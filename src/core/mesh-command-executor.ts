@@ -8,6 +8,7 @@ import type {
   CommandResult,
   FileDeleteOptions,
   FileMoveOptions,
+  FileMoveResult,
   FileStreamOptions,
   FileSystemDirectoryEntry,
   FileSystemMetadata,
@@ -107,7 +108,7 @@ export class MeshCommandExecutor implements CommandExecutor {
     sourcePath: string,
     destinationPath: string,
     options?: FileMoveOptions,
-  ): Promise<boolean> {
+  ): Promise<FileMoveResult> {
     return await this.client.movePath(sourcePath, destinationPath, options);
   }
 

@@ -13,6 +13,7 @@ import type {
   CommandOptions,
   FileDeleteOptions,
   FileMoveOptions,
+  FileMoveResult,
   FileStreamOptions,
   FileSystemDirectoryEntry,
   FileSystemMetadata,
@@ -1005,7 +1006,7 @@ export class CommandExecutorImpl implements CommandExecutor {
     sourcePath: string,
     destinationPath: string,
     options?: FileMoveOptions,
-  ): Promise<boolean> {
+  ): Promise<FileMoveResult> {
     if (this.localFileSystem) {
       return await this.localFileSystem.movePath(
         sourcePath,
@@ -1016,7 +1017,7 @@ export class CommandExecutorImpl implements CommandExecutor {
 
     const result = await this.exec("sh", [
       "-lc",
-      "src=\"$1\"; dest=\"$2\"; overwrite=\"$3\"; if [ ! -e \"$src\" ] && [ ! -L \"$src\" ]; then exit 2; fi; if [ -e \"$dest\" ] || [ -L \"$dest\" ]; then if [ \"$overwrite\" != 1 ]; then exit 3; fi; if [ -d \"$src\" ] || [ -d \"$dest\" ]; then exit 4; fi; fi; mkdir -p -- \"$(dirname -- \"$dest\")\" && mv -- \"$src\" \"$dest\"",
+      "src=\"$1\"; dest=\"$2\"; overwrite=\"$3\"; if [ ! -e \"$src\" ] && [ ! -L \"$src\" ]; then exit 2; fi; if [ -e \"$dest\" ] || [ -L \"$dest\" ]; then if [ \"$overwrite\" != 1 ]; then exit 3; fi; if [ -d \"$src\" ] || [ -d \"$dest\" ]; then exit 4; fi; fi; parent=$(dirname -- \"$dest\"); if [ -e \"$parent\" ] && [ ! -d \"$parent\" ]; then exit 5; fi; mkdir -p -- \"$parent\" && mv -- \"$src\" \"$dest\"",
       "clanky-file-move",
       sourcePath,
       destinationPath,
@@ -1024,7 +1025,23 @@ export class CommandExecutorImpl implements CommandExecutor {
     ], {
       logFailures: false,
     });
-    return result.success;
+    if (result.success) {
+      return { success: true };
+    }
+    const errorCode = result.exitCode === 2
+      ? "source_not_found"
+      : result.exitCode === 3
+        ? "destination_exists"
+        : result.exitCode === 4
+          ? "incompatible_type"
+          : result.exitCode === 5
+            ? "invalid_destination_parent"
+            : "operation_failed";
+    return {
+      success: false,
+      errorCode,
+      ...(result.stderr ? { error: result.stderr } : {}),
+    };
   }
 
   async deletePath(path: string, options: FileDeleteOptions): Promise<boolean> {

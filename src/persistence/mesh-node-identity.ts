@@ -671,12 +671,17 @@ export async function setLocalMeshExecutionConfiguration(
 
 export async function requireLocalMeshExecutionCapability(
   capability: keyof ExecutionHostCapabilities,
+  minimumVersion = 1,
 ): Promise<ExecutionNodeConfiguration> {
-  return await requireLocalMeshExecutionAnyCapability([capability]);
+  return await requireLocalMeshExecutionAnyCapability(
+    [capability],
+    { [capability]: minimumVersion },
+  );
 }
 
 export async function requireLocalMeshExecutionAnyCapability(
   capabilities: readonly (keyof ExecutionHostCapabilities)[],
+  minimumVersions: Partial<Record<keyof ExecutionHostCapabilities, number>> = {},
 ): Promise<ExecutionNodeConfiguration> {
   const identity = await ensureLocalMeshNodeIdentity();
   const execution = identity.execution;
@@ -687,15 +692,23 @@ export async function requireLocalMeshExecutionAnyCapability(
       "This Mesh node does not accept remote execution.",
     );
   }
-  if (!capabilities.some((capability) => (runtimeCapabilities[capability] ?? 0) >= 1)) {
+  if (!capabilities.some((capability) => (
+    (runtimeCapabilities[capability] ?? 0) >= (minimumVersions[capability] ?? 1)
+  ))) {
     const capability = capabilities.join(" or ");
     throw new DomainError(
       "mesh_execution_capability_unavailable",
       `This Mesh node does not provide the ${capability} capability.`,
       {
         details: capabilities.length === 1
-          ? { capability: capabilities[0] }
-          : { capabilities },
+          ? {
+              capability: capabilities[0],
+              minimumVersion: minimumVersions[capabilities[0]!] ?? 1,
+            }
+          : {
+              capabilities,
+              minimumVersions,
+            },
       },
     );
   }

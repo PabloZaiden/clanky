@@ -102,6 +102,23 @@ export interface FileMoveOptions {
   overwrite?: boolean;
 }
 
+export type FileMoveErrorCode =
+  | "source_not_found"
+  | "destination_exists"
+  | "incompatible_type"
+  | "invalid_destination_parent"
+  | "operation_failed";
+
+export type FileMoveResult =
+  | {
+      success: true;
+    }
+  | {
+      success: false;
+      errorCode: FileMoveErrorCode;
+      error?: string;
+    };
+
 export interface FileDeleteOptions {
   kind: FileSystemNodeKind;
   recursive?: boolean;
@@ -215,7 +232,7 @@ export interface CommandExecutor {
     sourcePath: string,
     destinationPath: string,
     options?: FileMoveOptions,
-  ): Promise<boolean>;
+  ): Promise<FileMoveResult>;
 
   /**
    * Delete a file or directory on the execution host.

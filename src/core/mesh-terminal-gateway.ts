@@ -28,7 +28,10 @@ import {
 import { decryptMeshPayload } from "./mesh-payload-crypto";
 import { requireTrustedController } from "./mesh-peer-auth";
 import { buildMeshTerminalSessionSigningPayload } from "./mesh-terminal-protocol";
-import { assertMeshExecutionCwd } from "./mesh-execution-gateway";
+import {
+  assertPhysicalExecutionPath,
+  resolveTrustedExecutionRoot,
+} from "./mesh-execution-gateway";
 import { executionPathStyleForPlatform } from "./execution-path";
 import { getMeshWorkerDirectory } from "./mesh-runtime";
 import { CommandExecutorImpl } from "./remote-command-executor";
@@ -153,17 +156,16 @@ export class MeshTerminalGateway {
           "The worker operating system does not provide supported path semantics.",
         );
       }
-      const executionRoot = assertMeshExecutionCwd(
+      const trustedRoot = await resolveTrustedExecutionRoot(
         getMeshWorkerDirectory(),
         request.executionRoot,
         pathStyle,
       );
-      const directory = assertMeshExecutionCwd(
-        executionRoot,
+      const directory = await assertPhysicalExecutionPath(
+        trustedRoot,
         request.directory,
-        pathStyle,
       );
-      request.executionRoot = executionRoot;
+      request.executionRoot = trustedRoot.physicalExecutionRoot;
       request.directory = directory;
       const decryptedEnvironment = request.encryptedEnvironment === undefined
         ? undefined

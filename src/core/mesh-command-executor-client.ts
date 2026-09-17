@@ -44,6 +44,7 @@ import type {
   CommandResult,
   FileDeleteOptions,
   FileMoveOptions,
+  FileMoveResult,
   FileSystemDirectoryEntry,
   FileSystemMetadata,
   FileWriteStreamOptions,
@@ -966,8 +967,8 @@ export class MeshCommandExecutorClient {
     sourcePath: string,
     destinationPath: string,
     options?: FileMoveOptions,
-  ): Promise<boolean> {
-    return await this.execute<boolean>({
+  ): Promise<FileMoveResult> {
+    return await this.execute<FileMoveResult>({
       operation: "movePath",
       sourcePath,
       destinationPath,

@@ -12,6 +12,7 @@ import type {
   CommandOptions,
   FileDeleteOptions,
   FileMoveOptions,
+  FileMoveResult,
   FileStreamOptions,
   FileSystemDirectoryEntry,
   FileSystemMetadata,
@@ -397,7 +398,7 @@ export class TestCommandExecutor implements CommandExecutor {
     sourcePath: string,
     destinationPath: string,
     options?: FileMoveOptions,
-  ): Promise<boolean> {
+  ): Promise<FileMoveResult> {
     return await this.localFileSystem.movePath(
       sourcePath,
       destinationPath,

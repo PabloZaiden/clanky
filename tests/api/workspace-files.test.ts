@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:tes
 import { getDatabase, initializeDatabase } from "../../src/persistence/database";
 import { backendManager } from "../../src/core/backend-manager";
 import type {
+  FileMoveResult,
   FileStreamOptions,
   FileSystemMetadata,
 } from "../../src/core/command-executor";
@@ -211,6 +212,36 @@ describe("workspace files API integration", () => {
     ) {
       this.streamWriteCalls += 1;
       return await super.writeFileStream(path, stream, options);
+    }
+  }
+
+  class MissingSourceMoveExecutor extends TestCommandExecutor {
+    override async movePath(): Promise<FileMoveResult> {
+      return {
+        success: false,
+        errorCode: "source_not_found",
+      };
+    }
+  }
+
+  class ConcurrentTreeExecutor extends TestCommandExecutor {
+    activeDirectoryListings = 0;
+    maximumConcurrentDirectoryListings = 0;
+
+    override async listDirectoryEntries(
+      path: string,
+      options?: { includeHidden?: boolean },
+    ) {
+      this.activeDirectoryListings += 1;
+      this.maximumConcurrentDirectoryListings = Math.max(
+        this.maximumConcurrentDirectoryListings,
+        this.activeDirectoryListings,
+      );
+      try {
+        return await super.listDirectoryEntries(path, options);
+      } finally {
+        this.activeDirectoryListings -= 1;
+      }
     }
   }
 
@@ -460,6 +491,19 @@ describe("workspace files API integration", () => {
     expect(data.entriesByDirectory["src"]?.map((entry) => entry.path)).toEqual(["src/index.ts"]);
   });
 
+  test("loads independent tree directories concurrently", async () => {
+    const treeExecutor = new ConcurrentTreeExecutor();
+    backendManager.setExecutorFactoryForTesting(() => treeExecutor);
+    const workspace = await createWorkspace();
+
+    const response = await fetch(
+      `${baseUrl}/api/workspaces/${workspace.id}/files/tree`,
+    );
+
+    expect(response.ok).toBe(true);
+    expect(treeExecutor.maximumConcurrentDirectoryListings).toBeGreaterThan(1);
+  });
+
   test("keeps symlinked directories as directory entries without traversing into them", async () => {
     const workspace = await createWorkspace();
     const directoryLinkPath = join(workDir, "src-link");
@@ -497,6 +541,17 @@ describe("workspace files API integration", () => {
       };
       expect(data.entriesByDirectory[""]?.map((entry) => entry.name)).toEqual([".git", "assets.png", "src", "broken-link", "logo.svg", "README.md"]);
       expect(data.entriesByDirectory[""]?.map((entry) => entry.kind)).toEqual(["directory", "directory", "directory", "file", "file", "file"]);
+
+      const metadataResponse = await fetch(
+        `${baseUrl}/api/workspaces/${workspace.id}/files/metadata?path=${encodeURIComponent("broken-link")}`,
+      );
+      expect(metadataResponse.ok).toBe(true);
+      expect(await metadataResponse.json()).toMatchObject({
+        file: {
+          path: "broken-link",
+          kind: "file",
+        },
+      });
     } finally {
       await rm(brokenLinkPath, { force: true });
     }
@@ -590,6 +645,30 @@ describe("workspace files API integration", () => {
     };
     expect(data.error).toBe("file_conflict");
     expect(data.currentFile?.path).toBe("src/index.ts");
+  });
+
+  test("preserves not-found semantics when a rename source disappears after preflight", async () => {
+    backendManager.setExecutorFactoryForTesting(
+      () => new MissingSourceMoveExecutor(),
+    );
+    const workspace = await createWorkspace();
+
+    const response = await fetch(
+      `${baseUrl}/api/workspaces/${workspace.id}/files/rename`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          path: "README.md",
+          newName: "renamed.md",
+        }),
+      },
+    );
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({
+      error: "file_not_found",
+    });
   });
 
     test("renames and deletes workspace files and directories", async () => {

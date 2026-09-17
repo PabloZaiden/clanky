@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { generateKeyPairSync, sign, type KeyObject } from "node:crypto";
-import { mkdtemp, rm, symlink } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
@@ -9,8 +9,11 @@ import type {
 } from "../../src/contracts/schemas/mesh-execution";
 import {
   MeshExecutionGateway,
+  assertPhysicalExecutionPath,
   assertMeshExecutionCwd,
   assertMeshExecutionPath,
+  getMeshExecutionOperationCapability,
+  resolveTrustedExecutionRoot,
 } from "../../src/core/mesh-execution-gateway";
 import { buildMeshExecutionSessionSigningPayload } from "../../src/core/mesh-protocol";
 import { configureMeshRuntime } from "../../src/core/mesh-runtime";
@@ -69,6 +72,43 @@ describe("mesh execution path validation", () => {
       .toThrow();
     expect(() => assertMeshExecutionPath("relative-root", "path", "posix"))
       .toThrow();
+  });
+
+  test("uses the canonical physical path after validating in-root symlinks", async () => {
+    const root = await mkdtemp(join(tmpdir(), "clanky-mesh-path-root-"));
+    const target = join(root, "physical");
+    await mkdir(target);
+    await writeFile(join(target, "note.txt"), "inside\n");
+    await symlink(target, join(root, "alias"));
+
+    try {
+      const trustedRoot = await resolveTrustedExecutionRoot(root, root, "posix");
+      expect(await assertPhysicalExecutionPath(
+        trustedRoot,
+        "alias/note.txt",
+      )).toBe(join(target, "note.txt"));
+      expect(await assertPhysicalExecutionPath(
+        trustedRoot,
+        "alias/new.txt",
+      )).toBe(join(target, "new.txt"));
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("assigns capability versions by Mesh operation contract", () => {
+    expect(getMeshExecutionOperationCapability("exec")).toEqual({
+      id: "commandExecution",
+      minimumVersion: 1,
+    });
+    expect(getMeshExecutionOperationCapability("readFile")).toEqual({
+      id: "fileOperations",
+      minimumVersion: 1,
+    });
+    expect(getMeshExecutionOperationCapability("movePath")).toEqual({
+      id: "fileOperations",
+      minimumVersion: 2,
+    });
   });
 });
 
@@ -294,7 +334,7 @@ describe("mesh asynchronous command lifecycle", () => {
       sourcePath: "notes/copied.txt",
       destinationPath: "notes/done.txt",
       overwrite: false,
-    })).toBe(true);
+    })).toEqual({ success: true });
     expect(await execute({
       operation: "deletePath",
       path: "notes/done.txt",

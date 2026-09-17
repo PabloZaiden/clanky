@@ -7,6 +7,7 @@ import { randomUUID } from "node:crypto";
 import type { WorkspaceFileKind, WorkspaceFileEntry, WorkspaceFileNode } from "@/shared";
 import type {
   CommandExecutor,
+  FileMoveResult,
   FileSystemMetadata,
 } from "./command-executor";
 import {
@@ -60,6 +61,7 @@ const FULL_TREE_DEFERRED_DIRECTORY_NAMES = [
   "Pods",
 ] as const;
 const FULL_TREE_DEFERRED_DIRECTORY_NAME_SET = new Set<string>(FULL_TREE_DEFERRED_DIRECTORY_NAMES);
+const FULL_TREE_DIRECTORY_CONCURRENCY = 8;
 
 export interface FileExplorerTarget {
   id: string;
@@ -241,6 +243,50 @@ function assertOverwriteKindCompatible(
   }
   if (existingFile.kind !== replacementKind) {
     throw new FileExplorerConflictError("Destination already exists with a different type", existingFile);
+  }
+}
+
+async function throwMoveFailure(
+  target: FileExplorerTarget,
+  destinationAbsolutePath: string,
+  result: Extract<FileMoveResult, { success: false }>,
+  sourceMissingCode: "file_not_found" | "invalid_upload_state",
+  operationMessage: string,
+): Promise<never> {
+  switch (result.errorCode) {
+    case "source_not_found":
+      throw new FileExplorerError(
+        sourceMissingCode,
+        sourceMissingCode === "file_not_found"
+          ? "Requested path does not exist"
+          : "The upload temporary file no longer exists",
+      );
+    case "destination_exists":
+    case "incompatible_type": {
+      const destination = await getFileMetadata(
+        target.executor,
+        destinationAbsolutePath,
+        { includeContentHash: false },
+      );
+      throw new FileExplorerConflictError(
+        result.errorCode === "destination_exists"
+          ? "Destination already exists"
+          : "Destination exists with an incompatible type",
+        destination
+          ? toFileEntry(target, destinationAbsolutePath, destination)
+          : null,
+      );
+    }
+    case "invalid_destination_parent":
+      throw new FileExplorerError(
+        "invalid_path_type",
+        "Destination parent is not a directory",
+      );
+    case "operation_failed":
+      throw fileExplorerOperationError(
+        operationMessage,
+        result.error ? new Error(result.error) : undefined,
+      );
   }
 }
 
@@ -477,30 +523,40 @@ async function loadFullTree(
   const result: WorkspaceFileNode[] = [];
   const pendingDirectories = [target.rootDirectory];
   while (pendingDirectories.length > 0) {
-    const directory = pendingDirectories.shift()!;
-    const entries = await target.executor.listDirectoryEntries(directory, {
-      includeHidden: true,
-    });
-    for (const entry of entries) {
-      const absolutePath = joinExecutionPath(
-        target.executor.pathStyle,
+    const directories = pendingDirectories.splice(
+      0,
+      FULL_TREE_DIRECTORY_CONCURRENCY,
+    );
+    const directoryEntries = await Promise.all(directories.map(
+      async (directory) => ({
         directory,
-        entry.name,
-      );
-      const deferred = entry.kind === "directory"
-        && isDeferredFullTreeDirectory(
-          absolutePath,
+        entries: await target.executor.listDirectoryEntries(directory, {
+          includeHidden: true,
+        }),
+      }),
+    ));
+    for (const { directory, entries } of directoryEntries) {
+      for (const entry of entries) {
+        const absolutePath = joinExecutionPath(
           target.executor.pathStyle,
+          directory,
+          entry.name,
         );
-      result.push(toFileNode(target, absolutePath, entry.kind, {
-        loadOnExpand: deferred,
-      }));
-      if (
-        entry.kind === "directory"
-        && !entry.isSymbolicLink
-        && !deferred
-      ) {
-        pendingDirectories.push(absolutePath);
+        const deferred = entry.kind === "directory"
+          && isDeferredFullTreeDirectory(
+            absolutePath,
+            target.executor.pathStyle,
+          );
+        result.push(toFileNode(target, absolutePath, entry.kind, {
+          loadOnExpand: deferred,
+        }));
+        if (
+          entry.kind === "directory"
+          && !entry.isSymbolicLink
+          && !deferred
+        ) {
+          pendingDirectories.push(absolutePath);
+        }
       }
     }
   }
@@ -774,8 +830,14 @@ export class FileExplorerService {
       destinationAbsolutePath,
       { overwrite: options?.overwrite },
     );
-    if (!moved) {
-      throw fileExplorerOperationError("Failed to rename file");
+    if (!moved.success) {
+      return await throwMoveFailure(
+        target,
+        destinationAbsolutePath,
+        moved,
+        "file_not_found",
+        "Failed to rename file",
+      );
     }
 
     const updatedFile = await this.getMetadata(
@@ -1026,8 +1088,14 @@ export class FileExplorerService {
       session.finalAbsolutePath,
       { overwrite: session.overwrite },
     );
-    if (!moved) {
-      throw fileExplorerOperationError("Failed to complete upload");
+    if (!moved.success) {
+      return await throwMoveFailure(
+        target,
+        session.finalAbsolutePath,
+        moved,
+        "invalid_upload_state",
+        "Failed to complete upload",
+      );
     }
 
     const uploadedFile = await this.getMetadata(target, session.relativePath);

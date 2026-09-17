@@ -4,6 +4,7 @@ import type {
   CommandResult,
   FileDeleteOptions,
   FileMoveOptions,
+  FileMoveResult,
   FileStreamOptions,
   FileSystemDirectoryEntry,
   FileSystemMetadata,
@@ -347,14 +348,18 @@ export class ProvisioningTestExecutor implements CommandExecutor {
     sourcePath: string,
     destinationPath: string,
     options?: FileMoveOptions,
-  ): Promise<boolean> {
+  ): Promise<FileMoveResult> {
     const content = this.files.get(sourcePath);
-    if (content === undefined || (!options?.overwrite && this.files.has(destinationPath))) {
-      return false;
+    if (content === undefined) {
+      return { success: false, errorCode: "source_not_found" };
+    }
+    const destinationExists = this.files.has(destinationPath);
+    if (!options?.overwrite && destinationExists) {
+      return { success: false, errorCode: "destination_exists" };
     }
     this.files.delete(sourcePath);
     this.files.set(destinationPath, content);
-    return true;
+    return { success: true };
   }
 
   async deletePath(path: string, options: FileDeleteOptions): Promise<boolean> {

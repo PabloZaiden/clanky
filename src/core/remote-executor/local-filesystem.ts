@@ -24,6 +24,7 @@ import {
 import type {
   FileDeleteOptions,
   FileMoveOptions,
+  FileMoveResult,
   FileStreamOptions,
   FileSystemDirectoryEntry,
   FileSystemMetadata,
@@ -310,34 +311,84 @@ export class LocalFileSystem {
     sourcePath: string,
     destinationPath: string,
     options?: FileMoveOptions,
-  ): Promise<boolean> {
+  ): Promise<FileMoveResult> {
     try {
+      const source = await this.getFileMetadata(sourcePath, {
+        includeContentHash: false,
+      });
+      if (!source) {
+        return { success: false, errorCode: "source_not_found" };
+      }
       const destination = await this.getFileMetadata(destinationPath, {
         includeContentHash: false,
       });
       if (destination && !options?.overwrite) {
-        return false;
+        return { success: false, errorCode: "destination_exists" };
       }
       if (destination) {
-        const source = await this.getFileMetadata(sourcePath, {
-          includeContentHash: false,
-        });
         if (
-          !source
-          || source.kind !== destination.kind
+          source.kind !== destination.kind
           || source.kind === "directory"
         ) {
-          return false;
+          return { success: false, errorCode: "incompatible_type" };
         }
+      }
+      const destinationParent = await this.getFileMetadata(
+        dirnameExecutionPath(destinationPath, this.pathStyle),
+        { includeContentHash: false },
+      );
+      if (destinationParent && destinationParent.kind !== "directory") {
+        return {
+          success: false,
+          errorCode: "invalid_destination_parent",
+        };
       }
       await mkdir(
         dirnameExecutionPath(destinationPath, this.pathStyle),
         { recursive: true },
       );
+      // Node uses replace-existing rename semantics for files on every supported
+      // platform, including MoveFileExW on Windows; pre-deleting would break the
+      // atomic replacement used by completed uploads.
       await rename(sourcePath, destinationPath);
-      return true;
-    } catch {
-      return false;
+      return { success: true };
+    } catch (error) {
+      const source = await this.getFileMetadata(sourcePath, {
+        includeContentHash: false,
+      }).catch(() => null);
+      if (!source) {
+        return { success: false, errorCode: "source_not_found" };
+      }
+      const destination = await this.getFileMetadata(destinationPath, {
+        includeContentHash: false,
+      }).catch(() => null);
+      if (destination && !options?.overwrite) {
+        return { success: false, errorCode: "destination_exists" };
+      }
+      if (
+        destination
+        && (
+          source.kind !== destination.kind
+          || source.kind === "directory"
+        )
+      ) {
+        return { success: false, errorCode: "incompatible_type" };
+      }
+      const destinationParent = await this.getFileMetadata(
+        dirnameExecutionPath(destinationPath, this.pathStyle),
+        { includeContentHash: false },
+      ).catch(() => null);
+      if (destinationParent && destinationParent.kind !== "directory") {
+        return {
+          success: false,
+          errorCode: "invalid_destination_parent",
+        };
+      }
+      return {
+        success: false,
+        errorCode: "operation_failed",
+        error: String(error),
+      };
     }
   }
 
