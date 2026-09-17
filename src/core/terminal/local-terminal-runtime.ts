@@ -60,6 +60,11 @@ export interface LocalTerminalSpawnConfig {
   env: Record<string, string>;
 }
 
+export interface ResolvedWindowsTerminalShell {
+  command: string;
+  kind: "powershell" | "cmd";
+}
+
 export function isWindowsTerminalRuntime(): boolean {
   return process.platform === "win32";
 }
@@ -101,14 +106,22 @@ export function resolveWindowsTerminalSpawn(
   cwd: string,
   environment: Record<string, string>,
 ): LocalTerminalSpawnConfig {
+  const shell = resolveWindowsTerminalShell();
+  return {
+    command: shell.command,
+    args: shell.kind === "powershell" ? ["-NoLogo"] : ["/Q"],
+    cwd,
+    env: environment,
+  };
+}
+
+export function resolveWindowsTerminalShell(): ResolvedWindowsTerminalShell {
   for (const candidate of ["pwsh.exe", "pwsh"]) {
     const command = Bun.which(candidate);
     if (command) {
       return {
         command,
-        args: ["-NoLogo"],
-        cwd,
-        env: environment,
+        kind: "powershell",
       };
     }
   }
@@ -117,9 +130,7 @@ export function resolveWindowsTerminalSpawn(
     if (command) {
       return {
         command,
-        args: ["-NoLogo"],
-        cwd,
-        env: environment,
+        kind: "powershell",
       };
     }
   }
@@ -132,18 +143,14 @@ export function resolveWindowsTerminalSpawn(
   ) {
     return {
       command: comSpec,
-      args: ["/Q"],
-      cwd,
-      env: environment,
+      kind: "cmd",
     };
   }
   const command = Bun.which("cmd.exe") ?? Bun.which("cmd");
   if (command) {
     return {
       command,
-      args: ["/Q"],
-      cwd,
-      env: environment,
+      kind: "cmd",
     };
   }
   throw new DomainError(

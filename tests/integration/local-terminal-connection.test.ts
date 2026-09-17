@@ -8,6 +8,7 @@ import {
 import { LocalTerminalConnection } from "../../src/core/terminal/local-terminal-connection";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { pollUntil } from "../helpers/polling";
+import { buildTerminalResizeProbe } from "../helpers/terminal-resize-probe";
 
 type LocalTerminalMode = "direct" | "dtach";
 
@@ -61,19 +62,21 @@ describe("LocalTerminalConnection integration", () => {
         }
 
         await connection.resize(120, 32);
-        if (process.platform === "win32") {
-          connection.sendInput(
-            "$size=$Host.UI.RawUI.WindowSize; Write-Output \"LOCAL_TERMINAL_SIZE:$($size.Height) $($size.Width):DONE\"\r\n",
-          );
-        } else {
-          connection.sendInput(
-            "size=$(stty size); printf 'LOCAL_TERMINAL_SIZE:%s:DONE\\n' \"$size\"\n",
-          );
-        }
+        const probe = buildTerminalResizeProbe({
+          marker: "LOCAL_TERMINAL_SIZE",
+          os: process.platform === "win32"
+            ? "windows"
+            : process.platform === "darwin"
+              ? "darwin"
+              : "linux",
+          cols: 120,
+          rows: 32,
+        });
+        connection.sendInput(probe.input);
 
         await pollUntil(
           () => output.join(""),
-          (value) => value.includes("LOCAL_TERMINAL_SIZE:32 120:DONE"),
+          (value) => value.includes(probe.expectedOutput),
           {
             description: `${mode} terminal resize output`,
             timeoutMs: 10_000,

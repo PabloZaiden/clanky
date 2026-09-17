@@ -507,10 +507,20 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
         const record = payload && typeof payload === "object"
           ? payload as Record<string, unknown>
           : {};
+        const code = typeof record["error"] === "string"
+          ? record["error"]
+          : "mesh_terminal_session_release_failed";
+        if (
+          response.status === 401
+          && (
+            code === "mesh_terminal_session_invalid"
+            || code === "mesh_terminal_session_expired"
+          )
+        ) {
+          return true;
+        }
         throw new DomainError(
-          typeof record["error"] === "string"
-            ? record["error"]
-            : "mesh_terminal_session_release_failed",
+          code,
           typeof record["message"] === "string"
             ? record["message"]
             : "The Mesh terminal session could not be released.",

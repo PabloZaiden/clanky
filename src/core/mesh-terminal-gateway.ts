@@ -228,7 +228,11 @@ export class MeshTerminalGateway {
     sessionToken: string,
   ): Promise<void> {
     const lease = this.leases.get(sessionId);
-    if (!lease || lease.sessionToken !== sessionToken) {
+    if (!lease) {
+      await this.closePromises.get(sessionId);
+      return;
+    }
+    if (lease.sessionToken !== sessionToken) {
       throw new DomainError(
         "mesh_terminal_session_invalid",
         "The Mesh terminal session is invalid.",
@@ -464,10 +468,15 @@ export class MeshTerminalGateway {
     }
     const socket = relay?.socket;
     const opening = this.opening.get(sessionId);
+    const teardownErrors: unknown[] = [];
     if (opening && !this.closing.has(sessionId)) {
       this.closing.add(sessionId);
       if (relay) {
-        await relay.connection.dispose();
+        try {
+          await relay.connection.dispose();
+        } catch (error) {
+          teardownErrors.push(error);
+        }
       }
       try {
         await opening;
@@ -477,14 +486,28 @@ export class MeshTerminalGateway {
         this.closing.delete(sessionId);
       }
     }
-    await this.cleanup(sessionId);
     const socketToClose = relay?.socket ?? socket;
-    if (closeSocket && socketToClose) {
-      try {
-        socketToClose.close(closeCode, closeReason);
-      } catch {
-        // The transport may already be closed.
+    try {
+      await this.cleanup(sessionId);
+    } catch (error) {
+      teardownErrors.push(error);
+    } finally {
+      if (closeSocket && socketToClose) {
+        try {
+          socketToClose.close(closeCode, closeReason);
+        } catch {
+          // The transport may already be closed.
+        }
       }
+    }
+    if (teardownErrors.length === 1) {
+      throw teardownErrors[0];
+    }
+    if (teardownErrors.length > 1) {
+      throw new AggregateError(
+        teardownErrors,
+        "Failed to fully terminate the Mesh terminal session.",
+      );
     }
   }
 

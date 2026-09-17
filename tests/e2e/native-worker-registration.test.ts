@@ -42,6 +42,7 @@ import {
   closeDatabase,
   initializeDatabase,
 } from "../../src/persistence/database";
+import { buildTerminalResizeProbe } from "../helpers/terminal-resize-probe";
 
 interface MeshHealthResponse {
   success: boolean;
@@ -245,12 +246,16 @@ async function exerciseMeshTerminal(
       }
 
       await connection.resize(113, 37);
-      connection.sendInput(windows
-        ? "$size=$Host.UI.RawUI.WindowSize; Write-Output \"NATIVE_TERMINAL_SIZE:$($size.Height) $($size.Width):DONE\"\r\n"
-        : "size=$(stty size); printf 'NATIVE_TERMINAL_SIZE:%s:DONE\\n' \"$size\"\n");
+      const probe = buildTerminalResizeProbe({
+        marker: "NATIVE_TERMINAL_SIZE",
+        os: platformOs,
+        cols: 113,
+        rows: 37,
+      });
+      connection.sendInput(probe.input);
       await pollUntil(
         () => output.join(""),
-        (value) => value.includes("NATIVE_TERMINAL_SIZE:37 113:DONE"),
+        (value) => value.includes(probe.expectedOutput),
         {
           description: "native Mesh terminal input, output, and resize",
           timeoutMs: 20_000,
@@ -268,16 +273,32 @@ async function expectTunnelEcho(
   message: string,
 ): Promise<void> {
   const echoed = new Promise<string>((resolve, reject) => {
+    const expected = Buffer.from(message);
+    let received = Buffer.alloc(0);
+    let settled = false;
     const timer = setTimeout(() => {
+      settled = true;
       reject(new Error("Timed out waiting for the native Mesh TCP echo"));
     }, 10_000);
     tunnel.once("error", (error) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
       clearTimeout(timer);
       reject(error);
     });
     tunnel.on("data", (data) => {
+      if (settled) {
+        return;
+      }
+      received = Buffer.concat([received, Buffer.from(data)]);
+      if (received.length < expected.length) {
+        return;
+      }
+      settled = true;
       clearTimeout(timer);
-      resolve(Buffer.from(data).toString("utf8"));
+      resolve(received.toString("utf8"));
     });
   });
   tunnel.write(message);
@@ -289,23 +310,39 @@ async function expectPreviewEcho(
   message: string,
 ): Promise<void> {
   await new Promise<void>((resolve, reject) => {
+    const expected = Buffer.from(message);
+    let received = Buffer.alloc(0);
+    let settled = false;
     const socket = net.createConnection({
       host: "127.0.0.1",
       port: localPort,
     });
     const timer = setTimeout(() => {
+      settled = true;
       socket.destroy();
       reject(new Error("Timed out waiting for the native Mesh preview echo"));
     }, 10_000);
     socket.once("connect", () => socket.write(message));
     socket.once("error", (error) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
       clearTimeout(timer);
       reject(error);
     });
     socket.on("data", (data) => {
+      if (settled) {
+        return;
+      }
+      received = Buffer.concat([received, Buffer.from(data)]);
+      if (received.length < expected.length) {
+        return;
+      }
+      settled = true;
       clearTimeout(timer);
       try {
-        expect(data.toString("utf8")).toBe(message);
+        expect(received.toString("utf8")).toBe(message);
         socket.end();
         resolve();
       } catch (error) {
