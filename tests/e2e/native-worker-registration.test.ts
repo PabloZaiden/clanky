@@ -23,7 +23,7 @@ import type {
   MeshWorkerStatus,
 } from "../../src/shared/mesh";
 import { CommandExecutorImpl } from "../../src/core/remote-command-executor";
-import { GitService } from "../../src/core/git";
+import { GitCommandError, GitService } from "../../src/core/git";
 import { ensurePlanningDirectory } from "../../src/core/planning-directory";
 
 interface MeshHealthResponse {
@@ -101,12 +101,16 @@ describe("native worker registration", () => {
       provider: "local",
       directory: root,
     });
+    const git = GitService.withExecutor(executor);
 
     try {
       expect(await executor.writeFile(
         join(repoDirectory, "tracked.txt"),
         "initial\n",
       )).toBe(true);
+      await expect(git.hasStagedChanges(repoDirectory)).rejects.toBeInstanceOf(
+        GitCommandError,
+      );
       for (const args of [
         ["init", repoDirectory],
         ["-C", repoDirectory, "config", "user.name", "Clanky Native E2E"],
@@ -116,7 +120,6 @@ describe("native worker registration", () => {
         expect(result.success).toBe(true);
       }
 
-      const git = GitService.withExecutor(executor);
       expect(await git.isGitRepo(repoDirectory)).toBe(true);
       const planningDirectory = await ensurePlanningDirectory(
         executor,

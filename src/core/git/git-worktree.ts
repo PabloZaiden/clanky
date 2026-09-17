@@ -10,7 +10,7 @@ import {
   joinExecutionPath,
   normalizeExecutionPath,
   relativeExecutionPath,
-  resolveExecutionPathUnscoped,
+  resolveExecutionPathFromDirectory,
   type ExecutionPathStyle,
 } from "../execution-path";
 import {
@@ -228,7 +228,7 @@ export async function ensureWorktreeExcluded(
   );
   const resolvedPath = result.success ? result.stdout.trim() : "";
   const excludePath = resolvedPath
-    ? resolveExecutionPathUnscoped(
+    ? resolveExecutionPathFromDirectory(
         repoDirectory,
         resolvedPath,
         executor.pathStyle,

@@ -29,9 +29,10 @@ function normalizePathValue(
 ): string {
   const api = pathApi(style);
   const normalized = api.normalize(value);
+  const trailingSeparators = style === "windows" ? /[\\/]+$/ : /\/+$/;
   return normalized === api.parse(normalized).root
     ? normalized
-    : normalized.replace(/[\\/]+$/, "");
+    : normalized.replace(trailingSeparators, "");
 }
 
 function isWindowsDevicePath(value: string): boolean {
@@ -56,7 +57,11 @@ function hasUnstableWindowsPathComponent(value: string): boolean {
   return value
     .slice(root.length)
     .split(/[\\/]+/)
-    .some((component) => component.endsWith(" ") || component.endsWith("."));
+    .some((component) => (
+      component !== "."
+      && component !== ".."
+      && (component.endsWith(" ") || component.endsWith("."))
+    ));
 }
 
 function assertSupportedWindowsPath(
@@ -163,6 +168,42 @@ export function resolveExecutionPathUnscoped(
     assertSupportedWindowsPath(value, "invalid_path", "Requested path");
   }
   return pathApi(style).resolve(normalizedRoot, value);
+}
+
+export function resolveExecutionPathFromDirectory(
+  directory: string,
+  requested: string,
+  style: ExecutionPathStyle,
+): string {
+  const normalizedDirectory = normalizeExecutionPath(directory, style);
+  const normalizedRequested = normalizeExecutionPath(requested, style);
+  const api = pathApi(style);
+  return api.isAbsolute(normalizedRequested)
+    ? normalizedRequested
+    : normalizePathValue(
+        api.join(normalizedDirectory, normalizedRequested),
+        style,
+      );
+}
+
+export function resolveExecutionPathWithinDirectory(
+  directory: string,
+  requested: string,
+  style: ExecutionPathStyle,
+): string {
+  const normalizedDirectory = normalizeExecutionPath(directory, style);
+  const resolved = resolveExecutionPathFromDirectory(
+    normalizedDirectory,
+    requested,
+    style,
+  );
+  if (!isExecutionPathWithinRoot(normalizedDirectory, resolved, style)) {
+    throw new ExecutionPathError(
+      "outside_root",
+      "Requested path must stay within the execution directory.",
+    );
+  }
+  return resolved;
 }
 
 export function executionPathsEqual(

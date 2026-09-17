@@ -5,7 +5,7 @@ import {
   isAbsoluteExecutionPath,
   joinExecutionPath,
   normalizeExecutionPath,
-  resolveExecutionPath,
+  resolveExecutionPathWithinDirectory,
   type ExecutionPathStyle,
 } from "./execution-path";
 import {
@@ -95,7 +95,11 @@ function resolvePlanningFileSource(
   try {
     planPath = isAbsolutePlanPath
     ? normalizedRequestedPath
-    : resolveExecutionPath(directory, normalizedRequestedPath, pathStyle);
+    : resolveExecutionPathWithinDirectory(
+        directory,
+        normalizedRequestedPath,
+        pathStyle,
+      );
   } catch (error) {
     throw new InvalidCurrentPlanError(
       "Relative plan file paths must stay within the current chat workspace.",

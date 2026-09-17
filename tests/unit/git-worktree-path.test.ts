@@ -3,8 +3,50 @@ import {
   GitService,
   InvalidManagedWorktreePathError,
 } from "../../src/core/git";
+import type {
+  CommandOptions,
+  CommandResult,
+} from "../../src/core/command-executor";
 import { ManagedPathService } from "../../src/core/managed-path-service";
 import { TestCommandExecutor } from "../mocks/mock-executor";
+
+class RelativeGitPathExecutor extends TestCommandExecutor {
+  override readonly pathStyle = "posix";
+  readonly writes = new Map<string, string>();
+
+  override async exec(
+    command: string,
+    args: string[],
+    _options?: CommandOptions,
+  ): Promise<CommandResult> {
+    if (
+      command === "git"
+      && args.slice(-3).join(" ") === "rev-parse --git-path info/exclude"
+    ) {
+      return {
+        success: true,
+        stdout: ".git/info/exclude\n",
+        stderr: "",
+        exitCode: 0,
+      };
+    }
+    return {
+      success: false,
+      stdout: "",
+      stderr: `Unexpected command: ${command} ${args.join(" ")}`,
+      exitCode: 1,
+    };
+  }
+
+  override async readFile(path: string): Promise<string | null> {
+    return this.writes.get(path) ?? null;
+  }
+
+  override async writeFile(path: string, content: string): Promise<boolean> {
+    this.writes.set(path, content);
+    return true;
+  }
+}
 
 describe("Managed worktree paths", () => {
   const paths = new ManagedPathService("posix");
@@ -101,5 +143,16 @@ describe("Managed worktree paths", () => {
     await expect(git.ensureWorktreeRemoved("/remote/workspaces/repository", unsafePath)).rejects.toThrow(
       InvalidManagedWorktreePathError,
     );
+  });
+
+  test("resolves relative Git metadata paths from the repository directory", async () => {
+    const executor = new RelativeGitPathExecutor();
+    const git = GitService.withExecutor(executor);
+
+    await git.ensureWorktreeExcluded("relative/repository");
+
+    expect(executor.writes.get(
+      "relative/repository/.git/info/exclude",
+    )).toContain(".clanky-worktrees");
   });
 });

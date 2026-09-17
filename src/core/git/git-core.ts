@@ -7,7 +7,7 @@ import type { CommandExecutor } from "../command-executor";
 import { log } from "@pablozaiden/webapp/server";
 import { GitCommandError } from "./git-types";
 import type { GitCommandResult } from "./git-types";
-import { resolveExecutionPathUnscoped } from "../execution-path";
+import { resolveExecutionPathFromDirectory } from "../execution-path";
 
 const DEFAULT_GIT_SSH_COMMAND = "ssh";
 const ACCEPT_NEW_HOST_KEY_OPTION = "-o StrictHostKeyChecking=accept-new";
@@ -137,7 +137,7 @@ async function getGitKnownHostsPath(executor: CommandExecutor, directory: string
   const gitPath = result.stdout.trim();
   if (!gitPath) return null;
 
-  return resolveExecutionPathUnscoped(
+  return resolveExecutionPathFromDirectory(
     directory,
     gitPath,
     executor.pathStyle,
