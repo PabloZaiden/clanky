@@ -165,8 +165,6 @@ export class ChatTaskConversionService implements ChatTaskConversionPort {
       await this.taskManager.seedPlanFiles(task.config.id, {
         planContent: currentPlan.planContent,
         statusContent: currentPlan.statusContent ?? buildSeededPlanStatusContent(task.config.name),
-        planSourcePath: currentPlan.planSourcePath,
-        statusSourcePath: currentPlan.statusContent ? currentPlan.statusSourcePath : undefined,
       });
       await this.taskManager.saveLastUsedModel(working.chat.config.model);
     } catch (error) {

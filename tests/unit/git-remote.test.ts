@@ -5,15 +5,27 @@ import { GitService, GitCommandError } from "../../src/core/git";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 
 class GitRemoteTestExecutor extends TestCommandExecutor {
+  override readonly pathStyle = "posix";
+  readonly calls: Array<{
+    command: string;
+    args: string[];
+    options?: CommandOptions;
+  }> = [];
+
   constructor(private readonly results: CommandResult[]) {
-    super();
+    super("/absolute/repository");
+  }
+
+  override async getEnvironmentVariable(_name: string): Promise<string | null> {
+    return null;
   }
 
   override async exec(
-    _command: string,
-    _args: string[],
-    _options?: CommandOptions,
+    command: string,
+    args: string[],
+    options?: CommandOptions,
   ): Promise<CommandResult> {
+    this.calls.push({ command, args, options });
     const result = this.results.shift();
     if (!result) {
       throw new Error("Git remote test executor ran out of command results");
@@ -80,5 +92,33 @@ describe("GitService remote ref classification", () => {
       exitCode: 7,
       gitStderr: stderr,
     } satisfies Partial<GitCommandError>);
+  });
+
+  test("retries host-key failures with Git metadata resolved from a relative repository", async () => {
+    const executor = new GitRemoteTestExecutor([
+      commandResult({
+        success: false,
+        stderr: "Host key verification failed.\n",
+        exitCode: 128,
+      }),
+      commandResult({
+        success: false,
+        stderr: "",
+        exitCode: 1,
+      }),
+      commandResult({ stdout: "/absolute/repository/.git/clanky-known-hosts\n" }),
+      commandResult(),
+    ]);
+    const git = GitService.withExecutor(executor);
+
+    await expect(git.pushBranch(
+      "relative/repository",
+      "feature",
+    )).resolves.toBe("origin/feature");
+
+    expect(executor.calls.at(-1)?.options?.env?.["GIT_SSH_COMMAND"]).toContain(
+      "/absolute/repository/.git/clanky-known-hosts",
+    );
+    expect(executor.calls[1]?.options?.logFailures).toBe(false);
   });
 });

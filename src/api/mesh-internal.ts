@@ -265,7 +265,10 @@ export const meshInternalRoutes = defineRoutes({
           sessionId: session.sessionId,
           expiresAt: session.expiresAt,
           encryptedPayload: encryptMeshPayload(
-            { sessionToken: session.sessionToken },
+            {
+              sessionToken: session.sessionToken,
+              executionRoot: session.executionRoot,
+            },
             parsed.data.callerEncryptionPublicKey,
           ),
         });

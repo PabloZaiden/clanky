@@ -114,7 +114,7 @@ describe("POST /api/tasks/:id/pending", () => {
         },
       ],
     }));
-    backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
 
     // Start test server on random port
     server = serveNativeApiRoutes();
@@ -171,7 +171,7 @@ describe("POST /api/tasks/:id/pending", () => {
         },
       ],
     }));
-    backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
   };
 
   beforeEach(async () => {

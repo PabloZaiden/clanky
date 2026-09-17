@@ -77,6 +77,7 @@ interface MeshExecutionSession {
   sessionId: string;
   sessionToken: string;
   expiresAt: number;
+  executionRoot?: string;
 }
 
 interface MeshSessionResponse {
@@ -427,6 +428,9 @@ export class MeshCommandExecutorClient {
       throw new DomainError("mesh_execution_response_invalid", "The mesh execution session token is invalid.");
     }
     const sessionToken = decrypted["sessionToken"];
+    const executionRoot = typeof decrypted["executionRoot"] === "string"
+      ? decrypted["executionRoot"]
+      : undefined;
     const expiresAtMs = new Date(body.expiresAt).getTime();
     if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
       throw new DomainError("mesh_execution_session_expired", "The mesh execution session has expired.");
@@ -454,7 +458,13 @@ export class MeshCommandExecutorClient {
       sessionId: body.sessionId,
       sessionToken,
       expiresAt: expiresAtMs,
+      ...(executionRoot ? { executionRoot } : {}),
     };
+  }
+
+  async getExecutionDirectory(): Promise<string | null> {
+    await this.ensureSession();
+    return this.session?.executionRoot ?? null;
   }
 
   getSessionConnection(): MeshExecutionSessionConnection {

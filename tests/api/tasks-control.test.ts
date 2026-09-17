@@ -160,7 +160,7 @@ describe("Tasks Control API Integration", () => {
     // Set up backend manager with test executor factory
     mockBackend = createMockBackend();
     backendManager.setBackendForTesting(mockBackend);
-    backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
 
     // Start test server on random port
     server = serveNativeApiRoutes();
@@ -200,7 +200,7 @@ describe("Tasks Control API Integration", () => {
     taskManager.resetForTesting();
     mockBackend = createMockBackend();
     backendManager.setBackendForTesting(mockBackend);
-    backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
     
     const tasks = await listTasks();
     const activeStatuses = ["idle", "planning", "starting", "running", "waiting"];

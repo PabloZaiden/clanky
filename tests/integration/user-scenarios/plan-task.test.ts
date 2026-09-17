@@ -366,7 +366,7 @@ describe("Plan + Task User Scenarios", () => {
 
         await discardTaskViaAPI(ctx.baseUrl, task.config.id);
       } finally {
-        backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+        backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
       }
     });
 
@@ -435,7 +435,7 @@ describe("Plan + Task User Scenarios", () => {
 
         await discardTaskViaAPI(ctx.baseUrl, task.config.id);
       } finally {
-        backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+        backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
       }
     });
   });

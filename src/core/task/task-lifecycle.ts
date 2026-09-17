@@ -16,6 +16,7 @@ import { terminalSessionManager } from "../terminal-session-manager";
 import { managedContextIdentityResolver } from "../managed-context-identity";
 import { managedCredentialService } from "../managed-credential-service";
 import { taskFailure, taskFailureFromUnknown, type TaskResult } from "./task-errors";
+import { resolveCommandExecutorDirectory } from "../command-executor";
 
 async function deleteLinkedTaskChat(taskId: string): Promise<void> {
   const { chatManager } = await import("../chat-manager");
@@ -62,7 +63,11 @@ async function getTaskGitCleanupContext(workspaceId: string, directory: string):
 
   try {
     const executor = await backendManager.getCommandExecutorAsync(workspace.id, workspace.directory);
-    const directoryExists = await executor.directoryExists(directory);
+    const cleanupDirectory = await resolveCommandExecutorDirectory(
+      executor,
+      directory,
+    );
+    const directoryExists = await executor.directoryExists(cleanupDirectory);
     if (!directoryExists) {
       log.warn("Skipping task git cleanup because the workspace directory is unavailable", {
         workspaceId: workspace.id,
@@ -73,7 +78,7 @@ async function getTaskGitCleanupContext(workspaceId: string, directory: string):
 
     return {
       git: GitService.withExecutor(executor),
-      cleanupDirectory: directory,
+      cleanupDirectory,
     };
   } catch (error) {
     log.warn("Skipping task git cleanup because the workspace host is unavailable", {
@@ -248,7 +253,7 @@ export async function purgeTaskImpl(_ctx: TaskCtx, taskId: string): Promise<Task
 
         const worktreePath = task.state.git?.worktreePath;
         if (worktreePath) {
-          const managedWorktreePath = git.assertCanonicalManagedWorktreePath(
+          const managedWorktreePath = await git.assertCanonicalManagedWorktreePath(
             cleanupDirectory,
             task.config.id,
             worktreePath,

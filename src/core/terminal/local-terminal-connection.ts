@@ -2,7 +2,10 @@
  * Native Bun PTY connection used for local and Mesh-peer terminals.
  */
 
-import type { CommandExecutor } from "../command-executor";
+import {
+  resolveCommandExecutorDirectory,
+  type CommandExecutor,
+} from "../command-executor";
 import {
   buildPersistentSessionAttachCommand,
   buildPersistentSessionBackendInstallHint,
@@ -176,7 +179,11 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
     if (this.disposed) {
       throw new DomainError("terminal_connection_closed", "The terminal connection is closed.");
     }
-    if (!await this.config.executor.directoryExists(this.config.directory)) {
+    const executionDirectory = await resolveCommandExecutorDirectory(
+      this.config.executor,
+      this.config.directory,
+    );
+    if (!await this.config.executor.directoryExists(executionDirectory)) {
       throw new DomainError(
         "terminal_directory_unavailable",
         "The terminal working directory does not exist on the execution host.",

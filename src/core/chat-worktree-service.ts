@@ -76,7 +76,7 @@ export class ChatWorktreeService implements ChatWorktreePort {
         const git = GitService.withExecutor(executor);
         return {
           chat,
-          directory: git.assertCanonicalManagedWorktreePath(task.config.directory, task.config.id, directory),
+          directory: await git.assertCanonicalManagedWorktreePath(task.config.directory, task.config.id, directory),
         };
       }
       return { chat, directory };
@@ -105,7 +105,7 @@ export class ChatWorktreeService implements ChatWorktreePort {
       const git = GitService.withExecutor(executor);
       return {
         chat,
-        directory: git.assertCanonicalManagedWorktreePath(chat.config.directory, chat.config.id, worktreePath),
+        directory: await git.assertCanonicalManagedWorktreePath(chat.config.directory, chat.config.id, worktreePath),
       };
     }
 
@@ -138,8 +138,8 @@ export class ChatWorktreeService implements ChatWorktreePort {
       ?? this.buildWorkingBranchName(chat);
     const persistedWorktreePath = chat.state.worktree?.worktreePath;
     const worktreePath = persistedWorktreePath
-      ? git.assertCanonicalManagedWorktreePath(chat.config.directory, chat.config.id, persistedWorktreePath)
-      : git.getManagedWorktreePath(chat.config.directory, chat.config.id);
+      ? await git.assertCanonicalManagedWorktreePath(chat.config.directory, chat.config.id, persistedWorktreePath)
+      : await git.getManagedWorktreePath(chat.config.directory, chat.config.id);
 
     const worktreeExists = await git.worktreeExists(chat.config.directory, worktreePath);
     throwIfAborted(options.signal);
@@ -220,7 +220,7 @@ export class ChatWorktreeService implements ChatWorktreePort {
 
     const executor = await this.executorProvider.getCommandExecutorAsync(getChatWorkspaceId(chat), chat.config.directory);
     const git = GitService.withExecutor(executor);
-    const managedWorktreePath = git.assertCanonicalManagedWorktreePath(
+    const managedWorktreePath = await git.assertCanonicalManagedWorktreePath(
       chat.config.directory,
       chat.config.id,
       worktreePath,

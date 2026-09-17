@@ -164,9 +164,20 @@ export async function branchExists(
 }
 
 export async function hasStagedChanges(executor: CommandExecutor, directory: string): Promise<boolean> {
-  const result = await runGitCommand(executor, directory, ["diff", "--cached", "--quiet"]);
-  // Exit code 0 = no changes, 1 = changes exist
-  return result.exitCode === 1;
+  const args = ["diff", "--cached", "--quiet"];
+  const result = await runGitCommand(
+    executor,
+    directory,
+    args,
+    { allowFailure: true },
+  );
+  if (result.exitCode === 0) {
+    return false;
+  }
+  if (result.exitCode === 1) {
+    return true;
+  }
+  throw gitError("Failed to check for staged changes", result, args);
 }
 
 export async function isAncestor(

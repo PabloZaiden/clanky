@@ -23,6 +23,18 @@ function pathApi(style: ExecutionPathStyle): typeof posix {
   return style === "windows" ? win32 : posix;
 }
 
+function normalizePathValue(
+  value: string,
+  style: ExecutionPathStyle,
+): string {
+  const api = pathApi(style);
+  const normalized = api.normalize(value);
+  const trailingSeparators = style === "windows" ? /[\\/]+$/ : /\/+$/;
+  return normalized === api.parse(normalized).root
+    ? normalized
+    : normalized.replace(trailingSeparators, "");
+}
+
 function isWindowsDevicePath(value: string): boolean {
   const normalized = value.replace(/\//g, "\\").toLowerCase();
   return normalized.startsWith("\\\\?\\") || normalized.startsWith("\\\\.\\");
@@ -40,6 +52,18 @@ function hasWindowsReservedPathComponent(value: string): boolean {
     });
 }
 
+function hasUnstableWindowsPathComponent(value: string): boolean {
+  const root = win32.parse(value).root;
+  return value
+    .slice(root.length)
+    .split(/[\\/]+/)
+    .some((component) => (
+      component !== "."
+      && component !== ".."
+      && (component.endsWith(" ") || component.endsWith("."))
+    ));
+}
+
 function assertSupportedWindowsPath(
   value: string,
   code: "invalid_root" | "invalid_path",
@@ -50,6 +74,7 @@ function assertSupportedWindowsPath(
     || /^[a-z]:(?![\\/])/i.test(value)
     || value.slice(win32.parse(value).root.length).includes(":")
     || hasWindowsReservedPathComponent(value)
+    || hasUnstableWindowsPathComponent(value)
   ) {
     throw new ExecutionPathError(
       code,
@@ -145,13 +170,49 @@ export function resolveExecutionPathUnscoped(
   return pathApi(style).resolve(normalizedRoot, value);
 }
 
+export function resolveExecutionPathFromDirectory(
+  directory: string,
+  requested: string,
+  style: ExecutionPathStyle,
+): string {
+  const normalizedDirectory = normalizeExecutionPath(directory, style);
+  const normalizedRequested = normalizeExecutionPath(requested, style);
+  const api = pathApi(style);
+  return api.isAbsolute(normalizedRequested)
+    ? normalizedRequested
+    : normalizePathValue(
+        api.join(normalizedDirectory, normalizedRequested),
+        style,
+      );
+}
+
+export function resolveExecutionPathWithinDirectory(
+  directory: string,
+  requested: string,
+  style: ExecutionPathStyle,
+): string {
+  const normalizedDirectory = normalizeExecutionPath(directory, style);
+  const resolved = resolveExecutionPathFromDirectory(
+    normalizedDirectory,
+    requested,
+    style,
+  );
+  if (!isExecutionPathWithinRoot(normalizedDirectory, resolved, style)) {
+    throw new ExecutionPathError(
+      "outside_root",
+      "Requested path must stay within the execution directory.",
+    );
+  }
+  return resolved;
+}
+
 export function executionPathsEqual(
   left: string,
   right: string,
   style: ExecutionPathStyle,
 ): boolean {
-  const normalizedLeft = pathApi(style).normalize(left);
-  const normalizedRight = pathApi(style).normalize(right);
+  const normalizedLeft = normalizePathValue(left, style);
+  const normalizedRight = normalizePathValue(right, style);
   return style === "windows"
     ? normalizedLeft.toLowerCase() === normalizedRight.toLowerCase()
     : normalizedLeft === normalizedRight;
@@ -165,7 +226,7 @@ export function normalizeExecutionPath(
   if (style === "windows") {
     assertSupportedWindowsPath(value, "invalid_path", "Path");
   }
-  return pathApi(style).normalize(value);
+  return normalizePathValue(value, style);
 }
 
 export function joinExecutionPath(
@@ -173,6 +234,13 @@ export function joinExecutionPath(
   ...parts: string[]
 ): string {
   return pathApi(style).join(...parts);
+}
+
+export function isAbsoluteExecutionPath(
+  path: string,
+  style: ExecutionPathStyle,
+): boolean {
+  return pathApi(style).isAbsolute(path);
 }
 
 export function dirnameExecutionPath(

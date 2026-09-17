@@ -16,7 +16,8 @@ import { GitService } from "../../core/git";
 import { createLogger } from "@pablozaiden/webapp/server";
 import type { FileContentResponse, PullRequestDestinationResponse } from "@/contracts";
 import { errorResponse, internalErrorResponse, requireWorkspace } from "../helpers";
-import { getPlanFilePath, getPlanningDirectoryPath, getStatusFilePath } from "../../lib/planning-files";
+import { ManagedPathService } from "../../core/managed-path-service";
+import { resolveCommandExecutorDirectory } from "../../core/command-executor";
 
 const log = createLogger("api:tasks");
 
@@ -50,8 +51,12 @@ export const tasksDataRoutes = defineRoutes({
         }
         const executor = await backendManager.getCommandExecutorAsync(task.config.workspaceId, workDir);
         const git = GitService.withExecutor(executor);
+        const executionDirectory = await resolveCommandExecutorDirectory(
+          executor,
+          workDir,
+        );
 
-        if (!(await executor.directoryExists(workDir)) || !(await git.isGitRepo(workDir))) {
+        if (!(await executor.directoryExists(executionDirectory)) || !(await git.isGitRepo(workDir))) {
           return Response.json([]);
         }
 
@@ -98,7 +103,13 @@ export const tasksDataRoutes = defineRoutes({
       }
 
       const executor = await backendManager.getCommandExecutorAsync(task.config.workspaceId, workDir);
-      const planPath = getPlanFilePath(workDir);
+      const executionDirectory = await resolveCommandExecutorDirectory(
+        executor,
+        workDir,
+      );
+      const planPath = new ManagedPathService(
+        executor.pathStyle,
+      ).getPlanFilePath(executionDirectory);
 
       const response: FileContentResponse = {
         content: "",
@@ -139,7 +150,13 @@ export const tasksDataRoutes = defineRoutes({
       }
 
       const executor = await backendManager.getCommandExecutorAsync(task.config.workspaceId, workDir);
-      const statusPath = getStatusFilePath(workDir);
+      const executionDirectory = await resolveCommandExecutorDirectory(
+        executor,
+        workDir,
+      );
+      const statusPath = new ManagedPathService(
+        executor.pathStyle,
+      ).getStatusFilePath(executionDirectory);
 
       const response: FileContentResponse = {
         content: "",
@@ -211,11 +228,16 @@ export const tasksDataRoutes = defineRoutes({
       }
       const directory = workspace.directory;
 
-      const planningDir = getPlanningDirectoryPath(directory);
-
       try {
         // Get mode-appropriate command executor
         const executor = await backendManager.getCommandExecutorAsync(workspace.id, directory);
+        const executionDirectory = await resolveCommandExecutorDirectory(
+          executor,
+          directory,
+        );
+        const planningDir = new ManagedPathService(
+          executor.pathStyle,
+        ).getPlanningDirectoryPath(executionDirectory);
 
         // Check if directory exists
         const exists = await executor.directoryExists(planningDir);

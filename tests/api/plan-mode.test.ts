@@ -35,6 +35,19 @@ interface PlanTaskResponse extends Record<string, unknown> {
     };
   };
 }
+
+class FailingPlanningListExecutor extends TestCommandExecutor {
+  override async listDirectory(
+    path: string,
+    options?: { includeHidden?: boolean },
+  ): Promise<string[]> {
+    if (path.endsWith(".clanky-planning")) {
+      throw new Error("remote planning directory is unreadable");
+    }
+    return await super.listDirectory(path, options);
+  }
+}
+
 let baseCreateTaskPayload = {
   attachments: [],
   cheapModel: { mode: "same-as-task" as const },
@@ -194,7 +207,7 @@ describe("Plan Mode API Integration", () => {
     // Set up backend manager with class-based mock
     mockBackend = new PlanModeMockBackend();
     backendManager.setBackendForTesting(mockBackend);
-    backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
 
     // Start test server
     server = serveNativeApiRoutes();
@@ -325,6 +338,24 @@ describe("Plan Mode API Integration", () => {
       expect(data.hasFiles).toBe(false);
       expect(data.files).toEqual([]);
       expect(data.warning).toBeUndefined();
+    });
+
+    test("reports planning directory listing failures instead of treating them as empty", async () => {
+      const planningDir = join(currentTestWorkDir, ".clanky-planning");
+      await mkdir(planningDir, { recursive: true });
+      backendManager.setExecutorFactoryForTesting(
+        (directory) => new FailingPlanningListExecutor(directory),
+      );
+
+      const response = await fetch(
+        `${baseUrl}/api/check-planning-dir?workspaceId=${encodeURIComponent(currentWorkspaceId)}`,
+      );
+
+      expect(response.status).toBe(500);
+      await expect(response.json()).resolves.toMatchObject({
+        error: "check_failed",
+        message: "Failed to check the planning directory",
+      });
     });
   });
 

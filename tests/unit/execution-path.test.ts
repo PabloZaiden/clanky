@@ -1,8 +1,31 @@
 import { describe, expect, test } from "bun:test";
 import {
+  normalizeExecutionPath,
   normalizeExecutionRoot,
   resolveExecutionPath,
+  resolveExecutionPathFromDirectory,
+  resolveExecutionPathWithinDirectory,
 } from "../../src/core/execution-path";
+import { readValidatedPlanningFiles } from "../../src/core/planning-file-service";
+import { TestCommandExecutor } from "../mocks/mock-executor";
+
+class RelativePlanningFileExecutor extends TestCommandExecutor {
+  override readonly pathStyle = "posix";
+
+  override async getExecutionDirectory(): Promise<string> {
+    return "/resolved/repository";
+  }
+
+  override async readFile(path: string): Promise<string | null> {
+    if (path === "/resolved/repository/plans/plan.md") {
+      return "# Relative plan";
+    }
+    if (path === "/resolved/repository/plans/status.md") {
+      return "# Relative status";
+    }
+    return null;
+  }
+}
 
 describe("execution path containment", () => {
   // This pure contract protects path containment for host path syntaxes that are
@@ -62,5 +85,57 @@ describe("execution path containment", () => {
     expect(() =>
       resolveExecutionPath("C:\\workspaces\\repo", "notes.txt:secret", "windows")
     ).toThrow("Requested path uses an unsupported Windows path form.");
+  });
+
+  test("preserves valid host-specific components during normalization", () => {
+    expect(normalizeExecutionPath("/workspaces/repo/task\\", "posix"))
+      .toBe("/workspaces/repo/task\\");
+    expect(normalizeExecutionPath(
+      String.raw`.\.clanky-planning\plan.md`,
+      "windows",
+    )).toBe(String.raw`.clanky-planning\plan.md`);
+    expect(() =>
+      normalizeExecutionPath(String.raw`plans\task.`, "windows")
+    ).toThrow("Path uses an unsupported Windows path form.");
+  });
+
+  test("resolves paths from relative execution directories without allowing escapes", () => {
+    expect(resolveExecutionPathFromDirectory(
+      "workspaces/repo",
+      ".git/info/exclude",
+      "posix",
+    )).toBe("workspaces/repo/.git/info/exclude");
+    expect(resolveExecutionPathWithinDirectory(
+      String.raw`workspaces\repo`,
+      String.raw`.\plans\..\plan.md`,
+      "windows",
+    )).toBe(String.raw`workspaces\repo\plan.md`);
+    expect(() =>
+      resolveExecutionPathWithinDirectory(
+        "workspaces/repo",
+        "../outside.md",
+        "posix",
+      )
+    ).toThrow("Requested path must stay within the execution directory.");
+    expect(() =>
+      resolveExecutionPathWithinDirectory(
+        String.raw`workspaces\repo`,
+        String.raw`..\outside.md`,
+        "windows",
+      )
+    ).toThrow("Requested path must stay within the execution directory.");
+  });
+
+  test("reads planning files from the executor's canonical absolute directory", async () => {
+    const files = await readValidatedPlanningFiles(
+      new RelativePlanningFileExecutor(),
+      "relative/repository",
+      "./plans/plan.md",
+    );
+
+    expect(files).toEqual({
+      planContent: "# Relative plan",
+      statusContent: "# Relative status",
+    });
   });
 });

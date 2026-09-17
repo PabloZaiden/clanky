@@ -37,7 +37,8 @@ import { log } from "@pablozaiden/webapp/server";
 import { markCommentsAsAddressed } from "../../persistence/review-comments";
 import { assertValidTransition } from "../task-state-machine";
 import { ensurePlanningDirectory } from "../planning-directory";
-import { getPlanFilePath } from "../../lib/planning-files";
+import { ManagedPathService } from "../managed-path-service";
+import { resolveCommandExecutorDirectory } from "../command-executor";
 
 import {
   type TaskBackend,
@@ -1242,7 +1243,13 @@ export class TaskEngine {
     let planContent: string | undefined;
     try {
       const planExecutor = await backendManager.getCommandExecutorAsync(this.config.workspaceId, this.workingDirectory);
-      const planFilePath = getPlanFilePath(this.workingDirectory);
+      const executionDirectory = await resolveCommandExecutorDirectory(
+        planExecutor,
+        this.workingDirectory,
+      );
+      const planFilePath = new ManagedPathService(
+        planExecutor.pathStyle,
+      ).getPlanFilePath(executionDirectory);
       const planFileExists = await planExecutor.fileExists(planFilePath);
       if (planFileExists) {
         planContent = await planExecutor.readFile(planFilePath) ?? undefined;

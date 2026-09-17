@@ -81,6 +81,14 @@ export class ProvisioningTestExecutor implements CommandExecutor {
   private readonly gitRepos = new Map<string, { origin?: string }>();
   private readonly files = new Map<string, string>();
 
+  async getExecutionDirectory(): Promise<string> {
+    return "/";
+  }
+
+  async getEnvironmentVariable(_name: string): Promise<string | null> {
+    return null;
+  }
+
   constructor(private readonly options: ProvisioningTestExecutorOptions = {}) {
     if (options.credentialFileContent) {
       this.files.set("/tmp/devbox/.sshcred", options.credentialFileContent);

@@ -15,7 +15,12 @@ import { pollUntil } from "../helpers/polling";
 import type { TerminalSession } from "../../src/shared";
 
 class TaskTerminalExecutor extends TestCommandExecutor {
-  public deleteCommands: string[] = [];
+  constructor(
+    directory: string,
+    private readonly deleteCommands: string[],
+  ) {
+    super(directory);
+  }
 
   override async exec(command: string, args: string[], options?: Parameters<TestCommandExecutor["exec"]>[2]) {
     if (command === "bash" && args[0] === "-lc" && args[1]?.includes("command -v dtach")) {
@@ -44,7 +49,7 @@ describe("Task terminal session API integration", () => {
   let workDir: string;
   let server: Server<unknown>;
   let baseUrl: string;
-  let executor: TaskTerminalExecutor;
+  const deleteCommands: string[] = [];
   let defaultBranch = "";
 
   beforeAll(async () => {
@@ -54,8 +59,9 @@ describe("Task terminal session API integration", () => {
     await initializeDatabase();
 
     backendManager.setBackendForTesting(createMockBackend());
-    executor = new TaskTerminalExecutor();
-    backendManager.setExecutorFactoryForTesting(() => executor);
+    backendManager.setExecutorFactoryForTesting(
+      (directory) => new TaskTerminalExecutor(directory, deleteCommands),
+    );
 
     server = serveNativeApiRoutes();
     baseUrl = server.url.toString().replace(/\/$/, "");
@@ -79,7 +85,7 @@ describe("Task terminal session API integration", () => {
     db.run("DELETE FROM tasks WHERE workspace_id IS NOT NULL");
     db.run("DELETE FROM workspaces");
     db.run("DELETE FROM ssh_servers");
-    executor.deleteCommands = [];
+    deleteCommands.length = 0;
   });
 
   afterEach(async () => {
@@ -274,7 +280,7 @@ describe("Task terminal session API integration", () => {
 
     const getSessionResponse = await fetch(`${baseUrl}/api/terminal-sessions/${session.config.id}`);
     expect(getSessionResponse.status).toBe(404);
-    expect(executor.deleteCommands.some((command) => command.includes(session.config.remoteSessionName))).toBe(true);
+    expect(deleteCommands.some((command) => command.includes(session.config.remoteSessionName))).toBe(true);
   });
 
   test("enforces per-user task uniqueness for terminal sessions", async () => {

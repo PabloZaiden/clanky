@@ -91,7 +91,10 @@ describe("MeshCommandExecutorClient", () => {
           sessionId: "session-1",
           expiresAt,
           encryptedPayload: encryptMeshPayload(
-            { sessionToken: "s".repeat(32) },
+            {
+              sessionToken: "s".repeat(32),
+              executionRoot: "/absolute/workspace",
+            },
             request["callerEncryptionPublicKey"] as string,
           ),
         });
@@ -119,6 +122,7 @@ describe("MeshCommandExecutorClient", () => {
     await Promise.all([firstOpen, secondOpen]);
 
     expect(sessionRequestCount).toBe(1);
+    expect(await client.getExecutionDirectory()).toBe("/absolute/workspace");
     expect(sessionRequest?.["encryptedEnvironment"]).toMatchObject({
       __clankyMeshEncrypted: true,
     });

@@ -92,7 +92,7 @@ describe("Workspace API Integration", () => {
 
     // Set up backend manager with test executor factory
     backendManager.setBackendForTesting(createMockBackend());
-    backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
 
     // Start test server on random port
     server = serveNativeApiRoutes();

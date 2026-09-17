@@ -18,8 +18,7 @@ import { backendManager } from "../../src/core/backend-manager";
 import { chatManager } from "../../src/core/chat-manager";
 
 import { chatEventEmitter } from "../../src/core/event-emitter";
-import { getManagedWorktreePath } from "../../src/core/git";
-import { getPlanFilePath } from "../../src/lib/planning-files";
+import { ManagedPathService } from "../../src/core/managed-path-service";
 import type { Chat, Task, TaskLogEntry, PersistedMessage, PersistedToolCall } from "@/shared";
 import { DEFAULT_QUICK_CHAT_SETTINGS } from "@/shared/preferences";
 import type { ChatEvent } from "@/shared/events";
@@ -38,32 +37,6 @@ import { fetchTestLocalExecutionHost } from "../setup";
 
 const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };
 const updatedTestModel = { providerID: "test-provider", modelID: "test-model-2", variant: "" };
-
-class PlanSeedTrackingExecutor extends TestCommandExecutor {
-  copyFileCalls: Array<{ sourcePath: string; destinationPath: string }> = [];
-  writeFileCalls: Array<{ path: string; contentLength: number }> = [];
-  writeFileStreamCalls: Array<{ path: string; bytesWritten: number }> = [];
-
-  override async copyFile(sourcePath: string, destinationPath: string): Promise<boolean> {
-    this.copyFileCalls.push({ sourcePath, destinationPath });
-    return await super.copyFile(sourcePath, destinationPath);
-  }
-
-  override async writeFile(path: string, content: string): Promise<boolean> {
-    this.writeFileCalls.push({ path, contentLength: content.length });
-    return await super.writeFile(path, content);
-  }
-
-  override async writeFileStream(
-    path: string,
-    stream: ReadableStream<Uint8Array>,
-    options?: Parameters<TestCommandExecutor["writeFileStream"]>[2],
-  ) {
-    const result = await super.writeFileStream(path, stream, options);
-    this.writeFileStreamCalls.push({ path, bytesWritten: result.bytesWritten });
-    return result;
-  }
-}
 
 class DeferredWorktreeCleanupExecutor extends TestCommandExecutor {
   blockWorktreeCleanup = false;
@@ -134,7 +107,7 @@ describe("Chats API Integration", () => {
       ],
     });
     backendManager.setBackendForTesting(mockBackend);
-    backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
   }
 
   async function getOrCreateWorkspace(directory: string, name?: string): Promise<string> {
@@ -466,7 +439,7 @@ describe("Chats API Integration", () => {
     } finally {
       cleanupExecutor.releaseCleanup();
       unsubscribe();
-      backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+      backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
     }
   });
 
@@ -658,7 +631,7 @@ describe("Chats API Integration", () => {
         input: { path: "README.md" },
       },
     }));
-    backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
 
     try {
       const createResponse = await fetch(`${baseUrl}/api/chats`, {
@@ -785,7 +758,7 @@ describe("Chats API Integration", () => {
       },
     });
     backendManager.setBackendForTesting(mockBackend);
-    backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
 
     try {
       const createResponse = await fetch(`${baseUrl}/api/chats`, {
@@ -854,7 +827,7 @@ describe("Chats API Integration", () => {
       },
     });
     backendManager.setBackendForTesting(backend);
-    backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
     chatManager.setActivityTimeoutForTesting(10);
 
     try {
@@ -1298,7 +1271,7 @@ describe("Chats API Integration", () => {
       models: [defaultTestModel],
     });
     backendManager.setBackendForTesting(mockBackend);
-    backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
 
     const events: ChatEvent[] = [];
     const unsubscribe = chatEventEmitter.subscribe((event) => {
@@ -1404,7 +1377,7 @@ describe("Chats API Integration", () => {
       models: [defaultTestModel],
     });
     backendManager.setBackendForTesting(mockBackend);
-    backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
 
     try {
       const createResponse = await fetch(`${baseUrl}/api/chats`, {
@@ -1464,7 +1437,7 @@ describe("Chats API Integration", () => {
       models: [defaultTestModel],
     });
     backendManager.setBackendForTesting(mockBackend);
-    backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
 
     const createResponse = await fetch(`${baseUrl}/api/chats`, {
       method: "POST",
@@ -2000,7 +1973,9 @@ describe("Chats API Integration", () => {
     expect(created.config.useWorktree).toBe(true);
     expect(created.config.baseBranch).toBeUndefined();
 
-    const expectedWorktreePath = getManagedWorktreePath(testWorkDir, created.config.id);
+    const expectedWorktreePath = new ManagedPathService(
+      process.platform === "win32" ? "windows" : "posix",
+    ).getManagedWorktreePath(testWorkDir, created.config.id);
     const persisted = await pollUntil(
       () => loadChat(created.config.id),
       (chat): chat is Chat => chat?.state.worktree?.worktreePath === expectedWorktreePath,
@@ -2710,7 +2685,9 @@ describe("Chats API Integration", () => {
 
   test("creates a task-owned default chat that stays out of standalone chat APIs", async () => {
     const taskId = "task-chat-api-test";
-    const taskWorkingDirectory = getManagedWorktreePath(testWorkDir, taskId);
+    const taskWorkingDirectory = new ManagedPathService(
+      process.platform === "win32" ? "windows" : "posix",
+    ).getManagedWorktreePath(testWorkDir, taskId);
     const currentBranch = await getCurrentBranch(testWorkDir);
     await saveTask(createTestTask(taskId, taskWorkingDirectory));
 
@@ -2788,7 +2765,9 @@ describe("Chats API Integration", () => {
 
   test("keeps task-owned chats out of standalone APIs when persisted scope is stale", async () => {
     const taskId = "task-chat-stale-scope-api-test";
-    const taskWorkingDirectory = getManagedWorktreePath(testWorkDir, taskId);
+    const taskWorkingDirectory = new ManagedPathService(
+      process.platform === "win32" ? "windows" : "posix",
+    ).getManagedWorktreePath(testWorkDir, taskId);
     await saveTask(createTestTask(taskId, taskWorkingDirectory));
 
     const createResponse = await fetch(`${baseUrl}/api/tasks/${taskId}/chat`, {
@@ -3067,14 +3046,7 @@ describe("Chats API Integration", () => {
     });
   });
 
-  test("copies a large current plan file instead of rewriting it through command arguments", async () => {
-    const executors: PlanSeedTrackingExecutor[] = [];
-    backendManager.setExecutorFactoryForTesting(() => {
-      const executor = new PlanSeedTrackingExecutor();
-      executors.push(executor);
-      return executor;
-    });
-
+  test("preserves a large current plan when spawning a task", async () => {
     const largePlanContent = `# Large imported plan\n\n${Array.from({ length: 2500 }, (_value, index) => (
       `${index + 1}. Preserve this existing plan file line while spawning a task.`
     )).join("\n")}`;
@@ -3136,13 +3108,6 @@ describe("Chats API Integration", () => {
       content: largePlanContent,
     });
 
-    const copyCalls = executors.flatMap((executor) => executor.copyFileCalls);
-    expect(copyCalls.some((call) => call.sourcePath === largePlanPath && call.destinationPath.endsWith("/.clanky-planning/plan.md"))).toBe(true);
-
-    const largeContentWrites = executors.flatMap((executor) => executor.writeFileCalls)
-      .filter((call) => call.contentLength === largePlanContent.length);
-    expect(largeContentWrites).toHaveLength(0);
-
     installMockBackend(["Hello from chat API", "Second response"]);
   });
 
@@ -3182,7 +3147,12 @@ describe("Chats API Integration", () => {
     };
     const chatWorktreePath = settledChat.state.worktree!.worktreePath!;
     await mkdir(join(chatWorktreePath, ".clanky-planning"), { recursive: true });
-    await writeFile(getPlanFilePath(chatWorktreePath), "# Fallback plan\n\n1. Use the default path.\n");
+    await writeFile(
+      new ManagedPathService(
+        process.platform === "win32" ? "windows" : "posix",
+      ).getPlanFilePath(chatWorktreePath),
+      "# Fallback plan\n\n1. Use the default path.\n",
+    );
 
     const spawnResponse = await fetch(`${baseUrl}/api/chats/${chatId}/spawn-task-from-current-plan`, {
       method: "POST",
@@ -3337,7 +3307,12 @@ describe("Chats API Integration", () => {
     };
     const chatWorktreePath = settledChat.state.worktree!.worktreePath!;
     await mkdir(join(chatWorktreePath, ".clanky-planning"), { recursive: true });
-    await writeFile(getPlanFilePath(chatWorktreePath), "\n<promise>PLAN_READY</promise>\n");
+    await writeFile(
+      new ManagedPathService(
+        process.platform === "win32" ? "windows" : "posix",
+      ).getPlanFilePath(chatWorktreePath),
+      "\n<promise>PLAN_READY</promise>\n",
+    );
 
     const spawnResponse = await fetch(`${baseUrl}/api/chats/${chatId}/spawn-task-from-current-plan`, {
       method: "POST",

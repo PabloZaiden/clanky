@@ -11,7 +11,7 @@ import { type Server } from "bun";
 import { serveNativeApiRoutes } from "../native-api-server";
 import { initializeDatabase } from "../../src/persistence/database";
 import { backendManager } from "../../src/core/backend-manager";
-import { getManagedWorktreePath } from "../../src/core/git";
+import { ManagedPathService } from "../../src/core/managed-path-service";
 import { taskManager } from "../../src/core/task-manager";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { createMockBackend } from "../mocks/mock-backend";
@@ -191,7 +191,7 @@ describe("Tasks CRUD API Integration", () => {
       return originalSendPrompt(sessionId, prompt);
     };
     backendManager.setBackendForTesting(mockBackend);
-    backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
 
     // Start test server on random port
     server = serveNativeApiRoutes();
@@ -796,7 +796,7 @@ describe("Tasks CRUD API Integration", () => {
       };
       backendManager.resetForTesting();
       backendManager.setBackendForTesting(strictBackend);
-      backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+      backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
 
       const response = await fetch(`${baseUrl}/api/tasks/title`, {
         method: "POST",
@@ -815,7 +815,7 @@ describe("Tasks CRUD API Integration", () => {
 
       backendManager.resetForTesting();
       backendManager.setBackendForTesting(mockBackend);
-      backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+      backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
     });
 
     test("surfaces backend failures without fallback titles", async () => {
@@ -1346,7 +1346,9 @@ describe("Tasks CRUD API Integration", () => {
         git: {
           originalBranch: baseCreateTaskPayload.baseBranch,
           workingBranch: `${taskId}-a1b2c3d`,
-          worktreePath: getManagedWorktreePath(testWorkDir, taskId),
+          worktreePath: new ManagedPathService(
+            process.platform === "win32" ? "windows" : "posix",
+          ).getManagedWorktreePath(testWorkDir, taskId),
           commits: [],
         },
       });
@@ -1779,7 +1781,7 @@ describe("Tasks CRUD API Integration", () => {
         await waitForTaskCompletion(taskId);
       } finally {
         executor.releaseSetup();
-        backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+        backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
       }
     });
 
@@ -1884,7 +1886,7 @@ describe("Tasks CRUD API Integration", () => {
         expect((await startResponse.json()).state.status).toBe("planning");
       } finally {
         executor.releaseSetup();
-        backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+        backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
       }
     });
 
@@ -1944,7 +1946,7 @@ describe("Tasks CRUD API Integration", () => {
         expect((await followUpResponse.json()).success).toBe(true);
         await waitForTaskStatus(taskId, ["stopped"]);
       } finally {
-        backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+        backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
       }
     });
 

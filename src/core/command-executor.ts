@@ -7,7 +7,11 @@
 /**
  * Result of a command execution.
  */
-import type { ExecutionPathStyle } from "./execution-path";
+import {
+  isAbsoluteExecutionPath,
+  normalizeExecutionRoot,
+  type ExecutionPathStyle,
+} from "./execution-path";
 
 export interface CommandResult {
   success: boolean;
@@ -134,6 +138,17 @@ export interface CommandExecutor {
   readonly pathStyle: ExecutionPathStyle;
 
   /**
+   * Return the configured execution directory as an absolute host path.
+   */
+  getExecutionDirectory(): Promise<string>;
+
+  /**
+   * Read one environment variable from the execution host.
+   * Returns null when the variable is unset.
+   */
+  getEnvironmentVariable(name: string): Promise<string | null>;
+
+  /**
    * Execute a shell command.
    * @param command - The command to execute (e.g., "git status")
    * @param args - Arguments to pass to the command
@@ -238,6 +253,23 @@ export interface CommandExecutor {
    * Delete a file or directory on the execution host.
    */
   deletePath(path: string, options: FileDeleteOptions): Promise<boolean>;
+}
+
+/**
+ * Preserve an explicit host-absolute directory, or resolve a relative
+ * configured-directory representation through its executor.
+ */
+export async function resolveCommandExecutorDirectory(
+  executor: CommandExecutor,
+  directory: string,
+): Promise<string> {
+  if (isAbsoluteExecutionPath(directory, executor.pathStyle)) {
+    return normalizeExecutionRoot(directory, executor.pathStyle);
+  }
+  return normalizeExecutionRoot(
+    await executor.getExecutionDirectory(),
+    executor.pathStyle,
+  );
 }
 
 export function closeCommandExecutor(executor: CommandExecutor): void {
