@@ -81,7 +81,7 @@ export const EXECUTION_HOST_CAPABILITY_VERSIONS = {
   fileOperations: 2,
   git: 2,
   managedWorktrees: 2,
-  acpRuntime: 1,
+  acpRuntime: 2,
   interactiveTerminal: 1,
   provisioning: 1,
   devboxLifecycle: 1,
@@ -148,7 +148,7 @@ export const POSIX_EXECUTION_HOST_CAPABILITIES: ExecutionHostCapabilities = {
   fileOperations: 2,
   git: 2,
   managedWorktrees: 2,
-  acpRuntime: 1,
+  acpRuntime: 2,
   interactiveTerminal: 1,
   provisioning: 1,
   devboxLifecycle: 1,
@@ -161,6 +161,7 @@ export const WINDOWS_EXECUTION_HOST_CAPABILITIES: ExecutionHostCapabilities = {
   fileOperations: 2,
   git: 2,
   managedWorktrees: 2,
+  acpRuntime: 2,
   serverHealth: 1,
 };
 
@@ -473,6 +474,18 @@ export function supportsGitCommandScope(
   return getUnavailableGitCommandCapability(capabilities, scope) === null;
 }
 
+export function supportsAcpRuntime(
+  capabilities: ExecutionHostCapabilities,
+): boolean {
+  return supportsExecutionHostCapability(capabilities, "acpRuntime", 1);
+}
+
+export function supportsPortableAcpRuntime(
+  capabilities: ExecutionHostCapabilities,
+): boolean {
+  return supportsExecutionHostCapability(capabilities, "acpRuntime");
+}
+
 export function getUnavailableGitCommandCapability(
   capabilities: ExecutionHostCapabilities,
   scope: GitCommandScope,
@@ -502,6 +515,8 @@ export function supportsWorkspaceExecutionHost(
   capabilities: ExecutionHostCapabilities,
 ): boolean {
   return WORKSPACE_EXECUTION_HOST_CAPABILITIES.every((capability) =>
-    supportsExecutionHostCapability(capabilities, capability)
+    capability === "acpRuntime"
+      ? supportsAcpRuntime(capabilities)
+      : supportsExecutionHostCapability(capabilities, capability)
   );
 }

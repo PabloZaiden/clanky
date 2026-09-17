@@ -44,6 +44,7 @@ export const MESH_EXECUTION_OPERATIONS = [
   "deletePath",
   "git",
   "gitEnvironment",
+  "agentProviderAvailability",
 ] as const;
 export type MeshExecutionOperation = typeof MESH_EXECUTION_OPERATIONS[number];
 

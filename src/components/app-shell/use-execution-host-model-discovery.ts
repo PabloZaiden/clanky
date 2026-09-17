@@ -3,7 +3,7 @@ import type { ModelInfo } from "@/contracts";
 import type { ExecutionHostDescriptor } from "@/shared";
 import {
   getExecutionHostSourceId,
-  supportsExecutionHostCapability,
+  supportsAcpRuntime,
 } from "@/shared";
 import {
   DEFAULT_EXECUTION_AGENT_PROVIDER,
@@ -31,10 +31,7 @@ export function useExecutionHostModelDiscovery(
   credentialToken: string | null = null,
   onCredentialRejected?: () => void,
 ) {
-  const enabled = supportsExecutionHostCapability(
-    host.capabilities,
-    "acpRuntime",
-  );
+  const enabled = supportsAcpRuntime(host.capabilities);
   const preferredProvider = host.preferredModel?.providerID;
   const [provider, setProvider] = useState<AgentProvider>(
     preferredProvider && isAgentProvider(preferredProvider)

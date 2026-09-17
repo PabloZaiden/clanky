@@ -286,7 +286,7 @@ const FILE_OPERATIONS_V2 = new Set<MeshExecutionOperation>([
 export function getMeshExecutionOperationCapability(
   operation: MeshExecutionOperation,
 ): {
-  id: "commandExecution" | "fileOperations" | "git";
+  id: "commandExecution" | "fileOperations" | "git" | "acpRuntime";
   minimumVersion: number;
 } {
   if (operation === "exec") {
@@ -296,6 +296,12 @@ export function getMeshExecutionOperationCapability(
     return {
       id: "git",
       minimumVersion: EXECUTION_HOST_CAPABILITY_VERSIONS.git,
+    };
+  }
+  if (operation === "agentProviderAvailability") {
+    return {
+      id: "acpRuntime",
+      minimumVersion: EXECUTION_HOST_CAPABILITY_VERSIONS.acpRuntime,
     };
   }
   return {
@@ -770,6 +776,7 @@ export class MeshExecutionGateway {
         "commandExecution",
         "fileOperations",
         "git",
+        "acpRuntime",
       ]);
     }
     const grant = await getControllerGrant(session.callerNodeId);
@@ -1379,6 +1386,17 @@ export class MeshExecutionGateway {
             assertStringSize(value, "Git environment value");
           }
           return value;
+        }
+        case "agentProviderAvailability": {
+          if (!request.agentProvider) {
+            throw new DomainError(
+              "mesh_execution_request_invalid",
+              "agentProviderAvailability requires agentProvider.",
+            );
+          }
+          return await executor.isAgentProviderAvailable(
+            request.agentProvider,
+          );
         }
 
         case "fileExists": {

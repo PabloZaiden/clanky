@@ -29,8 +29,6 @@ import { domainErrorResponse, errorResponse } from "./helpers";
 import { parseAndValidate } from "./validation";
 import { sshCredentialManager } from "../core/ssh-credential-manager";
 import { executionHostDiscoveryService } from "../core/execution-host-discovery-service";
-import { AGENT_PROVIDER_IDS } from "../constants/agent-providers";
-import { buildProviderAvailabilityShellCheck } from "../core/agent-runtime-command";
 import { getModelsForExecutionHost } from "../core/model-discovery";
 import { executionHostConfigurationService } from "../core/execution-host-configuration-service";
 
@@ -383,7 +381,12 @@ export const executionHostRoutes = defineRoutes({
         );
       }
       try {
-        await executionHostService.requireCapability(ref, "acpRuntime");
+        await executionHostService.requireCapability(
+          ref,
+          "acpRuntime",
+          undefined,
+          1,
+        );
         const binding = executionHostService.getBinding(ref);
         const sshPassword = resolveSshPassword(
           ref,
@@ -559,28 +562,16 @@ export const executionHostRoutes = defineRoutes({
         );
       }
       try {
-        await executionHostService.requireCapability(ref, "acpRuntime");
-        executionHostService.getBinding(ref);
-        const executor = await executionHostService.getCommandExecutorForRef(
+        const results = await executionHostService.discoverAgentProviders(
           ref,
           {
             operationId: `provider-discovery:${ctx.params["id"]!}`,
-            directory: "/",
+            directory: ".",
             sshPassword: resolveSshPassword(
               ref,
               validation.data.credentialToken ?? null,
             ),
           },
-        );
-        const results = await Promise.all(
-          AGENT_PROVIDER_IDS.map(async (providerID) => ({
-            providerID,
-            available: (await executor.exec(
-              "sh",
-              ["-lc", buildProviderAvailabilityShellCheck(providerID)],
-              { cwd: "/" },
-            )).success,
-          })),
         );
         return Response.json({ providers: results });
       } catch (error) {
@@ -627,7 +618,12 @@ export const executionHostRoutes = defineRoutes({
         );
       }
       try {
-        await executionHostService.requireCapability(ref, "acpRuntime");
+        await executionHostService.requireCapability(
+          ref,
+          "acpRuntime",
+          undefined,
+          1,
+        );
         const binding = executionHostService.getBinding(ref);
         const models = await getModelsForExecutionHost(
           binding,

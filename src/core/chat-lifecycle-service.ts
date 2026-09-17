@@ -84,6 +84,8 @@ export class ChatLifecycleService implements ChatLifecyclePort {
     executionHostService.requireBindingCapability(
       workspace.executionHostBinding,
       "acpRuntime",
+      undefined,
+      1,
     );
 
     const scope = options.scope ?? DEFAULT_CHAT_CONFIG.scope;
@@ -210,6 +212,8 @@ export class ChatLifecycleService implements ChatLifecyclePort {
     executionHostService.requireBindingCapability(
       options.executionHost,
       "acpRuntime",
+      undefined,
+      1,
     );
     const id = crypto.randomUUID();
     const now = createTimestamp();

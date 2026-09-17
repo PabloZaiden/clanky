@@ -12,6 +12,7 @@ import type {
   GitEnvironmentVariableName,
 } from "../../src/core/command-executor";
 import type { DevboxStatusResult } from "@/shared";
+import type { AgentProvider } from "@/shared/settings";
 
 interface ExecCall {
   command: string;
@@ -103,6 +104,10 @@ export class ProvisioningTestExecutor implements CommandExecutor {
     options: GitCommandOptions,
   ): Promise<CommandResult> {
     return await this.exec("git", ["-C", directory, ...args], options);
+  }
+
+  async isAgentProviderAvailable(_provider: AgentProvider): Promise<boolean> {
+    return true;
   }
 
   constructor(private readonly options: ProvisioningTestExecutorOptions = {}) {

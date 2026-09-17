@@ -1288,5 +1288,11 @@ class MockAcpServer {
   }
 }
 
-const server = new MockAcpServer();
-void server.start();
+export async function runMockAcpServer(): Promise<void> {
+  const server = new MockAcpServer();
+  await server.start();
+}
+
+if (import.meta.main) {
+  await runMockAcpServer();
+}

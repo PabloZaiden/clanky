@@ -33,6 +33,11 @@ import {
   resolveExecutionPathUnscoped,
   type ExecutionPathStyle,
 } from "../execution-path";
+import type { AgentProvider } from "@/shared/settings";
+import {
+  buildProviderAvailabilityShellCheck,
+  isAgentProviderAvailable,
+} from "../agent-runtime-command";
 
 const LOG_PREFIX = "[CommandExecutor]";
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
@@ -303,6 +308,17 @@ export class CommandExecutorImpl implements CommandExecutor {
     options: GitCommandOptions,
   ): Promise<CommandResult> {
     return await this.exec("git", ["-C", directory, ...args], options);
+  }
+
+  async isAgentProviderAvailable(provider: AgentProvider): Promise<boolean> {
+    if (this.provider === "local") {
+      return isAgentProviderAvailable(provider);
+    }
+    return (await this.exec(
+      "sh",
+      ["-lc", buildProviderAvailabilityShellCheck(provider)],
+      { cwd: "/", logFailures: false },
+    )).success;
   }
 
   /**

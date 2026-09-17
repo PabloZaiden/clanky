@@ -9,7 +9,6 @@ import { buildSshRemoteShellCommand } from "../remote-command-executor";
 import { buildSshProcessConfig, getSshConnectionTargetFromSettings } from "../ssh-connection-target";
 import {
   buildProviderShellInvocation,
-  buildProviderSpawnEnvironment,
   getProviderAcpCommand,
 } from "../agent-runtime-command";
 import {
@@ -22,17 +21,14 @@ function buildAgentRuntimeCommand(
   settings: RuntimeServerSettings,
   directory: string,
   runtimeEnvironment?: Record<string, string>,
-): { command: string; args: string[]; env?: NodeJS.ProcessEnv; startupStdin?: string } {
+): { command?: string; args?: string[]; env?: NodeJS.ProcessEnv; startupStdin?: string } {
   const provider = settings.agent.provider;
-  const providerCommand = getProviderAcpCommand(provider, settings.agent.transport);
 
   if (settings.agent.transport === "stdio") {
-    return {
-      ...providerCommand,
-      env: buildProviderSpawnEnvironment(providerCommand, process.env, runtimeEnvironment),
-    };
+    return runtimeEnvironment ? { env: runtimeEnvironment } : {};
   }
 
+  const providerCommand = getProviderAcpCommand(provider, settings.agent.transport);
   const sshTarget = getSshConnectionTargetFromSettings(settings);
   if (!sshTarget) {
     return providerCommand;
@@ -83,10 +79,7 @@ export function buildConnectionConfig(
     username: sshTarget?.username,
     password: sshTarget?.password,
     identityFile: sshTarget?.identityFile,
-    command: derivedCommand.command,
-    args: derivedCommand.args,
-    env: derivedCommand.env,
-    startupStdin: derivedCommand.startupStdin,
+    ...derivedCommand,
     managedEnvironment: runtimeEnvironment,
     directory,
   };

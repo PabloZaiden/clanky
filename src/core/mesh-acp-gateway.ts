@@ -17,7 +17,7 @@ import {
 } from "./agent-runtime-command";
 import { meshExecutionGateway } from "./mesh-execution-gateway";
 import { DomainError } from "./domain-error";
-import { CommandExecutorImpl } from "./remote-command-executor";
+import { LocalFileSystem } from "./remote-executor/local-filesystem";
 
 const log = createLogger("core:mesh-acp-gateway");
 const MAX_RELAY_SESSIONS = 64;
@@ -143,30 +143,7 @@ export class MeshAcpGateway {
       );
       throwIfAborted(signal);
       await this.stopRelay(sessionId);
-      const directoryCheck = await new CommandExecutorImpl({
-        provider: "local",
-        directory: ".",
-      }).exec(
-        "/bin/sh",
-        ["-c", "test -d \"$1\"", "clanky-acp-directory-check", config.directory],
-        {
-          cwd: ".",
-          maxOutputBytes: 16 * 1024,
-          signal,
-          timeout: MESH_ACP_STARTUP_TIMEOUT_MS,
-        },
-      );
-      if (signal.aborted || directoryCheck.exitCode === 130) {
-        throwIfAborted(signal);
-        throw new DomainError("mesh_acp_open_aborted", "The Mesh ACP directory check was aborted.");
-      }
-      if (directoryCheck.exitCode === 124) {
-        throw new DomainError(
-          "mesh_acp_startup_timed_out",
-          `The Mesh ACP directory check timed out after ${MESH_ACP_STARTUP_TIMEOUT_MS}ms.`,
-        );
-      }
-      if (!directoryCheck.success) {
+      if (!(await new LocalFileSystem().directoryExists(config.directory))) {
         throw new DomainError(
           "mesh_acp_directory_invalid",
           `The ACP working directory does not exist: ${config.directory}`,

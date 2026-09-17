@@ -27,6 +27,9 @@ import { GitCommandError, GitService } from "../../src/core/git";
 import { ensurePlanningDirectory } from "../../src/core/planning-directory";
 import { MeshCommandExecutor } from "../../src/core/mesh-command-executor";
 import { executionPathStyleForPlatform } from "../../src/core/execution-path";
+import { runWithCurrentUser } from "../../src/context/user-context";
+import { AcpBackend, MeshAcpTransport } from "../../src/backends/acp";
+import type { AgentEvent } from "../../src/backends/types";
 import {
   closeDatabase,
   initializeDatabase,
@@ -98,6 +101,99 @@ afterEach(async () => {
     throw new AggregateError(failures, "Failed to clean up native Mesh E2E processes");
   }
 });
+
+async function nextAgentEvent(
+  stream: { next(): Promise<AgentEvent | null> },
+  timeoutMs = 10_000,
+): Promise<AgentEvent> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const event = await Promise.race([
+      stream.next(),
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(
+          () => reject(new Error("Timed out waiting for the next ACP event")),
+          timeoutMs,
+        );
+      }),
+    ]);
+    if (!event) {
+      throw new Error("The ACP event stream closed before the expected event");
+    }
+    return event;
+  } finally {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
+  }
+}
+
+async function exerciseMeshAcpRuntime(
+  registration: MeshWorkerRegistration,
+  directory: string,
+): Promise<void> {
+  await runWithCurrentUser({
+    id: registration.localUserId,
+    username: "native-worker-owner",
+    role: "owner",
+    isOwner: true,
+    isAdmin: true,
+  }, async () => {
+    const backend = new AcpBackend({
+      transportLifecycle: new MeshAcpTransport(),
+    });
+    try {
+      await backend.connect({
+        mode: "spawn",
+        provider: "copilot",
+        directory,
+        mesh: {
+          workspaceId: "native-worker-acp-e2e",
+          executionNodeId: registration.workerNodeId,
+        },
+      });
+      const session = await backend.createSession({ directory });
+      const response = await backend.sendPrompt(session.id, {
+        parts: [{ type: "text", text: "Exercise native Mesh ACP" }],
+      });
+      expect(response.content).toContain("Mock ACP");
+
+      const stream = await backend.subscribeToEvents(session.id);
+      try {
+        await backend.sendPromptAsync(session.id, {
+          parts: [{ type: "text", text: "[slow] cancel native Mesh ACP" }],
+        });
+        expect(await nextAgentEvent(stream)).toMatchObject({
+          type: "session.status",
+          status: "busy",
+        });
+        await backend.abortSession(session.id);
+      } finally {
+        stream.close();
+      }
+    } finally {
+      await backend.disconnect();
+    }
+
+    const reconnectedBackend = new AcpBackend({
+      transportLifecycle: new MeshAcpTransport(),
+    });
+    try {
+      await reconnectedBackend.connect({
+        mode: "spawn",
+        provider: "copilot",
+        directory,
+        mesh: {
+          workspaceId: "native-worker-acp-reconnect-e2e",
+          executionNodeId: registration.workerNodeId,
+        },
+      });
+      expect(reconnectedBackend.isConnected()).toBe(true);
+    } finally {
+      await reconnectedBackend.disconnect();
+    }
+  });
+}
 
 describe("native worker registration", () => {
   test("runs Git and managed worktree paths on the native host", async () => {
@@ -188,7 +284,14 @@ describe("native worker registration", () => {
     const command = await compiledClankyCommand();
     const controller = await startMeshNode({ role: "controller", command });
     nodes.push(controller);
-    const worker = await startMeshNode({ role: "worker", command });
+    const worker = await startMeshNode({
+      role: "worker",
+      command,
+      environment: {
+        CLANKY_MOCK_ACP: "1",
+        CLANKY_EMBEDDED_MOCK_ACP: "1",
+      },
+    });
     nodes.push(worker);
 
     await enrollMeshWorker(controller, worker);
@@ -247,6 +350,25 @@ describe("native worker registration", () => {
         acceptRemoteExecution: true,
         ...expectedRuntime,
       },
+    });
+    expect(workerCapabilities.acpRuntime).toBe(2);
+
+    const providerDiscovery = await meshJsonRequest<{
+      providers?: Array<{ providerID: string; available: boolean }>;
+    }>(
+      controller,
+      `/api/execution-hosts/mesh/${
+        encodeURIComponent(registration.workerNodeId)
+      }/chat-providers`,
+      {
+        method: "POST",
+        body: {},
+      },
+    );
+    expect(providerDiscovery.status).toBe(200);
+    expect(providerDiscovery.body.providers).toContainEqual({
+      providerID: "copilot",
+      available: true,
     });
 
     const initialHealth = await pollUntil<
@@ -328,6 +450,7 @@ describe("native worker registration", () => {
           workerCapabilities.commandExecution,
         ).toBeUndefined();
       }
+      expect(await meshExecutor.isAgentProviderAvailable("copilot")).toBe(true);
 
       const git = GitService.withExecutor(meshExecutor);
       for (const args of [
@@ -394,6 +517,7 @@ describe("native worker registration", () => {
         { force: true },
       );
       expect(await meshExecutor.directoryExists(worktreePath)).toBe(false);
+      await exerciseMeshAcpRuntime(registration, executionDirectory);
     } finally {
       meshExecutor.close();
       closeDatabase();

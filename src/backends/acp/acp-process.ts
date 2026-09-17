@@ -194,13 +194,7 @@ export async function terminateAcpProcess(
     return;
   }
 
-  try {
-    process.kill("SIGTERM");
-  } catch (error) {
-    log.debug("Failed to send SIGTERM while stopping ACP process", {
-      error: String(error),
-    });
-  }
+  await requestAcpProcessStop(process, false);
 
   const exitedAfterTerminate = await waitForAcpProcessExit(
     process,
@@ -210,18 +204,88 @@ export async function terminateAcpProcess(
     return;
   }
 
-  try {
-    process.kill("SIGKILL");
-  } catch (error) {
-    log.debug("Failed to send SIGKILL while stopping ACP process", {
-      error: String(error),
-    });
-  }
+  await requestAcpProcessStop(process, true);
 
   await waitForAcpProcessExit(
     process,
     options.forceWaitMs ?? DEFAULT_FORCE_WAIT_MS,
   );
+}
+
+async function requestAcpProcessStop(
+  process: Bun.Subprocess,
+  force: boolean,
+): Promise<void> {
+  if (globalThis.process.platform === "win32") {
+    await terminateWindowsAcpProcessTree(process, force);
+    return;
+  }
+  try {
+    process.kill(force ? "SIGKILL" : "SIGTERM");
+  } catch (error) {
+    log.debug("Failed to signal ACP process while stopping it", {
+      signal: force ? "SIGKILL" : "SIGTERM",
+      error: String(error),
+    });
+  }
+}
+
+async function terminateWindowsAcpProcessTree(
+  process: Bun.Subprocess,
+  force: boolean,
+): Promise<void> {
+  if (!Number.isInteger(process.pid) || process.pid <= 0) {
+    tryKillAcpProcessHandle(process);
+    return;
+  }
+  const taskkill = Bun.which("taskkill.exe") ?? Bun.which("taskkill");
+  if (!taskkill) {
+    tryKillAcpProcessHandle(process);
+    return;
+  }
+  try {
+    const termination = Bun.spawn([
+      taskkill,
+      "/PID",
+      String(process.pid),
+      "/T",
+      ...(force ? ["/F"] : []),
+    ], {
+      stdin: "ignore",
+      stdout: "ignore",
+      stderr: "ignore",
+    });
+    const exitCode = await termination.exited;
+    if (exitCode !== 0 && process.exitCode === null) {
+      log.debug("Windows taskkill did not terminate the ACP process tree", {
+        pid: process.pid,
+        force,
+        exitCode,
+      });
+      if (force) {
+        tryKillAcpProcessHandle(process);
+      }
+    }
+  } catch (error) {
+    log.debug("Failed to terminate Windows ACP process tree", {
+      pid: process.pid,
+      force,
+      error: String(error),
+    });
+    if (force) {
+      tryKillAcpProcessHandle(process);
+    }
+  }
+}
+
+function tryKillAcpProcessHandle(process: Bun.Subprocess): void {
+  try {
+    process.kill();
+  } catch (error) {
+    log.debug("Failed to terminate ACP process through its Bun handle", {
+      error: String(error),
+    });
+  }
 }
 
 async function waitForAcpProcessExit(
