@@ -174,7 +174,7 @@ describe("workspace capability boundaries", () => {
     expect(response.status).toBe(409);
     expect(await response.json()).toMatchObject({
       error: "execution_host_capability_unavailable",
-      capability: "fileOperations",
+      capability: "acpRuntime",
     });
   });
 
@@ -217,7 +217,7 @@ describe("workspace capability boundaries", () => {
     expect(response.status).toBe(409);
     expect(await response.json()).toMatchObject({
       error: "execution_host_capability_unavailable",
-      capability: "fileOperations",
+      capability: "acpRuntime",
     });
     const persisted = await runWithCurrentUser(
       testOwnerUser,

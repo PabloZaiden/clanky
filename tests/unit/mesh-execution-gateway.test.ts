@@ -1,9 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { generateKeyPairSync, sign, type KeyObject } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { MeshExecutionSessionRequest } from "../../src/contracts/schemas/mesh-execution";
+import type {
+  MeshExecutionRpcRequest,
+  MeshExecutionSessionRequest,
+} from "../../src/contracts/schemas/mesh-execution";
 import {
   MeshExecutionGateway,
   assertMeshExecutionCwd,
@@ -16,32 +19,55 @@ import { getMeshNodeFingerprint, ensureLocalMeshNodeIdentity } from "../../src/p
 import { revokeControllerGrant, saveControllerGrant } from "../../src/persistence/mesh";
 
 describe("mesh execution path validation", () => {
-  test("accepts arbitrary absolute host paths", () => {
-    expect(assertMeshExecutionCwd("/workspaces/repo", "/workspaces/repo"))
+  test("keeps POSIX paths within the execution root", () => {
+    expect(assertMeshExecutionCwd("/workspaces/repo", "/workspaces/repo", "posix"))
       .toBe("/workspaces/repo");
-    expect(assertMeshExecutionCwd("/workspaces/repo", "/workspaces/repo/.clanky-worktrees/task-1"))
+    expect(assertMeshExecutionCwd("/workspaces/repo", "/workspaces/repo/.clanky-worktrees/task-1", "posix"))
       .toBe("/workspaces/repo/.clanky-worktrees/task-1");
-    expect(assertMeshExecutionCwd("/workspaces/repo", "/tmp/other"))
-      .toBe("/tmp/other");
-    expect(assertMeshExecutionPath("/workspaces/repo", "/workspaces/repo/../other"))
-      .toBe("/workspaces/other");
+    expect(() => assertMeshExecutionCwd("/workspaces/repo", "/tmp/other", "posix"))
+      .toThrow();
+    expect(() => assertMeshExecutionPath("/workspaces/repo", "/workspaces/repo/../other", "posix"))
+      .toThrow();
   });
 
   test("resolves relative paths against the execution root", () => {
-    expect(assertMeshExecutionPath("/workspaces/repo", "relative/path"))
+    expect(assertMeshExecutionPath("/workspaces/repo", "relative/path", "posix"))
       .toBe("/workspaces/repo/relative/path");
-    expect(assertMeshExecutionCwd("/workspaces/repo", "."))
+    expect(assertMeshExecutionCwd("/workspaces/repo", ".", "posix"))
       .toBe("/workspaces/repo");
-    expect(assertMeshExecutionCwd("/workspaces/repo", "subdir"))
+    expect(assertMeshExecutionCwd("/workspaces/repo", "subdir", "posix"))
       .toBe("/workspaces/repo/subdir");
   });
 
+  test("resolves Windows paths without allowing drive, casing, or separator escapes", () => {
+    expect(assertMeshExecutionPath(
+      "C:\\workspaces\\repo",
+      "src\\index.ts",
+      "windows",
+    )).toBe("C:\\workspaces\\repo\\src\\index.ts");
+    expect(assertMeshExecutionPath(
+      "C:\\Workspaces\\Repo",
+      "c:/workspaces/repo/src/index.ts",
+      "windows",
+    )).toBe("c:\\workspaces\\repo\\src\\index.ts");
+    expect(() => assertMeshExecutionPath(
+      "C:\\workspaces\\repo",
+      "..\\other",
+      "windows",
+    )).toThrow();
+    expect(() => assertMeshExecutionPath(
+      "C:\\workspaces\\repo",
+      "D:\\workspaces\\repo\\src\\index.ts",
+      "windows",
+    )).toThrow();
+  });
+
   test("rejects NUL bytes", () => {
-    expect(() => assertMeshExecutionCwd("/workspaces/repo", "/tmp/invalid\0path"))
+    expect(() => assertMeshExecutionCwd("/workspaces/repo", "/tmp/invalid\0path", "posix"))
       .toThrow();
-    expect(() => assertMeshExecutionPath("/workspaces/repo\0invalid", "path"))
+    expect(() => assertMeshExecutionPath("/workspaces/repo\0invalid", "path", "posix"))
       .toThrow();
-    expect(() => assertMeshExecutionPath("relative-root", "path"))
+    expect(() => assertMeshExecutionPath("relative-root", "path", "posix"))
       .toThrow();
   });
 });
@@ -172,6 +198,7 @@ describe("mesh asynchronous command lifecycle", () => {
       timeout: 5_000,
       maxOutputBytes: 1024,
     });
+
     const completed = await waitForTerminal(session, started.jobId);
 
     expect(completed.snapshot.status).toBe("completed");
@@ -205,6 +232,97 @@ describe("mesh asynchronous command lifecycle", () => {
       started.jobId,
       crypto.randomUUID(),
     )).rejects.toMatchObject({ code: "mesh_execution_context_changed" });
+  });
+
+  test("executes structured filesystem operations without allowing lexical or symlink escapes", async () => {
+    const session = await createSession("workspace-files");
+    const execute = async (
+      operation: Omit<
+        MeshExecutionRpcRequest,
+        "protocolVersion" | "sessionId" | "sessionToken" | "requestId"
+      >,
+    ) => await gateway.execute({
+      protocolVersion: 1,
+      sessionId: session.sessionId,
+      sessionToken: session.sessionToken,
+      requestId: crypto.randomUUID(),
+      ...operation,
+    });
+
+    expect(await execute({
+      operation: "writeFile",
+      path: "notes/todo.txt",
+      content: "portable filesystem\n",
+    })).toBe(true);
+    expect(await execute({
+      operation: "fileExists",
+      path: "notes/todo.txt",
+    })).toBe(true);
+    expect(await execute({
+      operation: "directoryExists",
+      path: "notes",
+    })).toBe(true);
+    expect(await execute({
+      operation: "readFile",
+      path: "notes/todo.txt",
+    })).toBe("portable filesystem\n");
+    expect(await execute({
+      operation: "listDirectoryEntries",
+      path: "notes",
+      includeHidden: true,
+    })).toEqual([{
+      name: "todo.txt",
+      kind: "file",
+      isSymbolicLink: false,
+    }]);
+    expect(await execute({
+      operation: "getFileMetadata",
+      path: "notes/todo.txt",
+      includeContentHash: true,
+    })).toMatchObject({
+      kind: "file",
+      size: 20,
+      isSymbolicLink: false,
+    });
+    expect(await execute({
+      operation: "copyFile",
+      sourcePath: "notes/todo.txt",
+      destinationPath: "notes/copied.txt",
+    })).toBe(true);
+    expect(await execute({
+      operation: "movePath",
+      sourcePath: "notes/copied.txt",
+      destinationPath: "notes/done.txt",
+      overwrite: false,
+    })).toBe(true);
+    expect(await execute({
+      operation: "deletePath",
+      path: "notes/done.txt",
+      kind: "file",
+    })).toBe(true);
+    expect(await execute({
+      operation: "fileExists",
+      path: "notes/done.txt",
+    })).toBe(false);
+
+    await expect(execute({
+      operation: "readFile",
+      path: "../outside.txt",
+    })).rejects.toMatchObject({ code: "mesh_execution_path_invalid" });
+
+    await Bun.write(join(dataDir, "outside.txt"), "outside\n");
+    await symlink(dataDir, join(workerDirectory, "outside-link"));
+    await expect(execute({
+      operation: "readFile",
+      path: "outside-link/outside.txt",
+    })).rejects.toMatchObject({ code: "mesh_execution_path_invalid" });
+
+    await symlink(join(dataDir, "future-directory"), join(workerDirectory, "dangling-link"));
+    await expect(execute({
+      operation: "writeFile",
+      path: "dangling-link/new.txt",
+      content: "outside\n",
+    })).rejects.toMatchObject({ code: "mesh_execution_path_invalid" });
   });
 
   test("cancels active commands when the controller grant is revoked", async () => {

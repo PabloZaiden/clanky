@@ -33,6 +33,10 @@ class SshServerApiExecutor extends TestCommandExecutor {
     super();
   }
 
+  override async directoryExists(_path: string): Promise<boolean> {
+    return true;
+  }
+
   override async exec(command: string, args: string[], options?: Parameters<TestCommandExecutor["exec"]>[2]) {
     if (command === "true") {
       const available = this.options.connectionAvailable ?? true;

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   createExecutionHostRuntimeSnapshot,
   normalizeExecutionHostPlatform,
+  supportsExecutionHostCapability,
 } from "../../src/shared/execution-host";
 
 describe("Execution host platform contract", () => {
@@ -17,8 +18,11 @@ describe("Execution host platform contract", () => {
         architecture: "x64",
       },
       capabilities: {
+        fileOperations: 2,
         serverHealth: 1,
       },
     });
+    expect(supportsExecutionHostCapability({ fileOperations: 1 }, "fileOperations"))
+      .toBe(false);
   });
 });

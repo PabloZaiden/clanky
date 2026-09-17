@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { MeshExecutionSessionRequest } from "../../src/contracts/schemas/mesh-execution";
@@ -28,9 +28,12 @@ describe("MeshExecutionGateway ACP session renewal", () => {
   let gateway: MeshExecutionGateway;
   let controllerPublicKey: string;
   let controllerFingerprint: string;
+  let workspaceDirectory: string;
 
   beforeEach(async () => {
     dataDir = await mkdtemp(join(tmpdir(), "clanky-mesh-session-renewal-"));
+    workspaceDirectory = join(dataDir, "workspace-a");
+    await mkdir(workspaceDirectory);
     process.env["CLANKY_DATA_DIR"] = dataDir;
     closeDatabase();
     await initializeDatabase();
@@ -75,7 +78,7 @@ describe("MeshExecutionGateway ACP session renewal", () => {
       callerEncryptionPublicKey: "test-encryption-key",
       targetNodeId: workerNodeId,
       workspaceId: "workspace-a",
-      directory: "/tmp/workspace-a",
+      directory: workspaceDirectory,
       provider: "copilot",
       channel: MESH_ACP_CHANNEL,
       nonce: crypto.randomUUID(),

@@ -672,6 +672,12 @@ export async function setLocalMeshExecutionConfiguration(
 export async function requireLocalMeshExecutionCapability(
   capability: keyof ExecutionHostCapabilities,
 ): Promise<ExecutionNodeConfiguration> {
+  return await requireLocalMeshExecutionAnyCapability([capability]);
+}
+
+export async function requireLocalMeshExecutionAnyCapability(
+  capabilities: readonly (keyof ExecutionHostCapabilities)[],
+): Promise<ExecutionNodeConfiguration> {
   const identity = await ensureLocalMeshNodeIdentity();
   const execution = identity.execution;
   const runtimeCapabilities = getDefaultExecutionCapabilities();
@@ -681,11 +687,16 @@ export async function requireLocalMeshExecutionCapability(
       "This Mesh node does not accept remote execution.",
     );
   }
-  if ((runtimeCapabilities[capability] ?? 0) < 1) {
+  if (!capabilities.some((capability) => (runtimeCapabilities[capability] ?? 0) >= 1)) {
+    const capability = capabilities.join(" or ");
     throw new DomainError(
       "mesh_execution_capability_unavailable",
       `This Mesh node does not provide the ${capability} capability.`,
-      { details: { capability } },
+      {
+        details: capabilities.length === 1
+          ? { capability: capabilities[0] }
+          : { capabilities },
+      },
     );
   }
   return {

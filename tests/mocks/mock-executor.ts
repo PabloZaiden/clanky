@@ -10,17 +10,25 @@ import type {
   CommandExecutor,
   CommandResult,
   CommandOptions,
+  FileDeleteOptions,
+  FileMoveOptions,
   FileStreamOptions,
+  FileSystemDirectoryEntry,
+  FileSystemMetadata,
   FileWriteStreamOptions,
   FileWriteStreamResult,
 } from "../../src/core/command-executor";
 import { CommandOutputLimitError } from "../../src/core/command-executor";
+import { LocalFileSystem } from "../../src/core/remote-executor/local-filesystem";
 
 /**
  * TestCommandExecutor runs commands locally for testing purposes.
  * Uses Bun.spawn for shell commands and Bun.file for file operations.
  */
 export class TestCommandExecutor implements CommandExecutor {
+  private readonly localFileSystem = new LocalFileSystem();
+  readonly pathStyle = this.localFileSystem.pathStyle;
+
   /**
    * Execute a shell command locally.
    * Streams stdout chunks incrementally so long-running processes
@@ -354,6 +362,20 @@ export class TestCommandExecutor implements CommandExecutor {
     }
   }
 
+  async getFileMetadata(
+    path: string,
+    options?: { includeContentHash?: boolean },
+  ): Promise<FileSystemMetadata | null> {
+    return await this.localFileSystem.getFileMetadata(path, options);
+  }
+
+  async listDirectoryEntries(
+    path: string,
+    options?: { includeHidden?: boolean },
+  ): Promise<FileSystemDirectoryEntry[]> {
+    return await this.localFileSystem.listDirectoryEntries(path, options);
+  }
+
   /**
    * Write content to a file locally.
    */
@@ -369,6 +391,22 @@ export class TestCommandExecutor implements CommandExecutor {
     } catch {
       return false;
     }
+  }
+
+  async movePath(
+    sourcePath: string,
+    destinationPath: string,
+    options?: FileMoveOptions,
+  ): Promise<boolean> {
+    return await this.localFileSystem.movePath(
+      sourcePath,
+      destinationPath,
+      options,
+    );
+  }
+
+  async deletePath(path: string, options: FileDeleteOptions): Promise<boolean> {
+    return await this.localFileSystem.deletePath(path, options);
   }
 }
 

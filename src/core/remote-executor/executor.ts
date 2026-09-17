@@ -6,14 +6,16 @@
  * parallel over the shared multiplexed connection.
  */
 
-import { createWriteStream } from "node:fs";
-import { copyFile as copyFileFs, mkdir, readdir, stat, truncate } from "node:fs/promises";
-import { dirname } from "node:path";
+import { posix } from "node:path";
 import type {
   CommandExecutor,
   CommandResult,
   CommandOptions,
+  FileDeleteOptions,
+  FileMoveOptions,
   FileStreamOptions,
+  FileSystemDirectoryEntry,
+  FileSystemMetadata,
   FileWriteStreamOptions,
   FileWriteStreamResult,
 } from "../command-executor";
@@ -22,6 +24,8 @@ import { log } from "@pablozaiden/webapp/server";
 import type { CommandExecutorConfig } from "./types";
 import { quoteShell, buildEnvAssignments, readProcessStream } from "./utils";
 import { buildSshRemoteShellCommand, buildSshCommandArgs } from "./ssh-helpers";
+import { LocalFileSystem } from "./local-filesystem";
+import type { ExecutionPathStyle } from "../execution-path";
 
 const LOG_PREFIX = "[CommandExecutor]";
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
@@ -194,6 +198,7 @@ export function createProcessStdoutStream(
 }
 
 export class CommandExecutorImpl implements CommandExecutor {
+  readonly pathStyle: ExecutionPathStyle;
   private readonly provider: "local" | "ssh";
   private readonly directory: string;
   private readonly host?: string;
@@ -202,6 +207,7 @@ export class CommandExecutorImpl implements CommandExecutor {
   private readonly password?: string;
   private readonly identityFile?: string;
   private readonly defaultTimeoutMs: number;
+  private readonly localFileSystem: LocalFileSystem | null;
 
   /** Queue of pending commands */
   private commandQueue: Array<{
@@ -215,6 +221,10 @@ export class CommandExecutorImpl implements CommandExecutor {
 
   constructor(config: CommandExecutorConfig) {
     this.provider = config.provider ?? "local";
+    this.localFileSystem = this.provider === "local"
+      ? new LocalFileSystem()
+      : null;
+    this.pathStyle = this.localFileSystem?.pathStyle ?? "posix";
     this.directory = config.directory;
     this.host = config.host;
     this.port = config.port ?? 22;
@@ -644,30 +654,24 @@ export class CommandExecutorImpl implements CommandExecutor {
   }
 
   async fileExists(path: string): Promise<boolean> {
+    if (this.localFileSystem) {
+      return await this.localFileSystem.fileExists(path);
+    }
     const result = await this.exec("test", ["-f", path]);
     return result.success;
   }
 
   async directoryExists(path: string): Promise<boolean> {
+    if (this.localFileSystem) {
+      return await this.localFileSystem.directoryExists(path);
+    }
     const result = await this.exec("test", ["-d", path]);
     return result.success;
   }
 
   async readFile(path: string, options?: FileStreamOptions): Promise<string | null> {
-    if (options?.signal?.aborted) {
-      return null;
-    }
-    if (this.provider === "local") {
-      try {
-        const file = Bun.file(path);
-        if (!(await file.exists())) {
-          return null;
-        }
-        const content = await file.text();
-        return options?.signal?.aborted ? null : content;
-      } catch {
-        return null;
-      }
+    if (this.localFileSystem) {
+      return await this.localFileSystem.readFile(path, options);
     }
 
     const result = await this.exec("cat", [path], { signal: options?.signal });
@@ -678,16 +682,8 @@ export class CommandExecutorImpl implements CommandExecutor {
   }
 
   async streamFile(path: string, options?: FileStreamOptions): Promise<ReadableStream<Uint8Array> | null> {
-    if (this.provider === "local") {
-      try {
-        const fileStat = await stat(path);
-        if (!fileStat.isFile()) {
-          return null;
-        }
-        return Bun.file(path).stream();
-      } catch {
-        return null;
-      }
+    if (this.localFileSystem) {
+      return await this.localFileSystem.streamFile(path, options);
     }
 
     if (!this.host) {
@@ -740,97 +736,15 @@ export class CommandExecutorImpl implements CommandExecutor {
     stream: ReadableStream<Uint8Array>,
     options?: FileWriteStreamOptions,
   ): Promise<FileWriteStreamResult> {
-    if (this.provider === "local") {
-      try {
-        if (options?.signal?.aborted) {
-          return { success: false, bytesWritten: 0, error: "Write aborted" };
-        }
-
-        await mkdir(dirname(path), { recursive: true });
-        const expectedOffset = options?.expectedOffset;
-        if (expectedOffset !== undefined) {
-          let currentSize = 0;
-          try {
-            currentSize = (await stat(path)).size;
-          } catch {
-            currentSize = 0;
-          }
-          if (options?.append && currentSize > expectedOffset) {
-            await truncate(path, expectedOffset);
-            currentSize = expectedOffset;
-          }
-          if (currentSize !== expectedOffset) {
-            return {
-              success: false,
-              bytesWritten: 0,
-              error: `Expected file offset ${expectedOffset}, found ${currentSize}`,
-            };
-          }
-        }
-
-        const writeStream = createWriteStream(path, {
-          flags: options?.append && expectedOffset !== 0 ? "r+" : "w",
-          ...(options?.append ? { start: expectedOffset ?? 0 } : {}),
-        });
-        const reader = stream.getReader();
-        let bytesWritten = 0;
-        let sizeLimitExceeded = false;
-        try {
-          while (true) {
-            if (options?.signal?.aborted) {
-              return { success: false, bytesWritten, error: "Write aborted" };
-            }
-            const { done, value } = await reader.read();
-            if (done) {
-              break;
-            }
-            if (
-              options?.maxBytes !== undefined
-              && bytesWritten + value.byteLength > options.maxBytes
-            ) {
-              sizeLimitExceeded = true;
-              try {
-                await reader.cancel();
-              } catch {
-                // Preserve the size-limit result when stream cancellation races the source.
-              }
-              break;
-            }
-            const canContinue = writeStream.write(value);
-            bytesWritten += value.byteLength;
-            if (!canContinue) {
-              await new Promise<void>((resolve, reject) => {
-                writeStream.once("drain", resolve);
-                writeStream.once("error", reject);
-              });
-            }
-          }
-        } finally {
-          await new Promise<void>((resolve, reject) => {
-            writeStream.end(() => resolve());
-            writeStream.once("error", reject);
-          });
-        }
-
-        if (sizeLimitExceeded) {
-          return {
-            success: false,
-            bytesWritten,
-            error: "Upload stream exceeds the maximum accepted size",
-            errorCode: "size_limit",
-          };
-        }
-        return { success: true, bytesWritten };
-      } catch (error) {
-        return { success: false, bytesWritten: 0, error: String(error) };
-      }
+    if (this.localFileSystem) {
+      return await this.localFileSystem.writeFileStream(path, stream, options);
     }
 
     if (!this.host) {
       return { success: false, bytesWritten: 0, error: "SSH file streaming requires execution host" };
     }
 
-    const parentDir = dirname(path);
+    const parentDir = posix.dirname(path);
     const expectedOffset = options?.expectedOffset;
     const appendMode = options?.append ? "1" : "0";
     const offsetCheck = expectedOffset === undefined
@@ -962,17 +876,11 @@ export class CommandExecutorImpl implements CommandExecutor {
   }
 
   async copyFile(sourcePath: string, destinationPath: string): Promise<boolean> {
-    if (this.provider === "local") {
-      try {
-        await mkdir(dirname(destinationPath), { recursive: true });
-        await copyFileFs(sourcePath, destinationPath);
-        return true;
-      } catch {
-        return false;
-      }
+    if (this.localFileSystem) {
+      return await this.localFileSystem.copyFile(sourcePath, destinationPath);
     }
 
-    const parentDir = dirname(destinationPath);
+    const parentDir = posix.dirname(destinationPath);
     const result = await this.exec("sh", [
       "-lc",
       `mkdir -p ${quoteShell(parentDir)} && cp ${quoteShell(sourcePath)} ${quoteShell(destinationPath)}`,
@@ -982,37 +890,158 @@ export class CommandExecutorImpl implements CommandExecutor {
 
   async listDirectory(path: string, options?: { includeHidden?: boolean }): Promise<string[]> {
     const includeHidden = options?.includeHidden ?? false;
-    if (this.provider === "local") {
-      try {
-        const entries = await readdir(path);
-        return includeHidden ? entries : entries.filter((entry) => !entry.startsWith("."));
-      } catch {
-        return [];
-      }
+    if (this.localFileSystem) {
+      return await this.localFileSystem.listDirectory(path, options);
     }
 
-    const result = await this.exec("ls", [includeHidden ? "-1A" : "-1", path]);
+    const result = await this.exec("sh", [
+      "-c",
+      "dir=\"$1\"; include_hidden=\"$2\"; [ -d \"$dir\" ] || exit 2; for entry in \"$dir\"/*; do if [ -e \"$entry\" ] || [ -L \"$entry\" ]; then printf '%s\\0' \"${entry##*/}\"; fi; done; if [ \"$include_hidden\" = 1 ]; then for entry in \"$dir\"/.[!.]* \"$dir\"/..?*; do if [ -e \"$entry\" ] || [ -L \"$entry\" ]; then printf '%s\\0' \"${entry##*/}\"; fi; done; fi",
+      "clanky-list-directory",
+      path,
+      includeHidden ? "1" : "0",
+    ], {
+      logFailures: false,
+    });
     if (!result.success) {
       return [];
     }
     return result.stdout
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0);
+      .split("\0")
+      .filter((entry) => entry.length > 0);
+  }
+
+  async getFileMetadata(
+    path: string,
+    options?: { includeContentHash?: boolean },
+  ): Promise<FileSystemMetadata | null> {
+    if (this.localFileSystem) {
+      return await this.localFileSystem.getFileMetadata(path, options);
+    }
+
+    const result = await this.exec(
+      "sh",
+      [
+        "-lc",
+        "path=\"$1\"; link=0; if [ -L \"$path\" ]; then link=1; fi; if [ \"$link\" = 0 ] && [ ! -e \"$path\" ]; then exit 2; fi; if [ \"$link\" = 1 ] && [ ! -e \"$path\" ]; then printf 'f\\t0\\t0\\t-\\t1\\n'; exit 0; fi; include_hash=\"${2:-1}\"; if [ -d \"$path\" ]; then type_flag=d; hash=-; else type_flag=f; if [ \"$include_hash\" = 1 ]; then if command -v sha256sum >/dev/null 2>&1; then hash=$(sha256sum \"$path\" | cut -d' ' -f1); elif command -v shasum >/dev/null 2>&1; then hash=$(shasum -a 256 \"$path\" | cut -d' ' -f1); else hash=; fi; else hash=-; fi; fi; if stat --version >/dev/null 2>&1; then size=$(stat -c '%s' \"$path\"); modified=$(stat -c '%Y' \"$path\"); else size=$(stat -f '%z' \"$path\"); modified=$(stat -f '%m' \"$path\"); fi; printf '%s\\t%s\\t%s\\t%s\\t%s\\n' \"$type_flag\" \"$size\" \"$modified\" \"$hash\" \"$link\"",
+        "clanky-file-metadata",
+        path,
+        options?.includeContentHash === false ? "0" : "1",
+      ],
+      { logFailures: false },
+    );
+    if (!result.success) {
+      if (result.exitCode === 2) {
+        return null;
+      }
+      throw new Error(
+        result.stderr.trim() || "Failed to read remote file metadata",
+      );
+    }
+
+    const [
+      typeFlag,
+      sizeText,
+      modifiedText,
+      contentHash,
+      symbolicLinkText,
+    ] = result.stdout.trim().split("\t");
+    const size = Number.parseInt(sizeText ?? "", 10);
+    const modifiedSeconds = Number.parseFloat(modifiedText ?? "");
+    if (
+      (typeFlag !== "d" && typeFlag !== "f")
+      || !Number.isFinite(size)
+      || !Number.isFinite(modifiedSeconds)
+      || (symbolicLinkText !== "0" && symbolicLinkText !== "1")
+    ) {
+      throw new Error("Failed to parse remote file metadata");
+    }
+    return {
+      kind: typeFlag === "d" ? "directory" : "file",
+      size,
+      modifiedAtMs: modifiedSeconds * 1000,
+      ...(contentHash && contentHash !== "-" ? { contentHash } : {}),
+      isSymbolicLink: symbolicLinkText === "1",
+    };
+  }
+
+  async listDirectoryEntries(
+    path: string,
+    options?: { includeHidden?: boolean },
+  ): Promise<FileSystemDirectoryEntry[]> {
+    if (this.localFileSystem) {
+      return await this.localFileSystem.listDirectoryEntries(path, options);
+    }
+
+    const names = await this.listDirectory(path, options);
+    const entries = await Promise.all(names.map(async (name) => {
+      const metadata = await this.getFileMetadata(
+        posix.join(path, name),
+        { includeContentHash: false },
+      );
+      return metadata
+        ? {
+            name,
+            kind: metadata.kind,
+            isSymbolicLink: metadata.isSymbolicLink,
+          }
+        : null;
+    }));
+    return entries.filter(
+      (entry): entry is FileSystemDirectoryEntry => entry !== null,
+    );
   }
 
   async writeFile(path: string, content: string): Promise<boolean> {
-    if (this.provider === "local") {
-      try {
-        await mkdir(dirname(path), { recursive: true });
-        await Bun.write(path, content);
-        return true;
-      } catch {
-        return false;
-      }
+    if (this.localFileSystem) {
+      return await this.localFileSystem.writeFile(path, content);
     }
 
     const result = await this.writeFileStream(path, new Blob([content]).stream());
+    return result.success;
+  }
+
+  async movePath(
+    sourcePath: string,
+    destinationPath: string,
+    options?: FileMoveOptions,
+  ): Promise<boolean> {
+    if (this.localFileSystem) {
+      return await this.localFileSystem.movePath(
+        sourcePath,
+        destinationPath,
+        options,
+      );
+    }
+
+    const result = await this.exec("sh", [
+      "-lc",
+      "src=\"$1\"; dest=\"$2\"; overwrite=\"$3\"; if [ ! -e \"$src\" ] && [ ! -L \"$src\" ]; then exit 2; fi; if [ -e \"$dest\" ] || [ -L \"$dest\" ]; then if [ \"$overwrite\" != 1 ]; then exit 3; fi; if [ -d \"$src\" ] || [ -d \"$dest\" ]; then exit 4; fi; fi; mkdir -p -- \"$(dirname -- \"$dest\")\" && mv -- \"$src\" \"$dest\"",
+      "clanky-file-move",
+      sourcePath,
+      destinationPath,
+      options?.overwrite ? "1" : "0",
+    ], {
+      logFailures: false,
+    });
+    return result.success;
+  }
+
+  async deletePath(path: string, options: FileDeleteOptions): Promise<boolean> {
+    if (this.localFileSystem) {
+      return await this.localFileSystem.deletePath(path, options);
+    }
+
+    const result = await this.exec("sh", [
+      "-lc",
+      "path=\"$1\"; kind=\"$2\"; recursive=\"$3\"; if [ ! -e \"$path\" ] && [ ! -L \"$path\" ]; then exit 2; fi; if [ \"$kind\" = directory ]; then [ -d \"$path\" ] || exit 3; if [ \"$recursive\" = 1 ]; then rm -rf -- \"$path\"; else rmdir -- \"$path\"; fi; else [ ! -d \"$path\" ] || exit 3; rm -f -- \"$path\"; fi",
+      "clanky-file-delete",
+      path,
+      options.kind,
+      options.recursive ? "1" : "0",
+    ], {
+      logFailures: false,
+    });
     return result.success;
   }
 }

@@ -320,9 +320,18 @@ export async function stopMeshNode(node: ManagedMeshNode): Promise<void> {
 export async function meshJsonRequest<T>(
   node: MeshHttpNode,
   path: string,
-  options: { method?: string; body?: unknown } = {},
+  options: {
+    method?: string;
+    body?: unknown;
+    rawBody?: BodyInit;
+    responseType?: "json" | "text";
+  } = {},
 ): Promise<MeshJsonResponse<T>> {
-  const method = options.method ?? (options.body === undefined ? "GET" : "POST");
+  if (options.body !== undefined && options.rawBody !== undefined) {
+    throw new Error("Mesh requests cannot include both JSON and raw bodies");
+  }
+  const method = options.method
+    ?? (options.body === undefined && options.rawBody === undefined ? "GET" : "POST");
   const response = await fetch(`${node.baseUrl}${path}`, {
     method,
     headers: {
@@ -330,12 +339,15 @@ export async function meshJsonRequest<T>(
       ...(method === "GET" ? {} : { origin: node.baseUrl }),
       ...(options.body === undefined ? {} : { "content-type": "application/json" }),
     },
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    body: options.rawBody
+      ?? (options.body === undefined ? undefined : JSON.stringify(options.body)),
     tls: node.tlsCertificate ? { ca: node.tlsCertificate } : undefined,
   });
   return {
     status: response.status,
-    body: await response.json() as T,
+    body: options.responseType === "text"
+      ? await response.text() as T
+      : await response.json() as T,
   };
 }
 

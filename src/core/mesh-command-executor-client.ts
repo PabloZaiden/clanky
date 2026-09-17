@@ -42,6 +42,10 @@ import { requireCurrentUserId } from "./user-context";
 import type {
   CommandOptions,
   CommandResult,
+  FileDeleteOptions,
+  FileMoveOptions,
+  FileSystemDirectoryEntry,
+  FileSystemMetadata,
   FileWriteStreamOptions,
   FileWriteStreamResult,
 } from "./command-executor";
@@ -924,6 +928,28 @@ export class MeshCommandExecutorClient {
     });
   }
 
+  async getFileMetadata(
+    path: string,
+    options?: { includeContentHash?: boolean },
+  ): Promise<FileSystemMetadata | null> {
+    return await this.execute<FileSystemMetadata | null>({
+      operation: "getFileMetadata",
+      path,
+      includeContentHash: options?.includeContentHash,
+    });
+  }
+
+  async listDirectoryEntries(
+    path: string,
+    options?: { includeHidden?: boolean },
+  ): Promise<FileSystemDirectoryEntry[]> {
+    return await this.execute<FileSystemDirectoryEntry[]>({
+      operation: "listDirectoryEntries",
+      path,
+      includeHidden: options?.includeHidden,
+    });
+  }
+
   async writeFile(path: string, content: string): Promise<boolean> {
     return await this.execute<boolean>({ operation: "writeFile", path, content });
   }
@@ -933,6 +959,28 @@ export class MeshCommandExecutorClient {
       operation: "copyFile",
       sourcePath,
       destinationPath,
+    });
+  }
+
+  async movePath(
+    sourcePath: string,
+    destinationPath: string,
+    options?: FileMoveOptions,
+  ): Promise<boolean> {
+    return await this.execute<boolean>({
+      operation: "movePath",
+      sourcePath,
+      destinationPath,
+      overwrite: options?.overwrite,
+    });
+  }
+
+  async deletePath(path: string, options: FileDeleteOptions): Promise<boolean> {
+    return await this.execute<boolean>({
+      operation: "deletePath",
+      path,
+      kind: options.kind,
+      recursive: options.recursive,
     });
   }
 

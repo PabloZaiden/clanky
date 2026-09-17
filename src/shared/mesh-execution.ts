@@ -38,6 +38,10 @@ export const MESH_EXECUTION_OPERATIONS = [
   "listDirectory",
   "writeFile",
   "copyFile",
+  "getFileMetadata",
+  "listDirectoryEntries",
+  "movePath",
+  "deletePath",
 ] as const;
 export type MeshExecutionOperation = typeof MESH_EXECUTION_OPERATIONS[number];
 
