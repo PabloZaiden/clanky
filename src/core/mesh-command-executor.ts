@@ -117,11 +117,12 @@ export class MeshCommandExecutor implements CommandExecutor {
     args: string[],
     options: GitCommandOptions,
   ): Promise<CommandResult> {
-    if (this.supportsGitRpc(options.scope)) {
+    const { scope, ...commandOptions } = options;
+    if (this.supportsGitRpc(scope)) {
       return await this.client.execGit(directory, args, options);
     }
-    this.requireLegacyGitCapability(options.scope);
-    return await this.exec("git", ["-C", directory, ...args], options);
+    this.requireLegacyGitCapability(scope);
+    return await this.exec("git", ["-C", directory, ...args], commandOptions);
   }
 
   async exec(command: string, args: string[], options?: CommandOptions): Promise<CommandResult> {

@@ -392,6 +392,19 @@ describe("mesh asynchronous command lifecycle", () => {
       ],
       gitScope: "managedWorktrees",
     })).rejects.toMatchObject({ code: "mesh_execution_path_invalid" });
+    await expect(execute({
+      operation: "git",
+      cwd: workerDirectory,
+      args: [
+        "worktree",
+        "add",
+        "-b",
+        "escaped-worktree",
+        join(dataDir, "escaped-worktree"),
+        "HEAD",
+      ],
+      gitScope: "managedWorktrees",
+    })).rejects.toMatchObject({ code: "mesh_execution_request_invalid" });
 
     await Bun.write(join(dataDir, "outside.txt"), "outside\n");
     await symlink(dataDir, join(workerDirectory, "outside-link"));

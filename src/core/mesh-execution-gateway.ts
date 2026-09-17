@@ -338,23 +338,59 @@ async function assertGitArguments(
   }
 
   const action = args[1];
-  if (action === "list" || action === "prune") {
+  let worktreePath: string | undefined;
+  if (action === "list" && args.length === 3 && args[2] === "--porcelain") {
     return;
   }
-  const worktreePath = action === "remove"
-    ? args[2]
-    : action === "add"
-      ? args[2] === "--orphan"
-        ? args.at(-1)
-        : args[2]
-      : undefined;
-  if (!worktreePath) {
-    throw new DomainError(
-      "mesh_execution_request_invalid",
-      "The managed worktree command is not supported.",
-    );
+  if (action === "prune" && args.length === 2) {
+    return;
+  }
+  if (
+    action === "remove"
+    && (args.length === 3 || (args.length === 4 && args[3] === "--force"))
+    && isGitOperand(args[2])
+  ) {
+    worktreePath = args[2];
+  } else if (
+    action === "add"
+    && args.length === 4
+    && isGitOperand(args[2])
+    && isGitOperand(args[3])
+  ) {
+    worktreePath = args[2];
+  } else if (
+    action === "add"
+    && (args.length === 5 || args.length === 6)
+    && isGitOperand(args[2])
+    && args[3] === "-b"
+    && isGitOperand(args[4])
+    && (args.length === 5 || isGitOperand(args[5]))
+  ) {
+    worktreePath = args[2];
+  } else if (
+    action === "add"
+    && args.length === 6
+    && args[2] === "--orphan"
+    && args[3] === "-b"
+    && isGitOperand(args[4])
+    && isGitOperand(args[5])
+  ) {
+    worktreePath = args[5];
+  } else {
+    throw unsupportedManagedWorktreeCommand();
   }
   await assertPhysicalExecutionPath(session, worktreePath);
+}
+
+function isGitOperand(value: string | undefined): value is string {
+  return Boolean(value && !value.startsWith("-"));
+}
+
+function unsupportedManagedWorktreeCommand(): DomainError {
+  return new DomainError(
+    "mesh_execution_request_invalid",
+    "The managed worktree command is not supported.",
+  );
 }
 
 function meshPathError(message: string, cause?: unknown): DomainError {

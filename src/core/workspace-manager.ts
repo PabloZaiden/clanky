@@ -22,7 +22,6 @@ import {
   isPrivateMeshExecutionHostRef,
   WORKSPACE_EXECUTION_HOST_CAPABILITIES,
   type ExecutionHostBinding,
-  type ExecutionHostCapabilityId,
   type ExecutionHostDescriptor,
   type ExecutionHostRef,
   type Workspace,
@@ -182,20 +181,21 @@ function requireWorkspaceExecutionCapabilities(
   workspaceType: WorkspaceType,
   allowWorktrees: boolean,
 ): void {
-  const requiredCapabilities: ExecutionHostCapabilityId[] = [
-    ...WORKSPACE_EXECUTION_HOST_CAPABILITIES,
-  ];
-  let persisted: ReturnType<
-    typeof executionHostService.requireBindingCapability
-  > | undefined;
-  for (const capability of requiredCapabilities) {
-    persisted = executionHostService.requireBindingCapability(
+  const [primaryCapability, ...additionalCapabilities] =
+    WORKSPACE_EXECUTION_HOST_CAPABILITIES;
+  const persisted = executionHostService.requireBindingCapability(
+    binding,
+    primaryCapability,
+    userId,
+  );
+  for (const capability of additionalCapabilities) {
+    executionHostService.requireBindingCapability(
       binding,
       capability,
       userId,
     );
   }
-  const unavailableGitCapability = workspaceType === "git" && persisted
+  const unavailableGitCapability = workspaceType === "git"
     ? getUnavailableGitCommandCapability(
         persisted.runtime.capabilities,
         allowWorktrees ? "managedWorktrees" : "repository",
