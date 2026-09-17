@@ -51,6 +51,10 @@ async function withMockWindowsTermination(
       factory: (command: string[]) => Bun.Subprocess,
     ): void;
   }) => Promise<void>,
+  options: {
+    taskkillPath?: string | null;
+    systemRoot?: string | null;
+  } = {},
 ): Promise<void> {
   const platformDescriptor = Object.getOwnPropertyDescriptor(
     process,
@@ -64,8 +68,18 @@ async function withMockWindowsTermination(
   const commands: string[][] = [];
   let taskkillFactory: (command: string[]) => Bun.Subprocess =
     () => createTaskkillProcess();
+  const originalSystemRoot = process.env["SystemRoot"];
+  const originalWindowsDirectory = process.env["WINDIR"];
+  if (options.systemRoot === null) {
+    delete process.env["SystemRoot"];
+    delete process.env["WINDIR"];
+  } else if (options.systemRoot !== undefined) {
+    process.env["SystemRoot"] = options.systemRoot;
+  }
   const whichSpy = spyOn(Bun, "which").mockReturnValue(
-    "C:\\Windows\\System32\\taskkill.exe",
+    options.taskkillPath === undefined
+      ? "C:\\Windows\\System32\\taskkill.exe"
+      : options.taskkillPath,
   );
   const spawnSpy = spyOn(Bun, "spawn").mockImplementation(((
     command: string[],
@@ -84,6 +98,16 @@ async function withMockWindowsTermination(
   } finally {
     spawnSpy.mockRestore();
     whichSpy.mockRestore();
+    if (originalSystemRoot === undefined) {
+      delete process.env["SystemRoot"];
+    } else {
+      process.env["SystemRoot"] = originalSystemRoot;
+    }
+    if (originalWindowsDirectory === undefined) {
+      delete process.env["WINDIR"];
+    } else {
+      process.env["WINDIR"] = originalWindowsDirectory;
+    }
     Object.defineProperty(process, "platform", platformDescriptor);
   }
 }
@@ -167,6 +191,53 @@ describe("subprocess tree termination", () => {
       expect(commands).toHaveLength(2);
       expect(commands[1]).toContain("/F");
       expect(target.kill).not.toHaveBeenCalled();
+    });
+  });
+
+  // SystemRoot is the stable Windows fallback when taskkill is absent from the
+  // inherited PATH, which is common for services with a restricted environment.
+  test("resolves taskkill from the Windows system directory", async () => {
+    await withMockWindowsTermination(async ({
+      target,
+      commands,
+      setTaskkillFactory,
+    }) => {
+      setTaskkillFactory(() => createTaskkillProcess(() => target.exit(0)));
+
+      await terminateSubprocessTree(target.process, {
+        gracefulWaitMs: 0,
+        forceWaitMs: 0,
+        requireExit: true,
+      });
+
+      expect(commands[0]?.[0]).toBe(
+        "D:\\Windows\\System32\\taskkill.exe",
+      );
+    }, {
+      taskkillPath: null,
+      systemRoot: "D:\\Windows",
+    });
+  });
+
+  // A root-handle kill is not success for a tree contract; this protects ACP
+  // and terminal descendants when no Windows tree-kill mechanism is available.
+  test("rejects when Windows tree termination cannot be guaranteed", async () => {
+    await withMockWindowsTermination(async ({ target, commands }) => {
+      target.kill.mockImplementation(() => target.exit(0));
+
+      await expect(terminateSubprocessTree(target.process, {
+        gracefulWaitMs: 0,
+        forceWaitMs: 0,
+        requireExit: true,
+      })).rejects.toThrow(
+        "The Windows subprocess exited, but process-tree termination could not be guaranteed (pid 4242).",
+      );
+
+      expect(commands).toEqual([]);
+      expect(target.kill).toHaveBeenCalledTimes(1);
+    }, {
+      taskkillPath: null,
+      systemRoot: null,
     });
   });
 });

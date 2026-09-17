@@ -31,6 +31,7 @@ import { TerminalOutput } from "./terminal-output";
 import { DomainError } from "../domain-error";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { terminateSubprocessTree } from "../subprocess-termination";
+import { resolveExecutionPathFromDirectory } from "../execution-path";
 import {
   buildLocalTerminalEnvironment,
   buildWindowsTerminalFallbackNotice,
@@ -40,6 +41,7 @@ import {
 } from "./local-terminal-runtime";
 
 const DEFAULT_COMMAND_TIMEOUT_MS = 10_000;
+const RETAINED_PROCESS_TERMINATION_RETRY_MS = 5_000;
 const log = createLogger("core:terminal:local");
 
 export interface LocalTerminalConnectionConfig {
@@ -117,6 +119,9 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
   private persistentAttachRetried = false;
   private suppressNextExitNotification = false;
   private clientTtyCleanupDone = false;
+  private retainedProcess: Bun.Subprocess | null = null;
+  private retainedProcessRetryTimer?: ReturnType<typeof setInterval>;
+  private retainedProcessTermination: Promise<void> | null = null;
 
   constructor(private readonly config: LocalTerminalConnectionConfig) {
     this.output = new TerminalOutput(config.callbacks);
@@ -148,10 +153,17 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
     if (this.disposed) {
       throw new DomainError("terminal_connection_closed", "The terminal connection is closed.");
     }
-    const executionDirectory = await resolveCommandExecutorDirectory(
+    const executorDirectory = await resolveCommandExecutorDirectory(
       this.config.executor,
       this.config.directory,
     );
+    const executionDirectory = isWindowsTerminalRuntime()
+      ? resolveExecutionPathFromDirectory(
+          executorDirectory,
+          this.config.directory,
+          this.config.executor.pathStyle,
+        )
+      : executorDirectory;
     if (!await this.config.executor.directoryExists(executionDirectory)) {
       throw new DomainError(
         "terminal_directory_unavailable",
@@ -244,7 +256,9 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
       rows: 24,
       name: DEFAULT_SSH_TERM,
       data: (_terminal, data) => {
-        this.output.write(data);
+        if (!this.disposed) {
+          this.output.write(data);
+        }
       },
       exit: (_terminal, exitCode) => {
         if (
@@ -388,6 +402,13 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
     this.ready = false;
     const processHandle = this.process;
     const cleanupErrors: unknown[] = [];
+    if (
+      processHandle
+      && this.retainedProcess === processHandle
+      && this.retainedProcessTermination
+    ) {
+      await this.retainedProcessTermination;
+    }
     if (processHandle?.exitCode === null) {
       try {
         await this.terminateProcess(processHandle);
@@ -395,15 +416,15 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
         cleanupErrors.push(error);
       }
     }
-    this.process = null;
-    if (this.terminal && !this.terminal.closed) {
-      try {
-        this.terminal.close();
-      } catch (error) {
-        cleanupErrors.push(error);
+    if (processHandle?.exitCode === null) {
+      this.watchRetainedProcess(processHandle);
+    } else {
+      if (processHandle) {
+        this.clearRetainedProcessWatch(processHandle);
       }
+      this.process = null;
+      this.closeTerminal(cleanupErrors);
     }
-    this.terminal = null;
     try {
       await this.cleanupClientTtyFile();
     } catch (error) {
@@ -422,6 +443,112 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
         "Failed to fully clean up the local terminal.",
       );
     }
+  }
+
+  private closeTerminal(errors: unknown[]): void {
+    const terminal = this.terminal;
+    if (!terminal || terminal.closed) {
+      this.terminal = null;
+      return;
+    }
+    try {
+      terminal.close();
+      this.terminal = null;
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+
+  private watchRetainedProcess(processHandle: Bun.Subprocess): void {
+    if (this.retainedProcess === processHandle) {
+      return;
+    }
+    if (this.retainedProcessRetryTimer) {
+      clearInterval(this.retainedProcessRetryTimer);
+    }
+    this.retainedProcess = processHandle;
+    void processHandle.exited.then(
+      () => this.finalizeRetainedProcess(processHandle),
+      (error) => {
+        log.warn("Failed to observe retained terminal process exit", {
+          sessionId: this.config.sessionId,
+          pid: processHandle.pid,
+          error: String(error),
+        });
+        if (processHandle.exitCode !== null) {
+          this.finalizeRetainedProcess(processHandle);
+        }
+      },
+    );
+    this.retainedProcessRetryTimer = setInterval(() => {
+      this.retryRetainedProcessTermination(processHandle);
+    }, RETAINED_PROCESS_TERMINATION_RETRY_MS);
+    this.retainedProcessRetryTimer.unref?.();
+  }
+
+  private retryRetainedProcessTermination(
+    processHandle: Bun.Subprocess,
+  ): void {
+    if (this.retainedProcess !== processHandle) {
+      return;
+    }
+    if (processHandle.exitCode !== null) {
+      this.finalizeRetainedProcess(processHandle);
+      return;
+    }
+    if (this.retainedProcessTermination) {
+      return;
+    }
+    const pending = this.terminateProcess(processHandle)
+      .catch((error: Error) => {
+        log.warn("Failed to retry retained terminal process termination", {
+          sessionId: this.config.sessionId,
+          pid: processHandle.pid,
+          error: String(error),
+        });
+      })
+      .finally(() => {
+        if (this.retainedProcessTermination === pending) {
+          this.retainedProcessTermination = null;
+        }
+        if (processHandle.exitCode !== null) {
+          this.finalizeRetainedProcess(processHandle);
+        }
+      });
+    this.retainedProcessTermination = pending;
+  }
+
+  private finalizeRetainedProcess(processHandle: Bun.Subprocess): void {
+    if (
+      this.retainedProcess !== processHandle
+      || processHandle.exitCode === null
+    ) {
+      return;
+    }
+    this.clearRetainedProcessWatch(processHandle);
+    if (this.process === processHandle) {
+      this.process = null;
+    }
+    const cleanupErrors: unknown[] = [];
+    this.closeTerminal(cleanupErrors);
+    if (cleanupErrors.length > 0) {
+      log.error("Failed to close terminal after retained process exit", {
+        sessionId: this.config.sessionId,
+        pid: processHandle.pid,
+        error: String(cleanupErrors[0]),
+      });
+    }
+  }
+
+  private clearRetainedProcessWatch(processHandle: Bun.Subprocess): void {
+    if (this.retainedProcess !== processHandle) {
+      return;
+    }
+    if (this.retainedProcessRetryTimer) {
+      clearInterval(this.retainedProcessRetryTimer);
+      this.retainedProcessRetryTimer = undefined;
+    }
+    this.retainedProcess = null;
   }
 
   private async waitUntilReady(processHandle: Bun.Subprocess): Promise<void> {

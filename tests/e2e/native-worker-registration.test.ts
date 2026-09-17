@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import net from "node:net";
 import { tmpdir } from "node:os";
-import { join, relative } from "node:path";
+import { isAbsolute, join, relative } from "node:path";
 import {
   compiledClankyCommand,
   enrollMeshWorker,
@@ -42,7 +42,10 @@ import {
   closeDatabase,
   initializeDatabase,
 } from "../../src/persistence/database";
-import { buildTerminalResizeProbe } from "../helpers/terminal-resize-probe";
+import {
+  buildTerminalCwdProbe,
+  buildTerminalResizeProbe,
+} from "../helpers/terminal-resize-probe";
 import {
   MeshTerminalSessionCloseRequestSchema,
   type MeshTerminalSessionCloseRequest,
@@ -302,6 +305,24 @@ async function exerciseMeshTerminal(
         (value) => value.includes(probe.expectedOutput),
         {
           description: "native Mesh terminal input, output, and resize",
+          timeoutMs: 20_000,
+        },
+      );
+      const expectedDirectory = isAbsolute(directory)
+        ? directory
+        : join(executionRoot, directory);
+      const cwdMarker = "NATIVE_TERMINAL_CWD";
+      connection.sendInput(buildTerminalCwdProbe({
+        marker: cwdMarker,
+        os: platformOs,
+      }));
+      await pollUntil(
+        () => output.join(""),
+        (value) => value.includes(
+          `${cwdMarker}:${expectedDirectory}:DONE`,
+        ),
+        {
+          description: "native Mesh terminal working directory",
           timeoutMs: 20_000,
         },
       );
@@ -780,13 +801,15 @@ describe("native worker registration", () => {
       expect(await meshExecutor.isAgentProviderAvailable("copilot")).toBe(true);
 
       for (const scenario of [
-        { legacyRelease: false },
-        { legacyRelease: true },
+        { legacyRelease: false, relativeDirectory: false },
+        { legacyRelease: true, relativeDirectory: true },
       ]) {
         await exerciseMeshTerminal(
           registration,
           worker.dataDir,
-          join(worker.dataDir, "native-terminal"),
+          scenario.relativeDirectory
+            ? "native-terminal"
+            : join(worker.dataDir, "native-terminal"),
           platformOs,
           { legacyRelease: scenario.legacyRelease },
         );

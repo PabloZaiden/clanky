@@ -2,6 +2,7 @@
  * Platform-specific termination for Bun subprocess trees.
  */
 
+import { win32 } from "node:path";
 import { createLogger } from "@pablozaiden/webapp/server";
 
 const log = createLogger("core:subprocess-termination");
@@ -22,15 +23,19 @@ export async function terminateSubprocessTree(
     return;
   }
 
-  await requestSubprocessStop(subprocess, false);
+  const windows = process.platform === "win32";
+  const gracefulTreeTermination = await requestSubprocessStop(subprocess, false);
   if (await waitForSubprocessExit(
     subprocess,
     options.gracefulWaitMs ?? DEFAULT_GRACEFUL_WAIT_MS,
   )) {
+    if (windows && options.requireExit && !gracefulTreeTermination) {
+      throwWindowsTreeTerminationGuaranteeError(subprocess);
+    }
     return;
   }
 
-  await requestSubprocessStop(subprocess, true);
+  const forcedTreeTermination = await requestSubprocessStop(subprocess, true);
   const exited = await waitForSubprocessExit(
     subprocess,
     options.forceWaitMs ?? DEFAULT_FORCE_WAIT_MS,
@@ -40,38 +45,42 @@ export async function terminateSubprocessTree(
       `The subprocess tree did not exit after forced termination (pid ${String(subprocess.pid)}).`,
     );
   }
+  if (windows && options.requireExit && !forcedTreeTermination) {
+    throwWindowsTreeTerminationGuaranteeError(subprocess);
+  }
 }
 
 async function requestSubprocessStop(
   subprocess: Bun.Subprocess,
   force: boolean,
-): Promise<void> {
+): Promise<boolean> {
   if (process.platform === "win32") {
-    await terminateWindowsSubprocessTree(subprocess, force);
-    return;
+    return await terminateWindowsSubprocessTree(subprocess, force);
   }
   try {
     subprocess.kill(force ? "SIGKILL" : "SIGTERM");
+    return true;
   } catch (error) {
     log.debug("Failed to signal subprocess while stopping it", {
       signal: force ? "SIGKILL" : "SIGTERM",
       error: String(error),
     });
+    return false;
   }
 }
 
 async function terminateWindowsSubprocessTree(
   subprocess: Bun.Subprocess,
   force: boolean,
-): Promise<void> {
+): Promise<boolean> {
   if (!Number.isInteger(subprocess.pid) || subprocess.pid <= 0) {
     tryKillSubprocessHandle(subprocess);
-    return;
+    return false;
   }
-  const taskkill = Bun.which("taskkill.exe") ?? Bun.which("taskkill");
+  const taskkill = resolveWindowsTaskkillExecutable();
   if (!taskkill) {
     tryKillSubprocessHandle(subprocess);
-    return;
+    return false;
   }
   try {
     const termination = Bun.spawn([
@@ -95,7 +104,9 @@ async function terminateWindowsSubprocessTree(
       if (force) {
         tryKillSubprocessHandle(subprocess);
       }
+      return false;
     }
+    return true;
   } catch (error) {
     log.debug("Failed to terminate Windows subprocess tree", {
       pid: subprocess.pid,
@@ -105,7 +116,27 @@ async function terminateWindowsSubprocessTree(
     if (force) {
       tryKillSubprocessHandle(subprocess);
     }
+    return false;
   }
+}
+
+function resolveWindowsTaskkillExecutable(): string | null {
+  const resolved = Bun.which("taskkill.exe") ?? Bun.which("taskkill");
+  if (resolved) {
+    return resolved;
+  }
+  const windowsDirectory = process.env["SystemRoot"] ?? process.env["WINDIR"];
+  return windowsDirectory
+    ? win32.join(windowsDirectory, "System32", "taskkill.exe")
+    : null;
+}
+
+function throwWindowsTreeTerminationGuaranteeError(
+  subprocess: Bun.Subprocess,
+): never {
+  throw new Error(
+    `The Windows subprocess exited, but process-tree termination could not be guaranteed (pid ${String(subprocess.pid)}).`,
+  );
 }
 
 function tryKillSubprocessHandle(subprocess: Bun.Subprocess): void {

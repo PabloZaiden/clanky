@@ -214,7 +214,6 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
       this.ready = false;
       if (isCurrentSocket) {
         this.socket = null;
-        this.session = null;
       }
       if (!isCurrentSocket) {
         return;
@@ -301,21 +300,26 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
     this.session = null;
     activeMeshTerminalConnections.delete(this);
     let releaseError: unknown;
+    let releaseFailed = false;
     if (session) {
       try {
-        const released = await this.releaseSession(session);
-        if (!released && socket?.readyState === WebSocket.OPEN) {
-          socket.send(JSON.stringify({ type: "terminal.close" }));
-          await this.waitForSocketClose(socket);
-        }
+        await this.releaseSessionWithFallback(session, socket);
       } catch (error) {
+        releaseFailed = true;
         releaseError = error;
       }
     }
     if (socket && socket.readyState !== WebSocket.CLOSED) {
-      socket.close(1000, "Terminal disconnected");
+      try {
+        socket.close(1000, "Terminal disconnected");
+      } catch (error) {
+        if (!releaseFailed) {
+          releaseFailed = true;
+          releaseError = error;
+        }
+      }
     }
-    if (releaseError) {
+    if (releaseFailed) {
       throw releaseError;
     }
   }
@@ -558,10 +562,23 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
   private async releaseSessionBeforeSocket(
     session: OpenMeshTerminalSession,
   ): Promise<void> {
+    await this.releaseSessionWithFallback(session);
+  }
+
+  private async releaseSessionWithFallback(
+    session: OpenMeshTerminalSession,
+    socket?: MeshDuplexSocket | null,
+  ): Promise<void> {
     if (await this.releaseSession(session)) {
       return;
     }
-    const socket = openMeshPeerSocket(
+    const fallbackSocket = socket
+      && (
+        socket.readyState === WebSocket.CONNECTING
+        || socket.readyState === WebSocket.OPEN
+      )
+      ? socket
+      : openMeshPeerSocket(
       session.route,
       "api/mesh/internal/terminal",
       {
@@ -570,13 +587,13 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
       },
     );
     try {
-      await this.waitForSocketOpen(socket);
-      socket.send(JSON.stringify({ type: "terminal.close" }));
-      await this.waitForSocketClose(socket);
+      await this.waitForSocketOpen(fallbackSocket);
+      fallbackSocket.send(JSON.stringify({ type: "terminal.close" }));
+      await this.waitForSocketClose(fallbackSocket);
     } finally {
-      if (socket.readyState !== WebSocket.CLOSED) {
+      if (fallbackSocket.readyState !== WebSocket.CLOSED) {
         try {
-          socket.close(1000, "Terminal disconnected");
+          fallbackSocket.close(1000, "Terminal disconnected");
         } catch {
           // The transport may already be closing.
         }
