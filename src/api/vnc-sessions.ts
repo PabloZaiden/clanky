@@ -24,6 +24,10 @@ function mapVncError(error: unknown): Response {
       invalid_credential_token: {
         status: 400,
       },
+      execution_host_capability_unavailable: {
+        status: 409,
+        message: "This execution host does not support VNC sessions.",
+      },
       vnc_session_not_active: {
         status: 409,
       },

@@ -31,6 +31,42 @@ jobs:
       - name: Run tests
         run: bun run test
 
+  native-worker-e2e:
+    name: Native worker E2E (${{ matrix.expected_os }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            expected_os: linux
+          - runner: macos-15-intel
+            expected_os: darwin
+          - runner: windows-2025
+            expected_os: windows
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build native binary
+        run: bun run build
+
+      - name: Run native worker E2E
+        run: bun run test:native-worker-e2e
+        env:
+          CLANKY_NATIVE_E2E_EXPECTED_OS: ${{ matrix.expected_os }}
+          CLANKY_TEST_MAX_WORKERS: 1
+
   smoke-test:
     runs-on: ubuntu-latest
 

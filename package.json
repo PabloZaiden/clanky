@@ -14,13 +14,14 @@
     "generate:macos-signing-cert": "bun scripts/generate-macos-signing-cert.ts",
     "test": "bun scripts/run-tests.ts all",
     "test:backend": "bun scripts/run-tests.ts backend",
+    "test:native-worker-e2e": "bun scripts/run-tests.ts native-worker",
     "test:changed": "bun scripts/run-tests.ts all --changed=HEAD",
     "tsc": "mkdir -p .cache/tsc && bunx tsc --noEmit --pretty false --incremental --tsBuildInfoFile .cache/tsc/build.tsbuildinfo"
   },
   "dependencies": {
     "@monaco-editor/react": "4.7.0",
     "@novnc/novnc": "1.7.0",
-    "@pablozaiden/webapp": "github:PabloZaiden/webapp#v1.10.5",
+    "@pablozaiden/webapp": "github:PabloZaiden/webapp#v1.11.0",
     "@peculiar/x509": "2.1.0",
     "@tailwindcss/typography": "0.5.20",
     "@xterm/addon-fit": "0.11.0",

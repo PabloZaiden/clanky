@@ -5,7 +5,10 @@ import type {
   Workspace,
   TerminalSession,
 } from "@/shared";
-import { getExecutionHostSourceId } from "@/shared";
+import {
+  getExecutionHostSourceId,
+  supportsExecutionHostCapability,
+} from "@/shared";
 import type { WebAppRoute } from "@pablozaiden/webapp/web";
 import type { CreateTerminalSessionRequest } from "@/contracts";
 import { getOrCreateTaskTerminalSessionApi } from "../../hooks/task-actions/terminal-actions";
@@ -135,20 +138,25 @@ export function getCodeExplorerOptions({
       description: getTaskCodeExplorerRootDirectory(task),
       target: { contentType: "task" as const, taskId: task.config.id },
     })),
-    ...executionHosts.map((host) => {
-      const hostId = getExecutionHostSourceId(host.ref);
-      return {
-        id: `execution-host:${host.ref.kind}:${hostId}`,
-        kind: "server" as const,
-        label: host.name,
-        description: host.repositoriesBasePath?.trim() || host.endpoint || "/",
-        target: {
-          contentType: "execution-host" as const,
-          hostKind: host.ref.kind,
-          hostId,
-        },
-      };
-    }),
+    ...executionHosts
+      .filter((host) => supportsExecutionHostCapability(
+        host.capabilities,
+        "fileOperations",
+      ))
+      .map((host) => {
+        const hostId = getExecutionHostSourceId(host.ref);
+        return {
+          id: `execution-host:${host.ref.kind}:${hostId}`,
+          kind: "server" as const,
+          label: host.name,
+          description: host.repositoriesBasePath?.trim() || host.endpoint || "/",
+          target: {
+            contentType: "execution-host" as const,
+            hostKind: host.ref.kind,
+            hostId,
+          },
+        };
+      }),
     ...chats.map((chat) => ({
       id: `chat:${chat.config.id}`,
       kind: "chat" as const,
@@ -273,7 +281,13 @@ export function resolveCodeExplorerTarget({
         candidate.ref.kind === target.hostKind
         && getExecutionHostSourceId(candidate.ref) === target.hostId
       ));
-      if (!host) {
+      if (
+        !host
+        || !supportsExecutionHostCapability(
+          host.capabilities,
+          "fileOperations",
+        )
+      ) {
         return null;
       }
 

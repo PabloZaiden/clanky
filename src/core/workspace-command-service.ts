@@ -6,20 +6,31 @@ import type { WorkspaceExecRequest, WorkspaceExecResponse } from "@/contracts";
 import { backendManager } from "./backend-manager";
 import { executeCommand } from "./command-execution-service";
 import { DomainError } from "./domain-error";
+import { executionHostService } from "./execution-host-service";
 import { workspaceManager } from "./workspace-manager";
 
 export interface WorkspaceCommandServiceDependencies {
   workspaceProvider?: Pick<typeof workspaceManager, "getWorkspace">;
   executorProvider?: Pick<typeof backendManager, "getCommandExecutorAsync">;
+  executionHostProvider?: Pick<
+    typeof executionHostService,
+    "requireBindingCapability"
+  >;
 }
 
 export class WorkspaceCommandService {
   private readonly workspaceProvider: Pick<typeof workspaceManager, "getWorkspace">;
   private readonly executorProvider: Pick<typeof backendManager, "getCommandExecutorAsync">;
+  private readonly executionHostProvider: Pick<
+    typeof executionHostService,
+    "requireBindingCapability"
+  >;
 
   constructor(dependencies: WorkspaceCommandServiceDependencies = {}) {
     this.workspaceProvider = dependencies.workspaceProvider ?? workspaceManager;
     this.executorProvider = dependencies.executorProvider ?? backendManager;
+    this.executionHostProvider =
+      dependencies.executionHostProvider ?? executionHostService;
   }
 
   async execute(
@@ -34,6 +45,10 @@ export class WorkspaceCommandService {
       });
     }
 
+    this.executionHostProvider.requireBindingCapability(
+      workspace.executionHostBinding,
+      "commandExecution",
+    );
     const executor = await this.executorProvider.getCommandExecutorAsync(
       workspace.id,
       workspace.directory,

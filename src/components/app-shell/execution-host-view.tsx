@@ -25,6 +25,7 @@ import {
   getExecutionHostDefaultDirectory,
   getExecutionHostSourceId,
   getRegisteredSshServerId,
+  supportsExecutionHostCapability,
 } from "@/shared";
 import type { ExecutionHostWorkingDirectory } from "@/contracts";
 import { apiRequest } from "../../lib/api-client";
@@ -135,6 +136,10 @@ export function ExecutionHostView({
     check: () => Promise<void>;
   } | null>(null);
   const hostUsable = host.acceptRemoteExecution;
+  const supportsFileOperations = supportsExecutionHostCapability(
+    host.capabilities,
+    "fileOperations",
+  );
   const requestSshCredentials = useCallback(() => {
     if (!sshServerId) {
       return;
@@ -159,17 +164,23 @@ export function ExecutionHostView({
     {
       id: "run-arise",
       label: "Run Arise",
-      disabled: !hostUsable || !host.capabilities.devboxLifecycle || provisioning.starting,
+      disabled: !hostUsable
+        || !host.capabilities.provisioning
+        || !host.capabilities.devboxLifecycle
+        || provisioning.starting,
       onAction: () => void runArise(),
     },
     {
       id: "check-prerequisites",
       label: "Check prerequisites",
-      disabled: !hostUsable || (sshServer ? !sshPrerequisites || sshPrerequisites.checking : prerequisites.checking),
+      disabled: !hostUsable
+        || !host.capabilities.provisioning
+        || (sshServer ? !sshPrerequisites || sshPrerequisites.checking : prerequisites.checking),
       onAction: () => void (sshServer ? sshPrerequisites?.check() : prerequisites.check()),
     },
   ], [
     host.capabilities.devboxLifecycle,
+    host.capabilities.provisioning,
     hostUsable,
     prerequisites,
     provisioning.starting,
@@ -230,6 +241,10 @@ export function ExecutionHostView({
     setDirectoryConfigured(host.repositoriesBasePath !== null);
     setDirectoryLoading(host.repositoriesBasePath === null);
     setError(null);
+    if (!supportsFileOperations) {
+      setDirectoryLoading(false);
+      return () => controller.abort();
+    }
     if (sshServerId && !credentialToken) {
       setDirectoryLoading(false);
       return () => controller.abort();
@@ -270,6 +285,7 @@ export function ExecutionHostView({
     host.configurationRevision,
     host.repositoriesBasePath,
     sshServerId,
+    supportsFileOperations,
   ]);
 
   useEffect(() => {
@@ -493,7 +509,7 @@ export function ExecutionHostView({
           onSubmittingChange={setSshFormSubmitting}
           onPrerequisitesChange={setSshPrerequisites}
         />
-      ) : host.ref.kind === "local" ? <Panel>
+      ) : host.ref.kind === "local" && supportsFileOperations ? <Panel>
         <div className="space-y-4">
           <TextField
             id="execution-host-directory"
@@ -511,43 +527,47 @@ export function ExecutionHostView({
             disabled={directoryLoading}
             className="font-mono"
           />
-          <SelectField
-            id="execution-host-provider"
-            label="Preferred provider"
-            value={discovery.provider}
-            onChange={(event) => {
-              discovery.setProvider(event.target.value as typeof discovery.provider);
-              setPreferredModel("");
-            }}
-            disabled={discovery.providersLoading || discovery.providerOptions.length === 0}
-          >
-            {discovery.providerOptions.length === 0 ? (
-              <option value="">
-                {discovery.providersLoading ? "Loading providers..." : "No providers available"}
-              </option>
-            ) : discovery.providerOptions.map((option) => (
-              <option key={option.id} value={option.id}>{option.label}</option>
-            ))}
-          </SelectField>
-          <div>
-            <label
-              htmlFor="execution-host-model"
-              className="block text-sm font-medium text-gray-700 dark:text-gray-300"
-            >
-              Preferred model
-            </label>
-            <ModelSelector
-              id="execution-host-model"
-              value={preferredModel}
-              onChange={setPreferredModel}
-              models={discovery.models}
-              loading={discovery.modelsLoading}
-              showDisconnected
-              additionalOptions={[{ value: "", label: "No node preference" }]}
-              className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600"
-              emptyText="Choose an available provider and directory"
-            />
-          </div>
+          {host.capabilities.acpRuntime ? (
+            <>
+              <SelectField
+                id="execution-host-provider"
+                label="Preferred provider"
+                value={discovery.provider}
+                onChange={(event) => {
+                  discovery.setProvider(event.target.value as typeof discovery.provider);
+                  setPreferredModel("");
+                }}
+                disabled={discovery.providersLoading || discovery.providerOptions.length === 0}
+              >
+                {discovery.providerOptions.length === 0 ? (
+                  <option value="">
+                    {discovery.providersLoading ? "Loading providers..." : "No providers available"}
+                  </option>
+                ) : discovery.providerOptions.map((option) => (
+                  <option key={option.id} value={option.id}>{option.label}</option>
+                ))}
+              </SelectField>
+              <div>
+                <label
+                  htmlFor="execution-host-model"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  Preferred model
+                </label>
+                <ModelSelector
+                  id="execution-host-model"
+                  value={preferredModel}
+                  onChange={setPreferredModel}
+                  models={discovery.models}
+                  loading={discovery.modelsLoading}
+                  showDisconnected
+                  additionalOptions={[{ value: "", label: "No node preference" }]}
+                  className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600"
+                  emptyText="Choose an available provider and directory"
+                />
+              </div>
+            </>
+          ) : null}
           {discovery.error ? <ErrorState description={discovery.error} /> : null}
           <FormActions>
             {!directoryConfigured ? (
@@ -580,7 +600,7 @@ export function ExecutionHostView({
             </Button>
           </FormActions>
         </div>
-      </Panel> : (
+      </Panel> : supportsFileOperations ? (
         <Panel>
           <div className="grid gap-2 sm:grid-cols-[10rem_minmax(0,1fr)] sm:items-center">
             <span className="text-sm font-medium">Worker directory</span>
@@ -589,16 +609,16 @@ export function ExecutionHostView({
             </div>
           </div>
         </Panel>
-      )}
+      ) : null}
 
-      {!sshServer ? (
+      {!sshServer && host.capabilities.provisioning ? (
         <ExecutionHostPrerequisitesSection
           error={prerequisites.error}
           report={prerequisites.report}
         />
       ) : null}
 
-      <FormGroup title="VNC">
+      {host.capabilities.vnc ? <FormGroup title="VNC">
         <div className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-3">
             <TextField
@@ -626,7 +646,7 @@ export function ExecutionHostView({
             variant="secondary"
             onClick={() => void createVncSession()}
             loading={pendingAction === "vnc"}
-            disabled={!hostUsable || !host.capabilities.tcpTunnel}
+            disabled={!hostUsable || !host.capabilities.vnc}
           >
             {vncSession ? "Reconnect" : "Connect"}
           </Button>
@@ -642,7 +662,7 @@ export function ExecutionHostView({
             </Panel>
           ) : null}
         </div>
-      </FormGroup>
+      </FormGroup> : null}
 
       {sshServerId && (
         <ServerPasswordModal

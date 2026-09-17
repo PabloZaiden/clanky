@@ -23,8 +23,9 @@ import {
   type MeshNodeIdentity,
 } from "@/shared/mesh";
 import {
-  EXECUTION_HOST_CAPABILITY_IDS,
   createDefaultExecutionNodeConfiguration,
+  createExecutionHostRuntimeSnapshot,
+  parseExecutionHostCapabilities,
   type ExecutionHostModelConfig,
   type ExecutionHostCapabilities,
   type ExecutionNodeConfiguration,
@@ -36,6 +37,13 @@ const log = createLogger("persistence:mesh-node-identity");
 const IDENTITY_FILE_VERSION = 1;
 const IDENTITY_FILE_NAME = "node-identity.json";
 let identityMutationTail: Promise<void> = Promise.resolve();
+
+function getDefaultExecutionCapabilities(): ExecutionHostCapabilities {
+  return createExecutionHostRuntimeSnapshot(
+    process.platform,
+    process.arch,
+  ).capabilities;
+}
 
 async function withIdentityMutation<T>(operation: () => Promise<T>): Promise<T> {
   const previousMutation = identityMutationTail;
@@ -79,26 +87,12 @@ interface MeshNodeIdentityRow {
 }
 
 function parseExecutionCapabilities(value: unknown): ExecutionHostCapabilities {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
+  const capabilities = parseExecutionHostCapabilities(value);
+  if (!capabilities) {
     throw new DomainError(
       "mesh_node_identity_invalid",
       "The stored execution capabilities are invalid.",
     );
-  }
-  const record = value as Record<string, unknown>;
-  const capabilities: ExecutionHostCapabilities = {};
-  for (const capability of EXECUTION_HOST_CAPABILITY_IDS) {
-    const version = record[capability];
-    if (version === undefined) {
-      continue;
-    }
-    if (typeof version !== "number" || !Number.isInteger(version) || version < 1) {
-      throw new DomainError(
-        "mesh_node_identity_invalid",
-        `The stored ${capability} capability version is invalid.`,
-      );
-    }
-    capabilities[capability] = version;
   }
   return capabilities;
 }
@@ -109,7 +103,11 @@ function parseExecutionConfiguration(
   fallbackEndpoint: string | null,
 ): ExecutionNodeConfiguration {
   if (value === undefined || value === null) {
-    return createDefaultExecutionNodeConfiguration(fallbackName, fallbackEndpoint);
+    return createDefaultExecutionNodeConfiguration(
+      fallbackName,
+      fallbackEndpoint,
+      getDefaultExecutionCapabilities(),
+    );
   }
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new DomainError(
@@ -272,6 +270,7 @@ function parseStoredIdentity(raw: string): StoredMeshNodeIdentity {
       typeof record["meshEndpoint"] === "string"
         ? record["meshEndpoint"]
         : null,
+      getDefaultExecutionCapabilities(),
     ),
     createdAt: record["createdAt"],
     updatedAt: record["updatedAt"],
@@ -404,6 +403,7 @@ function createStoredIdentity(
     execution: execution ?? createDefaultExecutionNodeConfiguration(
       instanceName ?? "This Clanky instance",
       meshEndpoint,
+      getDefaultExecutionCapabilities(),
     ),
     createdAt: now,
     updatedAt: now,
@@ -674,20 +674,24 @@ export async function requireLocalMeshExecutionCapability(
 ): Promise<ExecutionNodeConfiguration> {
   const identity = await ensureLocalMeshNodeIdentity();
   const execution = identity.execution;
+  const runtimeCapabilities = getDefaultExecutionCapabilities();
   if (!execution?.acceptRemoteExecution) {
     throw new DomainError(
       "mesh_remote_execution_disabled",
       "This Mesh node does not accept remote execution.",
     );
   }
-  if ((execution.capabilities[capability] ?? 0) < 1) {
+  if ((runtimeCapabilities[capability] ?? 0) < 1) {
     throw new DomainError(
       "mesh_execution_capability_unavailable",
       `This Mesh node does not provide the ${capability} capability.`,
       { details: { capability } },
     );
   }
-  return execution;
+  return {
+    ...execution,
+    capabilities: runtimeCapabilities,
+  };
 }
 
 /**

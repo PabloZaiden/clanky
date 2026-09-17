@@ -16,6 +16,23 @@ export interface ExecutionHostModelConfig extends ModelConfig {
 export const EXECUTION_HOST_KINDS = ["local", "mesh", "ssh"] as const;
 export type ExecutionHostKind = typeof EXECUTION_HOST_KINDS[number];
 
+export const EXECUTION_HOST_OPERATING_SYSTEMS = [
+  "linux",
+  "darwin",
+  "windows",
+] as const;
+export type ExecutionHostOperatingSystem =
+  typeof EXECUTION_HOST_OPERATING_SYSTEMS[number];
+
+export const EXECUTION_HOST_ARCHITECTURES = ["x64", "arm64"] as const;
+export type ExecutionHostArchitecture =
+  typeof EXECUTION_HOST_ARCHITECTURES[number];
+
+export interface ExecutionHostPlatform {
+  os: ExecutionHostOperatingSystem;
+  architecture: ExecutionHostArchitecture;
+}
+
 export const WORKSPACE_SSH_TARGET_SOURCE_PREFIX = "workspace-target:";
 const SCOPED_MESH_SOURCE_PREFIX = "mesh-scoped:";
 
@@ -40,14 +57,22 @@ export type ExecutionHostRef =
 export const EXECUTION_HOST_CAPABILITY_IDS = [
   "commandExecution",
   "fileOperations",
+  "git",
+  "managedWorktrees",
   "acpRuntime",
   "interactiveTerminal",
   "provisioning",
   "devboxLifecycle",
   "tcpTunnel",
+  "vnc",
   "serverHealth",
 ] as const;
 export type ExecutionHostCapabilityId = typeof EXECUTION_HOST_CAPABILITY_IDS[number];
+
+export const WORKSPACE_EXECUTION_HOST_CAPABILITIES = [
+  "fileOperations",
+  "acpRuntime",
+] as const satisfies readonly ExecutionHostCapabilityId[];
 
 /**
  * Capability values are protocol versions. Missing capabilities are not
@@ -56,6 +81,36 @@ export type ExecutionHostCapabilityId = typeof EXECUTION_HOST_CAPABILITY_IDS[num
 export type ExecutionHostCapabilities = Partial<
   Record<ExecutionHostCapabilityId, number>
 >;
+
+export interface ExecutionHostRuntimeSnapshot {
+  platform: ExecutionHostPlatform | null;
+  capabilities: ExecutionHostCapabilities;
+}
+
+export function parseExecutionHostCapabilities(
+  value: unknown,
+): ExecutionHostCapabilities | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  const capabilities: ExecutionHostCapabilities = {};
+  for (const capability of EXECUTION_HOST_CAPABILITY_IDS) {
+    const version = record[capability];
+    if (version === undefined) {
+      continue;
+    }
+    if (
+      typeof version !== "number"
+      || !Number.isInteger(version)
+      || version < 1
+    ) {
+      return null;
+    }
+    capabilities[capability] = version;
+  }
+  return capabilities;
+}
 
 export interface ExecutionNodeConfiguration {
   name: string;
@@ -67,20 +122,100 @@ export interface ExecutionNodeConfiguration {
   revision: number;
 }
 
-export const DEFAULT_EXECUTION_HOST_CAPABILITIES: ExecutionHostCapabilities = {
+export const POSIX_EXECUTION_HOST_CAPABILITIES: ExecutionHostCapabilities = {
   commandExecution: 1,
   fileOperations: 1,
+  git: 1,
+  managedWorktrees: 1,
   acpRuntime: 1,
   interactiveTerminal: 1,
   provisioning: 1,
   devboxLifecycle: 1,
   tcpTunnel: 1,
+  vnc: 1,
   serverHealth: 1,
 };
+
+export const WINDOWS_EXECUTION_HOST_CAPABILITIES: ExecutionHostCapabilities = {
+  serverHealth: 1,
+};
+
+export function normalizeExecutionHostPlatform(
+  platform: string,
+  architecture: string,
+): ExecutionHostPlatform | null {
+  const os = platform === "win32" ? "windows" : platform;
+  if (
+    !EXECUTION_HOST_OPERATING_SYSTEMS.includes(
+      os as ExecutionHostOperatingSystem,
+    )
+    || !EXECUTION_HOST_ARCHITECTURES.includes(
+      architecture as ExecutionHostArchitecture,
+    )
+  ) {
+    return null;
+  }
+  return {
+    os: os as ExecutionHostOperatingSystem,
+    architecture: architecture as ExecutionHostArchitecture,
+  };
+}
+
+export function getExecutionHostCapabilitiesForPlatform(
+  platform: ExecutionHostPlatform | null,
+): ExecutionHostCapabilities {
+  if (!platform) {
+    return {};
+  }
+  return platform.os === "windows"
+    ? { ...WINDOWS_EXECUTION_HOST_CAPABILITIES }
+    : { ...POSIX_EXECUTION_HOST_CAPABILITIES };
+}
+
+export function createExecutionHostRuntimeSnapshot(
+  platform: string,
+  architecture: string,
+): ExecutionHostRuntimeSnapshot {
+  const normalizedPlatform = normalizeExecutionHostPlatform(
+    platform,
+    architecture,
+  );
+  return {
+    platform: normalizedPlatform,
+    capabilities: getExecutionHostCapabilitiesForPlatform(normalizedPlatform),
+  };
+}
+
+export function parseExecutionHostRuntimeSnapshot(
+  platform: {
+    os: string | null;
+    architecture: string | null;
+  },
+  capabilities: unknown,
+): ExecutionHostRuntimeSnapshot | null {
+  if ((platform.os === null) !== (platform.architecture === null)) {
+    return null;
+  }
+  const normalizedPlatform = platform.os === null
+    ? null
+    : normalizeExecutionHostPlatform(platform.os, platform.architecture!);
+  if (platform.os !== null && !normalizedPlatform) {
+    return null;
+  }
+  const parsedCapabilities = parseExecutionHostCapabilities(capabilities);
+  if (!parsedCapabilities) {
+    return null;
+  }
+  return {
+    platform: normalizedPlatform,
+    capabilities: parsedCapabilities,
+  };
+}
 
 export function createDefaultExecutionNodeConfiguration(
   name: string,
   endpoint: string | null,
+  capabilities: ExecutionHostCapabilities,
 ): ExecutionNodeConfiguration {
   return {
     name,
@@ -88,7 +223,7 @@ export function createDefaultExecutionNodeConfiguration(
     repositoriesBasePath: null,
     preferredModel: null,
     acceptRemoteExecution: true,
-    capabilities: { ...DEFAULT_EXECUTION_HOST_CAPABILITIES },
+    capabilities: { ...capabilities },
     revision: 1,
   };
 }
@@ -155,6 +290,7 @@ export interface ExecutionHostDescriptor {
   configurationRevision: number;
   accessRequirement: ExecutionHostAccessRequirement;
   acceptRemoteExecution: boolean;
+  platform: ExecutionHostPlatform | null;
   capabilities: ExecutionHostCapabilities;
   revision: number;
   isPrivate?: boolean;
@@ -304,4 +440,12 @@ export function supportsExecutionHostCapability(
   minimumVersion: number = 1,
 ): boolean {
   return (capabilities[capability] ?? 0) >= minimumVersion;
+}
+
+export function supportsWorkspaceExecutionHost(
+  capabilities: ExecutionHostCapabilities,
+): boolean {
+  return WORKSPACE_EXECUTION_HOST_CAPABILITIES.every((capability) =>
+    supportsExecutionHostCapability(capabilities, capability)
+  );
 }

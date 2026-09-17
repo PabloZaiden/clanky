@@ -128,6 +128,12 @@ function mapFileExplorerError(
         return errorResponse("invalid_preview_type", error.message, 400);
       case "invalid_credential_token":
         return errorResponse("invalid_credential_token", error.message, 400);
+      case "execution_host_capability_unavailable":
+        return errorResponse(
+          "execution_host_capability_unavailable",
+          error.message,
+          409,
+        );
       case "ssh_server_not_found":
         return errorResponse("not_found", error.message, 404);
       case "operation_failed":

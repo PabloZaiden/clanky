@@ -14,6 +14,7 @@ import {
   revokeWorkerRegistration,
   saveControllerGrant,
   saveWorkerRegistration,
+  updateWorkerHealthSnapshot,
 } from "../../src/persistence/mesh";
 import {
   InconsistentMeshWorkerIdentityError,
@@ -21,7 +22,7 @@ import {
 } from "../../src/persistence/controller-relay-pairing";
 import { closeDatabase, getDatabase, initializeDatabase } from "../../src/persistence/database";
 import { InvalidMeshRelayRouteError } from "../../src/persistence/errors";
-import { DEFAULT_EXECUTION_HOST_CAPABILITIES } from "../../src/shared/execution-host";
+import { POSIX_EXECUTION_HOST_CAPABILITIES } from "../../src/shared/execution-host";
 import { seedTestOwnerUser } from "../setup";
 import {
   ensureExecutionHost,
@@ -74,7 +75,7 @@ describe("controller-worker Mesh persistence", () => {
       workerTlsCertificate: null,
       workerTlsFingerprint: null,
       workerDirectory: "/srv/worker",
-      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
       workerAcceptRemoteExecution: true,
       workerConfigRevision: 1,
       route: {
@@ -217,7 +218,7 @@ describe("controller-worker Mesh persistence", () => {
       workerTlsCertificate: null,
       workerTlsFingerprint: null,
       workerDirectory: "/srv/worker",
-      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
       workerAcceptRemoteExecution: true,
       workerConfigRevision: 1,
       route: {
@@ -281,7 +282,7 @@ describe("controller-worker Mesh persistence", () => {
       workerTlsCertificate: null,
       workerTlsFingerprint: null,
       workerDirectory: "/srv/worker",
-      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
       workerAcceptRemoteExecution: true,
       workerConfigRevision: 1,
     });
@@ -303,11 +304,165 @@ describe("controller-worker Mesh persistence", () => {
       workerTlsCertificate: null,
       workerTlsFingerprint: null,
       workerDirectory: "/srv/worker",
-      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
       workerAcceptRemoteExecution: true,
       workerConfigRevision: 2,
     });
     expect(getExecutionHostByRef("admin", { kind: "mesh", nodeId: "worker-a" })?.revokedAt).toBeNull();
+  });
+
+  // This persistence-boundary contract protects capability downgrades without
+  // invalidating bindings whose execution target did not change.
+  test("updates a worker runtime snapshot without advancing the host binding", async () => {
+    await saveWorkerRegistration({
+      workerNodeId: "worker-runtime",
+      localUserId: "admin",
+      workerInstanceName: "Runtime worker",
+      workerEndpoint: "https://worker.example",
+      workerTransport: "https",
+      workerPublicKey: "runtime-public",
+      workerFingerprint: "runtime-fingerprint",
+      workerEncryptionPublicKey: null,
+      workerTlsCertificate: null,
+      workerTlsFingerprint: null,
+      workerDirectory: "/srv/worker",
+      workerPlatform: { os: "linux", architecture: "x64" },
+      workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
+      workerAcceptRemoteExecution: true,
+      workerConfigRevision: 1,
+    });
+    const ref = { kind: "mesh" as const, nodeId: "worker-runtime" };
+    const initialHost = getExecutionHostByRef("admin", ref)!;
+
+    await updateWorkerHealthSnapshot({
+      workerNodeId: "worker-runtime",
+      localUserId: "admin",
+      directory: "C:\\workspaces",
+      platform: { os: "windows", architecture: "x64" },
+      capabilities: { serverHealth: 1 },
+      acceptRemoteExecution: true,
+      configRevision: 1,
+    });
+
+    expect(await getWorkerRegistration("worker-runtime", "admin")).toMatchObject({
+      workerDirectory: "C:\\workspaces",
+      workerPlatform: { os: "windows", architecture: "x64" },
+      workerCapabilities: { serverHealth: 1 },
+    });
+    expect(getExecutionHostByRef("admin", ref)).toMatchObject({
+      revision: initialHost.revision,
+      runtime: {
+        platform: { os: "windows", architecture: "x64" },
+        capabilities: { serverHealth: 1 },
+      },
+    });
+  });
+
+  // Runtime capabilities are an authorization boundary. A failed canonical
+  // host write must roll back the registration snapshot from the same health
+  // update so readers cannot observe different capability grants.
+  test("rolls back the worker registration when the canonical snapshot update fails", async () => {
+    await saveWorkerRegistration({
+      workerNodeId: "worker-runtime-rollback",
+      localUserId: "admin",
+      workerInstanceName: "Runtime rollback worker",
+      workerEndpoint: "https://worker.example",
+      workerTransport: "https",
+      workerPublicKey: "runtime-rollback-public",
+      workerFingerprint: "runtime-rollback-fingerprint",
+      workerEncryptionPublicKey: null,
+      workerTlsCertificate: null,
+      workerTlsFingerprint: null,
+      workerDirectory: "/srv/worker",
+      workerPlatform: { os: "linux", architecture: "x64" },
+      workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
+      workerAcceptRemoteExecution: true,
+      workerConfigRevision: 1,
+    });
+    const ref = {
+      kind: "mesh" as const,
+      nodeId: "worker-runtime-rollback",
+    };
+    getDatabase().run(`
+      CREATE TRIGGER fail_runtime_snapshot_update
+      BEFORE UPDATE OF capabilities_json ON execution_hosts
+      WHEN OLD.source_id = 'worker-runtime-rollback'
+      BEGIN
+        SELECT RAISE(ABORT, 'forced canonical snapshot failure');
+      END
+    `);
+
+    await expect(updateWorkerHealthSnapshot({
+      workerNodeId: "worker-runtime-rollback",
+      localUserId: "admin",
+      directory: "C:\\workspaces",
+      platform: { os: "windows", architecture: "x64" },
+      capabilities: { serverHealth: 1 },
+      acceptRemoteExecution: true,
+      configRevision: 2,
+    })).rejects.toThrow("forced canonical snapshot failure");
+
+    expect(await getWorkerRegistration(
+      "worker-runtime-rollback",
+      "admin",
+    )).toMatchObject({
+      workerDirectory: "/srv/worker",
+      workerPlatform: { os: "linux", architecture: "x64" },
+      workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
+      workerConfigRevision: 1,
+    });
+    expect(getExecutionHostByRef("admin", ref)?.runtime).toEqual({
+      platform: { os: "linux", architecture: "x64" },
+      capabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
+    });
+  });
+
+  // This persistence-boundary contract prevents partially trusted runtime
+  // metadata from enabling operations after storage corruption.
+  test("fails closed when either half of a runtime snapshot is corrupt", async () => {
+    const canonicalRef = { kind: "mesh" as const, nodeId: "canonical-corrupt-runtime" };
+    ensureExecutionHost("admin", canonicalRef, "mesh:canonical-corrupt-runtime", {
+      runtime: {
+        platform: { os: "linux", architecture: "x64" },
+        capabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
+      },
+    });
+    getDatabase().query(`
+      UPDATE execution_hosts
+      SET capabilities_json = '{invalid'
+      WHERE user_id = 'admin' AND source_id = 'canonical-corrupt-runtime'
+    `).run();
+    expect(getExecutionHostByRef("admin", canonicalRef)?.runtime).toEqual({
+      platform: null,
+      capabilities: {},
+    });
+
+    await saveWorkerRegistration({
+      workerNodeId: "worker-corrupt-runtime",
+      localUserId: "admin",
+      workerInstanceName: "Corrupt runtime worker",
+      workerEndpoint: "https://worker.example",
+      workerTransport: "https",
+      workerPublicKey: "corrupt-runtime-public",
+      workerFingerprint: "corrupt-runtime-fingerprint",
+      workerEncryptionPublicKey: null,
+      workerTlsCertificate: null,
+      workerTlsFingerprint: null,
+      workerDirectory: "/srv/worker",
+      workerPlatform: { os: "linux", architecture: "x64" },
+      workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
+      workerAcceptRemoteExecution: true,
+      workerConfigRevision: 1,
+    });
+    getDatabase().query(`
+      UPDATE mesh_worker_registrations
+      SET worker_platform_os = 'unsupported'
+      WHERE local_user_id = 'admin' AND worker_node_id = 'worker-corrupt-runtime'
+    `).run();
+    expect(await getWorkerRegistration("worker-corrupt-runtime", "admin")).toMatchObject({
+      workerPlatform: null,
+      workerCapabilities: {},
+    });
   });
 
   // Migration coverage is kept at the persistence boundary because a partial

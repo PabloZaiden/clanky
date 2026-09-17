@@ -36,6 +36,10 @@ function mapTerminalSessionError(error: unknown): Response {
         error: "invalid_session_configuration",
         status: 400,
       },
+      execution_host_capability_unavailable: {
+        status: 409,
+        message: "This execution host does not support interactive terminals.",
+      },
     },
     fallback: {
       error: "terminal_session_error",

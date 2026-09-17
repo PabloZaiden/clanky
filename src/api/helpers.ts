@@ -47,6 +47,19 @@ export interface DomainErrorResponseOptions {
   mappings?: Readonly<Record<string, DomainErrorHttpMapping>>;
 }
 
+export function executionHostCapabilityUnavailableMapping(
+  error: unknown,
+): DomainErrorHttpMapping {
+  const capability = isDomainError(error)
+    && typeof error.details["capability"] === "string"
+      ? error.details["capability"]
+      : undefined;
+  return {
+    status: 409,
+    ...(capability ? { extra: { capability } } : {}),
+  };
+}
+
 /**
  * Map a known typed domain failure at the HTTP boundary.
  *

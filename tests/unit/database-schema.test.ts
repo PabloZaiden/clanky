@@ -6,6 +6,10 @@ import { join } from "path";
 import { closeDatabase, getDatabase, initializeDatabase } from "../../src/persistence/database";
 import { getSchemaVersion, migrations, runMigrations } from "../../src/persistence/migrations";
 import { migrateCanonicalExecutionHosts } from "../../src/persistence/migrations/canonical-execution-hosts";
+import {
+  getExecutionHostSourceId,
+  POSIX_EXECUTION_HOST_CAPABILITIES,
+} from "../../src/shared/execution-host";
 
 const PRIVATE_FLAG_TABLE_NAMES = [
   "workspaces",
@@ -363,6 +367,166 @@ describe("database schema", () => {
         "paired_at",
         "updated_at",
       ]);
+    } finally {
+      db.close();
+    }
+  });
+
+  // This migration-boundary scenario protects existing global and scoped Mesh
+  // resources from losing capabilities during the runtime snapshot upgrade.
+  test("migration v54 backfills valid Mesh snapshots for existing bindings", () => {
+    const migration = migrations.find((candidate) => candidate.version === 54);
+    if (!migration) {
+      throw new Error("Migration v54 was not found");
+    }
+    const db = new Database(":memory:");
+    try {
+      db.exec(`
+        CREATE TABLE execution_hosts (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          kind TEXT NOT NULL,
+          source_id TEXT NOT NULL,
+          target_key TEXT NOT NULL,
+          revision INTEGER NOT NULL,
+          revoked_at TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE mesh_worker_registrations (
+          worker_node_id TEXT NOT NULL,
+          local_user_id TEXT NOT NULL,
+          worker_capabilities_json TEXT,
+          registration_scope TEXT NOT NULL,
+          workspace_worker_enrollment_id TEXT,
+          workspace_id TEXT
+        );
+        CREATE TABLE workspaces (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          execution_host_id TEXT NOT NULL
+        );
+        INSERT INTO execution_hosts (
+          id, user_id, kind, source_id, target_key, revision,
+          created_at, updated_at
+        ) VALUES
+          (
+            'global-host', 'user-1', 'mesh', 'worker-1', 'target-1', 3,
+            '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'
+          ),
+          (
+            'workspace-host', 'user-1', 'mesh', 'placeholder', 'target-2', 4,
+            '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'
+          ),
+          (
+            'enrollment-host', 'user-1', 'mesh', 'placeholder', 'target-4', 2,
+            '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'
+          ),
+          (
+            'corrupt-host', 'user-1', 'mesh', 'worker-3', 'target-3', 5,
+            '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'
+          );
+      `);
+      const enrollmentSourceId = getExecutionHostSourceId({
+        kind: "mesh",
+        scope: "enrollment",
+        enrollmentId: "enrollment-2",
+        nodeId: "worker-4",
+      });
+      const workspaceSourceId = getExecutionHostSourceId({
+        kind: "mesh",
+        scope: "workspace",
+        workspaceId: "workspace-1",
+        nodeId: "worker-2",
+      });
+      db.query(
+        `UPDATE execution_hosts
+         SET source_id = CASE id
+           WHEN 'enrollment-host' THEN ?
+           WHEN 'workspace-host' THEN ?
+           ELSE source_id
+         END`,
+      ).run(enrollmentSourceId, workspaceSourceId);
+      db.query(`
+        INSERT INTO mesh_worker_registrations (
+          worker_node_id, local_user_id, worker_capabilities_json,
+          registration_scope, workspace_worker_enrollment_id, workspace_id
+        ) VALUES
+          ('worker-1', 'user-1', ?, 'global', NULL, NULL),
+          ('worker-2', 'user-1', ?, 'workspace', 'enrollment-1', 'workspace-1'),
+          ('worker-4', 'user-1', ?, 'workspace', 'enrollment-2', NULL),
+          ('worker-3', 'user-1', '{invalid', 'global', NULL, NULL)
+      `).run(
+        JSON.stringify(POSIX_EXECUTION_HOST_CAPABILITIES),
+        JSON.stringify(POSIX_EXECUTION_HOST_CAPABILITIES),
+        JSON.stringify(POSIX_EXECUTION_HOST_CAPABILITIES),
+      );
+      db.query(`
+        INSERT INTO workspaces (id, user_id, execution_host_id)
+        VALUES ('workspace-1', 'user-1', 'workspace-host')
+      `).run();
+
+      migration.up(db);
+      migration.up(db);
+
+      const hosts = db.query(`
+        SELECT id, platform_os, platform_architecture, capabilities_json
+        FROM execution_hosts
+        ORDER BY id
+      `).all() as Array<{
+        id: string;
+        platform_os: string | null;
+        platform_architecture: string | null;
+        capabilities_json: string;
+      }>;
+      expect(hosts.map((host) => ({
+        id: host.id,
+        platform_os: host.platform_os,
+        platform_architecture: host.platform_architecture,
+        capabilities: JSON.parse(host.capabilities_json) as unknown,
+      }))).toEqual([
+        {
+          id: "corrupt-host",
+          platform_os: null,
+          platform_architecture: null,
+          capabilities: {},
+        },
+        {
+          id: "enrollment-host",
+          platform_os: null,
+          platform_architecture: null,
+          capabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
+        },
+        {
+          id: "global-host",
+          platform_os: null,
+          platform_architecture: null,
+          capabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
+        },
+        {
+          id: "workspace-host",
+          platform_os: null,
+          platform_architecture: null,
+          capabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
+        },
+      ]);
+      expect(db.query(`
+        SELECT host.capabilities_json
+        FROM workspaces workspace
+        JOIN execution_hosts host ON host.id = workspace.execution_host_id
+        WHERE workspace.id = 'workspace-1'
+      `).get()).toEqual({
+        capabilities_json: JSON.stringify(POSIX_EXECUTION_HOST_CAPABILITIES),
+      });
+      const workerColumns = db.query(
+        "PRAGMA table_info(mesh_worker_registrations)",
+      ).all() as Array<{ name: string }>;
+      expect(workerColumns.map((column) => column.name)).toEqual(
+        expect.arrayContaining([
+          "worker_platform_os",
+          "worker_platform_architecture",
+        ]),
+      );
     } finally {
       db.close();
     }

@@ -2,22 +2,28 @@
  * Owner-scoped persistence for canonical execution-host identities.
  */
 
+import { createLogger } from "@pablozaiden/webapp/server";
 import type {
   ExecutionHostBinding,
   ExecutionHostKind,
   ExecutionHostRef,
+  ExecutionHostRuntimeSnapshot,
 } from "@/shared";
 import {
   executionHostRefFromParts,
   getExecutionHostSourceId,
+  parseExecutionHostRuntimeSnapshot,
 } from "@/shared";
 import { getDatabase } from "./database";
+
+const log = createLogger("persistence:execution-hosts");
 
 export interface PersistedExecutionHost {
   id: string;
   userId: string;
   ref: ExecutionHostRef;
   targetKey: string;
+  runtime: ExecutionHostRuntimeSnapshot;
   revision: number;
   revokedAt: string | null;
   createdAt: string;
@@ -30,10 +36,38 @@ interface ExecutionHostRow {
   kind: ExecutionHostKind;
   source_id: string;
   target_key: string;
+  platform_os: string | null;
+  platform_architecture: string | null;
+  capabilities_json: string;
   revision: number;
   revoked_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+function parseRuntimeSnapshot(row: ExecutionHostRow): ExecutionHostRuntimeSnapshot {
+  try {
+    const runtime = parseExecutionHostRuntimeSnapshot(
+      {
+        os: row.platform_os,
+        architecture: row.platform_architecture,
+      },
+      JSON.parse(row.capabilities_json) as unknown,
+    );
+    if (!runtime) {
+      throw new Error("platform and capabilities must form a valid runtime snapshot");
+    }
+    return runtime;
+  } catch (error) {
+    log.warn("Invalid execution host runtime snapshot", {
+      hostId: row.id,
+      error: String(error),
+    });
+    return {
+      platform: null,
+      capabilities: {},
+    };
+  }
 }
 
 function refFromParts(kind: ExecutionHostKind, sourceId: string): ExecutionHostRef {
@@ -50,6 +84,7 @@ function rowToExecutionHost(row: ExecutionHostRow): PersistedExecutionHost {
     userId: row.user_id,
     ref: refFromParts(row.kind, row.source_id),
     targetKey: row.target_key,
+    runtime: parseRuntimeSnapshot(row),
     revision: Math.max(1, Math.floor(row.revision)),
     revokedAt: row.revoked_at,
     createdAt: row.created_at,
@@ -63,7 +98,8 @@ function selectExecutionHost(
 ): PersistedExecutionHost | null {
   const row = getDatabase().query(`
     SELECT
-      id, user_id, kind, source_id, target_key, revision,
+      id, user_id, kind, source_id, target_key,
+      platform_os, platform_architecture, capabilities_json, revision,
       revoked_at, created_at, updated_at
     FROM execution_hosts
     WHERE ${whereClause}
@@ -103,7 +139,8 @@ export function getExecutionHostByTargetKey(
 export function listExecutionHosts(userId: string): PersistedExecutionHost[] {
   const rows = getDatabase().query(`
     SELECT
-      id, user_id, kind, source_id, target_key, revision,
+      id, user_id, kind, source_id, target_key,
+      platform_os, platform_architecture, capabilities_json, revision,
       revoked_at, created_at, updated_at
     FROM execution_hosts
     WHERE user_id = ?
@@ -116,37 +153,111 @@ export function ensureExecutionHost(
   userId: string,
   ref: ExecutionHostRef,
   targetKey: string,
-  options: { forceRevision?: boolean } = {},
+  options: {
+    forceRevision?: boolean;
+    runtime?: ExecutionHostRuntimeSnapshot;
+  } = {},
 ): PersistedExecutionHost {
   const db = getDatabase();
   const sourceId = getExecutionHostSourceId(ref);
   const existing = getExecutionHostByRef(userId, ref);
   if (existing) {
+    const runtimeChanged = options.runtime !== undefined
+      && JSON.stringify(existing.runtime) !== JSON.stringify(options.runtime);
     if (
       existing.targetKey === targetKey
       && existing.revokedAt === null
       && options.forceRevision !== true
+      && !runtimeChanged
     ) {
       return existing;
     }
     const updatedAt = new Date().toISOString();
-    db.query(`
-      UPDATE execution_hosts
-      SET target_key = ?, revoked_at = NULL, revision = revision + 1, updated_at = ?
-      WHERE id = ? AND user_id = ?
-    `).run(targetKey, updatedAt, existing.id, userId);
+    const targetChanged =
+      existing.targetKey !== targetKey
+      || existing.revokedAt !== null
+      || options.forceRevision === true;
+    if (options.runtime) {
+      db.query(`
+        UPDATE execution_hosts
+        SET target_key = ?,
+            platform_os = ?,
+            platform_architecture = ?,
+            capabilities_json = ?,
+            revoked_at = NULL,
+            revision = revision + ?,
+            updated_at = ?
+        WHERE id = ? AND user_id = ?
+      `).run(
+        targetKey,
+        options.runtime.platform?.os ?? null,
+        options.runtime.platform?.architecture ?? null,
+        JSON.stringify(options.runtime.capabilities),
+        targetChanged ? 1 : 0,
+        updatedAt,
+        existing.id,
+        userId,
+      );
+    } else {
+      db.query(`
+        UPDATE execution_hosts
+        SET target_key = ?, revoked_at = NULL, revision = revision + 1, updated_at = ?
+        WHERE id = ? AND user_id = ?
+      `).run(targetKey, updatedAt, existing.id, userId);
+    }
     return getExecutionHostById(userId, existing.id)!;
   }
 
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
+  const runtime = options.runtime ?? { platform: null, capabilities: {} };
   db.query(`
     INSERT INTO execution_hosts (
-      id, user_id, kind, source_id, target_key, revision,
+      id, user_id, kind, source_id, target_key,
+      platform_os, platform_architecture, capabilities_json, revision,
       revoked_at, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, 1, NULL, ?, ?)
-  `).run(id, userId, ref.kind, sourceId, targetKey, now, now);
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, NULL, ?, ?)
+  `).run(
+    id,
+    userId,
+    ref.kind,
+    sourceId,
+    targetKey,
+    runtime.platform?.os ?? null,
+    runtime.platform?.architecture ?? null,
+    JSON.stringify(runtime.capabilities),
+    now,
+    now,
+  );
   return getExecutionHostById(userId, id)!;
+}
+
+export function updateExecutionHostRuntimeSnapshot(
+  userId: string,
+  ref: ExecutionHostRef,
+  runtime: ExecutionHostRuntimeSnapshot,
+): PersistedExecutionHost | null {
+  const existing = getExecutionHostByRef(userId, ref);
+  if (!existing || JSON.stringify(existing.runtime) === JSON.stringify(runtime)) {
+    return existing;
+  }
+  const now = new Date().toISOString();
+  getDatabase().query(`
+    UPDATE execution_hosts
+    SET platform_os = ?,
+        platform_architecture = ?,
+        capabilities_json = ?,
+        updated_at = ?
+    WHERE id = ? AND user_id = ?
+  `).run(
+    runtime.platform?.os ?? null,
+    runtime.platform?.architecture ?? null,
+    JSON.stringify(runtime.capabilities),
+    now,
+    existing.id,
+    userId,
+  );
+  return getExecutionHostById(userId, existing.id);
 }
 
 export function resolveExecutionHostBindingId(

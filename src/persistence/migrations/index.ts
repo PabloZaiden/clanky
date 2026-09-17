@@ -57,6 +57,7 @@ import { migrateMeshWorkerKillNonces } from "./mesh-worker-kill-nonces";
 import { migrateWorkspaceWorkerEnrollments } from "./workspace-worker-enrollments";
 import { migrateMeshPeerRoutes } from "./mesh-peer-routes";
 import { migrateControllerRelayPairing } from "./controller-relay-pairing";
+import { backfillMeshExecutionHostRuntimeSnapshots } from "./execution-host-runtime-snapshots";
 
 const log = createLogger("persistence:migrations");
 
@@ -1597,6 +1598,42 @@ export const migrations: Migration[] = [
     version: 53,
     name: "add_controller_relay_pairing",
     up: migrateControllerRelayPairing,
+  },
+  {
+    version: 54,
+    name: "add_execution_host_runtime_snapshots",
+    up: (db) => {
+      const hostColumns = getTableColumns(db, "execution_hosts");
+      if (!hostColumns.includes("platform_os")) {
+        db.run("ALTER TABLE execution_hosts ADD COLUMN platform_os TEXT");
+      }
+      if (!hostColumns.includes("platform_architecture")) {
+        db.run(
+          "ALTER TABLE execution_hosts ADD COLUMN platform_architecture TEXT",
+        );
+      }
+      if (!hostColumns.includes("capabilities_json")) {
+        db.run(
+          "ALTER TABLE execution_hosts ADD COLUMN capabilities_json TEXT NOT NULL DEFAULT '{}'",
+        );
+      }
+
+      const workerColumns = getTableColumns(
+        db,
+        "mesh_worker_registrations",
+      );
+      if (!workerColumns.includes("worker_platform_os")) {
+        db.run(
+          "ALTER TABLE mesh_worker_registrations ADD COLUMN worker_platform_os TEXT",
+        );
+      }
+      if (!workerColumns.includes("worker_platform_architecture")) {
+        db.run(
+          "ALTER TABLE mesh_worker_registrations ADD COLUMN worker_platform_architecture TEXT",
+        );
+      }
+      backfillMeshExecutionHostRuntimeSnapshots(db);
+    },
   },
 ];
 

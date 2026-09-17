@@ -3,6 +3,7 @@
  */
 
 import { createLogger, defineRoutes } from "@pablozaiden/webapp/server";
+import { z } from "zod";
 import { executionHostService } from "../core/execution-host-service";
 import { executionHostCommandService } from "../core/execution-host-command-service";
 import { chatManager } from "../core/chat-manager";
@@ -12,6 +13,7 @@ import {
   DiscoverExecutionHostAddressesRequestSchema,
   DiscoverExecutionHostModelsRequestSchema,
   DiscoverExecutionHostProvidersRequestSchema,
+  ExecutionHostDescriptorSchema,
   ExecutionHostExecRequestSchema,
   ExecutionHostExecResponseSchema,
   GetDevboxTemplatesRequestSchema,
@@ -20,7 +22,6 @@ import {
 } from "@/contracts/schemas";
 import {
   executionHostRefFromParts,
-  executionHostRefsEqual,
   getRegisteredSshServerId,
   type ExecutionHostRef,
 } from "@/shared";
@@ -34,6 +35,10 @@ import { getModelsForExecutionHost } from "../core/model-discovery";
 import { executionHostConfigurationService } from "../core/execution-host-configuration-service";
 
 const log = createLogger("api:execution-hosts");
+const CAPABILITY_UNAVAILABLE_MAPPING = {
+  status: 409,
+  message: "This execution host does not support the requested operation.",
+} as const;
 
 function resolveSshPassword(
   ref: ExecutionHostRef,
@@ -83,6 +88,8 @@ async function resolveWorkingDirectoryResponse(
           status: 404,
           message: "Execution host not found or unavailable.",
         },
+        execution_host_capability_unavailable:
+          CAPABILITY_UNAVAILABLE_MAPPING,
       },
     });
   }
@@ -93,6 +100,7 @@ export const executionHostRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "List execution hosts available to the current user.",
+    responseSchema: z.array(ExecutionHostDescriptorSchema),
     async GET(): Promise<Response> {
       try {
         return Response.json(await executionHostService.listHosts());
@@ -157,6 +165,11 @@ export const executionHostRoutes = defineRoutes({
       }
       const userId = ctx.requireUser().id;
       try {
+        await executionHostService.requireCapability(
+          ref,
+          "commandExecution",
+          userId,
+        );
         return Response.json(await executionHostCommandService.execute(
           ref,
           validation.data,
@@ -184,6 +197,8 @@ export const executionHostRoutes = defineRoutes({
               status: 400,
               message: "This execution host is private to its workspace.",
             },
+            execution_host_capability_unavailable:
+              CAPABILITY_UNAVAILABLE_MAPPING,
             execution_host_exec_cwd_invalid: {
               status: 400,
             },
@@ -234,7 +249,7 @@ export const executionHostRoutes = defineRoutes({
         );
       }
       try {
-        executionHostService.getBinding(ref);
+        await executionHostService.requireCapability(ref, "provisioning");
         const addresses = await executionHostDiscoveryService.listAccessibleIpv4Addresses(ref, {
           operationId: `execution-host-addresses:${ctx.params["id"]!}`,
           directory: "/",
@@ -270,6 +285,8 @@ export const executionHostRoutes = defineRoutes({
               status: 400,
               message: "This execution host is private to its workspace.",
             },
+            execution_host_capability_unavailable:
+              CAPABILITY_UNAVAILABLE_MAPPING,
           },
         });
       }
@@ -328,6 +345,8 @@ export const executionHostRoutes = defineRoutes({
               status: 400,
               message: "This execution host must be configured through its transport settings.",
             },
+            execution_host_capability_unavailable:
+              CAPABILITY_UNAVAILABLE_MAPPING,
             mesh_execution_configuration_stale: {
               status: 409,
               message: "The execution-host configuration changed. Refresh and try again.",
@@ -364,6 +383,7 @@ export const executionHostRoutes = defineRoutes({
         );
       }
       try {
+        await executionHostService.requireCapability(ref, "acpRuntime");
         const binding = executionHostService.getBinding(ref);
         const sshPassword = resolveSshPassword(
           ref,
@@ -413,6 +433,8 @@ export const executionHostRoutes = defineRoutes({
               status: 400,
               message: "The selected directory does not exist on the execution host.",
             },
+            execution_host_capability_unavailable:
+              CAPABILITY_UNAVAILABLE_MAPPING,
           },
         });
       }
@@ -433,11 +455,10 @@ export const executionHostRoutes = defineRoutes({
         return errorResponse("execution_host_kind_invalid", "Invalid execution host kind.", 400);
       }
       try {
-        const descriptor = (await executionHostService.listHosts())
-          .find((host) => executionHostRefsEqual(host.ref, ref));
-        if (!descriptor) {
-          return errorResponse("execution_host_unavailable", "Execution host not found or unavailable.", 404);
-        }
+        const descriptor = await executionHostService.requireCapability(
+          ref,
+          "provisioning",
+        );
         const report = await executionHostDiscoveryService.checkPrerequisites(ref, {
           operationId: `prerequisites:${ctx.params["id"]!}`,
           directory: "/",
@@ -461,6 +482,8 @@ export const executionHostRoutes = defineRoutes({
             invalid_credential_token: {
               status: 400,
             },
+            execution_host_capability_unavailable:
+              CAPABILITY_UNAVAILABLE_MAPPING,
           },
         });
       }
@@ -481,6 +504,10 @@ export const executionHostRoutes = defineRoutes({
         return errorResponse("execution_host_kind_invalid", "Invalid execution host kind.", 400);
       }
       try {
+        await executionHostService.requireCapability(
+          ref,
+          "devboxLifecycle",
+        );
         executionHostService.getBinding(ref);
         const templates = await executionHostDiscoveryService.listDevboxTemplates(ref, {
           operationId: `devbox-templates:${ctx.params["id"]!}`,
@@ -503,6 +530,8 @@ export const executionHostRoutes = defineRoutes({
             invalid_credential_token: {
               status: 400,
             },
+            execution_host_capability_unavailable:
+              CAPABILITY_UNAVAILABLE_MAPPING,
           },
         });
       }
@@ -530,6 +559,7 @@ export const executionHostRoutes = defineRoutes({
         );
       }
       try {
+        await executionHostService.requireCapability(ref, "acpRuntime");
         executionHostService.getBinding(ref);
         const executor = await executionHostService.getCommandExecutorForRef(
           ref,
@@ -568,6 +598,8 @@ export const executionHostRoutes = defineRoutes({
             invalid_credential_token: {
               status: 400,
             },
+            execution_host_capability_unavailable:
+              CAPABILITY_UNAVAILABLE_MAPPING,
           },
         });
       }
@@ -595,6 +627,7 @@ export const executionHostRoutes = defineRoutes({
         );
       }
       try {
+        await executionHostService.requireCapability(ref, "acpRuntime");
         const binding = executionHostService.getBinding(ref);
         const models = await getModelsForExecutionHost(
           binding,
@@ -625,6 +658,8 @@ export const executionHostRoutes = defineRoutes({
             invalid_credential_token: {
               status: 400,
             },
+            execution_host_capability_unavailable:
+              CAPABILITY_UNAVAILABLE_MAPPING,
           },
         });
       }

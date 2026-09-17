@@ -8,7 +8,7 @@ import { encryptMeshPayload } from "../../src/core/mesh-payload-crypto";
 import { closeDatabase, initializeDatabase } from "../../src/persistence/database";
 import { ensureLocalMeshNodeIdentity } from "../../src/persistence/mesh-node-identity";
 import { saveWorkerRegistration } from "../../src/persistence/mesh";
-import { DEFAULT_EXECUTION_HOST_CAPABILITIES } from "../../src/shared/execution-host";
+import { POSIX_EXECUTION_HOST_CAPABILITIES } from "../../src/shared/execution-host";
 import {
   MESH_ACP_LEGACY_SESSION_REQUEST_TTL_MS,
   MESH_ACP_SESSION_RENEWAL_LEAD_MS,
@@ -58,7 +58,7 @@ describe("MeshCommandExecutorClient", () => {
       workerTlsCertificate: null,
       workerTlsFingerprint: null,
       workerDirectory: "/workspace",
-      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
       workerAcceptRemoteExecution: true,
       workerConfigRevision: 1,
     });
@@ -141,7 +141,7 @@ describe("MeshCommandExecutorClient", () => {
       workerTlsCertificate: null,
       workerTlsFingerprint: null,
       workerDirectory: "/workspace",
-      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
       workerAcceptRemoteExecution: true,
       workerConfigRevision: 1,
     });
@@ -225,7 +225,7 @@ describe("MeshCommandExecutorClient", () => {
       workerTlsCertificate: null,
       workerTlsFingerprint: null,
       workerDirectory: "/workspace",
-      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
       workerAcceptRemoteExecution: true,
       workerConfigRevision: 1,
     });
@@ -296,7 +296,7 @@ describe("MeshCommandExecutorClient", () => {
       workerTlsCertificate: null,
       workerTlsFingerprint: null,
       workerDirectory: "/workspace",
-      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
       workerAcceptRemoteExecution: true,
       workerConfigRevision: 1,
     });
@@ -376,7 +376,7 @@ describe("MeshCommandExecutorClient", () => {
       workerTlsCertificate: null,
       workerTlsFingerprint: null,
       workerDirectory: "/workspace",
-      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
       workerAcceptRemoteExecution: true,
       workerConfigRevision: 1,
     });
@@ -462,7 +462,7 @@ describe("MeshCommandExecutorClient", () => {
       workerTlsCertificate: null,
       workerTlsFingerprint: null,
       workerDirectory: "/workspace",
-      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
       workerAcceptRemoteExecution: true,
       workerConfigRevision: 1,
     });
@@ -536,7 +536,7 @@ describe("MeshCommandExecutorClient", () => {
       workerTlsCertificate: null,
       workerTlsFingerprint: null,
       workerDirectory: "/workspace",
-      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
       workerAcceptRemoteExecution: true,
       workerConfigRevision: 1,
     });
@@ -624,7 +624,7 @@ describe("MeshCommandExecutorClient", () => {
       workerTlsCertificate: null,
       workerTlsFingerprint: null,
       workerDirectory: "/workspace",
-      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
       workerAcceptRemoteExecution: true,
       workerConfigRevision: 1,
     });
@@ -748,7 +748,7 @@ describe("MeshCommandExecutorClient", () => {
       workerTlsCertificate: null,
       workerTlsFingerprint: null,
       workerDirectory: "/workspace",
-      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
       workerAcceptRemoteExecution: true,
       workerConfigRevision: 1,
     });
@@ -833,7 +833,7 @@ describe("MeshCommandExecutorClient", () => {
       workerTlsCertificate: null,
       workerTlsFingerprint: null,
       workerDirectory: "/workspace",
-      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
       workerAcceptRemoteExecution: true,
       workerConfigRevision: 1,
     });

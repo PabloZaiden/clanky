@@ -29,6 +29,7 @@ const registration: MeshWorkerRegistration = {
     tlsFingerprint: "tls-fingerprint",
   },
   workerDirectory: "/srv/worker",
+  workerPlatform: null,
   workerCapabilities: {},
   workerAcceptRemoteExecution: true,
   workerConfigRevision: 1,

@@ -41,7 +41,7 @@ import {
   saveControllerGrant,
   saveWorkerRegistration,
 } from "../../src/persistence/mesh";
-import { DEFAULT_EXECUTION_HOST_CAPABILITIES } from "../../src/shared/execution-host";
+import { POSIX_EXECUTION_HOST_CAPABILITIES } from "../../src/shared/execution-host";
 import { pollUntil } from "../helpers/polling";
 import { seedTestOwnerUser } from "../setup";
 
@@ -224,7 +224,7 @@ describe("controller relay authorization recovery", () => {
       workerTlsCertificate: null,
       workerTlsFingerprint: null,
       workerDirectory: "/workspaces",
-      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
       workerAcceptRemoteExecution: true,
       workerConfigRevision: 1,
       route: {
@@ -439,7 +439,7 @@ describe("controller relay authorization recovery", () => {
       workerTlsCertificate: null,
       workerTlsFingerprint: null,
       workerDirectory: "/workspaces",
-      workerCapabilities: DEFAULT_EXECUTION_HOST_CAPABILITIES,
+      workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
       workerAcceptRemoteExecution: true,
       workerConfigRevision: 1,
       registrationScope: "workspace",

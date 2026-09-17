@@ -4,8 +4,10 @@
 
 import { z } from "zod";
 import {
+  EXECUTION_HOST_ARCHITECTURES,
   EXECUTION_HOST_CAPABILITY_IDS,
   EXECUTION_HOST_KINDS,
+  EXECUTION_HOST_OPERATING_SYSTEMS,
 } from "@/shared/execution-host";
 import { AGENT_PROVIDER_IDS } from "@/shared/settings";
 import { ModelConfigSchema } from "./model";
@@ -17,6 +19,10 @@ export const ExecutionHostPreferredModelSchema = ModelConfigSchema.extend({
 });
 
 export const ExecutionHostKindSchema = z.enum(EXECUTION_HOST_KINDS);
+export const ExecutionHostPlatformSchema = z.object({
+  os: z.enum(EXECUTION_HOST_OPERATING_SYSTEMS),
+  architecture: z.enum(EXECUTION_HOST_ARCHITECTURES),
+}).strict();
 
 export const ExecutionHostRefSchema = z.union([
   z.object({
@@ -105,6 +111,7 @@ export const ExecutionHostDescriptorSchema = z.object({
   configurationRevision: z.number().int().min(1),
   accessRequirement: ExecutionHostAccessRequirementSchema,
   acceptRemoteExecution: z.boolean(),
+  platform: ExecutionHostPlatformSchema.nullable().optional().default(null),
   capabilities: ExecutionHostCapabilitiesSchema,
   revision: z.number().int().min(1),
   isPrivate: z.boolean().optional(),

@@ -215,6 +215,15 @@ async function resolveProvisioningExecutionHostBinding(
         "Dedicated worker enrollments can only create a new workspace",
       );
     }
+    const binding = workspaceWorkerEnrollmentService.getExecutionHostBinding(
+      userId,
+      options.workspaceWorkerEnrollmentId,
+    );
+    executionHostService.requireBindingCapability(
+      binding,
+      "provisioning",
+      userId,
+    );
     return workspaceWorkerEnrollmentService.claimForProvisioning(
       userId,
       options.workspaceWorkerEnrollmentId,
@@ -227,7 +236,11 @@ async function resolveProvisioningExecutionHostBinding(
   ) {
     const workspace = await getWorkspace(options.workspaceId);
     if (workspace?.provisioningHostBinding) {
-      executionHostService.validateBinding(workspace.provisioningHostBinding, userId);
+      executionHostService.requireBindingCapability(
+        workspace.provisioningHostBinding,
+        "provisioning",
+        userId,
+      );
       return workspace.provisioningHostBinding;
     }
   }
@@ -238,7 +251,11 @@ async function resolveProvisioningExecutionHostBinding(
       "Provisioning requires an execution host",
     );
   }
-  await executionHostService.listHosts(userId);
+  await executionHostService.requireCapability(
+    options.executionHost,
+    "provisioning",
+    userId,
+  );
   return executionHostService.getBinding(options.executionHost, userId);
 }
 
@@ -471,6 +488,13 @@ export class ProvisioningManager {
       options,
       jobId,
     );
+    if (mode === "arise") {
+      executionHostService.requireBindingCapability(
+        executionHostBinding,
+        "devboxLifecycle",
+        owner.id,
+      );
+    }
     const existingWorkerEnrollment = transport === "worker"
       && (mode === "rebuild" || mode === "restart")
       && options.workspaceId

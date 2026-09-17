@@ -17,13 +17,16 @@ import type {
 import {
   type ExecutionHostBinding,
   type ExecutionHostCapabilities,
+  type ExecutionHostPlatform,
   type ExecutionHostRef,
+  parseExecutionHostRuntimeSnapshot,
 } from "@/shared/execution-host";
 import {
   deleteExecutionHost,
   ensureExecutionHost,
   getExecutionHostByRef,
   revokeExecutionHost,
+  updateExecutionHostRuntimeSnapshot,
 } from "./execution-hosts";
 import {
   buildMeshEnrollmentTargetKey,
@@ -54,6 +57,7 @@ export interface SaveWorkerRegistrationInput {
   workerTlsFingerprint: string | null;
   route?: MeshPeerRoute;
   workerDirectory: string | null;
+  workerPlatform?: ExecutionHostPlatform | null;
   workerCapabilities: ExecutionHostCapabilities | null;
   workerAcceptRemoteExecution: boolean;
   workerConfigRevision: number;
@@ -135,11 +139,12 @@ export async function saveWorkerRegistration(
       worker_public_key, worker_fingerprint, worker_encryption_public_key,
       worker_tls_certificate, worker_tls_fingerprint,
       route_kind, relay_url, relay_fingerprint,
-      worker_directory, worker_capabilities_json,
+      worker_directory, worker_platform_os, worker_platform_architecture,
+      worker_capabilities_json,
       worker_accept_remote_execution,       worker_config_revision, registration_scope,
       workspace_worker_enrollment_id, workspace_id,
       grant_status, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
     ON CONFLICT(local_user_id, worker_node_id) DO UPDATE SET
       worker_instance_name = excluded.worker_instance_name,
       worker_endpoint = excluded.worker_endpoint,
@@ -153,6 +158,8 @@ export async function saveWorkerRegistration(
       relay_url = excluded.relay_url,
       relay_fingerprint = excluded.relay_fingerprint,
       worker_directory = excluded.worker_directory,
+      worker_platform_os = excluded.worker_platform_os,
+      worker_platform_architecture = excluded.worker_platform_architecture,
       worker_capabilities_json = excluded.worker_capabilities_json,
       worker_accept_remote_execution = excluded.worker_accept_remote_execution,
       worker_config_revision = excluded.worker_config_revision,
@@ -176,6 +183,8 @@ export async function saveWorkerRegistration(
       route.kind === "relay" ? route.relayUrl : null,
       route.kind === "relay" ? route.relayFingerprint : null,
       input.workerDirectory,
+      input.workerPlatform?.os ?? null,
+      input.workerPlatform?.architecture ?? null,
       input.workerCapabilities ? JSON.stringify(input.workerCapabilities) : null,
       input.workerAcceptRemoteExecution ? 1 : 0,
       input.workerConfigRevision,
@@ -203,6 +212,12 @@ export async function saveWorkerRegistration(
       workspaceWorkerEnrollmentId: input.workspaceWorkerEnrollmentId,
       workspaceId: input.workspaceId,
     }),
+    {
+      runtime: {
+        platform: input.workerPlatform ?? null,
+        capabilities: input.workerCapabilities ?? {},
+      },
+    },
   );
 
   const reg = await getWorkerRegistration(input.workerNodeId, input.localUserId);
@@ -424,6 +439,12 @@ export function moveDedicatedWorkerToWorkspace(input: {
     input.localUserId,
     workspaceRef,
     buildMeshWorkspaceTargetKey(input.workspaceId, input.workerNodeId),
+    {
+      runtime: {
+        platform: registration.workerPlatform,
+        capabilities: registration.workerCapabilities ?? {},
+      },
+    },
   );
   const oldHost = getExecutionHostByRef(input.localUserId, enrollmentRef);
   const txn = db.transaction(() => {
@@ -454,32 +475,54 @@ export async function updateWorkerHealthSnapshot(input: {
   workerNodeId: string;
   localUserId: string;
   directory: string;
+  platform: ExecutionHostPlatform | null;
   capabilities: ExecutionHostCapabilities;
   acceptRemoteExecution: boolean;
   configRevision: number;
 }): Promise<void> {
   const db = getDatabase();
   const now = new Date().toISOString();
-  db.run(
-    `UPDATE mesh_worker_registrations SET
-      worker_directory = ?,
-      worker_capabilities_json = ?,
-      worker_accept_remote_execution = ?,
-      worker_config_revision = ?,
-      last_seen_at = ?,
-      updated_at = ?
-    WHERE worker_node_id = ? AND local_user_id = ?`,
-    [
-      input.directory,
-      JSON.stringify(input.capabilities),
-      input.acceptRemoteExecution ? 1 : 0,
-      input.configRevision,
-      now,
-      now,
+  const updateSnapshot = db.transaction(() => {
+    db.run(
+      `UPDATE mesh_worker_registrations SET
+        worker_directory = ?,
+        worker_platform_os = ?,
+        worker_platform_architecture = ?,
+        worker_capabilities_json = ?,
+        worker_accept_remote_execution = ?,
+        worker_config_revision = ?,
+        last_seen_at = ?,
+        updated_at = ?
+      WHERE worker_node_id = ? AND local_user_id = ?`,
+      [
+        input.directory,
+        input.platform?.os ?? null,
+        input.platform?.architecture ?? null,
+        JSON.stringify(input.capabilities),
+        input.acceptRemoteExecution ? 1 : 0,
+        input.configRevision,
+        now,
+        now,
+        input.workerNodeId,
+        input.localUserId,
+      ],
+    );
+    const registration = getWorkerRegistration(
       input.workerNodeId,
       input.localUserId,
-    ],
-  );
+    );
+    if (registration) {
+      updateExecutionHostRuntimeSnapshot(
+        input.localUserId,
+        getWorkerRegistrationExecutionHostRef(registration),
+        {
+          platform: input.platform,
+          capabilities: input.capabilities,
+        },
+      );
+    }
+  });
+  updateSnapshot();
 }
 
 // ---------------------------------------------------------------------------
@@ -702,6 +745,8 @@ interface WorkerRegistrationRow {
   relay_url: string | null;
   relay_fingerprint: string | null;
   worker_directory: string | null;
+  worker_platform_os: string | null;
+  worker_platform_architecture: string | null;
   worker_capabilities_json: string | null;
   worker_accept_remote_execution: number;
   worker_config_revision: number;
@@ -717,14 +762,31 @@ interface WorkerRegistrationRow {
 function mapWorkerRegistrationRow(
   row: WorkerRegistrationRow,
 ): MeshWorkerRegistration {
+  const hasPlatform = row.worker_platform_os !== null
+    || row.worker_platform_architecture !== null;
+  let platform: ExecutionHostPlatform | null = null;
   let capabilities: ExecutionHostCapabilities | null = null;
-  if (row.worker_capabilities_json) {
+  if (row.worker_capabilities_json !== null || hasPlatform) {
     try {
-      capabilities = JSON.parse(row.worker_capabilities_json);
-    } catch {
-      log.warn("Invalid worker capabilities JSON", {
+      const runtime = parseExecutionHostRuntimeSnapshot(
+        {
+          os: row.worker_platform_os,
+          architecture: row.worker_platform_architecture,
+        },
+        JSON.parse(row.worker_capabilities_json ?? "null") as unknown,
+      );
+      if (!runtime) {
+        throw new Error("platform and capabilities must form a valid runtime snapshot");
+      }
+      platform = runtime.platform;
+      capabilities = runtime.capabilities;
+    } catch (error) {
+      log.warn("Invalid worker runtime snapshot", {
         workerNodeId: row.worker_node_id,
+        error: String(error),
       });
+      platform = null;
+      capabilities = {};
     }
   }
   let route: MeshPeerRoute;
@@ -762,6 +824,7 @@ function mapWorkerRegistrationRow(
     workerTlsFingerprint: row.worker_tls_fingerprint,
     route,
     workerDirectory: row.worker_directory,
+    workerPlatform: platform,
     workerCapabilities: capabilities,
     workerAcceptRemoteExecution: row.worker_accept_remote_execution === 1,
     workerConfigRevision: row.worker_config_revision,
