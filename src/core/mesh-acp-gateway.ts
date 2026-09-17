@@ -85,6 +85,7 @@ function assertJsonRpcMessage(value: unknown): Record<string, unknown> {
 export class MeshAcpGateway {
   private readonly relays = new Map<string, RelayState>();
   private readonly opening = new Map<string, OpeningState>();
+  private readonly stopping = new Map<string, Promise<void>>();
   private readonly closing = new Set<string>();
 
   async open(
@@ -368,6 +369,11 @@ export class MeshAcpGateway {
   }
 
   private async stopRelay(sessionId: string): Promise<void> {
+    const existingStop = this.stopping.get(sessionId);
+    if (existingStop) {
+      await existingStop;
+      return;
+    }
     const relay = this.relays.get(sessionId);
     if (!relay) {
       return;
@@ -377,10 +383,18 @@ export class MeshAcpGateway {
       clearTimeout(relay.expiryTimer);
       relay.expiryTimer = undefined;
     }
-    await relay.process.stop({
-      gracefulWaitMs: 500,
-      forceWaitMs: 0,
-    });
+    const stopping = relay.process
+      .stop({
+        gracefulWaitMs: 500,
+        forceWaitMs: 0,
+      })
+      .finally(() => {
+        if (this.stopping.get(sessionId) === stopping) {
+          this.stopping.delete(sessionId);
+        }
+      });
+    this.stopping.set(sessionId, stopping);
+    await stopping;
   }
 
   private async closeRelay(sessionId: string): Promise<void> {
@@ -389,7 +403,11 @@ export class MeshAcpGateway {
   }
 
   async closeAll(): Promise<void> {
-    const sessionIds = new Set([...this.relays.keys(), ...this.opening.keys()]);
+    const sessionIds = new Set([
+      ...this.relays.keys(),
+      ...this.opening.keys(),
+      ...this.stopping.keys(),
+    ]);
     await Promise.all([...sessionIds].map((sessionId) => this.close(sessionId)));
     meshExecutionGateway.closeAll();
   }

@@ -928,9 +928,13 @@ export class MeshExecutionGateway {
     return session.expiresAt;
   }
 
-  releaseSession(sessionId: string, sessionToken: string): void {
-    this.requireSessionRecord(sessionId, sessionToken);
+  releaseSession(
+    sessionId: string,
+    sessionToken: string,
+  ): MeshExecutionSession["channel"] {
+    const session = this.requireSessionRecord(sessionId, sessionToken);
     this.closeSession(sessionId);
+    return session.channel;
   }
 
   async getAcpSessionConfig(
