@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, realpath, rm } from "node:fs/promises";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative } from "node:path";
@@ -27,7 +27,10 @@ import { CommandExecutorImpl } from "../../src/core/remote-command-executor";
 import { GitCommandError, GitService } from "../../src/core/git";
 import { ensurePlanningDirectory } from "../../src/core/planning-directory";
 import { MeshCommandExecutor } from "../../src/core/mesh-command-executor";
-import { executionPathStyleForPlatform } from "../../src/core/execution-path";
+import {
+  executionPathsEqual,
+  executionPathStyleForPlatform,
+} from "../../src/core/execution-path";
 import { runWithCurrentUser } from "../../src/context/user-context";
 import { openPreviewTcpForward } from "../../src/core/preview-tcp-forward";
 import { openTcpTunnel, type TcpTunnel } from "../../src/core/tcp-tunnel";
@@ -311,16 +314,28 @@ async function exerciseMeshTerminal(
       const expectedDirectory = isAbsolute(directory)
         ? directory
         : join(executionRoot, directory);
+      const canonicalExpectedDirectory = await realpath(expectedDirectory);
+      const pathStyle = platformOs === "windows" ? "windows" : "posix";
       const cwdMarker = "NATIVE_TERMINAL_CWD";
+      const cwdPrefix = `${cwdMarker}:`;
       connection.sendInput(buildTerminalCwdProbe({
         marker: cwdMarker,
         os: platformOs,
       }));
       await pollUntil(
         () => output.join(""),
-        (value) => value.includes(
-          `${cwdMarker}:${expectedDirectory}:DONE`,
-        ),
+        (value) => {
+          const start = value.lastIndexOf(cwdPrefix);
+          const end = value.indexOf(":DONE", start + cwdPrefix.length);
+          if (start < 0 || end < 0) {
+            return false;
+          }
+          return executionPathsEqual(
+            value.slice(start + cwdPrefix.length, end),
+            canonicalExpectedDirectory,
+            pathStyle,
+          );
+        },
         {
           description: "native Mesh terminal working directory",
           timeoutMs: 20_000,
