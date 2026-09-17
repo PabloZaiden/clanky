@@ -276,6 +276,11 @@ export interface TrustedExecutionRoot {
 
 type PhysicalPathMode = "follow" | "entry" | "metadata";
 
+const MESH_EXECUTION_SESSION_CAPABILITIES = [
+  "commandExecution",
+  "fileOperations",
+  "git",
+] as const;
 const FILE_OPERATIONS_V2 = new Set<MeshExecutionOperation>([
   "getFileMetadata",
   "listDirectoryEntries",
@@ -772,12 +777,9 @@ export class MeshExecutionGateway {
         options.requiredCapability.minimumVersion,
       );
     } else if (session.channel !== MESH_ACP_CHANNEL) {
-      await requireLocalMeshExecutionAnyCapability([
-        "commandExecution",
-        "fileOperations",
-        "git",
-        "acpRuntime",
-      ]);
+      await requireLocalMeshExecutionAnyCapability(
+        MESH_EXECUTION_SESSION_CAPABILITIES,
+      );
     }
     const grant = await getControllerGrant(session.callerNodeId);
     if (!grant || grant.grantStatus !== "active") {
@@ -802,11 +804,9 @@ export class MeshExecutionGateway {
     if (request.channel === MESH_ACP_CHANNEL) {
       await requireLocalMeshExecutionCapability("acpRuntime");
     } else {
-      await requireLocalMeshExecutionAnyCapability([
-        "commandExecution",
-        "fileOperations",
-        "git",
-      ]);
+      await requireLocalMeshExecutionAnyCapability(
+        MESH_EXECUTION_SESSION_CAPABILITIES,
+      );
     }
     if (Buffer.byteLength(JSON.stringify(request), "utf8") > MESH_EXECUTION_MAX_MESSAGE_BYTES) {
       throw new DomainError(

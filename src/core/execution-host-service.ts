@@ -147,7 +147,13 @@ export class ExecutionHostService {
       throw new DomainError(
         "execution_host_capability_unavailable",
         `The selected execution host does not provide the ${capability} capability.`,
-        { details: { capability } },
+        {
+          details: {
+            capability,
+            requiredVersion: minimumVersion ?? 1,
+            actualVersion: persisted.runtime.capabilities[capability] ?? 0,
+          },
+        },
       );
     }
     return persisted;
@@ -275,7 +281,13 @@ export class ExecutionHostService {
       throw new DomainError(
         "execution_host_capability_unavailable",
         `The selected execution host does not provide the ${capability} capability.`,
-        { details: { capability } },
+        {
+          details: {
+            capability,
+            requiredVersion: minimumVersion ?? 1,
+            actualVersion: descriptor.capabilities[capability] ?? 0,
+          },
+        },
       );
     }
     return descriptor;
