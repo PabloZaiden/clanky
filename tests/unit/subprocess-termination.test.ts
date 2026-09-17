@@ -303,6 +303,7 @@ describe("subprocess tree termination", () => {
 
       expect(outcome).toBeNull();
       expect(helperKill).toHaveBeenCalledTimes(1);
+      expect(helperKill).toHaveBeenCalledWith("SIGKILL");
       expect(commands[1]).toContain("/F");
     });
   });

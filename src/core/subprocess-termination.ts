@@ -167,7 +167,7 @@ function tryKillTaskkillHelper(
   force: boolean,
 ): void {
   try {
-    termination.kill();
+    termination.kill("SIGKILL");
   } catch (error) {
     log.warn("Failed to terminate timed-out Windows taskkill helper", {
       pid: targetPid,
