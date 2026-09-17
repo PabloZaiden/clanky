@@ -6,6 +6,7 @@
  */
 
 import { createInterface } from "node:readline";
+import { isAbsolute } from "node:path";
 
 const SUPPORTED_PROTOCOL_VERSION = 1;
 const OUTBOUND_REQUEST_TIMEOUT_MS = 10_000;
@@ -483,7 +484,7 @@ class MockAcpServer {
 
   private handleSessionNew(params: Record<string, unknown>): Record<string, unknown> {
     const cwd = getString(params["cwd"]);
-    if (!cwd || !cwd.startsWith("/")) {
+    if (!cwd || !isAbsolute(cwd)) {
       throw this.rpcError(INVALID_PARAMS_ERROR_CODE, "session/new requires an absolute cwd");
     }
     if (!Array.isArray(params["mcpServers"])) {
@@ -552,7 +553,7 @@ class MockAcpServer {
   ): Promise<Record<string, unknown>> {
     const session = this.getExistingSession(params["sessionId"]);
     const cwd = getString(params["cwd"]);
-    if (!cwd || !cwd.startsWith("/")) {
+    if (!cwd || !isAbsolute(cwd)) {
       throw this.rpcError(INVALID_PARAMS_ERROR_CODE, "session/load requires an absolute cwd");
     }
     if (!Array.isArray(params["mcpServers"])) {
