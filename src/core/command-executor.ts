@@ -7,6 +7,8 @@
 /**
  * Result of a command execution.
  */
+import type { ExecutionPathStyle } from "./execution-path";
+
 export interface CommandResult {
   success: boolean;
   stdout: string;
@@ -80,12 +82,57 @@ export interface FileWriteStreamResult {
   errorCode?: "size_limit";
 }
 
+export type FileSystemNodeKind = "file" | "directory";
+
+export interface FileSystemMetadata {
+  kind: FileSystemNodeKind;
+  size: number;
+  modifiedAtMs: number;
+  contentHash?: string;
+  isSymbolicLink: boolean;
+}
+
+export interface FileSystemDirectoryEntry {
+  name: string;
+  kind: FileSystemNodeKind;
+  isSymbolicLink: boolean;
+}
+
+export interface FileMoveOptions {
+  overwrite?: boolean;
+}
+
+export type FileMoveErrorCode =
+  | "source_not_found"
+  | "destination_exists"
+  | "incompatible_type"
+  | "invalid_destination_parent"
+  | "operation_failed";
+
+export type FileMoveResult =
+  | {
+      success: true;
+    }
+  | {
+      success: false;
+      errorCode: FileMoveErrorCode;
+      error?: string;
+    };
+
+export interface FileDeleteOptions {
+  kind: FileSystemNodeKind;
+  recursive?: boolean;
+}
+
 /**
  * CommandExecutor interface for running shell commands and file operations.
  * Implementation: CommandExecutorImpl executes commands via local or SSH providers.
  * Commands are queued to ensure only one runs at a time.
  */
 export interface CommandExecutor {
+  /** Path semantics used by the execution host. */
+  readonly pathStyle: ExecutionPathStyle;
+
   /**
    * Execute a shell command.
    * @param command - The command to execute (e.g., "git status")
@@ -153,6 +200,22 @@ export interface CommandExecutor {
   listDirectory(path: string, options?: { includeHidden?: boolean }): Promise<string[]>;
 
   /**
+   * Read portable metadata for a file or directory.
+   */
+  getFileMetadata(
+    path: string,
+    options?: { includeContentHash?: boolean },
+  ): Promise<FileSystemMetadata | null>;
+
+  /**
+   * List directory entries with their node type.
+   */
+  listDirectoryEntries(
+    path: string,
+    options?: { includeHidden?: boolean },
+  ): Promise<FileSystemDirectoryEntry[]>;
+
+  /**
    * Write content to a file on the server.
    * Creates the file if it doesn't exist, overwrites if it does.
    * Uses base64 encoding to safely transfer content with special characters.
@@ -161,6 +224,20 @@ export interface CommandExecutor {
    * @returns true if the write was successful
    */
   writeFile(path: string, content: string): Promise<boolean>;
+
+  /**
+   * Move a file or directory on the execution host.
+   */
+  movePath(
+    sourcePath: string,
+    destinationPath: string,
+    options?: FileMoveOptions,
+  ): Promise<FileMoveResult>;
+
+  /**
+   * Delete a file or directory on the execution host.
+   */
+  deletePath(path: string, options: FileDeleteOptions): Promise<boolean>;
 }
 
 export function closeCommandExecutor(executor: CommandExecutor): void {

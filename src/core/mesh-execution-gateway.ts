@@ -4,12 +4,14 @@
  * This module is deliberately independent from BackendManager. The signed
  * caller supplies the execution root, provider, and channel. Relative paths
  * are resolved against the worker's configured directory. The controller grant
- * is the host-level trust boundary: the receiving host does not load replicated
- * workspace or user data or apply a per-workspace filesystem sandbox.
+ * authorizes the receiving host without replicating workspace or user data.
+ * Canonical paths and an operation lock scope requests to the configured worker
+ * directory. The worker host itself remains trusted and is not treated as a
+ * hostile filesystem.
  */
 
 import { randomBytes } from "node:crypto";
-import { posix } from "node:path";
+import { lstat, realpath } from "node:fs/promises";
 import type {
   MeshExecutionAsyncCommandRequest,
   MeshExecutionRpcRequest,
@@ -38,6 +40,7 @@ import type {
 import { getControllerGrant } from "../persistence/mesh";
 import {
   ensureLocalMeshNodeIdentity,
+  requireLocalMeshExecutionAnyCapability,
   requireLocalMeshExecutionCapability,
   verifyMeshPayloadSignature,
 } from "../persistence/mesh-node-identity";
@@ -47,6 +50,9 @@ import {
   isCommandOutputLimitError,
   type CommandExecutor,
   type CommandResult,
+  type FileSystemDirectoryEntry,
+  type FileSystemMetadata,
+  type FileMoveResult,
   type FileWriteStreamOptions,
   type FileWriteStreamResult,
 } from "./command-executor";
@@ -57,10 +63,82 @@ import { requireTrustedController } from "./mesh-peer-auth";
 import { meshInboundResourceRegistry } from "./mesh-inbound-resource-registry";
 import { decryptMeshPayload } from "./mesh-payload-crypto";
 import { parseManagedContextEnvironment } from "./managed-context-environment";
+import {
+  basenameExecutionPath,
+  dirnameExecutionPath,
+  executionPathStyleForPlatform,
+  isExecutionPathWithinRoot,
+  joinExecutionPath,
+  resolveExecutionPath,
+  type ExecutionPathStyle,
+} from "./execution-path";
+import {
+  EXECUTION_HOST_CAPABILITY_VERSIONS,
+  type ExecutionHostCapabilityId,
+} from "@/shared/execution-host";
+import type { MeshExecutionOperation } from "@/shared/mesh-execution";
 
 const MAX_SESSIONS = 256;
 const MAX_IN_FLIGHT_REQUESTS = 8;
 const MAX_REQUEST_IDS = 512;
+const MUTATING_FILE_OPERATIONS = new Set<MeshExecutionOperation>([
+  "writeFile",
+  "copyFile",
+  "movePath",
+  "deletePath",
+]);
+
+class AsyncReadWriteLock {
+  private activeReaders = 0;
+  private writerActive = false;
+  private readonly waiters: Array<{
+    mode: "read" | "write";
+    resolve: (release: () => void) => void;
+  }> = [];
+
+  async acquire(mode: "read" | "write"): Promise<() => void> {
+    return await new Promise<() => void>((resolve) => {
+      this.waiters.push({ mode, resolve });
+      this.drain();
+    });
+  }
+
+  private drain(): void {
+    if (this.writerActive || this.waiters.length === 0) {
+      return;
+    }
+    if (this.waiters[0]!.mode === "write") {
+      if (this.activeReaders > 0) {
+        return;
+      }
+      const waiter = this.waiters.shift()!;
+      this.writerActive = true;
+      waiter.resolve(this.createRelease("write"));
+      return;
+    }
+    while (this.waiters[0]?.mode === "read" && !this.writerActive) {
+      const waiter = this.waiters.shift()!;
+      this.activeReaders += 1;
+      waiter.resolve(this.createRelease("read"));
+    }
+  }
+
+  private createRelease(mode: "read" | "write"): () => void {
+    let released = false;
+    return () => {
+      if (released) {
+        return;
+      }
+      released = true;
+      if (mode === "write") {
+        this.writerActive = false;
+      } else {
+        this.activeReaders -= 1;
+      }
+      this.drain();
+    };
+  }
+}
 
 interface MeshExecutionSession {
   sessionId: string;
@@ -68,6 +146,8 @@ interface MeshExecutionSession {
   callerNodeId: string;
   workspaceId: string;
   executionRoot: string;
+  physicalExecutionRoot: string;
+  pathStyle: ExecutionPathStyle;
   directory: string;
   provider: AgentProvider;
   channel: typeof MESH_EXECUTION_CHANNEL | typeof MESH_ACP_CHANNEL;
@@ -103,6 +183,10 @@ interface ValidatedExecutionSession {
 
 interface SessionValidationOptions {
   expectedChannel?: typeof MESH_ACP_CHANNEL;
+  requiredCapability?: {
+    id: ExecutionHostCapabilityId;
+    minimumVersion?: number;
+  };
   memberErrorCode: "mesh_execution_context_changed" | "mesh_peer_not_trusted";
 }
 
@@ -111,6 +195,9 @@ type MeshExecutionRpcResult =
   | boolean
   | string
   | string[]
+  | FileSystemMetadata
+  | FileSystemDirectoryEntry[]
+  | FileMoveResult
   | null;
 
 interface MeshExecutionAsyncCommand {
@@ -147,22 +234,28 @@ function assertStringSize(value: string, field: string): void {
   }
 }
 
-export function assertMeshExecutionPath(root: string, requested: string): string {
-  if (
-    !root.startsWith("/")
-    || requested.includes("\0")
-    || root.includes("\0")
-  ) {
+export function assertMeshExecutionPath(
+  root: string,
+  requested: string,
+  pathStyle: ExecutionPathStyle,
+): string {
+  try {
+    return resolveExecutionPath(root, requested, pathStyle);
+  } catch (error) {
     throw new DomainError(
       "mesh_execution_path_invalid",
-      "The execution root must be absolute and paths must not contain NUL bytes.",
+      error instanceof Error ? error.message : "The execution path is invalid.",
+      { cause: error },
     );
   }
-  return posix.resolve(root, requested);
 }
 
-export function assertMeshExecutionCwd(root: string, cwd: string): string {
-  return assertMeshExecutionPath(root, cwd);
+export function assertMeshExecutionCwd(
+  root: string,
+  cwd: string,
+  pathStyle: ExecutionPathStyle,
+): string {
+  return assertMeshExecutionPath(root, cwd, pathStyle);
 }
 
 interface SessionOperation {
@@ -170,7 +263,183 @@ interface SessionOperation {
   cleanup: () => void;
 }
 
-async function assertTrustedCaller(request: MeshExecutionSessionRequest): Promise<string> {
+export interface TrustedExecutionRoot {
+  executionRoot: string;
+  physicalExecutionRoot: string;
+  pathStyle: ExecutionPathStyle;
+}
+
+type PhysicalPathMode = "follow" | "entry" | "metadata";
+
+const FILE_OPERATIONS_V2 = new Set<MeshExecutionOperation>([
+  "getFileMetadata",
+  "listDirectoryEntries",
+  "movePath",
+  "deletePath",
+]);
+
+export function getMeshExecutionOperationCapability(
+  operation: MeshExecutionOperation,
+): {
+  id: "commandExecution" | "fileOperations";
+  minimumVersion: number;
+} {
+  if (operation === "exec") {
+    return { id: "commandExecution", minimumVersion: 1 };
+  }
+  return {
+    id: "fileOperations",
+    minimumVersion: FILE_OPERATIONS_V2.has(operation)
+      ? EXECUTION_HOST_CAPABILITY_VERSIONS.fileOperations
+      : 1,
+  };
+}
+
+function meshPathError(message: string, cause?: unknown): DomainError {
+  return new DomainError(
+    "mesh_execution_path_invalid",
+    message,
+    cause === undefined ? undefined : { cause },
+  );
+}
+
+function isMissingPathError(error: unknown): boolean {
+  return error instanceof Error
+    && "code" in error
+    && (error as NodeJS.ErrnoException).code === "ENOENT";
+}
+
+async function resolveExistingPath(path: string): Promise<string> {
+  try {
+    return await realpath(path);
+  } catch (error) {
+    throw meshPathError("The execution path could not be resolved.", error);
+  }
+}
+
+export async function resolveTrustedExecutionRoot(
+  workerRoot: string,
+  requestedRoot: string,
+  pathStyle: ExecutionPathStyle,
+): Promise<TrustedExecutionRoot> {
+  const executionRoot = assertMeshExecutionCwd(
+    workerRoot,
+    requestedRoot,
+    pathStyle,
+  );
+  const physicalWorkerRoot = await resolveExistingPath(workerRoot);
+  const physicalExecutionRoot = await resolveExistingPath(executionRoot);
+  if (!isExecutionPathWithinRoot(
+    physicalWorkerRoot,
+    physicalExecutionRoot,
+    pathStyle,
+  )) {
+    throw meshPathError(
+      "The requested execution root must stay within the physical worker root.",
+    );
+  }
+  return {
+    executionRoot,
+    physicalExecutionRoot,
+    pathStyle,
+  };
+}
+
+export async function assertPhysicalExecutionPath(
+  session: Pick<
+    MeshExecutionSession,
+    "executionRoot" | "physicalExecutionRoot" | "pathStyle"
+  >,
+  requested: string,
+  mode: PhysicalPathMode = "follow",
+): Promise<string> {
+  const candidate = assertMeshExecutionPath(
+    session.executionRoot,
+    requested,
+    session.pathStyle,
+  );
+  if (mode === "entry") {
+    const parent = dirnameExecutionPath(candidate, session.pathStyle);
+    const physicalParent = await assertPhysicalExecutionPath(
+      session,
+      parent,
+      "follow",
+    );
+    return joinExecutionPath(
+      session.pathStyle,
+      physicalParent,
+      basenameExecutionPath(candidate, session.pathStyle),
+    );
+  }
+
+  const missingSegments: string[] = [];
+  let existingPath = candidate;
+  while (true) {
+    try {
+      const physicalPath = await realpath(existingPath);
+      if (!isExecutionPathWithinRoot(
+        session.physicalExecutionRoot,
+        physicalPath,
+        session.pathStyle,
+      )) {
+        throw meshPathError(
+          "Requested path must stay within the physical execution root.",
+        );
+      }
+      return missingSegments.reduceRight(
+        (resolved, segment) => joinExecutionPath(
+          session.pathStyle,
+          resolved,
+          segment,
+        ),
+        physicalPath,
+      );
+    } catch (error) {
+      if (!isMissingPathError(error)) {
+        if (error instanceof DomainError) {
+          throw error;
+        }
+        throw meshPathError("The execution path could not be resolved.", error);
+      }
+      try {
+        if ((await lstat(existingPath)).isSymbolicLink()) {
+          if (mode === "metadata" && existingPath === candidate) {
+            return await assertPhysicalExecutionPath(
+              session,
+              candidate,
+              "entry",
+            );
+          }
+          throw meshPathError(
+            "The execution path contains an unresolved symbolic link.",
+          );
+        }
+      } catch (linkError) {
+        if (!isMissingPathError(linkError)) {
+          if (linkError instanceof DomainError) {
+            throw linkError;
+          }
+          throw meshPathError(
+            "The execution path could not be inspected.",
+            linkError,
+          );
+        }
+      }
+      const parent = dirnameExecutionPath(existingPath, session.pathStyle);
+      if (parent === existingPath) {
+        throw meshPathError("The execution path has no existing parent.");
+      }
+      missingSegments.push(
+        basenameExecutionPath(existingPath, session.pathStyle),
+      );
+      existingPath = parent;
+    }
+  }
+}
+
+async function assertTrustedCaller(
+  request: MeshExecutionSessionRequest,
+): Promise<TrustedExecutionRoot> {
   const identity = await ensureLocalMeshNodeIdentity();
   if (request.targetNodeId !== identity.nodeId) {
     throw new DomainError("mesh_execution_target_invalid", "The execution request targets another mesh node.");
@@ -184,12 +453,24 @@ async function assertTrustedCaller(request: MeshExecutionSessionRequest): Promis
     requireEncryptionKey: false,
     context: "execution caller",
   });
-  return assertMeshExecutionCwd(getMeshWorkerDirectory(), request.directory);
+  const pathStyle = executionPathStyleForPlatform(process.platform);
+  if (!pathStyle) {
+    throw new DomainError(
+      "mesh_execution_path_invalid",
+      "The worker operating system does not provide supported path semantics.",
+    );
+  }
+  return await resolveTrustedExecutionRoot(
+    getMeshWorkerDirectory(),
+    request.directory,
+    pathStyle,
+  );
 }
 
 export class MeshExecutionGateway {
   private readonly sessions = new Map<string, MeshExecutionSession>();
   private readonly asyncCommands = new Map<string, MeshExecutionAsyncCommand>();
+  private readonly fileOperationsLock = new AsyncReadWriteLock();
   private readonly asyncCommandRequestIds = new Map<string, string>();
   private readonly usedNonces = new Map<string, number>();
   private retainedAsyncOutputBytes = 0;
@@ -354,9 +635,20 @@ export class MeshExecutionGateway {
     options: SessionValidationOptions,
   ): Promise<ValidatedExecutionSession> {
     const session = this.requireSessionRecord(sessionId, sessionToken);
-    await requireLocalMeshExecutionCapability(
-      session.channel === MESH_ACP_CHANNEL ? "acpRuntime" : "commandExecution",
-    );
+    if (session.channel === MESH_ACP_CHANNEL) {
+      await requireLocalMeshExecutionCapability("acpRuntime");
+    }
+    if (options.requiredCapability) {
+      await requireLocalMeshExecutionCapability(
+        options.requiredCapability.id,
+        options.requiredCapability.minimumVersion,
+      );
+    } else if (session.channel !== MESH_ACP_CHANNEL) {
+      await requireLocalMeshExecutionAnyCapability([
+        "commandExecution",
+        "fileOperations",
+      ]);
+    }
     const grant = await getControllerGrant(session.callerNodeId);
     if (!grant || grant.grantStatus !== "active") {
       this.abortAsyncCommandsForCaller(session.callerNodeId);
@@ -377,9 +669,14 @@ export class MeshExecutionGateway {
 
   async createSession(request: MeshExecutionSessionRequest): Promise<MeshExecutionSessionResponse> {
     this.pruneExpired();
-    await requireLocalMeshExecutionCapability(
-      request.channel === MESH_ACP_CHANNEL ? "acpRuntime" : "commandExecution",
-    );
+    if (request.channel === MESH_ACP_CHANNEL) {
+      await requireLocalMeshExecutionCapability("acpRuntime");
+    } else {
+      await requireLocalMeshExecutionAnyCapability([
+        "commandExecution",
+        "fileOperations",
+      ]);
+    }
     if (Buffer.byteLength(JSON.stringify(request), "utf8") > MESH_EXECUTION_MAX_MESSAGE_BYTES) {
       throw new DomainError(
         "mesh_execution_request_too_large",
@@ -416,7 +713,11 @@ export class MeshExecutionGateway {
       throw new DomainError("mesh_peer_signature_invalid", "The execution session signature is invalid.");
     }
 
-    const executionRoot = await assertTrustedCaller(request);
+    const {
+      executionRoot,
+      physicalExecutionRoot,
+      pathStyle,
+    } = await assertTrustedCaller(request);
     const decryptedEnvironment = request.encryptedEnvironment === undefined
       ? undefined
       : await decryptMeshPayload(request.encryptedEnvironment);
@@ -434,6 +735,8 @@ export class MeshExecutionGateway {
       callerNodeId: request.callerNodeId,
       workspaceId: request.workspaceId,
       executionRoot,
+      physicalExecutionRoot,
+      pathStyle,
       directory: executionRoot,
       provider: request.provider,
       channel: request.channel,
@@ -530,9 +833,14 @@ export class MeshExecutionGateway {
     const { session } = await this.requireValidatedSession(
       request.sessionId,
       request.sessionToken,
-      { memberErrorCode: "mesh_peer_not_trusted" },
+      {
+        memberErrorCode: "mesh_peer_not_trusted",
+        requiredCapability: {
+          id: "commandExecution",
+          minimumVersion: 1,
+        },
+      },
     );
-    await requireLocalMeshExecutionCapability("commandExecution");
     this.pruneAsyncCommands();
     if (Buffer.byteLength(JSON.stringify(request), "utf8") > MESH_EXECUTION_MAX_MESSAGE_BYTES) {
       throw new DomainError(
@@ -572,7 +880,10 @@ export class MeshExecutionGateway {
       throw new DomainError("mesh_execution_request_invalid", "Asynchronous execution requires a command.");
     }
 
-    const cwd = assertMeshExecutionCwd(session.executionRoot, request.cwd ?? session.directory);
+    const cwd = await assertPhysicalExecutionPath(
+      session,
+      request.cwd ?? session.directory,
+    );
     const jobId = crypto.randomUUID();
     const command: MeshExecutionAsyncCommand = {
       jobId,
@@ -819,15 +1130,16 @@ export class MeshExecutionGateway {
   }
 
   async execute(request: MeshExecutionRpcRequest, signal?: AbortSignal): Promise<MeshExecutionRpcResult> {
+    const requiredCapability = getMeshExecutionOperationCapability(
+      request.operation,
+    );
     const { session } = await this.requireValidatedSession(
       request.sessionId,
       request.sessionToken,
       {
         memberErrorCode: "mesh_peer_not_trusted",
+        requiredCapability,
       },
-    );
-    await requireLocalMeshExecutionCapability(
-      request.operation === "exec" ? "commandExecution" : "fileOperations",
     );
 
     this.claimRequestId(session, request.requestId);
@@ -835,89 +1147,220 @@ export class MeshExecutionGateway {
       throw new DomainError("mesh_execution_limit_exceeded", "The execution session has too many in-flight requests.");
     }
     session.inFlight += 1;
+    const releaseFileOperation = request.operation === "exec"
+      ? undefined
+      : await this.fileOperationsLock.acquire(
+          MUTATING_FILE_OPERATIONS.has(request.operation) ? "write" : "read",
+        );
 
     try {
-      const cwd = assertMeshExecutionCwd(session.executionRoot, request.cwd ?? session.directory);
+      const cwd = await assertPhysicalExecutionPath(
+        session,
+        request.cwd ?? session.directory,
+      );
       const executor = session.executor;
       switch (request.operation) {
         case "exec": {
-        if (!request.command) {
-          throw new DomainError("mesh_execution_request_invalid", "exec requires a command.");
-        }
-        let result: CommandResult;
-        try {
-          result = await executor.exec(request.command, request.args ?? [], {
-            cwd,
-            timeout: request.timeout,
-            maxOutputBytes: request.maxOutputBytes,
-            env: request.env,
-            signal,
-            logFailures: false,
-          });
-        } catch (error) {
-          if (isCommandOutputLimitError(error)) {
-            throw new DomainError(
-              "mesh_execution_result_too_large",
-              `The ${error.stream} exceeds the mesh execution size limit.`,
-              { cause: error },
-            );
+          if (!request.command) {
+            throw new DomainError("mesh_execution_request_invalid", "exec requires a command.");
           }
-          throw error;
-        }
-        assertStringSize(result.stdout, "stdout");
-        assertStringSize(result.stderr, "stderr");
-        return result;
+          let result: CommandResult;
+          try {
+            result = await executor.exec(request.command, request.args ?? [], {
+              cwd,
+              timeout: request.timeout,
+              maxOutputBytes: request.maxOutputBytes,
+              env: request.env,
+              signal,
+              logFailures: false,
+            });
+          } catch (error) {
+            if (isCommandOutputLimitError(error)) {
+              throw new DomainError(
+                "mesh_execution_result_too_large",
+                `The ${error.stream} exceeds the mesh execution size limit.`,
+                { cause: error },
+              );
+            }
+            throw error;
+          }
+          assertStringSize(result.stdout, "stdout");
+          assertStringSize(result.stderr, "stderr");
+          return result;
         }
 
         case "fileExists": {
-        if (!request.path) throw new DomainError("mesh_execution_request_invalid", "fileExists requires a path.");
-        return await executor.fileExists(assertMeshExecutionPath(session.executionRoot, request.path));
+          if (!request.path) {
+            throw new DomainError(
+              "mesh_execution_request_invalid",
+              "fileExists requires a path.",
+            );
+          }
+          return await executor.fileExists(await assertPhysicalExecutionPath(
+            session,
+            request.path,
+          ));
         }
         case "directoryExists": {
-        if (!request.path) throw new DomainError("mesh_execution_request_invalid", "directoryExists requires a path.");
-        return await executor.directoryExists(assertMeshExecutionPath(session.executionRoot, request.path));
+          if (!request.path) {
+            throw new DomainError(
+              "mesh_execution_request_invalid",
+              "directoryExists requires a path.",
+            );
+          }
+          return await executor.directoryExists(await assertPhysicalExecutionPath(
+            session,
+            request.path,
+          ));
         }
         case "readFile": {
-        if (!request.path) throw new DomainError("mesh_execution_request_invalid", "readFile requires a path.");
-        const content = await executor.readFile(assertMeshExecutionPath(session.executionRoot, request.path));
-        if (content !== null) assertStringSize(content, "file content");
-        return content;
+          if (!request.path) {
+            throw new DomainError(
+              "mesh_execution_request_invalid",
+              "readFile requires a path.",
+            );
+          }
+          const content = await executor.readFile(await assertPhysicalExecutionPath(
+            session,
+            request.path,
+          ));
+          if (content !== null) assertStringSize(content, "file content");
+          return content;
         }
         case "listDirectory": {
-        const path = request.path
-          ? assertMeshExecutionPath(session.executionRoot, request.path)
-          : cwd;
-        const entries = await executor.listDirectory(path, { includeHidden: request.includeHidden });
-        assertStringSize(JSON.stringify(entries), "directory listing");
-        return entries;
+          const path = request.path
+            ? await assertPhysicalExecutionPath(
+                session,
+                request.path,
+              )
+            : cwd;
+          const entries = await executor.listDirectory(path, {
+            includeHidden: request.includeHidden,
+          });
+          assertStringSize(JSON.stringify(entries), "directory listing");
+          return entries;
         }
         case "writeFile": {
-        if (!request.path || request.content === undefined) {
-          throw new DomainError("mesh_execution_request_invalid", "writeFile requires a path and content.");
-        }
-        return await executor.writeFile(
-          assertMeshExecutionPath(session.executionRoot, request.path),
-          request.content,
-        );
-        }
-        case "copyFile": {
-        if (!request.sourcePath || !request.destinationPath) {
-          throw new DomainError("mesh_execution_request_invalid", "copyFile requires sourcePath and destinationPath.");
-        }
-        if (!executor.copyFile) {
-          throw new DomainError(
-            "mesh_execution_operation_unsupported",
-            "The execution host does not support file copying.",
+          if (!request.path || request.content === undefined) {
+            throw new DomainError(
+              "mesh_execution_request_invalid",
+              "writeFile requires a path and content.",
+            );
+          }
+          return await executor.writeFile(
+            await assertPhysicalExecutionPath(
+              session,
+              request.path,
+            ),
+            request.content,
           );
         }
-        return await executor.copyFile(
-          assertMeshExecutionPath(session.executionRoot, request.sourcePath),
-          assertMeshExecutionPath(session.executionRoot, request.destinationPath),
-        );
+        case "copyFile": {
+          if (!request.sourcePath || !request.destinationPath) {
+            throw new DomainError(
+              "mesh_execution_request_invalid",
+              "copyFile requires sourcePath and destinationPath.",
+            );
+          }
+          if (!executor.copyFile) {
+            throw new DomainError(
+              "mesh_execution_operation_unsupported",
+              "The execution host does not support file copying.",
+            );
+          }
+          return await executor.copyFile(
+            await assertPhysicalExecutionPath(
+              session,
+              request.sourcePath,
+            ),
+            await assertPhysicalExecutionPath(
+              session,
+              request.destinationPath,
+            ),
+          );
         }
+        case "getFileMetadata": {
+          if (!request.path) {
+            throw new DomainError(
+              "mesh_execution_request_invalid",
+              "getFileMetadata requires a path.",
+            );
+          }
+          return await executor.getFileMetadata(
+            await assertPhysicalExecutionPath(
+              session,
+              request.path,
+              "metadata",
+            ),
+            { includeContentHash: request.includeContentHash },
+          );
+        }
+        case "listDirectoryEntries": {
+          if (!request.path) {
+            throw new DomainError(
+              "mesh_execution_request_invalid",
+              "listDirectoryEntries requires a path.",
+            );
+          }
+          const entries = await executor.listDirectoryEntries(
+            await assertPhysicalExecutionPath(
+              session,
+              request.path,
+            ),
+            { includeHidden: request.includeHidden },
+          );
+          assertStringSize(JSON.stringify(entries), "directory entry listing");
+          return entries;
+        }
+        case "movePath": {
+          if (!request.sourcePath || !request.destinationPath) {
+            throw new DomainError(
+              "mesh_execution_request_invalid",
+              "movePath requires sourcePath and destinationPath.",
+            );
+          }
+          return await executor.movePath(
+            await assertPhysicalExecutionPath(
+              session,
+              request.sourcePath,
+              "entry",
+            ),
+            await assertPhysicalExecutionPath(
+              session,
+              request.destinationPath,
+              "entry",
+            ),
+            { overwrite: request.overwrite },
+          );
+        }
+        case "deletePath": {
+          if (!request.path || !request.kind) {
+            throw new DomainError(
+              "mesh_execution_request_invalid",
+              "deletePath requires a path and kind.",
+            );
+          }
+          return await executor.deletePath(
+            await assertPhysicalExecutionPath(
+              session,
+              request.path,
+              "entry",
+            ),
+            {
+              kind: request.kind,
+              recursive: request.recursive,
+            },
+          );
+        }
+        default:
+          throw new DomainError(
+            "mesh_execution_request_invalid",
+            "The mesh execution operation is not supported.",
+          );
       }
 
     } finally {
+      releaseFileOperation?.();
       session.inFlight -= 1;
     }
   }
@@ -937,25 +1380,32 @@ export class MeshExecutionGateway {
     if (session.inFlight >= MAX_IN_FLIGHT_REQUESTS) {
       throw new DomainError("mesh_execution_limit_exceeded", "The execution session has too many in-flight requests.");
     }
-    const path = assertMeshExecutionPath(session.executionRoot, requestedPath);
     if (signal?.aborted) {
       throw new DomainError("mesh_execution_aborted", "The mesh execution request was aborted.");
     }
 
     const operation = this.startSessionOperation(session, signal);
     session.inFlight += 1;
+    const releaseFileOperation = await this.fileOperationsLock.acquire("read");
     try {
+      const path = await assertPhysicalExecutionPath(
+        session,
+        requestedPath,
+      );
       const stream = await session.executor.streamFile(path, { signal: operation.signal });
       if (!stream) {
+        releaseFileOperation();
         operation.cleanup();
         session.inFlight -= 1;
         return null;
       }
       return this.trackStream(stream, operation.signal, () => {
+        releaseFileOperation();
         operation.cleanup();
         session.inFlight -= 1;
       });
     } catch (error) {
+      releaseFileOperation();
       operation.cleanup();
       session.inFlight -= 1;
       throw error;
@@ -979,7 +1429,6 @@ export class MeshExecutionGateway {
     if (session.inFlight >= MAX_IN_FLIGHT_REQUESTS) {
       throw new DomainError("mesh_execution_limit_exceeded", "The execution session has too many in-flight requests.");
     }
-    const path = assertMeshExecutionPath(session.executionRoot, requestedPath);
     const writeFileStream = session.executor.writeFileStream;
     if (!writeFileStream) {
       throw new DomainError(
@@ -993,7 +1442,12 @@ export class MeshExecutionGateway {
 
     const operation = this.startSessionOperation(session, signal);
     session.inFlight += 1;
+    const releaseFileOperation = await this.fileOperationsLock.acquire("write");
     try {
+      const path = await assertPhysicalExecutionPath(
+        session,
+        requestedPath,
+      );
       return await writeFileStream.call(session.executor, path, stream, {
         append: options?.append,
         expectedOffset: options?.expectedOffset,
@@ -1001,6 +1455,7 @@ export class MeshExecutionGateway {
         signal: operation.signal,
       });
     } finally {
+      releaseFileOperation();
       operation.cleanup();
       session.inFlight -= 1;
     }
@@ -1025,9 +1480,16 @@ export class MeshExecutionGateway {
       onClosed();
     };
     const abortHandler = () => {
-      void reader?.cancel().catch(() => undefined);
+      if (!reader) {
+        finish();
+        return;
+      }
+      void reader.cancel().catch(() => undefined).finally(finish);
     };
     signal?.addEventListener("abort", abortHandler, { once: true });
+    if (signal?.aborted) {
+      abortHandler();
+    }
 
     return new ReadableStream<Uint8Array>({
       start() {

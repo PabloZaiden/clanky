@@ -3,10 +3,13 @@
  */
 
 import { posix as pathPosix } from "node:path";
-import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 import type { WorkspaceFileKind, WorkspaceFileEntry, WorkspaceFileNode } from "@/shared";
-import type { CommandExecutor } from "./command-executor";
+import type {
+  CommandExecutor,
+  FileMoveResult,
+  FileSystemMetadata,
+} from "./command-executor";
 import {
   FileExplorerConflictError,
   FileExplorerError,
@@ -16,14 +19,20 @@ import {
   detectBrowserImageMimeType,
   getBrowserImageMimeType,
 } from "../utils/workspace-file-images";
-import { createLogger } from "@pablozaiden/webapp/server";
+import {
+  basenameExecutionPath,
+  executionPathsEqual,
+  joinExecutionPath,
+  normalizeExecutionPath,
+  normalizeExecutionRoot,
+  relativeExecutionPath,
+  resolveExecutionPath,
+  resolveExecutionPathUnscoped,
+  type ExecutionPathStyle,
+} from "./execution-path";
 
 export { FileExplorerConflictError } from "./file-explorer-errors";
 
-const log = createLogger("core:file-explorer-service");
-const LIST_SEPARATOR = "\t";
-const FULL_TREE_FIELD_SEPARATOR = "\0";
-const FULL_TREE_RECORD_SEPARATOR = "\0\0";
 const FULL_TREE_DEFERRED_DIRECTORY_NAMES = [
   ".git",
   "node_modules",
@@ -52,20 +61,7 @@ const FULL_TREE_DEFERRED_DIRECTORY_NAMES = [
   "Pods",
 ] as const;
 const FULL_TREE_DEFERRED_DIRECTORY_NAME_SET = new Set<string>(FULL_TREE_DEFERRED_DIRECTORY_NAMES);
-const FULL_TREE_DEFERRED_FIND_PATTERN = FULL_TREE_DEFERRED_DIRECTORY_NAMES
-  .map((name) => `-name '${name}'`)
-  .join(" -o ");
-
-const FULL_TREE_CAPABILITY_SCRIPT = [
-  "root=\"$1\"; if [ ! -d \"$root\" ]; then exit 2; fi;",
-  "if ! command -v find >/dev/null 2>&1 || ! command -v sh >/dev/null 2>&1; then exit 3; fi;",
-  "if ! find \"$root\" -prune -exec sh -c 'exit 0' file {} + >/dev/null 2>&1; then exit 3; fi;",
-  "printf 'nul-batched';",
-].join(" ");
-const FULL_TREE_EMIT_BASE_SCRIPT =
-  "kind=\"$1\"; shift; for path do if [ ! -e \"$path\" ]; then printf \"error\\0%s\\0entry_missing\\0\\0\" \"$path\"; else printf \"base\\0%s\\0%s\\0\\0\" \"$path\" \"$kind\"; fi; done";
-const FULL_TREE_EMIT_LINK_SCRIPT =
-  "for path do if [ -d \"$path\" ]; then targetKind=\"directory\"; else targetKind=\"file\"; fi; printf \"base\\0%s\\0symlink\\0\\0link\\0%s\\0%s\\0\\0\" \"$path\" \"$path\" \"$targetKind\"; done";
+const FULL_TREE_DIRECTORY_CONCURRENCY = 8;
 
 export interface FileExplorerTarget {
   id: string;
@@ -172,24 +168,15 @@ const UPLOAD_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_UPLOAD_SESSIONS = 100;
 const uploadSessions = new Map<string, FileExplorerUploadSession>();
 
-function commandFailure(
-  result: { stderr: string },
-  fallbackMessage: string,
-): FileExplorerError<"operation_failed"> {
-  const stderr = result.stderr.trim();
-  return fileExplorerOperationError(
-    fallbackMessage,
-    stderr ? new Error(stderr) : undefined,
-  );
-}
-
 interface FileExplorerMetadataOptions {
   includeContentHash?: boolean;
 }
 
-function normalizeRootDirectory(directory: string): string {
-  const normalized = pathPosix.normalize(directory.trim());
-  return normalized === "." ? "/" : normalized.replace(/\/+$/, "") || "/";
+function normalizeRootDirectory(
+  directory: string,
+  pathStyle: ExecutionPathStyle,
+): string {
+  return normalizeExecutionRoot(directory, pathStyle);
 }
 
 export async function resolveFileExplorerRootDirectory(
@@ -197,38 +184,31 @@ export async function resolveFileExplorerRootDirectory(
   defaultRootDirectory: string,
   requestedStartDirectory?: string,
 ): Promise<string> {
-  const normalizedDefaultRootDirectory = normalizeRootDirectory(defaultRootDirectory);
+  const normalizedDefaultRootDirectory = normalizeRootDirectory(
+    defaultRootDirectory,
+    executor.pathStyle,
+  );
   const trimmedStartDirectory = requestedStartDirectory?.trim();
   if (!trimmedStartDirectory) {
     return normalizedDefaultRootDirectory;
   }
 
-  const normalizedRootDirectory = normalizeRootDirectory(trimmedStartDirectory);
+  const normalizedRootDirectory = resolveExecutionPathUnscoped(
+    normalizedDefaultRootDirectory,
+    trimmedStartDirectory,
+    executor.pathStyle,
+  );
   if (normalizedRootDirectory === normalizedDefaultRootDirectory) {
     return normalizedRootDirectory;
   }
 
-  const result = await executor.exec(
-    "bash",
-    [
-      "-lc",
-      "if [ -d \"$1\" ]; then printf 'directory'; elif [ -e \"$1\" ]; then printf 'file'; else printf 'missing'; fi",
-      "file-explorer-root-type",
-      normalizedRootDirectory,
-    ],
-    {
-      logFailures: false,
-    },
-  );
-  if (!result.success) {
-    throw commandFailure(result, "Failed to resolve start directory");
-  }
-
-  const pathType = result.stdout.trim();
-  if (pathType === "directory") {
+  const metadata = await executor.getFileMetadata(normalizedRootDirectory, {
+    includeContentHash: false,
+  });
+  if (metadata?.kind === "directory") {
     return normalizedRootDirectory;
   }
-  if (pathType === "file") {
+  if (metadata?.kind === "file") {
     throw new FileExplorerError(
       "invalid_start_directory_type",
       "Requested start directory is not a directory",
@@ -240,11 +220,15 @@ export async function resolveFileExplorerRootDirectory(
   );
 }
 
-function toRelativePath(rootDirectory: string, absolutePath: string): string {
-  const root = normalizeRootDirectory(rootDirectory);
-  const normalizedPath = pathPosix.normalize(absolutePath);
-  const relativePath = pathPosix.relative(root, normalizedPath);
-  return relativePath === "." ? "" : relativePath;
+function toRelativePath(
+  rootDirectory: string,
+  absolutePath: string,
+  pathStyle: ExecutionPathStyle,
+): string {
+  const root = normalizeRootDirectory(rootDirectory, pathStyle);
+  const normalizedPath = normalizeExecutionPath(absolutePath, pathStyle);
+  const relativePath = relativeExecutionPath(root, normalizedPath, pathStyle);
+  return relativePath === "." ? "" : relativePath.replaceAll("\\", "/");
 }
 
 function assertOverwriteKindCompatible(
@@ -262,8 +246,55 @@ function assertOverwriteKindCompatible(
   }
 }
 
+async function throwMoveFailure(
+  target: FileExplorerTarget,
+  destinationAbsolutePath: string,
+  result: Extract<FileMoveResult, { success: false }>,
+  sourceMissingCode: "file_not_found" | "invalid_upload_state",
+  operationMessage: string,
+): Promise<never> {
+  switch (result.errorCode) {
+    case "source_not_found":
+      throw new FileExplorerError(
+        sourceMissingCode,
+        sourceMissingCode === "file_not_found"
+          ? "Requested path does not exist"
+          : "The upload temporary file no longer exists",
+      );
+    case "destination_exists":
+    case "incompatible_type": {
+      const destination = await getFileMetadata(
+        target.executor,
+        destinationAbsolutePath,
+        { includeContentHash: false },
+      );
+      throw new FileExplorerConflictError(
+        result.errorCode === "destination_exists"
+          ? "Destination already exists"
+          : "Destination exists with an incompatible type",
+        destination
+          ? toFileEntry(target, destinationAbsolutePath, destination)
+          : null,
+      );
+    }
+    case "invalid_destination_parent":
+      throw new FileExplorerError(
+        "invalid_path_type",
+        "Destination parent is not a directory",
+      );
+    case "operation_failed":
+      throw fileExplorerOperationError(
+        operationMessage,
+        result.error ? new Error(result.error) : undefined,
+      );
+  }
+}
+
 function resolveTargetPath(target: FileExplorerTarget, requestedPath: string): string {
-  const root = normalizeRootDirectory(target.rootDirectory);
+  const root = normalizeRootDirectory(
+    target.rootDirectory,
+    target.executor.pathStyle,
+  );
   const trimmedPath = requestedPath.trim();
   if (!trimmedPath || trimmedPath === ".") {
     return root;
@@ -275,16 +306,16 @@ function resolveTargetPath(target: FileExplorerTarget, requestedPath: string): s
     );
   }
 
-  const normalizedPath = trimmedPath.startsWith("/")
-    ? pathPosix.normalize(trimmedPath)
-    : pathPosix.normalize(pathPosix.join(root, trimmedPath));
-  const relativePath = pathPosix.relative(root, normalizedPath);
-
-  if (
-    !target.allowOutsideRoot
-    && relativePath
-    && (relativePath.startsWith("..") || pathPosix.isAbsolute(relativePath))
-  ) {
+  if (target.allowOutsideRoot) {
+    return resolveExecutionPathUnscoped(
+      root,
+      trimmedPath,
+      target.executor.pathStyle,
+    );
+  }
+  try {
+    return resolveExecutionPath(root, trimmedPath, target.executor.pathStyle);
+  } catch (error) {
     throw new FileExplorerError(
       "path_outside_root",
       `Requested path must stay within the ${target.pathScopeLabel} directory`,
@@ -292,11 +323,10 @@ function resolveTargetPath(target: FileExplorerTarget, requestedPath: string): s
         details: {
           pathScopeLabel: target.pathScopeLabel,
         },
+        cause: error,
       },
     );
   }
-
-  return normalizedPath;
 }
 
 function resolveUploadTempDirectory(target: FileExplorerTarget): string {
@@ -333,7 +363,17 @@ function assertMutablePath(requestedPath: string): void {
 }
 
 function assertSameUploadTarget(target: FileExplorerTarget, session: FileExplorerUploadSession): void {
-  if (session.targetId !== target.id || session.rootDirectory !== normalizeRootDirectory(target.rootDirectory)) {
+  if (
+    session.targetId !== target.id
+    || !executionPathsEqual(
+      session.rootDirectory,
+      normalizeRootDirectory(
+        target.rootDirectory,
+        target.executor.pathStyle,
+      ),
+      target.executor.pathStyle,
+    )
+  ) {
     throw new FileExplorerError(
       "upload_session_target_mismatch",
       "Upload session does not belong to the active explorer target",
@@ -341,150 +381,33 @@ function assertSameUploadTarget(target: FileExplorerTarget, session: FileExplore
   }
 }
 
-function parseModifiedAt(timestampSeconds: string): string {
-  const timestamp = Number.parseFloat(timestampSeconds);
-  if (!Number.isFinite(timestamp)) {
-    throw fileExplorerOperationError("Invalid file timestamp");
-  }
-  return new Date(timestamp * 1000).toISOString();
-}
-
-function buildVersionToken(timestampSeconds: string, size: number, contentHash?: string): string {
+function buildVersionToken(
+  modifiedAtMs: number,
+  size: number,
+  contentHash?: string,
+): string {
   return contentHash
-    ? `${timestampSeconds}:${size}:${contentHash}`
-    : `${timestampSeconds}:${size}`;
+    ? `${String(modifiedAtMs)}:${String(size)}:${contentHash}`
+    : `${String(modifiedAtMs)}:${String(size)}`;
 }
 
-async function runMetadataCommand(
+async function getFileMetadata(
   executor: CommandExecutor,
   absolutePath: string,
   options?: FileExplorerMetadataOptions,
-): Promise<{ kind: "file" | "directory"; size: number; modifiedAt: string; versionToken: string } | null> {
-  const result = await executor.exec(
-    "bash",
-    [
-      "-lc",
-      "if [ ! -e \"$1\" ]; then exit 2; fi; includeHash=\"${2:-1}\"; if [ -d \"$1\" ]; then typeFlag=d; hash=-; else typeFlag=f; if [ \"$includeHash\" = \"1\" ]; then if command -v sha256sum >/dev/null 2>&1; then hash=$(sha256sum \"$1\" | cut -d' ' -f1); elif command -v shasum >/dev/null 2>&1; then hash=$(shasum -a 256 \"$1\" | cut -d' ' -f1); else hash=; fi; else hash=-; fi; fi; if stat --version >/dev/null 2>&1; then size=$(stat -c '%s' \"$1\"); modified=$(stat -c '%Y' \"$1\"); else size=$(stat -f '%z' \"$1\"); modified=$(stat -f '%m' \"$1\"); fi; printf '%s\\t%s\\t%s\\t%s\\n' \"$typeFlag\" \"$size\" \"$modified\" \"$hash\"",
-      "file-explorer-metadata",
-      absolutePath,
-      options?.includeContentHash === false ? "0" : "1",
-    ],
-    {
-      logFailures: false,
-    },
-  );
-
-  if (!result.success) {
-    if (result.exitCode === 2) {
-      return null;
-    }
-    throw commandFailure(result, "Failed to read file metadata");
-  }
-
-  const [typeFlag, sizeText, timestampSeconds, contentHash] = result.stdout.trim().split(LIST_SEPARATOR);
-  if (!typeFlag || !sizeText || !timestampSeconds) {
-    throw fileExplorerOperationError("Failed to parse file metadata");
-  }
-
-  const size = Number.parseInt(sizeText, 10);
-  if (!Number.isFinite(size)) {
-    throw fileExplorerOperationError("Invalid metadata size");
-  }
-
-  return {
-    kind: typeFlag === "d" ? "directory" : "file",
-    size,
-    modifiedAt: parseModifiedAt(timestampSeconds),
-    versionToken: buildVersionToken(
-      timestampSeconds,
-      size,
-      typeFlag === "f" && contentHash && contentHash !== "-" ? contentHash : undefined,
-    ),
-  };
-}
-
-async function runNodeTypeCommand(
-  executor: CommandExecutor,
-  absolutePath: string,
-): Promise<"file" | "directory" | null> {
-  const result = await executor.exec(
-    "bash",
-    [
-      "-lc",
-      "if [ ! -e \"$1\" ]; then exit 2; fi; if [ -d \"$1\" ]; then printf 'd'; else printf 'f'; fi",
-      "file-explorer-node-type",
-      absolutePath,
-    ],
-    {
-      logFailures: false,
-    },
-  );
-
-  if (!result.success) {
-    if (result.exitCode === 2) {
-      return null;
-    }
-    throw commandFailure(result, "Failed to inspect path");
-  }
-
-  const output = result.stdout.trim();
-  if (output === "d") {
-    return "directory";
-  }
-  if (output === "f") {
-    return "file";
-  }
-  throw fileExplorerOperationError("Failed to parse path inspection result");
-}
-
-async function runNodeBatchCommand(
-  executor: CommandExecutor,
-  absolutePaths: string[],
-): Promise<Array<{ kind: "file" | "directory" } | null>> {
-  if (absolutePaths.length === 0) {
-    return [];
-  }
-
-  const result = await executor.exec(
-    "bash",
-    [
-      "-lc",
-      "for path in \"$@\"; do if [ ! -e \"$path\" ]; then printf 'missing\\n'; continue; fi; if [ -d \"$path\" ]; then printf 'd\\n'; else printf 'f\\n'; fi; done",
-      "file-explorer-batch-nodes",
-      ...absolutePaths,
-    ],
-    {
-      logFailures: false,
-    },
-  );
-
-  if (!result.success) {
-    throw commandFailure(result, "Failed to inspect directory entries");
-  }
-
-  const lines = result.stdout.endsWith("\n")
-    ? result.stdout.slice(0, -1).split("\n")
-    : result.stdout.split("\n");
-  if (lines.length !== absolutePaths.length) {
-    throw fileExplorerOperationError("Failed to parse directory entries");
-  }
-
-  return lines.map((line) => {
-    if (line === "missing") {
-      return null;
-    }
-    if (line !== "d" && line !== "f") {
-      throw fileExplorerOperationError("Failed to parse directory entries");
-    }
-
-    return {
-      kind: line === "d" ? "directory" : "file",
-    };
+): Promise<FileSystemMetadata | null> {
+  return await executor.getFileMetadata(absolutePath, {
+    includeContentHash: options?.includeContentHash,
   });
 }
 
-function isDeferredFullTreeDirectory(absolutePath: string): boolean {
-  return FULL_TREE_DEFERRED_DIRECTORY_NAME_SET.has(pathPosix.basename(absolutePath));
+function isDeferredFullTreeDirectory(
+  absolutePath: string,
+  pathStyle: ExecutionPathStyle,
+): boolean {
+  return FULL_TREE_DEFERRED_DIRECTORY_NAME_SET.has(
+    basenameExecutionPath(absolutePath, pathStyle),
+  );
 }
 
 function toFileNode(
@@ -494,8 +417,12 @@ function toFileNode(
   options?: { loadOnExpand?: boolean },
 ): WorkspaceFileNode {
   return {
-    name: pathPosix.basename(absolutePath),
-    path: toRelativePath(target.rootDirectory, absolutePath),
+    name: basenameExecutionPath(absolutePath, target.executor.pathStyle),
+    path: toRelativePath(
+      target.rootDirectory,
+      absolutePath,
+      target.executor.pathStyle,
+    ),
     kind,
     ...(options?.loadOnExpand ? { loadOnExpand: true } : {}),
   };
@@ -504,15 +431,19 @@ function toFileNode(
 function toFileEntry(
   target: FileExplorerTarget,
   absolutePath: string,
-  metadata: { kind: "file" | "directory"; size: number; modifiedAt: string; versionToken: string },
+  metadata: FileSystemMetadata,
 ): WorkspaceFileEntry {
   const mimeType = metadata.kind === "file" ? getBrowserImageMimeType(absolutePath) : null;
   return {
     ...toFileNode(target, absolutePath, metadata.kind),
     absolutePath,
     size: metadata.size,
-    modifiedAt: metadata.modifiedAt,
-    versionToken: metadata.versionToken,
+    modifiedAt: new Date(metadata.modifiedAtMs).toISOString(),
+    versionToken: buildVersionToken(
+      metadata.modifiedAtMs,
+      metadata.size,
+      metadata.contentHash,
+    ),
     ...(mimeType ? { mimeType, isImage: true } : {}),
   };
 }
@@ -523,7 +454,7 @@ async function getFileEntry(
   options?: FileExplorerMetadataOptions,
 ): Promise<WorkspaceFileEntry | null> {
   const absolutePath = resolveTargetPath(target, requestedPath);
-  const metadata = await runMetadataCommand(target.executor, absolutePath, options);
+  const metadata = await getFileMetadata(target.executor, absolutePath, options);
   return metadata ? toFileEntry(target, absolutePath, metadata) : null;
 }
 
@@ -568,230 +499,82 @@ function toEntriesByDirectory(entries: WorkspaceFileNode[]): Record<string, Work
   return entriesByDirectory;
 }
 
-type FullTreeEntryKind = "directory" | "file" | "symlink";
-
-interface FullTreeParsedEntry {
-  source: "base" | "link";
-  absolutePath: string;
-  kind: FullTreeEntryKind;
-}
-
-interface FullTreeParseResult {
-  entries: FullTreeParsedEntry[];
-  skippedRecordReasons: Record<string, number>;
-}
-
-function isFullTreePathWithinRoot(rootDirectory: string, absolutePath: string): boolean {
-  if (!pathPosix.isAbsolute(absolutePath)) {
-    return false;
-  }
-
-  const root = normalizeRootDirectory(rootDirectory);
-  const relativePath = pathPosix.relative(root, pathPosix.normalize(absolutePath));
-  return relativePath === ""
-    || (!relativePath.startsWith("..") && !pathPosix.isAbsolute(relativePath));
-}
-
-function parseFullTreeOutput(
-  stdout: string,
-  rootDirectory: string,
-): FullTreeParseResult {
-  if (!stdout) {
-    return {
-      entries: [],
-      skippedRecordReasons: {},
-    };
-  }
-  if (!stdout.endsWith(FULL_TREE_RECORD_SEPARATOR)) {
-    throw fileExplorerOperationError("Failed to parse file tree: incomplete record");
-  }
-
-  const payload = stdout.slice(0, -FULL_TREE_RECORD_SEPARATOR.length);
-  if (!payload) {
-    return {
-      entries: [],
-      skippedRecordReasons: {},
-    };
-  }
-
-  const entries: FullTreeParsedEntry[] = [];
-  const skippedRecordReasons = new Map<string, number>();
-  const skipRecord = (reason: string): void => {
-    skippedRecordReasons.set(reason, (skippedRecordReasons.get(reason) ?? 0) + 1);
-  };
-
-  for (const record of payload.split(FULL_TREE_RECORD_SEPARATOR)) {
-    const fields = record.split(FULL_TREE_FIELD_SEPARATOR);
-    if (fields.length !== 3) {
-      skipRecord("invalid_field_count");
-      continue;
-    }
-
-    const source = fields[0];
-    const absolutePath = fields[1];
-    const value = fields[2];
-    if (!source || !absolutePath || !value) {
-      skipRecord("empty_field");
-      continue;
-    }
-    if (source === "error") {
-      skipRecord("remote_entry_error");
-      continue;
-    }
-    if (source !== "base" && source !== "link") {
-      skipRecord("invalid_source");
-      continue;
-    }
-    if (!isFullTreePathWithinRoot(rootDirectory, absolutePath)) {
-      skipRecord("path_outside_root");
-      continue;
-    }
-
-    const kind: FullTreeEntryKind | null = source === "base"
-      ? value === "directory" || value === "file" || value === "symlink" ? value : null
-      : value === "directory" || value === "file" ? value : null;
-    if (kind === null) {
-      skipRecord("invalid_kind");
-      continue;
-    }
-
-    entries.push({
-      source,
-      absolutePath,
-      kind,
-    });
-  }
-
-  return {
-    entries,
-    skippedRecordReasons: Object.fromEntries(skippedRecordReasons),
-  };
-}
-
-async function verifyFullTreeCapabilities(
-  executor: CommandExecutor,
-  rootDirectory: string,
-): Promise<void> {
-  const result = await executor.exec(
-    "bash",
-    [
-      "-lc",
-      FULL_TREE_CAPABILITY_SCRIPT,
-      "file-explorer-tree-capabilities",
-      rootDirectory,
-    ],
-    {
-      logFailures: false,
-    },
+async function loadFullTree(
+  target: FileExplorerTarget,
+): Promise<WorkspaceFileNode[]> {
+  const rootMetadata = await getFileMetadata(
+    target.executor,
+    target.rootDirectory,
+    { includeContentHash: false },
   );
-
-  if (!result.success) {
-    if (result.exitCode === 2) {
-      throw new FileExplorerError("file_not_found", "Requested path does not exist");
-    }
-    throw fileExplorerOperationError(
-      "Workspace host does not support structured file-tree discovery",
-      result.stderr || `Capability probe exited with code ${result.exitCode}`,
+  if (!rootMetadata) {
+    throw new FileExplorerError(
+      "file_not_found",
+      "Requested path does not exist",
+    );
+  }
+  if (rootMetadata.kind !== "directory") {
+    throw new FileExplorerError(
+      "invalid_path_type",
+      "Requested path is not a directory",
     );
   }
 
-  if (result.stdout.trim() !== "nul-batched") {
-    throw fileExplorerOperationError("Failed to parse file-tree capability result");
-  }
-}
-
-function buildFullTreeCommand(): string {
-  return [
-    "root=\"$1\"; if [ ! -d \"$root\" ]; then exit 2; fi;",
-    `find "$root" ! -path "$root" \\(`,
-    `\\( -type d \\( ${FULL_TREE_DEFERRED_FIND_PATTERN} \\) -prune -exec sh -c '${FULL_TREE_EMIT_BASE_SCRIPT}' file-explorer-tree-directory "directory" {} + \\)`,
-    `-o \\( -type d -exec sh -c '${FULL_TREE_EMIT_BASE_SCRIPT}' file-explorer-tree-directory "directory" {} +`,
-    `\\) -o \\( -type l -exec sh -c '${FULL_TREE_EMIT_LINK_SCRIPT}' file-explorer-tree-link {} +`,
-    `\\) -o -exec sh -c '${FULL_TREE_EMIT_BASE_SCRIPT}' file-explorer-tree-entry "file" {} +`,
-    "\\)",
-  ].join(" ");
-}
-
-async function runFullTreeCommand(
-  target: FileExplorerTarget,
-): Promise<WorkspaceFileNode[]> {
-  await verifyFullTreeCapabilities(target.executor, target.rootDirectory);
-  const result = await target.executor.exec(
-    "bash",
-    [
-      "-lc",
-      buildFullTreeCommand(),
-      "file-explorer-tree",
-      target.rootDirectory,
-    ],
-    {
-      logFailures: false,
-    },
-  );
-
-  if (!result.success) {
-    if (result.exitCode === 2) {
-      throw new FileExplorerError("file_not_found", "Requested path does not exist");
+  const result: WorkspaceFileNode[] = [];
+  const pendingDirectories = [target.rootDirectory];
+  while (pendingDirectories.length > 0) {
+    const directories = pendingDirectories.splice(
+      0,
+      FULL_TREE_DIRECTORY_CONCURRENCY,
+    );
+    const directoryEntries = await Promise.all(directories.map(
+      async (directory) => ({
+        directory,
+        entries: await target.executor.listDirectoryEntries(directory, {
+          includeHidden: true,
+        }),
+      }),
+    ));
+    for (const { directory, entries } of directoryEntries) {
+      for (const entry of entries) {
+        const absolutePath = joinExecutionPath(
+          target.executor.pathStyle,
+          directory,
+          entry.name,
+        );
+        const deferred = entry.kind === "directory"
+          && isDeferredFullTreeDirectory(
+            absolutePath,
+            target.executor.pathStyle,
+          );
+        result.push(toFileNode(target, absolutePath, entry.kind, {
+          loadOnExpand: deferred,
+        }));
+        if (
+          entry.kind === "directory"
+          && !entry.isSymbolicLink
+          && !deferred
+        ) {
+          pendingDirectories.push(absolutePath);
+        }
+      }
     }
-    throw commandFailure(result, "Failed to load file tree");
   }
-
-  const parsedOutput = parseFullTreeOutput(result.stdout, target.rootDirectory);
-  if (Object.keys(parsedOutput.skippedRecordReasons).length > 0) {
-    log.warn("Skipped invalid file-tree records", {
-      reasons: parsedOutput.skippedRecordReasons,
-    });
-  }
-
-  const parsedEntries = parsedOutput.entries.reduce<{
-    baseEntries: Array<{ absolutePath: string; kind: "directory" | "file" | "symlink" }>;
-    linkKinds: Map<string, "directory" | "file">;
-  }>((accumulator, entry) => {
-    if (entry.source === "link") {
-      accumulator.linkKinds.set(entry.absolutePath, entry.kind === "directory" ? "directory" : "file");
-      return accumulator;
-    }
-
-    accumulator.baseEntries.push({
-      absolutePath: entry.absolutePath,
-      kind: entry.kind,
-    });
-    return accumulator;
-  }, {
-    baseEntries: [],
-    linkKinds: new Map<string, "directory" | "file">(),
-  });
-
-  return parsedEntries.baseEntries
-    .map((entry) => toFileNode(
-      target,
-      entry.absolutePath,
-      entry.kind === "symlink" ? parsedEntries.linkKinds.get(entry.absolutePath) ?? "file" : entry.kind,
-      {
-        loadOnExpand: entry.kind === "directory" && isDeferredFullTreeDirectory(entry.absolutePath),
-      },
-    ))
-    .filter((entry) => entry.path.length > 0);
+  return result;
 }
 
 async function readFileBytes(
   target: FileExplorerTarget,
   absolutePath: string,
 ): Promise<Uint8Array> {
-  const result = await target.executor.exec("bash", [
-    "-lc",
-    `path="$1"; if base64 --help 2>&1 | grep -q -- '-w'; then base64 -w 0 "$path"; else base64 < "$path" | tr -d '\\n'; fi`,
-    "file-explorer-file-bytes",
-    absolutePath,
-  ], {
-    logFailures: false,
-    timeout: 30 * 60 * 1000,
-  });
-  if (!result.success) {
-    throw commandFailure(result, "Failed to read file");
+  const stream = await target.executor.streamFile(absolutePath);
+  if (!stream) {
+    throw new FileExplorerError(
+      "file_not_found",
+      "Requested file does not exist",
+    );
   }
-
-  return Uint8Array.from(Buffer.from(result.stdout, "base64"));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 
 export class FileExplorerService {
@@ -801,33 +584,42 @@ export class FileExplorerService {
     options?: { includeHidden?: boolean },
   ): Promise<FileExplorerListResult> {
     const absolutePath = resolveTargetPath(target, requestedPath);
-    const pathKind = await runNodeTypeCommand(target.executor, absolutePath);
+    const pathMetadata = await getFileMetadata(
+      target.executor,
+      absolutePath,
+      { includeContentHash: false },
+    );
 
-    if (!pathKind) {
+    if (!pathMetadata) {
       throw new FileExplorerError("file_not_found", "Requested path does not exist");
     }
-    if (pathKind !== "directory") {
+    if (pathMetadata.kind !== "directory") {
       throw new FileExplorerError("invalid_path_type", "Requested path is not a directory");
     }
 
     const includeHidden = options?.includeHidden ?? true;
-    const names = await target.executor.listDirectory(absolutePath, {
-      includeHidden,
-    });
-    const entryPaths = names.map((name) => pathPosix.join(absolutePath, name));
-    const nodeEntries = await runNodeBatchCommand(target.executor, entryPaths);
-    const entries = nodeEntries
-      .map((entryMetadata, index) => {
-        if (!entryMetadata) {
-          return null;
-        }
-
-        return toFileNode(target, entryPaths[index]!, entryMetadata.kind);
-      })
-      .filter((entry): entry is WorkspaceFileNode => entry !== null);
+    const directoryEntries = await target.executor.listDirectoryEntries(
+      absolutePath,
+      {
+        includeHidden,
+      },
+    );
+    const entries = directoryEntries.map((entry) => toFileNode(
+      target,
+      joinExecutionPath(
+        target.executor.pathStyle,
+        absolutePath,
+        entry.name,
+      ),
+      entry.kind,
+    ));
 
     return {
-      directory: toRelativePath(target.rootDirectory, absolutePath),
+      directory: toRelativePath(
+        target.rootDirectory,
+        absolutePath,
+        target.executor.pathStyle,
+      ),
       entries: sortEntries(entries),
     };
   }
@@ -835,7 +627,7 @@ export class FileExplorerService {
   async loadTree(
     target: FileExplorerTarget,
   ): Promise<FileExplorerTreeResult> {
-    const entries = await runFullTreeCommand(target);
+    const entries = await loadFullTree(target);
     return {
       entriesByDirectory: toEntriesByDirectory(entries),
     };
@@ -843,7 +635,7 @@ export class FileExplorerService {
 
   async readFile(target: FileExplorerTarget, requestedPath: string): Promise<FileExplorerReadResult> {
     const absolutePath = resolveTargetPath(target, requestedPath);
-    const metadata = await runMetadataCommand(target.executor, absolutePath);
+    const metadata = await getFileMetadata(target.executor, absolutePath);
 
     if (!metadata) {
       throw new FileExplorerError("file_not_found", "Requested file does not exist");
@@ -865,7 +657,7 @@ export class FileExplorerService {
 
   async readImageFile(target: FileExplorerTarget, requestedPath: string): Promise<FileExplorerImageReadResult> {
     const absolutePath = resolveTargetPath(target, requestedPath);
-    const metadata = await runMetadataCommand(target.executor, absolutePath);
+    const metadata = await getFileMetadata(target.executor, absolutePath);
 
     if (!metadata) {
       throw new FileExplorerError("file_not_found", "Requested file does not exist");
@@ -1007,7 +799,11 @@ export class FileExplorerService {
       target,
       pathPosix.join(pathPosix.dirname(sourceFile.path), safeName),
     );
-    if (sourceAbsolutePath === destinationAbsolutePath) {
+    if (executionPathsEqual(
+      sourceAbsolutePath,
+      destinationAbsolutePath,
+      target.executor.pathStyle,
+    )) {
       return {
         success: true,
         file: sourceFile,
@@ -1016,7 +812,7 @@ export class FileExplorerService {
       };
     }
 
-    const existingDestination = await runMetadataCommand(target.executor, destinationAbsolutePath, {
+    const existingDestination = await getFileMetadata(target.executor, destinationAbsolutePath, {
       includeContentHash: false,
     });
     const existingDestinationFile = existingDestination
@@ -1029,31 +825,29 @@ export class FileExplorerService {
       assertOverwriteKindCompatible(existingDestinationFile, sourceFile.kind);
     }
 
-    const result = await target.executor.exec("bash", [
-      "-lc",
-      "src=\"$1\"; dest=\"$2\"; kind=\"$3\"; overwrite=\"$4\"; if [ ! -e \"$src\" ]; then exit 2; fi; if [ -e \"$dest\" ]; then if [ \"$overwrite\" != \"1\" ]; then exit 3; fi; if [ -d \"$dest\" ]; then exit 4; fi; if [ \"$kind\" = \"directory\" ] && [ ! -d \"$dest\" ]; then exit 4; fi; if [ \"$kind\" = \"file\" ] && [ ! -f \"$dest\" ]; then exit 4; fi; fi; mv -- \"$src\" \"$dest\"",
-      "file-explorer-rename",
+    const moved = await target.executor.movePath(
       sourceAbsolutePath,
       destinationAbsolutePath,
-      sourceFile.kind,
-      options?.overwrite ? "1" : "0",
-    ], {
-      logFailures: false,
-    });
-    if (!result.success) {
-      if (result.exitCode === 2) {
-        throw new FileExplorerError("file_not_found", "Requested path does not exist");
-      }
-      if (result.exitCode === 3) {
-        throw new FileExplorerConflictError("Destination already exists", null);
-      }
-      if (result.exitCode === 4) {
-        throw new FileExplorerConflictError("Destination already exists with an incompatible type", null);
-      }
-      throw commandFailure(result, "Failed to rename file");
+      { overwrite: options?.overwrite },
+    );
+    if (!moved.success) {
+      return await throwMoveFailure(
+        target,
+        destinationAbsolutePath,
+        moved,
+        "file_not_found",
+        "Failed to rename file",
+      );
     }
 
-    const updatedFile = await this.getMetadata(target, toRelativePath(target.rootDirectory, destinationAbsolutePath));
+    const updatedFile = await this.getMetadata(
+      target,
+      toRelativePath(
+        target.rootDirectory,
+        destinationAbsolutePath,
+        target.executor.pathStyle,
+      ),
+    );
     if (!updatedFile) {
       throw fileExplorerOperationError("File was renamed but metadata could not be read");
     }
@@ -1091,23 +885,15 @@ export class FileExplorerService {
       throw new FileExplorerConflictError("File changed outside the code explorer", file);
     }
 
-    const result = await target.executor.exec("bash", [
-      "-lc",
-      "path=\"$1\"; kind=\"$2\"; if [ ! -e \"$path\" ]; then exit 2; fi; if [ \"$kind\" = \"directory\" ]; then if [ ! -d \"$path\" ]; then exit 4; fi; rm -rf -- \"$path\"; else if [ ! -f \"$path\" ]; then exit 4; fi; rm -f -- \"$path\"; fi",
-      "file-explorer-delete",
+    const deleted = await target.executor.deletePath(
       absolutePath,
-      file.kind,
-    ], {
-      logFailures: false,
-    });
-    if (!result.success) {
-      if (result.exitCode === 2) {
-        throw new FileExplorerError("file_not_found", "Requested path does not exist");
-      }
-      if (result.exitCode === 4) {
-        throw new FileExplorerError("invalid_path_type", "Requested path type changed before delete");
-      }
-      throw commandFailure(result, "Failed to delete file");
+      {
+        kind: file.kind,
+        recursive: file.kind === "directory",
+      },
+    );
+    if (!deleted) {
+      throw fileExplorerOperationError("Failed to delete file");
     }
 
     return {
@@ -1132,7 +918,17 @@ export class FileExplorerService {
       throw new FileExplorerError("invalid_upload_state", "Invalid upload size");
     }
     const activeSessionsForTarget = Array.from(uploadSessions.values()).filter(
-      (session) => session.targetId === target.id && session.rootDirectory === normalizeRootDirectory(target.rootDirectory),
+      (session) => (
+        session.targetId === target.id
+        && executionPathsEqual(
+          session.rootDirectory,
+          normalizeRootDirectory(
+            target.rootDirectory,
+            target.executor.pathStyle,
+          ),
+          target.executor.pathStyle,
+        )
+      ),
     ).length;
     if (activeSessionsForTarget >= MAX_UPLOAD_SESSIONS) {
       throw fileExplorerOperationError("Too many active upload sessions");
@@ -1141,17 +937,25 @@ export class FileExplorerService {
     const safeName = assertSafeBaseName(fileName);
     const normalizedDirectory = directory.trim();
     const directoryAbsolutePath = resolveTargetPath(target, normalizedDirectory);
-    const directoryKind = await runNodeTypeCommand(target.executor, directoryAbsolutePath);
-    if (!directoryKind) {
+    const directoryMetadata = await getFileMetadata(
+      target.executor,
+      directoryAbsolutePath,
+      { includeContentHash: false },
+    );
+    if (!directoryMetadata) {
       throw new FileExplorerError("file_not_found", "Requested path does not exist");
     }
-    if (directoryKind !== "directory") {
+    if (directoryMetadata.kind !== "directory") {
       throw new FileExplorerError("invalid_path_type", "Requested path is not a directory");
     }
 
     const finalAbsolutePath = resolveTargetPath(target, pathPosix.join(normalizedDirectory, safeName));
-    const relativePath = toRelativePath(target.rootDirectory, finalAbsolutePath);
-    const existingFile = await runMetadataCommand(target.executor, finalAbsolutePath, {
+    const relativePath = toRelativePath(
+      target.rootDirectory,
+      finalAbsolutePath,
+      target.executor.pathStyle,
+    );
+    const existingFile = await getFileMetadata(target.executor, finalAbsolutePath, {
       includeContentHash: false,
     });
     const existingFinalFile = existingFile ? toFileEntry(target, finalAbsolutePath, existingFile) : null;
@@ -1164,15 +968,23 @@ export class FileExplorerService {
 
     const uploadId = randomUUID();
     const now = Date.now();
-    const tempAbsolutePath = pathPosix.join(
+    const tempAbsolutePath = joinExecutionPath(
+      target.executor.pathStyle,
       resolveUploadTempDirectory(target),
       `${uploadId}-${safeName}`,
     );
     const session: FileExplorerUploadSession = {
       id: uploadId,
       targetId: target.id,
-      rootDirectory: normalizeRootDirectory(target.rootDirectory),
-      directory: toRelativePath(target.rootDirectory, directoryAbsolutePath),
+      rootDirectory: normalizeRootDirectory(
+        target.rootDirectory,
+        target.executor.pathStyle,
+      ),
+      directory: toRelativePath(
+        target.rootDirectory,
+        directoryAbsolutePath,
+        target.executor.pathStyle,
+      ),
       fileName: safeName,
       relativePath,
       finalAbsolutePath,
@@ -1253,7 +1065,7 @@ export class FileExplorerService {
       );
     }
 
-    const existingFinalFile = await runMetadataCommand(target.executor, session.finalAbsolutePath, {
+    const existingFinalFile = await getFileMetadata(target.executor, session.finalAbsolutePath, {
       includeContentHash: false,
     });
     const existingFinalEntry = existingFinalFile ? toFileEntry(target, session.finalAbsolutePath, existingFinalFile) : null;
@@ -1271,30 +1083,19 @@ export class FileExplorerService {
       }
     }
 
-    const result = await target.executor.exec("bash", [
-      "-lc",
-      "tmp=\"$1\"; dest=\"$2\"; overwrite=\"$3\"; if [ ! -f \"$tmp\" ]; then exit 2; fi; if [ -e \"$dest\" ]; then if [ \"$overwrite\" != \"1\" ]; then exit 3; fi; if [ ! -f \"$dest\" ]; then exit 4; fi; fi; mv -- \"$tmp\" \"$dest\"",
-      "file-explorer-upload-complete",
+    const moved = await target.executor.movePath(
       session.tempAbsolutePath,
       session.finalAbsolutePath,
-      session.overwrite ? "1" : "0",
-    ], {
-      logFailures: false,
-    });
-    if (!result.success) {
-      if (result.exitCode === 2) {
-        throw new FileExplorerError(
-          "upload_session_not_found",
-          "Upload temporary file does not exist",
-        );
-      }
-      if (result.exitCode === 3) {
-        throw new FileExplorerConflictError("Destination already exists", null);
-      }
-      if (result.exitCode === 4) {
-        throw new FileExplorerConflictError("Destination already exists with an incompatible type", null);
-      }
-      throw commandFailure(result, "Failed to complete upload");
+      { overwrite: session.overwrite },
+    );
+    if (!moved.success) {
+      return await throwMoveFailure(
+        target,
+        session.finalAbsolutePath,
+        moved,
+        "invalid_upload_state",
+        "Failed to complete upload",
+      );
     }
 
     const uploadedFile = await this.getMetadata(target, session.relativePath);
@@ -1317,13 +1118,8 @@ export class FileExplorerService {
   ): Promise<FileExplorerUploadCancelResult> {
     const session = await this.getActiveUploadSession(target, uploadId);
     uploadSessions.delete(uploadId);
-    await target.executor.exec("bash", [
-      "-lc",
-      "rm -f -- \"$1\"",
-      "file-explorer-upload-cancel",
-      session.tempAbsolutePath,
-    ], {
-      logFailures: false,
+    await target.executor.deletePath(session.tempAbsolutePath, {
+      kind: "file",
     });
     await this.cleanupUploadTempDirectory(target, session);
     return {
@@ -1359,10 +1155,17 @@ export class FileExplorerService {
 
   private async cleanupExpiredUploadSessions(target: FileExplorerTarget): Promise<void> {
     const now = Date.now();
-    const normalizedRootDirectory = normalizeRootDirectory(target.rootDirectory);
+    const normalizedRootDirectory = normalizeRootDirectory(
+      target.rootDirectory,
+      target.executor.pathStyle,
+    );
     const expiredSessions = Array.from(uploadSessions.values()).filter((session) => {
       return session.targetId === target.id
-        && session.rootDirectory === normalizedRootDirectory
+        && executionPathsEqual(
+          session.rootDirectory,
+          normalizedRootDirectory,
+          target.executor.pathStyle,
+        )
         && now - session.lastTouchedAt > UPLOAD_SESSION_TTL_MS;
     });
     for (const session of expiredSessions) {
@@ -1374,15 +1177,32 @@ export class FileExplorerService {
 
   private async cleanupAbandonedUploadTempFiles(target: FileExplorerTarget): Promise<void> {
     const tempDirectory = resolveUploadTempDirectory(target);
-    const ttlMinutes = String(Math.max(1, Math.floor(UPLOAD_SESSION_TTL_MS / 60_000)));
-    await target.executor.exec("bash", [
-      "-lc",
-      "dir=\"$1\"; ttl_minutes=\"$2\"; if [ -d \"$dir\" ]; then find \"$dir\" -type f -mmin +\"$ttl_minutes\" -delete; rmdir -- \"$dir\" 2>/dev/null || true; fi",
-      "file-explorer-upload-cleanup-abandoned",
-      tempDirectory,
-      ttlMinutes,
-    ], {
-      logFailures: false,
+    if (!(await target.executor.directoryExists(tempDirectory))) {
+      return;
+    }
+    const entries = await target.executor.listDirectoryEntries(tempDirectory, {
+      includeHidden: true,
+    });
+    const expirationThreshold = Date.now() - UPLOAD_SESSION_TTL_MS;
+    for (const entry of entries) {
+      if (entry.kind !== "file") {
+        continue;
+      }
+      const path = joinExecutionPath(
+        target.executor.pathStyle,
+        tempDirectory,
+        entry.name,
+      );
+      const metadata = await getFileMetadata(target.executor, path, {
+        includeContentHash: false,
+      });
+      if (metadata && metadata.modifiedAtMs < expirationThreshold) {
+        await target.executor.deletePath(path, { kind: "file" });
+      }
+    }
+    await target.executor.deletePath(tempDirectory, {
+      kind: "directory",
+      recursive: false,
     });
   }
 
@@ -1390,27 +1210,18 @@ export class FileExplorerService {
     target: FileExplorerTarget,
     session: FileExplorerUploadSession,
   ): Promise<void> {
-    await target.executor.exec("bash", [
-      "-lc",
-      "rm -f -- \"$1\"",
-      "file-explorer-upload-delete-temp",
-      session.tempAbsolutePath,
-    ], {
-      logFailures: false,
+    await target.executor.deletePath(session.tempAbsolutePath, {
+      kind: "file",
     });
   }
 
   private async cleanupUploadTempDirectory(
     target: FileExplorerTarget,
-    session: FileExplorerUploadSession,
+    _session: FileExplorerUploadSession,
   ): Promise<void> {
-    await target.executor.exec("bash", [
-      "-lc",
-      "tmp=\"$1\"; dir=$(dirname -- \"$tmp\"); rmdir -- \"$dir\" 2>/dev/null || true",
-      "file-explorer-upload-cleanup",
-      session.tempAbsolutePath,
-    ], {
-      logFailures: false,
+    await target.executor.deletePath(resolveUploadTempDirectory(target), {
+      kind: "directory",
+      recursive: false,
     });
   }
 }

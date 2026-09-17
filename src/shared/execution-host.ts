@@ -69,6 +69,20 @@ export const EXECUTION_HOST_CAPABILITY_IDS = [
 ] as const;
 export type ExecutionHostCapabilityId = typeof EXECUTION_HOST_CAPABILITY_IDS[number];
 
+export const EXECUTION_HOST_CAPABILITY_VERSIONS = {
+  commandExecution: 1,
+  fileOperations: 2,
+  git: 1,
+  managedWorktrees: 1,
+  acpRuntime: 1,
+  interactiveTerminal: 1,
+  provisioning: 1,
+  devboxLifecycle: 1,
+  tcpTunnel: 1,
+  vnc: 1,
+  serverHealth: 1,
+} as const satisfies Record<ExecutionHostCapabilityId, number>;
+
 export const WORKSPACE_EXECUTION_HOST_CAPABILITIES = [
   "fileOperations",
   "acpRuntime",
@@ -124,7 +138,7 @@ export interface ExecutionNodeConfiguration {
 
 export const POSIX_EXECUTION_HOST_CAPABILITIES: ExecutionHostCapabilities = {
   commandExecution: 1,
-  fileOperations: 1,
+  fileOperations: 2,
   git: 1,
   managedWorktrees: 1,
   acpRuntime: 1,
@@ -137,6 +151,7 @@ export const POSIX_EXECUTION_HOST_CAPABILITIES: ExecutionHostCapabilities = {
 };
 
 export const WINDOWS_EXECUTION_HOST_CAPABILITIES: ExecutionHostCapabilities = {
+  fileOperations: 2,
   serverHealth: 1,
 };
 
@@ -437,7 +452,7 @@ export function executionHostBindingsEqual(
 export function supportsExecutionHostCapability(
   capabilities: ExecutionHostCapabilities,
   capability: ExecutionHostCapabilityId,
-  minimumVersion: number = 1,
+  minimumVersion: number = EXECUTION_HOST_CAPABILITY_VERSIONS[capability],
 ): boolean {
   return (capabilities[capability] ?? 0) >= minimumVersion;
 }

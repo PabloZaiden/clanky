@@ -1,4 +1,14 @@
-import type { CommandExecutor, CommandOptions, CommandResult, FileStreamOptions } from "../../src/core/command-executor";
+import type {
+  CommandExecutor,
+  CommandOptions,
+  CommandResult,
+  FileDeleteOptions,
+  FileMoveOptions,
+  FileMoveResult,
+  FileStreamOptions,
+  FileSystemDirectoryEntry,
+  FileSystemMetadata,
+} from "../../src/core/command-executor";
 import type { DevboxStatusResult } from "@/shared";
 
 interface ExecCall {
@@ -65,6 +75,7 @@ export function createDevboxStatusOutput(overrides: Partial<DevboxStatusResult> 
 }
 
 export class ProvisioningTestExecutor implements CommandExecutor {
+  readonly pathStyle = "posix" as const;
   readonly calls: ExecCall[] = [];
   private readonly directories = new Set<string>();
   private readonly gitRepos = new Map<string, { origin?: string }>();
@@ -300,8 +311,60 @@ export class ProvisioningTestExecutor implements CommandExecutor {
     return [];
   }
 
+  async getFileMetadata(
+    path: string,
+    _options?: { includeContentHash?: boolean },
+  ): Promise<FileSystemMetadata | null> {
+    if (this.files.has(path)) {
+      const content = this.files.get(path)!;
+      return {
+        kind: "file",
+        size: Buffer.byteLength(content),
+        modifiedAtMs: 0,
+        isSymbolicLink: false,
+      };
+    }
+    if (this.directories.has(path) || this.gitRepos.has(path)) {
+      return {
+        kind: "directory",
+        size: 0,
+        modifiedAtMs: 0,
+        isSymbolicLink: false,
+      };
+    }
+    return null;
+  }
+
+  async listDirectoryEntries(_path: string): Promise<FileSystemDirectoryEntry[]> {
+    return [];
+  }
+
   async writeFile(path: string, content: string): Promise<boolean> {
     this.files.set(path, content);
     return true;
+  }
+
+  async movePath(
+    sourcePath: string,
+    destinationPath: string,
+    options?: FileMoveOptions,
+  ): Promise<FileMoveResult> {
+    const content = this.files.get(sourcePath);
+    if (content === undefined) {
+      return { success: false, errorCode: "source_not_found" };
+    }
+    const destinationExists = this.files.has(destinationPath);
+    if (!options?.overwrite && destinationExists) {
+      return { success: false, errorCode: "destination_exists" };
+    }
+    this.files.delete(sourcePath);
+    this.files.set(destinationPath, content);
+    return { success: true };
+  }
+
+  async deletePath(path: string, options: FileDeleteOptions): Promise<boolean> {
+    return options.kind === "file"
+      ? this.files.delete(path)
+      : this.directories.delete(path);
   }
 }

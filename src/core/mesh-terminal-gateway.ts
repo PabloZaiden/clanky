@@ -28,7 +28,11 @@ import {
 import { decryptMeshPayload } from "./mesh-payload-crypto";
 import { requireTrustedController } from "./mesh-peer-auth";
 import { buildMeshTerminalSessionSigningPayload } from "./mesh-terminal-protocol";
-import { assertMeshExecutionCwd } from "./mesh-execution-gateway";
+import {
+  assertPhysicalExecutionPath,
+  resolveTrustedExecutionRoot,
+} from "./mesh-execution-gateway";
+import { executionPathStyleForPlatform } from "./execution-path";
 import { getMeshWorkerDirectory } from "./mesh-runtime";
 import { CommandExecutorImpl } from "./remote-command-executor";
 import { DomainError, isDomainError } from "./domain-error";
@@ -145,12 +149,23 @@ export class MeshTerminalGateway {
         throw new DomainError("mesh_peer_signature_invalid", "The Mesh terminal session signature is invalid.");
       }
       await this.assertTrustedCaller(request);
-      const executionRoot = assertMeshExecutionCwd(
+      const pathStyle = executionPathStyleForPlatform(process.platform);
+      if (!pathStyle) {
+        throw new DomainError(
+          "mesh_execution_path_invalid",
+          "The worker operating system does not provide supported path semantics.",
+        );
+      }
+      const trustedRoot = await resolveTrustedExecutionRoot(
         getMeshWorkerDirectory(),
         request.executionRoot,
+        pathStyle,
       );
-      const directory = assertMeshExecutionCwd(executionRoot, request.directory);
-      request.executionRoot = executionRoot;
+      const directory = await assertPhysicalExecutionPath(
+        trustedRoot,
+        request.directory,
+      );
+      request.executionRoot = trustedRoot.physicalExecutionRoot;
       request.directory = directory;
       const decryptedEnvironment = request.encryptedEnvironment === undefined
         ? undefined

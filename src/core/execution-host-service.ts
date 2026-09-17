@@ -49,6 +49,7 @@ import type { SshConnectionTarget } from "./ssh-connection-target";
 import { sshServerManager } from "./ssh-server-manager";
 import { requireCurrentUserId } from "./user-context";
 import { getWorkspaceSshTarget } from "../persistence/workspace-execution-targets";
+import { executionPathStyleForPlatform } from "./execution-path";
 
 export interface ExecutionHostCommandContext {
   directory: string;
@@ -293,6 +294,12 @@ export class ExecutionHostService {
         configured: true,
       };
     }
+    if (ref.kind === "local") {
+      return {
+        directory: process.cwd(),
+        configured: configuredDirectory === ".",
+      };
+    }
 
     const executor = await this.getCommandExecutorForRef(ref, {
       operationId: `working-directory:${descriptor.targetKey}`,
@@ -338,12 +345,14 @@ export class ExecutionHostService {
       localUserId: userId,
       sshPassword: options.sshPassword,
     });
-    const result = await executor.exec(
-      "/bin/sh",
-      ["-c", "test -d \"$1\"", "clanky-directory-check", directory],
-      { cwd: ".", maxOutputBytes: 16 * 1024 },
-    );
-    if (!result.success) {
+    const directoryExists = await (async () => {
+      try {
+        return await executor.directoryExists(directory);
+      } finally {
+        closeCommandExecutor(executor);
+      }
+    })();
+    if (!directoryExists) {
       throw new DomainError(
         "execution_host_directory_invalid",
         "The selected directory does not exist on the execution host.",
@@ -438,6 +447,10 @@ export class ExecutionHostService {
     }
 
     if (host.kind === "mesh") {
+      const runtime = getExecutionHostByRef(userId, host)?.runtime;
+      const pathStyle = runtime?.platform
+        ? executionPathStyleForPlatform(runtime.platform.os)
+        : null;
       return new MeshCommandExecutor({
         workspaceId: context.operationId,
         directory: context.directory,
@@ -447,6 +460,7 @@ export class ExecutionHostService {
             ? "copilot"
             : await this.resolveAgentProvider(host, userId)),
         localUserId: userId,
+        pathStyle,
       });
     }
 

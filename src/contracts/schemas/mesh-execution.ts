@@ -53,6 +53,10 @@ export const MeshExecutionRpcRequestSchema = z.object({
   destinationPath: MeshExecutionPathSchema.optional(),
   content: z.string().max(MESH_EXECUTION_MAX_RESULT_BYTES).optional(),
   includeHidden: z.boolean().optional(),
+  includeContentHash: z.boolean().optional(),
+  overwrite: z.boolean().optional(),
+  kind: z.enum(["file", "directory"]).optional(),
+  recursive: z.boolean().optional(),
 });
 
 export const MeshExecutionAsyncCommandRequestSchema = z.object({

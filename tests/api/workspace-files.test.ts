@@ -1,7 +1,11 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { getDatabase, initializeDatabase } from "../../src/persistence/database";
 import { backendManager } from "../../src/core/backend-manager";
-import type { CommandOptions, CommandResult, FileStreamOptions } from "../../src/core/command-executor";
+import type {
+  FileMoveResult,
+  FileStreamOptions,
+  FileSystemMetadata,
+} from "../../src/core/command-executor";
 
 import { createMockBackend } from "../mocks/mock-backend";
 import { TestCommandExecutor } from "../mocks/mock-executor";
@@ -12,10 +16,6 @@ import { mkdtemp, rm, mkdir, stat, symlink, utimes, writeFile } from "fs/promise
 import { tmpdir } from "os";
 import { initializeGitRepository, runGit } from "../helpers/git-fixtures";
 import { fetchTestLocalExecutionHost } from "../setup";
-
-function structuredTreeRecord(...fields: string[]): string {
-  return `${fields.join("\0")}\0\0`;
-}
 
 describe("workspace files API integration", () => {
   const previousDownloadLimitBytes = 100 * 1024 * 1024;
@@ -86,33 +86,36 @@ describe("workspace files API integration", () => {
   }
 
   class LargeDownloadExecutor extends TestCommandExecutor {
-    bytesCommandCalled = false;
+    readFileCalled = false;
     streamClosed = false;
 
     private readonly largeDownloadPayloadPrefix = new TextEncoder().encode("large download payload\n");
     private readonly largeDownloadSize = previousDownloadLimitBytes + 1;
 
-    override async exec(command: string, args: string[], options?: CommandOptions): Promise<CommandResult> {
-      const commandLabel = args[2];
-      const requestedPath = args[3];
-      if (command === "bash" && commandLabel === "file-explorer-metadata" && requestedPath?.endsWith("/large-download.bin")) {
+    override async getFileMetadata(
+      path: string,
+      options?: { includeContentHash?: boolean },
+    ): Promise<FileSystemMetadata | null> {
+      if (path.endsWith("/large-download.bin")) {
         return {
-          success: true,
-          stdout: `f\t${this.largeDownloadSize}\t1700000000\tlarge-download-hash\n`,
-          stderr: "",
-          exitCode: 0,
+          kind: "file",
+          size: this.largeDownloadSize,
+          modifiedAtMs: 1_700_000_000_000,
+          isSymbolicLink: false,
         };
       }
-      if (command === "bash" && commandLabel === "file-explorer-file-bytes" && requestedPath?.endsWith("/large-download.bin")) {
-        this.bytesCommandCalled = true;
-        return {
-          success: false,
-          stdout: Buffer.from("large download payload\n").toString("base64"),
-          stderr: "download should use streamFile instead of file-explorer-file-bytes",
-          exitCode: 1,
-        };
+      return await super.getFileMetadata(path, options);
+    }
+
+    override async readFile(
+      path: string,
+      options?: FileStreamOptions,
+    ): Promise<string | null> {
+      if (path.endsWith("/large-download.bin")) {
+        this.readFileCalled = true;
+        return null;
       }
-      return await super.exec(command, args, options);
+      return await super.readFile(path, options);
     }
 
     override async streamFile(path: string, _options?: FileStreamOptions): Promise<ReadableStream<Uint8Array> | null> {
@@ -158,32 +161,23 @@ describe("workspace files API integration", () => {
       return this.payload.byteLength;
     }
 
-    override async exec(command: string, args: string[], options?: CommandOptions): Promise<CommandResult> {
-      const commandLabel = args[2];
-      const requestedPath = args[3];
-      const includeHash = args[4];
-      if (
-        command === "bash"
-        && commandLabel === "file-explorer-metadata"
-        && requestedPath?.endsWith("/slow-hash-download.bin")
-      ) {
-        if (includeHash !== "0") {
+    override async getFileMetadata(
+      path: string,
+      options?: { includeContentHash?: boolean },
+    ): Promise<FileSystemMetadata | null> {
+      if (path.endsWith("/slow-hash-download.bin")) {
+        if (options?.includeContentHash !== false) {
           this.hashRequested = true;
-          return {
-            success: false,
-            stdout: "",
-            stderr: "download metadata should not request a content hash",
-            exitCode: 124,
-          };
+          throw new Error("download metadata should not request a content hash");
         }
         return {
-          success: true,
-          stdout: `f\t${this.payload.byteLength}\t1700000000\t-\n`,
-          stderr: "",
-          exitCode: 0,
+          kind: "file",
+          size: this.payload.byteLength,
+          modifiedAtMs: 1_700_000_000_000,
+          isSymbolicLink: false,
         };
       }
-      return await super.exec(command, args, options);
+      return await super.getFileMetadata(path, options);
     }
 
     override async streamFile(path: string, _options?: FileStreamOptions): Promise<ReadableStream<Uint8Array> | null> {
@@ -221,54 +215,33 @@ describe("workspace files API integration", () => {
     }
   }
 
-  class StructuredTreeFixtureExecutor extends TestCommandExecutor {
-    capabilityProbeCalls = 0;
-    treeCommandCalls = 0;
-
-    constructor(
-      private readonly capabilityFamily: "supported" | "invalid" | "unsupported",
-      private readonly treeOutput: string,
-    ) {
-      super();
+  class MissingSourceMoveExecutor extends TestCommandExecutor {
+    override async movePath(): Promise<FileMoveResult> {
+      return {
+        success: false,
+        errorCode: "source_not_found",
+      };
     }
+  }
 
-    override async exec(command: string, args: string[], options?: CommandOptions): Promise<CommandResult> {
-      const commandLabel = args[2];
-      if (command === "bash" && commandLabel === "file-explorer-tree-capabilities") {
-        this.capabilityProbeCalls += 1;
-        if (this.capabilityFamily === "unsupported") {
-          return {
-            success: false,
-            stdout: "",
-            stderr: "unsupported tree host",
-            exitCode: 3,
-          };
-        }
-        if (this.capabilityFamily === "invalid") {
-          return {
-            success: true,
-            stdout: "legacy",
-            stderr: "",
-            exitCode: 0,
-          };
-        }
-        return {
-          success: true,
-          stdout: "nul-batched",
-          stderr: "",
-          exitCode: 0,
-        };
+  class ConcurrentTreeExecutor extends TestCommandExecutor {
+    activeDirectoryListings = 0;
+    maximumConcurrentDirectoryListings = 0;
+
+    override async listDirectoryEntries(
+      path: string,
+      options?: { includeHidden?: boolean },
+    ) {
+      this.activeDirectoryListings += 1;
+      this.maximumConcurrentDirectoryListings = Math.max(
+        this.maximumConcurrentDirectoryListings,
+        this.activeDirectoryListings,
+      );
+      try {
+        return await super.listDirectoryEntries(path, options);
+      } finally {
+        this.activeDirectoryListings -= 1;
       }
-      if (command === "bash" && commandLabel === "file-explorer-tree") {
-        this.treeCommandCalls += 1;
-        return {
-          success: true,
-          stdout: this.treeOutput,
-          stderr: "",
-          exitCode: 0,
-        };
-      }
-      return await super.exec(command, args, options);
     }
   }
 
@@ -427,7 +400,7 @@ describe("workspace files API integration", () => {
     expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
     expect(response.headers.get("Content-Disposition")).toContain("attachment; filename=\"large-download.bin\"");
     expect(response.headers.get("X-Clanky-Download-Size")).toBe(String(previousDownloadLimitBytes + 1));
-    expect(largeDownloadExecutor.bytesCommandCalled).toBe(false);
+    expect(largeDownloadExecutor.readFileCalled).toBe(false);
     const reader = response.body?.getReader();
     expect(reader).toBeDefined();
     const firstChunk = await reader!.read();
@@ -518,6 +491,19 @@ describe("workspace files API integration", () => {
     expect(data.entriesByDirectory["src"]?.map((entry) => entry.path)).toEqual(["src/index.ts"]);
   });
 
+  test("loads independent tree directories concurrently", async () => {
+    const treeExecutor = new ConcurrentTreeExecutor();
+    backendManager.setExecutorFactoryForTesting(() => treeExecutor);
+    const workspace = await createWorkspace();
+
+    const response = await fetch(
+      `${baseUrl}/api/workspaces/${workspace.id}/files/tree`,
+    );
+
+    expect(response.ok).toBe(true);
+    expect(treeExecutor.maximumConcurrentDirectoryListings).toBeGreaterThan(1);
+  });
+
   test("keeps symlinked directories as directory entries without traversing into them", async () => {
     const workspace = await createWorkspace();
     const directoryLinkPath = join(workDir, "src-link");
@@ -555,6 +541,17 @@ describe("workspace files API integration", () => {
       };
       expect(data.entriesByDirectory[""]?.map((entry) => entry.name)).toEqual([".git", "assets.png", "src", "broken-link", "logo.svg", "README.md"]);
       expect(data.entriesByDirectory[""]?.map((entry) => entry.kind)).toEqual(["directory", "directory", "directory", "file", "file", "file"]);
+
+      const metadataResponse = await fetch(
+        `${baseUrl}/api/workspaces/${workspace.id}/files/metadata?path=${encodeURIComponent("broken-link")}`,
+      );
+      expect(metadataResponse.ok).toBe(true);
+      expect(await metadataResponse.json()).toMatchObject({
+        file: {
+          path: "broken-link",
+          kind: "file",
+        },
+      });
     } finally {
       await rm(brokenLinkPath, { force: true });
     }
@@ -648,6 +645,30 @@ describe("workspace files API integration", () => {
     };
     expect(data.error).toBe("file_conflict");
     expect(data.currentFile?.path).toBe("src/index.ts");
+  });
+
+  test("preserves not-found semantics when a rename source disappears after preflight", async () => {
+    backendManager.setExecutorFactoryForTesting(
+      () => new MissingSourceMoveExecutor(),
+    );
+    const workspace = await createWorkspace();
+
+    const response = await fetch(
+      `${baseUrl}/api/workspaces/${workspace.id}/files/rename`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          path: "README.md",
+          newName: "renamed.md",
+        }),
+      },
+    );
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({
+      error: "file_not_found",
+    });
   });
 
     test("renames and deletes workspace files and directories", async () => {
@@ -1046,6 +1067,25 @@ describe("workspace files API integration", () => {
     expect(await Bun.file(join(alternateRootDir, "notes", "todo.txt")).text()).toBe("updated alternate root note\n");
   });
 
+  test("resolves a relative start directory from the workspace root", async () => {
+    const workspace = await createWorkspace();
+
+    const response = await fetch(
+      `${baseUrl}/api/workspaces/${workspace.id}/files?startDirectory=src`,
+    );
+
+    expect(response.ok).toBe(true);
+    const data = await response.json() as {
+      directory: string;
+      entries: Array<{ name: string; path: string; absolutePath?: string }>;
+    };
+    expect(data.directory).toBe("");
+    expect(data.entries).toContainEqual(expect.objectContaining({
+      name: "index.ts",
+      path: "index.ts",
+    }));
+  });
+
   test("returns an explicit error when the workspace start directory does not exist", async () => {
     const workspace = await createWorkspace();
     const missingStartDirectory = encodeURIComponent(join(alternateRootDir, "missing-root"));
@@ -1064,16 +1104,8 @@ describe("workspace files API integration", () => {
     const workspace = await createWorkspace();
 
     class MetadataFailureExecutor extends TestCommandExecutor {
-      override async exec(command: string, args: string[], options?: CommandOptions): Promise<CommandResult> {
-        if (command === "bash" && args[2] === "file-explorer-metadata") {
-          return {
-            success: false,
-            stdout: "",
-            stderr: "sensitive command failure",
-            exitCode: 1,
-          };
-        }
-        return await super.exec(command, args, options);
+      override async getFileMetadata(): Promise<FileSystemMetadata | null> {
+        throw new Error("sensitive command failure");
       }
     }
 
@@ -1090,19 +1122,4 @@ describe("workspace files API integration", () => {
     expect(data.message).not.toContain("sensitive command failure");
   });
 
-  test("fails the tree endpoint with a stable error instead of parsing a truncated tree stream", async () => {
-    const workspace = await createWorkspace();
-    const truncatedRecord = structuredTreeRecord("base", `${workDir}/README.md`, "file").slice(0, -2);
-
-    backendManager.setExecutorFactoryForTesting(
-      () => new StructuredTreeFixtureExecutor("supported", truncatedRecord),
-    );
-
-    const response = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/files/tree`);
-
-    expect(response.status).toBe(500);
-    const data = await response.json() as { error: string; message: string };
-    expect(data.error).toBe("workspace_file_error");
-    expect(data.message).toBe("File explorer operation failed");
-  });
 });

@@ -1016,29 +1016,17 @@ describe("Workspace API Integration", () => {
         username: "tester",
         repositoriesBasePath: null,
       });
-      sshServerManager.setExecutorFactoryForTesting(() => ({
-        async directoryExists() {
-          return true;
-        },
-        async exec() {
-          return { success: false, stdout: "", stderr: "permission denied", exitCode: 1 };
-        },
-        async fileExists() {
-          return false;
-        },
-        async readFile() {
-          return null;
-        },
-        async streamFile() {
-          return null;
-        },
-        async listDirectory() {
-          return [];
-        },
-        async writeFile() {
-          return false;
-        },
-      }));
+      sshServerManager.setExecutorFactoryForTesting(() => {
+        const executor = new TestCommandExecutor();
+        executor.directoryExists = async () => true;
+        executor.exec = async () => ({
+          success: false,
+          stdout: "",
+          stderr: "permission denied",
+          exitCode: 1,
+        });
+        return executor;
+      });
 
       await createWorkspace({
         id: "auto-fail-workspace",
@@ -1081,29 +1069,19 @@ describe("Workspace API Integration", () => {
         username: "tester",
         repositoriesBasePath: null,
       });
-      sshServerManager.setExecutorFactoryForTesting(() => ({
-        async directoryExists() {
+      sshServerManager.setExecutorFactoryForTesting(() => {
+        const executor = new TestCommandExecutor();
+        executor.directoryExists = async () => {
           throw new Error("ssh connection lost");
-        },
-        async exec() {
-          return { success: true, stdout: "", stderr: "", exitCode: 0 };
-        },
-        async fileExists() {
-          return false;
-        },
-        async readFile() {
-          return null;
-        },
-        async streamFile() {
-          return null;
-        },
-        async listDirectory() {
-          return [];
-        },
-        async writeFile() {
-          return false;
-        },
-      }));
+        };
+        executor.exec = async () => ({
+          success: true,
+          stdout: "",
+          stderr: "",
+          exitCode: 0,
+        });
+        return executor;
+      });
 
       await createWorkspace({
         id: "auto-exists-fail-workspace",
