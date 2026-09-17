@@ -107,6 +107,7 @@ export class MeshTerminalGateway {
   private readonly opening = new Map<string, Promise<void>>();
   private readonly openingSockets = new Map<string, MeshTerminalSocket>();
   private readonly closing = new Set<string>();
+  private readonly closePromises = new Map<string, Promise<void>>();
   private readonly usedNonces = new Map<string, UsedMeshTerminalNonce>();
 
   async createSession(request: MeshTerminalSessionRequest): Promise<MeshTerminalSessionResponse> {
@@ -220,6 +221,20 @@ export class MeshTerminalGateway {
 
   async authorize(sessionId: string, sessionToken: string): Promise<void> {
     await this.requireValidatedLease(sessionId, sessionToken);
+  }
+
+  async releaseSession(
+    sessionId: string,
+    sessionToken: string,
+  ): Promise<void> {
+    const lease = this.leases.get(sessionId);
+    if (!lease || lease.sessionToken !== sessionToken) {
+      throw new DomainError(
+        "mesh_terminal_session_invalid",
+        "The Mesh terminal session is invalid.",
+      );
+    }
+    await this.close(sessionId, true, 1000, "Mesh terminal session released");
   }
 
   async open(
@@ -408,6 +423,34 @@ export class MeshTerminalGateway {
     closeReason = "Mesh terminal closed",
     ownerSocket?: MeshTerminalSocket,
   ): Promise<void> {
+    const existing = this.closePromises.get(sessionId);
+    if (existing) {
+      await existing;
+      return;
+    }
+    let pending: Promise<void>;
+    pending = this.closeInternal(
+      sessionId,
+      closeSocket,
+      closeCode,
+      closeReason,
+      ownerSocket,
+    ).finally(() => {
+      if (this.closePromises.get(sessionId) === pending) {
+        this.closePromises.delete(sessionId);
+      }
+    });
+    this.closePromises.set(sessionId, pending);
+    await pending;
+  }
+
+  private async closeInternal(
+    sessionId: string,
+    closeSocket: boolean,
+    closeCode: number,
+    closeReason: string,
+    ownerSocket?: MeshTerminalSocket,
+  ): Promise<void> {
     const relay = this.relays.get(sessionId);
     const openingSocket = this.openingSockets.get(sessionId);
     if (
@@ -450,6 +493,7 @@ export class MeshTerminalGateway {
       ...this.leases.keys(),
       ...this.relays.keys(),
       ...this.opening.keys(),
+      ...this.closePromises.keys(),
     ]);
     await Promise.all([...sessionIds].map(
       async (sessionId) => await this.close(sessionId, true, 1001, "Mesh terminal gateway stopped"),

@@ -5,6 +5,7 @@
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import type {
   ExecutionHostBinding,
+  ExecutionHostPlatform,
   Workspace,
   TerminalSession,
 } from "@/shared";
@@ -41,6 +42,7 @@ export interface ResolvedTerminal {
   session: TerminalSession;
   workspace?: Workspace;
   executionHostBinding: ExecutionHostBinding;
+  executionHostPlatform: ExecutionHostPlatform | null;
 }
 
 function targetMismatch(message: string, session: TerminalSession): DomainError {
@@ -63,18 +65,19 @@ export async function resolveTerminal(
   }
   if (!session.config.workspaceId) {
     const binding = session.config.executionHostBinding;
-    executionHostService.requireBindingCapability(
+    const executionHost = executionHostService.requireBindingCapability(
       binding,
       "interactiveTerminal",
     );
     return {
       session,
       executionHostBinding: binding,
+      executionHostPlatform: executionHost.runtime.platform,
     };
   }
   const workspace = await workspaceManager.requireWorkspace(session.config.workspaceId);
   const binding = session.config.executionHostBinding;
-  executionHostService.requireBindingCapability(
+  const executionHost = executionHostService.requireBindingCapability(
     binding,
     "interactiveTerminal",
   );
@@ -92,6 +95,7 @@ export async function resolveTerminal(
     session,
     workspace,
     executionHostBinding: binding,
+    executionHostPlatform: executionHost.runtime.platform,
   };
 }
 
@@ -301,6 +305,7 @@ export async function createTerminalConnection(
   const runtimeMode = resolved.session.state.runtimeConnectionMode
     ?? resolved.session.config.connectionMode;
   const persistentRuntimeExists = runtimeMode === "dtach"
+    && resolved.executionHostPlatform?.os !== "windows"
     && await hasPersistentSession(
       executor,
       {

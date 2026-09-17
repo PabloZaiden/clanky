@@ -15,7 +15,7 @@ import {
   PERSISTENT_SESSION_ATTACH_UNAVAILABLE_EXIT_CODE,
 } from "../ssh-persistent-session";
 import { buildShellBootstrapCommand } from "../ssh-shell-bootstrap";
-import { DEFAULT_SSH_COLOR_TERM, DEFAULT_SSH_TERM } from "../ssh-terminal-env";
+import { DEFAULT_SSH_TERM } from "../ssh-terminal-env";
 import {
   DEFAULT_SESSION_READY_TIMEOUT_MS,
   SESSION_READY_POLL_INTERVAL_MS,
@@ -30,27 +30,16 @@ import type {
 import { TerminalOutput } from "./terminal-output";
 import { DomainError } from "../domain-error";
 import { createLogger } from "@pablozaiden/webapp/server";
+import { terminateSubprocessTree } from "../subprocess-termination";
+import {
+  buildLocalTerminalEnvironment,
+  buildWindowsTerminalFallbackNotice,
+  isWindowsTerminalRuntime,
+  resolveWindowsTerminalSpawn,
+  type LocalTerminalSpawnConfig,
+} from "./local-terminal-runtime";
 
 const DEFAULT_COMMAND_TIMEOUT_MS = 10_000;
-const PROCESS_TERMINATION_GRACE_MS = 1_000;
-const SAFE_ENVIRONMENT_KEYS = new Set([
-  "COLORTERM",
-  "DISPLAY",
-  "HOME",
-  "LANG",
-  "LOGNAME",
-  "PATH",
-  "SHELL",
-  "TERM",
-  "TMPDIR",
-  "TZ",
-  "USER",
-  "WAYLAND_DISPLAY",
-  "XDG_CACHE_HOME",
-  "XDG_CONFIG_HOME",
-  "XDG_DATA_HOME",
-  "XDG_RUNTIME_DIR",
-]);
 const log = createLogger("core:terminal:local");
 
 export interface LocalTerminalConnectionConfig {
@@ -108,26 +97,6 @@ function buildDirectReadyCommand(sessionId: string): string {
     "tty_path=$(cat \"$tty_file\" 2>/dev/null || true)",
     "test -n \"$tty_path\"",
   ].join("\n");
-}
-
-function buildSafeEnvironment(extra?: Record<string, string>): Record<string, string> {
-  const environment: Record<string, string> = {};
-  for (const [key, value] of Object.entries(process.env)) {
-    if (
-      value !== undefined
-      && (SAFE_ENVIRONMENT_KEYS.has(key) || key.startsWith("LC_"))
-    ) {
-      environment[key] = value;
-    }
-  }
-  environment["PATH"] = environment["PATH"] ?? "/usr/local/bin:/usr/bin:/bin";
-  environment["SHELL"] = environment["SHELL"] ?? "/bin/sh";
-  environment["TERM"] = environment["TERM"] ?? DEFAULT_SSH_TERM;
-  environment["COLORTERM"] = environment["COLORTERM"] ?? DEFAULT_SSH_COLOR_TERM;
-  for (const [key, value] of Object.entries(extra ?? {})) {
-    environment[key] = value;
-  }
-  return environment;
 }
 
 function normalizeSize(value: number, minimum: number): number {
@@ -193,6 +162,27 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
     this.assertNotDisposed();
 
     let notice: string | undefined;
+    if (isWindowsTerminalRuntime()) {
+      notice = buildWindowsTerminalFallbackNotice(
+        this.config.connectionMode === "dtach",
+        this.config.useTmux,
+      );
+      this.activeMode = "direct";
+      if (
+        this.config.runtimeConnectionMode !== "direct"
+        || notice !== undefined
+      ) {
+        await this.config.onRuntimeConnectionState?.({
+          runtimeConnectionMode: this.config.connectionMode === "direct"
+            ? undefined
+            : "direct",
+          notice,
+        });
+        this.assertNotDisposed();
+      }
+      return await this.connectPty(executionDirectory, notice);
+    }
+
     if (this.config.connectionMode === "dtach") {
       const probe = await this.config.executor.exec(
         "bash",
@@ -236,23 +226,19 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
 
     this.assertNotDisposed();
     this.persistentAttachRetried = false;
-    return await this.connectPty(notice);
+    return await this.connectPty(executionDirectory, notice);
   }
 
-  private async connectPty(notice?: string): Promise<InteractiveTerminalConnectResult> {
+  private async connectPty(
+    executionDirectory: string,
+    notice?: string,
+  ): Promise<InteractiveTerminalConnectResult> {
     this.assertNotDisposed();
-    const command = this.activeMode === "dtach"
-      ? buildPersistentSessionAttachCommand({
-          config: {
-            id: this.config.sessionId,
-            remoteSessionName: this.config.remoteSessionName,
-            directory: this.config.directory,
-            useTmux: this.config.useTmux,
-          },
-        }, this.runtimeEnvironment, {
-          allowCreate: this.allowPersistentSessionCreate,
-        })
-      : buildDirectShellCommand(this.config);
+    const environment = buildLocalTerminalEnvironment(this.runtimeEnvironment);
+    const spawnConfig = this.buildSpawnConfig(
+      executionDirectory,
+      environment,
+    );
     const terminal = new Bun.Terminal({
       cols: 80,
       rows: 24,
@@ -278,9 +264,12 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
 
     let processHandle: Bun.Subprocess;
     try {
-      processHandle = Bun.spawn(["bash", "-lc", command], {
-        cwd: "/",
-        env: buildSafeEnvironment(this.runtimeEnvironment),
+      processHandle = Bun.spawn([
+        spawnConfig.command,
+        ...spawnConfig.args,
+      ], {
+        cwd: spawnConfig.cwd,
+        env: spawnConfig.env,
         terminal,
       });
     } catch (error) {
@@ -330,7 +319,10 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
           this.persistentAttachRetried = true;
           this.runtimeEnvironment = recovery.environment;
           this.allowPersistentSessionCreate = true;
-          return await this.connectPty(recovery.notice ?? notice);
+          return await this.connectPty(
+            executionDirectory,
+            recovery.notice ?? notice,
+          );
         }
       }
       throw error;
@@ -415,6 +407,15 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
   }
 
   private async waitUntilReady(processHandle: Bun.Subprocess): Promise<void> {
+    if (isWindowsTerminalRuntime()) {
+      if (processHandle.exitCode !== null) {
+        throw new DomainError(
+          "terminal_process_exited",
+          `The terminal process exited before it became ready (code ${String(processHandle.exitCode)}).`,
+        );
+      }
+      return;
+    }
     const deadline = Date.now() + (this.config.readyTimeoutMs ?? DEFAULT_SESSION_READY_TIMEOUT_MS);
     const command = this.activeMode === "dtach"
       ? buildPersistentSessionReadyCommand({
@@ -500,6 +501,10 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
     if (this.clientTtyCleanupDone) {
       return;
     }
+    if (isWindowsTerminalRuntime()) {
+      this.clientTtyCleanupDone = true;
+      return;
+    }
     const result = await this.config.executor.exec(
       "rm",
       ["-f", buildDirectTtyFilePath(this.config.sessionId)],
@@ -516,29 +521,38 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
   }
 
   private async terminateProcess(processHandle: Bun.Subprocess): Promise<void> {
-    if (processHandle.exitCode !== null) {
-      return;
-    }
+    await terminateSubprocessTree(processHandle, {
+      gracefulWaitMs: 1_000,
+      forceWaitMs: 1_000,
+      requireExit: true,
+    });
+  }
 
-    processHandle.kill("SIGTERM");
-    let graceTimer: ReturnType<typeof setTimeout> | undefined;
-    try {
-      await Promise.race([
-        processHandle.exited,
-        new Promise<void>((resolve) => {
-          graceTimer = setTimeout(resolve, PROCESS_TERMINATION_GRACE_MS);
-        }),
-      ]);
-    } finally {
-      if (graceTimer) {
-        clearTimeout(graceTimer);
-      }
+  private buildSpawnConfig(
+    executionDirectory: string,
+    environment: Record<string, string>,
+  ): LocalTerminalSpawnConfig {
+    if (isWindowsTerminalRuntime()) {
+      return resolveWindowsTerminalSpawn(executionDirectory, environment);
     }
-
-    if (processHandle.exitCode === null) {
-      processHandle.kill("SIGKILL");
-    }
-    await processHandle.exited.catch(() => undefined);
+    const command = this.activeMode === "dtach"
+      ? buildPersistentSessionAttachCommand({
+          config: {
+            id: this.config.sessionId,
+            remoteSessionName: this.config.remoteSessionName,
+            directory: this.config.directory,
+            useTmux: this.config.useTmux,
+          },
+        }, this.runtimeEnvironment, {
+          allowCreate: this.allowPersistentSessionCreate,
+        })
+      : buildDirectShellCommand(this.config);
+    return {
+      command: "bash",
+      args: ["-lc", command],
+      cwd: "/",
+      env: environment,
+    };
   }
 
   private assertNotDisposed(): void {

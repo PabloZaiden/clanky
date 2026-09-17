@@ -12,8 +12,7 @@ import { pollUntil } from "../helpers/polling";
 type LocalTerminalMode = "direct" | "dtach";
 
 async function commandExists(command: string): Promise<boolean> {
-  const result = await Bun.$`which ${command}`.quiet().nothrow();
-  return result.exitCode === 0;
+  return Bun.which(command) !== null;
 }
 
 describe("LocalTerminalConnection integration", () => {
@@ -29,7 +28,11 @@ describe("LocalTerminalConnection integration", () => {
 
   for (const mode of ["direct", "dtach"] as const satisfies readonly LocalTerminalMode[]) {
     test(`resizes the attached shell in ${mode} mode`, async () => {
-      if (mode === "dtach" && !(await commandExists("dtach"))) {
+      if (
+        process.platform !== "win32"
+        && mode === "dtach"
+        && !(await commandExists("dtach"))
+      ) {
         return;
       }
 
@@ -51,12 +54,22 @@ describe("LocalTerminalConnection integration", () => {
 
       try {
         const result = await connection.connect();
-        expect(result.runtimeConnectionMode).toBe(mode);
+        const expectedMode = process.platform === "win32" ? "direct" : mode;
+        expect(result.runtimeConnectionMode).toBe(expectedMode);
+        if (process.platform === "win32" && mode === "dtach") {
+          expect(result.notice).toContain("unavailable on Windows");
+        }
 
         await connection.resize(120, 32);
-        connection.sendInput(
-          "size=$(stty size); printf 'LOCAL_TERMINAL_SIZE:%s:DONE\\n' \"$size\"\n",
-        );
+        if (process.platform === "win32") {
+          connection.sendInput(
+            "$size=$Host.UI.RawUI.WindowSize; Write-Output \"LOCAL_TERMINAL_SIZE:$($size.Height) $($size.Width):DONE\"\r\n",
+          );
+        } else {
+          connection.sendInput(
+            "size=$(stty size); printf 'LOCAL_TERMINAL_SIZE:%s:DONE\\n' \"$size\"\n",
+          );
+        }
 
         await pollUntil(
           () => output.join(""),
@@ -68,7 +81,7 @@ describe("LocalTerminalConnection integration", () => {
         );
       } finally {
         await connection.dispose();
-        if (mode === "dtach") {
+        if (mode === "dtach" && process.platform !== "win32") {
           const cleanup = await executor.exec(
             "bash",
             [

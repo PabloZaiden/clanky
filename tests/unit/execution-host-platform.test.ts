@@ -27,6 +27,9 @@ describe("Execution host platform contract", () => {
         git: 2,
         managedWorktrees: 2,
         acpRuntime: 2,
+        interactiveTerminal: 1,
+        tcpTunnel: 1,
+        vnc: 1,
         serverHealth: 1,
       },
     });

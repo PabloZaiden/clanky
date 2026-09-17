@@ -38,6 +38,13 @@ export const MeshTerminalSessionRequestSchema = z.object({
   signature: z.string().trim().min(1).max(16_384),
 });
 
+export const MeshTerminalSessionCloseRequestSchema = z.object({
+  protocolVersion: z.literal(MESH_TERMINAL_PROTOCOL_VERSION),
+  sessionId: z.string().trim().min(1).max(200),
+  sessionToken: z.string().trim().min(32).max(256),
+  requestId: z.string().trim().min(1).max(200),
+});
+
 export const MeshTerminalClientFrameSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("terminal.input"),
@@ -80,5 +87,8 @@ export const MeshTerminalServerFrameSchema = z.discriminatedUnion("type", [
 ]);
 
 export type MeshTerminalSessionRequest = z.infer<typeof MeshTerminalSessionRequestSchema>;
+export type MeshTerminalSessionCloseRequest = z.infer<
+  typeof MeshTerminalSessionCloseRequestSchema
+>;
 export type MeshTerminalClientFrame = z.infer<typeof MeshTerminalClientFrameSchema>;
 export type MeshTerminalServerFrame = z.infer<typeof MeshTerminalServerFrameSchema>;

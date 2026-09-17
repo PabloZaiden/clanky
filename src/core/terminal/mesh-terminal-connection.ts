@@ -4,6 +4,7 @@
 
 import type {
   MeshTerminalServerFrame,
+  MeshTerminalSessionCloseRequest,
   MeshTerminalSessionRequest,
 } from "@/contracts/schemas/mesh-terminal";
 import { MeshTerminalServerFrameSchema } from "@/contracts/schemas/mesh-terminal";
@@ -26,6 +27,7 @@ import {
 } from "../../persistence/mesh-node-identity";
 import { encryptMeshPayload, decryptMeshPayload } from "../mesh-payload-crypto";
 import { buildMeshTerminalSessionSigningPayload } from "../mesh-terminal-protocol";
+import { MeshRelayStreamError } from "../mesh-relay-errors";
 import {
   openMeshPeerSocket,
   requestMeshPeer,
@@ -97,6 +99,7 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
   private connectPromise: Promise<InteractiveTerminalConnectResult> | null = null;
   private disposePromise: Promise<void> | null = null;
   private sessionRequestController: AbortController | null = null;
+  private session: OpenMeshTerminalSession | null = null;
   private disposed = false;
   private closing = false;
   private ready = false;
@@ -176,7 +179,12 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
     this.closing = false;
     this.receivedExit = false;
     const session = await this.openSession();
+    this.session = session;
     if (this.disposed || this.closing) {
+      await this.releaseSession(session);
+      if (this.session === session) {
+        this.session = null;
+      }
       throw new DomainError("mesh_terminal_connection_closed", "The Mesh terminal connection was closed while connecting.");
     }
     const socket = openMeshPeerSocket(session.route, "api/mesh/internal/terminal", {
@@ -203,6 +211,7 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
       this.ready = false;
       if (isCurrentSocket) {
         this.socket = null;
+        this.session = null;
       }
       if (!isCurrentSocket) {
         return;
@@ -284,17 +293,27 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
     this.sessionRequestController = null;
     this.rejectReady(new DomainError("mesh_terminal_connection_closed", "The Mesh terminal connection was closed."));
     const socket = this.socket;
+    const session = this.session;
     this.socket = null;
+    this.session = null;
     activeMeshTerminalConnections.delete(this);
-    if (socket && socket.readyState === WebSocket.OPEN) {
+    let releaseError: unknown;
+    if (session) {
       try {
-        socket.send(JSON.stringify({ type: "terminal.close" }));
-      } catch {
-        // The socket is already unavailable.
+        const released = await this.releaseSession(session);
+        if (!released && socket?.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({ type: "terminal.close" }));
+          await this.waitForSocketClose(socket);
+        }
+      } catch (error) {
+        releaseError = error;
       }
     }
     if (socket && socket.readyState !== WebSocket.CLOSED) {
       socket.close(1000, "Terminal disconnected");
+    }
+    if (releaseError) {
+      throw releaseError;
     }
   }
 
@@ -447,6 +466,104 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
         this.sessionRequestController = null;
       }
     }
+  }
+
+  private async releaseSession(
+    session: OpenMeshTerminalSession,
+  ): Promise<boolean> {
+    const request: MeshTerminalSessionCloseRequest = {
+      protocolVersion: MESH_TERMINAL_PROTOCOL_VERSION,
+      sessionId: session.sessionId,
+      sessionToken: session.sessionToken,
+      requestId: crypto.randomUUID(),
+    };
+    const controller = new AbortController();
+    const timer = setTimeout(
+      () => controller.abort(),
+      MESH_TERMINAL_SESSION_REQUEST_TIMEOUT_MS,
+    );
+    timer.unref?.();
+    try {
+      const response = await requestMeshPeer(
+        session.route,
+        "api/mesh/internal/terminal/session",
+        {
+          method: "DELETE",
+          headers: {
+            "content-type": "application/json",
+            "x-clanky-mesh-session-id": session.sessionId,
+            "x-clanky-mesh-request-id": request.requestId,
+          },
+          body: JSON.stringify(request),
+          signal: controller.signal,
+          fetch: this.fetchImpl,
+        },
+      );
+      if (response.status === 404 || response.status === 405) {
+        return false;
+      }
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null) as unknown;
+        const record = payload && typeof payload === "object"
+          ? payload as Record<string, unknown>
+          : {};
+        throw new DomainError(
+          typeof record["error"] === "string"
+            ? record["error"]
+            : "mesh_terminal_session_release_failed",
+          typeof record["message"] === "string"
+            ? record["message"]
+            : "The Mesh terminal session could not be released.",
+          { details: { status: response.status } },
+        );
+      }
+      return true;
+    } catch (error) {
+      if (
+        error instanceof MeshRelayStreamError
+        && error.code === "mesh_relay_route_forbidden"
+      ) {
+        return false;
+      }
+      if (error instanceof DomainError) {
+        throw error;
+      }
+      throw new DomainError(
+        controller.signal.aborted
+          ? "mesh_terminal_session_release_timeout"
+          : "mesh_terminal_session_release_failed",
+        controller.signal.aborted
+          ? "Timed out releasing the Mesh terminal session."
+          : "The Mesh terminal session could not be released.",
+        { cause: error },
+      );
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  private async waitForSocketClose(socket: MeshDuplexSocket): Promise<void> {
+    if (socket.readyState === WebSocket.CLOSED) {
+      return;
+    }
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        cleanup();
+        reject(new DomainError(
+          "mesh_terminal_session_release_timeout",
+          "Timed out waiting for the Mesh terminal process to close.",
+        ));
+      }, MESH_TERMINAL_SESSION_REQUEST_TIMEOUT_MS);
+      const cleanup = (): void => {
+        clearTimeout(timer);
+        socket.removeEventListener("close", onClose);
+      };
+      const onClose = (): void => {
+        cleanup();
+        resolve();
+      };
+      socket.addEventListener("close", onClose);
+    });
   }
 
   private async waitForSocketOpen(socket: MeshDuplexSocket): Promise<void> {

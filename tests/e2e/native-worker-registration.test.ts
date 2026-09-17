@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
+import net from "node:net";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import {
@@ -28,6 +29,13 @@ import { ensurePlanningDirectory } from "../../src/core/planning-directory";
 import { MeshCommandExecutor } from "../../src/core/mesh-command-executor";
 import { executionPathStyleForPlatform } from "../../src/core/execution-path";
 import { runWithCurrentUser } from "../../src/context/user-context";
+import { openPreviewTcpForward } from "../../src/core/preview-tcp-forward";
+import { openTcpTunnel, type TcpTunnel } from "../../src/core/tcp-tunnel";
+import { MeshInteractiveTerminalConnection } from "../../src/core/terminal/mesh-terminal-connection";
+import type {
+  ExecutionHostBinding,
+  ExecutionHostDescriptor,
+} from "../../src/shared/execution-host";
 import { AcpBackend, MeshAcpTransport } from "../../src/backends/acp";
 import type { AgentEvent } from "../../src/backends/types";
 import {
@@ -195,6 +203,164 @@ async function exerciseMeshAcpRuntime(
   });
 }
 
+async function exerciseMeshTerminal(
+  registration: MeshWorkerRegistration,
+  executionRoot: string,
+  directory: string,
+  platformOs: "linux" | "darwin" | "windows",
+): Promise<void> {
+  await runWithCurrentUser({
+    id: registration.localUserId,
+    username: "native-worker-owner",
+    role: "owner",
+    isOwner: true,
+    isAdmin: true,
+  }, async () => {
+    const output: string[] = [];
+    const errors: Error[] = [];
+    const windows = platformOs === "windows";
+    const connection = new MeshInteractiveTerminalConnection({
+      workspaceId: "native-worker-terminal-e2e",
+      executionRoot,
+      directory,
+      executionNodeId: registration.workerNodeId,
+      provider: "copilot",
+      terminalSessionId: crypto.randomUUID(),
+      remoteSessionName: `clanky-native-terminal-${crypto.randomUUID()}`,
+      connectionMode: windows ? "dtach" : "direct",
+      useTmux: windows,
+      allowPersistentSessionCreate: true,
+      callbacks: {
+        onOutput: (chunk) => output.push(chunk),
+        onError: (error) => errors.push(error),
+      },
+      localUserId: registration.localUserId,
+    });
+
+    try {
+      const result = await connection.connect();
+      expect(result.runtimeConnectionMode).toBe("direct");
+      if (windows) {
+        expect(result.notice).toContain("unavailable on Windows");
+      }
+
+      await connection.resize(113, 37);
+      connection.sendInput(windows
+        ? "$size=$Host.UI.RawUI.WindowSize; Write-Output \"NATIVE_TERMINAL_SIZE:$($size.Height) $($size.Width):DONE\"\r\n"
+        : "size=$(stty size); printf 'NATIVE_TERMINAL_SIZE:%s:DONE\\n' \"$size\"\n");
+      await pollUntil(
+        () => output.join(""),
+        (value) => value.includes("NATIVE_TERMINAL_SIZE:37 113:DONE"),
+        {
+          description: "native Mesh terminal input, output, and resize",
+          timeoutMs: 20_000,
+        },
+      );
+      expect(errors).toEqual([]);
+    } finally {
+      await connection.dispose();
+    }
+  });
+}
+
+async function expectTunnelEcho(
+  tunnel: TcpTunnel,
+  message: string,
+): Promise<void> {
+  const echoed = new Promise<string>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error("Timed out waiting for the native Mesh TCP echo"));
+    }, 10_000);
+    tunnel.once("error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    tunnel.on("data", (data) => {
+      clearTimeout(timer);
+      resolve(Buffer.from(data).toString("utf8"));
+    });
+  });
+  tunnel.write(message);
+  expect(await echoed).toBe(message);
+}
+
+async function expectPreviewEcho(
+  localPort: number,
+  message: string,
+): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const socket = net.createConnection({
+      host: "127.0.0.1",
+      port: localPort,
+    });
+    const timer = setTimeout(() => {
+      socket.destroy();
+      reject(new Error("Timed out waiting for the native Mesh preview echo"));
+    }, 10_000);
+    socket.once("connect", () => socket.write(message));
+    socket.once("error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    socket.on("data", (data) => {
+      clearTimeout(timer);
+      try {
+        expect(data.toString("utf8")).toBe(message);
+        socket.end();
+        resolve();
+      } catch (error) {
+        socket.destroy();
+        reject(error);
+      }
+    });
+  });
+}
+
+async function exerciseMeshTunnels(
+  registration: MeshWorkerRegistration,
+  binding: ExecutionHostBinding,
+): Promise<void> {
+  const server = Bun.listen({
+    hostname: "127.0.0.1",
+    port: 0,
+    socket: {
+      data(socket, data) {
+        socket.write(data);
+      },
+    },
+  });
+  try {
+    await runWithCurrentUser({
+      id: registration.localUserId,
+      username: "native-worker-owner",
+      role: "owner",
+      isOwner: true,
+      isAdmin: true,
+    }, async () => {
+      const tunnel = await openTcpTunnel({
+        binding,
+        remoteHost: "127.0.0.1",
+        remotePort: server.port,
+      });
+      const tunnelClosed = new Promise<void>((resolve) => {
+        tunnel.once("close", resolve);
+      });
+      await expectTunnelEcho(tunnel, "native-mesh-tunnel");
+      tunnel.destroy();
+      await tunnelClosed;
+
+      const preview = await openPreviewTcpForward(binding, server.port);
+      try {
+        await expectPreviewEcho(preview.localPort, "native-mesh-preview");
+      } finally {
+        await preview.close();
+      }
+    });
+  } finally {
+    server.stop(true);
+  }
+}
+
 describe("native worker registration", () => {
   test("runs Git and managed worktree paths on the native host", async () => {
     const root = await mkdtemp(join(tmpdir(), "clanky-native-git-"));
@@ -352,6 +518,16 @@ describe("native worker registration", () => {
       },
     });
     expect(workerCapabilities.acpRuntime).toBe(2);
+    expect(workerCapabilities).toMatchObject({
+      interactiveTerminal: 1,
+      tcpTunnel: 1,
+      vnc: 1,
+    });
+    if (expectedRuntime.platform?.os === "windows") {
+      expect(workerCapabilities.commandExecution).toBeUndefined();
+      expect(workerCapabilities.provisioning).toBeUndefined();
+      expect(workerCapabilities.devboxLifecycle).toBeUndefined();
+    }
 
     const providerDiscovery = await meshJsonRequest<{
       providers?: Array<{ providerID: string; available: boolean }>;
@@ -370,6 +546,22 @@ describe("native worker registration", () => {
       providerID: "copilot",
       available: true,
     });
+
+    const executionHosts = await meshJsonRequest<ExecutionHostDescriptor[]>(
+      controller,
+      "/api/execution-hosts",
+    );
+    expect(executionHosts.status).toBe(200);
+    const executionHost = executionHosts.body.find(
+      (candidate) => candidate.ref.kind === "mesh"
+        && candidate.ref.nodeId === registration.workerNodeId,
+    );
+    expect(executionHost).toBeDefined();
+    const executionHostBinding: ExecutionHostBinding = {
+      host: executionHost!.ref,
+      targetKey: executionHost!.targetKey,
+      revision: executionHost!.revision,
+    };
 
     const initialHealth = await pollUntil<
       MeshJsonResponse<MeshHealthResponse>
@@ -426,6 +618,22 @@ describe("native worker registration", () => {
     );
     expect(createdPlan.status).toBe(200);
 
+    const terminalDirectoryFile = await meshJsonRequest<FileWriteResponse>(
+      controller,
+      `${filesPath}/write`,
+      {
+        method: "POST",
+        body: {
+          path: "native-terminal/session.txt",
+          content: "terminal cwd\n",
+          expectedVersionToken: null,
+          overwrite: false,
+          startDirectory: null,
+        },
+      },
+    );
+    expect(terminalDirectoryFile.status).toBe(200);
+
     const previousDataDir = process.env["CLANKY_DATA_DIR"];
     closeDatabase();
     process.env["CLANKY_DATA_DIR"] = controller.dataDir;
@@ -441,16 +649,37 @@ describe("native worker registration", () => {
     });
     try {
       const executionDirectory = await meshExecutor.getExecutionDirectory();
+      const platformOs = expectedRuntime.platform!.os;
       expect(executionDirectory).toBe(join(worker.dataDir, "native-files"));
       expect(await meshExecutor.fileExists(
         join(executionDirectory, ".clanky-planning", "plan.md"),
       )).toBe(true);
-      if (expectedRuntime.platform?.os === "windows") {
-        expect(
-          workerCapabilities.commandExecution,
-        ).toBeUndefined();
-      }
       expect(await meshExecutor.isAgentProviderAvailable("copilot")).toBe(true);
+
+      await exerciseMeshTerminal(
+        registration,
+        worker.dataDir,
+        join(worker.dataDir, "native-terminal"),
+        platformOs,
+      );
+      const deletedTerminalDirectory = await meshJsonRequest<FileMutationResponse>(
+        controller,
+        `${filesPath}/delete`,
+        {
+          method: "POST",
+          body: {
+            path: "native-terminal",
+            kind: "directory",
+            startDirectory: null,
+          },
+        },
+      );
+      expect(deletedTerminalDirectory.status).toBe(200);
+      expect(await Bun.file(
+        join(worker.dataDir, "native-terminal", "session.txt"),
+      ).exists()).toBe(false);
+
+      await exerciseMeshTunnels(registration, executionHostBinding);
 
       const git = GitService.withExecutor(meshExecutor);
       for (const args of [

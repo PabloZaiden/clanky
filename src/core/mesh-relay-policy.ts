@@ -53,7 +53,7 @@ export const MESH_RELAY_CONTROLLER_HTTP_ROUTES: ReadonlyMap<string, ReadonlySet<
     ["/api/mesh/internal/execution/async", new Set(["POST"])],
     ["/api/mesh/internal/execution/file", new Set(["GET", "POST"])],
     ["/api/mesh/internal/execution/acp/renew", new Set(["POST"])],
-    ["/api/mesh/internal/terminal/session", new Set(["POST"])],
+    ["/api/mesh/internal/terminal/session", new Set(["POST", "DELETE"])],
     ["/api/mesh/internal/tcp-tunnel/session", new Set(["POST"])],
   ]);
 
