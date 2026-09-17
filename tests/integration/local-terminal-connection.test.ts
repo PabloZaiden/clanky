@@ -1,14 +1,22 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "fs/promises";
+import { mkdir, mkdtemp, realpath, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import {
   buildPersistentSessionDeleteCommand,
 } from "../../src/core/ssh-persistent-session";
 import { LocalTerminalConnection } from "../../src/core/terminal/local-terminal-connection";
+import { CommandExecutorImpl } from "../../src/core/remote-command-executor";
+import {
+  executionPathsEqual,
+  executionPathStyleForPlatform,
+} from "../../src/core/execution-path";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { pollUntil } from "../helpers/polling";
-import { buildTerminalResizeProbe } from "../helpers/terminal-resize-probe";
+import {
+  buildTerminalCwdProbe,
+  buildTerminalResizeProbe,
+} from "../helpers/terminal-resize-probe";
 
 type LocalTerminalMode = "direct" | "dtach";
 
@@ -109,4 +117,69 @@ describe("LocalTerminalConnection integration", () => {
       }
     });
   }
+
+  test("resolves a relative local terminal directory exactly once", async () => {
+    const originalDirectory = process.cwd();
+    const relativeDirectory = "relative-terminal";
+    await mkdir(join(tempDir, relativeDirectory));
+    const expectedDirectory = await realpath(join(tempDir, relativeDirectory));
+    process.chdir(tempDir);
+    const executor = new CommandExecutorImpl({
+      provider: "local",
+      directory: relativeDirectory,
+    });
+    const output: string[] = [];
+    const connection = new LocalTerminalConnection({
+      sessionId: crypto.randomUUID(),
+      remoteSessionName: `clanky-test-${crypto.randomUUID()}`,
+      directory: relativeDirectory,
+      connectionMode: "direct",
+      useTmux: false,
+      executor,
+      callbacks: {
+        onOutput: (chunk) => output.push(chunk),
+      },
+      readyTimeoutMs: 1_000,
+    });
+
+    try {
+      await connection.connect();
+      const marker = "LOCAL_TERMINAL_CWD";
+      const prefix = `${marker}:`;
+      connection.sendInput(buildTerminalCwdProbe({
+        marker,
+        os: process.platform === "win32"
+          ? "windows"
+          : process.platform === "darwin"
+            ? "darwin"
+            : "linux",
+      }));
+      await pollUntil(
+        () => output.join(""),
+        (value) => {
+          const start = value.lastIndexOf(prefix);
+          const end = value.indexOf(":DONE", start + prefix.length);
+          const pathStyle = executionPathStyleForPlatform(process.platform);
+          return start >= 0
+            && end >= 0
+            && pathStyle !== null
+            && executionPathsEqual(
+              value.slice(start + prefix.length, end),
+              expectedDirectory,
+              pathStyle,
+            );
+        },
+        {
+          description: "relative local terminal working directory",
+          timeoutMs: 10_000,
+        },
+      );
+    } finally {
+      try {
+        await connection.dispose();
+      } finally {
+        process.chdir(originalDirectory);
+      }
+    }
+  });
 });

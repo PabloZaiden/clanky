@@ -1,5 +1,6 @@
 import { describe, expect, mock, spyOn, test } from "bun:test";
 import { terminateSubprocessTree } from "../../src/core/subprocess-termination";
+import { pollUntil } from "../helpers/polling";
 
 interface ControlledSubprocess {
   process: Bun.Subprocess;
@@ -242,6 +243,67 @@ describe("subprocess tree termination", () => {
 
       expect(commands).toHaveLength(1);
       expect(target.kill).not.toHaveBeenCalled();
+    });
+  });
+
+  // A stuck taskkill helper must not consume the entire terminal/ACP teardown.
+  test("terminates a hung taskkill helper before forced escalation", async () => {
+    await withMockWindowsTermination(async ({
+      target,
+      commands,
+      setTaskkillFactory,
+    }) => {
+      let resolveTaskkill!: (exitCode: number) => void;
+      const taskkillExited = new Promise<number>((resolve) => {
+        resolveTaskkill = resolve;
+      });
+      let helperReleased = false;
+      const helperKill = mock(() => {
+        if (!helperReleased) {
+          helperReleased = true;
+          resolveTaskkill(1);
+        }
+      });
+      setTaskkillFactory((command) => command.includes("/F")
+        ? createTaskkillProcess(() => target.exit(0))
+        : {
+            exited: taskkillExited,
+            kill: helperKill,
+          } as unknown as Bun.Subprocess);
+      let outcome: unknown;
+      const termination = terminateSubprocessTree(target.process, {
+        gracefulWaitMs: 10,
+        forceWaitMs: 10,
+        requireExit: true,
+      }).then(
+        () => {
+          outcome = null;
+        },
+        (error: unknown) => {
+          outcome = error;
+        },
+      );
+
+      try {
+        await pollUntil(
+          () => outcome,
+          (value) => value !== undefined,
+          {
+            description: "hung taskkill escalation",
+            timeoutMs: 1_000,
+          },
+        );
+      } finally {
+        if (!helperReleased) {
+          helperReleased = true;
+          resolveTaskkill(1);
+        }
+        await termination;
+      }
+
+      expect(outcome).toBeNull();
+      expect(helperKill).toHaveBeenCalledTimes(1);
+      expect(commands[1]).toContain("/F");
     });
   });
 

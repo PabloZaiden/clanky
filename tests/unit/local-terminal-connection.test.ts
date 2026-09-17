@@ -1,0 +1,99 @@
+import { describe, expect, spyOn, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { LocalTerminalConnection } from "../../src/core/terminal/local-terminal-connection";
+import { pollUntil } from "../helpers/polling";
+import { TestCommandExecutor } from "../mocks/mock-executor";
+
+interface ControlledProcess {
+  subprocess: Bun.Subprocess;
+  exit(exitCode: number): void;
+}
+
+function createControlledProcess(): ControlledProcess {
+  let exitCode: number | null = null;
+  let resolveExit!: (exitCode: number) => void;
+  const exited = new Promise<number>((resolve) => {
+    resolveExit = resolve;
+  });
+  return {
+    subprocess: {
+      pid: 4242,
+      get exitCode() {
+        return exitCode;
+      },
+      exited,
+      signalCode: null,
+      kill(): void {},
+    } as unknown as Bun.Subprocess,
+    exit(nextExitCode: number): void {
+      exitCode = nextExitCode;
+      resolveExit(nextExitCode);
+    },
+  };
+}
+
+describe("LocalTerminalConnection lifecycle", () => {
+  // This lifecycle seam deterministically forces startup and tree-termination
+  // failures without leaking a real shell process on the test host.
+  test("retains a live process when startup cleanup fails", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "clanky-terminal-startup-"));
+    const controlled = createControlledProcess();
+    const spawnSpy = spyOn(Bun, "spawn").mockReturnValue(
+      controlled.subprocess,
+    );
+    const connection = new LocalTerminalConnection({
+      sessionId: crypto.randomUUID(),
+      remoteSessionName: `clanky-test-${crypto.randomUUID()}`,
+      directory,
+      connectionMode: "direct",
+      useTmux: false,
+      executor: new TestCommandExecutor(directory),
+      callbacks: {
+        onOutput(): void {},
+      },
+    });
+    const startupError = new Error("terminal startup failed");
+    const internals = connection as unknown as {
+      waitUntilReady(processHandle: Bun.Subprocess): Promise<void>;
+      terminateProcess(processHandle: Bun.Subprocess): Promise<void>;
+      retainedProcess: Bun.Subprocess | null;
+      terminal: Bun.Terminal | null;
+    };
+    internals.waitUntilReady = async () => {
+      throw startupError;
+    };
+    internals.terminateProcess = async () => {
+      throw new Error("tree termination failed");
+    };
+
+    try {
+      await expect(connection.connect()).rejects.toBe(startupError);
+      expect(internals.retainedProcess).toBe(controlled.subprocess);
+      expect(internals.terminal).not.toBeNull();
+
+      controlled.exit(1);
+      await pollUntil(
+        () => ({
+          retainedProcess: internals.retainedProcess,
+          terminal: internals.terminal,
+        }),
+        (state) => state.retainedProcess === null && state.terminal === null,
+        {
+          description: "retained startup process cleanup",
+          timeoutMs: 1_000,
+          formatLastObserved: (state) => JSON.stringify({
+            retained: state.retainedProcess !== null,
+            terminal: state.terminal !== null,
+          }),
+        },
+      );
+    } finally {
+      controlled.exit(1);
+      spawnSpy.mockRestore();
+      await connection.dispose();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+});

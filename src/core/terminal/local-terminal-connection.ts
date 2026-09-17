@@ -31,7 +31,6 @@ import { TerminalOutput } from "./terminal-output";
 import { DomainError } from "../domain-error";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { terminateSubprocessTree } from "../subprocess-termination";
-import { resolveExecutionPathFromDirectory } from "../execution-path";
 import {
   buildLocalTerminalEnvironment,
   buildWindowsTerminalFallbackNotice,
@@ -73,7 +72,10 @@ function buildDirectTtyFilePath(sessionId: string): string {
   return `/tmp/clanky-terminal-${sessionId}.tty`;
 }
 
-function buildDirectShellCommand(config: LocalTerminalConnectionConfig): string {
+function buildDirectShellCommand(
+  config: LocalTerminalConnectionConfig,
+  executionDirectory: string,
+): string {
   const ttyFile = quoteShell(buildDirectTtyFilePath(config.sessionId));
   return [
     `tty_file=${ttyFile}`,
@@ -85,7 +87,7 @@ function buildDirectShellCommand(config: LocalTerminalConnectionConfig): string 
     "printf '%s\\n' \"$tty_path\" > \"$tty_file\";",
     "trap 'rm -f \"$tty_file\"' EXIT HUP INT TERM;",
     buildShellBootstrapCommand({
-      directory: config.directory,
+      directory: executionDirectory,
       useTmux: config.useTmux,
     }),
   ].join(" ");
@@ -153,17 +155,10 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
     if (this.disposed) {
       throw new DomainError("terminal_connection_closed", "The terminal connection is closed.");
     }
-    const executorDirectory = await resolveCommandExecutorDirectory(
+    const executionDirectory = await resolveCommandExecutorDirectory(
       this.config.executor,
       this.config.directory,
     );
-    const executionDirectory = isWindowsTerminalRuntime()
-      ? resolveExecutionPathFromDirectory(
-          executorDirectory,
-          this.config.directory,
-          this.config.executor.pathStyle,
-        )
-      : executorDirectory;
     if (!await this.config.executor.directoryExists(executionDirectory)) {
       throw new DomainError(
         "terminal_directory_unavailable",
@@ -311,7 +306,7 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
     });
 
     try {
-      await this.waitUntilReady(processHandle);
+      await this.waitUntilReady(processHandle, executionDirectory);
       this.assertNotDisposed();
       this.ready = true;
       return {
@@ -325,7 +320,17 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
         this.suppressNextExitNotification = true;
       }
       if (processHandle.exitCode === null) {
-        await this.terminateProcess(processHandle);
+        try {
+          await this.terminateProcess(processHandle);
+        } catch (terminationError) {
+          this.disposed = true;
+          this.watchRetainedProcess(processHandle);
+          log.error("Failed to terminate terminal process after startup failure", {
+            sessionId: this.config.sessionId,
+            pid: processHandle.pid,
+            error: String(terminationError),
+          });
+        }
       }
       if (shouldRetry && !this.disposed && !this.persistentAttachRetried) {
         const recovery = await this.config.onPersistentSessionAttachUnavailable?.();
@@ -551,7 +556,10 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
     this.retainedProcess = null;
   }
 
-  private async waitUntilReady(processHandle: Bun.Subprocess): Promise<void> {
+  private async waitUntilReady(
+    processHandle: Bun.Subprocess,
+    executionDirectory: string,
+  ): Promise<void> {
     if (isWindowsTerminalRuntime()) {
       if (processHandle.exitCode !== null) {
         throw new DomainError(
@@ -590,7 +598,7 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
         );
       }
       const result = await this.config.executor.exec("bash", ["-lc", command], {
-        cwd: this.config.directory,
+        cwd: executionDirectory,
         timeout: Math.min(DEFAULT_COMMAND_TIMEOUT_MS, Math.max(1, deadline - Date.now())),
         logFailures: false,
       });
@@ -685,13 +693,13 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
           config: {
             id: this.config.sessionId,
             remoteSessionName: this.config.remoteSessionName,
-            directory: this.config.directory,
+            directory: executionDirectory,
             useTmux: this.config.useTmux,
           },
         }, this.runtimeEnvironment, {
           allowCreate: this.allowPersistentSessionCreate,
         })
-      : buildDirectShellCommand(this.config);
+      : buildDirectShellCommand(this.config, executionDirectory);
     return {
       command: "bash",
       args: ["-lc", command],

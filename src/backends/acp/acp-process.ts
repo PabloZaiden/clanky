@@ -188,5 +188,8 @@ export async function terminateAcpProcess(
   process: Bun.Subprocess | null,
   options: AcpProcessStopOptions = {},
 ): Promise<void> {
-  await terminateSubprocessTree(process, options);
+  await terminateSubprocessTree(process, {
+    ...options,
+    requireExit: true,
+  });
 }

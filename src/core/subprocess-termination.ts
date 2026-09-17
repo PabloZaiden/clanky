@@ -8,6 +8,7 @@ import { createLogger } from "@pablozaiden/webapp/server";
 const log = createLogger("core:subprocess-termination");
 const DEFAULT_GRACEFUL_WAIT_MS = 250;
 const DEFAULT_FORCE_WAIT_MS = 1_000;
+const TASKKILL_REAP_WAIT_MS = 250;
 
 export interface SubprocessTerminationOptions {
   gracefulWaitMs?: number;
@@ -24,10 +25,17 @@ export async function terminateSubprocessTree(
   }
 
   const windows = process.platform === "win32";
-  const gracefulTreeTermination = await requestSubprocessStop(subprocess, false);
+  const gracefulWaitMs = options.gracefulWaitMs
+    ?? DEFAULT_GRACEFUL_WAIT_MS;
+  const gracefulDeadline = Date.now() + gracefulWaitMs;
+  const gracefulTreeTermination = await requestSubprocessStop(
+    subprocess,
+    false,
+    gracefulWaitMs,
+  );
   if (await waitForSubprocessExit(
     subprocess,
-    options.gracefulWaitMs ?? DEFAULT_GRACEFUL_WAIT_MS,
+    Math.max(0, gracefulDeadline - Date.now()),
   )) {
     if (windows && options.requireExit && !gracefulTreeTermination) {
       throwWindowsTreeTerminationGuaranteeError(subprocess);
@@ -35,10 +43,16 @@ export async function terminateSubprocessTree(
     return;
   }
 
-  const forcedTreeTermination = await requestSubprocessStop(subprocess, true);
+  const forceWaitMs = options.forceWaitMs ?? DEFAULT_FORCE_WAIT_MS;
+  const forceDeadline = Date.now() + forceWaitMs;
+  const forcedTreeTermination = await requestSubprocessStop(
+    subprocess,
+    true,
+    forceWaitMs,
+  );
   const exited = await waitForSubprocessExit(
     subprocess,
-    options.forceWaitMs ?? DEFAULT_FORCE_WAIT_MS,
+    Math.max(0, forceDeadline - Date.now()),
   );
   if (!exited && options.requireExit) {
     throw new Error(
@@ -53,9 +67,14 @@ export async function terminateSubprocessTree(
 async function requestSubprocessStop(
   subprocess: Bun.Subprocess,
   force: boolean,
+  timeoutMs: number,
 ): Promise<boolean> {
   if (process.platform === "win32") {
-    return await terminateWindowsSubprocessTree(subprocess, force);
+    return await terminateWindowsSubprocessTree(
+      subprocess,
+      force,
+      timeoutMs,
+    );
   }
   try {
     subprocess.kill(force ? "SIGKILL" : "SIGTERM");
@@ -72,6 +91,7 @@ async function requestSubprocessStop(
 async function terminateWindowsSubprocessTree(
   subprocess: Bun.Subprocess,
   force: boolean,
+  timeoutMs: number,
 ): Promise<boolean> {
   if (!Number.isInteger(subprocess.pid) || subprocess.pid <= 0) {
     tryKillSubprocessHandle(subprocess);
@@ -94,7 +114,28 @@ async function terminateWindowsSubprocessTree(
       stdout: "ignore",
       stderr: "ignore",
     });
-    const exitCode = await termination.exited;
+    const exitCode = await waitForSubprocessExitCode(termination, timeoutMs);
+    if (exitCode === null) {
+      log.warn("Windows taskkill helper timed out", {
+        pid: subprocess.pid,
+        force,
+        timeoutMs,
+      });
+      tryKillTaskkillHelper(termination, subprocess.pid, force);
+      if (
+        await waitForSubprocessExitCode(termination, TASKKILL_REAP_WAIT_MS)
+          === null
+      ) {
+        log.warn("Windows taskkill helper did not exit after termination", {
+          pid: subprocess.pid,
+          force,
+        });
+      }
+      if (force && subprocess.exitCode === null) {
+        tryKillSubprocessHandle(subprocess);
+      }
+      return false;
+    }
     if (exitCode !== 0) {
       log.debug("Windows taskkill did not terminate the subprocess tree", {
         pid: subprocess.pid,
@@ -117,6 +158,22 @@ async function terminateWindowsSubprocessTree(
       tryKillSubprocessHandle(subprocess);
     }
     return false;
+  }
+}
+
+function tryKillTaskkillHelper(
+  termination: Bun.Subprocess,
+  targetPid: number,
+  force: boolean,
+): void {
+  try {
+    termination.kill();
+  } catch (error) {
+    log.warn("Failed to terminate timed-out Windows taskkill helper", {
+      pid: targetPid,
+      force,
+      error: String(error),
+    });
   }
 }
 
@@ -146,6 +203,25 @@ function tryKillSubprocessHandle(subprocess: Bun.Subprocess): void {
     log.debug("Failed to terminate subprocess through its Bun handle", {
       error: String(error),
     });
+  }
+}
+
+async function waitForSubprocessExitCode(
+  subprocess: Bun.Subprocess,
+  timeoutMs: number,
+): Promise<number | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race<number | null>([
+      subprocess.exited,
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), Math.max(0, timeoutMs));
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
   }
 }
 
