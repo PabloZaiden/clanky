@@ -132,7 +132,11 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
     try {
       return await pending;
     } catch (error) {
-      activeMeshTerminalConnections.delete(this);
+      if (this.session) {
+        activeMeshTerminalConnections.add(this);
+      } else {
+        activeMeshTerminalConnections.delete(this);
+      }
       throw error;
     } finally {
       if (this.connectPromise === pending) {
@@ -181,12 +185,9 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
     const session = await this.openSession();
     this.session = session;
     if (this.disposed || this.closing) {
-      try {
-        await this.releaseSessionBeforeSocket(session);
-      } finally {
-        if (this.session === session) {
-          this.session = null;
-        }
+      await this.releaseSessionBeforeSocket(session);
+      if (this.session === session) {
+        this.session = null;
       }
       throw new DomainError("mesh_terminal_connection_closed", "The Mesh terminal connection was closed while connecting.");
     }
@@ -297,13 +298,14 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
     const socket = this.socket;
     const session = this.session;
     this.socket = null;
-    this.session = null;
-    activeMeshTerminalConnections.delete(this);
     let releaseError: unknown;
     let releaseFailed = false;
     if (session) {
       try {
         await this.releaseSessionWithFallback(session, socket);
+        if (this.session === session) {
+          this.session = null;
+        }
       } catch (error) {
         releaseFailed = true;
         releaseError = error;
@@ -318,6 +320,9 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
           releaseError = error;
         }
       }
+    }
+    if (!this.session) {
+      activeMeshTerminalConnections.delete(this);
     }
     if (releaseFailed) {
       throw releaseError;

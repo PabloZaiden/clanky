@@ -227,6 +227,7 @@ async function exerciseMeshTerminal(
   platformOs: "linux" | "darwin" | "windows",
   options: {
     legacyRelease?: boolean;
+    failFirstRelease?: boolean;
   } = {},
 ): Promise<void> {
   await runWithCurrentUser({
@@ -240,6 +241,7 @@ async function exerciseMeshTerminal(
     const errors: Error[] = [];
     const windows = platformOs === "windows";
     let capturedRelease: CapturedTerminalRelease | undefined;
+    let releaseAttempts = 0;
     const releaseAwareFetch: typeof globalThis.fetch = Object.assign(
       async (
         input: Parameters<typeof fetch>[0],
@@ -258,6 +260,13 @@ async function exerciseMeshTerminal(
             request,
             ...("tls" in init && init.tls ? { tls: init.tls } : {}),
           };
+          releaseAttempts += 1;
+          if (options.failFirstRelease && releaseAttempts === 1) {
+            return Response.json(
+              { error: "mesh_terminal_session_release_failed" },
+              { status: 500 },
+            );
+          }
           if (options.legacyRelease) {
             return Response.json(
               { message: "Method not allowed" },
@@ -343,10 +352,18 @@ async function exerciseMeshTerminal(
       );
       expect(errors).toEqual([]);
     } finally {
+      if (options.failFirstRelease) {
+        await expect(connection.dispose()).rejects.toThrow(
+          "could not be released",
+        );
+      }
       await connection.dispose();
     }
     if (!capturedRelease) {
       throw new Error("The native Mesh terminal did not issue its release request");
+    }
+    if (options.failFirstRelease) {
+      expect(releaseAttempts).toBe(2);
     }
     await expectTerminalSessionReleased(capturedRelease);
   });
@@ -816,7 +833,11 @@ describe("native worker registration", () => {
       expect(await meshExecutor.isAgentProviderAvailable("copilot")).toBe(true);
 
       for (const scenario of [
-        { legacyRelease: false, relativeDirectory: false },
+        {
+          legacyRelease: false,
+          relativeDirectory: false,
+          failFirstRelease: true,
+        },
         { legacyRelease: true, relativeDirectory: true },
       ]) {
         await exerciseMeshTerminal(
@@ -826,7 +847,10 @@ describe("native worker registration", () => {
             ? "native-terminal"
             : join(worker.dataDir, "native-terminal"),
           platformOs,
-          { legacyRelease: scenario.legacyRelease },
+          {
+            legacyRelease: scenario.legacyRelease,
+            failFirstRelease: scenario.failFirstRelease,
+          },
         );
       }
       const deletedTerminalDirectory = await meshJsonRequest<FileMutationResponse>(

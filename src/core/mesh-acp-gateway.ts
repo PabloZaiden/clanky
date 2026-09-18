@@ -24,6 +24,8 @@ const MAX_RELAY_SESSIONS = 64;
 const MAX_STARTUP_STDERR_BYTES = 2_048;
 const ACP_GRACEFUL_STOP_WAIT_MS = 500;
 const ACP_FORCE_STOP_WAIT_MS = 1_000;
+const ACP_STOP_RETRY_MIN_MS = 1_000;
+const ACP_STOP_RETRY_MAX_MS = 30_000;
 
 function appendStartupDiagnostic(current: string, line: string): string {
   const combined = `${current}${current ? "\n" : ""}${line}`.replace(/[\r\n\t]+/g, " ");
@@ -65,6 +67,8 @@ interface RelayState {
   socket: MeshAcpSocket;
   process: AcpProcess;
   expiryTimer?: ReturnType<typeof setTimeout>;
+  stopRetryTimer?: ReturnType<typeof setTimeout>;
+  stopRetryDelayMs?: number;
 }
 
 interface OpeningState {
@@ -397,6 +401,10 @@ export class MeshAcpGateway {
       clearTimeout(relay.expiryTimer);
       relay.expiryTimer = undefined;
     }
+    if (relay.stopRetryTimer !== undefined) {
+      clearTimeout(relay.stopRetryTimer);
+      relay.stopRetryTimer = undefined;
+    }
     const stopping = relay.process
       .stop({
         gracefulWaitMs: ACP_GRACEFUL_STOP_WAIT_MS,
@@ -407,6 +415,10 @@ export class MeshAcpGateway {
           this.relays.delete(sessionId);
         }
       })
+      .catch((error: unknown) => {
+        this.scheduleStopRetry(sessionId, relay);
+        throw error;
+      })
       .finally(() => {
         if (this.stopping.get(sessionId) === stopping) {
           this.stopping.delete(sessionId);
@@ -414,6 +426,22 @@ export class MeshAcpGateway {
       });
     this.stopping.set(sessionId, stopping);
     await stopping;
+  }
+
+  private scheduleStopRetry(sessionId: string, relay: RelayState): void {
+    if (
+      this.relays.get(sessionId) !== relay
+      || relay.stopRetryTimer !== undefined
+    ) {
+      return;
+    }
+    const delayMs = relay.stopRetryDelayMs ?? ACP_STOP_RETRY_MIN_MS;
+    relay.stopRetryDelayMs = Math.min(delayMs * 2, ACP_STOP_RETRY_MAX_MS);
+    relay.stopRetryTimer = setTimeout(() => {
+      relay.stopRetryTimer = undefined;
+      this.closeInBackground(sessionId, "retrying process termination");
+    }, delayMs);
+    relay.stopRetryTimer.unref?.();
   }
 
   private async closeRelay(sessionId: string): Promise<void> {
@@ -446,6 +474,10 @@ export class MeshAcpGateway {
     if (relay.expiryTimer !== undefined) {
       clearTimeout(relay.expiryTimer);
       relay.expiryTimer = undefined;
+    }
+    if (relay.stopRetryTimer !== undefined) {
+      clearTimeout(relay.stopRetryTimer);
+      relay.stopRetryTimer = undefined;
     }
     meshExecutionGateway.closeSession(sessionId);
     try {
