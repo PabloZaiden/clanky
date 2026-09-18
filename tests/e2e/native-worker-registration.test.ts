@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import net from "node:net";
 import { tmpdir } from "node:os";
-import { isAbsolute, join, relative } from "node:path";
+import { basename, isAbsolute, join, relative } from "node:path";
 import {
   compiledClankyCommand,
   enrollMeshWorker,
@@ -30,6 +30,7 @@ import { MeshCommandExecutor } from "../../src/core/mesh-command-executor";
 import {
   executionPathsEqual,
   executionPathStyleForPlatform,
+  normalizeExecutionPath,
 } from "../../src/core/execution-path";
 import { runWithCurrentUser } from "../../src/context/user-context";
 import { openPreviewTcpForward } from "../../src/core/preview-tcp-forward";
@@ -474,8 +475,11 @@ async function exerciseMeshTerminal(
       const expectedDirectory = isAbsolute(directory)
         ? directory
         : join(executionRoot, directory);
-      const canonicalExpectedDirectory = await realpath(expectedDirectory);
       const pathStyle = platformOs === "windows" ? "windows" : "posix";
+      const expectedTerminalDirectories = [
+        normalizeExecutionPath(expectedDirectory, pathStyle),
+        normalizeExecutionPath(await realpath(expectedDirectory), pathStyle),
+      ];
       const cwdMarker = "NATIVE_TERMINAL_CWD";
       const cwdPrefix = `${cwdMarker}:`;
       connection.sendInput(buildTerminalCwdProbe({
@@ -490,10 +494,16 @@ async function exerciseMeshTerminal(
           if (start < 0 || end < 0) {
             return false;
           }
-          return executionPathsEqual(
-            value.slice(start + cwdPrefix.length, end),
-            canonicalExpectedDirectory,
-            pathStyle,
+          const reportedDirectory = value.slice(
+            start + cwdPrefix.length,
+            end,
+          );
+          return expectedTerminalDirectories.some(
+            (expectedTerminalDirectory) => executionPathsEqual(
+              reportedDirectory,
+              expectedTerminalDirectory,
+              pathStyle,
+            ),
           );
         },
         {
@@ -1598,22 +1608,44 @@ describe("native worker registration", () => {
       join(worker.dataDir, "native-files", "renamed.txt"),
     ).exists()).toBe(false);
 
-    const escapedWrite = await meshJsonRequest<{ error: string }>(
+    const escapedPath = `../${basename(worker.dataDir)}-escape.txt`;
+    const escapedWrite = await meshJsonRequest<FileWriteResponse>(
       controller,
       `${filesPath}/write`,
       {
         method: "POST",
         body: {
-          path: "../native-worker-escape.txt",
-          content: "must not escape\n",
+          path: escapedPath,
+          content: "trusted host access\n",
           expectedVersionToken: null,
           overwrite: false,
           startDirectory: null,
         },
       },
     );
-    expect(escapedWrite.status).toBe(400);
-    expect(escapedWrite.body.error).toBe("invalid_server_path");
+    expect(escapedWrite.status).toBe(200);
+    expect(escapedWrite.body.file.path).toBe(escapedPath);
+
+    const escapedRead = await meshJsonRequest<FileReadResponse>(
+      controller,
+      `${filesPath}/content?path=${encodeURIComponent(escapedPath)}`,
+    );
+    expect(escapedRead.status).toBe(200);
+    expect(escapedRead.body.content).toBe("trusted host access\n");
+
+    const escapedDelete = await meshJsonRequest<FileMutationResponse>(
+      controller,
+      `${filesPath}/delete`,
+      {
+        method: "POST",
+        body: {
+          path: escapedPath,
+          kind: "file",
+          startDirectory: null,
+        },
+      },
+    );
+    expect(escapedDelete.status).toBe(200);
 
     await restartMeshNode(worker, 20_000);
     expect(worker.generation).toBe(2);

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { generateKeyPairSync, sign, type KeyObject } from "node:crypto";
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
@@ -9,10 +9,10 @@ import type {
 } from "../../src/contracts/schemas/mesh-execution";
 import {
   MeshExecutionGateway,
-  assertPhysicalExecutionPath,
   assertMeshExecutionCwd,
   assertMeshExecutionPath,
   getMeshExecutionOperationCapability,
+  resolveMeshExecutionPath,
   resolveTrustedExecutionRoot,
 } from "../../src/core/mesh-execution-gateway";
 import { buildMeshExecutionSessionSigningPayload } from "../../src/core/mesh-protocol";
@@ -21,28 +21,32 @@ import { closeDatabase, initializeDatabase } from "../../src/persistence/databas
 import { getMeshNodeFingerprint, ensureLocalMeshNodeIdentity } from "../../src/persistence/mesh-node-identity";
 import { revokeControllerGrant, saveControllerGrant } from "../../src/persistence/mesh";
 
-describe("mesh execution path validation", () => {
-  test("keeps POSIX paths within the execution root", () => {
+describe("mesh execution path resolution", () => {
+  test("allows trusted sessions to use any POSIX host path", () => {
     expect(assertMeshExecutionCwd("/workspaces/repo", "/workspaces/repo", "posix"))
       .toBe("/workspaces/repo");
     expect(assertMeshExecutionCwd("/workspaces/repo", "/workspaces/repo/.clanky-worktrees/task-1", "posix"))
       .toBe("/workspaces/repo/.clanky-worktrees/task-1");
-    expect(() => assertMeshExecutionCwd("/workspaces/repo", "/tmp/other", "posix"))
-      .toThrow();
-    expect(() => assertMeshExecutionPath("/workspaces/repo", "/workspaces/repo/../other", "posix"))
-      .toThrow();
+    expect(assertMeshExecutionCwd("/workspaces/repo", "/tmp/other", "posix"))
+      .toBe("/tmp/other");
+    expect(assertMeshExecutionPath("/workspaces/repo", "/workspaces/repo/../other", "posix"))
+      .toBe("/workspaces/other");
   });
 
-  test("resolves relative paths against the execution root", () => {
+  test("resolves relative paths against the requested execution directory", () => {
     expect(assertMeshExecutionPath("/workspaces/repo", "relative/path", "posix"))
       .toBe("/workspaces/repo/relative/path");
     expect(assertMeshExecutionCwd("/workspaces/repo", ".", "posix"))
       .toBe("/workspaces/repo");
     expect(assertMeshExecutionCwd("/workspaces/repo", "subdir", "posix"))
       .toBe("/workspaces/repo/subdir");
+    expect(resolveMeshExecutionPath(
+      { executionRoot: "/workspaces/repo", pathStyle: "posix" },
+      "../shared",
+    )).toBe("/workspaces/shared");
   });
 
-  test("resolves Windows paths without allowing drive, casing, or separator escapes", () => {
+  test("resolves Windows paths without restricting drives or parent paths", () => {
     expect(assertMeshExecutionPath(
       "C:\\workspaces\\repo",
       "src\\index.ts",
@@ -53,16 +57,16 @@ describe("mesh execution path validation", () => {
       "c:/workspaces/repo/src/index.ts",
       "windows",
     )).toBe("c:\\workspaces\\repo\\src\\index.ts");
-    expect(() => assertMeshExecutionPath(
+    expect(assertMeshExecutionPath(
       "C:\\workspaces\\repo",
       "..\\other",
       "windows",
-    )).toThrow();
-    expect(() => assertMeshExecutionPath(
+    )).toBe("C:\\workspaces\\other");
+    expect(assertMeshExecutionPath(
       "C:\\workspaces\\repo",
       "D:\\workspaces\\repo\\src\\index.ts",
       "windows",
-    )).toThrow();
+    )).toBe("D:\\workspaces\\repo\\src\\index.ts");
   });
 
   test("rejects NUL bytes", () => {
@@ -74,49 +78,16 @@ describe("mesh execution path validation", () => {
       .toThrow();
   });
 
-  test("uses the canonical physical path after validating in-root symlinks", async () => {
-    const root = await mkdtemp(join(tmpdir(), "clanky-mesh-path-root-"));
-    const target = join(root, "physical");
-    await mkdir(target);
-    await writeFile(join(target, "note.txt"), "inside\n");
-    await symlink(target, join(root, "alias"));
-
-    try {
-      const trustedRoot = await resolveTrustedExecutionRoot(root, root, "posix");
-      expect(await assertPhysicalExecutionPath(
-        trustedRoot,
-        "alias/note.txt",
-      )).toBe(join(target, "note.txt"));
-      expect(await assertPhysicalExecutionPath(
-        trustedRoot,
-        "alias/new.txt",
-      )).toBe(join(target, "new.txt"));
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  });
-
-  test("accepts canonical paths returned through an aliased execution root", async () => {
-    const container = await mkdtemp(join(tmpdir(), "clanky-mesh-root-alias-"));
-    const physicalRoot = join(container, "physical");
-    const logicalRoot = join(container, "logical");
-    await mkdir(physicalRoot);
-    await writeFile(join(physicalRoot, "note.txt"), "inside\n");
-    await symlink(physicalRoot, logicalRoot);
-
-    try {
-      const trustedRoot = await resolveTrustedExecutionRoot(
-        logicalRoot,
-        logicalRoot,
-        "posix",
-      );
-      expect(await assertPhysicalExecutionPath(
-        trustedRoot,
-        join(physicalRoot, "note.txt"),
-      )).toBe(join(physicalRoot, "note.txt"));
-    } finally {
-      await rm(container, { recursive: true, force: true });
-    }
+  test("does not require the requested execution root to exist under worker root", async () => {
+    const trustedRoot = await resolveTrustedExecutionRoot(
+      "/worker/root",
+      "/tmp/other-host-directory",
+      "posix",
+    );
+    expect(trustedRoot).toEqual({
+      executionRoot: "/tmp/other-host-directory",
+      pathStyle: "posix",
+    });
   });
 
   test("assigns capability versions by Mesh operation contract", () => {
@@ -305,7 +276,7 @@ describe("mesh asynchronous command lifecycle", () => {
     )).rejects.toMatchObject({ code: "mesh_execution_context_changed" });
   });
 
-  test("executes structured filesystem operations without allowing lexical or symlink escapes", async () => {
+  test("executes structured filesystem operations across the trusted host", async () => {
     const session = await createSession("workspace-files");
     const execute = async (
       operation: Omit<
@@ -376,22 +347,20 @@ describe("mesh asynchronous command lifecycle", () => {
       path: "notes/done.txt",
     })).toBe(false);
 
-    await expect(execute({
+    const outsideFile = join(dataDir, "outside.txt");
+    await Bun.write(outsideFile, "outside\n");
+    expect(await execute({
       operation: "readFile",
-      path: "../outside.txt",
-    })).rejects.toMatchObject({ code: "mesh_execution_path_invalid" });
-    await expect(execute({
-      operation: "git",
-      cwd: workerDirectory,
-      args: [
-        "worktree",
-        "add",
-        join(dataDir, "escaped-worktree"),
-        "-b",
-        "escaped-worktree",
-      ],
-      gitScope: "managedWorktrees",
-    })).rejects.toMatchObject({ code: "mesh_execution_path_invalid" });
+      path: outsideFile,
+    })).toBe("outside\n");
+    const outsideWrite = join(dataDir, "outside-written.txt");
+    expect(await execute({
+      operation: "writeFile",
+      path: outsideWrite,
+      content: "outside write\n",
+    })).toBe(true);
+    expect(await Bun.file(outsideWrite).text()).toBe("outside write\n");
+
     await expect(execute({
       operation: "git",
       cwd: workerDirectory,
@@ -406,19 +375,11 @@ describe("mesh asynchronous command lifecycle", () => {
       gitScope: "managedWorktrees",
     })).rejects.toMatchObject({ code: "mesh_execution_request_invalid" });
 
-    await Bun.write(join(dataDir, "outside.txt"), "outside\n");
     await symlink(dataDir, join(workerDirectory, "outside-link"));
-    await expect(execute({
+    expect(await execute({
       operation: "readFile",
       path: "outside-link/outside.txt",
-    })).rejects.toMatchObject({ code: "mesh_execution_path_invalid" });
-
-    await symlink(join(dataDir, "future-directory"), join(workerDirectory, "dangling-link"));
-    await expect(execute({
-      operation: "writeFile",
-      path: "dangling-link/new.txt",
-      content: "outside\n",
-    })).rejects.toMatchObject({ code: "mesh_execution_path_invalid" });
+    })).toBe("outside\n");
   });
 
   test("cancels active commands when the controller grant is revoked", async () => {

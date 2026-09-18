@@ -30,7 +30,7 @@ import { decryptMeshPayload } from "./mesh-payload-crypto";
 import { requireTrustedController } from "./mesh-peer-auth";
 import { buildMeshTerminalSessionSigningPayload } from "./mesh-terminal-protocol";
 import {
-  assertPhysicalExecutionPath,
+  resolveMeshExecutionPath,
   resolveTrustedExecutionRoot,
 } from "./mesh-execution-gateway";
 import {
@@ -179,11 +179,11 @@ export class MeshTerminalGateway {
         request.executionRoot,
         pathStyle,
       );
-      const directory = await assertPhysicalExecutionPath(
+      const directory = resolveMeshExecutionPath(
         trustedRoot,
         request.directory,
       );
-      request.executionRoot = trustedRoot.physicalExecutionRoot;
+      request.executionRoot = trustedRoot.executionRoot;
       request.directory = directory;
       const decryptedEnvironment = request.encryptedEnvironment === undefined
         ? undefined

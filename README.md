@@ -309,8 +309,10 @@ An enrolled controller is a host-level trust boundary: it may request a remote
 execution session rooted at any path on the receiving host. Relative paths are
 resolved against the worker's configured `--worker-directory`; absolute paths
 are used directly. Mesh does not provide per-workspace sandboxing or a
-host-side root allowlist. Pair only controllers that are trusted with command
-and file access to that host.
+host-side root allowlist. This is intentional and must not be replaced by a
+path containment policy without an explicit product decision. Pair only
+controllers that are trusted with unrestricted command and file access to that
+host.
 Keep Mesh workers on a trusted network and use HTTPS (including WebSocket
 upgrades) when prompts, environment values, or file contents could cross an
 untrusted network. SSH-backed workspaces keep their existing routing.

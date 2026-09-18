@@ -44,14 +44,12 @@ export interface FileExplorerRouteConfig {
   invalidPathError: "invalid_workspace_path" | "invalid_server_path";
   internalError: "workspace_file_error" | "ssh_server_file_error";
   downloadDescription?: string;
-  allowOutsideRootForDownload?: boolean;
   resolveTarget: (
     req: Request,
     resourceId: string,
     startDirectory?: string,
     options?: {
       allowCredentialTokenQuery?: boolean;
-      allowOutsideRoot?: boolean;
     },
   ) => Promise<FileExplorerTarget>;
 }
@@ -111,9 +109,15 @@ function mapFileExplorerError(
       case "file_not_found":
         return errorResponse("file_not_found", error.message, 404);
       case "invalid_path_type":
-        return errorResponse("invalid_path_type", error.message, 400);
+      case "invalid_path":
+        return errorResponse(
+          error.code === "invalid_path"
+            ? config.invalidPathError
+            : "invalid_path_type",
+          error.message,
+          400,
+        );
       case "root_not_mutable":
-      case "path_outside_root":
         return errorResponse(config.invalidPathError, error.message, 400);
       case "invalid_file_name":
         return errorResponse("invalid_file_name", error.message, 400);
@@ -274,7 +278,6 @@ export function createFileExplorerRoutes(
             getStartDirectory(validation.data.startDirectory),
             {
               allowCredentialTokenQuery: true,
-              allowOutsideRoot: config.allowOutsideRootForDownload,
             },
           );
           if (req.method === "HEAD") {
