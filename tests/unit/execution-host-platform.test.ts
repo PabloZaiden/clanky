@@ -23,6 +23,7 @@ describe("Execution host platform contract", () => {
         architecture: "x64",
       },
       capabilities: {
+        commandExecution: 1,
         fileOperations: 2,
         git: 2,
         managedWorktrees: 2,

@@ -105,6 +105,19 @@ export function executionPathStyleForPlatform(
   return null;
 }
 
+export function inferExecutionPathStyle(
+  path: string,
+): ExecutionPathStyle | null {
+  const value = path.trim();
+  if (!value || value.includes("\0")) {
+    return null;
+  }
+  if (/^[a-z]:[\\/]/i.test(value) || /^\\\\[^\\]+\\[^\\]+/.test(value)) {
+    return "windows";
+  }
+  return value.startsWith("/") ? "posix" : null;
+}
+
 export function normalizeExecutionRoot(
   root: string,
   style: ExecutionPathStyle,

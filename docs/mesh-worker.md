@@ -179,6 +179,14 @@ outage.
 The start request is idempotent across a retried Mesh session, so losing the
 initial response does not launch a second command.
 
+Command execution always transports one executable plus a separate argument
+array. Clanky does not parse shell syntax or translate Bash commands to
+PowerShell. Callers must select commands available on the worker platform and
+invoke an explicit shell only when shell behavior is intentional. Windows
+commands run as the configured worker account with the same bounded output,
+timeout, cancellation, execution-root validation, and process-tree cleanup
+contract as POSIX workers.
+
 ## Register as an operating-system service
 
 The service command requires the standalone `clanky` binary and an already
@@ -200,28 +208,41 @@ command:
 CLANKY_DATA_DIR=/srv/clanky-worker clanky worker service install
 ```
 
-On Windows, install
-[WinSW 2.12](https://github.com/winsw/winsw/releases/tag/v2.12.0) separately
-and point Clanky at the downloaded executable:
+WinSW is required only for a persistent Windows worker service. Foreground
+workers and controller-only Windows installations do not need it. Download
+[WinSW 2.12.0](https://github.com/winsw/winsw/releases/tag/v2.12.0) from the
+official release, choose `WinSW-x64.exe` or `WinSW-arm64.exe` to match the
+host architecture, verify the downloaded executable, and keep it at a trusted
+stable path. Point Clanky at that source wrapper whenever running
+`worker service install`, including upgrades and reinstalls:
 
 ```powershell
 $env:CLANKY_WORKER_SERVICE_WRAPPER = "C:\Tools\WinSW-x64.exe"
 clanky worker service install
 ```
 
-The command verifies the supplied wrapper but never downloads WinSW or another
-host dependency. On first install, WinSW requests elevation and prompts for
-the worker account and password. Enter the same account running the bootstrap
-command and allow the **Log on as a service** right. Passwords are handled by
-WinSW and are not stored in Clanky configuration or data.
+Clanky checks that the supplied path is a regular file, but it does not
+download, authenticate, inspect, or update WinSW or another host dependency.
+The operator owns the provenance and lifecycle of that source executable. On
+first install, WinSW requests elevation and prompts for the worker account and
+password. Enter the same account running the bootstrap command and allow the
+**Log on as a service** right. Passwords are handled by WinSW and are not
+stored in Clanky configuration or data.
 
-Clanky deploys an operational copy of its installed release binary under
-`$CLANKY_DATA_DIR\worker-service`, registers it for delayed automatic startup,
-and configures bounded rolling logs plus restart-on-failure recovery. The
-service runs with the persisted worker configuration and the user environment
-needed to find externally installed tools such as Git. `status`, `start`,
-`stop`, `restart`, and `uninstall` query or control the Windows Service Control
-Manager; no interactive login session is required after installation.
+Clanky copies WinSW and an operational copy of its installed release binary
+under `$CLANKY_DATA_DIR\worker-service`, registers the managed wrapper for
+delayed automatic startup, and configures bounded rolling logs plus
+restart-on-failure recovery. After installation, `status`, `start`, `stop`,
+`restart`, and `uninstall` use the managed copy and do not require
+`CLANKY_WORKER_SERVICE_WRAPPER` or the source file. A later `service install`
+does require the source wrapper again so it can atomically refresh the managed
+copy.
+
+The service runs with the persisted worker configuration and the selected
+worker account's environment needed to find externally installed tools such
+as Git. Ensure those tools are on that account's `PATH`; the non-interactive
+service cannot use temporary shell-session configuration or display dependency
+prompts. No interactive login session is required after installation.
 
 On macOS, the per-user LaunchAgent starts at login through `/bin/zsh -lic`.
 The worker process starts its permission preflight asynchronously: it requests

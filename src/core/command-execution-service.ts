@@ -2,7 +2,6 @@
  * Shared bounded command execution semantics for workspaces and execution hosts.
  */
 
-import { posix as pathPosix } from "node:path";
 import type {
   CommandExecRequest,
   CommandExecResult,
@@ -13,6 +12,12 @@ import {
   type CommandExecutor,
 } from "./command-executor";
 import { DomainError } from "./domain-error";
+import {
+  ExecutionPathError,
+  normalizeExecutionPath,
+  resolveExecutionPathFromDirectory,
+  type ExecutionPathStyle,
+} from "./execution-path";
 
 export interface CommandExecutionErrorCodes {
   cwdInvalid: string;
@@ -24,28 +29,24 @@ export interface CommandExecutionErrorCodes {
 export function resolveCommandWorkingDirectory(
   rootDirectory: string,
   requestedCwd: string | undefined,
+  pathStyle: ExecutionPathStyle,
   errors: Pick<CommandExecutionErrorCodes, "cwdInvalid">,
 ): string {
-  const trimmedRoot = rootDirectory.trim();
-  if (!trimmedRoot || trimmedRoot.includes("\0")) {
+  try {
+    const root = normalizeExecutionPath(rootDirectory.trim(), pathStyle);
+    return requestedCwd === undefined
+      ? root
+      : resolveExecutionPathFromDirectory(root, requestedCwd.trim(), pathStyle);
+  } catch (error) {
+    if (!(error instanceof ExecutionPathError)) {
+      throw error;
+    }
     throw new DomainError(
       errors.cwdInvalid,
-      "The execution root is not a valid path.",
+      "The execution cwd is not a valid path for the selected host.",
+      { cause: error, details: { pathStyle } },
     );
   }
-  const root = pathPosix.normalize(trimmedRoot);
-  if (requestedCwd === undefined) {
-    return root;
-  }
-
-  const cwd = requestedCwd.trim();
-  if (!cwd || cwd.includes("\0")) {
-    throw new DomainError(
-      errors.cwdInvalid,
-      "The execution cwd must be a non-empty path without NUL bytes.",
-    );
-  }
-  return pathPosix.normalize(cwd.startsWith("/") ? cwd : pathPosix.join(root, cwd));
 }
 
 async function requireExecutionDirectory(
@@ -70,7 +71,12 @@ export async function executeCommand(
   signal: AbortSignal | undefined,
   errors: CommandExecutionErrorCodes,
 ): Promise<CommandExecResult> {
-  const cwd = resolveCommandWorkingDirectory(rootDirectory, request.cwd, errors);
+  const cwd = resolveCommandWorkingDirectory(
+    rootDirectory,
+    request.cwd,
+    executor.pathStyle,
+    errors,
+  );
   await requireExecutionDirectory(executor, cwd, errors);
 
   try {

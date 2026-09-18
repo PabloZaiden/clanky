@@ -350,6 +350,22 @@ clanky worker bootstrap \
 clanky worker service install
 ```
 
+Running a worker in the foreground does not require a service wrapper. A
+persistent Windows worker requires
+[WinSW 2.12.0](https://github.com/winsw/winsw/releases/tag/v2.12.0) matching
+the host architecture (`WinSW-x64.exe` or `WinSW-arm64.exe`). Download it from
+the official release, keep it at a trusted stable path, and provide that path
+whenever installing or upgrading the service:
+
+```powershell
+$env:CLANKY_WORKER_SERVICE_WRAPPER = "C:\Tools\WinSW-x64.exe"
+clanky worker service install
+```
+
+Clanky does not download or authenticate WinSW. See
+[Mesh worker setup](docs/mesh-worker.md#register-as-an-operating-system-service)
+for account, credential, lifecycle, and upgrade details.
+
 On macOS, the worker process starts an asynchronous permission preflight when
 the LaunchAgent starts it. It requests Accessibility, Screen Recording, and
 direct screen capture access for screenshots. The preflight also performs one

@@ -6,7 +6,7 @@
  * parallel over the shared multiplexed connection.
  */
 
-import { posix } from "node:path";
+import { posix, win32 } from "node:path";
 import type {
   CommandExecutor,
   CommandResult,
@@ -38,11 +38,44 @@ import {
   buildProviderAvailabilityShellCheck,
   isAgentProviderAvailable,
 } from "../agent-runtime-command";
+import { terminateSubprocessTree } from "../subprocess-termination";
 
 const LOG_PREFIX = "[CommandExecutor]";
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
+const POSIX_DEFAULT_PATH =
+  "/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin";
 
 const sshControlMasterInitializers = new Map<string, Promise<CommandResult>>();
+
+function inheritedExecutableSearchPath(
+  environment: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): string | undefined {
+  const configured = platform === "win32"
+    ? Object.entries(environment).find(([key]) => key.toLowerCase() === "path")?.[1]
+    : environment["PATH"];
+  if (configured?.trim()) {
+    return configured;
+  }
+  if (platform !== "win32") {
+    return POSIX_DEFAULT_PATH;
+  }
+  const windowsDirectory = environment["SystemRoot"] ?? environment["WINDIR"];
+  if (!windowsDirectory?.trim()) {
+    return undefined;
+  }
+  return [
+    win32.join(windowsDirectory, "System32"),
+    windowsDirectory,
+    win32.join(windowsDirectory, "System32", "Wbem"),
+    win32.join(
+      windowsDirectory,
+      "System32",
+      "WindowsPowerShell",
+      "v1.0",
+    ),
+  ].join(";");
+}
 export interface StreamedProcess {
   stdout: ReadableStream<Uint8Array> | null;
   stderr: ReadableStream<Uint8Array> | null;
@@ -411,7 +444,6 @@ export class CommandExecutorImpl implements CommandExecutor {
     onStderrChunk?: (chunk: string) => void,
     maxOutputBytes?: number,
   ): Promise<CommandResult> {
-    let proc: Bun.Subprocess | undefined;
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     let abortHandler: (() => void) | undefined;
     try {
@@ -424,9 +456,10 @@ export class CommandExecutorImpl implements CommandExecutor {
         };
       }
 
+      const executableSearchPath = inheritedExecutableSearchPath();
       const commandEnv = {
         ...process.env,
-        PATH: process.env["PATH"] ?? "/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin",
+        ...(executableSearchPath ? { PATH: executableSearchPath } : {}),
         ...env,
       };
 
@@ -436,66 +469,67 @@ export class CommandExecutorImpl implements CommandExecutor {
         stderr: "pipe",
         env: commandEnv,
       });
-      proc = subprocess;
-
-      const killProcess = () => {
-        try {
-          proc?.kill();
-        } catch {
-          // Ignore kill errors while stopping a process after an output limit.
-        }
+      let terminationPromise: Promise<void> | undefined;
+      const terminateProcess = (): Promise<void> => {
+        terminationPromise ??= terminateSubprocessTree(subprocess, {
+          requireExit: true,
+        });
+        return terminationPromise;
+      };
+      const requestTermination = (): void => {
+        void terminateProcess().catch(() => {
+          // The owning execution path awaits and reports this failure.
+        });
       };
       const stdoutPromise = readProcessStream(subprocess.stdout, onStdoutChunk, {
         maxBytes: maxOutputBytes,
         streamName: "stdout",
-        onLimit: killProcess,
+        onLimit: requestTermination,
       });
       const stderrPromise = readProcessStream(subprocess.stderr, onStderrChunk, {
         maxBytes: maxOutputBytes,
         streamName: "stderr",
-        onLimit: killProcess,
+        onLimit: requestTermination,
       });
+      const streamResultsPromise = Promise.allSettled([
+        stdoutPromise,
+        stderrPromise,
+      ]);
 
       let timedOut = false;
       let aborted = false;
       const timeoutPromise = timeoutMs === undefined
         ? undefined
-        : new Promise<number>((resolve) => {
+        : new Promise<number>((resolve, reject) => {
             timeoutId = setTimeout(() => {
               timedOut = true;
-              try {
-                subprocess.kill();
-              } catch {
-                // Ignore kill errors during timeout cleanup
-              }
-              resolve(124);
+              void terminateProcess().then(
+                () => resolve(124),
+                reject,
+              );
             }, timeoutMs);
           });
 
-      const abortPromise = new Promise<number>((resolve) => {
+      const abortPromise = new Promise<number>((resolve, reject) => {
         if (!signal) {
           return;
         }
 
         if (signal.aborted) {
           aborted = true;
-          try {
-            subprocess.kill();
-          } catch {
-            // Ignore kill errors during abort cleanup
-          }
-          resolve(130);
+          void terminateProcess().then(
+            () => resolve(130),
+            reject,
+          );
           return;
         }
 
         abortHandler = () => {
           aborted = true;
-          try {
-            subprocess.kill();
-          } catch {
-            // Ignore kill errors during abort cleanup
-          }
-          resolve(130);
+          void terminateProcess().then(
+            () => resolve(130),
+            reject,
+          );
         };
 
         signal.addEventListener("abort", abortHandler, { once: true });
@@ -515,8 +549,11 @@ export class CommandExecutorImpl implements CommandExecutor {
       if (signal && abortHandler) {
         signal.removeEventListener("abort", abortHandler);
       }
+      if ((timedOut || aborted) && terminationPromise) {
+        await terminationPromise;
+      }
 
-      const streamResults = await Promise.allSettled([stdoutPromise, stderrPromise]);
+      const streamResults = await streamResultsPromise;
       const outputLimitResult = streamResults.find(
         (result): result is PromiseRejectedResult => (
           result.status === "rejected"
@@ -524,6 +561,9 @@ export class CommandExecutorImpl implements CommandExecutor {
         ),
       );
       if (outputLimitResult) {
+        if (terminationPromise) {
+          await terminationPromise;
+        }
         throw outputLimitResult.reason;
       }
       const streamError = streamResults.find(
@@ -544,7 +584,7 @@ export class CommandExecutorImpl implements CommandExecutor {
           success: false,
           stdout,
           stderr: stderr || `Command timed out after ${timeoutMs}ms`,
-          exitCode: racedExitCode,
+          exitCode: 124,
         };
       }
 
@@ -553,7 +593,7 @@ export class CommandExecutorImpl implements CommandExecutor {
           success: false,
           stdout,
           stderr: stderr || "Command aborted",
-          exitCode: racedExitCode,
+          exitCode: 130,
         };
       }
 

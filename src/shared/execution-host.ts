@@ -158,6 +158,7 @@ export const POSIX_EXECUTION_HOST_CAPABILITIES: ExecutionHostCapabilities = {
 };
 
 export const WINDOWS_EXECUTION_HOST_CAPABILITIES: ExecutionHostCapabilities = {
+  commandExecution: 1,
   fileOperations: 2,
   git: 2,
   managedWorktrees: 2,

@@ -21,6 +21,7 @@ import type {
 import { MeshCommandExecutorClient } from "./mesh-command-executor-client";
 import type { AgentProvider } from "@/shared/settings";
 import {
+  inferExecutionPathStyle,
   isAbsoluteExecutionPath,
   normalizeExecutionRoot,
 } from "./execution-path";
@@ -63,13 +64,15 @@ export class MeshCommandExecutor implements CommandExecutor {
   }
 
   get pathStyle(): ExecutionPathStyle {
-    if (!this.configuredPathStyle) {
+    const pathStyle = this.configuredPathStyle
+      ?? inferExecutionPathStyle(this.configuredDirectory);
+    if (!pathStyle) {
       throw new DomainError(
         "execution_host_unavailable",
         "The selected Mesh execution host has no supported path semantics.",
       );
     }
-    return this.configuredPathStyle;
+    return pathStyle;
   }
 
   async getExecutionDirectory(): Promise<string> {
