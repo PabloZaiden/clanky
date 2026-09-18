@@ -308,7 +308,7 @@ export const routes = defineRoutes<ClankyRealtimeEvent>({
   "/api/previews/bridge": {
     auth: "user",
     sameOrigin: "always",
-    description: "Open the raw websocket bridge for a workspace preview.",
+    description: "Open the raw websocket bridge for a workspace or direct server preview.",
     GET: (req, ctx) => {
       const user = ctx.requireUser();
       return authorizedRawWebSocketUpgrade(user.id, () => {

@@ -71,8 +71,8 @@ export function createClankyCli() {
     commands: {
       mesh: createMeshCommand(),
       preview: {
-        description: "Start a local CLI-owned live preview for a workspace service.",
-        usage: "preview --workspace ID_OR_NAME --port PORT [options]",
+        description: "Start a local CLI-owned live preview for a workspace or server service.",
+        usage: "preview (--workspace ID_OR_NAME | --server NAME_OR_ID) --port PORT [options]",
         handler: async (context) => {
           const command = parsePreviewCommandArgs(context.args);
           const exitCode = await runPreviewCommand(command, {

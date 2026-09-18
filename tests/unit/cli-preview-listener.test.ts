@@ -29,6 +29,7 @@ class FakeBridgeSocket extends EventTarget {
       const ready = {
         type: "ready",
         previewId: "preview-1",
+        targetKind: "workspace",
         workspaceId: "workspace-1",
       } satisfies PreviewBridgeReadyMessage;
       queueMicrotask(() => {

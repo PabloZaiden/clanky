@@ -102,7 +102,7 @@ export const terminalSessionEventEmitter = new SimpleEventEmitter<TerminalSessio
 export const provisioningEventEmitter = new SimpleEventEmitter<ProvisioningEvent>();
 
 /**
- * Global event emitter instance for workspace live preview events.
+ * Global event emitter instance for workspace and direct server preview events.
  */
 export const previewEventEmitter = new SimpleEventEmitter<PreviewEvent>();
 

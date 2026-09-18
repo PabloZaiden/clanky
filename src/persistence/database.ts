@@ -487,7 +487,7 @@ function createTables(database: Database): void {
       WHERE status IN ('starting', 'active', 'stopping')
     `);
 
-    // Preview sessions table - CLI-owned workspace live previews
+    // Legacy workspace-only preview table; migration 56 adds server targets.
     database.run(`
       CREATE TABLE IF NOT EXISTS preview_sessions (
         id TEXT PRIMARY KEY,

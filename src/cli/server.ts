@@ -7,10 +7,8 @@ import {
   type ExecutionHostDescriptorInput,
 } from "@/contracts/schemas";
 import {
-  executionHostRefsEqual,
+  executionHostReferenceMatches,
   getExecutionHostSourceId,
-  parseExecutionHostRef,
-  serializeExecutionHostRef,
   type ExecutionHostRef,
 } from "@/shared";
 import type {
@@ -90,25 +88,11 @@ async function listExecutionHosts(
   return hosts;
 }
 
-function parseReference(reference: string): ExecutionHostRef | undefined {
-  try {
-    return parseExecutionHostRef(reference);
-  } catch {
-    return undefined;
-  }
-}
-
 function findExecutionHost(
   hosts: readonly ExecutionHostDescriptorInput[],
   reference: string,
 ): ExecutionHostDescriptorInput {
-  const parsedReference = parseReference(reference);
-  const matches = hosts.filter((host) => (
-    host.name === reference
-    || getExecutionHostSourceId(host.ref) === reference
-    || serializeExecutionHostRef(host.ref) === reference
-    || (parsedReference !== undefined && executionHostRefsEqual(host.ref, parsedReference))
-  ));
+  const matches = hosts.filter((host) => executionHostReferenceMatches(host, reference));
   if (matches.length === 1) {
     return matches[0]!;
   }

@@ -86,6 +86,37 @@ ON CONFLICT(id) DO UPDATE SET
   updated_at = excluded.updated_at,
   repositories_base_path = excluded.repositories_base_path;
 
+INSERT INTO execution_hosts (
+  id,
+  user_id,
+  kind,
+  source_id,
+  target_key,
+  revision,
+  revoked_at,
+  created_at,
+  updated_at
+) VALUES (
+  'demo-execution-host-build',
+  'admin',
+  'ssh',
+  'demo-server-build',
+  'demo-ssh-target-build',
+  1,
+  NULL,
+  '2026-04-16T18:00:00.000Z',
+  '2026-04-16T18:00:00.000Z'
+)
+ON CONFLICT(id) DO UPDATE SET
+  user_id = excluded.user_id,
+  kind = excluded.kind,
+  source_id = excluded.source_id,
+  target_key = excluded.target_key,
+  revision = excluded.revision,
+  revoked_at = excluded.revoked_at,
+  created_at = excluded.created_at,
+  updated_at = excluded.updated_at;
+
 INSERT INTO ssh_server_sessions (
   id,
   user_id,
@@ -1546,7 +1577,10 @@ ON CONFLICT(id) DO UPDATE SET
 INSERT INTO preview_sessions (
   id,
   user_id,
+  target_kind,
   workspace_id,
+  execution_host_id,
+  execution_host_revision,
   remote_host,
   remote_port,
   local_host,
@@ -1564,7 +1598,10 @@ INSERT INTO preview_sessions (
 ) VALUES (
   'demo-preview-session-1',
   'admin',
+  'workspace',
   'demo-workspace-api',
+  'demo-execution-host-build',
+  1,
   '127.0.0.1',
   4173,
   '127.0.0.1',
@@ -1581,7 +1618,10 @@ INSERT INTO preview_sessions (
   NULL
 )
 ON CONFLICT(id) DO UPDATE SET
+  target_kind = excluded.target_kind,
   workspace_id = excluded.workspace_id,
+  execution_host_id = excluded.execution_host_id,
+  execution_host_revision = excluded.execution_host_revision,
   remote_host = excluded.remote_host,
   remote_port = excluded.remote_port,
   local_host = excluded.local_host,

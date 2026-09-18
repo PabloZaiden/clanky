@@ -14,6 +14,7 @@ import {
   createExecutionHostRuntimeSnapshot,
   executionHostRefsEqual,
   getExecutionHostAgentProvider,
+  executionHostReferenceMatches,
   isPrivateMeshExecutionHostRef,
   isWorkspaceSshExecutionHostRef,
   supportsExecutionHostCapability,
@@ -291,6 +292,45 @@ export class ExecutionHostService {
       );
     }
     return descriptor;
+  }
+
+  async resolveReference(
+    reference: string,
+    userId: string = requireCurrentUserId(),
+  ): Promise<ExecutionHostDescriptor> {
+    const normalized = reference.trim();
+    if (!normalized) {
+      throw new DomainError(
+        "execution_host_reference_required",
+        "Execution host is required.",
+      );
+    }
+    const matches = (await this.listHosts(userId)).filter((host) =>
+      executionHostReferenceMatches(host, normalized)
+    );
+    if (matches.length === 0) {
+      throw new DomainError(
+        "execution_host_not_found",
+        "Execution host not found.",
+        { details: { reference: normalized } },
+      );
+    }
+    if (matches.length > 1) {
+      throw new DomainError(
+        "execution_host_name_ambiguous",
+        "Execution host name is ambiguous.",
+        {
+          details: {
+            reference: normalized,
+            candidates: matches.map((host) => ({
+              name: host.name,
+              ref: host.ref,
+            })),
+          },
+        },
+      );
+    }
+    return matches[0]!;
   }
 
   getRegisteredHosts(userId: string = requireCurrentUserId()): PersistedExecutionHost[] {

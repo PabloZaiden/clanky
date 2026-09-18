@@ -1,12 +1,22 @@
 /**
- * Workspace live preview domain and bridge protocol types.
+ * Live preview domain and bridge protocol types.
  */
+
+import type { ExecutionHostBinding } from "./execution-host";
 
 export type PreviewSessionStatus = "active" | "closing" | "closed" | "failed";
 
+export type PreviewTargetKind = "workspace" | "server";
+
+export type PreviewTarget =
+  | { kind: "workspace"; reference: string }
+  | { kind: "server"; reference: string };
+
 export interface PreviewSessionConfig {
   id: string;
-  workspaceId: string;
+  targetKind: PreviewTargetKind;
+  workspaceId?: string;
+  executionHostBinding: ExecutionHostBinding;
   remoteHost: string;
   remotePort: number;
   localHost: string;
@@ -32,7 +42,7 @@ export interface PreviewSession {
 }
 
 export interface RegisterCliPreviewOptions {
-  workspace: string;
+  target: PreviewTarget;
   remoteHost: string;
   remotePort: number;
   localHost: string;
@@ -43,15 +53,20 @@ export interface RegisterCliPreviewOptions {
   cliHostname?: string;
 }
 
+interface PreviewEventTarget {
+  workspaceId?: string;
+  executionHostBinding?: ExecutionHostBinding;
+}
+
 export type PreviewEvent =
-  | { type: "preview.created"; previewId: string; workspaceId: string; preview: PreviewSession; timestamp: string }
-  | { type: "preview.connected"; previewId: string; workspaceId: string; preview: PreviewSession; timestamp: string }
-  | { type: "preview.closed"; previewId: string; workspaceId: string; preview: PreviewSession; timestamp: string }
-  | { type: "preview.failed"; previewId: string; workspaceId: string; error: string; preview?: PreviewSession; timestamp: string };
+  | ({ type: "preview.created"; previewId: string; preview: PreviewSession } & PreviewEventTarget & { timestamp: string })
+  | ({ type: "preview.connected"; previewId: string; preview: PreviewSession } & PreviewEventTarget & { timestamp: string })
+  | ({ type: "preview.closed"; previewId: string; preview: PreviewSession } & PreviewEventTarget & { timestamp: string })
+  | ({ type: "preview.failed"; previewId: string; error: string; preview?: PreviewSession } & PreviewEventTarget & { timestamp: string });
 
 export interface PreviewBridgeHelloMessage {
   type: "hello";
-  workspace: string;
+  target: PreviewTarget;
   remoteHost: string;
   remotePort: number;
   localHost: string;
@@ -65,7 +80,8 @@ export interface PreviewBridgeHelloMessage {
 export interface PreviewBridgeReadyMessage {
   type: "ready";
   previewId: string;
-  workspaceId: string;
+  targetKind: PreviewTargetKind;
+  workspaceId?: string;
 }
 
 export interface PreviewBridgeRequestStartMessage {

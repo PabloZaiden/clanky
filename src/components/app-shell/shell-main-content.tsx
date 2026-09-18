@@ -621,6 +621,7 @@ function renderMainContent(props: ShellMainContentProps) {
     return (
       <ExecutionHostView
         host={host}
+        executionHosts={executionHosts}
         workspaces={hostWorkspaces}
         sessions={hostSessions}
         chats={hostChats}

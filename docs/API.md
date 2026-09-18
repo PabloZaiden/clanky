@@ -239,9 +239,9 @@ the running version. Framework-owned routes such as `/api/auth/*`,
 | GET, PUT | `/api/preferences/markdown-rendering` | Persist markdown rendering preferences. |
 | GET, PUT | `/api/preferences/quick-chat` | Persist quick chat workspace and model preferences. |
 | GET, PUT | `/api/preferences/scheduler-timezone` | Persist the scheduler timezone preference. |
-| GET | `/api/previews` | List active workspace previews. |
-| DELETE | `/api/previews/:previewId` | Close an active workspace preview. |
-| GET | `/api/previews/bridge` | Open the raw websocket bridge for a workspace preview. |
+| GET | `/api/previews` | List all active workspace and direct server previews. |
+| DELETE | `/api/previews/:previewId` | Close an active workspace or direct server preview. |
+| GET | `/api/previews/bridge` | Open the raw websocket bridge for a workspace or direct server preview. |
 | POST | `/api/provisioning-jobs` | Start a remote provisioning job. |
 | GET, DELETE | `/api/provisioning-jobs/:id` | Read or cancel a remote provisioning job. |
 | GET | `/api/provisioning-jobs/:id/logs` | Read logs for a remote provisioning job. |
@@ -335,7 +335,8 @@ the running version. Framework-owned routes such as `/api/auth/*`,
 | GET, PUT | `/api/workspaces/:id/server-settings` | Read or update workspace server settings. |
 | GET | `/api/workspaces/:id/server-settings/status` | Read the current workspace connection status. |
 | POST | `/api/workspaces/:id/server-settings/test` | Test the configured workspace connection using workspace settings. |
-| GET | `/api/workspaces/:workspaceId/previews` | List previews for a workspace. |
+| GET | `/api/workspaces/:workspaceId/previews` | List previews associated with a workspace. |
+| GET | `/api/execution-hosts/:kind/:id/previews` | List direct previews for a local or Mesh execution host. Direct SSH previews are unsupported. |
 
 </details>
 
@@ -3028,7 +3029,7 @@ parameters are combined with AND. Common filters are:
 |-----------|-------------|
 | `resource` | Resource name for invalidation events, such as `tasks`, `chats`, `agents`, `agent-runs`, `terminal-sessions`, `ssh-server-sessions`, `provisioning-jobs`, or `previews` |
 | `id` | Entity ID for a resource invalidation |
-| `scope` | Resource scope, such as an agent ID for `agent-runs` or a workspace ID for `previews` |
+| `scope` | Resource scope, such as an agent ID for `agent-runs`, a workspace ID for workspace `previews`, or a serialized execution-host reference (for example, `local:node-id` or `mesh:node-id`) for direct server `previews` |
 | `taskId` | Target a retained task stream |
 | `chatId` | Target a retained chat stream |
 | `agentId` | Target a retained agent-run stream or an agent-run resource scope |

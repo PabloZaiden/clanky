@@ -15,7 +15,8 @@ const WS_READY_STATE_CLOSING = 2;
 const PREVIEW_LISTENER_WS_IDLE_TIMEOUT_SECONDS = 0;
 
 export interface PreviewCommandOptions {
-  workspace: string;
+  workspace?: string;
+  server?: string;
   port: number;
   remoteHost: string;
   host: string;
@@ -98,6 +99,7 @@ export function parsePreviewCommandArgs(args: readonly string[]): PreviewCommand
   const positionals: string[] = [];
   const allowedOptions = new Set([
     "--workspace",
+    "--server",
     "--port",
     "--remote-host",
     "--host",
@@ -139,8 +141,12 @@ export function parsePreviewCommandArgs(args: readonly string[]): PreviewCommand
   }
 
   const workspace = options["--workspace"]?.trim();
-  if (!workspace) {
-    throw new Error("Missing required option: --workspace");
+  const server = options["--server"]?.trim();
+  if (!workspace && !server) {
+    throw new Error("Exactly one target option is required: --workspace or --server");
+  }
+  if (workspace && server) {
+    throw new Error("--workspace and --server may not be used together");
   }
   const rawPort = options["--port"]?.trim();
   if (!rawPort) {
@@ -152,6 +158,7 @@ export function parsePreviewCommandArgs(args: readonly string[]): PreviewCommand
   return {
     baseUrl,
     workspace,
+    server,
     port: parsePortOption("--port", rawPort),
     remoteHost: options["--remote-host"]?.trim() || "localhost",
     host: options["--host"]?.trim() || "localhost",
@@ -570,7 +577,9 @@ export async function runPreviewCommand(
   const actualLocalUrl = `http://${command.host}:${String(serverPort)}${localPath}`;
   socket.send(JSON.stringify({
     type: "hello",
-    workspace: command.workspace,
+    target: command.server
+      ? { kind: "server", reference: command.server }
+      : { kind: "workspace", reference: command.workspace! },
     remoteHost: command.remoteHost,
     remotePort: command.port,
     localHost: command.host,
@@ -580,9 +589,12 @@ export async function runPreviewCommand(
     cliHostname: (dependencies.getHostname ?? hostname)(),
   } satisfies PreviewBridgeClientMessage));
 
-  const ready = await waitForReady(socket);
+  await waitForReady(socket);
   out(`Preview ready: ${actualLocalUrl}`);
-  out(`Remote target: ${command.remoteHost}:${String(command.port)} (${ready.workspaceId})`);
+  const targetLabel = command.server
+    ? `server ${command.server}`
+    : `workspace ${command.workspace}`;
+  out(`Remote target: ${command.remoteHost}:${String(command.port)} (${targetLabel})`);
   for (const lanUrl of getLanUrls(command.host, serverPort, localPath)) {
     out(`LAN URL: ${lanUrl}`);
   }

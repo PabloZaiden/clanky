@@ -36,7 +36,11 @@ export { formatFileSize, formatRelativeTime } from "./format";
 
 export { readClipboardContent, writeTextToClipboard, type ClipboardReadResult } from "./clipboard";
 
-export { buildPreviewCliCommand, getPreviewWorkspaceReference } from "./preview-command";
+export {
+  buildPreviewCliCommand,
+  getPreviewServerReference,
+  getPreviewWorkspaceReference,
+} from "./preview-command";
 
 export {
   getEffectiveTerminalConnectionMode,

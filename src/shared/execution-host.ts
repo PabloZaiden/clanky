@@ -447,6 +447,26 @@ export function parseExecutionHostRef(value: string): ExecutionHostRef {
   return ref;
 }
 
+export function executionHostReferenceMatches(
+  host: Pick<ExecutionHostDescriptor, "ref" | "name">,
+  reference: string,
+): boolean {
+  const normalized = reference.trim();
+  if (!normalized) {
+    return false;
+  }
+  let parsedReference: ExecutionHostRef | undefined;
+  try {
+    parsedReference = parseExecutionHostRef(normalized);
+  } catch {
+    parsedReference = undefined;
+  }
+  return host.name === normalized
+    || getExecutionHostSourceId(host.ref) === normalized
+    || serializeExecutionHostRef(host.ref) === normalized
+    || (parsedReference !== undefined && executionHostRefsEqual(host.ref, parsedReference));
+}
+
 export function executionHostRefsEqual(
   left: ExecutionHostRef,
   right: ExecutionHostRef,
