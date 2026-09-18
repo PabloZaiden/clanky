@@ -200,6 +200,29 @@ command:
 CLANKY_DATA_DIR=/srv/clanky-worker clanky worker service install
 ```
 
+On Windows, install
+[WinSW 2.12](https://github.com/winsw/winsw/releases/tag/v2.12.0) separately
+and point Clanky at the downloaded executable:
+
+```powershell
+$env:CLANKY_WORKER_SERVICE_WRAPPER = "C:\Tools\WinSW-x64.exe"
+clanky worker service install
+```
+
+The command verifies the supplied wrapper but never downloads WinSW or another
+host dependency. On first install, WinSW requests elevation and prompts for
+the worker account and password. Enter the same account running the bootstrap
+command and allow the **Log on as a service** right. Passwords are handled by
+WinSW and are not stored in Clanky configuration or data.
+
+Clanky deploys an operational copy of its installed release binary under
+`$CLANKY_DATA_DIR\worker-service`, registers it for delayed automatic startup,
+and configures bounded rolling logs plus restart-on-failure recovery. The
+service runs with the persisted worker configuration and the user environment
+needed to find externally installed tools such as Git. `status`, `start`,
+`stop`, `restart`, and `uninstall` query or control the Windows Service Control
+Manager; no interactive login session is required after installation.
+
 On macOS, the per-user LaunchAgent starts at login through `/bin/zsh -lic`.
 The worker process starts its permission preflight asynchronously: it requests
 Accessibility, Screen Recording, and direct screen capture access for
@@ -226,7 +249,9 @@ process restarts, while the real agent uses the private
 `agent-upstream.sock` path. Keeping the public socket under the user's home
 also makes it visible to rootless Docker daemons used by automatic workspace
 provisioning. Neither service writes private keys or passphrases to its unit
-or to Clanky data.
+or to Clanky data. Installation creates the socket directory with the worker
+as owner before enabling either unit, so their parallel boot ordering cannot
+leave a root-owned directory behind.
 After the agent starts, a normal `clanky worker service install` invokes
 `ssh-add` interactively and prompts for the passphrase of each default SSH
 identity that needs unlocking. The passphrase is handled by `ssh-add` and is
@@ -253,6 +278,9 @@ shell hooks without starting them or prompting. Start the worker and run the
 unlock command from an interactive session when using that mode. Uninstalling
 the worker removes only Clanky's managed shell block and helper; it does not
 delete anything from `~/.ssh`.
+
+On Windows, `--no-start` registers the service without starting it. Initial
+registration still prompts for the service account credentials.
 
 To regenerate the service configuration without starting it immediately, use
 `clanky worker service install --no-start`. The lifecycle commands are:
@@ -340,6 +368,23 @@ clanky worker service install
 relay units, updates the shell hooks, unlocks the agent when needed, and
 restarts the worker with the registered configuration. No worker data or Mesh
 identity is moved during an update.
+
+On Windows, `clanky update` replaces the user-installed CLI after the updater
+process exits. The service keeps using its separate operational copy until the
+following `worker service install` promotes the new version and restarts it.
+To roll back, install the previous release explicitly and promote it the same
+way:
+
+```powershell
+clanky update --version v0.8.1
+clanky worker service install
+```
+
+`clanky worker service uninstall` stops and removes the Windows service,
+wrapper, XML definition, and operational Clanky binary. It preserves the
+worker database, identity, configuration, workspaces, and logs. The
+user-installed `$HOME\.local\bin\clanky.exe` remains available for
+reinstallation or explicit removal.
 
 Direct chats created on a Mesh server use the normal provider and model
 selection. Provider and model defaults are not stored on the worker.
