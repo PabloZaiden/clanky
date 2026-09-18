@@ -47,20 +47,10 @@ describe("MeshTerminalGateway relay lifecycle", () => {
     openingSettled = false;
   });
 
-  afterEach(async () => {
-    if (openingSettled) {
-      await gateway.closeAll();
-    }
-    await configureMeshRuntime({ meshWorker: false });
-    closeDatabase();
-    delete process.env["CLANKY_DATA_DIR"];
-    await rm(workerDirectory, { recursive: true, force: true });
-    await rm(dataDir, { recursive: true, force: true });
-  });
-
-  // This unit seam covers a lifecycle deadlock that requires a lease to become
-  // invalid inside its own opening promise, before a terminal process exists.
-  test("rejects an opening relay after its controller grant is revoked", async () => {
+  async function createSession(): Promise<{
+    sessionId: string;
+    sessionToken: string;
+  }> {
     const identity = await ensureLocalMeshNodeIdentity();
     await saveControllerGrant({
       controllerNodeId: "controller-a",
@@ -92,12 +82,29 @@ describe("MeshTerminalGateway relay lifecycle", () => {
         Date.now() + MESH_TERMINAL_SESSION_TTL_MS - 1_000,
       ).toISOString(),
     };
-    const session = await gateway.createSession({
+    return await gateway.createSession({
       ...unsigned,
       signature: await signMeshPayload(
         buildMeshTerminalSessionSigningPayload(unsigned),
       ),
     });
+  }
+
+  afterEach(async () => {
+    if (openingSettled) {
+      await gateway.closeAll();
+    }
+    await configureMeshRuntime({ meshWorker: false });
+    closeDatabase();
+    delete process.env["CLANKY_DATA_DIR"];
+    await rm(workerDirectory, { recursive: true, force: true });
+    await rm(dataDir, { recursive: true, force: true });
+  });
+
+  // This unit seam covers a lifecycle deadlock that requires a lease to become
+  // invalid inside its own opening promise, before a terminal process exists.
+  test("rejects an opening relay after its controller grant is revoked", async () => {
+    const session = await createSession();
     await revokeControllerGrant("controller-a");
 
     const closeEvents: Array<{ code?: number; reason?: string }> = [];
@@ -138,5 +145,57 @@ describe("MeshTerminalGateway relay lifecycle", () => {
       code: 1008,
       reason: "Mesh terminal authority changed",
     }]);
+  });
+
+  // Worker-side terminal disposal cannot be failed safely through a live
+  // public session, so this seam verifies retryable relay and lease ownership.
+  test("retains a relay and lease until terminal disposal succeeds", async () => {
+    const session = await createSession();
+    const socket = {
+      send(_data: string): void {},
+      close(_code?: number, _reason?: string): void {},
+    };
+    const cleanupError = new Error("terminal cleanup failed");
+    let disposeAttempts = 0;
+    const validationTimer = setInterval(() => undefined, 60_000);
+    validationTimer.unref?.();
+    const internals = gateway as unknown as {
+      relays: Map<string, {
+        socket: typeof socket;
+        connection: {
+          dispose(): Promise<void>;
+        };
+        validationTimer: ReturnType<typeof setInterval>;
+      }>;
+    };
+    internals.relays.set(session.sessionId, {
+      socket,
+      connection: {
+        async dispose(): Promise<void> {
+          disposeAttempts += 1;
+          if (disposeAttempts === 1) {
+            throw cleanupError;
+          }
+        },
+      },
+      validationTimer,
+    });
+
+    await expect(
+      gateway.releaseSession(session.sessionId, session.sessionToken),
+    ).rejects.toBe(cleanupError);
+    await expect(
+      gateway.authorize(session.sessionId, session.sessionToken),
+    ).resolves.toBeUndefined();
+
+    await expect(
+      gateway.releaseSession(session.sessionId, session.sessionToken),
+    ).resolves.toBeUndefined();
+    expect(disposeAttempts).toBe(2);
+    await expect(
+      gateway.authorize(session.sessionId, session.sessionToken),
+    ).rejects.toMatchObject({
+      code: "mesh_terminal_session_invalid",
+    });
   });
 });

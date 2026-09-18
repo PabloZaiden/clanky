@@ -139,8 +139,8 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
     signal: AbortSignal | undefined,
     requester: RpcRequester & RpcPendingController,
   ): Promise<unknown> {
-    if (this.connected) {
-      throw new Error("Already connected. Call disconnect() first.");
+    if (this.connected || this.process) {
+      throw new Error("Already connected or process cleanup is pending. Call disconnect() first.");
     }
 
     this.directory = config.directory;
@@ -184,8 +184,17 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
         connectionAbort.dispose();
       }
     } catch (error) {
-      const process = this.detachForShutdown();
-      await this.terminateProcess(process);
+      const process = this.process;
+      this.connected = false;
+      try {
+        await this.terminateProcess(process);
+      } catch (terminationError) {
+        throw new AggregateError(
+          [error, terminationError],
+          "ACP connection failed and its process could not be terminated.",
+        );
+      }
+      this.detachAfterShutdown(process);
       throw error;
     }
   }
@@ -366,9 +375,10 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
     throw this.getAbortError(signal, config);
   }
 
-  /** Reset connection metadata and diagnostics; returns the detached process. */
-  detachForShutdown(): AcpProcess | null {
-    const process = this.process;
+  private detachAfterShutdown(process: AcpProcess | null): void {
+    if (this.process !== process) {
+      return;
+    }
     this.process = null;
     this.connected = false;
     this.directory = "";
@@ -378,12 +388,13 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
     this.stage = "spawn";
     this.recentProcessLines = [];
     this.requester = null;
-    return process;
   }
 
   async disconnect(): Promise<void> {
-    const process = this.detachForShutdown();
+    const process = this.process;
+    this.connected = false;
     await this.terminateProcess(process);
+    this.detachAfterShutdown(process);
   }
 
   private pushProcessLine(line: string): void {

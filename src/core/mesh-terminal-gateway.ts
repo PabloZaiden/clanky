@@ -669,13 +669,17 @@ export class MeshTerminalGateway {
     if (ownerSocket && relay && relay.socket !== ownerSocket) {
       return;
     }
-    this.relays.delete(sessionId);
-    this.deleteLease(sessionId);
     if (!relay) {
+      this.deleteLease(sessionId);
       return;
     }
     clearInterval(relay.validationTimer);
     await relay.connection.dispose();
+    if (this.relays.get(sessionId) !== relay) {
+      return;
+    }
+    this.relays.delete(sessionId);
+    this.deleteLease(sessionId);
   }
 
   private sendFrame(
