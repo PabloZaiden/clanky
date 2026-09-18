@@ -8,7 +8,7 @@ import {
   MESH_TCP_TUNNEL_OPEN_TIMEOUT_MS,
   MESH_TCP_TUNNEL_PROTOCOL_VERSION,
   MESH_TCP_TUNNEL_REQUEST_TIMEOUT_MS,
-  MESH_TCP_TUNNEL_SESSION_TTL_MS,
+  MESH_TCP_TUNNEL_SESSION_REQUEST_TTL_MS,
 } from "@/shared/mesh-tcp-tunnel";
 import type { MeshTcpTunnelSessionRequest } from "@/contracts/schemas/mesh-tcp-tunnel";
 import { getWorkerRegistration } from "../persistence/mesh";
@@ -94,7 +94,9 @@ class MeshTcpTunnel extends EventEmitter implements TcpTunnel {
       );
     }
     const route = registration.route;
-    const expiresAt = new Date(Date.now() + MESH_TCP_TUNNEL_SESSION_TTL_MS).toISOString();
+    const expiresAt = new Date(
+      Date.now() + MESH_TCP_TUNNEL_SESSION_REQUEST_TTL_MS,
+    ).toISOString();
     const unsigned: Omit<MeshTcpTunnelSessionRequest, "signature"> = {
       protocolVersion: MESH_TCP_TUNNEL_PROTOCOL_VERSION,
       capability: MESH_TCP_TUNNEL_CAPABILITY,
