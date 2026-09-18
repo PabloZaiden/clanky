@@ -114,4 +114,48 @@ describe("LocalTerminalConnection lifecycle", () => {
       await rm(directory, { recursive: true, force: true });
     }
   });
+
+  // Native terminal close failures cannot be induced safely through a public
+  // terminal session, so this seam verifies ownership transfers before return.
+  test("quarantines a terminal that fails to close after process exit", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "clanky-terminal-close-"));
+    const controlled = createControlledProcess();
+    controlled.exit(0);
+    const connection = new LocalTerminalConnection({
+      sessionId: crypto.randomUUID(),
+      remoteSessionName: `clanky-test-${crypto.randomUUID()}`,
+      directory,
+      connectionMode: "direct",
+      useTmux: false,
+      executor: new TestCommandExecutor(directory),
+      callbacks: {
+        onOutput(): void {},
+      },
+    });
+    const closeError = new Error("terminal close failed");
+    let closeAttempts = 0;
+    const terminal = {
+      closed: false,
+      close(): void {
+        closeAttempts += 1;
+        throw closeError;
+      },
+    } as unknown as Bun.Terminal;
+    const internals = connection as unknown as {
+      process: Bun.Subprocess | null;
+      terminal: Bun.Terminal | null;
+    };
+    internals.process = controlled.subprocess;
+    internals.terminal = terminal;
+
+    try {
+      await expect(connection.dispose()).rejects.toBe(closeError);
+      expect(internals.process).toBeNull();
+      expect(internals.terminal).toBeNull();
+      expect(closeAttempts).toBe(1);
+      await expect(connection.dispose()).resolves.toBeUndefined();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
 });

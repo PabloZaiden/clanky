@@ -461,8 +461,17 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
       if (processHandle) {
         this.clearRetainedProcessWatch(processHandle);
       }
+      const terminal = this.terminal;
+      const terminalCloseErrors: unknown[] = [];
+      this.closeTerminal(terminalCloseErrors);
+      this.quarantineFailedTerminalClose(
+        terminal,
+        terminalCloseErrors,
+        processHandle,
+        "Failed to close terminal while disposing",
+      );
       this.process = null;
-      this.closeTerminal(cleanupErrors);
+      cleanupErrors.push(...terminalCloseErrors);
     }
     try {
       await this.cleanupClientTtyFile();
@@ -510,7 +519,7 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
   private quarantineFailedTerminalClose(
     terminal: Bun.Terminal | null,
     errors: unknown[],
-    processHandle: Bun.Subprocess,
+    processHandle: Bun.Subprocess | null,
     message: string,
   ): void {
     if (errors.length === 0) {
@@ -522,7 +531,7 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
     }
     log.error(message, {
       sessionId: this.config.sessionId,
-      pid: processHandle.pid,
+      ...(processHandle ? { pid: processHandle.pid } : {}),
       error: String(errors[0]),
     });
   }
