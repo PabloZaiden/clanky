@@ -31,6 +31,7 @@ WHERE api_key_id LIKE 'demo-%' OR context_id LIKE 'demo-%';
 DELETE FROM workspace_execution_targets WHERE workspace_id LIKE 'demo-%';
 DELETE FROM workspace_worker_enrollments
 WHERE id LIKE 'demo-%' OR token_id LIKE 'demo-%' OR workspace_id LIKE 'demo-%';
+DELETE FROM workspaces WHERE id LIKE 'demo-%';
 DELETE FROM mesh_enrollment_tokens WHERE id LIKE 'demo-%' OR user_id = 'demo-user';
 DELETE FROM mesh_worker_registrations
 WHERE local_user_id = 'demo-user' AND worker_node_id LIKE 'demo-%';
