@@ -18,6 +18,10 @@ interface DatabaseModule {
   closeDatabase: () => void;
   getDatabase: () => {
     exec: (sql: string) => void;
+    query: (sql: string) => {
+      all: () => unknown[];
+      get: () => unknown;
+    };
   };
   initializeDatabase: () => Promise<void>;
 }
@@ -97,7 +101,63 @@ async function applySeedToDatabase(dataDir: string, sqlPath: string): Promise<vo
 
   try {
     const sql = await Bun.file(sqlPath).text();
-    database.getDatabase().exec(sql);
+    const db = database.getDatabase();
+    db.exec(sql);
+
+    const foreignKeyFailures = db.query("PRAGMA foreign_key_check").all();
+    if (foreignKeyFailures.length > 0) {
+      throw new Error(
+        `Demo seed left foreign-key violations: ${JSON.stringify(foreignKeyFailures.slice(0, 5))}`,
+      );
+    }
+
+    const legacyTables = db.query(`
+      SELECT name
+      FROM sqlite_master
+      WHERE type = 'table'
+        AND name IN ('ssh_server_sessions', 'port_forwards', 'execution_nodes')
+      ORDER BY name
+    `).all() as Array<{ name?: unknown }>;
+    if (legacyTables.length > 0) {
+      const names = legacyTables
+        .map((row) => row.name)
+        .filter((name): name is string => typeof name === "string");
+      throw new Error(`Demo seed requires the consolidated schema; legacy tables remain: ${names.join(", ")}`);
+    }
+
+    const schemaVersionRow = db.query(
+      "SELECT MAX(version) AS version FROM schema_migrations",
+    ).get() as { version?: unknown };
+    const schemaVersion = schemaVersionRow.version;
+    if (schemaVersion !== 56) {
+      throw new Error(`Demo seed requires schema version 56, got ${schemaVersion}`);
+    }
+
+    const requiredDemoRows: Array<[string, string]> = [
+      ["webapp_users", "id = 'demo-user'"],
+      ["execution_hosts", "user_id = 'demo-user' AND id LIKE 'demo-%'"],
+      ["workspaces", "user_id = 'demo-user' AND id LIKE 'demo-%'"],
+      ["tasks", "user_id = 'demo-user' AND id LIKE 'demo-%'"],
+      ["chats", "user_id = 'demo-user' AND id LIKE 'demo-%'"],
+      ["agents", "user_id = 'demo-user' AND id LIKE 'demo-%'"],
+      ["agent_runs", "user_id = 'demo-user' AND id LIKE 'demo-%'"],
+      ["terminal_sessions", "user_id = 'demo-user' AND id LIKE 'demo-%'"],
+      ["preview_sessions", "user_id = 'demo-user' AND id LIKE 'demo-%'"],
+      ["vnc_sessions", "user_id = 'demo-user' AND id LIKE 'demo-%'"],
+      ["provisioning_jobs", "user_id = 'demo-user' AND id LIKE 'demo-%'"],
+      ["review_comments", "user_id = 'demo-user' AND id LIKE 'demo-%'"],
+      ["task_transcript_entries", "user_id = 'demo-user' AND task_id LIKE 'demo-%'"],
+      ["chat_transcript_entries", "user_id = 'demo-user' AND chat_id LIKE 'demo-%'"],
+      ["agent_run_transcript_entries", "user_id = 'demo-user' AND agent_run_id LIKE 'demo-%'"],
+    ];
+    for (const [table, predicate] of requiredDemoRows) {
+      const row = db.query(`SELECT COUNT(*) AS count FROM ${table} WHERE ${predicate}`).get() as {
+        count?: unknown;
+      };
+      if (typeof row.count !== "number" || row.count === 0) {
+        throw new Error(`Demo seed did not create required rows in ${table}`);
+      }
+    }
   } finally {
     database.closeDatabase();
   }
