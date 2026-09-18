@@ -37,7 +37,7 @@ function createControlledProcess(): ControlledProcess {
 describe("LocalTerminalConnection lifecycle", () => {
   // This lifecycle seam deterministically forces startup and tree-termination
   // failures without leaking a real shell process on the test host.
-  test("retains a live process when startup cleanup fails", async () => {
+  test("bounds retained resources when startup tree cleanup cannot be confirmed", async () => {
     const directory = await mkdtemp(join(tmpdir(), "clanky-terminal-startup-"));
     const controlled = createControlledProcess();
     const spawnSpy = spyOn(Bun, "spawn").mockReturnValue(
@@ -59,6 +59,8 @@ describe("LocalTerminalConnection lifecycle", () => {
       waitUntilReady(processHandle: Bun.Subprocess): Promise<void>;
       terminateProcess(processHandle: Bun.Subprocess): Promise<void>;
       retainedProcess: Bun.Subprocess | null;
+      retainedProcessRetryTimer?: ReturnType<typeof setInterval>;
+      process: Bun.Subprocess | null;
       terminal: Bun.Terminal | null;
       processTreeCleanupFailure: Bun.Subprocess | null;
     };
@@ -72,7 +74,6 @@ describe("LocalTerminalConnection lifecycle", () => {
         internals.processTreeCleanupFailure = processHandle;
         throw new Error("tree termination failed");
       }
-      internals.processTreeCleanupFailure = null;
     };
 
     try {
@@ -84,19 +85,28 @@ describe("LocalTerminalConnection lifecycle", () => {
       await pollUntil(
         () => ({
           retainedProcess: internals.retainedProcess,
+          retainedProcessRetryTimer: internals.retainedProcessRetryTimer,
+          process: internals.process,
           terminal: internals.terminal,
         }),
-        (state) => state.retainedProcess === null && state.terminal === null,
+        (state) => (
+          state.retainedProcess === null
+          && state.retainedProcessRetryTimer === undefined
+          && state.process === null
+          && state.terminal === null
+        ),
         {
-          description: "retained startup process cleanup",
+          description: "bounded startup process cleanup",
           timeoutMs: 1_000,
           formatLastObserved: (state) => JSON.stringify({
             retained: state.retainedProcess !== null,
+            retryTimer: state.retainedProcessRetryTimer !== undefined,
+            process: state.process !== null,
             terminal: state.terminal !== null,
           }),
         },
       );
-      expect(terminationAttempts).toBe(2);
+      expect(terminationAttempts).toBe(1);
     } finally {
       controlled.exit(1);
       spawnSpy.mockRestore();

@@ -30,7 +30,10 @@ import type {
 import { TerminalOutput } from "./terminal-output";
 import { DomainError } from "../domain-error";
 import { createLogger } from "@pablozaiden/webapp/server";
-import { terminateSubprocessTree } from "../subprocess-termination";
+import {
+  SubprocessTreeTerminationError,
+  terminateSubprocessTree,
+} from "../subprocess-termination";
 import {
   buildLocalTerminalEnvironment,
   buildWindowsTerminalFallbackNotice,
@@ -41,7 +44,22 @@ import {
 
 const DEFAULT_COMMAND_TIMEOUT_MS = 10_000;
 const RETAINED_PROCESS_TERMINATION_RETRY_MS = 5_000;
+const RETAINED_PROCESS_TERMINATION_MAX_ATTEMPTS = 5;
+const MAX_QUARANTINED_TERMINALS = 8;
 const log = createLogger("core:terminal:local");
+const quarantinedTerminals: Bun.Terminal[] = [];
+
+function quarantineTerminalResources(
+  terminal: Bun.Terminal | null,
+): void {
+  if (!terminal) {
+    return;
+  }
+  quarantinedTerminals.push(terminal);
+  if (quarantinedTerminals.length > MAX_QUARANTINED_TERMINALS) {
+    quarantinedTerminals.shift();
+  }
+}
 
 export interface LocalTerminalConnectionConfig {
   sessionId: string;
@@ -124,8 +142,10 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
   private retainedProcess: Bun.Subprocess | null = null;
   private retainedProcessRetryTimer?: ReturnType<typeof setInterval>;
   private retainedProcessTermination: Promise<void> | null = null;
+  private retainedProcessTerminationAttempts = 0;
   private processTreeCleanupInProgress: Bun.Subprocess | null = null;
   private processTreeCleanupFailure: Bun.Subprocess | null = null;
+  private processTreeCleanupError: unknown | null = null;
 
   constructor(private readonly config: LocalTerminalConnectionConfig) {
     this.output = new TerminalOutput(config.callbacks);
@@ -466,15 +486,24 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
 
   private closeTerminal(errors: unknown[]): void {
     const terminal = this.terminal;
-    if (!terminal || terminal.closed) {
+    if (this.closeTerminalResource(terminal, errors)) {
       this.terminal = null;
-      return;
+    }
+  }
+
+  private closeTerminalResource(
+    terminal: Bun.Terminal | null,
+    errors: unknown[],
+  ): boolean {
+    if (!terminal || terminal.closed) {
+      return true;
     }
     try {
       terminal.close();
-      this.terminal = null;
+      return true;
     } catch (error) {
       errors.push(error);
+      return false;
     }
   }
 
@@ -488,8 +517,14 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
     this.retainedProcess = processHandle;
     void processHandle.exited.then(
       () => {
+        if (this.processTreeCleanupInProgress === processHandle) {
+          return;
+        }
         if (this.processTreeCleanupFailure === processHandle) {
-          this.retryRetainedProcessTermination(processHandle);
+          this.abandonRetainedProcess(
+            processHandle,
+            this.processTreeCleanupError,
+          );
         } else {
           this.finalizeRetainedProcess(processHandle);
         }
@@ -521,15 +556,29 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
       return;
     }
     if (
+      this.retainedProcessTermination
+      || this.processTreeCleanupInProgress === processHandle
+    ) {
+      return;
+    }
+    if (
       processHandle.exitCode !== null
       && this.processTreeCleanupFailure !== processHandle
     ) {
       this.finalizeRetainedProcess(processHandle);
       return;
     }
-    if (this.retainedProcessTermination) {
+    if (
+      this.retainedProcessTerminationAttempts
+        >= RETAINED_PROCESS_TERMINATION_MAX_ATTEMPTS
+    ) {
+      this.abandonRetainedProcess(
+        processHandle,
+        this.processTreeCleanupError,
+      );
       return;
     }
+    this.retainedProcessTerminationAttempts += 1;
     const pending = this.terminateProcess(processHandle)
       .catch((error: Error) => {
         log.warn("Failed to retry retained terminal process termination", {
@@ -537,6 +586,17 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
           pid: processHandle.pid,
           error: String(error),
         });
+        if (
+          (
+            error instanceof SubprocessTreeTerminationError
+            && !error.retryable
+          )
+          || processHandle.exitCode !== null
+          || this.retainedProcessTerminationAttempts
+            >= RETAINED_PROCESS_TERMINATION_MAX_ATTEMPTS
+        ) {
+          this.abandonRetainedProcess(processHandle, error);
+        }
       })
       .finally(() => {
         if (this.retainedProcessTermination === pending) {
@@ -552,10 +612,48 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
     this.retainedProcessTermination = pending;
   }
 
+  private abandonRetainedProcess(
+    processHandle: Bun.Subprocess,
+    error: unknown,
+  ): void {
+    if (this.retainedProcess !== processHandle) {
+      return;
+    }
+    const attempts = this.retainedProcessTerminationAttempts;
+    const terminal = this.terminal;
+    this.clearRetainedProcessWatch(processHandle);
+    if (this.process === processHandle) {
+      this.process = null;
+    }
+    this.ready = false;
+    this.terminal = null;
+    if (isWindowsTerminalRuntime()) {
+      // Closing an unconfirmed ConPTY tree can block on older Windows builds.
+      quarantineTerminalResources(terminal);
+    } else {
+      const cleanupErrors: unknown[] = [];
+      this.closeTerminalResource(terminal, cleanupErrors);
+      if (cleanupErrors.length > 0) {
+        log.error("Failed to close the abandoned terminal", {
+          sessionId: this.config.sessionId,
+          pid: processHandle.pid,
+          error: String(cleanupErrors[0]),
+        });
+      }
+    }
+    log.error("Abandoned terminal resources after bounded process-tree cleanup failed", {
+      sessionId: this.config.sessionId,
+      pid: processHandle.pid,
+      attempts,
+      error: String(error ?? "Process-tree cleanup could not be confirmed"),
+    });
+  }
+
   private finalizeRetainedProcess(processHandle: Bun.Subprocess): void {
     if (
       this.retainedProcess !== processHandle
       || processHandle.exitCode === null
+      || this.processTreeCleanupInProgress === processHandle
       || this.processTreeCleanupFailure === processHandle
     ) {
       return;
@@ -584,8 +682,10 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
       this.retainedProcessRetryTimer = undefined;
     }
     this.retainedProcess = null;
+    this.retainedProcessTerminationAttempts = 0;
     if (this.processTreeCleanupFailure === processHandle) {
       this.processTreeCleanupFailure = null;
+      this.processTreeCleanupError = null;
     }
   }
 
@@ -723,9 +823,11 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
       terminated = true;
       if (this.processTreeCleanupFailure === processHandle) {
         this.processTreeCleanupFailure = null;
+        this.processTreeCleanupError = null;
       }
     } catch (error) {
       this.processTreeCleanupFailure = processHandle;
+      this.processTreeCleanupError = error;
       throw error;
     } finally {
       if (this.processTreeCleanupInProgress === processHandle) {

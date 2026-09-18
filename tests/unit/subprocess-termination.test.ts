@@ -1,5 +1,8 @@
 import { describe, expect, mock, spyOn, test } from "bun:test";
-import { terminateSubprocessTree } from "../../src/core/subprocess-termination";
+import {
+  SubprocessTreeTerminationError,
+  terminateSubprocessTree,
+} from "../../src/core/subprocess-termination";
 import { pollUntil } from "../helpers/polling";
 
 interface ControlledSubprocess {
@@ -233,23 +236,63 @@ describe("subprocess tree termination", () => {
         1,
       ));
 
-      await expect(terminateSubprocessTree(target.process, {
+      const firstError = await terminateSubprocessTree(target.process, {
         gracefulWaitMs: 0,
         forceWaitMs: 0,
         requireExit: true,
-      })).rejects.toThrow(
-        "The Windows subprocess exited, but process-tree termination could not be guaranteed (pid 4242).",
-      );
-      await expect(terminateSubprocessTree(target.process, {
+      }).then(() => null, (error: unknown) => error);
+      const retryError = await terminateSubprocessTree(target.process, {
         gracefulWaitMs: 0,
         forceWaitMs: 0,
         requireExit: true,
-      })).rejects.toThrow(
+      }).then(() => null, (error: unknown) => error);
+
+      expect(firstError).toBeInstanceOf(SubprocessTreeTerminationError);
+      expect(firstError).toMatchObject({
+        retryable: false,
+      });
+      expect(retryError).toBe(firstError);
+      expect(String(retryError)).toContain(
         "The Windows subprocess exited, but process-tree termination could not be guaranteed (pid 4242).",
       );
 
       expect(commands).toHaveLength(1);
       expect(target.kill).not.toHaveBeenCalled();
+    });
+  });
+
+  // Once the root exits, retrying taskkill by PID could target a reused PID.
+  // The retry contract must become permanently failed instead.
+  test("marks a failed tree termination unrecoverable after root exit", async () => {
+    await withMockWindowsTermination(async ({
+      target,
+      commands,
+      setTaskkillFactory,
+    }) => {
+      setTaskkillFactory(() => createTaskkillProcess(undefined, 1));
+
+      const firstError = await terminateSubprocessTree(target.process, {
+        gracefulWaitMs: 0,
+        forceWaitMs: 0,
+        requireExit: true,
+      }).then(() => null, (error: unknown) => error);
+      expect(firstError).toMatchObject({
+        retryable: true,
+      });
+
+      target.exit(1);
+      const retryError = await terminateSubprocessTree(target.process, {
+        gracefulWaitMs: 0,
+        forceWaitMs: 0,
+        requireExit: true,
+      }).then(() => null, (error: unknown) => error);
+
+      expect(retryError).toBeInstanceOf(SubprocessTreeTerminationError);
+      expect(retryError).toMatchObject({
+        retryable: false,
+        cause: firstError,
+      });
+      expect(commands).toHaveLength(2);
     });
   });
 
