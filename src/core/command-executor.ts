@@ -65,8 +65,15 @@ export class CommandOutputLimitError extends Error {
   readonly stream: "stdout" | "stderr";
   readonly maxBytes: number;
 
-  constructor(stream: "stdout" | "stderr", maxBytes: number) {
-    super(`${stream} exceeded the ${String(maxBytes)} byte output limit`);
+  constructor(
+    stream: "stdout" | "stderr",
+    maxBytes: number,
+    options?: ErrorOptions,
+  ) {
+    super(
+      `${stream} exceeded the ${String(maxBytes)} byte output limit`,
+      options,
+    );
     this.name = "CommandOutputLimitError";
     this.stream = stream;
     this.maxBytes = maxBytes;

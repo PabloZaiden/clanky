@@ -9,12 +9,13 @@ import type {
 import { WORKSPACE_EXEC_MAX_OUTPUT_BYTES } from "@/shared/mesh-execution";
 import {
   isCommandOutputLimitError,
+  resolveCommandExecutorDirectory,
   type CommandExecutor,
 } from "./command-executor";
 import { DomainError } from "./domain-error";
 import {
   ExecutionPathError,
-  normalizeExecutionPath,
+  normalizeExecutionRoot,
   resolveExecutionPathFromDirectory,
   type ExecutionPathStyle,
 } from "./execution-path";
@@ -26,6 +27,21 @@ export interface CommandExecutionErrorCodes {
   targetLabel: string;
 }
 
+function throwCommandPathError(
+  error: unknown,
+  pathStyle: ExecutionPathStyle,
+  errors: Pick<CommandExecutionErrorCodes, "cwdInvalid">,
+): never {
+  if (!(error instanceof ExecutionPathError)) {
+    throw error;
+  }
+  throw new DomainError(
+    errors.cwdInvalid,
+    "The execution cwd is not a valid path for the selected host.",
+    { cause: error, details: { pathStyle } },
+  );
+}
+
 export function resolveCommandWorkingDirectory(
   rootDirectory: string,
   requestedCwd: string | undefined,
@@ -33,19 +49,12 @@ export function resolveCommandWorkingDirectory(
   errors: Pick<CommandExecutionErrorCodes, "cwdInvalid">,
 ): string {
   try {
-    const root = normalizeExecutionPath(rootDirectory.trim(), pathStyle);
+    const root = normalizeExecutionRoot(rootDirectory.trim(), pathStyle);
     return requestedCwd === undefined
       ? root
       : resolveExecutionPathFromDirectory(root, requestedCwd.trim(), pathStyle);
   } catch (error) {
-    if (!(error instanceof ExecutionPathError)) {
-      throw error;
-    }
-    throw new DomainError(
-      errors.cwdInvalid,
-      "The execution cwd is not a valid path for the selected host.",
-      { cause: error, details: { pathStyle } },
-    );
+    throwCommandPathError(error, pathStyle, errors);
   }
 }
 
@@ -71,10 +80,20 @@ export async function executeCommand(
   signal: AbortSignal | undefined,
   errors: CommandExecutionErrorCodes,
 ): Promise<CommandExecResult> {
+  const pathStyle = executor.pathStyle;
+  let resolvedRootDirectory: string;
+  try {
+    resolvedRootDirectory = await resolveCommandExecutorDirectory(
+      executor,
+      rootDirectory,
+    );
+  } catch (error) {
+    throwCommandPathError(error, pathStyle, errors);
+  }
   const cwd = resolveCommandWorkingDirectory(
-    rootDirectory,
+    resolvedRootDirectory,
     request.cwd,
-    executor.pathStyle,
+    pathStyle,
     errors,
   );
   await requireExecutionDirectory(executor, cwd, errors);
@@ -89,14 +108,18 @@ export async function executeCommand(
     });
   } catch (error) {
     if (isCommandOutputLimitError(error)) {
+      const cleanupFailed = error.cause !== undefined;
       throw new DomainError(
         errors.outputLimitExceeded,
-        `Command ${error.stream} exceeded the ${String(error.maxBytes)} byte output limit.`,
+        `Command ${error.stream} exceeded the ${String(error.maxBytes)} byte output limit.${
+          cleanupFailed ? " Process-tree cleanup also failed." : ""
+        }`,
         {
           cause: error,
           details: {
             stream: error.stream,
             maxBytes: error.maxBytes,
+            cleanupFailed,
             target: errors.targetLabel,
           },
         },

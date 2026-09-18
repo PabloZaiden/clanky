@@ -34,7 +34,7 @@ export async function readProcessStream(
   options?: {
     maxBytes?: number;
     streamName?: "stdout" | "stderr";
-    onLimit?: () => void;
+    onLimit?: (error: CommandOutputLimitError) => void;
   },
 ): Promise<string> {
   if (!stream) {
@@ -55,11 +55,11 @@ export async function readProcessStream(
 
       bytesRead += value.byteLength;
       if (options?.maxBytes !== undefined && bytesRead > options.maxBytes) {
-        options.onLimit?.();
         const error = new CommandOutputLimitError(
           options.streamName ?? "stdout",
           options.maxBytes,
         );
+        options.onLimit?.(error);
         try {
           await reader.cancel(error);
         } catch {

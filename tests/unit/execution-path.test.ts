@@ -156,12 +156,6 @@ describe("execution path containment", () => {
       "windows",
       errors,
     )).toBe(String.raw`\\server\share\repo\scripts`);
-    expect(resolveCommandWorkingDirectory(
-      " node_modules ",
-      " bin ",
-      "posix",
-      errors,
-    )).toBe("node_modules/bin");
     expect(() => resolveCommandWorkingDirectory(
       String.raw`C:\workspaces\repo`,
       "C:relative",

@@ -481,15 +481,27 @@ export class CommandExecutorImpl implements CommandExecutor {
           // The owning execution path awaits and reports this failure.
         });
       };
+      let outputLimitError: CommandOutputLimitError | undefined;
+      let resolveOutputLimit: ((exitCode: number) => void) | undefined;
+      const outputLimitPromise = maxOutputBytes === undefined
+        ? undefined
+        : new Promise<number>((resolve) => {
+            resolveOutputLimit = resolve;
+          });
+      const handleOutputLimit = (error: CommandOutputLimitError): void => {
+        outputLimitError ??= error;
+        requestTermination();
+        resolveOutputLimit?.(1);
+      };
       const stdoutPromise = readProcessStream(subprocess.stdout, onStdoutChunk, {
         maxBytes: maxOutputBytes,
         streamName: "stdout",
-        onLimit: requestTermination,
+        onLimit: handleOutputLimit,
       });
       const stderrPromise = readProcessStream(subprocess.stderr, onStderrChunk, {
         maxBytes: maxOutputBytes,
         streamName: "stderr",
-        onLimit: requestTermination,
+        onLimit: handleOutputLimit,
       });
       const streamResultsPromise = Promise.allSettled([
         stdoutPromise,
@@ -500,36 +512,30 @@ export class CommandExecutorImpl implements CommandExecutor {
       let aborted = false;
       const timeoutPromise = timeoutMs === undefined
         ? undefined
-        : new Promise<number>((resolve, reject) => {
+        : new Promise<number>((resolve) => {
             timeoutId = setTimeout(() => {
               timedOut = true;
-              void terminateProcess().then(
-                () => resolve(124),
-                reject,
-              );
+              requestTermination();
+              resolve(124);
             }, timeoutMs);
           });
 
-      const abortPromise = new Promise<number>((resolve, reject) => {
+      const abortPromise = new Promise<number>((resolve) => {
         if (!signal) {
           return;
         }
 
         if (signal.aborted) {
           aborted = true;
-          void terminateProcess().then(
-            () => resolve(130),
-            reject,
-          );
+          requestTermination();
+          resolve(130);
           return;
         }
 
         abortHandler = () => {
           aborted = true;
-          void terminateProcess().then(
-            () => resolve(130),
-            reject,
-          );
+          requestTermination();
+          resolve(130);
         };
 
         signal.addEventListener("abort", abortHandler, { once: true });
@@ -542,6 +548,9 @@ export class CommandExecutorImpl implements CommandExecutor {
       if (signal) {
         racePromises.push(abortPromise);
       }
+      if (outputLimitPromise) {
+        racePromises.push(outputLimitPromise);
+      }
       const racedExitCode = await Promise.race(racePromises);
       if (timeoutId) {
         clearTimeout(timeoutId);
@@ -549,8 +558,56 @@ export class CommandExecutorImpl implements CommandExecutor {
       if (signal && abortHandler) {
         signal.removeEventListener("abort", abortHandler);
       }
-      if ((timedOut || aborted) && terminationPromise) {
-        await terminationPromise;
+      let terminationFailed = false;
+      let terminationFailure: unknown;
+      const waitForTermination = async (reason: string): Promise<void> => {
+        if (!terminationPromise || terminationFailed) {
+          return;
+        }
+        try {
+          await terminationPromise;
+        } catch (error) {
+          terminationFailed = true;
+          terminationFailure = error;
+          log.error(`${LOG_PREFIX} Failed to terminate subprocess tree`, {
+            pid: subprocess.pid,
+            reason,
+            error: String(error),
+          });
+        }
+      };
+      if (timedOut || aborted || outputLimitError) {
+        await waitForTermination(
+          outputLimitError ? "output_limit" : timedOut ? "timeout" : "abort",
+        );
+      }
+      const throwOutputLimit = (error: CommandOutputLimitError): never => {
+        if (terminationFailed) {
+          throw new CommandOutputLimitError(error.stream, error.maxBytes, {
+            cause: terminationFailure,
+          });
+        }
+        throw error;
+      };
+      if (outputLimitError) {
+        throwOutputLimit(outputLimitError);
+      }
+      if (terminationFailed) {
+        const cleanupMessage =
+          `Process-tree cleanup failed: ${String(terminationFailure)}`;
+        return timedOut
+          ? {
+              success: false,
+              stdout: "",
+              stderr: `Command timed out after ${timeoutMs}ms. ${cleanupMessage}`,
+              exitCode: 124,
+            }
+          : {
+              success: false,
+              stdout: "",
+              stderr: `Command aborted. ${cleanupMessage}`,
+              exitCode: 130,
+            };
       }
 
       const streamResults = await streamResultsPromise;
@@ -561,10 +618,8 @@ export class CommandExecutorImpl implements CommandExecutor {
         ),
       );
       if (outputLimitResult) {
-        if (terminationPromise) {
-          await terminationPromise;
-        }
-        throw outputLimitResult.reason;
+        await waitForTermination("output_limit");
+        throwOutputLimit(outputLimitResult.reason);
       }
       const streamError = streamResults.find(
         (result): result is PromiseRejectedResult => result.status === "rejected",
