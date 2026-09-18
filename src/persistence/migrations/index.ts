@@ -58,6 +58,7 @@ import { migrateWorkspaceWorkerEnrollments } from "./workspace-worker-enrollment
 import { migrateMeshPeerRoutes } from "./mesh-peer-routes";
 import { migrateControllerRelayPairing } from "./controller-relay-pairing";
 import { backfillMeshExecutionHostRuntimeSnapshots } from "./execution-host-runtime-snapshots";
+import { migratePreviewSessions } from "./preview-sessions";
 
 const log = createLogger("persistence:migrations");
 
@@ -1673,6 +1674,12 @@ export const migrations: Migration[] = [
         `);
       }
     },
+  },
+  {
+    version: 56,
+    name: "make_preview_sessions_execution_host_backed",
+    up: migratePreviewSessions,
+    transactional: false,
   },
 ];
 

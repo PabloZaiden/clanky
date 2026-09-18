@@ -1,4 +1,8 @@
-import type { Workspace } from "@/shared";
+import {
+  getExecutionHostSourceId,
+  type ExecutionHostDescriptor,
+  type Workspace,
+} from "@/shared";
 
 function shellArg(value: string): string {
   if (/^[A-Za-z0-9_./:=@%+-]+$/.test(value)) {
@@ -14,6 +18,20 @@ export function getPreviewWorkspaceReference(workspace: Workspace, workspaces: W
   }
   const sameNameCount = workspaces.filter((candidate) => candidate.name.trim() === workspaceName).length;
   return sameNameCount === 1 ? workspaceName : workspace.id;
+}
+
+export function getPreviewServerReference(
+  server: ExecutionHostDescriptor,
+  servers: ExecutionHostDescriptor[],
+): string {
+  const serverName = server.name.trim();
+  if (!serverName) {
+    return getExecutionHostSourceId(server.ref);
+  }
+  const sameNameCount = servers.filter((candidate) => candidate.name.trim() === serverName).length;
+  return sameNameCount === 1
+    ? serverName
+    : getExecutionHostSourceId(server.ref);
 }
 
 function sanitizePreviewPort(port: string): string {
@@ -32,8 +50,16 @@ export function buildPreviewCliCommand(options: {
   workspace: Workspace;
   workspaces: Workspace[];
   port: string;
+} | {
+  server: ExecutionHostDescriptor;
+  servers: ExecutionHostDescriptor[];
+  port: string;
 }): string {
-  const workspaceReference = getPreviewWorkspaceReference(options.workspace, options.workspaces);
   const port = sanitizePreviewPort(options.port);
-  return `clanky preview --workspace ${shellArg(workspaceReference)} --port ${port}`;
+  if ("workspace" in options) {
+    const workspaceReference = getPreviewWorkspaceReference(options.workspace, options.workspaces);
+    return `clanky preview --workspace ${shellArg(workspaceReference)} --port ${port}`;
+  }
+  const serverReference = getPreviewServerReference(options.server, options.servers);
+  return `clanky preview --server ${shellArg(serverReference)} --port ${port}`;
 }

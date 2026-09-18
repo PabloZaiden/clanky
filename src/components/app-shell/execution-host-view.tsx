@@ -43,6 +43,8 @@ import { ExecutionHostPrerequisitesSection } from "./execution-host-prerequisite
 import { SshServerSettingsForm } from "./ssh-server-settings-form";
 import { useExecutionHostPrerequisites } from "./use-execution-host-prerequisites";
 import { ClankyListRow } from "./clanky-list-row";
+import { PreviewSessionsView } from "./preview-sessions-view";
+import { buildPreviewCliCommand } from "../../utils";
 import {
   getStoredSshCredentialToken,
   invalidateStoredSshCredentialToken,
@@ -59,6 +61,7 @@ import {
 
 interface ExecutionHostViewProps {
   host: ExecutionHostDescriptor;
+  executionHosts: ExecutionHostDescriptor[];
   workspaces: Workspace[];
   sessions: TerminalSession[];
   chats: Chat[];
@@ -81,6 +84,7 @@ function hostApiPath(host: ExecutionHostDescriptor): string {
 
 export function ExecutionHostView({
   host,
+  executionHosts,
   workspaces,
   sessions,
   chats,
@@ -448,6 +452,23 @@ export function ExecutionHostView({
             ))}
           </div>
         </Panel>
+      ) : null}
+
+      {host.ref.kind === "ssh" ? (
+        <Panel title="Previews">
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Direct previews are unavailable for SSH servers. Start a preview from a workspace assigned to this server.
+          </p>
+        </Panel>
+      ) : supportsExecutionHostCapability(host.capabilities, "tcpTunnel") ? (
+        <PreviewSessionsView
+          scope={{ kind: "server", executionHost: host.ref }}
+          buildCommand={(port) => buildPreviewCliCommand({
+            server: host,
+            servers: executionHosts,
+            port,
+          })}
+        />
       ) : null}
 
       {sessions.length > 0 ? (

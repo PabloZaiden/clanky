@@ -35,6 +35,7 @@ describe("CLI preview command parsing", () => {
     ])).toEqual({
       baseUrl: undefined,
       workspace: "app",
+      server: undefined,
       port: 3000,
       remoteHost: "127.0.0.1",
       host: "0.0.0.0",
@@ -42,6 +43,25 @@ describe("CLI preview command parsing", () => {
       path: "/",
       open: true,
     });
+  });
+
+  test("accepts a direct server target and rejects combining target selectors", () => {
+    expect(parsePreviewCommandArgs([
+      "--server",
+      "mesh-node",
+      "--port",
+      "3000",
+    ])).toMatchObject({
+      workspace: undefined,
+      server: "mesh-node",
+      remoteHost: "localhost",
+    });
+    expect(() => parsePreviewCommandArgs([
+      "--workspace",
+      "app",
+      "--server",
+      "mesh-node",
+    ])).toThrow("--workspace and --server may not be used together");
   });
 });
 

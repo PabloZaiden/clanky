@@ -239,9 +239,9 @@ the running version. Framework-owned routes such as `/api/auth/*`,
 | GET, PUT | `/api/preferences/markdown-rendering` | Persist markdown rendering preferences. |
 | GET, PUT | `/api/preferences/quick-chat` | Persist quick chat workspace and model preferences. |
 | GET, PUT | `/api/preferences/scheduler-timezone` | Persist the scheduler timezone preference. |
-| GET | `/api/previews` | List active workspace previews. |
-| DELETE | `/api/previews/:previewId` | Close an active workspace preview. |
-| GET | `/api/previews/bridge` | Open the raw websocket bridge for a workspace preview. |
+| GET | `/api/previews` | List all active workspace and direct server previews. |
+| DELETE | `/api/previews/:previewId` | Close an active workspace or direct server preview. |
+| GET | `/api/previews/bridge` | Open the raw websocket bridge for a workspace or direct server preview. |
 | POST | `/api/provisioning-jobs` | Start a remote provisioning job. |
 | GET, DELETE | `/api/provisioning-jobs/:id` | Read or cancel a remote provisioning job. |
 | GET | `/api/provisioning-jobs/:id/logs` | Read logs for a remote provisioning job. |
@@ -335,7 +335,8 @@ the running version. Framework-owned routes such as `/api/auth/*`,
 | GET, PUT | `/api/workspaces/:id/server-settings` | Read or update workspace server settings. |
 | GET | `/api/workspaces/:id/server-settings/status` | Read the current workspace connection status. |
 | POST | `/api/workspaces/:id/server-settings/test` | Test the configured workspace connection using workspace settings. |
-| GET | `/api/workspaces/:workspaceId/previews` | List previews for a workspace. |
+| GET | `/api/workspaces/:workspaceId/previews` | List previews associated with a workspace. |
+| GET | `/api/execution-hosts/:kind/:id/previews` | List direct previews for a local or Mesh execution host. Direct SSH previews are unsupported. |
 
 </details>
 

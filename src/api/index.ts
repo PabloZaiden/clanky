@@ -17,7 +17,7 @@
  * - chats: Standalone and task-linked chat sessions
  * - agents: Scheduled-agent management and runs
  * - vnc-sessions: VNC session management
- * - previews: Workspace preview management
+ * - previews: Workspace and direct server preview management
  * - mesh: Controller-managed worker enrollment and transport
  * - agent-prompt-bridge: Internal deterministic-agent prompt bridge
  * - raw websocket upgrades: Realtime, terminal, preview, and VNC transports are defined separately

@@ -18,6 +18,11 @@ export { useTerminalSessions, type UseTerminalSessionsResult } from "./useTermin
 export { useTerminalSession, type UseTerminalSessionResult } from "./useTerminalSession";
 export { useSshServers, type UseSshServersResult } from "./useSshServers";
 export { useExecutionHosts } from "./useExecutionHosts";
+export {
+  usePreviewSessions,
+  type PreviewSessionScope,
+  type UsePreviewSessionsResult,
+} from "./usePreviewSessions";
 export { useWorkspacePreviews, type UseWorkspacePreviewsResult } from "./useWorkspacePreviews";
 export { useWorkspaceServerSettings, type UseWorkspaceServerSettingsResult } from "./useWorkspaceServerSettings";
 export { useExecutionHostAddresses } from "./workspace-server-settings";

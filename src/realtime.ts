@@ -15,7 +15,7 @@ import type {
   TaskEvent,
 } from "@/shared";
 import type { MeshStateEvent } from "./core/event-emitter";
-import { createToolCallSummary } from "@/shared";
+import { createToolCallSummary, serializeExecutionHostRef } from "@/shared";
 import { isChatTerminalStatus } from "@/shared/chat";
 import { sanitizeProvisioningEvent } from "./lib/sensitive-data";
 import type {
@@ -416,24 +416,36 @@ export function publishClankyDomainEvent(
 
     case "preview.created":
     case "preview.connected":
+      {
+        const binding = event.executionHostBinding
+          ?? event.preview.config.executionHostBinding;
+        const scope = event.workspaceId
+          ?? (binding ? serializeExecutionHostRef(binding.host) : undefined);
       publishChanged(
         publisher,
         owner,
         CLANKY_REALTIME_RESOURCES.previews,
         event.previewId,
-        event.workspaceId,
+        scope,
       );
       return;
+      }
     case "preview.closed":
     case "preview.failed":
+      {
+        const binding = event.executionHostBinding
+          ?? event.preview?.config.executionHostBinding;
+        const scope = event.workspaceId
+          ?? (binding ? serializeExecutionHostRef(binding.host) : undefined);
       publishDeleted(
         publisher,
         owner,
         CLANKY_REALTIME_RESOURCES.previews,
         event.previewId,
-        event.workspaceId,
+        scope,
       );
       return;
+      }
     default:
       assertNever(event);
   }
