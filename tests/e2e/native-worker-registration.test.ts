@@ -47,6 +47,7 @@ import {
 } from "../../src/persistence/database";
 import {
   buildTerminalCwdProbe,
+  buildTerminalLiteralProbe,
   buildTerminalResizeProbe,
 } from "../helpers/terminal-resize-probe";
 import {
@@ -317,6 +318,19 @@ async function exerciseMeshTerminal(
         (value) => value.includes(probe.expectedOutput),
         {
           description: "native Mesh terminal input, output, and resize",
+          timeoutMs: 20_000,
+        },
+      );
+      const literalProbe = buildTerminalLiteralProbe({
+        marker: "NATIVE_TERMINAL_LITERAL",
+        os: platformOs,
+      });
+      connection.sendInput(literalProbe.input);
+      await pollUntil(
+        () => output.join(""),
+        (value) => value.includes(literalProbe.expectedOutput),
+        {
+          description: "native Mesh terminal literal input",
           timeoutMs: 20_000,
         },
       );

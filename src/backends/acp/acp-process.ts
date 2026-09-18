@@ -87,15 +87,15 @@ export class AcpProcess {
   }
 
   async stop(options: AcpProcessStopOptions = {}): Promise<void> {
+    if (this.stopping) {
+      return await this.stopping;
+    }
     if (
       this.child.exitCode !== null
       && this.terminationFailure === null
     ) {
       this.closed = true;
       return;
-    }
-    if (this.stopping) {
-      return await this.stopping;
     }
     this.closed = true;
     const stopping = terminateAcpProcess(this.child, options);

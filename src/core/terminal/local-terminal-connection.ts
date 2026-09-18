@@ -49,7 +49,7 @@ const MAX_QUARANTINED_TERMINALS = 8;
 const log = createLogger("core:terminal:local");
 const quarantinedTerminals: Bun.Terminal[] = [];
 
-function quarantineTerminalResources(
+function quarantineTerminal(
   terminal: Bun.Terminal | null,
 ): void {
   if (!terminal) {
@@ -507,6 +507,26 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
     }
   }
 
+  private quarantineFailedTerminalClose(
+    terminal: Bun.Terminal | null,
+    errors: unknown[],
+    processHandle: Bun.Subprocess,
+    message: string,
+  ): void {
+    if (errors.length === 0) {
+      return;
+    }
+    quarantineTerminal(terminal);
+    if (this.terminal === terminal) {
+      this.terminal = null;
+    }
+    log.error(message, {
+      sessionId: this.config.sessionId,
+      pid: processHandle.pid,
+      error: String(errors[0]),
+    });
+  }
+
   private watchRetainedProcess(processHandle: Bun.Subprocess): void {
     if (this.retainedProcess === processHandle) {
       return;
@@ -629,17 +649,16 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
     this.terminal = null;
     if (isWindowsTerminalRuntime()) {
       // Closing an unconfirmed ConPTY tree can block on older Windows builds.
-      quarantineTerminalResources(terminal);
+      quarantineTerminal(terminal);
     } else {
       const cleanupErrors: unknown[] = [];
       this.closeTerminalResource(terminal, cleanupErrors);
-      if (cleanupErrors.length > 0) {
-        log.error("Failed to close the abandoned terminal", {
-          sessionId: this.config.sessionId,
-          pid: processHandle.pid,
-          error: String(cleanupErrors[0]),
-        });
-      }
+      this.quarantineFailedTerminalClose(
+        terminal,
+        cleanupErrors,
+        processHandle,
+        "Failed to close the abandoned terminal",
+      );
     }
     log.error("Abandoned terminal resources after bounded process-tree cleanup failed", {
       sessionId: this.config.sessionId,
@@ -662,15 +681,15 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
     if (this.process === processHandle) {
       this.process = null;
     }
+    const terminal = this.terminal;
     const cleanupErrors: unknown[] = [];
     this.closeTerminal(cleanupErrors);
-    if (cleanupErrors.length > 0) {
-      log.error("Failed to close terminal after retained process exit", {
-        sessionId: this.config.sessionId,
-        pid: processHandle.pid,
-        error: String(cleanupErrors[0]),
-      });
-    }
+    this.quarantineFailedTerminalClose(
+      terminal,
+      cleanupErrors,
+      processHandle,
+      "Failed to close terminal after retained process exit",
+    );
   }
 
   private clearRetainedProcessWatch(processHandle: Bun.Subprocess): void {
@@ -756,10 +775,15 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
     this.ready = false;
     this.process = null;
     this.output.flush();
-    if (this.terminal && !this.terminal.closed) {
-      this.terminal.close();
-    }
-    this.terminal = null;
+    const terminal = this.terminal;
+    const cleanupErrors: unknown[] = [];
+    this.closeTerminal(cleanupErrors);
+    this.quarantineFailedTerminalClose(
+      terminal,
+      cleanupErrors,
+      processHandle,
+      "Failed to close terminal after process exit",
+    );
     void this.cleanupClientTtyFile().catch((error: Error) => {
       log.warn("Failed to clean up the terminal client tty file after process exit", {
         sessionId: this.config.sessionId,

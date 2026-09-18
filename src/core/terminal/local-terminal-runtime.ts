@@ -109,7 +109,7 @@ export function resolveWindowsTerminalSpawn(
   const shell = resolveWindowsTerminalShell();
   return {
     command: shell.command,
-    args: shell.kind === "powershell" ? ["-NoLogo"] : ["/Q", "/V:ON"],
+    args: shell.kind === "powershell" ? ["-NoLogo"] : ["/Q", "/V:OFF"],
     cwd,
     env: environment,
   };
