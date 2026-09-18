@@ -91,6 +91,12 @@ export interface ChatSnapshot {
   transcript: ChatTranscript;
 }
 
+export type TranscriptSnapshotMergeDirection = "refresh" | "older" | "full";
+
+export interface TranscriptSnapshotMergeOptions {
+  direction?: TranscriptSnapshotMergeDirection;
+}
+
 function compareTranscriptRecords(
   left: { id: string; timestamp: string },
   right: { id: string; timestamp: string },
@@ -102,6 +108,7 @@ function compareTranscriptRecords(
 export function mergeTranscriptSnapshot(
   current: ChatTranscript | null | undefined,
   incoming: ChatTranscript,
+  options: TranscriptSnapshotMergeOptions = {},
 ): ChatTranscript {
   if (
     !current
@@ -118,6 +125,7 @@ export function mergeTranscriptSnapshot(
 
   const incomingIsFull = !incoming.isPartial;
   const currentIsFull = !current.isPartial;
+  const direction = options.direction ?? "refresh";
   const mergeRecords = incomingIsFull
     ? mergeTranscriptSnapshotRecords
     : mergeTranscriptRecords;
@@ -131,7 +139,9 @@ export function mergeTranscriptSnapshot(
   const isPartial = !incomingIsFull && !currentIsFull && loadedResponses < totalResponses;
   const nextCursor = !isPartial
     ? undefined
-    : current.loadedResponses > incoming.loadedResponses
+    : direction === "older"
+      ? incoming.nextCursor
+      : current.loadedResponses > incoming.loadedResponses
       ? current.nextCursor ?? incoming.nextCursor
       : incoming.nextCursor ?? current.nextCursor;
 

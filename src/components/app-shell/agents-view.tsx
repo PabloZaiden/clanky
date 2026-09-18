@@ -604,7 +604,11 @@ function AgentRunDetail({
           snapshotEtagRef.current = response.headers.get("ETag");
         }
         setRun(snapshot.run);
-        setTranscript(mergeTranscriptSnapshot(transcriptRef.current, snapshot.transcript));
+        setTranscript(mergeTranscriptSnapshot(
+          transcriptRef.current,
+          snapshot.transcript,
+          { direction: transcriptWindow.full ? "full" : "refresh" },
+        ));
       } catch (refreshError) {
         if (runIdRef.current !== requestRunId) {
           return;
@@ -664,7 +668,11 @@ function AgentRunDetail({
         return;
       }
       setRun(snapshot.run);
-      setTranscript((current) => mergeTranscriptSnapshot(current, snapshot.transcript));
+      setTranscript((current) => mergeTranscriptSnapshot(
+        current,
+        snapshot.transcript,
+        { direction: options.full ? "full" : "older" },
+      ));
       if (options.full) {
         transcriptWindowRef.current = { full: true };
         snapshotEtagRef.current = response.headers.get("ETag");
@@ -828,6 +836,11 @@ function AgentRunDetail({
       {run.error && (
         <div className="mx-4 mt-3 rounded-md bg-red-50 p-3 text-sm text-red-800 dark:bg-red-900/20 dark:text-red-300">
           {run.error.message}
+        </div>
+      )}
+      {error && (
+        <div className="mx-4 mt-3">
+          <ErrorState title="Unable to load agent run transcript" description={error} />
         </div>
       )}
       <DeterministicOutputPanel logs={transcript?.logs ?? []} />

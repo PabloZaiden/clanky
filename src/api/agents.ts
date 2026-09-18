@@ -1208,7 +1208,7 @@ export const agentsRoutes = defineRoutes({
   "/api/agent-runs/:id/snapshot": {
     auth: "user",
     sameOrigin: "mutations",
-    description: "Read a lightweight transcript page for an agent run; use before or full=1 for older or complete history.",
+    description: "Read the latest page of up to 100 assistant responses for an agent run; use before for older history or full=1 for the complete transcript.",
     async GET(req: Request, ctx): Promise<Response> {
       const options = parseTranscriptSnapshotOptions(req);
       if (options instanceof Response) {

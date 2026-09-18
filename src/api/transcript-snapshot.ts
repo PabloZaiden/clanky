@@ -2,6 +2,11 @@ import type { TranscriptSnapshotOptions } from "@/shared";
 import { isDomainError } from "../core/domain-error";
 import { errorResponse } from "./helpers";
 
+/**
+ * Parse the paged transcript contract. An omitted option returns only the
+ * latest response page; callers that need every persisted entry must request
+ * `full=1`, while `before` loads the next older page.
+ */
 export function parseTranscriptSnapshotOptions(
   request: Request,
 ): TranscriptSnapshotOptions | Response {

@@ -147,7 +147,7 @@ describe("Chats API Integration", () => {
         if (chat.state?.status !== "idle" && chat.state?.status !== "failed") {
           return { statusCode: response.status, chat };
         }
-        const snapshotResponse = await fetch(`${baseUrl}/api/chats/${chatId}/snapshot`);
+        const snapshotResponse = await fetch(`${baseUrl}/api/chats/${chatId}/snapshot?full=1`);
         expect(snapshotResponse.status).toBe(200);
         const snapshot = await snapshotResponse.json() as {
           transcript: Pick<Chat["state"], "messages" | "logs" | "toolCalls">;

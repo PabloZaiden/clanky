@@ -372,6 +372,84 @@ describe("database schema", () => {
     }
   });
 
+  test("migration v55 backfills transcript message roles idempotently", () => {
+    const migration = migrations.find((candidate) => candidate.version === 55);
+    if (!migration) {
+      throw new Error("Migration v55 was not found");
+    }
+
+    const resources = [
+      { table: "chat_transcript_entries", resourceColumn: "chat_id", resourceId: "chat-1" },
+      { table: "task_transcript_entries", resourceColumn: "task_id", resourceId: "task-1" },
+      { table: "agent_run_transcript_entries", resourceColumn: "agent_run_id", resourceId: "run-1" },
+    ] as const;
+    const db = new Database(":memory:");
+    try {
+      for (const resource of resources) {
+        db.exec(`
+          CREATE TABLE ${resource.table} (
+            ${resource.resourceColumn} TEXT NOT NULL,
+            entry_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            timestamp TEXT NOT NULL,
+            sequence INTEGER NOT NULL,
+            kind TEXT NOT NULL,
+            payload TEXT NOT NULL
+          )
+        `);
+        const insert = db.query(`
+          INSERT INTO ${resource.table} (
+            ${resource.resourceColumn}, entry_id, user_id, timestamp, sequence, kind, payload
+          ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        `);
+        insert.run(resource.resourceId, "user-message", "user-1", "2024-01-01T00:00:00Z", 1, "message", JSON.stringify({
+          role: "user",
+          content: "Question",
+        }));
+        insert.run(resource.resourceId, "assistant-message", "user-1", "2024-01-01T00:00:01Z", 2, "message", JSON.stringify({
+          role: "assistant",
+          content: "Answer",
+        }));
+        insert.run(resource.resourceId, "system-message", "user-1", "2024-01-01T00:00:02Z", 3, "message", JSON.stringify({
+          role: "system",
+          content: "Ignored role",
+        }));
+        insert.run(resource.resourceId, "invalid-message", "user-1", "2024-01-01T00:00:03Z", 4, "message", "{invalid json");
+        insert.run(resource.resourceId, "tool-entry", "user-1", "2024-01-01T00:00:04Z", 5, "tool_call", JSON.stringify({
+          role: "assistant",
+          content: "Not a message",
+        }));
+      }
+
+      migration.up(db);
+      migration.up(db);
+
+      for (const resource of resources) {
+        const rows = db.query(`
+          SELECT entry_id, message_role
+          FROM ${resource.table}
+          ORDER BY sequence
+        `).all() as Array<{ entry_id: string; message_role: string | null }>;
+        expect(rows).toEqual([
+          { entry_id: "user-message", message_role: "user" },
+          { entry_id: "assistant-message", message_role: "assistant" },
+          { entry_id: "system-message", message_role: null },
+          { entry_id: "invalid-message", message_role: null },
+          { entry_id: "tool-entry", message_role: null },
+        ]);
+
+        const index = db.query(`
+          SELECT name
+          FROM sqlite_master
+          WHERE type = 'index' AND name = ?
+        `).get(`idx_${resource.table}_assistant_page`) as { name: string } | null;
+        expect(index?.name).toBe(`idx_${resource.table}_assistant_page`);
+      }
+    } finally {
+      db.close();
+    }
+  });
+
   // This migration-boundary scenario protects existing global and scoped Mesh
   // resources from losing capabilities during the runtime snapshot upgrade.
   test("migration v54 backfills valid Mesh snapshots for existing bindings", () => {

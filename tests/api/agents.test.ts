@@ -86,7 +86,7 @@ describe("Agents API Integration", () => {
         if (!terminalStatuses.has(run.status)) {
           return { statusCode: response.status, run };
         }
-        const snapshotResponse = await fetch(`${baseUrl}/api/agent-runs/${runId}/snapshot`);
+        const snapshotResponse = await fetch(`${baseUrl}/api/agent-runs/${runId}/snapshot?full=1`);
         expect(snapshotResponse.status).toBe(200);
         const snapshot = await snapshotResponse.json() as {
           transcript: Pick<AgentRun, "messages" | "logs" | "toolCalls">;

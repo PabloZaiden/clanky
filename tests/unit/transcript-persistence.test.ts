@@ -301,4 +301,50 @@ describe("incremental transcript persistence", () => {
     expect(merged).toEqual(incoming);
   });
 
+  test("advances the cursor when merging consecutive older transcript pages", () => {
+    const createPage = (
+      start: number,
+      count: number,
+      nextCursor: string | undefined,
+    ) => ({
+      messages: Array.from({ length: count }, (_, offset) => ({
+        id: `assistant-${start + offset}`,
+        role: "assistant" as const,
+        content: `Answer ${start + offset}`,
+        timestamp: `2024-01-01T00:${String(start + offset).padStart(2, "0")}:00.000Z`,
+      })),
+      logs: [],
+      toolCalls: [],
+      revision: `page-${start}`,
+      totalEntries: count,
+      isPartial: true,
+      loadedResponses: count,
+      totalResponses: 250,
+      hasOlder: Boolean(nextCursor),
+      ...(nextCursor ? { nextCursor } : {}),
+    });
+
+    const latestPage = createPage(150, 100, "before-150");
+    const firstOlderPage = createPage(50, 100, "before-50");
+    const finalOlderPage = createPage(0, 50, undefined);
+
+    const afterFirstOlderPage = mergeTranscriptSnapshot(
+      latestPage,
+      firstOlderPage,
+      { direction: "older" },
+    );
+    expect(afterFirstOlderPage.nextCursor).toBe("before-50");
+    expect(afterFirstOlderPage.hasOlder).toBe(true);
+
+    const afterFinalOlderPage = mergeTranscriptSnapshot(
+      afterFirstOlderPage,
+      finalOlderPage,
+      { direction: "older" },
+    );
+    expect(afterFinalOlderPage.nextCursor).toBeUndefined();
+    expect(afterFinalOlderPage.hasOlder).toBe(false);
+    expect(afterFinalOlderPage.loadedResponses).toBe(250);
+    expect(afterFinalOlderPage.messages).toHaveLength(250);
+  });
+
 });

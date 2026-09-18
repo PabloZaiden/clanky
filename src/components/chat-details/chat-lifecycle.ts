@@ -449,7 +449,11 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
           ? mergeOperationalChatSnapshot(currentChat, hydrated.chat)
           : hydrated.chat);
         const currentTranscript = transcriptRef.current;
-        setTranscriptState(mergeTranscriptSnapshot(currentTranscript, hydrated.transcript));
+        setTranscriptState(mergeTranscriptSnapshot(
+          currentTranscript,
+          hydrated.transcript,
+          { direction: refreshWindow.full ? "full" : "refresh" },
+        ));
       } catch (refreshError) {
         if (
           controller.signal.aborted
@@ -524,7 +528,11 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
       setChatState(chatRef.current
         ? mergeOperationalChatSnapshot(chatRef.current, hydrated.chat)
         : hydrated.chat);
-      setTranscriptState(mergeTranscriptSnapshot(transcriptRef.current, hydrated.transcript));
+      setTranscriptState(mergeTranscriptSnapshot(
+        transcriptRef.current,
+        hydrated.transcript,
+        { direction: options.full ? "full" : "older" },
+      ));
     } catch (transcriptError) {
       if (
         controller.signal.aborted
