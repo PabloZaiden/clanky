@@ -125,6 +125,14 @@ export function usePreviewSessions(scope: PreviewSessionScope): UsePreviewSessio
     onReconnect: () => refresh({ showLoading: false }),
   });
 
+  useRealtimeRefreshWithRecovery({
+    enabled: scope.kind === "server",
+    resources: ["execution-hosts"],
+    filters: { resource: "execution-hosts" },
+    refresh: () => refresh({ showLoading: false }),
+    onReconnect: () => refresh({ showLoading: false }),
+  });
+
   useEffect(() => {
     isMountedRef.current = true;
     void refresh();

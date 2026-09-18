@@ -3,6 +3,9 @@
  */
 
 import type { Database } from "bun:sqlite";
+import { createLogger } from "@pablozaiden/webapp/server";
+
+const log = createLogger("persistence:migrations:preview-sessions");
 
 interface PreviewColumn {
   name: string;
@@ -47,31 +50,24 @@ export function migratePreviewSessions(db: Database): void {
   if (!columnNames.has("workspace_id")) {
     throw new Error("Cannot migrate preview sessions without workspace associations");
   }
-  const unresolved = db.query(`
-    SELECT preview.id
-    FROM preview_sessions preview
-    LEFT JOIN workspaces workspace
-      ON workspace.id = preview.workspace_id
-     AND workspace.user_id = preview.user_id
-    LEFT JOIN execution_hosts host
-      ON host.id = workspace.execution_host_id
-     AND host.user_id = workspace.user_id
-    WHERE workspace.id IS NULL
-       OR workspace.execution_host_id IS NULL
-       OR workspace.execution_host_revision IS NULL
-       OR host.id IS NULL
-       OR host.revision != workspace.execution_host_revision
-    LIMIT 1
-  `).get() as { id: string } | null;
-  if (unresolved) {
-    throw new Error(
-      `Cannot migrate preview ${unresolved.id} without a current execution-host binding`,
-    );
-  }
-
   db.run("PRAGMA foreign_keys = OFF");
   db.run("BEGIN IMMEDIATE");
+  let discardedCount = 0;
   try {
+    const discarded = db.run(`
+      DELETE FROM preview_sessions
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM workspaces workspace
+        JOIN execution_hosts host
+          ON host.id = workspace.execution_host_id
+         AND host.user_id = workspace.user_id
+         AND host.revision = workspace.execution_host_revision
+        WHERE workspace.id = preview_sessions.workspace_id
+          AND workspace.user_id = preview_sessions.user_id
+      )
+    `);
+    discardedCount = discarded.changes;
     db.run(`
       CREATE TABLE preview_sessions_execution_host (
         id TEXT PRIMARY KEY,
@@ -127,6 +123,11 @@ export function migratePreviewSessions(db: Database): void {
     db.run("ALTER TABLE preview_sessions_execution_host RENAME TO preview_sessions");
     createPreviewIndexes(db);
     db.run("COMMIT");
+    if (discardedCount > 0) {
+      log.warn("Discarded preview sessions without a current execution-host binding", {
+        count: discardedCount,
+      });
+    }
     if (db.query("PRAGMA foreign_key_check").all().length > 0) {
       throw new Error("Foreign-key violations detected after preview execution-host migration");
     }

@@ -214,4 +214,21 @@ describe("Clanky realtime migration", () => {
       },
     ]);
   });
+
+  test("publishes execution-host invalidations for binding revisions", () => {
+    const recording = createRecordingPublisher();
+
+    publishClankyDomainEvent(recording.publisher, {
+      type: "mesh.changed",
+      executionHostsChanged: true,
+    }, { userId: "user-1" });
+
+    expect(recording.resources).toContainEqual({
+      ownerId: "user-1",
+      resource: CLANKY_REALTIME_RESOURCES.executionHosts,
+      action: "changed",
+      id: undefined,
+      scope: undefined,
+    });
+  });
 });

@@ -9,10 +9,14 @@ import { previewSessionManager } from "../../src/core/preview-session-manager";
 import { runWithCurrentUser } from "../../src/core/user-context";
 import {
   getExecutionHostSourceId,
+  POSIX_EXECUTION_HOST_CAPABILITIES,
   type ExecutionHostBinding,
   type PreviewBridgeServerMessage,
   type Workspace,
 } from "@/shared";
+import { ensureExecutionHost, toExecutionHostBinding } from "../../src/persistence/execution-hosts";
+import { PreviewSessionManager } from "../../src/core/preview-session-manager";
+import { buildMeshTargetKey } from "../../src/persistence/workspace-target-key";
 import {
   getTestLocalExecutionHostBinding,
   seedTestOwnerUser,
@@ -173,6 +177,120 @@ describe("workspace previews", () => {
 
       expect(await previewSessionManager.closePreview(preview.config.id, "test close")).toBe(true);
       expect(await previewSessionManager.listServerPreviews(executionHostBinding.host)).toEqual([]);
+    });
+  });
+
+  test("registers a direct Mesh server preview through the bridge", async () => {
+    const meshNodeId = "preview-mesh-worker";
+    const meshRef = { kind: "mesh", nodeId: meshNodeId } as const;
+    const now = new Date().toISOString();
+    getDatabase().query(`
+      INSERT INTO mesh_worker_registrations (
+        worker_node_id, local_user_id, worker_instance_name,
+        worker_endpoint, worker_transport,
+        worker_public_key, worker_fingerprint,
+        route_kind, worker_directory,
+        worker_platform_os, worker_platform_architecture,
+        worker_capabilities_json, worker_accept_remote_execution,
+        worker_config_revision, registration_scope, grant_status,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      meshNodeId,
+      testOwnerUser.id,
+      "Preview Mesh worker",
+      "http://127.0.0.1:1",
+      "http",
+      "fixture-public-key",
+      "fixture-fingerprint",
+      "direct",
+      null,
+      "linux",
+      "x64",
+      JSON.stringify(POSIX_EXECUTION_HOST_CAPABILITIES),
+      1,
+      1,
+      "global",
+      "active",
+      now,
+      now,
+    );
+    const meshBinding = await runWithCurrentUser(testOwnerUser, async () =>
+      toExecutionHostBinding(ensureExecutionHost(
+        testOwnerUser.id,
+        meshRef,
+        buildMeshTargetKey(meshNodeId),
+        {
+          runtime: {
+            platform: { os: "linux", architecture: "x64" },
+            capabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
+          },
+        },
+      ))
+    );
+    let openedBinding: ExecutionHostBinding | undefined;
+    let openedRemotePort: number | undefined;
+    let closeCount = 0;
+    const manager = new PreviewSessionManager({
+      openPreviewTcpForward: async (binding, remotePort) => {
+        openedBinding = binding;
+        openedRemotePort = remotePort;
+        return {
+          localPort: 45454,
+          close: async () => {
+            closeCount += 1;
+          },
+        };
+      },
+    });
+
+    await runWithCurrentUser(testOwnerUser, async () => {
+      const sentMessages: PreviewBridgeServerMessage[] = [];
+      const bridgeSocket = {
+        data: { user: testOwnerUser },
+        send(data: string | Uint8Array) {
+          if (typeof data === "string") {
+            sentMessages.push(JSON.parse(data) as PreviewBridgeServerMessage);
+          }
+        },
+        close() {},
+      };
+
+      await manager.handleBridgeMessage(bridgeSocket, JSON.stringify({
+        type: "hello",
+        target: {
+          kind: "server",
+          reference: meshNodeId,
+        },
+        remoteHost: "127.0.0.1",
+        remotePort: 4173,
+        localHost: "127.0.0.1",
+        localPort: 54173,
+        localUrl: "http://127.0.0.1:54173/",
+        initialPath: "/",
+        cliHostname: "mesh-devbox",
+      }));
+
+      const ready = await waitForBridgeMessage(
+        sentMessages,
+        (message) => message.type === "ready",
+      );
+      expect(ready.type).toBe("ready");
+      if (ready.type !== "ready") {
+        throw new Error(`Expected ready message, received ${ready.type}`);
+      }
+      expect(ready.targetKind).toBe("server");
+      expect(ready.workspaceId).toBeUndefined();
+      expect(openedBinding).toEqual(meshBinding);
+      expect(openedRemotePort).toBe(4173);
+
+      const preview = await manager.getPreview(ready.previewId);
+      expect(preview?.config.executionHostBinding).toEqual(meshBinding);
+      expect(preview?.config.workspaceId).toBeUndefined();
+
+      await manager.closeBridgeSession(bridgeSocket, "test done");
+      expect(closeCount).toBe(1);
+      expect(await manager.getPreview(ready.previewId)).toBeNull();
     });
   });
 

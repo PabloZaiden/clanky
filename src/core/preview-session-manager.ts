@@ -67,6 +67,10 @@ interface UpstreamWebSocketState {
   queuedMessages: Array<string | ArrayBuffer>;
 }
 
+export interface PreviewSessionManagerDependencies {
+  openPreviewTcpForward?: typeof openPreviewTcpForward;
+}
+
 type ResolvedPreviewTarget =
   | {
       kind: "workspace";
@@ -199,6 +203,10 @@ export class PreviewSessionManager {
   private initializedUserIds = new Set<string>();
   private initializingByUserId = new Map<string, Promise<void>>();
 
+  constructor(
+    private readonly dependencies: PreviewSessionManagerDependencies = {},
+  ) {}
+
   async initialize(): Promise<void> {
     const user = requireCurrentUser();
     if (this.initializedUserIds.has(user.id)) {
@@ -301,7 +309,10 @@ export class PreviewSessionManager {
         ? target.executionTarget.kind
         : target.transportKind;
       meshForward = transportKind === "mesh"
-        ? await openPreviewTcpForward(target.binding, options.remotePort)
+        ? await (this.dependencies.openPreviewTcpForward ?? openPreviewTcpForward)(
+          target.binding,
+          options.remotePort,
+        )
         : undefined;
       const targetPort = sshTunnel?.localPort ?? meshForward?.localPort ?? options.remotePort;
       const targetHost = sshTunnel || meshForward ? LOCAL_TUNNEL_HOST : options.remoteHost;

@@ -104,7 +104,7 @@ describe("preview session migration", () => {
     }
   });
 
-  test("fails explicitly when a workspace preview has no current host binding", () => {
+  test("discards workspace previews without a current host binding", () => {
     const db = new Database(":memory:");
     try {
       createLegacyPreviewSchema(db);
@@ -118,9 +118,11 @@ describe("preview session migration", () => {
         )
       `);
 
-      expect(() => migratePreviewSessions(db)).toThrow(
-        "Cannot migrate preview orphan-preview without a current execution-host binding",
-      );
+      migratePreviewSessions(db);
+
+      expect(db.query("SELECT COUNT(*) AS count FROM preview_sessions").get())
+        .toEqual({ count: 0 });
+      expect(db.query("PRAGMA foreign_key_check").all()).toEqual([]);
     } finally {
       db.close();
     }

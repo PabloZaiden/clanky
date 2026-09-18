@@ -3029,7 +3029,7 @@ parameters are combined with AND. Common filters are:
 |-----------|-------------|
 | `resource` | Resource name for invalidation events, such as `tasks`, `chats`, `agents`, `agent-runs`, `terminal-sessions`, `ssh-server-sessions`, `provisioning-jobs`, or `previews` |
 | `id` | Entity ID for a resource invalidation |
-| `scope` | Resource scope, such as an agent ID for `agent-runs` or a workspace ID for `previews` |
+| `scope` | Resource scope, such as an agent ID for `agent-runs`, a workspace ID for workspace `previews`, or a serialized execution-host reference (for example, `local:node-id` or `mesh:node-id`) for direct server `previews` |
 | `taskId` | Target a retained task stream |
 | `chatId` | Target a retained chat stream |
 | `agentId` | Target a retained agent-run stream or an agent-run resource scope |

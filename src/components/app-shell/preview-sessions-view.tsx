@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Button, StatusBadge } from "../common";
 import {
   ActionMenu,
+  ConfirmDialog,
   EmptyState,
   ErrorState,
   LoadingState,
@@ -32,6 +33,7 @@ export function PreviewSessionsView({
   buildCommand,
 }: PreviewSessionsViewProps) {
   const [port, setPort] = useState("3000");
+  const [pendingClosePreviewId, setPendingClosePreviewId] = useState<string | null>(null);
   const toast = useToast();
   const { previews, loading, error, closePreview } = usePreviewSessions(scope);
   const command = useMemo(() => buildCommand(port), [buildCommand, port]);
@@ -51,6 +53,14 @@ export function PreviewSessionsView({
       toast.success("Preview URL copied");
     } catch (err) {
       toast.error(`Failed to copy URL: ${String(err)}`);
+    }
+  }
+
+  async function confirmClosePreview() {
+    const previewId = pendingClosePreviewId;
+    setPendingClosePreviewId(null);
+    if (previewId) {
+      await closePreview(previewId);
     }
   }
 
@@ -150,7 +160,7 @@ export function PreviewSessionsView({
                           id: "close",
                           label: "Close",
                           destructive: true,
-                          onAction: () => void closePreview(preview.config.id),
+                          onAction: () => setPendingClosePreviewId(preview.config.id),
                         },
                       ] satisfies ActionMenuItem[]}
                     />
@@ -161,6 +171,15 @@ export function PreviewSessionsView({
           </div>
         )}
       </section>
+      <ConfirmDialog
+        open={pendingClosePreviewId !== null}
+        title="Close preview?"
+        message="This disconnects the active preview session."
+        confirmLabel="Close preview"
+        danger
+        onCancel={() => setPendingClosePreviewId(null)}
+        onConfirm={() => void confirmClosePreview()}
+      />
     </div>
   );
 }
