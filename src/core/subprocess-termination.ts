@@ -116,6 +116,14 @@ async function terminateWindowsSubprocessTree(
     });
     const exitCode = await waitForSubprocessExitCode(termination, timeoutMs);
     if (exitCode === null) {
+      console.error(JSON.stringify({
+        diagnostic: "windows-taskkill-timeout",
+        workerPid: process.pid,
+        targetPid: subprocess.pid,
+        helperPid: termination.pid,
+        force,
+        timeoutMs,
+      }));
       log.warn("Windows taskkill helper timed out", {
         pid: subprocess.pid,
         force,
