@@ -39,6 +39,10 @@ export interface UseTaskResult {
   task: Task | null;
   /** Whether the task is loading */
   loading: boolean;
+  /** Whether a transcript history action is loading */
+  loadingTranscript: boolean;
+  /** Whether older transcript responses are available */
+  hasOlderTranscript: boolean;
   /** Error message if any */
   error: string | null;
   /** WebSocket connection status */
@@ -57,6 +61,10 @@ export interface UseTaskResult {
   refresh: () => Promise<void>;
   /** Load one complete tool-call payload when expanded. */
   loadToolDetails: (toolCallId: string) => Promise<ToolCallData | null>;
+  /** Load the next older transcript page. */
+  loadMoreTranscript: () => Promise<void>;
+  /** Load the complete transcript history. */
+  loadFullTranscript: () => Promise<void>;
   /** Update the task */
   update: (request: UpdateTaskRequest) => Promise<boolean>;
   /** Delete the task */
@@ -137,6 +145,8 @@ export function useTask(taskId: string): UseTaskResult {
     task,
     setTask,
     loading,
+    loadingTranscript,
+    hasOlderTranscript,
     error,
     setError,
     messages,
@@ -150,6 +160,8 @@ export function useTask(taskId: string): UseTaskResult {
     gitChangeCounter,
     setGitChangeCounter,
     refresh,
+    loadMoreTranscript,
+    loadFullTranscript,
     loadToolDetails,
     abortControllerRef,
     initialLoadDoneRef,
@@ -267,6 +279,8 @@ export function useTask(taskId: string): UseTaskResult {
   return {
     task,
     loading,
+    loadingTranscript,
+    hasOlderTranscript,
     error,
     connectionStatus,
     messages,
@@ -275,6 +289,8 @@ export function useTask(taskId: string): UseTaskResult {
     logs,
     gitChangeCounter,
     refresh,
+    loadMoreTranscript,
+    loadFullTranscript,
     loadToolDetails,
     ...actions,
     ...fileQueries,

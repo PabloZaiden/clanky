@@ -46,6 +46,7 @@ export function TaskDetails({
 }: TaskDetailsProps) {
    const {
       task, loading, error, messages, toolCalls, logs, gitChangeCounter,
+      hasOlderTranscript, loadingTranscript, loadMoreTranscript, loadFullTranscript,
         accept, push, updateBranch, remove, purge, markMerged, closeLocalTask, manualCompleteTask,
        stopTask, setPending, sendFollowUp, loadToolDetails,
       getDiff, getPlan, getStatusFile, getPullRequestDestination,
@@ -334,6 +335,10 @@ export function TaskDetails({
             feedbackRounds={feedbackRounds} markdownEnabled={markdownEnabled}
             messages={messages} toolCalls={toolCalls} logs={logs}
             onLoadToolDetails={loadToolDetails}
+            hasOlderTranscript={hasOlderTranscript}
+            onLoadMoreTranscript={loadMoreTranscript}
+            onLoadFullTranscript={loadFullTranscript}
+            loadingTranscript={loadingTranscript}
             logDisplay={logDisplay}
             content={content}
             actions={actions}

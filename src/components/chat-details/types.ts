@@ -2,6 +2,7 @@ import type {
   Chat,
   ChatEvent,
   ChatPermissionRequest,
+  ChatTranscript,
   MessageData,
   QueuedChatMessage,
   ToolCallData,
@@ -35,6 +36,11 @@ export interface ChatTranscriptViewState {
   toolCalls: ToolCallDisplayData[];
   revision: string;
   totalEntries: number;
+  isPartial: ChatTranscript["isPartial"];
+  loadedResponses: ChatTranscript["loadedResponses"];
+  totalResponses: ChatTranscript["totalResponses"];
+  hasOlder: ChatTranscript["hasOlder"];
+  nextCursor?: ChatTranscript["nextCursor"];
 }
 
 export interface ChatLifecycleResult {
@@ -46,6 +52,9 @@ export interface ChatLifecycleResult {
   needsSshCredentials: boolean;
   refreshChat: (options?: ChatRefreshOptions) => Promise<void>;
   loadToolCallDetails: (toolCallId: string) => Promise<ToolCallData | null>;
+  loadMoreTranscript: () => Promise<void>;
+  loadFullTranscript: () => Promise<void>;
+  loadingTranscript: boolean;
   applyChatSnapshot: (nextChat: Chat) => void;
   markChatStarting: () => void;
   handleReconnect: () => Promise<void>;
@@ -59,6 +68,9 @@ export interface ChatTranscriptProps {
   toolPathDisplayRoot: string;
   fileLinkContext?: TranscriptFileLinkContext;
   onLoadToolDetails: (toolCallId: string) => Promise<ToolCallData | null>;
+  onLoadMoreTranscript: () => Promise<void>;
+  onLoadFullTranscript: () => Promise<void>;
+  loadingTranscript: boolean;
   voiceInput: {
     available: boolean;
     status: VoiceRecorderStatus;

@@ -36,6 +36,10 @@ import {
 import {
   getTranscriptSnapshotEtag,
 } from "../core/transcript-service";
+import {
+  parseTranscriptSnapshotOptions,
+  transcriptSnapshotErrorResponse,
+} from "./transcript-snapshot";
 
 const log = createLogger("api:agents");
 const GENERATE_CODE_HEARTBEAT_INTERVAL_MS = 4_000;
@@ -1204,16 +1208,21 @@ export const agentsRoutes = defineRoutes({
   "/api/agent-runs/:id/snapshot": {
     auth: "user",
     sameOrigin: "mutations",
-    description: "Read the complete lightweight transcript snapshot for an agent run.",
+    description: "Read a lightweight transcript page for an agent run; use before or full=1 for older or complete history.",
     async GET(req: Request, ctx): Promise<Response> {
+      const options = parseTranscriptSnapshotOptions(req);
+      if (options instanceof Response) {
+        return options;
+      }
       try {
-        const snapshot = await getAgentRunTranscriptSnapshot(ctx.params["id"]!);
+        const snapshot = await getAgentRunTranscriptSnapshot(ctx.params["id"]!, options);
         if (!snapshot) {
           return errorResponse("agent_run_not_found", "Agent run not found", 404);
         }
         const revision = getTranscriptSnapshotEtag(
           snapshot.transcript.revision,
           { run: snapshot.run },
+          options,
         );
         if (isNotModified(req, revision)) {
           return new Response(null, {
@@ -1225,6 +1234,10 @@ export const agentsRoutes = defineRoutes({
           headers: transcriptResponseHeaders(revision),
         });
       } catch (error) {
+        const snapshotError = transcriptSnapshotErrorResponse(error);
+        if (snapshotError) {
+          return snapshotError;
+        }
         return internalErrorResponse(error, {
           error: "snapshot_failed",
           message: "Failed to load agent-run snapshot",

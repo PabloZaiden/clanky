@@ -11,6 +11,7 @@ import {
   getTranscriptMetaForUser,
   getTranscriptToolCallForUser,
   listTranscriptEntriesForUser,
+  listTranscriptEntriesPage,
   replaceTranscriptEntriesForUser,
   replaceTranscriptEntriesForUserInTransaction,
   syncTranscriptEntriesInTransaction,
@@ -85,6 +86,13 @@ export function listChatTranscriptEntries(
     requirePersistenceUserId(),
     includeToolPayload,
   );
+}
+
+export function listChatTranscriptEntriesPage(
+  chatId: string,
+  options: { full?: boolean; before?: string } = {},
+) {
+  return listTranscriptEntriesPage("chat", chatId, options);
 }
 
 export function getChatToolCallFromTranscript(

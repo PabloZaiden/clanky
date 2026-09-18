@@ -15,6 +15,9 @@ export function ChatTranscript({
   toolPathDisplayRoot,
   fileLinkContext,
   onLoadToolDetails,
+  onLoadMoreTranscript,
+  onLoadFullTranscript,
+  loadingTranscript,
   voiceInput,
   onStartVoice,
   onReadAloud,
@@ -155,6 +158,10 @@ export function ChatTranscript({
         fileLinkContext={fileLinkContext}
         emptyStateMessage="No messages yet"
         activeStateMessage="Thinking…"
+        hasOlderTranscript={transcript.hasOlder}
+        onLoadMoreTranscript={onLoadMoreTranscript}
+        onLoadFullTranscript={onLoadFullTranscript}
+        loadingTranscript={loadingTranscript}
         onReadAloud={readAloudAvailable ? onReadAloud : undefined}
         readAloudSummaryEnabled={readAloudSummaryAvailable}
         playingReadAloudKey={playingReadAloudKey}

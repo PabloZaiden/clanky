@@ -12,6 +12,13 @@ export type TranscriptEntryKind = ChatTranscriptEntryKind;
 
 export type TranscriptEntryPayload = PersistedMessage | TaskLogEntry | ToolCallRecord;
 
+export const TRANSCRIPT_PAGE_SIZE = 100;
+
+export interface TranscriptSnapshotOptions {
+  full?: boolean;
+  before?: string;
+}
+
 export interface TranscriptEntryUpsert {
   id: string;
   kind: TranscriptEntryKind;
@@ -69,6 +76,11 @@ export interface ChatTranscript {
   toolCalls: ToolCallDisplayData[];
   revision: string;
   totalEntries: number;
+  isPartial: boolean;
+  loadedResponses: number;
+  totalResponses: number;
+  hasOlder: boolean;
+  nextCursor?: string;
 }
 
 export type ChatSnapshotState = Omit<ChatState, "messages" | "logs" | "toolCalls">;
@@ -91,17 +103,57 @@ export function mergeTranscriptSnapshot(
   current: ChatTranscript | null | undefined,
   incoming: ChatTranscript,
 ): ChatTranscript {
-  if (!current) {
+  if (
+    !current
+    || (
+      current.revision.length === 0
+      && current.totalEntries === 0
+      && current.messages.length === 0
+      && current.logs.length === 0
+      && current.toolCalls.length === 0
+    )
+  ) {
     return incoming;
   }
 
+  const incomingIsFull = !incoming.isPartial;
+  const currentIsFull = !current.isPartial;
+  const mergeRecords = incomingIsFull
+    ? mergeTranscriptSnapshotRecords
+    : mergeTranscriptRecords;
+  const messages = mergeRecords(current.messages, incoming.messages);
+  const logs = mergeRecords(current.logs, incoming.logs);
+  const toolCalls = incomingIsFull
+    ? mergeTranscriptSnapshotToolCalls(current.toolCalls, incoming.toolCalls)
+    : mergeTranscriptToolCalls(current.toolCalls, incoming.toolCalls);
+  const loadedResponses = countAssistantResponses(messages);
+  const totalResponses = Math.max(current.totalResponses, incoming.totalResponses);
+  const isPartial = !incomingIsFull && !currentIsFull && loadedResponses < totalResponses;
+  const nextCursor = !isPartial
+    ? undefined
+    : current.loadedResponses > incoming.loadedResponses
+      ? current.nextCursor ?? incoming.nextCursor
+      : incoming.nextCursor ?? current.nextCursor;
+
   return {
-    messages: mergeTranscriptSnapshotRecords(current.messages, incoming.messages),
-    logs: mergeTranscriptSnapshotRecords(current.logs, incoming.logs),
-    toolCalls: mergeTranscriptSnapshotToolCalls(current.toolCalls, incoming.toolCalls),
+    messages,
+    logs,
+    toolCalls,
     revision: incoming.revision,
-    totalEntries: incoming.totalEntries,
+    totalEntries: Math.max(current.totalEntries, incoming.totalEntries),
+    isPartial,
+    loadedResponses,
+    totalResponses,
+    hasOlder: isPartial && Boolean(nextCursor),
+    ...(nextCursor ? { nextCursor } : {}),
   };
+}
+
+function countAssistantResponses(messages: PersistedMessage[]): number {
+  return messages.reduce(
+    (count, message) => count + (message.role === "assistant" ? 1 : 0),
+    0,
+  );
 }
 
 export function mergeTranscriptRecords<T extends { id: string; timestamp: string }>(

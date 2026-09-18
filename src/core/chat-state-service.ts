@@ -14,12 +14,12 @@ import {
   loadTaskChat,
   getChatTranscriptMeta,
   getChatToolCallFromTranscript,
-  listChatTranscriptEntries,
+  listChatTranscriptEntriesPage,
   saveChat,
   updateChatConfig,
   updateChatState,
 } from "../persistence/chats";
-import { createTranscriptFromStorageEntries } from "./transcript-service";
+import { createTranscriptFromStoragePage } from "./transcript-service";
 import { getWorkspace, touchWorkspace } from "../persistence/workspaces";
 import type {
   Chat,
@@ -29,6 +29,7 @@ import type {
   ChatStartupStage,
   TranscriptChangeSet,
   Workspace,
+  TranscriptSnapshotOptions,
 } from "@/shared";
 import { createTranscriptChangeSet } from "@/shared";
 import type { ChatSnapshot, ToolCallRecord } from "@/shared";
@@ -51,7 +52,10 @@ export class ChatStateService implements ChatStatePort {
     return loadChatMetadata(chatId);
   }
 
-  async getChatSnapshot(chatId: string): Promise<ChatSnapshot | null> {
+  async getChatSnapshot(
+    chatId: string,
+    options: TranscriptSnapshotOptions = {},
+  ): Promise<ChatSnapshot | null> {
     const chat = await loadChatMetadata(chatId);
     if (!chat) {
       return null;
@@ -62,12 +66,12 @@ export class ChatStateService implements ChatStatePort {
       throw new Error(`Chat transcript metadata is unavailable: ${chatId}`);
     }
 
-    const entries = listChatTranscriptEntries(chatId);
+    const page = listChatTranscriptEntriesPage(chatId, options);
     const { messages: _messages, logs: _logs, toolCalls: _toolCalls, ...state } = chat.state;
     return {
       config: chat.config,
       state,
-      transcript: createTranscriptFromStorageEntries(entries, {
+      transcript: createTranscriptFromStoragePage(page, {
         revision: meta.revision,
         totalEntries: meta.entryCount,
       }, shouldIncludeChatTranscriptLog),

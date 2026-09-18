@@ -1,4 +1,7 @@
 import type { Database } from "bun:sqlite";
+import {
+  TRANSCRIPT_PAGE_SIZE,
+} from "@/shared";
 import type {
   ChatTranscriptStorageEntry,
   TranscriptChangeSet,
@@ -7,6 +10,7 @@ import type {
   TaskLogEntry,
   ToolCallRecord,
 } from "@/shared";
+import { DomainError } from "../../domain/domain-error";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { getDatabase } from "../database";
 import { requirePersistenceUserId } from "../ownership";
@@ -15,6 +19,20 @@ const log = createLogger("persistence:transcripts");
 
 export type TranscriptResource = "chat" | "task" | "agent_run";
 export type TranscriptEntryKind = SharedTranscriptEntryKind;
+
+export interface TranscriptEntriesPage {
+  entries: ChatTranscriptStorageEntry[];
+  totalResponses: number;
+  loadedResponses: number;
+  hasOlder: boolean;
+  nextCursor?: string;
+}
+
+export class TranscriptCursorError extends DomainError<"transcript_cursor_invalid"> {
+  constructor(message: string) {
+    super("transcript_cursor_invalid", message);
+  }
+}
 
 interface TranscriptTableConfig {
   parentTable: "chats" | "tasks" | "agent_runs";
@@ -91,6 +109,75 @@ function getEntryKey(kind: TranscriptEntryKind, id: string): string {
 function allocateLiveTranscriptSequence(): number {
   nextLiveTranscriptSequence += 1;
   return nextLiveTranscriptSequence;
+}
+
+interface TranscriptCursor {
+  version: 1;
+  resource: TranscriptResource;
+  resourceId: string;
+  userId: string;
+  entryId: string;
+  timestamp: string;
+  sequence: number;
+}
+
+interface TranscriptResponseRow {
+  entry_id: string;
+  timestamp: string;
+  sequence: number;
+}
+
+function encodeTranscriptCursor(
+  resource: TranscriptResource,
+  resourceId: string,
+  userId: string,
+  row: TranscriptResponseRow,
+): string {
+  const cursor: TranscriptCursor = {
+    version: 1,
+    resource,
+    resourceId,
+    userId,
+    entryId: row.entry_id,
+    timestamp: row.timestamp,
+    sequence: row.sequence,
+  };
+  return Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url");
+}
+
+function decodeTranscriptCursor(
+  resource: TranscriptResource,
+  resourceId: string,
+  userId: string,
+  encoded: string,
+): TranscriptCursor {
+  if (encoded.length > 2048) {
+    throw new TranscriptCursorError("Transcript cursor is too long");
+  }
+
+  try {
+    const parsed = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")) as Partial<TranscriptCursor>;
+    if (
+      parsed.version !== 1
+      || parsed.resource !== resource
+      || parsed.resourceId !== resourceId
+      || parsed.userId !== userId
+      || typeof parsed.entryId !== "string"
+      || !parsed.entryId.startsWith("message:")
+      || typeof parsed.timestamp !== "string"
+      || typeof parsed.sequence !== "number"
+      || !Number.isInteger(parsed.sequence)
+      || parsed.sequence < 0
+    ) {
+      throw new TranscriptCursorError("Transcript cursor is invalid");
+    }
+    return parsed as TranscriptCursor;
+  } catch (error) {
+    if (error instanceof TranscriptCursorError) {
+      throw error;
+    }
+    throw new TranscriptCursorError("Transcript cursor is invalid");
+  }
 }
 
 function serializeJson(value: unknown): string {
@@ -183,19 +270,23 @@ function upsertEntry(
   const input = tool?.input === undefined ? null : serializeJson(tool.input);
   const output = tool?.output === undefined ? null : serializeJson(tool.output);
   const extras = tool?.extras === undefined ? null : serializeJson(tool.extras);
+  const messageRole = entry.kind === "message"
+    ? (entry.payload as PersistedMessage).role
+    : null;
 
   db.prepare(`
     INSERT INTO ${config.entriesTable} (
       ${config.resourceColumn}, user_id, entry_id, kind, timestamp, sequence,
-      payload, tool_name, tool_status, tool_input, tool_output, tool_extras,
+      payload, message_role, tool_name, tool_status, tool_input, tool_output, tool_extras,
       created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(${config.resourceColumn}, entry_id) DO UPDATE SET
       user_id = excluded.user_id,
       kind = excluded.kind,
       timestamp = excluded.timestamp,
       sequence = excluded.sequence,
       payload = excluded.payload,
+      message_role = excluded.message_role,
       tool_name = excluded.tool_name,
       tool_status = excluded.tool_status,
       tool_input = excluded.tool_input,
@@ -210,6 +301,7 @@ function upsertEntry(
     entry.timestamp,
     sequence,
     serializeJson(payload),
+    messageRole,
     tool?.name ?? null,
     tool?.status ?? null,
     input,
@@ -579,6 +671,251 @@ export function listTranscriptEntriesForUser(
   return rows.map((row) => rowToStorageEntry(row, includeToolPayload, resource));
 }
 
+function getTranscriptResponseCount(
+  resource: TranscriptResource,
+  resourceId: string,
+  userId: string,
+): number {
+  const config = getTableConfig(resource);
+  const row = getDatabase().prepare(`
+    SELECT COUNT(*) AS count
+    FROM ${config.entriesTable}
+    WHERE ${config.resourceColumn} = ?
+      AND user_id = ?
+      AND kind = 'message'
+      AND message_role = 'assistant'
+  `).get(resourceId, userId) as { count: number };
+  return row.count;
+}
+
+function getEntriesBetween(
+  resource: TranscriptResource,
+  resourceId: string,
+  userId: string,
+  lower: TranscriptResponseRow,
+  upper: TranscriptResponseRow | null,
+): ChatTranscriptStorageEntry[] {
+  const config = getTableConfig(resource);
+  const upperClause = upper
+    ? `
+      AND (
+        timestamp < ?
+        OR (
+          timestamp = ?
+          AND (
+            sequence < ?
+            OR (sequence = ? AND entry_id < ?)
+          )
+        )
+      )
+    `
+    : "";
+  const params = upper
+    ? [
+        resourceId,
+        userId,
+        lower.timestamp,
+        lower.timestamp,
+        lower.sequence,
+        lower.sequence,
+        lower.entry_id,
+        upper.timestamp,
+        upper.timestamp,
+        upper.sequence,
+        upper.sequence,
+        upper.entry_id,
+      ]
+    : [
+        resourceId,
+        userId,
+        lower.timestamp,
+        lower.timestamp,
+        lower.sequence,
+        lower.sequence,
+        lower.entry_id,
+      ];
+  const rows = getDatabase().prepare(`
+    SELECT entry_id, kind, timestamp, sequence, payload,
+      updated_at,
+      tool_name, tool_status, tool_input, NULL AS tool_output, NULL AS tool_extras,
+      CASE WHEN tool_output IS NOT NULL THEN 1 ELSE 0 END AS tool_has_output
+    FROM ${config.entriesTable}
+    WHERE ${config.resourceColumn} = ?
+      AND user_id = ?
+      AND (
+        timestamp > ?
+        OR (
+          timestamp = ?
+          AND (
+            sequence > ?
+            OR (sequence = ? AND entry_id >= ?)
+          )
+        )
+      )
+      ${upperClause}
+    ORDER BY timestamp ASC, sequence ASC, kind ASC, entry_id ASC
+  `).all(...params) as TranscriptRow[];
+
+  return rows.map((row) => rowToStorageEntry(row, false, resource));
+}
+
+function hasOlderTranscriptResponses(
+  resource: TranscriptResource,
+  resourceId: string,
+  userId: string,
+  oldest: TranscriptResponseRow,
+): boolean {
+  const config = getTableConfig(resource);
+  const row = getDatabase().prepare(`
+    SELECT 1 AS present
+    FROM ${config.entriesTable}
+    WHERE ${config.resourceColumn} = ?
+      AND user_id = ?
+      AND kind = 'message'
+      AND message_role = 'assistant'
+      AND (
+        timestamp < ?
+        OR (
+          timestamp = ?
+          AND (
+            sequence < ?
+            OR (sequence = ? AND entry_id < ?)
+          )
+        )
+      )
+    LIMIT 1
+  `).get(
+    resourceId,
+    userId,
+    oldest.timestamp,
+    oldest.timestamp,
+    oldest.sequence,
+    oldest.sequence,
+    oldest.entry_id,
+  ) as { present: number } | null;
+  return row !== null;
+}
+
+export function listTranscriptEntriesPageForUser(
+  resource: TranscriptResource,
+  resourceId: string,
+  userId: string,
+  options: { full?: boolean; before?: string } = {},
+): TranscriptEntriesPage {
+  if (options.full && options.before) {
+    throw new TranscriptCursorError("Transcript page cannot be both full and cursor-based");
+  }
+
+  const totalResponses = getTranscriptResponseCount(resource, resourceId, userId);
+  if (options.full || (!options.before && totalResponses <= TRANSCRIPT_PAGE_SIZE)) {
+    return {
+      entries: listTranscriptEntriesForUser(resource, resourceId, userId),
+      totalResponses,
+      loadedResponses: totalResponses,
+      hasOlder: false,
+    };
+  }
+
+  const config = getTableConfig(resource);
+  const cursor = options.before
+    ? decodeTranscriptCursor(resource, resourceId, userId, options.before)
+    : null;
+  const beforeClause = cursor
+    ? `
+      AND (
+        timestamp < ?
+        OR (
+          timestamp = ?
+          AND (
+            sequence < ?
+            OR (sequence = ? AND entry_id < ?)
+          )
+        )
+      )
+    `
+    : "";
+  const responseRows = getDatabase().prepare(`
+    SELECT entry_id, timestamp, sequence
+    FROM ${config.entriesTable}
+    WHERE ${config.resourceColumn} = ?
+      AND user_id = ?
+      AND kind = 'message'
+      AND message_role = 'assistant'
+      ${beforeClause}
+    ORDER BY timestamp DESC, sequence DESC, entry_id DESC
+    LIMIT ?
+  `).all(
+    resourceId,
+    userId,
+    ...(cursor
+      ? [
+          cursor.timestamp,
+          cursor.timestamp,
+          cursor.sequence,
+          cursor.sequence,
+          cursor.entryId,
+        ]
+      : []),
+    TRANSCRIPT_PAGE_SIZE,
+  ) as TranscriptResponseRow[];
+
+  if (responseRows.length === 0) {
+    return {
+      entries: [],
+      totalResponses,
+      loadedResponses: 0,
+      hasOlder: false,
+    };
+  }
+
+  const oldest = responseRows[responseRows.length - 1]!;
+  const configForUser = getDatabase().prepare(`
+    SELECT entry_id, timestamp, sequence
+    FROM ${config.entriesTable}
+    WHERE ${config.resourceColumn} = ?
+      AND user_id = ?
+      AND kind = 'message'
+      AND message_role = 'user'
+      AND (
+        timestamp < ?
+        OR (
+          timestamp = ?
+          AND (
+            sequence < ?
+            OR (sequence = ? AND entry_id < ?)
+          )
+        )
+      )
+    ORDER BY timestamp DESC, sequence DESC, entry_id DESC
+    LIMIT 1
+  `).get(
+    resourceId,
+    userId,
+    oldest.timestamp,
+    oldest.timestamp,
+    oldest.sequence,
+    oldest.sequence,
+    oldest.entry_id,
+  ) as TranscriptResponseRow | null;
+  const lower = configForUser ?? oldest;
+  const hasOlder = hasOlderTranscriptResponses(resource, resourceId, userId, oldest);
+  const upper = cursor
+    ? {
+        entry_id: cursor.entryId,
+        timestamp: cursor.timestamp,
+        sequence: cursor.sequence,
+      }
+    : null;
+
+  return {
+    entries: getEntriesBetween(resource, resourceId, userId, lower, upper),
+    totalResponses,
+    loadedResponses: responseRows.length,
+    hasOlder,
+    ...(hasOlder ? { nextCursor: encodeTranscriptCursor(resource, resourceId, userId, oldest) } : {}),
+  };
+}
+
 export function listTranscriptEntries(
   resource: TranscriptResource,
   resourceId: string,
@@ -589,6 +926,19 @@ export function listTranscriptEntries(
     resourceId,
     requirePersistenceUserId(),
     includeToolPayload,
+  );
+}
+
+export function listTranscriptEntriesPage(
+  resource: TranscriptResource,
+  resourceId: string,
+  options: { full?: boolean; before?: string } = {},
+): TranscriptEntriesPage {
+  return listTranscriptEntriesPageForUser(
+    resource,
+    resourceId,
+    requirePersistenceUserId(),
+    options,
   );
 }
 

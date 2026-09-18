@@ -1,4 +1,4 @@
-import { useMemo, memo } from "react";
+import { useCallback, useMemo, memo } from "react";
 import { ImageViewerModal } from "../ImageViewerModal";
 import type { ConversationViewerProps, EntryBase } from "./types";
 import {
@@ -45,6 +45,10 @@ export const ConversationViewer = memo(function ConversationViewer({
   surfaceClassName,
   transcriptClassName,
   onLoadToolDetails,
+  hasOlderTranscript = false,
+  onLoadMoreTranscript,
+  onLoadFullTranscript,
+  loadingTranscript = false,
 }: ConversationViewerProps) {
   const imagePreview = useTranscriptImagePreview(fileLinkContext);
   const resolvedFileLinkContext = useMemo(() => {
@@ -176,7 +180,12 @@ export const ConversationViewer = memo(function ConversationViewer({
   const isEmpty = groupedEntries.length === 0;
   const hasActiveWorkRow = hasActiveWorkEntry(visibleEntries);
   const shouldShowWorkingIndicator = isActive && !isEmpty && !hasActiveWorkRow;
-  const { containerRef, contentRef } = useStickyBottomScroll([
+  const {
+    containerRef,
+    contentRef,
+    preserveScrollPosition,
+    cancelPreservedScrollPosition,
+  } = useStickyBottomScroll([
     visibleEntries,
     isActive,
     isEmpty,
@@ -185,6 +194,45 @@ export const ConversationViewer = memo(function ConversationViewer({
     emptyStateMessage,
     markdownEnabled,
   ]);
+
+  const handleLoadTranscript = useCallback(
+    async (load: (() => Promise<void>) | undefined): Promise<void> => {
+      if (!load) {
+        return;
+      }
+      preserveScrollPosition();
+      try {
+        await load();
+      } finally {
+        cancelPreservedScrollPosition();
+      }
+    },
+    [cancelPreservedScrollPosition, preserveScrollPosition],
+  );
+
+  const transcriptHistoryActions = hasOlderTranscript && (
+    <div
+      className="mb-5 flex flex-wrap items-center justify-center gap-2 border-b border-gray-200/70 pb-4 dark:border-white/10"
+      data-testid="transcript-history-actions"
+    >
+      <button
+        type="button"
+        className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/15 dark:bg-white/5 dark:text-gray-200 dark:hover:bg-white/10"
+        disabled={loadingTranscript || !onLoadMoreTranscript}
+        onClick={() => void handleLoadTranscript(onLoadMoreTranscript)}
+      >
+        {loadingTranscript ? "Loading…" : "Load more"}
+      </button>
+      <button
+        type="button"
+        className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/15 dark:bg-white/5 dark:text-gray-200 dark:hover:bg-white/10"
+        disabled={loadingTranscript || !onLoadFullTranscript}
+        onClick={() => void handleLoadTranscript(onLoadFullTranscript)}
+      >
+        Load all
+      </button>
+    </div>
+  );
 
   const resolvedSurfaceClassName = surfaceClassName ?? "bg-transparent";
   const resolvedTranscriptClassName = transcriptClassName ?? "mx-auto flex w-full max-w-7xl flex-col px-3 py-5 sm:px-4 sm:py-6 lg:px-6 xl:px-7";
@@ -210,6 +258,7 @@ export const ConversationViewer = memo(function ConversationViewer({
           </div>
         ) : (
           <div ref={contentRef} className={resolvedTranscriptClassName} data-testid="conversation-transcript">
+            {transcriptHistoryActions}
             {visibleEntries.map((entry, index) => {
               const spacingClass = getEntrySpacingClass(entry, visibleEntries[index - 1]);
               if (entry.type === "message") {
