@@ -476,10 +476,10 @@ async function exerciseMeshTerminal(
         ? directory
         : join(executionRoot, directory);
       const pathStyle = platformOs === "windows" ? "windows" : "posix";
-      const expectedTerminalDirectory = normalizeExecutionPath(
-        expectedDirectory,
-        pathStyle,
-      );
+      const expectedTerminalDirectories = [
+        normalizeExecutionPath(expectedDirectory, pathStyle),
+        normalizeExecutionPath(await realpath(expectedDirectory), pathStyle),
+      ];
       const cwdMarker = "NATIVE_TERMINAL_CWD";
       const cwdPrefix = `${cwdMarker}:`;
       connection.sendInput(buildTerminalCwdProbe({
@@ -494,10 +494,16 @@ async function exerciseMeshTerminal(
           if (start < 0 || end < 0) {
             return false;
           }
-          return executionPathsEqual(
-            value.slice(start + cwdPrefix.length, end),
-            expectedTerminalDirectory,
-            pathStyle,
+          const reportedDirectory = value.slice(
+            start + cwdPrefix.length,
+            end,
+          );
+          return expectedTerminalDirectories.some(
+            (expectedTerminalDirectory) => executionPathsEqual(
+              reportedDirectory,
+              expectedTerminalDirectory,
+              pathStyle,
+            ),
           );
         },
         {
