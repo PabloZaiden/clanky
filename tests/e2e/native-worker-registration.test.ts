@@ -930,6 +930,8 @@ describe("native worker registration", () => {
         processOutput = [stdout.trim(), stderr.trim()]
           .filter((value) => value.length > 0)
           .join("\n");
+      } else {
+        processOutput = worker.output.snapshot();
       }
       const diagnostics = [serverLog.trim(), processOutput]
         .filter((value) => value.length > 0)
