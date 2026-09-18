@@ -26,6 +26,7 @@ export interface AcpProcessStopOptions {
 export class AcpProcess {
   private closed = false;
   private started = false;
+  private stopping: Promise<void> | null = null;
 
   private constructor(
     private readonly child: Bun.Subprocess,
@@ -66,7 +67,7 @@ export class AcpProcess {
   }
 
   isWritable(): boolean {
-    return !!this.child.stdin && typeof this.child.stdin !== "number";
+    return !this.closed && !!this.child.stdin && typeof this.child.stdin !== "number";
   }
 
   write(value: string): void {
@@ -85,11 +86,23 @@ export class AcpProcess {
   }
 
   async stop(options: AcpProcessStopOptions = {}): Promise<void> {
-    if (this.closed) {
+    if (this.child.exitCode !== null) {
+      this.closed = true;
       return;
     }
+    if (this.stopping) {
+      return await this.stopping;
+    }
     this.closed = true;
-    await terminateAcpProcess(this.child, options);
+    const stopping = terminateAcpProcess(this.child, options);
+    this.stopping = stopping;
+    try {
+      await stopping;
+    } finally {
+      if (this.stopping === stopping) {
+        this.stopping = null;
+      }
+    }
   }
 
   private startReaders(): void {

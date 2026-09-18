@@ -247,7 +247,10 @@ export function close(ws: ServerWebSocket<WebSocketData>): void {
     void previewSessionManager.closeBridgeSession(ws, "Preview bridge disconnected");
   }
   if (ws.data.meshAcpMode && ws.data.meshAcpSessionId) {
-    void meshAcpGateway.close(ws.data.meshAcpSessionId);
+    meshAcpGateway.closeInBackground(
+      ws.data.meshAcpSessionId,
+      "socket disconnected",
+    );
   }
   if (ws.data.meshTerminalMode && ws.data.meshTerminalSessionId) {
     meshTerminalGateway.closeInBackground(
@@ -306,7 +309,10 @@ export function error(ws: ServerWebSocket<WebSocketData>, err: Error): void {
     void previewSessionManager.closeBridgeSession(ws, "Preview bridge error");
   }
   if (ws.data.meshAcpMode && ws.data.meshAcpSessionId) {
-    void meshAcpGateway.close(ws.data.meshAcpSessionId);
+    meshAcpGateway.closeInBackground(
+      ws.data.meshAcpSessionId,
+      "socket errored",
+    );
   }
   if (ws.data.meshTerminalMode && ws.data.meshTerminalSessionId) {
     meshTerminalGateway.closeInBackground(
