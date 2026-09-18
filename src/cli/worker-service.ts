@@ -44,6 +44,8 @@ import {
   uninstallWindowsWorkerService,
   type WindowsWorkerServiceDefinition,
   type WindowsWorkerServicePaths,
+  type WindowsWorkerServiceProcessResult,
+  type WindowsWorkerServiceProcessRunner,
 } from "./worker-service-windows";
 
 const MACOS_LABEL = "com.pablozaiden.clanky.worker";
@@ -116,16 +118,8 @@ interface WorkerServiceResolutionInput {
   serviceWrapperPath?: string;
 }
 
-export interface WorkerServiceProcessResult {
-  exitCode: number;
-  stdout: string;
-  stderr: string;
-}
-
-export type WorkerServiceProcessRunner = (
-  command: string,
-  args: readonly string[],
-) => Promise<WorkerServiceProcessResult>;
+export type WorkerServiceProcessResult = WindowsWorkerServiceProcessResult;
+export type WorkerServiceProcessRunner = WindowsWorkerServiceProcessRunner;
 
 type ProcessResult = WorkerServiceProcessResult;
 type ProcessRunner = WorkerServiceProcessRunner;
@@ -674,7 +668,20 @@ export function renderSystemdUnit(configuration: WorkerServiceConfiguration): st
 async function defaultProcessRunner(
   command: string,
   args: readonly string[],
+  options?: { inheritOutput?: boolean },
 ): Promise<ProcessResult> {
+  if (options?.inheritOutput) {
+    const process = Bun.spawn([command, ...args], {
+      stdin: "inherit",
+      stdout: "inherit",
+      stderr: "inherit",
+    });
+    return {
+      exitCode: await process.exited,
+      stdout: "",
+      stderr: "",
+    };
+  }
   const process = Bun.spawn([command, ...args], {
     stdin: "inherit",
     stdout: "pipe",

@@ -666,13 +666,18 @@ describe("Windows worker service lifecycle", () => {
     const sourceWrapperPath = join(root, "WinSW-x64.exe");
     const dataDir = join(root, "data");
     const persistedDataPath = join(dataDir, "clanky.db");
-    const calls: Array<{ command: string; args: readonly string[] }> = [];
+    const calls: Array<{
+      command: string;
+      args: readonly string[];
+      options?: { inheritOutput?: boolean };
+    }> = [];
     let serviceState: "missing" | "stopped" | "running" = "missing";
     const runner = async (
       command: string,
       args: readonly string[],
+      options?: { inheritOutput?: boolean },
     ): Promise<WorkerServiceProcessResult> => {
-      calls.push({ command, args });
+      calls.push({ command, args, options });
       if (command.endsWith("powershell.exe")) {
         return serviceState === "missing"
           ? { exitCode: 0, stdout: '{"installed":false}', stderr: "" }
@@ -738,6 +743,9 @@ describe("Windows worker service lifecycle", () => {
         [paths.wrapperPath, "install", "/p"],
         [paths.wrapperPath, "start"],
       ]);
+      expect(calls.find(({ args }) => args[0] === "install")?.options).toEqual({
+        inheritOutput: true,
+      });
 
       calls.length = 0;
       serviceState = "running";

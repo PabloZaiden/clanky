@@ -41,9 +41,14 @@ export interface WindowsWorkerServiceProcessResult {
   stderr: string;
 }
 
+export interface WindowsWorkerServiceProcessOptions {
+  inheritOutput?: boolean;
+}
+
 export type WindowsWorkerServiceProcessRunner = (
   command: string,
   args: readonly string[],
+  options?: WindowsWorkerServiceProcessOptions,
 ) => Promise<WindowsWorkerServiceProcessResult>;
 
 interface WindowsWorkerServiceStatus {
@@ -98,8 +103,9 @@ async function runRequired(
   runner: WindowsWorkerServiceProcessRunner,
   command: string,
   args: readonly string[],
+  options?: WindowsWorkerServiceProcessOptions,
 ): Promise<WindowsWorkerServiceProcessResult> {
-  const result = await runner(command, args);
+  const result = await runner(command, args, options);
   if (result.exitCode !== 0) {
     throw processFailure(result, command, args);
   }
@@ -303,7 +309,12 @@ async function runWrapper(
   runner: WindowsWorkerServiceProcessRunner,
 ): Promise<void> {
   const args = operation === "install" ? ["install", "/p"] : [operation];
-  await runRequired(runner, paths.wrapperPath, args);
+  await runRequired(
+    runner,
+    paths.wrapperPath,
+    args,
+    operation === "install" ? { inheritOutput: true } : undefined,
+  );
 }
 
 async function waitForWindowsServiceState(
