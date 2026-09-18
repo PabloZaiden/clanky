@@ -59,13 +59,22 @@ The recommended workflow is to treat Clanky as a controller for isolated Devbox 
 
 ## Installation
 
-Install the latest Linux or macOS binary releases:
+Install the latest Linux or macOS binary release:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/pablozaiden/installer/main/install.sh | sh -s -- pablozaiden/clanky
 ```
 
-The shared installer downloads the latest release asset for Linux or macOS (`x64` or `arm64`) and installs `clanky` in `$HOME/.local/bin`. If that directory is not on your `PATH`, the installer prints the shell profile line to add.
+On Windows PowerShell:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/pablozaiden/installer/main/install.ps1))) pablozaiden/clanky
+```
+
+The shared installer downloads the latest release asset for Linux, macOS, or
+Windows (`x64` or `arm64`), verifies its checksum, and installs `clanky` in
+`$HOME/.local/bin`. If that directory is not on your `PATH`, the installer
+prints or applies the platform-specific PATH update.
 
 You can also download binaries directly from the [Releases page](https://github.com/pablozaiden/clanky/releases/latest).
 

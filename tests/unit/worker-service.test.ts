@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -10,10 +17,20 @@ import {
   parseWorkerServiceArgs,
   renderLaunchAgent,
   renderSystemdUnit,
+  renderWindowsService,
+  resolveWindowsServiceUserDomain,
   runMacWorkerServiceOperation,
   type WorkerServiceConfiguration,
   type WorkerServiceProcessResult,
 } from "../../src/cli/worker-service";
+import {
+  getWindowsWorkerServiceStatus,
+  installWindowsWorkerService,
+  runWindowsWorkerServiceOperation,
+  uninstallWindowsWorkerService,
+  type WindowsWorkerServiceDefinition,
+  type WindowsWorkerServicePaths,
+} from "../../src/cli/worker-service-windows";
 import {
   getWorkerSshAgentPaths,
   renderSshAgentRelayServiceUnit,
@@ -29,8 +46,42 @@ import {
 } from "../../src/cli/worker-ssh-agent";
 
 function configuration(
-  platform: "darwin" | "linux",
+  platform: "darwin" | "linux" | "win32",
 ): WorkerServiceConfiguration {
+  if (platform === "win32") {
+    return {
+      platform,
+      paths: getWorkerServicePaths(
+        platform,
+        "C:\\Users\\alice",
+        undefined,
+        "C:\\Users\\alice\\.clanky",
+      ),
+      binaryPath: "C:\\Users\\alice\\.local\\bin\\clanky.exe",
+      dataDir: "C:\\Users\\alice\\.clanky",
+      workerDirectory: "C:\\Work Spaces",
+      workerExecutionEnabled: true,
+      relayOnly: false,
+      insecure: false,
+      host: "127.0.0.1",
+      port: 4180,
+      homeDirectory: "C:\\Users\\alice",
+      userName: "alice",
+      userDomain: "WORKSTATION",
+      serviceWrapperPath: "C:\\Tools\\WinSW-x64.exe",
+      environment: {
+        CLANKY_DATA_DIR: "C:\\Users\\alice\\.clanky",
+        CLANKY_HOST: "127.0.0.1",
+        CLANKY_PORT: "4180",
+        HOME: "C:\\Users\\alice",
+        USERPROFILE: "C:\\Users\\alice",
+        USERNAME: "alice",
+        HOMEDRIVE: "C:",
+        HOMEPATH: "\\Users\\alice",
+        PATH: "C:\\Program Files\\Git\\cmd;C:\\Windows\\System32",
+      },
+    };
+  }
   return {
     platform,
     paths: getWorkerServicePaths(
@@ -286,18 +337,61 @@ describe("worker service command parsing", () => {
 });
 
 describe("worker service definitions", () => {
-  test("detects only the supported operating systems", () => {
+  test("detects the supported operating systems", () => {
     expect(detectWorkerServicePlatform("darwin")).toBe("darwin");
     expect(detectWorkerServicePlatform("linux")).toBe("linux");
-    expect(() => detectWorkerServicePlatform("win32")).toThrow(
-      "supported on macOS and Linux",
+    expect(detectWorkerServicePlatform("win32")).toBe("win32");
+    expect(() => detectWorkerServicePlatform("freebsd")).toThrow(
+      "supported on macOS, Linux, and Windows",
     );
   });
 
   test("recognizes standalone Bun binaries but not source entrypoints", () => {
-    expect(isStandaloneClankyInvocation("/$bunfs/root/index.ts", "/usr/local/bin/clanky")).toBe(true);
-    expect(isStandaloneClankyInvocation("/usr/local/bin/clanky", "/usr/local/bin/clanky")).toBe(true);
-    expect(isStandaloneClankyInvocation("/workspace/src/index.ts", "/usr/local/bin/bun")).toBe(false);
+    expect(
+      isStandaloneClankyInvocation(
+        "/$bunfs/root/index.ts",
+        "/usr/local/bin/clanky",
+      ),
+    ).toBe(true);
+    expect(
+      isStandaloneClankyInvocation(
+        "B:/~BUN/root/clanky-windows-x64",
+        "C:\\Users\\alice\\.local\\bin\\clanky.exe",
+      ),
+    ).toBe(true);
+    expect(
+      isStandaloneClankyInvocation(
+        "/usr/local/bin/clanky",
+        "/usr/local/bin/clanky",
+      ),
+    ).toBe(true);
+    expect(
+      isStandaloneClankyInvocation(
+        "/workspace/src/index.ts",
+        "/usr/local/bin/bun",
+      ),
+    ).toBe(false);
+  });
+
+  test("maps workgroup and local-computer accounts to the SCM local domain", () => {
+    expect(
+      resolveWindowsServiceUserDomain({
+        USERDOMAIN: "WORKGROUP",
+        COMPUTERNAME: "WIN11VM",
+      }),
+    ).toBe(".");
+    expect(
+      resolveWindowsServiceUserDomain({
+        USERDOMAIN: "WIN11VM",
+        COMPUTERNAME: "WIN11VM",
+      }),
+    ).toBe(".");
+    expect(
+      resolveWindowsServiceUserDomain({
+        USERDOMAIN: "CORPORATE",
+        COMPUTERNAME: "WIN11VM",
+      }),
+    ).toBe("CORPORATE");
   });
 
   test("renders a user LaunchAgent with the login shell and explicit worker command", () => {
@@ -325,6 +419,24 @@ describe("worker service definitions", () => {
     expect(unit).toContain("CLANKY_DATA_DIR=/home/alice/.clanky");
     expect(unit).not.toContain('"');
     expect(unit).not.toContain("CLANKY_API_KEY");
+  });
+
+  test("renders a credential-free Windows service with a managed binary and quoted paths", () => {
+    const xml = renderWindowsService(configuration("win32"));
+    expect(xml).toContain("<id>clanky-worker</id>");
+    expect(xml).toContain("<startmode>Automatic</startmode>");
+    expect(xml).toContain("<delayedAutoStart/>");
+    expect(xml).toContain('<onfailure action="restart" delay="5 sec"/>');
+    expect(xml).toContain(
+      "<executable>C:\\Users\\alice\\.clanky\\worker-service\\clanky-worker.exe</executable>",
+    );
+    expect(xml).toContain(
+      "<arguments>serve --mesh-worker true --relay-only false --worker-directory &quot;C:\\Work Spaces&quot;",
+    );
+    expect(xml).toContain("<domain>WORKSTATION</domain>");
+    expect(xml).toContain("<user>alice</user>");
+    expect(xml).not.toContain("<password>");
+    expect(xml).not.toContain("CLANKY_API_KEY");
   });
 
   test("quotes only systemd values that require grouping or escaping", () => {
@@ -387,24 +499,29 @@ describe("worker service definitions", () => {
   });
 
   test("checks systemctl even when the Linux unit file is missing", async () => {
-    const temporaryDirectory = await mkdtemp(join(tmpdir(), "clanky-worker-status-"));
+    const temporaryDirectory = await mkdtemp(
+      join(tmpdir(), "clanky-worker-status-"),
+    );
     const calls: string[][] = [];
     try {
       const paths = {
         ...getWorkerServicePaths("linux", "/home/alice"),
         servicePath: join(temporaryDirectory, "missing.service"),
       };
-      const status = await getWorkerServiceStatus(paths, async (_command, args) => {
-        calls.push([...args]);
-        if (args[1] === "is-active") {
-          return { exitCode: 0, stdout: "active\n", stderr: "" };
-        }
-        return { exitCode: 1, stdout: "not-found\n", stderr: "" };
-      });
+      const status = await getWorkerServiceStatus(
+        paths,
+        async (_command, args) => {
+          calls.push([...args]);
+          if (args[1] === "is-active") {
+            return { exitCode: 4, stdout: "inactive\n", stderr: "" };
+          }
+          return { exitCode: 1, stdout: "not-found\n", stderr: "" };
+        },
+      );
       expect(status).toMatchObject({
         installed: false,
         loaded: false,
-        running: true,
+        running: false,
       });
       expect(calls).toEqual([
         ["systemctl", "is-active", "clanky-worker.service"],
@@ -525,5 +642,221 @@ describe("macOS worker service lifecycle", () => {
         args: ["bootstrap", paths.supervisorDomain!, paths.servicePath],
       },
     ]);
+  });
+});
+
+describe("Windows worker service lifecycle", () => {
+  function windowsPaths(root: string): WindowsWorkerServicePaths {
+    const serviceDirectory = join(root, "worker-service");
+    return {
+      platform: "win32",
+      label: "clanky-worker",
+      servicePath: join(serviceDirectory, "clanky-worker-service.xml"),
+      supervisorTarget: "clanky-worker",
+      serviceDirectory,
+      managedBinaryPath: join(serviceDirectory, "clanky-worker.exe"),
+      wrapperPath: join(serviceDirectory, "clanky-worker-service.exe"),
+    };
+  }
+
+  test("deploys, upgrades, and removes service artifacts without deleting worker data", async () => {
+    const root = await mkdtemp(join(tmpdir(), "clanky-windows-service-"));
+    const paths = windowsPaths(root);
+    const sourceBinaryPath = join(root, "installed-clanky.exe");
+    const sourceWrapperPath = join(root, "WinSW-x64.exe");
+    const dataDir = join(root, "data");
+    const persistedDataPath = join(dataDir, "clanky.db");
+    const calls: Array<{ command: string; args: readonly string[] }> = [];
+    let serviceState: "missing" | "stopped" | "running" = "missing";
+    const runner = async (
+      command: string,
+      args: readonly string[],
+    ): Promise<WorkerServiceProcessResult> => {
+      calls.push({ command, args });
+      if (command.endsWith("powershell.exe")) {
+        return serviceState === "missing"
+          ? { exitCode: 0, stdout: '{"installed":false}', stderr: "" }
+          : {
+              exitCode: 0,
+              stdout: JSON.stringify({
+                installed: true,
+                state: serviceState === "running" ? "Running" : "Stopped",
+                processId: serviceState === "running" ? 123 : 0,
+                childRunning: serviceState === "running",
+              }),
+              stderr: "",
+            };
+      }
+      if (args[0] === "install") {
+        serviceState = "stopped";
+      } else if (args[0] === "start") {
+        serviceState = "running";
+      } else if (args[0] === "stop") {
+        serviceState = "stopped";
+      } else if (args[0] === "uninstall") {
+        serviceState = "missing";
+      }
+      return { exitCode: 0, stdout: "", stderr: "" };
+    };
+    const definition: WindowsWorkerServiceDefinition = {
+      paths,
+      sourceBinaryPath,
+      sourceWrapperPath,
+      dataDir,
+      workerDirectory: "C:\\Work Spaces",
+      userName: "alice",
+      userDomain: "WORKSTATION",
+      environment: {
+        CLANKY_DATA_DIR: "C:\\Users\\alice\\.clanky",
+        HOME: "C:\\Users\\alice",
+      },
+      arguments: ["serve", "--worker-directory", "C:\\Work Spaces"],
+    };
+
+    try {
+      await writeFile(sourceBinaryPath, "version-one");
+      await writeFile(sourceWrapperPath, "winsw");
+      await mkdir(dataDir, { recursive: true });
+      await writeFile(persistedDataPath, "worker-data");
+
+      await installWindowsWorkerService(definition, false, runner);
+      expect(await readFile(paths.managedBinaryPath, "utf8")).toBe(
+        "version-one",
+      );
+      expect(await readFile(paths.wrapperPath, "utf8")).toBe("winsw");
+      expect(await readFile(paths.servicePath, "utf8")).toContain(
+        "<arguments>serve --worker-directory &quot;C:\\Work Spaces&quot;</arguments>",
+      );
+      expect(
+        calls.filter(({ command }) => command.endsWith("powershell.exe")),
+      ).toHaveLength(3);
+      expect(
+        calls
+          .filter(({ command }) => !command.endsWith("powershell.exe"))
+          .map(({ command, args }) => [command, ...args]),
+      ).toEqual([
+        [paths.wrapperPath, "install", "/p"],
+        [paths.wrapperPath, "start"],
+      ]);
+
+      calls.length = 0;
+      serviceState = "running";
+      await writeFile(sourceBinaryPath, "version-two");
+      await installWindowsWorkerService(definition, false, runner);
+      expect(await readFile(paths.managedBinaryPath, "utf8")).toBe(
+        "version-two",
+      );
+      expect(
+        calls.filter(({ command }) => command.endsWith("powershell.exe")),
+      ).toHaveLength(4);
+      expect(
+        calls
+          .filter(({ command }) => !command.endsWith("powershell.exe"))
+          .map(({ command, args }) => [command, ...args]),
+      ).toEqual([
+        [paths.wrapperPath, "stop"],
+        [paths.wrapperPath, "start"],
+      ]);
+
+      calls.length = 0;
+      expect(await getWindowsWorkerServiceStatus(paths, runner)).toMatchObject({
+        platform: "win32",
+        installed: true,
+        loaded: true,
+        running: true,
+        state: 4,
+        childRunning: true,
+        processId: 123,
+      });
+
+      calls.length = 0;
+      await uninstallWindowsWorkerService(paths, runner);
+      expect(await Bun.file(paths.managedBinaryPath).exists()).toBe(false);
+      expect(await Bun.file(paths.wrapperPath).exists()).toBe(false);
+      expect(await Bun.file(paths.servicePath).exists()).toBe(false);
+      expect(await readFile(persistedDataPath, "utf8")).toBe("worker-data");
+      expect(
+        calls.filter(({ command }) => command.endsWith("powershell.exe")),
+      ).toHaveLength(2);
+      expect(
+        calls
+          .filter(({ command }) => !command.endsWith("powershell.exe"))
+          .map(({ command, args }) => [command, ...args]),
+      ).toEqual([
+        [paths.wrapperPath, "stop"],
+        [paths.wrapperPath, "uninstall"],
+      ]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("makes already-satisfied lifecycle operations idempotent", async () => {
+    const paths = windowsPaths("C:\\Users\\alice\\.clanky");
+    const calls: Array<{ command: string; args: readonly string[] }> = [];
+    const running = async (
+      command: string,
+      args: readonly string[],
+    ): Promise<WorkerServiceProcessResult> => {
+      calls.push({ command, args });
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({
+          installed: true,
+          state: "Running",
+          processId: 123,
+          childRunning: true,
+        }),
+        stderr: "",
+      };
+    };
+    await runWindowsWorkerServiceOperation("start", paths, running);
+    expect(calls).toHaveLength(1);
+
+    calls.length = 0;
+    const stopped = async (
+      command: string,
+      args: readonly string[],
+    ): Promise<WorkerServiceProcessResult> => {
+      calls.push({ command, args });
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({
+          installed: true,
+          state: "Stopped",
+          processId: 0,
+          childRunning: false,
+        }),
+        stderr: "",
+      };
+    };
+    await runWindowsWorkerServiceOperation("stop", paths, stopped);
+    expect(calls).toHaveLength(1);
+  });
+
+  test("waits for the managed child when SCM is already running", async () => {
+    const paths = windowsPaths("C:\\Users\\alice\\.clanky");
+    let inspectionCount = 0;
+    const runner = async (
+      command: string,
+      _args: readonly string[],
+    ): Promise<WorkerServiceProcessResult> => {
+      expect(command.endsWith("powershell.exe")).toBe(true);
+      inspectionCount += 1;
+      return {
+        exitCode: 0,
+        stdout: JSON.stringify({
+          installed: true,
+          state: "Running",
+          processId: 123,
+          childRunning: inspectionCount > 1,
+        }),
+        stderr: "",
+      };
+    };
+
+    await runWindowsWorkerServiceOperation("start", paths, runner);
+
+    expect(inspectionCount).toBe(2);
   });
 });
