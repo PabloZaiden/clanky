@@ -30,6 +30,7 @@ import { MeshCommandExecutor } from "../../src/core/mesh-command-executor";
 import {
   executionPathsEqual,
   executionPathStyleForPlatform,
+  normalizeExecutionPath,
 } from "../../src/core/execution-path";
 import { runWithCurrentUser } from "../../src/context/user-context";
 import { openPreviewTcpForward } from "../../src/core/preview-tcp-forward";
@@ -474,8 +475,11 @@ async function exerciseMeshTerminal(
       const expectedDirectory = isAbsolute(directory)
         ? directory
         : join(executionRoot, directory);
-      const canonicalExpectedDirectory = await realpath(expectedDirectory);
       const pathStyle = platformOs === "windows" ? "windows" : "posix";
+      const expectedTerminalDirectory = normalizeExecutionPath(
+        expectedDirectory,
+        pathStyle,
+      );
       const cwdMarker = "NATIVE_TERMINAL_CWD";
       const cwdPrefix = `${cwdMarker}:`;
       connection.sendInput(buildTerminalCwdProbe({
@@ -492,7 +496,7 @@ async function exerciseMeshTerminal(
           }
           return executionPathsEqual(
             value.slice(start + cwdPrefix.length, end),
-            canonicalExpectedDirectory,
+            expectedTerminalDirectory,
             pathStyle,
           );
         },
