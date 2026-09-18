@@ -15,7 +15,7 @@ export type FileExplorerErrorCode =
   | "invalid_start_directory_type"
   | "file_not_found"
   | "invalid_path_type"
-  | "path_outside_root"
+  | "invalid_path"
   | "root_not_mutable"
   | "invalid_file_name"
   | "upload_session_not_found"
