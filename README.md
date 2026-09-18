@@ -495,8 +495,27 @@ To repopulate local demo data for the UI, run:
 bun tests/test-data-generation/generate-demo-ui-data.ts
 ```
 
+The generator accepts `--data-dir <path>` to keep the demo database isolated:
+
+```bash
+CLANKY_DISABLE_PASSKEY=true \
+  bun tests/test-data-generation/generate-demo-ui-data.ts \
+  --data-dir /tmp/clanky-demo
+```
+
+Use a disposable data directory for visual validation. The fixture is
+idempotent, removes only rows owned by `demo-user` or with `demo-*` IDs, and
+preserves unrelated local data. It covers execution hosts, local/SSH/Mesh
+workspaces, tasks, chats, agents and runs, terminals, previews, VNC,
+provisioning, Mesh state, reviews, and normalized transcripts. The generator
+validates the consolidated schema, foreign-key integrity, and the required
+demo surfaces after applying the SQL seed. `CLANKY_DISABLE_PASSKEY=true` is
+only appropriate with disposable local data.
+
 The versioned SQL seed targets the current database schema directly, including
 normalized transcript entries; the generator does not rewrite legacy columns.
+New database changes should be added as migrations after the consolidated
+baseline (currently version 56).
 
 ## Contributing
 
