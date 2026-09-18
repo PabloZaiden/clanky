@@ -45,6 +45,7 @@ interface TunnelRelay {
 export class MeshTcpTunnelGateway {
   private readonly leases = new Map<string, TunnelLease>();
   private readonly relays = new Map<string, TunnelRelay>();
+  private readonly opening = new Map<string, Promise<void>>();
   private readonly usedNonces = new Map<string, number>();
 
   async createSession(request: MeshTcpTunnelSessionRequest): Promise<{
@@ -128,15 +129,37 @@ export class MeshTcpTunnelGateway {
     sessionToken: string,
     signal?: AbortSignal,
   ): Promise<void> {
+    if (this.opening.has(sessionId) || this.relays.has(sessionId)) {
+      throw new DomainError("mesh_tunnel_session_in_use", "The TCP tunnel is already connected.");
+    }
+    const pending = this.openInternal(
+      webSocket,
+      sessionId,
+      sessionToken,
+      signal,
+    );
+    this.opening.set(sessionId, pending);
+    try {
+      await pending;
+    } finally {
+      if (this.opening.get(sessionId) === pending) {
+        this.opening.delete(sessionId);
+      }
+    }
+  }
+
+  private async openInternal(
+    webSocket: MeshTcpTunnelSocket,
+    sessionId: string,
+    sessionToken: string,
+    signal?: AbortSignal,
+  ): Promise<void> {
     const lease = await this.requireLease(sessionId, sessionToken);
     if (signal?.aborted) {
       throw new DomainError(
         "mesh_tunnel_open_aborted",
         "The Mesh TCP tunnel was closed while it was starting.",
       );
-    }
-    if (this.relays.has(sessionId)) {
-      throw new DomainError("mesh_tunnel_session_in_use", "The TCP tunnel is already connected.");
     }
     const socket = net.createConnection({
       host: "127.0.0.1",
@@ -174,6 +197,10 @@ export class MeshTcpTunnelGateway {
     sessionToken: string,
     data: string | Buffer,
   ): Promise<void> {
+    const opening = this.opening.get(sessionId);
+    if (opening) {
+      await opening;
+    }
     await this.requireLease(sessionId, sessionToken);
     const relay = this.relays.get(sessionId);
     if (!relay) {
@@ -221,6 +248,12 @@ export class MeshTcpTunnelGateway {
       throw new DomainError("mesh_tunnel_session_invalid", "The TCP tunnel session is invalid.");
     }
     const grant = await getControllerGrant(lease.callerNodeId);
+    if (
+      this.leases.get(sessionId) !== lease
+      || lease.expiresAt <= Date.now()
+    ) {
+      throw new DomainError("mesh_tunnel_session_invalid", "The TCP tunnel session is invalid.");
+    }
     if (!grant || grant.grantStatus !== "active") {
       await this.close(sessionId, 1008, "Mesh TCP tunnel authority changed");
       throw new DomainError("mesh_tunnel_context_changed", "The TCP tunnel controller grant is no longer active.");
