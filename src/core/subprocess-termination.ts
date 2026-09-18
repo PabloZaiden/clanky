@@ -37,6 +37,9 @@ export async function terminateSubprocessTree(
     return;
   }
   if (subprocess.exitCode !== null) {
+    if (process.platform !== "win32") {
+      return;
+    }
     const previousFailure = pendingTreeTerminationFailures.get(subprocess);
     if (previousFailure !== undefined) {
       if (
@@ -53,7 +56,7 @@ export async function terminateSubprocessTree(
     await terminateRunningSubprocessTree(subprocess, options);
     pendingTreeTerminationFailures.delete(subprocess);
   } catch (error) {
-    if (options.requireExit) {
+    if (options.requireExit && process.platform === "win32") {
       pendingTreeTerminationFailures.set(subprocess, error);
     }
     throw error;

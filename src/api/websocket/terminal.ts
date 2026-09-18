@@ -174,6 +174,7 @@ export async function startTerminalBridge(
         "socket closed before connection setup",
       );
       attachment.release();
+      releaseTerminalSocket(terminalSessionId, ws);
       return;
     }
     ws.data.terminalBridge = connection;
@@ -186,6 +187,7 @@ export async function startTerminalBridge(
         "socket closed while connecting",
       );
       attachment.release();
+      releaseTerminalSocket(terminalSessionId, ws);
       ws.data.terminalBridge = undefined;
       return;
     }

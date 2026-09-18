@@ -296,6 +296,39 @@ describe("subprocess tree termination", () => {
     });
   });
 
+  // POSIX retries can trust the completed handle after signal delivery; the
+  // Windows-only PID reuse guard must not turn that completion into failure.
+  test("accepts POSIX exit after a forced termination timeout", async () => {
+    const platformDescriptor = Object.getOwnPropertyDescriptor(
+      process,
+      "platform",
+    )!;
+    Object.defineProperty(process, "platform", {
+      ...platformDescriptor,
+      value: "linux",
+    });
+    const target = createControlledSubprocess();
+    try {
+      const firstError = await terminateSubprocessTree(target.process, {
+        gracefulWaitMs: 0,
+        forceWaitMs: 0,
+        requireExit: true,
+      }).then(() => null, (error: unknown) => error);
+      expect(firstError).toMatchObject({
+        retryable: true,
+      });
+
+      target.exit(1);
+      await expect(terminateSubprocessTree(target.process, {
+        gracefulWaitMs: 0,
+        forceWaitMs: 0,
+        requireExit: true,
+      })).resolves.toBeUndefined();
+    } finally {
+      Object.defineProperty(process, "platform", platformDescriptor);
+    }
+  });
+
   // A stuck taskkill helper must not consume the entire terminal/ACP teardown.
   test("terminates a hung taskkill helper before forced escalation", async () => {
     await withMockWindowsTermination(async ({
