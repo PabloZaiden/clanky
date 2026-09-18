@@ -27,6 +27,7 @@ export class AcpProcess {
   private closed = false;
   private started = false;
   private stopping: Promise<void> | null = null;
+  private terminationFailure: unknown | null = null;
 
   private constructor(
     private readonly child: Bun.Subprocess,
@@ -88,6 +89,9 @@ export class AcpProcess {
   async stop(options: AcpProcessStopOptions = {}): Promise<void> {
     if (this.child.exitCode !== null) {
       this.closed = true;
+      if (this.terminationFailure !== null) {
+        throw this.terminationFailure;
+      }
       return;
     }
     if (this.stopping) {
@@ -98,6 +102,10 @@ export class AcpProcess {
     this.stopping = stopping;
     try {
       await stopping;
+      this.terminationFailure = null;
+    } catch (error) {
+      this.terminationFailure = error;
+      throw error;
     } finally {
       if (this.stopping === stopping) {
         this.stopping = null;

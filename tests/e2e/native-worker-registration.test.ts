@@ -356,6 +356,14 @@ async function exerciseMeshTerminal(
         await expect(connection.dispose()).rejects.toThrow(
           "could not be released",
         );
+        await pollUntil(
+          () => releaseAttempts,
+          (attempts) => attempts >= 2,
+          {
+            description: "automatic native Mesh terminal release retry",
+            timeoutMs: 10_000,
+          },
+        );
       }
       await connection.dispose();
     }

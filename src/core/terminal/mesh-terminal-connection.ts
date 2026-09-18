@@ -20,6 +20,7 @@ import {
 import type { AgentProvider } from "@/shared/settings";
 import type { TerminalConnectionMode } from "@/shared/terminal-session";
 import type { MeshPeerRoute } from "@/shared/mesh";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { getWorkerRegistration } from "../../persistence/mesh";
 import {
   ensureLocalMeshNodeIdentity,
@@ -78,6 +79,10 @@ interface OpenMeshTerminalSession {
   expiresAt: number;
 }
 
+const log = createLogger("core:mesh-terminal-connection");
+const RELEASE_RETRY_MIN_MS = 1_000;
+const RELEASE_RETRY_MAX_MS = 30_000;
+const MAX_RELEASE_RETRY_ATTEMPTS = 5;
 const activeMeshTerminalConnections = new Set<MeshInteractiveTerminalConnection>();
 
 export async function closeAllMeshTerminalConnections(): Promise<void> {
@@ -109,6 +114,8 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
   private runtimeEnvironment?: Record<string, string>;
   private allowPersistentSessionCreate: boolean;
   private persistentAttachRetried = false;
+  private releaseRetryTimer: ReturnType<typeof setTimeout> | undefined;
+  private releaseRetryAttempts = 0;
 
   constructor(private readonly config: MeshTerminalConnectionConfig) {
     this.fetchImpl = config.fetch ?? globalThis.fetch;
@@ -185,9 +192,15 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
     const session = await this.openSession();
     this.session = session;
     if (this.disposed || this.closing) {
-      await this.releaseSessionBeforeSocket(session);
-      if (this.session === session) {
-        this.session = null;
+      try {
+        await this.releaseSessionBeforeSocket(session);
+        if (this.session === session) {
+          this.session = null;
+        }
+      } catch (error) {
+        activeMeshTerminalConnections.add(this);
+        this.scheduleReleaseRetry();
+        throw error;
       }
       throw new DomainError("mesh_terminal_connection_closed", "The Mesh terminal connection was closed while connecting.");
     }
@@ -277,6 +290,7 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
     if (this.disposePromise) {
       return await this.disposePromise;
     }
+    this.clearReleaseRetryTimer();
     const pending = this.disposeInternal();
     this.disposePromise = pending;
     try {
@@ -306,6 +320,7 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
         if (this.session === session) {
           this.session = null;
         }
+        this.releaseRetryAttempts = 0;
       } catch (error) {
         releaseFailed = true;
         releaseError = error;
@@ -322,10 +337,51 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
       }
     }
     if (!this.session) {
+      this.clearReleaseRetryTimer();
       activeMeshTerminalConnections.delete(this);
     }
     if (releaseFailed) {
+      if (this.session) {
+        this.scheduleReleaseRetry();
+      }
       throw releaseError;
+    }
+  }
+
+  private scheduleReleaseRetry(): void {
+    if (!this.session || this.releaseRetryTimer !== undefined) {
+      return;
+    }
+    if (this.releaseRetryAttempts >= MAX_RELEASE_RETRY_ATTEMPTS) {
+      activeMeshTerminalConnections.delete(this);
+      log.error("Failed to release the Mesh terminal session after retries", {
+        sessionId: this.session.sessionId,
+        attempts: this.releaseRetryAttempts,
+      });
+      return;
+    }
+    const delayMs = Math.min(
+      RELEASE_RETRY_MIN_MS * (2 ** this.releaseRetryAttempts),
+      RELEASE_RETRY_MAX_MS,
+    );
+    this.releaseRetryAttempts += 1;
+    this.releaseRetryTimer = setTimeout(() => {
+      this.releaseRetryTimer = undefined;
+      void this.dispose().catch((error: Error) => {
+        log.warn("Mesh terminal session release retry failed", {
+          sessionId: this.session?.sessionId,
+          attempt: this.releaseRetryAttempts,
+          error: String(error),
+        });
+      });
+    }, delayMs);
+    this.releaseRetryTimer.unref?.();
+  }
+
+  private clearReleaseRetryTimer(): void {
+    if (this.releaseRetryTimer !== undefined) {
+      clearTimeout(this.releaseRetryTimer);
+      this.releaseRetryTimer = undefined;
     }
   }
 

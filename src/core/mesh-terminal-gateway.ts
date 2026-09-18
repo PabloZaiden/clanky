@@ -33,7 +33,10 @@ import {
   assertPhysicalExecutionPath,
   resolveTrustedExecutionRoot,
 } from "./mesh-execution-gateway";
-import { executionPathStyleForPlatform } from "./execution-path";
+import {
+  executionPathStyleForPlatform,
+  isAbsoluteExecutionPath,
+} from "./execution-path";
 import { getMeshWorkerDirectory } from "./mesh-runtime";
 import { CommandExecutorImpl } from "./remote-command-executor";
 import { DomainError, isDomainError } from "./domain-error";
@@ -309,6 +312,16 @@ export class MeshTerminalGateway {
     const lease = await this.requireValidatedLease(sessionId, sessionToken);
     if (this.relays.has(sessionId)) {
       throw new DomainError("mesh_terminal_session_in_use", "The Mesh terminal session is already connected.");
+    }
+    const pathStyle = executionPathStyleForPlatform(process.platform);
+    if (
+      !pathStyle
+      || !isAbsoluteExecutionPath(lease.request.directory, pathStyle)
+    ) {
+      throw new DomainError(
+        "mesh_execution_path_invalid",
+        "The validated Mesh terminal directory must be an absolute host path.",
+      );
     }
     const executor = new CommandExecutorImpl({
       provider: "local",
