@@ -45,6 +45,7 @@ import {
   type AcpTransportStage,
 } from "./types";
 import { AcpProcess } from "./acp-process";
+import { SubprocessTreeTerminationError } from "../../core/subprocess-termination";
 import type { JsonRpcMessage } from "./types";
 import type {
   AcpTransportClosedEvent,
@@ -187,14 +188,13 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
       const process = this.process;
       this.connected = false;
       try {
-        await this.terminateProcess(process);
+        await this.shutdownProcess(process);
       } catch (terminationError) {
         throw new AggregateError(
           [error, terminationError],
           "ACP connection failed and its process could not be terminated.",
         );
       }
-      this.detachAfterShutdown(process);
       throw error;
     }
   }
@@ -393,7 +393,25 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
   async disconnect(): Promise<void> {
     const process = this.process;
     this.connected = false;
-    await this.terminateProcess(process);
+    await this.shutdownProcess(process);
+  }
+
+  private async shutdownProcess(process: AcpProcess | null): Promise<void> {
+    try {
+      await this.terminateProcess(process);
+    } catch (error) {
+      if (
+        error instanceof SubprocessTreeTerminationError
+        && !error.retryable
+      ) {
+        this.detachAfterShutdown(process);
+        log.error("[AcpBackend] Released ACP process ownership after cleanup became unrecoverable", {
+          pid: process?.getChild().pid,
+          error: String(error),
+        });
+      }
+      throw error;
+    }
     this.detachAfterShutdown(process);
   }
 
