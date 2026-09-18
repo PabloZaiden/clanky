@@ -47,6 +47,9 @@ import { meshInboundResourceRegistry } from "./mesh-inbound-resource-registry";
 
 const MAX_TERMINAL_SESSIONS = 64;
 const MAX_USED_NONCES = 512;
+const CLEANUP_RETRY_MIN_MS = 1_000;
+const CLEANUP_RETRY_MAX_MS = 30_000;
+const MAX_CLEANUP_RETRY_ATTEMPTS = 5;
 const log = createLogger("core:mesh-terminal-gateway");
 
 export interface MeshTerminalSocket {
@@ -68,6 +71,8 @@ interface MeshTerminalRelay {
   socket: MeshTerminalSocket;
   connection: InteractiveTerminalConnection;
   validationTimer: ReturnType<typeof setInterval>;
+  cleanupRetryTimer?: ReturnType<typeof setTimeout>;
+  cleanupRetryAttempts?: number;
 }
 
 interface UsedMeshTerminalNonce {
@@ -673,13 +678,84 @@ export class MeshTerminalGateway {
       this.deleteLease(sessionId);
       return;
     }
+    if (relay.cleanupRetryTimer !== undefined) {
+      clearTimeout(relay.cleanupRetryTimer);
+      relay.cleanupRetryTimer = undefined;
+    }
     clearInterval(relay.validationTimer);
-    await relay.connection.dispose();
+    try {
+      await relay.connection.dispose();
+    } catch (error) {
+      if (!this.scheduleCleanupRetry(sessionId, relay)) {
+        this.abandonRelayAfterCleanupFailure(sessionId, relay, error);
+      }
+      throw error;
+    }
     if (this.relays.get(sessionId) !== relay) {
       return;
     }
     this.relays.delete(sessionId);
     this.deleteLease(sessionId);
+  }
+
+  private scheduleCleanupRetry(
+    sessionId: string,
+    relay: MeshTerminalRelay,
+  ): boolean {
+    if (
+      this.relays.get(sessionId) !== relay
+      || relay.cleanupRetryTimer !== undefined
+      || (relay.cleanupRetryAttempts ?? 0) >= MAX_CLEANUP_RETRY_ATTEMPTS
+    ) {
+      return false;
+    }
+    const attempt = relay.cleanupRetryAttempts ?? 0;
+    const delayMs = Math.min(
+      CLEANUP_RETRY_MIN_MS * (2 ** attempt),
+      CLEANUP_RETRY_MAX_MS,
+    );
+    relay.cleanupRetryAttempts = attempt + 1;
+    relay.cleanupRetryTimer = setTimeout(() => {
+      relay.cleanupRetryTimer = undefined;
+      this.closeInBackground(
+        sessionId,
+        false,
+        1000,
+        "Retrying Mesh terminal cleanup",
+      );
+    }, delayMs);
+    relay.cleanupRetryTimer.unref?.();
+    return true;
+  }
+
+  private abandonRelayAfterCleanupFailure(
+    sessionId: string,
+    relay: MeshTerminalRelay,
+    error: unknown,
+  ): void {
+    if (this.relays.get(sessionId) !== relay) {
+      return;
+    }
+    if (relay.cleanupRetryTimer !== undefined) {
+      clearTimeout(relay.cleanupRetryTimer);
+      relay.cleanupRetryTimer = undefined;
+    }
+    clearInterval(relay.validationTimer);
+    this.relays.delete(sessionId);
+    this.deleteLease(sessionId);
+    try {
+      relay.socket.close(1011, "Terminal cleanup could not be confirmed");
+    } catch (closeError) {
+      log.warn("Failed to close the abandoned Mesh terminal socket", {
+        sessionId,
+        error: String(closeError),
+      });
+    }
+    log.error("Abandoned the Mesh terminal relay after bounded cleanup failed", {
+      sessionId,
+      attempts: relay.cleanupRetryAttempts ?? 0,
+      error: String(error),
+    });
   }
 
   private sendFrame(

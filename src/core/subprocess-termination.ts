@@ -113,6 +113,9 @@ async function requestSubprocessStop(
   force: boolean,
   timeoutMs: number,
 ): Promise<boolean> {
+  if (subprocess.exitCode !== null) {
+    return false;
+  }
   if (process.platform === "win32") {
     return await terminateWindowsSubprocessTree(
       subprocess,

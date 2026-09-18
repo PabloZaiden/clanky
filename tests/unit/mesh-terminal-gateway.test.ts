@@ -149,7 +149,7 @@ describe("MeshTerminalGateway relay lifecycle", () => {
 
   // Worker-side terminal disposal cannot be failed safely through a live
   // public session, so this seam verifies retryable relay and lease ownership.
-  test("retains a relay and lease until terminal disposal succeeds", async () => {
+  test("retries terminal disposal before releasing the lease", async () => {
     const session = await createSession();
     const socket = {
       send(_data: string): void {},
@@ -188,9 +188,14 @@ describe("MeshTerminalGateway relay lifecycle", () => {
       gateway.authorize(session.sessionId, session.sessionToken),
     ).resolves.toBeUndefined();
 
-    await expect(
-      gateway.releaseSession(session.sessionId, session.sessionToken),
-    ).resolves.toBeUndefined();
+    await pollUntil(
+      () => disposeAttempts,
+      (attempts) => attempts >= 2,
+      {
+        description: "worker-side terminal cleanup retry",
+        timeoutMs: 3_000,
+      },
+    );
     expect(disposeAttempts).toBe(2);
     await expect(
       gateway.authorize(session.sessionId, session.sessionToken),
