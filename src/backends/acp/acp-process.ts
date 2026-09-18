@@ -1,5 +1,6 @@
 import { log } from "@pablozaiden/webapp/server";
 import type { AcpAuthenticationMode, AcpProcessExit } from "./types";
+import { terminateSubprocessTree } from "../../core/subprocess-termination";
 
 export type AcpProcessStream = "stdout" | "stderr";
 
@@ -22,12 +23,10 @@ export interface AcpProcessStopOptions {
   forceWaitMs?: number;
 }
 
-const DEFAULT_GRACEFUL_WAIT_MS = 250;
-const DEFAULT_FORCE_WAIT_MS = 1_000;
-
 export class AcpProcess {
   private closed = false;
   private started = false;
+  private stopping: Promise<void> | null = null;
 
   private constructor(
     private readonly child: Bun.Subprocess,
@@ -68,7 +67,7 @@ export class AcpProcess {
   }
 
   isWritable(): boolean {
-    return !!this.child.stdin && typeof this.child.stdin !== "number";
+    return !this.closed && !!this.child.stdin && typeof this.child.stdin !== "number";
   }
 
   write(value: string): void {
@@ -87,11 +86,21 @@ export class AcpProcess {
   }
 
   async stop(options: AcpProcessStopOptions = {}): Promise<void> {
-    if (this.closed) {
-      return;
+    if (this.stopping) {
+      return await this.stopping;
     }
     this.closed = true;
-    await terminateAcpProcess(this.child, options);
+    const stopping = terminateAcpProcess(this.child, options);
+    this.stopping = stopping;
+    try {
+      await stopping;
+    } catch (error) {
+      throw error;
+    } finally {
+      if (this.stopping === stopping) {
+        this.stopping = null;
+      }
+    }
   }
 
   private startReaders(): void {
@@ -190,127 +199,8 @@ export async function terminateAcpProcess(
   process: Bun.Subprocess | null,
   options: AcpProcessStopOptions = {},
 ): Promise<void> {
-  if (!process || process.exitCode !== null) {
-    return;
-  }
-
-  await requestAcpProcessStop(process, false);
-
-  const exitedAfterTerminate = await waitForAcpProcessExit(
-    process,
-    options.gracefulWaitMs ?? DEFAULT_GRACEFUL_WAIT_MS,
-  );
-  if (exitedAfterTerminate) {
-    return;
-  }
-
-  await requestAcpProcessStop(process, true);
-
-  await waitForAcpProcessExit(
-    process,
-    options.forceWaitMs ?? DEFAULT_FORCE_WAIT_MS,
-  );
-}
-
-async function requestAcpProcessStop(
-  process: Bun.Subprocess,
-  force: boolean,
-): Promise<void> {
-  if (globalThis.process.platform === "win32") {
-    await terminateWindowsAcpProcessTree(process, force);
-    return;
-  }
-  try {
-    process.kill(force ? "SIGKILL" : "SIGTERM");
-  } catch (error) {
-    log.debug("Failed to signal ACP process while stopping it", {
-      signal: force ? "SIGKILL" : "SIGTERM",
-      error: String(error),
-    });
-  }
-}
-
-async function terminateWindowsAcpProcessTree(
-  process: Bun.Subprocess,
-  force: boolean,
-): Promise<void> {
-  if (!Number.isInteger(process.pid) || process.pid <= 0) {
-    tryKillAcpProcessHandle(process);
-    return;
-  }
-  const taskkill = Bun.which("taskkill.exe") ?? Bun.which("taskkill");
-  if (!taskkill) {
-    tryKillAcpProcessHandle(process);
-    return;
-  }
-  try {
-    const termination = Bun.spawn([
-      taskkill,
-      "/PID",
-      String(process.pid),
-      "/T",
-      ...(force ? ["/F"] : []),
-    ], {
-      stdin: "ignore",
-      stdout: "ignore",
-      stderr: "ignore",
-    });
-    const exitCode = await termination.exited;
-    if (exitCode !== 0 && process.exitCode === null) {
-      log.debug("Windows taskkill did not terminate the ACP process tree", {
-        pid: process.pid,
-        force,
-        exitCode,
-      });
-      if (force) {
-        tryKillAcpProcessHandle(process);
-      }
-    }
-  } catch (error) {
-    log.debug("Failed to terminate Windows ACP process tree", {
-      pid: process.pid,
-      force,
-      error: String(error),
-    });
-    if (force) {
-      tryKillAcpProcessHandle(process);
-    }
-  }
-}
-
-function tryKillAcpProcessHandle(process: Bun.Subprocess): void {
-  try {
-    process.kill();
-  } catch (error) {
-    log.debug("Failed to terminate ACP process through its Bun handle", {
-      error: String(error),
-    });
-  }
-}
-
-async function waitForAcpProcessExit(
-  process: Bun.Subprocess,
-  timeoutMs: number,
-): Promise<boolean> {
-  if (process.exitCode !== null) {
-    return true;
-  }
-  if (timeoutMs <= 0) {
-    return process.exitCode !== null;
-  }
-
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    const exited = await Promise.race<boolean>([
-      process.exited.then(() => true),
-      new Promise<boolean>((resolve) => {
-        timer = setTimeout(() => resolve(false), timeoutMs);
-      }),
-    ]);
-    return exited || process.exitCode !== null;
-  } finally {
-    if (timer !== undefined) {
-      clearTimeout(timer);
-    }
-  }
+  await terminateSubprocessTree(process, {
+    ...options,
+    requireExit: true,
+  });
 }

@@ -240,7 +240,10 @@ export async function openTcpTunnel(options: {
   remoteHost: "127.0.0.1";
   remotePort: number;
 }): Promise<TcpTunnel> {
-  executionHostService.validateBinding(options.binding);
+  executionHostService.requireBindingCapability(
+    options.binding,
+    "tcpTunnel",
+  );
   if (options.binding.host.kind === "ssh") {
     throw new DomainError(
       "ssh_tunnel_requires_credentials",

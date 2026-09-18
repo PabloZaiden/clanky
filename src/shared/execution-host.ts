@@ -162,6 +162,9 @@ export const WINDOWS_EXECUTION_HOST_CAPABILITIES: ExecutionHostCapabilities = {
   git: 2,
   managedWorktrees: 2,
   acpRuntime: 2,
+  interactiveTerminal: 1,
+  tcpTunnel: 1,
+  vnc: 1,
   serverHealth: 1,
 };
 

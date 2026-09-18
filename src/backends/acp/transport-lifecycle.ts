@@ -45,6 +45,7 @@ import {
   type AcpTransportStage,
 } from "./types";
 import { AcpProcess } from "./acp-process";
+import { SubprocessTreeTerminationError } from "../../core/subprocess-termination";
 import type { JsonRpcMessage } from "./types";
 import type {
   AcpTransportClosedEvent,
@@ -139,8 +140,8 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
     signal: AbortSignal | undefined,
     requester: RpcRequester & RpcPendingController,
   ): Promise<unknown> {
-    if (this.connected) {
-      throw new Error("Already connected. Call disconnect() first.");
+    if (this.connected || this.process) {
+      throw new Error("Already connected or process cleanup is pending. Call disconnect() first.");
     }
 
     this.directory = config.directory;
@@ -184,8 +185,16 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
         connectionAbort.dispose();
       }
     } catch (error) {
-      const process = this.detachForShutdown();
-      await this.terminateProcess(process);
+      const process = this.process;
+      this.connected = false;
+      try {
+        await this.shutdownProcess(process);
+      } catch (terminationError) {
+        throw new AggregateError(
+          [error, terminationError],
+          "ACP connection failed and its process could not be terminated.",
+        );
+      }
       throw error;
     }
   }
@@ -366,9 +375,10 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
     throw this.getAbortError(signal, config);
   }
 
-  /** Reset connection metadata and diagnostics; returns the detached process. */
-  detachForShutdown(): AcpProcess | null {
-    const process = this.process;
+  private detachAfterShutdown(process: AcpProcess | null): void {
+    if (this.process !== process) {
+      return;
+    }
     this.process = null;
     this.connected = false;
     this.directory = "";
@@ -378,12 +388,31 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
     this.stage = "spawn";
     this.recentProcessLines = [];
     this.requester = null;
-    return process;
   }
 
   async disconnect(): Promise<void> {
-    const process = this.detachForShutdown();
-    await this.terminateProcess(process);
+    const process = this.process;
+    this.connected = false;
+    await this.shutdownProcess(process);
+  }
+
+  private async shutdownProcess(process: AcpProcess | null): Promise<void> {
+    try {
+      await this.terminateProcess(process);
+    } catch (error) {
+      if (
+        error instanceof SubprocessTreeTerminationError
+        && !error.retryable
+      ) {
+        this.detachAfterShutdown(process);
+        log.error("[AcpBackend] Released ACP process ownership after cleanup became unrecoverable", {
+          pid: process?.getChild().pid,
+          error: String(error),
+        });
+      }
+      throw error;
+    }
+    this.detachAfterShutdown(process);
   }
 
   private pushProcessLine(line: string): void {

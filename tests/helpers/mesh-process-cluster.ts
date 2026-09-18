@@ -9,6 +9,7 @@ import { join, resolve } from "node:path";
 import { pollUntil } from "./polling";
 
 const rootDirectory = resolve(import.meta.dir, "../..");
+const MAX_CAPTURED_PROCESS_OUTPUT = 64 * 1024;
 
 export interface MeshHttpNode {
   baseUrl: string;
@@ -20,6 +21,7 @@ export interface MeshHttpNode {
 interface CapturedProcessOutput {
   stdout: Promise<string>;
   stderr: Promise<string>;
+  snapshot(): string;
 }
 
 export interface ManagedMeshNode extends MeshHttpNode {
@@ -84,14 +86,49 @@ export async function compiledClankyCommand(): Promise<string[]> {
   );
 }
 
-function capturedOutput(child: ReturnType<typeof Bun.spawn>): CapturedProcessOutput {
+interface CapturedStream {
+  completed: Promise<string>;
+  snapshot(): string;
+}
+
+function captureStream(stream: ReadableStream<Uint8Array> | number | undefined): CapturedStream {
+  let output = "";
+  const append = (chunk: string): void => {
+    output = `${output}${chunk}`.slice(-MAX_CAPTURED_PROCESS_OUTPUT);
+  };
+  const completed = stream instanceof ReadableStream
+    ? (async (): Promise<string> => {
+        const reader = stream.getReader();
+        const decoder = new TextDecoder();
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) {
+              append(decoder.decode());
+              return output;
+            }
+            append(decoder.decode(value, { stream: true }));
+          }
+        } finally {
+          reader.releaseLock();
+        }
+      })()
+    : Promise.resolve("");
   return {
-    stdout: child.stdout instanceof ReadableStream
-      ? new Response(child.stdout).text()
-      : Promise.resolve(""),
-    stderr: child.stderr instanceof ReadableStream
-      ? new Response(child.stderr).text()
-      : Promise.resolve(""),
+    completed,
+    snapshot: () => output,
+  };
+}
+
+function capturedOutput(child: ReturnType<typeof Bun.spawn>): CapturedProcessOutput {
+  const stdout = captureStream(child.stdout);
+  const stderr = captureStream(child.stderr);
+  return {
+    stdout: stdout.completed,
+    stderr: stderr.completed,
+    snapshot: () => [stdout.snapshot().trim(), stderr.snapshot().trim()]
+      .filter((value) => value.length > 0)
+      .join("\n"),
   };
 }
 

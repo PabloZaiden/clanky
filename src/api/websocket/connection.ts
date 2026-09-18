@@ -159,7 +159,12 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
       ws.data.terminalCredentialTimeout.unref?.();
       return;
     }
-    void startTerminalBridge(ws);
+    void startTerminalBridge(ws).catch((error: Error) => {
+      log.error("Unhandled terminal bridge startup failure", {
+        terminalSessionId,
+        error: String(error),
+      });
+    });
     return;
   }
 
@@ -217,8 +222,14 @@ export function close(ws: ServerWebSocket<WebSocketData>): void {
     ws.data.terminalCredentialTimeout = undefined;
   }
   if (ws.data.terminalBridge) {
-    void ws.data.terminalBridge.dispose();
+    const bridge = ws.data.terminalBridge;
     ws.data.terminalBridge = undefined;
+    void bridge.dispose().catch((disposeError: Error) => {
+      log.error("Failed to dispose terminal bridge after WebSocket close", {
+        terminalSessionId: ws.data.terminalSessionId,
+        error: String(disposeError),
+      });
+    });
   }
   ws.data.terminalAttachment?.release();
   ws.data.terminalAttachment = undefined;
@@ -236,10 +247,19 @@ export function close(ws: ServerWebSocket<WebSocketData>): void {
     void previewSessionManager.closeBridgeSession(ws, "Preview bridge disconnected");
   }
   if (ws.data.meshAcpMode && ws.data.meshAcpSessionId) {
-    void meshAcpGateway.close(ws.data.meshAcpSessionId);
+    meshAcpGateway.closeInBackground(
+      ws.data.meshAcpSessionId,
+      "socket disconnected",
+    );
   }
   if (ws.data.meshTerminalMode && ws.data.meshTerminalSessionId) {
-    void meshTerminalGateway.close(ws.data.meshTerminalSessionId, false, 1000, "Mesh terminal closed", ws);
+    meshTerminalGateway.closeInBackground(
+      ws.data.meshTerminalSessionId,
+      false,
+      1000,
+      "Mesh terminal closed",
+      ws,
+    );
   }
   if (ws.data.meshTcpTunnelMode && ws.data.meshTcpTunnelSessionId) {
     void meshTcpTunnelGateway.close(ws.data.meshTcpTunnelSessionId);
@@ -266,8 +286,14 @@ export function error(ws: ServerWebSocket<WebSocketData>, err: Error): void {
     ws.data.terminalCredentialTimeout = undefined;
   }
   if (ws.data.terminalBridge) {
-    void ws.data.terminalBridge.dispose();
+    const bridge = ws.data.terminalBridge;
     ws.data.terminalBridge = undefined;
+    void bridge.dispose().catch((disposeError: Error) => {
+      log.error("Failed to dispose terminal bridge after WebSocket error", {
+        terminalSessionId: ws.data.terminalSessionId,
+        error: String(disposeError),
+      });
+    });
   }
   ws.data.terminalAttachment?.release();
   ws.data.terminalAttachment = undefined;
@@ -283,10 +309,19 @@ export function error(ws: ServerWebSocket<WebSocketData>, err: Error): void {
     void previewSessionManager.closeBridgeSession(ws, "Preview bridge error");
   }
   if (ws.data.meshAcpMode && ws.data.meshAcpSessionId) {
-    void meshAcpGateway.close(ws.data.meshAcpSessionId);
+    meshAcpGateway.closeInBackground(
+      ws.data.meshAcpSessionId,
+      "socket errored",
+    );
   }
   if (ws.data.meshTerminalMode && ws.data.meshTerminalSessionId) {
-    void meshTerminalGateway.close(ws.data.meshTerminalSessionId, false, 1000, "Mesh terminal closed", ws);
+    meshTerminalGateway.closeInBackground(
+      ws.data.meshTerminalSessionId,
+      false,
+      1000,
+      "Mesh terminal closed",
+      ws,
+    );
   }
   if (ws.data.meshTcpTunnelMode && ws.data.meshTcpTunnelSessionId) {
     void meshTcpTunnelGateway.close(ws.data.meshTcpTunnelSessionId, 1011, "Mesh TCP tunnel failed");

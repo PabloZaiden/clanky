@@ -15,7 +15,7 @@ import {
   PERSISTENT_SESSION_ATTACH_UNAVAILABLE_EXIT_CODE,
 } from "../ssh-persistent-session";
 import { buildShellBootstrapCommand } from "../ssh-shell-bootstrap";
-import { DEFAULT_SSH_COLOR_TERM, DEFAULT_SSH_TERM } from "../ssh-terminal-env";
+import { DEFAULT_SSH_TERM } from "../ssh-terminal-env";
 import {
   DEFAULT_SESSION_READY_TIMEOUT_MS,
   SESSION_READY_POLL_INTERVAL_MS,
@@ -30,28 +30,37 @@ import type {
 import { TerminalOutput } from "./terminal-output";
 import { DomainError } from "../domain-error";
 import { createLogger } from "@pablozaiden/webapp/server";
+import {
+  isSubprocessTreeTerminationConfirmed,
+  SubprocessTreeTerminationError,
+  terminateSubprocessTree,
+} from "../subprocess-termination";
+import {
+  buildLocalTerminalEnvironment,
+  buildWindowsTerminalFallbackNotice,
+  isWindowsTerminalRuntime,
+  resolveWindowsTerminalSpawn,
+  type LocalTerminalSpawnConfig,
+} from "./local-terminal-runtime";
 
 const DEFAULT_COMMAND_TIMEOUT_MS = 10_000;
-const PROCESS_TERMINATION_GRACE_MS = 1_000;
-const SAFE_ENVIRONMENT_KEYS = new Set([
-  "COLORTERM",
-  "DISPLAY",
-  "HOME",
-  "LANG",
-  "LOGNAME",
-  "PATH",
-  "SHELL",
-  "TERM",
-  "TMPDIR",
-  "TZ",
-  "USER",
-  "WAYLAND_DISPLAY",
-  "XDG_CACHE_HOME",
-  "XDG_CONFIG_HOME",
-  "XDG_DATA_HOME",
-  "XDG_RUNTIME_DIR",
-]);
+const RETAINED_PROCESS_TERMINATION_RETRY_MS = 5_000;
+const RETAINED_PROCESS_TERMINATION_MAX_ATTEMPTS = 5;
+const MAX_QUARANTINED_TERMINALS = 8;
 const log = createLogger("core:terminal:local");
+const quarantinedTerminals: Bun.Terminal[] = [];
+
+function quarantineTerminal(
+  terminal: Bun.Terminal | null,
+): void {
+  if (!terminal) {
+    return;
+  }
+  quarantinedTerminals.push(terminal);
+  if (quarantinedTerminals.length > MAX_QUARANTINED_TERMINALS) {
+    quarantinedTerminals.shift();
+  }
+}
 
 export interface LocalTerminalConnectionConfig {
   sessionId: string;
@@ -82,7 +91,10 @@ function buildDirectTtyFilePath(sessionId: string): string {
   return `/tmp/clanky-terminal-${sessionId}.tty`;
 }
 
-function buildDirectShellCommand(config: LocalTerminalConnectionConfig): string {
+function buildDirectShellCommand(
+  config: LocalTerminalConnectionConfig,
+  executionDirectory: string,
+): string {
   const ttyFile = quoteShell(buildDirectTtyFilePath(config.sessionId));
   return [
     `tty_file=${ttyFile}`,
@@ -94,7 +106,7 @@ function buildDirectShellCommand(config: LocalTerminalConnectionConfig): string 
     "printf '%s\\n' \"$tty_path\" > \"$tty_file\";",
     "trap 'rm -f \"$tty_file\"' EXIT HUP INT TERM;",
     buildShellBootstrapCommand({
-      directory: config.directory,
+      directory: executionDirectory,
       useTmux: config.useTmux,
     }),
   ].join(" ");
@@ -108,26 +120,6 @@ function buildDirectReadyCommand(sessionId: string): string {
     "tty_path=$(cat \"$tty_file\" 2>/dev/null || true)",
     "test -n \"$tty_path\"",
   ].join("\n");
-}
-
-function buildSafeEnvironment(extra?: Record<string, string>): Record<string, string> {
-  const environment: Record<string, string> = {};
-  for (const [key, value] of Object.entries(process.env)) {
-    if (
-      value !== undefined
-      && (SAFE_ENVIRONMENT_KEYS.has(key) || key.startsWith("LC_"))
-    ) {
-      environment[key] = value;
-    }
-  }
-  environment["PATH"] = environment["PATH"] ?? "/usr/local/bin:/usr/bin:/bin";
-  environment["SHELL"] = environment["SHELL"] ?? "/bin/sh";
-  environment["TERM"] = environment["TERM"] ?? DEFAULT_SSH_TERM;
-  environment["COLORTERM"] = environment["COLORTERM"] ?? DEFAULT_SSH_COLOR_TERM;
-  for (const [key, value] of Object.entries(extra ?? {})) {
-    environment[key] = value;
-  }
-  return environment;
 }
 
 function normalizeSize(value: number, minimum: number): number {
@@ -148,6 +140,13 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
   private persistentAttachRetried = false;
   private suppressNextExitNotification = false;
   private clientTtyCleanupDone = false;
+  private retainedProcess: Bun.Subprocess | null = null;
+  private retainedProcessRetryTimer?: ReturnType<typeof setInterval>;
+  private retainedProcessTermination: Promise<void> | null = null;
+  private retainedProcessTerminationAttempts = 0;
+  private processTreeCleanupInProgress: Bun.Subprocess | null = null;
+  private processTreeCleanupFailure: Bun.Subprocess | null = null;
+  private processTreeCleanupError: unknown | null = null;
 
   constructor(private readonly config: LocalTerminalConnectionConfig) {
     this.output = new TerminalOutput(config.callbacks);
@@ -193,6 +192,27 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
     this.assertNotDisposed();
 
     let notice: string | undefined;
+    if (isWindowsTerminalRuntime()) {
+      notice = buildWindowsTerminalFallbackNotice(
+        this.config.connectionMode === "dtach",
+        this.config.useTmux,
+      );
+      this.activeMode = "direct";
+      if (
+        this.config.runtimeConnectionMode !== "direct"
+        || notice !== undefined
+      ) {
+        await this.config.onRuntimeConnectionState?.({
+          runtimeConnectionMode: this.config.connectionMode === "direct"
+            ? undefined
+            : "direct",
+          notice,
+        });
+        this.assertNotDisposed();
+      }
+      return await this.connectPty(executionDirectory, notice);
+    }
+
     if (this.config.connectionMode === "dtach") {
       const probe = await this.config.executor.exec(
         "bash",
@@ -236,29 +256,27 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
 
     this.assertNotDisposed();
     this.persistentAttachRetried = false;
-    return await this.connectPty(notice);
+    return await this.connectPty(executionDirectory, notice);
   }
 
-  private async connectPty(notice?: string): Promise<InteractiveTerminalConnectResult> {
+  private async connectPty(
+    executionDirectory: string,
+    notice?: string,
+  ): Promise<InteractiveTerminalConnectResult> {
     this.assertNotDisposed();
-    const command = this.activeMode === "dtach"
-      ? buildPersistentSessionAttachCommand({
-          config: {
-            id: this.config.sessionId,
-            remoteSessionName: this.config.remoteSessionName,
-            directory: this.config.directory,
-            useTmux: this.config.useTmux,
-          },
-        }, this.runtimeEnvironment, {
-          allowCreate: this.allowPersistentSessionCreate,
-        })
-      : buildDirectShellCommand(this.config);
+    const environment = buildLocalTerminalEnvironment(this.runtimeEnvironment);
+    const spawnConfig = this.buildSpawnConfig(
+      executionDirectory,
+      environment,
+    );
     const terminal = new Bun.Terminal({
       cols: 80,
       rows: 24,
       name: DEFAULT_SSH_TERM,
       data: (_terminal, data) => {
-        this.output.write(data);
+        if (!this.disposed) {
+          this.output.write(data);
+        }
       },
       exit: (_terminal, exitCode) => {
         if (
@@ -278,9 +296,12 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
 
     let processHandle: Bun.Subprocess;
     try {
-      processHandle = Bun.spawn(["bash", "-lc", command], {
-        cwd: "/",
-        env: buildSafeEnvironment(this.runtimeEnvironment),
+      processHandle = Bun.spawn([
+        spawnConfig.command,
+        ...spawnConfig.args,
+      ], {
+        cwd: spawnConfig.cwd,
+        env: spawnConfig.env,
         terminal,
       });
     } catch (error) {
@@ -308,7 +329,7 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
     });
 
     try {
-      await this.waitUntilReady(processHandle);
+      await this.waitUntilReady(processHandle, executionDirectory);
       this.assertNotDisposed();
       this.ready = true;
       return {
@@ -321,8 +342,24 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
       if (shouldRetry) {
         this.suppressNextExitNotification = true;
       }
-      if (processHandle.exitCode === null) {
-        await this.terminateProcess(processHandle);
+      if (
+        processHandle.exitCode === null
+        || (
+          isWindowsTerminalRuntime()
+          && !isSubprocessTreeTerminationConfirmed(processHandle)
+        )
+      ) {
+        try {
+          await this.terminateProcess(processHandle);
+        } catch (terminationError) {
+          this.disposed = true;
+          this.watchRetainedProcess(processHandle);
+          log.error("Failed to terminate terminal process after startup failure", {
+            sessionId: this.config.sessionId,
+            pid: processHandle.pid,
+            error: String(terminationError),
+          });
+        }
       }
       if (shouldRetry && !this.disposed && !this.persistentAttachRetried) {
         const recovery = await this.config.onPersistentSessionAttachUnavailable?.();
@@ -330,7 +367,10 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
           this.persistentAttachRetried = true;
           this.runtimeEnvironment = recovery.environment;
           this.allowPersistentSessionCreate = true;
-          return await this.connectPty(recovery.notice ?? notice);
+          return await this.connectPty(
+            executionDirectory,
+            recovery.notice ?? notice,
+          );
         }
       }
       throw error;
@@ -395,14 +435,59 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
     this.disposed = true;
     this.ready = false;
     const processHandle = this.process;
-    if (processHandle?.exitCode === null) {
-      await this.terminateProcess(processHandle);
+    const cleanupErrors: unknown[] = [];
+    if (
+      processHandle
+      && this.retainedProcess === processHandle
+      && this.retainedProcessTermination
+    ) {
+      await this.retainedProcessTermination;
     }
-    this.process = null;
-    if (this.terminal && !this.terminal.closed) {
-      this.terminal.close();
+    if (
+      processHandle
+      && (
+        processHandle.exitCode === null
+        || this.processTreeCleanupFailure === processHandle
+        || (
+          isWindowsTerminalRuntime()
+          && !isSubprocessTreeTerminationConfirmed(processHandle)
+        )
+      )
+    ) {
+      try {
+        await this.terminateProcess(processHandle);
+      } catch (error) {
+        cleanupErrors.push(error);
+      }
     }
-    this.terminal = null;
+    if (
+      processHandle
+      && (
+        processHandle.exitCode === null
+        || this.processTreeCleanupFailure === processHandle
+        || (
+          isWindowsTerminalRuntime()
+          && !isSubprocessTreeTerminationConfirmed(processHandle)
+        )
+      )
+    ) {
+      this.watchRetainedProcess(processHandle);
+    } else {
+      if (processHandle) {
+        this.clearRetainedProcessWatch(processHandle);
+      }
+      const terminal = this.terminal;
+      const terminalCloseErrors: unknown[] = [];
+      this.closeTerminal(terminalCloseErrors);
+      this.quarantineFailedTerminalClose(
+        terminal,
+        terminalCloseErrors,
+        processHandle,
+        "Failed to close terminal while disposing",
+      );
+      this.process = null;
+      cleanupErrors.push(...terminalCloseErrors);
+    }
     try {
       await this.cleanupClientTtyFile();
     } catch (error) {
@@ -412,9 +497,251 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
       });
     }
     this.output.flush();
+    if (cleanupErrors.length === 1) {
+      throw cleanupErrors[0];
+    }
+    if (cleanupErrors.length > 1) {
+      throw new AggregateError(
+        cleanupErrors,
+        "Failed to fully clean up the local terminal.",
+      );
+    }
   }
 
-  private async waitUntilReady(processHandle: Bun.Subprocess): Promise<void> {
+  private closeTerminal(errors: unknown[]): void {
+    const terminal = this.terminal;
+    if (this.closeTerminalResource(terminal, errors)) {
+      this.terminal = null;
+    }
+  }
+
+  private closeTerminalResource(
+    terminal: Bun.Terminal | null,
+    errors: unknown[],
+  ): boolean {
+    if (!terminal || terminal.closed) {
+      return true;
+    }
+    try {
+      terminal.close();
+      return true;
+    } catch (error) {
+      errors.push(error);
+      return false;
+    }
+  }
+
+  private quarantineFailedTerminalClose(
+    terminal: Bun.Terminal | null,
+    errors: unknown[],
+    processHandle: Bun.Subprocess | null,
+    message: string,
+  ): void {
+    if (errors.length === 0) {
+      return;
+    }
+    quarantineTerminal(terminal);
+    if (this.terminal === terminal) {
+      this.terminal = null;
+    }
+    log.error(message, {
+      sessionId: this.config.sessionId,
+      ...(processHandle ? { pid: processHandle.pid } : {}),
+      error: String(errors[0]),
+    });
+  }
+
+  private watchRetainedProcess(processHandle: Bun.Subprocess): void {
+    if (this.retainedProcess === processHandle) {
+      return;
+    }
+    if (this.retainedProcessRetryTimer) {
+      clearInterval(this.retainedProcessRetryTimer);
+    }
+    this.retainedProcess = processHandle;
+    void processHandle.exited.then(
+      () => {
+        if (this.processTreeCleanupInProgress === processHandle) {
+          return;
+        }
+        if (this.processTreeCleanupFailure === processHandle) {
+          this.abandonRetainedProcess(
+            processHandle,
+            this.processTreeCleanupError,
+          );
+        } else {
+          this.finalizeRetainedProcess(processHandle);
+        }
+      },
+      (error) => {
+        log.warn("Failed to observe retained terminal process exit", {
+          sessionId: this.config.sessionId,
+          pid: processHandle.pid,
+          error: String(error),
+        });
+        if (
+          processHandle.exitCode !== null
+          && this.processTreeCleanupFailure !== processHandle
+        ) {
+          this.finalizeRetainedProcess(processHandle);
+        }
+      },
+    );
+    this.retainedProcessRetryTimer = setInterval(() => {
+      this.retryRetainedProcessTermination(processHandle);
+    }, RETAINED_PROCESS_TERMINATION_RETRY_MS);
+    this.retainedProcessRetryTimer.unref?.();
+  }
+
+  private retryRetainedProcessTermination(
+    processHandle: Bun.Subprocess,
+  ): void {
+    if (this.retainedProcess !== processHandle) {
+      return;
+    }
+    if (
+      this.retainedProcessTermination
+      || this.processTreeCleanupInProgress === processHandle
+    ) {
+      return;
+    }
+    if (
+      processHandle.exitCode !== null
+      && this.processTreeCleanupFailure !== processHandle
+    ) {
+      this.finalizeRetainedProcess(processHandle);
+      return;
+    }
+    if (
+      this.retainedProcessTerminationAttempts
+        >= RETAINED_PROCESS_TERMINATION_MAX_ATTEMPTS
+    ) {
+      this.abandonRetainedProcess(
+        processHandle,
+        this.processTreeCleanupError,
+      );
+      return;
+    }
+    this.retainedProcessTerminationAttempts += 1;
+    const pending = this.terminateProcess(processHandle)
+      .catch((error: Error) => {
+        log.warn("Failed to retry retained terminal process termination", {
+          sessionId: this.config.sessionId,
+          pid: processHandle.pid,
+          error: String(error),
+        });
+        if (
+          (
+            error instanceof SubprocessTreeTerminationError
+            && !error.retryable
+          )
+          || processHandle.exitCode !== null
+          || this.retainedProcessTerminationAttempts
+            >= RETAINED_PROCESS_TERMINATION_MAX_ATTEMPTS
+        ) {
+          this.abandonRetainedProcess(processHandle, error);
+        }
+      })
+      .finally(() => {
+        if (this.retainedProcessTermination === pending) {
+          this.retainedProcessTermination = null;
+        }
+        if (
+          processHandle.exitCode !== null
+          && this.processTreeCleanupFailure !== processHandle
+        ) {
+          this.finalizeRetainedProcess(processHandle);
+        }
+      });
+    this.retainedProcessTermination = pending;
+  }
+
+  private abandonRetainedProcess(
+    processHandle: Bun.Subprocess,
+    error: unknown,
+  ): void {
+    if (this.retainedProcess !== processHandle) {
+      return;
+    }
+    const attempts = this.retainedProcessTerminationAttempts;
+    const terminal = this.terminal;
+    this.clearRetainedProcessWatch(processHandle);
+    if (this.process === processHandle) {
+      this.process = null;
+    }
+    this.ready = false;
+    this.terminal = null;
+    if (isWindowsTerminalRuntime()) {
+      // Closing an unconfirmed ConPTY tree can block on older Windows builds.
+      quarantineTerminal(terminal);
+    } else {
+      const cleanupErrors: unknown[] = [];
+      this.closeTerminalResource(terminal, cleanupErrors);
+      this.quarantineFailedTerminalClose(
+        terminal,
+        cleanupErrors,
+        processHandle,
+        "Failed to close the abandoned terminal",
+      );
+    }
+    log.error("Abandoned terminal resources after bounded process-tree cleanup failed", {
+      sessionId: this.config.sessionId,
+      pid: processHandle.pid,
+      attempts,
+      error: String(error ?? "Process-tree cleanup could not be confirmed"),
+    });
+  }
+
+  private finalizeRetainedProcess(processHandle: Bun.Subprocess): void {
+    if (
+      this.retainedProcess !== processHandle
+      || processHandle.exitCode === null
+      || this.processTreeCleanupInProgress === processHandle
+      || this.processTreeCleanupFailure === processHandle
+    ) {
+      return;
+    }
+    this.clearRetainedProcessWatch(processHandle);
+    if (this.process === processHandle) {
+      this.process = null;
+    }
+    const terminal = this.terminal;
+    this.releaseTerminalAfterProcessExit(
+      terminal,
+      processHandle,
+      "Failed to close terminal after retained process exit",
+    );
+  }
+
+  private clearRetainedProcessWatch(processHandle: Bun.Subprocess): void {
+    if (this.retainedProcess !== processHandle) {
+      return;
+    }
+    if (this.retainedProcessRetryTimer) {
+      clearInterval(this.retainedProcessRetryTimer);
+      this.retainedProcessRetryTimer = undefined;
+    }
+    this.retainedProcess = null;
+    this.retainedProcessTerminationAttempts = 0;
+    if (this.processTreeCleanupFailure === processHandle) {
+      this.processTreeCleanupFailure = null;
+      this.processTreeCleanupError = null;
+    }
+  }
+
+  private async waitUntilReady(
+    processHandle: Bun.Subprocess,
+    executionDirectory: string,
+  ): Promise<void> {
+    if (isWindowsTerminalRuntime()) {
+      if (processHandle.exitCode !== null) {
+        throw new DomainError(
+          "terminal_process_exited",
+          `The terminal process exited before it became ready (code ${String(processHandle.exitCode)}).`,
+        );
+      }
+      return;
+    }
     const deadline = Date.now() + (this.config.readyTimeoutMs ?? DEFAULT_SESSION_READY_TIMEOUT_MS);
     const command = this.activeMode === "dtach"
       ? buildPersistentSessionReadyCommand({
@@ -444,7 +771,7 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
         );
       }
       const result = await this.config.executor.exec("bash", ["-lc", command], {
-        cwd: this.config.directory,
+        cwd: executionDirectory,
         timeout: Math.min(DEFAULT_COMMAND_TIMEOUT_MS, Math.max(1, deadline - Date.now())),
         logFailures: false,
       });
@@ -458,16 +785,23 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
   }
 
   private handleProcessExit(processHandle: Bun.Subprocess, exitCode: number): void {
-    if (this.process !== processHandle) {
+    if (
+      this.process !== processHandle
+      || this.processTreeCleanupInProgress === processHandle
+      || this.processTreeCleanupFailure === processHandle
+    ) {
       return;
     }
+    this.clearRetainedProcessWatch(processHandle);
     this.ready = false;
     this.process = null;
     this.output.flush();
-    if (this.terminal && !this.terminal.closed) {
-      this.terminal.close();
-    }
-    this.terminal = null;
+    const terminal = this.terminal;
+    this.releaseTerminalAfterProcessExit(
+      terminal,
+      processHandle,
+      "Failed to close terminal after process exit",
+    );
     void this.cleanupClientTtyFile().catch((error: Error) => {
       log.warn("Failed to clean up the terminal client tty file after process exit", {
         sessionId: this.config.sessionId,
@@ -486,6 +820,35 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
     }
   }
 
+  private releaseTerminalAfterProcessExit(
+    terminal: Bun.Terminal | null,
+    processHandle: Bun.Subprocess,
+    closeErrorMessage: string,
+  ): void {
+    if (
+      isWindowsTerminalRuntime()
+      && !isSubprocessTreeTerminationConfirmed(processHandle)
+    ) {
+      if (this.terminal === terminal) {
+        this.terminal = null;
+      }
+      quarantineTerminal(terminal);
+      log.warn("Quarantined terminal after an unverified Windows process-tree exit", {
+        sessionId: this.config.sessionId,
+        pid: processHandle.pid,
+      });
+      return;
+    }
+    const cleanupErrors: unknown[] = [];
+    this.closeTerminal(cleanupErrors);
+    this.quarantineFailedTerminalClose(
+      terminal,
+      cleanupErrors,
+      processHandle,
+      closeErrorMessage,
+    );
+  }
+
   private isPersistentAttachUnavailable(error: unknown, processHandle: Bun.Subprocess): boolean {
     return (
       this.activeMode === "dtach"
@@ -498,6 +861,10 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
 
   private async cleanupClientTtyFile(): Promise<void> {
     if (this.clientTtyCleanupDone) {
+      return;
+    }
+    if (isWindowsTerminalRuntime()) {
+      this.clientTtyCleanupDone = true;
       return;
     }
     const result = await this.config.executor.exec(
@@ -516,29 +883,58 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
   }
 
   private async terminateProcess(processHandle: Bun.Subprocess): Promise<void> {
-    if (processHandle.exitCode !== null) {
-      return;
-    }
-
-    processHandle.kill("SIGTERM");
-    let graceTimer: ReturnType<typeof setTimeout> | undefined;
+    this.processTreeCleanupInProgress = processHandle;
+    let terminated = false;
     try {
-      await Promise.race([
-        processHandle.exited,
-        new Promise<void>((resolve) => {
-          graceTimer = setTimeout(resolve, PROCESS_TERMINATION_GRACE_MS);
-        }),
-      ]);
+      await terminateSubprocessTree(processHandle, {
+        gracefulWaitMs: 1_000,
+        forceWaitMs: 1_000,
+        requireExit: true,
+      });
+      terminated = true;
+      if (this.processTreeCleanupFailure === processHandle) {
+        this.processTreeCleanupFailure = null;
+        this.processTreeCleanupError = null;
+      }
+    } catch (error) {
+      this.processTreeCleanupFailure = processHandle;
+      this.processTreeCleanupError = error;
+      throw error;
     } finally {
-      if (graceTimer) {
-        clearTimeout(graceTimer);
+      if (this.processTreeCleanupInProgress === processHandle) {
+        this.processTreeCleanupInProgress = null;
+      }
+      if (terminated && processHandle.exitCode !== null) {
+        this.handleProcessExit(processHandle, processHandle.exitCode);
       }
     }
+  }
 
-    if (processHandle.exitCode === null) {
-      processHandle.kill("SIGKILL");
+  private buildSpawnConfig(
+    executionDirectory: string,
+    environment: Record<string, string>,
+  ): LocalTerminalSpawnConfig {
+    if (isWindowsTerminalRuntime()) {
+      return resolveWindowsTerminalSpawn(executionDirectory, environment);
     }
-    await processHandle.exited.catch(() => undefined);
+    const command = this.activeMode === "dtach"
+      ? buildPersistentSessionAttachCommand({
+          config: {
+            id: this.config.sessionId,
+            remoteSessionName: this.config.remoteSessionName,
+            directory: executionDirectory,
+            useTmux: this.config.useTmux,
+          },
+        }, this.runtimeEnvironment, {
+          allowCreate: this.allowPersistentSessionCreate,
+        })
+      : buildDirectShellCommand(this.config, executionDirectory);
+    return {
+      command: "bash",
+      args: ["-lc", command],
+      cwd: "/",
+      env: environment,
+    };
   }
 
   private assertNotDisposed(): void {

@@ -18,10 +18,16 @@ import {
 import { meshExecutionGateway } from "./mesh-execution-gateway";
 import { DomainError } from "./domain-error";
 import { LocalFileSystem } from "./remote-executor/local-filesystem";
+import { SubprocessTreeTerminationError } from "./subprocess-termination";
 
 const log = createLogger("core:mesh-acp-gateway");
 const MAX_RELAY_SESSIONS = 64;
 const MAX_STARTUP_STDERR_BYTES = 2_048;
+const ACP_GRACEFUL_STOP_WAIT_MS = 500;
+const ACP_FORCE_STOP_WAIT_MS = 1_000;
+const ACP_STOP_RETRY_MIN_MS = 1_000;
+const ACP_STOP_RETRY_MAX_MS = 30_000;
+const ACP_STOP_MAX_RETRY_ATTEMPTS = 5;
 
 function appendStartupDiagnostic(current: string, line: string): string {
   const combined = `${current}${current ? "\n" : ""}${line}`.replace(/[\r\n\t]+/g, " ");
@@ -63,6 +69,9 @@ interface RelayState {
   socket: MeshAcpSocket;
   process: AcpProcess;
   expiryTimer?: ReturnType<typeof setTimeout>;
+  stopRetryTimer?: ReturnType<typeof setTimeout>;
+  stopRetryDelayMs?: number;
+  stopRetryAttempts?: number;
 }
 
 interface OpeningState {
@@ -188,7 +197,7 @@ export class MeshAcpGateway {
           onOutputLimitExceeded: () => {
             outputLimitExceeded = true;
             if (this.relays.has(sessionId)) {
-              void this.close(sessionId);
+              this.closeInBackground(sessionId, "output limit exceeded");
             }
           },
           onStreamError: (source, error) => {
@@ -201,7 +210,10 @@ export class MeshAcpGateway {
         });
       const spawned = await raceWithAbort(spawnPromise, signal).catch(async (error) => {
         await spawnPromise.then(
-          (process) => process.stop({ gracefulWaitMs: 0, forceWaitMs: 0 }),
+          (process) => process.stop({
+            gracefulWaitMs: 0,
+            forceWaitMs: ACP_FORCE_STOP_WAIT_MS,
+          }),
           () => undefined,
         );
         throw error;
@@ -213,8 +225,8 @@ export class MeshAcpGateway {
       }
       if (this.closing.has(sessionId) || signal.aborted) {
         await process.stop({
-          gracefulWaitMs: 500,
-          forceWaitMs: 0,
+          gracefulWaitMs: ACP_GRACEFUL_STOP_WAIT_MS,
+          forceWaitMs: ACP_FORCE_STOP_WAIT_MS,
         });
         return;
       }
@@ -244,7 +256,7 @@ export class MeshAcpGateway {
       if (processHandle) {
         await processHandle.stop({
           gracefulWaitMs: 0,
-          forceWaitMs: 0,
+          forceWaitMs: ACP_FORCE_STOP_WAIT_MS,
         });
       }
       throw error instanceof DomainError
@@ -273,7 +285,7 @@ export class MeshAcpGateway {
       if (this.relays.get(sessionId) !== relay) {
         return;
       }
-      void this.close(sessionId);
+      this.closeInBackground(sessionId, "session expired");
       try {
         relay.socket.close(1000, "Mesh ACP session expired");
       } catch {
@@ -368,6 +380,16 @@ export class MeshAcpGateway {
     await this.closeRelay(sessionId);
   }
 
+  closeInBackground(sessionId: string, reason = "socket closed"): void {
+    void this.close(sessionId).catch((error: Error) => {
+      log.error("Failed to close the Mesh ACP relay", {
+        sessionId,
+        reason,
+        error: String(error),
+      });
+    });
+  }
+
   private async stopRelay(sessionId: string): Promise<void> {
     const existingStop = this.stopping.get(sessionId);
     if (existingStop) {
@@ -378,15 +400,29 @@ export class MeshAcpGateway {
     if (!relay) {
       return;
     }
-    this.relays.delete(sessionId);
     if (relay.expiryTimer !== undefined) {
       clearTimeout(relay.expiryTimer);
       relay.expiryTimer = undefined;
     }
+    if (relay.stopRetryTimer !== undefined) {
+      clearTimeout(relay.stopRetryTimer);
+      relay.stopRetryTimer = undefined;
+    }
     const stopping = relay.process
       .stop({
-        gracefulWaitMs: 500,
-        forceWaitMs: 0,
+        gracefulWaitMs: ACP_GRACEFUL_STOP_WAIT_MS,
+        forceWaitMs: ACP_FORCE_STOP_WAIT_MS,
+      })
+      .then(() => {
+        if (this.relays.get(sessionId) === relay) {
+          this.relays.delete(sessionId);
+        }
+      })
+      .catch((error: unknown) => {
+        if (!this.scheduleStopRetry(sessionId, relay, error)) {
+          this.abandonRelayAfterTerminationFailure(sessionId, relay, error);
+        }
+        throw error;
       })
       .finally(() => {
         if (this.stopping.get(sessionId) === stopping) {
@@ -395,6 +431,66 @@ export class MeshAcpGateway {
       });
     this.stopping.set(sessionId, stopping);
     await stopping;
+  }
+
+  private scheduleStopRetry(
+    sessionId: string,
+    relay: RelayState,
+    error: unknown,
+  ): boolean {
+    if (
+      this.relays.get(sessionId) !== relay
+      || relay.stopRetryTimer !== undefined
+    ) {
+      return false;
+    }
+    if (
+      (
+        error instanceof SubprocessTreeTerminationError
+        && !error.retryable
+      )
+      || (relay.stopRetryAttempts ?? 0) >= ACP_STOP_MAX_RETRY_ATTEMPTS
+    ) {
+      return false;
+    }
+    const delayMs = relay.stopRetryDelayMs ?? ACP_STOP_RETRY_MIN_MS;
+    relay.stopRetryDelayMs = Math.min(delayMs * 2, ACP_STOP_RETRY_MAX_MS);
+    relay.stopRetryAttempts = (relay.stopRetryAttempts ?? 0) + 1;
+    relay.stopRetryTimer = setTimeout(() => {
+      relay.stopRetryTimer = undefined;
+      this.closeInBackground(sessionId, "retrying process termination");
+    }, delayMs);
+    relay.stopRetryTimer.unref?.();
+    return true;
+  }
+
+  private abandonRelayAfterTerminationFailure(
+    sessionId: string,
+    relay: RelayState,
+    error: unknown,
+  ): void {
+    if (this.relays.get(sessionId) !== relay) {
+      return;
+    }
+    if (relay.stopRetryTimer !== undefined) {
+      clearTimeout(relay.stopRetryTimer);
+      relay.stopRetryTimer = undefined;
+    }
+    this.relays.delete(sessionId);
+    meshExecutionGateway.closeSession(sessionId);
+    try {
+      relay.socket.close(1011, "ACP process cleanup could not be confirmed");
+    } catch (closeError) {
+      log.warn("Failed to close the abandoned Mesh ACP relay socket", {
+        sessionId,
+        error: String(closeError),
+      });
+    }
+    log.error("Abandoned the Mesh ACP relay after bounded process cleanup failed", {
+      sessionId,
+      attempts: relay.stopRetryAttempts ?? 0,
+      error: String(error),
+    });
   }
 
   private async closeRelay(sessionId: string): Promise<void> {
@@ -428,6 +524,10 @@ export class MeshAcpGateway {
       clearTimeout(relay.expiryTimer);
       relay.expiryTimer = undefined;
     }
+    if (relay.stopRetryTimer !== undefined) {
+      clearTimeout(relay.stopRetryTimer);
+      relay.stopRetryTimer = undefined;
+    }
     meshExecutionGateway.closeSession(sessionId);
     try {
       relay.socket.close(1011, meshAcpExitReason(provider, exit, stderr));
@@ -441,7 +541,7 @@ export class MeshAcpGateway {
 
   private sendLine(sessionId: string, line: string): void {
     if (Buffer.byteLength(line, "utf8") > MESH_EXECUTION_MAX_MESSAGE_BYTES) {
-      void this.close(sessionId);
+      this.closeInBackground(sessionId, "output message too large");
       return;
     }
     try {

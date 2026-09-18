@@ -25,7 +25,10 @@ import {
   MeshExecutionSessionCloseRequestSchema,
   MeshExecutionSessionRequestSchema,
 } from "@/contracts/schemas/mesh-execution";
-import { MeshTerminalSessionRequestSchema } from "@/contracts/schemas/mesh-terminal";
+import {
+  MeshTerminalSessionCloseRequestSchema,
+  MeshTerminalSessionRequestSchema,
+} from "@/contracts/schemas/mesh-terminal";
 import { MeshTcpTunnelSessionRequestSchema } from "@/contracts/schemas/mesh-tcp-tunnel";
 import { meshManager } from "../core/mesh-manager";
 import { meshExecutionGateway } from "../core/mesh-execution-gateway";
@@ -527,6 +530,35 @@ export const meshInternalRoutes = defineRoutes({
             parsed.data.callerEncryptionPublicKey,
           ),
         });
+      } catch (error) {
+        return internalMeshErrorResponse(error);
+      }
+    },
+    async DELETE(req): Promise<Response> {
+      const parsed = await parseAndValidate(
+        MeshTerminalSessionCloseRequestSchema,
+        req,
+      );
+      if (!parsed.success) return parsed.response;
+      const sessionId = req.headers.get("x-clanky-mesh-session-id");
+      const requestId = req.headers.get("x-clanky-mesh-request-id");
+      if (
+        sessionId !== parsed.data.sessionId
+        || requestId !== parsed.data.requestId
+      ) {
+        return errorResponse(
+          "mesh_peer_headers_invalid",
+          "Mesh headers do not match the terminal session release.",
+          400,
+        );
+      }
+      try {
+        requireMeshRuntimeRole("worker");
+        await meshTerminalGateway.releaseSession(
+          parsed.data.sessionId,
+          parsed.data.sessionToken,
+        );
+        return Response.json({ success: true });
       } catch (error) {
         return internalMeshErrorResponse(error);
       }

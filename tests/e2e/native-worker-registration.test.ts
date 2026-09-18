@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, realpath, rm } from "node:fs/promises";
+import net from "node:net";
 import { tmpdir } from "node:os";
-import { join, relative } from "node:path";
+import { isAbsolute, join, relative } from "node:path";
 import {
   compiledClankyCommand,
   enrollMeshWorker,
@@ -26,18 +27,44 @@ import { CommandExecutorImpl } from "../../src/core/remote-command-executor";
 import { GitCommandError, GitService } from "../../src/core/git";
 import { ensurePlanningDirectory } from "../../src/core/planning-directory";
 import { MeshCommandExecutor } from "../../src/core/mesh-command-executor";
-import { executionPathStyleForPlatform } from "../../src/core/execution-path";
+import {
+  executionPathsEqual,
+  executionPathStyleForPlatform,
+} from "../../src/core/execution-path";
 import { runWithCurrentUser } from "../../src/context/user-context";
+import { openPreviewTcpForward } from "../../src/core/preview-tcp-forward";
+import { openTcpTunnel, type TcpTunnel } from "../../src/core/tcp-tunnel";
+import { MeshInteractiveTerminalConnection } from "../../src/core/terminal/mesh-terminal-connection";
+import type {
+  ExecutionHostBinding,
+  ExecutionHostDescriptor,
+} from "../../src/shared/execution-host";
+import type { VncSession } from "../../src/shared";
 import { AcpBackend, MeshAcpTransport } from "../../src/backends/acp";
 import type { AgentEvent } from "../../src/backends/types";
 import {
   closeDatabase,
   initializeDatabase,
 } from "../../src/persistence/database";
+import {
+  buildTerminalCwdProbe,
+  buildTerminalLiteralProbe,
+  buildTerminalResizeProbe,
+} from "../helpers/terminal-resize-probe";
+import {
+  MeshTerminalSessionCloseRequestSchema,
+  type MeshTerminalSessionCloseRequest,
+} from "../../src/contracts/schemas";
 
 interface MeshHealthResponse {
   success: boolean;
   status: MeshControllerStatus;
+}
+
+interface CapturedTerminalRelease {
+  url: string;
+  request: MeshTerminalSessionCloseRequest;
+  tls?: Bun.TLSOptions;
 }
 
 interface FileWriteResponse {
@@ -193,6 +220,455 @@ async function exerciseMeshAcpRuntime(
       await reconnectedBackend.disconnect();
     }
   });
+}
+
+async function exerciseMeshTerminal(
+  registration: MeshWorkerRegistration,
+  executionRoot: string,
+  directory: string,
+  platformOs: "linux" | "darwin" | "windows",
+  options: {
+    legacyRelease?: boolean;
+    failFirstRelease?: boolean;
+  } = {},
+): Promise<void> {
+  await runWithCurrentUser({
+    id: registration.localUserId,
+    username: "native-worker-owner",
+    role: "owner",
+    isOwner: true,
+    isAdmin: true,
+  }, async () => {
+    const output: string[] = [];
+    const errors: Error[] = [];
+    const windows = platformOs === "windows";
+    let capturedRelease: CapturedTerminalRelease | undefined;
+    let releaseAttempts = 0;
+    const releaseAwareFetch: typeof globalThis.fetch = Object.assign(
+      async (
+        input: Parameters<typeof fetch>[0],
+        init: Parameters<typeof fetch>[1],
+      ): Promise<Response> => {
+        const url = input instanceof Request ? input.url : String(input);
+        if (
+          init?.method === "DELETE"
+          && new URL(url).pathname.endsWith("/api/mesh/internal/terminal/session")
+        ) {
+          const request = MeshTerminalSessionCloseRequestSchema.parse(
+            JSON.parse(String(init.body)),
+          );
+          capturedRelease = {
+            url,
+            request,
+            ...("tls" in init && init.tls ? { tls: init.tls } : {}),
+          };
+          releaseAttempts += 1;
+          if (options.failFirstRelease && releaseAttempts === 1) {
+            return Response.json(
+              { error: "mesh_terminal_session_release_failed" },
+              { status: 500 },
+            );
+          }
+          if (options.legacyRelease) {
+            return Response.json(
+              { message: "Method not allowed" },
+              { status: 405 },
+            );
+          }
+        }
+        return await globalThis.fetch(input, init);
+      },
+      { preconnect: globalThis.fetch.preconnect },
+    );
+    const connection = new MeshInteractiveTerminalConnection({
+      workspaceId: "native-worker-terminal-e2e",
+      executionRoot,
+      directory,
+      executionNodeId: registration.workerNodeId,
+      provider: "copilot",
+      terminalSessionId: crypto.randomUUID(),
+      remoteSessionName: `clanky-native-terminal-${crypto.randomUUID()}`,
+      connectionMode: windows ? "dtach" : "direct",
+      useTmux: windows,
+      allowPersistentSessionCreate: true,
+      callbacks: {
+        onOutput: (chunk) => output.push(chunk),
+        onError: (error) => errors.push(error),
+      },
+      localUserId: registration.localUserId,
+      fetch: releaseAwareFetch,
+    });
+
+    try {
+      const result = await connection.connect();
+      expect(result.runtimeConnectionMode).toBe("direct");
+      if (windows) {
+        expect(result.notice).toContain("unavailable on Windows");
+      }
+
+      await connection.resize(113, 37);
+      const probe = buildTerminalResizeProbe({
+        marker: "NATIVE_TERMINAL_SIZE",
+        os: platformOs,
+        cols: 113,
+        rows: 37,
+      });
+      connection.sendInput(probe.input);
+      await pollUntil(
+        () => output.join(""),
+        (value) => value.includes(probe.expectedOutput),
+        {
+          description: "native Mesh terminal input, output, and resize",
+          timeoutMs: 20_000,
+        },
+      );
+      const literalProbe = buildTerminalLiteralProbe({
+        marker: "NATIVE_TERMINAL_LITERAL",
+        os: platformOs,
+      });
+      connection.sendInput(literalProbe.input);
+      await pollUntil(
+        () => output.join(""),
+        (value) => value.includes(literalProbe.expectedOutput),
+        {
+          description: "native Mesh terminal literal input",
+          timeoutMs: 20_000,
+        },
+      );
+      const expectedDirectory = isAbsolute(directory)
+        ? directory
+        : join(executionRoot, directory);
+      const canonicalExpectedDirectory = await realpath(expectedDirectory);
+      const pathStyle = platformOs === "windows" ? "windows" : "posix";
+      const cwdMarker = "NATIVE_TERMINAL_CWD";
+      const cwdPrefix = `${cwdMarker}:`;
+      connection.sendInput(buildTerminalCwdProbe({
+        marker: cwdMarker,
+        os: platformOs,
+      }));
+      await pollUntil(
+        () => output.join(""),
+        (value) => {
+          const start = value.lastIndexOf(cwdPrefix);
+          const end = value.indexOf(":DONE", start + cwdPrefix.length);
+          if (start < 0 || end < 0) {
+            return false;
+          }
+          return executionPathsEqual(
+            value.slice(start + cwdPrefix.length, end),
+            canonicalExpectedDirectory,
+            pathStyle,
+          );
+        },
+        {
+          description: "native Mesh terminal working directory",
+          timeoutMs: 20_000,
+        },
+      );
+      expect(errors).toEqual([]);
+    } finally {
+      if (options.failFirstRelease) {
+        await expect(connection.dispose()).rejects.toThrow(
+          "could not be released",
+        );
+        await pollUntil(
+          () => releaseAttempts,
+          (attempts) => attempts >= 2,
+          {
+            description: "automatic native Mesh terminal release retry",
+            timeoutMs: 10_000,
+          },
+        );
+      }
+      await connection.dispose();
+    }
+    if (!capturedRelease) {
+      throw new Error("The native Mesh terminal did not issue its release request");
+    }
+    if (options.failFirstRelease) {
+      expect(releaseAttempts).toBe(2);
+    }
+    await expectTerminalSessionReleased(capturedRelease);
+  });
+}
+
+async function expectTerminalSessionReleased(
+  release: CapturedTerminalRelease,
+): Promise<void> {
+  const terminalUrl = new URL(release.url);
+  terminalUrl.pathname = terminalUrl.pathname.replace(/\/session$/, "");
+  const authorizationResponse = await fetch(terminalUrl, {
+    headers: {
+      "x-clanky-mesh-session-id": release.request.sessionId,
+      "x-clanky-mesh-session-token": release.request.sessionToken,
+    },
+    ...(release.tls ? { tls: release.tls } : {}),
+  });
+  expect(authorizationResponse.status).toBe(401);
+  expect(await authorizationResponse.json()).toMatchObject({
+    error: "mesh_terminal_session_invalid",
+  });
+
+  const repeatedRequest: MeshTerminalSessionCloseRequest = {
+    ...release.request,
+    requestId: crypto.randomUUID(),
+  };
+  const repeatedRelease = await fetch(release.url, {
+    method: "DELETE",
+    headers: {
+      "content-type": "application/json",
+      "x-clanky-mesh-session-id": repeatedRequest.sessionId,
+      "x-clanky-mesh-request-id": repeatedRequest.requestId,
+    },
+    body: JSON.stringify(repeatedRequest),
+    ...(release.tls ? { tls: release.tls } : {}),
+  });
+  expect(repeatedRelease.status).toBe(200);
+  expect(await repeatedRelease.json()).toEqual({ success: true });
+}
+
+async function expectTunnelEcho(
+  tunnel: TcpTunnel,
+  message: string,
+): Promise<void> {
+  const echoed = new Promise<string>((resolve, reject) => {
+    const expected = Buffer.from(message);
+    let received = Buffer.alloc(0);
+    let settled = false;
+    const timer = setTimeout(() => {
+      settled = true;
+      reject(new Error("Timed out waiting for the native Mesh TCP echo"));
+    }, 10_000);
+    tunnel.once("error", (error) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      reject(error);
+    });
+    tunnel.on("data", (data) => {
+      if (settled) {
+        return;
+      }
+      received = Buffer.concat([received, Buffer.from(data)]);
+      if (received.length < expected.length) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      resolve(received.toString("utf8"));
+    });
+  });
+  tunnel.write(message);
+  expect(await echoed).toBe(message);
+}
+
+async function expectPreviewEcho(
+  localPort: number,
+  message: string,
+): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const expected = Buffer.from(message);
+    let received = Buffer.alloc(0);
+    let settled = false;
+    const socket = net.createConnection({
+      host: "127.0.0.1",
+      port: localPort,
+    });
+    const timer = setTimeout(() => {
+      settled = true;
+      socket.destroy();
+      reject(new Error("Timed out waiting for the native Mesh preview echo"));
+    }, 10_000);
+    socket.once("connect", () => socket.write(message));
+    socket.once("error", (error) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      reject(error);
+    });
+    socket.on("data", (data) => {
+      if (settled) {
+        return;
+      }
+      received = Buffer.concat([received, Buffer.from(data)]);
+      if (received.length < expected.length) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      try {
+        expect(received.toString("utf8")).toBe(message);
+        socket.end();
+        resolve();
+      } catch (error) {
+        socket.destroy();
+        reject(error);
+      }
+    });
+  });
+}
+
+async function expectVncWebSocketEcho(
+  controller: ManagedMeshNode,
+  sessionId: string,
+  message: string,
+): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const url = new URL("/api/vnc", controller.baseUrl);
+    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+    url.searchParams.set("vncSessionId", sessionId);
+    const options: Bun.WebSocketOptions = {
+      headers: { origin: controller.baseUrl },
+    };
+    const socket = Reflect.construct(WebSocket, [url, options]) as WebSocket;
+    socket.binaryType = "arraybuffer";
+    const expected = Buffer.from(message);
+    let received = Buffer.alloc(0);
+    let settled = false;
+    const timer = setTimeout(() => {
+      settled = true;
+      socket.close();
+      reject(new Error("Timed out waiting for the native Mesh VNC echo"));
+    }, 10_000);
+    socket.addEventListener("open", () => {
+      if (settled) {
+        socket.close();
+        return;
+      }
+      socket.send(Buffer.from(message));
+    });
+    socket.addEventListener("message", (event) => {
+      if (settled) {
+        return;
+      }
+      const chunk = typeof event.data === "string"
+        ? Buffer.from(event.data)
+        : Buffer.from(event.data as ArrayBuffer);
+      received = Buffer.concat([received, chunk]);
+      if (received.length < expected.length) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      socket.close();
+      try {
+        expect(received.toString("utf8")).toBe(message);
+        resolve();
+      } catch (error) {
+        reject(error);
+      }
+    });
+    socket.addEventListener("error", () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      socket.close();
+      reject(new Error("Native Mesh VNC websocket failed"));
+    });
+    socket.addEventListener("close", () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      reject(new Error("Native Mesh VNC websocket closed before echoing data"));
+    });
+  });
+}
+
+async function exerciseMeshTunnels(
+  controller: ManagedMeshNode,
+  registration: MeshWorkerRegistration,
+  binding: ExecutionHostBinding,
+): Promise<void> {
+  const server = Bun.listen({
+    hostname: "127.0.0.1",
+    port: 0,
+    socket: {
+      data(socket, data) {
+        socket.write(data);
+      },
+    },
+  });
+  try {
+    await runWithCurrentUser({
+      id: registration.localUserId,
+      username: "native-worker-owner",
+      role: "owner",
+      isOwner: true,
+      isAdmin: true,
+    }, async () => {
+      const tunnel = await openTcpTunnel({
+        binding,
+        remoteHost: "127.0.0.1",
+        remotePort: server.port,
+      });
+      const tunnelClosed = new Promise<void>((resolve) => {
+        tunnel.once("close", resolve);
+      });
+      try {
+        await expectTunnelEcho(tunnel, "native-mesh-tunnel");
+      } finally {
+        tunnel.destroy();
+        await tunnelClosed;
+      }
+
+      const preview = await openPreviewTcpForward(binding, server.port);
+      try {
+        await expectPreviewEcho(preview.localPort, "native-mesh-preview");
+      } finally {
+        await preview.close();
+      }
+
+      if (binding.host.kind !== "mesh") {
+        throw new Error("Native worker VNC requires a Mesh execution host");
+      }
+      const sessionsPath = `/api/execution-hosts/mesh/${
+        encodeURIComponent(binding.host.nodeId)
+      }/vnc-sessions`;
+      const created = await meshJsonRequest<VncSession>(
+        controller,
+        sessionsPath,
+        {
+          method: "POST",
+          body: {
+            remotePort: server.port,
+            credentialToken: null,
+          },
+        },
+      );
+      expect(created.status).toBe(201);
+      expect(created.body.state.status).toBe("active");
+      try {
+        await expectVncWebSocketEcho(
+          controller,
+          created.body.config.id,
+          "native-mesh-vnc",
+        );
+      } finally {
+        const deleted = await meshJsonRequest<{ success: boolean }>(
+          controller,
+          `/api/vnc-sessions/${encodeURIComponent(created.body.config.id)}`,
+          { method: "DELETE" },
+        );
+        expect(deleted.status).toBe(200);
+        expect(deleted.body.success).toBe(true);
+      }
+      const missing = await meshJsonRequest<{ error: string }>(
+        controller,
+        `/api/vnc-sessions/${encodeURIComponent(created.body.config.id)}`,
+      );
+      expect(missing.status).toBe(404);
+    });
+  } finally {
+    server.stop(true);
+  }
 }
 
 describe("native worker registration", () => {
@@ -352,6 +828,16 @@ describe("native worker registration", () => {
       },
     });
     expect(workerCapabilities.acpRuntime).toBe(2);
+    expect(workerCapabilities).toMatchObject({
+      interactiveTerminal: 1,
+      tcpTunnel: 1,
+      vnc: 1,
+    });
+    if (expectedRuntime.platform?.os === "windows") {
+      expect(workerCapabilities.commandExecution).toBeUndefined();
+      expect(workerCapabilities.provisioning).toBeUndefined();
+      expect(workerCapabilities.devboxLifecycle).toBeUndefined();
+    }
 
     const providerDiscovery = await meshJsonRequest<{
       providers?: Array<{ providerID: string; available: boolean }>;
@@ -370,6 +856,22 @@ describe("native worker registration", () => {
       providerID: "copilot",
       available: true,
     });
+
+    const executionHosts = await meshJsonRequest<ExecutionHostDescriptor[]>(
+      controller,
+      "/api/execution-hosts",
+    );
+    expect(executionHosts.status).toBe(200);
+    const executionHost = executionHosts.body.find(
+      (candidate) => candidate.ref.kind === "mesh"
+        && candidate.ref.nodeId === registration.workerNodeId,
+    );
+    expect(executionHost).toBeDefined();
+    const executionHostBinding: ExecutionHostBinding = {
+      host: executionHost!.ref,
+      targetKey: executionHost!.targetKey,
+      revision: executionHost!.revision,
+    };
 
     const initialHealth = await pollUntil<
       MeshJsonResponse<MeshHealthResponse>
@@ -426,6 +928,22 @@ describe("native worker registration", () => {
     );
     expect(createdPlan.status).toBe(200);
 
+    const terminalDirectoryFile = await meshJsonRequest<FileWriteResponse>(
+      controller,
+      `${filesPath}/write`,
+      {
+        method: "POST",
+        body: {
+          path: "native-terminal/session.txt",
+          content: "terminal cwd\n",
+          expectedVersionToken: null,
+          overwrite: false,
+          startDirectory: null,
+        },
+      },
+    );
+    expect(terminalDirectoryFile.status).toBe(200);
+
     const previousDataDir = process.env["CLANKY_DATA_DIR"];
     closeDatabase();
     process.env["CLANKY_DATA_DIR"] = controller.dataDir;
@@ -441,16 +959,56 @@ describe("native worker registration", () => {
     });
     try {
       const executionDirectory = await meshExecutor.getExecutionDirectory();
+      const platformOs = expectedRuntime.platform!.os;
       expect(executionDirectory).toBe(join(worker.dataDir, "native-files"));
       expect(await meshExecutor.fileExists(
         join(executionDirectory, ".clanky-planning", "plan.md"),
       )).toBe(true);
-      if (expectedRuntime.platform?.os === "windows") {
-        expect(
-          workerCapabilities.commandExecution,
-        ).toBeUndefined();
-      }
       expect(await meshExecutor.isAgentProviderAvailable("copilot")).toBe(true);
+
+      for (const scenario of [
+        {
+          legacyRelease: false,
+          relativeDirectory: false,
+          failFirstRelease: true,
+        },
+        { legacyRelease: true, relativeDirectory: true },
+      ]) {
+        await exerciseMeshTerminal(
+          registration,
+          worker.dataDir,
+          scenario.relativeDirectory
+            ? "native-terminal"
+            : join(worker.dataDir, "native-terminal"),
+          platformOs,
+          {
+            legacyRelease: scenario.legacyRelease,
+            failFirstRelease: scenario.failFirstRelease,
+          },
+        );
+      }
+      const deletedTerminalDirectory = await meshJsonRequest<FileMutationResponse>(
+        controller,
+        `${filesPath}/delete`,
+        {
+          method: "POST",
+          body: {
+            path: "native-terminal",
+            kind: "directory",
+            startDirectory: null,
+          },
+        },
+      );
+      expect(deletedTerminalDirectory.status).toBe(200);
+      expect(await Bun.file(
+        join(worker.dataDir, "native-terminal", "session.txt"),
+      ).exists()).toBe(false);
+
+      await exerciseMeshTunnels(
+        controller,
+        registration,
+        executionHostBinding,
+      );
 
       const git = GitService.withExecutor(meshExecutor);
       for (const args of [
@@ -518,6 +1076,37 @@ describe("native worker registration", () => {
       );
       expect(await meshExecutor.directoryExists(worktreePath)).toBe(false);
       await exerciseMeshAcpRuntime(registration, executionDirectory);
+    } catch (error) {
+      const serverLogFile = Bun.file(
+        join(worker.dataDir, "logs", "server.log"),
+      );
+      const serverLog = await serverLogFile.exists()
+        ? await serverLogFile.text()
+        : "";
+      let processOutput = "";
+      if (worker.child.exitCode !== null) {
+        const [stdout, stderr] = await Promise.all([
+          worker.output.stdout,
+          worker.output.stderr,
+        ]);
+        processOutput = [stdout.trim(), stderr.trim()]
+          .filter((value) => value.length > 0)
+          .join("\n");
+      } else {
+        processOutput = worker.output.snapshot();
+      }
+      const diagnostics = [serverLog.trim(), processOutput]
+        .filter((value) => value.length > 0)
+        .join("\n")
+        .slice(-20_000);
+      throw new Error(
+        `Native worker feature scenario failed (exit ${
+          String(worker.child.exitCode)
+        }, signal ${String(worker.child.signalCode)})${
+          diagnostics ? `:\n${diagnostics}` : "."
+        }`,
+        { cause: error },
+      );
     } finally {
       meshExecutor.close();
       closeDatabase();

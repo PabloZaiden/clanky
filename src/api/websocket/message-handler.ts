@@ -215,7 +215,12 @@ export function createMessageHandler(helpers: TerminalHelpers) {
           );
           return;
         }
-        void helpers.startTerminalBridge(ws, credentialToken);
+        void helpers.startTerminalBridge(ws, credentialToken).catch((error: Error) => {
+          log.error("Unhandled terminal bridge credential startup failure", {
+            terminalSessionId: ws.data.terminalSessionId,
+            error: String(error),
+          });
+        });
         return;
       }
 

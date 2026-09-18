@@ -3,6 +3,7 @@
  */
 
 import { randomBytes } from "node:crypto";
+import { createLogger } from "@pablozaiden/webapp/server";
 import type {
   MeshTerminalClientFrame,
   MeshTerminalServerFrame,
@@ -32,7 +33,10 @@ import {
   assertPhysicalExecutionPath,
   resolveTrustedExecutionRoot,
 } from "./mesh-execution-gateway";
-import { executionPathStyleForPlatform } from "./execution-path";
+import {
+  executionPathStyleForPlatform,
+  isAbsoluteExecutionPath,
+} from "./execution-path";
 import { getMeshWorkerDirectory } from "./mesh-runtime";
 import { CommandExecutorImpl } from "./remote-command-executor";
 import { DomainError, isDomainError } from "./domain-error";
@@ -43,6 +47,10 @@ import { meshInboundResourceRegistry } from "./mesh-inbound-resource-registry";
 
 const MAX_TERMINAL_SESSIONS = 64;
 const MAX_USED_NONCES = 512;
+const CLEANUP_RETRY_MIN_MS = 1_000;
+const CLEANUP_RETRY_MAX_MS = 30_000;
+const MAX_CLEANUP_RETRY_ATTEMPTS = 5;
+const log = createLogger("core:mesh-terminal-gateway");
 
 export interface MeshTerminalSocket {
   send(data: string): void;
@@ -63,11 +71,20 @@ interface MeshTerminalRelay {
   socket: MeshTerminalSocket;
   connection: InteractiveTerminalConnection;
   validationTimer: ReturnType<typeof setInterval>;
+  cleanupRetryTimer?: ReturnType<typeof setTimeout>;
+  cleanupRetryAttempts?: number;
 }
 
 interface UsedMeshTerminalNonce {
   expiresAt: number;
   reserved: boolean;
+}
+
+interface MeshTerminalCloseState {
+  promise: Promise<void>;
+  closeSocket: boolean;
+  closeCode: number;
+  closeReason: string;
 }
 
 export interface MeshTerminalSessionResponse {
@@ -107,6 +124,7 @@ export class MeshTerminalGateway {
   private readonly opening = new Map<string, Promise<void>>();
   private readonly openingSockets = new Map<string, MeshTerminalSocket>();
   private readonly closing = new Set<string>();
+  private readonly closePromises = new Map<string, MeshTerminalCloseState>();
   private readonly usedNonces = new Map<string, UsedMeshTerminalNonce>();
 
   async createSession(request: MeshTerminalSessionRequest): Promise<MeshTerminalSessionResponse> {
@@ -185,7 +203,12 @@ export class MeshTerminalGateway {
         environment,
       };
       const expiryTimer = setTimeout(() => {
-        void this.close(sessionId, true, 1000, "Mesh terminal session expired");
+        this.closeInBackground(
+          sessionId,
+          true,
+          1000,
+          "Mesh terminal session expired",
+        );
       }, Math.max(1, expiresAt - Date.now()));
       expiryTimer.unref?.();
       lease.expiryTimer = expiryTimer;
@@ -195,7 +218,12 @@ export class MeshTerminalGateway {
       while (this.leases.size > MAX_TERMINAL_SESSIONS) {
         const oldest = this.leases.keys().next().value as string | undefined;
         if (!oldest) break;
-        void this.close(oldest, true, 1013, "Mesh terminal capacity exceeded");
+        this.closeInBackground(
+          oldest,
+          true,
+          1013,
+          "Mesh terminal capacity exceeded",
+        );
       }
       while (this.usedNonces.size > MAX_USED_NONCES) {
         const oldestReusable = [...this.usedNonces.entries()]
@@ -222,6 +250,24 @@ export class MeshTerminalGateway {
     await this.requireValidatedLease(sessionId, sessionToken);
   }
 
+  async releaseSession(
+    sessionId: string,
+    sessionToken: string,
+  ): Promise<void> {
+    const lease = this.leases.get(sessionId);
+    if (!lease) {
+      await this.closePromises.get(sessionId)?.promise;
+      return;
+    }
+    if (lease.sessionToken !== sessionToken) {
+      throw new DomainError(
+        "mesh_terminal_session_invalid",
+        "The Mesh terminal session is invalid.",
+      );
+    }
+    await this.close(sessionId, true, 1000, "Mesh terminal session released");
+  }
+
   async open(
     socket: MeshTerminalSocket,
     sessionId: string,
@@ -237,7 +283,7 @@ export class MeshTerminalGateway {
     );
     this.opening.set(sessionId, pending);
     const abortHandler = (): void => {
-      void this.close(
+      this.closeInBackground(
         sessionId,
         false,
         1000,
@@ -271,6 +317,16 @@ export class MeshTerminalGateway {
     const lease = await this.requireValidatedLease(sessionId, sessionToken);
     if (this.relays.has(sessionId)) {
       throw new DomainError("mesh_terminal_session_in_use", "The Mesh terminal session is already connected.");
+    }
+    const pathStyle = executionPathStyleForPlatform(process.platform);
+    if (
+      !pathStyle
+      || !isAbsoluteExecutionPath(lease.request.directory, pathStyle)
+    ) {
+      throw new DomainError(
+        "mesh_execution_path_invalid",
+        "The validated Mesh terminal directory must be an absolute host path.",
+      );
     }
     const executor = new CommandExecutorImpl({
       provider: "local",
@@ -312,18 +368,25 @@ export class MeshTerminalGateway {
           this.sendFrame(sessionId, { type: "terminal.exit", code, signal }, socket);
           const relay = this.relays.get(sessionId);
           if (relay?.socket === socket) {
-            try {
-              relay.socket.close(1000, "Terminal process exited");
-            } finally {
-              void this.cleanup(sessionId, socket);
-            }
+            this.closeInBackground(
+              sessionId,
+              true,
+              1000,
+              "Terminal process exited",
+              socket,
+            );
           }
         },
       },
     });
     const validationTimer = setInterval(() => {
       void this.requireValidatedLease(sessionId, sessionToken).catch(() => {
-        void this.close(sessionId, true, 1008, "Mesh terminal authority changed");
+        this.closeInBackground(
+          sessionId,
+          true,
+          1008,
+          "Mesh terminal authority changed",
+        );
       });
     }, MESH_TERMINAL_LEASE_CHECK_INTERVAL_MS);
     validationTimer.unref?.();
@@ -408,23 +471,72 @@ export class MeshTerminalGateway {
     closeReason = "Mesh terminal closed",
     ownerSocket?: MeshTerminalSocket,
   ): Promise<void> {
-    const relay = this.relays.get(sessionId);
-    const openingSocket = this.openingSockets.get(sessionId);
-    if (
-      ownerSocket
-      && (
-        (relay && relay.socket !== ownerSocket)
-        || (!relay && openingSocket && openingSocket !== ownerSocket)
-      )
-    ) {
+    if (!this.isSocketOwner(sessionId, ownerSocket)) {
       return;
     }
-    const socket = relay?.socket;
+    const existing = this.closePromises.get(sessionId);
+    if (existing) {
+      if (closeSocket) {
+        existing.closeSocket = true;
+        existing.closeCode = closeCode;
+        existing.closeReason = closeReason;
+      }
+      await existing.promise;
+      return;
+    }
+    const state: MeshTerminalCloseState = {
+      promise: Promise.resolve(),
+      closeSocket,
+      closeCode,
+      closeReason,
+    };
+    state.promise = this.closeInternal(sessionId, state).finally(() => {
+      if (this.closePromises.get(sessionId) === state) {
+        this.closePromises.delete(sessionId);
+      }
+    });
+    this.closePromises.set(sessionId, state);
+    await state.promise;
+  }
+
+  closeInBackground(
+    sessionId: string,
+    closeSocket = false,
+    closeCode = 1000,
+    closeReason = "Mesh terminal closed",
+    ownerSocket?: MeshTerminalSocket,
+  ): void {
+    void this.close(
+      sessionId,
+      closeSocket,
+      closeCode,
+      closeReason,
+      ownerSocket,
+    ).catch((error: Error) => {
+      log.error("Failed to close the Mesh terminal session", {
+        sessionId,
+        closeReason,
+        error: String(error),
+      });
+    });
+  }
+
+  private async closeInternal(
+    sessionId: string,
+    state: MeshTerminalCloseState,
+  ): Promise<void> {
+    const relay = this.relays.get(sessionId);
+    const socket = relay?.socket ?? this.openingSockets.get(sessionId);
     const opening = this.opening.get(sessionId);
+    const teardownErrors: unknown[] = [];
     if (opening && !this.closing.has(sessionId)) {
       this.closing.add(sessionId);
       if (relay) {
-        await relay.connection.dispose();
+        try {
+          await relay.connection.dispose();
+        } catch (error) {
+          teardownErrors.push(error);
+        }
       }
       try {
         await opening;
@@ -434,14 +546,28 @@ export class MeshTerminalGateway {
         this.closing.delete(sessionId);
       }
     }
-    await this.cleanup(sessionId);
-    const socketToClose = relay?.socket ?? socket;
-    if (closeSocket && socketToClose) {
-      try {
-        socketToClose.close(closeCode, closeReason);
-      } catch {
-        // The transport may already be closed.
+    const socketToClose = this.relays.get(sessionId)?.socket ?? socket;
+    try {
+      await this.cleanup(sessionId);
+    } catch (error) {
+      teardownErrors.push(error);
+    } finally {
+      if (state.closeSocket && socketToClose) {
+        try {
+          socketToClose.close(state.closeCode, state.closeReason);
+        } catch {
+          // The transport may already be closed.
+        }
       }
+    }
+    if (teardownErrors.length === 1) {
+      throw teardownErrors[0];
+    }
+    if (teardownErrors.length > 1) {
+      throw new AggregateError(
+        teardownErrors,
+        "Failed to fully terminate the Mesh terminal session.",
+      );
     }
   }
 
@@ -450,6 +576,7 @@ export class MeshTerminalGateway {
       ...this.leases.keys(),
       ...this.relays.keys(),
       ...this.opening.keys(),
+      ...this.closePromises.keys(),
     ]);
     await Promise.all([...sessionIds].map(
       async (sessionId) => await this.close(sessionId, true, 1001, "Mesh terminal gateway stopped"),
@@ -483,15 +610,35 @@ export class MeshTerminalGateway {
       throw new DomainError("mesh_terminal_session_invalid", "The Mesh terminal session is invalid.");
     }
     if (lease.expiresAt <= Date.now()) {
-      await this.close(sessionId, true, 1000, "Mesh terminal session expired");
+      await this.closeInvalidLease(
+        sessionId,
+        1000,
+        "Mesh terminal session expired",
+      );
       throw new DomainError("mesh_terminal_session_expired", "The Mesh terminal session has expired.");
     }
     const grant = await getControllerGrant(lease.callerNodeId);
     if (!grant || grant.grantStatus !== "active") {
-      await this.close(sessionId, true, 1008, "Mesh terminal authority changed");
+      await this.closeInvalidLease(
+        sessionId,
+        1008,
+        "Mesh terminal authority changed",
+      );
       throw new DomainError("mesh_terminal_context_changed", "The Mesh terminal controller grant is no longer active.");
     }
     return lease;
+  }
+
+  private async closeInvalidLease(
+    sessionId: string,
+    closeCode: number,
+    closeReason: string,
+  ): Promise<void> {
+    if (this.opening.has(sessionId)) {
+      this.closeInBackground(sessionId, true, closeCode, closeReason);
+      return;
+    }
+    await this.close(sessionId, true, closeCode, closeReason);
   }
 
   private pruneExpired(): void {
@@ -503,7 +650,12 @@ export class MeshTerminalGateway {
     }
     for (const [sessionId, lease] of this.leases) {
       if (lease.expiresAt <= now) {
-        void this.close(sessionId, true, 1000, "Mesh terminal session expired");
+        this.closeInBackground(
+          sessionId,
+          true,
+          1000,
+          "Mesh terminal session expired",
+        );
       }
     }
   }
@@ -522,13 +674,88 @@ export class MeshTerminalGateway {
     if (ownerSocket && relay && relay.socket !== ownerSocket) {
       return;
     }
-    this.relays.delete(sessionId);
-    this.deleteLease(sessionId);
     if (!relay) {
+      this.deleteLease(sessionId);
       return;
     }
+    if (relay.cleanupRetryTimer !== undefined) {
+      clearTimeout(relay.cleanupRetryTimer);
+      relay.cleanupRetryTimer = undefined;
+    }
     clearInterval(relay.validationTimer);
-    await relay.connection.dispose();
+    try {
+      await relay.connection.dispose();
+    } catch (error) {
+      if (!this.scheduleCleanupRetry(sessionId, relay)) {
+        this.abandonRelayAfterCleanupFailure(sessionId, relay, error);
+      }
+      throw error;
+    }
+    if (this.relays.get(sessionId) !== relay) {
+      return;
+    }
+    this.relays.delete(sessionId);
+    this.deleteLease(sessionId);
+  }
+
+  private scheduleCleanupRetry(
+    sessionId: string,
+    relay: MeshTerminalRelay,
+  ): boolean {
+    if (
+      this.relays.get(sessionId) !== relay
+      || relay.cleanupRetryTimer !== undefined
+      || (relay.cleanupRetryAttempts ?? 0) >= MAX_CLEANUP_RETRY_ATTEMPTS
+    ) {
+      return false;
+    }
+    const attempt = relay.cleanupRetryAttempts ?? 0;
+    const delayMs = Math.min(
+      CLEANUP_RETRY_MIN_MS * (2 ** attempt),
+      CLEANUP_RETRY_MAX_MS,
+    );
+    relay.cleanupRetryAttempts = attempt + 1;
+    relay.cleanupRetryTimer = setTimeout(() => {
+      relay.cleanupRetryTimer = undefined;
+      this.closeInBackground(
+        sessionId,
+        false,
+        1000,
+        "Retrying Mesh terminal cleanup",
+      );
+    }, delayMs);
+    relay.cleanupRetryTimer.unref?.();
+    return true;
+  }
+
+  private abandonRelayAfterCleanupFailure(
+    sessionId: string,
+    relay: MeshTerminalRelay,
+    error: unknown,
+  ): void {
+    if (this.relays.get(sessionId) !== relay) {
+      return;
+    }
+    if (relay.cleanupRetryTimer !== undefined) {
+      clearTimeout(relay.cleanupRetryTimer);
+      relay.cleanupRetryTimer = undefined;
+    }
+    clearInterval(relay.validationTimer);
+    this.relays.delete(sessionId);
+    this.deleteLease(sessionId);
+    try {
+      relay.socket.close(1011, "Terminal cleanup could not be confirmed");
+    } catch (closeError) {
+      log.warn("Failed to close the abandoned Mesh terminal socket", {
+        sessionId,
+        error: String(closeError),
+      });
+    }
+    log.error("Abandoned the Mesh terminal relay after bounded cleanup failed", {
+      sessionId,
+      attempts: relay.cleanupRetryAttempts ?? 0,
+      error: String(error),
+    });
   }
 
   private sendFrame(
@@ -542,26 +769,45 @@ export class MeshTerminalGateway {
     }
     const serialized = JSON.stringify(frame);
     if (Buffer.byteLength(serialized, "utf8") > MESH_TERMINAL_MAX_FRAME_BYTES) {
-      void this.close(sessionId, true, 1009, "Mesh terminal frame too large", ownerSocket);
+      this.closeInBackground(
+        sessionId,
+        true,
+        1009,
+        "Mesh terminal frame too large",
+        ownerSocket,
+      );
       return;
     }
     try {
       relay.socket.send(serialized);
     } catch {
-      void this.close(sessionId, false, 1000, "Mesh terminal closed", ownerSocket);
+      this.closeInBackground(
+        sessionId,
+        false,
+        1000,
+        "Mesh terminal closed",
+        ownerSocket,
+      );
     }
   }
 
-  private assertSocketOwner(sessionId: string, socket?: MeshTerminalSocket): void {
-    if (!socket) {
-      return;
+  private isSocketOwner(
+    sessionId: string,
+    ownerSocket?: MeshTerminalSocket,
+  ): boolean {
+    if (!ownerSocket) {
+      return true;
     }
     const relay = this.relays.get(sessionId);
     const openingSocket = this.openingSockets.get(sessionId);
-    if (
-      (relay && relay.socket !== socket)
-      || (!relay && openingSocket && openingSocket !== socket)
-    ) {
+    return !(
+      (relay && relay.socket !== ownerSocket)
+      || (!relay && openingSocket && openingSocket !== ownerSocket)
+    );
+  }
+
+  private assertSocketOwner(sessionId: string, socket?: MeshTerminalSocket): void {
+    if (!this.isSocketOwner(sessionId, socket)) {
       throw new DomainError("mesh_terminal_session_in_use", "The Mesh terminal session is already connected.");
     }
   }

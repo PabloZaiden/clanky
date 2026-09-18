@@ -257,9 +257,11 @@ export {
 } from "./execution-host-execution";
 
 export {
+  MeshTerminalSessionCloseRequestSchema,
   MeshTerminalSessionRequestSchema,
   MeshTerminalClientFrameSchema,
   MeshTerminalServerFrameSchema,
+  type MeshTerminalSessionCloseRequest,
   type MeshTerminalSessionRequest,
   type MeshTerminalClientFrame,
   type MeshTerminalServerFrame,
