@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LocalTerminalConnection } from "../../src/core/terminal/local-terminal-connection";
+import { SubprocessTreeTerminationError } from "../../src/core/subprocess-termination";
 import { pollUntil } from "../helpers/polling";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 
@@ -155,6 +156,65 @@ describe("LocalTerminalConnection lifecycle", () => {
       expect(closeAttempts).toBe(1);
       await expect(connection.dispose()).resolves.toBeUndefined();
     } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  // Closing an unverified ConPTY can block and an exited root does not prove
+  // its Windows descendants stopped, so disposal must transfer ownership.
+  test("quarantines an unverified terminal after its Windows root exits", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "clanky-terminal-windows-exit-"));
+    const controlled = createControlledProcess();
+    controlled.exit(0);
+    const platformDescriptor = Object.getOwnPropertyDescriptor(
+      process,
+      "platform",
+    )!;
+    Object.defineProperty(process, "platform", {
+      ...platformDescriptor,
+      value: "win32",
+    });
+    let closeAttempts = 0;
+    const connection = new LocalTerminalConnection({
+      sessionId: crypto.randomUUID(),
+      remoteSessionName: `clanky-test-${crypto.randomUUID()}`,
+      directory,
+      connectionMode: "direct",
+      useTmux: false,
+      executor: new TestCommandExecutor(directory),
+      callbacks: {
+        onOutput(): void {},
+      },
+    });
+    const internals = connection as unknown as {
+      process: Bun.Subprocess | null;
+      terminal: Bun.Terminal | null;
+    };
+    internals.process = controlled.subprocess;
+    internals.terminal = {
+      closed: false,
+      close(): void {
+        closeAttempts += 1;
+      },
+    } as unknown as Bun.Terminal;
+
+    try {
+      await expect(connection.dispose()).rejects.toBeInstanceOf(
+        SubprocessTreeTerminationError,
+      );
+      await pollUntil(
+        () => internals.terminal,
+        (terminal) => terminal === null,
+        {
+          description: "unverified Windows terminal quarantine",
+          timeoutMs: 1_000,
+          formatLastObserved: (terminal) => String(terminal !== null),
+        },
+      );
+      expect(internals.process).toBeNull();
+      expect(closeAttempts).toBe(0);
+    } finally {
+      Object.defineProperty(process, "platform", platformDescriptor);
       await rm(directory, { recursive: true, force: true });
     }
   });

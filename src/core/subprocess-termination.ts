@@ -10,6 +10,7 @@ const DEFAULT_GRACEFUL_WAIT_MS = 250;
 const DEFAULT_FORCE_WAIT_MS = 1_000;
 const TASKKILL_REAP_WAIT_MS = 250;
 const pendingTreeTerminationFailures = new WeakMap<Bun.Subprocess, unknown>();
+const confirmedTreeTerminations = new WeakSet<Bun.Subprocess>();
 
 export class SubprocessTreeTerminationError extends Error {
   override readonly name = "SubprocessTreeTerminationError";
@@ -37,7 +38,11 @@ export async function terminateSubprocessTree(
     return;
   }
   if (subprocess.exitCode !== null) {
-    if (process.platform !== "win32") {
+    if (
+      process.platform !== "win32"
+      || !options.requireExit
+      || confirmedTreeTerminations.has(subprocess)
+    ) {
       return;
     }
     const previousFailure = pendingTreeTerminationFailures.get(subprocess);
@@ -48,12 +53,22 @@ export async function terminateSubprocessTree(
       ) {
         throw previousFailure;
       }
-      throwTreeTerminationGuaranteeError(subprocess, previousFailure);
+      const error = createTreeTerminationGuaranteeError(
+        subprocess,
+        previousFailure,
+      );
+      pendingTreeTerminationFailures.set(subprocess, error);
+      throw error;
     }
-    return;
+    const error = createTreeTerminationGuaranteeError(subprocess);
+    pendingTreeTerminationFailures.set(subprocess, error);
+    throw error;
   }
   try {
     await terminateRunningSubprocessTree(subprocess, options);
+    if (options.requireExit && process.platform === "win32") {
+      confirmedTreeTerminations.add(subprocess);
+    }
     pendingTreeTerminationFailures.delete(subprocess);
   } catch (error) {
     if (options.requireExit && process.platform === "win32") {
@@ -235,16 +250,30 @@ function resolveWindowsTaskkillExecutable(): string | null {
     : null;
 }
 
-function throwTreeTerminationGuaranteeError(
+export function isSubprocessTreeTerminationConfirmed(
+  subprocess: Bun.Subprocess,
+): boolean {
+  return process.platform !== "win32"
+    || confirmedTreeTerminations.has(subprocess);
+}
+
+function createTreeTerminationGuaranteeError(
   subprocess: Bun.Subprocess,
   cause?: unknown,
-): never {
+): SubprocessTreeTerminationError {
   const platform = process.platform === "win32" ? "Windows " : "";
-  throw new SubprocessTreeTerminationError(
+  return new SubprocessTreeTerminationError(
     `The ${platform}subprocess exited, but process-tree termination could not be guaranteed (pid ${String(subprocess.pid)}).`,
     false,
     cause === undefined ? undefined : { cause },
   );
+}
+
+function throwTreeTerminationGuaranteeError(
+  subprocess: Bun.Subprocess,
+  cause?: unknown,
+): never {
+  throw createTreeTerminationGuaranteeError(subprocess, cause);
 }
 
 function tryKillSubprocessHandle(subprocess: Bun.Subprocess): void {

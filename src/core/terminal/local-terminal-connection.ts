@@ -31,6 +31,7 @@ import { TerminalOutput } from "./terminal-output";
 import { DomainError } from "../domain-error";
 import { createLogger } from "@pablozaiden/webapp/server";
 import {
+  isSubprocessTreeTerminationConfirmed,
   SubprocessTreeTerminationError,
   terminateSubprocessTree,
 } from "../subprocess-termination";
@@ -341,7 +342,13 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
       if (shouldRetry) {
         this.suppressNextExitNotification = true;
       }
-      if (processHandle.exitCode === null) {
+      if (
+        processHandle.exitCode === null
+        || (
+          isWindowsTerminalRuntime()
+          && !isSubprocessTreeTerminationConfirmed(processHandle)
+        )
+      ) {
         try {
           await this.terminateProcess(processHandle);
         } catch (terminationError) {
@@ -441,6 +448,10 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
       && (
         processHandle.exitCode === null
         || this.processTreeCleanupFailure === processHandle
+        || (
+          isWindowsTerminalRuntime()
+          && !isSubprocessTreeTerminationConfirmed(processHandle)
+        )
       )
     ) {
       try {
@@ -454,6 +465,10 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
       && (
         processHandle.exitCode === null
         || this.processTreeCleanupFailure === processHandle
+        || (
+          isWindowsTerminalRuntime()
+          && !isSubprocessTreeTerminationConfirmed(processHandle)
+        )
       )
     ) {
       this.watchRetainedProcess(processHandle);
@@ -691,11 +706,8 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
       this.process = null;
     }
     const terminal = this.terminal;
-    const cleanupErrors: unknown[] = [];
-    this.closeTerminal(cleanupErrors);
-    this.quarantineFailedTerminalClose(
+    this.releaseTerminalAfterProcessExit(
       terminal,
-      cleanupErrors,
       processHandle,
       "Failed to close terminal after retained process exit",
     );
@@ -785,11 +797,8 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
     this.process = null;
     this.output.flush();
     const terminal = this.terminal;
-    const cleanupErrors: unknown[] = [];
-    this.closeTerminal(cleanupErrors);
-    this.quarantineFailedTerminalClose(
+    this.releaseTerminalAfterProcessExit(
       terminal,
-      cleanupErrors,
       processHandle,
       "Failed to close terminal after process exit",
     );
@@ -809,6 +818,35 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
     if (!this.disposed && !suppressExitNotification) {
       this.config.callbacks.onExit?.(exitCode, processHandle.signalCode);
     }
+  }
+
+  private releaseTerminalAfterProcessExit(
+    terminal: Bun.Terminal | null,
+    processHandle: Bun.Subprocess,
+    closeErrorMessage: string,
+  ): void {
+    if (
+      isWindowsTerminalRuntime()
+      && !isSubprocessTreeTerminationConfirmed(processHandle)
+    ) {
+      if (this.terminal === terminal) {
+        this.terminal = null;
+      }
+      quarantineTerminal(terminal);
+      log.warn("Quarantined terminal after an unverified Windows process-tree exit", {
+        sessionId: this.config.sessionId,
+        pid: processHandle.pid,
+      });
+      return;
+    }
+    const cleanupErrors: unknown[] = [];
+    this.closeTerminal(cleanupErrors);
+    this.quarantineFailedTerminalClose(
+      terminal,
+      cleanupErrors,
+      processHandle,
+      closeErrorMessage,
+    );
   }
 
   private isPersistentAttachUnavailable(error: unknown, processHandle: Bun.Subprocess): boolean {

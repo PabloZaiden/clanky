@@ -27,7 +27,6 @@ export class AcpProcess {
   private closed = false;
   private started = false;
   private stopping: Promise<void> | null = null;
-  private terminationFailure: unknown | null = null;
 
   private constructor(
     private readonly child: Bun.Subprocess,
@@ -90,21 +89,12 @@ export class AcpProcess {
     if (this.stopping) {
       return await this.stopping;
     }
-    if (
-      this.child.exitCode !== null
-      && this.terminationFailure === null
-    ) {
-      this.closed = true;
-      return;
-    }
     this.closed = true;
     const stopping = terminateAcpProcess(this.child, options);
     this.stopping = stopping;
     try {
       await stopping;
-      this.terminationFailure = null;
     } catch (error) {
-      this.terminationFailure = error;
       throw error;
     } finally {
       if (this.stopping === stopping) {

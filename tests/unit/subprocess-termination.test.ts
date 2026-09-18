@@ -132,6 +132,11 @@ describe("subprocess tree termination", () => {
         forceWaitMs: 0,
         requireExit: true,
       });
+      await expect(terminateSubprocessTree(target.process, {
+        gracefulWaitMs: 0,
+        forceWaitMs: 0,
+        requireExit: true,
+      })).resolves.toBeUndefined();
 
       expect(commands).toEqual([[
         "C:\\Windows\\System32\\taskkill.exe",
@@ -140,6 +145,29 @@ describe("subprocess tree termination", () => {
         "/T",
       ]]);
       expect(target.kill).not.toHaveBeenCalled();
+    });
+  });
+
+  // An exited parent is not evidence that Windows also stopped its children.
+  test("rejects an exited Windows root without confirmed tree termination", async () => {
+    await withMockWindowsTermination(async ({ target, commands }) => {
+      target.exit(0);
+
+      const firstError = await terminateSubprocessTree(target.process, {
+        gracefulWaitMs: 0,
+        forceWaitMs: 0,
+        requireExit: true,
+      }).then(() => null, (error: unknown) => error);
+      const retryError = await terminateSubprocessTree(target.process, {
+        gracefulWaitMs: 0,
+        forceWaitMs: 0,
+        requireExit: true,
+      }).then(() => null, (error: unknown) => error);
+
+      expect(firstError).toBeInstanceOf(SubprocessTreeTerminationError);
+      expect(firstError).toMatchObject({ retryable: false });
+      expect(retryError).toBe(firstError);
+      expect(commands).toHaveLength(0);
     });
   });
 

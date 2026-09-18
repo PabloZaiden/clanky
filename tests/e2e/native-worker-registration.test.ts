@@ -39,6 +39,7 @@ import type {
   ExecutionHostBinding,
   ExecutionHostDescriptor,
 } from "../../src/shared/execution-host";
+import type { VncSession } from "../../src/shared";
 import { AcpBackend, MeshAcpTransport } from "../../src/backends/acp";
 import type { AgentEvent } from "../../src/backends/types";
 import {
@@ -511,7 +512,78 @@ async function expectPreviewEcho(
   });
 }
 
+async function expectVncWebSocketEcho(
+  controller: ManagedMeshNode,
+  sessionId: string,
+  message: string,
+): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const url = new URL("/api/vnc", controller.baseUrl);
+    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+    url.searchParams.set("vncSessionId", sessionId);
+    const options: Bun.WebSocketOptions = {
+      headers: { origin: controller.baseUrl },
+    };
+    const socket = Reflect.construct(WebSocket, [url, options]) as WebSocket;
+    socket.binaryType = "arraybuffer";
+    const expected = Buffer.from(message);
+    let received = Buffer.alloc(0);
+    let settled = false;
+    const timer = setTimeout(() => {
+      settled = true;
+      socket.close();
+      reject(new Error("Timed out waiting for the native Mesh VNC echo"));
+    }, 10_000);
+    socket.addEventListener("open", () => {
+      if (settled) {
+        socket.close();
+        return;
+      }
+      socket.send(Buffer.from(message));
+    });
+    socket.addEventListener("message", (event) => {
+      if (settled) {
+        return;
+      }
+      const chunk = typeof event.data === "string"
+        ? Buffer.from(event.data)
+        : Buffer.from(event.data as ArrayBuffer);
+      received = Buffer.concat([received, chunk]);
+      if (received.length < expected.length) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      socket.close();
+      try {
+        expect(received.toString("utf8")).toBe(message);
+        resolve();
+      } catch (error) {
+        reject(error);
+      }
+    });
+    socket.addEventListener("error", () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      socket.close();
+      reject(new Error("Native Mesh VNC websocket failed"));
+    });
+    socket.addEventListener("close", () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      reject(new Error("Native Mesh VNC websocket closed before echoing data"));
+    });
+  });
+}
+
 async function exerciseMeshTunnels(
+  controller: ManagedMeshNode,
   registration: MeshWorkerRegistration,
   binding: ExecutionHostBinding,
 ): Promise<void> {
@@ -553,6 +625,46 @@ async function exerciseMeshTunnels(
       } finally {
         await preview.close();
       }
+
+      if (binding.host.kind !== "mesh") {
+        throw new Error("Native worker VNC requires a Mesh execution host");
+      }
+      const sessionsPath = `/api/execution-hosts/mesh/${
+        encodeURIComponent(binding.host.nodeId)
+      }/vnc-sessions`;
+      const created = await meshJsonRequest<VncSession>(
+        controller,
+        sessionsPath,
+        {
+          method: "POST",
+          body: {
+            remotePort: server.port,
+            credentialToken: null,
+          },
+        },
+      );
+      expect(created.status).toBe(201);
+      expect(created.body.state.status).toBe("active");
+      try {
+        await expectVncWebSocketEcho(
+          controller,
+          created.body.config.id,
+          "native-mesh-vnc",
+        );
+      } finally {
+        const deleted = await meshJsonRequest<{ success: boolean }>(
+          controller,
+          `/api/vnc-sessions/${encodeURIComponent(created.body.config.id)}`,
+          { method: "DELETE" },
+        );
+        expect(deleted.status).toBe(200);
+        expect(deleted.body.success).toBe(true);
+      }
+      const missing = await meshJsonRequest<{ error: string }>(
+        controller,
+        `/api/vnc-sessions/${encodeURIComponent(created.body.config.id)}`,
+      );
+      expect(missing.status).toBe(404);
     });
   } finally {
     server.stop(true);
@@ -892,7 +1004,11 @@ describe("native worker registration", () => {
         join(worker.dataDir, "native-terminal", "session.txt"),
       ).exists()).toBe(false);
 
-      await exerciseMeshTunnels(registration, executionHostBinding);
+      await exerciseMeshTunnels(
+        controller,
+        registration,
+        executionHostBinding,
+      );
 
       const git = GitService.withExecutor(meshExecutor);
       for (const args of [
