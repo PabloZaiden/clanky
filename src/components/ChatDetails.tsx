@@ -38,10 +38,13 @@ export function ChatDetails({
     chat,
     transcript,
     loading,
+    loadingTranscript,
     error,
     isActive,
     needsSshCredentials,
     refreshChat,
+    loadMoreTranscript,
+    loadFullTranscript,
     loadToolCallDetails,
     applyChatSnapshot,
     markChatStarting,
@@ -190,6 +193,9 @@ export function ChatDetails({
         toolPathDisplayRoot={chatWorkingDirectory}
         fileLinkContext={fileLinkContext}
         onLoadToolDetails={loadToolCallDetails}
+        onLoadMoreTranscript={loadMoreTranscript}
+        onLoadFullTranscript={loadFullTranscript}
+        loadingTranscript={loadingTranscript}
         voiceInput={{
           available: voiceSettings.settings.capabilities.transcription.validated,
           status: voiceRecorder.status,

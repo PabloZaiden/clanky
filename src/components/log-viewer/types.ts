@@ -112,6 +112,14 @@ export interface LogViewerProps {
   transcriptClassName?: string;
   /** Fetches one full tool-call payload when its row is expanded. */
   onLoadToolDetails?: (toolCallId: string) => Promise<ToolCallData | null>;
+  /** Whether older transcript pages are available. */
+  hasOlderTranscript?: boolean;
+  /** Load the next older transcript page. */
+  onLoadMoreTranscript?: () => Promise<void>;
+  /** Load the complete transcript history. */
+  onLoadFullTranscript?: () => Promise<void>;
+  /** Whether a transcript history action is currently loading. */
+  loadingTranscript?: boolean;
 }
 
 export interface ConversationViewerProps extends LogViewerProps {

@@ -1635,6 +1635,45 @@ export const migrations: Migration[] = [
       backfillMeshExecutionHostRuntimeSnapshots(db);
     },
   },
+  {
+    version: 55,
+    name: "add_transcript_message_roles",
+    up: (db) => {
+      const resources = [
+        { table: "chat_transcript_entries", column: "chat_id" },
+        { table: "task_transcript_entries", column: "task_id" },
+        { table: "agent_run_transcript_entries", column: "agent_run_id" },
+      ] as const;
+
+      for (const resource of resources) {
+        if (!tableExists(db, resource.table)) {
+          continue;
+        }
+        const columns = getTableColumns(db, resource.table);
+        if (!columns.includes("message_role")) {
+          db.run(`ALTER TABLE ${resource.table} ADD COLUMN message_role TEXT`);
+        }
+        db.run(`
+          UPDATE ${resource.table}
+          SET message_role = CASE
+            WHEN json_valid(payload) = 1 THEN json_extract(payload, '$.role')
+            ELSE NULL
+          END
+          WHERE kind = 'message'
+            AND message_role IS NULL
+            AND CASE
+              WHEN json_valid(payload) = 1 THEN json_extract(payload, '$.role')
+              ELSE NULL
+            END IN ('user', 'assistant')
+        `);
+        db.run(`
+          CREATE INDEX IF NOT EXISTS idx_${resource.table}_assistant_page
+          ON ${resource.table}(user_id, ${resource.column}, timestamp DESC, sequence DESC, entry_id DESC)
+          WHERE kind = 'message' AND message_role = 'assistant'
+        `);
+      }
+    },
+  },
 ];
 
 const DEFAULT_SERVER_SETTINGS_JSON = JSON.stringify(getDefaultServerSettings());

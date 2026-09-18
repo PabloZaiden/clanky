@@ -765,6 +765,123 @@ describe("Tasks CRUD API Integration", () => {
       expect(JSON.stringify(snapshot)).not.toContain("task-large-output-3");
 
     });
+
+    test("loads task transcripts from the latest assistant responses and pages older history", async () => {
+      const createResponse = await fetch(`${baseUrl}/api/tasks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...baseCreateTaskPayload,
+          workspaceId: testWorkspaceId,
+          prompt: "Load a progressive task transcript",
+          name: "Progressive Task Transcript Test",
+          planMode: false,
+          model: testModel,
+          useWorktree: true,
+          draft: true,
+        }),
+      });
+
+      expect(createResponse.status).toBe(201);
+      const created = await createResponse.json();
+      const taskId = created.config.id as string;
+      const firstTimestamp = Date.parse("2025-03-01T00:00:00.000Z");
+      const messages: PersistedMessage[] = [];
+      const toolCalls: PersistedToolCall[] = [];
+      for (let index = 0; index < 105; index += 1) {
+        const timestamp = new Date(firstTimestamp + index * 1_000).toISOString();
+        messages.push(
+          {
+            id: `progressive-task-user-${index}`,
+            role: "user",
+            content: `Task question ${index}`,
+            timestamp,
+          },
+          {
+            id: `progressive-task-assistant-${index}`,
+            role: "assistant",
+            content: `Task answer ${index}`,
+            timestamp,
+          },
+        );
+        toolCalls.push({
+          id: `progressive-task-tool-${index}`,
+          name: "Read",
+          input: { filePath: `task-file-${index}.txt` },
+          output: `large task tool output ${index}`,
+          status: "completed",
+          timestamp,
+        });
+      }
+
+      const updated = await updateTaskState(taskId, {
+        ...created.state,
+        messages,
+        logs: [],
+        toolCalls,
+        lastActivityAt: toolCalls.at(-1)!.timestamp,
+      });
+      expect(updated).not.toBeNull();
+
+      const latestResponse = await fetch(`${baseUrl}/api/tasks/${taskId}/snapshot`);
+      expect(latestResponse.status).toBe(200);
+      const latest = await latestResponse.json() as {
+        transcript: {
+          messages: PersistedMessage[];
+          toolCalls: Array<Record<string, unknown>>;
+          isPartial: boolean;
+          loadedResponses: number;
+          totalResponses: number;
+          hasOlder: boolean;
+          nextCursor?: string;
+        };
+      };
+      expect(latest.transcript.isPartial).toBe(true);
+      expect(latest.transcript.loadedResponses).toBe(100);
+      expect(latest.transcript.totalResponses).toBe(105);
+      expect(latest.transcript.hasOlder).toBe(true);
+      expect(latest.transcript.nextCursor).toBeString();
+      expect(latest.transcript.messages.filter((message) => message.role === "assistant")).toHaveLength(100);
+      expect(latest.transcript.messages.some((message) => message.id === "progressive-task-assistant-4")).toBe(false);
+      expect(latest.transcript.toolCalls).toHaveLength(100);
+      expect(latest.transcript.toolCalls.every((tool) => !("output" in tool))).toBe(true);
+
+      const olderResponse = await fetch(
+        `${baseUrl}/api/tasks/${taskId}/snapshot?before=${encodeURIComponent(latest.transcript.nextCursor!)}`,
+      );
+      expect(olderResponse.status).toBe(200);
+      const older = await olderResponse.json() as {
+        transcript: {
+          messages: PersistedMessage[];
+          hasOlder: boolean;
+        };
+      };
+      expect(older.transcript.messages
+        .filter((message) => message.role === "assistant")
+        .map((message) => message.id)).toEqual([
+        "progressive-task-assistant-0",
+        "progressive-task-assistant-1",
+        "progressive-task-assistant-2",
+        "progressive-task-assistant-3",
+        "progressive-task-assistant-4",
+      ]);
+      expect(older.transcript.hasOlder).toBe(false);
+
+      const fullResponse = await fetch(`${baseUrl}/api/tasks/${taskId}/snapshot?full=1`);
+      expect(fullResponse.status).toBe(200);
+      const full = await fullResponse.json() as {
+        transcript: {
+          messages: PersistedMessage[];
+          isPartial: boolean;
+          loadedResponses: number;
+          hasOlder: boolean;
+        };
+      };
+      expect(full.transcript.isPartial).toBe(false);
+      expect(full.transcript.loadedResponses).toBe(105);
+      expect(full.transcript.hasOlder).toBe(false);
+      expect(full.transcript.messages.filter((message) => message.role === "assistant")).toHaveLength(105);
+    });
   });
 
   describe("POST /api/tasks/title", () => {

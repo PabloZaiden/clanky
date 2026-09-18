@@ -8,6 +8,7 @@ import type {
   ChatStatus,
   SessionInfo,
   Task,
+  TranscriptSnapshotOptions,
   ToolCallRecord,
 } from "@/shared";
 import type { ChatEvent } from "@/shared/events";
@@ -168,8 +169,11 @@ export class ChatManager {
     return this.services.state.getTaskChat(taskId);
   }
 
-  async getChatSnapshot(chatId: string): Promise<ChatSnapshot | null> {
-    return this.services.state.getChatSnapshot(chatId);
+  async getChatSnapshot(
+    chatId: string,
+    options?: TranscriptSnapshotOptions,
+  ): Promise<ChatSnapshot | null> {
+    return this.services.state.getChatSnapshot(chatId, options);
   }
 
   async getChatToolCall(chatId: string, toolCallId: string): Promise<ToolCallRecord | null> {

@@ -5,8 +5,10 @@ import type {
   ChatTranscriptStorageEntry,
   PersistedMessage,
   TaskLogEntry,
+  TranscriptSnapshotOptions,
   ToolCallRecord,
 } from "@/shared";
+import type { TranscriptEntriesPage } from "../persistence/transcripts/store";
 
 type TranscriptEntry =
   | {
@@ -35,12 +37,14 @@ type TranscriptEntry =
 export function getTranscriptSnapshotEtag(
   transcriptRevision: string,
   snapshotState: unknown,
+  window: TranscriptSnapshotOptions = {},
 ): string {
+  const windowKey = window.full ? "full" : window.before ? "page" : "latest";
   const stateRevision = createHash("sha256")
-    .update(JSON.stringify(snapshotState) ?? "undefined")
+    .update(JSON.stringify({ snapshotState, window }) ?? "undefined")
     .digest("hex")
     .slice(0, 16);
-  return `${transcriptRevision}:state-${stateRevision}:full`;
+  return `${transcriptRevision}:state-${stateRevision}:${windowKey}`;
 }
 
 function compareTranscriptEntries(left: TranscriptEntry, right: TranscriptEntry): number {
@@ -100,7 +104,14 @@ function createTranscriptEntryFromStorage(
 
 export function createTranscriptFromStorageEntries(
   entries: ChatTranscriptStorageEntry[],
-  options: { revision: string; totalEntries: number },
+  options: {
+    revision: string;
+    totalEntries: number;
+    totalResponses?: number;
+    hasOlder?: boolean;
+    nextCursor?: string;
+    isPartial?: boolean;
+  },
   shouldIncludeLog: (entry: TaskLogEntry) => boolean = () => true,
 ): ChatTranscript {
   const transcriptEntries = entries
@@ -108,17 +119,46 @@ export function createTranscriptFromStorageEntries(
     .filter((entry): entry is TranscriptEntry => entry !== null)
     .sort(compareTranscriptEntries);
 
-  return {
-    messages: transcriptEntries
+  const messages = transcriptEntries
       .filter((entry): entry is Extract<TranscriptEntry, { kind: "message" }> => entry.kind === "message")
-      .map((entry) => entry.message),
-    logs: transcriptEntries
+      .map((entry) => entry.message);
+  const logs = transcriptEntries
       .filter((entry): entry is Extract<TranscriptEntry, { kind: "log" }> => entry.kind === "log")
-      .map((entry) => entry.log),
-    toolCalls: transcriptEntries
+      .map((entry) => entry.log);
+  const toolCalls = transcriptEntries
       .filter((entry): entry is Extract<TranscriptEntry, { kind: "tool" }> => entry.kind === "tool")
-      .map((entry) => createToolCallSummary(entry.tool, { hasOutput: entry.hasOutput })),
+      .map((entry) => createToolCallSummary(entry.tool, { hasOutput: entry.hasOutput }));
+  const loadedResponses = messages.filter((message) => message.role === "assistant").length;
+  const totalResponses = options.totalResponses ?? loadedResponses;
+  const isPartial = options.isPartial ?? totalResponses > loadedResponses;
+
+  return {
+    messages,
+    logs,
+    toolCalls,
     revision: options.revision,
     totalEntries: options.totalEntries,
+    isPartial,
+    loadedResponses,
+    totalResponses,
+    hasOlder: options.hasOlder ?? false,
+    ...(options.nextCursor ? { nextCursor: options.nextCursor } : {}),
   };
+}
+
+export function createTranscriptFromStoragePage(
+  page: TranscriptEntriesPage,
+  options: { revision: string; totalEntries: number },
+  shouldIncludeLog: (entry: TaskLogEntry) => boolean = () => true,
+): ChatTranscript {
+  return createTranscriptFromStorageEntries(
+    page.entries,
+    {
+      ...options,
+      totalResponses: page.totalResponses,
+      hasOlder: page.hasOlder,
+      ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
+    },
+    shouldIncludeLog,
+  );
 }

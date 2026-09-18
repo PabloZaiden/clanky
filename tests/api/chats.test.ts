@@ -33,7 +33,8 @@ import {
   runGit,
 } from "../helpers/git-fixtures";
 import { pollUntil } from "../helpers/polling";
-import { fetchTestLocalExecutionHost } from "../setup";
+import { fetchTestLocalExecutionHost, testOwnerUser } from "../setup";
+import { runWithCurrentUser } from "../../src/core/user-context";
 
 const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };
 const updatedTestModel = { providerID: "test-provider", modelID: "test-model-2", variant: "" };
@@ -146,7 +147,7 @@ describe("Chats API Integration", () => {
         if (chat.state?.status !== "idle" && chat.state?.status !== "failed") {
           return { statusCode: response.status, chat };
         }
-        const snapshotResponse = await fetch(`${baseUrl}/api/chats/${chatId}/snapshot`);
+        const snapshotResponse = await fetch(`${baseUrl}/api/chats/${chatId}/snapshot?full=1`);
         expect(snapshotResponse.status).toBe(200);
         const snapshot = await snapshotResponse.json() as {
           transcript: Pick<Chat["state"], "messages" | "logs" | "toolCalls">;
@@ -2172,6 +2173,141 @@ describe("Chats API Integration", () => {
     expect(detail.output.content).toContain("large-output-249");
     expect(JSON.stringify(snapshot)).not.toContain("large-output-249");
 
+  });
+
+  test("loads chat transcripts from the latest assistant responses and pages older history", async () => {
+    const createResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Progressive Chat Transcript",
+        workspaceId: testWorkspaceId,
+        model: testModel,
+        useWorktree: false,
+        baseBranch: defaultBranch,
+      }),
+    });
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json() as Chat;
+    const firstTimestamp = Date.parse("2025-02-01T00:00:00.000Z");
+    const messages: PersistedMessage[] = [];
+    const toolCalls: PersistedToolCall[] = [];
+    for (let index = 0; index < 105; index += 1) {
+      const timestamp = new Date(firstTimestamp + index * 1_000).toISOString();
+      messages.push(
+        {
+          id: `progressive-user-${index}`,
+          role: "user",
+          content: `Question ${index}`,
+          timestamp,
+        },
+        {
+          id: `progressive-assistant-${index}`,
+          role: "assistant",
+          content: `Answer ${index}`,
+          timestamp,
+        },
+      );
+      toolCalls.push({
+        id: `progressive-tool-${index}`,
+        name: "read_file",
+        input: { path: `file-${index}.txt` },
+        output: `large tool output ${index}`,
+        status: "completed",
+        timestamp,
+      });
+    }
+    await runWithCurrentUser(testOwnerUser, async () => {
+      await updateChatState(created.config.id, {
+        ...created.state,
+        messages,
+        logs: [],
+        toolCalls,
+        lastActivityAt: toolCalls.at(-1)!.timestamp,
+      });
+    });
+
+    const latestResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/snapshot`);
+    expect(latestResponse.status).toBe(200);
+    const latest = await latestResponse.json() as {
+      transcript: Chat["state"] & {
+        isPartial: boolean;
+        loadedResponses: number;
+        totalResponses: number;
+        hasOlder: boolean;
+        nextCursor?: string;
+      };
+    };
+    expect(latest.transcript.isPartial).toBe(true);
+    expect(latest.transcript.loadedResponses).toBe(100);
+    expect(latest.transcript.totalResponses).toBe(105);
+    expect(latest.transcript.hasOlder).toBe(true);
+    expect(latest.transcript.nextCursor).toBeString();
+    const latestAssistantIds = latest.transcript.messages
+      .filter((message) => message.role === "assistant")
+      .map((message) => message.id);
+    expect(latestAssistantIds).toHaveLength(100);
+    expect(latestAssistantIds).toContain("progressive-assistant-104");
+    expect(latestAssistantIds).not.toContain("progressive-assistant-4");
+    expect(latest.transcript.toolCalls).toHaveLength(100);
+    expect(latest.transcript.toolCalls.every((tool) => !("output" in tool))).toBe(true);
+
+    const latestEtag = latestResponse.headers.get("ETag");
+    expect(latestEtag).toBeString();
+    const latestNotModified = await fetch(`${baseUrl}/api/chats/${created.config.id}/snapshot`, {
+      headers: { "If-None-Match": latestEtag! },
+    });
+    expect(latestNotModified.status).toBe(304);
+
+    const olderResponse = await fetch(
+      `${baseUrl}/api/chats/${created.config.id}/snapshot?before=${encodeURIComponent(latest.transcript.nextCursor!)}`,
+    );
+    expect(olderResponse.status).toBe(200);
+    const older = await olderResponse.json() as {
+      transcript: typeof latest.transcript;
+    };
+    const olderAssistantIds = older.transcript.messages
+      .filter((message) => message.role === "assistant")
+      .map((message) => message.id);
+    expect(olderAssistantIds).toEqual([
+      "progressive-assistant-0",
+      "progressive-assistant-1",
+      "progressive-assistant-2",
+      "progressive-assistant-3",
+      "progressive-assistant-4",
+    ]);
+    expect(older.transcript.hasOlder).toBe(false);
+    expect(new Set([...latestAssistantIds, ...olderAssistantIds]).size).toBe(105);
+    const olderEtag = olderResponse.headers.get("ETag");
+    expect(olderEtag).toBeString();
+    expect(olderEtag).not.toBe(latestEtag);
+    const olderNotModified = await fetch(
+      `${baseUrl}/api/chats/${created.config.id}/snapshot?before=${encodeURIComponent(latest.transcript.nextCursor!)}`,
+      { headers: { "If-None-Match": olderEtag! } },
+    );
+    expect(olderNotModified.status).toBe(304);
+
+    const fullResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/snapshot?full=1`);
+    expect(fullResponse.status).toBe(200);
+    const full = await fullResponse.json() as { transcript: typeof latest.transcript };
+    expect(full.transcript.isPartial).toBe(false);
+    expect(full.transcript.loadedResponses).toBe(105);
+    expect(full.transcript.hasOlder).toBe(false);
+    expect(full.transcript.messages.filter((message) => message.role === "assistant")).toHaveLength(105);
+    const fullNotModifiedAgainstLatest = await fetch(
+      `${baseUrl}/api/chats/${created.config.id}/snapshot?full=1`,
+      { headers: { "If-None-Match": latestEtag! } },
+    );
+    expect(fullNotModifiedAgainstLatest.status).toBe(200);
+
+    const invalidOptions = await fetch(
+      `${baseUrl}/api/chats/${created.config.id}/snapshot?full=1&before=${encodeURIComponent(latest.transcript.nextCursor!)}`,
+    );
+    expect(invalidOptions.status).toBe(400);
+    const invalidCursor = await fetch(
+      `${baseUrl}/api/chats/${created.config.id}/snapshot?before=not-a-valid-cursor`,
+    );
+    expect(invalidCursor.status).toBe(400);
   });
 
   test("rolls back chat metadata when transcript persistence fails", async () => {

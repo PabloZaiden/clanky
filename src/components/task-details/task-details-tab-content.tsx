@@ -38,6 +38,10 @@ interface TaskDetailsTabContentProps {
   toolCalls: ToolCallDisplayData[];
   logs: TaskLogEntry[];
   onLoadToolDetails: (toolCallId: string) => Promise<ToolCallData | null>;
+  hasOlderTranscript: boolean;
+  onLoadMoreTranscript: () => Promise<void>;
+  onLoadFullTranscript: () => Promise<void>;
+  loadingTranscript: boolean;
 
   // Bundled state from hooks
   logDisplay: LogDisplayState;
@@ -62,6 +66,10 @@ export function TaskDetailsTabContent({
   toolCalls,
   logs,
   onLoadToolDetails,
+  hasOlderTranscript,
+  onLoadMoreTranscript,
+  onLoadFullTranscript,
+  loadingTranscript,
   logDisplay,
   content,
   actions,
@@ -119,6 +127,10 @@ export function TaskDetailsTabContent({
           toolPathDisplayRoot={toolPathDisplayRoot}
           fileLinkContext={fileLinkContext}
           onLoadToolDetails={onLoadToolDetails}
+          hasOlderTranscript={hasOlderTranscript}
+          onLoadMoreTranscript={onLoadMoreTranscript}
+          onLoadFullTranscript={onLoadFullTranscript}
+          loadingTranscript={loadingTranscript}
         />
       </TabPanel>
       {hasVisitedChatTab || activeTab === "chat" ? (

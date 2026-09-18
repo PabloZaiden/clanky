@@ -642,7 +642,7 @@ export async function getTaskViaAPI(
 }
 
 async function hydrateTaskTranscriptFromSnapshot(baseUrl: string, task: Task): Promise<Task> {
-  const response = await fetch(`${baseUrl}/api/tasks/${task.config.id}/snapshot`);
+  const response = await fetch(`${baseUrl}/api/tasks/${task.config.id}/snapshot?full=1`);
   if (!response.ok) {
     throw new Error(`Failed to load task transcript snapshot: HTTP ${response.status}`);
   }

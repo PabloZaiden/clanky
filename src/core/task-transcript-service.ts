@@ -1,11 +1,16 @@
-import type { ChatTranscript, Task, ToolCallRecord } from "@/shared";
+import type {
+  ChatTranscript,
+  Task,
+  ToolCallRecord,
+  TranscriptSnapshotOptions,
+} from "@/shared";
 import {
   getTranscriptMeta,
-  listTranscriptEntries,
+  listTranscriptEntriesPage,
   getTranscriptToolCall,
 } from "../persistence/transcripts/store";
 import { loadTaskSummary } from "../persistence/tasks";
-import { createTranscriptFromStorageEntries } from "./transcript-service";
+import { createTranscriptFromStoragePage } from "./transcript-service";
 
 export type TaskTranscriptSnapshotTask = Omit<Task, "state"> & {
   state: Omit<Task["state"], "messages" | "logs" | "toolCalls">;
@@ -18,6 +23,7 @@ export interface TaskTranscriptSnapshot {
 
 export async function getTaskTranscriptSnapshot(
   taskId: string,
+  options: TranscriptSnapshotOptions = {},
 ): Promise<TaskTranscriptSnapshot | null> {
   const task = await loadTaskSummary(taskId);
   if (!task) {
@@ -35,8 +41,8 @@ export async function getTaskTranscriptSnapshot(
       config: task.config,
       state,
     },
-    transcript: createTranscriptFromStorageEntries(
-      listTranscriptEntries("task", taskId),
+    transcript: createTranscriptFromStoragePage(
+      listTranscriptEntriesPage("task", taskId, options),
       {
         revision: meta.revision,
         totalEntries: meta.entryCount,

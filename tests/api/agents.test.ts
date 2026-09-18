@@ -86,7 +86,7 @@ describe("Agents API Integration", () => {
         if (!terminalStatuses.has(run.status)) {
           return { statusCode: response.status, run };
         }
-        const snapshotResponse = await fetch(`${baseUrl}/api/agent-runs/${runId}/snapshot`);
+        const snapshotResponse = await fetch(`${baseUrl}/api/agent-runs/${runId}/snapshot?full=1`);
         expect(snapshotResponse.status).toBe(200);
         const snapshot = await snapshotResponse.json() as {
           transcript: Pick<AgentRun, "messages" | "logs" | "toolCalls">;
@@ -1591,6 +1591,125 @@ export default async function run(ctx) {
     expect(detail.output.content).toContain("agent-large-output-3");
     expect(JSON.stringify(snapshot)).not.toContain("agent-large-output-3");
 
+  });
+
+  test("loads agent-run transcripts from the latest assistant responses and pages older history", async () => {
+    const agent = await createAgent("Progressive agent transcript");
+    const runId = crypto.randomUUID();
+    const firstTimestamp = Date.parse("2025-03-02T00:00:00.000Z");
+    const messages: AgentRun["messages"] = [];
+    const toolCalls: AgentRun["toolCalls"] = [];
+    for (let index = 0; index < 105; index += 1) {
+      const timestamp = new Date(firstTimestamp + index * 1_000).toISOString();
+      messages.push(
+        {
+          id: `progressive-agent-user-${index}`,
+          role: "user",
+          content: `Agent question ${index}`,
+          timestamp,
+        },
+        {
+          id: `progressive-agent-assistant-${index}`,
+          role: "assistant",
+          content: `Agent answer ${index}`,
+          timestamp,
+        },
+      );
+      toolCalls.push({
+        id: `progressive-agent-tool-${index}`,
+        name: "Execute",
+        input: { command: `printf agent-${index}` },
+        output: { content: `large agent tool output ${index}` },
+        status: "completed",
+        timestamp,
+      });
+    }
+    const configSnapshot = {
+      name: agent!.config.name,
+      workspaceId: agent!.config.workspaceId,
+      directory: agent!.config.directory,
+      prompt: agent!.config.prompt,
+      model: agent!.config.model,
+      baseBranch: agent!.config.baseBranch,
+      useWorktree: agent!.config.useWorktree,
+      schedule: agent!.config.schedule,
+    };
+    const completedAt = toolCalls.at(-1)!.timestamp;
+    await saveAgentRun({
+      id: runId,
+      agentId: agent!.config.id,
+      status: "completed",
+      trigger: "manual",
+      scheduledFor: new Date(firstTimestamp).toISOString(),
+      startedAt: new Date(firstTimestamp).toISOString(),
+      completedAt,
+      messages,
+      logs: [],
+      toolCalls,
+      pendingPermissionRequests: [],
+      configSnapshot,
+      createdAt: new Date(firstTimestamp).toISOString(),
+      updatedAt: completedAt,
+    });
+
+    const latestResponse = await fetch(`${baseUrl}/api/agent-runs/${runId}/snapshot`);
+    expect(latestResponse.status).toBe(200);
+    const latest = await latestResponse.json() as {
+      transcript: {
+        messages: AgentRun["messages"];
+        toolCalls: Array<Record<string, unknown>>;
+        isPartial: boolean;
+        loadedResponses: number;
+        totalResponses: number;
+        hasOlder: boolean;
+        nextCursor?: string;
+      };
+    };
+    expect(latest.transcript.isPartial).toBe(true);
+    expect(latest.transcript.loadedResponses).toBe(100);
+    expect(latest.transcript.totalResponses).toBe(105);
+    expect(latest.transcript.hasOlder).toBe(true);
+    expect(latest.transcript.nextCursor).toBeString();
+    expect(latest.transcript.messages.filter((message) => message.role === "assistant")).toHaveLength(100);
+    expect(latest.transcript.messages.some((message) => message.id === "progressive-agent-assistant-4")).toBe(false);
+    expect(latest.transcript.toolCalls).toHaveLength(100);
+    expect(latest.transcript.toolCalls.every((tool) => !("output" in tool))).toBe(true);
+
+    const olderResponse = await fetch(
+      `${baseUrl}/api/agent-runs/${runId}/snapshot?before=${encodeURIComponent(latest.transcript.nextCursor!)}`,
+    );
+    expect(olderResponse.status).toBe(200);
+    const older = await olderResponse.json() as {
+      transcript: {
+        messages: AgentRun["messages"];
+        hasOlder: boolean;
+      };
+    };
+    expect(older.transcript.messages
+      .filter((message) => message.role === "assistant")
+      .map((message) => message.id)).toEqual([
+      "progressive-agent-assistant-0",
+      "progressive-agent-assistant-1",
+      "progressive-agent-assistant-2",
+      "progressive-agent-assistant-3",
+      "progressive-agent-assistant-4",
+    ]);
+    expect(older.transcript.hasOlder).toBe(false);
+
+    const fullResponse = await fetch(`${baseUrl}/api/agent-runs/${runId}/snapshot?full=1`);
+    expect(fullResponse.status).toBe(200);
+    const full = await fullResponse.json() as {
+      transcript: {
+        messages: AgentRun["messages"];
+        isPartial: boolean;
+        loadedResponses: number;
+        hasOlder: boolean;
+      };
+    };
+    expect(full.transcript.isPartial).toBe(false);
+    expect(full.transcript.loadedResponses).toBe(105);
+    expect(full.transcript.hasOlder).toBe(false);
+    expect(full.transcript.messages.filter((message) => message.role === "assistant")).toHaveLength(105);
   });
 
   test("purges large run histories in batches", async () => {

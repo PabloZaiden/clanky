@@ -26,6 +26,10 @@ import { buildChatTranscriptHtml, buildChatTranscriptMarkdown } from "../lib/cha
 import {
   getTranscriptSnapshotEtag,
 } from "../core/transcript-service";
+import {
+  parseTranscriptSnapshotOptions,
+  transcriptSnapshotErrorResponse,
+} from "./transcript-snapshot";
 
 const log = createLogger("api:chats");
 
@@ -466,10 +470,14 @@ export const chatsRoutes = defineRoutes({
   "/api/chats/:id/snapshot": {
     auth: "user",
     sameOrigin: "mutations",
-    description: "Read the complete lightweight transcript snapshot for a chat.",
+    description: "Read the latest page of up to 100 assistant responses for a chat; use before for older history or full=1 for the complete transcript.",
     async GET(req: Request, ctx): Promise<Response> {
+      const options = parseTranscriptSnapshotOptions(req);
+      if (options instanceof Response) {
+        return options;
+      }
       try {
-        const snapshot = await chatManager.getChatSnapshot(ctx.params["id"]!);
+        const snapshot = await chatManager.getChatSnapshot(ctx.params["id"]!, options);
         if (!snapshot) {
           return errorResponse("not_found", "Chat not found", 404);
         }
@@ -477,6 +485,7 @@ export const chatsRoutes = defineRoutes({
         const revision = getTranscriptSnapshotEtag(
           snapshot.transcript.revision,
           { config: snapshot.config, state: snapshot.state },
+          options,
         );
         if (isNotModified(req, revision)) {
           return new Response(null, {
@@ -489,6 +498,10 @@ export const chatsRoutes = defineRoutes({
           headers: transcriptResponseHeaders(revision),
         });
       } catch (error) {
+        const snapshotError = transcriptSnapshotErrorResponse(error);
+        if (snapshotError) {
+          return snapshotError;
+        }
         log.error("Failed to load chat snapshot", {
           chatId: ctx.params["id"]!,
           error: String(error),

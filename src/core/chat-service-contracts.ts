@@ -24,6 +24,7 @@ import type {
   Task,
   TaskLogEntry,
   TranscriptChangeSet,
+  TranscriptSnapshotOptions,
   ToolCallRecord,
 } from "@/shared";
 import type { ChatEvent } from "@/shared/events";
@@ -107,7 +108,10 @@ export interface ChatDirectoryResolution {
 export interface ChatStatePort {
   getChat(chatId: string): Promise<Chat | null>;
   getChatSummary(chatId: string): Promise<Chat | null>;
-  getChatSnapshot(chatId: string): Promise<ChatSnapshot | null>;
+  getChatSnapshot(
+    chatId: string,
+    options?: TranscriptSnapshotOptions,
+  ): Promise<ChatSnapshot | null>;
   getChatToolCall(chatId: string, toolCallId: string): Promise<ToolCallRecord | null>;
   getTaskChat(taskId: string): Promise<Chat | null>;
   getAllChats(): Promise<Chat[]>;

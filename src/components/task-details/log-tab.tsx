@@ -17,6 +17,10 @@ interface LogTabProps {
   toolPathDisplayRoot?: string;
   fileLinkContext?: TranscriptFileLinkContext;
   onLoadToolDetails?: (toolCallId: string) => Promise<ToolCallData | null>;
+  hasOlderTranscript: boolean;
+  onLoadMoreTranscript: () => Promise<void>;
+  onLoadFullTranscript: () => Promise<void>;
+  loadingTranscript: boolean;
 }
 
 export function LogTab({
@@ -33,6 +37,10 @@ export function LogTab({
   toolPathDisplayRoot,
   fileLinkContext,
   onLoadToolDetails,
+  hasOlderTranscript,
+  onLoadMoreTranscript,
+  onLoadFullTranscript,
+  loadingTranscript,
 }: LogTabProps) {
   const logViewerId = "logs-viewer";
 
@@ -53,6 +61,10 @@ export function LogTab({
           surfaceClassName="bg-transparent"
           transcriptClassName={`flex w-full flex-col ${taskDetailsTabPaddingClassName}`}
           onLoadToolDetails={onLoadToolDetails}
+          hasOlderTranscript={hasOlderTranscript}
+          onLoadMoreTranscript={onLoadMoreTranscript}
+          onLoadFullTranscript={onLoadFullTranscript}
+          loadingTranscript={loadingTranscript}
         />
       </div>
 

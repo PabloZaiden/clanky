@@ -26,6 +26,7 @@ export {
   replaceChatTranscriptEntries,
   syncChatTranscriptEntries,
   listChatTranscriptEntries,
+  listChatTranscriptEntriesPage,
   getChatToolCallFromTranscript,
 } from "./chats/index";
 export {

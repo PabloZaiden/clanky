@@ -12,6 +12,7 @@ export function useStickyBottomScroll(dependencies: DependencyList) {
   const isPinnedToBottomRef = useRef(true);
   const animationFrameRef = useRef<number | null>(null);
   const scheduledScrollTopRef = useRef(0);
+  const pendingPrependScrollRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null);
 
   const cancelScheduledScroll = useCallback(() => {
     if (animationFrameRef.current === null) {
@@ -52,6 +53,21 @@ export function useStickyBottomScroll(dependencies: DependencyList) {
     });
   }, [cancelScheduledScroll]);
 
+  const preserveScrollPosition = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) {
+      return;
+    }
+    pendingPrependScrollRef.current = {
+      scrollHeight: container.scrollHeight,
+      scrollTop: container.scrollTop,
+    };
+  }, []);
+
+  const cancelPreservedScrollPosition = useCallback(() => {
+    pendingPrependScrollRef.current = null;
+  }, []);
+
   useLayoutEffect(() => {
     const container = containerRef.current;
     if (!container) {
@@ -78,6 +94,18 @@ export function useStickyBottomScroll(dependencies: DependencyList) {
   }, [cancelScheduledScroll]);
 
   useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (!container) {
+      return cancelScheduledScroll;
+    }
+    const pendingPrependScroll = pendingPrependScrollRef.current;
+    if (pendingPrependScroll) {
+      pendingPrependScrollRef.current = null;
+      container.scrollTop = pendingPrependScroll.scrollTop
+        + container.scrollHeight
+        - pendingPrependScroll.scrollHeight;
+      return cancelScheduledScroll;
+    }
     scrollToBottomIfPinned();
     return cancelScheduledScroll;
   }, [...dependencies, scrollToBottomIfPinned, cancelScheduledScroll]);
@@ -104,5 +132,10 @@ export function useStickyBottomScroll(dependencies: DependencyList) {
 
   useEffect(() => cancelScheduledScroll, [cancelScheduledScroll]);
 
-  return { containerRef, contentRef };
+  return {
+    containerRef,
+    contentRef,
+    preserveScrollPosition,
+    cancelPreservedScrollPosition,
+  };
 }

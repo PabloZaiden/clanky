@@ -1,11 +1,16 @@
-import type { AgentRun, ChatTranscript, ToolCallRecord } from "@/shared";
+import type {
+  AgentRun,
+  ChatTranscript,
+  ToolCallRecord,
+  TranscriptSnapshotOptions,
+} from "@/shared";
 import {
   getTranscriptMeta,
   getTranscriptToolCall,
-  listTranscriptEntries,
+  listTranscriptEntriesPage,
 } from "../persistence/transcripts/store";
 import { loadAgentRunSummary } from "../persistence/agents";
-import { createTranscriptFromStorageEntries } from "./transcript-service";
+import { createTranscriptFromStoragePage } from "./transcript-service";
 
 export type AgentRunTranscriptSnapshotRun = Omit<AgentRun, "messages" | "logs" | "toolCalls">;
 
@@ -16,6 +21,7 @@ export interface AgentRunTranscriptSnapshot {
 
 export async function getAgentRunTranscriptSnapshot(
   runId: string,
+  options: TranscriptSnapshotOptions = {},
 ): Promise<AgentRunTranscriptSnapshot | null> {
   const run = await loadAgentRunSummary(runId);
   if (!run) {
@@ -30,8 +36,8 @@ export async function getAgentRunTranscriptSnapshot(
   const { messages: _messages, logs: _logs, toolCalls: _toolCalls, ...runWithoutTranscript } = run;
   return {
     run: runWithoutTranscript,
-    transcript: createTranscriptFromStorageEntries(
-      listTranscriptEntries("agent_run", runId),
+    transcript: createTranscriptFromStoragePage(
+      listTranscriptEntriesPage("agent_run", runId, options),
       {
         revision: meta.revision,
         totalEntries: meta.entryCount,
