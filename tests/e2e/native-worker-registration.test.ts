@@ -104,7 +104,143 @@ interface FileUploadResponse {
   uploadId: string;
 }
 
+interface ExecutionHostCommandResponse {
+  executionHost: string;
+  success: boolean;
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+}
+
+interface NativeCommandInvocation {
+  command: string;
+  args: string[];
+}
+
 let nodes: ManagedMeshNode[] = [];
+
+function nativeCommandProbeScript(
+  platformOs: "darwin" | "linux" | "windows",
+): { name: string; content: string } {
+  if (platformOs === "windows") {
+    return {
+      name: "command-probe.ps1",
+      content: [
+        "param([string]$Value)",
+        "[Console]::Out.WriteLine($Value)",
+        "[Console]::Out.WriteLine((Get-Location).Path)",
+        "[Console]::Out.WriteLine($env:CLANKY_NATIVE_EXEC_VALUE)",
+        "[Console]::Error.Write(\"native-stderr\")",
+        "exit 7",
+        "",
+      ].join("\n"),
+    };
+  }
+  return {
+    name: "command-probe.sh",
+    content: [
+      "printf '%s\\n' \"$1\"",
+      "pwd",
+      "printf '%s\\n' \"${CLANKY_NATIVE_EXEC_VALUE-}\"",
+      "printf 'native-stderr' >&2",
+      "exit 7",
+      "",
+    ].join("\n"),
+  };
+}
+
+function nativeScriptInvocation(
+  platformOs: "darwin" | "linux" | "windows",
+  scriptPath: string,
+  args: string[],
+): NativeCommandInvocation {
+  return platformOs === "windows"
+    ? {
+        command: "powershell.exe",
+        args: [
+          "-NoLogo",
+          "-NoProfile",
+          "-NonInteractive",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-File",
+          scriptPath,
+          ...args,
+        ],
+      }
+    : {
+        command: "sh",
+        args: [scriptPath, ...args],
+      };
+}
+
+function windowsChildProbeScript(): string {
+  return [
+    "param([string]$PidFile, [string]$Mode)",
+    "$ping = Join-Path $env:SystemRoot \"System32\\ping.exe\"",
+    "$child = Start-Process -FilePath $ping -ArgumentList @(\"-t\", \"127.0.0.1\") -PassThru",
+    "[IO.File]::WriteAllText($PidFile, [string]$child.Id)",
+    "if ($Mode -eq \"output\") {",
+    "  while ($true) { [Console]::Out.Write(\"x\" * 1024) }",
+    "}",
+    "Wait-Process -Id $child.Id",
+    "",
+  ].join("\n");
+}
+
+function isProcessRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    if (
+      error
+      && typeof error === "object"
+      && "code" in error
+      && error.code === "ESRCH"
+    ) {
+      return false;
+    }
+    throw error;
+  }
+}
+
+async function readChildPid(path: string): Promise<number> {
+  const value = Number.parseInt((await Bun.file(path).text()).trim(), 10);
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error(`Invalid child process id in ${path}`);
+  }
+  return value;
+}
+
+async function expectWindowsChildStopped(pid: number): Promise<void> {
+  try {
+    await pollUntil(
+      async () => isProcessRunning(pid),
+      (running) => !running,
+      {
+        description: `Windows child process ${String(pid)} to stop`,
+        timeoutMs: 10_000,
+        formatLastObserved: String,
+      },
+    );
+  } finally {
+    if (isProcessRunning(pid)) {
+      const cleanup = Bun.spawn([
+        "taskkill.exe",
+        "/PID",
+        String(pid),
+        "/T",
+        "/F",
+      ], {
+        stdin: "ignore",
+        stdout: "ignore",
+        stderr: "ignore",
+      });
+      await cleanup.exited;
+    }
+  }
+}
 
 function expectRuntimeSnapshot(
   registration: MeshWorkerRegistration,
@@ -812,6 +948,7 @@ describe("native worker registration", () => {
     });
     expectRuntimeSnapshot(registration, expectedRuntime);
     const workerCapabilities = registration.workerCapabilities ?? {};
+    const platformOs = expectedRuntime.platform!.os;
 
     const workerStatus = await meshJsonRequest<MeshWorkerStatus>(
       worker,
@@ -827,14 +964,14 @@ describe("native worker registration", () => {
         ...expectedRuntime,
       },
     });
+    expect(workerCapabilities.commandExecution).toBe(1);
     expect(workerCapabilities.acpRuntime).toBe(2);
     expect(workerCapabilities).toMatchObject({
       interactiveTerminal: 1,
       tcpTunnel: 1,
       vnc: 1,
     });
-    if (expectedRuntime.platform?.os === "windows") {
-      expect(workerCapabilities.commandExecution).toBeUndefined();
+    if (platformOs === "windows") {
       expect(workerCapabilities.provisioning).toBeUndefined();
       expect(workerCapabilities.devboxLifecycle).toBeUndefined();
     }
@@ -944,6 +1081,149 @@ describe("native worker registration", () => {
     );
     expect(terminalDirectoryFile.status).toBe(200);
 
+    const commandProbe = nativeCommandProbeScript(platformOs);
+    const commandProbeRelativePath = `native-files/${commandProbe.name}`;
+    const commandProbeFile = await meshJsonRequest<FileWriteResponse>(
+      controller,
+      `${filesPath}/write`,
+      {
+        method: "POST",
+        body: {
+          path: commandProbeRelativePath,
+          content: commandProbe.content,
+          expectedVersionToken: null,
+          overwrite: false,
+          startDirectory: null,
+        },
+      },
+    );
+    expect(commandProbeFile.status).toBe(200);
+    const commandDirectory = join(worker.dataDir, "native-files");
+    const commandProbePath = join(worker.dataDir, commandProbeRelativePath);
+    const commandInvocation = nativeScriptInvocation(
+      platformOs,
+      commandProbePath,
+      ["literal argument with spaces"],
+    );
+    const executionPath = `/api/execution-hosts/mesh/${
+      encodeURIComponent(registration.workerNodeId)
+    }/exec`;
+    const commandResponse = await meshJsonRequest<ExecutionHostCommandResponse>(
+      controller,
+      executionPath,
+      {
+        method: "POST",
+        body: {
+          command: commandInvocation.command,
+          args: commandInvocation.args,
+          cwd: "native-files",
+        },
+      },
+    );
+    expect(commandResponse.status).toBe(200);
+    expect(commandResponse.body).toMatchObject({
+      success: false,
+      stderr: "native-stderr",
+      exitCode: 7,
+    });
+    const commandOutput = commandResponse.body.stdout.split(/\r?\n/u);
+    expect(commandOutput[0]).toBe("literal argument with spaces");
+    const canonicalCommandDirectory = await realpath(commandDirectory);
+    const canonicalReportedDirectory = await realpath(commandOutput[1]!);
+    expect(executionPathsEqual(
+      canonicalReportedDirectory,
+      canonicalCommandDirectory,
+      executionPathStyleForPlatform(platformOs)!,
+    )).toBe(true);
+
+    let windowsChildProbePath: string | undefined;
+    if (platformOs === "windows") {
+      const relativePath = "native-files/child-probe.ps1";
+      const childProbeFile = await meshJsonRequest<FileWriteResponse>(
+        controller,
+        `${filesPath}/write`,
+        {
+          method: "POST",
+          body: {
+            path: relativePath,
+            content: windowsChildProbeScript(),
+            expectedVersionToken: null,
+            overwrite: false,
+            startDirectory: null,
+          },
+        },
+      );
+      expect(childProbeFile.status).toBe(200);
+      windowsChildProbePath = join(worker.dataDir, relativePath);
+
+      const timeoutPidPath = join(commandDirectory, "timeout-child.pid");
+      const timeoutInvocation = nativeScriptInvocation(
+        platformOs,
+        windowsChildProbePath,
+        [timeoutPidPath, "wait"],
+      );
+      const timeoutResponse = await meshJsonRequest<ExecutionHostCommandResponse>(
+        controller,
+        executionPath,
+        {
+          method: "POST",
+          body: {
+            command: timeoutInvocation.command,
+            args: timeoutInvocation.args,
+            cwd: "native-files",
+            timeoutMs: 2_000,
+          },
+        },
+      );
+      expect(timeoutResponse).toMatchObject({
+        status: 200,
+        body: {
+          success: false,
+          exitCode: 124,
+        },
+      });
+      await expectWindowsChildStopped(await readChildPid(timeoutPidPath));
+
+      const cancelledPidPath = join(commandDirectory, "cancelled-child.pid");
+      const cancelledInvocation = nativeScriptInvocation(
+        platformOs,
+        windowsChildProbePath,
+        [cancelledPidPath, "wait"],
+      );
+      const abortController = new AbortController();
+      const cancelledRequest = meshJsonRequest<ExecutionHostCommandResponse>(
+        controller,
+        executionPath,
+        {
+          method: "POST",
+          body: {
+            command: cancelledInvocation.command,
+            args: cancelledInvocation.args,
+            cwd: "native-files",
+            timeoutMs: 30_000,
+          },
+          signal: abortController.signal,
+        },
+      );
+      await pollUntil(
+        async () => await Bun.file(cancelledPidPath).exists(),
+        Boolean,
+        {
+          description: "Windows command child pid file",
+          timeoutMs: 10_000,
+          formatLastObserved: String,
+        },
+      );
+      const cancelledChildPid = await readChildPid(cancelledPidPath);
+      abortController.abort();
+      const requestWasAborted = await cancelledRequest.then(
+        () => false,
+        () => true,
+      );
+      expect(requestWasAborted).toBe(true);
+      await expectWindowsChildStopped(cancelledChildPid);
+    }
+
     const previousDataDir = process.env["CLANKY_DATA_DIR"];
     closeDatabase();
     process.env["CLANKY_DATA_DIR"] = controller.dataDir;
@@ -959,12 +1239,73 @@ describe("native worker registration", () => {
     });
     try {
       const executionDirectory = await meshExecutor.getExecutionDirectory();
-      const platformOs = expectedRuntime.platform!.os;
       expect(executionDirectory).toBe(join(worker.dataDir, "native-files"));
       expect(await meshExecutor.fileExists(
         join(executionDirectory, ".clanky-planning", "plan.md"),
       )).toBe(true);
       expect(await meshExecutor.isAgentProviderAvailable("copilot")).toBe(true);
+
+      const environmentResult = await meshExecutor.exec(
+        commandInvocation.command,
+        commandInvocation.args,
+        {
+          cwd: executionDirectory,
+          env: {
+            CLANKY_NATIVE_EXEC_VALUE: "environment value with spaces",
+          },
+        },
+      );
+      expect(environmentResult).toMatchObject({
+        success: false,
+        stderr: "native-stderr",
+        exitCode: 7,
+      });
+      const environmentOutput = environmentResult.stdout.split(/\r?\n/u);
+      expect(environmentOutput[0]).toBe("literal argument with spaces");
+      expect(environmentOutput[2]).toBe("environment value with spaces");
+
+      if (platformOs === "windows") {
+        const invalidCwd = await meshJsonRequest<{ error: string }>(
+          controller,
+          executionPath,
+          {
+            method: "POST",
+            body: {
+              command: commandInvocation.command,
+              args: commandInvocation.args,
+              cwd: "C:drive-relative",
+            },
+          },
+        );
+        expect(invalidCwd).toMatchObject({
+          status: 400,
+          body: { error: "execution_host_exec_cwd_invalid" },
+        });
+
+        const outputPidPath = join(commandDirectory, "output-child.pid");
+        const outputInvocation = nativeScriptInvocation(
+          platformOs,
+          windowsChildProbePath!,
+          [outputPidPath, "output"],
+        );
+        let outputLimitError: unknown;
+        try {
+          await meshExecutor.exec(
+            outputInvocation.command,
+            outputInvocation.args,
+            {
+              cwd: executionDirectory,
+              maxOutputBytes: 1_024,
+            },
+          );
+        } catch (error) {
+          outputLimitError = error;
+        }
+        expect(outputLimitError).toMatchObject({
+          code: "mesh_execution_result_too_large",
+        });
+        await expectWindowsChildStopped(await readChildPid(outputPidPath));
+      }
 
       for (const scenario of [
         {

@@ -1,11 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import {
+  inferExecutionPathStyle,
   normalizeExecutionPath,
   normalizeExecutionRoot,
   resolveExecutionPath,
   resolveExecutionPathFromDirectory,
   resolveExecutionPathWithinDirectory,
 } from "../../src/core/execution-path";
+import { resolveCommandWorkingDirectory } from "../../src/core/command-execution-service";
 import { readValidatedPlanningFiles } from "../../src/core/planning-file-service";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 
@@ -97,6 +99,12 @@ describe("execution path containment", () => {
     expect(() =>
       normalizeExecutionPath(String.raw`plans\task.`, "windows")
     ).toThrow("Path uses an unsupported Windows path form.");
+    expect(inferExecutionPathStyle("/srv/worktrees")).toBe("posix");
+    expect(inferExecutionPathStyle(String.raw`C:\worktrees`)).toBe("windows");
+    expect(inferExecutionPathStyle(String.raw`\\server\share\worktrees`))
+      .toBe("windows");
+    expect(inferExecutionPathStyle("//srv/worktrees")).toBe("posix");
+    expect(inferExecutionPathStyle("relative/worktrees")).toBeNull();
   });
 
   test("resolves paths from relative execution directories without allowing escapes", () => {
@@ -124,6 +132,36 @@ describe("execution path containment", () => {
         "windows",
       )
     ).toThrow("Requested path must stay within the execution directory.");
+  });
+
+  // Command cwd portability is a stable host-boundary contract that cannot be
+  // exercised with Windows drive and UNC semantics on a POSIX test runner.
+  test("resolves command working directories with host path semantics", () => {
+    const errors = { cwdInvalid: "test_cwd_invalid" };
+    expect(resolveCommandWorkingDirectory(
+      String.raw`C:\workspaces\repo`,
+      String.raw`src\app`,
+      "windows",
+      errors,
+    )).toBe(String.raw`C:\workspaces\repo\src\app`);
+    expect(resolveCommandWorkingDirectory(
+      String.raw`C:\workspaces\repo`,
+      String.raw`D:\shared tools`,
+      "windows",
+      errors,
+    )).toBe(String.raw`D:\shared tools`);
+    expect(resolveCommandWorkingDirectory(
+      String.raw`\\server\share\repo`,
+      String.raw`.\scripts`,
+      "windows",
+      errors,
+    )).toBe(String.raw`\\server\share\repo\scripts`);
+    expect(() => resolveCommandWorkingDirectory(
+      String.raw`C:\workspaces\repo`,
+      "C:relative",
+      "windows",
+      errors,
+    )).toThrow("The execution cwd is not a valid path for the selected host.");
   });
 
   test("reads planning files from the executor's canonical absolute directory", async () => {

@@ -364,6 +364,7 @@ export async function meshJsonRequest<T>(
     body?: unknown;
     rawBody?: BodyInit;
     responseType?: "json" | "text";
+    signal?: AbortSignal;
   } = {},
 ): Promise<MeshJsonResponse<T>> {
   if (options.body !== undefined && options.rawBody !== undefined) {
@@ -380,6 +381,7 @@ export async function meshJsonRequest<T>(
     },
     body: options.rawBody
       ?? (options.body === undefined ? undefined : JSON.stringify(options.body)),
+    signal: options.signal,
     tls: node.tlsCertificate ? { ca: node.tlsCertificate } : undefined,
   });
   return {
