@@ -1128,9 +1128,11 @@ describe("native worker registration", () => {
     });
     const commandOutput = commandResponse.body.stdout.split(/\r?\n/u);
     expect(commandOutput[0]).toBe("literal argument with spaces");
+    const canonicalCommandDirectory = await realpath(commandDirectory);
+    const canonicalReportedDirectory = await realpath(commandOutput[1]!);
     expect(executionPathsEqual(
-      commandOutput[1]!,
-      commandDirectory,
+      canonicalReportedDirectory,
+      canonicalCommandDirectory,
       executionPathStyleForPlatform(platformOs)!,
     )).toBe(true);
 
