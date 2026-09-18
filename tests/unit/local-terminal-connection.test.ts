@@ -60,12 +60,19 @@ describe("LocalTerminalConnection lifecycle", () => {
       terminateProcess(processHandle: Bun.Subprocess): Promise<void>;
       retainedProcess: Bun.Subprocess | null;
       terminal: Bun.Terminal | null;
+      processTreeCleanupFailure: Bun.Subprocess | null;
     };
     internals.waitUntilReady = async () => {
       throw startupError;
     };
-    internals.terminateProcess = async () => {
-      throw new Error("tree termination failed");
+    let terminationAttempts = 0;
+    internals.terminateProcess = async (processHandle) => {
+      terminationAttempts += 1;
+      if (terminationAttempts === 1) {
+        internals.processTreeCleanupFailure = processHandle;
+        throw new Error("tree termination failed");
+      }
+      internals.processTreeCleanupFailure = null;
     };
 
     try {
@@ -89,6 +96,7 @@ describe("LocalTerminalConnection lifecycle", () => {
           }),
         },
       );
+      expect(terminationAttempts).toBe(2);
     } finally {
       controlled.exit(1);
       spawnSpy.mockRestore();

@@ -240,6 +240,13 @@ describe("subprocess tree termination", () => {
       })).rejects.toThrow(
         "The Windows subprocess exited, but process-tree termination could not be guaranteed (pid 4242).",
       );
+      await expect(terminateSubprocessTree(target.process, {
+        gracefulWaitMs: 0,
+        forceWaitMs: 0,
+        requireExit: true,
+      })).rejects.toThrow(
+        "The Windows subprocess exited, but process-tree termination could not be guaranteed (pid 4242).",
+      );
 
       expect(commands).toHaveLength(1);
       expect(target.kill).not.toHaveBeenCalled();

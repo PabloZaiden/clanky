@@ -9,6 +9,7 @@ const log = createLogger("core:subprocess-termination");
 const DEFAULT_GRACEFUL_WAIT_MS = 250;
 const DEFAULT_FORCE_WAIT_MS = 1_000;
 const TASKKILL_REAP_WAIT_MS = 250;
+const pendingTreeTerminationFailures = new WeakMap<Bun.Subprocess, unknown>();
 
 export interface SubprocessTerminationOptions {
   gracefulWaitMs?: number;
@@ -20,10 +21,31 @@ export async function terminateSubprocessTree(
   subprocess: Bun.Subprocess | null,
   options: SubprocessTerminationOptions = {},
 ): Promise<void> {
-  if (!subprocess || subprocess.exitCode !== null) {
+  if (!subprocess) {
     return;
   }
+  if (subprocess.exitCode !== null) {
+    const previousFailure = pendingTreeTerminationFailures.get(subprocess);
+    if (previousFailure !== undefined) {
+      throw previousFailure;
+    }
+    return;
+  }
+  try {
+    await terminateRunningSubprocessTree(subprocess, options);
+    pendingTreeTerminationFailures.delete(subprocess);
+  } catch (error) {
+    if (options.requireExit) {
+      pendingTreeTerminationFailures.set(subprocess, error);
+    }
+    throw error;
+  }
+}
 
+async function terminateRunningSubprocessTree(
+  subprocess: Bun.Subprocess,
+  options: SubprocessTerminationOptions,
+): Promise<void> {
   const windows = process.platform === "win32";
   const gracefulWaitMs = options.gracefulWaitMs
     ?? DEFAULT_GRACEFUL_WAIT_MS;

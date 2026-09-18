@@ -124,6 +124,8 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
   private retainedProcess: Bun.Subprocess | null = null;
   private retainedProcessRetryTimer?: ReturnType<typeof setInterval>;
   private retainedProcessTermination: Promise<void> | null = null;
+  private processTreeCleanupInProgress: Bun.Subprocess | null = null;
+  private processTreeCleanupFailure: Bun.Subprocess | null = null;
 
   constructor(private readonly config: LocalTerminalConnectionConfig) {
     this.output = new TerminalOutput(config.callbacks);
@@ -414,14 +416,26 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
     ) {
       await this.retainedProcessTermination;
     }
-    if (processHandle?.exitCode === null) {
+    if (
+      processHandle
+      && (
+        processHandle.exitCode === null
+        || this.processTreeCleanupFailure === processHandle
+      )
+    ) {
       try {
         await this.terminateProcess(processHandle);
       } catch (error) {
         cleanupErrors.push(error);
       }
     }
-    if (processHandle?.exitCode === null) {
+    if (
+      processHandle
+      && (
+        processHandle.exitCode === null
+        || this.processTreeCleanupFailure === processHandle
+      )
+    ) {
       this.watchRetainedProcess(processHandle);
     } else {
       if (processHandle) {
@@ -473,14 +487,23 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
     }
     this.retainedProcess = processHandle;
     void processHandle.exited.then(
-      () => this.finalizeRetainedProcess(processHandle),
+      () => {
+        if (this.processTreeCleanupFailure === processHandle) {
+          this.retryRetainedProcessTermination(processHandle);
+        } else {
+          this.finalizeRetainedProcess(processHandle);
+        }
+      },
       (error) => {
         log.warn("Failed to observe retained terminal process exit", {
           sessionId: this.config.sessionId,
           pid: processHandle.pid,
           error: String(error),
         });
-        if (processHandle.exitCode !== null) {
+        if (
+          processHandle.exitCode !== null
+          && this.processTreeCleanupFailure !== processHandle
+        ) {
           this.finalizeRetainedProcess(processHandle);
         }
       },
@@ -497,7 +520,10 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
     if (this.retainedProcess !== processHandle) {
       return;
     }
-    if (processHandle.exitCode !== null) {
+    if (
+      processHandle.exitCode !== null
+      && this.processTreeCleanupFailure !== processHandle
+    ) {
       this.finalizeRetainedProcess(processHandle);
       return;
     }
@@ -516,7 +542,10 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
         if (this.retainedProcessTermination === pending) {
           this.retainedProcessTermination = null;
         }
-        if (processHandle.exitCode !== null) {
+        if (
+          processHandle.exitCode !== null
+          && this.processTreeCleanupFailure !== processHandle
+        ) {
           this.finalizeRetainedProcess(processHandle);
         }
       });
@@ -527,6 +556,7 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
     if (
       this.retainedProcess !== processHandle
       || processHandle.exitCode === null
+      || this.processTreeCleanupFailure === processHandle
     ) {
       return;
     }
@@ -554,6 +584,9 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
       this.retainedProcessRetryTimer = undefined;
     }
     this.retainedProcess = null;
+    if (this.processTreeCleanupFailure === processHandle) {
+      this.processTreeCleanupFailure = null;
+    }
   }
 
   private async waitUntilReady(
@@ -612,9 +645,14 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
   }
 
   private handleProcessExit(processHandle: Bun.Subprocess, exitCode: number): void {
-    if (this.process !== processHandle) {
+    if (
+      this.process !== processHandle
+      || this.processTreeCleanupInProgress === processHandle
+      || this.processTreeCleanupFailure === processHandle
+    ) {
       return;
     }
+    this.clearRetainedProcessWatch(processHandle);
     this.ready = false;
     this.process = null;
     this.output.flush();
@@ -674,11 +712,29 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
   }
 
   private async terminateProcess(processHandle: Bun.Subprocess): Promise<void> {
-    await terminateSubprocessTree(processHandle, {
-      gracefulWaitMs: 1_000,
-      forceWaitMs: 1_000,
-      requireExit: true,
-    });
+    this.processTreeCleanupInProgress = processHandle;
+    let terminated = false;
+    try {
+      await terminateSubprocessTree(processHandle, {
+        gracefulWaitMs: 1_000,
+        forceWaitMs: 1_000,
+        requireExit: true,
+      });
+      terminated = true;
+      if (this.processTreeCleanupFailure === processHandle) {
+        this.processTreeCleanupFailure = null;
+      }
+    } catch (error) {
+      this.processTreeCleanupFailure = processHandle;
+      throw error;
+    } finally {
+      if (this.processTreeCleanupInProgress === processHandle) {
+        this.processTreeCleanupInProgress = null;
+      }
+      if (terminated && processHandle.exitCode !== null) {
+        this.handleProcessExit(processHandle, processHandle.exitCode);
+      }
+    }
   }
 
   private buildSpawnConfig(
