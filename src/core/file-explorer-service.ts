@@ -26,7 +26,6 @@ import {
   normalizeExecutionPath,
   normalizeExecutionRoot,
   relativeExecutionPath,
-  resolveExecutionPath,
   resolveExecutionPathUnscoped,
   type ExecutionPathStyle,
 } from "./execution-path";
@@ -65,9 +64,8 @@ const FULL_TREE_DIRECTORY_CONCURRENCY = 8;
 
 export interface FileExplorerTarget {
   id: string;
+  /** Default navigation directory; it is not a filesystem access boundary. */
   rootDirectory: string;
-  pathScopeLabel: string;
-  allowOutsideRoot?: boolean;
   executor: CommandExecutor;
 }
 
@@ -301,30 +299,22 @@ function resolveTargetPath(target: FileExplorerTarget, requestedPath: string): s
   }
   if (trimmedPath.includes("\0")) {
     throw new FileExplorerError(
-      "path_outside_root",
+      "invalid_path",
       "Requested path contains an invalid NUL byte",
     );
   }
 
-  if (target.allowOutsideRoot) {
+  try {
     return resolveExecutionPathUnscoped(
       root,
       trimmedPath,
       target.executor.pathStyle,
     );
-  }
-  try {
-    return resolveExecutionPath(root, trimmedPath, target.executor.pathStyle);
   } catch (error) {
     throw new FileExplorerError(
-      "path_outside_root",
-      `Requested path must stay within the ${target.pathScopeLabel} directory`,
-      {
-        details: {
-          pathScopeLabel: target.pathScopeLabel,
-        },
-        cause: error,
-      },
+      "invalid_path",
+      "Requested path is invalid for the execution host",
+      { cause: error },
     );
   }
 }

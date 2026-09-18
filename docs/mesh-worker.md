@@ -7,7 +7,16 @@ Each controller receives its own durable grant. Connectivity is checked only
 when an operation runs; a network failure never revokes the grant.
 
 Mesh, SSH, and local stdio targets all provide unrestricted access to their
-host by design.
+host by design. The configured worker or workspace directory is the default
+working directory, not a filesystem sandbox or path allowlist.
+
+This is an intentional trust-model decision: a controller with an active
+grant, or an authenticated user operating a workspace/server, may execute
+commands and use file operations anywhere on the selected host. Do not add
+per-workspace, worker-root, or server-root path containment without an explicit
+product decision. Authentication, signed Mesh requests, capability checks,
+path syntax validation, output limits, timeouts, cancellation, and cleanup
+remain required.
 
 ## Controller relay availability
 
@@ -184,8 +193,9 @@ array. Clanky does not parse shell syntax or translate Bash commands to
 PowerShell. Callers must select commands available on the worker platform and
 invoke an explicit shell only when shell behavior is intentional. Windows
 commands run as the configured worker account with the same bounded output,
-timeout, cancellation, execution-root validation, and process-tree cleanup
-contract as POSIX workers.
+timeout, cancellation, path syntax, and process-tree cleanup contract as POSIX
+workers. The worker directory is only the default command directory; commands
+and file operations may use any host path.
 
 ## Register as an operating-system service
 

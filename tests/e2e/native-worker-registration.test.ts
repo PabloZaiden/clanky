@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import net from "node:net";
 import { tmpdir } from "node:os";
-import { isAbsolute, join, relative } from "node:path";
+import { basename, isAbsolute, join, relative } from "node:path";
 import {
   compiledClankyCommand,
   enrollMeshWorker,
@@ -1598,22 +1598,44 @@ describe("native worker registration", () => {
       join(worker.dataDir, "native-files", "renamed.txt"),
     ).exists()).toBe(false);
 
-    const escapedWrite = await meshJsonRequest<{ error: string }>(
+    const escapedPath = `../${basename(worker.dataDir)}-escape.txt`;
+    const escapedWrite = await meshJsonRequest<FileWriteResponse>(
       controller,
       `${filesPath}/write`,
       {
         method: "POST",
         body: {
-          path: "../native-worker-escape.txt",
-          content: "must not escape\n",
+          path: escapedPath,
+          content: "trusted host access\n",
           expectedVersionToken: null,
           overwrite: false,
           startDirectory: null,
         },
       },
     );
-    expect(escapedWrite.status).toBe(400);
-    expect(escapedWrite.body.error).toBe("invalid_server_path");
+    expect(escapedWrite.status).toBe(200);
+    expect(escapedWrite.body.file.path).toBe(escapedPath);
+
+    const escapedRead = await meshJsonRequest<FileReadResponse>(
+      controller,
+      `${filesPath}/content?path=${encodeURIComponent(escapedPath)}`,
+    );
+    expect(escapedRead.status).toBe(200);
+    expect(escapedRead.body.content).toBe("trusted host access\n");
+
+    const escapedDelete = await meshJsonRequest<FileMutationResponse>(
+      controller,
+      `${filesPath}/delete`,
+      {
+        method: "POST",
+        body: {
+          path: escapedPath,
+          kind: "file",
+          startDirectory: null,
+        },
+      },
+    );
+    expect(escapedDelete.status).toBe(200);
 
     await restartMeshNode(worker, 20_000);
     expect(worker.generation).toBe(2);

@@ -76,7 +76,6 @@ async function resolveExecutionHostFileTarget(
       defaultRoot,
       startDirectory,
     ),
-    pathScopeLabel: "active execution host explorer root",
     executor,
   };
 }

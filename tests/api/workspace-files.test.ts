@@ -11,7 +11,7 @@ import { createMockBackend } from "../mocks/mock-backend";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { type Server } from "bun";
 import { serveNativeApiRoutes } from "../native-api-server";
-import { join } from "path";
+import { basename, join } from "path";
 import { mkdtemp, rm, mkdir, stat, symlink, utimes, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { initializeGitRepository, runGit } from "../helpers/git-fixtures";
@@ -22,6 +22,7 @@ describe("workspace files API integration", () => {
   let dataDir: string;
   let workDir: string;
   let alternateRootDir: string;
+  let outsideWorkFile: string;
   let server: Server<unknown>;
   let baseUrl: string;
 
@@ -29,6 +30,7 @@ describe("workspace files API integration", () => {
     dataDir = await mkdtemp(join(tmpdir(), "clanky-workspace-files-data-"));
     workDir = await mkdtemp(join(tmpdir(), "clanky-workspace-files-work-"));
     alternateRootDir = await mkdtemp(join(tmpdir(), "clanky-workspace-files-alt-"));
+    outsideWorkFile = `${workDir}-outside.txt`;
     process.env["CLANKY_DATA_DIR"] = dataDir;
 
     await initializeDatabase();
@@ -42,6 +44,7 @@ describe("workspace files API integration", () => {
     await runGit(workDir, ["commit", "-m", "Initial commit"]);
     await mkdir(join(alternateRootDir, "notes"), { recursive: true });
     await writeFile(join(alternateRootDir, "notes", "todo.txt"), "alternate root note\n");
+    await writeFile(outsideWorkFile, "outside workspace root\n");
 
     backendManager.setBackendForTesting(createMockBackend());
     backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
@@ -56,6 +59,7 @@ describe("workspace files API integration", () => {
     await rm(dataDir, { recursive: true, force: true });
     await rm(workDir, { recursive: true, force: true });
     await rm(alternateRootDir, { recursive: true, force: true });
+    await rm(outsideWorkFile, { force: true });
     delete process.env["CLANKY_DATA_DIR"];
   });
 
@@ -1010,16 +1014,18 @@ describe("workspace files API integration", () => {
     expect(data.currentFile?.path).toBe("src/index.ts");
   });
 
-  test("rejects paths that escape the workspace root", async () => {
+  test("allows paths outside the workspace directory on the trusted execution host", async () => {
     const workspace = await createWorkspace();
 
     const response = await fetch(
-      `${baseUrl}/api/workspaces/${workspace.id}/files/content?path=${encodeURIComponent("../outside.txt")}`,
+      `${baseUrl}/api/workspaces/${workspace.id}/files/content?path=${
+        encodeURIComponent(`../${basename(outsideWorkFile)}`)
+      }`,
     );
 
-    expect(response.status).toBe(400);
-    const data = await response.json() as { error: string };
-    expect(data.error).toBe("invalid_workspace_path");
+    expect(response.ok).toBe(true);
+    const data = await response.json() as { content: string };
+    expect(data.content).toBe("outside workspace root\n");
   });
 
   test("can use an alternate absolute start directory for workspace operations", async () => {

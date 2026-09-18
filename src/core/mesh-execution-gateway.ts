@@ -5,13 +5,14 @@
  * caller supplies the execution root, provider, and channel. Relative paths
  * are resolved against the worker's configured directory. The controller grant
  * authorizes the receiving host without replicating workspace or user data.
- * Canonical paths and an operation lock scope requests to the configured worker
- * directory. The worker host itself remains trusted and is not treated as a
- * hostile filesystem.
+ * The controller grant is the host-level trust boundary: Mesh does not impose
+ * a per-workspace or worker-directory filesystem sandbox. Relative paths are
+ * resolved against the requested execution directory and absolute paths are
+ * used directly. Operation locks serialize conflicting mutations but do not
+ * restrict their paths.
  */
 
 import { randomBytes } from "node:crypto";
-import { lstat, realpath } from "node:fs/promises";
 import type {
   MeshExecutionAsyncCommandRequest,
   MeshExecutionRpcRequest,
@@ -65,14 +66,8 @@ import { meshInboundResourceRegistry } from "./mesh-inbound-resource-registry";
 import { decryptMeshPayload } from "./mesh-payload-crypto";
 import { parseManagedContextEnvironment } from "./managed-context-environment";
 import {
-  basenameExecutionPath,
-  dirnameExecutionPath,
   executionPathStyleForPlatform,
-  isAbsoluteExecutionPath,
-  isExecutionPathWithinRoot,
-  joinExecutionPath,
-  normalizeExecutionRoot,
-  resolveExecutionPath,
+  resolveExecutionPathUnscoped,
   type ExecutionPathStyle,
 } from "./execution-path";
 import {
@@ -150,7 +145,6 @@ interface MeshExecutionSession {
   callerNodeId: string;
   workspaceId: string;
   executionRoot: string;
-  physicalExecutionRoot: string;
   pathStyle: ExecutionPathStyle;
   directory: string;
   provider: AgentProvider;
@@ -245,7 +239,7 @@ export function assertMeshExecutionPath(
   pathStyle: ExecutionPathStyle,
 ): string {
   try {
-    return resolveExecutionPath(root, requested, pathStyle);
+    return resolveExecutionPathUnscoped(root, requested, pathStyle);
   } catch (error) {
     throw new DomainError(
       "mesh_execution_path_invalid",
@@ -270,11 +264,8 @@ interface SessionOperation {
 
 export interface TrustedExecutionRoot {
   executionRoot: string;
-  physicalExecutionRoot: string;
   pathStyle: ExecutionPathStyle;
 }
-
-type PhysicalPathMode = "follow" | "entry" | "metadata";
 
 const MESH_EXECUTION_SESSION_CAPABILITIES = [
   "commandExecution",
@@ -390,7 +381,7 @@ async function assertGitArguments(
   } else {
     throw unsupportedManagedWorktreeCommand();
   }
-  await assertPhysicalExecutionPath(session, worktreePath);
+  resolveMeshExecutionPath(session, worktreePath);
 }
 
 function isGitOperand(value: string | undefined): value is string {
@@ -404,170 +395,29 @@ function unsupportedManagedWorktreeCommand(): DomainError {
   );
 }
 
-function meshPathError(message: string, cause?: unknown): DomainError {
-  return new DomainError(
-    "mesh_execution_path_invalid",
-    message,
-    cause === undefined ? undefined : { cause },
-  );
-}
-
-function isMissingPathError(error: unknown): boolean {
-  return error instanceof Error
-    && "code" in error
-    && (error as NodeJS.ErrnoException).code === "ENOENT";
-}
-
-async function resolveExistingPath(path: string): Promise<string> {
-  try {
-    return await realpath(path);
-  } catch (error) {
-    throw meshPathError("The execution path could not be resolved.", error);
-  }
-}
-
 export async function resolveTrustedExecutionRoot(
   workerRoot: string,
   requestedRoot: string,
   pathStyle: ExecutionPathStyle,
 ): Promise<TrustedExecutionRoot> {
-  const executionRoot = assertMeshExecutionCwd(
-    workerRoot,
-    requestedRoot,
-    pathStyle,
-  );
-  const physicalWorkerRoot = await resolveExistingPath(workerRoot);
-  const physicalExecutionRoot = await resolveExistingPath(executionRoot);
-  if (!isExecutionPathWithinRoot(
-    physicalWorkerRoot,
-    physicalExecutionRoot,
-    pathStyle,
-  )) {
-    throw meshPathError(
-      "The requested execution root must stay within the physical worker root.",
-    );
-  }
   return {
-    executionRoot,
-    physicalExecutionRoot,
+    executionRoot: assertMeshExecutionCwd(workerRoot, requestedRoot, pathStyle),
     pathStyle,
   };
 }
 
-export async function assertPhysicalExecutionPath(
+export function resolveMeshExecutionPath(
   session: Pick<
     MeshExecutionSession,
-    "executionRoot" | "physicalExecutionRoot" | "pathStyle"
+    "executionRoot" | "pathStyle"
   >,
   requested: string,
-  mode: PhysicalPathMode = "follow",
-): Promise<string> {
-  let candidate: string;
-  try {
-    candidate = assertMeshExecutionPath(
-      session.executionRoot,
-      requested,
-      session.pathStyle,
-    );
-  } catch (error) {
-    if (!isAbsoluteExecutionPath(requested, session.pathStyle)) {
-      throw error;
-    }
-    let physicalCandidate: string;
-    try {
-      physicalCandidate = normalizeExecutionRoot(
-        requested,
-        session.pathStyle,
-      );
-    } catch {
-      throw error;
-    }
-    if (!isExecutionPathWithinRoot(
-      session.physicalExecutionRoot,
-      physicalCandidate,
-      session.pathStyle,
-    )) {
-      throw error;
-    }
-    candidate = physicalCandidate;
-  }
-  if (mode === "entry") {
-    const parent = dirnameExecutionPath(candidate, session.pathStyle);
-    const physicalParent = await assertPhysicalExecutionPath(
-      session,
-      parent,
-      "follow",
-    );
-    return joinExecutionPath(
-      session.pathStyle,
-      physicalParent,
-      basenameExecutionPath(candidate, session.pathStyle),
-    );
-  }
-
-  const missingSegments: string[] = [];
-  let existingPath = candidate;
-  while (true) {
-    try {
-      const physicalPath = await realpath(existingPath);
-      if (!isExecutionPathWithinRoot(
-        session.physicalExecutionRoot,
-        physicalPath,
-        session.pathStyle,
-      )) {
-        throw meshPathError(
-          "Requested path must stay within the physical execution root.",
-        );
-      }
-      return missingSegments.reduceRight(
-        (resolved, segment) => joinExecutionPath(
-          session.pathStyle,
-          resolved,
-          segment,
-        ),
-        physicalPath,
-      );
-    } catch (error) {
-      if (!isMissingPathError(error)) {
-        if (error instanceof DomainError) {
-          throw error;
-        }
-        throw meshPathError("The execution path could not be resolved.", error);
-      }
-      try {
-        if ((await lstat(existingPath)).isSymbolicLink()) {
-          if (mode === "metadata" && existingPath === candidate) {
-            return await assertPhysicalExecutionPath(
-              session,
-              candidate,
-              "entry",
-            );
-          }
-          throw meshPathError(
-            "The execution path contains an unresolved symbolic link.",
-          );
-        }
-      } catch (linkError) {
-        if (!isMissingPathError(linkError)) {
-          if (linkError instanceof DomainError) {
-            throw linkError;
-          }
-          throw meshPathError(
-            "The execution path could not be inspected.",
-            linkError,
-          );
-        }
-      }
-      const parent = dirnameExecutionPath(existingPath, session.pathStyle);
-      if (parent === existingPath) {
-        throw meshPathError("The execution path has no existing parent.");
-      }
-      missingSegments.push(
-        basenameExecutionPath(existingPath, session.pathStyle),
-      );
-      existingPath = parent;
-    }
-  }
+): string {
+  return assertMeshExecutionPath(
+    session.executionRoot,
+    requested,
+    session.pathStyle,
+  );
 }
 
 async function assertTrustedCaller(
@@ -844,11 +694,7 @@ export class MeshExecutionGateway {
       throw new DomainError("mesh_peer_signature_invalid", "The execution session signature is invalid.");
     }
 
-    const {
-      executionRoot,
-      physicalExecutionRoot,
-      pathStyle,
-    } = await assertTrustedCaller(request);
+    const { executionRoot, pathStyle } = await assertTrustedCaller(request);
     const decryptedEnvironment = request.encryptedEnvironment === undefined
       ? undefined
       : await decryptMeshPayload(request.encryptedEnvironment);
@@ -866,7 +712,6 @@ export class MeshExecutionGateway {
       callerNodeId: request.callerNodeId,
       workspaceId: request.workspaceId,
       executionRoot,
-      physicalExecutionRoot,
       pathStyle,
       directory: executionRoot,
       provider: request.provider,
@@ -1016,7 +861,7 @@ export class MeshExecutionGateway {
       throw new DomainError("mesh_execution_request_invalid", "Asynchronous execution requires a command.");
     }
 
-    const cwd = await assertPhysicalExecutionPath(
+    const cwd = resolveMeshExecutionPath(
       session,
       request.cwd ?? session.directory,
     );
@@ -1299,7 +1144,7 @@ export class MeshExecutionGateway {
         );
 
     try {
-      const cwd = await assertPhysicalExecutionPath(
+      const cwd = resolveMeshExecutionPath(
         session,
         request.cwd ?? session.directory,
       );
@@ -1410,7 +1255,7 @@ export class MeshExecutionGateway {
               "fileExists requires a path.",
             );
           }
-          return await executor.fileExists(await assertPhysicalExecutionPath(
+          return await executor.fileExists(resolveMeshExecutionPath(
             session,
             request.path,
           ));
@@ -1422,7 +1267,7 @@ export class MeshExecutionGateway {
               "directoryExists requires a path.",
             );
           }
-          return await executor.directoryExists(await assertPhysicalExecutionPath(
+          return await executor.directoryExists(resolveMeshExecutionPath(
             session,
             request.path,
           ));
@@ -1434,7 +1279,7 @@ export class MeshExecutionGateway {
               "readFile requires a path.",
             );
           }
-          const content = await executor.readFile(await assertPhysicalExecutionPath(
+          const content = await executor.readFile(resolveMeshExecutionPath(
             session,
             request.path,
           ));
@@ -1443,7 +1288,7 @@ export class MeshExecutionGateway {
         }
         case "listDirectory": {
           const path = request.path
-            ? await assertPhysicalExecutionPath(
+            ? resolveMeshExecutionPath(
                 session,
                 request.path,
               )
@@ -1462,7 +1307,7 @@ export class MeshExecutionGateway {
             );
           }
           return await executor.writeFile(
-            await assertPhysicalExecutionPath(
+            resolveMeshExecutionPath(
               session,
               request.path,
             ),
@@ -1483,11 +1328,11 @@ export class MeshExecutionGateway {
             );
           }
           return await executor.copyFile(
-            await assertPhysicalExecutionPath(
+            resolveMeshExecutionPath(
               session,
               request.sourcePath,
             ),
-            await assertPhysicalExecutionPath(
+            resolveMeshExecutionPath(
               session,
               request.destinationPath,
             ),
@@ -1501,10 +1346,9 @@ export class MeshExecutionGateway {
             );
           }
           return await executor.getFileMetadata(
-            await assertPhysicalExecutionPath(
+            resolveMeshExecutionPath(
               session,
               request.path,
-              "metadata",
             ),
             { includeContentHash: request.includeContentHash },
           );
@@ -1517,7 +1361,7 @@ export class MeshExecutionGateway {
             );
           }
           const entries = await executor.listDirectoryEntries(
-            await assertPhysicalExecutionPath(
+            resolveMeshExecutionPath(
               session,
               request.path,
             ),
@@ -1534,15 +1378,13 @@ export class MeshExecutionGateway {
             );
           }
           return await executor.movePath(
-            await assertPhysicalExecutionPath(
+            resolveMeshExecutionPath(
               session,
               request.sourcePath,
-              "entry",
             ),
-            await assertPhysicalExecutionPath(
+            resolveMeshExecutionPath(
               session,
               request.destinationPath,
-              "entry",
             ),
             { overwrite: request.overwrite },
           );
@@ -1555,10 +1397,9 @@ export class MeshExecutionGateway {
             );
           }
           return await executor.deletePath(
-            await assertPhysicalExecutionPath(
+            resolveMeshExecutionPath(
               session,
               request.path,
-              "entry",
             ),
             {
               kind: request.kind,
@@ -1602,7 +1443,7 @@ export class MeshExecutionGateway {
     session.inFlight += 1;
     const releaseFileOperation = await this.fileOperationsLock.acquire("read");
     try {
-      const path = await assertPhysicalExecutionPath(
+      const path = resolveMeshExecutionPath(
         session,
         requestedPath,
       );
@@ -1658,7 +1499,7 @@ export class MeshExecutionGateway {
     session.inFlight += 1;
     const releaseFileOperation = await this.fileOperationsLock.acquire("write");
     try {
-      const path = await assertPhysicalExecutionPath(
+      const path = resolveMeshExecutionPath(
         session,
         requestedPath,
       );
