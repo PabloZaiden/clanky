@@ -18,11 +18,12 @@ function findTranscriptTable(
   resource: TranscriptResource,
   role: SchemaTranscriptTableMetadata["role"],
 ): SchemaTranscriptTableMetadata & { name: string } {
-  const matches = SCHEMA_TABLE_INVENTORY.filter(
-    (table) =>
-      table.transcript?.resource === resource
-      && table.transcript.role === role,
-  );
+  const matches = SCHEMA_TABLE_INVENTORY.filter((table) => {
+    const transcript = table.transcript;
+    return transcript !== undefined
+      && transcript.resource === resource
+      && transcript.role === role;
+  });
   if (matches.length !== 1) {
     throw new Error(
       `Expected exactly one ${role} transcript table for ${resource}, found ${matches.length}`,
