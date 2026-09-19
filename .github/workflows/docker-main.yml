@@ -6,10 +6,6 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
-  RELAY_IMAGE_NAME: ${{ github.repository }}-relay
-  # Toggle platforms: 'linux/amd64' for fast builds, 'linux/amd64,linux/arm64' for full cross-build
-  BUILD_PLATFORMS: linux/amd64
 
 jobs:
   build-and-push:
@@ -21,6 +17,18 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: latest
+
+      - name: Resolve main release metadata
+        id: release_metadata
+        run: |
+          set -euo pipefail
+          bun run release:metadata:check
+          echo "config=$(bun scripts/release-metadata.ts docker-config main)" >> "$GITHUB_OUTPUT"
 
       - name: Resolve build version
         id: version
@@ -44,24 +52,22 @@ jobs:
         id: meta_server
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=raw,value=main
+          images: ${{ env.REGISTRY }}/${{ fromJSON(steps.release_metadata.outputs.config).images.server.name }}
+          tags: ${{ fromJSON(steps.release_metadata.outputs.config).tags }}
 
       - name: Extract relay metadata (tags, labels)
         id: meta_relay
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
-          images: ${{ env.REGISTRY }}/${{ env.RELAY_IMAGE_NAME }}
-          tags: |
-            type=raw,value=main
+          images: ${{ env.REGISTRY }}/${{ fromJSON(steps.release_metadata.outputs.config).images.relay.name }}
+          tags: ${{ fromJSON(steps.release_metadata.outputs.config).tags }}
 
       - name: Build and push server image
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: Dockerfile
-          target: server
+          target: ${{ fromJSON(steps.release_metadata.outputs.config).images.server.dockerfileTarget }}
           push: true
           load: true
           tags: ${{ steps.meta_server.outputs.tags }}
@@ -70,14 +76,14 @@ jobs:
             CLANKY_VERSION=${{ steps.version.outputs.version }}
           cache-from: type=gha,scope=clanky
           cache-to: type=gha,mode=max,scope=clanky
-          platforms: ${{ env.BUILD_PLATFORMS }}
+          platforms: ${{ fromJSON(steps.release_metadata.outputs.config).platforms }}
 
       - name: Build and push relay image
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: Dockerfile
-          target: relay
+          target: ${{ fromJSON(steps.release_metadata.outputs.config).images.relay.dockerfileTarget }}
           push: true
           load: true
           tags: ${{ steps.meta_relay.outputs.tags }}
@@ -85,7 +91,7 @@ jobs:
           build-args: |
             CLANKY_VERSION=${{ steps.version.outputs.version }}
           cache-from: type=gha,scope=clanky
-          platforms: ${{ env.BUILD_PLATFORMS }}
+          platforms: ${{ fromJSON(steps.release_metadata.outputs.config).platforms }}
 
       - name: Test server and relay containers
         run: |

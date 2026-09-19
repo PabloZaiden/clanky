@@ -86,6 +86,28 @@ clanky update
 clanky update --version v0.8.1
 ```
 
+### Release metadata
+
+Clanky owns its release targets, binary artifact metadata, Docker image targets,
+and channel platform policy in
+`.github/release-metadata.json`. Edit that file when adding or removing a
+release target, binary, Docker platform, or image. The committed
+`.github/installer.json` is a generated projection for the shared generic
+installer and must not be edited directly.
+
+Validate the metadata and generated projection, or regenerate the installer
+manifest after an intentional metadata change:
+
+```bash
+bun run release:metadata:check
+bun run release:metadata:generate
+```
+
+Release Docker images build for `linux/amd64` and `linux/arm64`; the main
+channel intentionally builds only `linux/amd64`. The shared
+`pablozaiden/installer` workflow remains generic: Clanky passes it the
+explicit target and binary projections from the canonical metadata.
+
 ## Quick start
 
 ### Requirements

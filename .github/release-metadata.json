@@ -1,0 +1,120 @@
+{
+  "schemaVersion": 1,
+  "repo": "pablozaiden/clanky",
+  "installDir": "$HOME/.local/bin",
+  "binaries": [
+    {
+      "id": "clanky",
+      "name": "clanky",
+      "installedFilename": "clanky",
+      "assetPrefix": "clanky",
+      "buildCommand": "bun src/build.ts --target=$BUN_TARGET",
+      "outputPath": "dist/clanky-$RELEASE_TARGET",
+      "postInstallMessage": "Run 'clanky serve' to start the local server, or 'clanky --help' for CLI commands.",
+      "checksum": {
+        "required": true,
+        "extension": ".sha256"
+      }
+    }
+  ],
+  "targets": [
+    {
+      "id": "linux-x64",
+      "os": "linux",
+      "architecture": "x64",
+      "runner": "ubuntu-latest",
+      "bunTarget": "bun-linux-x64",
+      "executableExtension": ""
+    },
+    {
+      "id": "linux-arm64",
+      "os": "linux",
+      "architecture": "arm64",
+      "runner": "ubuntu-latest",
+      "bunTarget": "bun-linux-arm64",
+      "executableExtension": ""
+    },
+    {
+      "id": "darwin-x64",
+      "os": "darwin",
+      "architecture": "x64",
+      "runner": "macos-latest",
+      "bunTarget": "bun-darwin-x64",
+      "executableExtension": ""
+    },
+    {
+      "id": "darwin-arm64",
+      "os": "darwin",
+      "architecture": "arm64",
+      "runner": "macos-latest",
+      "bunTarget": "bun-darwin-arm64",
+      "executableExtension": ""
+    },
+    {
+      "id": "windows-x64",
+      "os": "windows",
+      "architecture": "x64",
+      "runner": "windows-latest",
+      "bunTarget": "bun-windows-x64",
+      "executableExtension": ".exe"
+    },
+    {
+      "id": "windows-arm64",
+      "os": "windows",
+      "architecture": "arm64",
+      "runner": "windows-latest",
+      "bunTarget": "bun-windows-arm64",
+      "executableExtension": ".exe"
+    }
+  ],
+  "docker": {
+    "images": [
+      {
+        "id": "server",
+        "imageSuffix": "",
+        "dockerfileTarget": "server"
+      },
+      {
+        "id": "relay",
+        "imageSuffix": "-relay",
+        "dockerfileTarget": "relay"
+      }
+    ],
+    "platforms": [
+      {
+        "id": "linux-amd64",
+        "platform": "linux/amd64",
+        "targetArch": "amd64",
+        "targetId": "linux-x64"
+      },
+      {
+        "id": "linux-arm64",
+        "platform": "linux/arm64",
+        "targetArch": "arm64",
+        "targetId": "linux-arm64"
+      }
+    ],
+    "channels": {
+      "release": {
+        "platforms": [
+          "linux/amd64",
+          "linux/arm64"
+        ],
+        "tags": [
+          "type=semver,pattern={{version}}",
+          "type=semver,pattern={{major}}.{{minor}}",
+          "type=semver,pattern={{major}}",
+          "type=raw,value=latest"
+        ]
+      },
+      "main": {
+        "platforms": [
+          "linux/amd64"
+        ],
+        "tags": [
+          "type=raw,value=main"
+        ]
+      }
+    }
+  }
+}
