@@ -4,7 +4,6 @@
 
 import { useEffect, useState } from "react";
 import { WorkspaceSelector } from "../WorkspaceSelector";
-import { Button } from "../common";
 import {
   type CreateTaskFormActionState,
   type CreateTaskFormProps,
@@ -19,7 +18,6 @@ import { PromptField } from "./prompt-field";
 import { TaskSettings } from "./task-settings";
 import { AdvancedOptions } from "./advanced-options";
 import { FormActions } from "./form-actions";
-import { parsePositiveIssueNumber } from "./issue-number";
 import { useCreateTaskForm } from "./use-create-task-form";
 import { useGitHubIssues } from "./use-github-issues";
 import { UPLOADED_PLAN_IMPLEMENTATION_PROMPT } from "../../lib/uploaded-plan";
@@ -128,16 +126,14 @@ export function CreateTaskForm({
   const gitBackedWorkspaces = workspaces.filter((workspace) => workspace.workspaceType === "git");
   const selectedWorkspace = gitBackedWorkspaces.find((workspace) => workspace.id === selectedWorkspaceId);
   const uploadedPlanLocked = !!uploadedPlan;
-  const parsedIssueNumber = parsePositiveIssueNumber(issueNumber);
   const {
     issues: githubIssues,
     loading: githubIssuesLoading,
-    error: githubIssuesError,
-    fetchIssues,
   } = useGitHubIssues({
     workspaceId: selectedWorkspaceId,
     issueNumber,
     setIssueNumber,
+    preserveExistingIssue: isEditing,
   });
 
   useEffect(() => {
@@ -161,14 +157,6 @@ export function CreateTaskForm({
     setPrompt(autofillText);
     promptRef.current = autofillText;
     setSelectedTemplate("");
-  }
-
-  function handleAutofillPrompt() {
-    if (parsedIssueNumber === undefined) {
-      return;
-    }
-
-    applyIssueAutofill(parsedIssueNumber);
   }
 
   return (
@@ -280,73 +268,37 @@ export function CreateTaskForm({
           GitHub Issue Number
         </label>
         <div className="mt-1 flex flex-wrap items-center gap-2">
-          {githubIssues === null ? (
-            <input
-              type="number"
-              id="issueNumber"
-              value={issueNumber}
-              onChange={(e) => setIssueNumber(e.target.value)}
-              min="1"
-              step="1"
-              placeholder="Optional"
-              className="block w-32 rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600"
-            />
-          ) : (
-            <select
-              id="issueNumber"
-              value={issueNumber}
-              onChange={(e) => {
-                const selectedIssueNumber = e.target.value;
-                setIssueNumber(selectedIssueNumber);
+          <select
+            id="issueNumber"
+            value={issueNumber}
+            onChange={(e) => {
+              const selectedIssueNumber = e.target.value;
+              setIssueNumber(selectedIssueNumber);
 
-                const selectedIssue = githubIssues.find(
-                  (issue) => String(issue.number) === selectedIssueNumber,
-                );
-                if (selectedIssue) {
-                  applyIssueAutofill(selectedIssue.number, selectedIssue.title);
-                }
-              }}
-              className="block min-w-0 max-w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600"
-            >
-              <option value="">Optional</option>
-              {githubIssues.map((issue) => (
-                <option key={issue.number} value={String(issue.number)}>
-                  #{issue.number} - {issue.title}
-                </option>
-              ))}
-            </select>
-          )}
-          {githubIssues === null && (
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={() => void fetchIssues()}
-              disabled={!selectedWorkspaceId}
-              loading={githubIssuesLoading}
-              className="shrink-0"
-            >
-              Fetch issues
-            </Button>
-          )}
-          {githubIssues === null && (
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={handleAutofillPrompt}
-              disabled={parsedIssueNumber === undefined}
-              className="shrink-0"
-            >
-              Autofill
-            </Button>
-          )}
+              const selectedIssue = githubIssues.find(
+                (issue) => String(issue.number) === selectedIssueNumber,
+              );
+              if (selectedIssue) {
+                applyIssueAutofill(selectedIssue.number, selectedIssue.title);
+              }
+            }}
+            disabled={githubIssuesLoading}
+            className="block min-w-0 max-w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600"
+          >
+            <option value="">Optional</option>
+            {githubIssues.map((issue) => (
+              <option key={issue.number} value={String(issue.number)}>
+                #{issue.number} - {issue.title}
+              </option>
+            ))}
+            {isEditing
+              && issueNumber
+              && !githubIssues.some((issue) => String(issue.number) === issueNumber)
+              && !githubIssuesLoading && (
+                <option value={issueNumber}>#{issueNumber}</option>
+              )}
+          </select>
         </div>
-        {githubIssuesError && (
-          <p className="mt-1 text-xs text-red-600 dark:text-red-400" role="alert">
-            {githubIssuesError}
-          </p>
-        )}
         <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
           Adds <code>Closes #number</code> to an automatically created PR.
         </p>

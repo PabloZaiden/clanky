@@ -1,6 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createLogger } from "@pablozaiden/webapp/web";
-import type { GitHubIssueSummary, GitHubIssuesResponse } from "@/contracts";
+import type {
+  GitHubIssueSummary,
+  GitHubIssuesResponse,
+  GitHubRepositoryUrlResponse,
+} from "@/contracts";
 import { apiRequest } from "../../lib/api-client";
 
 const log = createLogger("useGitHubIssues");
@@ -9,13 +13,21 @@ interface UseGitHubIssuesOptions {
   workspaceId?: string;
   issueNumber: string;
   setIssueNumber: (value: string) => void;
+  preserveExistingIssue: boolean;
 }
 
 export interface UseGitHubIssuesResult {
-  issues: GitHubIssueSummary[] | null;
+  issues: GitHubIssueSummary[];
   loading: boolean;
-  error: string | null;
-  fetchIssues: () => Promise<void>;
+}
+
+function isGitHubRepositoryUrlResponse(value: unknown): value is GitHubRepositoryUrlResponse {
+  if (typeof value !== "object" || value === null || !("githubUrl" in value)) {
+    return false;
+  }
+
+  const githubUrl = value.githubUrl;
+  return githubUrl === null || typeof githubUrl === "string";
 }
 
 function isGitHubIssuesResponse(value: unknown): value is GitHubIssuesResponse {
@@ -40,90 +52,127 @@ export function useGitHubIssues({
   workspaceId,
   issueNumber,
   setIssueNumber,
+  preserveExistingIssue,
 }: UseGitHubIssuesOptions): UseGitHubIssuesResult {
-  const [issues, setIssues] = useState<GitHubIssueSummary[] | null>(null);
+  const [issues, setIssues] = useState<GitHubIssueSummary[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const requestIdRef = useRef(0);
   const controllerRef = useRef<AbortController | null>(null);
+  const issueNumberRef = useRef(issueNumber);
+  issueNumberRef.current = issueNumber;
 
   useEffect(() => {
-    requestIdRef.current += 1;
-    controllerRef.current?.abort();
-    controllerRef.current = null;
-    setIssues(null);
-    setError(null);
-    setLoading(false);
-
-    return () => {
-      requestIdRef.current += 1;
-      controllerRef.current?.abort();
-      controllerRef.current = null;
-    };
-  }, [workspaceId]);
-
-  const fetchIssues = useCallback(async () => {
-    if (!workspaceId || loading) {
-      return;
-    }
-
     const requestId = ++requestIdRef.current;
     controllerRef.current?.abort();
     const controller = new AbortController();
     controllerRef.current = controller;
+    setIssues([]);
+    setLoading(Boolean(workspaceId));
+
     const isActiveRequest = () =>
       requestIdRef.current === requestId
       && controllerRef.current === controller
       && !controller.signal.aborted;
 
-    setLoading(true);
-    setError(null);
-
-    try {
-      const body = await apiRequest<unknown>(
-        `/api/git/github-issues?workspaceId=${encodeURIComponent(workspaceId)}`,
-        {
-          signal: controller.signal,
-          action: "Fetch GitHub issues",
-          fallbackMessage: "Failed to fetch GitHub issues",
-        },
-      );
-      if (!isActiveRequest()) {
-        return;
-      }
-      if (!isGitHubIssuesResponse(body)) {
-        throw new Error("Clanky API returned an invalid GitHub issues response");
-      }
-
-      if (issueNumber && !body.issues.some((issue) => String(issue.number) === issueNumber)) {
+    const clearIssueSelection = () => {
+      if (!preserveExistingIssue) {
+        issueNumberRef.current = "";
         setIssueNumber("");
       }
-      setIssues(body.issues);
-    } catch (fetchError) {
-      if (!isActiveRequest()) {
-        return;
-      }
+    };
 
-      const message = fetchError instanceof Error
-        ? fetchError.message
-        : "Failed to fetch GitHub issues";
-      log.warn("Failed to fetch GitHub issues", {
-        workspaceId,
-        error: message,
-      });
-      setError(message);
-    } finally {
-      if (isActiveRequest()) {
-        controllerRef.current = null;
-        setLoading(false);
-      }
+    if (!workspaceId) {
+      clearIssueSelection();
+      controllerRef.current = null;
+      setLoading(false);
+      return () => {
+        requestIdRef.current += 1;
+        controller.abort();
+      };
     }
-  }, [issueNumber, loading, setIssueNumber, workspaceId]);
+
+    const loadIssues = async () => {
+      try {
+        const repositoryResponse = await apiRequest<unknown>(
+          `/api/git/github-repository-url?workspaceId=${encodeURIComponent(workspaceId)}`,
+          {
+            signal: controller.signal,
+            action: "Load GitHub repository URL",
+            fallbackMessage: "GitHub repository URL is not available for this workspace",
+          },
+        );
+        if (!isActiveRequest()) {
+          return;
+        }
+        if (!isGitHubRepositoryUrlResponse(repositoryResponse)) {
+          throw new Error("Clanky API returned an invalid GitHub repository response");
+        }
+        if (!repositoryResponse.githubUrl) {
+          clearIssueSelection();
+          setIssues([]);
+          return;
+        }
+
+        const issuesResponse = await apiRequest<unknown>(
+          `/api/git/github-issues?workspaceId=${encodeURIComponent(workspaceId)}`,
+          {
+            signal: controller.signal,
+            action: "Load GitHub issues",
+            fallbackMessage: "GitHub issues are not available for this workspace",
+          },
+        );
+        if (!isActiveRequest()) {
+          return;
+        }
+        if (!isGitHubIssuesResponse(issuesResponse)) {
+          throw new Error("Clanky API returned an invalid GitHub issues response");
+        }
+
+        if (
+          issueNumberRef.current
+          && !issuesResponse.issues.some(
+            (issue) => String(issue.number) === issueNumberRef.current,
+          )
+        ) {
+          issueNumberRef.current = "";
+          setIssueNumber("");
+        }
+        setIssues(issuesResponse.issues);
+      } catch (fetchError) {
+        if (!isActiveRequest()) {
+          return;
+        }
+
+        const message = fetchError instanceof Error
+          ? fetchError.message
+          : "Failed to load GitHub issues";
+        log.warn("Failed to load GitHub issues automatically", {
+          workspaceId,
+          error: message,
+        });
+        clearIssueSelection();
+        setIssues([]);
+      } finally {
+        if (isActiveRequest()) {
+          controllerRef.current = null;
+          setLoading(false);
+        }
+      }
+    };
+
+    void loadIssues();
+
+    return () => {
+      requestIdRef.current += 1;
+      controller.abort();
+      if (controllerRef.current === controller) {
+        controllerRef.current = null;
+      }
+    };
+  }, [preserveExistingIssue, setIssueNumber, workspaceId]);
 
   return {
     issues,
     loading,
-    error,
-    fetchIssues,
   };
 }
