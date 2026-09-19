@@ -281,6 +281,10 @@ export class ProvisioningTestExecutor implements CommandExecutor {
       return { success: true, stdout: "", stderr: "", exitCode: 0 };
     }
 
+    if (command === "sh") {
+      return { success: true, stdout: "", stderr: "", exitCode: 0 };
+    }
+
     if (command === "devbox" && args[0] === "exec") {
       if (args.some((arg) => arg.includes("worker join"))) {
         if (this.options.failWorkerJoin) {

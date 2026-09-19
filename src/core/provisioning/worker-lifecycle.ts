@@ -59,6 +59,11 @@ export interface WorkerProvisioningResult {
   processCleanup?: ProvisioningResourceHandle;
 }
 
+const WORKER_INSTALLER_REVISION =
+  "1e73c9a4b84bb2282d5a6fd8463f9a9f62c26c67";
+const WORKER_INSTALLER_SHA256 =
+  "d377a7ed04b150781b94cb0af97e6f7a2efe2c8d12dae1a1f0aa825306ea28f3";
+
 type ProvisioningCommandRunner = (
   record: ProvisioningJobRecord,
   executor: CommandExecutor,
@@ -102,8 +107,9 @@ log_file=${shellQuote(paths.containerLog)}
 pid_file=${shellQuote(paths.containerPid)}
 
 mkdir -p "$bin_dir" "$data_dir" "$install_dir" "$install_home"
-curl -fsSL https://raw.githubusercontent.com/pablozaiden/installer/main/install.sh -o "$installer"
-HOME="$install_home" sh "$installer" pablozaiden/clanky --install-dir "$install_dir"
+curl -fsSL --proto '=https' --tlsv1.2 https://raw.githubusercontent.com/pablozaiden/installer/${WORKER_INSTALLER_REVISION}/install.sh -o "$installer"
+printf '%s  %s\\n' ${WORKER_INSTALLER_SHA256} "$installer" | sha256sum -c -
+HOME="$install_home" sh "$installer" pablozaiden/clanky --install-dir "$install_dir" --checksum required
 if [ -x "$install_dir/clanky" ]; then
   source_binary="$install_dir/clanky"
 elif [ -x "$installed_binary" ]; then
@@ -259,6 +265,17 @@ export class ProvisioningWorkerLifecycle {
       );
     }
 
+    const processCleanup = record.attempt?.registerCleanup(
+      `workspace worker process ${workerPaths.containerPid}`,
+      async () => {
+        await this.stopWorkerProcess(
+          executor,
+          options.targetDirectory,
+          workerPaths.containerPid,
+        );
+      },
+    );
+
     await this.runDevboxExec(
       record,
       executor,
@@ -335,16 +352,6 @@ export class ProvisioningWorkerLifecycle {
         },
       );
     }
-    const processCleanup = record.attempt?.registerCleanup(
-      `workspace worker process ${workerPaths.containerPid}`,
-      async () => {
-        await this.stopWorkerProcess(
-          executor,
-          options.targetDirectory,
-          workerPaths.containerPid,
-        );
-      },
-    );
     await this.waitForEnrollment(record, enrollmentId);
     return { enrollmentCleanup, processCleanup };
   }

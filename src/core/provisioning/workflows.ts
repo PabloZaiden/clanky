@@ -337,6 +337,7 @@ export class ProvisioningWorkflows {
       workspaceCleanup.commit();
       workerEnrollmentCleanup?.commit();
       workerProcessCleanup?.commit();
+      record.workspaceWorkerEnrollmentCleanup?.commit();
       await attempt.complete(
         record.job.state.workspaceAction === "reused"
           ? `Workspace connection test succeeded. Existing workspace ${record.job.config.name} is ready.`

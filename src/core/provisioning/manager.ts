@@ -18,8 +18,10 @@ import { appendSystemLog, persistProvisioningState } from "./job-logger";
 import type { ProvisioningJobRecord, StartProvisioningJobOptions } from "./types";
 import { requireCurrentUser, requireCurrentUserId, runWithCurrentUser } from "../user-context";
 import {
+  claimProvisioningTarget,
   getProvisioningTargetKey,
   normalizeOptionalValue,
+  releaseProvisioningTargetClaim,
   resolveProvisioningTarget,
 } from "./target-resolver";
 import { ProvisioningRemoteExecutor } from "./remote-executor";
@@ -67,6 +69,7 @@ export class ProvisioningManager {
       existingWorkerEnrollmentId,
       workerEnrollmentRoute,
       workerHostAddress,
+      workspaceWorkerEnrollmentId,
     } = target;
     const now = new Date().toISOString();
     const record: ProvisioningJobRecord = {
@@ -125,11 +128,40 @@ export class ProvisioningManager {
       );
     }
 
+    if (workspaceWorkerEnrollmentId) {
+      record.job.config.executionHostBinding = claimProvisioningTarget(
+        owner.id,
+        target,
+        jobId,
+      );
+      record.workspaceWorkerEnrollmentCleanup = record.attempt.registerCleanup(
+        `workspace worker enrollment claim ${workspaceWorkerEnrollmentId}`,
+        () => {
+          releaseProvisioningTargetClaim(
+            owner.id,
+            workspaceWorkerEnrollmentId,
+            jobId,
+          );
+        },
+      );
+    }
+
     try {
       this.jobs.set(jobId, record);
       createProvisioningJob(owner.id, record.job);
     } catch (error) {
       this.jobs.delete(jobId);
+      if (workspaceWorkerEnrollmentId) {
+        try {
+          releaseProvisioningTargetClaim(owner.id, workspaceWorkerEnrollmentId, jobId);
+        } catch (cleanupError) {
+          log.error("Failed to release workspace worker enrollment after job creation failed", {
+            provisioningJobId: jobId,
+            enrollmentId: workspaceWorkerEnrollmentId,
+            error: String(cleanupError),
+          });
+        }
+      }
       throw error;
     }
     emitJobStarted(record.job);

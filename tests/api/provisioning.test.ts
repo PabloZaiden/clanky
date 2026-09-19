@@ -586,6 +586,17 @@ describe("Provisioning API integration", () => {
         && call.args[0] === "755"
         && call.args.some((arg) => arg.endsWith("/.devbox/clanky-worker/launcher.sh")),
       )).toBe(true);
+      const launcher = await executor.readFile(
+        "/workspaces/worker-example/.devbox/clanky-worker/launcher.sh",
+      );
+      expect(launcher).toBeTruthy();
+      expect(launcher ?? "").toContain(
+        "https://raw.githubusercontent.com/pablozaiden/installer/1e73c9a4b84bb2282d5a6fd8463f9a9f62c26c67/install.sh",
+      );
+      expect(launcher ?? "").toContain(
+        "d377a7ed04b150781b94cb0af97e6f7a2efe2c8d12dae1a1f0aa825306ea28f3",
+      );
+      expect(launcher ?? "").toContain("sha256sum -c -");
       expect(executor.calls.some((call) =>
         call.command === "devbox"
         && call.args[0] === "exec"
@@ -722,6 +733,17 @@ describe("Provisioning API integration", () => {
       const failed = await waitForJobStatus(baseUrl, started.job.config.id, ["failed"]);
       expect(failed.job.state.error?.code).toBe("worker_join_failed");
       expect(failed.workspace).toBeUndefined();
+      const joinIndex = executor.calls.findIndex((call) =>
+        call.command === "devbox"
+        && call.args[0] === "exec"
+        && call.args.some((arg) => arg.includes("worker join"))
+      );
+      const processCleanupIndex = executor.calls.findIndex((call) =>
+        call.command === "sh"
+        && call.args.some((arg) => arg.includes(".devbox/clanky-worker/worker.pid"))
+      );
+      expect(joinIndex).toBeGreaterThan(-1);
+      expect(processCleanupIndex).toBeGreaterThan(joinIndex);
 
       const enrollment = workspaceWorkerEnrollmentService.list("admin")
         .find((candidate) => candidate.enrollment.name === "Failed Worker worker");
@@ -734,6 +756,48 @@ describe("Provisioning API integration", () => {
         process.env["CLANKY_PUBLIC_BASE_URL"] = previousPublicBaseUrl;
       }
     }
+  });
+
+  test("releases an externally supplied worker claim when provisioning fails early", async () => {
+    const workspaceWorkerEnrollmentId = await seedDedicatedMeshExecutionTarget();
+    const executor = new ProvisioningTestExecutor({
+      failDevboxVersion: true,
+    });
+    backendManager.setExecutorFactoryForTesting(() => executor);
+
+    const response = await fetch(`${baseUrl}/api/provisioning-jobs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Early Failure Dedicated Worker",
+        workspaceWorkerEnrollmentId,
+        transport: "ssh",
+        repoUrl: "https://github.com/octocat/early-failure.git",
+        basePath: "/workspaces",
+        devcontainerSubpath: null,
+        devboxTemplate: null,
+        githubUser: null,
+        provider: "copilot",
+        credentialToken: null,
+        mode: "provision",
+        createNewRepository: false,
+        targetDirectory: null,
+        workspaceId: null,
+      }),
+    });
+
+    expect(response.status).toBe(201);
+    const started = await response.json() as ProvisioningSnapshotResponse;
+    const failed = await waitForJobStatus(baseUrl, started.job.config.id, ["failed"]);
+    expect(failed.job.state.error?.code).toBe("devbox_not_found");
+
+    const enrollment = workspaceWorkerEnrollmentService.getStatus(
+      "admin",
+      workspaceWorkerEnrollmentId,
+    );
+    expect(enrollment.enrollment.status).toBe("connected");
+    expect(enrollment.enrollment.claimedBy).toBeNull();
+    expect(enrollment.enrollment.workspaceId).toBeNull();
   });
 
   test("provisions a relay-only dedicated worker without a published port", async () => {

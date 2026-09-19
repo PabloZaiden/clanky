@@ -5,6 +5,7 @@ import {
 } from "../../persistence/provisioning-jobs";
 import { meshManager } from "../mesh-manager";
 import { workspaceManager } from "../workspace-manager";
+import { releaseProvisioningTargetClaim } from "./target-resolver";
 
 const log = createLogger("core:provisioning-reconciliation");
 
@@ -31,10 +32,9 @@ export class ProvisioningReconciler {
     userId: string,
     job: ReturnType<typeof listProvisioningJobs>[number],
   ): Promise<void> {
-    const enrollmentId = job.config.workerEnrollmentId;
-    if (!enrollmentId) {
-      // workspaceWorkerEnrollmentId identifies an existing enrollment used as
-      // the provisioning host; it is not owned by the abandoned attempt.
+    const claimedEnrollmentId = job.config.workspaceWorkerEnrollmentId;
+    const createdEnrollmentId = job.config.workerEnrollmentId;
+    if (!claimedEnrollmentId && !createdEnrollmentId) {
       return;
     }
 
@@ -58,18 +58,36 @@ export class ProvisioningReconciler {
         });
       }
     }
+    if (claimedEnrollmentId) {
+      try {
+        releaseProvisioningTargetClaim(
+          userId,
+          claimedEnrollmentId,
+          job.config.id,
+        );
+      } catch (error) {
+        log.error("Failed to release workspace worker claim after server restart", {
+          provisioningJobId: job.config.id,
+          enrollmentId: claimedEnrollmentId,
+          error: String(error),
+        });
+      }
+    }
+    if (!createdEnrollmentId) {
+      return;
+    }
     if (!workspaceDeleted) {
       try {
         const workspaceStillExists = job.state.workspaceId
           ? await workspaceManager.getWorkspace(job.state.workspaceId) !== null
           : false;
-        await meshManager.cleanupDedicatedWorker(userId, enrollmentId, {
+        await meshManager.cleanupDedicatedWorker(userId, createdEnrollmentId, {
           preserveRegistration: workspaceStillExists,
         });
       } catch (error) {
         log.error("Failed to clean up dedicated worker after server restart", {
           provisioningJobId: job.config.id,
-          enrollmentId,
+          enrollmentId: createdEnrollmentId,
           error: String(error),
         });
       }

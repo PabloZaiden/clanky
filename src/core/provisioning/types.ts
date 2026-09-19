@@ -7,7 +7,10 @@ import type {
   ProvisioningLogEntry,
 } from "@/shared";
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
-import type { ProvisioningAttempt } from "./attempt";
+import type {
+  ProvisioningAttempt,
+  ProvisioningResourceHandle,
+} from "./attempt";
 import type { ProvisioningTargetOwnership } from "./target-resolver";
 
 export interface StartProvisioningJobOptions {
@@ -42,5 +45,6 @@ export interface ProvisioningJobRecord {
   workerEnrollmentToken?: string;
   workerJoinCommand?: string;
   targetOwnership?: ProvisioningTargetOwnership;
+  workspaceWorkerEnrollmentCleanup?: ProvisioningResourceHandle;
   attempt?: ProvisioningAttempt;
 }

@@ -12,6 +12,12 @@ import {
   createProvisioningJob,
   loadProvisioningJob,
 } from "../../src/persistence/provisioning-jobs";
+import {
+  claimWorkspaceWorkerEnrollment,
+  createWorkspaceWorkerEnrollment,
+  getWorkspaceWorkerEnrollment,
+  markWorkspaceWorkerConnected,
+} from "../../src/persistence/workspace-worker-enrollments";
 import { closeDatabase, initializeDatabase } from "../../src/persistence/database";
 import { runWithCurrentUser } from "../../src/core/user-context";
 import { getTestLocalExecutionHostBinding, testOwnerUser } from "../setup";
@@ -156,5 +162,67 @@ describe("provisioning job recovery", () => {
     expect(recovered?.logs.some((entry) =>
       entry.text.includes("Cleanup failed for partially created workspace"),
     )).toBe(true);
+  });
+
+  test("releases an interrupted externally supplied worker claim", async () => {
+    const createdAt = new Date().toISOString();
+    const executionHostBinding = await runWithCurrentUser(
+      testOwnerUser,
+      () => getTestLocalExecutionHostBinding(),
+    );
+    const enrollment = createWorkspaceWorkerEnrollment({
+      userId: testOwnerUser.id,
+      name: "Interrupted external worker",
+      ttlSeconds: 900,
+      controller: {
+        nodeId: "controller-node",
+        fingerprint: "controller-fingerprint",
+      },
+    });
+    markWorkspaceWorkerConnected({
+      userId: testOwnerUser.id,
+      enrollmentId: enrollment.enrollment.id,
+      workerNodeId: "interrupted-worker",
+    });
+    const job: ProvisioningJob = {
+      config: {
+        id: crypto.randomUUID(),
+        name: "Interrupted external worker workspace",
+        executionHostBinding,
+        workspaceWorkerEnrollmentId: enrollment.enrollment.id,
+        transport: "ssh",
+        repoUrl: "https://github.com/octocat/interrupted-external.git",
+        basePath: "/workspaces",
+        provider: "copilot",
+        mode: "provision",
+        createdAt,
+      },
+      state: {
+        status: "running",
+        currentStep: "devbox_up",
+        updatedAt: createdAt,
+      },
+    };
+    claimWorkspaceWorkerEnrollment({
+      userId: testOwnerUser.id,
+      enrollmentId: enrollment.enrollment.id,
+      claimedBy: job.config.id,
+    });
+    createProvisioningJob(testOwnerUser.id, job);
+
+    await runWithCurrentUser(
+      testOwnerUser,
+      () => provisioningManager.reconcileDedicatedWorkerStartupState(),
+    );
+
+    const recoveredEnrollment = getWorkspaceWorkerEnrollment(
+      testOwnerUser.id,
+      enrollment.enrollment.id,
+    );
+    expect(recoveredEnrollment?.status).toBe("connected");
+    expect(recoveredEnrollment?.claimedBy).toBeNull();
+    expect(recoveredEnrollment?.workspaceId).toBeNull();
+    expect(loadProvisioningJob(testOwnerUser.id, job.config.id)?.job.state.status)
+      .toBe("interrupted");
   });
 });

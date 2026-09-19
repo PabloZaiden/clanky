@@ -20,6 +20,7 @@ export interface ProvisioningTargetResolution {
   transport: ProvisioningTransport;
   executionHostBinding: ExecutionHostBinding;
   ownership: ProvisioningTargetOwnership;
+  workspaceWorkerEnrollmentId?: string;
   existingWorkerEnrollmentId?: string;
   workerEnrollmentRoute?: "direct" | "relay";
   workerHostAddress?: string;
@@ -131,7 +132,6 @@ export async function resolveProvisioningTarget(
   const executionHostResolution = await resolveProvisioningExecutionHostBinding(
     userId,
     options,
-    jobId,
   );
   const executionHostBinding = executionHostResolution.binding;
   if (mode === "arise") {
@@ -182,6 +182,9 @@ export async function resolveProvisioningTarget(
             ? "new"
             : "none",
     },
+    ...(executionHostResolution.workspaceWorkerEnrollmentId
+      ? { workspaceWorkerEnrollmentId: executionHostResolution.workspaceWorkerEnrollmentId }
+      : {}),
     ...(existingWorkerEnrollment
       ? { existingWorkerEnrollmentId: existingWorkerEnrollment.enrollment.id }
       : {}),
@@ -193,10 +196,10 @@ export async function resolveProvisioningTarget(
 async function resolveProvisioningExecutionHostBinding(
   userId: string,
   options: StartProvisioningJobOptions,
-  jobId: string,
 ): Promise<{
   binding: ExecutionHostBinding;
   ownership: ProvisioningTargetOwnership["executionHost"];
+  workspaceWorkerEnrollmentId?: string;
 }> {
   if (options.workspaceWorkerEnrollmentId) {
     if ((options.mode ?? "provision") !== "provision") {
@@ -216,12 +219,9 @@ async function resolveProvisioningExecutionHostBinding(
       userId,
     );
     return {
-      binding: workspaceWorkerEnrollmentService.claimForProvisioning(
-        userId,
-        options.workspaceWorkerEnrollmentId,
-        jobId,
-      ),
+      binding,
       ownership: "claimed",
+      workspaceWorkerEnrollmentId: options.workspaceWorkerEnrollmentId,
     };
   }
   if (
@@ -257,6 +257,33 @@ async function resolveProvisioningExecutionHostBinding(
     binding: executionHostService.getBinding(options.executionHost, userId),
     ownership: "external",
   };
+}
+
+export function claimProvisioningTarget(
+  userId: string,
+  target: ProvisioningTargetResolution,
+  jobId: string,
+): ExecutionHostBinding {
+  if (!target.workspaceWorkerEnrollmentId) {
+    return target.executionHostBinding;
+  }
+  return workspaceWorkerEnrollmentService.claimForProvisioning(
+    userId,
+    target.workspaceWorkerEnrollmentId,
+    jobId,
+  );
+}
+
+export function releaseProvisioningTargetClaim(
+  userId: string,
+  enrollmentId: string,
+  jobId: string,
+): boolean {
+  return workspaceWorkerEnrollmentService.releaseProvisioningClaim(
+    userId,
+    enrollmentId,
+    jobId,
+  );
 }
 
 function resolveProvisioningTransport(
