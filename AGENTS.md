@@ -417,111 +417,76 @@ test("hello world", () => {
 });
 ```
 
-### Testing Guidelines
+### Test decision gate
 
-- **Prefer no new test over a low-value test.** A test is only worth adding if it catches realistic regressions during refactors or bugs.
-- The default committed coverage should be **API tests, integration/user-scenario tests, or e2e tests** that exercise real application behavior through public boundaries.
-- New tests should prove a meaningful workflow, state transition, persistence effect, security rule, or external contract. Good examples: creating/running/accepting/pushing a task through the API, workspace lifecycle, plan-mode workflow, auth/passkey boundaries, SSH/session behavior, provisioning behavior, branch safety, and review-cycle behavior.
-- Automated tests should generally set `CLANKY_DISABLE_PASSKEY=true` so they do not require interactive passkey setup, unless the test is explicitly verifying passkey registration, login, deletion, or enforcement behavior.
-- Bug fixes should be covered at the highest practical level that reproduces the bug. Prefer an API/integration/e2e regression over a unit test of the helper that happened to contain the bug.
-- UI-only changes, text/copy changes, styling changes, layout changes, label changes, and presentation refactors should **not** get automated tests. Validate them manually when needed.
-- If you need to validate real agent scenarios for a new feature or to reproduce a bug, use a local Copilot CLI unless the user explicitly says otherwise. Mocks usually do not work well for this kind of manual validation.
-- Live agent providers may be used for manual investigation and final validation when needed, but committed automated tests **MUST NOT** depend on live agents or external providers. Prefer deterministic local test doubles only at the API/integration boundary.
-- **100%** of the tests **MUST** pass before considering a feature complete
-- A flaky test that fails intermittently **MUST** be fixed. A lot of times, flaky tests indicate deeper issues, race conditions, or bad mock implementations.
-- **Tests MUST be deterministic**: Tests should never have conditional expectations based on timing or race conditions. If a test sometimes expects one outcome and sometimes another, the test is flaky and must be fixed. Use polling helpers, explicit waits, or control execution flow to ensure deterministic behavior.
-- **Do not add frontend component/hook tests.** They have historically produced brittle coverage around labels, buttons, copy, DOM structure, CSS classes, mocked fetch wrappers, and implementation details. Test the behavior through API/integration/e2e boundaries instead.
-- **For transcript and file-link UI, do not test DOM attributes, punctuation, endpoint construction, fetch or click plumbing, or browser-standard interactions.** Cover file/path safety, metadata, containment, and file-versus-directory behavior through API/integration boundaries, and validate presentation manually with `Bun.WebView` when needed.
-- **Remove frontend test helpers, mocks, and factories when their last meaningful test is removed.** Do not retain speculative frontend harnesses or build broad mock systems for implementation-detail tests; prefer no test over low-signal infrastructure.
-- **Do not add unit tests by default.** Unit tests are allowed only for small, stable, pure domain contracts that are hard or impossible to cover through public boundaries. Get explicit justification before adding them.
-- **Do not test mocks.** Avoid tests where the main assertion is that a mocked function was called, a mocked adapter returned a value, or a fake implementation behaves like itself.
-- **Do not reimplement production logic in the test.** If the expected value is computed by duplicating the algorithm under test, the test does not add signal.
-- **Test external request behavior semantically.** Do not assert generated GraphQL/SQL/request selection text, nesting depth, or absence of deprecated fields when equivalent behavior can be verified through representative responses and public outputs. Assert exact request shape only when it is itself an external compatibility contract that cannot be covered behaviorally.
-- **Internal agent prompt wording is not a test contract.** Do not assert internal prompt wording, headings, ordering, or explanatory prose. Test observable outcomes and assert exact strings only when they are required by an external protocol, security boundary, or explicitly documented product contract.
-- **Do not add exhaustive matrix tests for implementation tables or tiny helpers.** A few high-value examples are better than dozens of cases that lock down internals.
-- **Do not add tests for wrappers around `fetch`, endpoint string construction, button click plumbing, modal open/close mechanics, default labels, placeholder text, aria wording, CSS utility classes, DOM nesting, or visibility-only toggles.**
-- **Do not add removal-only regression tests.** Avoid tests whose main value is proving old UI/copy/behavior is gone unless the absence is a security or explicit product contract.
+Prefer no test over a low-value test. Before adding, retaining, or
+substantially changing a test, record the concrete regression it catches, the
+public boundary or justified pure contract it exercises, why a
+behavior-preserving refactor should not invalidate it, and whether equivalent
+coverage already exists. Delete or rewrite the test when any of those answers is
+missing.
 
-### Test value decision gate
+Use the highest practical public boundary:
 
-Before adding or keeping a test, identify the user-visible behavior, the
-public boundary that exercises it, and the regression it would catch. Keep the
-test only when the answer is concrete:
+- API tests should exercise real HTTP requests, persistence, workspace effects,
+  authorization, and observable responses.
+- Integration/user-scenario tests should cover workflows crossing subsystems,
+  including task/chat/workspace lifecycle, Git, branch safety, SSH, Mesh,
+  provisioning, and review cycles.
+- E2E tests should be sparse and exercise the real application boundary.
+- Unit tests are exceptional and must protect a small, stable security,
+  data-safety, migration, containment, protocol, scheduling, cancellation, or
+  lifecycle contract that is impractical or unsafe to prove publicly. Add a
+  short rationale beside every non-obvious exception.
 
-- **Assert behavior, not structure.** Prefer HTTP responses, CLI output, public
-  websocket messages, persisted records, filesystem effects on the workspace
-  host, state transitions, and externally observable cleanup. If a production
-  refactor could preserve the behavior while breaking the test, rewrite or
-  delete the test.
-- **Use the highest practical boundary.** API tests should exercise real HTTP
-  requests; integration tests should cover workflows crossing multiple
-  subsystems; E2E tests should use the real application boundary sparingly.
-  Do not duplicate the same workflow in both API and integration suites just
-  because the files have different directory names.
-- **Keep unit tests exceptional.** A unit test is justified only for a small,
-  stable domain contract that is hard or unsafe to prove through a public
-  workflow, such as migration/data-loss guards, path containment, protocol
-  signing/framing, secret redaction, shell injection, scheduling, or
-  cancellation/lifecycle races. Add a short rationale next to each such test.
-- **Prefer one scenario per rule.** Do not multiply tests for every verb,
-  endpoint, or resource when they exercise the same validation, `400`/`404`
-  mapping, field round-trip, or default. Retain additional cases only when
-  they protect a distinct status/error code, security boundary, state
-  transition, data-safety rule, or external compatibility contract.
+Tests must assert behavior, not implementation. Do not test private fields,
+maps, refs, counters, helper results, event ordering, internal state
+transitions, or implementation-only sequences. Do not test mocks or fakes:
+call counts, call order, configured return values, and delegation are not
+contracts. Use deterministic local doubles only at genuine external seams and
+assert the resulting public response, persisted state, filesystem effect,
+process cleanup, or protocol payload.
 
-### Test boundary and harness rules
+Do not add tests for internal prompt wording, headings, logs, generated
+SQL/GraphQL/request construction, generated code, error-message composition, or
+other exact text when stable status, structured data, or an external protocol
+is sufficient. Exact text is valid only when required by an external protocol,
+security boundary, or explicitly documented compatibility contract. Do not add
+tests for UI copy, labels, punctuation, DOM structure, CSS classes, fetch/click
+plumbing, modal mechanics, accessibility wording, or visibility-only behavior.
+UI-only changes should be validated manually when needed; do not add frontend
+component or hook tests.
 
-- `tests/native-api-server.ts` invokes route handlers with a test context; it
-  does **not** run the framework authentication or same-origin middleware.
-  Tests using `serveNativeApiRoutes()` must not claim to cover authentication,
-  authorization middleware, CSRF, or same-origin enforcement. Test those
-  behaviors by booting the real framework/server boundary, and keep route
-  metadata checks as a defense-in-depth contract rather than a substitute for
-  an authenticated request.
-- API tests must not import persistence modules to arrange or assert route
-  behavior, and must not spy on a manager merely to prove delegation. Arrange
-  state through the API or a documented test fixture, then assert the public
-  response and resulting behavior. Direct persistence tests belong only to
-  persistence/migration contracts that cannot be covered higher up.
-- Use deterministic local doubles only at genuine external seams (for
-  example, a local ACP runtime or GitHub adapter). Do not test that a mock was
-  called, that a fake adapter returned its own value, or that a private map,
-  event emitter, translator, or controller followed an implementation
-  sequence. Promote the scenario to an API/integration test instead.
-- Internal agent prompt wording, headings, log messages, request construction,
-  generated SQL/GraphQL, and internal event ordering are not contracts unless
-  an external protocol or security rule explicitly requires them. Assert the
-  resulting user-visible output, persisted state, side effect, or stable
-  protocol payload.
-- Do not leave empty `describe` blocks or lifecycle hooks after removing their
-  tests. A zero-test suite or bucket must fail discovery rather than report a
-  false-green run.
+Never add a test whose primary purpose is proving that a removed table, field,
+route, option, label, or behavior is absent. Keep a negative assertion only
+when absence is itself an explicit security, containment, compatibility,
+validation, or data-loss contract, and explain non-obvious cases next to the
+test. Do not duplicate one rule across API, integration, and E2E layers.
+Retain lower-level coverage only for a distinct status/error contract,
+security boundary, state transition, data-safety property, external protocol
+guarantee, or cleanup behavior that the higher boundary cannot prove.
 
-### Test review checklist
+Tests must be deterministic. Fixed delays are not synchronization: use explicit
+deferred signals, server/stream/process completion, emitted events, or bounded
+polling of named observable state with last-observed-state diagnostics. Keep a
+timer only when timeout, deadline, cancellation, or scheduling is the
+contract, and control or document that timer. Do not lengthen sleeps or add
+arbitrary retries to hide races. Remove mocks, fixtures, helpers, and hooks
+when their last meaningful test is removed, and do not leave empty suites.
 
-For every new or substantially changed test, answer these questions in the
-review:
+Do not reimplement production logic in expectations. Prefer a few meaningful
+scenarios over exhaustive matrices for tiny helpers or implementation tables.
+Committed tests must not depend on live providers. Use
+`CLANKY_DISABLE_PASSKEY=true` for unattended tests unless passkey behavior is
+the contract being tested. A test using `serveNativeApiRoutes()` does not cover
+framework authentication, authorization middleware, CSRF, or same-origin
+enforcement; those require the real framework/server boundary. API tests must
+not import persistence modules or spy on managers to prove delegation.
 
-1. What real regression would this catch?
-2. Which public boundary or justified pure contract does it exercise?
-3. Could an implementation refactor preserve behavior and invalidate this
-   assertion? If yes, make the assertion more behavioral or remove it.
-4. Is the behavior already covered at a higher layer? If yes, merge or delete
-   the lower-level duplicate.
-5. If it is an exceptional unit test, why is a public-boundary test
-   impractical, and what security, data-safety, protocol, or lifecycle risk
-   makes the unit contract worth retaining?
-
-### Test Patterns
-
-1. **API tests** (`tests/api/`): Preferred for most coverage. Exercise real HTTP requests, persistence, workspace setup, and observable API responses.
-2. **Integration/user-scenario tests** (`tests/integration/`): Use for complete workflows that need multiple subsystems, git repositories, task lifecycle, branch safety, SSH, provisioning, or review cycles.
-3. **E2E tests** (`tests/e2e/`): Use sparingly for the most important full task/runtime workflows.
-   Tests in `tests/e2e` must exercise real public application boundaries. Do
-   not label direct manager tests as E2E, duplicate the same workflow across
-   layers, or assert internal event/iteration sequences unless they are
-   explicit product contracts.
-4. **Unit tests** (`tests/unit/`): Exceptional only. Add one only when API/integration/e2e coverage would be impractical and the behavior is a stable domain contract rather than implementation detail.
+Before review, confirm the scenario is not already covered at a higher
+boundary, explain any exceptional unit-test rationale, and verify the suite
+still discovers at least one meaningful test per bucket. The complete suite
+must pass deterministically before the change is considered complete.
 
 Use the test utilities from `tests/setup.ts`:
 
@@ -685,10 +650,6 @@ The existing Error Handling section covers try/catch syntax. Additionally:
 - **Single source of truth for shared types** — if the same type (e.g., `ModelInfo`) exists in multiple files, consolidate to one canonical location and import from there.
 - **Avoid name collisions** — if two modules export types with the same name but different meanings, rename one to be specific (e.g., `ConnectionStatus` → `WebSocketConnectionStatus`).
 - **Keep barrel exports complete and clean** — when adding new modules, add them to the barrel (`index.ts`). When removing modules, clean up their re-exports.
-
-### Test Signal
-
-- **Do not add tests whose main purpose is proving an old table, field, route, label, or implementation is gone.** Absence assertions are reserved for explicit security/validation contracts; schema tests should cover current runtime requirements and real upgrade paths.
 
 ## Common Patterns
 

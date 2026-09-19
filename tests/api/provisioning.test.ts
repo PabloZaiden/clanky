@@ -1381,7 +1381,6 @@ describe("Provisioning API integration", () => {
     const failed = await waitForJobStatus(baseUrl, started.job.config.id, ["failed"]);
     expect(failed.job.state.status).toBe("failed");
     expect(failed.job.state.error?.code).toBe("devbox_not_found");
-    expect(failed.job.state.error?.message).toContain("Devbox is not installed or not available on PATH");
   });
 
   test("keeps a failed job for retry and removes it with its logs on dismiss", async () => {

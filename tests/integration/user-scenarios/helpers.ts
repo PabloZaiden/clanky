@@ -78,12 +78,12 @@ export class ConfigurableMockBackend implements TaskBackend {
   private responseIndex = 0;
   private responses: string[];
   private readonly sessions = new Map<string, AgentSession>();
-  private readonly sentPrompts: Array<{ sessionId: string; prompt: PromptInput }> = [];
   private sessionNotFoundResponses = 0;
   
   // Promise-based synchronization for prompt/subscription coordination
   private promptResolver: (() => void) | null = null;
   private promptPromise: Promise<void> | null = null;
+  private promptStartedResolver: (() => void) | null = null;
   private holdNextPromptResponse = false;
   private heldPromptResolver: (() => void) | null = null;
   private heldPromptReleaseRequested = false;
@@ -99,7 +99,7 @@ export class ConfigurableMockBackend implements TaskBackend {
     this.responseIndex = 0;
     this.promptResolver = null;
     this.promptPromise = null;
-    this.sentPrompts.length = 0;
+    this.promptStartedResolver = null;
     this.sessionNotFoundResponses = 0;
     this.holdNextPromptResponse = false;
     this.heldPromptResolver = null;
@@ -115,13 +115,6 @@ export class ConfigurableMockBackend implements TaskBackend {
   setResponses(responses: string[]): void {
     this.responses = responses;
     this.responseIndex = 0;
-  }
-
-  /**
-   * Get the current response index.
-   */
-  getResponseIndex(): number {
-    return this.responseIndex;
   }
 
   private getNextResponse(): string {
@@ -160,8 +153,7 @@ export class ConfigurableMockBackend implements TaskBackend {
     return session;
   }
 
-  async sendPrompt(sessionId: string, prompt: PromptInput): Promise<AgentResponse> {
-    this.sentPrompts.push({ sessionId, prompt });
+  async sendPrompt(_sessionId: string, _prompt: PromptInput): Promise<AgentResponse> {
     const response = this.getNextResponse();
     this.checkForError(response);
     return {
@@ -171,8 +163,9 @@ export class ConfigurableMockBackend implements TaskBackend {
     };
   }
 
-  async sendPromptAsync(sessionId: string, prompt: PromptInput): Promise<void> {
-    this.sentPrompts.push({ sessionId, prompt });
+  async sendPromptAsync(_sessionId: string, _prompt: PromptInput): Promise<void> {
+    this.promptStartedResolver?.();
+    this.promptStartedResolver = null;
     // Resolve any waiting subscription
     if (this.promptResolver) {
       this.promptResolver();
@@ -273,12 +266,11 @@ export class ConfigurableMockBackend implements TaskBackend {
 
   async setSessionModel(_sessionId: string, _modelId: string) {}
 
-  getSentPrompts(): Array<{ sessionId: string; prompt: PromptInput }> {
-    return [...this.sentPrompts];
-  }
-
-  holdNextPrompt(): void {
+  holdNextPrompt(): Promise<void> {
     this.holdNextPromptResponse = true;
+    return new Promise<void>((resolve) => {
+      this.promptStartedResolver = resolve;
+    });
   }
 
   failNextPromptSessionNotFound(count = 1): void {

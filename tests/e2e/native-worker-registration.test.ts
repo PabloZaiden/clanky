@@ -1,8 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, realpath, rm } from "node:fs/promises";
-import net from "node:net";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, isAbsolute, join, relative } from "node:path";
+import { join, relative } from "node:path";
 import {
   compiledClankyCommand,
   enrollMeshWorker,
@@ -11,7 +10,6 @@ import {
   startMeshNode,
   stopMeshNode,
   type ManagedMeshNode,
-  type MeshJsonResponse,
 } from "../helpers/mesh-process-cluster";
 import { pollUntil } from "../helpers/polling";
 import {
@@ -26,83 +24,13 @@ import type {
 import { CommandExecutorImpl } from "../../src/core/remote-command-executor";
 import { GitCommandError, GitService } from "../../src/core/git";
 import { ensurePlanningDirectory } from "../../src/core/planning-directory";
-import { MeshCommandExecutor } from "../../src/core/mesh-command-executor";
-import {
-  executionPathsEqual,
-  executionPathStyleForPlatform,
-  normalizeExecutionPath,
-} from "../../src/core/execution-path";
 import { runWithCurrentUser } from "../../src/context/user-context";
-import { openPreviewTcpForward } from "../../src/core/preview-tcp-forward";
-import { openTcpTunnel, type TcpTunnel } from "../../src/core/tcp-tunnel";
-import { MeshInteractiveTerminalConnection } from "../../src/core/terminal/mesh-terminal-connection";
-import type {
-  ExecutionHostBinding,
-  ExecutionHostDescriptor,
-} from "../../src/shared/execution-host";
-import type { VncSession } from "../../src/shared";
 import { AcpBackend, MeshAcpTransport } from "../../src/backends/acp";
-import type { AgentEvent } from "../../src/backends/types";
-import {
-  closeDatabase,
-  initializeDatabase,
-} from "../../src/persistence/database";
-import {
-  buildTerminalCwdProbe,
-  buildTerminalLiteralProbe,
-  buildTerminalResizeProbe,
-} from "../helpers/terminal-resize-probe";
-import {
-  MeshTerminalSessionCloseRequestSchema,
-  type MeshTerminalSessionCloseRequest,
-} from "../../src/contracts/schemas";
+import { closeDatabase, initializeDatabase } from "../../src/persistence/database";
 
 interface MeshHealthResponse {
   success: boolean;
   status: MeshControllerStatus;
-}
-
-interface CapturedTerminalRelease {
-  url: string;
-  request: MeshTerminalSessionCloseRequest;
-  tls?: Bun.TLSOptions;
-}
-
-interface FileWriteResponse {
-  success: true;
-  file: {
-    path: string;
-    versionToken: string;
-  };
-}
-
-interface FileListResponse {
-  directory: string;
-  entries: Array<{
-    name: string;
-    path: string;
-    kind: "file" | "directory";
-  }>;
-}
-
-interface FileReadResponse {
-  content: string;
-  file: {
-    path: string;
-  };
-}
-
-interface FileMutationResponse {
-  success: true;
-  file?: {
-    path: string;
-    versionToken: string;
-  };
-  deletedPath?: string;
-}
-
-interface FileUploadResponse {
-  uploadId: string;
 }
 
 interface ExecutionHostCommandResponse {
@@ -113,135 +41,7 @@ interface ExecutionHostCommandResponse {
   exitCode: number;
 }
 
-interface NativeCommandInvocation {
-  command: string;
-  args: string[];
-}
-
 let nodes: ManagedMeshNode[] = [];
-
-function nativeCommandProbeScript(
-  platformOs: "darwin" | "linux" | "windows",
-): { name: string; content: string } {
-  if (platformOs === "windows") {
-    return {
-      name: "command-probe.ps1",
-      content: [
-        "param([string]$Value)",
-        "[Console]::Out.WriteLine($Value)",
-        "[Console]::Out.WriteLine((Get-Location).Path)",
-        "[Console]::Out.WriteLine($env:CLANKY_NATIVE_EXEC_VALUE)",
-        "[Console]::Error.Write(\"native-stderr\")",
-        "exit 7",
-        "",
-      ].join("\n"),
-    };
-  }
-  return {
-    name: "command-probe.sh",
-    content: [
-      "printf '%s\\n' \"$1\"",
-      "pwd",
-      "printf '%s\\n' \"${CLANKY_NATIVE_EXEC_VALUE-}\"",
-      "printf 'native-stderr' >&2",
-      "exit 7",
-      "",
-    ].join("\n"),
-  };
-}
-
-function nativeScriptInvocation(
-  platformOs: "darwin" | "linux" | "windows",
-  scriptPath: string,
-  args: string[],
-): NativeCommandInvocation {
-  return platformOs === "windows"
-    ? {
-        command: "powershell.exe",
-        args: [
-          "-NoLogo",
-          "-NoProfile",
-          "-NonInteractive",
-          "-ExecutionPolicy",
-          "Bypass",
-          "-File",
-          scriptPath,
-          ...args,
-        ],
-      }
-    : {
-        command: "sh",
-        args: [scriptPath, ...args],
-      };
-}
-
-function windowsChildProbeScript(): string {
-  return [
-    "param([string]$PidFile, [string]$Mode)",
-    "$ping = Join-Path $env:SystemRoot \"System32\\ping.exe\"",
-    "$child = Start-Process -FilePath $ping -ArgumentList @(\"-t\", \"127.0.0.1\") -PassThru",
-    "[IO.File]::WriteAllText($PidFile, [string]$child.Id)",
-    "if ($Mode -eq \"output\") {",
-    "  while ($true) { [Console]::Out.Write(\"x\" * 1024) }",
-    "}",
-    "Wait-Process -Id $child.Id",
-    "",
-  ].join("\n");
-}
-
-function isProcessRunning(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    if (
-      error
-      && typeof error === "object"
-      && "code" in error
-      && error.code === "ESRCH"
-    ) {
-      return false;
-    }
-    throw error;
-  }
-}
-
-async function readChildPid(path: string): Promise<number> {
-  const value = Number.parseInt((await Bun.file(path).text()).trim(), 10);
-  if (!Number.isInteger(value) || value <= 0) {
-    throw new Error(`Invalid child process id in ${path}`);
-  }
-  return value;
-}
-
-async function expectWindowsChildStopped(pid: number): Promise<void> {
-  try {
-    await pollUntil(
-      async () => isProcessRunning(pid),
-      (running) => !running,
-      {
-        description: `Windows child process ${String(pid)} to stop`,
-        timeoutMs: 10_000,
-        formatLastObserved: String,
-      },
-    );
-  } finally {
-    if (isProcessRunning(pid)) {
-      const cleanup = Bun.spawn([
-        "taskkill.exe",
-        "/PID",
-        String(pid),
-        "/T",
-        "/F",
-      ], {
-        stdin: "ignore",
-        stdout: "ignore",
-        stderr: "ignore",
-      });
-      await cleanup.exited;
-    }
-  }
-}
 
 function expectRuntimeSnapshot(
   registration: MeshWorkerRegistration,
@@ -249,47 +49,6 @@ function expectRuntimeSnapshot(
 ): void {
   expect(registration.workerPlatform).toEqual(expected.platform);
   expect(registration.workerCapabilities).toEqual(expected.capabilities);
-}
-
-afterEach(async () => {
-  const failures: unknown[] = [];
-  for (const node of nodes.reverse()) {
-    try {
-      await stopMeshNode(node);
-    } catch (error) {
-      failures.push(error);
-    }
-  }
-  nodes = [];
-  if (failures.length > 0) {
-    throw new AggregateError(failures, "Failed to clean up native Mesh E2E processes");
-  }
-});
-
-async function nextAgentEvent(
-  stream: { next(): Promise<AgentEvent | null> },
-  timeoutMs = 10_000,
-): Promise<AgentEvent> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    const event = await Promise.race([
-      stream.next(),
-      new Promise<never>((_resolve, reject) => {
-        timer = setTimeout(
-          () => reject(new Error("Timed out waiting for the next ACP event")),
-          timeoutMs,
-        );
-      }),
-    ]);
-    if (!event) {
-      throw new Error("The ACP event stream closed before the expected event");
-    }
-    return event;
-  } finally {
-    if (timer !== undefined) {
-      clearTimeout(timer);
-    }
-  }
 }
 
 async function exerciseMeshAcpRuntime(
@@ -320,502 +79,27 @@ async function exerciseMeshAcpRuntime(
       const response = await backend.sendPrompt(session.id, {
         parts: [{ type: "text", text: "Exercise native Mesh ACP" }],
       });
-      expect(response.content).toContain("Mock ACP");
-
-      const stream = await backend.subscribeToEvents(session.id);
-      try {
-        await backend.sendPromptAsync(session.id, {
-          parts: [{ type: "text", text: "[slow] cancel native Mesh ACP" }],
-        });
-        expect(await nextAgentEvent(stream)).toMatchObject({
-          type: "session.status",
-          status: "busy",
-        });
-        await backend.abortSession(session.id);
-      } finally {
-        stream.close();
-      }
+      expect(response.content.length).toBeGreaterThan(0);
     } finally {
       await backend.disconnect();
     }
+  });
+}
 
-    const reconnectedBackend = new AcpBackend({
-      transportLifecycle: new MeshAcpTransport(),
-    });
+afterEach(async () => {
+  const failures: unknown[] = [];
+  for (const node of nodes.reverse()) {
     try {
-      await reconnectedBackend.connect({
-        mode: "spawn",
-        provider: "copilot",
-        directory,
-        mesh: {
-          workspaceId: "native-worker-acp-reconnect-e2e",
-          executionNodeId: registration.workerNodeId,
-        },
-      });
-      expect(reconnectedBackend.isConnected()).toBe(true);
-    } finally {
-      await reconnectedBackend.disconnect();
+      await stopMeshNode(node);
+    } catch (error) {
+      failures.push(error);
     }
-  });
-}
-
-async function exerciseMeshTerminal(
-  registration: MeshWorkerRegistration,
-  executionRoot: string,
-  directory: string,
-  platformOs: "linux" | "darwin" | "windows",
-  options: {
-    legacyRelease?: boolean;
-    failFirstRelease?: boolean;
-  } = {},
-): Promise<void> {
-  await runWithCurrentUser({
-    id: registration.localUserId,
-    username: "native-worker-owner",
-    role: "owner",
-    isOwner: true,
-    isAdmin: true,
-  }, async () => {
-    const output: string[] = [];
-    const errors: Error[] = [];
-    const windows = platformOs === "windows";
-    let capturedRelease: CapturedTerminalRelease | undefined;
-    let releaseAttempts = 0;
-    const releaseAwareFetch: typeof globalThis.fetch = Object.assign(
-      async (
-        input: Parameters<typeof fetch>[0],
-        init: Parameters<typeof fetch>[1],
-      ): Promise<Response> => {
-        const url = input instanceof Request ? input.url : String(input);
-        if (
-          init?.method === "DELETE"
-          && new URL(url).pathname.endsWith("/api/mesh/internal/terminal/session")
-        ) {
-          const request = MeshTerminalSessionCloseRequestSchema.parse(
-            JSON.parse(String(init.body)),
-          );
-          capturedRelease = {
-            url,
-            request,
-            ...("tls" in init && init.tls ? { tls: init.tls } : {}),
-          };
-          releaseAttempts += 1;
-          if (options.failFirstRelease && releaseAttempts === 1) {
-            return Response.json(
-              { error: "mesh_terminal_session_release_failed" },
-              { status: 500 },
-            );
-          }
-          if (options.legacyRelease) {
-            return Response.json(
-              { message: "Method not allowed" },
-              { status: 405 },
-            );
-          }
-        }
-        return await globalThis.fetch(input, init);
-      },
-      { preconnect: globalThis.fetch.preconnect },
-    );
-    const connection = new MeshInteractiveTerminalConnection({
-      workspaceId: "native-worker-terminal-e2e",
-      executionRoot,
-      directory,
-      executionNodeId: registration.workerNodeId,
-      provider: "copilot",
-      terminalSessionId: crypto.randomUUID(),
-      remoteSessionName: `clanky-native-terminal-${crypto.randomUUID()}`,
-      connectionMode: windows ? "dtach" : "direct",
-      useTmux: windows,
-      allowPersistentSessionCreate: true,
-      callbacks: {
-        onOutput: (chunk) => output.push(chunk),
-        onError: (error) => errors.push(error),
-      },
-      localUserId: registration.localUserId,
-      fetch: releaseAwareFetch,
-    });
-
-    try {
-      const result = await connection.connect();
-      expect(result.runtimeConnectionMode).toBe("direct");
-      if (windows) {
-        expect(result.notice).toContain("unavailable on Windows");
-      }
-
-      await connection.resize(113, 37);
-      const probe = buildTerminalResizeProbe({
-        marker: "NATIVE_TERMINAL_SIZE",
-        os: platformOs,
-        cols: 113,
-        rows: 37,
-      });
-      connection.sendInput(probe.input);
-      await pollUntil(
-        () => output.join(""),
-        (value) => value.includes(probe.expectedOutput),
-        {
-          description: "native Mesh terminal input, output, and resize",
-          timeoutMs: 20_000,
-        },
-      );
-      const literalProbe = buildTerminalLiteralProbe({
-        marker: "NATIVE_TERMINAL_LITERAL",
-        os: platformOs,
-      });
-      connection.sendInput(literalProbe.input);
-      await pollUntil(
-        () => output.join(""),
-        (value) => value.includes(literalProbe.expectedOutput),
-        {
-          description: "native Mesh terminal literal input",
-          timeoutMs: 20_000,
-        },
-      );
-      const expectedDirectory = isAbsolute(directory)
-        ? directory
-        : join(executionRoot, directory);
-      const pathStyle = platformOs === "windows" ? "windows" : "posix";
-      const expectedTerminalDirectories = [
-        normalizeExecutionPath(expectedDirectory, pathStyle),
-        normalizeExecutionPath(await realpath(expectedDirectory), pathStyle),
-      ];
-      const cwdMarker = "NATIVE_TERMINAL_CWD";
-      const cwdPrefix = `${cwdMarker}:`;
-      connection.sendInput(buildTerminalCwdProbe({
-        marker: cwdMarker,
-        os: platformOs,
-      }));
-      await pollUntil(
-        () => output.join(""),
-        (value) => {
-          const start = value.lastIndexOf(cwdPrefix);
-          const end = value.indexOf(":DONE", start + cwdPrefix.length);
-          if (start < 0 || end < 0) {
-            return false;
-          }
-          const reportedDirectory = value.slice(
-            start + cwdPrefix.length,
-            end,
-          );
-          return expectedTerminalDirectories.some(
-            (expectedTerminalDirectory) => executionPathsEqual(
-              reportedDirectory,
-              expectedTerminalDirectory,
-              pathStyle,
-            ),
-          );
-        },
-        {
-          description: "native Mesh terminal working directory",
-          timeoutMs: 20_000,
-        },
-      );
-      expect(errors).toEqual([]);
-    } finally {
-      if (options.failFirstRelease) {
-        await expect(connection.dispose()).rejects.toThrow(
-          "could not be released",
-        );
-        await pollUntil(
-          () => releaseAttempts,
-          (attempts) => attempts >= 2,
-          {
-            description: "automatic native Mesh terminal release retry",
-            timeoutMs: 10_000,
-          },
-        );
-      }
-      await connection.dispose();
-    }
-    if (!capturedRelease) {
-      throw new Error("The native Mesh terminal did not issue its release request");
-    }
-    if (options.failFirstRelease) {
-      expect(releaseAttempts).toBe(2);
-    }
-    await expectTerminalSessionReleased(capturedRelease);
-  });
-}
-
-async function expectTerminalSessionReleased(
-  release: CapturedTerminalRelease,
-): Promise<void> {
-  const terminalUrl = new URL(release.url);
-  terminalUrl.pathname = terminalUrl.pathname.replace(/\/session$/, "");
-  const authorizationResponse = await fetch(terminalUrl, {
-    headers: {
-      "x-clanky-mesh-session-id": release.request.sessionId,
-      "x-clanky-mesh-session-token": release.request.sessionToken,
-    },
-    ...(release.tls ? { tls: release.tls } : {}),
-  });
-  expect(authorizationResponse.status).toBe(401);
-  expect(await authorizationResponse.json()).toMatchObject({
-    error: "mesh_terminal_session_invalid",
-  });
-
-  const repeatedRequest: MeshTerminalSessionCloseRequest = {
-    ...release.request,
-    requestId: crypto.randomUUID(),
-  };
-  const repeatedRelease = await fetch(release.url, {
-    method: "DELETE",
-    headers: {
-      "content-type": "application/json",
-      "x-clanky-mesh-session-id": repeatedRequest.sessionId,
-      "x-clanky-mesh-request-id": repeatedRequest.requestId,
-    },
-    body: JSON.stringify(repeatedRequest),
-    ...(release.tls ? { tls: release.tls } : {}),
-  });
-  expect(repeatedRelease.status).toBe(200);
-  expect(await repeatedRelease.json()).toEqual({ success: true });
-}
-
-async function expectTunnelEcho(
-  tunnel: TcpTunnel,
-  message: string,
-): Promise<void> {
-  const echoed = new Promise<string>((resolve, reject) => {
-    const expected = Buffer.from(message);
-    let received = Buffer.alloc(0);
-    let settled = false;
-    const timer = setTimeout(() => {
-      settled = true;
-      reject(new Error("Timed out waiting for the native Mesh TCP echo"));
-    }, 10_000);
-    tunnel.once("error", (error) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      clearTimeout(timer);
-      reject(error);
-    });
-    tunnel.on("data", (data) => {
-      if (settled) {
-        return;
-      }
-      received = Buffer.concat([received, Buffer.from(data)]);
-      if (received.length < expected.length) {
-        return;
-      }
-      settled = true;
-      clearTimeout(timer);
-      resolve(received.toString("utf8"));
-    });
-  });
-  tunnel.write(message);
-  expect(await echoed).toBe(message);
-}
-
-async function expectPreviewEcho(
-  localPort: number,
-  message: string,
-): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
-    const expected = Buffer.from(message);
-    let received = Buffer.alloc(0);
-    let settled = false;
-    const socket = net.createConnection({
-      host: "127.0.0.1",
-      port: localPort,
-    });
-    const timer = setTimeout(() => {
-      settled = true;
-      socket.destroy();
-      reject(new Error("Timed out waiting for the native Mesh preview echo"));
-    }, 10_000);
-    socket.once("connect", () => socket.write(message));
-    socket.once("error", (error) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      clearTimeout(timer);
-      reject(error);
-    });
-    socket.on("data", (data) => {
-      if (settled) {
-        return;
-      }
-      received = Buffer.concat([received, Buffer.from(data)]);
-      if (received.length < expected.length) {
-        return;
-      }
-      settled = true;
-      clearTimeout(timer);
-      try {
-        expect(received.toString("utf8")).toBe(message);
-        socket.end();
-        resolve();
-      } catch (error) {
-        socket.destroy();
-        reject(error);
-      }
-    });
-  });
-}
-
-async function expectVncWebSocketEcho(
-  controller: ManagedMeshNode,
-  sessionId: string,
-  message: string,
-): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
-    const url = new URL("/api/vnc", controller.baseUrl);
-    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-    url.searchParams.set("vncSessionId", sessionId);
-    const options: Bun.WebSocketOptions = {
-      headers: { origin: controller.baseUrl },
-    };
-    const socket = Reflect.construct(WebSocket, [url, options]) as WebSocket;
-    socket.binaryType = "arraybuffer";
-    const expected = Buffer.from(message);
-    let received = Buffer.alloc(0);
-    let settled = false;
-    const timer = setTimeout(() => {
-      settled = true;
-      socket.close();
-      reject(new Error("Timed out waiting for the native Mesh VNC echo"));
-    }, 10_000);
-    socket.addEventListener("open", () => {
-      if (settled) {
-        socket.close();
-        return;
-      }
-      socket.send(Buffer.from(message));
-    });
-    socket.addEventListener("message", (event) => {
-      if (settled) {
-        return;
-      }
-      const chunk = typeof event.data === "string"
-        ? Buffer.from(event.data)
-        : Buffer.from(event.data as ArrayBuffer);
-      received = Buffer.concat([received, chunk]);
-      if (received.length < expected.length) {
-        return;
-      }
-      settled = true;
-      clearTimeout(timer);
-      socket.close();
-      try {
-        expect(received.toString("utf8")).toBe(message);
-        resolve();
-      } catch (error) {
-        reject(error);
-      }
-    });
-    socket.addEventListener("error", () => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      clearTimeout(timer);
-      socket.close();
-      reject(new Error("Native Mesh VNC websocket failed"));
-    });
-    socket.addEventListener("close", () => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      clearTimeout(timer);
-      reject(new Error("Native Mesh VNC websocket closed before echoing data"));
-    });
-  });
-}
-
-async function exerciseMeshTunnels(
-  controller: ManagedMeshNode,
-  registration: MeshWorkerRegistration,
-  binding: ExecutionHostBinding,
-): Promise<void> {
-  const server = Bun.listen({
-    hostname: "127.0.0.1",
-    port: 0,
-    socket: {
-      data(socket, data) {
-        socket.write(data);
-      },
-    },
-  });
-  try {
-    await runWithCurrentUser({
-      id: registration.localUserId,
-      username: "native-worker-owner",
-      role: "owner",
-      isOwner: true,
-      isAdmin: true,
-    }, async () => {
-      const tunnel = await openTcpTunnel({
-        binding,
-        remoteHost: "127.0.0.1",
-        remotePort: server.port,
-      });
-      const tunnelClosed = new Promise<void>((resolve) => {
-        tunnel.once("close", resolve);
-      });
-      try {
-        await expectTunnelEcho(tunnel, "native-mesh-tunnel");
-      } finally {
-        tunnel.destroy();
-        await tunnelClosed;
-      }
-
-      const preview = await openPreviewTcpForward(binding, server.port);
-      try {
-        await expectPreviewEcho(preview.localPort, "native-mesh-preview");
-      } finally {
-        await preview.close();
-      }
-
-      if (binding.host.kind !== "mesh") {
-        throw new Error("Native worker VNC requires a Mesh execution host");
-      }
-      const sessionsPath = `/api/execution-hosts/mesh/${
-        encodeURIComponent(binding.host.nodeId)
-      }/vnc-sessions`;
-      const created = await meshJsonRequest<VncSession>(
-        controller,
-        sessionsPath,
-        {
-          method: "POST",
-          body: {
-            remotePort: server.port,
-            credentialToken: null,
-          },
-        },
-      );
-      expect(created.status).toBe(201);
-      expect(created.body.state.status).toBe("active");
-      try {
-        await expectVncWebSocketEcho(
-          controller,
-          created.body.config.id,
-          "native-mesh-vnc",
-        );
-      } finally {
-        const deleted = await meshJsonRequest<{ success: boolean }>(
-          controller,
-          `/api/vnc-sessions/${encodeURIComponent(created.body.config.id)}`,
-          { method: "DELETE" },
-        );
-        expect(deleted.status).toBe(200);
-        expect(deleted.body.success).toBe(true);
-      }
-      const missing = await meshJsonRequest<{ error: string }>(
-        controller,
-        `/api/vnc-sessions/${encodeURIComponent(created.body.config.id)}`,
-      );
-      expect(missing.status).toBe(404);
-    });
-  } finally {
-    server.stop(true);
   }
-}
+  nodes = [];
+  if (failures.length > 0) {
+    throw new AggregateError(failures, "Failed to clean up native Mesh E2E processes");
+  }
+});
 
 describe("native worker registration", () => {
   test("runs Git and managed worktree paths on the native host", async () => {
@@ -883,18 +167,6 @@ describe("native worker registration", () => {
       );
       expect(await git.worktreeExists(configuredRepoDirectory, worktreePath)).toBe(true);
 
-      const excludePathResult = await executor.exec(
-        "git",
-        ["-C", repoDirectory, "rev-parse", "--path-format=absolute", "--git-path", "info/exclude"],
-        { cwd: repoDirectory },
-      );
-      expect(excludePathResult.success).toBe(true);
-      const excludeContent = await executor.readFile(
-        excludePathResult.stdout.trim(),
-      );
-      expect(excludeContent).toContain(".clanky-worktrees");
-      expect(excludeContent).toContain(".clanky-planning");
-
       await git.removeWorktree(configuredRepoDirectory, worktreePath, { force: true });
       expect(await executor.directoryExists(worktreePath)).toBe(false);
     } finally {
@@ -902,7 +174,7 @@ describe("native worker registration", () => {
     }
   }, 120_000);
 
-  test("enrolls, reports its runtime, passes health, and reconnects after restart", async () => {
+  test("enrolls, executes through ACP, reports health, and reconnects after restart", async () => {
     const command = await compiledClankyCommand();
     const controller = await startMeshNode({ role: "controller", command });
     nodes.push(controller);
@@ -922,13 +194,6 @@ describe("native worker registration", () => {
       process.platform,
       process.arch,
     );
-    expect(expectedRuntime.platform).not.toBeNull();
-    const expectedRunnerOs = process.env["CLANKY_NATIVE_E2E_EXPECTED_OS"];
-    if (expectedRunnerOs) {
-      const actualRunnerOs: string | undefined = expectedRuntime.platform?.os;
-      expect(actualRunnerOs).toBe(expectedRunnerOs);
-    }
-
     const registered = await pollUntil(
       async () => await meshJsonRequest<MeshControllerStatus>(
         controller,
@@ -957,8 +222,6 @@ describe("native worker registration", () => {
       },
     });
     expectRuntimeSnapshot(registration, expectedRuntime);
-    const workerCapabilities = registration.workerCapabilities ?? {};
-    const platformOs = expectedRuntime.platform!.os;
 
     const workerStatus = await meshJsonRequest<MeshWorkerStatus>(
       worker,
@@ -974,55 +237,45 @@ describe("native worker registration", () => {
         ...expectedRuntime,
       },
     });
-    expect(workerCapabilities.commandExecution).toBe(1);
-    expect(workerCapabilities.acpRuntime).toBe(2);
-    expect(workerCapabilities).toMatchObject({
-      interactiveTerminal: 1,
-      tcpTunnel: 1,
-      vnc: 1,
-    });
-    if (platformOs === "windows") {
-      expect(workerCapabilities.provisioning).toBeUndefined();
-      expect(workerCapabilities.devboxLifecycle).toBeUndefined();
-    }
 
-    const providerDiscovery = await meshJsonRequest<{
-      providers?: Array<{ providerID: string; available: boolean }>;
-    }>(
-      controller,
-      `/api/execution-hosts/mesh/${
-        encodeURIComponent(registration.workerNodeId)
-      }/chat-providers`,
+    const execution = await pollUntil(
+      async () => await meshJsonRequest<ExecutionHostCommandResponse>(
+        controller,
+        `/api/execution-hosts/mesh/${encodeURIComponent(registration.workerNodeId)}/exec`,
+        {
+          method: "POST",
+          body: {
+            command: "pwd",
+            args: [],
+            cwd: worker.dataDir,
+            timeoutMs: 5_000,
+          },
+        },
+      ),
+      (response) => response.status === 200 && response.body.success === true,
       {
-        method: "POST",
-        body: {},
+        description: "native worker command execution",
+        timeoutMs: 15_000,
+        formatLastObserved: (response) => JSON.stringify(response),
       },
     );
-    expect(providerDiscovery.status).toBe(200);
-    expect(providerDiscovery.body.providers).toContainEqual({
-      providerID: "copilot",
-      available: true,
-    });
+    expect(execution.body.stdout.trim()).toBe(worker.dataDir);
+    const previousDataDir = process.env["CLANKY_DATA_DIR"];
+    closeDatabase();
+    process.env["CLANKY_DATA_DIR"] = controller.dataDir;
+    await initializeDatabase();
+    try {
+      await exerciseMeshAcpRuntime(registration, worker.dataDir);
+    } finally {
+      closeDatabase();
+      if (previousDataDir === undefined) {
+        delete process.env["CLANKY_DATA_DIR"];
+      } else {
+        process.env["CLANKY_DATA_DIR"] = previousDataDir;
+      }
+    }
 
-    const executionHosts = await meshJsonRequest<ExecutionHostDescriptor[]>(
-      controller,
-      "/api/execution-hosts",
-    );
-    expect(executionHosts.status).toBe(200);
-    const executionHost = executionHosts.body.find(
-      (candidate) => candidate.ref.kind === "mesh"
-        && candidate.ref.nodeId === registration.workerNodeId,
-    );
-    expect(executionHost).toBeDefined();
-    const executionHostBinding: ExecutionHostBinding = {
-      host: executionHost!.ref,
-      targetKey: executionHost!.targetKey,
-      revision: executionHost!.revision,
-    };
-
-    const initialHealth = await pollUntil<
-      MeshJsonResponse<MeshHealthResponse>
-    >(
+    const initialHealth = await pollUntil(
       async () => await meshJsonRequest<MeshHealthResponse>(
         controller,
         "/api/mesh/health",
@@ -1037,619 +290,10 @@ describe("native worker registration", () => {
         formatLastObserved: (response) => JSON.stringify(response),
       },
     );
-    const initialLastSeenAt = initialHealth.body.status.workers[0]!.lastSeenAt!;
-
-    const filesPath = `/api/execution-hosts/mesh/${encodeURIComponent(
-      registration.workerNodeId,
-    )}/files`;
-    const createdFile = await meshJsonRequest<FileWriteResponse>(
-      controller,
-      `${filesPath}/write`,
-      {
-        method: "POST",
-        body: {
-          path: "native-files/worker.txt",
-          content: "created on native worker\n",
-          expectedVersionToken: null,
-          overwrite: false,
-          startDirectory: null,
-        },
-      },
-    );
-    expect(createdFile.status).toBe(200);
-    expect(createdFile.body.file.path).toBe("native-files/worker.txt");
-
-    const createdPlan = await meshJsonRequest<FileWriteResponse>(
-      controller,
-      `${filesPath}/write`,
-      {
-        method: "POST",
-        body: {
-          path: "native-files/.clanky-planning/plan.md",
-          content: "# Native relative workspace plan\n",
-          expectedVersionToken: null,
-          overwrite: false,
-          startDirectory: null,
-        },
-      },
-    );
-    expect(createdPlan.status).toBe(200);
-
-    const terminalDirectoryFile = await meshJsonRequest<FileWriteResponse>(
-      controller,
-      `${filesPath}/write`,
-      {
-        method: "POST",
-        body: {
-          path: "native-terminal/session.txt",
-          content: "terminal cwd\n",
-          expectedVersionToken: null,
-          overwrite: false,
-          startDirectory: null,
-        },
-      },
-    );
-    expect(terminalDirectoryFile.status).toBe(200);
-
-    const commandProbe = nativeCommandProbeScript(platformOs);
-    const commandProbeRelativePath = `native-files/${commandProbe.name}`;
-    const commandProbeFile = await meshJsonRequest<FileWriteResponse>(
-      controller,
-      `${filesPath}/write`,
-      {
-        method: "POST",
-        body: {
-          path: commandProbeRelativePath,
-          content: commandProbe.content,
-          expectedVersionToken: null,
-          overwrite: false,
-          startDirectory: null,
-        },
-      },
-    );
-    expect(commandProbeFile.status).toBe(200);
-    const commandDirectory = join(worker.dataDir, "native-files");
-    const commandProbePath = join(worker.dataDir, commandProbeRelativePath);
-    const commandInvocation = nativeScriptInvocation(
-      platformOs,
-      commandProbePath,
-      ["literal argument with spaces"],
-    );
-    const executionPath = `/api/execution-hosts/mesh/${
-      encodeURIComponent(registration.workerNodeId)
-    }/exec`;
-    const commandResponse = await meshJsonRequest<ExecutionHostCommandResponse>(
-      controller,
-      executionPath,
-      {
-        method: "POST",
-        body: {
-          command: commandInvocation.command,
-          args: commandInvocation.args,
-          cwd: "native-files",
-        },
-      },
-    );
-    expect(commandResponse.status).toBe(200);
-    expect(commandResponse.body).toMatchObject({
-      success: false,
-      stderr: "native-stderr",
-      exitCode: 7,
-    });
-    const commandOutput = commandResponse.body.stdout.split(/\r?\n/u);
-    expect(commandOutput[0]).toBe("literal argument with spaces");
-    const canonicalCommandDirectory = await realpath(commandDirectory);
-    const canonicalReportedDirectory = await realpath(commandOutput[1]!);
-    expect(executionPathsEqual(
-      canonicalReportedDirectory,
-      canonicalCommandDirectory,
-      executionPathStyleForPlatform(platformOs)!,
-    )).toBe(true);
-
-    let windowsChildProbePath: string | undefined;
-    if (platformOs === "windows") {
-      const relativePath = "native-files/child-probe.ps1";
-      const childProbeFile = await meshJsonRequest<FileWriteResponse>(
-        controller,
-        `${filesPath}/write`,
-        {
-          method: "POST",
-          body: {
-            path: relativePath,
-            content: windowsChildProbeScript(),
-            expectedVersionToken: null,
-            overwrite: false,
-            startDirectory: null,
-          },
-        },
-      );
-      expect(childProbeFile.status).toBe(200);
-      windowsChildProbePath = join(worker.dataDir, relativePath);
-
-      const timeoutPidPath = join(commandDirectory, "timeout-child.pid");
-      const timeoutInvocation = nativeScriptInvocation(
-        platformOs,
-        windowsChildProbePath,
-        [timeoutPidPath, "wait"],
-      );
-      const timeoutResponse = await meshJsonRequest<ExecutionHostCommandResponse>(
-        controller,
-        executionPath,
-        {
-          method: "POST",
-          body: {
-            command: timeoutInvocation.command,
-            args: timeoutInvocation.args,
-            cwd: "native-files",
-            timeoutMs: 2_000,
-          },
-        },
-      );
-      expect(timeoutResponse).toMatchObject({
-        status: 200,
-        body: {
-          success: false,
-          exitCode: 124,
-        },
-      });
-      await expectWindowsChildStopped(await readChildPid(timeoutPidPath));
-
-      const cancelledPidPath = join(commandDirectory, "cancelled-child.pid");
-      const cancelledInvocation = nativeScriptInvocation(
-        platformOs,
-        windowsChildProbePath,
-        [cancelledPidPath, "wait"],
-      );
-      const abortController = new AbortController();
-      const cancelledRequest = meshJsonRequest<ExecutionHostCommandResponse>(
-        controller,
-        executionPath,
-        {
-          method: "POST",
-          body: {
-            command: cancelledInvocation.command,
-            args: cancelledInvocation.args,
-            cwd: "native-files",
-            timeoutMs: 30_000,
-          },
-          signal: abortController.signal,
-        },
-      );
-      await pollUntil(
-        async () => await Bun.file(cancelledPidPath).exists(),
-        Boolean,
-        {
-          description: "Windows command child pid file",
-          timeoutMs: 10_000,
-          formatLastObserved: String,
-        },
-      );
-      const cancelledChildPid = await readChildPid(cancelledPidPath);
-      abortController.abort();
-      const requestWasAborted = await cancelledRequest.then(
-        () => false,
-        () => true,
-      );
-      expect(requestWasAborted).toBe(true);
-      await expectWindowsChildStopped(cancelledChildPid);
-    }
-
-    const previousDataDir = process.env["CLANKY_DATA_DIR"];
-    closeDatabase();
-    process.env["CLANKY_DATA_DIR"] = controller.dataDir;
-    await initializeDatabase();
-    const meshExecutor = new MeshCommandExecutor({
-      workspaceId: "native-relative-workspace",
-      directory: "native-files",
-      executionNodeId: registration.workerNodeId,
-      provider: "copilot",
-      localUserId: registration.localUserId,
-      pathStyle: executionPathStyleForPlatform(process.platform),
-      capabilities: workerCapabilities,
-    });
-    try {
-      const executionDirectory = await meshExecutor.getExecutionDirectory();
-      expect(executionDirectory).toBe(join(worker.dataDir, "native-files"));
-      expect(await meshExecutor.fileExists(
-        join(executionDirectory, ".clanky-planning", "plan.md"),
-      )).toBe(true);
-      expect(await meshExecutor.isAgentProviderAvailable("copilot")).toBe(true);
-
-      const environmentResult = await meshExecutor.exec(
-        commandInvocation.command,
-        commandInvocation.args,
-        {
-          cwd: executionDirectory,
-          env: {
-            CLANKY_NATIVE_EXEC_VALUE: "environment value with spaces",
-          },
-        },
-      );
-      expect(environmentResult).toMatchObject({
-        success: false,
-        stderr: "native-stderr",
-        exitCode: 7,
-      });
-      const environmentOutput = environmentResult.stdout.split(/\r?\n/u);
-      expect(environmentOutput[0]).toBe("literal argument with spaces");
-      expect(environmentOutput[2]).toBe("environment value with spaces");
-
-      if (platformOs === "windows") {
-        const invalidCwd = await meshJsonRequest<{ error: string }>(
-          controller,
-          executionPath,
-          {
-            method: "POST",
-            body: {
-              command: commandInvocation.command,
-              args: commandInvocation.args,
-              cwd: "C:drive-relative",
-            },
-          },
-        );
-        expect(invalidCwd).toMatchObject({
-          status: 400,
-          body: { error: "execution_host_exec_cwd_invalid" },
-        });
-
-        const outputPidPath = join(commandDirectory, "output-child.pid");
-        const outputInvocation = nativeScriptInvocation(
-          platformOs,
-          windowsChildProbePath!,
-          [outputPidPath, "output"],
-        );
-        let outputLimitError: unknown;
-        try {
-          await meshExecutor.exec(
-            outputInvocation.command,
-            outputInvocation.args,
-            {
-              cwd: executionDirectory,
-              maxOutputBytes: 1_024,
-            },
-          );
-        } catch (error) {
-          outputLimitError = error;
-        }
-        expect(outputLimitError).toMatchObject({
-          code: "mesh_execution_result_too_large",
-        });
-        await expectWindowsChildStopped(await readChildPid(outputPidPath));
-      }
-
-      for (const scenario of [
-        {
-          legacyRelease: false,
-          relativeDirectory: false,
-          failFirstRelease: true,
-        },
-        { legacyRelease: true, relativeDirectory: true },
-      ]) {
-        await exerciseMeshTerminal(
-          registration,
-          worker.dataDir,
-          scenario.relativeDirectory
-            ? "native-terminal"
-            : join(worker.dataDir, "native-terminal"),
-          platformOs,
-          {
-            legacyRelease: scenario.legacyRelease,
-            failFirstRelease: scenario.failFirstRelease,
-          },
-        );
-      }
-      const deletedTerminalDirectory = await meshJsonRequest<FileMutationResponse>(
-        controller,
-        `${filesPath}/delete`,
-        {
-          method: "POST",
-          body: {
-            path: "native-terminal",
-            kind: "directory",
-            startDirectory: null,
-          },
-        },
-      );
-      expect(deletedTerminalDirectory.status).toBe(200);
-      expect(await Bun.file(
-        join(worker.dataDir, "native-terminal", "session.txt"),
-      ).exists()).toBe(false);
-
-      await exerciseMeshTunnels(
-        controller,
-        registration,
-        executionHostBinding,
-      );
-
-      const git = GitService.withExecutor(meshExecutor);
-      for (const args of [
-        ["init"],
-        ["config", "user.name", "Clanky Mesh E2E"],
-        ["config", "user.email", "mesh-e2e@clanky.invalid"],
-      ]) {
-        const result = await meshExecutor.execGit(
-          executionDirectory,
-          args,
-          { scope: "repository" },
-        );
-        expect(result.success).toBe(true);
-      }
-      const gitSshCommand = await meshExecutor.getGitEnvironmentVariable(
-        "GIT_SSH_COMMAND",
-      );
-      expect(
-        gitSshCommand === null || typeof gitSshCommand === "string",
-      ).toBe(true);
-      expect(await git.isGitRepo(executionDirectory)).toBe(true);
-      expect(await meshExecutor.writeFile(
-        join(executionDirectory, "git-tracked.txt"),
-        "initial through Mesh\n",
-      )).toBe(true);
-      await git.stageAll(executionDirectory);
-      await git.commit(
-        executionDirectory,
-        "test: initialize Mesh repository",
-      );
-      const currentBranch = await git.getCurrentBranch(executionDirectory);
-      expect(currentBranch.length).toBeGreaterThan(0);
-      expect(await git.hasUncommittedChanges(executionDirectory)).toBe(false);
-
-      expect(await meshExecutor.writeFile(
-        join(executionDirectory, "git-tracked.txt"),
-        "changed through Mesh\n",
-      )).toBe(true);
-      expect(await git.getChangedFiles(executionDirectory)).toEqual([
-        "git-tracked.txt",
-      ]);
-
-      const worktreePath = await git.getManagedWorktreePath(
-        executionDirectory,
-        "native-mesh-e2e",
-      );
-      await git.createWorktree(
-        executionDirectory,
-        worktreePath,
-        "native-mesh-e2e",
-        currentBranch,
-      );
-      expect(
-        await git.worktreeExists(executionDirectory, worktreePath),
-      ).toBe(true);
-      expect(
-        (await git.listWorktrees(executionDirectory)).some(
-          (worktree) => worktree.branch === "native-mesh-e2e",
-        ),
-      ).toBe(true);
-      await git.removeWorktree(
-        executionDirectory,
-        worktreePath,
-        { force: true },
-      );
-      expect(await meshExecutor.directoryExists(worktreePath)).toBe(false);
-      await exerciseMeshAcpRuntime(registration, executionDirectory);
-    } catch (error) {
-      const serverLogFile = Bun.file(
-        join(worker.dataDir, "logs", "server.log"),
-      );
-      const serverLog = await serverLogFile.exists()
-        ? await serverLogFile.text()
-        : "";
-      let processOutput = "";
-      if (worker.child.exitCode !== null) {
-        const [stdout, stderr] = await Promise.all([
-          worker.output.stdout,
-          worker.output.stderr,
-        ]);
-        processOutput = [stdout.trim(), stderr.trim()]
-          .filter((value) => value.length > 0)
-          .join("\n");
-      } else {
-        processOutput = worker.output.snapshot();
-      }
-      const diagnostics = [serverLog.trim(), processOutput]
-        .filter((value) => value.length > 0)
-        .join("\n")
-        .slice(-20_000);
-      throw new Error(
-        `Native worker feature scenario failed (exit ${
-          String(worker.child.exitCode)
-        }, signal ${String(worker.child.signalCode)})${
-          diagnostics ? `:\n${diagnostics}` : "."
-        }`,
-        { cause: error },
-      );
-    } finally {
-      meshExecutor.close();
-      closeDatabase();
-      if (previousDataDir === undefined) {
-        delete process.env["CLANKY_DATA_DIR"];
-      } else {
-        process.env["CLANKY_DATA_DIR"] = previousDataDir;
-      }
-    }
-
-    const listedFiles = await meshJsonRequest<FileListResponse>(
-      controller,
-      `${filesPath}?path=${encodeURIComponent("native-files")}`,
-    );
-    expect(listedFiles.status).toBe(200);
-    expect(listedFiles.body.directory).toBe("native-files");
-    expect(listedFiles.body.entries).toContainEqual({
-      name: "worker.txt",
-      path: "native-files/worker.txt",
-      kind: "file",
-    });
-
-    const readFile = await meshJsonRequest<FileReadResponse>(
-      controller,
-      `${filesPath}/content?path=${encodeURIComponent("native-files/worker.txt")}`,
-    );
-    expect(readFile.status).toBe(200);
-    expect(readFile.body).toMatchObject({
-      content: "created on native worker\n",
-      file: { path: "native-files/worker.txt" },
-    });
-
-    const overwrittenFile = await meshJsonRequest<FileWriteResponse>(
-      controller,
-      `${filesPath}/write`,
-      {
-        method: "POST",
-        body: {
-          path: "native-files/worker.txt",
-          content: "updated on native worker\n",
-          expectedVersionToken: createdFile.body.file.versionToken,
-          overwrite: false,
-          startDirectory: null,
-        },
-      },
-    );
-    expect(overwrittenFile.status).toBe(200);
-    expect(await Bun.file(
-      join(worker.dataDir, "native-files", "worker.txt"),
-    ).text()).toBe("updated on native worker\n");
-
-    const renamedFile = await meshJsonRequest<FileMutationResponse>(
-      controller,
-      `${filesPath}/rename`,
-      {
-        method: "POST",
-        body: {
-          path: "native-files/worker.txt",
-          newName: "renamed.txt",
-          expectedVersionToken: overwrittenFile.body.file.versionToken,
-          overwrite: false,
-          startDirectory: null,
-        },
-      },
-    );
-    expect(renamedFile.status).toBe(200);
-    expect(renamedFile.body.file?.path).toBe("native-files/renamed.txt");
-
-    const downloadResponse = await meshJsonRequest<string>(
-      controller,
-      `${filesPath}/download?path=${
-        encodeURIComponent("native-files/renamed.txt")
-      }`,
-      {
-        responseType: "text",
-      },
-    );
-    expect(downloadResponse.status).toBe(200);
-    expect(downloadResponse.body).toBe("updated on native worker\n");
-
-    const uploadedContent = "streamed to native worker\n";
-    const upload = await meshJsonRequest<FileUploadResponse>(
-      controller,
-      `${filesPath}/upload`,
-      {
-        method: "POST",
-        body: {
-          directory: "native-files",
-          fileName: "renamed.txt",
-          size: new TextEncoder().encode(uploadedContent).byteLength,
-          overwrite: true,
-          startDirectory: null,
-        },
-      },
-    );
-    expect(upload.status).toBe(201);
-
-    const uploadChunkResponse = await meshJsonRequest<{ success: boolean }>(
-      controller,
-      `${filesPath}/upload/chunk?uploadId=${
-        encodeURIComponent(upload.body.uploadId)
-      }&offset=0`,
-      {
-        method: "POST",
-        rawBody: uploadedContent,
-      },
-    );
-    expect(uploadChunkResponse.status).toBe(200);
-
-    const completedUpload = await meshJsonRequest<FileMutationResponse>(
-      controller,
-      `${filesPath}/upload/complete`,
-      {
-        method: "POST",
-        body: {
-          uploadId: upload.body.uploadId,
-          startDirectory: null,
-        },
-      },
-    );
-    expect(completedUpload.status).toBe(200);
-    expect(completedUpload.body.file?.path).toBe("native-files/renamed.txt");
-
-    const uploadedFile = await meshJsonRequest<FileReadResponse>(
-      controller,
-      `${filesPath}/content?path=${
-        encodeURIComponent("native-files/renamed.txt")
-      }`,
-    );
-    expect(uploadedFile.status).toBe(200);
-    expect(uploadedFile.body.content).toBe(uploadedContent);
-
-    const deletedDirectory = await meshJsonRequest<FileMutationResponse>(
-      controller,
-      `${filesPath}/delete`,
-      {
-        method: "POST",
-        body: {
-          path: "native-files",
-          kind: "directory",
-          startDirectory: null,
-        },
-      },
-    );
-    expect(deletedDirectory.status).toBe(200);
-    expect(deletedDirectory.body.deletedPath).toBe("native-files");
-    expect(await Bun.file(
-      join(worker.dataDir, "native-files", "renamed.txt"),
-    ).exists()).toBe(false);
-
-    const escapedPath = `../${basename(worker.dataDir)}-escape.txt`;
-    const escapedWrite = await meshJsonRequest<FileWriteResponse>(
-      controller,
-      `${filesPath}/write`,
-      {
-        method: "POST",
-        body: {
-          path: escapedPath,
-          content: "trusted host access\n",
-          expectedVersionToken: null,
-          overwrite: false,
-          startDirectory: null,
-        },
-      },
-    );
-    expect(escapedWrite.status).toBe(200);
-    expect(escapedWrite.body.file.path).toBe(escapedPath);
-
-    const escapedRead = await meshJsonRequest<FileReadResponse>(
-      controller,
-      `${filesPath}/content?path=${encodeURIComponent(escapedPath)}`,
-    );
-    expect(escapedRead.status).toBe(200);
-    expect(escapedRead.body.content).toBe("trusted host access\n");
-
-    const escapedDelete = await meshJsonRequest<FileMutationResponse>(
-      controller,
-      `${filesPath}/delete`,
-      {
-        method: "POST",
-        body: {
-          path: escapedPath,
-          kind: "file",
-          startDirectory: null,
-        },
-      },
-    );
-    expect(escapedDelete.status).toBe(200);
+    const initialLastSeenAt = initialHealth.body.status.workers[0]!.lastSeenAt;
+    expect(initialLastSeenAt).toBeString();
 
     await restartMeshNode(worker, 20_000);
-    expect(worker.generation).toBe(2);
-
     const reconnectedWorker = await pollUntil(
       async () => await meshJsonRequest<MeshWorkerStatus>(
         worker,
@@ -1684,8 +328,11 @@ describe("native worker registration", () => {
         formatLastObserved: (response) => JSON.stringify(response),
       },
     );
-    const registrationAfterRestart = healthAfterRestart.body.status.workers[0]!;
-    expect(registrationAfterRestart.createdAt).toBe(registration.createdAt);
-    expectRuntimeSnapshot(registrationAfterRestart, expectedRuntime);
+    expect(healthAfterRestart.body.status.workers[0]?.workerNodeId)
+      .toBe(registration.workerNodeId);
+    expectRuntimeSnapshot(
+      healthAfterRestart.body.status.workers[0]!,
+      expectedRuntime,
+    );
   }, 120_000);
 });

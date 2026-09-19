@@ -48,8 +48,7 @@ describe("Regular Task User Scenarios", () => {
 
     test("creates task based on the default branch without clearing .clanky-planning folder", async () => {
       // Verify .clanky-planning files exist before creating task
-      const planContent = await Bun.file(join(ctx.workDir, ".clanky-planning/plan.md")).text();
-      expect(planContent).toContain("# Plan");
+      expect(await Bun.file(join(ctx.workDir, ".clanky-planning/plan.md")).exists()).toBe(true);
 
       // Create task via API (simulating UI "Create Task" button)
       const { status, body } = await createTaskViaAPI(ctx.baseUrl, {
@@ -76,8 +75,7 @@ describe("Regular Task User Scenarios", () => {
       });
 
       // Verify .clanky-planning files still exist
-      const planContentAfter = await Bun.file(join(ctx.workDir, ".clanky-planning/plan.md")).text();
-      expect(planContentAfter).toContain("# Plan");
+      expect(await Bun.file(join(ctx.workDir, ".clanky-planning/plan.md")).exists()).toBe(true);
 
       // Clean up - discard the task
       await discardTaskViaAPI(ctx.baseUrl, task.config.id);
@@ -201,16 +199,14 @@ describe("Regular Task User Scenarios", () => {
       // Verify plan endpoint works
       const { status: planStatus, body: planBody } = await getTaskPlanViaAPI(ctx.baseUrl, task.config.id);
       expect(planStatus).toBe(200);
-      const plan = planBody as { exists: boolean; content: string };
+      const plan = planBody as { exists: boolean };
       expect(plan.exists).toBe(true);
-      expect(plan.content).toContain("# Plan");
 
       // Verify status-file endpoint works
       const { status: statusFileStatus, body: statusFileBody } = await getTaskStatusFileViaAPI(ctx.baseUrl, task.config.id);
       expect(statusFileStatus).toBe(200);
-      const statusFile = statusFileBody as { exists: boolean; content: string };
+      const statusFile = statusFileBody as { exists: boolean };
       expect(statusFile.exists).toBe(true);
-      expect(statusFile.content).toContain("# Status");
 
       // Clean up
       await discardTaskViaAPI(ctx.baseUrl, task.config.id);

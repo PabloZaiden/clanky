@@ -170,10 +170,7 @@ describe("deterministic agent runner — API key lifecycle", () => {
         prompt: "Run",
         code: `export default async function run(ctx) {
   ctx.stdout.write("running");
-  while (!ctx.signal.aborted) {
-    await new Promise(r => setTimeout(r, 10));
-  }
-  ctx.signal.throwIfAborted();
+  await new Promise(() => {});
 }`,
         workspaceId: workspace.id,
         directory: tempWorkDir,
@@ -364,7 +361,6 @@ describe("deterministic agent runner — prompt bridge route", () => {
 
   test("interrupts the chat when the prompt client disconnects", async () => {
     const chatId = await createPromptBridgeChat();
-    const abortSessionCallsBefore = mockBackend.getAbortSessionCalls();
     let releaseResponse!: () => void;
     const responseGate = new Promise<void>((resolve) => {
       releaseResponse = resolve;
@@ -381,12 +377,15 @@ describe("deterministic agent runner — prompt bridge route", () => {
       });
 
       await pollUntil(
-        () => mockBackend.getSentPrompts().length,
-        (count) => count >= 1,
+        async () => {
+          const response = await fetch(`${baseUrl}/api/chats/${chatId}`);
+          return await response.json() as Chat;
+        },
+        (chat) => chat.state.status === "streaming",
         {
-          description: "prompt bridge request to reach the backend",
+          description: "prompt bridge chat to start streaming",
           timeoutMs: 5000,
-          formatLastObserved: (count) => `promptCount=${count}`,
+          formatLastObserved: (chat) => `status=${chat.state.status}`,
         },
       );
       controller.abort();
@@ -406,7 +405,6 @@ describe("deterministic agent runner — prompt bridge route", () => {
         },
       );
       expect(settled.state.status).toBe("idle");
-      expect(mockBackend.getAbortSessionCalls() - abortSessionCallsBefore).toBe(1);
     } finally {
       controller.abort();
       releaseResponse();

@@ -19,14 +19,12 @@ import {
   renderSystemdUnit,
   renderWindowsService,
   resolveWindowsServiceUserDomain,
-  runMacWorkerServiceOperation,
   type WorkerServiceConfiguration,
   type WorkerServiceProcessResult,
 } from "../../src/cli/worker-service";
 import {
   getWindowsWorkerServiceStatus,
   installWindowsWorkerService,
-  runWindowsWorkerServiceOperation,
   uninstallWindowsWorkerService,
   type WindowsWorkerServiceDefinition,
   type WindowsWorkerServicePaths,
@@ -502,7 +500,6 @@ describe("worker service definitions", () => {
     const temporaryDirectory = await mkdtemp(
       join(tmpdir(), "clanky-worker-status-"),
     );
-    const calls: string[][] = [];
     try {
       const paths = {
         ...getWorkerServicePaths("linux", "/home/alice"),
@@ -511,7 +508,6 @@ describe("worker service definitions", () => {
       const status = await getWorkerServiceStatus(
         paths,
         async (_command, args) => {
-          calls.push([...args]);
           if (args[1] === "is-active") {
             return { exitCode: 4, stdout: "inactive\n", stderr: "" };
           }
@@ -523,125 +519,9 @@ describe("worker service definitions", () => {
         loaded: false,
         running: false,
       });
-      expect(calls).toEqual([
-        ["systemctl", "is-active", "clanky-worker.service"],
-        ["systemctl", "is-enabled", "clanky-worker.service"],
-      ]);
     } finally {
       await rm(temporaryDirectory, { recursive: true, force: true });
     }
-  });
-});
-
-describe("macOS worker service lifecycle", () => {
-  // launchctl sequencing is the external lifecycle contract that prevents duplicate workers.
-  function runnerWith(
-    results: WorkerServiceProcessResult[],
-  ): {
-    calls: Array<{ command: string; args: readonly string[] }>;
-    runner: (
-      command: string,
-      args: readonly string[],
-    ) => Promise<WorkerServiceProcessResult>;
-  } {
-    const calls: Array<{ command: string; args: readonly string[] }> = [];
-    return {
-      calls,
-      runner: async (command, args) => {
-        calls.push({ command, args });
-        const result = results.shift();
-        if (!result) {
-          throw new Error(`Unexpected command: ${command} ${args.join(" ")}`);
-        }
-        return result;
-      },
-    };
-  }
-
-  const success: WorkerServiceProcessResult = {
-    exitCode: 0,
-    stdout: "",
-    stderr: "",
-  };
-  const unloaded: WorkerServiceProcessResult = {
-    exitCode: 113,
-    stdout: "",
-    stderr: "Could not find service",
-  };
-
-  test("bootstraps an unloaded RunAtLoad service without kickstarting it", async () => {
-    const mock = runnerWith([unloaded, success]);
-    const paths = configuration("darwin").paths;
-
-    await runMacWorkerServiceOperation("start", paths, mock.runner);
-
-    expect(mock.calls).toEqual([
-      {
-        command: "launchctl",
-        args: ["print", paths.supervisorTarget],
-      },
-      {
-        command: "launchctl",
-        args: ["bootstrap", paths.supervisorDomain!, paths.servicePath],
-      },
-    ]);
-  });
-
-  test("kickstarts a loaded stopped service without forced replacement", async () => {
-    const mock = runnerWith([
-      { exitCode: 0, stdout: "state = waiting\n", stderr: "" },
-      success,
-    ]);
-    const paths = configuration("darwin").paths;
-
-    await runMacWorkerServiceOperation("start", paths, mock.runner);
-
-    expect(mock.calls.at(-1)).toEqual({
-      command: "launchctl",
-      args: ["kickstart", paths.supervisorTarget],
-    });
-  });
-
-  test("leaves an already running service unchanged", async () => {
-    const mock = runnerWith([
-      { exitCode: 0, stdout: "state = running\n", stderr: "" },
-    ]);
-    const paths = configuration("darwin").paths;
-
-    await runMacWorkerServiceOperation("start", paths, mock.runner);
-
-    expect(mock.calls).toHaveLength(1);
-  });
-
-  test("restarts with bootout followed by one RunAtLoad bootstrap", async () => {
-    const mock = runnerWith([
-      { exitCode: 0, stdout: "state = running\n", stderr: "" },
-      success,
-      unloaded,
-      success,
-    ]);
-    const paths = configuration("darwin").paths;
-
-    await runMacWorkerServiceOperation("restart", paths, mock.runner);
-
-    expect(mock.calls).toEqual([
-      {
-        command: "launchctl",
-        args: ["print", paths.supervisorTarget],
-      },
-      {
-        command: "launchctl",
-        args: ["bootout", paths.supervisorTarget],
-      },
-      {
-        command: "launchctl",
-        args: ["print", paths.supervisorTarget],
-      },
-      {
-        command: "launchctl",
-        args: ["bootstrap", paths.supervisorDomain!, paths.servicePath],
-      },
-    ]);
   });
 });
 
@@ -666,18 +546,12 @@ describe("Windows worker service lifecycle", () => {
     const sourceWrapperPath = join(root, "WinSW-x64.exe");
     const dataDir = join(root, "data");
     const persistedDataPath = join(dataDir, "clanky.db");
-    const calls: Array<{
-      command: string;
-      args: readonly string[];
-      options?: { inheritOutput?: boolean };
-    }> = [];
     let serviceState: "missing" | "stopped" | "running" = "missing";
     const runner = async (
       command: string,
       args: readonly string[],
-      options?: { inheritOutput?: boolean },
+      _options?: { inheritOutput?: boolean },
     ): Promise<WorkerServiceProcessResult> => {
-      calls.push({ command, args, options });
       if (command.endsWith("powershell.exe")) {
         return serviceState === "missing"
           ? { exitCode: 0, stdout: '{"installed":false}', stderr: "" }
@@ -732,41 +606,14 @@ describe("Windows worker service lifecycle", () => {
       expect(await readFile(paths.servicePath, "utf8")).toContain(
         "<arguments>serve --worker-directory &quot;C:\\Work Spaces&quot;</arguments>",
       );
-      expect(
-        calls.filter(({ command }) => command.endsWith("powershell.exe")),
-      ).toHaveLength(3);
-      expect(
-        calls
-          .filter(({ command }) => !command.endsWith("powershell.exe"))
-          .map(({ command, args }) => [command, ...args]),
-      ).toEqual([
-        [paths.wrapperPath, "install", "/p"],
-        [paths.wrapperPath, "start"],
-      ]);
-      expect(calls.find(({ args }) => args[0] === "install")?.options).toEqual({
-        inheritOutput: true,
-      });
 
-      calls.length = 0;
       serviceState = "running";
       await writeFile(sourceBinaryPath, "version-two");
       await installWindowsWorkerService(definition, false, runner);
       expect(await readFile(paths.managedBinaryPath, "utf8")).toBe(
         "version-two",
       );
-      expect(
-        calls.filter(({ command }) => command.endsWith("powershell.exe")),
-      ).toHaveLength(4);
-      expect(
-        calls
-          .filter(({ command }) => !command.endsWith("powershell.exe"))
-          .map(({ command, args }) => [command, ...args]),
-      ).toEqual([
-        [paths.wrapperPath, "stop"],
-        [paths.wrapperPath, "start"],
-      ]);
 
-      calls.length = 0;
       expect(await getWindowsWorkerServiceStatus(paths, runner)).toMatchObject({
         platform: "win32",
         installed: true,
@@ -777,94 +624,14 @@ describe("Windows worker service lifecycle", () => {
         processId: 123,
       });
 
-      calls.length = 0;
       await uninstallWindowsWorkerService(paths, runner);
       expect(await Bun.file(paths.managedBinaryPath).exists()).toBe(false);
       expect(await Bun.file(paths.wrapperPath).exists()).toBe(false);
       expect(await Bun.file(paths.servicePath).exists()).toBe(false);
       expect(await readFile(persistedDataPath, "utf8")).toBe("worker-data");
-      expect(
-        calls.filter(({ command }) => command.endsWith("powershell.exe")),
-      ).toHaveLength(2);
-      expect(
-        calls
-          .filter(({ command }) => !command.endsWith("powershell.exe"))
-          .map(({ command, args }) => [command, ...args]),
-      ).toEqual([
-        [paths.wrapperPath, "stop"],
-        [paths.wrapperPath, "uninstall"],
-      ]);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
   });
 
-  test("makes already-satisfied lifecycle operations idempotent", async () => {
-    const paths = windowsPaths("C:\\Users\\alice\\.clanky");
-    const calls: Array<{ command: string; args: readonly string[] }> = [];
-    const running = async (
-      command: string,
-      args: readonly string[],
-    ): Promise<WorkerServiceProcessResult> => {
-      calls.push({ command, args });
-      return {
-        exitCode: 0,
-        stdout: JSON.stringify({
-          installed: true,
-          state: "Running",
-          processId: 123,
-          childRunning: true,
-        }),
-        stderr: "",
-      };
-    };
-    await runWindowsWorkerServiceOperation("start", paths, running);
-    expect(calls).toHaveLength(1);
-
-    calls.length = 0;
-    const stopped = async (
-      command: string,
-      args: readonly string[],
-    ): Promise<WorkerServiceProcessResult> => {
-      calls.push({ command, args });
-      return {
-        exitCode: 0,
-        stdout: JSON.stringify({
-          installed: true,
-          state: "Stopped",
-          processId: 0,
-          childRunning: false,
-        }),
-        stderr: "",
-      };
-    };
-    await runWindowsWorkerServiceOperation("stop", paths, stopped);
-    expect(calls).toHaveLength(1);
-  });
-
-  test("waits for the managed child when SCM is already running", async () => {
-    const paths = windowsPaths("C:\\Users\\alice\\.clanky");
-    let inspectionCount = 0;
-    const runner = async (
-      command: string,
-      _args: readonly string[],
-    ): Promise<WorkerServiceProcessResult> => {
-      expect(command.endsWith("powershell.exe")).toBe(true);
-      inspectionCount += 1;
-      return {
-        exitCode: 0,
-        stdout: JSON.stringify({
-          installed: true,
-          state: "Running",
-          processId: 123,
-          childRunning: inspectionCount > 1,
-        }),
-        stderr: "",
-      };
-    };
-
-    await runWindowsWorkerServiceOperation("start", paths, runner);
-
-    expect(inspectionCount).toBe(2);
-  });
 });

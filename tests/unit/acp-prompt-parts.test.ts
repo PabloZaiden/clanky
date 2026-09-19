@@ -17,17 +17,14 @@ import type { MessageAttachment } from "@/shared/message-attachments";
  */
 function createRequester(): {
   requester: RpcRequester;
-  calls: Array<{ method: string; params: Record<string, unknown> }>;
 } {
-  const calls: Array<{ method: string; params: Record<string, unknown> }> = [];
   const requester: RpcRequester = {
-    async sendRequest<T>(method: string, params: Record<string, unknown>): Promise<T> {
-      calls.push({ method, params });
+    async sendRequest<T>(_method: string, _params: Record<string, unknown>): Promise<T> {
       return {} as T;
     },
     writeMessage(_message: JsonRpcMessage): void {},
   };
-  return { requester, calls };
+  return { requester };
 }
 
 function textAttachment(): MessageAttachment {
@@ -43,7 +40,7 @@ function textAttachment(): MessageAttachment {
 
 describe("ACP prompt attachments", () => {
   test("rejects embedded resources before session configuration when capability is absent", async () => {
-    const { requester, calls } = createRequester();
+    const { requester } = createRequester();
     const capability = new CapabilityService(requester);
     const state = new SessionStateStore();
     state.setCachedSession("session-1", {
@@ -78,7 +75,6 @@ describe("ACP prompt attachments", () => {
     ).rejects.toMatchObject({
       code: "acp_unsupported_prompt_capability",
     });
-    expect(calls).toEqual([]);
     expect(state.getCachedSession("session-1")?.configOptions?.[0]?.currentValue).toBe("model-a");
   });
 

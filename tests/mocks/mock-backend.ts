@@ -78,6 +78,34 @@ function createMockSessionId(prefix: string): string {
   return `${prefix}-${Date.now()}-${mockSessionIdCounter}`;
 }
 
+class PromptStartSignal {
+  private pendingPrompts = 0;
+  private readonly waiters: Array<() => void> = [];
+
+  markStarted(): void {
+    const waiter = this.waiters.shift();
+    if (waiter) {
+      waiter();
+      return;
+    }
+    this.pendingPrompts++;
+  }
+
+  async waitForStart(): Promise<void> {
+    if (this.pendingPrompts > 0) {
+      this.pendingPrompts--;
+      return;
+    }
+    await new Promise<void>((resolve) => {
+      this.waiters.push(resolve);
+    });
+  }
+
+  reset(): void {
+    this.pendingPrompts = 0;
+  }
+}
+
 /**
  * MockAcpBackend provides a mock implementation of the Backend interface.
  * It implements all methods that AcpBackend has, ensuring no runtime errors
@@ -93,7 +121,7 @@ export class MockAcpBackend implements Backend {
   private connected = false;
   private directory = "";
   private responseIndex = 0;
-  private pendingPrompt = false;
+  private readonly promptStartSignal = new PromptStartSignal();
   private readonly responses: string[];
   private readonly onConnect?: MockBackendOptions["onConnect"];
   private readonly streamingResponseChunks: string[][];
@@ -109,13 +137,8 @@ export class MockAcpBackend implements Backend {
   private readonly importableSessions = new Map<string, { session: ImportableSession; events: SessionReplayEvent[] }>();
   private readonly sentPrompts: PromptInput[] = [];
   private readonly permissionReplies: Array<{ requestId: string; response: string }> = [];
-  private readonly configOptionUpdates: Array<{ sessionId: string; configId: string; value: string }> = [];
-  private readonly sessionModelUpdates: Array<{ sessionId: string; modelId: string }> = [];
   private readonly connectionConfigs: BackendConnectionConfig[] = [];
-  private abortSessionCalls = 0;
   private responseGate: (() => Promise<void>) | undefined;
-  private nextCreateSessionError: string | null = null;
-  private nextGetSessionError: string | null = null;
 
   constructor(options: MockBackendOptions = {}) {
     this.responses = options.responses ?? ["<promise>COMPLETE</promise>"];
@@ -175,11 +198,6 @@ export class MockAcpBackend implements Backend {
   }
 
   async createSession(options: CreateSessionOptions): Promise<AgentSession> {
-    if (this.nextCreateSessionError) {
-      const message = this.nextCreateSessionError;
-      this.nextCreateSessionError = null;
-      throw new Error(message);
-    }
     const session: AgentSession = {
       id: createMockSessionId("mock-session"),
       title: options.title,
@@ -218,28 +236,16 @@ export class MockAcpBackend implements Backend {
   async sendPromptAsync(_sessionId: string, _prompt: PromptInput): Promise<void> {
     this.sentPrompts.push(_prompt);
     await this.onPrompt?.(_prompt, this.directory);
-    this.pendingPrompt = true;
+    setImmediate(() => this.promptStartSignal.markStarted());
   }
 
-  async abortSession(_sessionId: string): Promise<void> {
-    this.abortSessionCalls++;
-  }
-
-  getAbortSessionCalls(): number {
-    return this.abortSessionCalls;
-  }
+  async abortSession(_sessionId: string): Promise<void> {}
 
   async subscribeToEvents(_sessionId: string): Promise<EventStream<AgentEvent>> {
     const { stream, push, end } = createEventStream<AgentEvent>();
 
     (async () => {
-      // Wait for pendingPrompt to be set
-      let attempts = 0;
-      while (!this.pendingPrompt && attempts < 100) {
-        await new Promise((resolve) => setTimeout(resolve, 10));
-        attempts++;
-      }
-      this.pendingPrompt = false;
+      await this.promptStartSignal.waitForStart();
       await this.responseGate?.();
 
       if (this.streamEventSequences.length > 0) {
@@ -289,7 +295,6 @@ export class MockAcpBackend implements Backend {
   }
 
   async setConfigOption(sessionId: string, configId: string, value: string): Promise<ConfigOption[]> {
-    this.configOptionUpdates.push({ sessionId, configId, value });
     if (configId === "model") {
       const session = this.sessions.get(sessionId);
       if (session) {
@@ -300,7 +305,6 @@ export class MockAcpBackend implements Backend {
   }
 
   async setSessionModel(sessionId: string, modelId: string) {
-    this.sessionModelUpdates.push({ sessionId, modelId });
     const session = this.sessions.get(sessionId);
     if (session) {
       session.model = modelId;
@@ -364,11 +368,6 @@ export class MockAcpBackend implements Backend {
    * Get an existing session by ID.
    */
   async getSession(id: string): Promise<AgentSession | null> {
-    if (this.nextGetSessionError) {
-      const message = this.nextGetSessionError;
-      this.nextGetSessionError = null;
-      throw new Error(message);
-    }
     return this.sessions.get(id) ?? null;
   }
 
@@ -404,14 +403,6 @@ export class MockAcpBackend implements Backend {
     this.sessions.delete(id);
   }
 
-  failNextCreateSession(message: string): void {
-    this.nextCreateSessionError = message;
-  }
-
-  failNextGetSession(message: string): void {
-    this.nextGetSessionError = message;
-  }
-
   setResponseGate(responseGate?: () => Promise<void>): void {
     this.responseGate = responseGate;
   }
@@ -422,14 +413,6 @@ export class MockAcpBackend implements Backend {
 
   getPermissionReplies(): Array<{ requestId: string; response: string }> {
     return [...this.permissionReplies];
-  }
-
-  getConfigOptionUpdates(): Array<{ sessionId: string; configId: string; value: string }> {
-    return [...this.configOptionUpdates];
-  }
-
-  getSessionModelUpdates(): Array<{ sessionId: string; modelId: string }> {
-    return [...this.sessionModelUpdates];
   }
 
   getConnectionConfigs(): BackendConnectionConfig[] {
@@ -487,7 +470,6 @@ export class NeverCompletingMockBackend implements Backend {
   private readonly sessions = new Map<string, AgentSession>();
   private readonly models: MockModelInfo[];
   private readonly runningToolCall: { id: string; name: string; input: unknown } | undefined;
-  private abortSessionCalls = 0;
 
   constructor(options: NeverCompletingMockBackendOptions = {}) {
     this.models = options.models ?? [defaultTestModel];
@@ -530,13 +512,7 @@ export class NeverCompletingMockBackend implements Backend {
     // No-op
   }
 
-  async abortSession(_sessionId: string): Promise<void> {
-    this.abortSessionCalls++;
-  }
-
-  getAbortSessionCalls(): number {
-    return this.abortSessionCalls;
-  }
+  async abortSession(_sessionId: string): Promise<void> {}
 
   async subscribeToEvents(_sessionId: string): Promise<EventStream<AgentEvent>> {
     const { stream, push } = createEventStream<AgentEvent>();
@@ -553,7 +529,7 @@ export class NeverCompletingMockBackend implements Backend {
         });
       }
       // Never end the stream - keep task running forever
-      await new Promise((resolve) => setTimeout(resolve, 100000));
+      await new Promise<void>(() => {});
     })();
 
     return stream;
@@ -634,15 +610,13 @@ export class PlanModeMockBackend implements Backend {
 
   private connected = false;
   private directory = "";
-  private pendingPrompt = false;
+  private readonly promptStartSignal = new PromptStartSignal();
   private nameCounter = 0;
   private sessions = new Map<string, AgentSession>();
   private sessionResponseIndex = new Map<string, number>();
-  private sentPrompts: PromptInput[] = [];
   reset(): void {
     this.sessionResponseIndex.clear();
-    this.pendingPrompt = false;
-    this.sentPrompts = [];
+    this.promptStartSignal.reset();
   }
 
   private getNextStreamResponse(sessionId: string): string {
@@ -694,8 +668,7 @@ export class PlanModeMockBackend implements Backend {
   }
 
   async sendPromptAsync(_sessionId: string, _prompt: PromptInput): Promise<void> {
-    this.sentPrompts.push(_prompt);
-    this.pendingPrompt = true;
+    setImmediate(() => this.promptStartSignal.markStarted());
   }
 
   async abortSession(_sessionId: string): Promise<void> {
@@ -707,12 +680,7 @@ export class PlanModeMockBackend implements Backend {
     const self = this;
 
     (async () => {
-      let attempts = 0;
-      while (!self.pendingPrompt && attempts < 100) {
-        await new Promise((resolve) => setTimeout(resolve, 10));
-        attempts++;
-      }
-      self.pendingPrompt = false;
+      await self.promptStartSignal.waitForStart();
 
       const response = self.getNextStreamResponse(sessionId);
       push({ type: "message.start", messageId: `msg-${Date.now()}` });
@@ -797,9 +765,5 @@ export class PlanModeMockBackend implements Backend {
 
   async deleteSession(id: string): Promise<void> {
     this.sessions.delete(id);
-  }
-
-  getSentPrompts(): PromptInput[] {
-    return [...this.sentPrompts];
   }
 }

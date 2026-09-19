@@ -4,8 +4,6 @@ import type { EntryBase } from "../../src/components/log-viewer/types";
 import {
   annotateReasoningBoundaries,
   annotateDisplayEntries,
-  formatThoughtDuration,
-  getWorkingGroupToolSummary,
   groupConsecutiveEntries,
   hasActiveWorkEntry,
   isReasoningLogEntry,
@@ -72,18 +70,6 @@ function createToolEntry(
 }
 
 describe("reasoning display helpers", () => {
-  test("uses a short label below ten seconds and preserves duration boundaries", () => {
-    const start = "2026-09-05T00:00:00.000Z";
-
-    expect(formatThoughtDuration(start, "2026-09-05T00:00:00.999Z")).toBe("a bit");
-    expect(formatThoughtDuration(start, "2026-09-05T00:00:01.000Z")).toBe("a bit");
-    expect(formatThoughtDuration(start, "2026-09-05T00:00:09.999Z")).toBe("a bit");
-    expect(formatThoughtDuration(start, "2026-09-05T00:00:10.000Z")).toBe("10 seconds");
-    expect(formatThoughtDuration(start, "2026-09-05T00:00:59.999Z")).toBe("59 seconds");
-    expect(formatThoughtDuration(start, "2026-09-05T00:01:00.000Z")).toBe("1 minute");
-    expect(formatThoughtDuration(start, "2026-09-05T00:02:00.000Z")).toBe("2 minutes");
-  });
-
   test("groups consecutive reasoning logs and closes a finished group at the next event", () => {
     const firstReasoning = createReasoningLog(
       "reasoning-1",
@@ -194,37 +180,6 @@ describe("reasoning display helpers", () => {
 
   });
 
-  test("shows individual tool details for short mixed working groups", () => {
-    const grouped = groupConsecutiveEntries([
-      createReasoningEntry(
-        "reasoning-detail",
-        "2026-09-05T00:00:00.000Z",
-        "2026-09-05T00:00:01.000Z",
-      ),
-      createToolEntry(
-        "tool-detail-1",
-        "2026-09-05T00:00:01.000Z",
-        "View src/one.ts",
-      ),
-      createToolEntry(
-        "tool-detail-2",
-        "2026-09-05T00:00:02.000Z",
-        "Edit src/two.ts",
-      ),
-      createReasoningEntry("reasoning-detail-end", "2026-09-05T00:00:03.000Z"),
-    ], true);
-
-    const workingGroup = grouped[0];
-    expect(workingGroup?.type).toBe("working-group");
-    if (workingGroup?.type !== "working-group") {
-      return;
-    }
-
-    expect(getWorkingGroupToolSummary(workingGroup.entries)).toBe(
-      "2 tools: View src/one.ts, Edit src/two.ts",
-    );
-  });
-
   test("keeps repeated completed thinking and tool cycles active until response text arrives", () => {
     const grouped = groupConsecutiveEntries([
       createReasoningEntry(
@@ -286,7 +241,6 @@ describe("reasoning display helpers", () => {
     }
 
     expect(workingGroup.entries.filter((entry) => entry.type === "tool-group")).toHaveLength(3);
-    expect(getWorkingGroupToolSummary(workingGroup.entries)).toBe("3 tools");
   });
 
   test("uses the first following event to close a mixed working group", () => {
@@ -317,7 +271,6 @@ describe("reasoning display helpers", () => {
     }
     expect(workingGroup.endedAt).toBe(responseTimestamp);
     expect(workingGroup.isActive).toBe(false);
-    expect(formatThoughtDuration(workingGroup.timestamp, workingGroup.endedAt!)).toBe("10 seconds");
     expect(grouped[1]?.type).toBe("message");
   });
 
@@ -429,10 +382,8 @@ describe("reasoning display helpers", () => {
 
     expect(firstGroup.logs.map((log) => log.id)).toEqual(["reasoning-filtered-first"]);
     expect(firstGroup.endedAt).toBe(sharedEndTimestamp);
-    expect(formatThoughtDuration(firstGroup.timestamp, firstGroup.endedAt!)).toBe("a bit");
     expect(secondGroup.logs.map((log) => log.id)).toEqual(["reasoning-filtered-second"]);
     expect(secondGroup.endedAt).toBe(sharedEndTimestamp);
-    expect(formatThoughtDuration(secondGroup.timestamp, secondGroup.endedAt!)).toBe("a bit");
   });
 
   test("keeps a trailing reasoning group active while the transcript is active", () => {

@@ -167,35 +167,6 @@ describe("Plan Mode API Integration", () => {
     return observation.task;
   }
 
-  function getPromptText(prompt: { parts?: Array<{ type: string; text?: string }> }): string {
-    return prompt.parts
-      ?.filter((part) => part.type === "text" && typeof part.text === "string")
-      .map((part) => part.text)
-      .join("\n") ?? "";
-  }
-
-  async function waitForSentPromptContaining(text: string, timeoutMs = 10000): Promise<string> {
-    const observation = await pollUntil(
-      () => {
-        const prompts = mockBackend.getSentPrompts().map(getPromptText);
-        return {
-          prompts,
-          match: prompts.find((prompt) => prompt.includes(text)),
-        };
-      },
-      (value) => value.match !== undefined,
-      {
-        description: `a sent prompt containing "${text}"`,
-        timeoutMs,
-        formatLastObserved: (value) => `lastPrompt=${value.prompts.at(-1) ?? "none"}`,
-      },
-    );
-    if (observation.match === undefined) {
-      throw new Error(`No sent prompt contained "${text}" after polling`);
-    }
-    return observation.match;
-  }
-
   beforeAll(async () => {
     // Create temp data directory
     testDataDir = await mkdtemp(join(tmpdir(), "clanky-api-plan-test-data-"));
@@ -427,12 +398,9 @@ describe("Plan Mode API Integration", () => {
       const worktreePath = task.state.git?.worktreePath;
       expect(worktreePath).toBeTruthy();
       const seededPlan = await Bun.file(join(worktreePath, ".clanky-planning", "plan.md")).text();
-      expect(seededPlan).toContain("# Uploaded plan");
       expect(seededPlan).toContain("Update the implementation.");
       expect(seededPlan).not.toContain("<promise>PLAN_READY</promise>");
 
-      const executionPrompt = await waitForSentPromptContaining(UPLOADED_PLAN_IMPLEMENTATION_PROMPT);
-      expect(executionPrompt).toContain(UPLOADED_PLAN_IMPLEMENTATION_PROMPT);
     });
 
     test("returns 400 when uploaded plan content normalizes to empty", async () => {

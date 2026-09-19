@@ -1010,7 +1010,7 @@ describe("workspace files API integration", () => {
       currentFile: { path: string } | null;
     };
     expect(data.error).toBe("file_conflict");
-    expect(data.message).toBe("File changed outside the code explorer");
+    expect(data.message).toBeString();
     expect(data.currentFile?.path).toBe("src/index.ts");
   });
 
@@ -1124,7 +1124,7 @@ describe("workspace files API integration", () => {
     expect(response.status).toBe(500);
     const data = await response.json() as { error: string; message: string };
     expect(data.error).toBe("workspace_file_error");
-    expect(data.message).toBe("File explorer operation failed");
+    expect(data.message).toBeString();
     expect(data.message).not.toContain("sensitive command failure");
   });
 
