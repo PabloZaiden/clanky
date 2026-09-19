@@ -52,7 +52,12 @@ export { useAgentsMdOptimizer, type UseAgentsMdOptimizerResult, type AgentsMdSta
 export { useTaskGrouping, groupTasksByStatus, sectionConfig, type StatusGroups, type StatusSectionKey, type SectionConfig, type WorkspaceGroup, type UseTaskGroupingResult } from "./useTaskGrouping";
 export { useDashboardData, type UseDashboardDataResult } from "./useDashboardData";
 export { useViewModePreference, type UseViewModePreferenceResult, type DashboardViewMode } from "./useViewModePreference";
-export { useProvisioningJob, type UseProvisioningJobResult, type StartProvisioningJobRequest } from "./useProvisioningJob";
+export {
+  useProvisioningJob,
+  type DismissAllProvisioningJobsResult,
+  type UseProvisioningJobResult,
+  type StartProvisioningJobRequest,
+} from "./useProvisioningJob";
 export { useMesh, type UseMeshResult } from "./useMesh";
 export {
   useAvailableModels,

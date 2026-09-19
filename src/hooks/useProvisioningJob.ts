@@ -5,6 +5,7 @@ import {
 } from "../lib/ssh-browser-credentials";
 import { apiRequest, readApiResponse, requestApiResponse } from "../lib/api-client";
 import { isAbortError } from "../lib/request-lifecycle";
+import { isProvisioningJobTerminal } from "@/shared";
 import type {
   AgentProvider,
   ProvisioningEvent,
@@ -43,6 +44,11 @@ export interface StartProvisioningJobRequest {
   workspaceId: string | null;
 }
 
+export interface DismissAllProvisioningJobsResult {
+  dismissedJobIds: string[];
+  failedJobIds: string[];
+}
+
 export interface UseProvisioningJobResult {
   jobs: PublicProvisioningJob[];
   jobsLoading: boolean;
@@ -60,6 +66,8 @@ export interface UseProvisioningJobResult {
   refreshJob: (options?: { showLoading?: boolean }) => Promise<PublicProvisioningJobSnapshot | null>;
   cancelJob: () => Promise<boolean>;
   dismissJob: (jobId?: string) => Promise<boolean>;
+  dismissAllJobs: () => Promise<DismissAllProvisioningJobsResult>;
+  dismissingAllJobs: boolean;
   clearActiveJob: () => void;
 }
 
@@ -94,6 +102,18 @@ function isSuccessfulConnectionLog(entry: ProvisioningLogEntry): boolean {
 
 const ACTIVE_JOB_REFRESH_INTERVAL_MS = 1000;
 
+function isDismissibleProvisioningJob(job: PublicProvisioningJob): boolean {
+  return isProvisioningJobTerminal(job.state.status);
+}
+
+async function dismissProvisioningJobRequest(jobId: string): Promise<void> {
+  await apiRequest(`/api/provisioning-jobs/${encodeURIComponent(jobId)}/dismiss`, {
+    method: "POST",
+    action: "Dismiss provisioning job",
+    fallbackMessage: "Failed to dismiss provisioning job",
+  });
+}
+
 export function useProvisioningJob(): UseProvisioningJobResult {
   const [jobs, setJobs] = useState<PublicProvisioningJob[]>([]);
   const [jobsLoading, setJobsLoading] = useState(false);
@@ -104,6 +124,8 @@ export function useProvisioningJob(): UseProvisioningJobResult {
   const [loading, setLoading] = useState(false);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dismissingAllJobs, setDismissingAllJobs] = useState(false);
+  const dismissingAllJobsRef = useRef(false);
   const activeJobIdRef = useRef(activeJobId);
   const jobsRequestControllerRef = useRef<AbortController | null>(null);
   const jobsRequestIdRef = useRef(0);
@@ -405,11 +427,7 @@ export function useProvisioningJob(): UseProvisioningJobResult {
 
     try {
       setError(null);
-      await apiRequest(`/api/provisioning-jobs/${encodeURIComponent(jobId)}/dismiss`, {
-        method: "POST",
-        action: "Dismiss provisioning job",
-        fallbackMessage: "Failed to dismiss provisioning job",
-      });
+      await dismissProvisioningJobRequest(jobId);
       if (activeJobIdRef.current === jobId) {
         clearActiveJob();
       }
@@ -420,6 +438,54 @@ export function useProvisioningJob(): UseProvisioningJobResult {
       return false;
     }
   }, [clearActiveJob, refreshJobs]);
+
+  const dismissAllJobs = useCallback(async (): Promise<DismissAllProvisioningJobsResult> => {
+    if (dismissingAllJobsRef.current) {
+      return {
+        dismissedJobIds: [],
+        failedJobIds: [],
+      };
+    }
+
+    const jobIds = jobs
+      .filter(isDismissibleProvisioningJob)
+      .map((job) => job.config.id);
+    if (jobIds.length === 0) {
+      return {
+        dismissedJobIds: [],
+        failedJobIds: [],
+      };
+    }
+
+    dismissingAllJobsRef.current = true;
+    setDismissingAllJobs(true);
+    setError(null);
+    try {
+      const results = await Promise.allSettled(
+        jobIds.map((jobId) => dismissProvisioningJobRequest(jobId)),
+      );
+      const dismissedJobIds: string[] = [];
+      const failedJobIds: string[] = [];
+
+      results.forEach((result, index) => {
+        const jobId = jobIds[index]!;
+        if (result.status === "fulfilled") {
+          dismissedJobIds.push(jobId);
+        } else {
+          failedJobIds.push(jobId);
+        }
+      });
+
+      if (activeJobIdRef.current && dismissedJobIds.includes(activeJobIdRef.current)) {
+        clearActiveJob();
+      }
+      await refreshJobs({ showLoading: false });
+      return { dismissedJobIds, failedJobIds };
+    } finally {
+      dismissingAllJobsRef.current = false;
+      setDismissingAllJobs(false);
+    }
+  }, [clearActiveJob, jobs, refreshJobs]);
 
   useEffect(() => {
     void refreshJobs();
@@ -446,6 +512,8 @@ export function useProvisioningJob(): UseProvisioningJobResult {
     refreshJob,
     cancelJob,
     dismissJob,
+    dismissAllJobs,
+    dismissingAllJobs,
     clearActiveJob,
   };
 }
