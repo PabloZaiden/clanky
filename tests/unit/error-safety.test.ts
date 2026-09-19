@@ -4,6 +4,8 @@ import { createGitSyncFailure } from "../../src/core/task/task-git-push-helpers"
 import { taskFailureFromUnknown } from "../../src/core/task/task-errors";
 import { getTerminalErrorPayload } from "../../src/api/websocket/terminal";
 import { domainErrorResponse } from "../../src/api/helpers";
+import { chatActionErrorResponse } from "../../src/api/chats/helpers";
+import { createAcpConnectionTimeoutError } from "../../src/backends/acp";
 
 describe("typed error safety boundaries", () => {
   test("uses a fixed payload for unknown terminal bridge errors", () => {
@@ -181,6 +183,32 @@ describe("typed error safety boundaries", () => {
     expect(await response.json()).toEqual({
       error: "agent_run_not_ready",
       message: "Agent run cannot be interrupted because its chat has not been created yet",
+    });
+  });
+
+  test("preserves chat timeout response contracts for SSH and non-SSH transports", async () => {
+    const nonSshResponse = chatActionErrorResponse(
+      createAcpConnectionTimeoutError(5000),
+    );
+    if (!nonSshResponse) {
+      throw new Error("Expected a non-SSH timeout response");
+    }
+    expect(nonSshResponse.status).toBe(504);
+    expect(await nonSshResponse.json()).toEqual({
+      error: "connection_timeout",
+      message: "The agent connection timed out before it became ready",
+    });
+
+    const sshResponse = chatActionErrorResponse(
+      createAcpConnectionTimeoutError(5000, { transport: "ssh" }),
+    );
+    if (!sshResponse) {
+      throw new Error("Expected an SSH timeout response");
+    }
+    expect(sshResponse.status).toBe(504);
+    expect(await sshResponse.json()).toEqual({
+      error: "ssh_connection_timeout",
+      message: "The SSH connection timed out before the agent became ready",
     });
   });
 
