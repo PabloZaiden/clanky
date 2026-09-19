@@ -15,7 +15,7 @@ import { getRouteString } from "./route-fields";
 import {
   getHeaderOwnerRoute,
   sidebarNodeMatchesRoute,
-} from "./shell-sidebar-composition";
+} from "./shell-sidebar-utils";
 import type {
   Agent,
   Chat,

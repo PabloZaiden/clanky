@@ -4,11 +4,7 @@ import type {
   ToolCallRecord,
   TranscriptSnapshotOptions,
 } from "@/shared";
-import {
-  getTranscriptMeta,
-  getTranscriptToolCall,
-  listTranscriptEntriesPage,
-} from "../persistence/transcripts/store";
+import { agentRunTranscriptStore } from "../persistence/transcripts/agent-run-store";
 import { loadAgentRunSummary } from "../persistence/agents";
 import { createTranscriptFromStoragePage } from "./transcript-service";
 
@@ -28,7 +24,7 @@ export async function getAgentRunTranscriptSnapshot(
     return null;
   }
 
-  const meta = getTranscriptMeta("agent_run", runId);
+  const meta = agentRunTranscriptStore.getMeta(runId);
   if (!meta) {
     throw new Error(`Agent run transcript metadata is unavailable: ${runId}`);
   }
@@ -37,7 +33,7 @@ export async function getAgentRunTranscriptSnapshot(
   return {
     run: runWithoutTranscript,
     transcript: createTranscriptFromStoragePage(
-      listTranscriptEntriesPage("agent_run", runId, options),
+      agentRunTranscriptStore.listPage(runId, options),
       {
         revision: meta.revision,
         totalEntries: meta.entryCount,
@@ -54,8 +50,8 @@ export async function getAgentRunTranscriptToolCall(
   if (!run) {
     return null;
   }
-  if (!getTranscriptMeta("agent_run", runId)) {
+  if (!agentRunTranscriptStore.getMeta(runId)) {
     throw new Error(`Agent run transcript metadata is unavailable: ${runId}`);
   }
-  return getTranscriptToolCall("agent_run", runId, toolCallId);
+  return agentRunTranscriptStore.getToolCall(runId, toolCallId);
 }

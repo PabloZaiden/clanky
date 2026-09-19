@@ -8,10 +8,7 @@ import { getDatabase } from "../database";
 import { chatToRow, rowToChat, validateChatColumnNames } from "./helpers";
 import { requirePersistenceUserId } from "../ownership";
 import { syncChatTranscriptEntriesInTransaction } from "./transcript";
-import {
-  applyTranscriptChangeSetInTransaction,
-  hydrateTranscriptStateForUser,
-} from "../transcripts/store";
+import { chatTranscriptStore } from "../transcripts/chat-store";
 import { CHAT_METADATA_COLUMNS } from "./crud";
 
 const log = createLogger("persistence:chats");
@@ -62,16 +59,15 @@ export async function updateChatState(chatId: string, state: ChatState, options:
       }
     }
     if (options.transcriptChanges) {
-      applyTranscriptChangeSetInTransaction(
+      chatTranscriptStore.applyChangeSetInTransaction(
         db,
-        "chat",
         chatId,
         userId,
         options.transcriptChanges,
       );
     } else {
       const previousState = options.previousState ?? (() => {
-        const transcript = hydrateTranscriptStateForUser("chat", chatId, userId);
+        const transcript = chatTranscriptStore.hydrateForUser(chatId, userId);
         return {
           ...state,
           messages: transcript.messages,

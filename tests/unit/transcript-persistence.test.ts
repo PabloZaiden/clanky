@@ -12,15 +12,14 @@ import {
 
 import { TaskEngine } from "../../src/core/task-engine";
 import {
+  deleteTask,
   loadTask,
   saveTask,
   updateTaskState,
 } from "../../src/persistence/tasks";
-import {
-  getTranscriptMeta,
-  listTranscriptEntriesPage,
-  TranscriptCursorError,
-} from "../../src/persistence/transcripts/store";
+import { getDatabase } from "../../src/persistence/database";
+import { taskTranscriptStore } from "../../src/persistence/transcripts/task-store";
+import { decodeTranscriptCursor, encodeTranscriptCursor, TranscriptCursorError } from "../../src/persistence/transcripts/cursor";
 import { runWithCurrentUser } from "../../src/core/user-context";
 import {
   setupTestContext,
@@ -124,7 +123,147 @@ describe("incremental transcript persistence", () => {
       expect(persisted?.state.messages).toEqual(loaded.state.messages);
       expect(persisted?.state.logs).toEqual(loaded.state.logs);
       expect(persisted?.state.toolCalls[0]?.output).toBe("after");
-      expect(getTranscriptMeta("task", task.config.id)?.entryCount).toBe(3);
+      expect(taskTranscriptStore.getMeta(task.config.id)?.entryCount).toBe(3);
+    });
+  });
+
+  test("validates cursor bindings before accepting a continuation", () => {
+    const cursor = encodeTranscriptCursor(
+      "task",
+      "cursor-task",
+      testOwnerUser.id,
+      {
+        entry_id: "message:assistant-1",
+        timestamp: "2024-01-01T00:00:00.000Z",
+        sequence: 4,
+      },
+    );
+
+    expect(decodeTranscriptCursor("task", "cursor-task", testOwnerUser.id, cursor)).toEqual({
+      version: 1,
+      resource: "task",
+      resourceId: "cursor-task",
+      userId: testOwnerUser.id,
+      entryId: "message:assistant-1",
+      timestamp: "2024-01-01T00:00:00.000Z",
+      sequence: 4,
+    });
+    expect(() => decodeTranscriptCursor("task", "other-task", testOwnerUser.id, cursor))
+      .toThrow(TranscriptCursorError);
+    expect(() => decodeTranscriptCursor("task", "cursor-task", "other-user", cursor))
+      .toThrow(TranscriptCursorError);
+    expect(() => decodeTranscriptCursor("chat", "cursor-task", testOwnerUser.id, cursor))
+      .toThrow(TranscriptCursorError);
+  });
+
+  test("omits malformed persisted payloads while retaining normalized and legacy tool data", async () => {
+    const task = createTask(context);
+    task.config.id = "malformed-payload-task";
+    task.state.id = task.config.id;
+    const legacyTool: PersistedToolCall = {
+      id: "legacy-tool",
+      name: "write_file",
+      input: { path: "legacy.txt" },
+      output: "legacy output",
+      status: "completed",
+      timestamp: new Date(Date.now() + 1).toISOString(),
+    };
+    task.state.toolCalls = [...task.state.toolCalls, legacyTool];
+
+    await runWithCurrentUser(testOwnerUser, async () => {
+      await saveTask(task);
+      const db = getDatabase();
+      db.prepare(`
+        UPDATE task_transcript_entries
+        SET payload = ?
+        WHERE task_id = ? AND entry_id = ?
+      `).run("{malformed", task.config.id, "message:message-1");
+      db.prepare(`
+        UPDATE task_transcript_entries
+        SET payload = ?
+        WHERE task_id = ? AND entry_id = ?
+      `).run("{malformed", task.config.id, "log:log-1");
+      db.prepare(`
+        UPDATE task_transcript_entries
+        SET tool_input = ?, tool_output = ?, tool_extras = ?
+        WHERE task_id = ? AND entry_id = ?
+      `).run(
+        "{malformed",
+        "[malformed",
+        "not-json",
+        task.config.id,
+        "tool:tool-1",
+      );
+      db.prepare(`
+        UPDATE task_transcript_entries
+        SET payload = ?, tool_name = NULL, tool_status = NULL,
+          tool_input = NULL, tool_output = NULL, tool_extras = NULL
+        WHERE task_id = ? AND entry_id = ?
+      `).run(
+        JSON.stringify(legacyTool),
+        task.config.id,
+        "tool:legacy-tool",
+      );
+
+      const loaded = await loadTask(task.config.id);
+      expect(loaded?.state.messages).toEqual([]);
+      expect(loaded?.state.logs).toEqual([]);
+      expect(loaded?.state.toolCalls).toEqual([
+        {
+          id: "tool-1",
+          name: "read_file",
+          status: "completed",
+          timestamp: task.state.toolCalls[0]!.timestamp,
+        },
+        legacyTool,
+      ]);
+    });
+  });
+
+  test("keeps transcript reads isolated to the owning user", async () => {
+    const task = createTask(context);
+    task.config.id = "owned-transcript-task";
+    task.state.id = task.config.id;
+
+    await runWithCurrentUser(testOwnerUser, async () => {
+      await saveTask(task);
+
+      expect(taskTranscriptStore.getMetaForUser(task.config.id, testOwnerUser.id)).not.toBeNull();
+      expect(taskTranscriptStore.listForUser(task.config.id, testOwnerUser.id)).toHaveLength(3);
+      expect(taskTranscriptStore.getMetaForUser(task.config.id, "different-user")).toBeNull();
+      expect(taskTranscriptStore.listForUser(task.config.id, "different-user")).toEqual([]);
+      expect(
+        taskTranscriptStore.getToolCallForUser(task.config.id, "different-user", "tool-1"),
+      ).toBeNull();
+    });
+  });
+
+  test("cascades transcript rows and metadata when a task is deleted", async () => {
+    const task = createTask(context);
+    task.config.id = "cascade-transcript-task";
+    task.state.id = task.config.id;
+
+    await runWithCurrentUser(testOwnerUser, async () => {
+      await saveTask(task);
+      const db = getDatabase();
+      expect(
+        (db.query("SELECT COUNT(*) AS count FROM task_transcript_entries WHERE task_id = ?")
+          .get(task.config.id) as { count: number }).count,
+      ).toBe(3);
+      expect(
+        (db.query("SELECT COUNT(*) AS count FROM task_transcript_meta WHERE task_id = ?")
+          .get(task.config.id) as { count: number }).count,
+      ).toBe(1);
+
+      expect(await deleteTask(task.config.id)).toBe(true);
+      expect(
+        (db.query("SELECT COUNT(*) AS count FROM task_transcript_entries WHERE task_id = ?")
+          .get(task.config.id) as { count: number }).count,
+      ).toBe(0);
+      expect(
+        (db.query("SELECT COUNT(*) AS count FROM task_transcript_meta WHERE task_id = ?")
+          .get(task.config.id) as { count: number }).count,
+      ).toBe(0);
     });
   });
 
@@ -189,7 +328,7 @@ describe("incremental transcript persistence", () => {
     await runWithCurrentUser(testOwnerUser, async () => {
       await saveTask(task);
 
-      const latestPage = listTranscriptEntriesPage("task", task.config.id);
+      const latestPage = taskTranscriptStore.listPage(task.config.id);
       expect(latestPage.totalResponses).toBe(105);
       expect(latestPage.loadedResponses).toBe(100);
       expect(latestPage.hasOlder).toBe(true);
@@ -208,7 +347,7 @@ describe("incremental transcript persistence", () => {
       expect(latestTool?.tool?.output).toBeUndefined();
       expect(latestTool?.toolHasOutput).toBe(true);
 
-      const olderPage = listTranscriptEntriesPage("task", task.config.id, {
+      const olderPage = taskTranscriptStore.listPage(task.config.id, {
         before: latestPage.nextCursor,
       });
       expect(olderPage.totalResponses).toBe(105);
@@ -227,12 +366,12 @@ describe("incremental transcript persistence", () => {
       ]);
       expect(new Set([...latestResponseIds, ...olderResponseIds]).size).toBe(105);
 
-      const fullPage = listTranscriptEntriesPage("task", task.config.id, { full: true });
+      const fullPage = taskTranscriptStore.listPage(task.config.id, { full: true });
       expect(fullPage.loadedResponses).toBe(105);
       expect(fullPage.hasOlder).toBe(false);
       expect(fullPage.nextCursor).toBeUndefined();
 
-      expect(() => listTranscriptEntriesPage("task", task.config.id, {
+      expect(() => taskTranscriptStore.listPage(task.config.id, {
         full: true,
         before: latestPage.nextCursor,
       })).toThrow(TranscriptCursorError);

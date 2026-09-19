@@ -10,10 +10,8 @@ import {
   buildShellRoutes,
   type ShellRouteCompositionContext,
 } from "./shell-route-composition";
-import {
-  buildShellSidebarComposition,
-  type ShellSidebarActionHandlers,
-} from "./shell-sidebar-composition";
+import { buildShellSidebarComposition } from "./shell-sidebar-composition";
+import type { ShellSidebarActionHandlers } from "./shell-sidebar-types";
 import { buildShellSettingsSections } from "./shell-settings-composition";
 import { useShellActions } from "./use-shell-actions";
 import { HOME_ROUTE, useShellNavigation } from "./use-shell-navigation";
