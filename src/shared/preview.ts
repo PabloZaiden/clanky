@@ -124,6 +124,46 @@ export interface PreviewBridgeWebSocketOpenMessage {
   headers: Array<[string, string]>;
 }
 
+export type PreviewBridgePath = string & {
+  readonly __previewBridgePath: unique symbol;
+};
+
+const PREVIEW_BRIDGE_PATH_BASE_URL = "http://clanky-preview.invalid/";
+
+/**
+ * Accept only bridge-relative request paths. Destination origin validation is
+ * performed separately against the registered preview runtime.
+ */
+export function parsePreviewBridgePath(value: unknown): PreviewBridgePath | null {
+  if (
+    typeof value !== "string"
+    || !value.startsWith("/")
+    || value.startsWith("//")
+    || value.includes("\\")
+    || [...value].some((character) => {
+      const code = character.charCodeAt(0);
+      return code < 0x20 || code === 0x7f;
+    })
+  ) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(value, PREVIEW_BRIDGE_PATH_BASE_URL);
+    if (
+      parsed.origin !== new URL(PREVIEW_BRIDGE_PATH_BASE_URL).origin
+      || parsed.username
+      || parsed.password
+    ) {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+
+  return value as PreviewBridgePath;
+}
+
 export interface PreviewBridgeWebSocketMessage {
   type: "websocket.message";
   streamId: string;

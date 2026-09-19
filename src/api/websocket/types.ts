@@ -25,6 +25,8 @@ export interface WebSocketData {
   vncMode?: boolean;
   /** Whether this socket is the CLI live-preview bridge */
   previewBridgeMode?: boolean;
+  /** Authenticated user ID captured when the preview bridge is upgraded */
+  previewBridgeUserId?: string;
   /** Registered preview session for a CLI bridge socket */
   previewBridgeSessionId?: string;
   /** Keepalive timer for CLI live-preview bridge sockets */

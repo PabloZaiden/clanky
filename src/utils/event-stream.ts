@@ -53,6 +53,15 @@ export interface EventStreamOptions {
   maxBufferSize?: number;
 }
 
+type EventStreamTerminalState =
+  | { status: "ended" }
+  | { status: "failed"; error: Error }
+  | { status: "closed" };
+
+type EventStreamState =
+  | { status: "open" }
+  | EventStreamTerminalState;
+
 /**
  * Create an EventStream from a source that pushes events.
  * The producer calls `push()` for each event and `end()` when done.
@@ -71,18 +80,35 @@ export function createEventStream<T>(options?: EventStreamOptions): {
     resolve: (value: T | null) => void;
     reject: (error: Error) => void;
   }> = [];
-  let ended = false;
-  let closed = false;
-  let error: Error | null = null;
+  let state: EventStreamState = { status: "open" };
   let droppedCount = 0;
-  
+
   // Generate a unique ID for this stream instance for tracing
   const streamId = Math.random().toString(36).substring(2, 8);
   log.trace("Creating new event stream", { streamId, maxBufferSize });
 
+  function transition(nextState: EventStreamTerminalState): boolean {
+    if (state.status !== "open") {
+      return false;
+    }
+
+    state = nextState;
+    if (nextState.status === "failed") {
+      for (const waiter of waiters) {
+        waiter.reject(nextState.error);
+      }
+    } else {
+      for (const waiter of waiters) {
+        waiter.resolve(null);
+      }
+    }
+    waiters.length = 0;
+    return true;
+  }
+
   function push(item: T): void {
-    if (ended || closed) {
-      log.trace("Push ignored (stream ended/closed)", { streamId, ended, closed });
+    if (state.status !== "open") {
+      log.trace("Push ignored (stream not open)", { streamId, state: state.status });
       return;
     }
 
@@ -109,42 +135,31 @@ export function createEventStream<T>(options?: EventStreamOptions): {
   }
 
   function end(): void {
-    if (ended) {
-      log.trace("End ignored (already ended)", { streamId });
+    const pendingWaiters = waiters.length;
+    if (!transition({ status: "ended" })) {
+      log.trace("End ignored (stream already terminal)", { streamId, state: state.status });
       return;
     }
-    log.trace("Stream ending", { streamId, pendingWaiters: waiters.length });
-    ended = true;
-
-    for (const waiter of waiters) {
-      waiter.resolve(null);
-    }
-    waiters.length = 0;
+    log.trace("Stream ending", { streamId, pendingWaiters });
   }
 
   function fail(err: Error): void {
-    if (ended) {
-      log.trace("Fail ignored (already ended)", { streamId });
+    const pendingWaiters = waiters.length;
+    if (!transition({ status: "failed", error: err })) {
+      log.trace("Fail ignored (stream already terminal)", { streamId, state: state.status });
       return;
     }
-    log.debug("Stream failing", { streamId, error: err.message, pendingWaiters: waiters.length });
-    error = err;
-    ended = true;
-
-    for (const waiter of waiters) {
-      waiter.reject(err);
-    }
-    waiters.length = 0;
+    log.debug("Stream failing", { streamId, error: err.message, pendingWaiters });
   }
 
   const stream: EventStream<T> = {
     async next(): Promise<T | null> {
-      if (error) {
-        log.trace("Next: throwing stored error", { streamId, error: error.message });
-        throw error;
+      if (state.status === "failed") {
+        log.trace("Next: throwing stored error", { streamId, error: state.error.message });
+        throw state.error;
       }
 
-      if (closed) {
+      if (state.status === "closed") {
         log.trace("Next: returning null (stream closed)", { streamId });
         return null;
       }
@@ -155,7 +170,7 @@ export function createEventStream<T>(options?: EventStreamOptions): {
         return item;
       }
 
-      if (ended) {
+      if (state.status === "ended") {
         log.trace("Next: returning null (stream ended)", { streamId });
         return null;
       }
@@ -168,11 +183,7 @@ export function createEventStream<T>(options?: EventStreamOptions): {
 
     close(): void {
       log.trace("Stream closing", { streamId, pendingWaiters: waiters.length });
-      closed = true;
-      for (const waiter of waiters) {
-        waiter.resolve(null);
-      }
-      waiters.length = 0;
+      transition({ status: "closed" });
     },
   };
 

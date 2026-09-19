@@ -14,6 +14,13 @@ export type ProvisioningJobStatus =
   | "cancelled"
   | "interrupted";
 
+export function isProvisioningJobTerminal(status: ProvisioningJobStatus): boolean {
+  return status === "completed"
+    || status === "failed"
+    || status === "cancelled"
+    || status === "interrupted";
+}
+
 export type ProvisioningJobMode = "provision" | "rebuild" | "restart" | "arise";
 export type ProvisioningTransport = "ssh" | "worker";
 
