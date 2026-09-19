@@ -1,12 +1,14 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   getExecutionHostSourceId,
+  isProvisioningJobTerminal,
   type Agent,
   type ExecutionHostDescriptor,
   type PublicProvisioningJob,
 } from "@/shared";
-import type { useTaskGrouping } from "../../hooks";
-import { StatusBadge, type BadgeVariant } from "../common";
+import { ConfirmModal, EmptyState, Panel, useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
+import type { DismissAllProvisioningJobsResult, useTaskGrouping } from "../../hooks";
+import { Button, StatusBadge, type BadgeVariant } from "../common";
 import { getProvisioningStatusBadgeVariant, getProvisioningStatusLabel } from "../common/status-variants";
 import { ConfiguredAgentsSection } from "../ConfiguredAgentsSection";
 import {
@@ -17,7 +19,6 @@ import {
   type SidebarExecutionHostNode,
   type SidebarWorkspaceGroupNode,
 } from "./shell-types";
-import { EmptyState, Panel, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { isEffectivelyPrivate, shouldObscurePrivateItem } from "../../lib/private-items";
 import { ClankyListRow } from "./clanky-list-row";
 import { ServerTransportIcon } from "./server-sidebar-item";
@@ -137,6 +138,8 @@ export function OverviewView({
   sidebarWorkspaceGroups,
   onNavigate,
   provisioningJobs,
+  onDismissAllProvisioningJobs,
+  dismissingAllProvisioningJobs,
   showPrivateItems = false,
 }: {
   executionHosts: ExecutionHostDescriptor[];
@@ -148,8 +151,12 @@ export function OverviewView({
   sidebarWorkspaceGroups: SidebarWorkspaceGroupNode[];
   onNavigate: (route: WebAppRoute) => void;
   provisioningJobs: PublicProvisioningJob[];
+  onDismissAllProvisioningJobs: () => Promise<DismissAllProvisioningJobsResult>;
+  dismissingAllProvisioningJobs: boolean;
   showPrivateItems?: boolean;
 }) {
+  const toast = useToast();
+  const [dismissConfirmOpen, setDismissConfirmOpen] = useState(false);
   const activeWorkItems = useMemo(
     () => buildActiveWorkSidebarItems(sidebarWorkspaceGroups, { executionHostNodes }),
     [executionHostNodes, sidebarWorkspaceGroups],
@@ -181,6 +188,32 @@ export function OverviewView({
     () => agents.filter((agent) => visibleWorkspaceIds.has(agent.config.workspaceId)),
     [agents, visibleWorkspaceIds],
   );
+  const terminalProvisioningJobs = useMemo(
+    () => provisioningJobs.filter((job) => isProvisioningJobTerminal(job.state.status)),
+    [provisioningJobs],
+  );
+
+  async function handleDismissAllProvisioningJobs(): Promise<void> {
+    try {
+      const result = await onDismissAllProvisioningJobs();
+      setDismissConfirmOpen(false);
+      if (result.failedJobIds.length > 0) {
+        toast.error(
+          `Dismissed ${result.dismissedJobIds.length} provisioning job${
+            result.dismissedJobIds.length === 1 ? "" : "s"
+          }, but ${result.failedJobIds.length} could not be dismissed.`,
+        );
+        return;
+      }
+      toast.success(
+        `Dismissed ${result.dismissedJobIds.length} provisioning job${
+          result.dismissedJobIds.length === 1 ? "" : "s"
+        }.`,
+      );
+    } catch (error) {
+      toast.error(String(error));
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -292,6 +325,20 @@ export function OverviewView({
 
       {provisioningJobs.length > 0 ? (
         <Panel title="Provisioning">
+          {terminalProvisioningJobs.length > 0 ? (
+            <div className="mb-3 flex justify-end">
+              <Button
+                type="button"
+                variant="danger"
+                size="sm"
+                loading={dismissingAllProvisioningJobs}
+                onClick={() => setDismissConfirmOpen(true)}
+                data-testid="dismiss-all-provisioning-jobs"
+              >
+                Dismiss all
+              </Button>
+            </div>
+          ) : null}
           <div className="space-y-2">
             {provisioningJobs.map((job) => (
               <ClankyListRow
@@ -313,6 +360,21 @@ export function OverviewView({
           </div>
         </Panel>
       ) : null}
+
+      <ConfirmModal
+        isOpen={dismissConfirmOpen}
+        onClose={() => {
+          if (!dismissingAllProvisioningJobs) {
+            setDismissConfirmOpen(false);
+          }
+        }}
+        onConfirm={() => void handleDismissAllProvisioningJobs()}
+        title="Dismiss terminal provisioning jobs?"
+        message="This permanently removes the selected jobs, their logs, and their retry configuration."
+        confirmLabel="Dismiss all"
+        loading={dismissingAllProvisioningJobs}
+        variant="danger"
+      />
     </div>
   );
 }
