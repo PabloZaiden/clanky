@@ -5,11 +5,7 @@ import type {
   TranscriptSnapshotOptions,
 } from "@/shared";
 import { shouldIncludeConversationTranscriptLog } from "@/shared";
-import {
-  getTranscriptMeta,
-  listTranscriptEntriesPage,
-  getTranscriptToolCall,
-} from "../persistence/transcripts/store";
+import { taskTranscriptStore } from "../persistence/transcripts/task-store";
 import { loadTaskSummary } from "../persistence/tasks";
 import { createTranscriptFromStoragePage } from "./transcript-service";
 
@@ -31,7 +27,7 @@ export async function getTaskTranscriptSnapshot(
     return null;
   }
 
-  const meta = getTranscriptMeta("task", taskId);
+  const meta = taskTranscriptStore.getMeta(taskId);
   if (!meta) {
     throw new Error(`Task transcript metadata is unavailable: ${taskId}`);
   }
@@ -43,7 +39,7 @@ export async function getTaskTranscriptSnapshot(
       state,
     },
     transcript: createTranscriptFromStoragePage(
-      listTranscriptEntriesPage("task", taskId, options),
+      taskTranscriptStore.listPage(taskId, options),
       {
         revision: meta.revision,
         totalEntries: meta.entryCount,
@@ -61,8 +57,8 @@ export async function getTaskTranscriptToolCall(
   if (!task) {
     return null;
   }
-  if (!getTranscriptMeta("task", taskId)) {
+  if (!taskTranscriptStore.getMeta(taskId)) {
     throw new Error(`Task transcript metadata is unavailable: ${taskId}`);
   }
-  return getTranscriptToolCall("task", taskId, toolCallId);
+  return taskTranscriptStore.getToolCall(taskId, toolCallId);
 }

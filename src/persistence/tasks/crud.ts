@@ -7,10 +7,7 @@ import { getDatabase } from "../database";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { taskToRow, rowToTask, validateColumnNames } from "./helpers";
 import { requirePersistenceUserId } from "../ownership";
-import {
-  hydrateTranscriptStateForUser,
-  syncTranscriptEntriesInTransaction,
-} from "../transcripts/store";
+import { taskTranscriptStore } from "../transcripts/task-store";
 
 const log = createLogger("persistence:tasks");
 
@@ -123,11 +120,10 @@ export async function saveTask(task: Task): Promise<void> {
 
   const userId = String(row["user_id"]);
   db.transaction(() => {
-    const previousState = hydrateTranscriptStateForUser("task", task.config.id, userId);
+    const previousState = taskTranscriptStore.hydrateForUser(task.config.id, userId);
     stmt.run(...values);
-    syncTranscriptEntriesInTransaction(
+    taskTranscriptStore.syncInTransaction(
       db,
-      "task",
       task.config.id,
       userId,
       previousState,
@@ -166,7 +162,7 @@ export async function loadTaskForUser(taskId: string, userId: string): Promise<T
   }
 
   const task = rowToTask(row);
-  const transcript = hydrateTranscriptStateForUser("task", taskId, userId);
+  const transcript = taskTranscriptStore.hydrateForUser(taskId, userId);
   task.state.messages = transcript.messages;
   task.state.logs = transcript.logs;
   task.state.toolCalls = transcript.toolCalls;
@@ -210,7 +206,7 @@ export async function listTasksForUser(userId: string): Promise<Task[]> {
 
   const tasks = rows.map((row) => {
     const task = rowToTask(row);
-    const transcript = hydrateTranscriptStateForUser("task", task.config.id, userId);
+    const transcript = taskTranscriptStore.hydrateForUser(task.config.id, userId);
     task.state.messages = transcript.messages;
     task.state.logs = transcript.logs;
     task.state.toolCalls = transcript.toolCalls;
