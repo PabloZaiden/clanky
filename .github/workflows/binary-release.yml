@@ -6,7 +6,38 @@ on:
       - published
 
 jobs:
+  metadata:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      targets: ${{ steps.release_metadata.outputs.targets }}
+      binaries: ${{ steps.release_metadata.outputs.binaries }}
+      generate_checksums: ${{ steps.release_metadata.outputs.generate_checksums }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: latest
+
+      - name: Validate release metadata
+        run: bun run release:metadata:check
+
+      - name: Export installer workflow inputs
+        id: release_metadata
+        run: |
+          {
+            echo "targets=$(bun scripts/release-metadata.ts installer-targets)"
+            echo "binaries=$(bun scripts/release-metadata.ts installer-binaries)"
+            echo "generate_checksums=$(bun scripts/release-metadata.ts installer-checksums)"
+          } >> "$GITHUB_OUTPUT"
+
   binaries:
+    needs: metadata
     uses: pablozaiden/installer/.github/workflows/reusable-binary-release.yml@1e73c9a4b84bb2282d5a6fd8463f9a9f62c26c67 # installer v0.1.0
     permissions:
       contents: write
@@ -16,12 +47,6 @@ jobs:
     with:
       install_command: bun install --frozen-lockfile
       prebuild_command: bun run build
-      binaries: |
-        [
-          {
-            "name": "clanky",
-            "asset_prefix": "clanky",
-            "build_command": "bun src/build.ts --target=$BUN_TARGET",
-            "output_path": "dist/clanky-$RELEASE_TARGET"
-          }
-        ]
+      targets: ${{ needs.metadata.outputs.targets }}
+      binaries: ${{ needs.metadata.outputs.binaries }}
+      generate_checksums: ${{ needs.metadata.outputs.generate_checksums == 'true' }}

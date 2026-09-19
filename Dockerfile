@@ -13,6 +13,8 @@ RUN bun install --frozen-lockfile
 COPY tsconfig.json ./
 COPY src ./src
 COPY scripts/novnc-vendor.ts ./scripts/novnc-vendor.ts
+COPY scripts/release-metadata.ts ./scripts/release-metadata.ts
+COPY .github/release-metadata.json ./.github/release-metadata.json
 
 # The CI version is resolved outside the image build so package changes do not
 # invalidate the dependency layer on every image build.
@@ -20,11 +22,7 @@ ARG CLANKY_VERSION=0.0.0-development
 RUN CLANKY_VERSION="$CLANKY_VERSION" bun -e 'const version = process.env["CLANKY_VERSION"]; if (!version) throw new Error("CLANKY_VERSION is required"); const path = "package.json"; const packageJson = await Bun.file(path).json(); packageJson.version = version; await Bun.write(path, `${JSON.stringify(packageJson, null, 2)}\n`);'
 
 # Build the standalone product binary
-RUN case "$TARGETARCH" in \
-      amd64) BUN_TARGET=bun-linux-x64 ;; \
-      arm64) BUN_TARGET=bun-linux-arm64 ;; \
-      *) echo "Unsupported architecture: $TARGETARCH" >&2; exit 1 ;; \
-    esac && \
+RUN BUN_TARGET="$(bun scripts/release-metadata.ts docker-bun-target "$TARGETARCH")" && \
     bun src/build.ts --target="$BUN_TARGET" && \
     cp "dist/clanky-${BUN_TARGET#bun-}" /tmp/clanky
 

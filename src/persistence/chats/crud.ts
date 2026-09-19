@@ -9,7 +9,7 @@ import { chatToRow, hasMessageContent, rowToChat, validateChatColumnNames } from
 import { requirePersistenceUserId } from "../ownership";
 import { isSqliteUniqueConstraintError, uniqueConstraintError } from "../errors";
 import { replaceChatTranscriptEntriesForUserInTransaction } from "./transcript";
-import { hydrateTranscriptStateForUser } from "../transcripts/store";
+import { chatTranscriptStore } from "../transcripts/chat-store";
 
 const log = createLogger("persistence:chats");
 const STANDALONE_CHAT_CONDITION = "scope = 'workspace' AND task_id IS NULL";
@@ -117,7 +117,10 @@ export async function loadChat(chatId: string): Promise<Chat | null> {
     return null;
   }
   const chat = rowToChat(row);
-  const transcript = hydrateTranscriptStateForUser("chat", chatId, requirePersistenceUserId());
+  const transcript = chatTranscriptStore.hydrateForUser(
+    chatId,
+    requirePersistenceUserId(),
+  );
   chat.state.messages = transcript.messages;
   chat.state.logs = transcript.logs;
   chat.state.toolCalls = transcript.toolCalls;
@@ -141,7 +144,10 @@ export async function loadTaskChat(taskId: string): Promise<Chat | null> {
     return null;
   }
   const chat = rowToChat(row);
-  const transcript = hydrateTranscriptStateForUser("chat", chat.config.id, requirePersistenceUserId());
+  const transcript = chatTranscriptStore.hydrateForUser(
+    chat.config.id,
+    requirePersistenceUserId(),
+  );
   chat.state.messages = transcript.messages;
   chat.state.logs = transcript.logs;
   chat.state.toolCalls = transcript.toolCalls;
