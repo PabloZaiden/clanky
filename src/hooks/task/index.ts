@@ -106,8 +106,8 @@ export interface UseTaskResult {
   getPullRequestDestination: () => Promise<PullRequestDestinationResponse>;
   /** Send feedback to refine the plan (only works when task is in planning status) */
   sendPlanFeedback: (feedback: string, attachments?: MessageImageAttachment[]) => Promise<boolean>;
-  /** Accept the plan via the requested mode (only works when task is in planning status) */
-  acceptPlan: (mode?: "start_task" | "open_terminal") => Promise<AcceptPlanResult>;
+  /** Accept the plan and start execution (only works when task is in planning status) */
+  acceptPlan: () => Promise<AcceptPlanResult>;
   /** Discard the plan and delete the task (only works when task is in planning status) */
   discardPlan: () => Promise<boolean>;
   /** Address reviewer comments (only works for pushed/merged tasks with reviewMode.addressable = true) */
