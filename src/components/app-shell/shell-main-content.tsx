@@ -433,11 +433,6 @@ function renderMainContent(props: ShellMainContentProps) {
           void refreshTasks();
         }}
         onSelectTerminalSession={(terminalSessionId) => navigateWithinShell({ view: "terminal", terminalSessionId })}
-        onOpenTaskFiles={(selectedTaskId) => navigateWithinShell({
-          view: "code-explorer",
-          contentType: "task",
-          taskId: selectedTaskId,
-        })}
       />
     );
   }
