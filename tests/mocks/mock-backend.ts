@@ -78,14 +78,25 @@ function createMockSessionId(prefix: string): string {
   return `${prefix}-${Date.now()}-${mockSessionIdCounter}`;
 }
 
+class PromptStartSignalResetError extends Error {
+  constructor() {
+    super("Prompt start signal was reset");
+    this.name = "PromptStartSignalResetError";
+  }
+}
+
 class PromptStartSignal {
   private pendingPrompts = 0;
-  private readonly waiters: Array<() => void> = [];
+  private readonly waiters: Array<{
+    resolve: () => void;
+    reject: (error: Error) => void;
+  }> = [];
+  private generation = 0;
 
   markStarted(): void {
     const waiter = this.waiters.shift();
     if (waiter) {
-      waiter();
+      waiter.resolve();
       return;
     }
     this.pendingPrompts++;
@@ -96,13 +107,40 @@ class PromptStartSignal {
       this.pendingPrompts--;
       return;
     }
-    await new Promise<void>((resolve) => {
-      this.waiters.push(resolve);
+    await new Promise<void>((resolve, reject) => {
+      this.waiters.push({ resolve, reject });
+    });
+  }
+
+  scheduleStart(): void {
+    const generation = this.generation;
+    setImmediate(() => {
+      if (generation !== this.generation) {
+        return;
+      }
+      this.markStarted();
     });
   }
 
   reset(): void {
+    this.generation++;
     this.pendingPrompts = 0;
+    const resetError = new PromptStartSignalResetError();
+    for (const waiter of this.waiters.splice(0)) {
+      waiter.reject(resetError);
+    }
+  }
+}
+
+async function waitForPromptStart(signal: PromptStartSignal): Promise<boolean> {
+  try {
+    await signal.waitForStart();
+    return true;
+  } catch (error) {
+    if (error instanceof PromptStartSignalResetError) {
+      return false;
+    }
+    throw error;
   }
 }
 
@@ -236,7 +274,7 @@ export class MockAcpBackend implements Backend {
   async sendPromptAsync(_sessionId: string, _prompt: PromptInput): Promise<void> {
     this.sentPrompts.push(_prompt);
     await this.onPrompt?.(_prompt, this.directory);
-    setImmediate(() => this.promptStartSignal.markStarted());
+    this.promptStartSignal.scheduleStart();
   }
 
   async abortSession(_sessionId: string): Promise<void> {}
@@ -245,7 +283,10 @@ export class MockAcpBackend implements Backend {
     const { stream, push, end } = createEventStream<AgentEvent>();
 
     (async () => {
-      await this.promptStartSignal.waitForStart();
+      if (!(await waitForPromptStart(this.promptStartSignal))) {
+        end();
+        return;
+      }
       await this.responseGate?.();
 
       if (this.streamEventSequences.length > 0) {
@@ -668,7 +709,7 @@ export class PlanModeMockBackend implements Backend {
   }
 
   async sendPromptAsync(_sessionId: string, _prompt: PromptInput): Promise<void> {
-    setImmediate(() => this.promptStartSignal.markStarted());
+    this.promptStartSignal.scheduleStart();
   }
 
   async abortSession(_sessionId: string): Promise<void> {
@@ -680,7 +721,10 @@ export class PlanModeMockBackend implements Backend {
     const self = this;
 
     (async () => {
-      await self.promptStartSignal.waitForStart();
+      if (!(await waitForPromptStart(self.promptStartSignal))) {
+        end();
+        return;
+      }
 
       const response = self.getNextStreamResponse(sessionId);
       push({ type: "message.start", messageId: `msg-${Date.now()}` });

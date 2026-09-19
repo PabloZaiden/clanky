@@ -26,6 +26,20 @@ function workspace(id: string, name: string): Workspace {
 }
 
 describe("preview command suggestion", () => {
+  test("quotes unsafe workspace references independently from port sanitization", () => {
+    const app = workspace("workspace-1", "My App; echo unexpected");
+
+    const command = buildPreviewCliCommand({
+      workspace: app,
+      workspaces: [app],
+      port: "3000",
+    });
+
+    expect(command).toBe(
+      "clanky preview --workspace 'My App; echo unexpected' --port 3000",
+    );
+  });
+
   test("sanitizes shell-sensitive preview port input", () => {
     const app = workspace("workspace-1", "App");
 

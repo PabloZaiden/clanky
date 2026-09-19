@@ -22,6 +22,7 @@ import type {
   MeshWorkerStatus,
 } from "../../src/shared/mesh";
 import { CommandExecutorImpl } from "../../src/core/remote-command-executor";
+import { MeshCommandExecutor } from "../../src/core/mesh-command-executor";
 import { GitCommandError, GitService } from "../../src/core/git";
 import { ensurePlanningDirectory } from "../../src/core/planning-directory";
 import {
@@ -88,6 +89,130 @@ async function exerciseMeshAcpRuntime(
       await backend.disconnect();
     }
   });
+}
+
+async function exerciseNativeWorkerOperations(
+  registration: MeshWorkerRegistration,
+  directory: string,
+  platformOs: string,
+): Promise<void> {
+  const executor = new MeshCommandExecutor({
+    workspaceId: "native-worker-operations-e2e",
+    directory,
+    executionNodeId: registration.workerNodeId,
+    provider: "copilot",
+    localUserId: registration.localUserId,
+    pathStyle: executionPathStyleForPlatform(platformOs)!,
+    capabilities: registration.workerCapabilities ?? {},
+  });
+
+  try {
+    const filesDirectory = join(directory, "native-worker-files");
+    const sourcePath = join(filesDirectory, "source.txt");
+    const movedPath = join(filesDirectory, "moved.txt");
+    expect(await executor.writeFile(sourcePath, "native worker file\n")).toBe(true);
+    expect(await executor.readFile(sourcePath)).toBe("native worker file\n");
+    expect(await executor.listDirectoryEntries(filesDirectory, {
+      includeHidden: true,
+    })).toEqual([{
+      name: "source.txt",
+      kind: "file",
+      isSymbolicLink: false,
+    }]);
+    expect(await executor.movePath(sourcePath, movedPath)).toEqual({ success: true });
+    expect(await executor.deletePath(movedPath, { kind: "file" })).toBe(true);
+    expect(await executor.fileExists(movedPath)).toBe(false);
+
+    const gitDirectory = join(directory, "native-worker-git");
+    const trackedPath = join(gitDirectory, "tracked.txt");
+    expect(await executor.writeFile(trackedPath, "initial\n")).toBe(true);
+    for (const args of [
+      ["init"],
+      ["config", "user.name", "Clanky Native Worker E2E"],
+      ["config", "user.email", "native-worker-e2e@clanky.invalid"],
+    ]) {
+      expect((await executor.execGit(gitDirectory, args, {
+        scope: "repository",
+      })).success).toBe(true);
+    }
+    const git = GitService.withExecutor(executor);
+    expect(await git.isGitRepo(gitDirectory)).toBe(true);
+    await git.stageAll(gitDirectory);
+    await git.commit(gitDirectory, "test: initialize native worker repository");
+    expect(await git.hasUncommittedChanges(gitDirectory)).toBe(false);
+    expect(await executor.writeFile(trackedPath, "updated\n")).toBe(true);
+    expect(await git.getChangedFiles(gitDirectory)).toEqual(["tracked.txt"]);
+
+    const outputCommand = platformOs === "windows"
+      ? {
+          command: "powershell.exe",
+          args: [
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            "[Console]::Out.Write(('x' * 2048 -join ''))",
+          ],
+        }
+      : {
+          command: "sh",
+          args: ["-c", "printf '%2048s' '' | tr ' ' x"],
+        };
+    await expect(executor.exec(
+      outputCommand.command,
+      outputCommand.args,
+      {
+        cwd: directory,
+        maxOutputBytes: 1_024,
+      },
+    )).rejects.toMatchObject({ code: "mesh_execution_result_too_large" });
+
+    const markerPath = join(directory, "native-worker-cancel-started");
+    const cancelCommand = platformOs === "windows"
+      ? {
+          command: "powershell.exe",
+          args: [
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            "[IO.File]::WriteAllText($env:CLANKY_NATIVE_E2E_MARKER, 'started'); Start-Sleep -Seconds 30",
+          ],
+        }
+      : {
+          command: "sh",
+          args: [
+            "-c",
+            "printf started > \"$CLANKY_NATIVE_E2E_MARKER\"; sleep 30",
+          ],
+        };
+    const cancellation = new AbortController();
+    const pendingCancellation = executor.exec(
+      cancelCommand.command,
+      cancelCommand.args,
+      {
+        cwd: directory,
+        timeout: 60_000,
+        longRunning: true,
+        signal: cancellation.signal,
+        env: { CLANKY_NATIVE_E2E_MARKER: markerPath },
+      },
+    );
+    await pollUntil(
+      async () => await executor.fileExists(markerPath),
+      (exists) => exists,
+      {
+        description: "native worker cancellation command to start",
+        timeoutMs: 15_000,
+      },
+    );
+    cancellation.abort();
+    await expect(pendingCancellation).rejects.toMatchObject({
+      code: "mesh_execution_aborted",
+    });
+  } finally {
+    executor.close();
+  }
 }
 
 afterEach(async () => {
@@ -292,6 +417,11 @@ describe("native worker registration", () => {
     process.env["CLANKY_DATA_DIR"] = controller.dataDir;
     await initializeDatabase();
     try {
+      await exerciseNativeWorkerOperations(
+        registration,
+        worker.dataDir,
+        platformOs,
+      );
       await exerciseMeshAcpRuntime(registration, worker.dataDir);
     } finally {
       closeDatabase();
