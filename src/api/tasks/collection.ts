@@ -45,7 +45,14 @@ function mapTaskCreationError(error: unknown, workspaceId: string): Response | n
       },
     });
   }
-  if (error.code === "invalid_uploaded_plan" || error.code === "model_not_enabled") {
+  if (
+    error.code === "invalid_uploaded_plan"
+    || error.code === "model_not_enabled"
+    || error.code === "cheap_model_not_enabled"
+    || error.code === "model_not_found"
+    || error.code === "provider_not_found"
+    || error.code === "validation_failed"
+  ) {
     return domainErrorResponse(error, {
       policy: "tasks",
       fallback: {

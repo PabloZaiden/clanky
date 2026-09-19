@@ -63,6 +63,7 @@ interface DomainErrorHttpPolicyEntry {
   error?: string;
   message?: string;
   messageFromDetails?: DomainErrorMessageProjector;
+  messageFromError?: DomainErrorMessageProjector;
   extra?: DomainErrorDetailProjector;
   headers?: DomainErrorHeaderProjector;
 }
@@ -142,7 +143,10 @@ const API_DOMAIN_ERROR_CODES = {
   invalid_model_config: true,
   invalid_uploaded_plan: true,
   invalid_task_input: true,
+  cheap_model_not_enabled: true,
   model_not_enabled: true,
+  model_not_found: true,
+  provider_not_found: true,
   invalid_task_state: true,
   invalid_worker_host_address: true,
   job_not_terminal: true,
@@ -169,14 +173,34 @@ const API_DOMAIN_ERROR_CODES = {
   mesh_execution_aborted: true,
   mesh_execution_async_command_not_found: true,
   mesh_execution_caller_not_active: true,
+  mesh_execution_cancel_failed: true,
+  mesh_execution_capability_unavailable: true,
+  mesh_execution_command_failed: true,
   mesh_execution_configuration_request_expired: true,
   mesh_execution_configuration_stale: true,
   mesh_execution_context_changed: true,
+  mesh_execution_encryption_key_invalid: true,
+  mesh_execution_encryption_unavailable: true,
+  mesh_execution_endpoint_unavailable: true,
+  mesh_execution_environment_invalid: true,
+  mesh_execution_environment_unavailable: true,
+  mesh_execution_limit_exceeded: true,
   mesh_execution_operation_unsupported: true,
+  mesh_execution_output_gap: true,
+  mesh_execution_output_offset_invalid: true,
   mesh_execution_owner_mismatch: true,
+  mesh_execution_path_invalid: true,
+  mesh_execution_protocol_mismatch: true,
+  mesh_execution_replay: true,
+  mesh_execution_request_failed: true,
+  mesh_execution_request_invalid: true,
+  mesh_execution_request_too_large: true,
+  mesh_execution_response_invalid: true,
   mesh_execution_result_too_large: true,
   mesh_execution_session_expired: true,
+  mesh_execution_session_expiry_invalid: true,
   mesh_execution_session_invalid: true,
+  mesh_execution_target_invalid: true,
   mesh_execution_unreachable: true,
   mesh_peer_not_trusted: true,
   mesh_peer_revoked: true,
@@ -387,6 +411,11 @@ function fileConflictMessage(error: DomainError): string | undefined {
     : undefined;
 }
 
+function legacyAgentMessage(error: DomainError): string | undefined {
+  const message = error.message.trim();
+  return message.length > 0 && message.length <= 500 ? message : undefined;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -453,20 +482,23 @@ const POLICY_PROFILES = {
       agent_already_running: {
         status: 409,
         message: "Agent already has an active run.",
+        messageFromError: legacyAgentMessage,
       },
       agent_chat_not_found: {
         status: 409,
         error: "agent_run_not_ready",
-        message: "Agent run chat is no longer available.",
+        message: "Agent run chat is no longer available",
       },
       agent_code_generation_failed: {
         status: 502,
         message: "The code generation provider did not create a non-empty source file.",
+        messageFromError: legacyAgentMessage,
       },
       agent_code_invalid: {
         status: 400,
         extra: diagnosticsDetails,
         message: "Agent code is invalid",
+        messageFromError: legacyAgentMessage,
       },
       agent_not_found: {
         status: 404,
@@ -475,6 +507,18 @@ const POLICY_PROFILES = {
       agent_run_not_ready: {
         status: 409,
         message: "The agent run is not ready.",
+        messageFromError: legacyAgentMessage,
+      },
+      workspace_not_found: {
+        status: 404,
+        error: "workspace_not_found",
+        message: "Workspace not found",
+        messageFromError: legacyAgentMessage,
+      },
+      workspace_worktrees_disabled: {
+        status: 409,
+        message: "Worktrees are disabled for this workspace.",
+        messageFromError: legacyAgentMessage,
       },
     },
   },
@@ -544,6 +588,10 @@ const POLICY_PROFILES = {
     boundary: "authenticated",
     mappings: {
       ...COMMON_MAPPINGS,
+      execution_host_addresses_unavailable: {
+        status: 409,
+        message: "Execution-host addresses are unavailable.",
+      },
       execution_host_binding_stale: {
         status: 409,
         message: "Execution host configuration changed.",
@@ -670,19 +718,27 @@ const POLICY_PROFILES = {
       ...COMMON_MAPPINGS,
       mesh_acp_unavailable: {
         status: 503,
-        message: "Mesh ACP is unavailable.",
+        error: "mesh_operation_failed",
+        message: "Mesh operation failed",
       },
       mesh_control_request_rejected: {
         status: 502,
-        message: "The Mesh control request was rejected.",
+        error: "mesh_operation_failed",
+        message: "Mesh operation failed",
       },
       mesh_control_request_unreachable: {
         status: 503,
-        message: "The Mesh control request could not reach its peer.",
+        error: "mesh_operation_failed",
+        message: "Mesh operation failed",
       },
       mesh_enrollment_controller_mismatch: {
         status: 409,
-        message: "The Mesh enrollment controller does not match.",
+        error: "mesh_operation_failed",
+        message: "Mesh operation failed",
+      },
+      mesh_enrollment_target_invalid: {
+        status: 400,
+        message: "The Mesh enrollment target is invalid.",
       },
       mesh_enrollment_discovery_invalid: {
         status: 400,
@@ -706,7 +762,8 @@ const POLICY_PROFILES = {
       },
       mesh_enrollment_expired: {
         status: 410,
-        message: "The Mesh enrollment has expired.",
+        error: "mesh_operation_failed",
+        message: "Mesh operation failed",
       },
       mesh_enrollment_relay_mismatch: {
         status: 409,
@@ -726,19 +783,23 @@ const POLICY_PROFILES = {
       },
       mesh_enrollment_self: {
         status: 409,
-        message: "A Mesh worker cannot enroll itself.",
+        error: "mesh_operation_failed",
+        message: "Mesh operation failed",
       },
       mesh_enrollment_token_invalid: {
         status: 410,
-        message: "The Mesh enrollment token is invalid or expired.",
+        error: "mesh_operation_failed",
+        message: "Mesh operation failed",
       },
       mesh_peer_not_trusted: {
         status: 403,
-        message: "The Mesh peer is not trusted.",
+        error: "mesh_operation_failed",
+        message: "Mesh operation failed",
       },
       mesh_peer_revoked: {
         status: 403,
-        message: "The Mesh peer has been revoked.",
+        error: "mesh_operation_failed",
+        message: "Mesh operation failed",
       },
       mesh_relay_not_paired: {
         status: 409,
@@ -750,11 +811,13 @@ const POLICY_PROFILES = {
       },
       mesh_role_invalid: {
         status: 404,
-        message: "The Mesh role is invalid.",
+        error: "mesh_operation_failed",
+        message: "Mesh operation failed",
       },
       mesh_worker_not_found: {
         status: 404,
-        message: "Mesh worker not found.",
+        error: "mesh_operation_failed",
+        message: "Mesh operation failed",
       },
       mesh_worker_relay_grants_inconsistent: {
         status: 409,
@@ -762,39 +825,48 @@ const POLICY_PROFILES = {
       },
       workspace_worker_enrollment_claimed: {
         status: 409,
-        message: "The workspace worker enrollment has already been claimed.",
+        error: "mesh_operation_failed",
+        message: "Mesh operation failed",
       },
       workspace_worker_enrollment_expired: {
         status: 410,
-        message: "The workspace worker enrollment has expired.",
+        error: "mesh_operation_failed",
+        message: "Mesh operation failed",
       },
       workspace_worker_enrollment_not_found: {
         status: 404,
-        message: "Workspace worker enrollment not found.",
+        error: "mesh_operation_failed",
+        message: "Mesh operation failed",
       },
       workspace_worker_enrollment_unavailable: {
         status: 409,
-        message: "Workspace worker enrollment is unavailable.",
+        error: "mesh_operation_failed",
+        message: "Mesh operation failed",
       },
       workspace_worker_already_attached: {
         status: 409,
-        message: "The workspace worker is already attached.",
+        error: "mesh_operation_failed",
+        message: "Mesh operation failed",
       },
       workspace_worker_already_registered: {
         status: 409,
-        message: "The workspace worker is already registered.",
+        error: "mesh_operation_failed",
+        message: "Mesh operation failed",
       },
       workspace_worker_enrollment_invalid: {
         status: 409,
-        message: "The workspace worker enrollment is invalid.",
+        error: "mesh_operation_failed",
+        message: "Mesh operation failed",
       },
       workspace_worker_not_connected: {
         status: 409,
-        message: "The workspace worker is not connected.",
+        error: "mesh_operation_failed",
+        message: "Mesh operation failed",
       },
       workspace_worker_workspace_scoped: {
         status: 409,
-        message: "The workspace worker enrollment is workspace-scoped.",
+        error: "mesh_operation_failed",
+        message: "Mesh operation failed",
       },
     },
     unknownStatus: (code) => code.startsWith("mesh_") ? 400 : undefined,
@@ -831,6 +903,22 @@ const POLICY_PROFILES = {
         status: 409,
         message: "The Mesh execution caller is not active.",
       },
+      mesh_execution_aborted: {
+        status: 400,
+        message: "The Mesh execution request was aborted.",
+      },
+      mesh_execution_cancel_failed: {
+        status: 400,
+        message: "The Mesh execution request could not be cancelled.",
+      },
+      mesh_execution_capability_unavailable: {
+        status: 400,
+        message: "The Mesh execution capability is unavailable.",
+      },
+      mesh_execution_command_failed: {
+        status: 400,
+        message: "The Mesh execution command failed.",
+      },
       mesh_execution_configuration_request_expired: {
         status: 410,
         message: "The Mesh execution configuration request has expired.",
@@ -843,13 +931,73 @@ const POLICY_PROFILES = {
         status: 409,
         message: "The Mesh execution context changed.",
       },
+      mesh_execution_encryption_key_invalid: {
+        status: 400,
+        message: "The Mesh execution encryption key is invalid.",
+      },
+      mesh_execution_encryption_unavailable: {
+        status: 400,
+        message: "Mesh execution encryption is unavailable.",
+      },
+      mesh_execution_endpoint_unavailable: {
+        status: 400,
+        message: "The Mesh execution endpoint is unavailable.",
+      },
+      mesh_execution_environment_invalid: {
+        status: 400,
+        message: "The Mesh execution environment is invalid.",
+      },
+      mesh_execution_environment_unavailable: {
+        status: 400,
+        message: "The Mesh execution environment is unavailable.",
+      },
+      mesh_execution_limit_exceeded: {
+        status: 400,
+        message: "The Mesh execution limit was exceeded.",
+      },
       mesh_execution_operation_unsupported: {
         status: 501,
         message: "The Mesh execution operation is unsupported.",
       },
+      mesh_execution_output_gap: {
+        status: 400,
+        message: "The Mesh execution output has a gap.",
+      },
+      mesh_execution_output_offset_invalid: {
+        status: 400,
+        message: "The Mesh execution output offset is invalid.",
+      },
       mesh_execution_owner_mismatch: {
         status: 403,
         message: "The Mesh execution owner does not match.",
+      },
+      mesh_execution_path_invalid: {
+        status: 400,
+        message: "The Mesh execution path is invalid.",
+      },
+      mesh_execution_protocol_mismatch: {
+        status: 400,
+        message: "The Mesh execution protocol is incompatible.",
+      },
+      mesh_execution_replay: {
+        status: 400,
+        message: "The Mesh execution request has already been used.",
+      },
+      mesh_execution_request_failed: {
+        status: 400,
+        message: "The Mesh execution request failed.",
+      },
+      mesh_execution_request_invalid: {
+        status: 400,
+        message: "The Mesh execution request is invalid.",
+      },
+      mesh_execution_request_too_large: {
+        status: 400,
+        message: "The Mesh execution request is too large.",
+      },
+      mesh_execution_response_invalid: {
+        status: 400,
+        message: "The Mesh execution response is invalid.",
       },
       mesh_execution_result_too_large: {
         status: 413,
@@ -859,9 +1007,21 @@ const POLICY_PROFILES = {
         status: 401,
         message: "The Mesh execution session has expired.",
       },
+      mesh_execution_session_expiry_invalid: {
+        status: 400,
+        message: "The Mesh execution session expiry is invalid.",
+      },
       mesh_execution_session_invalid: {
         status: 401,
         message: "The Mesh execution session is invalid.",
+      },
+      mesh_execution_target_invalid: {
+        status: 400,
+        message: "The Mesh execution target is invalid.",
+      },
+      mesh_execution_unreachable: {
+        status: 400,
+        message: "The Mesh execution peer could not be reached.",
       },
       execution_host_directory_invalid: {
         status: 400,
@@ -1138,6 +1298,10 @@ const POLICY_PROFILES = {
         status: 400,
         message: "The uploaded plan is invalid.",
       },
+      cheap_model_not_enabled: {
+        status: 400,
+        message: "The selected low-cost model is not available.",
+      },
       invalid_task_input: {
         status: 400,
         error: "validation_error",
@@ -1165,6 +1329,18 @@ const POLICY_PROFILES = {
       model_not_enabled: {
         status: 400,
         message: "The selected model is not available.",
+      },
+      model_not_found: {
+        status: 400,
+        message: "The selected model was not found.",
+      },
+      provider_not_found: {
+        status: 400,
+        message: "The selected model provider was not found.",
+      },
+      validation_failed: {
+        status: 400,
+        message: "The selected model could not be validated.",
       },
       planning_update_restricted: {
         status: 409,
@@ -1294,6 +1470,10 @@ const POLICY_PROFILES = {
       invalid_credential_token: {
         status: 400,
         message: "SSH credential token is missing or expired",
+      },
+      ssh_server_not_found: {
+        status: 404,
+        message: "SSH server not found",
       },
       mesh_terminal_connection_unavailable: {
         status: 503,
@@ -1479,6 +1659,11 @@ const POLICY_PROFILES = {
         status: 400,
         message: "Execution host is unavailable.",
       },
+      workspace_not_found: {
+        status: 404,
+        error: "workspace_not_found",
+        message: "Workspace not found",
+      },
       mesh_execution_aborted: {
         status: 499,
         message: "Workspace command was aborted",
@@ -1577,7 +1762,9 @@ function getEntryMapping(
   entry: DomainErrorHttpPolicyEntry,
   error: DomainError,
 ): DomainErrorHttpMapping {
-  const message = entry.messageFromDetails?.(error) ?? entry.message;
+  const message = entry.messageFromDetails?.(error)
+    ?? entry.messageFromError?.(error)
+    ?? entry.message;
   return {
     status: entry.status,
     ...(entry.error ? { error: entry.error } : {}),

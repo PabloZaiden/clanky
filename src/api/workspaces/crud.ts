@@ -31,6 +31,24 @@ function mapDeleteWorkspaceError(error: unknown): Response {
   });
 }
 
+function logWorkspaceMutationFailure(
+  operation: "create" | "update",
+  workspaceId: string | undefined,
+  error: unknown,
+  response: Response,
+): void {
+  const context = {
+    ...(workspaceId ? { workspaceId } : {}),
+    status: response.status,
+    ...(isDomainError(error) ? { errorCode: error.code } : { error: String(error) }),
+  };
+  if (response.status >= 500) {
+    log.error(`Failed to ${operation} workspace`, context);
+  } else {
+    log.warn(`Rejected workspace ${operation}`, context);
+  }
+}
+
 export const crudRoutes = defineRoutes({
   /**
    * GET /api/workspaces - List all workspaces
@@ -75,10 +93,7 @@ export const crudRoutes = defineRoutes({
         log.info(`Created workspace: ${workspace.name} (${workspace.directory})`);
         return Response.json(workspace, { status: 201 });
       } catch (error) {
-        if (!isDomainError(error)) {
-          log.error("Failed to create workspace:", String(error));
-        }
-        return domainErrorResponse(error, {
+        const response = domainErrorResponse(error, {
           policy: "workspaces",
           fallback: {
             error: "create_failed",
@@ -86,6 +101,8 @@ export const crudRoutes = defineRoutes({
             status: 500,
           },
         });
+        logWorkspaceMutationFailure("create", undefined, error, response);
+        return response;
       }
     },
   },
@@ -151,10 +168,7 @@ export const crudRoutes = defineRoutes({
         }
         return Response.json(includeSensitive ? workspace : sanitizeWorkspace(workspace));
       } catch (error) {
-        if (!isDomainError(error)) {
-          log.error("Failed to update workspace:", String(error));
-        }
-        return domainErrorResponse(error, {
+        const response = domainErrorResponse(error, {
           policy: "workspaces",
           fallback: {
             error: "update_failed",
@@ -162,6 +176,8 @@ export const crudRoutes = defineRoutes({
             status: 500,
           },
         });
+        logWorkspaceMutationFailure("update", id, error, response);
+        return response;
       }
     },
 

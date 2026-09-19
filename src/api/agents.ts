@@ -729,22 +729,12 @@ export const agentsRoutes = defineRoutes({
         const agent = await agentManager.createAgent(body);
         return Response.json(agent, { status: 201 });
       } catch (error) {
-        const response = internalErrorResponse(error, {
-          error: "create_agent_failed",
-          message: "Failed to create agent",
-          status: 500,
-        }, {
-          agent_code_invalid: {
-            error: "agent_code_invalid",
-            status: 400,
-          },
-          workspace_git_required: {
-            error: "workspace_git_required",
-            status: 409,
-          },
-          workspace_worktrees_disabled: {
-            error: "workspace_worktrees_disabled",
-            status: 409,
+        const response = domainErrorResponse(error, {
+          policy: "agents",
+          fallback: {
+            error: "create_agent_failed",
+            message: "Failed to create agent",
+            status: 500,
           },
         });
         if (response.status >= 500) {
@@ -814,26 +804,12 @@ export const agentsRoutes = defineRoutes({
         const agent = await importAgentConfig(workspaceId, validation.data);
         return Response.json(agent, { status: 201 });
       } catch (error) {
-        const response = internalErrorResponse(error, {
-          error: "import_agent_failed",
-          message: "Failed to import agent",
-          status: 500,
-        }, {
-          agent_code_invalid: {
-            error: "agent_code_invalid",
-            status: 400,
-          },
-          workspace_git_required: {
-            error: "workspace_git_required",
-            status: 409,
-          },
-          workspace_worktrees_disabled: {
-            error: "workspace_worktrees_disabled",
-            status: 409,
-          },
-          workspace_not_found: {
-            error: "workspace_not_found",
-            status: 404,
+        const response = domainErrorResponse(error, {
+          policy: "agents",
+          fallback: {
+            error: "import_agent_failed",
+            message: "Failed to import agent",
+            status: 500,
           },
         });
         if (response.status >= 500) {
@@ -889,22 +865,12 @@ export const agentsRoutes = defineRoutes({
         }
         return Response.json(agent);
       } catch (error) {
-        const response = internalErrorResponse(error, {
-          error: "update_agent_failed",
-          message: "Failed to update agent",
-          status: 500,
-        }, {
-          agent_code_invalid: {
-            error: "agent_code_invalid",
-            status: 400,
-          },
-          workspace_git_required: {
-            error: "workspace_git_required",
-            status: 409,
-          },
-          workspace_worktrees_disabled: {
-            error: "workspace_worktrees_disabled",
-            status: 409,
+        const response = domainErrorResponse(error, {
+          policy: "agents",
+          fallback: {
+            error: "update_agent_failed",
+            message: "Failed to update agent",
+            status: 500,
           },
         });
         if (response.status >= 500) {
