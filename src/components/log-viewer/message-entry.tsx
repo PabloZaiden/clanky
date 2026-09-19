@@ -1,23 +1,28 @@
 import { memo, useState } from "react";
 import type { MessageData } from "@/shared";
+import type { BadgeVariant } from "../common";
 import {
   getMessageAttachmentExtension,
   getMessageAttachmentKind,
   type MessageAttachment,
 } from "@/shared/message-attachments";
 import { ImageViewerModal } from "../ImageViewerModal";
+import { StatusBadge } from "../common";
 import { MarkdownRenderer } from "../MarkdownRenderer";
 import type { TranscriptFileLinkContext } from "./types";
 import { ActivitySpinner } from "./activity-spinner";
 import { TranscriptTextContent } from "./transcript-file-links";
 import { formatTime } from "./utils";
+import {
+  detectTrailingPromiseMarker,
+  type PromiseMarkerOutcomeKind,
+} from "../../utils/promise-markers";
 
 interface MessageEntryProps {
   data: MessageData;
   showTimestamp: boolean;
   spacingClass: string;
   markdownEnabled: boolean;
-  showRoleLabel: boolean;
   fileLinkContext?: TranscriptFileLinkContext;
   onReadAloud?: (message: MessageData, mode: "full" | "summary") => void;
   readAloudSummaryEnabled: boolean;
@@ -26,12 +31,24 @@ interface MessageEntryProps {
   readAloudDisabled: boolean;
 }
 
+function getOutcomeBadgeVariant(kind: PromiseMarkerOutcomeKind): BadgeVariant {
+  switch (kind) {
+    case "complete":
+      return "completed";
+    case "plan_ready":
+      return "plan_ready";
+    case "blocked":
+      return "warning";
+    case "custom":
+      return "default";
+  }
+}
+
 export const MessageEntry = memo(function MessageEntry({
   data: msg,
   showTimestamp,
   spacingClass,
   markdownEnabled,
-  showRoleLabel,
   fileLinkContext,
   onReadAloud,
   readAloudSummaryEnabled,
@@ -40,8 +57,9 @@ export const MessageEntry = memo(function MessageEntry({
   readAloudDisabled,
 }: MessageEntryProps) {
   const isUser = msg.role === "user";
+  const outcome = isUser ? null : detectTrailingPromiseMarker(msg.content);
+  const displayMessage = outcome ? { ...msg, content: outcome.content } : msg;
   const shouldRenderMarkdown = markdownEnabled && msg.role === "assistant";
-  const roleLabel = msg.role === "assistant" ? "Assistant" : "You";
   const contentWidthClassName = isUser
     ? "min-w-0 max-w-[min(88%,64rem)] space-y-2"
     : "min-w-0 w-full space-y-2";
@@ -74,7 +92,7 @@ export const MessageEntry = memo(function MessageEntry({
       <button
         type="button"
         className={`inline-flex items-center gap-1 text-xs text-gray-500 underline-offset-2 hover:underline dark:text-gray-400 ${isGenerating ? "no-underline" : ""}`}
-        onClick={() => onReadAloud?.(msg, mode)}
+        onClick={() => onReadAloud?.(displayMessage, mode)}
         aria-label={isGenerating ? "Cancel audio generation" : isActive ? activeAriaLabel : idleAriaLabel}
         aria-busy={isGenerating}
       >
@@ -100,34 +118,36 @@ export const MessageEntry = memo(function MessageEntry({
       )}
       <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
         <div className={contentWidthClassName}>
-          {showRoleLabel && (
-            <div className={`text-[11px] uppercase tracking-[0.2em] text-gray-500 ${isUser ? "text-right" : ""}`}>
-            {roleLabel}
-            </div>
-          )}
           {isUser ? (
             <div
               className="rounded-[1.35rem] bg-gray-900 px-4 py-3 text-sm leading-7 text-white shadow-sm dark:bg-neutral-700 dark:text-gray-50"
               data-message-bubble="user"
             >
               <TranscriptTextContent
-                content={msg.content}
+                content={displayMessage.content}
                 className="whitespace-pre-wrap break-words text-white"
                 fileLinkContext={fileLinkContext}
               />
             </div>
           ) : shouldRenderMarkdown ? (
             <MarkdownRenderer
-              content={msg.content}
+              content={displayMessage.content}
               className="text-sm leading-7 text-gray-900 dark:text-white"
               fileLinkContext={fileLinkContext}
             />
           ) : (
             <TranscriptTextContent
-              content={msg.content}
+              content={displayMessage.content}
               className="whitespace-pre-wrap break-words text-sm leading-7 text-gray-900 dark:text-white"
               fileLinkContext={fileLinkContext}
             />
+          )}
+          {outcome && (
+            <div className="pt-1">
+              <StatusBadge variant={getOutcomeBadgeVariant(outcome.kind)} size="sm">
+                {outcome.label}
+              </StatusBadge>
+            </div>
           )}
           {msg.attachments && msg.attachments.length > 0 && (
             <div className={`flex flex-wrap gap-2 ${isUser ? "justify-end" : "justify-start"}`}>
@@ -171,7 +191,7 @@ export const MessageEntry = memo(function MessageEntry({
               ))}
             </div>
           )}
-          {!isUser && onReadAloud && msg.content.trim() && (!readAloudDisabled || generatingReadAloudMode) && (
+          {!isUser && onReadAloud && displayMessage.content.trim() && (!readAloudDisabled || generatingReadAloudMode) && (
             <div className="flex flex-wrap gap-2 pt-1">
               {generatingReadAloudMode ? (
                 renderReadAloudAction(

@@ -1,46 +1,11 @@
 import type {
   MessageData,
+  TaskLogEntry,
   ToolCallData,
   ToolCallDisplayData,
-  LogLevel,
   WorkspaceFileEntry,
 } from "@/shared";
 import type { FileExplorerTarget } from "../../hooks/workspaceFileActions";
-import type { PromiseMarkerOutcomeKind } from "../../utils/promise-markers";
-
-/**
- * Application log entry for display in the UI.
- */
-export interface LogEntry {
-  /** Unique ID for the log entry */
-  id: string;
-  /** Log level */
-  level: LogLevel;
-  /** Log message */
-  message: string;
-  /** Optional additional details */
-  details?: Record<string, unknown>;
-  /** Optional finalized-response metadata derived once the assistant message completes. */
-  finalizedResponse?: FinalizedResponseLogData;
-  /** ISO timestamp */
-  timestamp: string;
-}
-
-export interface FinalizedResponseIndicator {
-  /** Raw promise marker value that was detected. */
-  marker: string;
-  /** Normalized semantic kind for UI styling. */
-  kind: PromiseMarkerOutcomeKind;
-  /** Human-readable label for the UI indicator. */
-  label: string;
-}
-
-export interface FinalizedResponseLogData {
-  /** Response content with the trailing promise marker removed. */
-  content: string;
-  /** UI indicator metadata for the detected marker. */
-  indicator: FinalizedResponseIndicator;
-}
 
 export interface TranscriptFileLinkTarget {
   /** File path relative to the selected explorer root. */
@@ -66,37 +31,16 @@ export interface TranscriptFileLinkContext {
   onFileOpenError?: (message: string) => void;
 }
 
-/**
- * Internal marker used to preserve separation whenever a response is hidden
- * or filtered, including assistant messages and response logs with actual
- * response content. Empty response entries do not end the active work group.
- */
-export interface ResponseBoundaryEntryBase {
-  type: "response-boundary";
-  id: string;
-  timestamp: string;
-  /** Whether the hidden response contained actual assistant text. */
-  hasResponseContent?: boolean;
-}
-
-export interface LogViewerProps {
-  /** Messages to display (only user messages are rendered; assistant messages are filtered out) */
+export interface ConversationViewerProps {
+  /** Conversation messages to display. */
   messages: MessageData[];
   /** Tool calls to display. ToolEntry infers the concrete tool kind from the raw payload shape. */
   toolCalls: ToolCallDisplayData[];
   /** Application logs to display */
-  logs?: LogEntry[];
+  logs?: TaskLogEntry[];
   /** Maximum height */
   maxHeight?: string;
-  /** Whether to show system information logs (info, warn, error, debug, trace, system agent messages). Default: false */
-  showSystemInfo?: boolean;
-  /**
-   * Whether to show tool-related entries derived from `toolCalls` (ToolEntry rows).
-   * Legacy tool-related agent log messages (e.g. logKind="tool" or messages starting
-   * with "AI calling tool:") are always hidden by the log viewer. Default: true
-   */
-  showTools?: boolean;
-  /** Whether to render response log content as markdown (default: false) */
+  /** Whether to render conversation content as markdown. */
   markdownEnabled?: boolean;
   /** Whether the task is actively working; active work rows own the spinner when available. Default: false */
   isActive?: boolean;
@@ -106,10 +50,6 @@ export interface LogViewerProps {
   toolPathDisplayRoot?: string;
   /** Optional chat/task-aware context for turning inline code paths into code explorer links. */
   fileLinkContext?: TranscriptFileLinkContext;
-  /** Optional surface class override for the scroll container that owns the transcript background. */
-  surfaceClassName?: string;
-  /** Optional class override for the inner transcript wrapper. */
-  transcriptClassName?: string;
   /** Fetches one full tool-call payload when its row is expanded. */
   onLoadToolDetails?: (toolCallId: string) => Promise<ToolCallData | null>;
   /** Whether older transcript pages are available. */
@@ -120,19 +60,6 @@ export interface LogViewerProps {
   onLoadFullTranscript?: () => Promise<void>;
   /** Whether a transcript history action is currently loading. */
   loadingTranscript?: boolean;
-}
-
-export interface ConversationViewerProps extends LogViewerProps {
-  /** Whether assistant messages should be rendered alongside user messages. Default: false */
-  showAssistantMessages?: boolean;
-  /** Whether response log entries should be rendered. Default: true */
-  showResponseLogs?: boolean;
-  /** Whether to show explicit role labels above message content. Default: false */
-  showMessageRoles?: boolean;
-  /** Empty state copy to show when there are no visible entries. */
-  emptyStateMessage?: string;
-  /** Active-state copy to show while the transcript is still streaming. */
-  activeStateMessage?: string;
   /** Start server-side speech playback for a completed assistant message. */
   onReadAloud?: (message: MessageData, mode: "full" | "summary") => void;
   /** Whether the summary playback action is available. */
@@ -151,14 +78,13 @@ export type EntryBase =
   | { type: "tool"; data: ToolCallDisplayData; timestamp: string }
   | {
       type: "log";
-      data: LogEntry;
+      data: TaskLogEntry;
       timestamp: string;
       /** Stable identity of the original consecutive reasoning run. */
       reasoningGroupId?: string;
       /** Timestamp of the first non-reasoning event after this reasoning block. */
       reasoningEndTimestamp?: string;
-    }
-  | ResponseBoundaryEntryBase;
+    };
 
 export interface ToolGroupEntryBase {
   type: "tool-group";
@@ -179,7 +105,7 @@ export interface ReasoningGroupEntryBase {
   /** Stable identity for a consecutive run of reasoning logs. */
   id: string;
   /** Reasoning log entries contained in this consecutive run. */
-  logs: LogEntry[];
+  logs: TaskLogEntry[];
   /** Timestamp of the first reasoning log in the run. */
   timestamp: string;
   /** Timestamp of the last reasoning log in the run. */
@@ -209,7 +135,7 @@ export interface WorkingGroupEntryBase {
 }
 
 export type GroupedEntryBase =
-  | Exclude<EntryBase, ResponseBoundaryEntryBase>
+  | EntryBase
   | ToolGroupEntryBase
   | ReasoningGroupEntryBase
   | WorkingGroupEntryBase;

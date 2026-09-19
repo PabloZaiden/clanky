@@ -60,6 +60,15 @@ export {
   type UseAvailableModelsResult,
 } from "./useAvailableModels";
 export {
+  createEmptyTranscript,
+  useTranscriptResource,
+  type TranscriptResourceRefreshOptions,
+  type TranscriptResourceSnapshot,
+  type UseTranscriptResourceOptions,
+  type UseTranscriptResourceResult,
+} from "./useTranscriptResource";
+export { toTranscriptStreamEvent } from "./transcript-event-adapter";
+export {
   useDevboxTemplates,
   type UseDevboxTemplatesOptions,
   type UseDevboxTemplatesResult,

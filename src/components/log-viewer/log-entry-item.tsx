@@ -1,14 +1,13 @@
 import { memo, useCallback } from "react";
-import { StatusBadge } from "../common";
-import type { BadgeVariant } from "../common";
+import type { TaskLogEntry } from "@/shared";
 import { LazyDetails } from "./lazy-details";
-import type { LogEntry, TranscriptFileLinkContext } from "./types";
+import type { TranscriptFileLinkContext } from "./types";
 import { MarkdownRenderer } from "../MarkdownRenderer";
 import { TranscriptTextContent } from "./transcript-file-links";
 import { formatTime, getLogLevelColor, isReasoningLogEntry } from "./utils";
 
 interface LogEntryItemProps {
-  data: LogEntry;
+  data: TaskLogEntry;
   showTimestamp: boolean;
   showGroupHeader: boolean;
   spacingClass: string;
@@ -22,19 +21,6 @@ function getOtherDetails(details: Record<string, unknown>): Record<string, unkno
   );
 }
 
-function getFinalizedResponseBadgeVariant(log: LogEntry): BadgeVariant {
-  switch (log.finalizedResponse?.indicator.kind) {
-    case "complete":
-      return "completed";
-    case "plan_ready":
-      return "plan_ready";
-    case "blocked":
-      return "warning";
-    default:
-      return "default";
-  }
-}
-
 export const LogEntryItem = memo(function LogEntryItem({
   data: log,
   showTimestamp,
@@ -46,10 +32,8 @@ export const LogEntryItem = memo(function LogEntryItem({
   const details = log.details;
   const logKind = log.details?.["logKind"] as string | undefined;
   const isReasoning = isReasoningLogEntry(log);
-  const isResponse = logKind === "response";
-  const responseContent = log.finalizedResponse?.content ?? log.details?.["responseContent"];
+  const responseContent = log.details?.["responseContent"];
   const hasResponseContent = typeof responseContent === "string" && responseContent.length > 0;
-  const finalizedResponseIndicator = log.finalizedResponse?.indicator;
   const hasOtherDetails = details
     ? Object.keys(details).some((key) => key !== "responseContent" && key !== "logKind")
     : false;
@@ -62,25 +46,22 @@ export const LogEntryItem = memo(function LogEntryItem({
     [details]
   );
 
-  // Don't render response/reasoning entries with no displayable content
-  const isResponseOrReasoning = logKind === "response" || logKind === "reasoning";
-  if (isResponseOrReasoning && !hasResponseContent && !hasOtherDetails && !finalizedResponseIndicator) {
+  if (isReasoning && !hasResponseContent && !hasOtherDetails) {
     return null;
   }
 
-  const hidesTypedResponseLabel = logKind === "response" || logKind === "reasoning";
-  const showMessageLabel = showGroupHeader && !hidesTypedResponseLabel;
+  const showMessageLabel = showGroupHeader && !isReasoning;
   const textColorClassName = isReasoning
     ? "text-gray-500 dark:text-gray-400"
-    : isResponse || log.level === "agent"
+    : log.level === "agent"
       ? "text-gray-900 dark:text-white"
       : getLogLevelColor(log.level);
   const logTone = isReasoning
     ? "reasoning"
-    : isResponse || log.level === "agent"
+    : log.level === "agent"
       ? "agent"
       : log.level;
-  const widthClassName = isResponseOrReasoning
+  const widthClassName = isReasoning
     ? "min-w-0 w-full"
     : "min-w-0 max-w-[min(96%,72rem)]";
 
@@ -103,29 +84,18 @@ export const LogEntryItem = memo(function LogEntryItem({
             {markdownEnabled ? (
               <MarkdownRenderer
                 content={responseContent as string}
-                className={`text-sm leading-7 ${isReasoning ? "text-gray-500 dark:text-gray-400" : "text-gray-900 dark:text-white"}`}
-                dimmed={isReasoning}
+                className="text-sm leading-7 text-gray-500 dark:text-gray-400"
+                dimmed
                 fileLinkContext={fileLinkContext}
               />
             ) : (
               <TranscriptTextContent
                 content={responseContent as string}
-                className={`text-sm leading-7 whitespace-pre-wrap break-words ${isReasoning ? "text-gray-500 dark:text-gray-400" : "text-gray-900 dark:text-white"}`}
-                dimmed={isReasoning}
+                className="text-sm leading-7 whitespace-pre-wrap break-words text-gray-500 dark:text-gray-400"
+                dimmed
                 fileLinkContext={fileLinkContext}
               />
             )}
-          </div>
-        )}
-        {finalizedResponseIndicator && (
-          <div
-            className={hasResponseContent ? "mt-3" : showMessageLabel ? "mt-2" : ""}
-            data-response-outcome={finalizedResponseIndicator.kind}
-            data-promise-marker={finalizedResponseIndicator.marker}
-          >
-            <StatusBadge variant={getFinalizedResponseBadgeVariant(log)} size="sm">
-              {finalizedResponseIndicator.label}
-            </StatusBadge>
           </div>
         )}
         {hasOtherDetails && (

@@ -4,6 +4,7 @@ import type {
   ToolCallRecord,
   TranscriptSnapshotOptions,
 } from "@/shared";
+import { shouldIncludeConversationTranscriptLog } from "@/shared";
 import {
   getTranscriptMeta,
   listTranscriptEntriesPage,
@@ -47,6 +48,7 @@ export async function getTaskTranscriptSnapshot(
         revision: meta.revision,
         totalEntries: meta.entryCount,
       },
+      shouldIncludeConversationTranscriptLog,
     ),
   };
 }

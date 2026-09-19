@@ -95,6 +95,7 @@ export type TranscriptSnapshotMergeDirection = "refresh" | "older" | "full";
 
 export interface TranscriptSnapshotMergeOptions {
   direction?: TranscriptSnapshotMergeDirection;
+  preferIncoming?: boolean;
 }
 
 function compareTranscriptRecords(
@@ -126,14 +127,22 @@ export function mergeTranscriptSnapshot(
   const incomingIsFull = !incoming.isPartial;
   const currentIsFull = !current.isPartial;
   const direction = options.direction ?? "refresh";
-  const mergeRecords = incomingIsFull
-    ? mergeTranscriptSnapshotRecords
-    : mergeTranscriptRecords;
+  const mergeRecords = options.preferIncoming === true
+    ? incomingIsFull
+      ? mergeTranscriptSnapshotRecords
+      : mergeTranscriptIncomingRecords
+    : options.preferIncoming === false
+      ? mergeTranscriptRecords
+      : incomingIsFull
+        ? mergeTranscriptSnapshotRecords
+        : mergeTranscriptRecords;
   const messages = mergeRecords(current.messages, incoming.messages);
   const logs = mergeRecords(current.logs, incoming.logs);
-  const toolCalls = incomingIsFull
-    ? mergeTranscriptSnapshotToolCalls(current.toolCalls, incoming.toolCalls)
-    : mergeTranscriptToolCalls(current.toolCalls, incoming.toolCalls);
+  const toolCalls = options.preferIncoming === false
+    ? mergeTranscriptToolCalls(incoming.toolCalls, current.toolCalls)
+    : incomingIsFull
+      ? mergeTranscriptSnapshotToolCalls(current.toolCalls, incoming.toolCalls)
+      : mergeTranscriptToolCalls(current.toolCalls, incoming.toolCalls);
   const loadedResponses = countAssistantResponses(messages);
   const totalResponses = Math.max(current.totalResponses, incoming.totalResponses);
   const isPartial = !incomingIsFull && !currentIsFull && loadedResponses < totalResponses;
@@ -175,6 +184,20 @@ export function mergeTranscriptRecords<T extends { id: string; timestamp: string
     merged.set(item.id, item);
   }
   for (const item of current) {
+    merged.set(item.id, item);
+  }
+  return Array.from(merged.values()).sort(compareTranscriptRecords);
+}
+
+export function mergeTranscriptIncomingRecords<T extends { id: string; timestamp: string }>(
+  current: T[],
+  incoming: T[],
+): T[] {
+  const merged = new Map<string, T>();
+  for (const item of current) {
+    merged.set(item.id, item);
+  }
+  for (const item of incoming) {
     merged.set(item.id, item);
   }
   return Array.from(merged.values()).sort(compareTranscriptRecords);
@@ -236,7 +259,7 @@ export function mergeTranscriptSnapshotToolCalls(
   return mergeTranscriptToolCalls(currentToMerge, incoming);
 }
 
-export function shouldIncludeChatTranscriptLog(log: TaskLogEntry): boolean {
+export function shouldIncludeConversationTranscriptLog(log: TaskLogEntry): boolean {
   const logKind = log.details?.["logKind"];
   if (
     logKind === "tool"

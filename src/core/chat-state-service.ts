@@ -35,7 +35,7 @@ import { createTranscriptChangeSet } from "@/shared";
 import type { ChatSnapshot, ToolCallRecord } from "@/shared";
 import type { ChatEvent } from "@/shared/events";
 import { createTimestamp } from "@/shared/events";
-import { ChatBusyError, isStandaloneChat, shouldIncludeChatTranscriptLog } from "@/shared";
+import { ChatBusyError, isStandaloneChat, shouldIncludeConversationTranscriptLog } from "@/shared";
 import { chatEventEmitter, SimpleEventEmitter } from "./event-emitter";
 import type { ChatStatePort } from "./chat-service-contracts";
 
@@ -74,7 +74,7 @@ export class ChatStateService implements ChatStatePort {
       transcript: createTranscriptFromStoragePage(page, {
         revision: meta.revision,
         totalEntries: meta.entryCount,
-      }, shouldIncludeChatTranscriptLog),
+      }, shouldIncludeConversationTranscriptLog),
     };
   }
 

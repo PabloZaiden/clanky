@@ -1,8 +1,7 @@
 /**
  * Shared ModelSelector component for selecting AI models.
  *
- * Extracts duplicated model grouping, sorting, and option rendering logic
- * from CreateTaskForm and TaskActionBar into a reusable component.
+ * Centralizes model grouping, sorting, and option rendering.
  */
 
 import { useEffect, useMemo, useState } from "react";

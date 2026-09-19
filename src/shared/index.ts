@@ -2,6 +2,7 @@ export * from "./agent";
 export * from "./deterministic-agent";
 export * from "./chat";
 export * from "./chat-transcript";
+export * from "./transcript-events";
 export * from "./commit-scope";
 export * from "./context-api-key";
 export * from "./events";

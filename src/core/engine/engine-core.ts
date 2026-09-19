@@ -877,7 +877,7 @@ export class TaskEngine {
     message: string,
     delta: string,
     fullContent: string,
-    logKind: "response" | "reasoning",
+    logKind: "reasoning",
     id: string,
   ): void {
     const timestamp = createTimestamp();
@@ -1500,7 +1500,9 @@ export class TaskEngine {
         checkpointPolicy: this.persistence.checkpointPolicy,
         idFactories: {
           createResponseMessageId: (state) =>
-            state.currentMessageId ?? `msg-${this.config.id}-${iteration}`,
+            state.currentMessageId
+              ? `${state.currentMessageId}-${state.responseSegmentCount}`
+              : `msg-${this.config.id}-${iteration}-${state.responseSegmentCount}`,
           createResponseLogId: (_kind) =>
             `log-${this.config.id}-${crypto.randomUUID()}`,
           createToolCallId: (event, state) =>

@@ -266,12 +266,7 @@
   }
 }
 
-.clanky-composer-surface {
-  background: transparent;
-  color: var(--wapp-text);
-}
-
-.clanky-chat-composer-surface {
+.clanky-conversation-composer-surface {
   background: transparent;
   color: var(--wapp-text);
 }
@@ -346,12 +341,4 @@
 
 .clanky-composer-label {
   color: var(--wapp-muted);
-}
-
-.clanky-log-filter {
-  color: var(--wapp-muted);
-}
-
-.clanky-log-filter-input {
-  accent-color: var(--wapp-muted);
 }

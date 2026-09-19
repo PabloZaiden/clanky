@@ -1,29 +1,18 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useToast } from "@pablozaiden/webapp/web";
-import {
-  mergeTranscriptSnapshot,
-} from "@/shared";
 import type {
   Chat,
   ChatSnapshot,
-  MessageData,
-  TaskLogEntry,
-  ToolCallData,
-  ToolCallDisplayData,
-  TranscriptSnapshotOptions,
+  TranscriptStreamEvent,
 } from "@/shared";
-import { shouldIncludeChatTranscriptLog } from "@/shared";
 import { getRegisteredSshServerId } from "@/shared/execution-host";
 import {
-  isToolCallDetailsStale,
-  isToolCallSummary,
-  mergeToolCallDisplayData,
-  upsertToolCallExtra,
-} from "@/shared/tool-call";
-import { useRealtimeRefreshWithRecovery, useRealtimeStream } from "../../hooks";
-import { apiRequest, readApiResponse, requestApiResponse } from "../../lib/api-client";
-import { createRefreshCoordinator } from "../../lib/refresh-coordinator";
-import { isAbortError } from "../../lib/request-lifecycle";
+  useRealtimeRefreshWithRecovery,
+  useRealtimeStream,
+  useTranscriptResource,
+} from "../../hooks";
+import { toTranscriptStreamEvent } from "../../hooks/transcript-event-adapter";
+import { apiRequest } from "../../lib/api-client";
 import { getStoredSshCredentialToken } from "../../lib/ssh-browser-credentials";
 import {
   applyChatStatusEvent,
@@ -34,7 +23,6 @@ import type {
   ChatLifecycleResult,
   ChatRefreshOptions,
   ChatStreamEvent,
-  ChatTranscriptViewState,
 } from "./types";
 
 const ACTIVE_CHAT_STATUSES = new Set(["starting", "streaming", "interrupting", "reconnecting"]);
@@ -43,45 +31,11 @@ export function getChatErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export function upsertById<T extends { id: string; timestamp?: string }>(items: T[], item: T): T[] {
-  const existingIndex = items.findIndex((entry) => entry.id === item.id);
-  const next = existingIndex === -1
-    ? [...items, item]
-    : items.map((entry, index) => index === existingIndex ? item : entry);
-  return next.sort((left, right) => (left.timestamp ?? "").localeCompare(right.timestamp ?? ""));
-}
-
-function buildChatSnapshotUrl(chatId: string, options: TranscriptSnapshotOptions = {}): string {
-  const params = new URLSearchParams();
-  if (options.full) {
-    params.set("full", "1");
-  } else if (options.before) {
-    params.set("before", options.before);
-  }
-  const query = params.toString();
-  return `/api/chats/${encodeURIComponent(chatId)}/snapshot${query ? `?${query}` : ""}`;
-}
-
-function createEmptyTranscript(): ChatTranscriptViewState {
+function decodeChatSnapshot(
+  snapshot: ChatSnapshot,
+): { resource: Chat; transcript: ChatSnapshot["transcript"] } {
   return {
-    messages: [],
-    logs: [],
-    toolCalls: [],
-    revision: "",
-    totalEntries: 0,
-    isPartial: false,
-    loadedResponses: 0,
-    totalResponses: 0,
-    hasOlder: false,
-  };
-}
-
-function hydrateChatSnapshot(snapshot: ChatSnapshot): {
-  chat: Chat;
-  transcript: ChatTranscriptViewState;
-} {
-  return {
-    chat: {
+    resource: {
       config: snapshot.config,
       state: {
         ...snapshot.state,
@@ -90,31 +44,14 @@ function hydrateChatSnapshot(snapshot: ChatSnapshot): {
         toolCalls: [],
       },
     },
-    transcript: {
-      messages: snapshot.transcript.messages,
-      logs: snapshot.transcript.logs,
-      toolCalls: snapshot.transcript.toolCalls,
-      revision: snapshot.transcript.revision,
-      totalEntries: snapshot.transcript.totalEntries,
-      isPartial: snapshot.transcript.isPartial,
-      loadedResponses: snapshot.transcript.loadedResponses,
-      totalResponses: snapshot.transcript.totalResponses,
-      hasOlder: snapshot.transcript.hasOlder,
-      ...(snapshot.transcript.nextCursor
-        ? { nextCursor: snapshot.transcript.nextCursor }
-        : {}),
-    },
+    transcript: snapshot.transcript,
   };
 }
 
-function mergeDisplayToolCall(
-  existing: ToolCallDisplayData | undefined,
-  incoming: ToolCallDisplayData,
-): ToolCallDisplayData {
-  return mergeToolCallDisplayData(existing, incoming);
-}
-
-function mergeOperationalChatSnapshot(current: Chat, incoming: Chat): Chat {
+function mergeOperationalChatSnapshot(current: Chat | null, incoming: Chat): Chat {
+  if (!current) {
+    return incoming;
+  }
   const merged = mergeChatSummarySnapshot(current, incoming);
   return {
     ...merged,
@@ -127,499 +64,87 @@ function mergeOperationalChatSnapshot(current: Chat, incoming: Chat): Chat {
   };
 }
 
-interface ChatStreamUpdate {
-  chat: Chat;
-  transcript?: ChatTranscriptViewState;
-  refreshOptions?: ChatRefreshOptions;
+function markChatStreamingActivity(
+  chat: Chat,
+  timestamp: string,
+  updates: Partial<Chat["state"]> = {},
+): Chat {
+  return {
+    ...chat,
+    state: {
+      ...chat.state,
+      status: getStreamingActivityStatus(chat.state.status),
+      startupStage: undefined,
+      lastActivityAt: timestamp,
+      ...updates,
+    },
+  };
 }
 
-function applyChatStreamEvent(
+function applyChatOperationalEvent(
   current: Chat,
-  transcript: ChatTranscriptViewState,
   event: ChatStreamEvent,
-): ChatStreamUpdate {
+): Chat {
   switch (event.type) {
     case "chat.status":
-      return {
-        chat: applyChatStatusEvent(current, event.status, event.timestamp),
-      };
+      return applyChatStatusEvent(current, event.status, event.timestamp);
     case "chat.message":
+      if (event.message.role === "assistant") {
+        return markChatStreamingActivity(current, event.timestamp);
+      }
       return {
-        chat: {
-          ...current,
-          state: {
-            ...current.state,
-            status: event.message.role === "assistant"
-              ? getStreamingActivityStatus(current.state.status)
-              : current.state.status,
-            ...(event.message.role === "assistant" ? { startupStage: undefined } : {}),
-            lastActivityAt: event.timestamp,
-          },
-        },
-        transcript: {
-          ...transcript,
-          messages: upsertById(transcript.messages as MessageData[], event.message),
+        ...current,
+        state: {
+          ...current.state,
+          lastActivityAt: event.timestamp,
         },
       };
-    case "chat.message.delta": {
-      const messages = transcript.messages as MessageData[];
-      const existingIndex = messages.findIndex((messageEntry) => messageEntry.id === event.messageId);
-      if (existingIndex < 0 && event.baseLength !== 0) {
-        return { chat: current, refreshOptions: { showLoading: false } };
-      }
-      if (existingIndex >= 0 && messages[existingIndex]!.content.length !== event.baseLength) {
-        return { chat: current, refreshOptions: { showLoading: false } };
-      }
-      const nextMessage: MessageData = existingIndex >= 0
-        ? {
-            ...messages[existingIndex]!,
-            content: `${messages[existingIndex]!.content}${event.delta}`,
-            timestamp: messages[existingIndex]!.timestamp,
-          }
-        : {
-            id: event.messageId,
-            role: event.role,
-            content: event.delta,
-            timestamp: event.messageTimestamp,
-          };
-      const nextMessages = existingIndex >= 0
-        ? messages.map((messageEntry, index) => index === existingIndex ? nextMessage : messageEntry)
-        : [...messages, nextMessage];
-      return {
-        chat: {
-          ...current,
-          state: {
-            ...current.state,
-            status: event.role === "assistant"
-              ? getStreamingActivityStatus(current.state.status)
-              : current.state.status,
-            ...(event.role === "assistant" ? { startupStage: undefined } : {}),
-            activeMessageId: event.messageId,
-            lastActivityAt: event.timestamp,
-          },
-        },
-        transcript: {
-          ...transcript,
-          messages: nextMessages,
-        },
-      };
-    }
+    case "chat.message.delta":
+      return markChatStreamingActivity(current, event.timestamp, {
+        activeMessageId: event.messageId,
+      });
     case "chat.tool_call":
-      return {
-        chat: {
-          ...current,
-          state: {
-            ...current.state,
-            status: getStreamingActivityStatus(current.state.status),
-            startupStage: undefined,
-            lastActivityAt: event.timestamp,
-          },
-        },
-        transcript: {
-          ...transcript,
-          toolCalls: upsertById(
-            transcript.toolCalls,
-            mergeDisplayToolCall(
-              transcript.toolCalls.find((toolCall) => toolCall.id === event.tool.id),
-              event.tool,
-            ),
-          ),
-        },
-      };
     case "chat.tool_call.extra":
-      return {
-        chat: {
-          ...current,
-          state: {
-            ...current.state,
-            status: getStreamingActivityStatus(current.state.status),
-            startupStage: undefined,
-            lastActivityAt: event.timestamp,
-          },
-        },
-        transcript: {
-          ...transcript,
-          toolCalls: transcript.toolCalls.map((toolCall) => {
-            if (toolCall.id !== event.toolId || isToolCallSummary(toolCall)) {
-              return toolCall;
-            }
-            return {
-              ...toolCall,
-              extras: upsertToolCallExtra(toolCall.extras, event.extra),
-            };
-          }),
-        },
-      };
     case "chat.log":
-      if (!shouldIncludeChatTranscriptLog(event.log)) {
-        return {
-          chat: {
-            ...current,
-            state: {
-              ...current.state,
-              status: getStreamingActivityStatus(current.state.status),
-              startupStage: undefined,
-              lastActivityAt: event.timestamp,
-            },
-          },
-        };
-      }
-      return {
-        chat: {
-          ...current,
-          state: {
-            ...current.state,
-            status: getStreamingActivityStatus(current.state.status),
-            startupStage: undefined,
-            lastActivityAt: event.timestamp,
-          },
-        },
-        transcript: {
-          ...transcript,
-          logs: upsertById(transcript.logs as TaskLogEntry[], event.log),
-        },
-      };
-    case "chat.log.delta": {
-      if (event.logKind === "response" || event.logKind === "tool" || event.logKind === "system") {
-        return {
-          chat: {
-            ...current,
-            state: {
-              ...current.state,
-              status: getStreamingActivityStatus(current.state.status),
-              startupStage: undefined,
-              lastActivityAt: event.timestamp,
-            },
-          },
-        };
-      }
-
-      const logs = transcript.logs as TaskLogEntry[];
-      const existingIndex = logs.findIndex((logEntry) => logEntry.id === event.logId);
-      if (existingIndex < 0 && event.baseLength !== 0) {
-        return { chat: current, refreshOptions: { showLoading: false } };
-      }
-      const existingContent = existingIndex >= 0
-        ? logs[existingIndex]!.details?.["responseContent"]
-        : "";
-      if (typeof existingContent !== "string" || existingContent.length !== event.baseLength) {
-        return { chat: current, refreshOptions: {} };
-      }
-      const nextLog: TaskLogEntry = existingIndex >= 0
-        ? {
-            ...logs[existingIndex]!,
-            level: event.level,
-            message: event.message,
-            details: {
-              ...logs[existingIndex]!.details,
-              logKind: event.logKind,
-              responseContent: `${existingContent}${event.delta}`,
-            },
-            timestamp: event.logTimestamp,
-          }
-        : {
-            id: event.logId,
-            level: event.level,
-            message: event.message,
-            details: {
-              logKind: event.logKind,
-              responseContent: event.delta,
-            },
-            timestamp: event.logTimestamp,
-          };
-      if (!shouldIncludeChatTranscriptLog(nextLog)) {
-        return {
-          chat: {
-            ...current,
-            state: {
-              ...current.state,
-              status: getStreamingActivityStatus(current.state.status),
-              startupStage: undefined,
-              lastActivityAt: event.timestamp,
-            },
-          },
-        };
-      }
-      const nextLogs = existingIndex >= 0
-        ? logs.map((logEntry, index) => index === existingIndex ? nextLog : logEntry)
-        : [...logs, nextLog];
-      return {
-        chat: {
-          ...current,
-          state: {
-            ...current.state,
-            status: getStreamingActivityStatus(current.state.status),
-            startupStage: undefined,
-            lastActivityAt: event.timestamp,
-          },
-        },
-        transcript: {
-          ...transcript,
-          logs: nextLogs,
-        },
-      };
-    }
+    case "chat.log.delta":
+      return markChatStreamingActivity(current, event.timestamp);
   }
 }
 
 export function useChatLifecycle(chatId: string): ChatLifecycleResult {
   const toast = useToast();
-  const [chat, setChat] = useState<Chat | null>(null);
-  const [transcript, setTranscript] = useState<ChatTranscriptViewState>(createEmptyTranscript);
-  const [loading, setLoading] = useState(true);
-  const [loadingTranscript, setLoadingTranscript] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const chatRef = useRef<Chat | null>(null);
-  const transcriptRef = useRef<ChatTranscriptViewState>(createEmptyTranscript());
-  const mountedRef = useRef(false);
-  const refreshControllerRef = useRef<AbortController | null>(null);
-  const transcriptControllerRef = useRef<AbortController | null>(null);
-  const detailControllersRef = useRef(new Map<string, AbortController>());
-  const refreshRequestIdRef = useRef(0);
-  const transcriptRequestIdRef = useRef(0);
-  const refreshCoordinatorRef = useRef(createRefreshCoordinator<void>());
+  const mountedChatIdRef = useRef(chatId);
   const reconnectAttemptedRef = useRef(false);
-  const snapshotEtagRef = useRef<string | null>(null);
-  const refreshWindowRef = useRef<TranscriptSnapshotOptions>({});
-  const toolDetailsCacheRef = useRef(new Map<string, ToolCallData>());
+  mountedChatIdRef.current = chatId;
 
-  const setChatState = useCallback((nextChat: Chat | null) => {
-    chatRef.current = nextChat;
-    setChat(nextChat);
-  }, []);
+  const transcriptResource = useTranscriptResource<Chat, ChatSnapshot>({
+    resourceId: chatId,
+    resourceLabel: "chat",
+    baseUrl: `/api/chats/${encodeURIComponent(chatId)}`,
+    decodeSnapshot: decodeChatSnapshot,
+    mergeResource: mergeOperationalChatSnapshot,
+  });
+  const {
+    resource: chat,
+    getResource: getChat,
+    setResource: setChat,
+    transcript,
+    loading,
+    loadingTranscript,
+    error,
+    refresh: refreshChat,
+    loadMoreTranscript,
+    loadFullTranscript,
+    loadToolDetails: loadToolCallDetails,
+    applyTranscriptEvent,
+    clearResource,
+  } = transcriptResource;
 
-  const setTranscriptState = useCallback((nextTranscript: ChatTranscriptViewState) => {
-    transcriptRef.current = nextTranscript;
-    setTranscript(nextTranscript);
-  }, []);
-
-  const refreshChat = useCallback((options: ChatRefreshOptions = {}): Promise<void> => {
-    return refreshCoordinatorRef.current.run(async () => {
-      const showLoading = options.showLoading ?? true;
-      const controller = new AbortController();
-      const requestId = refreshRequestIdRef.current + 1;
-      refreshRequestIdRef.current = requestId;
-      refreshControllerRef.current = controller;
-      const refreshWindow = refreshWindowRef.current;
-
-      try {
-        if (showLoading && mountedRef.current) {
-          setLoading(true);
-        }
-        if (mountedRef.current) {
-          setError(null);
-        }
-        const headers = new Headers();
-        if (snapshotEtagRef.current) {
-          headers.set("If-None-Match", snapshotEtagRef.current);
-        }
-        const response = await requestApiResponse(
-          buildChatSnapshotUrl(chatId, refreshWindow),
-          {
-            signal: controller.signal,
-            headers,
-            action: "Fetch chat snapshot",
-            fallbackMessage: "Failed to fetch chat",
-            acceptedStatuses: [304, 404],
-          },
-        );
-        if (
-          controller.signal.aborted
-          || !mountedRef.current
-          || requestId !== refreshRequestIdRef.current
-        ) {
-          return;
-        }
-        if (response.status === 304) {
-          return;
-        }
-        if (response.status === 404) {
-          setChatState(null);
-          setTranscriptState(createEmptyTranscript());
-          setError("Chat not found");
-          return;
-        }
-        const data = await readApiResponse<ChatSnapshot>(response);
-        const hydrated = hydrateChatSnapshot(data);
-        if (refreshWindow.full === refreshWindowRef.current.full) {
-          snapshotEtagRef.current = response.headers.get("ETag");
-        }
-        const currentChat = chatRef.current;
-        setChatState(currentChat
-          ? mergeOperationalChatSnapshot(currentChat, hydrated.chat)
-          : hydrated.chat);
-        const currentTranscript = transcriptRef.current;
-        setTranscriptState(mergeTranscriptSnapshot(
-          currentTranscript,
-          hydrated.transcript,
-          { direction: refreshWindow.full ? "full" : "refresh" },
-        ));
-      } catch (refreshError) {
-        if (
-          controller.signal.aborted
-          || isAbortError(refreshError)
-          || !mountedRef.current
-          || requestId !== refreshRequestIdRef.current
-        ) {
-          return;
-        }
-        setError(String(refreshError));
-      } finally {
-        if (
-          mountedRef.current
-          && requestId === refreshRequestIdRef.current
-          && showLoading
-        ) {
-          setLoading(false);
-        }
-        if (refreshControllerRef.current === controller) {
-          refreshControllerRef.current = null;
-        }
-      }
-    });
-  }, [chatId, setChatState, setTranscriptState]);
-
-  const loadTranscriptWindow = useCallback(async (options: TranscriptSnapshotOptions): Promise<void> => {
-    if (transcriptControllerRef.current || (!options.full && !transcriptRef.current.nextCursor)) {
+  const applyChatSnapshot = useCallback((nextChat: Chat): void => {
+    if (mountedChatIdRef.current !== chatId || nextChat.config.id !== chatId) {
       return;
     }
-
-    refreshControllerRef.current?.abort();
-    const controller = new AbortController();
-    const requestId = transcriptRequestIdRef.current + 1;
-    transcriptRequestIdRef.current = requestId;
-    transcriptControllerRef.current = controller;
-    if (mountedRef.current) {
-      setLoadingTranscript(true);
-    }
-
-    try {
-      const response = await requestApiResponse(
-        buildChatSnapshotUrl(chatId, options),
-        {
-          signal: controller.signal,
-          action: options.full ? "Load complete chat transcript" : "Load older chat transcript",
-          fallbackMessage: options.full
-            ? "Failed to load complete chat transcript"
-            : "Failed to load older chat transcript",
-          acceptedStatuses: [404],
-        },
-      );
-      if (
-        controller.signal.aborted
-        || !mountedRef.current
-        || requestId !== transcriptRequestIdRef.current
-      ) {
-        return;
-      }
-      if (response.status === 404) {
-        setChatState(null);
-        setTranscriptState(createEmptyTranscript());
-        setError("Chat not found");
-        return;
-      }
-
-      const data = await readApiResponse<ChatSnapshot>(response);
-      const hydrated = hydrateChatSnapshot(data);
-      if (options.full) {
-        refreshWindowRef.current = { full: true };
-        snapshotEtagRef.current = response.headers.get("ETag");
-      }
-      setChatState(chatRef.current
-        ? mergeOperationalChatSnapshot(chatRef.current, hydrated.chat)
-        : hydrated.chat);
-      setTranscriptState(mergeTranscriptSnapshot(
-        transcriptRef.current,
-        hydrated.transcript,
-        { direction: options.full ? "full" : "older" },
-      ));
-    } catch (transcriptError) {
-      if (
-        controller.signal.aborted
-        || isAbortError(transcriptError)
-        || !mountedRef.current
-        || requestId !== transcriptRequestIdRef.current
-      ) {
-        return;
-      }
-      toast.error(String(transcriptError));
-    } finally {
-      if (
-        mountedRef.current
-        && requestId === transcriptRequestIdRef.current
-      ) {
-        setLoadingTranscript(false);
-      }
-      if (transcriptControllerRef.current === controller) {
-        transcriptControllerRef.current = null;
-      }
-    }
-  }, [chatId, setChatState, setTranscriptState, toast]);
-
-  const loadMoreTranscript = useCallback(
-    () => loadTranscriptWindow({ before: transcriptRef.current.nextCursor }),
-    [loadTranscriptWindow],
-  );
-
-  const loadFullTranscript = useCallback(
-    () => loadTranscriptWindow({ full: true }),
-    [loadTranscriptWindow],
-  );
-
-  const loadToolCallDetails = useCallback(async (toolCallId: string): Promise<ToolCallData | null> => {
-    const currentTool = transcriptRef.current.toolCalls.find((toolCall) => toolCall.id === toolCallId);
-    const cached = toolDetailsCacheRef.current.get(toolCallId);
-    if (
-      cached
-      && (!currentTool || !isToolCallSummary(currentTool) || !isToolCallDetailsStale(currentTool, cached))
-    ) {
-      return cached;
-    }
-    if (cached) {
-      toolDetailsCacheRef.current.delete(toolCallId);
-    }
-    if (currentTool && !isToolCallSummary(currentTool)) {
-      toolDetailsCacheRef.current.set(toolCallId, currentTool);
-      return currentTool;
-    }
-
-    const existingController = detailControllersRef.current.get(toolCallId);
-    existingController?.abort();
-    const controller = new AbortController();
-    detailControllersRef.current.set(toolCallId, controller);
-
-    try {
-      const tool = await apiRequest<ToolCallData>(
-        `/api/chats/${chatId}/tool-calls/${encodeURIComponent(toolCallId)}`,
-        {
-          signal: controller.signal,
-          action: "Fetch chat tool-call details",
-          fallbackMessage: "Failed to load chat tool call details",
-        },
-      );
-      toolDetailsCacheRef.current.set(toolCallId, tool);
-      setTranscriptState({
-        ...transcriptRef.current,
-        toolCalls: transcriptRef.current.toolCalls.map((entry) => (
-          entry.id === toolCallId
-            ? mergeToolCallDisplayData(entry, tool)
-            : entry
-        )),
-      });
-      return tool;
-    } finally {
-      if (detailControllersRef.current.get(toolCallId) === controller) {
-        detailControllersRef.current.delete(toolCallId);
-      }
-    }
-  }, [chatId, setTranscriptState]);
-
-  const applyChatSnapshot = useCallback((nextChat: Chat) => {
-    if (!mountedRef.current || nextChat.config.id !== chatId) {
-      return;
-    }
-    const current = chatRef.current;
-    setChatState(current ? mergeOperationalChatSnapshot(current, nextChat) : {
+    setChat((current) => mergeOperationalChatSnapshot(current, {
       ...nextChat,
       state: {
         ...nextChat.state,
@@ -627,18 +152,11 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
         logs: [],
         toolCalls: [],
       },
-    });
-  }, [chatId, setChatState]);
+    }));
+  }, [chatId, setChat]);
 
-  const markChatStarting = useCallback(() => {
-    if (!mountedRef.current) {
-      return;
-    }
-    const current = chatRef.current;
-    if (!current) {
-      return;
-    }
-    setChatState({
+  const markChatStarting = useCallback((): void => {
+    setChat((current) => current ? {
       ...current,
       state: {
         ...current.state,
@@ -648,18 +166,17 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
         activeMessageId: undefined,
         interruptRequested: false,
       },
-    });
-  }, [setChatState]);
+    } : current);
+  }, [setChat]);
 
   const handleReconnect = useCallback(async (): Promise<void> => {
     try {
-      const source = chatRef.current?.config.source;
+      const source = getChat()?.config.source;
       const serverId = source?.kind === "execution_host"
         && source.executionHost.host.kind === "ssh"
         ? getRegisteredSshServerId(source.executionHost.host)
         : null;
-      const credentialToken = source?.kind === "execution_host"
-        && serverId
+      const credentialToken = source?.kind === "execution_host" && serverId
         ? await getStoredSshCredentialToken(serverId)
         : null;
       const nextChat = await apiRequest<Chat>(`/api/chats/${chatId}/reconnect`, {
@@ -673,28 +190,25 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
     } catch (reconnectError) {
       toast.error(String(reconnectError));
     }
-  }, [applyChatSnapshot, chatId, toast]);
+  }, [applyChatSnapshot, chatId, getChat, toast]);
 
-  const handleEvent = useCallback((event: ChatStreamEvent) => {
+  const handleEvent = useCallback((event: ChatStreamEvent): void => {
     if (event.chatId !== chatId) {
       return;
     }
-    const current = chatRef.current;
+    const current = getChat();
     if (!current) {
       return;
     }
-    const update = applyChatStreamEvent(current, transcriptRef.current, event);
-    if (update.refreshOptions) {
-      void refreshChat(update.refreshOptions);
-      return;
+    const nextChat = applyChatOperationalEvent(current, event);
+    if (nextChat !== current) {
+      setChat(nextChat);
     }
-    if (update.chat !== current) {
-      setChatState(update.chat);
+    const transcriptEvent = toTranscriptStreamEvent(event);
+    if (transcriptEvent) {
+      applyTranscriptEvent(transcriptEvent as TranscriptStreamEvent);
     }
-    if (update.transcript) {
-      setTranscriptState(update.transcript);
-    }
-  }, [chatId, refreshChat, setChatState, setTranscriptState]);
+  }, [applyTranscriptEvent, chatId, getChat, setChat]);
 
   const { status: chatSocketStatus } = useRealtimeStream<ChatStreamEvent>({
     filters: { chatId },
@@ -708,9 +222,7 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
     filters: { resource: "chats", id: chatId },
     refresh: (event) => {
       if (event.action === "deleted") {
-        setChatState(null);
-        setTranscriptState(createEmptyTranscript());
-        setError("Chat not found");
+        clearResource("Chat not found");
         return;
       }
       return refreshChat({ showLoading: false });
@@ -719,36 +231,8 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
   });
 
   useEffect(() => {
-    mountedRef.current = true;
-    chatRef.current = null;
-    transcriptRef.current = createEmptyTranscript();
-    setChat(null);
-    setTranscript(createEmptyTranscript());
-    setLoading(true);
-    setLoadingTranscript(false);
-    setError(null);
-    snapshotEtagRef.current = null;
-    refreshWindowRef.current = {};
-    transcriptRequestIdRef.current += 1;
-    transcriptControllerRef.current?.abort();
-    toolDetailsCacheRef.current.clear();
     void refreshChat();
-
-    return () => {
-      mountedRef.current = false;
-      refreshControllerRef.current?.abort();
-      transcriptControllerRef.current?.abort();
-      refreshCoordinatorRef.current.reset();
-      for (const controller of detailControllersRef.current.values()) {
-        controller.abort();
-      }
-      detailControllersRef.current.clear();
-      refreshControllerRef.current = null;
-      transcriptControllerRef.current = null;
-      chatRef.current = null;
-      transcriptRef.current = createEmptyTranscript();
-    };
-  }, [chatId, refreshChat]);
+  }, [refreshChat]);
 
   useEffect(() => {
     if (!chat || !chat.state.session?.id || !ACTIVE_CHAT_STATUSES.has(chat.state.status)) {
@@ -776,7 +260,7 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
     needsSshCredentials: chat?.config.source?.kind === "execution_host"
       && getRegisteredSshServerId(chat.config.source.executionHost.host) !== null
       && chat.state.connectionStatus === "needs_credentials",
-    refreshChat,
+    refreshChat: refreshChat as (options?: ChatRefreshOptions) => Promise<void>,
     loadMoreTranscript,
     loadFullTranscript,
     loadToolCallDetails,

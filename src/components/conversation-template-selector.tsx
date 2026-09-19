@@ -2,19 +2,19 @@ import { useId } from "react";
 
 import { PROMPT_TEMPLATES, getTemplateById } from "../lib/prompt-templates";
 
-interface ChatTemplateSelectorProps {
+interface ConversationTemplateSelectorProps {
   selectedTemplate: string;
   onChange: (templateId: string) => void;
   onPromptChange: (prompt: string) => void;
   disabled?: boolean;
 }
 
-export function ChatTemplateSelector({
+export function ConversationTemplateSelector({
   selectedTemplate,
   onChange,
   onPromptChange,
   disabled = false,
-}: ChatTemplateSelectorProps) {
+}: ConversationTemplateSelectorProps) {
   const templateSelectId = useId();
   const template = selectedTemplate ? getTemplateById(selectedTemplate) : undefined;
 

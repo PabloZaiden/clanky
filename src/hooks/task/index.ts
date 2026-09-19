@@ -10,11 +10,18 @@
  * - useTaskFileQueries – read-only file/diff queries
  */
 
-import { useEffect, useRef } from "react";
-import type { Task, TaskEvent, MessageData, ToolCallData, ToolCallDisplayData, TerminalSession } from "@/shared";
+import { useEffect } from "react";
+import type {
+  Task,
+  TaskEvent,
+  MessageData,
+  TaskLogEntry,
+  ToolCallData,
+  ToolCallDisplayData,
+  TerminalSession,
+} from "@/shared";
 import type { UpdateTaskRequest, FileDiff, FileContentResponse, PullRequestDestinationResponse } from "@/contracts";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
-import type { LogEntry } from "../../components/LogViewer";
 import { useRealtimeRefreshWithRecovery, useRealtimeStream } from "../useRealtimeStream";
 import { createLogger } from "@pablozaiden/webapp/web";
 import type {
@@ -51,10 +58,8 @@ export interface UseTaskResult {
   messages: MessageData[];
   /** Tool calls from the current/recent iterations */
   toolCalls: ToolCallDisplayData[];
-  /** Streaming progress content (accumulated text deltas) */
-  progressContent: string;
   /** Application logs from the task engine */
-  logs: LogEntry[];
+  logs: TaskLogEntry[];
   /** Counter that increments when git changes occur (use to trigger diff refresh) */
   gitChangeCounter: number;
   /** Refresh task data */
@@ -133,14 +138,12 @@ export interface UseTaskResult {
 export function useTask(taskId: string): UseTaskResult {
   log.debug("useTask initialized", { taskId });
 
-  const hasMountedRef = useRef(false);
-
   // Stale-request guard — prevents state updates from previous taskId
   const { isActiveTask, ignoreStaleTaskAction, ignoreStaleTaskError } =
     useTaskStaleGuard(taskId);
 
   // Core state and data fetching
-  const data = useTaskData(taskId, isActiveTask);
+  const data = useTaskData(taskId);
   const {
     task,
     setTask,
@@ -149,33 +152,20 @@ export function useTask(taskId: string): UseTaskResult {
     hasOlderTranscript,
     error,
     setError,
-    messages,
-    setMessages,
-    toolCalls,
-    setToolCalls,
-    progressContent,
-    setProgressContent,
-    logs,
-    setLogs,
+    transcript,
     gitChangeCounter,
     setGitChangeCounter,
     refresh,
     loadMoreTranscript,
     loadFullTranscript,
     loadToolDetails,
-    abortControllerRef,
-    initialLoadDoneRef,
-    refreshRequestIdRef,
+    applyTranscriptEvent,
   } = data;
 
   // WebSocket event handler
   const handleEvent = createTaskEventHandler({
     isActiveTask,
-    refresh,
-    setLogs,
-    setMessages,
-    setToolCalls,
-    setProgressContent,
+    applyTranscriptEvent,
     setGitChangeCounter,
   });
 
@@ -189,8 +179,8 @@ export function useTask(taskId: string): UseTaskResult {
     resources: ["tasks"],
     ids: [taskId],
     filters: { resource: "tasks", id: taskId },
-    refresh: () => refresh({ hydrateFromSnapshot: true }),
-    onReconnect: () => refresh({ hydrateFromSnapshot: true }),
+    refresh: () => refresh({ showLoading: false }),
+    onReconnect: () => refresh({ showLoading: false }),
   });
 
   // Action callbacks
@@ -214,67 +204,10 @@ export function useTask(taskId: string): UseTaskResult {
     setError,
   });
 
-  // Reset state when taskId changes (switching between tasks)
-  // This prevents stale data from appearing briefly when switching tasks
-  useEffect(() => {
-    if (!hasMountedRef.current) {
-      hasMountedRef.current = true;
-      return;
-    }
-    abortControllerRef.current?.abort();
-    abortControllerRef.current = null;
-    refreshRequestIdRef.current += 1;
-    // setLoading(true) is implicitly handled in useTaskData's refresh on next render
-    setError(null);
-    setTask(null);
-    setMessages([]);
-    setToolCalls([]);
-    setProgressContent("");
-    setLogs([]);
-    setGitChangeCounter(0);
-    // Reset initial load tracking so the new task hydrates from API
-    initialLoadDoneRef.current = false;
-  }, [
-    abortControllerRef,
-    initialLoadDoneRef,
-    taskId,
-    refreshRequestIdRef,
-    setError,
-    setGitChangeCounter,
-    setLogs,
-    setTask,
-    setMessages,
-    setProgressContent,
-    setToolCalls,
-  ]);
-
   // Initial fetch
   useEffect(() => {
-    refresh();
+    void refresh();
   }, [refresh]);
-
-  // Cleanup: Release memory and cancel in-flight requests when component unmounts
-  // Critical for preventing memory leaks when closing TaskDetails
-  // This handles the case where the component unmounts entirely (not just switching tasks)
-  // React state updates in cleanup are safe — warnings about unmounted components are
-  // development-only and don't affect production behavior
-  // Empty dependency array means this only runs on unmount, not on every render
-  useEffect(() => {
-    return () => {
-      // Cancel any in-flight fetch request
-      abortControllerRef.current?.abort();
-      abortControllerRef.current = null;
-
-      setTask(null);
-      setMessages([]);
-      setToolCalls([]);
-      setProgressContent("");
-      setLogs([]);
-      setGitChangeCounter(0);
-      refreshRequestIdRef.current += 1;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   return {
     task,
@@ -283,10 +216,9 @@ export function useTask(taskId: string): UseTaskResult {
     hasOlderTranscript,
     error,
     connectionStatus,
-    messages,
-    toolCalls,
-    progressContent,
-    logs,
+    messages: transcript.messages as MessageData[],
+    toolCalls: transcript.toolCalls as ToolCallDisplayData[],
+    logs: transcript.logs,
     gitChangeCounter,
     refresh,
     loadMoreTranscript,
