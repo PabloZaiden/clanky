@@ -16,6 +16,7 @@ import {
   type PreviewTarget,
   type RegisterCliPreviewOptions,
   type Workspace,
+  parsePreviewBridgePath,
 } from "@/shared";
 import { getWorkspace, listWorkspaces, touchWorkspace } from "../persistence/workspaces";
 import {
@@ -45,6 +46,28 @@ const LOCAL_TUNNEL_HOST = "127.0.0.1";
 const STARTUP_GRACE_MS = 500;
 const STOP_TIMEOUT_MS = 2000;
 const WS_READY_STATE_CLOSING = 2;
+const PREVIEW_DESTINATION_REJECTED_MESSAGE = "Preview destination rejected";
+const UPSTREAM_EXCLUDED_HEADERS = new Set([
+  "connection",
+  "keep-alive",
+  "proxy-authenticate",
+  "proxy-authorization",
+  "te",
+  "trailer",
+  "transfer-encoding",
+  "upgrade",
+  "sec-websocket-accept",
+  "sec-websocket-extensions",
+  "sec-websocket-key",
+  "sec-websocket-version",
+]);
+const UPSTREAM_CONTROLLED_HEADERS = new Set([
+  "forwarded",
+  "x-forwarded-for",
+  "x-forwarded-host",
+  "x-forwarded-port",
+  "x-forwarded-proto",
+]);
 
 interface PreviewRuntime {
   localOrigin: string;
@@ -57,7 +80,11 @@ interface PreviewRuntime {
 }
 
 interface PreviewBridgeSocket {
-  data: { previewBridgeSessionId?: string; user?: CurrentUser };
+  data: {
+    previewBridgeSessionId?: string;
+    previewBridgeUserId?: string;
+    user?: CurrentUser;
+  };
   send(data: string | Uint8Array): void;
   close(code?: number, reason?: string): void;
 }
@@ -119,7 +146,10 @@ function getForwardedOriginParts(headers: Array<[string, string]>, runtime: Prev
   const origin = getHeaderValue(headers, "origin");
   if (origin) {
     try {
-      return new URL(origin);
+      const parsed = new URL(origin);
+      if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+        return parsed;
+      }
     } catch {
       // Fall back to the registered preview URL if a non-browser client sent an invalid Origin.
     }
@@ -140,7 +170,7 @@ function getForwardedPort(origin: URL): string | undefined {
   return undefined;
 }
 
-function applyWebSocketForwardedHeaders(
+function applyUpstreamForwardedHeaders(
   result: Record<string, string>,
   headers: Array<[string, string]>,
   runtime: PreviewRuntime,
@@ -153,6 +183,57 @@ function applyWebSocketForwardedHeaders(
   if (port) {
     result["x-forwarded-port"] = port;
   }
+}
+
+function buildUpstreamHeaders(
+  headers: Array<[string, string]>,
+  runtime: PreviewRuntime,
+): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const [name, value] of headers) {
+    const lowerName = name.toLowerCase();
+    if (UPSTREAM_EXCLUDED_HEADERS.has(lowerName) || UPSTREAM_CONTROLLED_HEADERS.has(lowerName)) {
+      continue;
+    }
+    result[name] = value;
+  }
+  applyUpstreamForwardedHeaders(result, headers, runtime);
+  return result;
+}
+
+function resolvePreviewDestination(runtime: PreviewRuntime, path: unknown): URL {
+  const previewPath = parsePreviewBridgePath(path);
+  if (!previewPath) {
+    throw new DomainError(
+      "preview_destination_rejected",
+      PREVIEW_DESTINATION_REJECTED_MESSAGE,
+    );
+  }
+
+  let targetUrl: URL;
+  try {
+    targetUrl = new URL(previewPath, runtime.targetBaseUrl);
+  } catch (error) {
+    throw new DomainError(
+      "preview_destination_rejected",
+      PREVIEW_DESTINATION_REJECTED_MESSAGE,
+      { cause: error },
+    );
+  }
+  if (targetUrl.origin !== runtime.targetOrigin) {
+    throw new DomainError(
+      "preview_destination_rejected",
+      PREVIEW_DESTINATION_REJECTED_MESSAGE,
+    );
+  }
+  return targetUrl;
+}
+
+function getBridgeErrorMessage(error: unknown): string {
+  if (error instanceof DomainError && error.code === "preview_destination_rejected") {
+    return PREVIEW_DESTINATION_REJECTED_MESSAGE;
+  }
+  return String(error);
 }
 
 function rewritePreviewLocationHeader(value: string, runtime: PreviewRuntime): string {
@@ -545,12 +626,45 @@ export class PreviewSessionManager {
     if (!previewId || !ws.data.user) {
       return;
     }
+    if (
+      ws.data.previewBridgeUserId
+      && ws.data.previewBridgeUserId !== ws.data.user.id
+    ) {
+      ws.data.previewBridgeSessionId = undefined;
+      return;
+    }
+    if (this.bridgeSockets.get(previewId) !== ws) {
+      ws.data.previewBridgeSessionId = undefined;
+      return;
+    }
     this.bridgeSockets.delete(previewId);
     await runWithCurrentUser(ws.data.user, () => this.closePreview(previewId, reason));
     ws.data.previewBridgeSessionId = undefined;
   }
 
   private async handleHello(ws: PreviewBridgeSocket, message: PreviewBridgeHelloMessage): Promise<void> {
+    const user = ws.data.user;
+    const currentUser = requireCurrentUser();
+    if (
+      !user
+      || currentUser.id !== user.id
+      || (
+        ws.data.previewBridgeUserId
+        && ws.data.previewBridgeUserId !== user.id
+      )
+    ) {
+      throw new DomainError(
+        "preview_bridge_unauthorized",
+        "Authenticated user context is required for preview bridges",
+      );
+    }
+    if (ws.data.previewBridgeSessionId) {
+      ws.send(JSON.stringify({
+        type: "stream.error",
+        error: "Preview bridge is already ready",
+      }));
+      return;
+    }
     const { preview } = await this.registerCliPreview(message);
     ws.data.previewBridgeSessionId = preview.config.id;
     this.bridgeSockets.set(preview.config.id, ws);
@@ -571,15 +685,15 @@ export class PreviewSessionManager {
       ws.send(JSON.stringify({ type: "stream.error", streamId: message.streamId, error: "Preview bridge is not ready" }));
       return;
     }
-    const runtime = this.runtimes.get(previewId);
+    const runtime = this.getOwnedRuntime(ws, previewId);
     if (!runtime) {
       ws.send(JSON.stringify({ type: "stream.error", streamId: message.streamId, error: "Preview runtime is not available" }));
       return;
     }
 
     try {
-      const targetUrl = new URL(message.path, runtime.targetBaseUrl);
-      const headers = new Headers(message.headers);
+      const targetUrl = resolvePreviewDestination(runtime, message.path);
+      const headers = buildUpstreamHeaders(message.headers, runtime);
       const response = await fetch(targetUrl, {
         method: message.method,
         headers,
@@ -608,7 +722,7 @@ export class PreviewSessionManager {
       }
       ws.send(JSON.stringify({ type: "response.end", streamId: message.streamId }));
     } catch (error) {
-      ws.send(JSON.stringify({ type: "stream.error", streamId: message.streamId, error: String(error) }));
+      ws.send(JSON.stringify({ type: "stream.error", streamId: message.streamId, error: getBridgeErrorMessage(error) }));
     }
   }
 
@@ -618,67 +732,71 @@ export class PreviewSessionManager {
       ws.send(JSON.stringify({ type: "stream.error", streamId: message.streamId, error: "Preview bridge is not ready" }));
       return;
     }
-    const runtime = this.runtimes.get(previewId);
+    const runtime = this.getOwnedRuntime(ws, previewId);
     if (!runtime) {
       ws.send(JSON.stringify({ type: "stream.error", streamId: message.streamId, error: "Preview runtime is not available" }));
       return;
     }
 
-    const targetUrl = new URL(message.path, runtime.targetBaseUrl);
-    targetUrl.protocol = targetUrl.protocol === "https:" ? "wss:" : "ws:";
-    const upstream = createUpstreamWebSocket(targetUrl, this.buildUpstreamWebSocketHeaders(message.headers, runtime));
-    const upstreamState: UpstreamWebSocketState = { socket: upstream, queuedMessages: [] };
-    const sockets = this.getUpstreamSocketMap(previewId);
-    sockets.set(message.streamId, upstreamState);
+    try {
+      const targetUrl = resolvePreviewDestination(runtime, message.path);
+      targetUrl.protocol = targetUrl.protocol === "https:" ? "wss:" : "ws:";
+      const upstream = createUpstreamWebSocket(targetUrl, buildUpstreamHeaders(message.headers, runtime));
+      const upstreamState: UpstreamWebSocketState = { socket: upstream, queuedMessages: [] };
+      const sockets = this.getUpstreamSocketMap(previewId);
+      sockets.set(message.streamId, upstreamState);
 
-    upstream.addEventListener("open", () => {
-      for (const queuedMessage of upstreamState.queuedMessages.splice(0)) {
-        upstream.send(queuedMessage);
-      }
-    });
-    upstream.addEventListener("message", (event: MessageEvent) => {
-      const body = typeof event.data === "string"
-        ? new TextEncoder().encode(event.data)
-        : event.data instanceof ArrayBuffer
-          ? new Uint8Array(event.data)
-          : event.data instanceof Blob
-            ? undefined
-            : event.data instanceof Uint8Array
-              ? event.data
-              : Buffer.from(event.data as Buffer);
-      if (!body) {
-        void event.data.arrayBuffer().then((buffer: ArrayBuffer) => {
-          ws.send(JSON.stringify({
-            type: "websocket.message",
-            streamId: message.streamId,
-            body: encodeBase64(new Uint8Array(buffer)),
-            binary: true,
-          } satisfies PreviewBridgeWebSocketMessage));
-        }).catch((error: unknown) => {
-          ws.send(JSON.stringify({ type: "stream.error", streamId: message.streamId, error: String(error) }));
-        });
-        return;
-      }
-      ws.send(JSON.stringify({
-        type: "websocket.message",
-        streamId: message.streamId,
-        body: encodeBase64(body),
-        binary: typeof event.data !== "string",
-      } satisfies PreviewBridgeWebSocketMessage));
-    });
-    upstream.addEventListener("close", (event: CloseEvent) => {
-      sockets.delete(message.streamId);
-      ws.send(JSON.stringify({
-        type: "websocket.close",
-        streamId: message.streamId,
-        code: event.code,
-        reason: event.reason,
-      } satisfies PreviewBridgeWebSocketCloseMessage));
-    });
-    upstream.addEventListener("error", () => {
-      sockets.delete(message.streamId);
-      ws.send(JSON.stringify({ type: "stream.error", streamId: message.streamId, error: "Preview upstream WebSocket failed" }));
-    });
+      upstream.addEventListener("open", () => {
+        for (const queuedMessage of upstreamState.queuedMessages.splice(0)) {
+          upstream.send(queuedMessage);
+        }
+      });
+      upstream.addEventListener("message", (event: MessageEvent) => {
+        const body = typeof event.data === "string"
+          ? new TextEncoder().encode(event.data)
+          : event.data instanceof ArrayBuffer
+            ? new Uint8Array(event.data)
+            : event.data instanceof Blob
+              ? undefined
+              : event.data instanceof Uint8Array
+                ? event.data
+                : Buffer.from(event.data as Buffer);
+        if (!body) {
+          void event.data.arrayBuffer().then((buffer: ArrayBuffer) => {
+            ws.send(JSON.stringify({
+              type: "websocket.message",
+              streamId: message.streamId,
+              body: encodeBase64(new Uint8Array(buffer)),
+              binary: true,
+            } satisfies PreviewBridgeWebSocketMessage));
+          }).catch((error: unknown) => {
+            ws.send(JSON.stringify({ type: "stream.error", streamId: message.streamId, error: String(error) }));
+          });
+          return;
+        }
+        ws.send(JSON.stringify({
+          type: "websocket.message",
+          streamId: message.streamId,
+          body: encodeBase64(body),
+          binary: typeof event.data !== "string",
+        } satisfies PreviewBridgeWebSocketMessage));
+      });
+      upstream.addEventListener("close", (event: CloseEvent) => {
+        sockets.delete(message.streamId);
+        ws.send(JSON.stringify({
+          type: "websocket.close",
+          streamId: message.streamId,
+          code: event.code,
+          reason: event.reason,
+        } satisfies PreviewBridgeWebSocketCloseMessage));
+      });
+      upstream.addEventListener("error", () => {
+        sockets.delete(message.streamId);
+        ws.send(JSON.stringify({ type: "stream.error", streamId: message.streamId, error: "Preview upstream WebSocket failed" }));
+      });
+    } catch (error) {
+      ws.send(JSON.stringify({ type: "stream.error", streamId: message.streamId, error: getBridgeErrorMessage(error) }));
+    }
   }
 
   private handleWebSocketMessage(ws: PreviewBridgeSocket, message: PreviewBridgeWebSocketMessage): void {
@@ -714,10 +832,31 @@ export class PreviewSessionManager {
 
   private getUpstreamSocket(ws: PreviewBridgeSocket, streamId: string): UpstreamWebSocketState | undefined {
     const previewId = ws.data.previewBridgeSessionId;
-    if (!previewId) {
+    if (!previewId || !this.getOwnedRuntime(ws, previewId)) {
       return undefined;
     }
     return this.upstreamSockets.get(previewId)?.get(streamId);
+  }
+
+  private getOwnedRuntime(
+    ws: PreviewBridgeSocket,
+    previewId: string,
+  ): PreviewRuntime | undefined {
+    const runtime = this.runtimes.get(previewId);
+    const user = ws.data.user;
+    if (
+      !runtime
+      || !user
+      || runtime.user.id !== user.id
+      || (
+        ws.data.previewBridgeUserId
+        && ws.data.previewBridgeUserId !== user.id
+      )
+      || this.bridgeSockets.get(previewId) !== ws
+    ) {
+      return undefined;
+    }
+    return runtime;
   }
 
   private getUpstreamSocketMap(previewId: string): Map<string, UpstreamWebSocketState> {
@@ -740,27 +879,6 @@ export class PreviewSessionManager {
       }
     }
     this.upstreamSockets.delete(previewId);
-  }
-
-  private buildUpstreamWebSocketHeaders(headers: Array<[string, string]>, runtime: PreviewRuntime): Record<string, string> {
-    const result: Record<string, string> = {};
-    const excluded = new Set([
-      "connection",
-      "sec-websocket-accept",
-      "sec-websocket-extensions",
-      "sec-websocket-key",
-      "sec-websocket-version",
-      "upgrade",
-    ]);
-    for (const [name, value] of headers) {
-      const lowerName = name.toLowerCase();
-      if (excluded.has(lowerName)) {
-        continue;
-      }
-      result[name] = value;
-    }
-    applyWebSocketForwardedHeaders(result, headers, runtime);
-    return result;
   }
 
   private async reconcileStalePreviews(): Promise<void> {
