@@ -184,6 +184,10 @@ export class ChatManager {
     this.services.conversation.setActivityTimeoutForTesting(timeoutMs);
   }
 
+  setNameGenerationTimeoutForTesting(timeoutMs: number | undefined): void {
+    this.services.conversation.setNameGenerationTimeoutForTesting(timeoutMs);
+  }
+
   async getOrCreateTaskChat(taskId: string, task?: Task): Promise<{ chat: Chat; created: boolean }> {
     return this.services.lifecycle.getOrCreateTaskChat(taskId, task);
   }

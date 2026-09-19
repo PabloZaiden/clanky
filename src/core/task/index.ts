@@ -44,6 +44,7 @@ import {
 export class TaskManager {
   private readonly ctx: TaskCtx;
   private readonly engines: Map<string, TaskEngine>;
+  private titleGenerationTimeoutMs: number | undefined;
 
   constructor(options?: { eventEmitter?: SimpleEventEmitter<TaskEvent> }) {
     this.engines = new Map<string, TaskEngine>();
@@ -80,7 +81,14 @@ export class TaskManager {
   }
 
   async generateTaskTitle(options: GenerateTaskTitleOptions): Promise<string> {
-    return generateTaskTitleImpl(this.ctx, options);
+    return generateTaskTitleImpl(this.ctx, {
+      ...options,
+      timeoutMs: options.timeoutMs ?? this.titleGenerationTimeoutMs,
+    });
+  }
+
+  setTitleGenerationTimeoutForTesting(timeoutMs: number | undefined): void {
+    this.titleGenerationTimeoutMs = timeoutMs;
   }
 
   async startPlanMode(taskId: string, options?: StartTaskOptions): Promise<void> {
