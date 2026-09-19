@@ -8,7 +8,7 @@ import type {
   TranscriptSnapshotOptions,
   ToolCallRecord,
 } from "@/shared";
-import type { TranscriptEntriesPage } from "../persistence/transcripts/store";
+import type { TranscriptEntriesPage } from "../persistence/transcripts/types";
 
 type TranscriptEntry =
   | {

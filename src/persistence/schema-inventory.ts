@@ -14,17 +14,29 @@ export type SchemaTableCategory =
   | "metadata"
   | "legacy-reset-only";
 
+export type SchemaTranscriptResource = "chat" | "task" | "agent_run";
+export type SchemaTranscriptTableRole = "entries" | "meta";
+
+export interface SchemaTranscriptTableMetadata {
+  readonly resource: SchemaTranscriptResource;
+  readonly role: SchemaTranscriptTableRole;
+  readonly parentTable: "chats" | "tasks" | "agent_runs";
+  readonly resourceColumn: "chat_id" | "task_id" | "agent_run_id";
+}
+
 export interface SchemaTableDefinition {
   readonly name: string;
   readonly category: SchemaTableCategory;
   readonly expectedInFreshSchema: boolean;
   readonly introspectable: boolean;
   readonly resettable: boolean;
+  readonly transcript?: SchemaTranscriptTableMetadata;
 }
 
 function currentTable(
   name: string,
   category: "clanky" | "framework" | "metadata",
+  transcript?: SchemaTranscriptTableMetadata,
 ): SchemaTableDefinition {
   return {
     name,
@@ -32,6 +44,7 @@ function currentTable(
     expectedInFreshSchema: true,
     introspectable: true,
     resettable: true,
+    ...(transcript ? { transcript } : {}),
   };
 }
 
@@ -80,8 +93,18 @@ export const SCHEMA_TABLE_INVENTORY: readonly SchemaTableDefinition[] = [
   currentTable("workspace_execution_targets", "clanky"),
   currentTable("clanky_context_api_keys", "clanky"),
   currentTable("preview_sessions", "clanky"),
-  currentTable("agent_run_transcript_meta", "clanky"),
-  currentTable("agent_run_transcript_entries", "clanky"),
+  currentTable("agent_run_transcript_meta", "clanky", {
+    resource: "agent_run",
+    role: "meta",
+    parentTable: "agent_runs",
+    resourceColumn: "agent_run_id",
+  }),
+  currentTable("agent_run_transcript_entries", "clanky", {
+    resource: "agent_run",
+    role: "entries",
+    parentTable: "agent_runs",
+    resourceColumn: "agent_run_id",
+  }),
   currentTable("agent_runs", "clanky"),
   currentTable("agents", "clanky"),
   currentTable("review_comments", "clanky"),
@@ -90,11 +113,31 @@ export const SCHEMA_TABLE_INVENTORY: readonly SchemaTableDefinition[] = [
   resetOnlyTable("ssh_server_sessions", "legacy-reset-only"),
   currentTable("provisioning_job_logs", "clanky"),
   currentTable("provisioning_jobs", "clanky"),
-  currentTable("task_transcript_meta", "clanky"),
-  currentTable("task_transcript_entries", "clanky"),
+  currentTable("task_transcript_meta", "clanky", {
+    resource: "task",
+    role: "meta",
+    parentTable: "tasks",
+    resourceColumn: "task_id",
+  }),
+  currentTable("task_transcript_entries", "clanky", {
+    resource: "task",
+    role: "entries",
+    parentTable: "tasks",
+    resourceColumn: "task_id",
+  }),
   currentTable("tasks", "clanky"),
-  currentTable("chat_transcript_meta", "clanky"),
-  currentTable("chat_transcript_entries", "clanky"),
+  currentTable("chat_transcript_meta", "clanky", {
+    resource: "chat",
+    role: "meta",
+    parentTable: "chats",
+    resourceColumn: "chat_id",
+  }),
+  currentTable("chat_transcript_entries", "clanky", {
+    resource: "chat",
+    role: "entries",
+    parentTable: "chats",
+    resourceColumn: "chat_id",
+  }),
   currentTable("chats", "clanky"),
   currentTable("vnc_sessions", "clanky"),
   currentTable("ssh_servers", "clanky"),

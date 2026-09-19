@@ -9,7 +9,7 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import { rowToTask } from "./helpers";
 import { TASK_LIST_COLUMNS } from "./crud";
 import { requirePersistenceUserId } from "../ownership";
-import { hydrateTranscriptStateForUser } from "../transcripts/store";
+import { taskTranscriptStore } from "../transcripts/task-store";
 
 const log = createLogger("persistence:tasks");
 const STALE_TASK_RESET_MESSAGE = "Forcefully stopped by connection reset";
@@ -61,7 +61,7 @@ export async function getActiveTaskByDirectory(directory: string, workspaceId: s
   }
 
   const task = rowToTask(row);
-  const transcript = hydrateTranscriptStateForUser("task", task.config.id, userId);
+  const transcript = taskTranscriptStore.hydrateForUser(task.config.id, userId);
   task.state.messages = transcript.messages;
   task.state.logs = transcript.logs;
   task.state.toolCalls = transcript.toolCalls;
