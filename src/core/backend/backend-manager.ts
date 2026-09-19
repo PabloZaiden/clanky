@@ -22,6 +22,7 @@ import type { Workspace } from "@/shared/workspace";
 import { meshStateEventEmitter, taskEventEmitter } from "../event-emitter";
 import type { TaskEvent } from "@/shared/events";
 import {
+  closeCommandExecutor,
   resolveCommandExecutorDirectory,
   type CommandExecutor,
 } from "../command-executor";
@@ -297,8 +298,30 @@ class BackendManager {
     const keyPrefix = `{"workspaceId":"${workspaceId}"`;
     for (const key of this.commandExecutors.keys()) {
       if (key.startsWith(keyPrefix)) {
-        this.commandExecutors.delete(key);
+        this.evictCommandExecutor(key);
       }
+    }
+  }
+
+  private clearAllCommandExecutors(): void {
+    for (const key of this.commandExecutors.keys()) {
+      this.evictCommandExecutor(key);
+    }
+  }
+
+  private evictCommandExecutor(cacheKey: string): void {
+    const executor = this.commandExecutors.get(cacheKey);
+    if (!executor) {
+      return;
+    }
+
+    this.commandExecutors.delete(cacheKey);
+    try {
+      closeCommandExecutor(executor);
+    } catch (error) {
+      log.error("[BackendManager] Error closing cached CommandExecutor", {
+        error: String(error),
+      });
     }
   }
 
@@ -566,11 +589,7 @@ class BackendManager {
         }
         const host = parsed.executionHostBinding?.host;
         if (host?.kind === "mesh" && host.nodeId !== localNodeId) {
-          const executor = this.commandExecutors.get(key);
-          if (executor && "close" in executor && typeof executor.close === "function") {
-            (executor as CommandExecutor & { close: () => void }).close();
-          }
-          this.commandExecutors.delete(key);
+          this.evictCommandExecutor(key);
         }
       } catch {
         continue;
@@ -615,7 +634,7 @@ class BackendManager {
       this.connections.clear();
       this.taskConnections.clear();
     }
-    this.commandExecutors.clear();
+    this.clearAllCommandExecutors();
     this.invalidateLocalMeshNodeIdCache();
 
     this.emitEvent({
@@ -1261,7 +1280,7 @@ class BackendManager {
   setExecutorFactoryForTesting(factory: CommandExecutorFactory): void {
     this.testExecutorFactory = factory;
     executionHostService.setExecutorFactoryForTesting(factory);
-    this.commandExecutors.clear();
+    this.clearAllCommandExecutors();
   }
 
   /**
@@ -1281,7 +1300,7 @@ class BackendManager {
     this.meshStateUnsubscribe = null;
     this.connections.clear();
     this.taskConnections.clear();
-    this.commandExecutors.clear();
+    this.clearAllCommandExecutors();
     this.initialized = false;
     this.testExecutorFactory = null;
     executionHostService.setExecutorFactoryForTesting(null);
