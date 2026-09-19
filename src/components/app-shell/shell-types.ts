@@ -1,7 +1,6 @@
 import {
-  canJumpstart,
   getTaskStatusPill,
-  isFinalState,
+  isSidebarHistoryTask,
 } from "../../utils";
 import { getChatWorkspaceId, isStandaloneChat, isWorkspaceChat } from "@/shared/chat";
 import {
@@ -214,11 +213,6 @@ function sortByDesc<T>(items: T[], getValue: (item: T) => string): T[] {
   return [...items].sort((left, right) => getValue(right).localeCompare(getValue(left)));
 }
 
-function isTerminalSidebarTask(task: Task): boolean {
-  const { status } = task.state;
-  return status !== "completed" && status !== "pushed" && (canJumpstart(status) || isFinalState(status));
-}
-
 export function buildWorkspaceSidebarGroups({
   workspaces,
   tasks,
@@ -278,8 +272,8 @@ export function buildWorkspaceSidebarGroups({
         badgeVariant: statusPill.variant,
       };
     });
-    const activeTaskNodes = taskNodes.filter((taskNode) => !isTerminalSidebarTask(taskNode.task));
-    const historyTaskNodes = taskNodes.filter((taskNode) => isTerminalSidebarTask(taskNode.task));
+    const activeTaskNodes = taskNodes.filter((taskNode) => !isSidebarHistoryTask(taskNode.task.state.status));
+    const historyTaskNodes = taskNodes.filter((taskNode) => isSidebarHistoryTask(taskNode.task.state.status));
     const chatNodes = workspaceChats.map((chat) => ({
       chat,
       title: chat.config.name,
