@@ -14,8 +14,17 @@
     "extension": ".sha256"
   },
   "platforms": {
-    "linux": ["x64", "arm64"],
-    "darwin": ["x64", "arm64"],
-    "windows": ["x64", "arm64"]
+    "linux": [
+      "x64",
+      "arm64"
+    ],
+    "darwin": [
+      "x64",
+      "arm64"
+    ],
+    "windows": [
+      "x64",
+      "arm64"
+    ]
   }
 }
