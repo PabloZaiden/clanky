@@ -324,21 +324,23 @@ export function OverviewView({
       </Panel>
 
       {provisioningJobs.length > 0 ? (
-        <Panel title="Provisioning">
-          {terminalProvisioningJobs.length > 0 ? (
-            <div className="mb-3 flex justify-end">
-              <Button
-                type="button"
-                variant="danger"
-                size="sm"
-                loading={dismissingAllProvisioningJobs}
-                onClick={() => setDismissConfirmOpen(true)}
-                data-testid="dismiss-all-provisioning-jobs"
-              >
-                Dismiss all
-              </Button>
-            </div>
+        <Panel
+          className="clanky-provisioning-panel"
+          title="Provisioning"
+          actions={terminalProvisioningJobs.length > 0 ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="xs"
+              className="text-red-600 dark:text-red-400"
+              loading={dismissingAllProvisioningJobs}
+              onClick={() => setDismissConfirmOpen(true)}
+              data-testid="dismiss-all-provisioning-jobs"
+            >
+              Dismiss all
+            </Button>
           ) : null}
+        >
           <div className="space-y-2">
             {provisioningJobs.map((job) => (
               <ClankyListRow
