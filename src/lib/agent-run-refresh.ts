@@ -37,13 +37,13 @@ export function createAgentRunRefreshCoordinator<T>(): AgentRunRefreshCoordinato
 
   const invalidate = (agentId: string): void => {
     const request = requests.get(agentId);
-    if (!request) {
-      return;
+    if (request) {
+      request.controller.abort();
+      if (requests.get(agentId) === request) {
+        requests.delete(agentId);
+      }
     }
-    request.controller.abort();
-    if (requests.get(agentId) === request) {
-      requests.delete(agentId);
-    }
+    generations.delete(agentId);
   };
 
   const invalidateAll = (): void => {

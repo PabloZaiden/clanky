@@ -474,7 +474,10 @@ export function useAgents(): UseAgentsResult {
         invalidateAgentRunRefresh(agentId);
       }
       setRunsByAgentId((prev) => Object.fromEntries(
-        Object.entries(prev).map(([agentId, runs]) => [agentId, runs.filter((run) => run.id !== runId)]),
+        Object.entries(prev).map(([currentAgentId, runs]) => [
+          currentAgentId,
+          runs.filter((run) => run.id !== runId),
+        ]),
       ));
       return true;
     }
