@@ -1,37 +1,37 @@
 import { createLogger } from "@pablozaiden/webapp/web";
 
-const log = createLogger("chatComposerDrafts");
+const log = createLogger("conversationComposerDrafts");
 
-const CHAT_COMPOSER_DRAFT_STORAGE_PREFIX = "clanky.chatComposerDraft.v1.";
-const CHAT_COMPOSER_DRAFT_VERSION = 1 as const;
-const CHAT_COMPOSER_DRAFT_DEBOUNCE_MS = 400;
+const CONVERSATION_COMPOSER_DRAFT_STORAGE_PREFIX = "clanky.conversationComposerDraft.v1.";
+const CONVERSATION_COMPOSER_DRAFT_VERSION = 1 as const;
+const CONVERSATION_COMPOSER_DRAFT_DEBOUNCE_MS = 400;
 
 type DraftTimeoutHandle = number | ReturnType<typeof setTimeout>;
 type DraftSetTimeout = (callback: () => void, delay: number) => DraftTimeoutHandle;
 type DraftClearTimeout = (timeoutId: DraftTimeoutHandle) => void;
 
-interface StoredChatComposerDraft {
-  version: typeof CHAT_COMPOSER_DRAFT_VERSION;
+interface StoredConversationComposerDraft {
+  version: typeof CONVERSATION_COMPOSER_DRAFT_VERSION;
   message: string;
 }
 
-export interface ChatComposerDraftStorageLike {
+export interface ConversationComposerDraftStorageLike {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
   removeItem(key: string): void;
 }
 
-export interface ChatComposerDraftDependencies {
-  storage?: ChatComposerDraftStorageLike;
+export interface ConversationComposerDraftDependencies {
+  storage?: ConversationComposerDraftStorageLike;
 }
 
-export interface ChatComposerDraftPersistenceDependencies
-  extends ChatComposerDraftDependencies {
+export interface ConversationComposerDraftPersistenceDependencies
+  extends ConversationComposerDraftDependencies {
   setTimeout?: DraftSetTimeout;
   clearTimeout?: DraftClearTimeout;
 }
 
-export interface ChatComposerDraftPersistence {
+export interface ConversationComposerDraftPersistence {
   schedule(message: string): void;
   flush(): void;
   clear(): void;
@@ -39,8 +39,8 @@ export interface ChatComposerDraftPersistence {
 }
 
 function resolveStorage(
-  storage?: ChatComposerDraftStorageLike,
-): ChatComposerDraftStorageLike | null {
+  storage?: ConversationComposerDraftStorageLike,
+): ConversationComposerDraftStorageLike | null {
   if (storage) {
     return storage;
   }
@@ -51,48 +51,50 @@ function resolveStorage(
   try {
     return window.localStorage;
   } catch (error) {
-    log.warn("Chat composer draft storage is unavailable", {
+    log.warn("Conversation composer draft storage is unavailable", {
       error: String(error),
     });
     return null;
   }
 }
 
-function getStorageKey(chatId: string): string {
-  return `${CHAT_COMPOSER_DRAFT_STORAGE_PREFIX}${encodeURIComponent(chatId)}`;
+function getStorageKey(conversationId: string): string {
+  return `${CONVERSATION_COMPOSER_DRAFT_STORAGE_PREFIX}${encodeURIComponent(conversationId)}`;
 }
 
-function isStoredChatComposerDraft(value: unknown): value is StoredChatComposerDraft {
+function isStoredConversationComposerDraft(
+  value: unknown,
+): value is StoredConversationComposerDraft {
   if (!value || typeof value !== "object") {
     return false;
   }
 
   const candidate = value as Record<string, unknown>;
   return (
-    candidate["version"] === CHAT_COMPOSER_DRAFT_VERSION
+    candidate["version"] === CONVERSATION_COMPOSER_DRAFT_VERSION
     && typeof candidate["message"] === "string"
   );
 }
 
 function removeStoredDraft(
-  storage: ChatComposerDraftStorageLike,
+  storage: ConversationComposerDraftStorageLike,
   storageKey: string,
 ): void {
   try {
     storage.removeItem(storageKey);
   } catch (error) {
-    log.warn("Failed to clear chat composer draft", {
+    log.warn("Failed to clear conversation composer draft", {
       storageKey,
       error: String(error),
     });
   }
 }
 
-export function getStoredChatComposerDraft(
-  chatId: string,
-  dependencies: ChatComposerDraftDependencies = {},
+export function getStoredConversationComposerDraft(
+  conversationId: string,
+  dependencies: ConversationComposerDraftDependencies = {},
 ): string | null {
-  if (!chatId.trim()) {
+  if (!conversationId.trim()) {
     return null;
   }
 
@@ -101,12 +103,12 @@ export function getStoredChatComposerDraft(
     return null;
   }
 
-  const storageKey = getStorageKey(chatId);
+  const storageKey = getStorageKey(conversationId);
   let raw: string | null;
   try {
     raw = storage.getItem(storageKey);
   } catch (error) {
-    log.warn("Failed to read chat composer draft", {
+    log.warn("Failed to read conversation composer draft", {
       storageKey,
       error: String(error),
     });
@@ -119,8 +121,8 @@ export function getStoredChatComposerDraft(
 
   try {
     const parsed = JSON.parse(raw) as unknown;
-    if (!isStoredChatComposerDraft(parsed)) {
-      log.warn("Removing invalid chat composer draft", {
+    if (!isStoredConversationComposerDraft(parsed)) {
+      log.warn("Removing invalid conversation composer draft", {
         storageKey,
       });
       removeStoredDraft(storage, storageKey);
@@ -134,7 +136,7 @@ export function getStoredChatComposerDraft(
 
     return parsed.message;
   } catch (error) {
-    log.warn("Removing invalid chat composer draft", {
+    log.warn("Removing invalid conversation composer draft", {
       storageKey,
       error: String(error),
     });
@@ -143,12 +145,12 @@ export function getStoredChatComposerDraft(
   }
 }
 
-export function saveStoredChatComposerDraft(
-  chatId: string,
+export function saveStoredConversationComposerDraft(
+  conversationId: string,
   message: string,
-  dependencies: ChatComposerDraftDependencies = {},
+  dependencies: ConversationComposerDraftDependencies = {},
 ): void {
-  if (!chatId.trim()) {
+  if (!conversationId.trim()) {
     return;
   }
 
@@ -157,32 +159,32 @@ export function saveStoredChatComposerDraft(
     return;
   }
 
-  const storageKey = getStorageKey(chatId);
+  const storageKey = getStorageKey(conversationId);
   if (!message.trim()) {
     removeStoredDraft(storage, storageKey);
     return;
   }
 
-  const draft: StoredChatComposerDraft = {
-    version: CHAT_COMPOSER_DRAFT_VERSION,
+  const draft: StoredConversationComposerDraft = {
+    version: CONVERSATION_COMPOSER_DRAFT_VERSION,
     message,
   };
 
   try {
     storage.setItem(storageKey, JSON.stringify(draft));
   } catch (error) {
-    log.warn("Failed to persist chat composer draft", {
+    log.warn("Failed to persist conversation composer draft", {
       storageKey,
       error: String(error),
     });
   }
 }
 
-export function clearStoredChatComposerDraft(
-  chatId: string,
-  dependencies: ChatComposerDraftDependencies = {},
+export function clearStoredConversationComposerDraft(
+  conversationId: string,
+  dependencies: ConversationComposerDraftDependencies = {},
 ): void {
-  if (!chatId.trim()) {
+  if (!conversationId.trim()) {
     return;
   }
 
@@ -191,13 +193,13 @@ export function clearStoredChatComposerDraft(
     return;
   }
 
-  removeStoredDraft(storage, getStorageKey(chatId));
+  removeStoredDraft(storage, getStorageKey(conversationId));
 }
 
-export function createChatComposerDraftPersistence(
-  chatId: string,
-  dependencies: ChatComposerDraftPersistenceDependencies = {},
-): ChatComposerDraftPersistence {
+export function createConversationComposerDraftPersistence(
+  conversationId: string,
+  dependencies: ConversationComposerDraftPersistenceDependencies = {},
+): ConversationComposerDraftPersistence {
   const scheduleTimeout = dependencies.setTimeout ?? globalThis.setTimeout;
   const clearTimeout = dependencies.clearTimeout ?? globalThis.clearTimeout;
   let latestMessage = "";
@@ -219,7 +221,7 @@ export function createChatComposerDraftPersistence(
     }
 
     dirty = false;
-    saveStoredChatComposerDraft(chatId, latestMessage, dependencies);
+    saveStoredConversationComposerDraft(conversationId, latestMessage, dependencies);
   }
 
   return {
@@ -230,14 +232,14 @@ export function createChatComposerDraftPersistence(
       timeoutHandle = scheduleTimeout(() => {
         timeoutHandle = null;
         flush();
-      }, CHAT_COMPOSER_DRAFT_DEBOUNCE_MS);
+      }, CONVERSATION_COMPOSER_DRAFT_DEBOUNCE_MS);
     },
     flush,
     clear(): void {
       cancelScheduledWrite();
       dirty = false;
       latestMessage = "";
-      clearStoredChatComposerDraft(chatId, dependencies);
+      clearStoredConversationComposerDraft(conversationId, dependencies);
     },
     cancel: cancelScheduledWrite,
   };

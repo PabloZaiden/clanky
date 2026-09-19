@@ -44,7 +44,7 @@ type RetainedTaskEvent = Extract<
   {
     type:
       | "task.message"
-      | "task.progress"
+      | "task.message.delta"
       | "task.tool_call"
       | "task.tool_call.extra"
       | "task.log"
@@ -74,9 +74,11 @@ type RetainedAgentEvent = Extract<
   {
     type:
       | "agent.run.message"
+      | "agent.run.message.delta"
       | "agent.run.tool_call"
       | "agent.run.tool_call.extra"
-      | "agent.run.log";
+      | "agent.run.log"
+      | "agent.run.log.delta";
   }
 >;
 
@@ -236,7 +238,7 @@ export function publishClankyDomainEvent(
       publishDeleted(publisher, owner, CLANKY_REALTIME_RESOURCES.tasks, event.taskId);
       return;
     case "task.message":
-    case "task.progress":
+    case "task.message.delta":
     case "task.log":
     case "task.log.delta":
       publishStream(publisher, owner, event, { taskId: event.taskId });
@@ -335,7 +337,9 @@ export function publishClankyDomainEvent(
       publishDeleted(publisher, owner, CLANKY_REALTIME_RESOURCES.agents, event.agentId);
       return;
     case "agent.run.message":
+    case "agent.run.message.delta":
     case "agent.run.log":
+    case "agent.run.log.delta":
       publishStream(publisher, owner, event, {
         agentId: event.agentId,
         agentRunId: event.agentRunId,

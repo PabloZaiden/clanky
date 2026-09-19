@@ -129,6 +129,45 @@ describe("Clanky realtime migration", () => {
     }]);
   });
 
+  test("publishes task and agent-run message deltas to their scoped streams", () => {
+    const recording = createRecordingPublisher();
+    const delta = {
+      messageId: "message-1",
+      role: "assistant" as const,
+      delta: "Hello",
+      baseLength: 0,
+      contentLength: 5,
+      messageTimestamp: "2026-01-01T00:00:00.000Z",
+      timestamp: "2026-01-01T00:00:01.000Z",
+    };
+
+    publishClankyDomainEvent(recording.publisher, {
+      type: "task.message.delta",
+      taskId: "task-1",
+      iteration: 1,
+      ...delta,
+    }, { userId: "user-1" });
+    publishClankyDomainEvent(recording.publisher, {
+      type: "agent.run.message.delta",
+      agentId: "agent-1",
+      agentRunId: "run-1",
+      ...delta,
+    }, { userId: "user-1" });
+
+    expect(recording.streams).toEqual([
+      {
+        ownerId: "user-1",
+        type: "task.message.delta",
+        target: { taskId: "task-1" },
+      },
+      {
+        ownerId: "user-1",
+        type: "agent.run.message.delta",
+        target: { agentId: "agent-1", agentRunId: "run-1" },
+      },
+    ]);
+  });
+
   test("delivers owner-targeted resource events only to matching users and filters", () => {
     const bus = new RealtimeBus<ClankyRealtimeEvent>();
     const userOne = createSocket("user-1", { resource: "tasks", id: "task-1" });

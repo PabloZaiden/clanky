@@ -9,7 +9,6 @@ import { replaceWebAppRoute, routeToHash, TabPanel, TabPanels } from "@pablozaid
 import type { MessageData, Task, TaskLogEntry, ToolCallData, ToolCallDisplayData } from "@/shared";
 import type { EntityLabels } from "../../utils";
 import type { TabId } from "./types";
-import type { LogDisplayState } from "./use-log-display-state";
 import type { UseTaskContentResult } from "./use-task-content";
 import type { UseTaskActionsResult } from "./use-task-actions";
 import { LogTab } from "./log-tab";
@@ -28,7 +27,6 @@ interface TaskDetailsTabContentProps {
   isPlanning: boolean;
   isPlanReady: boolean;
   isLogActive: boolean;
-  applyLogBottomSafeAreaPadding: boolean;
   hasBottomActionBar: boolean;
   feedbackRounds: number;
   markdownEnabled: boolean;
@@ -44,7 +42,6 @@ interface TaskDetailsTabContentProps {
   loadingTranscript: boolean;
 
   // Bundled state from hooks
-  logDisplay: LogDisplayState;
   content: UseTaskContentResult;
   actions: UseTaskActionsResult;
   onFileOpenError: (message: string) => void;
@@ -58,7 +55,6 @@ export function TaskDetailsTabContent({
   isPlanning,
   isPlanReady,
   isLogActive,
-  applyLogBottomSafeAreaPadding,
   hasBottomActionBar,
   feedbackRounds,
   markdownEnabled,
@@ -70,7 +66,6 @@ export function TaskDetailsTabContent({
   onLoadMoreTranscript,
   onLoadFullTranscript,
   loadingTranscript,
-  logDisplay,
   content,
   actions,
   onFileOpenError,
@@ -120,10 +115,8 @@ export function TaskDetailsTabContent({
           messages={messages}
           toolCalls={toolCalls}
           logs={logs}
-          {...logDisplay}
           markdownEnabled={markdownEnabled}
           isLogActive={isLogActive}
-          applyBottomSafeAreaPadding={applyLogBottomSafeAreaPadding}
           toolPathDisplayRoot={toolPathDisplayRoot}
           fileLinkContext={fileLinkContext}
           onLoadToolDetails={onLoadToolDetails}

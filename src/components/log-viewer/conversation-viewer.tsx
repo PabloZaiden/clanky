@@ -1,4 +1,5 @@
 import { useCallback, useMemo, memo } from "react";
+import { shouldIncludeConversationTranscriptLog } from "@/shared";
 import { ImageViewerModal } from "../ImageViewerModal";
 import type { ConversationViewerProps, EntryBase } from "./types";
 import {
@@ -8,7 +9,6 @@ import {
   groupConsecutiveEntries,
   hasActiveWorkEntry,
   isReasoningLogEntry,
-  isResponseLogEntry,
   isToolCallInProgress,
 } from "./utils";
 import { MessageEntry } from "./message-entry";
@@ -26,24 +26,15 @@ export const ConversationViewer = memo(function ConversationViewer({
   toolCalls,
   logs = [],
   maxHeight,
-  showSystemInfo = false,
-  showTools = true,
   markdownEnabled = false,
   isActive = false,
   id,
-  showAssistantMessages = false,
-  showResponseLogs = true,
-  showMessageRoles = false,
-  emptyStateMessage = "No activity yet.",
-  activeStateMessage = "Working...",
   onReadAloud,
   readAloudSummaryEnabled = false,
   playingReadAloudKey = null,
   readAloudStatus = null,
   toolPathDisplayRoot,
   fileLinkContext,
-  surfaceClassName,
-  transcriptClassName,
   onLoadToolDetails,
   hasOlderTranscript = false,
   onLoadMoreTranscript,
@@ -71,7 +62,7 @@ export const ConversationViewer = memo(function ConversationViewer({
     toolCalls.forEach((tool) => {
       sourceEntries.push({ type: "tool", data: tool, timestamp: tool.timestamp });
     });
-    logs.forEach((logEntry) => {
+    logs.filter(shouldIncludeConversationTranscriptLog).forEach((logEntry) => {
       sourceEntries.push({ type: "log", data: logEntry, timestamp: logEntry.timestamp });
     });
     sourceEntries.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
@@ -89,27 +80,14 @@ export const ConversationViewer = memo(function ConversationViewer({
       if (msg.role === "assistant" && msg.content.length === 0) {
         return;
       }
-      if (msg.role === "assistant" && !showAssistantMessages) {
-        result.push({
-          type: "response-boundary",
-          id: `assistant-response-${msg.id}`,
-          timestamp: msg.timestamp,
-          hasResponseContent: true,
-        });
-        return;
-      }
       result.push({ type: "message", data: msg, timestamp: msg.timestamp });
     });
 
-    if (showTools) {
-      toolCalls.forEach((tool) => {
-        result.push({ type: "tool", data: tool, timestamp: tool.timestamp });
-      });
-    }
+    toolCalls.forEach((tool) => {
+      result.push({ type: "tool", data: tool, timestamp: tool.timestamp });
+    });
 
-    logs.forEach((logEntry) => {
-      const logKind = logEntry.details?.["logKind"] as string | undefined;
-
+    logs.filter(shouldIncludeConversationTranscriptLog).forEach((logEntry) => {
       if (isReasoningLogEntry(logEntry)) {
         const content = logEntry.details?.["responseContent"];
         if (typeof content === "string" && content.length > 0) {
@@ -125,52 +103,12 @@ export const ConversationViewer = memo(function ConversationViewer({
         return;
       }
 
-      if (logKind === "tool" || (!logKind && logEntry.message.startsWith("AI calling tool:"))) {
-        return;
-      }
-
-      if (isResponseLogEntry(logEntry)) {
-        const content = logEntry.details?.["responseContent"];
-        if (typeof content !== "string" || content.length === 0) {
-          return;
-        }
-        if (!showResponseLogs) {
-          result.push({
-            type: "response-boundary",
-            id: `response-log-${logEntry.id}`,
-            timestamp: logEntry.timestamp,
-            hasResponseContent: true,
-          });
-          return;
-        }
-        result.push({ type: "log", data: logEntry, timestamp: logEntry.timestamp });
-        return;
-      }
-
-      if (logKind === "system") {
-        if (!showSystemInfo) return;
-        result.push({ type: "log", data: logEntry, timestamp: logEntry.timestamp });
-        return;
-      }
-
-      if (logEntry.level !== "agent" && logEntry.level !== "user") {
-        if (!showSystemInfo) return;
-        result.push({ type: "log", data: logEntry, timestamp: logEntry.timestamp });
-        return;
-      }
-
-      if (logEntry.level === "agent" && !logKind) {
-        if (logEntry.message.startsWith("AI started") || logEntry.message.startsWith("AI finished")) {
-          if (!showSystemInfo) return;
-        }
-      }
-
       result.push({ type: "log", data: logEntry, timestamp: logEntry.timestamp });
     });
 
     result.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
     return groupConsecutiveEntries(result, isActive);
-  }, [isActive, logs, messages, showAssistantMessages, showResponseLogs, showSystemInfo, showTools, toolCalls]);
+  }, [isActive, logs, messages, toolCalls]);
 
   const visibleEntries = useMemo(() => annotateDisplayEntries(groupedEntries), [groupedEntries]);
   const latestAssistantMessageId = useMemo(
@@ -190,8 +128,6 @@ export const ConversationViewer = memo(function ConversationViewer({
     isActive,
     isEmpty,
     shouldShowWorkingIndicator,
-    activeStateMessage,
-    emptyStateMessage,
     markdownEnabled,
   ]);
 
@@ -234,15 +170,12 @@ export const ConversationViewer = memo(function ConversationViewer({
     </div>
   );
 
-  const resolvedSurfaceClassName = surfaceClassName ?? "bg-transparent";
-  const resolvedTranscriptClassName = transcriptClassName ?? "mx-auto flex w-full max-w-7xl flex-col px-3 py-5 sm:px-4 sm:py-6 lg:px-6 xl:px-7";
-
   return (
     <>
       <div
         ref={containerRef}
         id={id}
-        className={`dark-scrollbar min-w-0 overflow-x-hidden overflow-y-auto text-xs text-gray-700 dark:text-gray-100 sm:text-sm ${resolvedSurfaceClassName} ${!maxHeight ? "flex-1 min-h-0" : ""}`}
+        className={`dark-scrollbar min-w-0 overflow-x-hidden overflow-y-auto bg-transparent text-xs text-gray-700 dark:text-gray-100 sm:text-sm ${!maxHeight ? "flex-1 min-h-0" : ""}`}
         style={maxHeight ? { maxHeight } : undefined}
       >
         {isEmpty ? (
@@ -250,14 +183,14 @@ export const ConversationViewer = memo(function ConversationViewer({
             {isActive ? (
               <div className="inline-flex max-w-full items-center gap-2 rounded-md py-0.5 text-left text-xs text-gray-400 dark:text-white/28">
                 <ActivitySpinner className="h-3.5 w-3.5" />
-                <span>{activeStateMessage}</span>
+                <span>Thinking…</span>
               </div>
             ) : (
-              emptyStateMessage
+              "No messages yet"
             )}
           </div>
         ) : (
-          <div ref={contentRef} className={resolvedTranscriptClassName} data-testid="conversation-transcript">
+          <div ref={contentRef} className="mx-auto flex w-full max-w-7xl flex-col px-3 py-5 sm:px-4 sm:py-6 lg:px-6 xl:px-7" data-testid="conversation-transcript">
             {transcriptHistoryActions}
             {visibleEntries.map((entry, index) => {
               const spacingClass = getEntrySpacingClass(entry, visibleEntries[index - 1]);
@@ -269,7 +202,6 @@ export const ConversationViewer = memo(function ConversationViewer({
                     showTimestamp={entry.showTimestamp}
                     spacingClass={spacingClass}
                     markdownEnabled={markdownEnabled}
-                    showRoleLabel={showMessageRoles}
                     fileLinkContext={resolvedFileLinkContext}
                     onReadAloud={onReadAloud}
                     readAloudSummaryEnabled={readAloudSummaryEnabled}
@@ -340,7 +272,7 @@ export const ConversationViewer = memo(function ConversationViewer({
             {shouldShowWorkingIndicator && (
               <div className="mt-4 inline-flex max-w-full items-center gap-2 rounded-md py-0.5 text-left text-xs text-gray-400 dark:text-white/28" data-testid="working-indicator">
                 <ActivitySpinner />
-                <span>{activeStateMessage}</span>
+                <span>Thinking…</span>
               </div>
             )}
           </div>

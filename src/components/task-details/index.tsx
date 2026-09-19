@@ -5,7 +5,10 @@
 import { replaceWebAppRoute, Tabs, useHeaderActions, useToast, type ActionMenuItem } from "@pablozaiden/webapp/web";
 import { useMemo } from "react";
 import { useTask, useMarkdownPreference } from "../../hooks";
-import { TaskActionBar } from "../TaskActionBar";
+import {
+  ConversationComposer,
+  useConversationVoice,
+} from "../conversation-composer";
 import {
   canAccept,
   canManualComplete,
@@ -21,11 +24,10 @@ import { tabs, formatDateTime } from "./types";
 import { useTabState } from "./use-tab-state";
 import { useTaskContent } from "./use-task-content";
 import { useTaskActions } from "./use-task-actions";
-import { useAvailableModels } from "../../hooks/useAvailableModels";
-import { useLogDisplayState } from "./use-log-display-state";
 import { useTaskRemoteStatus } from "./use-task-remote-status";
 import { TaskDetailsModals } from "./task-details-modals";
 import { TaskDetailsTabContent } from "./task-details-tab-content";
+import { useTaskComposerAdapter } from "./task-composer-adapter";
 
 export interface TaskDetailsProps {
   /** Task ID to display */
@@ -56,7 +58,6 @@ export function TaskDetails({
 
   const { enabled: markdownEnabled } = useMarkdownPreference();
   const toast = useToast();
-  const logDisplay = useLogDisplayState();
   const { activeTab, tabsWithUpdates, setTabsWithUpdates, handleTabChange } = useTabState({
     taskId, task,
     messagesCount: messages.length, toolCallsCount: toolCalls.length, logsCount: logs.length,
@@ -228,9 +229,26 @@ export function TaskDetails({
     actions,
   ]);
   useHeaderActions({ overflow: taskMenuActions });
-  const { models, modelsLoading } = useAvailableModels({ workspaceId: task?.config.workspaceId });
+  const voice = useConversationVoice();
   const remoteStatus = useTaskRemoteStatus({
     workspaceId: task?.config.workspaceId,
+  });
+  const taskIsPlanning = task?.state.status === "planning";
+  const taskCanTerminalFollowUp = task
+    ? canSendTerminalFollowUp(task.state.status, task.state.reviewMode?.addressable)
+    : false;
+  const taskIsGenerating = task ? isTaskGenerating(task) : false;
+  const composerProps = useTaskComposerAdapter({
+    task,
+    isPlanning: taskIsPlanning,
+    isGenerating: taskIsGenerating,
+    canTerminalFollowUp: taskCanTerminalFollowUp,
+    isLoading: loading,
+    voice: voice.composer,
+    setPending,
+    sendPlanFeedback,
+    sendFollowUp,
+    stopTask,
   });
   if (loading && !task) {
     return (
@@ -256,10 +274,9 @@ export function TaskDetails({
   const { config, state } = task;
   const isActive = isTaskActive(state.status);
   const labels = getEntityLabel(config.mode);
-  const isPlanning = state.status === "planning";
-  const canTerminalFollowUp = canSendTerminalFollowUp(state.status, state.reviewMode?.addressable);
+  const isPlanning = taskIsPlanning;
+  const canTerminalFollowUp = taskCanTerminalFollowUp;
   const isPlanReady = task.state.planMode?.isPlanReady ?? false;
-  const isGenerating = isTaskGenerating(task);
   const feedbackRounds = task.state.planMode?.feedbackRounds ?? 0;
   const isLogActive = isActive || (isPlanning && !isPlanReady);
   const visibleTabs = tabs;
@@ -330,7 +347,7 @@ export function TaskDetails({
           <TaskDetailsTabContent
             activeTab={activeTab} task={task} taskId={taskId} labels={labels}
             isPlanning={isPlanning} isPlanReady={isPlanReady}
-            isLogActive={isLogActive} applyLogBottomSafeAreaPadding={!showActionBar}
+            isLogActive={isLogActive}
             hasBottomActionBar={showActionBar}
             feedbackRounds={feedbackRounds} markdownEnabled={markdownEnabled}
             messages={messages} toolCalls={toolCalls} logs={logs}
@@ -339,7 +356,6 @@ export function TaskDetails({
             onLoadMoreTranscript={loadMoreTranscript}
             onLoadFullTranscript={loadFullTranscript}
             loadingTranscript={loadingTranscript}
-            logDisplay={logDisplay}
             content={content}
             actions={actions}
             onFileOpenError={toast.error}
@@ -347,33 +363,8 @@ export function TaskDetails({
         </div>
       </div>
 
-      {showActionBar && (
-        <TaskActionBar
-          mode={config.mode} isPlanning={isPlanning} isGenerating={isGenerating}
-          currentModel={config.model}
-          models={models} modelsLoading={modelsLoading}
-          variantDiscovery={{
-            workspaceId: config.workspaceId,
-          }}
-          requireMessage={canTerminalFollowUp}
-          submitLabel={canTerminalFollowUp ? "Restart" : undefined}
-          onStop={isActive || isPlanning ? stopTask : undefined}
-          onSubmit={async (options) => {
-            if (isPlanning) { if (options.message) { await sendPlanFeedback(options.message, options.attachments); return true; } return false; }
-            if (canTerminalFollowUp) {
-              if (options.message) {
-                return await sendFollowUp(
-                  options.message,
-                  options.model,
-                  options.attachments,
-                );
-              }
-              return false;
-            }
-            const result = await setPending(options);
-            return result.success;
-          }}
-        />
+      {showActionBar && composerProps && (
+        <ConversationComposer {...composerProps} />
       )}
 
       <TaskDetailsModals

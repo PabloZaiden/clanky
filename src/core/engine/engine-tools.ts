@@ -30,7 +30,7 @@ export interface ToolProcessingContext {
     message: string,
     delta: string,
     fullContent: string,
-    logKind: "response" | "reasoning",
+    logKind: "reasoning",
     id: string,
   ) => void;
   emit: (event: TaskEvent) => void;
@@ -47,18 +47,33 @@ export async function processTaskAgentEvent(
 ): Promise<void> {
   switch (event.type) {
     case "message.start":
-      emitFlushedBlocks(transcriptResult.flushedBlocks, toolCtx);
+      emitFlushedBlocks(transcriptResult.flushedBlocks, ctx.iteration, toolCtx);
       toolCtx.emitLog("agent", "AI started generating response", { logKind: "system" });
       break;
 
     case "message.delta":
       emitTextDelta(transcriptResult.responseDelta, toolCtx);
       if (transcriptResult.responseDelta) {
+        const delta = transcriptResult.responseDelta;
+        if (!delta.messageId) {
+          throw new Error("Task response delta is missing its message identity");
+        }
+        toolCtx.persistMessage({
+          id: delta.messageId,
+          role: "assistant",
+          content: delta.content,
+          timestamp: delta.timestamp,
+        });
         toolCtx.emit({
-          type: "task.progress",
+          type: "task.message.delta",
           taskId: toolCtx.taskId,
           iteration: ctx.iteration,
-          content: transcriptResult.responseDelta.delta,
+          messageId: delta.messageId,
+          role: "assistant",
+          delta: delta.delta,
+          baseLength: Math.max(0, delta.content.length - delta.delta.length),
+          contentLength: delta.content.length,
+          messageTimestamp: delta.timestamp,
           timestamp: transcriptResult.timestamp,
         });
       }
@@ -69,22 +84,22 @@ export async function processTaskAgentEvent(
       break;
 
     case "message.complete":
-      emitFlushedBlocks(transcriptResult.flushedBlocks, toolCtx);
+      emitFlushedBlocks(transcriptResult.flushedBlocks, ctx.iteration, toolCtx);
       handleMessageComplete(transcriptResult, ctx, toolCtx);
       break;
 
     case "tool.start":
-      emitFlushedBlocks(transcriptResult.flushedBlocks, toolCtx);
+      emitFlushedBlocks(transcriptResult.flushedBlocks, ctx.iteration, toolCtx);
       handleToolProjection(transcriptResult, ctx, toolCtx);
       break;
 
     case "tool.complete":
-      emitFlushedBlocks(transcriptResult.flushedBlocks, toolCtx);
+      emitFlushedBlocks(transcriptResult.flushedBlocks, ctx.iteration, toolCtx);
       handleToolProjection(transcriptResult, ctx, toolCtx);
       break;
 
     case "error":
-      emitFlushedBlocks(transcriptResult.flushedBlocks, toolCtx);
+      emitFlushedBlocks(transcriptResult.flushedBlocks, ctx.iteration, toolCtx);
       ctx.outcome = "error";
       ctx.error = event.message;
       ctx.errorCode = event.code;
@@ -116,13 +131,11 @@ function emitTextDelta(
   delta: AgentEventTranscriptTextDelta | undefined,
   toolCtx: ToolProcessingContext,
 ): void {
-  if (!delta) {
+  if (!delta || delta.kind === "response") {
     return;
   }
 
-  const logMessage = delta.kind === "response"
-    ? "AI generating response..."
-    : "AI reasoning...";
+  const logMessage = "AI reasoning...";
   if (delta.isFirstInBlock) {
     toolCtx.emitLog(
       "agent",
@@ -149,15 +162,33 @@ function emitTextDelta(
 
 function emitFlushedBlocks(
   blocks: AgentEventTranscriptBlock[],
+  iteration: number,
   toolCtx: ToolProcessingContext,
 ): void {
   for (const block of blocks) {
-    if (block.logContent.length === 0) {
+    if (block.kind === "response" && block.messageId && block.content.length > 0) {
+      const message: MessageData = {
+        id: block.messageId,
+        role: "assistant",
+        content: block.content,
+        timestamp: block.timestamp,
+      };
+      toolCtx.persistMessage(message);
+      toolCtx.emit({
+        type: "task.message",
+        taskId: toolCtx.taskId,
+        iteration,
+        message,
+        timestamp: block.timestamp,
+      });
+      continue;
+    }
+    if (block.kind !== "reasoning" || block.logContent.length === 0) {
       continue;
     }
     toolCtx.emitLog(
       "agent",
-      block.kind === "response" ? "AI generating response..." : "AI reasoning...",
+      "AI reasoning...",
       {
         logKind: block.kind,
         responseContent: block.logContent,
@@ -182,14 +213,16 @@ function handleMessageComplete(
     logKind: "system",
     responseLength: completed.responseLength,
   });
-  toolCtx.persistMessage(completed.message);
-  toolCtx.emit({
-    type: "task.message",
-    taskId: toolCtx.taskId,
-    iteration: ctx.iteration,
-    message: completed.message,
-    timestamp: transcriptResult.timestamp,
-  });
+  if (!completed.hadResponseBlock) {
+    toolCtx.persistMessage(completed.message);
+    toolCtx.emit({
+      type: "task.message",
+      taskId: toolCtx.taskId,
+      iteration: ctx.iteration,
+      message: completed.message,
+      timestamp: transcriptResult.timestamp,
+    });
+  }
 }
 
 function handleToolProjection(

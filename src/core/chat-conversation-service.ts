@@ -497,16 +497,6 @@ export class ChatConversationService implements ChatConversationPort {
           content: pendingText.content,
           timestamp,
         });
-        logs.push({
-          id: `chat-log-${crypto.randomUUID()}`,
-          level: "agent",
-          message: "Imported AI response",
-          details: {
-            logKind: "response",
-            responseContent: pendingText.content,
-          },
-          timestamp,
-        });
       } else {
         logs.push({
           id: `chat-log-${crypto.randomUUID()}`,
@@ -1006,15 +996,12 @@ export class ChatConversationService implements ChatConversationPort {
             await this.updateStreamingAssistantProgress(streamState.chat, {
               messageId: delta.messageId ?? null,
               content: delta.content,
-              responseLogId: delta.logId,
-              responseLogContent: delta.logContent,
               timestamp: delta.timestamp,
               activityTimestamp: now,
               delta: delta.delta,
               persist: transcriptResult.checkpointRequested,
               emitDelta: true,
               emitFullMessage: false,
-              updateResponseLog: false,
             }, streamState.transcriptMemory)
           ).chat;
         }
@@ -1224,15 +1211,12 @@ export class ChatConversationService implements ChatConversationPort {
           await this.updateStreamingAssistantProgress(streamState.chat, {
             messageId: block.messageId,
             content: block.content,
-            responseLogId: block.logId,
-            responseLogContent: block.logContent,
             timestamp: block.timestamp,
             activityTimestamp,
             delta: "",
             persist: true,
             emitDelta: false,
             emitFullMessage: true,
-            updateResponseLog: false,
           }, streamState.transcriptMemory)
         ).chat;
       } else if (block.kind === "reasoning") {
@@ -1307,40 +1291,28 @@ export class ChatConversationService implements ChatConversationPort {
     {
       messageId,
       content,
-      responseLogId,
-      responseLogContent,
       timestamp,
       activityTimestamp,
       delta,
       persist,
       emitDelta,
       emitFullMessage,
-      updateResponseLog,
     }: {
       messageId: string | null;
       content: string;
-      responseLogId: string | null;
-      responseLogContent: string;
       timestamp: string;
       activityTimestamp: string;
       delta?: string;
       persist?: boolean;
       emitDelta?: boolean;
       emitFullMessage?: boolean;
-      updateResponseLog?: boolean;
     },
     memory?: ChatTranscriptMemory,
-  ): Promise<{ chat: Chat; messageId: string; responseLogId: string }> {
+  ): Promise<{ chat: Chat; messageId: string }> {
     const shouldPersist = persist ?? true;
     const shouldEmitDelta = emitDelta ?? false;
     const shouldEmitFullMessage = emitFullMessage ?? true;
-    const shouldUpdateResponseLog = updateResponseLog ?? true;
     const existingMessage = this.findMessage(chat, messageId ?? undefined, memory);
-    const existingLog = shouldUpdateResponseLog && responseLogId
-      ? memory
-        ? memory.logs.get(responseLogId)
-        : chat.state.logs.find((logEntry) => logEntry.id === responseLogId)
-      : undefined;
     const nextMessageId = existingMessage?.id
       ?? messageId
       ?? `chat-assistant-${crypto.randomUUID()}`;
@@ -1350,33 +1322,15 @@ export class ChatConversationService implements ChatConversationPort {
       content,
       timestamp: existingMessage?.timestamp ?? timestamp,
     };
-    const responseLog: TaskLogEntry = {
-      id: responseLogId ?? `chat-log-${crypto.randomUUID()}`,
-      level: "agent",
-      message: "AI generating response...",
-      details: {
-        logKind: "response",
-        responseContent: responseLogContent,
-      },
-      timestamp: existingLog?.timestamp ?? timestamp,
-    };
     const nextMessages = memory
       ? (memory.messages.upsert(assistantMessage), memory.messages.values)
       : chat.state.messages.some((existing) => existing.id === assistantMessage.id)
         ? chat.state.messages.map((existing) => existing.id === assistantMessage.id ? assistantMessage : existing)
         : [...chat.state.messages, assistantMessage];
-    const nextLogs = shouldUpdateResponseLog
-      ? memory
-        ? (memory.logs.upsert(responseLog), memory.logs.values)
-        : existingLog
-          ? chat.state.logs.map((logEntry) => logEntry.id === responseLog.id ? responseLog : logEntry)
-          : [...chat.state.logs, responseLog]
-      : chat.state.logs;
     const nextState = {
       ...chat.state,
       activeMessageId: nextMessageId,
       messages: nextMessages,
-      logs: nextLogs,
       lastActivityAt: activityTimestamp,
     };
     const transcriptUpserts: TranscriptChangeSet["upserts"] = [{
@@ -1385,14 +1339,6 @@ export class ChatConversationService implements ChatConversationPort {
       timestamp: assistantMessage.timestamp,
       payload: assistantMessage,
     }];
-    if (shouldUpdateResponseLog) {
-      transcriptUpserts.push({
-        id: responseLog.id,
-        kind: "log" as const,
-        timestamp: responseLog.timestamp,
-        payload: responseLog,
-      });
-    }
     const updated = shouldPersist
       ? await this.updateState(chat, nextState, {
         transcriptChanges: createTranscriptChangeSet(nextState, transcriptUpserts),
@@ -1421,19 +1367,9 @@ export class ChatConversationService implements ChatConversationPort {
         timestamp: activityTimestamp,
       });
     }
-    if (shouldUpdateResponseLog) {
-      this.emitter.emit({
-        type: "chat.log",
-        chatId: chat.config.id,
-        scope: chat.config.scope,
-        log: responseLog,
-        timestamp: activityTimestamp,
-      });
-    }
     return {
       chat: updated,
       messageId: nextMessageId,
-      responseLogId: responseLog.id,
     };
   }
 

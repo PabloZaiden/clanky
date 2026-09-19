@@ -354,12 +354,44 @@ export class AgentRunner {
           });
           return;
         }
+        if (event.type === "chat.message.delta") {
+          agentEventEmitter.emit({
+            type: "agent.run.message.delta",
+            agentId: agent.config.id,
+            agentRunId: currentRun.id,
+            messageId: event.messageId,
+            role: event.role,
+            delta: event.delta,
+            baseLength: event.baseLength,
+            contentLength: event.contentLength,
+            messageTimestamp: event.messageTimestamp,
+            timestamp: event.timestamp,
+          });
+          return;
+        }
         if (event.type === "chat.log") {
           agentEventEmitter.emit({
             type: "agent.run.log",
             agentId: agent.config.id,
             agentRunId: currentRun.id,
             log: event.log,
+            timestamp: event.timestamp,
+          });
+          return;
+        }
+        if (event.type === "chat.log.delta") {
+          agentEventEmitter.emit({
+            type: "agent.run.log.delta",
+            agentId: agent.config.id,
+            agentRunId: currentRun.id,
+            logId: event.logId,
+            level: event.level,
+            message: event.message,
+            logKind: event.logKind,
+            delta: event.delta,
+            baseLength: event.baseLength,
+            contentLength: event.contentLength,
+            logTimestamp: event.logTimestamp,
             timestamp: event.timestamp,
           });
           return;

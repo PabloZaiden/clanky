@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { PointerEvent } from "react";
-import { ConversationViewer } from "../LogViewer";
+import { ConversationViewer } from "../log-viewer";
 import { useMarkdownPreference } from "../../hooks";
 import type { ChatTranscriptProps } from "./types";
 
@@ -152,12 +152,8 @@ export function ChatTranscript({
         onLoadToolDetails={onLoadToolDetails}
         isActive={isActive}
         markdownEnabled={markdownEnabled}
-        showAssistantMessages
-        showResponseLogs={false}
         toolPathDisplayRoot={toolPathDisplayRoot}
         fileLinkContext={fileLinkContext}
-        emptyStateMessage="No messages yet"
-        activeStateMessage="Thinking…"
         hasOlderTranscript={transcript.hasOlder}
         onLoadMoreTranscript={onLoadMoreTranscript}
         onLoadFullTranscript={onLoadFullTranscript}

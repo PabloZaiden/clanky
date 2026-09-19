@@ -1,23 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { mergeTranscriptSnapshot, mergeTranscriptToolCalls } from "@/shared";
 import type {
   Agent,
   AgentEvent,
   AgentRun,
   ChatTranscript,
   ModelConfig,
-  ToolCallData,
   Workspace,
 } from "@/shared";
 import { isAgentCodeEnabled } from "@/shared/agent";
 import type { BranchInfo, ModelInfo } from "@/contracts";
 import type { UseAgentsResult } from "../../hooks/useAgents";
-import { readApiResponse, requestApiResponse } from "../../lib/api-client";
-import { createRefreshCoordinator } from "../../lib/refresh-coordinator";
-import { isAbortError } from "../../lib/request-lifecycle";
-import { useMarkdownPreference, useRealtimeRefreshWithRecovery, useRealtimeStream } from "../../hooks";
-import { isToolCallSummary, upsertToolCallExtra } from "@/shared/tool-call";
-import { ConversationViewer } from "../LogViewer";
+import {
+  toTranscriptStreamEvent,
+  useMarkdownPreference,
+  useRealtimeRefreshWithRecovery,
+  useRealtimeStream,
+  useTranscriptResource,
+} from "../../hooks";
+import { ConversationViewer } from "../log-viewer";
 import {
   ConfirmModal,
   EmptyState,
@@ -48,25 +48,6 @@ function formatDate(value?: string): string {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
-}
-
-function upsertById<T extends { id: string; timestamp?: string }>(items: T[], item: T): T[] {
-  const existingIndex = items.findIndex((entry) => entry.id === item.id);
-  const nextItems = existingIndex === -1 ? [...items, item] : items.map((entry, index) => (
-    index === existingIndex ? item : entry
-  ));
-  return nextItems.sort((left, right) => (left.timestamp ?? "").localeCompare(right.timestamp ?? ""));
-}
-
-function buildAgentRunSnapshotUrl(runId: string, options: { full?: boolean; before?: string } = {}): string {
-  const params = new URLSearchParams();
-  if (options.full) {
-    params.set("full", "1");
-  } else if (options.before) {
-    params.set("before", options.before);
-  }
-  const query = params.toString();
-  return `/api/agent-runs/${encodeURIComponent(runId)}/snapshot${query ? `?${query}` : ""}`;
 }
 
 function AgentStatusPill({ status }: { status: string }) {
@@ -541,6 +522,25 @@ function DeterministicOutputPanel({ logs }: { logs: AgentRun["logs"] }) {
   );
 }
 
+interface AgentRunSnapshotResponse {
+  run: AgentRun;
+  transcript: ChatTranscript;
+}
+
+function decodeAgentRunSnapshot(
+  snapshot: AgentRunSnapshotResponse,
+): { resource: AgentRun; transcript: ChatTranscript } {
+  return {
+    resource: {
+      ...snapshot.run,
+      messages: [],
+      logs: [],
+      toolCalls: [],
+    },
+    transcript: snapshot.transcript,
+  };
+}
+
 function AgentRunDetail({
   agent,
   runId,
@@ -551,204 +551,28 @@ function AgentRunDetail({
   initialRun: AgentRun | null;
 }) {
   const { enabled: markdownEnabled } = useMarkdownPreference();
-  const [run, setRun] = useState<AgentRun | null>(initialRun);
-  const [transcript, setTranscript] = useState<ChatTranscript | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadingTranscript, setLoadingTranscript] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const transcriptRef = useRef<ChatTranscript | null>(null);
-  const snapshotEtagRef = useRef<string | null>(null);
-  const transcriptWindowRef = useRef<{ full?: boolean }>({});
-  const transcriptControllerRef = useRef<AbortController | null>(null);
-  const transcriptRequestIdRef = useRef(0);
-  const previousRunIdRef = useRef(runId);
-  const runIdRef = useRef(runId);
-  const refreshCoordinatorRef = useRef(createRefreshCoordinator<void>());
-  runIdRef.current = runId;
-
-  useEffect(() => {
-    transcriptRef.current = transcript;
-  }, [transcript]);
-
-  const refreshRun = useCallback((options: { showLoading?: boolean } = {}) => {
-    return refreshCoordinatorRef.current.run(async () => {
-      const requestRunId = runId;
-      const showLoading = options.showLoading ?? true;
-      const transcriptWindow = transcriptWindowRef.current;
-      try {
-        if (showLoading) {
-          setLoading(true);
-        }
-        setError(null);
-        const headers = new Headers();
-        if (snapshotEtagRef.current) {
-          headers.set("If-None-Match", snapshotEtagRef.current);
-        }
-        const response = await requestApiResponse(buildAgentRunSnapshotUrl(runId, transcriptWindow), {
-          headers,
-          action: "Fetch agent run snapshot",
-          fallbackMessage: "Failed to fetch agent run",
-          acceptedStatuses: [304],
-        });
-        if (runIdRef.current !== requestRunId) {
-          return;
-        }
-        if (response.status === 304) {
-          return;
-        }
-        const snapshot = await readApiResponse<{ run: AgentRun; transcript: ChatTranscript }>(response);
-        if (runIdRef.current !== requestRunId) {
-          return;
-        }
-        if (transcriptWindow.full === transcriptWindowRef.current.full) {
-          snapshotEtagRef.current = response.headers.get("ETag");
-        }
-        setRun(snapshot.run);
-        setTranscript(mergeTranscriptSnapshot(
-          transcriptRef.current,
-          snapshot.transcript,
-          { direction: transcriptWindow.full ? "full" : "refresh" },
-        ));
-      } catch (refreshError) {
-        if (runIdRef.current !== requestRunId) {
-          return;
-        }
-        setError(String(refreshError));
-      } finally {
-        if (showLoading && runIdRef.current === requestRunId) {
-          setLoading(false);
-        }
-      }
-    });
-  }, [runId]);
-
-  const loadTranscriptWindow = useCallback(async (options: { full?: boolean; before?: string }): Promise<void> => {
-    if (
-      transcriptControllerRef.current
-      || (!options.full && !options.before)
-      || runIdRef.current !== runId
-    ) {
-      return;
-    }
-
-    const controller = new AbortController();
-    const requestId = transcriptRequestIdRef.current + 1;
-    transcriptRequestIdRef.current = requestId;
-    transcriptControllerRef.current = controller;
-    setLoadingTranscript(true);
-
-    try {
-      const response = await requestApiResponse(buildAgentRunSnapshotUrl(runId, options), {
-        signal: controller.signal,
-        action: options.full ? "Load complete agent run transcript" : "Load older agent run transcript",
-        fallbackMessage: options.full
-          ? "Failed to load complete agent run transcript"
-          : "Failed to load older agent run transcript",
-        acceptedStatuses: [404],
-      });
-      if (
-        controller.signal.aborted
-        || runIdRef.current !== runId
-        || transcriptRequestIdRef.current !== requestId
-      ) {
-        return;
-      }
-      if (response.status === 404) {
-        setRun(null);
-        setTranscript(null);
-        setError("Agent run not found");
-        return;
-      }
-      const snapshot = await readApiResponse<{ run: AgentRun; transcript: ChatTranscript }>(response);
-      if (
-        controller.signal.aborted
-        || runIdRef.current !== runId
-        || transcriptRequestIdRef.current !== requestId
-      ) {
-        return;
-      }
-      setRun(snapshot.run);
-      setTranscript((current) => mergeTranscriptSnapshot(
-        current,
-        snapshot.transcript,
-        { direction: options.full ? "full" : "older" },
-      ));
-      if (options.full) {
-        transcriptWindowRef.current = { full: true };
-        snapshotEtagRef.current = response.headers.get("ETag");
-      }
-      setError(null);
-    } catch (transcriptError) {
-      if (
-        controller.signal.aborted
-        || isAbortError(transcriptError)
-        || runIdRef.current !== runId
-        || transcriptRequestIdRef.current !== requestId
-      ) {
-        return;
-      }
-      setError(String(transcriptError));
-    } finally {
-      if (transcriptControllerRef.current === controller) {
-        transcriptControllerRef.current = null;
-      }
-      if (runIdRef.current === runId && transcriptRequestIdRef.current === requestId) {
-        setLoadingTranscript(false);
-      }
-    }
-  }, [runId]);
-
-  const loadMoreTranscript = useCallback(
-    () => {
-      const cursor = transcriptRef.current?.nextCursor;
-      return cursor ? loadTranscriptWindow({ before: cursor }) : Promise.resolve();
-    },
-    [loadTranscriptWindow],
-  );
-
-  const loadFullTranscript = useCallback(
-    () => loadTranscriptWindow({ full: true }),
-    [loadTranscriptWindow],
-  );
-
-  useEffect(() => {
-    const runChanged = previousRunIdRef.current !== runId;
-    if (runChanged) {
-      refreshCoordinatorRef.current.reset();
-      snapshotEtagRef.current = null;
-      previousRunIdRef.current = runId;
-      transcriptRef.current = null;
-      setTranscript(null);
-      transcriptWindowRef.current = {};
-      transcriptRequestIdRef.current += 1;
-      transcriptControllerRef.current?.abort();
-      transcriptControllerRef.current = null;
-      setLoadingTranscript(false);
-    }
-    setRun(initialRun);
-    void refreshRun();
-  }, [initialRun, refreshRun, runId]);
-
-  useEffect(() => () => {
-    transcriptRequestIdRef.current += 1;
-    transcriptControllerRef.current?.abort();
-    transcriptControllerRef.current = null;
-  }, []);
-
-  const loadToolDetails = useCallback(async (toolCallId: string): Promise<ToolCallData | null> => {
-    const response = await requestApiResponse(
-      `/api/agent-runs/${runId}/tool-calls/${encodeURIComponent(toolCallId)}`,
-      {
-        action: "Fetch agent tool-call details",
-        fallbackMessage: "Failed to load tool-call details",
-        acceptedStatuses: [404],
-      },
-    );
-    if (response.status === 404) {
-      return null;
-    }
-    return await readApiResponse<ToolCallData>(response);
-  }, [runId]);
+  const transcriptResource = useTranscriptResource<AgentRun, AgentRunSnapshotResponse>({
+    resourceId: runId,
+    resourceLabel: "agent run",
+    baseUrl: `/api/agent-runs/${encodeURIComponent(runId)}`,
+    initialResource: initialRun,
+    decodeSnapshot: decodeAgentRunSnapshot,
+  });
+  const {
+    resource: run,
+    getResource: getRun,
+    setResource: setRun,
+    transcript,
+    loading,
+    loadingTranscript,
+    error,
+    refresh: refreshRun,
+    loadMoreTranscript,
+    loadFullTranscript,
+    loadToolDetails,
+    applyTranscriptEvent,
+    clearResource,
+  } = transcriptResource;
 
   useRealtimeRefreshWithRecovery({
     resources: ["agent-runs"],
@@ -756,7 +580,7 @@ function AgentRunDetail({
     filters: { resource: "agent-runs", id: runId, scope: agent?.config.id },
     refresh: (event) => {
       if (event.action === "deleted") {
-        setRun(null);
+        clearResource("Agent run not found");
         return;
       }
       return refreshRun({ showLoading: false });
@@ -765,54 +589,24 @@ function AgentRunDetail({
   });
 
   useEffect(() => {
-    if (!run) {
-      void refreshRun();
-    }
-  }, [refreshRun, run]);
+    void refreshRun();
+  }, [refreshRun]);
 
   useRealtimeStream<AgentEvent>({
     filters: { agentRunId: runId },
     predicate: (event) => event.type.startsWith("agent.run."),
     onEvent: (event) => {
-      if (!run || !("agentRunId" in event) || event.agentRunId !== run.id) {
-        return;
-      }
-      if (event.type === "agent.run.message") {
-        setTranscript((current) => current ? {
-          ...current,
-          messages: upsertById(current.messages, event.message),
-          totalEntries: current.totalEntries + 1,
-        } : current);
-        return;
-      }
-      if (event.type === "agent.run.tool_call") {
-        setTranscript((current) => current ? {
-          ...current,
-          toolCalls: mergeTranscriptToolCalls(current.toolCalls, [event.tool]),
-        } : current);
-        return;
-      }
-      if (event.type === "agent.run.tool_call.extra") {
-        setTranscript((current) => current ? {
-          ...current,
-          toolCalls: current.toolCalls.map((toolCall) => (
-            toolCall.id === event.toolId && !isToolCallSummary(toolCall)
-              ? { ...toolCall, extras: upsertToolCallExtra(toolCall.extras, event.extra) }
-              : toolCall
-          )),
-        } : current);
-        return;
-      }
-      if (event.type === "agent.run.log") {
-        setTranscript((current) => current ? {
-          ...current,
-          logs: upsertById(current.logs, event.log),
-          totalEntries: current.totalEntries + 1,
-        } : current);
+      const currentRun = getRun();
+      if (!currentRun || !("agentRunId" in event) || event.agentRunId !== currentRun.id) {
         return;
       }
       if (event.type === "agent.run.status") {
         setRun((current) => current ? { ...current, status: event.status, updatedAt: event.timestamp } : current);
+        return;
+      }
+      const transcriptEvent = toTranscriptStreamEvent(event);
+      if (transcriptEvent) {
+        applyTranscriptEvent(transcriptEvent);
       }
     },
   });
@@ -843,20 +637,16 @@ function AgentRunDetail({
           <ErrorState title="Unable to load agent run transcript" description={error} />
         </div>
       )}
-      <DeterministicOutputPanel logs={transcript?.logs ?? []} />
+      <DeterministicOutputPanel logs={transcript.logs} />
       <ConversationViewer
         id="agent-run-transcript"
-        messages={transcript?.messages ?? []}
-        toolCalls={transcript?.toolCalls ?? []}
-        logs={transcript?.logs ?? []}
+        messages={transcript.messages}
+        toolCalls={transcript.toolCalls}
+        logs={transcript.logs}
         isActive={isActive}
         markdownEnabled={markdownEnabled}
-        showAssistantMessages
-        showResponseLogs={false}
-        emptyStateMessage="No messages yet"
-        activeStateMessage="Running..."
         onLoadToolDetails={loadToolDetails}
-        hasOlderTranscript={transcript?.hasOlder ?? false}
+        hasOlderTranscript={transcript.hasOlder}
         onLoadMoreTranscript={loadMoreTranscript}
         onLoadFullTranscript={loadFullTranscript}
         loadingTranscript={loadingTranscript}

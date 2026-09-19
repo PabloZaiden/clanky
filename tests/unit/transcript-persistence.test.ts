@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
+  applyTranscriptStreamEvent,
   createTranscriptChangeSet,
   DEFAULT_TASK_CONFIG,
   mergeTranscriptSnapshot,
@@ -345,6 +346,108 @@ describe("incremental transcript persistence", () => {
     expect(afterFinalOlderPage.hasOlder).toBe(false);
     expect(afterFinalOlderPage.loadedResponses).toBe(250);
     expect(afterFinalOlderPage.messages).toHaveLength(250);
+  });
+
+  // Delta recovery is a protocol/lifecycle contract: stale snapshots must not
+  // overwrite events that arrived while a request was in flight.
+  test("reconciles transcript snapshots according to stream freshness", () => {
+    const current = {
+      messages: [
+        {
+          id: "older",
+          role: "assistant" as const,
+          content: "Earlier response",
+          timestamp: "2024-01-01T00:00:00.000Z",
+        },
+        {
+          id: "streaming",
+          role: "assistant" as const,
+          content: "Hel",
+          timestamp: "2024-01-01T00:01:00.000Z",
+        },
+      ],
+      logs: [],
+      toolCalls: [],
+      revision: "current",
+      totalEntries: 2,
+      isPartial: true,
+      loadedResponses: 2,
+      totalResponses: 3,
+      hasOlder: true,
+      nextCursor: "cursor",
+    };
+    const incoming = {
+      ...current,
+      messages: [{
+        ...current.messages[1]!,
+        content: "Hello",
+      }],
+      revision: "incoming",
+      loadedResponses: 1,
+    };
+
+    const recovered = mergeTranscriptSnapshot(current, incoming, {
+      preferIncoming: true,
+    });
+    expect(recovered.messages.map((message) => message.content)).toEqual([
+      "Earlier response",
+      "Hello",
+    ]);
+
+    const liveWins = mergeTranscriptSnapshot(current, incoming, {
+      preferIncoming: false,
+    });
+    expect(liveWins.messages.find((message) => message.id === "streaming")?.content).toBe("Hel");
+  });
+
+  // Message delta identity and base lengths are a stable realtime protocol
+  // boundary; a mismatch must trigger authoritative recovery without mutation.
+  test("upserts message deltas and reports sequence gaps", () => {
+    const emptyTranscript = {
+      messages: [],
+      logs: [],
+      toolCalls: [],
+      revision: "",
+      totalEntries: 0,
+      isPartial: false,
+      loadedResponses: 0,
+      totalResponses: 0,
+      hasOlder: false,
+    };
+    const first = applyTranscriptStreamEvent(emptyTranscript, {
+      type: "transcript.message.delta",
+      messageId: "assistant-1",
+      role: "assistant",
+      delta: "Hel",
+      baseLength: 0,
+      messageTimestamp: "2024-01-01T00:00:00.000Z",
+    });
+    const second = applyTranscriptStreamEvent(first.transcript, {
+      type: "transcript.message.delta",
+      messageId: "assistant-1",
+      role: "assistant",
+      delta: "lo",
+      baseLength: 3,
+      messageTimestamp: "2024-01-01T00:00:00.000Z",
+    });
+
+    expect(second.gapDetected).toBe(false);
+    expect(second.transcript.messages).toEqual([
+      expect.objectContaining({ id: "assistant-1", content: "Hello" }),
+    ]);
+    expect(second.transcript.totalEntries).toBe(1);
+    expect(second.transcript.totalResponses).toBe(1);
+
+    const gap = applyTranscriptStreamEvent(second.transcript, {
+      type: "transcript.message.delta",
+      messageId: "assistant-1",
+      role: "assistant",
+      delta: "!",
+      baseLength: 4,
+      messageTimestamp: "2024-01-01T00:00:00.000Z",
+    });
+    expect(gap.gapDetected).toBe(true);
+    expect(gap.transcript).toBe(second.transcript);
   });
 
 });

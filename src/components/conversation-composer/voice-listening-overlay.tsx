@@ -1,6 +1,6 @@
 import { Button } from "../common";
-import type { VoiceRecorderStatus } from "../../hooks";
-import { VOICE_MAX_RECORDING_MS } from "../../hooks";
+import type { VoiceRecorderStatus } from "../../hooks/useVoiceRecorder";
+import { VOICE_MAX_RECORDING_MS } from "../../hooks/useVoiceRecorder";
 import { Modal } from "@pablozaiden/webapp/web";
 
 function formatElapsed(milliseconds: number): string {

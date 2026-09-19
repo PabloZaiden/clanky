@@ -6,11 +6,13 @@ import type {
   MessageData,
   QueuedChatMessage,
   ToolCallData,
-  ToolCallDisplayData,
 } from "@/shared";
 import type { VoiceRecorderStatus } from "../../hooks";
-import type { MessageImageAttachment } from "@/shared/message-attachments";
-import type { TranscriptFileLinkContext } from "../LogViewer";
+import type { MessageAttachment } from "@/shared/message-attachments";
+import type {
+  ConversationComposerVoice,
+} from "../conversation-composer";
+import type { TranscriptFileLinkContext } from "../log-viewer";
 
 export type ChatStreamEvent = Extract<
   ChatEvent,
@@ -30,22 +32,9 @@ export interface ChatRefreshOptions {
   showLoading?: boolean;
 }
 
-export interface ChatTranscriptViewState {
-  messages: Chat["state"]["messages"];
-  logs: Chat["state"]["logs"];
-  toolCalls: ToolCallDisplayData[];
-  revision: string;
-  totalEntries: number;
-  isPartial: ChatTranscript["isPartial"];
-  loadedResponses: ChatTranscript["loadedResponses"];
-  totalResponses: ChatTranscript["totalResponses"];
-  hasOlder: ChatTranscript["hasOlder"];
-  nextCursor?: ChatTranscript["nextCursor"];
-}
-
 export interface ChatLifecycleResult {
   chat: Chat | null;
-  transcript: ChatTranscriptViewState;
+  transcript: ChatTranscript;
   loading: boolean;
   error: string | null;
   isActive: boolean;
@@ -62,7 +51,7 @@ export interface ChatLifecycleResult {
 
 export interface ChatTranscriptProps {
   chat: Chat;
-  transcript: ChatTranscriptViewState;
+  transcript: ChatTranscript;
   lifecycleError: string | null;
   isActive: boolean;
   toolPathDisplayRoot: string;
@@ -100,8 +89,13 @@ export interface ChatQueuedMessagesPanelProps {
   onChatSnapshot: (nextChat: Chat) => void;
 }
 
-export interface ChatComposerProps {
-  chat: Chat;
+export type ChatSendMessageHandler = (options: {
+  message?: string;
+  attachments: MessageAttachment[];
+}) => Promise<Chat>;
+
+export interface ChatComposerAdapterOptions {
+  chat: Chat | null;
   chatId: string;
   isEmbedded: boolean;
   isActive: boolean;
@@ -111,18 +105,6 @@ export interface ChatComposerProps {
   markChatStarting: () => void;
   refreshChat: (options?: ChatRefreshOptions) => Promise<void>;
   handleReconnect: () => Promise<void>;
-  onSendMessage?: (options: {
-    message?: string;
-    attachments: MessageImageAttachment[];
-  }) => Promise<Chat>;
-  voiceInput: {
-    available: boolean;
-    status: VoiceRecorderStatus;
-  };
-  onStartVoice: () => Promise<void>;
-  registerVoiceDraft: (
-    setDraft: (text: string) => void,
-    getDraft: () => string,
-    submitDraft: (text: string) => Promise<void>,
-  ) => () => void;
+  onSendMessage?: ChatSendMessageHandler;
+  voice: ConversationComposerVoice;
 }

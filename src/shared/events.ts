@@ -51,6 +51,16 @@ export interface MessageData {
   timestamp: string;
 }
 
+export interface MessageDeltaData {
+  messageId: string;
+  role: MessageData["role"];
+  delta: string;
+  baseLength: number;
+  contentLength: number;
+  messageTimestamp: string;
+  timestamp: string;
+}
+
 /**
  * Tool call data from the AI agent.
  * 
@@ -97,9 +107,9 @@ export type TaskEvent =
   | TaskIterationStartEvent
   | TaskIterationEndEvent
   | TaskMessageEvent
+  | TaskMessageDeltaEvent
   | TaskToolCallEvent
   | TaskToolCallExtraEvent
-  | TaskProgressEvent
   | TaskLogEvent
   | TaskLogDeltaEvent
   | TaskGitCommitEvent
@@ -152,9 +162,11 @@ export type AgentEvent =
   | AgentRunStartedEvent
   | AgentRunStatusEvent
   | AgentRunMessageEvent
+  | AgentRunMessageDeltaEvent
   | AgentRunToolCallEvent
   | AgentRunToolCallExtraEvent
   | AgentRunLogEvent
+  | AgentRunLogDeltaEvent
   | AgentRunSkippedEvent
   | AgentRunCompletedEvent
   | AgentRunFailedEvent
@@ -192,17 +204,10 @@ export interface ChatMessageEvent {
   timestamp: string;
 }
 
-export interface ChatMessageDeltaEvent {
+export interface ChatMessageDeltaEvent extends MessageDeltaData {
   type: "chat.message.delta";
   chatId: string;
   scope: ChatConfig["scope"];
-  messageId: string;
-  role: MessageData["role"];
-  delta: string;
-  baseLength: number;
-  contentLength: number;
-  messageTimestamp: string;
-  timestamp: string;
 }
 
 export interface ChatToolCallEvent {
@@ -320,6 +325,12 @@ export interface AgentRunMessageEvent {
   timestamp: string;
 }
 
+export interface AgentRunMessageDeltaEvent extends MessageDeltaData {
+  type: "agent.run.message.delta";
+  agentId: string;
+  agentRunId: string;
+}
+
 export interface AgentRunToolCallEvent {
   type: "agent.run.tool_call";
   agentId: string;
@@ -342,6 +353,21 @@ export interface AgentRunLogEvent {
   agentId: string;
   agentRunId: string;
   log: TaskLogEntry;
+  timestamp: string;
+}
+
+export interface AgentRunLogDeltaEvent {
+  type: "agent.run.log.delta";
+  agentId: string;
+  agentRunId: string;
+  logId: string;
+  level: TaskLogEntry["level"];
+  message: string;
+  logKind: string;
+  delta: string;
+  baseLength: number;
+  contentLength: number;
+  logTimestamp: string;
   timestamp: string;
 }
 
@@ -483,6 +509,13 @@ export interface TaskMessageEvent {
   timestamp: string;
 }
 
+export interface TaskMessageDeltaEvent extends MessageDeltaData {
+  type: "task.message.delta";
+  taskId: string;
+  /** Current iteration number */
+  iteration: number;
+}
+
 /**
  * Emitted when a tool call is made or updated.
  * The same tool call ID may be emitted multiple times as status changes.
@@ -512,22 +545,6 @@ export interface TaskToolCallExtraEvent {
   toolId: string;
   /** The attached extra payload */
   extra: ToolCallExtra;
-  /** ISO 8601 timestamp */
-  timestamp: string;
-}
-
-/**
- * Emitted for streaming progress updates.
- * Used for partial content that doesn't form complete messages yet.
- */
-export interface TaskProgressEvent {
-  type: "task.progress";
-  /** ID of the task */
-  taskId: string;
-  /** Current iteration number */
-  iteration: number;
-  /** Partial content being streamed */
-  content: string;
   /** ISO 8601 timestamp */
   timestamp: string;
 }

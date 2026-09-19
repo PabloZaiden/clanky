@@ -1,12 +1,10 @@
 import { getToolMeta } from "./tool-inference";
-import type { LogLevel, ToolCallDisplayData } from "@/shared";
+import type { LogLevel, TaskLogEntry, ToolCallDisplayData } from "@/shared";
 import type {
   EntryBase,
   GroupedEntryBase,
   DisplayEntry,
-  LogEntry,
   ReasoningGroupEntryBase,
-  ResponseBoundaryEntryBase,
   ToolGroupEntryBase,
   WorkingGroupChildEntry,
   WorkingGroupEntryBase,
@@ -91,8 +89,7 @@ export function getLogLevelColor(level: LogLevel): string {
 
 /**
  * Preserve reasoning-run boundaries from the complete transcript sequence.
- * Visibility filters are applied later, so a filtered non-reasoning entry must
- * still prevent the surrounding reasoning entries from sharing a group.
+ * Every visible non-reasoning entry closes the current reasoning run.
  */
 export function annotateReasoningBoundaries(sorted: EntryBase[]): EntryBase[] {
   const annotatedEntries = sorted.map((entry) =>
@@ -127,9 +124,9 @@ export function annotateReasoningBoundaries(sorted: EntryBase[]): EntryBase[] {
  * the same visual group (and thus collapse their headers) when their
  * keys are equal.
  *
- * - Messages group by role: "message|user" (assistant messages are filtered out before grouping)
+ * - Messages group by role: "message|user" or "message|assistant"
  * - Tool calls group by tool name: "tool|Write", "tool|Read"
- * - Log entries group by level + message: "log|agent|AI generating response..."
+ * - Log entries group by level + message: "log|agent|AI reasoning..."
  */
 export function getEntryGroupKey(entry: GroupedEntryBase): string {
   switch (entry.type) {
@@ -194,16 +191,7 @@ function isMatchingReasoningEntry(
     && entry.reasoningEndTimestamp === reasoningEndTimestamp;
 }
 
-type GroupingEntry = GroupedEntryBase | ResponseBoundaryEntryBase;
-
-function hasVisibleEntryAfter(
-  entries: Array<{ type: string; hasResponseContent?: boolean }>,
-  startIndex: number,
-): boolean {
-  return entries
-    .slice(startIndex)
-    .some((entry) => entry.type !== "response-boundary" || entry.hasResponseContent === true);
-}
+type GroupingEntry = GroupedEntryBase;
 
 function isWorkingGroupChild(entry: GroupingEntry): entry is WorkingGroupChildEntry {
   return entry.type === "tool-group" || entry.type === "reasoning-group";
@@ -238,9 +226,7 @@ function groupMixedWorkingEntries(
     const entry = entries[index]!;
 
     if (!isWorkingGroupChild(entry)) {
-      if (entry.type !== "response-boundary") {
-        groupedEntries.push(entry);
-      }
+      groupedEntries.push(entry);
       continue;
     }
 
@@ -262,7 +248,7 @@ function groupMixedWorkingEntries(
     }
 
     const nextEntry = entries[cursor];
-    const active = isActive && !hasVisibleEntryAfter(entries, cursor);
+    const active = isActive && cursor >= entries.length;
     if (hasToolGroup && hasReasoningGroup) {
       groupedEntries.push(createWorkingGroupEntry(consecutiveChildren, nextEntry, active));
     } else {
@@ -282,11 +268,6 @@ export function groupConsecutiveEntries(
 
   for (let index = 0; index < sorted.length; index += 1) {
     const entry = sorted[index]!;
-    if (entry.type === "response-boundary") {
-      groupedEntries.push(entry);
-      continue;
-    }
-
     if (entry.type === "tool") {
       const consecutiveTools = [entry.data];
       let cursor = index + 1;
@@ -297,7 +278,7 @@ export function groupConsecutiveEntries(
 
       groupedEntries.push(createToolGroupEntry(
         consecutiveTools,
-        isActive && !hasVisibleEntryAfter(sorted, cursor),
+        isActive && cursor >= sorted.length,
       ));
       index = cursor - 1;
       continue;
@@ -355,15 +336,11 @@ export function formatThoughtDuration(startTimestamp: string, endTimestamp: stri
   return `${elapsedMinutes} minute${elapsedMinutes === 1 ? "" : "s"}`;
 }
 
-export function isReasoningLogEntry(logEntry: LogEntry): boolean {
+export function isReasoningLogEntry(logEntry: TaskLogEntry): boolean {
   const logKind = logEntry.details?.["logKind"] as string | undefined;
   return logKind === "reasoning" || (!logKind && logEntry.message === "AI reasoning...");
 }
 
-export function isResponseLogEntry(logEntry: LogEntry): boolean {
-  const logKind = logEntry.details?.["logKind"] as string | undefined;
-  return logKind === "response" || (!logKind && logEntry.message === "AI generating response...");
-}
 
 export function hasActiveWorkEntry(entries: DisplayEntry[]): boolean {
   const lastIndex = entries.length - 1;

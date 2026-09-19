@@ -1,22 +1,23 @@
-import { useCallback, useMemo, useRef } from "react";
-import { type TranscriptFileLinkTarget } from "./LogViewer";
+import { useCallback, useMemo } from "react";
+import { type TranscriptFileLinkTarget } from "./log-viewer";
 import { getChatWorkspaceId, getExecutionHostSourceId } from "@/shared";
 import { appAbsoluteUrl } from "../lib/public-path";
 import { replaceWebAppRoute, routeToHash, useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { useChatLifecycle } from "./chat-details/chat-lifecycle";
-import { ChatComposer } from "./chat-details/chat-composer";
+import {
+  ConversationComposer,
+  useConversationVoice,
+} from "./conversation-composer";
+import { useChatComposerAdapter } from "./chat-details/chat-composer-adapter";
 import {
   ChatPermissionPanel,
   ChatQueuedMessagesPanel,
 } from "./chat-details/chat-support-panels";
 import { ChatTranscript } from "./chat-details/chat-transcript";
-import type { ChatComposerProps } from "./chat-details/types";
-import { VoiceListeningOverlay } from "./chat-details/voice-listening-overlay";
+import type { ChatSendMessageHandler } from "./chat-details/types";
 import { VoicePlaybackOverlay } from "./chat-details/voice-playback-overlay";
 import {
   useVoicePlayback,
-  useVoiceRecorder,
-  useVoiceSettings,
 } from "../hooks";
 
 export function ChatDetails({
@@ -30,7 +31,7 @@ export function ChatDetails({
   embeddedTaskId?: string;
   embedded?: boolean;
   isExternallyBusy?: boolean;
-  onSendMessage?: ChatComposerProps["onSendMessage"];
+  onSendMessage?: ChatSendMessageHandler;
 }) {
   const toast = useToast();
   const isEmbedded = embedded || (typeof embeddedTaskId === "string" && embeddedTaskId.length > 0);
@@ -50,45 +51,15 @@ export function ChatDetails({
     markChatStarting,
     handleReconnect,
   } = useChatLifecycle(chatId);
-  const voiceSettings = useVoiceSettings();
-  const voiceDraftSetterRef = useRef<((text: string) => void) | null>(null);
-  const voiceDraftGetterRef = useRef<(() => string) | null>(null);
-  const voiceDraftSubmitterRef = useRef<((text: string) => Promise<void>) | null>(null);
-  const registerVoiceDraft = useCallback((
-    setDraft: (text: string) => void,
-    getDraft: () => string,
-    submitDraft: (text: string) => Promise<void>,
-  ): (() => void) => {
-    voiceDraftSetterRef.current = setDraft;
-    voiceDraftGetterRef.current = getDraft;
-    voiceDraftSubmitterRef.current = submitDraft;
-    return () => {
-      if (voiceDraftSetterRef.current === setDraft) {
-        voiceDraftSetterRef.current = null;
-        voiceDraftGetterRef.current = null;
-        voiceDraftSubmitterRef.current = null;
-      }
-    };
-  }, []);
-  const handleVoiceTranscript = useCallback((text: string): void => {
-    const currentDraft = voiceDraftGetterRef.current?.().trim() ?? "";
-    const nextDraft = currentDraft ? `${currentDraft}\n\n${text}` : text;
-    voiceDraftSetterRef.current?.(nextDraft);
-    void voiceDraftSubmitterRef.current?.(nextDraft);
-  }, []);
-  const voiceRecorder = useVoiceRecorder({
-    enabled: voiceSettings.settings.capabilities.transcription.validated,
-    canStart: () => voiceDraftGetterRef.current?.().trim() === "",
-    onTranscript: handleVoiceTranscript,
-  });
+  const voice = useConversationVoice();
   const voicePlayback = useVoicePlayback();
   const handleReadAloud = useCallback((
     message: { id: string; content: string },
     mode: "full" | "summary",
   ): void => {
     const capability = mode === "summary"
-      ? voiceSettings.settings.capabilities.text
-      : voiceSettings.settings.capabilities.speech;
+      ?       voice.capabilities.text
+      : voice.capabilities.speech;
     if (!capability.validated) {
       toast.error("This voice capability is not configured and validated.");
       return;
@@ -97,9 +68,23 @@ export function ChatDetails({
   }, [
     toast,
     voicePlayback,
-    voiceSettings.settings.capabilities.speech,
-    voiceSettings.settings.capabilities.text,
+    voice.capabilities.speech,
+    voice.capabilities.text,
   ]);
+  const composerProps = useChatComposerAdapter({
+    chat,
+    chatId,
+    isEmbedded,
+    isActive,
+    isExternallyBusy,
+    needsSshCredentials,
+    onChatSnapshot: applyChatSnapshot,
+    markChatStarting,
+    refreshChat,
+    handleReconnect,
+    onSendMessage,
+    voice: voice.composer,
+  });
   const chatWorkingDirectory = chat?.state.worktree?.worktreePath ?? chat?.config.directory ?? "";
   const fileLinkContext = useMemo(() => {
     if (!chat || !chatWorkingDirectory) {
@@ -197,20 +182,20 @@ export function ChatDetails({
         onLoadFullTranscript={loadFullTranscript}
         loadingTranscript={loadingTranscript}
         voiceInput={{
-          available: voiceSettings.settings.capabilities.transcription.validated,
-          status: voiceRecorder.status,
-          elapsedMs: voiceRecorder.elapsedMs,
-          error: voiceRecorder.error,
+          available: voice.composer.available,
+          status: voice.composer.status,
+          elapsedMs: voice.composer.elapsedMs,
+          error: voice.composer.error,
         }}
-        onStartVoice={voiceRecorder.start}
-        onStopVoice={voiceRecorder.stop}
-        onCancelVoice={voiceRecorder.cancel}
-        onDismissVoiceError={voiceRecorder.dismissError}
+        onStartVoice={voice.composer.start}
+        onStopVoice={voice.composer.stop}
+        onCancelVoice={voice.composer.cancel}
+        onDismissVoiceError={voice.composer.dismissError}
         onReadAloud={handleReadAloud}
-        readAloudAvailable={voiceSettings.settings.capabilities.speech.validated}
+        readAloudAvailable={voice.capabilities.speech.validated}
         readAloudSummaryAvailable={
-          voiceSettings.settings.capabilities.speech.validated
-          && voiceSettings.settings.capabilities.text.validated
+          voice.capabilities.speech.validated
+          && voice.capabilities.text.validated
         }
         playingReadAloudKey={voicePlayback.playingKey}
         readAloudStatus={voicePlayback.status === "idle" ? null : voicePlayback.status}
@@ -225,34 +210,7 @@ export function ChatDetails({
         messages={chat.state.queuedMessages ?? []}
         onChatSnapshot={applyChatSnapshot}
       />
-      <ChatComposer
-        chat={chat}
-        chatId={chatId}
-        isEmbedded={isEmbedded}
-        isActive={isActive}
-        needsSshCredentials={needsSshCredentials}
-        isExternallyBusy={isExternallyBusy}
-        onChatSnapshot={applyChatSnapshot}
-        markChatStarting={markChatStarting}
-        refreshChat={refreshChat}
-        handleReconnect={handleReconnect}
-        onSendMessage={onSendMessage}
-        voiceInput={{
-          available: voiceSettings.settings.capabilities.transcription.validated,
-          status: voiceRecorder.status,
-        }}
-        onStartVoice={voiceRecorder.start}
-        registerVoiceDraft={registerVoiceDraft}
-      />
-      <VoiceListeningOverlay
-        status={voiceRecorder.status}
-        elapsedMs={voiceRecorder.elapsedMs}
-        error={voiceRecorder.error}
-        onStop={voiceRecorder.stop}
-        onCancel={voiceRecorder.cancel}
-        onRetry={voiceRecorder.start}
-        onDismissError={voiceRecorder.dismissError}
-      />
+      {composerProps && <ConversationComposer {...composerProps} />}
       <VoicePlaybackOverlay
         recovery={voicePlayback.playbackRecovery}
         onPlay={voicePlayback.retryPlayback}
