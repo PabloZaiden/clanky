@@ -11,21 +11,19 @@ function formatElapsed(milliseconds: number): string {
 
 function VoiceActionButton({
   label,
-  variant,
   onClick,
   children,
 }: {
   label: string;
-  variant: "ghost" | "primary";
   onClick: () => void;
   children: ReactNode;
 }) {
   return (
     <Button
       type="button"
-      variant={variant}
+      variant="ghost"
       size="sm"
-      className="!h-8 !w-8 !p-0"
+      className="wapp-action-menu-trigger wapp-action-menu-trigger-compact !h-8 !w-8 !p-0"
       aria-label={label}
       title={label}
       onClick={onClick}
@@ -136,14 +134,12 @@ export function VoiceListeningPanel({
             <>
               <VoiceActionButton
                 label="Cancel voice input"
-                variant="ghost"
                 onClick={onCancel}
               >
                 <CloseIcon />
               </VoiceActionButton>
               <VoiceActionButton
                 label="Stop recording"
-                variant="primary"
                 onClick={onStop}
               >
                 <span className="text-lg leading-none">↑</span>
@@ -152,7 +148,6 @@ export function VoiceListeningPanel({
           ) : pending ? (
             <VoiceActionButton
               label="Cancel voice input"
-              variant="ghost"
               onClick={onCancel}
             >
               <CloseIcon />
@@ -161,14 +156,12 @@ export function VoiceListeningPanel({
             <>
               <VoiceActionButton
                 label="Dismiss voice input error"
-                variant="ghost"
                 onClick={onDismissError}
               >
                 <CloseIcon />
               </VoiceActionButton>
               <VoiceActionButton
                 label="Retry microphone"
-                variant="primary"
                 onClick={() => void onRetry()}
               >
                 <RefreshIcon />
