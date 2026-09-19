@@ -97,89 +97,88 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Smoke test dev server
+      - name: Smoke test production binary
         run: |
-          set -e
-          bash scripts/pr-smoke.sh \
-            --port 3017 \
-            --log-file /tmp/clanky-pr-dev-smoke.log \
-            --env CLANKY_DISABLE_PASSKEY=1 \
-            --env CLANKY_HOST=127.0.0.1 \
-            --env CLANKY_PORT=3017 \
-            --env "CLANKY_DATA_DIR=$(mktemp -d)" \
-            -- bun run dev
-
-      - name: Build binary
-        run: bun run build
-
-      - name: Smoke test binary startup
-        run: |
-          set -e
-          rm -f /tmp/clanky-pr-binary-smoke.log
-          ./dist/clanky --help > /tmp/clanky-pr-help.log
-          grep -q "Usage:" /tmp/clanky-pr-help.log
-          if ./dist/clanky > /tmp/clanky-pr-empty.log 2>&1; then
-            echo "Plain clanky should print help and exit non-zero"
-            cat /tmp/clanky-pr-empty.log
-            exit 1
-          fi
-          grep -q "Usage:" /tmp/clanky-pr-empty.log
-          bash scripts/pr-smoke.sh \
-            --port 3018 \
-            --log-file /tmp/clanky-pr-binary-smoke.log \
-            --env CLANKY_DISABLE_PASSKEY=1 \
-            --env CLANKY_HOST=127.0.0.1 \
-            --env CLANKY_PORT=3018 \
-            --env "CLANKY_DATA_DIR=$(mktemp -d)" \
-            -- ./dist/clanky serve
+          set -euo pipefail
+          bun scripts/production-smoke.ts
+          help_log="$(mktemp)"
+          trap 'rm -f "$help_log"' EXIT
+          ./dist/clanky --help >"$help_log"
+          grep -q "Usage:" "$help_log"
 
       - name: Smoke test Docker image
         run: |
-          set -e
-          docker build -t clanky-pr-smoke .
-          docker build --target relay -t clanky-relay-pr-smoke .
-          docker run -d --name clanky-pr-smoke -p 3019:8080 \
+          set -euo pipefail
+          main_image="clanky-pr-smoke:${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          relay_image="clanky-relay-pr-smoke:${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          main_name="clanky-pr-smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          relay_name="clanky-relay-pr-smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          trap 'docker rm -f "$main_name" "$relay_name" 2>/dev/null || true' EXIT
+
+          docker build -t "$main_image" .
+          docker build --target relay -t "$relay_image" .
+          docker run -d --name "$main_name" -P \
             -e CLANKY_DISABLE_PASSKEY=1 \
             -e CLANKY_DATA_DIR=/app/data \
-            clanky-pr-smoke
-          docker run -d --name clanky-relay-pr-smoke -p 3020:8080 \
+            "$main_image"
+          docker run -d --name "$relay_name" -P \
             -e CLANKY_RELAY_CONTROLLER_FINGERPRINT=sha256:0000000000000000000000000000000000000000000000000000000000000000 \
-            clanky-relay-pr-smoke
-          trap 'docker rm -f clanky-pr-smoke clanky-relay-pr-smoke 2>/dev/null || true' EXIT
+            "$relay_image"
 
-          docker inspect --format='{{range .Config.Env}}{{println .}}{{end}}' clanky-pr-smoke \
+          docker inspect --format='{{range .Config.Env}}{{println .}}{{end}}' "$main_name" \
             | grep -Fx 'CLANKY_TRUST_PROXY=true'
-          docker inspect --format='{{range .Config.Env}}{{println .}}{{end}}' clanky-pr-smoke \
+          docker inspect --format='{{range .Config.Env}}{{println .}}{{end}}' "$main_name" \
             | grep -Fx 'CLANKY_TRUST_PROXY_HEADERS=proto,host,prefix'
-          docker inspect --format='{{range .Config.Env}}{{println .}}{{end}}' clanky-pr-smoke \
+          docker inspect --format='{{range .Config.Env}}{{println .}}{{end}}' "$main_name" \
             | grep -Fx 'CLANKY_TRUST_PROXY_CHAIN=first'
 
-          wait_for_healthy() {
+          main_port="$(docker inspect --format='{{(index (index .NetworkSettings.Ports "8080/tcp") 0).HostPort}}' "$main_name")"
+          relay_port="$(docker inspect --format='{{(index (index .NetworkSettings.Ports "8080/tcp") 0).HostPort}}' "$relay_name")"
+          test -n "$main_port"
+          test -n "$relay_port"
+          main_url="http://127.0.0.1:${main_port}"
+          relay_url="http://127.0.0.1:${relay_port}"
+
+          wait_for_url() {
             name="$1"
-            for attempt in $(seq 1 45); do
-              status=$(docker inspect --format='{{.State.Health.Status}}' "$name" 2>/dev/null || echo "starting")
-              if [ "$status" = "healthy" ]; then
+            url="$2"
+            for attempt in $(seq 1 60); do
+              if curl --fail --silent --show-error --max-time 2 "$url" >/dev/null; then
                 return 0
               fi
-              if [ "$status" = "unhealthy" ] || [ "$attempt" -eq 45 ]; then
-                echo "$name failed to become healthy (status: $status)"
+              running="$(docker inspect --format='{{.State.Running}}' "$name" 2>/dev/null || echo "false")"
+              if [ "$running" != "true" ] || [ "$attempt" -eq 60 ]; then
+                echo "$name failed to respond at $url"
                 docker logs "$name"
                 return 1
               fi
-              sleep 2
+              sleep 1
             done
           }
 
-          wait_for_healthy clanky-pr-smoke
-          wait_for_healthy clanky-relay-pr-smoke
-
-          if ! bash scripts/pr-smoke.sh \
-            --check-only \
-            --base-url http://127.0.0.1:3019; then
+          wait_for_url "$main_name" "${main_url}/api/health"
+          wait_for_url "$relay_name" "${relay_url}/api/health"
+          if ! bun scripts/production-smoke-http.ts --base-url "$main_url"; then
             echo "Docker smoke resource checks failed"
-            docker logs clanky-pr-smoke
+            docker logs "$main_name"
             exit 1
           fi
-
-          curl -fsS http://127.0.0.1:3020/.well-known/clanky-mesh \
-            | grep -Eq '"role"[[:space:]]*:[[:space:]]*"relay"'
+          if ! RELAY_URL="$relay_url" bun -e '
+              const relayUrl = process.env["RELAY_URL"];
+              if (!relayUrl) throw new Error("RELAY_URL is required");
+              const response = await fetch(
+                `${relayUrl}/.well-known/clanky-mesh`,
+                { signal: AbortSignal.timeout(5000) },
+              );
+              if (!response.ok) {
+                throw new Error(`Relay descriptor returned HTTP ${String(response.status)}`);
+              }
+              const descriptor = await response.json();
+              if (descriptor?.role !== "relay") {
+                throw new Error("Relay descriptor did not identify a relay");
+              }
+            '; then
+            echo "Relay descriptor validation failed"
+            docker logs "$relay_name"
+            exit 1
+          fi

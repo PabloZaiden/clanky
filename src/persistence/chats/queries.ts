@@ -8,7 +8,7 @@ import { getDatabase } from "../database";
 import { rowToChat } from "./helpers";
 import { CHAT_METADATA_COLUMNS } from "./crud";
 import { requirePersistenceUserId } from "../ownership";
-import { hydrateTranscriptStateForUser } from "../transcripts/store";
+import { chatTranscriptStore } from "../transcripts/chat-store";
 
 const log = createLogger("persistence:chats");
 const STALE_CHAT_RESET_MESSAGE = "Forcefully stopped by connection reset";
@@ -41,7 +41,7 @@ export async function getActiveChatByDirectory(directory: string, workspaceId: s
     return null;
   }
   const chat = rowToChat(row);
-  const transcript = hydrateTranscriptStateForUser("chat", chat.config.id, userId);
+  const transcript = chatTranscriptStore.hydrateForUser(chat.config.id, userId);
   chat.state.messages = transcript.messages;
   chat.state.logs = transcript.logs;
   chat.state.toolCalls = transcript.toolCalls;

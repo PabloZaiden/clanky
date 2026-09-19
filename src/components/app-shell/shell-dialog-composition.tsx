@@ -15,7 +15,7 @@ import type {
 } from "../../hooks";
 import { RenameSessionModal } from "../RenameSessionModal";
 import { getRouteString } from "./route-fields";
-import type { TerminalSessionActionTarget } from "./shell-sidebar-composition";
+import type { TerminalSessionActionTarget } from "./shell-sidebar-types";
 
 interface ShellDialogCompositionOptions {
   route: WebAppRoute;
