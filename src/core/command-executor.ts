@@ -159,6 +159,12 @@ export interface CommandExecutor {
   readonly pathStyle: ExecutionPathStyle;
 
   /**
+   * Release transport-owned resources when this executor is no longer used.
+   * Stateless executors may omit the lifecycle hook.
+   */
+  close?(): void;
+
+  /**
    * Return the configured execution directory as an absolute host path.
    */
   getExecutionDirectory(): Promise<string>;
@@ -316,8 +322,7 @@ export async function resolveCommandExecutorDirectory(
 }
 
 export function closeCommandExecutor(executor: CommandExecutor): void {
-  const closable = executor as CommandExecutor & { close?: () => void };
-  closable.close?.();
+  executor.close?.();
 }
 
 export { MeshCommandExecutor, MeshCommandExecutorClient } from "./mesh-command-executor";
