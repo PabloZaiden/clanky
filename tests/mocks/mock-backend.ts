@@ -34,6 +34,16 @@ export interface MockModelInfo {
   variants?: string[];
 }
 
+export interface MockSendPromptContext {
+  sessionId: string;
+  prompt: PromptInput;
+  session: AgentSession | undefined;
+}
+
+export type MockSendPromptHandler = (
+  context: MockSendPromptContext,
+) => AgentResponse | undefined | Promise<AgentResponse | undefined>;
+
 /**
  * Options for creating a MockAcpBackend.
  */
@@ -51,6 +61,10 @@ export interface MockBackendOptions {
   streamEventSequences?: AgentEvent[][];
   /** Optional hook invoked after a prompt is sent, before its response is emitted. */
   onPrompt?: (prompt: PromptInput, directory: string) => void | Promise<void>;
+  /** Optional handler for direct prompts such as task-title and chat-name generation. */
+  onSendPrompt?: MockSendPromptHandler;
+  /** Optional hook invoked after a direct prompt handler and response have settled. */
+  onSendPromptSettled?: (context: MockSendPromptContext) => void | Promise<void>;
   /** Models to return from getModels() */
   models?: MockModelInfo[];
   /** Match real ACP provider-scoped model discovery for tests that need it. */
@@ -85,6 +99,8 @@ export class MockAcpBackend implements Backend {
   private readonly streamingResponseChunks: string[][];
   private readonly streamEventSequences: AgentEvent[][];
   private readonly onPrompt?: MockBackendOptions["onPrompt"];
+  private readonly onSendPrompt?: MockBackendOptions["onSendPrompt"];
+  private readonly onSendPromptSettled?: MockBackendOptions["onSendPromptSettled"];
   private streamingResponseIndex = 0;
   private streamEventIndex = 0;
   private readonly models: MockModelInfo[];
@@ -107,6 +123,8 @@ export class MockAcpBackend implements Backend {
     this.streamingResponseChunks = options.streamingResponseChunks ?? [];
     this.streamEventSequences = options.streamEventSequences ?? [];
     this.onPrompt = options.onPrompt;
+    this.onSendPrompt = options.onSendPrompt;
+    this.onSendPromptSettled = options.onSendPromptSettled;
     this.models = options.models ?? [];
     this.filterModelsByConnectionProvider = options.filterModelsByConnectionProvider ?? false;
   }
@@ -172,16 +190,29 @@ export class MockAcpBackend implements Backend {
     return session;
   }
 
-  async sendPrompt(_sessionId: string, _prompt: PromptInput): Promise<AgentResponse> {
-    this.sentPrompts.push(_prompt);
-    await this.onPrompt?.(_prompt, this.directory);
-    const response = this.getNextResponse();
-    this.checkForError(response);
-    return {
-      id: `msg-${Date.now()}`,
-      content: response,
-      parts: [{ type: "text", text: response }],
+  async sendPrompt(sessionId: string, prompt: PromptInput): Promise<AgentResponse> {
+    this.sentPrompts.push(prompt);
+    await this.onPrompt?.(prompt, this.directory);
+    const context: MockSendPromptContext = {
+      sessionId,
+      prompt,
+      session: this.sessions.get(sessionId),
     };
+    try {
+      const customResponse = await this.onSendPrompt?.(context);
+      if (customResponse !== undefined) {
+        return customResponse;
+      }
+      const response = this.getNextResponse();
+      this.checkForError(response);
+      return {
+        id: `msg-${Date.now()}`,
+        content: response,
+        parts: [{ type: "text", text: response }],
+      };
+    } finally {
+      await this.onSendPromptSettled?.(context);
+    }
   }
 
   async sendPromptAsync(_sessionId: string, _prompt: PromptInput): Promise<void> {

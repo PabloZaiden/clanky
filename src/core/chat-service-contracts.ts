@@ -209,6 +209,7 @@ export interface ChatConversationPort {
   closeActiveStream(chatId: string): void;
   hasActiveStream(chatId: string): boolean;
   setActivityTimeoutForTesting(timeoutMs: number | undefined): void;
+  setNameGenerationTimeoutForTesting(timeoutMs: number | undefined): void;
   emitChatLog(
     chat: Chat,
     level: TaskLogEntry["level"],
