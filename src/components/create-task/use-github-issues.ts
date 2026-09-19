@@ -129,7 +129,8 @@ export function useGitHubIssues({
         }
 
         if (
-          issueNumberRef.current
+          !preserveExistingIssue
+          && issueNumberRef.current
           && !issuesResponse.issues.some(
             (issue) => String(issue.number) === issueNumberRef.current,
           )

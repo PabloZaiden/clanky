@@ -62,7 +62,13 @@ async function resolveGitHubRepositoryUrl(
   if (gitWorkspace instanceof Response) {
     return gitWorkspace;
   }
-  const workspace = gitWorkspace;
+  return await resolveGitHubRepositoryUrlForWorkspace(gitWorkspace);
+}
+
+async function resolveGitHubRepositoryUrlForWorkspace(
+  workspace: Workspace,
+  git?: GitService,
+): Promise<string | null> {
   const directory = workspace.directory;
 
   const persistedRepoUrl = workspace.repoUrl?.trim() ?? "";
@@ -70,14 +76,14 @@ async function resolveGitHubRepositoryUrl(
     return normalizeGitHubRepositoryUrl(persistedRepoUrl);
   }
 
-  const git = await createGitServiceForWorkspace(workspace);
+  const gitService = git ?? await createGitServiceForWorkspace(workspace);
 
-  if (!(await git.isGitRepo(directory))) {
+  if (!(await gitService.isGitRepo(directory))) {
     return null;
   }
 
   try {
-    const remoteUrl = await git.getRemoteUrl(directory, "origin");
+    const remoteUrl = await gitService.getRemoteUrl(directory, "origin");
     return normalizeGitHubRepositoryUrl(remoteUrl);
   } catch (error) {
     if (error instanceof GitCommandError) {
@@ -101,7 +107,7 @@ async function createGitServiceForWorkspace(workspace: Workspace): Promise<GitSe
 
 /** Validate a workspace git request and verify its repository. */
 async function validateGitRequest(req: Request): Promise<
-  { git: GitService; executor: CommandExecutor; directory: string } | Response
+  { git: GitService; executor: CommandExecutor; directory: string; workspace: Workspace } | Response
 > {
   const url = new URL(req.url);
   const workspaceId = url.searchParams.get("workspaceId");
@@ -132,7 +138,7 @@ async function validateGitRequest(req: Request): Promise<
     return errorResponse("not_git_repo", "Workspace directory is not a git repository");
   }
 
-  return { git, executor, directory };
+  return { git, executor, directory, workspace: gitWorkspace };
 }
 
 /**
@@ -321,7 +327,20 @@ export const gitRoutes = defineRoutes({
         const result = await validateGitRequest(req);
         if (result instanceof Response) return result;
 
-        const issues = await listOpenGitHubIssues(result.executor, result.directory);
+        const githubUrl = await resolveGitHubRepositoryUrlForWorkspace(
+          result.workspace,
+          result.git,
+        );
+        if (!githubUrl) {
+          const response: GitHubIssuesResponse = { issues: [] };
+          return Response.json(response);
+        }
+
+        const issues = await listOpenGitHubIssues(
+          result.executor,
+          result.directory,
+          githubUrl,
+        );
         const response: GitHubIssuesResponse = { issues };
         log.debug("GitHub issues retrieved", {
           directory: result.directory,
@@ -346,6 +365,11 @@ export const gitRoutes = defineRoutes({
             github_issues_invalid_response: {
               error: "github_issues_invalid_response",
               message: "Clanky API returned an invalid GitHub issues response",
+              status: 502,
+            },
+            github_issues_invalid_repository: {
+              error: "github_issues_invalid_repository",
+              message: "GitHub issues are not available for this workspace",
               status: 502,
             },
           },
