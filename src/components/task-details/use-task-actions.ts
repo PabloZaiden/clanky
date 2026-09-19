@@ -18,7 +18,6 @@ import type {
 interface UseTaskActionsOptions {
   onBack?: () => void;
   onSelectTerminalSession?: (terminalSessionId: string) => void;
-  onOpenTaskFiles?: () => void;
   toast: ToastService;
   accept: () => Promise<AcceptPlanResult | unknown>;
   push: () => Promise<PushTaskResult | unknown>;
@@ -88,14 +87,12 @@ export interface UseTaskActionsResult {
   handleAcceptPlan: () => Promise<void>;
   handleDiscardPlan: () => Promise<void>;
   handleConnectTerminal: () => Promise<void>;
-  handleOpenTaskFiles: () => void;
   handleUpdatePlanningSettings: (request: Pick<UpdateTaskRequest, "autoAcceptPlan" | "fullyAutonomous">) => Promise<boolean>;
 }
 
 export function useTaskActions({
   onBack,
   onSelectTerminalSession,
-  onOpenTaskFiles,
   toast,
   accept,
   push,
@@ -289,10 +286,6 @@ export function useTaskActions({
     }
   }
 
-  function handleOpenTaskFiles() {
-    onOpenTaskFiles?.();
-  }
-
   async function handleUpdatePlanningSettings(
     request: Pick<UpdateTaskRequest, "autoAcceptPlan" | "fullyAutonomous">,
   ): Promise<boolean> {
@@ -348,7 +341,6 @@ export function useTaskActions({
     handleAcceptPlan,
     handleDiscardPlan,
     handleConnectTerminal,
-    handleOpenTaskFiles,
     handleUpdatePlanningSettings,
   };
 }

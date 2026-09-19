@@ -2,7 +2,7 @@
  * TaskDetails component showing full task information with tabs.
  */
 
-import { replaceWebAppRoute, Tabs, useHeaderActions, useToast, type ActionMenuItem } from "@pablozaiden/webapp/web";
+import { Tabs, useHeaderActions, useToast, type ActionMenuItem } from "@pablozaiden/webapp/web";
 import { useMemo } from "react";
 import { useTask, useMarkdownPreference } from "../../hooks";
 import {
@@ -36,15 +36,12 @@ export interface TaskDetailsProps {
   onBack?: () => void;
   /** Navigate to the terminal session details view */
   onSelectTerminalSession?: (terminalSessionId: string) => void;
-  /** Navigate to the task-scoped code explorer view */
-  onOpenTaskFiles?: (taskId: string) => void;
 }
 
 export function TaskDetails({
   taskId,
   onBack,
   onSelectTerminalSession,
-  onOpenTaskFiles,
 }: TaskDetailsProps) {
    const {
       task, loading, error, messages, toolCalls, logs, gitChangeCounter,
@@ -69,17 +66,6 @@ export function TaskDetails({
   const actions = useTaskActions({
     onBack,
     onSelectTerminalSession,
-    onOpenTaskFiles: () => {
-      if (onOpenTaskFiles) {
-        onOpenTaskFiles(taskId);
-        return;
-      }
-      replaceWebAppRoute({
-        view: "code-explorer",
-        contentType: "task",
-        taskId,
-      });
-     },
       toast,
         accept, push, updateBranch, remove, purge, markMerged, closeLocalTask, manualCompleteTask,
       addressReviewComments, enablePullRequestAutoMerge, startAutomaticPrFlow, stopAutomaticPrFlow, acceptPlan, discardPlan, connectTerminal, update,
@@ -91,15 +77,10 @@ export function TaskDetails({
     const { state } = task;
     const menuActions: ActionMenuItem[] = [
        {
-         id: "open-terminal",
-         label: actions.terminalConnecting ? "Connecting..." : "Open terminal",
-         disabled: actions.terminalConnecting,
-         onAction: () => void actions.handleConnectTerminal(),
-       },
-       {
-         id: "open-code-explorer",
-         label: "Open code explorer",
-         onAction: () => actions.handleOpenTaskFiles(),
+        id: "open-terminal",
+        label: actions.terminalConnecting ? "Connecting..." : "Open terminal",
+        disabled: actions.terminalConnecting,
+        onAction: () => void actions.handleConnectTerminal(),
        },
     ];
 
