@@ -18,38 +18,14 @@ import { parseAndValidate } from "./validation";
 const VOICE_MAX_UPLOAD_BYTES = 21 * 1024 * 1024;
 
 function voiceErrorResponse(error: unknown): Response {
-  const response = domainErrorResponse(error, {
+  return domainErrorResponse(error, {
+    policy: "voice",
     fallback: {
       error: "voice_request_failed",
       message: "The voice request could not be completed.",
       status: 500,
     },
-    mappings: {
-      voice_invalid_base_url: { status: 400 },
-      voice_unsafe_provider_url: { status: 400 },
-      voice_provider_invalid_request: { status: 400 },
-      voice_not_configured: { status: 409 },
-      voice_capability_not_configured: { status: 409 },
-      voice_capability_unavailable: { status: 409 },
-      voice_validation_stale: { status: 409 },
-      voice_audio_too_large: { status: 413 },
-      voice_text_too_large: { status: 413 },
-      voice_provider_rate_limited: { status: 429 },
-      voice_provider_unreachable: { status: 502 },
-      voice_provider_timeout: { status: 504 },
-      voice_provider_redirect: { status: 502 },
-      voice_provider_request_failed: { status: 502 },
-      voice_provider_invalid_response: { status: 502 },
-      voice_provider_response_too_large: { status: 502 },
-    },
   });
-  if (isDomainError(error) && error.code === "voice_provider_rate_limited") {
-    const retryAfter = error.details["retryAfter"];
-    if (typeof retryAfter === "string") {
-      response.headers.set("Retry-After", retryAfter);
-    }
-  }
-  return response;
 }
 
 async function readRequestBodyWithLimit(

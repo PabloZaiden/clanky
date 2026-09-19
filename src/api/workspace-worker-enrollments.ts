@@ -61,6 +61,7 @@ export const workspaceWorkerEnrollmentRoutes = defineRoutes({
       } catch (error) {
         if (isDomainError(error) && error.code === "workspace_worker_enrollment_not_found") {
           return domainErrorResponse(error, {
+            policy: "mesh",
             fallback: {
               error: "not_found",
               message: "Workspace worker enrollment not found",

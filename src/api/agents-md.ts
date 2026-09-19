@@ -20,17 +20,18 @@ type AgentsMdOperation = "read" | "preview" | "optimize";
 function mapAgentsMdError(error: unknown, operation: AgentsMdOperation): Response {
   if (isDomainError(error)) {
     if (error.code === "workspace_not_found") {
-      return errorResponse("workspace_not_found", "Workspace not found", 404);
+      return domainErrorResponse(error, {
+        policy: "agents-md",
+        fallback: {
+          error: "not_found",
+          message: "Workspace not found",
+          status: 404,
+        },
+      });
     }
     if (error.code === "agents_md_read_failed") {
       return domainErrorResponse(error, {
-        mappings: {
-          agents_md_read_failed: {
-            error: "read_failed",
-            status: 500,
-            message: "Failed to read AGENTS.md",
-          },
-        },
+        policy: "agents-md",
         fallback: {
           error: "read_failed",
           message: "Failed to read AGENTS.md",
@@ -40,13 +41,7 @@ function mapAgentsMdError(error: unknown, operation: AgentsMdOperation): Respons
     }
     if (error.code === "agents_md_write_failed") {
       return domainErrorResponse(error, {
-        mappings: {
-          agents_md_write_failed: {
-            error: "write_failed",
-            status: 500,
-            message: "Failed to update AGENTS.md",
-          },
-        },
+        policy: "agents-md",
         fallback: {
           error: "write_failed",
           message: "Failed to update AGENTS.md",

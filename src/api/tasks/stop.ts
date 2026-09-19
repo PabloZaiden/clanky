@@ -57,6 +57,7 @@ export const tasksStopRoutes = defineRoutes({
           error: String(error),
         });
         return domainErrorResponse(error, {
+          policy: "tasks",
           fallback: {
             error: "stop_task_failed",
             message: "Failed to stop task",

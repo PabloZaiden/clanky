@@ -143,6 +143,7 @@ export const tasksReviewRoutes = defineRoutes({
           });
         }
         return domainErrorResponse(error, {
+          policy: "tasks",
           fallback: {
             error: "get_review_history_failed",
             message: "Failed to get task review history",
@@ -181,6 +182,7 @@ export const tasksReviewRoutes = defineRoutes({
           });
         }
         return domainErrorResponse(error, {
+          policy: "tasks",
           fallback: {
             error: "automatic_pr_flow_start_failed",
             message: "Failed to start automatic PR flow",
@@ -219,6 +221,7 @@ export const tasksReviewRoutes = defineRoutes({
           });
         }
         return domainErrorResponse(error, {
+          policy: "tasks",
           fallback: {
             error: "automatic_pr_flow_stop_failed",
             message: "Failed to stop automatic PR flow",
@@ -257,6 +260,7 @@ export const tasksReviewRoutes = defineRoutes({
           });
         }
         return domainErrorResponse(error, {
+          policy: "tasks",
           fallback: {
             error: "pull_request_auto_merge_enable_failed",
             message: "Failed to enable pull request auto-merge",

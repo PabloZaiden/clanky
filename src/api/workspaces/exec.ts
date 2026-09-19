@@ -10,7 +10,6 @@ import {
 import { workspaceCommandService } from "../../core/workspace-command-service";
 import {
   domainErrorResponse,
-  executionHostCapabilityUnavailableMapping,
 } from "../helpers";
 import { parseAndValidate } from "../validation";
 
@@ -36,30 +35,7 @@ export const workspaceExecRoutes = defineRoutes({
         ));
       } catch (error) {
         return domainErrorResponse(error, {
-          mappings: {
-            workspace_not_found: {
-              status: 404,
-            },
-            workspace_exec_cwd_invalid: {
-              status: 400,
-            },
-            workspace_exec_cwd_not_found: {
-              status: 400,
-            },
-            workspace_exec_output_limit_exceeded: {
-              status: 413,
-            },
-            execution_host_capability_unavailable:
-              executionHostCapabilityUnavailableMapping(error),
-            mesh_execution_aborted: {
-              status: 499,
-              message: "Workspace command was aborted",
-            },
-            mesh_execution_unreachable: {
-              status: 502,
-              message: "Workspace execution host is unavailable",
-            },
-          },
+          policy: "workspaces",
           fallback: {
             error: "workspace_exec_failed",
             message: "Workspace command execution failed",

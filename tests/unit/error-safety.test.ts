@@ -3,6 +3,7 @@ import { DomainError } from "../../src/core/domain-error";
 import { createGitSyncFailure } from "../../src/core/task/task-git-push-helpers";
 import { taskFailureFromUnknown } from "../../src/core/task/task-errors";
 import { getTerminalErrorPayload } from "../../src/api/websocket/terminal";
+import { domainErrorResponse } from "../../src/api/helpers";
 
 describe("typed error safety boundaries", () => {
   test("uses a fixed payload for unknown terminal bridge errors", () => {
@@ -30,6 +31,75 @@ describe("typed error safety boundaries", () => {
     );
 
     expect(payload).toEqual({ message: "SSH terminal connection failed" });
+  });
+
+  test("uses boundary policy messages instead of known domain messages", async () => {
+    const response = domainErrorResponse(
+      new DomainError(
+        "voice_provider_request_failed",
+        "provider response includes a private endpoint",
+      ),
+      {
+        policy: "voice",
+        fallback: {
+          error: "voice_failed",
+          message: "Voice request failed",
+          status: 500,
+        },
+      },
+    );
+
+    expect(response.status).toBe(502);
+    expect(await response.json()).toEqual({
+      error: "voice_provider_request_failed",
+      message: "The voice provider request failed.",
+    });
+  });
+
+  test("keeps only approved structured details and headers", async () => {
+    const response = domainErrorResponse(
+      new DomainError("voice_provider_rate_limited", "private provider details", {
+        details: {
+          retryAfter: "30",
+          secret: "do-not-return",
+        },
+      }),
+      {
+        policy: "voice",
+        fallback: {
+          error: "voice_failed",
+          message: "Voice request failed",
+          status: 500,
+        },
+      },
+    );
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Retry-After")).toBe("30");
+    expect(await response.json()).toEqual({
+      error: "voice_provider_rate_limited",
+      message: "The voice provider rate-limited the request.",
+    });
+  });
+
+  test("uses a fixed fallback for unknown domain errors", async () => {
+    const response = domainErrorResponse(
+      new DomainError("internal_provider_failure", "private endpoint and credentials"),
+      {
+        policy: "mesh",
+        fallback: {
+          error: "mesh_operation_failed",
+          message: "Mesh operation failed",
+          status: 500,
+        },
+      },
+    );
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({
+      error: "mesh_operation_failed",
+      message: "Mesh operation failed",
+    });
   });
 
   test("uses a fixed message and safe details for git sync failures", () => {

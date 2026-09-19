@@ -13,18 +13,7 @@ import { parseAndValidate } from "./validation";
 
 function controllerRelayErrorResponse(error: unknown): Response {
   return domainErrorResponse(error, {
-    mappings: {
-      mesh_relay_url_invalid: { status: 400 },
-      mesh_relay_controller_mismatch: { status: 409 },
-      mesh_relay_descriptor_too_large: { status: 413 },
-      mesh_relay_descriptor_unreachable: { status: 502 },
-      mesh_relay_descriptor_rejected: { status: 502 },
-      mesh_relay_descriptor_invalid: { status: 502 },
-      mesh_relay_pairing_auth_failed: { status: 401 },
-      mesh_relay_authorization_failed: { status: 502 },
-      mesh_relay_controller_identity_changed: { status: 409 },
-      mesh_role_invalid: { status: 404 },
-    },
+    policy: "mesh-relay",
     fallback: {
       error: "mesh_relay_operation_failed",
       message: "Mesh relay operation failed.",

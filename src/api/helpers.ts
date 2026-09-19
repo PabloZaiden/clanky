@@ -12,6 +12,13 @@ import type { Workspace } from "@/shared/workspace";
 import { workspaceManager } from "../core/workspace-manager";
 import { isDomainError } from "../core/domain-error";
 import { assertGitBackedWorkspace } from "../core/workspace-capabilities";
+import {
+  getSafeDomainErrorMessage,
+  getUnknownDomainErrorStatus,
+  resolveDomainErrorHttpMapping,
+  type DomainErrorHttpMapping,
+  type DomainErrorPolicyName,
+} from "./domain-error-policy";
 
 /**
  * Create a standardized error response.
@@ -31,33 +38,14 @@ export function errorResponse(
   return Response.json({ ...extra, ...body }, { status });
 }
 
-export interface DomainErrorHttpMapping {
-  status: number;
-  error?: string;
-  message?: string;
-  extra?: Record<string, unknown>;
-}
-
 export interface DomainErrorResponseOptions {
   fallback: {
     error: string;
     message: string;
     status?: number;
   };
+  policy?: DomainErrorPolicyName;
   mappings?: Readonly<Record<string, DomainErrorHttpMapping>>;
-}
-
-export function executionHostCapabilityUnavailableMapping(
-  error: unknown,
-): DomainErrorHttpMapping {
-  const capability = isDomainError(error)
-    && typeof error.details["capability"] === "string"
-      ? error.details["capability"]
-      : undefined;
-  return {
-    status: 409,
-    ...(capability ? { extra: { capability } } : {}),
-  };
 }
 
 /**
@@ -70,23 +58,35 @@ export function domainErrorResponse(
   error: unknown,
   options: DomainErrorResponseOptions,
 ): Response {
-  if (isDomainError(error)) {
-    const mapping = options.mappings?.[error.code];
-    if (mapping) {
-      return errorResponse(
-        mapping.error ?? error.code,
-        mapping.message ?? error.message,
-        mapping.status,
-        mapping.extra,
-      );
+  const mapping = resolveDomainErrorHttpMapping(error, {
+    fallback: options.fallback,
+    mappings: options.mappings,
+    policy: options.policy,
+  });
+  if (mapping) {
+    const response = errorResponse(
+      mapping.error ?? (isDomainError(error) ? error.code : options.fallback.error),
+      mapping.message ?? getSafeDomainErrorMessage(
+        isDomainError(error) ? error.code : "",
+        options.fallback.message,
+        options.policy,
+      ),
+      mapping.status,
+      mapping.extra,
+    );
+    for (const [name, value] of Object.entries(mapping.headers ?? {})) {
+      response.headers.set(name, value);
     }
-
+    return response;
   }
 
   return errorResponse(
     options.fallback.error,
     options.fallback.message,
-    options.fallback.status ?? 500,
+    getUnknownDomainErrorStatus(error, {
+      fallbackStatus: options.fallback.status ?? 500,
+      policy: options.policy,
+    }),
   );
 }
 
@@ -100,8 +100,9 @@ export function internalErrorResponse(
   error: unknown,
   fallback: { error: string; message: string; status?: number },
   mappings?: Readonly<Record<string, DomainErrorHttpMapping>>,
+  policy?: DomainErrorPolicyName,
 ): Response {
-  return domainErrorResponse(error, { fallback, mappings });
+  return domainErrorResponse(error, { fallback, mappings, policy });
 }
 
 /**
@@ -146,13 +147,7 @@ export function requireGitBackedWorkspace(
     return workspace;
   } catch (error) {
     return domainErrorResponse(error, {
-      mappings: {
-        workspace_git_required: {
-          error: "workspace_git_required",
-          message: "This operation requires a Git-backed workspace",
-          status: 409,
-        },
-      },
+      policy: "workspaces",
       fallback: {
         error: "workspace_capability_failed",
         message: "Workspace capability validation failed",

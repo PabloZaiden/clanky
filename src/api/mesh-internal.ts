@@ -36,9 +36,9 @@ import { meshAcpGateway } from "../core/mesh-acp-gateway";
 import { meshTerminalGateway } from "../core/mesh-terminal-gateway";
 import { meshTcpTunnelGateway } from "../core/mesh-tcp-tunnel-gateway";
 import { encryptMeshPayload } from "../core/mesh-payload-crypto";
-import { errorResponse } from "./helpers";
+import { domainErrorResponse, errorResponse } from "./helpers";
 import { parseAndValidate, validateRequest } from "./validation";
-import { DomainError, isDomainError } from "../core/domain-error";
+import { DomainError } from "../core/domain-error";
 import { requireMeshRuntimeRole } from "../core/mesh-runtime";
 import {
   MESH_ACP_CHANNEL,
@@ -47,67 +47,14 @@ import {
 import { getMeshRelayRequestInitiatorNodeId } from "../core/mesh-relay-http";
 
 function internalMeshErrorResponse(error: unknown): Response {
-  if (isDomainError(error)) {
-    const status = error.code === "mesh_enrollment_expired"
-      || error.code === "mesh_enrollment_token_invalid"
-      ? 410
-      : error.code === "mesh_role_invalid"
-        ? 404
-        : error.code === "mesh_enrollment_controller_mismatch"
-          || error.code === "mesh_enrollment_relay_mismatch"
-        ? 409
-        : error.code === "mesh_peer_not_trusted"
-        ? 403
-        : error.code === "mesh_peer_revoked"
-          ? 403
-          : error.code === "mesh_worker_kill_expired"
-            ? 410
-          : error.code === "mesh_worker_kill_invalid_signature"
-            || error.code === "mesh_peer_target_invalid"
-            ? 400
-          : error.code === "mesh_execution_caller_not_active"
-            ? 409
-          : error.code === "mesh_execution_context_changed"
-            ? 409
-          : error.code === "mesh_execution_configuration_stale"
-            ? 409
-          : error.code === "mesh_execution_configuration_request_expired"
-            ? 410
-          : error.code === "mesh_execution_owner_mismatch"
-            ? 403
-          : error.code === "mesh_execution_async_command_not_found"
-            ? 404
-          : error.code === "mesh_acp_unavailable"
-            ? 503
-          : error.code === "workspace_not_found"
-            ? 404
-          : error.code === "execution_host_directory_invalid"
-            ? 400
-          : error.code === "mesh_execution_session_invalid"
-            || error.code === "mesh_execution_session_expired"
-            ? 401
-          : error.code === "mesh_execution_result_too_large"
-            ? 413
-          : error.code === "mesh_execution_operation_unsupported"
-            ? 501
-          : error.code === "mesh_terminal_session_invalid"
-            || error.code === "mesh_terminal_session_expired"
-            ? 401
-          : error.code === "mesh_terminal_context_changed"
-            || error.code === "mesh_terminal_target_invalid"
-            ? 403
-          : error.code.startsWith("mesh_terminal_")
-            ? 400
-          : error.code.startsWith("mesh_tunnel_")
-            ? 400
-          : error.code.startsWith("mesh_execution_")
-            ? 400
-          : error.code.startsWith("mesh_peer_") || error.code.startsWith("mesh_endpoint_")
-            ? 400
-            : 500;
-    return errorResponse(error.code, error.message, status);
-  }
-  return errorResponse("mesh_internal_request_failed", "Mesh internal request failed", 500);
+  return domainErrorResponse(error, {
+    policy: "mesh-internal",
+    fallback: {
+      error: "mesh_internal_request_failed",
+      message: "Mesh internal request failed",
+      status: 500,
+    },
+  });
 }
 
 export const meshInternalRoutes = defineRoutes({

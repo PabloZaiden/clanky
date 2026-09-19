@@ -68,6 +68,7 @@ export const tasksPlanRoutes = defineRoutes({
           error: String(error),
         });
         return domainErrorResponse(error, {
+          policy: "tasks",
           fallback: {
             error: "feedback_failed",
             message: "Failed to send plan feedback",
@@ -122,6 +123,7 @@ export const tasksPlanRoutes = defineRoutes({
           error: String(error),
         });
         return domainErrorResponse(error, {
+          policy: "tasks",
           fallback: {
             error: "accept_failed",
             message: "Failed to accept plan",
@@ -157,6 +159,7 @@ export const tasksPlanRoutes = defineRoutes({
           error: String(error),
         });
         return domainErrorResponse(error, {
+          policy: "tasks",
           fallback: {
             error: "discard_failed",
             message: "Failed to discard plan",

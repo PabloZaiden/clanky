@@ -14,20 +14,12 @@ const log = createLogger("api:tasks");
 
 function mapTaskTerminalSessionError(error: unknown): Response {
   return domainErrorResponse(error, {
+    policy: "terminal",
     mappings: {
-      task_not_found: {
-        error: "not_found",
-        message: "Task not found",
-        status: 404,
-      },
       terminal_session_not_found: {
         error: "not_found",
         message: "Terminal session not found for task",
         status: 404,
-      },
-      task_working_directory_unavailable: {
-        error: "invalid_session_configuration",
-        status: 400,
       },
     },
     fallback: {

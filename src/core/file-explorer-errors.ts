@@ -48,6 +48,7 @@ export class FileExplorerConflictError extends FileExplorerError<"conflict"> {
       details: {
         conflict: true,
         currentFile,
+        publicMessage: message,
       },
     });
     this.name = "FileExplorerConflictError";

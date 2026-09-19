@@ -26,7 +26,7 @@ import {
 } from "../core/file-explorer-service";
 import { isFileExplorerConflictError } from "../core/file-explorer-errors";
 import { createLogger } from "@pablozaiden/webapp/server";
-import { errorResponse } from "./helpers";
+import { domainErrorResponse, errorResponse } from "./helpers";
 import { createFileDownloadHeadResponse, createFileDownloadResponse, createInlineImageResponse } from "./file-download-response";
 import { parseAndValidate, validateRequest, type ValidationResult } from "./validation";
 
@@ -93,57 +93,47 @@ function mapFileExplorerError(
   }
 
   if (isFileExplorerConflictError(error)) {
-    return Response.json({
-      error: "file_conflict",
-      message: error.message,
-      currentFile: error.currentFile,
-    }, { status: 409 });
+    return domainErrorResponse(error, {
+      policy: "file-explorer",
+      fallback: {
+        error: "file_conflict",
+        message: "The file changed since it was loaded.",
+        status: 409,
+      },
+    });
   }
 
   if (isDomainError(error)) {
-    switch (error.code) {
-      case "start_directory_not_found":
-        return errorResponse("start_directory_not_found", error.message, 404);
-      case "invalid_start_directory_type":
-        return errorResponse("invalid_start_directory_type", error.message, 400);
-      case "file_not_found":
-        return errorResponse("file_not_found", error.message, 404);
-      case "invalid_path_type":
-      case "invalid_path":
-        return errorResponse(
-          error.code === "invalid_path"
-            ? config.invalidPathError
-            : "invalid_path_type",
-          error.message,
-          400,
-        );
-      case "root_not_mutable":
-        return errorResponse(config.invalidPathError, error.message, 400);
-      case "invalid_file_name":
-        return errorResponse("invalid_file_name", error.message, 400);
-      case "upload_session_not_found":
-        return errorResponse("upload_session_not_found", error.message, 404);
-      case "upload_session_target_mismatch":
-      case "invalid_upload_state":
-        return errorResponse("invalid_upload_state", error.message, 400);
-      case "upload_size_exceeded":
-        return errorResponse("upload_size_exceeded", error.message, 413);
-      case "invalid_preview_type":
-        return errorResponse("invalid_preview_type", error.message, 400);
-      case "invalid_credential_token":
-        return errorResponse("invalid_credential_token", error.message, 400);
-      case "execution_host_capability_unavailable":
-        return errorResponse(
-          "execution_host_capability_unavailable",
-          error.message,
-          409,
-        );
-      case "ssh_server_not_found":
-        return errorResponse("not_found", error.message, 404);
-      case "operation_failed":
-      default:
-        return errorResponse(config.internalError, "File explorer operation failed", 500);
-    }
+    return domainErrorResponse(error, {
+      policy: "file-explorer",
+      mappings: {
+        invalid_path: {
+          status: 400,
+          error: config.invalidPathError,
+        },
+        operation_failed: {
+          status: 500,
+          error: config.internalError,
+        },
+        root_not_mutable: {
+          status: 400,
+          error: config.invalidPathError,
+        },
+        ssh_server_not_found: {
+          status: 404,
+          error: "not_found",
+        },
+        upload_session_target_mismatch: {
+          status: 400,
+          error: "invalid_upload_state",
+        },
+      },
+      fallback: {
+        error: config.internalError,
+        message: "File explorer operation failed",
+        status: 500,
+      },
+    });
   }
 
   return errorResponse(config.internalError, "File explorer operation failed", 500);

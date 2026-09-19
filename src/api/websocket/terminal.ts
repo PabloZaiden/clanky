@@ -7,29 +7,12 @@ import {
   createTerminalConnection,
   resolveTerminal,
 } from "../../core/terminal-connection";
+import { resolveDomainErrorHttpMapping } from "../domain-error-policy";
 
 const log = createLogger("api:websocket");
 const SAFE_TERMINAL_ERROR_MESSAGE = "SSH terminal connection failed";
 const SAFE_TERMINAL_CONNECTION_ERROR_MESSAGE = "Terminal connection failed";
 export const SSH_TERMINAL_CREDENTIALS_REQUIRED_MESSAGE = "SSH credentials are required for this terminal";
-const KNOWN_TERMINAL_DOMAIN_ERROR_CODES = new Set([
-  "invalid_credential_token",
-  "ssh_server_not_found",
-  "workspace_not_found",
-  "terminal_session_not_found",
-  "terminal_session_closing",
-  "terminal_target_mismatch",
-  "terminal_execution_target_changed",
-  "terminal_directory_unavailable",
-  "terminal_connection_unavailable",
-  "terminal_persistent_session_attach_unavailable",
-  "mesh_terminal_capability_unavailable",
-  "mesh_terminal_capability_mismatch",
-  "mesh_terminal_target_unavailable",
-  "mesh_terminal_link_unavailable",
-  "mesh_terminal_session_expired",
-]);
-
 const activeTerminalSockets = new Map<string, ServerWebSocket<WebSocketData>>();
 
 function claimTerminalSocket(
@@ -234,10 +217,17 @@ export function getTerminalErrorPayload(
   error: unknown,
   fallbackMessage = SAFE_TERMINAL_ERROR_MESSAGE,
 ): TerminalErrorPayload {
-  if (isDomainError(error) && KNOWN_TERMINAL_DOMAIN_ERROR_CODES.has(error.code)) {
+  if (isDomainError(error)) {
+    const mapping = resolveDomainErrorHttpMapping(error, {
+      policy: "transport",
+      fallback: { message: fallbackMessage },
+    });
+    if (!mapping) {
+      return { message: fallbackMessage };
+    }
     return {
       code: error.code,
-      message: error.message,
+      message: mapping.message ?? fallbackMessage,
     };
   }
 

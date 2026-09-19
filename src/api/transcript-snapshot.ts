@@ -1,6 +1,6 @@
 import type { TranscriptSnapshotOptions } from "@/shared";
 import { isDomainError } from "../core/domain-error";
-import { errorResponse } from "./helpers";
+import { domainErrorResponse, errorResponse } from "./helpers";
 
 /**
  * Parse the paged transcript contract. An omitted option returns only the
@@ -53,9 +53,12 @@ export function transcriptSnapshotErrorResponse(error: unknown): Response | null
   if (!isDomainError(error) || error.code !== "transcript_cursor_invalid") {
     return null;
   }
-  return errorResponse(
-    "invalid_transcript_cursor",
-    "The transcript cursor is invalid",
-    400,
-  );
+  return domainErrorResponse(error, {
+    policy: "transcript",
+    fallback: {
+      error: "invalid_transcript_cursor",
+      message: "The transcript cursor is invalid",
+      status: 400,
+    },
+  });
 }

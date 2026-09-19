@@ -12,7 +12,12 @@ import { taskManager } from "../../core/task-manager";
 import { TaskUpdateError } from "../../core/task/task-errors";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { parseAndValidate } from "../validation";
-import { errorResponse, internalErrorResponse, successResponse } from "../helpers";
+import {
+  domainErrorResponse,
+  errorResponse,
+  internalErrorResponse,
+  successResponse,
+} from "../helpers";
 import type { TaskConfig, Task } from "@/shared/task";
 import type { z } from "zod";
 import { UpdateTaskRequestSchema } from "@/contracts/schemas";
@@ -96,10 +101,24 @@ async function applyTaskUpdates(
   } catch (error) {
     const errorMessage = String(error);
     if (error instanceof TaskUpdateError) {
-      return errorResponse(error.code, error.message, 409);
+      return domainErrorResponse(error, {
+        policy: "tasks",
+        fallback: {
+          error: error.code,
+          message: "Task update is not allowed in the current state.",
+          status: 409,
+        },
+      });
     }
     if (isDomainError(error) && error.code === "workspace_worktrees_disabled") {
-      return errorResponse(error.code, error.message, 409);
+      return domainErrorResponse(error, {
+        policy: "tasks",
+        fallback: {
+          error: "workspace_worktrees_disabled",
+          message: "Worktrees are disabled for this workspace.",
+          status: 409,
+        },
+      });
     }
     log.error("Failed to update task", { taskId, error: errorMessage });
     return internalErrorResponse(error, {

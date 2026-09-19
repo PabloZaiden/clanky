@@ -20,6 +20,7 @@ import { parseAndValidate, validateRequest } from "./validation";
 import { generateDeterministicAgentCode } from "../core/deterministic-agent-generation";
 import { testDeterministicAgentCode } from "../core/deterministic-agent-test";
 import { isDomainError } from "../core/domain-error";
+import { resolveDomainErrorHttpMapping } from "./domain-error-policy";
 import {
   assertWorktreesAllowed,
   isGitBackedWorkspace,
@@ -166,13 +167,7 @@ async function resetGenerationChat(
       error: String(error),
     });
     return domainErrorResponse(error, {
-      mappings: {
-        agent_not_found: {
-          error: "agent_not_found",
-          message: "Agent not found",
-          status: 404,
-        },
-      },
+      policy: "agents",
       fallback: {
         error: "generation_chat_failed",
         message: "Failed to prepare the generation conversation",
@@ -273,23 +268,24 @@ async function mapGenerateAgentCodeError(
   agentId?: string,
 ): Promise<{ status: number; payload: GenerateAgentCodeErrorPayload }> {
   if (isDomainError(error) && error.code === "agent_code_invalid") {
+    const mapping = resolveDomainErrorHttpMapping(error, {
+      policy: "agents",
+      fallback: {
+        message: "Agent code is invalid",
+      },
+    });
     return {
-      status: 400,
+      status: mapping?.status ?? 400,
       payload: {
-        error: "agent_code_invalid",
-        message: error.message,
-        diagnostics: error.details["diagnostics"] ?? [],
+        error: mapping?.error ?? "agent_code_invalid",
+        message: mapping?.message ?? "Agent code is invalid",
+        diagnostics: mapping?.extra?.["diagnostics"] ?? [],
       },
     };
   }
 
   const response = domainErrorResponse(error, {
-    mappings: {
-      agent_code_generation_failed: {
-        error: "agent_code_generation_failed",
-        status: 502,
-      },
-    },
+    policy: "agents",
     fallback: {
       error: "generate_agent_code_failed",
       message: "Failed to generate agent code",
@@ -445,7 +441,14 @@ async function prepareDeterministicAgentTest(
       assertWorktreesAllowed(workspace);
     } catch (error) {
       if (isDomainError(error)) {
-        return errorResponse(error.code, error.message, 409);
+        return domainErrorResponse(error, {
+          policy: "agents",
+          fallback: {
+            error: error.code,
+            message: "The workspace configuration is not valid for this operation.",
+            status: 409,
+          },
+        });
       }
       throw error;
     }
@@ -1024,21 +1027,7 @@ export const agentsRoutes = defineRoutes({
         return Response.json(await toLightweightAgentRun(run), { status: 202 });
       } catch (error) {
         const response = domainErrorResponse(error, {
-          mappings: {
-            agent_not_found: {
-              error: "agent_not_found",
-              message: "Agent not found",
-              status: 404,
-            },
-            agent_already_running: {
-              error: "agent_already_running",
-              status: 409,
-            },
-            workspace_worktrees_disabled: {
-              error: "workspace_worktrees_disabled",
-              status: 409,
-            },
-          },
+          policy: "agents",
           fallback: {
             error: "run_agent_failed",
             message: "Failed to run agent",
@@ -1069,17 +1058,7 @@ export const agentsRoutes = defineRoutes({
         return Response.json(await toLightweightAgentRun(run));
       } catch (error) {
         const response = domainErrorResponse(error, {
-          mappings: {
-            agent_run_not_ready: {
-              error: "agent_run_not_ready",
-              status: 409,
-            },
-            agent_chat_not_found: {
-              error: "agent_run_not_ready",
-              message: "Agent run chat is no longer available",
-              status: 409,
-            },
-          },
+          policy: "agents",
           fallback: {
             error: "interrupt_agent_failed",
             message: "Failed to interrupt agent",

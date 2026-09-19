@@ -11,73 +11,12 @@ import {
   UpdateMeshInstanceNameSchema,
 } from "@/contracts/schemas/mesh";
 import { meshManager } from "../core/mesh-manager";
-import { isDomainError } from "../core/domain-error";
 import { domainErrorResponse, successResponse } from "./helpers";
 import { parseAndValidate } from "./validation";
 
-const meshErrorMappings = {
-  mesh_enrollment_target_invalid: { status: 400 },
-  mesh_enrollment_discovery_invalid: { status: 400 },
-  mesh_enrollment_discovery_too_large: { status: 400 },
-  mesh_enrollment_discovery_unreachable: { status: 503 },
-  mesh_enrollment_discovery_timeout: { status: 503 },
-  mesh_enrollment_discovery_rejected: { status: 502 },
-  mesh_enrollment_relay_unpaired: { status: 409 },
-  mesh_enrollment_relay_identity_invalid: { status: 400 },
-  mesh_enrollment_response_invalid: { status: 502 },
-  mesh_enrollment_relay_mismatch: { status: 409 },
-  mesh_relay_not_paired: { status: 409 },
-  mesh_relay_unavailable: { status: 503 },
-  mesh_worker_relay_grants_inconsistent: { status: 409 },
-} as const;
-
 export function meshErrorResponse(error: unknown): Response {
-  if (isDomainError(error)) {
-    const status = error.code === "mesh_worker_not_found"
-        || error.code === "workspace_worker_enrollment_not_found"
-          ? 404
-        : error.code === "mesh_enrollment_token_invalid"
-          || error.code === "mesh_enrollment_expired"
-          || error.code === "workspace_worker_enrollment_expired"
-          ? 410
-        : error.code === "mesh_enrollment_controller_mismatch"
-          || error.code === "mesh_enrollment_relay_mismatch"
-          || error.code === "mesh_relay_not_paired"
-          || error.code === "mesh_enrollment_self"
-          || error.code === "workspace_worker_enrollment_claimed"
-          || error.code === "workspace_worker_already_attached"
-          || error.code === "workspace_worker_already_registered"
-          || error.code === "workspace_worker_workspace_scoped"
-          || error.code === "workspace_worker_enrollment_invalid"
-          ? 409
-          : error.code === "mesh_role_invalid"
-            ? 404
-            : error.code === "mesh_peer_not_trusted"
-              ? 403
-              : error.code === "mesh_peer_revoked"
-                ? 403
-              : error.code === "mesh_control_request_unreachable"
-                || error.code === "mesh_enrollment_discovery_unreachable"
-                || error.code === "mesh_enrollment_discovery_timeout"
-                || error.code === "mesh_relay_unavailable"
-                ? 503
-                : error.code === "mesh_control_request_rejected"
-                  || error.code === "mesh_enrollment_discovery_rejected"
-                  ? 502
-                  : error.code.startsWith("mesh_")
-                    ? 400
-                    : 500;
-    return domainErrorResponse(error, {
-      mappings: meshErrorMappings,
-      fallback: {
-        error: "mesh_operation_failed",
-        message: "Mesh operation failed",
-        status,
-      },
-    });
-  }
   return domainErrorResponse(error, {
-    mappings: meshErrorMappings,
+    policy: "mesh",
     fallback: {
       error: "mesh_operation_failed",
       message: "Mesh operation failed",
