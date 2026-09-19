@@ -9,11 +9,7 @@ import { getDatabase } from "../database";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { taskToRow, rowToTask, validateColumnNames } from "./helpers";
 import { requirePersistenceUserId } from "../ownership";
-import {
-  applyTranscriptChangeSetInTransaction,
-  hydrateTranscriptStateForUser,
-  syncTranscriptEntriesInTransaction,
-} from "../transcripts/store";
+import { taskTranscriptStore } from "../transcripts/task-store";
 import { TASK_LIST_COLUMNS } from "./crud";
 
 const log = createLogger("persistence:tasks");
@@ -89,16 +85,15 @@ export async function updateTaskStateForUser(
     `);
     updateStmt.run(...values);
     if (options.transcriptChanges) {
-      applyTranscriptChangeSetInTransaction(
+      taskTranscriptStore.applyChangeSetInTransaction(
         db,
-        "task",
         taskId,
         userId,
         options.transcriptChanges,
       );
     } else {
       const previousState = options.previousState ?? (() => {
-        const transcript = hydrateTranscriptStateForUser("task", taskId, userId);
+        const transcript = taskTranscriptStore.hydrateForUser(taskId, userId);
         return {
           ...state,
           messages: transcript.messages,
@@ -106,9 +101,8 @@ export async function updateTaskStateForUser(
           toolCalls: transcript.toolCalls,
         };
       })();
-      syncTranscriptEntriesInTransaction(
+      taskTranscriptStore.syncInTransaction(
         db,
-        "task",
         taskId,
         userId,
         previousState,
