@@ -317,6 +317,7 @@ export const routes = defineRoutes<ClankyRealtimeEvent>({
           data: {
             webappSocketHandler: "clanky",
             previewBridgeMode: true,
+            previewBridgeUserId: user.id,
             user,
           },
         });
