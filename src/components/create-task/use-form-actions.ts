@@ -220,9 +220,8 @@ export function useFormActions({
       } finally {
         setSubmitting(false);
       }
-      // Note: onSubmit and onCancel intentionally NOT in deps (parent callbacks)
-      // Note: prompt/name read from refs to avoid stale closures
-      // eslint-disable-next-line react-hooks/exhaustive-deps
+      // Read name and prompt from refs so external actions and delayed title
+      // generation use the latest field values rather than a render-time closure.
     },
     [
       selectedWorkspaceId,
@@ -243,7 +242,13 @@ export function useFormActions({
       attachments,
       uploadedPlan,
       generateTitle,
-    ]
+      isEditing,
+      onSubmit,
+      closeOnSuccess,
+      onCancel,
+      nameRef,
+      promptRef,
+    ],
   );
 
   const handleSubmitClick = useCallback(() => {

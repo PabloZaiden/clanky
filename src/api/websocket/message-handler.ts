@@ -159,7 +159,13 @@ export function createMessageHandler(helpers: TerminalHelpers) {
     }
 
     if (ws.data.previewBridgeMode) {
-      if (!ws.data.user) {
+      if (
+        !ws.data.user
+        || (
+          ws.data.previewBridgeUserId
+          && ws.data.previewBridgeUserId !== ws.data.user.id
+        )
+      ) {
         ws.close(1008, "Authenticated user context is required for preview bridges");
         return;
       }
