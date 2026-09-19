@@ -29,6 +29,7 @@ import {
   getWorkspaceWorkerEnrollmentByWorkspace,
   listWorkspaceWorkerEnrollments,
   markWorkspaceWorkerConnected,
+  releaseWorkspaceWorkerProvisioningClaim,
   type CreatedWorkspaceWorkerEnrollment,
   type WorkspaceWorkerEnrollment,
 } from "../persistence/workspace-worker-enrollments";
@@ -226,6 +227,18 @@ export class WorkspaceWorkerEnrollmentService {
       );
     }
     return this.getExecutionHostBinding(userId, enrollmentId);
+  }
+
+  releaseProvisioningClaim(
+    userId: string,
+    enrollmentId: string,
+    jobId: string,
+  ): boolean {
+    return releaseWorkspaceWorkerProvisioningClaim({
+      userId,
+      enrollmentId,
+      claimedBy: jobId,
+    });
   }
 
   claimForWorkspace(

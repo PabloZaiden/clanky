@@ -47,6 +47,11 @@ export interface ProvisioningLogEntry {
   step?: ProvisioningStep;
 }
 
+export interface ProvisioningCleanupError {
+  resource: string;
+  message: string;
+}
+
 export interface ProvisioningJobError {
   code: string;
   message: string;
@@ -87,6 +92,7 @@ export interface ProvisioningJobState {
   workspaceAction?: "created" | "reused";
   serverSettings?: ServerSettings;
   error?: ProvisioningJobError;
+  cleanupErrors?: ProvisioningCleanupError[];
   startedAt?: string;
   completedAt?: string;
   updatedAt: string;
