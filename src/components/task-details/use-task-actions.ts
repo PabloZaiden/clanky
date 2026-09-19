@@ -32,7 +32,7 @@ interface UseTaskActionsOptions {
   enablePullRequestAutoMerge: () => Promise<PullRequestAutoMergeResult>;
   startAutomaticPrFlow: () => Promise<AutomaticPrFlowResult>;
   stopAutomaticPrFlow: () => Promise<AutomaticPrFlowResult>;
-  acceptPlan: (mode?: "start_task" | "open_terminal") => Promise<AcceptPlanResult>;
+  acceptPlan: () => Promise<AcceptPlanResult>;
   discardPlan: () => Promise<boolean>;
   connectTerminal: () => Promise<TerminalSession | null>;
   update: (request: UpdateTaskRequest) => Promise<boolean>;
@@ -85,7 +85,7 @@ export interface UseTaskActionsResult {
   handleEnablePullRequestAutoMerge: () => Promise<void>;
   handleStartAutomaticPrFlow: () => Promise<void>;
   handleStopAutomaticPrFlow: () => Promise<void>;
-  handleAcceptPlan: (mode?: "start_task" | "open_terminal") => Promise<void>;
+  handleAcceptPlan: () => Promise<void>;
   handleDiscardPlan: () => Promise<void>;
   handleConnectTerminal: () => Promise<void>;
   handleOpenTaskFiles: () => void;
@@ -249,19 +249,12 @@ export function useTaskActions({
     }
   }
 
-  async function handleAcceptPlan(mode: "start_task" | "open_terminal" = "start_task") {
+  async function handleAcceptPlan() {
     setPlanActionSubmitting(true);
     try {
-      const result = await acceptPlan(mode);
+      const result = await acceptPlan();
       if (!result.success) {
-        const errorLabel = mode === "open_terminal"
-          ? "Failed to accept plan and open terminal"
-          : "Failed to accept plan";
-        toast.error(errorLabel);
-        return;
-      }
-      if (result.success && result.mode === "open_terminal") {
-        navigateToTerminalSession(result.terminalSession.config.id);
+        toast.error("Failed to accept plan");
       }
     } finally {
       setPlanActionSubmitting(false);
