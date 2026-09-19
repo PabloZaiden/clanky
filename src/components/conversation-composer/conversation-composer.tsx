@@ -67,6 +67,7 @@ export function ConversationComposer(props: ConversationComposerProps) {
     modelSelectId,
     messageInputId,
     hasContent,
+    hasAttachmentWithoutMessage,
     controlsDisabled,
     attachmentLimitReached,
     handleSubmit,
@@ -225,6 +226,7 @@ export function ConversationComposer(props: ConversationComposerProps) {
                   type="submit"
                   disabled={
                     controlsDisabled
+                    || hasAttachmentWithoutMessage
                     || (!active && selectedModel.length > 0 && !selectedModelEnabled)
                   }
                   className="wapp-action-menu-trigger wapp-action-menu-trigger-compact flex-shrink-0"

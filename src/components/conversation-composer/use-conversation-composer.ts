@@ -44,6 +44,7 @@ export function useConversationComposer({
   externallyBusy = false,
   disabled = false,
   requireMessage = false,
+  requireMessageForAttachments = false,
   voice,
   onSubmit,
   onInterrupt,
@@ -147,6 +148,14 @@ export function useConversationComposer({
     if (!hasContent && !hasModelChange) {
       return;
     }
+    if (
+      requireMessageForAttachments
+      && currentAttachments.length > 0
+      && trimmedMessage.length === 0
+    ) {
+      setSubmissionError("Enter a message to send attachments.");
+      return;
+    }
     if (requireMessage && trimmedMessage.length === 0) {
       setSubmissionError("Enter a message.");
       return;
@@ -201,6 +210,7 @@ export function useConversationComposer({
     isSubmitting,
     onSubmit,
     requireMessage,
+    requireMessageForAttachments,
     selectedModel,
     selectedModelEnabled,
   ]);
@@ -271,6 +281,9 @@ export function useConversationComposer({
   } = useComposerSizing(message);
   const composerInstanceId = useId();
   const hasContent = message.trim().length > 0 || attachments.length > 0;
+  const hasAttachmentWithoutMessage = requireMessageForAttachments
+    && attachments.length > 0
+    && message.trim().length === 0;
   const composerBusy = isSubmitting || externallyBusy;
   const controlsDisabled = composerBusy || disabled;
 
@@ -309,6 +322,7 @@ export function useConversationComposer({
     modelSelectId: `${composerInstanceId}-model`,
     messageInputId: `${composerInstanceId}-message`,
     hasContent,
+    hasAttachmentWithoutMessage,
     controlsDisabled,
     attachmentLimitReached: attachments.length >= MESSAGE_ATTACHMENT_LIMIT,
     handleSubmit,

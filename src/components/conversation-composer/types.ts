@@ -46,6 +46,7 @@ export interface ConversationComposerProps {
   externallyBusy?: boolean;
   disabled?: boolean;
   requireMessage?: boolean;
+  requireMessageForAttachments?: boolean;
   notice?: ConversationComposerNotice;
   status?: ConversationComposerStatus;
   voice?: ConversationComposerVoice;

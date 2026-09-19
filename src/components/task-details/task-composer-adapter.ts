@@ -89,6 +89,7 @@ export function useTaskComposerAdapter({
     active: isGenerating,
     disabled: isLoading,
     requireMessage: canTerminalFollowUp,
+    requireMessageForAttachments: true,
     voice,
     onSubmit: submit,
     onInterrupt: stopTask,

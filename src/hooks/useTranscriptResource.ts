@@ -89,13 +89,20 @@ function buildSnapshotUrl(
   return `${baseUrl}/snapshot${query ? `?${query}` : ""}`;
 }
 
+function replaceResource<TResource>(
+  _current: TResource | null,
+  incoming: TResource,
+): TResource {
+  return incoming;
+}
+
 export function useTranscriptResource<TResource, TSnapshot>({
   resourceId,
   resourceLabel,
   baseUrl,
   initialResource = null,
   decodeSnapshot,
-  mergeResource = (_current, incoming) => incoming,
+  mergeResource = replaceResource,
 }: UseTranscriptResourceOptions<TResource, TSnapshot>): UseTranscriptResourceResult<TResource> {
   const [resource, setResourceState] = useState<TResource | null>(initialResource);
   const [transcript, setTranscriptState] = useState<ChatTranscript>(createEmptyTranscript);
