@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { getModelDisplayName, ModelSelector } from "../ModelSelector";
 import {
   ImageAttachmentControl,
@@ -78,6 +79,14 @@ export function ConversationComposer(props: ConversationComposerProps) {
     handleRemoveAttachment,
   } = state;
   const showVoicePanel = Boolean(voice && voice.status !== "idle");
+  const voicePanelWasVisibleRef = useRef(false);
+
+  useEffect(() => {
+    if (voicePanelWasVisibleRef.current && !showVoicePanel) {
+      composerTextareaRef.current?.focus();
+    }
+    voicePanelWasVisibleRef.current = showVoicePanel;
+  }, [composerTextareaRef, showVoicePanel]);
 
   return (
     <div className={`${isKeyboardVisible ? "" : "safe-area-bottom"} clanky-conversation-composer-surface`}>

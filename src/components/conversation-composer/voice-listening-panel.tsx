@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
 import { Button, CloseIcon, RefreshIcon } from "../common";
 import type { VoiceRecorderStatus } from "../../hooks/useVoiceRecorder";
 import { VOICE_MAX_RECORDING_MS } from "../../hooks/useVoiceRecorder";
@@ -52,6 +52,14 @@ export function VoiceListeningPanel({
   onRetry: () => Promise<void>;
   onDismissError: () => void;
 }) {
+  const panelRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (status !== "idle") {
+      panelRef.current?.focus();
+    }
+  }, [status]);
+
   if (status === "idle") {
     return null;
   }
@@ -69,10 +77,25 @@ export function VoiceListeningPanel({
     title = "Transcribing…";
   }
 
+  function handleKeyDown(event: KeyboardEvent<HTMLElement>): void {
+    if (event.key !== "Escape") {
+      return;
+    }
+    event.preventDefault();
+    if (listening || pending) {
+      onCancel();
+    } else {
+      onDismissError();
+    }
+  }
+
   return (
     <section
+      ref={panelRef}
       aria-label="Voice input"
       aria-busy={pending || undefined}
+      tabIndex={-1}
+      onKeyDown={handleKeyDown}
       className="border-t border-[var(--wapp-border-soft)] bg-[var(--wapp-surface)] px-3 py-2.5 text-[var(--wapp-text)] shadow-[var(--wapp-shadow)] sm:px-4"
     >
       <div className="mx-auto flex w-full max-w-7xl items-center gap-3">
