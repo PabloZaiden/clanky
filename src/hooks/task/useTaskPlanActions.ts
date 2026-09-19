@@ -18,7 +18,7 @@ const log = createLogger("useTask");
 
 export interface UseTaskPlanActionsResult {
   sendPlanFeedback: (feedback: string, attachments?: MessageImageAttachment[]) => Promise<boolean>;
-  acceptPlan: (mode?: "start_task" | "open_terminal") => Promise<AcceptPlanResult>;
+  acceptPlan: () => Promise<AcceptPlanResult>;
   discardPlan: () => Promise<boolean>;
 }
 
@@ -59,7 +59,7 @@ export function useTaskPlanActions(params: UseTaskActionsParams): UseTaskPlanAct
   );
 
   const acceptPlan = useCallback(
-    async (mode: "start_task" | "open_terminal" = "start_task"): Promise<AcceptPlanResult> => {
+    async (): Promise<AcceptPlanResult> => {
       const actionTaskId = taskId;
       const staleAction = ignoreStaleTaskAction<AcceptPlanResult>("acceptPlan", actionTaskId, {
         success: false,
@@ -67,15 +67,15 @@ export function useTaskPlanActions(params: UseTaskActionsParams): UseTaskPlanAct
       if (staleAction !== null) {
         return staleAction;
       }
-      log.info("Accepting plan", { taskId: actionTaskId, mode });
+      log.info("Accepting plan", { taskId: actionTaskId });
       try {
-        const result = await acceptPlanApi(actionTaskId, mode);
+        const result = await acceptPlanApi(actionTaskId);
         await refresh();
         if (!isActiveTask(actionTaskId)) {
           return { success: false };
         }
         if (result.success) {
-          log.info("Plan accepted", { taskId: actionTaskId, mode: result.mode });
+          log.info("Plan accepted", { taskId: actionTaskId });
         }
         return result;
       } catch (err) {
@@ -88,7 +88,7 @@ export function useTaskPlanActions(params: UseTaskActionsParams): UseTaskPlanAct
         if (staleError !== null) {
           return staleError;
         }
-        log.error("Failed to accept plan", { taskId: actionTaskId, mode, error: String(err) });
+        log.error("Failed to accept plan", { taskId: actionTaskId, error: String(err) });
         setError(String(err));
         return { success: false };
       }
