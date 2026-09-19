@@ -31,6 +31,8 @@ export interface GenerateTaskNameOptions {
   model?: ModelConfig;
   /** Timeout in milliseconds (default: 30_000ms / 30s, see DEFAULT_TASK_TITLE_TIMEOUT_MS) */
   timeoutMs?: number;
+  /** Cancel the temporary backend session if generation times out */
+  cancelSession?: () => Promise<void>;
 }
 
 export interface GenerateChatNameOptions {
@@ -44,6 +46,8 @@ export interface GenerateChatNameOptions {
   model?: ModelConfig;
   /** Timeout in milliseconds (default: 30_000ms / 30s, see DEFAULT_CHAT_NAME_TIMEOUT_MS) */
   timeoutMs?: number;
+  /** Cancel the temporary backend session if generation times out */
+  cancelSession?: () => Promise<void>;
 }
 
 /**
@@ -66,6 +70,103 @@ export function sanitizeTaskName(name: string): string {
 
 export const sanitizeChatName = sanitizeTaskName;
 
+class NameGenerationTimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "NameGenerationTimeoutError";
+  }
+}
+
+interface GenerateNameOperationOptions {
+  source: string;
+  sourceError: string;
+  backend: BackendInterface;
+  sessionId: string;
+  model?: ModelConfig;
+  timeoutMs: number;
+  buildPrompt: (source: string, model?: ModelConfig) => PromptInput;
+  timeoutMessage: string;
+  emptyResponseMessage: string;
+  unusableResponseMessage: string;
+  errorPrefix: string;
+  sanitize: (name: string) => string;
+  cancelSession?: () => Promise<void>;
+}
+
+async function sendPromptWithTimeout(
+  options: Pick<
+    GenerateNameOperationOptions,
+    "backend" | "sessionId" | "timeoutMs" | "timeoutMessage" | "cancelSession"
+  > & { prompt: PromptInput },
+): Promise<AgentResponse> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const responsePromise = Promise.resolve().then(() =>
+    options.backend.sendPrompt(options.sessionId, options.prompt)
+  );
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(
+      () => reject(new NameGenerationTimeoutError(options.timeoutMessage)),
+      options.timeoutMs,
+    );
+  });
+
+  try {
+    return await Promise.race([responsePromise, timeoutPromise]);
+  } catch (error) {
+    if (!(error instanceof NameGenerationTimeoutError) || !options.cancelSession) {
+      throw error;
+    }
+
+    try {
+      await options.cancelSession();
+    } catch (cancelError) {
+      throw new Error(
+        `${error.message}; failed to cancel temporary backend session: ${String(cancelError)}`,
+        { cause: cancelError },
+      );
+    }
+    throw error;
+  } finally {
+    if (timeoutId !== undefined) {
+      clearTimeout(timeoutId);
+    }
+  }
+}
+
+async function generateName(options: GenerateNameOperationOptions): Promise<string> {
+  if (!options.source || !options.source.trim()) {
+    throw new Error(options.sourceError);
+  }
+
+  if (!options.backend || !options.sessionId) {
+    throw new Error("Backend and sessionId are required");
+  }
+
+  try {
+    const response = await sendPromptWithTimeout({
+      backend: options.backend,
+      sessionId: options.sessionId,
+      prompt: options.buildPrompt(options.source.slice(0, 1000), options.model),
+      timeoutMs: options.timeoutMs,
+      timeoutMessage: options.timeoutMessage,
+      cancelSession: options.cancelSession,
+    });
+    const generatedName = response.content.trim();
+    if (!generatedName) {
+      throw new Error(options.emptyResponseMessage);
+    }
+
+    const sanitized = options.sanitize(generatedName);
+    if (!sanitized) {
+      throw new Error(options.unusableResponseMessage);
+    }
+
+    return sanitized;
+  } catch (error) {
+    throw new Error(`${options.errorPrefix}: ${String(error)}`, { cause: error });
+  }
+}
+
 /**
  * Generate a task title from a prompt using the configured agent backend.
  *
@@ -78,121 +179,55 @@ export const sanitizeChatName = sanitizeTaskName;
  * @throws Error if prompt is empty, the backend call fails, or the response is unusable
  */
 export async function generateTaskName(options: GenerateTaskNameOptions): Promise<string> {
-  const { prompt, backend, sessionId, model, timeoutMs = DEFAULT_TASK_TITLE_TIMEOUT_MS } = options;
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TASK_TITLE_TIMEOUT_MS;
+  return generateName({
+    source: options.prompt,
+    sourceError: "Prompt cannot be empty",
+    backend: options.backend,
+    sessionId: options.sessionId,
+    model: options.model,
+    timeoutMs,
+    buildPrompt: (truncatedPrompt, model) => ({
+      parts: [{
+        type: "text",
+        text: `Generate a title for a task with the following description. It should be 100 chars or less: ${truncatedPrompt}
 
-  // Validate inputs
-  if (!prompt || !prompt.trim()) {
-    throw new Error("Prompt cannot be empty");
-  }
-
-  if (!backend || !sessionId) {
-    throw new Error("Backend and sessionId are required");
-  }
-
-  // Truncate prompt for generation (max 1000 chars)
-  const truncatedPrompt = prompt.slice(0, 1000);
-
-  // Build the prompt for the backend
-  const nameGenerationPrompt: PromptInput = {
-    parts: [{
-      type: "text",
-      text: `Generate a title for a task with the following description. It should be 100 chars or less: ${truncatedPrompt}
-
-Output ONLY the title, nothing else. No quotes, no formatting, no explanation.`
-    }],
-    model,
-  };
-
-  try {
-    // Create a promise that rejects after timeout, storing the timer ID
-    // so we can clear it when the race completes (prevents timer leak).
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      timeoutId = setTimeout(
-        () => reject(new Error(`Name generation timed out after ${timeoutMs}ms`)),
-        timeoutMs
-      );
-    });
-
-    // Race between generation and timeout
-    let response: AgentResponse;
-    try {
-      response = await Promise.race([
-        backend.sendPrompt(sessionId, nameGenerationPrompt),
-        timeoutPromise,
-      ]);
-    } finally {
-      clearTimeout(timeoutId);
-    }
-
-    const generatedName = response.content.trim();
-    if (!generatedName) {
-      throw new Error("Title generation returned an empty response");
-    }
-
-    const sanitized = sanitizeTaskName(generatedName);
-    if (!sanitized) {
-      throw new Error("Title generation returned an unusable title");
-    }
-
-    return sanitized;
-  } catch (error) {
-    throw new Error(`Failed to generate task title: ${String(error)}`, { cause: error });
-  }
+Output ONLY the title, nothing else. No quotes, no formatting, no explanation.`,
+      }],
+      model,
+    }),
+    timeoutMessage: `Name generation timed out after ${timeoutMs}ms`,
+    emptyResponseMessage: "Title generation returned an empty response",
+    unusableResponseMessage: "Title generation returned an unusable title",
+    errorPrefix: "Failed to generate task title",
+    sanitize: sanitizeTaskName,
+    cancelSession: options.cancelSession,
+  });
 }
 
 export async function generateChatName(options: GenerateChatNameOptions): Promise<string> {
-  const { message, backend, sessionId, model, timeoutMs = DEFAULT_CHAT_NAME_TIMEOUT_MS } = options;
-
-  if (!message || !message.trim()) {
-    throw new Error("Message cannot be empty");
-  }
-  if (!backend || !sessionId) {
-    throw new Error("Backend and sessionId are required");
-  }
-
-  const truncatedMessage = message.slice(0, 1000);
-  const nameGenerationPrompt: PromptInput = {
-    parts: [{
-      type: "text",
-      text: `Generate a short name for a chat based on the user's first message. It should be 100 chars or less: ${truncatedMessage}
+  const timeoutMs = options.timeoutMs ?? DEFAULT_CHAT_NAME_TIMEOUT_MS;
+  return generateName({
+    source: options.message,
+    sourceError: "Message cannot be empty",
+    backend: options.backend,
+    sessionId: options.sessionId,
+    model: options.model,
+    timeoutMs,
+    buildPrompt: (truncatedMessage, model) => ({
+      parts: [{
+        type: "text",
+        text: `Generate a short name for a chat based on the user's first message. It should be 100 chars or less: ${truncatedMessage}
 
 Output ONLY the chat name, nothing else. No quotes, no formatting, no explanation.`,
-    }],
-    model,
-  };
-
-  try {
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      timeoutId = setTimeout(
-        () => reject(new Error(`Chat name generation timed out after ${timeoutMs}ms`)),
-        timeoutMs,
-      );
-    });
-
-    let response: AgentResponse;
-    try {
-      response = await Promise.race([
-        backend.sendPrompt(sessionId, nameGenerationPrompt),
-        timeoutPromise,
-      ]);
-    } finally {
-      clearTimeout(timeoutId);
-    }
-
-    const generatedName = response.content.trim();
-    if (!generatedName) {
-      throw new Error("Chat name generation returned an empty response");
-    }
-
-    const sanitized = sanitizeChatName(generatedName);
-    if (!sanitized) {
-      throw new Error("Chat name generation returned an unusable name");
-    }
-
-    return sanitized;
-  } catch (error) {
-    throw new Error(`Failed to generate chat name: ${String(error)}`, { cause: error });
-  }
+      }],
+      model,
+    }),
+    timeoutMessage: `Chat name generation timed out after ${timeoutMs}ms`,
+    emptyResponseMessage: "Chat name generation returned an empty response",
+    unusableResponseMessage: "Chat name generation returned an unusable name",
+    errorPrefix: "Failed to generate chat name",
+    sanitize: sanitizeChatName,
+    cancelSession: options.cancelSession,
+  });
 }

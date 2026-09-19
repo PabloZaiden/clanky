@@ -32,6 +32,7 @@ export {
 
 export { sanitizeBranchName } from "./sanitize-branch-name";
 export { formatFileSize, formatRelativeTime } from "./format";
+export { createIdempotentAsyncOperation } from "./async-operation";
 
 
 export { readClipboardContent, writeTextToClipboard, type ClipboardReadResult } from "./clipboard";

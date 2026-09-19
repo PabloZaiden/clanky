@@ -53,7 +53,7 @@ import {
 } from "./agent-event-transcript-interpreter";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { resolveEffectiveCheapModel } from "./cheap-model";
-import { generateChatName } from "../utils/name-generator";
+import { DEFAULT_CHAT_NAME_TIMEOUT_MS, generateChatName } from "../utils/name-generator";
 import { resolveToolCallImagePreview, getImageViewToolPath } from "./tool-call-image-preview";
 import { mergeToolCallRecord, upsertToolCallExtra, type ToolCallExtra } from "@/shared/tool-call";
 import { isPersistenceError } from "../persistence/errors";
@@ -68,6 +68,7 @@ import type {
 } from "./chat-service-contracts";
 import { buildPromptParts } from "../backends/prompt-parts";
 import { createChatLatencyTimer } from "./chat-latency-instrumentation";
+import { createIdempotentAsyncOperation } from "../utils/async-operation";
 
 const log = createLogger("chat-conversation-service");
 const DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS = 15 * 60 * 1000;
@@ -138,6 +139,7 @@ export class ChatConversationService implements ChatConversationPort {
   private readonly scheduleQueuedMessageDrain: (chatId: string) => void;
   private permissionHandler: ChatPermissionHandler | undefined;
   private activityTimeoutMs = DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS;
+  private nameGenerationTimeoutMs = DEFAULT_CHAT_NAME_TIMEOUT_MS;
 
   constructor(dependencies: ChatConversationServiceDependencies) {
     this.state = dependencies.state;
@@ -154,6 +156,10 @@ export class ChatConversationService implements ChatConversationPort {
 
   setActivityTimeoutForTesting(timeoutMs: number | undefined): void {
     this.activityTimeoutMs = timeoutMs ?? DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS;
+  }
+
+  setNameGenerationTimeoutForTesting(timeoutMs: number | undefined): void {
+    this.nameGenerationTimeoutMs = timeoutMs ?? DEFAULT_CHAT_NAME_TIMEOUT_MS;
   }
 
   async dispatchMessage(
@@ -1799,6 +1805,7 @@ export class ChatConversationService implements ChatConversationPort {
   ): Promise<void> {
     const timer = createChatLatencyTimer();
     let tempSession: SessionInfo | null = null;
+    let cleanupTempSession: (() => Promise<void>) | undefined;
     const directory = chat.state.worktree?.worktreePath
       ?? backend.getDirectory()
       ?? chat.config.directory;
@@ -1820,6 +1827,7 @@ export class ChatConversationService implements ChatConversationPort {
         directory,
       });
       const nameSession = tempSession;
+      cleanupTempSession = createIdempotentAsyncOperation(() => backend.abortSession(nameSession.id));
       const helperModel = await resolveEffectiveCheapModel({
         workspaceId,
         directory,
@@ -1831,6 +1839,8 @@ export class ChatConversationService implements ChatConversationPort {
         backend,
         sessionId: nameSession.id,
         model: helperModel,
+        timeoutMs: this.nameGenerationTimeoutMs,
+        cancelSession: cleanupTempSession,
       }));
 
       const latest = await this.loadChatIfAvailable(chat.config.id);
@@ -1872,7 +1882,7 @@ export class ChatConversationService implements ChatConversationPort {
     } finally {
       if (tempSession) {
         try {
-          await backend.abortSession(tempSession.id);
+          await cleanupTempSession?.();
         } catch (cleanupError) {
           log.warn("Failed to clean up temporary chat name generation session", {
             chatId: chat.config.id,
