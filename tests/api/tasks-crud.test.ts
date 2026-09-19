@@ -14,7 +14,7 @@ import { backendManager } from "../../src/core/backend-manager";
 import { ManagedPathService } from "../../src/core/managed-path-service";
 import { taskManager } from "../../src/core/task-manager";
 import { TestCommandExecutor } from "../mocks/mock-executor";
-import { createMockBackend } from "../mocks/mock-backend";
+import { createMockBackend, MockAcpBackend, defaultTestModel } from "../mocks/mock-backend";
 import type { AgentResponse } from "../../src/backends/types";
 import { updateTaskState } from "../../src/persistence/tasks";
 import type { TaskLogEntry, PersistedMessage, PersistedToolCall } from "@/shared";
@@ -175,22 +175,18 @@ describe("Tasks CRUD API Integration", () => {
 
     // Set up backend manager with test executor factory.
     // The mocked backend is also used by the explicit title-generation endpoint tests.
-    mockBackend = createMockBackend();
     let nameCounter = 0;
-    const originalSendPrompt = mockBackend.sendPrompt.bind(mockBackend);
-    mockBackend.sendPrompt = async (sessionId, prompt) => {
-      // Check if this is a name generation prompt (contains "Generate a title")
-      const promptText = prompt.parts?.map((part) => part.type === "text" ? part.text : "").join("") ?? "";
-      if (promptText.includes("Generate a title")) {
+    mockBackend = new MockAcpBackend({
+      models: [defaultTestModel],
+      onSendPrompt: () => {
         nameCounter++;
         return {
           id: `msg-name-${Date.now()}`,
           content: `crud-test-task-${nameCounter}`,
           parts: [{ type: "text" as const, text: `crud-test-task-${nameCounter}` }],
         };
-      }
-      return originalSendPrompt(sessionId, prompt);
-    };
+      },
+    });
     backendManager.setBackendForTesting(mockBackend);
     backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
 
@@ -963,25 +959,29 @@ describe("Tasks CRUD API Integration", () => {
     });
 
     test("cancels timed-out title generation before returning without a fallback title", async () => {
-      const timeoutBackend = createMockBackend();
       const lifecycle: string[] = [];
       let signalPromptStarted!: () => void;
       const promptStarted = new Promise<void>((resolve) => {
         signalPromptStarted = resolve;
       });
       let resolveLateResponse!: (response: AgentResponse) => void;
-      const originalSendPrompt = timeoutBackend.sendPrompt.bind(timeoutBackend);
-      timeoutBackend.sendPrompt = async (sessionId, prompt) => {
-        const promptText = prompt.parts?.map((part) => part.type === "text" ? part.text : "").join("") ?? "";
-        if (!promptText.includes("Generate a title")) {
-          return originalSendPrompt(sessionId, prompt);
-        }
-        lifecycle.push("prompt-started");
-        signalPromptStarted();
-        return await new Promise<AgentResponse>((resolve) => {
-          resolveLateResponse = resolve;
-        });
-      };
+      let signalLateResponseSettled!: () => void;
+      const lateResponseSettled = new Promise<void>((resolve) => {
+        signalLateResponseSettled = resolve;
+      });
+      const timeoutBackend = new MockAcpBackend({
+        models: [defaultTestModel],
+        onSendPrompt: async () => {
+          lifecycle.push("prompt-started");
+          signalPromptStarted();
+          return await new Promise<AgentResponse>((resolve) => {
+            resolveLateResponse = resolve;
+          });
+        },
+        onSendPromptSettled: () => {
+          signalLateResponseSettled();
+        },
+      });
       const originalAbortSession = timeoutBackend.abortSession.bind(timeoutBackend);
       timeoutBackend.abortSession = async (sessionId) => {
         lifecycle.push("session-aborted");
@@ -1018,7 +1018,7 @@ describe("Tasks CRUD API Integration", () => {
           content: "Late title must not be returned",
           parts: [{ type: "text", text: "Late title must not be returned" }],
         });
-        await Promise.resolve();
+        await lateResponseSettled;
       } finally {
         taskManager.setTitleGenerationTimeoutForTesting(undefined);
         backendManager.resetForTesting();
