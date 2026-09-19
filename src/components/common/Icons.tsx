@@ -49,6 +49,49 @@ export function ChatIcon({ className = "", size = "h-4 w-4" }: IconProps) {
 }
 
 /**
+ * Microphone icon for voice input actions.
+ */
+export function MicrophoneIcon({ className = "", size = "h-4 w-4" }: IconProps) {
+  return (
+    <svg
+      className={`${size} ${className}`.trim()}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2}
+    >
+      <rect x="9" y="3" width="6" height="11" rx="3" />
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M5 11a7 7 0 0014 0M12 18v3M8 21h8"
+      />
+    </svg>
+  );
+}
+
+/**
+ * Close/cancel icon for compact action buttons.
+ */
+export function CloseIcon({ className = "", size = "h-4 w-4" }: IconProps) {
+  return (
+    <svg
+      className={`${size} ${className}`.trim()}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M6 6l12 12M18 6L6 18"
+      />
+    </svg>
+  );
+}
+
+/**
  * Activity/pulse icon for active work navigation.
  */
 export function ActivityIcon({ className = "", size = "h-4 w-4" }: IconProps) {
