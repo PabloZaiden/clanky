@@ -13,6 +13,10 @@ import type {
   TaskLogEntry,
 } from "@/shared";
 import type { CreateAgentRequest, DeleteAgentRunsRequest, GenerateAgentCodeRequest, PrepareGenerateAgentCodeRequest, RunAgentRequest, TestAgentCodeRequest, UpdateAgentRequest } from "@/contracts/schemas";
+import {
+  createAgentRunRefreshCoordinator,
+  type AgentRunRefreshOptions,
+} from "../lib/agent-run-refresh";
 import { createRefreshCoordinator } from "../lib/refresh-coordinator";
 import { useRealtimeRefreshWithRecovery } from "./useRealtimeStream";
 
@@ -89,7 +93,8 @@ export function useAgents(): UseAgentsResult {
   const [error, setError] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const refreshCoordinatorRef = useRef(createRefreshCoordinator<void>());
-  const refreshRunsPromisesRef = useRef(new Map<string, Promise<void>>());
+  const refreshRunsCoordinatorRef = useRef(createAgentRunRefreshCoordinator<AgentRun[]>());
+  const isMountedRef = useRef(true);
 
   const refresh = useCallback((options: { showLoading?: boolean } = {}) => {
     return refreshCoordinatorRef.current.run(async () => {
@@ -126,36 +131,50 @@ export function useAgents(): UseAgentsResult {
     });
   }, []);
 
-  const refreshRuns = useCallback((agentId: string) => {
-    const existing = refreshRunsPromisesRef.current.get(agentId);
-    if (existing) {
-      return existing;
-    }
-
-    const promise = (async () => {
-      try {
-        const runs = await apiRequest<AgentRun[]>(`/api/agents/${agentId}/runs`, {
-          action: "Fetch agent runs",
-          fallbackMessage: "Failed to fetch agent runs",
-        });
-        setRunsByAgentId((prev) => ({ ...prev, [agentId]: sortRuns(runs) }));
-      } catch (refreshError) {
-        log.error("Failed to refresh agent runs", { agentId, error: String(refreshError) });
-        setError(String(refreshError));
-      }
-    })();
-    const trackedPromise = promise.finally(() => {
-      if (refreshRunsPromisesRef.current.get(agentId) === trackedPromise) {
-        refreshRunsPromisesRef.current.delete(agentId);
-      }
-    });
-    refreshRunsPromisesRef.current.set(agentId, trackedPromise);
-    return trackedPromise;
+  const invalidateAgentRunRefresh = useCallback((agentId: string): void => {
+    refreshRunsCoordinatorRef.current.invalidate(agentId);
   }, []);
 
+  const refreshRunsForAgent = useCallback((
+    agentId: string,
+    options: AgentRunRefreshOptions = {},
+  ): Promise<void> => {
+    if (!isMountedRef.current) {
+      return Promise.resolve();
+    }
+
+    return refreshRunsCoordinatorRef.current.refresh(agentId, {
+      ...options,
+      load: (signal) => apiRequest<AgentRun[]>(`/api/agents/${agentId}/runs`, {
+        signal,
+        action: "Fetch agent runs",
+        fallbackMessage: "Failed to fetch agent runs",
+      }),
+      onLoaded: (runs) => {
+        if (!isMountedRef.current) {
+          return;
+        }
+        setRunsByAgentId((prev) => ({ ...prev, [agentId]: sortRuns(runs) }));
+      },
+      onError: (refreshError) => {
+        if (!isMountedRef.current || isAbortError(refreshError)) {
+          return;
+        }
+        log.error("Failed to refresh agent runs", { agentId, error: String(refreshError) });
+        setError(String(refreshError));
+      },
+    });
+  }, []);
+
+  const refreshRuns = useCallback((agentId: string) => {
+    return refreshRunsForAgent(agentId);
+  }, [refreshRunsForAgent]);
+
   const refreshAllRuns = useCallback(async () => {
-    await Promise.all(Object.keys(runsByAgentId).map((agentId) => refreshRuns(agentId)));
-  }, [refreshRuns, runsByAgentId]);
+    await Promise.all(
+      Object.keys(runsByAgentId).map((agentId) => refreshRunsForAgent(agentId, { force: true })),
+    );
+  }, [refreshRunsForAgent, runsByAgentId]);
 
   const requestAgent = useCallback(async <T>(
     path: string,
@@ -386,6 +405,7 @@ export function useAgents(): UseAgentsResult {
       method: "DELETE",
     }, "Failed to delete agent");
     if (result?.success) {
+      invalidateAgentRunRefresh(id);
       setAgents((prev) => prev.filter((agent) => agent.config.id !== id));
       setRunsByAgentId((prev) => {
         const next = { ...prev };
@@ -395,7 +415,7 @@ export function useAgents(): UseAgentsResult {
       return true;
     }
     return false;
-  }, [requestAgent]);
+  }, [invalidateAgentRunRefresh, requestAgent]);
 
   const runAgent = useCallback(async (id: string, request: RunAgentRequest = { attachments: [] }) => {
     const run = await requestAgent<AgentRun>(`/api/agents/${id}/run`, {
@@ -403,10 +423,11 @@ export function useAgents(): UseAgentsResult {
       body: JSON.stringify(request),
     }, "Failed to run agent");
     if (run) {
+      invalidateAgentRunRefresh(run.agentId);
       setRunsByAgentId((prev) => ({ ...prev, [run.agentId]: upsertRun(prev[run.agentId] ?? [], run) }));
     }
     return run;
-  }, [requestAgent]);
+  }, [invalidateAgentRunRefresh, requestAgent]);
 
   const interruptAgent = useCallback(async (id: string) => {
     const run = await requestAgent<AgentRun>(`/api/agents/${id}/interrupt`, {
@@ -414,10 +435,11 @@ export function useAgents(): UseAgentsResult {
       body: JSON.stringify({}),
     }, "Failed to interrupt agent");
     if (run) {
+      invalidateAgentRunRefresh(run.agentId);
       setRunsByAgentId((prev) => ({ ...prev, [run.agentId]: upsertRun(prev[run.agentId] ?? [], run) }));
     }
     return run;
-  }, [requestAgent]);
+  }, [invalidateAgentRunRefresh, requestAgent]);
 
   const pauseAgent = useCallback(async (id: string) => {
     const agent = await requestAgent<Agent>(`/api/agents/${id}/pause`, {
@@ -442,17 +464,25 @@ export function useAgents(): UseAgentsResult {
   }, [requestAgent]);
 
   const deleteRun = useCallback(async (runId: string) => {
+    const agentId = Object.entries(runsByAgentId)
+      .find(([, runs]) => runs.some((run) => run.id === runId))?.[0];
     const result = await requestAgent<{ success: boolean }>(`/api/agent-runs/${runId}`, {
       method: "DELETE",
     }, "Failed to delete agent run");
     if (result?.success) {
+      if (agentId) {
+        invalidateAgentRunRefresh(agentId);
+      }
       setRunsByAgentId((prev) => Object.fromEntries(
-        Object.entries(prev).map(([agentId, runs]) => [agentId, runs.filter((run) => run.id !== runId)]),
+        Object.entries(prev).map(([currentAgentId, runs]) => [
+          currentAgentId,
+          runs.filter((run) => run.id !== runId),
+        ]),
       ));
       return true;
     }
     return false;
-  }, [requestAgent]);
+  }, [invalidateAgentRunRefresh, requestAgent, runsByAgentId]);
 
   const purgeRuns = useCallback(async (agentId: string, request: Partial<DeleteAgentRunsRequest> = {}) => {
     const result = await requestAgent<{ success: boolean; deletedRunIds: string[] }>(`/api/agents/${agentId}/runs`, {
@@ -461,6 +491,7 @@ export function useAgents(): UseAgentsResult {
     }, "Failed to purge agent runs");
     const deletedRunIds = result?.deletedRunIds ?? [];
     if (deletedRunIds.length > 0) {
+      invalidateAgentRunRefresh(agentId);
       const deleted = new Set(deletedRunIds);
       setRunsByAgentId((prev) => ({
         ...prev,
@@ -468,7 +499,7 @@ export function useAgents(): UseAgentsResult {
       }));
     }
     return deletedRunIds;
-  }, [requestAgent]);
+  }, [invalidateAgentRunRefresh, requestAgent]);
 
   useRealtimeRefreshWithRecovery({
     resources: ["agents"],
@@ -480,17 +511,22 @@ export function useAgents(): UseAgentsResult {
   useRealtimeRefreshWithRecovery({
     resources: ["agent-runs"],
     filters: { resource: "agent-runs" },
-    refresh: (event) => event.scope ? refreshRuns(event.scope) : refresh({ showLoading: false }),
+    refresh: (event) => event.scope
+      ? refreshRunsForAgent(event.scope, { force: true })
+      : refresh({ showLoading: false }),
     onReconnect: refreshAllRuns,
   });
 
   useEffect(() => {
+    isMountedRef.current = true;
+    refreshRunsCoordinatorRef.current.setMounted(true);
     void refresh();
     return () => {
+      isMountedRef.current = false;
       abortControllerRef.current?.abort();
       abortControllerRef.current = null;
       refreshCoordinatorRef.current.reset();
-      refreshRunsPromisesRef.current.clear();
+      refreshRunsCoordinatorRef.current.setMounted(false);
     };
   }, [refresh]);
 
