@@ -57,7 +57,7 @@ export interface UseTaskActionsResult {
   setPendingPrompt: (prompt: string, attachments?: MessageImageAttachment[]) => Promise<boolean>;
   clearPendingPrompt: () => Promise<boolean>;
   sendPlanFeedback: (feedback: string, attachments?: MessageImageAttachment[]) => Promise<boolean>;
-  acceptPlan: (mode?: "start_task" | "open_terminal") => Promise<AcceptPlanResult>;
+  acceptPlan: () => Promise<AcceptPlanResult>;
   discardPlan: () => Promise<boolean>;
   addressReviewComments: (comments: string, attachments?: MessageImageAttachment[]) => Promise<AddressCommentsResult>;
   enablePullRequestAutoMerge: () => Promise<PullRequestAutoMergeResult>;
