@@ -9,7 +9,14 @@ import {
   type ActionMenuItem,
   type WebAppRoute,
 } from "@pablozaiden/webapp/web";
-import { getExecutionHostSourceId, type Chat, type ExecutionHostDescriptor, type Task, type Workspace } from "@/shared";
+import {
+  getExecutionHostSourceId,
+  isProvisioningJobTerminal,
+  type Chat,
+  type ExecutionHostDescriptor,
+  type Task,
+  type Workspace,
+} from "@/shared";
 import type { SshServer } from "@/shared/ssh-server";
 import type { WorkspaceGroup } from "../../hooks/useTaskGrouping";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
@@ -192,10 +199,7 @@ function ProvisioningJobRouteView({
 
   const snapshot = provisioning.snapshot;
   const status = snapshot?.job.state.status;
-  const isTerminal = status === "completed"
-    || status === "failed"
-    || status === "cancelled"
-    || status === "interrupted";
+  const isTerminal = status !== undefined && isProvisioningJobTerminal(status);
   const returnRoute = getProvisioningReturnRoute(route);
 
   async function handleDismiss(): Promise<void> {
@@ -746,6 +750,8 @@ function renderMainContent(props: ShellMainContentProps) {
       sidebarWorkspaceGroups={sidebarWorkspaceGroups}
       onNavigate={navigateWithinShell}
       provisioningJobs={props.provisioning.jobs}
+      onDismissAllProvisioningJobs={props.provisioning.dismissAllJobs}
+      dismissingAllProvisioningJobs={props.provisioning.dismissingAllJobs}
       showPrivateItems={showPrivateItems}
     />
   );
