@@ -5,7 +5,8 @@ import type { Database } from "bun:sqlite";
  *
  * The statements intentionally use IF NOT EXISTS so this can run before the
  * migration runner against both a new database and the consolidated
- * production baseline.
+ * production baseline. Every table added here must also be classified in
+ * `schema-inventory.ts`.
  */
 export function createBaseSchema(database: Database): void {
   const createSchema = database.transaction(() => {

@@ -11,10 +11,17 @@ import {
 } from "../../src/persistence/database";
 import {
   BASELINE_SCHEMA_VERSION,
+  getTableColumns,
   getSchemaVersion,
   migrations,
   runMigrations,
 } from "../../src/persistence/migrations";
+import {
+  assertSchemaInventory,
+  getFreshSchemaTableNames,
+  getIntrospectableTableNames,
+  getResettableTableNames,
+} from "../../src/persistence/schema-inventory";
 
 async function withTempDataDir(run: (dataDir: string) => Promise<void>): Promise<void> {
   const dataDir = await mkdtemp(join(tmpdir(), "clanky-db-schema-"));
@@ -34,7 +41,9 @@ function tableNames(): string[] {
     getDatabase()
       .query("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
       .all() as Array<{ name: string }>
-  ).map((row) => row.name);
+  )
+    .map((row) => row.name)
+    .filter((name) => !name.startsWith("sqlite_"));
 }
 
 function columnNames(tableName: string): string[] {
@@ -51,7 +60,7 @@ describe("database schema", () => {
     delete process.env["CLANKY_DATA_DIR"];
   });
 
-  test("creates the consolidated baseline without legacy tables or columns", async () => {
+  test("creates the consolidated baseline from the authoritative inventory", async () => {
     await withTempDataDir(async () => {
       await initializeDatabase();
 
@@ -61,12 +70,13 @@ describe("database schema", () => {
           count: number;
         }).count,
       ).toBe(BASELINE_SCHEMA_VERSION);
+      expect(tableNames()).toEqual([...getFreshSchemaTableNames()].sort());
+      expect(() => assertSchemaInventory(getDatabase())).not.toThrow();
       expect(tableNames()).toContain("execution_hosts");
       expect(tableNames()).toContain("workspace_execution_targets");
       expect(tableNames()).toContain("workspace_worker_enrollments");
       expect(tableNames()).toContain("chat_transcript_entries");
       expect(tableNames()).toContain("agent_run_transcript_entries");
-      expect(tableNames()).not.toContain("ssh_server_sessions");
       expect(columnNames("workspaces")).toContain("execution_host_id");
       expect(columnNames("workspaces")).toContain("provisioning_host_id");
       expect(columnNames("workspaces")).not.toContain("execution_node_id");
@@ -81,6 +91,19 @@ describe("database schema", () => {
       expect(columnNames("chat_transcript_entries")).toContain("message_role");
       expect(columnNames("task_transcript_entries")).toContain("message_role");
       expect(getDatabase().query("PRAGMA foreign_key_check").all()).toEqual([]);
+    });
+  });
+
+  test("allows introspection only for inventory-approved table names", async () => {
+    await withTempDataDir(async () => {
+      await initializeDatabase();
+
+      for (const tableName of getIntrospectableTableNames()) {
+        expect(getTableColumns(getDatabase(), tableName)).toBeInstanceOf(Array);
+      }
+      expect(() =>
+        getTableColumns(getDatabase(), "unknown_table; DROP TABLE tasks"),
+      ).toThrow('Unknown table name: "unknown_table; DROP TABLE tasks"');
     });
   });
 
@@ -152,7 +175,20 @@ describe("database schema", () => {
     });
   });
 
-  test("reset recreates the same baseline and clears framework and app data", async () => {
+  test("rejects tables that are not classified by the inventory", async () => {
+    await withTempDataDir(async () => {
+      await initializeDatabase();
+      getDatabase().run(
+        "CREATE TABLE unclassified_schema_table (id TEXT PRIMARY KEY)",
+      );
+
+      expect(() => assertSchemaInventory(getDatabase())).toThrow(
+        "unexpected tables: unclassified_schema_table",
+      );
+    });
+  });
+
+  test("reset recreates the inventory baseline and clears current and legacy data", async () => {
     await withTempDataDir(async () => {
       await initializeDatabase();
       getDatabase().run(
@@ -161,6 +197,15 @@ describe("database schema", () => {
         ) VALUES (?, ?, ?, ?, ?, ?)`,
         ["reset-user", "reset-user", "owner", 1, "now", "now"],
       );
+      const freshTableNames = new Set(getFreshSchemaTableNames());
+      for (const tableName of getResettableTableNames()) {
+        if (freshTableNames.has(tableName)) {
+          continue;
+        }
+        getDatabase().run(
+          `CREATE TABLE IF NOT EXISTS "${tableName}" (id TEXT PRIMARY KEY)`,
+        );
+      }
 
       resetDatabase();
 
@@ -170,8 +215,8 @@ describe("database schema", () => {
         }).count,
       ).toBe(0);
       expect(getSchemaVersion(getDatabase())).toBe(BASELINE_SCHEMA_VERSION);
-      expect(tableNames()).toContain("workspace_execution_targets");
-      expect(tableNames()).not.toContain("ssh_server_sessions");
+        expect(tableNames()).toEqual([...getFreshSchemaTableNames()].sort());
+        expect(() => assertSchemaInventory(getDatabase())).not.toThrow();
       expect(getDatabase().query("PRAGMA foreign_key_check").all()).toEqual([]);
     });
   });
