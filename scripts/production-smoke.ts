@@ -116,6 +116,22 @@ function signalProcessGroup(processGroupId: number, signal: NodeJS.Signals): voi
   }
 }
 
+function signalDirectProcess(
+  managedProcess: ManagedProcess,
+  signal: NodeJS.Signals,
+): void {
+  try {
+    managedProcess.child.kill(signal);
+  } catch (error) {
+    if (!isMissingProcessError(error)) {
+      throw new Error(
+        `Unable to send ${signal} to smoke process ${String(managedProcess.child.pid)}`,
+        { cause: error },
+      );
+    }
+  }
+}
+
 async function waitForCondition(
   condition: () => boolean | Promise<boolean>,
   timeoutMs: number,
@@ -231,13 +247,20 @@ async function terminateProcessGroup(
     );
   }
 
-  const childExited = await waitForProcessExit(
+  let childExited = await waitForProcessExit(
     managedProcess.child,
     PROCESS_FORCE_PERIOD_MS,
   );
+  if (!childExited) {
+    signalDirectProcess(managedProcess, "SIGKILL");
+    childExited = await waitForProcessExit(
+      managedProcess.child,
+      PROCESS_FORCE_PERIOD_MS,
+    );
+  }
   if (!groupGone || !childExited) {
     throw new Error(
-      `Smoke process group ${String(managedProcess.processGroupId)} did not terminate completely`,
+      `Smoke process group ${String(managedProcess.processGroupId)} did not terminate completely (groupGone=${String(groupGone)}, childExited=${String(childExited)})`,
     );
   }
 }
@@ -314,9 +337,7 @@ async function runBuild(
       throw new Error(`Production build exited with code ${String(exitCode)}`);
     }
   } finally {
-    if (processGroupExists(build.processGroupId)) {
-      await terminateProcessGroup(build);
-    }
+    await terminateProcessGroup(build);
   }
 }
 

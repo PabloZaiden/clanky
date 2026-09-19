@@ -7,6 +7,7 @@
  */
 
 const REQUEST_TIMEOUT_MS = 5_000;
+const RESPONSE_BODY_CANCEL_TIMEOUT_MS = 1_000;
 const HEALTH_TIMEOUT_MS = 60_000;
 const HEALTH_INTERVAL_MS = 250;
 
@@ -119,13 +120,61 @@ async function fetchWithTimeout<T>(
       ...init,
       signal: controller.signal,
     });
-    const body = await readBody(response);
+    let body: T;
+    try {
+      body = await readBody(response);
+    } catch (error) {
+      controller.abort(error);
+      await cancelResponseBody(response, label, error);
+      throw error;
+    }
     return { response, body };
   } finally {
     if (timer !== undefined) {
       clearTimeout(timer);
     }
     parentSignal?.removeEventListener("abort", abortFromParent);
+  }
+}
+
+async function cancelResponseBody(
+  response: Response,
+  label: string,
+  reason: unknown,
+): Promise<void> {
+  if (response.body === null || response.body.locked) {
+    return;
+  }
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const cancellation = response.body.cancel(reason).then(
+      () => undefined,
+      (error: unknown) => {
+        console.warn(
+          `${label} response-body cancellation failed: ${formatError(error)}`,
+        );
+      },
+    );
+    await Promise.race([
+      cancellation,
+      new Promise<void>((resolvePromise) => {
+        timer = setTimeout(() => {
+          console.warn(
+            `${label} response-body cancellation timed out after ${String(RESPONSE_BODY_CANCEL_TIMEOUT_MS)}ms`,
+          );
+          resolvePromise();
+        }, RESPONSE_BODY_CANCEL_TIMEOUT_MS);
+      }),
+    ]);
+  } catch (error) {
+    console.warn(
+      `${label} response-body cleanup failed: ${formatError(error)}`,
+    );
+  } finally {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
   }
 }
 
