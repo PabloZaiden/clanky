@@ -82,6 +82,7 @@ export interface GenerateTaskTitleOptions {
   workspaceId: string;
   model: ModelConfig;
   cheapModel?: CheapModelSelection;
+  timeoutMs?: number;
 }
 
 export interface AcceptPlanOptions {

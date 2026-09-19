@@ -30,6 +30,7 @@ import { handleFullyAutonomousCompletionImpl } from "./task-fully-autonomous";
 import { TaskOperationError, TaskUpdateError, type TaskUpdateErrorCode } from "./task-errors";
 import { getWorkspace } from "../../persistence/workspaces";
 import { assertWorktreesAllowed, isGitBackedWorkspace } from "../workspace-capabilities";
+import { createIdempotentAsyncOperation } from "../../utils/async-operation";
 
 export async function createTaskImpl(ctx: TaskCtx, options: CreateTaskOptions): Promise<Task> {
   const id = crypto.randomUUID();
@@ -156,6 +157,7 @@ export async function generateTaskTitleImpl(
     title: "Task Title Generation",
     directory: options.directory,
   });
+  const cleanupTempSession = createIdempotentAsyncOperation(() => backend.abortSession(tempSession.id));
 
   try {
     const helperModel = await resolveEffectiveCheapModel({
@@ -170,12 +172,14 @@ export async function generateTaskTitleImpl(
       backend,
       sessionId: tempSession.id,
       model: helperModel,
+      timeoutMs: options.timeoutMs,
+      cancelSession: cleanupTempSession,
     });
     log.info(`Generated task title: ${title}`);
     return title;
   } finally {
     try {
-      await backend.abortSession(tempSession.id);
+      await cleanupTempSession();
     } catch (cleanupError) {
       log.warn(`Failed to clean up temporary session: ${String(cleanupError)}`);
     }
