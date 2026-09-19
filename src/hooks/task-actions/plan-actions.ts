@@ -2,7 +2,6 @@
  * Plan-related task actions: feedback, accept, and discard.
  */
 
-import type { TerminalSession } from "@/shared";
 import type { PlanAcceptResponse } from "@/contracts";
 import type { MessageImageAttachment } from "@/shared/message-attachments";
 import { apiCall, apiAction, apiActionWithBody } from "./helpers";
@@ -14,11 +13,6 @@ export type AcceptPlanResult =
   | {
       success: true;
       mode: "start_task";
-    }
-  | {
-      success: true;
-      mode: "open_terminal";
-      terminalSession: TerminalSession;
     }
   | {
       success: false;
@@ -45,27 +39,22 @@ export async function sendPlanFeedbackApi(
  */
 export async function acceptPlanApi(
   taskId: string,
-  mode: "start_task" | "open_terminal" = "start_task",
 ): Promise<AcceptPlanResult> {
   const data = await apiCall<PlanAcceptResponse>(
     `/api/tasks/${taskId}/plan/accept`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode }),
+      body: JSON.stringify({ mode: "start_task" }),
     },
     "Accept plan",
   );
-  if (data.mode === "open_terminal") {
-    return {
-      success: true,
-      mode: data.mode,
-      terminalSession: data.terminalSession,
-    };
+  if (data.mode !== "start_task") {
+    throw new Error(`Unexpected plan acceptance mode: ${data.mode}`);
   }
   return {
     success: true,
-    mode: data.mode,
+    mode: "start_task",
   };
 }
 
