@@ -242,6 +242,22 @@ describe("native worker registration", () => {
       },
     });
 
+    const platformOs = expectedRuntime.platform!.os;
+    const workingDirectoryProbe = platformOs === "windows"
+      ? {
+          command: "powershell.exe",
+          args: [
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            "[Console]::Out.Write((Get-Location).Path)",
+          ],
+        }
+      : {
+          command: "pwd",
+          args: ["-P"],
+        };
     const execution = await pollUntil(
       async () => await meshJsonRequest<ExecutionHostCommandResponse>(
         controller,
@@ -249,8 +265,8 @@ describe("native worker registration", () => {
         {
           method: "POST",
           body: {
-            command: "pwd",
-            args: [],
+            command: workingDirectoryProbe.command,
+            args: workingDirectoryProbe.args,
             cwd: worker.dataDir,
             timeoutMs: 5_000,
           },
@@ -269,7 +285,7 @@ describe("native worker registration", () => {
     expect(executionPathsEqual(
       canonicalReportedDirectory,
       canonicalWorkerDirectory,
-      executionPathStyleForPlatform(expectedRuntime.platform!.os)!,
+      executionPathStyleForPlatform(platformOs)!,
     )).toBe(true);
     const previousDataDir = process.env["CLANKY_DATA_DIR"];
     closeDatabase();
