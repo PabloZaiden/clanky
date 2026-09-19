@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ProvisioningJob } from "@/shared";
+import { backendManager } from "../../src/core/backend-manager";
 import { provisioningManager } from "../../src/core/provisioning-manager";
 import { ProvisioningAttempt } from "../../src/core/provisioning/attempt";
 import { ProvisioningFailedError } from "../../src/core/provisioning/errors";
@@ -20,6 +21,7 @@ import {
 } from "../../src/persistence/workspace-worker-enrollments";
 import { closeDatabase, initializeDatabase } from "../../src/persistence/database";
 import { runWithCurrentUser } from "../../src/core/user-context";
+import { ProvisioningTestExecutor } from "../mocks/provisioning-test-executor";
 import { getTestLocalExecutionHostBinding, testOwnerUser } from "../setup";
 
 describe("provisioning job recovery", () => {
@@ -30,11 +32,13 @@ describe("provisioning job recovery", () => {
     closeDatabase();
     process.env["CLANKY_DATA_DIR"] = dataDir;
     await initializeDatabase();
+    backendManager.resetForTesting();
     provisioningManager.resetForTesting();
   });
 
   afterEach(async () => {
     provisioningManager.resetForTesting();
+    backendManager.resetForTesting();
     closeDatabase();
     delete process.env["CLANKY_DATA_DIR"];
     await rm(dataDir, { recursive: true, force: true });
@@ -224,5 +228,125 @@ describe("provisioning job recovery", () => {
     expect(recoveredEnrollment?.workspaceId).toBeNull();
     expect(loadProvisioningJob(testOwnerUser.id, job.config.id)?.job.state.status)
       .toBe("interrupted");
+  });
+
+  test("cleans an interrupted worker process through the selected host", async () => {
+    const executor = new ProvisioningTestExecutor();
+    backendManager.setExecutorFactoryForTesting(() => executor);
+    const createdAt = new Date().toISOString();
+    const executionHostBinding = await runWithCurrentUser(
+      testOwnerUser,
+      () => getTestLocalExecutionHostBinding(),
+    );
+    const enrollment = createWorkspaceWorkerEnrollment({
+      userId: testOwnerUser.id,
+      name: "Interrupted process worker",
+      ttlSeconds: 900,
+      controller: {
+        nodeId: "controller-node",
+        fingerprint: "controller-fingerprint",
+      },
+    });
+    markWorkspaceWorkerConnected({
+      userId: testOwnerUser.id,
+      enrollmentId: enrollment.enrollment.id,
+      workerNodeId: "interrupted-process-worker",
+    });
+    const job: ProvisioningJob = {
+      config: {
+        id: crypto.randomUUID(),
+        name: "Interrupted process workspace",
+        executionHostBinding,
+        workerEnrollmentId: enrollment.enrollment.id,
+        transport: "worker",
+        repoUrl: "https://github.com/octocat/interrupted-process.git",
+        basePath: "/workspaces",
+        provider: "copilot",
+        mode: "provision",
+        createdAt,
+      },
+      state: {
+        status: "running",
+        currentStep: "devbox_up",
+        targetDirectory: "/workspaces/interrupted-process",
+        resolvedDirectory: "/devbox/workspaces/interrupted-process",
+        updatedAt: createdAt,
+      },
+    };
+    createProvisioningJob(testOwnerUser.id, job);
+
+    await runWithCurrentUser(
+      testOwnerUser,
+      () => provisioningManager.reconcileDedicatedWorkerStartupState(),
+    );
+
+    expect(executor.calls.some((call) =>
+      call.command === "sh"
+      && call.args.some((arg) =>
+        arg.includes("/devbox/workspaces/interrupted-process/.devbox/clanky-worker/worker.pid"),
+      )
+    )).toBe(true);
+  });
+
+  test("persists startup worker cleanup failures on the interrupted job", async () => {
+    const executor = new ProvisioningTestExecutor({
+      failWorkerProcessCleanup: true,
+    });
+    backendManager.setExecutorFactoryForTesting(() => executor);
+    const createdAt = new Date().toISOString();
+    const executionHostBinding = await runWithCurrentUser(
+      testOwnerUser,
+      () => getTestLocalExecutionHostBinding(),
+    );
+    const enrollment = createWorkspaceWorkerEnrollment({
+      userId: testOwnerUser.id,
+      name: "Cleanup failure worker",
+      ttlSeconds: 900,
+      controller: {
+        nodeId: "controller-node",
+        fingerprint: "controller-fingerprint",
+      },
+    });
+    markWorkspaceWorkerConnected({
+      userId: testOwnerUser.id,
+      enrollmentId: enrollment.enrollment.id,
+      workerNodeId: "cleanup-failure-worker",
+    });
+    const job: ProvisioningJob = {
+      config: {
+        id: crypto.randomUUID(),
+        name: "Cleanup failure process workspace",
+        executionHostBinding,
+        workerEnrollmentId: enrollment.enrollment.id,
+        transport: "worker",
+        repoUrl: "https://github.com/octocat/cleanup-process.git",
+        basePath: "/workspaces",
+        provider: "copilot",
+        mode: "provision",
+        createdAt,
+      },
+      state: {
+        status: "running",
+        currentStep: "devbox_up",
+        targetDirectory: "/workspaces/cleanup-process",
+        resolvedDirectory: "/devbox/workspaces/cleanup-process",
+        updatedAt: createdAt,
+      },
+    };
+    createProvisioningJob(testOwnerUser.id, job);
+
+    await runWithCurrentUser(
+      testOwnerUser,
+      () => provisioningManager.reconcileDedicatedWorkerStartupState(),
+    );
+
+    const recovered = loadProvisioningJob(testOwnerUser.id, job.config.id);
+    expect(recovered?.job.state.cleanupErrors).toContainEqual({
+      resource: `workspace worker process for enrollment ${enrollment.enrollment.id}`,
+      message: "worker process cleanup failed",
+    });
+    expect(recovered?.logs.some((entry) =>
+      entry.text.includes("Cleanup failed for workspace worker process"),
+    )).toBe(true);
   });
 });

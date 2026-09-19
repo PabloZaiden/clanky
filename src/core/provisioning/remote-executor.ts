@@ -5,6 +5,7 @@ import { executionHostService } from "../execution-host-service";
 import type {
   DevboxStatusResult,
   ExecutionHostBinding,
+  ProvisioningJob,
 } from "@/shared";
 import { getRegisteredSshServerId } from "@/shared/execution-host";
 import { getSshServerConfig } from "../../persistence/ssh-servers";
@@ -65,6 +66,22 @@ export class ProvisioningRemoteExecutor {
       localUserId: record.owner.id,
       sshPassword: password,
     });
+  }
+
+  async acquireForRecovery(
+    job: ProvisioningJob,
+    userId: string,
+    directory: string,
+  ): Promise<CommandExecutor> {
+    return await executionHostService.getCommandExecutor(
+      job.config.executionHostBinding,
+      {
+        operationId: `provisioning:${job.config.id}`,
+        directory,
+        provider: job.config.provider,
+        localUserId: userId,
+      },
+    );
   }
 
   async prepareRepository(

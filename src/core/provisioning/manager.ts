@@ -45,7 +45,10 @@ export class ProvisioningManager {
   ) {
     this.workerLifecycle = new ProvisioningWorkerLifecycle(maxLogEntries);
     this.remoteExecutor = new ProvisioningRemoteExecutor(maxLogEntries);
-    this.reconciler = new ProvisioningReconciler();
+    this.reconciler = new ProvisioningReconciler(
+      this.remoteExecutor,
+      this.workerLifecycle,
+    );
     this.snapshotProjector = new ProvisioningSnapshotProjector(maxLogEntries);
     this.workflows = new ProvisioningWorkflows(
       maxLogEntries,

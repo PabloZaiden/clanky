@@ -28,6 +28,7 @@ export interface ProvisioningTestExecutorOptions {
   failDevboxRebuild?: boolean;
   failDevboxArise?: boolean;
   failWorkerJoin?: boolean;
+  failWorkerProcessCleanup?: boolean;
   devboxUpDelayMs?: number;
   devboxStatusOutput?: string;
   credentialFileContent?: string;
@@ -282,6 +283,19 @@ export class ProvisioningTestExecutor implements CommandExecutor {
     }
 
     if (command === "sh") {
+      if (
+        this.options.failWorkerProcessCleanup
+        && args.some((arg) =>
+          arg.includes('kill "$(cat') && arg.includes("worker.pid")
+        )
+      ) {
+        return {
+          success: false,
+          stdout: "",
+          stderr: "worker process cleanup failed",
+          exitCode: 1,
+        };
+      }
       return { success: true, stdout: "", stderr: "", exitCode: 0 };
     }
 

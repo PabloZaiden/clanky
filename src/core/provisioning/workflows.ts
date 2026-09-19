@@ -164,6 +164,7 @@ export class ProvisioningWorkflows {
           "devbox status did not include a workdir value",
         );
       }
+      this.updateState(record, { resolvedDirectory, serverSettings });
 
       if (workerTransport) {
         if (!status.workdir.trim()) {
@@ -250,7 +251,6 @@ export class ProvisioningWorkflows {
         workerProcessCleanup = workerResult.processCleanup;
       }
 
-      this.updateState(record, { resolvedDirectory, serverSettings });
       appendSystemLog(
         record,
         this.maxLogEntries,

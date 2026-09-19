@@ -356,6 +356,22 @@ export class ProvisioningWorkerLifecycle {
     return { enrollmentCleanup, processCleanup };
   }
 
+  async cleanupWorkerProcess(
+    executor: CommandExecutor,
+    targetDirectory: string,
+    resolvedDirectory?: string,
+  ): Promise<void> {
+    const workerPaths = getWorkerPaths(
+      targetDirectory,
+      resolvedDirectory?.trim() || targetDirectory,
+    );
+    await this.stopWorkerProcess(
+      executor,
+      targetDirectory,
+      workerPaths.containerPid,
+    );
+  }
+
   async refreshWorker(
     record: ProvisioningJobRecord,
     executor: CommandExecutor,
