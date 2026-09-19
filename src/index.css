@@ -134,6 +134,16 @@
   margin-top: 0;
 }
 
+/* Keep the compact Provisioning action beside its title on mobile. */
+:root[data-wapp-mobile] .clanky-provisioning-panel .wapp-panel-header {
+  align-items: center;
+  flex-wrap: nowrap;
+}
+
+:root[data-wapp-mobile] .clanky-provisioning-panel .wapp-panel-actions {
+  width: auto;
+}
+
 /* Preserve descenders in active-work text badges such as "Planning". */
 :root .wapp-sidebar-item-subtitle-above-title > .wapp-badge.wapp-sidebar-badge-text {
   line-height: 0.75rem;
