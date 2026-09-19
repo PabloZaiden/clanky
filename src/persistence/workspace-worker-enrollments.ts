@@ -253,6 +253,27 @@ export function claimWorkspaceWorkerEnrollment(input: {
   return enrollment;
 }
 
+export function releaseWorkspaceWorkerProvisioningClaim(input: {
+  userId: string;
+  enrollmentId: string;
+  claimedBy: string;
+}): boolean {
+  const now = new Date().toISOString();
+  const result = getDatabase().query(`
+    UPDATE workspace_worker_enrollments
+    SET status = 'connected', claimed_by = NULL, workspace_id = NULL,
+        error_code = NULL, error_message = NULL, updated_at = ?
+    WHERE id = ? AND user_id = ? AND status = 'claimed'
+      AND claimed_by = ? AND workspace_id IS NULL
+  `).run(
+    now,
+    input.enrollmentId,
+    input.userId,
+    input.claimedBy,
+  );
+  return result.changes > 0;
+}
+
 export function attachWorkspaceWorkerEnrollment(input: {
   userId: string;
   enrollmentId: string;

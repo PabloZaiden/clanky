@@ -2,6 +2,7 @@ import { provisioningEventEmitter } from "../event-emitter";
 import { appendProvisioningJobLog, updateProvisioningJob } from "../../persistence/provisioning-jobs";
 import type { ProvisioningLogEntry, ProvisioningStep } from "@/shared";
 import type { ProvisioningJobRecord } from "./types";
+import { assertValidProvisioningTransition } from "./state-machine";
 
 function redactLogText(record: ProvisioningJobRecord, text: string): string {
   return record.secretValues.reduce(
@@ -56,15 +57,29 @@ export function setStep(
   step: ProvisioningStep,
   message?: string,
 ): void {
+  if (record.attempt) {
+    record.attempt.step(step, message);
+    return;
+  }
+  persistStep(record, maxLogEntries, step, message);
+}
+
+export function persistStep(
+  record: ProvisioningJobRecord,
+  maxLogEntries: number,
+  step: ProvisioningStep,
+  message?: string,
+): void {
   const now = new Date().toISOString();
-  record.job.state = {
-    ...record.job.state,
-    status: "running",
-    currentStep: step,
-    startedAt: record.job.state.startedAt ?? now,
-    updatedAt: now,
-  };
-  updateProvisioningJob(record.owner.id, record.job);
+  persistProvisioningState(
+    record,
+    {
+      status: "running",
+      currentStep: step,
+      startedAt: record.job.state.startedAt ?? now,
+    },
+    "setStep",
+  );
   if (message) {
     appendSystemLog(record, maxLogEntries, message, step);
   }
@@ -76,4 +91,20 @@ export function setStep(
     message,
     timestamp: record.job.state.updatedAt,
   });
+}
+
+export function persistProvisioningState(
+  record: ProvisioningJobRecord,
+  updates: Partial<ProvisioningJobRecord["job"]["state"]>,
+  context: string,
+): void {
+  const currentStatus = record.job.state.status;
+  const nextStatus = updates.status ?? currentStatus;
+  assertValidProvisioningTransition(currentStatus, nextStatus, context);
+  record.job.state = {
+    ...record.job.state,
+    ...updates,
+    updatedAt: new Date().toISOString(),
+  };
+  updateProvisioningJob(record.owner.id, record.job);
 }
