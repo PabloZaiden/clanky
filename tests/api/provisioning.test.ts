@@ -676,6 +676,66 @@ describe("Provisioning API integration", () => {
     }
   });
 
+  test("rolls back a worker enrollment when worker registration fails", async () => {
+    const previousPublicBaseUrl = process.env["CLANKY_PUBLIC_BASE_URL"];
+    process.env["CLANKY_PUBLIC_BASE_URL"] = "https://clanky.example.test";
+    try {
+      const sshServer = await createServer();
+      const executor = new ProvisioningTestExecutor({
+        failWorkerJoin: true,
+        devboxStatusOutput: createDevboxStatusOutput({
+          sshEnabled: false,
+          password: null,
+          sshUser: null,
+          sshPort: null,
+          workdir: "/workspaces/failed-worker",
+          ports: [5001],
+          publishedPorts: {
+            "5001/tcp": [{ hostIp: "0.0.0.0", hostPort: 5001 }],
+          },
+        }),
+      });
+      sshServerManager.setExecutorFactoryForTesting(() => executor);
+
+      const response = await fetch(`${baseUrl}/api/provisioning-jobs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Failed Worker",
+          executionHost: { kind: "ssh", serverId: sshServer.config.id },
+          workerHostAddress: "worker.example.test",
+          workerHostAddressManual: true,
+          repoUrl: "https://github.com/octocat/failed-worker.git",
+          basePath: "/workspaces",
+          devcontainerSubpath: null,
+          devboxTemplate: null,
+          provider: "copilot",
+          credentialToken: null,
+          mode: "provision",
+          targetDirectory: null,
+          workspaceId: null,
+        }),
+      });
+
+      expect(response.status).toBe(201);
+      const started = await response.json() as ProvisioningSnapshotResponse;
+      const failed = await waitForJobStatus(baseUrl, started.job.config.id, ["failed"]);
+      expect(failed.job.state.error?.code).toBe("worker_join_failed");
+      expect(failed.workspace).toBeUndefined();
+
+      const enrollment = workspaceWorkerEnrollmentService.list("admin")
+        .find((candidate) => candidate.enrollment.name === "Failed Worker worker");
+      expect(enrollment?.enrollment.status).toBe("cancelled");
+      expect(enrollment?.enrollment.errorCode).toBe("enrollment_cancelled");
+    } finally {
+      if (previousPublicBaseUrl === undefined) {
+        delete process.env["CLANKY_PUBLIC_BASE_URL"];
+      } else {
+        process.env["CLANKY_PUBLIC_BASE_URL"] = previousPublicBaseUrl;
+      }
+    }
+  });
+
   test("provisions a relay-only dedicated worker without a published port", async () => {
     const previousPublicBaseUrl = process.env["CLANKY_PUBLIC_BASE_URL"];
     process.env["CLANKY_PUBLIC_BASE_URL"] = "https://clanky.example.test";
@@ -693,6 +753,7 @@ describe("Provisioning API integration", () => {
       controllerNodeId: controller.nodeId,
       controllerFingerprint: controller.fingerprint,
     });
+
     let workerNodeId = "";
     let workerPrivateKey: KeyObject | undefined;
     setMeshRelayTransport({
@@ -1215,6 +1276,15 @@ describe("Provisioning API integration", () => {
     const cancelled = await waitForJobStatus(baseUrl, started.job.config.id, ["cancelled"]);
     expect(cancelled.job.state.status).toBe("cancelled");
     expect(cancelled.job.state.error?.code).toBe("cancelled");
+
+    const repeatedCancelResponse = await fetch(
+      `${baseUrl}/api/provisioning-jobs/${started.job.config.id}`,
+      { method: "DELETE" },
+    );
+    expect(repeatedCancelResponse.ok).toBe(true);
+    expect(
+      (await repeatedCancelResponse.json() as { job: { state: { status: string } } }).job.state.status,
+    ).toBe("cancelled");
   });
 
   test("captures provisioning failures in job state", async () => {
