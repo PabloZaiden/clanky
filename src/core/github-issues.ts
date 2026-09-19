@@ -5,10 +5,9 @@
 import type { GitHubIssueSummary } from "@/contracts";
 import type { CommandExecutor } from "./command-executor";
 import { DomainError } from "./domain-error";
+import { normalizeGitHubRepositoryUrl } from "../lib/github-repository-url";
 
 const GH_ISSUE_LIST_ARGS = [
-  "issue",
-  "list",
   "--state",
   "open",
   "--json",
@@ -18,6 +17,28 @@ const GH_ISSUE_LIST_ARGS = [
 ] as const;
 
 const GH_ISSUE_LIST_TIMEOUT_MS = 15_000;
+
+function getGitHubRepositorySlug(repositoryUrl: string): string {
+  const normalizedUrl = normalizeGitHubRepositoryUrl(repositoryUrl);
+  if (!normalizedUrl) {
+    throw new DomainError(
+      "github_issues_invalid_repository",
+      "GitHub repository URL is invalid",
+    );
+  }
+
+  const repositoryParts = new URL(normalizedUrl).pathname
+    .split("/")
+    .filter(Boolean);
+  if (repositoryParts.length !== 2) {
+    throw new DomainError(
+      "github_issues_invalid_repository",
+      "GitHub repository URL is invalid",
+    );
+  }
+
+  return repositoryParts.join("/");
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -74,12 +95,18 @@ function parseGitHubIssues(rawOutput: string): GitHubIssueSummary[] {
 export async function listOpenGitHubIssues(
   executor: CommandExecutor,
   directory: string,
+  repositoryUrl: string,
 ): Promise<GitHubIssueSummary[]> {
-  const result = await executor.exec("gh", [...GH_ISSUE_LIST_ARGS], {
-    cwd: directory,
-    timeout: GH_ISSUE_LIST_TIMEOUT_MS,
-    logFailures: false,
-  });
+  const repository = getGitHubRepositorySlug(repositoryUrl);
+  const result = await executor.exec(
+    "gh",
+    ["issue", "list", "--repo", repository, ...GH_ISSUE_LIST_ARGS],
+    {
+      cwd: directory,
+      timeout: GH_ISSUE_LIST_TIMEOUT_MS,
+      logFailures: false,
+    },
+  );
 
   if (!result.success) {
     throw new DomainError(

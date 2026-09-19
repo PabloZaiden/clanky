@@ -26,6 +26,7 @@ describe("Git API Integration", () => {
   let server: Server<unknown>;
   let baseUrl: string;
   let githubIssuesCommandResult: CommandResult | null = null;
+  let githubIssuesCommandArgs: string[] | null = null;
   let executionHostBinding: ExecutionHostBinding;
 
   class GitHubIssuesTestExecutor extends TestCommandExecutor {
@@ -35,6 +36,7 @@ describe("Git API Integration", () => {
       options?: CommandOptions,
     ): Promise<CommandResult> {
       if (command === "gh" && args[0] === "issue" && githubIssuesCommandResult) {
+        githubIssuesCommandArgs = [...args];
         return githubIssuesCommandResult;
       }
       return await super.exec(command, args, options);
@@ -218,6 +220,7 @@ describe("Git API Integration", () => {
   describe("GET /api/git/github-issues", () => {
     afterEach(() => {
       githubIssuesCommandResult = null;
+      githubIssuesCommandArgs = null;
     });
 
     test("returns open issues sorted by number", async () => {
@@ -258,6 +261,33 @@ describe("Git API Integration", () => {
       );
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual({ issues: [] });
+    });
+
+    test("passes the repository resolved from workspace metadata to gh", async () => {
+      await createWorkspace({
+        id: "git-test-workspace-issue-repo",
+        name: "Git Test Issue Repository",
+        directory: testWorkDir,
+        workspaceType: "git",
+        executionTargetRevision: 1,
+        executionHostBinding,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        serverSettings: getDefaultServerSettings(),
+        repoUrl: "https://github.com/persisted/repo.git",
+      });
+      githubIssuesCommandResult = {
+        success: true,
+        stdout: "[]",
+        stderr: "",
+        exitCode: 0,
+      };
+
+      const res = await fetch(
+        `${baseUrl}/api/git/github-issues?workspaceId=git-test-workspace-issue-repo`,
+      );
+      expect(res.status).toBe(200);
+      expect(githubIssuesCommandArgs).toContain("persisted/repo");
     });
 
     test("returns a safe error when gh fails", async () => {
