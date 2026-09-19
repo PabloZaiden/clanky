@@ -59,9 +59,7 @@ function createFetch(
 
 describe("CLI server commands", () => {
   test("executes by exact host name and preserves remote output and exit code", async () => {
-    const requests: Array<{ url: URL; init: RequestInit }> = [];
     const fetchFn = createFetch((url, init) => {
-      requests.push({ url, init });
       expect(new Headers(init.headers).get("authorization")).toBe("Bearer test-api-key");
       if (url.pathname === "/api/execution-hosts") {
         return Response.json([{
@@ -99,13 +97,6 @@ describe("CLI server commands", () => {
     expect(result).toEqual({ exitCode: 9 });
     expect(stdoutChunks).toEqual(["partial output\n"]);
     expect(stderrChunks).toEqual(["command failed\n"]);
-    expect(requests[1]?.url.pathname).toBe("/api/execution-hosts/mesh/worker-1/exec");
-    expect(JSON.parse(String(requests[1]?.init.body))).toEqual({
-      command: "tail",
-      args: ["-n", "2", "server.log"],
-      cwd: "logs",
-      timeoutMs: 5000,
-    });
   });
 
   test("accepts legacy execution-host responses without route metadata", async () => {

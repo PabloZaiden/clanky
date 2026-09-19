@@ -20,6 +20,7 @@ import { configureMeshRuntime } from "../../src/core/mesh-runtime";
 import { closeDatabase, initializeDatabase } from "../../src/persistence/database";
 import { getMeshNodeFingerprint, ensureLocalMeshNodeIdentity } from "../../src/persistence/mesh-node-identity";
 import { revokeControllerGrant, saveControllerGrant } from "../../src/persistence/mesh";
+import { pollUntil } from "../helpers/polling";
 
 describe("mesh execution path resolution", () => {
   test("allows trusted sessions to use any POSIX host path", () => {
@@ -196,34 +197,36 @@ describe("mesh asynchronous command lifecycle", () => {
     let stderrOffset = 0;
     let streamedStdout = "";
     let streamedStderr = "";
-    let lastStatus = "running";
-    const deadline = Date.now() + 5_000;
-    while (Date.now() < deadline) {
-      const snapshot = await gateway.getAsyncCommand(
-        session.sessionId,
-        session.sessionToken,
-        jobId,
-        crypto.randomUUID(),
-        stdoutOffset,
-        stderrOffset,
-      );
-      lastStatus = snapshot.status;
-      if (snapshot.output) {
-        streamedStdout += snapshot.output.stdout;
-        streamedStderr += snapshot.output.stderr;
-        stdoutOffset = snapshot.output.nextStdoutOffset;
-        stderrOffset = snapshot.output.nextStderrOffset;
-      }
-      if (snapshot.status !== "running") {
+    return await pollUntil(
+      async () => {
+        const snapshot = await gateway.getAsyncCommand(
+          session.sessionId,
+          session.sessionToken,
+          jobId,
+          crypto.randomUUID(),
+          stdoutOffset,
+          stderrOffset,
+        );
+        if (snapshot.output) {
+          streamedStdout += snapshot.output.stdout;
+          streamedStderr += snapshot.output.stderr;
+          stdoutOffset = snapshot.output.nextStdoutOffset;
+          stderrOffset = snapshot.output.nextStderrOffset;
+        }
         return {
           snapshot,
           streamedStdout,
           streamedStderr,
         };
-      }
-      await Bun.sleep(20);
-    }
-    throw new Error(`Timed out waiting for async command; last status: ${lastStatus}`);
+      },
+      (result) => result.snapshot.status !== "running",
+      {
+        description: "async command to reach a terminal status",
+        timeoutMs: 5_000,
+        intervalMs: 20,
+        formatLastObserved: (result) => `status=${result.snapshot.status}`,
+      },
+    );
   }
 
   test("runs, streams bounded output, cancels, and rejects a mismatched context", async () => {

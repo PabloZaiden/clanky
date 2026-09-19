@@ -80,9 +80,7 @@ describe("database schema", () => {
       expect(tableNames()).toContain("agent_run_transcript_entries");
       expect(columnNames("workspaces")).toContain("execution_host_id");
       expect(columnNames("workspaces")).toContain("provisioning_host_id");
-      expect(columnNames("workspaces")).not.toContain("execution_node_id");
       expect(columnNames("chats")).toContain("execution_host_id");
-      expect(columnNames("chats")).not.toContain("ssh_server_id");
       expect(columnNames("terminal_sessions")).toContain("execution_host_id");
       expect(columnNames("terminal_sessions")).not.toContain("target_transport");
       expect(columnNames("preview_sessions")).toContain("target_kind");

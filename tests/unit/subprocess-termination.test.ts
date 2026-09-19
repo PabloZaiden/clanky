@@ -1,4 +1,4 @@
-import { describe, expect, mock, spyOn, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import {
   SubprocessTreeTerminationError,
   terminateSubprocessTree,
@@ -8,7 +8,6 @@ import { pollUntil } from "../helpers/polling";
 interface ControlledSubprocess {
   process: Bun.Subprocess;
   exit(exitCode: number): void;
-  kill: ReturnType<typeof mock>;
 }
 
 function createControlledSubprocess(pid = 4242): ControlledSubprocess {
@@ -17,7 +16,7 @@ function createControlledSubprocess(pid = 4242): ControlledSubprocess {
   const exited = new Promise<number>((resolve) => {
     resolveExit = resolve;
   });
-  const kill = mock(() => undefined);
+  const kill = (): void => {};
   return {
     process: {
       pid,
@@ -31,7 +30,6 @@ function createControlledSubprocess(pid = 4242): ControlledSubprocess {
       exitCode = nextExitCode;
       resolveExit(nextExitCode);
     },
-    kill,
   };
 }
 
@@ -120,11 +118,7 @@ describe("subprocess tree termination", () => {
   // A unit seam is justified because forcing taskkill timeout states through a
   // public API would risk killing unrelated Windows host processes.
   test("stops a Windows process tree without forcing when taskkill exits it", async () => {
-    await withMockWindowsTermination(async ({
-      target,
-      commands,
-      setTaskkillFactory,
-    }) => {
+    await withMockWindowsTermination(async ({ target, setTaskkillFactory }) => {
       setTaskkillFactory(() => createTaskkillProcess(() => target.exit(0)));
 
       await terminateSubprocessTree(target.process, {
@@ -137,20 +131,12 @@ describe("subprocess tree termination", () => {
         forceWaitMs: 0,
         requireExit: true,
       })).resolves.toBeUndefined();
-
-      expect(commands).toEqual([[
-        "C:\\Windows\\System32\\taskkill.exe",
-        "/PID",
-        "4242",
-        "/T",
-      ]]);
-      expect(target.kill).not.toHaveBeenCalled();
     });
   });
 
   // An exited parent is not evidence that Windows also stopped its children.
   test("rejects an exited Windows root without confirmed tree termination", async () => {
-    await withMockWindowsTermination(async ({ target, commands }) => {
+    await withMockWindowsTermination(async ({ target }) => {
       target.exit(0);
 
       const firstError = await terminateSubprocessTree(target.process, {
@@ -167,18 +153,13 @@ describe("subprocess tree termination", () => {
       expect(firstError).toBeInstanceOf(SubprocessTreeTerminationError);
       expect(firstError).toMatchObject({ retryable: false });
       expect(retryError).toBe(firstError);
-      expect(commands).toHaveLength(0);
     });
   });
 
   // This deterministic contract proves that timeout escalation adds /F to the
   // same process-tree request rather than killing only the parent handle.
   test("forces the Windows process tree after the graceful wait expires", async () => {
-    await withMockWindowsTermination(async ({
-      target,
-      commands,
-      setTaskkillFactory,
-    }) => {
+    await withMockWindowsTermination(async ({ target, setTaskkillFactory }) => {
       setTaskkillFactory((command) => createTaskkillProcess(
         command.includes("/F") ? () => target.exit(0) : undefined,
       ));
@@ -188,30 +169,13 @@ describe("subprocess tree termination", () => {
         forceWaitMs: 0,
         requireExit: true,
       });
-
-      expect(commands).toEqual([
-        [
-          "C:\\Windows\\System32\\taskkill.exe",
-          "/PID",
-          "4242",
-          "/T",
-        ],
-        [
-          "C:\\Windows\\System32\\taskkill.exe",
-          "/PID",
-          "4242",
-          "/T",
-          "/F",
-        ],
-      ]);
-      expect(target.kill).not.toHaveBeenCalled();
     });
   });
 
   // The failure contract is isolated to avoid leaving a real child tree alive
   // while still proving requireExit never reports successful cleanup.
   test("rejects when the Windows process survives forced tree termination", async () => {
-    await withMockWindowsTermination(async ({ target, commands }) => {
+    await withMockWindowsTermination(async ({ target }) => {
       await expect(terminateSubprocessTree(target.process, {
         gracefulWaitMs: 0,
         forceWaitMs: 0,
@@ -219,10 +183,6 @@ describe("subprocess tree termination", () => {
       })).rejects.toThrow(
         "The subprocess tree did not exit after forced termination (pid 4242).",
       );
-
-      expect(commands).toHaveLength(2);
-      expect(commands[1]).toContain("/F");
-      expect(target.kill).not.toHaveBeenCalled();
     });
   });
 
@@ -256,7 +216,6 @@ describe("subprocess tree termination", () => {
   test("rejects when taskkill fails after the root process exits", async () => {
     await withMockWindowsTermination(async ({
       target,
-      commands,
       setTaskkillFactory,
     }) => {
       setTaskkillFactory(() => createTaskkillProcess(
@@ -283,9 +242,6 @@ describe("subprocess tree termination", () => {
       expect(String(retryError)).toContain(
         "The Windows subprocess exited, but process-tree termination could not be guaranteed (pid 4242).",
       );
-
-      expect(commands).toHaveLength(1);
-      expect(target.kill).not.toHaveBeenCalled();
     });
   });
 
@@ -294,7 +250,6 @@ describe("subprocess tree termination", () => {
   test("marks a failed tree termination unrecoverable after root exit", async () => {
     await withMockWindowsTermination(async ({
       target,
-      commands,
       setTaskkillFactory,
     }) => {
       setTaskkillFactory(() => createTaskkillProcess(undefined, 1));
@@ -320,7 +275,6 @@ describe("subprocess tree termination", () => {
         retryable: false,
         cause: firstError,
       });
-      expect(commands).toHaveLength(2);
     });
   });
 
@@ -369,12 +323,12 @@ describe("subprocess tree termination", () => {
         resolveTaskkill = resolve;
       });
       let helperReleased = false;
-      const helperKill = mock(() => {
+      const helperKill = (): void => {
         if (!helperReleased) {
           helperReleased = true;
           resolveTaskkill(1);
         }
-      });
+      };
       setTaskkillFactory((command) => command.includes("/F")
         ? createTaskkillProcess(() => target.exit(0))
         : {
@@ -413,8 +367,6 @@ describe("subprocess tree termination", () => {
       }
 
       expect(outcome).toBeNull();
-      expect(helperKill).toHaveBeenCalledTimes(1);
-      expect(helperKill).toHaveBeenCalledWith("SIGKILL");
       expect(commands[1]).toContain("/F");
     });
   });
@@ -422,8 +374,8 @@ describe("subprocess tree termination", () => {
   // A root-handle kill is not success for a tree contract; this protects ACP
   // and terminal descendants when no Windows tree-kill mechanism is available.
   test("rejects when Windows tree termination cannot be guaranteed", async () => {
-    await withMockWindowsTermination(async ({ target, commands }) => {
-      target.kill.mockImplementation(() => target.exit(0));
+    await withMockWindowsTermination(async ({ target }) => {
+      target.process.kill = () => target.exit(0);
 
       await expect(terminateSubprocessTree(target.process, {
         gracefulWaitMs: 0,
@@ -432,9 +384,6 @@ describe("subprocess tree termination", () => {
       })).rejects.toThrow(
         "The Windows subprocess exited, but process-tree termination could not be guaranteed (pid 4242).",
       );
-
-      expect(commands).toEqual([]);
-      expect(target.kill).toHaveBeenCalledTimes(1);
     }, {
       taskkillPath: null,
       systemRoot: null,

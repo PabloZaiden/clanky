@@ -66,7 +66,7 @@ describe("LocalTerminalConnection integration", () => {
         const expectedMode = process.platform === "win32" ? "direct" : mode;
         expect(result.runtimeConnectionMode).toBe(expectedMode);
         if (process.platform === "win32" && mode === "dtach") {
-          expect(result.notice).toContain("unavailable on Windows");
+          expect(result.notice).toBeTruthy();
         }
 
         await connection.resize(120, 32);

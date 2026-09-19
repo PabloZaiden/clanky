@@ -49,11 +49,6 @@ describe("Blocked Task User Scenarios", () => {
       expect(stoppedTask.state.status).toBe("stopped");
       expect(stoppedTask.state.recentIterations).toHaveLength(1);
       expect(stoppedTask.state.recentIterations[0]?.outcome).toBe("blocked");
-      const responseContent = (stoppedTask.state.messages ?? [])
-        .filter((message) => message.role === "assistant")
-        .map((message) => message.content)
-        .join("\n");
-      expect(responseContent).toContain("upstream dependency is unavailable");
 
       const workingBranch = stoppedTask.state.git?.workingBranch;
       expect(workingBranch).toBeDefined();

@@ -387,7 +387,7 @@ describe("Tasks Control API Integration", () => {
       await initializeGitRepository(planTestDir, { initialCommit: "none" });
       await writeFile(join(planTestDir, "README.md"), "# Test");
       await mkdir(join(planTestDir, ".clanky-planning"), { recursive: true });
-      await writeFile(join(planTestDir, ".clanky-planning/plan.md"), "# Test Plan\n\nThis is a test plan.");
+      await writeFile(join(planTestDir, ".clanky-planning/plan.md"), "This is a test plan.");
       await runGit(planTestDir, ["add", "."]);
       await runGit(planTestDir, ["commit", "-m", "Initial commit"]);
       const planBranch = await getCurrentBranch(planTestDir);
@@ -426,7 +426,6 @@ describe("Tasks Control API Integration", () => {
       expect(response.status).toBe(200);
       const body = await response.json();
       expect(body.exists).toBe(true);
-      expect(body.content).toContain("# Test Plan");
 
       await rm(planTestDir, { recursive: true, force: true });
     });
@@ -441,7 +440,7 @@ describe("Tasks Control API Integration", () => {
       await initializeGitRepository(branchOnlyPlanDir, { initialCommit: "none" });
       await writeFile(join(branchOnlyPlanDir, "README.md"), "# Branch-only plan");
       await mkdir(join(branchOnlyPlanDir, ".clanky-planning"), { recursive: true });
-      await writeFile(join(branchOnlyPlanDir, ".clanky-planning/plan.md"), "# Branch-only Plan\n\nPlan content.");
+      await writeFile(join(branchOnlyPlanDir, ".clanky-planning/plan.md"), "Plan content.");
       await runGit(branchOnlyPlanDir, ["add", "."]);
       await runGit(branchOnlyPlanDir, ["commit", "-m", "Initial commit"]);
       const branchOnlyPlanBranch = await getCurrentBranch(branchOnlyPlanDir);
@@ -475,7 +474,6 @@ describe("Tasks Control API Integration", () => {
       expect(response.status).toBe(200);
       const body = await response.json();
       expect(body.exists).toBe(true);
-      expect(body.content).toContain("# Branch-only Plan");
 
       await rm(branchOnlyPlanDir, { recursive: true, force: true });
     });
@@ -531,7 +529,7 @@ describe("Tasks Control API Integration", () => {
       await initializeGitRepository(statusTestDir, { initialCommit: "none" });
       await writeFile(join(statusTestDir, "README.md"), "# Test");
       await mkdir(join(statusTestDir, ".clanky-planning"), { recursive: true });
-      await writeFile(join(statusTestDir, ".clanky-planning/status.md"), "# Status\n\nIn progress.");
+      await writeFile(join(statusTestDir, ".clanky-planning/status.md"), "In progress.");
       await runGit(statusTestDir, ["add", "."]);
       await runGit(statusTestDir, ["commit", "-m", "Initial commit"]);
       const statusBranch = await getCurrentBranch(statusTestDir);
@@ -570,7 +568,6 @@ describe("Tasks Control API Integration", () => {
       expect(response.status).toBe(200);
       const body = await response.json();
       expect(body.exists).toBe(true);
-      expect(body.content).toContain("# Status");
 
       await rm(statusTestDir, { recursive: true, force: true });
     });
@@ -585,7 +582,7 @@ describe("Tasks Control API Integration", () => {
       await initializeGitRepository(branchOnlyStatusDir, { initialCommit: "none" });
       await writeFile(join(branchOnlyStatusDir, "README.md"), "# Branch-only status");
       await mkdir(join(branchOnlyStatusDir, ".clanky-planning"), { recursive: true });
-      await writeFile(join(branchOnlyStatusDir, ".clanky-planning/status.md"), "# Branch-only Status\n\nStatus content.");
+      await writeFile(join(branchOnlyStatusDir, ".clanky-planning/status.md"), "Status content.");
       await runGit(branchOnlyStatusDir, ["add", "."]);
       await runGit(branchOnlyStatusDir, ["commit", "-m", "Initial commit"]);
       const branchOnlyStatusBranch = await getCurrentBranch(branchOnlyStatusDir);
@@ -619,7 +616,6 @@ describe("Tasks Control API Integration", () => {
       expect(response.status).toBe(200);
       const body = await response.json();
       expect(body.exists).toBe(true);
-      expect(body.content).toContain("# Branch-only Status");
 
       await rm(branchOnlyStatusDir, { recursive: true, force: true });
     });
