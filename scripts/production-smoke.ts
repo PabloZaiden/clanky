@@ -158,6 +158,50 @@ async function waitForProcessExit(
   }
 }
 
+function waitForProcessExitOrAbort(
+  child: Bun.Subprocess,
+  signal: AbortSignal,
+): Promise<number> {
+  if (signal.aborted) {
+    return Promise.reject(new Error("Production build was interrupted"));
+  }
+
+  return new Promise<number>((resolvePromise, reject) => {
+    let settled = false;
+    const cleanup = () => {
+      signal.removeEventListener("abort", onAbort);
+    };
+    const onAbort = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      reject(new Error("Production build was interrupted"));
+    };
+
+    signal.addEventListener("abort", onAbort, { once: true });
+    void child.exited.then(
+      (exitCode) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        cleanup();
+        resolvePromise(exitCode);
+      },
+      (error: unknown) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        cleanup();
+        reject(error);
+      },
+    );
+  });
+}
+
 async function waitForProcessGroupGone(
   processGroupId: number,
   timeoutMs: number,
@@ -260,17 +304,9 @@ async function runBuild(
       stderr: Bun.file(logPaths.buildStderr),
     },
   );
-  const abortBuild = () => {
-    try {
-      signalProcessGroup(build.processGroupId, "SIGTERM");
-    } catch (error) {
-      console.error(`Unable to stop the build process after interruption: ${formatError(error)}`);
-    }
-  };
-  signal.addEventListener("abort", abortBuild, { once: true });
 
   try {
-    const exitCode = await build.child.exited;
+    const exitCode = await waitForProcessExitOrAbort(build.child, signal);
     if (signal.aborted) {
       throw new Error("Production build was interrupted");
     }
@@ -278,7 +314,6 @@ async function runBuild(
       throw new Error(`Production build exited with code ${String(exitCode)}`);
     }
   } finally {
-    signal.removeEventListener("abort", abortBuild);
     if (processGroupExists(build.processGroupId)) {
       await terminateProcessGroup(build);
     }

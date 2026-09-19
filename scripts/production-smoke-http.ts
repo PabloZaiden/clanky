@@ -37,6 +37,13 @@ interface ProductionHttpSmokeOptions {
   ensureProcessRunning?: () => void;
 }
 
+type ResponseBodyReader<T> = (response: Response) => Promise<T>;
+
+interface TimedResponse<T> {
+  response: Response;
+  body: T;
+}
+
 function formatError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -81,12 +88,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-async function fetchWithTimeout(
+async function fetchWithTimeout<T>(
   url: URL,
   init: RequestInit,
   parentSignal: AbortSignal | undefined,
   label: string,
-): Promise<Response> {
+  readBody: ResponseBodyReader<T>,
+): Promise<TimedResponse<T>> {
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -107,16 +115,28 @@ async function fetchWithTimeout(
   }, REQUEST_TIMEOUT_MS);
 
   try {
-    return await fetch(url, {
+    const response = await fetch(url, {
       ...init,
       signal: controller.signal,
     });
+    const body = await readBody(response);
+    return { response, body };
   } finally {
     if (timer !== undefined) {
       clearTimeout(timer);
     }
     parentSignal?.removeEventListener("abort", abortFromParent);
   }
+}
+
+function bodyPreview(body: unknown): string {
+  if (typeof body === "string") {
+    return body.slice(0, 500);
+  }
+  if (body instanceof ArrayBuffer) {
+    return new TextDecoder().decode(new Uint8Array(body)).slice(0, 500);
+  }
+  return String(body).slice(0, 500);
 }
 
 function waitForInterval(milliseconds: number, signal?: AbortSignal): Promise<void> {
@@ -180,13 +200,15 @@ async function waitForHealth(
         { headers: { accept: "application/json" } },
         options.signal,
         "Health",
+        (healthResponse) => healthResponse.text(),
       );
-      const body = await response.text();
-      if (!response.ok) {
-        throw new Error(`HTTP ${String(response.status)}: ${body.slice(0, 500)}`);
+      if (!response.response.ok) {
+        throw new Error(
+          `HTTP ${String(response.response.status)}: ${bodyPreview(response.body)}`,
+        );
       }
 
-      const health = parseHealthResponse(body, healthUrl);
+      const health = parseHealthResponse(response.body, healthUrl);
       console.log(`Health check passed (version ${health.version})`);
       return;
     } catch (error) {
@@ -319,48 +341,51 @@ function acceptsAssetContentType(kind: AssetKind, value: string): boolean {
   }
 }
 
-async function fetchAsset(
+async function fetchAsset<T>(
   url: URL,
   kind: AssetKind,
   label: string,
-  signal?: AbortSignal,
-): Promise<Response> {
-  const response = await fetchWithTimeout(
+  signal: AbortSignal | undefined,
+  readBody: ResponseBodyReader<T>,
+): Promise<TimedResponse<T>> {
+  const result = await fetchWithTimeout(
     url,
     { headers: { accept: "*/*" } },
     signal,
     label,
+    readBody,
   );
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`${label} ${url.href} returned HTTP ${String(response.status)}: ${body.slice(0, 500)}`);
+  if (!result.response.ok) {
+    throw new Error(
+      `${label} ${url.href} returned HTTP ${String(result.response.status)}: ${bodyPreview(result.body)}`,
+    );
   }
 
-  const contentType = mediaType(response);
+  const contentType = mediaType(result.response);
   if (!acceptsAssetContentType(kind, contentType)) {
-    await response.arrayBuffer();
     throw new Error(
       `${label} ${url.href} returned Content-Type ${contentType || "(missing)"}`,
     );
   }
 
-  return response;
+  return result;
 }
 
 async function checkManifest(
   manifestUrl: URL,
   signal?: AbortSignal,
 ): Promise<void> {
-  const response = await fetchAsset(
+  const result = await fetchAsset(
     manifestUrl,
     "manifest",
     "Web manifest",
     signal,
+    (manifestResponse) => manifestResponse.text(),
   );
 
   let manifest: unknown;
   try {
-    manifest = await response.json() as unknown;
+    manifest = JSON.parse(result.body) as unknown;
   } catch (error) {
     throw new Error(`Web manifest ${manifestUrl.href} was not valid JSON`, { cause: error });
   }
@@ -390,13 +415,13 @@ async function checkManifest(
   }
 
   for (const iconUrl of iconUrls.values()) {
-    const iconResponse = await fetchAsset(
+    await fetchAsset(
       iconUrl,
       "manifest-icon",
       "Manifest icon",
       signal,
+      (iconResponse) => iconResponse.arrayBuffer(),
     );
-    await iconResponse.arrayBuffer();
     console.log(`Checked manifest icon: ${iconUrl.pathname}`);
   }
 }
@@ -406,17 +431,18 @@ async function checkDocumentAndAssets(
   signal?: AbortSignal,
 ): Promise<void> {
   const documentUrl = urlForPath(baseUrl, "/");
-  const documentResponse = await fetchAsset(
+  const documentResult = await fetchAsset(
     documentUrl,
     "html-document",
     "HTML document",
     signal,
+    (htmlResponse) => htmlResponse.text(),
   );
-  if (mediaType(documentResponse) !== "text/html") {
+  if (mediaType(documentResult.response) !== "text/html") {
     throw new Error(`HTML document ${documentUrl.href} did not return text/html`);
   }
 
-  const html = await documentResponse.text();
+  const html = documentResult.body;
   let references: RawDocumentReferences;
   try {
     references = collectDocumentReferences(html);
@@ -459,33 +485,33 @@ async function checkDocumentAndAssets(
   }
 
   for (const javascriptUrl of javascriptUrls) {
-    const response = await fetchAsset(
+    await fetchAsset(
       javascriptUrl,
       "javascript",
       "JavaScript asset",
       signal,
+      (javascriptResponse) => javascriptResponse.arrayBuffer(),
     );
-    await response.arrayBuffer();
     console.log(`Checked JavaScript asset: ${javascriptUrl.pathname}`);
   }
   for (const stylesheetUrl of stylesheetUrls) {
-    const response = await fetchAsset(
+    await fetchAsset(
       stylesheetUrl,
       "stylesheet",
       "Stylesheet",
       signal,
+      (stylesheetResponse) => stylesheetResponse.arrayBuffer(),
     );
-    await response.arrayBuffer();
     console.log(`Checked stylesheet: ${stylesheetUrl.pathname}`);
   }
   for (const htmlIconUrl of htmlIconUrls) {
-    const response = await fetchAsset(
+    await fetchAsset(
       htmlIconUrl,
       "html-icon",
       "HTML icon",
       signal,
+      (iconResponse) => iconResponse.arrayBuffer(),
     );
-    await response.arrayBuffer();
     console.log(`Checked HTML icon: ${htmlIconUrl.pathname}`);
   }
   for (const manifestUrl of manifestUrls) {
@@ -503,15 +529,17 @@ async function checkInitialWorkspaces(
     { headers: { accept: "application/json" } },
     signal,
     "Workspace list",
+    (workspaceResponse) => workspaceResponse.text(),
   );
-  const body = await response.text();
-  if (!response.ok) {
-    throw new Error(`Workspace list ${url.href} returned HTTP ${String(response.status)}: ${body.slice(0, 500)}`);
+  if (!response.response.ok) {
+    throw new Error(
+      `Workspace list ${url.href} returned HTTP ${String(response.response.status)}: ${bodyPreview(response.body)}`,
+    );
   }
 
   let workspaces: unknown;
   try {
-    workspaces = JSON.parse(body) as unknown;
+    workspaces = JSON.parse(response.body) as unknown;
   } catch (error) {
     throw new Error(`Workspace list ${url.href} was not valid JSON`, { cause: error });
   }
