@@ -7,21 +7,13 @@ import type {
 } from "@/shared";
 import { getDatabase } from "../database";
 import { requirePersistenceUserId } from "../ownership";
-import {
-  getTranscriptMetaForUser,
-  getTranscriptToolCallForUser,
-  listTranscriptEntriesForUser,
-  listTranscriptEntriesPage,
-  replaceTranscriptEntriesForUser,
-  replaceTranscriptEntriesForUserInTransaction,
-  syncTranscriptEntriesInTransaction,
-  type TranscriptMeta,
-} from "../transcripts/store";
+import { chatTranscriptStore } from "../transcripts/chat-store";
+import type { TranscriptMeta } from "../transcripts/types";
 
 export type ChatTranscriptMeta = TranscriptMeta;
 
 export function getChatTranscriptMeta(chatId: string): ChatTranscriptMeta | null {
-  return getTranscriptMetaForUser("chat", chatId, requirePersistenceUserId());
+  return chatTranscriptStore.getMetaForUser(chatId, requirePersistenceUserId());
 }
 
 export function replaceChatTranscriptEntriesForUserInTransaction(
@@ -29,18 +21,15 @@ export function replaceChatTranscriptEntriesForUserInTransaction(
   chat: Chat,
   userId: string,
 ): void {
-  replaceTranscriptEntriesForUserInTransaction(
+  chatTranscriptStore.replaceForUserInTransaction(
     db,
-    "chat",
     chat.config.id,
     userId,
     chat.state,
   );
 }
-
 export function replaceChatTranscriptEntriesForUser(chat: Chat, userId: string): void {
-  replaceTranscriptEntriesForUser(
-    "chat",
+  chatTranscriptStore.replaceForUser(
     chat.config.id,
     userId,
     chat.state,
@@ -57,9 +46,8 @@ export function syncChatTranscriptEntriesInTransaction(
   previousState: ChatState,
   nextState: ChatState,
 ): void {
-  syncTranscriptEntriesInTransaction(
+  chatTranscriptStore.syncInTransaction(
     db,
-    "chat",
     chatId,
     requirePersistenceUserId(),
     previousState,
@@ -80,8 +68,7 @@ export function listChatTranscriptEntries(
   chatId: string,
   includeToolPayload = false,
 ): ChatTranscriptStorageEntry[] {
-  return listTranscriptEntriesForUser(
-    "chat",
+  return chatTranscriptStore.listForUser(
     chatId,
     requirePersistenceUserId(),
     includeToolPayload,
@@ -92,15 +79,14 @@ export function listChatTranscriptEntriesPage(
   chatId: string,
   options: { full?: boolean; before?: string } = {},
 ) {
-  return listTranscriptEntriesPage("chat", chatId, options);
+  return chatTranscriptStore.listPage(chatId, options);
 }
 
 export function getChatToolCallFromTranscript(
   chatId: string,
   toolCallId: string,
 ): ToolCallRecord | null {
-  return getTranscriptToolCallForUser(
-    "chat",
+  return chatTranscriptStore.getToolCallForUser(
     chatId,
     requirePersistenceUserId(),
     toolCallId,

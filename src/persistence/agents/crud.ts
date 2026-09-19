@@ -10,11 +10,7 @@ import {
   validateAgentRunColumnNames,
 } from "./helpers";
 import { requirePersistenceUserId } from "../ownership";
-import {
-  applyTranscriptChangeSetInTransaction,
-  hydrateTranscriptStateForUser,
-  syncTranscriptEntriesInTransaction,
-} from "../transcripts/store";
+import { agentRunTranscriptStore } from "../transcripts/agent-run-store";
 
 const DELETE_AGENT_RUN_BATCH_SIZE = 500;
 const AGENT_RUN_METADATA_COLUMNS = [
@@ -137,18 +133,16 @@ export async function saveAgentRun(run: AgentRun, options: SaveAgentRunOptions =
   db.transaction(() => {
     db.prepare(sql).run(...values);
     if (options.transcriptChanges) {
-      applyTranscriptChangeSetInTransaction(
+      agentRunTranscriptStore.applyChangeSetInTransaction(
         db,
-        "agent_run",
         run.id,
         userId,
         options.transcriptChanges,
       );
     } else {
-      const previousState = options.previousState ?? hydrateTranscriptStateForUser("agent_run", run.id, userId);
-      syncTranscriptEntriesInTransaction(
+      const previousState = options.previousState ?? agentRunTranscriptStore.hydrateForUser(run.id, userId);
+      agentRunTranscriptStore.syncInTransaction(
         db,
-        "agent_run",
         run.id,
         userId,
         previousState,
@@ -168,7 +162,7 @@ export async function loadAgentRun(runId: string): Promise<AgentRun | null> {
   }
 
   const run = rowToAgentRun(row);
-  const transcript = hydrateTranscriptStateForUser("agent_run", runId, userId);
+  const transcript = agentRunTranscriptStore.hydrateForUser(runId, userId);
   run.messages = transcript.messages;
   run.logs = transcript.logs;
   run.toolCalls = transcript.toolCalls;
@@ -201,7 +195,7 @@ export async function loadAgentRunByChatId(chatId: string): Promise<AgentRun | n
     return null;
   }
   const run = rowToAgentRun(row);
-  const transcript = hydrateTranscriptStateForUser("agent_run", run.id, userId);
+  const transcript = agentRunTranscriptStore.hydrateForUser(run.id, userId);
   run.messages = transcript.messages;
   run.logs = transcript.logs;
   run.toolCalls = transcript.toolCalls;
@@ -237,7 +231,7 @@ export async function listActiveAgentRuns(agentId: string): Promise<AgentRun[]> 
     .all(agentId, userId) as Record<string, unknown>[];
   return rows.map((row) => {
     const run = rowToAgentRun(row);
-    const transcript = hydrateTranscriptStateForUser("agent_run", run.id, userId);
+    const transcript = agentRunTranscriptStore.hydrateForUser(run.id, userId);
     run.messages = transcript.messages;
     run.logs = transcript.logs;
     run.toolCalls = transcript.toolCalls;
