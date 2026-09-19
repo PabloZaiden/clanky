@@ -4,11 +4,13 @@
  * The schema created by `base-schema.ts` is the production schema at version
  * 56. Versions 1-56 remain as no-op markers so a new database has the same
  * history as the existing production database. New schema changes must append
- * a real migration after `BASELINE_SCHEMA_VERSION`.
+ * a real migration after `BASELINE_SCHEMA_VERSION`. Table names accepted by
+ * `getTableColumns` are derived from `schema-inventory.ts`.
  */
 
 import type { Database } from "bun:sqlite";
 import { createLogger } from "@pablozaiden/webapp/server";
+import { isIntrospectableTableName } from "../schema-inventory";
 
 const log = createLogger("persistence:migrations");
 
@@ -80,45 +82,6 @@ const HISTORICAL_MIGRATION_NAMES = [
   "make_preview_sessions_execution_host_backed",
 ] as const;
 
-const KNOWN_TABLE_NAMES = new Set([
-  "agent_run_transcript_entries",
-  "agent_run_transcript_meta",
-  "agent_runs",
-  "agents",
-  "chat_transcript_entries",
-  "chat_transcript_meta",
-  "chats",
-  "clanky_context_api_keys",
-  "execution_hosts",
-  "mesh_controller_grants",
-  "mesh_controller_relay_pairing",
-  "mesh_enrollment_tokens",
-  "mesh_node_identity",
-  "mesh_worker_kill_nonces",
-  "mesh_worker_registrations",
-  "preferences",
-  "preview_sessions",
-  "provisioning_job_logs",
-  "provisioning_jobs",
-  "review_comments",
-  "schema_migrations",
-  "sessions",
-  "ssh_servers",
-  "task_transcript_entries",
-  "task_transcript_meta",
-  "tasks",
-  "terminal_sessions",
-  "vnc_sessions",
-  "webapp_api_keys",
-  "webapp_device_auth_requests",
-  "webapp_passkeys",
-  "webapp_refresh_sessions",
-  "webapp_users",
-  "workspace_execution_targets",
-  "workspace_worker_enrollments",
-  "workspaces",
-]);
-
 export const migrations: Migration[] = HISTORICAL_MIGRATION_NAMES.map(
   (name, index) => ({
     version: index + 1,
@@ -135,7 +98,7 @@ export function tableExists(db: Database, tableName: string): boolean {
 }
 
 export function getTableColumns(db: Database, tableName: string): string[] {
-  if (!KNOWN_TABLE_NAMES.has(tableName)) {
+  if (!isIntrospectableTableName(tableName)) {
     throw new Error(`Unknown table name: "${tableName}"`);
   }
   const rows = db.query(`PRAGMA table_info(${tableName})`).all() as Array<{
