@@ -48,48 +48,6 @@ function createChatActionErrorResponse(error: unknown): Response | null {
     return errorResponse(error.code, error.message, error.status);
   }
   if (isDomainError(error)) {
-    const mappings = {
-      acp_request_cancelled: {
-        error: "cancelled",
-        message: "Chat operation was cancelled",
-        status: 409,
-      },
-      acp_session_not_found: {
-        error: "session_not_found",
-        message: "The chat session is no longer available",
-        status: 409,
-      },
-      acp_ssh_authentication_failed: {
-        error: "ssh_authentication_failed",
-        message: "SSH authentication failed",
-        status: 401,
-      },
-      acp_connection_aborted: {
-        error: "connection_aborted",
-        message: "The connection was aborted",
-        status: 409,
-      },
-      acp_unsupported_prompt_capability: {
-        error: "unsupported_prompt_capability",
-        message: "The connected agent does not support embedded document attachments",
-        status: 422,
-      },
-      workspace_git_required: {
-        error: "workspace_git_required",
-        message: "This operation requires a Git-backed workspace",
-        status: 409,
-      },
-      workspace_worktrees_disabled: {
-        error: "workspace_worktrees_disabled",
-        message: "Worktrees are disabled for this workspace",
-        status: 409,
-      },
-      execution_host_capability_unavailable: {
-        error: "execution_host_capability_unavailable",
-        message: "This execution host does not support ACP chats",
-        status: 409,
-      },
-    } as const;
     if (error.code === "acp_connection_timed_out") {
       const isSsh = error.details["transport"] === "ssh";
       return errorResponse(
@@ -100,9 +58,18 @@ function createChatActionErrorResponse(error: unknown): Response | null {
         504,
       );
     }
-    const mapping = mappings[error.code as keyof typeof mappings];
-    if (mapping) {
-      return errorResponse(mapping.error, mapping.message, mapping.status);
+    const response = internalErrorResponse(
+      error,
+      {
+        error: "chat_action_failed",
+        message: "Chat operation failed",
+        status: 500,
+      },
+      undefined,
+      "chats",
+    );
+    if (response.status !== 500) {
+      return response;
     }
     if (
       isAcpSshTransportFailure(error)
@@ -153,7 +120,16 @@ async function validateQuickChatRequestModel(body: {
     return null;
   } catch (error) {
     if (isDomainError(error) && error.code === "quick_chat_model_mismatch") {
-      return errorResponse(error.code, error.message, 400);
+      return internalErrorResponse(
+        error,
+        {
+          error: "quick_chat_model_mismatch",
+          message: "Chat model validation failed",
+          status: 400,
+        },
+        undefined,
+        "chats",
+      );
     }
     throw error;
   }

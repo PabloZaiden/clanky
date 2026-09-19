@@ -61,9 +61,7 @@ export const settingsRoutes = defineRoutes({
             error: "reset_failed",
             message: "Failed to reset settings",
             status: 500,
-          }, {
-            reset_failed: { status: 500, message: "Failed to reset settings" },
-          });
+          }, undefined, "settings");
         }
         log.error("Failed to reset all settings", { error: String(error) });
         return internalErrorResponse(error, {
@@ -105,12 +103,7 @@ export const settingsRoutes = defineRoutes({
             error: "purge_terminal_tasks_failed",
             message: "Failed to purge terminal-state tasks",
             status: 500,
-          }, {
-            purge_terminal_tasks_failed: {
-              status: 500,
-              message: "Failed to purge terminal-state tasks",
-            },
-          });
+          }, undefined, "settings");
         }
         log.error("Failed to purge terminal-state tasks across all workspaces", { error: String(error) });
         return internalErrorResponse(error, {

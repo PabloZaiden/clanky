@@ -10,44 +10,7 @@ const log = createLogger("api:vnc-sessions");
 
 function mapVncError(error: unknown): Response {
   return domainErrorResponse(error, {
-    mappings: {
-      ssh_server_not_found: {
-        error: "not_found",
-        message: "SSH server not found",
-        status: 404,
-      },
-      vnc_session_not_found: {
-        error: "not_found",
-        message: "VNC session not found",
-        status: 404,
-      },
-      invalid_credential_token: {
-        status: 400,
-      },
-      execution_host_capability_unavailable: {
-        status: 409,
-        message: "This execution host does not support VNC sessions.",
-      },
-      vnc_session_not_active: {
-        status: 409,
-      },
-      vnc_session_start_failed: {
-        status: 500,
-        message: "Failed to start VNC session",
-      },
-      vnc_tunnel_failed: {
-        status: 500,
-        message: "VNC tunnel failed to start",
-      },
-      workspace_execution_target_missing: {
-        status: 409,
-        message: "The workspace SSH execution target is not configured.",
-      },
-      execution_host_unavailable: {
-        status: 404,
-        message: "Execution host not found or unavailable.",
-      },
-    },
+    policy: "vnc",
     fallback: {
       error: "vnc_session_error",
       message: "VNC session operation failed",

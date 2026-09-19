@@ -33,10 +33,6 @@ import { getModelsForExecutionHost } from "../core/model-discovery";
 import { executionHostConfigurationService } from "../core/execution-host-configuration-service";
 
 const log = createLogger("api:execution-hosts");
-const CAPABILITY_UNAVAILABLE_MAPPING = {
-  status: 409,
-  message: "This execution host does not support the requested operation.",
-} as const;
 
 function resolveSshPassword(
   ref: ExecutionHostRef,
@@ -76,18 +72,11 @@ async function resolveWorkingDirectoryResponse(
       error: String(error),
     });
     return domainErrorResponse(error, {
+      policy: "execution-hosts",
       fallback: {
         error: "execution_host_directory_unavailable",
         message: "Failed to resolve the execution-host working directory.",
         status: 500,
-      },
-      mappings: {
-        execution_host_unavailable: {
-          status: 404,
-          message: "Execution host not found or unavailable.",
-        },
-        execution_host_capability_unavailable:
-          CAPABILITY_UNAVAILABLE_MAPPING,
       },
     });
   }
@@ -181,45 +170,11 @@ export const executionHostRoutes = defineRoutes({
           error: String(error),
         });
         return domainErrorResponse(error, {
+          policy: "execution-hosts",
           fallback: {
             error: "execution_host_exec_failed",
             message: "Execution-host command execution failed.",
             status: 500,
-          },
-          mappings: {
-            execution_host_unavailable: {
-              status: 404,
-              message: "Execution host not found or unavailable.",
-            },
-            execution_host_private: {
-              status: 400,
-              message: "This execution host is private to its workspace.",
-            },
-            execution_host_capability_unavailable:
-              CAPABILITY_UNAVAILABLE_MAPPING,
-            execution_host_exec_cwd_invalid: {
-              status: 400,
-            },
-            execution_host_exec_cwd_not_found: {
-              status: 400,
-            },
-            execution_host_exec_output_limit_exceeded: {
-              status: 413,
-            },
-            mesh_execution_result_too_large: {
-              status: 413,
-            },
-            invalid_credential_token: {
-              status: 400,
-            },
-            mesh_execution_aborted: {
-              status: 499,
-              message: "Execution-host command was aborted.",
-            },
-            mesh_execution_unreachable: {
-              status: 502,
-              message: "The execution host is unavailable.",
-            },
           },
         });
       }
@@ -263,28 +218,11 @@ export const executionHostRoutes = defineRoutes({
           error: String(error),
         });
         return domainErrorResponse(error, {
+          policy: "execution-hosts",
           fallback: {
             error: "execution_host_addresses_failed",
             message: "Failed to discover execution-host addresses.",
             status: 500,
-          },
-          mappings: {
-            invalid_credential_token: {
-              status: 400,
-            },
-            execution_host_addresses_unavailable: {
-              status: 409,
-            },
-            execution_host_unavailable: {
-              status: 404,
-              message: "Execution host not found or unavailable.",
-            },
-            execution_host_private: {
-              status: 400,
-              message: "This execution host is private to its workspace.",
-            },
-            execution_host_capability_unavailable:
-              CAPABILITY_UNAVAILABLE_MAPPING,
           },
         });
       }
@@ -325,38 +263,11 @@ export const executionHostRoutes = defineRoutes({
           error: String(error),
         });
         return domainErrorResponse(error, {
+          policy: "execution-hosts",
           fallback: {
             error: "execution_host_configuration_failed",
             message: "Failed to update execution-host configuration.",
             status: 500,
-          },
-          mappings: {
-            execution_host_unavailable: {
-              status: 404,
-              message: "Execution host not found or unavailable.",
-            },
-            execution_host_directory_invalid: {
-              status: 400,
-              message: "The selected directory does not exist on the execution host.",
-            },
-            execution_host_configuration_unsupported: {
-              status: 400,
-              message: "This execution host must be configured through its transport settings.",
-            },
-            execution_host_capability_unavailable:
-              CAPABILITY_UNAVAILABLE_MAPPING,
-            mesh_execution_configuration_stale: {
-              status: 409,
-              message: "The execution-host configuration changed. Refresh and try again.",
-            },
-            mesh_control_request_unreachable: {
-              status: 503,
-              message: "The Mesh execution host could not be reached.",
-            },
-            mesh_control_request_rejected: {
-              status: 502,
-              message: "The Mesh execution host rejected the configuration update.",
-            },
           },
         });
       }
@@ -413,31 +324,11 @@ export const executionHostRoutes = defineRoutes({
           error: String(error),
         });
         return domainErrorResponse(error, {
+          policy: "execution-hosts",
           fallback: {
             error: "execution_host_chat_failed",
             message: "Failed to create execution-host chat.",
             status: 500,
-          },
-          mappings: {
-            invalid_credential_token: {
-              status: 400,
-            },
-            execution_host_unavailable: {
-              status: 404,
-              error: "execution_host_unavailable",
-              message: "Execution host not found or unavailable.",
-            },
-            execution_host_binding_stale: {
-              status: 409,
-              error: "execution_host_binding_stale",
-              message: "Execution host configuration changed.",
-            },
-            execution_host_directory_invalid: {
-              status: 400,
-              message: "The selected directory does not exist on the execution host.",
-            },
-            execution_host_capability_unavailable:
-              CAPABILITY_UNAVAILABLE_MAPPING,
           },
         });
       }
@@ -476,17 +367,11 @@ export const executionHostRoutes = defineRoutes({
           error: String(error),
         });
         return domainErrorResponse(error, {
+          policy: "execution-hosts",
           fallback: {
             error: "execution_host_prerequisites_failed",
             message: "Failed to check execution-host prerequisites.",
             status: 500,
-          },
-          mappings: {
-            invalid_credential_token: {
-              status: 400,
-            },
-            execution_host_capability_unavailable:
-              CAPABILITY_UNAVAILABLE_MAPPING,
           },
         });
       }
@@ -524,17 +409,11 @@ export const executionHostRoutes = defineRoutes({
           error: String(error),
         });
         return domainErrorResponse(error, {
+          policy: "execution-hosts",
           fallback: {
             error: "execution_host_templates_failed",
             message: "Failed to list execution-host Devbox templates.",
             status: 500,
-          },
-          mappings: {
-            invalid_credential_token: {
-              status: 400,
-            },
-            execution_host_capability_unavailable:
-              CAPABILITY_UNAVAILABLE_MAPPING,
           },
         });
       }
@@ -580,17 +459,11 @@ export const executionHostRoutes = defineRoutes({
           error: String(error),
         });
         return domainErrorResponse(error, {
+          policy: "execution-hosts",
           fallback: {
             error: "execution_host_provider_discovery_failed",
             message: "Failed to discover execution-host providers.",
             status: 500,
-          },
-          mappings: {
-            invalid_credential_token: {
-              status: 400,
-            },
-            execution_host_capability_unavailable:
-              CAPABILITY_UNAVAILABLE_MAPPING,
           },
         });
       }
@@ -645,17 +518,11 @@ export const executionHostRoutes = defineRoutes({
           error: String(error),
         });
         return domainErrorResponse(error, {
+          policy: "execution-hosts",
           fallback: {
             error: "execution_host_model_discovery_failed",
             message: "Failed to discover execution-host models.",
             status: 500,
-          },
-          mappings: {
-            invalid_credential_token: {
-              status: 400,
-            },
-            execution_host_capability_unavailable:
-              CAPABILITY_UNAVAILABLE_MAPPING,
           },
         });
       }

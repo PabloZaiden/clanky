@@ -18,63 +18,7 @@ const log = createLogger("api:provisioning");
 
 function mapProvisioningError(error: unknown): Response {
   return domainErrorResponse(error, {
-    mappings: {
-      ssh_server_not_found: {
-        error: "not_found",
-        message: "SSH server not found",
-        status: 404,
-      },
-      invalid_credential_token: {
-        status: 400,
-      },
-      invalid_worker_host_address: {
-        status: 400,
-      },
-      invalid_execution_target: {
-        status: 400,
-      },
-      execution_host_capability_unavailable: {
-        status: 409,
-        message: "This execution host does not support provisioning.",
-      },
-      job_not_terminal: {
-        status: 409,
-      },
-      provisioning_target_busy: {
-        status: 409,
-      },
-      provisioning_cancelled: {
-        status: 409,
-      },
-      workspace_worker_enrollment_not_found: {
-        status: 404,
-      },
-      workspace_worker_enrollment_expired: {
-        status: 410,
-      },
-      workspace_worker_enrollment_claimed: {
-        status: 409,
-      },
-      workspace_worker_already_attached: {
-        status: 409,
-      },
-      workspace_worker_enrollment_unavailable: {
-        status: 409,
-      },
-      workspace_worker_not_connected: {
-        status: 409,
-      },
-      mesh_public_base_url_not_configured: {
-        status: 400,
-        message: "Configure CLANKY_PUBLIC_BASE_URL before using worker provisioning.",
-      },
-      execution_host_addresses_unavailable: {
-        status: 409,
-      },
-      execution_host_unavailable: {
-        status: 409,
-      },
-    },
+    policy: "provisioning",
     fallback: {
       error: "provisioning_error",
       message: "Provisioning operation failed",

@@ -16,31 +16,7 @@ const log = createLogger("api:terminal-sessions");
 
 function mapTerminalSessionError(error: unknown): Response {
   return domainErrorResponse(error, {
-    mappings: {
-      workspace_not_found: {
-        error: "not_found",
-        message: "Workspace not found",
-        status: 404,
-      },
-      terminal_session_not_found: {
-        error: "not_found",
-        message: "Terminal session not found",
-        status: 404,
-      },
-      task_not_found: {
-        error: "not_found",
-        message: "Task not found",
-        status: 404,
-      },
-      task_working_directory_unavailable: {
-        error: "invalid_session_configuration",
-        status: 400,
-      },
-      execution_host_capability_unavailable: {
-        status: 409,
-        message: "This execution host does not support interactive terminals.",
-      },
-    },
+    policy: "terminal",
     fallback: {
       error: "terminal_session_error",
       message: "Terminal session operation failed",

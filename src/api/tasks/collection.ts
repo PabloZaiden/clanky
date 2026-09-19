@@ -11,7 +11,7 @@ import {
 } from "../../core/task-creation-service";
 import { taskManager } from "../../core/task-manager";
 import { CreateTaskRequestSchema, GenerateTaskTitleRequestSchema } from "@/contracts/schemas";
-import { errorResponse, internalErrorResponse } from "../helpers";
+import { domainErrorResponse, errorResponse, internalErrorResponse } from "../helpers";
 import { parseAndValidate } from "../validation";
 import { startErrorResponse } from "./helpers";
 
@@ -26,13 +26,44 @@ function mapTaskCreationError(error: unknown, workspaceId: string): Response | n
     return errorResponse("workspace_not_found", `Workspace not found: ${workspaceId}`, 404);
   }
   if (error.code === "workspace_git_required") {
-    return errorResponse(error.code, error.message, 409);
+    return domainErrorResponse(error, {
+      policy: "tasks",
+      fallback: {
+        error: "create_failed",
+        message: "Failed to create task",
+        status: 500,
+      },
+    });
   }
   if (error.code === "workspace_worktrees_disabled") {
-    return errorResponse(error.code, error.message, 409);
+    return domainErrorResponse(error, {
+      policy: "tasks",
+      fallback: {
+        error: "create_failed",
+        message: "Failed to create task",
+        status: 500,
+      },
+    });
+  }
+  if (
+    error.code === "invalid_uploaded_plan"
+    || error.code === "model_not_enabled"
+    || error.code === "cheap_model_not_enabled"
+    || error.code === "model_not_found"
+    || error.code === "provider_not_found"
+    || error.code === "validation_failed"
+  ) {
+    return domainErrorResponse(error, {
+      policy: "tasks",
+      fallback: {
+        error: "create_failed",
+        message: "Failed to create task",
+        status: 400,
+      },
+    });
   }
 
-  return errorResponse(error.code, error.message, 400);
+  return null;
 }
 
 export const tasksCollectionRoutes = defineRoutes({
@@ -145,7 +176,14 @@ export const tasksCollectionRoutes = defineRoutes({
           );
         }
         if (isDomainError(error) && error.code === "workspace_git_required") {
-          return errorResponse(error.code, error.message, 409);
+          return domainErrorResponse(error, {
+            policy: "tasks",
+            fallback: {
+              error: "title_generation_failed",
+              message: "Failed to generate task title",
+              status: 500,
+            },
+          });
         }
 
         log.error("Failed to generate task title", {

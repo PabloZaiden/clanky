@@ -19,7 +19,7 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import { isDomainError } from "../../core/domain-error";
 import { preferencesManager } from "../../core/preferences-manager";
 import { parseAndValidate } from "../validation";
-import { errorResponse, internalErrorResponse } from "../helpers";
+import { domainErrorResponse, internalErrorResponse } from "../helpers";
 import { SetLastModelRequestSchema, SetLastCheapModelRequestSchema, SetLastDirectoryRequestSchema, SetGithubUsernameRequestSchema, SetMarkdownRenderingRequestSchema, SetFileExplorerFullTreeRequestSchema, SetDashboardViewModeRequestSchema, SetSchedulerTimezoneRequestSchema, SetQuickChatSettingsRequestSchema } from "@/contracts/schemas";
 
 const log = createLogger("api:preferences");
@@ -356,7 +356,20 @@ export const preferencesRoutes = defineRoutes({
         return Response.json({ success: true, settings });
       } catch (error) {
         if (isDomainError(error) && error.code === "workspace_not_found") {
-          return errorResponse(error.code, error.message, 404);
+          return domainErrorResponse(error, {
+            mappings: {
+              workspace_not_found: {
+                error: "workspace_not_found",
+                message: "Workspace not found",
+                status: 404,
+              },
+            },
+            fallback: {
+              error: "not_found",
+              message: "Workspace not found",
+              status: 404,
+            },
+          });
         }
         logPreferenceSaveFailure("quick-chat", error);
         return internalErrorResponse(error, {

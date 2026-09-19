@@ -12,44 +12,7 @@ const log = createLogger("api:previews");
 
 function mapPreviewError(error: unknown): Response {
   return domainErrorResponse(error, {
-    mappings: {
-      workspace_not_found: {
-        error: "not_found",
-        message: "Workspace not found",
-        status: 404,
-      },
-      workspace_name_ambiguous: {
-        status: 409,
-      },
-      workspace_reference_required: {
-        status: 400,
-      },
-      execution_host_kind_invalid: {
-        status: 400,
-      },
-      execution_host_reference_required: {
-        status: 400,
-      },
-      execution_host_name_ambiguous: {
-        status: 409,
-      },
-      execution_host_not_found: {
-        status: 404,
-      },
-      execution_host_unavailable: {
-        status: 404,
-      },
-      execution_host_private: {
-        status: 409,
-      },
-      execution_host_capability_unavailable: {
-        status: 409,
-        message: "This execution host does not support direct previews.",
-      },
-      preview_server_unsupported: {
-        status: 409,
-      },
-    },
+    policy: "previews",
     fallback: {
       error: "preview_error",
       message: "Preview operation failed",

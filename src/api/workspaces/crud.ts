@@ -11,7 +11,6 @@ import { parseAndValidate } from "../validation";
 import {
   domainErrorResponse,
   errorResponse,
-  executionHostCapabilityUnavailableMapping,
   internalErrorResponse,
   requireWorkspace,
 } from "../helpers";
@@ -23,24 +22,31 @@ const log = createLogger("api:workspaces");
 
 function mapDeleteWorkspaceError(error: unknown): Response {
   return domainErrorResponse(error, {
-    mappings: {
-      invalid_credential_token: {
-        status: 400,
-      },
-      workspace_delete_metadata_invalid: {
-        status: 400,
-      },
-      workspace_delete_remote_failed: {
-        status: 500,
-        message: "Failed to delete the auto-provisioned workspace directory",
-      },
-    },
+    policy: "workspaces",
     fallback: {
       error: "delete_failed",
       message: "Failed to delete workspace",
       status: 500,
     },
   });
+}
+
+function logWorkspaceMutationFailure(
+  operation: "create" | "update",
+  workspaceId: string | undefined,
+  error: unknown,
+  response: Response,
+): void {
+  const context = {
+    ...(workspaceId ? { workspaceId } : {}),
+    status: response.status,
+    ...(isDomainError(error) ? { errorCode: error.code } : { error: String(error) }),
+  };
+  if (response.status >= 500) {
+    log.error(`Failed to ${operation} workspace`, context);
+  } else {
+    log.warn(`Rejected workspace ${operation}`, context);
+  }
 }
 
 export const crudRoutes = defineRoutes({
@@ -87,67 +93,16 @@ export const crudRoutes = defineRoutes({
         log.info(`Created workspace: ${workspace.name} (${workspace.directory})`);
         return Response.json(workspace, { status: 201 });
       } catch (error) {
-        if (isDomainError(error)) {
-          return domainErrorResponse(error, {
-            mappings: {
-              validation_failed: {
-                status: 400,
-                message: "Failed to validate the workspace directory",
-              },
-              directory_not_found: {
-                status: 400,
-                message: "Directory does not exist on the remote server",
-              },
-              not_git_repo: {
-                status: 400,
-                message: "Directory must be a git repository",
-              },
-              workspace_execution_target_not_trusted: {
-                status: 400,
-              },
-              execution_host_unavailable: {
-                status: 400,
-              },
-              execution_host_capability_unavailable:
-                executionHostCapabilityUnavailableMapping(error),
-              execution_host_private: {
-                status: 400,
-              },
-              workspace_worker_enrollment_not_found: {
-                status: 404,
-              },
-              workspace_worker_enrollment_expired: {
-                status: 410,
-              },
-              workspace_worker_enrollment_claimed: {
-                status: 409,
-              },
-              workspace_worker_already_attached: {
-                status: 409,
-              },
-              workspace_worker_not_connected: {
-                status: 409,
-              },
-              workspace_worker_enrollment_unavailable: {
-                status: 409,
-              },
-              workspace_execution_target_in_use: {
-                status: 409,
-              },
-            },
-            fallback: {
-              error: "create_failed",
-              message: "Failed to create workspace",
-              status: 500,
-            },
-          });
-        }
-        log.error("Failed to create workspace:", String(error));
-        return internalErrorResponse(error, {
-          error: "create_failed",
-          message: "Failed to create workspace",
-          status: 500,
+        const response = domainErrorResponse(error, {
+          policy: "workspaces",
+          fallback: {
+            error: "create_failed",
+            message: "Failed to create workspace",
+            status: 500,
+          },
         });
+        logWorkspaceMutationFailure("create", undefined, error, response);
+        return response;
       }
     },
   },
@@ -213,34 +168,16 @@ export const crudRoutes = defineRoutes({
         }
         return Response.json(includeSensitive ? workspace : sanitizeWorkspace(workspace));
       } catch (error) {
-        if (isDomainError(error)) {
-          return domainErrorResponse(error, {
-            mappings: {
-              workspace_execution_target_not_trusted: {
-                status: 400,
-              },
-              execution_host_unavailable: {
-                status: 400,
-              },
-              execution_host_capability_unavailable:
-                executionHostCapabilityUnavailableMapping(error),
-              workspace_execution_target_in_use: {
-                status: 409,
-              },
-            },
-            fallback: {
-              error: "update_failed",
-              message: "Failed to update workspace",
-              status: 500,
-            },
-          });
-        }
-        log.error("Failed to update workspace:", String(error));
-        return internalErrorResponse(error, {
-          error: "update_failed",
-          message: "Failed to update workspace",
-          status: 500,
+        const response = domainErrorResponse(error, {
+          policy: "workspaces",
+          fallback: {
+            error: "update_failed",
+            message: "Failed to update workspace",
+            status: 500,
+          },
         });
+        logWorkspaceMutationFailure("update", id, error, response);
+        return response;
       }
     },
 
@@ -264,20 +201,7 @@ export const crudRoutes = defineRoutes({
             errorCode: result.error.code,
           });
           return domainErrorResponse(result.error, {
-            mappings: {
-              workspace_not_found: {
-                status: 404,
-              },
-              workspace_has_tasks: {
-                status: 400,
-              },
-              workspace_deletion_in_progress: {
-                status: 409,
-              },
-              workspace_not_auto_provisioned: {
-                status: 400,
-              },
-            },
+            policy: "workspaces",
             fallback: {
               error: "delete_failed",
               message: "Failed to delete workspace",

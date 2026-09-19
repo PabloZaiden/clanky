@@ -5,7 +5,7 @@
 import { taskManager } from "../../core/task-manager";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { isModelEnabled } from "../../core/model-discovery";
-import { isTaskOperationError, type TaskOperationError, type TaskErrorCode } from "../../core/task/task-errors";
+import { isTaskOperationError, type TaskOperationError } from "../../core/task/task-errors";
 import { domainErrorResponse, errorResponse } from "../helpers";
 import { isDomainError } from "../../core/domain-error";
 
@@ -60,14 +60,14 @@ export function startErrorResponse(
         error: error.message,
         changedFilesCount: Array.isArray(changedFiles) ? changedFiles.length : 0,
       });
-      return Response.json(
-        {
+      return domainErrorResponse(error, {
+        policy: "tasks",
+        fallback: {
           error: "uncommitted_changes",
-          message: error.message,
-          changedFiles: Array.isArray(changedFiles) ? changedFiles : [],
+          message: "Cannot start because the repository has uncommitted changes",
+          status: 409,
         },
-        { status: 409 },
-      );
+      });
     }
 
     if (error.code === "directory_in_use") {
@@ -75,7 +75,14 @@ export function startErrorResponse(
         ...context,
         error: error.message,
       });
-      return errorResponse("directory_in_use", error.message, 409);
+      return domainErrorResponse(error, {
+        policy: "tasks",
+        fallback: {
+          error: "directory_in_use",
+          message: "The directory is already in use.",
+          status: 409,
+        },
+      });
     }
 
     if (error.code === "operation_in_progress") {
@@ -83,7 +90,14 @@ export function startErrorResponse(
         ...context,
         error: error.message,
       });
-      return errorResponse("operation_in_progress", error.message, 409);
+      return domainErrorResponse(error, {
+        policy: "tasks",
+        fallback: {
+          error: "operation_in_progress",
+          message: "Another task operation is already in progress.",
+          status: 409,
+        },
+      });
     }
   }
 
@@ -92,7 +106,14 @@ export function startErrorResponse(
       ...context,
       error: error.message,
     });
-    return errorResponse(error.code, error.message, 409);
+    return domainErrorResponse(error, {
+      policy: "tasks",
+      fallback: {
+        error: "workspace_worktrees_disabled",
+        message: "Worktrees are disabled for this workspace.",
+        status: 409,
+      },
+    });
   }
 
   log.error("Task start failed", {
@@ -103,137 +124,12 @@ export function startErrorResponse(
   return errorResponse(fallbackCode, fallbackMessage, 500);
 }
 
-const TASK_ERROR_MAPPINGS: Readonly<
-  Record<TaskErrorCode, { error: string; message: string; status: number }>
-> = {
-  task_not_found: { error: "not_found", message: "Task not found", status: 404 },
-  task_not_running: { error: "not_running", message: "Task is not running", status: 409 },
-  task_not_planning: {
-    error: "not_planning",
-    message: "Task is not in planning status",
-    status: 400,
-  },
-  plan_not_ready: {
-    error: "plan_not_ready",
-    message: "Plan is not ready yet",
-    status: 400,
-  },
-  task_already_running: {
-    error: "already_running",
-    message: "Task is already running",
-    status: 409,
-  },
-  invalid_task_state: {
-    error: "invalid_state",
-    message: "Task is in an invalid state for this operation",
-    status: 400,
-  },
-  invalid_model_config: {
-    error: "invalid_model_config",
-    message: "Invalid model configuration",
-    status: 400,
-  },
-  task_branch_missing: {
-    error: "no_git_branch",
-    message: "No git branch was created for this task",
-    status: 400,
-  },
-  task_worktree_missing: {
-    error: "no_worktree",
-    message: "Task worktree is not available",
-    status: 400,
-  },
-  operation_in_progress: {
-    error: "operation_in_progress",
-    message: "This task operation is already in progress",
-    status: 409,
-  },
-  invalid_task_input: {
-    error: "validation_error",
-    message: "Invalid task input",
-    status: 400,
-  },
-  workspace_git_required: {
-    error: "workspace_git_required",
-    message: "Tasks require a Git-backed workspace",
-    status: 409,
-  },
-  task_not_addressable: {
-    error: "invalid_state",
-    message: "Task cannot receive follow-up feedback",
-    status: 400,
-  },
-  automatic_pr_flow_disabled: {
-    error: "automatic_pr_flow_disabled",
-    message: "Automatic PR flow is not enabled for this task",
-    status: 400,
-  },
-  automatic_pr_flow_busy: {
-    error: "automatic_pr_flow_busy",
-    message: "Automatic PR flow is already processing feedback",
-    status: 409,
-  },
-  task_no_remote: {
-    error: "no_remote",
-    message: "Workspace has no git remote configured",
-    status: 400,
-  },
-  task_operation_failed: {
-    error: "task_operation_failed",
-    message: "Task operation failed",
-    status: 500,
-  },
-  task_git_operation_failed: {
-    error: "task_git_operation_failed",
-    message: "Task git operation failed",
-    status: 500,
-  },
-  task_terminal_session_failed: {
-    error: "task_terminal_session_failed",
-    message: "Task terminal session operation failed",
-    status: 500,
-  },
-  task_file_operation_failed: {
-    error: "task_file_operation_failed",
-    message: "Task file operation failed",
-    status: 500,
-  },
-  task_session_reconnect_failed: {
-    error: "task_session_reconnect_failed",
-    message: "Task session could not be reconnected",
-    status: 500,
-  },
-  uncommitted_changes: {
-    error: "uncommitted_changes",
-    message: "Cannot start because the repository has uncommitted changes",
-    status: 409,
-  },
-  directory_in_use: {
-    error: "directory_in_use",
-    message: "The task directory is already in use",
-    status: 409,
-  },
-};
-
 export function taskErrorResponse(
   error: TaskOperationError,
   fallback: { error: string; message: string; status?: number },
 ): Response {
-  if (error.code === "uncommitted_changes") {
-    const changedFiles = error.details["changedFiles"];
-    return errorResponse(
-      "uncommitted_changes",
-      error.message,
-      409,
-      { changedFiles: Array.isArray(changedFiles) ? changedFiles : [] },
-    );
-  }
-
-  const mapping = TASK_ERROR_MAPPINGS[error.code];
   return domainErrorResponse(error, {
-    mappings: {
-      [error.code]: mapping,
-    },
+    policy: "tasks",
     fallback,
   });
 }

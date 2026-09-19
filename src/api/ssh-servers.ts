@@ -19,27 +19,7 @@ const log = createLogger("api:ssh-servers");
 
 function mapSshServerError(error: unknown): Response {
   return domainErrorResponse(error, {
-    mappings: {
-      ssh_server_not_found: {
-        error: "not_found",
-        message: "SSH server not found",
-        status: 404,
-      },
-      invalid_encrypted_credential: {
-        status: 400,
-      },
-      invalid_credential_token: {
-        status: 400,
-      },
-      ssh_server_reload_failed: {
-        status: 500,
-        message: "Failed to reload SSH server",
-      },
-      ssh_server_key_generation_failed: {
-        status: 500,
-        message: "Failed to generate SSH server key pair",
-      },
-    },
+    policy: "ssh",
     fallback: {
       error: "ssh_server_error",
       message: "SSH server operation failed",
