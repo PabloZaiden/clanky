@@ -111,13 +111,7 @@ export function TaskDetails({
            id: "accept-plan-start",
            label: "Accept plan & start",
            disabled: actions.planActionSubmitting || !planReady,
-           onAction: () => void actions.handleAcceptPlan("start_task"),
-         },
-         {
-           id: "accept-plan-terminal",
-           label: "Accept plan & open terminal",
-           disabled: actions.planActionSubmitting || !planReady,
-           onAction: () => void actions.handleAcceptPlan("open_terminal"),
+           onAction: () => void actions.handleAcceptPlan(),
          },
          {
            id: "discard-plan",
