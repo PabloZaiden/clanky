@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import {
@@ -24,6 +24,10 @@ import type {
 import { CommandExecutorImpl } from "../../src/core/remote-command-executor";
 import { GitCommandError, GitService } from "../../src/core/git";
 import { ensurePlanningDirectory } from "../../src/core/planning-directory";
+import {
+  executionPathsEqual,
+  executionPathStyleForPlatform,
+} from "../../src/core/execution-path";
 import { runWithCurrentUser } from "../../src/context/user-context";
 import { AcpBackend, MeshAcpTransport } from "../../src/backends/acp";
 import { closeDatabase, initializeDatabase } from "../../src/persistence/database";
@@ -259,7 +263,14 @@ describe("native worker registration", () => {
         formatLastObserved: (response) => JSON.stringify(response),
       },
     );
-    expect(execution.body.stdout.trim()).toBe(worker.dataDir);
+    const reportedDirectory = execution.body.stdout.trim();
+    const canonicalWorkerDirectory = await realpath(worker.dataDir);
+    const canonicalReportedDirectory = await realpath(reportedDirectory);
+    expect(executionPathsEqual(
+      canonicalReportedDirectory,
+      canonicalWorkerDirectory,
+      executionPathStyleForPlatform(expectedRuntime.platform!.os)!,
+    )).toBe(true);
     const previousDataDir = process.env["CLANKY_DATA_DIR"];
     closeDatabase();
     process.env["CLANKY_DATA_DIR"] = controller.dataDir;
