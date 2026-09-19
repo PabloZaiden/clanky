@@ -22,6 +22,13 @@ const ACTIVE_SYNC_CONFLICT_STATUSES: ReadonlySet<TaskStatus> = new Set([
   "running",
   "waiting",
 ]);
+const SIDEBAR_HISTORY_STATUSES: ReadonlySet<TaskStatus> = new Set([
+  "failed",
+  "max_iterations",
+  "accepted_local",
+  "merged",
+  "deleted",
+]);
 
 export type TaskStatusPillVariant =
   | "default"
@@ -189,6 +196,16 @@ export function isTaskActive(status: TaskStatus): boolean {
 }
 
 /**
+ * Check if a task belongs in the dashboard's Active section.
+ * Stopped tasks are actionable work, but they do not have an active engine.
+ */
+export function isTaskInActiveSection(status: TaskStatus): boolean {
+  const result = status === "stopped" || isTaskActive(status);
+  log.trace("isTaskInActiveSection check", { status, result });
+  return result;
+}
+
+/**
  * Check if a task is in a running state where iteration prompts can be set.
  */
 export function isTaskRunning(status: TaskStatus): boolean {
@@ -265,6 +282,17 @@ export function isArchivedTask(status: TaskStatus, reviewModeAddressable: boolea
 export function isWorkspaceHistoryTask(status: TaskStatus): boolean {
   const result = status === "merged" || status === "deleted";
   log.trace("isWorkspaceHistoryTask check", { status, result });
+  return result;
+}
+
+/**
+ * Check if a task belongs in the workspace sidebar's History subsection.
+ * This intentionally does not derive presentation from canJumpstart:
+ * stopped tasks remain visible in the active task list so they can be resumed.
+ */
+export function isSidebarHistoryTask(status: TaskStatus): boolean {
+  const result = SIDEBAR_HISTORY_STATUSES.has(status);
+  log.trace("isSidebarHistoryTask check", { status, result });
   return result;
 }
 

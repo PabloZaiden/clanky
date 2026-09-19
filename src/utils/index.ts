@@ -15,6 +15,8 @@ export {
   canSendTerminalFollowUp,
   isAwaitingFeedback,
   isArchivedTask,
+  isTaskInActiveSection,
+  isSidebarHistoryTask,
   isWorkspaceHistoryTask,
   shouldShowInRecentActivity,
   getRecentActivityTimestamp,

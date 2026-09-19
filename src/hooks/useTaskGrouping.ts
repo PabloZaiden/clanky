@@ -5,7 +5,12 @@
 
 import { useMemo } from "react";
 import type { Task, Workspace } from "@/shared";
-import { isArchivedTask, isAwaitingFeedback, isTaskPlanReady } from "../utils";
+import {
+  isArchivedTask,
+  isAwaitingFeedback,
+  isTaskInActiveSection,
+  isTaskPlanReady,
+} from "../utils";
 
 export interface StatusGroups {
   draft: Task[];
@@ -57,12 +62,7 @@ export function groupTasksByStatus(tasksToGroup: Task[]): StatusGroups {
 
   return {
     draft: tasksToGroup.filter((task) => task.state.status === "draft"),
-    active: tasksToGroup.filter(
-      (task) =>
-        task.state.status === "running" ||
-        task.state.status === "waiting" ||
-        task.state.status === "starting"
-    ),
+    active: tasksToGroup.filter((task) => isTaskInActiveSection(task.state.status)),
     needsReview: tasksToGroup.filter((task) => planReadySet.has(task.config.id)),
     planning: tasksToGroup.filter(
       (task) => task.state.status === "planning" && !planReadySet.has(task.config.id)
@@ -74,9 +74,8 @@ export function groupTasksByStatus(tasksToGroup: Task[]): StatusGroups {
     archived: tasksToGroup.filter((task) => isArchivedTask(task.state.status, task.state.reviewMode?.addressable)),
     other: tasksToGroup.filter(
       (task) =>
-        !["draft", "running", "waiting", "starting", "completed", "accepted_local", "merged", "pushed", "deleted", "planning"].includes(
-          task.state.status
-        )
+        !isTaskInActiveSection(task.state.status) &&
+        !["draft", "completed", "accepted_local", "merged", "pushed", "deleted", "planning"].includes(task.state.status)
     ),
   };
 }
