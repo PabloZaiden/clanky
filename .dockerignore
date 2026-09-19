@@ -1,7 +1,6 @@
 # local-only files and metadata
 .git
-.github
-!.github/
+.github/*
 !.github/release-metadata.json
 .clanky-planning
 .devcontainer
