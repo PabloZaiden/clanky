@@ -32,10 +32,13 @@ export function chatActionErrorResponse(error: unknown): Response | null {
     return null;
   }
 
-  if (error.code === "acp_connection_timed_out" && error.details["transport"] === "ssh") {
+  if (error.code === "acp_connection_timed_out") {
+    const isSsh = error.details["transport"] === "ssh";
     return errorResponse(
-      "ssh_connection_timeout",
-      "The SSH connection timed out before the agent became ready",
+      isSsh ? "ssh_connection_timeout" : "connection_timeout",
+      isSsh
+        ? "The SSH connection timed out before the agent became ready"
+        : "The agent connection timed out before it became ready",
       504,
     );
   }
