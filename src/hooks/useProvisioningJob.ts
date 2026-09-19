@@ -4,6 +4,7 @@ import {
   storeSshServerPassword,
 } from "../lib/ssh-browser-credentials";
 import { apiRequest, readApiResponse, requestApiResponse } from "../lib/api-client";
+import { isApiErrorCode } from "../lib/api-error";
 import { isAbortError } from "../lib/request-lifecycle";
 import { isProvisioningJobTerminal } from "@/shared";
 import type {
@@ -101,17 +102,64 @@ function isSuccessfulConnectionLog(entry: ProvisioningLogEntry): boolean {
 }
 
 const ACTIVE_JOB_REFRESH_INTERVAL_MS = 1000;
+const DISMISS_RETRY_DELAY_MS = 100;
+const MAX_DISMISS_RETRIES = 50;
 
 function isDismissibleProvisioningJob(job: PublicProvisioningJob): boolean {
   return isProvisioningJobTerminal(job.state.status);
 }
 
-async function dismissProvisioningJobRequest(jobId: string): Promise<void> {
-  await apiRequest(`/api/provisioning-jobs/${encodeURIComponent(jobId)}/dismiss`, {
-    method: "POST",
-    action: "Dismiss provisioning job",
-    fallbackMessage: "Failed to dismiss provisioning job",
+function waitForDismissRetry(signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException("Dismissal retry was aborted", "AbortError"));
+      return;
+    }
+
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const handleAbort = () => {
+      if (timeout !== undefined) {
+        clearTimeout(timeout);
+      }
+      signal?.removeEventListener("abort", handleAbort);
+      reject(new DOMException("Dismissal retry was aborted", "AbortError"));
+    };
+
+    timeout = setTimeout(() => {
+      signal?.removeEventListener("abort", handleAbort);
+      resolve();
+    }, DISMISS_RETRY_DELAY_MS);
+    signal?.addEventListener("abort", handleAbort, { once: true });
   });
+}
+
+async function dismissProvisioningJobRequest(
+  jobId: string,
+  options: {
+    signal?: AbortSignal;
+    retryOnReadiness?: boolean;
+  } = {},
+): Promise<void> {
+  for (let retry = 0; ; retry += 1) {
+    try {
+      await apiRequest(`/api/provisioning-jobs/${encodeURIComponent(jobId)}/dismiss`, {
+        method: "POST",
+        signal: options.signal,
+        action: "Dismiss provisioning job",
+        fallbackMessage: "Failed to dismiss provisioning job",
+      });
+      return;
+    } catch (error) {
+      if (
+        !options.retryOnReadiness
+        || !isApiErrorCode(error, "job_not_terminal")
+        || retry >= MAX_DISMISS_RETRIES
+      ) {
+        throw error;
+      }
+      await waitForDismissRetry(options.signal);
+    }
+  }
 }
 
 export function useProvisioningJob(): UseProvisioningJobResult {
@@ -126,56 +174,69 @@ export function useProvisioningJob(): UseProvisioningJobResult {
   const [error, setError] = useState<string | null>(null);
   const [dismissingAllJobs, setDismissingAllJobs] = useState(false);
   const dismissingAllJobsRef = useRef(false);
+  const dismissingAllControllerRef = useRef<AbortController | null>(null);
   const activeJobIdRef = useRef(activeJobId);
   const jobsRequestControllerRef = useRef<AbortController | null>(null);
   const jobsRequestIdRef = useRef(0);
+  const jobsRefreshCoordinatorRef = useRef(createRefreshCoordinator<void>());
   const refreshControllerRef = useRef<AbortController | null>(null);
   const refreshCoordinatorRef = useRef(createRefreshCoordinator<PublicProvisioningJobSnapshot | null>());
   activeJobIdRef.current = activeJobId;
 
   const refreshJobs = useCallback(async (
-    options: { showLoading?: boolean } = {},
+    options: { showLoading?: boolean; force?: boolean } = {},
   ): Promise<void> => {
-    const requestId = ++jobsRequestIdRef.current;
-    jobsRequestControllerRef.current?.abort();
-    const controller = new AbortController();
-    jobsRequestControllerRef.current = controller;
-    const showLoading = options.showLoading ?? true;
-    setJobsLoading(showLoading);
+    const refresh = async (): Promise<void> => {
+      const requestId = ++jobsRequestIdRef.current;
+      jobsRequestControllerRef.current?.abort();
+      const controller = new AbortController();
+      jobsRequestControllerRef.current = controller;
+      const showLoading = options.showLoading ?? true;
+      setJobsLoading(showLoading);
 
-    try {
-      const response = await apiRequest<{ jobs: PublicProvisioningJob[] }>(
-        "/api/provisioning-jobs",
-        {
-          signal: controller.signal,
-          action: "Load provisioning jobs",
-          fallbackMessage: "Failed to load provisioning jobs",
-        },
-      );
-      if (
-        controller.signal.aborted
-        || requestId !== jobsRequestIdRef.current
-      ) {
-        return;
+      try {
+        const response = await apiRequest<{ jobs: PublicProvisioningJob[] }>(
+          "/api/provisioning-jobs",
+          {
+            signal: controller.signal,
+            action: "Load provisioning jobs",
+            fallbackMessage: "Failed to load provisioning jobs",
+          },
+        );
+        if (
+          controller.signal.aborted
+          || requestId !== jobsRequestIdRef.current
+        ) {
+          return;
+        }
+        setJobs(response.jobs);
+        setJobsError(null);
+      } catch (nextError) {
+        if (
+          controller.signal.aborted
+          || requestId !== jobsRequestIdRef.current
+          || isAbortError(nextError)
+        ) {
+          return;
+        }
+        setJobsError(String(nextError));
+      } finally {
+        if (jobsRequestIdRef.current === requestId) {
+          jobsRequestControllerRef.current = null;
+          setJobsLoading(false);
+        }
       }
-      setJobs(response.jobs);
-      setJobsError(null);
-    } catch (nextError) {
-      if (
-        controller.signal.aborted
-        || requestId !== jobsRequestIdRef.current
-        || isAbortError(nextError)
-      ) {
-        return;
-      }
-      setJobsError(String(nextError));
-    } finally {
-      if (jobsRequestIdRef.current === requestId) {
-        jobsRequestControllerRef.current = null;
-        setJobsLoading(false);
-      }
-    }
+    };
+
+    const refreshPromise = options.force
+      ? jobsRefreshCoordinatorRef.current.runAfterCurrent(refresh)
+      : jobsRefreshCoordinatorRef.current.run(refresh);
+    await refreshPromise;
   }, []);
+
+  const refreshJobsAfterBulk = useCallback(async (): Promise<void> => {
+    await refreshJobs({ showLoading: false, force: true });
+  }, [refreshJobs]);
 
   const clearActiveJob = useCallback(() => {
     refreshControllerRef.current?.abort();
@@ -460,9 +521,14 @@ export function useProvisioningJob(): UseProvisioningJobResult {
     dismissingAllJobsRef.current = true;
     setDismissingAllJobs(true);
     setError(null);
+    const controller = new AbortController();
+    dismissingAllControllerRef.current = controller;
     try {
       const results = await Promise.allSettled(
-        jobIds.map((jobId) => dismissProvisioningJobRequest(jobId)),
+        jobIds.map((jobId) => dismissProvisioningJobRequest(jobId, {
+          signal: controller.signal,
+          retryOnReadiness: true,
+        })),
       );
       const dismissedJobIds: string[] = [];
       const failedJobIds: string[] = [];
@@ -479,19 +545,27 @@ export function useProvisioningJob(): UseProvisioningJobResult {
       if (activeJobIdRef.current && dismissedJobIds.includes(activeJobIdRef.current)) {
         clearActiveJob();
       }
-      await refreshJobs({ showLoading: false });
+      if (!controller.signal.aborted) {
+        await refreshJobsAfterBulk();
+      }
       return { dismissedJobIds, failedJobIds };
     } finally {
+      if (dismissingAllControllerRef.current === controller) {
+        dismissingAllControllerRef.current = null;
+      }
       dismissingAllJobsRef.current = false;
       setDismissingAllJobs(false);
     }
-  }, [clearActiveJob, jobs, refreshJobs]);
+  }, [clearActiveJob, jobs, refreshJobsAfterBulk]);
 
   useEffect(() => {
     void refreshJobs();
     return () => {
       jobsRequestControllerRef.current?.abort();
       jobsRequestControllerRef.current = null;
+      dismissingAllControllerRef.current?.abort();
+      dismissingAllControllerRef.current = null;
+      jobsRefreshCoordinatorRef.current.reset();
     };
   }, [refreshJobs]);
 
