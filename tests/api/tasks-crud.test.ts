@@ -14,7 +14,8 @@ import { backendManager } from "../../src/core/backend-manager";
 import { ManagedPathService } from "../../src/core/managed-path-service";
 import { taskManager } from "../../src/core/task-manager";
 import { TestCommandExecutor } from "../mocks/mock-executor";
-import { createMockBackend } from "../mocks/mock-backend";
+import { createMockBackend, MockAcpBackend, defaultTestModel } from "../mocks/mock-backend";
+import type { AgentResponse } from "../../src/backends/types";
 import { updateTaskState } from "../../src/persistence/tasks";
 import type { TaskLogEntry, PersistedMessage, PersistedToolCall } from "@/shared";
 import { getCurrentBranch, initializeGitRepository } from "../helpers/git-fixtures";
@@ -174,22 +175,18 @@ describe("Tasks CRUD API Integration", () => {
 
     // Set up backend manager with test executor factory.
     // The mocked backend is also used by the explicit title-generation endpoint tests.
-    mockBackend = createMockBackend();
     let nameCounter = 0;
-    const originalSendPrompt = mockBackend.sendPrompt.bind(mockBackend);
-    mockBackend.sendPrompt = async (sessionId, prompt) => {
-      // Check if this is a name generation prompt (contains "Generate a title")
-      const promptText = prompt.parts?.map((part) => part.type === "text" ? part.text : "").join("") ?? "";
-      if (promptText.includes("Generate a title")) {
+    mockBackend = new MockAcpBackend({
+      models: [defaultTestModel],
+      onSendPrompt: () => {
         nameCounter++;
         return {
           id: `msg-name-${Date.now()}`,
           content: `crud-test-task-${nameCounter}`,
           parts: [{ type: "text" as const, text: `crud-test-task-${nameCounter}` }],
         };
-      }
-      return originalSendPrompt(sessionId, prompt);
-    };
+      },
+    });
     backendManager.setBackendForTesting(mockBackend);
     backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
 
@@ -959,6 +956,75 @@ describe("Tasks CRUD API Integration", () => {
       expect(body.message).toContain("Failed to generate task title");
 
       backendManager.setBackendForTesting(mockBackend);
+    });
+
+    test("cancels timed-out title generation before returning without a fallback title", async () => {
+      const lifecycle: string[] = [];
+      let signalPromptStarted!: () => void;
+      const promptStarted = new Promise<void>((resolve) => {
+        signalPromptStarted = resolve;
+      });
+      let resolveLateResponse!: (response: AgentResponse) => void;
+      let signalLateResponseSettled!: () => void;
+      const lateResponseSettled = new Promise<void>((resolve) => {
+        signalLateResponseSettled = resolve;
+      });
+      const timeoutBackend = new MockAcpBackend({
+        models: [defaultTestModel],
+        onSendPrompt: async () => {
+          lifecycle.push("prompt-started");
+          signalPromptStarted();
+          return await new Promise<AgentResponse>((resolve) => {
+            resolveLateResponse = resolve;
+          });
+        },
+        onSendPromptSettled: () => {
+          signalLateResponseSettled();
+        },
+      });
+      const originalAbortSession = timeoutBackend.abortSession.bind(timeoutBackend);
+      timeoutBackend.abortSession = async (sessionId) => {
+        lifecycle.push("session-aborted");
+        await originalAbortSession(sessionId);
+      };
+
+      backendManager.resetForTesting();
+      backendManager.setBackendForTesting(timeoutBackend);
+      backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
+      taskManager.setTitleGenerationTimeoutForTesting(0);
+
+      try {
+        const responsePromise = fetch(`${baseUrl}/api/tasks/title`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...baseCreateTaskPayload,
+            workspaceId: testWorkspaceId,
+            prompt: "Build something that never returns a title",
+            model: testModel,
+          }),
+        });
+
+        await promptStarted;
+        const response = await responsePromise;
+        expect(response.status).toBe(500);
+        const body = await response.json();
+        expect(body.error).toBe("title_generation_failed");
+        expect(body.message).toBe("Failed to generate task title");
+        expect(lifecycle).toEqual(["prompt-started", "session-aborted"]);
+
+        resolveLateResponse({
+          id: "late-task-title-response",
+          content: "Late title must not be returned",
+          parts: [{ type: "text", text: "Late title must not be returned" }],
+        });
+        await lateResponseSettled;
+      } finally {
+        taskManager.setTitleGenerationTimeoutForTesting(undefined);
+        backendManager.resetForTesting();
+        backendManager.setBackendForTesting(mockBackend);
+        backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
+      }
     });
   });
 
