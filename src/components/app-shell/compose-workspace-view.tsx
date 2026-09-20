@@ -45,6 +45,7 @@ interface ComposeWorkspaceViewProps {
 
 const COMPOSE_AUTOMATIC_ADVANCED_PANEL_ID = "compose-workspace-automatic-advanced-options-panel";
 const MANUAL_WORKER_HOST_ADDRESS_OPTION = "__manual_worker_host_address__";
+const RELAY_WORKER_HOST_ADDRESS_OPTION = "__relay_worker_host_address__";
 
 function DedicatedWorkerEnrollment({
   enrollment,
@@ -138,6 +139,10 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     setAutomaticExecutionHost,
     automaticTransport,
     setAutomaticTransport,
+    automaticWorkerEnrollmentRoute,
+    setAutomaticWorkerEnrollmentRoute,
+    automaticRelayPaired,
+    automaticRelayStatusLoading,
     automaticWorkerHostAddress,
     setAutomaticWorkerHostAddress,
     automaticWorkerHostAddressMode,
@@ -176,7 +181,11 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     loading: workerHostAddressesLoading,
     error: workerHostAddressesError,
   } = useExecutionHostAddresses(
-    automaticTransport === "worker" ? automaticExecutionHost : null,
+    automaticTransport === "worker"
+      && !automaticRelayStatusLoading
+      && automaticWorkerEnrollmentRoute === "direct"
+      ? automaticExecutionHost
+      : null,
     automaticPassword,
   );
   const autoSelectedDevboxTemplateRef = useRef<string | null>(null);
@@ -190,6 +199,14 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
       setAutomaticWorkerHostAddress("");
       return;
     }
+    if (automaticRelayStatusLoading) {
+      return;
+    }
+    if (automaticWorkerEnrollmentRoute === "relay") {
+      setAutomaticWorkerHostAddressMode("discovered");
+      setAutomaticWorkerHostAddress("");
+      return;
+    }
     if (automaticWorkerHostAddressMode === "manual") {
       return;
     }
@@ -198,7 +215,9 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     }
   }, [
     automaticExecutionHost,
+    automaticRelayStatusLoading,
     automaticTransport,
+    automaticWorkerEnrollmentRoute,
     automaticWorkerHostAddress,
     automaticWorkerHostAddressMode,
     setAutomaticWorkerHostAddress,
@@ -248,6 +267,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     (
       workspaceWorkerEnrollmentSelected
       || automaticTransport !== "worker"
+      || automaticWorkerEnrollmentRoute === "relay"
       || (automaticWorkerHostAddressMode === "manual"
         ? isValidWorkerHostAddress(automaticWorkerHostAddress)
         : (
@@ -484,25 +504,43 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                         id="automatic-worker-host-address"
                         label="Worker host address"
                         value={
-                          automaticWorkerHostAddressMode === "manual"
+                          automaticWorkerEnrollmentRoute === "relay"
+                            ? RELAY_WORKER_HOST_ADDRESS_OPTION
+                            : automaticWorkerHostAddressMode === "manual"
                             ? MANUAL_WORKER_HOST_ADDRESS_OPTION
                             : automaticWorkerHostAddress
                         }
                         onChange={(event) => {
                           const value = event.target.value;
+                          if (value === RELAY_WORKER_HOST_ADDRESS_OPTION) {
+                            setAutomaticWorkerEnrollmentRoute("relay");
+                            return;
+                          }
                           if (value === MANUAL_WORKER_HOST_ADDRESS_OPTION) {
+                            setAutomaticWorkerEnrollmentRoute("direct");
                             setAutomaticWorkerHostAddressMode("manual");
                             setAutomaticWorkerHostAddress("");
                             return;
                           }
+                          setAutomaticWorkerEnrollmentRoute("direct");
                           setAutomaticWorkerHostAddressMode("discovered");
                           setAutomaticWorkerHostAddress(value);
                         }}
+                        disabled={automaticRelayStatusLoading}
                         required
                       >
                         <option value="">
-                          {workerHostAddressesLoading ? "Discovering addresses..." : "Select an address"}
+                          {automaticRelayStatusLoading
+                            ? "Checking relay status..."
+                            : workerHostAddressesLoading
+                            ? "Discovering addresses..."
+                            : "Select an address"}
                         </option>
+                        {automaticRelayPaired && (
+                          <option value={RELAY_WORKER_HOST_ADDRESS_OPTION}>
+                            Via Clanky Relay
+                          </option>
+                        )}
                         {workerHostAddresses.map((address) => (
                           <option key={address} value={address}>{address}</option>
                         ))}

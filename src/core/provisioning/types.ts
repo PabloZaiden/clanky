@@ -5,6 +5,7 @@ import type {
   ProvisioningJobMode,
   ProvisioningTransport,
   ProvisioningLogEntry,
+  ProvisioningWorkerEnrollmentRoute,
 } from "@/shared";
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import type {
@@ -18,6 +19,7 @@ export interface StartProvisioningJobOptions {
   executionHost?: ExecutionHostRef;
   workspaceWorkerEnrollmentId?: string;
   transport?: ProvisioningTransport;
+  workerEnrollmentRoute?: ProvisioningWorkerEnrollmentRoute;
   workerHostAddress?: string;
   workerHostAddressManual?: boolean;
   repoUrl?: string;

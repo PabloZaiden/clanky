@@ -4,6 +4,7 @@ import type {
   ProvisioningJob,
   ProvisioningJobMode,
   ProvisioningTransport,
+  ProvisioningWorkerEnrollmentRoute,
 } from "@/shared";
 import { isValidWorkerHostAddress } from "@/shared";
 import { getWorkspace } from "../../persistence/workspaces";
@@ -22,7 +23,7 @@ export interface ProvisioningTargetResolution {
   ownership: ProvisioningTargetOwnership;
   workspaceWorkerEnrollmentId?: string;
   existingWorkerEnrollmentId?: string;
-  workerEnrollmentRoute?: "direct" | "relay";
+  workerEnrollmentRoute?: ProvisioningWorkerEnrollmentRoute;
   workerHostAddress?: string;
 }
 
@@ -149,6 +150,7 @@ export async function resolveProvisioningTarget(
     : null;
   const workerEnrollmentRoute = transport === "worker"
     ? existingWorkerEnrollment?.worker?.route.kind
+      ?? options.workerEnrollmentRoute
       ?? controllerRelayService.getDedicatedWorkerEnrollmentRoute()
     : undefined;
   const workerHostAddress = transport === "worker"

@@ -2585,6 +2585,7 @@ Create a provisioning job.
 | `executionHost` | object | Exactly one of `executionHost` or `workspaceWorkerEnrollmentId` | Execution host reference, such as `{ "kind": "local", "nodeId": "..." }` or `{ "kind": "ssh", "serverId": "..." }` |
 | `workspaceWorkerEnrollmentId` | string | Exactly one of `executionHost` or `workspaceWorkerEnrollmentId` | Existing dedicated worker enrollment; only valid for `provision` mode |
 | `transport` | string | No | `worker` (default for new automatic workspaces) or `ssh` |
+| `workerEnrollmentRoute` | string | No | `direct` or `relay` for a new worker transport; when omitted, the controller selects its configured default |
 | `workerHostAddress` | string \| null | Required for direct worker `provision`; omit for relay workers | Reachable IPv4 address or hostname without spaces |
 | `workerHostAddressManual` | boolean | No | Set to `true` when using a manually entered host instead of a discovered IPv4 address |
 | `repoUrl` | string | Yes | Repository URL for `provision` mode unless `createNewRepository` is true |
@@ -2607,6 +2608,7 @@ Create a provisioning job.
     "nodeId": "execution-host-node-uuid"
   },
   "transport": "worker",
+  "workerEnrollmentRoute": "direct",
   "workerHostAddress": "worker.example.com",
   "workerHostAddressManual": true,
   "repoUrl": "https://github.com/example/repo.git",
@@ -2622,12 +2624,16 @@ Create a provisioning job.
 ```
 
 `provider` accepts `"copilot"`, `"opencode"`, `"codex"`, `"claude"`, `"pi"`, or
-`"grok"`. For direct worker provisioning, a discovered address must be one of
-the addresses returned by the selected execution host. Set
-`workerHostAddressManual` to `true` for a manually entered host value. The
-controller must have `CLANKY_PUBLIC_BASE_URL` configured. For `rebuild` and
-`restart`, provide `targetDirectory` and `workspaceId`; `arise` only needs the
-server context and mode-specific fields may be `null`.
+`"grok"`. Set `workerEnrollmentRoute` to `"relay"` to create a relay-only
+worker and omit `workerHostAddress`; set it to `"direct"` to require a
+reachable worker address. If the route is omitted, the controller preserves
+the existing default selection based on its relay pairing. For direct worker
+provisioning, a discovered address must be one of the addresses returned by
+the selected execution host. Set `workerHostAddressManual` to `true` for a
+manually entered host value. The controller must have
+`CLANKY_PUBLIC_BASE_URL` configured. For `rebuild` and `restart`, provide
+`targetDirectory` and `workspaceId`; `arise` only needs the server context and
+mode-specific fields may be `null`.
 
 **Response**
 
@@ -2648,6 +2654,7 @@ Returns the created provisioning job snapshot with status `201 Created`.
         "revision": 1
       },
       "transport": "worker",
+      "workerEnrollmentRoute": "direct",
       "workerHostAddress": "192.0.2.10",
       "repoUrl": "https://github.com/example/repo.git",
       "basePath": "/workspaces",

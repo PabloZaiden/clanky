@@ -453,6 +453,18 @@ describe("Provisioning API integration", () => {
     process.env["CLANKY_PUBLIC_BASE_URL"] = "https://clanky.example.test";
     const healthResponder = installMeshHealthResponder();
     try {
+      const controller = await ensureLocalMeshNodeIdentity();
+      const relayKeys = generateKeyPairSync("ed25519");
+      const relayPublicKey = relayKeys.publicKey
+        .export({ format: "pem", type: "spki" })
+        .toString();
+      saveControllerRelayPairing({
+        relayUrl: "https://relay.example.test",
+        relayPublicKey,
+        relayFingerprint: getMeshNodeFingerprint(relayPublicKey),
+        controllerNodeId: controller.nodeId,
+        controllerFingerprint: controller.fingerprint,
+      });
       const sshServer = await createServer();
       const manualWorkerHost = "worker.example.test";
       const executor = new ProvisioningTestExecutor({
@@ -520,6 +532,7 @@ describe("Provisioning API integration", () => {
         body: JSON.stringify({
           name: "Worker Workspace",
           executionHost: { kind: "ssh", serverId: sshServer.config.id },
+          workerEnrollmentRoute: "direct",
           workerHostAddress: manualWorkerHost,
           workerHostAddressManual: true,
           repoUrl: "https://github.com/octocat/worker-example.git",
@@ -536,6 +549,7 @@ describe("Provisioning API integration", () => {
       expect(response.status).toBe(201);
       const started = await response.json() as ProvisioningSnapshotResponse;
       expect(started.job.config.transport).toBe("worker");
+      expect(started.job.config.workerEnrollmentRoute).toBe("direct");
       expect(started.job.config.workerHostAddress).toBe(manualWorkerHost);
       expect(started.job.config.workerHostAddressManual).toBe(true);
 
@@ -800,7 +814,7 @@ describe("Provisioning API integration", () => {
     expect(enrollment.enrollment.workspaceId).toBeNull();
   });
 
-  test("provisions a relay-only dedicated worker without a published port", async () => {
+  test("defaults a paired controller to a relay-only dedicated worker", async () => {
     const previousPublicBaseUrl = process.env["CLANKY_PUBLIC_BASE_URL"];
     process.env["CLANKY_PUBLIC_BASE_URL"] = "https://clanky.example.test";
     const relayUrl = "https://relay.example.test";

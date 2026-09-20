@@ -208,6 +208,7 @@ export function AppShell() {
     navigateWithinShell,
     servers,
     provisioning,
+    mesh,
     createWorkspace,
     refreshWorkspaces,
     workspaceGroups: allWorkspaceGroups,

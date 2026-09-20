@@ -16,7 +16,10 @@ import type {
   WorkspaceSshTargetRequest,
 } from "@/contracts/schemas/workspace";
 import type { SshServer } from "@/shared/ssh-server";
-import type { ProvisioningTransport } from "@/shared/provisioning";
+import type {
+  ProvisioningTransport,
+  ProvisioningWorkerEnrollmentRoute,
+} from "@/shared/provisioning";
 import { apiRequest } from "../../lib/api-client";
 import {
   getAutomaticWorkspaceBasePath,
@@ -25,6 +28,7 @@ import {
 } from "../../lib/automatic-workspace-preferences";
 import type { UseGithubUsernameResult } from "../../hooks/useGithubUsername";
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
+import type { UseMeshResult } from "../../hooks/useMesh";
 import { getRouteString } from "./route-fields";
 import { createRefreshCoordinator } from "../../lib/refresh-coordinator";
 import { isAbortError } from "../../lib/request-lifecycle";
@@ -60,6 +64,10 @@ export interface UseWorkspaceCreateResult {
   setAutomaticExecutionHost: (host: ExecutionHostRef | null) => void;
   automaticTransport: ProvisioningTransport;
   setAutomaticTransport: (transport: ProvisioningTransport) => void;
+  automaticWorkerEnrollmentRoute: ProvisioningWorkerEnrollmentRoute;
+  setAutomaticWorkerEnrollmentRoute: (route: ProvisioningWorkerEnrollmentRoute) => void;
+  automaticRelayPaired: boolean;
+  automaticRelayStatusLoading: boolean;
   automaticWorkerHostAddress: string;
   setAutomaticWorkerHostAddress: (address: string) => void;
   automaticWorkerHostAddressMode: AutomaticWorkerHostAddressMode;
@@ -119,6 +127,9 @@ interface UseWorkspaceCreateOptions {
   toast: ToastService;
   navigateWithinShell: (route: WebAppRoute) => void;
   githubUsername: UseGithubUsernameResult;
+  relayPaired: boolean;
+  relayStatusLoading: boolean;
+  refreshRelayStatus: UseMeshResult["refreshRelayStatus"];
 }
 
 export function useWorkspaceCreate({
@@ -130,6 +141,9 @@ export function useWorkspaceCreate({
   toast,
   navigateWithinShell,
   githubUsername,
+  relayPaired,
+  relayStatusLoading,
+  refreshRelayStatus,
 }: UseWorkspaceCreateOptions): UseWorkspaceCreateResult {
   const [workspaceCreateMode, setWorkspaceCreateMode] = useState<"manual" | "automatic">("manual");
   const [workspaceName, setWorkspaceName] = useState("");
@@ -149,6 +163,8 @@ export function useWorkspaceCreate({
   const [workspaceCreateSubmitting, setWorkspaceCreateSubmitting] = useState(false);
   const [automaticExecutionHost, setAutomaticExecutionHostState] = useState<ExecutionHostRef | null>(null);
   const [automaticTransport, setAutomaticTransport] = useState<ProvisioningTransport>("worker");
+  const [automaticWorkerEnrollmentRoute, setAutomaticWorkerEnrollmentRouteState] =
+    useState<ProvisioningWorkerEnrollmentRoute>("direct");
   const [automaticWorkerHostAddress, setAutomaticWorkerHostAddress] = useState("");
   const [automaticWorkerHostAddressMode, setAutomaticWorkerHostAddressMode] =
     useState<AutomaticWorkerHostAddressMode>("discovered");
@@ -166,6 +182,7 @@ export function useWorkspaceCreate({
   const lastProvisioningRefreshIdRef = useRef<string | null>(null);
   const wasOnComposeWorkspaceRef = useRef(false);
   const prefilledRetryJobIdRef = useRef<string | null>(null);
+  const automaticWorkerEnrollmentRouteTouchedRef = useRef(false);
   const enrollmentRefreshControllerRef = useRef<AbortController | null>(null);
   const enrollmentRefreshCoordinatorRef = useRef(
     createRefreshCoordinator<WorkspaceWorkerEnrollmentState>(),
@@ -175,6 +192,20 @@ export function useWorkspaceCreate({
     setAutomaticExecutionHostState(host);
     setAutomaticWorkerHostAddress("");
     setAutomaticWorkerHostAddressMode("discovered");
+    if (!automaticWorkerEnrollmentRouteTouchedRef.current && !relayStatusLoading) {
+      setAutomaticWorkerEnrollmentRouteState(relayPaired ? "relay" : "direct");
+    }
+  }
+
+  function setAutomaticWorkerEnrollmentRoute(
+    nextRoute: ProvisioningWorkerEnrollmentRoute,
+  ): void {
+    automaticWorkerEnrollmentRouteTouchedRef.current = true;
+    setAutomaticWorkerEnrollmentRouteState(nextRoute);
+    if (nextRoute === "relay") {
+      setAutomaticWorkerHostAddress("");
+      setAutomaticWorkerHostAddressMode("discovered");
+    }
   }
 
   useEffect(() => {
@@ -190,6 +221,7 @@ export function useWorkspaceCreate({
     if (!isOnComposeWorkspace) {
       wasOnComposeWorkspaceRef.current = false;
       prefilledRetryJobIdRef.current = null;
+      automaticWorkerEnrollmentRouteTouchedRef.current = false;
       return;
     }
 
@@ -215,6 +247,11 @@ export function useWorkspaceCreate({
             : config.executionHostBinding.host,
         );
         setAutomaticTransport(config.transport ?? "ssh");
+        automaticWorkerEnrollmentRouteTouchedRef.current = true;
+        setAutomaticWorkerEnrollmentRouteState(
+          config.workerEnrollmentRoute
+            ?? (config.workerHostAddress ? "direct" : relayPaired ? "relay" : "direct"),
+        );
         setAutomaticWorkerHostAddress(config.workerHostAddress ?? "");
         setAutomaticWorkerHostAddressMode(
           config.workerHostAddressManual ? "manual" : "discovered",
@@ -274,6 +311,8 @@ export function useWorkspaceCreate({
     setWorkspaceServerSettingsValid(true);
     setWorkspaceTesting(false);
     setWorkspaceCreateSubmitting(false);
+    automaticWorkerEnrollmentRouteTouchedRef.current = false;
+    setAutomaticWorkerEnrollmentRouteState(relayPaired ? "relay" : "direct");
     const defaultAutomaticServer = getDefaultAutomaticWorkspaceServer(servers);
     const requestedExecutionHostKind = getRouteString(route, "executionHostKind");
     const requestedExecutionHostId = getRouteString(route, "executionHostId");
@@ -316,7 +355,34 @@ export function useWorkspaceCreate({
     servers,
     githubUsername.githubUsername,
     githubUsername.loading,
+    relayPaired,
   ]);
+
+  useEffect(() => {
+    if (
+      route.view !== "compose"
+      || getRouteString(route, "kind") !== "workspace"
+    ) {
+      return;
+    }
+    void refreshRelayStatus();
+  }, [refreshRelayStatus, route]);
+
+  useEffect(() => {
+    if (
+      route.view !== "compose"
+      || getRouteString(route, "kind") !== "workspace"
+      || automaticWorkerEnrollmentRouteTouchedRef.current
+      || relayStatusLoading
+    ) {
+      return;
+    }
+    setAutomaticWorkerEnrollmentRouteState(relayPaired ? "relay" : "direct");
+    if (relayPaired) {
+      setAutomaticWorkerHostAddress("");
+      setAutomaticWorkerHostAddressMode("discovered");
+    }
+  }, [automaticWorkerEnrollmentRoute, relayPaired, relayStatusLoading, route]);
 
   useEffect(() => {
     const enrollmentId = workspaceWorkerEnrollment?.enrollment.id;
@@ -495,6 +561,11 @@ export function useWorkspaceCreate({
         : config.executionHostBinding.host,
     );
     setAutomaticTransport(config.transport ?? "ssh");
+    automaticWorkerEnrollmentRouteTouchedRef.current = true;
+    setAutomaticWorkerEnrollmentRouteState(
+      config.workerEnrollmentRoute
+        ?? (config.workerHostAddress ? "direct" : relayPaired ? "relay" : "direct"),
+    );
     setAutomaticWorkerHostAddress(config.workerHostAddress ?? "");
     setAutomaticWorkerHostAddressMode(
       config.workerHostAddressManual ? "manual" : "discovered",
@@ -545,10 +616,15 @@ export function useWorkspaceCreate({
             : {}),
           transport: workspaceWorkerEnrollmentSelected ? "ssh" : automaticTransport,
           ...(automaticTransport === "worker" && !workspaceWorkerEnrollmentSelected
+            ? { workerEnrollmentRoute: automaticWorkerEnrollmentRoute }
+            : {}),
+          ...(automaticTransport === "worker" && !workspaceWorkerEnrollmentSelected
+            && automaticWorkerEnrollmentRoute !== "relay"
             ? { workerHostAddress: automaticWorkerHostAddress }
             : {}),
           ...(automaticTransport === "worker"
             && !workspaceWorkerEnrollmentSelected
+            && automaticWorkerEnrollmentRoute !== "relay"
             && automaticWorkerHostAddressMode === "manual"
             ? { workerHostAddressManual: true }
             : {}),
@@ -644,6 +720,10 @@ export function useWorkspaceCreate({
     setAutomaticExecutionHost,
     automaticTransport,
     setAutomaticTransport,
+    automaticWorkerEnrollmentRoute,
+    setAutomaticWorkerEnrollmentRoute,
+    automaticRelayPaired: relayPaired,
+    automaticRelayStatusLoading: relayStatusLoading,
     automaticWorkerHostAddress,
     setAutomaticWorkerHostAddress,
     automaticWorkerHostAddressMode,

@@ -23,6 +23,9 @@ export function isProvisioningJobTerminal(status: ProvisioningJobStatus): boolea
 
 export type ProvisioningJobMode = "provision" | "rebuild" | "restart" | "arise";
 export type ProvisioningTransport = "ssh" | "worker";
+export const PROVISIONING_WORKER_ENROLLMENT_ROUTES = ["direct", "relay"] as const;
+export type ProvisioningWorkerEnrollmentRoute =
+  typeof PROVISIONING_WORKER_ENROLLMENT_ROUTES[number];
 
 export type ProvisioningStep =
   | "verify_devbox"
@@ -65,7 +68,7 @@ export interface ProvisioningJobConfig {
   transport?: ProvisioningTransport;
   workspaceWorkerEnrollmentId?: string;
   workerEnrollmentId?: string;
-  workerEnrollmentRoute?: "direct" | "relay";
+  workerEnrollmentRoute?: ProvisioningWorkerEnrollmentRoute;
   workerHostAddress?: string;
   workerHostAddressManual?: boolean;
   repoUrl?: string;
