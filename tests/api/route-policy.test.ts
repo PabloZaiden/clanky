@@ -143,7 +143,5 @@ describe("API route policy metadata", () => {
     expect(apiRoutes["/api/settings/purge-terminal-tasks"]?.auth).toBe("owner");
     expect(routes["/api/previews/bridge"]?.auth).toBe("user");
     expect(routes["/api/previews/bridge"]?.sameOrigin).toBe("always");
-    expect(routes["/api/vnc"]?.auth).toBe("user");
-    expect(routes["/api/vnc"]?.sameOrigin).toBe("always");
   });
 });

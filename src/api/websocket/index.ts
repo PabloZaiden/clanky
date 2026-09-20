@@ -3,11 +3,10 @@
  *
  * Supports raw websocket surfaces:
  * - WS /api/terminal for canonical terminal streams
- * - WS /api/vnc for raw VNC traffic
  * - WS /api/previews/bridge for live-preview forwarding
  *
  * Features:
- * - Raw terminal, VNC, and preview bridge transport
+ * - Raw terminal and preview bridge transport
  * - Ping/pong keep-alive support
  * - Automatic cleanup on disconnect
  *

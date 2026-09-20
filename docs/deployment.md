@@ -47,8 +47,8 @@ Use a reverse proxy for any public deployment:
    credentials, a path, query, or fragment. Use HTTPS for public deployments.
 3. Remove client-supplied forwarded host, protocol, and prefix headers, then
    write sanitized values from the proxy.
-4. Forward WebSocket upgrades for `/api/ws` and the raw terminal, preview, and
-   VNC transports.
+4. Forward WebSocket upgrades for `/api/ws` and the raw terminal and preview
+   transports.
 5. Keep the Clanky listener private to the proxy network or bind it to
    loopback.
 6. Persist and back up `/app/data`.

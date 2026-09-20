@@ -182,7 +182,6 @@ export {
   SshCredentialTokenSchema,
   CheckSshServerPrerequisitesRequestSchema,
   GetDevboxTemplatesRequestSchema,
-  CreateVncSessionRequestSchema,
   type SshKeyAlgorithm,
   type CreateSshServerRequest,
   type UpdateSshServerRequest,
@@ -191,7 +190,6 @@ export {
   type SshCredentialToken,
   type CheckSshServerPrerequisitesRequest,
   type GetDevboxTemplatesRequest,
-  type CreateVncSessionRequest,
 } from "./ssh-server";
 
 // Provisioning schemas

@@ -16,11 +16,10 @@
  * - provisioning: Remote workspace provisioning jobs
  * - chats: Standalone and task-linked chat sessions
  * - agents: Scheduled-agent management and runs
- * - vnc-sessions: VNC session management
  * - previews: Workspace and direct server preview management
  * - mesh: Controller-managed worker enrollment and transport
  * - agent-prompt-bridge: Internal deterministic-agent prompt bridge
- * - raw websocket upgrades: Realtime, terminal, preview, and VNC transports are defined separately
+ * - raw websocket upgrades: Realtime, terminal, and preview transports are defined separately
  * 
  * @module api
  */
@@ -39,7 +38,6 @@ import { terminalSessionsRoutes } from "./terminal-sessions";
 import { provisioningRoutes } from "./provisioning";
 import { chatsRoutes } from "./chats/index";
 import { agentsRoutes } from "./agents";
-import { vncSessionRoutes } from "./vnc-sessions";
 import { previewRoutes } from "./previews";
 import { meshRoutes } from "./mesh";
 import { meshRelayRoutes } from "./mesh-relay";
@@ -66,7 +64,6 @@ const nativeApiRoutes = {
   ...provisioningRoutes,
   ...chatsRoutes,
   ...agentsRoutes,
-  ...vncSessionRoutes,
   ...previewRoutes,
   ...meshRoutes,
   ...meshRelayRoutes,
@@ -114,7 +111,6 @@ export * from "./websocket";
 export * from "./provisioning";
 export * from "./chats/index";
 export * from "./agents";
-export * from "./vnc-sessions";
 export * from "./previews";
 export * from "./agent-prompt-bridge";
 export * from "./mesh";

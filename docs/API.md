@@ -23,7 +23,7 @@ where they affect integration.
 
 Normal private REST routes require an authenticated user and enforce
 same-origin protection for browser mutations. Database reset and terminal-task
-purge are owner-only. Preview, terminal, and VNC WebSocket upgrades require an
+purge are owner-only. Preview and terminal WebSocket upgrades require an
 authenticated user and always enforce same-origin checks.
 
 Use `clanky api` to list the routes exposed by the running server and
@@ -197,7 +197,6 @@ included in this table.
 | POST | `/api/execution-hosts/:kind/:id/files/upload/cancel` | Cancel an execution-host file upload session. |
 | POST | `/api/execution-hosts/:kind/:id/files/upload/chunk` | Upload a chunk for an execution-host file upload session. |
 | POST | `/api/execution-hosts/:kind/:id/files/upload/complete` | Complete an execution-host file upload session. |
-| GET, POST | `/api/execution-hosts/:kind/:id/vnc-sessions` | List or create VNC sessions for an execution host. |
 | GET | `/api/git/branches` | List local git branches for a workspace. |
 | GET | `/api/git/default-branch` | Detect the default git branch for a workspace. |
 | GET | `/api/git/github-issues` | List open GitHub issues for a workspace repository. |
@@ -274,8 +273,6 @@ included in this table.
 | GET | `/api/tasks/:id/tool-calls/:toolCallId` | Read one complete task tool-call payload. |
 | POST | `/api/tasks/:id/update-branch` | Sync a pushed task branch with its base branch. |
 | POST | `/api/tasks/title` | Generate a task title from a prompt. |
-| GET | `/api/vnc` | Open the raw websocket bridge for a VNC session. |
-| GET, DELETE | `/api/vnc-sessions/:id` | Read or close a VNC session. |
 | GET, PUT | `/api/voice/settings` | Read or update the current user's voice provider settings. |
 | POST | `/api/voice/validate` | Validate a configured voice capability against its provider. |
 | POST | `/api/voice/transcribe` | Transcribe an uploaded audio recording. |
@@ -2469,7 +2466,7 @@ Standalone SSH servers let the browser register reusable SSH targets and
 exchange encrypted credentials. Registered SSH servers are execution-host
 sources; use the `/api/execution-hosts/ssh/:id/...` routes for commands,
 working-directory resolution, file operations, provider/model discovery,
-prerequisite checks, Devbox templates, direct chats, and VNC sessions.
+prerequisite checks, Devbox templates, and direct chats.
 
 #### GET /api/ssh-servers
 

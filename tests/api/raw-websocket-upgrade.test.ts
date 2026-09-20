@@ -51,29 +51,6 @@ describe("raw WebSocket upgrade flow", () => {
     );
     expect(terminalResponse?.status).toBe(400);
     expect(await terminalResponse?.text()).toBe("terminalSessionId is required");
-
-    const vncResponse = await getRouteHandler("/api/vnc")(
-      new Request("http://localhost/api/vnc"),
-      createRouteContext(),
-    );
-    expect(vncResponse?.status).toBe(400);
-    expect(await vncResponse?.text()).toBe("vncSessionId is required");
-
-    let upgradeData: unknown;
-    const upgradeResponse = await getRouteHandler("/api/vnc")(
-      new Request("http://localhost/api/vnc?vncSessionId=vnc-1"),
-      createRouteContext((_request, options) => {
-        upgradeData = options?.data;
-        return true;
-      }),
-    );
-    expect(upgradeResponse).toBeUndefined();
-    expect(upgradeData).toMatchObject({
-      webappSocketHandler: "clanky",
-      vncSessionId: "vnc-1",
-      vncMode: true,
-      user: testOwnerUser,
-    });
   });
 
   test("reports terminal resolution failures through the socket", async () => {

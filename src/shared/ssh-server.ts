@@ -2,8 +2,6 @@
  * Standalone SSH server and credential domain types.
  */
 
-import type { ExecutionHostBinding } from "./execution-host";
-
 export type SshKeyAlgorithm = "RSA-OAEP-256";
 
 /**
@@ -74,35 +72,6 @@ export interface SshServerEncryptedCredential {
 export interface SshCredentialExchangeResponse {
   credentialToken: string;
   expiresAt: string;
-}
-
-export type VncSessionStatus =
-  | "starting"
-  | "active"
-  | "stopping"
-  | "stopped"
-  | "failed";
-
-export interface VncSessionConfig {
-  id: string;
-  executionHostBinding: ExecutionHostBinding;
-  remoteHost: "127.0.0.1";
-  remotePort: number;
-  localPort: number;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface VncSessionState {
-  status: VncSessionStatus;
-  pid?: number;
-  connectedAt?: string;
-  error?: string;
-}
-
-export interface VncSession {
-  config: VncSessionConfig;
-  state: VncSessionState;
 }
 
 export type SshServerPrerequisiteId =

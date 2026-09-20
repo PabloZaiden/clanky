@@ -366,30 +366,6 @@ export const routes = defineRoutes<ClankyRealtimeEvent>({
       }
     },
   },
-  "/api/vnc": {
-    auth: "user",
-    sameOrigin: "always",
-    description: "Open the raw websocket bridge for a VNC session.",
-    GET: (req, ctx) => {
-      const user = ctx.requireUser();
-      const url = new URL(req.url);
-      const vncSessionId = url.searchParams.get("vncSessionId") ?? undefined;
-      if (!vncSessionId) {
-        return new Response("vncSessionId is required", { status: 400 });
-      }
-      return authorizedRawWebSocketUpgrade(user.id, () => {
-        const upgraded = ctx.server?.upgrade(req, {
-          data: {
-            webappSocketHandler: "clanky",
-            vncSessionId,
-            vncMode: true,
-            user,
-          },
-        });
-        return upgraded ? undefined : new Response("WebSocket upgrade failed", { status: 400 });
-      });
-    },
-  },
   ...apiRoutes,
   ...meshControllerInternalRoutes,
 });

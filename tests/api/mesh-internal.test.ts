@@ -354,7 +354,6 @@ describe("Mesh internal controller-worker routes", () => {
     expect(legacyBody.workerPlatform).toBeUndefined();
     expect(legacyBody.workerCapabilities["git"]).toBeUndefined();
     expect(legacyBody.workerCapabilities["managedWorktrees"]).toBeUndefined();
-    expect(legacyBody.workerCapabilities["vnc"]).toBeUndefined();
   });
 
   test("rejects signed controller operations targeting another worker", async () => {

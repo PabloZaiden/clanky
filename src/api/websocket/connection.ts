@@ -7,8 +7,6 @@ import {
   SSH_TERMINAL_CREDENTIALS_REQUIRED_MESSAGE,
   startTerminalBridge,
 } from "./terminal";
-import { vncSessionManager } from "../../core/vnc-session-manager";
-import { runWithCurrentUser } from "../../core/user-context";
 import { previewSessionManager } from "../../core/preview-session-manager";
 import { meshAcpGateway } from "../../core/mesh-acp-gateway";
 import { meshTerminalGateway } from "../../core/mesh-terminal-gateway";
@@ -55,8 +53,6 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
   const {
     terminalSessionId,
     terminalMode,
-    vncMode,
-    vncSessionId,
     previewBridgeMode,
     meshAcpMode,
     meshAcpSessionId,
@@ -85,10 +81,8 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
   activeConnections.add(ws);
   log.info("WebSocket connection opened", {
     terminalMode: terminalMode ?? false,
-    vncMode: vncMode ?? false,
     previewBridgeMode: previewBridgeMode ?? false,
     terminalSessionId: terminalSessionId ?? "none",
-    vncSessionId: vncSessionId ?? "none",
     activeConnections: activeConnections.size,
   });
 
@@ -168,41 +162,6 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
     return;
   }
 
-  if (vncMode && vncSessionId) {
-    if (!ws.data.user) {
-      ws.close(1008, "Authenticated user context is required for VNC connections");
-      return;
-    }
-
-    void runWithCurrentUser(ws.data.user, () => vncSessionManager.openTcpSocket(vncSessionId)).then(({ socket }) => {
-      ws.data.vncSocket = socket;
-      const pendingMessages = ws.data.pendingVncMessages ?? [];
-      ws.data.pendingVncMessages = undefined;
-      for (const pendingMessage of pendingMessages) {
-        socket.write(pendingMessage);
-      }
-      socket.on("data", (chunk) => {
-        try {
-          if (typeof chunk === "string") {
-            ws.send(chunk);
-            return;
-          }
-          ws.send(new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength));
-        } catch (sendError) {
-          log.trace("Failed to send VNC socket payload", { vncSessionId, error: String(sendError) });
-        }
-      });
-      socket.once("close", () => ws.close(1000));
-      socket.once("error", (socketError) => {
-        log.warn("VNC TCP bridge error", { vncSessionId, error: String(socketError) });
-        ws.close(1011, "VNC TCP bridge error");
-      });
-    }).catch((bridgeError: Error) => {
-      log.warn("Failed to open VNC TCP bridge", { vncSessionId, error: String(bridgeError) });
-      ws.close(1011, "VNC session unavailable");
-    });
-    return;
-  }
 }
 
 /**
@@ -238,11 +197,6 @@ export function close(ws: ServerWebSocket<WebSocketData>): void {
     releaseTerminalSocket(terminalSessionId, ws);
   }
 
-  if (ws.data.vncSocket) {
-    ws.data.vncSocket.destroy();
-    ws.data.vncSocket = undefined;
-  }
-
   if (ws.data.previewBridgeSessionId && ws.data.user) {
     void previewSessionManager.closeBridgeSession(ws, "Preview bridge disconnected");
   }
@@ -276,7 +230,6 @@ export function error(ws: ServerWebSocket<WebSocketData>, err: Error): void {
   log.error("WebSocket error", {
     error: String(err),
     terminalSessionId: ws.data.terminalSessionId,
-    vncSessionId: ws.data.vncSessionId,
     previewBridgeSessionId: ws.data.previewBridgeSessionId,
   });
   // Remove from active connections
@@ -300,10 +253,6 @@ export function error(ws: ServerWebSocket<WebSocketData>, err: Error): void {
   const terminalSessionId = ws.data.terminalSessionId;
   if (terminalSessionId) {
     releaseTerminalSocket(terminalSessionId, ws);
-  }
-  if (ws.data.vncSocket) {
-    ws.data.vncSocket.destroy();
-    ws.data.vncSocket = undefined;
   }
   if (ws.data.previewBridgeSessionId && ws.data.user) {
     void previewSessionManager.closeBridgeSession(ws, "Preview bridge error");

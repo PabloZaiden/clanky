@@ -88,13 +88,22 @@ const HISTORICAL_MIGRATION_NAMES = [
   "make_preview_sessions_execution_host_backed",
 ] as const;
 
-export const migrations: Migration[] = HISTORICAL_MIGRATION_NAMES.map(
-  (name, index) => ({
-    version: index + 1,
-    name,
-    up: () => {},
-  }),
-);
+export const migrations: Migration[] = [
+  ...HISTORICAL_MIGRATION_NAMES.map(
+    (name, index) => ({
+      version: index + 1,
+      name,
+      up: () => {},
+    }),
+  ),
+  {
+    version: BASELINE_SCHEMA_VERSION + 1,
+    name: "remove_vnc_sessions",
+    up: (db) => {
+      db.run("DROP TABLE IF EXISTS vnc_sessions");
+    },
+  },
+];
 
 export function tableExists(db: Database, tableName: string): boolean {
   const result = db

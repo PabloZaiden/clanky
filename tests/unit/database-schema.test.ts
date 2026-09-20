@@ -146,16 +146,16 @@ describe("database schema", () => {
     delete process.env["CLANKY_DATA_DIR"];
   });
 
-  test("creates the consolidated baseline from the authoritative inventory", async () => {
+  test("creates the current schema from the authoritative inventory", async () => {
     await withTempDataDir(async () => {
       await initializeDatabase();
 
-      expect(getSchemaVersion(getDatabase())).toBe(BASELINE_SCHEMA_VERSION);
+      expect(getSchemaVersion(getDatabase())).toBe(BASELINE_SCHEMA_VERSION + 1);
       expect(
         (getDatabase().query("SELECT COUNT(*) AS count FROM schema_migrations").get() as {
           count: number;
         }).count,
-      ).toBe(BASELINE_SCHEMA_VERSION);
+      ).toBe(BASELINE_SCHEMA_VERSION + 1);
       expect(tableNames()).toEqual([...getFreshSchemaTableNames()].sort());
       expect(() => assertSchemaInventory(getDatabase())).not.toThrow();
       expect(tableNames()).toContain("execution_hosts");
@@ -236,7 +236,7 @@ describe("database schema", () => {
           username: string;
         }).username,
       ).toBe("demo-user");
-      expect(getSchemaVersion(getDatabase())).toBe(BASELINE_SCHEMA_VERSION);
+      expect(getSchemaVersion(getDatabase())).toBe(BASELINE_SCHEMA_VERSION + 1);
       expect(runMigrations(getDatabase())).toBe(0);
     });
   });
@@ -263,7 +263,7 @@ describe("database schema", () => {
 
         await initializeDatabase({ meshWorker: true });
 
-        expect(getSchemaVersion(getDatabase())).toBe(BASELINE_SCHEMA_VERSION);
+        expect(getSchemaVersion(getDatabase())).toBe(BASELINE_SCHEMA_VERSION + 1);
         expect(runMigrations(getDatabase(), { meshWorker: true })).toBe(0);
         expect(
           (
@@ -322,7 +322,7 @@ describe("database schema", () => {
     await withTempDataDir(async () => {
       await initializeDatabase();
       const futureMigration = {
-        version: BASELINE_SCHEMA_VERSION + 1,
+        version: migrations.at(-1)!.version + 1,
         name: "test_future_schema_change",
         up: (db: Database) => {
           db.run(
@@ -382,7 +382,7 @@ describe("database schema", () => {
           count: number;
         }).count,
       ).toBe(0);
-      expect(getSchemaVersion(getDatabase())).toBe(BASELINE_SCHEMA_VERSION);
+      expect(getSchemaVersion(getDatabase())).toBe(BASELINE_SCHEMA_VERSION + 1);
         expect(tableNames()).toEqual([...getFreshSchemaTableNames()].sort());
         expect(() => assertSchemaInventory(getDatabase())).not.toThrow();
       expect(getDatabase().query("PRAGMA foreign_key_check").all()).toEqual([]);

@@ -24,4 +24,3 @@ tests
 *.md
 
 # generated vendor output is recreated during the image build
-src/vendor/novnc-rfb.js

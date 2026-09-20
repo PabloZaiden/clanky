@@ -139,7 +139,6 @@ export const SCHEMA_TABLE_INVENTORY: readonly SchemaTableDefinition[] = [
     resourceColumn: "chat_id",
   }),
   currentTable("chats", "clanky"),
-  currentTable("vnc_sessions", "clanky"),
   currentTable("ssh_servers", "clanky"),
   currentTable("workspaces", "clanky"),
   currentTable("execution_hosts", "clanky"),
