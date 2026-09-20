@@ -128,24 +128,21 @@ export function useTranscriptResource<TResource, TSnapshot>({
   resourceIdRef.current = resourceId;
   initialResourceRef.current = initialResource;
 
+  // Resolve updates before React renders so bursts of realtime events share the latest state.
   const setResource = useCallback<Dispatch<SetStateAction<TResource | null>>>((next) => {
-    setResourceState((current) => {
-      const resolved = typeof next === "function"
-        ? (next as (value: TResource | null) => TResource | null)(current)
-        : next;
-      resourceRef.current = resolved;
-      return resolved;
-    });
+    const resolved = typeof next === "function"
+      ? (next as (value: TResource | null) => TResource | null)(resourceRef.current)
+      : next;
+    resourceRef.current = resolved;
+    setResourceState(resolved);
   }, []);
 
   const setTranscript = useCallback<Dispatch<SetStateAction<ChatTranscript>>>((next) => {
-    setTranscriptState((current) => {
-      const resolved = typeof next === "function"
-        ? (next as (value: ChatTranscript) => ChatTranscript)(current)
-        : next;
-      transcriptRef.current = resolved;
-      return resolved;
-    });
+    const resolved = typeof next === "function"
+      ? (next as (value: ChatTranscript) => ChatTranscript)(transcriptRef.current)
+      : next;
+    transcriptRef.current = resolved;
+    setTranscriptState(resolved);
   }, []);
 
   const clearResource = useCallback((nextError?: string): void => {
