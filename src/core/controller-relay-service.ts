@@ -74,6 +74,10 @@ export interface ControllerRelayServiceOptions {
   descriptorMaxBytes?: number;
 }
 
+export interface ControllerRelayRuntimeOptions {
+  onAuthenticated?(): void;
+}
+
 type RelayDispatch = (request: Request) => Promise<Response | undefined>;
 
 interface AuthorizationWaiter {
@@ -156,6 +160,7 @@ export class ControllerRelayService {
   private authorizationRefresh?: Promise<void>;
   private readonly authorizationWaiters = new Set<AuthorizationWaiter>();
   private runtimeError: ControllerRelayStatus["runtimeError"] = null;
+  private onAuthenticated?: () => void;
 
   constructor(private readonly options: ControllerRelayServiceOptions = {}) {
     this.manager = options.manager ?? new MeshRelayConnectorManager();
@@ -309,10 +314,14 @@ export class ControllerRelayService {
     });
   }
 
-  async startRuntime(dispatch: RelayDispatch): Promise<void> {
+  async startRuntime(
+    dispatch: RelayDispatch,
+    options: ControllerRelayRuntimeOptions = {},
+  ): Promise<void> {
     await this.runLifecycle(async () => {
       requireMeshRuntimeRole("controller");
       this.dispatch = dispatch;
+      this.onAuthenticated = options.onAuthenticated;
       this.unsubscribeMesh ??= meshStateEventEmitter.subscribe(() => {
         this.requestRuntimeRefresh();
       });
@@ -337,6 +346,7 @@ export class ControllerRelayService {
       this.unsubscribeMesh = undefined;
       await this.stopManager();
       this.dispatch = undefined;
+      this.onAuthenticated = undefined;
       this.runtimeError = null;
     });
   }
@@ -482,6 +492,13 @@ export class ControllerRelayService {
       onAuthenticated: () => {
         this.authorizationDirty = true;
         this.requestAuthorizationRefresh();
+        try {
+          this.onAuthenticated?.();
+        } catch (error) {
+          log.error("Controller relay authentication callback failed", {
+            error: String(error),
+          });
+        }
       },
     });
     if (waitForConnection) {

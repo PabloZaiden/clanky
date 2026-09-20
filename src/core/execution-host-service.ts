@@ -20,6 +20,7 @@ import {
   supportsExecutionHostCapability,
 } from "@/shared/execution-host";
 import type { AgentProvider } from "@/shared/settings";
+import { createLogger } from "@pablozaiden/webapp/server";
 import {
   getExecutionHostByRef,
   ensureExecutionHost,
@@ -55,6 +56,9 @@ import {
   resolveExecutionPathUnscoped,
 } from "./execution-path";
 import { AGENT_PROVIDER_IDS } from "../constants/agent-providers";
+import { meshHealthService } from "./mesh-health-service";
+
+const log = createLogger("core:execution-host-service");
 
 export interface ExecutionHostCommandContext {
   directory: string;
@@ -266,7 +270,7 @@ export class ExecutionHostService {
     userId: string = requireCurrentUserId(),
     minimumVersion?: number,
   ): Promise<ExecutionHostDescriptor> {
-    const descriptor = (await this.listHosts(userId))
+    let descriptor = (await this.listHosts(userId))
       .find((candidate) => executionHostRefsEqual(candidate.ref, ref));
     if (!descriptor) {
       throw new DomainError(
@@ -274,7 +278,23 @@ export class ExecutionHostService {
         "The selected execution host is unavailable.",
       );
     }
-    if (!supportsExecutionHostCapability(
+
+    if (!supportsExecutionHostCapability(descriptor.capabilities, capability, minimumVersion)
+      && ref.kind === "mesh") {
+      try {
+        await meshHealthService.refreshWorker(userId, ref.nodeId);
+        descriptor = (await this.listHosts(userId))
+          .find((candidate) => executionHostRefsEqual(candidate.ref, ref));
+      } catch (error) {
+        log.warn("Mesh worker capability refresh failed", {
+          workerNodeId: ref.nodeId,
+          capability,
+          error: String(error),
+        });
+      }
+    }
+
+    if (!descriptor || !supportsExecutionHostCapability(
       descriptor.capabilities,
       capability,
       minimumVersion,
@@ -286,7 +306,7 @@ export class ExecutionHostService {
           details: {
             capability,
             requiredVersion: minimumVersion ?? 1,
-            actualVersion: descriptor.capabilities[capability] ?? 0,
+            actualVersion: descriptor?.capabilities[capability] ?? 0,
           },
         },
       );
