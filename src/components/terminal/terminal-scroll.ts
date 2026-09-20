@@ -94,6 +94,9 @@ export function attachTerminalScrollBehavior(terminal: Terminal): () => void {
       return true;
     }
 
+    if (event.cancelable) {
+      event.preventDefault();
+    }
     wheelLineRemainder += getWheelDeltaLines(event, getCellHeight(), terminal.rows);
     const result = takeWholeScrollLines(wheelLineRemainder);
     wheelLineRemainder = result.remainder;
@@ -175,20 +178,22 @@ export function attachTerminalScrollBehavior(terminal: Terminal): () => void {
 
   terminal.attachCustomWheelEventHandler(handleWheel);
   const terminalElement = terminal.element;
-  if (!terminalElement) {
-    return () => undefined;
+  if (terminalElement) {
+    terminalElement.addEventListener("touchstart", handleTouchStart, { passive: false });
+    terminalElement.addEventListener("touchmove", handleTouchMove, { passive: false });
+    terminalElement.addEventListener("touchend", handleTouchEnd, { passive: false });
+    terminalElement.addEventListener("touchcancel", handleTouchCancel);
   }
 
-  terminalElement.addEventListener("touchstart", handleTouchStart, { passive: false });
-  terminalElement.addEventListener("touchmove", handleTouchMove, { passive: false });
-  terminalElement.addEventListener("touchend", handleTouchEnd, { passive: false });
-  terminalElement.addEventListener("touchcancel", handleTouchCancel);
-
   return () => {
-    terminalElement.removeEventListener("touchstart", handleTouchStart);
-    terminalElement.removeEventListener("touchmove", handleTouchMove);
-    terminalElement.removeEventListener("touchend", handleTouchEnd);
-    terminalElement.removeEventListener("touchcancel", handleTouchCancel);
+    if (terminalElement) {
+      terminalElement.removeEventListener("touchstart", handleTouchStart);
+      terminalElement.removeEventListener("touchmove", handleTouchMove);
+      terminalElement.removeEventListener("touchend", handleTouchEnd);
+      terminalElement.removeEventListener("touchcancel", handleTouchCancel);
+    }
+    // xterm exposes replacement rather than detachment for custom wheel handlers.
+    terminal.attachCustomWheelEventHandler(() => true);
     touchScrollState = null;
   };
 }
