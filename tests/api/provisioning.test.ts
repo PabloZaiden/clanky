@@ -814,7 +814,7 @@ describe("Provisioning API integration", () => {
     expect(enrollment.enrollment.workspaceId).toBeNull();
   });
 
-  test("provisions a relay-only dedicated worker without a published port", async () => {
+  test("defaults a paired controller to a relay-only dedicated worker", async () => {
     const previousPublicBaseUrl = process.env["CLANKY_PUBLIC_BASE_URL"];
     process.env["CLANKY_PUBLIC_BASE_URL"] = "https://clanky.example.test";
     const relayUrl = "https://relay.example.test";
@@ -931,7 +931,6 @@ describe("Provisioning API integration", () => {
         body: JSON.stringify({
           name: "Relay Workspace",
           executionHost: { kind: "ssh", serverId: sshServer.config.id },
-          workerEnrollmentRoute: "relay",
           repoUrl: "https://github.com/octocat/relay-example.git",
           basePath: "/workspaces",
           devcontainerSubpath: null,

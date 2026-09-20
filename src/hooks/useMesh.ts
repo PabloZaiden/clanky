@@ -34,6 +34,7 @@ export interface CreatedMeshEnrollment {
 export interface UseMeshResult {
   status: MeshControllerStatus | null;
   relayStatus: ControllerRelayPairingStatus | null;
+  relayStatusLoading: boolean;
   enrollmentTokens: MeshEnrollmentTokenSummary[];
   loading: boolean;
   saving: boolean;
@@ -57,6 +58,7 @@ export interface UseMeshResult {
 export function useMesh(): UseMeshResult {
   const [status, setStatus] = useState<MeshControllerStatus | null>(null);
   const [relayStatus, setRelayStatus] = useState<ControllerRelayPairingStatus | null>(null);
+  const [relayStatusLoading, setRelayStatusLoading] = useState(true);
   const [enrollmentTokens, setEnrollmentTokens] = useState<MeshEnrollmentTokenSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -64,6 +66,7 @@ export function useMesh(): UseMeshResult {
   const [mutationError, setMutationError] = useState<string | null>(null);
   const refreshAbortRef = useRef<AbortController | null>(null);
   const relayRefreshAbortRef = useRef<AbortController | null>(null);
+  const relayStatusRequestIdRef = useRef(0);
   const isMountedRef = useRef(false);
   const refreshCoordinatorRef = useRef(createRefreshCoordinator<MeshControllerStatus | null>());
 
@@ -71,8 +74,10 @@ export function useMesh(): UseMeshResult {
     options: { showLoading?: boolean } = {},
   ): Promise<MeshControllerStatus | null> => refreshCoordinatorRef.current.run(async () => {
     const controller = new AbortController();
+    const relayStatusRequestId = ++relayStatusRequestIdRef.current;
     refreshAbortRef.current = controller;
     if (options.showLoading !== false && isMountedRef.current) setLoading(true);
+    if (isMountedRef.current) setRelayStatusLoading(true);
     if (isMountedRef.current) setError(null);
     try {
       const [body, tokens, relay] = await Promise.all([
@@ -95,7 +100,9 @@ export function useMesh(): UseMeshResult {
       if (controller.signal.aborted || !isMountedRef.current) return null;
       const next = body;
       setStatus(next);
-      setRelayStatus(relay);
+      if (relayStatusRequestId === relayStatusRequestIdRef.current) {
+        setRelayStatus(relay);
+      }
       setEnrollmentTokens(tokens);
       return next;
     } catch (refreshError) {
@@ -106,6 +113,13 @@ export function useMesh(): UseMeshResult {
       return null;
     } finally {
       if (refreshAbortRef.current === controller) refreshAbortRef.current = null;
+      if (
+        relayStatusRequestId === relayStatusRequestIdRef.current
+        && !controller.signal.aborted
+        && isMountedRef.current
+      ) {
+        setRelayStatusLoading(false);
+      }
       if (!controller.signal.aborted && isMountedRef.current) setLoading(false);
     }
   }), []);
@@ -113,7 +127,9 @@ export function useMesh(): UseMeshResult {
   const refreshRelayStatus = useCallback(async (): Promise<ControllerRelayPairingStatus | null> => {
     relayRefreshAbortRef.current?.abort();
     const controller = new AbortController();
+    const relayStatusRequestId = ++relayStatusRequestIdRef.current;
     relayRefreshAbortRef.current = controller;
+    if (isMountedRef.current) setRelayStatusLoading(true);
     try {
       const next = await apiRequest<ControllerRelayPairingStatus>("/api/mesh/relay", {
         signal: controller.signal,
@@ -123,7 +139,9 @@ export function useMesh(): UseMeshResult {
       if (controller.signal.aborted || !isMountedRef.current) {
         return null;
       }
-      setRelayStatus(next);
+      if (relayStatusRequestId === relayStatusRequestIdRef.current) {
+        setRelayStatus(next);
+      }
       return next;
     } catch (refreshError) {
       if (
@@ -139,6 +157,13 @@ export function useMesh(): UseMeshResult {
     } finally {
       if (relayRefreshAbortRef.current === controller) {
         relayRefreshAbortRef.current = null;
+      }
+      if (
+        relayStatusRequestId === relayStatusRequestIdRef.current
+        && !controller.signal.aborted
+        && isMountedRef.current
+      ) {
+        setRelayStatusLoading(false);
       }
     }
   }, []);
@@ -214,6 +239,7 @@ export function useMesh(): UseMeshResult {
       isMountedRef.current = false;
       refreshAbortRef.current?.abort();
       relayRefreshAbortRef.current?.abort();
+      relayStatusRequestIdRef.current += 1;
       refreshCoordinatorRef.current.reset();
     };
   }, [refresh]);
@@ -221,6 +247,7 @@ export function useMesh(): UseMeshResult {
   return {
     status,
     relayStatus,
+    relayStatusLoading,
     enrollmentTokens,
     loading,
     saving,

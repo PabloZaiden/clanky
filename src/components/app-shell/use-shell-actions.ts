@@ -108,6 +108,7 @@ export function useShellActions({
     navigateWithinShell,
     githubUsername,
     relayPaired: mesh.relayStatus?.paired === true,
+    relayStatusLoading: mesh.relayStatusLoading,
     refreshRelayStatus: mesh.refreshRelayStatus,
   });
 

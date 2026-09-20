@@ -142,6 +142,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     automaticWorkerEnrollmentRoute,
     setAutomaticWorkerEnrollmentRoute,
     automaticRelayPaired,
+    automaticRelayStatusLoading,
     automaticWorkerHostAddress,
     setAutomaticWorkerHostAddress,
     automaticWorkerHostAddressMode,
@@ -181,6 +182,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     error: workerHostAddressesError,
   } = useExecutionHostAddresses(
     automaticTransport === "worker"
+      && !automaticRelayStatusLoading
       && automaticWorkerEnrollmentRoute === "direct"
       ? automaticExecutionHost
       : null,
@@ -197,6 +199,9 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
       setAutomaticWorkerHostAddress("");
       return;
     }
+    if (automaticRelayStatusLoading) {
+      return;
+    }
     if (automaticWorkerEnrollmentRoute === "relay") {
       setAutomaticWorkerHostAddressMode("discovered");
       setAutomaticWorkerHostAddress("");
@@ -210,6 +215,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     }
   }, [
     automaticExecutionHost,
+    automaticRelayStatusLoading,
     automaticTransport,
     automaticWorkerEnrollmentRoute,
     automaticWorkerHostAddress,
@@ -520,10 +526,15 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                           setAutomaticWorkerHostAddressMode("discovered");
                           setAutomaticWorkerHostAddress(value);
                         }}
+                        disabled={automaticRelayStatusLoading}
                         required
                       >
                         <option value="">
-                          {workerHostAddressesLoading ? "Discovering addresses..." : "Select an address"}
+                          {automaticRelayStatusLoading
+                            ? "Checking relay status..."
+                            : workerHostAddressesLoading
+                            ? "Discovering addresses..."
+                            : "Select an address"}
                         </option>
                         {automaticRelayPaired && (
                           <option value={RELAY_WORKER_HOST_ADDRESS_OPTION}>

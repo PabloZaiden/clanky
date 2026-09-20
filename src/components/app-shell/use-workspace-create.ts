@@ -67,6 +67,7 @@ export interface UseWorkspaceCreateResult {
   automaticWorkerEnrollmentRoute: ProvisioningWorkerEnrollmentRoute;
   setAutomaticWorkerEnrollmentRoute: (route: ProvisioningWorkerEnrollmentRoute) => void;
   automaticRelayPaired: boolean;
+  automaticRelayStatusLoading: boolean;
   automaticWorkerHostAddress: string;
   setAutomaticWorkerHostAddress: (address: string) => void;
   automaticWorkerHostAddressMode: AutomaticWorkerHostAddressMode;
@@ -127,6 +128,7 @@ interface UseWorkspaceCreateOptions {
   navigateWithinShell: (route: WebAppRoute) => void;
   githubUsername: UseGithubUsernameResult;
   relayPaired: boolean;
+  relayStatusLoading: boolean;
   refreshRelayStatus: UseMeshResult["refreshRelayStatus"];
 }
 
@@ -140,6 +142,7 @@ export function useWorkspaceCreate({
   navigateWithinShell,
   githubUsername,
   relayPaired,
+  relayStatusLoading,
   refreshRelayStatus,
 }: UseWorkspaceCreateOptions): UseWorkspaceCreateResult {
   const [workspaceCreateMode, setWorkspaceCreateMode] = useState<"manual" | "automatic">("manual");
@@ -189,7 +192,7 @@ export function useWorkspaceCreate({
     setAutomaticExecutionHostState(host);
     setAutomaticWorkerHostAddress("");
     setAutomaticWorkerHostAddressMode("discovered");
-    if (!automaticWorkerEnrollmentRouteTouchedRef.current) {
+    if (!automaticWorkerEnrollmentRouteTouchedRef.current && !relayStatusLoading) {
       setAutomaticWorkerEnrollmentRouteState(relayPaired ? "relay" : "direct");
     }
   }
@@ -370,6 +373,7 @@ export function useWorkspaceCreate({
       route.view !== "compose"
       || getRouteString(route, "kind") !== "workspace"
       || automaticWorkerEnrollmentRouteTouchedRef.current
+      || relayStatusLoading
     ) {
       return;
     }
@@ -378,7 +382,7 @@ export function useWorkspaceCreate({
       setAutomaticWorkerHostAddress("");
       setAutomaticWorkerHostAddressMode("discovered");
     }
-  }, [automaticWorkerEnrollmentRoute, relayPaired, route]);
+  }, [automaticWorkerEnrollmentRoute, relayPaired, relayStatusLoading, route]);
 
   useEffect(() => {
     const enrollmentId = workspaceWorkerEnrollment?.enrollment.id;
@@ -719,6 +723,7 @@ export function useWorkspaceCreate({
     automaticWorkerEnrollmentRoute,
     setAutomaticWorkerEnrollmentRoute,
     automaticRelayPaired: relayPaired,
+    automaticRelayStatusLoading: relayStatusLoading,
     automaticWorkerHostAddress,
     setAutomaticWorkerHostAddress,
     automaticWorkerHostAddressMode,
