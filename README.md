@@ -5,37 +5,23 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
 [![Built with Bun](https://img.shields.io/badge/Built%20with-Bun-f9f1e1?style=flat-square&logo=bun)](https://bun.sh)
 
-Clanky is a coding agent manager for running, reviewing, and iterating on tasks with coding agents such as Codex, Copilot, OpenCode, Claude Code, Pi, and Grok Build.
+Clanky is a coding-agent manager for running, reviewing, and iterating on
+software tasks with Codex, Copilot, OpenCode, Claude Code, Pi, and Grok Build.
+It combines a web dashboard, an authenticated CLI, isolated workspaces, live
+task visibility, chats, and review workflows in one application.
 
-The repository is organized as a single Bun app:
+## Why Clanky
 
-- `src` - the Clanky app and binary entrypoint, including the Bun server, React UI, CLI subcommands, shared helpers, API contracts, and client transport utilities.
-
-Shared foundations such as passkey/API-key/device auth, users, settings, app shell, sidebar/title-bar action menus, dialogs, realtime plumbing, health, and server lifecycle operations come from `@pablozaiden/webapp`. Clanky-owned code focuses on coding-agent domains: tasks, chats, agents, workspaces, SSH/VNC sessions, file exploration, and provider/runtime orchestration.
-
-## Best way to use Clanky
-
-While Clanky can be used locally, accessing code repositories and running agents on the same machine, it really shines when it is used with remote execution hosts. Dedicated Mesh workers are the default transport for automatic workspaces, while SSH remains available as an explicit fallback.
-
-The recommended workflow is to treat Clanky as a controller for isolated Devbox environments on a local or remote execution host.
-
-1. Register or select an execution host in Clanky. Use a local host, a Mesh worker, or a registered SSH server.
-2. Install Devbox on the selected execution host (`devbox --help` must succeed; newer stable releases are supported).
-3. Set `CLANKY_PUBLIC_BASE_URL` to the controller origin reachable from the Devbox container when automatic workspaces use workers.
-4. Create an automatic workspace for each project you want to work on. Clanky starts a [`@pablozaiden/devbox`](https://github.com/PabloZaiden/devbox) container without SSH, publishes one dynamically assigned port, installs the latest Clanky binary, and registers a dedicated HTTPS worker. Select the host address that the controller can reach from the discovered addresses in the form. Choose SSH when the environment requires the legacy transport.
-5. Once the workspace is ready, either open chats to work interactively with the coding agent in that workspace or create a new task, write the task prompt, and let the agent work autonomously.
-
-**[Download the latest release](https://github.com/pablozaiden/clanky/releases/latest)**
+- **Safer automation:** work in isolated branches or worktrees and review
+  changes before accepting or pushing them.
+- **One control plane:** manage tasks, chats, agents, workspaces, terminals,
+  files, previews, and reviews from the dashboard or API.
+- **Local or remote execution:** run locally or use a remote SSH or Mesh host
+  when the repository and agent should live elsewhere.
 
 ![Clanky Dashboard](assets/screenshots/desktop/home.jpg)
 
 *Dashboard overview with active tasks, workspaces, and quick actions.*
-
-## Why Clanky
-
-- **Safer automation.** Tasks can use an isolated branch/worktree, commit iteration-by-iteration, and be merged or discarded deliberately.
-- **Operational visibility.** The dashboard gives you logs, diffs, plan review, task controls, and follow-up flows in one place.
-- **Local or remote execution.** Workspaces can use local `stdio` transport or remote `ssh` transports.
 
 <details>
 <summary><strong>More screenshots</strong></summary>
@@ -57,492 +43,86 @@ The recommended workflow is to treat Clanky as a controller for isolated Devbox 
 *Open persistent terminals alongside task execution.*
 </details>
 
-## Installation
+## Install
 
-Install the latest Linux or macOS binary release:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/pablozaiden/installer/main/install.sh | sh -s -- pablozaiden/clanky
-```
-
-On Windows PowerShell:
-
-```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/pablozaiden/installer/main/install.ps1))) pablozaiden/clanky
-```
-
-The shared installer downloads the latest release asset for Linux, macOS, or
-Windows (`x64` or `arm64`), verifies its checksum, and installs `clanky` in
-`$HOME/.local/bin`. If that directory is not on your `PATH`, the installer
-prints or applies the platform-specific PATH update.
-
-You can also download binaries directly from the [Releases page](https://github.com/pablozaiden/clanky/releases/latest).
-
-Once installed from a release binary, you can update the installed release binaries in place:
+Install the latest Linux or macOS binary:
 
 ```bash
-clanky update --check
-clanky update
-clanky update --version v0.8.1
+curl -fsSL https://raw.githubusercontent.com/pablozaiden/installer/main/install.sh \
+  | sh -s -- pablozaiden/clanky
 ```
 
-### Release metadata
-
-Clanky owns its release targets, binary artifact metadata, Docker image targets,
-and channel platform policy in
-`.github/release-metadata.json`. Edit that file when adding or removing a
-release target, binary, Docker platform, or image. The committed
-`.github/installer.json` is a generated projection for the shared generic
-installer and must not be edited directly.
-
-Validate the metadata and generated projection, or regenerate the installer
-manifest after an intentional metadata change:
-
-```bash
-bun run release:metadata:check
-bun run release:metadata:generate
-```
-
-Release Docker images build for `linux/amd64` and `linux/arm64`; the main
-channel intentionally builds only `linux/amd64`. The shared
-`pablozaiden/installer` workflow remains generic: Clanky passes it the
-explicit target and binary projections from the canonical metadata.
+Or download a binary from the [latest release](https://github.com/pablozaiden/clanky/releases/latest).
+The installer verifies the release checksum and places `clanky` in
+`$HOME/.local/bin`.
 
 ## Quick start
 
 ### Requirements
 
 - Git
-- An ACP-capable runtime for the provider you select (`copilot`, `opencode`, `grok`, `claude-agent-acp`, `pi-acp`, and/or `codex-acp`). If a runtime is not found, Clanky tries `npx`/`bunx` package fallbacks when available; the Codex provider also requires an installed and authenticated `codex` CLI.
-- Optional SSH access to remote workspace hosts if you plan to use `ssh` transport
-- [Bun](https://bun.sh) only if you want to run Clanky from source
+- An ACP-capable provider runtime such as `copilot`, `opencode`, `grok`,
+  `claude-agent-acp`, `pi-acp`, or `codex-acp`
+- [Bun](https://bun.sh) only when running Clanky from source
 
-### Run Clanky
+### Start the server
 
 ```bash
-# Installed server binary (embedded API + web, same-origin)
+# Installed binary
 clanky serve
 
-# Start or replace a detached local server
-clanky serve up
-clanky serve status
-clanky serve down
-
-# Build and start the configured source checkout
-clanky serve config set development.source-path "$PWD"
-clanky serve up --dev
-
-# Source development (combined API + web, same-origin)
+# From a source checkout
+bun install
 bun dev
-
-# Source development (alias for bun dev; combined API + web)
-bun run dev:server
 ```
 
-The UI is available at `http://localhost:3000` by default. Use `CLANKY_PORT` to change the port and `CLANKY_HOST` to change the bind address.
+Open <http://localhost:3000>. Use `CLANKY_PORT` or `CLANKY_HOST` to change the
+default port or bind address.
 
-### CLI client commands
-
-The `clanky` binary exposes both the server and terminal client surfaces:
+### Use the CLI
 
 ```bash
-# Check which version is installed
-clanky version
-
-# Check whether a newer published binary is available
-clanky update --check
-
-# Update the installed release binaries in place
-clanky update
-
-# Install a specific published release
-clanky update --version v0.8.1
-
-# Start device authorization against a specific Clanky server
 clanky auth --base-url http://localhost:3000
-
-# Check whether stored CLI credentials are still valid
 clanky status
-
-# List the discoverable REST endpoints
 clanky api
-
-# Invoke an authenticated API request (prints one JSON object)
-clanky api tasks/my-task --method GET
-
-# Inspect the expected schema for an endpoint
-clanky schema auth/device
-
-# Stream authenticated websocket events over stdio
+clanky api tasks --method GET
+clanky schema tasks
 clanky ws
-
-# Execute a diagnostic command on a registered local, Mesh, or SSH host
-clanky server exec "worker-1" --cwd /var/log --timeout 10000 -- pwd
 ```
 
-`clanky server exec` is the execution-host equivalent of
-`clanky workspace exec`. The target may be an execution-host name, its source
-ID (for example a Mesh node ID), or a serialized reference such as
-`mesh:worker-1`. The command and its arguments are passed separately; the
-operation is non-interactive and preserves stdout, stderr, and the remote exit
-code. SSH hosts may receive a temporary credential with
-`--credential-token TOKEN`.
+See the [getting started guide](docs/getting-started.md) for the first
+workspace and task, and the [API reference](docs/API.md) for the complete CLI
+and HTTP contract.
 
-## Key features
-
-- **Dashboard + API:** manage tasks from the browser or automate them through the REST API.
-- **Plan mode:** review and refine a generated plan before code changes begin.
-- **Review cycles:** continue completed, pushed, or locally accepted work with follow-up prompts; pushed and locally accepted work can also receive review comments.
-- **Live observability:** stream logs, inspect diffs, and track task state.
-- **Execution servers:** use local, Mesh, or SSH hosts for workspaces, chats, terminals, files, provisioning, and VNC. Automatic Devbox workspaces default to dedicated HTTPS Mesh workers and retain SSH as an option.
-
-## Configuration and deployment
-
-### Common environment variables
-
-| Variable | Description | Default |
-| --- | --- | --- |
-| `CLANKY_HOST` | Host/interface passed to `Bun.serve` | `127.0.0.1` |
-| `CLANKY_PORT` | HTTP port | `3000` |
-| `CLANKY_DATA_DIR` | Complete override for Clanky state, including SQLite, config, detached-server metadata, and logs | `$HOME/.clanky` |
-| `CLANKY_PUBLIC_BASE_URL` | Stable absolute HTTP(S) browser origin without a path, query, or fragment; used to initialize the Mesh endpoint when none is saved | unset |
-| `CLANKY_REMOTE_ONLY` | Disables local `stdio` transport | unset |
-| `CLANKY_MESH_CONTROLLER_FINGERPRINT` | Expected controller identity for headless Mesh enrollment | unset |
-| `CLANKY_RELAY_CONTROLLER_FINGERPRINT` | Controller fingerprint trusted by `clanky relay`; obtain it with `clanky mesh relay bootstrap-info` | unset |
-| `CLANKY_MOCK_ACP` | Uses the built-in fake ACP runtime for local testing | unset |
-| `CLANKY_DISABLE_PASSKEY` | Bypasses passkey enforcement when set to `true`, `1`, or `yes` | unset |
-| `CLANKY_DISABLE_SAME_ORIGIN_CHECK` | Disables `Origin`/`Referer` validation for state-changing requests and WebSocket upgrades | unset |
-| `CLANKY_LOG_LEVEL` | Server log level override | `info` |
-
-Without `CLANKY_DATA_DIR`, local state is stored in `$HOME/.clanky`
-regardless of the directory from which Clanky is launched. The `serve config`
-commands persist host, port, and development source-path settings in that
-directory. Application lifecycle options such as `mesh-worker` can also be
-persisted there; one-shot `serve` flags take precedence over applicable
-environment variables, persisted configuration, and defaults.
-
-SSH retry, keepalive, timeout, and handshake-concurrency values are fixed
-application constants in `src/core/ssh-reliability-policy.ts`.
-
-### Auth notes
-
-- Passkey authentication protects the browser session and device-approval flow.
-- Device bearer credentials are issued through the framework device authorization
-  flow and are stored in the selected CLI profile.
-- `clanky ws` is a generic JSON-lines realtime bridge. Its destination comes
-  from the selected profile or environment and it does not expose
-  Clanky-specific event filters or a positional base URL.
-- Bearer tokens are issued through the device authorization flow and work as an alternative to the browser passkey session for APIs, WebSocket upgrades, and preview bridge access.
-- `clanky auth` stores framework device credentials in the selected profile under the home directory (or `CLANKY_CLI_HOME` when set), `clanky status` validates them through `GET /api/auth/status`, `clanky api` sends authenticated REST calls with the selected profile, `clanky ws` uses the selected profile for authenticated websocket upgrades to `/api/ws`, and `clanky schema` exposes endpoint discoverability data from the built-in API catalog.
-- Non-interactive CLI calls can use the environment API-key pair `CLANKY_BASE_URL` and `CLANKY_API_KEY`. When no stored device credentials are available, framework commands use this pair without persisting or printing the key.
-- `clanky worker bootstrap` creates an owner without a passkey and prints a managed API key once. Register that standalone installation with `clanky worker service install`; do not combine Mesh-worker mode with `CLANKY_DISABLE_PASSKEY`, because workers must remain authenticated.
-- Mesh-worker mode exposes only `GET /api/health`, signed `/api/mesh/internal/*` transport and lifecycle routes, and API-key-authenticated Mesh status, instance-name, endpoint, execution-policy, and outbound pairing operations. Browser routes, framework administration, realtime UI, and all unrelated Clanky APIs return `404`.
-- Clanky exposes `/.well-known/openid-configuration` and `/.well-known/jwks.json` so external clients can verify access tokens.
-- Set `CLANKY_DISABLE_PASSKEY=true`, `1`, or `yes` to bypass only the passkey requirement as an emergency override.
-- Set `CLANKY_DISABLE_SAME_ORIGIN_CHECK=true`, `1`, or `yes` only for development setups where the frontend intentionally runs on a different local origin than the backend. Leave it unset in normal and production deployments.
-
-### Docker
-
-The same Dockerfile publishes two images with matching `main`, semantic
-version, and `latest` tags:
-
-- `ghcr.io/pablozaiden/clanky` starts `clanky serve`.
-- `ghcr.io/pablozaiden/clanky-relay` starts `clanky relay`.
-
-They contain the same binary and share their production layers; only the
-default command differs.
-
-```yaml
-services:
-  clanky:
-    image: ghcr.io/pablozaiden/clanky:latest
-    # Use expose when the reverse proxy is another container on the same network.
-    expose:
-      - "8080"
-    # If the proxy runs on the host, replace expose with:
-    # ports:
-    #   - "127.0.0.1:8080:8080"
-    volumes:
-      - clanky-data:/app/data
-    environment:
-      CLANKY_DATA_DIR: /app/data
-      CLANKY_PUBLIC_BASE_URL: https://clanky.example.com
-
-volumes:
-  clanky-data:
-```
-
-The container listens on port `8080` by default and starts the same embedded server product that the `clanky` binary runs locally. Docker overrides the bind host to `0.0.0.0`; local/native runs default to `127.0.0.1` unless you override `CLANKY_HOST`.
-
-The production image assumes it is reachable only through a reverse proxy and
-enables these defaults:
-
-```text
-CLANKY_TRUST_PROXY=true
-CLANKY_TRUST_PROXY_HEADERS=proto,host,prefix
-CLANKY_TRUST_PROXY_CHAIN=first
-```
-
-For a public deployment, configure the reverse proxy to:
-
-- terminate TLS and serve Clanky at a stable HTTPS URL;
-- remove client-supplied `X-Forwarded-Proto`, `X-Forwarded-Host`, and
-  `X-Forwarded-Prefix` headers, then write sanitized values;
-- forward WebSocket upgrades for `/api/ws` and the raw terminal, preview, and
-  VNC transports;
-- keep the application port private, either with `expose` on a shared Docker
-  network or a loopback-only host binding;
-- set `CLANKY_PUBLIC_BASE_URL` to the external absolute HTTPS origin, without
-  a path, query, or fragment, as shown above;
-- mount a durable volume for all of `/app/data` and back it up.
-
-For Mesh connections, configure each worker's Mesh endpoint to the absolute
-HTTPS origin reachable by its controllers, such as
-`https://192.168.1.20:3000`. Worker bootstrap generates a durable self-signed
-certificate and controllers pin that exact certificate during enrollment,
-including for HTTP and WebSocket requests. If no endpoint has been saved yet,
-Clanky initializes it from `CLANKY_PUBLIC_BASE_URL` and persists that value.
-Later changes to the public base URL do not change the saved Mesh endpoint.
-Use `--insecure` with an `http://` endpoint only for a deliberately trusted
-private network.
-
-For a direct worker without a public DNS name, use a stable IP address that the
-controller can reach and include the worker port in `--mesh-endpoint`, for
-example `https://203.0.113.10:3000`. Bind the worker with
-`--host 0.0.0.0` (or a reachable interface) and allow or forward that port
-through the worker host's firewall/NAT. `127.0.0.1`, `localhost`, and an
-unroutable private address cannot be used as a remote worker endpoint.
-
-Mesh provides enrollment, health checks, and trusted controller-to-worker
-transport. A worker may grant access to multiple independent controllers;
-controllers do not join each other. A workspace may use local `stdio`, remote
-`stdio` through a Mesh worker, or SSH. With remote `stdio`, ACP processes and
-file/command operations run on the selected worker while the workspace record
-and all application data remain local to its controller.
-The **Servers** view lists enabled local and Mesh hosts alongside registered
-SSH servers. From a host, users can start an automatic workspace with that
-target preselected, browse files, open a chat or terminal, run Arise, and
-connect through VNC when the advertised capabilities permit it. Automatic
-workspace template discovery runs on the selected host.
-An enrolled controller is a host-level trust boundary: it may request a remote
-execution session rooted at any path on the receiving host. Relative paths are
-resolved against the worker's configured `--worker-directory`; absolute paths
-are used directly. Mesh does not provide per-workspace sandboxing or a
-host-side root allowlist. This is intentional and must not be replaced by a
-path containment policy without an explicit product decision. Pair only
-controllers that are trusted with unrestricted command and file access to that
-host.
-Keep Mesh workers on a trusted network and use HTTPS (including WebSocket
-upgrades) when prompts, environment values, or file contents could cross an
-untrusted network. SSH-backed workspaces keep their existing routing.
-
-Each worker can disable **Accept remote execution**. Its persisted execution
-directory and policy revision are returned in signed health responses, so each
-controller synchronizes changes without replacing the durable grant. Disabled
-workers remain enrolled but cannot be selected as execution targets. Controller
-registration changes update connected browsers through realtime resource
-invalidation.
-
-For unattended enrollment, create a short-lived single-use token on an
-existing owner instance. The JSON response includes a copyable
-`response.workerJoinCommand` containing the complete command for the worker:
+### Run with Docker
 
 ```bash
-# Existing owner instance
-clanky mesh enrollment-token create --name worker-1 --ttl-seconds 900
-
-# New instance
-clanky worker join 'https://coordinator.example.com' \
-  --token '<single-use-token>' \
-  --fingerprint '<controller-fingerprint>'
+docker run -d --name clanky --restart unless-stopped \
+  -p 127.0.0.1:8080:8080 \
+  -v clanky-data:/app/data \
+  ghcr.io/pablozaiden/clanky:latest
 ```
 
-The generated command is a single line in the JSON output, so it can be copied
-without moving the worker API key or local `CLANKY_BASE_URL` variables between
-machines. Bootstrap a dedicated worker installation before starting it:
+For a public deployment, keep port `8080` behind a reverse proxy and follow
+the [deployment guide](docs/deployment.md).
 
-```bash
-clanky worker bootstrap \
-  --host 0.0.0.0 \
-  --port 3000 \
-  --worker-directory /workspaces \
-  --instance-name worker-1 \
-  --mesh-endpoint https://worker.example.com
-clanky worker service install
-```
+## Remote execution
 
-Running a worker in the foreground does not require a service wrapper. A
-persistent Windows worker requires
-[WinSW 2.12.0](https://github.com/winsw/winsw/releases/tag/v2.12.0) matching
-the host architecture (`WinSW-x64.exe` or `WinSW-arm64.exe`). Download it from
-the official release, keep it at a trusted stable path, and provide that path
-whenever installing or upgrading the service:
-
-```powershell
-$env:CLANKY_WORKER_SERVICE_WRAPPER = "C:\Tools\WinSW-x64.exe"
-clanky worker service install
-```
-
-Clanky does not download or authenticate WinSW. See
-[Mesh worker setup](docs/mesh-worker.md#register-as-an-operating-system-service)
-for account, credential, lifecycle, and upgrade details.
-
-On macOS, the worker process starts an asynchronous permission preflight when
-the LaunchAgent starts it. It requests Accessibility, Screen Recording, and
-direct screen capture access for screenshots. The preflight also performs one
-non-interactive `screencapture` probe so macOS can show its screen/audio
-capture consent before an agent needs a screenshot. It then probes Desktop,
-Documents, and Downloads for Files and Folders access. Mesh serves immediately
-and keeps working if a prompt is denied, ignored, or times out; failures are
-logged. This keeps consent associated with the service process rather than the
-terminal used to install it. Full Disk Access is not requested.
-
-The bootstrap command uses `$HOME/.clanky` by default. Override it only when
-needed with `CLANKY_DATA_DIR`. Repeated runs report the existing key ID without
-printing its secret; use `--rotate` to revoke that key and issue a new
-plaintext key once, repeating the bootstrap arguments. Enrollment tokens are
-stored only as hashes, expire after 15 minutes by default, and are consumed
-atomically.
-
-To run a transport-only relay behind an HTTPS reverse proxy, first print the
-controller fingerprint assignment. Put that value in the dedicated relay
-image and then pair the controller through its normal authenticated CLI
-profile:
-
-```bash
-clanky mesh relay bootstrap-info
-docker run -d --name clanky-relay \
-  --restart unless-stopped \
-  --network reverse-proxy \
-  -v clanky-relay-data:/app/data \
-  -e CLANKY_RELAY_CONTROLLER_FINGERPRINT='<controller-fingerprint>' \
-  ghcr.io/pablozaiden/clanky-relay:latest
-clanky mesh relay pair https://relay.example.com
-clanky mesh relay status
-```
-
-The relay container listens on port `8080`; keep it private on the reverse
-proxy network and forward HTTPS plus WebSocket upgrades to it. Persist all of
-`/app/data`, which contains the relay identity, pairing, worker authorization,
-and audit database. The main image remains interchangeable when an explicit
-command is preferable:
-
-```bash
-docker run ... ghcr.io/pablozaiden/clanky:latest /app/clanky relay
-```
-
-The controller stores the relay URL and pinned relay identity only after live
-signed authentication succeeds. `clanky mesh relay unpair` stops the controller
-connection and removes that local pairing; it does not reset `relay.db`.
-After stopping the relay listener, use `clanky relay pairing reset` to clear its
-controller pairing and worker authorization. Create direct invitations with
-`clanky mesh enrollment-token create --route direct` or relayed invitations
-with `--route relay`; both produce the unified
-`clanky worker join <target> --token ... --fingerprint ...` command. Relay-only
-workers bootstrap with `clanky worker bootstrap --relay-only
---worker-directory ... --instance-name ...` and require no public worker port
-or worker TLS certificate. Public relays should sit behind an HTTPS reverse
-proxy that forwards WebSocket upgrades. Clanky rejects plaintext relay origins
-unless the hostname is loopback (`localhost`, `127.0.0.0/8`, or `::1`) for
-local development and tests; there is no insecure fallback for remote relays.
-
-The controller-worker schema is an intentional clean break from the previous
-peer Mesh. Migration 45 deletes legacy Mesh identities, hosts, and all
-dependent workspaces, tasks, chats, agents, sessions, terminals, provisioning
-jobs, VNC resources, and transcripts rather than remapping them. Unrelated SSH
-data is preserved.
-
-See the [Mesh worker guide](docs/mesh-worker.md) for node configuration,
-headless enrollment, verification, and common errors.
-
-Keep `CLANKY_DISABLE_PASSKEY` and `CLANKY_DISABLE_SAME_ORIGIN_CHECK` unset in
-public deployments. The image's trust-proxy defaults are intentionally unsafe
-for direct, unproxied exposure because forwarded headers are then
-client-controlled.
+Clanky works well as a controller for repositories running on a remote host.
+Use the [Mesh worker guide](docs/mesh-worker.md) for automatic workspaces,
+worker enrollment, relay connections, and remote execution. The
+[deployment guide](docs/deployment.md) covers HTTPS, reverse proxies, and
+Docker persistence.
 
 ## Documentation
 
+The [documentation index](docs/README.md) organizes the guides by task:
+
+- [Getting started](docs/getting-started.md)
+- [Deployment and configuration](docs/deployment.md)
+- [Mesh workers and relays](docs/mesh-worker.md)
 - [API reference](docs/API.md)
-- [Mesh worker guide](docs/mesh-worker.md)
-- [Project conventions and agent workflow](AGENTS.md)
-
-## Development
-
-```bash
-git clone https://github.com/pablozaiden/clanky.git
-cd clanky
-bun install
-bun run build
-bun run test
-bun dev
-```
-
-`bun run build` creates standalone executables in `dist/`.
-
-Local builds are not signed. The release workflow delegates macOS signing to
-the reusable `pablozaiden/installer` workflow, which imports the configured
-certificate into a temporary keychain and signs each release binary before
-publishing it.
-
-To generate the self-signed PKCS#12 certificate used by the release workflow,
-run this command on macOS. If the certificate already exists, the command
-validates and reuses it:
-
-```bash
-bun run generate:macos-signing-cert
-```
-
-The generated files are stored in `.clanky-dev/`, are gitignored, and must not
-be committed. Upload them to the repository secrets used by the release
-workflow:
-
-```bash
-base64 -i .clanky-dev/macos-signing.p12 \
-  | gh secret set CLANKY_MACOS_SIGNING_CERT_BASE64
-gh secret set CLANKY_MACOS_SIGNING_CERT_PASSWORD \
-  < .clanky-dev/macos-signing-password
-```
-
-The certificate is self-signed and does not provide Apple Developer ID signing,
-notarization, or Gatekeeper trust. The PKCS#12 container uses the
-Keychain-compatible Apple export profile (SHA-1/3DES) only for transporting the
-certificate and private key to the release runner.
-
-To repopulate local demo data for the UI, run:
-
-```bash
-bun tests/test-data-generation/generate-demo-ui-data.ts
-```
-
-The generator accepts `--data-dir <path>` to keep the demo database isolated:
-
-```bash
-CLANKY_DISABLE_PASSKEY=true \
-  bun tests/test-data-generation/generate-demo-ui-data.ts \
-  --data-dir /tmp/clanky-demo
-```
-
-Use a disposable data directory for visual validation. The fixture is
-idempotent, removes only rows owned by `demo-user` or with `demo-*` IDs, and
-preserves unrelated local data. It covers execution hosts, local/SSH/Mesh
-workspaces, tasks, chats, agents and runs, terminals, previews, VNC,
-provisioning, Mesh state, reviews, and normalized transcripts. The generator
-validates the consolidated schema, foreign-key integrity, and the required
-demo surfaces after applying the SQL seed. `CLANKY_DISABLE_PASSKEY=true` is
-only appropriate with disposable local data.
-
-The versioned SQL seed targets the current database schema directly, including
-normalized transcript entries; the generator does not rewrite legacy columns.
-New database changes should be added as migrations after the consolidated
-baseline (currently version 56).
-
-## Contributing
-
-1. Fork the repository.
-2. Create a feature branch.
-3. Make your changes with tests when appropriate.
-4. Run `bun run build && bun run test`.
-5. Open a pull request.
+- [Development](docs/development.md)
 
 ## License
 
