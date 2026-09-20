@@ -286,7 +286,9 @@ If the schema or endpoint list differs from this example, follow the local `clan
 
 ## Working with chats, agents, and other entities
 
-Clanky may expose chats, agents, SSH sessions, previews, provisioning jobs, or other entity APIs depending on the version and instance configuration. Discover them first:
+Clanky may expose chats, agents, terminal sessions, previews, provisioning
+jobs, or other entity APIs depending on the instance configuration. Discover
+them first:
 
 ```bash
 clanky api

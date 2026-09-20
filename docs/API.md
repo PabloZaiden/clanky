@@ -1,4 +1,4 @@
-# Clanky API Reference
+# Clanky HTTP and CLI reference
 
 This document describes the REST API for the Clanky Task Management System.
 
@@ -12,26 +12,24 @@ The port can be configured via the `CLANKY_PORT` environment variable, and the b
 
 ## Authentication
 
-Authentication, users, passkeys, API keys, device auth, health, theme, log level, and server operations are provided by `@pablozaiden/webapp`. This document covers Clanky-owned domain endpoints only.
+Browser sessions use passkeys. CLI and automation clients can use device
+credentials or API keys. This document covers Clanky domain endpoints; the
+framework-owned authentication and health endpoints are listed separately
+where they affect integration.
 
 `clanky auth` uses the framework device flow, `clanky api` sends authenticated REST calls with selected framework credentials, `clanky ws` opens an authenticated JSON-lines websocket session against `/api/ws`, `clanky schema` exposes discoverability metadata for catalogued Clanky endpoints, and `clanky update` checks or installs published Clanky release binaries from GitHub Releases.
 
 ## Route security and discovery metadata
 
-Every Clanky-owned route declares its authorization and same-origin policy in
-its `defineRoutes` entry. Normal private REST routes use authenticated user
-access and same-origin protection for browser mutations. The database reset and
-terminal-task purge routes are owner-only. Raw preview, SSH terminal, and VNC
-websocket upgrades require an authenticated user and always enforce
-same-origin checks.
+Normal private REST routes require an authenticated user and enforce
+same-origin protection for browser mutations. Database reset and terminal-task
+purge are owner-only. Preview, terminal, and VNC WebSocket upgrades require an
+authenticated user and always enforce same-origin checks.
 
-Route `auth`, `sameOrigin`, `scopes`, request/query/response schemas,
-descriptions, tags, and CLI paths are consumed directly by the framework route
-catalog. `clanky api` and `clanky schema` therefore expose the same contract
-that the server enforces; no separate policy catalog or global route rewrite is
-used. Public endpoints are not part of the Clanky-owned API contract unless a
-route explicitly documents a deliberate `auth: "public"` and
-`sameOrigin: "never"` exception.
+Use `clanky api` to list the routes exposed by the running server and
+`clanky schema <endpoint>` to inspect a route's request, response, and CLI
+metadata. Public routes are exceptional and are identified explicitly in the
+route reference.
 
 ## CLI discovery helpers
 
@@ -66,7 +64,10 @@ clanky schema tasks
 clanky ws
 ```
 
-`clanky help` includes the same version banner shown by `clanky version`, which makes it easier to confirm the client version while browsing the built-in command list. `clanky update` currently supports only the published Linux and macOS release binary, prints progress while release metadata and downloads are in flight, and should not be used from a Bun source checkout. `clanky api <endpoint>` emits a single JSON envelope so scripts can always parse the output. `clanky ws` uses the selected framework profile or environment credentials, writes inbound websocket frames to stdout one line at a time, reads one JSON value per non-empty stdin line, and sends diagnostics to stderr so stdout stays machine-safe.
+`clanky api <endpoint>` emits a single JSON envelope so scripts can parse the
+result consistently. `clanky ws` writes inbound frames to stdout one line at a
+time, reads one JSON value per non-empty stdin line, and sends diagnostics to
+stderr.
 
 Example CLI output:
 
@@ -99,40 +100,12 @@ responses from JSON endpoints follow this format:
 Transcript downloads, file downloads, and raw websocket/streaming endpoints
 use their documented content type instead of this JSON format.
 
-## ACP Agent Runtime Architecture
+## Workspaces and agent sessions
 
-Clanky runs agent interactions through ACP JSON-RPC and supports the following providers:
-
-- `opencode` (CLI command: `opencode acp`)
-- `copilot` (CLI command: `copilot --yolo --acp`)
-- `codex` (CLI command: resolves `codex-acp`, or runs `@agentclientprotocol/codex-acp` through `npx`/`bunx`, with full-access runtime settings)
-- `claude` (CLI command: resolves `claude-agent-acp`, or runs `@agentclientprotocol/claude-agent-acp` through `npx`/`bunx`)
-- `pi` (CLI command: resolves `pi-acp`, or runs the `pi-acp` package through `npx`/`bunx`)
-- `grok` (CLI command: resolves `grok`, or runs `@xai-official/grok` through `npx`/`bunx` as `grok agent --always-approve stdio`)
-
-Agent transport is configured per workspace:
-
-1. **Local ACP** (`stdio`): provider CLI is launched on the local host.
-2. **Remote ACP** (`ssh`): provider CLI is launched over SSH on the target workspace host.
-
-When `CLANKY_MOCK_ACP=true`, local `stdio` workspaces use Clanky's built-in fake ACP runtime instead of launching the provider CLI. This is intended for testing and exercises ACP flows such as initialization, authentication, session lifecycle, prompt streaming, tool events, permission requests, question flows, config updates, file-system requests, terminal requests, and cancellation.
-
-This agent channel handles sessions, prompts, streaming updates, tool events, and permission/question requests.
-
-## Command Execution Architecture
-
-All API endpoints that perform deterministic server-side operations (git commands, file operations, etc.) use the `CommandExecutor` abstraction:
-
-1. **Local execution** (`stdio` transport): commands run directly on the local host.
-2. **Remote execution** (`ssh` transport): commands run over SSH on the target workspace host.
-3. **Bounded execution**: command operations enforce timeouts and explicit success/failure results.
-
-This execution channel is decoupled from ACP streaming/provider internals. The following operations use deterministic command execution:
-
-- Git operations (`/api/git/branches`, task git operations)
-- File existence checks (`/api/check-planning-dir`)
-- File reads (`/api/tasks/:id/plan`, `/api/tasks/:id/status-file`)
-- Directory listings
+Agent sessions use the provider selected for the workspace. A workspace can
+run locally, over SSH, or through a Mesh worker. Git, file, and command
+operations run on that workspace's execution host, while the API and
+application data remain on the controller.
 
 ### Direct execution-host commands
 
@@ -148,21 +121,19 @@ clanky server exec "worker-1" --cwd /var/log --timeout 10000 -- pwd
 clanky server exec mesh:worker-1 -- journalctl -u clanky-worker --no-pager
 ```
 
-The operation does not start a persistent shell. Use the execution-host
-terminal endpoints for interactive sessions. SSH hosts can receive the
-temporary credential token issued by Clanky through
-`--credential-token TOKEN`; Mesh execution continues to use its signed,
-encrypted worker transport.
+The operation does not start a persistent shell. Use the terminal endpoints
+for interactive sessions. SSH hosts can receive the temporary credential token
+issued by Clanky through `--credential-token TOKEN`.
 
 ## Endpoints
 
 ### Current Clanky route inventory
 
-The table below is the current Clanky-owned route catalog generated from the
-`defineRoutes` entries. It is a concise inventory; use `clanky schema <endpoint>`
-for the request/query schema and `clanky api` for the endpoint list exposed by
-the running version. Framework-owned routes such as `/api/auth/*`,
-`/api/config`, `/api/health`, and `/api/ws` are described separately.
+The table below is the public Clanky-owned route catalog. Use
+`clanky schema <endpoint>` for request and response details, and `clanky api`
+for the endpoint list exposed by the running server. Framework-owned routes
+such as `/api/auth/*`, `/api/config`, `/api/health`, and `/api/ws` are not
+included in this table.
 
 <details>
 <summary>Show all catalogued Clanky routes</summary>
@@ -175,6 +146,7 @@ the running version. Framework-owned routes such as `/api/auth/*`,
 | GET, POST | `/api/agents` | List or create scheduled agents. |
 | GET, PATCH, DELETE | `/api/agents/:id` | Read, update, or delete a scheduled agent. |
 | GET | `/api/agents/:id/code/draft` | Read the current generated deterministic agent draft. |
+| GET | `/api/agents/:id/export` | Download a portable scheduled-agent configuration. |
 | POST | `/api/agents/:id/code/generate` | Generate an editable deterministic agent program without saving it. |
 | POST | `/api/agents/:id/code/generate/prepare` | Prepare the hidden deterministic-agent generation conversation before a long generation request. |
 | POST | `/api/agents/:id/interrupt` | Interrupt an active agent run. |
@@ -205,26 +177,38 @@ the running version. Framework-owned routes such as `/api/auth/*`,
 | GET | `/api/execution-hosts` | List execution hosts available to the current user. |
 | POST | `/api/execution-hosts/:kind/:id/exec` | Execute one non-interactive command on a registered execution host. |
 | GET, POST | `/api/execution-hosts/:kind/:id/working-directory` | Resolve the configured or current execution-host directory. |
+| POST | `/api/execution-hosts/:kind/:id/addresses` | List accessible IPv4 addresses on an execution host. |
+| PATCH | `/api/execution-hosts/:kind/:id/configuration` | Update node-owned defaults for a local or Mesh execution host. |
+| POST | `/api/execution-hosts/:kind/:id/chats` | Create a direct chat on an execution host. |
+| POST | `/api/execution-hosts/:kind/:id/prerequisites` | Check prerequisites on an execution host. |
+| POST | `/api/execution-hosts/:kind/:id/devbox-templates` | List Devbox templates on an execution host. |
+| POST | `/api/execution-hosts/:kind/:id/chat-providers` | Discover ACP providers available on an execution host. |
+| POST | `/api/execution-hosts/:kind/:id/chat-models` | Discover ACP models for a provider on an execution host. |
+| GET | `/api/execution-hosts/:kind/:id/files` | List execution-host files in the active explorer root. |
+| GET | `/api/execution-hosts/:kind/:id/files/content` | Read an execution-host file. |
+| POST | `/api/execution-hosts/:kind/:id/files/delete` | Delete an execution-host file or directory. |
+| GET, HEAD | `/api/execution-hosts/:kind/:id/files/download` | Download an execution-host file. |
+| GET | `/api/execution-hosts/:kind/:id/files/metadata` | Read execution-host file metadata. |
+| GET | `/api/execution-hosts/:kind/:id/files/preview` | Preview a browser-renderable execution-host image file. |
+| POST | `/api/execution-hosts/:kind/:id/files/rename` | Rename an execution-host file or directory. |
+| GET | `/api/execution-hosts/:kind/:id/files/tree` | Load the full execution-host file tree. |
+| POST | `/api/execution-hosts/:kind/:id/files/write` | Write an execution-host file. |
+| POST | `/api/execution-hosts/:kind/:id/files/upload` | Create an execution-host file upload session. |
+| POST | `/api/execution-hosts/:kind/:id/files/upload/cancel` | Cancel an execution-host file upload session. |
+| POST | `/api/execution-hosts/:kind/:id/files/upload/chunk` | Upload a chunk for an execution-host file upload session. |
+| POST | `/api/execution-hosts/:kind/:id/files/upload/complete` | Complete an execution-host file upload session. |
+| GET, POST | `/api/execution-hosts/:kind/:id/vnc-sessions` | List or create VNC sessions for an execution host. |
 | GET | `/api/git/branches` | List local git branches for a workspace. |
 | GET | `/api/git/default-branch` | Detect the default git branch for a workspace. |
 | GET | `/api/git/github-issues` | List open GitHub issues for a workspace repository. |
 | GET | `/api/git/github-repository-url` | Resolve the GitHub repository URL for a workspace. |
 | GET | `/api/git/remote-status` | Check whether a git remote exists for a workspace. |
-| POST | `/api/internal/agent-prompt` | Internal endpoint used by the workspace-side deterministic agent runner to forward workspace prompt calls to the authenticated user's chat. |
 | POST | `/api/mesh/endpoint` | Set this controller or worker advertised Mesh endpoint. |
 | POST | `/api/mesh/enroll` | Enroll this worker with a controller. |
 | GET, POST | `/api/mesh/enrollment-tokens` | List or create single-use worker enrollment tokens. |
 | POST | `/api/mesh/health` | Probe enrolled workers without changing durable trust. |
 | POST | `/api/mesh/instance-name` | Set this controller or worker display name. |
-| POST | `/api/mesh/internal/enrollment` | Receive a signed worker enrollment request. |
-| GET | `/api/mesh/internal/execution/acp` | Open an authenticated mesh ACP relay for a `CommandExecutor` session. |
-| POST | `/api/mesh/internal/execution/file` | Receive a streamed file chunk in an authenticated mesh `CommandExecutor` session. |
-| POST | `/api/mesh/internal/execution/async` | Start, inspect, or cancel a long-running mesh command without holding one HTTP response open. |
-| POST | `/api/mesh/internal/execution/rpc` | Execute a bounded `CommandExecutor` operation in a mesh session. |
-| POST | `/api/mesh/internal/execution/session` | Establish a signed, short-lived mesh `CommandExecutor` session. |
-| POST | `/api/mesh/internal/health` | Receive a signed health check from an enrolled controller and return the worker's signed execution-policy snapshot. |
-| POST | `/api/mesh/internal/kill` | Receive a signed worker termination request from an enrolled controller. |
-| POST | `/api/mesh/internal/revocation` | Receive a signed revocation from an enrolled controller. |
+| GET, POST, DELETE | `/api/mesh/relay` | Inspect, pair, or unpair this controller's Mesh relay. |
 | GET | `/api/mesh/status` | Get this controller's workers or this worker's local status. |
 | DELETE | `/api/mesh/workers/:workerNodeId` | Delete a revoked worker registration. |
 | POST | `/api/mesh/workers/:workerNodeId/kill` | Ask an enrolled worker to terminate so its service supervisor can restart it. |
@@ -233,6 +217,7 @@ the running version. Framework-owned routes such as `/api/auth/*`,
 | GET | `/api/models/variants` | List available model variants for a workspace. |
 | GET, PUT | `/api/preferences/dashboard-view-mode` | Persist the preferred dashboard layout. |
 | GET, PUT | `/api/preferences/file-explorer-full-tree` | Persist file explorer tree loading preferences. |
+| GET, PUT | `/api/preferences/github-username` | Persist the user's optional GitHub username. |
 | GET, PUT | `/api/preferences/last-cheap-model` | Persist the user's most recently used cheap model. |
 | GET, PUT | `/api/preferences/last-directory` | Persist the user's last selected directory. |
 | GET, PUT | `/api/preferences/last-model` | Persist the user's most recently used model. |
@@ -243,39 +228,19 @@ the running version. Framework-owned routes such as `/api/auth/*`,
 | DELETE | `/api/previews/:previewId` | Close an active workspace or direct server preview. |
 | GET | `/api/previews/bridge` | Open the raw websocket bridge for a workspace or direct server preview. |
 | POST | `/api/provisioning-jobs` | Start a remote provisioning job. |
+| POST | `/api/provisioning-jobs/:id/dismiss` | Dismiss a completed, failed, cancelled, or interrupted provisioning job. |
 | GET, DELETE | `/api/provisioning-jobs/:id` | Read or cancel a remote provisioning job. |
 | GET | `/api/provisioning-jobs/:id/logs` | Read logs for a remote provisioning job. |
 | POST | `/api/server-settings/test` | Test a server connection without creating a workspace. |
 | POST | `/api/settings/purge-terminal-tasks` | Purge terminal-state tasks across all workspaces. |
 | POST | `/api/settings/reset-all` | Reset all persisted settings and recreate the database. |
-| GET, PATCH, DELETE | `/api/ssh-server-sessions/:id` | Read, update, or delete a standalone SSH server session. |
 | GET, POST | `/api/ssh-servers` | List or create standalone SSH servers. |
 | GET, PATCH, DELETE | `/api/ssh-servers/:id` | Update or delete a standalone SSH server. |
-| POST | `/api/ssh-servers/:id/chat-models` | Discover ACP chat models for a selected provider on a standalone SSH server. |
-| POST | `/api/ssh-servers/:id/chat-providers` | Discover ACP chat providers available on a standalone SSH server. |
-| GET, POST | `/api/ssh-servers/:id/chats` | List or create chats owned by a standalone SSH server. |
 | POST | `/api/ssh-servers/:id/credentials` | Exchange an encrypted SSH credential for a temporary token. |
-| POST | `/api/ssh-servers/:id/devbox/templates` | List available devbox templates for a standalone SSH server. |
-| GET | `/api/ssh-servers/:id/files` | List standalone SSH server files in the active explorer root. |
-| GET | `/api/ssh-servers/:id/files/content` | Read a standalone SSH server file. |
-| POST | `/api/ssh-servers/:id/files/delete` | Delete a standalone SSH server file or directory in the active explorer root. |
-| GET | `/api/ssh-servers/:id/files/download` | Download a standalone SSH server file from the active explorer root. |
-| GET | `/api/ssh-servers/:id/files/metadata` | Read standalone SSH server file metadata. |
-| GET | `/api/ssh-servers/:id/files/preview` | Preview a browser-renderable standalone SSH server image file. |
-| POST | `/api/ssh-servers/:id/files/rename` | Rename a standalone SSH server file or directory in the active explorer root. |
-| GET | `/api/ssh-servers/:id/files/tree` | Load the full standalone SSH server file tree. |
-| POST | `/api/ssh-servers/:id/files/upload` | Create a standalone SSH server file upload session. |
-| POST | `/api/ssh-servers/:id/files/upload/cancel` | Cancel a standalone SSH server file upload session. |
-| POST | `/api/ssh-servers/:id/files/upload/chunk` | Upload a raw chunk for a standalone SSH server file upload session. |
-| POST | `/api/ssh-servers/:id/files/upload/complete` | Complete a standalone SSH server file upload session. |
-| POST | `/api/ssh-servers/:id/files/write` | Write a standalone SSH server file with optional conflict checks. |
-| POST | `/api/ssh-servers/:id/prerequisites/check` | Run prerequisite checks for a standalone SSH server. |
 | GET | `/api/ssh-servers/:id/public-key` | Read the public key for a standalone SSH server. |
-| GET, POST | `/api/ssh-servers/:id/sessions` | List or create standalone SSH server sessions. |
-| GET, POST | `/api/ssh-servers/:id/vnc-sessions` | List or create VNC sessions for a standalone SSH server. |
-| GET, POST | `/api/terminal-sessions` | List or create a workspace-backed terminal session. |
-| GET, PATCH, DELETE | `/api/terminal-sessions/:id` | Read, update, or delete a workspace-backed terminal session. |
-| GET | `/api/ssh-terminal` | Open the raw websocket bridge for an SSH terminal. |
+| GET, POST | `/api/terminal-sessions` | List or create a workspace or direct execution-host terminal session. |
+| GET, PATCH, DELETE | `/api/terminal-sessions/:id` | Read, update, or delete a terminal session. |
+| GET | `/api/terminal` | Open the raw websocket bridge for a terminal session. |
 | GET, POST | `/api/tasks` | List tasks or create a new task. |
 | GET, PUT, PATCH, DELETE | `/api/tasks/:id` | Read, update, or delete a task. |
 | POST | `/api/tasks/:id/accept` | Accept a completed or max-iteration task locally without pushing. |
@@ -311,12 +276,19 @@ the running version. Framework-owned routes such as `/api/auth/*`,
 | POST | `/api/tasks/title` | Generate a task title from a prompt. |
 | GET | `/api/vnc` | Open the raw websocket bridge for a VNC session. |
 | GET, DELETE | `/api/vnc-sessions/:id` | Read or close a VNC session. |
+| GET, PUT | `/api/voice/settings` | Read or update the current user's voice provider settings. |
+| POST | `/api/voice/validate` | Validate a configured voice capability against its provider. |
+| POST | `/api/voice/transcribe` | Transcribe an uploaded audio recording. |
+| POST | `/api/voice/speech` | Generate speech for a response or summary. |
+| GET, POST | `/api/workspace-worker-enrollments` | List or create workspace-exclusive Mesh worker enrollments. |
+| GET, DELETE | `/api/workspace-worker-enrollments/:id` | Read or cancel a workspace-exclusive Mesh worker enrollment. |
 | GET, POST | `/api/workspaces` | List workspaces or create a workspace. |
 | GET, PUT, DELETE | `/api/workspaces/:id` | Read, update, or delete a workspace. |
 | GET | `/api/workspaces/:id/agents-md` | Read the `AGENTS.md` file and optimization status for a workspace. |
 | POST | `/api/workspaces/:id/agents-md/optimize` | Apply `AGENTS.md` optimization changes to a workspace. |
 | POST | `/api/workspaces/:id/agents-md/preview` | Preview `AGENTS.md` optimization changes for a workspace. |
 | POST | `/api/workspaces/:id/archived-tasks/purge` | Purge archived tasks for a workspace. |
+| POST | `/api/workspaces/:id/agents/import` | Import a portable scheduled-agent configuration into a workspace. |
 | POST | `/api/workspaces/:id/exec` | Execute one non-interactive command on the workspace's execution host. |
 | GET | `/api/workspaces/:id/files` | List workspace files in the active explorer root. |
 | GET | `/api/workspaces/:id/files/content` | Read a workspace file. |
@@ -335,8 +307,9 @@ the running version. Framework-owned routes such as `/api/auth/*`,
 | GET, PUT | `/api/workspaces/:id/server-settings` | Read or update workspace server settings. |
 | GET | `/api/workspaces/:id/server-settings/status` | Read the current workspace connection status. |
 | POST | `/api/workspaces/:id/server-settings/test` | Test the configured workspace connection using workspace settings. |
+| GET | `/api/workspaces/execution-targets` | List local and paired Mesh stdio execution targets. |
 | GET | `/api/workspaces/:workspaceId/previews` | List previews associated with a workspace. |
-| GET | `/api/execution-hosts/:kind/:id/previews` | List direct previews for a local or Mesh execution host. Direct SSH previews are unsupported. |
+| GET | `/api/execution-hosts/:kind/:id/previews` | List direct previews for a local or Mesh execution host. |
 
 </details>
 
@@ -873,7 +846,7 @@ Clear all pending values (message and model).
 
 ---
 
-### Pending Prompt (Legacy)
+### Pending prompt
 
 Modify the prompt for the next iteration while a task is running.
 
@@ -1699,28 +1672,6 @@ Set the scheduler timezone to a valid IANA timezone, such as
 
 ---
 
-### Configuration
-
-#### GET /api/config
-
-Get application configuration based on environment.
-
-**Response**
-
-```json
-{
-  "remoteOnly": false,
-  "publicBasePath": null
-}
-```
-
-| Field | Description |
-|-------|-------------|
-| `remoteOnly` | If true, local `stdio` transport is disabled and only `ssh` transport is allowed (set via CLANKY_REMOTE_ONLY env var) |
-| `publicBasePath` | `null` when no public path prefix is configured; otherwise the path prefix inferred from the request's trusted forwarding configuration |
-
----
-
 ### Utilities
 
 #### GET /api/check-planning-dir
@@ -1779,10 +1730,20 @@ List all workspaces.
     "id": "ws-uuid",
     "name": "My Project",
     "directory": "/path/to/project",
+    "workspaceType": "git",
+    "allowWorktrees": true,
+    "executionTargetRevision": 1,
+    "executionHostBinding": {
+      "host": {
+        "kind": "local",
+        "nodeId": "local"
+      },
+      "targetKey": "local",
+      "revision": 1
+    },
     "serverSettings": {
       "agent": {
-        "provider": "opencode",
-        "transport": "stdio"
+        "provider": "copilot"
       }
     },
     "createdAt": "2026-01-20T10:00:00.000Z",
@@ -1793,16 +1754,23 @@ List all workspaces.
 
 #### POST /api/workspaces
 
-Create a new workspace. Validates that its execution directory exists on the remote server and is a git repository.
+Create a new workspace. The directory is validated on the selected execution
+host. Git workspaces must point to a repository; directory workspaces may use
+any existing directory.
 
 **Request Body**
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `name` | string | Yes | Workspace display name |
-| `directory` | string | Yes | Absolute path to git repository |
-| `serverSettings` | object | No | Workspace connection settings (defaults to `{ agent: { provider: "opencode", transport: "stdio" } }`) |
+| `directory` | string | Yes | Path to the directory on the selected execution host |
+| `serverSettings` | object | Yes | Agent provider, for example `{ "agent": { "provider": "copilot" } }` |
+| `executionHost` | object | Exactly one of `executionHost`, `sshTarget`, or `workspaceWorkerEnrollmentId` | Registered local, Mesh, or SSH execution-host reference |
+| `sshTarget` | object | Exactly one of `executionHost`, `sshTarget`, or `workspaceWorkerEnrollmentId` | Ad hoc SSH target with `host`, `port`, `username`, and optional `password` |
+| `workspaceWorkerEnrollmentId` | string | Exactly one of `executionHost`, `sshTarget`, or `workspaceWorkerEnrollmentId` | Dedicated Mesh worker enrollment |
+| `workspaceType` | string | No | `git` (default) or `directory` |
 | `allowWorktrees` | boolean | No | Whether task, chat, and agent worktrees may be created for this workspace (defaults to `true`) |
+| `allowClankyContext` | boolean | No | Whether new execution contexts may receive authenticated Clanky CLI access (defaults to `false`) |
 
 **Response**
 
@@ -1841,7 +1809,12 @@ Update a workspace.
 | Field | Type | Description |
 |-------|------|-------------|
 | `name` | string | Update display name |
-| `serverSettings` | object | Update server connection settings |
+| `serverSettings` | object | Update the agent provider |
+| `executionHost` | object | Replace the registered execution host |
+| `sshTarget` | object \| null | Replace or clear the ad hoc SSH target |
+| `isPrivate` | boolean | Hide the workspace when private items are hidden |
+| `archived` | boolean | Hide the workspace from active work surfaces |
+| `allowClankyContext` | boolean | Allow authenticated Clanky CLI access in new execution contexts |
 | `allowWorktrees` | boolean | Enable or disable creation of task, chat, and agent worktrees |
 
 **Response**
@@ -1950,8 +1923,8 @@ GET /api/workspaces/ws-abc123/files/download?path=%2Ftmp%2Fapp.tar.gz
 Relative paths resolve from `workspace.directory`; absolute paths are used
 directly on the selected host. There is no application-level file-size limit,
 so this route can retrieve files larger than the 8 MiB command-output limit.
-The response is binary and streamed through `CommandExecutor`; it is not a
-JSON API response. Directories return `invalid_path_type`. `HEAD` returns the
+The response is binary and streamed; it is not a JSON API response.
+Directories return `invalid_path_type`. `HEAD` returns the
 same file metadata without transferring bytes.
 
 The response includes `Content-Disposition`, `Content-Type`,
@@ -2190,47 +2163,20 @@ Apply the Clanky optimization to the workspace's AGENTS.md file. If the file alr
 
 ### Server Settings
 
-Server settings are configured per-workspace. Each workspace can have different connection settings, allowing different providers/transports per project.
-Settings use a single contract:
+Server settings select the agent provider for a workspace. The execution host
+is configured separately on the workspace through `executionHost`, `sshTarget`,
+or `workspaceWorkerEnrollmentId`.
 
 ```json
 {
   "agent": {
-    "provider": "opencode | copilot | codex | claude | pi | grok",
-    "transport": "stdio | ssh",
-    "hostname": "required for ssh",
-    "port": 22,
-    "username": "optional",
-    "password": "optional",
-    "identityFile": "optional"
+    "provider": "opencode"
   }
 }
 ```
 
-Execution behavior is derived automatically from `agent.transport`:
-- `stdio` → local deterministic execution
-- `ssh` → remote deterministic execution over SSH
-
-Provider runtime command is derived from `agent.provider`:
-- `opencode` → `opencode acp`
-- `copilot` → `copilot --yolo --acp`
-- `codex` → resolves `codex-acp`, or runs `@agentclientprotocol/codex-acp` through `npx`/`bunx`, with Codex configured for non-interactive full-access ACP execution
-- `claude` → resolves `claude-agent-acp`, or runs `@agentclientprotocol/claude-agent-acp` through `npx`/`bunx`
-- `pi` → resolves `pi-acp`, or runs `pi-acp` through `npx`/`bunx`
-- `grok` → resolves `grok`, or runs `@xai-official/grok` through `npx`/`bunx`, using `grok agent --always-approve stdio`
-
-For `codex`, Clanky passes the following runtime environment to the provider on
-both `stdio` and `ssh` transports:
-
-```sh
-INITIAL_AGENT_MODE=agent-full-access
-CODEX_CONFIG='{"approval_policy":"never","sandbox_mode":"danger-full-access"}'
-```
-
-`CODEX_CONFIG` is parsed by `codex-acp` as a JSON object and merged into each
-Codex session configuration.
-
-If `CLANKY_MOCK_ACP=true`, local `stdio` launches use the built-in mock ACP runtime regardless of the selected provider so end-to-end tests can exercise ACP transport behavior without an external agent CLI.
+Supported providers are `opencode`, `copilot`, `codex`, `claude`, `pi`, and
+`grok`.
 
 #### GET /api/workspaces/:id/server-settings
 
@@ -2241,8 +2187,7 @@ Get server settings for a specific workspace.
 ```json
 {
   "agent": {
-    "provider": "opencode",
-    "transport": "stdio"
+    "provider": "opencode"
   }
 }
 ```
@@ -2262,24 +2207,13 @@ Update server settings for a workspace.
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `agent.provider` | string | Yes | `opencode`, `copilot`, `codex`, `claude`, `pi`, or `grok` |
-| `agent.transport` | string | Yes | `stdio` or `ssh` |
-| `agent.hostname` | string | For `ssh` | SSH hostname |
-| `agent.port` | number | No | SSH port (default `22`) |
-| `agent.username` | string | No | SSH username |
-| `agent.password` | string | No | SSH password |
-| `agent.identityFile` | string | No | Path to an SSH private key file to use instead of password auth |
 
 **Response**
 
 ```json
 {
   "agent": {
-    "provider": "copilot",
-    "transport": "ssh",
-    "hostname": "remote.example.com",
-    "port": 22,
-    "username": "vscode",
-    "password": "***"
+    "provider": "copilot"
   }
 }
 ```
@@ -2301,22 +2235,17 @@ Get connection status for a workspace.
 {
   "connected": true,
   "provider": "opencode",
-  "transport": "ssh",
+  "transport": "mesh",
   "capabilities": ["createSession", "sendPromptAsync", "abortSession", "subscribeToEvents", "models"],
-  "serverUrl": "ssh://remote.example.com:22",
   "directoryExists": true,
   "isGitRepo": true,
-  "executionAvailability": "local"
+  "executionAvailability": "remote-connected"
 }
 ```
 
-`capabilities` lists high-level runtime operations exposed by the selected
-provider. The current ACP status response advertises
-`createSession`, `sendPromptAsync`, `abortSession`, `subscribeToEvents`, and
-`models` for every supported provider.
-`executionAvailability` reports `local` for SSH workspaces and reports
-`local`, `remote-connected`, `remote-unavailable`, or `unsupported` for
-`stdio` workspaces.
+`transport` identifies the selected execution-host kind: `local`, `mesh`, or
+`ssh`. `serverUrl` is included only when the active agent runtime exposes one.
+`executionAvailability` describes whether a remote Mesh host is reachable.
 
 **Errors**
 
@@ -2326,21 +2255,20 @@ provider. The current ACP status response advertises
 
 #### POST /api/workspaces/:id/server-settings/test
 
-Test connection with provided settings for a workspace.
+Test the current workspace connection, or test a proposed provider.
 
 **Request Body**
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `agent.provider` | string | Yes | `opencode`, `copilot`, `codex`, `claude`, `pi`, or `grok` |
-| `agent.transport` | string | Yes | `stdio` or `ssh` |
-| `agent.hostname` | string | For `ssh` | SSH hostname |
-| `agent.port` | number | No | SSH port (default `22`) |
-| `agent.username` | string | No | SSH username |
-| `agent.password` | string | No | SSH password |
-| `agent.identityFile` | string | No | Path to an SSH private key file to use instead of password auth |
+Pass `{}` or no body to use the workspace's current settings. To test a
+different provider, send a server-settings object:
 
-If no body (or `{}`) is provided, the workspace's current settings are used.
+```json
+{
+  "agent": {
+    "provider": "codex"
+  }
+}
+```
 
 **Response**
 
@@ -2361,7 +2289,7 @@ If no body (or `{}`) is provided, the workspace's current settings are used.
 
 #### POST /api/server-settings/test
 
-Test a server connection without requiring a workspace. Useful for validating connection settings before creating a workspace.
+Test a server connection before creating a workspace.
 
 **Request Body**
 
@@ -2369,13 +2297,10 @@ Test a server connection without requiring a workspace. Useful for validating co
 |-------|------|----------|-------------|
 | `settings` | object | Yes | Server settings to test |
 | `settings.agent.provider` | string | Yes | `opencode`, `copilot`, `codex`, `claude`, `pi`, or `grok` |
-| `settings.agent.transport` | string | Yes | `stdio` or `ssh` |
-| `settings.agent.hostname` | string | For `ssh` | SSH hostname |
-| `settings.agent.port` | number | No | SSH port (default `22`) |
-| `settings.agent.username` | string | No | SSH username |
-| `settings.agent.password` | string | No | SSH password |
-| `settings.agent.identityFile` | string | No | Path to an SSH private key file to use instead of password auth |
 | `directory` | string | Yes | Directory path to test against |
+| `executionHost` | object | Exactly one of `executionHost`, `sshTarget`, or `workspaceWorkerEnrollmentId` | Registered execution-host reference |
+| `sshTarget` | object | Exactly one of `executionHost`, `sshTarget`, or `workspaceWorkerEnrollmentId` | Ad hoc SSH target |
+| `workspaceWorkerEnrollmentId` | string | Exactly one of `executionHost`, `sshTarget`, or `workspaceWorkerEnrollmentId` | Dedicated Mesh worker enrollment |
 
 **Response**
 
@@ -2395,7 +2320,9 @@ Test a server connection without requiring a workspace. Useful for validating co
 
 #### POST /api/settings/reset-all
 
-Delete database and reinitialize. This is a destructive operation that deletes all tasks, workspaces, sessions, and preferences. The database is recreated fresh with all migrations applied.
+Delete the database and reinitialize it. This destructive operation deletes all
+tasks, workspaces, sessions, and preferences before recreating the current
+schema.
 
 **Response**
 
@@ -2446,8 +2373,8 @@ The endpoint uses the same archived-task predicate as the workspace purge endpoi
 
 ### Terminal Sessions
 
-Workspace-backed terminal sessions are persistent dtach-backed sessions that work with local stdio,
-Mesh-routed stdio, and SSH workspace transports.
+Terminal sessions are persistent sessions backed by a workspace or a direct
+execution host. They can use local, Mesh, or SSH transports.
 
 #### GET /api/terminal-sessions
 
@@ -2465,7 +2392,9 @@ Returns an array of terminal session objects.
 
 #### POST /api/terminal-sessions
 
-Create a persistent terminal session for a workspace.
+Create a persistent terminal session for a workspace or direct execution host.
+Provide exactly one of `workspaceId` or `executionHost`. Direct execution-host
+sessions also require `directory`.
 
 **Request Body**
 
@@ -2474,6 +2403,19 @@ Create a persistent terminal session for a workspace.
   "workspaceId": "ws-abc123",
   "name": "Debug Shell",
   "connectionMode": "dtach",
+  "useTmux": false
+}
+```
+
+For a direct execution host, replace `workspaceId` with an execution-host
+reference and include the working directory:
+
+```json
+{
+  "executionHost": { "kind": "mesh", "nodeId": "worker-1" },
+  "directory": "/workspaces/project",
+  "name": "Worker Shell",
+  "connectionMode": "direct",
   "useTmux": false
 }
 ```
@@ -2523,7 +2465,11 @@ Delete a terminal session.
 
 ### Standalone SSH Servers
 
-Standalone SSH servers let the browser register reusable SSH targets, exchange encrypted credentials, and create terminal sessions that are not tied to a workspace.
+Standalone SSH servers let the browser register reusable SSH targets and
+exchange encrypted credentials. Registered SSH servers are execution-host
+sources; use the `/api/execution-hosts/ssh/:id/...` routes for commands,
+working-directory resolution, file operations, provider/model discovery,
+prerequisite checks, Devbox templates, direct chats, and VNC sessions.
 
 #### GET /api/ssh-servers
 
@@ -2615,64 +2561,10 @@ Exchange an encrypted credential payload for a short-lived credential token.
 }
 ```
 
-#### GET /api/ssh-servers/:id/sessions
-
-List standalone SSH server sessions.
-
-#### POST /api/ssh-servers/:id/sessions
-
-Create a standalone SSH server session.
-
-**Request Body**
-
-```json
-{
-  "name": "Emergency Shell",
-  "credentialToken": "token-uuid",
-  "connectionMode": "dtach",
-  "useTmux": false
-}
-```
-
-`credentialToken` is nullable and must be present; use `null` when the server
-does not require an exchanged credential. `connectionMode` is either `dtach`
-or `direct`.
-
-#### GET /api/ssh-server-sessions/:id
-
-Get one standalone SSH server session.
-
-#### PATCH /api/ssh-server-sessions/:id
-
-Rename a standalone SSH server session.
-
-**Request Body**
-
-```json
-{
-  "name": "Renamed Emergency Shell"
-}
-```
-
-#### DELETE /api/ssh-server-sessions/:id
-
-Delete a standalone SSH server session.
-
-**Request Body**
-
-```json
-{
-  "credentialToken": "token-uuid"
-}
-```
-
-**Response**
-
-```json
-{
-  "success": true
-}
-```
+Pass the short-lived credential token in the
+`x-clanky-ssh-credential-token` header when an SSH execution-host operation
+requires it. Use `/api/terminal-sessions` to create an interactive session
+backed by the SSH execution host.
 
 ---
 
@@ -2696,7 +2588,7 @@ Create a provisioning job.
 | `executionHost` | object | Exactly one of `executionHost` or `workspaceWorkerEnrollmentId` | Execution host reference, such as `{ "kind": "local", "nodeId": "..." }` or `{ "kind": "ssh", "serverId": "..." }` |
 | `workspaceWorkerEnrollmentId` | string | Exactly one of `executionHost` or `workspaceWorkerEnrollmentId` | Existing dedicated worker enrollment; only valid for `provision` mode |
 | `transport` | string | No | `worker` (default for new automatic workspaces) or `ssh` |
-| `workerHostAddress` | string \| null | Required for worker `provision` | Reachable IPv4 address or hostname without spaces |
+| `workerHostAddress` | string \| null | Required for direct worker `provision`; omit for relay workers | Reachable IPv4 address or hostname without spaces |
 | `workerHostAddressManual` | boolean | No | Set to `true` when using a manually entered host instead of a discovered IPv4 address |
 | `repoUrl` | string | Yes | Repository URL for `provision` mode unless `createNewRepository` is true |
 | `basePath` | string | Yes | Parent path used by `provision` mode |
@@ -2732,15 +2624,13 @@ Create a provisioning job.
 }
 ```
 
-`provider` accepts `"copilot"`, `"opencode"`, `"codex"`, `"claude"`, `"pi"`, or `"grok"`.
-For worker provisioning, a discovered IPv4 address must be one of the
-addresses returned by the selected execution host. Set
-`workerHostAddressManual` to `true` for a manually entered hostname or host
-value. The controller must have `CLANKY_PUBLIC_BASE_URL` configured. Devbox
-publishes one dynamically assigned port; Clanky reads that port from
-`devbox status` and builds the worker endpoint from the selected host value.
-For `rebuild` and `restart`, provide `targetDirectory` and `workspaceId`;
-`arise` only needs the server context and mode-specific fields may be `null`.
+`provider` accepts `"copilot"`, `"opencode"`, `"codex"`, `"claude"`, `"pi"`, or
+`"grok"`. For direct worker provisioning, a discovered address must be one of
+the addresses returned by the selected execution host. Set
+`workerHostAddressManual` to `true` for a manually entered host value. The
+controller must have `CLANKY_PUBLIC_BASE_URL` configured. For `rebuild` and
+`restart`, provide `targetDirectory` and `workspaceId`; `arise` only needs the
+server context and mode-specific fields may be `null`.
 
 **Response**
 
@@ -3027,7 +2917,7 @@ parameters are combined with AND. Common filters are:
 
 | Parameter | Description |
 |-----------|-------------|
-| `resource` | Resource name for invalidation events, such as `tasks`, `chats`, `agents`, `agent-runs`, `terminal-sessions`, `ssh-server-sessions`, `provisioning-jobs`, or `previews` |
+| `resource` | Resource name for invalidation events, such as `tasks`, `chats`, `agents`, `agent-runs`, `terminal-sessions`, `provisioning-jobs`, `previews`, `mesh`, or `execution-hosts` |
 | `id` | Entity ID for a resource invalidation |
 | `scope` | Resource scope, such as an agent ID for `agent-runs`, a workspace ID for workspace `previews`, or a serialized execution-host reference (for example, `local:node-id` or `mesh:node-id`) for direct server `previews` |
 | `taskId` | Target a retained task stream |
@@ -3086,18 +2976,19 @@ Resource invalidations use these resource names and actions:
 | `agents.changed`, `agents.deleted` | Agent collection or entity changed/deleted |
 | `agent-runs.changed`, `agent-runs.deleted` | Agent-run collection or entity changed/deleted |
 | `terminal-sessions.changed`, `terminal-sessions.deleted` | Workspace terminal collection or entity changed/deleted |
-| `ssh-server-sessions.changed`, `ssh-server-sessions.deleted` | Standalone SSH-server session collection or entity changed/deleted |
 | `provisioning-jobs.changed`, `provisioning-jobs.deleted` | Provisioning-job collection or entity changed/deleted |
 | `previews.changed`, `previews.deleted` | Preview collection or entity changed/deleted |
+| `mesh.changed`, `mesh.deleted` | Mesh controller or worker state changed/deleted |
+| `execution-hosts.changed`, `execution-hosts.deleted` | Execution-host collection or entity changed/deleted |
 
 Selected incremental events are sent as the nested `event` value. The retained
 event types are:
 
 | Area | Event types |
 |------|-------------|
-| Tasks | `task.message`, `task.progress`, `task.tool_call`, `task.log`, `task.log.delta`, `task.iteration.start`, `task.iteration.end`, `task.git.commit` |
+| Tasks | `task.message`, `task.message.delta`, `task.tool_call`, `task.log`, `task.log.delta`, `task.iteration.start`, `task.iteration.end`, `task.git.commit` |
 | Chats | `chat.status` (terminal statuses), `chat.message`, `chat.message.delta`, `chat.tool_call`, `chat.log`, `chat.log.delta` |
-| Agent runs | `agent.run.message`, `agent.run.tool_call`, `agent.run.log` |
+| Agent runs | `agent.run.message`, `agent.run.message.delta`, `agent.run.tool_call`, `agent.run.log`, `agent.run.log.delta` |
 | Provisioning | `provisioning.step`, `provisioning.output` |
 
 Other domain lifecycle notifications, including `task.accepted`, `task.merged`,
@@ -3147,17 +3038,18 @@ ws.onclose = () => {
 };
 ```
 
-#### WS /api/ssh-terminal
+#### WS /api/terminal
 
-Dedicated WebSocket endpoint for interactive SSH terminal sessions.
+WebSocket endpoint for an interactive terminal session.
 
 **Query Parameters**
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `sshServerSessionId` | Required | Connect to a standalone SSH server session |
+| `terminalSessionId` | Required | Connect to a terminal session created through `/api/terminal-sessions` |
 
-Standalone SSH server sessions require an initial auth message after the socket opens:
+An SSH-backed terminal session that is not attached to a workspace requires an
+initial credential message after the socket opens:
 
 ```json
 {
@@ -3166,7 +3058,9 @@ Standalone SSH server sessions require an initial auth message after the socket 
 }
 ```
 
-The terminal socket emits events such as `terminal.connected`, `terminal.output`, `terminal.clipboard`, `terminal.error`, and `terminal.closed`.
+The terminal socket emits events such as `terminal.connected`,
+`terminal.output`, `terminal.clipboard`, `terminal.error`, and
+`terminal.closed`.
 
 ---
 
@@ -3191,11 +3085,6 @@ The terminal socket emits events such as `terminal.connected`, `terminal.output`
 | `merged` | Changes merged into original branch |
 | `pushed` | Branch pushed to remote (can receive reviews) |
 | `deleted` | Soft-deleted and normally hidden from active task views |
-
-The state machine does not define a status with zero outgoing transitions.
-`merged` can be deleted, `pushed` and `accepted_local` can be restarted or
-receive review work, and a deleted task can be revived into `stopped` or
-`planning` before it is purged.
 
 ### File Diff Status
 
@@ -3238,7 +3127,8 @@ Log levels used in `task.log` events:
 
 ### Commit Message Format
 
-Clanky generates commit messages following the [Conventional Commits v1.0.0](https://www.conventionalcommits.org/en/v1.0.0/) specification:
+Clanky generates commit messages following the
+[Conventional Commits](https://www.conventionalcommits.org/) specification:
 
 ```
 type: description
