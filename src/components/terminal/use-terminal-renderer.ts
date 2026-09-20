@@ -15,6 +15,7 @@ import {
   TERMINAL_SCROLLBACK_LINES,
   TERMINAL_THEME,
 } from "./terminal-constants";
+import { attachTerminalScrollBehavior } from "./terminal-scroll";
 
 const log = createLogger("terminal-renderer");
 
@@ -58,6 +59,7 @@ export function useTerminalRenderer({
     let webglContextLossDisposable: IDisposable | null = null;
     let resizeObserver: ResizeObserver | null = null;
     let removeResizeListener: (() => void) | null = null;
+    let removeTouchScrollListeners: (() => void) | null = null;
     let resizeAnimationFrame: number | null = null;
 
     function queueFit() {
@@ -121,6 +123,9 @@ export function useTerminalRenderer({
         loadWebglRenderer(terminal);
         terminalRef.current = terminal;
         fitAddonRef.current = fitAddon;
+
+        removeTouchScrollListeners = attachTerminalScrollBehavior(terminal);
+
         syncTerminalSelectionState();
         flushPendingOutput();
         terminal.focus();
@@ -186,6 +191,7 @@ export function useTerminalRenderer({
       }
       resizeObserver?.disconnect();
       removeResizeListener?.();
+      removeTouchScrollListeners?.();
       webglContextLossDisposable?.dispose();
       webglAddon?.dispose();
       dataDisposable?.dispose();
