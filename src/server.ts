@@ -463,7 +463,7 @@ export async function getWebAppServer(
     workerExecutionEnabled: options.workerExecutionEnabled,
     relayOnly,
   });
-  await initializeDatabase();
+  await initializeDatabase({ meshWorker });
   const identity = await ensureLocalMeshNodeIdentity();
   let workerTls: Bun.TLSOptions | undefined;
   if (meshWorker) {

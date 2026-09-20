@@ -15,6 +15,7 @@ import {
   getSchemaVersion,
   migrations,
   runMigrations,
+  WORKER_SCHEMA_BASELINE_VERSION,
 } from "../../src/persistence/migrations";
 import {
   assertSchemaInventory,
@@ -53,6 +54,25 @@ function columnNames(tableName: string): string[] {
       name: string;
     }>
   ).map((row) => row.name);
+}
+
+function createVersionedMigrationDatabase(
+  dataDir: string,
+  version: number,
+): void {
+  const legacyDatabase = new Database(join(dataDir, "clanky.db"));
+  legacyDatabase.exec(`
+    CREATE TABLE schema_migrations (
+      version INTEGER PRIMARY KEY,
+      name TEXT NOT NULL,
+      applied_at TEXT NOT NULL
+    )
+  `);
+  legacyDatabase.run(
+    "INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)",
+    [version, `migration_${String(version)}`, "now"],
+  );
+  legacyDatabase.close();
 }
 
 describe("database schema", () => {
@@ -152,21 +172,40 @@ describe("database schema", () => {
 
   test("rejects a database below the consolidated baseline", async () => {
     await withTempDataDir(async (dataDir) => {
-      const legacyDatabase = new Database(join(dataDir, "clanky.db"));
-      legacyDatabase.exec(`
-        CREATE TABLE schema_migrations (
-          version INTEGER PRIMARY KEY,
-          name TEXT NOT NULL,
-          applied_at TEXT NOT NULL
-        );
-        INSERT INTO schema_migrations (version, name, applied_at)
-        VALUES (55, 'add_transcript_message_roles', 'now');
-      `);
-      legacyDatabase.close();
+      createVersionedMigrationDatabase(dataDir, 55);
 
       await expect(initializeDatabase()).rejects.toThrow(
         "below the consolidated baseline",
       );
+    });
+  });
+
+  test("allows workers from the worker baseline through the latest historical marker", async () => {
+    for (const version of [
+      WORKER_SCHEMA_BASELINE_VERSION,
+      BASELINE_SCHEMA_VERSION - 1,
+    ]) {
+      await withTempDataDir(async (dataDir) => {
+        createVersionedMigrationDatabase(dataDir, version);
+
+        await initializeDatabase({ meshWorker: true });
+
+        expect(getSchemaVersion(getDatabase())).toBe(BASELINE_SCHEMA_VERSION);
+        expect(runMigrations(getDatabase(), { meshWorker: true })).toBe(0);
+      });
+    }
+  });
+
+  test("rejects workers below the worker schema baseline", async () => {
+    await withTempDataDir(async (dataDir) => {
+      createVersionedMigrationDatabase(
+        dataDir,
+        WORKER_SCHEMA_BASELINE_VERSION - 1,
+      );
+
+      await expect(
+        initializeDatabase({ meshWorker: true }),
+      ).rejects.toThrow("below the consolidated baseline");
     });
   });
 

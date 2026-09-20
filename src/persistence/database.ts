@@ -48,7 +48,9 @@ export function getDatabase(): Database {
   return db;
 }
 
-export async function initializeDatabase(): Promise<void> {
+export async function initializeDatabase(
+  options: { meshWorker?: boolean } = {},
+): Promise<void> {
   const dbPath = getDatabasePath();
   log.debug("Initializing database", { path: dbPath });
 
@@ -71,9 +73,9 @@ export async function initializeDatabase(): Promise<void> {
     nextDatabase.run("PRAGMA journal_mode = WAL");
     nextDatabase.run("PRAGMA busy_timeout = 5000");
 
-    assertBaselineCompatibility(nextDatabase);
+    assertBaselineCompatibility(nextDatabase, options);
     createBaseSchema(nextDatabase);
-    runMigrations(nextDatabase);
+    runMigrations(nextDatabase, options);
     assertSchemaInventory(nextDatabase);
 
     log.info("Database initialized", { path: dbPath });

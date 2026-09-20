@@ -417,6 +417,13 @@ worker database, identity, configuration, workspaces, and logs. The
 user-installed `$HOME\.local\bin\clanky.exe` remains available for
 reinstallation or explicit removal.
 
+Worker databases at schema version 52 or newer can be promoted to the current
+consolidated schema baseline during a worker-only restart. The worker records
+the controller-only historical markers through version 56 without running
+controller data migrations. Databases below version 52 still require a normal
+schema upgrade before the worker can start; controller databases remain strict
+about the version-56 baseline.
+
 Direct chats created on a Mesh server use the normal provider and model
 selection. Provider and model defaults are not stored on the worker.
 
