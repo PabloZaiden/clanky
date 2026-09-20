@@ -3,10 +3,11 @@
  */
 
 import { useState } from "react";
-import { ActionMenu, ConfirmModal, useToast } from "@pablozaiden/webapp/web";
+import { ConfirmModal, useToast } from "@pablozaiden/webapp/web";
 import type { Workspace } from "@/shared/workspace";
 import { getRegisteredSshServerId } from "@/shared/execution-host";
 import type { DeleteWorkspaceRequest } from "@/contracts/schemas/workspace";
+import { Button } from "../common";
 import { getStoredSshCredentialToken } from "../../lib/ssh-browser-credentials";
 import { isAutoProvisionedWorkspace } from "../../lib/workspace-deletion-safety";
 
@@ -64,30 +65,31 @@ export function DeleteWorkspaceSection({
   return (
     <div className="border-t border-gray-200 dark:border-gray-700 pt-6 mt-6">
       <div className="p-4 rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-900/20">
-        <h3 className="text-sm font-medium text-red-800 dark:text-red-200 mb-2">
-          Delete Workspace
-        </h3>
-        <p className="text-sm text-red-700 dark:text-red-300 mb-4">
-          {workspaceTaskCount > 0
-            ? `Delete the remaining ${workspaceTaskCount} task${workspaceTaskCount === 1 ? "" : "s"} in this workspace before removing it from Clanky.`
-            : "This only removes the workspace record and does not delete files on disk."}
-        </p>
-        <ActionMenu
-          ariaLabel="Workspace actions"
-          triggerVariant="ghost"
-          triggerSize="compact"
-          disabled={disabled}
-          items={[{
-            id: "delete",
-            label: "Delete",
-            destructive: true,
-            disabled,
-            onAction: () => {
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <h3 className="text-sm font-medium text-red-800 dark:text-red-200 mb-2">
+              Delete Workspace
+            </h3>
+            <p className="text-sm text-red-700 dark:text-red-300">
+              {workspaceTaskCount > 0
+                ? `Delete the remaining ${workspaceTaskCount} task${workspaceTaskCount === 1 ? "" : "s"} in this workspace before removing it from Clanky.`
+                : "This only removes the workspace record and does not delete files on disk."}
+            </p>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="danger"
+            className="shrink-0"
+            disabled={disabled}
+            onClick={() => {
               setDeleteServerDirectory(true);
               setShowConfirm(true);
-            },
-          }]}
-        />
+            }}
+          >
+            Delete
+          </Button>
+        </div>
       </div>
 
       <ConfirmModal

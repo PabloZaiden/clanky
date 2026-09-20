@@ -20,7 +20,7 @@ export function TestConnection({ onTest, testing, disabled = false, testResult }
         disabled={disabled || testing}
         onClick={() => void onTest()}
       >
-        Test
+        Test Workspace connection
       </Button>
 
       {testResult && (

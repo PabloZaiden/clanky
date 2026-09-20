@@ -410,21 +410,6 @@ export function ExecutionHostView({
     <div className="space-y-6">
       {error ? <ErrorState description={error} /> : null}
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Panel padding="compact">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Workspaces</p>
-          <p className="mt-2 text-3xl font-semibold">{workspaces.length}</p>
-        </Panel>
-        <Panel padding="compact">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Terminals</p>
-          <p className="mt-2 text-3xl font-semibold">{sessions.length}</p>
-        </Panel>
-        <Panel padding="compact">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Chats</p>
-          <p className="mt-2 text-3xl font-semibold">{chats.length}</p>
-        </Panel>
-      </div>
-
       {workspaces.length > 0 ? (
         <Panel title="Workspaces">
           <div className="space-y-2">

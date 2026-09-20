@@ -46,6 +46,7 @@ export interface ConfiguredAgentsSectionProps {
   workspaceNamesById?: Record<string, string>;
   onSelectAgent?: (agentId: string) => void;
   isAgentPrivateHidden?: (agent: Agent) => boolean;
+  panelClassName?: string;
 }
 
 export function ConfiguredAgentsSection({
@@ -57,6 +58,7 @@ export function ConfiguredAgentsSection({
   workspaceNamesById = {},
   onSelectAgent,
   isAgentPrivateHidden = () => false,
+  panelClassName,
 }: ConfiguredAgentsSectionProps) {
   if (!loading && !error && agents.length === 0) {
     return null;
@@ -67,6 +69,7 @@ export function ConfiguredAgentsSection({
       data-testid="configured-agents-section"
       title={title}
       description={description}
+      className={panelClassName}
     >
       {error ? <ErrorState title="Unable to load agents" description={error} /> : null}
       {loading ? <LoadingState title="Loading agents" /> : null}

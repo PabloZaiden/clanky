@@ -78,7 +78,7 @@ export function WorkspaceView({
 
   return (
     <div className="min-w-0 space-y-6">
-      <Panel data-testid="workspace-activity-card" title="Activity">
+      <Panel data-testid="workspace-activity-card" title="Activity" className="border-0">
         <div>
           {hasActivity ? (
             <div className="space-y-2">
@@ -109,12 +109,13 @@ export function WorkspaceView({
         loading={agentsLoading}
         error={agentsError}
         title="Configured Agents"
+        panelClassName="border-0"
         onSelectAgent={(agentId) => onNavigate({ view: "agent", agentId })}
         isAgentPrivateHidden={(agent) => shouldObscurePrivateItem(isEffectivelyPrivate(agent.config, [workspace]), showPrivateItems)}
       />
 
       {historyTasks.length > 0 || historyChats.length > 0 ? (
-        <Panel data-testid="workspace-history-card" title="History" description={historyDescription}>
+        <Panel data-testid="workspace-history-card" title="History" description={historyDescription} className="border-0">
           <div className="space-y-2">
             {historyTasks.map((task) => renderTaskRow(task))}
             {historyChats.map(renderChatRow)}
