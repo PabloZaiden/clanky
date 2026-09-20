@@ -16,6 +16,12 @@ const log = createLogger("persistence:migrations");
 
 export const BASELINE_SCHEMA_VERSION = 56;
 
+/**
+ * The last historical migration required by the worker runtime. Migrations
+ * 53-56 only change controller-owned state or data that workers do not use.
+ */
+export const WORKER_SCHEMA_BASELINE_VERSION = 52;
+
 export interface Migration {
   version: number;
   name: string;
@@ -146,10 +152,13 @@ function assertMigrationDefinitions(): void {
 
 /**
  * Rejects databases that cannot safely be treated as the consolidated
- * production baseline. The application must not mark old, incomplete schemas
- * as current merely because the historical transformation code was removed.
+ * production baseline. Worker databases may skip controller-only historical
+ * migrations once they contain the worker-required schema.
  */
-export function assertBaselineCompatibility(db: Database): void {
+export function assertBaselineCompatibility(
+  db: Database,
+  options: { meshWorker?: boolean } = {},
+): void {
   if (!tableExists(db, "schema_migrations")) {
     const applicationTableCount = db
       .query(`
@@ -175,6 +184,12 @@ export function assertBaselineCompatibility(db: Database): void {
     );
   }
   if (version > 0 && version < BASELINE_SCHEMA_VERSION) {
+    if (
+      options.meshWorker === true
+      && version >= WORKER_SCHEMA_BASELINE_VERSION
+    ) {
+      return;
+    }
     throw new Error(
       `Database schema version ${version} is below the consolidated baseline ` +
         `${BASELINE_SCHEMA_VERSION}; refusing to mark an incomplete schema as current`,
@@ -189,9 +204,12 @@ function recordMigration(db: Database, migration: Migration): void {
   );
 }
 
-export function runMigrations(db: Database): number {
+export function runMigrations(
+  db: Database,
+  options: { meshWorker?: boolean } = {},
+): number {
   assertMigrationDefinitions();
-  assertBaselineCompatibility(db);
+  assertBaselineCompatibility(db, options);
   ensureMigrationsTable(db);
 
   const appliedVersions = getAppliedVersions(db);
