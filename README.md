@@ -207,11 +207,8 @@ code. SSH hosts may receive a temporary credential with
 | `CLANKY_DATA_DIR` | Complete override for Clanky state, including SQLite, config, detached-server metadata, and logs | `$HOME/.clanky` |
 | `CLANKY_PUBLIC_BASE_URL` | Stable absolute HTTP(S) browser origin without a path, query, or fragment; used to initialize the Mesh endpoint when none is saved | unset |
 | `CLANKY_REMOTE_ONLY` | Disables local `stdio` transport | unset |
-| `CLANKY_MESH_WORKER` | Runs a restricted Mesh execution worker with no browser application or unrelated APIs; equivalent to `serve --mesh-worker` | `false` |
-| `CLANKY_MESH_ENROLLMENT_TOKEN` | Single-use token consumed by `clanky mesh enroll` when `--token` is omitted | unset |
 | `CLANKY_MESH_CONTROLLER_FINGERPRINT` | Expected controller identity for headless Mesh enrollment | unset |
 | `CLANKY_RELAY_CONTROLLER_FINGERPRINT` | Controller fingerprint trusted by `clanky relay`; obtain it with `clanky mesh relay bootstrap-info` | unset |
-| `CLANKY_PUSHED_TASK_MONITOR_INTERVAL_MS` | Poll interval for monitoring pushed tasks and automatic pull-request flows; values below 60000 are rejected | `120000` |
 | `CLANKY_MOCK_ACP` | Uses the built-in fake ACP runtime for local testing | unset |
 | `CLANKY_DISABLE_PASSKEY` | Bypasses passkey enforcement when set to `true`, `1`, or `yes` | unset |
 | `CLANKY_DISABLE_SAME_ORIGIN_CHECK` | Disables `Origin`/`Referer` validation for state-changing requests and WebSocket upgrades | unset |
@@ -221,8 +218,8 @@ Without `CLANKY_DATA_DIR`, local state is stored in `$HOME/.clanky`
 regardless of the directory from which Clanky is launched. The `serve config`
 commands persist host, port, and development source-path settings in that
 directory. Application lifecycle options such as `mesh-worker` can also be
-persisted there; one-shot `serve` flags take precedence over environment
-variables, persisted configuration, and defaults.
+persisted there; one-shot `serve` flags take precedence over applicable
+environment variables, persisted configuration, and defaults.
 
 SSH retry, keepalive, timeout, and handshake-concurrency values are fixed
 application constants in `src/core/ssh-reliability-policy.ts`.

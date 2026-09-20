@@ -37,7 +37,6 @@ import { runForEachActiveUser } from "./background-users";
 const log = createLogger("core:pushed-task-monitor");
 
 const DEFAULT_MONITOR_INTERVAL_MS = 2 * 60 * 1000;
-const MINIMUM_MONITOR_INTERVAL_MS = 60 * 1000;
 const MAX_AUTOMATIC_PR_FLOW_HANDLED_ITEMS = 200;
 
 function mergeHandledItems(
@@ -50,25 +49,6 @@ function mergeHandledItems(
     itemsById.set(item.id, item);
   }
   return [...itemsById.values()].slice(-MAX_AUTOMATIC_PR_FLOW_HANDLED_ITEMS);
-}
-
-function getMonitorIntervalMs(): number {
-  const rawValue = process.env["CLANKY_PUSHED_TASK_MONITOR_INTERVAL_MS"];
-  if (!rawValue) {
-    return DEFAULT_MONITOR_INTERVAL_MS;
-  }
-
-  const parsedValue = Number.parseInt(rawValue, 10);
-  if (!Number.isFinite(parsedValue) || parsedValue < MINIMUM_MONITOR_INTERVAL_MS) {
-    log.warn("Invalid pushed task monitor interval, using default", {
-      rawValue,
-      minimumMs: MINIMUM_MONITOR_INTERVAL_MS,
-      defaultMs: DEFAULT_MONITOR_INTERVAL_MS,
-    });
-    return DEFAULT_MONITOR_INTERVAL_MS;
-  }
-
-  return parsedValue;
 }
 
 function isEligibleForMonitoring(task: Task): boolean {
@@ -157,7 +137,7 @@ export class PushedTaskMonitor {
       extractAutomaticPrFeedback,
       startAutomaticPrReviewCycle: (taskId: string, options) => taskManager.startAutomaticPrReviewCycle(taskId, options),
       resolveAutomaticPrFlowReviewThread,
-      intervalMs: getMonitorIntervalMs(),
+      intervalMs: DEFAULT_MONITOR_INTERVAL_MS,
       ...dependencies,
     };
   }

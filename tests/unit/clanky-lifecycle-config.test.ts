@@ -93,12 +93,12 @@ describe("Clanky lifecycle state configuration", () => {
     expect(config.path).toBe(join(dataDir, "config.json"));
   });
 
-  test("resolves Mesh-worker mode from persisted config and environment", async () => {
+  test("resolves Mesh-worker mode from persisted config and ignores its removed environment variable", async () => {
     const home = await mkdtemp(join(tmpdir(), "clanky-home-test-"));
     temporaryRoots.push(home);
     process.env["HOME"] = home;
     delete process.env["CLANKY_DATA_DIR"];
-    delete process.env["CLANKY_MESH_WORKER"];
+    process.env["CLANKY_MESH_WORKER"] = "true";
     const cli = createClankyCli();
 
     const defaults = await readServeConfig();
@@ -120,7 +120,7 @@ describe("Clanky lifecycle state configuration", () => {
     process.env["CLANKY_MESH_WORKER"] = "false";
     const overridden = await readServeConfig();
     expect(overridden.config.serve?.options?.["mesh-worker"]).toBe(true);
-    expect(overridden.effective.application["mesh-worker"]).toBe(false);
+    expect(overridden.effective.application["mesh-worker"]).toBe(true);
   });
 
   test("rejects changing the mode of an initialized server singleton", async () => {
