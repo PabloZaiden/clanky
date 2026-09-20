@@ -74,7 +74,7 @@ export async function initializeDatabase(
     nextDatabase.run("PRAGMA busy_timeout = 5000");
 
     assertBaselineCompatibility(nextDatabase, options);
-    createBaseSchema(nextDatabase);
+    createBaseSchema(nextDatabase, options);
     runMigrations(nextDatabase, options);
     assertSchemaInventory(nextDatabase);
 

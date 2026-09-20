@@ -1,5 +1,97 @@
 import type { Database } from "bun:sqlite";
 
+interface BaseSchemaOptions {
+  meshWorker?: boolean;
+}
+
+type ConditionalIndexTable =
+  | "chat_transcript_entries"
+  | "agent_run_transcript_entries"
+  | "task_transcript_entries"
+  | "preview_sessions";
+
+interface ConditionalIndex {
+  name: string;
+  tableName: ConditionalIndexTable;
+  requiredColumns: readonly string[];
+  sql: string;
+}
+
+const CONDITIONAL_INDEXES: readonly ConditionalIndex[] = [
+  {
+    name: "idx_chat_transcript_entries_assistant_page",
+    tableName: "chat_transcript_entries",
+    requiredColumns: ["message_role"],
+    sql: `
+      CREATE INDEX IF NOT EXISTS idx_chat_transcript_entries_assistant_page
+        ON chat_transcript_entries(user_id, chat_id, timestamp DESC, sequence DESC, entry_id DESC)
+        WHERE kind = 'message' AND message_role = 'assistant'
+    `,
+  },
+  {
+    name: "idx_agent_run_transcript_entries_assistant_page",
+    tableName: "agent_run_transcript_entries",
+    requiredColumns: ["message_role"],
+    sql: `
+      CREATE INDEX IF NOT EXISTS idx_agent_run_transcript_entries_assistant_page
+        ON agent_run_transcript_entries(user_id, agent_run_id, timestamp DESC, sequence DESC, entry_id DESC)
+        WHERE kind = 'message' AND message_role = 'assistant'
+    `,
+  },
+  {
+    name: "idx_task_transcript_entries_assistant_page",
+    tableName: "task_transcript_entries",
+    requiredColumns: ["message_role"],
+    sql: `
+      CREATE INDEX IF NOT EXISTS idx_task_transcript_entries_assistant_page
+        ON task_transcript_entries(user_id, task_id, timestamp DESC, sequence DESC, entry_id DESC)
+        WHERE kind = 'message' AND message_role = 'assistant'
+    `,
+  },
+  {
+    name: "idx_preview_sessions_execution_host_status",
+    tableName: "preview_sessions",
+    requiredColumns: ["execution_host_id"],
+    sql: `
+      CREATE INDEX IF NOT EXISTS idx_preview_sessions_execution_host_status
+        ON preview_sessions(user_id, execution_host_id, status, updated_at DESC)
+    `,
+  },
+];
+
+function getTableColumnNames(
+  database: Database,
+  tableName: ConditionalIndexTable,
+): Set<string> {
+  const rows = database.query(
+    "SELECT name FROM pragma_table_info(?)",
+  ).all(tableName) as Array<{ name: string }>;
+  return new Set(rows.map((row) => row.name));
+}
+
+function createConditionalIndexes(
+  database: Database,
+  options: BaseSchemaOptions,
+): void {
+  for (const index of CONDITIONAL_INDEXES) {
+    const columns = getTableColumnNames(database, index.tableName);
+    const missingColumns = index.requiredColumns.filter(
+      (column) => !columns.has(column),
+    );
+    if (missingColumns.length > 0) {
+      if (options.meshWorker === true) {
+        // Workers may retain controller-owned tables at their pre-baseline shape.
+        continue;
+      }
+      throw new Error(
+        `Cannot create index ${index.name}; table ${index.tableName} ` +
+          `is missing columns: ${missingColumns.join(", ")}`,
+      );
+    }
+    database.run(index.sql);
+  }
+}
+
 /**
  * Creates the schema that is already present in the production installation.
  *
@@ -8,7 +100,10 @@ import type { Database } from "bun:sqlite";
  * production baseline. Every table added here must also be classified in
  * `schema-inventory.ts`.
  */
-export function createBaseSchema(database: Database): void {
+export function createBaseSchema(
+  database: Database,
+  options: BaseSchemaOptions = {},
+): void {
   const createSchema = database.transaction(() => {
     database.exec(`
       CREATE TABLE IF NOT EXISTS webapp_users (
@@ -665,23 +760,14 @@ export function createBaseSchema(database: Database): void {
         ON agent_runs(user_id, status);
       CREATE INDEX IF NOT EXISTS idx_chat_transcript_entries_page
         ON chat_transcript_entries(user_id, chat_id, timestamp DESC, sequence DESC, kind DESC, entry_id DESC);
-      CREATE INDEX IF NOT EXISTS idx_chat_transcript_entries_assistant_page
-        ON chat_transcript_entries(user_id, chat_id, timestamp DESC, sequence DESC, entry_id DESC)
-        WHERE kind = 'message' AND message_role = 'assistant';
       CREATE INDEX IF NOT EXISTS idx_chat_transcript_meta_user
         ON chat_transcript_meta(user_id, chat_id);
       CREATE INDEX IF NOT EXISTS idx_agent_run_transcript_entries_page
         ON agent_run_transcript_entries(user_id, agent_run_id, timestamp DESC, sequence DESC, kind DESC, entry_id DESC);
-      CREATE INDEX IF NOT EXISTS idx_agent_run_transcript_entries_assistant_page
-        ON agent_run_transcript_entries(user_id, agent_run_id, timestamp DESC, sequence DESC, entry_id DESC)
-        WHERE kind = 'message' AND message_role = 'assistant';
       CREATE INDEX IF NOT EXISTS idx_agent_run_transcript_meta_user
         ON agent_run_transcript_meta(user_id, agent_run_id);
       CREATE INDEX IF NOT EXISTS idx_task_transcript_entries_page
         ON task_transcript_entries(user_id, task_id, timestamp DESC, sequence DESC, kind DESC, entry_id DESC);
-      CREATE INDEX IF NOT EXISTS idx_task_transcript_entries_assistant_page
-        ON task_transcript_entries(user_id, task_id, timestamp DESC, sequence DESC, entry_id DESC)
-        WHERE kind = 'message' AND message_role = 'assistant';
       CREATE INDEX IF NOT EXISTS idx_task_transcript_meta_user
         ON task_transcript_meta(user_id, task_id);
       CREATE INDEX IF NOT EXISTS idx_clanky_context_api_keys_context
@@ -704,8 +790,6 @@ export function createBaseSchema(database: Database): void {
         WHERE status IN ('starting', 'active', 'stopping');
       CREATE INDEX IF NOT EXISTS idx_vnc_sessions_execution_host
         ON vnc_sessions(execution_host_id);
-      CREATE INDEX IF NOT EXISTS idx_preview_sessions_execution_host_status
-        ON preview_sessions(user_id, execution_host_id, status, updated_at DESC);
       CREATE INDEX IF NOT EXISTS idx_preview_sessions_status_updated
         ON preview_sessions(user_id, status, updated_at DESC);
       CREATE INDEX IF NOT EXISTS idx_preview_sessions_workspace_created
@@ -737,6 +821,7 @@ export function createBaseSchema(database: Database): void {
       CREATE INDEX IF NOT EXISTS idx_mesh_worker_registrations_user
         ON mesh_worker_registrations(local_user_id);
     `);
+    createConditionalIndexes(database, options);
   });
 
   createSchema();
