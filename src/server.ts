@@ -75,6 +75,7 @@ import {
 } from "./shared/mesh";
 import { controllerRelayService } from "./core/controller-relay-service";
 import { workerRelayService } from "./core/worker-relay-service";
+import { meshHealthService } from "./core/mesh-health-service";
 
 const PREVIEW_BRIDGE_IDLE_TIMEOUT_SECONDS = 0;
 const WORKSPACE_WORKER_RECONCILE_INTERVAL_MS = 30_000;
@@ -525,7 +526,15 @@ export async function getWebAppServer(
         } else {
           await controllerRelayService.startRuntime(
             async (request) => await appServer.handleRequest(request),
+            {
+              onAuthenticated: () => {
+                meshHealthService.scheduleRefreshAllWorkers(
+                  "controller relay authenticated",
+                );
+              },
+            },
           );
+          meshHealthService.scheduleRefreshAllWorkers("controller startup");
         }
       },
       beforeStop: async () => {
