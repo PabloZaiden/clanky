@@ -30,7 +30,6 @@ describe("Execution host platform contract", () => {
         acpRuntime: 2,
         interactiveTerminal: 1,
         tcpTunnel: 1,
-        vnc: 1,
         serverHealth: 1,
       },
     });

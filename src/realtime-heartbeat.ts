@@ -6,7 +6,7 @@ export const REALTIME_HEARTBEAT_INTERVAL_MS = 30_000;
 
 /**
  * Adds control-frame heartbeats to the framework-owned realtime bus without
- * involving Clanky's raw terminal, VNC, or preview websocket handlers.
+ * involving Clanky's raw terminal or preview websocket handlers.
  */
 export function installRealtimeHeartbeat(
   realtime: RealtimeBus,

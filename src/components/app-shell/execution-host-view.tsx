@@ -4,7 +4,6 @@ import {
   CodeValue,
   ErrorState,
   FormActions,
-  FormGroup,
   Panel,
   SelectField,
   TextField,
@@ -17,7 +16,6 @@ import type {
   ExecutionHostDescriptor,
   SshServer,
   TerminalSession,
-  VncSession,
   Workspace,
 } from "@/shared";
 import {
@@ -35,10 +33,8 @@ import {
   ModelSelector,
   parseModelKey,
 } from "../ModelSelector";
-import { VncViewer } from "./VncViewer";
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
 import { useExecutionHostModelDiscovery } from "./use-execution-host-model-discovery";
-import { createOrResumeExecutionHostVncSessionApi } from "../../hooks/executionHostActions";
 import { ExecutionHostPrerequisitesSection } from "./execution-host-prerequisites-section";
 import { SshServerSettingsForm } from "./ssh-server-settings-form";
 import { useExecutionHostPrerequisites } from "./use-execution-host-prerequisites";
@@ -115,10 +111,6 @@ export function ExecutionHostView({
       )
       : "",
   );
-  const [vncPort, setVncPort] = useState("5900");
-  const [vncUsername, setVncUsername] = useState("");
-  const [vncPassword, setVncPassword] = useState("");
-  const [vncSession, setVncSession] = useState<VncSession | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
@@ -338,23 +330,6 @@ export function ExecutionHostView({
   const handlePasswordModalClose = useCallback(() => {
     setPasswordModalOpen(false);
   }, []);
-
-  async function createVncSession() {
-    const remotePort = Number.parseInt(vncPort, 10);
-    if (!Number.isInteger(remotePort) || remotePort < 1 || remotePort > 65_535) {
-      setError("VNC port must be between 1 and 65535.");
-      return;
-    }
-
-    const session = await runAction("vnc", () =>
-      createOrResumeExecutionHostVncSessionApi({
-        executionHost: host.ref,
-        remotePort,
-      }));
-    if (session) {
-      setVncSession(session);
-    }
-  }
 
   async function saveDefaults(repositoriesBasePath: string | null) {
     const parsedModel = parseModelKey(preferredModel);
@@ -612,52 +587,6 @@ export function ExecutionHostView({
           onCheck={prerequisites.check}
         />
       ) : null}
-
-      {host.capabilities.vnc ? <FormGroup title="VNC">
-        <div className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-3">
-            <TextField
-              id="execution-host-vnc-port"
-              label="Remote port"
-              inputMode="numeric"
-              value={vncPort}
-              onChange={(event) => setVncPort(event.target.value)}
-            />
-            <TextField
-              id="execution-host-vnc-username"
-              label="VNC username"
-              value={vncUsername}
-              onChange={(event) => setVncUsername(event.target.value)}
-            />
-            <TextField
-              id="execution-host-vnc-password"
-              label="VNC password"
-              type="password"
-              value={vncPassword}
-              onChange={(event) => setVncPassword(event.target.value)}
-            />
-          </div>
-          <Button
-            variant="secondary"
-            onClick={() => void createVncSession()}
-            loading={pendingAction === "vnc"}
-            disabled={!hostUsable || !host.capabilities.vnc}
-          >
-            {vncSession ? "Reconnect" : "Connect"}
-          </Button>
-          {vncSession ? (
-            <Panel className="h-[min(65vh,48rem)] min-h-96 overflow-hidden p-0">
-              <VncViewer
-                session={vncSession}
-                username={vncUsername || undefined}
-                password={vncPassword || undefined}
-                onDisconnect={() => setVncSession(null)}
-                onError={setError}
-              />
-            </Panel>
-          ) : null}
-        </div>
-      </FormGroup> : null}
 
       {sshServerId && (
         <ServerPasswordModal

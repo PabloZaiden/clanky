@@ -60,17 +60,16 @@ export const ExecutionHostCapabilityIdSchema = z.enum(
   EXECUTION_HOST_CAPABILITY_IDS,
 );
 
-export const ExecutionHostCapabilitiesSchema = z.object(
-  Object.fromEntries(
-    EXECUTION_HOST_CAPABILITY_IDS.map((capability) => [
-      capability,
-      CapabilityVersionSchema.optional(),
-    ]),
-  ) as Record<
-    typeof EXECUTION_HOST_CAPABILITY_IDS[number],
-    z.ZodOptional<typeof CapabilityVersionSchema>
-  >,
-).strict();
+/**
+ * Capability maps are validated as versioned records rather than strict
+ * objects so workers can retain unknown capability keys during signed
+ * protocol validation while controllers roll forward. Core code projects
+ * these maps onto the current capability registry after verification.
+ */
+export const ExecutionHostCapabilitiesSchema = z.record(
+  z.string(),
+  CapabilityVersionSchema,
+);
 
 export const ExecutionNodeConfigurationSchema = z.object({
   name: RequiredIdSchema,

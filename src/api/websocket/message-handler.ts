@@ -184,23 +184,6 @@ export function createMessageHandler(helpers: TerminalHelpers) {
       return;
     }
 
-    if (ws.data.vncMode) {
-      if (ws.data.vncSocket && !ws.data.vncSocket.destroyed) {
-        ws.data.vncSocket.write(typeof msg === "string" ? Buffer.from(msg) : msg);
-        return;
-      }
-      if (!ws.data.vncSocket) {
-        ws.data.pendingVncMessages = ws.data.pendingVncMessages ?? [];
-        ws.data.pendingVncMessages.push(typeof msg === "string" ? Buffer.from(msg) : msg);
-        return;
-      }
-      log.warn("Closing VNC WebSocket because TCP bridge is not open", {
-        vncSessionId: ws.data.vncSessionId,
-      });
-      ws.close(1011, "VNC TCP bridge is not open");
-      return;
-    }
-
     // Parse message if needed for future commands
     try {
       const data = JSON.parse(typeof msg === "string" ? msg : msg.toString());

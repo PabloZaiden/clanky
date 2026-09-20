@@ -5,12 +5,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun run build:novnc && bun --hot src/index.ts serve",
+    "dev": "bun --hot src/index.ts serve",
     "dev:server": "bun run dev",
     "start": "bun src/index.ts serve",
     "start:server": "bun run start",
     "build": "bun scripts/run-build.ts",
-    "build:novnc": "bun scripts/novnc-vendor.ts",
     "generate:macos-signing-cert": "bun scripts/generate-macos-signing-cert.ts",
     "release:metadata": "bun scripts/release-metadata.ts",
     "release:metadata:check": "bun scripts/release-metadata.ts check",
@@ -23,7 +22,6 @@
   },
   "dependencies": {
     "@monaco-editor/react": "4.7.0",
-    "@novnc/novnc": "1.7.0",
     "@pablozaiden/webapp": "github:PabloZaiden/webapp#v1.11.2",
     "@peculiar/x509": "2.1.0",
     "@tailwindcss/typography": "0.5.20",

@@ -3,8 +3,6 @@ interface BuildStep {
   cmd: string[];
 }
 
-const novncVendorReadyEnv = "CLANKY_NOVNC_VENDOR_READY";
-
 interface BuildStepResult {
   step: BuildStep;
   exitCode: number;
@@ -15,10 +13,6 @@ interface BuildStepResult {
 const rootDir = `${import.meta.dir}/..`;
 
 const buildSteps: BuildStep[] = [
-  {
-    label: "novnc-vendor",
-    cmd: [process.execPath, "run", "build:novnc"],
-  },
   {
     label: "typecheck",
     cmd: [process.execPath, "run", "tsc"],
@@ -78,26 +72,13 @@ async function runStep(step: BuildStep, env: NodeJS.ProcessEnv = process.env): P
 }
 
 console.log("Running build steps in parallel...");
-const setupStep = buildSteps[0];
-if (!setupStep) {
-  throw new Error("No build steps configured.");
-}
-const parallelSteps = buildSteps.slice(1);
-console.log(`- ${setupStep.label}`);
-for (const step of parallelSteps) {
+for (const step of buildSteps) {
   console.log(`- ${step.label}`);
 }
 console.log("");
 
 const startedAt = Date.now();
-const setupResult = await runStep(setupStep);
-const parallelEnv = {
-  ...process.env,
-  [novncVendorReadyEnv]: "1",
-};
-const results = setupResult.exitCode === 0
-  ? [setupResult, ...(await Promise.all(parallelSteps.map((step) => runStep(step, parallelEnv))))]
-  : [setupResult];
+const results = await Promise.all(buildSteps.map((step) => runStep(step)));
 let failed = false;
 
 for (const result of results) {

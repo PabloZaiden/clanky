@@ -12,7 +12,6 @@ RUN bun install --frozen-lockfile
 # Copy only the files needed to build the standalone binary.
 COPY tsconfig.json ./
 COPY src ./src
-COPY scripts/novnc-vendor.ts ./scripts/novnc-vendor.ts
 COPY scripts/release-metadata.ts ./scripts/release-metadata.ts
 COPY .github/release-metadata.json ./.github/release-metadata.json
 

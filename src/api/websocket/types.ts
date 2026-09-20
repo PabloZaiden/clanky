@@ -2,7 +2,6 @@ import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import type { ExecutionHostKind } from "@/shared";
 import type { InteractiveTerminalConnection } from "../../core/terminal";
 import type { TerminalAttachmentHandle } from "../../core/terminal-attachment-registry";
-import type { TcpTunnel } from "../../core/tcp-tunnel";
 
 /**
  * WebSocket client data attached to each connection.
@@ -13,16 +12,12 @@ export interface WebSocketData {
   terminalSessionId?: string;
   /** Resolved transport for a canonical workspace terminal */
   terminalTransport?: ExecutionHostKind;
-  /** Optional VNC session ID for raw RFB websocket traffic */
-  vncSessionId?: string;
   /** Whether this socket is a terminal transport socket */
   terminalMode?: boolean;
   /** Whether this terminal must receive a browser-held SSH credential token before starting */
   terminalCredentialRequired?: boolean;
   /** Timeout used while waiting for a direct SSH terminal credential */
   terminalCredentialTimeout?: ReturnType<typeof setTimeout>;
-  /** Whether this socket bridges noVNC RFB traffic to a local TCP tunnel */
-  vncMode?: boolean;
   /** Whether this socket is the CLI live-preview bridge */
   previewBridgeMode?: boolean;
   /** Authenticated user ID captured when the preview bridge is upgraded */
@@ -33,10 +28,6 @@ export interface WebSocketData {
   previewBridgeKeepalive?: ReturnType<typeof setInterval>;
   /** Authenticated framework user for websocket operations that need persistence ownership */
   user?: CurrentUser;
-  /** Active TCP socket for VNC bridge traffic */
-  vncSocket?: TcpTunnel;
-  /** RFB payloads received before the VNC TCP socket is ready */
-  pendingVncMessages?: Buffer[];
   /** Active terminal bridge for terminal-mode sockets */
   terminalBridge?: Pick<InteractiveTerminalConnection, "sendInput" | "resize" | "dispose">;
   /** Core-owned attachment for canonical workspace terminal sessions */

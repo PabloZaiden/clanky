@@ -20,7 +20,6 @@ DELETE FROM review_comments WHERE id LIKE 'demo-%' OR task_id LIKE 'demo-%';
 DELETE FROM agent_runs WHERE id LIKE 'demo-%' OR agent_id LIKE 'demo-%';
 DELETE FROM provisioning_jobs WHERE id LIKE 'demo-%';
 DELETE FROM terminal_sessions WHERE id LIKE 'demo-%';
-DELETE FROM vnc_sessions WHERE id LIKE 'demo-%';
 DELETE FROM preview_sessions WHERE id LIKE 'demo-%';
 DELETE FROM chats WHERE id LIKE 'demo-%';
 DELETE FROM agents WHERE id LIKE 'demo-%';
@@ -103,17 +102,17 @@ INSERT INTO execution_hosts (
   (
     'demo-host-local', 'demo-user', 'local', 'demo-local-node', 'demo-target-local', 1, NULL,
     '2026-04-16T18:00:00.000Z', '2026-04-17T13:50:00.000Z', 'linux', 'x86_64',
-    '{"commandExecution":1,"fileOperations":2,"git":2,"managedWorktrees":2,"acpRuntime":2,"interactiveTerminal":1,"provisioning":1,"devboxLifecycle":1,"tcpTunnel":1,"vnc":1,"serverHealth":1}'
+    '{"commandExecution":1,"fileOperations":2,"git":2,"managedWorktrees":2,"acpRuntime":2,"interactiveTerminal":1,"provisioning":1,"devboxLifecycle":1,"tcpTunnel":1,"serverHealth":1}'
   ),
   (
     'demo-host-ssh', 'demo-user', 'ssh', 'demo-server-build', 'demo-target-ssh', 3, NULL,
     '2026-04-16T18:01:00.000Z', '2026-04-17T13:45:00.000Z', 'linux', 'x86_64',
-    '{"commandExecution":1,"fileOperations":2,"git":2,"managedWorktrees":2,"acpRuntime":2,"interactiveTerminal":1,"provisioning":1,"devboxLifecycle":1,"tcpTunnel":1,"vnc":1,"serverHealth":1}'
+    '{"commandExecution":1,"fileOperations":2,"git":2,"managedWorktrees":2,"acpRuntime":2,"interactiveTerminal":1,"provisioning":1,"devboxLifecycle":1,"tcpTunnel":1,"serverHealth":1}'
   ),
   (
     'demo-host-mesh', 'demo-user', 'mesh', 'demo-worker-node', 'demo-target-mesh', 2, NULL,
     '2026-04-16T18:02:00.000Z', '2026-04-17T13:48:00.000Z', 'linux', 'aarch64',
-    '{"commandExecution":1,"fileOperations":2,"git":2,"managedWorktrees":2,"acpRuntime":2,"interactiveTerminal":1,"tcpTunnel":1,"vnc":1,"serverHealth":1}'
+    '{"commandExecution":1,"fileOperations":2,"git":2,"managedWorktrees":2,"acpRuntime":2,"interactiveTerminal":1,"tcpTunnel":1,"serverHealth":1}'
   )
 ON CONFLICT(id) DO UPDATE SET
   user_id = excluded.user_id,
@@ -189,7 +188,7 @@ INSERT INTO mesh_worker_registrations (
   'demo-worker-node', 'demo-user', 'Demo Mesh Worker', 'https://mesh.demo.internal',
   'https', 'demo-worker-public-key', 'SHA256:demo-worker',
   'demo-worker-encryption-key', '/srv/mesh',
-  '{"shell":true,"git":true,"docker":true,"vnc":true}',
+  '{"shell":true,"git":true,"docker":true}',
   1, 4, 'global', NULL, NULL, 'active', '2026-04-17T13:49:00.000Z',
   '2026-04-16T18:00:00.000Z', '2026-04-17T13:49:00.000Z',
   'demo-tls-certificate', 'SHA256:demo-worker-tls',
@@ -779,35 +778,6 @@ ON CONFLICT(id) DO UPDATE SET
   closed_at = excluded.closed_at,
   error_message = excluded.error_message;
 
-INSERT INTO vnc_sessions (
-  id, user_id, remote_host, remote_port, local_port, created_at, updated_at,
-  status, pid, connected_at, error_message, execution_host_id, execution_host_revision
-) VALUES
-  (
-    'demo-vnc-local', 'demo-user', '127.0.0.1', 5901, 55901,
-    '2026-04-17T12:50:00.000Z', '2026-04-17T13:45:00.000Z',
-    'active', 4242, '2026-04-17T12:50:30.000Z', NULL, 'demo-host-local', 1
-  ),
-  (
-    'demo-vnc-mesh', 'demo-user', '127.0.0.1', 5902, 55902,
-    '2026-04-17T10:30:00.000Z', '2026-04-17T11:42:00.000Z',
-    'failed', NULL, NULL, 'The worker did not expose a VNC display.',
-    'demo-host-mesh', 2
-  )
-ON CONFLICT(id) DO UPDATE SET
-  user_id = excluded.user_id,
-  remote_host = excluded.remote_host,
-  remote_port = excluded.remote_port,
-  local_port = excluded.local_port,
-  created_at = excluded.created_at,
-  updated_at = excluded.updated_at,
-  status = excluded.status,
-  pid = excluded.pid,
-  connected_at = excluded.connected_at,
-  error_message = excluded.error_message,
-  execution_host_id = excluded.execution_host_id,
-  execution_host_revision = excluded.execution_host_revision;
-
 INSERT INTO provisioning_jobs (
   id, user_id, config_json, state_json, status, workspace_id,
   created_at, updated_at, execution_host_id, execution_host_revision
@@ -994,7 +964,7 @@ INSERT INTO chat_transcript_entries (
   (
     'demo-chat-host', 'demo-user', 'message:demo-chat-host-assistant', 'message',
     '2026-04-17T09:32:00.000Z', 1,
-    '{"id":"demo-chat-host-assistant","role":"assistant","content":"The Mesh worker exposes shell, Git, Docker and VNC capabilities.","timestamp":"2026-04-17T09:32:00.000Z"}',
+    '{"id":"demo-chat-host-assistant","role":"assistant","content":"The Mesh worker exposes shell, Git and Docker capabilities.","timestamp":"2026-04-17T09:32:00.000Z"}',
     NULL, NULL, NULL, NULL, NULL, 'assistant', '2026-04-17T09:32:00.000Z', '2026-04-17T09:32:00.000Z'
   )
 ON CONFLICT(chat_id, entry_id) DO UPDATE SET

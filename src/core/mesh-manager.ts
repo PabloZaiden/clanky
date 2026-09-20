@@ -37,6 +37,7 @@ import {
 } from "@/shared/mesh";
 import {
   createExecutionHostRuntimeSnapshot,
+  parseExecutionHostCapabilities,
   type ExecutionHostCapabilities,
 } from "@/shared/execution-host";
 import { createLogger } from "@pablozaiden/webapp/server";
@@ -376,6 +377,9 @@ export class MeshManager {
         "The enrollment request signature is invalid.",
       );
     }
+    const workerCapabilities = parseExecutionHostCapabilities(
+      envelope.workerCapabilities,
+    );
 
     // Verify the worker is enrolling against the correct controller
     if (envelope.expectedControllerFingerprint !== identity.fingerprint) {
@@ -555,7 +559,7 @@ export class MeshManager {
           route: enrollmentRoute,
           workerDirectory: envelope.workerDirectory,
           workerPlatform: envelope.workerPlatform ?? null,
-          workerCapabilities: envelope.workerCapabilities,
+          workerCapabilities,
           workerAcceptRemoteExecution: envelope.workerAcceptRemoteExecution,
           workerConfigRevision: envelope.workerConfigRevision,
           ...(workspaceWorkerEnrollmentId
@@ -1028,6 +1032,9 @@ export class MeshManager {
         "The worker health response signature is invalid.",
       );
     }
+    const workerCapabilities = parseExecutionHostCapabilities(
+      health.workerCapabilities,
+    );
     if (health.workerConfigRevision < worker.workerConfigRevision) {
       throw new DomainError(
         "mesh_health_check_response_invalid",
@@ -1050,14 +1057,14 @@ export class MeshManager {
     const runtimeSnapshotChanged =
       JSON.stringify(health.workerPlatform ?? null)
         !== JSON.stringify(worker.workerPlatform)
-      || JSON.stringify(health.workerCapabilities)
+      || JSON.stringify(workerCapabilities)
         !== JSON.stringify(worker.workerCapabilities);
     await updateWorkerHealthSnapshot({
       workerNodeId: worker.workerNodeId,
       localUserId: options.userId,
       directory: health.workerDirectory,
       platform: health.workerPlatform ?? null,
-      capabilities: health.workerCapabilities,
+      capabilities: workerCapabilities,
       acceptRemoteExecution: health.workerAcceptRemoteExecution,
       configRevision: health.workerConfigRevision,
     });

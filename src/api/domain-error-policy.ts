@@ -34,7 +34,6 @@ export type DomainErrorPolicyName =
   | "terminal"
   | "transcript"
   | "transport"
-  | "vnc"
   | "voice"
   | "workspaces";
 
@@ -274,10 +273,6 @@ const API_DOMAIN_ERROR_CODES = {
   transcript_cursor_invalid: true,
   uncommitted_changes: true,
   validation_failed: true,
-  vnc_session_not_active: true,
-  vnc_session_not_found: true,
-  vnc_session_start_failed: true,
-  vnc_tunnel_failed: true,
   voice_audio_too_large: true,
   voice_capability_not_configured: true,
   voice_capability_unavailable: true,
@@ -1527,47 +1522,6 @@ const POLICY_PROFILES = {
       terminal_target_mismatch: {
         status: 409,
         message: "The terminal target does not match.",
-      },
-    },
-  },
-  vnc: {
-    boundary: "authenticated",
-    mappings: {
-      ...COMMON_MAPPINGS,
-      execution_host_capability_unavailable: {
-        status: 409,
-        message: "This execution host does not support VNC sessions.",
-        extra: capabilityDetails,
-      },
-      execution_host_unavailable: {
-        status: 404,
-        message: "Execution host not found or unavailable.",
-      },
-      ssh_server_not_found: {
-        status: 404,
-        error: "not_found",
-        message: "SSH server not found",
-      },
-      vnc_session_not_active: {
-        status: 409,
-        message: "The VNC session is not active.",
-      },
-      vnc_session_not_found: {
-        status: 404,
-        error: "not_found",
-        message: "VNC session not found",
-      },
-      vnc_session_start_failed: {
-        status: 500,
-        message: "Failed to start VNC session",
-      },
-      vnc_tunnel_failed: {
-        status: 500,
-        message: "VNC tunnel failed to start",
-      },
-      workspace_execution_target_missing: {
-        status: 409,
-        message: "The workspace SSH execution target is not configured.",
       },
     },
   },

@@ -23,7 +23,6 @@ const demoRowCountQueries = {
   agent_runs: "SELECT COUNT(*) AS count FROM agent_runs WHERE user_id = 'demo-user' AND id LIKE 'demo-%'",
   terminal_sessions: "SELECT COUNT(*) AS count FROM terminal_sessions WHERE user_id = 'demo-user' AND id LIKE 'demo-%'",
   preview_sessions: "SELECT COUNT(*) AS count FROM preview_sessions WHERE user_id = 'demo-user' AND id LIKE 'demo-%'",
-  vnc_sessions: "SELECT COUNT(*) AS count FROM vnc_sessions WHERE user_id = 'demo-user' AND id LIKE 'demo-%'",
   provisioning_jobs: "SELECT COUNT(*) AS count FROM provisioning_jobs WHERE user_id = 'demo-user' AND id LIKE 'demo-%'",
   review_comments: "SELECT COUNT(*) AS count FROM review_comments WHERE user_id = 'demo-user' AND id LIKE 'demo-%'",
   task_transcript_entries: "SELECT COUNT(*) AS count FROM task_transcript_entries WHERE user_id = 'demo-user' AND task_id LIKE 'demo-%'",

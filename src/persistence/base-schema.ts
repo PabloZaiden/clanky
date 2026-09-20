@@ -506,21 +506,6 @@ export function createBaseSchema(
         notice_message TEXT,
         FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
       );
-      CREATE TABLE IF NOT EXISTS vnc_sessions (
-        id TEXT PRIMARY KEY,
-        user_id TEXT NOT NULL,
-        remote_host TEXT NOT NULL DEFAULT '127.0.0.1',
-        remote_port INTEGER NOT NULL,
-        local_port INTEGER NOT NULL,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        status TEXT NOT NULL,
-        pid INTEGER,
-        connected_at TEXT,
-        error_message TEXT,
-        execution_host_id TEXT NOT NULL REFERENCES execution_hosts(id) ON DELETE CASCADE,
-        execution_host_revision INTEGER NOT NULL
-      );
       CREATE TABLE IF NOT EXISTS preview_sessions (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
@@ -782,14 +767,6 @@ export function createBaseSchema(
         ON terminal_sessions(execution_host_id);
       CREATE UNIQUE INDEX IF NOT EXISTS idx_terminal_sessions_task_id_unique
         ON terminal_sessions(user_id, task_id) WHERE task_id IS NOT NULL;
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_vnc_sessions_active_host_port
-        ON vnc_sessions(user_id, execution_host_id, remote_port)
-        WHERE status IN ('starting', 'active', 'stopping');
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_vnc_sessions_active_local_port
-        ON vnc_sessions(local_port)
-        WHERE status IN ('starting', 'active', 'stopping');
-      CREATE INDEX IF NOT EXISTS idx_vnc_sessions_execution_host
-        ON vnc_sessions(execution_host_id);
       CREATE INDEX IF NOT EXISTS idx_preview_sessions_status_updated
         ON preview_sessions(user_id, status, updated_at DESC);
       CREATE INDEX IF NOT EXISTS idx_preview_sessions_workspace_created

@@ -129,8 +129,8 @@ async function applySeedToDatabase(dataDir: string, sqlPath: string): Promise<vo
       "SELECT MAX(version) AS version FROM schema_migrations",
     ).get() as { version?: unknown };
     const schemaVersion = schemaVersionRow.version;
-    if (schemaVersion !== 56) {
-      throw new Error(`Demo seed requires schema version 56, got ${schemaVersion}`);
+    if (schemaVersion !== 57) {
+      throw new Error(`Demo seed requires schema version 57, got ${schemaVersion}`);
     }
 
     const requiredDemoRows: Array<[string, string]> = [
@@ -143,7 +143,6 @@ async function applySeedToDatabase(dataDir: string, sqlPath: string): Promise<vo
       ["agent_runs", "user_id = 'demo-user' AND id LIKE 'demo-%'"],
       ["terminal_sessions", "user_id = 'demo-user' AND id LIKE 'demo-%'"],
       ["preview_sessions", "user_id = 'demo-user' AND id LIKE 'demo-%'"],
-      ["vnc_sessions", "user_id = 'demo-user' AND id LIKE 'demo-%'"],
       ["provisioning_jobs", "user_id = 'demo-user' AND id LIKE 'demo-%'"],
       ["review_comments", "user_id = 'demo-user' AND id LIKE 'demo-%'"],
       ["task_transcript_entries", "user_id = 'demo-user' AND task_id LIKE 'demo-%'"],

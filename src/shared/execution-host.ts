@@ -64,7 +64,6 @@ export const EXECUTION_HOST_CAPABILITY_IDS = [
   "provisioning",
   "devboxLifecycle",
   "tcpTunnel",
-  "vnc",
   "serverHealth",
 ] as const;
 export type ExecutionHostCapabilityId = typeof EXECUTION_HOST_CAPABILITY_IDS[number];
@@ -86,7 +85,6 @@ export const EXECUTION_HOST_CAPABILITY_VERSIONS = {
   provisioning: 1,
   devboxLifecycle: 1,
   tcpTunnel: 1,
-  vnc: 1,
   serverHealth: 1,
 } as const satisfies Record<ExecutionHostCapabilityId, number>;
 
@@ -108,6 +106,12 @@ export interface ExecutionHostRuntimeSnapshot {
   capabilities: ExecutionHostCapabilities;
 }
 
+export function parseExecutionHostCapabilities(
+  value: Record<string, number>,
+): ExecutionHostCapabilities;
+export function parseExecutionHostCapabilities(
+  value: unknown,
+): ExecutionHostCapabilities | null;
 export function parseExecutionHostCapabilities(
   value: unknown,
 ): ExecutionHostCapabilities | null {
@@ -153,7 +157,6 @@ export const POSIX_EXECUTION_HOST_CAPABILITIES: ExecutionHostCapabilities = {
   provisioning: 1,
   devboxLifecycle: 1,
   tcpTunnel: 1,
-  vnc: 1,
   serverHealth: 1,
 };
 
@@ -165,7 +168,6 @@ export const WINDOWS_EXECUTION_HOST_CAPABILITIES: ExecutionHostCapabilities = {
   acpRuntime: 2,
   interactiveTerminal: 1,
   tcpTunnel: 1,
-  vnc: 1,
   serverHealth: 1,
 };
 

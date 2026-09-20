@@ -213,28 +213,6 @@ describe("Execution hosts API", () => {
     );
     expect(deleteTerminalResponse.status).toBe(200);
 
-    const createVncResponse = await fetch(
-      `${baseUrl}/api/execution-hosts/local/${localHost!.ref.kind === "local" ? localHost!.ref.nodeId : ""}/vnc-sessions`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          remotePort: 5900,
-          credentialToken: null,
-        }),
-      },
-    );
-    expect(createVncResponse.status).toBe(201);
-    const vncSession = await createVncResponse.json() as {
-      config: { executionHostBinding?: unknown; sshServerId?: string };
-      state: { status: string };
-    };
-    expect(vncSession.config.executionHostBinding).toEqual(
-      terminal.config.executionHostBinding,
-    );
-    expect(vncSession.config.sshServerId).toBeUndefined();
-    expect(vncSession.state.status).toBe("active");
-
     const deleteChatResponse = await fetch(
       `${baseUrl}/api/chats/${chat.config.id}`,
       { method: "DELETE" },
