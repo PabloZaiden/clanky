@@ -80,7 +80,10 @@ describe("Mesh internal controller-worker routes", () => {
       workerTlsFingerprint: null,
       workerDirectory: "/srv/worker",
       workerPlatform: { os: "linux" as const, architecture: "x64" as const },
-      workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
+      workerCapabilities: {
+        ...POSIX_EXECUTION_HOST_CAPABILITIES,
+        retiredCapability: 1,
+      },
       workerAcceptRemoteExecution: true as const,
       workerConfigRevision: 1,
       enrollmentToken: created.token,
@@ -124,6 +127,7 @@ describe("Mesh internal controller-worker routes", () => {
     expect(await listWorkerRegistrations("admin")).toEqual([
       expect.objectContaining({
         workerPlatform: { os: "linux", architecture: "x64" },
+        workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
       }),
     ]);
     const replay = await route(new Request("http://controller/api/mesh/internal/enrollment", {

@@ -107,6 +107,12 @@ export interface ExecutionHostRuntimeSnapshot {
 }
 
 export function parseExecutionHostCapabilities(
+  value: Record<string, number>,
+): ExecutionHostCapabilities;
+export function parseExecutionHostCapabilities(
+  value: unknown,
+): ExecutionHostCapabilities | null;
+export function parseExecutionHostCapabilities(
   value: unknown,
 ): ExecutionHostCapabilities | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
