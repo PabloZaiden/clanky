@@ -6,6 +6,7 @@ import {
   availablePort,
   enrollMeshWorker,
   meshJsonRequest,
+  restartMeshNode,
   sourceClankyCommand,
   startMeshNode,
   type ManagedMeshNode,
@@ -471,6 +472,90 @@ describe("controller-worker Mesh", () => {
       ),
     ]);
     expect(afterRelayRestart.every((result) => result.body.success === true)).toBe(true);
+  }, 60_000);
+
+  test("refreshes worker health when the controller starts", async () => {
+    const [controller, worker] = await Promise.all([
+      startNode("controller"),
+      startNode("worker"),
+    ]);
+    await enroll(controller, worker);
+
+    const nextDirectory = join(worker.dataDir, "startup-refresh");
+    await mkdir(nextDirectory, { recursive: true });
+    worker.serveArguments = [
+      "serve",
+      "--mesh-worker",
+      "true",
+      "--worker-directory",
+      nextDirectory,
+      "--worker-execution-enabled",
+      "false",
+    ];
+    await restartMeshNode(worker);
+    await restartMeshNode(controller);
+
+    const status = await pollUntil(
+      async () => (await jsonRequest(controller, "/api/mesh/status")).body,
+      (body) => body.workers?.[0]?.workerDirectory === nextDirectory
+        && body.workers?.[0]?.workerAcceptRemoteExecution === false,
+      {
+        description: "startup health refresh to update the worker snapshot",
+        timeoutMs: 15_000,
+        formatLastObserved: (body) => JSON.stringify(body),
+      },
+    );
+    expect(status.workers[0]).toMatchObject({
+      workerDirectory: nextDirectory,
+      workerAcceptRemoteExecution: false,
+    });
+  }, 45_000);
+
+  test("refreshes worker health after controller relay re-authentication", async () => {
+    const [controller, worker] = await Promise.all([
+      startNode("controller"),
+      startNode("worker"),
+    ]);
+    await enroll(controller, worker);
+    const controllerStatus = await jsonRequest(controller, "/api/mesh/status");
+    const relay = await startRelay(controllerStatus.body.node.fingerprint as string);
+    const paired = await jsonRequest(controller, "/api/mesh/relay", {
+      method: "POST",
+      body: { relayUrl: relay.baseUrl },
+    });
+    expect(paired.status).toBe(201);
+
+    const nextDirectory = join(worker.dataDir, "relay-refresh");
+    await mkdir(nextDirectory, { recursive: true });
+    worker.serveArguments = [
+      "serve",
+      "--mesh-worker",
+      "true",
+      "--worker-directory",
+      nextDirectory,
+      "--worker-execution-enabled",
+      "false",
+    ];
+    await restartMeshNode(worker);
+    await restartRelay(
+      relay,
+      controllerStatus.body.node.fingerprint as string,
+    );
+
+    const status = await pollUntil(
+      async () => (await jsonRequest(controller, "/api/mesh/status")).body,
+      (body) => body.workers?.[0]?.workerDirectory === nextDirectory
+        && body.workers?.[0]?.workerAcceptRemoteExecution === false,
+      {
+        description: "relay authentication health refresh to update the worker snapshot",
+        timeoutMs: 30_000,
+        formatLastObserved: (body) => JSON.stringify(body),
+      },
+    );
+    expect(status.workers[0]).toMatchObject({
+      workerDirectory: nextDirectory,
+      workerAcceptRemoteExecution: false,
+    });
   }, 60_000);
 
   test("one worker accepts isolated grants from two controllers", async () => {

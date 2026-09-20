@@ -69,6 +69,13 @@ export interface ExecutionHostCommandContext {
   sshTargetOverride?: SshConnectionTarget;
 }
 
+export interface ExecutionHostServiceDependencies {
+  refreshMeshWorkerHealth?: (
+    userId: string,
+    workerNodeId: string,
+  ) => Promise<void>;
+}
+
 const SSH_HOST_CAPABILITIES: ExecutionHostCapabilities = {
   ...POSIX_EXECUTION_HOST_CAPABILITIES,
 };
@@ -105,6 +112,18 @@ function assertExecutionHostAllowedInCurrentMode(ref: ExecutionHostRef): void {
 
 export class ExecutionHostService {
   private testExecutorFactory: ((directory: string) => CommandExecutor) | null = null;
+  private readonly refreshMeshWorkerHealth: (
+    userId: string,
+    workerNodeId: string,
+  ) => Promise<void>;
+
+  constructor(dependencies: ExecutionHostServiceDependencies = {}) {
+    this.refreshMeshWorkerHealth =
+      dependencies.refreshMeshWorkerHealth
+      ?? (async (userId, workerNodeId) => {
+        await meshHealthService.refreshWorker(userId, workerNodeId);
+      });
+  }
 
   setExecutorFactoryForTesting(
     factory: ((directory: string) => CommandExecutor) | null,
@@ -282,7 +301,7 @@ export class ExecutionHostService {
     if (!supportsExecutionHostCapability(descriptor.capabilities, capability, minimumVersion)
       && ref.kind === "mesh") {
       try {
-        await meshHealthService.refreshWorker(userId, ref.nodeId);
+        await this.refreshMeshWorkerHealth(userId, ref.nodeId);
         descriptor = (await this.listHosts(userId))
           .find((candidate) => executionHostRefsEqual(candidate.ref, ref));
       } catch (error) {
