@@ -12,6 +12,7 @@ import {
 const POSIX_ENVIRONMENT_KEYS = new Set([
   "COLORTERM",
   "DISPLAY",
+  "GH_TOKEN",
   "HOME",
   "LANG",
   "LOGNAME",
@@ -43,6 +44,7 @@ const WINDOWS_ENVIRONMENT_KEYS = new Set([
   "PROGRAMFILES(X86)",
   "PSMODULEPATH",
   "PUBLIC",
+  "GH_TOKEN",
   "SYSTEMDRIVE",
   "SYSTEMROOT",
   "TEMP",
@@ -71,10 +73,11 @@ export function isWindowsTerminalRuntime(): boolean {
 
 export function buildLocalTerminalEnvironment(
   extra?: Record<string, string>,
+  sourceEnvironment: NodeJS.ProcessEnv = process.env,
 ): Record<string, string> {
   const environment: Record<string, string> = {};
   const windows = isWindowsTerminalRuntime();
-  for (const [key, value] of Object.entries(process.env)) {
+  for (const [key, value] of Object.entries(sourceEnvironment)) {
     if (value === undefined) {
       continue;
     }
