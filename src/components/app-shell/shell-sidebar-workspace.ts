@@ -193,6 +193,24 @@ function getWorkspaceSidebarActions(
           workspaceId,
         }),
       },
+      ...(workspaceNode.workspace.sourceDirectory ? [
+        {
+          id: "restart-workspace",
+          label: "Restart",
+          onClick: () => context.navigateWithinShell({
+            view: "restart-workspace",
+            workspaceId,
+          }),
+        },
+        {
+          id: "rebuild-workspace",
+          label: "Rebuild",
+          onClick: () => context.navigateWithinShell({
+            view: "rebuild-workspace",
+            workspaceId,
+          }),
+        },
+      ] : []),
       {
         id: workspaceArchived ? "unarchive-workspace" : "archive-workspace",
         label: workspaceArchiving

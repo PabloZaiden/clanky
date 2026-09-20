@@ -3,8 +3,8 @@
  */
 
 import { useState } from "react";
-import { ActionMenu, ConfirmModal } from "@pablozaiden/webapp/web";
-import { Badge } from "../common";
+import { ConfirmModal } from "@pablozaiden/webapp/web";
+import { Badge, Button } from "../common";
 import type { PurgeArchivedTasksResult } from "../../hooks";
 import type { Workspace } from "@/shared/workspace";
 
@@ -47,13 +47,26 @@ export function PurgeTasksSection({
   return (
     <div className="border-t border-gray-200 dark:border-gray-700 pt-6 mt-6">
       <div className="p-4 rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-900/20">
-        <div className="flex items-center justify-between gap-3 mb-2">
-          <h3 className="text-sm font-medium text-red-800 dark:text-red-200">
-            Tasks in a Terminal State
-          </h3>
-          <Badge variant={purgeableTaskCount > 0 ? "warning" : "default"} size="sm">
-            {purgeableTaskCount} purgeable
-          </Badge>
+        <div className="flex flex-col gap-3 mb-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <h3 className="text-sm font-medium text-red-800 dark:text-red-200">
+              Tasks in a Terminal State
+            </h3>
+            <Badge variant={purgeableTaskCount > 0 ? "warning" : "default"} size="sm">
+              {purgeableTaskCount} purgeable
+            </Badge>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="danger"
+            className="shrink-0"
+            loading={purgingPurgeableTasks}
+            disabled={purgeableTaskCount === 0}
+            onClick={() => setShowConfirm(true)}
+          >
+            Purge
+          </Button>
         </div>
         {purgeError && (
           <div className="mb-3 p-3 rounded-md bg-red-100 dark:bg-red-950/40 border border-red-200 dark:border-red-900">
@@ -85,20 +98,6 @@ export function PurgeTasksSection({
             )}
           </div>
         )}
-
-        <ActionMenu
-          ariaLabel="Terminal-state task actions"
-          triggerVariant="ghost"
-          triggerSize="compact"
-          disabled={purgingPurgeableTasks || purgeableTaskCount === 0}
-          items={[{
-            id: "purge",
-            label: "Purge",
-            destructive: true,
-            disabled: purgingPurgeableTasks || purgeableTaskCount === 0,
-            onAction: () => setShowConfirm(true),
-          }]}
-        />
       </div>
 
       <ConfirmModal

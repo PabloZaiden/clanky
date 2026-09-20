@@ -2,7 +2,6 @@ import type { Workspace } from "@/shared";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import { Button } from "../common";
 import { WorkspaceSettingsForm } from "../workspace-settings";
-import { ProvisioningActionsSection } from "../workspace-settings";
 import { ErrorState, LoadingState, useHeaderActions, type WebAppRoute } from "@pablozaiden/webapp/web";
 import type { UseWorkspaceSettingsShellResult } from "./use-workspace-settings-shell";
 
@@ -114,13 +113,6 @@ export function WorkspaceSettingsView({
             onDeleted={() => navigateWithinShell({ view: "home" })}
             onValidityChange={setWorkspaceSettingsFormValid}
           />
-
-          {workspaceFromHook.sourceDirectory && (
-            <ProvisioningActionsSection
-              onRestart={() => navigateWithinShell({ view: "restart-workspace", workspaceId: workspaceFromHook.id })}
-              onRebuild={() => navigateWithinShell({ view: "rebuild-workspace", workspaceId: workspaceFromHook.id })}
-            />
-          )}
         </div>
       ) : (
         <ErrorState title="Workspace settings unavailable" description="Workspace settings are unavailable right now." />
