@@ -197,6 +197,20 @@ timeout, cancellation, path syntax, and process-tree cleanup contract as POSIX
 workers. The worker directory is only the default command directory; commands
 and file operations may use any host path.
 
+## GitHub CLI authentication in automatic workspace terminals
+
+When an automatic workspace is provisioned with Devbox, Devbox can inject the
+selected GitHub CLI account's `GH_TOKEN` into the devcontainer. The workspace
+worker inherits that environment, and Clanky makes that one variable available
+to interactive terminals on the execution host. This allows `gh` and Copilot
+CLI to reuse the workspace's existing authentication without a second login.
+
+The token is not added to the Mesh protocol, Clanky persistence, or logs. It
+remains an inherited execution-host environment value. Because an interactive
+terminal can read and use it, only run trusted commands and code in a workspace
+where this behavior is enabled; child processes and persistent terminal
+sessions can retain the token until they exit.
+
 ## Register as an operating-system service
 
 The service command requires the standalone `clanky` binary and an already
