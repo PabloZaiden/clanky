@@ -91,9 +91,9 @@ export function parseMeshCommandArgs(args: readonly string[]): MeshCommand {
   }
   if (operation === "enroll") {
     const { positionals, options } = parseOptions(operationArgs, ["--token", "--fingerprint"]);
-    const token = options["--token"] ?? process.env["CLANKY_MESH_ENROLLMENT_TOKEN"];
+    const token = options["--token"];
     const fingerprint = options["--fingerprint"] ?? process.env["CLANKY_MESH_CONTROLLER_FINGERPRINT"];
-    if (!token) throw usageError("Mesh enroll requires --token or CLANKY_MESH_ENROLLMENT_TOKEN");
+    if (!token) throw usageError("Mesh enroll requires --token");
     if (!fingerprint) {
       throw usageError("Mesh enroll requires --fingerprint or CLANKY_MESH_CONTROLLER_FINGERPRINT");
     }

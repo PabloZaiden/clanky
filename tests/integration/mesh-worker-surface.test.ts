@@ -40,7 +40,6 @@ test("Mesh worker exposes only its transport and authenticated control surface",
     CLANKY_PUBLIC_BASE_URL: baseUrl,
   };
   delete env["CLANKY_DISABLE_PASSKEY"];
-  delete env["CLANKY_MESH_WORKER"];
 
   const bootstrap = Bun.spawnSync(
     [

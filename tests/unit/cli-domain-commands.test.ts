@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { parsePreviewCommandArgs } from "../../src/cli/preview";
 import { parseWorkspaceCommandArgs } from "../../src/cli/workspace";
 import { parseRelayCommandArgs } from "../../src/cli/relay";
+import { parseMeshCommandArgs } from "../../src/cli/mesh";
 import {
   parseWorkerBootstrapArgs,
   parseWorkerJoinArgs,
@@ -38,6 +39,39 @@ describe("CLI preview command parsing", () => {
       localPort: 43123,
       path: "/",
       open: true,
+    });
+  });
+
+  describe("CLI Mesh command parsing", () => {
+    test("requires the enrollment token from --token", () => {
+      const originalToken = process.env["CLANKY_MESH_ENROLLMENT_TOKEN"];
+      process.env["CLANKY_MESH_ENROLLMENT_TOKEN"] = "environment-token";
+      try {
+        expect(() => parseMeshCommandArgs([
+          "enroll",
+          "https://worker.example.com",
+          "--fingerprint",
+          "fingerprint",
+        ])).toThrow("Mesh enroll requires --token");
+      } finally {
+        if (originalToken === undefined) {
+          delete process.env["CLANKY_MESH_ENROLLMENT_TOKEN"];
+        } else {
+          process.env["CLANKY_MESH_ENROLLMENT_TOKEN"] = originalToken;
+        }
+      }
+
+      expect(parseMeshCommandArgs([
+        "enroll",
+        "https://worker.example.com",
+        "--token",
+        "cli-token",
+        "--fingerprint",
+        "fingerprint",
+      ])).toMatchObject({
+        operation: "enroll",
+        token: "cli-token",
+      });
     });
   });
 

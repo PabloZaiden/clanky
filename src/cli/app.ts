@@ -40,10 +40,13 @@ export function createClankyCli() {
   const appContext: ClankyCliContext = {
     routeCatalog: createRouteCatalog(routes),
   };
+  const environment = { ...process.env };
+  delete environment["CLANKY_MESH_WORKER"];
   return createWebAppCli<ClankyCliContext>({
     appName: "Clanky",
     commandName: "clanky",
     envPrefix: "CLANKY",
+    environment,
     version: CLANKY_VERSION,
     realtimePath: "/api/ws",
     routeCatalog: appContext.routeCatalog,
