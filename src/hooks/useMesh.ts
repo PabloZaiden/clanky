@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MeshControllerStatus } from "@/shared/mesh";
 import type { MeshEnrollmentRoute } from "@/contracts/schemas/mesh";
+import type { ControllerRelayPairingStatus } from "@/contracts/relay";
 import { apiRequest } from "../lib/api-client";
 import { createRefreshCoordinator } from "../lib/refresh-coordinator";
 import { useRealtimeRefreshWithRecovery } from "./useRealtimeStream";
@@ -32,12 +33,14 @@ export interface CreatedMeshEnrollment {
 
 export interface UseMeshResult {
   status: MeshControllerStatus | null;
+  relayStatus: ControllerRelayPairingStatus | null;
   enrollmentTokens: MeshEnrollmentTokenSummary[];
   loading: boolean;
   saving: boolean;
   error: string | null;
   mutationError: string | null;
   refresh: (options?: { showLoading?: boolean }) => Promise<MeshControllerStatus | null>;
+  refreshRelayStatus: () => Promise<ControllerRelayPairingStatus | null>;
   updateInstanceName: (instanceName: string) => Promise<MeshControllerStatus | null>;
   updateMeshEndpoint: (meshEndpoint: string) => Promise<MeshControllerStatus | null>;
   createEnrollmentToken: (
@@ -53,12 +56,14 @@ export interface UseMeshResult {
 
 export function useMesh(): UseMeshResult {
   const [status, setStatus] = useState<MeshControllerStatus | null>(null);
+  const [relayStatus, setRelayStatus] = useState<ControllerRelayPairingStatus | null>(null);
   const [enrollmentTokens, setEnrollmentTokens] = useState<MeshEnrollmentTokenSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
   const refreshAbortRef = useRef<AbortController | null>(null);
+  const relayRefreshAbortRef = useRef<AbortController | null>(null);
   const isMountedRef = useRef(false);
   const refreshCoordinatorRef = useRef(createRefreshCoordinator<MeshControllerStatus | null>());
 
@@ -70,7 +75,7 @@ export function useMesh(): UseMeshResult {
     if (options.showLoading !== false && isMountedRef.current) setLoading(true);
     if (isMountedRef.current) setError(null);
     try {
-      const [body, tokens] = await Promise.all([
+      const [body, tokens, relay] = await Promise.all([
         apiRequest<MeshControllerStatus>("/api/mesh/status", {
           signal: controller.signal,
           action: "Load Mesh status",
@@ -81,10 +86,16 @@ export function useMesh(): UseMeshResult {
           action: "Load Mesh enrollment tokens",
           fallbackMessage: "Failed to load Mesh enrollment tokens",
         }),
+        apiRequest<ControllerRelayPairingStatus>("/api/mesh/relay", {
+          signal: controller.signal,
+          action: "Load Mesh relay status",
+          fallbackMessage: "Failed to load Mesh relay status",
+        }),
       ]);
       if (controller.signal.aborted || !isMountedRef.current) return null;
       const next = body;
       setStatus(next);
+      setRelayStatus(relay);
       setEnrollmentTokens(tokens);
       return next;
     } catch (refreshError) {
@@ -98,6 +109,39 @@ export function useMesh(): UseMeshResult {
       if (!controller.signal.aborted && isMountedRef.current) setLoading(false);
     }
   }), []);
+
+  const refreshRelayStatus = useCallback(async (): Promise<ControllerRelayPairingStatus | null> => {
+    relayRefreshAbortRef.current?.abort();
+    const controller = new AbortController();
+    relayRefreshAbortRef.current = controller;
+    try {
+      const next = await apiRequest<ControllerRelayPairingStatus>("/api/mesh/relay", {
+        signal: controller.signal,
+        action: "Load Mesh relay status",
+        fallbackMessage: "Failed to load Mesh relay status",
+      });
+      if (controller.signal.aborted || !isMountedRef.current) {
+        return null;
+      }
+      setRelayStatus(next);
+      return next;
+    } catch (refreshError) {
+      if (
+        controller.signal.aborted
+        || refreshError instanceof DOMException && refreshError.name === "AbortError"
+      ) {
+        return null;
+      }
+      if (isMountedRef.current) {
+        setError(String(refreshError));
+      }
+      return null;
+    } finally {
+      if (relayRefreshAbortRef.current === controller) {
+        relayRefreshAbortRef.current = null;
+      }
+    }
+  }, []);
 
   useRealtimeRefreshWithRecovery({
     resources: ["mesh"],
@@ -169,18 +213,21 @@ export function useMesh(): UseMeshResult {
     return () => {
       isMountedRef.current = false;
       refreshAbortRef.current?.abort();
+      relayRefreshAbortRef.current?.abort();
       refreshCoordinatorRef.current.reset();
     };
   }, [refresh]);
 
   return {
     status,
+    relayStatus,
     enrollmentTokens,
     loading,
     saving,
     error,
     mutationError,
     refresh,
+    refreshRelayStatus,
     updateInstanceName: async (instanceName) => (
       await mutate("/api/mesh/instance-name", "POST", { instanceName })
     ).status,

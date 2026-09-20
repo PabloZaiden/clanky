@@ -2,18 +2,26 @@ import { z } from "zod";
 import { AgentProviderSchema } from "./workspace";
 import { SshCredentialTokenSchema } from "./ssh-server";
 import { ExecutionHostRefSchema } from "./execution-host";
-import { isIncompleteGitHubRepositoryUrl, isValidWorkerHostAddress } from "@/shared";
+import {
+  isIncompleteGitHubRepositoryUrl,
+  isValidWorkerHostAddress,
+  PROVISIONING_WORKER_ENROLLMENT_ROUTES,
+} from "@/shared";
 
 const RequiredTrimmedStringSchema = z.string().trim().min(1, "value is required");
 
 export const ProvisioningJobModeSchema = z.enum(["provision", "rebuild", "restart", "arise"]);
 export const ProvisioningTransportSchema = z.enum(["ssh", "worker"]);
+export const ProvisioningWorkerEnrollmentRouteSchema = z.enum(
+  PROVISIONING_WORKER_ENROLLMENT_ROUTES,
+);
 
 export const CreateProvisioningJobRequestSchema = z.object({
   name: RequiredTrimmedStringSchema,
   executionHost: ExecutionHostRefSchema.optional(),
   workspaceWorkerEnrollmentId: RequiredTrimmedStringSchema.optional(),
   transport: ProvisioningTransportSchema.optional(),
+  workerEnrollmentRoute: ProvisioningWorkerEnrollmentRouteSchema.optional(),
   workerHostAddress: z.string()
     .trim()
     .nullable()

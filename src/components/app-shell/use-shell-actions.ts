@@ -15,6 +15,7 @@ import {
   type UseChatsResult,
   type UseDashboardDataResult,
   type UseGithubUsernameResult,
+  type UseMeshResult,
   type UseProvisioningJobResult,
   type UseQuickChatSettingsResult,
   type UseSshServersResult,
@@ -34,6 +35,7 @@ interface UseShellActionsOptions {
   navigateWithinShell: (route: WebAppRoute) => void;
   servers: SshServer[];
   provisioning: UseProvisioningJobResult;
+  mesh: UseMeshResult;
   createWorkspace: UseWorkspacesResult["createWorkspace"];
   refreshWorkspaces: UseWorkspacesResult["refresh"];
   workspaceGroups: WorkspaceGroup[];
@@ -65,6 +67,7 @@ export function useShellActions({
   navigateWithinShell,
   servers,
   provisioning,
+  mesh,
   createWorkspace,
   refreshWorkspaces,
   workspaceGroups,
@@ -104,6 +107,8 @@ export function useShellActions({
     toast,
     navigateWithinShell,
     githubUsername,
+    relayPaired: mesh.relayStatus?.paired === true,
+    refreshRelayStatus: mesh.refreshRelayStatus,
   });
 
   const workspaceSettings = useWorkspaceSettingsShell({
