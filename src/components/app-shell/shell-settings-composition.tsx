@@ -4,8 +4,7 @@ import { DEFAULT_QUICK_CHAT_SETTINGS } from "@/shared/preferences";
 import {
   PurgeTerminalTasksAction,
   QuickChatModelRowContent,
-  MeshSettingsContent,
-  RelaySettingsContent,
+  LinkedInstancesSettingsSection,
   SchedulerTimezoneRowContent,
   GithubUsernameRowContent,
   SettingsCheckbox,
@@ -166,23 +165,10 @@ export function buildShellSettingsSections({
     {
       id: "mesh",
       title: "Linked instances",
-      scope: "user" as const,
-      rows: [{
-        id: "mesh-management",
-        title: "Mesh",
-        content: <MeshSettingsContent mesh={mesh} />,
-      }],
-    },
-    {
-      id: "mesh-relay",
-      title: "Worker relay",
       scope: "owner" as const,
-      rows: [{
-        id: "mesh-relay-pairing",
-        title: "Pairing",
-        description: "Use the controller fingerprint when starting the relay, then pair its public HTTPS origin.",
-        content: <RelaySettingsContent />,
-      }],
+      // The framework settings row model cannot collapse a section, so this
+      // custom render keeps Mesh and the owner-only relay in one collapsed list.
+      render: () => <LinkedInstancesSettingsSection mesh={mesh} />,
     },
     {
       id: "voice",
@@ -220,7 +206,6 @@ export function buildShellSettingsSections({
       rows: [{
         id: "github-username",
         title: "Username",
-        description: "Used to prefill automatic workspace Git URLs.",
         content: (
           <GithubUsernameRowContent
             githubUsername={githubUsername.githubUsername}
@@ -295,7 +280,6 @@ export function buildShellSettingsSections({
         id: "purge-terminal-tasks",
         title: "Purge terminal-state tasks",
         description: "Permanently delete archived terminal tasks across every workspace. Addressable pushed and accepted-local tasks are kept.",
-        danger: true,
         actions: (
           <PurgeTerminalTasksAction
             onPurgeTerminalTasks={async () => {

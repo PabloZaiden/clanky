@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { ActionMenu, ConfirmModal, useToast } from "@pablozaiden/webapp/web";
 import type { UseMeshResult } from "../../hooks";
 import { Badge, Button } from "../common";
@@ -41,6 +41,13 @@ function MeshFormField({
 
 export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
   const toast = useToast();
+  const workers = useMemo(() => {
+    const currentWorkers = mesh.status?.workers ?? [];
+    return [
+      ...currentWorkers.filter((worker) => worker.registrationScope !== "workspace"),
+      ...currentWorkers.filter((worker) => worker.registrationScope === "workspace"),
+    ];
+  }, [mesh.status?.workers]);
   const [instanceName, setInstanceName] = useState("");
   const [meshEndpoint, setMeshEndpoint] = useState("");
   const [tokenName, setTokenName] = useState("Mesh worker");
@@ -106,19 +113,17 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-3">
           <h4 className="text-sm font-medium">Workers</h4>
-          <ActionMenu
-            ariaLabel="Worker actions"
-            triggerVariant="ghost"
-            triggerSize="compact"
-            items={[{
-              id: "probe",
-              label: "Probe",
-              disabled: mesh.saving,
-              onAction: () => void mesh.checkHealth(),
-            }]}
-          />
+          <Button
+            type="button"
+            size="sm"
+            loading={mesh.saving}
+            disabled={mesh.saving}
+            onClick={() => void mesh.checkHealth()}
+          >
+            Health check
+          </Button>
         </div>
-        {mesh.status?.workers.length ? mesh.status.workers.map((worker) => (
+        {workers.length ? workers.map((worker) => (
           <div
             key={worker.workerNodeId}
             className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-gray-200 p-3 dark:border-gray-700"
@@ -259,43 +264,37 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
         ) : null}
       </form>
 
-      <details>
-        <summary className="cursor-pointer text-sm font-medium">Controller identity</summary>
-        <form className="mt-3 space-y-3" onSubmit={(event) => void saveIdentity(event)}>
-          <MeshFormField
+      <form className="space-y-3" onSubmit={(event) => void saveIdentity(event)}>
+        <MeshFormField
+          id="mesh-instance-name"
+          label="Controller name"
+          description="Name shown by this controller in enrollment responses."
+        >
+          <SettingsInput
             id="mesh-instance-name"
-            label="Controller name"
-            description="Name shown by this controller in enrollment responses."
-          >
-            <SettingsInput
-              id="mesh-instance-name"
-              required
-              maxLength={64}
-              value={instanceName}
-              onChange={(event) => setInstanceName(event.currentTarget.value)}
-              disabled={mesh.saving}
-            />
-          </MeshFormField>
-          <MeshFormField
+            required
+            maxLength={64}
+            value={instanceName}
+            onChange={(event) => setInstanceName(event.currentTarget.value)}
+            disabled={mesh.saving}
+          />
+        </MeshFormField>
+        <MeshFormField
+          id="mesh-endpoint"
+          label="Controller endpoint"
+          description="HTTP(S) origin workers use during enrollment."
+        >
+          <SettingsInput
             id="mesh-endpoint"
-            label="Controller endpoint"
-            description="HTTP(S) origin workers use during enrollment."
-          >
-            <SettingsInput
-              id="mesh-endpoint"
-              type="url"
-              required
-              value={meshEndpoint}
-              onChange={(event) => setMeshEndpoint(event.currentTarget.value)}
-              disabled={mesh.saving}
-            />
-          </MeshFormField>
-          <Button type="submit" size="sm" loading={mesh.saving}>Save</Button>
-          <p className="break-all text-xs text-gray-500 dark:text-gray-400">
-            Fingerprint: {mesh.status?.node.fingerprint ?? "Loading..."}
-          </p>
-        </form>
-      </details>
+            type="url"
+            required
+            value={meshEndpoint}
+            onChange={(event) => setMeshEndpoint(event.currentTarget.value)}
+            disabled={mesh.saving}
+          />
+        </MeshFormField>
+        <Button type="submit" size="sm" loading={mesh.saving}>Save</Button>
+      </form>
 
       <ConfirmModal
         isOpen={killWorkerNodeId !== null}

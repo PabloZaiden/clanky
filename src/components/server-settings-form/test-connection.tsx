@@ -1,6 +1,6 @@
 /** Test connection action and result display. */
 
-import { ActionMenu } from "@pablozaiden/webapp/web";
+import { Button } from "../common";
 import { CheckIcon, XIcon } from "./icons";
 
 interface TestConnectionProps {
@@ -13,18 +13,15 @@ interface TestConnectionProps {
 export function TestConnection({ onTest, testing, disabled = false, testResult }: TestConnectionProps) {
   return (
     <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4">
-      <ActionMenu
-        ariaLabel="Connection actions"
-        triggerVariant="ghost"
-        triggerSize="compact"
+      <Button
+        type="button"
+        size="sm"
+        loading={testing}
         disabled={disabled || testing}
-        items={[{
-          id: "test",
-          label: testing ? "Testing..." : "Test",
-          disabled: disabled || testing,
-          onAction: () => void onTest(),
-        }]}
-      />
+        onClick={() => void onTest()}
+      >
+        Test
+      </Button>
 
       {testResult && (
         <div className="flex items-center gap-2">
