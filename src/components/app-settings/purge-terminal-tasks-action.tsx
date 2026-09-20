@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { ActionMenu, ConfirmModal, createLogger } from "@pablozaiden/webapp/web";
+import { ConfirmModal, createLogger } from "@pablozaiden/webapp/web";
 import type { PurgeTerminalTasksResult } from "../../hooks";
+import { Button } from "../common";
 
 const log = createLogger("PurgeTerminalTasksAction");
 
@@ -34,22 +35,20 @@ export function PurgeTerminalTasksAction({
 
   return (
     <div className="clanky-purge-terminal-tasks-action space-y-2">
-      <ActionMenu
-        ariaLabel="Terminal task actions"
-        triggerVariant="ghost"
-        triggerSize="compact"
-        items={[{
-          id: "purge",
-          label: purgingTerminalTasks ? "Purging..." : "Purge",
-          disabled: purgingTerminalTasks,
-          destructive: true,
-          onAction: () => {
-            setPurgeResult(null);
-            setPurgeError(false);
-            setShowPurgeConfirm(true);
-          },
-        }]}
-      />
+      <Button
+        type="button"
+        size="sm"
+        variant="danger"
+        loading={purgingTerminalTasks}
+        disabled={purgingTerminalTasks}
+        onClick={() => {
+          setPurgeResult(null);
+          setPurgeError(false);
+          setShowPurgeConfirm(true);
+        }}
+      >
+        Purge
+      </Button>
       {purgeResult ? (
         <div
           role="status"

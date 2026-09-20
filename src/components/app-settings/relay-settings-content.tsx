@@ -116,11 +116,6 @@ export function RelaySettingsContent() {
             </span>
           </p>
           <CodeValue value={status.bootstrapEnvironment} />
-          {status.relayFingerprint ? (
-            <p className="break-all text-xs text-gray-500 dark:text-gray-400">
-              Relay fingerprint: {status.relayFingerprint}
-            </p>
-          ) : null}
         </div>
       ) : null}
       <form className="space-y-2" onSubmit={(event) => void pair(event)}>

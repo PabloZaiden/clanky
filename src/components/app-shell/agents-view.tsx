@@ -24,7 +24,6 @@ import {
   ErrorState,
   LoadingState,
   Panel,
-  ActionMenu,
   useHeaderActions,
   useToast,
   type ActionMenuItem,
@@ -325,18 +324,15 @@ function AgentRunsList({
                 <p className="mt-1 truncate text-xs text-red-600 dark:text-red-300">{run.error.message}</p>
               )}
             </button>
-            <ActionMenu
-              ariaLabel={`Actions for run ${run.id}`}
-              triggerVariant="ghost"
-              triggerSize="compact"
-              items={[{
-                id: "delete",
-                label: "Delete",
-                destructive: true,
-                disabled: deletePending,
-                onAction: () => setDeleteRun(run),
-              }]}
-            />
+            <Button
+              type="button"
+              size="sm"
+              variant="danger"
+              disabled={deletePending}
+              onClick={() => setDeleteRun(run)}
+            >
+              Delete
+            </Button>
           </div>
         ))}
       </div>

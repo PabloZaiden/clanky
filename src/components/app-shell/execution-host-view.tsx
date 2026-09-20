@@ -135,10 +135,6 @@ export function ExecutionHostView({
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [sshFormValid, setSshFormValid] = useState(false);
   const [sshFormSubmitting, setSshFormSubmitting] = useState(false);
-  const [sshPrerequisites, setSshPrerequisites] = useState<{
-    checking: boolean;
-    check: () => Promise<void>;
-  } | null>(null);
   const hostUsable = host.acceptRemoteExecution;
   const supportsFileOperations = supportsExecutionHostCapability(
     host.capabilities,
@@ -174,22 +170,12 @@ export function ExecutionHostView({
         || provisioning.starting,
       onAction: () => void runArise(),
     },
-    {
-      id: "check-prerequisites",
-      label: "Check prerequisites",
-      disabled: !hostUsable
-        || !host.capabilities.provisioning
-        || (sshServer ? !sshPrerequisites || sshPrerequisites.checking : prerequisites.checking),
-      onAction: () => void (sshServer ? sshPrerequisites?.check() : prerequisites.check()),
-    },
   ], [
     host.capabilities.devboxLifecycle,
     host.capabilities.provisioning,
     hostUsable,
     prerequisites,
     provisioning.starting,
-    sshServer,
-    sshPrerequisites,
   ]);
   useHeaderActions({
     primary: sshServer ? (
@@ -528,7 +514,7 @@ export function ExecutionHostView({
           onDeleted={() => onNavigate({ view: "home" })}
           onValidityChange={setSshFormValid}
           onSubmittingChange={setSshFormSubmitting}
-          onPrerequisitesChange={setSshPrerequisites}
+          prerequisitesDisabled={!hostUsable || !host.capabilities.provisioning}
         />
       ) : host.ref.kind === "local" && supportsFileOperations ? <Panel>
         <div className="space-y-4">
@@ -636,6 +622,9 @@ export function ExecutionHostView({
         <ExecutionHostPrerequisitesSection
           error={prerequisites.error}
           report={prerequisites.report}
+          checking={prerequisites.checking}
+          disabled={!hostUsable || !host.capabilities.provisioning}
+          onCheck={prerequisites.check}
         />
       ) : null}
 
