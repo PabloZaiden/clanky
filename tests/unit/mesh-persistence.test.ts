@@ -28,7 +28,10 @@ import {
   ensureExecutionHost,
   getExecutionHostByRef,
 } from "../../src/persistence/execution-hosts";
-import { getMeshNodeFingerprint } from "../../src/persistence/mesh-node-identity";
+import {
+  ensureLocalMeshNodeIdentity,
+  getMeshNodeFingerprint,
+} from "../../src/persistence/mesh-node-identity";
 
 let dataDir: string;
 
@@ -47,6 +50,31 @@ afterEach(async () => {
 });
 
 describe("controller-worker Mesh persistence", () => {
+  // Upgrade boundary: an identity file from before encryption keys were
+  // persisted must rotate cleanly instead of preventing server startup.
+  test("rotates a stale local identity before strict encryption validation", async () => {
+    const previousIdentity = await ensureLocalMeshNodeIdentity();
+    const identityPath = join(dataDir, "mesh", "node-identity.json");
+    const storedIdentity = JSON.parse(await Bun.file(identityPath).text()) as Record<string, unknown>;
+    delete storedIdentity["encryptionPublicKey"];
+    delete storedIdentity["encryptionPrivateKey"];
+    await Bun.write(identityPath, JSON.stringify(storedIdentity));
+    getDatabase().query("DELETE FROM mesh_node_identity").run();
+
+    const rotatedIdentity = await ensureLocalMeshNodeIdentity();
+    expect(rotatedIdentity.nodeId).not.toBe(previousIdentity.nodeId);
+    expect(typeof rotatedIdentity.encryptionPublicKey).toBe("string");
+
+    const persistedIdentity = JSON.parse(await Bun.file(identityPath).text()) as Record<string, unknown>;
+    expect(typeof persistedIdentity["encryptionPublicKey"]).toBe("string");
+    expect(typeof persistedIdentity["encryptionPrivateKey"]).toBe("string");
+    expect(
+      (getDatabase().query(
+        "SELECT encryption_public_key FROM mesh_node_identity WHERE singleton = 1",
+      ).get() as { encryption_public_key: string }).encryption_public_key,
+    ).toBe(rotatedIdentity.encryptionPublicKey);
+  });
+
   test("unions exact active worker identities across owners and rejects conflicts", async () => {
     const now = new Date().toISOString();
     getDatabase().query(`

@@ -138,6 +138,11 @@ export const migrations: Migration[] = [
         WHERE worker_encryption_public_key IS NULL
           OR trim(worker_encryption_public_key) = ''
       `);
+      db.run(`
+        DELETE FROM mesh_node_identity
+        WHERE encryption_public_key IS NULL
+          OR trim(encryption_public_key) = ''
+      `);
     },
   },
 ];

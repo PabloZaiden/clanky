@@ -229,6 +229,10 @@ describe("database schema", () => {
           worker_node_id TEXT NOT NULL,
           worker_encryption_public_key TEXT
         );
+        CREATE TABLE mesh_node_identity (
+          singleton INTEGER PRIMARY KEY,
+          encryption_public_key TEXT
+        );
       `);
       for (let version = 1; version <= BASELINE_SCHEMA_VERSION + 2; version++) {
         database.run(
@@ -244,6 +248,10 @@ describe("database schema", () => {
         "INSERT INTO mesh_worker_registrations VALUES (?, ?), (?, ?), (?, ?)",
         ["valid-worker", "worker-key", "null-worker", null, "empty-worker", "  "],
       );
+      database.run(
+        "INSERT INTO mesh_node_identity VALUES (?, ?)",
+        [1, null],
+      );
 
       expect(runMigrations(database)).toBe(1);
       expect(
@@ -256,6 +264,7 @@ describe("database schema", () => {
           .query("SELECT worker_node_id FROM mesh_worker_registrations")
           .all(),
       ).toEqual([{ worker_node_id: "valid-worker" }]);
+      expect(database.query("SELECT * FROM mesh_node_identity").all()).toEqual([]);
       database.close();
     });
   });

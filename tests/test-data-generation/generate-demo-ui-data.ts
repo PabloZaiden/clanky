@@ -13,6 +13,7 @@
 
 import { mkdir } from "fs/promises";
 import { join, resolve } from "path";
+import { migrations } from "../../src/persistence/migrations";
 
 interface DatabaseModule {
   closeDatabase: () => void;
@@ -129,8 +130,11 @@ async function applySeedToDatabase(dataDir: string, sqlPath: string): Promise<vo
       "SELECT MAX(version) AS version FROM schema_migrations",
     ).get() as { version?: unknown };
     const schemaVersion = schemaVersionRow.version;
-    if (schemaVersion !== 58) {
-      throw new Error(`Demo seed requires schema version 58, got ${schemaVersion}`);
+    const currentSchemaVersion = migrations.at(-1)?.version;
+    if (schemaVersion !== currentSchemaVersion) {
+      throw new Error(
+        `Demo seed requires schema version ${currentSchemaVersion}, got ${schemaVersion}`,
+      );
     }
 
     const requiredDemoRows: Array<[string, string]> = [
