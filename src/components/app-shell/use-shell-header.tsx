@@ -402,6 +402,14 @@ export function useShellHeader({
             scopeSubtitle,
           };
         }
+        if (composeKind === "execution-host-terminal") {
+          return {
+            title: composeExecutionHost
+              ? `Create a new terminal on ${composeExecutionHost.name}`
+              : "Create a new terminal",
+            scopeSubtitle,
+          };
+        }
         if (composeKind === "agent") {
           return {
             title: composeWorkspace ? `Start a new agent in ${composeWorkspace.name}` : "Start a new agent",

@@ -72,7 +72,6 @@ function buildSidebarNodes(options: ShellSidebarCompositionOptions): SidebarNode
   };
   const executionContext = {
     navigateWithinShell: handlers.navigateWithinShell,
-    openExecutionHostTerminalPrompt: handlers.openExecutionHostTerminalPrompt,
   };
   const workspaceContext = {
     navigateWithinShell: handlers.navigateWithinShell,

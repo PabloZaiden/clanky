@@ -40,7 +40,6 @@ export interface ShellSidebarActionHandlers {
   toggleAgentPrivate: (agent: Agent) => void | Promise<void>;
   toggleWorkspacePrivate: (workspace: Workspace) => void | Promise<void>;
   toggleSshServerPrivate: (server: SshServer) => void | Promise<void>;
-  openExecutionHostTerminalPrompt: (host: ExecutionHostDescriptor) => void;
   stopSidebarTask: (task: Task) => void | Promise<void>;
   toggleTerminalSessionPrivate: (session: TerminalSession) => void | Promise<void>;
   openRenameTerminalSession: (target: TerminalSessionActionTarget) => void;

@@ -26,11 +26,12 @@ import {
   withPrivateToggleAction,
 } from "./shell-sidebar-utils";
 import {
-  createExecutionHostChat,
-  createExecutionHostWorkspace,
   executionHostId,
   executionHostUsable,
+  getExecutionHostChatRoute,
   getExecutionHostSidebarActions,
+  getExecutionHostTerminalRoute,
+  getExecutionHostWorkspaceRoute,
   type ExecutionHostSidebarContext,
 } from "./shell-sidebar-execution-host";
 
@@ -129,8 +130,8 @@ export function buildServerSidebarNodes({
               id: "new-workspace",
               title: "New workspace",
               label: "New",
-              onAction: executionHostUsable(host) && host.capabilities.provisioning
-                ? () => createExecutionHostWorkspace(host, context.execution)
+              route: executionHostUsable(host) && host.capabilities.provisioning
+                ? getExecutionHostWorkspaceRoute(host)
                 : undefined,
             },
             children: hostWorkspaces.map((workspace): SidebarNode => ({
@@ -150,8 +151,8 @@ export function buildServerSidebarNodes({
               id: "new-terminal",
               title: "New terminal",
               label: "New",
-              onAction: executionHostUsable(host) && host.capabilities.interactiveTerminal
-                ? () => context.execution.openExecutionHostTerminalPrompt(host)
+              route: executionHostUsable(host) && host.capabilities.interactiveTerminal
+                ? getExecutionHostTerminalRoute(host)
                 : undefined,
             },
             children: hostTerminals.map((session): SidebarNode =>
@@ -176,8 +177,8 @@ export function buildServerSidebarNodes({
               id: "new-chat",
               title: "New chat",
               label: "New",
-              onAction: executionHostUsable(host) && host.capabilities.acpRuntime
-                ? () => createExecutionHostChat(host, context.execution)
+              route: executionHostUsable(host) && host.capabilities.acpRuntime
+                ? getExecutionHostChatRoute(host)
                 : undefined,
             },
             children: hostChats.map((chat): SidebarNode =>

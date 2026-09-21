@@ -19,8 +19,9 @@ import { ComposeWorkspaceView } from "./compose-workspace-view";
 import { AgentComposer } from "./agents-view";
 import type { UseAgentsResult } from "../../hooks/useAgents";
 import { ExecutionHostChatComposer } from "./execution-host-chat-composer";
+import { ExecutionHostTerminalComposer } from "./execution-host-terminal-composer";
 
-type ComposeKind = "task" | "chat" | "agent" | "workspace" | "terminal-session" | "ssh-server" | "execution-host-chat";
+type ComposeKind = "task" | "chat" | "agent" | "workspace" | "terminal-session" | "ssh-server" | "execution-host-chat" | "execution-host-terminal";
 
 export function isComposeKind(value: string): value is ComposeKind {
   return [
@@ -31,6 +32,7 @@ export function isComposeKind(value: string): value is ComposeKind {
     "terminal-session",
     "ssh-server",
     "execution-host-chat",
+    "execution-host-terminal",
   ].includes(value);
 }
 
@@ -165,6 +167,16 @@ export function ComposeView(props: ComposeViewProps) {
       <ExecutionHostChatComposer
         host={composeExecutionHost}
         navigateWithinShell={navigateWithinShell}
+      />
+    ) : null;
+  }
+
+  if (kind === "execution-host-terminal") {
+    return composeExecutionHost ? (
+      <ExecutionHostTerminalComposer
+        host={composeExecutionHost}
+        navigateWithinShell={navigateWithinShell}
+        onCreateTerminalSession={createTerminalSession}
       />
     ) : null;
   }

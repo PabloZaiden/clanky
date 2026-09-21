@@ -100,6 +100,8 @@ export function getShellRouteSelection(
   const serverId = getRouteString(route, "serverId");
   const composeKind = route.view === "compose" ? getRouteString(route, "kind") : undefined;
   const composeScopeId = route.view === "compose" ? getRouteString(route, "scopeId") : undefined;
+  const isExecutionHostCompose = composeKind === "execution-host-chat"
+    || composeKind === "execution-host-terminal";
 
   const selectedTask =
     route.view === "task" || route.view === "task-files"
@@ -131,7 +133,7 @@ export function getShellRouteSelection(
   const composeWorkspace =
     route.view === "compose"
       && composeKind !== "ssh-server"
-      && composeKind !== "execution-host-chat"
+      && !isExecutionHostCompose
       ? (workspaces.find((workspace) => workspace.id === (workspaceId ?? composeScopeId)) ?? null)
       : null;
   const composeServer =
@@ -140,7 +142,7 @@ export function getShellRouteSelection(
       ? (servers.find((server) => server.config.id === (serverId ?? composeScopeId)) ?? null)
       : null;
   const composeExecutionHost =
-    route.view === "compose" && composeKind === "execution-host-chat"
+    route.view === "compose" && isExecutionHostCompose
       ? (executionHosts.find((host) => {
           const hostId = getExecutionHostSourceId(host.ref);
           return host.ref.kind === getRouteString(route, "hostKind")
