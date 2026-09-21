@@ -4,7 +4,7 @@ import { DEFAULT_QUICK_CHAT_SETTINGS } from "@/shared/preferences";
 import {
   PurgeTerminalTasksAction,
   QuickChatModelRowContent,
-  LinkedInstancesSettingsSection,
+  WorkersSettingsSection,
   SchedulerTimezoneRowContent,
   GithubUsernameRowContent,
   SettingsCheckbox,
@@ -164,11 +164,11 @@ export function buildShellSettingsSections({
     },
     {
       id: "mesh",
-      title: "Linked instances",
+      title: "Workers",
       scope: "owner" as const,
       // The framework settings row model cannot collapse a section, so this
       // custom render keeps Mesh and the owner-only relay in one collapsed list.
-      render: () => <LinkedInstancesSettingsSection mesh={mesh} />,
+      render: () => <WorkersSettingsSection mesh={mesh} />,
     },
     {
       id: "voice",
