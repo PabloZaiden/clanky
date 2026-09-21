@@ -286,6 +286,17 @@ export const MeshHealthCheckV5Schema = z.object({
   senderNodeId: z.string().trim().min(1),
   senderPublicKey: z.string().min(1),
   senderFingerprint: z.string().trim().min(1),
+  binaryVersion: z.string().trim().min(1).max(200),
+  supportedProtocolVersions: z.array(
+    z.union([
+      z.literal(MESH_LEGACY_PROTOCOL_VERSION),
+      z.literal(MESH_PROTOCOL_VERSION),
+    ]),
+  ).min(1).max(MESH_SUPPORTED_PROTOCOL_VERSIONS.length),
+  preferredProtocolVersion: z.union([
+    z.literal(MESH_LEGACY_PROTOCOL_VERSION),
+    z.literal(MESH_PROTOCOL_VERSION),
+  ]),
   nonce: z.string().trim().min(1),
   sentAt: z.string().datetime(),
   signature: z.string().trim().min(1),

@@ -11,7 +11,7 @@ import {
 } from "@/shared/mesh";
 import {
   MESH_BINARY_VERSION_HEADER,
-  MESH_PROTOCOL_VERSION,
+  MESH_LEGACY_PROTOCOL_VERSION,
   MESH_PROTOCOL_VERSION_HEADER,
   MESH_PROTOCOL_VERSIONS_HEADER,
   serializeMeshProtocolVersions,
@@ -44,13 +44,22 @@ export const meshControlRoutes = defineRoutes({
       );
       if (headerError) return headerError;
       const relayInitiatorNodeId = getMeshRelayRequestInitiatorNodeId(req);
+      const requestedRouteKind =
+        parsed.data.protocolVersion === MESH_LEGACY_PROTOCOL_VERSION
+          ? "direct"
+          : parsed.data.route.kind;
+      const relayIdentityMatches =
+        relayInitiatorNodeId !== undefined
+        && relayInitiatorNodeId === parsed.data.workerNodeId;
       if (
-        (relayInitiatorNodeId !== undefined && (
-          parsed.data.protocolVersion !== 2
-          && parsed.data.protocolVersion !== MESH_PROTOCOL_VERSION
-          || relayInitiatorNodeId !== parsed.data.workerNodeId
-        ))
-        || (relayInitiatorNodeId === undefined && parsed.data.protocolVersion === 2)
+        (
+          requestedRouteKind === "relay"
+          && !relayIdentityMatches
+        )
+        || (
+          requestedRouteKind !== "relay"
+          && relayInitiatorNodeId !== undefined
+        )
       ) {
         return errorResponse(
           "mesh_enrollment_relay_identity_mismatch",

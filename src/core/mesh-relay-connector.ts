@@ -405,8 +405,8 @@ export class MeshRelayConnector {
     const onClose = (event: CloseEvent): void => {
       this.finalize(event.code, event.reason || "The Mesh relay connection closed.");
     };
-    const onError = (event: Event): void => {
-      console.error("DEBUG relay socket error", event);
+    const onError = (): void => {
+      log.warn("Mesh relay control socket reported an error");
       this.finalize(1006, "The Mesh relay connection failed.");
     };
     this.detachSocket = (): void => {

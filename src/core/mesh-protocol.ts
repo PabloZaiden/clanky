@@ -12,7 +12,8 @@ import type {
   MeshEnrollmentResponseV1,
   MeshEnrollmentResponseV2,
   MeshEnrollmentResponseV5,
-  MeshHealthCheck,
+  MeshHealthCheckV1,
+  MeshHealthCheckV5,
   MeshHealthCheckResponseV1,
   MeshHealthCheckResponseV5,
   MeshRevocationNotice,
@@ -34,7 +35,9 @@ type UnsignedEnrollmentResponse =
   | UnsignedEnrollmentResponseV1
   | UnsignedEnrollmentResponseV2
   | UnsignedEnrollmentResponseV5;
-type UnsignedHealthCheck = Omit<MeshHealthCheck, "signature">;
+type UnsignedHealthCheckV1 = Omit<MeshHealthCheckV1, "signature">;
+type UnsignedHealthCheckV5 = Omit<MeshHealthCheckV5, "signature">;
+type UnsignedHealthCheck = UnsignedHealthCheckV1 | UnsignedHealthCheckV5;
 type UnsignedHealthCheckResponseV1 = Omit<
   MeshHealthCheckResponseV1,
   "signature"
@@ -175,7 +178,7 @@ export function buildMeshEnrollmentResponseSigningPayload(
 export function buildMeshHealthCheckSigningPayload(
   envelope: UnsignedHealthCheck,
 ): string {
-  return JSON.stringify([
+  const payload: unknown[] = [
     envelope.protocolVersion === 5
       ? "clanky-mesh-health-check-v5"
       : "clanky-mesh-health-check-v1",
@@ -183,9 +186,16 @@ export function buildMeshHealthCheckSigningPayload(
     envelope.senderNodeId,
     envelope.senderPublicKey,
     envelope.senderFingerprint,
-    envelope.nonce,
-    envelope.sentAt,
-  ]);
+  ];
+  if (envelope.protocolVersion === 5) {
+    payload.push(
+      envelope.binaryVersion,
+      envelope.supportedProtocolVersions,
+      envelope.preferredProtocolVersion,
+    );
+  }
+  payload.push(envelope.nonce, envelope.sentAt);
+  return JSON.stringify(payload);
 }
 
 export function buildMeshHealthCheckResponseSigningPayload(

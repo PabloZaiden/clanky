@@ -898,7 +898,7 @@ interface WorkerRegistrationRow {
 
 function parsePersistedProtocolVersions(
   value: string | null,
-  workerNodeId: string,
+  peerNodeId: string,
 ): MeshProtocolVersion[] {
   if (!value) {
     return [MESH_LEGACY_PROTOCOL_VERSION];
@@ -913,8 +913,8 @@ function parsePersistedProtocolVersions(
       ? normalized
       : [MESH_LEGACY_PROTOCOL_VERSION];
   } catch (error) {
-    log.warn("Invalid persisted worker protocol metadata", {
-      workerNodeId,
+    log.warn("Invalid persisted Mesh protocol metadata", {
+      peerNodeId,
       error: String(error),
     });
     return [MESH_LEGACY_PROTOCOL_VERSION];

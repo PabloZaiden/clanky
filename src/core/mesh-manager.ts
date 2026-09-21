@@ -17,6 +17,8 @@ import type {
   MeshEnrollmentResponseV2,
   MeshEnrollmentResponseV5,
   MeshHealthCheck,
+  MeshHealthCheckV1,
+  MeshHealthCheckV5,
   MeshHealthCheckResponse,
   MeshHealthCheckResponseV1,
   MeshHealthCheckResponseV5,
@@ -1176,10 +1178,32 @@ export class MeshManager {
       worker.workerNegotiatedProtocolVersion === MESH_PROTOCOL_VERSION
         ? MESH_PROTOCOL_VERSION
         : MESH_LEGACY_PROTOCOL_VERSION;
+    const localProtocol = getLocalMeshProtocolMetadata();
     const buildHealthRequest = async (): Promise<MeshHealthCheck> => {
       const nonce = crypto.randomUUID();
-      const envelope: Omit<MeshHealthCheck, "signature"> = {
-        protocolVersion,
+      if (protocolVersion === MESH_PROTOCOL_VERSION) {
+        const envelope: Omit<MeshHealthCheckV5, "signature"> = {
+          protocolVersion: MESH_PROTOCOL_VERSION,
+          senderNodeId: identity.nodeId,
+          senderPublicKey: identity.publicKey,
+          senderFingerprint: identity.fingerprint,
+          binaryVersion: localProtocol.binaryVersion!,
+          supportedProtocolVersions: [
+            ...MESH_SUPPORTED_PROTOCOL_VERSIONS,
+          ],
+          preferredProtocolVersion: MESH_PROTOCOL_VERSION,
+          nonce,
+          sentAt: new Date().toISOString(),
+        };
+        return {
+          ...envelope,
+          signature: await signMeshPayload(
+            buildMeshHealthCheckSigningPayload(envelope),
+          ),
+        };
+      }
+      const envelope: Omit<MeshHealthCheckV1, "signature"> = {
+        protocolVersion: MESH_LEGACY_PROTOCOL_VERSION,
         senderNodeId: identity.nodeId,
         senderPublicKey: identity.publicKey,
         senderFingerprint: identity.fingerprint,
@@ -1423,6 +1447,22 @@ export class MeshManager {
         "The health check sender identity does not match the stored grant.",
       );
     }
+    if (envelope.protocolVersion === MESH_PROTOCOL_VERSION) {
+      try {
+        await updateControllerGrantProtocolMetadata({
+          controllerNodeId: envelope.senderNodeId,
+          controllerBinaryVersion: envelope.binaryVersion,
+          controllerSupportedProtocolVersions: envelope.supportedProtocolVersions,
+          controllerPreferredProtocolVersion: envelope.preferredProtocolVersion,
+          controllerNegotiatedProtocolVersion: MESH_PROTOCOL_VERSION,
+        });
+      } catch (error) {
+        log.warn("Mesh controller protocol metadata could not be persisted", {
+          controllerNodeId: envelope.senderNodeId,
+          error: String(error),
+        });
+      }
+    }
     log.debug("Received valid health check", {
       senderNodeId: envelope.senderNodeId,
     });
@@ -1627,6 +1667,8 @@ export class MeshManager {
           ? {
               protocolVersion: MESH_PROTOCOL_VERSION,
               ...common,
+              workerPlatform: execution.platform,
+              workerCapabilities: execution.capabilities,
               binaryVersion: localProtocol.binaryVersion!,
               supportedProtocolVersions: [
                 ...MESH_SUPPORTED_PROTOCOL_VERSIONS,

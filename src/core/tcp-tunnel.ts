@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import net from "node:net";
+import { createLogger } from "@pablozaiden/webapp/server";
 import type { ExecutionHostBinding } from "@/shared/execution-host";
 import type { MeshWorkerRegistration } from "@/shared/mesh";
 import {
@@ -31,6 +32,8 @@ import { executionHostService } from "./execution-host-service";
 import { requireCurrentUserId } from "../context/user-context";
 import { DomainError } from "../domain/domain-error";
 import { isMeshProtocolCompatibilityError } from "./mesh-protocol-version";
+
+const log = createLogger("core:tcp-tunnel");
 
 export interface TcpTunnel {
   readonly destroyed: boolean;
@@ -151,12 +154,19 @@ class MeshTcpTunnel extends EventEmitter implements TcpTunnel {
         throw error;
       }
       protocolVersion = MESH_TCP_TUNNEL_LEGACY_PROTOCOL_VERSION;
-      await updateWorkerNegotiatedProtocolVersion({
-        workerNodeId: host.nodeId,
-        localUserId: userId,
-        negotiatedProtocolVersion: protocolVersion,
-        preferredProtocolVersion: protocolVersion,
-      });
+      try {
+        await updateWorkerNegotiatedProtocolVersion({
+          workerNodeId: host.nodeId,
+          localUserId: userId,
+          negotiatedProtocolVersion: protocolVersion,
+          preferredProtocolVersion: protocolVersion,
+        });
+      } catch (updateError) {
+        log.warn("Mesh TCP tunnel protocol downgrade could not be persisted", {
+          workerNodeId: host.nodeId,
+          error: String(updateError),
+        });
+      }
       request = await buildRequest();
       response = await this.post(
         route,
