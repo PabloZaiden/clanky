@@ -156,6 +156,7 @@ export const meshExecutionRoutes = defineRoutes({
                 parsed.data.requestId,
                 parsed.data.stdoutOffset,
                 parsed.data.stderrOffset,
+                parsed.data.protocolVersion,
               )
             : await meshExecutionGateway.cancelAsyncCommand(
                 parsed.data.sessionId,
@@ -164,6 +165,7 @@ export const meshExecutionRoutes = defineRoutes({
                 parsed.data.requestId,
                 parsed.data.stdoutOffset,
                 parsed.data.stderrOffset,
+                parsed.data.protocolVersion,
               );
         return Response.json({
           protocolVersion: parsed.data.protocolVersion,

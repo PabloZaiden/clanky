@@ -145,6 +145,135 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    version: BASELINE_SCHEMA_VERSION + 4,
+    name: "add_mesh_protocol_v5_metadata",
+    up: (db) => {
+      const addColumn = (tableName: string, columnName: string, definition: string): void => {
+        if (
+          tableExists(db, tableName)
+          && !getTableColumns(db, tableName).includes(columnName)
+        ) {
+          db.run(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
+        }
+      };
+
+      addColumn("mesh_worker_registrations", "worker_binary_version", "TEXT");
+      addColumn(
+        "mesh_worker_registrations",
+        "worker_supported_protocol_versions_json",
+        "TEXT NOT NULL DEFAULT '[1]'",
+      );
+      addColumn(
+        "mesh_worker_registrations",
+        "worker_preferred_protocol_version",
+        "INTEGER NOT NULL DEFAULT 1",
+      );
+      addColumn(
+        "mesh_worker_registrations",
+        "worker_negotiated_protocol_version",
+        "INTEGER NOT NULL DEFAULT 1",
+      );
+      addColumn(
+        "mesh_worker_registrations",
+        "worker_protocol_updated_at",
+        "TEXT",
+      );
+
+      addColumn("mesh_controller_grants", "controller_binary_version", "TEXT");
+      addColumn(
+        "mesh_controller_grants",
+        "controller_supported_protocol_versions_json",
+        "TEXT NOT NULL DEFAULT '[1]'",
+      );
+      addColumn(
+        "mesh_controller_grants",
+        "controller_preferred_protocol_version",
+        "INTEGER NOT NULL DEFAULT 1",
+      );
+      addColumn(
+        "mesh_controller_grants",
+        "controller_negotiated_protocol_version",
+        "INTEGER NOT NULL DEFAULT 1",
+      );
+      addColumn(
+        "mesh_controller_grants",
+        "controller_protocol_updated_at",
+        "TEXT",
+      );
+
+      addColumn("mesh_controller_relay_pairing", "relay_binary_version", "TEXT");
+      addColumn(
+        "mesh_controller_relay_pairing",
+        "relay_supported_protocol_versions_json",
+        "TEXT NOT NULL DEFAULT '[1]'",
+      );
+      addColumn(
+        "mesh_controller_relay_pairing",
+        "relay_preferred_protocol_version",
+        "INTEGER NOT NULL DEFAULT 1",
+      );
+      addColumn(
+        "mesh_controller_relay_pairing",
+        "relay_negotiated_protocol_version",
+        "INTEGER NOT NULL DEFAULT 1",
+      );
+      addColumn(
+        "mesh_controller_relay_pairing",
+        "relay_protocol_updated_at",
+        "TEXT",
+      );
+
+      const hasRows = (tableName: string): boolean => {
+        if (!tableExists(db, tableName)) {
+          return false;
+        }
+        switch (tableName) {
+          case "mesh_node_identity":
+            return (db.query(
+              "SELECT COUNT(*) AS count FROM mesh_node_identity",
+            ).get() as { count: number }).count > 0;
+          case "mesh_worker_registrations":
+            return (db.query(
+              "SELECT COUNT(*) AS count FROM mesh_worker_registrations",
+            ).get() as { count: number }).count > 0;
+          case "mesh_controller_grants":
+            return (db.query(
+              "SELECT COUNT(*) AS count FROM mesh_controller_grants",
+            ).get() as { count: number }).count > 0;
+          default:
+            throw new Error(`Unknown Mesh state table: "${tableName}"`);
+        }
+      };
+      const hadExistingMeshState = (
+        hasRows("mesh_node_identity")
+        || hasRows("mesh_worker_registrations")
+        || hasRows("mesh_controller_grants")
+      );
+      db.run(`
+        CREATE TABLE IF NOT EXISTS mesh_protocol_state (
+          singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+          current_version INTEGER NOT NULL,
+          migrated_from_version INTEGER,
+          migrated_at TEXT,
+          updated_at TEXT NOT NULL
+        )
+      `);
+      const now = new Date().toISOString();
+      db.run(`
+        INSERT INTO mesh_protocol_state (
+          singleton, current_version, migrated_from_version, migrated_at, updated_at
+        ) VALUES (1, 5, ?, ?, ?)
+        ON CONFLICT(singleton) DO UPDATE SET
+          current_version = 5,
+          updated_at = excluded.updated_at
+      `, [
+        hadExistingMeshState ? 1 : null,
+        hadExistingMeshState ? now : null,
+        now,
+      ]);
+    },
+  },
 ];
 
 export function tableExists(db: Database, tableName: string): boolean {

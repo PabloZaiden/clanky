@@ -68,11 +68,24 @@ import {
   MESH_CONTROLLER_ENROLLMENT_PROTOCOL_VERSION,
   MESH_RELAY_DESCRIPTOR_PATH,
   type MeshControllerWellKnownDescriptor,
+  type MeshControllerWellKnownDescriptorV5,
 } from "./shared/mesh-relay";
 import {
   MESH_RUNTIME_SNAPSHOT_HEADER,
   MESH_RUNTIME_SNAPSHOT_VERSION,
 } from "./shared/mesh";
+import {
+  MESH_BINARY_VERSION_HEADER,
+  MESH_LEGACY_PROTOCOL_VERSION,
+  MESH_PROTOCOL_VERSION,
+  MESH_PROTOCOL_VERSION_HEADER,
+  MESH_PROTOCOL_VERSIONS_HEADER,
+  MESH_SUPPORTED_PROTOCOL_VERSIONS,
+  negotiateMeshProtocolVersion,
+  parseMeshProtocolVersionsHeader,
+  serializeMeshProtocolVersions,
+} from "./shared/mesh-protocol";
+import { getLocalMeshProtocolMetadata } from "./core/mesh-protocol-version";
 import { controllerRelayService } from "./core/controller-relay-service";
 import { workerRelayService } from "./core/worker-relay-service";
 import { meshHealthService } from "./core/mesh-health-service";
@@ -288,19 +301,47 @@ export const routes = defineRoutes<ClankyRealtimeEvent>({
     sameOrigin: "never",
     description: "Describe this Clanky Mesh controller and its public identity.",
     tags: ["mesh", "discovery"],
-    async GET(): Promise<Response> {
+    async GET(req): Promise<Response> {
       const identity = await ensureLocalMeshNodeIdentity();
-      const descriptor: MeshControllerWellKnownDescriptor = {
-        role: "controller",
-        enrollmentProtocol: MESH_CONTROLLER_ENROLLMENT_PROTOCOL_VERSION,
-        nodeId: identity.nodeId,
-        publicKey: identity.publicKey,
-        fingerprint: identity.fingerprint,
-      };
+      const protocol = getLocalMeshProtocolMetadata();
+      const requestedVersions = parseMeshProtocolVersionsHeader(
+        req.headers.get(MESH_PROTOCOL_VERSIONS_HEADER),
+      );
+      const negotiatedVersion = negotiateMeshProtocolVersion(
+        [...MESH_SUPPORTED_PROTOCOL_VERSIONS],
+        requestedVersions,
+      );
+      const descriptor: MeshControllerWellKnownDescriptor
+        | MeshControllerWellKnownDescriptorV5 = negotiatedVersion === MESH_PROTOCOL_VERSION
+        ? {
+            role: "controller",
+            protocolVersion: MESH_PROTOCOL_VERSION,
+            nodeId: identity.nodeId,
+            publicKey: identity.publicKey,
+            fingerprint: identity.fingerprint,
+            binaryVersion: protocol.binaryVersion!,
+            supportedProtocolVersions: protocol.supportedProtocolVersions,
+            preferredProtocolVersion: protocol.preferredProtocolVersion,
+            negotiatedProtocolVersion: negotiatedVersion,
+          }
+        : {
+            role: "controller",
+            enrollmentProtocol: MESH_CONTROLLER_ENROLLMENT_PROTOCOL_VERSION,
+            nodeId: identity.nodeId,
+            publicKey: identity.publicKey,
+            fingerprint: identity.fingerprint,
+          };
       return Response.json(descriptor, {
         headers: {
           [MESH_RUNTIME_SNAPSHOT_HEADER]: String(
             MESH_RUNTIME_SNAPSHOT_VERSION,
+          ),
+          [MESH_BINARY_VERSION_HEADER]: protocol.binaryVersion ?? "",
+          [MESH_PROTOCOL_VERSIONS_HEADER]: serializeMeshProtocolVersions(
+            protocol.supportedProtocolVersions,
+          ),
+          [MESH_PROTOCOL_VERSION_HEADER]: String(
+            negotiatedVersion ?? MESH_LEGACY_PROTOCOL_VERSION,
           ),
         },
       });

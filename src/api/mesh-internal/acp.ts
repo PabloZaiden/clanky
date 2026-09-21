@@ -1,5 +1,4 @@
 import { defineRoutes } from "@pablozaiden/webapp/server";
-import { MESH_EXECUTION_PROTOCOL_VERSION } from "@/shared/mesh-execution";
 import { meshExecutionGateway } from "../../core/mesh-execution-gateway";
 import { meshAcpGateway } from "../../core/mesh-acp-gateway";
 import { requireMeshRuntimeRole } from "../../core/mesh-runtime";
@@ -48,11 +47,11 @@ export const meshAcpRoutes = defineRoutes({
       }
       try {
         requireMeshRuntimeRole("worker");
-        const expiresAt = await meshAcpGateway.renew(sessionId, sessionToken);
+        const renewed = await meshAcpGateway.renew(sessionId, sessionToken);
         return Response.json({
-          protocolVersion: MESH_EXECUTION_PROTOCOL_VERSION,
+          protocolVersion: renewed.protocolVersion,
           sessionId,
-          expiresAt: new Date(expiresAt).toISOString(),
+          expiresAt: new Date(renewed.expiresAt).toISOString(),
         });
       } catch (error) {
         return internalMeshErrorResponse(error);

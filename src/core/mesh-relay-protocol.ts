@@ -11,7 +11,9 @@ export function buildMeshRelayChallengeSigningPayload(
   challenge: UnsignedRelayChallenge,
 ): string {
   return JSON.stringify([
-    "clanky-mesh-relay-challenge-v1",
+    challenge.protocolVersion === 5
+      ? "clanky-mesh-relay-challenge-v5"
+      : "clanky-mesh-relay-challenge-v1",
     challenge.protocolVersion,
     challenge.challengeId,
     challenge.nonce,
@@ -24,7 +26,9 @@ export function buildMeshRelayChallengeSigningPayload(
 
 export function buildMeshRelayAuthSigningPayload(auth: UnsignedRelayAuth): string {
   return JSON.stringify([
-    "clanky-mesh-relay-auth-v1",
+    auth.protocolVersion === 5
+      ? "clanky-mesh-relay-auth-v5"
+      : "clanky-mesh-relay-auth-v1",
     auth.protocolVersion,
     auth.role,
     auth.nodeId,

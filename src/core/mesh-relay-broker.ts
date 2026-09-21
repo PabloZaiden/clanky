@@ -38,6 +38,7 @@ import {
   type MeshRelayStreamTicketFrame,
   type MeshRelayWorkerStatus,
 } from "@/shared/mesh-relay";
+import { MESH_PROTOCOL_VERSION } from "@/shared/mesh-protocol";
 import {
   getMeshRelayFingerprint,
   verifyMeshRelaySignature,
@@ -127,7 +128,12 @@ interface RelayControlConnection {
   pendingAdmissionTimer?: ReturnType<typeof setTimeout>;
   authorizationTransaction?: RelayAuthorizationTransaction;
   lastHeartbeatAt: number;
+  protocolVersion: RelayProtocolVersion;
 }
+
+type RelayProtocolVersion =
+  | typeof MESH_RELAY_PROTOCOL_VERSION
+  | typeof MESH_PROTOCOL_VERSION;
 
 interface ValidatedStreamRequest {
   requestId: string;
@@ -171,6 +177,7 @@ interface RelayDataConnection {
   streamId: string;
   side: RelayTicketSide;
   socket: MeshRelaySocket;
+  protocolVersion: RelayProtocolVersion;
 }
 
 interface RelayLiveStream {
@@ -495,7 +502,10 @@ export class MeshRelayBroker {
     return this.controls.size + this.dataConnections.size + attachingDataSockets;
   }
 
-  openControl(socket: MeshRelaySocket): string {
+  openControl(
+    socket: MeshRelaySocket,
+    protocolVersion: RelayProtocolVersion = MESH_RELAY_PROTOCOL_VERSION,
+  ): string {
     this.assertRunning();
     if (this.connectionCount >= RELAY_MAX_CONNECTIONS) {
       socket.close(CONTROL_CLOSE_CAPACITY, "Relay connection capacity exceeded");
@@ -524,10 +534,11 @@ export class MeshRelayBroker {
       challenge,
       authTimer,
       lastHeartbeatAt: Date.now(),
+      protocolVersion,
     };
     this.controls.set(id, connection);
     const unsignedChallenge = {
-      protocolVersion: MESH_RELAY_PROTOCOL_VERSION,
+      protocolVersion: connection.protocolVersion,
       type: "challenge",
       challengeId: challenge.challengeId,
       nonce: challenge.nonce,
@@ -594,7 +605,7 @@ export class MeshRelayBroker {
       return;
     }
     const record = raw as Record<string, unknown>;
-    if (record["protocolVersion"] !== MESH_RELAY_PROTOCOL_VERSION) {
+    if (record["protocolVersion"] !== connection.protocolVersion) {
       this.closeControl(
         connectionId,
         CONTROL_CLOSE_INVALID,
@@ -872,7 +883,7 @@ export class MeshRelayBroker {
     }
 
     const frame: MeshRelayAuthOkFrame = {
-      protocolVersion: MESH_RELAY_PROTOCOL_VERSION,
+      protocolVersion: connection.protocolVersion,
       type: "auth.ok",
       connectionId: connection.id,
       role: auth.role,
@@ -1057,7 +1068,7 @@ export class MeshRelayBroker {
         if (wasPending) {
           this.releasePendingAdmission(connection);
           this.sendControl(connection, {
-            protocolVersion: MESH_RELAY_PROTOCOL_VERSION,
+            protocolVersion: connection.protocolVersion,
             type: "auth.ok",
             connectionId: connection.id,
             role: "worker",
@@ -1077,7 +1088,7 @@ export class MeshRelayBroker {
       );
     }
     this.sendControl(controller, {
-      protocolVersion: MESH_RELAY_PROTOCOL_VERSION,
+      protocolVersion: controller.protocolVersion,
       type: "authorization.ack",
       transactionId: frame.transactionId,
       workerCount: workers.length,
@@ -1150,7 +1161,7 @@ export class MeshRelayBroker {
     this.tickets.set(ticketId, ticket);
 
     const initiatorFrame: MeshRelayStreamTicketFrame = {
-      protocolVersion: MESH_RELAY_PROTOCOL_VERSION,
+      protocolVersion: initiator.protocolVersion,
       type: "stream.ticket",
       requestId: request.requestId,
       streamId,
@@ -1159,7 +1170,7 @@ export class MeshRelayBroker {
       expiresAt,
     };
     const receiverFrame: MeshRelayStreamOfferFrame = {
-      protocolVersion: MESH_RELAY_PROTOCOL_VERSION,
+      protocolVersion: receiver.protocolVersion,
       type: "stream.offer",
       requestId: request.requestId,
       streamId,
@@ -1384,28 +1395,49 @@ export class MeshRelayBroker {
       bytesToReceiver: 0,
     };
     this.streams.set(stream.id, stream);
+    const initiatorConnection = this.controls.get(ticket.initiatorConnectionId);
+    const receiverConnection = this.controls.get(ticket.receiverConnectionId);
+    if (!initiatorConnection || !receiverConnection) {
+      this.closeStream(stream.id, 1011, "Relay control connection is unavailable");
+      return;
+    }
     this.dataConnections.set(initiatorDataId, {
       id: initiatorDataId,
       streamId: stream.id,
       side: "initiator",
       socket: stream.initiatorSocket,
+      protocolVersion: initiatorConnection.protocolVersion,
     });
     this.dataConnections.set(receiverDataId, {
       id: receiverDataId,
       streamId: stream.id,
       side: "receiver",
       socket: stream.receiverSocket,
+      protocolVersion: receiverConnection.protocolVersion,
     });
-    const ready: MeshRelayStreamReadyFrame = {
-      protocolVersion: MESH_RELAY_PROTOCOL_VERSION,
+    const initiatorReady: MeshRelayStreamReadyFrame = {
+      protocolVersion: initiatorConnection.protocolVersion,
       type: "stream.ready",
       requestId: stream.request.requestId,
       streamId: stream.id,
     };
-    const serialized = JSON.stringify(ready);
-    this.sendData(stream, stream.initiatorSocket, serialized);
+    const receiverReady: MeshRelayStreamReadyFrame = {
+      protocolVersion: receiverConnection.protocolVersion,
+      type: "stream.ready",
+      requestId: stream.request.requestId,
+      streamId: stream.id,
+    };
+    this.sendData(
+      stream,
+      stream.initiatorSocket,
+      JSON.stringify(initiatorReady),
+    );
     if (this.streams.has(stream.id)) {
-      this.sendData(stream, stream.receiverSocket, serialized);
+      this.sendData(
+        stream,
+        stream.receiverSocket,
+        JSON.stringify(receiverReady),
+      );
     }
   }
 
@@ -1615,7 +1647,7 @@ export class MeshRelayBroker {
     error: RelayRequestError,
   ): void {
     const frame: MeshRelayControlErrorFrame = {
-      protocolVersion: MESH_RELAY_PROTOCOL_VERSION,
+      protocolVersion: connection.protocolVersion,
       type: "stream.error",
       requestId,
       code: error.code,
@@ -1661,7 +1693,7 @@ export class MeshRelayBroker {
         continue;
       }
       this.sendControl(connection, {
-        protocolVersion: MESH_RELAY_PROTOCOL_VERSION,
+        protocolVersion: connection.protocolVersion,
         type: "heartbeat",
         sentAt: new Date(now).toISOString(),
       });

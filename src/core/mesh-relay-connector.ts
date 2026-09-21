@@ -40,6 +40,10 @@ import {
   type MeshRelayWorkerStatus,
 } from "@/shared/mesh-relay";
 import {
+  MESH_PROTOCOL_VERSION,
+  type MeshProtocolVersion,
+} from "@/shared/mesh-protocol";
+import {
   ensureLocalMeshNodeIdentity,
   signMeshPayload,
 } from "../persistence/mesh-node-identity";
@@ -56,6 +60,10 @@ import {
   MESH_RELAY_DATA_OPEN_TIMEOUT_MS,
 } from "./mesh-relay-data-stream";
 import { MeshRelayStreamError } from "./mesh-relay-errors";
+
+type MeshRelayProtocolVersion =
+  | typeof MESH_RELAY_PROTOCOL_VERSION
+  | typeof MESH_PROTOCOL_VERSION;
 import {
   getMeshRelayFingerprint,
   verifyMeshRelaySignature,
@@ -99,6 +107,8 @@ export interface MeshRelayConnectorConfig {
   targetNodeId?: string;
   /** Controller-signed token used only for an unknown worker's enrollment. */
   enrollmentAdmission?: string;
+  /** Global Mesh generation selected during discovery. */
+  protocolVersion?: MeshProtocolVersion;
 }
 
 export interface MeshRelayConnectorIdentity {
@@ -164,10 +174,21 @@ interface PendingAuthorization {
   expectedWorkerCount: number;
 }
 
-function controlUrl(relayUrl: string): string {
+function controlUrl(
+  relayUrl: string,
+  protocolVersion: MeshRelayProtocolVersion,
+): string {
   const base = new URL(relayUrl);
   base.protocol = base.protocol === "http:" ? "ws:" : "wss:";
-  return new URL(MESH_RELAY_CONTROL_PATH, base).toString();
+  if (protocolVersion !== MESH_PROTOCOL_VERSION) {
+    return new URL(MESH_RELAY_CONTROL_PATH, base).toString();
+  }
+  return new URL(
+    `${MESH_RELAY_CONTROL_PATH}?protocolVersion=${String(
+      protocolVersion,
+    )}`,
+    base,
+  ).toString();
 }
 
 function controlFrameBytes(frame: MeshRelayClientControlFrame): number {
@@ -328,6 +349,12 @@ export class MeshRelayConnector {
 
   constructor(private readonly options: MeshRelayConnectorOptions) {}
 
+  private getRelayProtocolVersion(): MeshRelayProtocolVersion {
+    return this.options.config.protocolVersion === MESH_PROTOCOL_VERSION
+      ? MESH_PROTOCOL_VERSION
+      : MESH_RELAY_PROTOCOL_VERSION;
+  }
+
   get status(): MeshRelayConnectorStatus {
     return this.state;
   }
@@ -367,7 +394,7 @@ export class MeshRelayConnector {
     this.relayUrl = relayUrl;
     const identity = this.options.identity ?? await resolveDefaultIdentity();
     const factory = this.options.socketFactory ?? openMeshRelayClientSocket;
-    const socket = factory(controlUrl(relayUrl));
+    const socket = factory(controlUrl(relayUrl, this.getRelayProtocolVersion()));
     socket.binaryType = "arraybuffer";
     this.socket = socket;
     this.lastServerFrameAt = Date.now();
@@ -378,7 +405,8 @@ export class MeshRelayConnector {
     const onClose = (event: CloseEvent): void => {
       this.finalize(event.code, event.reason || "The Mesh relay connection closed.");
     };
-    const onError = (): void => {
+    const onError = (event: Event): void => {
+      console.error("DEBUG relay socket error", event);
       this.finalize(1006, "The Mesh relay connection failed.");
     };
     this.detachSocket = (): void => {
@@ -475,7 +503,7 @@ export class MeshRelayConnector {
     });
     try {
       this.sendControl({
-        protocolVersion: MESH_RELAY_PROTOCOL_VERSION,
+        protocolVersion: this.getRelayProtocolVersion(),
         type: "authorization.begin",
         transactionId,
         workerCount: validated.workers.length,
@@ -483,14 +511,14 @@ export class MeshRelayConnector {
       });
       for (const chunk of chunks) {
         this.sendControl({
-          protocolVersion: MESH_RELAY_PROTOCOL_VERSION,
+          protocolVersion: this.getRelayProtocolVersion(),
           type: "authorization.chunk",
           transactionId,
           workers: chunk,
         });
       }
       this.sendControl({
-        protocolVersion: MESH_RELAY_PROTOCOL_VERSION,
+        protocolVersion: this.getRelayProtocolVersion(),
         type: "authorization.commit",
         transactionId,
       });
@@ -595,7 +623,7 @@ export class MeshRelayConnector {
     try {
       if (this.pendingTickets.has(requestId)) {
         this.sendControl({
-          protocolVersion: MESH_RELAY_PROTOCOL_VERSION,
+          protocolVersion: this.getRelayProtocolVersion(),
           type: "stream.request",
           requestId,
           targetNodeId,
@@ -656,7 +684,7 @@ export class MeshRelayConnector {
     }
     try {
       this.sendControl({
-        protocolVersion: MESH_RELAY_PROTOCOL_VERSION,
+        protocolVersion: this.getRelayProtocolVersion(),
         type: "stream.status",
         streamId,
         status,
@@ -714,7 +742,7 @@ export class MeshRelayConnector {
     }
     try {
       this.sendControl({
-        protocolVersion: MESH_RELAY_PROTOCOL_VERSION,
+        protocolVersion: this.getRelayProtocolVersion(),
         type: "stream.cancel",
         requestId,
       });
@@ -754,7 +782,7 @@ export class MeshRelayConnector {
       return;
     }
     const record = raw as Record<string, unknown>;
-    if (record["protocolVersion"] !== MESH_RELAY_PROTOCOL_VERSION) {
+    if (record["protocolVersion"] !== this.getRelayProtocolVersion()) {
       this.close(4400, "Unsupported Mesh relay protocol version");
       return;
     }
@@ -847,7 +875,7 @@ export class MeshRelayConnector {
     }
 
     const unsigned: Omit<MeshRelayAuthFrame, "signature"> = {
-      protocolVersion: MESH_RELAY_PROTOCOL_VERSION,
+      protocolVersion: this.getRelayProtocolVersion(),
       type: "auth",
       role: this.options.config.role,
       nodeId: identity.nodeId,
@@ -1018,7 +1046,7 @@ export class MeshRelayConnector {
     }
     try {
       this.sendControl({
-        protocolVersion: MESH_RELAY_PROTOCOL_VERSION,
+        protocolVersion: this.getRelayProtocolVersion(),
         type: "pong",
         sentAt: new Date().toISOString(),
       });

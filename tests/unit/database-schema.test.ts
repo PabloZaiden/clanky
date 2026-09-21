@@ -253,7 +253,7 @@ describe("database schema", () => {
         [1, null],
       );
 
-      expect(runMigrations(database)).toBe(1);
+      expect(runMigrations(database)).toBe(2);
       expect(
         database
           .query("SELECT controller_node_id FROM mesh_controller_grants")

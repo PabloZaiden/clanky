@@ -105,10 +105,19 @@ export async function postMeshControlMessage(
       const peerMessage = typeof body?.message === "string"
         ? ` ${body.message}`
         : "";
+      const peerErrorCode = typeof body?.error === "string"
+        ? body.error
+        : undefined;
       throw new DomainError(
         "mesh_control_request_rejected",
         `The peer rejected the mesh control request.${peerMessage}`,
-        { details: { status: response.status, requestId } },
+        {
+          details: {
+            status: response.status,
+            requestId,
+            ...(peerErrorCode ? { peerErrorCode } : {}),
+          },
+        },
       );
     }
     return response;

@@ -12,6 +12,14 @@ import {
   normalizeMeshRelayOrigin,
   type MeshWellKnownDescriptor,
 } from "@/shared/mesh-relay";
+import {
+  MESH_PROTOCOL_VERSION,
+  MESH_PROTOCOL_VERSIONS_HEADER,
+  MESH_SUPPORTED_PROTOCOL_VERSIONS,
+  negotiateMeshProtocolVersion,
+  serializeMeshProtocolVersions,
+  type MeshProtocolVersion,
+} from "@/shared/mesh-protocol";
 import { DomainError } from "../domain/domain-error";
 
 export const MESH_TARGET_DISCOVERY_TIMEOUT_MS = 10_000;
@@ -105,6 +113,7 @@ export async function discoverMeshEnrollmentTarget(
   target: string;
   descriptor: MeshWellKnownDescriptor;
   runtimeSnapshotVersion: number;
+  negotiatedProtocolVersion: MeshProtocolVersion;
 }> {
   const normalizedTarget = normalizeMeshEnrollmentTarget(target);
   const controller = new AbortController();
@@ -118,7 +127,10 @@ export async function discoverMeshEnrollmentTarget(
       new URL(MESH_RELAY_DESCRIPTOR_PATH, `${normalizedTarget}/`),
       {
         method: "GET",
-        headers: { accept: "application/json" },
+        headers: {
+          accept: "application/json",
+          [MESH_PROTOCOL_VERSIONS_HEADER]: serializeMeshProtocolVersions(),
+        },
         signal: controller.signal,
       },
     );
@@ -177,6 +189,14 @@ export async function discoverMeshEnrollmentTarget(
       target: normalizedTarget,
       descriptor: parsed.data,
       runtimeSnapshotVersion,
+      negotiatedProtocolVersion:
+        "protocolVersion" in parsed.data
+          && parsed.data.protocolVersion === MESH_PROTOCOL_VERSION
+          ? MESH_PROTOCOL_VERSION
+          : negotiateMeshProtocolVersion(
+              [...MESH_SUPPORTED_PROTOCOL_VERSIONS],
+              [1],
+            )!,
     };
   } catch (error) {
     if (error instanceof DomainError) {

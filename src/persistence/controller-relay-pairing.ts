@@ -4,6 +4,10 @@
 
 import type { MeshRelayPeerIdentity } from "@/shared/mesh-relay";
 import { normalizeMeshRelayOrigin } from "@/shared/mesh-relay";
+import {
+  MESH_LEGACY_PROTOCOL_VERSION,
+  type MeshProtocolVersion,
+} from "@/shared/mesh-protocol";
 import { getDatabase } from "./database";
 import { InvalidMeshRelayRouteError } from "./errors";
 import { getMeshNodeFingerprint } from "./mesh-node-identity";
@@ -16,6 +20,10 @@ export interface ControllerRelayPairing {
   controllerFingerprint: string;
   pairedAt: string;
   updatedAt: string;
+  relayBinaryVersion: string | null;
+  relaySupportedProtocolVersions: MeshProtocolVersion[];
+  relayPreferredProtocolVersion: MeshProtocolVersion;
+  relayNegotiatedProtocolVersion: MeshProtocolVersion | null;
 }
 
 export interface SaveControllerRelayPairingInput {
@@ -24,6 +32,10 @@ export interface SaveControllerRelayPairingInput {
   relayFingerprint: string;
   controllerNodeId: string;
   controllerFingerprint: string;
+  relayBinaryVersion?: string | null;
+  relaySupportedProtocolVersions?: readonly MeshProtocolVersion[];
+  relayPreferredProtocolVersion?: MeshProtocolVersion;
+  relayNegotiatedProtocolVersion?: MeshProtocolVersion | null;
 }
 
 interface ControllerRelayPairingRow {
@@ -34,6 +46,11 @@ interface ControllerRelayPairingRow {
   controller_fingerprint: string;
   paired_at: string;
   updated_at: string;
+  relay_binary_version: string | null;
+  relay_supported_protocol_versions_json: string | null;
+  relay_preferred_protocol_version: number | null;
+  relay_negotiated_protocol_version: number | null;
+  relay_protocol_updated_at: string | null;
 }
 
 interface ActiveWorkerIdentityRow {
@@ -60,6 +77,25 @@ export class InconsistentMeshWorkerIdentityError extends Error {
 }
 
 function mapPairing(row: ControllerRelayPairingRow): ControllerRelayPairing {
+  let supportedProtocolVersions: MeshProtocolVersion[] = [
+    MESH_LEGACY_PROTOCOL_VERSION,
+  ];
+  try {
+    const parsed: unknown = JSON.parse(
+      row.relay_supported_protocol_versions_json ?? "[1]",
+    );
+    if (Array.isArray(parsed)) {
+      const normalized = parsed.filter(
+        (version): version is MeshProtocolVersion =>
+          version === 1 || version === 5,
+      );
+      if (normalized.length > 0) {
+        supportedProtocolVersions = normalized;
+      }
+    }
+  } catch {
+    // Optional metadata must not make a valid pairing unreadable.
+  }
   return {
     relayUrl: row.relay_url,
     relayPublicKey: row.relay_public_key,
@@ -68,13 +104,24 @@ function mapPairing(row: ControllerRelayPairingRow): ControllerRelayPairing {
     controllerFingerprint: row.controller_fingerprint,
     pairedAt: row.paired_at,
     updatedAt: row.updated_at,
+    relayBinaryVersion: row.relay_binary_version,
+    relaySupportedProtocolVersions: supportedProtocolVersions,
+    relayPreferredProtocolVersion: row.relay_preferred_protocol_version === 5
+      ? 5
+      : MESH_LEGACY_PROTOCOL_VERSION,
+    relayNegotiatedProtocolVersion: row.relay_negotiated_protocol_version === 5
+      ? 5
+      : MESH_LEGACY_PROTOCOL_VERSION,
   };
 }
 
 export function getControllerRelayPairing(): ControllerRelayPairing | null {
   const row = getDatabase().query(`
     SELECT relay_url, relay_public_key, relay_fingerprint,
-      controller_node_id, controller_fingerprint, paired_at, updated_at
+      controller_node_id, controller_fingerprint, paired_at, updated_at,
+      relay_binary_version, relay_supported_protocol_versions_json,
+      relay_preferred_protocol_version, relay_negotiated_protocol_version,
+      relay_protocol_updated_at
     FROM mesh_controller_relay_pairing
     WHERE singleton = 1
   `).get() as ControllerRelayPairingRow | null;
@@ -96,8 +143,11 @@ export function saveControllerRelayPairing(
   database.query(`
     INSERT INTO mesh_controller_relay_pairing (
       singleton, relay_url, relay_public_key, relay_fingerprint,
-      controller_node_id, controller_fingerprint, paired_at, updated_at
-    ) VALUES (1, ?, ?, ?, ?, ?, ?, ?)
+      controller_node_id, controller_fingerprint, paired_at, updated_at,
+      relay_binary_version, relay_supported_protocol_versions_json,
+      relay_preferred_protocol_version, relay_negotiated_protocol_version,
+      relay_protocol_updated_at
+    ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(singleton) DO UPDATE SET
       relay_url = excluded.relay_url,
       relay_public_key = excluded.relay_public_key,
@@ -105,7 +155,12 @@ export function saveControllerRelayPairing(
       controller_node_id = excluded.controller_node_id,
       controller_fingerprint = excluded.controller_fingerprint,
       paired_at = excluded.paired_at,
-      updated_at = excluded.updated_at
+      updated_at = excluded.updated_at,
+      relay_binary_version = excluded.relay_binary_version,
+      relay_supported_protocol_versions_json = excluded.relay_supported_protocol_versions_json,
+      relay_preferred_protocol_version = excluded.relay_preferred_protocol_version,
+      relay_negotiated_protocol_version = excluded.relay_negotiated_protocol_version,
+      relay_protocol_updated_at = excluded.relay_protocol_updated_at
   `).run(
     relayUrl,
     input.relayPublicKey,
@@ -114,12 +169,28 @@ export function saveControllerRelayPairing(
     input.controllerFingerprint,
     pairedAt,
     now,
+    input.relayBinaryVersion ?? null,
+    JSON.stringify(
+      input.relaySupportedProtocolVersions
+        ?? [MESH_LEGACY_PROTOCOL_VERSION],
+    ),
+    input.relayPreferredProtocolVersion ?? MESH_LEGACY_PROTOCOL_VERSION,
+    input.relayNegotiatedProtocolVersion ?? MESH_LEGACY_PROTOCOL_VERSION,
+    now,
   );
   return {
     ...input,
     relayUrl,
     pairedAt,
     updatedAt: now,
+    relayBinaryVersion: input.relayBinaryVersion ?? null,
+    relaySupportedProtocolVersions: [
+      ...(input.relaySupportedProtocolVersions ?? [MESH_LEGACY_PROTOCOL_VERSION]),
+    ],
+    relayPreferredProtocolVersion: input.relayPreferredProtocolVersion
+      ?? MESH_LEGACY_PROTOCOL_VERSION,
+    relayNegotiatedProtocolVersion: input.relayNegotiatedProtocolVersion
+      ?? MESH_LEGACY_PROTOCOL_VERSION,
   };
 }
 
@@ -129,8 +200,11 @@ export function restoreControllerRelayPairing(
   getDatabase().query(`
     INSERT INTO mesh_controller_relay_pairing (
       singleton, relay_url, relay_public_key, relay_fingerprint,
-      controller_node_id, controller_fingerprint, paired_at, updated_at
-    ) VALUES (1, ?, ?, ?, ?, ?, ?, ?)
+      controller_node_id, controller_fingerprint, paired_at, updated_at,
+      relay_binary_version, relay_supported_protocol_versions_json,
+      relay_preferred_protocol_version, relay_negotiated_protocol_version,
+      relay_protocol_updated_at
+    ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(singleton) DO UPDATE SET
       relay_url = excluded.relay_url,
       relay_public_key = excluded.relay_public_key,
@@ -138,7 +212,12 @@ export function restoreControllerRelayPairing(
       controller_node_id = excluded.controller_node_id,
       controller_fingerprint = excluded.controller_fingerprint,
       paired_at = excluded.paired_at,
-      updated_at = excluded.updated_at
+      updated_at = excluded.updated_at,
+      relay_binary_version = excluded.relay_binary_version,
+      relay_supported_protocol_versions_json = excluded.relay_supported_protocol_versions_json,
+      relay_preferred_protocol_version = excluded.relay_preferred_protocol_version,
+      relay_negotiated_protocol_version = excluded.relay_negotiated_protocol_version,
+      relay_protocol_updated_at = excluded.relay_protocol_updated_at
   `).run(
     pairing.relayUrl,
     pairing.relayPublicKey,
@@ -146,6 +225,11 @@ export function restoreControllerRelayPairing(
     pairing.controllerNodeId,
     pairing.controllerFingerprint,
     pairing.pairedAt,
+    pairing.updatedAt,
+    pairing.relayBinaryVersion,
+    JSON.stringify(pairing.relaySupportedProtocolVersions),
+    pairing.relayPreferredProtocolVersion,
+    pairing.relayNegotiatedProtocolVersion,
     pairing.updatedAt,
   );
 }

@@ -6,12 +6,16 @@ import {
   MESH_TCP_TUNNEL_CAPABILITY,
   MESH_TCP_TUNNEL_MAX_FRAME_BYTES,
   MESH_TCP_TUNNEL_OPEN_TIMEOUT_MS,
-  MESH_TCP_TUNNEL_PROTOCOL_VERSION,
+  MESH_TCP_TUNNEL_LEGACY_PROTOCOL_VERSION,
   MESH_TCP_TUNNEL_REQUEST_TIMEOUT_MS,
   MESH_TCP_TUNNEL_SESSION_REQUEST_TTL_MS,
 } from "@/shared/mesh-tcp-tunnel";
+import { MESH_PROTOCOL_VERSION } from "@/shared/mesh-protocol";
 import type { MeshTcpTunnelSessionRequest } from "@/contracts/schemas/mesh-tcp-tunnel";
-import { getWorkerRegistration } from "../persistence/mesh";
+import {
+  getWorkerRegistration,
+  updateWorkerNegotiatedProtocolVersion,
+} from "../persistence/mesh";
 import {
   ensureLocalMeshNodeIdentity,
   signMeshPayload,
@@ -26,6 +30,7 @@ import {
 import { executionHostService } from "./execution-host-service";
 import { requireCurrentUserId } from "../context/user-context";
 import { DomainError } from "../domain/domain-error";
+import { isMeshProtocolCompatibilityError } from "./mesh-protocol-version";
 
 export interface TcpTunnel {
   readonly destroyed: boolean;
@@ -94,32 +99,71 @@ class MeshTcpTunnel extends EventEmitter implements TcpTunnel {
       );
     }
     const route = registration.route;
+    let protocolVersion:
+      | typeof MESH_PROTOCOL_VERSION
+      | typeof MESH_TCP_TUNNEL_LEGACY_PROTOCOL_VERSION =
+      registration.workerNegotiatedProtocolVersion
+      === MESH_PROTOCOL_VERSION
+      ? MESH_PROTOCOL_VERSION
+      : MESH_TCP_TUNNEL_LEGACY_PROTOCOL_VERSION;
     const expiresAt = new Date(
       Date.now() + MESH_TCP_TUNNEL_SESSION_REQUEST_TTL_MS,
     ).toISOString();
-    const unsigned: Omit<MeshTcpTunnelSessionRequest, "signature"> = {
-      protocolVersion: MESH_TCP_TUNNEL_PROTOCOL_VERSION,
-      capability: MESH_TCP_TUNNEL_CAPABILITY,
-      requestId: crypto.randomUUID(),
-      callerNodeId: identity.nodeId,
-      callerPublicKey: identity.publicKey,
-      callerFingerprint: identity.fingerprint,
-      callerEncryptionPublicKey: identity.encryptionPublicKey,
-      targetNodeId: host.nodeId,
-      remoteHost: this.remoteHost,
-      remotePort: this.remotePort,
-      nonce: crypto.randomUUID(),
-      expiresAt,
+    const buildRequest = async (): Promise<MeshTcpTunnelSessionRequest> => {
+      const unsigned: Omit<MeshTcpTunnelSessionRequest, "signature"> = {
+        protocolVersion,
+        capability: MESH_TCP_TUNNEL_CAPABILITY,
+        requestId: crypto.randomUUID(),
+        callerNodeId: identity.nodeId,
+        callerPublicKey: identity.publicKey,
+        callerFingerprint: identity.fingerprint,
+        callerEncryptionPublicKey: identity.encryptionPublicKey,
+        targetNodeId: host.nodeId,
+        remoteHost: this.remoteHost,
+        remotePort: this.remotePort,
+        nonce: crypto.randomUUID(),
+        expiresAt,
+      };
+      return {
+        ...unsigned,
+        signature: await signMeshPayload(buildMeshTcpTunnelSigningPayload(unsigned)),
+      };
     };
-    const request: MeshTcpTunnelSessionRequest = {
-      ...unsigned,
-      signature: await signMeshPayload(buildMeshTcpTunnelSigningPayload(unsigned)),
+    let request = await buildRequest();
+    let response: {
+      protocolVersion:
+        | typeof MESH_PROTOCOL_VERSION
+        | typeof MESH_TCP_TUNNEL_LEGACY_PROTOCOL_VERSION;
+      sessionId: string;
+      encryptedPayload: unknown;
     };
-    const response = await this.post(
-      route,
-      "api/mesh/internal/tcp-tunnel/session",
-      request,
-    );
+    try {
+      response = await this.post(
+        route,
+        "api/mesh/internal/tcp-tunnel/session",
+        request,
+      );
+    } catch (error) {
+      if (
+        protocolVersion !== MESH_PROTOCOL_VERSION
+        || !isMeshProtocolCompatibilityError(error)
+      ) {
+        throw error;
+      }
+      protocolVersion = MESH_TCP_TUNNEL_LEGACY_PROTOCOL_VERSION;
+      await updateWorkerNegotiatedProtocolVersion({
+        workerNodeId: host.nodeId,
+        localUserId: userId,
+        negotiatedProtocolVersion: protocolVersion,
+        preferredProtocolVersion: protocolVersion,
+      });
+      request = await buildRequest();
+      response = await this.post(
+        route,
+        "api/mesh/internal/tcp-tunnel/session",
+        request,
+      );
+    }
     const decrypted = await decryptMeshPayload(response.encryptedPayload);
     const token = typeof decrypted === "object" && decrypted
       ? (decrypted as Record<string, unknown>)["sessionToken"]
@@ -181,7 +225,12 @@ class MeshTcpTunnel extends EventEmitter implements TcpTunnel {
     route: MeshWorkerRegistration["route"],
     path: string,
     body: MeshTcpTunnelSessionRequest,
-  ): Promise<{ sessionId: string; encryptedPayload: unknown }> {
+  ): Promise<{
+    protocolVersion: typeof MESH_PROTOCOL_VERSION
+      | typeof MESH_TCP_TUNNEL_LEGACY_PROTOCOL_VERSION;
+    sessionId: string;
+    encryptedPayload: unknown;
+  }> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), MESH_TCP_TUNNEL_REQUEST_TIMEOUT_MS);
     timer.unref?.();
@@ -201,9 +250,17 @@ class MeshTcpTunnel extends EventEmitter implements TcpTunnel {
         throw new DomainError(
           typeof payload["error"] === "string" ? payload["error"] : "mesh_tunnel_session_failed",
           typeof payload["message"] === "string" ? payload["message"] : "Mesh tunnel setup failed.",
+          { details: { status: response.status } },
+        );
+      }
+      if (payload["protocolVersion"] !== body.protocolVersion) {
+        throw new DomainError(
+          "mesh_tunnel_protocol_mismatch",
+          "The Mesh TCP tunnel peer uses a different protocol generation.",
         );
       }
       return {
+        protocolVersion: body.protocolVersion,
         sessionId: payload["sessionId"],
         encryptedPayload: payload["encryptedPayload"],
       };
