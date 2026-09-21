@@ -183,7 +183,6 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
   } = useExecutionHostAddresses(
     automaticTransport === "worker"
       && !automaticRelayStatusLoading
-      && automaticWorkerEnrollmentRoute === "direct"
       ? automaticExecutionHost
       : null,
     automaticPassword,
