@@ -1,4 +1,4 @@
-import { useCallback, useState, type ReactNode } from "react";
+import { useCallback, useRef, useState, type ReactNode } from "react";
 import {
   ConfirmModal,
   Modal,
@@ -58,6 +58,8 @@ export function useShellDialogComposition({
 }: ShellDialogCompositionOptions): ShellDialogComposition {
   const [renameTerminalSessionTarget, setRenameTerminalSessionTarget] = useState<TerminalSessionActionTarget | null>(null);
   const [deleteTerminalSessionTarget, setDeleteTerminalSessionTarget] = useState<TerminalSessionActionTarget | null>(null);
+  const [deleteTerminalSessionPending, setDeleteTerminalSessionPending] = useState(false);
+  const deleteTerminalSessionPendingRef = useRef(false);
   const [editingAgentId, setEditingAgentId] = useState<string | null>(null);
   const [deleteAgentTarget, setDeleteAgentTarget] = useState<Agent | null>(null);
   const [deleteAgentPending, setDeleteAgentPending] = useState(false);
@@ -73,6 +75,13 @@ export function useShellDialogComposition({
     setDeleteTerminalSessionTarget(target);
   }, []);
 
+  const closeDeleteTerminalSession = useCallback(() => {
+    if (deleteTerminalSessionPendingRef.current) {
+      return;
+    }
+    setDeleteTerminalSessionTarget(null);
+  }, []);
+
   const renameTerminalSession = useCallback(async (newName: string): Promise<void> => {
     if (!renameTerminalSessionTarget) {
       return;
@@ -82,23 +91,31 @@ export function useShellDialogComposition({
   }, [renameTerminalSessionTarget, updateTerminalSession]);
 
   const deleteTerminalSessionAction = useCallback(async (): Promise<void> => {
-    if (!deleteTerminalSessionTarget) {
+    const target = deleteTerminalSessionTarget;
+    if (!target || deleteTerminalSessionPendingRef.current) {
       return;
     }
+    deleteTerminalSessionPendingRef.current = true;
+    setDeleteTerminalSessionPending(true);
     try {
-      const success = await deleteTerminalSession(deleteTerminalSessionTarget.id);
+      const success = await deleteTerminalSession(target.id);
       if (!success) {
         onError("Failed to delete terminal session.");
         return;
       }
       const deletedActiveSession = route.view === "terminal"
-        && getRouteString(route, "terminalSessionId") === deleteTerminalSessionTarget.id;
-      setDeleteTerminalSessionTarget(null);
+        && getRouteString(route, "terminalSessionId") === target.id;
+      setDeleteTerminalSessionTarget((currentTarget) => (
+        currentTarget?.id === target.id ? null : currentTarget
+      ));
       if (deletedActiveSession) {
         navigateWithinShell({ view: "home" });
       }
     } catch (error) {
       onError(String(error));
+    } finally {
+      deleteTerminalSessionPendingRef.current = false;
+      setDeleteTerminalSessionPending(false);
     }
   }, [deleteTerminalSession, deleteTerminalSessionTarget, navigateWithinShell, onError, route]);
 
@@ -211,14 +228,14 @@ export function useShellDialogComposition({
       />
       <ConfirmModal
         isOpen={Boolean(deleteTerminalSessionTarget)}
-        onClose={() => setDeleteTerminalSessionTarget(null)}
+        onClose={closeDeleteTerminalSession}
         onConfirm={() => void deleteTerminalSessionAction()}
         title="Delete terminal session?"
         message={deleteTerminalSessionTarget
           ? `This removes "${deleteTerminalSessionTarget.name}" from Clanky and attempts to stop any persistent session.`
           : ""}
         confirmLabel="Delete"
-        loading={false}
+        loading={deleteTerminalSessionPending}
       />
       <ConfirmModal
         isOpen={Boolean(deleteAgentTarget)}
