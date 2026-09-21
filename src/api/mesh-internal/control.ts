@@ -5,6 +5,10 @@ import {
   MeshRevocationNoticeSchema,
   MeshWorkerKillRequestSchema,
 } from "@/contracts/schemas/mesh";
+import {
+  MESH_RUNTIME_SNAPSHOT_HEADER,
+  MESH_RUNTIME_SNAPSHOT_VERSION,
+} from "@/shared/mesh";
 import { meshManager } from "../../core/mesh-manager";
 import { requireMeshRuntimeRole } from "../../core/mesh-runtime";
 import { getMeshRelayRequestInitiatorNodeId } from "../../core/mesh-relay-http";
@@ -118,8 +122,22 @@ export const meshControlRoutes = defineRoutes({
       if (headerError) return headerError;
       try {
         requireMeshRuntimeRole("worker");
+        const includeRuntimeSnapshot =
+          req.headers.get(MESH_RUNTIME_SNAPSHOT_HEADER)
+            === String(MESH_RUNTIME_SNAPSHOT_VERSION);
         return Response.json(
-          await meshManager.receiveHealthCheck(parsed.data),
+          await meshManager.receiveHealthCheck(parsed.data, {
+            includeRuntimeSnapshot,
+          }),
+          {
+            headers: includeRuntimeSnapshot
+              ? {
+                  [MESH_RUNTIME_SNAPSHOT_HEADER]: String(
+                    MESH_RUNTIME_SNAPSHOT_VERSION,
+                  ),
+                }
+              : undefined,
+          },
         );
       } catch (error) {
         return internalMeshErrorResponse(error);

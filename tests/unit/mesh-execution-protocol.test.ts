@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  MeshExecutionSessionRequestSchema,
   MeshExecutionRpcRequestSchema,
   type MeshExecutionSessionRequest,
 } from "../../src/contracts/schemas/mesh-execution";
@@ -9,7 +10,7 @@ import { MESH_ACP_CHANNEL, MESH_EXECUTION_PROTOCOL_VERSION } from "../../src/sha
 function buildRequest(
   encryptedEnvironment?: unknown,
 ): Omit<MeshExecutionSessionRequest, "signature"> {
-  return {
+  const request: Omit<MeshExecutionSessionRequest, "signature"> = {
     protocolVersion: MESH_EXECUTION_PROTOCOL_VERSION,
     requestId: "request-1",
     callerNodeId: "caller-1",
@@ -21,15 +22,17 @@ function buildRequest(
     directory: "/workspaces/repo",
     provider: "copilot",
     channel: MESH_ACP_CHANNEL,
-    encryptedEnvironment: encryptedEnvironment === undefined ? null : encryptedEnvironment,
     nonce: "nonce-1",
     expiresAt: new Date(Date.now() + 60_000).toISOString(),
   };
+  return encryptedEnvironment === undefined
+    ? request
+    : { ...request, encryptedEnvironment };
 }
 
 describe("Mesh execution session protocol", () => {
   test("signs the canonical request shape when no managed environment is present", () => {
-    const request = buildRequest(null);
+    const request = buildRequest();
     const payload = JSON.stringify([
       "clanky-mesh-execution-session-v1",
       request.protocolVersion,
@@ -43,11 +46,14 @@ describe("Mesh execution session protocol", () => {
       request.directory,
       request.provider,
       request.channel,
-      null,
       request.nonce,
       request.expiresAt,
     ]);
 
+    expect(MeshExecutionSessionRequestSchema.safeParse({
+      ...request,
+      signature: "signature",
+    }).success).toBe(true);
     expect(buildMeshExecutionSessionSigningPayload(request)).toBe(payload);
   });
 

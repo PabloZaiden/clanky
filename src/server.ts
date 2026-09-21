@@ -69,6 +69,10 @@ import {
   MESH_RELAY_DESCRIPTOR_PATH,
   type MeshControllerWellKnownDescriptor,
 } from "./shared/mesh-relay";
+import {
+  MESH_RUNTIME_SNAPSHOT_HEADER,
+  MESH_RUNTIME_SNAPSHOT_VERSION,
+} from "./shared/mesh";
 import { controllerRelayService } from "./core/controller-relay-service";
 import { workerRelayService } from "./core/worker-relay-service";
 import { meshHealthService } from "./core/mesh-health-service";
@@ -293,7 +297,13 @@ export const routes = defineRoutes<ClankyRealtimeEvent>({
         publicKey: identity.publicKey,
         fingerprint: identity.fingerprint,
       };
-      return Response.json(descriptor);
+      return Response.json(descriptor, {
+        headers: {
+          [MESH_RUNTIME_SNAPSHOT_HEADER]: String(
+            MESH_RUNTIME_SNAPSHOT_VERSION,
+          ),
+        },
+      });
     },
   },
   "/api/previews/bridge": {

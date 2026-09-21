@@ -58,7 +58,9 @@ export function buildMeshEnrollmentRequestSigningPayload(
       relayEnvelope.nonce,
       relayEnvelope.expiresAt,
     ];
-    payload.push(relayEnvelope.workerPlatform);
+    if (relayEnvelope.workerPlatform !== undefined) {
+      payload.push(relayEnvelope.workerPlatform);
+    }
     return JSON.stringify(payload);
   }
   const directEnvelope = envelope as UnsignedEnrollmentRequestV1;
@@ -83,7 +85,9 @@ export function buildMeshEnrollmentRequestSigningPayload(
     directEnvelope.nonce,
     directEnvelope.expiresAt,
   ];
-  payload.push(directEnvelope.workerPlatform);
+  if (directEnvelope.workerPlatform !== undefined) {
+    payload.push(directEnvelope.workerPlatform);
+  }
   return JSON.stringify(payload);
 }
 
@@ -136,7 +140,9 @@ export function buildMeshHealthCheckResponseSigningPayload(
     envelope.workerAcceptRemoteExecution,
     envelope.workerConfigRevision,
   ];
-  payload.push(envelope.workerPlatform);
+  if (envelope.workerPlatform !== undefined) {
+    payload.push(envelope.workerPlatform);
+  }
   return JSON.stringify(payload);
 }
 
@@ -173,7 +179,7 @@ export function buildMeshWorkerKillRequestSigningPayload(
 export function buildMeshExecutionSessionSigningPayload(
   envelope: UnsignedExecutionSession,
 ): string {
-  const payload = [
+  const payload: unknown[] = [
     "clanky-mesh-execution-session-v1",
     envelope.protocolVersion,
     envelope.requestId,
@@ -186,9 +192,12 @@ export function buildMeshExecutionSessionSigningPayload(
     envelope.directory,
     envelope.provider,
     envelope.channel,
-    envelope.encryptedEnvironment,
-    envelope.nonce,
-    envelope.expiresAt,
   ];
+  // Keep the no-environment shape compatible with workers that predate the
+  // managed runtime environment field.
+  if (envelope.encryptedEnvironment !== undefined) {
+    payload.push(envelope.encryptedEnvironment);
+  }
+  payload.push(envelope.nonce, envelope.expiresAt);
   return JSON.stringify(payload);
 }
