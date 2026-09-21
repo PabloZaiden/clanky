@@ -286,16 +286,6 @@ export interface ConsecutiveErrorTracker {
  */
 export type TaskPromptIntent = "engine_context" | "direct_user";
 
-/**
- * Legacy prompt-mode values accepted at internal compatibility boundaries.
- * Persisted state is normalized to TaskPromptIntent.
- */
-export type TaskPromptMode = TaskPromptIntent | "task_context" | "plain_chat";
-
-export function normalizeTaskPromptIntent(mode: TaskPromptMode | undefined): TaskPromptIntent {
-  return mode === "direct_user" || mode === "plain_chat" ? "direct_user" : "engine_context";
-}
-
 export type TaskStatus =
   | "idle"                // Created but not started (transitional)
   | "draft"               // Saved as draft, not started (no git branch or session)

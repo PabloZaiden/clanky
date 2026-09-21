@@ -1,97 +1,5 @@
 import type { Database } from "bun:sqlite";
 
-interface BaseSchemaOptions {
-  meshWorker?: boolean;
-}
-
-type ConditionalIndexTable =
-  | "chat_transcript_entries"
-  | "agent_run_transcript_entries"
-  | "task_transcript_entries"
-  | "preview_sessions";
-
-interface ConditionalIndex {
-  name: string;
-  tableName: ConditionalIndexTable;
-  requiredColumns: readonly string[];
-  sql: string;
-}
-
-const CONDITIONAL_INDEXES: readonly ConditionalIndex[] = [
-  {
-    name: "idx_chat_transcript_entries_assistant_page",
-    tableName: "chat_transcript_entries",
-    requiredColumns: ["message_role"],
-    sql: `
-      CREATE INDEX IF NOT EXISTS idx_chat_transcript_entries_assistant_page
-        ON chat_transcript_entries(user_id, chat_id, timestamp DESC, sequence DESC, entry_id DESC)
-        WHERE kind = 'message' AND message_role = 'assistant'
-    `,
-  },
-  {
-    name: "idx_agent_run_transcript_entries_assistant_page",
-    tableName: "agent_run_transcript_entries",
-    requiredColumns: ["message_role"],
-    sql: `
-      CREATE INDEX IF NOT EXISTS idx_agent_run_transcript_entries_assistant_page
-        ON agent_run_transcript_entries(user_id, agent_run_id, timestamp DESC, sequence DESC, entry_id DESC)
-        WHERE kind = 'message' AND message_role = 'assistant'
-    `,
-  },
-  {
-    name: "idx_task_transcript_entries_assistant_page",
-    tableName: "task_transcript_entries",
-    requiredColumns: ["message_role"],
-    sql: `
-      CREATE INDEX IF NOT EXISTS idx_task_transcript_entries_assistant_page
-        ON task_transcript_entries(user_id, task_id, timestamp DESC, sequence DESC, entry_id DESC)
-        WHERE kind = 'message' AND message_role = 'assistant'
-    `,
-  },
-  {
-    name: "idx_preview_sessions_execution_host_status",
-    tableName: "preview_sessions",
-    requiredColumns: ["execution_host_id"],
-    sql: `
-      CREATE INDEX IF NOT EXISTS idx_preview_sessions_execution_host_status
-        ON preview_sessions(user_id, execution_host_id, status, updated_at DESC)
-    `,
-  },
-];
-
-function getTableColumnNames(
-  database: Database,
-  tableName: ConditionalIndexTable,
-): Set<string> {
-  const rows = database.query(
-    "SELECT name FROM pragma_table_info(?)",
-  ).all(tableName) as Array<{ name: string }>;
-  return new Set(rows.map((row) => row.name));
-}
-
-function createConditionalIndexes(
-  database: Database,
-  options: BaseSchemaOptions,
-): void {
-  for (const index of CONDITIONAL_INDEXES) {
-    const columns = getTableColumnNames(database, index.tableName);
-    const missingColumns = index.requiredColumns.filter(
-      (column) => !columns.has(column),
-    );
-    if (missingColumns.length > 0) {
-      if (options.meshWorker === true) {
-        // Workers may retain controller-owned tables at their pre-baseline shape.
-        continue;
-      }
-      throw new Error(
-        `Cannot create index ${index.name}; table ${index.tableName} ` +
-          `is missing columns: ${missingColumns.join(", ")}`,
-      );
-    }
-    database.run(index.sql);
-  }
-}
-
 /**
  * Creates the schema that is already present in the production installation.
  *
@@ -102,7 +10,6 @@ function createConditionalIndexes(
  */
 export function createBaseSchema(
   database: Database,
-  options: BaseSchemaOptions = {},
 ): void {
   const createSchema = database.transaction(() => {
     database.exec(`
@@ -618,7 +525,7 @@ export function createBaseSchema(
         controller_instance_name TEXT,
         controller_public_key TEXT NOT NULL,
         controller_fingerprint TEXT NOT NULL,
-        controller_encryption_public_key TEXT,
+        controller_encryption_public_key TEXT NOT NULL,
         grant_status TEXT NOT NULL DEFAULT 'active'
           CHECK (grant_status IN ('active', 'revoked')),
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -659,7 +566,7 @@ export function createBaseSchema(
         fingerprint TEXT NOT NULL UNIQUE,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
-        encryption_public_key TEXT,
+        encryption_public_key TEXT NOT NULL,
         instance_name TEXT,
         mesh_endpoint TEXT,
         execution_config_json TEXT
@@ -676,7 +583,7 @@ export function createBaseSchema(
         worker_transport TEXT NOT NULL DEFAULT 'https',
         worker_public_key TEXT NOT NULL,
         worker_fingerprint TEXT NOT NULL,
-        worker_encryption_public_key TEXT,
+        worker_encryption_public_key TEXT NOT NULL,
         worker_directory TEXT,
         worker_capabilities_json TEXT,
         worker_accept_remote_execution INTEGER NOT NULL DEFAULT 1,
@@ -797,8 +704,18 @@ export function createBaseSchema(
         ON mesh_worker_registrations(local_user_id, registration_scope, grant_status);
       CREATE INDEX IF NOT EXISTS idx_mesh_worker_registrations_user
         ON mesh_worker_registrations(local_user_id);
+      CREATE INDEX IF NOT EXISTS idx_chat_transcript_entries_assistant_page
+        ON chat_transcript_entries(user_id, chat_id, timestamp DESC, sequence DESC, entry_id DESC)
+        WHERE kind = 'message' AND message_role = 'assistant';
+      CREATE INDEX IF NOT EXISTS idx_agent_run_transcript_entries_assistant_page
+        ON agent_run_transcript_entries(user_id, agent_run_id, timestamp DESC, sequence DESC, entry_id DESC)
+        WHERE kind = 'message' AND message_role = 'assistant';
+      CREATE INDEX IF NOT EXISTS idx_task_transcript_entries_assistant_page
+        ON task_transcript_entries(user_id, task_id, timestamp DESC, sequence DESC, entry_id DESC)
+        WHERE kind = 'message' AND message_role = 'assistant';
+      CREATE INDEX IF NOT EXISTS idx_preview_sessions_execution_host_status
+        ON preview_sessions(user_id, execution_host_id, status, updated_at DESC);
     `);
-    createConditionalIndexes(database, options);
   });
 
   createSchema();

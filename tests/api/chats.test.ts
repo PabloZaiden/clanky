@@ -38,7 +38,7 @@ import {
 } from "../helpers/git-fixtures";
 import { pollUntil } from "../helpers/polling";
 import { fetchTestLocalExecutionHost, testOwnerUser } from "../setup";
-import { runWithCurrentUser } from "../../src/core/user-context";
+import { runWithCurrentUser } from "../../src/context/user-context";
 
 const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };
 const updatedTestModel = { providerID: "test-provider", modelID: "test-model-2", variant: "" };

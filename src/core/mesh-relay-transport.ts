@@ -3,7 +3,7 @@
  */
 
 import type { MeshPeerRoute, MeshRelayPeerRoute } from "@/shared/mesh";
-import { DomainError } from "./domain-error";
+import { DomainError } from "../domain/domain-error";
 import type {
   MeshDuplexSocket,
   MeshPeerRequest,

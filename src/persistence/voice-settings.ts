@@ -30,7 +30,6 @@ export interface PersistedVoiceSettings {
   version: 1;
   baseUrl: string;
   apiKeyCiphertext: string | null;
-  legacyApiKey?: string | null;
   models: {
     transcription: string;
     speech: string;
@@ -94,7 +93,6 @@ function parseSettings(raw: string): PersistedVoiceSettings {
   const models = record["models"];
   const validation = record["validation"];
   const apiKeyCiphertext = record["apiKeyCiphertext"];
-  const legacyApiKey = record["apiKey"];
   const languageHints = record["languageHints"];
   if (
     record["version"] !== PERSISTED_VERSION
@@ -106,14 +104,8 @@ function parseSettings(raw: string): PersistedVoiceSettings {
     || (languageHints !== undefined && !Array.isArray(languageHints))
     || !validation || typeof validation !== "object"
     || (
-      apiKeyCiphertext !== undefined
-      && apiKeyCiphertext !== null
+      apiKeyCiphertext !== null
       && typeof apiKeyCiphertext !== "string"
-    )
-    || (
-      legacyApiKey !== undefined
-      && legacyApiKey !== null
-      && typeof legacyApiKey !== "string"
     )
   ) {
     throw new Error("Persisted voice settings have an invalid shape.");
@@ -154,7 +146,6 @@ function parseSettings(raw: string): PersistedVoiceSettings {
     apiKeyCiphertext: typeof apiKeyCiphertext === "string"
       ? apiKeyCiphertext
       : null,
-    legacyApiKey: typeof legacyApiKey === "string" ? legacyApiKey : null,
     models: {
       transcription: (models as Record<string, unknown>)["transcription"] as string,
       speech: (models as Record<string, unknown>)["speech"] as string,
@@ -185,9 +176,6 @@ export async function getPersistedVoiceSettings(): Promise<PersistedVoiceSetting
 async function readPersistedVoiceApiKey(
   settings: PersistedVoiceSettings,
 ): Promise<string | null> {
-  if (settings.legacyApiKey) {
-    return settings.legacyApiKey;
-  }
   if (!settings.apiKeyCiphertext) {
     return null;
   }
@@ -239,26 +227,7 @@ function enqueueWrite<T>(operation: () => Promise<T>): Promise<T> {
 export async function getPersistedVoiceApiKey(
   settings: PersistedVoiceSettings,
 ): Promise<string | null> {
-  const apiKey = await readPersistedVoiceApiKey(settings);
-  if (!settings.legacyApiKey || !apiKey) {
-    return apiKey;
-  }
-
-  const migratedCiphertext = await encryptPersistedSecret(apiKey);
-  await enqueueWrite(async () => {
-    const current = await getPersistedVoiceSettings();
-    if (!current?.legacyApiKey) {
-      return;
-    }
-    await writePersistedVoiceSettings({
-      ...current,
-      apiKeyCiphertext: migratedCiphertext,
-      legacyApiKey: null,
-    });
-  });
-  settings.apiKeyCiphertext = migratedCiphertext;
-  settings.legacyApiKey = null;
-  return apiKey;
+  return await readPersistedVoiceApiKey(settings);
 }
 
 export async function updatePersistedVoiceSettings(
@@ -381,14 +350,8 @@ export async function updatePersistedVoiceValidation(
     ) {
       return null;
     }
-    const apiKeyCiphertext = current.apiKeyCiphertext
-      ?? (current.legacyApiKey
-        ? await encryptPersistedSecret(current.legacyApiKey)
-        : null);
     const next: PersistedVoiceSettings = {
       ...current,
-      apiKeyCiphertext,
-      legacyApiKey: null,
       validation: {
         ...current.validation,
         [capability]: validation,

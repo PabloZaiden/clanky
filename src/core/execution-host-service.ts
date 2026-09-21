@@ -44,12 +44,12 @@ import {
   type CommandExecutor,
 } from "./command-executor";
 import { isRemoteOnlyMode } from "./config";
-import { DomainError } from "./domain-error";
+import { DomainError } from "../domain/domain-error";
 import { MeshCommandExecutor } from "./mesh-command-executor";
 import { CommandExecutorImpl } from "./remote-command-executor";
 import type { SshConnectionTarget } from "./ssh-connection-target";
 import { sshServerManager } from "./ssh-server-manager";
-import { requireCurrentUserId } from "./user-context";
+import { requireCurrentUserId } from "../context/user-context";
 import { getWorkspaceSshTarget } from "../persistence/workspace-execution-targets";
 import {
   executionPathStyleForPlatform,

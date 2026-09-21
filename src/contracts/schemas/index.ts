@@ -42,8 +42,6 @@ export {
   IssueNumberSchema,
   MessageAttachmentSchema,
   MessageAttachmentsSchema,
-  MessageImageAttachmentSchema,
-  MessageImageAttachmentsSchema,
   CreateTaskRequestSchema,
   GenerateTaskTitleRequestSchema,
   UpdateTaskRequestSchema,

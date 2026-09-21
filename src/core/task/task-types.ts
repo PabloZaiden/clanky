@@ -1,5 +1,5 @@
-import type { CheapModelSelection, TaskPromptMode, Task, ModelConfig } from "@/shared/task";
-import type { MessageImageAttachment } from "@/shared/message-attachments";
+import type { CheapModelSelection, TaskPromptIntent, Task, ModelConfig } from "@/shared/task";
+import type { MessageAttachment } from "@/shared/message-attachments";
 import type { TerminalSession } from "@/shared/terminal-session";
 import type { TaskResult } from "./task-errors";
 export type {
@@ -22,7 +22,7 @@ export interface CreateTaskOptions {
   /** Optional GitHub issue number linked to this task */
   issueNumber?: number;
   /** Transient image attachments for the initial prompt */
-  attachments?: MessageImageAttachment[];
+  attachments?: MessageAttachment[];
   /** Workspace ID this task belongs to */
   workspaceId: string;
   /** Model provider ID (required) */
@@ -68,7 +68,7 @@ export interface CreateTaskOptions {
  */
 export interface StartTaskOptions {
   /** Transient image attachments for the first prompt sent after start */
-  attachments?: MessageImageAttachment[];
+  attachments?: MessageAttachment[];
 }
 
 export interface SeedPlanFilesOptions {
@@ -88,7 +88,7 @@ export interface GenerateTaskTitleOptions {
 export interface AcceptPlanOptions {
   mode?: "start_task" | "open_terminal";
   executionPrompt?: string;
-  executionPromptMode?: TaskPromptMode;
+  executionPromptMode?: TaskPromptIntent;
 }
 
 export type AcceptPlanResult =
@@ -114,7 +114,7 @@ export type SendFollowUpResult = TaskResult<{
 export interface SendFollowUpOptions {
   message: string;
   model?: ModelConfig;
-  attachments?: MessageImageAttachment[];
+  attachments?: MessageAttachment[];
 }
 
 /**

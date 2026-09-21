@@ -2,7 +2,7 @@ import { deleteWorkspace as deleteWorkspaceRecord, getWorkspace, countWorkspaceT
 import type { Workspace } from "@/shared/workspace";
 import { sshCredentialManager } from "./ssh-credential-manager";
 import { executionHostService } from "./execution-host-service";
-import { DomainError } from "./domain-error";
+import { DomainError } from "../domain/domain-error";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { isAutoProvisionedWorkspace, isSafeProvisionedDirectory } from "../lib/workspace-deletion-safety";
 import { managedCredentialService } from "./managed-credential-service";
@@ -11,7 +11,7 @@ import { withWorkspaceExecutionLock } from "./workspace-execution-lock";
 import { getRegisteredSshServerId } from "@/shared/execution-host";
 import { meshManager } from "./mesh-manager";
 import { workspaceWorkerEnrollmentService } from "./workspace-worker-enrollment-service";
-import { requireCurrentUserId } from "./user-context";
+import { requireCurrentUserId } from "../context/user-context";
 
 const log = createLogger("core:workspace-deletion");
 const workspaceDeletionLocks = new Set<string>();

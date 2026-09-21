@@ -1,6 +1,6 @@
 import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
-import { DomainError } from "./domain-error";
+import { DomainError } from "../domain/domain-error";
 
 export type MeshRuntimeRole = "controller" | "worker";
 

@@ -14,7 +14,7 @@ import {
   publicEncrypt,
   randomBytes,
 } from "node:crypto";
-import { DomainError } from "./domain-error";
+import { DomainError } from "../domain/domain-error";
 import { getLocalMeshEncryptionPrivateKey } from "../persistence/mesh-node-identity";
 
 const ENCRYPTED_PAYLOAD_VERSION = 1;

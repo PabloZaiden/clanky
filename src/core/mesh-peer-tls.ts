@@ -7,7 +7,7 @@
 
 import type { MeshWorkerRegistration } from "@/shared/mesh";
 import { assertMeshWorkerTlsCertificate } from "../persistence/mesh-worker-tls";
-import { DomainError } from "./domain-error";
+import { DomainError } from "../domain/domain-error";
 
 export function getMeshWorkerTlsOptions(
   registration: Pick<

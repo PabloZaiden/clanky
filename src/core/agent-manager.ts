@@ -1,10 +1,10 @@
 import type { Agent, AgentConfig, AgentRun, AgentRunStatus } from "@/shared/agent";
-import type { MessageImageAttachment } from "@/shared/message-attachments";
+import type { MessageAttachment } from "@/shared/message-attachments";
 import { isChatBusyStatus } from "@/shared/chat";
 import { createInitialAgentState, isAgentRunActiveStatus } from "@/shared/agent";
 import { createTimestamp } from "@/shared/events";
 import { createLogger } from "@pablozaiden/webapp/server";
-import { DomainError } from "./domain-error";
+import { DomainError } from "../domain/domain-error";
 import { getWorkspace, touchWorkspace } from "../persistence/workspaces";
 import {
   deleteAgent,
@@ -425,7 +425,7 @@ export class AgentManager {
     });
   }
 
-  async runNow(agentId: string, attachments: MessageImageAttachment[] = []): Promise<AgentRun> {
+  async runNow(agentId: string, attachments: MessageAttachment[] = []): Promise<AgentRun> {
     const agent = await loadAgent(agentId);
     if (!agent) {
       throw new DomainError("agent_not_found", "Agent not found", {

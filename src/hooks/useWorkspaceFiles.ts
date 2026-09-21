@@ -2,7 +2,7 @@
  * Public file explorer hook facade.
  *
  * Target lifecycle, tree navigation, active documents, and mutations are
- * implemented by focused hooks and composed here for compatibility.
+ * implemented by focused hooks and composed here for the public API.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";

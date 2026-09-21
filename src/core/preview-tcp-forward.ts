@@ -1,7 +1,7 @@
 import net from "node:net";
 import type { ExecutionHostBinding } from "@/shared";
 import { createLogger } from "@pablozaiden/webapp/server";
-import { DomainError } from "./domain-error";
+import { DomainError } from "../domain/domain-error";
 import { openTcpTunnel, type TcpTunnel } from "./tcp-tunnel";
 
 const log = createLogger("core:preview-tcp-forward");

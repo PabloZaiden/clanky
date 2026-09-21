@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { DomainError } from "../../src/core/domain-error";
+import { DomainError } from "../../src/domain/domain-error";
 import { createGitSyncFailure } from "../../src/core/task/task-git-push-helpers";
 import { taskFailureFromUnknown } from "../../src/core/task/task-errors";
 import { getTerminalErrorPayload } from "../../src/api/websocket/terminal";

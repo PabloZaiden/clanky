@@ -1,8 +1,8 @@
 /**
  * Shared SQL implementation for chat, task, and agent-run transcript stores.
  *
- * Resource-specific adapters and the compatibility facade live in separate
- * modules; this file owns only the parameterized persistence operations.
+ * Resource-specific adapters live in separate modules; this file owns only
+ * the parameterized persistence operations.
  */
 import type { Database } from "bun:sqlite";
 import {
@@ -388,7 +388,9 @@ export function listTranscriptEntriesForUser(
     ORDER BY timestamp DESC, sequence DESC, kind DESC, entry_id DESC
   `).all(resourceId, userId) as TranscriptRow[];
 
-  return rows.map((row) => rowToStorageEntry(row, includeToolPayload, resource));
+  return rows
+    .map((row) => rowToStorageEntry(row, includeToolPayload, resource))
+    .filter((entry): entry is ChatTranscriptStorageEntry => entry !== null);
 }
 
 function getTranscriptResponseCount(
@@ -476,7 +478,9 @@ function getEntriesBetween(
     ORDER BY timestamp ASC, sequence ASC, kind ASC, entry_id ASC
   `).all(...params) as TranscriptRow[];
 
-  return rows.map((row) => rowToStorageEntry(row, false, resource));
+  return rows
+    .map((row) => rowToStorageEntry(row, false, resource))
+    .filter((entry): entry is ChatTranscriptStorageEntry => entry !== null);
 }
 
 function hasOlderTranscriptResponses(
@@ -681,7 +685,7 @@ export function getTranscriptToolCallForUser(
     return null;
   }
 
-  return rowToStorageEntry(row, true, resource).tool ?? null;
+  return rowToStorageEntry(row, true, resource)?.tool ?? null;
 }
 
 export function getTranscriptToolCall(

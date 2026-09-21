@@ -17,7 +17,6 @@ import {
   MESH_EXECUTION_PROTOCOL_VERSION,
   MESH_EXECUTION_DEFAULT_TIMEOUT_MS,
   MESH_EXECUTION_SESSION_REQUEST_TIMEOUT_MS,
-  MESH_ACP_LEGACY_SESSION_REQUEST_TTL_MS,
   MESH_EXECUTION_SESSION_REQUEST_TTL_MS,
   MESH_ACP_SESSION_REQUEST_TTL_MS,
   MESH_ACP_SESSION_RENEWAL_LEAD_MS,
@@ -37,8 +36,8 @@ import {
 import { decryptMeshPayload, encryptMeshPayload } from "./mesh-payload-crypto";
 import { buildMeshExecutionSessionSigningPayload } from "./mesh-protocol";
 import { requestMeshPeer } from "./mesh-peer-transport";
-import { DomainError } from "./domain-error";
-import { requireCurrentUserId } from "./user-context";
+import { DomainError } from "../domain/domain-error";
+import { requireCurrentUserId } from "../context/user-context";
 import type {
   CommandOptions,
   CommandResult,
@@ -374,7 +373,7 @@ export class MeshCommandExecutorClient {
         directory: this.directory,
         provider: this.provider,
         channel,
-        ...(encryptedEnvironment === undefined ? {} : { encryptedEnvironment }),
+        encryptedEnvironment: encryptedEnvironment ?? null,
         nonce: crypto.randomUUID(),
         expiresAt: new Date(Date.now() + sessionTtlMs).toISOString(),
       };
@@ -390,27 +389,8 @@ export class MeshCommandExecutorClient {
       "x-clanky-mesh-request-id": request.requestId,
     }, signal, MESH_EXECUTION_SESSION_REQUEST_TIMEOUT_MS, "POST", route);
 
-    let request = await buildSessionRequest(this.sessionTtlMs);
-    let response: unknown;
-    try {
-      response = await postSessionRequest(request);
-    } catch (error) {
-      if (
-        this.channel !== MESH_ACP_CHANNEL
-        || !(error instanceof DomainError)
-        || error.code !== "mesh_execution_session_expiry_invalid"
-        || this.sessionTtlMs <= MESH_ACP_LEGACY_SESSION_REQUEST_TTL_MS
-      ) {
-        throw error;
-      }
-      log.warn("Mesh ACP worker rejected the extended session lease; retrying with the legacy lease", {
-        executionNodeId: this.executionNodeId,
-        requestedTtlMs: this.sessionTtlMs,
-        fallbackTtlMs: MESH_ACP_LEGACY_SESSION_REQUEST_TTL_MS,
-      });
-      request = await buildSessionRequest(MESH_ACP_LEGACY_SESSION_REQUEST_TTL_MS);
-      response = await postSessionRequest(request);
-    }
+    const request = await buildSessionRequest(this.sessionTtlMs);
+    const response = await postSessionRequest(request);
     const body = parseResponseShape<MeshSessionResponse>(
       response,
       ["protocolVersion", "sessionId", "expiresAt", "encryptedPayload"],

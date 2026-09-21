@@ -39,7 +39,7 @@ import {
 import type { CommandExecutorFactory } from "./backend-executor-factory";
 import { ensureLocalMeshNodeIdentity } from "../../persistence/mesh-node-identity";
 import { getWorkerRegistration } from "../../persistence/mesh";
-import { requireCurrentUserId } from "../user-context";
+import { requireCurrentUserId } from "../../context/user-context";
 import { getSshReliabilityPolicy } from "../ssh-reliability-policy";
 import { executionHostService } from "../execution-host-service";
 import { executionHostBindingsEqual } from "@/shared/execution-host";
@@ -399,7 +399,6 @@ class BackendManager {
       this.emitEvent({
         type: "server.connected",
         workspaceId,
-        mode: config.mode,
         serverUrl: buildAgentServerUrl(settings),
         timestamp: new Date().toISOString(),
       });
@@ -448,7 +447,6 @@ class BackendManager {
     this.emitEvent({
       type: "server.connected",
       workspaceId,
-      mode: buildConnectionConfig(state.settings, directory).mode,
       timestamp: new Date().toISOString(),
     });
   }

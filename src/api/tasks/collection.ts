@@ -3,7 +3,7 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
  * Task collection routes.
  */
 
-import { isDomainError } from "../../core/domain-error";
+import { isDomainError } from "../../domain/domain-error";
 import { createLogger } from "@pablozaiden/webapp/server";
 import {
   TaskCreationStartError,

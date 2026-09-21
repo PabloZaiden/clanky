@@ -1,6 +1,6 @@
 import type { TaskCtx } from "./context";
 import type { Task, ModelConfig } from "@/shared/task";
-import type { MessageImageAttachment } from "@/shared/message-attachments";
+import type { MessageAttachment } from "@/shared/message-attachments";
 import { TaskEngine } from "../task-engine";
 import { insertReviewComment, } from "../../persistence/review-comments";
 import { backendManager } from "../backend-manager";
@@ -30,7 +30,7 @@ export async function transitionToFeedbackCycleAndStart(
     };
     nextReviewCycle: number;
     resultBranch: string;
-    attachments?: MessageImageAttachment[];
+    attachments?: MessageAttachment[];
   },
 ): Promise<{ success: true; reviewCycle: number; branch: string; commentIds?: string[] }> {
   assertValidTransition(task.state.status, "idle", `startFeedbackCycle:${options.transitionLabel}`);
@@ -85,7 +85,7 @@ function startFeedbackEngine(
     prompt: string;
     model?: ModelConfig;
     startFailureLabel: string;
-    attachments?: MessageImageAttachment[];
+    attachments?: MessageAttachment[];
   },
 ): void {
   const engine = new TaskEngine({

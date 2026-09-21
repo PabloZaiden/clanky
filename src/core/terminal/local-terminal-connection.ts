@@ -28,7 +28,7 @@ import type {
   InteractiveTerminalConnectResult,
 } from "./interactive-terminal-connection";
 import { TerminalOutput } from "./terminal-output";
-import { DomainError } from "../domain-error";
+import { DomainError } from "../../domain/domain-error";
 import { createLogger } from "@pablozaiden/webapp/server";
 import {
   isSubprocessTreeTerminationConfirmed,

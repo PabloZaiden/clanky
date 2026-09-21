@@ -14,7 +14,6 @@
  */
 
 import type {
-  TaskPromptMode,
   TaskPromptIntent,
   TaskConfig,
   TaskState,
@@ -23,10 +22,10 @@ import type {
   TaskLogEntry,
   ModelConfig,
 } from "@/shared/task";
-import { DEFAULT_TASK_CONFIG, normalizeTaskPromptIntent } from "@/shared/task";
+import { DEFAULT_TASK_CONFIG } from "@/shared/task";
 import type { TaskEvent, MessageData, ToolCallData, LogLevel } from "@/shared/events";
 import { createTimestamp } from "@/shared/events";
-import type { MessageImageAttachment } from "@/shared/message-attachments";
+import type { MessageAttachment } from "@/shared/message-attachments";
 import type {
   AgentEvent,
 } from "../../backends/types";
@@ -103,8 +102,8 @@ export class TaskEngine {
    * This is different from `aborted` which stops the task entirely.
    */
   private injectionPending = false;
-  private initialPromptAttachments: MessageImageAttachment[];
-  private pendingPromptAttachments: MessageImageAttachment[] = [];
+  private initialPromptAttachments: MessageAttachment[];
+  private pendingPromptAttachments: MessageAttachment[] = [];
   private readonly persistence: TaskPersistenceCoordinator;
   private readonly sessionLifecycle: TaskSessionLifecycleImpl;
   private readonly promptExecutor: TaskPromptExecutorImpl;
@@ -197,12 +196,12 @@ export class TaskEngine {
    */
   setPendingPrompt(
     prompt: string,
-    attachments: MessageImageAttachment[] = [],
-    promptMode: TaskPromptMode = "engine_context",
+    attachments: MessageAttachment[] = [],
+    promptMode: TaskPromptIntent = "engine_context",
   ): void {
     this.updateState({
       pendingPrompt: prompt,
-      pendingPromptMode: normalizeTaskPromptIntent(promptMode),
+      pendingPromptMode: promptMode,
     });
     this.pendingPromptAttachments = [...attachments];
   }
@@ -273,7 +272,7 @@ export class TaskEngine {
   async injectPendingNow(options: {
     message?: string;
     model?: ModelConfig;
-    attachments?: MessageImageAttachment[];
+    attachments?: MessageAttachment[];
   }): Promise<void> {
     // Set the pending values first
     if (options.message !== undefined) {
@@ -557,7 +556,7 @@ export class TaskEngine {
    *
    * @param feedback - The user's feedback message
    */
-  async injectPlanFeedback(feedback: string, attachments: MessageImageAttachment[] = []): Promise<void> {
+  async injectPlanFeedback(feedback: string, attachments: MessageAttachment[] = []): Promise<void> {
     // Set the feedback as a pending prompt
     this.updateState({ pendingPrompt: feedback });
     this.pendingPromptAttachments = [...attachments];
@@ -1526,7 +1525,7 @@ export class TaskEngine {
 
       // Direct user turns are conversational and must not trigger task markers
       // or an automatic follow-up iteration.
-      const promptMode = normalizeTaskPromptIntent(this.lastPromptMode);
+      const promptMode: string = this.lastPromptMode;
       if (!options.skipOutcomeEvaluation && promptMode !== "direct_user") {
         this.evaluateOutcome(ctx);
       }
@@ -1572,13 +1571,13 @@ export class TaskEngine {
    * @param idSuffix - Optional suffix for the deterministic message ID.
    *                   Defaults to the current iteration number.
    */
-  private consumeInitialPromptAttachments(): MessageImageAttachment[] {
+  private consumeInitialPromptAttachments(): MessageAttachment[] {
     const attachments = this.initialPromptAttachments;
     this.initialPromptAttachments = [];
     return attachments;
   }
 
-  private consumePendingPromptAttachments(): MessageImageAttachment[] {
+  private consumePendingPromptAttachments(): MessageAttachment[] {
     const attachments = this.pendingPromptAttachments;
     this.pendingPromptAttachments = [];
     return attachments;
@@ -1587,7 +1586,7 @@ export class TaskEngine {
   private emitUserMessage(
     content: string,
     idSuffix?: string,
-    attachments: MessageImageAttachment[] = [],
+    attachments: MessageAttachment[] = [],
   ): void {
     const suffix = idSuffix ?? `iter-${this.task.state.currentIteration}`;
     const messageData: MessageData = {

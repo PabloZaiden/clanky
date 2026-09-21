@@ -1,9 +1,9 @@
-import type { MessageImageAttachment } from "@/shared/message-attachments";
+import type { MessageAttachment } from "@/shared/message-attachments";
 import type { ModelConfig } from "@/shared/model";
 import { DETERMINISTIC_AGENT_CODE_CONTRACT } from "@/shared/deterministic-agent";
 import { isChatBusyStatus } from "@/shared/chat";
 import { createLogger } from "@pablozaiden/webapp/server";
-import { DomainError } from "./domain-error";
+import { DomainError } from "../domain/domain-error";
 import { backendManager } from "./backend";
 import { chatManager } from "./chat-manager";
 import type { CommandExecutor } from "./command-executor";
@@ -29,7 +29,7 @@ export interface GenerateDeterministicAgentCodeOptions {
   directory: string;
   model: ModelConfig;
   message?: string;
-  attachments?: MessageImageAttachment[];
+  attachments?: MessageAttachment[];
   signal?: AbortSignal;
 }
 

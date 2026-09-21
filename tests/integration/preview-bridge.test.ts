@@ -7,7 +7,7 @@ import { closeDatabase, getDatabase, initializeDatabase } from "../../src/persis
 import { createWorkspace } from "../../src/persistence/workspaces";
 import { deleteSshServer, saveSshServerConfig } from "../../src/persistence/ssh-servers";
 import { previewSessionManager } from "../../src/core/preview-session-manager";
-import { runWithCurrentUser } from "../../src/core/user-context";
+import { runWithCurrentUser } from "../../src/context/user-context";
 import {
   getExecutionHostSourceId,
   POSIX_EXECUTION_HOST_CAPABILITIES,
@@ -158,12 +158,13 @@ describe("workspace previews", () => {
         worker_node_id, local_user_id, worker_instance_name,
         worker_endpoint, worker_transport,
         worker_public_key, worker_fingerprint,
+        worker_encryption_public_key,
         route_kind, worker_directory,
         worker_platform_os, worker_platform_architecture,
         worker_capabilities_json, worker_accept_remote_execution,
         worker_config_revision, registration_scope, grant_status,
         created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       meshNodeId,
       testOwnerUser.id,
@@ -172,6 +173,7 @@ describe("workspace previews", () => {
       "http",
       "fixture-public-key",
       "fixture-fingerprint",
+      "fixture-encryption-key",
       "direct",
       null,
       "linux",

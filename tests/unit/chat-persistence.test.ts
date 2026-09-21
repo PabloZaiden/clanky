@@ -10,7 +10,7 @@ import {
   ensureExecutionHost,
   toExecutionHostBinding,
 } from "../../src/persistence/execution-hosts";
-import { runWithCurrentUser } from "../../src/core/user-context";
+import { runWithCurrentUser } from "../../src/context/user-context";
 import { testOwnerUser } from "../setup";
 
 describe("chat persistence recovery", () => {

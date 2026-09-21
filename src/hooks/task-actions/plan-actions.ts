@@ -3,7 +3,7 @@
  */
 
 import type { PlanAcceptResponse } from "@/contracts";
-import type { MessageImageAttachment } from "@/shared/message-attachments";
+import type { MessageAttachment } from "@/shared/message-attachments";
 import { apiCall, apiAction, apiActionWithBody } from "./helpers";
 
 /**
@@ -24,7 +24,7 @@ export type AcceptPlanResult =
 export async function sendPlanFeedbackApi(
   taskId: string,
   feedback: string,
-  attachments?: MessageImageAttachment[],
+  attachments?: MessageAttachment[],
 ): Promise<boolean> {
   return apiActionWithBody(
     `/api/tasks/${taskId}/plan/feedback`,

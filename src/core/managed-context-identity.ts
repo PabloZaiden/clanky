@@ -8,8 +8,8 @@ import { loadAgentRun, loadAgentRunByChatId } from "../persistence/agents";
 import { loadChat } from "../persistence/chats";
 import { loadTask } from "../persistence/tasks";
 import { getTerminalSession } from "../persistence/terminal-sessions";
-import { DomainError } from "./domain-error";
-import { requireCurrentUserId } from "./user-context";
+import { DomainError } from "../domain/domain-error";
+import { requireCurrentUserId } from "../context/user-context";
 
 function missingContext(contextType: ManagedContextType, contextId: string): DomainError {
   return new DomainError("managed_context_not_found", "Managed execution context was not found", {

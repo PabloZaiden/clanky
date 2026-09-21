@@ -11,7 +11,7 @@ import { terminalSessionManager } from "../../src/core/terminal-session-manager"
 import type { Workspace } from "@/shared";
 import { initializeGitRepository } from "../helpers/git-fixtures";
 import { pollUntil } from "../helpers/polling";
-import { runWithCurrentUser } from "../../src/core/user-context";
+import { runWithCurrentUser } from "../../src/context/user-context";
 import { testOwnerUser } from "../setup";
 import { sshServerManager } from "../../src/core/ssh-server-manager";
 import { loadSshServerKeyPair } from "../../src/persistence/ssh-server-keys";

@@ -14,7 +14,7 @@ import type {
   TaskPromptIntent,
 } from "@/shared";
 import type { TaskEvent } from "@/shared/events";
-import type { MessageImageAttachment } from "@/shared/message-attachments";
+import type { MessageAttachment } from "@/shared/message-attachments";
 import type { PromptInput } from "../../backends/types";
 import type { GitService } from "../git";
 import type { SimpleEventEmitter } from "../event-emitter";
@@ -150,7 +150,7 @@ export interface TaskEngineOptions {
   /** Execution policy used when start() or continueExecution() runs the engine. */
   executionPolicy?: TaskExecutionPolicy;
   /** Transient attachments for the first prompt sent by this engine */
-  initialPromptAttachments?: MessageImageAttachment[];
+  initialPromptAttachments?: MessageAttachment[];
 }
 
 /**

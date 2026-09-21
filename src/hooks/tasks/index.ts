@@ -12,7 +12,7 @@ import { useTaskActions } from "./use-task-actions";
 import type { AcceptTaskResult, PushTaskResult, AddressCommentsResult, PurgeArchivedTasksResult } from "../taskActions";
 import type { Task } from "@/shared";
 import type { CreateTaskRequest, UpdateTaskRequest } from "@/contracts";
-import type { MessageImageAttachment } from "@/shared/message-attachments";
+import type { MessageAttachment } from "@/shared/message-attachments";
 import { useRealtimeRefreshWithRecovery } from "../useRealtimeStream";
 
 export interface UseTasksResult {
@@ -47,7 +47,7 @@ export interface UseTasksResult {
   /** Purge all archived tasks for a workspace */
   purgeArchivedWorkspaceTasks: (workspaceId: string) => Promise<PurgeArchivedTasksResult>;
   /** Address reviewer comments (only for pushed/merged tasks with reviewMode.addressable = true) */
-  addressReviewComments: (id: string, comments: string, attachments?: MessageImageAttachment[]) => Promise<AddressCommentsResult>;
+  addressReviewComments: (id: string, comments: string, attachments?: MessageAttachment[]) => Promise<AddressCommentsResult>;
   /** Get a task by ID */
   getTask: (id: string) => Task | undefined;
 }

@@ -19,7 +19,7 @@ import {
   UploadFileExplorerChunkRequestSchema,
   WriteFileExplorerRequestSchema,
 } from "@/contracts/schemas";
-import { isDomainError } from "../core/domain-error";
+import { isDomainError } from "../domain/domain-error";
 import {
   fileExplorerService,
   type FileExplorerTarget,

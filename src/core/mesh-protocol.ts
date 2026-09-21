@@ -45,7 +45,7 @@ export function buildMeshEnrollmentRequestSigningPayload(
       relayEnvelope.workerInstanceName ?? null,
       relayEnvelope.workerPublicKey,
       relayEnvelope.workerFingerprint,
-      relayEnvelope.workerEncryptionPublicKey ?? null,
+      relayEnvelope.workerEncryptionPublicKey,
       relayEnvelope.workerDirectory,
       relayEnvelope.workerCapabilities,
       relayEnvelope.workerAcceptRemoteExecution,
@@ -58,9 +58,7 @@ export function buildMeshEnrollmentRequestSigningPayload(
       relayEnvelope.nonce,
       relayEnvelope.expiresAt,
     ];
-    if (relayEnvelope.workerPlatform !== undefined) {
-      payload.push(relayEnvelope.workerPlatform);
-    }
+    payload.push(relayEnvelope.workerPlatform);
     return JSON.stringify(payload);
   }
   const directEnvelope = envelope as UnsignedEnrollmentRequestV1;
@@ -73,7 +71,7 @@ export function buildMeshEnrollmentRequestSigningPayload(
     directEnvelope.workerTransport,
     directEnvelope.workerPublicKey,
     directEnvelope.workerFingerprint,
-    directEnvelope.workerEncryptionPublicKey ?? null,
+    directEnvelope.workerEncryptionPublicKey,
     directEnvelope.workerTlsCertificate,
     directEnvelope.workerTlsFingerprint,
     directEnvelope.workerDirectory,
@@ -85,9 +83,7 @@ export function buildMeshEnrollmentRequestSigningPayload(
     directEnvelope.nonce,
     directEnvelope.expiresAt,
   ];
-  if (directEnvelope.workerPlatform !== undefined) {
-    payload.push(directEnvelope.workerPlatform);
-  }
+  payload.push(directEnvelope.workerPlatform);
   return JSON.stringify(payload);
 }
 
@@ -108,7 +104,7 @@ export function buildMeshEnrollmentResponseSigningPayload(
     response.controllerInstanceName,
     response.controllerPublicKey,
     response.controllerFingerprint,
-    response.controllerEncryptionPublicKey ?? null,
+    response.controllerEncryptionPublicKey,
   ]);
 }
 
@@ -140,9 +136,7 @@ export function buildMeshHealthCheckResponseSigningPayload(
     envelope.workerAcceptRemoteExecution,
     envelope.workerConfigRevision,
   ];
-  if (envelope.workerPlatform !== undefined) {
-    payload.push(envelope.workerPlatform);
-  }
+  payload.push(envelope.workerPlatform);
   return JSON.stringify(payload);
 }
 
@@ -179,25 +173,22 @@ export function buildMeshWorkerKillRequestSigningPayload(
 export function buildMeshExecutionSessionSigningPayload(
   envelope: UnsignedExecutionSession,
 ): string {
-  const payload: unknown[] = [
+  const payload = [
     "clanky-mesh-execution-session-v1",
     envelope.protocolVersion,
     envelope.requestId,
     envelope.callerNodeId,
     envelope.callerPublicKey,
     envelope.callerFingerprint,
-    envelope.callerEncryptionPublicKey ?? null,
+    envelope.callerEncryptionPublicKey,
     envelope.targetNodeId,
     envelope.workspaceId,
     envelope.directory,
     envelope.provider,
     envelope.channel,
+    envelope.encryptedEnvironment,
+    envelope.nonce,
+    envelope.expiresAt,
   ];
-  // Keep the no-environment shape compatible with workers that predate the
-  // managed runtime environment field.
-  if (envelope.encryptedEnvironment !== undefined) {
-    payload.push(envelope.encryptedEnvironment);
-  }
-  payload.push(envelope.nonce, envelope.expiresAt);
   return JSON.stringify(payload);
 }

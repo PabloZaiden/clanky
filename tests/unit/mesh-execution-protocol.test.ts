@@ -21,16 +21,16 @@ function buildRequest(
     directory: "/workspaces/repo",
     provider: "copilot",
     channel: MESH_ACP_CHANNEL,
-    ...(encryptedEnvironment === undefined ? {} : { encryptedEnvironment }),
+    encryptedEnvironment: encryptedEnvironment === undefined ? null : encryptedEnvironment,
     nonce: "nonce-1",
     expiresAt: new Date(Date.now() + 60_000).toISOString(),
   };
 }
 
 describe("Mesh execution session protocol", () => {
-  test("keeps legacy signatures stable when no managed environment is present", () => {
-    const request = buildRequest();
-    const legacyPayload = JSON.stringify([
+  test("signs the canonical request shape when no managed environment is present", () => {
+    const request = buildRequest(null);
+    const payload = JSON.stringify([
       "clanky-mesh-execution-session-v1",
       request.protocolVersion,
       request.requestId,
@@ -43,11 +43,12 @@ describe("Mesh execution session protocol", () => {
       request.directory,
       request.provider,
       request.channel,
+      null,
       request.nonce,
       request.expiresAt,
     ]);
 
-    expect(buildMeshExecutionSessionSigningPayload(request)).toBe(legacyPayload);
+    expect(buildMeshExecutionSessionSigningPayload(request)).toBe(payload);
   });
 
   test("binds the encrypted managed environment into the session signature", () => {

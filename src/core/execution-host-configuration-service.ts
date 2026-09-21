@@ -9,9 +9,9 @@ import type {
 } from "@/shared/execution-host";
 import { executionHostRefsEqual } from "@/shared/execution-host";
 import { setLocalMeshExecutionConfiguration } from "../persistence/mesh-node-identity";
-import { DomainError } from "./domain-error";
+import { DomainError } from "../domain/domain-error";
 import { executionHostService } from "./execution-host-service";
-import { requireCurrentUserId } from "./user-context";
+import { requireCurrentUserId } from "../context/user-context";
 
 export class ExecutionHostConfigurationService {
   async updateNodeDefaults(

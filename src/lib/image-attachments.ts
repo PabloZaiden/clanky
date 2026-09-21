@@ -1,4 +1,4 @@
-import type { ComposerAttachment, ComposerImageAttachment, MessageAttachment } from "@/shared/message-attachments";
+import type { ComposerAttachment, MessageAttachment } from "@/shared/message-attachments";
 import {
   getCanonicalMessageAttachmentMimeType,
   getMessageAttachmentKind,
@@ -8,8 +8,6 @@ import {
   MESSAGE_ATTACHMENT_MAX_BYTES,
   MESSAGE_IMAGE_ALLOWED_MIME_TYPES,
   MESSAGE_IMAGE_ACCEPT,
-  MESSAGE_IMAGE_ATTACHMENT_LIMIT,
-  MESSAGE_IMAGE_ATTACHMENT_MAX_BYTES,
 } from "@/shared/message-attachments";
 
 function readFileAsDataUrl(file: File): Promise<string> {
@@ -53,9 +51,6 @@ export function getClipboardAttachmentFiles(
 
   return files;
 }
-
-/** Compatibility name retained for existing paste handlers. */
-export const getClipboardImageFiles = getClipboardAttachmentFiles;
 
 export async function createComposerAttachments(
   files: File[],
@@ -118,26 +113,6 @@ export function toMessageAttachments(
   return attachments.map(({ previewUrl: _previewUrl, ...attachment }) => attachment);
 }
 
-/** Compatibility name retained while existing callers migrate to generic attachments. */
-export function createComposerImageAttachments(
-  files: File[],
-  existingCount = 0,
-): Promise<ComposerAttachment[]> {
-  return createComposerAttachments(files, existingCount);
-}
-
-/** Compatibility name retained while existing callers migrate to generic attachments. */
-export function revokeComposerImageAttachments(attachments: ComposerImageAttachment[]): void {
-  revokeComposerAttachments(attachments);
-}
-
-/** Compatibility name retained while existing callers migrate to generic attachments. */
-export function toMessageImageAttachments(
-  attachments: ComposerImageAttachment[],
-): MessageAttachment[] {
-  return toMessageAttachments(attachments);
-}
-
 /**
  * Strip the transient `attachments` field from a request before persisting.
  * Used by draft save and task edit flows to avoid storing image data.
@@ -153,6 +128,4 @@ export {
   MESSAGE_ATTACHMENT_MAX_BYTES,
   MESSAGE_IMAGE_ACCEPT,
   MESSAGE_IMAGE_ALLOWED_MIME_TYPES,
-  MESSAGE_IMAGE_ATTACHMENT_LIMIT,
-  MESSAGE_IMAGE_ATTACHMENT_MAX_BYTES,
 };

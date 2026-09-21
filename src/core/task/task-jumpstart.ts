@@ -1,6 +1,6 @@
 import type { TaskCtx } from "./context";
 import type { Task, ModelConfig } from "@/shared/task";
-import type { MessageImageAttachment } from "@/shared/message-attachments";
+import type { MessageAttachment } from "@/shared/message-attachments";
 import { TaskEngine } from "../task-engine";
 import { createTimestamp } from "@/shared/events";
 import {
@@ -20,7 +20,7 @@ import { taskFailure, taskFailureFromUnknown, type TaskResult } from "./task-err
 export async function jumpstartTaskImpl(
   ctx: TaskCtx,
   taskId: string,
-  options: { message?: string; model?: ModelConfig; attachments?: MessageImageAttachment[] }
+  options: { message?: string; model?: ModelConfig; attachments?: MessageAttachment[] }
 ): Promise<TaskResult> {
   return jumpstartTaskFromEngine(ctx, taskId, options);
 }
@@ -29,7 +29,7 @@ export async function jumpstartTaskImpl(
 export async function jumpstartTaskFromEngine(
   ctx: TaskCtx,
   taskId: string,
-  options: { message?: string; model?: ModelConfig; attachments?: MessageImageAttachment[] }
+  options: { message?: string; model?: ModelConfig; attachments?: MessageAttachment[] }
 ): Promise<TaskResult> {
   const task = await loadTask(taskId);
   if (!task) {
@@ -174,7 +174,7 @@ async function jumpstartOnExistingBranch(
   taskId: string,
   task: Task,
   isPlanning = false,
-  attachments: MessageImageAttachment[] = [],
+  attachments: MessageAttachment[] = [],
 ): Promise<TaskResult> {
   try {
     const workingDirectory = getTaskWorkingDirectory(task);

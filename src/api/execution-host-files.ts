@@ -13,7 +13,7 @@ import {
   type FileExplorerTarget,
 } from "../core/file-explorer-service";
 import { sshCredentialManager } from "../core/ssh-credential-manager";
-import { DomainError } from "../core/domain-error";
+import { DomainError } from "../domain/domain-error";
 import { createFileExplorerRoutes } from "./file-explorer-routes";
 
 const SSH_CREDENTIAL_TOKEN_HEADER = "x-clanky-ssh-credential-token";

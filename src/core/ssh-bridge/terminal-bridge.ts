@@ -40,11 +40,11 @@ import {
   buildDirectResizeCommand,
 } from "./command-builders";
 import { extractClipboardSequences } from "./osc52";
-import { requireCurrentUser, runWithCurrentUser } from "../user-context";
+import { requireCurrentUser, runWithCurrentUser } from "../../context/user-context";
 import { managedContextIdentityResolver } from "../managed-context-identity";
 import { managedCredentialService, type ManagedRuntimeCredential } from "../managed-credential-service";
 import { buildManagedContextEnvironment } from "../managed-context-environment";
-import { DomainError } from "../domain-error";
+import { DomainError } from "../../domain/domain-error";
 import { isTerminalAttachmentBlocked } from "../terminal-attachment-registry";
 
 const log = createLogger("core:ssh-terminal-bridge");

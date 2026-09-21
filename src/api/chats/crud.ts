@@ -1,6 +1,6 @@
 import { createLogger, defineRoutes } from "@pablozaiden/webapp/server";
 import { chatManager } from "../../core/chat-manager";
-import { isDomainError } from "../../core/domain-error";
+import { isDomainError } from "../../domain/domain-error";
 import { isModelEnabled } from "../../core/model-discovery";
 import { preferencesManager } from "../../core/preferences-manager";
 import { getChatWorkspaceId, isTaskChat, isWorkspaceChat, type ChatConfig } from "@/shared/chat";

@@ -22,7 +22,7 @@ import { meshStateEventEmitter } from "../../src/core/event-emitter";
 import {
   executionHostService,
 } from "../../src/core/execution-host-service";
-import { runWithCurrentUser } from "../../src/core/user-context";
+import { runWithCurrentUser } from "../../src/context/user-context";
 import {
   closeDatabase,
   getDatabase,
@@ -127,12 +127,13 @@ function registerMeshWorker(
       worker_node_id, local_user_id, worker_instance_name,
       worker_endpoint, worker_transport,
       worker_public_key, worker_fingerprint,
+      worker_encryption_public_key,
       route_kind, worker_directory,
       worker_platform_os, worker_platform_architecture,
       worker_capabilities_json, worker_accept_remote_execution,
       worker_config_revision, registration_scope, grant_status,
       created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     ref.nodeId,
     testOwnerUser.id,
@@ -141,6 +142,7 @@ function registerMeshWorker(
     "http",
     "fixture-public-key",
     "fixture-fingerprint",
+    "fixture-encryption-key",
     "direct",
     null,
     os,

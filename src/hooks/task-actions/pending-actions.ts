@@ -2,7 +2,7 @@
  * Pending prompt and pending value actions for tasks.
  */
 
-import type { MessageImageAttachment } from "@/shared/message-attachments";
+import type { MessageAttachment } from "@/shared/message-attachments";
 import { apiCall, apiAction, apiActionWithBody } from "./helpers";
 
 /**
@@ -18,7 +18,7 @@ export interface SetPendingResult {
 export async function setPendingPromptApi(
   taskId: string,
   prompt: string,
-  attachments?: MessageImageAttachment[],
+  attachments?: MessageAttachment[],
 ): Promise<boolean> {
   return apiActionWithBody(
     `/api/tasks/${taskId}/pending-prompt`,
@@ -38,7 +38,7 @@ export async function clearPendingPromptApi(taskId: string): Promise<boolean> {
 /** Set pending message and/or model for a task via the API. */
 export async function setPendingApi(
   taskId: string,
-  options: { message?: string; model?: { providerID: string; modelID: string }; attachments?: MessageImageAttachment[] },
+  options: { message?: string; model?: { providerID: string; modelID: string }; attachments?: MessageAttachment[] },
 ): Promise<SetPendingResult> {
   await apiCall(
     `/api/tasks/${taskId}/pending`,

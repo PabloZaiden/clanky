@@ -4,9 +4,9 @@ import { backendManager } from "./backend/backend-manager";
 import { quoteShell } from "./remote-executor/utils";
 import type { ToolCallExtra } from "@/shared/tool-call";
 import {
+  MESSAGE_ATTACHMENT_MAX_BYTES,
   MESSAGE_IMAGE_ALLOWED_MIME_TYPES,
-  MESSAGE_IMAGE_ATTACHMENT_MAX_BYTES,
-  type MessageImageAttachment,
+  type MessageAttachment,
 } from "@/shared/message-attachments";
 import { detectBrowserImageMimeType } from "../utils/workspace-file-images";
 
@@ -114,7 +114,7 @@ function createImagePreviewExtra(
   size: number,
 ): ToolCallExtra {
   const previewToken = createStablePreviewToken(toolCallId, path);
-  const attachment: MessageImageAttachment = {
+  const attachment: MessageAttachment = {
     id: `tool-image-${previewToken}`,
     filename: basename(path) || "image",
     mimeType,
@@ -150,7 +150,7 @@ export async function resolveToolCallImagePreview(
       "  exit 0",
       "fi",
       "size=$(wc -c < \"$path\" | tr -d '[:space:]')",
-      `if [ \"$size\" -gt ${MESSAGE_IMAGE_ATTACHMENT_MAX_BYTES} ]; then`,
+      `if [ \"$size\" -gt ${MESSAGE_ATTACHMENT_MAX_BYTES} ]; then`,
       "  printf '%s\\n' '__TOO_LARGE__'",
       "  printf '%s\\n' \"$size\"",
       "  exit 0",
@@ -175,7 +175,7 @@ export async function resolveToolCallImagePreview(
   }
 
   const size = Number.parseInt(sizeLine ?? "", 10);
-  if (!Number.isFinite(size) || size <= 0 || size > MESSAGE_IMAGE_ATTACHMENT_MAX_BYTES) {
+  if (!Number.isFinite(size) || size <= 0 || size > MESSAGE_ATTACHMENT_MAX_BYTES) {
     return null;
   }
 

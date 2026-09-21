@@ -166,10 +166,6 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
           { details: config.mesh },
         );
       }
-      if (config.mode !== "spawn") {
-        throw new Error("Connect mode is not supported by ACP runtime. Use stdio or ssh transport.");
-      }
-
       if (isRemoteOnlyMode() && config.transport !== "ssh") {
         throw new Error(
           "Local stdio transport is disabled. CLANKY_REMOTE_ONLY environment variable is set. " +

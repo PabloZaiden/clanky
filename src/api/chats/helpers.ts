@@ -1,7 +1,7 @@
 import { ChatBranchCheckoutError, ChatBusyError, ChatNotMarkableError, ChatPermissionReplyError, ChatPermissionRequestNotFoundError, EmptyChatTranscriptError, InvalidChatBaseBranchError, InvalidCurrentPlanError, SshCredentialsRequiredError, type Chat } from "@/shared/chat";
 import type { Task } from "@/shared/task";
 import { isAcpErrorCode, isAcpSshTransportFailure } from "../../backends/acp";
-import { isDomainError } from "../../core/domain-error";
+import { isDomainError } from "../../domain/domain-error";
 import { chatManager } from "../../core/chat-manager";
 import { taskManager } from "../../core/task-manager";
 import { domainErrorResponse, errorResponse } from "../helpers";

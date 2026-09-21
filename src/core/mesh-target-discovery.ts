@@ -8,11 +8,7 @@ import {
   normalizeMeshRelayOrigin,
   type MeshWellKnownDescriptor,
 } from "@/shared/mesh-relay";
-import {
-  MESH_RUNTIME_SNAPSHOT_HEADER,
-  MESH_RUNTIME_SNAPSHOT_VERSION,
-} from "@/shared/mesh";
-import { DomainError } from "./domain-error";
+import { DomainError } from "../domain/domain-error";
 
 export const MESH_TARGET_DISCOVERY_TIMEOUT_MS = 10_000;
 export const MESH_TARGET_DISCOVERY_MAX_BYTES = 64 * 1024;
@@ -104,7 +100,6 @@ export async function discoverMeshEnrollmentTarget(
 ): Promise<{
   target: string;
   descriptor: MeshWellKnownDescriptor;
-  runtimeSnapshotVersion: number;
 }> {
   const normalizedTarget = normalizeMeshEnrollmentTarget(target);
   const controller = new AbortController();
@@ -165,18 +160,9 @@ export async function discoverMeshEnrollmentTarget(
         );
       }
     }
-    const advertisedSnapshotVersion = Number(
-      response.headers.get(MESH_RUNTIME_SNAPSHOT_HEADER),
-    );
-    const runtimeSnapshotVersion =
-      Number.isInteger(advertisedSnapshotVersion)
-        && advertisedSnapshotVersion >= MESH_RUNTIME_SNAPSHOT_VERSION
-        ? advertisedSnapshotVersion
-        : 0;
     return {
       target: normalizedTarget,
       descriptor: parsed.data,
-      runtimeSnapshotVersion,
     };
   } catch (error) {
     if (error instanceof DomainError) {

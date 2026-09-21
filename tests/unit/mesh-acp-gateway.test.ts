@@ -25,6 +25,7 @@ describe("MeshAcpGateway relay lifecycle", () => {
   let workerNodeId: string;
   let controllerPublicKey: string;
   let controllerFingerprint: string;
+  let controllerEncryptionPublicKey: string;
   let originalMockAcp: string | undefined;
 
   beforeEach(async () => {
@@ -44,12 +45,13 @@ describe("MeshAcpGateway relay lifecycle", () => {
     workerNodeId = identity.nodeId;
     controllerPublicKey = identity.publicKey;
     controllerFingerprint = identity.fingerprint;
+    controllerEncryptionPublicKey = identity.encryptionPublicKey;
     await saveControllerGrant({
       controllerNodeId: "controller-a",
       controllerInstanceName: "Test controller",
       controllerPublicKey,
       controllerFingerprint,
-      controllerEncryptionPublicKey: identity.encryptionPublicKey ?? null,
+      controllerEncryptionPublicKey,
     });
     gateway = new MeshAcpGateway();
   });
@@ -79,12 +81,13 @@ describe("MeshAcpGateway relay lifecycle", () => {
       callerNodeId: "controller-a",
       callerPublicKey: controllerPublicKey,
       callerFingerprint: controllerFingerprint,
-      callerEncryptionPublicKey: controllerPublicKey,
+      callerEncryptionPublicKey: controllerEncryptionPublicKey,
       targetNodeId: workerNodeId,
       workspaceId: "workspace-a",
       directory: workerDirectory,
       provider: "copilot",
       channel: MESH_ACP_CHANNEL,
+      encryptedEnvironment: null,
       nonce: crypto.randomUUID(),
       expiresAt: new Date(Date.now() + MESH_ACP_SESSION_TTL_MS - 1_000).toISOString(),
     };

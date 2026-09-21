@@ -10,7 +10,7 @@ import {
   VoiceValidationRequestSchema,
 } from "@/contracts/schemas";
 import { voiceManager } from "../core/voice-manager";
-import { isDomainError } from "../core/domain-error";
+import { isDomainError } from "../domain/domain-error";
 import { DomainError } from "../domain/domain-error";
 import { domainErrorResponse, errorResponse, successResponse } from "./helpers";
 import { parseAndValidate } from "./validation";

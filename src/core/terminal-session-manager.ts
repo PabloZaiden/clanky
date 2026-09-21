@@ -34,7 +34,7 @@ import { terminalSessionEventEmitter } from "./event-emitter";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { buildPersistentSessionDeleteCommand } from "./ssh-persistent-session";
 import { isUniqueConstraint } from "../persistence/errors";
-import { DomainError } from "./domain-error";
+import { DomainError } from "../domain/domain-error";
 import { managedContextIdentityResolver } from "./managed-context-identity";
 import { managedCredentialService } from "./managed-credential-service";
 import { withWorkspaceExecutionLock } from "./workspace-execution-lock";
@@ -72,8 +72,7 @@ async function requireWorkspace(workspaceId: string): Promise<Workspace> {
 }
 
 /**
- * Check if a session uses the persistent (dtach) connection mode,
- * accounting for runtime fallbacks.
+ * Check if a session uses the persistent (dtach) connection mode.
  */
 function isPersistentTerminalSession(session: TerminalSession): boolean {
   const effectiveMode = session.state.runtimeConnectionMode ?? session.config.connectionMode;

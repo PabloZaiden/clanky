@@ -19,7 +19,7 @@ import {
 import { getDatabase } from "../../src/persistence/database";
 import { taskTranscriptStore } from "../../src/persistence/transcripts/task-store";
 import { decodeTranscriptCursor, encodeTranscriptCursor, TranscriptCursorError } from "../../src/persistence/transcripts/cursor";
-import { runWithCurrentUser } from "../../src/core/user-context";
+import { runWithCurrentUser } from "../../src/context/user-context";
 import {
   setupTestContext,
   teardownTestContext,
@@ -116,19 +116,19 @@ describe("incremental transcript persistence", () => {
       .toThrow(TranscriptCursorError);
   });
 
-  test("omits malformed persisted payloads while retaining normalized and legacy tool data", async () => {
+  test("omits malformed payloads and rows without normalized tool data", async () => {
     const task = createTask(context);
     task.config.id = "malformed-payload-task";
     task.state.id = task.config.id;
-    const legacyTool: PersistedToolCall = {
-      id: "legacy-tool",
+    const unnormalizedTool: PersistedToolCall = {
+      id: "unnormalized-tool",
       name: "write_file",
-      input: { path: "legacy.txt" },
-      output: "legacy output",
+      input: { path: "unnormalized.txt" },
+      output: "unnormalized output",
       status: "completed",
       timestamp: new Date(Date.now() + 1).toISOString(),
     };
-    task.state.toolCalls = [...task.state.toolCalls, legacyTool];
+    task.state.toolCalls = [...task.state.toolCalls, unnormalizedTool];
 
     await runWithCurrentUser(testOwnerUser, async () => {
       await saveTask(task);
@@ -160,9 +160,9 @@ describe("incremental transcript persistence", () => {
           tool_input = NULL, tool_output = NULL, tool_extras = NULL
         WHERE task_id = ? AND entry_id = ?
       `).run(
-        JSON.stringify(legacyTool),
+        JSON.stringify(unnormalizedTool),
         task.config.id,
-        "tool:legacy-tool",
+        "tool:unnormalized-tool",
       );
 
       const loaded = await loadTask(task.config.id);
@@ -175,7 +175,6 @@ describe("incremental transcript persistence", () => {
           status: "completed",
           timestamp: task.state.toolCalls[0]!.timestamp,
         },
-        legacyTool,
       ]);
     });
   });

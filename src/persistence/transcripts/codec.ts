@@ -2,9 +2,9 @@
  * Encode and decode persisted transcript rows at the SQL boundary.
  *
  * Parsed JSON is validated before it becomes a transcript domain value.
- * Malformed message, log, and legacy tool payloads are omitted; malformed
- * optional normalized tool fields are treated as absent while valid summary
- * columns remain usable.
+ * Malformed message and log payloads are omitted; malformed optional
+ * normalized tool fields are treated as absent while valid summary columns
+ * remain usable.
  */
 import { createLogger } from "@pablozaiden/webapp/server";
 import type {
@@ -275,7 +275,7 @@ export function rowToStorageEntry(
   row: TranscriptRow,
   includeToolPayload: boolean,
   resource: TranscriptResource,
-): ChatTranscriptStorageEntry {
+): ChatTranscriptStorageEntry | null {
   const id = getEntryId(row);
   if (row.kind !== "tool") {
     return {
@@ -302,25 +302,5 @@ export function rowToStorageEntry(
     };
   }
 
-  const legacyTool = decodePayload(row, resource);
-  if (legacyTool && !includeToolPayload && isToolCallRecord(legacyTool)) {
-    const { output: _output, extras: _extras, ...summary } = legacyTool;
-    return {
-      id,
-      kind: row.kind,
-      timestamp: row.timestamp,
-      sequence: row.sequence,
-      payload: summary,
-      tool: summary,
-      ...(legacyTool.output !== undefined ? { toolHasOutput: true } : {}),
-    };
-  }
-  return {
-    id,
-    kind: row.kind,
-    timestamp: row.timestamp,
-    sequence: row.sequence,
-    payload: legacyTool,
-    ...(legacyTool && isToolCallRecord(legacyTool) ? { tool: legacyTool } : {}),
-  };
+  return null;
 }

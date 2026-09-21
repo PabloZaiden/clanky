@@ -3,7 +3,7 @@
  */
 
 import { win32 } from "node:path";
-import { DomainError } from "../domain-error";
+import { DomainError } from "../../domain/domain-error";
 import {
   DEFAULT_SSH_COLOR_TERM,
   DEFAULT_SSH_TERM,

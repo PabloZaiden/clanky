@@ -12,7 +12,7 @@ import {
   resolveCommandExecutorDirectory,
   type CommandExecutor,
 } from "./command-executor";
-import { DomainError } from "./domain-error";
+import { DomainError } from "../domain/domain-error";
 import {
   ExecutionPathError,
   normalizeExecutionRoot,

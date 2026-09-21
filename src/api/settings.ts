@@ -13,7 +13,7 @@ import { defineRoutes, type RouteContext } from "@pablozaiden/webapp/server";
  */
 
 import { createLogger } from "@pablozaiden/webapp/server";
-import { isDomainError } from "../core/domain-error";
+import { isDomainError } from "../domain/domain-error";
 import { settingsMaintenanceService } from "../core/settings-maintenance-service";
 import { internalErrorResponse, successResponse } from "./helpers";
 

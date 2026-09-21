@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { MeshTerminalSessionRequest } from "../../src/contracts/schemas/mesh-terminal";
-import { DomainError } from "../../src/core/domain-error";
+import { DomainError } from "../../src/domain/domain-error";
 import { MeshTerminalGateway } from "../../src/core/mesh-terminal-gateway";
 import { buildMeshTerminalSessionSigningPayload } from "../../src/core/mesh-terminal-protocol";
 import { configureMeshRuntime } from "../../src/core/mesh-runtime";
@@ -57,7 +57,7 @@ describe("MeshTerminalGateway relay lifecycle", () => {
       controllerInstanceName: "Test controller",
       controllerPublicKey: identity.publicKey,
       controllerFingerprint: identity.fingerprint,
-      controllerEncryptionPublicKey: identity.encryptionPublicKey ?? null,
+      controllerEncryptionPublicKey: identity.encryptionPublicKey,
     });
     const unsigned: Omit<MeshTerminalSessionRequest, "signature"> = {
       protocolVersion: MESH_TERMINAL_PROTOCOL_VERSION,
@@ -77,6 +77,7 @@ describe("MeshTerminalGateway relay lifecycle", () => {
       connectionMode: "direct",
       useTmux: false,
       allowPersistentSessionCreate: false,
+      encryptedEnvironment: null,
       nonce: crypto.randomUUID(),
       expiresAt: new Date(
         Date.now() + MESH_TERMINAL_SESSION_TTL_MS - 1_000,

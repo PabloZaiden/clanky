@@ -6,7 +6,7 @@
  */
 
 import { backendManager, buildConnectionConfig } from "./backend-manager";
-import { DomainError } from "./domain-error";
+import { DomainError } from "../domain/domain-error";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { workspaceManager } from "./workspace-manager";
 import type { ModelInfo } from "@/contracts";

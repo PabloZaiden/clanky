@@ -3,7 +3,6 @@ import {
   createExecutionHostRuntimeSnapshot,
   getUnavailableGitCommandCapability,
   normalizeExecutionHostPlatform,
-  supportsAcpRuntime,
   supportsExecutionHostCapability,
   supportsGitCommandScope,
   supportsPortableAcpRuntime,
@@ -37,8 +36,8 @@ describe("Execution host platform contract", () => {
       .toBe(false);
     expect(supportsGitCommandScope({
       commandExecution: 1,
-      git: 1,
-      managedWorktrees: 1,
+      git: 2,
+      managedWorktrees: 2,
     }, "managedWorktrees")).toBe(true);
     expect(supportsGitCommandScope({
       git: 1,
@@ -46,18 +45,17 @@ describe("Execution host platform contract", () => {
     }, "managedWorktrees")).toBe(false);
     expect(getUnavailableGitCommandCapability({
       commandExecution: 1,
-      git: 1,
-      managedWorktrees: 1,
+      git: 2,
+      managedWorktrees: 2,
     }, "managedWorktrees")).toBeNull();
     expect(getUnavailableGitCommandCapability({
       git: 2,
     }, "managedWorktrees")).toBe("managedWorktrees");
-    expect(supportsAcpRuntime({ acpRuntime: 1 })).toBe(true);
     expect(supportsPortableAcpRuntime({ acpRuntime: 1 })).toBe(false);
     expect(supportsPortableAcpRuntime({ acpRuntime: 2 })).toBe(true);
     expect(supportsWorkspaceExecutionHost({
       fileOperations: 2,
-      acpRuntime: 1,
+      acpRuntime: 2,
     })).toBe(true);
   });
 });

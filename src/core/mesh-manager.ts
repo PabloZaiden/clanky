@@ -31,14 +31,11 @@ import type {
   MeshWorkerStatus,
 } from "@/shared/mesh";
 import {
-  MESH_RUNTIME_SNAPSHOT_HEADER,
-  MESH_RUNTIME_SNAPSHOT_VERSION,
   MESH_WORKER_KILL_REQUEST_TTL_MS,
 } from "@/shared/mesh";
 import {
   createExecutionHostRuntimeSnapshot,
   parseExecutionHostCapabilities,
-  type ExecutionHostCapabilities,
 } from "@/shared/execution-host";
 import { createLogger } from "@pablozaiden/webapp/server";
 import {
@@ -98,7 +95,7 @@ import {
   getMeshTransport,
   resolveAdvertisedMeshEndpoint,
 } from "./mesh-transport-config";
-import { DomainError, isDomainError } from "./domain-error";
+import { DomainError, isDomainError } from "../domain/domain-error";
 import {
   postMeshControlMessage,
   readMeshControlResponseJson,
@@ -129,34 +126,6 @@ import {
   isMeshWorkerExecutionEnabled,
   requireMeshRuntimeRole,
 } from "./mesh-runtime";
-
-const LEGACY_MESH_EXECUTION_CAPABILITY_IDS = [
-  "commandExecution",
-  "fileOperations",
-  "acpRuntime",
-  "interactiveTerminal",
-  "provisioning",
-  "devboxLifecycle",
-  "tcpTunnel",
-  "serverHealth",
-] as const;
-
-function capabilitiesForMeshPeer(
-  capabilities: ExecutionHostCapabilities,
-  supportsRuntimeSnapshot: boolean,
-): ExecutionHostCapabilities {
-  if (supportsRuntimeSnapshot) {
-    return capabilities;
-  }
-  const compatible: ExecutionHostCapabilities = {};
-  for (const capability of LEGACY_MESH_EXECUTION_CAPABILITY_IDS) {
-    const version = capabilities[capability];
-    if (version !== undefined) {
-      compatible[capability] = version;
-    }
-  }
-  return compatible;
-}
 
 const log = createLogger("core:mesh-manager");
 const MESH_WORKER_KILL_DELAY_MS = 100;
@@ -358,6 +327,13 @@ export class MeshManager {
   ): Promise<MeshEnrollmentResponse> {
     requireMeshRuntimeRole("controller");
     const identity = await ensureLocalMeshNodeIdentity();
+    const controllerEncryptionPublicKey = identity.encryptionPublicKey;
+    if (!controllerEncryptionPublicKey) {
+      throw new DomainError(
+        "mesh_execution_encryption_key_invalid",
+        "The local mesh identity has no usable encryption public key.",
+      );
+    }
 
     // Verify the enrollment signature
     assertMeshPeerIdentity(
@@ -549,7 +525,7 @@ export class MeshManager {
             : getMeshTransport(envelope.route.relayUrl),
           workerPublicKey: envelope.workerPublicKey,
           workerFingerprint: envelope.workerFingerprint,
-          workerEncryptionPublicKey: envelope.workerEncryptionPublicKey ?? null,
+          workerEncryptionPublicKey: envelope.workerEncryptionPublicKey,
           workerTlsCertificate: envelope.protocolVersion === 1
             ? envelope.workerTlsCertificate
             : null,
@@ -634,7 +610,7 @@ export class MeshManager {
       controllerInstanceName: identity.instanceName,
       controllerPublicKey: identity.publicKey,
       controllerFingerprint: identity.fingerprint,
-      controllerEncryptionPublicKey: identity.encryptionPublicKey,
+      controllerEncryptionPublicKey,
     } satisfies Omit<MeshEnrollmentResponse, "signature">;
     return {
       ...response,
@@ -995,11 +971,6 @@ export class MeshManager {
       signature,
     }, nonce, {
       signal: options.signal,
-      headers: {
-        [MESH_RUNTIME_SNAPSHOT_HEADER]: String(
-          MESH_RUNTIME_SNAPSHOT_VERSION,
-        ),
-      },
     });
     const parsedResponse = MeshHealthCheckResponseSchema.safeParse(
       await readMeshControlResponseJson(response, { signal: options.signal }),
@@ -1132,7 +1103,6 @@ export class MeshManager {
 
   async receiveHealthCheck(
     envelope: MeshHealthCheck,
-    options: { includeRuntimeSnapshot?: boolean } = {},
   ): Promise<MeshHealthCheckResponse> {
     requireMeshRuntimeRole("worker");
     assertMeshPeerIdentity(
@@ -1180,13 +1150,8 @@ export class MeshManager {
       controllerNodeId: envelope.senderNodeId,
       requestNonce: envelope.nonce,
       workerDirectory: execution.directory,
-      ...(options.includeRuntimeSnapshot
-        ? { workerPlatform: execution.platform }
-        : {}),
-      workerCapabilities: capabilitiesForMeshPeer(
-        execution.capabilities,
-        options.includeRuntimeSnapshot === true,
-      ),
+      workerPlatform: execution.platform,
+      workerCapabilities: execution.capabilities,
       workerAcceptRemoteExecution: execution.acceptRemoteExecution,
       workerConfigRevision: execution.revision,
     };
@@ -1210,11 +1175,15 @@ export class MeshManager {
     const identity = discovered.descriptor.role === "controller"
       ? await ensureLocalMeshIdentityWithEndpoint()
       : await ensureLocalMeshNodeIdentity();
+    const workerEncryptionPublicKey = identity.encryptionPublicKey;
+    if (!workerEncryptionPublicKey) {
+      throw new DomainError(
+        "mesh_execution_encryption_key_invalid",
+        "The local mesh identity has no usable encryption public key.",
+      );
+    }
     const instanceName = requireMeshInstanceName(identity);
     const execution = await getWorkerExecutionConfig();
-    const targetSupportsRuntimeSnapshot =
-      discovered.descriptor.role === "controller"
-      && discovered.runtimeSnapshotVersion >= MESH_RUNTIME_SNAPSHOT_VERSION;
     const nonce = crypto.randomUUID();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
     const common = {
@@ -1222,15 +1191,10 @@ export class MeshManager {
       workerInstanceName: instanceName,
       workerPublicKey: identity.publicKey,
       workerFingerprint: identity.fingerprint,
-      workerEncryptionPublicKey: identity.encryptionPublicKey,
+      workerEncryptionPublicKey,
       workerDirectory: execution.directory,
-      ...(targetSupportsRuntimeSnapshot
-        ? { workerPlatform: execution.platform }
-        : {}),
-      workerCapabilities: capabilitiesForMeshPeer(
-        execution.capabilities,
-        targetSupportsRuntimeSnapshot,
-      ),
+      workerPlatform: execution.platform,
+      workerCapabilities: execution.capabilities,
       workerAcceptRemoteExecution: execution.acceptRemoteExecution,
       workerConfigRevision: execution.revision,
       enrollmentToken: input.enrollmentToken,
@@ -1462,7 +1426,7 @@ export class MeshManager {
           controllerInstanceName: body.controllerInstanceName,
           controllerPublicKey: body.controllerPublicKey,
           controllerFingerprint: body.controllerFingerprint,
-          controllerEncryptionPublicKey: body.controllerEncryptionPublicKey ?? null,
+          controllerEncryptionPublicKey: body.controllerEncryptionPublicKey,
           controllerRoute,
         });
       } catch (error) {

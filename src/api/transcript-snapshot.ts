@@ -1,5 +1,5 @@
 import type { TranscriptSnapshotOptions } from "@/shared";
-import { isDomainError } from "../core/domain-error";
+import { isDomainError } from "../domain/domain-error";
 import { domainErrorResponse, errorResponse } from "./helpers";
 
 /**

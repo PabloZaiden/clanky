@@ -2,7 +2,7 @@ import type { AgentTransferPayload } from "@/contracts/schemas";
 import type { Agent } from "@/shared/agent";
 import { getWorkspace } from "../persistence/workspaces";
 import { agentManager } from "./agent-manager";
-import { DomainError } from "./domain-error";
+import { DomainError } from "../domain/domain-error";
 import { isGitBackedWorkspace } from "./workspace-capabilities";
 
 const AGENT_TRANSFER_FORMAT = "clanky-agent" as const;

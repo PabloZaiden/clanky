@@ -1,5 +1,5 @@
 import type { ProvisioningStep } from "@/shared";
-import { DomainError, type DomainErrorOptions } from "../domain-error";
+import { DomainError, type DomainErrorOptions } from "../../domain/domain-error";
 
 export class ProvisioningFailedError extends DomainError<string> {
   constructor(

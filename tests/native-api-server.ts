@@ -3,7 +3,7 @@ import type { Server } from "bun";
 import { apiRoutes } from "../src/api";
 import { testOwnerUser } from "./setup";
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
-import { runWithCurrentUser } from "../src/core/user-context";
+import { runWithCurrentUser } from "../src/context/user-context";
 
 export interface NativeApiServerOptions {
   /** Bun.serve's idleTimeout value, expressed in seconds. */

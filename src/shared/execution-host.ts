@@ -500,12 +500,6 @@ export function supportsGitCommandScope(
   return getUnavailableGitCommandCapability(capabilities, scope) === null;
 }
 
-export function supportsAcpRuntime(
-  capabilities: ExecutionHostCapabilities,
-): boolean {
-  return supportsExecutionHostCapability(capabilities, "acpRuntime", 1);
-}
-
 export function supportsPortableAcpRuntime(
   capabilities: ExecutionHostCapabilities,
 ): boolean {
@@ -520,9 +514,7 @@ export function getUnavailableGitCommandCapability(
     capabilities,
     "git",
   );
-  const supportsLegacyGit = capabilities.git === 1
-    && supportsExecutionHostCapability(capabilities, "commandExecution");
-  if (!supportsGitRpc && !supportsLegacyGit) {
+  if (!supportsGitRpc) {
     return "git";
   }
   if (scope === "repository") {
@@ -530,9 +522,7 @@ export function getUnavailableGitCommandCapability(
   }
   const supportsWorktreeRpc = supportsGitRpc
     && supportsExecutionHostCapability(capabilities, "managedWorktrees");
-  const supportsLegacyWorktrees = supportsLegacyGit
-    && capabilities.managedWorktrees === 1;
-  return supportsWorktreeRpc || supportsLegacyWorktrees
+  return supportsWorktreeRpc
     ? null
     : "managedWorktrees";
 }
@@ -541,8 +531,6 @@ export function supportsWorkspaceExecutionHost(
   capabilities: ExecutionHostCapabilities,
 ): boolean {
   return WORKSPACE_EXECUTION_HOST_CAPABILITIES.every((capability) =>
-    capability === "acpRuntime"
-      ? supportsAcpRuntime(capabilities)
-      : supportsExecutionHostCapability(capabilities, capability)
+    supportsExecutionHostCapability(capabilities, capability)
   );
 }

@@ -15,7 +15,7 @@ import {
 } from "./agents-md-optimizer";
 import { backendManager } from "./backend-manager";
 import type { CommandExecutor } from "./command-executor";
-import { DomainError } from "./domain-error";
+import { DomainError } from "../domain/domain-error";
 import { workspaceManager } from "./workspace-manager";
 
 export interface AgentsMdReadResult {

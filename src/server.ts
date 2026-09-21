@@ -49,11 +49,11 @@ import {
 import { installRealtimeHeartbeat } from "./realtime-heartbeat";
 import { CLANKY_VERSION } from "./version";
 import { resolveTerminal } from "./core/terminal-connection";
-import { isDomainError } from "./core/domain-error";
+import { isDomainError } from "./domain/domain-error";
 import { meshTerminalGateway } from "./core/mesh-terminal-gateway";
 import { meshTcpTunnelGateway } from "./core/mesh-tcp-tunnel-gateway";
 import { closeAllMeshTerminalConnections } from "./core/terminal";
-import { runWithCurrentUser } from "./core/user-context";
+import { runWithCurrentUser } from "./context/user-context";
 import {
   configureMeshRuntime,
   getMeshWorkerDirectory,
@@ -69,10 +69,6 @@ import {
   MESH_RELAY_DESCRIPTOR_PATH,
   type MeshControllerWellKnownDescriptor,
 } from "./shared/mesh-relay";
-import {
-  MESH_RUNTIME_SNAPSHOT_HEADER,
-  MESH_RUNTIME_SNAPSHOT_VERSION,
-} from "./shared/mesh";
 import { controllerRelayService } from "./core/controller-relay-service";
 import { workerRelayService } from "./core/worker-relay-service";
 import { meshHealthService } from "./core/mesh-health-service";
@@ -297,13 +293,7 @@ export const routes = defineRoutes<ClankyRealtimeEvent>({
         publicKey: identity.publicKey,
         fingerprint: identity.fingerprint,
       };
-      return Response.json(descriptor, {
-        headers: {
-          [MESH_RUNTIME_SNAPSHOT_HEADER]: String(
-            MESH_RUNTIME_SNAPSHOT_VERSION,
-          ),
-        },
-      });
+      return Response.json(descriptor);
     },
   },
   "/api/previews/bridge": {
@@ -440,7 +430,7 @@ export async function getWebAppServer(
     workerExecutionEnabled: options.workerExecutionEnabled,
     relayOnly,
   });
-  await initializeDatabase({ meshWorker });
+  await initializeDatabase();
   const identity = await ensureLocalMeshNodeIdentity();
   let workerTls: Bun.TLSOptions | undefined;
   if (meshWorker) {

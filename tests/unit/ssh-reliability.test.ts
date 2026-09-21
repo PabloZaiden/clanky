@@ -86,7 +86,6 @@ describe("SSH reliability policy", () => {
     try {
       await expect(
         backend.connect({
-          mode: "spawn",
           provider: "opencode",
           transport: "ssh",
           hostname: "example.test",

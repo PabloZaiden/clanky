@@ -4,7 +4,7 @@
  */
 
 import type { TaskPromptIntent, Task, TaskConfig, TaskState, ConsecutiveErrorTracker } from "@/shared";
-import { DEFAULT_TASK_CONFIG, normalizeTaskPromptIntent } from "@/shared/task";
+import { DEFAULT_TASK_CONFIG } from "@/shared/task";
 import { normalizeCommitScope } from "@/shared";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { CheapModelSelectionSchema } from "@/contracts/schemas";
@@ -363,8 +363,8 @@ export function rowToTask(row: Record<string, unknown>): Task {
 }
 
 function normalizePendingPromptMode(value: unknown): TaskPromptIntent | undefined {
-  if (value !== "task_context" && value !== "engine_context" && value !== "direct_user" && value !== "plain_chat") {
+  if (value !== "engine_context" && value !== "direct_user") {
     return undefined;
   }
-  return normalizeTaskPromptIntent(value);
+  return value;
 }

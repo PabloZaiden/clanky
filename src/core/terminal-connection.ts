@@ -11,7 +11,7 @@ import type {
 } from "@/shared";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { backendManager } from "./backend-manager";
-import { DomainError, isDomainError } from "./domain-error";
+import { DomainError, isDomainError } from "../domain/domain-error";
 import { managedContextIdentityResolver } from "./managed-context-identity";
 import { buildManagedContextEnvironment } from "./managed-context-environment";
 import { managedCredentialService, type ManagedRuntimeCredential } from "./managed-credential-service";
@@ -26,7 +26,7 @@ import {
 } from "./terminal";
 import { DEFAULT_SSH_TERMINAL_COMMAND_TIMEOUT_MS } from "./ssh-bridge/constants";
 import { hasPersistentSession } from "./ssh-persistent-session";
-import { requireCurrentUser, runWithCurrentUser } from "./user-context";
+import { requireCurrentUser, runWithCurrentUser } from "../context/user-context";
 import { workspaceManager } from "./workspace-manager";
 import { resolveWorkspaceExecutionTarget } from "./workspace-execution-target";
 import {

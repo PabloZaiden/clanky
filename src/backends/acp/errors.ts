@@ -1,4 +1,4 @@
-import { DomainError, type DomainErrorOptions } from "../../core/domain-error";
+import { DomainError, type DomainErrorOptions } from "../../domain/domain-error";
 import type { AgentProvider } from "@/shared/settings";
 import {
   SSHPASS_INVALID_PASSWORD_EXIT_CODE,

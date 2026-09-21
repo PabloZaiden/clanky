@@ -17,20 +17,20 @@ import {
 } from "../taskActions";
 import { createLogger } from "@pablozaiden/webapp/web";
 import type { TerminalSession } from "@/shared";
-import type { MessageImageAttachment } from "@/shared/message-attachments";
+import type { MessageAttachment } from "@/shared/message-attachments";
 import type { UseTaskActionsParams } from "./useTaskActions";
 
 const log = createLogger("useTask");
 
 export interface UseTaskFollowUpActionsResult {
-  addressReviewComments: (comments: string, attachments?: MessageImageAttachment[]) => Promise<AddressCommentsResult>;
+  addressReviewComments: (comments: string, attachments?: MessageAttachment[]) => Promise<AddressCommentsResult>;
   enablePullRequestAutoMerge: () => Promise<PullRequestAutoMergeResult>;
   startAutomaticPrFlow: () => Promise<AutomaticPrFlowResult>;
   stopAutomaticPrFlow: () => Promise<AutomaticPrFlowResult>;
   sendFollowUp: (
     message: string,
     model?: { providerID: string; modelID: string },
-    attachments?: MessageImageAttachment[],
+    attachments?: MessageAttachment[],
   ) => Promise<boolean>;
   connectTerminal: () => Promise<TerminalSession | null>;
 }
@@ -39,7 +39,7 @@ export function useTaskFollowUpActions(params: UseTaskActionsParams): UseTaskFol
   const { taskId, isActiveTask, ignoreStaleTaskAction, ignoreStaleTaskError, setError, refresh } = params;
 
   const addressReviewComments = useCallback(
-    async (comments: string, attachments?: MessageImageAttachment[]): Promise<AddressCommentsResult> => {
+    async (comments: string, attachments?: MessageAttachment[]): Promise<AddressCommentsResult> => {
       const actionTaskId = taskId;
       const staleAction = ignoreStaleTaskAction("addressReviewComments", actionTaskId, {
         success: false,
@@ -87,7 +87,7 @@ export function useTaskFollowUpActions(params: UseTaskActionsParams): UseTaskFol
     async (
       message: string,
       model?: { providerID: string; modelID: string },
-      attachments?: MessageImageAttachment[],
+      attachments?: MessageAttachment[],
     ): Promise<boolean> => {
       const actionTaskId = taskId;
       const staleAction = ignoreStaleTaskAction("sendFollowUp", actionTaskId, false);

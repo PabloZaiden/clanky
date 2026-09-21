@@ -7,12 +7,13 @@
  *   bun tests/test-data-generation/generate-demo-ui-data.ts --skip-apply
  *   bun tests/test-data-generation/generate-demo-ui-data.ts --data-dir ./tmp/demo-data
  *
- * The SQL seed is kept in the current schema. This script intentionally does
- * not rewrite legacy columns or transcript payloads at runtime.
+ * The SQL seed is kept in the current schema and is applied without data
+ * rewriting.
  */
 
 import { mkdir } from "fs/promises";
 import { join, resolve } from "path";
+import { migrations } from "../../src/persistence/migrations";
 
 interface DatabaseModule {
   closeDatabase: () => void;
@@ -111,26 +112,29 @@ async function applySeedToDatabase(dataDir: string, sqlPath: string): Promise<vo
       );
     }
 
-    const legacyTables = db.query(`
+    const obsoleteTables = db.query(`
       SELECT name
       FROM sqlite_master
       WHERE type = 'table'
         AND name IN ('ssh_server_sessions', 'port_forwards', 'execution_nodes')
       ORDER BY name
     `).all() as Array<{ name?: unknown }>;
-    if (legacyTables.length > 0) {
-      const names = legacyTables
+    if (obsoleteTables.length > 0) {
+      const names = obsoleteTables
         .map((row) => row.name)
         .filter((name): name is string => typeof name === "string");
-      throw new Error(`Demo seed requires the consolidated schema; legacy tables remain: ${names.join(", ")}`);
+      throw new Error(`Demo seed requires the consolidated schema; obsolete tables remain: ${names.join(", ")}`);
     }
 
     const schemaVersionRow = db.query(
       "SELECT MAX(version) AS version FROM schema_migrations",
     ).get() as { version?: unknown };
     const schemaVersion = schemaVersionRow.version;
-    if (schemaVersion !== 57) {
-      throw new Error(`Demo seed requires schema version 57, got ${schemaVersion}`);
+    const currentSchemaVersion = migrations.at(-1)?.version;
+    if (schemaVersion !== currentSchemaVersion) {
+      throw new Error(
+        `Demo seed requires schema version ${currentSchemaVersion}, got ${schemaVersion}`,
+      );
     }
 
     const requiredDemoRows: Array<[string, string]> = [

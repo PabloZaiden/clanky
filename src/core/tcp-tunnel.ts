@@ -24,8 +24,8 @@ import {
   type MeshDuplexSocket,
 } from "./mesh-peer-transport";
 import { executionHostService } from "./execution-host-service";
-import { requireCurrentUserId } from "./user-context";
-import { DomainError } from "./domain-error";
+import { requireCurrentUserId } from "../context/user-context";
+import { DomainError } from "../domain/domain-error";
 
 export interface TcpTunnel {
   readonly destroyed: boolean;

@@ -10,7 +10,7 @@ import { GenerateAgentCodeRequestSchema, PrepareGenerateAgentCodeRequestSchema }
 import type { GenerateAgentCodeRequest, PrepareGenerateAgentCodeRequest } from "@/contracts/schemas";
 import { agentManager } from "../../core/agent-manager";
 import { generateDeterministicAgentCode } from "../../core/deterministic-agent-generation";
-import { isDomainError } from "../../core/domain-error";
+import { isDomainError } from "../../domain/domain-error";
 import { domainErrorResponse, errorResponse, requireWorkspace } from "../helpers";
 import { resolveDomainErrorHttpMapping } from "../domain-error-policy";
 import { parseAndValidate } from "../validation";

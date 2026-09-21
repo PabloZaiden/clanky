@@ -4,7 +4,7 @@
 
 import type { GitHubIssueSummary } from "@/contracts";
 import type { CommandExecutor } from "./command-executor";
-import { DomainError } from "./domain-error";
+import { DomainError } from "../domain/domain-error";
 import { normalizeGitHubRepositoryUrl } from "../lib/github-repository-url";
 
 const GH_ISSUE_LIST_ARGS = [

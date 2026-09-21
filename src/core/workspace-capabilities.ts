@@ -1,5 +1,5 @@
 import type { Workspace } from "@/shared/workspace";
-import { DomainError } from "./domain-error";
+import { DomainError } from "../domain/domain-error";
 
 export const WORKSPACE_GIT_REQUIRED_CODE = "workspace_git_required" as const;
 export const WORKSPACE_WORKTREES_DISABLED_CODE = "workspace_worktrees_disabled" as const;

@@ -1,6 +1,6 @@
 import type { TaskCtx } from "./context";
 import type { Task, TaskStatus, ModelConfig } from "@/shared/task";
-import type { MessageImageAttachment } from "@/shared/message-attachments";
+import type { MessageAttachment } from "@/shared/message-attachments";
 import type { SendFollowUpOptions, SendFollowUpResult } from "./task-types";
 import {
   loadTask,
@@ -76,7 +76,7 @@ export async function sendFollowUpImpl(
 async function startSingleTurnFollowUp(
   ctx: TaskCtx,
   task: Task,
-  options: { message: string; model?: ModelConfig; attachments?: MessageImageAttachment[] },
+  options: { message: string; model?: ModelConfig; attachments?: MessageAttachment[] },
 ): Promise<SendFollowUpResult> {
   const taskId = task.config.id;
   const activeEngine = ctx.engines.get(taskId);
@@ -184,7 +184,7 @@ async function startSingleTurnFollowUp(
 
 function prepareSingleTurnFollowUpState(
   engine: TaskEngine,
-  options: { message: string; model?: ModelConfig; attachments?: MessageImageAttachment[] },
+  options: { message: string; model?: ModelConfig; attachments?: MessageAttachment[] },
 ): void {
   const state = engine.state;
   if (state.status === "completed" || state.status === "pushed") {

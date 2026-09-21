@@ -15,7 +15,6 @@ import {
   getSchemaVersion,
   migrations,
   runMigrations,
-  WORKER_SCHEMA_BASELINE_VERSION,
 } from "../../src/persistence/migrations";
 import {
   assertSchemaInventory,
@@ -66,77 +65,20 @@ function indexNames(tableName: string): string[] {
 function createVersionedMigrationDatabase(
   dataDir: string,
   version: number,
-  options: { legacyWorkerSchema?: boolean } = {},
 ): void {
-  const legacyDatabase = new Database(join(dataDir, "clanky.db"));
-  legacyDatabase.exec(`
+  const database = new Database(join(dataDir, "clanky.db"));
+  database.exec(`
     CREATE TABLE schema_migrations (
       version INTEGER PRIMARY KEY,
       name TEXT NOT NULL,
       applied_at TEXT NOT NULL
     )
   `);
-  legacyDatabase.run(
+  database.run(
     "INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)",
     [version, `migration_${String(version)}`, "now"],
   );
-  if (options.legacyWorkerSchema === true) {
-    legacyDatabase.exec(`
-      CREATE TABLE preview_sessions (
-        id TEXT PRIMARY KEY,
-        user_id TEXT NOT NULL,
-        workspace_id TEXT NOT NULL,
-        remote_host TEXT NOT NULL,
-        remote_port INTEGER NOT NULL,
-        local_host TEXT NOT NULL,
-        local_port INTEGER NOT NULL,
-        local_url TEXT NOT NULL,
-        initial_path TEXT NOT NULL,
-        cli_client_id TEXT,
-        cli_hostname TEXT,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'active',
-        connected_at TEXT,
-        closed_at TEXT,
-        error_message TEXT,
-        FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
-      );
-      INSERT INTO preview_sessions (
-        id, user_id, workspace_id, remote_host, remote_port, local_host,
-        local_port, local_url, initial_path, created_at, updated_at
-      ) VALUES (
-        'legacy-preview', 'legacy-user', 'legacy-workspace', '127.0.0.1',
-        3000, '127.0.0.1', 4000, 'http://127.0.0.1:4000', '/', 'now', 'now'
-      );
-      CREATE TABLE chat_transcript_entries (
-        chat_id TEXT NOT NULL,
-        user_id TEXT NOT NULL,
-        entry_id TEXT NOT NULL,
-        kind TEXT NOT NULL CHECK (kind IN ('message', 'tool', 'log')),
-        timestamp TEXT NOT NULL,
-        sequence INTEGER NOT NULL,
-        payload TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        tool_name TEXT,
-        tool_status TEXT,
-        tool_input TEXT,
-        tool_output TEXT,
-        tool_extras TEXT,
-        PRIMARY KEY (chat_id, entry_id),
-        FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE
-      );
-      INSERT INTO chat_transcript_entries (
-        chat_id, user_id, entry_id, kind, timestamp, sequence, payload,
-        created_at, updated_at
-      ) VALUES (
-        'legacy-chat', 'legacy-user', 'legacy-entry', 'message', 'now', 1,
-        '{"role":"assistant","content":"legacy"}', 'now', 'now'
-      );
-    `);
-  }
-  legacyDatabase.close();
+  database.close();
 }
 
 describe("database schema", () => {
@@ -149,12 +91,12 @@ describe("database schema", () => {
     await withTempDataDir(async () => {
       await initializeDatabase();
 
-      expect(getSchemaVersion(getDatabase())).toBe(BASELINE_SCHEMA_VERSION + 1);
+      expect(getSchemaVersion(getDatabase())).toBe(migrations.at(-1)!.version);
       expect(
         (getDatabase().query("SELECT COUNT(*) AS count FROM schema_migrations").get() as {
           count: number;
         }).count,
-      ).toBe(BASELINE_SCHEMA_VERSION + 1);
+      ).toBe(migrations.length);
       expect(tableNames()).toEqual([...getFreshSchemaTableNames()].sort());
       expect(() => assertSchemaInventory(getDatabase())).not.toThrow();
       expect(tableNames()).toContain("execution_hosts");
@@ -214,7 +156,7 @@ describe("database schema", () => {
           username: string;
         }).username,
       ).toBe("demo-user");
-      expect(getSchemaVersion(getDatabase())).toBe(BASELINE_SCHEMA_VERSION + 1);
+      expect(getSchemaVersion(getDatabase())).toBe(migrations.at(-1)!.version);
       expect(runMigrations(getDatabase())).toBe(0);
     });
   });
@@ -229,70 +171,101 @@ describe("database schema", () => {
     });
   });
 
-  test("allows workers from the worker baseline through the latest historical marker", async () => {
-    for (const version of [
-      WORKER_SCHEMA_BASELINE_VERSION,
-      BASELINE_SCHEMA_VERSION - 1,
-    ]) {
-      await withTempDataDir(async (dataDir) => {
-        createVersionedMigrationDatabase(dataDir, version, {
-          legacyWorkerSchema: true,
-        });
-
-        await initializeDatabase({ meshWorker: true });
-
-        expect(getSchemaVersion(getDatabase())).toBe(BASELINE_SCHEMA_VERSION + 1);
-        expect(runMigrations(getDatabase(), { meshWorker: true })).toBe(0);
-        expect(
-          (
-            getDatabase()
-              .query(
-                "SELECT local_url FROM preview_sessions WHERE id = ?",
-              )
-              .get("legacy-preview") as { local_url: string }
-          ).local_url,
-        ).toBe("http://127.0.0.1:4000");
-        expect(
-          (
-            getDatabase()
-              .query(
-                "SELECT payload FROM chat_transcript_entries WHERE entry_id = ?",
-              )
-              .get("legacy-entry") as { payload: string }
-          ).payload,
-        ).toBe('{"role":"assistant","content":"legacy"}');
-        expect(indexNames("preview_sessions")).not.toContain(
-          "idx_preview_sessions_execution_host_status",
-        );
-        expect(indexNames("chat_transcript_entries")).not.toContain(
-          "idx_chat_transcript_entries_assistant_page",
-        );
-      });
-    }
-  });
-
-  test("rejects workers below the worker schema baseline", async () => {
+  test("removes obsolete Mesh and SSH tables during initialization", async () => {
     await withTempDataDir(async (dataDir) => {
-      createVersionedMigrationDatabase(
-        dataDir,
-        WORKER_SCHEMA_BASELINE_VERSION - 1,
-      );
+      createVersionedMigrationDatabase(dataDir, BASELINE_SCHEMA_VERSION + 1);
+      const database = new Database(join(dataDir, "clanky.db"));
+      for (const tableName of [
+        "mesh_sync_conflicts",
+        "mesh_link_claims",
+        "mesh_sync_cursors",
+        "mesh_sync_outbox",
+        "mesh_sync_checkpoints",
+        "mesh_pairing_approvals",
+        "mesh_pairing_requests",
+        "mesh_links",
+        "mesh_link_members",
+        "mesh_nodes",
+        "ssh_server_sessions",
+      ]) {
+        database.run(`CREATE TABLE ${tableName} (id TEXT PRIMARY KEY)`);
+      }
+      database.close();
 
-      await expect(
-        initializeDatabase({ meshWorker: true }),
-      ).rejects.toThrow("below the consolidated baseline");
+      await initializeDatabase();
+
+      for (const tableName of [
+        "mesh_sync_conflicts",
+        "mesh_link_claims",
+        "mesh_sync_cursors",
+        "mesh_sync_outbox",
+        "mesh_sync_checkpoints",
+        "mesh_pairing_approvals",
+        "mesh_pairing_requests",
+        "mesh_links",
+        "mesh_link_members",
+        "mesh_nodes",
+        "ssh_server_sessions",
+      ]) {
+        expect(tableNames()).not.toContain(tableName);
+      }
     });
   });
 
-  test("keeps controllers strict when a baseline marker hides a legacy table", async () => {
+  test("removes Mesh records without encryption keys during migration", async () => {
     await withTempDataDir(async (dataDir) => {
-      createVersionedMigrationDatabase(dataDir, BASELINE_SCHEMA_VERSION, {
-        legacyWorkerSchema: true,
-      });
-
-      await expect(initializeDatabase()).rejects.toThrow(
-        "Cannot create index",
+      const database = new Database(join(dataDir, "clanky.db"));
+      database.exec(`
+        CREATE TABLE schema_migrations (
+          version INTEGER PRIMARY KEY,
+          name TEXT NOT NULL,
+          applied_at TEXT NOT NULL
+        );
+        CREATE TABLE mesh_controller_grants (
+          controller_node_id TEXT NOT NULL,
+          controller_encryption_public_key TEXT
+        );
+        CREATE TABLE mesh_worker_registrations (
+          worker_node_id TEXT NOT NULL,
+          worker_encryption_public_key TEXT
+        );
+        CREATE TABLE mesh_node_identity (
+          singleton INTEGER PRIMARY KEY,
+          encryption_public_key TEXT
+        );
+      `);
+      for (let version = 1; version <= BASELINE_SCHEMA_VERSION + 2; version++) {
+        database.run(
+          "INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)",
+          [version, `migration_${String(version)}`, "now"],
+        );
+      }
+      database.run(
+        "INSERT INTO mesh_controller_grants VALUES (?, ?), (?, ?), (?, ?)",
+        ["valid-controller", "controller-key", "null-controller", null, "empty-controller", "  "],
       );
+      database.run(
+        "INSERT INTO mesh_worker_registrations VALUES (?, ?), (?, ?), (?, ?)",
+        ["valid-worker", "worker-key", "null-worker", null, "empty-worker", "  "],
+      );
+      database.run(
+        "INSERT INTO mesh_node_identity VALUES (?, ?)",
+        [1, null],
+      );
+
+      expect(runMigrations(database)).toBe(1);
+      expect(
+        database
+          .query("SELECT controller_node_id FROM mesh_controller_grants")
+          .all(),
+      ).toEqual([{ controller_node_id: "valid-controller" }]);
+      expect(
+        database
+          .query("SELECT worker_node_id FROM mesh_worker_registrations")
+          .all(),
+      ).toEqual([{ worker_node_id: "valid-worker" }]);
+      expect(database.query("SELECT * FROM mesh_node_identity").all()).toEqual([]);
+      database.close();
     });
   });
 
@@ -334,7 +307,7 @@ describe("database schema", () => {
     });
   });
 
-  test("reset recreates the inventory baseline and clears current and legacy data", async () => {
+  test("reset recreates the inventory baseline and clears current data", async () => {
     await withTempDataDir(async () => {
       await initializeDatabase();
       getDatabase().run(
@@ -360,9 +333,9 @@ describe("database schema", () => {
           count: number;
         }).count,
       ).toBe(0);
-      expect(getSchemaVersion(getDatabase())).toBe(BASELINE_SCHEMA_VERSION + 1);
-        expect(tableNames()).toEqual([...getFreshSchemaTableNames()].sort());
-        expect(() => assertSchemaInventory(getDatabase())).not.toThrow();
+      expect(getSchemaVersion(getDatabase())).toBe(migrations.at(-1)!.version);
+      expect(tableNames()).toEqual([...getFreshSchemaTableNames()].sort());
+      expect(() => assertSchemaInventory(getDatabase())).not.toThrow();
       expect(getDatabase().query("PRAGMA foreign_key_check").all()).toEqual([]);
     });
   });

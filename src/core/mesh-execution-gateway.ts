@@ -58,7 +58,7 @@ import {
   type FileWriteStreamResult,
   type GitCommandScope,
 } from "./command-executor";
-import { DomainError } from "./domain-error";
+import { DomainError } from "../domain/domain-error";
 import { buildMeshExecutionSessionSigningPayload } from "./mesh-protocol";
 import type { AgentProvider } from "@/shared/settings";
 import { requireTrustedController } from "./mesh-peer-auth";
@@ -433,7 +433,6 @@ async function assertTrustedCaller(
     publicKey: request.callerPublicKey,
     fingerprint: request.callerFingerprint,
     encryptionPublicKey: request.callerEncryptionPublicKey,
-    requireEncryptionKey: false,
     context: "execution caller",
   });
   const pathStyle = executionPathStyleForPlatform(process.platform);
@@ -695,7 +694,7 @@ export class MeshExecutionGateway {
     }
 
     const { executionRoot, pathStyle } = await assertTrustedCaller(request);
-    const decryptedEnvironment = request.encryptedEnvironment === undefined
+    const decryptedEnvironment = request.encryptedEnvironment === null
       ? undefined
       : await decryptMeshPayload(request.encryptedEnvironment);
     const environment = parseManagedContextEnvironment(decryptedEnvironment);

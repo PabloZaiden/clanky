@@ -6,7 +6,6 @@ const directory = process.cwd();
 
 function buildConnectionConfig(script: string) {
   return {
-    mode: "spawn" as const,
     provider: "opencode" as const,
     transport: "stdio" as const,
     directory,

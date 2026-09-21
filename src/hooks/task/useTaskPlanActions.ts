@@ -11,13 +11,13 @@ import {
   type AcceptPlanResult,
 } from "../taskActions";
 import { createLogger } from "@pablozaiden/webapp/web";
-import type { MessageImageAttachment } from "@/shared/message-attachments";
+import type { MessageAttachment } from "@/shared/message-attachments";
 import type { UseTaskActionsParams } from "./useTaskActions";
 
 const log = createLogger("useTask");
 
 export interface UseTaskPlanActionsResult {
-  sendPlanFeedback: (feedback: string, attachments?: MessageImageAttachment[]) => Promise<boolean>;
+  sendPlanFeedback: (feedback: string, attachments?: MessageAttachment[]) => Promise<boolean>;
   acceptPlan: () => Promise<AcceptPlanResult>;
   discardPlan: () => Promise<boolean>;
 }
@@ -27,7 +27,7 @@ export function useTaskPlanActions(params: UseTaskActionsParams): UseTaskPlanAct
     params;
 
   const sendPlanFeedback = useCallback(
-    async (feedback: string, attachments?: MessageImageAttachment[]): Promise<boolean> => {
+    async (feedback: string, attachments?: MessageAttachment[]): Promise<boolean> => {
       const actionTaskId = taskId;
       const staleAction = ignoreStaleTaskAction("sendPlanFeedback", actionTaskId, false);
       if (staleAction !== null) {

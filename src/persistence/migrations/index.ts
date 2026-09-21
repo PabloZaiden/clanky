@@ -16,12 +16,6 @@ const log = createLogger("persistence:migrations");
 
 export const BASELINE_SCHEMA_VERSION = 56;
 
-/**
- * The last historical migration required by the worker runtime. Migrations
- * 53-56 only change controller-owned state or data that workers do not use.
- */
-export const WORKER_SCHEMA_BASELINE_VERSION = 52;
-
 export interface Migration {
   version: number;
   name: string;
@@ -103,6 +97,54 @@ export const migrations: Migration[] = [
       db.run("DROP TABLE IF EXISTS vnc_sessions");
     },
   },
+  {
+    version: BASELINE_SCHEMA_VERSION + 2,
+    name: "remove_obsolete_mesh_and_ssh_tables",
+    transactional: false,
+    up: (db) => {
+      db.run("PRAGMA foreign_keys = OFF");
+      try {
+        for (const tableName of [
+          "mesh_sync_conflicts",
+          "mesh_link_claims",
+          "mesh_sync_cursors",
+          "mesh_sync_outbox",
+          "mesh_sync_checkpoints",
+          "mesh_pairing_approvals",
+          "mesh_pairing_requests",
+          "mesh_links",
+          "mesh_link_members",
+          "mesh_nodes",
+          "ssh_server_sessions",
+        ]) {
+          db.run(`DROP TABLE IF EXISTS ${tableName}`);
+        }
+      } finally {
+        db.run("PRAGMA foreign_keys = ON");
+      }
+    },
+  },
+  {
+    version: BASELINE_SCHEMA_VERSION + 3,
+    name: "remove_mesh_grants_without_encryption_keys",
+    up: (db) => {
+      db.run(`
+        DELETE FROM mesh_controller_grants
+        WHERE controller_encryption_public_key IS NULL
+          OR trim(controller_encryption_public_key) = ''
+      `);
+      db.run(`
+        DELETE FROM mesh_worker_registrations
+        WHERE worker_encryption_public_key IS NULL
+          OR trim(worker_encryption_public_key) = ''
+      `);
+      db.run(`
+        DELETE FROM mesh_node_identity
+        WHERE encryption_public_key IS NULL
+          OR trim(encryption_public_key) = ''
+      `);
+    },
+  },
 ];
 
 export function tableExists(db: Database, tableName: string): boolean {
@@ -161,13 +203,9 @@ function assertMigrationDefinitions(): void {
 
 /**
  * Rejects databases that cannot safely be treated as the consolidated
- * production baseline. Worker databases may skip controller-only historical
- * migrations once they contain the worker-required schema.
+ * production baseline.
  */
-export function assertBaselineCompatibility(
-  db: Database,
-  options: { meshWorker?: boolean } = {},
-): void {
+export function assertSchemaBaseline(db: Database): void {
   if (!tableExists(db, "schema_migrations")) {
     const applicationTableCount = db
       .query(`
@@ -193,12 +231,6 @@ export function assertBaselineCompatibility(
     );
   }
   if (version > 0 && version < BASELINE_SCHEMA_VERSION) {
-    if (
-      options.meshWorker === true
-      && version >= WORKER_SCHEMA_BASELINE_VERSION
-    ) {
-      return;
-    }
     throw new Error(
       `Database schema version ${version} is below the consolidated baseline ` +
         `${BASELINE_SCHEMA_VERSION}; refusing to mark an incomplete schema as current`,
@@ -215,10 +247,9 @@ function recordMigration(db: Database, migration: Migration): void {
 
 export function runMigrations(
   db: Database,
-  options: { meshWorker?: boolean } = {},
 ): number {
   assertMigrationDefinitions();
-  assertBaselineCompatibility(db, options);
+  assertSchemaBaseline(db);
   ensureMigrationsTable(db);
 
   const appliedVersions = getAppliedVersions(db);
