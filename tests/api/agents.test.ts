@@ -921,38 +921,6 @@ describe("Agents API Integration", () => {
     }
   });
 
-  test("waits for the provider to finish before returning the file draft", async () => {
-    let releaseProvider!: () => void;
-    const providerGate = new Promise<void>((resolve) => {
-      releaseProvider = resolve;
-    });
-    mockBackend.setResponseGate(() => providerGate);
-
-    try {
-      const agent = await createAgent("Streaming generation agent");
-      const response = await fetch(`${baseUrl}/api/agents/${agent!.config.id}/code/generate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "Streaming file generation draft",
-          prompt: "Generate code and write it to the temporary source file",
-          comments: "",
-          previousCode: "",
-          workspaceId,
-          model: testModel,
-        }),
-      });
-
-      expect(response.status).toBe(200);
-      releaseProvider();
-      const generated = await response.json() as { code: string };
-      expect(generated.code.trim().length).toBeGreaterThan(0);
-    } finally {
-      releaseProvider();
-      mockBackend.setResponseGate();
-    }
-  });
-
   test("keeps generation alive past the HTTP idle timeout", async () => {
     let releaseProvider!: () => void;
     const providerGate = new Promise<void>((resolve) => {

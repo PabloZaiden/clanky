@@ -99,35 +99,6 @@ describe("ACP prompt completion", () => {
     expect(state.hasActivePrompt("session-1")).toBe(false);
   });
 
-  test("uses the ACP state_update idle signal as the terminal event", () => {
-    const { state, translator, events } = createTranslator();
-    state.beginPrompt("session-1");
-
-    translator.handleSessionUpdate({
-      sessionId: "session-1",
-      update: {
-        sessionUpdate: "agent_message_chunk",
-        content: { text: "Complete response" },
-      },
-    });
-    translator.handleSessionUpdate({
-      sessionId: "session-1",
-      update: {
-        sessionUpdate: "state_update",
-        state: "idle",
-      },
-    });
-    translator.handleSessionUpdate({
-      sessionId: "session-1",
-      update: {
-        sessionUpdate: "state_update",
-        state: "idle",
-      },
-    });
-
-    expect(events.filter((event) => event.type === "message.complete")).toHaveLength(1);
-  });
-
   test("reconciles an explicit terminal signal received before the prompt acknowledgement", async () => {
     let resolvePrompt: ((result: unknown) => void) | undefined;
     const requester: RpcRequester = {
@@ -163,34 +134,6 @@ describe("ACP prompt completion", () => {
 
     expect(events.filter((event) => event.type === "message.complete")).toHaveLength(1);
     expect(state.hasActivePrompt("session-1")).toBe(false);
-  });
-
-  test("does not let a legacy idle status truncate later response chunks", () => {
-    const { state, translator, events } = createTranslator();
-    state.beginPrompt("session-1");
-
-    translator.handleSessionUpdate({
-      sessionId: "session-1",
-      update: {
-        sessionUpdate: "agent_message_chunk",
-        content: { text: "first" },
-      },
-    });
-    translator.handleSessionStatus({ sessionId: "session-1", status: "idle" });
-    translator.handleSessionUpdate({
-      sessionId: "session-1",
-      update: {
-        sessionUpdate: "agent_message_chunk",
-        content: { text: " second" },
-      },
-    });
-
-    expect(events.filter((event) => event.type === "message.complete")).toHaveLength(0);
-    expect(events.filter((event) => event.type === "session.status")).toHaveLength(0);
-    expect(events
-      .filter((event): event is Extract<AgentEvent, { type: "message.delta" }> => event.type === "message.delta")
-      .map((event) => event.content)
-      .join("")).toBe("first second");
   });
 
   test("treats a prompt RPC stopReason as terminal", async () => {

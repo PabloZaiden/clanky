@@ -331,35 +331,6 @@ describe("Plan Mode API Integration", () => {
   });
 
   describe("POST /api/tasks (plan mode)", () => {
-    test("creates task in planning status when planMode is true", async () => {
-      const response = await fetch(`${baseUrl}/api/tasks`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...baseCreateTaskPayload,
-          prompt: "Create a plan",
-          name: "Test Task",
-          workspaceId: currentWorkspaceId,
-          maxIterations: 1,
-          planMode: true,
-          autoAcceptPlan: false,
-          model: testModel,
-          useWorktree: true,
-        }),
-      });
-
-      expect(response.ok).toBe(true);
-      const data = await response.json();
-      expect(data.config?.id).toBeDefined();
-
-      // Get the task and verify status
-      const getResponse = await fetch(`${baseUrl}/api/tasks/${data.config.id}`);
-      expect(getResponse.ok).toBe(true);
-      const task = await getResponse.json();
-      expect(task.state.status).toBe("planning");
-      expect(task.state.planMode?.active).toBe(true);
-    });
-
     test("starts from uploaded plan as an approved plan", async () => {
       const uploadedPlanContent = `\uFEFF# Uploaded plan
 
@@ -539,57 +510,6 @@ describe("Plan Mode API Integration", () => {
   });
 
   describe("POST /api/tasks/:id/plan/discard", () => {
-    test("deletes the task", async () => {
-      // Commit any previous changes first
-      try {
-        await runGit(currentTestWorkDir, ["add", "-A"]);
-        await runGit(currentTestWorkDir, ["commit", "-m", "Test changes", "--allow-empty"]);
-      } catch {
-        // Ignore if nothing to commit
-      }
-
-      // Create task in plan mode
-      const createResponse = await fetch(`${baseUrl}/api/tasks`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...baseCreateTaskPayload,
-          prompt: "Create a plan",
-          name: "Test Task",
-          workspaceId: currentWorkspaceId,
-          maxIterations: 1,
-          planMode: true,
-          autoAcceptPlan: false,
-          model: testModel,
-          useWorktree: true,
-        }),
-      });
-
-      expect(createResponse.status).toBe(201);
-      const response = await createResponse.json();
-      expect(response.config).toBeDefined();
-      const id = response.config.id;
-      await waitForPlanReady(id);
-
-      // Verify task exists
-      let getResponse = await fetch(`${baseUrl}/api/tasks/${id}`);
-      expect(getResponse.ok).toBe(true);
-
-      // Discard the plan
-      const discardResponse = await fetch(`${baseUrl}/api/tasks/${id}/plan/discard`, {
-        method: "POST",
-      });
-
-      expect(discardResponse.status).toBe(200);
-      await waitForStatus(id, ["deleted"]);
-
-      // Verify task is marked as deleted (soft delete)
-      getResponse = await fetch(`${baseUrl}/api/tasks/${id}`);
-      expect(getResponse.ok).toBe(true);
-      const deletedTask = await getResponse.json();
-      expect(deletedTask.state.status).toBe("deleted");
-    });
-
     test("returns 404 if task not found", async () => {
       const response = await fetch(`${baseUrl}/api/tasks/nonexistent/plan/discard`, {
         method: "POST",

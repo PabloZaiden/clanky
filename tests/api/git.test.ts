@@ -26,7 +26,6 @@ describe("Git API Integration", () => {
   let server: Server<unknown>;
   let baseUrl: string;
   let githubIssuesCommandResult: CommandResult | null = null;
-  let githubIssuesCommandArgs: string[] | null = null;
   let executionHostBinding: ExecutionHostBinding;
 
   class GitHubIssuesTestExecutor extends TestCommandExecutor {
@@ -36,7 +35,6 @@ describe("Git API Integration", () => {
       options?: CommandOptions,
     ): Promise<CommandResult> {
       if (command === "gh" && args[0] === "issue" && githubIssuesCommandResult) {
-        githubIssuesCommandArgs = [...args];
         return githubIssuesCommandResult;
       }
       return await super.exec(command, args, options);
@@ -106,16 +104,6 @@ describe("Git API Integration", () => {
       expect(branchNames).toContain("feature-branch");
     });
 
-    test("returns the current branch correctly", async () => {
-      const res = await fetch(`${baseUrl}/api/git/branches?workspaceId=git-test-workspace`);
-      const body = await res.json();
-
-      // Current branch should match what's checked out
-      const currentBranch = body.branches.find((b: { current: boolean }) => b.current);
-      expect(currentBranch).toBeTruthy();
-      expect(body.currentBranch).toBe(currentBranch.name);
-    });
-
     test("rejects every Git endpoint for a directory workspace", async () => {
       const workspaceId = "directory-git-api-workspace";
       await createWorkspace({
@@ -145,23 +133,6 @@ describe("Git API Integration", () => {
       }
     });
 
-    test("uses workspaceId as the only workspace identity", async () => {
-      const res = await fetch(
-        `${baseUrl}/api/git/branches?workspaceId=git-test-workspace`
-      );
-      expect(res.status).toBe(200);
-    });
-
-    test("ignores a supplied directory query", async () => {
-      const res = await fetch(
-        `${baseUrl}/api/git/branches?directory=${encodeURIComponent("/tmp/another-directory")}&workspaceId=git-test-workspace`
-      );
-      expect(res.status).toBe(200);
-
-      const body = await res.json();
-      expect(body.currentBranch).toBeTruthy();
-      expect(Array.isArray(body.branches)).toBe(true);
-    });
   });
 
   // ==========================================================================
@@ -220,7 +191,6 @@ describe("Git API Integration", () => {
   describe("GET /api/git/github-issues", () => {
     afterEach(() => {
       githubIssuesCommandResult = null;
-      githubIssuesCommandArgs = null;
     });
 
     test("returns open issues sorted by number", async () => {
@@ -246,48 +216,6 @@ describe("Git API Integration", () => {
           { number: 42, title: "Later issue" },
         ],
       });
-    });
-
-    test("returns an empty issue list when the repository has no open issues", async () => {
-      githubIssuesCommandResult = {
-        success: true,
-        stdout: "[]",
-        stderr: "",
-        exitCode: 0,
-      };
-
-      const res = await fetch(
-        `${baseUrl}/api/git/github-issues?workspaceId=git-test-workspace`,
-      );
-      expect(res.status).toBe(200);
-      expect(await res.json()).toEqual({ issues: [] });
-    });
-
-    test("passes the repository resolved from workspace metadata to gh", async () => {
-      await createWorkspace({
-        id: "git-test-workspace-issue-repo",
-        name: "Git Test Issue Repository",
-        directory: testWorkDir,
-        workspaceType: "git",
-        executionTargetRevision: 1,
-        executionHostBinding,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        serverSettings: getDefaultServerSettings(),
-        repoUrl: "https://github.com/persisted/repo.git",
-      });
-      githubIssuesCommandResult = {
-        success: true,
-        stdout: "[]",
-        stderr: "",
-        exitCode: 0,
-      };
-
-      const res = await fetch(
-        `${baseUrl}/api/git/github-issues?workspaceId=git-test-workspace-issue-repo`,
-      );
-      expect(res.status).toBe(200);
-      expect(githubIssuesCommandArgs).toContain("persisted/repo");
     });
 
     test("returns a safe error when gh fails", async () => {

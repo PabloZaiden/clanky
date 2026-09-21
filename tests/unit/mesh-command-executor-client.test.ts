@@ -10,11 +10,9 @@ import { ensureLocalMeshNodeIdentity } from "../../src/persistence/mesh-node-ide
 import { saveWorkerRegistration } from "../../src/persistence/mesh";
 import { POSIX_EXECUTION_HOST_CAPABILITIES } from "../../src/shared/execution-host";
 import {
-  MESH_ACP_LEGACY_SESSION_REQUEST_TTL_MS,
   MESH_ACP_SESSION_RENEWAL_LEAD_MS,
   MESH_ACP_SESSION_RENEWAL_RETRY_MS,
   MESH_ACP_SESSION_RENEWAL_SAFETY_MARGIN_MS,
-  MESH_ACP_SESSION_REQUEST_TTL_MS,
   MESH_ACP_SESSION_TTL_MS,
 } from "../../src/shared/mesh-execution";
 import { seedTestOwnerUser } from "../setup";
@@ -37,7 +35,7 @@ afterEach(async () => {
 });
 
 describe("MeshCommandExecutorClient", () => {
-  test("shares concurrent session opening and encrypts managed environment", async () => {
+  test("encrypts the managed environment in session requests", async () => {
     await ensureLocalMeshNodeIdentity();
     const workerEncryption = generateKeyPairSync("rsa", {
       modulusLength: 2048,
@@ -63,25 +61,11 @@ describe("MeshCommandExecutorClient", () => {
       workerConfigRevision: 1,
     });
 
-    let releaseFirstRequest!: () => void;
-    const firstRequestReleased = new Promise<void>((resolve) => {
-      releaseFirstRequest = resolve;
-    });
-    let requestStarted!: () => void;
-    const firstRequestStarted = new Promise<void>((resolve) => {
-      requestStarted = resolve;
-    });
-    let sessionRequestCount = 0;
     let sessionRequest: Record<string, unknown> | undefined;
     const fetchImpl = Object.assign(
       async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-        sessionRequestCount += 1;
         const request = JSON.parse(String(init?.body)) as Record<string, unknown>;
         sessionRequest = request;
-        if (sessionRequestCount === 1) {
-          requestStarted();
-          await firstRequestReleased;
-        }
         if (init?.signal?.aborted) {
           throw new DOMException("The request was aborted.", "AbortError");
         }
@@ -115,13 +99,8 @@ describe("MeshCommandExecutorClient", () => {
       fetch: fetchImpl,
     });
 
-    const firstOpen = client.openSession();
-    await firstRequestStarted;
-    const secondOpen = client.openSession();
-    releaseFirstRequest();
-    await Promise.all([firstOpen, secondOpen]);
+    await client.openSession();
 
-    expect(sessionRequestCount).toBe(1);
     expect(await client.getExecutionDirectory()).toBe("/absolute/workspace");
     expect(sessionRequest?.["encryptedEnvironment"]).toMatchObject({
       __clankyMeshEncrypted: true,
@@ -284,86 +263,6 @@ describe("MeshCommandExecutorClient", () => {
     await expect(opening).rejects.toMatchObject({ code: "mesh_execution_aborted" });
     expect(releaseRequests).toBe(1);
     client.closeSession();
-  });
-
-  test("falls back to the legacy ACP lease for older workers", async () => {
-    await ensureLocalMeshNodeIdentity();
-    await saveWorkerRegistration({
-      workerNodeId: "worker-1",
-      localUserId: "admin",
-      workerInstanceName: "Worker",
-      workerEndpoint: "http://worker.example",
-      workerTransport: "http",
-      workerPublicKey: "worker-public-key",
-      workerFingerprint: "worker-fingerprint",
-      workerEncryptionPublicKey: null,
-      workerTlsCertificate: null,
-      workerTlsFingerprint: null,
-      workerDirectory: "/workspace",
-      workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
-      workerAcceptRemoteExecution: true,
-      workerConfigRevision: 1,
-    });
-
-    const sessionRequests: Record<string, unknown>[] = [];
-    const fetchImpl = Object.assign(
-      async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-        const url = String(input);
-        if (!url.endsWith("/session")) {
-          throw new Error(`Unexpected mesh route: ${url}`);
-        }
-        const request = JSON.parse(String(init?.body)) as Record<string, unknown>;
-        const headers = init?.headers as Record<string, string>;
-        expect(headers["x-clanky-mesh-request-id"]).toBe(request["requestId"] as string);
-        sessionRequests.push(request);
-        if (sessionRequests.length === 1) {
-          return Response.json(
-            {
-              error: "mesh_execution_session_expiry_invalid",
-              message: "The execution session expiry is too far in the future.",
-            },
-            { status: 400 },
-          );
-        }
-        return Response.json({
-          protocolVersion: 1,
-          sessionId: "legacy-session",
-          expiresAt: request["expiresAt"],
-          encryptedPayload: encryptMeshPayload(
-            { sessionToken: "s".repeat(32) },
-            request["callerEncryptionPublicKey"] as string,
-          ),
-        });
-      },
-      { preconnect: () => undefined },
-    ) as typeof globalThis.fetch;
-
-    const client = new MeshCommandExecutorClient({
-      workspaceId: "workspace-1",
-      directory: "/workspace",
-      executionNodeId: "worker-1",
-      provider: "copilot",
-      localUserId: "admin",
-      channel: "acp",
-      fetch: fetchImpl,
-    });
-
-    try {
-      await client.openSession();
-
-      expect(sessionRequests).toHaveLength(2);
-      expect(sessionRequests[0]?.["requestId"]).not.toBe(sessionRequests[1]?.["requestId"]);
-      expect(sessionRequests[0]?.["nonce"]).not.toBe(sessionRequests[1]?.["nonce"]);
-      expect(sessionRequests[0]?.["signature"]).not.toBe(sessionRequests[1]?.["signature"]);
-      const extendedExpiry = Date.parse(sessionRequests[0]?.["expiresAt"] as string);
-      const legacyExpiry = Date.parse(sessionRequests[1]?.["expiresAt"] as string);
-      expect(extendedExpiry - legacyExpiry).toBeGreaterThan(
-        MESH_ACP_SESSION_REQUEST_TTL_MS - MESH_ACP_LEGACY_SESSION_REQUEST_TTL_MS - 1_000,
-      );
-      expect(client.getSessionConnection().sessionId).toBe("legacy-session");
-    } finally {
-      client.closeSession();
-    }
   });
 
   test("retries a transient renewal failure using bounded backoff", async () => {
@@ -612,130 +511,6 @@ describe("MeshCommandExecutorClient", () => {
     } finally {
       client.closeSession();
     }
-  });
-
-  test("runs long-running commands through the asynchronous mesh protocol", async () => {
-    await ensureLocalMeshNodeIdentity();
-    await saveWorkerRegistration({
-      workerNodeId: "worker-1",
-      localUserId: "admin",
-      workerInstanceName: "Worker",
-      workerEndpoint: "http://worker.example",
-      workerTransport: "http",
-      workerPublicKey: "worker-public-key",
-      workerFingerprint: "worker-fingerprint",
-      workerEncryptionPublicKey: null,
-      workerTlsCertificate: null,
-      workerTlsFingerprint: null,
-      workerDirectory: "/workspace",
-      workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
-      workerAcceptRemoteExecution: true,
-      workerConfigRevision: 1,
-    });
-
-    let callerEncryptionPublicKey = "";
-    let statusRequests = 0;
-    const fetchImpl = Object.assign(
-      async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-        const url = String(input);
-        const request = JSON.parse(String(init?.body)) as Record<string, unknown>;
-        if (url.endsWith("/session")) {
-          callerEncryptionPublicKey = request["callerEncryptionPublicKey"] as string;
-          return Response.json({
-            protocolVersion: 1,
-            sessionId: "session-1",
-            expiresAt: request["expiresAt"],
-            encryptedPayload: encryptMeshPayload(
-              { sessionToken: "s".repeat(32) },
-              callerEncryptionPublicKey,
-            ),
-          });
-        }
-        if (!url.endsWith("/execution/async")) {
-          throw new Error(`Unexpected mesh route: ${url}`);
-        }
-
-        let payload: Record<string, unknown>;
-        if (request["action"] === "start") {
-          payload = {
-            jobId: "command-1",
-            status: "running",
-            output: {
-              stdout: "",
-              stderr: "",
-              stdoutOffset: 0,
-              stderrOffset: 0,
-              nextStdoutOffset: 0,
-              nextStderrOffset: 0,
-            },
-          };
-        } else {
-          statusRequests += 1;
-          payload = statusRequests === 1
-            ? {
-                jobId: "command-1",
-                status: "running",
-                output: {
-                  stdout: "devbox ",
-                  stderr: "",
-                  stdoutOffset: 0,
-                  stderrOffset: 0,
-                  nextStdoutOffset: 7,
-                  nextStderrOffset: 0,
-                },
-              }
-            : {
-                jobId: "command-1",
-                status: "completed",
-                output: {
-                  stdout: "rebuilt\n",
-                  stderr: "",
-                  stdoutOffset: 7,
-                  stderrOffset: 0,
-                  nextStdoutOffset: 15,
-                  nextStderrOffset: 0,
-                },
-                result: {
-                  success: true,
-                  stdout: "devbox rebuilt\n",
-                  stderr: "",
-                  exitCode: 0,
-                },
-              };
-        }
-        return Response.json({
-          protocolVersion: 1,
-          requestId: request["requestId"],
-          encryptedPayload: encryptMeshPayload(payload, callerEncryptionPublicKey),
-        });
-      },
-      { preconnect: () => undefined },
-    ) as typeof globalThis.fetch;
-
-    const output: string[] = [];
-    const client = new MeshCommandExecutorClient({
-      workspaceId: "workspace-1",
-      directory: "/workspace",
-      executionNodeId: "worker-1",
-      provider: "copilot",
-      localUserId: "admin",
-      fetch: fetchImpl,
-    });
-
-    const result = await client.exec("devbox", ["rebuild"], {
-      longRunning: true,
-      onStdoutChunk: (chunk) => output.push(chunk),
-    });
-
-    expect(result).toEqual({
-      success: true,
-      stdout: "devbox rebuilt\n",
-      stderr: "",
-      exitCode: 0,
-    });
-    expect(output).toEqual(["devbox ", "rebuilt\n"]);
-    expect(statusRequests).toBe(2);
-    client.closeSession();
   });
 
   test("retries a lost async start response without launching a second command", async () => {

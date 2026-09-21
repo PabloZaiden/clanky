@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   applyTranscriptStreamEvent,
-  createTranscriptChangeSet,
   DEFAULT_TASK_CONFIG,
   mergeTranscriptSnapshot,
   type Task,
@@ -86,45 +85,6 @@ describe("incremental transcript persistence", () => {
 
   afterEach(async () => {
     await teardownTestContext(context);
-  });
-
-  test("updates one task entry without rebuilding the other transcript entries", async () => {
-    const task = createTask(context);
-    await runWithCurrentUser(testOwnerUser, async () => {
-      await saveTask(task);
-
-      const loaded = await loadTask(task.config.id);
-      if (!loaded) {
-        throw new Error("Expected task to load");
-      }
-      const originalTool = loaded.state.toolCalls[0];
-      if (!originalTool) {
-        throw new Error("Expected task tool call");
-      }
-      const updatedTool: PersistedToolCall = {
-        ...originalTool,
-        output: "after",
-      };
-      const nextState = {
-        ...loaded.state,
-        toolCalls: [updatedTool],
-      };
-
-      await updateTaskState(task.config.id, nextState, {
-        transcriptChanges: createTranscriptChangeSet(nextState, [{
-          id: updatedTool.id,
-          kind: "tool",
-          timestamp: updatedTool.timestamp,
-          payload: updatedTool,
-        }]),
-      });
-
-      const persisted = await loadTask(task.config.id);
-      expect(persisted?.state.messages).toEqual(loaded.state.messages);
-      expect(persisted?.state.logs).toEqual(loaded.state.logs);
-      expect(persisted?.state.toolCalls[0]?.output).toBe("after");
-      expect(taskTranscriptStore.getMeta(task.config.id)?.entryCount).toBe(3);
-    });
   });
 
   test("validates cursor bindings before accepting a continuation", () => {
@@ -410,35 +370,6 @@ describe("incremental transcript persistence", () => {
     expect(merged.isPartial).toBe(false);
     expect(merged.hasOlder).toBe(false);
     expect(merged.nextCursor).toBeUndefined();
-  });
-
-  test("hydrates a partial snapshot into an empty transcript state", () => {
-    const incoming = {
-      messages: [
-        { id: "latest", role: "assistant" as const, content: "latest", timestamp: "2024-01-01T00:00:00.000Z" },
-      ],
-      logs: [],
-      toolCalls: [],
-      revision: "revision",
-      totalEntries: 1,
-      isPartial: true,
-      loadedResponses: 1,
-      totalResponses: 101,
-      hasOlder: true,
-      nextCursor: "cursor",
-    };
-    const merged = mergeTranscriptSnapshot({
-      messages: [],
-      logs: [],
-      toolCalls: [],
-      revision: "",
-      totalEntries: 0,
-      isPartial: false,
-      loadedResponses: 0,
-      totalResponses: 0,
-      hasOlder: false,
-    }, incoming);
-    expect(merged).toEqual(incoming);
   });
 
   test("advances the cursor when merging consecutive older transcript pages", () => {

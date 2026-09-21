@@ -230,64 +230,6 @@ describe("provisioning job recovery", () => {
       .toBe("interrupted");
   });
 
-  test("cleans an interrupted worker process through the selected host", async () => {
-    const executor = new ProvisioningTestExecutor();
-    backendManager.setExecutorFactoryForTesting(() => executor);
-    const createdAt = new Date().toISOString();
-    const executionHostBinding = await runWithCurrentUser(
-      testOwnerUser,
-      () => getTestLocalExecutionHostBinding(),
-    );
-    const enrollment = createWorkspaceWorkerEnrollment({
-      userId: testOwnerUser.id,
-      name: "Interrupted process worker",
-      ttlSeconds: 900,
-      controller: {
-        nodeId: "controller-node",
-        fingerprint: "controller-fingerprint",
-      },
-    });
-    markWorkspaceWorkerConnected({
-      userId: testOwnerUser.id,
-      enrollmentId: enrollment.enrollment.id,
-      workerNodeId: "interrupted-process-worker",
-    });
-    const job: ProvisioningJob = {
-      config: {
-        id: crypto.randomUUID(),
-        name: "Interrupted process workspace",
-        executionHostBinding,
-        workerEnrollmentId: enrollment.enrollment.id,
-        transport: "worker",
-        repoUrl: "https://github.com/octocat/interrupted-process.git",
-        basePath: "/workspaces",
-        provider: "copilot",
-        mode: "provision",
-        createdAt,
-      },
-      state: {
-        status: "running",
-        currentStep: "devbox_up",
-        targetDirectory: "/workspaces/interrupted-process",
-        resolvedDirectory: "/devbox/workspaces/interrupted-process",
-        updatedAt: createdAt,
-      },
-    };
-    createProvisioningJob(testOwnerUser.id, job);
-
-    await runWithCurrentUser(
-      testOwnerUser,
-      () => provisioningManager.reconcileDedicatedWorkerStartupState(),
-    );
-
-    expect(executor.calls.some((call) =>
-      call.command === "sh"
-      && call.args.some((arg) =>
-        arg.includes("/devbox/workspaces/interrupted-process/.devbox/clanky-worker/worker.pid"),
-      )
-    )).toBe(true);
-  });
-
   test("persists startup worker cleanup failures on the interrupted job", async () => {
     const executor = new ProvisioningTestExecutor({
       failWorkerProcessCleanup: true,

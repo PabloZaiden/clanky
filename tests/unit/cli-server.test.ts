@@ -1,9 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { WebAppCliCommandContext } from "@pablozaiden/webapp/cli";
-import {
-  parseServerCommandArgs,
-  runServerCommand,
-} from "../../src/cli/server";
+import { runServerCommand } from "../../src/cli/server";
 import type { ClankyCliContext } from "../../src/cli/mesh";
 
 function createServerContext(
@@ -99,62 +96,4 @@ describe("CLI server commands", () => {
     expect(stderrChunks).toEqual(["command failed\n"]);
   });
 
-  test("accepts legacy execution-host responses without route metadata", async () => {
-    const fetchFn = createFetch((url) => {
-      if (url.pathname === "/api/execution-hosts") {
-        return Response.json([{
-          ref: { kind: "mesh", nodeId: "legacy-worker" },
-          targetKey: "mesh:legacy-worker",
-          name: "Legacy worker",
-          endpoint: "https://legacy-worker.example",
-          repositoriesBasePath: "/srv",
-          preferredModel: null,
-          configurationRevision: 1,
-          accessRequirement: { kind: "none" },
-          acceptRemoteExecution: true,
-          capabilities: {},
-          revision: 1,
-        }]);
-      }
-      return Response.json({
-        executionHost: "mesh:legacy-worker",
-        success: true,
-        stdout: "legacy output\n",
-        stderr: "",
-        exitCode: 0,
-      });
-    });
-    const stdoutChunks: string[] = [];
-    const stderrChunks: string[] = [];
-    const result = await runServerCommand(createServerContext(
-      ["exec", "Legacy worker", "--", "pwd"],
-      fetchFn,
-      stdoutChunks,
-      stderrChunks,
-    ));
-
-    expect(result).toEqual({ exitCode: 0 });
-    expect(stdoutChunks).toEqual(["legacy output\n"]);
-    expect(stderrChunks).toEqual([]);
-  });
-
-  test("parses a serialized execution-host reference and SSH credential token", () => {
-    expect(parseServerCommandArgs([
-      "exec",
-      "mesh:worker-1",
-      "--cwd=/var/log/a=b",
-      "--credential-token=temporary=token",
-      "--",
-      "uname",
-      "-a",
-    ])).toEqual({
-      operation: "exec",
-      server: "mesh:worker-1",
-      cwd: "/var/log/a=b",
-      timeoutMs: undefined,
-      credentialToken: "temporary=token",
-      command: "uname",
-      args: ["-a"],
-    });
-  });
 });

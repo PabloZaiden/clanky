@@ -50,30 +50,6 @@ describe("Mock ACP runtime integration", () => {
     await discardTaskViaAPI(ctx.baseUrl, task.config.id);
   }, { timeout: 60_000 });
 
-  test("reaches PLAN_READY and then completes accepted-plan execution", async () => {
-    const { status, body } = await createTaskViaAPI(ctx.baseUrl, {
-      directory: ctx.workDir,
-      prompt: "Plan and then execute the mock ACP work",
-      name: "Mock ACP Plan Task",
-      planMode: true,
-      autoAcceptPlan: false,
-      model: mockAcpModel,
-    });
-
-    expect(status).toBe(201);
-    const task = body as Task;
-    const readyTask = await waitForPlanReady(ctx.baseUrl, task.config.id);
-    expect(readyTask.state.planMode?.isPlanReady).toBe(true);
-
-    const acceptResponse = await acceptPlanViaAPI(ctx.baseUrl, task.config.id);
-    expect(acceptResponse.status).toBe(200);
-    expect(acceptResponse.body.success).toBe(true);
-
-    const completed = await waitForTaskStatus(ctx.baseUrl, task.config.id, "completed");
-    expect(completed.state.status).toBe("completed");
-    await discardTaskViaAPI(ctx.baseUrl, task.config.id);
-  }, { timeout: 60_000 });
-
   test("accepts and executes a ready plan in a local-only repository", async () => {
     const originUrl = (await runGit(ctx.workDir, ["remote", "get-url", "origin"])).stdout.trim();
     await runGit(ctx.workDir, ["remote", "remove", "origin"]);

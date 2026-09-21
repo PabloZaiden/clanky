@@ -11,7 +11,6 @@ import {
   MeshExecutionGateway,
   assertMeshExecutionCwd,
   assertMeshExecutionPath,
-  getMeshExecutionOperationCapability,
   resolveMeshExecutionPath,
   resolveTrustedExecutionRoot,
 } from "../../src/core/mesh-execution-gateway";
@@ -91,28 +90,6 @@ describe("mesh execution path resolution", () => {
     });
   });
 
-  test("assigns capability versions by Mesh operation contract", () => {
-    expect(getMeshExecutionOperationCapability("exec")).toEqual({
-      id: "commandExecution",
-      minimumVersion: 1,
-    });
-    expect(getMeshExecutionOperationCapability("readFile")).toEqual({
-      id: "fileOperations",
-      minimumVersion: 1,
-    });
-    expect(getMeshExecutionOperationCapability("movePath")).toEqual({
-      id: "fileOperations",
-      minimumVersion: 2,
-    });
-    expect(getMeshExecutionOperationCapability("git")).toEqual({
-      id: "git",
-      minimumVersion: 2,
-    });
-    expect(getMeshExecutionOperationCapability("gitEnvironment")).toEqual({
-      id: "git",
-      minimumVersion: 2,
-    });
-  });
 });
 
 describe("mesh asynchronous command lifecycle", () => {

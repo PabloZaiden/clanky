@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, realpath, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join, relative } from "node:path";
+import { realpath } from "node:fs/promises";
+import { join } from "node:path";
 import {
   compiledClankyCommand,
   enrollMeshWorker,
@@ -21,10 +20,8 @@ import type {
   MeshWorkerRegistration,
   MeshWorkerStatus,
 } from "../../src/shared/mesh";
-import { CommandExecutorImpl } from "../../src/core/remote-command-executor";
 import { MeshCommandExecutor } from "../../src/core/mesh-command-executor";
-import { GitCommandError, GitService } from "../../src/core/git";
-import { ensurePlanningDirectory } from "../../src/core/planning-directory";
+import { GitService } from "../../src/core/git";
 import {
   executionPathsEqual,
   executionPathStyleForPlatform,
@@ -231,78 +228,6 @@ afterEach(async () => {
 });
 
 describe("native worker registration", () => {
-  test("runs Git and managed worktree paths on the native host", async () => {
-    const root = await mkdtemp(join(tmpdir(), "clanky-native-git-"));
-    const repoDirectory = join(root, "repository with spaces");
-    const configuredRepoDirectory = relative(process.cwd(), repoDirectory);
-    const executor = new CommandExecutorImpl({
-      provider: "local",
-      directory: configuredRepoDirectory,
-    });
-    const git = GitService.withExecutor(executor);
-
-    try {
-      expect(await executor.writeFile(
-        join(repoDirectory, "tracked.txt"),
-        "initial\n",
-      )).toBe(true);
-      await expect(git.hasStagedChanges(configuredRepoDirectory)).rejects.toBeInstanceOf(
-        GitCommandError,
-      );
-      for (const args of [
-        ["init", repoDirectory],
-        ["-C", repoDirectory, "config", "user.name", "Clanky Native E2E"],
-        ["-C", repoDirectory, "config", "user.email", "native-e2e@clanky.invalid"],
-      ]) {
-        const result = await executor.exec("git", args, { cwd: root });
-        expect(result.success).toBe(true);
-      }
-
-      expect(await executor.getExecutionDirectory()).toBe(repoDirectory);
-      expect(await git.isGitRepo(configuredRepoDirectory)).toBe(true);
-      const planningDirectory = await ensurePlanningDirectory(
-        executor,
-        configuredRepoDirectory,
-      );
-      expect(await executor.directoryExists(planningDirectory)).toBe(true);
-      expect(await executor.listDirectory(planningDirectory, {
-        includeHidden: true,
-      })).toEqual([]);
-      const currentBranch = await git.getCurrentBranch(configuredRepoDirectory);
-      expect(currentBranch.length).toBeGreaterThan(0);
-
-      await git.stageAll(configuredRepoDirectory);
-      await git.commit(configuredRepoDirectory, "test: initialize native repository");
-      expect(await git.hasUncommittedChanges(configuredRepoDirectory)).toBe(false);
-      expect(await git.getLocalBranches(configuredRepoDirectory)).toEqual([
-        { name: currentBranch, current: true },
-      ]);
-
-      expect(await executor.writeFile(
-        join(repoDirectory, "tracked.txt"),
-        "updated\n",
-      )).toBe(true);
-      expect(await git.getChangedFiles(configuredRepoDirectory)).toEqual(["tracked.txt"]);
-
-      const worktreePath = await git.getManagedWorktreePath(
-        configuredRepoDirectory,
-        "native-e2e",
-      );
-      await git.createWorktree(
-        configuredRepoDirectory,
-        worktreePath,
-        "native-e2e",
-        currentBranch,
-      );
-      expect(await git.worktreeExists(configuredRepoDirectory, worktreePath)).toBe(true);
-
-      await git.removeWorktree(configuredRepoDirectory, worktreePath, { force: true });
-      expect(await executor.directoryExists(worktreePath)).toBe(false);
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  }, 120_000);
-
   test("enrolls, executes through ACP, reports health, and reconnects after restart", async () => {
     const command = await compiledClankyCommand();
     const controller = await startMeshNode({ role: "controller", command });

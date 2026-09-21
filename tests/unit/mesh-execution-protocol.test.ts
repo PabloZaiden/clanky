@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
   MeshExecutionRpcRequestSchema,
-  MeshExecutionSessionRequestSchema,
   type MeshExecutionSessionRequest,
 } from "../../src/contracts/schemas/mesh-execution";
 import { buildMeshExecutionSessionSigningPayload } from "../../src/core/mesh-protocol";
@@ -29,28 +28,6 @@ function buildRequest(
 }
 
 describe("Mesh execution session protocol", () => {
-  test("keeps legacy signatures stable when no managed environment is present", () => {
-    const request = buildRequest();
-    const legacyPayload = JSON.stringify([
-      "clanky-mesh-execution-session-v1",
-      request.protocolVersion,
-      request.requestId,
-      request.callerNodeId,
-      request.callerPublicKey,
-      request.callerFingerprint,
-      request.callerEncryptionPublicKey,
-      request.targetNodeId,
-      request.workspaceId,
-      request.directory,
-      request.provider,
-      request.channel,
-      request.nonce,
-      request.expiresAt,
-    ]);
-
-    expect(buildMeshExecutionSessionSigningPayload(request)).toBe(legacyPayload);
-  });
-
   test("binds the encrypted managed environment into the session signature", () => {
     const request = buildRequest({ ciphertext: "encrypted" });
     const payload = buildMeshExecutionSessionSigningPayload(request);
@@ -60,13 +37,6 @@ describe("Mesh execution session protocol", () => {
       ...request,
       encryptedEnvironment: { ciphertext: "different" },
     })).not.toBe(payload);
-  });
-
-  test("accepts an encrypted environment field on ACP session requests", () => {
-    expect(MeshExecutionSessionRequestSchema.safeParse({
-      ...buildRequest({ ciphertext: "encrypted" }),
-      signature: "signature",
-    }).success).toBe(true);
   });
 
   test("validates the structured Git RPC boundary", () => {

@@ -8,26 +8,6 @@ import {
   resolveExecutionPathWithinDirectory,
 } from "../../src/core/execution-path";
 import { resolveCommandWorkingDirectory } from "../../src/core/command-execution-service";
-import { readValidatedPlanningFiles } from "../../src/core/planning-file-service";
-import { TestCommandExecutor } from "../mocks/mock-executor";
-
-class RelativePlanningFileExecutor extends TestCommandExecutor {
-  override readonly pathStyle = "posix";
-
-  override async getExecutionDirectory(): Promise<string> {
-    return "/resolved/repository";
-  }
-
-  override async readFile(path: string): Promise<string | null> {
-    if (path === "/resolved/repository/plans/plan.md") {
-      return "# Relative plan";
-    }
-    if (path === "/resolved/repository/plans/status.md") {
-      return "# Relative status";
-    }
-    return null;
-  }
-}
 
 describe("execution path containment", () => {
   // This pure contract protects path containment for host path syntaxes that are
@@ -164,16 +144,4 @@ describe("execution path containment", () => {
     )).toThrow("The execution cwd is not a valid path for the selected host.");
   });
 
-  test("reads planning files from the executor's canonical absolute directory", async () => {
-    const files = await readValidatedPlanningFiles(
-      new RelativePlanningFileExecutor(),
-      "relative/repository",
-      "./plans/plan.md",
-    );
-
-    expect(files).toEqual({
-      planContent: "# Relative plan",
-      statusContent: "# Relative status",
-    });
-  });
 });

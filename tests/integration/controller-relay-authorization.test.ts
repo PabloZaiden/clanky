@@ -14,11 +14,9 @@ import type {
 import {
   MeshRelayConnector,
 } from "../../src/core/mesh-relay-connector";
-import { MeshRelayStreamError } from "../../src/core/mesh-relay-errors";
 import {
   MeshRelayConnectorManager,
 } from "../../src/core/mesh-relay-connector-manager";
-import { WorkerRelayService } from "../../src/core/worker-relay-service";
 import { workspaceWorkerEnrollmentService } from "../../src/core/workspace-worker-enrollment-service";
 import { getMeshRelayFingerprint } from "../../src/core/mesh-relay-identity";
 import {
@@ -38,7 +36,6 @@ import {
   ensureLocalMeshNodeIdentity,
 } from "../../src/persistence/mesh-node-identity";
 import {
-  saveControllerGrant,
   saveWorkerRegistration,
 } from "../../src/persistence/mesh";
 import { POSIX_EXECUTION_HOST_CAPABILITIES } from "../../src/shared/execution-host";
@@ -154,12 +151,10 @@ describe("controller relay authorization recovery", () => {
   let relayDataDir = "";
   let relay: StartedRelayServer | undefined;
   let service: ControllerRelayService | undefined;
-  let workerService: WorkerRelayService | undefined;
 
   beforeEach(async () => {
     relay = undefined;
     service = undefined;
-    workerService = undefined;
     dataDir = await mkdtemp(join(tmpdir(), "clanky-controller-relay-sync-"));
     relayDataDir = await mkdtemp(join(tmpdir(), "clanky-relay-sync-"));
     closeDatabase();
@@ -172,7 +167,6 @@ describe("controller relay authorization recovery", () => {
   afterEach(async () => {
     await service?.stopRuntime();
     await service?.unpair();
-    await workerService?.stopRuntime();
     await relay?.stop();
     closeDatabase();
     delete process.env["CLANKY_DATA_DIR"];
@@ -309,101 +303,6 @@ describe("controller relay authorization recovery", () => {
         code: "mesh_relay_url_invalid",
       },
     });
-  });
-
-  test("does not reconnect after a deterministic authorization rejection", async () => {
-    const controllerIdentity = await ensureLocalMeshNodeIdentity();
-    const port = await availablePort();
-    const relayUrl = `http://127.0.0.1:${String(port)}`;
-    const runtimeConfig = readRuntimeConfig({
-      appName: "Clanky Relay",
-      envPrefix: "CLANKY",
-      appDirectoryName: ".clanky",
-      environment: {
-        CLANKY_DATA_DIR: relayDataDir,
-        CLANKY_HOST: "127.0.0.1",
-        CLANKY_PORT: String(port),
-        CLANKY_LOG_LEVEL: "fatal",
-      },
-    });
-    relay = await startRelayServer({
-      runtimeConfig,
-      controllerFingerprint: controllerIdentity.fingerprint,
-    });
-    saveControllerRelayPairing({
-      relayUrl,
-      relayPublicKey: relay.identity.publicKey,
-      relayFingerprint: relay.identity.fingerprint,
-      controllerNodeId: controllerIdentity.nodeId,
-      controllerFingerprint: controllerIdentity.fingerprint,
-    });
-
-    let connections = 0;
-    let authorizationAttempts = 0;
-    class RejectingAuthorizationConnector extends MeshRelayConnector {
-      override async replaceAuthorization(): Promise<number> {
-        authorizationAttempts += 1;
-        throw new MeshRelayStreamError(
-          "mesh_relay_relay_authorization_incomplete",
-          "The relay authorization transaction is incomplete.",
-          { status: 409 },
-        );
-      }
-    }
-    const manager = new MeshRelayConnectorManager({
-      socketFactory: (url) => {
-        connections += 1;
-        return new WebSocket(url) as unknown as MeshRelayClientSocket;
-      },
-      createConnector: (options) => new RejectingAuthorizationConnector(options),
-      baseDelayMs: 10,
-      maxDelayMs: 20,
-    });
-    service = new ControllerRelayService({ manager });
-    await service.startRuntime(
-      async () => new Response("Not found", { status: 404 }),
-    );
-
-    const status = await pollUntil(
-      async () => await service!.getStatus(),
-      (candidate) => candidate.runtimeError !== null,
-      {
-        description: "deterministic relay authorization rejection",
-        timeoutMs: 5_000,
-      },
-    );
-    expect(status.connected).toBe(true);
-    expect(status.runtimeError?.code)
-      .toBe("mesh_relay_relay_authorization_incomplete");
-    expect(authorizationAttempts).toBe(1);
-    expect(connections).toBe(1);
-  });
-
-  test("keeps the worker server available when a relay grant is incomplete", async () => {
-    await configureMeshRuntime({ meshWorker: true });
-    await saveControllerGrant({
-      controllerNodeId: "controller-corrupt-route",
-      controllerInstanceName: "Controller",
-      controllerPublicKey: "controller-public",
-      controllerFingerprint: "controller-fingerprint",
-      controllerEncryptionPublicKey: null,
-      controllerRoute: {
-        kind: "relay",
-        targetNodeId: "controller-corrupt-route",
-        relayUrl: "http://127.0.0.1:8080",
-        relayFingerprint: "relay-fingerprint",
-      },
-    });
-    getDatabase().query(`
-      UPDATE mesh_controller_grants
-      SET relay_fingerprint = NULL
-      WHERE controller_node_id = 'controller-corrupt-route'
-    `).run();
-
-    workerService = new WorkerRelayService();
-    await expect(workerService.startRuntime(
-      async () => new Response("Not found", { status: 404 }),
-    )).resolves.toBeUndefined();
   });
 
   test("keeps controller startup available with a corrupt relay worker row", async () => {

@@ -45,11 +45,6 @@ async function getAvailablePort(): Promise<number> {
   });
 }
 
-async function commandExists(command: string): Promise<boolean> {
-  const result = await Bun.$`which ${command}`.quiet().nothrow();
-  return result.exitCode === 0;
-}
-
 async function runCommand(command: string[], env?: NodeJS.ProcessEnv): Promise<CommandRunResult> {
   const proc = Bun.spawn(command, {
     stdin: "ignore",
@@ -94,12 +89,12 @@ async function waitForCondition(
   );
 }
 
-const canRunRealSshBridge = async () =>
-  process.env["CLANKY_RUN_REAL_SSH_BRIDGE_TEST"] === "1"
-  && await commandExists("sshd")
-  && await commandExists("ssh")
-  && await commandExists("ssh-keygen")
-  && await commandExists("dtach");
+const sshdExecutable = Bun.which("sshd");
+const canRunRealSshBridge = process.env["CLANKY_RUN_REAL_SSH_BRIDGE_TEST"] === "1"
+  && sshdExecutable !== null
+  && Bun.which("ssh") !== null
+  && Bun.which("ssh-keygen") !== null
+  && Bun.which("dtach") !== null;
 
 function startStreamingCapture(stream: ReadableStream<Uint8Array>): { read: () => string; done: Promise<void> } {
   const reader = stream.getReader();
@@ -138,11 +133,7 @@ describe("SshTerminalBridge integration", () => {
     await rm(tempDir, { recursive: true, force: true });
   });
 
-  test("connects through a real local sshd and tears it down when capabilities are available", async () => {
-    if (!(await canRunRealSshBridge())) {
-      return;
-    }
-
+  async function runRealSshBridgeTest(): Promise<void> {
     const homeDir = join(tempDir, "home");
     const sshDir = join(homeDir, ".ssh");
     const serverDir = join(tempDir, "server");
@@ -195,7 +186,7 @@ describe("SshTerminalBridge integration", () => {
       "Subsystem sftp internal-sftp",
     ].join("\n"));
 
-    const sshd = Bun.spawn(["/usr/sbin/sshd", "-D", "-f", configPath], {
+    const sshd = Bun.spawn([sshdExecutable!, "-D", "-f", configPath], {
       stdout: "ignore",
       stderr: "pipe",
     });
@@ -290,5 +281,11 @@ describe("SshTerminalBridge integration", () => {
       await sshd.exited;
       await sshdStderr.done;
     }
-  }, { timeout: 45_000 });
+  }
+
+  test.skipIf(!canRunRealSshBridge)(
+    "connects through a real local sshd and tears it down when capabilities are available",
+    runRealSshBridgeTest,
+    { timeout: 45_000 },
+  );
 });

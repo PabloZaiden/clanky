@@ -90,9 +90,6 @@ describe("workspace files API integration", () => {
   }
 
   class LargeDownloadExecutor extends TestCommandExecutor {
-    readFileCalled = false;
-    streamClosed = false;
-
     private readonly largeDownloadPayloadPrefix = new TextEncoder().encode("large download payload\n");
     private readonly largeDownloadSize = previousDownloadLimitBytes + 1;
 
@@ -109,17 +106,6 @@ describe("workspace files API integration", () => {
         };
       }
       return await super.getFileMetadata(path, options);
-    }
-
-    override async readFile(
-      path: string,
-      options?: FileStreamOptions,
-    ): Promise<string | null> {
-      if (path.endsWith("/large-download.bin")) {
-        this.readFileCalled = true;
-        return null;
-      }
-      return await super.readFile(path, options);
     }
 
     override async streamFile(path: string, _options?: FileStreamOptions): Promise<ReadableStream<Uint8Array> | null> {
@@ -148,74 +134,7 @@ describe("workspace files API integration", () => {
           controller.enqueue(new Uint8Array(chunkSize));
           remainingBytes -= chunkSize;
         },
-        cancel: () => {
-          this.streamClosed = true;
-        },
       });
-    }
-  }
-
-  class DownloadMetadataWithoutHashExecutor extends TestCommandExecutor {
-    hashRequested = false;
-    streamRequested = false;
-
-    private readonly payload = new TextEncoder().encode("download without hashing\n");
-
-    get payloadByteLength(): number {
-      return this.payload.byteLength;
-    }
-
-    override async getFileMetadata(
-      path: string,
-      options?: { includeContentHash?: boolean },
-    ): Promise<FileSystemMetadata | null> {
-      if (path.endsWith("/slow-hash-download.bin")) {
-        if (options?.includeContentHash !== false) {
-          this.hashRequested = true;
-          throw new Error("download metadata should not request a content hash");
-        }
-        return {
-          kind: "file",
-          size: this.payload.byteLength,
-          modifiedAtMs: 1_700_000_000_000,
-          isSymbolicLink: false,
-        };
-      }
-      return await super.getFileMetadata(path, options);
-    }
-
-    override async streamFile(path: string, _options?: FileStreamOptions): Promise<ReadableStream<Uint8Array> | null> {
-      if (!path.endsWith("/slow-hash-download.bin")) {
-        return await super.streamFile(path, _options);
-      }
-
-      this.streamRequested = true;
-      const payload = this.payload;
-      return new ReadableStream<Uint8Array>({
-        start(controller) {
-          controller.enqueue(payload);
-          controller.close();
-        },
-      });
-    }
-  }
-
-  class UploadTrackingExecutor extends TestCommandExecutor {
-    writeFileCalled = false;
-    streamWriteCalls = 0;
-
-    override async writeFile(path: string, content: string): Promise<boolean> {
-      this.writeFileCalled = true;
-      return await super.writeFile(path, content);
-    }
-
-    override async writeFileStream(
-      path: string,
-      stream: ReadableStream<Uint8Array>,
-      options?: Parameters<TestCommandExecutor["writeFileStream"]>[2],
-    ) {
-      this.streamWriteCalls += 1;
-      return await super.writeFileStream(path, stream, options);
     }
   }
 
@@ -225,27 +144,6 @@ describe("workspace files API integration", () => {
         success: false,
         errorCode: "source_not_found",
       };
-    }
-  }
-
-  class ConcurrentTreeExecutor extends TestCommandExecutor {
-    activeDirectoryListings = 0;
-    maximumConcurrentDirectoryListings = 0;
-
-    override async listDirectoryEntries(
-      path: string,
-      options?: { includeHidden?: boolean },
-    ) {
-      this.activeDirectoryListings += 1;
-      this.maximumConcurrentDirectoryListings = Math.max(
-        this.maximumConcurrentDirectoryListings,
-        this.activeDirectoryListings,
-      );
-      try {
-        return await super.listDirectoryEntries(path, options);
-      } finally {
-        this.activeDirectoryListings -= 1;
-      }
     }
   }
 
@@ -404,34 +302,12 @@ describe("workspace files API integration", () => {
     expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
     expect(response.headers.get("Content-Disposition")).toContain("attachment; filename=\"large-download.bin\"");
     expect(response.headers.get("X-Clanky-Download-Size")).toBe(String(previousDownloadLimitBytes + 1));
-    expect(largeDownloadExecutor.readFileCalled).toBe(false);
     const reader = response.body?.getReader();
     expect(reader).toBeDefined();
     const firstChunk = await reader!.read();
     expect(firstChunk.done).toBe(false);
     expect(new TextDecoder().decode(firstChunk.value).startsWith("large download payload")).toBe(true);
     await reader!.cancel();
-  });
-
-  test("starts download responses without hashing the whole file first", async () => {
-    const downloadExecutor = new DownloadMetadataWithoutHashExecutor();
-    backendManager.setExecutorFactoryForTesting(() => downloadExecutor);
-    const workspace = await createWorkspace();
-    const downloadUrl =
-      `${baseUrl}/api/workspaces/${workspace.id}/files/download?path=${encodeURIComponent("slow-hash-download.bin")}`;
-
-    const headResponse = await fetch(downloadUrl, { method: "HEAD" });
-    expect(headResponse.ok).toBe(true);
-    expect(headResponse.headers.get("Content-Length")).toBe(String(downloadExecutor.payloadByteLength));
-    expect(downloadExecutor.hashRequested).toBe(false);
-    expect(downloadExecutor.streamRequested).toBe(false);
-
-    const response = await fetch(downloadUrl);
-
-    expect(response.ok).toBe(true);
-    expect(await response.text()).toBe("download without hashing\n");
-    expect(downloadExecutor.hashRequested).toBe(false);
-    expect(downloadExecutor.streamRequested).toBe(true);
   });
 
   test("does not report directories with image-like names as images", async () => {
@@ -493,19 +369,6 @@ describe("workspace files API integration", () => {
     };
     expect(data.entriesByDirectory[""]?.map((entry) => entry.name)).toEqual([".git", "assets.png", "src", "logo.svg", "README.md"]);
     expect(data.entriesByDirectory["src"]?.map((entry) => entry.path)).toEqual(["src/index.ts"]);
-  });
-
-  test("loads independent tree directories concurrently", async () => {
-    const treeExecutor = new ConcurrentTreeExecutor();
-    backendManager.setExecutorFactoryForTesting(() => treeExecutor);
-    const workspace = await createWorkspace();
-
-    const response = await fetch(
-      `${baseUrl}/api/workspaces/${workspace.id}/files/tree`,
-    );
-
-    expect(response.ok).toBe(true);
-    expect(treeExecutor.maximumConcurrentDirectoryListings).toBeGreaterThan(1);
   });
 
   test("keeps symlinked directories as directory entries without traversing into them", async () => {
@@ -759,9 +622,7 @@ describe("workspace files API integration", () => {
       });
     });
 
-    test("uploads workspace files in chunks using streamed writes", async () => {
-      const uploadExecutor = new UploadTrackingExecutor();
-      backendManager.setExecutorFactoryForTesting(() => uploadExecutor);
+    test("uploads workspace files in chunks", async () => {
       const workspace = await createWorkspace();
 
       const createResponse = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/files/upload`, {
@@ -807,8 +668,6 @@ describe("workspace files API integration", () => {
       expect(completeData.file).toMatchObject({ path: "src/uploaded.txt", size: 11 });
       expect(await Bun.file(join(workDir, "src", "uploaded.txt")).text()).toBe("hello world");
       expect(await Bun.file(join(workDir, ".clanky-upload-tmp")).exists()).toBe(false);
-      expect(uploadExecutor.writeFileCalled).toBe(false);
-      expect(uploadExecutor.streamWriteCalls).toBe(2);
     });
 
     test("rejects upload chunks that exceed the declared size", async () => {

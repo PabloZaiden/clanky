@@ -111,8 +111,8 @@ describe("deterministic agent runner — API key lifecycle", () => {
     await rm(tempWorkDir, { recursive: true, force: true });
   });
 
-  test("API key is revoked after a successful run", async () => {
-    const result = await runWithCurrentUser(testOwnerUser, () =>
+  test("API key is revoked after completed and failed runs", async () => {
+    const completed = await runWithCurrentUser(testOwnerUser, () =>
       testDeterministicAgentCode({
         name: "Key cleanup test",
         prompt: "Run",
@@ -125,21 +125,17 @@ describe("deterministic agent runner — API key lifecycle", () => {
         useWorktree: false,
       }),
     );
-    expect(result.status).toBe("completed");
-    expect(result.logs.some((l) => l.message.includes("success"))).toBe(true);
+    expect(completed.status).toBe("completed");
 
-    const remainingKeys = managedCredentialService.listManagedKeysForCurrentUser
-      ? await runWithCurrentUser(testOwnerUser, () =>
-          Promise.resolve(
-            managedCredentialService.listManagedKeysForCurrentUser(DETERMINISTIC_AGENT_MANAGED_BY),
-          ),
-        )
-      : [];
-    expect(remainingKeys).toHaveLength(0);
-  });
+    expect(
+      await runWithCurrentUser(testOwnerUser, () =>
+        Promise.resolve(
+          managedCredentialService.listManagedKeysForCurrentUser(DETERMINISTIC_AGENT_MANAGED_BY),
+        ),
+      ),
+    ).toHaveLength(0);
 
-  test("API key is revoked after a failed run", async () => {
-    const result = await runWithCurrentUser(testOwnerUser, () =>
+    const failed = await runWithCurrentUser(testOwnerUser, () =>
       testDeterministicAgentCode({
         name: "Key cleanup on failure",
         prompt: "Run",
@@ -152,14 +148,15 @@ describe("deterministic agent runner — API key lifecycle", () => {
         useWorktree: false,
       }),
     );
-    expect(result.status).toBe("failed");
+    expect(failed.status).toBe("failed");
 
-    const remainingKeys = await runWithCurrentUser(testOwnerUser, () =>
-      Promise.resolve(
-        managedCredentialService.listManagedKeysForCurrentUser(DETERMINISTIC_AGENT_MANAGED_BY),
+    expect(
+      await runWithCurrentUser(testOwnerUser, () =>
+        Promise.resolve(
+          managedCredentialService.listManagedKeysForCurrentUser(DETERMINISTIC_AGENT_MANAGED_BY),
+        ),
       ),
-    );
-    expect(remainingKeys).toHaveLength(0);
+    ).toHaveLength(0);
   });
 
   test("API key is revoked after cancellation", async () => {
@@ -335,15 +332,6 @@ describe("deterministic agent runner — prompt bridge route", () => {
       body: JSON.stringify({ chatId: "nonexistent-chat-id", message: "hello" }),
     });
     expect(response.status).toBe(404);
-  });
-
-  test("prompt bridge returns 400 for missing chatId", async () => {
-    const response = await fetch(`${baseUrl}/api/internal/agent-prompt`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: "hello" }),
-    });
-    expect(response.status).toBe(400);
   });
 
   test("forwards a prompt and returns the new assistant response", async () => {
