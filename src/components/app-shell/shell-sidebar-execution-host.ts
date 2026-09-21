@@ -8,7 +8,6 @@ import { sidebarActionItems } from "./shell-sidebar-utils";
 
 export interface ExecutionHostSidebarContext {
   navigateWithinShell: (route: WebAppRoute) => void;
-  openExecutionHostTerminalPrompt: (host: ExecutionHostDescriptor) => void;
 }
 
 export function executionHostId(host: ExecutionHostDescriptor): string {
@@ -23,30 +22,54 @@ export function executionHostUsable(host: ExecutionHostDescriptor): boolean {
   return host.acceptRemoteExecution;
 }
 
-export function createExecutionHostWorkspace(
-  host: ExecutionHostDescriptor,
-  context: ExecutionHostSidebarContext,
-): void {
-  context.navigateWithinShell({
+export function getExecutionHostWorkspaceRoute(host: ExecutionHostDescriptor): WebAppRoute {
+  return {
     view: "compose",
     kind: "workspace",
     workspaceMode: "automatic",
     executionHostKind: host.ref.kind,
     executionHostId: executionHostId(host),
     basePath: executionHostDirectory(host),
-  });
+  };
+}
+
+export function getExecutionHostChatRoute(host: ExecutionHostDescriptor): WebAppRoute {
+  return {
+    view: "compose",
+    kind: "execution-host-chat",
+    hostKind: host.ref.kind,
+    hostId: executionHostId(host),
+  };
+}
+
+export function getExecutionHostTerminalRoute(host: ExecutionHostDescriptor): WebAppRoute {
+  return {
+    view: "compose",
+    kind: "execution-host-terminal",
+    hostKind: host.ref.kind,
+    hostId: executionHostId(host),
+  };
+}
+
+export function createExecutionHostWorkspace(
+  host: ExecutionHostDescriptor,
+  context: ExecutionHostSidebarContext,
+): void {
+  context.navigateWithinShell(getExecutionHostWorkspaceRoute(host));
 }
 
 export function createExecutionHostChat(
   host: ExecutionHostDescriptor,
   context: ExecutionHostSidebarContext,
 ): void {
-  context.navigateWithinShell({
-    view: "compose",
-    kind: "execution-host-chat",
-    hostKind: host.ref.kind,
-    hostId: executionHostId(host),
-  });
+  context.navigateWithinShell(getExecutionHostChatRoute(host));
+}
+
+export function createExecutionHostTerminal(
+  host: ExecutionHostDescriptor,
+  context: ExecutionHostSidebarContext,
+): void {
+  context.navigateWithinShell(getExecutionHostTerminalRoute(host));
 }
 
 export function getExecutionHostSidebarActions(
@@ -65,7 +88,7 @@ export function getExecutionHostSidebarActions(
       id: "new-terminal",
       label: "New Terminal",
       disabled: !usable || !host.capabilities.interactiveTerminal,
-      onClick: () => context.openExecutionHostTerminalPrompt(host),
+      onClick: () => createExecutionHostTerminal(host, context),
     },
     {
       id: "new-chat",
