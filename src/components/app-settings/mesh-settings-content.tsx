@@ -111,18 +111,6 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
       {mesh.error && mesh.error !== mesh.mutationError ? <SettingsError>{mesh.error}</SettingsError> : null}
 
       <div className="space-y-2">
-        <div className="flex items-center justify-between gap-3">
-          <h4 className="text-sm font-medium">Workers</h4>
-          <Button
-            type="button"
-            size="sm"
-            loading={mesh.saving}
-            disabled={mesh.saving}
-            onClick={() => void mesh.checkHealth()}
-          >
-            Health check
-          </Button>
-        </div>
         {workers.length ? workers.map((worker) => (
           <div
             key={worker.workerNodeId}
