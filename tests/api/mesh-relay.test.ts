@@ -154,7 +154,7 @@ describe("controller relay owner API", () => {
       bootstrapEnvironment:
         `CLANKY_RELAY_CONTROLLER_FINGERPRINT=${identity.fingerprint}`,
       relayBinaryVersion: expect.any(String),
-      relaySupportedProtocolVersions: [1, 5],
+      relaySupportedProtocolVersions: [5],
       relayPreferredProtocolVersion: 5,
       relayNegotiatedProtocolVersion: 5,
     });

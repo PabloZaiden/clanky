@@ -18,10 +18,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readRuntimeConfig } from "@pablozaiden/webapp/server";
 import {
-  MESH_RELAY_PROTOCOL_VERSION,
   type MeshRelayPeerIdentity,
   type MeshRelayStreamOfferFrame,
 } from "@/shared/mesh-relay";
+import { MESH_PROTOCOL_VERSION } from "@/shared/mesh-protocol";
 import type {
   MeshRelayPeerRoute,
 } from "@/shared/mesh";
@@ -313,7 +313,7 @@ describe("Mesh relay connector", () => {
     const connecting = connector.connect();
 
     socket.emitMessage(JSON.stringify({
-      protocolVersion: MESH_RELAY_PROTOCOL_VERSION,
+      protocolVersion: MESH_PROTOCOL_VERSION,
       type: "auth.ok",
       connectionId: "unsolicited-connection",
       role: "controller",
@@ -350,7 +350,7 @@ describe("Mesh relay connector", () => {
     try {
       expect((await revocable.connect()).workerStatus).toBe("pending");
       expect(Buffer.byteLength(JSON.stringify({
-        protocolVersion: MESH_RELAY_PROTOCOL_VERSION,
+        protocolVersion: MESH_PROTOCOL_VERSION,
         type: "authorization.chunk",
         transactionId: "single-frame",
         workers,

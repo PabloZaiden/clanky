@@ -20,7 +20,6 @@ import {
   MESH_RELAY_CONTROL_CLOSE_REPLACED,
   MESH_RELAY_MAX_AUTHORIZATION_STAGED_BYTES,
   MESH_RELAY_MAX_AUTHORIZED_WORKERS,
-  MESH_RELAY_PROTOCOL_VERSION,
   type MeshRelayAuthFrame,
   type MeshRelayAuthOkFrame,
   type MeshRelayAuthorizationBeginFrame,
@@ -132,8 +131,7 @@ interface RelayControlConnection {
 }
 
 type RelayProtocolVersion =
-  | typeof MESH_RELAY_PROTOCOL_VERSION
-  | typeof MESH_PROTOCOL_VERSION;
+  typeof MESH_PROTOCOL_VERSION;
 
 interface ValidatedStreamRequest {
   requestId: string;
@@ -504,7 +502,7 @@ export class MeshRelayBroker {
 
   openControl(
     socket: MeshRelaySocket,
-    protocolVersion: RelayProtocolVersion = MESH_RELAY_PROTOCOL_VERSION,
+    protocolVersion: RelayProtocolVersion = MESH_PROTOCOL_VERSION,
   ): string {
     this.assertRunning();
     if (this.connectionCount >= RELAY_MAX_CONNECTIONS) {

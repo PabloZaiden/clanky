@@ -282,6 +282,133 @@ export const migrations: Migration[] = [
     up: repairConsolidatedSchema,
     transactional: false,
   },
+  {
+    version: BASELINE_SCHEMA_VERSION + 6,
+    name: "normalize_mesh_protocol_v5_metadata",
+    up: (db) => {
+      const now = new Date().toISOString();
+      const addColumn = (
+        tableName: string,
+        columnName: string,
+        definition: string,
+      ): void => {
+        if (
+          tableExists(db, tableName)
+          && !getTableColumns(db, tableName).includes(columnName)
+        ) {
+          db.run(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
+        }
+      };
+      if (tableExists(db, "mesh_worker_registrations")) {
+        addColumn("mesh_worker_registrations", "worker_binary_version", "TEXT");
+        addColumn(
+          "mesh_worker_registrations",
+          "worker_supported_protocol_versions_json",
+          "TEXT NOT NULL DEFAULT '[5]'",
+        );
+        addColumn(
+          "mesh_worker_registrations",
+          "worker_preferred_protocol_version",
+          "INTEGER NOT NULL DEFAULT 5",
+        );
+        addColumn(
+          "mesh_worker_registrations",
+          "worker_negotiated_protocol_version",
+          "INTEGER NOT NULL DEFAULT 5",
+        );
+        addColumn(
+          "mesh_worker_registrations",
+          "worker_protocol_updated_at",
+          "TEXT",
+        );
+        db.run(`
+          UPDATE mesh_worker_registrations
+          SET worker_supported_protocol_versions_json = '[5]',
+              worker_preferred_protocol_version = 5,
+              worker_negotiated_protocol_version = 5,
+              worker_protocol_updated_at = COALESCE(
+                worker_protocol_updated_at,
+                ?
+              )
+        `, [now]);
+      }
+      if (tableExists(db, "mesh_controller_grants")) {
+        addColumn("mesh_controller_grants", "controller_binary_version", "TEXT");
+        addColumn(
+          "mesh_controller_grants",
+          "controller_supported_protocol_versions_json",
+          "TEXT NOT NULL DEFAULT '[5]'",
+        );
+        addColumn(
+          "mesh_controller_grants",
+          "controller_preferred_protocol_version",
+          "INTEGER NOT NULL DEFAULT 5",
+        );
+        addColumn(
+          "mesh_controller_grants",
+          "controller_negotiated_protocol_version",
+          "INTEGER NOT NULL DEFAULT 5",
+        );
+        addColumn(
+          "mesh_controller_grants",
+          "controller_protocol_updated_at",
+          "TEXT",
+        );
+        db.run(`
+          UPDATE mesh_controller_grants
+          SET controller_supported_protocol_versions_json = '[5]',
+              controller_preferred_protocol_version = 5,
+              controller_negotiated_protocol_version = 5,
+              controller_protocol_updated_at = COALESCE(
+                controller_protocol_updated_at,
+                ?
+              )
+        `, [now]);
+      }
+      if (tableExists(db, "mesh_controller_relay_pairing")) {
+        addColumn("mesh_controller_relay_pairing", "relay_binary_version", "TEXT");
+        addColumn(
+          "mesh_controller_relay_pairing",
+          "relay_supported_protocol_versions_json",
+          "TEXT NOT NULL DEFAULT '[5]'",
+        );
+        addColumn(
+          "mesh_controller_relay_pairing",
+          "relay_preferred_protocol_version",
+          "INTEGER NOT NULL DEFAULT 5",
+        );
+        addColumn(
+          "mesh_controller_relay_pairing",
+          "relay_negotiated_protocol_version",
+          "INTEGER NOT NULL DEFAULT 5",
+        );
+        addColumn(
+          "mesh_controller_relay_pairing",
+          "relay_protocol_updated_at",
+          "TEXT",
+        );
+        db.run(`
+          UPDATE mesh_controller_relay_pairing
+          SET relay_supported_protocol_versions_json = '[5]',
+              relay_preferred_protocol_version = 5,
+              relay_negotiated_protocol_version = 5,
+              relay_protocol_updated_at = COALESCE(
+                relay_protocol_updated_at,
+                ?
+              )
+          WHERE singleton = 1
+        `, [now]);
+      }
+      if (tableExists(db, "mesh_protocol_state")) {
+        db.run(`
+          UPDATE mesh_protocol_state
+          SET current_version = 5,
+              updated_at = ?
+          WHERE singleton = 1
+        `, [now]);
+      }
+    },
+  },
 ];
 
 export function tableExists(db: Database, tableName: string): boolean {

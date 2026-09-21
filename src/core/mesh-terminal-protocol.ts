@@ -10,9 +10,7 @@ export function buildMeshTerminalSessionSigningPayload(
   request: UnsignedMeshTerminalSessionRequest,
 ): string {
   return JSON.stringify([
-    request.protocolVersion === 5
-      ? "clanky-mesh-terminal-session-v5"
-      : "clanky-mesh-terminal-session-v1",
+    "clanky-mesh-terminal-session-v5",
     request.protocolVersion,
     request.capability,
     request.requestId,

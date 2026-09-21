@@ -17,6 +17,7 @@ import {
   MESH_ACP_CHANNEL,
   MESH_ACP_SESSION_TTL_MS,
 } from "../../src/shared/mesh-execution";
+import { MESH_PROTOCOL_VERSION } from "../../src/shared/mesh-protocol";
 
 describe("MeshAcpGateway relay lifecycle", () => {
   let dataDir: string;
@@ -76,7 +77,7 @@ describe("MeshAcpGateway relay lifecycle", () => {
     sessionToken: string;
   }> {
     const unsigned: Omit<MeshExecutionSessionRequest, "signature"> = {
-      protocolVersion: 1,
+      protocolVersion: MESH_PROTOCOL_VERSION,
       requestId: crypto.randomUUID(),
       callerNodeId: "controller-a",
       callerPublicKey: controllerPublicKey,

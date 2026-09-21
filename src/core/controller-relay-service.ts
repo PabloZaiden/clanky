@@ -10,12 +10,10 @@ import {
   MESH_RELAY_DESCRIPTOR_PATH,
   normalizeMeshRelayOrigin,
   type MeshRelayPeerIdentity,
-  type MeshRelayWellKnownDescriptor,
   type MeshRelayWellKnownDescriptorV5,
 } from "@/shared/mesh-relay";
 import { MESH_PROTOCOL_VERSIONS_HEADER, serializeMeshProtocolVersions } from "@/shared/mesh-protocol";
 import {
-  MESH_LEGACY_PROTOCOL_VERSION,
   MESH_PROTOCOL_VERSION,
   type MeshProtocolVersion,
 } from "@/shared/mesh-protocol";
@@ -161,11 +159,11 @@ function pairingStatus(
       `${RELAY_CONTROLLER_FINGERPRINT_ENV}=${controllerFingerprint}`,
     relayBinaryVersion: pairing?.relayBinaryVersion ?? null,
     relaySupportedProtocolVersions: pairing?.relaySupportedProtocolVersions
-      ?? [MESH_LEGACY_PROTOCOL_VERSION],
+      ?? [MESH_PROTOCOL_VERSION],
     relayPreferredProtocolVersion: pairing?.relayPreferredProtocolVersion
-      ?? MESH_LEGACY_PROTOCOL_VERSION,
+      ?? MESH_PROTOCOL_VERSION,
     relayNegotiatedProtocolVersion: pairing?.relayNegotiatedProtocolVersion
-      ?? null,
+      ?? MESH_PROTOCOL_VERSION,
   };
 }
 
@@ -267,10 +265,7 @@ export class ControllerRelayService {
           relayUrl: normalizedRelayUrl,
           relayFingerprint: descriptor.fingerprint,
           role: "controller",
-          ...("protocolVersion" in descriptor
-            && descriptor.protocolVersion === MESH_PROTOCOL_VERSION
-            ? { protocolVersion: MESH_PROTOCOL_VERSION }
-            : {}),
+          protocolVersion: MESH_PROTOCOL_VERSION,
         },
       });
       try {
@@ -292,22 +287,10 @@ export class ControllerRelayService {
         relayFingerprint: descriptor.fingerprint,
         controllerNodeId: identity.nodeId,
         controllerFingerprint: identity.fingerprint,
-        relayBinaryVersion: "protocolVersion" in descriptor
-          && descriptor.protocolVersion === MESH_PROTOCOL_VERSION
-          ? descriptor.binaryVersion
-          : null,
-        relaySupportedProtocolVersions: "protocolVersion" in descriptor
-          && descriptor.protocolVersion === MESH_PROTOCOL_VERSION
-          ? descriptor.supportedProtocolVersions
-          : [MESH_LEGACY_PROTOCOL_VERSION],
-        relayPreferredProtocolVersion: "protocolVersion" in descriptor
-          && descriptor.protocolVersion === MESH_PROTOCOL_VERSION
-          ? descriptor.preferredProtocolVersion
-          : MESH_LEGACY_PROTOCOL_VERSION,
-        relayNegotiatedProtocolVersion: "protocolVersion" in descriptor
-          && descriptor.protocolVersion === MESH_PROTOCOL_VERSION
-          ? descriptor.negotiatedProtocolVersion
-          : MESH_LEGACY_PROTOCOL_VERSION,
+        relayBinaryVersion: descriptor.binaryVersion,
+        relaySupportedProtocolVersions: descriptor.supportedProtocolVersions,
+        relayPreferredProtocolVersion: descriptor.preferredProtocolVersion,
+        relayNegotiatedProtocolVersion: descriptor.negotiatedProtocolVersion,
       });
       this.runtimeError = null;
       if (this.dispatch) {
@@ -419,7 +402,7 @@ export class ControllerRelayService {
 
   private async fetchDescriptor(
     relayUrl: string,
-  ): Promise<MeshRelayWellKnownDescriptor | MeshRelayWellKnownDescriptorV5> {
+  ): Promise<MeshRelayWellKnownDescriptorV5> {
     const controller = new AbortController();
     const timer = setTimeout(
       () => controller.abort(),
@@ -480,6 +463,12 @@ export class ControllerRelayService {
           { cause: parsed.error },
         );
       }
+      if (parsed.data.negotiatedProtocolVersion !== MESH_PROTOCOL_VERSION) {
+        throw new DomainError(
+          "mesh_relay_descriptor_invalid",
+          "The Mesh relay does not negotiate the required protocol generation.",
+        );
+      }
       return parsed.data;
     } catch (error) {
       if (error instanceof DomainError) {
@@ -498,7 +487,7 @@ export class ControllerRelayService {
   private async refreshPairingProtocol(
     pairing: ControllerRelayPairing,
   ): Promise<ControllerRelayPairing> {
-    let descriptor: MeshRelayWellKnownDescriptor | MeshRelayWellKnownDescriptorV5;
+    let descriptor: MeshRelayWellKnownDescriptorV5;
     try {
       descriptor = await this.fetchDescriptor(pairing.relayUrl);
     } catch (error) {
@@ -514,22 +503,12 @@ export class ControllerRelayService {
     ) {
       return pairing;
     }
-    const metadata = "protocolVersion" in descriptor
-      && descriptor.protocolVersion === MESH_PROTOCOL_VERSION
-      ? {
-          relayBinaryVersion: descriptor.binaryVersion,
-          relaySupportedProtocolVersions: descriptor.supportedProtocolVersions,
-          relayPreferredProtocolVersion: descriptor.preferredProtocolVersion,
-          relayNegotiatedProtocolVersion: descriptor.negotiatedProtocolVersion,
-        }
-      : {
-          relayBinaryVersion: null,
-          relaySupportedProtocolVersions: [
-            MESH_LEGACY_PROTOCOL_VERSION,
-          ] as MeshProtocolVersion[],
-          relayPreferredProtocolVersion: MESH_LEGACY_PROTOCOL_VERSION,
-          relayNegotiatedProtocolVersion: MESH_LEGACY_PROTOCOL_VERSION,
-        };
+    const metadata = {
+      relayBinaryVersion: descriptor.binaryVersion,
+      relaySupportedProtocolVersions: descriptor.supportedProtocolVersions,
+      relayPreferredProtocolVersion: descriptor.preferredProtocolVersion,
+      relayNegotiatedProtocolVersion: descriptor.negotiatedProtocolVersion,
+    };
     if (
       pairing.relayBinaryVersion === metadata.relayBinaryVersion
       && JSON.stringify(pairing.relaySupportedProtocolVersions)
@@ -585,9 +564,7 @@ export class ControllerRelayService {
         relayUrl,
         relayFingerprint: pairing.relayFingerprint,
         role: "controller",
-        ...(pairing.relayNegotiatedProtocolVersion === MESH_PROTOCOL_VERSION
-          ? { protocolVersion: MESH_PROTOCOL_VERSION }
-          : {}),
+        protocolVersion: MESH_PROTOCOL_VERSION,
       },
       dispatch,
       onAuthenticated: () => {

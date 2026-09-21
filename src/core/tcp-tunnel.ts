@@ -1,22 +1,17 @@
 import { EventEmitter } from "node:events";
 import net from "node:net";
-import { createLogger } from "@pablozaiden/webapp/server";
 import type { ExecutionHostBinding } from "@/shared/execution-host";
 import type { MeshWorkerRegistration } from "@/shared/mesh";
 import {
   MESH_TCP_TUNNEL_CAPABILITY,
   MESH_TCP_TUNNEL_MAX_FRAME_BYTES,
   MESH_TCP_TUNNEL_OPEN_TIMEOUT_MS,
-  MESH_TCP_TUNNEL_LEGACY_PROTOCOL_VERSION,
   MESH_TCP_TUNNEL_REQUEST_TIMEOUT_MS,
   MESH_TCP_TUNNEL_SESSION_REQUEST_TTL_MS,
 } from "@/shared/mesh-tcp-tunnel";
 import { MESH_PROTOCOL_VERSION } from "@/shared/mesh-protocol";
 import type { MeshTcpTunnelSessionRequest } from "@/contracts/schemas/mesh-tcp-tunnel";
-import {
-  getWorkerRegistration,
-  updateWorkerNegotiatedProtocolVersion,
-} from "../persistence/mesh";
+import { getWorkerRegistration } from "../persistence/mesh";
 import {
   ensureLocalMeshNodeIdentity,
   signMeshPayload,
@@ -31,9 +26,6 @@ import {
 import { executionHostService } from "./execution-host-service";
 import { requireCurrentUserId } from "../context/user-context";
 import { DomainError } from "../domain/domain-error";
-import { isMeshProtocolCompatibilityError } from "./mesh-protocol-version";
-
-const log = createLogger("core:tcp-tunnel");
 
 export interface TcpTunnel {
   readonly destroyed: boolean;
@@ -102,13 +94,7 @@ class MeshTcpTunnel extends EventEmitter implements TcpTunnel {
       );
     }
     const route = registration.route;
-    let protocolVersion:
-      | typeof MESH_PROTOCOL_VERSION
-      | typeof MESH_TCP_TUNNEL_LEGACY_PROTOCOL_VERSION =
-      registration.workerNegotiatedProtocolVersion
-      === MESH_PROTOCOL_VERSION
-      ? MESH_PROTOCOL_VERSION
-      : MESH_TCP_TUNNEL_LEGACY_PROTOCOL_VERSION;
+    const protocolVersion = MESH_PROTOCOL_VERSION;
     const expiresAt = new Date(
       Date.now() + MESH_TCP_TUNNEL_SESSION_REQUEST_TTL_MS,
     ).toISOString();
@@ -132,48 +118,16 @@ class MeshTcpTunnel extends EventEmitter implements TcpTunnel {
         signature: await signMeshPayload(buildMeshTcpTunnelSigningPayload(unsigned)),
       };
     };
-    let request = await buildRequest();
-    let response: {
-      protocolVersion:
-        | typeof MESH_PROTOCOL_VERSION
-        | typeof MESH_TCP_TUNNEL_LEGACY_PROTOCOL_VERSION;
+    const request = await buildRequest();
+    const response: {
+      protocolVersion: typeof MESH_PROTOCOL_VERSION;
       sessionId: string;
       encryptedPayload: unknown;
-    };
-    try {
-      response = await this.post(
-        route,
-        "api/mesh/internal/tcp-tunnel/session",
-        request,
-      );
-    } catch (error) {
-      if (
-        protocolVersion !== MESH_PROTOCOL_VERSION
-        || !isMeshProtocolCompatibilityError(error)
-      ) {
-        throw error;
-      }
-      protocolVersion = MESH_TCP_TUNNEL_LEGACY_PROTOCOL_VERSION;
-      try {
-        await updateWorkerNegotiatedProtocolVersion({
-          workerNodeId: host.nodeId,
-          localUserId: userId,
-          negotiatedProtocolVersion: protocolVersion,
-          preferredProtocolVersion: protocolVersion,
-        });
-      } catch (updateError) {
-        log.warn("Mesh TCP tunnel protocol downgrade could not be persisted", {
-          workerNodeId: host.nodeId,
-          error: String(updateError),
-        });
-      }
-      request = await buildRequest();
-      response = await this.post(
-        route,
-        "api/mesh/internal/tcp-tunnel/session",
-        request,
-      );
-    }
+    } = await this.post(
+      route,
+      "api/mesh/internal/tcp-tunnel/session",
+      request,
+    );
     const decrypted = await decryptMeshPayload(response.encryptedPayload);
     const token = typeof decrypted === "object" && decrypted
       ? (decrypted as Record<string, unknown>)["sessionToken"]
@@ -236,8 +190,7 @@ class MeshTcpTunnel extends EventEmitter implements TcpTunnel {
     path: string,
     body: MeshTcpTunnelSessionRequest,
   ): Promise<{
-    protocolVersion: typeof MESH_PROTOCOL_VERSION
-      | typeof MESH_TCP_TUNNEL_LEGACY_PROTOCOL_VERSION;
+    protocolVersion: typeof MESH_PROTOCOL_VERSION;
     sessionId: string;
     encryptedPayload: unknown;
   }> {

@@ -23,15 +23,9 @@ import {
 } from "../../src/persistence/mesh";
 import { saveControllerRelayPairing } from "../../src/persistence/controller-relay-pairing";
 import {
-  createExecutionHostRuntimeSnapshot,
   POSIX_EXECUTION_HOST_CAPABILITIES,
 } from "../../src/shared/execution-host";
 import {
-  MESH_RUNTIME_SNAPSHOT_HEADER,
-  MESH_RUNTIME_SNAPSHOT_VERSION,
-} from "../../src/shared/mesh";
-import {
-  MESH_LEGACY_PROTOCOL_VERSION,
   MESH_PROTOCOL_VERSION,
   MESH_SUPPORTED_PROTOCOL_VERSIONS,
 } from "../../src/shared/mesh-protocol";
@@ -74,16 +68,12 @@ describe("Mesh internal controller-worker routes", () => {
     const created = await meshManager.createEnrollmentToken("admin", "Worker", 900);
     const worker = createSigningIdentity();
     const unsigned = {
-      protocolVersion: 1 as const,
+      protocolVersion: MESH_PROTOCOL_VERSION,
       workerNodeId: "worker-1",
       workerInstanceName: "Worker 1",
-      workerEndpoint: "http://127.0.0.1:4200",
-      workerTransport: "http" as const,
       workerPublicKey: worker.publicKey,
       workerFingerprint: worker.fingerprint,
       workerEncryptionPublicKey: "test-encryption-key",
-      workerTlsCertificate: null,
-      workerTlsFingerprint: null,
       workerDirectory: "/srv/worker",
       workerPlatform: { os: "linux" as const, architecture: "x64" as const },
       workerCapabilities: {
@@ -92,8 +82,18 @@ describe("Mesh internal controller-worker routes", () => {
       },
       workerAcceptRemoteExecution: true as const,
       workerConfigRevision: 1,
+      binaryVersion: "5.0.0-test",
+      supportedProtocolVersions: [...MESH_SUPPORTED_PROTOCOL_VERSIONS],
+      preferredProtocolVersion: MESH_PROTOCOL_VERSION,
       enrollmentToken: created.token,
       expectedControllerFingerprint: created.enrollment.controllerFingerprint,
+      route: {
+        kind: "direct" as const,
+        endpoint: "http://127.0.0.1:4200",
+        transport: "http" as const,
+        tlsCertificate: null,
+        tlsFingerprint: null,
+      },
       nonce: crypto.randomUUID(),
       expiresAt: new Date(Date.now() + 60_000).toISOString(),
     };
@@ -115,7 +115,10 @@ describe("Mesh internal controller-worker routes", () => {
       },
       body: JSON.stringify({
         ...body,
-        workerTransport: "https",
+        route: {
+          ...unsigned.route,
+          transport: "https",
+        },
       }),
     }), undefined as never);
     expect(mismatchedTransport!.status).toBe(400);
@@ -146,73 +149,6 @@ describe("Mesh internal controller-worker routes", () => {
       body: JSON.stringify(body),
     }), undefined as never);
     expect(replay!.status).toBe(410);
-  });
-
-  test("rejects signed relay enrollment outside an authenticated relay stream", async () => {
-    const controller = await ensureLocalMeshNodeIdentity();
-    const relay = createSigningIdentity();
-    saveControllerRelayPairing({
-      relayUrl: "https://relay.example.com",
-      relayPublicKey: relay.publicKey,
-      relayFingerprint: relay.fingerprint,
-      controllerNodeId: controller.nodeId,
-      controllerFingerprint: controller.fingerprint,
-    });
-    const created = await meshManager.createEnrollmentToken(
-      "admin",
-      "Relay worker",
-      900,
-      "relay",
-    );
-    const worker = createSigningIdentity();
-    const unsigned = {
-      protocolVersion: 2 as const,
-      workerNodeId: "worker-relay-1",
-      workerInstanceName: "Relay worker",
-      workerPublicKey: worker.publicKey,
-      workerFingerprint: worker.fingerprint,
-      workerEncryptionPublicKey: "test-encryption-key",
-      workerDirectory: "/srv/relay-worker",
-      workerPlatform: null,
-      workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
-      workerAcceptRemoteExecution: true,
-      workerConfigRevision: 1,
-      enrollmentToken: created.token,
-      expectedControllerFingerprint: controller.fingerprint,
-      route: {
-        kind: "relay" as const,
-        relayUrl: "https://relay.example.com",
-        relayFingerprint: relay.fingerprint,
-      },
-      nonce: crypto.randomUUID(),
-      expiresAt: new Date(Date.now() + 60_000).toISOString(),
-    };
-    const route = meshInternalRoutes["/api/mesh/internal/enrollment"]!.POST!;
-    const response = await route(new Request(
-      "http://controller/api/mesh/internal/enrollment",
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-clanky-mesh-node-id": unsigned.workerNodeId,
-          "x-clanky-mesh-request-id": unsigned.workerNodeId,
-        },
-        body: JSON.stringify({
-          ...unsigned,
-          signature: sign(
-            null,
-            Buffer.from(buildMeshEnrollmentRequestSigningPayload(unsigned)),
-            worker.privateKey,
-          ).toString("base64url"),
-        }),
-      },
-    ), undefined as never);
-
-    expect(response!.status).toBe(403);
-    expect(await readJson(response!)).toMatchObject({
-      error: "mesh_enrollment_relay_identity_mismatch",
-    });
-    expect(await listWorkerRegistrations("admin")).toEqual([]);
   });
 
   test("rejects v5 relay enrollment outside an authenticated relay stream", async () => {
@@ -285,71 +221,7 @@ describe("Mesh internal controller-worker routes", () => {
     expect(await listWorkerRegistrations("admin")).toEqual([]);
   });
 
-  test("rejects a relay invitation used for direct protocol-v1 enrollment", async () => {
-    const controller = await ensureLocalMeshNodeIdentity();
-    const relay = createSigningIdentity();
-    saveControllerRelayPairing({
-      relayUrl: "https://relay.example.com",
-      relayPublicKey: relay.publicKey,
-      relayFingerprint: relay.fingerprint,
-      controllerNodeId: controller.nodeId,
-      controllerFingerprint: controller.fingerprint,
-    });
-    const created = await meshManager.createEnrollmentToken(
-      "admin",
-      "Relay worker",
-      900,
-      "relay",
-    );
-    const worker = createSigningIdentity();
-    const unsigned = {
-      protocolVersion: 1 as const,
-      workerNodeId: "worker-direct-downgrade",
-      workerInstanceName: "Downgrade worker",
-      workerPublicKey: worker.publicKey,
-      workerFingerprint: worker.fingerprint,
-      workerEncryptionPublicKey: "test-encryption-key",
-      workerDirectory: "/srv/worker",
-      workerPlatform: null,
-      workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
-      workerAcceptRemoteExecution: true,
-      workerConfigRevision: 1,
-      workerEndpoint: "http://127.0.0.1:8081",
-      workerTransport: "http" as const,
-      workerTlsCertificate: null,
-      workerTlsFingerprint: null,
-      enrollmentToken: created.token,
-      expectedControllerFingerprint: controller.fingerprint,
-      nonce: crypto.randomUUID(),
-      expiresAt: new Date(Date.now() + 60_000).toISOString(),
-    };
-    const response = await meshInternalRoutes[
-      "/api/mesh/internal/enrollment"
-    ]!.POST!(new Request("http://controller/api/mesh/internal/enrollment", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-clanky-mesh-node-id": unsigned.workerNodeId,
-        "x-clanky-mesh-request-id": unsigned.workerNodeId,
-      },
-      body: JSON.stringify({
-        ...unsigned,
-        signature: sign(
-          null,
-          Buffer.from(buildMeshEnrollmentRequestSigningPayload(unsigned)),
-          worker.privateKey,
-        ).toString("base64url"),
-      }),
-    }), undefined as never);
-
-    expect(response!.status).toBe(409);
-    expect(await readJson(response!)).toMatchObject({
-      error: "mesh_enrollment_relay_mismatch",
-    });
-    expect(await listWorkerRegistrations("admin")).toEqual([]);
-  });
-
-  test("negotiates current and pre-PR runtime health contracts", async () => {
+  test("handles signed v5 runtime health contracts", async () => {
     await configureMeshRuntime({ meshWorker: true, workerDirectory: dataDir });
     const controller = createSigningIdentity();
     await saveControllerGrant({
@@ -359,18 +231,6 @@ describe("Mesh internal controller-worker routes", () => {
       controllerFingerprint: controller.fingerprint,
       controllerEncryptionPublicKey: "test-encryption-key",
     });
-    const runtimeSnapshot = createExecutionHostRuntimeSnapshot(
-      process.platform,
-      process.arch,
-    );
-    const unsigned = {
-      protocolVersion: 1 as const,
-      senderNodeId: "controller-1",
-      senderPublicKey: controller.publicKey,
-      senderFingerprint: controller.fingerprint,
-      nonce: crypto.randomUUID(),
-      sentAt: new Date().toISOString(),
-    };
     const route = meshInternalRoutes["/api/mesh/internal/health"]!.POST!;
     const currentUnsigned = {
       protocolVersion: MESH_PROTOCOL_VERSION,
@@ -410,72 +270,12 @@ describe("Mesh internal controller-worker routes", () => {
     expect(await getControllerGrant("controller-1")).toEqual(
       expect.objectContaining({
         controllerBinaryVersion: "5.0.0-test",
-        controllerSupportedProtocolVersions: [
-          MESH_PROTOCOL_VERSION,
-          MESH_LEGACY_PROTOCOL_VERSION,
-        ],
+        controllerSupportedProtocolVersions: [MESH_PROTOCOL_VERSION],
         controllerPreferredProtocolVersion: MESH_PROTOCOL_VERSION,
         controllerNegotiatedProtocolVersion: MESH_PROTOCOL_VERSION,
       }),
     );
 
-    const response = await route(new Request("http://worker/api/mesh/internal/health", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-clanky-mesh-node-id": "controller-1",
-        "x-clanky-mesh-request-id": unsigned.nonce,
-        [MESH_RUNTIME_SNAPSHOT_HEADER]: String(MESH_RUNTIME_SNAPSHOT_VERSION),
-      },
-      body: JSON.stringify({
-        ...unsigned,
-        signature: sign(
-          null,
-          Buffer.from(buildMeshHealthCheckSigningPayload(unsigned)),
-          controller.privateKey,
-        ).toString("base64url"),
-      }),
-    }), undefined as never);
-
-    expect(response!.status).toBe(200);
-    expect(await readJson(response!)).toMatchObject({
-      protocolVersion: 1,
-      controllerNodeId: "controller-1",
-      requestNonce: unsigned.nonce,
-      workerDirectory: dataDir,
-      workerPlatform: runtimeSnapshot.platform,
-      workerAcceptRemoteExecution: true,
-      workerConfigRevision: 1,
-      workerCapabilities: runtimeSnapshot.capabilities,
-      signature: expect.any(String),
-    });
-
-    const legacyUnsigned = {
-      ...unsigned,
-      nonce: crypto.randomUUID(),
-    };
-    const legacyResponse = await route(new Request("http://worker/api/mesh/internal/health", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-clanky-mesh-node-id": "controller-1",
-        "x-clanky-mesh-request-id": legacyUnsigned.nonce,
-      },
-      body: JSON.stringify({
-        ...legacyUnsigned,
-        signature: sign(
-          null,
-          Buffer.from(buildMeshHealthCheckSigningPayload(legacyUnsigned)),
-          controller.privateKey,
-        ).toString("base64url"),
-      }),
-    }), undefined as never);
-
-    expect(legacyResponse!.status).toBe(200);
-    const legacyBody = await readJson(legacyResponse!);
-    expect(legacyBody).not.toHaveProperty("workerPlatform");
-    expect(legacyBody["workerCapabilities"]).not.toHaveProperty("git");
-    expect(legacyBody["workerCapabilities"]).not.toHaveProperty("managedWorktrees");
   });
 
   test("rejects signed controller operations targeting another worker", async () => {
@@ -491,7 +291,7 @@ describe("Mesh internal controller-worker routes", () => {
     });
 
     const revocation = {
-      protocolVersion: 1 as const,
+      protocolVersion: MESH_PROTOCOL_VERSION,
       controllerNodeId: "controller-1",
       workerNodeId: `${worker.nodeId}-other`,
       controllerPublicKey: controller.publicKey,
@@ -535,7 +335,7 @@ describe("Mesh internal controller-worker routes", () => {
         "x-clanky-mesh-request-id": "request-1",
       },
       body: JSON.stringify({
-        protocolVersion: 1,
+        protocolVersion: MESH_PROTOCOL_VERSION,
         requestId: "request-1",
         callerNodeId: "controller-1",
         callerPublicKey: "key",

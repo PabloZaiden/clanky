@@ -3,7 +3,6 @@ import {
   MESH_EXECUTION_CHANNEL,
   MESH_ACP_CHANNEL,
   MESH_EXECUTION_OPERATIONS,
-  MESH_EXECUTION_LEGACY_PROTOCOL_VERSION,
   MESH_EXECUTION_MAX_RPC_TIMEOUT_MS,
   MESH_EXECUTION_MAX_RESULT_BYTES,
 } from "@/shared/mesh-execution";
@@ -12,10 +11,7 @@ import { GIT_COMMAND_SCOPES } from "@/shared/execution-host";
 import { MESH_PROTOCOL_VERSION } from "@/shared/mesh-protocol";
 
 const MeshExecutionPathSchema = z.string().min(1).max(16_384);
-const MeshExecutionProtocolVersionSchema = z.union([
-  z.literal(MESH_EXECUTION_LEGACY_PROTOCOL_VERSION),
-  z.literal(MESH_PROTOCOL_VERSION),
-]);
+const MeshExecutionProtocolVersionSchema = z.literal(MESH_PROTOCOL_VERSION);
 
 export const MeshExecutionSessionRequestSchema = z.object({
   protocolVersion: MeshExecutionProtocolVersionSchema,

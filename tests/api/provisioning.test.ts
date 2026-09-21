@@ -23,6 +23,10 @@ import { saveControllerRelayPairing } from "../../src/persistence/controller-rel
 import { buildMeshHealthCheckResponseSigningPayload } from "../../src/core/mesh-protocol";
 import { setMeshRelayTransport } from "../../src/core/mesh-peer-transport";
 import { POSIX_EXECUTION_HOST_CAPABILITIES } from "../../src/shared/execution-host";
+import {
+  MESH_PROTOCOL_VERSION,
+  MESH_SUPPORTED_PROTOCOL_VERSIONS,
+} from "../../src/shared/mesh-protocol";
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import { createMockBackend } from "../mocks/mock-backend";
 import {
@@ -129,7 +133,7 @@ function installMeshHealthResponder(): MeshHealthResponder {
     const request = new Request(input, init);
     const body = await request.json() as { senderNodeId: string; nonce: string };
     const unsignedResponse = {
-      protocolVersion: 1 as const,
+      protocolVersion: MESH_PROTOCOL_VERSION,
       workerNodeId,
       controllerNodeId: body.senderNodeId,
       requestNonce: body.nonce,
@@ -138,6 +142,9 @@ function installMeshHealthResponder(): MeshHealthResponder {
       workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
       workerAcceptRemoteExecution: true,
       workerConfigRevision: 1,
+      binaryVersion: "5.0.0-test",
+      supportedProtocolVersions: [...MESH_SUPPORTED_PROTOCOL_VERSIONS],
+      preferredProtocolVersion: MESH_PROTOCOL_VERSION,
     };
     const response = {
       ...unsignedResponse,
@@ -823,7 +830,7 @@ describe("Provisioning API integration", () => {
           nonce: string;
         };
         const unsignedResponse = {
-          protocolVersion: 1 as const,
+          protocolVersion: MESH_PROTOCOL_VERSION,
           workerNodeId,
           controllerNodeId: body.senderNodeId,
           requestNonce: body.nonce,
@@ -832,6 +839,9 @@ describe("Provisioning API integration", () => {
           workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
           workerAcceptRemoteExecution: true,
           workerConfigRevision: 1,
+          binaryVersion: "5.0.0-test",
+          supportedProtocolVersions: [...MESH_SUPPORTED_PROTOCOL_VERSIONS],
+          preferredProtocolVersion: MESH_PROTOCOL_VERSION,
         };
         return Response.json({
           ...unsignedResponse,

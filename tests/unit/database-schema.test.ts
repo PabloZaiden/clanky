@@ -323,7 +323,7 @@ describe("database schema", () => {
     const database = createLegacyConsolidatedDatabase();
     try {
       expect(() => createBaseSchema(database)).not.toThrow();
-      expect(runMigrations(database)).toBe(1);
+      expect(runMigrations(database)).toBe(2);
 
       expect(getSchemaVersion(database)).toBe(migrations.at(-1)!.version);
       expect(getTableColumns(database, "execution_hosts")).toEqual(
@@ -524,7 +524,7 @@ describe("database schema", () => {
         [1, null],
       );
 
-      expect(runMigrations(database)).toBe(3);
+      expect(runMigrations(database)).toBe(4);
       expect(
         database
           .query("SELECT controller_node_id FROM mesh_controller_grants")
@@ -540,7 +540,7 @@ describe("database schema", () => {
     });
   });
 
-  test("migrates Mesh protocol metadata from v1 and is idempotent", async () => {
+  test("normalizes Mesh protocol metadata to v5 and is idempotent", async () => {
     await withTempDataDir(async (dataDir) => {
       const database = new Database(join(dataDir, "clanky.db"));
       database.exec(`
@@ -573,7 +573,7 @@ describe("database schema", () => {
       database.run("INSERT INTO mesh_controller_grants VALUES (?)", ["controller-1"]);
       database.run("INSERT INTO mesh_controller_relay_pairing VALUES (?)", [1]);
 
-      expect(runMigrations(database)).toBe(2);
+      expect(runMigrations(database)).toBe(3);
       expect(getTableColumns(database, "mesh_worker_registrations")).toEqual(
         expect.arrayContaining([
           "worker_binary_version",
@@ -607,9 +607,9 @@ describe("database schema", () => {
         ).all(),
       ).toEqual([{
         worker_node_id: "worker-1",
-        worker_supported_protocol_versions_json: "[1]",
-        worker_preferred_protocol_version: 1,
-        worker_negotiated_protocol_version: 1,
+        worker_supported_protocol_versions_json: "[5]",
+        worker_preferred_protocol_version: 5,
+        worker_negotiated_protocol_version: 5,
       }]);
       expect(
         database.query(
@@ -617,15 +617,22 @@ describe("database schema", () => {
         ).all(),
       ).toEqual([{
         controller_node_id: "controller-1",
-        controller_supported_protocol_versions_json: "[1]",
-        controller_preferred_protocol_version: 1,
-        controller_negotiated_protocol_version: 1,
+        controller_supported_protocol_versions_json: "[5]",
+        controller_preferred_protocol_version: 5,
+        controller_negotiated_protocol_version: 5,
       }]);
       expect(database.query(
         "SELECT current_version, migrated_from_version FROM mesh_protocol_state WHERE singleton = 1",
       ).all()).toEqual([{
         current_version: 5,
         migrated_from_version: 1,
+      }]);
+      expect(database.query(
+        "SELECT relay_supported_protocol_versions_json, relay_preferred_protocol_version, relay_negotiated_protocol_version FROM mesh_controller_relay_pairing",
+      ).all()).toEqual([{
+        relay_supported_protocol_versions_json: "[5]",
+        relay_preferred_protocol_version: 5,
+        relay_negotiated_protocol_version: 5,
       }]);
       expect(database.query(
         "SELECT worker_node_id FROM mesh_worker_registrations",

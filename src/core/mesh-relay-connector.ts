@@ -28,7 +28,6 @@ import {
   MESH_RELAY_CONTROL_PATH,
   MESH_RELAY_MAX_AUTHORIZATION_STAGED_BYTES,
   MESH_RELAY_MAX_AUTHORIZED_WORKERS,
-  MESH_RELAY_PROTOCOL_VERSION,
   normalizeMeshRelayOrigin,
   type MeshRelayAuthFrame,
   type MeshRelayAuthOkFrame,
@@ -61,9 +60,7 @@ import {
 } from "./mesh-relay-data-stream";
 import { MeshRelayStreamError } from "./mesh-relay-errors";
 
-type MeshRelayProtocolVersion =
-  | typeof MESH_RELAY_PROTOCOL_VERSION
-  | typeof MESH_PROTOCOL_VERSION;
+type MeshRelayProtocolVersion = MeshProtocolVersion;
 import {
   getMeshRelayFingerprint,
   verifyMeshRelaySignature,
@@ -180,9 +177,6 @@ function controlUrl(
 ): string {
   const base = new URL(relayUrl);
   base.protocol = base.protocol === "http:" ? "ws:" : "wss:";
-  if (protocolVersion !== MESH_PROTOCOL_VERSION) {
-    return new URL(MESH_RELAY_CONTROL_PATH, base).toString();
-  }
   return new URL(
     `${MESH_RELAY_CONTROL_PATH}?protocolVersion=${String(
       protocolVersion,
@@ -279,7 +273,7 @@ export function chunkMeshRelayAuthorization(
   const chunks: MeshRelayPeerIdentity[][] = [];
   let current: MeshRelayPeerIdentity[] = [];
   const emptyFrameBytes = controlFrameBytes({
-    protocolVersion: MESH_RELAY_PROTOCOL_VERSION,
+    protocolVersion: MESH_PROTOCOL_VERSION,
     type: "authorization.chunk",
     transactionId,
     workers: [],
@@ -350,9 +344,7 @@ export class MeshRelayConnector {
   constructor(private readonly options: MeshRelayConnectorOptions) {}
 
   private getRelayProtocolVersion(): MeshRelayProtocolVersion {
-    return this.options.config.protocolVersion === MESH_PROTOCOL_VERSION
-      ? MESH_PROTOCOL_VERSION
-      : MESH_RELAY_PROTOCOL_VERSION;
+    return this.options.config.protocolVersion ?? MESH_PROTOCOL_VERSION;
   }
 
   get status(): MeshRelayConnectorStatus {

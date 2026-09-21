@@ -29,7 +29,7 @@ import {
   MESH_EXECUTION_MAX_MESSAGE_BYTES,
   MESH_EXECUTION_SESSION_TTL_MS,
   MESH_ACP_SESSION_TTL_MS,
-  MESH_EXECUTION_LEGACY_PROTOCOL_VERSION,
+  MESH_EXECUTION_PROTOCOL_VERSION,
   type MeshExecutionProtocolVersion,
 } from "@/shared/mesh-execution";
 import type {
@@ -923,7 +923,7 @@ export class MeshExecutionGateway {
     stdoutOffset?: number,
     stderrOffset?: number,
     protocolVersion: MeshExecutionProtocolVersion =
-      MESH_EXECUTION_LEGACY_PROTOCOL_VERSION,
+      MESH_EXECUTION_PROTOCOL_VERSION,
   ): Promise<MeshExecutionAsyncCommandSnapshot> {
     const { session } = await this.requireValidatedSession(
       sessionId,
@@ -946,7 +946,7 @@ export class MeshExecutionGateway {
     stdoutOffset?: number,
     stderrOffset?: number,
     protocolVersion: MeshExecutionProtocolVersion =
-      MESH_EXECUTION_LEGACY_PROTOCOL_VERSION,
+      MESH_EXECUTION_PROTOCOL_VERSION,
   ): Promise<MeshExecutionAsyncCommandSnapshot> {
     const { session } = await this.requireValidatedSession(
       sessionId,
