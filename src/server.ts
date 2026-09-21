@@ -65,9 +65,7 @@ import {
   getMeshWorkerServerTls,
 } from "./persistence/mesh-worker-tls";
 import {
-  MESH_CONTROLLER_ENROLLMENT_PROTOCOL_VERSION,
   MESH_RELAY_DESCRIPTOR_PATH,
-  type MeshControllerWellKnownDescriptor,
   type MeshControllerWellKnownDescriptorV5,
 } from "./shared/mesh-relay";
 import {
@@ -76,7 +74,6 @@ import {
 } from "./shared/mesh";
 import {
   MESH_BINARY_VERSION_HEADER,
-  MESH_LEGACY_PROTOCOL_VERSION,
   MESH_PROTOCOL_VERSION,
   MESH_PROTOCOL_VERSION_HEADER,
   MESH_PROTOCOL_VERSIONS_HEADER,
@@ -311,26 +308,17 @@ export const routes = defineRoutes<ClankyRealtimeEvent>({
         [...MESH_SUPPORTED_PROTOCOL_VERSIONS],
         requestedVersions,
       );
-      const descriptor: MeshControllerWellKnownDescriptor
-        | MeshControllerWellKnownDescriptorV5 = negotiatedVersion === MESH_PROTOCOL_VERSION
-        ? {
-            role: "controller",
-            protocolVersion: MESH_PROTOCOL_VERSION,
-            nodeId: identity.nodeId,
-            publicKey: identity.publicKey,
-            fingerprint: identity.fingerprint,
-            binaryVersion: protocol.binaryVersion!,
-            supportedProtocolVersions: protocol.supportedProtocolVersions,
-            preferredProtocolVersion: protocol.preferredProtocolVersion,
-            negotiatedProtocolVersion: negotiatedVersion,
-          }
-        : {
-            role: "controller",
-            enrollmentProtocol: MESH_CONTROLLER_ENROLLMENT_PROTOCOL_VERSION,
-            nodeId: identity.nodeId,
-            publicKey: identity.publicKey,
-            fingerprint: identity.fingerprint,
-          };
+      const descriptor: MeshControllerWellKnownDescriptorV5 = {
+        role: "controller",
+        protocolVersion: MESH_PROTOCOL_VERSION,
+        nodeId: identity.nodeId,
+        publicKey: identity.publicKey,
+        fingerprint: identity.fingerprint,
+        binaryVersion: protocol.binaryVersion!,
+        supportedProtocolVersions: protocol.supportedProtocolVersions,
+        preferredProtocolVersion: protocol.preferredProtocolVersion,
+        negotiatedProtocolVersion: negotiatedVersion,
+      };
       return Response.json(descriptor, {
         headers: {
           [MESH_RUNTIME_SNAPSHOT_HEADER]: String(
@@ -341,7 +329,7 @@ export const routes = defineRoutes<ClankyRealtimeEvent>({
             protocol.supportedProtocolVersions,
           ),
           [MESH_PROTOCOL_VERSION_HEADER]: String(
-            negotiatedVersion ?? MESH_LEGACY_PROTOCOL_VERSION,
+            negotiatedVersion ?? MESH_PROTOCOL_VERSION,
           ),
         },
       });

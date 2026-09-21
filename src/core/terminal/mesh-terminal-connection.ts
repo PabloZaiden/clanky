@@ -15,7 +15,6 @@ import {
   MESH_TERMINAL_SESSION_REQUEST_TIMEOUT_MS,
   MESH_TERMINAL_SESSION_REQUEST_TTL_MS,
   MESH_TERMINAL_WEBSOCKET_OPEN_TIMEOUT_MS,
-  MESH_TERMINAL_LEGACY_PROTOCOL_VERSION,
   type MeshTerminalProtocolVersion,
 } from "@/shared/mesh-terminal";
 import { MESH_PROTOCOL_VERSION } from "@/shared/mesh-protocol";
@@ -23,10 +22,7 @@ import type { AgentProvider } from "@/shared/settings";
 import type { TerminalConnectionMode } from "@/shared/terminal-session";
 import type { MeshPeerRoute } from "@/shared/mesh";
 import { createLogger } from "@pablozaiden/webapp/server";
-import {
-  getWorkerRegistration,
-  updateWorkerNegotiatedProtocolVersion,
-} from "../../persistence/mesh";
+import { getWorkerRegistration } from "../../persistence/mesh";
 import {
   ensureLocalMeshNodeIdentity,
   signMeshPayload,
@@ -47,7 +43,6 @@ import type {
   InteractiveTerminalConnectResult,
 } from "./interactive-terminal-connection";
 import { isDomainError } from "../../domain/domain-error";
-import { isMeshProtocolCompatibilityError } from "../mesh-protocol-version";
 
 interface MeshTerminalSessionResponse {
   protocolVersion: MeshTerminalProtocolVersion;
@@ -413,11 +408,7 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
       );
     }
     const peerRoute = registration.route;
-    let protocolVersion: MeshTerminalProtocolVersion =
-      registration.workerNegotiatedProtocolVersion
-      === MESH_PROTOCOL_VERSION
-      ? MESH_PROTOCOL_VERSION
-      : MESH_TERMINAL_LEGACY_PROTOCOL_VERSION;
+    const protocolVersion: MeshTerminalProtocolVersion = MESH_PROTOCOL_VERSION;
     const expiresAt = new Date(Date.now() + MESH_TERMINAL_SESSION_REQUEST_TTL_MS).toISOString();
     const buildRequest = async (): Promise<MeshTerminalSessionRequest> => {
       const unsigned: Omit<MeshTerminalSessionRequest, "signature"> = {
@@ -454,44 +445,11 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
         signature: await signMeshPayload(buildMeshTerminalSessionSigningPayload(unsigned)),
       };
     };
-    let request = await buildRequest();
-    let response: MeshTerminalSessionResponse;
-    try {
-      response = await this.post(peerRoute, "api/mesh/internal/terminal/session", request, {
-        "x-clanky-mesh-node-id": identity.nodeId,
-        "x-clanky-mesh-request-id": request.requestId,
-      });
-    } catch (error) {
-      if (
-        protocolVersion !== MESH_PROTOCOL_VERSION
-        || !isMeshProtocolCompatibilityError(error)
-      ) {
-        throw error;
-      }
-      log.warn("Mesh terminal peer rejected v5; retrying with the legacy generation", {
-        executionNodeId: this.config.executionNodeId,
-        error: String(error),
-      });
-      protocolVersion = MESH_TERMINAL_LEGACY_PROTOCOL_VERSION;
-      try {
-        await updateWorkerNegotiatedProtocolVersion({
-          workerNodeId: this.config.executionNodeId,
-          localUserId,
-          negotiatedProtocolVersion: protocolVersion,
-          preferredProtocolVersion: protocolVersion,
-        });
-      } catch (updateError) {
-        log.warn("Mesh terminal protocol downgrade could not be persisted", {
-          executionNodeId: this.config.executionNodeId,
-          error: String(updateError),
-        });
-      }
-      request = await buildRequest();
-      response = await this.post(peerRoute, "api/mesh/internal/terminal/session", request, {
-        "x-clanky-mesh-node-id": identity.nodeId,
-        "x-clanky-mesh-request-id": request.requestId,
-      });
-    }
+    const request = await buildRequest();
+    const response = await this.post(peerRoute, "api/mesh/internal/terminal/session", request, {
+      "x-clanky-mesh-node-id": identity.nodeId,
+      "x-clanky-mesh-request-id": request.requestId,
+    });
     if (response.protocolVersion !== protocolVersion) {
       throw new DomainError("mesh_terminal_protocol_mismatch", "The Mesh peer uses an unsupported terminal protocol.");
     }

@@ -141,10 +141,7 @@ export class WorkerRelayService {
       relayFingerprint: selected.route.relayFingerprint,
       role: "worker" as const,
       targetNodeId: selected.grant.controllerNodeId,
-      ...(selected.grant.controllerNegotiatedProtocolVersion
-        === MESH_PROTOCOL_VERSION
-        ? { protocolVersion: MESH_PROTOCOL_VERSION }
-        : {}),
+      protocolVersion: MESH_PROTOCOL_VERSION,
     };
     const active = this.manager.activeConfig;
     if (
@@ -167,12 +164,8 @@ export class WorkerRelayService {
           && current.grant.controllerNodeId === selected.grant.controllerNodeId
           && current.route.relayUrl === selected.route.relayUrl
           && current.route.relayFingerprint === selected.route.relayFingerprint
-          && (
-            current.grant.controllerNegotiatedProtocolVersion
-              === MESH_PROTOCOL_VERSION
-              ? MESH_PROTOCOL_VERSION
-              : undefined
-          ) === expected.protocolVersion;
+          && current.grant.controllerNegotiatedProtocolVersion === MESH_PROTOCOL_VERSION
+          && expected.protocolVersion === MESH_PROTOCOL_VERSION;
       },
     });
   }

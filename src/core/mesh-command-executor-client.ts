@@ -16,14 +16,12 @@ import {
   MESH_ACP_CHANNEL,
   MESH_EXECUTION_DEFAULT_TIMEOUT_MS,
   MESH_EXECUTION_SESSION_REQUEST_TIMEOUT_MS,
-  MESH_ACP_LEGACY_SESSION_REQUEST_TTL_MS,
   MESH_EXECUTION_SESSION_REQUEST_TTL_MS,
   MESH_ACP_SESSION_REQUEST_TTL_MS,
   MESH_ACP_SESSION_RENEWAL_LEAD_MS,
   MESH_ACP_SESSION_RENEWAL_RETRY_MS,
   MESH_ACP_SESSION_RENEWAL_MAX_RETRY_MS,
   MESH_ACP_SESSION_RENEWAL_SAFETY_MARGIN_MS,
-  MESH_EXECUTION_LEGACY_PROTOCOL_VERSION,
   type MeshExecutionProtocolVersion,
 } from "@/shared/mesh-execution";
 import { MESH_PROTOCOL_VERSION } from "@/shared/mesh-protocol";
@@ -31,10 +29,7 @@ import type {
   MeshExecutionAsyncCommandSnapshot,
 } from "@/shared/mesh-execution";
 import type { MeshPeerRoute } from "@/shared/mesh";
-import {
-  getWorkerRegistration,
-  updateWorkerNegotiatedProtocolVersion,
-} from "../persistence/mesh";
+import { getWorkerRegistration } from "../persistence/mesh";
 import {
   ensureLocalMeshNodeIdentity,
   signMeshPayload,
@@ -44,7 +39,6 @@ import { buildMeshExecutionSessionSigningPayload } from "./mesh-protocol";
 import { requestMeshPeer } from "./mesh-peer-transport";
 import { DomainError } from "../domain/domain-error";
 import { requireCurrentUserId } from "../context/user-context";
-import { isMeshProtocolCompatibilityError } from "./mesh-protocol-version";
 import type {
   CommandOptions,
   CommandResult,
@@ -351,11 +345,7 @@ export class MeshCommandExecutorClient {
       );
     }
     const route = registration.route;
-    let protocolVersion: MeshExecutionProtocolVersion =
-      registration.workerNegotiatedProtocolVersion
-      === MESH_PROTOCOL_VERSION
-      ? MESH_PROTOCOL_VERSION
-      : MESH_EXECUTION_LEGACY_PROTOCOL_VERSION;
+    const protocolVersion: MeshExecutionProtocolVersion = MESH_PROTOCOL_VERSION;
 
     const channel = this.channel;
     let encryptedEnvironment: unknown;
@@ -404,54 +394,7 @@ export class MeshCommandExecutorClient {
 
     let request = await buildSessionRequest(this.sessionTtlMs);
     let response: unknown;
-    try {
-      response = await postSessionRequest(request);
-    } catch (error) {
-      if (
-        protocolVersion === MESH_PROTOCOL_VERSION
-        && isMeshProtocolCompatibilityError(error)
-      ) {
-        log.warn("Mesh execution peer rejected v5; retrying with the legacy generation", {
-          executionNodeId: this.executionNodeId,
-          error: String(error),
-        });
-        protocolVersion = MESH_EXECUTION_LEGACY_PROTOCOL_VERSION;
-        try {
-          await updateWorkerNegotiatedProtocolVersion({
-            workerNodeId: this.executionNodeId,
-            localUserId,
-            negotiatedProtocolVersion: protocolVersion,
-            preferredProtocolVersion: protocolVersion,
-          });
-        } catch (updateError) {
-          log.warn("Mesh execution protocol downgrade could not be persisted", {
-            executionNodeId: this.executionNodeId,
-            error: String(updateError),
-          });
-        }
-        request = await buildSessionRequest(
-          this.channel === MESH_ACP_CHANNEL
-            ? MESH_ACP_LEGACY_SESSION_REQUEST_TTL_MS
-            : this.sessionTtlMs,
-        );
-        response = await postSessionRequest(request);
-      } else if (
-        this.channel !== MESH_ACP_CHANNEL
-        || !(error instanceof DomainError)
-        || error.code !== "mesh_execution_session_expiry_invalid"
-        || this.sessionTtlMs <= MESH_ACP_LEGACY_SESSION_REQUEST_TTL_MS
-      ) {
-        throw error;
-      } else {
-        log.warn("Mesh ACP worker rejected the extended session lease; retrying with the legacy lease", {
-          executionNodeId: this.executionNodeId,
-          requestedTtlMs: this.sessionTtlMs,
-          fallbackTtlMs: MESH_ACP_LEGACY_SESSION_REQUEST_TTL_MS,
-        });
-        request = await buildSessionRequest(MESH_ACP_LEGACY_SESSION_REQUEST_TTL_MS);
-        response = await postSessionRequest(request);
-      }
-    }
+    response = await postSessionRequest(request);
     const body = parseResponseShape<MeshSessionResponse>(
       response,
       ["protocolVersion", "sessionId", "expiresAt", "encryptedPayload"],

@@ -323,7 +323,7 @@ describe("database schema", () => {
     const database = createLegacyConsolidatedDatabase();
     try {
       expect(() => createBaseSchema(database)).not.toThrow();
-      expect(runMigrations(database)).toBe(1);
+      expect(runMigrations(database)).toBe(2);
 
       expect(getSchemaVersion(database)).toBe(migrations.at(-1)!.version);
       expect(getTableColumns(database, "execution_hosts")).toEqual(
@@ -524,7 +524,7 @@ describe("database schema", () => {
         [1, null],
       );
 
-      expect(runMigrations(database)).toBe(3);
+      expect(runMigrations(database)).toBe(4);
       expect(
         database
           .query("SELECT controller_node_id FROM mesh_controller_grants")
@@ -540,7 +540,7 @@ describe("database schema", () => {
     });
   });
 
-  test("migrates Mesh protocol metadata from v1 and is idempotent", async () => {
+  test("normalizes Mesh protocol metadata to v5 and is idempotent", async () => {
     await withTempDataDir(async (dataDir) => {
       const database = new Database(join(dataDir, "clanky.db"));
       database.exec(`
@@ -573,7 +573,7 @@ describe("database schema", () => {
       database.run("INSERT INTO mesh_controller_grants VALUES (?)", ["controller-1"]);
       database.run("INSERT INTO mesh_controller_relay_pairing VALUES (?)", [1]);
 
-      expect(runMigrations(database)).toBe(2);
+      expect(runMigrations(database)).toBe(3);
       expect(getTableColumns(database, "mesh_worker_registrations")).toEqual(
         expect.arrayContaining([
           "worker_binary_version",
@@ -607,9 +607,9 @@ describe("database schema", () => {
         ).all(),
       ).toEqual([{
         worker_node_id: "worker-1",
-        worker_supported_protocol_versions_json: "[1]",
-        worker_preferred_protocol_version: 1,
-        worker_negotiated_protocol_version: 1,
+        worker_supported_protocol_versions_json: "[5]",
+        worker_preferred_protocol_version: 5,
+        worker_negotiated_protocol_version: 5,
       }]);
       expect(
         database.query(
@@ -617,15 +617,22 @@ describe("database schema", () => {
         ).all(),
       ).toEqual([{
         controller_node_id: "controller-1",
-        controller_supported_protocol_versions_json: "[1]",
-        controller_preferred_protocol_version: 1,
-        controller_negotiated_protocol_version: 1,
+        controller_supported_protocol_versions_json: "[5]",
+        controller_preferred_protocol_version: 5,
+        controller_negotiated_protocol_version: 5,
       }]);
       expect(database.query(
         "SELECT current_version, migrated_from_version FROM mesh_protocol_state WHERE singleton = 1",
       ).all()).toEqual([{
         current_version: 5,
         migrated_from_version: 1,
+      }]);
+      expect(database.query(
+        "SELECT relay_supported_protocol_versions_json, relay_preferred_protocol_version, relay_negotiated_protocol_version FROM mesh_controller_relay_pairing",
+      ).all()).toEqual([{
+        relay_supported_protocol_versions_json: "[5]",
+        relay_preferred_protocol_version: 5,
+        relay_negotiated_protocol_version: 5,
       }]);
       expect(database.query(
         "SELECT worker_node_id FROM mesh_worker_registrations",
@@ -644,6 +651,113 @@ describe("database schema", () => {
         current_version: 5,
         migrated_from_version: 1,
       }]);
+      database.close();
+    });
+  });
+
+  test("normalizes deployed v1 Mesh metadata during the v5-only upgrade", async () => {
+    await withTempDataDir(async (dataDir) => {
+      const database = new Database(join(dataDir, "clanky.db"));
+      database.exec(`
+        CREATE TABLE schema_migrations (
+          version INTEGER PRIMARY KEY,
+          name TEXT NOT NULL,
+          applied_at TEXT NOT NULL
+        );
+        CREATE TABLE mesh_node_identity (
+          singleton INTEGER PRIMARY KEY
+        );
+        CREATE TABLE mesh_worker_registrations (
+          worker_node_id TEXT PRIMARY KEY,
+          worker_binary_version TEXT,
+          worker_supported_protocol_versions_json TEXT NOT NULL DEFAULT '[1]',
+          worker_preferred_protocol_version INTEGER NOT NULL DEFAULT 1,
+          worker_negotiated_protocol_version INTEGER NOT NULL DEFAULT 1,
+          worker_protocol_updated_at TEXT
+        );
+        CREATE TABLE mesh_controller_grants (
+          controller_node_id TEXT PRIMARY KEY,
+          controller_binary_version TEXT,
+          controller_supported_protocol_versions_json TEXT NOT NULL DEFAULT '[1]',
+          controller_preferred_protocol_version INTEGER NOT NULL DEFAULT 1,
+          controller_negotiated_protocol_version INTEGER NOT NULL DEFAULT 1,
+          controller_protocol_updated_at TEXT
+        );
+        CREATE TABLE mesh_controller_relay_pairing (
+          singleton INTEGER PRIMARY KEY,
+          relay_binary_version TEXT,
+          relay_supported_protocol_versions_json TEXT NOT NULL DEFAULT '[1]',
+          relay_preferred_protocol_version INTEGER NOT NULL DEFAULT 1,
+          relay_negotiated_protocol_version INTEGER NOT NULL DEFAULT 1,
+          relay_protocol_updated_at TEXT
+        );
+        CREATE TABLE mesh_protocol_state (
+          singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+          current_version INTEGER NOT NULL,
+          migrated_from_version INTEGER,
+          migrated_at TEXT,
+          updated_at TEXT NOT NULL
+        );
+      `);
+      for (let version = 1; version <= BASELINE_SCHEMA_VERSION + 5; version++) {
+        database.run(
+          "INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)",
+          [version, `migration_${String(version)}`, "now"],
+        );
+      }
+      database.run("INSERT INTO mesh_node_identity VALUES (?)", [1]);
+      database.run(
+        "INSERT INTO mesh_worker_registrations VALUES (?, ?, ?, ?, ?, ?)",
+        ["worker-1", "5.0.5", "[1]", 1, 1, "old-worker-time"],
+      );
+      database.run(
+        "INSERT INTO mesh_controller_grants VALUES (?, ?, ?, ?, ?, ?)",
+        ["controller-1", "5.0.5", "[1]", 1, 1, "old-controller-time"],
+      );
+      database.run(
+        "INSERT INTO mesh_controller_relay_pairing VALUES (?, ?, ?, ?, ?, ?)",
+        [1, "5.0.5", "[1]", 1, 1, "old-relay-time"],
+      );
+      database.run(
+        "INSERT INTO mesh_protocol_state VALUES (?, ?, ?, ?, ?)",
+        [1, 1, 1, "old-migration-time", "old-update-time"],
+      );
+
+      expect(runMigrations(database)).toBe(1);
+      expect(database.query(
+        "SELECT worker_supported_protocol_versions_json, worker_preferred_protocol_version, worker_negotiated_protocol_version, worker_protocol_updated_at FROM mesh_worker_registrations",
+      ).all()).toEqual([{
+        worker_supported_protocol_versions_json: "[5]",
+        worker_preferred_protocol_version: 5,
+        worker_negotiated_protocol_version: 5,
+        worker_protocol_updated_at: "old-worker-time",
+      }]);
+      expect(database.query(
+        "SELECT controller_supported_protocol_versions_json, controller_preferred_protocol_version, controller_negotiated_protocol_version, controller_protocol_updated_at FROM mesh_controller_grants",
+      ).all()).toEqual([{
+        controller_supported_protocol_versions_json: "[5]",
+        controller_preferred_protocol_version: 5,
+        controller_negotiated_protocol_version: 5,
+        controller_protocol_updated_at: "old-controller-time",
+      }]);
+      expect(database.query(
+        "SELECT relay_supported_protocol_versions_json, relay_preferred_protocol_version, relay_negotiated_protocol_version, relay_protocol_updated_at FROM mesh_controller_relay_pairing",
+      ).all()).toEqual([{
+        relay_supported_protocol_versions_json: "[5]",
+        relay_preferred_protocol_version: 5,
+        relay_negotiated_protocol_version: 5,
+        relay_protocol_updated_at: "old-relay-time",
+      }]);
+      expect(database.query(
+        "SELECT current_version, migrated_from_version, migrated_at, updated_at FROM mesh_protocol_state",
+      ).all()).toEqual([{
+        current_version: 5,
+        migrated_from_version: 1,
+        migrated_at: "old-migration-time",
+        updated_at: expect.any(String),
+      }]);
+
+      expect(runMigrations(database)).toBe(0);
       database.close();
     });
   });

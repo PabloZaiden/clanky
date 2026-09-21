@@ -8,9 +8,7 @@ import type {
   MeshRelayChallengeFrame,
   MeshRelayPeerIdentity,
 } from "../../src/shared/mesh-relay";
-import {
-  MESH_RELAY_PROTOCOL_VERSION,
-} from "../../src/shared/mesh-relay";
+import { MESH_PROTOCOL_VERSION } from "../../src/shared/mesh-protocol";
 import {
   MeshRelayBroker,
   type MeshRelaySocket,
@@ -93,7 +91,7 @@ function sendAuthorization(
   chunkSizes: readonly number[],
 ): void {
   broker.handleControlMessage(connectionId, JSON.stringify({
-    protocolVersion: MESH_RELAY_PROTOCOL_VERSION,
+    protocolVersion: MESH_PROTOCOL_VERSION,
     type: "authorization.begin",
     transactionId,
     workerCount: workers.length,
@@ -102,7 +100,7 @@ function sendAuthorization(
   let offset = 0;
   for (const chunkSize of chunkSizes) {
     broker.handleControlMessage(connectionId, JSON.stringify({
-      protocolVersion: MESH_RELAY_PROTOCOL_VERSION,
+      protocolVersion: MESH_PROTOCOL_VERSION,
       type: "authorization.chunk",
       transactionId,
       workers: workers.slice(offset, offset + chunkSize),
@@ -120,7 +118,7 @@ function authenticateController(
   const connectionId = broker.openControl(socket);
   const challenge = socket.frames()[0] as unknown as MeshRelayChallengeFrame;
   const unsigned = {
-    protocolVersion: MESH_RELAY_PROTOCOL_VERSION,
+    protocolVersion: MESH_PROTOCOL_VERSION,
     type: "auth",
     role: "controller",
     nodeId: identity.peer.nodeId,
@@ -166,7 +164,7 @@ describe("Mesh relay authorization transactions", () => {
         [1],
       );
       broker.handleControlMessage(connectionId, JSON.stringify({
-        protocolVersion: MESH_RELAY_PROTOCOL_VERSION,
+        protocolVersion: MESH_PROTOCOL_VERSION,
         type: "authorization.commit",
         transactionId: "generation-original",
       }));
@@ -186,7 +184,7 @@ describe("Mesh relay authorization transactions", () => {
       expect(store.listAuthorizedWorkers()).toEqual([original]);
 
       broker.handleControlMessage(connectionId, JSON.stringify({
-        protocolVersion: MESH_RELAY_PROTOCOL_VERSION,
+        protocolVersion: MESH_PROTOCOL_VERSION,
         type: "authorization.commit",
         transactionId: "generation-multi",
       }));
@@ -200,7 +198,7 @@ describe("Mesh relay authorization transactions", () => {
         [1],
       );
       broker.handleControlMessage(connectionId, JSON.stringify({
-        protocolVersion: MESH_RELAY_PROTOCOL_VERSION,
+        protocolVersion: MESH_PROTOCOL_VERSION,
         type: "authorization.commit",
         transactionId: "generation-revoke",
       }));
@@ -240,7 +238,7 @@ describe("Mesh relay authorization transactions", () => {
 
       jest.advanceTimersByTime(1_000);
       broker.handleControlMessage(connectionId, JSON.stringify({
-        protocolVersion: MESH_RELAY_PROTOCOL_VERSION,
+        protocolVersion: MESH_PROTOCOL_VERSION,
         type: "authorization.commit",
         transactionId: "generation-expiring",
       }));

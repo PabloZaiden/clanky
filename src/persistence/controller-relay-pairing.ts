@@ -5,7 +5,7 @@
 import type { MeshRelayPeerIdentity } from "@/shared/mesh-relay";
 import { normalizeMeshRelayOrigin } from "@/shared/mesh-relay";
 import {
-  MESH_LEGACY_PROTOCOL_VERSION,
+  MESH_PROTOCOL_VERSION,
   type MeshProtocolVersion,
 } from "@/shared/mesh-protocol";
 import { getDatabase } from "./database";
@@ -77,17 +77,15 @@ export class InconsistentMeshWorkerIdentityError extends Error {
 }
 
 function mapPairing(row: ControllerRelayPairingRow): ControllerRelayPairing {
-  let supportedProtocolVersions: MeshProtocolVersion[] = [
-    MESH_LEGACY_PROTOCOL_VERSION,
-  ];
+  let supportedProtocolVersions: MeshProtocolVersion[] = [MESH_PROTOCOL_VERSION];
   try {
     const parsed: unknown = JSON.parse(
-      row.relay_supported_protocol_versions_json ?? "[1]",
+      row.relay_supported_protocol_versions_json ?? "[5]",
     );
     if (Array.isArray(parsed)) {
       const normalized = parsed.filter(
         (version): version is MeshProtocolVersion =>
-          version === 1 || version === 5,
+          version === MESH_PROTOCOL_VERSION,
       );
       if (normalized.length > 0) {
         supportedProtocolVersions = normalized;
@@ -106,12 +104,8 @@ function mapPairing(row: ControllerRelayPairingRow): ControllerRelayPairing {
     updatedAt: row.updated_at,
     relayBinaryVersion: row.relay_binary_version,
     relaySupportedProtocolVersions: supportedProtocolVersions,
-    relayPreferredProtocolVersion: row.relay_preferred_protocol_version === 5
-      ? 5
-      : MESH_LEGACY_PROTOCOL_VERSION,
-    relayNegotiatedProtocolVersion: row.relay_negotiated_protocol_version === 5
-      ? 5
-      : MESH_LEGACY_PROTOCOL_VERSION,
+    relayPreferredProtocolVersion: MESH_PROTOCOL_VERSION,
+    relayNegotiatedProtocolVersion: MESH_PROTOCOL_VERSION,
   };
 }
 
@@ -172,10 +166,10 @@ export function saveControllerRelayPairing(
     input.relayBinaryVersion ?? null,
     JSON.stringify(
       input.relaySupportedProtocolVersions
-        ?? [MESH_LEGACY_PROTOCOL_VERSION],
+        ?? [MESH_PROTOCOL_VERSION],
     ),
-    input.relayPreferredProtocolVersion ?? MESH_LEGACY_PROTOCOL_VERSION,
-    input.relayNegotiatedProtocolVersion ?? MESH_LEGACY_PROTOCOL_VERSION,
+    input.relayPreferredProtocolVersion ?? MESH_PROTOCOL_VERSION,
+    input.relayNegotiatedProtocolVersion ?? MESH_PROTOCOL_VERSION,
     now,
   );
   return {
@@ -185,12 +179,12 @@ export function saveControllerRelayPairing(
     updatedAt: now,
     relayBinaryVersion: input.relayBinaryVersion ?? null,
     relaySupportedProtocolVersions: [
-      ...(input.relaySupportedProtocolVersions ?? [MESH_LEGACY_PROTOCOL_VERSION]),
+      ...(input.relaySupportedProtocolVersions ?? [MESH_PROTOCOL_VERSION]),
     ],
     relayPreferredProtocolVersion: input.relayPreferredProtocolVersion
-      ?? MESH_LEGACY_PROTOCOL_VERSION,
+      ?? MESH_PROTOCOL_VERSION,
     relayNegotiatedProtocolVersion: input.relayNegotiatedProtocolVersion
-      ?? MESH_LEGACY_PROTOCOL_VERSION,
+      ?? MESH_PROTOCOL_VERSION,
   };
 }
 

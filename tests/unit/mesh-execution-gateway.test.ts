@@ -19,6 +19,7 @@ import { configureMeshRuntime } from "../../src/core/mesh-runtime";
 import { closeDatabase, initializeDatabase } from "../../src/persistence/database";
 import { getMeshNodeFingerprint, ensureLocalMeshNodeIdentity } from "../../src/persistence/mesh-node-identity";
 import { revokeControllerGrant, saveControllerGrant } from "../../src/persistence/mesh";
+import { MESH_PROTOCOL_VERSION } from "../../src/shared/mesh-protocol";
 import { pollUntil } from "../helpers/polling";
 
 describe("mesh execution path resolution", () => {
@@ -142,7 +143,7 @@ describe("mesh asynchronous command lifecycle", () => {
   async function createSession(workspaceId: string) {
     const workerIdentity = await ensureLocalMeshNodeIdentity();
     const unsigned: Omit<MeshExecutionSessionRequest, "signature"> = {
-      protocolVersion: 1,
+      protocolVersion: MESH_PROTOCOL_VERSION,
       requestId: crypto.randomUUID(),
       callerNodeId: controllerNodeId,
       callerPublicKey: controllerPublicKey,
@@ -210,7 +211,7 @@ describe("mesh asynchronous command lifecycle", () => {
   test("runs, streams bounded output, cancels, and rejects a mismatched context", async () => {
     const session = await createSession("workspace-a");
     const started = await gateway.startAsyncCommand({
-      protocolVersion: 1,
+      protocolVersion: MESH_PROTOCOL_VERSION,
       action: "start",
       sessionId: session.sessionId,
       sessionToken: session.sessionToken,
@@ -230,7 +231,7 @@ describe("mesh asynchronous command lifecycle", () => {
     expect(completed.snapshot.result?.exitCode).toBe(0);
 
     const cancellable = await gateway.startAsyncCommand({
-      protocolVersion: 1,
+      protocolVersion: MESH_PROTOCOL_VERSION,
       action: "start",
       sessionId: session.sessionId,
       sessionToken: session.sessionToken,
@@ -265,7 +266,7 @@ describe("mesh asynchronous command lifecycle", () => {
         "protocolVersion" | "sessionId" | "sessionToken" | "requestId"
       >,
     ) => await gateway.execute({
-      protocolVersion: 1,
+      protocolVersion: MESH_PROTOCOL_VERSION,
       sessionId: session.sessionId,
       sessionToken: session.sessionToken,
       requestId: crypto.randomUUID(),
@@ -366,7 +367,7 @@ describe("mesh asynchronous command lifecycle", () => {
   test("cancels active commands when the controller grant is revoked", async () => {
     const session = await createSession("workspace-a");
     const started = await gateway.startAsyncCommand({
-      protocolVersion: 1,
+      protocolVersion: MESH_PROTOCOL_VERSION,
       action: "start",
       sessionId: session.sessionId,
       sessionToken: session.sessionToken,

@@ -13,9 +13,7 @@ import { MESH_PROTOCOL_VERSION } from "../../src/shared/mesh-protocol";
 
 function buildRequest(
   encryptedEnvironment?: unknown,
-  protocolVersion:
-    | typeof MESH_EXECUTION_PROTOCOL_VERSION
-    | typeof MESH_PROTOCOL_VERSION = MESH_EXECUTION_PROTOCOL_VERSION,
+  protocolVersion: typeof MESH_PROTOCOL_VERSION = MESH_PROTOCOL_VERSION,
 ): Omit<MeshExecutionSessionRequest, "signature"> {
   const request: Omit<MeshExecutionSessionRequest, "signature"> = {
     protocolVersion,
@@ -38,34 +36,8 @@ function buildRequest(
 }
 
 describe("Mesh execution session protocol", () => {
-  test("signs the canonical request shape when no managed environment is present", () => {
+  test("signs the canonical v5 request shape", () => {
     const request = buildRequest();
-    const payload = JSON.stringify([
-      "clanky-mesh-execution-session-v1",
-      request.protocolVersion,
-      request.requestId,
-      request.callerNodeId,
-      request.callerPublicKey,
-      request.callerFingerprint,
-      request.callerEncryptionPublicKey,
-      request.targetNodeId,
-      request.workspaceId,
-      request.directory,
-      request.provider,
-      request.channel,
-      request.nonce,
-      request.expiresAt,
-    ]);
-
-    expect(MeshExecutionSessionRequestSchema.safeParse({
-      ...request,
-      signature: "signature",
-    }).success).toBe(true);
-    expect(buildMeshExecutionSessionSigningPayload(request)).toBe(payload);
-  });
-
-  test("signs the v5 canonical request shape", () => {
-    const request = buildRequest(undefined, MESH_PROTOCOL_VERSION);
     const payload = JSON.stringify([
       "clanky-mesh-execution-session-v5",
       request.protocolVersion,

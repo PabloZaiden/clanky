@@ -15,8 +15,6 @@ import {
 import {
   MESH_PROTOCOL_VERSION,
   MESH_PROTOCOL_VERSIONS_HEADER,
-  MESH_SUPPORTED_PROTOCOL_VERSIONS,
-  negotiateMeshProtocolVersion,
   serializeMeshProtocolVersions,
   type MeshProtocolVersion,
 } from "@/shared/mesh-protocol";
@@ -166,6 +164,12 @@ export async function discoverMeshEnrollmentTarget(
         { cause: parsed.error },
       );
     }
+    if (parsed.data.negotiatedProtocolVersion !== MESH_PROTOCOL_VERSION) {
+      throw new DomainError(
+        "mesh_enrollment_discovery_invalid",
+        "The Mesh target does not negotiate the required protocol generation.",
+      );
+    }
     if (parsed.data.role === "relay") {
       try {
         normalizeMeshRelayOrigin(normalizedTarget);
@@ -189,14 +193,7 @@ export async function discoverMeshEnrollmentTarget(
       target: normalizedTarget,
       descriptor: parsed.data,
       runtimeSnapshotVersion,
-      negotiatedProtocolVersion:
-        "protocolVersion" in parsed.data
-          && parsed.data.protocolVersion === MESH_PROTOCOL_VERSION
-          ? MESH_PROTOCOL_VERSION
-          : negotiateMeshProtocolVersion(
-              [...MESH_SUPPORTED_PROTOCOL_VERSIONS],
-              [1],
-            )!,
+      negotiatedProtocolVersion: parsed.data.negotiatedProtocolVersion,
     };
   } catch (error) {
     if (error instanceof DomainError) {

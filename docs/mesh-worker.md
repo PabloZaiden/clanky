@@ -11,20 +11,19 @@ are trusted to execute commands and access files on the worker host.
 ## Protocol generations and migration
 
 Mesh protocol generations are global and aligned with the Clanky release major.
-The current generation is v5; v1 remains available only during the migration
-window. Controller, relay, and worker data directories migrate their stored
-Mesh metadata automatically at startup without replacing identities, keys, or
-grants. New enrollment negotiates the highest generation supported by both
-peers, while existing peers continue through the isolated v1 compatibility
-adapter until they are upgraded.
+The current and only supported generation is v5. Controller, relay, and worker
+data directories normalize their stored Mesh metadata automatically at startup
+without replacing identities, keys, or grants. New connections advertise and
+negotiate v5 before parsing or emitting Mesh contracts; peers that do not
+support v5 are rejected rather than silently downgraded.
 
 The Mesh status and Settings views show each controller, relay, and worker
 binary version, supported generations, and the generation observed in the last
-successful exchange. Wait until every peer reports v5 before removing v1
-support. A future breaking generation should follow the same pattern: add the
-new generation behind a narrow adapter, migrate persisted state idempotently,
-run a short dual-version window, then delete the old adapter and its tests
-once rollout is confirmed.
+successful exchange. A future breaking generation should follow the same
+pattern: add the new generation behind a narrow adapter, migrate persisted
+state idempotently, negotiate before parsing or emitting contracts, run a
+short dual-version window, then delete the old adapter and its tests once
+rollout is confirmed.
 
 ## Choose a topology
 

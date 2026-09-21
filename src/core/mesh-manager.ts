@@ -9,18 +9,12 @@
 import type {
   MeshEnrollmentRoute,
   MeshEnrollmentRequest,
-  MeshEnrollmentRequestV1,
-  MeshEnrollmentRequestV2,
   MeshEnrollmentRequestV5,
   MeshEnrollmentResponse,
-  MeshEnrollmentResponseV1,
-  MeshEnrollmentResponseV2,
   MeshEnrollmentResponseV5,
   MeshHealthCheck,
-  MeshHealthCheckV1,
   MeshHealthCheckV5,
   MeshHealthCheckResponse,
-  MeshHealthCheckResponseV1,
   MeshHealthCheckResponseV5,
   MeshRevocationNotice,
   MeshWorkerKillRequest,
@@ -46,7 +40,6 @@ import {
 import {
   createExecutionHostRuntimeSnapshot,
   parseExecutionHostCapabilities,
-  type ExecutionHostCapabilities,
 } from "@/shared/execution-host";
 import { createLogger } from "@pablozaiden/webapp/server";
 import {
@@ -66,7 +59,6 @@ import {
   saveWorkerRegistration,
   updateControllerGrantProtocolMetadata,
   updateWorkerHealthSnapshot,
-  updateWorkerNegotiatedProtocolVersion,
 } from "../persistence/mesh";
 import {
   deleteExecutionHost,
@@ -94,17 +86,11 @@ import {
 import {
   addLocalMeshProtocolMetadata,
   getLocalMeshProtocolMetadata,
-  isMeshProtocolCompatibilityError,
 } from "./mesh-protocol-version";
 import {
-  MESH_LEGACY_PROTOCOL_VERSION,
   MESH_PROTOCOL_VERSION,
   MESH_SUPPORTED_PROTOCOL_VERSIONS,
-  negotiateMeshProtocolVersion,
-  parseMeshProtocolVersionsHeader,
   MESH_PROTOCOL_VERSIONS_HEADER,
-  MESH_BINARY_VERSION_HEADER,
-  type MeshProtocolVersion,
 } from "@/shared/mesh-protocol";
 import {
   assertMeshWorkerTlsCertificate,
@@ -158,87 +144,6 @@ import {
 const log = createLogger("core:mesh-manager");
 const MESH_WORKER_KILL_DELAY_MS = 100;
 const MESH_WORKER_KILL_EXIT_CODE = 1;
-
-async function postMeshControlMessageWithProtocolFallback(options: {
-  route: MeshPeerRoute;
-  path: string;
-  requestId: string;
-  protocolVersion: MeshProtocolVersion;
-  buildPayload: (protocolVersion: MeshProtocolVersion) => Promise<unknown>;
-  headers?: Record<string, string>;
-  onLegacyFallback?: () => Promise<void>;
-}): Promise<MeshProtocolVersion> {
-  const send = async (protocolVersion: MeshProtocolVersion): Promise<void> => {
-    await postMeshControlMessage(
-      options.route,
-      options.path,
-      await options.buildPayload(protocolVersion),
-      options.requestId,
-      { headers: options.headers },
-    );
-  };
-  try {
-    await send(options.protocolVersion);
-    return options.protocolVersion;
-  } catch (error) {
-    if (
-      options.protocolVersion !== MESH_PROTOCOL_VERSION
-      || !isMeshProtocolCompatibilityError(error)
-    ) {
-      throw error;
-    }
-    await send(MESH_LEGACY_PROTOCOL_VERSION);
-    await options.onLegacyFallback?.();
-    return MESH_LEGACY_PROTOCOL_VERSION;
-  }
-}
-
-async function persistWorkerProtocolDowngrade(
-  workerNodeId: string,
-  localUserId: string,
-): Promise<void> {
-  try {
-    await updateWorkerNegotiatedProtocolVersion({
-      workerNodeId,
-      localUserId,
-      negotiatedProtocolVersion: MESH_LEGACY_PROTOCOL_VERSION,
-      preferredProtocolVersion: MESH_LEGACY_PROTOCOL_VERSION,
-    });
-  } catch (error) {
-    log.warn("Mesh worker protocol downgrade could not be persisted", {
-      workerNodeId,
-      error: String(error),
-    });
-  }
-}
-
-const LEGACY_MESH_EXECUTION_CAPABILITY_IDS = [
-  "commandExecution",
-  "fileOperations",
-  "acpRuntime",
-  "interactiveTerminal",
-  "provisioning",
-  "devboxLifecycle",
-  "tcpTunnel",
-  "serverHealth",
-] as const;
-
-function capabilitiesForMeshPeer(
-  capabilities: ExecutionHostCapabilities,
-  supportsRuntimeSnapshot: boolean,
-): ExecutionHostCapabilities {
-  if (supportsRuntimeSnapshot) {
-    return capabilities;
-  }
-  const compatible: ExecutionHostCapabilities = {};
-  for (const capability of LEGACY_MESH_EXECUTION_CAPABILITY_IDS) {
-    const version = capabilities[capability];
-    if (version !== undefined) {
-      compatible[capability] = version;
-    }
-  }
-  return compatible;
-}
 
 function meshRoutesEqual(
   left: MeshPeerRoute | null | undefined,
@@ -481,24 +386,12 @@ export class MeshManager {
         "The enrollment request has expired.",
       );
     }
-    const v5Envelope = envelope.protocolVersion === MESH_PROTOCOL_VERSION
-      ? envelope
+    const directRoute = envelope.route.kind === "direct"
+      ? envelope.route
       : null;
-    const directRoute = v5Envelope?.route.kind === "direct"
-      ? v5Envelope.route
-      : envelope.protocolVersion === 1
-        ? {
-            endpoint: envelope.workerEndpoint,
-            transport: envelope.workerTransport,
-            tlsCertificate: envelope.workerTlsCertificate,
-            tlsFingerprint: envelope.workerTlsFingerprint,
-          }
-        : null;
-    const relayRoute = v5Envelope?.route.kind === "relay"
-      ? v5Envelope.route
-      : envelope.protocolVersion === 2
-        ? envelope.route
-        : null;
+    const relayRoute = envelope.route.kind === "relay"
+      ? envelope.route
+      : null;
     const isRelayEnrollment = relayRoute !== null;
     if (directRoute) {
       if (directRoute.transport === "https") {
@@ -660,14 +553,10 @@ export class MeshManager {
           workerCapabilities,
           workerAcceptRemoteExecution: envelope.workerAcceptRemoteExecution,
           workerConfigRevision: envelope.workerConfigRevision,
-          workerBinaryVersion: v5Envelope?.binaryVersion ?? null,
-          workerSupportedProtocolVersions: v5Envelope?.supportedProtocolVersions
-            ?? [MESH_LEGACY_PROTOCOL_VERSION],
-          workerPreferredProtocolVersion: v5Envelope?.preferredProtocolVersion
-            ?? MESH_LEGACY_PROTOCOL_VERSION,
-          workerNegotiatedProtocolVersion: v5Envelope
-            ? MESH_PROTOCOL_VERSION
-            : MESH_LEGACY_PROTOCOL_VERSION,
+          workerBinaryVersion: envelope.binaryVersion,
+          workerSupportedProtocolVersions: envelope.supportedProtocolVersions,
+          workerPreferredProtocolVersion: envelope.preferredProtocolVersion,
+          workerNegotiatedProtocolVersion: MESH_PROTOCOL_VERSION,
           ...(workspaceWorkerEnrollmentId
             ? {
                 registrationScope: "workspace" as const,
@@ -726,7 +615,7 @@ export class MeshManager {
         }
         throw error;
       }
-    } else if (v5Envelope && existingRegistration) {
+    } else if (existingRegistration) {
       await updateWorkerHealthSnapshot({
         workerNodeId: envelope.workerNodeId,
         localUserId: tokenResult.userId,
@@ -737,9 +626,9 @@ export class MeshManager {
         capabilities: workerCapabilities,
         acceptRemoteExecution: envelope.workerAcceptRemoteExecution,
         configRevision: envelope.workerConfigRevision,
-        binaryVersion: v5Envelope.binaryVersion,
-        supportedProtocolVersions: v5Envelope.supportedProtocolVersions,
-        preferredProtocolVersion: v5Envelope.preferredProtocolVersion,
+        binaryVersion: envelope.binaryVersion,
+        supportedProtocolVersions: envelope.supportedProtocolVersions,
+        preferredProtocolVersion: envelope.preferredProtocolVersion,
         negotiatedProtocolVersion: MESH_PROTOCOL_VERSION,
       });
     }
@@ -749,40 +638,18 @@ export class MeshManager {
       { userId: tokenResult.userId },
     );
 
-    const response = envelope.protocolVersion === MESH_PROTOCOL_VERSION
-      ? ({
-            protocolVersion: MESH_PROTOCOL_VERSION,
-            workerNodeId: envelope.workerNodeId,
-            controllerNodeId: identity.nodeId,
-            controllerInstanceName: identity.instanceName,
-            controllerPublicKey: identity.publicKey,
-            controllerFingerprint: identity.fingerprint,
-            controllerEncryptionPublicKey,
-            binaryVersion: getLocalMeshProtocolMetadata().binaryVersion!,
-            supportedProtocolVersions: [
-              ...MESH_SUPPORTED_PROTOCOL_VERSIONS,
-            ],
-            preferredProtocolVersion: MESH_PROTOCOL_VERSION,
-          } satisfies Omit<MeshEnrollmentResponseV5, "signature">)
-        : envelope.protocolVersion === 2
-          ? ({
-              protocolVersion: 2,
-              workerNodeId: envelope.workerNodeId,
-              controllerNodeId: identity.nodeId,
-              controllerInstanceName: identity.instanceName,
-              controllerPublicKey: identity.publicKey,
-              controllerFingerprint: identity.fingerprint,
-              controllerEncryptionPublicKey,
-            } satisfies Omit<MeshEnrollmentResponseV2, "signature">)
-          : ({
-            protocolVersion: envelope.protocolVersion,
-            workerNodeId: envelope.workerNodeId,
-            controllerNodeId: identity.nodeId,
-            controllerInstanceName: identity.instanceName,
-            controllerPublicKey: identity.publicKey,
-            controllerFingerprint: identity.fingerprint,
-            controllerEncryptionPublicKey,
-          } satisfies Omit<MeshEnrollmentResponseV1, "signature">);
+    const response = {
+      protocolVersion: MESH_PROTOCOL_VERSION,
+      workerNodeId: envelope.workerNodeId,
+      controllerNodeId: identity.nodeId,
+      controllerInstanceName: identity.instanceName,
+      controllerPublicKey: identity.publicKey,
+      controllerFingerprint: identity.fingerprint,
+      controllerEncryptionPublicKey,
+      binaryVersion: getLocalMeshProtocolMetadata().binaryVersion!,
+      supportedProtocolVersions: [...MESH_SUPPORTED_PROTOCOL_VERSIONS],
+      preferredProtocolVersion: MESH_PROTOCOL_VERSION,
+    } satisfies Omit<MeshEnrollmentResponseV5, "signature">;
     return {
       ...response,
       signature: await signMeshPayload(
@@ -847,39 +714,31 @@ export class MeshManager {
       const expiresAt = new Date(
         Date.now() + 60_000,
       ).toISOString();
-      const protocolVersion = target.workerNegotiatedProtocolVersion
-        === MESH_PROTOCOL_VERSION
-        ? MESH_PROTOCOL_VERSION
-        : MESH_LEGACY_PROTOCOL_VERSION;
-      await postMeshControlMessageWithProtocolFallback({
-        route: target.route,
-        path: "api/mesh/internal/revocation",
-        requestId: identity.nodeId,
-        protocolVersion,
-        buildPayload: async (version) => {
-          const envelope: Omit<MeshRevocationNotice, "signature"> = {
-            protocolVersion: version,
-            controllerNodeId: identity.nodeId,
-            workerNodeId,
-            controllerPublicKey: identity.publicKey,
-            controllerFingerprint: identity.fingerprint,
-            nonce,
-            expiresAt,
-          };
-          return {
-            ...envelope,
-            signature: await signMeshPayload(
-              buildMeshRevocationNoticeSigningPayload(envelope),
-            ),
-          };
+      const envelope: Omit<MeshRevocationNotice, "signature"> = {
+        protocolVersion: MESH_PROTOCOL_VERSION,
+        controllerNodeId: identity.nodeId,
+        workerNodeId,
+        controllerPublicKey: identity.publicKey,
+        controllerFingerprint: identity.fingerprint,
+        nonce,
+        expiresAt,
+      };
+      await postMeshControlMessage(
+        target.route,
+        "api/mesh/internal/revocation",
+        {
+          ...envelope,
+          signature: await signMeshPayload(
+            buildMeshRevocationNoticeSigningPayload(envelope),
+          ),
         },
-        headers: {
-          "x-clanky-mesh-node-id": identity.nodeId,
+        identity.nodeId,
+        {
+          headers: {
+            "x-clanky-mesh-node-id": identity.nodeId,
+          },
         },
-        onLegacyFallback: async () => {
-          await persistWorkerProtocolDowngrade(workerNodeId, userId);
-        },
-      });
+      );
     } catch (error) {
       if (isDomainError(error)) {
         log.warn("Worker remote revocation notice could not be prepared or delivered", {
@@ -926,39 +785,31 @@ export class MeshManager {
     const expiresAt = new Date(
       Date.now() + MESH_WORKER_KILL_REQUEST_TTL_MS,
     ).toISOString();
-    const protocolVersion = registration.workerNegotiatedProtocolVersion
-      === MESH_PROTOCOL_VERSION
-      ? MESH_PROTOCOL_VERSION
-      : MESH_LEGACY_PROTOCOL_VERSION;
-    await postMeshControlMessageWithProtocolFallback({
-      route: registration.route,
-      path: "api/mesh/internal/kill",
-      requestId: nonce,
-      protocolVersion,
-      buildPayload: async (version) => {
-        const envelope: Omit<MeshWorkerKillRequest, "signature"> = {
-          protocolVersion: version,
-          controllerNodeId: identity.nodeId,
-          workerNodeId,
-          controllerPublicKey: identity.publicKey,
-          controllerFingerprint: identity.fingerprint,
-          nonce,
-          expiresAt,
-        };
-        return {
-          ...envelope,
-          signature: await signMeshPayload(
-            buildMeshWorkerKillRequestSigningPayload(envelope),
-          ),
-        };
+    const envelope: Omit<MeshWorkerKillRequest, "signature"> = {
+      protocolVersion: MESH_PROTOCOL_VERSION,
+      controllerNodeId: identity.nodeId,
+      workerNodeId,
+      controllerPublicKey: identity.publicKey,
+      controllerFingerprint: identity.fingerprint,
+      nonce,
+      expiresAt,
+    };
+    await postMeshControlMessage(
+      registration.route,
+      "api/mesh/internal/kill",
+      {
+        ...envelope,
+        signature: await signMeshPayload(
+          buildMeshWorkerKillRequestSigningPayload(envelope),
+        ),
       },
-      headers: {
-        "x-clanky-mesh-node-id": identity.nodeId,
+      nonce,
+      {
+        headers: {
+          "x-clanky-mesh-node-id": identity.nodeId,
+        },
       },
-      onLegacyFallback: async () => {
-        await persistWorkerProtocolDowngrade(workerNodeId, userId);
-      },
-    });
+    );
   }
 
   async removeRevokedWorker(
@@ -1050,43 +901,32 @@ export class MeshManager {
     const identity = await ensureLocalMeshNodeIdentity();
     const nonce = crypto.randomUUID();
     const expiresAt = new Date(Date.now() + 60_000).toISOString();
-    const protocolVersion = registration.workerNegotiatedProtocolVersion
-      === MESH_PROTOCOL_VERSION
-      ? MESH_PROTOCOL_VERSION
-      : MESH_LEGACY_PROTOCOL_VERSION;
     try {
-      await postMeshControlMessageWithProtocolFallback({
-        route: registration.route,
-        path: "api/mesh/internal/revocation",
-        requestId: identity.nodeId,
-        protocolVersion,
-        buildPayload: async (version) => {
-          const envelope: Omit<MeshRevocationNotice, "signature"> = {
-            protocolVersion: version,
-            controllerNodeId: identity.nodeId,
-            workerNodeId: registration.workerNodeId,
-            controllerPublicKey: identity.publicKey,
-            controllerFingerprint: identity.fingerprint,
-            nonce,
-            expiresAt,
-          };
-          return {
-            ...envelope,
-            signature: await signMeshPayload(
-              buildMeshRevocationNoticeSigningPayload(envelope),
-            ),
-          };
+      const envelope: Omit<MeshRevocationNotice, "signature"> = {
+        protocolVersion: MESH_PROTOCOL_VERSION,
+        controllerNodeId: identity.nodeId,
+        workerNodeId: registration.workerNodeId,
+        controllerPublicKey: identity.publicKey,
+        controllerFingerprint: identity.fingerprint,
+        nonce,
+        expiresAt,
+      };
+      await postMeshControlMessage(
+        registration.route,
+        "api/mesh/internal/revocation",
+        {
+          ...envelope,
+          signature: await signMeshPayload(
+            buildMeshRevocationNoticeSigningPayload(envelope),
+          ),
         },
-        headers: {
-          "x-clanky-mesh-node-id": identity.nodeId,
+        identity.nodeId,
+        {
+          headers: {
+            "x-clanky-mesh-node-id": identity.nodeId,
+          },
         },
-        onLegacyFallback: async () => {
-          await persistWorkerProtocolDowngrade(
-            registration.workerNodeId,
-            userId,
-          );
-        },
-      });
+      );
     } catch (error) {
       log.warn("Dedicated worker remote revocation could not be delivered", {
         workerNodeId: registration.workerNodeId,
@@ -1174,40 +1014,17 @@ export class MeshManager {
     },
   ): Promise<boolean> {
     const { identity, worker } = options;
-    let protocolVersion: MeshProtocolVersion =
-      worker.workerNegotiatedProtocolVersion === MESH_PROTOCOL_VERSION
-        ? MESH_PROTOCOL_VERSION
-        : MESH_LEGACY_PROTOCOL_VERSION;
     const localProtocol = getLocalMeshProtocolMetadata();
     const buildHealthRequest = async (): Promise<MeshHealthCheck> => {
-      const nonce = crypto.randomUUID();
-      if (protocolVersion === MESH_PROTOCOL_VERSION) {
-        const envelope: Omit<MeshHealthCheckV5, "signature"> = {
-          protocolVersion: MESH_PROTOCOL_VERSION,
-          senderNodeId: identity.nodeId,
-          senderPublicKey: identity.publicKey,
-          senderFingerprint: identity.fingerprint,
-          binaryVersion: localProtocol.binaryVersion!,
-          supportedProtocolVersions: [
-            ...MESH_SUPPORTED_PROTOCOL_VERSIONS,
-          ],
-          preferredProtocolVersion: MESH_PROTOCOL_VERSION,
-          nonce,
-          sentAt: new Date().toISOString(),
-        };
-        return {
-          ...envelope,
-          signature: await signMeshPayload(
-            buildMeshHealthCheckSigningPayload(envelope),
-          ),
-        };
-      }
-      const envelope: Omit<MeshHealthCheckV1, "signature"> = {
-        protocolVersion: MESH_LEGACY_PROTOCOL_VERSION,
+      const envelope: Omit<MeshHealthCheckV5, "signature"> = {
+        protocolVersion: MESH_PROTOCOL_VERSION,
         senderNodeId: identity.nodeId,
         senderPublicKey: identity.publicKey,
         senderFingerprint: identity.fingerprint,
-        nonce,
+        binaryVersion: localProtocol.binaryVersion!,
+        supportedProtocolVersions: [...MESH_SUPPORTED_PROTOCOL_VERSIONS],
+        preferredProtocolVersion: MESH_PROTOCOL_VERSION,
+        nonce: crypto.randomUUID(),
         sentAt: new Date().toISOString(),
       };
       return {
@@ -1234,29 +1051,8 @@ export class MeshManager {
         },
       )
     );
-    let healthRequest = await buildHealthRequest();
-    let response: Response;
-    try {
-      response = await sendHealthRequest(healthRequest);
-    } catch (error) {
-      if (
-        protocolVersion !== MESH_PROTOCOL_VERSION
-        || !isMeshProtocolCompatibilityError(error)
-      ) {
-        throw error;
-      }
-      log.warn("Mesh worker rejected v5 health; retrying with the legacy generation", {
-        workerNodeId: worker.workerNodeId,
-        error: String(error),
-      });
-      protocolVersion = MESH_LEGACY_PROTOCOL_VERSION;
-      await persistWorkerProtocolDowngrade(
-        worker.workerNodeId,
-        options.userId,
-      );
-      healthRequest = await buildHealthRequest();
-      response = await sendHealthRequest(healthRequest);
-    }
+    const healthRequest = await buildHealthRequest();
+    const response = await sendHealthRequest(healthRequest);
     const parsedResponse = MeshHealthCheckResponseSchema.safeParse(
       await readMeshControlResponseJson(response, { signal: options.signal }),
     );
@@ -1315,20 +1111,6 @@ export class MeshManager {
         !== JSON.stringify(worker.workerPlatform)
       || JSON.stringify(workerCapabilities)
         !== JSON.stringify(worker.workerCapabilities);
-    const advertisedProtocolVersions = health.protocolVersion === MESH_PROTOCOL_VERSION
-      ? health.supportedProtocolVersions
-      : parseMeshProtocolVersionsHeader(
-        response.headers.get(MESH_PROTOCOL_VERSIONS_HEADER),
-      );
-    const supportedProtocolVersions = advertisedProtocolVersions.length > 0
-      ? advertisedProtocolVersions
-      : [MESH_LEGACY_PROTOCOL_VERSION];
-    const negotiatedProtocolVersion = health.protocolVersion === MESH_PROTOCOL_VERSION
-      ? MESH_PROTOCOL_VERSION
-      : negotiateMeshProtocolVersion(
-        [...MESH_SUPPORTED_PROTOCOL_VERSIONS],
-        supportedProtocolVersions,
-      ) ?? MESH_LEGACY_PROTOCOL_VERSION;
     await updateWorkerHealthSnapshot({
       workerNodeId: worker.workerNodeId,
       localUserId: options.userId,
@@ -1337,14 +1119,10 @@ export class MeshManager {
       capabilities: workerCapabilities,
       acceptRemoteExecution: health.workerAcceptRemoteExecution,
       configRevision: health.workerConfigRevision,
-      binaryVersion: health.protocolVersion === MESH_PROTOCOL_VERSION
-        ? health.binaryVersion
-        : response.headers.get(MESH_BINARY_VERSION_HEADER),
-      supportedProtocolVersions,
-      preferredProtocolVersion: health.protocolVersion === MESH_PROTOCOL_VERSION
-        ? health.preferredProtocolVersion
-        : MESH_LEGACY_PROTOCOL_VERSION,
-      negotiatedProtocolVersion,
+      binaryVersion: health.binaryVersion,
+      supportedProtocolVersions: health.supportedProtocolVersions,
+      preferredProtocolVersion: health.preferredProtocolVersion,
+      negotiatedProtocolVersion: MESH_PROTOCOL_VERSION,
     });
     return configurationChanged || runtimeSnapshotChanged;
   }
@@ -1410,7 +1188,7 @@ export class MeshManager {
 
   async receiveHealthCheck(
     envelope: MeshHealthCheck,
-    options: { includeRuntimeSnapshot?: boolean } = {},
+    _options: { includeRuntimeSnapshot?: boolean } = {},
   ): Promise<MeshHealthCheckResponse> {
     requireMeshRuntimeRole("worker");
     assertMeshPeerIdentity(
@@ -1447,60 +1225,39 @@ export class MeshManager {
         "The health check sender identity does not match the stored grant.",
       );
     }
-    if (envelope.protocolVersion === MESH_PROTOCOL_VERSION) {
-      try {
-        await updateControllerGrantProtocolMetadata({
-          controllerNodeId: envelope.senderNodeId,
-          controllerBinaryVersion: envelope.binaryVersion,
-          controllerSupportedProtocolVersions: envelope.supportedProtocolVersions,
-          controllerPreferredProtocolVersion: envelope.preferredProtocolVersion,
-          controllerNegotiatedProtocolVersion: MESH_PROTOCOL_VERSION,
-        });
-      } catch (error) {
-        log.warn("Mesh controller protocol metadata could not be persisted", {
-          controllerNodeId: envelope.senderNodeId,
-          error: String(error),
-        });
-      }
+    try {
+      await updateControllerGrantProtocolMetadata({
+        controllerNodeId: envelope.senderNodeId,
+        controllerBinaryVersion: envelope.binaryVersion,
+        controllerSupportedProtocolVersions: envelope.supportedProtocolVersions,
+        controllerPreferredProtocolVersion: envelope.preferredProtocolVersion,
+        controllerNegotiatedProtocolVersion: MESH_PROTOCOL_VERSION,
+      });
+    } catch (error) {
+      log.warn("Mesh controller protocol metadata could not be persisted", {
+        controllerNodeId: envelope.senderNodeId,
+        error: String(error),
+      });
     }
     log.debug("Received valid health check", {
       senderNodeId: envelope.senderNodeId,
     });
     const identity = await ensureLocalMeshNodeIdentity();
     const execution = await getWorkerExecutionConfig();
-    const response = envelope.protocolVersion === MESH_PROTOCOL_VERSION
-      ? ({
-            protocolVersion: MESH_PROTOCOL_VERSION,
-            workerNodeId: identity.nodeId,
-            controllerNodeId: envelope.senderNodeId,
-            requestNonce: envelope.nonce,
-            workerDirectory: execution.directory,
-            workerPlatform: execution.platform,
-            workerCapabilities: execution.capabilities,
-            workerAcceptRemoteExecution: execution.acceptRemoteExecution,
-            workerConfigRevision: execution.revision,
-            binaryVersion: getLocalMeshProtocolMetadata().binaryVersion!,
-            supportedProtocolVersions: [
-              ...MESH_SUPPORTED_PROTOCOL_VERSIONS,
-            ],
-            preferredProtocolVersion: MESH_PROTOCOL_VERSION,
-          } satisfies Omit<MeshHealthCheckResponseV5, "signature">)
-        : ({
-            protocolVersion: MESH_LEGACY_PROTOCOL_VERSION,
-            workerNodeId: identity.nodeId,
-            controllerNodeId: envelope.senderNodeId,
-            requestNonce: envelope.nonce,
-            workerDirectory: execution.directory,
-            ...(options.includeRuntimeSnapshot
-              ? { workerPlatform: execution.platform }
-              : {}),
-            workerCapabilities: capabilitiesForMeshPeer(
-              execution.capabilities,
-              options.includeRuntimeSnapshot === true,
-            ),
-            workerAcceptRemoteExecution: execution.acceptRemoteExecution,
-            workerConfigRevision: execution.revision,
-          } satisfies Omit<MeshHealthCheckResponseV1, "signature">);
+    const response = {
+      protocolVersion: MESH_PROTOCOL_VERSION,
+      workerNodeId: identity.nodeId,
+      controllerNodeId: envelope.senderNodeId,
+      requestNonce: envelope.nonce,
+      workerDirectory: execution.directory,
+      workerPlatform: execution.platform,
+      workerCapabilities: execution.capabilities,
+      workerAcceptRemoteExecution: execution.acceptRemoteExecution,
+      workerConfigRevision: execution.revision,
+      binaryVersion: getLocalMeshProtocolMetadata().binaryVersion!,
+      supportedProtocolVersions: [...MESH_SUPPORTED_PROTOCOL_VERSIONS],
+      preferredProtocolVersion: MESH_PROTOCOL_VERSION,
+    } satisfies Omit<MeshHealthCheckResponseV5, "signature">;
     return {
       ...response,
       signature: await signMeshPayload(
@@ -1530,9 +1287,6 @@ export class MeshManager {
     }
     const instanceName = requireMeshInstanceName(identity);
     const execution = await getWorkerExecutionConfig();
-    const targetSupportsRuntimeSnapshot =
-      discovered.descriptor.role === "controller"
-      && discovered.runtimeSnapshotVersion >= MESH_RUNTIME_SNAPSHOT_VERSION;
     const localProtocol = getLocalMeshProtocolMetadata();
     const nonce = crypto.randomUUID();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
@@ -1543,13 +1297,8 @@ export class MeshManager {
       workerFingerprint: identity.fingerprint,
       workerEncryptionPublicKey,
       workerDirectory: execution.directory,
-      ...(targetSupportsRuntimeSnapshot
-        ? { workerPlatform: execution.platform }
-        : {}),
-      workerCapabilities: capabilitiesForMeshPeer(
-        execution.capabilities,
-        targetSupportsRuntimeSnapshot,
-      ),
+      workerPlatform: execution.platform,
+      workerCapabilities: execution.capabilities,
       workerAcceptRemoteExecution: execution.acceptRemoteExecution,
       workerConfigRevision: execution.revision,
       enrollmentToken: input.enrollmentToken,
@@ -1653,59 +1402,30 @@ export class MeshManager {
       );
     }
 
-    const sendEnrollment = async (
-      generation: MeshProtocolVersion,
-    ): Promise<{
+    const sendEnrollment = async (): Promise<{
       envelope: MeshEnrollmentRequest;
       rawResponse: unknown;
     }> => {
-      const unsignedEnvelope:
-        | Omit<MeshEnrollmentRequestV1, "signature">
-        | Omit<MeshEnrollmentRequestV2, "signature">
-        | Omit<MeshEnrollmentRequestV5, "signature"> =
-        generation === MESH_PROTOCOL_VERSION
+      const unsignedEnvelope: Omit<MeshEnrollmentRequestV5, "signature"> = {
+        protocolVersion: MESH_PROTOCOL_VERSION,
+        ...common,
+        binaryVersion: localProtocol.binaryVersion!,
+        supportedProtocolVersions: [...MESH_SUPPORTED_PROTOCOL_VERSIONS],
+        preferredProtocolVersion: MESH_PROTOCOL_VERSION,
+        route: controllerRoute.kind === "direct"
           ? {
-              protocolVersion: MESH_PROTOCOL_VERSION,
-              ...common,
-              workerPlatform: execution.platform,
-              workerCapabilities: execution.capabilities,
-              binaryVersion: localProtocol.binaryVersion!,
-              supportedProtocolVersions: [
-                ...MESH_SUPPORTED_PROTOCOL_VERSIONS,
-              ],
-              preferredProtocolVersion: MESH_PROTOCOL_VERSION,
-              route: controllerRoute.kind === "direct"
-                ? {
-                    kind: "direct" as const,
-                    endpoint: identity.meshEndpoint!,
-                    transport: workerTransport!,
-                    tlsCertificate: workerTlsIdentity?.certificate ?? null,
-                    tlsFingerprint: workerTlsIdentity?.fingerprint ?? null,
-                  }
-                : {
-                    kind: "relay" as const,
-                    relayUrl: discovered.target,
-                    relayFingerprint: discovered.descriptor.fingerprint,
-                  },
+              kind: "direct" as const,
+              endpoint: identity.meshEndpoint!,
+              transport: workerTransport!,
+              tlsCertificate: workerTlsIdentity?.certificate ?? null,
+              tlsFingerprint: workerTlsIdentity?.fingerprint ?? null,
             }
-          : controllerRoute.kind === "direct"
-            ? {
-                protocolVersion: 1,
-                ...common,
-                workerEndpoint: identity.meshEndpoint!,
-                workerTransport: workerTransport!,
-                workerTlsCertificate: workerTlsIdentity?.certificate ?? null,
-                workerTlsFingerprint: workerTlsIdentity?.fingerprint ?? null,
-              }
-            : {
-                protocolVersion: 2,
-                ...common,
-                route: {
-                  kind: "relay" as const,
-                  relayUrl: discovered.target,
-                  relayFingerprint: discovered.descriptor.fingerprint,
-                },
-              };
+          : {
+              kind: "relay" as const,
+              relayUrl: discovered.target,
+              relayFingerprint: discovered.descriptor.fingerprint,
+            },
+      };
       const envelope = {
         ...unsignedEnvelope,
         signature: await signMeshPayload(
@@ -1729,9 +1449,7 @@ export class MeshManager {
             role: "worker",
             targetNodeId: controllerRoute.targetNodeId,
             enrollmentAdmission: input.enrollmentToken,
-            ...(generation === MESH_PROTOCOL_VERSION
-              ? { protocolVersion: MESH_PROTOCOL_VERSION }
-              : {}),
+            protocolVersion: MESH_PROTOCOL_VERSION,
           },
         });
         try {
@@ -1752,26 +1470,7 @@ export class MeshManager {
       return { envelope, rawResponse };
     };
 
-    const discoveredProtocolVersion = discovered.negotiatedProtocolVersion;
-    let enrollmentAttempt: {
-      envelope: MeshEnrollmentRequest;
-      rawResponse: unknown;
-    };
-    try {
-      enrollmentAttempt = await sendEnrollment(discoveredProtocolVersion);
-    } catch (error) {
-      if (
-        discoveredProtocolVersion !== MESH_PROTOCOL_VERSION
-        || !isMeshProtocolCompatibilityError(error)
-      ) {
-        throw error;
-      }
-      log.warn("Mesh controller rejected v5 enrollment; retrying with the legacy generation", {
-        target: discovered.target,
-        error: String(error),
-      });
-      enrollmentAttempt = await sendEnrollment(MESH_LEGACY_PROTOCOL_VERSION);
-    }
+    const enrollmentAttempt = await sendEnrollment();
 
     const parsedResponse = MeshEnrollmentResponseSchema.safeParse(
       enrollmentAttempt.rawResponse,
@@ -1843,18 +1542,10 @@ export class MeshManager {
           controllerFingerprint: body.controllerFingerprint,
           controllerEncryptionPublicKey: body.controllerEncryptionPublicKey,
           controllerRoute,
-          controllerBinaryVersion: body.protocolVersion === MESH_PROTOCOL_VERSION
-            ? body.binaryVersion
-            : null,
-          controllerSupportedProtocolVersions: body.protocolVersion === MESH_PROTOCOL_VERSION
-            ? body.supportedProtocolVersions
-            : [MESH_LEGACY_PROTOCOL_VERSION],
-          controllerPreferredProtocolVersion: body.protocolVersion === MESH_PROTOCOL_VERSION
-            ? body.preferredProtocolVersion
-            : MESH_LEGACY_PROTOCOL_VERSION,
-          controllerNegotiatedProtocolVersion: body.protocolVersion === MESH_PROTOCOL_VERSION
-            ? MESH_PROTOCOL_VERSION
-            : MESH_LEGACY_PROTOCOL_VERSION,
+          controllerBinaryVersion: body.binaryVersion,
+          controllerSupportedProtocolVersions: body.supportedProtocolVersions,
+          controllerPreferredProtocolVersion: body.preferredProtocolVersion,
+          controllerNegotiatedProtocolVersion: MESH_PROTOCOL_VERSION,
         });
       } catch (error) {
         if (error instanceof InconsistentMeshControllerRelayGrantError) {
@@ -1871,17 +1562,14 @@ export class MeshManager {
     }
 
     // idempotent — return existing grant
-    let grant = existingGrant;
-    if (body.protocolVersion === MESH_PROTOCOL_VERSION) {
-      await updateControllerGrantProtocolMetadata({
-        controllerNodeId: body.controllerNodeId,
-        controllerBinaryVersion: body.binaryVersion,
-        controllerSupportedProtocolVersions: body.supportedProtocolVersions,
-        controllerPreferredProtocolVersion: body.preferredProtocolVersion,
-        controllerNegotiatedProtocolVersion: MESH_PROTOCOL_VERSION,
-      });
-      grant = await getControllerGrant(body.controllerNodeId);
-    }
+    await updateControllerGrantProtocolMetadata({
+      controllerNodeId: body.controllerNodeId,
+      controllerBinaryVersion: body.binaryVersion,
+      controllerSupportedProtocolVersions: body.supportedProtocolVersions,
+      controllerPreferredProtocolVersion: body.preferredProtocolVersion,
+      controllerNegotiatedProtocolVersion: MESH_PROTOCOL_VERSION,
+    });
+    const grant = await getControllerGrant(body.controllerNodeId);
     await workerRelayService.refresh();
     return grant!;
   }

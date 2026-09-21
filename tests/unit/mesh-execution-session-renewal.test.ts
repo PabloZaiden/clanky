@@ -17,6 +17,7 @@ import {
   MESH_ACP_CHANNEL,
   MESH_ACP_SESSION_TTL_MS,
 } from "../../src/shared/mesh-execution";
+import { MESH_PROTOCOL_VERSION } from "../../src/shared/mesh-protocol";
 
 /**
  * This lifecycle contract is isolated so concurrent gateway tests cannot share
@@ -70,7 +71,7 @@ describe("MeshExecutionGateway ACP session renewal", () => {
     response: MeshExecutionSessionResponse;
   }> {
     const unsigned: Omit<MeshExecutionSessionRequest, "signature"> = {
-      protocolVersion: 1,
+      protocolVersion: MESH_PROTOCOL_VERSION,
       requestId: crypto.randomUUID(),
       callerNodeId: "controller-a",
       callerPublicKey: controllerPublicKey,

@@ -15,6 +15,7 @@ import {
   MESH_ACP_SESSION_RENEWAL_SAFETY_MARGIN_MS,
   MESH_ACP_SESSION_TTL_MS,
 } from "../../src/shared/mesh-execution";
+import { MESH_PROTOCOL_VERSION } from "../../src/shared/mesh-protocol";
 import { seedTestOwnerUser } from "../setup";
 
 let dataDir: string;
@@ -85,7 +86,7 @@ describe("MeshCommandExecutorClient", () => {
         }
         const expiresAt = request["expiresAt"];
         return Response.json({
-          protocolVersion: 1,
+          protocolVersion: MESH_PROTOCOL_VERSION,
           sessionId: "session-1",
           expiresAt,
           encryptedPayload: encryptMeshPayload(
@@ -161,7 +162,7 @@ describe("MeshCommandExecutorClient", () => {
         if (url.endsWith("/session")) {
           callerEncryptionPublicKey = request?.["callerEncryptionPublicKey"] as string;
           return Response.json({
-            protocolVersion: 1,
+            protocolVersion: MESH_PROTOCOL_VERSION,
             sessionId: "session-1",
             expiresAt: request?.["expiresAt"],
             encryptedPayload: encryptMeshPayload(
@@ -174,7 +175,7 @@ describe("MeshCommandExecutorClient", () => {
           renewalRequests += 1;
           resolveRenewal();
           return Response.json({
-            protocolVersion: 1,
+            protocolVersion: MESH_PROTOCOL_VERSION,
             sessionId: "session-1",
             expiresAt: new Date(Date.now() + MESH_ACP_SESSION_TTL_MS).toISOString(),
           });
@@ -253,7 +254,7 @@ describe("MeshCommandExecutorClient", () => {
         requestStarted();
         await responseGate;
         return Response.json({
-          protocolVersion: 1,
+          protocolVersion: MESH_PROTOCOL_VERSION,
           sessionId: "session-1",
           expiresAt: new Date(Date.now() + MESH_ACP_SESSION_TTL_MS).toISOString(),
           encryptedPayload: encryptMeshPayload(
@@ -313,7 +314,7 @@ describe("MeshCommandExecutorClient", () => {
         if (url.endsWith("/session")) {
           callerEncryptionPublicKey = request?.["callerEncryptionPublicKey"] as string;
           return Response.json({
-            protocolVersion: 1,
+            protocolVersion: MESH_PROTOCOL_VERSION,
             sessionId: "session-1",
             expiresAt: request?.["expiresAt"],
             encryptedPayload: encryptMeshPayload(
@@ -328,7 +329,7 @@ describe("MeshCommandExecutorClient", () => {
             throw new Error("temporary worker network failure");
           }
           return Response.json({
-            protocolVersion: 1,
+            protocolVersion: MESH_PROTOCOL_VERSION,
             sessionId: "session-1",
             expiresAt: new Date(Date.now() + MESH_ACP_SESSION_TTL_MS).toISOString(),
           });
@@ -399,7 +400,7 @@ describe("MeshCommandExecutorClient", () => {
         if (url.endsWith("/session")) {
           callerEncryptionPublicKey = request?.["callerEncryptionPublicKey"] as string;
           return Response.json({
-            protocolVersion: 1,
+            protocolVersion: MESH_PROTOCOL_VERSION,
             sessionId: "session-1",
             expiresAt: request?.["expiresAt"],
             encryptedPayload: encryptMeshPayload(
@@ -478,7 +479,7 @@ describe("MeshCommandExecutorClient", () => {
         if (url.endsWith("/session")) {
           callerEncryptionPublicKey = request?.["callerEncryptionPublicKey"] as string;
           return Response.json({
-            protocolVersion: 1,
+            protocolVersion: MESH_PROTOCOL_VERSION,
             sessionId: "session-1",
             expiresAt: request?.["expiresAt"],
             encryptedPayload: encryptMeshPayload(
@@ -561,7 +562,7 @@ describe("MeshCommandExecutorClient", () => {
         if (url.endsWith("/session")) {
           callerEncryptionPublicKey = request["callerEncryptionPublicKey"] as string;
           return Response.json({
-            protocolVersion: 1,
+            protocolVersion: MESH_PROTOCOL_VERSION,
             sessionId: "session-1",
             expiresAt: request["expiresAt"],
             encryptedPayload: encryptMeshPayload(
@@ -581,7 +582,7 @@ describe("MeshCommandExecutorClient", () => {
         }
         expect(request["requestId"]).toBe(firstStartRequestId);
         return Response.json({
-          protocolVersion: 1,
+          protocolVersion: MESH_PROTOCOL_VERSION,
           requestId: request["requestId"],
           encryptedPayload: encryptMeshPayload({
             jobId: "command-1",
@@ -646,7 +647,7 @@ describe("MeshCommandExecutorClient", () => {
         if (url.endsWith("/session")) {
           callerEncryptionPublicKey = request["callerEncryptionPublicKey"] as string;
           return Response.json({
-            protocolVersion: 1,
+            protocolVersion: MESH_PROTOCOL_VERSION,
             sessionId: "session-1",
             expiresAt: request["expiresAt"],
             encryptedPayload: encryptMeshPayload(
@@ -661,7 +662,7 @@ describe("MeshCommandExecutorClient", () => {
         if (request["action"] === "start") {
           abortController.abort();
           return Response.json({
-            protocolVersion: 1,
+            protocolVersion: MESH_PROTOCOL_VERSION,
             requestId: request["requestId"],
             encryptedPayload: encryptMeshPayload({
               jobId: "command-1",
@@ -672,7 +673,7 @@ describe("MeshCommandExecutorClient", () => {
         expect(request["action"]).toBe("cancel");
         cancelJobId = request["jobId"] as string;
         return Response.json({
-          protocolVersion: 1,
+          protocolVersion: MESH_PROTOCOL_VERSION,
           requestId: request["requestId"],
           encryptedPayload: encryptMeshPayload({
             jobId: "command-1",

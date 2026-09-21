@@ -4,19 +4,12 @@
 
 import { MESH_PROTOCOL_VERSION } from "./mesh-protocol";
 
-export const MESH_EXECUTION_LEGACY_PROTOCOL_VERSION = 1 as const;
-/** Legacy execution peers still use 1; new Mesh generations use global v5. */
-export const MESH_EXECUTION_PROTOCOL_VERSION =
-  MESH_EXECUTION_LEGACY_PROTOCOL_VERSION;
-export type MeshExecutionProtocolVersion =
-  | typeof MESH_EXECUTION_LEGACY_PROTOCOL_VERSION
-  | typeof MESH_PROTOCOL_VERSION;
+export const MESH_EXECUTION_PROTOCOL_VERSION = MESH_PROTOCOL_VERSION;
+export type MeshExecutionProtocolVersion = typeof MESH_PROTOCOL_VERSION;
 export const MESH_EXECUTION_CHANNEL = "command-executor" as const;
 export const MESH_ACP_CHANNEL = "acp" as const;
 export const MESH_EXECUTION_DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
 export const MESH_EXECUTION_SESSION_TTL_MS = 60_000;
-export const MESH_ACP_LEGACY_SESSION_TTL_MS = 30 * 60 * 1000;
-export const MESH_ACP_LEGACY_SESSION_REQUEST_TTL_MS = MESH_ACP_LEGACY_SESSION_TTL_MS - 15_000;
 export const MESH_ACP_SESSION_TTL_MS = 60 * 60 * 1000;
 export const MESH_EXECUTION_SESSION_REQUEST_TTL_MS = 45_000;
 export const MESH_ACP_SESSION_REQUEST_TTL_MS = MESH_ACP_SESSION_TTL_MS - 15_000;

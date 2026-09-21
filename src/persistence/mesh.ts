@@ -15,7 +15,6 @@ import type {
   MeshWorkerRegistration,
 } from "@/shared/mesh";
 import {
-  MESH_LEGACY_PROTOCOL_VERSION,
   MESH_PROTOCOL_VERSION,
   normalizeMeshProtocolVersions,
   type MeshProtocolVersion,
@@ -211,9 +210,9 @@ export async function saveWorkerRegistration(
       input.workspaceWorkerEnrollmentId ?? null,
       input.workspaceId ?? null,
       input.workerBinaryVersion ?? null,
-      JSON.stringify(input.workerSupportedProtocolVersions ?? [MESH_LEGACY_PROTOCOL_VERSION]),
-      input.workerPreferredProtocolVersion ?? MESH_LEGACY_PROTOCOL_VERSION,
-      input.workerNegotiatedProtocolVersion ?? MESH_LEGACY_PROTOCOL_VERSION,
+      JSON.stringify(input.workerSupportedProtocolVersions ?? [MESH_PROTOCOL_VERSION]),
+      input.workerPreferredProtocolVersion ?? MESH_PROTOCOL_VERSION,
+      input.workerNegotiatedProtocolVersion ?? MESH_PROTOCOL_VERSION,
       now,
       "active",
       now,
@@ -696,10 +695,10 @@ export async function saveControllerGrant(
         input.controllerBinaryVersion ?? null,
         JSON.stringify(
           input.controllerSupportedProtocolVersions
-            ?? [MESH_LEGACY_PROTOCOL_VERSION],
+            ?? [MESH_PROTOCOL_VERSION],
         ),
-        input.controllerPreferredProtocolVersion ?? MESH_LEGACY_PROTOCOL_VERSION,
-        input.controllerNegotiatedProtocolVersion ?? MESH_LEGACY_PROTOCOL_VERSION,
+        input.controllerPreferredProtocolVersion ?? MESH_PROTOCOL_VERSION,
+        input.controllerNegotiatedProtocolVersion ?? MESH_PROTOCOL_VERSION,
         now,
         now,
         now,
@@ -901,7 +900,7 @@ function parsePersistedProtocolVersions(
   peerNodeId: string,
 ): MeshProtocolVersion[] {
   if (!value) {
-    return [MESH_LEGACY_PROTOCOL_VERSION];
+    return [MESH_PROTOCOL_VERSION];
   }
   try {
     const parsed: unknown = JSON.parse(value);
@@ -911,22 +910,20 @@ function parsePersistedProtocolVersions(
     const normalized = normalizeMeshProtocolVersions(parsed);
     return normalized.length > 0
       ? normalized
-      : [MESH_LEGACY_PROTOCOL_VERSION];
+      : [MESH_PROTOCOL_VERSION];
   } catch (error) {
     log.warn("Invalid persisted Mesh protocol metadata", {
       peerNodeId,
       error: String(error),
     });
-    return [MESH_LEGACY_PROTOCOL_VERSION];
+    return [MESH_PROTOCOL_VERSION];
   }
 }
 
 function persistedProtocolVersion(
-  value: number | null,
+  _value: number | null,
 ): MeshProtocolVersion {
-  return value === MESH_PROTOCOL_VERSION
-    ? MESH_PROTOCOL_VERSION
-    : MESH_LEGACY_PROTOCOL_VERSION;
+  return MESH_PROTOCOL_VERSION;
 }
 
 function mapWorkerRegistrationRow(

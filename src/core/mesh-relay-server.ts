@@ -19,16 +19,12 @@ import {
   type WebAppWebSocketData,
 } from "@pablozaiden/webapp/server";
 import {
-  MESH_RELAY_ENROLLMENT_PROTOCOL_VERSION,
   MESH_RELAY_CONTROL_PATH,
   MESH_RELAY_DESCRIPTOR_PATH,
-  MESH_RELAY_PROTOCOL_VERSION,
   MESH_RELAY_STREAM_PATH,
-  type MeshRelayWellKnownDescriptor,
   type MeshRelayWellKnownDescriptorV5,
 } from "@/shared/mesh-relay";
 import {
-  MESH_LEGACY_PROTOCOL_VERSION,
   MESH_PROTOCOL_VERSION,
   MESH_PROTOCOL_VERSION_HEADER,
   MESH_PROTOCOL_VERSIONS_HEADER,
@@ -58,7 +54,7 @@ export interface MeshRelayWebSocketData extends WebAppWebSocketData {
   relaySocketKind: "control" | "data";
   relayControlConnectionId?: string;
   relayDataReservationId?: string;
-  relayProtocolVersion?: 2 | typeof MESH_PROTOCOL_VERSION;
+  relayProtocolVersion?: typeof MESH_PROTOCOL_VERSION;
 }
 
 export interface CreateRelayServerOptions {
@@ -73,7 +69,7 @@ export interface RelayServer {
   broker: MeshRelayBroker;
   identity: MeshRelaySigningIdentity;
   store: MeshRelayStore;
-  descriptor: MeshRelayWellKnownDescriptor | MeshRelayWellKnownDescriptorV5;
+  descriptor: MeshRelayWellKnownDescriptorV5;
   start(): Promise<Server<WebAppWebSocketData>>;
   stop(closeActiveConnections?: boolean): Promise<void>;
 }
@@ -131,16 +127,10 @@ function hasNoQuery(url: URL): boolean {
 
 function hasValidControlQuery(url: URL): boolean {
   const keys = [...url.searchParams.keys()];
-  if (keys.length === 0) {
-    return true;
-  }
   return keys.length === 1
     && keys[0] === "protocolVersion"
     && url.searchParams.getAll("protocolVersion").length === 1
-    && (
-      url.searchParams.get("protocolVersion") === String(MESH_RELAY_PROTOCOL_VERSION)
-      || url.searchParams.get("protocolVersion") === String(MESH_PROTOCOL_VERSION)
-    );
+    && url.searchParams.get("protocolVersion") === String(MESH_PROTOCOL_VERSION);
 }
 
 function hasValidStreamQuery(url: URL): boolean {
@@ -285,35 +275,25 @@ export async function createRelayServer(
   });
   const descriptor = (
     request?: Request,
-  ): MeshRelayWellKnownDescriptor | MeshRelayWellKnownDescriptorV5 => {
-    const protocol = negotiateMeshProtocolVersion(
+  ): MeshRelayWellKnownDescriptorV5 => {
+    const negotiatedProtocolVersion = negotiateMeshProtocolVersion(
       [...MESH_SUPPORTED_PROTOCOL_VERSIONS],
       parseMeshProtocolVersionsHeader(
         request?.headers.get(MESH_PROTOCOL_VERSIONS_HEADER) ?? null,
       ),
     );
-    return protocol === MESH_PROTOCOL_VERSION
-      ? {
-          role: "relay",
-          protocolVersion: MESH_PROTOCOL_VERSION,
-          publicKey: identity.publicKey,
-          fingerprint: identity.fingerprint,
-          controllerFingerprint,
-          controllerNodeId: store.getController()?.nodeId ?? null,
-          binaryVersion: CLANKY_VERSION,
-          supportedProtocolVersions: [...MESH_SUPPORTED_PROTOCOL_VERSIONS],
-          preferredProtocolVersion: MESH_PROTOCOL_VERSION,
-          negotiatedProtocolVersion: protocol,
-        }
-      : {
-          role: "relay",
-          relayProtocol: MESH_RELAY_PROTOCOL_VERSION,
-          enrollmentProtocol: MESH_RELAY_ENROLLMENT_PROTOCOL_VERSION,
-          publicKey: identity.publicKey,
-          fingerprint: identity.fingerprint,
-          controllerFingerprint,
-          controllerNodeId: store.getController()?.nodeId ?? null,
-        };
+    return {
+      role: "relay",
+      protocolVersion: MESH_PROTOCOL_VERSION,
+      publicKey: identity.publicKey,
+      fingerprint: identity.fingerprint,
+      controllerFingerprint,
+      controllerNodeId: store.getController()?.nodeId ?? null,
+      binaryVersion: CLANKY_VERSION,
+      supportedProtocolVersions: [...MESH_SUPPORTED_PROTOCOL_VERSIONS],
+      preferredProtocolVersion: MESH_PROTOCOL_VERSION,
+      negotiatedProtocolVersion,
+    };
   };
   const routes = defineRoutes({
     [MESH_RELAY_DESCRIPTOR_PATH]: {
@@ -333,7 +313,7 @@ export async function createRelayServer(
             [MESH_PROTOCOL_VERSIONS_HEADER]: serializeMeshProtocolVersions(),
             ["x-clanky-binary-version"]: CLANKY_VERSION,
             [MESH_PROTOCOL_VERSION_HEADER]: String(
-              protocol ?? MESH_LEGACY_PROTOCOL_VERSION,
+            protocol ?? MESH_PROTOCOL_VERSION,
             ),
           },
         });
@@ -352,15 +332,17 @@ export async function createRelayServer(
         if (!server) {
           return new Response("Relay server unavailable", { status: 503 });
         }
+        if (
+          new URL(req.url).searchParams.get("protocolVersion")
+          !== String(MESH_PROTOCOL_VERSION)
+        ) {
+          return new Response("Mesh protocol v5 is required", { status: 406 });
+        }
         const upgraded = server.upgrade(req, {
           data: {
             webappSocketHandler: RELAY_WEBSOCKET_HANDLER,
             relaySocketKind: "control",
-            relayProtocolVersion: new URL(req.url).searchParams.get(
-              "protocolVersion",
-            ) === String(MESH_PROTOCOL_VERSION)
-              ? MESH_PROTOCOL_VERSION
-              : MESH_RELAY_PROTOCOL_VERSION,
+            relayProtocolVersion: MESH_PROTOCOL_VERSION,
           },
         });
         return upgraded

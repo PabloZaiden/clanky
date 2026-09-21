@@ -1,16 +1,12 @@
 /**
  * Global Mesh wire-generation metadata.
  *
- * Mesh v1 is the legacy contract. Mesh v5 is aligned with the Clanky release
- * major and intentionally covers controller, relay, and worker transports as
- * one generation. The legacy constants remain in their owning modules until
- * the temporary compatibility window is removed.
+ * Mesh v5 is aligned with the Clanky release major and covers controller,
+ * relay, and worker transports as one generation.
  */
 
-export const MESH_LEGACY_PROTOCOL_VERSION = 1 as const;
 export const MESH_PROTOCOL_VERSION = 5 as const;
 export const MESH_SUPPORTED_PROTOCOL_VERSIONS = [
-  MESH_LEGACY_PROTOCOL_VERSION,
   MESH_PROTOCOL_VERSION,
 ] as const;
 export const MESH_PROTOCOL_PREFERRED_VERSION = MESH_PROTOCOL_VERSION;
@@ -36,10 +32,7 @@ export function normalizeMeshProtocolVersions(
 ): MeshProtocolVersion[] {
   const normalized = new Set<MeshProtocolVersion>();
   for (const version of versions ?? []) {
-    if (
-      version === MESH_LEGACY_PROTOCOL_VERSION
-      || version === MESH_PROTOCOL_VERSION
-    ) {
+    if (version === MESH_PROTOCOL_VERSION) {
       normalized.add(version);
     }
   }
