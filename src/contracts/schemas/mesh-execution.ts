@@ -24,7 +24,7 @@ export const MeshExecutionSessionRequestSchema = z.object({
   directory: MeshExecutionPathSchema,
   provider: AgentProviderSchema,
   channel: z.union([z.literal(MESH_EXECUTION_CHANNEL), z.literal(MESH_ACP_CHANNEL)]),
-  encryptedEnvironment: z.unknown().nullable(),
+  encryptedEnvironment: z.unknown().nullable().optional(),
   nonce: z.string().trim().min(1).max(200),
   expiresAt: z.string().datetime(),
   signature: z.string().trim().min(1).max(16_384),

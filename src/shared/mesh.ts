@@ -26,6 +26,9 @@ export const MESH_PEER_ROUTE_KINDS = ["direct", "relay"] as const;
 export type MeshPeerRouteKind = (typeof MESH_PEER_ROUTE_KINDS)[number];
 export const MESH_INSTANCE_NAME_MAX_LENGTH = 64;
 export const MESH_WORKER_KILL_REQUEST_TTL_MS = 60_000;
+export const MESH_RUNTIME_SNAPSHOT_HEADER =
+  "x-clanky-mesh-runtime-snapshot-version";
+export const MESH_RUNTIME_SNAPSHOT_VERSION = 1;
 
 export const MESH_GRANT_STATUSES = ["active", "revoked"] as const;
 export type MeshGrantStatus = (typeof MESH_GRANT_STATUSES)[number];

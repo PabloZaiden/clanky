@@ -694,7 +694,8 @@ export class MeshExecutionGateway {
     }
 
     const { executionRoot, pathStyle } = await assertTrustedCaller(request);
-    const decryptedEnvironment = request.encryptedEnvironment === null
+    const decryptedEnvironment = request.encryptedEnvironment === undefined
+      || request.encryptedEnvironment === null
       ? undefined
       : await decryptMeshPayload(request.encryptedEnvironment);
     const environment = parseManagedContextEnvironment(decryptedEnvironment);

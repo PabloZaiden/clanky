@@ -185,7 +185,8 @@ export class MeshTerminalGateway {
       );
       request.executionRoot = trustedRoot.executionRoot;
       request.directory = directory;
-      const decryptedEnvironment = request.encryptedEnvironment === null
+      const decryptedEnvironment = request.encryptedEnvironment === undefined
+        || request.encryptedEnvironment === null
         ? undefined
         : await decryptMeshPayload(request.encryptedEnvironment);
       const environment = parseManagedContextEnvironment(

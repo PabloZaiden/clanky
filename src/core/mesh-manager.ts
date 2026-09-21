@@ -31,11 +31,14 @@ import type {
   MeshWorkerStatus,
 } from "@/shared/mesh";
 import {
+  MESH_RUNTIME_SNAPSHOT_HEADER,
+  MESH_RUNTIME_SNAPSHOT_VERSION,
   MESH_WORKER_KILL_REQUEST_TTL_MS,
 } from "@/shared/mesh";
 import {
   createExecutionHostRuntimeSnapshot,
   parseExecutionHostCapabilities,
+  type ExecutionHostCapabilities,
 } from "@/shared/execution-host";
 import { createLogger } from "@pablozaiden/webapp/server";
 import {
@@ -130,6 +133,34 @@ import {
 const log = createLogger("core:mesh-manager");
 const MESH_WORKER_KILL_DELAY_MS = 100;
 const MESH_WORKER_KILL_EXIT_CODE = 1;
+
+const LEGACY_MESH_EXECUTION_CAPABILITY_IDS = [
+  "commandExecution",
+  "fileOperations",
+  "acpRuntime",
+  "interactiveTerminal",
+  "provisioning",
+  "devboxLifecycle",
+  "tcpTunnel",
+  "serverHealth",
+] as const;
+
+function capabilitiesForMeshPeer(
+  capabilities: ExecutionHostCapabilities,
+  supportsRuntimeSnapshot: boolean,
+): ExecutionHostCapabilities {
+  if (supportsRuntimeSnapshot) {
+    return capabilities;
+  }
+  const compatible: ExecutionHostCapabilities = {};
+  for (const capability of LEGACY_MESH_EXECUTION_CAPABILITY_IDS) {
+    const version = capabilities[capability];
+    if (version !== undefined) {
+      compatible[capability] = version;
+    }
+  }
+  return compatible;
+}
 
 function meshRoutesEqual(
   left: MeshPeerRoute | null | undefined,
@@ -971,6 +1002,11 @@ export class MeshManager {
       signature,
     }, nonce, {
       signal: options.signal,
+      headers: {
+        [MESH_RUNTIME_SNAPSHOT_HEADER]: String(
+          MESH_RUNTIME_SNAPSHOT_VERSION,
+        ),
+      },
     });
     const parsedResponse = MeshHealthCheckResponseSchema.safeParse(
       await readMeshControlResponseJson(response, { signal: options.signal }),
@@ -1103,6 +1139,7 @@ export class MeshManager {
 
   async receiveHealthCheck(
     envelope: MeshHealthCheck,
+    options: { includeRuntimeSnapshot?: boolean } = {},
   ): Promise<MeshHealthCheckResponse> {
     requireMeshRuntimeRole("worker");
     assertMeshPeerIdentity(
@@ -1150,8 +1187,13 @@ export class MeshManager {
       controllerNodeId: envelope.senderNodeId,
       requestNonce: envelope.nonce,
       workerDirectory: execution.directory,
-      workerPlatform: execution.platform,
-      workerCapabilities: execution.capabilities,
+      ...(options.includeRuntimeSnapshot
+        ? { workerPlatform: execution.platform }
+        : {}),
+      workerCapabilities: capabilitiesForMeshPeer(
+        execution.capabilities,
+        options.includeRuntimeSnapshot === true,
+      ),
       workerAcceptRemoteExecution: execution.acceptRemoteExecution,
       workerConfigRevision: execution.revision,
     };
@@ -1184,6 +1226,9 @@ export class MeshManager {
     }
     const instanceName = requireMeshInstanceName(identity);
     const execution = await getWorkerExecutionConfig();
+    const targetSupportsRuntimeSnapshot =
+      discovered.descriptor.role === "controller"
+      && discovered.runtimeSnapshotVersion >= MESH_RUNTIME_SNAPSHOT_VERSION;
     const nonce = crypto.randomUUID();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
     const common = {
@@ -1193,8 +1238,13 @@ export class MeshManager {
       workerFingerprint: identity.fingerprint,
       workerEncryptionPublicKey,
       workerDirectory: execution.directory,
-      workerPlatform: execution.platform,
-      workerCapabilities: execution.capabilities,
+      ...(targetSupportsRuntimeSnapshot
+        ? { workerPlatform: execution.platform }
+        : {}),
+      workerCapabilities: capabilitiesForMeshPeer(
+        execution.capabilities,
+        targetSupportsRuntimeSnapshot,
+      ),
       workerAcceptRemoteExecution: execution.acceptRemoteExecution,
       workerConfigRevision: execution.revision,
       enrollmentToken: input.enrollmentToken,

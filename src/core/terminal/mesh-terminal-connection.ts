@@ -425,12 +425,14 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
       connectionMode: this.config.connectionMode,
       useTmux: this.config.useTmux,
       allowPersistentSessionCreate: this.allowPersistentSessionCreate,
-      encryptedEnvironment: this.runtimeEnvironment
-        ? encryptMeshPayload(
-            this.runtimeEnvironment,
-            registration.workerEncryptionPublicKey,
-          )
-        : null,
+      ...(this.runtimeEnvironment
+        ? {
+            encryptedEnvironment: encryptMeshPayload(
+              this.runtimeEnvironment,
+              registration.workerEncryptionPublicKey,
+            ),
+          }
+        : {}),
       nonce: crypto.randomUUID(),
       expiresAt,
     };

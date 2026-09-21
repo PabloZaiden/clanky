@@ -25,6 +25,10 @@ import {
   createExecutionHostRuntimeSnapshot,
   POSIX_EXECUTION_HOST_CAPABILITIES,
 } from "../../src/shared/execution-host";
+import {
+  MESH_RUNTIME_SNAPSHOT_HEADER,
+  MESH_RUNTIME_SNAPSHOT_VERSION,
+} from "../../src/shared/mesh";
 import { seedTestOwnerUser } from "../setup";
 let dataDir: string;
 
@@ -269,7 +273,7 @@ describe("Mesh internal controller-worker routes", () => {
     expect(await listWorkerRegistrations("admin")).toEqual([]);
   });
 
-  test("returns runtime health using the current controller contract", async () => {
+  test("negotiates current and pre-PR runtime health contracts", async () => {
     await configureMeshRuntime({ meshWorker: true, workerDirectory: dataDir });
     const controller = createSigningIdentity();
     await saveControllerGrant({
@@ -298,6 +302,7 @@ describe("Mesh internal controller-worker routes", () => {
         "content-type": "application/json",
         "x-clanky-mesh-node-id": "controller-1",
         "x-clanky-mesh-request-id": unsigned.nonce,
+        [MESH_RUNTIME_SNAPSHOT_HEADER]: String(MESH_RUNTIME_SNAPSHOT_VERSION),
       },
       body: JSON.stringify({
         ...unsigned,
@@ -322,6 +327,32 @@ describe("Mesh internal controller-worker routes", () => {
       signature: expect.any(String),
     });
 
+    const legacyUnsigned = {
+      ...unsigned,
+      nonce: crypto.randomUUID(),
+    };
+    const legacyResponse = await route(new Request("http://worker/api/mesh/internal/health", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-clanky-mesh-node-id": "controller-1",
+        "x-clanky-mesh-request-id": legacyUnsigned.nonce,
+      },
+      body: JSON.stringify({
+        ...legacyUnsigned,
+        signature: sign(
+          null,
+          Buffer.from(buildMeshHealthCheckSigningPayload(legacyUnsigned)),
+          controller.privateKey,
+        ).toString("base64url"),
+      }),
+    }), undefined as never);
+
+    expect(legacyResponse!.status).toBe(200);
+    const legacyBody = await readJson(legacyResponse!);
+    expect(legacyBody).not.toHaveProperty("workerPlatform");
+    expect(legacyBody["workerCapabilities"]).not.toHaveProperty("git");
+    expect(legacyBody["workerCapabilities"]).not.toHaveProperty("managedWorktrees");
   });
 
   test("rejects signed controller operations targeting another worker", async () => {

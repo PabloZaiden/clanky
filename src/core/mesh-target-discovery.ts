@@ -4,6 +4,10 @@
 
 import { MeshWellKnownDescriptorSchema } from "@/contracts/schemas/mesh-relay";
 import {
+  MESH_RUNTIME_SNAPSHOT_HEADER,
+  MESH_RUNTIME_SNAPSHOT_VERSION,
+} from "@/shared/mesh";
+import {
   MESH_RELAY_DESCRIPTOR_PATH,
   normalizeMeshRelayOrigin,
   type MeshWellKnownDescriptor,
@@ -100,6 +104,7 @@ export async function discoverMeshEnrollmentTarget(
 ): Promise<{
   target: string;
   descriptor: MeshWellKnownDescriptor;
+  runtimeSnapshotVersion: number;
 }> {
   const normalizedTarget = normalizeMeshEnrollmentTarget(target);
   const controller = new AbortController();
@@ -160,9 +165,18 @@ export async function discoverMeshEnrollmentTarget(
         );
       }
     }
+    const advertisedSnapshotVersion = Number(
+      response.headers.get(MESH_RUNTIME_SNAPSHOT_HEADER),
+    );
+    const runtimeSnapshotVersion =
+      Number.isInteger(advertisedSnapshotVersion)
+        && advertisedSnapshotVersion >= MESH_RUNTIME_SNAPSHOT_VERSION
+        ? advertisedSnapshotVersion
+        : 0;
     return {
       target: normalizedTarget,
       descriptor: parsed.data,
+      runtimeSnapshotVersion,
     };
   } catch (error) {
     if (error instanceof DomainError) {
