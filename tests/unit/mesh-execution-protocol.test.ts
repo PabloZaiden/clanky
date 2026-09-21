@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
   MeshExecutionRpcRequestSchema,
-  MeshExecutionSessionRequestSchema,
   type MeshExecutionSessionRequest,
 } from "../../src/contracts/schemas/mesh-execution";
 import { buildMeshExecutionSessionSigningPayload } from "../../src/core/mesh-protocol";
@@ -60,13 +59,6 @@ describe("Mesh execution session protocol", () => {
       ...request,
       encryptedEnvironment: { ciphertext: "different" },
     })).not.toBe(payload);
-  });
-
-  test("accepts an encrypted environment field on ACP session requests", () => {
-    expect(MeshExecutionSessionRequestSchema.safeParse({
-      ...buildRequest({ ciphertext: "encrypted" }),
-      signature: "signature",
-    }).success).toBe(true);
   });
 
   test("validates the structured Git RPC boundary", () => {

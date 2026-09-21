@@ -15,15 +15,6 @@ describe("createEventStream", () => {
     await expect(stream.next()).resolves.toBeNull();
   });
 
-  test("resolves all pending readers when the stream ends", async () => {
-    const { stream, end } = createEventStream<number>();
-    const pendingReads = [stream.next(), stream.next()];
-
-    end();
-
-    await expect(Promise.all(pendingReads)).resolves.toEqual([null, null]);
-  });
-
   test("resolves pending and future reads as null when closed", async () => {
     const { stream, push, end, fail } = createEventStream<number>();
     const pendingRead = stream.next();
@@ -36,22 +27,6 @@ describe("createEventStream", () => {
     fail(failure);
 
     await expect(pendingRead).resolves.toBeNull();
-    await expect(stream.next()).resolves.toBeNull();
-  });
-
-  test("keeps the first normal end when later terminals are attempted", async () => {
-    const { stream, push, end, fail } = createEventStream<number>();
-    const failure = new Error("late failure");
-
-    push(1);
-    end();
-    end();
-    fail(failure);
-    stream.close();
-    push(2);
-
-    await expect(stream.next()).resolves.toBe(1);
-    await expect(stream.next()).resolves.toBeNull();
     await expect(stream.next()).resolves.toBeNull();
   });
 

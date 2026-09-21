@@ -27,7 +27,6 @@ afterEach(() => {
 });
 
 describe("mesh transport configuration", () => {
-
   test("requires the configured public base URL for the advertised endpoint", () => {
     delete process.env["CLANKY_PUBLIC_BASE_URL"];
     expect(() => resolveAdvertisedMeshEndpoint()).toThrow(DomainError);
@@ -36,34 +35,21 @@ describe("mesh transport configuration", () => {
     expect(resolveAdvertisedMeshEndpoint()).toBe("http://192.168.1.20:4100");
   });
 
-  test("validates an explicit Mesh endpoint override", () => {
-    expect(() => resolveAdvertisedMeshEndpoint("http://mesh.example.test:4300/mesh"))
-      .toThrow(DomainError);
-    try {
-      resolveAdvertisedMeshEndpoint("http://mesh.example.test:4300/mesh");
-    } catch (error) {
-      expect(error).toMatchObject({ code: "mesh_endpoint_invalid" });
+  test("rejects unsafe or inconsistent advertised endpoints", () => {
+    const invalidEndpoints = [
+      "http://mesh.example.test:4300/mesh",
+      "http://192.168.1.20:4100?mesh=1",
+      "http://192.168.1.20:4100/mesh#peer",
+      "http://user:password@192.168.1.20:4100",
+    ];
+    for (const endpoint of invalidEndpoints) {
+      expect(() => assertMeshEndpointAllowed(endpoint)).toThrow(DomainError);
     }
-  });
-
-  test("rejects endpoints with query strings or fragments", () => {
-    expect(() => assertMeshEndpointAllowed("http://192.168.1.20:4100?mesh=1")).toThrow(DomainError);
-    expect(() => assertMeshEndpointAllowed("http://192.168.1.20:4100/mesh#peer")).toThrow(DomainError);
-  });
-
-  test("rejects endpoints with credentials", () => {
-    expect(() => assertMeshEndpointAllowed("http://mesh-user:mesh-password@192.168.1.20:4100"))
+    expect(() => assertMeshEndpointAllowed("https://mesh.example.test", "http"))
       .toThrow(DomainError);
-  });
 
-  test("requires the public base URL to be an absolute origin", () => {
     process.env["CLANKY_PUBLIC_BASE_URL"] = "http://configured.example.test:4200/mesh";
     expect(() => resolveAdvertisedMeshEndpoint()).toThrow(DomainError);
-    try {
-      resolveAdvertisedMeshEndpoint();
-    } catch (error) {
-      expect(error).toMatchObject({ code: "mesh_public_base_url_invalid" });
-    }
   });
 
   // Missing certificate pins must never downgrade an enrolled HTTPS worker to
@@ -93,9 +79,5 @@ describe("mesh transport configuration", () => {
       .toThrow("Remote relay URLs must use HTTPS.");
     expect(normalizeMeshRelayOrigin("https://relay.example.com"))
       .toBe("https://relay.example.com");
-  });
-
-  test("rejects transport declarations that do not match the URL", () => {
-    expect(() => assertMeshEndpointAllowed("https://mesh.example.test", "http")).toThrow(DomainError);
   });
 });

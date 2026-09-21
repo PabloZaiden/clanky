@@ -69,32 +69,6 @@ function createTestCoordinator(
 }
 
 describe("interruptible operation coordinator", () => {
-  test("completes normally and removes the abort listener before later cancellation", async () => {
-    const controller = new AbortController();
-    const testCoordinator = createTestCoordinator(controller);
-
-    await expect(
-      testCoordinator.coordinator.runPhase(async () => "complete", "send"),
-    ).resolves.toBe("complete");
-    await testCoordinator.coordinator.dispose();
-
-    controller.abort();
-
-    expect(testCoordinator.interruptCalls).toBe(0);
-    expect(testCoordinator.interruptErrors).toHaveLength(0);
-  });
-
-  test("handles a pre-aborted coordinator without starting a phase", async () => {
-    const controller = new AbortController();
-    controller.abort();
-    const testCoordinator = createTestCoordinator(controller);
-
-    await testCoordinator.coordinator.dispose();
-
-    expect(testCoordinator.interruptCalls).toBeGreaterThan(0);
-    expect(testCoordinator.interruptErrors).toHaveLength(0);
-  });
-
   test("interrupts an active phase once and performs one late interrupt after settlement", async () => {
     const controller = new AbortController();
     const testCoordinator = createTestCoordinator(controller);

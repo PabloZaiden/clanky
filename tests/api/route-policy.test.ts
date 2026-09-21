@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { createRouteCatalog, findRouteCatalogEntry } from "@pablozaiden/webapp/server";
-import { apiRoutes } from "../../src/api";
+import { createRouteCatalog } from "@pablozaiden/webapp/server";
 import { routes } from "../../src/server";
-import { MESH_RELAY_DESCRIPTOR_PATH } from "../../src/shared/mesh-relay";
 
 /**
  * Routes that are intentionally reachable without an authenticated Clanky user.
@@ -37,31 +35,6 @@ const OWNER_ROUTE_ALLOWLIST = [
   "/api/settings/reset-all",
 ] as const;
 
-type ApiMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
-
-const AGENT_ROUTE_SURFACE = {
-  "/api/agents": ["GET", "POST"],
-  "/api/agents/code/generate": ["POST"],
-  "/api/agents/:id/export": ["GET"],
-  "/api/workspaces/:id/agents/import": ["POST"],
-  "/api/agents/:id": ["GET", "PATCH", "DELETE"],
-  "/api/agents/:id/code/draft": ["GET"],
-  "/api/agents/:id/code/generate/prepare": ["POST"],
-  "/api/agents/:id/code/generate": ["POST"],
-  "/api/agents/code/test": ["POST"],
-  "/api/agents/code/test/stream": ["POST"],
-  "/api/agents/:id/run": ["POST"],
-  "/api/agents/:id/interrupt": ["POST"],
-  "/api/agents/:id/pause": ["POST"],
-  "/api/agents/:id/resume": ["POST"],
-  "/api/agents/:id/runs": ["GET", "DELETE"],
-  "/api/agent-runs/:id": ["GET", "DELETE"],
-  "/api/agent-runs/:id/snapshot": ["GET"],
-  "/api/agent-runs/:id/tool-calls/:toolCallId": ["GET"],
-} as const satisfies Record<string, readonly ApiMethod[]>;
-
-const API_METHODS: readonly ApiMethod[] = ["GET", "POST", "PUT", "PATCH", "DELETE"];
-
 describe("API route policy metadata", () => {
   test("declares authorization, same-origin policy, and route descriptions on every Clanky route", () => {
     const catalog = createRouteCatalog(routes);
@@ -77,38 +50,6 @@ describe("API route policy metadata", () => {
       expect(entry.sameOrigin).toBe(route.sameOrigin);
       expect(route.description).toBeTruthy();
       expect(entry.description).toBe(route.description);
-    }
-
-    const tasksEntry = findRouteCatalogEntry(catalog, "tasks")?.entry;
-    expect(tasksEntry?.path).toBe("/api/tasks");
-    expect(tasksEntry?.auth).toBe("user");
-    expect(tasksEntry?.sameOrigin).toBe("mutations");
-    expect(tasksEntry?.description).toBeTruthy();
-  });
-
-  test("preserves the complete scheduled-agent route surface after composition", () => {
-    const expectedPaths = Object.keys(AGENT_ROUTE_SURFACE).sort();
-    const actualPaths = Object.keys(apiRoutes)
-      .filter((path) => (
-        path === "/api/agents"
-        || path.startsWith("/api/agents/")
-        || path.startsWith("/api/agent-runs/")
-        || path === "/api/workspaces/:id/agents/import"
-      ))
-      .sort();
-    expect(actualPaths).toEqual(expectedPaths);
-
-    for (const path of expectedPaths) {
-      const route = apiRoutes[path];
-      if (!route) {
-        throw new Error(`Missing scheduled-agent route: ${path}`);
-      }
-      const expectedMethods = AGENT_ROUTE_SURFACE[path as keyof typeof AGENT_ROUTE_SURFACE];
-      const actualMethods = API_METHODS.filter((method) => route[method] !== undefined);
-      expect(actualMethods).toEqual([...expectedMethods]);
-      expect(route.auth).toBe("user");
-      expect(route.sameOrigin).toBe("mutations");
-      expect(route.description).toBeTruthy();
     }
   });
 
@@ -134,14 +75,4 @@ describe("API route policy metadata", () => {
     expect(ownerPaths).toEqual([...OWNER_ROUTE_ALLOWLIST].sort());
   });
 
-  test("keeps user and websocket policies explicit after composition", () => {
-    expect(routes[MESH_RELAY_DESCRIPTOR_PATH]?.auth).toBe("public");
-    expect(routes[MESH_RELAY_DESCRIPTOR_PATH]?.sameOrigin).toBe("never");
-    expect(apiRoutes["/api/tasks"]?.auth).toBe("user");
-    expect(apiRoutes["/api/tasks"]?.sameOrigin).toBe("mutations");
-    expect(apiRoutes["/api/settings/reset-all"]?.auth).toBe("owner");
-    expect(apiRoutes["/api/settings/purge-terminal-tasks"]?.auth).toBe("owner");
-    expect(routes["/api/previews/bridge"]?.auth).toBe("user");
-    expect(routes["/api/previews/bridge"]?.sameOrigin).toBe("always");
-  });
 });

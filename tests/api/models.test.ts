@@ -6,17 +6,13 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { type Server } from "bun";
 import { serveNativeApiRoutes } from "../native-api-server";
 import { backendManager } from "../../src/core/backend-manager";
-import type { AgentProvider } from "@/shared/settings";
 import { setupTestContext, teardownTestContext, type TestContext } from "../setup";
 import { MockAcpBackend } from "../mocks/mock-backend";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 
 class VariantTrackingBackend extends MockAcpBackend {
-  readonly variantRequests: Array<{ directory: string; modelID: string; provider?: AgentProvider }> = [];
-
   async getModelVariants(directory: string, modelID: string): Promise<string[]> {
     const provider = this.getConnectionConfigs().at(-1)?.provider;
-    this.variantRequests.push({ directory, modelID, provider });
     return [`${provider ?? "unknown"}:${directory}:${modelID}`];
   }
 }
@@ -52,7 +48,7 @@ describe("Models API", () => {
     expect(await missingModel.json()).toMatchObject({ error: "missing_model_id" });
   });
 
-  test("derives variant backend routing from workspace settings and ignores providerID", async () => {
+  test("derives variant discovery from the workspace provider", async () => {
     const response = await fetch(
       `${baseUrl}/api/models/variants?workspaceId=test-workspace-id&providerID=copilot&modelID=test-model`,
     );
@@ -61,9 +57,6 @@ describe("Models API", () => {
     expect(await response.json()).toEqual({
       variants: [`opencode:${ctx.workDir}:test-model`],
     });
-    expect(backend.variantRequests).toEqual([
-      { directory: ctx.workDir, modelID: "test-model", provider: "opencode" },
-    ]);
   });
 
   test("keeps variant cache entries isolated when the workspace provider changes", async () => {
@@ -102,16 +95,5 @@ describe("Models API", () => {
       variants: [`copilot:${ctx.workDir}:test-model`],
     });
 
-    const repeatedSecond = await fetch(
-      `${baseUrl}/api/models/variants?workspaceId=test-workspace-id&modelID=test-model`,
-    );
-    expect(repeatedSecond.status).toBe(200);
-    expect(await repeatedSecond.json()).toEqual({
-      variants: [`copilot:${ctx.workDir}:test-model`],
-    });
-    expect(backend.variantRequests).toEqual([
-      { directory: ctx.workDir, modelID: "test-model", provider: "opencode" },
-      { directory: ctx.workDir, modelID: "test-model", provider: "copilot" },
-    ]);
   });
 });

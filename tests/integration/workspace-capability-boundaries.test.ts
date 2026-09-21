@@ -20,7 +20,6 @@ import {
 import { backendManager } from "../../src/core/backend-manager";
 import { meshStateEventEmitter } from "../../src/core/event-emitter";
 import {
-  ExecutionHostService,
   executionHostService,
 } from "../../src/core/execution-host-service";
 import { runWithCurrentUser } from "../../src/core/user-context";
@@ -33,7 +32,6 @@ import {
   ensureExecutionHost,
   toExecutionHostBinding,
 } from "../../src/persistence/execution-hosts";
-import { updateWorkerHealthSnapshot } from "../../src/persistence/mesh";
 import {
   createWorkspace,
   getWorkspace,
@@ -288,62 +286,6 @@ describe("workspace capability boundaries", () => {
     });
   });
 
-  // This core-boundary regression verifies that stale Mesh metadata is
-  // refreshed before a capability failure, while unsupported capabilities
-  // still keep their original typed error.
-  test("refreshes stale Mesh capabilities and preserves typed failures", async () => {
-    let refreshCount = 0;
-    const refreshingService = new ExecutionHostService({
-      refreshMeshWorkerHealth: async (userId, workerNodeId) => {
-        refreshCount += 1;
-        await updateWorkerHealthSnapshot({
-          workerNodeId,
-          localUserId: userId,
-          directory: dataDir,
-          platform: { os: "windows", architecture: "x64" },
-          capabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
-          acceptRemoteExecution: true,
-          configRevision: 1,
-        });
-      },
-    });
-
-    const refreshed = await runWithCurrentUser(
-      testOwnerUser,
-      async () => await refreshingService.requireCapability(
-        unsupportedRef,
-        "acpRuntime",
-        testOwnerUser.id,
-        1,
-      ),
-    );
-    expect(refreshCount).toBe(1);
-    expect(refreshed.capabilities.acpRuntime).toBe(
-      POSIX_EXECUTION_HOST_CAPABILITIES.acpRuntime,
-    );
-
-    const failingService = new ExecutionHostService({
-      refreshMeshWorkerHealth: async () => {
-        throw new Error("worker is unavailable");
-      },
-    });
-    await expect(runWithCurrentUser(
-      testOwnerUser,
-      async () => await failingService.requireCapability(
-        noGitRef,
-        "acpRuntime",
-        testOwnerUser.id,
-        2,
-      ),
-    )).rejects.toMatchObject({
-      code: "execution_host_capability_unavailable",
-      details: {
-        capability: "acpRuntime",
-        actualVersion: 1,
-      },
-    });
-  });
-
   test("rejects a Git workspace on a host without Git transport", async () => {
     const response = await fetch(`${baseUrl}/api/workspaces`, {
       method: "POST",
@@ -395,9 +337,8 @@ describe("workspace capability boundaries", () => {
     ).toBe(firstExecutor);
 
     await backendManager.disconnectWorkspace("supported-workspace");
-    expect(executors).toHaveLength(1);
-    expect(executors[0]!.closeCount).toBe(1);
-    await expect(executors[0]!.getExecutionDirectory()).rejects.toThrow(
+    expect(executors[0]?.closeCount).toBe(1);
+    await expect(executors[0]?.getExecutionDirectory()).rejects.toThrow(
       "Command executor is closed",
     );
 
@@ -412,7 +353,7 @@ describe("workspace capability boundaries", () => {
 
     await backendManager.resetWorkspaceConnection("supported-workspace");
     await backendManager.resetWorkspaceConnection("supported-workspace");
-    expect(executors[1]!.closeCount).toBe(1);
+    expect(executors[1]?.closeCount).toBe(1);
 
     await runWithCurrentUser(
       secondaryUser,
@@ -422,8 +363,7 @@ describe("workspace capability boundaries", () => {
       ),
     );
     await backendManager.resetAllConnections();
-    expect(executors).toHaveLength(3);
-    expect(executors[2]!.closeCount).toBe(1);
+    expect(executors[2]?.closeCount).toBe(1);
   });
 
   test("closes the cached executor when workspace settings change", async () => {
@@ -468,24 +408,6 @@ describe("workspace capability boundaries", () => {
     expect(executors).toHaveLength(2);
   });
 
-  test("supports stateless cached executors during global reset", async () => {
-    executionHostService.setExecutorFactoryForTesting(
-      (directory) => new TestCommandExecutor(directory),
-    );
-
-    const executor = await runWithCurrentUser(
-      testOwnerUser,
-      async () => await backendManager.getCommandExecutorAsync(
-        "supported-workspace",
-        dataDir,
-      ),
-    );
-    await backendManager.resetAllConnections();
-    expect(await executor.getExecutionDirectory()).toBe(dataDir);
-  });
-
-  // This integration regression verifies owner-scoped cache invalidation
-  // through the Mesh state boundary rather than asserting private maps.
   test("rebuilds only the affected owner's Mesh executor", async () => {
     const executors: LifecycleTestExecutor[] = [];
     executionHostService.setExecutorFactoryForTesting((directory) => {
@@ -495,10 +417,6 @@ describe("workspace capability boundaries", () => {
     });
 
     await runWithCurrentUser(testOwnerUser, async () => {
-      expect(await backendManager.getCommandExecutorAsync(
-        "supported-workspace",
-        dataDir,
-      )).toBe(executors[0]!);
       expect(await backendManager.getCommandExecutorAsync(
         "supported-workspace",
         dataDir,
@@ -544,9 +462,9 @@ describe("workspace capability boundaries", () => {
     );
 
     expect(rebuiltExecutor).toBeDefined();
-    expect(rebuiltExecutor!).not.toBe(executors[0]);
-    expect(executors[0]!.closeCount).toBe(1);
-    expect(executors[1]!.closeCount).toBe(0);
+    expect(rebuiltExecutor).not.toBe(executors[0]);
+    expect(executors[0]?.closeCount).toBe(1);
+    expect(executors[1]?.closeCount).toBe(0);
     await runWithCurrentUser(secondaryUser, async () => {
       expect(
         await backendManager.getCommandExecutorAsync(

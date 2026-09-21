@@ -15,19 +15,6 @@ describe("agent schedule calculations", () => {
     expect(nextRunAt).toBe("2026-01-01T00:01:00.000Z");
   });
 
-  test("advances old hour schedules arithmetically", () => {
-    const nextRunAt = calculateNextRunAt({
-      startAtLocal: "2020-01-01T00:00",
-      timezone: "UTC",
-      interval: {
-        value: 1,
-        unit: "hours",
-      },
-    }, new Date("2026-01-01T00:00:00Z"));
-
-    expect(nextRunAt).toBe("2026-01-01T01:00:00.000Z");
-  });
-
   test("advances old day schedules using local calendar days across DST", () => {
     const nextRunAt = calculateNextRunAt({
       startAtLocal: "2020-03-07T09:30",

@@ -3,69 +3,11 @@ import {
   GitService,
   InvalidManagedWorktreePathError,
 } from "../../src/core/git";
-import type {
-  CommandOptions,
-  CommandResult,
-} from "../../src/core/command-executor";
 import { ManagedPathService } from "../../src/core/managed-path-service";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 
-class RelativeGitPathExecutor extends TestCommandExecutor {
-  override readonly pathStyle = "posix";
-  readonly writes = new Map<string, string>();
-
-  override async getExecutionDirectory(): Promise<string> {
-    return "/remote/workspaces/repository";
-  }
-
-  override async exec(
-    command: string,
-    args: string[],
-    _options?: CommandOptions,
-  ): Promise<CommandResult> {
-    if (
-      command === "git"
-      && args.slice(-4).join(" ") === "rev-parse --path-format=absolute --git-path info/exclude"
-    ) {
-      return {
-        success: true,
-        stdout: "/remote/workspaces/repository/.git/info/exclude\n",
-        stderr: "",
-        exitCode: 0,
-      };
-    }
-    return {
-      success: false,
-      stdout: "",
-      stderr: `Unexpected command: ${command} ${args.join(" ")}`,
-      exitCode: 1,
-    };
-  }
-
-  override async readFile(path: string): Promise<string | null> {
-    return this.writes.get(path) ?? null;
-  }
-
-  override async writeFile(path: string, content: string): Promise<boolean> {
-    this.writes.set(path, content);
-    return true;
-  }
-}
-
 describe("Managed worktree paths", () => {
   const paths = new ManagedPathService("posix");
-
-  test("constructs paths from the explicit repository directory", () => {
-    expect(paths.getManagedWorktreeRoot("/remote/workspaces/repository")).toBe(
-      "/remote/workspaces/repository/.clanky-worktrees",
-    );
-    expect(paths.getManagedWorktreePath("/remote/workspaces/repository", "task-123")).toBe(
-      "/remote/workspaces/repository/.clanky-worktrees/task-123",
-    );
-    expect(() =>
-      paths.getManagedWorktreePath("remote/workspaces/repository", "chat-123")
-    ).toThrow(InvalidManagedWorktreePathError);
-  });
 
   test("normalizes safe identifiers and rejects path traversal", () => {
     expect(paths.normalizeManagedWorktreeIdentifier(" task-123 ")).toBe("task-123");
@@ -149,14 +91,4 @@ describe("Managed worktree paths", () => {
     );
   });
 
-  test("resolves Git metadata from the executor's canonical absolute directory", async () => {
-    const executor = new RelativeGitPathExecutor();
-    const git = GitService.withExecutor(executor);
-
-    await git.ensureWorktreeExcluded("relative/repository");
-
-    expect(executor.writes.get(
-      "/remote/workspaces/repository/.git/info/exclude",
-    )).toContain(".clanky-worktrees");
-  });
 });

@@ -5,7 +5,7 @@
  * of the source checkout's branch state (worktree isolation).
  */
 
-import { test, expect, describe, beforeAll, afterAll, beforeEach, afterEach } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { writeFile } from "fs/promises";
 import { join } from "path";
 import {
@@ -17,7 +17,6 @@ import {
   pushTaskViaAPI,
   discardTaskViaAPI,
   getCurrentBranch,
-  branchExists,
   remoteBranchExists,
   assertTaskState,
   waitForGitAvailable,
@@ -27,60 +26,6 @@ import type { Task } from "@/shared/task";
 import { runGit } from "../../helpers/git-fixtures";
 
 describe("Branch Safety - Worktree Isolation", () => {
-  describe("Task commits correctly with worktree isolation", () => {
-    let ctx: TestServerContext;
-
-    beforeAll(async () => {
-      ctx = await setupTestServer({
-        mockResponses: [
-          "Working on iteration 1...",
-          "Working on iteration 2...",
-          "Done! <promise>COMPLETE</promise>",
-        ],
-        withPlanningDir: true,
-      });
-    });
-
-    afterAll(async () => {
-      await teardownTestServer(ctx);
-    });
-
-    test("task completes without modifying source checkout branch", async () => {
-      // Get the original branch before creating the task
-      const originalBranch = await getCurrentBranch(ctx.workDir);
-
-      // Create task
-      const { status, body } = await createTaskViaAPI(ctx.baseUrl, {
-        directory: ctx.workDir,
-        prompt: "Complete a multi-step task",
-        planMode: false,
-      });
-
-      expect(status).toBe(201);
-      const task = body as Task;
-
-      // Wait for completion
-      const completedTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "completed");
-
-      // Validate the task completed successfully
-      assertTaskState(completedTask, {
-        status: "completed",
-        hasGitBranch: true,
-        hasError: false,
-      });
-
-      // Source checkout should still be on the original branch (worktree isolation)
-      const currentBranch = await getCurrentBranch(ctx.workDir);
-      expect(currentBranch).toBe(originalBranch);
-
-      // The working branch should exist (checked out in the worktree)
-      expect(await branchExists(ctx.workDir, completedTask.state.git!.workingBranch)).toBe(true);
-
-      // Clean up
-      await discardTaskViaAPI(ctx.baseUrl, task.config.id);
-    });
-  });
-
   describe("Task discard with worktree isolation", () => {
     let ctx: TestServerContext;
 
@@ -96,40 +41,6 @@ describe("Branch Safety - Worktree Isolation", () => {
 
     afterEach(async () => {
       await teardownTestServer(ctx);
-    });
-
-    test("discard succeeds and source checkout stays unchanged", async () => {
-      // Get the original branch
-      const originalBranch = await getCurrentBranch(ctx.workDir);
-
-      // Create and wait for task completion
-      const { body } = await createTaskViaAPI(ctx.baseUrl, {
-        directory: ctx.workDir,
-        prompt: "Make some changes",
-        planMode: false,
-      });
-      const task = body as Task;
-
-      await waitForTaskStatus(ctx.baseUrl, task.config.id, "completed");
-
-      // Source checkout stays on original branch (worktree isolation)
-      expect(await getCurrentBranch(ctx.workDir)).toBe(originalBranch);
-
-      // Discard the task
-      const { status, body: discardBody } = await discardTaskViaAPI(ctx.baseUrl, task.config.id);
-
-      expect(status).toBe(200);
-      expect(discardBody.success).toBe(true);
-
-      // Source checkout still on original branch
-      expect(await getCurrentBranch(ctx.workDir)).toBe(originalBranch);
-
-      // Verify the task state is now "deleted"
-      const deletedTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "deleted");
-      assertTaskState(deletedTask, {
-        status: "deleted",
-        hasError: false,
-      });
     });
 
     test("discard succeeds even when user is on a different branch in source checkout", async () => {

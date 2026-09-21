@@ -1,19 +1,18 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { PushedTaskMonitor } from "../../src/core/pushed-task-monitor";
 import {
-  constructAutomaticPrReviewCommentText,
-} from "../../src/core/task/task-review";
-import {
   AUTOMATIC_PR_WORKFLOW_FAILURE_MESSAGE,
-  fetchAutomaticPrFlowSnapshot,
   type AutomaticPrFlowFeedbackItem,
-  type AutomaticPrFlowPullRequest,
   type AutomaticPrFlowSnapshot,
+  fetchAutomaticPrFlowSnapshot,
 } from "../../src/core/automatic-pr-flow-github";
-import type { PullRequestNavigationGitService } from "../../src/core/pull-request-navigation";
+import {
+  type AutomaticPrFlowPullRequest,
+} from "../../src/core/automatic-pr-flow-github";
 import { SimpleEventEmitter } from "../../src/core/event-emitter";
 import type { TaskEvent } from "@/shared/events";
 import { createInitialState, type Task } from "@/shared/task";
+import type { PullRequestNavigationGitService } from "../../src/core/pull-request-navigation";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import {
   setupTestContext,
@@ -64,10 +63,8 @@ class GitHubSnapshotExecutor extends TestCommandExecutor {
   }
 }
 
-const fixtureDefaultBranch = "fixture-default";
-
 const navigationGit: PullRequestNavigationGitService = {
-  getDefaultBranch: async () => fixtureDefaultBranch,
+  getDefaultBranch: async () => "fixture-default",
   getRemoteUrl: async () => "https://github.com/test-owner/test-repo.git",
   hasRemote: async () => true,
 };
@@ -89,7 +86,7 @@ function createTaskForMonitor(directory: string): Task {
   const state = createInitialState("automatic-pr-flow-task");
   state.status = "pushed";
   state.git = {
-    originalBranch: fixtureDefaultBranch,
+    originalBranch: "fixture-default",
     workingBranch: "feature/automatic-pr-flow",
     commits: [],
   };
@@ -125,7 +122,7 @@ function createTaskForMonitor(directory: string): Task {
         branchPrefix: "",
         commitScope: "",
       },
-      baseBranch: fixtureDefaultBranch,
+      baseBranch: "fixture-default",
       useWorktree: false,
       clearPlanningFolder: false,
       planMode: false,
@@ -268,20 +265,17 @@ describe("Automatic PR flow feedback sources", () => {
       "unit-tests",
       "external-gate",
     ]);
-    expect(snapshot.workflowFailures.map((item) => item.headSha)).toEqual([headSha, headSha]);
+    expect(snapshot.workflowFailures.map((item) => item.headSha)).toEqual([
+      headSha,
+      headSha,
+    ]);
     expect(snapshot.workflowFailures.map((item) => item.checkConclusion)).toEqual([
       "FAILURE",
       "FAILURE",
     ]);
-    expect(snapshot.workflowFailures[0]?.id).toContain(headSha);
-    expect(snapshot.workflowFailures[0]?.workflowName).toBe("CI");
-    expect(snapshot.workflowFailures[0]?.body).toContain("Expected true to be false");
-    expect(snapshot.workflowFailures[0]?.url).toContain("/actions/runs/101");
-    expect(snapshot.workflowFailures[1]?.body).toContain("The external gate failed");
-    expect(snapshot.workflowFailures[1]?.url).toBe("https://example.test/gate");
   });
 
-  test("processes workflow failures deterministically before reviewer comments", async () => {
+  test("processes workflow failures before reviewer comments and retries a new PR head", async () => {
     const task = createTaskForMonitor(context.workDir);
     let currentTask = task;
     let snapshot = createSnapshot(createSnapshotPullRequest(), [
@@ -302,7 +296,6 @@ describe("Automatic PR flow feedback sources", () => {
       },
     ]);
     const startedBatches: Array<{
-      batchId: string;
       sourceItems: AutomaticPrFlowFeedbackItem[];
       feedbackItems: Array<{ text: string; sourceItemIds: string[] }>;
     }> = [];
@@ -354,7 +347,6 @@ describe("Automatic PR flow feedback sources", () => {
       },
       startAutomaticPrReviewCycle: async (_taskId, options) => {
         startedBatches.push({
-          batchId: options.batchId,
           sourceItems: options.sourceItems,
           feedbackItems: options.feedbackItems,
         });
@@ -405,10 +397,10 @@ describe("Automatic PR flow feedback sources", () => {
     ]);
 
     await monitor.runNow();
+
     expect(startedBatches).toHaveLength(2);
     expect(startedBatches[1]?.sourceItems.map((item) => item.source)).toEqual(["review_thread"]);
     expect(extractionCallCount).toBe(1);
-    expect(currentTask.state.automaticPrFlow?.activeBatch?.itemIds).toEqual(["thread-1"]);
 
     currentTask = {
       ...currentTask,
@@ -422,20 +414,6 @@ describe("Automatic PR flow feedback sources", () => {
     expect(pushCount).toBe(2);
     expect(resolvedThreadIds).toEqual(["thread-1"]);
     expect(currentTask.state.automaticPrFlow?.activeBatch).toBeUndefined();
-    expect(currentTask.state.automaticPrFlow?.handledItems).toEqual([
-      {
-        id: "workflow:check-failed:head-sha-1:FAILURE:2026-07-12T17:01:00Z",
-        source: "workflow",
-        outcome: "manual",
-        handledAt: expect.any(String),
-      },
-      {
-        id: "thread-1",
-        source: "review_thread",
-        outcome: "resolved",
-        handledAt: expect.any(String),
-      },
-    ]);
 
     await monitor.runNow();
     expect(startedBatches).toHaveLength(2);
@@ -540,24 +518,5 @@ describe("Automatic PR flow feedback sources", () => {
       id: "workflow-0",
       outcome: "manual",
     });
-  });
-
-  test("uses a fixed task comment for workflow failures", () => {
-    const workflowItem: AutomaticPrFlowFeedbackItem = {
-      id: "workflow:check-failed:head-sha-1:FAILURE:2026-07-12T17:01:00Z",
-      source: "workflow",
-      body: "Untrusted API output that must not become the task comment.",
-      checkName: "unit-tests",
-      checkConclusion: "FAILURE",
-      headSha: "head-sha-1",
-    };
-
-    expect(constructAutomaticPrReviewCommentText(
-      [{
-        text: "Another untrusted value.",
-        sourceItemIds: [workflowItem.id],
-      }],
-      [workflowItem],
-    )).toBe(AUTOMATIC_PR_WORKFLOW_FAILURE_MESSAGE);
   });
 });

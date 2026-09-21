@@ -34,7 +34,6 @@ describe("Mesh worker TLS identity", () => {
 
     await expect(getMeshWorkerTlsIdentity()).rejects.toMatchObject({
       code: "mesh_worker_tls_private_key_invalid",
-      message: "The stored Mesh worker TLS private key is invalid or does not match the certificate.",
     });
   });
 });

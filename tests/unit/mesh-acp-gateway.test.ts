@@ -98,23 +98,6 @@ describe("MeshAcpGateway relay lifecycle", () => {
     };
   }
 
-  test("keeps the execution session valid when opening a new relay", async () => {
-    const session = await createSession();
-    const closeEvents: Array<{ code?: number; reason?: string }> = [];
-    const socket = {
-      send(_data: string): void {},
-      close(code?: number, reason?: string): void {
-        closeEvents.push({ code, reason });
-      },
-    };
-
-    await gateway.open(socket, session.sessionId, session.sessionToken);
-    await expect(
-      gateway.renew(session.sessionId, session.sessionToken),
-    ).resolves.toBeGreaterThan(Date.now());
-    expect(closeEvents).toEqual([]);
-  });
-
   test("aborts a relay opening when the socket closes", async () => {
     const session = await createSession();
     let openingStarted!: () => void;

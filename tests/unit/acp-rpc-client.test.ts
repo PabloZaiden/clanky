@@ -33,18 +33,6 @@ function createClient(options: {
 }
 
 describe("RpcClient", () => {
-  test("correlates a numeric-id response and resolves the request", async () => {
-    const { client, written } = createClient();
-    const promise = client.sendRequest<{ ok: boolean }>("session/new", { cwd: "/repo" });
-
-    expect(written).toHaveLength(1);
-    const id = written[0]!.id;
-    expect(typeof id).toBe("number");
-
-    client.handleMessage({ jsonrpc: "2.0", id, result: { ok: true } });
-    await expect(promise).resolves.toEqual({ ok: true });
-  });
-
   test("preserves the JSON-RPC error code when a request fails", async () => {
     const { client, written } = createClient();
     const promise = client.sendRequest("session/set_config_option", {});

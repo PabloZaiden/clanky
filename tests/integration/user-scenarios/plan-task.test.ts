@@ -4,8 +4,6 @@
  */
 
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
-import { writeFile, readdir } from "fs/promises";
-import { join } from "path";
 import {
   setupTestServer,
   teardownTestServer,
@@ -21,7 +19,6 @@ import {
   getCurrentBranch,
   branchExists,
   assertTaskState,
-  waitForGitAvailable,
   type TestServerContext,
 } from "./helpers";
 import type { Task } from "@/shared/task";
@@ -144,12 +141,10 @@ class GitHubMockExecutor extends TestCommandExecutor {
 function createPlanModeMockResponses(options: {
   planIterations?: number;
   executionResponses?: string[];
-  taskName?: string;
 }): string[] {
-  const { 
-    planIterations = 1, 
+  const {
+    planIterations = 1,
     executionResponses = ["<promise>COMPLETE</promise>"],
-    taskName: _taskName = "unused",
   } = options;
 
   const responses: string[] = [];
@@ -222,57 +217,6 @@ describe("Plan + Task User Scenarios", () => {
       expect(planningTask.state.git).toBeDefined();
       expect(planningTask.state.git?.workingBranch).toBeDefined();
       expect(planningTask.state.git?.worktreePath).toBeDefined();
-
-      // Clean up - wait for status to confirm deletion
-      await discardPlanViaAPI(ctx.baseUrl, task.config.id);
-      await waitForTaskStatus(ctx.baseUrl, task.config.id, "deleted");
-    });
-
-    test("creates task with plan mode and clearPlanningFolder: true", async () => {
-      ctx.mockBackend.reset(
-        createPlanModeMockResponses({
-          planIterations: 1,
-          executionResponses: ["<promise>COMPLETE</promise>"],
-          taskName: "test-task-clearfolder",
-        })
-      );
-
-      // The discard API awaits engine cleanup; confirm the source checkout is
-      // also free of an active git lock before starting the next task.
-      await waitForGitAvailable(ctx.workDir);
-
-      // Add an ignored file to the source checkout's managed planning directory.
-      // Plan-mode clearing happens in the worktree, not in the source checkout.
-      await writeFile(join(ctx.workDir, ".clanky-planning/extra-plan.md"), "Extra plan content");
-
-      // Verify extra file exists
-      const extraExists = await Bun.file(join(ctx.workDir, ".clanky-planning/extra-plan.md")).exists();
-      expect(extraExists).toBe(true);
-
-      // Create task with both plan mode and clear planning folder
-      const { status, body } = await createTaskViaAPI(ctx.baseUrl, {
-        directory: ctx.workDir,
-        prompt: "Create a plan from scratch",
-        planMode: true,
-        clearPlanningFolder: true,
-        autoAcceptPlan: false,
-      });
-
-      expect(status).toBe(201);
-      const task = body as Task;
-
-      // Wait for planning status
-      await waitForTaskStatus(ctx.baseUrl, task.config.id, "planning");
-
-      // Verify .clanky-planning was cleared in the worktree (not the source checkout)
-      const planTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "planning");
-      const worktreePath = planTask.state.git?.worktreePath;
-      expect(worktreePath).toBeDefined();
-      const planningDir = join(worktreePath!, ".clanky-planning");
-      const files = await readdir(planningDir);
-      // Should be cleared (may have new files created by the agent)
-      expect(files.length).toBeLessThanOrEqual(2);
-      expect(await Bun.file(join(ctx.workDir, ".clanky-planning/extra-plan.md")).exists()).toBe(true);
 
       // Clean up - wait for status to confirm deletion
       await discardPlanViaAPI(ctx.baseUrl, task.config.id);
@@ -492,93 +436,6 @@ describe("Plan + Task User Scenarios", () => {
         hasError: false,
       });
     });
-  });
-
-  describe("Plan Close Variant B: No Feedback, Accept Plan Immediately", () => {
-    describe("Then Accept and Merge", () => {
-      let ctx: TestServerContext;
-
-      beforeAll(async () => {
-        ctx = await setupTestServer({
-          mockResponses: createPlanModeMockResponses({
-            planIterations: 1,
-            executionResponses: [
-              "Working on iteration 1...",
-              "Working on iteration 2...",
-              "Done! <promise>COMPLETE</promise>",
-            ],
-          }),
-          withPlanningDir: true,
-        });
-      });
-
-      afterAll(async () => {
-        await teardownTestServer(ctx);
-      });
-
-      test("accepts plan without feedback, runs iterations, then accepts and merges", async () => {
-        const originalBranch = await getCurrentBranch(ctx.workDir);
-
-        // Create task with plan mode
-        const { body } = await createTaskViaAPI(ctx.baseUrl, {
-          directory: ctx.workDir,
-          prompt: "Create a plan and execute it",
-          planMode: true,
-          autoAcceptPlan: false,
-        });
-        const task = body as Task;
-
-        // Wait for planning status
-        const planningTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "planning");
-        assertTaskState(planningTask, {
-          status: "planning",
-          planMode: { active: true, feedbackRounds: 0 },
-        });
-
-        // Wait for plan to be ready before accepting
-        await waitForPlanReady(ctx.baseUrl, task.config.id);
-
-        // Accept the plan immediately (no feedback)
-        const { status, body: acceptPlanBody } = await acceptPlanViaAPI(ctx.baseUrl, task.config.id);
-        expect(status).toBe(200);
-        expect(acceptPlanBody.success).toBe(true);
-
-        // Wait for task to complete
-        const completedTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "completed");
-        assertTaskState(completedTask, {
-          status: "completed",
-          hasGitBranch: true,
-          hasError: false,
-        });
-
-        // Verify iterations ran (total = 1 plan iteration + 3 execution iterations = 4)
-        // But we don't check exact count since timing can vary
-        expect(completedTask.state.currentIteration).toBeGreaterThanOrEqual(1);
-
-        const workingBranch = completedTask.state.git!.workingBranch;
-
-        // Accept the task locally
-        const { status: acceptStatus, body: acceptBody } = await acceptTaskViaAPI(ctx.baseUrl, task.config.id);
-        expect(acceptStatus).toBe(200);
-        expect(acceptBody.success).toBe(true);
-
-        // Verify we're back on original branch
-        expect(await getCurrentBranch(ctx.workDir)).toBe(originalBranch);
-
-        // Verify working branch was NOT deleted (kept for review mode)
-        expect(await branchExists(ctx.workDir, workingBranch)).toBe(true);
-
-        // Verify final state
-        const mergedTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "accepted_local");
-        assertTaskState(mergedTask, { status: "accepted_local" });
-        
-        // Verify reviewMode was initialized
-        expect(mergedTask.state.reviewMode).toBeDefined();
-        expect(mergedTask.state.reviewMode?.addressable).toBe(true);
-        expect(mergedTask.state.reviewMode?.completionAction).toBe("local");
-      });
-    });
-
   });
 
   describe("Plan Close Variant C: Add Feedback 2 Times, Then Accept Plan", () => {

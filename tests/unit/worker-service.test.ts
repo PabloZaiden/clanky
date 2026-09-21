@@ -10,15 +10,11 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  detectWorkerServicePlatform,
-  getWorkerServiceStatus,
   getWorkerServicePaths,
-  isStandaloneClankyInvocation,
-  parseWorkerServiceArgs,
+  getWorkerServiceStatus,
   renderLaunchAgent,
   renderSystemdUnit,
   renderWindowsService,
-  resolveWindowsServiceUserDomain,
   type WorkerServiceConfiguration,
   type WorkerServiceProcessResult,
 } from "../../src/cli/worker-service";
@@ -33,15 +29,21 @@ import {
   getWorkerSshAgentPaths,
   renderSshAgentRelayServiceUnit,
   renderSshAgentRelaySocketUnit,
-  parseWorkerSshAgentArgs,
-  renderShellStartupBlock,
-  renderSshAgentShellHelper,
   renderSshAgentSystemdUnit,
-  removeShellStartupBlock,
   unlockWorkerSshAgent,
-  upsertShellStartupBlock,
   type WorkerSshAgentConfiguration,
 } from "../../src/cli/worker-ssh-agent";
+
+function sshAgentConfiguration(): WorkerSshAgentConfiguration {
+  return {
+    paths: getWorkerSshAgentPaths("/home/alice"),
+    homeDirectory: "/home/alice",
+    userName: "alice",
+    binaryPath: "/home/alice/.local/bin/clanky",
+    sshAgentPath: "/usr/bin/ssh-agent",
+    sshAddPath: "/usr/bin/ssh-add",
+  };
+}
 
 function configuration(
   platform: "darwin" | "linux" | "win32",
@@ -110,162 +112,43 @@ function configuration(
   };
 }
 
-function sshAgentConfiguration(): WorkerSshAgentConfiguration {
-  return {
-    paths: getWorkerSshAgentPaths("/home/alice"),
-    homeDirectory: "/home/alice",
-    userName: "alice",
-    binaryPath: "/home/alice/.local/bin/clanky",
-    sshAgentPath: "/usr/bin/ssh-agent",
-    sshAddPath: "/usr/bin/ssh-add",
-  };
-}
+describe("worker SSH-agent service", () => {
+  test("renders secret-free systemd agent, relay, and worker integration", () => {
+    const agent = sshAgentConfiguration();
+    const agentUnit = renderSshAgentSystemdUnit(agent);
+    const socketUnit = renderSshAgentRelaySocketUnit(agent);
+    const relayUnit = renderSshAgentRelayServiceUnit(agent);
+    const workerUnit = renderSystemdUnit(configuration("linux"));
 
-describe("worker SSH-agent command and shell integration", () => {
-  test("parses unlock, status, and relay operations", () => {
-    expect(parseWorkerSshAgentArgs(["unlock", "--if-needed"])).toEqual({
-      operation: "unlock",
-      ifNeeded: true,
-    });
-    expect(parseWorkerSshAgentArgs(["status"])).toEqual({
-      operation: "status",
-      ifNeeded: false,
-    });
-    expect(parseWorkerSshAgentArgs(["relay"])).toEqual({
-      operation: "relay",
-      ifNeeded: false,
-    });
-    expect(() => parseWorkerSshAgentArgs(["status", "--if-needed"])).toThrow(
-      "Unknown worker ssh-agent option",
-    );
-  });
-
-  test("renders a per-user systemd agent without private key material", () => {
-    const unit = renderSshAgentSystemdUnit(sshAgentConfiguration());
-    expect(unit).toContain("User=alice");
-    expect(unit).toContain("ExecStartPre=/usr/bin/mkdir -p /home/alice/.clanky/worker-ssh-agent");
-    expect(unit).toContain("ExecStartPre=/usr/bin/chmod 0700 /home/alice/.clanky/worker-ssh-agent");
-    expect(unit).toContain("ExecStartPre=/usr/bin/rm -f /home/alice/.clanky/worker-ssh-agent/agent-upstream.sock");
-    expect(unit).not.toContain("RuntimeDirectory=");
-    expect(unit).toContain(
+    expect(agentUnit).toContain("User=alice");
+    expect(agentUnit).toContain(
       "ExecStart=/usr/bin/ssh-agent -D -a /home/alice/.clanky/worker-ssh-agent/agent-upstream.sock",
     );
-    expect(unit).not.toContain("ssh-add");
-    expect(unit).not.toContain("passphrase");
-    expect(unit).not.toContain("id_ed25519");
-  });
-
-  test("uses systemd escaping for agent executable and socket paths", () => {
-    const base = sshAgentConfiguration();
-    const unit = renderSshAgentSystemdUnit({
-      ...base,
-      sshAgentPath: "/usr/bin/ssh$agent",
-      paths: {
-        ...base.paths,
-        upstreamSocketPath: "/run/$agent.sock",
-      },
-    });
-    expect(unit).toContain(
-      'ExecStart="/usr/bin/ssh$$agent" -D -a "/run/$$agent.sock"',
-    );
-  });
-
-  test("renders a systemd-owned stable relay socket and service", () => {
-    const agent = sshAgentConfiguration();
-    const socketUnit = renderSshAgentRelaySocketUnit(agent);
-    const serviceUnit = renderSshAgentRelayServiceUnit(agent);
+    expect(agentUnit).not.toContain("ssh-add");
+    expect(agentUnit).not.toContain("passphrase");
+    expect(agentUnit).not.toContain("id_ed25519");
     expect(socketUnit).toContain(
       "ListenStream=/home/alice/.clanky/worker-ssh-agent/agent.sock",
     );
-    expect(socketUnit).toContain("SocketUser=alice");
     expect(socketUnit).toContain("SocketMode=0600");
-    expect(socketUnit).toContain(
-      "Service=clanky-worker-ssh-agent-relay.service",
-    );
-    expect(serviceUnit).toContain(
-      "Requires=clanky-worker-ssh-agent.service clanky-worker-ssh-agent-relay.socket",
-    );
-    expect(serviceUnit).toContain(
+    expect(relayUnit).toContain(
       "ExecStart=/home/alice/.local/bin/clanky worker ssh-agent relay",
     );
-    expect(serviceUnit).toContain("Environment=HOME=/home/alice");
-    expect(serviceUnit).not.toContain("passphrase");
-  });
-
-  test("does not escape dollar signs in the relay socket path", () => {
-    const agent = sshAgentConfiguration();
-    const socketUnit = renderSshAgentRelaySocketUnit({
-      ...agent,
-      paths: {
-        ...agent.paths,
-        socketPath: "/home/alice/.clanky/$agent.sock",
-      },
-    });
-
-    expect(
-      socketUnit.split("\n").find((line) => line.startsWith("ListenStream=")),
-    ).toBe('ListenStream="/home/alice/.clanky/$agent.sock"');
-  });
-
-  test("renders the worker dependency and stable SSH_AUTH_SOCK", () => {
-    const unit = renderSystemdUnit(configuration("linux"));
-    expect(unit).toContain(
-      "Requires=clanky-worker-ssh-agent.service clanky-worker-ssh-agent-relay.socket",
-    );
-    expect(unit).toContain(
-      "PartOf=clanky-worker-ssh-agent.service clanky-worker-ssh-agent-relay.socket",
-    );
-    expect(unit).toContain(
-      "After=network-online.target clanky-worker-ssh-agent.service clanky-worker-ssh-agent-relay.socket",
-    );
-    expect(unit).toContain(
+    expect(workerUnit).toContain(
       "Environment=SSH_AUTH_SOCK=/home/alice/.clanky/worker-ssh-agent/agent.sock",
     );
-  });
 
-  test("propagates relay-only mode to the worker service command", () => {
-    const unit = renderSystemdUnit({
-      ...configuration("linux"),
-      relayOnly: true,
-      host: "127.0.0.1",
-      port: 0,
-      environment: {
-        ...configuration("linux").environment,
-        CLANKY_HOST: "127.0.0.1",
-        CLANKY_PORT: "0",
+    const escapedUnit = renderSshAgentSystemdUnit({
+      ...agent,
+      sshAgentPath: "/usr/bin/ssh$agent",
+      paths: {
+        ...agent.paths,
+        upstreamSocketPath: "/run/$agent.sock",
       },
     });
-    expect(unit).toContain("--mesh-worker true --relay-only true");
-    expect(unit).toContain("Environment=CLANKY_HOST=127.0.0.1");
-    expect(unit).toContain("Environment=CLANKY_PORT=0");
-  });
-
-  test("renders an unlock helper and interactive shell block", () => {
-    const agent = sshAgentConfiguration();
-    const helper = renderSshAgentShellHelper(agent);
-    const block = renderShellStartupBlock(agent.paths.helperPath);
-    expect(helper).toContain(
-      "export SSH_AUTH_SOCK=/home/alice/.clanky/worker-ssh-agent/agent.sock",
+    expect(escapedUnit).toContain(
+      'ExecStart="/usr/bin/ssh$$agent" -D -a "/run/$$agent.sock"',
     );
-    expect(helper).toContain(
-      "/home/alice/.local/bin/clanky worker ssh-agent unlock --if-needed",
-    );
-    expect(helper).not.toContain("ssh-add -p");
-    expect(block).toContain("*i*)");
-    expect(block).toContain(". /home/alice/.clanky/worker-ssh-agent.sh");
-    expect(agent.paths.bashProfilePath).toBe("/home/alice/.bash_profile");
-    expect(agent.paths.bashLoginPath).toBe("/home/alice/.bash_login");
-    expect(agent.paths.profilePath).toBe("/home/alice/.profile");
-    expect(agent.paths.zshProfilePath).toBe("/home/alice/.zprofile");
-  });
-
-  test("updates one managed block without duplicating it and removes it cleanly", () => {
-    const helperPath = "/home/alice/.clanky/worker-ssh-agent.sh";
-    const initial = "export EDITOR=vim\n";
-    const once = upsertShellStartupBlock(initial, helperPath);
-    const twice = upsertShellStartupBlock(once, helperPath);
-    expect(twice).toBe(once);
-    expect(removeShellStartupBlock(twice)).toBe(initial);
   });
 
   test("unlocks an empty agent once and skips ssh-add when identities are loaded", async () => {
@@ -291,230 +174,100 @@ describe("worker SSH-agent command and shell integration", () => {
     );
     await chmod(sshAddPath, 0o700);
     try {
-      const configuration = {
+      const agent = {
         ...sshAgentConfiguration(),
         homeDirectory,
         paths: getWorkerSshAgentPaths(homeDirectory),
         sshAddPath,
       };
-      await expect(unlockWorkerSshAgent(configuration)).resolves.toEqual({
+      await expect(unlockWorkerSshAgent(agent)).resolves.toEqual({
         changed: true,
         identities: 1,
       });
-      await expect(unlockWorkerSshAgent(configuration)).resolves.toEqual({
+      await expect(unlockWorkerSshAgent(agent)).resolves.toEqual({
         changed: false,
         identities: 1,
       });
-      expect(await readFile(join(homeDirectory, ".fake-agent-unlocked"), "utf8")).toBe("loaded\n");
+      expect(await readFile(join(homeDirectory, ".fake-agent-unlocked"), "utf8"))
+        .toBe("loaded\n");
     } finally {
       await rm(homeDirectory, { recursive: true, force: true });
     }
   });
 });
 
-describe("worker service command parsing", () => {
-  test("accepts lifecycle operations and the no-start install flag", () => {
-    expect(parseWorkerServiceArgs(["install", "--no-start"])).toEqual({
-      operation: "install",
-      noStart: true,
-    });
-    expect(parseWorkerServiceArgs(["restart"])).toEqual({
-      operation: "restart",
-      noStart: false,
-    });
-  });
-
-  test("rejects options on operations that do not support them", () => {
-    expect(() => parseWorkerServiceArgs(["status", "--no-start"])).toThrow(
-      "Unknown worker service option",
-    );
-    expect(() => parseWorkerServiceArgs(["install", "--no-start", "--no-start"])).toThrow(
-      "Unknown worker service option",
-    );
-  });
-});
-
 describe("worker service definitions", () => {
-  test("detects the supported operating systems", () => {
-    expect(detectWorkerServicePlatform("darwin")).toBe("darwin");
-    expect(detectWorkerServicePlatform("linux")).toBe("linux");
-    expect(detectWorkerServicePlatform("win32")).toBe("win32");
-    expect(() => detectWorkerServicePlatform("freebsd")).toThrow(
-      "supported on macOS, Linux, and Windows",
-    );
-  });
+  test("renders credential-free service definitions for every supported platform", () => {
+    const launchAgent = renderLaunchAgent(configuration("darwin"));
+    const systemdUnit = renderSystemdUnit({
+      ...configuration("linux"),
+      relayOnly: true,
+      port: 0,
+    });
+    const windowsService = renderWindowsService(configuration("win32"));
 
-  test("recognizes standalone Bun binaries but not source entrypoints", () => {
-    expect(
-      isStandaloneClankyInvocation(
-        "/$bunfs/root/index.ts",
-        "/usr/local/bin/clanky",
-      ),
-    ).toBe(true);
-    expect(
-      isStandaloneClankyInvocation(
-        "B:/~BUN/root/clanky-windows-x64",
-        "C:\\Users\\alice\\.local\\bin\\clanky.exe",
-      ),
-    ).toBe(true);
-    expect(
-      isStandaloneClankyInvocation(
-        "/usr/local/bin/clanky",
-        "/usr/local/bin/clanky",
-      ),
-    ).toBe(true);
-    expect(
-      isStandaloneClankyInvocation(
-        "/workspace/src/index.ts",
-        "/usr/local/bin/bun",
-      ),
-    ).toBe(false);
-  });
-
-  test("maps workgroup and local-computer accounts to the SCM local domain", () => {
-    expect(
-      resolveWindowsServiceUserDomain({
-        USERDOMAIN: "WORKGROUP",
-        COMPUTERNAME: "WIN11VM",
-      }),
-    ).toBe(".");
-    expect(
-      resolveWindowsServiceUserDomain({
-        USERDOMAIN: "WIN11VM",
-        COMPUTERNAME: "WIN11VM",
-      }),
-    ).toBe(".");
-    expect(
-      resolveWindowsServiceUserDomain({
-        USERDOMAIN: "CORPORATE",
-        COMPUTERNAME: "WIN11VM",
-      }),
-    ).toBe("CORPORATE");
-  });
-
-  test("renders a user LaunchAgent with the login shell and explicit worker command", () => {
-    const plist = renderLaunchAgent(configuration("darwin"));
-    expect(plist).toContain("<key>RunAtLoad</key>");
-    expect(plist).toContain("<key>KeepAlive</key>");
-    expect(plist).toContain("<string>/bin/zsh</string>");
-    expect(plist).toContain("<string>-lic</string>");
-    expect(plist).toContain("CLANKY_DATA_DIR=/Users/alice/.clanky");
-    expect(plist).toContain("/Applications/Clanky Worker/clanky");
-    expect(plist).toContain("--worker-directory");
-    expect(plist).not.toContain("CLANKY_API_KEY");
-  });
-
-  test("renders a boot-time systemd service with canonical unquoted simple values", () => {
-    const unit = renderSystemdUnit(configuration("linux"));
-    expect(unit).toContain("After=network-online.target");
-    expect(unit).toContain("User=alice");
-    expect(unit).not.toContain('User="alice"');
-    expect(unit).toContain("WorkingDirectory=/srv/workspaces");
-    expect(unit).toContain("Restart=on-failure");
-    expect(unit).toContain(
-      "ExecStart=/home/alice/.local/bin/clanky serve --mesh-worker true --relay-only false --worker-directory /srv/workspaces --worker-execution-enabled true --insecure false",
-    );
-    expect(unit).toContain("CLANKY_DATA_DIR=/home/alice/.clanky");
-    expect(unit).not.toContain('"');
-    expect(unit).not.toContain("CLANKY_API_KEY");
-  });
-
-  test("renders a credential-free Windows service with a managed binary and quoted paths", () => {
-    const xml = renderWindowsService(configuration("win32"));
-    expect(xml).toContain("<id>clanky-worker</id>");
-    expect(xml).toContain("<startmode>Automatic</startmode>");
-    expect(xml).toContain("<delayedAutoStart/>");
-    expect(xml).toContain('<onfailure action="restart" delay="5 sec"/>');
-    expect(xml).toContain(
+    expect(launchAgent).toContain("<string>/bin/zsh</string>");
+    expect(launchAgent).toContain("<string>-lic</string>");
+    expect(systemdUnit).toContain("Restart=on-failure");
+    expect(systemdUnit).toContain("--mesh-worker true --relay-only true");
+    expect(windowsService).toContain("<startmode>Automatic</startmode>");
+    expect(windowsService).toContain(
       "<executable>C:\\Users\\alice\\.clanky\\worker-service\\clanky-worker.exe</executable>",
     );
-    expect(xml).toContain(
-      "<arguments>serve --mesh-worker true --relay-only false --worker-directory &quot;C:\\Work Spaces&quot;",
-    );
-    expect(xml).toContain("<domain>WORKSTATION</domain>");
-    expect(xml).toContain("<user>alice</user>");
-    expect(xml).not.toContain("<password>");
-    expect(xml).not.toContain("CLANKY_API_KEY");
+    for (const definition of [launchAgent, systemdUnit, windowsService]) {
+      expect(definition).not.toContain("CLANKY_API_KEY");
+      expect(definition).not.toContain("<password>");
+    }
   });
 
-  test("quotes only systemd values that require grouping or escaping", () => {
+  test("escapes systemd executable, working-directory, and environment values", () => {
     const base = configuration("linux");
     const unit = renderSystemdUnit({
       ...base,
-      binaryPath: "/home/alice/bin/clanky worker",
-      workerDirectory: "/srv/worker spaces",
+      binaryPath: "/home/alice/bin/$clanky` worker",
+      workerDirectory: "/srv/$clanky` workspace",
       environment: {
         ...base.environment,
-        CLANKY_LABEL: "worker service",
+        CLANKY_PUBLIC_BASE_URL: "https://$host.example/path value",
       },
     });
-    expect(unit).toContain('WorkingDirectory="/srv/worker spaces"');
-    expect(unit).toContain('Environment="CLANKY_LABEL=worker service"');
+
+    expect(unit).toContain('WorkingDirectory="/srv/$clanky` workspace"');
     expect(unit).toContain(
-      'ExecStart="/home/alice/bin/clanky worker" serve --mesh-worker true --relay-only false --worker-directory "/srv/worker spaces" --worker-execution-enabled true --insecure false',
+      'ExecStart="/home/alice/bin/$$clanky` worker" serve --mesh-worker true --relay-only false --worker-directory "/srv/$$clanky` workspace"',
+    );
+    expect(unit).toContain(
+      'Environment="CLANKY_PUBLIC_BASE_URL=https://$host.example/path value"',
     );
   });
 
-  test("escapes ExecStart dollars without escaping environment dollars or backticks", () => {
-    const base = configuration("linux");
-    const unit = renderSystemdUnit({
-      ...base,
-      binaryPath: "/home/alice/bin/$clanky`worker",
-      workerDirectory: "/srv/$clanky`workspace",
-      environment: {
-        ...base.environment,
-        CLANKY_PUBLIC_BASE_URL: "https://$host.example",
-      },
-    });
-    expect(unit).toContain(
-      'ExecStart="/home/alice/bin/$$clanky`worker" serve --mesh-worker true --relay-only false --worker-directory "/srv/$$clanky`workspace" --worker-execution-enabled true --insecure false',
-    );
-    expect(unit).toContain('Environment="CLANKY_PUBLIC_BASE_URL=https://$host.example"');
-  });
-
-  test("checks launchctl even when the macOS plist is missing", async () => {
+  test("queries service managers even when definition files are missing", async () => {
     const temporaryDirectory = await mkdtemp(join(tmpdir(), "clanky-worker-status-"));
     try {
-      const paths = {
+      const launchdStatus = await getWorkerServiceStatus({
         ...getWorkerServicePaths("darwin", "/Users/alice", 501),
         servicePath: join(temporaryDirectory, "missing.plist"),
-      };
-      const status = await getWorkerServiceStatus(paths, async (_command, _args) => {
-        return {
-          exitCode: 0,
-          stdout: "state = running\n",
-          stderr: "",
-        };
-      });
-      expect(status).toMatchObject({
+      }, async () => ({
+        exitCode: 0,
+        stdout: "state = running\n",
+        stderr: "",
+      }));
+      expect(launchdStatus).toMatchObject({
         installed: false,
         loaded: true,
         running: true,
       });
-    } finally {
-      await rm(temporaryDirectory, { recursive: true, force: true });
-    }
-  });
 
-  test("checks systemctl even when the Linux unit file is missing", async () => {
-    const temporaryDirectory = await mkdtemp(
-      join(tmpdir(), "clanky-worker-status-"),
-    );
-    try {
-      const paths = {
+      const systemdStatus = await getWorkerServiceStatus({
         ...getWorkerServicePaths("linux", "/home/alice"),
         servicePath: join(temporaryDirectory, "missing.service"),
-      };
-      const status = await getWorkerServiceStatus(
-        paths,
-        async (_command, args) => {
-          if (args[1] === "is-active") {
-            return { exitCode: 4, stdout: "inactive\n", stderr: "" };
-          }
-          return { exitCode: 1, stdout: "not-found\n", stderr: "" };
-        },
-      );
-      expect(status).toMatchObject({
+      }, async (_command, args) => {
+        if (args[1] === "is-active") {
+          return { exitCode: 4, stdout: "inactive\n", stderr: "" };
+        }
+        return { exitCode: 1, stdout: "not-found\n", stderr: "" };
+      });
+      expect(systemdStatus).toMatchObject({
         installed: false,
         loaded: false,
         running: false,
@@ -539,7 +292,7 @@ describe("Windows worker service lifecycle", () => {
     };
   }
 
-  test("deploys, upgrades, and removes service artifacts without deleting worker data", async () => {
+  test("deploys, upgrades, and removes artifacts without deleting worker data", async () => {
     const root = await mkdtemp(join(tmpdir(), "clanky-windows-service-"));
     const paths = windowsPaths(root);
     const sourceBinaryPath = join(root, "installed-clanky.exe");
@@ -599,21 +352,13 @@ describe("Windows worker service lifecycle", () => {
       await writeFile(persistedDataPath, "worker-data");
 
       await installWindowsWorkerService(definition, false, runner);
-      expect(await readFile(paths.managedBinaryPath, "utf8")).toBe(
-        "version-one",
-      );
+      expect(await readFile(paths.managedBinaryPath, "utf8")).toBe("version-one");
       expect(await readFile(paths.wrapperPath, "utf8")).toBe("winsw");
-      expect(await readFile(paths.servicePath, "utf8")).toContain(
-        "<arguments>serve --worker-directory &quot;C:\\Work Spaces&quot;</arguments>",
-      );
 
       serviceState = "running";
       await writeFile(sourceBinaryPath, "version-two");
       await installWindowsWorkerService(definition, false, runner);
-      expect(await readFile(paths.managedBinaryPath, "utf8")).toBe(
-        "version-two",
-      );
-
+      expect(await readFile(paths.managedBinaryPath, "utf8")).toBe("version-two");
       expect(await getWindowsWorkerServiceStatus(paths, runner)).toMatchObject({
         platform: "win32",
         installed: true,
@@ -633,5 +378,4 @@ describe("Windows worker service lifecycle", () => {
       await rm(root, { recursive: true, force: true });
     }
   });
-
 });

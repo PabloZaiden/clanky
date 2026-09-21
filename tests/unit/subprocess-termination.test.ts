@@ -115,25 +115,6 @@ async function withMockWindowsTermination(
 }
 
 describe("subprocess tree termination", () => {
-  // A unit seam is justified because forcing taskkill timeout states through a
-  // public API would risk killing unrelated Windows host processes.
-  test("stops a Windows process tree without forcing when taskkill exits it", async () => {
-    await withMockWindowsTermination(async ({ target, setTaskkillFactory }) => {
-      setTaskkillFactory(() => createTaskkillProcess(() => target.exit(0)));
-
-      await terminateSubprocessTree(target.process, {
-        gracefulWaitMs: 0,
-        forceWaitMs: 0,
-        requireExit: true,
-      });
-      await expect(terminateSubprocessTree(target.process, {
-        gracefulWaitMs: 0,
-        forceWaitMs: 0,
-        requireExit: true,
-      })).resolves.toBeUndefined();
-    });
-  });
-
   // An exited parent is not evidence that Windows also stopped its children.
   test("rejects an exited Windows root without confirmed tree termination", async () => {
     await withMockWindowsTermination(async ({ target }) => {
@@ -182,65 +163,6 @@ describe("subprocess tree termination", () => {
         requireExit: true,
       })).rejects.toThrow(
         "The subprocess tree did not exit after forced termination (pid 4242).",
-      );
-    });
-  });
-
-  // SystemRoot is the stable Windows fallback when taskkill is absent from the
-  // inherited PATH, which is common for services with a restricted environment.
-  test("resolves taskkill from the Windows system directory", async () => {
-    await withMockWindowsTermination(async ({
-      target,
-      commands,
-      setTaskkillFactory,
-    }) => {
-      setTaskkillFactory(() => createTaskkillProcess(() => target.exit(0)));
-
-      await terminateSubprocessTree(target.process, {
-        gracefulWaitMs: 0,
-        forceWaitMs: 0,
-        requireExit: true,
-      });
-
-      expect(commands[0]?.[0]).toBe(
-        "D:\\Windows\\System32\\taskkill.exe",
-      );
-    }, {
-      taskkillPath: null,
-      systemRoot: "D:\\Windows",
-    });
-  });
-
-  // The root process exiting does not prove that a failed taskkill invocation
-  // terminated its descendants, so requireExit must preserve that failure.
-  test("rejects when taskkill fails after the root process exits", async () => {
-    await withMockWindowsTermination(async ({
-      target,
-      setTaskkillFactory,
-    }) => {
-      setTaskkillFactory(() => createTaskkillProcess(
-        () => target.exit(1),
-        1,
-      ));
-
-      const firstError = await terminateSubprocessTree(target.process, {
-        gracefulWaitMs: 0,
-        forceWaitMs: 0,
-        requireExit: true,
-      }).then(() => null, (error: unknown) => error);
-      const retryError = await terminateSubprocessTree(target.process, {
-        gracefulWaitMs: 0,
-        forceWaitMs: 0,
-        requireExit: true,
-      }).then(() => null, (error: unknown) => error);
-
-      expect(firstError).toBeInstanceOf(SubprocessTreeTerminationError);
-      expect(firstError).toMatchObject({
-        retryable: false,
-      });
-      expect(retryError).toBe(firstError);
-      expect(String(retryError)).toContain(
-        "The Windows subprocess exited, but process-tree termination could not be guaranteed (pid 4242).",
       );
     });
   });

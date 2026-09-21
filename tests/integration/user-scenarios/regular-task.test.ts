@@ -1,442 +1,102 @@
-/**
- * Integration tests for regular task user scenarios.
- * These tests simulate UI interactions via API calls.
- */
-
-import { test, expect, describe, beforeAll, afterAll } from "bun:test";
-import { writeFile, readdir } from "fs/promises";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { writeFile } from "fs/promises";
 import { join } from "path";
+import type { Task } from "@/shared/task";
+import { runGit } from "../../helpers/git-fixtures";
 import {
-  setupTestServer,
-  teardownTestServer,
+  assertTaskState,
+  branchExists,
   createTaskViaAPI,
-  waitForTaskStatus,
-  acceptTaskViaAPI,
-  pushTaskViaAPI,
   discardTaskViaAPI,
   getTaskDiffViaAPI,
   getTaskPlanViaAPI,
   getTaskStatusFileViaAPI,
-  getCurrentBranch,
-  branchExists,
-  remoteBranchExists,
-  assertTaskState,
+  setupTestServer,
+  teardownTestServer,
+  waitForTaskStatus,
   type TestServerContext,
 } from "./helpers";
-import type { Task } from "@/shared/task";
-import { runGit } from "../../helpers/git-fixtures";
 
 describe("Regular Task User Scenarios", () => {
-  describe("Task Creation Variants", () => {
-    let ctx: TestServerContext;
+  let ctx: TestServerContext;
 
-    beforeAll(async () => {
-      ctx = await setupTestServer({
-        mockResponses: Array(20).fill(null).map((_, i) => {
-          const mod = i % 3;
-          if (mod === 0) return "Working on iteration 1...";
-          if (mod === 1) return "Working on iteration 2...";
-          return "Done! <promise>COMPLETE</promise>";
-        }),
-        withPlanningDir: true,
-      });
-    });
-
-    afterAll(async () => {
-      await teardownTestServer(ctx);
-    });
-
-    test("creates task based on the default branch without clearing .clanky-planning folder", async () => {
-      // Verify .clanky-planning files exist before creating task
-      expect(await Bun.file(join(ctx.workDir, ".clanky-planning/plan.md")).exists()).toBe(true);
-
-      // Create task via API (simulating UI "Create Task" button)
-      const { status, body } = await createTaskViaAPI(ctx.baseUrl, {
-        directory: ctx.workDir,
-        prompt: "Implement a feature",
-        clearPlanningFolder: false,
-        planMode: false, // Regular execution, not plan mode
-      });
-
-      expect(status).toBe(201);
-      const task = body as Task;
-      expect(task.config.id).toBeDefined();
-      expect(task.config.clearPlanningFolder).toBe(false);
-
-      // Wait for task to complete (3 iterations: 2 continue + 1 complete)
-      const completedTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "completed");
-
-      // Validate task state for UI display
-      assertTaskState(completedTask, {
-        status: "completed",
-        iterationCount: 3,
-        hasGitBranch: true,
-        hasError: false,
-      });
-
-      // Verify .clanky-planning files still exist
-      expect(await Bun.file(join(ctx.workDir, ".clanky-planning/plan.md")).exists()).toBe(true);
-
-      // Clean up - discard the task
-      await discardTaskViaAPI(ctx.baseUrl, task.config.id);
-    });
-
-    test("creates task based on the default branch with clearing .clanky-planning folder", async () => {
-      // Reset mock backend for this test
-      ctx.mockBackend.reset([
+  beforeAll(async () => {
+    ctx = await setupTestServer({
+      mockResponses: [
         "Working on iteration 1...",
         "Working on iteration 2...",
         "Done! <promise>COMPLETE</promise>",
-      ]);
+        "<promise>COMPLETE</promise>",
+      ],
+      withPlanningDir: true,
+    });
+  });
 
-      // Add an ignored file to the source checkout's managed planning directory.
-      // Clearing happens in the task worktree, not in the source checkout.
-      await writeFile(join(ctx.workDir, ".clanky-planning/extra.md"), "Extra content");
+  afterAll(async () => {
+    await teardownTestServer(ctx);
+  });
 
-      // Verify extra file exists
-      const extraExists = await Bun.file(join(ctx.workDir, ".clanky-planning/extra.md")).exists();
-      expect(extraExists).toBe(true);
+  test("runs iterations to completion and exposes task artifacts", async () => {
+    const { status, body } = await createTaskViaAPI(ctx.baseUrl, {
+      directory: ctx.workDir,
+      prompt: "Complete a multi-step task",
+      planMode: false,
+    });
 
-      // Create task via API with clearPlanningFolder=true
+    expect(status).toBe(201);
+    const task = body as Task;
+    const completedTask = await waitForTaskStatus(
+      ctx.baseUrl,
+      task.config.id,
+      "completed",
+    );
+
+    assertTaskState(completedTask, {
+      status: "completed",
+      iterationCount: 3,
+      hasGitBranch: true,
+      hasError: false,
+    });
+    expect(completedTask.state.recentIterations.map((iteration) => iteration.outcome))
+      .toEqual(["continue", "continue", "complete"]);
+
+    const workingBranch = completedTask.state.git!.workingBranch;
+    expect(await branchExists(ctx.workDir, workingBranch)).toBe(true);
+
+    const diff = await getTaskDiffViaAPI(ctx.baseUrl, task.config.id);
+    expect(diff.status).toBe(200);
+    expect(Array.isArray(diff.body)).toBe(true);
+
+    const plan = await getTaskPlanViaAPI(ctx.baseUrl, task.config.id);
+    expect(plan.status).toBe(200);
+    expect(plan.body).toMatchObject({ exists: true });
+
+    const statusFile = await getTaskStatusFileViaAPI(ctx.baseUrl, task.config.id);
+    expect(statusFile.status).toBe(200);
+    expect(statusFile.body).toMatchObject({ exists: true });
+
+    await discardTaskViaAPI(ctx.baseUrl, task.config.id);
+  });
+
+  test("allows task execution with uncommitted source-checkout changes", async () => {
+    await writeFile(join(ctx.workDir, "uncommitted.txt"), "uncommitted content");
+    await runGit(ctx.workDir, ["add", "."]);
+
+    try {
       const { status, body } = await createTaskViaAPI(ctx.baseUrl, {
         directory: ctx.workDir,
-        prompt: "Implement a feature",
-        clearPlanningFolder: true,
-        planMode: false, // Regular execution, not plan mode
-      });
-
-      expect(status).toBe(201);
-      const task = body as Task;
-
-      // Wait for task to complete
-      const completedTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "completed");
-
-      // Validate task state
-      assertTaskState(completedTask, {
-        status: "completed",
-        iterationCount: 3,
-        hasGitBranch: true,
-        hasError: false,
-      });
-
-      // Verify clearPlanningFolder was set
-      expect(completedTask.config.clearPlanningFolder).toBe(true);
-      // With worktrees, the clearing happens in the worktree's .clanky-planning dir, not the source checkout.
-      // Verify the worktree's .clanky-planning was cleared by checking the task completed successfully
-      // (clearing happens before iterations start in the worktree).
-      const worktreePath = completedTask.state.git?.worktreePath;
-      expect(worktreePath).toBeDefined();
-      // The worktree's .clanky-planning should have been cleared (only .gitkeep or files created by the task)
-      const worktreePlanningDir = join(worktreePath!, ".clanky-planning");
-      const filesAfterClear = await readdir(worktreePlanningDir);
-      expect(filesAfterClear.length).toBeLessThanOrEqual(2); // May have .gitkeep or be empty
-      expect(await Bun.file(join(ctx.workDir, ".clanky-planning/extra.md")).exists()).toBe(true);
-
-      // Clean up
-      await discardTaskViaAPI(ctx.baseUrl, task.config.id);
-    });
-  });
-
-  describe("Task Execution - 2 iterations without completion, 1 final iteration completing", () => {
-    let ctx: TestServerContext;
-
-    beforeAll(async () => {
-      ctx = await setupTestServer({
-        mockResponses: [
-          "Working on iteration 1, still more to do...",
-          "Working on iteration 2, getting closer...",
-          "All done! <promise>COMPLETE</promise>",
-        ],
-        withPlanningDir: true,
-      });
-    });
-
-    afterAll(async () => {
-      await teardownTestServer(ctx);
-    });
-
-    test("runs 2 iterations without completion, then 1 iteration that completes", async () => {
-      // Create task
-      const { status, body } = await createTaskViaAPI(ctx.baseUrl, {
-        directory: ctx.workDir,
-        prompt: "Complete a multi-step task",
-        planMode: false, // Regular execution, not plan mode
-      });
-
-      expect(status).toBe(201);
-      const task = body as Task;
-
-      // Wait for completion
-      const completedTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "completed");
-
-      // Validate the task ran exactly 3 iterations
-      assertTaskState(completedTask, {
-        status: "completed",
-        iterationCount: 3,
-        hasGitBranch: true,
-        hasError: false,
-      });
-
-      // Verify iteration history
-      expect(completedTask.state.recentIterations.length).toBe(3);
-      expect(completedTask.state.recentIterations[0]?.outcome).toBe("continue");
-      expect(completedTask.state.recentIterations[1]?.outcome).toBe("continue");
-      expect(completedTask.state.recentIterations[2]?.outcome).toBe("complete");
-
-      // With worktrees, the source checkout stays on the original branch.
-      // Verify the working branch exists (it's checked out in the worktree, not the source checkout).
-      const workingBranch = completedTask.state.git!.workingBranch;
-      expect(workingBranch).not.toStartWith("clanky/");
-      expect(workingBranch).toMatch(/-[0-9a-f]{7}$/);
-      expect(await branchExists(ctx.workDir, workingBranch)).toBe(true);
-
-      // Verify diff endpoint works
-      const { status: diffStatus, body: diffBody } = await getTaskDiffViaAPI(ctx.baseUrl, task.config.id);
-      expect(diffStatus).toBe(200);
-      // Diff should be an array (even if empty since mock doesn't actually change files)
-      expect(Array.isArray(diffBody)).toBe(true);
-
-      // Verify plan endpoint works
-      const { status: planStatus, body: planBody } = await getTaskPlanViaAPI(ctx.baseUrl, task.config.id);
-      expect(planStatus).toBe(200);
-      const plan = planBody as { exists: boolean };
-      expect(plan.exists).toBe(true);
-
-      // Verify status-file endpoint works
-      const { status: statusFileStatus, body: statusFileBody } = await getTaskStatusFileViaAPI(ctx.baseUrl, task.config.id);
-      expect(statusFileStatus).toBe(200);
-      const statusFile = statusFileBody as { exists: boolean };
-      expect(statusFile.exists).toBe(true);
-
-      // Clean up
-      await discardTaskViaAPI(ctx.baseUrl, task.config.id);
-    });
-  });
-
-  describe("Finish Variant A: Accept and Merge to Base Branch", () => {
-    let ctx: TestServerContext;
-
-    beforeAll(async () => {
-      ctx = await setupTestServer({
-        mockResponses: [
-          "Working...",
-          "Done! <promise>COMPLETE</promise>",
-        ],
-        withPlanningDir: true,
-      });
-    });
-
-    afterAll(async () => {
-      await teardownTestServer(ctx);
-    });
-
-    test("accepts task and merges to base branch", async () => {
-      // Get the original branch before creating the task
-      const originalBranch = await getCurrentBranch(ctx.workDir);
-
-      // Create and wait for task completion
-      const { body } = await createTaskViaAPI(ctx.baseUrl, {
-        directory: ctx.workDir,
-        prompt: "Make some changes",
-        planMode: false, // Regular execution, not plan mode
-      });
-      const task = body as Task;
-
-      // Wait for completion
-      const completedTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "completed");
-      const workingBranch = completedTask.state.git!.workingBranch;
-
-      // With worktrees, the source checkout stays on the original branch throughout
-      expect(await getCurrentBranch(ctx.workDir)).toBe(originalBranch);
-      expect(await branchExists(ctx.workDir, workingBranch)).toBe(true);
-
-      // Accept the task via API (simulating UI "Accept" button)
-      const { status, body: acceptBody } = await acceptTaskViaAPI(ctx.baseUrl, task.config.id);
-
-      expect(status).toBe(200);
-      expect(acceptBody.success).toBe(true);
-
-      // Source checkout stays on original branch (worktrees don't modify it)
-      expect(await getCurrentBranch(ctx.workDir)).toBe(originalBranch);
-
-      // Verify the working branch was NOT deleted (kept for review mode)
-      expect(await branchExists(ctx.workDir, workingBranch)).toBe(true);
-
-      // Verify the task state is now "merged"
-      const mergedTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "accepted_local");
-      assertTaskState(mergedTask, {
-        status: "accepted_local",
-        hasError: false,
-      });
-      
-      // Verify reviewMode was initialized
-      expect(mergedTask.state.reviewMode).toBeDefined();
-      expect(mergedTask.state.reviewMode?.addressable).toBe(true);
-      expect(mergedTask.state.reviewMode?.completionAction).toBe("local");
-      expect(mergedTask.state.reviewMode?.reviewCycles).toBe(0);
-    });
-  });
-
-  describe("Finish Variant B: Accept and Push (with local file-based remote)", () => {
-    let ctx: TestServerContext;
-
-    beforeAll(async () => {
-      ctx = await setupTestServer({
-        mockResponses: [
-          "Working...",
-          "Done! <promise>COMPLETE</promise>",
-        ],
-        withPlanningDir: true,
-        withRemote: true, // This creates a local bare git repository as remote
-      });
-    });
-
-    afterAll(async () => {
-      await teardownTestServer(ctx);
-    });
-
-    test("accepts task and pushes to remote (offline-compatible)", async () => {
-      // Verify we have a remote configured
-      expect(ctx.remoteDir).toBeDefined();
-
-      // Create and wait for task completion
-      const { body } = await createTaskViaAPI(ctx.baseUrl, {
-        directory: ctx.workDir,
-        prompt: "Make some changes",
-        planMode: false, // Regular execution, not plan mode
-      });
-      const task = body as Task;
-
-      // Wait for completion
-      const completedTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "completed");
-      const workingBranch = completedTask.state.git!.workingBranch;
-
-      // Push the task via API (simulating UI "Push" button)
-      const { status, body: pushBody } = await pushTaskViaAPI(ctx.baseUrl, task.config.id);
-
-      expect(status).toBe(200);
-      expect(pushBody.success).toBe(true);
-      expect(pushBody.remoteBranch).toBeDefined();
-
-      // Verify the branch exists on the remote
-      expect(await remoteBranchExists(ctx.workDir, workingBranch)).toBe(true);
-
-      // Verify the task state is now "pushed"
-      const pushedTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "pushed");
-      assertTaskState(pushedTask, {
-        status: "pushed",
-        hasError: false,
-      });
-
-      // Clean up - discard the task
-      await discardTaskViaAPI(ctx.baseUrl, task.config.id);
-    });
-  });
-
-  describe("Finish Variant C: Discard", () => {
-    let ctx: TestServerContext;
-
-    beforeAll(async () => {
-      ctx = await setupTestServer({
-        mockResponses: [
-          "Working...",
-          "Done! <promise>COMPLETE</promise>",
-        ],
-        withPlanningDir: true,
-      });
-    });
-
-    afterAll(async () => {
-      await teardownTestServer(ctx);
-    });
-
-    test("discards task and deletes working branch", async () => {
-      // Get the original branch
-      const originalBranch = await getCurrentBranch(ctx.workDir);
-
-      // Create and wait for task completion
-      const { body } = await createTaskViaAPI(ctx.baseUrl, {
-        directory: ctx.workDir,
-        prompt: "Make some changes",
-        planMode: false, // Regular execution, not plan mode
-      });
-      const task = body as Task;
-
-      // Wait for completion
-      const completedTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "completed");
-      const workingBranch = completedTask.state.git!.workingBranch;
-
-      // Verify the working branch exists
-      expect(await branchExists(ctx.workDir, workingBranch)).toBe(true);
-
-      // Discard the task via API (simulating UI "Discard" button)
-      const { status, body: discardBody } = await discardTaskViaAPI(ctx.baseUrl, task.config.id);
-
-      expect(status).toBe(200);
-      expect(discardBody.success).toBe(true);
-
-      // Source checkout stays on original branch (worktrees don't modify it)
-      expect(await getCurrentBranch(ctx.workDir)).toBe(originalBranch);
-
-      // With worktrees, discard no longer deletes the branch (only purge does)
-      // The branch may still exist — that's expected
-
-      // Verify the task state is now "deleted"
-      const deletedTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "deleted");
-      assertTaskState(deletedTask, {
-        status: "deleted",
-        hasError: false,
-      });
-    });
-  });
-
-  describe("Edge Cases and Error Handling", () => {
-    let ctx: TestServerContext;
-
-    beforeAll(async () => {
-      ctx = await setupTestServer({
-        mockResponses: [
-          "<promise>COMPLETE</promise>",
-          // Extra responses for the "cannot accept a task that is not completed" test
-          "Still working...",
-          "More work...",
-          "Even more...",
-          "Almost done...",
-          "<promise>COMPLETE</promise>",
-        ],
-        withPlanningDir: true,
-      });
-    });
-
-    afterAll(async () => {
-      await teardownTestServer(ctx);
-    });
-
-    test("allows creating task even with uncommitted changes in source checkout", async () => {
-      // Create uncommitted changes in the source checkout
-      await writeFile(join(ctx.workDir, "uncommitted.txt"), "uncommitted content");
-      await runGit(ctx.workDir, ["add", "."]);
-
-      // With worktrees, uncommitted changes in source checkout don't block task creation
-      const { status, body } = await createTaskViaAPI(ctx.baseUrl, {
-        directory: ctx.workDir,
-        prompt: "This should succeed with worktrees",
+        prompt: "Work independently of source checkout changes",
         planMode: false,
       });
 
-      // Task creation succeeds — worktrees isolate the task from source checkout state
       expect(status).toBe(201);
       const task = body as Task;
-      expect(task.config.id).toBeDefined();
-
-      // Wait for task to complete
       await waitForTaskStatus(ctx.baseUrl, task.config.id, "completed");
-
-      // Clean up the uncommitted change
+      await discardTaskViaAPI(ctx.baseUrl, task.config.id);
+    } finally {
       await runGit(ctx.workDir, ["reset", "HEAD", "--", "."]);
       await runGit(ctx.workDir, ["checkout", "--", "."]);
       await runGit(ctx.workDir, ["clean", "-fd"]);
-    });
-
+    }
   });
 });

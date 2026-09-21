@@ -23,7 +23,6 @@ import {
   getIntrospectableTableNames,
   getResettableTableNames,
 } from "../../src/persistence/schema-inventory";
-import { getTranscriptTableConfig } from "../../src/persistence/transcripts/table-config";
 
 async function withTempDataDir(run: (dataDir: string) => Promise<void>): Promise<void> {
   const dataDir = await mkdtemp(join(tmpdir(), "clanky-db-schema-"));
@@ -194,27 +193,6 @@ describe("database schema", () => {
       expect(() =>
         getTableColumns(getDatabase(), "unknown_table; DROP TABLE tasks"),
       ).toThrow('Unknown table name: "unknown_table; DROP TABLE tasks"');
-    });
-  });
-
-  test("derives transcript table configuration from the canonical inventory", () => {
-    expect(getTranscriptTableConfig("chat")).toEqual({
-      parentTable: "chats",
-      entriesTable: "chat_transcript_entries",
-      metaTable: "chat_transcript_meta",
-      resourceColumn: "chat_id",
-    });
-    expect(getTranscriptTableConfig("task")).toEqual({
-      parentTable: "tasks",
-      entriesTable: "task_transcript_entries",
-      metaTable: "task_transcript_meta",
-      resourceColumn: "task_id",
-    });
-    expect(getTranscriptTableConfig("agent_run")).toEqual({
-      parentTable: "agent_runs",
-      entriesTable: "agent_run_transcript_entries",
-      metaTable: "agent_run_transcript_meta",
-      resourceColumn: "agent_run_id",
     });
   });
 

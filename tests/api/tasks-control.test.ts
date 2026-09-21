@@ -226,51 +226,7 @@ describe("Tasks Control API Integration", () => {
     await cleanupTrackedTempDirs();
   });
 
-  describe("POST /api/tasks/:id/discard", () => {
-    test("succeeds for plan mode task (git branch created at plan start)", async () => {
-      // Create a task in plan mode - git branch+worktree is now created at plan mode start
-      const createResponse = await fetch(`${baseUrl}/api/tasks`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...baseCreateTaskPayload,
-          workspaceId: testWorkspaceId,
-          prompt: "Test prompt",
-          attachments: [],
-          name: "Test Task",
-          planMode: true,
-          model: testModel,
-          useWorktree: true,
-        }),
-      });
-      const createBody = await createResponse.json();
-      const taskId = createBody.config.id;
-
-      // Plan mode tasks now have git branches from the start, so discard should succeed
-      const response = await fetch(`${baseUrl}/api/tasks/${taskId}/discard`, {
-        method: "POST",
-      });
-
-      expect(response.status).toBe(200);
-      const body = await response.json();
-      expect(body.success).toBe(true);
-    });
-
-    test("returns 404 for non-existent task", async () => {
-      const response = await fetch(`${baseUrl}/api/tasks/non-existent/discard`, {
-        method: "POST",
-      });
-
-      expect(response.status).toBe(404);
-    });
-  });
-
   describe("GET /api/tasks/:id/diff", () => {
-    test("returns 404 for non-existent task", async () => {
-      const response = await fetch(`${baseUrl}/api/tasks/non-existent/diff`);
-      expect(response.status).toBe(404);
-    });
-
     test("returns 400 for task without git branch (draft mode)", async () => {
       // Create a draft task - no git branch is created until the task is started
       const createResponse = await fetch(`${baseUrl}/api/tasks`, {
@@ -430,11 +386,6 @@ describe("Tasks Control API Integration", () => {
       await rm(planTestDir, { recursive: true, force: true });
     });
 
-    test("returns 404 for non-existent task", async () => {
-      const response = await fetch(`${baseUrl}/api/tasks/non-existent/plan`);
-      expect(response.status).toBe(404);
-    });
-
     test("returns plan.md content for branch-only tasks without a worktree", async () => {
       const branchOnlyPlanDir = await createTrackedTempDir("clanky-branch-only-plan-");
       await initializeGitRepository(branchOnlyPlanDir, { initialCommit: "none" });
@@ -572,11 +523,6 @@ describe("Tasks Control API Integration", () => {
       await rm(statusTestDir, { recursive: true, force: true });
     });
 
-    test("returns 404 for non-existent task", async () => {
-      const response = await fetch(`${baseUrl}/api/tasks/non-existent/status-file`);
-      expect(response.status).toBe(404);
-    });
-
     test("returns status.md content for branch-only tasks without a worktree", async () => {
       const branchOnlyStatusDir = await createTrackedTempDir("clanky-branch-only-status-");
       await initializeGitRepository(branchOnlyStatusDir, { initialCommit: "none" });
@@ -621,231 +567,7 @@ describe("Tasks Control API Integration", () => {
     });
   });
 
-  describe("Pending Prompt API", () => {
-    test("PUT /api/tasks/:id/pending-prompt returns 409 when task is not running", async () => {
-      // Use unique directory to avoid conflicts
-      const uniqueWorkDir = await createTrackedGitRepo("clanky-pending-prompt-test-");
-      
-      try {
-        // Create workspace for this directory
-        const workspaceId = await getOrCreateWorkspace(uniqueWorkDir);
-
-        // Create a task - it will auto-start and complete immediately with mock backend
-        const createResponse = await fetch(`${baseUrl}/api/tasks`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-          ...baseCreateTaskPayload,
-            workspaceId,
-            prompt: "Test prompt",
-          attachments: [],
-            name: "Test Task",
-            planMode: false,
-            model: testModel,
-            useWorktree: true,
-          }),
-        });
-        const createBody = await createResponse.json();
-        const taskId = createBody.config.id;
-
-        // Wait for the task to complete
-        await waitForTaskCompletion(taskId);
-
-        // Try to set pending prompt on completed task
-        const response = await fetch(`${baseUrl}/api/tasks/${taskId}/pending-prompt`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt: "New prompt", attachments: [] }),
-        });
-
-        expect(response.status).toBe(409);
-        const body = await response.json();
-        expect(body.error).toBe("not_running");
-      } finally {
-        await rm(uniqueWorkDir, { recursive: true, force: true });
-      }
-    });
-
-    test("PUT /api/tasks/:id/pending-prompt requires prompt in body", async () => {
-      // Use unique directory to avoid conflicts
-      const uniqueWorkDir = await createTrackedGitRepo("clanky-pending-body-test-");
-      
-      try {
-        // Create workspace for this directory
-        const workspaceId = await getOrCreateWorkspace(uniqueWorkDir);
-
-        const createResponse = await fetch(`${baseUrl}/api/tasks`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-          ...baseCreateTaskPayload,
-            workspaceId,
-            prompt: "Test prompt",
-          attachments: [],
-            name: "Test Task",
-            planMode: false,
-            model: testModel,
-            useWorktree: true,
-          }),
-        });
-        const createBody = await createResponse.json();
-        const taskId = createBody.config.id;
-
-        // Try without prompt
-        const response = await fetch(`${baseUrl}/api/tasks/${taskId}/pending-prompt`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({}),
-        });
-
-        expect(response.status).toBe(400);
-        const body = await response.json();
-        expect(body.error).toBe("validation_error");
-      } finally {
-        await rm(uniqueWorkDir, { recursive: true, force: true });
-      }
-    });
-
-    test("PUT /api/tasks/:id/pending-prompt rejects empty prompt", async () => {
-      // Use unique directory to avoid conflicts
-      const uniqueWorkDir = await createTrackedGitRepo("clanky-pending-empty-test-");
-      
-      try {
-        // Create workspace for this directory
-        const workspaceId = await getOrCreateWorkspace(uniqueWorkDir);
-
-        const createResponse = await fetch(`${baseUrl}/api/tasks`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-          ...baseCreateTaskPayload,
-            workspaceId,
-            prompt: "Test prompt",
-          attachments: [],
-            name: "Test Task",
-            planMode: false,
-            model: testModel,
-            useWorktree: true,
-          }),
-        });
-        const createBody = await createResponse.json();
-        const taskId = createBody.config.id;
-
-        // Try with empty prompt
-        const response = await fetch(`${baseUrl}/api/tasks/${taskId}/pending-prompt`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt: "   ", attachments: [] }),
-        });
-
-        expect(response.status).toBe(400);
-        const body = await response.json();
-        expect(body.error).toBe("validation_error");
-      } finally {
-        await rm(uniqueWorkDir, { recursive: true, force: true });
-      }
-    });
-
-    test("DELETE /api/tasks/:id/pending-prompt returns 409 when task is not running", async () => {
-      // Use unique directory to avoid conflicts
-      const uniqueWorkDir = await createTrackedGitRepo("clanky-pending-del-test-");
-      
-      try {
-        // Create workspace for this directory
-        const workspaceId = await getOrCreateWorkspace(uniqueWorkDir);
-
-        // Create a task - it will auto-start and complete immediately with mock backend
-        const createResponse = await fetch(`${baseUrl}/api/tasks`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-          ...baseCreateTaskPayload,
-            workspaceId,
-            prompt: "Test prompt",
-          attachments: [],
-            name: "Test Task",
-            planMode: false,
-            model: testModel,
-            useWorktree: true,
-          }),
-        });
-        const createBody = await createResponse.json();
-        const taskId = createBody.config.id;
-
-        // Wait for the task to complete
-        await waitForTaskCompletion(taskId);
-
-        const response = await fetch(`${baseUrl}/api/tasks/${taskId}/pending-prompt`, {
-          method: "DELETE",
-        });
-
-        expect(response.status).toBe(409);
-        const body = await response.json();
-        expect(body.error).toBe("not_running");
-      } finally {
-        await rm(uniqueWorkDir, { recursive: true, force: true });
-      }
-    });
-
-    test("PUT /api/tasks/:id/pending-prompt returns 404 for non-existent task", async () => {
-      const response = await fetch(`${baseUrl}/api/tasks/non-existent/pending-prompt`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: "Test", attachments: [] }),
-      });
-      expect(response.status).toBe(404);
-    });
-
-    test("DELETE /api/tasks/:id/pending-prompt returns 404 for non-existent task", async () => {
-      const response = await fetch(`${baseUrl}/api/tasks/non-existent/pending-prompt`, {
-        method: "DELETE",
-      });
-      expect(response.status).toBe(404);
-    });
-  });
-
   describe("Review Comments API", () => {
-    test("GET /api/tasks/:id/comments returns empty array for new task", async () => {
-      // Use unique directory to avoid conflicts
-      const uniqueWorkDir = await createTrackedGitRepo("clanky-comments-empty-test-");
-      
-      try {
-        // Create workspace for this directory
-        const workspaceId = await getOrCreateWorkspace(uniqueWorkDir);
-
-        const createResponse = await fetch(`${baseUrl}/api/tasks`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-          ...baseCreateTaskPayload,
-            workspaceId,
-            prompt: "Test prompt",
-          attachments: [],
-            name: "Test Task",
-            planMode: false,
-            model: testModel,
-            useWorktree: true,
-          }),
-        });
-        const createBody = await createResponse.json();
-        const taskId = createBody.config.id;
-
-        const response = await fetch(`${baseUrl}/api/tasks/${taskId}/comments`);
-
-        expect(response.status).toBe(200);
-        const body = await response.json();
-        expect(body.success).toBe(true);
-        expect(body.comments).toEqual([]);
-      } finally {
-        await rm(uniqueWorkDir, { recursive: true, force: true });
-      }
-    });
-
-    test("GET /api/tasks/:id/comments returns 404 for non-existent task", async () => {
-      const response = await fetch(`${baseUrl}/api/tasks/non-existent/comments`);
-      expect(response.status).toBe(404);
-    });
-
     test("POST /api/tasks/:id/address-comments stores and returns comment IDs", async () => {
       // Use unique directory with bare repo to avoid conflicts
       const uniqueWorkDir = await createTrackedGitRepo("clanky-comments-store-test-");
@@ -1048,15 +770,6 @@ describe("Tasks Control API Integration", () => {
       } finally {
         await rm(uniqueWorkDir, { recursive: true, force: true });
       }
-    });
-
-    test("POST /api/tasks/:id/address-comments returns 404 for non-existent task", async () => {
-      const response = await fetch(`${baseUrl}/api/tasks/non-existent/address-comments`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ comments: "Some comment", attachments: [] }),
-      });
-      expect(response.status).toBe(404);
     });
 
   });

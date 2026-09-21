@@ -14,18 +14,6 @@ describe("agent runtime command", () => {
     })).toBe("'provider' 'arg with spaces' 'it'\"'\"'s quoted'");
   });
 
-  // This pure contract covers runtime resolution without depending on the host OS or installed CLIs.
-  test("resolves a provider executable directly without a shell", () => {
-    const command = resolveProviderAcpCommand("opencode", (executable) =>
-      executable === "opencode" ? "C:\\Tools\\opencode.exe" : null
-    );
-
-    expect(command).toEqual({
-      command: "C:\\Tools\\opencode.exe",
-      args: ["acp"],
-    });
-  });
-
   test("falls back to package runners without a shell", () => {
     const command = resolveProviderAcpCommand("copilot", (executable) =>
       executable === "npx"

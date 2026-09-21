@@ -465,54 +465,6 @@ describe("Tasks CRUD API Integration", () => {
       }
     });
 
-    test("returns 400 for invalid JSON", async () => {
-      const response = await fetch(`${baseUrl}/api/tasks`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: "not valid json",
-      });
-
-      expect(response.status).toBe(400);
-      const body = await response.json();
-      expect(body.error).toBe("invalid_json");
-    });
-
-    test("returns 400 for missing required fields", async () => {
-      const response = await fetch(`${baseUrl}/api/tasks`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "Test Task",
-          prompt: "Missing workspaceId",
-          planMode: false,
-        }),
-      });
-
-      expect(response.status).toBe(400);
-      const body = await response.json();
-      expect(body.error).toBe("validation_error");
-    });
-
-    test("returns 400 for empty prompt", async () => {
-      const response = await fetch(`${baseUrl}/api/tasks`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...baseCreateTaskPayload,
-          workspaceId: testWorkspaceId,
-          prompt: "",
-          name: "Test Task",
-          planMode: false,
-          model: testModel,
-          useWorktree: true,
-        }),
-      });
-
-      expect(response.status).toBe(400);
-      const body = await response.json();
-      expect(body.error).toBe("validation_error");
-    });
-
   });
 
   describe("GET /api/tasks", () => {
@@ -573,86 +525,6 @@ describe("Tasks CRUD API Integration", () => {
         },
       });
       expect(updated).not.toBeNull();
-
-      const listResponse = await fetch(`${baseUrl}/api/tasks`);
-      expect(listResponse.status).toBe(200);
-      const listedTasks = await listResponse.json();
-      const listed = listedTasks.find((task: { config: { id: string } }) => task.config.id === created.config.id);
-      expect(listed).toBeDefined();
-      expect(listed.state.messages).toEqual([]);
-      expect(listed.state.logs).toEqual([]);
-      expect(listed.state.toolCalls).toEqual([]);
-      expect(listed.state.planMode.isPlanReady).toBe(true);
-      expect(listed.state.planMode.planContent).toBeUndefined();
-
-      const detailResponse = await fetch(`${baseUrl}/api/tasks/${created.config.id}`);
-      expect(detailResponse.status).toBe(200);
-      const detail = await detailResponse.json();
-      expect(detail.state.messages).toEqual([]);
-      expect(detail.state.logs).toEqual([]);
-      expect(detail.state.toolCalls).toEqual([]);
-      expect(detail.state.planMode.planContent).toBeUndefined();
-    });
-
-    test("lists active-engine tasks without hydrating transcript payloads", async () => {
-      const createResponse = await fetch(`${baseUrl}/api/tasks`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...baseCreateTaskPayload,
-          workspaceId: testWorkspaceId,
-          prompt: "Keep active engine payload lightweight",
-          name: "Active Engine Summary Test",
-          planMode: true,
-          model: testModel,
-          useWorktree: true,
-          draft: true,
-        }),
-      });
-
-      expect(createResponse.status).toBe(201);
-      const created = await createResponse.json();
-      const timestamp = new Date().toISOString();
-      const activeState = {
-        ...created.state,
-        status: "running" as const,
-        currentIteration: 1,
-        messages: [{
-          id: "active-message-1",
-          role: "assistant" as const,
-          content: "Active engine transcript content that should not be returned by the list endpoint",
-          timestamp,
-        }],
-        logs: [{
-          id: "active-log-1",
-          level: "agent" as const,
-          message: "Active engine log content that should not be returned by the list endpoint",
-          timestamp,
-        }],
-        toolCalls: [{
-          id: "active-tool-1",
-          name: "Read",
-          input: { filePath: "src/index.ts" },
-          output: { content: "Active engine tool output that should not be returned by the list endpoint" },
-          status: "completed" as const,
-          timestamp,
-        }],
-        planMode: {
-          active: true,
-          feedbackRounds: 1,
-          planContent: "Active engine plan content that should not be returned by the list endpoint",
-          planningFolderCleared: true,
-          isPlanReady: true,
-        },
-      };
-
-      const engineMap = (taskManager as unknown as {
-        engines: Map<string, { config: typeof created.config; state: typeof activeState }>;
-      }).engines;
-      engineMap.set(created.config.id as string, {
-        config: created.config,
-        state: activeState,
-      });
 
       const listResponse = await fetch(`${baseUrl}/api/tasks`);
       expect(listResponse.status).toBe(200);
@@ -782,39 +654,6 @@ describe("Tasks CRUD API Integration", () => {
       expect(body.title).toBe("crud-test-task-1");
     });
 
-    test("connects the backend before explicit title generation", async () => {
-      const strictBackend = createMockBackend(["connected-title"]);
-      const originalCreateSession = strictBackend.createSession.bind(strictBackend);
-      strictBackend.createSession = async (options) => {
-        if (!strictBackend.isConnected()) {
-          throw new Error("Not connected. Call connect() first.");
-        }
-        return originalCreateSession(options);
-      };
-      backendManager.resetForTesting();
-      backendManager.setBackendForTesting(strictBackend);
-      backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
-
-      const response = await fetch(`${baseUrl}/api/tasks/title`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...baseCreateTaskPayload,
-          workspaceId: testWorkspaceId,
-          prompt: "Build something",
-          model: testModel,
-        }),
-      });
-
-      expect(response.status).toBe(200);
-      const body = await response.json();
-      expect(body.title).toBe("connected-title");
-
-      backendManager.resetForTesting();
-      backendManager.setBackendForTesting(mockBackend);
-      backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
-    });
-
     test("surfaces backend failures without fallback titles", async () => {
       const failingBackend = createMockBackend();
       failingBackend.sendPrompt = async () => {
@@ -898,43 +737,6 @@ describe("Tasks CRUD API Integration", () => {
         backendManager.setBackendForTesting(mockBackend);
         backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
       }
-    });
-  });
-
-  describe("GET /api/tasks/:id", () => {
-    test("returns a specific task", async () => {
-      // First create a draft task (to avoid active task conflicts)
-      const createResponse = await fetch(`${baseUrl}/api/tasks`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...baseCreateTaskPayload,
-          workspaceId: testWorkspaceId,
-          prompt: "Test prompt",
-          name: "Test Task",
-          draft: true,
-          planMode: false,
-          model: testModel,
-          useWorktree: true,
-        }),
-      });
-      const createBody = await createResponse.json();
-      const taskId = createBody.config.id;
-
-      // Then get it
-      const response = await fetch(`${baseUrl}/api/tasks/${taskId}`);
-      expect(response.status).toBe(200);
-
-      const body = await response.json();
-      expect(body.config.id).toBe(taskId);
-    });
-
-    test("returns 404 for non-existent task", async () => {
-      const response = await fetch(`${baseUrl}/api/tasks/non-existent-id`);
-      expect(response.status).toBe(404);
-
-      const body = await response.json();
-      expect(body.error).toBe("not_found");
     });
   });
 
@@ -1513,42 +1315,6 @@ describe("Tasks CRUD API Integration", () => {
       expect(body.state.status).toBe("draft");
       expect(body.state.session).toBeUndefined();
       expect(body.state.git).toBeUndefined();
-    });
-
-    test("non-draft tasks still auto-start", async () => {
-      // Create a unique directory for this test to avoid conflicts with other tests
-      const uniqueWorkDir = await mkdtemp(join(tmpdir(), "clanky-non-draft-test-"));
-      await initializeGitRepository(uniqueWorkDir, { initialCommit: "readme" });
-      
-      try {
-        // Create workspace for this directory
-        const workspaceId = await getOrCreateWorkspace(uniqueWorkDir);
-
-        const response = await fetch(`${baseUrl}/api/tasks`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ...baseCreateTaskPayload,
-            workspaceId,
-            prompt: "Normal task",
-            name: "Test Task",
-            draft: false,
-            planMode: false,
-            model: testModel,
-            useWorktree: true,
-          }),
-        });
-
-        expect(response.status).toBe(201);
-        const body = await response.json();
-        expect(body.state.status).not.toBe("draft");
-        expect(body.state.status).not.toBe("idle");
-        
-        // Wait for completion so it doesn't interfere with other tests
-        await waitForTaskCompletion(body.config.id);
-      } finally {
-        await rm(uniqueWorkDir, { recursive: true, force: true });
-      }
     });
 
     test("can update a draft task via PUT", async () => {

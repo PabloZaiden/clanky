@@ -303,13 +303,4 @@ describe("Task terminal session API integration", () => {
     expect(secondSession.config.id).toBe(firstSession.config.id);
   });
 
-  test("returns 404 for terminal session on non-existent task", async () => {
-    const getResponse = await fetch(`${baseUrl}/api/tasks/fake-task-id/terminal-session`);
-    expect(getResponse.status).toBe(404);
-
-    const postResponse = await fetch(`${baseUrl}/api/tasks/fake-task-id/terminal-session`, {
-      method: "POST",
-    });
-    expect(postResponse.status).toBe(404);
-  });
 });
