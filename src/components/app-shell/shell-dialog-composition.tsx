@@ -75,6 +75,13 @@ export function useShellDialogComposition({
     setDeleteTerminalSessionTarget(target);
   }, []);
 
+  const closeDeleteTerminalSession = useCallback(() => {
+    if (deleteTerminalSessionPendingRef.current) {
+      return;
+    }
+    setDeleteTerminalSessionTarget(null);
+  }, []);
+
   const renameTerminalSession = useCallback(async (newName: string): Promise<void> => {
     if (!renameTerminalSessionTarget) {
       return;
@@ -98,7 +105,9 @@ export function useShellDialogComposition({
       }
       const deletedActiveSession = route.view === "terminal"
         && getRouteString(route, "terminalSessionId") === target.id;
-      setDeleteTerminalSessionTarget(null);
+      setDeleteTerminalSessionTarget((currentTarget) => (
+        currentTarget?.id === target.id ? null : currentTarget
+      ));
       if (deletedActiveSession) {
         navigateWithinShell({ view: "home" });
       }
@@ -219,7 +228,7 @@ export function useShellDialogComposition({
       />
       <ConfirmModal
         isOpen={Boolean(deleteTerminalSessionTarget)}
-        onClose={() => setDeleteTerminalSessionTarget(null)}
+        onClose={closeDeleteTerminalSession}
         onConfirm={() => void deleteTerminalSessionAction()}
         title="Delete terminal session?"
         message={deleteTerminalSessionTarget
