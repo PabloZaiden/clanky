@@ -21,7 +21,6 @@ import type {
 import {
   MESH_ACP_CHANNEL,
   MESH_EXECUTION_CHANNEL,
-  MESH_EXECUTION_PROTOCOL_VERSION,
   MESH_EXECUTION_ASYNC_COMMAND_RETENTION_MS,
   MESH_EXECUTION_ASYNC_MAX_RETAINED_OUTPUT_BYTES,
   MESH_EXECUTION_ASYNC_MAX_COMMANDS,
@@ -30,6 +29,8 @@ import {
   MESH_EXECUTION_MAX_MESSAGE_BYTES,
   MESH_EXECUTION_SESSION_TTL_MS,
   MESH_ACP_SESSION_TTL_MS,
+  MESH_EXECUTION_LEGACY_PROTOCOL_VERSION,
+  type MeshExecutionProtocolVersion,
 } from "@/shared/mesh-execution";
 import type {
   MeshExecutionAsyncCommandError,
@@ -142,6 +143,7 @@ class AsyncReadWriteLock {
 interface MeshExecutionSession {
   sessionId: string;
   sessionToken: string;
+  protocolVersion: MeshExecutionProtocolVersion;
   callerNodeId: string;
   workspaceId: string;
   executionRoot: string;
@@ -160,7 +162,7 @@ interface MeshExecutionSession {
 }
 
 export interface MeshExecutionSessionResponse {
-  protocolVersion: typeof MESH_EXECUTION_PROTOCOL_VERSION;
+  protocolVersion: MeshExecutionProtocolVersion;
   sessionId: string;
   sessionToken: string;
   executionRoot: string;
@@ -182,6 +184,7 @@ interface ValidatedExecutionSession {
 
 interface SessionValidationOptions {
   expectedChannel?: typeof MESH_ACP_CHANNEL;
+  expectedProtocolVersion?: MeshExecutionProtocolVersion;
   requiredCapability?: {
     id: ExecutionHostCapabilityId;
     minimumVersion?: number;
@@ -644,6 +647,15 @@ export class MeshExecutionGateway {
       this.closeSession(session.sessionId);
       throw new DomainError("mesh_execution_context_changed", "The mesh execution channel is no longer valid.");
     }
+    if (
+      options.expectedProtocolVersion !== undefined
+      && session.protocolVersion !== options.expectedProtocolVersion
+    ) {
+      throw new DomainError(
+        "mesh_execution_protocol_mismatch",
+        "The execution request uses a different protocol generation than its session.",
+      );
+    }
 
     return { session };
   }
@@ -710,6 +722,7 @@ export class MeshExecutionGateway {
       sessionId,
       sessionToken,
       callerNodeId: request.callerNodeId,
+      protocolVersion: request.protocolVersion,
       workspaceId: request.workspaceId,
       executionRoot,
       pathStyle,
@@ -731,7 +744,7 @@ export class MeshExecutionGateway {
     this.sessions.set(sessionId, sessionRecord);
     this.scheduleSessionExpiry(sessionRecord);
     return {
-      protocolVersion: MESH_EXECUTION_PROTOCOL_VERSION,
+      protocolVersion: request.protocolVersion,
       sessionId,
       sessionToken,
       executionRoot,
@@ -782,6 +795,13 @@ export class MeshExecutionGateway {
     return session.channel;
   }
 
+  getSessionProtocolVersion(
+    sessionId: string,
+    sessionToken: string,
+  ): MeshExecutionProtocolVersion {
+    return this.requireSessionRecord(sessionId, sessionToken).protocolVersion;
+  }
+
   async getAcpSessionConfig(
     sessionId: string,
     sessionToken: string,
@@ -816,6 +836,7 @@ export class MeshExecutionGateway {
       request.sessionToken,
       {
         memberErrorCode: "mesh_peer_not_trusted",
+        expectedProtocolVersion: request.protocolVersion,
         requiredCapability: {
           id: "commandExecution",
           minimumVersion: 1,
@@ -901,11 +922,16 @@ export class MeshExecutionGateway {
     requestId: string,
     stdoutOffset?: number,
     stderrOffset?: number,
+    protocolVersion: MeshExecutionProtocolVersion =
+      MESH_EXECUTION_LEGACY_PROTOCOL_VERSION,
   ): Promise<MeshExecutionAsyncCommandSnapshot> {
     const { session } = await this.requireValidatedSession(
       sessionId,
       sessionToken,
-      { memberErrorCode: "mesh_peer_not_trusted" },
+      {
+        memberErrorCode: "mesh_peer_not_trusted",
+        expectedProtocolVersion: protocolVersion,
+      },
     );
     this.claimRequestId(session, requestId);
     const command = this.requireAsyncCommand(jobId, session);
@@ -919,11 +945,16 @@ export class MeshExecutionGateway {
     requestId: string,
     stdoutOffset?: number,
     stderrOffset?: number,
+    protocolVersion: MeshExecutionProtocolVersion =
+      MESH_EXECUTION_LEGACY_PROTOCOL_VERSION,
   ): Promise<MeshExecutionAsyncCommandSnapshot> {
     const { session } = await this.requireValidatedSession(
       sessionId,
       sessionToken,
-      { memberErrorCode: "mesh_peer_not_trusted" },
+      {
+        memberErrorCode: "mesh_peer_not_trusted",
+        expectedProtocolVersion: protocolVersion,
+      },
     );
     this.claimRequestId(session, requestId);
     const command = this.requireAsyncCommand(jobId, session);
@@ -1119,6 +1150,7 @@ export class MeshExecutionGateway {
       request.sessionToken,
       {
         memberErrorCode: "mesh_peer_not_trusted",
+        expectedProtocolVersion: request.protocolVersion,
         requiredCapability,
       },
     );

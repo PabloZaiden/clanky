@@ -31,6 +31,18 @@ Clanky is a full-stack Bun + React application for controlling and managing Clan
 
 For more project information, see the [README.md](README.md).
 
+### Mesh protocol breaking changes
+
+Mesh wire generations are global and aligned with the Clanky release major.
+For a breaking change, add the new generation behind a narrow compatibility
+adapter, migrate existing persisted Mesh state idempotently at startup, and
+negotiate the highest mutually supported generation before parsing or emitting
+contracts. Keep the old generation isolated for a short dual-version window
+and expose binary/protocol metadata in status so rollout completion is
+observable. Remove the old adapter, migration-only paths, and compatibility
+tests only after every controller, relay, and worker has been confirmed on the
+new generation; do not mix cleanup with wire-contract changes.
+
 ## Webapp framework migration rules
 
 - Prefer `@pablozaiden/webapp` primitives for auth, passkeys, API keys, device auth, same-origin checks, app shell, sidebar, settings, realtime, server health, and server lifecycle actions.

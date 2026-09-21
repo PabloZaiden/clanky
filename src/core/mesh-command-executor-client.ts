@@ -14,7 +14,6 @@ import {
   MESH_EXECUTION_ASYNC_REQUEST_TIMEOUT_MS,
   MESH_EXECUTION_CHANNEL,
   MESH_ACP_CHANNEL,
-  MESH_EXECUTION_PROTOCOL_VERSION,
   MESH_EXECUTION_DEFAULT_TIMEOUT_MS,
   MESH_EXECUTION_SESSION_REQUEST_TIMEOUT_MS,
   MESH_ACP_LEGACY_SESSION_REQUEST_TTL_MS,
@@ -24,12 +23,18 @@ import {
   MESH_ACP_SESSION_RENEWAL_RETRY_MS,
   MESH_ACP_SESSION_RENEWAL_MAX_RETRY_MS,
   MESH_ACP_SESSION_RENEWAL_SAFETY_MARGIN_MS,
+  MESH_EXECUTION_LEGACY_PROTOCOL_VERSION,
+  type MeshExecutionProtocolVersion,
 } from "@/shared/mesh-execution";
+import { MESH_PROTOCOL_VERSION } from "@/shared/mesh-protocol";
 import type {
   MeshExecutionAsyncCommandSnapshot,
 } from "@/shared/mesh-execution";
 import type { MeshPeerRoute } from "@/shared/mesh";
-import { getWorkerRegistration } from "../persistence/mesh";
+import {
+  getWorkerRegistration,
+  updateWorkerNegotiatedProtocolVersion,
+} from "../persistence/mesh";
 import {
   ensureLocalMeshNodeIdentity,
   signMeshPayload,
@@ -39,6 +44,7 @@ import { buildMeshExecutionSessionSigningPayload } from "./mesh-protocol";
 import { requestMeshPeer } from "./mesh-peer-transport";
 import { DomainError } from "../domain/domain-error";
 import { requireCurrentUserId } from "../context/user-context";
+import { isMeshProtocolCompatibilityError } from "./mesh-protocol-version";
 import type {
   CommandOptions,
   CommandResult,
@@ -78,25 +84,26 @@ export interface MeshExecutionSessionConnection {
 interface MeshExecutionSession {
   sessionId: string;
   sessionToken: string;
+  protocolVersion: MeshExecutionProtocolVersion;
   expiresAt: number;
   executionRoot?: string;
 }
 
 interface MeshSessionResponse {
-  protocolVersion: typeof MESH_EXECUTION_PROTOCOL_VERSION;
+  protocolVersion: MeshExecutionProtocolVersion;
   sessionId: string;
   expiresAt: string;
   encryptedPayload: unknown;
 }
 
 interface MeshSessionRenewalResponse {
-  protocolVersion: typeof MESH_EXECUTION_PROTOCOL_VERSION;
+  protocolVersion: MeshExecutionProtocolVersion;
   sessionId: string;
   expiresAt: string;
 }
 
 interface MeshRpcResponse {
-  protocolVersion: typeof MESH_EXECUTION_PROTOCOL_VERSION;
+  protocolVersion: MeshExecutionProtocolVersion;
   requestId: string;
   encryptedPayload: unknown;
 }
@@ -344,6 +351,11 @@ export class MeshCommandExecutorClient {
       );
     }
     const route = registration.route;
+    let protocolVersion: MeshExecutionProtocolVersion =
+      registration.workerNegotiatedProtocolVersion
+      === MESH_PROTOCOL_VERSION
+      ? MESH_PROTOCOL_VERSION
+      : MESH_EXECUTION_LEGACY_PROTOCOL_VERSION;
 
     const channel = this.channel;
     let encryptedEnvironment: unknown;
@@ -363,7 +375,7 @@ export class MeshCommandExecutorClient {
       sessionTtlMs: number,
     ): Promise<MeshExecutionSessionRequest> => {
       const unsigned: Omit<MeshExecutionSessionRequest, "signature"> = {
-        protocolVersion: MESH_EXECUTION_PROTOCOL_VERSION,
+        protocolVersion,
         requestId: crypto.randomUUID(),
         callerNodeId: identity.nodeId,
         callerPublicKey: identity.publicKey,
@@ -396,27 +408,56 @@ export class MeshCommandExecutorClient {
       response = await postSessionRequest(request);
     } catch (error) {
       if (
+        protocolVersion === MESH_PROTOCOL_VERSION
+        && isMeshProtocolCompatibilityError(error)
+      ) {
+        log.warn("Mesh execution peer rejected v5; retrying with the legacy generation", {
+          executionNodeId: this.executionNodeId,
+          error: String(error),
+        });
+        protocolVersion = MESH_EXECUTION_LEGACY_PROTOCOL_VERSION;
+        try {
+          await updateWorkerNegotiatedProtocolVersion({
+            workerNodeId: this.executionNodeId,
+            localUserId,
+            negotiatedProtocolVersion: protocolVersion,
+            preferredProtocolVersion: protocolVersion,
+          });
+        } catch (updateError) {
+          log.warn("Mesh execution protocol downgrade could not be persisted", {
+            executionNodeId: this.executionNodeId,
+            error: String(updateError),
+          });
+        }
+        request = await buildSessionRequest(
+          this.channel === MESH_ACP_CHANNEL
+            ? MESH_ACP_LEGACY_SESSION_REQUEST_TTL_MS
+            : this.sessionTtlMs,
+        );
+        response = await postSessionRequest(request);
+      } else if (
         this.channel !== MESH_ACP_CHANNEL
         || !(error instanceof DomainError)
         || error.code !== "mesh_execution_session_expiry_invalid"
         || this.sessionTtlMs <= MESH_ACP_LEGACY_SESSION_REQUEST_TTL_MS
       ) {
         throw error;
+      } else {
+        log.warn("Mesh ACP worker rejected the extended session lease; retrying with the legacy lease", {
+          executionNodeId: this.executionNodeId,
+          requestedTtlMs: this.sessionTtlMs,
+          fallbackTtlMs: MESH_ACP_LEGACY_SESSION_REQUEST_TTL_MS,
+        });
+        request = await buildSessionRequest(MESH_ACP_LEGACY_SESSION_REQUEST_TTL_MS);
+        response = await postSessionRequest(request);
       }
-      log.warn("Mesh ACP worker rejected the extended session lease; retrying with the legacy lease", {
-        executionNodeId: this.executionNodeId,
-        requestedTtlMs: this.sessionTtlMs,
-        fallbackTtlMs: MESH_ACP_LEGACY_SESSION_REQUEST_TTL_MS,
-      });
-      request = await buildSessionRequest(MESH_ACP_LEGACY_SESSION_REQUEST_TTL_MS);
-      response = await postSessionRequest(request);
     }
     const body = parseResponseShape<MeshSessionResponse>(
       response,
       ["protocolVersion", "sessionId", "expiresAt", "encryptedPayload"],
       "The mesh execution session response is invalid.",
     );
-    if (body.protocolVersion !== MESH_EXECUTION_PROTOCOL_VERSION) {
+    if (body.protocolVersion !== protocolVersion) {
       throw new DomainError("mesh_execution_protocol_mismatch", "The mesh execution protocol version is unsupported.");
     }
     if (typeof body.sessionId !== "string" || body.sessionId.length === 0) {
@@ -440,6 +481,7 @@ export class MeshCommandExecutorClient {
     const remoteSession = {
       sessionId: body.sessionId,
       sessionToken,
+      protocolVersion,
     };
     if (signal.aborted || generation !== this.sessionGeneration) {
       await this.releaseRemoteSession(
@@ -459,6 +501,7 @@ export class MeshCommandExecutorClient {
     this.session = {
       sessionId: body.sessionId,
       sessionToken,
+      protocolVersion,
       expiresAt: expiresAtMs,
       ...(executionRoot ? { executionRoot } : {}),
     };
@@ -559,7 +602,7 @@ export class MeshCommandExecutorClient {
         "The mesh ACP session renewal response is invalid.",
       );
       if (
-        body.protocolVersion !== MESH_EXECUTION_PROTOCOL_VERSION
+        body.protocolVersion !== session.protocolVersion
         || body.sessionId !== session.sessionId
       ) {
         throw new DomainError(
@@ -879,7 +922,7 @@ export class MeshCommandExecutorClient {
       }
       const requestId = requestIdOverride ?? crypto.randomUUID();
       const request: MeshExecutionAsyncCommandRequest = {
-        protocolVersion: MESH_EXECUTION_PROTOCOL_VERSION,
+        protocolVersion: session.protocolVersion,
         sessionId: session.sessionId,
         sessionToken: session.sessionToken,
         requestId,
@@ -901,7 +944,7 @@ export class MeshCommandExecutorClient {
           ["protocolVersion", "requestId", "encryptedPayload"],
           "The mesh asynchronous command response is invalid.",
         );
-        if (body.protocolVersion !== MESH_EXECUTION_PROTOCOL_VERSION || body.requestId !== requestId) {
+        if (body.protocolVersion !== session.protocolVersion || body.requestId !== requestId) {
           throw new DomainError(
             "mesh_execution_response_invalid",
             "The mesh asynchronous command response does not match the request.",
@@ -1333,7 +1376,7 @@ export class MeshCommandExecutorClient {
       }
       const requestId = crypto.randomUUID();
       const request: MeshExecutionRpcRequest = {
-        protocolVersion: MESH_EXECUTION_PROTOCOL_VERSION,
+        protocolVersion: session.protocolVersion,
         sessionId: session.sessionId,
         sessionToken: session.sessionToken,
         requestId,
@@ -1359,7 +1402,7 @@ export class MeshCommandExecutorClient {
           ["protocolVersion", "requestId", "encryptedPayload"],
           "The mesh execution RPC response is invalid.",
         );
-        if (body.protocolVersion !== MESH_EXECUTION_PROTOCOL_VERSION || body.requestId !== requestId) {
+        if (body.protocolVersion !== session.protocolVersion || body.requestId !== requestId) {
           throw new DomainError("mesh_execution_response_invalid", "The mesh execution RPC response does not match the request.");
         }
         return await decryptMeshPayload(body.encryptedPayload) as T;
@@ -1493,11 +1536,14 @@ export class MeshCommandExecutorClient {
   private async releaseRemoteSession(
     route: MeshPeerRoute,
     callerNodeId: string,
-    session: Pick<MeshExecutionSession, "sessionId" | "sessionToken">,
+    session: Pick<
+      MeshExecutionSession,
+      "sessionId" | "sessionToken" | "protocolVersion"
+    >,
   ): Promise<void> {
     const requestId = crypto.randomUUID();
     const body: MeshExecutionSessionCloseRequest = {
-      protocolVersion: MESH_EXECUTION_PROTOCOL_VERSION,
+      protocolVersion: session.protocolVersion,
       sessionId: session.sessionId,
       sessionToken: session.sessionToken,
       requestId,
@@ -1533,6 +1579,7 @@ function throwIfMeshSessionOpeningAborted(signal: AbortSignal): void {
     });
   }
 }
+
 
 async function raceWithAbort<T>(operation: Promise<T>, signal?: AbortSignal): Promise<T> {
   if (!signal) {

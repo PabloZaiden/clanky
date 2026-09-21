@@ -5,6 +5,7 @@
 import { createLogger } from "@pablozaiden/webapp/server";
 import type { MeshControllerGrant, MeshRelayPeerRoute } from "@/shared/mesh";
 import { normalizeMeshRelayOrigin } from "@/shared/mesh-relay";
+import { MESH_PROTOCOL_VERSION } from "@/shared/mesh-protocol";
 import { listControllerGrants } from "../persistence/mesh";
 import { DomainError } from "../domain/domain-error";
 import { MeshRelayConnectorManager } from "./mesh-relay-connector-manager";
@@ -140,6 +141,10 @@ export class WorkerRelayService {
       relayFingerprint: selected.route.relayFingerprint,
       role: "worker" as const,
       targetNodeId: selected.grant.controllerNodeId,
+      ...(selected.grant.controllerNegotiatedProtocolVersion
+        === MESH_PROTOCOL_VERSION
+        ? { protocolVersion: MESH_PROTOCOL_VERSION }
+        : {}),
     };
     const active = this.manager.activeConfig;
     if (
@@ -148,6 +153,7 @@ export class WorkerRelayService {
       && active.relayFingerprint === expected.relayFingerprint
       && active.role === expected.role
       && active.targetNodeId === expected.targetNodeId
+      && active.protocolVersion === expected.protocolVersion
     ) {
       return;
     }
@@ -160,7 +166,13 @@ export class WorkerRelayService {
         return current !== null
           && current.grant.controllerNodeId === selected.grant.controllerNodeId
           && current.route.relayUrl === selected.route.relayUrl
-          && current.route.relayFingerprint === selected.route.relayFingerprint;
+          && current.route.relayFingerprint === selected.route.relayFingerprint
+          && (
+            current.grant.controllerNegotiatedProtocolVersion
+              === MESH_PROTOCOL_VERSION
+              ? MESH_PROTOCOL_VERSION
+              : undefined
+          ) === expected.protocolVersion;
       },
     });
   }

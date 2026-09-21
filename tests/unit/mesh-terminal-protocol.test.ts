@@ -11,10 +11,15 @@ import {
   MESH_TERMINAL_MAX_INPUT_BYTES,
   MESH_TERMINAL_PROTOCOL_VERSION,
 } from "../../src/shared/mesh-terminal";
+import { MESH_PROTOCOL_VERSION } from "../../src/shared/mesh-protocol";
 
-function buildRequest(): Omit<MeshTerminalSessionRequest, "signature"> {
+function buildRequest(
+  protocolVersion:
+    | typeof MESH_TERMINAL_PROTOCOL_VERSION
+    | typeof MESH_PROTOCOL_VERSION = MESH_TERMINAL_PROTOCOL_VERSION,
+): Omit<MeshTerminalSessionRequest, "signature"> {
   return {
-    protocolVersion: MESH_TERMINAL_PROTOCOL_VERSION,
+    protocolVersion,
     capability: MESH_TERMINAL_CAPABILITY,
     requestId: "request-1",
     callerNodeId: "caller-1",
@@ -50,6 +55,39 @@ describe("Mesh terminal protocol", () => {
       ...request,
       connectionMode: "direct",
     })).not.toBe(payload);
+  });
+
+  test("uses the v5 signing domain and canonical payload order", () => {
+    const request = buildRequest(MESH_PROTOCOL_VERSION);
+    const payload = JSON.stringify([
+      "clanky-mesh-terminal-session-v5",
+      request.protocolVersion,
+      request.capability,
+      request.requestId,
+      request.callerNodeId,
+      request.callerPublicKey,
+      request.callerFingerprint,
+      request.callerEncryptionPublicKey,
+      request.targetNodeId,
+      request.workspaceId,
+      request.executionRoot,
+      request.directory,
+      request.provider,
+      request.terminalSessionId,
+      request.remoteSessionName,
+      request.connectionMode,
+      request.useTmux,
+      request.allowPersistentSessionCreate,
+      request.encryptedEnvironment,
+      request.nonce,
+      request.expiresAt,
+    ]);
+
+    expect(MeshTerminalSessionRequestSchema.safeParse({
+      ...request,
+      signature: "signature",
+    }).success).toBe(true);
+    expect(buildMeshTerminalSessionSigningPayload(request)).toBe(payload);
   });
 
   test("requires the terminal-v1 capability", () => {

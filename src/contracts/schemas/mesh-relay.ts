@@ -8,12 +8,28 @@ import {
   MESH_RELAY_PROTOCOL_VERSION,
   normalizeMeshRelayOrigin,
 } from "@/shared/mesh-relay";
+import {
+  MESH_LEGACY_PROTOCOL_VERSION,
+  MESH_PROTOCOL_VERSION,
+  MESH_SUPPORTED_PROTOCOL_VERSIONS,
+} from "@/shared/mesh-protocol";
 
 const RelayIdSchema = z.string().trim().min(1).max(200);
 const RelayPublicKeySchema = z.string().min(1).max(16_384);
 const RelayFingerprintSchema = z.string().trim().min(1).max(200);
 const RelaySignatureSchema = z.string().trim().min(1).max(16_384);
 const RelayTimestampSchema = z.string().datetime();
+const MeshRelayProtocolVersionSchema = z.union([
+  z.literal(MESH_RELAY_PROTOCOL_VERSION),
+  z.literal(MESH_PROTOCOL_VERSION),
+]);
+const MeshGlobalProtocolVersionSchema = z.union([
+  z.literal(MESH_LEGACY_PROTOCOL_VERSION),
+  z.literal(MESH_PROTOCOL_VERSION),
+]);
+const MeshSupportedProtocolVersionsSchema = z.array(
+  MeshGlobalProtocolVersionSchema,
+).min(1).max(MESH_SUPPORTED_PROTOCOL_VERSIONS.length);
 const RelayHeadersSchema = z.record(
   z.string().min(1).max(200),
   z.string().max(16_384),
@@ -27,7 +43,7 @@ export const MeshRelayPeerIdentitySchema = z.object({
   fingerprint: RelayFingerprintSchema,
 }).strict();
 
-export const MeshRelayWellKnownDescriptorSchema = z.object({
+const MeshRelayWellKnownDescriptorLegacySchema = z.object({
   role: z.literal("relay"),
   relayProtocol: z.literal(MESH_RELAY_PROTOCOL_VERSION),
   enrollmentProtocol: z.literal(MESH_RELAY_ENROLLMENT_PROTOCOL_VERSION),
@@ -37,7 +53,20 @@ export const MeshRelayWellKnownDescriptorSchema = z.object({
   controllerNodeId: RelayIdSchema.nullable(),
 }).strict();
 
-export const MeshControllerWellKnownDescriptorSchema = z.object({
+export const MeshRelayWellKnownDescriptorV5Schema = z.object({
+  role: z.literal("relay"),
+  protocolVersion: z.literal(MESH_PROTOCOL_VERSION),
+  publicKey: RelayPublicKeySchema,
+  fingerprint: RelayFingerprintSchema,
+  controllerFingerprint: RelayFingerprintSchema,
+  controllerNodeId: RelayIdSchema.nullable(),
+  binaryVersion: z.string().trim().min(1).max(200),
+  supportedProtocolVersions: MeshSupportedProtocolVersionsSchema,
+  preferredProtocolVersion: MeshGlobalProtocolVersionSchema,
+  negotiatedProtocolVersion: MeshGlobalProtocolVersionSchema.nullable(),
+}).strict();
+
+export const MeshControllerWellKnownDescriptorLegacySchema = z.object({
   role: z.literal("controller"),
   enrollmentProtocol: z.literal(MESH_CONTROLLER_ENROLLMENT_PROTOCOL_VERSION),
   nodeId: RelayIdSchema,
@@ -45,7 +74,29 @@ export const MeshControllerWellKnownDescriptorSchema = z.object({
   fingerprint: RelayFingerprintSchema,
 }).strict();
 
-export const MeshWellKnownDescriptorSchema = z.discriminatedUnion("role", [
+export const MeshControllerWellKnownDescriptorV5Schema = z.object({
+  role: z.literal("controller"),
+  protocolVersion: z.literal(MESH_PROTOCOL_VERSION),
+  nodeId: RelayIdSchema,
+  publicKey: RelayPublicKeySchema,
+  fingerprint: RelayFingerprintSchema,
+  binaryVersion: z.string().trim().min(1).max(200),
+  supportedProtocolVersions: MeshSupportedProtocolVersionsSchema,
+  preferredProtocolVersion: MeshGlobalProtocolVersionSchema,
+  negotiatedProtocolVersion: MeshGlobalProtocolVersionSchema.nullable(),
+}).strict();
+
+export const MeshRelayWellKnownDescriptorSchema = z.union([
+  MeshRelayWellKnownDescriptorLegacySchema,
+  MeshRelayWellKnownDescriptorV5Schema,
+]);
+
+export const MeshControllerWellKnownDescriptorSchema = z.union([
+  MeshControllerWellKnownDescriptorLegacySchema,
+  MeshControllerWellKnownDescriptorV5Schema,
+]);
+
+export const MeshWellKnownDescriptorSchema = z.union([
   MeshRelayWellKnownDescriptorSchema,
   MeshControllerWellKnownDescriptorSchema,
 ]);
@@ -81,10 +132,14 @@ export const ControllerRelayPairingStatusSchema = z.object({
   pairedAt: RelayTimestampSchema.nullable(),
   updatedAt: RelayTimestampSchema.nullable(),
   bootstrapEnvironment: z.string().min(1),
+  relayBinaryVersion: z.string().trim().min(1).nullable(),
+  relaySupportedProtocolVersions: MeshSupportedProtocolVersionsSchema,
+  relayPreferredProtocolVersion: MeshGlobalProtocolVersionSchema,
+  relayNegotiatedProtocolVersion: MeshGlobalProtocolVersionSchema.nullable(),
 }).strict();
 
 export const MeshRelayChallengeFrameSchema = z.object({
-  protocolVersion: z.literal(MESH_RELAY_PROTOCOL_VERSION),
+  protocolVersion: MeshRelayProtocolVersionSchema,
   type: z.literal("challenge"),
   challengeId: RelayIdSchema,
   nonce: RelayIdSchema,
@@ -96,7 +151,7 @@ export const MeshRelayChallengeFrameSchema = z.object({
 }).strict();
 
 export const MeshRelayAuthFrameSchema = z.object({
-  protocolVersion: z.literal(MESH_RELAY_PROTOCOL_VERSION),
+  protocolVersion: MeshRelayProtocolVersionSchema,
   type: z.literal("auth"),
   role: z.enum(["controller", "worker"]),
   nodeId: RelayIdSchema,
@@ -120,7 +175,7 @@ export const MeshRelayEnrollmentAdmissionSchema = z.object({
 }).strict();
 
 export const MeshRelayAuthorizationBeginFrameSchema = z.object({
-  protocolVersion: z.literal(MESH_RELAY_PROTOCOL_VERSION),
+  protocolVersion: MeshRelayProtocolVersionSchema,
   type: z.literal("authorization.begin"),
   transactionId: RelayIdSchema,
   workerCount: z.number().int().min(0).max(MESH_RELAY_MAX_AUTHORIZED_WORKERS),
@@ -130,7 +185,7 @@ export const MeshRelayAuthorizationBeginFrameSchema = z.object({
 }).strict();
 
 export const MeshRelayAuthorizationChunkFrameSchema = z.object({
-  protocolVersion: z.literal(MESH_RELAY_PROTOCOL_VERSION),
+  protocolVersion: MeshRelayProtocolVersionSchema,
   type: z.literal("authorization.chunk"),
   transactionId: RelayIdSchema,
   workers: z.array(MeshRelayPeerIdentitySchema)
@@ -139,13 +194,13 @@ export const MeshRelayAuthorizationChunkFrameSchema = z.object({
 }).strict();
 
 export const MeshRelayAuthorizationCommitFrameSchema = z.object({
-  protocolVersion: z.literal(MESH_RELAY_PROTOCOL_VERSION),
+  protocolVersion: MeshRelayProtocolVersionSchema,
   type: z.literal("authorization.commit"),
   transactionId: RelayIdSchema,
 }).strict();
 
 export const MeshRelayStreamRequestFrameSchema = z.object({
-  protocolVersion: z.literal(MESH_RELAY_PROTOCOL_VERSION),
+  protocolVersion: MeshRelayProtocolVersionSchema,
   type: z.literal("stream.request"),
   requestId: RelayIdSchema,
   targetNodeId: RelayIdSchema,
@@ -156,19 +211,19 @@ export const MeshRelayStreamRequestFrameSchema = z.object({
 }).strict();
 
 export const MeshRelayStreamCancelFrameSchema = z.object({
-  protocolVersion: z.literal(MESH_RELAY_PROTOCOL_VERSION),
+  protocolVersion: MeshRelayProtocolVersionSchema,
   type: z.literal("stream.cancel"),
   requestId: RelayIdSchema,
 }).strict();
 
 export const MeshRelayPongFrameSchema = z.object({
-  protocolVersion: z.literal(MESH_RELAY_PROTOCOL_VERSION),
+  protocolVersion: MeshRelayProtocolVersionSchema,
   type: z.literal("pong"),
   sentAt: RelayTimestampSchema,
 }).strict();
 
 export const MeshRelayAuthOkFrameSchema = z.object({
-  protocolVersion: z.literal(MESH_RELAY_PROTOCOL_VERSION),
+  protocolVersion: MeshRelayProtocolVersionSchema,
   type: z.literal("auth.ok"),
   connectionId: RelayIdSchema,
   role: z.enum(["controller", "worker"]),
@@ -177,14 +232,14 @@ export const MeshRelayAuthOkFrameSchema = z.object({
 }).strict();
 
 export const MeshRelayAuthorizationAckFrameSchema = z.object({
-  protocolVersion: z.literal(MESH_RELAY_PROTOCOL_VERSION),
+  protocolVersion: MeshRelayProtocolVersionSchema,
   type: z.literal("authorization.ack"),
   transactionId: RelayIdSchema,
   workerCount: z.number().int().min(0).max(MESH_RELAY_MAX_AUTHORIZED_WORKERS),
 }).strict();
 
 export const MeshRelayStreamTicketFrameSchema = z.object({
-  protocolVersion: z.literal(MESH_RELAY_PROTOCOL_VERSION),
+  protocolVersion: MeshRelayProtocolVersionSchema,
   type: z.literal("stream.ticket"),
   requestId: RelayIdSchema,
   streamId: RelayIdSchema,
@@ -194,7 +249,7 @@ export const MeshRelayStreamTicketFrameSchema = z.object({
 }).strict();
 
 export const MeshRelayStreamOfferFrameSchema = z.object({
-  protocolVersion: z.literal(MESH_RELAY_PROTOCOL_VERSION),
+  protocolVersion: MeshRelayProtocolVersionSchema,
   type: z.literal("stream.offer"),
   requestId: RelayIdSchema,
   streamId: RelayIdSchema,
@@ -209,7 +264,7 @@ export const MeshRelayStreamOfferFrameSchema = z.object({
 }).strict();
 
 export const MeshRelayControlErrorFrameSchema = z.object({
-  protocolVersion: z.literal(MESH_RELAY_PROTOCOL_VERSION),
+  protocolVersion: MeshRelayProtocolVersionSchema,
   type: z.literal("stream.error"),
   requestId: RelayIdSchema,
   code: RelayIdSchema,
@@ -218,20 +273,20 @@ export const MeshRelayControlErrorFrameSchema = z.object({
 }).strict();
 
 export const MeshRelayHeartbeatFrameSchema = z.object({
-  protocolVersion: z.literal(MESH_RELAY_PROTOCOL_VERSION),
+  protocolVersion: MeshRelayProtocolVersionSchema,
   type: z.literal("heartbeat"),
   sentAt: RelayTimestampSchema,
 }).strict();
 
 export const MeshRelayStreamReadyFrameSchema = z.object({
-  protocolVersion: z.literal(MESH_RELAY_PROTOCOL_VERSION),
+  protocolVersion: MeshRelayProtocolVersionSchema,
   type: z.literal("stream.ready"),
   requestId: RelayIdSchema,
   streamId: RelayIdSchema,
 }).strict();
 
 export const MeshRelayStreamStatusFrameSchema = z.object({
-  protocolVersion: z.literal(MESH_RELAY_PROTOCOL_VERSION),
+  protocolVersion: MeshRelayProtocolVersionSchema,
   type: z.literal("stream.status"),
   streamId: RelayIdSchema,
   status: z.number().int().min(100).max(599),

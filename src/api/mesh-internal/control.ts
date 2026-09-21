@@ -9,6 +9,13 @@ import {
   MESH_RUNTIME_SNAPSHOT_HEADER,
   MESH_RUNTIME_SNAPSHOT_VERSION,
 } from "@/shared/mesh";
+import {
+  MESH_BINARY_VERSION_HEADER,
+  MESH_LEGACY_PROTOCOL_VERSION,
+  MESH_PROTOCOL_VERSION_HEADER,
+  MESH_PROTOCOL_VERSIONS_HEADER,
+  serializeMeshProtocolVersions,
+} from "@/shared/mesh-protocol";
 import { meshManager } from "../../core/mesh-manager";
 import { requireMeshRuntimeRole } from "../../core/mesh-runtime";
 import { getMeshRelayRequestInitiatorNodeId } from "../../core/mesh-relay-http";
@@ -18,6 +25,7 @@ import {
   internalMeshErrorResponse,
   validateMeshIdentityHeaders,
 } from "./shared";
+import { getLocalMeshProtocolMetadata } from "../../core/mesh-protocol-version";
 
 export const meshControlRoutes = defineRoutes({
   "/api/mesh/internal/enrollment": {
@@ -36,16 +44,26 @@ export const meshControlRoutes = defineRoutes({
       );
       if (headerError) return headerError;
       const relayInitiatorNodeId = getMeshRelayRequestInitiatorNodeId(req);
+      const requestedRouteKind =
+        parsed.data.protocolVersion === MESH_LEGACY_PROTOCOL_VERSION
+          ? "direct"
+          : parsed.data.route.kind;
+      const relayIdentityMatches =
+        relayInitiatorNodeId !== undefined
+        && relayInitiatorNodeId === parsed.data.workerNodeId;
       if (
-        (relayInitiatorNodeId !== undefined && (
-          parsed.data.protocolVersion !== 2
-          || relayInitiatorNodeId !== parsed.data.workerNodeId
-        ))
-        || (relayInitiatorNodeId === undefined && parsed.data.protocolVersion === 2)
+        (
+          requestedRouteKind === "relay"
+          && !relayIdentityMatches
+        )
+        || (
+          requestedRouteKind !== "relay"
+          && relayInitiatorNodeId !== undefined
+        )
       ) {
         return errorResponse(
           "mesh_enrollment_relay_identity_mismatch",
-          "Relay enrollment must use protocol v2 and originate from the signed worker identity.",
+          "Relay enrollment must use a supported relay protocol and originate from the signed worker identity.",
           403,
         );
       }
@@ -130,13 +148,19 @@ export const meshControlRoutes = defineRoutes({
             includeRuntimeSnapshot,
           }),
           {
-            headers: includeRuntimeSnapshot
-              ? {
-                  [MESH_RUNTIME_SNAPSHOT_HEADER]: String(
-                    MESH_RUNTIME_SNAPSHOT_VERSION,
-                  ),
-                }
-              : undefined,
+            headers: {
+              ...(includeRuntimeSnapshot
+                ? {
+                    [MESH_RUNTIME_SNAPSHOT_HEADER]: String(
+                      MESH_RUNTIME_SNAPSHOT_VERSION,
+                    ),
+                  }
+                : {}),
+              [MESH_BINARY_VERSION_HEADER]: getLocalMeshProtocolMetadata()
+                .binaryVersion ?? "",
+              [MESH_PROTOCOL_VERSIONS_HEADER]: serializeMeshProtocolVersions(),
+              [MESH_PROTOCOL_VERSION_HEADER]: String(parsed.data.protocolVersion),
+            },
           },
         );
       } catch (error) {

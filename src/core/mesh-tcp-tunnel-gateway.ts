@@ -4,8 +4,8 @@ import type { MeshTcpTunnelSessionRequest } from "@/contracts/schemas/mesh-tcp-t
 import {
   MESH_TCP_TUNNEL_CAPABILITY,
   MESH_TCP_TUNNEL_MAX_FRAME_BYTES,
-  MESH_TCP_TUNNEL_PROTOCOL_VERSION,
   MESH_TCP_TUNNEL_SESSION_TTL_MS,
+  type MeshTcpTunnelProtocolVersion,
 } from "@/shared/mesh-tcp-tunnel";
 import { getControllerGrant } from "../persistence/mesh";
 import {
@@ -49,7 +49,7 @@ export class MeshTcpTunnelGateway {
   private readonly usedNonces = new Map<string, number>();
 
   async createSession(request: MeshTcpTunnelSessionRequest): Promise<{
-    protocolVersion: typeof MESH_TCP_TUNNEL_PROTOCOL_VERSION;
+    protocolVersion: MeshTcpTunnelProtocolVersion;
     capability: typeof MESH_TCP_TUNNEL_CAPABILITY;
     sessionId: string;
     sessionToken: string;
@@ -110,7 +110,7 @@ export class MeshTcpTunnelGateway {
     this.leases.set(sessionId, lease);
     this.usedNonces.set(request.nonce, expiresAt);
     return {
-      protocolVersion: MESH_TCP_TUNNEL_PROTOCOL_VERSION,
+      protocolVersion: request.protocolVersion,
       capability: MESH_TCP_TUNNEL_CAPABILITY,
       sessionId,
       sessionToken: lease.sessionToken,

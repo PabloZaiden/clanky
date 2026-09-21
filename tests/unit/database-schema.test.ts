@@ -253,7 +253,7 @@ describe("database schema", () => {
         [1, null],
       );
 
-      expect(runMigrations(database)).toBe(1);
+      expect(runMigrations(database)).toBe(2);
       expect(
         database
           .query("SELECT controller_node_id FROM mesh_controller_grants")
@@ -265,6 +265,114 @@ describe("database schema", () => {
           .all(),
       ).toEqual([{ worker_node_id: "valid-worker" }]);
       expect(database.query("SELECT * FROM mesh_node_identity").all()).toEqual([]);
+      database.close();
+    });
+  });
+
+  test("migrates Mesh protocol metadata from v1 and is idempotent", async () => {
+    await withTempDataDir(async (dataDir) => {
+      const database = new Database(join(dataDir, "clanky.db"));
+      database.exec(`
+        CREATE TABLE schema_migrations (
+          version INTEGER PRIMARY KEY,
+          name TEXT NOT NULL,
+          applied_at TEXT NOT NULL
+        );
+        CREATE TABLE mesh_node_identity (
+          singleton INTEGER PRIMARY KEY
+        );
+        CREATE TABLE mesh_worker_registrations (
+          worker_node_id TEXT PRIMARY KEY
+        );
+        CREATE TABLE mesh_controller_grants (
+          controller_node_id TEXT PRIMARY KEY
+        );
+        CREATE TABLE mesh_controller_relay_pairing (
+          singleton INTEGER PRIMARY KEY
+        );
+      `);
+      for (let version = 1; version <= BASELINE_SCHEMA_VERSION + 3; version++) {
+        database.run(
+          "INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)",
+          [version, `migration_${String(version)}`, "now"],
+        );
+      }
+      database.run("INSERT INTO mesh_node_identity VALUES (?)", [1]);
+      database.run("INSERT INTO mesh_worker_registrations VALUES (?)", ["worker-1"]);
+      database.run("INSERT INTO mesh_controller_grants VALUES (?)", ["controller-1"]);
+      database.run("INSERT INTO mesh_controller_relay_pairing VALUES (?)", [1]);
+
+      expect(runMigrations(database)).toBe(1);
+      expect(getTableColumns(database, "mesh_worker_registrations")).toEqual(
+        expect.arrayContaining([
+          "worker_binary_version",
+          "worker_supported_protocol_versions_json",
+          "worker_preferred_protocol_version",
+          "worker_negotiated_protocol_version",
+          "worker_protocol_updated_at",
+        ]),
+      );
+      expect(getTableColumns(database, "mesh_controller_grants")).toEqual(
+        expect.arrayContaining([
+          "controller_binary_version",
+          "controller_supported_protocol_versions_json",
+          "controller_preferred_protocol_version",
+          "controller_negotiated_protocol_version",
+          "controller_protocol_updated_at",
+        ]),
+      );
+      expect(getTableColumns(database, "mesh_controller_relay_pairing")).toEqual(
+        expect.arrayContaining([
+          "relay_binary_version",
+          "relay_supported_protocol_versions_json",
+          "relay_preferred_protocol_version",
+          "relay_negotiated_protocol_version",
+          "relay_protocol_updated_at",
+        ]),
+      );
+      expect(
+        database.query(
+          "SELECT worker_node_id, worker_supported_protocol_versions_json, worker_preferred_protocol_version, worker_negotiated_protocol_version FROM mesh_worker_registrations",
+        ).all(),
+      ).toEqual([{
+        worker_node_id: "worker-1",
+        worker_supported_protocol_versions_json: "[1]",
+        worker_preferred_protocol_version: 1,
+        worker_negotiated_protocol_version: 1,
+      }]);
+      expect(
+        database.query(
+          "SELECT controller_node_id, controller_supported_protocol_versions_json, controller_preferred_protocol_version, controller_negotiated_protocol_version FROM mesh_controller_grants",
+        ).all(),
+      ).toEqual([{
+        controller_node_id: "controller-1",
+        controller_supported_protocol_versions_json: "[1]",
+        controller_preferred_protocol_version: 1,
+        controller_negotiated_protocol_version: 1,
+      }]);
+      expect(database.query(
+        "SELECT current_version, migrated_from_version FROM mesh_protocol_state WHERE singleton = 1",
+      ).all()).toEqual([{
+        current_version: 5,
+        migrated_from_version: 1,
+      }]);
+      expect(database.query(
+        "SELECT worker_node_id FROM mesh_worker_registrations",
+      ).all()).toEqual([{ worker_node_id: "worker-1" }]);
+      expect(database.query(
+        "SELECT controller_node_id FROM mesh_controller_grants",
+      ).all()).toEqual([{ controller_node_id: "controller-1" }]);
+      expect(database.query(
+        "SELECT singleton FROM mesh_controller_relay_pairing",
+      ).all()).toEqual([{ singleton: 1 }]);
+
+      expect(runMigrations(database)).toBe(0);
+      expect(database.query(
+        "SELECT current_version, migrated_from_version FROM mesh_protocol_state WHERE singleton = 1",
+      ).all()).toEqual([{
+        current_version: 5,
+        migrated_from_version: 1,
+      }]);
       database.close();
     });
   });

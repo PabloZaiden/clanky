@@ -15,6 +15,12 @@ import type {
   MeshWorkerRegistration,
 } from "@/shared/mesh";
 import {
+  MESH_LEGACY_PROTOCOL_VERSION,
+  MESH_PROTOCOL_VERSION,
+  normalizeMeshProtocolVersions,
+  type MeshProtocolVersion,
+} from "@/shared/mesh-protocol";
+import {
   type ExecutionHostBinding,
   type ExecutionHostCapabilities,
   type ExecutionHostPlatform,
@@ -61,6 +67,10 @@ export interface SaveWorkerRegistrationInput {
   workerCapabilities: ExecutionHostCapabilities | null;
   workerAcceptRemoteExecution: boolean;
   workerConfigRevision: number;
+  workerBinaryVersion?: string | null;
+  workerSupportedProtocolVersions?: readonly MeshProtocolVersion[];
+  workerPreferredProtocolVersion?: MeshProtocolVersion;
+  workerNegotiatedProtocolVersion?: MeshProtocolVersion | null;
   registrationScope?: "global" | "workspace";
   workspaceWorkerEnrollmentId?: string;
   workspaceId?: string;
@@ -143,8 +153,12 @@ export async function saveWorkerRegistration(
       worker_capabilities_json,
       worker_accept_remote_execution,       worker_config_revision, registration_scope,
       workspace_worker_enrollment_id, workspace_id,
-      grant_status, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+      worker_binary_version, worker_supported_protocol_versions_json,
+      worker_preferred_protocol_version, worker_negotiated_protocol_version,
+      worker_protocol_updated_at, grant_status, created_at, updated_at
+    ) VALUES (
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+    )
     ON CONFLICT(local_user_id, worker_node_id) DO UPDATE SET
       worker_instance_name = excluded.worker_instance_name,
       worker_endpoint = excluded.worker_endpoint,
@@ -163,6 +177,11 @@ export async function saveWorkerRegistration(
       worker_capabilities_json = excluded.worker_capabilities_json,
       worker_accept_remote_execution = excluded.worker_accept_remote_execution,
       worker_config_revision = excluded.worker_config_revision,
+      worker_binary_version = excluded.worker_binary_version,
+      worker_supported_protocol_versions_json = excluded.worker_supported_protocol_versions_json,
+      worker_preferred_protocol_version = excluded.worker_preferred_protocol_version,
+      worker_negotiated_protocol_version = excluded.worker_negotiated_protocol_version,
+      worker_protocol_updated_at = excluded.worker_protocol_updated_at,
       registration_scope = excluded.registration_scope,
       workspace_worker_enrollment_id = excluded.workspace_worker_enrollment_id,
       workspace_id = excluded.workspace_id,
@@ -191,6 +210,12 @@ export async function saveWorkerRegistration(
       input.registrationScope ?? "global",
       input.workspaceWorkerEnrollmentId ?? null,
       input.workspaceId ?? null,
+      input.workerBinaryVersion ?? null,
+      JSON.stringify(input.workerSupportedProtocolVersions ?? [MESH_LEGACY_PROTOCOL_VERSION]),
+      input.workerPreferredProtocolVersion ?? MESH_LEGACY_PROTOCOL_VERSION,
+      input.workerNegotiatedProtocolVersion ?? MESH_LEGACY_PROTOCOL_VERSION,
+      now,
+      "active",
       now,
       now,
     ],
@@ -479,6 +504,10 @@ export async function updateWorkerHealthSnapshot(input: {
   capabilities: ExecutionHostCapabilities;
   acceptRemoteExecution: boolean;
   configRevision: number;
+  binaryVersion?: string | null;
+  supportedProtocolVersions?: readonly MeshProtocolVersion[];
+  preferredProtocolVersion?: MeshProtocolVersion;
+  negotiatedProtocolVersion?: MeshProtocolVersion | null;
 }): Promise<void> {
   const db = getDatabase();
   const now = new Date().toISOString();
@@ -491,6 +520,20 @@ export async function updateWorkerHealthSnapshot(input: {
         worker_capabilities_json = ?,
         worker_accept_remote_execution = ?,
         worker_config_revision = ?,
+        worker_binary_version = COALESCE(?, worker_binary_version),
+        worker_supported_protocol_versions_json = COALESCE(
+          ?, worker_supported_protocol_versions_json
+        ),
+        worker_preferred_protocol_version = COALESCE(
+          ?, worker_preferred_protocol_version
+        ),
+        worker_negotiated_protocol_version = COALESCE(
+          ?, worker_negotiated_protocol_version
+        ),
+        worker_protocol_updated_at = CASE
+          WHEN ? IS NULL THEN worker_protocol_updated_at
+          ELSE ?
+        END,
         last_seen_at = ?,
         updated_at = ?
       WHERE worker_node_id = ? AND local_user_id = ?`,
@@ -501,6 +544,14 @@ export async function updateWorkerHealthSnapshot(input: {
         JSON.stringify(input.capabilities),
         input.acceptRemoteExecution ? 1 : 0,
         input.configRevision,
+        input.binaryVersion ?? null,
+        input.supportedProtocolVersions
+          ? JSON.stringify(input.supportedProtocolVersions)
+          : null,
+        input.preferredProtocolVersion ?? null,
+        input.negotiatedProtocolVersion ?? null,
+        input.negotiatedProtocolVersion ?? null,
+        input.negotiatedProtocolVersion === undefined ? null : now,
         now,
         now,
         input.workerNodeId,
@@ -525,6 +576,34 @@ export async function updateWorkerHealthSnapshot(input: {
   updateSnapshot();
 }
 
+export async function updateWorkerNegotiatedProtocolVersion(input: {
+  workerNodeId: string;
+  localUserId: string;
+  negotiatedProtocolVersion: MeshProtocolVersion;
+  preferredProtocolVersion?: MeshProtocolVersion;
+}): Promise<void> {
+  const db = getDatabase();
+  const now = new Date().toISOString();
+  db.run(
+    `UPDATE mesh_worker_registrations SET
+      worker_negotiated_protocol_version = ?,
+      worker_preferred_protocol_version = COALESCE(
+        ?, worker_preferred_protocol_version
+      ),
+      worker_protocol_updated_at = ?,
+      updated_at = ?
+    WHERE worker_node_id = ? AND local_user_id = ?`,
+    [
+      input.negotiatedProtocolVersion,
+      input.preferredProtocolVersion ?? null,
+      now,
+      now,
+      input.workerNodeId,
+      input.localUserId,
+    ],
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Controller grants (worker side)
 // ---------------------------------------------------------------------------
@@ -536,6 +615,10 @@ export interface SaveControllerGrantInput {
   controllerFingerprint: string;
   controllerEncryptionPublicKey: string;
   controllerRoute?: MeshPeerRoute | null;
+  controllerBinaryVersion?: string | null;
+  controllerSupportedProtocolVersions?: readonly MeshProtocolVersion[];
+  controllerPreferredProtocolVersion?: MeshProtocolVersion;
+  controllerNegotiatedProtocolVersion?: MeshProtocolVersion | null;
 }
 
 export class InconsistentMeshControllerRelayGrantError extends Error {
@@ -573,8 +656,11 @@ export async function saveControllerGrant(
       controller_public_key, controller_fingerprint,
       controller_encryption_public_key,
       controller_endpoint, route_kind, relay_url, relay_fingerprint,
+      controller_binary_version, controller_supported_protocol_versions_json,
+      controller_preferred_protocol_version, controller_negotiated_protocol_version,
+      controller_protocol_updated_at,
       grant_status, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
     ON CONFLICT(controller_node_id) DO UPDATE SET
       controller_instance_name = excluded.controller_instance_name,
       controller_public_key = excluded.controller_public_key,
@@ -584,6 +670,11 @@ export async function saveControllerGrant(
       route_kind = excluded.route_kind,
       relay_url = excluded.relay_url,
       relay_fingerprint = excluded.relay_fingerprint,
+      controller_binary_version = excluded.controller_binary_version,
+      controller_supported_protocol_versions_json = excluded.controller_supported_protocol_versions_json,
+      controller_preferred_protocol_version = excluded.controller_preferred_protocol_version,
+      controller_negotiated_protocol_version = excluded.controller_negotiated_protocol_version,
+      controller_protocol_updated_at = excluded.controller_protocol_updated_at,
       grant_status = 'active',
       updated_at = excluded.updated_at`,
       [
@@ -602,6 +693,14 @@ export async function saveControllerGrant(
         input.controllerRoute?.kind === "relay"
           ? input.controllerRoute.relayFingerprint
           : null,
+        input.controllerBinaryVersion ?? null,
+        JSON.stringify(
+          input.controllerSupportedProtocolVersions
+            ?? [MESH_LEGACY_PROTOCOL_VERSION],
+        ),
+        input.controllerPreferredProtocolVersion ?? MESH_LEGACY_PROTOCOL_VERSION,
+        input.controllerNegotiatedProtocolVersion ?? MESH_LEGACY_PROTOCOL_VERSION,
+        now,
         now,
         now,
       ],
@@ -654,6 +753,39 @@ export async function listActiveControllerGrants(): Promise<
     )
     .all() as ControllerGrantRow[];
   return rows.map(mapControllerGrantRow);
+}
+
+export async function updateControllerGrantProtocolMetadata(input: {
+  controllerNodeId: string;
+  controllerBinaryVersion?: string | null;
+  controllerSupportedProtocolVersions: readonly MeshProtocolVersion[];
+  controllerPreferredProtocolVersion: MeshProtocolVersion;
+  controllerNegotiatedProtocolVersion: MeshProtocolVersion;
+}): Promise<void> {
+  const db = getDatabase();
+  const now = new Date().toISOString();
+  const result = db.run(
+    `UPDATE mesh_controller_grants SET
+      controller_binary_version = ?,
+      controller_supported_protocol_versions_json = ?,
+      controller_preferred_protocol_version = ?,
+      controller_negotiated_protocol_version = ?,
+      controller_protocol_updated_at = ?,
+      updated_at = ?
+    WHERE controller_node_id = ?`,
+    [
+      input.controllerBinaryVersion ?? null,
+      JSON.stringify(input.controllerSupportedProtocolVersions),
+      input.controllerPreferredProtocolVersion,
+      input.controllerNegotiatedProtocolVersion,
+      now,
+      now,
+      input.controllerNodeId,
+    ],
+  );
+  if (result.changes === 0) {
+    throw new Error(`Controller grant not found: ${input.controllerNodeId}`);
+  }
 }
 
 export async function revokeControllerGrant(
@@ -754,9 +886,47 @@ interface WorkerRegistrationRow {
   workspace_worker_enrollment_id: string | null;
   workspace_id: string | null;
   grant_status: string;
+  worker_binary_version: string | null;
+  worker_supported_protocol_versions_json: string | null;
+  worker_preferred_protocol_version: number | null;
+  worker_negotiated_protocol_version: number | null;
+  worker_protocol_updated_at: string | null;
   last_seen_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+function parsePersistedProtocolVersions(
+  value: string | null,
+  peerNodeId: string,
+): MeshProtocolVersion[] {
+  if (!value) {
+    return [MESH_LEGACY_PROTOCOL_VERSION];
+  }
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!Array.isArray(parsed) || parsed.some((version) => typeof version !== "number")) {
+      throw new Error("protocol versions must be an array of numbers");
+    }
+    const normalized = normalizeMeshProtocolVersions(parsed);
+    return normalized.length > 0
+      ? normalized
+      : [MESH_LEGACY_PROTOCOL_VERSION];
+  } catch (error) {
+    log.warn("Invalid persisted Mesh protocol metadata", {
+      peerNodeId,
+      error: String(error),
+    });
+    return [MESH_LEGACY_PROTOCOL_VERSION];
+  }
+}
+
+function persistedProtocolVersion(
+  value: number | null,
+): MeshProtocolVersion {
+  return value === MESH_PROTOCOL_VERSION
+    ? MESH_PROTOCOL_VERSION
+    : MESH_LEGACY_PROTOCOL_VERSION;
 }
 
 function mapWorkerRegistrationRow(
@@ -835,6 +1005,17 @@ function mapWorkerRegistrationRow(
     lastSeenAt: row.last_seen_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    workerBinaryVersion: row.worker_binary_version,
+    workerSupportedProtocolVersions: parsePersistedProtocolVersions(
+      row.worker_supported_protocol_versions_json,
+      row.worker_node_id,
+    ),
+    workerPreferredProtocolVersion: persistedProtocolVersion(
+      row.worker_preferred_protocol_version,
+    ),
+    workerNegotiatedProtocolVersion: persistedProtocolVersion(
+      row.worker_negotiated_protocol_version,
+    ),
   };
 }
 
@@ -868,6 +1049,11 @@ interface ControllerGrantRow {
   route_kind: string;
   relay_url: string | null;
   relay_fingerprint: string | null;
+  controller_binary_version: string | null;
+  controller_supported_protocol_versions_json: string | null;
+  controller_preferred_protocol_version: number | null;
+  controller_negotiated_protocol_version: number | null;
+  controller_protocol_updated_at: string | null;
   grant_status: string;
   created_at: string;
   updated_at: string;
@@ -913,5 +1099,16 @@ function mapControllerGrantRow(
     grantStatus: row.grant_status as MeshGrantStatus,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    controllerBinaryVersion: row.controller_binary_version,
+    controllerSupportedProtocolVersions: parsePersistedProtocolVersions(
+      row.controller_supported_protocol_versions_json,
+      row.controller_node_id,
+    ),
+    controllerPreferredProtocolVersion: persistedProtocolVersion(
+      row.controller_preferred_protocol_version,
+    ),
+    controllerNegotiatedProtocolVersion: persistedProtocolVersion(
+      row.controller_negotiated_protocol_version,
+    ),
   };
 }

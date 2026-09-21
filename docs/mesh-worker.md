@@ -8,6 +8,24 @@ Mesh access is host-level access. The worker directory is the default working
 directory, not a sandbox or filesystem allowlist. Pair only controllers that
 are trusted to execute commands and access files on the worker host.
 
+## Protocol generations and migration
+
+Mesh protocol generations are global and aligned with the Clanky release major.
+The current generation is v5; v1 remains available only during the migration
+window. Controller, relay, and worker data directories migrate their stored
+Mesh metadata automatically at startup without replacing identities, keys, or
+grants. New enrollment negotiates the highest generation supported by both
+peers, while existing peers continue through the isolated v1 compatibility
+adapter until they are upgraded.
+
+The Mesh status and Settings views show each controller, relay, and worker
+binary version, supported generations, and the generation observed in the last
+successful exchange. Wait until every peer reports v5 before removing v1
+support. A future breaking generation should follow the same pattern: add the
+new generation behind a narrow adapter, migrate persisted state idempotently,
+run a short dual-version window, then delete the old adapter and its tests
+once rollout is confirmed.
+
 ## Choose a topology
 
 | Situation | Setup |

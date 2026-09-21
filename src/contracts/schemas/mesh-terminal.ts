@@ -4,18 +4,23 @@ import {
   MESH_TERMINAL_MAX_CLIPBOARD_BYTES,
   MESH_TERMINAL_MAX_INPUT_BYTES,
   MESH_TERMINAL_MAX_OUTPUT_BYTES,
-  MESH_TERMINAL_PROTOCOL_VERSION,
+  MESH_TERMINAL_LEGACY_PROTOCOL_VERSION,
 } from "@/shared/mesh-terminal";
+import { MESH_PROTOCOL_VERSION } from "@/shared/mesh-protocol";
 import { AgentProviderSchema } from "./workspace";
 
 const MeshTerminalPathSchema = z.string().min(1).max(16_384);
+const MeshTerminalProtocolVersionSchema = z.union([
+  z.literal(MESH_TERMINAL_LEGACY_PROTOCOL_VERSION),
+  z.literal(MESH_PROTOCOL_VERSION),
+]);
 const byteBoundedString = (maximumBytes: number) => z.string().refine(
   (value) => new TextEncoder().encode(value).byteLength <= maximumBytes,
   { message: `String exceeds the ${String(maximumBytes)} byte limit` },
 );
 
 export const MeshTerminalSessionRequestSchema = z.object({
-  protocolVersion: z.literal(MESH_TERMINAL_PROTOCOL_VERSION),
+  protocolVersion: MeshTerminalProtocolVersionSchema,
   capability: z.literal(MESH_TERMINAL_CAPABILITY),
   requestId: z.string().trim().min(1).max(200),
   callerNodeId: z.string().trim().min(1).max(200),
@@ -39,7 +44,7 @@ export const MeshTerminalSessionRequestSchema = z.object({
 });
 
 export const MeshTerminalSessionCloseRequestSchema = z.object({
-  protocolVersion: z.literal(MESH_TERMINAL_PROTOCOL_VERSION),
+  protocolVersion: MeshTerminalProtocolVersionSchema,
   sessionId: z.string().trim().min(1).max(200),
   sessionToken: z.string().trim().min(32).max(256),
   requestId: z.string().trim().min(1).max(200),

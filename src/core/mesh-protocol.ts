@@ -8,10 +8,14 @@
 import type {
   MeshEnrollmentRequestV1,
   MeshEnrollmentRequestV2,
+  MeshEnrollmentRequestV5,
   MeshEnrollmentResponseV1,
   MeshEnrollmentResponseV2,
-  MeshHealthCheck,
-  MeshHealthCheckResponse,
+  MeshEnrollmentResponseV5,
+  MeshHealthCheckV1,
+  MeshHealthCheckV5,
+  MeshHealthCheckResponseV1,
+  MeshHealthCheckResponseV5,
   MeshRevocationNotice,
   MeshWorkerKillRequest,
 } from "@/contracts/schemas/mesh";
@@ -19,16 +23,32 @@ import type { MeshExecutionSessionRequest } from "@/contracts/schemas/mesh-execu
 
 type UnsignedEnrollmentRequestV1 = Omit<MeshEnrollmentRequestV1, "signature">;
 type UnsignedEnrollmentRequestV2 = Omit<MeshEnrollmentRequestV2, "signature">;
+type UnsignedEnrollmentRequestV5 = Omit<MeshEnrollmentRequestV5, "signature">;
 type UnsignedEnrollmentResponseV1 = Omit<MeshEnrollmentResponseV1, "signature">;
 type UnsignedEnrollmentResponseV2 = Omit<MeshEnrollmentResponseV2, "signature">;
+type UnsignedEnrollmentResponseV5 = Omit<MeshEnrollmentResponseV5, "signature">;
 type UnsignedEnrollmentRequest =
   | UnsignedEnrollmentRequestV1
-  | UnsignedEnrollmentRequestV2;
+  | UnsignedEnrollmentRequestV2
+  | UnsignedEnrollmentRequestV5;
 type UnsignedEnrollmentResponse =
   | UnsignedEnrollmentResponseV1
-  | UnsignedEnrollmentResponseV2;
-type UnsignedHealthCheck = Omit<MeshHealthCheck, "signature">;
-type UnsignedHealthCheckResponse = Omit<MeshHealthCheckResponse, "signature">;
+  | UnsignedEnrollmentResponseV2
+  | UnsignedEnrollmentResponseV5;
+type UnsignedHealthCheckV1 = Omit<MeshHealthCheckV1, "signature">;
+type UnsignedHealthCheckV5 = Omit<MeshHealthCheckV5, "signature">;
+type UnsignedHealthCheck = UnsignedHealthCheckV1 | UnsignedHealthCheckV5;
+type UnsignedHealthCheckResponseV1 = Omit<
+  MeshHealthCheckResponseV1,
+  "signature"
+>;
+type UnsignedHealthCheckResponseV5 = Omit<
+  MeshHealthCheckResponseV5,
+  "signature"
+>;
+type UnsignedHealthCheckResponse =
+  | UnsignedHealthCheckResponseV1
+  | UnsignedHealthCheckResponseV5;
 type UnsignedRevocationNotice = Omit<MeshRevocationNotice, "signature">;
 type UnsignedWorkerKillRequest = Omit<MeshWorkerKillRequest, "signature">;
 type UnsignedExecutionSession = Omit<MeshExecutionSessionRequest, "signature">;
@@ -36,6 +56,31 @@ type UnsignedExecutionSession = Omit<MeshExecutionSessionRequest, "signature">;
 export function buildMeshEnrollmentRequestSigningPayload(
   envelope: UnsignedEnrollmentRequest,
 ): string {
+  if (envelope.protocolVersion === 5) {
+    const v5Envelope = envelope as UnsignedEnrollmentRequestV5;
+    return JSON.stringify([
+      "clanky-mesh-enrollment-request-v5",
+      v5Envelope.protocolVersion,
+      v5Envelope.workerNodeId,
+      v5Envelope.workerInstanceName ?? null,
+      v5Envelope.workerPublicKey,
+      v5Envelope.workerFingerprint,
+      v5Envelope.workerEncryptionPublicKey,
+      v5Envelope.workerDirectory,
+      v5Envelope.workerPlatform,
+      v5Envelope.workerCapabilities,
+      v5Envelope.workerAcceptRemoteExecution,
+      v5Envelope.workerConfigRevision,
+      v5Envelope.binaryVersion,
+      v5Envelope.supportedProtocolVersions,
+      v5Envelope.preferredProtocolVersion,
+      v5Envelope.enrollmentToken,
+      v5Envelope.expectedControllerFingerprint,
+      v5Envelope.route,
+      v5Envelope.nonce,
+      v5Envelope.expiresAt,
+    ]);
+  }
   if (envelope.protocolVersion === 2) {
     const relayEnvelope = envelope as UnsignedEnrollmentRequestV2;
     const payload: unknown[] = [
@@ -94,9 +139,27 @@ export function buildMeshEnrollmentRequestSigningPayload(
 export function buildMeshEnrollmentResponseSigningPayload(
   envelope: UnsignedEnrollmentResponse,
 ): string {
-  const domain = envelope.protocolVersion === 2
-    ? "clanky-mesh-enrollment-response-v2"
-    : "clanky-mesh-enrollment-response-v1";
+  const domain = envelope.protocolVersion === 5
+    ? "clanky-mesh-enrollment-response-v5"
+    : envelope.protocolVersion === 2
+      ? "clanky-mesh-enrollment-response-v2"
+      : "clanky-mesh-enrollment-response-v1";
+  if (envelope.protocolVersion === 5) {
+    const response = envelope as UnsignedEnrollmentResponseV5;
+    return JSON.stringify([
+      domain,
+      response.protocolVersion,
+      response.workerNodeId,
+      response.controllerNodeId,
+      response.controllerInstanceName,
+      response.controllerPublicKey,
+      response.controllerFingerprint,
+      response.controllerEncryptionPublicKey,
+      response.binaryVersion,
+      response.supportedProtocolVersions,
+      response.preferredProtocolVersion,
+    ]);
+  }
   const response = envelope.protocolVersion === 2
     ? envelope as UnsignedEnrollmentResponseV2
     : envelope as UnsignedEnrollmentResponseV1;
@@ -115,22 +178,33 @@ export function buildMeshEnrollmentResponseSigningPayload(
 export function buildMeshHealthCheckSigningPayload(
   envelope: UnsignedHealthCheck,
 ): string {
-  return JSON.stringify([
-    "clanky-mesh-health-check-v1",
+  const payload: unknown[] = [
+    envelope.protocolVersion === 5
+      ? "clanky-mesh-health-check-v5"
+      : "clanky-mesh-health-check-v1",
     envelope.protocolVersion,
     envelope.senderNodeId,
     envelope.senderPublicKey,
     envelope.senderFingerprint,
-    envelope.nonce,
-    envelope.sentAt,
-  ]);
+  ];
+  if (envelope.protocolVersion === 5) {
+    payload.push(
+      envelope.binaryVersion,
+      envelope.supportedProtocolVersions,
+      envelope.preferredProtocolVersion,
+    );
+  }
+  payload.push(envelope.nonce, envelope.sentAt);
+  return JSON.stringify(payload);
 }
 
 export function buildMeshHealthCheckResponseSigningPayload(
   envelope: UnsignedHealthCheckResponse,
 ): string {
   const payload: unknown[] = [
-    "clanky-mesh-health-check-response-v1",
+    envelope.protocolVersion === 5
+      ? "clanky-mesh-health-check-response-v5"
+      : "clanky-mesh-health-check-response-v1",
     envelope.protocolVersion,
     envelope.workerNodeId,
     envelope.controllerNodeId,
@@ -143,6 +217,14 @@ export function buildMeshHealthCheckResponseSigningPayload(
   if (envelope.workerPlatform !== undefined) {
     payload.push(envelope.workerPlatform);
   }
+  if (envelope.protocolVersion === 5) {
+    const v5Envelope = envelope as UnsignedHealthCheckResponseV5;
+    payload.push(
+      v5Envelope.binaryVersion,
+      v5Envelope.supportedProtocolVersions,
+      v5Envelope.preferredProtocolVersion,
+    );
+  }
   return JSON.stringify(payload);
 }
 
@@ -150,7 +232,9 @@ export function buildMeshRevocationNoticeSigningPayload(
   envelope: UnsignedRevocationNotice,
 ): string {
   return JSON.stringify([
-    "clanky-mesh-revocation-notice-v1",
+    envelope.protocolVersion === 5
+      ? "clanky-mesh-revocation-notice-v5"
+      : "clanky-mesh-revocation-notice-v1",
     envelope.protocolVersion,
     envelope.controllerNodeId,
     envelope.workerNodeId,
@@ -165,7 +249,9 @@ export function buildMeshWorkerKillRequestSigningPayload(
   envelope: UnsignedWorkerKillRequest,
 ): string {
   return JSON.stringify([
-    "clanky-mesh-worker-kill-request-v1",
+    envelope.protocolVersion === 5
+      ? "clanky-mesh-worker-kill-request-v5"
+      : "clanky-mesh-worker-kill-request-v1",
     envelope.protocolVersion,
     envelope.controllerNodeId,
     envelope.workerNodeId,
@@ -180,7 +266,9 @@ export function buildMeshExecutionSessionSigningPayload(
   envelope: UnsignedExecutionSession,
 ): string {
   const payload: unknown[] = [
-    "clanky-mesh-execution-session-v1",
+    envelope.protocolVersion === 5
+      ? "clanky-mesh-execution-session-v5"
+      : "clanky-mesh-execution-session-v1",
     envelope.protocolVersion,
     envelope.requestId,
     envelope.callerNodeId,

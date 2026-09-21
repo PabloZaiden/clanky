@@ -1,11 +1,17 @@
 import { z } from "zod";
 import {
   MESH_TCP_TUNNEL_CAPABILITY,
-  MESH_TCP_TUNNEL_PROTOCOL_VERSION,
+  MESH_TCP_TUNNEL_LEGACY_PROTOCOL_VERSION,
 } from "@/shared/mesh-tcp-tunnel";
+import { MESH_PROTOCOL_VERSION } from "@/shared/mesh-protocol";
+
+const MeshTcpTunnelProtocolVersionSchema = z.union([
+  z.literal(MESH_TCP_TUNNEL_LEGACY_PROTOCOL_VERSION),
+  z.literal(MESH_PROTOCOL_VERSION),
+]);
 
 export const MeshTcpTunnelSessionRequestSchema = z.object({
-  protocolVersion: z.literal(MESH_TCP_TUNNEL_PROTOCOL_VERSION),
+  protocolVersion: MeshTcpTunnelProtocolVersionSchema,
   capability: z.literal(MESH_TCP_TUNNEL_CAPABILITY),
   requestId: z.string().trim().min(1).max(200),
   callerNodeId: z.string().trim().min(1).max(200),

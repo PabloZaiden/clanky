@@ -4,7 +4,9 @@ export function buildMeshTcpTunnelSigningPayload(
   request: Omit<MeshTcpTunnelSessionRequest, "signature">,
 ): string {
   return JSON.stringify([
-    "clanky-mesh-tcp-tunnel-v1",
+    request.protocolVersion === 5
+      ? "clanky-mesh-tcp-tunnel-v5"
+      : "clanky-mesh-tcp-tunnel-v1",
     request.protocolVersion,
     request.capability,
     request.requestId,

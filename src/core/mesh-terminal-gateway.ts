@@ -17,8 +17,8 @@ import {
   MESH_TERMINAL_MAX_FRAME_BYTES,
   MESH_TERMINAL_MAX_HANDSHAKE_BYTES,
   MESH_TERMINAL_MAX_OUTPUT_BYTES,
-  MESH_TERMINAL_PROTOCOL_VERSION,
   MESH_TERMINAL_SESSION_TTL_MS,
+  type MeshTerminalProtocolVersion,
 } from "@/shared/mesh-terminal";
 import { getControllerGrant } from "../persistence/mesh";
 import {
@@ -88,7 +88,7 @@ interface MeshTerminalCloseState {
 }
 
 export interface MeshTerminalSessionResponse {
-  protocolVersion: typeof MESH_TERMINAL_PROTOCOL_VERSION;
+  protocolVersion: MeshTerminalProtocolVersion;
   capability: typeof MESH_TERMINAL_CAPABILITY;
   sessionId: string;
   sessionToken: string;
@@ -233,7 +233,7 @@ export class MeshTerminalGateway {
         this.usedNonces.delete(oldestReusable[0]);
       }
       return {
-        protocolVersion: MESH_TERMINAL_PROTOCOL_VERSION,
+        protocolVersion: request.protocolVersion,
         capability: MESH_TERMINAL_CAPABILITY,
         sessionId,
         sessionToken: lease.sessionToken,

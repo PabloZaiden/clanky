@@ -110,6 +110,22 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
     <div className="space-y-4">
       {mesh.error && mesh.error !== mesh.mutationError ? <SettingsError>{mesh.error}</SettingsError> : null}
 
+      {mesh.status ? (
+        <div className="rounded-md border border-gray-200 p-3 text-sm dark:border-gray-700">
+          <p className="font-medium">Controller runtime</p>
+          <p className="text-xs text-gray-600 dark:text-gray-300">
+            Binary: {mesh.status.protocol.binaryVersion ?? "unknown"} ·
+            {" "}Protocol: v{mesh.status.protocol.negotiatedProtocolVersion
+              ?? mesh.status.protocol.preferredProtocolVersion}
+          </p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Supported: {mesh.status.protocol.supportedProtocolVersions
+              .map((version) => `v${String(version)}`)
+              .join(", ")}
+          </p>
+        </div>
+      ) : null}
+
       <div className="space-y-2">
         {workers.length ? workers.map((worker) => (
           <div
@@ -142,6 +158,15 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
                   Last successful probe: {new Date(worker.lastSeenAt).toLocaleString()}
                 </p>
               ) : null}
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Binary: {worker.workerBinaryVersion ?? "unknown"} · Protocol: v{
+                  worker.workerNegotiatedProtocolVersion
+                    ?? worker.workerPreferredProtocolVersion
+                    ?? "unknown"
+                } · Supports: {worker.workerSupportedProtocolVersions?.map(
+                  (version) => `v${String(version)}`,
+                ).join(", ") ?? "unknown"}
+              </p>
             </div>
             {worker.grantStatus === "active" && worker.registrationScope !== "workspace" ? (
               <div className="flex items-center gap-2">

@@ -12,16 +12,21 @@ import {
   MESH_TERMINAL_CAPABILITY,
   MESH_TERMINAL_MAX_FRAME_BYTES,
   MESH_TERMINAL_MAX_INPUT_BYTES,
-  MESH_TERMINAL_PROTOCOL_VERSION,
   MESH_TERMINAL_SESSION_REQUEST_TIMEOUT_MS,
   MESH_TERMINAL_SESSION_REQUEST_TTL_MS,
   MESH_TERMINAL_WEBSOCKET_OPEN_TIMEOUT_MS,
+  MESH_TERMINAL_LEGACY_PROTOCOL_VERSION,
+  type MeshTerminalProtocolVersion,
 } from "@/shared/mesh-terminal";
+import { MESH_PROTOCOL_VERSION } from "@/shared/mesh-protocol";
 import type { AgentProvider } from "@/shared/settings";
 import type { TerminalConnectionMode } from "@/shared/terminal-session";
 import type { MeshPeerRoute } from "@/shared/mesh";
 import { createLogger } from "@pablozaiden/webapp/server";
-import { getWorkerRegistration } from "../../persistence/mesh";
+import {
+  getWorkerRegistration,
+  updateWorkerNegotiatedProtocolVersion,
+} from "../../persistence/mesh";
 import {
   ensureLocalMeshNodeIdentity,
   signMeshPayload,
@@ -42,9 +47,10 @@ import type {
   InteractiveTerminalConnectResult,
 } from "./interactive-terminal-connection";
 import { isDomainError } from "../../domain/domain-error";
+import { isMeshProtocolCompatibilityError } from "../mesh-protocol-version";
 
 interface MeshTerminalSessionResponse {
-  protocolVersion: typeof MESH_TERMINAL_PROTOCOL_VERSION;
+  protocolVersion: MeshTerminalProtocolVersion;
   capability: typeof MESH_TERMINAL_CAPABILITY;
   sessionId: string;
   expiresAt: string;
@@ -76,6 +82,7 @@ interface OpenMeshTerminalSession {
   route: MeshPeerRoute;
   sessionId: string;
   sessionToken: string;
+  protocolVersion: MeshTerminalProtocolVersion;
   expiresAt: number;
 }
 
@@ -406,45 +413,86 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
       );
     }
     const peerRoute = registration.route;
+    let protocolVersion: MeshTerminalProtocolVersion =
+      registration.workerNegotiatedProtocolVersion
+      === MESH_PROTOCOL_VERSION
+      ? MESH_PROTOCOL_VERSION
+      : MESH_TERMINAL_LEGACY_PROTOCOL_VERSION;
     const expiresAt = new Date(Date.now() + MESH_TERMINAL_SESSION_REQUEST_TTL_MS).toISOString();
-    const unsigned: Omit<MeshTerminalSessionRequest, "signature"> = {
-      protocolVersion: MESH_TERMINAL_PROTOCOL_VERSION,
-      capability: MESH_TERMINAL_CAPABILITY,
-      requestId: crypto.randomUUID(),
-      callerNodeId: identity.nodeId,
-      callerPublicKey: identity.publicKey,
-      callerFingerprint: identity.fingerprint,
-      callerEncryptionPublicKey: identity.encryptionPublicKey,
-      targetNodeId: this.config.executionNodeId,
-      workspaceId: this.config.workspaceId,
-      executionRoot: this.config.executionRoot,
-      directory: this.config.directory,
-      provider: this.config.provider,
-      terminalSessionId: this.config.terminalSessionId,
-      remoteSessionName: this.config.remoteSessionName,
-      connectionMode: this.config.connectionMode,
-      useTmux: this.config.useTmux,
-      allowPersistentSessionCreate: this.allowPersistentSessionCreate,
-      ...(this.runtimeEnvironment
-        ? {
-            encryptedEnvironment: encryptMeshPayload(
-              this.runtimeEnvironment,
-              registration.workerEncryptionPublicKey,
-            ),
-          }
-        : {}),
-      nonce: crypto.randomUUID(),
-      expiresAt,
+    const buildRequest = async (): Promise<MeshTerminalSessionRequest> => {
+      const unsigned: Omit<MeshTerminalSessionRequest, "signature"> = {
+        protocolVersion,
+        capability: MESH_TERMINAL_CAPABILITY,
+        requestId: crypto.randomUUID(),
+        callerNodeId: identity.nodeId,
+        callerPublicKey: identity.publicKey,
+        callerFingerprint: identity.fingerprint,
+        callerEncryptionPublicKey: identity.encryptionPublicKey,
+        targetNodeId: this.config.executionNodeId,
+        workspaceId: this.config.workspaceId,
+        executionRoot: this.config.executionRoot,
+        directory: this.config.directory,
+        provider: this.config.provider,
+        terminalSessionId: this.config.terminalSessionId,
+        remoteSessionName: this.config.remoteSessionName,
+        connectionMode: this.config.connectionMode,
+        useTmux: this.config.useTmux,
+        allowPersistentSessionCreate: this.allowPersistentSessionCreate,
+        ...(this.runtimeEnvironment
+          ? {
+              encryptedEnvironment: encryptMeshPayload(
+                this.runtimeEnvironment,
+                registration.workerEncryptionPublicKey,
+              ),
+            }
+          : {}),
+        nonce: crypto.randomUUID(),
+        expiresAt,
+      };
+      return {
+        ...unsigned,
+        signature: await signMeshPayload(buildMeshTerminalSessionSigningPayload(unsigned)),
+      };
     };
-    const request: MeshTerminalSessionRequest = {
-      ...unsigned,
-      signature: await signMeshPayload(buildMeshTerminalSessionSigningPayload(unsigned)),
-    };
-    const response = await this.post(peerRoute, "api/mesh/internal/terminal/session", request, {
-      "x-clanky-mesh-node-id": identity.nodeId,
-      "x-clanky-mesh-request-id": request.requestId,
-    });
-    if (response.protocolVersion !== MESH_TERMINAL_PROTOCOL_VERSION) {
+    let request = await buildRequest();
+    let response: MeshTerminalSessionResponse;
+    try {
+      response = await this.post(peerRoute, "api/mesh/internal/terminal/session", request, {
+        "x-clanky-mesh-node-id": identity.nodeId,
+        "x-clanky-mesh-request-id": request.requestId,
+      });
+    } catch (error) {
+      if (
+        protocolVersion !== MESH_PROTOCOL_VERSION
+        || !isMeshProtocolCompatibilityError(error)
+      ) {
+        throw error;
+      }
+      log.warn("Mesh terminal peer rejected v5; retrying with the legacy generation", {
+        executionNodeId: this.config.executionNodeId,
+        error: String(error),
+      });
+      protocolVersion = MESH_TERMINAL_LEGACY_PROTOCOL_VERSION;
+      try {
+        await updateWorkerNegotiatedProtocolVersion({
+          workerNodeId: this.config.executionNodeId,
+          localUserId,
+          negotiatedProtocolVersion: protocolVersion,
+          preferredProtocolVersion: protocolVersion,
+        });
+      } catch (updateError) {
+        log.warn("Mesh terminal protocol downgrade could not be persisted", {
+          executionNodeId: this.config.executionNodeId,
+          error: String(updateError),
+        });
+      }
+      request = await buildRequest();
+      response = await this.post(peerRoute, "api/mesh/internal/terminal/session", request, {
+        "x-clanky-mesh-node-id": identity.nodeId,
+        "x-clanky-mesh-request-id": request.requestId,
+      });
+    }
+    if (response.protocolVersion !== protocolVersion) {
       throw new DomainError("mesh_terminal_protocol_mismatch", "The Mesh peer uses an unsupported terminal protocol.");
     }
     if (response.capability !== MESH_TERMINAL_CAPABILITY) {
@@ -463,6 +511,7 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
       route: peerRoute,
       sessionId: response.sessionId,
       sessionToken,
+      protocolVersion,
       expiresAt: expiresAtMs,
     };
   }
@@ -540,7 +589,7 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
     session: OpenMeshTerminalSession,
   ): Promise<boolean> {
     const request: MeshTerminalSessionCloseRequest = {
-      protocolVersion: MESH_TERMINAL_PROTOCOL_VERSION,
+      protocolVersion: session.protocolVersion,
       sessionId: session.sessionId,
       sessionToken: session.sessionToken,
       requestId: crypto.randomUUID(),

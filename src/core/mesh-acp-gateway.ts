@@ -296,7 +296,15 @@ export class MeshAcpGateway {
     relay.expiryTimer = expiryTimer;
   }
 
-  async renew(sessionId: string, sessionToken: string): Promise<number> {
+  async renew(
+    sessionId: string,
+    sessionToken: string,
+  ): Promise<{
+    expiresAt: number;
+    protocolVersion: ReturnType<
+      typeof meshExecutionGateway.getSessionProtocolVersion
+    >;
+  }> {
     const relay = this.relays.get(sessionId);
     if (!relay) {
       throw new DomainError("mesh_acp_unavailable", "The mesh ACP relay is not connected.");
@@ -337,7 +345,13 @@ export class MeshAcpGateway {
       throw new DomainError("mesh_acp_unavailable", "The mesh ACP relay is not connected.");
     }
     this.scheduleRelayExpiry(sessionId, relay, expiresAt);
-    return expiresAt;
+    return {
+      expiresAt,
+      protocolVersion: meshExecutionGateway.getSessionProtocolVersion(
+        sessionId,
+        sessionToken,
+      ),
+    };
   }
 
   async message(sessionId: string, value: string | Buffer): Promise<void> {

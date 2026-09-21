@@ -153,6 +153,10 @@ describe("controller relay owner API", () => {
       updatedAt: expect.any(String),
       bootstrapEnvironment:
         `CLANKY_RELAY_CONTROLLER_FINGERPRINT=${identity.fingerprint}`,
+      relayBinaryVersion: expect.any(String),
+      relaySupportedProtocolVersions: [1, 5],
+      relayPreferredProtocolVersion: 5,
+      relayNegotiatedProtocolVersion: 5,
     });
 
     const status = await fetch(`${api!.url}/api/mesh/relay`);

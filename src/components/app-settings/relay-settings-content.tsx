@@ -115,6 +115,17 @@ export function RelaySettingsContent() {
               {status.connected ? "Connected" : status.paired ? "Disconnected" : "Not paired"}
             </span>
           </p>
+          <p>
+            Binary: {status.relayBinaryVersion ?? "unknown"} · Protocol: v{
+              status.relayNegotiatedProtocolVersion
+                ?? status.relayPreferredProtocolVersion
+            }
+          </p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Supported: {status.relaySupportedProtocolVersions
+              .map((version) => `v${String(version)}`)
+              .join(", ")}
+          </p>
           <CodeValue value={status.bootstrapEnvironment} />
         </div>
       ) : null}

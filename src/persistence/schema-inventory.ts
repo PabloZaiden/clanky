@@ -76,6 +76,7 @@ export const SCHEMA_TABLE_INVENTORY: readonly SchemaTableDefinition[] = [
   currentTable("mesh_worker_registrations", "clanky"),
   currentTable("mesh_controller_grants", "clanky"),
   currentTable("mesh_controller_relay_pairing", "clanky"),
+  currentTable("mesh_protocol_state", "clanky"),
   currentTable("mesh_node_identity", "clanky"),
 
   currentTable("workspace_worker_enrollments", "clanky"),

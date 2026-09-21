@@ -2,7 +2,15 @@
  * Transport-neutral contracts for execution on a mesh-owned workspace.
  */
 
-export const MESH_EXECUTION_PROTOCOL_VERSION = 1 as const;
+import { MESH_PROTOCOL_VERSION } from "./mesh-protocol";
+
+export const MESH_EXECUTION_LEGACY_PROTOCOL_VERSION = 1 as const;
+/** Legacy execution peers still use 1; new Mesh generations use global v5. */
+export const MESH_EXECUTION_PROTOCOL_VERSION =
+  MESH_EXECUTION_LEGACY_PROTOCOL_VERSION;
+export type MeshExecutionProtocolVersion =
+  | typeof MESH_EXECUTION_LEGACY_PROTOCOL_VERSION
+  | typeof MESH_PROTOCOL_VERSION;
 export const MESH_EXECUTION_CHANNEL = "command-executor" as const;
 export const MESH_ACP_CHANNEL = "acp" as const;
 export const MESH_EXECUTION_DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;

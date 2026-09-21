@@ -16,6 +16,10 @@ import type {
   ExecutionHostPlatform,
   ExecutionNodeConfiguration,
 } from "./execution-host";
+import type {
+  MeshProtocolMetadata,
+  MeshProtocolVersion,
+} from "./mesh-protocol";
 
 export const MESH_TRANSPORTS = ["https", "http"] as const;
 export type MeshTransport = (typeof MESH_TRANSPORTS)[number];
@@ -46,6 +50,11 @@ export interface MeshNodeIdentity {
   execution: ExecutionNodeConfiguration;
   createdAt: string;
   updatedAt: string;
+  /** Runtime metadata is added by status/discovery boundaries. */
+  binaryVersion?: string;
+  supportedProtocolVersions?: MeshProtocolVersion[];
+  preferredProtocolVersion?: MeshProtocolVersion;
+  negotiatedProtocolVersion?: MeshProtocolVersion | null;
 }
 
 export interface MeshDirectPeerRoute {
@@ -106,6 +115,10 @@ export interface MeshWorkerRegistration {
   lastSeenAt: string | null;
   createdAt: string;
   updatedAt: string;
+  workerBinaryVersion?: string | null;
+  workerSupportedProtocolVersions?: MeshProtocolVersion[];
+  workerPreferredProtocolVersion?: MeshProtocolVersion;
+  workerNegotiatedProtocolVersion?: MeshProtocolVersion | null;
 }
 
 /**
@@ -123,12 +136,17 @@ export interface MeshControllerGrant {
   grantStatus: MeshGrantStatus;
   createdAt: string;
   updatedAt: string;
+  controllerBinaryVersion?: string | null;
+  controllerSupportedProtocolVersions?: MeshProtocolVersion[];
+  controllerPreferredProtocolVersion?: MeshProtocolVersion;
+  controllerNegotiatedProtocolVersion?: MeshProtocolVersion | null;
 }
 
 /** Aggregated mesh status for controllers. */
 export interface MeshControllerStatus {
   node: MeshNodeIdentity;
   workers: MeshWorkerRegistration[];
+  protocol: MeshProtocolMetadata;
 }
 
 /** Aggregated mesh status for workers. */
@@ -136,6 +154,7 @@ export interface MeshWorkerStatus {
   node: MeshNodeIdentity;
   execution: MeshWorkerExecutionConfig;
   controllerCount: number;
+  protocol: MeshProtocolMetadata;
 }
 
 export type MeshStatusRecord = MeshControllerStatus | MeshWorkerStatus;
