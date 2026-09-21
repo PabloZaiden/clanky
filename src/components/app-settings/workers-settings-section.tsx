@@ -22,7 +22,12 @@ export function WorkersSettingsSection({ mesh }: { mesh: UseMeshResult }) {
           </svg>
           <span>Workers</span>
         </span>
-        <span onClick={(event) => event.stopPropagation()}>
+        <span
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+        >
           <Button
             type="button"
             size="sm"
