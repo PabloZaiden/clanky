@@ -162,8 +162,7 @@ function pairingStatus(
       ?? [MESH_PROTOCOL_VERSION],
     relayPreferredProtocolVersion: pairing?.relayPreferredProtocolVersion
       ?? MESH_PROTOCOL_VERSION,
-    relayNegotiatedProtocolVersion: pairing?.relayNegotiatedProtocolVersion
-      ?? MESH_PROTOCOL_VERSION,
+    relayNegotiatedProtocolVersion: pairing?.relayNegotiatedProtocolVersion ?? null,
   };
 }
 
