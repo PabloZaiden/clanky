@@ -4,7 +4,7 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
  */
 
 import { createLogger } from "@pablozaiden/webapp/server";
-import { isDomainError } from "../../core/domain-error";
+import { isDomainError } from "../../domain/domain-error";
 import { purgeArchivedWorkspaceTasks } from "../../core/settings-maintenance-service";
 import {
   domainErrorResponse,

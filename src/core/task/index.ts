@@ -17,7 +17,7 @@ import type { ModelConfig } from "@/shared/task";
 import type { CreateTaskOptions, StartTaskOptions, GenerateTaskTitleOptions, AcceptPlanOptions, AcceptPlanResult, AcceptTaskResult, SendFollowUpResult, SendFollowUpOptions, PushTaskResult, TaskResult } from "./task-types";
 import type { SeedPlanFilesOptions } from "./task-types";
 import type { PullRequestDestinationResponse } from "@/contracts";
-import type { MessageImageAttachment } from "@/shared/message-attachments";
+import type { MessageAttachment } from "@/shared/message-attachments";
 import type { AutomaticPrFlowExtractedFeedbackItem } from "../automatic-pr-feedback";
 
 import { TaskEngine } from "../task-engine";
@@ -95,11 +95,11 @@ export class TaskManager {
     return startPlanModeImpl(this.ctx, taskId, options);
   }
 
-  async startDraft(taskId: string, options: { planMode: boolean; attachments?: MessageImageAttachment[] }): Promise<Task> {
+  async startDraft(taskId: string, options: { planMode: boolean; attachments?: MessageAttachment[] }): Promise<Task> {
     return startDraftImpl(this.ctx, taskId, options);
   }
 
-  async sendPlanFeedback(taskId: string, feedback: string, attachments?: MessageImageAttachment[]): Promise<void> {
+  async sendPlanFeedback(taskId: string, feedback: string, attachments?: MessageAttachment[]): Promise<void> {
     return sendPlanFeedbackImpl(this.ctx, taskId, feedback, attachments);
   }
 
@@ -189,7 +189,7 @@ export class TaskManager {
   async setPendingPrompt(
     taskId: string,
     prompt: string,
-    attachments?: MessageImageAttachment[],
+    attachments?: MessageAttachment[],
   ): Promise<TaskResult> {
     return setPendingPromptImpl(this.ctx, taskId, prompt, attachments);
   }
@@ -212,14 +212,14 @@ export class TaskManager {
 
   async setPending(
     taskId: string,
-    options: { message?: string; model?: ModelConfig; attachments?: MessageImageAttachment[] },
+    options: { message?: string; model?: ModelConfig; attachments?: MessageAttachment[] },
   ): Promise<TaskResult> {
     return setPendingImpl(this.ctx, taskId, options);
   }
 
   async injectPending(
     taskId: string,
-    options: { message?: string; model?: ModelConfig; attachments?: MessageImageAttachment[] },
+    options: { message?: string; model?: ModelConfig; attachments?: MessageAttachment[] },
   ): Promise<TaskResult> {
     return injectPendingImpl(this.ctx, taskId, options);
   }
@@ -234,7 +234,7 @@ export class TaskManager {
   async addressReviewComments(
     taskId: string,
     comments: string,
-    attachments?: MessageImageAttachment[],
+    attachments?: MessageAttachment[],
   ): Promise<SendFollowUpResult> {
     return addressReviewCommentsImpl(this.ctx, taskId, comments, attachments);
   }

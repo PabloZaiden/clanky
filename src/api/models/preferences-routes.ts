@@ -16,7 +16,7 @@ import { defineRoutes, type RouteContext } from "@pablozaiden/webapp/server";
  */
 
 import { createLogger } from "@pablozaiden/webapp/server";
-import { isDomainError } from "../../core/domain-error";
+import { isDomainError } from "../../domain/domain-error";
 import { preferencesManager } from "../../core/preferences-manager";
 import { parseAndValidate } from "../validation";
 import { domainErrorResponse, internalErrorResponse } from "../helpers";

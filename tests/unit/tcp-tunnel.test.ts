@@ -7,7 +7,7 @@ import {
 } from "../../src/persistence/database";
 import { executionHostService } from "../../src/core/execution-host-service";
 import { openTcpTunnel } from "../../src/core/tcp-tunnel";
-import { runWithCurrentUser } from "../../src/core/user-context";
+import { runWithCurrentUser } from "../../src/context/user-context";
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 
 const owner: CurrentUser = {

@@ -6,7 +6,7 @@
 
 import type { AgentEvent, ChatEvent, TaskEvent, ProvisioningEvent, PreviewEvent, TerminalSessionEvent } from "@/shared";
 import { log } from "@pablozaiden/webapp/server";
-import { getCurrentUserId } from "./user-context";
+import { getCurrentUserId } from "../context/user-context";
 
 export interface EventContext {
   readonly userId?: string;

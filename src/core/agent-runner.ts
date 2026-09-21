@@ -2,9 +2,9 @@ import type { Agent, AgentRun, AgentRunTrigger } from "@/shared/agent";
 import { isAgentCodeEnabled } from "@/shared/agent";
 import type { ChatEvent } from "@/shared";
 import { createTranscriptChangeSet } from "@/shared";
-import type { MessageImageAttachment } from "@/shared/message-attachments";
+import type { MessageAttachment } from "@/shared/message-attachments";
 import { createTimestamp } from "@/shared/events";
-import { DomainError, isDomainError } from "./domain-error";
+import { DomainError, isDomainError } from "../domain/domain-error";
 import { chatManager } from "./chat-manager";
 import {
   loadAgent,
@@ -39,7 +39,7 @@ function createRunFromAgent(
   agent: Agent,
   trigger: AgentRunTrigger,
   scheduledFor: string,
-  attachments: MessageImageAttachment[] = [],
+  attachments: MessageAttachment[] = [],
 ): AgentRun {
   const now = createTimestamp();
   return {
@@ -93,7 +93,7 @@ export class AgentRunner {
     trigger: AgentRunTrigger,
     options: {
       scheduledFor?: string;
-      attachments?: MessageImageAttachment[];
+      attachments?: MessageAttachment[];
     } = {},
   ): Promise<AgentRun> {
     const run = await this.startAgentRun(agent, trigger, options);
@@ -109,7 +109,7 @@ export class AgentRunner {
     trigger: AgentRunTrigger,
     options: {
       scheduledFor?: string;
-      attachments?: MessageImageAttachment[];
+      attachments?: MessageAttachment[];
     } = {},
   ): Promise<AgentRun> {
     if (agent.config.useWorktree) {

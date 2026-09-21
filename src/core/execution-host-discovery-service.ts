@@ -15,7 +15,7 @@ import {
   type ExecutionHostCommandContext,
 } from "./execution-host-service";
 import { checkExecutionHostPrerequisites } from "./ssh-server-prerequisites";
-import { DomainError } from "./domain-error";
+import { DomainError } from "../domain/domain-error";
 
 export interface ExecutionHostDiscoveryContext extends ExecutionHostCommandContext {
   repositoriesBasePath: string | null;

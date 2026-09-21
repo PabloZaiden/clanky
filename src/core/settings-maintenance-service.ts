@@ -8,7 +8,7 @@
 import { deleteAndReinitializeDatabase } from "../persistence/database";
 import { isArchivedTask } from "../utils";
 import { backendManager } from "./backend-manager";
-import { DomainError } from "./domain-error";
+import { DomainError } from "../domain/domain-error";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { taskManager } from "./task-manager";
 import { workspaceManager } from "./workspace-manager";

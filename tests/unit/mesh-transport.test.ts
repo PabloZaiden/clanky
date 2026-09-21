@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { DomainError } from "../../src/core/domain-error";
+import { DomainError } from "../../src/domain/domain-error";
 import {
   assertMeshEndpointAllowed,
   resolveAdvertisedMeshEndpoint,

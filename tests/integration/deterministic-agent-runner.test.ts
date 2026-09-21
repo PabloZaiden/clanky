@@ -11,7 +11,7 @@ import { mkdtemp, rm } from "fs/promises";
 import { join } from "path";
 import { closeDatabase, initializeDatabase } from "../../src/persistence/database";
 import { createWorkspace } from "../../src/persistence/workspaces";
-import { runWithCurrentUser } from "../../src/core/user-context";
+import { runWithCurrentUser } from "../../src/context/user-context";
 import {
   getTestLocalExecutionHostBinding,
   seedTestOwnerUser,

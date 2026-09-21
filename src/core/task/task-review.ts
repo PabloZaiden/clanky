@@ -1,6 +1,6 @@
 import type { TaskCtx } from "./context";
 import type { Task, ModelConfig } from "@/shared/task";
-import type { MessageImageAttachment } from "@/shared/message-attachments";
+import type { MessageAttachment } from "@/shared/message-attachments";
 import type { SendFollowUpResult } from "./task-types";
 import type { AutomaticPrFlowFeedbackItem } from "../automatic-pr-flow-github";
 import type { AutomaticPrFlowExtractedFeedbackItem } from "../automatic-pr-feedback";
@@ -26,7 +26,7 @@ export async function addressReviewCommentsImpl(
   ctx: TaskCtx,
   taskId: string,
   comments: string,
-  attachments: MessageImageAttachment[] = [],
+  attachments: MessageAttachment[] = [],
 ): Promise<SendFollowUpResult> {
   if (!comments || comments.trim() === "") {
     return taskFailure("invalid_task_input", "Comments cannot be empty");
@@ -402,7 +402,7 @@ export async function startFeedbackCycleImpl(
     prompt: string;
     model?: ModelConfig;
     reviewCommentText?: string;
-    attachments?: MessageImageAttachment[];
+    attachments?: MessageAttachment[];
   }
 ): Promise<SendFollowUpResult> {
   const task = await loadTask(taskId);

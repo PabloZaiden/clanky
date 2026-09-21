@@ -69,7 +69,7 @@ export const PairControllerRelayRequestSchema = z.object({
 
 export const ControllerRelayPairingStatusSchema = z.object({
   paired: z.boolean(),
-  // Status must remain readable when a legacy persisted URL is now invalid.
+  // Status must remain readable when a persisted URL is now invalid.
   relayUrl: z.string().trim().url().nullable(),
   relayFingerprint: RelayFingerprintSchema.nullable(),
   controllerFingerprint: RelayFingerprintSchema,

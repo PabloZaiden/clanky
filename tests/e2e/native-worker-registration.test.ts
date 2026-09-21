@@ -69,7 +69,6 @@ async function exerciseMeshAcpRuntime(
     });
     try {
       await backend.connect({
-        mode: "spawn",
         provider: "copilot",
         directory,
         mesh: {

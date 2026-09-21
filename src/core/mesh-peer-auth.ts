@@ -12,7 +12,7 @@ import {
   getWorkerRegistration,
 } from "../persistence/mesh";
 import { getMeshNodeFingerprint } from "../persistence/mesh-node-identity";
-import { DomainError } from "./domain-error";
+import { DomainError } from "../domain/domain-error";
 
 export interface TrustedController {
   grant: MeshControllerGrant;
@@ -51,8 +51,7 @@ export async function requireTrustedController(options: {
   controllerNodeId: string;
   publicKey: string;
   fingerprint: string;
-  encryptionPublicKey?: string;
-  requireEncryptionKey?: boolean;
+  encryptionPublicKey: string;
   context?: string;
 }): Promise<TrustedController> {
   const context = options.context ?? "controller";
@@ -74,11 +73,7 @@ export async function requireTrustedController(options: {
       `The ${context} identity does not match the stored grant.`,
     );
   }
-  if (
-    grant.controllerEncryptionPublicKey
-    && options.requireEncryptionKey !== false
-    && (!options.encryptionPublicKey || grant.controllerEncryptionPublicKey !== options.encryptionPublicKey)
-  ) {
+  if (grant.controllerEncryptionPublicKey !== options.encryptionPublicKey) {
     throw new DomainError(
       "mesh_peer_not_trusted",
       `The ${context} encryption identity does not match the stored grant.`,

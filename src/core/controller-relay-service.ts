@@ -25,7 +25,7 @@ import {
 import {
   ensureLocalMeshNodeIdentity,
 } from "../persistence/mesh-node-identity";
-import { DomainError } from "./domain-error";
+import { DomainError } from "../domain/domain-error";
 import { meshStateEventEmitter } from "./event-emitter";
 import {
   MeshRelayConnector,

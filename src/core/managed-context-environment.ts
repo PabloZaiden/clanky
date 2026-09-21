@@ -3,7 +3,7 @@
  */
 
 import type { ManagedRuntimeCredential } from "./managed-credential-service";
-import { DomainError } from "./domain-error";
+import { DomainError } from "../domain/domain-error";
 
 export interface ManagedContextEnvironment extends Record<string, string> {
   CLANKY_BASE_URL: string;

@@ -71,7 +71,6 @@ export function buildConnectionConfig(
   const derivedCommand = buildAgentRuntimeCommand(settings, directory, runtimeEnvironment);
   const sshTarget = getSshConnectionTargetFromSettings(settings);
   return {
-    mode: "spawn",
     provider: settings.agent.provider,
     transport: settings.agent.transport,
     hostname: sshTarget?.host,

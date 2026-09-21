@@ -8,7 +8,7 @@
  */
 
 import { createLogger } from "@pablozaiden/webapp/server";
-import { DomainError } from "./domain-error";
+import { DomainError } from "../domain/domain-error";
 import { meshAcpGateway } from "./mesh-acp-gateway";
 import { meshExecutionGateway } from "./mesh-execution-gateway";
 import { meshTcpTunnelGateway } from "./mesh-tcp-tunnel-gateway";

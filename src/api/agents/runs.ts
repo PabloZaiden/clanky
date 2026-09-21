@@ -10,7 +10,7 @@ import type { Workspace } from "@/shared/workspace";
 import { AgentRunsQuerySchema, DeleteAgentRunsRequestSchema, RunAgentRequestSchema, TestAgentCodeRequestSchema } from "@/contracts/schemas";
 import type { TestAgentCodeRequest } from "@/contracts/schemas";
 import { agentManager } from "../../core/agent-manager";
-import { isDomainError } from "../../core/domain-error";
+import { isDomainError } from "../../domain/domain-error";
 import { testDeterministicAgentCode } from "../../core/deterministic-agent-test";
 import { assertWorktreesAllowed, isGitBackedWorkspace } from "../../core/workspace-capabilities";
 import { domainErrorResponse, errorResponse, internalErrorResponse, requireWorkspace, successResponse } from "../helpers";

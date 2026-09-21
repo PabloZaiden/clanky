@@ -18,7 +18,7 @@ import { TestCommandExecutor } from "./mocks/mock-executor";
 import { MockAcpBackend, defaultTestModel } from "./mocks/mock-backend";
 import type { TaskEvent } from "@/shared/events";
 import { getDefaultServerSettings } from "@/shared/settings";
-import { runWithCurrentUser } from "../src/core/user-context";
+import { runWithCurrentUser } from "../src/context/user-context";
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import { initializeGitRepository } from "./helpers/git-fixtures";
 import { pollUntil } from "./helpers/polling";

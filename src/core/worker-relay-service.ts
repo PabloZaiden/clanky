@@ -6,7 +6,7 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import type { MeshControllerGrant, MeshRelayPeerRoute } from "@/shared/mesh";
 import { normalizeMeshRelayOrigin } from "@/shared/mesh-relay";
 import { listControllerGrants } from "../persistence/mesh";
-import { DomainError } from "./domain-error";
+import { DomainError } from "../domain/domain-error";
 import { MeshRelayConnectorManager } from "./mesh-relay-connector-manager";
 import { requireMeshRuntimeRole } from "./mesh-runtime";
 

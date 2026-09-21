@@ -1,4 +1,4 @@
-import type { MessageImageAttachment } from "./message-attachments";
+import type { MessageAttachment } from "./message-attachments";
 import {
   getToolCallOutputLabel,
   getToolCallSummary,
@@ -9,7 +9,7 @@ import {
 export interface ToolCallImagePreviewExtra {
   id: string;
   type: "image_preview";
-  image: MessageImageAttachment;
+  image: MessageAttachment;
   sourcePath?: string;
 }
 

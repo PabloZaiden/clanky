@@ -12,18 +12,18 @@ import {
   type SetPendingResult,
 } from "../taskActions";
 import { createLogger } from "@pablozaiden/webapp/web";
-import type { MessageImageAttachment } from "@/shared/message-attachments";
+import type { MessageAttachment } from "@/shared/message-attachments";
 import type { UseTaskActionsParams } from "./useTaskActions";
 
 const log = createLogger("useTask");
 
 export interface UseTaskPendingActionsResult {
-  setPendingPrompt: (prompt: string, attachments?: MessageImageAttachment[]) => Promise<boolean>;
+  setPendingPrompt: (prompt: string, attachments?: MessageAttachment[]) => Promise<boolean>;
   clearPendingPrompt: () => Promise<boolean>;
   setPending: (options: {
     message?: string;
     model?: { providerID: string; modelID: string };
-    attachments?: MessageImageAttachment[];
+    attachments?: MessageAttachment[];
   }) => Promise<SetPendingResult>;
   clearPending: () => Promise<boolean>;
 }
@@ -33,7 +33,7 @@ export function useTaskPendingActions(params: UseTaskActionsParams): UseTaskPend
     params;
 
   const setPendingPrompt = useCallback(
-    async (prompt: string, attachments?: MessageImageAttachment[]): Promise<boolean> => {
+    async (prompt: string, attachments?: MessageAttachment[]): Promise<boolean> => {
       const actionTaskId = taskId;
       const staleAction = ignoreStaleTaskAction("setPendingPrompt", actionTaskId, false);
       if (staleAction !== null) {
@@ -91,7 +91,7 @@ export function useTaskPendingActions(params: UseTaskActionsParams): UseTaskPend
     async (options: {
       message?: string;
       model?: { providerID: string; modelID: string };
-      attachments?: MessageImageAttachment[];
+      attachments?: MessageAttachment[];
     }): Promise<SetPendingResult> => {
       const actionTaskId = taskId;
       const staleAction = ignoreStaleTaskAction("setPending", actionTaskId, { success: false });

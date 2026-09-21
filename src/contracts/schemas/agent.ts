@@ -7,7 +7,7 @@
 import { z } from "zod";
 import { isValidIanaTimeZone } from "@/shared";
 import { ModelConfigSchema } from "./model";
-import { TaskNameSchema, MessageImageAttachmentsSchema } from "./task";
+import { TaskNameSchema, MessageAttachmentsSchema } from "./task";
 
 export const AgentScheduleIntervalUnitSchema = z.enum(["minutes", "hours", "days"]);
 
@@ -81,7 +81,7 @@ export const GenerateAgentCodeRequestSchema = z.object({
   chatId: z.string().uuid().optional(),
   generationMode: z.enum(["initial", "follow_up"]).optional(),
   message: z.string().trim().min(1).optional(),
-  attachments: MessageImageAttachmentsSchema.default([]),
+  attachments: MessageAttachmentsSchema.default([]),
 });
 
 export const PrepareGenerateAgentCodeRequestSchema = z.object({
@@ -101,7 +101,7 @@ export const TestAgentCodeRequestSchema = z.object({
 });
 
 export const RunAgentRequestSchema = z.object({
-  attachments: MessageImageAttachmentsSchema.default([]),
+  attachments: MessageAttachmentsSchema.default([]),
 }).default({ attachments: [] });
 
 export const DeleteAgentRunsRequestSchema = z.object({

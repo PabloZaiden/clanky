@@ -4,7 +4,7 @@
 
 import { log } from "@pablozaiden/webapp/server";
 import type { TaskConfig, TaskState, ModelConfig } from "@/shared/task";
-import type { MessageImageAttachment } from "@/shared/message-attachments";
+import type { MessageAttachment } from "@/shared/message-attachments";
 import type { LogLevel } from "@/shared/events";
 import type { PromptInput } from "../../backends/types";
 import { buildPromptParts } from "../../backends/prompt-parts";
@@ -17,11 +17,11 @@ export interface PromptBuildContext {
   state: TaskState;
   workingDirectory: string;
   stopDetector: StopPatternDetector;
-  emitUserMessage: (content: string, idSuffix?: string, attachments?: MessageImageAttachment[]) => void;
+  emitUserMessage: (content: string, idSuffix?: string, attachments?: MessageAttachment[]) => void;
   emitLog: (level: LogLevel, message: string, details?: Record<string, unknown>) => string;
   updateState: (update: Partial<TaskState>) => void;
-  consumeInitialPromptAttachments: () => MessageImageAttachment[];
-  consumePendingPromptAttachments: () => MessageImageAttachment[];
+  consumeInitialPromptAttachments: () => MessageAttachment[];
+  consumePendingPromptAttachments: () => MessageAttachment[];
   consumeSessionRecovery: () => boolean;
 }
 
@@ -70,7 +70,7 @@ const BLOCKED_OUTCOME_INSTRUCTION = `- If you are blocked by an external depende
 
 Do not claim completion. Clanky will stop the task without pushing it, and the user can resume it with a follow-up message.`;
 
-function consumePendingOrInitialAttachments(ctx: PromptBuildContext): MessageImageAttachment[] {
+function consumePendingOrInitialAttachments(ctx: PromptBuildContext): MessageAttachment[] {
   const pendingAttachments = ctx.consumePendingPromptAttachments();
   if (pendingAttachments.length > 0) {
     return pendingAttachments;

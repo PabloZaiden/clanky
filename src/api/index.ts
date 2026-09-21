@@ -25,7 +25,7 @@
  */
 
 import { defineRoutes, type RouteDefinition, type RouteTable } from "@pablozaiden/webapp/server";
-import { runWithCurrentUser } from "../core/user-context";
+import { runWithCurrentUser } from "../context/user-context";
 import { agentPromptBridgeRoutes } from "./agent-prompt-bridge";
 import { tasksRoutes } from "./tasks";
 import { modelsAndPreferencesRoutes } from "./models";

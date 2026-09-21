@@ -67,8 +67,8 @@ interface StoredMeshNodeIdentity {
   publicKey: string;
   privateKey: string;
   fingerprint: string;
-  encryptionPublicKey?: string;
-  encryptionPrivateKey?: string;
+  encryptionPublicKey: string;
+  encryptionPrivateKey: string;
   execution: ExecutionNodeConfiguration;
   createdAt: string;
   updatedAt: string;
@@ -249,6 +249,8 @@ function parseStoredIdentity(raw: string): StoredMeshNodeIdentity {
     || typeof record["publicKey"] !== "string"
     || typeof record["privateKey"] !== "string"
     || typeof record["fingerprint"] !== "string"
+    || typeof record["encryptionPublicKey"] !== "string"
+    || typeof record["encryptionPrivateKey"] !== "string"
     || typeof record["createdAt"] !== "string"
     || typeof record["updatedAt"] !== "string"
   ) {
@@ -263,6 +265,8 @@ function parseStoredIdentity(raw: string): StoredMeshNodeIdentity {
     publicKey: record["publicKey"],
     privateKey: record["privateKey"],
     fingerprint: record["fingerprint"],
+    encryptionPublicKey: record["encryptionPublicKey"],
+    encryptionPrivateKey: record["encryptionPrivateKey"],
     execution: createDefaultExecutionNodeConfiguration(
       typeof record["instanceName"] === "string"
         ? record["instanceName"]
@@ -326,34 +330,23 @@ function parseStoredIdentity(raw: string): StoredMeshNodeIdentity {
     throw new DomainError("mesh_node_identity_invalid", "The stored mesh node identity fingerprint does not match its public key.");
   }
 
-  if (
-    (record["encryptionPublicKey"] !== undefined && typeof record["encryptionPublicKey"] !== "string")
-    || (record["encryptionPrivateKey"] !== undefined && typeof record["encryptionPrivateKey"] !== "string")
-    || (record["encryptionPublicKey"] !== undefined) !== (record["encryptionPrivateKey"] !== undefined)
-  ) {
-    throw new DomainError("mesh_node_identity_invalid", "The stored mesh node encryption keys are invalid.");
-  }
-  identity.encryptionPublicKey = record["encryptionPublicKey"] as string | undefined;
-  identity.encryptionPrivateKey = record["encryptionPrivateKey"] as string | undefined;
-  if (identity.encryptionPublicKey && identity.encryptionPrivateKey) {
-    validateMeshEncryptionPublicKey(identity.encryptionPublicKey);
-    try {
-      const privateKey = createPrivateKey(identity.encryptionPrivateKey);
-      const derivedPublicKey = createPublicKey(privateKey).export({ format: "der", type: "spki" });
-      const expectedPublicKey = createPublicKey(identity.encryptionPublicKey).export({
-        format: "der",
-        type: "spki",
-      });
-      if (!Buffer.from(derivedPublicKey).equals(Buffer.from(expectedPublicKey))) {
-        throw new Error("mesh encryption private and public keys do not match");
-      }
-    } catch (error) {
-      throw new DomainError(
-        "mesh_node_identity_invalid",
-        "The stored mesh node encryption keys are invalid.",
-        { cause: error },
-      );
+  validateMeshEncryptionPublicKey(identity.encryptionPublicKey);
+  try {
+    const privateKey = createPrivateKey(identity.encryptionPrivateKey);
+    const derivedPublicKey = createPublicKey(privateKey).export({ format: "der", type: "spki" });
+    const expectedPublicKey = createPublicKey(identity.encryptionPublicKey).export({
+      format: "der",
+      type: "spki",
+    });
+    if (!Buffer.from(derivedPublicKey).equals(Buffer.from(expectedPublicKey))) {
+      throw new Error("mesh encryption private and public keys do not match");
     }
+  } catch (error) {
+    throw new DomainError(
+      "mesh_node_identity_invalid",
+      "The stored mesh node encryption keys are invalid.",
+      { cause: error },
+    );
   }
 
   return identity;
@@ -447,7 +440,7 @@ function upsertIdentityRows(identity: StoredMeshNodeIdentity): void {
     identity.meshEndpoint,
     identity.publicKey,
     identity.fingerprint,
-    identity.encryptionPublicKey ?? null,
+    identity.encryptionPublicKey,
     JSON.stringify(identity.execution),
     identity.createdAt,
     now,
@@ -457,8 +450,8 @@ function upsertIdentityRows(identity: StoredMeshNodeIdentity): void {
 /**
  * Ensure that this data directory has a durable node identity.
  *
- * After migration v45 (clean-break), the DB row is cleared but the identity
- * file may remain. In that case, delete the stale file and generate fresh.
+ * If the database row is missing while the identity file remains, remove the
+ * stale file and generate a fresh identity.
  */
 export async function ensureLocalMeshNodeIdentity(): Promise<MeshNodeIdentity> {
   const db = getDatabase();
@@ -481,7 +474,7 @@ export async function ensureLocalMeshNodeIdentity(): Promise<MeshNodeIdentity> {
       if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) {
         throw new DomainError(
           "mesh_node_identity_reset_failed",
-          "The legacy Mesh identity could not be removed.",
+          "The stale Mesh identity could not be removed.",
           { cause: error },
         );
       }
@@ -496,19 +489,6 @@ export async function ensureLocalMeshNodeIdentity(): Promise<MeshNodeIdentity> {
   }
 
   let identity = stored ?? createStoredIdentity();
-  if (!identity.encryptionPublicKey || !identity.encryptionPrivateKey) {
-    const encryptionKeys = generateKeyPairSync("rsa", {
-      modulusLength: 2048,
-      publicExponent: 0x10001,
-    });
-    identity = {
-      ...identity,
-      encryptionPublicKey: asPem(encryptionKeys.publicKey.export({ format: "pem", type: "spki" })),
-      encryptionPrivateKey: asPem(encryptionKeys.privateKey.export({ format: "pem", type: "pkcs8" })),
-      updatedAt: new Date().toISOString(),
-    };
-    await writeStoredIdentity(identity);
-  }
   if (row && (
     row.node_id !== identity.nodeId
     || (row.instance_name ?? null) !== identity.instanceName

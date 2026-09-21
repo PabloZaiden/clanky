@@ -1,6 +1,6 @@
 import type { MeshPeerRoute } from "@/shared/mesh";
 import { assertMeshWorkerTlsCertificate } from "../persistence/mesh-worker-tls";
-import { DomainError } from "./domain-error";
+import { DomainError } from "../domain/domain-error";
 import { resolveMeshRoute } from "./mesh-transport-config";
 
 export interface MeshPeerRequest {

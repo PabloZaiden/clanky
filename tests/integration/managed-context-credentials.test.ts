@@ -14,7 +14,7 @@ import {
   listContextApiKeyAssociationsForUser,
 } from "../../src/persistence/context-api-keys";
 import { closeDatabase, initializeDatabase } from "../../src/persistence/database";
-import { runWithCurrentUser } from "../../src/core/user-context";
+import { runWithCurrentUser } from "../../src/context/user-context";
 import { getTestLocalExecutionHostBinding, testOwnerUser } from "../setup";
 import type { Workspace } from "@/shared";
 import { ensureExecutionHost } from "../../src/persistence/execution-hosts";

@@ -21,8 +21,6 @@ export interface ConnectionInfo {
  * Configuration for connecting to an ACP backend.
  */
 export interface BackendConnectionConfig {
-  /** Backend runtime mode (ACP backends currently use "spawn") */
-  mode: "spawn" | "connect";
   /** Selected agent provider (used by ACP backends) */
   provider?: AgentProvider;
   /** Selected agent transport (used by ACP backends) */

@@ -27,7 +27,7 @@ import {
 } from "../persistence/preferences";
 import type { CheapModelSelection } from "@/contracts/schemas/model";
 import type { DashboardViewMode, QuickChatSettings } from "@/shared/preferences";
-import { DomainError } from "./domain-error";
+import { DomainError } from "../domain/domain-error";
 import { workspaceManager } from "./workspace-manager";
 
 export interface LastModelPreference {

@@ -29,7 +29,7 @@ import {
 } from "@/shared";
 import { DEFAULT_WORKSPACE_TYPE } from "@/shared/workspace";
 import { backendManager } from "./backend-manager";
-import { DomainError } from "./domain-error";
+import { DomainError } from "../domain/domain-error";
 import {
   deleteWorkspaceWithOptions,
   type DeleteWorkspaceOptions,
@@ -41,7 +41,7 @@ import { withWorkspaceExecutionLock } from "./workspace-execution-lock";
 import { executionHostService } from "./execution-host-service";
 import { workspaceWorkerEnrollmentService } from "./workspace-worker-enrollment-service";
 import { meshManager } from "./mesh-manager";
-import { requireCurrentUserId } from "./user-context";
+import { requireCurrentUserId } from "../context/user-context";
 import {
   captureWorkspaceSshTargetState,
   ensureWorkspaceSshTarget,

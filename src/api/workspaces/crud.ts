@@ -5,7 +5,7 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
  */
 
 import { createLogger } from "@pablozaiden/webapp/server";
-import { isDomainError } from "../../core/domain-error";
+import { isDomainError } from "../../domain/domain-error";
 import { workspaceManager } from "../../core/workspace-manager";
 import { parseAndValidate } from "../validation";
 import {

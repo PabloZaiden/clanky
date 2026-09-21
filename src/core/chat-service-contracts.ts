@@ -28,7 +28,7 @@ import type {
   ToolCallRecord,
 } from "@/shared";
 import type { ChatEvent } from "@/shared/events";
-import type { MessageImageAttachment } from "@/shared/message-attachments";
+import type { MessageAttachment } from "@/shared/message-attachments";
 import type { Workspace } from "@/shared/workspace";
 import type { EventStream } from "../utils/event-stream";
 import type { SimpleEventEmitter } from "./event-emitter";
@@ -91,13 +91,13 @@ export type ChatConfigUpdates = Partial<
 
 export interface ChatMessageOptions {
   message?: string;
-  attachments?: MessageImageAttachment[];
+  attachments?: MessageAttachment[];
   credentialToken?: string | null;
 }
 
 export interface NormalizedChatMessageInput {
   message: string;
-  attachments: MessageImageAttachment[];
+  attachments: MessageAttachment[];
 }
 
 export interface ChatDirectoryResolution {

@@ -16,7 +16,7 @@ import { ProvisioningAttempt } from "./attempt";
 import { emitJobCancelled, emitJobDismissed, emitJobStarted } from "./job-events";
 import { appendSystemLog, persistProvisioningState } from "./job-logger";
 import type { ProvisioningJobRecord, StartProvisioningJobOptions } from "./types";
-import { requireCurrentUser, requireCurrentUserId, runWithCurrentUser } from "../user-context";
+import { requireCurrentUser, requireCurrentUserId, runWithCurrentUser } from "../../context/user-context";
 import {
   claimProvisioningTarget,
   getProvisioningTargetKey,

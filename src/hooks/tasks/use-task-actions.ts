@@ -4,7 +4,7 @@
 
 import { useCallback } from "react";
 import type { Task } from "@/shared";
-import type { MessageImageAttachment } from "@/shared/message-attachments";
+import type { MessageAttachment } from "@/shared/message-attachments";
 import {
   acceptTaskApi,
   pushTaskApi,
@@ -32,7 +32,7 @@ export interface UseTaskActionsResult {
   discardTask: (id: string) => Promise<boolean>;
   purgeTask: (id: string) => Promise<boolean>;
   purgeArchivedWorkspaceTasks: (workspaceId: string) => Promise<PurgeArchivedTasksResult>;
-  addressReviewComments: (id: string, comments: string, attachments?: MessageImageAttachment[]) => Promise<AddressCommentsResult>;
+  addressReviewComments: (id: string, comments: string, attachments?: MessageAttachment[]) => Promise<AddressCommentsResult>;
 }
 
 export function useTaskActions({ setError, setTasks, refreshTask }: UseTaskActionsOptions): UseTaskActionsResult {
@@ -116,7 +116,7 @@ export function useTaskActions({ setError, setTasks, refreshTask }: UseTaskActio
   const addressReviewComments = useCallback(async (
     id: string,
     comments: string,
-    attachments?: MessageImageAttachment[],
+    attachments?: MessageAttachment[],
   ): Promise<AddressCommentsResult> => {
     try {
       const result = await addressReviewCommentsApi(id, comments, attachments);

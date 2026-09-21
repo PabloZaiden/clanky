@@ -34,14 +34,14 @@ import {
   requestMeshPeer,
   type MeshDuplexSocket,
 } from "../mesh-peer-transport";
-import { requireCurrentUserId } from "../user-context";
-import { DomainError } from "../domain-error";
+import { requireCurrentUserId } from "../../context/user-context";
+import { DomainError } from "../../domain/domain-error";
 import type {
   InteractiveTerminalCallbacks,
   InteractiveTerminalConnection,
   InteractiveTerminalConnectResult,
 } from "./interactive-terminal-connection";
-import { isDomainError } from "../domain-error";
+import { isDomainError } from "../../domain/domain-error";
 
 interface MeshTerminalSessionResponse {
   protocolVersion: typeof MESH_TERMINAL_PROTOCOL_VERSION;
@@ -425,14 +425,12 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
       connectionMode: this.config.connectionMode,
       useTmux: this.config.useTmux,
       allowPersistentSessionCreate: this.allowPersistentSessionCreate,
-      ...(this.runtimeEnvironment
-        ? {
-            encryptedEnvironment: encryptMeshPayload(
-              this.runtimeEnvironment,
-              registration.workerEncryptionPublicKey,
-            ),
-          }
-        : {}),
+      encryptedEnvironment: this.runtimeEnvironment
+        ? encryptMeshPayload(
+            this.runtimeEnvironment,
+            registration.workerEncryptionPublicKey,
+          )
+        : null,
       nonce: crypto.randomUUID(),
       expiresAt,
     };

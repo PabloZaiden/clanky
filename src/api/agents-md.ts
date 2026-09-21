@@ -9,7 +9,7 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
  */
 
 import { agentsMdService } from "../core/agents-md-service";
-import { isDomainError } from "../core/domain-error";
+import { isDomainError } from "../domain/domain-error";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { domainErrorResponse, errorResponse } from "./helpers";
 

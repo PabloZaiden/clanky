@@ -109,7 +109,7 @@ describe("controller relay owner API", () => {
       workerTransport: "http",
       workerPublicKey,
       workerFingerprint,
-      workerEncryptionPublicKey: null,
+      workerEncryptionPublicKey: "test-encryption-key",
       workerTlsCertificate: null,
       workerTlsFingerprint: null,
       workerDirectory: "/workspaces",

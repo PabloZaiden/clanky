@@ -10,7 +10,7 @@ import {
   type ClipboardEvent,
   type ForwardedRef,
 } from "react";
-import type { ComposerAttachment, ComposerImageAttachment } from "@/shared/message-attachments";
+import type { ComposerAttachment } from "@/shared/message-attachments";
 import {
   getMessageAttachmentExtension,
   getMessageAttachmentKind,
@@ -59,7 +59,11 @@ interface ImageAttachmentPreviewListProps {
   disabled?: boolean;
 }
 
-function isPreviewableImage(attachment: ComposerAttachment): attachment is ComposerImageAttachment {
+type PreviewableComposerAttachment = ComposerAttachment & { previewUrl: string };
+
+function isPreviewableImage(
+  attachment: ComposerAttachment,
+): attachment is PreviewableComposerAttachment {
   return getMessageAttachmentKind(attachment) === "image" && typeof attachment.previewUrl === "string";
 }
 
@@ -68,7 +72,7 @@ export function ImageAttachmentPreviewList({
   onRemoveAttachment,
   disabled = false,
 }: ImageAttachmentPreviewListProps) {
-  const [selectedAttachment, setSelectedAttachment] = useState<ComposerImageAttachment | null>(null);
+  const [selectedAttachment, setSelectedAttachment] = useState<PreviewableComposerAttachment | null>(null);
 
   useEffect(() => {
     if (selectedAttachment && !attachments.some((attachment) => attachment.id === selectedAttachment.id)) {

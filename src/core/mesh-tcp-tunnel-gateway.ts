@@ -13,7 +13,7 @@ import {
   requireLocalMeshExecutionCapability,
   verifyMeshPayloadSignature,
 } from "../persistence/mesh-node-identity";
-import { DomainError } from "./domain-error";
+import { DomainError } from "../domain/domain-error";
 import { meshInboundResourceRegistry } from "./mesh-inbound-resource-registry";
 import { requireTrustedController } from "./mesh-peer-auth";
 import { buildMeshTcpTunnelSigningPayload } from "./mesh-tcp-tunnel-protocol";
@@ -91,7 +91,6 @@ export class MeshTcpTunnelGateway {
       publicKey: request.callerPublicKey,
       fingerprint: request.callerFingerprint,
       encryptionPublicKey: request.callerEncryptionPublicKey,
-      requireEncryptionKey: true,
       context: "TCP tunnel caller",
     });
     const sessionId = crypto.randomUUID();

@@ -7,10 +7,7 @@ import { Database } from "bun:sqlite";
 import { mkdir, rm, unlink } from "fs/promises";
 import { join } from "path";
 import { createLogger, resolveAppDataDir } from "@pablozaiden/webapp/server";
-import {
-  assertBaselineCompatibility,
-  runMigrations,
-} from "./migrations";
+import { assertSchemaBaseline, runMigrations } from "./migrations";
 import { createBaseSchema } from "./base-schema";
 import { DatabaseNotInitializedError } from "./errors";
 import {
@@ -48,9 +45,7 @@ export function getDatabase(): Database {
   return db;
 }
 
-export async function initializeDatabase(
-  options: { meshWorker?: boolean } = {},
-): Promise<void> {
+export async function initializeDatabase(): Promise<void> {
   const dbPath = getDatabasePath();
   log.debug("Initializing database", { path: dbPath });
 
@@ -73,9 +68,9 @@ export async function initializeDatabase(
     nextDatabase.run("PRAGMA journal_mode = WAL");
     nextDatabase.run("PRAGMA busy_timeout = 5000");
 
-    assertBaselineCompatibility(nextDatabase, options);
-    createBaseSchema(nextDatabase, options);
-    runMigrations(nextDatabase, options);
+    assertSchemaBaseline(nextDatabase);
+    createBaseSchema(nextDatabase);
+    runMigrations(nextDatabase);
     assertSchemaInventory(nextDatabase);
 
     log.info("Database initialized", { path: dbPath });

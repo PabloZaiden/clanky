@@ -26,17 +26,14 @@ import {
   normalizeExecutionRoot,
 } from "./execution-path";
 import type { ExecutionPathStyle } from "./execution-path";
-import { DomainError } from "./domain-error";
+import { DomainError } from "../domain/domain-error";
 import {
   EXECUTION_HOST_CAPABILITY_VERSIONS,
   getUnavailableGitCommandCapability,
-  supportsAcpRuntime,
   supportsGitCommandScope,
   supportsPortableAcpRuntime,
-  supportsExecutionHostCapability,
   type ExecutionHostCapabilities,
 } from "@/shared/execution-host";
-import { buildProviderAvailabilityShellCheck } from "./agent-runtime-command";
 
 export interface MeshCommandExecutorConfig {
   workspaceId: string;
@@ -111,11 +108,8 @@ export class MeshCommandExecutor implements CommandExecutor {
   async getGitEnvironmentVariable(
     name: GitEnvironmentVariableName,
   ): Promise<string | null> {
-    if (this.supportsGitRpc("repository")) {
-      return await this.client.getGitEnvironmentVariable(name);
-    }
-    this.requireLegacyGitCapability("repository");
-    return await this.getEnvironmentVariable(name);
+    this.requireGitRpc("repository");
+    return await this.client.getGitEnvironmentVariable(name);
   }
 
   async execGit(
@@ -123,12 +117,8 @@ export class MeshCommandExecutor implements CommandExecutor {
     args: string[],
     options: GitCommandOptions,
   ): Promise<CommandResult> {
-    const { scope, ...commandOptions } = options;
-    if (this.supportsGitRpc(scope)) {
-      return await this.client.execGit(directory, args, options);
-    }
-    this.requireLegacyGitCapability(scope);
-    return await this.exec("git", ["-C", directory, ...args], commandOptions);
+    this.requireGitRpc(options.scope);
+    return await this.client.execGit(directory, args, options);
   }
 
   async exec(command: string, args: string[], options?: CommandOptions): Promise<CommandResult> {
@@ -139,45 +129,14 @@ export class MeshCommandExecutor implements CommandExecutor {
     if (supportsPortableAcpRuntime(this.capabilities)) {
       return await this.client.isAgentProviderAvailable(provider);
     }
-    if (
-      supportsAcpRuntime(this.capabilities)
-      && supportsExecutionHostCapability(
-        this.capabilities,
-        "commandExecution",
-      )
-    ) {
-      return (await this.exec(
-        "sh",
-        ["-lc", buildProviderAvailabilityShellCheck(provider)],
-        { cwd: "/" },
-      )).success;
-    }
-    const capability = supportsAcpRuntime(this.capabilities)
-      ? "commandExecution"
-      : "acpRuntime";
     throw new DomainError(
       "execution_host_capability_unavailable",
-      `The selected Mesh execution host does not support ${capability}.`,
-      { details: { capability } },
+      "The selected Mesh execution host does not support acpRuntime.",
+      { details: { capability: "acpRuntime" } },
     );
   }
 
-  private supportsGitRpc(scope: GitCommandScope): boolean {
-    return supportsExecutionHostCapability(
-      this.capabilities,
-      "git",
-      EXECUTION_HOST_CAPABILITY_VERSIONS.git,
-    ) && (
-      scope === "repository"
-      || supportsExecutionHostCapability(
-        this.capabilities,
-        "managedWorktrees",
-        EXECUTION_HOST_CAPABILITY_VERSIONS.managedWorktrees,
-      )
-    );
-  }
-
-  private requireLegacyGitCapability(scope: GitCommandScope): void {
+  private requireGitRpc(scope: GitCommandScope): void {
     if (supportsGitCommandScope(this.capabilities, scope)) {
       return;
     }

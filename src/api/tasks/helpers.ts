@@ -7,7 +7,7 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import { isModelEnabled } from "../../core/model-discovery";
 import { isTaskOperationError, type TaskOperationError } from "../../core/task/task-errors";
 import { domainErrorResponse, errorResponse } from "../helpers";
-import { isDomainError } from "../../core/domain-error";
+import { isDomainError } from "../../domain/domain-error";
 
 const log = createLogger("api:tasks");
 

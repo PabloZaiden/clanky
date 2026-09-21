@@ -39,7 +39,7 @@ import {
 } from "./execution-path";
 import { getMeshWorkerDirectory } from "./mesh-runtime";
 import { CommandExecutorImpl } from "./remote-command-executor";
-import { DomainError, isDomainError } from "./domain-error";
+import { DomainError, isDomainError } from "../domain/domain-error";
 import { parseManagedContextEnvironment } from "./managed-context-environment";
 import { LocalTerminalConnection } from "./terminal";
 import type { InteractiveTerminalConnection } from "./terminal";
@@ -185,7 +185,7 @@ export class MeshTerminalGateway {
       );
       request.executionRoot = trustedRoot.executionRoot;
       request.directory = directory;
-      const decryptedEnvironment = request.encryptedEnvironment === undefined
+      const decryptedEnvironment = request.encryptedEnvironment === null
         ? undefined
         : await decryptMeshPayload(request.encryptedEnvironment);
       const environment = parseManagedContextEnvironment(
@@ -594,7 +594,6 @@ export class MeshTerminalGateway {
       publicKey: request.callerPublicKey,
       fingerprint: request.callerFingerprint,
       encryptionPublicKey: request.callerEncryptionPublicKey,
-      requireEncryptionKey: true,
       context: "terminal caller",
     });
   }

@@ -16,7 +16,7 @@ import {
   getProviderAcpCommand,
 } from "./agent-runtime-command";
 import { meshExecutionGateway } from "./mesh-execution-gateway";
-import { DomainError } from "./domain-error";
+import { DomainError } from "../domain/domain-error";
 import { LocalFileSystem } from "./remote-executor/local-filesystem";
 import { SubprocessTreeTerminationError } from "./subprocess-termination";
 

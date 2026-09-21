@@ -5,7 +5,7 @@
  * reserved for the explicit insecure opt-out on trusted private networks.
  */
 
-import { DomainError } from "./domain-error";
+import { DomainError } from "../domain/domain-error";
 import type { MeshTransport } from "@/shared/mesh";
 
 export function assertMeshEndpointAllowed(

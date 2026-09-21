@@ -1,4 +1,4 @@
-import { DomainError } from "./domain-error";
+import { DomainError } from "../domain/domain-error";
 import type { MeshPeerRoute } from "@/shared/mesh";
 import { requestMeshPeer } from "./mesh-peer-transport";
 import type { MeshPeerTransport } from "./mesh-peer-transport";

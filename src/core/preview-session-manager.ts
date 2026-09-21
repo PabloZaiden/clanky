@@ -28,7 +28,7 @@ import {
   savePreviewSession,
 } from "../persistence/preview-sessions";
 import { createLogger } from "@pablozaiden/webapp/server";
-import { DomainError } from "./domain-error";
+import { DomainError } from "../domain/domain-error";
 import { previewEventEmitter } from "./event-emitter";
 import { ensureLocalPortAvailable } from "./local-port-allocator";
 import { buildSshProcessConfig } from "./ssh-connection-target";
@@ -39,7 +39,7 @@ import {
 } from "./workspace-execution-target";
 import { executionHostService } from "./execution-host-service";
 import { waitForProcessExit, waitForProcessStartup } from "./process-lifecycle";
-import { requireCurrentUser, runWithCurrentUser } from "./user-context";
+import { requireCurrentUser, runWithCurrentUser } from "../context/user-context";
 
 const log = createLogger("core:preview-session-manager");
 const LOCAL_TUNNEL_HOST = "127.0.0.1";

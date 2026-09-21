@@ -52,10 +52,6 @@ export const MessageAttachmentsSchema = z
   .array(MessageAttachmentSchema)
   .max(MESSAGE_ATTACHMENT_LIMIT, `no more than ${MESSAGE_ATTACHMENT_LIMIT} attachments can be attached`);
 
-/** Compatibility exports retained for API consumers during the attachment migration. */
-export const MessageImageAttachmentSchema = MessageAttachmentSchema;
-export const MessageImageAttachmentsSchema = MessageAttachmentsSchema;
-
 /**
  * Schema for GitConfig - git integration settings.
  * Used as a partial in CreateTaskRequest and UpdateTaskRequest.
@@ -102,7 +98,7 @@ export const CreateTaskRequestSchema = z.object({
   workspaceId: z.string().min(1, "workspaceId is required"),
   prompt: z.string().min(1, "prompt is required and must be a non-empty string"),
   issueNumber: IssueNumberSchema.optional(),
-  attachments: MessageImageAttachmentsSchema,
+  attachments: MessageAttachmentsSchema,
   model: ModelConfigSchema,
   cheapModel: CheapModelSelectionSchema,
   maxIterations: z.number().positive().nullable(),
@@ -172,7 +168,7 @@ export const AddressCommentsRequestSchema = z.object({
   comments: z.string().refine((val) => val.trim().length > 0, {
     message: "comments cannot be empty",
   }),
-  attachments: MessageImageAttachmentsSchema,
+  attachments: MessageAttachmentsSchema,
 });
 
 /**
@@ -182,7 +178,7 @@ export const PlanFeedbackRequestSchema = z.object({
   feedback: z.string().refine((val) => val.trim().length > 0, {
     message: "feedback cannot be empty",
   }),
-  attachments: MessageImageAttachmentsSchema,
+  attachments: MessageAttachmentsSchema,
 });
 
 /**
@@ -199,14 +195,14 @@ export const PendingPromptRequestSchema = z.object({
   prompt: z.string().refine((val) => val.trim().length > 0, {
     message: "prompt is required and cannot be empty or whitespace-only",
   }),
-  attachments: MessageImageAttachmentsSchema,
+  attachments: MessageAttachmentsSchema,
 });
 
 /** Schema for set pending - POST /api/tasks/:id/pending. */
 export const SetPendingRequestSchema = z.object({
   message: z.string().nullable(),
   model: ModelConfigSchema.nullable(),
-  attachments: MessageImageAttachmentsSchema,
+  attachments: MessageAttachmentsSchema,
 }).strict();
 
 /**
@@ -214,7 +210,7 @@ export const SetPendingRequestSchema = z.object({
  */
 export const StartDraftRequestSchema = z.object({
   planMode: z.boolean({ error: "planMode is required" }),
-  attachments: MessageImageAttachmentsSchema,
+  attachments: MessageAttachmentsSchema,
 });
 
 /**
@@ -225,5 +221,5 @@ export const FollowUpRequestSchema = z.object({
     message: "message cannot be empty",
   }),
   model: ModelConfigSchema.nullable(),
-  attachments: MessageImageAttachmentsSchema,
+  attachments: MessageAttachmentsSchema,
 });

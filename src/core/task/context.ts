@@ -5,7 +5,7 @@ import type { TaskEngine } from "../task-engine";
 import type { SimpleEventEmitter } from "../event-emitter";
 import type { TaskEvent } from "@/shared/events";
 import type { Task, ModelConfig } from "@/shared/task";
-import type { MessageImageAttachment } from "@/shared/message-attachments";
+import type { MessageAttachment } from "@/shared/message-attachments";
 import type { GitService } from "../git";
 import type { CommandExecutor } from "../command-executor";
 import type { SendFollowUpResult, TaskResult } from "./task-types";
@@ -23,8 +23,8 @@ export interface TaskCtx {
   deleteTask(taskId: string): Promise<boolean>;
   discardTask(taskId: string): Promise<TaskResult>;
   getTask(taskId: string): Promise<Task | null>;
-  startTask(taskId: string, options?: { attachments?: MessageImageAttachment[] }): Promise<void>;
-  startPlanMode(taskId: string, options?: { attachments?: MessageImageAttachment[] }): Promise<void>;
+  startTask(taskId: string, options?: { attachments?: MessageAttachment[] }): Promise<void>;
+  startPlanMode(taskId: string, options?: { attachments?: MessageAttachment[] }): Promise<void>;
   acceptPlan(taskId: string, options?: AcceptPlanOptions): Promise<AcceptPlanResult>;
   pushTask(taskId: string): Promise<PushTaskResult>;
   startAutomaticPrFlow(
@@ -37,7 +37,7 @@ export interface TaskCtx {
   recoverPlanningEngine(taskId: string): Promise<TaskEngine>;
   startFeedbackCycle(
     taskId: string,
-    options: { prompt: string; model?: ModelConfig; reviewCommentText?: string; attachments?: MessageImageAttachment[] },
+    options: { prompt: string; model?: ModelConfig; reviewCommentText?: string; attachments?: MessageAttachment[] },
   ): Promise<SendFollowUpResult>;
-  jumpstartTask(taskId: string, options: { message?: string; model?: ModelConfig; attachments?: MessageImageAttachment[] }): Promise<TaskResult>;
+  jumpstartTask(taskId: string, options: { message?: string; model?: ModelConfig; attachments?: MessageAttachment[] }): Promise<TaskResult>;
 }

@@ -33,7 +33,7 @@ import {
   type CreatedWorkspaceWorkerEnrollment,
   type WorkspaceWorkerEnrollment,
 } from "../persistence/workspace-worker-enrollments";
-import { DomainError } from "./domain-error";
+import { DomainError } from "../domain/domain-error";
 import { assertMeshEndpointAllowed } from "./mesh-transport-config";
 
 const log = createLogger("core:workspace-worker-enrollment-service");

@@ -7,7 +7,7 @@
 import { z } from "zod";
 import { DEFAULT_CHAT_INTERRUPT_REASON } from "@/shared";
 import { ModelConfigSchema } from "./model";
-import { TaskNameSchema, MessageImageAttachmentsSchema } from "./task";
+import { TaskNameSchema, MessageAttachmentsSchema } from "./task";
 import { AgentProviderSchema } from "./workspace";
 
 export const CreateChatRequestSchema = z.object({
@@ -53,7 +53,7 @@ export const UpdateChatRequestSchema = z.object({
 
 export const SendChatMessageRequestSchema = z.object({
   message: z.string().nullable().optional().transform((value) => value ?? null),
-  attachments: MessageImageAttachmentsSchema.default([]),
+  attachments: MessageAttachmentsSchema.default([]),
   credentialToken: z.string().trim().min(1).nullable().optional(),
 }).superRefine((value, ctx) => {
   const hasMessage = typeof value.message === "string" && value.message.trim().length > 0;

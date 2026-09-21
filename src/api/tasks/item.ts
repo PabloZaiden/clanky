@@ -21,7 +21,7 @@ import {
 import type { TaskConfig, Task } from "@/shared/task";
 import type { z } from "zod";
 import { UpdateTaskRequestSchema } from "@/contracts/schemas";
-import { isDomainError } from "../../core/domain-error";
+import { isDomainError } from "../../domain/domain-error";
 
 const log = createLogger("api:tasks");
 

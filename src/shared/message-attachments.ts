@@ -47,20 +47,9 @@ export interface MessageAttachment {
   size: number;
 }
 
-/**
- * Compatibility name retained while callers migrate to the generic
- * `MessageAttachment` contract.
- */
-export type MessageImageAttachment = MessageAttachment;
-
 export interface ComposerAttachment extends MessageAttachment {
   /** Object URL used only for image previews; revoked when the attachment is removed. */
   previewUrl?: string;
-}
-
-/** Compatibility name retained for image-only callers. */
-export interface ComposerImageAttachment extends MessageAttachment {
-  previewUrl: string;
 }
 
 export const MESSAGE_ATTACHMENT_ACCEPT = [
@@ -69,9 +58,6 @@ export const MESSAGE_ATTACHMENT_ACCEPT = [
 ].join(",");
 
 export const MESSAGE_IMAGE_ACCEPT = MESSAGE_IMAGE_ALLOWED_MIME_TYPES.join(",");
-
-export const MESSAGE_IMAGE_ATTACHMENT_LIMIT = MESSAGE_ATTACHMENT_LIMIT;
-export const MESSAGE_IMAGE_ATTACHMENT_MAX_BYTES = MESSAGE_ATTACHMENT_MAX_BYTES;
 
 function normalizeMimeType(mimeType: string): string {
   return mimeType.split(";", 1)[0]?.trim().toLowerCase() ?? "";

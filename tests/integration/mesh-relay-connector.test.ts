@@ -38,7 +38,7 @@ import { createMeshRelayInboundHandler } from "../../src/core/mesh-relay-inbound
 import { createMeshRelayPeerTransport } from "../../src/core/mesh-relay-transport";
 import { MeshRelayStreamError } from "../../src/core/mesh-relay-errors";
 import { MeshRelayConnectorManager } from "../../src/core/mesh-relay-connector-manager";
-import { DomainError } from "../../src/core/domain-error";
+import { DomainError } from "../../src/domain/domain-error";
 import {
   MESH_RELAY_MAX_CONTROL_FRAME_BYTES,
   MESH_RELAY_MAX_ENROLLMENT_BODY_BYTES,

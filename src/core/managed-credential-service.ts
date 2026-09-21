@@ -29,8 +29,8 @@ import { loadChat } from "../persistence/chats";
 import { loadTask } from "../persistence/tasks";
 import { getTerminalSession } from "../persistence/terminal-sessions";
 import { getWorkspace } from "../persistence/workspaces";
-import { DomainError } from "./domain-error";
-import { requireCurrentUser } from "./user-context";
+import { DomainError } from "../domain/domain-error";
+import { requireCurrentUser } from "../context/user-context";
 
 const MANAGED_BY = "clanky.execution-context";
 export const DETERMINISTIC_AGENT_MANAGED_BY = "clanky.deterministic-agent-runtime";

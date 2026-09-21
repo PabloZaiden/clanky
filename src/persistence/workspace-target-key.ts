@@ -1,6 +1,6 @@
 /**
  * Credential-free execution-target key construction shared by core target
- * resolution and persistence compatibility adapters.
+ * resolution and persistence adapters.
  */
 
 import { createHash } from "node:crypto";

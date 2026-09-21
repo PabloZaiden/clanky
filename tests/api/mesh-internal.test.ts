@@ -26,11 +26,6 @@ import {
   POSIX_EXECUTION_HOST_CAPABILITIES,
 } from "../../src/shared/execution-host";
 import { seedTestOwnerUser } from "../setup";
-import {
-  MESH_RUNTIME_SNAPSHOT_HEADER,
-  MESH_RUNTIME_SNAPSHOT_VERSION,
-} from "../../src/shared/mesh";
-
 let dataDir: string;
 
 beforeEach(async () => {
@@ -76,6 +71,7 @@ describe("Mesh internal controller-worker routes", () => {
       workerTransport: "http" as const,
       workerPublicKey: worker.publicKey,
       workerFingerprint: worker.fingerprint,
+      workerEncryptionPublicKey: "test-encryption-key",
       workerTlsCertificate: null,
       workerTlsFingerprint: null,
       workerDirectory: "/srv/worker",
@@ -165,7 +161,9 @@ describe("Mesh internal controller-worker routes", () => {
       workerInstanceName: "Relay worker",
       workerPublicKey: worker.publicKey,
       workerFingerprint: worker.fingerprint,
+      workerEncryptionPublicKey: "test-encryption-key",
       workerDirectory: "/srv/relay-worker",
+      workerPlatform: null,
       workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
       workerAcceptRemoteExecution: true,
       workerConfigRevision: 1,
@@ -230,7 +228,9 @@ describe("Mesh internal controller-worker routes", () => {
       workerInstanceName: "Downgrade worker",
       workerPublicKey: worker.publicKey,
       workerFingerprint: worker.fingerprint,
+      workerEncryptionPublicKey: "test-encryption-key",
       workerDirectory: "/srv/worker",
+      workerPlatform: null,
       workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
       workerAcceptRemoteExecution: true,
       workerConfigRevision: 1,
@@ -269,7 +269,7 @@ describe("Mesh internal controller-worker routes", () => {
     expect(await listWorkerRegistrations("admin")).toEqual([]);
   });
 
-  test("returns runtime health compatible with current and legacy controllers", async () => {
+  test("returns runtime health using the current controller contract", async () => {
     await configureMeshRuntime({ meshWorker: true, workerDirectory: dataDir });
     const controller = createSigningIdentity();
     await saveControllerGrant({
@@ -277,7 +277,7 @@ describe("Mesh internal controller-worker routes", () => {
       controllerInstanceName: "Controller",
       controllerPublicKey: controller.publicKey,
       controllerFingerprint: controller.fingerprint,
-      controllerEncryptionPublicKey: null,
+      controllerEncryptionPublicKey: "test-encryption-key",
     });
     const runtimeSnapshot = createExecutionHostRuntimeSnapshot(
       process.platform,
@@ -298,9 +298,6 @@ describe("Mesh internal controller-worker routes", () => {
         "content-type": "application/json",
         "x-clanky-mesh-node-id": "controller-1",
         "x-clanky-mesh-request-id": unsigned.nonce,
-        [MESH_RUNTIME_SNAPSHOT_HEADER]: String(
-          MESH_RUNTIME_SNAPSHOT_VERSION,
-        ),
       },
       body: JSON.stringify({
         ...unsigned,
@@ -325,39 +322,6 @@ describe("Mesh internal controller-worker routes", () => {
       signature: expect.any(String),
     });
 
-    const legacyUnsigned = {
-      ...unsigned,
-      nonce: crypto.randomUUID(),
-      sentAt: new Date().toISOString(),
-    };
-    const legacyResponse = await route(new Request(
-      "http://worker/api/mesh/internal/health",
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-clanky-mesh-node-id": "controller-1",
-          "x-clanky-mesh-request-id": legacyUnsigned.nonce,
-        },
-        body: JSON.stringify({
-          ...legacyUnsigned,
-          signature: sign(
-            null,
-            Buffer.from(buildMeshHealthCheckSigningPayload(legacyUnsigned)),
-            controller.privateKey,
-          ).toString("base64url"),
-        }),
-      },
-    ), undefined as never);
-
-    expect(legacyResponse!.status).toBe(200);
-    const legacyBody = await readJson(legacyResponse!) as {
-      workerPlatform?: unknown;
-      workerCapabilities: Record<string, number>;
-    };
-    expect(legacyBody.workerPlatform).toBeUndefined();
-    expect(legacyBody.workerCapabilities["git"]).toBeUndefined();
-    expect(legacyBody.workerCapabilities["managedWorktrees"]).toBeUndefined();
   });
 
   test("rejects signed controller operations targeting another worker", async () => {
@@ -369,7 +333,7 @@ describe("Mesh internal controller-worker routes", () => {
       controllerInstanceName: "Controller",
       controllerPublicKey: controller.publicKey,
       controllerFingerprint: controller.fingerprint,
-      controllerEncryptionPublicKey: null,
+      controllerEncryptionPublicKey: "test-encryption-key",
     });
 
     const revocation = {
@@ -428,6 +392,7 @@ describe("Mesh internal controller-worker routes", () => {
         directory: "/workspace",
         provider: "opencode",
         channel: "command-executor",
+        encryptedEnvironment: null,
         nonce: "nonce-1",
         expiresAt: new Date(Date.now() + 10_000).toISOString(),
         signature: "signature",

@@ -10,7 +10,7 @@ import { MESH_ACP_CHANNEL } from "@/shared/mesh-execution";
 import { meshExecutionGateway } from "../../core/mesh-execution-gateway";
 import { meshAcpGateway } from "../../core/mesh-acp-gateway";
 import { encryptMeshPayload } from "../../core/mesh-payload-crypto";
-import { DomainError } from "../../core/domain-error";
+import { DomainError } from "../../domain/domain-error";
 import { requireMeshRuntimeRole } from "../../core/mesh-runtime";
 import { errorResponse } from "../helpers";
 import { parseAndValidate, validateRequest } from "../validation";

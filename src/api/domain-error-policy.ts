@@ -7,7 +7,7 @@
  * without leaking HTTP concerns into Core or Persistence.
  */
 
-import { isDomainError, type DomainError } from "../core/domain-error";
+import { isDomainError, type DomainError } from "../domain/domain-error";
 
 export type DomainErrorBoundary =
   | "authenticated"
@@ -62,7 +62,6 @@ interface DomainErrorHttpPolicyEntry {
   error?: string;
   message?: string;
   messageFromDetails?: DomainErrorMessageProjector;
-  messageFromError?: DomainErrorMessageProjector;
   extra?: DomainErrorDetailProjector;
   headers?: DomainErrorHeaderProjector;
 }
@@ -406,11 +405,6 @@ function fileConflictMessage(error: DomainError): string | undefined {
     : undefined;
 }
 
-function legacyAgentMessage(error: DomainError): string | undefined {
-  const message = error.message.trim();
-  return message.length > 0 && message.length <= 500 ? message : undefined;
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -477,7 +471,6 @@ const POLICY_PROFILES = {
       agent_already_running: {
         status: 409,
         message: "Agent already has an active run.",
-        messageFromError: legacyAgentMessage,
       },
       agent_chat_not_found: {
         status: 409,
@@ -487,13 +480,11 @@ const POLICY_PROFILES = {
       agent_code_generation_failed: {
         status: 502,
         message: "The code generation provider did not create a non-empty source file.",
-        messageFromError: legacyAgentMessage,
       },
       agent_code_invalid: {
         status: 400,
         extra: diagnosticsDetails,
         message: "Agent code is invalid",
-        messageFromError: legacyAgentMessage,
       },
       agent_not_found: {
         status: 404,
@@ -502,18 +493,15 @@ const POLICY_PROFILES = {
       agent_run_not_ready: {
         status: 409,
         message: "The agent run is not ready.",
-        messageFromError: legacyAgentMessage,
       },
       workspace_not_found: {
         status: 404,
         error: "workspace_not_found",
         message: "Workspace not found",
-        messageFromError: legacyAgentMessage,
       },
       workspace_worktrees_disabled: {
         status: 409,
         message: "Worktrees are disabled for this workspace.",
-        messageFromError: legacyAgentMessage,
       },
     },
   },
@@ -1717,7 +1705,6 @@ function getEntryMapping(
   error: DomainError,
 ): DomainErrorHttpMapping {
   const message = entry.messageFromDetails?.(error)
-    ?? entry.messageFromError?.(error)
     ?? entry.message;
   return {
     status: entry.status,

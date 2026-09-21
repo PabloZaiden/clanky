@@ -5,7 +5,7 @@
 import type { WorkspaceExecRequest, WorkspaceExecResponse } from "@/contracts";
 import { backendManager } from "./backend-manager";
 import { executeCommand } from "./command-execution-service";
-import { DomainError } from "./domain-error";
+import { DomainError } from "../domain/domain-error";
 import { executionHostService } from "./execution-host-service";
 import { workspaceManager } from "./workspace-manager";
 

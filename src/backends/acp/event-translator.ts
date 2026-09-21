@@ -280,7 +280,7 @@ export class AcpEventTranslator {
         rpcAccepted: this.state.hasPromptRpcAccepted(sessionId),
       });
     } else if (isIdle && hasActivePrompt && !ignoreStatusUntilActivity && !hasTerminalSignal) {
-      log.debug("[AcpBackend] Ignoring legacy idle status without terminal reason", {
+      log.debug("[AcpBackend] Ignoring idle status without terminal reason", {
         sessionId,
         hadActivity: hasPromptActivity,
         rpcAccepted: this.state.hasPromptRpcAccepted(sessionId),

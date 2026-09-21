@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Agent, Chat, DeterministicCodeDiagnostic, Workspace } from "@/shared";
 import type { GenerateAgentCodeRequest } from "@/contracts/schemas";
-import type { MessageImageAttachment } from "@/shared/message-attachments";
+import type { MessageAttachment } from "@/shared/message-attachments";
 import { useToast } from "@pablozaiden/webapp/web";
 import { apiRequest } from "../../lib/api-client";
 import { isAbortError } from "../../lib/request-lifecycle";
@@ -45,7 +45,7 @@ export interface UseAgentCodeGenerationOptions {
 
 export interface AgentGenerationMessageOptions {
   message?: string;
-  attachments: MessageImageAttachment[];
+  attachments: MessageAttachment[];
 }
 
 export interface UseAgentCodeGenerationResult {

@@ -6,7 +6,7 @@
  */
 
 import type { WorkspaceFileEntry } from "@/shared";
-import { DomainError } from "./domain-error";
+import { DomainError } from "../domain/domain-error";
 
 export type FileExplorerErrorCode =
   | "operation_failed"

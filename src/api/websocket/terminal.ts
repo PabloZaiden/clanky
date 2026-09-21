@@ -1,7 +1,7 @@
 import type { ServerWebSocket } from "bun";
-import { isDomainError } from "../../core/domain-error";
+import { isDomainError } from "../../domain/domain-error";
 import { createLogger } from "@pablozaiden/webapp/server";
-import { runWithCurrentUser } from "../../core/user-context";
+import { runWithCurrentUser } from "../../context/user-context";
 import type { WebSocketData } from "./types";
 import {
   createTerminalConnection,

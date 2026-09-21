@@ -11,8 +11,7 @@ import type { Database } from "bun:sqlite";
 export type SchemaTableCategory =
   | "clanky"
   | "framework"
-  | "metadata"
-  | "legacy-reset-only";
+  | "metadata";
 
 export type SchemaTranscriptResource = "chat" | "task" | "agent_run";
 export type SchemaTranscriptTableRole = "entries" | "meta";
@@ -50,7 +49,7 @@ function currentTable(
 
 function resetOnlyTable(
   name: string,
-  category: "framework" | "legacy-reset-only",
+  category: "framework",
 ): SchemaTableDefinition {
   return {
     name,
@@ -72,16 +71,6 @@ export const SCHEMA_TABLE_INVENTORY: readonly SchemaTableDefinition[] = [
   resetOnlyTable("webapp_signing_keys", "framework"),
   currentTable("webapp_users", "framework"),
 
-  resetOnlyTable("mesh_sync_conflicts", "legacy-reset-only"),
-  resetOnlyTable("mesh_link_claims", "legacy-reset-only"),
-  resetOnlyTable("mesh_sync_cursors", "legacy-reset-only"),
-  resetOnlyTable("mesh_sync_outbox", "legacy-reset-only"),
-  resetOnlyTable("mesh_sync_checkpoints", "legacy-reset-only"),
-  resetOnlyTable("mesh_pairing_approvals", "legacy-reset-only"),
-  resetOnlyTable("mesh_pairing_requests", "legacy-reset-only"),
-  resetOnlyTable("mesh_links", "legacy-reset-only"),
-  resetOnlyTable("mesh_link_members", "legacy-reset-only"),
-  resetOnlyTable("mesh_nodes", "legacy-reset-only"),
   currentTable("mesh_enrollment_tokens", "clanky"),
   currentTable("mesh_worker_kill_nonces", "clanky"),
   currentTable("mesh_worker_registrations", "clanky"),
@@ -110,7 +99,6 @@ export const SCHEMA_TABLE_INVENTORY: readonly SchemaTableDefinition[] = [
   currentTable("review_comments", "clanky"),
   currentTable("sessions", "clanky"),
   currentTable("terminal_sessions", "clanky"),
-  resetOnlyTable("ssh_server_sessions", "legacy-reset-only"),
   currentTable("provisioning_job_logs", "clanky"),
   currentTable("provisioning_jobs", "clanky"),
   currentTable("task_transcript_meta", "clanky", {
@@ -194,7 +182,8 @@ export function isIntrospectableTableName(tableName: string): boolean {
 
 /**
  * Verifies that all current tables exist and that no unknown user table has
- * been introduced. Known reset-only tables are allowed for legacy upgrades.
+ * been introduced. Known reset-only framework tables are allowed to remain
+ * until the next database reset.
  */
 export function assertSchemaInventory(db: Database): void {
   const actualTableNames = (

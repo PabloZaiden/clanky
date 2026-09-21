@@ -51,7 +51,7 @@ describe("MeshExecutionGateway ACP session renewal", () => {
       controllerInstanceName: "Test controller",
       controllerPublicKey,
       controllerFingerprint,
-      controllerEncryptionPublicKey: null,
+      controllerEncryptionPublicKey: "test-encryption-key",
     });
     gateway = new MeshExecutionGateway();
   });
@@ -81,6 +81,7 @@ describe("MeshExecutionGateway ACP session renewal", () => {
       directory: workspaceDirectory,
       provider: "copilot",
       channel: MESH_ACP_CHANNEL,
+      encryptedEnvironment: null,
       nonce: crypto.randomUUID(),
       expiresAt: new Date(Date.now() + MESH_ACP_SESSION_TTL_MS - 1_000).toISOString(),
     };

@@ -10,7 +10,7 @@
 import type { ErrorResponse } from "@/contracts";
 import type { Workspace } from "@/shared/workspace";
 import { workspaceManager } from "../core/workspace-manager";
-import { isDomainError } from "../core/domain-error";
+import { isDomainError } from "../domain/domain-error";
 import { assertGitBackedWorkspace } from "../core/workspace-capabilities";
 import {
   getSafeDomainErrorMessage,

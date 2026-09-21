@@ -3,7 +3,7 @@
  */
 
 import { apiCall, apiActionWithBody } from "./helpers";
-import type { MessageImageAttachment } from "@/shared/message-attachments";
+import type { MessageAttachment } from "@/shared/message-attachments";
 
 /**
  * Result of an address comments action.
@@ -43,7 +43,7 @@ export interface PullRequestAutoMergeResult {
 export async function addressReviewCommentsApi(
   taskId: string,
   comments: string,
-  attachments?: MessageImageAttachment[],
+  attachments?: MessageAttachment[],
 ): Promise<AddressCommentsResult> {
   const data = await apiCall<{ reviewCycle: number; branch: string }>(
     `/api/tasks/${taskId}/address-comments`,
@@ -72,7 +72,7 @@ export async function sendFollowUpApi(
   taskId: string,
   message: string,
   model?: { providerID: string; modelID: string },
-  attachments?: MessageImageAttachment[],
+  attachments?: MessageAttachment[],
 ): Promise<boolean> {
   return apiActionWithBody(
     `/api/tasks/${taskId}/follow-up`,

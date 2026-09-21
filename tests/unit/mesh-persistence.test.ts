@@ -69,7 +69,7 @@ describe("controller-worker Mesh persistence", () => {
       workerTransport: "https" as const,
       workerPublicKey: publicKey,
       workerFingerprint: getMeshNodeFingerprint(publicKey),
-      workerEncryptionPublicKey: null,
+      workerEncryptionPublicKey: "test-encryption-key",
       workerTlsCertificate: null,
       workerTlsFingerprint: null,
       workerDirectory: "/srv/worker",
@@ -127,7 +127,7 @@ describe("controller-worker Mesh persistence", () => {
       workerFingerprint: "different-fingerprint",
     })).rejects.toBeInstanceOf(InconsistentMeshWorkerIdentityError);
 
-    // Simulate legacy/corrupt storage to retain fail-closed snapshot coverage.
+    // Simulate corrupt storage to retain fail-closed snapshot coverage.
     getDatabase().query(`
       UPDATE mesh_worker_registrations
       SET worker_public_key = 'different-public',
@@ -144,14 +144,14 @@ describe("controller-worker Mesh persistence", () => {
       controllerInstanceName: "Controller A",
       controllerPublicKey: "public-a",
       controllerFingerprint: "fingerprint-a",
-      controllerEncryptionPublicKey: null,
+      controllerEncryptionPublicKey: "test-encryption-key",
     });
     await saveControllerGrant({
       controllerNodeId: "controller-b",
       controllerInstanceName: "Controller B",
       controllerPublicKey: "public-b",
       controllerFingerprint: "fingerprint-b",
-      controllerEncryptionPublicKey: null,
+      controllerEncryptionPublicKey: "test-encryption-key",
     });
 
     expect((await listControllerGrants()).map((grant) => grant.controllerNodeId)).toEqual([
@@ -174,7 +174,7 @@ describe("controller-worker Mesh persistence", () => {
       controllerInstanceName: "Controller A",
       controllerPublicKey: "public-a",
       controllerFingerprint: "fingerprint-a",
-      controllerEncryptionPublicKey: null,
+      controllerEncryptionPublicKey: "test-encryption-key",
       controllerRoute: {
         ...relayRoute,
         targetNodeId: "controller-relay-a",
@@ -186,7 +186,7 @@ describe("controller-worker Mesh persistence", () => {
       controllerInstanceName: "Controller B",
       controllerPublicKey: "public-b",
       controllerFingerprint: "fingerprint-b",
-      controllerEncryptionPublicKey: null,
+      controllerEncryptionPublicKey: "test-encryption-key",
       controllerRoute: {
         ...relayRoute,
         targetNodeId: "controller-relay-b",
@@ -212,7 +212,7 @@ describe("controller-worker Mesh persistence", () => {
       workerTransport: "https",
       workerPublicKey: "worker-public",
       workerFingerprint: "worker-fingerprint",
-      workerEncryptionPublicKey: null,
+      workerEncryptionPublicKey: "test-encryption-key",
       workerTlsCertificate: null,
       workerTlsFingerprint: null,
       workerDirectory: "/srv/worker",
@@ -252,7 +252,7 @@ describe("controller-worker Mesh persistence", () => {
       controllerInstanceName: "Corrupt route controller",
       controllerPublicKey: "controller-public",
       controllerFingerprint: "controller-fingerprint",
-      controllerEncryptionPublicKey: null,
+      controllerEncryptionPublicKey: "test-encryption-key",
       controllerRoute: {
         ...relayRoute,
         targetNodeId: "controller-corrupt-route",
@@ -276,7 +276,7 @@ describe("controller-worker Mesh persistence", () => {
       workerTransport: "https",
       workerPublicKey: "public",
       workerFingerprint: "fingerprint",
-      workerEncryptionPublicKey: null,
+      workerEncryptionPublicKey: "test-encryption-key",
       workerTlsCertificate: null,
       workerTlsFingerprint: null,
       workerDirectory: "/srv/worker",
@@ -298,7 +298,7 @@ describe("controller-worker Mesh persistence", () => {
       workerTransport: "https",
       workerPublicKey: "public",
       workerFingerprint: "fingerprint",
-      workerEncryptionPublicKey: null,
+      workerEncryptionPublicKey: "test-encryption-key",
       workerTlsCertificate: null,
       workerTlsFingerprint: null,
       workerDirectory: "/srv/worker",
@@ -320,7 +320,7 @@ describe("controller-worker Mesh persistence", () => {
       workerTransport: "https",
       workerPublicKey: "runtime-public",
       workerFingerprint: "runtime-fingerprint",
-      workerEncryptionPublicKey: null,
+      workerEncryptionPublicKey: "test-encryption-key",
       workerTlsCertificate: null,
       workerTlsFingerprint: null,
       workerDirectory: "/srv/worker",
@@ -368,7 +368,7 @@ describe("controller-worker Mesh persistence", () => {
       workerTransport: "https",
       workerPublicKey: "runtime-rollback-public",
       workerFingerprint: "runtime-rollback-fingerprint",
-      workerEncryptionPublicKey: null,
+      workerEncryptionPublicKey: "test-encryption-key",
       workerTlsCertificate: null,
       workerTlsFingerprint: null,
       workerDirectory: "/srv/worker",
@@ -443,7 +443,7 @@ describe("controller-worker Mesh persistence", () => {
       workerTransport: "https",
       workerPublicKey: "corrupt-runtime-public",
       workerFingerprint: "corrupt-runtime-fingerprint",
-      workerEncryptionPublicKey: null,
+      workerEncryptionPublicKey: "test-encryption-key",
       workerTlsCertificate: null,
       workerTlsFingerprint: null,
       workerDirectory: "/srv/worker",

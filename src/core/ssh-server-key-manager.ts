@@ -19,7 +19,7 @@ import {
   type PersistedSshServerKeyPair,
 } from "../persistence/ssh-server-keys";
 import { createLogger } from "@pablozaiden/webapp/server";
-import { DomainError } from "./domain-error";
+import { DomainError } from "../domain/domain-error";
 
 const log = createLogger("core:ssh-server-key-manager");
 const SSH_SERVER_KEY_MODULUS_LENGTH = 4096;

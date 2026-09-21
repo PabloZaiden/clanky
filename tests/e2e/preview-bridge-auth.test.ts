@@ -9,7 +9,7 @@ import {
 } from "@pablozaiden/webapp/server";
 import { rm } from "node:fs/promises";
 import { websocketHandlers } from "../../src/api/websocket";
-import { runWithCurrentUser } from "../../src/core/user-context";
+import { runWithCurrentUser } from "../../src/context/user-context";
 import { closeDatabase } from "../../src/persistence/database";
 import { getPreviewSession } from "../../src/persistence/preview-sessions";
 import { routes } from "../../src/server";

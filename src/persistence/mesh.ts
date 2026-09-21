@@ -52,7 +52,7 @@ export interface SaveWorkerRegistrationInput {
   workerTransport: MeshTransport;
   workerPublicKey: string;
   workerFingerprint: string;
-  workerEncryptionPublicKey: string | null;
+  workerEncryptionPublicKey: string;
   workerTlsCertificate: string | null;
   workerTlsFingerprint: string | null;
   route?: MeshPeerRoute;
@@ -534,7 +534,7 @@ export interface SaveControllerGrantInput {
   controllerInstanceName: string | null;
   controllerPublicKey: string;
   controllerFingerprint: string;
-  controllerEncryptionPublicKey: string | null;
+  controllerEncryptionPublicKey: string;
   controllerRoute?: MeshPeerRoute | null;
 }
 
@@ -738,7 +738,7 @@ interface WorkerRegistrationRow {
   worker_transport: string;
   worker_public_key: string;
   worker_fingerprint: string;
-  worker_encryption_public_key: string | null;
+  worker_encryption_public_key: string;
   worker_tls_certificate: string | null;
   worker_tls_fingerprint: string | null;
   route_kind: string;
@@ -863,7 +863,7 @@ interface ControllerGrantRow {
   controller_instance_name: string | null;
   controller_public_key: string;
   controller_fingerprint: string;
-  controller_encryption_public_key: string | null;
+  controller_encryption_public_key: string;
   controller_endpoint: string | null;
   route_kind: string;
   relay_url: string | null;

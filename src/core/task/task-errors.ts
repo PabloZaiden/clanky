@@ -1,4 +1,4 @@
-import { DomainError, type DomainErrorOptions } from "../domain-error";
+import { DomainError, type DomainErrorOptions } from "../../domain/domain-error";
 
 /**
  * Stable failure codes returned by task operations.

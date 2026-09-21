@@ -26,9 +26,6 @@ export const MESH_PEER_ROUTE_KINDS = ["direct", "relay"] as const;
 export type MeshPeerRouteKind = (typeof MESH_PEER_ROUTE_KINDS)[number];
 export const MESH_INSTANCE_NAME_MAX_LENGTH = 64;
 export const MESH_WORKER_KILL_REQUEST_TTL_MS = 60_000;
-export const MESH_RUNTIME_SNAPSHOT_HEADER =
-  "x-clanky-mesh-runtime-snapshot-version";
-export const MESH_RUNTIME_SNAPSHOT_VERSION = 1;
 
 export const MESH_GRANT_STATUSES = ["active", "revoked"] as const;
 export type MeshGrantStatus = (typeof MESH_GRANT_STATUSES)[number];
@@ -42,7 +39,7 @@ export interface MeshNodeIdentity {
   meshEndpoint: string | null;
   publicKey: string;
   fingerprint: string;
-  encryptionPublicKey?: string;
+  encryptionPublicKey: string;
   execution: ExecutionNodeConfiguration;
   createdAt: string;
   updatedAt: string;
@@ -89,7 +86,7 @@ export interface MeshWorkerRegistration {
   workerTransport: MeshTransport;
   workerPublicKey: string;
   workerFingerprint: string;
-  workerEncryptionPublicKey: string | null;
+  workerEncryptionPublicKey: string;
   workerTlsCertificate: string | null;
   workerTlsFingerprint: string | null;
   route: MeshPeerRoute;
@@ -118,7 +115,7 @@ export interface MeshControllerGrant {
   controllerInstanceName: string | null;
   controllerPublicKey: string;
   controllerFingerprint: string;
-  controllerEncryptionPublicKey: string | null;
+  controllerEncryptionPublicKey: string;
   controllerRoute: MeshPeerRoute | null;
   grantStatus: MeshGrantStatus;
   createdAt: string;

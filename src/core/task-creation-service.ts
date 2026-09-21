@@ -14,7 +14,7 @@ import {
   type ValidatedPlanningFiles,
 } from "./planning-file-service";
 import { backendManager } from "./backend-manager";
-import { DomainError } from "./domain-error";
+import { DomainError } from "../domain/domain-error";
 import { GitService } from "./git";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { isModelEnabled } from "./model-discovery";

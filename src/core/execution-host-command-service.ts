@@ -13,7 +13,7 @@ import {
 import { executeCommand } from "./command-execution-service";
 import { closeCommandExecutor } from "./command-executor";
 import { executionHostService } from "./execution-host-service";
-import { requireCurrentUserId } from "./user-context";
+import { requireCurrentUserId } from "../context/user-context";
 
 export class ExecutionHostCommandService {
   async execute(

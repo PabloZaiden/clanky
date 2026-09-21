@@ -3,7 +3,7 @@
  * transport details so lifecycle operations can close them before deletion.
  */
 
-import { DomainError } from "./domain-error";
+import { DomainError } from "../domain/domain-error";
 interface DisposableTerminalConnection {
   dispose(): Promise<void>;
 }

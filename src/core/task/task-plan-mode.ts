@@ -10,15 +10,15 @@ import { terminalSessionManager } from "../terminal-session-manager";
 import { log } from "@pablozaiden/webapp/server";
 import { assertValidTransition } from "../task-state-machine";
 import { syncBaseBranchBeforeExecution } from "./task-git-push-helpers";
-import type { TaskPromptMode, TaskState } from "@/shared/task";
-import type { MessageImageAttachment } from "@/shared/message-attachments";
+import type { TaskPromptIntent, TaskState } from "@/shared/task";
+import type { MessageAttachment } from "@/shared/message-attachments";
 import { TaskOperationError } from "./task-errors";
 
 export async function sendPlanFeedbackImpl(
   ctx: TaskCtx,
   taskId: string,
   feedback: string,
-  attachments: MessageImageAttachment[] = [],
+  attachments: MessageAttachment[] = [],
 ): Promise<void> {
   const engine = ctx.engines.get(taskId) ?? await ctx.recoverPlanningEngine(taskId);
 
@@ -167,7 +167,7 @@ async function beginAcceptedPlanExecution(
   ctx: TaskCtx,
   taskId: string,
   executionPrompt: string,
-  executionPromptMode?: TaskPromptMode,
+  executionPromptMode?: TaskPromptIntent,
 ): Promise<void> {
   const engine = ctx.engines.get(taskId);
   if (!engine) {

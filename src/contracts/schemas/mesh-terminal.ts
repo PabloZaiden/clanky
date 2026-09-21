@@ -32,7 +32,7 @@ export const MeshTerminalSessionRequestSchema = z.object({
   connectionMode: z.enum(["dtach", "direct"]),
   useTmux: z.boolean(),
   allowPersistentSessionCreate: z.boolean().default(true),
-  encryptedEnvironment: z.unknown().optional(),
+  encryptedEnvironment: z.unknown().nullable(),
   nonce: z.string().trim().min(1).max(200),
   expiresAt: z.string().datetime(),
   signature: z.string().trim().min(1).max(16_384),

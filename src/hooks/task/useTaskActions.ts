@@ -11,7 +11,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import type { Task, TerminalSession } from "@/shared";
 import type { UpdateTaskRequest } from "@/contracts";
-import type { MessageImageAttachment } from "@/shared/message-attachments";
+import type { MessageAttachment } from "@/shared/message-attachments";
 import type {
   AcceptTaskResult,
   AcceptPlanResult,
@@ -54,25 +54,25 @@ export interface UseTaskActionsResult {
   markMerged: () => Promise<boolean>;
   closeLocalTask: () => Promise<boolean>;
   manualCompleteTask: () => Promise<boolean>;
-  setPendingPrompt: (prompt: string, attachments?: MessageImageAttachment[]) => Promise<boolean>;
+  setPendingPrompt: (prompt: string, attachments?: MessageAttachment[]) => Promise<boolean>;
   clearPendingPrompt: () => Promise<boolean>;
-  sendPlanFeedback: (feedback: string, attachments?: MessageImageAttachment[]) => Promise<boolean>;
+  sendPlanFeedback: (feedback: string, attachments?: MessageAttachment[]) => Promise<boolean>;
   acceptPlan: () => Promise<AcceptPlanResult>;
   discardPlan: () => Promise<boolean>;
-  addressReviewComments: (comments: string, attachments?: MessageImageAttachment[]) => Promise<AddressCommentsResult>;
+  addressReviewComments: (comments: string, attachments?: MessageAttachment[]) => Promise<AddressCommentsResult>;
   enablePullRequestAutoMerge: () => Promise<PullRequestAutoMergeResult>;
   startAutomaticPrFlow: () => Promise<AutomaticPrFlowResult>;
   stopAutomaticPrFlow: () => Promise<AutomaticPrFlowResult>;
   setPending: (options: {
     message?: string;
     model?: { providerID: string; modelID: string };
-    attachments?: MessageImageAttachment[];
+    attachments?: MessageAttachment[];
   }) => Promise<SetPendingResult>;
   clearPending: () => Promise<boolean>;
   sendFollowUp: (
     message: string,
     model?: { providerID: string; modelID: string },
-    attachments?: MessageImageAttachment[],
+    attachments?: MessageAttachment[],
   ) => Promise<boolean>;
   connectTerminal: () => Promise<TerminalSession | null>;
 }

@@ -8,7 +8,7 @@ import { meshManager } from "../core/mesh-manager";
 import { meshErrorResponse } from "./mesh";
 import { domainErrorResponse, successResponse } from "./helpers";
 import { parseAndValidate } from "./validation";
-import { isDomainError } from "../core/domain-error";
+import { isDomainError } from "../domain/domain-error";
 
 export const workspaceWorkerEnrollmentRoutes = defineRoutes({
   "/api/workspace-worker-enrollments": {

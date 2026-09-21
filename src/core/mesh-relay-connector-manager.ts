@@ -13,7 +13,7 @@ import type {
   MeshRelayAuthOkFrame,
   MeshRelayPeerIdentity,
 } from "@/shared/mesh-relay";
-import { DomainError } from "./domain-error";
+import { DomainError } from "../domain/domain-error";
 import { setMeshRelayTransport } from "./mesh-peer-transport";
 import type { MeshRelayClientSocketFactory } from "./mesh-relay-client-socket";
 import {

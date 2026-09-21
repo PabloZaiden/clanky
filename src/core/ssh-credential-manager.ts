@@ -5,7 +5,7 @@
 import type { SshCredentialExchangeResponse, SshServerEncryptedCredential } from "@/shared";
 import { sshServerKeyManager } from "./ssh-server-key-manager";
 import { createLogger } from "@pablozaiden/webapp/server";
-import { DomainError } from "./domain-error";
+import { DomainError } from "../domain/domain-error";
 
 const log = createLogger("core:ssh-credential-manager");
 const DEFAULT_CREDENTIAL_TOKEN_TTL_MS = 5 * 60 * 1000;

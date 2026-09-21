@@ -20,7 +20,7 @@ import {
   markWorkspaceWorkerConnected,
 } from "../../src/persistence/workspace-worker-enrollments";
 import { closeDatabase, initializeDatabase } from "../../src/persistence/database";
-import { runWithCurrentUser } from "../../src/core/user-context";
+import { runWithCurrentUser } from "../../src/context/user-context";
 import { ProvisioningTestExecutor } from "../mocks/provisioning-test-executor";
 import { getTestLocalExecutionHostBinding, testOwnerUser } from "../setup";
 

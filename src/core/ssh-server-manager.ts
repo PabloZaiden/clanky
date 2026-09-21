@@ -20,7 +20,7 @@ import { sshCredentialManager } from "./ssh-credential-manager";
 import { CommandExecutorImpl } from "./remote-command-executor";
 import type { SshConnectionTarget } from "./ssh-connection-target";
 import { getSshConnectionTargetFromServer } from "./ssh-connection-target";
-import { DomainError } from "./domain-error";
+import { DomainError } from "../domain/domain-error";
 
 type SshServerExecutorFactory = (server: SshServerConfig, password: string) => CommandExecutor;
 

@@ -1,6 +1,6 @@
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import { listActiveUsers } from "../persistence/users";
-import { runWithCurrentUser } from "./user-context";
+import { runWithCurrentUser } from "../context/user-context";
 
 export async function runForEachActiveUser(
   callback: (user: CurrentUser) => Promise<void>,

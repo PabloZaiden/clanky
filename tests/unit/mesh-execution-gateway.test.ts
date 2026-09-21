@@ -125,7 +125,7 @@ describe("mesh asynchronous command lifecycle", () => {
       controllerInstanceName: "Test controller",
       controllerPublicKey,
       controllerFingerprint,
-      controllerEncryptionPublicKey: null,
+      controllerEncryptionPublicKey: "test-encryption-key",
     });
     gateway = new MeshExecutionGateway();
   });
@@ -153,6 +153,7 @@ describe("mesh asynchronous command lifecycle", () => {
       directory: workerDirectory,
       provider: "copilot",
       channel: "command-executor",
+      encryptedEnvironment: null,
       nonce: crypto.randomUUID(),
       expiresAt: new Date(Date.now() + 30_000).toISOString(),
     };
@@ -389,7 +390,7 @@ describe("mesh asynchronous command lifecycle", () => {
       controllerInstanceName: "Test controller",
       controllerPublicKey,
       controllerFingerprint,
-      controllerEncryptionPublicKey: null,
+      controllerEncryptionPublicKey: "test-encryption-key",
     });
     const resumedSession = await createSession("workspace-a");
     const cancelled = await gateway.getAsyncCommand(
