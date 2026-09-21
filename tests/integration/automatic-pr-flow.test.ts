@@ -1,13 +1,24 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { PushedTaskMonitor } from "../../src/core/pushed-task-monitor";
 import {
+  AUTOMATIC_PR_WORKFLOW_FAILURE_MESSAGE,
+  type AutomaticPrFlowFeedbackItem,
+  type AutomaticPrFlowSnapshot,
   fetchAutomaticPrFlowSnapshot,
+} from "../../src/core/automatic-pr-flow-github";
+import {
   type AutomaticPrFlowPullRequest,
 } from "../../src/core/automatic-pr-flow-github";
+import { SimpleEventEmitter } from "../../src/core/event-emitter";
+import type { TaskEvent } from "@/shared/events";
+import { createInitialState, type Task } from "@/shared/task";
 import type { PullRequestNavigationGitService } from "../../src/core/pull-request-navigation";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import {
   setupTestContext,
   teardownTestContext,
+  testModel,
+  testWorkspaceId,
   type TestContext,
 } from "../setup";
 
@@ -58,7 +69,7 @@ const navigationGit: PullRequestNavigationGitService = {
   hasRemote: async () => true,
 };
 
-function createSnapshotPullRequest(headSha: string): AutomaticPrFlowPullRequest {
+function createSnapshotPullRequest(headSha = "head-sha-1"): AutomaticPrFlowPullRequest {
   return {
     number: 42,
     url: "https://github.com/test-owner/test-repo/pull/42",
@@ -67,6 +78,73 @@ function createSnapshotPullRequest(headSha: string): AutomaticPrFlowPullRequest 
     mergeStateStatus: "CLEAN",
     viewerCanUpdateBranch: false,
     headSha,
+  };
+}
+
+function createTaskForMonitor(directory: string): Task {
+  const now = new Date().toISOString();
+  const state = createInitialState("automatic-pr-flow-task");
+  state.status = "pushed";
+  state.git = {
+    originalBranch: "fixture-default",
+    workingBranch: "feature/automatic-pr-flow",
+    commits: [],
+  };
+  state.reviewMode = {
+    addressable: true,
+    completionAction: "push",
+    reviewCycles: 0,
+  };
+  state.automaticPrFlow = {
+    enabled: true,
+    status: "monitoring",
+    startedAt: now,
+    updatedAt: now,
+    lastCheckedAt: now,
+    handledItems: [],
+  };
+
+  return {
+    config: {
+      id: state.id,
+      name: "Automatic PR flow test",
+      directory,
+      prompt: "Test automatic PR feedback",
+      createdAt: now,
+      updatedAt: now,
+      workspaceId: testWorkspaceId,
+      model: testModel,
+      maxIterations: Infinity,
+      maxConsecutiveErrors: 10,
+      activityTimeoutSeconds: null,
+      stopPattern: "<promise>COMPLETE</promise>$",
+      git: {
+        branchPrefix: "",
+        commitScope: "",
+      },
+      baseBranch: "fixture-default",
+      useWorktree: false,
+      clearPlanningFolder: false,
+      planMode: false,
+      autoAcceptPlan: false,
+      fullyAutonomous: false,
+      mode: "task",
+    },
+    state,
+  };
+}
+
+function createSnapshot(
+  pullRequest: AutomaticPrFlowPullRequest,
+  sourceItems: AutomaticPrFlowFeedbackItem[],
+): AutomaticPrFlowSnapshot {
+  return {
+    pullRequest,
+    reviewThreads: sourceItems.filter((item) => item.source === "review_thread"),
+    reviewComments: sourceItems.filter((item) => item.source === "review_comment"),
+    reviews: sourceItems.filter((item) => item.source === "review"),
+    workflowFailures: sourceItems.filter((item) => item.source === "workflow"),
+    actionableItems: sourceItems,
   };
 }
 
@@ -195,5 +273,250 @@ describe("Automatic PR flow feedback sources", () => {
       "FAILURE",
       "FAILURE",
     ]);
+  });
+
+  test("processes workflow failures before reviewer comments and retries a new PR head", async () => {
+    const task = createTaskForMonitor(context.workDir);
+    let currentTask = task;
+    let snapshot = createSnapshot(createSnapshotPullRequest(), [
+      {
+        id: "thread-1",
+        source: "review_thread",
+        body: "Please handle the error path.",
+        threadId: "thread-1",
+      },
+      {
+        id: "workflow:check-failed:head-sha-1:FAILURE:2026-07-12T17:01:00Z",
+        source: "workflow",
+        body: "Workflow check unit-tests failed.",
+        workflowName: "CI",
+        checkName: "unit-tests",
+        checkConclusion: "FAILURE",
+        headSha: "head-sha-1",
+      },
+    ]);
+    const startedBatches: Array<{
+      sourceItems: AutomaticPrFlowFeedbackItem[];
+      feedbackItems: Array<{ text: string; sourceItemIds: string[] }>;
+    }> = [];
+    const resolvedThreadIds: string[] = [];
+    let pushCount = 0;
+    let extractionCallCount = 0;
+
+    const monitor = new PushedTaskMonitor({
+      listTasks: async () => [currentTask],
+      loadTask: async () => currentTask,
+      updateTaskState: async (_taskId, state) => {
+        currentTask = { ...currentTask, state };
+        return true;
+      },
+      emitter: new SimpleEventEmitter<TaskEvent>(),
+      getCommandExecutor: async () => new TestCommandExecutor(),
+      createGitService: () => navigationGit,
+      markMerged: async () => ({ success: true }),
+      pushTask: async () => {
+        pushCount++;
+        currentTask = {
+          ...currentTask,
+          state: {
+            ...currentTask.state,
+            status: "pushed",
+          },
+        };
+        return { success: true, syncStatus: "clean" };
+      },
+      updateBranch: async () => ({ success: true }),
+      isTaskRunning: () => false,
+      probePullRequestMonitoring: async () => ({
+        status: "open",
+        lastCheckedAt: new Date().toISOString(),
+        pullRequestNumber: 42,
+        pullRequestUrl: "https://github.com/test-owner/test-repo/pull/42",
+      }),
+      ensureAutomaticPrFlowPullRequest: async () => createSnapshotPullRequest(),
+      fetchAutomaticPrFlowSnapshot: async () => snapshot,
+      extractAutomaticPrFeedback: async (_task, _directory, items) => {
+        extractionCallCount++;
+        return {
+          feedbackItems: items.map((item) => ({
+            text: item.body,
+            sourceItemIds: [item.id],
+          })),
+          ignoredItems: [],
+        };
+      },
+      startAutomaticPrReviewCycle: async (_taskId, options) => {
+        startedBatches.push({
+          sourceItems: options.sourceItems,
+          feedbackItems: options.feedbackItems,
+        });
+        return {
+          success: true,
+          reviewCycle: 1,
+          branch: "feature/automatic-pr-flow",
+        };
+      },
+      resolveAutomaticPrFlowReviewThread: async (threadId) => {
+        resolvedThreadIds.push(threadId);
+      },
+      intervalMs: 60_000,
+    });
+
+    await monitor.runNow();
+
+    expect(startedBatches).toHaveLength(1);
+    expect(startedBatches[0]?.sourceItems.map((item) => item.source)).toEqual(["workflow"]);
+    expect(startedBatches[0]?.feedbackItems).toEqual([{
+      text: AUTOMATIC_PR_WORKFLOW_FAILURE_MESSAGE,
+      sourceItemIds: ["workflow:check-failed:head-sha-1:FAILURE:2026-07-12T17:01:00Z"],
+    }]);
+    expect(extractionCallCount).toBe(0);
+    expect(currentTask.state.automaticPrFlow?.activeBatch?.itemIds).toEqual([
+      "workflow:check-failed:head-sha-1:FAILURE:2026-07-12T17:01:00Z",
+    ]);
+
+    currentTask = {
+      ...currentTask,
+      state: {
+        ...currentTask.state,
+        status: "completed",
+      },
+    };
+    await monitor.runNow();
+
+    expect(pushCount).toBe(1);
+    expect(resolvedThreadIds).toEqual([]);
+    expect(currentTask.state.automaticPrFlow?.activeBatch).toBeUndefined();
+    expect(currentTask.state.automaticPrFlow?.handledItems).toEqual([
+      {
+        id: "workflow:check-failed:head-sha-1:FAILURE:2026-07-12T17:01:00Z",
+        source: "workflow",
+        outcome: "manual",
+        handledAt: expect.any(String),
+      },
+    ]);
+
+    await monitor.runNow();
+
+    expect(startedBatches).toHaveLength(2);
+    expect(startedBatches[1]?.sourceItems.map((item) => item.source)).toEqual(["review_thread"]);
+    expect(extractionCallCount).toBe(1);
+
+    currentTask = {
+      ...currentTask,
+      state: {
+        ...currentTask.state,
+        status: "completed",
+      },
+    };
+    await monitor.runNow();
+
+    expect(pushCount).toBe(2);
+    expect(resolvedThreadIds).toEqual(["thread-1"]);
+    expect(currentTask.state.automaticPrFlow?.activeBatch).toBeUndefined();
+
+    await monitor.runNow();
+    expect(startedBatches).toHaveLength(2);
+
+    snapshot = createSnapshot(createSnapshotPullRequest("head-sha-2"), [
+      {
+        id: "workflow:check-failed:head-sha-2:FAILURE:2026-07-12T17:05:00Z",
+        source: "workflow",
+        body: "The rerun failed on the new head.",
+        workflowName: "CI",
+        checkName: "unit-tests",
+        checkConclusion: "FAILURE",
+        headSha: "head-sha-2",
+      },
+    ]);
+    await monitor.runNow();
+
+    expect(startedBatches).toHaveLength(3);
+    expect(startedBatches[2]?.sourceItems.map((item) => item.source)).toEqual(["workflow"]);
+    expect(extractionCallCount).toBe(1);
+  });
+
+  test("moves re-recorded handled items to the newest position before applying the cap", async () => {
+    const task = createTaskForMonitor(context.workDir);
+    const now = new Date().toISOString();
+    const handledItems: NonNullable<Task["state"]["automaticPrFlow"]>["handledItems"] = Array.from(
+      { length: 200 },
+      (_, index) => ({
+        id: `workflow-${index}`,
+        source: "workflow" as const,
+        outcome: "ignored" as const,
+        handledAt: now,
+      }),
+    );
+    const reRecordedItemId = handledItems[0]?.id;
+    if (!reRecordedItemId) {
+      throw new Error("Expected a handled item to re-record.");
+    }
+
+    let currentTask: Task = {
+      ...task,
+      state: {
+        ...task.state,
+        automaticPrFlow: {
+          ...task.state.automaticPrFlow!,
+          handledItems,
+          activeBatch: {
+            batchId: "batch-1",
+            itemIds: [reRecordedItemId],
+            items: [{
+              id: reRecordedItemId,
+              source: "workflow",
+            }],
+            startedAt: now,
+            reviewCycle: 1,
+          },
+        },
+      },
+    };
+
+    const monitor = new PushedTaskMonitor({
+      listTasks: async () => [currentTask],
+      loadTask: async () => currentTask,
+      updateTaskState: async (_taskId, state) => {
+        currentTask = { ...currentTask, state };
+        return true;
+      },
+      emitter: new SimpleEventEmitter<TaskEvent>(),
+      getCommandExecutor: async () => new TestCommandExecutor(),
+      createGitService: () => navigationGit,
+      markMerged: async () => ({ success: true }),
+      pushTask: async () => ({ success: true, syncStatus: "clean" }),
+      updateBranch: async () => ({ success: true }),
+      isTaskRunning: () => false,
+      probePullRequestMonitoring: async () => ({
+        status: "open",
+        lastCheckedAt: now,
+        pullRequestNumber: 42,
+        pullRequestUrl: "https://github.com/test-owner/test-repo/pull/42",
+      }),
+      ensureAutomaticPrFlowPullRequest: async () => createSnapshotPullRequest(),
+      fetchAutomaticPrFlowSnapshot: async () => createSnapshot(createSnapshotPullRequest(), []),
+      extractAutomaticPrFeedback: async () => ({
+        feedbackItems: [],
+        ignoredItems: [],
+      }),
+      startAutomaticPrReviewCycle: async () => ({
+        success: true,
+        reviewCycle: 1,
+        branch: "feature/automatic-pr-flow",
+      }),
+      resolveAutomaticPrFlowReviewThread: async () => {},
+      intervalMs: 60_000,
+    });
+
+    await monitor.runNow();
+
+    const updatedHandledItems = currentTask.state.automaticPrFlow?.handledItems ?? [];
+    expect(updatedHandledItems).toHaveLength(200);
+    expect(updatedHandledItems[0]?.id).toBe("workflow-1");
+    expect(updatedHandledItems[199]).toMatchObject({
+      id: "workflow-0",
+      outcome: "manual",
+    });
   });
 });

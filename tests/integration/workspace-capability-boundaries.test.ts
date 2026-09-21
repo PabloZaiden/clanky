@@ -9,6 +9,7 @@ import type { Server } from "bun";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import {
   POSIX_EXECUTION_HOST_CAPABILITIES,
   type ExecutionHostCapabilities,
@@ -17,6 +18,7 @@ import {
   type Workspace,
 } from "@/shared";
 import { backendManager } from "../../src/core/backend-manager";
+import { meshStateEventEmitter } from "../../src/core/event-emitter";
 import {
   executionHostService,
 } from "../../src/core/execution-host-service";
@@ -39,6 +41,7 @@ import {
   seedTestOwnerUser,
   testOwnerUser,
 } from "../setup";
+import { pollUntil } from "../helpers/polling";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 
 const supportedRef = {
@@ -48,6 +51,10 @@ const supportedRef = {
 const unsupportedRef = {
   kind: "mesh",
   nodeId: "health-only-worker",
+} as const satisfies ExecutionHostRef;
+const secondarySupportedRef = {
+  kind: "mesh",
+  nodeId: "secondary-supported-worker",
 } as const satisfies ExecutionHostRef;
 const noGitRef = {
   kind: "mesh",
@@ -76,6 +83,15 @@ let server: Server<unknown>;
 let baseUrl: string;
 let supportedBinding: ExecutionHostBinding;
 let unsupportedBinding: ExecutionHostBinding;
+let secondarySupportedBinding: ExecutionHostBinding;
+
+const secondaryUser: CurrentUser = {
+  id: "secondary",
+  username: "secondary",
+  role: "user",
+  isOwner: false,
+  isAdmin: false,
+};
 
 function workspace(
   id: string,
@@ -137,6 +153,17 @@ function registerMeshWorker(
     now,
     now,
   );
+}
+
+function seedUser(user: CurrentUser): void {
+  const now = new Date().toISOString();
+  getDatabase()
+    .query(`
+      INSERT OR IGNORE INTO webapp_users (
+        id, username, role, auth_version, created_at, updated_at, last_login_at, disabled_at
+      ) VALUES (?, ?, ?, 1, ?, ?, NULL, NULL)
+    `)
+    .run(user.id, user.username, user.role, now, now);
 }
 
 beforeEach(async () => {
@@ -204,6 +231,21 @@ beforeEach(async () => {
     await createWorkspace(workspace("supported-workspace", supportedBinding));
     await createWorkspace(workspace("unsupported-workspace", unsupportedBinding));
   });
+  seedUser(secondaryUser);
+  await runWithCurrentUser(secondaryUser, async () => {
+    secondarySupportedBinding = toExecutionHostBinding(ensureExecutionHost(
+      secondaryUser.id,
+      secondarySupportedRef,
+      "mesh:secondary-supported-worker",
+      {
+        runtime: {
+          platform: { os: "linux", architecture: "x64" },
+          capabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
+        },
+      },
+    ));
+    await createWorkspace(workspace("secondary-supported-workspace", secondarySupportedBinding));
+  });
 
   server = serveNativeApiRoutes();
   baseUrl = server.url.toString().replace(/\/$/, "");
@@ -269,6 +311,61 @@ describe("workspace capability boundaries", () => {
     });
   });
 
+  test("closes cached executors on workspace disconnect, reset, and global reset", async () => {
+    const executors: LifecycleTestExecutor[] = [];
+    executionHostService.setExecutorFactoryForTesting((directory) => {
+      const executor = new LifecycleTestExecutor(directory);
+      executors.push(executor);
+      return executor;
+    });
+
+    const firstExecutor = await runWithCurrentUser(
+      testOwnerUser,
+      async () => await backendManager.getCommandExecutorAsync(
+        "supported-workspace",
+        dataDir,
+      ),
+    );
+    expect(
+      await runWithCurrentUser(
+        testOwnerUser,
+        async () => await backendManager.getCommandExecutorAsync(
+          "supported-workspace",
+          dataDir,
+        ),
+      ),
+    ).toBe(firstExecutor);
+
+    await backendManager.disconnectWorkspace("supported-workspace");
+    expect(executors[0]?.closeCount).toBe(1);
+    await expect(executors[0]?.getExecutionDirectory()).rejects.toThrow(
+      "Command executor is closed",
+    );
+
+    const secondExecutor = await runWithCurrentUser(
+      testOwnerUser,
+      async () => await backendManager.getCommandExecutorAsync(
+        "supported-workspace",
+        dataDir,
+      ),
+    );
+    expect(secondExecutor).not.toBe(firstExecutor);
+
+    await backendManager.resetWorkspaceConnection("supported-workspace");
+    await backendManager.resetWorkspaceConnection("supported-workspace");
+    expect(executors[1]?.closeCount).toBe(1);
+
+    await runWithCurrentUser(
+      secondaryUser,
+      async () => await backendManager.getCommandExecutorAsync(
+        "secondary-supported-workspace",
+        dataDir,
+      ),
+    );
+    await backendManager.resetAllConnections();
+    expect(executors[2]?.closeCount).toBe(1);
+  });
+
   test("closes the cached executor when workspace settings change", async () => {
     const executors: LifecycleTestExecutor[] = [];
     executionHostService.setExecutorFactoryForTesting((directory) => {
@@ -309,6 +406,73 @@ describe("workspace capability boundaries", () => {
     );
     expect(replacementExecutor).not.toBe(firstExecutor);
     expect(executors).toHaveLength(2);
+  });
+
+  test("rebuilds only the affected owner's Mesh executor", async () => {
+    const executors: LifecycleTestExecutor[] = [];
+    executionHostService.setExecutorFactoryForTesting((directory) => {
+      const executor = new LifecycleTestExecutor(directory);
+      executors.push(executor);
+      return executor;
+    });
+
+    await runWithCurrentUser(testOwnerUser, async () => {
+      expect(await backendManager.getCommandExecutorAsync(
+        "supported-workspace",
+        dataDir,
+      )).toBe(executors[0]!);
+    });
+    const secondaryExecutor = await runWithCurrentUser(
+      secondaryUser,
+      async () => await backendManager.getCommandExecutorAsync(
+        "secondary-supported-workspace",
+        dataDir,
+      ),
+    );
+
+    meshStateEventEmitter.emit(
+      { type: "mesh.changed", executionHostsChanged: true },
+      { userId: testOwnerUser.id },
+    );
+
+    let rebuiltExecutor: LifecycleTestExecutor | undefined;
+    await pollUntil(
+      async () => await runWithCurrentUser(
+        testOwnerUser,
+        async () => {
+          await backendManager.getCommandExecutorAsync(
+            "supported-workspace",
+            dataDir,
+          );
+          rebuiltExecutor = executors[executors.length - 1];
+          return {
+            createdExecutors: executors.length,
+            firstCloseCount: executors[0]?.closeCount ?? 0,
+          };
+        },
+      ),
+      (result) => result.createdExecutors === 3 && result.firstCloseCount === 1,
+      {
+        description: "Mesh executor cache invalidation",
+        formatLastObserved: (result) => (
+          `createdExecutors=${String(result.createdExecutors)}, `
+          + `firstCloseCount=${String(result.firstCloseCount)}`
+        ),
+      },
+    );
+
+    expect(rebuiltExecutor).toBeDefined();
+    expect(rebuiltExecutor).not.toBe(executors[0]);
+    expect(executors[0]?.closeCount).toBe(1);
+    expect(executors[1]?.closeCount).toBe(0);
+    await runWithCurrentUser(secondaryUser, async () => {
+      expect(
+        await backendManager.getCommandExecutorAsync(
+          "secondary-supported-workspace",
+          dataDir,
+        ),
+      ).toBe(secondaryExecutor);
+    });
   });
 
   // This public-boundary regression prevents persisted workspaces from
