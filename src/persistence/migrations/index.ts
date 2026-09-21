@@ -1,16 +1,18 @@
 /**
  * Database migration bookkeeping for the consolidated Clanky schema.
  *
- * The schema created by `base-schema.ts` is the production schema at version
- * 56. Versions 1-56 remain as no-op markers so a new database has the same
- * history as the existing production database. New schema changes must append
- * a real migration after `BASELINE_SCHEMA_VERSION`. Table names accepted by
- * `getTableColumns` are derived from `schema-inventory.ts`.
+ * The schema created by `base-schema.ts` is promoted from the consolidated
+ * version-56 production baseline. Versions 1-56 remain as no-op markers so a
+ * new database has the same history as the existing production database. New
+ * schema changes must append a real migration after `BASELINE_SCHEMA_VERSION`.
+ * Table names accepted by `getTableColumns` are derived from
+ * `schema-inventory.ts`.
  */
 
 import type { Database } from "bun:sqlite";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { isIntrospectableTableName } from "../schema-inventory";
+import { repairConsolidatedSchema } from "./consolidated-schema-repair";
 
 const log = createLogger("persistence:migrations");
 
@@ -273,6 +275,12 @@ export const migrations: Migration[] = [
         now,
       ]);
     },
+  },
+  {
+    version: BASELINE_SCHEMA_VERSION + 5,
+    name: "repair_consolidated_schema",
+    up: repairConsolidatedSchema,
+    transactional: false,
   },
 ];
 

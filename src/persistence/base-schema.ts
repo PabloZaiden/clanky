@@ -704,17 +704,6 @@ export function createBaseSchema(
         ON mesh_worker_registrations(local_user_id, registration_scope, grant_status);
       CREATE INDEX IF NOT EXISTS idx_mesh_worker_registrations_user
         ON mesh_worker_registrations(local_user_id);
-      CREATE INDEX IF NOT EXISTS idx_chat_transcript_entries_assistant_page
-        ON chat_transcript_entries(user_id, chat_id, timestamp DESC, sequence DESC, entry_id DESC)
-        WHERE kind = 'message' AND message_role = 'assistant';
-      CREATE INDEX IF NOT EXISTS idx_agent_run_transcript_entries_assistant_page
-        ON agent_run_transcript_entries(user_id, agent_run_id, timestamp DESC, sequence DESC, entry_id DESC)
-        WHERE kind = 'message' AND message_role = 'assistant';
-      CREATE INDEX IF NOT EXISTS idx_task_transcript_entries_assistant_page
-        ON task_transcript_entries(user_id, task_id, timestamp DESC, sequence DESC, entry_id DESC)
-        WHERE kind = 'message' AND message_role = 'assistant';
-      CREATE INDEX IF NOT EXISTS idx_preview_sessions_execution_host_status
-        ON preview_sessions(user_id, execution_host_id, status, updated_at DESC);
     `);
   });
 

@@ -3,6 +3,7 @@ import { Database } from "bun:sqlite";
 import { mkdtemp, rm } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
+import { createBaseSchema } from "../../src/persistence/base-schema";
 import {
   closeDatabase,
   getDatabase,
@@ -81,6 +82,199 @@ function createVersionedMigrationDatabase(
   database.close();
 }
 
+function createLegacyConsolidatedDatabase(): Database {
+  const database = new Database(":memory:");
+  database.run("PRAGMA foreign_keys = ON");
+  database.exec(`
+    CREATE TABLE schema_migrations (
+      version INTEGER PRIMARY KEY,
+      name TEXT NOT NULL,
+      applied_at TEXT NOT NULL
+    );
+    CREATE TABLE execution_hosts (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      source_id TEXT NOT NULL,
+      target_key TEXT NOT NULL,
+      revision INTEGER NOT NULL DEFAULT 1,
+      revoked_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE mesh_worker_registrations (
+      worker_node_id TEXT NOT NULL,
+      local_user_id TEXT NOT NULL,
+      worker_capabilities_json TEXT,
+      worker_platform_os TEXT,
+      worker_platform_architecture TEXT,
+      registration_scope TEXT NOT NULL DEFAULT 'global',
+      workspace_worker_enrollment_id TEXT,
+      workspace_id TEXT,
+      grant_status TEXT NOT NULL DEFAULT 'active'
+    );
+    CREATE TABLE workspaces (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      execution_host_id TEXT NOT NULL,
+      execution_host_revision INTEGER NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE chat_transcript_entries (
+      chat_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      entry_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      timestamp TEXT NOT NULL,
+      sequence INTEGER NOT NULL,
+      payload TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      tool_name TEXT,
+      tool_status TEXT,
+      tool_input TEXT,
+      tool_output TEXT,
+      tool_extras TEXT,
+      PRIMARY KEY (chat_id, entry_id)
+    );
+    CREATE TABLE task_transcript_entries (
+      task_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      entry_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      timestamp TEXT NOT NULL,
+      sequence INTEGER NOT NULL,
+      payload TEXT NOT NULL,
+      tool_name TEXT,
+      tool_status TEXT,
+      tool_input TEXT,
+      tool_output TEXT,
+      tool_extras TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (task_id, entry_id)
+    );
+    CREATE TABLE agent_run_transcript_entries (
+      agent_run_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      entry_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      timestamp TEXT NOT NULL,
+      sequence INTEGER NOT NULL,
+      payload TEXT NOT NULL,
+      tool_name TEXT,
+      tool_status TEXT,
+      tool_input TEXT,
+      tool_output TEXT,
+      tool_extras TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (agent_run_id, entry_id)
+    );
+    CREATE TABLE preview_sessions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      workspace_id TEXT NOT NULL,
+      remote_host TEXT NOT NULL,
+      remote_port INTEGER NOT NULL,
+      local_host TEXT NOT NULL,
+      local_port INTEGER NOT NULL,
+      local_url TEXT NOT NULL,
+      initial_path TEXT NOT NULL,
+      cli_client_id TEXT,
+      cli_hostname TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active',
+      connected_at TEXT,
+      closed_at TEXT,
+      error_message TEXT
+    );
+  `);
+  for (let version = 1; version <= 60; version++) {
+    database.run(
+      "INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)",
+      [version, `migration_${String(version)}`, "now"],
+    );
+  }
+  database.run(
+    `INSERT INTO execution_hosts (
+      id, user_id, kind, source_id, target_key, revision, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ["host-1", "user-1", "mesh", "worker-1", "mesh:worker-1", 1, "now", "now"],
+  );
+  database.run(
+    `INSERT INTO mesh_worker_registrations (
+      worker_node_id, local_user_id, worker_capabilities_json,
+      worker_platform_os, worker_platform_architecture,
+      registration_scope, grant_status
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ["worker-1", "user-1", "{}", "linux", "x64", "global", "active"],
+  );
+  database.run(
+    `INSERT INTO workspaces (
+      id, user_id, execution_host_id, execution_host_revision, updated_at
+    ) VALUES (?, ?, ?, ?, ?)`,
+    ["workspace-1", "user-1", "host-1", 1, "now"],
+  );
+  database.run(
+    `INSERT INTO chat_transcript_entries (
+      chat_id, user_id, entry_id, kind, timestamp, sequence, payload,
+      created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      "chat-1",
+      "user-1",
+      "entry-1",
+      "message",
+      "now",
+      1,
+      JSON.stringify({ role: "assistant", content: "hello" }),
+      "now",
+      "now",
+    ],
+  );
+  database.run(
+    `INSERT INTO preview_sessions (
+      id, user_id, workspace_id, remote_host, remote_port, local_host,
+      local_port, local_url, initial_path, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      "preview-valid",
+      "user-1",
+      "workspace-1",
+      "127.0.0.1",
+      3000,
+      "127.0.0.1",
+      4000,
+      "http://127.0.0.1:4000",
+      "/",
+      "now",
+      "now",
+    ],
+  );
+  database.run(
+    `INSERT INTO preview_sessions (
+      id, user_id, workspace_id, remote_host, remote_port, local_host,
+      local_port, local_url, initial_path, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      "preview-invalid",
+      "user-1",
+      "missing-workspace",
+      "127.0.0.1",
+      3001,
+      "127.0.0.1",
+      4001,
+      "http://127.0.0.1:4001",
+      "/",
+      "now",
+      "now",
+    ],
+  );
+  return database;
+}
+
 describe("database schema", () => {
   afterEach(() => {
     closeDatabase();
@@ -123,6 +317,83 @@ describe("database schema", () => {
       );
       expect(getDatabase().query("PRAGMA foreign_key_check").all()).toEqual([]);
     });
+  });
+
+  test("repairs legacy consolidated schema gaps before dependent indexes are created", () => {
+    const database = createLegacyConsolidatedDatabase();
+    try {
+      expect(() => createBaseSchema(database)).not.toThrow();
+      expect(runMigrations(database)).toBe(1);
+
+      expect(getSchemaVersion(database)).toBe(migrations.at(-1)!.version);
+      expect(getTableColumns(database, "execution_hosts")).toEqual(
+        expect.arrayContaining([
+          "platform_os",
+          "platform_architecture",
+          "capabilities_json",
+        ]),
+      );
+      expect(
+        database
+          .query(
+            "SELECT platform_os, platform_architecture, capabilities_json FROM execution_hosts WHERE id = ?",
+          )
+          .get("host-1"),
+      ).toEqual({
+        platform_os: "linux",
+        platform_architecture: "x64",
+        capabilities_json: "{}",
+      });
+      expect(getTableColumns(database, "chat_transcript_entries")).toContain(
+        "message_role",
+      );
+      expect(
+        database
+          .query(
+            "SELECT message_role FROM chat_transcript_entries WHERE entry_id = ?",
+          )
+          .get("entry-1"),
+      ).toEqual({ message_role: "assistant" });
+      expect(getTableColumns(database, "preview_sessions")).toEqual(
+        expect.arrayContaining([
+          "target_kind",
+          "execution_host_id",
+          "execution_host_revision",
+        ]),
+      );
+      expect(
+        database
+          .query(
+            "SELECT target_kind, execution_host_id, execution_host_revision FROM preview_sessions WHERE id = ?",
+          )
+          .get("preview-valid"),
+      ).toEqual({
+        target_kind: "workspace",
+        execution_host_id: "host-1",
+        execution_host_revision: 1,
+      });
+      expect(
+        database
+          .query("SELECT id FROM preview_sessions ORDER BY id")
+          .all(),
+      ).toEqual([{ id: "preview-valid" }]);
+      expect(
+        database
+          .query(
+            "SELECT name FROM sqlite_master WHERE type = 'index' AND name IN (?, ?, ?, ?)",
+          )
+          .all(
+            "idx_chat_transcript_entries_assistant_page",
+            "idx_agent_run_transcript_entries_assistant_page",
+            "idx_task_transcript_entries_assistant_page",
+            "idx_preview_sessions_execution_host_status",
+          ),
+      ).toHaveLength(4);
+
+      expect(runMigrations(database)).toBe(0);
+    } finally {
+      database.close();
+    }
   });
 
   test("allows introspection only for inventory-approved table names", async () => {
@@ -253,7 +524,7 @@ describe("database schema", () => {
         [1, null],
       );
 
-      expect(runMigrations(database)).toBe(2);
+      expect(runMigrations(database)).toBe(3);
       expect(
         database
           .query("SELECT controller_node_id FROM mesh_controller_grants")
@@ -302,7 +573,7 @@ describe("database schema", () => {
       database.run("INSERT INTO mesh_controller_grants VALUES (?)", ["controller-1"]);
       database.run("INSERT INTO mesh_controller_relay_pairing VALUES (?)", [1]);
 
-      expect(runMigrations(database)).toBe(1);
+      expect(runMigrations(database)).toBe(2);
       expect(getTableColumns(database, "mesh_worker_registrations")).toEqual(
         expect.arrayContaining([
           "worker_binary_version",
