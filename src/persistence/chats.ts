@@ -6,6 +6,7 @@ export {
   saveChat,
   loadChat,
   loadChatMetadata,
+  loadChatStreamControlState,
   loadTaskChat,
   deleteChat,
   deleteChatsByTaskId,
@@ -19,6 +20,7 @@ export {
 } from "./chats/index";
 export {
   updateChatState,
+  updateChatStreamState,
   updateChatConfig,
 } from "./chats/index";
 export {

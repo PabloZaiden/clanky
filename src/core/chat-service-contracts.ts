@@ -17,6 +17,7 @@ import type {
   ChatSnapshot,
   ChatState,
   ChatStatus,
+  ChatStreamControlState,
   ChatStartupStage,
   ChatWorktreeState,
   ExecutionHostBinding,
@@ -108,6 +109,7 @@ export interface ChatDirectoryResolution {
 export interface ChatStatePort {
   getChat(chatId: string): Promise<Chat | null>;
   getChatSummary(chatId: string): Promise<Chat | null>;
+  getChatStreamControlState(chatId: string): Promise<ChatStreamControlState | null>;
   getChatSnapshot(
     chatId: string,
     options?: TranscriptSnapshotOptions,
@@ -132,6 +134,7 @@ export interface ChatStatePort {
     options?: {
       transcriptChanges?: TranscriptChangeSet;
       expectedStatus?: ChatStatus;
+      streaming?: boolean;
     },
   ): Promise<Chat>;
   updateStartupStage(

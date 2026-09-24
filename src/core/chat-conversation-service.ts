@@ -737,7 +737,7 @@ export class ChatConversationService implements ChatConversationPort {
       });
       if (streamResult.endedByInactivity) {
         const blocks = streamState.interpreter.flushActiveBlocks();
-        await this.flushChatStreamBlocks(streamState, blocks);
+        await this.flushChatStreamBlocksAfterMetadataReload(chatId, streamState, blocks);
         if (blocks.length > 0) {
           streamState.interpreter.acknowledgeCheckpoint();
         }
@@ -747,7 +747,7 @@ export class ChatConversationService implements ChatConversationPort {
         && streamResult.lastEvent?.type !== "error"
       ) {
         const blocks = streamState.interpreter.flushActiveBlocks();
-        await this.flushChatStreamBlocks(streamState, blocks);
+        await this.flushChatStreamBlocksAfterMetadataReload(chatId, streamState, blocks);
         if (blocks.length > 0) {
           streamState.interpreter.acknowledgeCheckpoint();
         }
@@ -755,7 +755,7 @@ export class ChatConversationService implements ChatConversationPort {
     } catch (error) {
       try {
         const blocks = streamState.interpreter.flushActiveBlocks();
-        await this.flushChatStreamBlocks(streamState, blocks);
+        await this.flushChatStreamBlocksAfterMetadataReload(chatId, streamState, blocks);
         if (blocks.length > 0) {
           streamState.interpreter.acknowledgeCheckpoint();
         }
@@ -888,8 +888,32 @@ export class ChatConversationService implements ChatConversationPort {
     ) {
       return true;
     }
-    const latestChat = await this.state.getChatSummary(chatId);
+    if (force) {
+      const reloaded = await this.reloadChatStreamMetadata(chatId, streamState);
+      streamState.lastStatusReloadAt = nowMs;
+      return reloaded;
+    }
+    const latestControlState = await this.state.getChatStreamControlState(chatId);
     streamState.lastStatusReloadAt = nowMs;
+    if (!latestControlState) {
+      return false;
+    }
+    streamState.chat = {
+      ...streamState.chat,
+      state: {
+        ...streamState.chat.state,
+        status: latestControlState.status,
+        interruptRequested: latestControlState.interruptRequested ? true : undefined,
+      },
+    };
+    return true;
+  }
+
+  private async reloadChatStreamMetadata(
+    chatId: string,
+    streamState: ChatStreamConsumptionState,
+  ): Promise<boolean> {
+    const latestChat = await this.state.getChatSummary(chatId);
     if (!latestChat) {
       return false;
     }
@@ -904,17 +928,21 @@ export class ChatConversationService implements ChatConversationPort {
         lastActivityAt: streamState.chat.state.lastActivityAt ?? latestChat.state.lastActivityAt,
       },
     };
-    if (latestChat.state.status === "interrupting" || latestChat.state.interruptRequested) {
-      streamState.chat = {
-        ...streamState.chat,
-        state: {
-          ...streamState.chat.state,
-          status: latestChat.state.status,
-          interruptRequested: latestChat.state.interruptRequested,
-        },
-      };
-    }
     return true;
+  }
+
+  private async flushChatStreamBlocksAfterMetadataReload(
+    chatId: string,
+    streamState: ChatStreamConsumptionState,
+    blocks: AgentEventTranscriptBlock[],
+  ): Promise<void> {
+    if (blocks.length === 0) {
+      return;
+    }
+    if (!await this.reloadChatStreamMetadata(chatId, streamState)) {
+      throw new Error(`Chat not found while flushing stream blocks: ${chatId}`);
+    }
+    await this.flushChatStreamBlocks(streamState, blocks);
   }
 
   private async handleChatStreamEvent(
@@ -924,10 +952,15 @@ export class ChatConversationService implements ChatConversationPort {
     streamState: ChatStreamConsumptionState,
     event: AgentEvent,
   ): Promise<AgentStreamEventResult | void> {
+    const forceMetadataReload =
+      event.type !== "message.delta"
+      && event.type !== "reasoning.delta"
+      && event.type !== "tool.start"
+      && event.type !== "tool.complete";
     if (!await this.reloadChatStreamState(
       chatId,
       streamState,
-      event.type !== "message.delta" && event.type !== "reasoning.delta",
+      forceMetadataReload,
     )) {
       return { stop: true };
     }
@@ -984,6 +1017,13 @@ export class ChatConversationService implements ChatConversationPort {
     }
 
     const transcriptResult = streamState.interpreter.handle(event);
+    if (
+      !forceMetadataReload
+      && (transcriptResult.flushedBlocks.length > 0 || transcriptResult.checkpointRequested)
+      && !await this.reloadChatStreamMetadata(chatId, streamState)
+    ) {
+      return { stop: true };
+    }
     switch (event.type) {
       case "user.message":
         break;
@@ -1486,6 +1526,7 @@ export class ChatConversationService implements ChatConversationPort {
         timestamp: tool.timestamp,
         payload: tool,
       }]),
+      streaming: true,
     });
     this.emitter.emit({
       type: "chat.tool_call",
@@ -1525,6 +1566,7 @@ export class ChatConversationService implements ChatConversationPort {
         timestamp: persistedTool.timestamp,
         payload: persistedTool,
       }]),
+      streaming: true,
     });
     this.emitter.emit({
       type: "chat.tool_call",
@@ -1568,6 +1610,7 @@ export class ChatConversationService implements ChatConversationPort {
         timestamp: updatedTool.timestamp,
         payload: updatedTool,
       }]),
+      streaming: true,
     });
     this.emitter.emit({
       type: "chat.tool_call.extra",
@@ -1764,6 +1807,7 @@ export class ChatConversationService implements ChatConversationPort {
     options?: {
       transcriptChanges?: TranscriptChangeSet;
       expectedStatus?: ChatStatus;
+      streaming?: boolean;
     },
   ): Promise<Chat> {
     return this.state.updateState(chat, state, options);

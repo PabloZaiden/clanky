@@ -61,6 +61,8 @@ export interface MockBackendOptions {
   streamEventSequences?: AgentEvent[][];
   /** Optional hook invoked after a prompt is sent, before its response is emitted. */
   onPrompt?: (prompt: PromptInput, directory: string) => void | Promise<void>;
+  /** Optional hook invoked before each scripted stream event is emitted. */
+  onStreamEvent?: (event: AgentEvent, index: number) => void | Promise<void>;
   /** Optional handler for direct prompts such as task-title and chat-name generation. */
   onSendPrompt?: MockSendPromptHandler;
   /** Optional hook invoked after a direct prompt handler and response have settled. */
@@ -165,6 +167,7 @@ export class MockAcpBackend implements Backend {
   private readonly streamingResponseChunks: string[][];
   private readonly streamEventSequences: AgentEvent[][];
   private readonly onPrompt?: MockBackendOptions["onPrompt"];
+  private readonly onStreamEvent?: MockBackendOptions["onStreamEvent"];
   private readonly onSendPrompt?: MockBackendOptions["onSendPrompt"];
   private readonly onSendPromptSettled?: MockBackendOptions["onSendPromptSettled"];
   private streamingResponseIndex = 0;
@@ -184,6 +187,7 @@ export class MockAcpBackend implements Backend {
     this.streamingResponseChunks = options.streamingResponseChunks ?? [];
     this.streamEventSequences = options.streamEventSequences ?? [];
     this.onPrompt = options.onPrompt;
+    this.onStreamEvent = options.onStreamEvent;
     this.onSendPrompt = options.onSendPrompt;
     this.onSendPromptSettled = options.onSendPromptSettled;
     this.models = options.models ?? [];
@@ -291,7 +295,8 @@ export class MockAcpBackend implements Backend {
 
       if (this.streamEventSequences.length > 0) {
         const events = this.streamEventSequences[this.streamEventIndex++ % this.streamEventSequences.length] ?? [];
-        for (const event of events) {
+        for (const [index, event] of events.entries()) {
+          await this.onStreamEvent?.(event, index);
           push(event);
         }
         end();

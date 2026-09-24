@@ -2,7 +2,7 @@
  * Basic CRUD operations for chats persistence.
  */
 
-import type { Chat } from "@/shared";
+import type { Chat, ChatStreamControlState } from "@/shared";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { getDatabase } from "../database";
 import { chatToRow, hasMessageContent, rowToChat, validateChatColumnNames } from "./helpers";
@@ -133,6 +133,23 @@ export async function loadChatMetadata(chatId: string): Promise<Chat | null> {
     .get(chatId, requirePersistenceUserId()) as Record<string, unknown> | null;
 
   return row ? rowToChat(row) : null;
+}
+
+export function loadChatStreamControlState(chatId: string): ChatStreamControlState | null {
+  const row = getDatabase()
+    .prepare("SELECT status, interrupt_requested FROM chats WHERE id = ? AND user_id = ?")
+    .get(chatId, requirePersistenceUserId()) as {
+      status: ChatStreamControlState["status"];
+      interrupt_requested: number | null;
+    } | null;
+
+  if (!row) {
+    return null;
+  }
+  return {
+    status: row.status,
+    interruptRequested: row.interrupt_requested === 1,
+  };
 }
 
 export async function loadTaskChat(taskId: string): Promise<Chat | null> {

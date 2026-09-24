@@ -20,6 +20,56 @@ export interface UpdateChatStateOptions {
   expectedStatus?: ChatStatus;
 }
 
+/**
+ * Persist a live stream mutation without rebuilding the full chat row.
+ *
+ * Tool events already have the current transcript in memory and only own
+ * last_activity_at in the chat metadata. Keeping this path separate prevents
+ * a stream event from overwriting metadata changed by another operation.
+ */
+export async function updateChatStreamState(
+  chatId: string,
+  lastActivityAt: string | undefined,
+  options: Pick<UpdateChatStateOptions, "transcriptChanges" | "expectedStatus"> = {},
+): Promise<boolean> {
+  const db = getDatabase();
+  const userId = requirePersistenceUserId();
+  const statusCondition = options.expectedStatus === undefined ? "" : " AND status = ?";
+  const updateStmt = db.prepare(`
+    UPDATE chats
+    SET last_activity_at = ?
+    WHERE id = ? AND user_id = ?${statusCondition}
+  `);
+  const selectStatusStmt = db.prepare(
+    "SELECT status FROM chats WHERE id = ? AND user_id = ?",
+  );
+
+  const saved = db.transaction(() => {
+    const values: (string | null)[] = [lastActivityAt ?? null, chatId, userId];
+    if (options.expectedStatus !== undefined) {
+      values.push(options.expectedStatus);
+    }
+    const result = updateStmt.run(...values);
+    if (result.changes === 0) {
+      const row = selectStatusStmt.get(chatId, userId) as { status: ChatStatus } | null;
+      if (!row || (options.expectedStatus !== undefined && row.status !== options.expectedStatus)) {
+        return false;
+      }
+    }
+
+    if (options.transcriptChanges) {
+      chatTranscriptStore.applyChangeSetInTransaction(
+        db,
+        chatId,
+        userId,
+        options.transcriptChanges,
+      );
+    }
+    return true;
+  })();
+  return saved;
+}
+
 export async function updateChatState(chatId: string, state: ChatState, options: UpdateChatStateOptions = {}): Promise<boolean> {
   const db = getDatabase();
   const userId = requirePersistenceUserId();
