@@ -22,6 +22,42 @@ describe("CLI security-sensitive parsing", () => {
     }
   });
 
+  test("requires named relay mutations and limits relay selection to relay invitations", () => {
+    // CLI validation prevents an omitted name from mutating an unintended pairing.
+    expect(() => parseMeshCommandArgs([
+      "relay", "pair", "https://relay.example.com",
+    ])).toThrow("Mesh relay pair requires --name");
+    expect(() => parseMeshCommandArgs([
+      "relay", "unpair",
+    ])).toThrow("Mesh relay unpair requires --name");
+    expect(parseMeshCommandArgs([
+      "relay", "pair", "https://relay.example.com", "--name", "east",
+    ])).toMatchObject({
+      operation: "relay-pair",
+      relayName: "east",
+      relayUrl: "https://relay.example.com",
+    });
+    expect(parseMeshCommandArgs([
+      "relay", "unpair", "--name", "east",
+    ])).toMatchObject({ operation: "relay-unpair", relayName: "east" });
+    expect(parseMeshCommandArgs([
+      "relay", "primary", "west",
+    ])).toMatchObject({ operation: "relay-primary", relayName: "west" });
+    expect(parseMeshCommandArgs([
+      "enrollment-token", "create", "--route", "relay", "--relay", "west",
+    ])).toMatchObject({
+      operation: "enrollment-token-create",
+      route: "relay",
+      relayName: "west",
+    });
+    expect(parseMeshCommandArgs([
+      "enrollment-token", "create", "--route", "relay",
+    ]).relayName).toBeUndefined();
+    expect(() => parseMeshCommandArgs([
+      "enrollment-token", "create", "--route", "direct", "--relay", "west",
+    ])).toThrow("--relay requires --route relay");
+  });
+
   test("restricts relay-only workers to loopback without a public endpoint", () => {
     expect(parseWorkerBootstrapArgs([
       "bootstrap",

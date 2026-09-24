@@ -185,6 +185,7 @@ export class MeshManager {
     name: string,
     ttlSeconds: number,
     route: MeshEnrollmentRoute = "direct",
+    relayName?: string,
   ) {
     requireMeshRuntimeRole("controller");
     const identity = route === "direct"
@@ -195,6 +196,7 @@ export class MeshManager {
       route === "direct"
         ? identity.meshEndpoint ?? resolveAdvertisedMeshEndpoint()
         : "",
+      relayName,
     );
     const expiresAt = new Date(Date.now() + ttlSeconds * 1_000).toISOString();
     const admission = route === "relay"
@@ -214,6 +216,7 @@ export class MeshManager {
       },
       {
         ...(admission ? { token: admission, expiresAt } : {}),
+        ...(invitation.relay ? { relay: invitation.relay } : {}),
       },
     );
     return {
@@ -231,6 +234,7 @@ export class MeshManager {
     name: string,
     ttlSeconds: number,
     route: MeshEnrollmentRoute = "direct",
+    relayName?: string,
   ) {
     requireMeshRuntimeRole("controller");
     const identity = route === "direct"
@@ -241,6 +245,7 @@ export class MeshManager {
       route === "direct"
         ? identity.meshEndpoint ?? resolveAdvertisedMeshEndpoint()
         : "",
+      relayName,
     );
     const expiresAt = new Date(Date.now() + ttlSeconds * 1_000).toISOString();
     const admission = route === "relay"
@@ -258,6 +263,7 @@ export class MeshManager {
         fingerprint: identity.fingerprint,
       },
       ...(admission ? { token: admission, expiresAt } : {}),
+      ...(invitation.relay ? { relay: invitation.relay } : {}),
     });
     return {
       ...created,
@@ -444,6 +450,12 @@ export class MeshManager {
         nodeId: identity.nodeId,
         fingerprint: identity.fingerprint,
       },
+      relayRoute
+        ? {
+            relayUrl: relayRoute.relayUrl,
+            relayFingerprint: relayRoute.relayFingerprint,
+          }
+        : undefined,
     );
     if (!tokenResult) {
       throw new DomainError(

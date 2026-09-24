@@ -49,7 +49,7 @@ function currentTable(
 
 function resetOnlyTable(
   name: string,
-  category: "framework",
+  category: "clanky" | "framework",
 ): SchemaTableDefinition {
   return {
     name,
@@ -75,7 +75,9 @@ export const SCHEMA_TABLE_INVENTORY: readonly SchemaTableDefinition[] = [
   currentTable("mesh_worker_kill_nonces", "clanky"),
   currentTable("mesh_worker_registrations", "clanky"),
   currentTable("mesh_controller_grants", "clanky"),
-  currentTable("mesh_controller_relay_pairing", "clanky"),
+  // The immutable baseline can recreate this table; reset must discard it.
+  resetOnlyTable("mesh_controller_relay_pairing", "clanky"),
+  currentTable("mesh_controller_relays", "clanky"),
   currentTable("mesh_protocol_state", "clanky"),
   currentTable("mesh_node_identity", "clanky"),
 
@@ -148,6 +150,7 @@ const FRESH_SCHEMA_TABLE_NAMES = Object.freeze(
     (table) => table.expectedInFreshSchema,
   ).map((table) => table.name),
 );
+const FRESH_SCHEMA_TABLE_NAME_SET = new Set(FRESH_SCHEMA_TABLE_NAMES);
 const INTROSPECTABLE_TABLE_NAMES = Object.freeze(
   SCHEMA_TABLE_INVENTORY.filter((table) => table.introspectable).map(
     (table) => table.name,
@@ -158,9 +161,9 @@ const RESETTABLE_TABLE_NAMES = Object.freeze(
     (table) => table.name,
   ),
 );
-const NON_FRESH_TABLE_NAMES = new Set(
+const NON_FRESH_FRAMEWORK_TABLE_NAMES = new Set(
   SCHEMA_TABLE_INVENTORY.filter(
-    (table) => !table.expectedInFreshSchema,
+    (table) => !table.expectedInFreshSchema && table.category === "framework",
   ).map((table) => table.name),
 );
 const INTROSPECTABLE_TABLE_NAME_SET = new Set(INTROSPECTABLE_TABLE_NAMES);
@@ -184,7 +187,7 @@ export function isIntrospectableTableName(tableName: string): boolean {
 /**
  * Verifies that all current tables exist and that no unknown user table has
  * been introduced. Known reset-only framework tables are allowed to remain
- * until the next database reset.
+ * until the next database reset; the retired Clanky relay table is not.
  */
 export function assertSchemaInventory(db: Database): void {
   const actualTableNames = (
@@ -202,7 +205,8 @@ export function assertSchemaInventory(db: Database): void {
   );
   const unexpectedTableNames = actualTableNames.filter(
     (tableName) =>
-      !inventoryNames.has(tableName) && !NON_FRESH_TABLE_NAMES.has(tableName),
+      !FRESH_SCHEMA_TABLE_NAME_SET.has(tableName)
+      && !NON_FRESH_FRAMEWORK_TABLE_NAMES.has(tableName),
   );
 
   if (missingTableNames.length === 0 && unexpectedTableNames.length === 0) {

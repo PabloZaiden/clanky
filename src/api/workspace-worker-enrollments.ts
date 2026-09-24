@@ -38,6 +38,7 @@ export const workspaceWorkerEnrollmentRoutes = defineRoutes({
             parsed.data.name,
             parsed.data.ttlSeconds,
             parsed.data.route,
+            parsed.data.relayName,
           ),
           { status: 201 },
         );

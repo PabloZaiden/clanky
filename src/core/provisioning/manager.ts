@@ -71,6 +71,7 @@ export class ProvisioningManager {
       executionHostBinding,
       existingWorkerEnrollmentId,
       workerEnrollmentRoute,
+      workerRelayName,
       workerHostAddress,
       workspaceWorkerEnrollmentId,
     } = target;
@@ -89,6 +90,7 @@ export class ProvisioningManager {
             ? { workerEnrollmentId: existingWorkerEnrollmentId }
             : {}),
           ...(workerEnrollmentRoute ? { workerEnrollmentRoute } : {}),
+          ...(workerRelayName ? { workerRelayName } : {}),
           ...(workerHostAddress ? { workerHostAddress } : {}),
           ...(workerHostAddress && options.workerHostAddressManual
             ? { workerHostAddressManual: true }

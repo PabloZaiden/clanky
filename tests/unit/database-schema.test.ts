@@ -294,6 +294,7 @@ describe("database schema", () => {
       expect(tableNames()).toEqual([...getFreshSchemaTableNames()].sort());
       expect(() => assertSchemaInventory(getDatabase())).not.toThrow();
       expect(tableNames()).toContain("execution_hosts");
+      expect(tableNames()).toContain("mesh_controller_relays");
       expect(tableNames()).toContain("workspace_execution_targets");
       expect(tableNames()).toContain("workspace_worker_enrollments");
       expect(tableNames()).toContain("chat_transcript_entries");
@@ -309,6 +310,9 @@ describe("database schema", () => {
       expect(columnNames("agents")).toContain("generation_chat_id");
       expect(columnNames("chat_transcript_entries")).toContain("message_role");
       expect(columnNames("task_transcript_entries")).toContain("message_role");
+      expect(columnNames("mesh_enrollment_tokens")).toEqual(
+        expect.arrayContaining(["relay_url", "relay_fingerprint"]),
+      );
       expect(indexNames("preview_sessions")).toContain(
         "idx_preview_sessions_execution_host_status",
       );
@@ -323,7 +327,7 @@ describe("database schema", () => {
     const database = createLegacyConsolidatedDatabase();
     try {
       expect(() => createBaseSchema(database)).not.toThrow();
-      expect(runMigrations(database)).toBe(2);
+      expect(runMigrations(database)).toBe(3);
 
       expect(getSchemaVersion(database)).toBe(migrations.at(-1)!.version);
       expect(getTableColumns(database, "execution_hosts")).toEqual(
@@ -524,7 +528,7 @@ describe("database schema", () => {
         [1, null],
       );
 
-      expect(runMigrations(database)).toBe(4);
+      expect(runMigrations(database)).toBe(5);
       expect(
         database
           .query("SELECT controller_node_id FROM mesh_controller_grants")
@@ -559,7 +563,14 @@ describe("database schema", () => {
           controller_node_id TEXT PRIMARY KEY
         );
         CREATE TABLE mesh_controller_relay_pairing (
-          singleton INTEGER PRIMARY KEY
+          singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+          relay_url TEXT NOT NULL,
+          relay_public_key TEXT NOT NULL,
+          relay_fingerprint TEXT NOT NULL,
+          controller_node_id TEXT NOT NULL,
+          controller_fingerprint TEXT NOT NULL,
+          paired_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
         );
       `);
       for (let version = 1; version <= BASELINE_SCHEMA_VERSION + 3; version++) {
@@ -571,9 +582,15 @@ describe("database schema", () => {
       database.run("INSERT INTO mesh_node_identity VALUES (?)", [1]);
       database.run("INSERT INTO mesh_worker_registrations VALUES (?)", ["worker-1"]);
       database.run("INSERT INTO mesh_controller_grants VALUES (?)", ["controller-1"]);
-      database.run("INSERT INTO mesh_controller_relay_pairing VALUES (?)", [1]);
+      database.run(
+        "INSERT INTO mesh_controller_relay_pairing VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+          1, "https://relay-v4.example", "relay-key", "relay-fingerprint",
+          "controller-node", "controller-fingerprint", "paired-time", "updated-time",
+        ],
+      );
 
-      expect(runMigrations(database)).toBe(3);
+      expect(runMigrations(database)).toBe(4);
       expect(getTableColumns(database, "mesh_worker_registrations")).toEqual(
         expect.arrayContaining([
           "worker_binary_version",
@@ -592,7 +609,7 @@ describe("database schema", () => {
           "controller_protocol_updated_at",
         ]),
       );
-      expect(getTableColumns(database, "mesh_controller_relay_pairing")).toEqual(
+      expect(getTableColumns(database, "mesh_controller_relays")).toEqual(
         expect.arrayContaining([
           "relay_binary_version",
           "relay_supported_protocol_versions_json",
@@ -628,7 +645,7 @@ describe("database schema", () => {
         migrated_from_version: 1,
       }]);
       expect(database.query(
-        "SELECT relay_supported_protocol_versions_json, relay_preferred_protocol_version, relay_negotiated_protocol_version FROM mesh_controller_relay_pairing",
+        "SELECT relay_supported_protocol_versions_json, relay_preferred_protocol_version, relay_negotiated_protocol_version FROM mesh_controller_relays",
       ).all()).toEqual([{
         relay_supported_protocol_versions_json: "[5]",
         relay_preferred_protocol_version: 5,
@@ -641,8 +658,14 @@ describe("database schema", () => {
         "SELECT controller_node_id FROM mesh_controller_grants",
       ).all()).toEqual([{ controller_node_id: "controller-1" }]);
       expect(database.query(
-        "SELECT singleton FROM mesh_controller_relay_pairing",
-      ).all()).toEqual([{ singleton: 1 }]);
+        "SELECT name, is_primary, relay_url, paired_at, updated_at FROM mesh_controller_relays",
+      ).all()).toEqual([{
+        name: "default",
+        is_primary: 1,
+        relay_url: "https://relay-v4.example",
+        paired_at: "paired-time",
+        updated_at: "updated-time",
+      }]);
 
       expect(runMigrations(database)).toBe(0);
       expect(database.query(
@@ -684,7 +707,14 @@ describe("database schema", () => {
           controller_protocol_updated_at TEXT
         );
         CREATE TABLE mesh_controller_relay_pairing (
-          singleton INTEGER PRIMARY KEY,
+          singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+          relay_url TEXT NOT NULL,
+          relay_public_key TEXT NOT NULL,
+          relay_fingerprint TEXT NOT NULL,
+          controller_node_id TEXT NOT NULL,
+          controller_fingerprint TEXT NOT NULL,
+          paired_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
           relay_binary_version TEXT,
           relay_supported_protocol_versions_json TEXT NOT NULL DEFAULT '[1]',
           relay_preferred_protocol_version INTEGER NOT NULL DEFAULT 1,
@@ -715,15 +745,19 @@ describe("database schema", () => {
         ["controller-1", "5.0.5", "[1]", 1, 1, "old-controller-time"],
       );
       database.run(
-        "INSERT INTO mesh_controller_relay_pairing VALUES (?, ?, ?, ?, ?, ?)",
-        [1, "5.0.5", "[1]", 1, 1, "old-relay-time"],
+        "INSERT INTO mesh_controller_relay_pairing VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+          1, "https://relay-v1.example", "relay-key", "relay-fingerprint",
+          "controller-node", "controller-fingerprint", "paired-time", "updated-time",
+          "5.0.5", "[1]", 1, 1, "old-relay-time",
+        ],
       );
       database.run(
         "INSERT INTO mesh_protocol_state VALUES (?, ?, ?, ?, ?)",
         [1, 1, 1, "old-migration-time", "old-update-time"],
       );
 
-      expect(runMigrations(database)).toBe(1);
+      expect(runMigrations(database)).toBe(2);
       expect(database.query(
         "SELECT worker_supported_protocol_versions_json, worker_preferred_protocol_version, worker_negotiated_protocol_version, worker_protocol_updated_at FROM mesh_worker_registrations",
       ).all()).toEqual([{
@@ -741,8 +775,11 @@ describe("database schema", () => {
         controller_protocol_updated_at: "old-controller-time",
       }]);
       expect(database.query(
-        "SELECT relay_supported_protocol_versions_json, relay_preferred_protocol_version, relay_negotiated_protocol_version, relay_protocol_updated_at FROM mesh_controller_relay_pairing",
+        "SELECT name, is_primary, relay_binary_version, relay_supported_protocol_versions_json, relay_preferred_protocol_version, relay_negotiated_protocol_version, relay_protocol_updated_at FROM mesh_controller_relays",
       ).all()).toEqual([{
+        name: "default",
+        is_primary: 1,
+        relay_binary_version: "5.0.5",
         relay_supported_protocol_versions_json: "[5]",
         relay_preferred_protocol_version: 5,
         relay_negotiated_protocol_version: 5,
@@ -760,6 +797,155 @@ describe("database schema", () => {
       expect(runMigrations(database)).toBe(0);
       database.close();
     });
+  });
+
+  test("upgrades a prior controller relay pairing and preserves unbound enrollment tokens", () => {
+    const database = new Database(":memory:");
+    try {
+      database.run("PRAGMA foreign_keys = ON");
+      createBaseSchema(database);
+      for (const migration of migrations) {
+        if (migration.version > BASELINE_SCHEMA_VERSION + 6) {
+          break;
+        }
+        migration.up(database);
+        database.run(
+          "INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)",
+          [migration.version, migration.name, "old-migration-time"],
+        );
+      }
+      database.run(`
+        INSERT INTO mesh_controller_relay_pairing (
+          singleton, relay_url, relay_public_key, relay_fingerprint,
+          controller_node_id, controller_fingerprint, paired_at, updated_at,
+          relay_binary_version, relay_supported_protocol_versions_json,
+          relay_preferred_protocol_version, relay_negotiated_protocol_version,
+          relay_protocol_updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        1, "https://original-relay.example", "relay-public-key", "relay-fingerprint",
+        "controller-node", "controller-fingerprint", "paired-time", "updated-time",
+        "5.0.5", "[5]", 5, 5, "protocol-time",
+      ]);
+      database.run(`
+        INSERT INTO mesh_enrollment_tokens (
+          id, user_id, token_hash, name, controller_node_id,
+          controller_fingerprint, created_at, expires_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        "token-1", "user-1", "token-hash", "existing token",
+        "controller-node", "controller-fingerprint", "created-time", "expires-time",
+      ]);
+
+      expect(runMigrations(database)).toBe(1);
+      expect(getSchemaVersion(database)).toBe(migrations.at(-1)!.version);
+      const migratedPairing = {
+        name: "default",
+        is_primary: 1,
+        relay_url: "https://original-relay.example",
+        relay_public_key: "relay-public-key",
+        relay_fingerprint: "relay-fingerprint",
+        controller_node_id: "controller-node",
+        controller_fingerprint: "controller-fingerprint",
+        paired_at: "paired-time",
+        updated_at: "updated-time",
+        relay_binary_version: "5.0.5",
+        relay_supported_protocol_versions_json: "[5]",
+        relay_preferred_protocol_version: 5,
+        relay_negotiated_protocol_version: 5,
+        relay_protocol_updated_at: "protocol-time",
+      };
+      expect(database.query("SELECT * FROM mesh_controller_relays").all()).toEqual([
+        migratedPairing,
+      ]);
+      expect(database.query(
+        "SELECT id, token_hash, relay_url, relay_fingerprint FROM mesh_enrollment_tokens",
+      ).all()).toEqual([{
+        id: "token-1",
+        token_hash: "token-hash",
+        relay_url: null,
+        relay_fingerprint: null,
+      }]);
+      expect(database.query(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'mesh_controller_relay_pairing'",
+      ).get()).toBeNull();
+      expect(() => assertSchemaInventory(database)).not.toThrow();
+
+      createBaseSchema(database);
+      database.run(`
+        INSERT INTO mesh_controller_relay_pairing (
+          singleton, relay_url, relay_public_key, relay_fingerprint,
+          controller_node_id, controller_fingerprint, paired_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        1, "https://stale-relay.example", "stale-relay-key", "stale-fingerprint",
+        "controller-node", "controller-fingerprint", "paired-time", "updated-time",
+      ]);
+      expect(() => runMigrations(database)).toThrow();
+      expect(database.query(
+        "SELECT relay_url FROM mesh_controller_relay_pairing",
+      ).all()).toEqual([{ relay_url: "https://stale-relay.example" }]);
+      expect(database.query("SELECT * FROM mesh_controller_relays").all()).toEqual([
+        migratedPairing,
+      ]);
+      database.run("DELETE FROM mesh_controller_relay_pairing");
+      expect(runMigrations(database)).toBe(0);
+      expect(database.query("SELECT * FROM mesh_controller_relays").all()).toEqual([
+        migratedPairing,
+      ]);
+      expect(database.query(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'mesh_controller_relay_pairing'",
+      ).get()).toBeNull();
+      expect(() => assertSchemaInventory(database)).not.toThrow();
+    } finally {
+      database.close();
+    }
+  });
+
+  test("enforces relay identity and primary uniqueness while allowing no primary", () => {
+    const database = new Database(":memory:");
+    try {
+      createBaseSchema(database);
+      runMigrations(database);
+      const insertRelay = (
+        name: string,
+        relayUrl: string,
+        relayFingerprint: string,
+        isPrimary = 0,
+      ): void => {
+        database.run(`
+          INSERT INTO mesh_controller_relays (
+            name, is_primary, relay_url, relay_public_key, relay_fingerprint,
+            controller_node_id, controller_fingerprint, paired_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [
+          name, isPrimary, relayUrl, "relay-public-key", relayFingerprint,
+          "controller-node", "controller-fingerprint", "paired-time", "updated-time",
+        ]);
+      };
+
+      insertRelay("Primary", "https://primary.example", "primary-fingerprint", 1);
+      insertRelay("Backup", "https://backup.example", "backup-fingerprint");
+      expect(() => insertRelay(
+        "PRIMARY", "https://another.example", "another-fingerprint",
+      )).toThrow();
+      expect(() => insertRelay(
+        "Another", "https://backup.example", "another-fingerprint",
+      )).toThrow();
+      expect(() => insertRelay(
+        "Another", "https://another.example", "backup-fingerprint",
+      )).toThrow();
+      expect(() => insertRelay(
+        "Another", "https://another.example", "another-fingerprint", 1,
+      )).toThrow();
+
+      database.run("DELETE FROM mesh_controller_relays WHERE name = ?", ["Primary"]);
+      expect(database.query(
+        "SELECT name FROM mesh_controller_relays WHERE is_primary = 1",
+      ).all()).toEqual([]);
+    } finally {
+      database.close();
+    }
   });
 
   test("applies a future migration once and keeps it idempotent", async () => {
@@ -809,6 +995,25 @@ describe("database schema", () => {
         ) VALUES (?, ?, ?, ?, ?, ?)`,
         ["reset-user", "reset-user", "owner", 1, "now", "now"],
       );
+      getDatabase().run(`
+        INSERT INTO mesh_controller_relays (
+          name, is_primary, relay_url, relay_public_key, relay_fingerprint,
+          controller_node_id, controller_fingerprint, paired_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        "primary", 1, "https://current.example", "relay-key", "current-fingerprint",
+        "controller-node", "controller-fingerprint", "paired-time", "updated-time",
+      ]);
+      createBaseSchema(getDatabase());
+      getDatabase().run(`
+        INSERT INTO mesh_controller_relay_pairing (
+          singleton, relay_url, relay_public_key, relay_fingerprint,
+          controller_node_id, controller_fingerprint, paired_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        1, "https://legacy.example", "legacy-key", "legacy-fingerprint",
+        "controller-node", "controller-fingerprint", "paired-time", "updated-time",
+      ]);
       const freshTableNames = new Set(getFreshSchemaTableNames());
       for (const tableName of getResettableTableNames()) {
         if (freshTableNames.has(tableName)) {
@@ -826,8 +1031,12 @@ describe("database schema", () => {
           count: number;
         }).count,
       ).toBe(0);
+      expect(getDatabase().query("SELECT name FROM mesh_controller_relays").all()).toEqual([]);
       expect(getSchemaVersion(getDatabase())).toBe(migrations.at(-1)!.version);
       expect(tableNames()).toEqual([...getFreshSchemaTableNames()].sort());
+      expect(columnNames("mesh_enrollment_tokens")).toEqual(
+        expect.arrayContaining(["relay_url", "relay_fingerprint"]),
+      );
       expect(() => assertSchemaInventory(getDatabase())).not.toThrow();
       expect(getDatabase().query("PRAGMA foreign_key_check").all()).toEqual([]);
     });

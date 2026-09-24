@@ -4,7 +4,10 @@
 
 import { createLogger } from "@pablozaiden/webapp/server";
 import {
+  ControllerRelayNameSchema,
   MeshRelayWellKnownDescriptorSchema,
+  type ControllerRelayPairingStatus,
+  type ControllerRelayStatusItem,
 } from "@/contracts/schemas/mesh-relay";
 import {
   MESH_RELAY_DESCRIPTOR_PATH,
@@ -13,18 +16,19 @@ import {
   type MeshRelayWellKnownDescriptorV5,
 } from "@/shared/mesh-relay";
 import { MESH_PROTOCOL_VERSIONS_HEADER, serializeMeshProtocolVersions } from "@/shared/mesh-protocol";
-import {
-  MESH_PROTOCOL_VERSION,
-  type MeshProtocolVersion,
-} from "@/shared/mesh-protocol";
+import { MESH_PROTOCOL_VERSION } from "@/shared/mesh-protocol";
 import type { MeshEnrollmentRoute } from "@/contracts/schemas/mesh";
+import type { MeshRelayPeerRoute } from "@/shared/mesh";
 import {
   deleteControllerRelayPairing,
   getControllerRelayPairing,
+  getPrimaryControllerRelayPairing,
   InconsistentMeshWorkerIdentityError,
   listActiveControllerWorkerIdentities,
+  listControllerRelayPairings,
   restoreControllerRelayPairing,
   saveControllerRelayPairing,
+  setPrimaryControllerRelayPairing,
   type ControllerRelayPairing,
 } from "../persistence/controller-relay-pairing";
 import {
@@ -41,6 +45,8 @@ import { MeshRelayStreamError } from "./mesh-relay-errors";
 import {
   MeshRelayConnectorManager,
 } from "./mesh-relay-connector-manager";
+import { setMeshRelayTransport } from "./mesh-peer-transport";
+import { createMeshRelayPeerTransport } from "./mesh-relay-transport";
 import { requireMeshRuntimeRole } from "./mesh-runtime";
 
 const log = createLogger("core:controller-relay-service");
@@ -51,28 +57,15 @@ export const CONTROLLER_RELAY_CONNECTION_TIMEOUT_MS = 30_000;
 export const RELAY_CONTROLLER_FINGERPRINT_ENV =
   "CLANKY_RELAY_CONTROLLER_FINGERPRINT";
 
-export interface ControllerRelayStatus {
-  paired: boolean;
-  relayUrl: string | null;
-  relayFingerprint: string | null;
-  controllerFingerprint: string;
-  connected: boolean;
-  runtimeError: {
-    code: string;
-    message: string;
-  } | null;
-  pairedAt: string | null;
-  updatedAt: string | null;
-  bootstrapEnvironment: string;
-  relayBinaryVersion: string | null;
-  relaySupportedProtocolVersions: MeshProtocolVersion[];
-  relayPreferredProtocolVersion: MeshProtocolVersion;
-  relayNegotiatedProtocolVersion: MeshProtocolVersion | null;
-}
+export type ControllerRelayStatus = ControllerRelayPairingStatus;
 
 export interface MeshEnrollmentInvitationTarget {
   route: MeshEnrollmentRoute;
   target: string;
+  relay?: {
+    relayUrl: string;
+    relayFingerprint: string;
+  };
 }
 
 export interface ControllerRelayServiceOptions {
@@ -93,6 +86,14 @@ interface AuthorizationWaiter {
   resolve(): void;
   reject(error: unknown): void;
   timer: ReturnType<typeof setTimeout>;
+}
+
+interface ControllerRelayRuntime {
+  manager: MeshRelayConnectorManager;
+  authorizationDirty: boolean;
+  authorizationRefresh?: Promise<void>;
+  authorizationWaiters: Set<AuthorizationWaiter>;
+  runtimeError: ControllerRelayStatusItem["runtimeError"];
 }
 
 async function readBoundedBody(
@@ -141,70 +142,80 @@ async function readBoundedBody(
 }
 
 function pairingStatus(
-  pairing: ControllerRelayPairing | null,
-  controllerFingerprint: string,
+  pairing: ControllerRelayPairing,
   connected: boolean,
-  runtimeError: ControllerRelayStatus["runtimeError"],
-): ControllerRelayStatus {
+  runtimeError: ControllerRelayStatusItem["runtimeError"],
+): ControllerRelayStatusItem {
   return {
-    paired: pairing !== null,
-    relayUrl: pairing?.relayUrl ?? null,
-    relayFingerprint: pairing?.relayFingerprint ?? null,
-    controllerFingerprint,
+    name: pairing.name,
+    isPrimary: pairing.isPrimary,
+    relayUrl: pairing.relayUrl,
+    relayFingerprint: pairing.relayFingerprint,
     connected,
     runtimeError,
-    pairedAt: pairing?.pairedAt ?? null,
-    updatedAt: pairing?.updatedAt ?? null,
-    bootstrapEnvironment:
-      `${RELAY_CONTROLLER_FINGERPRINT_ENV}=${controllerFingerprint}`,
-    relayBinaryVersion: pairing?.relayBinaryVersion ?? null,
-    relaySupportedProtocolVersions: pairing?.relaySupportedProtocolVersions
-      ?? [MESH_PROTOCOL_VERSION],
-    relayPreferredProtocolVersion: pairing?.relayPreferredProtocolVersion
-      ?? MESH_PROTOCOL_VERSION,
-    relayNegotiatedProtocolVersion: pairing?.relayNegotiatedProtocolVersion ?? null,
+    pairedAt: pairing.pairedAt,
+    updatedAt: pairing.updatedAt,
+    relayBinaryVersion: pairing.relayBinaryVersion,
+    relaySupportedProtocolVersions: pairing.relaySupportedProtocolVersions,
+    relayPreferredProtocolVersion: pairing.relayPreferredProtocolVersion,
+    relayNegotiatedProtocolVersion: pairing.relayNegotiatedProtocolVersion,
   };
 }
 
 export class ControllerRelayService {
-  private readonly manager: MeshRelayConnectorManager;
+  private readonly runtimes = new Map<string, ControllerRelayRuntime>();
   private dispatch?: RelayDispatch;
   private unsubscribeMesh?: () => void;
   private lifecycle = Promise.resolve();
-  private authorizationDirty = false;
-  private authorizationRefresh?: Promise<void>;
-  private readonly authorizationWaiters = new Set<AuthorizationWaiter>();
-  private runtimeError: ControllerRelayStatus["runtimeError"] = null;
+  private usedInjectedManager = false;
   private onAuthenticated?: () => void;
 
-  constructor(private readonly options: ControllerRelayServiceOptions = {}) {
-    this.manager = options.manager ?? new MeshRelayConnectorManager();
-  }
+  constructor(private readonly options: ControllerRelayServiceOptions = {}) {}
 
   async getStatus(): Promise<ControllerRelayStatus> {
     requireMeshRuntimeRole("controller");
     const identity = await ensureLocalMeshNodeIdentity();
-    return pairingStatus(
-      getControllerRelayPairing(),
-      identity.fingerprint,
-      this.manager.status === "connected",
-      this.runtimeError,
-    );
+    const pairings = listControllerRelayPairings();
+    return {
+      controllerFingerprint: identity.fingerprint,
+      bootstrapEnvironment:
+        `${RELAY_CONTROLLER_FINGERPRINT_ENV}=${identity.fingerprint}`,
+      primaryName: pairings.find((pairing) => pairing.isPrimary)?.name ?? null,
+      relays: pairings.map((pairing) => {
+        const runtime = this.runtimes.get(pairing.name);
+        return pairingStatus(
+          pairing,
+          runtime?.manager.status === "connected",
+          runtime?.runtimeError ?? null,
+        );
+      }),
+    };
   }
 
   async resolveEnrollmentInvitationTarget(
     route: MeshEnrollmentRoute,
     directTarget: string,
+    relayName?: string,
   ): Promise<MeshEnrollmentInvitationTarget> {
     requireMeshRuntimeRole("controller");
     if (route === "direct") {
+      if (relayName !== undefined) {
+        throw new DomainError(
+          "mesh_relay_name_invalid",
+          "A relay can only be selected for a relay enrollment.",
+        );
+      }
       return { route, target: directTarget };
     }
-    const pairing = getControllerRelayPairing();
+    const pairing = relayName === undefined
+      ? getPrimaryControllerRelayPairing()
+      : getControllerRelayPairing(this.normalizeRelayName(relayName));
     if (!pairing) {
       throw new DomainError(
-        "mesh_relay_not_paired",
-        "Pair a controller relay before creating a relay enrollment invitation.",
+        relayName === undefined ? "mesh_relay_not_paired" : "mesh_relay_not_found",
+        relayName === undefined
+          ? "Select a primary relay before creating a relay enrollment invitation."
+          : "The selected controller relay is not paired.",
       );
     }
     const identity = await ensureLocalMeshNodeIdentity();
@@ -217,12 +228,19 @@ export class ControllerRelayService {
         "The persisted relay pairing belongs to a different controller identity.",
       );
     }
-    return { route, target: pairing.relayUrl };
+    return {
+      route,
+      target: pairing.relayUrl,
+      relay: {
+        relayUrl: pairing.relayUrl,
+        relayFingerprint: pairing.relayFingerprint,
+      },
+    };
   }
 
   getDedicatedWorkerEnrollmentRoute(): MeshEnrollmentRoute {
     requireMeshRuntimeRole("controller");
-    return getControllerRelayPairing() ? "relay" : "direct";
+    return getPrimaryControllerRelayPairing() ? "relay" : "direct";
   }
 
   assertEnrollmentRelayRoute(route: {
@@ -230,23 +248,23 @@ export class ControllerRelayService {
     relayFingerprint: string;
   }): ControllerRelayPairing {
     requireMeshRuntimeRole("controller");
-    const pairing = getControllerRelayPairing();
-    if (
-      !pairing
-      || pairing.relayUrl !== route.relayUrl
-      || pairing.relayFingerprint !== route.relayFingerprint
-    ) {
+    const pairing = listControllerRelayPairings().find(
+      (candidate) => candidate.relayUrl === route.relayUrl
+        && candidate.relayFingerprint === route.relayFingerprint,
+    );
+    if (!pairing) {
       throw new DomainError(
         "mesh_enrollment_relay_mismatch",
-        "The enrollment relay route does not match the controller's active pairing.",
+        "The enrollment relay route does not match a controller pairing.",
       );
     }
     return pairing;
   }
 
-  async pair(relayUrl: string): Promise<ControllerRelayStatus> {
+  async pair(name: string, relayUrl: string): Promise<ControllerRelayStatus> {
     return await this.runLifecycle(async () => {
       requireMeshRuntimeRole("controller");
+      name = this.normalizeRelayName(name);
       const normalizedRelayUrl = this.normalizeRelayUrl(relayUrl);
       const identity = await ensureLocalMeshNodeIdentity();
       const descriptor = await this.fetchDescriptor(normalizedRelayUrl);
@@ -254,6 +272,18 @@ export class ControllerRelayService {
         throw new DomainError(
           "mesh_relay_controller_mismatch",
           "The relay is configured for a different controller fingerprint.",
+        );
+      }
+      if (listControllerRelayPairings().some((pairing) => (
+        pairing.name !== name
+        && (
+          pairing.relayUrl === normalizedRelayUrl
+          || pairing.relayFingerprint === descriptor.fingerprint
+        )
+      ))) {
+        throw new DomainError(
+          "mesh_relay_already_paired",
+          "The relay is already paired under another name.",
         );
       }
 
@@ -279,8 +309,9 @@ export class ControllerRelayService {
         connector.close(1000, "Controller relay pairing authentication complete");
       }
 
-      const previousPairing = getControllerRelayPairing();
+      const previousPairing = getControllerRelayPairing(name);
       const pairing = saveControllerRelayPairing({
+        name,
         relayUrl: normalizedRelayUrl,
         relayPublicKey: descriptor.publicKey,
         relayFingerprint: descriptor.fingerprint,
@@ -291,46 +322,62 @@ export class ControllerRelayService {
         relayPreferredProtocolVersion: descriptor.preferredProtocolVersion,
         relayNegotiatedProtocolVersion: descriptor.negotiatedProtocolVersion,
       });
-      this.runtimeError = null;
+      const runtime = this.dispatch ? this.getOrCreateRuntime(name) : undefined;
+      if (runtime) {
+        runtime.runtimeError = null;
+      }
       if (this.dispatch) {
         try {
-          await this.restartManager(pairing, true);
+          await this.restartManager(runtime!, pairing, true);
         } catch (error) {
-          await this.stopManager();
+          await this.stopManager(runtime!);
           if (previousPairing) {
             restoreControllerRelayPairing(previousPairing);
             try {
-              await this.restartManager(previousPairing, false);
+              await this.restartManager(runtime!, previousPairing, false);
             } catch (restoreError) {
-              this.setRuntimeError(restoreError);
+              this.setRuntimeError(runtime!, restoreError);
               log.error("Previous controller relay runtime could not be restored", {
+                relayName: name,
                 error: String(restoreError),
               });
             }
           } else {
-            deleteControllerRelayPairing();
-            this.runtimeError = null;
+            deleteControllerRelayPairing(name);
+            this.runtimes.delete(name);
           }
           throw error;
         }
       }
-      return pairingStatus(
-        pairing,
-        identity.fingerprint,
-        this.manager.status === "connected",
-        this.runtimeError,
-      );
+      return await this.getStatus();
     });
   }
 
-  async unpair(): Promise<ControllerRelayStatus> {
+  async unpair(name: string): Promise<ControllerRelayStatus> {
     return await this.runLifecycle(async () => {
       requireMeshRuntimeRole("controller");
-      await this.stopManager();
-      deleteControllerRelayPairing();
-      this.runtimeError = null;
-      const identity = await ensureLocalMeshNodeIdentity();
-      return pairingStatus(null, identity.fingerprint, false, null);
+      name = this.normalizeRelayName(name);
+      if (!getControllerRelayPairing(name)) {
+        throw new DomainError("mesh_relay_not_found", "The controller relay is not paired.");
+      }
+      const runtime = this.runtimes.get(name);
+      if (runtime) {
+        await this.stopManager(runtime);
+        this.runtimes.delete(name);
+      }
+      deleteControllerRelayPairing(name);
+      return await this.getStatus();
+    });
+  }
+
+  async selectPrimary(name: string): Promise<ControllerRelayStatus> {
+    return await this.runLifecycle(async () => {
+      requireMeshRuntimeRole("controller");
+      name = this.normalizeRelayName(name);
+      if (!setPrimaryControllerRelayPairing(name)) {
+        throw new DomainError("mesh_relay_not_found", "The controller relay is not paired.");
+      }
+      return await this.getStatus();
     });
   }
 
@@ -345,14 +392,18 @@ export class ControllerRelayService {
       this.unsubscribeMesh ??= meshStateEventEmitter.subscribe(() => {
         this.requestRuntimeRefresh();
       });
-      const pairing = getControllerRelayPairing();
-      if (pairing) {
+      setMeshRelayTransport(createMeshRelayPeerTransport(
+        (route) => this.resolveConnector(route),
+      ));
+      for (const pairing of listControllerRelayPairings()) {
+        const runtime = this.getOrCreateRuntime(pairing.name);
         try {
-          await this.restartManager(pairing, false);
+          await this.restartManager(runtime, pairing, false);
         } catch (error) {
-          await this.stopManager();
-          this.setRuntimeError(error);
+          await this.stopManager(runtime);
+          this.setRuntimeError(runtime, error);
           log.error("Controller relay runtime could not be started", {
+            relayName: pairing.name,
             error: String(error),
           });
         }
@@ -364,10 +415,14 @@ export class ControllerRelayService {
     await this.runLifecycle(async () => {
       this.unsubscribeMesh?.();
       this.unsubscribeMesh = undefined;
-      await this.stopManager();
+      await Promise.all(
+        [...this.runtimes.values()].map((runtime) => this.stopManager(runtime)),
+      );
+      this.runtimes.clear();
+      this.usedInjectedManager = false;
+      setMeshRelayTransport(null);
       this.dispatch = undefined;
       this.onAuthenticated = undefined;
-      this.runtimeError = null;
     });
   }
 
@@ -397,6 +452,52 @@ export class ControllerRelayService {
         { cause: error },
       );
     }
+  }
+
+  private normalizeRelayName(value: string): string {
+    const parsed = ControllerRelayNameSchema.safeParse(value);
+    if (!parsed.success) {
+      throw new DomainError(
+        "mesh_relay_name_invalid",
+        "Relay name must use 1-64 letters, numbers, hyphens, or underscores.",
+        { cause: parsed.error },
+      );
+    }
+    return parsed.data;
+  }
+
+  private getOrCreateRuntime(name: string): ControllerRelayRuntime {
+    const existing = this.runtimes.get(name);
+    if (existing) {
+      return existing;
+    }
+    const manager = this.options.manager && !this.usedInjectedManager
+      ? this.options.manager
+      : new MeshRelayConnectorManager({ manageTransport: false });
+    this.usedInjectedManager = true;
+    const runtime: ControllerRelayRuntime = {
+      manager,
+      authorizationDirty: false,
+      authorizationWaiters: new Set<AuthorizationWaiter>(),
+      runtimeError: null,
+    };
+    this.runtimes.set(name, runtime);
+    return runtime;
+  }
+
+  private resolveConnector(route: MeshRelayPeerRoute): MeshRelayConnector {
+    const runtime = [...this.runtimes.values()].find((candidate) => {
+      const config = candidate.manager.activeConfig;
+      return config?.relayUrl === route.relayUrl
+        && config.relayFingerprint === route.relayFingerprint;
+    });
+    if (!runtime) {
+      throw new DomainError(
+        "mesh_relay_unavailable",
+        "No configured Mesh relay connection matches this worker's route.",
+      );
+    }
+    return runtime.manager.resolveConnector(route);
   }
 
   private async fetchDescriptor(
@@ -520,6 +621,7 @@ export class ControllerRelayService {
       return pairing;
     }
     return saveControllerRelayPairing({
+      name: pairing.name,
       relayUrl: pairing.relayUrl,
       relayPublicKey: pairing.relayPublicKey,
       relayFingerprint: pairing.relayFingerprint,
@@ -530,10 +632,11 @@ export class ControllerRelayService {
   }
 
   private async restartManager(
+    runtime: ControllerRelayRuntime,
     pairing: ControllerRelayPairing,
     waitForConnection: boolean,
   ): Promise<void> {
-    await this.stopManager();
+    await this.stopManager(runtime);
     pairing = await this.refreshPairingProtocol(pairing);
     const relayUrl = this.normalizeRelayUrl(pairing.relayUrl);
     const dispatch = this.dispatch;
@@ -556,9 +659,9 @@ export class ControllerRelayService {
       relayUrl,
       relayFingerprint: pairing.relayFingerprint,
     });
-    this.runtimeError = null;
-    this.authorizationDirty = true;
-    this.manager.start({
+    runtime.runtimeError = null;
+    runtime.authorizationDirty = true;
+    runtime.manager.start({
       config: {
         relayUrl,
         relayFingerprint: pairing.relayFingerprint,
@@ -567,8 +670,8 @@ export class ControllerRelayService {
       },
       dispatch,
       onAuthenticated: () => {
-        this.authorizationDirty = true;
-        this.requestAuthorizationRefresh();
+        runtime.authorizationDirty = true;
+        this.requestAuthorizationRefresh(runtime);
         try {
           this.onAuthenticated?.();
         } catch (error) {
@@ -579,32 +682,33 @@ export class ControllerRelayService {
       },
     });
     if (waitForConnection) {
-      await this.manager.waitUntilConnected(CONTROLLER_RELAY_CONNECTION_TIMEOUT_MS);
-      this.requestAuthorizationRefresh();
+      await runtime.manager.waitUntilConnected(CONTROLLER_RELAY_CONNECTION_TIMEOUT_MS);
+      this.requestAuthorizationRefresh(runtime);
       await this.waitUntilAuthorizationSynchronized(
+        runtime,
         CONTROLLER_RELAY_CONNECTION_TIMEOUT_MS,
       );
     }
   }
 
-  private requestAuthorizationRefresh(): void {
-    this.authorizationDirty = true;
+  private requestAuthorizationRefresh(runtime: ControllerRelayRuntime): void {
+    runtime.authorizationDirty = true;
     if (
-      this.authorizationRefresh
-      || this.manager.status !== "connected"
+      runtime.authorizationRefresh
+      || runtime.manager.status !== "connected"
     ) {
       return;
     }
-    this.authorizationRefresh = this.refreshAuthorization()
+    runtime.authorizationRefresh = this.refreshAuthorization(runtime)
       .finally(() => {
-        this.authorizationRefresh = undefined;
-        if (this.authorizationDirty && this.manager.status === "connected") {
-          this.requestAuthorizationRefresh();
+        runtime.authorizationRefresh = undefined;
+        if (runtime.authorizationDirty && runtime.manager.status === "connected") {
+          this.requestAuthorizationRefresh(runtime);
         } else if (
-          !this.authorizationDirty
-          && this.manager.status === "connected"
+          !runtime.authorizationDirty
+          && runtime.manager.status === "connected"
         ) {
-          this.resolveAuthorizationWaiters();
+          this.resolveAuthorizationWaiters(runtime);
         }
       });
   }
@@ -614,38 +718,39 @@ export class ControllerRelayService {
       if (!this.dispatch) {
         return;
       }
-      if (this.manager.activeConfig) {
-        this.requestAuthorizationRefresh();
-        return;
-      }
-      const pairing = getControllerRelayPairing();
-      if (!pairing) {
-        this.runtimeError = null;
-        return;
-      }
-      try {
-        await this.restartManager(pairing, false);
-      } catch (error) {
-        await this.stopManager();
-        this.setRuntimeError(error);
-        log.error("Controller relay runtime could not be refreshed", {
-          error: String(error),
-        });
+      for (const pairing of listControllerRelayPairings()) {
+        const runtime = this.getOrCreateRuntime(pairing.name);
+        if (runtime.manager.activeConfig) {
+          this.requestAuthorizationRefresh(runtime);
+          continue;
+        }
+        try {
+          await this.restartManager(runtime, pairing, false);
+        } catch (error) {
+          await this.stopManager(runtime);
+          this.setRuntimeError(runtime, error);
+          log.error("Controller relay runtime could not be refreshed", {
+            relayName: pairing.name,
+            error: String(error),
+          });
+        }
       }
     }).catch((error: unknown) => {
-      this.setRuntimeError(error);
       log.error("Controller relay runtime refresh failed", {
         error: String(error),
       });
     });
   }
 
-  private async refreshAuthorization(): Promise<void> {
-    while (this.authorizationDirty && this.manager.status === "connected") {
-      this.authorizationDirty = false;
+  private async refreshAuthorization(runtime: ControllerRelayRuntime): Promise<void> {
+    while (
+      runtime.authorizationDirty
+      && runtime.manager.status === "connected"
+    ) {
+      runtime.authorizationDirty = false;
       let workers: MeshRelayPeerIdentity[];
       try {
-        const config = this.manager.activeConfig;
+        const config = runtime.manager.activeConfig;
         if (!config) {
           return;
         }
@@ -655,19 +760,19 @@ export class ControllerRelayService {
         });
       } catch (error) {
         const mapped = this.mapRuntimeError(error);
-        this.runtimeError = {
+        runtime.runtimeError = {
           code: mapped.code,
           message: mapped.message,
         };
-        this.rejectAuthorizationWaiters(mapped);
+        this.rejectAuthorizationWaiters(runtime, mapped);
         log.error("Controller relay authorization snapshot is invalid", {
           error: String(mapped),
         });
         return;
       }
       try {
-        await this.manager.replaceAuthorization(workers);
-        this.runtimeError = null;
+        await runtime.manager.replaceAuthorization(workers);
+        runtime.runtimeError = null;
       } catch (error) {
         if (
           error instanceof MeshRelayStreamError
@@ -675,21 +780,21 @@ export class ControllerRelayService {
           && error.status < 500
         ) {
           const mapped = this.mapRuntimeError(error);
-          this.runtimeError = {
+          runtime.runtimeError = {
             code: mapped.code,
             message: mapped.message,
           };
-          this.rejectAuthorizationWaiters(mapped);
+          this.rejectAuthorizationWaiters(runtime, mapped);
           log.error("Controller relay rejected the authorization snapshot", {
             error: String(mapped),
           });
           return;
         }
-        this.authorizationDirty = true;
+        runtime.authorizationDirty = true;
         log.warn("Controller relay authorization refresh was ambiguous", {
           error: String(error),
         });
-        this.manager.closeCurrentConnection(
+        runtime.manager.closeCurrentConnection(
           1011,
           "Relay authorization synchronization failed",
         );
@@ -698,12 +803,12 @@ export class ControllerRelayService {
     }
   }
 
-  private async stopManager(): Promise<void> {
-    await this.manager.stop();
-    await this.authorizationRefresh;
-    this.authorizationRefresh = undefined;
-    this.authorizationDirty = false;
-    this.rejectAuthorizationWaiters(new DomainError(
+  private async stopManager(runtime: ControllerRelayRuntime): Promise<void> {
+    await runtime.manager.stop();
+    await runtime.authorizationRefresh;
+    runtime.authorizationRefresh = undefined;
+    runtime.authorizationDirty = false;
+    this.rejectAuthorizationWaiters(runtime, new DomainError(
       "mesh_relay_disconnected",
       "The Mesh relay connection was stopped.",
     ));
@@ -739,21 +844,22 @@ export class ControllerRelayService {
     );
   }
 
-  private setRuntimeError(error: unknown): void {
+  private setRuntimeError(runtime: ControllerRelayRuntime, error: unknown): void {
     const mapped = this.mapRuntimeError(error);
-    this.runtimeError = {
+    runtime.runtimeError = {
       code: mapped.code,
       message: mapped.message,
     };
   }
 
   private async waitUntilAuthorizationSynchronized(
+    runtime: ControllerRelayRuntime,
     timeoutMs: number,
   ): Promise<void> {
     if (
-      this.manager.status === "connected"
-      && !this.authorizationDirty
-      && !this.authorizationRefresh
+      runtime.manager.status === "connected"
+      && !runtime.authorizationDirty
+      && !runtime.authorizationRefresh
     ) {
       return;
     }
@@ -762,7 +868,7 @@ export class ControllerRelayService {
         resolve,
         reject,
         timer: setTimeout(() => {
-          this.authorizationWaiters.delete(waiter);
+          runtime.authorizationWaiters.delete(waiter);
           reject(new DomainError(
             "mesh_relay_authorization_failed",
             "The relay worker authorization snapshot could not be synchronized.",
@@ -770,21 +876,24 @@ export class ControllerRelayService {
         }, timeoutMs),
       };
       waiter.timer.unref?.();
-      this.authorizationWaiters.add(waiter);
+      runtime.authorizationWaiters.add(waiter);
     });
   }
 
-  private resolveAuthorizationWaiters(): void {
-    for (const waiter of [...this.authorizationWaiters]) {
-      this.authorizationWaiters.delete(waiter);
+  private resolveAuthorizationWaiters(runtime: ControllerRelayRuntime): void {
+    for (const waiter of [...runtime.authorizationWaiters]) {
+      runtime.authorizationWaiters.delete(waiter);
       clearTimeout(waiter.timer);
       waiter.resolve();
     }
   }
 
-  private rejectAuthorizationWaiters(error: unknown): void {
-    for (const waiter of [...this.authorizationWaiters]) {
-      this.authorizationWaiters.delete(waiter);
+  private rejectAuthorizationWaiters(
+    runtime: ControllerRelayRuntime,
+    error: unknown,
+  ): void {
+    for (const waiter of [...runtime.authorizationWaiters]) {
+      runtime.authorizationWaiters.delete(waiter);
       clearTimeout(waiter.timer);
       waiter.reject(error);
     }

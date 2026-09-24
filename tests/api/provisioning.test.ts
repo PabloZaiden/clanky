@@ -234,7 +234,7 @@ describe("Provisioning API integration", () => {
     db.run("DELETE FROM tasks");
     db.run("DELETE FROM workspaces");
     db.run("DELETE FROM ssh_servers");
-    db.run("DELETE FROM mesh_controller_relay_pairing");
+    db.run("DELETE FROM mesh_controller_relays");
     setMeshRelayTransport(null);
   });
 
@@ -503,6 +503,7 @@ describe("Provisioning API integration", () => {
         .export({ format: "pem", type: "spki" })
         .toString();
       saveControllerRelayPairing({
+        name: "default",
         relayUrl: "https://relay.example.test",
         relayPublicKey,
         relayFingerprint: getMeshNodeFingerprint(relayPublicKey),
@@ -808,6 +809,7 @@ describe("Provisioning API integration", () => {
     const relayFingerprint = getMeshNodeFingerprint(relayPublicKey);
     const controller = await ensureLocalMeshNodeIdentity();
     saveControllerRelayPairing({
+      name: "default",
       relayUrl,
       relayPublicKey,
       relayFingerprint,

@@ -166,7 +166,6 @@ describe("controller relay authorization recovery", () => {
 
   afterEach(async () => {
     await service?.stopRuntime();
-    await service?.unpair();
     await relay?.stop();
     closeDatabase();
     delete process.env["CLANKY_DATA_DIR"];
@@ -194,6 +193,7 @@ describe("controller relay authorization recovery", () => {
       controllerFingerprint: controllerIdentity.fingerprint,
     });
     saveControllerRelayPairing({
+      name: "default",
       relayUrl,
       relayPublicKey: relay.identity.publicKey,
       relayFingerprint: relay.identity.fingerprint,
@@ -238,6 +238,7 @@ describe("controller relay authorization recovery", () => {
       }),
       baseDelayMs: 10,
       maxDelayMs: 20,
+      manageTransport: false,
     });
     service = new ControllerRelayService({ manager });
     await service.startRuntime(
@@ -254,7 +255,7 @@ describe("controller relay authorization recovery", () => {
         state.dropped
         && state.connections >= 2
         && state.deliveredAcks >= 1
-        && state.status.connected
+        && state.status.relays[0]?.connected === true
         && state.authorized.length === 1,
       {
         description: "relay authorization to recover after an ambiguous ack",
@@ -263,7 +264,7 @@ describe("controller relay authorization recovery", () => {
           dropped: state.dropped,
           connections: state.connections,
           deliveredAcks: state.deliveredAcks,
-          connected: state.status.connected,
+          connected: state.status.relays[0]?.connected,
           authorized: state.authorized.length,
         }),
       },
@@ -278,6 +279,7 @@ describe("controller relay authorization recovery", () => {
   test("keeps the server available when a persisted relay URL is invalid", async () => {
     const controllerIdentity = await ensureLocalMeshNodeIdentity();
     saveControllerRelayPairing({
+      name: "default",
       relayUrl: "http://127.0.0.1:8080",
       relayPublicKey: controllerIdentity.publicKey,
       relayFingerprint: controllerIdentity.fingerprint,
@@ -285,9 +287,9 @@ describe("controller relay authorization recovery", () => {
       controllerFingerprint: controllerIdentity.fingerprint,
     });
     getDatabase().query(`
-      UPDATE mesh_controller_relay_pairing
+      UPDATE mesh_controller_relays
       SET relay_url = 'http://relay.example'
-      WHERE singleton = 1
+      WHERE name = 'default'
     `).run();
 
     service = new ControllerRelayService();
@@ -296,18 +298,21 @@ describe("controller relay authorization recovery", () => {
     )).resolves.toBeUndefined();
 
     expect(await service.getStatus()).toMatchObject({
-      paired: true,
-      relayUrl: "http://relay.example",
-      connected: false,
-      runtimeError: {
-        code: "mesh_relay_url_invalid",
-      },
+      relays: [{
+        name: "default",
+        relayUrl: "http://relay.example",
+        connected: false,
+        runtimeError: {
+          code: "mesh_relay_url_invalid",
+        },
+      }],
     });
   });
 
   test("keeps controller startup available with a corrupt relay worker row", async () => {
     const controllerIdentity = await ensureLocalMeshNodeIdentity();
     saveControllerRelayPairing({
+      name: "default",
       relayUrl: "http://127.0.0.1:8080",
       relayPublicKey: controllerIdentity.publicKey,
       relayFingerprint: controllerIdentity.fingerprint,
@@ -367,13 +372,13 @@ describe("controller relay authorization recovery", () => {
     await expect(service.startRuntime(
       async () => new Response("Not found", { status: 404 }),
     )).resolves.toBeUndefined();
-    expect((await service.getStatus()).runtimeError?.code)
+    expect((await service.getStatus()).relays[0]?.runtimeError?.code)
       .toBe("mesh_relay_route_invalid");
 
     await meshManager.revokeWorker("admin", "worker-corrupt-startup");
     await pollUntil(
       async () => await service!.getStatus(),
-      (status) => status.runtimeError === null,
+      (status) => status.relays[0]?.runtimeError === null,
       {
         description: "controller relay runtime to recover after local revocation",
         timeoutMs: 5_000,

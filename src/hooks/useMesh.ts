@@ -48,6 +48,7 @@ export interface UseMeshResult {
     name: string,
     ttlSeconds?: number,
     route?: MeshEnrollmentRoute,
+    relayName?: string,
   ) => Promise<CreatedMeshEnrollment | null>;
   revokeWorker: (workerNodeId: string) => Promise<boolean>;
   killWorker: (workerNodeId: string) => Promise<MeshControllerStatus | null>;
@@ -211,6 +212,7 @@ export function useMesh(): UseMeshResult {
     name: string,
     ttlSeconds = 900,
     route: MeshEnrollmentRoute = "direct",
+    relayName?: string,
   ): Promise<CreatedMeshEnrollment | null> => {
     setSaving(true);
     setMutationError(null);
@@ -218,7 +220,12 @@ export function useMesh(): UseMeshResult {
       const created = await apiRequest<CreatedMeshEnrollment>("/api/mesh/enrollment-tokens", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, ttlSeconds, route }),
+        body: JSON.stringify({
+          name,
+          ttlSeconds,
+          route,
+          ...(relayName ? { relayName } : {}),
+        }),
         action: "Create Mesh enrollment token",
         fallbackMessage: "Failed to create Mesh enrollment token",
       });

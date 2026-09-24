@@ -32,6 +32,12 @@ export function serveNativeApiRoutes(options: NativeApiServerOptions = {}): Serv
       const context: Partial<RouteContext> = {
         params: matched.params,
         server,
+        userRealtime: {
+          publishChanged() {},
+          publishEntityChanged() {},
+          publishDeleted() {},
+          publishSettingsChanged() {},
+        },
         requireUser: () => currentUser,
         requireOwner: () => {
           if (!currentUser.isOwner) {

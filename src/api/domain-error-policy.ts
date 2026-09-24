@@ -204,6 +204,7 @@ const API_DOMAIN_ERROR_CODES = {
   mesh_peer_revoked: true,
   mesh_peer_target_invalid: true,
   mesh_relay_authorization_failed: true,
+  mesh_relay_already_paired: true,
   mesh_relay_controller_identity_changed: true,
   mesh_relay_controller_mismatch: true,
   mesh_relay_descriptor_invalid: true,
@@ -211,6 +212,8 @@ const API_DOMAIN_ERROR_CODES = {
   mesh_relay_descriptor_too_large: true,
   mesh_relay_descriptor_unreachable: true,
   mesh_relay_not_paired: true,
+  mesh_relay_not_found: true,
+  mesh_relay_name_invalid: true,
   mesh_relay_pairing_auth_failed: true,
   mesh_relay_unavailable: true,
   mesh_relay_url_invalid: true,
@@ -788,6 +791,14 @@ const POLICY_PROFILES = {
         status: 409,
         message: "The Mesh relay is not paired.",
       },
+      mesh_relay_not_found: {
+        status: 404,
+        message: "The Mesh relay was not found.",
+      },
+      mesh_relay_name_invalid: {
+        status: 400,
+        message: "The Mesh relay name is invalid.",
+      },
       mesh_relay_unavailable: {
         status: 503,
         message: "The Mesh relay is unavailable.",
@@ -1072,6 +1083,18 @@ const POLICY_PROFILES = {
       mesh_relay_authorization_failed: {
         status: 502,
         message: "Mesh relay authorization failed.",
+      },
+      mesh_relay_already_paired: {
+        status: 409,
+        message: "The Mesh relay is already paired under another name.",
+      },
+      mesh_relay_name_invalid: {
+        status: 400,
+        message: "The Mesh relay name is invalid.",
+      },
+      mesh_relay_not_found: {
+        status: 404,
+        message: "The Mesh relay was not found.",
       },
       mesh_relay_controller_identity_changed: {
         status: 409,

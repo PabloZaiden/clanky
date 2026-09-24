@@ -20,6 +20,7 @@ export interface StartProvisioningJobOptions {
   workspaceWorkerEnrollmentId?: string;
   transport?: ProvisioningTransport;
   workerEnrollmentRoute?: ProvisioningWorkerEnrollmentRoute;
+  workerRelayName?: string;
   workerHostAddress?: string;
   workerHostAddressManual?: boolean;
   repoUrl?: string;

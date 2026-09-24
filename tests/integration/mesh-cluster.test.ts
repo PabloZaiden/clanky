@@ -276,6 +276,35 @@ async function jsonRequest(
   return await meshJsonRequest<any>(node, path, options);
 }
 
+async function executeRelayWorkerWhenReady(
+  controller: MeshProcess,
+  workerNodeId: string,
+  directory: string,
+  description: string,
+): Promise<{ status: number; body: { success: boolean; stdout: string } }> {
+  return await pollUntil(
+    async () => await meshJsonRequest<{ success: boolean; stdout: string }>(
+      controller,
+      `/api/execution-hosts/mesh/${encodeURIComponent(workerNodeId)}/exec`,
+      {
+        method: "POST",
+        body: {
+          command: "pwd",
+          args: [],
+          cwd: directory,
+          timeoutMs: 5_000,
+        },
+      },
+    ),
+    (result) => result.status === 200,
+    {
+      description,
+      timeoutMs: 15_000,
+      formatLastObserved: (result) => JSON.stringify(result),
+    },
+  );
+}
+
 async function enroll(
   controller: ManagedMeshNode,
   worker: ManagedMeshNode,
@@ -314,11 +343,14 @@ describe("controller-worker Mesh", () => {
     const relay = await startRelay(controllerStatus.body.node.fingerprint as string);
     const paired = await jsonRequest(controller, "/api/mesh/relay", {
       method: "POST",
-      body: { relayUrl: relay.baseUrl },
+      body: { name: "east", relayUrl: relay.baseUrl },
     });
     expect(paired).toMatchObject({
       status: 201,
-      body: { paired: true, relayUrl: relay.baseUrl },
+      body: {
+        primaryName: "east",
+        relays: [{ name: "east", relayUrl: relay.baseUrl, connected: true }],
+      },
     });
 
     const created = await jsonRequest(
@@ -381,40 +413,16 @@ describe("controller-worker Mesh", () => {
       });
     }
 
-    const execute = async (workerNodeId: string, directory: string) => await jsonRequest(
-      controller,
-      `/api/execution-hosts/mesh/${encodeURIComponent(workerNodeId)}/exec`,
-      {
-        method: "POST",
-        body: {
-          command: "pwd",
-          args: [],
-          cwd: directory,
-          timeoutMs: 5_000,
-        },
-      },
-    );
-    const executeWhenReady = async (
-      workerNodeId: string,
-      directory: string,
-      description: string,
-    ) => await pollUntil(
-      async () => await execute(workerNodeId, directory),
-      (result) => result.status === 200,
-      {
-        description,
-        timeoutMs: 15_000,
-        formatLastObserved: (result) => JSON.stringify(result),
-      },
-    );
     const [firstRegistration, secondRegistration] = workers;
     const initialExecutions = await Promise.all([
-      executeWhenReady(
+      executeRelayWorkerWhenReady(
+        controller,
         firstRegistration!.workerNodeId,
         worker.dataDir,
         "first relay worker command execution",
       ),
-      executeWhenReady(
+      executeRelayWorkerWhenReady(
+        controller,
         secondRegistration!.workerNodeId,
         secondWorker.dataDir,
         "second relay worker command execution",
@@ -445,7 +453,8 @@ describe("controller-worker Mesh", () => {
     worker.child.kill();
     await worker.child.exited;
     restartRelayOnlyWorker(worker);
-    const restartedExecution = await executeWhenReady(
+    const restartedExecution = await executeRelayWorkerWhenReady(
+      controller,
       firstRegistration!.workerNodeId,
       worker.dataDir,
       "persisted relay worker route after restart",
@@ -460,12 +469,14 @@ describe("controller-worker Mesh", () => {
       controllerStatus.body.node.fingerprint as string,
     );
     const afterRelayRestart = await Promise.all([
-      executeWhenReady(
+      executeRelayWorkerWhenReady(
+        controller,
         firstRegistration!.workerNodeId,
         worker.dataDir,
         "first worker after relay restart",
       ),
-      executeWhenReady(
+      executeRelayWorkerWhenReady(
+        controller,
         secondRegistration!.workerNodeId,
         secondWorker.dataDir,
         "second worker after relay restart",
@@ -473,6 +484,191 @@ describe("controller-worker Mesh", () => {
     ]);
     expect(afterRelayRestart.every((result) => result.body.success === true)).toBe(true);
   }, 60_000);
+
+  test("keeps workers on independently connected relays when the primary changes", async () => {
+    const controller = await startNode("controller");
+    const controllerStatus = await jsonRequest(controller, "/api/mesh/status");
+    const fingerprint = controllerStatus.body.node.fingerprint as string;
+    const [east, west] = await Promise.all([
+      startRelay(fingerprint),
+      startRelay(fingerprint),
+    ]);
+    for (const [name, relay] of [["east", east], ["west", west]] as const) {
+      const paired = await jsonRequest(controller, "/api/mesh/relay", {
+        method: "POST",
+        body: { name, relayUrl: relay.baseUrl },
+      });
+      expect(paired.status).toBe(201);
+    }
+    const apiKey = await jsonRequest(controller, "/api/api-keys", {
+      method: "POST",
+      body: { name: "Mesh CLI integration", scopes: ["*"] },
+    });
+    expect(apiKey.status).toBe(200);
+    const runCli = (...args: string[]) => Bun.spawnSync([
+      ...sourceClankyCommand(),
+      "mesh",
+      ...args,
+    ], {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        CLANKY_DATA_DIR: controller.dataDir,
+        CLANKY_BASE_URL: controller.baseUrl,
+        CLANKY_API_KEY: apiKey.body.token as string,
+        CLANKY_LOG_LEVEL: "fatal",
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+
+    const invite = async (relayName?: string) => await jsonRequest(
+      controller,
+      "/api/mesh/enrollment-tokens",
+      {
+        method: "POST",
+        body: {
+          name: "Relay worker",
+          route: "relay",
+          ...(relayName ? { relayName } : {}),
+        },
+      },
+    );
+    const eastInvite = await invite();
+    expect(eastInvite.status).toBe(201);
+    expect(eastInvite.body.workerJoinCommand).toContain(`'${east.baseUrl}'`);
+    const eastWorker = await startRelayOnlyWorker({
+      relayUrl: east.baseUrl,
+      token: eastInvite.body.token as string,
+      controllerFingerprint: fingerprint,
+    });
+    const westInvite = await invite("west");
+    expect(westInvite.status).toBe(201);
+    expect(westInvite.body.workerJoinCommand).toContain(`'${west.baseUrl}'`);
+    const westWorker = await startRelayOnlyWorker({
+      relayUrl: west.baseUrl,
+      token: westInvite.body.token as string,
+      controllerFingerprint: fingerprint,
+    });
+
+    const status = await pollUntil(
+      async () => (await jsonRequest(controller, "/api/mesh/status")).body,
+      (body) => body.workers?.length === 2
+        && body.workers.some((worker: { route: { relayUrl: string } }) =>
+          worker.route.relayUrl === east.baseUrl)
+        && body.workers.some((worker: { route: { relayUrl: string } }) =>
+          worker.route.relayUrl === west.baseUrl),
+      {
+        description: "workers to enroll on separate relays",
+        timeoutMs: 15_000,
+        formatLastObserved: (body) => JSON.stringify(body),
+      },
+    );
+    const registrations = status.workers as Array<{
+      workerNodeId: string;
+      route: { kind: string; relayUrl: string };
+    }>;
+    const eastNodeId = registrations.find((worker) =>
+      worker.route.relayUrl === east.baseUrl)!.workerNodeId;
+    const westNodeId = registrations.find((worker) =>
+      worker.route.relayUrl === west.baseUrl)!.workerNodeId;
+    const initial = await Promise.all([
+      executeRelayWorkerWhenReady(
+        controller, eastNodeId, eastWorker.dataDir, "east relay worker to execute",
+      ),
+      executeRelayWorkerWhenReady(
+        controller, westNodeId, westWorker.dataDir, "west relay worker to execute",
+      ),
+    ]);
+    expect(initial.map((result) => result.body.stdout).sort()).toEqual([
+      `${eastWorker.dataDir}\n`, `${westWorker.dataDir}\n`,
+    ].sort());
+
+    const boundInvite = await invite("east");
+    expect(boundInvite.status).toBe(201);
+    expect(() => joinRelayWorker({
+      worker: eastWorker,
+      relayUrl: west.baseUrl,
+      token: boundInvite.body.token as string,
+      controllerFingerprint: fingerprint,
+    })).toThrow();
+    joinRelayWorker({
+      worker: eastWorker,
+      relayUrl: east.baseUrl,
+      token: boundInvite.body.token as string,
+      controllerFingerprint: fingerprint,
+    });
+
+    const changed = await jsonRequest(controller, "/api/mesh/relay/primary", {
+      method: "POST",
+      body: { name: "west" },
+    });
+    expect(changed.status).toBe(200);
+    expect(changed.body.primaryName).toBe("west");
+    expect(changed.body.relays).toContainEqual(
+      expect.objectContaining({ name: "west", isPrimary: true }),
+    );
+    expect(changed.body.relays).toContainEqual(
+      expect.objectContaining({ name: "east", isPrimary: false }),
+    );
+    expect((await invite()).body.workerJoinCommand).toContain(`'${west.baseUrl}'`);
+    const namedCliInvite = runCli(
+      "enrollment-token", "create", "--route", "relay", "--relay", "east",
+    );
+    if (namedCliInvite.exitCode !== 0) {
+      throw new Error(
+        `Mesh CLI invitation failed: ${namedCliInvite.stderr.toString()}`,
+      );
+    }
+    expect(JSON.parse(namedCliInvite.stdout.toString()).response.workerJoinCommand)
+      .toContain(`'${east.baseUrl}'`);
+    const unchanged = await Promise.all([
+      executeRelayWorkerWhenReady(
+        controller, eastNodeId, eastWorker.dataDir, "east worker after changing primary",
+      ),
+      executeRelayWorkerWhenReady(
+        controller, westNodeId, westWorker.dataDir, "west worker after changing primary",
+      ),
+    ]);
+    expect(unchanged.every((result) => result.body.success)).toBe(true);
+
+    const cliUnpair = runCli("relay", "unpair", "--name", "west");
+    expect(cliUnpair.exitCode).toBe(0);
+    const removed = await jsonRequest(controller, "/api/mesh/relay");
+    expect(removed).toMatchObject({
+      status: 200,
+      body: { primaryName: null, relays: [{ name: "east", connected: true }] },
+    });
+    expect((await invite()).status).toBe(409);
+    expect((await invite("east")).status).toBe(201);
+    expect((await executeRelayWorkerWhenReady(
+      controller, eastNodeId, eastWorker.dataDir, "east worker after west unpair",
+    )).body.success).toBe(true);
+    const disconnected = await jsonRequest(
+      controller,
+      `/api/execution-hosts/mesh/${encodeURIComponent(westNodeId)}/exec`,
+      {
+        method: "POST",
+        body: { command: "pwd", args: [], cwd: westWorker.dataDir, timeoutMs: 5_000 },
+      },
+    );
+    expect(disconnected.status).toBeGreaterThanOrEqual(400);
+    const unchangedRegistration = await jsonRequest(controller, "/api/mesh/status");
+    expect(unchangedRegistration.body.workers).toContainEqual(
+      expect.objectContaining({
+        workerNodeId: westNodeId,
+        route: expect.objectContaining({ relayUrl: west.baseUrl }),
+      }),
+    );
+
+    expect((await jsonRequest(controller, "/api/mesh/relay", {
+      method: "POST",
+      body: { name: "west", relayUrl: west.baseUrl },
+    })).status).toBe(201);
+    expect((await executeRelayWorkerWhenReady(
+      controller, westNodeId, westWorker.dataDir, "west worker after re-pair",
+    )).body.success).toBe(true);
+  }, 90_000);
 
   test("refreshes worker health when the controller starts", async () => {
     const [controller, worker] = await Promise.all([
@@ -521,7 +717,7 @@ describe("controller-worker Mesh", () => {
     const relay = await startRelay(controllerStatus.body.node.fingerprint as string);
     const paired = await jsonRequest(controller, "/api/mesh/relay", {
       method: "POST",
-      body: { relayUrl: relay.baseUrl },
+      body: { name: "east", relayUrl: relay.baseUrl },
     });
     expect(paired.status).toBe(201);
 

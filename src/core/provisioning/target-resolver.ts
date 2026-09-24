@@ -24,6 +24,7 @@ export interface ProvisioningTargetResolution {
   workspaceWorkerEnrollmentId?: string;
   existingWorkerEnrollmentId?: string;
   workerEnrollmentRoute?: ProvisioningWorkerEnrollmentRoute;
+  workerRelayName?: string;
   workerHostAddress?: string;
 }
 
@@ -191,6 +192,9 @@ export async function resolveProvisioningTarget(
       ? { existingWorkerEnrollmentId: existingWorkerEnrollment.enrollment.id }
       : {}),
     ...(workerEnrollmentRoute ? { workerEnrollmentRoute } : {}),
+    ...(workerEnrollmentRoute === "relay" && options.workerRelayName
+      ? { workerRelayName: options.workerRelayName }
+      : {}),
     ...(workerHostAddress ? { workerHostAddress } : {}),
   };
 }

@@ -50,11 +50,25 @@ const RELAY_WORKER_HOST_ADDRESS_OPTION = "__relay_worker_host_address__";
 function DedicatedWorkerEnrollment({
   enrollment,
   loading,
+  route,
+  onRouteChange,
+  relayName,
+  onRelayNameChange,
+  relays,
+  primaryRelayName,
+  relayStatusLoading,
   onStart,
   onCancel,
 }: {
   enrollment: UseWorkspaceCreateResult["workspaceWorkerEnrollment"];
   loading: boolean;
+  route: UseWorkspaceCreateResult["dedicatedWorkerRoute"];
+  onRouteChange: UseWorkspaceCreateResult["setDedicatedWorkerRoute"];
+  relayName: string;
+  onRelayNameChange: (name: string) => void;
+  relays: UseWorkspaceCreateResult["relayOptions"];
+  primaryRelayName: string | null;
+  relayStatusLoading: boolean;
   onStart: () => void;
   onCancel: () => void;
 }) {
@@ -77,6 +91,39 @@ function DedicatedWorkerEnrollment({
           </Button>
         )}
       </div>
+      {!enrollment ? (
+        <div className="mt-3 space-y-2">
+          <SelectField
+            id="dedicated-worker-route"
+            label="Worker route"
+            value={route}
+            onChange={(event) => onRouteChange(event.target.value as "direct" | "relay")}
+            disabled={loading || relayStatusLoading}
+          >
+            <option value="direct">Direct</option>
+            {relays.length > 0 ? <option value="relay">Relay</option> : null}
+          </SelectField>
+          {route === "relay" ? (
+            <SelectField
+              id="dedicated-worker-relay"
+              label="Relay"
+              value={relayName}
+              onChange={(event) => onRelayNameChange(event.target.value)}
+              disabled={loading || relayStatusLoading}
+            >
+              <option value="">
+                {primaryRelayName ? `Primary (${primaryRelayName})` : "Select a relay"}
+              </option>
+              {relayName && !relays.some((relay) => relay.name === relayName) ? (
+                <option value={relayName} disabled>{relayName} (no longer paired)</option>
+              ) : null}
+              {relays.map((relay) => (
+                <option key={relay.name} value={relay.name}>{relay.name}</option>
+              ))}
+            </SelectField>
+          ) : null}
+        </div>
+      ) : null}
       {enrollment ? (
         <div className="mt-3 space-y-2 text-xs">
           <p>
@@ -128,6 +175,10 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     workspaceWorkerEnrollmentSelected,
     setWorkspaceWorkerEnrollmentSelected,
     workspaceWorkerEnrollmentLoading,
+    dedicatedWorkerRoute,
+    setDedicatedWorkerRoute,
+    dedicatedWorkerRelayName,
+    setDedicatedWorkerRelayName,
     startWorkspaceWorkerEnrollment,
     cancelWorkspaceWorkerEnrollment,
     setWorkspaceServerSettings,
@@ -141,7 +192,11 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     setAutomaticTransport,
     automaticWorkerEnrollmentRoute,
     setAutomaticWorkerEnrollmentRoute,
-    automaticRelayPaired,
+    automaticWorkerRelayName,
+    setAutomaticWorkerRelayName,
+    relayOptions,
+    primaryRelayName,
+    automaticRelayAvailable,
     automaticRelayStatusLoading,
     automaticWorkerHostAddress,
     setAutomaticWorkerHostAddress,
@@ -182,6 +237,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     error: workerHostAddressesError,
   } = useExecutionHostAddresses(
     automaticTransport === "worker"
+      && automaticWorkerEnrollmentRoute !== "relay"
       && !automaticRelayStatusLoading
       ? automaticExecutionHost
       : null,
@@ -377,6 +433,13 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                   <DedicatedWorkerEnrollment
                     enrollment={workspaceWorkerEnrollment}
                     loading={workspaceWorkerEnrollmentLoading}
+                    route={dedicatedWorkerRoute}
+                    onRouteChange={setDedicatedWorkerRoute}
+                    relayName={dedicatedWorkerRelayName}
+                    onRelayNameChange={setDedicatedWorkerRelayName}
+                    relays={relayOptions}
+                    primaryRelayName={primaryRelayName}
+                    relayStatusLoading={automaticRelayStatusLoading}
                     onStart={() => void startWorkspaceWorkerEnrollment()}
                     onCancel={() => void cancelWorkspaceWorkerEnrollment()}
                   />
@@ -535,7 +598,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                             ? "Discovering addresses..."
                             : "Select an address"}
                         </option>
-                        {automaticRelayPaired && (
+                        {automaticRelayAvailable && (
                           <option value={RELAY_WORKER_HOST_ADDRESS_OPTION}>
                             Via Clanky Relay
                           </option>
@@ -546,6 +609,30 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                         <option value={MANUAL_WORKER_HOST_ADDRESS_OPTION}>Enter manually</option>
                       </SelectField>
                     )}
+                    {automaticTransport === "worker"
+                      && automaticWorkerEnrollmentRoute === "relay" ? (
+                      <SelectField
+                        id="automatic-worker-relay"
+                        label="Relay"
+                        value={automaticWorkerRelayName}
+                        onChange={(event) => setAutomaticWorkerRelayName(event.target.value)}
+                        disabled={automaticRelayStatusLoading}
+                      >
+                        <option value="">
+                          {primaryRelayName ? `Primary (${primaryRelayName})` : "Select a relay"}
+                        </option>
+                        {automaticWorkerRelayName
+                          && !relayOptions.some((relay) =>
+                            relay.name === automaticWorkerRelayName) ? (
+                          <option value={automaticWorkerRelayName} disabled>
+                            {automaticWorkerRelayName} (no longer paired)
+                          </option>
+                        ) : null}
+                        {relayOptions.map((relay) => (
+                          <option key={relay.name} value={relay.name}>{relay.name}</option>
+                        ))}
+                      </SelectField>
+                    ) : null}
                     {automaticTransport === "worker"
                       && automaticWorkerHostAddressMode === "manual" && (
                       <TextField
@@ -560,7 +647,9 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                         required
                       />
                     )}
-                    {automaticTransport === "worker" && workerHostAddressesError && (
+                    {automaticTransport === "worker"
+                      && automaticWorkerEnrollmentRoute !== "relay"
+                      && workerHostAddressesError && (
                       <p className="text-xs text-amber-600 dark:text-amber-400">
                         {workerHostAddressesError}
                       </p>
