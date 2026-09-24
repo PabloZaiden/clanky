@@ -43,13 +43,15 @@ async function availablePort(): Promise<number> {
 
 describe("controller relay owner API", () => {
   let dataDir = "";
-  let relayDataDir = "";
+  let relayDataDirs: string[] = [];
+  let relays: StartedRelayServer[] = [];
   let relay: StartedRelayServer | undefined;
   let api: ReturnType<typeof serveNativeApiRoutes> | undefined;
 
   beforeEach(async () => {
     dataDir = await mkdtemp(join(tmpdir(), "clanky-controller-relay-"));
-    relayDataDir = await mkdtemp(join(tmpdir(), "clanky-relay-api-"));
+    relayDataDirs = [];
+    relays = [];
     closeDatabase();
     process.env["CLANKY_DATA_DIR"] = dataDir;
     await configureMeshRuntime({ meshWorker: false });
@@ -64,17 +66,21 @@ describe("controller relay owner API", () => {
   afterEach(async () => {
     api?.stop(true);
     await controllerRelayService.stopRuntime();
-    await controllerRelayService.unpair();
-    await relay?.stop();
+    await Promise.all(relays.map(async (server) => await server.stop()));
     closeDatabase();
     delete process.env["CLANKY_DATA_DIR"];
     await rm(dataDir, { recursive: true, force: true });
-    await rm(relayDataDir, { recursive: true, force: true });
+    await Promise.all(
+      relayDataDirs.map(async (directory) =>
+        await rm(directory, { recursive: true, force: true })),
+    );
   });
 
   async function startRelay(controllerFingerprint: string): Promise<string> {
     const port = await availablePort();
     const relayUrl = `http://127.0.0.1:${String(port)}`;
+    const relayDataDir = await mkdtemp(join(tmpdir(), "clanky-relay-api-"));
+    relayDataDirs.push(relayDataDir);
     const runtimeConfig = readRuntimeConfig({
       appName: "Clanky Relay",
       envPrefix: "CLANKY",
@@ -90,6 +96,7 @@ describe("controller relay owner API", () => {
       runtimeConfig,
       controllerFingerprint,
     });
+    relays.push(relay);
     return relayUrl;
   }
 
@@ -139,30 +146,34 @@ describe("controller relay owner API", () => {
     const paired = await fetch(`${api!.url}/api/mesh/relay`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ relayUrl }),
+      body: JSON.stringify({ name: "east", relayUrl }),
     });
     expect(paired.status).toBe(201);
     expect(await paired.json()).toEqual({
-      paired: true,
-      relayUrl,
-      relayFingerprint: relay!.identity.fingerprint,
       controllerFingerprint: identity.fingerprint,
-      connected: true,
-      runtimeError: null,
-      pairedAt: expect.any(String),
-      updatedAt: expect.any(String),
       bootstrapEnvironment:
         `CLANKY_RELAY_CONTROLLER_FINGERPRINT=${identity.fingerprint}`,
-      relayBinaryVersion: expect.any(String),
-      relaySupportedProtocolVersions: [5],
-      relayPreferredProtocolVersion: 5,
-      relayNegotiatedProtocolVersion: 5,
+      primaryName: "east",
+      relays: [{
+        name: "east",
+        isPrimary: true,
+        relayUrl,
+        relayFingerprint: relay!.identity.fingerprint,
+        connected: true,
+        runtimeError: null,
+        pairedAt: expect.any(String),
+        updatedAt: expect.any(String),
+        relayBinaryVersion: expect.any(String),
+        relaySupportedProtocolVersions: [5],
+        relayPreferredProtocolVersion: 5,
+        relayNegotiatedProtocolVersion: 5,
+      }],
     });
 
     const status = await fetch(`${api!.url}/api/mesh/relay`);
     const statusBody = await status.json() as Record<string, unknown>;
     expect(statusBody["relayPublicKey"]).toBeUndefined();
-    expect(statusBody["paired"]).toBe(true);
+    expect(statusBody["primaryName"]).toBe("east");
     expect(relay!.store.listAuthorizedWorkers()).toEqual([{
       nodeId: "worker-live",
       publicKey: workerPublicKey,
@@ -170,13 +181,13 @@ describe("controller relay owner API", () => {
     }]);
 
     await controllerRelayService.stopRuntime();
-    expect((await controllerRelayService.getStatus()).connected).toBe(false);
+    expect((await controllerRelayService.getStatus()).relays[0]?.connected).toBe(false);
     await controllerRelayService.startRuntime(
       async () => new Response("Not found", { status: 404 }),
     );
     await pollUntil(
-      async () => (await controllerRelayService.getStatus()).connected,
-      (connected) => connected,
+      async () => (await controllerRelayService.getStatus()).relays[0]?.connected,
+      (connected) => connected === true,
       { description: "the persisted controller relay connection to restart" },
     );
 
@@ -184,10 +195,13 @@ describe("controller relay owner API", () => {
     expect((await descriptor.json() as { controllerNodeId: string }).controllerNodeId)
       .toBe(identity.nodeId);
 
-    const unpaired = await fetch(`${api!.url}/api/mesh/relay`, {
+    const unpaired = await fetch(`${api!.url}/api/mesh/relay/east`, {
       method: "DELETE",
     });
-    expect((await unpaired.json() as { paired: boolean }).paired).toBe(false);
+    expect(await unpaired.json()).toMatchObject({
+      primaryName: null,
+      relays: [],
+    });
     const remoteDescriptor = await fetch(`${relayUrl}${MESH_RELAY_DESCRIPTOR_PATH}`);
     expect(
       (await remoteDescriptor.json() as { controllerNodeId: string }).controllerNodeId,
@@ -199,11 +213,118 @@ describe("controller relay owner API", () => {
     const response = await fetch(`${api!.url}/api/mesh/relay`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ relayUrl }),
+      body: JSON.stringify({ name: "east", relayUrl }),
     });
     expect(response.status).toBe(409);
     expect(await response.json()).toMatchObject({
       error: "mesh_relay_controller_mismatch",
     });
+  });
+
+  test("pairs independent named relays and changes only the invitation default", async () => {
+    const identity = await ensureLocalMeshNodeIdentity();
+    const eastUrl = await startRelay(identity.fingerprint);
+    const eastRelay = relay!;
+    const westUrl = await startRelay(identity.fingerprint);
+    const westRelay = relay!;
+    const pair = async (name: string, relayUrl: string) => await fetch(
+      `${api!.url}/api/mesh/relay`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name, relayUrl }),
+      },
+    );
+    expect((await pair("east", eastUrl)).status).toBe(201);
+    expect((await pair("west", westUrl)).status).toBe(201);
+    const status = await fetch(`${api!.url}/api/mesh/relay`);
+    expect(await status.json()).toMatchObject({
+      primaryName: "east",
+      relays: [
+        { name: "east", isPrimary: true, connected: true, relayUrl: eastUrl },
+        { name: "west", isPrimary: false, connected: true, relayUrl: westUrl },
+      ],
+    });
+    expect(eastRelay.store.listAuthorizedWorkers()).toEqual([]);
+    expect(westRelay.store.listAuthorizedWorkers()).toEqual([]);
+
+    const duplicate = await pair("another-name", eastUrl);
+    expect(duplicate.status).toBe(409);
+    expect(await duplicate.json()).toMatchObject({ error: "mesh_relay_already_paired" });
+    const missingName = await fetch(`${api!.url}/api/mesh/relay`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ relayUrl: westUrl }),
+    });
+    expect(missingName.status).toBe(400);
+
+    const createToken = async (relayName?: string) => await fetch(
+      `${api!.url}/api/mesh/enrollment-tokens`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: "New worker",
+          route: "relay",
+          ...(relayName ? { relayName } : {}),
+        }),
+      },
+    );
+    const eastInvite = await createToken();
+    expect(eastInvite.status).toBe(201);
+    expect((await eastInvite.json() as { workerJoinCommand: string })
+      .workerJoinCommand).toContain(`'${eastUrl}'`);
+    const namedInvite = await createToken("west");
+    expect(namedInvite.status).toBe(201);
+    expect((await namedInvite.json() as { workerJoinCommand: string })
+      .workerJoinCommand).toContain(`'${westUrl}'`);
+    const dedicatedInvite = await fetch(`${api!.url}/api/workspace-worker-enrollments`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "Dedicated worker",
+        route: "relay",
+        relayName: "west",
+      }),
+    });
+    expect(dedicatedInvite.status).toBe(201);
+    expect((await dedicatedInvite.json() as { workerJoinCommand: string })
+      .workerJoinCommand).toContain(`'${westUrl}'`);
+    const unknownInvite = await createToken("missing");
+    expect(unknownInvite.status).toBe(404);
+
+    const primary = await fetch(`${api!.url}/api/mesh/relay/primary`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "west" }),
+    });
+    expect(primary.status).toBe(200);
+    expect(await primary.json()).toMatchObject({
+      primaryName: "west",
+      relays: [
+        { name: "west", isPrimary: true, connected: true },
+        { name: "east", isPrimary: false, connected: true },
+      ],
+    });
+    const westInvite = await createToken();
+    expect(westInvite.status).toBe(201);
+    expect((await westInvite.json() as { workerJoinCommand: string })
+      .workerJoinCommand).toContain(`'${westUrl}'`);
+
+    const removed = await fetch(`${api!.url}/api/mesh/relay/west`, {
+      method: "DELETE",
+    });
+    expect(removed.status).toBe(200);
+    expect(await removed.json()).toMatchObject({
+      primaryName: null,
+      relays: [{ name: "east", connected: true }],
+    });
+    expect((await createToken()).status).toBe(409);
+    expect((await createToken("east")).status).toBe(201);
+    expect((await fetch(`${api!.url}/api/mesh/relay/primary`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "east" }),
+    })).status).toBe(200);
   });
 });

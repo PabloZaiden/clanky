@@ -48,6 +48,7 @@ interface ProvisioningSnapshotResponse {
         transport?: string;
         workerEnrollmentId?: string;
         workerEnrollmentRoute?: "direct" | "relay";
+        workerRelayName?: string;
         workerHostAddress?: string;
         workerHostAddressManual?: boolean;
         devcontainerSubpath?: string;
@@ -234,7 +235,7 @@ describe("Provisioning API integration", () => {
     db.run("DELETE FROM tasks");
     db.run("DELETE FROM workspaces");
     db.run("DELETE FROM ssh_servers");
-    db.run("DELETE FROM mesh_controller_relay_pairing");
+    db.run("DELETE FROM mesh_controller_relays");
     setMeshRelayTransport(null);
   });
 
@@ -503,6 +504,7 @@ describe("Provisioning API integration", () => {
         .export({ format: "pem", type: "spki" })
         .toString();
       saveControllerRelayPairing({
+        name: "default",
         relayUrl: "https://relay.example.test",
         relayPublicKey,
         relayFingerprint: getMeshNodeFingerprint(relayPublicKey),
@@ -797,23 +799,43 @@ describe("Provisioning API integration", () => {
     expect(enrollment.enrollment.workspaceId).toBeNull();
   });
 
-  test("defaults a paired controller to a relay-only dedicated worker", async () => {
+  async function verifyRelayProvisioning(workerRelayName?: string): Promise<void> {
     const previousPublicBaseUrl = process.env["CLANKY_PUBLIC_BASE_URL"];
     process.env["CLANKY_PUBLIC_BASE_URL"] = "https://clanky.example.test";
-    const relayUrl = "https://relay.example.test";
-    const relayKeys = generateKeyPairSync("ed25519");
+    const primaryRelayUrl = "https://relay.example.test";
+    const relayUrl = workerRelayName
+      ? "https://relay-secondary.example.test"
+      : primaryRelayUrl;
+    const primaryRelayKeys = generateKeyPairSync("ed25519");
+    const primaryRelayPublicKey = primaryRelayKeys.publicKey
+      .export({ format: "pem", type: "spki" })
+      .toString();
+    const relayKeys = workerRelayName
+      ? generateKeyPairSync("ed25519")
+      : primaryRelayKeys;
     const relayPublicKey = relayKeys.publicKey
       .export({ format: "pem", type: "spki" })
       .toString();
     const relayFingerprint = getMeshNodeFingerprint(relayPublicKey);
     const controller = await ensureLocalMeshNodeIdentity();
     saveControllerRelayPairing({
-      relayUrl,
-      relayPublicKey,
-      relayFingerprint,
+      name: "default",
+      relayUrl: primaryRelayUrl,
+      relayPublicKey: primaryRelayPublicKey,
+      relayFingerprint: getMeshNodeFingerprint(primaryRelayPublicKey),
       controllerNodeId: controller.nodeId,
       controllerFingerprint: controller.fingerprint,
     });
+    if (workerRelayName) {
+      saveControllerRelayPairing({
+        name: workerRelayName,
+        relayUrl,
+        relayPublicKey,
+        relayFingerprint,
+        controllerNodeId: controller.nodeId,
+        controllerFingerprint: controller.fingerprint,
+      });
+    }
 
     let workerNodeId = "";
     let workerPrivateKey: KeyObject | undefined;
@@ -918,6 +940,9 @@ describe("Provisioning API integration", () => {
         body: JSON.stringify({
           name: "Relay Workspace",
           executionHost: { kind: "ssh", serverId: sshServer.config.id },
+          ...(workerRelayName
+            ? { transport: "worker", workerEnrollmentRoute: "relay", workerRelayName }
+            : {}),
           repoUrl: "https://github.com/octocat/relay-example.git",
           basePath: "/workspaces",
           devcontainerSubpath: null,
@@ -942,6 +967,9 @@ describe("Provisioning API integration", () => {
         started.job.config.id,
         ["completed"],
       );
+      if (workerRelayName) {
+        expect(completed.job.config.workerRelayName).toBe(workerRelayName);
+      }
       expect(completed.workspace?.executionHostBinding?.host).toMatchObject({
         kind: "mesh",
         scope: "workspace",
@@ -955,6 +983,14 @@ describe("Provisioning API integration", () => {
         process.env["CLANKY_PUBLIC_BASE_URL"] = previousPublicBaseUrl;
       }
     }
+  }
+
+  test("defaults a paired controller to a relay-only dedicated worker", async () => {
+    await verifyRelayProvisioning();
+  });
+
+  test("provisions a dedicated worker using a selected secondary relay", async () => {
+    await verifyRelayProvisioning("secondary");
   });
 
   test("keeps the provisioning host separate from the Devbox SSH execution target", async () => {

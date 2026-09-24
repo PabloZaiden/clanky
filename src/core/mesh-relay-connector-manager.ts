@@ -48,6 +48,8 @@ export interface MeshRelayConnectorManagerOptions {
   createConnector?(options: MeshRelayConnectorOptions): MeshRelayConnector;
   baseDelayMs?: number;
   maxDelayMs?: number;
+  /** Controllers with multiple relays install one shared route-aware transport. */
+  manageTransport?: boolean;
 }
 
 interface ConnectedWaiter {
@@ -95,9 +97,11 @@ export class MeshRelayConnectorManager {
     }
     this.request = request;
     this.running = true;
-    setMeshRelayTransport(createMeshRelayPeerTransport(
-      (route) => this.requireConnector(route),
-    ));
+    if (this.options.manageTransport !== false) {
+      setMeshRelayTransport(createMeshRelayPeerTransport(
+        (route) => this.resolveConnector(route),
+      ));
+    }
     this.loop = this.run();
   }
 
@@ -107,7 +111,9 @@ export class MeshRelayConnectorManager {
       return;
     }
     this.running = false;
-    setMeshRelayTransport(null);
+    if (this.options.manageTransport !== false) {
+      setMeshRelayTransport(null);
+    }
     this.connector?.close(1000, "Mesh relay connection stopped");
     this.interruptBackoff();
     const loop = this.loop;
@@ -181,7 +187,7 @@ export class MeshRelayConnectorManager {
     this.interruptBackoff();
   }
 
-  private requireConnector(route: MeshRelayPeerRoute): MeshRelayConnector {
+  resolveConnector(route: MeshRelayPeerRoute): MeshRelayConnector {
     const connector = this.connector;
     const config = this.request?.config;
     if (!connector || !config || connector.status !== "connected") {
@@ -223,7 +229,9 @@ export class MeshRelayConnectorManager {
       }
       if (!shouldMaintain) {
         this.running = false;
-        setMeshRelayTransport(null);
+        if (this.options.manageTransport !== false) {
+          setMeshRelayTransport(null);
+        }
         this.request = undefined;
         this.connector = undefined;
         this.rejectWaiters(new DomainError(

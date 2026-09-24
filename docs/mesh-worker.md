@@ -65,7 +65,7 @@ volumes:
 Then pair the controller with the relay:
 
 ```bash
-clanky mesh relay pair https://relay.example.com
+clanky mesh relay pair https://relay.example.com --name east
 clanky mesh relay status
 ```
 
@@ -74,11 +74,35 @@ forward HTTP and WebSocket traffic while keeping the relay listener private.
 Persist `/app/data`; it contains the relay identity, pairing, worker
 authorization, and audit data.
 
+To add another relay, run a separate relay instance with its own data volume,
+URL, and the same controller fingerprint, then pair it under a different name:
+
+```bash
+clanky mesh relay pair https://relay-west.example.com --name west
+clanky mesh relay primary west
+```
+
+Names are unique, case-insensitive, and use letters, numbers, hyphens, or
+underscores (up to 64 characters). Pairing the first relay makes it primary.
+`primary` changes only which relay is selected for new invitations without a
+relay name; it does not move existing workers or change their connections.
+Controllers maintain independent connections and worker authorization for all
+paired relays. An existing single-relay pairing is migrated under the name
+`default`; `pair` and `unpair` always require an explicit name, including for
+that migrated relay.
+
 To remove a pairing:
 
 ```bash
-clanky mesh relay unpair
+clanky mesh relay unpair --name west
 ```
+
+This disconnects the controller from that relay without deleting worker
+enrollments or clearing trust on the relay. Workers using it cannot reach the
+controller until the same URL and relay identity are paired again, or they
+are reenrolled through another relay. Removing the primary does not promote
+another relay: choose one with `clanky mesh relay primary <name>` before
+creating relay invitations without an explicit relay name.
 
 To clear the relay-side pairing and worker authorization, stop the relay
 listener first and run:
@@ -206,6 +230,18 @@ For a relay-only worker, use `--route relay`:
 clanky mesh enrollment-token create --name worker-1 --route relay
 ```
 
+Without `--relay`, the invitation uses the current primary relay. To choose
+a different paired relay, specify its name:
+
+```bash
+clanky mesh enrollment-token create --name worker-2 --route relay --relay east
+```
+
+The selected relay is part of the token's trust boundary: the token cannot
+enroll a worker through a different relay even if the worker changes the
+generated command's URL. Settings offers the same choice when issuing worker
+invitations, including dedicated workspace workers.
+
 The JSON response contains `response.workerJoinCommand`. Run the complete
 command on the worker, replacing the placeholders only if you are not using
 the generated value:
@@ -219,7 +255,7 @@ clanky worker join 'https://controller.example.com' \
 For a relay invitation, the generated target is the relay:
 
 ```bash
-clanky worker join 'https://relay.example.com' \
+clanky worker join 'https://relay-west.example.com' \
   --token '<single-use-token>' \
   --fingerprint '<controller-fingerprint>'
 ```

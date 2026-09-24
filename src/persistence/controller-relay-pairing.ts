@@ -13,6 +13,8 @@ import { InvalidMeshRelayRouteError } from "./errors";
 import { getMeshNodeFingerprint } from "./mesh-node-identity";
 
 export interface ControllerRelayPairing {
+  name: string;
+  isPrimary: boolean;
   relayUrl: string;
   relayPublicKey: string;
   relayFingerprint: string;
@@ -27,6 +29,7 @@ export interface ControllerRelayPairing {
 }
 
 export interface SaveControllerRelayPairingInput {
+  name: string;
   relayUrl: string;
   relayPublicKey: string;
   relayFingerprint: string;
@@ -39,6 +42,8 @@ export interface SaveControllerRelayPairingInput {
 }
 
 interface ControllerRelayPairingRow {
+  name: string;
+  is_primary: number;
   relay_url: string;
   relay_public_key: string;
   relay_fingerprint: string;
@@ -95,6 +100,8 @@ function mapPairing(row: ControllerRelayPairingRow): ControllerRelayPairing {
     // Optional metadata must not make a valid pairing unreadable.
   }
   return {
+    name: row.name,
+    isPrimary: row.is_primary === 1,
     relayUrl: row.relay_url,
     relayPublicKey: row.relay_public_key,
     relayFingerprint: row.relay_fingerprint,
@@ -109,17 +116,26 @@ function mapPairing(row: ControllerRelayPairingRow): ControllerRelayPairing {
   };
 }
 
-export function getControllerRelayPairing(): ControllerRelayPairing | null {
+export function getControllerRelayPairing(name: string): ControllerRelayPairing | null {
   const row = getDatabase().query(`
-    SELECT relay_url, relay_public_key, relay_fingerprint,
-      controller_node_id, controller_fingerprint, paired_at, updated_at,
-      relay_binary_version, relay_supported_protocol_versions_json,
-      relay_preferred_protocol_version, relay_negotiated_protocol_version,
-      relay_protocol_updated_at
-    FROM mesh_controller_relay_pairing
-    WHERE singleton = 1
+    SELECT * FROM mesh_controller_relays WHERE name = ? COLLATE NOCASE
+  `).get(name) as ControllerRelayPairingRow | null;
+  return row ? mapPairing(row) : null;
+}
+
+export function getPrimaryControllerRelayPairing(): ControllerRelayPairing | null {
+  const row = getDatabase().query(`
+    SELECT * FROM mesh_controller_relays WHERE is_primary = 1
   `).get() as ControllerRelayPairingRow | null;
   return row ? mapPairing(row) : null;
+}
+
+export function listControllerRelayPairings(): ControllerRelayPairing[] {
+  const rows = getDatabase().query(`
+    SELECT * FROM mesh_controller_relays
+    ORDER BY is_primary DESC, name COLLATE NOCASE
+  `).all() as ControllerRelayPairingRow[];
+  return rows.map(mapPairing);
 }
 
 export function saveControllerRelayPairing(
@@ -127,22 +143,24 @@ export function saveControllerRelayPairing(
 ): ControllerRelayPairing {
   const database = getDatabase();
   const relayUrl = normalizeMeshRelayOrigin(input.relayUrl);
-  const existing = getControllerRelayPairing();
+  const existing = getControllerRelayPairing(input.name);
   const now = new Date().toISOString();
   const pairedAt = existing
     && existing.relayUrl === relayUrl
     && existing.relayFingerprint === input.relayFingerprint
     ? existing.pairedAt
     : now;
+  const isPrimary = existing?.isPrimary
+    ?? listControllerRelayPairings().length === 0;
   database.query(`
-    INSERT INTO mesh_controller_relay_pairing (
-      singleton, relay_url, relay_public_key, relay_fingerprint,
+    INSERT INTO mesh_controller_relays (
+      name, is_primary, relay_url, relay_public_key, relay_fingerprint,
       controller_node_id, controller_fingerprint, paired_at, updated_at,
       relay_binary_version, relay_supported_protocol_versions_json,
       relay_preferred_protocol_version, relay_negotiated_protocol_version,
       relay_protocol_updated_at
-    ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(singleton) DO UPDATE SET
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(name) DO UPDATE SET
       relay_url = excluded.relay_url,
       relay_public_key = excluded.relay_public_key,
       relay_fingerprint = excluded.relay_fingerprint,
@@ -156,6 +174,8 @@ export function saveControllerRelayPairing(
       relay_negotiated_protocol_version = excluded.relay_negotiated_protocol_version,
       relay_protocol_updated_at = excluded.relay_protocol_updated_at
   `).run(
+    input.name,
+    isPrimary ? 1 : 0,
     relayUrl,
     input.relayPublicKey,
     input.relayFingerprint,
@@ -174,6 +194,7 @@ export function saveControllerRelayPairing(
   );
   return {
     ...input,
+    isPrimary,
     relayUrl,
     pairedAt,
     updatedAt: now,
@@ -192,14 +213,15 @@ export function restoreControllerRelayPairing(
   pairing: ControllerRelayPairing,
 ): void {
   getDatabase().query(`
-    INSERT INTO mesh_controller_relay_pairing (
-      singleton, relay_url, relay_public_key, relay_fingerprint,
+    INSERT INTO mesh_controller_relays (
+      name, is_primary, relay_url, relay_public_key, relay_fingerprint,
       controller_node_id, controller_fingerprint, paired_at, updated_at,
       relay_binary_version, relay_supported_protocol_versions_json,
       relay_preferred_protocol_version, relay_negotiated_protocol_version,
       relay_protocol_updated_at
-    ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(singleton) DO UPDATE SET
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(name) DO UPDATE SET
+      is_primary = excluded.is_primary,
       relay_url = excluded.relay_url,
       relay_public_key = excluded.relay_public_key,
       relay_fingerprint = excluded.relay_fingerprint,
@@ -213,6 +235,8 @@ export function restoreControllerRelayPairing(
       relay_negotiated_protocol_version = excluded.relay_negotiated_protocol_version,
       relay_protocol_updated_at = excluded.relay_protocol_updated_at
   `).run(
+    pairing.name,
+    pairing.isPrimary ? 1 : 0,
     pairing.relayUrl,
     pairing.relayPublicKey,
     pairing.relayFingerprint,
@@ -228,10 +252,28 @@ export function restoreControllerRelayPairing(
   );
 }
 
-export function deleteControllerRelayPairing(): void {
+export function deleteControllerRelayPairing(name: string): void {
   getDatabase().query(
-    "DELETE FROM mesh_controller_relay_pairing WHERE singleton = 1",
-  ).run();
+    "DELETE FROM mesh_controller_relays WHERE name = ? COLLATE NOCASE",
+  ).run(name);
+}
+
+export function setPrimaryControllerRelayPairing(
+  name: string,
+): ControllerRelayPairing | null {
+  const database = getDatabase();
+  if (!getControllerRelayPairing(name)) {
+    return null;
+  }
+  database.transaction(() => {
+    database.run("UPDATE mesh_controller_relays SET is_primary = 0 WHERE is_primary = 1");
+    database.query(`
+      UPDATE mesh_controller_relays
+      SET is_primary = 1, updated_at = ?
+      WHERE name = ? COLLATE NOCASE
+    `).run(new Date().toISOString(), name);
+  })();
+  return getControllerRelayPairing(name);
 }
 
 /**

@@ -103,6 +103,7 @@ export class WorkspaceWorkerEnrollmentService {
       controller: { nodeId: string; fingerprint: string };
       token?: string;
       expiresAt?: string;
+      relay?: { relayUrl: string; relayFingerprint: string };
     },
   ): CreatedWorkspaceWorkerEnrollment {
     return createWorkspaceWorkerEnrollment({

@@ -18,6 +18,7 @@ export type MeshOperation =
   | "revoke"
   | "relay-bootstrap-info"
   | "relay-pair"
+  | "relay-primary"
   | "relay-status"
   | "relay-unpair";
 
@@ -30,6 +31,7 @@ export interface MeshCommand {
   name?: string;
   ttlSeconds?: number;
   relayUrl?: string;
+  relayName?: string;
   route?: MeshEnrollmentRoute;
 }
 
@@ -111,7 +113,7 @@ export function parseMeshCommandArgs(args: readonly string[]): MeshCommand {
     }
     const { positionals, options } = parseOptions(
       tokenArgs,
-      ["--name", "--ttl-seconds", "--route"],
+      ["--name", "--ttl-seconds", "--route", "--relay"],
     );
     if (positionals.length > 0) throw usageError(`Unexpected argument: ${positionals[0]}`);
     const ttlSeconds = options["--ttl-seconds"]
@@ -124,28 +126,55 @@ export function parseMeshCommandArgs(args: readonly string[]): MeshCommand {
     if (route !== undefined && route !== "direct" && route !== "relay") {
       throw usageError("--route must be direct or relay");
     }
+    if (options["--relay"] && route !== "relay") {
+      throw usageError("--relay requires --route relay");
+    }
     return {
       operation: "enrollment-token-create",
       name: options["--name"],
       ttlSeconds,
       route,
+      relayName: options["--relay"],
     };
   }
   if (operation === "relay") {
     const [relayOperation, ...relayArgs] = operationArgs;
-    const { positionals } = parseOptions(relayArgs, []);
     if (relayOperation === "pair") {
+      const { positionals, options } = parseOptions(relayArgs, ["--name"]);
+      if (!options["--name"]) {
+        throw usageError("Mesh relay pair requires --name");
+      }
       return {
         operation: "relay-pair",
+        relayName: options["--name"],
         relayUrl: requireSinglePositional(
           positionals,
           "Mesh relay pair requires one relay URL",
         ),
       };
     }
+    if (relayOperation === "unpair") {
+      const { positionals, options } = parseOptions(relayArgs, ["--name"]);
+      if (positionals.length > 0) {
+        throw usageError(`Unexpected argument: ${positionals[0]}`);
+      }
+      if (!options["--name"]) {
+        throw usageError("Mesh relay unpair requires --name");
+      }
+      return { operation: "relay-unpair", relayName: options["--name"] };
+    }
+    const { positionals } = parseOptions(relayArgs, []);
+    if (relayOperation === "primary") {
+      return {
+        operation: "relay-primary",
+        relayName: requireSinglePositional(
+          positionals,
+          "Mesh relay primary requires one relay name",
+        ),
+      };
+    }
     if (
       relayOperation === "status"
-      || relayOperation === "unpair"
       || relayOperation === "bootstrap-info"
     ) {
       if (positionals.length > 0) {
@@ -154,13 +183,11 @@ export function parseMeshCommandArgs(args: readonly string[]): MeshCommand {
       return {
         operation: relayOperation === "status"
           ? "relay-status"
-          : relayOperation === "unpair"
-            ? "relay-unpair"
-            : "relay-bootstrap-info",
+          : "relay-bootstrap-info",
       };
     }
     throw usageError(
-      "Mesh relay command must be bootstrap-info, pair, status, or unpair",
+      "Mesh relay command must be bootstrap-info, pair, primary, status, or unpair",
     );
   }
   throw usageError(
@@ -194,6 +221,7 @@ export function buildMeshRequest(command: MeshCommand): {
           ...(command.name ? { name: command.name } : {}),
           ...(command.ttlSeconds !== undefined ? { ttlSeconds: command.ttlSeconds } : {}),
           ...(command.route ? { route: command.route } : {}),
+          ...(command.relayName ? { relayName: command.relayName } : {}),
         }),
       };
     case "revoke":
@@ -209,10 +237,19 @@ export function buildMeshRequest(command: MeshCommand): {
       return {
         endpoint: "/api/mesh/relay",
         method: "POST",
-        payload: JSON.stringify({ relayUrl: command.relayUrl }),
+        payload: JSON.stringify({ name: command.relayName, relayUrl: command.relayUrl }),
+      };
+    case "relay-primary":
+      return {
+        endpoint: "/api/mesh/relay/primary",
+        method: "POST",
+        payload: JSON.stringify({ name: command.relayName }),
       };
     case "relay-unpair":
-      return { endpoint: "/api/mesh/relay", method: "DELETE" };
+      return {
+        endpoint: `/api/mesh/relay/${encodeURIComponent(command.relayName!)}`,
+        method: "DELETE",
+      };
   }
 }
 

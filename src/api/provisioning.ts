@@ -90,6 +90,9 @@ export const provisioningRoutes = defineRoutes({
           ...(validation.data.workerEnrollmentRoute
             ? { workerEnrollmentRoute: validation.data.workerEnrollmentRoute }
             : {}),
+          ...(validation.data.workerRelayName
+            ? { workerRelayName: validation.data.workerRelayName }
+            : {}),
           ...(validation.data.workerHostAddress
             ? { workerHostAddress: validation.data.workerHostAddress }
             : {}),

@@ -203,6 +203,7 @@ export class ProvisioningWorkerLifecycle {
       `${record.job.config.name} worker`,
       900,
       record.job.config.workerEnrollmentRoute ?? "direct",
+      record.job.config.workerRelayName,
     );
     record.job.config.workerEnrollmentId = created.enrollment.id;
     record.workerEnrollmentToken = created.token;

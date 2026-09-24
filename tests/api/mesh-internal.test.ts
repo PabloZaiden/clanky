@@ -155,6 +155,7 @@ describe("Mesh internal controller-worker routes", () => {
     const controller = await ensureLocalMeshNodeIdentity();
     const relay = createSigningIdentity();
     saveControllerRelayPairing({
+      name: "default",
       relayUrl: "https://relay.example.com",
       relayPublicKey: relay.publicKey,
       relayFingerprint: relay.fingerprint,

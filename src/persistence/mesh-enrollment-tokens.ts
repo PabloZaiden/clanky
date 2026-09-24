@@ -56,6 +56,7 @@ export function createMeshEnrollmentToken(
     workspaceWorkerEnrollmentId?: string;
     token?: string;
     expiresAt?: string;
+    relay?: { relayUrl: string; relayFingerprint: string };
   } = {},
 ): { token: string; enrollment: MeshEnrollmentTokenSummary } {
   const db = getDatabase();
@@ -69,8 +70,9 @@ export function createMeshEnrollmentToken(
     `INSERT INTO mesh_enrollment_tokens
       (id, user_id, token_hash, name, controller_node_id,
        controller_fingerprint, purpose, workspace_worker_enrollment_id,
+       relay_url, relay_fingerprint,
        created_at, expires_at, consumed_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
     [
       id,
       userId,
@@ -80,6 +82,8 @@ export function createMeshEnrollmentToken(
       controller.fingerprint,
       options.purpose ?? "global",
       options.workspaceWorkerEnrollmentId ?? null,
+      options.relay?.relayUrl ?? null,
+      options.relay?.relayFingerprint ?? null,
       createdAt,
       expiresAt,
     ],
@@ -120,6 +124,7 @@ export function consumeMeshEnrollmentToken(
     nodeId: string;
     fingerprint: string;
   },
+  relay?: { relayUrl: string; relayFingerprint: string },
 ): {
   userId: string;
   controllerNodeId: string;
@@ -135,13 +140,15 @@ export function consumeMeshEnrollmentToken(
     controller_fingerprint: string;
     purpose: string;
     workspace_worker_enrollment_id: string | null;
-  }, [string, string, string, string, string]>(
+  }, [string, string, string, string, string | null, string | null, string]>(
     `UPDATE mesh_enrollment_tokens
      SET consumed_at = ?
      WHERE token_hash = ?
        AND consumed_at IS NULL
        AND controller_node_id = ?
        AND controller_fingerprint = ?
+       AND (relay_url IS NULL OR
+         (relay_url = ? AND relay_fingerprint = ?))
        AND expires_at > ?
      RETURNING user_id, controller_node_id, controller_fingerprint,
                purpose, workspace_worker_enrollment_id`,
@@ -150,6 +157,8 @@ export function consumeMeshEnrollmentToken(
     hashToken(token),
     expectedController.nodeId,
     expectedController.fingerprint,
+    relay?.relayUrl ?? null,
+    relay?.relayFingerprint ?? null,
     consumedAt,
   );
   return row

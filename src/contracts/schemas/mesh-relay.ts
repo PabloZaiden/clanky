@@ -78,28 +78,45 @@ export const ControllerRelayUrlSchema = z.string().trim().url().superRefine(
   },
 );
 
+export const ControllerRelayNameSchema = z.string().trim().toLowerCase()
+  .min(1).max(64)
+  .regex(/^[a-z0-9](?:[a-z0-9_-]{0,62}[a-z0-9])?$/, {
+    message: "Relay name must use letters, numbers, hyphens, or underscores.",
+  });
+
 export const PairControllerRelayRequestSchema = z.object({
+  name: ControllerRelayNameSchema,
   relayUrl: ControllerRelayUrlSchema,
 }).strict();
 
-export const ControllerRelayPairingStatusSchema = z.object({
-  paired: z.boolean(),
+export const SelectPrimaryControllerRelayRequestSchema = z.object({
+  name: ControllerRelayNameSchema,
+}).strict();
+
+export const ControllerRelayStatusItemSchema = z.object({
+  name: ControllerRelayNameSchema,
+  isPrimary: z.boolean(),
   // Status must remain readable when a persisted URL is now invalid.
-  relayUrl: z.string().trim().url().nullable(),
-  relayFingerprint: RelayFingerprintSchema.nullable(),
-  controllerFingerprint: RelayFingerprintSchema,
+  relayUrl: z.string().min(1),
+  relayFingerprint: RelayFingerprintSchema,
   connected: z.boolean(),
   runtimeError: z.object({
     code: z.string().min(1),
     message: z.string().min(1),
   }).strict().nullable(),
-  pairedAt: RelayTimestampSchema.nullable(),
-  updatedAt: RelayTimestampSchema.nullable(),
-  bootstrapEnvironment: z.string().min(1),
+  pairedAt: RelayTimestampSchema,
+  updatedAt: RelayTimestampSchema,
   relayBinaryVersion: z.string().trim().min(1).nullable(),
   relaySupportedProtocolVersions: MeshSupportedProtocolVersionsSchema,
   relayPreferredProtocolVersion: z.literal(MESH_PROTOCOL_VERSION),
   relayNegotiatedProtocolVersion: z.literal(MESH_PROTOCOL_VERSION).nullable(),
+}).strict();
+
+export const ControllerRelayPairingStatusSchema = z.object({
+  controllerFingerprint: RelayFingerprintSchema,
+  bootstrapEnvironment: z.string().min(1),
+  primaryName: ControllerRelayNameSchema.nullable(),
+  relays: z.array(ControllerRelayStatusItemSchema),
 }).strict();
 
 export const MeshRelayChallengeFrameSchema = z.object({
@@ -298,4 +315,7 @@ export type MeshRelayServerControlFrame = z.infer<
 >;
 export type ControllerRelayPairingStatus = z.infer<
   typeof ControllerRelayPairingStatusSchema
+>;
+export type ControllerRelayStatusItem = z.infer<
+  typeof ControllerRelayStatusItemSchema
 >;

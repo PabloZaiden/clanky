@@ -18,7 +18,7 @@ import {
   ExecutionHostCapabilitiesSchema,
   ExecutionHostPlatformSchema,
 } from "./execution-host";
-import { ControllerRelayUrlSchema } from "./mesh-relay";
+import { ControllerRelayNameSchema, ControllerRelayUrlSchema } from "./mesh-relay";
 
 export const MeshTransportSchema = z.enum(MESH_TRANSPORTS);
 export const MeshInstanceNameSchema = z.string()
@@ -64,6 +64,10 @@ export const CreateMeshEnrollmentTokenRequestSchema = z.object({
   name: z.string().trim().min(1).max(120).default("Mesh enrollment"),
   ttlSeconds: z.number().int().min(60).max(86_400).default(900),
   route: MeshEnrollmentRouteSchema.default("direct"),
+  relayName: ControllerRelayNameSchema.optional(),
+}).refine((input) => input.relayName === undefined || input.route === "relay", {
+  path: ["relayName"],
+  message: "A relay can only be selected for a relay enrollment.",
 });
 
 export const CreateWorkspaceWorkerEnrollmentRequestSchema =

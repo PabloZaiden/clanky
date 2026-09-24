@@ -17,6 +17,7 @@ import { repairConsolidatedSchema } from "./consolidated-schema-repair";
 const log = createLogger("persistence:migrations");
 
 export const BASELINE_SCHEMA_VERSION = 56;
+const MULTI_RELAY_PAIRING_MIGRATION_VERSION = BASELINE_SCHEMA_VERSION + 7;
 
 export interface Migration {
   version: number;
@@ -154,7 +155,7 @@ export const migrations: Migration[] = [
       const addColumn = (tableName: string, columnName: string, definition: string): void => {
         if (
           tableExists(db, tableName)
-          && !getTableColumns(db, tableName).includes(columnName)
+          && !getMigrationTableColumns(db, tableName).includes(columnName)
         ) {
           db.run(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
         }
@@ -294,7 +295,7 @@ export const migrations: Migration[] = [
       ): void => {
         if (
           tableExists(db, tableName)
-          && !getTableColumns(db, tableName).includes(columnName)
+          && !getMigrationTableColumns(db, tableName).includes(columnName)
         ) {
           db.run(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
         }
@@ -409,7 +410,92 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: MULTI_RELAY_PAIRING_MIGRATION_VERSION,
+    name: "add_named_controller_relays",
+    up: migrateControllerRelays,
+  },
 ];
+
+function getMigrationTableColumns(db: Database, tableName: string): string[] {
+  if (tableName === "mesh_controller_relay_pairing") {
+    // The retired singleton table is intentionally absent from the current inventory.
+    const rows = db.query("PRAGMA table_info(mesh_controller_relay_pairing)").all() as Array<{
+      name: string;
+    }>;
+    return rows.map((row) => row.name);
+  }
+  return getTableColumns(db, tableName);
+}
+
+function migrateControllerRelays(db: Database): void {
+  db.run(`
+    CREATE TABLE IF NOT EXISTS mesh_controller_relays (
+      name TEXT PRIMARY KEY COLLATE NOCASE NOT NULL CHECK (length(trim(name)) > 0),
+      is_primary INTEGER NOT NULL DEFAULT 0 CHECK (is_primary IN (0, 1)),
+      relay_url TEXT NOT NULL UNIQUE,
+      relay_public_key TEXT NOT NULL,
+      relay_fingerprint TEXT NOT NULL UNIQUE,
+      controller_node_id TEXT NOT NULL,
+      controller_fingerprint TEXT NOT NULL,
+      paired_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      relay_binary_version TEXT,
+      relay_supported_protocol_versions_json TEXT NOT NULL DEFAULT '[5]',
+      relay_preferred_protocol_version INTEGER NOT NULL DEFAULT 5,
+      relay_negotiated_protocol_version INTEGER NOT NULL DEFAULT 5,
+      relay_protocol_updated_at TEXT
+    )
+  `);
+  db.run(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_mesh_controller_relays_primary
+      ON mesh_controller_relays(is_primary) WHERE is_primary = 1
+  `);
+
+  if (tableExists(db, "mesh_controller_relay_pairing")) {
+    if (db.query("SELECT 1 FROM mesh_controller_relay_pairing LIMIT 1").get()) {
+      const columns = getMigrationTableColumns(db, "mesh_controller_relay_pairing");
+      for (const [columnName, definition] of [
+        ["relay_binary_version", "TEXT"],
+        ["relay_supported_protocol_versions_json", "TEXT NOT NULL DEFAULT '[5]'"],
+        ["relay_preferred_protocol_version", "INTEGER NOT NULL DEFAULT 5"],
+        ["relay_negotiated_protocol_version", "INTEGER NOT NULL DEFAULT 5"],
+        ["relay_protocol_updated_at", "TEXT"],
+      ] as const) {
+        if (!columns.includes(columnName)) {
+          db.run(`ALTER TABLE mesh_controller_relay_pairing ADD COLUMN ${columnName} ${definition}`);
+        }
+      }
+      db.run(`
+        INSERT INTO mesh_controller_relays (
+          name, is_primary, relay_url, relay_public_key, relay_fingerprint,
+          controller_node_id, controller_fingerprint, paired_at, updated_at,
+          relay_binary_version, relay_supported_protocol_versions_json,
+          relay_preferred_protocol_version, relay_negotiated_protocol_version,
+          relay_protocol_updated_at
+        )
+        SELECT
+          'default', 1, relay_url, relay_public_key, relay_fingerprint,
+          controller_node_id, controller_fingerprint, paired_at, updated_at,
+          relay_binary_version, relay_supported_protocol_versions_json,
+          relay_preferred_protocol_version, relay_negotiated_protocol_version,
+          relay_protocol_updated_at
+        FROM mesh_controller_relay_pairing
+      `);
+    }
+    db.run("DROP TABLE mesh_controller_relay_pairing");
+  }
+
+  if (tableExists(db, "mesh_enrollment_tokens")) {
+    const columns = getTableColumns(db, "mesh_enrollment_tokens");
+    if (!columns.includes("relay_url")) {
+      db.run("ALTER TABLE mesh_enrollment_tokens ADD COLUMN relay_url TEXT");
+    }
+    if (!columns.includes("relay_fingerprint")) {
+      db.run("ALTER TABLE mesh_enrollment_tokens ADD COLUMN relay_fingerprint TEXT");
+    }
+  }
+}
 
 export function tableExists(db: Database, tableName: string): boolean {
   const result = db
@@ -517,6 +603,13 @@ export function runMigrations(
   ensureMigrationsTable(db);
 
   const appliedVersions = getAppliedVersions(db);
+  if (
+    appliedVersions.has(MULTI_RELAY_PAIRING_MIGRATION_VERSION)
+    && tableExists(db, "mesh_controller_relay_pairing")
+  ) {
+    // The unchanged baseline schema recreates the retired table on startup.
+    db.transaction(() => migrateControllerRelays(db))();
+  }
   const pendingMigrations = migrations
     .filter((migration) => !appliedVersions.has(migration.version))
     .sort((left, right) => left.version - right.version);

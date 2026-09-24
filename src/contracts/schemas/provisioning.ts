@@ -7,6 +7,7 @@ import {
   isValidWorkerHostAddress,
   PROVISIONING_WORKER_ENROLLMENT_ROUTES,
 } from "@/shared";
+import { ControllerRelayNameSchema } from "./mesh-relay";
 
 const RequiredTrimmedStringSchema = z.string().trim().min(1, "value is required");
 
@@ -22,6 +23,7 @@ export const CreateProvisioningJobRequestSchema = z.object({
   workspaceWorkerEnrollmentId: RequiredTrimmedStringSchema.optional(),
   transport: ProvisioningTransportSchema.optional(),
   workerEnrollmentRoute: ProvisioningWorkerEnrollmentRouteSchema.optional(),
+  workerRelayName: ControllerRelayNameSchema.optional(),
   workerHostAddress: z.string()
     .trim()
     .nullable()
@@ -44,6 +46,12 @@ export const CreateProvisioningJobRequestSchema = z.object({
   /** For rebuild/restart: existing workspace ID */
   workspaceId: z.string().trim().nullable(),
 }).refine((data) => {
+  if (
+    data.workerRelayName
+    && (data.transport !== "worker" || data.workerEnrollmentRoute !== "relay")
+  ) {
+    return false;
+  }
   const targetCount = [
     Boolean(data.executionHost),
     Boolean(data.workspaceWorkerEnrollmentId),
@@ -71,7 +79,7 @@ export const CreateProvisioningJobRequestSchema = z.object({
   return (data.targetDirectory ?? "").length > 0
     && (data.workspaceId ?? "").length > 0;
 }, {
-  message: "Provisioning requires exactly one execution host or dedicated worker enrollment; dedicated worker enrollments only support provision mode; provision mode also requires repoUrl and basePath, rebuild/restart requires targetDirectory and workspaceId, and arise requires a target",
+  message: "Provisioning requires one execution host or dedicated worker enrollment, a relay name only with worker relay transport, and a valid target for the selected mode.",
 });
 
 export type CreateProvisioningJobRequest = z.infer<typeof CreateProvisioningJobRequestSchema>;

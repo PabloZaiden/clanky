@@ -29,6 +29,7 @@ import {
 import type { UseGithubUsernameResult } from "../../hooks/useGithubUsername";
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
 import type { UseMeshResult } from "../../hooks/useMesh";
+import type { MeshEnrollmentRoute } from "@/contracts/schemas/mesh";
 import { getRouteString } from "./route-fields";
 import { createRefreshCoordinator } from "../../lib/refresh-coordinator";
 import { isAbortError } from "../../lib/request-lifecycle";
@@ -53,6 +54,10 @@ export interface UseWorkspaceCreateResult {
   workspaceWorkerEnrollmentSelected: boolean;
   setWorkspaceWorkerEnrollmentSelected: (selected: boolean) => void;
   workspaceWorkerEnrollmentLoading: boolean;
+  dedicatedWorkerRoute: MeshEnrollmentRoute;
+  setDedicatedWorkerRoute: (route: MeshEnrollmentRoute) => void;
+  dedicatedWorkerRelayName: string;
+  setDedicatedWorkerRelayName: (name: string) => void;
   startWorkspaceWorkerEnrollment: () => Promise<void>;
   cancelWorkspaceWorkerEnrollment: () => Promise<void>;
   setWorkspaceServerSettings: (settings: ServerSettings | ((current: ServerSettings) => ServerSettings)) => void;
@@ -66,7 +71,11 @@ export interface UseWorkspaceCreateResult {
   setAutomaticTransport: (transport: ProvisioningTransport) => void;
   automaticWorkerEnrollmentRoute: ProvisioningWorkerEnrollmentRoute;
   setAutomaticWorkerEnrollmentRoute: (route: ProvisioningWorkerEnrollmentRoute) => void;
-  automaticRelayPaired: boolean;
+  automaticWorkerRelayName: string;
+  setAutomaticWorkerRelayName: (name: string) => void;
+  relayOptions: Array<{ name: string; isPrimary: boolean }>;
+  primaryRelayName: string | null;
+  automaticRelayAvailable: boolean;
   automaticRelayStatusLoading: boolean;
   automaticWorkerHostAddress: string;
   setAutomaticWorkerHostAddress: (address: string) => void;
@@ -118,6 +127,16 @@ export interface WorkspaceWorkerEnrollmentState {
   workerJoinCommand?: string;
 }
 
+function hasPairedRelay(
+  selectedName: string,
+  primaryName: string | null,
+  relays: UseWorkspaceCreateResult["relayOptions"],
+): boolean {
+  return selectedName
+    ? relays.some((relay) => relay.name === selectedName)
+    : primaryName !== null;
+}
+
 interface UseWorkspaceCreateOptions {
   route: WebAppRoute;
   servers: SshServer[];
@@ -127,7 +146,7 @@ interface UseWorkspaceCreateOptions {
   toast: ToastService;
   navigateWithinShell: (route: WebAppRoute) => void;
   githubUsername: UseGithubUsernameResult;
-  relayPaired: boolean;
+  relayStatus: UseMeshResult["relayStatus"];
   relayStatusLoading: boolean;
   refreshRelayStatus: UseMeshResult["refreshRelayStatus"];
 }
@@ -141,10 +160,15 @@ export function useWorkspaceCreate({
   toast,
   navigateWithinShell,
   githubUsername,
-  relayPaired,
+  relayStatus,
   relayStatusLoading,
   refreshRelayStatus,
 }: UseWorkspaceCreateOptions): UseWorkspaceCreateResult {
+  const primaryRelayName = relayStatus?.primaryName ?? null;
+  const relayPaired = primaryRelayName !== null;
+  const relayOptions = relayStatus?.relays.map(
+    (relay) => ({ name: relay.name, isPrimary: relay.isPrimary }),
+  ) ?? [];
   const [workspaceCreateMode, setWorkspaceCreateMode] = useState<"manual" | "automatic">("manual");
   const [workspaceName, setWorkspaceName] = useState("");
   const [workspaceDirectory, setWorkspaceDirectory] = useState("");
@@ -158,6 +182,8 @@ export function useWorkspaceCreate({
     useState<WorkspaceWorkerEnrollmentState | null>(null);
   const [workspaceWorkerEnrollmentSelected, setWorkspaceWorkerEnrollmentSelected] = useState(false);
   const [workspaceWorkerEnrollmentLoading, setWorkspaceWorkerEnrollmentLoading] = useState(false);
+  const [dedicatedWorkerRoute, setDedicatedWorkerRoute] = useState<MeshEnrollmentRoute>("direct");
+  const [dedicatedWorkerRelayName, setDedicatedWorkerRelayName] = useState("");
   const [workspaceServerSettingsValid, setWorkspaceServerSettingsValid] = useState(true);
   const [workspaceTesting, setWorkspaceTesting] = useState(false);
   const [workspaceCreateSubmitting, setWorkspaceCreateSubmitting] = useState(false);
@@ -165,6 +191,7 @@ export function useWorkspaceCreate({
   const [automaticTransport, setAutomaticTransport] = useState<ProvisioningTransport>("worker");
   const [automaticWorkerEnrollmentRoute, setAutomaticWorkerEnrollmentRouteState] =
     useState<ProvisioningWorkerEnrollmentRoute>("direct");
+  const [automaticWorkerRelayName, setAutomaticWorkerRelayName] = useState("");
   const [automaticWorkerHostAddress, setAutomaticWorkerHostAddress] = useState("");
   const [automaticWorkerHostAddressMode, setAutomaticWorkerHostAddressMode] =
     useState<AutomaticWorkerHostAddressMode>("discovered");
@@ -252,6 +279,7 @@ export function useWorkspaceCreate({
           config.workerEnrollmentRoute
             ?? (config.workerHostAddress ? "direct" : relayPaired ? "relay" : "direct"),
         );
+        setAutomaticWorkerRelayName(config.workerRelayName ?? "");
         setAutomaticWorkerHostAddress(config.workerHostAddress ?? "");
         setAutomaticWorkerHostAddressMode(
           config.workerHostAddressManual ? "manual" : "discovered",
@@ -308,11 +336,14 @@ export function useWorkspaceCreate({
     setWorkspaceSshTarget(null);
     setWorkspaceWorkerEnrollment(null);
     setWorkspaceWorkerEnrollmentSelected(false);
+    setDedicatedWorkerRoute("direct");
+    setDedicatedWorkerRelayName("");
     setWorkspaceServerSettingsValid(true);
     setWorkspaceTesting(false);
     setWorkspaceCreateSubmitting(false);
     automaticWorkerEnrollmentRouteTouchedRef.current = false;
     setAutomaticWorkerEnrollmentRouteState(relayPaired ? "relay" : "direct");
+    setAutomaticWorkerRelayName("");
     const defaultAutomaticServer = getDefaultAutomaticWorkspaceServer(servers);
     const requestedExecutionHostKind = getRouteString(route, "executionHostKind");
     const requestedExecutionHostId = getRouteString(route, "executionHostId");
@@ -498,6 +529,13 @@ export function useWorkspaceCreate({
   }
 
   async function startWorkspaceWorkerEnrollment(): Promise<void> {
+    if (
+      dedicatedWorkerRoute === "relay"
+      && !hasPairedRelay(dedicatedWorkerRelayName, primaryRelayName, relayOptions)
+    ) {
+      toast.error("Select a paired relay before enrolling the worker.");
+      return;
+    }
     setWorkspaceWorkerEnrollmentLoading(true);
     try {
       const created = await apiRequest<{
@@ -507,7 +545,13 @@ export function useWorkspaceCreate({
       }>("/api/workspace-worker-enrollments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: workspaceName.trim() || "Workspace worker" }),
+        body: JSON.stringify({
+          name: workspaceName.trim() || "Workspace worker",
+          route: dedicatedWorkerRoute,
+          ...(dedicatedWorkerRoute === "relay" && dedicatedWorkerRelayName
+            ? { relayName: dedicatedWorkerRelayName }
+            : {}),
+        }),
         action: "Create dedicated worker enrollment",
         fallbackMessage: "Failed to create dedicated worker enrollment",
       });
@@ -566,6 +610,7 @@ export function useWorkspaceCreate({
       config.workerEnrollmentRoute
         ?? (config.workerHostAddress ? "direct" : relayPaired ? "relay" : "direct"),
     );
+    setAutomaticWorkerRelayName(config.workerRelayName ?? "");
     setAutomaticWorkerHostAddress(config.workerHostAddress ?? "");
     setAutomaticWorkerHostAddressMode(
       config.workerHostAddressManual ? "manual" : "discovered",
@@ -608,6 +653,15 @@ export function useWorkspaceCreate({
           toast.error("Devbox template is required when the repository doesn't exist yet.");
           return;
         }
+        if (
+          automaticTransport === "worker"
+          && !workspaceWorkerEnrollmentSelected
+          && automaticWorkerEnrollmentRoute === "relay"
+          && !hasPairedRelay(automaticWorkerRelayName, primaryRelayName, relayOptions)
+        ) {
+          toast.error("Select a paired relay before creating the worker.");
+          return;
+        }
         const snapshot = await provisioning.startJob({
           name,
           ...(automaticExecutionHost ? { executionHost: automaticExecutionHost } : {}),
@@ -617,6 +671,10 @@ export function useWorkspaceCreate({
           transport: workspaceWorkerEnrollmentSelected ? "ssh" : automaticTransport,
           ...(automaticTransport === "worker" && !workspaceWorkerEnrollmentSelected
             ? { workerEnrollmentRoute: automaticWorkerEnrollmentRoute }
+            : {}),
+          ...(automaticTransport === "worker" && !workspaceWorkerEnrollmentSelected
+            && automaticWorkerEnrollmentRoute === "relay" && automaticWorkerRelayName
+            ? { workerRelayName: automaticWorkerRelayName }
             : {}),
           ...(automaticTransport === "worker" && !workspaceWorkerEnrollmentSelected
             && automaticWorkerEnrollmentRoute !== "relay"
@@ -709,6 +767,10 @@ export function useWorkspaceCreate({
     workspaceWorkerEnrollmentSelected,
     setWorkspaceWorkerEnrollmentSelected,
     workspaceWorkerEnrollmentLoading,
+    dedicatedWorkerRoute,
+    setDedicatedWorkerRoute,
+    dedicatedWorkerRelayName,
+    setDedicatedWorkerRelayName,
     startWorkspaceWorkerEnrollment,
     cancelWorkspaceWorkerEnrollment,
     setWorkspaceServerSettings,
@@ -722,7 +784,11 @@ export function useWorkspaceCreate({
     setAutomaticTransport,
     automaticWorkerEnrollmentRoute,
     setAutomaticWorkerEnrollmentRoute,
-    automaticRelayPaired: relayPaired,
+    automaticWorkerRelayName,
+    setAutomaticWorkerRelayName,
+    relayOptions,
+    primaryRelayName,
+    automaticRelayAvailable: relayOptions.length > 0,
     automaticRelayStatusLoading: relayStatusLoading,
     automaticWorkerHostAddress,
     setAutomaticWorkerHostAddress,

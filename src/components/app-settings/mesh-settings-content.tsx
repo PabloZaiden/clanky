@@ -52,6 +52,7 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
   const [meshEndpoint, setMeshEndpoint] = useState("");
   const [tokenName, setTokenName] = useState("Mesh worker");
   const [tokenRoute, setTokenRoute] = useState<MeshEnrollmentRoute>("direct");
+  const [tokenRelayName, setTokenRelayName] = useState("");
   const [createdEnrollment, setCreatedEnrollment] = useState<{
     token: string;
     workerJoinCommand: string;
@@ -61,6 +62,11 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
   const [killWorkerNodeId, setKillWorkerNodeId] = useState<string | null>(null);
   const [killingWorkerNodeId, setKillingWorkerNodeId] = useState<string | null>(null);
   const [killCountdown, setKillCountdown] = useState<number | null>(null);
+  const selectedRelayUnavailable = Boolean(
+    tokenRelayName
+    && mesh.relayStatus
+    && !mesh.relayStatus.relays.some((relay) => relay.name === tokenRelayName),
+  );
 
   useEffect(() => {
     if (mesh.mutationError) toast.error(mesh.mutationError);
@@ -100,7 +106,14 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
 
   async function createToken(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    const created = await mesh.createEnrollmentToken(tokenName, 900, tokenRoute);
+    const created = await mesh.createEnrollmentToken(
+      tokenName,
+      900,
+      tokenRoute,
+      tokenRoute === "relay" && tokenRelayName
+        ? tokenRelayName
+        : undefined,
+    );
     if (!created) return;
     setCreatedEnrollment(created);
     toast.success("Worker enrollment token created.");
@@ -252,7 +265,7 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
         <MeshFormField
           id="mesh-enrollment-route"
           label="Route"
-          description="Direct uses this controller endpoint. Relay requires an active controller relay pairing."
+          description="Direct uses this controller endpoint. Relay uses the primary relay unless you select another."
         >
           <SettingsSelect
             id="mesh-enrollment-route"
@@ -266,7 +279,42 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
             <option value="relay">Relay</option>
           </SettingsSelect>
         </MeshFormField>
-        <Button type="submit" size="sm" loading={mesh.saving}>Create</Button>
+        {tokenRoute === "relay" ? (
+          <MeshFormField
+            id="mesh-enrollment-relay"
+            label="Relay"
+            description="Leave the primary selected to use the controller default."
+          >
+            <SettingsSelect
+              id="mesh-enrollment-relay"
+              value={tokenRelayName}
+              onChange={(event) => setTokenRelayName(event.currentTarget.value)}
+              disabled={mesh.saving || mesh.relayStatusLoading}
+            >
+              <option value="">
+                {mesh.relayStatus?.primaryName
+                  ? `Primary (${mesh.relayStatus.primaryName})`
+                  : "No primary relay selected"}
+              </option>
+              {selectedRelayUnavailable ? (
+                <option value={tokenRelayName} disabled>
+                  {tokenRelayName} (no longer paired)
+                </option>
+              ) : null}
+              {mesh.relayStatus?.relays.map((relay) => (
+                <option key={relay.name} value={relay.name}>
+                  {relay.name}
+                </option>
+              ))}
+            </SettingsSelect>
+          </MeshFormField>
+        ) : null}
+        {selectedRelayUnavailable ? (
+          <SettingsError>Choose a paired relay before creating a token.</SettingsError>
+        ) : null}
+        <Button type="submit" size="sm" loading={mesh.saving} disabled={selectedRelayUnavailable}>
+          Create
+        </Button>
         {createdEnrollment ? (
           <div className="rounded-md bg-gray-50 p-3 text-sm dark:bg-neutral-800">
             <p className="font-medium">Run this command on the worker</p>
