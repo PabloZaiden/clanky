@@ -40,7 +40,7 @@ DELETE FROM execution_hosts WHERE id LIKE 'demo-%';
 DELETE FROM ssh_servers WHERE id LIKE 'demo-%';
 DELETE FROM preferences WHERE user_id = 'demo-user';
 DELETE FROM mesh_node_identity WHERE node_id LIKE 'demo-%';
-DELETE FROM mesh_controller_relay_pairing WHERE relay_url LIKE 'http://demo-%';
+DELETE FROM mesh_controller_relays WHERE relay_url LIKE 'http://demo-%';
 DELETE FROM webapp_users WHERE id = 'demo-user';
 
 INSERT INTO webapp_users (

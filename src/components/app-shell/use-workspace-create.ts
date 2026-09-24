@@ -127,6 +127,16 @@ export interface WorkspaceWorkerEnrollmentState {
   workerJoinCommand?: string;
 }
 
+function hasPairedRelay(
+  selectedName: string,
+  primaryName: string | null,
+  relays: UseWorkspaceCreateResult["relayOptions"],
+): boolean {
+  return selectedName
+    ? relays.some((relay) => relay.name === selectedName)
+    : primaryName !== null;
+}
+
 interface UseWorkspaceCreateOptions {
   route: WebAppRoute;
   servers: SshServer[];
@@ -519,8 +529,11 @@ export function useWorkspaceCreate({
   }
 
   async function startWorkspaceWorkerEnrollment(): Promise<void> {
-    if (dedicatedWorkerRoute === "relay" && !dedicatedWorkerRelayName && !primaryRelayName) {
-      toast.error("Select a relay before enrolling the worker.");
+    if (
+      dedicatedWorkerRoute === "relay"
+      && !hasPairedRelay(dedicatedWorkerRelayName, primaryRelayName, relayOptions)
+    ) {
+      toast.error("Select a paired relay before enrolling the worker.");
       return;
     }
     setWorkspaceWorkerEnrollmentLoading(true);
@@ -644,10 +657,9 @@ export function useWorkspaceCreate({
           automaticTransport === "worker"
           && !workspaceWorkerEnrollmentSelected
           && automaticWorkerEnrollmentRoute === "relay"
-          && !automaticWorkerRelayName
-          && !primaryRelayName
+          && !hasPairedRelay(automaticWorkerRelayName, primaryRelayName, relayOptions)
         ) {
-          toast.error("Select a relay before creating the worker.");
+          toast.error("Select a paired relay before creating the worker.");
           return;
         }
         const snapshot = await provisioning.startJob({

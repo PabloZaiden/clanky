@@ -97,7 +97,7 @@ export const ControllerRelayStatusItemSchema = z.object({
   name: ControllerRelayNameSchema,
   isPrimary: z.boolean(),
   // Status must remain readable when a persisted URL is now invalid.
-  relayUrl: z.string().trim().url(),
+  relayUrl: z.string().min(1),
   relayFingerprint: RelayFingerprintSchema,
   connected: z.boolean(),
   runtimeError: z.object({

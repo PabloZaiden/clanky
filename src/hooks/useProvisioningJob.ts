@@ -32,6 +32,7 @@ export interface StartProvisioningJobRequest {
   workspaceWorkerEnrollmentId?: string;
   transport?: ProvisioningTransport;
   workerEnrollmentRoute?: ProvisioningWorkerEnrollmentRoute;
+  workerRelayName?: string;
   workerHostAddress?: string;
   workerHostAddressManual?: boolean;
   repoUrl: string;
@@ -429,6 +430,9 @@ export function useProvisioningJob(): UseProvisioningJobResult {
           ...(request.transport ? { transport: request.transport } : {}),
           ...(request.workerEnrollmentRoute
             ? { workerEnrollmentRoute: request.workerEnrollmentRoute }
+            : {}),
+          ...(request.workerRelayName
+            ? { workerRelayName: request.workerRelayName }
             : {}),
           ...(request.workerHostAddress
             ? { workerHostAddress: request.workerHostAddress.trim() }

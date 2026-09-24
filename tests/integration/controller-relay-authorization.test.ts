@@ -5,6 +5,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readRuntimeConfig } from "@pablozaiden/webapp/server";
+import { ControllerRelayPairingStatusSchema } from "@/contracts/schemas/mesh-relay";
 import { ControllerRelayService } from "../../src/core/controller-relay-service";
 import { meshManager } from "../../src/core/mesh-manager";
 import type {
@@ -288,7 +289,7 @@ describe("controller relay authorization recovery", () => {
     });
     getDatabase().query(`
       UPDATE mesh_controller_relays
-      SET relay_url = 'http://relay.example'
+      SET relay_url = 'not-a-url'
       WHERE name = 'default'
     `).run();
 
@@ -297,10 +298,12 @@ describe("controller relay authorization recovery", () => {
       async () => new Response("Not found", { status: 404 }),
     )).resolves.toBeUndefined();
 
-    expect(await service.getStatus()).toMatchObject({
+    const status = await service.getStatus();
+    expect(ControllerRelayPairingStatusSchema.safeParse(status).success).toBe(true);
+    expect(status).toMatchObject({
       relays: [{
         name: "default",
-        relayUrl: "http://relay.example",
+        relayUrl: "not-a-url",
         connected: false,
         runtimeError: {
           code: "mesh_relay_url_invalid",

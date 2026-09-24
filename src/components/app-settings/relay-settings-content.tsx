@@ -3,6 +3,8 @@ import { CodeValue, ConfirmModal, useToast } from "@pablozaiden/webapp/web";
 import type { ControllerRelayPairingStatus } from "@/contracts/relay";
 import { useRealtimeRefreshWithRecovery } from "../../hooks/useRealtimeStream";
 import { apiRequest } from "../../lib/api-client";
+import { createRefreshCoordinator } from "../../lib/refresh-coordinator";
+import { isAbortError } from "../../lib/request-lifecycle";
 import { Button } from "../common";
 import { SettingsError, SettingsInput } from "./settings-row-controls";
 
@@ -16,46 +18,56 @@ export function RelaySettingsContent() {
   const [error, setError] = useState<string | null>(null);
   const [confirmUnpair, setConfirmUnpair] = useState<string | null>(null);
   const refreshAbortRef = useRef<AbortController | null>(null);
+  const refreshCoordinatorRef = useRef(createRefreshCoordinator<void>());
+  const refreshVersionRef = useRef(0);
 
-  const refresh = useCallback(async (): Promise<void> => {
-    refreshAbortRef.current?.abort();
-    const controller = new AbortController();
+  const refresh = useCallback((): Promise<void> => {
+    const controller = refreshAbortRef.current ?? new AbortController();
     refreshAbortRef.current = controller;
-    setError(null);
-    try {
-      const next = await apiRequest<ControllerRelayPairingStatus>(
-        "/api/mesh/relay",
-        {
-          signal: controller.signal,
-          action: "Load Mesh relay status",
-          fallbackMessage: "Failed to load Mesh relay status",
-        },
-      );
-      if (controller.signal.aborted) {
-        return;
-      }
-      setStatus(next);
-    } catch (loadError) {
-      if (
-        controller.signal.aborted
-        || loadError instanceof DOMException && loadError.name === "AbortError"
-      ) {
-        return;
-      }
-      setError(loadError instanceof Error ? loadError.message : String(loadError));
-    } finally {
-      if (refreshAbortRef.current === controller) {
-        refreshAbortRef.current = null;
+    refreshVersionRef.current++;
+    return refreshCoordinatorRef.current.run(async () => {
+      if (controller.signal.aborted) return;
+      setError(null);
+      try {
+        let version: number;
+        do {
+          version = refreshVersionRef.current;
+          try {
+            const next = await apiRequest<ControllerRelayPairingStatus>(
+              "/api/mesh/relay",
+              {
+                signal: controller.signal,
+                action: "Load Mesh relay status",
+                fallbackMessage: "Failed to load Mesh relay status",
+              },
+            );
+            if (controller.signal.aborted) return;
+            if (version === refreshVersionRef.current) setStatus(next);
+          } catch (loadError) {
+            if (controller.signal.aborted || isAbortError(loadError)) return;
+            if (version === refreshVersionRef.current) {
+              setError(loadError instanceof Error ? loadError.message : String(loadError));
+            }
+          }
+        } while (version !== refreshVersionRef.current);
+      } finally {
+        if (refreshAbortRef.current === controller) {
+          refreshAbortRef.current = null;
+        }
         if (!controller.signal.aborted) {
           setLoading(false);
         }
       }
-    }
+    });
   }, []);
 
   useEffect(() => {
     void refresh();
-    return () => refreshAbortRef.current?.abort();
+    return () => {
+      refreshAbortRef.current?.abort();
+      refreshAbortRef.current = null;
+      refreshCoordinatorRef.current.reset();
+    };
   }, [refresh]);
 
   useRealtimeRefreshWithRecovery({
@@ -64,6 +76,12 @@ export function RelaySettingsContent() {
     refresh,
     onReconnect: refresh,
   });
+
+  function updateStatus(next: ControllerRelayPairingStatus): void {
+    refreshVersionRef.current++;
+    setStatus(next);
+    setError(null);
+  }
 
   async function pair(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -80,7 +98,7 @@ export function RelaySettingsContent() {
           fallbackMessage: "Failed to pair Mesh relay",
         },
       );
-      setStatus(next);
+      updateStatus(next);
       setRelayName("");
       setRelayUrl("");
       toast.success("Mesh relay paired.");
@@ -105,7 +123,7 @@ export function RelaySettingsContent() {
           fallbackMessage: "Failed to select primary Mesh relay",
         },
       );
-      setStatus(next);
+      updateStatus(next);
       toast.success("Primary Mesh relay updated.");
     } catch (selectionError) {
       setError(selectionError instanceof Error
@@ -129,7 +147,7 @@ export function RelaySettingsContent() {
           fallbackMessage: "Failed to unpair Mesh relay",
         },
       );
-      setStatus(next);
+      updateStatus(next);
       setConfirmUnpair(null);
       toast.success("Mesh relay unpaired.");
     } catch (unpairError) {
