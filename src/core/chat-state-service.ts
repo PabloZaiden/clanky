@@ -11,6 +11,7 @@ import {
   listChatsByWorkspace,
   loadChat,
   loadChatMetadata,
+  loadChatStreamControlState,
   loadTaskChat,
   getChatTranscriptMeta,
   getChatToolCallFromTranscript,
@@ -18,6 +19,7 @@ import {
   saveChat,
   updateChatConfig,
   updateChatState,
+  updateChatStreamState,
 } from "../persistence/chats";
 import { createTranscriptFromStoragePage } from "./transcript-service";
 import { getWorkspace, touchWorkspace } from "../persistence/workspaces";
@@ -26,6 +28,7 @@ import type {
   ChatConfig,
   ChatState,
   ChatStatus,
+  ChatStreamControlState,
   ChatStartupStage,
   TranscriptChangeSet,
   Workspace,
@@ -50,6 +53,10 @@ export class ChatStateService implements ChatStatePort {
 
   async getChatSummary(chatId: string): Promise<Chat | null> {
     return loadChatMetadata(chatId);
+  }
+
+  async getChatStreamControlState(chatId: string): Promise<ChatStreamControlState | null> {
+    return loadChatStreamControlState(chatId);
   }
 
   async getChatSnapshot(
@@ -151,6 +158,7 @@ export class ChatStateService implements ChatStatePort {
     options: {
       transcriptChanges?: TranscriptChangeSet;
       expectedStatus?: ChatStatus;
+      streaming?: boolean;
     } = {},
   ): Promise<Chat> {
     const preserveQueuedMessages = state.queuedMessages === chat.state.queuedMessages;
@@ -161,12 +169,17 @@ export class ChatStateService implements ChatStatePort {
         ? createTranscriptChangeSet(state)
         : undefined
     );
-    const saved = await updateChatState(chat.config.id, state, {
-      preserveQueuedMessages,
-      previousState: transcriptChanges ? chat.state : undefined,
-      transcriptChanges,
-      expectedStatus: options.expectedStatus,
-    });
+    const saved = options.streaming
+      ? await updateChatStreamState(chat.config.id, state.lastActivityAt, {
+        transcriptChanges,
+        expectedStatus: options.expectedStatus,
+      })
+      : await updateChatState(chat.config.id, state, {
+        preserveQueuedMessages,
+        previousState: transcriptChanges ? chat.state : undefined,
+        transcriptChanges,
+        expectedStatus: options.expectedStatus,
+      });
     if (!saved) {
       if (options.expectedStatus !== undefined) {
         const latest = await this.getChat(chat.config.id);

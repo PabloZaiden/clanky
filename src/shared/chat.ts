@@ -107,6 +107,11 @@ export type ChatStatus =
   | "failed"
   | "done";
 
+export interface ChatStreamControlState {
+  status: ChatStatus;
+  interruptRequested: boolean;
+}
+
 export type ChatStartupStage =
   | "preparing_workspace"
   | "connecting_provider"

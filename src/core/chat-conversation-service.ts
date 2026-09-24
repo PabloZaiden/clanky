@@ -888,32 +888,19 @@ export class ChatConversationService implements ChatConversationPort {
     ) {
       return true;
     }
-    const latestChat = await this.state.getChatSummary(chatId);
+    const latestControlState = await this.state.getChatStreamControlState(chatId);
     streamState.lastStatusReloadAt = nowMs;
-    if (!latestChat) {
+    if (!latestControlState) {
       return false;
     }
     streamState.chat = {
-      ...latestChat,
+      ...streamState.chat,
       state: {
-        ...latestChat.state,
-        messages: streamState.chat.state.messages,
-        logs: streamState.chat.state.logs,
-        toolCalls: streamState.chat.state.toolCalls,
-        activeMessageId: streamState.chat.state.activeMessageId,
-        lastActivityAt: streamState.chat.state.lastActivityAt ?? latestChat.state.lastActivityAt,
+        ...streamState.chat.state,
+        status: latestControlState.status,
+        interruptRequested: latestControlState.interruptRequested ? true : undefined,
       },
     };
-    if (latestChat.state.status === "interrupting" || latestChat.state.interruptRequested) {
-      streamState.chat = {
-        ...streamState.chat,
-        state: {
-          ...streamState.chat.state,
-          status: latestChat.state.status,
-          interruptRequested: latestChat.state.interruptRequested,
-        },
-      };
-    }
     return true;
   }
 
@@ -927,7 +914,10 @@ export class ChatConversationService implements ChatConversationPort {
     if (!await this.reloadChatStreamState(
       chatId,
       streamState,
-      event.type !== "message.delta" && event.type !== "reasoning.delta",
+      event.type !== "message.delta"
+      && event.type !== "reasoning.delta"
+      && event.type !== "tool.start"
+      && event.type !== "tool.complete",
     )) {
       return { stop: true };
     }
@@ -1486,6 +1476,7 @@ export class ChatConversationService implements ChatConversationPort {
         timestamp: tool.timestamp,
         payload: tool,
       }]),
+      streaming: true,
     });
     this.emitter.emit({
       type: "chat.tool_call",
@@ -1525,6 +1516,7 @@ export class ChatConversationService implements ChatConversationPort {
         timestamp: persistedTool.timestamp,
         payload: persistedTool,
       }]),
+      streaming: true,
     });
     this.emitter.emit({
       type: "chat.tool_call",
@@ -1568,6 +1560,7 @@ export class ChatConversationService implements ChatConversationPort {
         timestamp: updatedTool.timestamp,
         payload: updatedTool,
       }]),
+      streaming: true,
     });
     this.emitter.emit({
       type: "chat.tool_call.extra",
@@ -1764,6 +1757,7 @@ export class ChatConversationService implements ChatConversationPort {
     options?: {
       transcriptChanges?: TranscriptChangeSet;
       expectedStatus?: ChatStatus;
+      streaming?: boolean;
     },
   ): Promise<Chat> {
     return this.state.updateState(chat, state, options);
