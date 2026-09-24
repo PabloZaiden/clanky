@@ -737,7 +737,7 @@ export class ChatConversationService implements ChatConversationPort {
       });
       if (streamResult.endedByInactivity) {
         const blocks = streamState.interpreter.flushActiveBlocks();
-        await this.flushChatStreamBlocks(streamState, blocks);
+        await this.flushChatStreamBlocksAfterMetadataReload(chatId, streamState, blocks);
         if (blocks.length > 0) {
           streamState.interpreter.acknowledgeCheckpoint();
         }
@@ -747,7 +747,7 @@ export class ChatConversationService implements ChatConversationPort {
         && streamResult.lastEvent?.type !== "error"
       ) {
         const blocks = streamState.interpreter.flushActiveBlocks();
-        await this.flushChatStreamBlocks(streamState, blocks);
+        await this.flushChatStreamBlocksAfterMetadataReload(chatId, streamState, blocks);
         if (blocks.length > 0) {
           streamState.interpreter.acknowledgeCheckpoint();
         }
@@ -755,7 +755,7 @@ export class ChatConversationService implements ChatConversationPort {
     } catch (error) {
       try {
         const blocks = streamState.interpreter.flushActiveBlocks();
-        await this.flushChatStreamBlocks(streamState, blocks);
+        await this.flushChatStreamBlocksAfterMetadataReload(chatId, streamState, blocks);
         if (blocks.length > 0) {
           streamState.interpreter.acknowledgeCheckpoint();
         }
@@ -888,6 +888,11 @@ export class ChatConversationService implements ChatConversationPort {
     ) {
       return true;
     }
+    if (force) {
+      const reloaded = await this.reloadChatStreamMetadata(chatId, streamState);
+      streamState.lastStatusReloadAt = nowMs;
+      return reloaded;
+    }
     const latestControlState = await this.state.getChatStreamControlState(chatId);
     streamState.lastStatusReloadAt = nowMs;
     if (!latestControlState) {
@@ -904,6 +909,42 @@ export class ChatConversationService implements ChatConversationPort {
     return true;
   }
 
+  private async reloadChatStreamMetadata(
+    chatId: string,
+    streamState: ChatStreamConsumptionState,
+  ): Promise<boolean> {
+    const latestChat = await this.state.getChatSummary(chatId);
+    if (!latestChat) {
+      return false;
+    }
+    streamState.chat = {
+      ...latestChat,
+      state: {
+        ...latestChat.state,
+        messages: streamState.chat.state.messages,
+        logs: streamState.chat.state.logs,
+        toolCalls: streamState.chat.state.toolCalls,
+        activeMessageId: streamState.chat.state.activeMessageId,
+        lastActivityAt: streamState.chat.state.lastActivityAt ?? latestChat.state.lastActivityAt,
+      },
+    };
+    return true;
+  }
+
+  private async flushChatStreamBlocksAfterMetadataReload(
+    chatId: string,
+    streamState: ChatStreamConsumptionState,
+    blocks: AgentEventTranscriptBlock[],
+  ): Promise<void> {
+    if (blocks.length === 0) {
+      return;
+    }
+    if (!await this.reloadChatStreamMetadata(chatId, streamState)) {
+      throw new Error(`Chat not found while flushing stream blocks: ${chatId}`);
+    }
+    await this.flushChatStreamBlocks(streamState, blocks);
+  }
+
   private async handleChatStreamEvent(
     chatId: string,
     backend: Backend,
@@ -911,13 +952,15 @@ export class ChatConversationService implements ChatConversationPort {
     streamState: ChatStreamConsumptionState,
     event: AgentEvent,
   ): Promise<AgentStreamEventResult | void> {
-    if (!await this.reloadChatStreamState(
-      chatId,
-      streamState,
+    const forceMetadataReload =
       event.type !== "message.delta"
       && event.type !== "reasoning.delta"
       && event.type !== "tool.start"
-      && event.type !== "tool.complete",
+      && event.type !== "tool.complete";
+    if (!await this.reloadChatStreamState(
+      chatId,
+      streamState,
+      forceMetadataReload,
     )) {
       return { stop: true };
     }
@@ -974,6 +1017,13 @@ export class ChatConversationService implements ChatConversationPort {
     }
 
     const transcriptResult = streamState.interpreter.handle(event);
+    if (
+      !forceMetadataReload
+      && (transcriptResult.flushedBlocks.length > 0 || transcriptResult.checkpointRequested)
+      && !await this.reloadChatStreamMetadata(chatId, streamState)
+    ) {
+      return { stop: true };
+    }
     switch (event.type) {
       case "user.message":
         break;

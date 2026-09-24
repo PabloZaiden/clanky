@@ -2391,6 +2391,208 @@ describe("Chats API Integration", () => {
     });
   });
 
+  test("preserves permission resolutions when a stream resumes after a control-state reload", async () => {
+    let signalMessageCompleteBlocked!: () => void;
+    const messageCompleteBlocked = new Promise<void>((resolve) => {
+      signalMessageCompleteBlocked = resolve;
+    });
+    let releaseMessageComplete!: () => void;
+    const messageCompleteGate = new Promise<void>((resolve) => {
+      releaseMessageComplete = resolve;
+    });
+    mockBackend = new MockAcpBackend({
+      streamEventSequences: [[
+        { type: "message.start", messageId: "permission-message" },
+        {
+          type: "permission.asked",
+          requestId: "permission-stream-1",
+          sessionId: "permission-stream-session",
+          permission: "execute",
+          patterns: ["bun test"],
+        },
+        { type: "message.complete", content: "Permission completed" },
+      ] as BackendAgentEvent[]],
+      onStreamEvent: async (event) => {
+        if (event.type === "message.complete") {
+          signalMessageCompleteBlocked();
+          await messageCompleteGate;
+        }
+      },
+      models: [defaultTestModel],
+    });
+    backendManager.setBackendForTesting(mockBackend);
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
+
+    try {
+      const createResponse = await fetch(`${baseUrl}/api/chats`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Permission Stream Resume",
+          workspaceId: testWorkspaceId,
+          model: testModel,
+          useWorktree: false,
+          autoApprovePermissions: false,
+          baseBranch: defaultBranch,
+        }),
+      });
+      expect(createResponse.status).toBe(201);
+      const created = await createResponse.json() as Chat;
+
+      const sendResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: "Ask for permission" }),
+      });
+      expect(sendResponse.status).toBe(200);
+
+      await pollUntil(
+        async () => {
+          const response = await fetch(`${baseUrl}/api/chats/${created.config.id}`);
+          return response.ok ? await response.json() as Chat : null;
+        },
+        (chat): chat is Chat => chat?.state.pendingPermissionRequests?.some(
+          (request) => request.requestId === "permission-stream-1" && request.status === "pending",
+        ) ?? false,
+        {
+          description: "permission request to become pending",
+          timeoutMs: 5000,
+        },
+      );
+      await messageCompleteBlocked;
+
+      const replyResponse = await fetch(
+        `${baseUrl}/api/chats/${created.config.id}/permissions/permission-stream-1`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ decision: "allow" }),
+        },
+      );
+      expect(replyResponse.status).toBe(200);
+
+      releaseMessageComplete();
+      const settled = await waitForChatIdle(created.config.id);
+      expect(settled.state.pendingPermissionRequests).toContainEqual(expect.objectContaining({
+        requestId: "permission-stream-1",
+        status: "approved",
+        decision: "allow",
+      }));
+    } finally {
+      releaseMessageComplete();
+      installMockBackend(["Hello from chat API", "Second response"]);
+    }
+  });
+
+  test("uses live auto-approval configuration for permission requests during a stream", async () => {
+    let signalBeforeSecondPermission!: () => void;
+    const beforeSecondPermission = new Promise<void>((resolve) => {
+      signalBeforeSecondPermission = resolve;
+    });
+    let releaseBeforeSecondPermission!: () => void;
+    const beforeSecondPermissionGate = new Promise<void>((resolve) => {
+      releaseBeforeSecondPermission = resolve;
+    });
+    let signalSecondPermissionBlocked!: () => void;
+    const secondPermissionBlocked = new Promise<void>((resolve) => {
+      signalSecondPermissionBlocked = resolve;
+    });
+    let releaseSecondPermission!: () => void;
+    const secondPermissionGate = new Promise<void>((resolve) => {
+      releaseSecondPermission = resolve;
+    });
+    mockBackend = new MockAcpBackend({
+      streamEventSequences: [[
+        { type: "message.start", messageId: "auto-approval-message" },
+        {
+          type: "permission.asked",
+          requestId: "permission-auto-1",
+          sessionId: "permission-auto-session",
+          permission: "execute",
+          patterns: ["first command"],
+        },
+        { type: "message.delta", content: "between permissions" },
+        {
+          type: "permission.asked",
+          requestId: "permission-auto-2",
+          sessionId: "permission-auto-session",
+          permission: "execute",
+          patterns: ["second command"],
+        },
+        { type: "message.complete", content: "Configuration completed" },
+      ] as BackendAgentEvent[]],
+      onStreamEvent: async (event) => {
+        if (event.type === "message.delta" && event.content === "between permissions") {
+          signalBeforeSecondPermission();
+          await beforeSecondPermissionGate;
+        }
+        if (event.type === "permission.asked" && event.requestId === "permission-auto-2") {
+          signalSecondPermissionBlocked();
+          await secondPermissionGate;
+        }
+      },
+      models: [defaultTestModel],
+    });
+    backendManager.setBackendForTesting(mockBackend);
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
+
+    try {
+      const createResponse = await fetch(`${baseUrl}/api/chats`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Live Permission Configuration",
+          workspaceId: testWorkspaceId,
+          model: testModel,
+          useWorktree: false,
+          autoApprovePermissions: true,
+          baseBranch: defaultBranch,
+        }),
+      });
+      expect(createResponse.status).toBe(201);
+      const created = await createResponse.json() as Chat;
+
+      const sendResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: "Use live permission settings" }),
+      });
+      expect(sendResponse.status).toBe(200);
+
+      await beforeSecondPermission;
+      await pollUntil(
+        () => mockBackend.getPermissionReplies(),
+        (replies) => replies.some((reply) => reply.requestId === "permission-auto-1"),
+        {
+          description: "first permission request to be auto-approved before the configuration change",
+          timeoutMs: 5000,
+        },
+      );
+      const updated = await runWithCurrentUser(
+        testOwnerUser,
+        () => chatManager.updateChat(created.config.id, { autoApprovePermissions: false }),
+      );
+      expect(updated?.config.autoApprovePermissions).toBe(false);
+
+      releaseBeforeSecondPermission();
+      await secondPermissionBlocked;
+      releaseSecondPermission();
+      const settled = await waitForChatIdle(created.config.id);
+      expect(mockBackend.getPermissionReplies()).toEqual([{
+        requestId: "permission-auto-1",
+        response: "always",
+      }]);
+      expect(settled.state.pendingPermissionRequests).toContainEqual(expect.objectContaining({
+        requestId: "permission-auto-2",
+        status: "pending",
+      }));
+    } finally {
+      releaseBeforeSecondPermission();
+      releaseSecondPermission();
+      installMockBackend(["Hello from chat API", "Second response"]);
+    }
+  });
+
   test("checks out the selected branch for non-worktree chats without creating a managed chat branch", async () => {
     const originalBranch = await getCurrentBranch(testWorkDir);
     const selectedBranch = "selected-chat-base";
