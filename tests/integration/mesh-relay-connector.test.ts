@@ -10,7 +10,6 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { Database } from "bun:sqlite";
 import { createServer } from "node:net";
 import { generateKeyPairSync, sign as signPayload } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -443,39 +442,12 @@ describe("Mesh relay connector", () => {
     );
   });
 
-  test("audits peer dispatch failures separately from completed requests", async () => {
+  test("reports peer dispatch failures as transport errors", async () => {
     await expect(transport().request(
       route(),
       "/api/mesh/internal/health",
       { method: "POST", body: "{" },
     )).rejects.toMatchObject({ code: "mesh_relay_dispatch_failed" });
-
-    const database = new Database(relay.store.databasePath, {
-      readonly: true,
-      strict: true,
-    });
-    try {
-      const audit = await pollUntil(
-        () => database.query(`
-          SELECT outcome, error_code
-          FROM relay_stream_audit
-          WHERE path = '/api/mesh/internal/health'
-          ORDER BY id DESC
-          LIMIT 1
-        `).get() as { outcome: string; error_code: string | null } | null,
-        (row) => row?.outcome === "dispatch_failed",
-        {
-          description: "the failed relay dispatch audit",
-          formatLastObserved: (row) => JSON.stringify(row),
-        },
-      );
-      expect(audit).toEqual({
-        outcome: "dispatch_failed",
-        error_code: "relay_stream_dispatch_failed",
-      });
-    } finally {
-      database.close();
-    }
   });
 
   test("streams a large response body without buffering it whole", async () => {

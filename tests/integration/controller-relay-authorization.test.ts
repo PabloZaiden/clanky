@@ -174,7 +174,7 @@ describe("controller relay authorization recovery", () => {
     await rm(relayDataDir, { recursive: true, force: true });
   });
 
-  test("reconnects and resends after an authorization acknowledgement is lost", async () => {
+  test("reconnects after an ambiguous ack and rebuilds relay authorization after restart", async () => {
     const controllerIdentity = await ensureLocalMeshNodeIdentity();
     const port = await availablePort();
     const relayUrl = `http://127.0.0.1:${String(port)}`;
@@ -271,6 +271,55 @@ describe("controller relay authorization recovery", () => {
       },
     );
     expect(relay.store.listAuthorizedWorkers()).toEqual([{
+      nodeId: "worker-retry",
+      publicKey: workerPublicKey,
+      fingerprint: workerFingerprint,
+    }]);
+
+    const originalRelay = relay;
+    const originalService = service;
+    if (!originalRelay || !originalService) {
+      throw new Error("Relay restart test setup did not complete.");
+    }
+    const relayFingerprint = originalRelay.identity.fingerprint;
+    await originalService.stopRuntime();
+    service = undefined;
+    await originalRelay.stop();
+    relay = undefined;
+
+    const restartedRelay = await startRelayServer({
+      runtimeConfig,
+      controllerFingerprint: controllerIdentity.fingerprint,
+    });
+    relay = restartedRelay;
+    expect(restartedRelay.identity.fingerprint).toBe(relayFingerprint);
+    expect(restartedRelay.store.getController()).toBeUndefined();
+    expect(restartedRelay.store.listAuthorizedWorkers()).toEqual([]);
+    expect(await Bun.file(join(relayDataDir, "relay-identity.json")).exists()).toBe(true);
+    expect(await Bun.file(join(relayDataDir, "relay.db")).exists()).toBe(false);
+
+    const restartedService = new ControllerRelayService();
+    service = restartedService;
+    await restartedService.startRuntime(
+      async () => new Response("Not found", { status: 404 }),
+    );
+    await pollUntil(
+      async () => ({
+        status: await restartedService.getStatus(),
+        authorizedWorkers: restartedRelay.store.listAuthorizedWorkers(),
+      }),
+      (state) =>
+        state.status.relays[0]?.connected === true
+        && state.authorizedWorkers.length === 1,
+      {
+        description: "the controller snapshot to rebuild relay authorization after restart",
+        formatLastObserved: (state) => JSON.stringify({
+          connected: state.status.relays[0]?.connected,
+          authorizedWorkers: state.authorizedWorkers.length,
+        }),
+      },
+    );
+    expect(restartedRelay.store.listAuthorizedWorkers()).toEqual([{
       nodeId: "worker-retry",
       publicKey: workerPublicKey,
       fingerprint: workerFingerprint,

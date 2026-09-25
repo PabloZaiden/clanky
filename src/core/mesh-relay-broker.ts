@@ -67,6 +67,92 @@ import { MeshRelayStore } from "./mesh-relay-store";
 
 const log = createLogger("core:mesh-relay-broker");
 
+interface RelayAuditEvent {
+  eventType: string;
+  role?: MeshRelayPeerRole;
+  nodeId?: string;
+  connectionId?: string;
+  outcome?: string;
+  errorCode?: string;
+  occurredAt?: string;
+}
+
+interface RelayStreamAudit {
+  streamId: string;
+  initiatorNodeId: string;
+  targetNodeId: string;
+  kind: MeshRelayStreamKind;
+  method?: string;
+  path: string;
+  status?: number;
+  bytesToInitiator: number;
+  bytesToReceiver: number;
+  durationMs: number;
+  outcome: string;
+  errorCode?: string;
+  occurredAt?: string;
+}
+
+function logRelayAudit(event: RelayAuditEvent): void {
+  const details = {
+    eventType: event.eventType,
+    occurredAt: event.occurredAt ?? new Date().toISOString(),
+    ...(event.role ? { role: event.role } : {}),
+    ...(event.nodeId ? { nodeId: event.nodeId } : {}),
+    ...(event.connectionId ? { connectionId: event.connectionId } : {}),
+    ...(event.outcome ? { outcome: event.outcome } : {}),
+    ...(event.errorCode ? { errorCode: event.errorCode } : {}),
+  };
+  if (
+    event.outcome === "rejected"
+    || event.outcome === "timeout"
+    || event.outcome === "capacity"
+    || event.outcome === "disconnected"
+  ) {
+    log.warn("Mesh relay event", details);
+    return;
+  }
+  if (
+    (
+      event.eventType === "peer.auth"
+      && event.role === "controller"
+      && event.outcome === "authorized"
+    )
+    || (
+      event.eventType === "authorization.replace"
+      && event.outcome === "accepted"
+    )
+  ) {
+    log.info("Mesh relay event", details);
+    return;
+  }
+  log.trace("Mesh relay event", details);
+}
+
+function logRelayStreamAudit(stream: RelayStreamAudit): void {
+  const details = {
+    eventType: "stream.close",
+    occurredAt: stream.occurredAt ?? new Date().toISOString(),
+    streamId: stream.streamId,
+    initiatorNodeId: stream.initiatorNodeId,
+    targetNodeId: stream.targetNodeId,
+    kind: stream.kind,
+    ...(stream.method ? { method: stream.method } : {}),
+    path: stream.path,
+    ...(stream.status !== undefined ? { status: stream.status } : {}),
+    bytesToInitiator: stream.bytesToInitiator,
+    bytesToReceiver: stream.bytesToReceiver,
+    durationMs: stream.durationMs,
+    outcome: stream.outcome,
+    ...(stream.errorCode ? { errorCode: stream.errorCode } : {}),
+  };
+  if (stream.outcome === "completed" || stream.outcome === "cancelled") {
+    log.trace("Mesh relay stream", details);
+    return;
+  }
+  log.warn("Mesh relay stream", details);
+}
+
 export const RELAY_AUTH_TIMEOUT_MS = 10_000;
 export const RELAY_CHALLENGE_LIFETIME_MS = 30_000;
 export const RELAY_TICKET_LIFETIME_MS = 15_000;
@@ -556,7 +642,7 @@ export class MeshRelayBroker {
       if (!this.controls.has(id)) {
         throw new Error("The relay challenge could not be sent.");
       }
-      this.options.store.audit({
+      logRelayAudit({
         eventType: "peer.connect",
         connectionId: id,
         outcome: "challenge_sent",
@@ -730,7 +816,7 @@ export class MeshRelayBroker {
       derivedFingerprint = getMeshRelayFingerprint(auth.publicKey);
     } catch (error) {
       this.auditAuthFailure(connection, auth, "relay_identity_invalid");
-      log.warn("Relay peer presented an invalid public key", {
+      log.debug("Relay peer public-key validation detail", {
         connectionId: connection.id,
         error: String(error),
       });
@@ -891,7 +977,7 @@ export class MeshRelayBroker {
         : {}),
     };
     this.sendControl(connection, frame);
-    this.options.store.audit({
+    logRelayAudit({
       eventType: "peer.auth",
       connectionId: connection.id,
       role: auth.role,
@@ -905,7 +991,7 @@ export class MeshRelayBroker {
     auth: { role: MeshRelayPeerRole; nodeId: string },
     errorCode: string,
   ): void {
-    this.options.store.audit({
+    logRelayAudit({
       eventType: "peer.auth",
       connectionId: connection.id,
       role: auth.role,
@@ -1091,7 +1177,7 @@ export class MeshRelayBroker {
       transactionId: frame.transactionId,
       workerCount: workers.length,
     });
-    this.options.store.audit({
+    logRelayAudit({
       eventType: "authorization.replace",
       role: "controller",
       nodeId: controller.identity?.nodeId,
@@ -1525,7 +1611,7 @@ export class MeshRelayBroker {
     stream.initiatorSocket.close(code, reason);
     stream.receiverSocket.close(code, reason);
     const audit = streamAuditResult(code);
-    this.options.store.auditStream({
+    logRelayStreamAudit({
       streamId: stream.id,
       initiatorNodeId: stream.initiatorNodeId,
       targetNodeId: stream.receiverNodeId,
@@ -1557,7 +1643,7 @@ export class MeshRelayBroker {
     ticket.initiatorSocket?.close(code, reason);
     ticket.receiverSocket?.close(code, reason);
     const audit = streamAuditResult(code);
-    this.options.store.auditStream({
+    logRelayStreamAudit({
       streamId: ticket.streamId,
       initiatorNodeId: ticket.initiatorNodeId,
       targetNodeId: ticket.receiverNodeId,
@@ -1629,7 +1715,7 @@ export class MeshRelayBroker {
     if (closeSocket) {
       connection.socket.close(code, reason);
     }
-    this.options.store.audit({
+    logRelayAudit({
       eventType: "peer.disconnect",
       connectionId,
       role: connection.role,

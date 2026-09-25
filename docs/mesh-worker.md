@@ -71,8 +71,8 @@ clanky mesh relay status
 
 The relay URL must be the external HTTPS origin. Its reverse proxy must
 forward HTTP and WebSocket traffic while keeping the relay listener private.
-Persist `/app/data`; it contains the relay identity, pairing, worker
-authorization, and audit data.
+Persist `/app/data` so the relay signing identity and fingerprint survive
+container recreation.
 
 To add another relay, run a separate relay instance with its own data volume,
 URL, and the same controller fingerprint, then pair it under a different name:
@@ -104,12 +104,15 @@ are reenrolled through another relay. Removing the primary does not promote
 another relay: choose one with `clanky mesh relay primary <name>` before
 creating relay invitations without an explicit relay name.
 
-To clear the relay-side pairing and worker authorization, stop the relay
-listener first and run:
-
-```bash
-clanky relay pairing reset
-```
+The relay persists its signing identity in `relay-identity.json` under
+`CLANKY_DATA_DIR`. Controller pairing and the authorized-worker snapshot exist
+only in relay memory. After a relay restart, it accepts the configured
+controller fingerprint, then rebuilds pairing and worker authorization from
+the controller's next connection and full snapshot. Workers remain
+unauthorized until that snapshot arrives. Relay activity is sent through the
+standard WebApp logger to stdout/stderr: routine connection and stream details
+are visible at trace level, and abnormal outcomes remain warnings. The relay
+does not retain a persistent audit history.
 
 ## Bootstrap a direct worker
 
