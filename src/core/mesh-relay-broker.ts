@@ -112,7 +112,21 @@ function logRelayAudit(event: RelayAuditEvent): void {
     log.warn("Mesh relay event", details);
     return;
   }
-  log.info("Mesh relay event", details);
+  if (
+    (
+      event.eventType === "peer.auth"
+      && event.role === "controller"
+      && event.outcome === "authorized"
+    )
+    || (
+      event.eventType === "authorization.replace"
+      && event.outcome === "accepted"
+    )
+  ) {
+    log.info("Mesh relay event", details);
+    return;
+  }
+  log.trace("Mesh relay event", details);
 }
 
 function logRelayStreamAudit(stream: RelayStreamAudit): void {
@@ -133,7 +147,7 @@ function logRelayStreamAudit(stream: RelayStreamAudit): void {
     ...(stream.errorCode ? { errorCode: stream.errorCode } : {}),
   };
   if (stream.outcome === "completed" || stream.outcome === "cancelled") {
-    log.info("Mesh relay stream", details);
+    log.trace("Mesh relay stream", details);
     return;
   }
   log.warn("Mesh relay stream", details);
