@@ -104,12 +104,13 @@ are reenrolled through another relay. Removing the primary does not promote
 another relay: choose one with `clanky mesh relay primary <name>` before
 creating relay invitations without an explicit relay name.
 
-To clear the relay-side pairing and worker authorization, stop the relay
-listener first and run:
-
-```bash
-clanky relay pairing reset
-```
+The relay persists its signing identity in `relay-identity.json` under
+`CLANKY_DATA_DIR`. Controller pairing and the authorized-worker snapshot exist
+only in relay memory. After a relay restart, it accepts the configured
+controller fingerprint, then rebuilds pairing and worker authorization from
+the controller's next connection and full snapshot. Workers remain
+unauthorized until that snapshot arrives. Relay audit events are sent to the
+standard logger; the relay does not use a SQLite database.
 
 ## Bootstrap a direct worker
 

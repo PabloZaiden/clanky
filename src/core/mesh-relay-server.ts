@@ -11,8 +11,8 @@ import {
   createLogger,
   createWebAppServer,
   defineRoutes,
+  memoryWebAppStore,
   readRuntimeConfig,
-  sqliteWebAppStore,
   webAppConfigPath,
   type RuntimeConfig,
   type WebAppServer,
@@ -267,7 +267,7 @@ export async function createRelayServer(
       ?? process.env["CLANKY_RELAY_CONTROLLER_FINGERPRINT"],
   );
   const identity = await ensureMeshRelayIdentity(runtimeConfig.dataDir);
-  const store = new MeshRelayStore(runtimeConfig.dataDir);
+  const store = new MeshRelayStore();
   const broker = new MeshRelayBroker({
     identity,
     store,
@@ -408,10 +408,7 @@ export async function createRelayServer(
       runtimeConfig,
       web: false,
       version: options.version ?? CLANKY_VERSION,
-      store: sqliteWebAppStore({
-        dataDir: runtimeConfig.dataDir,
-        fileName: "relay.db",
-      }),
+      store: memoryWebAppStore(),
       auth: {
         passkeys: false,
         apiKeys: false,
@@ -425,13 +422,11 @@ export async function createRelayServer(
       lifecycle: {
         beforeStop(): void {
           broker.stop();
-          store.close();
         },
       },
     });
   } catch (error) {
     broker.stop();
-    store.close();
     throw error;
   }
   let disposed = false;
@@ -441,7 +436,6 @@ export async function createRelayServer(
     }
     disposed = true;
     broker.stop();
-    store.close();
   };
   const relayServer: RelayServer = {
     app,

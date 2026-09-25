@@ -1,8 +1,5 @@
 import { afterEach, describe, expect, jest, test } from "bun:test";
 import { generateKeyPairSync, sign as signPayload } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import type {
   MeshRelayAuthFrame,
   MeshRelayChallengeFrame,
@@ -143,9 +140,8 @@ afterEach(() => {
 });
 
 describe("Mesh relay authorization transactions", () => {
-  test("applies multi-chunk replacement atomically and revokes removed workers", async () => {
-    const dataDir = await mkdtemp(join(tmpdir(), "clanky-relay-authorization-"));
-    const store = new MeshRelayStore(dataDir);
+  test("applies multi-chunk replacement atomically and revokes removed workers", () => {
+    const store = new MeshRelayStore();
     const controller = createIdentity("controller");
     const broker = new MeshRelayBroker({
       identity: createRelayIdentity(),
@@ -205,15 +201,12 @@ describe("Mesh relay authorization transactions", () => {
       expect(store.listAuthorizedWorkers()).toEqual([replacement[1]!]);
     } finally {
       broker.stop();
-      store.close();
-      await rm(dataDir, { recursive: true, force: true });
     }
   });
 
-  test("expires incomplete authorization without changing persisted workers", async () => {
+  test("expires incomplete authorization without changing authorized workers", () => {
     jest.useFakeTimers();
-    const dataDir = await mkdtemp(join(tmpdir(), "clanky-relay-authorization-"));
-    const store = new MeshRelayStore(dataDir);
+    const store = new MeshRelayStore();
     const controller = createIdentity("controller");
     const broker = new MeshRelayBroker({
       identity: createRelayIdentity(),
@@ -251,8 +244,6 @@ describe("Mesh relay authorization transactions", () => {
       });
     } finally {
       broker.stop();
-      store.close();
-      await rm(dataDir, { recursive: true, force: true });
     }
   });
 });

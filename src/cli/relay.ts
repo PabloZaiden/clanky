@@ -4,21 +4,15 @@ import type {
 } from "@pablozaiden/webapp/cli";
 import { readRuntimeConfig } from "@pablozaiden/webapp/server";
 import { startRelayServer } from "../core/mesh-relay-server";
-import { resetStoppedMeshRelayPairing } from "../core/mesh-relay-store";
 import type { ClankyCliContext } from "./mesh";
 
-export type RelayCommand =
-  | { operation: "serve" }
-  | { operation: "pairing-reset" };
+export type RelayCommand = { operation: "serve" };
 
 export function parseRelayCommandArgs(args: readonly string[]): RelayCommand {
-  if (args.length === 0) {
-    return { operation: "serve" };
+  if (args.length !== 0) {
+    throw new Error("Relay command does not accept arguments.");
   }
-  if (args.length === 2 && args[0] === "pairing" && args[1] === "reset") {
-    return { operation: "pairing-reset" };
-  }
-  throw new Error("Relay command must be `relay` or `relay pairing reset`.");
+  return { operation: "serve" };
 }
 
 async function serveRelay(
@@ -65,27 +59,14 @@ export async function runRelayCommand(
     NonNullable<WebAppCliCommandDefinition<ClankyCliContext>["handler"]>
   >[0],
 ): Promise<CliCommandResult> {
-  const command = parseRelayCommandArgs(context.args);
-  if (command.operation === "pairing-reset") {
-    const runtimeConfig = readRuntimeConfig({
-      appName: "Clanky Relay",
-      envPrefix: context.envPrefix,
-      appDirectoryName: ".clanky",
-      environment: context.environment,
-    });
-    resetStoppedMeshRelayPairing(runtimeConfig.dataDir);
-    return {
-      exitCode: 0,
-      output: "Relay controller pairing and worker authorization reset.",
-    };
-  }
+  parseRelayCommandArgs(context.args);
   return await serveRelay(context);
 }
 
 export function createRelayCommand(): WebAppCliCommandDefinition<ClankyCliContext> {
   return {
     description: "Run the transport-only Mesh relay.",
-    usage: "relay [pairing reset]",
+    usage: "relay",
     handler: runRelayCommand,
   };
 }
