@@ -16,6 +16,7 @@ export function RelaySettingsContent() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pairingError, setPairingError] = useState<string | null>(null);
   const [confirmUnpair, setConfirmUnpair] = useState<string | null>(null);
   const refreshAbortRef = useRef<AbortController | null>(null);
   const refreshCoordinatorRef = useRef(createRefreshCoordinator<void>());
@@ -81,12 +82,14 @@ export function RelaySettingsContent() {
     refreshVersionRef.current++;
     setStatus(next);
     setError(null);
+    setPairingError(null);
   }
 
   async function pair(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     setSaving(true);
     setError(null);
+    setPairingError(null);
     try {
       const next = await apiRequest<ControllerRelayPairingStatus>(
         "/api/mesh/relay",
@@ -103,7 +106,7 @@ export function RelaySettingsContent() {
       setRelayUrl("");
       toast.success("Mesh relay paired.");
     } catch (pairError) {
-      setError(pairError instanceof Error ? pairError.message : String(pairError));
+      setPairingError(pairError instanceof Error ? pairError.message : String(pairError));
     } finally {
       setSaving(false);
     }
@@ -255,6 +258,7 @@ export function RelaySettingsContent() {
           onChange={(event) => setRelayUrl(event.currentTarget.value)}
           disabled={loading || saving}
         />
+        {pairingError ? <SettingsError>{pairingError}</SettingsError> : null}
         <Button type="submit" size="sm" loading={saving} disabled={loading}>
           {status?.relays.some((relay) => relay.name === relayName) ? "Re-pair" : "Pair"}
         </Button>
