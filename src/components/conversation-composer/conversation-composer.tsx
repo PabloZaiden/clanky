@@ -95,9 +95,10 @@ export function ConversationComposer(props: ConversationComposerProps) {
           status={voice.status}
           elapsedMs={voice.elapsedMs}
           error={voice.error}
+          canRetryTranscription={voice.canRetryTranscription}
           onStop={voice.stop}
           onCancel={voice.cancel}
-          onRetry={voice.start}
+          onRetry={voice.retry}
           onDismissError={voice.dismissError}
         />
       ) : (

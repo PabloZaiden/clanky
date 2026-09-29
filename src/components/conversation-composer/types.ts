@@ -25,7 +25,9 @@ export interface ConversationComposerVoice {
   status: VoiceRecorderStatus;
   elapsedMs: number;
   error: string | null;
+  canRetryTranscription: boolean;
   start: () => Promise<void>;
+  retry: () => Promise<void>;
   stop: () => void;
   cancel: () => void;
   dismissError: () => void;
