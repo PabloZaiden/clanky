@@ -2,10 +2,6 @@ import { basename as localBasename, dirname, posix as pathPosix } from "node:pat
 import { mkdir, rename, rm, stat } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import {
-  getAuthorizedHeaders,
-  normalizeBaseUrl,
-  refreshDeviceCredentials,
-  resolveEnvironmentApiKeyAuth,
   type CliEnvironment,
   type DeviceCredentialsStore,
   type StoredDeviceCredentials,
@@ -19,6 +15,14 @@ import { WorkspaceExecResponseSchema } from "@/contracts/schemas";
 import { retryFileUploadChunk, uploadFileInChunks } from "@/shared";
 import type { ClankyCliContext } from "./mesh";
 import { parseExecCommandArgs } from "./exec-command";
+import {
+  resolveCliApiAuth as resolveWorkspaceAuth,
+  fetchCliApi as fetchWorkspaceApi,
+  readCliResponseBody as readResponseBody,
+  responseErrorMessage,
+  resolveCliWorkspace as resolveWorkspace,
+} from "./remote-api";
+import { parseWebDavCommandArgs, runWorkspaceWebDav, type WebDavCommand } from "./webdav";
 
 export interface WorkspaceExecCommand {
   operation: "exec";
@@ -45,7 +49,7 @@ export interface WorkspaceUploadCommand {
   force: boolean;
 }
 
-export type WorkspaceCommand = WorkspaceExecCommand | WorkspaceDownloadCommand | WorkspaceUploadCommand;
+export type WorkspaceCommand = WorkspaceExecCommand | WorkspaceDownloadCommand | WorkspaceUploadCommand | WebDavCommand;
 
 interface WorkspaceSummary {
   id: string;
@@ -162,6 +166,7 @@ function parseUploadOptions(
 
 export function parseWorkspaceCommandArgs(args: readonly string[]): WorkspaceCommand {
   const [operation, ...operationArgs] = args;
+  if (operation === "webdav") return parseWebDavCommandArgs(operationArgs);
   if (operation === "exec") {
     const parsed = parseExecCommandArgs(
       operationArgs,
@@ -206,131 +211,7 @@ export function parseWorkspaceCommandArgs(args: readonly string[]): WorkspaceCom
     };
   }
 
-  throw usageError("workspace command must be exec, download, or upload");
-}
-
-async function resolveWorkspaceAuth(input: WorkspaceCliContext): Promise<WorkspaceCliAuth> {
-  const stored = await input.credentials.read();
-  if (stored) {
-    const refreshed = await refreshDeviceCredentials({
-      credentials: stored,
-      store: input.credentials,
-      fetchFn: input.fetchFn,
-    });
-    if (refreshed) {
-      return {
-        baseUrl: refreshed.baseUrl,
-        headers: getAuthorizedHeaders(refreshed),
-        source: "device",
-        accessToken: refreshed.accessToken,
-      };
-    }
-  }
-
-  const environmentAuth = resolveEnvironmentApiKeyAuth({
-    envPrefix: input.envPrefix,
-    environment: input.environment,
-  });
-  if (environmentAuth) {
-    const headers = new Headers();
-    headers.set("authorization", `Bearer ${environmentAuth.apiKey}`);
-    return {
-      baseUrl: environmentAuth.baseUrl,
-      headers,
-      source: "environment",
-    };
-  }
-
-  const rawBaseUrl = input.environment[`${input.envPrefix}_BASE_URL`] ?? "http://localhost:3000";
-  return {
-    baseUrl: normalizeBaseUrl(rawBaseUrl),
-    headers: new Headers(),
-    source: "anonymous",
-  };
-}
-
-async function fetchWorkspaceApi(
-  input: WorkspaceCliContext,
-  auth: WorkspaceCliAuth,
-  path: string,
-  init: RequestInit = {},
-): Promise<Response> {
-  const send = () => input.fetchFn(new URL(path, `${auth.baseUrl}/`), {
-    ...init,
-    headers: new Headers({
-      ...Object.fromEntries(auth.headers.entries()),
-      ...Object.fromEntries(new Headers(init.headers).entries()),
-    }),
-  });
-  let response = await send();
-  if (response.status === 401 && auth.source === "device" && auth.accessToken) {
-    const stored = await input.credentials.read();
-    const refreshed = stored
-      ? await refreshDeviceCredentials({
-        credentials: stored,
-        store: input.credentials,
-        forceRefresh: { rejectedAccessToken: auth.accessToken },
-        fetchFn: input.fetchFn,
-      })
-      : undefined;
-    if (refreshed) {
-      auth.headers = getAuthorizedHeaders(refreshed);
-      auth.accessToken = refreshed.accessToken;
-      response = await send();
-    }
-  }
-  return response;
-}
-
-async function readResponseBody(response: Response): Promise<unknown> {
-  const text = await response.text();
-  if (!text) return null;
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    return text;
-  }
-}
-
-function responseErrorMessage(body: unknown, fallback: string): string {
-  if (body && typeof body === "object" && !Array.isArray(body)) {
-    const record = body as Record<string, unknown>;
-    if (typeof record["message"] === "string") return record["message"];
-    if (typeof record["error"] === "string") return record["error"];
-  }
-  if (typeof body === "string" && body.trim()) return body.trim();
-  return fallback;
-}
-
-async function resolveWorkspace(
-  input: WorkspaceCliContext,
-  auth: WorkspaceCliAuth,
-  reference: string,
-  signal?: AbortSignal,
-): Promise<WorkspaceSummary> {
-  const response = await fetchWorkspaceApi(input, auth, "/api/workspaces", { signal });
-  const body = await readResponseBody(response);
-  if (!response.ok) {
-    throw new Error(responseErrorMessage(body, `Unable to list workspaces (HTTP ${String(response.status)})`));
-  }
-  if (!Array.isArray(body)) {
-    throw new Error("The workspace list response is invalid");
-  }
-  const workspaces = body.filter((value): value is WorkspaceSummary => (
-    Boolean(value)
-    && typeof value === "object"
-    && typeof (value as Record<string, unknown>)["id"] === "string"
-    && typeof (value as Record<string, unknown>)["name"] === "string"
-    && typeof (value as Record<string, unknown>)["directory"] === "string"
-  ));
-  const idMatch = workspaces.find((workspace) => workspace.id === reference);
-  if (idMatch) return idMatch;
-  const nameMatches = workspaces.filter((workspace) => workspace.name === reference);
-  if (nameMatches.length === 1) return nameMatches[0]!;
-  if (nameMatches.length > 1) {
-    throw new Error(`Workspace name is ambiguous: ${reference}`);
-  }
-  throw new Error(`Workspace not found: ${reference}`);
+  throw usageError("workspace command must be exec, download, upload, or webdav");
 }
 
 function writeCliOutput(output: { write(chunk: string): unknown }, text: string): void {
@@ -794,6 +675,9 @@ export async function runWorkspaceCommand(
   process.on("SIGINT", onSignal);
   process.on("SIGTERM", onSignal);
   try {
+    if (command.operation === "webdav") {
+      return await runWorkspaceWebDav(context, command, controller.signal);
+    }
     if (command.operation === "exec") {
       return await runWorkspaceExec(command, input, context, controller.signal);
     }
@@ -817,8 +701,8 @@ export async function runWorkspaceCommand(
 
 export function createWorkspaceCommand(): WebAppCliCommandDefinition<ClankyCliContext> {
   return {
-    description: "Execute commands and transfer files from a workspace host.",
-    usage: "workspace <exec|download|upload> ...",
+    description: "Execute commands, transfer files, or expose a local WebDAV volume from a workspace host.",
+    usage: "workspace <exec|download|upload|webdav> ...",
     handler: runWorkspaceCommand,
   };
 }

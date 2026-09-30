@@ -13,8 +13,11 @@ import {
   type FileExplorerTarget,
 } from "../core/file-explorer-service";
 import { sshCredentialManager } from "../core/ssh-credential-manager";
+import { fileSystemTargetFingerprint } from "../core/file-system-service";
 import { DomainError } from "../domain/domain-error";
 import { createFileExplorerRoutes } from "./file-explorer-routes";
+import { createFileSystemRoutes } from "./file-system-routes";
+import type { FileExplorerRouteConfig } from "./file-explorer-routes";
 
 const SSH_CREDENTIAL_TOKEN_HEADER = "x-clanky-ssh-credential-token";
 
@@ -37,7 +40,7 @@ async function resolveExecutionHostFileTarget(
   options?: { allowCredentialTokenQuery?: boolean },
 ): Promise<FileExplorerTarget> {
   const ref = parseRef(req, id);
-  await executionHostService.requireCapability(ref, "fileOperations");
+  const host = await executionHostService.requireCapability(ref, "fileOperations");
 
   let sshPassword: string | undefined;
   if (ref.kind === "ssh") {
@@ -77,10 +80,13 @@ async function resolveExecutionHostFileTarget(
       startDirectory,
     ),
     executor,
+    commandExecutionAvailable: (host.capabilities["commandExecution"] ?? 0) >= 1,
+    fileSystemIdentity: host.targetKey,
+    fileSystemTarget: fileSystemTargetFingerprint([ref, host.revision]),
   };
 }
 
-export const executionHostFilesRoutes = createFileExplorerRoutes({
+const configuration: FileExplorerRouteConfig = {
   basePath: "/api/execution-hosts/:kind/:id/files",
   logName: "execution-host-files",
   resourceLabel: "execution host",
@@ -88,4 +94,9 @@ export const executionHostFilesRoutes = createFileExplorerRoutes({
   invalidPathError: "invalid_server_path",
   internalError: "ssh_server_file_error",
   resolveTarget: resolveExecutionHostFileTarget,
-});
+};
+
+export const executionHostFilesRoutes = {
+  ...createFileExplorerRoutes(configuration),
+  ...createFileSystemRoutes(configuration),
+};

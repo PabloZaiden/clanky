@@ -4,6 +4,8 @@
 
 import { createHash } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
+import { Readable, Transform, type TransformCallback } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import {
   copyFile,
   lstat,
@@ -45,6 +47,8 @@ async function hashFile(path: string): Promise<string> {
   }
   return hash.digest("hex");
 }
+
+class FileSizeLimitError extends Error {}
 
 export class LocalFileSystem {
   readonly pathStyle: ExecutionPathStyle;
@@ -136,53 +140,24 @@ export class LocalFileSystem {
         flags: options?.append && expectedOffset !== 0 ? "r+" : "w",
         ...(options?.append ? { start: expectedOffset ?? 0 } : {}),
       });
-      const reader = stream.getReader();
       let bytesWritten = 0;
-      let sizeLimitExceeded = false;
+      const counter = new Transform({
+        transform(chunk: Buffer, _encoding: BufferEncoding, callback: TransformCallback) {
+          if (options?.maxBytes !== undefined && bytesWritten + chunk.byteLength > options.maxBytes) {
+            callback(new FileSizeLimitError("Upload stream exceeds the maximum accepted size"));
+          } else {
+            bytesWritten += chunk.byteLength;
+            callback(null, chunk);
+          }
+        },
+      });
       try {
-        while (true) {
-          if (options?.signal?.aborted) {
-            return { success: false, bytesWritten, error: "Write aborted" };
-          }
-          const { done, value } = await reader.read();
-          if (done) {
-            break;
-          }
-          if (
-            options?.maxBytes !== undefined
-            && bytesWritten + value.byteLength > options.maxBytes
-          ) {
-            sizeLimitExceeded = true;
-            try {
-              await reader.cancel();
-            } catch {
-              // Preserve the size-limit result when stream cancellation races the source.
-            }
-            break;
-          }
-          const canContinue = writeStream.write(value);
-          bytesWritten += value.byteLength;
-          if (!canContinue) {
-            await new Promise<void>((resolve, reject) => {
-              writeStream.once("drain", resolve);
-              writeStream.once("error", reject);
-            });
-          }
+        await pipeline(Readable.from(stream), counter, writeStream, { signal: options?.signal });
+      } catch (error) {
+        if (error instanceof FileSizeLimitError) {
+          return { success: false, bytesWritten, error: error.message, errorCode: "size_limit" };
         }
-      } finally {
-        await new Promise<void>((resolve, reject) => {
-          writeStream.end(() => resolve());
-          writeStream.once("error", reject);
-        });
-      }
-
-      if (sizeLimitExceeded) {
-        return {
-          success: false,
-          bytesWritten,
-          error: "Upload stream exceeds the maximum accepted size",
-          errorCode: "size_limit",
-        };
+        return { success: false, bytesWritten, error: String(error) };
       }
       return { success: true, bytesWritten };
     } catch (error) {

@@ -114,6 +114,20 @@ Use an isolated `CLANKY_DATA_DIR` when creating validation data so local user da
 
 Clanky can connect to ACP runtimes across different environments (local host via `stdio`, or remote machines via `ssh`). Workspace directory paths (like `/workspaces/myrepo`) always refer to the selected workspace host for that transport, not implicitly to the Clanky server filesystem.
 
+### Workspace directories are navigation starting points
+
+`workspace.directory` and the file explorer's active root are initial
+directories, not filesystem sandboxes or authorization boundaries. Access to
+paths outside them on the selected execution host is intentional and is an
+accepted product risk, subject to that host account's filesystem permissions.
+Preserve navigation via parent paths, absolute paths, alternate start
+directories, and existing symbolic-link semantics; do not add workspace-root
+containment or no-follow restrictions to file APIs, CLI bridges, or mounts
+unless the user explicitly requests a separate restricted-access feature.
+
+This does not relax authentication, user ownership, execution-host selection,
+or the domain-specific ownership and cleanup rules for managed worktrees.
+
 ### How to Execute Commands on Workspace Hosts
 
 Always use the `CommandExecutor` interface to run commands on the selected workspace host:

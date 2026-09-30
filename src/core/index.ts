@@ -7,6 +7,7 @@ export * from "./agents-md-service";
 export * from "../domain/domain-error";
 export * from "./github-issues";
 export * from "./file-explorer-errors";
+export * from "./file-system-service";
 export * from "./task-creation-service";
 export * from "./settings-maintenance-service";
 export * from "./chat-manager";
