@@ -37,6 +37,7 @@ export function VoiceListeningPanel({
   status,
   elapsedMs,
   error,
+  canRetryTranscription,
   onStop,
   onCancel,
   onRetry,
@@ -45,6 +46,7 @@ export function VoiceListeningPanel({
   status: VoiceRecorderStatus;
   elapsedMs: number;
   error: string | null;
+  canRetryTranscription: boolean;
   onStop: () => void;
   onCancel: () => void;
   onRetry: () => Promise<void>;
@@ -161,7 +163,7 @@ export function VoiceListeningPanel({
                 <CloseIcon />
               </VoiceActionButton>
               <VoiceActionButton
-                label="Retry microphone"
+                label={canRetryTranscription ? "Retry transcription" : "Retry microphone"}
                 onClick={() => void onRetry()}
               >
                 <RefreshIcon />

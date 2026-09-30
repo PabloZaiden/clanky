@@ -265,14 +265,40 @@ export class VoiceManager {
       baseUrl: settings.baseUrl,
       apiKey,
     });
-    return await provider.transcribe({
-      audio,
-      filename,
-      mimeType,
-      model: settings.models.transcription,
-      languageHints: settings.languageHints,
-      signal,
-    });
+    try {
+      return await provider.transcribe({
+        audio,
+        filename,
+        mimeType,
+        model: settings.models.transcription,
+        languageHints: settings.languageHints,
+        signal,
+      });
+    } catch (error) {
+      if (!signal?.aborted) {
+        const logContext: {
+          operation: "transcription";
+          errorCode: string;
+          providerStatus?: number;
+        } = {
+          operation: "transcription",
+          errorCode: isDomainError(error) ? error.code : "unexpected_error",
+        };
+        const providerStatus = isDomainError(error)
+          ? error.details["status"]
+          : undefined;
+        if (typeof providerStatus === "number") {
+          logContext.providerStatus = providerStatus;
+        }
+
+        if (isDomainError(error) && error.code === "voice_provider_rate_limited") {
+          log.warn("Voice transcription provider request was rate limited", logContext);
+        } else {
+          log.error("Voice transcription provider request failed", logContext);
+        }
+      }
+      throw error;
+    }
   }
 
   async synthesizeSpeech(
