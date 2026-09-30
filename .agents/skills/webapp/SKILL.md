@@ -1,7 +1,7 @@
 ---
 name: webapp
-version: 0.5.10
-description: 'Build, modify, validate, and ship apps using @pablozaiden/webapp. Use when creating framework apps, adding routes, auth, settings, realtime, sidebar actions, Docker, GitHub Actions, screenshots, Bun.WebView validation, or explaining how to inspect applications that use webapp with Bun.WebView.'
+version: 0.5.11
+description: 'Build, modify, validate, and ship apps using @pablozaiden/webapp. Use when creating Bun/React apps or API-only services; adding routes, auth, settings, realtime, CLI, sidebar UI, Docker, GitHub Actions, or validating apps with Bun.WebView.'
 ---
 
 # Webapp framework skill
@@ -10,12 +10,23 @@ Use this skill when building an app with `@pablozaiden/webapp`.
 
 ## Repository-local references
 
-The expanded templates and manual checklist referenced below are maintained in
-the `pablozaiden/webapp` repository at its repository root, not relative to
-this skill file or an installed skill bundle:
+The current documentation is maintained in the `pablozaiden/webapp` repository
+at its root, not relative to this skill file or an installed skill bundle:
 
-- [`docs/github-actions.md`](https://github.com/PabloZaiden/webapp/blob/main/docs/github-actions.md)
-  contains the full Docker and GitHub Actions templates.
+- [`docs/getting-started.md`](https://github.com/PabloZaiden/webapp/blob/main/docs/getting-started.md)
+  and [`docs/server.md`](https://github.com/PabloZaiden/webapp/blob/main/docs/server.md)
+  cover app setup, routes, runtime validation, stores, and server options.
+- [`docs/auth.md`](https://github.com/PabloZaiden/webapp/blob/main/docs/auth.md)
+  and [`docs/cli.md`](https://github.com/PabloZaiden/webapp/blob/main/docs/cli.md)
+  cover authentication, CLI commands, and server lifecycle.
+- [`docs/realtime.md`](https://github.com/PabloZaiden/webapp/blob/main/docs/realtime.md),
+  [`docs/sidebar.md`](https://github.com/PabloZaiden/webapp/blob/main/docs/sidebar.md),
+  [`docs/settings.md`](https://github.com/PabloZaiden/webapp/blob/main/docs/settings.md),
+  and [`docs/ui-guidelines.md`](https://github.com/PabloZaiden/webapp/blob/main/docs/ui-guidelines.md)
+  cover the framework UI and live updates.
+- [`docs/deployment.md`](https://github.com/PabloZaiden/webapp/blob/main/docs/deployment.md)
+  and [`docs/github-actions.md`](https://github.com/PabloZaiden/webapp/blob/main/docs/github-actions.md)
+  cover binary builds, Docker, and CI/CD templates.
 - [`docs/auth-validation.md`](https://github.com/PabloZaiden/webapp/blob/main/docs/auth-validation.md)
   contains the manual passkey, API-key, and device-auth checklist.
 
@@ -24,26 +35,32 @@ the application being built; they are not expected to exist beside this skill.
 
 ## Rules
 
-- Treat the app as one Bun server that serves React, API routes and websockets together.
+- Treat a UI app as one Bun server that serves React, API routes, and websockets together. Use `web: false` only for API/WebSocket-only processes.
 - Do not add Vite or a standalone client dev server.
 - Use `bun --hot src/index.ts serve` for dev.
+- Declare `react` and `react-dom` in the application package; they are framework peer dependencies. The default frontend entrypoint is `web/main.tsx` relative to the Bun entry file.
 - Do not create app-owned `index.html` or `site.webmanifest`; the framework generates the HTML document, PWA manifest, default SVG icons, fixed-scale viewport metadata and theme prepaint script from `createWebAppServer({ web })`.
 - The generated viewport uses fixed-scale tokens. On iPhone/iPad and other mobile browsers that honor those tokens, it prevents pinch-to-zoom while preserving scrolling; clients that ignore them are unaffected. Do not add global touch handlers, `preventDefault()` calls, or `touch-action: none` to solve zoom.
 - PWA is enabled by default. Lightweight examples may use generated initials icons, but production apps should set `web.icons` with favicon, Apple-touch, and 192x192/512x512 manifest PNGs. Icon paths are relative to the app package root.
+- For an API/WebSocket-only process, `web: false` avoids generating the browser app. Use `requestFilter` only in this mode to deny requests before framework routes and websocket upgrades; returning `false` gives a 404. Do not rely on it to filter a web-serving app, where Bun can serve frontend assets outside the request dispatcher.
 - Keep the product as one app and one binary with subcommands (`serve`, `version`, app-specific commands, and optional framework-backed `auth`/`api`/`schema` commands). Do not split web/server/CLI into separate apps or binaries unless there is a real package boundary.
-- Keep generated apps and tooling cross-platform across macOS and Linux on arm64 and x86-64.
+- Preserve macOS and Linux support on x64 and arm64. The detached lifecycle also supports Windows; use the framework's exported `BUN_COMPILE_TARGETS` when validating binary targets instead of hard-coding them. Docker images should target Linux with an explicit platform/artifact mapping.
 - Use `Bun.WebView` from Bun 1.4+ for browser automation and screenshots; do not add external browser automation packages or launch a browser directly from an application.
 - When screenshots are captured to validate a visual change, review them against the specific goal; capture alone is not validation.
 - Configure env through a single uppercase `envPrefix`; read framework env as `{PREFIX}_...`.
+- TLS is disabled by default. Configure `server.tls` to terminate TLS in Bun; behind a reverse proxy, trust forwarded headers only with explicit `{PREFIX}_TRUST_PROXY=true`, a sanitizing proxy, and no direct untrusted access to the app port. Persist `{PREFIX}_DATA_DIR` on durable storage when application data must survive restarts.
 - Prefer the framework shell, settings and auth conventions when in doubt.
 - Frontend entrypoints should use `renderWebApp(<App />)` from `@pablozaiden/webapp/web`, not `ReactDOMClient.createRoot(...)`, so hot reload reuses the existing React root.
+- Prefer `appJson` and `appFetch` from `@pablozaiden/webapp/web` for normal browser API calls; they preserve configured URLs, credentials, auth-required events, and `WebAppApiError` handling. Use `appRequest` only when you need a raw `Response` and custom handling, such as downloads; it does not apply the default credentials, auth-required events, or error normalization. Use the framework URL helpers for links, history, and websocket URLs so they honor reverse-proxy `publicBasePath` values.
 - Treat apps as multi-user by default. App data should include an owner/current-user id unless the route is deliberately public or global-admin.
 - In server routes prefer declarative `auth: "user"`, `auth: "admin"` or `auth: "owner"` and use `ctx.requireUser()`, `ctx.requireAdmin()`, `ctx.requireOwner()`, `ctx.assertUser(userId)`, `ctx.filterOwned(records)` and `ctx.requireOwned(record)` instead of ad-hoc auth checks.
+- Treat TypeScript types as compile-time guidance, not input validation. Use `parseJson(req, schema)` for runtime body validation; `requestSchema` route metadata alone does not validate handler input. Define explicit create/update inputs and assign only allowlisted fields instead of mass-assigning request bodies. Return intentional 4xx responses for malformed or invalid input.
 - Add route metadata (`description`, `cliPath`, `tags`, schemas) directly to `defineRoutes` entries when an app needs CLI API discovery; use `createRouteCatalog` instead of maintaining a separate API catalog.
 - Make public endpoints explicit with `auth: "public", sameOrigin: "never"`.
 - Do not disable same-origin except for deliberate non-browser routes.
 - Use scopes for API keys and device bearer tokens.
 - Keep settings framework-owned; add app-specific settings as custom sections with `scope: "user"`, `"admin"` or `"owner"`.
+- Use `useTheme()` when app logic needs the effective theme; prefer CSS when it does not. Use framework `createLogger` from `/web` and `/server`, and `useLogLevel()` when UI needs the effective client log-level state; do not fetch framework configuration to initialize a separate logger.
 - Use `WebAppRoot`, `SidebarNode` and framework UI primitives before custom shell/layout code.
 - Use `useToast()` from `@pablozaiden/webapp/web` for transient success, error, warning, and informational feedback. Do not add an app-owned toast provider, queue, timer system, or notification styling; use inline `ErrorState`, loading states, and validation for persistent page/form state.
 - Route components rendered inside `WebAppRoot.routes` must use `Page` as the top-level main-content wrapper. Do not render raw panels/lists directly into `WebAppRoot`, and do not use or recreate `wapp-main-content`; `Page` provides the standard content margins/padding on desktop and mobile by default. Use `<Page layout="full">` for viewport-sized child content that owns its own spacing or scrolling instead of overriding framework CSS.
@@ -58,17 +75,19 @@ the application being built; they are not expected to exist beside this skill.
 - Mark destructive menu items with `destructive: true`; delete-labelled actions are treated defensively, rendered red, and ordered last by the framework.
 - Do not add app-local shell/header action menus for active entities. If the action belongs to a task/chat/agent/session/workspace/server sidebar entity, put it on that node's `actions`.
 - Framework header actions and icon/sidebar buttons must remain visible and non-deforming; let titles/subtitles truncate instead of clipping actions.
-- For user-owned live updates, prefer `ctx.userRealtime.publishEntityChanged(resource, id)` / `publishChanged(resource)` and `useRealtimeRefresh({ resources, refresh })` over custom websocket wiring. Use global `ctx.realtime` only for public/global-admin events or server-validated non-user scopes.
-- Use app-owned websocket upgrade handlers only for raw transports such as terminals or port-forward proxies; keep normal app state on framework realtime.
+- For user-owned live updates, prefer `ctx.userRealtime.publishEntityChanged(resource, id)` / `publishChanged(resource)` and `useLiveQuery` for initial loading plus live refresh, or `useRealtimeRefresh({ resources, refresh })` for an existing loader. Use global `ctx.realtime` only for public/global-admin events or server-validated non-user scopes.
+- Use app-owned websocket upgrade handlers only for raw transports such as terminals, VNC or port-forward proxies; keep normal app state on framework realtime.
 - Prefer `Page`, `Panel`, `DataList`, `DataListRow`, `DangerZone`, `LoadingState`, `ErrorState`, `FormGroup`, `FormActions`, and `CodeValue` for main content before custom CSS. Use `EntityHeader` only when the content needs an entity-specific heading that is not already provided by the fixed framework title bar.
 - Prefer structured `settings.sections[].rows` for settings; keep `render` only as an escape hatch.
 - All destructive delete actions must show a framework `ConfirmDialog` before the mutation. Never wire Delete buttons directly to `DELETE` requests.
 - Server lifecycle actions such as kill/reboot must show confirmation first and then a 15-second shutdown countdown progress bar after a successful response.
 - Test user-visible functionality and behavior, not implementation details such as internal class names, DOM structure or component internals.
-- When creating a production-ready app, add the Dockerfile and GitHub Actions from `docs/github-actions.md`: PR build/test/dev-smoke/Docker-smoke, main GHCR Docker image, binary release, and Docker release.
+- Keep TypeScript checks strict; package scripts and every CI/release workflow must invoke the canonical `bun run typecheck` command.
+- When creating a production-ready app, add the Dockerfile and GitHub Actions from `docs/github-actions.md`: PR typecheck/build/test/dev-smoke/Docker-smoke, main GHCR Docker image, binary release, and Docker release.
 
 ## Server state and lifecycle
 
+- `createWebAppServer` uses persistent `sqliteWebAppStore()` by default. Inject `memoryWebAppStore()` only when losing framework auth/settings state on process exit is intentional; it is volatile and not suitable for data that must survive restarts.
 - The framework owns the application state directory. It defaults to
   `$HOME/.<app-directory-name>`, deriving the name from `envPrefix` when
   `appDirectoryName` is omitted (`MY_APP` becomes `.my-app`).
@@ -80,10 +99,12 @@ the application being built; they are not expected to exist beside this skill.
   `serve` for foreground operation, `serve up` for a detached server,
   `serve down` for idempotent shutdown, `serve status` for inspection, and
   `serve config show|set|unset` for persisted bootstrap settings.
-- `config.json` stores only validated bootstrap values: `server.host`,
-  `server.port`, and `development.sourcePath`. Environment variables override
-  persisted host and port values; `serve up/down/status --host/--port` are
-  one-shot overrides.
+- `config.json` stores validated bootstrap values: `server.host`,
+  `server.port`, `development.sourcePath`, and declared typed
+  `serve.options`. Application option precedence is invocation flag,
+  environment, persisted config, then default; environment variables override
+  persisted host and port values, while `serve up/down/status --host/--port`
+  are one-shot overrides.
 - `serve up --dev` never accepts a source path argument. It requires
   `development.sourcePath` to be configured and existing, invokes the
   application-provided build adapter before stopping the current server, and
@@ -96,6 +117,9 @@ the application being built; they are not expected to exist beside this skill.
 - Lifecycle process ownership checks must refuse to stop an unrecognized
   process that occupies the configured port. Keep PID/log writes atomic and
   use the framework's state-directory and locking helpers.
+- The detached lifecycle supports Linux, macOS, and Windows. Validate build
+  targets with `BUN_COMPILE_TARGETS`; Docker's supported example mapping is
+  Linux `amd64` to `bun-linux-x64` and Linux `arm64` to `bun-linux-arm64`.
 
 The canonical lifecycle API is documented in
 [`docs/cli.md`](https://github.com/PabloZaiden/webapp/blob/main/docs/cli.md).
@@ -365,14 +389,21 @@ PATCH: (_req, ctx) => {
 
 ## Validation checklist
 
-Run targeted tests, `bun run typecheck`, example binary builds, and app health checks. Use the temporary Bun.WebView harness above for visual validation, and use `docs/auth-validation.md` for manual passkey/API-key/device-auth validation. If Docker base images can be pulled, build and run the example containers and check `/api/health`.
+For a consuming app, run its targeted tests and `bun run typecheck`, start the
+real server, and check `/api/health` plus the changed API/WebSocket behavior.
+Exercise browser-facing flows with the temporary Bun.WebView harness above.
+Build and run that app's container when validating deployment changes. Every
+generated app's CI/release workflows should invoke `bun run typecheck`. When
+changing the framework itself, also build its example binaries/containers and
+smoke-test them. Use `docs/auth-validation.md` for manual
+passkey/API-key/device-auth validation.
 
 ## CI/CD checklist for generated apps
 
 Use `docs/github-actions.md` as the source of truth. At minimum, generated apps should include:
 
 - A root `Dockerfile` that builds with `oven/bun`, copies the standalone binary into a slim runtime image, runs as a non-root user, and healthchecks `/api/health`.
-- `.github/workflows/pr.yml` with install, build, test, Bun dev-server smoke checks, and Docker image smoke checks.
+- `.github/workflows/pr.yml` with install, `bun run typecheck`, build, test, Bun dev-server smoke checks, and Docker image smoke checks.
 - `.github/workflows/docker-main.yml` to publish `ghcr.io/<owner>/<repo>:main` on pushes to `main` and smoke-test the container.
 - `.github/workflows/binary-release.yml` using `pablozaiden/installer/.github/workflows/reusable-binary-release.yml`.
 - `.github/workflows/docker-release.yml` to publish semver GHCR images on published GitHub releases.
