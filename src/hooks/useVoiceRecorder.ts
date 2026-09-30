@@ -22,7 +22,9 @@ export interface UseVoiceRecorderResult {
   status: VoiceRecorderStatus;
   elapsedMs: number;
   error: string | null;
+  canRetryTranscription: boolean;
   start: () => Promise<void>;
+  retry: () => Promise<void>;
   stop: () => void;
   cancel: () => void;
   dismissError: () => void;
@@ -78,12 +80,14 @@ export function useVoiceRecorder({
   const [status, setStatus] = useState<VoiceRecorderStatus>("idle");
   const [elapsedMs, setElapsedMs] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [canRetryTranscription, setCanRetryTranscription] = useState(false);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const recorderGenerationRef = useRef<number | null>(null);
   const generationRef = useRef(0);
   const startLockGenerationRef = useRef<number | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const retainedAudioRef = useRef<Blob | null>(null);
   const recordedBytesRef = useRef(0);
   const discardRef = useRef(false);
   const recordingErrorRef = useRef<string | null>(null);
@@ -135,27 +139,30 @@ export function useVoiceRecorder({
     setStatus("error");
   }, [clearRecorder]);
 
-  const transcribeChunks = useCallback(async (
-    chunks: Blob[],
-    mimeType: string,
-  ): Promise<void> => {
-    const audio = new Blob(chunks, { type: mimeType || "audio/webm" });
+  const transcribeAudio = useCallback(async (audio: Blob): Promise<void> => {
     if (audio.size <= 0) {
+      retainedAudioRef.current = null;
+      setCanRetryTranscription(false);
       fail("No audio was captured.");
       return;
     }
     if (audio.size > VOICE_RECORDING_MAX_BYTES) {
+      retainedAudioRef.current = null;
+      setCanRetryTranscription(false);
       fail("The recording exceeds the 20 MB limit.");
       return;
     }
 
     const controller = new AbortController();
     requestControllerRef.current = controller;
+    setError(null);
+    setStatus("transcribing");
     try {
       const form = new FormData();
-      const filename = `clanky-voice-recording.${getVoiceAudioExtension(audio.type || mimeType)}`;
+      const mimeType = audio.type || "audio/webm";
+      const filename = `clanky-voice-recording.${getVoiceAudioExtension(mimeType)}`;
       form.append("file", new File([audio], filename, {
-        type: audio.type || "audio/webm",
+        type: mimeType,
       }));
       const result = await apiRequest<{ text: string }>("/api/voice/transcribe", {
         method: "POST",
@@ -173,6 +180,8 @@ export function useVoiceRecorder({
         return;
       }
       onTranscriptRef.current(text);
+      retainedAudioRef.current = null;
+      setCanRetryTranscription(false);
       setError(null);
       setStatus("idle");
     } catch (transcriptionError) {
@@ -205,8 +214,10 @@ export function useVoiceRecorder({
     discardRef.current = false;
     recordingErrorRef.current = null;
     if (recordingError) {
+      retainedAudioRef.current = null;
       if (mountedRef.current) {
         setElapsedMs(0);
+        setCanRetryTranscription(false);
         setError(recordingError);
         setStatus("error");
       }
@@ -219,9 +230,13 @@ export function useVoiceRecorder({
       }
       return;
     }
-    setStatus("transcribing");
-    void transcribeChunks(chunks, mimeType);
-  }, [clearRecorder, transcribeChunks]);
+    const audio = new Blob(chunks, { type: mimeType || "audio/webm" });
+    retainedAudioRef.current = audio.size > 0 && audio.size <= VOICE_RECORDING_MAX_BYTES
+      ? audio
+      : null;
+    setCanRetryTranscription(retainedAudioRef.current !== null);
+    void transcribeAudio(audio);
+  }, [clearRecorder, transcribeAudio]);
 
   const stop = useCallback((): void => {
     const recorder = recorderRef.current;
@@ -238,6 +253,7 @@ export function useVoiceRecorder({
     discardRef.current = true;
     recordingErrorRef.current = null;
     requestControllerRef.current?.abort();
+    retainedAudioRef.current = null;
     const recorder = recorderRef.current;
     if (recorder && recorder.state !== "inactive") {
       recorder.stop();
@@ -245,6 +261,7 @@ export function useVoiceRecorder({
     clearRecorder();
     if (mountedRef.current) {
       setStatus("idle");
+      setCanRetryTranscription(false);
       setError(null);
       setElapsedMs(0);
     }
@@ -260,6 +277,8 @@ export function useVoiceRecorder({
     const generation = generationRef.current + 1;
     generationRef.current = generation;
     startLockGenerationRef.current = generation;
+    retainedAudioRef.current = null;
+    setCanRetryTranscription(false);
     if (!enabled) {
       releaseStartLock(generation);
       setError("Voice transcription is not configured and validated.");
@@ -372,8 +391,22 @@ export function useVoiceRecorder({
     }
   }, [clearRecorder, enabled, fail, finalizeRecording, releaseStartLock, status, stop]);
 
+  const retry = useCallback(async (): Promise<void> => {
+    if (requestControllerRef.current) {
+      return;
+    }
+    const audio = retainedAudioRef.current;
+    if (audio) {
+      await transcribeAudio(audio);
+      return;
+    }
+    await start();
+  }, [start, transcribeAudio]);
+
   const dismissError = useCallback((): void => {
     if (status === "error") {
+      retainedAudioRef.current = null;
+      setCanRetryTranscription(false);
       setStatus("idle");
       setError(null);
       setElapsedMs(0);
@@ -389,6 +422,7 @@ export function useVoiceRecorder({
       discardRef.current = true;
       recordingErrorRef.current = null;
       requestControllerRef.current?.abort();
+      retainedAudioRef.current = null;
       const recorder = recorderRef.current;
       if (recorder && recorder.state !== "inactive") {
         recorder.stop();
@@ -401,7 +435,9 @@ export function useVoiceRecorder({
     status,
     elapsedMs,
     error,
+    canRetryTranscription,
     start,
+    retry,
     stop,
     cancel,
     dismissError,
