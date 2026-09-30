@@ -39,6 +39,7 @@ import {
   isAgentProviderAvailable,
 } from "../agent-runtime-command";
 import { terminateSubprocessTree } from "../subprocess-termination";
+import { streamFileRange } from "../ranged-file-stream";
 
 const LOG_PREFIX = "[CommandExecutor]";
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
@@ -871,6 +872,7 @@ export class CommandExecutorImpl implements CommandExecutor {
     if (!this.host) {
       return createErroredStream(new Error("SSH file streaming requires execution host"));
     }
+    if (options?.range) return streamFileRange(this, path, { ...options, range: options.range });
 
     const remoteShellCommand = `cat -- ${quoteShell(path)}`;
     const sshTarget = this.user ? `${this.user}@${this.host}` : this.host;

@@ -4,11 +4,14 @@
 
 import { backendManager } from "../../core/backend-manager";
 import { executionHostService } from "../../core/execution-host-service";
+import { fileSystemTargetFingerprint } from "../../core/file-system-service";
 import {
   resolveFileExplorerRootDirectory,
   type FileExplorerTarget,
 } from "../../core/file-explorer-service";
 import { createFileExplorerRoutes } from "../file-explorer-routes";
+import { createFileSystemRoutes } from "../file-system-routes";
+import type { FileExplorerRouteConfig } from "../file-explorer-routes";
 import { requireWorkspace } from "../helpers";
 
 async function resolveWorkspaceFileTarget(
@@ -20,7 +23,7 @@ async function resolveWorkspaceFileTarget(
   if (workspaceResult instanceof Response) {
     throw workspaceResult;
   }
-  executionHostService.requireBindingCapability(
+  const host = executionHostService.requireBindingCapability(
     workspaceResult.executionHostBinding,
     "fileOperations",
   );
@@ -39,10 +42,16 @@ async function resolveWorkspaceFileTarget(
     id: workspaceResult.id,
     rootDirectory,
     executor,
+    commandExecutionAvailable: (host.runtime.capabilities["commandExecution"] ?? 0) >= 1,
+    fileSystemIdentity: workspaceResult.executionHostBinding.targetKey,
+    fileSystemTarget: fileSystemTargetFingerprint([
+      workspaceResult.executionHostBinding, workspaceResult.executionTargetRevision,
+      workspaceResult.directory,
+    ]),
   };
 }
 
-export const workspaceFilesRoutes = createFileExplorerRoutes({
+const configuration: FileExplorerRouteConfig = {
   basePath: "/api/workspaces/:id/files",
   logName: "workspace-files",
   resourceLabel: "workspace",
@@ -51,4 +60,9 @@ export const workspaceFilesRoutes = createFileExplorerRoutes({
   internalError: "workspace_file_error",
   downloadDescription: "Stream a workspace file from the selected execution host.",
   resolveTarget: resolveWorkspaceFileTarget,
-});
+};
+
+export const workspaceFilesRoutes = {
+  ...createFileExplorerRoutes(configuration),
+  ...createFileSystemRoutes(configuration),
+};

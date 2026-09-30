@@ -27,11 +27,13 @@ import {
 } from "./execution-path";
 import type { ExecutionPathStyle } from "./execution-path";
 import { DomainError } from "../domain/domain-error";
+import { streamFileRange } from "./ranged-file-stream";
 import {
   EXECUTION_HOST_CAPABILITY_VERSIONS,
   getUnavailableGitCommandCapability,
   supportsGitCommandScope,
   supportsPortableAcpRuntime,
+  supportsExecutionHostCapability,
   type ExecutionHostCapabilities,
 } from "@/shared/execution-host";
 
@@ -168,8 +170,14 @@ export class MeshCommandExecutor implements CommandExecutor {
     return await this.client.readFile(path, options?.signal);
   }
 
-  async streamFile(_path: string, _options?: FileStreamOptions): Promise<ReadableStream<Uint8Array> | null> {
-    return await this.client.streamFile(_path, _options?.signal);
+  async streamFile(path: string, options?: FileStreamOptions): Promise<ReadableStream<Uint8Array> | null> {
+    if (options?.range) {
+      if (!supportsExecutionHostCapability(this.capabilities, "commandExecution")) {
+        throw new DomainError("execution_host_capability_unavailable", "commandExecution is required for ranged file reads.");
+      }
+      return streamFileRange(this, path, { ...options, range: options.range });
+    }
+    return await this.client.streamFile(path, options?.signal);
   }
 
   async listDirectory(path: string, options?: { includeHidden?: boolean }): Promise<string[]> {

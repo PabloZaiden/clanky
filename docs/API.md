@@ -107,6 +107,139 @@ run locally, over SSH, or through a Mesh worker. Git, file, and command
 operations run on that workspace's execution host, while the API and
 application data remain on the controller.
 
+`workspace.directory` is the initial navigation directory, not a filesystem
+sandbox. File operations may access parent paths, absolute paths and alternate
+start directories on the selected host, subject to the execution account's
+filesystem permissions. Access outside the initial directory is intentional
+and an accepted product risk; authentication, workspace ownership and
+execution-host authorization still apply.
+
+### Workspace WebDAV and exact-path file operations
+
+```bash
+clanky workspace webdav <ID_OR_NAME> [--read-only] [--local-port PORT] [--tls-cert FILE --tls-key FILE]
+```
+
+This foreground CLI command runs a DAV listener on `127.0.0.1`, with a random
+per-run Basic password. The OS mounts the printed URL; the CLI forwards file
+operations through authenticated controller APIs and the selected local, SSH
+or Mesh executor. It does not forward the native client's Authorization header
+upstream or send controller/profile credentials as DAV login credentials.
+Controller HTTPS is required outside loopback; redirects are rejected, even
+during device-token refresh. Profiles refresh during use without replaying a
+consumed PUT body or retrying unknown mutation outcomes.
+
+Read/write is the default. `--read-only` blocks PUT, MKCOL, MOVE, COPY, DELETE,
+PROPPATCH, LOCK and UNLOCK at this listener; it does not revoke independent
+API, agent or host access. No public/LAN bind, daemon, automatic mounting or
+filesystem sandbox is provided. Unexpected Host authorities and cross-origin
+browser requests are rejected. Optional `--tls-cert FILE --tls-key FILE`
+must be supplied together and use a certificate trusted by the native client
+for the local hostname/address. Clanky never installs a certificate or changes
+the OS's authentication policy.
+
+URLs represent absolute paths on the selected host, percent-encoding each
+component: `/home/user/project/` for POSIX, `/C%3A/project/` for a Windows
+drive, and `/UNC/server/share/project/` for UNC paths. The initial URL is the
+workspace directory. To access another directory, mount its URL under the
+same endpoint; native clients may not allow `..` above a mounted volume.
+Existing host symlink semantics apply. Atomic replacement of a destination
+file, including a file symlink, uses rename semantics like explorer binary
+uploads. Neither credentials stored in host files nor cached native-client
+downloads are hidden or revoked by this bridge.
+
+The controller exposes these user-owned endpoints for both workspace and
+standalone execution-host adapters:
+
+| Method | Workspace path | Purpose |
+| --- | --- | --- |
+| POST | `/api/workspaces/:id/files/filesystem` | JSON filesystem command. |
+| GET, HEAD, PUT | `/api/workspaces/:id/files/filesystem/content?path=...` | Binary stream/metadata or staged binary replacement. |
+| POST | `/api/execution-hosts/:kind/:id/files/filesystem` | Same commands, with host authorization/credentials. |
+| GET, HEAD, PUT | `/api/execution-hosts/:kind/:id/files/filesystem/content?path=...` | Same exact-path binary operations on a standalone host. |
+
+API keys/device tokens require `clanky:files` or `*`. Browser mutations retain
+framework same-origin protection. Standalone SSH adapters require the existing
+`x-clanky-ssh-credential-token`; no password is accepted by these contracts.
+Paths are nonempty, NUL-free strings of at most 16,384 characters and are not
+trimmed. Relative API paths resolve from the adapter's initial directory;
+valid absolute/parent paths are deliberately unrestricted by that directory.
+
+Commands use an `operation` discriminator: `info`, `stat`, `list`, `mkdir`,
+`delete`, `move`, `copy`, `lock`, `refreshLock`, `unlock`, or `releaseLocks`.
+`info` returns `directory`, `pathStyle`, an opaque `target` fingerprint and
+`commandExecution`. `stat` accepts `hash: true` for a content-hash ETag.
+Other results contain applicable `entry`, `entries`, `locks`, `lock`, `created`
+or `overwritten` fields. MOVE/COPY accept `destination`, `overwrite` and
+`depth: "0" | "infinity"`; MOVE always uses infinity. Inspect the route's
+schema for the complete lock/precondition contract.
+
+Send `x-clanky-file-target` with the `info.target` value to reject changed
+execution targets with `409 file_system_target_changed`. A bridge pins this
+value rather than automatically rebinding. Commands take optional `conditions`
+with `ifMatch`, `ifNoneMatch` and parsed DAV `davIf` lists; streamed PUT takes
+the same JSON object in `x-clanky-file-conditions`. Failed/stale validators
+return `412 file_system_precondition_failed`; missing lock tokens return
+`423 file_system_locked`. GET is streamed and may be chunked; its
+`x-clanky-download-size` header and HEAD's `Content-Length` expose file size.
+
+PUT and COPY stage on the destination filesystem and rename only after
+completion; failures remove staging without pre-deleting an existing file.
+MKCOL/COPY require `commandExecution` and use existing host commands, bounded
+by a 120-second deadline, not new worker RPCs. Directory replacement and
+cross-filesystem MOVE are unsupported. Filesystem-root deletion/move and
+recursive copy/move into the source itself are rejected. External host tools
+can still race operations: DAV locks are not host-wide locks or filesystem CAS.
+Recursive DELETE can fail after removing some children; a failed response is
+not a rollback guarantee. Inspect authoritative state after uncertain outcomes.
+The current Bun/framework controller limits streamed uploads to 128 MiB per
+request (`413` above that limit); reverse proxies may impose lower limits.
+Downloads and host-side COPY are not subject to this request-body limit.
+POSIX collection COPY follows a directory link at the source entry and copies
+its contents independently; links within that tree retain host copy semantics.
+Staged PUT replaces the addressed file entry, including a final-component
+symlink, rather than writing through that link. Parent-directory links remain
+usable for navigation.
+
+The DAV listener supports depth-0/1 PROPFIND, GET/HEAD (including conditional
+reads and single byte ranges), OPTIONS, PUT, MKCOL, MOVE/COPY, DELETE and real
+LOCK/UNLOCK with shared/exclusive locks. PROPPATCH returns per-property 403;
+arbitrary properties, POSIX permissions/ownership, executable modes, device
+files and complete POSIX locking are not provided. Infinite PROPFIND and
+multiple byte ranges are rejected. Filenames must be representable in UTF-8
+and DAV XML; names containing XML-forbidden controls fail explicitly.
+
+Single-range GET seeks on the selected host rather than transferring its prefix.
+Local hosts use native file slices; SSH and Mesh use bounded existing `exec`
+windows (POSIX `sh`, `dd` and `base64`, or Windows PowerShell). Hosts lacking
+`commandExecution` cannot provide remote ranged reads. Ordinary ranges and
+date-based If-Range use metadata only; a strong ETag condition still requires
+hashing the whole file. Metadata-only 206 responses omit ETag, since weak
+validators are not valid on 206; Last-Modified remains available. A weak or
+mismatched If-Range returns the complete 200 representation.
+
+Limits: 64 KiB XML requests, XML depth 32, 32 live listener requests, 64 pending
+controller mutations per physical target and 256 across the controller,
+10,000 entries per listing/recursive COPY or DELETE,
+recursive depth 128, 16 MiB metadata/XML responses, 256 locks per user/target
+and 2,048 locks per controller. Locks last at most 3,600 seconds and are
+in-memory: controller restarts discard them. They coordinate the new exact-path
+surface for the same user/target, not old explorer routes or direct agents.
+Shutdown aborts owned requests, closes the listener and attempts to release
+locks. Revoked auth, a deleted workspace or an unavailable/changed target can
+prevent release; failure is reported and remaining locks expire.
+Mutations on different physical targets proceed independently; users sharing a
+physical target share its mutation queue. Cancellation is checked immediately
+before a non-cancellable host mutation starts; it cannot undo an already-started
+delete or rename.
+
+The CLI and controller must be updated. Workers/relays that support the current
+`fileOperations` and `commandExecution` contracts need no protocol update.
+Native macOS, Windows WebClient and Linux desktop mounting remain unverified;
+Windows WebClient is deprecated and normally requires trusted HTTPS for Basic
+auth, while Linux may require additional client components. Protocol/API
+validation is not proof of Finder/editor compatibility.
+
 ### Direct execution-host commands
 
 `POST /api/execution-hosts/:kind/:id/exec` runs one bounded, non-interactive
@@ -186,6 +319,8 @@ included in this table.
 | POST | `/api/execution-hosts/:kind/:id/chat-models` | Discover ACP models for a provider on an execution host. |
 | GET | `/api/execution-hosts/:kind/:id/files` | List execution-host files in the active explorer root. |
 | GET | `/api/execution-hosts/:kind/:id/files/content` | Read an execution-host file. |
+| POST | `/api/execution-hosts/:kind/:id/files/filesystem` | Exact-path commands, preconditions and DAV locks on the selected host. |
+| GET, HEAD, PUT | `/api/execution-hosts/:kind/:id/files/filesystem/content` | Stream, inspect or stage binary content on the selected host. |
 | POST | `/api/execution-hosts/:kind/:id/files/delete` | Delete an execution-host file or directory. |
 | GET, HEAD | `/api/execution-hosts/:kind/:id/files/download` | Download an execution-host file. |
 | GET | `/api/execution-hosts/:kind/:id/files/metadata` | Read execution-host file metadata. |
@@ -289,6 +424,8 @@ included in this table.
 | POST | `/api/workspaces/:id/exec` | Execute one non-interactive command on the workspace's execution host. |
 | GET | `/api/workspaces/:id/files` | List workspace files in the active explorer root. |
 | GET | `/api/workspaces/:id/files/content` | Read a workspace file. |
+| POST | `/api/workspaces/:id/files/filesystem` | Run an exact-path filesystem command. |
+| GET, HEAD, PUT | `/api/workspaces/:id/files/filesystem/content` | Stream, inspect or atomically replace binary content. |
 | POST | `/api/workspaces/:id/files/delete` | Delete a workspace file or directory in the active explorer root. |
 | GET, HEAD | `/api/workspaces/:id/files/download` | Stream a workspace file from the selected execution host. |
 | GET | `/api/workspaces/:id/files/metadata` | Read workspace file metadata. |
@@ -1932,7 +2069,9 @@ include `Content-Length`. A streamed `GET` may use chunked transfer without a
 another remote stream; clients that need the size should use
 `X-Clanky-Download-Size`. Request cancellation aborts an in-progress remote
 stream. The other file-explorer operations (listing, reading, writing,
-renaming, and deleting) retain their active-root containment rules.
+renaming, and deleting) likewise use their active root as a navigation starting
+point, not a containment boundary. Their operation-specific path validation,
+conflict checks and destructive-operation safeguards still apply.
 
 **Errors**
 

@@ -67,6 +67,9 @@ export interface FileExplorerTarget {
   /** Default navigation directory; it is not a filesystem access boundary. */
   rootDirectory: string;
   executor: CommandExecutor;
+  commandExecutionAvailable?: boolean;
+  fileSystemIdentity?: string;
+  fileSystemTarget?: string;
 }
 
 export interface FileExplorerListResult {

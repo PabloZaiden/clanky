@@ -17,6 +17,7 @@ import type {
   GitEnvironmentVariableName,
 } from "../shared/execution-host";
 import type { AgentProvider } from "../shared/settings";
+import type { ByteRange } from "../shared/byte-range";
 
 export type {
   GitCommandScope,
@@ -87,6 +88,8 @@ export function isCommandOutputLimitError(error: unknown): error is CommandOutpu
 export interface FileStreamOptions {
   /** Abort signal for cancelling the file stream */
   signal?: AbortSignal;
+  /** Host-seeking inclusive interval for streamFile (not readFile). */
+  range?: ByteRange;
 }
 
 export interface FileWriteStreamOptions {

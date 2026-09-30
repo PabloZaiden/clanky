@@ -6,6 +6,8 @@
  * @module contracts/schemas
  */
 
+export * from "./file-system";
+
 export {
   ModelConfigSchema,
   CheapModelSelectionSchema,

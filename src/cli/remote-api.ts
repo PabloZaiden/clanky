@@ -11,11 +11,13 @@ import {
   type DeviceCredentialsStore,
   type StoredDeviceCredentials,
 } from "@pablozaiden/webapp/cli";
+import { z } from "zod";
 
 export interface CliApiContext {
   fetchFn: typeof fetch;
   environment: CliEnvironment;
   envPrefix: string;
+  validateBaseUrl?: (baseUrl: string) => void;
   credentials: DeviceCredentialsStore & {
     read(): Promise<StoredDeviceCredentials | undefined>;
   };
@@ -28,13 +30,37 @@ export interface CliApiAuth {
   accessToken?: string;
 }
 
-export async function resolveCliApiAuth(input: CliApiContext): Promise<CliApiAuth> {
+export async function resolveCliWorkspace(input: CliApiContext, auth: CliApiAuth, reference: string, signal?: AbortSignal) {
+  const response = await fetchCliApi(input, auth, "/api/workspaces", { signal, redirect: "error" });
+  const body = await readCliResponseBody(response);
+  if (!response.ok) throw new Error(responseErrorMessage(body, `Unable to list workspaces (HTTP ${String(response.status)})`));
+  const parsed = z.array(z.object({ id: z.string(), name: z.string(), directory: z.string() })).safeParse(body);
+  if (!parsed.success) throw new Error("The workspace list response is invalid");
+  const byId = parsed.data.find((entry) => entry.id === reference);
+  if (byId) return byId;
+  const byName = parsed.data.filter((entry) => entry.name === reference);
+  if (byName.length === 1) return byName[0]!;
+  throw new Error(byName.length > 1 ? `Workspace name is ambiguous: ${reference}` : `Workspace not found: ${reference}`);
+}
+
+function abortableFetch(fetchFn: typeof fetch, signal?: AbortSignal): typeof fetch {
+  if (!signal) return fetchFn;
+  return Object.assign(
+    (resource: Parameters<typeof fetch>[0], init?: RequestInit) => fetchFn(resource, {
+      ...init, signal: init?.signal ? AbortSignal.any([signal, init.signal]) : signal,
+    }),
+    { preconnect: fetchFn.preconnect },
+  );
+}
+
+export async function resolveCliApiAuth(input: CliApiContext, signal?: AbortSignal): Promise<CliApiAuth> {
   const stored = await input.credentials.read();
   if (stored) {
+    input.validateBaseUrl?.(stored.baseUrl);
     const refreshed = await refreshDeviceCredentials({
       credentials: stored,
       store: input.credentials,
-      fetchFn: input.fetchFn,
+      fetchFn: abortableFetch(input.fetchFn, signal),
     });
     if (refreshed) {
       return {
@@ -51,6 +77,7 @@ export async function resolveCliApiAuth(input: CliApiContext): Promise<CliApiAut
     environment: input.environment,
   });
   if (environmentAuth) {
+    input.validateBaseUrl?.(environmentAuth.baseUrl);
     const headers = new Headers();
     headers.set("authorization", `Bearer ${environmentAuth.apiKey}`);
     return {
@@ -61,6 +88,7 @@ export async function resolveCliApiAuth(input: CliApiContext): Promise<CliApiAut
   }
 
   const rawBaseUrl = input.environment[`${input.envPrefix}_BASE_URL`] ?? "http://localhost:3000";
+  input.validateBaseUrl?.(rawBaseUrl);
   return {
     baseUrl: normalizeBaseUrl(rawBaseUrl),
     headers: new Headers(),
@@ -84,18 +112,20 @@ export async function fetchCliApi(
   let response = await send();
   if (response.status === 401 && auth.source === "device" && auth.accessToken) {
     const stored = await input.credentials.read();
+    if (stored) input.validateBaseUrl?.(stored.baseUrl);
     const refreshed = stored
       ? await refreshDeviceCredentials({
         credentials: stored,
         store: input.credentials,
         forceRefresh: { rejectedAccessToken: auth.accessToken },
-        fetchFn: input.fetchFn,
+        fetchFn: abortableFetch(input.fetchFn, init.signal ?? undefined),
       })
       : undefined;
     if (refreshed) {
       auth.headers = getAuthorizedHeaders(refreshed);
       auth.accessToken = refreshed.accessToken;
-      response = await send();
+      // A streamed body is consumed by the first request and cannot be replayed.
+      if (!(init.body instanceof ReadableStream)) response = await send();
     }
   }
   return response;
