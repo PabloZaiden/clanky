@@ -186,14 +186,25 @@ realtime UI, or unrelated APIs. Do not combine worker mode with
    action to make the worker process exit; its LaunchAgent or systemd
    supervisor should restart it without revoking the grant.
 
-   For scripted enrollment from the controller, use
-   `clanky mesh enroll <target> --token <token> --fingerprint <fingerprint>`.
-   Inspect and revoke existing enrollments with `clanky mesh status` and
-   `clanky mesh revoke <worker-node-id>`.
+   Inspect and revoke existing enrollments from the controller with
+   `clanky mesh status` and `clanky mesh revoke <worker-node-id>`.
 
 Mesh access intentionally grants unrestricted command and file access to the
 worker host. Do not invent path sandboxing or assume a workspace confines Mesh
 operations.
+
+For scripted enrollment instead of running the generated `worker join`
+command, use:
+
+```bash
+clanky mesh enroll <target> --token <token> --fingerprint <fingerprint>
+```
+
+The CLI profile or `CLANKY_BASE_URL`/`CLANKY_API_KEY` must target the worker
+instance; `<target>` is the controller endpoint. The
+`/api/mesh/enroll` route requires the worker runtime role, so do not send this
+request to the controller profile. `CLANKY_MESH_CONTROLLER_FINGERPRINT` can
+provide the fingerprint instead of the flag.
 
 ## Running commands and downloading files
 
