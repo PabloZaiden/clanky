@@ -10,7 +10,7 @@ export const DAV_MAX_XML_BYTES = 64 * 1_024;
 export const DAV_MAX_REQUESTS = 32;
 
 export class DavError extends Error {
-  constructor(readonly status: number, message: string) {
+  constructor(readonly status: number, message: string, readonly headers?: HeadersInit) {
     super(message);
     this.name = "DavError";
   }

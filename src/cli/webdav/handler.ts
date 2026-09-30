@@ -7,7 +7,6 @@ import { davDestination, davHostPath, davHref } from "./paths";
 import { activeLockXml, propfindResponse, proppatchResponse } from "./properties";
 import { DavError, isDav, parseDavIf, readDavXml, xmlResponse, type DavXmlNode } from "./protocol";
 import type { WebDavFileClient } from "./remote";
-import { byteRange, rangeStream } from "./ranges";
 
 function conditions(req: Request, client: WebDavFileClient): FileSystemConditions {
   const url = new URL(req.url);
@@ -73,28 +72,24 @@ async function lock(req: Request, path: string, client: WebDavFileClient, ownerI
     result.created ? 201 : 200, { "lock-token": `<${result.lock.token}>` });
 }
 
-function validateReadConditions(req: Request, etag: string): number | null {
-  const matches = (value: string, weak: boolean) => value.trim() === "*"
-    || value.split(",").some((tag) => (
-      weak ? tag.trim().replace(/^W\//, "") === etag.replace(/^W\//, "") : tag.trim() === etag && !etag.startsWith("W/")
-    ));
-  const match = req.headers.get("if-match");
-  if (match !== null && !matches(match, false)) return 412;
-  const none = req.headers.get("if-none-match");
-  if (none !== null && matches(none, true)) return 304;
-  return null;
-}
-
 async function read(req: Request, path: string, client: WebDavFileClient, signal: AbortSignal): Promise<Response> {
-  const response = await client.read(path, req.method === "HEAD" ? "HEAD" : "GET", signal);
+  const forwarded = new Headers();
+  for (const name of ["range", "if-range", "if-match", "if-none-match"]) {
+    const value = req.headers.get(name);
+    if (value !== null) forwarded.set(name, value);
+  }
+  const response = await client.read({
+    path, method: req.method === "HEAD" ? "HEAD" : "GET", signal, headers: forwarded,
+  });
   const headers = new Headers({
     "content-type": "application/octet-stream", "cache-control": "no-cache",
     "x-content-type-options": "nosniff",
   });
-  for (const name of ["etag", "last-modified", "content-length"]) {
+  for (const name of ["etag", "last-modified", "content-length", "content-range"]) {
     const value = response.headers.get(name);
     if (value !== null) headers.set(name, value);
   }
+  if (response.status === 304) return new Response(null, { status: 304, headers });
   const length = response.headers.get("content-length") ?? response.headers.get("x-clanky-download-size");
   const size = length === null ? NaN : Number(length);
   if (!Number.isSafeInteger(size) || size < 0) {
@@ -103,33 +98,7 @@ async function read(req: Request, path: string, client: WebDavFileClient, signal
   }
   headers.set("content-length", String(size));
   headers.set("accept-ranges", "bytes");
-  const conditional = validateReadConditions(req, response.headers.get("etag") ?? "");
-  if (conditional) {
-    await response.body?.cancel();
-    headers.delete("content-length");
-    return new Response(null, { status: conditional, headers });
-  }
-  const range = req.headers.get("range");
-  const ifRange = req.headers.get("if-range");
-  const matchesRange = ifRange === null || ifRange === headers.get("etag")
-    || (!ifRange.startsWith('"') && !ifRange.startsWith("W/")
-      && Date.parse(ifRange) === Date.parse(headers.get("last-modified") ?? ""));
-  if (req.method === "GET" && range !== null && matchesRange) {
-    try {
-      const selected = byteRange(range, size);
-      if (!response.body) throw new DavError(502, "Clanky returned no file stream.");
-      headers.set("content-range", `bytes ${String(selected.start)}-${String(selected.end)}/${String(size)}`);
-      headers.set("content-length", String(selected.end - selected.start + 1));
-      return new Response(rangeStream(response.body, selected), { status: 206, headers });
-    } catch (error) {
-      await response.body?.cancel();
-      if (!(error instanceof DavError) || error.status !== 416) throw error;
-      headers.delete("content-length");
-      headers.set("content-range", `bytes */${String(size)}`);
-      return new Response(null, { status: 416, headers });
-    }
-  }
-  return new Response(response.body, { headers });
+  return new Response(response.body, { status: response.status, headers });
 }
 
 function requireEntry(entry: FileSystemEntry | null | undefined): FileSystemEntry {

@@ -12,6 +12,18 @@ import { DomainError } from "../domain/domain-error";
 import type { FileExplorerRouteConfig } from "./file-explorer-routes";
 import { domainErrorResponse, errorResponse } from "./helpers";
 import { parseAndValidate, validateRequest } from "./validation";
+import { parseByteRange } from "../shared/byte-range";
+
+function readConditions(req: Request, etag: string): number | null {
+  const matches = (value: string, weak: boolean) => value.trim() === "*"
+    || value.split(",").some((tag) => (
+      weak ? tag.trim().replace(/^W\//, "") === etag.replace(/^W\//, "") : tag.trim() === etag && !etag.startsWith("W/")
+    ));
+  const match = req.headers.get("if-match");
+  if (match !== null && !matches(match, false)) return 412;
+  const none = req.headers.get("if-none-match");
+  return none !== null && matches(none, true) ? 304 : null;
+}
 
 export function createFileSystemRoutes(config: FileExplorerRouteConfig): RouteTable {
   const log = createLogger(`api:${config.logName}:filesystem`);
@@ -30,6 +42,7 @@ export function createFileSystemRoutes(config: FileExplorerRouteConfig): RouteTa
         file_system_forbidden: { status: 403 },
         file_system_limit: { status: 507 },
         file_system_busy: { status: 503 },
+        file_system_aborted: { status: 499 },
         file_system_target_changed: { status: 409 },
         mesh_execution_unreachable: { status: 503, message: "The execution host is unavailable." },
         mesh_execution_endpoint_unavailable: { status: 503, message: "The execution host is unavailable." },
@@ -84,24 +97,59 @@ export function createFileSystemRoutes(config: FileExplorerRouteConfig): RouteTa
         if (!parsed.success) return parsed.response;
         try {
           const target = await targetFor(req, ctx.params["id"]!);
-          if (req.method === "HEAD") {
-            const entry = await fileSystemService.stat(target, parsed.data.path, true);
-            if (!entry) throw new DomainError("file_system_not_found", "The file does not exist.");
-            if (entry.kind !== "file") throw new DomainError("file_system_invalid_type", "A file is required.");
-            return new Response(null, { headers: {
-              "content-length": String(entry.size), etag: entry.etag,
-              "last-modified": new Date(entry.modifiedAtMs).toUTCString(),
-            } });
-          }
-          const { entry, stream } = await fileSystemService.read(target, parsed.data.path, req.signal);
-          return new Response(stream, { headers: {
-            "content-type": "application/octet-stream",
-            "cache-control": "no-store",
-            "x-content-type-options": "nosniff",
-            "x-clanky-download-size": String(entry.size),
-            etag: entry.etag,
+          const range = req.method === "HEAD" ? null : req.headers.get("range");
+          const ifRange = req.headers.get("if-range");
+          const strong = range === null || ifRange?.startsWith('"') === true
+            || ["if-match", "if-none-match"].some((name) => {
+              const value = req.headers.get(name);
+              return value !== null && value.trim() !== "*";
+            });
+          let entry = await fileSystemService.stat(target, parsed.data.path, strong);
+          if (!entry) throw new DomainError("file_system_not_found", "The file does not exist.");
+          if (entry.kind !== "file") throw new DomainError("file_system_invalid_type", "A file is required.");
+          const headers = new Headers({
+            "content-type": "application/octet-stream", "cache-control": "no-store",
+            "x-content-type-options": "nosniff", "accept-ranges": "bytes",
+            "x-clanky-download-size": String(entry.size), etag: entry.etag,
             "last-modified": new Date(entry.modifiedAtMs).toUTCString(),
-          } });
+          });
+          const conditional = readConditions(req, entry.etag);
+          if (conditional === 412) throw new DomainError("file_system_precondition_failed", "The resource changed.");
+          if (conditional === 304) return new Response(null, { status: 304, headers });
+          const matchesRange = ifRange === null
+            || (!ifRange.startsWith("W/") && !entry.etag.startsWith("W/") && ifRange === entry.etag)
+            || (!ifRange.startsWith('"') && !ifRange.startsWith("W/")
+              && Date.parse(ifRange) === Date.parse(headers.get("last-modified")!));
+          const selected = range !== null && matchesRange ? parseByteRange(range, entry.size) : undefined;
+          if (selected === null) {
+            log.warn("Unsatisfiable file range.");
+            const response = errorResponse("file_system_range_unsatisfiable", "A satisfiable single byte range is required.", 416);
+            response.headers.set("content-range", `bytes */${String(entry.size)}`);
+            return response;
+          }
+          if (!selected && !strong) {
+            entry = await fileSystemService.stat(target, parsed.data.path, true);
+            if (!entry) throw new DomainError("file_system_not_found", "The file does not exist.");
+            headers.set("etag", entry.etag);
+            headers.set("last-modified", new Date(entry.modifiedAtMs).toUTCString());
+            headers.set("x-clanky-download-size", String(entry.size));
+          }
+          if (req.method === "HEAD") {
+            headers.set("content-length", String(entry.size));
+            return new Response(null, { headers });
+          }
+          if (selected) {
+            headers.set("content-range", `bytes ${String(selected.start)}-${String(selected.end)}/${String(entry.size)}`);
+            headers.set("content-length", String(selected.end - selected.start + 1));
+            // RFC 9110 forbids weak validators on 206; metadata-only ranges omit ETag.
+            if (entry.etag.startsWith("W/")) headers.delete("etag");
+          }
+          const { stream } = await fileSystemService.read(target, entry, { signal: req.signal, range: selected });
+          // Bun auto-ranges native file streams even when If-Range failed.
+          const body = range !== null && !selected
+            ? stream.pipeThrough(new TransformStream<Uint8Array, Uint8Array>())
+            : stream;
+          return new Response(body, { status: selected ? 206 : 200, headers });
         } catch (error) {
           return failure(error);
         }

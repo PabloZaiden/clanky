@@ -10,7 +10,7 @@ import type {
 import { FILE_SYSTEM_MAX_METADATA_BYTES } from "../contracts/schemas/file-system";
 import { requireCurrentUserId } from "../context/user-context";
 import { DomainError } from "../domain/domain-error";
-import type { FileSystemMetadata } from "./command-executor";
+import type { FileStreamOptions, FileSystemMetadata } from "./command-executor";
 import type { FileExplorerTarget } from "./file-explorer-service";
 import {
   basenameExecutionPath, dirnameExecutionPath, executionPathsEqual, joinExecutionPath,
@@ -20,6 +20,14 @@ import { containsExecutionPath, FileSystemLocks } from "./file-system-locks";
 
 export const FILE_SYSTEM_MAX_ENTRIES = 10_000;
 export const FILE_SYSTEM_MAX_DEPTH = 128;
+const MAX_PENDING_PER_TARGET = 64;
+const MAX_PENDING_GLOBAL = 256;
+
+function assertActive(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw new DomainError("file_system_aborted", "Filesystem operation cancelled.", { cause: signal.reason });
+  }
+}
 
 export function fileSystemTargetFingerprint(values: readonly unknown[]): string {
   return new Bun.CryptoHasher("sha256").update(JSON.stringify(values)).digest("hex");
@@ -90,26 +98,35 @@ function assertPreconditions(entry: FileSystemEntry | null, conditions?: FileSys
 
 export class FileSystemService {
   private readonly locks = new FileSystemLocks();
-  private tail = Promise.resolve();
+  private readonly queues = new Map<string, { tail: Promise<void>; pending: number }>();
   private pending = 0;
 
   private key(target: FileExplorerTarget): string {
     return `${requireCurrentUserId()}:${target.fileSystemIdentity ?? target.id}`;
   }
 
-  private async serialize<T>(action: () => Promise<T>, signal?: AbortSignal): Promise<T> {
-    if (this.pending >= 64) throw new DomainError("file_system_busy", "Filesystem operation capacity reached.");
+  private async serialize<T>(target: FileExplorerTarget, action: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    assertActive(signal);
+    const key = target.fileSystemIdentity ?? target.id;
+    const queue = this.queues.get(key) ?? { tail: Promise.resolve(), pending: 0 };
+    if (queue.pending >= MAX_PENDING_PER_TARGET || this.pending >= MAX_PENDING_GLOBAL) {
+      throw new DomainError("file_system_busy", "Filesystem operation capacity reached.");
+    }
+    this.queues.set(key, queue);
     this.pending += 1;
-    const previous = this.tail;
+    queue.pending += 1;
+    const previous = queue.tail;
     let release!: () => void;
-    this.tail = new Promise<void>((resolve) => { release = resolve; });
+    queue.tail = new Promise<void>((resolve) => { release = resolve; });
     try {
       await previous;
-      signal?.throwIfAborted();
+      assertActive(signal);
       return await action();
     } finally {
       this.pending -= 1;
+      queue.pending -= 1;
       release();
+      if (queue.pending === 0) this.queues.delete(key);
     }
   }
 
@@ -189,6 +206,7 @@ export class FileSystemService {
   private async command({ target, posix, powershell, paths, signal }: {
     target: FileExplorerTarget; posix: string[]; powershell: string; paths: string[]; signal?: AbortSignal;
   }): Promise<void> {
+    assertActive(signal);
     if (!target.commandExecutionAvailable) {
       throw new DomainError("execution_host_capability_unavailable", "commandExecution is required for this operation.");
     }
@@ -251,7 +269,7 @@ export class FileSystemService {
     const pending = [{ path: entry.path, depth: 0 }];
     let count = 0;
     for (let index = 0; index < pending.length; index += 1) {
-      signal?.throwIfAborted();
+      assertActive(signal);
       const directory = pending[index]!;
       if (directory.depth > FILE_SYSTEM_MAX_DEPTH) {
         throw new DomainError("file_system_limit", "Recursive directory depth limit exceeded.");
@@ -275,7 +293,7 @@ export class FileSystemService {
       return { entry, locks: this.locks.applicable(this.key(target), pathFor(target, command.path)) };
     }
     if (command.operation === "list") return await this.list(target, command.path);
-    return await this.serialize(async () => {
+    return await this.serialize(target, async () => {
       if (command.operation === "releaseLocks") {
         this.locks.release(this.key(target), command.ownerId);
         return {};
@@ -290,6 +308,7 @@ export class FileSystemService {
         const entry = await this.stat(target, path, requiresHash(command.conditions));
         assertPreconditions(entry, command.conditions);
         const tokens = await this.conditionTokens({ target, path, entry, conditions: command.conditions });
+        assertActive(signal);
         return { lock: this.locks.refresh({ key, path, ownerId: command.ownerId, tokens, seconds: command.timeoutSeconds }) };
       }
       if (command.operation === "lock") return await this.lock({ target, path, command, signal });
@@ -307,6 +326,7 @@ export class FileSystemService {
         throw new DomainError("file_system_forbidden", "The host filesystem root cannot be deleted.");
       }
       await this.assertRecursiveBudget({ target, entry, signal });
+      assertActive(signal);
       if (!await target.executor.deletePath(path, { kind: entry.kind, recursive: entry.kind === "directory" })) {
         throw new DomainError("file_system_operation_failed", "Deletion failed.");
       }
@@ -322,6 +342,7 @@ export class FileSystemService {
     assertPreconditions(entry, command.conditions);
     await this.conditionTokens({ target, path, entry, conditions: command.conditions });
     if (!entry) await this.parent(target, path);
+    assertActive(signal);
     const lock = this.locks.create({
       key: this.key(target), path, ownerId: command.ownerId, scope: command.scope,
       depth: command.depth, owner: command.owner, pathStyle: target.executor.pathStyle,
@@ -329,11 +350,11 @@ export class FileSystemService {
     try {
       if (!entry) {
         await this.withStagedPath({ target, destination: path, kind: "file" }, async (stage) => {
-          signal?.throwIfAborted();
+          assertActive(signal);
           if (!await target.executor.writeFile(stage.path, "")) {
             throw new DomainError("file_system_operation_failed", "Could not create the locked resource.");
           }
-          signal?.throwIfAborted();
+          assertActive(signal);
           const moved = await target.executor.movePath(stage.path, path, { overwrite: false });
           if (!moved.success) throw new DomainError("file_system_conflict", "The lock resource could not be created.");
           stage.committed = true;
@@ -386,6 +407,7 @@ export class FileSystemService {
       await this.assertRecursiveBudget({ target, entry: source, signal, followRootLink: true });
     }
     if (command.operation === "move") {
+      assertActive(signal);
       const result = await target.executor.movePath(path, destination, { overwrite: command.overwrite });
       if (!result.success) throw new DomainError("file_system_conflict", "The resource could not be moved.");
       this.locks.remove(this.key(target), path, target.executor.pathStyle);
@@ -398,7 +420,7 @@ export class FileSystemService {
             + (source.kind === "directory" ? " -Recurse" : ""),
           paths: [path, stage.path], signal,
         });
-        signal?.throwIfAborted();
+        assertActive(signal);
         const moved = await target.executor.movePath(stage.path, destination, { overwrite: command.overwrite });
         if (!moved.success) throw new DomainError("file_system_conflict", "Copy replacement failed.");
         stage.committed = true;
@@ -407,10 +429,12 @@ export class FileSystemService {
     return { entry: await this.requireEntry(target, destination), overwritten: Boolean(existing) };
   }
 
-  async read(target: FileExplorerTarget, path: string, signal?: AbortSignal) {
-    const entry = await this.requireEntry(target, path, true);
-    if (entry.kind !== "file") throw new DomainError("file_system_invalid_type", "A file is required.");
-    const stream = await target.executor.streamFile(entry.path, { signal });
+  async read(target: FileExplorerTarget, entry: FileSystemEntry, options?: FileStreamOptions) {
+    if (entry.kind !== "file" || !await target.executor.fileExists(entry.path)) {
+      throw new DomainError("file_system_invalid_type", "A regular file is required.");
+    }
+    assertActive(options?.signal);
+    const stream = await target.executor.streamFile(entry.path, options);
     if (!stream) throw new DomainError("file_system_not_found", "The file could not be read.");
     return { entry, stream };
   }
@@ -426,11 +450,14 @@ export class FileSystemService {
     if (!target.executor.writeFileStream) throw new DomainError("file_system_operation_failed", "Streamed writes are unavailable.");
     const write = target.executor.writeFileStream.bind(target.executor);
     return await this.withStagedPath({ target, destination: absolute, kind: "file" }, async (stage) => {
+      assertActive(signal);
       const wrote = await write(stage.path, stream, { signal });
+      assertActive(signal);
       if (!wrote.success) throw new DomainError("file_system_operation_failed", "File transfer failed.");
-      return await this.serialize(async () => {
+      return await this.serialize(target, async () => {
         const current = await this.check({ target, path: absolute, conditions });
         if (current?.kind === "directory") throw new DomainError("file_system_conflict", "A file cannot replace a directory.");
+        assertActive(signal);
         const moved = await target.executor.movePath(stage.path, absolute, { overwrite: Boolean(current) });
         if (!moved.success) throw new DomainError("file_system_conflict", "File replacement failed.");
         stage.committed = true;

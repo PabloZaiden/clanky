@@ -135,7 +135,9 @@ describe("workspace WebDAV", () => {
     expect(new Uint8Array(await range.arrayBuffer())).toEqual(bytes.subarray(1, 4));
     const suffix = await request(dav, path, { headers: { range: "bytes=-2" } });
     expect(new Uint8Array(await suffix.arrayBuffer())).toEqual(bytes.subarray(4));
-    expect((await request(dav, path, { headers: { range: "bytes=99-" } })).status).toBe(416);
+    const unsatisfiable = await request(dav, path, { headers: { range: "bytes=99-" } });
+    expect(unsatisfiable.status).toBe(416);
+    expect(unsatisfiable.headers.get("content-range")).toBe("bytes */6");
     expect((await request(dav, path, { method: "PUT", body: "stale", headers: { "if-match": '"wrong-version"' } })).status).toBe(412);
     expect(new Uint8Array(await Bun.file(path).arrayBuffer())).toEqual(bytes);
     const properties = await request(dav, path, {
@@ -191,6 +193,21 @@ describe("workspace WebDAV", () => {
     const partial = await request(dav, path, { headers: { range: "bytes=65000-66000" } });
     expect(partial.status).toBe(206);
     expect(new Uint8Array(await partial.arrayBuffer())).toEqual(bytes.subarray(65_000, 66_001));
+    // External HTTP contract: strong/date validators permit a range; a weak
+    // If-Range cannot do so. No existing workflow covers these three cases.
+    const etag = downloaded.headers.get("etag")!;
+    const validated = await request(dav, path, { headers: { range: "bytes=1-3", "if-range": etag } });
+    expect(validated.status).toBe(206);
+    expect(validated.headers.get("etag")).toBe(etag);
+    expect(new Uint8Array(await validated.arrayBuffer())).toEqual(bytes.subarray(1, 4));
+    const dated = await request(dav, path, {
+      headers: { range: "bytes=1-3", "if-range": downloaded.headers.get("last-modified")! },
+    });
+    expect(dated.status).toBe(206);
+    expect(new Uint8Array(await dated.arrayBuffer())).toEqual(bytes.subarray(1, 4));
+    const weak = await request(dav, path, { headers: { range: "bytes=1-3", "if-range": `W/${etag}` } });
+    expect(weak.status).toBe(200);
+    expect(new Uint8Array(await weak.arrayBuffer())).toEqual(bytes);
     const changed = await request(dav, path, { headers: { range: "bytes=1-3", "if-range": '"old"' } });
     expect(changed.status).toBe(200);
     expect(new Uint8Array(await changed.arrayBuffer())).toEqual(bytes);

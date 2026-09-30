@@ -133,7 +133,7 @@ export async function startWorkspaceWebDav(
         .catch((error: unknown) => {
           release();
           if (combined.aborted) return new Response(null, { status: 499 });
-          if (error instanceof DavError) return new Response(error.message, { status: error.status });
+          if (error instanceof DavError) return new Response(error.message, { status: error.status, headers: error.headers });
           console.error(`WebDAV request failed: ${String(error)}`);
           return new Response("WebDAV upstream operation failed.", { status: 502 });
         })

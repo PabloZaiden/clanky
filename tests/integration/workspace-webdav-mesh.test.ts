@@ -6,6 +6,7 @@
 
 import { expect, test } from "bun:test";
 import { createDeviceCredentialsStore } from "@pablozaiden/webapp/cli";
+import { open } from "node:fs/promises";
 import { startWorkspaceWebDav, type WebDavBridge } from "../../src/cli/webdav";
 import {
   compiledClankyCommand, enrollMeshWorker, meshJsonRequest, startMeshNode, stopMeshNode,
@@ -74,6 +75,34 @@ test("workspace WebDAV uses Mesh streaming and exec, pins its host and refuses l
     expect(new Uint8Array(await (await request(path)).arrayBuffer())).toEqual(bytes);
     expect((await request(path, { method: "COPY", headers: { destination: url(copy) } })).status).toBe(201);
     expect(new Uint8Array(await (await request(copy)).arrayBuffer())).toEqual(bytes);
+    if (process.platform !== "win32") {
+      // Sparse POSIX fixture: suffix/late reads must not hash or transfer a
+      // 100 GiB prefix. Small ranges cannot detect that regression. The bounded
+      // request deadline is the contract, not a synchronization delay.
+      const sparse = `${directory}/sparse \u00f1 ' &.bin`;
+      const size = 100 * 1_024 ** 3;
+      const tail = new Uint8Array(2 * 1_024 ** 2 + 137).fill(221);
+      tail[0] = 0;
+      tail[tail.length - 2] = 255;
+      tail[tail.length - 1] = 31;
+      const file = await open(sparse, "w");
+      try {
+        await file.truncate(size);
+        await file.write(tail, 0, tail.length, size - tail.length);
+      } finally { await file.close(); }
+      const suffix = await request(sparse, {
+        headers: { range: "bytes=-2" }, signal: AbortSignal.timeout(5_000),
+      });
+      expect(suffix.status).toBe(206);
+      expect(suffix.headers.get("content-range")).toBe(`bytes ${size - 2}-${size - 1}/${size}`);
+      expect(new Uint8Array(await suffix.arrayBuffer())).toEqual(tail.subarray(-2));
+      const start = size - tail.length + 91;
+      const late = await request(sparse, {
+        headers: { range: `bytes=${start}-${size - 1}` }, signal: AbortSignal.timeout(5_000),
+      });
+      expect(late.status).toBe(206);
+      expect(new Uint8Array(await late.arrayBuffer())).toEqual(tail.subarray(91));
+    }
     expect((await meshJsonRequest(controller, `/api/workspaces/${workspace.body.id}`, {
       method: "PUT", body: { executionHost: localRef },
     })).status).toBe(200);

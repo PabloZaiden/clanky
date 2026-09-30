@@ -99,7 +99,10 @@ export class LocalFileSystem {
     if (options?.signal?.aborted || !(await this.fileExists(path))) {
       return null;
     }
-    return Bun.file(path).stream();
+    const file = Bun.file(path);
+    return options?.range
+      ? file.slice(options.range.start, options.range.end + 1).stream()
+      : file.stream();
   }
 
   async writeFileStream(

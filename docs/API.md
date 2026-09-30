@@ -117,7 +117,7 @@ execution-host authorization still apply.
 ### Workspace WebDAV and exact-path file operations
 
 ```bash
-clanky workspace webdav <ID_OR_NAME> [--read-only] [--local-port PORT]
+clanky workspace webdav <ID_OR_NAME> [--read-only] [--local-port PORT] [--tls-cert FILE --tls-key FILE]
 ```
 
 This foreground CLI command runs a DAV listener on `127.0.0.1`, with a random
@@ -209,8 +209,18 @@ files and complete POSIX locking are not provided. Infinite PROPFIND and
 multiple byte ranges are rejected. Filenames must be representable in UTF-8
 and DAV XML; names containing XML-forbidden controls fail explicitly.
 
-Limits: 64 KiB XML requests, XML depth 32, 32 live listener requests, 64 queued
-controller mutations, 10,000 entries per listing/recursive COPY or DELETE,
+Single-range GET seeks on the selected host rather than transferring its prefix.
+Local hosts use native file slices; SSH and Mesh use bounded existing `exec`
+windows (POSIX `sh`, `dd` and `base64`, or Windows PowerShell). Hosts lacking
+`commandExecution` cannot provide remote ranged reads. Ordinary ranges and
+date-based If-Range use metadata only; a strong ETag condition still requires
+hashing the whole file. Metadata-only 206 responses omit ETag, since weak
+validators are not valid on 206; Last-Modified remains available. A weak or
+mismatched If-Range returns the complete 200 representation.
+
+Limits: 64 KiB XML requests, XML depth 32, 32 live listener requests, 64 pending
+controller mutations per physical target and 256 across the controller,
+10,000 entries per listing/recursive COPY or DELETE,
 recursive depth 128, 16 MiB metadata/XML responses, 256 locks per user/target
 and 2,048 locks per controller. Locks last at most 3,600 seconds and are
 in-memory: controller restarts discard them. They coordinate the new exact-path
@@ -218,6 +228,10 @@ surface for the same user/target, not old explorer routes or direct agents.
 Shutdown aborts owned requests, closes the listener and attempts to release
 locks. Revoked auth, a deleted workspace or an unavailable/changed target can
 prevent release; failure is reported and remaining locks expire.
+Mutations on different physical targets proceed independently; users sharing a
+physical target share its mutation queue. Cancellation is checked immediately
+before a non-cancellable host mutation starts; it cannot undo an already-started
+delete or rename.
 
 The CLI and controller must be updated. Workers/relays that support the current
 `fileOperations` and `commandExecution` contracts need no protocol update.

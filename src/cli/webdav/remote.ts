@@ -91,15 +91,17 @@ export class WebDavFileClient {
     }
   }
 
-  private async request(path: string, init: RequestInit): Promise<Response> {
+  private async request(path: string, init: RequestInit, allowNotModified = false): Promise<Response> {
     const auth = await this.credentials(init.signal ?? undefined);
     const headers = new Headers(init.headers);
     if (this.info) headers.set("x-clanky-file-target", this.info.target);
     const response = await fetchCliApi(this.input, auth, path, { ...init, headers, redirect: "error" });
-    if (!response.ok) {
+    if (!response.ok && !(allowNotModified && response.status === 304)) {
       const body = await readCliResponseBody(response);
       const status = response.status === 401 || response.status === 403 ? 502 : response.status;
-      throw new DavError(status, responseErrorMessage(body, "Clanky filesystem request failed."));
+      const range = response.headers.get("content-range");
+      throw new DavError(status, responseErrorMessage(body, "Clanky filesystem request failed."),
+        status === 416 && range !== null && /^bytes \*\/[0-9]+$/.test(range) ? { "content-range": range } : undefined);
     }
     return response;
   }
@@ -116,8 +118,10 @@ export class WebDavFileClient {
     return FileSystemResultSchema.parse(await this.sendCommand(command, signal));
   }
 
-  async read(path: string, method: "GET" | "HEAD", signal?: AbortSignal): Promise<Response> {
-    return await this.request(`${this.endpoint}/content?${new URLSearchParams({ path })}`, { method, signal });
+  async read({ path, method, signal, headers }: {
+    path: string; method: "GET" | "HEAD"; signal?: AbortSignal; headers?: HeadersInit;
+  }): Promise<Response> {
+    return await this.request(`${this.endpoint}/content?${new URLSearchParams({ path })}`, { method, signal, headers }, true);
   }
 
   async write({ path, req, conditions, signal }: {

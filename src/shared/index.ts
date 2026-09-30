@@ -30,3 +30,4 @@ export * from "./workspace";
 export * from "./workspace-files";
 export * from "./worker-host";
 export * from "./voice";
+export * from "./byte-range";
