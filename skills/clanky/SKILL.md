@@ -1,6 +1,6 @@
 ---
 name: clanky
-description: Use the Clanky CLI to inspect and operate an authenticated Clanky instance, or to bootstrap and configure a Mesh execution worker when explicitly requested. Activate when a user wants to query Clanky state, discover available Clanky API endpoints, create or monitor tasks, interact with chats or agents, stream events, automate Clanky through the `clanky` command, or enroll a headless Mesh worker.
+description: Use the Clanky CLI to inspect and operate an authenticated Clanky instance, execute commands or transfer files on workspaces and registered servers, preview remote services, or manage Mesh workers and relays when explicitly requested. Activate when a user wants to query Clanky state, discover API endpoints, create or monitor tasks, interact with chats or agents, stream events, or automate Clanky through the `clanky` command.
 compatibility: Requires `clanky` on PATH. Normal operations require existing CLI authentication and access to the target instance; worker bootstrap initializes its own API-key access.
 ---
 
@@ -9,6 +9,7 @@ compatibility: Requires `clanky` on PATH. Normal operations require existing CLI
 Use this skill when you need to operate an existing Clanky instance from a terminal through the `clanky` CLI. Assume Clanky is already installed, configured, authenticated, and reachable unless the user explicitly asks to bootstrap or configure a Mesh worker. Do not install Clanky, start a server, or guide the user through authentication unless the user explicitly asks for that.
 
 Clanky evolves over time, so prefer discovery over memorized command details. Treat the running CLI and its API/schema output as the source of truth.
+The canonical command and HTTP reference is [`docs/API.md`](../../docs/API.md).
 
 ## Core workflow
 
@@ -57,6 +58,8 @@ Clanky evolves over time, so prefer discovery over memorized command details. Tr
 - Use `--payload '<json>'` for request bodies.
 - Use `clanky schema <endpoint>` before constructing payloads, especially for task, workspace, chat, or agent-related endpoints.
 - Use `clanky auth --base-url URL` to configure a profile for a server. Framework commands use the selected profile or the `CLANKY_BASE_URL`/`CLANKY_API_KEY` environment pair.
+- Use `clanky update --check` to check whether a newer Clanky release is available; only run `clanky update` when the user asks to update the CLI.
+- Purpose-built commands include `workspace`, `server`, `preview`, `mesh`, `worker`, and `relay`. Check `clanky help` for the exact command surface supported by the installed version.
 
 ## Bootstrapping a Mesh worker
 
@@ -101,6 +104,20 @@ realtime UI, or unrelated APIs. Do not combine worker mode with
    only when first created or rotated and is not needed for enrollment.
    To replace a lost API key, repeat the same command with `--rotate`.
 
+   If the worker cannot accept inbound connections, use a relay-only worker
+   instead of publishing a worker endpoint:
+
+   ```bash
+   clanky worker bootstrap \
+     --relay-only \
+     --worker-directory /workspaces \
+     --instance-name worker-1
+   ```
+
+   Relay-only workers use loopback and an ephemeral port; do not pass
+   `--mesh-endpoint` or `--insecure`. Pair a relay on the controller before
+   enrolling the worker.
+
 2. Install and start the native service on the worker:
 
    ```bash
@@ -120,16 +137,33 @@ realtime UI, or unrelated APIs. Do not combine worker mode with
    associates consent with the service process rather than the terminal used
    to install it. Full Disk Access is intentionally not requested. The service
    then reads the persisted worker configuration and starts the restricted Mesh
-   surface.
+   surface. Use `--no-start` to install without immediately starting it; the
+   service also supports `start`, `stop`, `restart`, and `uninstall`.
 
 3. On the controller, create a short-lived enrollment token:
 
    ```bash
-   clanky mesh enrollment-token create --name worker-1 --ttl-seconds 900
+   clanky mesh enrollment-token create --name worker-1 --route direct
    ```
 
    The JSON response contains `response.workerJoinCommand`, a single-line
    command containing the controller endpoint, token, and fingerprint.
+
+   For a relay-only worker, pair a relay first, then create an invitation with
+   `--route relay`. Use `--relay <name>` to choose a non-primary paired relay;
+   otherwise the primary relay is selected:
+
+   ```bash
+   clanky mesh relay bootstrap-info
+   clanky mesh relay pair https://relay.example.com --name east
+   clanky mesh enrollment-token create --name worker-1 --route relay --relay east
+   ```
+
+   `clanky mesh relay status`, `clanky mesh relay primary <name>`, and
+   `clanky mesh relay unpair --name <name>` inspect and manage pairings.
+   `clanky relay` runs the transport-only relay in the foreground. Follow the
+   canonical [`docs/mesh-worker.md`](../../docs/mesh-worker.md) for trusted
+   topology, proxy, and deployment setup.
 
 4. Copy that property and run it on the worker:
 
@@ -152,9 +186,25 @@ realtime UI, or unrelated APIs. Do not combine worker mode with
    action to make the worker process exit; its LaunchAgent or systemd
    supervisor should restart it without revoking the grant.
 
+   Inspect and revoke existing enrollments from the controller with
+   `clanky mesh status` and `clanky mesh revoke <worker-node-id>`.
+
 Mesh access intentionally grants unrestricted command and file access to the
 worker host. Do not invent path sandboxing or assume a workspace confines Mesh
 operations.
+
+For scripted enrollment instead of running the generated `worker join`
+command, use:
+
+```bash
+clanky mesh enroll <target> --token <token> --fingerprint <fingerprint>
+```
+
+The CLI profile or `CLANKY_BASE_URL`/`CLANKY_API_KEY` must target the worker
+instance; `<target>` is the controller endpoint. The
+`/api/mesh/enroll` route requires the worker runtime role, so do not send this
+request to the controller profile. `CLANKY_MESH_CONTROLLER_FINGERPRINT` can
+provide the fingerprint instead of the flag.
 
 ## Running commands and downloading files
 
@@ -217,6 +267,38 @@ profile's credentials, or the `CLANKY_BASE_URL`/`CLANKY_API_KEY` environment
 pair. `clanky ws` remains the realtime event bridge and is not a command
 execution or file-transfer transport.
 
+## Running commands on registered servers
+
+Use `server exec` for a bounded, non-interactive command when an execution host
+is not being addressed through a particular workspace:
+
+```bash
+clanky server exec "worker-1" --cwd /var/log --timeout 10000 -- pwd
+clanky server exec mesh:worker-1 -- journalctl -u clanky-worker --no-pager
+```
+
+It accepts a registered server name or ID, including SSH and Mesh hosts. Use
+`--credential-token TOKEN` only when Clanky issued a temporary SSH credential
+token. This is not a persistent shell; use a workspace command for a
+workspace-scoped operation and `clanky ws` for realtime events. It runs with
+the selected host's permissions and is not a workspace sandbox.
+
+## Previewing a workspace or server service
+
+`preview` starts a local listener and forwards HTTP and WebSocket traffic to a
+service port on a workspace or registered server:
+
+```bash
+clanky preview --workspace <WORKSPACE_ID_OR_NAME> --port 3000
+clanky preview --server <SERVER_NAME_OR_ID> --port 8080 --local-port 18080 --open
+```
+
+The command prints the local URL and remains active until stopped. Use
+`--remote-host` when the service is not bound to `localhost`, `--path` for a
+non-root base path, and `--local-port` to choose the local listener port. The
+listener binds to `localhost` by default; use `--host 0.0.0.0` only when LAN
+access is intended.
+
 ## Querying Clanky state
 
 Start broad, then narrow down by ID:
@@ -246,33 +328,12 @@ clanky schema tasks
 clanky api workspaces --method GET
 ```
 
-Then create the task with a payload that matches the schema returned by the instance. A typical task payload includes a workspace ID, name, prompt, model, worktree behavior, and planning behavior:
+Then create the task with the smallest payload accepted by the schema returned
+by that instance. Do not reuse provider, model, or branch values from old
+examples:
 
 ```bash
-clanky api tasks --method POST --payload '{
-  "name": "implement-dark-mode-toggle",
-  "workspaceId": "ws-abc123",
-  "prompt": "Implement a dark mode toggle in the settings page. Use existing app patterns and verify the behavior.",
-  "attachments": [],
-  "model": {
-    "providerID": "anthropic",
-    "modelID": "claude-sonnet-4-20250514",
-    "variant": ""
-  },
-  "cheapModel": { "mode": "same-as-task" },
-  "useWorktree": true,
-  "planMode": true,
-  "maxIterations": 10,
-  "maxConsecutiveErrors": 10,
-  "activityTimeoutSeconds": null,
-  "stopPattern": "<promise>COMPLETE</promise>$",
-  "git": { "branchPrefix": "", "commitScope": "" },
-  "baseBranch": "main",
-  "clearPlanningFolder": false,
-  "autoAcceptPlan": false,
-  "fullyAutonomous": false,
-  "draft": false
-}'
+clanky api tasks --method POST --payload '<JSON matching the current task schema>'
 ```
 
 After creation, inspect the returned JSON for the task ID and status. Then monitor it:
