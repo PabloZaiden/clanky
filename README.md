@@ -94,50 +94,6 @@ See the [getting started guide](docs/getting-started.md) for the first
 workspace and task, and the [API reference](docs/API.md) for the complete CLI
 and HTTP contract.
 
-### Expose a workspace as WebDAV
-
-```bash
-clanky workspace webdav my-workspace
-clanky workspace webdav my-workspace --read-only
-```
-
-The foreground command prints a loopback URL and temporary local credentials.
-It is **read/write by default**; `--read-only` blocks mutations through this
-listener. Keep the command running while the volume is mounted.
-
-On macOS, use Finder's **Go > Connect to Server** (`Cmd+K`), enter the printed
-URL, and authenticate with the printed local username/password. For a directory
-mount, the native terminal command is:
-
-```bash
-mkdir -p "$HOME/Clanky"
-mount_webdav -i '<printed URL>' "$HOME/Clanky"
-# Unmount before stopping the bridge:
-umount "$HOME/Clanky"
-```
-
-Clanky does not install FUSE, mount/unmount automatically, or expose a DAV port
-on the controller. `Ctrl+C` closes the local listener. Update the **CLI and
-controller** together; existing compatible Mesh workers/relays need no new RPCs.
-
-The workspace directory is an initial location, **not a sandbox**. Mount
-another absolute path below the same local endpoint to browse elsewhere on the
-selected host; an OS volume may prevent navigating above its own mount root.
-Host-account permissions still apply. This unrestricted access can include
-sensitive files stored on that host.
-
-This is WebDAV, not a complete POSIX filesystem or offline synchronization.
-The current controller accepts uploads up to **128 MiB per request**; reverse
-proxies may impose lower limits. Larger downloads and host-side copies do not
-use this upload limit.
-Windows needs an available WebClient service and trusted local HTTPS
-(`--tls-cert FILE --tls-key FILE`); do not weaken Basic-auth settings to use
-HTTP. Linux mounting depends on an already-installed desktop DAV client or
-filesystem driver. Native Finder/mount_webdav, Windows and Linux desktop
-mounting have not been validated in the Linux development environment.
-See [WebDAV and exact-path file operations](docs/API.md#workspace-webdav-and-exact-path-file-operations)
-for authentication, path syntax and protocol limits.
-
 ### Run with Docker
 
 ```bash
