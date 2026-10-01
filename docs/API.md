@@ -264,9 +264,9 @@ filenames, exclusive locks rejecting concurrent tokenless writes, mkdir,
 rename/delete, editor-style replacement, alternate mounting outside the initial
 workspace directory, unmount and CLI shutdown. No extra mounting software or
 TLS certificate was needed on the Mac.
-Graphical Finder/editor workflows, Windows WebClient and Linux desktop mounting
-remain unverified. Windows WebClient is deprecated and normally requires trusted
-HTTPS for Basic auth, while Linux may require additional client components.
+Windows WebClient and Linux desktop mounting remain unverified. Windows
+WebClient is deprecated and normally requires trusted HTTPS for Basic auth,
+while Linux may require additional client components.
 
 ### Direct execution-host commands
 
