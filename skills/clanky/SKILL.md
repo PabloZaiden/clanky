@@ -1,6 +1,6 @@
 ---
 name: clanky
-description: Use the Clanky CLI to inspect and operate an authenticated Clanky instance, execute commands or transfer files on workspaces and registered servers, preview remote services, or manage Mesh workers and relays when explicitly requested. Activate when a user wants to query Clanky state, discover API endpoints, create or monitor tasks, interact with chats or agents, stream events, or automate Clanky through the `clanky` command.
+description: Use the Clanky CLI to inspect and operate an authenticated Clanky instance, execute commands or transfer files on workspaces and registered servers, expose a workspace through local WebDAV, preview remote services, or manage Mesh workers and relays when explicitly requested. Activate when a user wants to query Clanky state, discover API endpoints, create or monitor tasks, interact with chats or agents, stream events, mount a workspace, or automate Clanky through the `clanky` command.
 compatibility: Requires `clanky` on PATH. Normal operations require existing CLI authentication and access to the target instance; worker bootstrap initializes its own API-key access.
 ---
 
@@ -266,6 +266,42 @@ case-sensitive workspace name. Names must be unique. They use the selected
 profile's credentials, or the `CLANKY_BASE_URL`/`CLANKY_API_KEY` environment
 pair. `clanky ws` remains the realtime event bridge and is not a command
 execution or file-transfer transport.
+
+## Mounting a workspace through WebDAV
+
+When the user requests filesystem mounting, run the bridge on the client
+computer, not the controller or worker:
+
+```bash
+clanky workspace webdav <WORKSPACE_ID_OR_NAME>
+clanky workspace webdav <WORKSPACE_ID_OR_NAME> --read-only
+```
+
+The foreground command binds only to `127.0.0.1` and prints the URL and random
+per-run local credentials. It is read/write by default. Use those credentials
+with the OS WebDAV client, never the controller API key. Keep the command
+running while mounted; unmount before stopping it with Ctrl+C.
+
+On macOS, native directory mounting needs no additional client installation:
+
+```bash
+mkdir -p "$HOME/Clanky"
+mount_webdav -i '<printed URL>' "$HOME/Clanky"
+umount "$HOME/Clanky"
+```
+
+`--local-port PORT` selects the loopback port. Optional
+`--tls-cert FILE --tls-key FILE` must be paired and trusted by the native client;
+Windows WebClient normally requires HTTPS for Basic auth. Do not weaken OS
+authentication policy or assume every Linux installation has a DAV client.
+
+The workspace directory is an initial location, not a sandbox: mount another
+absolute host-path URL under the same endpoint to access another directory,
+subject to host-account permissions. `--read-only` restricts this listener,
+not independent API/agent access. Update CLI and controller together; compatible
+workers/relays need no new RPCs. This is not full POSIX or offline sync.
+Consult [the canonical WebDAV reference](../../docs/API.md#workspace-webdav-and-exact-path-file-operations)
+for upload limits, security, protocol behavior and verified native-client scope.
 
 ## Running commands on registered servers
 

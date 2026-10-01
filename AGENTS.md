@@ -598,6 +598,18 @@ expect(task.state.status).toBe("completed");
 - **Never use time estimates** in plans, documentation, or task descriptions. Time estimates are inherently inaccurate and create false expectations. Use complexity levels (Low, Medium, High) instead.
 - **Avoid code duplication**: When you find yourself writing similar code in multiple places, refactor to extract the common logic into a shared function or method. Use parameters to handle variations rather than duplicating code. This improves maintainability and reduces the risk of inconsistent behavior.
 
+## Documentation and README changes
+
+- Document new and changed features in the appropriate guide or reference under
+  `docs/`, and update applicable skills with their operational guidance.
+- Keep `README.md` a short introduction, installation/quick-start guide and
+  navigation entry point. Feature walkthroughs, detailed command usage,
+  limitations and validation evidence belong in documentation and skills.
+- **Ask for explicit user confirmation before adding README sections or making
+  major README changes.** Approval to implement a feature does not authorize
+  expanding or restructuring the README. Small factual corrections and link
+  fixes within existing content do not require separate confirmation.
+
 ## Code Review Learnings — Anti-Patterns to Avoid
 
 These guidelines are distilled from a comprehensive code review (108+ findings). Follow these to avoid repeating past mistakes.

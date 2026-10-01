@@ -138,6 +138,28 @@ must be supplied together and use a certificate trusted by the native client
 for the local hostname/address. Clanky never installs a certificate or changes
 the OS's authentication policy.
 
+Start the bridge on the client computer and keep it running while mounted:
+
+```bash
+clanky workspace webdav my-workspace
+# Or expose a read-only volume:
+clanky workspace webdav my-workspace --read-only
+```
+
+On macOS, Finder's **Go > Connect to Server** (`Cmd+K`) accepts the printed URL
+and temporary local username/password. To mount into a directory from a terminal:
+
+```bash
+mkdir -p "$HOME/Clanky"
+mount_webdav -i '<printed URL>' "$HOME/Clanky"
+# Unmount before stopping the bridge with Ctrl+C:
+umount "$HOME/Clanky"
+```
+
+Clanky does not install FUSE or other mounting software. `Ctrl+C` closes its
+local listener; WebDAV does not provide a complete POSIX filesystem or offline
+synchronization.
+
 URLs represent absolute paths on the selected host, percent-encoding each
 component: `/home/user/project/` for POSIX, `/C%3A/project/` for a Windows
 drive, and `/UNC/server/share/project/` for UNC paths. The initial URL is the
@@ -235,10 +257,16 @@ delete or rename.
 
 The CLI and controller must be updated. Workers/relays that support the current
 `fileOperations` and `commandExecution` contracts need no protocol update.
-Native macOS, Windows WebClient and Linux desktop mounting remain unverified;
-Windows WebClient is deprecated and normally requires trusted HTTPS for Basic
-auth, while Linux may require additional client components. Protocol/API
-validation is not proof of Finder/editor compatibility.
+Native `mount_webdav -S -i` was validated on macOS 27.0.1 arm64 with the CLI
+listening on loopback HTTP and an authenticated HTTPS controller/Linux Mesh
+worker. Verified native read/write and read-only mounting, binary and Unicode
+filenames, exclusive locks rejecting concurrent tokenless writes, mkdir,
+rename/delete, editor-style replacement, alternate mounting outside the initial
+workspace directory, unmount and CLI shutdown. No extra mounting software or
+TLS certificate was needed on the Mac.
+Graphical Finder/editor workflows, Windows WebClient and Linux desktop mounting
+remain unverified. Windows WebClient is deprecated and normally requires trusted
+HTTPS for Basic auth, while Linux may require additional client components.
 
 ### Direct execution-host commands
 
