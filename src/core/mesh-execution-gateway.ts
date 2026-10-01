@@ -28,6 +28,7 @@ import {
   MESH_EXECUTION_MAX_RESULT_BYTES,
   MESH_EXECUTION_MAX_MESSAGE_BYTES,
   MESH_EXECUTION_SESSION_TTL_MS,
+  MESH_EXECUTION_MAX_IN_FLIGHT_REQUESTS,
   MESH_ACP_SESSION_TTL_MS,
   MESH_EXECUTION_PROTOCOL_VERSION,
   type MeshExecutionProtocolVersion,
@@ -78,7 +79,6 @@ import {
 import type { MeshExecutionOperation } from "@/shared/mesh-execution";
 
 const MAX_SESSIONS = 256;
-const MAX_IN_FLIGHT_REQUESTS = 8;
 const MAX_REQUEST_IDS = 512;
 const EXCLUSIVE_EXECUTION_OPERATIONS = new Set<MeshExecutionOperation>([
   "writeFile",
@@ -867,7 +867,7 @@ export class MeshExecutionGateway {
     }
 
     this.claimRequestId(session, request.requestId);
-    if (session.inFlight >= MAX_IN_FLIGHT_REQUESTS) {
+    if (session.inFlight >= MESH_EXECUTION_MAX_IN_FLIGHT_REQUESTS) {
       throw new DomainError("mesh_execution_limit_exceeded", "The execution session has too many in-flight requests.");
     }
     while (this.asyncCommands.size >= MESH_EXECUTION_ASYNC_MAX_COMMANDS) {
@@ -1165,7 +1165,7 @@ export class MeshExecutionGateway {
     }
 
     this.claimRequestId(session, request.requestId);
-    if (session.inFlight >= MAX_IN_FLIGHT_REQUESTS) {
+    if (session.inFlight >= MESH_EXECUTION_MAX_IN_FLIGHT_REQUESTS) {
       throw new DomainError("mesh_execution_limit_exceeded", "The execution session has too many in-flight requests.");
     }
     session.inFlight += 1;
@@ -1464,7 +1464,7 @@ export class MeshExecutionGateway {
       sessionToken,
       { memberErrorCode: "mesh_peer_not_trusted" },
     );
-    if (session.inFlight >= MAX_IN_FLIGHT_REQUESTS) {
+    if (session.inFlight >= MESH_EXECUTION_MAX_IN_FLIGHT_REQUESTS) {
       throw new DomainError("mesh_execution_limit_exceeded", "The execution session has too many in-flight requests.");
     }
     if (signal?.aborted) {
@@ -1513,7 +1513,7 @@ export class MeshExecutionGateway {
       sessionToken,
       { memberErrorCode: "mesh_peer_not_trusted" },
     );
-    if (session.inFlight >= MAX_IN_FLIGHT_REQUESTS) {
+    if (session.inFlight >= MESH_EXECUTION_MAX_IN_FLIGHT_REQUESTS) {
       throw new DomainError("mesh_execution_limit_exceeded", "The execution session has too many in-flight requests.");
     }
     const writeFileStream = session.executor.writeFileStream;

@@ -5,6 +5,7 @@ import type {
   FileMoveResult,
   FileStreamOptions,
   FileSystemMetadata,
+  FileSystemMetadataOptions,
 } from "../../src/core/command-executor";
 
 import { createMockBackend } from "../mocks/mock-backend";
@@ -95,7 +96,7 @@ describe("workspace files API integration", () => {
 
     override async getFileMetadata(
       path: string,
-      options?: { includeContentHash?: boolean },
+      options?: FileSystemMetadataOptions,
     ): Promise<FileSystemMetadata | null> {
       if (path.endsWith("/large-download.bin")) {
         return {

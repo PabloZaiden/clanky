@@ -16,7 +16,9 @@ import type {
   FileMoveResult,
   FileStreamOptions,
   FileSystemDirectoryEntry,
+  FileSystemListOptions,
   FileSystemMetadata,
+  FileSystemMetadataOptions,
   FileWriteStreamOptions,
   FileWriteStreamResult,
   GitCommandOptions,
@@ -387,7 +389,7 @@ export class TestCommandExecutor implements CommandExecutor {
   /**
    * List files in a directory locally.
    */
-  async listDirectory(path: string, options?: { includeHidden?: boolean }): Promise<string[]> {
+  async listDirectory(path: string, options?: FileSystemListOptions): Promise<string[]> {
     try {
       const entries = await readdir(path);
       return (options?.includeHidden ?? false) ? entries : entries.filter((entry) => !entry.startsWith("."));
@@ -398,14 +400,14 @@ export class TestCommandExecutor implements CommandExecutor {
 
   async getFileMetadata(
     path: string,
-    options?: { includeContentHash?: boolean },
+    options?: FileSystemMetadataOptions,
   ): Promise<FileSystemMetadata | null> {
     return await this.localFileSystem.getFileMetadata(path, options);
   }
 
   async listDirectoryEntries(
     path: string,
-    options?: { includeHidden?: boolean },
+    options?: FileSystemListOptions,
   ): Promise<FileSystemDirectoryEntry[]> {
     return await this.localFileSystem.listDirectoryEntries(path, options);
   }

@@ -11,7 +11,9 @@ import type {
   FileMoveResult,
   FileStreamOptions,
   FileSystemDirectoryEntry,
+  FileSystemListOptions,
   FileSystemMetadata,
+  FileSystemMetadataOptions,
   FileWriteStreamOptions,
   FileWriteStreamResult,
   GitCommandOptions,
@@ -180,20 +182,20 @@ export class MeshCommandExecutor implements CommandExecutor {
     return await this.client.streamFile(path, options?.signal);
   }
 
-  async listDirectory(path: string, options?: { includeHidden?: boolean }): Promise<string[]> {
+  async listDirectory(path: string, options?: FileSystemListOptions): Promise<string[]> {
     return await this.client.listDirectory(path, options);
   }
 
   async getFileMetadata(
     path: string,
-    options?: { includeContentHash?: boolean },
+    options?: FileSystemMetadataOptions,
   ): Promise<FileSystemMetadata | null> {
     return await this.client.getFileMetadata(path, options);
   }
 
   async listDirectoryEntries(
     path: string,
-    options?: { includeHidden?: boolean },
+    options?: FileSystemListOptions,
   ): Promise<FileSystemDirectoryEntry[]> {
     return await this.client.listDirectoryEntries(path, options);
   }
