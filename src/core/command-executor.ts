@@ -92,6 +92,16 @@ export interface FileStreamOptions {
   range?: ByteRange;
 }
 
+export interface FileSystemListOptions {
+  includeHidden?: boolean;
+  signal?: AbortSignal;
+}
+
+export interface FileSystemMetadataOptions {
+  includeContentHash?: boolean;
+  signal?: AbortSignal;
+}
+
 export interface FileWriteStreamOptions {
   /** Abort signal for cancelling the file write */
   signal?: AbortSignal;
@@ -264,14 +274,14 @@ export interface CommandExecutor {
    * @param options - Listing options
    * @returns Array of file/directory names in the directory
    */
-  listDirectory(path: string, options?: { includeHidden?: boolean }): Promise<string[]>;
+  listDirectory(path: string, options?: FileSystemListOptions): Promise<string[]>;
 
   /**
    * Read portable metadata for a file or directory.
    */
   getFileMetadata(
     path: string,
-    options?: { includeContentHash?: boolean },
+    options?: FileSystemMetadataOptions,
   ): Promise<FileSystemMetadata | null>;
 
   /**
@@ -279,7 +289,7 @@ export interface CommandExecutor {
    */
   listDirectoryEntries(
     path: string,
-    options?: { includeHidden?: boolean },
+    options?: FileSystemListOptions,
   ): Promise<FileSystemDirectoryEntry[]>;
 
   /**

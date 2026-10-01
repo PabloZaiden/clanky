@@ -16,7 +16,9 @@ import type {
   FileMoveResult,
   FileStreamOptions,
   FileSystemDirectoryEntry,
+  FileSystemListOptions,
   FileSystemMetadata,
+  FileSystemMetadataOptions,
   FileWriteStreamOptions,
   FileWriteStreamResult,
   GitCommandOptions,
@@ -1072,7 +1074,7 @@ export class CommandExecutorImpl implements CommandExecutor {
     return result.success;
   }
 
-  async listDirectory(path: string, options?: { includeHidden?: boolean }): Promise<string[]> {
+  async listDirectory(path: string, options?: FileSystemListOptions): Promise<string[]> {
     const includeHidden = options?.includeHidden ?? false;
     if (this.localFileSystem) {
       return await this.localFileSystem.listDirectory(path, options);
@@ -1086,6 +1088,7 @@ export class CommandExecutorImpl implements CommandExecutor {
       includeHidden ? "1" : "0",
     ], {
       logFailures: false,
+      signal: options?.signal,
     });
     if (!result.success) {
       throw new Error(
@@ -1101,7 +1104,7 @@ export class CommandExecutorImpl implements CommandExecutor {
 
   async getFileMetadata(
     path: string,
-    options?: { includeContentHash?: boolean },
+    options?: FileSystemMetadataOptions,
   ): Promise<FileSystemMetadata | null> {
     if (this.localFileSystem) {
       return await this.localFileSystem.getFileMetadata(path, options);
@@ -1116,7 +1119,7 @@ export class CommandExecutorImpl implements CommandExecutor {
         path,
         options?.includeContentHash === false ? "0" : "1",
       ],
-      { logFailures: false },
+      { logFailures: false, signal: options?.signal },
     );
     if (!result.success) {
       if (result.exitCode === 2) {
@@ -1155,7 +1158,7 @@ export class CommandExecutorImpl implements CommandExecutor {
 
   async listDirectoryEntries(
     path: string,
-    options?: { includeHidden?: boolean },
+    options?: FileSystemListOptions,
   ): Promise<FileSystemDirectoryEntry[]> {
     if (this.localFileSystem) {
       return await this.localFileSystem.listDirectoryEntries(path, options);
@@ -1165,7 +1168,7 @@ export class CommandExecutorImpl implements CommandExecutor {
     const entries = await Promise.all(names.map(async (name) => {
       const metadata = await this.getFileMetadata(
         posix.join(path, name),
-        { includeContentHash: false },
+        { includeContentHash: false, signal: options?.signal },
       );
       return metadata
         ? {

@@ -29,7 +29,9 @@ import type {
   FileMoveResult,
   FileStreamOptions,
   FileSystemDirectoryEntry,
+  FileSystemListOptions,
   FileSystemMetadata,
+  FileSystemMetadataOptions,
   FileWriteStreamOptions,
   FileWriteStreamResult,
 } from "../command-executor";
@@ -183,7 +185,7 @@ export class LocalFileSystem {
 
   async listDirectory(
     path: string,
-    options?: { includeHidden?: boolean },
+    options?: FileSystemListOptions,
   ): Promise<string[]> {
     const entries = await readdir(path);
     return options?.includeHidden
@@ -193,7 +195,7 @@ export class LocalFileSystem {
 
   async getFileMetadata(
     path: string,
-    options?: { includeContentHash?: boolean },
+    options?: FileSystemMetadataOptions,
   ): Promise<FileSystemMetadata | null> {
     let linkStats;
     try {
@@ -236,7 +238,7 @@ export class LocalFileSystem {
 
   async listDirectoryEntries(
     path: string,
-    options?: { includeHidden?: boolean },
+    options?: FileSystemListOptions,
   ): Promise<FileSystemDirectoryEntry[]> {
     const entries = await readdir(path, { withFileTypes: true });
     const visibleEntries = options?.includeHidden

@@ -68,6 +68,19 @@ test("workspace WebDAV uses Mesh streaming and exec, pins its host and refuses l
     const path = `${directory}/binary.bin`;
     const copy = `${directory}/copy.bin`;
     expect((await request(directory, { method: "MKCOL" })).status).toBe(201);
+    const listingNames = Array.from({ length: 12 }, (_, index) => `entry-${String(index).padStart(2, "0")}.txt`);
+    await Promise.all(listingNames.map(async (name) => await Bun.write(`${directory}/${name}`, name)));
+    const listings = await Promise.all(Array.from({ length: 3 }, async () => await request(directory, {
+      method: "PROPFIND",
+      headers: { depth: "1", "content-type": "application/xml" },
+      body: '<D:propfind xmlns:D="DAV:"><D:allprop/></D:propfind>',
+    })));
+    expect(listings.map((response) => response.status)).toEqual([207, 207, 207]);
+    for (const response of listings) {
+      const xml = await response.text();
+      for (const name of listingNames) expect(xml).toContain(encodeURIComponent(name));
+    }
+
     const bytes = new Uint8Array(10 * 1_024 * 1_024).fill(193);
     bytes[0] = 0;
     bytes[bytes.length - 1] = 255;

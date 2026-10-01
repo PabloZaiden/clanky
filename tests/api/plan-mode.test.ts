@@ -23,6 +23,7 @@ import {
 } from "../helpers/git-fixtures";
 import { pollUntil } from "../helpers/polling";
 import { fetchTestLocalExecutionHost } from "../setup";
+import type { FileSystemListOptions } from "../../src/core/command-executor";
 
 // Default test model for task creation (model is now required)
 const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };
@@ -39,7 +40,7 @@ interface PlanTaskResponse extends Record<string, unknown> {
 class FailingPlanningListExecutor extends TestCommandExecutor {
   override async listDirectory(
     path: string,
-    options?: { includeHidden?: boolean },
+    options?: FileSystemListOptions,
   ): Promise<string[]> {
     if (path.endsWith(".clanky-planning")) {
       throw new Error("remote planning directory is unreadable");

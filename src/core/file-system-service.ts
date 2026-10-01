@@ -12,6 +12,7 @@ import { requireCurrentUserId } from "../context/user-context";
 import { DomainError } from "../domain/domain-error";
 import type { FileStreamOptions, FileSystemMetadata } from "./command-executor";
 import type { FileExplorerTarget } from "./file-explorer-service";
+import { MESH_EXECUTION_MAX_IN_FLIGHT_REQUESTS } from "../shared/mesh-execution";
 import {
   basenameExecutionPath, dirnameExecutionPath, executionPathsEqual, joinExecutionPath,
   normalizeExecutionRoot, resolveExecutionPathUnscoped,
@@ -139,20 +140,25 @@ export class FileSystemService {
     };
   }
 
-  async stat(target: FileExplorerTarget, requested: string, hash = false): Promise<FileSystemEntry | null> {
+  async stat(
+    target: FileExplorerTarget, requested: string, hash = false, signal?: AbortSignal,
+  ): Promise<FileSystemEntry | null> {
     const path = pathFor(target, requested);
-    let metadata = await target.executor.getFileMetadata(path, { includeContentHash: false });
+    assertActive(signal);
+    let metadata = await target.executor.getFileMetadata(path, { includeContentHash: false, signal });
     if (hash && metadata?.kind === "file") {
       if (!await target.executor.fileExists(path)) {
         throw new DomainError("file_system_invalid_type", "A regular file is required.");
       }
-      metadata = await target.executor.getFileMetadata(path, { includeContentHash: true });
+      metadata = await target.executor.getFileMetadata(path, { includeContentHash: true, signal });
     }
     return metadata ? entryFor(target, path, metadata) : null;
   }
 
-  private async requireEntry(target: FileExplorerTarget, path: string, hash = false): Promise<FileSystemEntry> {
-    const entry = await this.stat(target, path, hash);
+  private async requireEntry(
+    target: FileExplorerTarget, path: string, hash = false, signal?: AbortSignal,
+  ): Promise<FileSystemEntry> {
+    const entry = await this.stat(target, path, hash, signal);
     if (!entry) throw new DomainError("file_system_not_found", "The resource does not exist.");
     return entry;
   }
@@ -232,19 +238,22 @@ export class FileSystemService {
     });
   }
 
-  async list(target: FileExplorerTarget, path: string): Promise<FileSystemResult> {
-    const entry = await this.requireEntry(target, path);
+  async list(target: FileExplorerTarget, path: string, signal?: AbortSignal): Promise<FileSystemResult> {
+    const entry = await this.requireEntry(target, path, false, signal);
     if (entry.kind !== "directory") return { entry, entries: [], locks: this.locks.applicable(this.key(target), entry.path) };
-    const nodes = await target.executor.listDirectoryEntries(entry.path, { includeHidden: true });
+    const nodes = await target.executor.listDirectoryEntries(entry.path, { includeHidden: true, signal });
     if (nodes.length > FILE_SYSTEM_MAX_ENTRIES) {
       throw new DomainError("file_system_limit", "Directory listing limit exceeded.");
     }
     const entries: FileSystemEntry[] = [];
     let bytes = Buffer.byteLength(JSON.stringify(entry));
-    for (let offset = 0; offset < nodes.length; offset += 16) {
-      const batch = await Promise.all(nodes.slice(offset, offset + 16).map(async (node) => {
+    for (let offset = 0; offset < nodes.length; offset += MESH_EXECUTION_MAX_IN_FLIGHT_REQUESTS) {
+      assertActive(signal);
+      const batch = await Promise.all(nodes.slice(
+        offset, offset + MESH_EXECUTION_MAX_IN_FLIGHT_REQUESTS,
+      ).map(async (node) => {
         const path = joinExecutionPath(target.executor.pathStyle, entry.path, node.name);
-        return await this.stat(target, path);
+        return await this.stat(target, path, false, signal);
       }));
       bytes += Buffer.byteLength(JSON.stringify(batch));
       if (bytes > FILE_SYSTEM_MAX_METADATA_BYTES) {
@@ -289,10 +298,10 @@ export class FileSystemService {
   async execute(target: FileExplorerTarget, command: FileSystemCommand, signal?: AbortSignal): Promise<FileSystemResult | FileSystemInfo> {
     if (command.operation === "info") return this.info(target);
     if (command.operation === "stat") {
-      const entry = await this.stat(target, command.path, command.hash);
+      const entry = await this.stat(target, command.path, command.hash, signal);
       return { entry, locks: this.locks.applicable(this.key(target), pathFor(target, command.path)) };
     }
-    if (command.operation === "list") return await this.list(target, command.path);
+    if (command.operation === "list") return await this.list(target, command.path, signal);
     return await this.serialize(target, async () => {
       if (command.operation === "releaseLocks") {
         this.locks.release(this.key(target), command.ownerId);

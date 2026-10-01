@@ -8,6 +8,7 @@ import type {
   FileStreamOptions,
   FileSystemDirectoryEntry,
   FileSystemMetadata,
+  FileSystemMetadataOptions,
   GitCommandOptions,
   GitEnvironmentVariableName,
 } from "../../src/core/command-executor";
@@ -369,7 +370,7 @@ export class ProvisioningTestExecutor implements CommandExecutor {
 
   async getFileMetadata(
     path: string,
-    _options?: { includeContentHash?: boolean },
+    _options?: FileSystemMetadataOptions,
   ): Promise<FileSystemMetadata | null> {
     if (this.files.has(path)) {
       const content = this.files.get(path)!;
