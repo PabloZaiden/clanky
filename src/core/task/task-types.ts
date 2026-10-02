@@ -51,8 +51,6 @@ export interface CreateTaskOptions {
   useWorktree?: boolean;
   /** Clear the .clanky-planning folder contents before starting (default: false) */
   clearPlanningFolder?: boolean;
-  /** Start in plan creation mode instead of immediate execution (required) */
-  planMode: boolean;
   /** Whether a ready plan should be automatically accepted and executed */
   autoAcceptPlan?: boolean;
   /** Whether the accepted plan should continue into push and automatic PR flow */

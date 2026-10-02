@@ -99,8 +99,7 @@ export function DraftTaskComposer({
       return false;
     }
     startRequestedRef.current = true;
-    const optimisticStatus = request.planMode ? "planning" : "starting";
-    onMarkTaskStarting(task.config.id, optimisticStatus);
+    onMarkTaskStarting(task.config.id, "planning");
 
     void (async () => {
       const resetFailedStart = async (): Promise<void> => {
@@ -213,20 +212,19 @@ export function DraftTaskComposer({
         defaultBranch={defaultBranch}
         editTaskId={task.config.id}
         initialTaskData={{
-           name: task.config.name,
-           directory: task.config.directory,
-           prompt: task.config.prompt,
-           issueNumber: task.config.issueNumber,
-           model: task.config.model,
-           cheapModel: task.config.cheapModel,
-           maxIterations: Number.isFinite(task.config.maxIterations) ? task.config.maxIterations : undefined,
+            name: task.config.name,
+            directory: task.config.directory,
+            prompt: task.config.prompt,
+            issueNumber: task.config.issueNumber,
+            model: task.config.model,
+            cheapModel: task.config.cheapModel,
+            maxIterations: Number.isFinite(task.config.maxIterations) ? task.config.maxIterations : undefined,
           maxConsecutiveErrors: task.config.maxConsecutiveErrors,
           activityTimeoutSeconds: task.config.activityTimeoutSeconds,
           baseBranch: task.config.baseBranch,
           useWorktree: task.config.useWorktree,
-           clearPlanningFolder: task.config.clearPlanningFolder,
-           planMode: task.config.planMode,
-           autoAcceptPlan: task.config.autoAcceptPlan,
+            clearPlanningFolder: task.config.clearPlanningFolder,
+            autoAcceptPlan: task.config.autoAcceptPlan,
             workspaceId: task.config.workspaceId,
           }}
         isEditingDraft

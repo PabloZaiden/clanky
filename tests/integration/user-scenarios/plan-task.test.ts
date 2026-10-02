@@ -182,12 +182,10 @@ describe("Plan + Task User Scenarios", () => {
       await teardownTestServer(ctx);
     });
 
-    test("creates task in planning status with planMode: true", async () => {
-      // Create task with plan mode via API (simulating UI "Create with Plan" option)
-      const { status, body } = await createTaskViaAPI(ctx.baseUrl, {
+    test("creates every task in planning before manual approval", async () => {
+      const { status, body } = await createTaskViaAPI(ctx, {
         directory: ctx.workDir,
         prompt: "Create a comprehensive plan first",
-        planMode: true,
         autoAcceptPlan: false,
       });
 
@@ -231,10 +229,9 @@ describe("Plan + Task User Scenarios", () => {
         })
       );
 
-      const { status, body } = await createTaskViaAPI(ctx.baseUrl, {
+      const { status, body } = await createTaskViaAPI(ctx, {
         directory: ctx.workDir,
         prompt: "Create a plan and execute it immediately",
-        planMode: true,
       });
 
       expect(status).toBe(201);
@@ -257,10 +254,9 @@ describe("Plan + Task User Scenarios", () => {
           })
         );
 
-        const { status, body } = await createTaskViaAPI(ctx.baseUrl, {
+        const { status, body } = await createTaskViaAPI(ctx, {
           directory: ctx.workDir,
           prompt: "Create a plan and carry it through push and PR automation",
-          planMode: true,
           autoAcceptPlan: false,
           fullyAutonomous: true,
         });
@@ -326,10 +322,9 @@ describe("Plan + Task User Scenarios", () => {
           })
         );
 
-        const { status, body } = await createTaskViaAPI(ctx.baseUrl, {
+        const { status, body } = await createTaskViaAPI(ctx, {
           directory: ctx.workDir,
           prompt: "Create a plan, let me approve it, then continue autonomously",
-          planMode: true,
           autoAcceptPlan: false,
           fullyAutonomous: false,
         });
@@ -403,10 +398,9 @@ describe("Plan + Task User Scenarios", () => {
       const originalBranch = await getCurrentBranch(ctx.workDir);
 
       // Create task with plan mode
-      const { body } = await createTaskViaAPI(ctx.baseUrl, {
+      const { body } = await createTaskViaAPI(ctx, {
         directory: ctx.workDir,
         prompt: "Create a plan to discard",
-        planMode: true,
         autoAcceptPlan: false,
       });
       const task = body as Task;
@@ -464,10 +458,9 @@ describe("Plan + Task User Scenarios", () => {
         const originalBranch = await getCurrentBranch(ctx.workDir);
 
         // Create task with plan mode
-        const { body } = await createTaskViaAPI(ctx.baseUrl, {
+        const { body } = await createTaskViaAPI(ctx, {
           directory: ctx.workDir,
           prompt: "Create a plan with feedback",
-          planMode: true,
           autoAcceptPlan: false,
         });
         const task = body as Task;
@@ -569,10 +562,9 @@ describe("Plan + Task User Scenarios", () => {
       }));
 
       // Create a task in plan mode
-      const { body } = await createTaskViaAPI(ctx.baseUrl, {
+      const { body } = await createTaskViaAPI(ctx, {
         directory: ctx.workDir,
         prompt: "Create a plan that survives reset",
-        planMode: true,
         autoAcceptPlan: false,
       });
       const task = body as Task;

@@ -5,7 +5,6 @@ interface TemplateSelectorProps {
   selectedTemplate: string;
   onChange: (templateId: string) => void;
   onPromptChange: (prompt: string) => void;
-  onPlanModeChange: (planMode: boolean) => void;
   promptRef: RefObject<string>;
 }
 
@@ -13,7 +12,6 @@ export function TemplateSelector({
   selectedTemplate,
   onChange,
   onPromptChange,
-  onPlanModeChange,
   promptRef,
 }: TemplateSelectorProps) {
   return (
@@ -35,9 +33,6 @@ export function TemplateSelector({
             if (template) {
               onPromptChange(template.prompt);
               promptRef.current = template.prompt;
-              if (template.taskDefaults?.planMode !== undefined) {
-                onPlanModeChange(template.taskDefaults.planMode);
-              }
             }
           }
         }}

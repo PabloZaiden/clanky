@@ -36,10 +36,8 @@ export async function createTaskImpl(ctx: TaskCtx, options: CreateTaskOptions): 
   const id = crypto.randomUUID();
   const now = createTimestamp();
   const name = options.name.trim();
-  const fullyAutonomous = options.planMode ? (options.fullyAutonomous ?? DEFAULT_TASK_CONFIG.fullyAutonomous) : false;
-  const autoAcceptPlan = options.planMode
-    ? (options.autoAcceptPlan ?? DEFAULT_TASK_CONFIG.autoAcceptPlan)
-    : false;
+  const fullyAutonomous = options.fullyAutonomous ?? DEFAULT_TASK_CONFIG.fullyAutonomous;
+  const autoAcceptPlan = options.autoAcceptPlan ?? DEFAULT_TASK_CONFIG.autoAcceptPlan;
 
   if (!name) {
     throw new TaskOperationError("invalid_task_input", "Task name is required", {
@@ -104,7 +102,6 @@ export async function createTaskImpl(ctx: TaskCtx, options: CreateTaskOptions): 
     baseBranch: options.baseBranch,
     useWorktree,
     clearPlanningFolder: options.clearPlanningFolder ?? DEFAULT_TASK_CONFIG.clearPlanningFolder,
-    planMode: options.planMode,
     autoAcceptPlan,
     fullyAutonomous,
     mode: DEFAULT_TASK_CONFIG.mode,
@@ -115,7 +112,7 @@ export async function createTaskImpl(ctx: TaskCtx, options: CreateTaskOptions): 
   if (options.draft) {
     assertValidTransition(state.status, "draft", "createTask");
     state.status = "draft";
-  } else if (options.planMode) {
+  } else {
     assertValidTransition(state.status, "planning", "createTask");
     state.status = "planning";
     state.planMode = {
@@ -262,17 +259,12 @@ function syncActivePlanningConfig(engine: { config: TaskConfig }, updatedConfig:
   engine.config.updatedAt = updatedConfig.updatedAt;
 }
 
-function isPostApprovalFullyAutonomousMutable(
-  config: TaskConfig,
-  state: TaskState,
-): boolean {
-  return config.planMode
-    && state.planMode?.active === false
+function isPostApprovalFullyAutonomousMutable(state: TaskState): boolean {
+  return state.planMode?.active === false
     && POST_APPROVAL_FULLY_AUTONOMOUS_EDITABLE_STATUSES.has(state.status);
 }
 
 function assertAllowedPlanModeUpdateKeys(
-  config: TaskConfig,
   state: TaskState,
   updates: Partial<Omit<TaskConfig, "id" | "createdAt">>,
 ): void {
@@ -287,14 +279,14 @@ function assertAllowedPlanModeUpdateKeys(
     );
     if (disallowedPlanningKeys.length > 0) {
       throw createTaskUpdateError(
-        "Only auto-accept plan and fully autonomous task can be changed while plan mode is running.",
+        "Only auto-accept plan and fully autonomous task can be changed while the task is planning.",
         "planning_update_restricted",
       );
     }
     return;
   }
 
-  if (isPostApprovalFullyAutonomousMutable(config, state)) {
+  if (isPostApprovalFullyAutonomousMutable(state)) {
     const disallowedPostApprovalKeys = definedKeys.filter(
       (key) => !POST_APPROVAL_MUTABLE_CONFIG_KEYS.has(key),
     );
@@ -325,7 +317,7 @@ function syncPostApprovalFullyAutonomousPending(
   config: TaskConfig,
   state: TaskState,
 ): boolean {
-  if (!isPostApprovalFullyAutonomousMutable(config, state)) {
+  if (!isPostApprovalFullyAutonomousMutable(state)) {
     return false;
   }
 
@@ -358,13 +350,13 @@ export async function updateTaskImpl(
   const currentState = engine?.state ?? task.state;
 
   assertNameUpdateAllowed(currentState, updates);
-  assertAllowedPlanModeUpdateKeys(currentConfig, currentState, updates);
+  assertAllowedPlanModeUpdateKeys(currentState, updates);
 
   if (engine) {
     const status = engine.state.status;
     if (
       status !== "planning"
-      && !isPostApprovalFullyAutonomousMutable(currentConfig, engine.state)
+      && !isPostApprovalFullyAutonomousMutable(engine.state)
       && (status === "waiting" || isActiveStatus(status))
     ) {
       throw createTaskUpdateError("Cannot update an active task. Stop it first.", "active_task_update_restricted");
@@ -410,11 +402,6 @@ export async function updateTaskImpl(
       : currentConfig.git,
     updatedAt: createTimestamp(),
   };
-
-  if (!updatedConfig.planMode) {
-    updatedConfig.autoAcceptPlan = false;
-    updatedConfig.fullyAutonomous = false;
-  }
 
   const shouldTriggerCompletedAutonomy = syncPostApprovalFullyAutonomousPending(updatedConfig, currentState);
 

@@ -58,7 +58,6 @@ async function applyTaskUpdates(
     if (body.baseBranch !== undefined) updates.baseBranch = body.baseBranch;
     if (body.useWorktree !== undefined) updates.useWorktree = body.useWorktree;
     if (body.clearPlanningFolder !== undefined) updates.clearPlanningFolder = body.clearPlanningFolder;
-    if (body.planMode !== undefined) updates.planMode = body.planMode;
     if (body.autoAcceptPlan !== undefined) updates.autoAcceptPlan = body.autoAcceptPlan;
     if (body.fullyAutonomous !== undefined) updates.fullyAutonomous = body.fullyAutonomous;
     if (body.isPrivate !== undefined) updates.isPrivate = body.isPrivate;
@@ -162,7 +161,7 @@ export const tasksItemRoutes = defineRoutes({
      *
      * Updatable fields: name (draft-only), directory, prompt, model, maxIterations,
      * maxConsecutiveErrors, activityTimeoutSeconds, stopPattern, baseBranch,
-     * clearPlanningFolder, planMode, git, autoAcceptPlan, fullyAutonomous
+     * clearPlanningFolder, git, autoAcceptPlan, fullyAutonomous
      *
      * @returns Updated Task object or 404 if not found
      */

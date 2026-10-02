@@ -5,7 +5,6 @@ const log = createLogger("newTaskPlanningPreferences");
 const NEW_TASK_PLANNING_STORAGE_KEY = "clanky.newTaskPlanningPreferences";
 
 export interface NewTaskPlanningPreferences {
-  planMode: boolean;
   autoAcceptPlan: boolean;
   fullyAutonomous: boolean;
 }
@@ -49,8 +48,7 @@ function isNewTaskPlanningPreferences(
 
   const candidate = value as Record<string, unknown>;
   return (
-    typeof candidate["planMode"] === "boolean"
-    && typeof candidate["autoAcceptPlan"] === "boolean"
+    typeof candidate["autoAcceptPlan"] === "boolean"
     && typeof candidate["fullyAutonomous"] === "boolean"
   );
 }
@@ -75,7 +73,11 @@ export function getStoredNewTaskPlanningPreferences(
       return null;
     }
 
-    return parsed;
+    const preferences = parsed as NewTaskPlanningPreferences;
+    return {
+      autoAcceptPlan: preferences.autoAcceptPlan,
+      fullyAutonomous: preferences.fullyAutonomous,
+    };
   } catch (error) {
     log.warn("Removing invalid stored new task planning preferences", {
       storageKey: NEW_TASK_PLANNING_STORAGE_KEY,

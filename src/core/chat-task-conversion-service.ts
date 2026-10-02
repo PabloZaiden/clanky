@@ -82,7 +82,6 @@ export class ChatTaskConversionService implements ChatTaskConversionPort {
       modelVariant: chat.config.model.variant,
       baseBranch,
       useWorktree: chat.config.useWorktree,
-      planMode: true,
       autoAcceptPlan: false,
       fullyAutonomous: false,
     });
@@ -156,7 +155,6 @@ export class ChatTaskConversionService implements ChatTaskConversionPort {
       modelVariant: working.chat.config.model.variant,
       baseBranch,
       useWorktree: working.chat.config.useWorktree,
-      planMode: true,
       autoAcceptPlan: false,
       fullyAutonomous: false,
     });

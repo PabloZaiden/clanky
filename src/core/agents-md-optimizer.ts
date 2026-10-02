@@ -10,7 +10,7 @@
  */
 
 /** Current version of the Clanky optimization section */
-export const CLANKY_OPTIMIZATION_VERSION = 1;
+export const CLANKY_OPTIMIZATION_VERSION = 2;
 
 /** Marker used to detect if AGENTS.md has already been optimized */
 const MARKER_PATTERN = /<!-- clanky-optimized-v(\d+) -->/;
@@ -39,18 +39,14 @@ When working on tasks, follow this workflow to ensure clarity, goal alignment, a
 - After completing each individual task, **immediately** update \`./.clanky-planning/status.md\` to mark it as completed and note any relevant findings or context.
 - Do **not** wait until the end of a session to batch-update progress — update after every task so that progress is preserved even if the session is interrupted or context is lost.
 
-### Pre-Compaction Persistence
+### Goal Verification
 
-- Before ending your response, update \`./.clanky-planning/status.md\` with:
+- Before considering work complete, check \`./.clanky-planning/plan.md\` and \`./.clanky-planning/status.md\` to ensure all tasks are actually marked as completed.
+- Before your final response, update \`./.clanky-planning/status.md\` with:
   - The task you are currently working on and its current state
   - Updated status of all tasks in the plan
   - Any new learnings, discoveries, or important context gathered
   - What the next steps should be when work resumes
-- This ensures progress is preserved even if the conversation context is compacted or summarized between iterations. Treat the status file as your persistent memory.
-
-### Goal Verification
-
-- Before considering work complete, check \`./.clanky-planning/plan.md\` and \`./.clanky-planning/status.md\` to ensure all tasks are actually marked as completed.
 - Follow this general task:
   1. Write down goals in the plan
   2. Implement the work

@@ -125,7 +125,6 @@ function createTaskForMonitor(directory: string): Task {
       baseBranch: "fixture-default",
       useWorktree: false,
       clearPlanningFolder: false,
-      planMode: false,
       autoAcceptPlan: false,
       fullyAutonomous: false,
       mode: "task",

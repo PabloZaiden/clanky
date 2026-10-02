@@ -170,11 +170,12 @@ export interface ModelInfo {
 /**
  * Request body for POST /api/tasks endpoint.
  * 
- * Creates a new Clanky Task. Non-draft tasks schedule execution immediately
- * and may return with `starting` status while the engine initializes. A task
- * with `draft: true` is saved for later editing.
+ * Creates a new Clanky Task. Non-draft tasks start plan generation and may
+ * return with `planning` status while the engine initializes. A task with
+ * `draft: true` is saved for later editing.
  * 
- * If `planMode: true`, the task starts in plan review mode before execution.
+ * Every task starts by creating or importing a plan. `autoAcceptPlan` controls
+ * whether the task waits for manual approval before execution.
  * 
  * The task name is required and must be provided by the client.
  * 
@@ -209,7 +210,7 @@ export interface GenerateTaskTitleResponse {
 /**
  * Request body for PATCH /api/tasks/:id endpoint.
  * All fields are optional - only provided fields are updated. Name updates
- * are accepted only while the task is still a draft; plan-mode settings have
+ * are accepted only while the task is still a draft; planning settings have
  * additional restrictions while planning or after plan approval.
  * 
  * Type is derived from UpdateTaskRequestSchema - the Zod schema is the

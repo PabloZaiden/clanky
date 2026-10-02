@@ -81,8 +81,6 @@ export function CreateTaskForm({
     setUserChangedBranch,
     selectedTemplate,
     setSelectedTemplate,
-    planMode,
-    setPlanMode,
     autoAcceptPlan,
     setAutoAcceptPlan,
     fullyAutonomous,
@@ -140,11 +138,10 @@ export function CreateTaskForm({
     if (!uploadedPlan) {
       return;
     }
-    setPlanMode(true);
     setAutoAcceptPlan(true);
     setSelectedTemplate("");
     setAttachments([]);
-  }, [setAutoAcceptPlan, setPlanMode, setSelectedTemplate, uploadedPlan]);
+  }, [setAutoAcceptPlan, setSelectedTemplate, uploadedPlan]);
 
   function applyIssueAutofill(issueNumberValue: number, issueTitle?: string) {
     const autofillText = `Address issue #${issueNumberValue}`;
@@ -171,7 +168,7 @@ export function CreateTaskForm({
           error={workspaceError}
           showServerDetails={false}
         />
-        {planningWarning && !planMode && (
+        {planningWarning && (
           <div className="mt-2 flex items-start gap-2 rounded-md bg-amber-50 dark:bg-amber-900/20 p-3 text-sm text-amber-800 dark:text-amber-300">
             <svg
               className="h-5 w-5 flex-shrink-0 text-amber-500"
@@ -223,7 +220,6 @@ export function CreateTaskForm({
             setPrompt(p);
             promptRef.current = p;
           }}
-          onPlanModeChange={setPlanMode}
           promptRef={promptRef}
         />
       )}
@@ -254,7 +250,6 @@ export function CreateTaskForm({
           }}
           attachments={attachments}
           onAttachmentsChange={setAttachments}
-          planMode={planMode}
           selectedTemplate={selectedTemplate}
           onTemplateClear={() => setSelectedTemplate("")}
         />
@@ -305,8 +300,6 @@ export function CreateTaskForm({
       </div>
 
       <TaskSettings
-        planMode={planMode}
-        onPlanModeChange={setPlanMode}
         autoAcceptPlan={autoAcceptPlan}
         onAutoAcceptPlanChange={setAutoAcceptPlan}
         fullyAutonomous={fullyAutonomous}

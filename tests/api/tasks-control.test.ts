@@ -41,7 +41,7 @@ let baseCreateTaskPayload = {
   },
   baseBranch: "",
   clearPlanningFolder: false,
-  autoAcceptPlan: false,
+  autoAcceptPlan: true,
   fullyAutonomous: false,
   draft: false,
 };
@@ -158,7 +158,10 @@ describe("Tasks Control API Integration", () => {
     await runGit(testWorkDir, ["commit", "-m", "Add planning files"]);
 
     // Set up backend manager with test executor factory
-    mockBackend = createMockBackend();
+    mockBackend = createMockBackend([
+      "<promise>PLAN_READY</promise>",
+      "<promise>COMPLETE</promise>",
+    ]);
     backendManager.setBackendForTesting(mockBackend);
     backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
 
@@ -198,7 +201,10 @@ describe("Tasks Control API Integration", () => {
     
     // Clear all running engines first
     taskManager.resetForTesting();
-    mockBackend = createMockBackend();
+    mockBackend = createMockBackend([
+      "<promise>PLAN_READY</promise>",
+      "<promise>COMPLETE</promise>",
+    ]);
     backendManager.setBackendForTesting(mockBackend);
     backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
     
@@ -239,7 +245,6 @@ describe("Tasks Control API Integration", () => {
           attachments: [],
           name: "Test Task",
           draft: true,
-          planMode: false,
           model: testModel,
           useWorktree: true,
         }),
@@ -266,7 +271,6 @@ describe("Tasks Control API Integration", () => {
           prompt: "Test missing worktree diff",
           name: "Missing Worktree Diff",
           draft: true,
-          planMode: false,
           model: testModel,
           useWorktree: true,
         }),
@@ -311,7 +315,6 @@ describe("Tasks Control API Integration", () => {
           baseBranch: diffBranch,
           attachments: [],
           name: "Test Task",
-          planMode: false,
           model: testModel,
           useWorktree: false,
         }),
@@ -351,9 +354,7 @@ describe("Tasks Control API Integration", () => {
       // Create workspace for this directory
       const workspaceId = await getOrCreateWorkspace(planTestDir);
 
-      // Start the task (non-draft) so a worktree is created.
-      // The mock backend completes immediately, and the worktree inherits
-      // the .clanky-planning/plan.md file from the source repository's branch.
+      // Import a plan so it remains available in the task worktree after startup.
       const createResponse = await fetch(`${baseUrl}/api/tasks`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -364,9 +365,9 @@ describe("Tasks Control API Integration", () => {
           prompt: "Test",
           attachments: [],
           name: "Test Task",
-          planMode: false,
           model: testModel,
           useWorktree: true,
+          uploadedPlan: { planContent: "This is a test plan." },
         }),
       });
       expect(createResponse.status).toBe(201);
@@ -409,9 +410,9 @@ describe("Tasks Control API Integration", () => {
           prompt: "Read branch-only plan",
           attachments: [],
           name: "Test Task",
-          planMode: false,
           model: testModel,
           useWorktree: false,
+          uploadedPlan: { planContent: "Plan content." },
         }),
       });
       expect(createResponse.status).toBe(201);
@@ -453,7 +454,6 @@ describe("Tasks Control API Integration", () => {
           attachments: [],
           name: "Test Task",
           draft: true,
-          planMode: false,
           model: testModel,
           useWorktree: true,
         }),
@@ -501,7 +501,6 @@ describe("Tasks Control API Integration", () => {
           prompt: "Test",
           attachments: [],
           name: "Test Task",
-          planMode: false,
           model: testModel,
           useWorktree: true,
         }),
@@ -546,7 +545,6 @@ describe("Tasks Control API Integration", () => {
           prompt: "Read branch-only status",
           attachments: [],
           name: "Test Task",
-          planMode: false,
           model: testModel,
           useWorktree: false,
         }),
@@ -573,6 +571,12 @@ describe("Tasks Control API Integration", () => {
       const uniqueWorkDir = await createTrackedGitRepo("clanky-comments-store-test-");
       const uniqueBareRepo = await createTrackedBareRepo("clanky-comments-store-bare-");
       await runGit(uniqueWorkDir, ["remote", "add", "origin", uniqueBareRepo]);
+      await runGit(uniqueWorkDir, [
+        "push",
+        "-u",
+        "origin",
+        await getCurrentBranch(uniqueWorkDir),
+      ]);
       
       try {
         // Create workspace for this directory
@@ -588,7 +592,6 @@ describe("Tasks Control API Integration", () => {
             prompt: "Test prompt",
           attachments: [],
             name: "Test Task",
-            planMode: false,
             model: testModel,
             useWorktree: true,
           }),
@@ -661,7 +664,6 @@ describe("Tasks Control API Integration", () => {
             prompt: "Test prompt",
           attachments: [],
             name: "Automatic PR comments task",
-            planMode: false,
             model: testModel,
             useWorktree: true,
           }),
@@ -746,7 +748,6 @@ describe("Tasks Control API Integration", () => {
             prompt: "Test prompt",
           attachments: [],
             name: "Test Task",
-            planMode: false,
             model: testModel,
             useWorktree: true,
           }),

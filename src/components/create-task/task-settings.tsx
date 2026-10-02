@@ -1,6 +1,4 @@
 interface TaskSettingsProps {
-  planMode: boolean;
-  onPlanModeChange: (value: boolean) => void;
   autoAcceptPlan: boolean;
   onAutoAcceptPlanChange: (value: boolean) => void;
   fullyAutonomous: boolean;
@@ -12,8 +10,6 @@ interface TaskSettingsProps {
 }
 
 export function TaskSettings({
-  planMode,
-  onPlanModeChange,
   autoAcceptPlan,
   onAutoAcceptPlanChange,
   fullyAutonomous,
@@ -29,10 +25,10 @@ export function TaskSettings({
         <label className="flex items-start gap-3">
           <input
             type="checkbox"
-            checked={planMode}
+            checked={autoAcceptPlan}
             onChange={(e) => {
               if (!uploadedPlanLocked) {
-                onPlanModeChange(e.target.checked);
+                onAutoAcceptPlanChange(e.target.checked);
               }
             }}
             disabled={uploadedPlanLocked}
@@ -40,65 +36,35 @@ export function TaskSettings({
           />
           <div className="flex-1">
             <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Plan Mode
+              Auto-accept plan
             </span>
-            {uploadedPlanLocked && (
-              <span className="block text-xs text-gray-500 dark:text-gray-400">
-                Required because the uploaded file is already a plan.
-              </span>
-            )}
+            <span className="block text-xs text-gray-500 dark:text-gray-400">
+              {uploadedPlanLocked
+                ? "Required because the uploaded plan has already been approved."
+                : "Skip manual plan review and continue as soon as the plan is ready."}
+            </span>
           </div>
         </label>
       </div>
 
-      {planMode && (
-        <div className="ml-7">
-          <label className="flex items-start gap-3">
-            <input
-              type="checkbox"
-              checked={autoAcceptPlan}
-              onChange={(e) => {
-                if (!uploadedPlanLocked) {
-                  onAutoAcceptPlanChange(e.target.checked);
-                }
-              }}
-              disabled={uploadedPlanLocked}
-              className="mt-1 h-4 w-4 rounded border-gray-300 text-gray-700 focus:ring-gray-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-300"
-            />
-            <div className="flex-1">
-              <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Auto-accept plan
-              </span>
-              <span className="block text-xs text-gray-500 dark:text-gray-400">
-                {uploadedPlanLocked
-                  ? "Required because the uploaded plan has already been approved."
-                  : "Skip manual plan review and continue as soon as the plan is ready."}
-              </span>
-            </div>
-          </label>
-        </div>
-      )}
-
-      {planMode && (
-        <div className="ml-7">
-          <label className="flex items-start gap-3">
-            <input
-              type="checkbox"
-              checked={fullyAutonomous}
-              onChange={(e) => onFullyAutonomousChange(e.target.checked)}
-              className="mt-1 h-4 w-4 rounded border-gray-300 text-gray-700 focus:ring-gray-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-300"
-            />
-            <div className="flex-1">
-              <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Fully autonomous task
-              </span>
-              <span className="block text-xs text-gray-500 dark:text-gray-400">
-                After the plan is accepted, keep going automatically: execute, push, and start the automatic PR flow.
-              </span>
-            </div>
-          </label>
-        </div>
-      )}
+      <div>
+        <label className="flex items-start gap-3">
+          <input
+            type="checkbox"
+            checked={fullyAutonomous}
+            onChange={(e) => onFullyAutonomousChange(e.target.checked)}
+            className="mt-1 h-4 w-4 rounded border-gray-300 text-gray-700 focus:ring-gray-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-300"
+          />
+          <div className="flex-1">
+            <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Fully autonomous task
+            </span>
+            <span className="block text-xs text-gray-500 dark:text-gray-400">
+              After the plan is accepted, keep going automatically: execute, push, and start the automatic PR flow.
+            </span>
+          </div>
+        </label>
+      </div>
 
       <div>
         <label className={`flex items-start gap-3 ${worktreeControlDisabled ? "opacity-60" : ""}`}>

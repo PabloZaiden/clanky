@@ -4,6 +4,7 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
+  acceptPlanViaAPI,
   createTaskViaAPI,
   discardTaskViaAPI,
   manualCompleteTaskViaAPI,
@@ -11,6 +12,7 @@ import {
   sendFollowUpViaAPI,
   setupTestServer,
   teardownTestServer,
+  waitForPlanReady,
   waitForTaskStatus,
   type TestServerContext,
 } from "./helpers";
@@ -29,20 +31,25 @@ describe("Task prompt flow", () => {
 
   test("sends an active user injection as one turn without automatic continuation", async () => {
     ctx.mockBackend.reset([
+      "Plan ready. <promise>PLAN_READY</promise>",
+      "chore: remove the stale planning document",
       "The original turn was interrupted.",
       "Continue the original work.",
       "The requested change is complete. <promise>COMPLETE</promise>",
     ]);
-    const promptStarted = ctx.mockBackend.holdNextPrompt();
 
-    const { status, body } = await createTaskViaAPI(ctx.baseUrl, {
+    const { status, body } = await createTaskViaAPI(ctx, {
       directory: ctx.workDir,
       prompt: "Implement the original feature",
-      planMode: false,
+      autoAcceptPlan: false,
     });
     expect(status).toBe(201);
     const task = body as Task;
 
+    await waitForPlanReady(ctx.baseUrl, task.config.id);
+    const promptStarted = ctx.mockBackend.holdNextPrompt();
+    const accepted = await acceptPlanViaAPI(ctx.baseUrl, task.config.id);
+    expect(accepted.status).toBe(200);
     await promptStarted;
     const response = await fetch(`${ctx.baseUrl}/api/tasks/${task.config.id}/pending`, {
       method: "POST",
@@ -59,22 +66,22 @@ describe("Task prompt flow", () => {
     const stoppedTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "stopped");
 
     expect(stoppedTask.state.status).toBe("stopped");
-    expect(stoppedTask.state.currentIteration).toBe(2);
-    expect(stoppedTask.state.recentIterations[1]?.outcome).toBe("continue");
+    expect(stoppedTask.state.currentIteration).toBe(3);
+    expect(stoppedTask.state.recentIterations.at(-1)?.outcome).toBe("continue");
 
     await discardTaskViaAPI(ctx.baseUrl, task.config.id);
   });
 
   test("keeps a recoverable session for terminal follow-ups without marker semantics", async () => {
     ctx.mockBackend.reset([
+      "chore: remove the stale planning document",
       "Initial work complete. <promise>COMPLETE</promise>",
       "I will continue with the requested follow-up.",
     ]);
 
-    const { status, body } = await createTaskViaAPI(ctx.baseUrl, {
+    const { status, body } = await createTaskViaAPI(ctx, {
       directory: ctx.workDir,
       prompt: "Implement the original feature",
-      planMode: false,
     });
     expect(status).toBe(201);
     const task = body as Task;
@@ -95,8 +102,8 @@ describe("Task prompt flow", () => {
 
     expect(stoppedTask.state.session?.id).toBe(initialSessionId);
     expect(stoppedTask.state.status).toBe("stopped");
-    expect(stoppedTask.state.currentIteration).toBe(2);
-    expect(stoppedTask.state.recentIterations[1]?.outcome).toBe("continue");
+    expect(stoppedTask.state.currentIteration).toBe(3);
+    expect(stoppedTask.state.recentIterations.at(-1)?.outcome).toBe("continue");
 
     const manualComplete = await manualCompleteTaskViaAPI(ctx.baseUrl, task.config.id);
     expect(manualComplete.status).toBe(200);
@@ -117,7 +124,7 @@ describe("Task prompt flow", () => {
     const pushedTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "stopped");
     expect(pushedTask.state.session?.id).toBe(initialSessionId);
     expect(pushedTask.state.status).toBe("stopped");
-    expect(pushedTask.state.recentIterations[2]?.outcome).toBe("continue");
+    expect(pushedTask.state.recentIterations.at(-1)?.outcome).toBe("continue");
 
     await discardTaskViaAPI(ctx.baseUrl, task.config.id);
   });
@@ -149,10 +156,9 @@ describe("Task prompt flow", () => {
 
     for (const scenario of scenarios) {
       ctx.mockBackend.reset([scenario.response]);
-      const { status, body } = await createTaskViaAPI(ctx.baseUrl, {
+      const { status, body } = await createTaskViaAPI(ctx, {
         directory: ctx.workDir,
         prompt: "Implement the original feature",
-        planMode: false,
         maxIterations: scenario.maxIterations,
         maxConsecutiveErrors: scenario.maxConsecutiveErrors,
       });
@@ -183,10 +189,9 @@ describe("Task prompt flow", () => {
       "The recovered follow-up is complete. <promise>COMPLETE</promise>",
     ]);
 
-    const { status, body } = await createTaskViaAPI(ctx.baseUrl, {
+    const { status, body } = await createTaskViaAPI(ctx, {
       directory: ctx.workDir,
       prompt: "Implement the original feature",
-      planMode: false,
     });
     expect(status).toBe(201);
     const task = body as Task;
@@ -217,10 +222,9 @@ describe("Task prompt flow", () => {
       "The recovered follow-up is complete.",
     ]);
 
-    const { status, body } = await createTaskViaAPI(ctx.baseUrl, {
+    const { status, body } = await createTaskViaAPI(ctx, {
       directory: ctx.workDir,
       prompt: "Implement the original feature",
-      planMode: false,
     });
     expect(status).toBe(201);
     const task = body as Task;
@@ -253,10 +257,9 @@ describe("Task prompt flow", () => {
     ctx.mockBackend.reset(["This response should not be reached."]);
     ctx.mockBackend.failNextPromptSessionNotFound(2);
 
-    const { status, body } = await createTaskViaAPI(ctx.baseUrl, {
+    const { status, body } = await createTaskViaAPI(ctx, {
       directory: ctx.workDir,
       prompt: "Run a task that loses its session twice",
-      planMode: false,
       maxConsecutiveErrors: 1,
     });
     expect(status).toBe(201);

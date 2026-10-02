@@ -2,7 +2,7 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
 /**
  * Draft task start routes.
  *
- * - POST /api/tasks/:id/draft/start - Transition a draft task to planning or execution
+ * - POST /api/tasks/:id/draft/start - Start planning for a draft task
  */
 
 import { taskManager } from "../../core/task-manager";
@@ -20,11 +20,10 @@ export const tasksDraftRoutes = defineRoutes({
     /**
      * POST /api/tasks/:id/draft/start - Start a draft task.
      *
-     * Transitions a draft task to either planning mode or immediate execution.
+     * Starts planning for a draft task.
      * Each task operates in its own worktree, so no uncommitted-changes checks are needed.
      *
      * Request Body:
-     * - planMode (required): If true, start in plan mode; if false, start immediately
      * - attachments (required): Message attachments; use an empty array when there are none
      *
      * Errors:
@@ -59,7 +58,6 @@ export const tasksDraftRoutes = defineRoutes({
       // Delegate the draft → start transition to TaskManager
       try {
         const updatedTask = await taskManager.startDraft(ctx.params["id"]!, {
-          planMode: body.planMode,
           attachments: body.attachments,
         });
         if (!updatedTask) {
@@ -73,11 +71,10 @@ export const tasksDraftRoutes = defineRoutes({
       } catch (startError) {
         return startErrorResponse(
           startError,
-          body.planMode ? "start_plan_failed" : "start_failed",
-          body.planMode ? "Failed to start plan mode" : "Failed to start task",
+          "start_plan_failed",
+          "Failed to start planning",
           {
             taskId: ctx.params["id"]!,
-            planMode: body.planMode,
           },
         );
       }

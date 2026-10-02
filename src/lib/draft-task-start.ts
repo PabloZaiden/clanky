@@ -132,7 +132,6 @@ export async function startDraftTask({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        planMode: request.planMode ?? false,
         attachments: request.attachments,
       }),
       action: "Start draft task",

@@ -1350,7 +1350,7 @@ const POLICY_PROFILES = {
       },
       planning_update_restricted: {
         status: 409,
-        message: "Only auto-accept plan and fully autonomous task can be changed while plan mode is running.",
+        message: "Only auto-accept plan and fully autonomous task can be changed while the task is planning.",
       },
       task_already_running: {
         status: 409,

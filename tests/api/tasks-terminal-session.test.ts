@@ -162,7 +162,6 @@ describe("Task terminal session API integration", () => {
         baseBranch: defaultBranch,
         useWorktree: true,
         clearPlanningFolder: false,
-        planMode: true,
         autoAcceptPlan: false,
         fullyAutonomous: false,
         draft: false,

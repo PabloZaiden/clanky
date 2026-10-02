@@ -124,7 +124,8 @@ export function taskToRow(task: Task): Record<string, unknown> {
     base_branch: config.baseBranch ?? null,
     use_worktree: config.useWorktree ? 1 : 0,
     clear_planning_folder: config.clearPlanningFolder ? 1 : 0,
-    plan_mode: config.planMode ? 1 : 0,
+    // Keep the legacy column populated; planning is now mandatory for tasks.
+    plan_mode: 1,
     auto_accept_plan: (config.autoAcceptPlan ?? DEFAULT_TASK_CONFIG.autoAcceptPlan) ? 1 : 0,
     fully_autonomous: config.fullyAutonomous ? 1 : 0,
     mode: config.mode,
@@ -221,7 +222,6 @@ export function rowToTask(row: Record<string, unknown>): Task {
       DEFAULT_TASK_CONFIG.activityTimeoutSeconds,
     useWorktree: row["use_worktree"] === 1,
     clearPlanningFolder: row["clear_planning_folder"] === 1,
-    planMode: row["plan_mode"] === 1,
     autoAcceptPlan: row["auto_accept_plan"] === 1,
     fullyAutonomous: row["fully_autonomous"] === 1,
     mode: "task",

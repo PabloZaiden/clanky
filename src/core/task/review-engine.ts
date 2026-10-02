@@ -119,19 +119,13 @@ function startFeedbackEngine(
 }
 
 export function constructReviewPrompt(comments: string): string {
-  return `A reviewer has provided feedback on your previous work. Please address the following comments:
+  return `The user has provided feedback on your previous work:
 
 ---
 ${comments}
 ---
 
-Instructions:
-- Read .clanky-planning/status.md to understand what was previously done
-- **FIRST**: Immediately add each reviewer comment as a pending task in .clanky-planning/status.md before starting to address any of them. This ensures the feedback is tracked and preserved even if the conversation context is compacted.
-- Make targeted changes to address each reviewer comment
-- **IMPORTANT — Incremental progress tracking**: After addressing each individual reviewer comment, immediately update .clanky-planning/status.md to mark it as resolved and note what was changed. Do not batch updates — persist progress after each comment so it is preserved if the iteration is interrupted.
-- Test your changes to ensure they work correctly
-- When all comments are fully addressed, end your response with:
+When addressed, end your response with:
 
 <promise>COMPLETE</promise>`;
 }

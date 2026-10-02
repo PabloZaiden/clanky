@@ -63,10 +63,9 @@ describe("Branch Safety - Worktree Isolation", () => {
       ]);
 
       // Create and wait for task completion
-      const { body } = await createTaskViaAPI(ctx.baseUrl, {
+      const { body } = await createTaskViaAPI(ctx, {
         directory: ctx.workDir,
         prompt: "Make some changes",
-        planMode: false,
       });
       const task = body as Task;
 
@@ -114,10 +113,9 @@ describe("Branch Safety - Worktree Isolation", () => {
       const originalBranch = await getCurrentBranch(ctx.workDir);
 
       // Create and wait for task completion
-      const { body } = await createTaskViaAPI(ctx.baseUrl, {
+      const { body } = await createTaskViaAPI(ctx, {
         directory: ctx.workDir,
         prompt: "Make some changes",
-        planMode: false,
       });
       const task = body as Task;
 
@@ -170,10 +168,9 @@ describe("Branch Safety - Worktree Isolation", () => {
       const originalBranch = await getCurrentBranch(ctx.workDir);
 
       // Create and wait for task completion
-      const { body } = await createTaskViaAPI(ctx.baseUrl, {
+      const { body } = await createTaskViaAPI(ctx, {
         directory: ctx.workDir,
         prompt: "Make some changes",
-        planMode: false,
       });
       const task = body as Task;
 

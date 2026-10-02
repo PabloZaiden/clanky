@@ -17,8 +17,6 @@ export interface CreateTaskFormActionState {
   isEditing: boolean;
   /** Whether we're editing a draft task */
   isEditingDraft: boolean;
-  /** Whether plan mode is enabled */
-  planMode: boolean;
   /** Handler for cancel button */
   onCancel: () => void;
   /** Handler for submit button (creates/starts the task) */
@@ -89,7 +87,6 @@ export interface CreateTaskFormProps {
     baseBranch?: string;
     useWorktree?: boolean;
     clearPlanningFolder?: boolean;
-    planMode?: boolean;
     autoAcceptPlan?: boolean;
     fullyAutonomous?: boolean;
     workspaceId?: string;

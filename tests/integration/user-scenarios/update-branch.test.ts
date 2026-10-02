@@ -40,10 +40,9 @@ describe("Update Branch User Scenarios", () => {
 
     test("update-branch re-pushes when base branch has no new commits", async () => {
       // Create and complete initial task
-      const { body } = await createTaskViaAPI(ctx.baseUrl, {
+      const { body } = await createTaskViaAPI(ctx, {
         directory: ctx.workDir,
         prompt: "Implement a feature",
-        planMode: false,
       });
       const task = body as Task;
 
@@ -97,10 +96,9 @@ describe("Update Branch User Scenarios", () => {
 
     test("update-branch merges and re-pushes when base branch has non-conflicting changes", async () => {
       // Create and complete initial task
-      const { body } = await createTaskViaAPI(ctx.baseUrl, {
+      const { body } = await createTaskViaAPI(ctx, {
         directory: ctx.workDir,
         prompt: "Implement a feature",
-        planMode: false,
       });
       const task = body as Task;
 

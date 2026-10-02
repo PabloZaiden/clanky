@@ -3181,7 +3181,6 @@ describe("Chats API Integration", () => {
 
     expect(spawnedTask.config.id).not.toBe(chatId);
     expect(spawnedTask.config.workspaceId).toBe(testWorkspaceId);
-    expect(spawnedTask.config.planMode).toBe(true);
     expect(spawnedTask.config.autoAcceptPlan).toBe(false);
     expect(spawnedTask.config.fullyAutonomous).toBe(false);
     expect(spawnedTask.config.name).toBeTruthy();

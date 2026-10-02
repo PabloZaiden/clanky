@@ -500,6 +500,8 @@ export function createMockBackend(responses: string[] = ["<promise>COMPLETE</pro
 export interface NeverCompletingMockBackendOptions {
   /** Models to return from getModels() */
   models?: MockModelInfo[];
+  /** Emit PLAN_READY once per session before keeping execution open */
+  planReadyFirst?: boolean;
   /** Optional running tool call to emit before hanging forever. */
   runningToolCall?: { id: string; name: string; input: unknown };
 }
@@ -515,10 +517,13 @@ export class NeverCompletingMockBackend implements Backend {
   private directory = "";
   private readonly sessions = new Map<string, AgentSession>();
   private readonly models: MockModelInfo[];
+  private readonly planReadyFirst: boolean;
+  private readonly planReadySessions = new Set<string>();
   private readonly runningToolCall: { id: string; name: string; input: unknown } | undefined;
 
   constructor(options: NeverCompletingMockBackendOptions = {}) {
     this.models = options.models ?? [defaultTestModel];
+    this.planReadyFirst = options.planReadyFirst ?? false;
     this.runningToolCall = options.runningToolCall;
   }
 
@@ -560,10 +565,20 @@ export class NeverCompletingMockBackend implements Backend {
 
   async abortSession(_sessionId: string): Promise<void> {}
 
-  async subscribeToEvents(_sessionId: string): Promise<EventStream<AgentEvent>> {
-    const { stream, push } = createEventStream<AgentEvent>();
+  async subscribeToEvents(sessionId: string): Promise<EventStream<AgentEvent>> {
+    const { stream, push, end } = createEventStream<AgentEvent>();
 
     (async () => {
+      if (this.planReadyFirst && !this.planReadySessions.has(sessionId)) {
+        this.planReadySessions.add(sessionId);
+        const response = "<promise>PLAN_READY</promise>";
+        push({ type: "message.start", messageId: `msg-${Date.now()}` });
+        push({ type: "message.delta", content: response });
+        push({ type: "message.complete", content: response });
+        end();
+        return;
+      }
+
       push({ type: "message.start", messageId: `msg-${Date.now()}` });
       push({ type: "message.delta", content: "Still working..." });
       if (this.runningToolCall) {

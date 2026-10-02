@@ -25,8 +25,6 @@ export interface UseFormFieldsReturn {
   setPrompt: (v: string) => void;
   issueNumber: string;
   setIssueNumber: (v: string) => void;
-  planMode: boolean;
-  setPlanMode: (v: boolean) => void;
   autoAcceptPlan: boolean;
   setAutoAcceptPlan: (v: boolean) => void;
   fullyAutonomous: boolean;
@@ -81,11 +79,6 @@ export function useFormFields({
     initialTaskData?.activityTimeoutSeconds?.toString() ?? ""
   );
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [planMode, setPlanMode] = useState(
-    isEditing
-      ? initialTaskData?.planMode ?? true
-      : storedPlanningPreferences?.planMode ?? initialTaskData?.planMode ?? true
-  );
   const [autoAcceptPlan, setAutoAcceptPlan] = useState(
     isEditing
       ? initialTaskData?.autoAcceptPlan ?? DEFAULT_TASK_CONFIG.autoAcceptPlan
@@ -124,11 +117,10 @@ export function useFormFields({
     }
 
     saveStoredNewTaskPlanningPreferences({
-      planMode,
       autoAcceptPlan,
       fullyAutonomous,
     });
-  }, [isEditing, planMode, autoAcceptPlan, fullyAutonomous]);
+  }, [isEditing, autoAcceptPlan, fullyAutonomous]);
 
   return {
     nameRef,
@@ -139,8 +131,6 @@ export function useFormFields({
     setPrompt,
     issueNumber,
     setIssueNumber,
-    planMode,
-    setPlanMode,
     autoAcceptPlan,
     setAutoAcceptPlan,
     fullyAutonomous,

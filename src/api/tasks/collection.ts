@@ -92,7 +92,6 @@ export const tasksCollectionRoutes = defineRoutes({
       log.debug("POST /api/tasks - Request validated", {
         name: body.name,
         workspaceId: body.workspaceId,
-        planMode: body.uploadedPlan ? true : body.planMode,
         draft: body.draft,
         hasModel: !!body.model,
         hasUploadedPlan: !!body.uploadedPlan,
@@ -111,26 +110,17 @@ export const tasksCollectionRoutes = defineRoutes({
             ? {
                 fallbackCode: "start_uploaded_plan_failed",
                 fallbackMessage: "Task created but failed to start from uploaded plan",
-                planMode: true,
               }
-            : error.phase === "plan"
-              ? {
-                  fallbackCode: "start_plan_failed",
-                  fallbackMessage: "Task created but failed to start plan mode",
-                  planMode: true,
-                }
-              : {
-                  fallbackCode: "start_failed",
-                  fallbackMessage: "Task created but failed to start",
-                  planMode: false,
-                };
+            : {
+                fallbackCode: "start_plan_failed",
+                fallbackMessage: "Task created but failed to start planning",
+              };
           return startErrorResponse(
             error.originalError,
             startDetails.fallbackCode,
             startDetails.fallbackMessage,
             {
               taskId: error.taskId,
-              planMode: startDetails.planMode,
             },
           );
         }

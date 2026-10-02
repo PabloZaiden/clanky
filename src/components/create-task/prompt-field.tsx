@@ -11,7 +11,6 @@ interface PromptFieldProps {
   onChange: (value: string) => void;
   attachments: ComposerAttachment[];
   onAttachmentsChange: (attachments: ComposerAttachment[]) => void;
-  planMode: boolean;
   selectedTemplate: string;
   onTemplateClear: () => void;
 }
@@ -21,7 +20,6 @@ export function PromptField({
   onChange,
   attachments,
   onAttachmentsChange,
-  planMode,
   selectedTemplate,
   onTemplateClear,
 }: PromptFieldProps) {
@@ -76,7 +74,7 @@ export function PromptField({
           handlePromptChange(e.target.value);
         }}
         onPaste={handlePaste}
-        placeholder={planMode ? "Describe what you want to achieve. The AI will create a detailed plan based on this." : "Do everything that's pending in the plan"}
+        placeholder="Describe what you want to achieve. The AI will create a plan before implementation."
         required
         rows={3}
         className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600 min-h-[76px] sm:min-h-[120px] resize-y"

@@ -58,7 +58,7 @@ describe("AGENTS.md API integration", () => {
     };
     expect(preview.currentContent).toBe("# Project guidance\n");
     expect(preview.fileExists).toBe(true);
-    expect(preview.proposedContent).toContain("clanky-optimized-v1");
+    expect(preview.proposedContent).toContain("clanky-optimized-v2");
 
     const optimizeResponse = await fetch(
       `${baseUrl}/api/workspaces/test-workspace-id/agents-md/optimize`,
@@ -70,12 +70,12 @@ describe("AGENTS.md API integration", () => {
       alreadyOptimized: false,
       analysis: {
         isOptimized: true,
-        currentVersion: 1,
+        currentVersion: 2,
         updateAvailable: false,
       },
     });
     expect(await Bun.file(`${context.workDir}/AGENTS.md`).text()).toContain(
-      "clanky-optimized-v1",
+      "clanky-optimized-v2",
     );
 
     const repeatedOptimizeResponse = await fetch(
@@ -87,6 +87,62 @@ describe("AGENTS.md API integration", () => {
       success: true,
       alreadyOptimized: true,
     });
+  });
+
+  test("upgrades old optimization and moves persistence guidance to final verification", async () => {
+    const legacyContent = [
+      "# Project guidance",
+      "",
+      "<!-- clanky-optimized-v1 -->",
+      "## Agentic Workflow — Planning & Progress Tracking",
+      "",
+      "### Pre-Compaction Persistence",
+      "",
+      "- Before ending your response, update the status file.",
+      "",
+    ].join("\n");
+    await Bun.write(`${context.workDir}/AGENTS.md`, legacyContent);
+
+    const previewResponse = await fetch(
+      `${baseUrl}/api/workspaces/test-workspace-id/agents-md/preview`,
+      { method: "POST" },
+    );
+    expect(previewResponse.status).toBe(200);
+    const preview = await previewResponse.json() as {
+      proposedContent: string;
+      analysis: {
+        isOptimized: boolean;
+        currentVersion: number | null;
+        updateAvailable: boolean;
+      };
+    };
+    expect(preview.analysis).toEqual({
+      isOptimized: true,
+      currentVersion: 1,
+      updateAvailable: true,
+    });
+    expect(preview.proposedContent).toContain("clanky-optimized-v2");
+    expect(preview.proposedContent).not.toContain("Pre-Compaction");
+    expect(preview.proposedContent).toContain("Before your final response");
+
+    const optimizeResponse = await fetch(
+      `${baseUrl}/api/workspaces/test-workspace-id/agents-md/optimize`,
+      { method: "POST" },
+    );
+    expect(optimizeResponse.status).toBe(200);
+    expect(await optimizeResponse.json()).toMatchObject({
+      success: true,
+      alreadyOptimized: false,
+      analysis: {
+        isOptimized: true,
+        currentVersion: 2,
+        updateAvailable: false,
+      },
+    });
+    const optimizedContent = await Bun.file(`${context.workDir}/AGENTS.md`).text();
+    expect(optimizedContent).toContain("clanky-optimized-v2");
+    expect(optimizedContent).not.toContain("Pre-Compaction");
+    expect(optimizedContent).toContain("Before your final response");
   });
 
   test("maps an unknown workspace to a not-found response", async () => {

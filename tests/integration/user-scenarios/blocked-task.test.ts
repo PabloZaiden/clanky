@@ -25,6 +25,7 @@ describe("Blocked Task User Scenarios", () => {
     beforeAll(async () => {
       ctx = await setupTestServer({
         mockResponses: [
+          "chore: remove the stale planning document",
           "I cannot continue because the upstream dependency is unavailable. <promise>BLOCKED</promise>",
         ],
         withPlanningDir: true,
@@ -36,10 +37,9 @@ describe("Blocked Task User Scenarios", () => {
     });
 
     test("stops without completion, preserves the blocker, and resumes with a follow-up", async () => {
-      const { status, body } = await createTaskViaAPI(ctx.baseUrl, {
+      const { status, body } = await createTaskViaAPI(ctx, {
         directory: ctx.workDir,
         prompt: "Implement the requested change",
-        planMode: false,
       });
 
       expect(status).toBe(201);
@@ -47,8 +47,9 @@ describe("Blocked Task User Scenarios", () => {
       const stoppedTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "stopped");
 
       expect(stoppedTask.state.status).toBe("stopped");
-      expect(stoppedTask.state.recentIterations).toHaveLength(1);
-      expect(stoppedTask.state.recentIterations[0]?.outcome).toBe("blocked");
+      expect(stoppedTask.state.recentIterations).toHaveLength(2);
+      expect(stoppedTask.state.recentIterations[0]?.outcome).toBe("plan_ready");
+      expect(stoppedTask.state.recentIterations[1]?.outcome).toBe("blocked");
 
       const workingBranch = stoppedTask.state.git?.workingBranch;
       expect(workingBranch).toBeDefined();
@@ -79,6 +80,7 @@ describe("Blocked Task User Scenarios", () => {
       ctx = await setupTestServer({
         mockResponses: [
           "Plan is ready. <promise>PLAN_READY</promise>",
+          "chore: remove the stale planning document",
           "The required external service is down. <promise>BLOCKED</promise>",
         ],
         withPlanningDir: true,
@@ -90,10 +92,9 @@ describe("Blocked Task User Scenarios", () => {
     });
 
     test("does not push a fully autonomous task after BLOCKED", async () => {
-      const { status, body } = await createTaskViaAPI(ctx.baseUrl, {
+      const { status, body } = await createTaskViaAPI(ctx, {
         directory: ctx.workDir,
         prompt: "Plan and execute the requested change",
-        planMode: true,
         autoAcceptPlan: true,
         fullyAutonomous: true,
       });
@@ -133,10 +134,9 @@ describe("Blocked Task User Scenarios", () => {
     });
 
     test("keeps plan mode resumable after BLOCKED", async () => {
-      const { status, body } = await createTaskViaAPI(ctx.baseUrl, {
+      const { status, body } = await createTaskViaAPI(ctx, {
         directory: ctx.workDir,
         prompt: "Create a plan for the requested change",
-        planMode: true,
         autoAcceptPlan: false,
       });
 
