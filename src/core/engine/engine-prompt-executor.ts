@@ -129,9 +129,7 @@ export class TaskPromptExecutorImpl implements TaskPromptExecutor {
         streamHandle = streamController.start({
           sessionId: activeSessionId,
           prompt,
-          activityTimeoutMs: activityTimeoutSeconds === null
-            ? null
-            : activityTimeoutSeconds * 1000,
+          activityTimeoutMs: activityTimeoutSeconds * 1000,
         });
         this.currentStreamHandle = streamHandle;
         const started = await streamHandle.startPrompt();

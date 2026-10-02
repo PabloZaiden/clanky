@@ -87,6 +87,32 @@ describe("incremental transcript persistence", () => {
     await teardownTestContext(context);
   });
 
+  describe("task activity timeout defaults", () => {
+    test("stores null timeouts as the default and loads legacy null values with that default", async () => {
+      const task = createTask(context);
+      task.config.id = "null-activity-timeout-task";
+      task.state.id = task.config.id;
+      task.config.activityTimeoutSeconds = null;
+
+      await runWithCurrentUser(testOwnerUser, async () => {
+        await saveTask(task);
+        const db = getDatabase();
+        const stored = db.prepare(
+          "SELECT activity_timeout_seconds FROM tasks WHERE id = ?",
+        ).get(task.config.id) as { activity_timeout_seconds: number | null };
+        expect(stored.activity_timeout_seconds).toBe(330);
+
+        // Existing rows may still contain null from before the finite default.
+        db.prepare(
+          "UPDATE tasks SET activity_timeout_seconds = NULL WHERE id = ?",
+        ).run(task.config.id);
+
+        const loaded = await loadTask(task.config.id);
+        expect(loaded?.config.activityTimeoutSeconds).toBe(330);
+      });
+    });
+  });
+
   test("validates cursor bindings before accepting a continuation", () => {
     const cursor = encodeTranscriptCursor(
       "task",

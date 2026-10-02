@@ -186,7 +186,7 @@ export function useFormActions({
             : DEFAULT_TASK_CONFIG.maxConsecutiveErrors,
           activityTimeoutSeconds: activityTimeoutSeconds.trim()
             ? Math.max(parseInt(activityTimeoutSeconds, 10), 60)
-            : null,
+            : DEFAULT_TASK_CONFIG.activityTimeoutSeconds,
           stopPattern: DEFAULT_TASK_CONFIG.stopPattern,
           git: {
             branchPrefix: DEFAULT_TASK_CONFIG.git.branchPrefix,

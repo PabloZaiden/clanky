@@ -90,10 +90,7 @@ export async function createTaskImpl(ctx: TaskCtx, options: CreateTaskOptions): 
     cheapModel: options.cheapModel ?? DEFAULT_TASK_CONFIG.cheapModel,
     maxIterations: options.maxIterations ?? DEFAULT_TASK_CONFIG.maxIterations,
     maxConsecutiveErrors: options.maxConsecutiveErrors ?? DEFAULT_TASK_CONFIG.maxConsecutiveErrors,
-    activityTimeoutSeconds:
-      options.activityTimeoutSeconds !== undefined
-        ? options.activityTimeoutSeconds
-        : DEFAULT_TASK_CONFIG.activityTimeoutSeconds,
+    activityTimeoutSeconds: options.activityTimeoutSeconds ?? DEFAULT_TASK_CONFIG.activityTimeoutSeconds,
     stopPattern: options.stopPattern ?? DEFAULT_TASK_CONFIG.stopPattern,
     git: {
       branchPrefix: normalizeBranchPrefix(options.gitBranchPrefix ?? DEFAULT_TASK_CONFIG.git.branchPrefix),
@@ -393,6 +390,9 @@ export async function updateTaskImpl(
     ...currentConfig,
     ...updates,
     cheapModel: updates.cheapModel ?? currentConfig.cheapModel ?? DEFAULT_TASK_CONFIG.cheapModel,
+    activityTimeoutSeconds: updates.activityTimeoutSeconds === undefined
+      ? currentConfig.activityTimeoutSeconds ?? DEFAULT_TASK_CONFIG.activityTimeoutSeconds
+      : updates.activityTimeoutSeconds ?? DEFAULT_TASK_CONFIG.activityTimeoutSeconds,
     git: updates.git
       ? {
           ...currentConfig.git,

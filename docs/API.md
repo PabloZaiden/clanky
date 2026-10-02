@@ -535,7 +535,7 @@ Create a new task.
 | `useWorktree` | boolean | Yes | Whether to run the task in a dedicated git worktree |
 | `maxIterations` | number \| null | Yes | Maximum iterations; use `null` for unlimited |
 | `maxConsecutiveErrors` | number | Yes | Maximum consecutive errors before the failsafe stops the task |
-| `activityTimeoutSeconds` | number \| null | No | Seconds without events before ending the current turn normally. Use `null` or omit the field for unlimited timeout; finite values must be at least 60 seconds. |
+| `activityTimeoutSeconds` | number \| null | No | Seconds without events before ending the current turn normally. Defaults to 330 seconds when omitted or `null`; finite values must be at least 60 seconds. |
 | `stopPattern` | string | Yes | Completion regex. A trailing `<promise>BLOCKED</promise>` always stops safely without completion or automatic push. |
 | `git` | object | Yes | Git configuration |
 | `git.branchPrefix` | string | Yes | Prefix prepended before the generated `title-hash` branch name; use `""` for no prefix |
@@ -565,7 +565,7 @@ Create a new task.
   "useWorktree": true,
   "maxIterations": 10,
   "maxConsecutiveErrors": 10,
-  "activityTimeoutSeconds": null,
+  "activityTimeoutSeconds": 330,
   "stopPattern": "<promise>COMPLETE</promise>$",
   "git": { "branchPrefix": "", "commitScope": "" },
   "baseBranch": "main",
@@ -672,7 +672,7 @@ state.
 | `cheapModel` | object | Update helper-model selection |
 | `maxIterations` | number \| null | Update max iterations; `null` means unlimited |
 | `maxConsecutiveErrors` | number | Update max consecutive errors |
-| `activityTimeoutSeconds` | number \| null | Update activity timeout; inactivity ends the current turn normally (`null` clears it to unlimited) |
+| `activityTimeoutSeconds` | number \| null | Update activity timeout; inactivity ends the current turn normally (`null` resets it to the 330-second default; omitting this field leaves it unchanged) |
 | `stopPattern` | string | Update stop pattern |
 | `baseBranch` | string | Update base branch |
 | `useWorktree` | boolean | Update worktree usage before the task has started |
@@ -3345,7 +3345,7 @@ curl -X POST http://localhost:3000/api/tasks \
     "useWorktree": true,
     "maxIterations": 10,
     "maxConsecutiveErrors": 10,
-    "activityTimeoutSeconds": null,
+    "activityTimeoutSeconds": 330,
     "stopPattern": "<promise>COMPLETE</promise>$",
     "git": { "branchPrefix": "", "commitScope": "" },
     "baseBranch": "main",
@@ -3383,7 +3383,7 @@ curl -X POST http://localhost:3000/api/tasks \
     "useWorktree": true,
     "maxIterations": 10,
     "maxConsecutiveErrors": 10,
-    "activityTimeoutSeconds": null,
+    "activityTimeoutSeconds": 330,
     "stopPattern": "<promise>COMPLETE</promise>$",
     "git": { "branchPrefix": "", "commitScope": "" },
     "baseBranch": "main",
@@ -3431,7 +3431,7 @@ curl -X POST http://localhost:3000/api/tasks \
     "useWorktree": true,
     "maxIterations": 10,
     "maxConsecutiveErrors": 10,
-    "activityTimeoutSeconds": null,
+    "activityTimeoutSeconds": 330,
     "stopPattern": "<promise>COMPLETE</promise>$",
     "git": { "branchPrefix": "", "commitScope": "" },
     "baseBranch": "main",

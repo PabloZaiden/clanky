@@ -76,7 +76,8 @@ export function useFormFields({
     initialTaskData?.maxConsecutiveErrors?.toString() ?? "10"
   );
   const [activityTimeoutSeconds, setActivityTimeoutSeconds] = useState<string>(
-    initialTaskData?.activityTimeoutSeconds?.toString() ?? ""
+    initialTaskData?.activityTimeoutSeconds?.toString()
+      ?? DEFAULT_TASK_CONFIG.activityTimeoutSeconds.toString()
   );
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [autoAcceptPlan, setAutoAcceptPlan] = useState(
