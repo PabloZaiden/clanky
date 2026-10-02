@@ -3,9 +3,10 @@
  * Uses react-markdown for client-side rendering with GFM support.
  */
 
-import Markdown from "react-markdown";
+import Markdown, { type ExtraProps } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, useContext, type ComponentPropsWithoutRef, type ReactNode } from "react";
+import { MermaidDiagram } from "./MermaidDiagram";
 import type { TranscriptFileLinkContext } from "./log-viewer/types";
 import {
   renderTranscriptTextNodes,
@@ -17,6 +18,25 @@ import {
 // react-markdown 10 no longer passes the legacy `inline` renderer prop, so
 // block code is marked at its <pre> boundary instead.
 const MarkdownCodeBlockContext = createContext(false);
+
+function MarkdownPre({ children, node }: ComponentPropsWithoutRef<"pre"> & ExtraProps) {
+  const code = node?.children.find((child) => child.type === "element" && child.tagName === "code");
+  if (
+    code?.type === "element"
+    && Array.isArray(code.properties["className"])
+    && code.properties["className"].includes("language-mermaid")
+  ) {
+    const source = code.children.map((child) => child.type === "text" ? child.value : "").join("");
+    return <MermaidDiagram source={source} />;
+  }
+  return (
+    <MarkdownCodeBlockContext.Provider value={true}>
+      <pre className="max-w-full overflow-x-auto rounded-lg bg-gray-100 p-4 text-sm text-gray-900 dark:bg-neutral-800 dark:text-gray-100">
+        {children}
+      </pre>
+    </MarkdownCodeBlockContext.Provider>
+  );
+}
 
 function MarkdownCode({
   children,
@@ -60,7 +80,7 @@ export interface MarkdownRendererProps {
 /**
  * Renders markdown content as React elements using react-markdown.
  * Supports GitHub Flavored Markdown features including tables, strikethrough,
- * task lists, and autolinks.
+ * task lists, autolinks, and Mermaid fenced code blocks.
  * 
  * When rawMode is true, displays the raw markdown text in a preformatted block.
  */
@@ -142,13 +162,7 @@ export function MarkdownRenderer({
               {children}
             </MarkdownCode>
           ),
-          pre: ({ children }) => (
-            <MarkdownCodeBlockContext.Provider value={true}>
-              <pre className="max-w-full overflow-x-auto rounded-lg bg-gray-100 p-4 text-sm dark:bg-neutral-800">
-                {children}
-              </pre>
-            </MarkdownCodeBlockContext.Provider>
-          ),
+          pre: MarkdownPre,
           table: ({ children, className, ...props }) => (
             <div className="min-w-0 max-w-full overflow-x-auto">
               <table {...props} className={`markdown-table min-w-full w-fit max-w-none table-auto ${className ?? ""}`.trim()}>

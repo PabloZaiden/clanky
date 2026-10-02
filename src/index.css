@@ -226,6 +226,11 @@
 }
 
 /* Markdown rendering utility overrides */
+/* Global reduced-motion transitions must not interpolate SVG layout measurements. */
+.mermaid-measurement * {
+  transition: none !important;
+}
+
 @layer utilities {
   .markdown-renderer :not(pre) > code::before,
   .markdown-renderer :not(pre) > code::after {

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { MonacoCodeEditor } from "../MonacoCodeEditor";
+import { MarkdownRenderer } from "../MarkdownRenderer";
 import { Button, RefreshIcon, WrapTextIcon } from "../common";
 
 const EDITOR_LANGUAGE_OPTIONS = [
@@ -36,7 +37,7 @@ function detectLanguage(path: string | undefined): EditorLanguageId {
     || normalizedPath.endsWith(".pxi")
   ) return "python";
   if (normalizedPath.endsWith(".json")) return "json";
-  if (normalizedPath.endsWith(".md")) return "markdown";
+  if (normalizedPath.endsWith(".md") || normalizedPath.endsWith(".markdown")) return "markdown";
   if (normalizedPath.endsWith(".css")) return "css";
   if (normalizedPath.endsWith(".html")) return "html";
   if (normalizedPath.endsWith(".sh")) return "shell";
@@ -75,9 +76,12 @@ export function WorkspaceEditorPanel({
 }: WorkspaceEditorPanelProps) {
   const [wordWrapEnabled, setWordWrapEnabled] = useState(true);
   const [selectedLanguage, setSelectedLanguage] = useState<EditorLanguageSelection>("auto");
+  const [previewFilePath, setPreviewFilePath] = useState<string | null>(null);
   const displayPath = pendingFilePath ?? filePath;
   const detectedLanguage = useMemo(() => detectLanguage(displayPath), [displayPath]);
   const editorLanguage = selectedLanguage === "auto" ? detectedLanguage : selectedLanguage;
+  const canPreview = Boolean(filePath) && editorLanguage === "markdown";
+  const showPreview = canPreview && previewFilePath === filePath && !loading;
   const statusText = loading
     ? `Loading ${pendingFilePath ?? filePath ?? "file"}...`
     : dirty
@@ -89,12 +93,13 @@ export function WorkspaceEditorPanel({
 
   useEffect(() => {
     setSelectedLanguage("auto");
+    setPreviewFilePath(null);
   }, [displayPath]);
 
   return (
     <section className="flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-neutral-900">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 px-3 py-2 dark:border-gray-800">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h2 className="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">
             {displayPath ?? "No file selected"}
           </h2>
@@ -104,11 +109,36 @@ export function WorkspaceEditorPanel({
             </p>
           )}
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-2">
+        <div className="flex max-w-full shrink-0 flex-wrap items-center justify-end gap-2">
+          {canPreview ? (
+            <div role="group" aria-label="Document view" className="flex shrink-0 gap-1">
+              <Button
+                variant={showPreview ? "ghost" : "secondary"}
+                size="sm"
+                onClick={() => setPreviewFilePath(null)}
+                disabled={loading}
+                aria-pressed={!showPreview}
+              >
+                Code
+              </Button>
+              <Button
+                variant={showPreview ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setPreviewFilePath(filePath ?? null)}
+                disabled={loading}
+                aria-pressed={showPreview}
+              >
+                Preview
+              </Button>
+            </div>
+          ) : null}
           {filePath ? (
             <select
               value={selectedLanguage}
-              onChange={(event) => setSelectedLanguage(event.target.value as EditorLanguageSelection)}
+              onChange={(event) => {
+                setSelectedLanguage(event.target.value as EditorLanguageSelection);
+                setPreviewFilePath(null);
+              }}
               disabled={loading}
               aria-label="Code explorer language"
               title={`Code explorer language: ${selectedLanguage === "auto" ? `Auto (${getLanguageLabel(detectedLanguage)})` : getLanguageLabel(editorLanguage)}`}
@@ -126,7 +156,7 @@ export function WorkspaceEditorPanel({
             variant={wordWrapEnabled ? "secondary" : "ghost"}
             size="sm"
             onClick={() => setWordWrapEnabled((currentValue) => !currentValue)}
-            disabled={!filePath || loading}
+            disabled={!filePath || loading || showPreview}
             icon={<WrapTextIcon size="h-4 w-4" />}
             aria-label={wordWrapLabel}
             aria-pressed={wordWrapEnabled}
@@ -162,14 +192,24 @@ export function WorkspaceEditorPanel({
             </div>
           </div>
         ) : filePath ? (
-          <MonacoCodeEditor
-            height="100%"
-            language={editorLanguage}
-            value={value}
-            onChange={onChange}
-            wordWrap={wordWrapEnabled ? "on" : "off"}
-            ariaLabel={`Code editor: ${displayPath ?? "file"}`}
-          />
+          <>
+            {/* Keep Monaco's model, undo history and view state while previewing. */}
+            <div className={showPreview ? "hidden" : "h-full"}>
+              <MonacoCodeEditor
+                height="100%"
+                language={editorLanguage}
+                value={value}
+                onChange={onChange}
+                wordWrap={wordWrapEnabled ? "on" : "off"}
+                ariaLabel={`Code editor: ${displayPath ?? "file"}`}
+              />
+            </div>
+            {showPreview ? (
+              <div aria-label="Markdown preview" className="h-full min-w-0 overflow-auto px-4 py-3 sm:px-6">
+                <MarkdownRenderer content={value} />
+              </div>
+            ) : null}
+          </>
         ) : (
           <div className="flex h-full items-center justify-center text-sm text-gray-500 dark:text-gray-400">
             Select a file from the explorer to start editing.
