@@ -156,11 +156,11 @@ export function AdvancedOptions({
               value={activityTimeoutSeconds}
               onChange={(e) => onActivityTimeoutChange(e.target.value)}
               min="60"
-              placeholder="Unlimited"
+              placeholder="330"
               className="mt-1 block w-32 rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600"
             />
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              Leave empty for unlimited. When set, the minimum is 60 seconds.
+              Leave empty to use the 330-second default. When set, the minimum is 60 seconds.
             </p>
           </div>
 

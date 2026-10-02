@@ -8,8 +8,9 @@
 
 import type { AgentEvent, PromptInput } from "../backends/types";
 import type { EventStream } from "../utils/event-stream";
+import { DEFAULT_ACTIVITY_TIMEOUT_SECONDS } from "@/shared/task";
 
-const DEFAULT_AGENT_STREAM_ACTIVITY_TIMEOUT_MS = 15 * 60 * 1000;
+const DEFAULT_AGENT_STREAM_ACTIVITY_TIMEOUT_MS = DEFAULT_ACTIVITY_TIMEOUT_SECONDS * 1000;
 const agentStreamTextEncoder = new TextEncoder();
 export const AGENT_STREAM_TEXT_CHECKPOINT_INTERVAL_MS = 300_000;
 export const AGENT_STREAM_TEXT_CHECKPOINT_BYTES = 512 * 1024;

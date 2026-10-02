@@ -37,7 +37,7 @@ export interface CreateTaskOptions {
   maxIterations?: number;
   /** Maximum consecutive identical errors before failsafe exit (default: 10) */
   maxConsecutiveErrors?: number;
-  /** Activity timeout in seconds - null means unlimited and is the default */
+  /** Activity timeout in seconds; null uses the 330-second default */
   activityTimeoutSeconds?: number | null;
   /** Custom stop pattern (default: "<promise>COMPLETE</promise>$") */
   stopPattern?: string;

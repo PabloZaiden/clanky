@@ -117,7 +117,7 @@ export function taskToRow(task: Task): Record<string, unknown> {
     cheap_model: JSON.stringify(config.cheapModel ?? DEFAULT_TASK_CONFIG.cheapModel),
     max_iterations: config.maxIterations ?? null,
     max_consecutive_errors: config.maxConsecutiveErrors ?? null,
-    activity_timeout_seconds: config.activityTimeoutSeconds ?? null,
+    activity_timeout_seconds: config.activityTimeoutSeconds ?? DEFAULT_TASK_CONFIG.activityTimeoutSeconds,
     stop_pattern: config.stopPattern,
     git_branch_prefix: config.git.branchPrefix,
     git_commit_scope: config.git.commitScope,

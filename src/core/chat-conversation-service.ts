@@ -69,9 +69,11 @@ import type {
 import { buildPromptParts } from "../backends/prompt-parts";
 import { createChatLatencyTimer } from "./chat-latency-instrumentation";
 import { createIdempotentAsyncOperation } from "../utils/async-operation";
+import { DEFAULT_ACTIVITY_TIMEOUT_SECONDS } from "@/shared/task";
 
 const log = createLogger("chat-conversation-service");
-const DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS = 15 * 60 * 1000;
+const DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS = DEFAULT_ACTIVITY_TIMEOUT_SECONDS * 1000;
+const DEFAULT_CHAT_IDLE_WAIT_TIMEOUT_MS = 15 * 60 * 1000;
 const CHAT_STREAM_STATUS_RELOAD_INTERVAL_MS = 500;
 const CHAT_INTERRUPT_ABORT_TIMEOUT_MS = 5_000;
 const CHAT_INTERRUPT_STARTUP_SETTLE_TIMEOUT_MS = 5_000;
@@ -323,7 +325,7 @@ export class ChatConversationService implements ChatConversationPort {
     }
   }
 
-  async waitForChatIdle(chatId: string, timeoutMs = DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS): Promise<Chat> {
+  async waitForChatIdle(chatId: string, timeoutMs = DEFAULT_CHAT_IDLE_WAIT_TIMEOUT_MS): Promise<Chat> {
     const startedAt = Date.now();
     while (true) {
       const summary = await this.state.getChatSummary(chatId);

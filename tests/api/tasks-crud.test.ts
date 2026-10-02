@@ -341,9 +341,10 @@ describe("Tasks CRUD API Integration", () => {
       expect(body.config.issueNumber).toBe(42);
       expect(body.config.stopPattern).toBe("<done>FINISHED</done>$");
       expect(body.config.git.branchPrefix).toBe("custom/");
+      expect(body.config.activityTimeoutSeconds).toBe(300);
     });
 
-    test("defaults activity timeout to unlimited when omitted", async () => {
+    test("defaults activity timeout to 330 seconds when omitted", async () => {
       const { activityTimeoutSeconds: _activityTimeoutSeconds, ...payloadWithoutTimeout } = baseCreateTaskPayload;
       const response = await fetch(`${baseUrl}/api/tasks`, {
         method: "POST",
@@ -352,15 +353,37 @@ describe("Tasks CRUD API Integration", () => {
           ...payloadWithoutTimeout,
           workspaceId: testWorkspaceId,
           prompt: "Use the default timeout",
-          name: "Unlimited Timeout Task",
+          name: "Default Timeout Task",
           model: testModel,
           useWorktree: true,
+          draft: true,
         }),
       });
 
       expect(response.status).toBe(201);
       const body = await response.json();
-      expect(body.config.activityTimeoutSeconds).toBeNull();
+      expect(body.config.activityTimeoutSeconds).toBe(330);
+    });
+
+    test("uses the 330-second default when task creation supplies a null activity timeout", async () => {
+      const response = await fetch(`${baseUrl}/api/tasks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...baseCreateTaskPayload,
+          activityTimeoutSeconds: null,
+          workspaceId: testWorkspaceId,
+          prompt: "Use the default timeout",
+          name: "Null Timeout Task",
+          model: testModel,
+          useWorktree: true,
+          draft: true,
+        }),
+      });
+
+      expect(response.status).toBe(201);
+      const body = await response.json();
+      expect(body.config.activityTimeoutSeconds).toBe(330);
     });
 
     test("creates a fully autonomous plan task without forcing auto-accept", async () => {
@@ -1137,7 +1160,7 @@ describe("Tasks CRUD API Integration", () => {
       expect(body.error).toBe("planning_update_restricted");
     });
 
-    test("updates a task to use an unlimited activity timeout", async () => {
+    test("resets a task activity timeout to the default when updated to null", async () => {
       const createResponse = await fetch(`${baseUrl}/api/tasks`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1145,7 +1168,7 @@ describe("Tasks CRUD API Integration", () => {
           ...baseCreateTaskPayload,
           workspaceId: testWorkspaceId,
           prompt: "Original prompt",
-          name: "Unlimited Timeout Draft",
+          name: "Default Timeout Draft",
           draft: true,
           model: testModel,
           useWorktree: true,
@@ -1153,6 +1176,16 @@ describe("Tasks CRUD API Integration", () => {
       });
       const createBody = await createResponse.json();
       const taskId = createBody.config.id;
+
+      const preserveResponse = await fetch(`${baseUrl}/api/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: "Update without changing the timeout",
+        }),
+      });
+      expect(preserveResponse.status).toBe(200);
+      expect((await preserveResponse.json()).config.activityTimeoutSeconds).toBe(300);
 
       const response = await fetch(`${baseUrl}/api/tasks/${taskId}`, {
         method: "PATCH",
@@ -1164,7 +1197,7 @@ describe("Tasks CRUD API Integration", () => {
 
       expect(response.status).toBe(200);
       const body = await response.json();
-      expect(body.config.activityTimeoutSeconds).toBeNull();
+      expect(body.config.activityTimeoutSeconds).toBe(330);
     });
 
     test("returns 409 when useWorktree is changed after git setup", async () => {

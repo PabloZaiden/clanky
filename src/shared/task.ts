@@ -60,7 +60,7 @@ export interface TaskConfig {
   /** Maximum consecutive identical errors before failsafe exit */
   maxConsecutiveErrors: number;
 
-  /** Seconds without events before ending the current turn normally; null for unlimited */
+  /** Seconds without events before ending the current turn normally; null uses the 330-second default */
   activityTimeoutSeconds: number | null;
 
   /** Regex pattern for completion detection */
@@ -503,11 +503,13 @@ export interface Task {
 /**
  * Default values for task configuration.
  */
+export const DEFAULT_ACTIVITY_TIMEOUT_SECONDS = 330;
+
 export const DEFAULT_TASK_CONFIG = {
   stopPattern: "<promise>COMPLETE</promise>$",
   maxIterations: Infinity,
   maxConsecutiveErrors: 10,
-  activityTimeoutSeconds: null,
+  activityTimeoutSeconds: DEFAULT_ACTIVITY_TIMEOUT_SECONDS,
   useWorktree: true,
   clearPlanningFolder: false,
   autoAcceptPlan: true,
