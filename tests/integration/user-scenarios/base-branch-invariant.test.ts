@@ -36,10 +36,9 @@ describe("Base Branch Invariant - Plan Mode", () => {
 
   test("originalBranch remains constant after plan acceptance", async () => {
     const originalBranch = await getCurrentBranch(ctx.workDir);
-    const { status, body } = await createTaskViaAPI(ctx.baseUrl, {
+    const { status, body } = await createTaskViaAPI(ctx, {
       directory: ctx.workDir,
       prompt: "Create a plan and execute it",
-      planMode: true,
       autoAcceptPlan: false,
     });
 
@@ -92,10 +91,9 @@ describe("Default Base Branch - Fixture Discovery", () => {
   test("task keeps the repository default branch while checkout is on a feature branch", async () => {
     await runGit(ctx.workDir, ["checkout", "-b", "feature/some-work"]);
 
-    const { status, body } = await createTaskViaAPI(ctx.baseUrl, {
+    const { status, body } = await createTaskViaAPI(ctx, {
       directory: ctx.workDir,
       prompt: "Do some work",
-      planMode: false,
       baseBranch: ctx.defaultBranch,
     });
 
@@ -118,25 +116,26 @@ describe("Default Base Branch - Fixture Discovery", () => {
   test("task created with explicit baseBranch uses that branch", async () => {
     await runGit(ctx.workDir, ["checkout", ctx.defaultBranch]);
     await runGit(ctx.workDir, ["checkout", "-b", "develop"]);
+    const developBranch = await getCurrentBranch(ctx.workDir);
+    await runGit(ctx.workDir, ["push", "-u", "origin", developBranch]);
     await runGit(ctx.workDir, ["checkout", ctx.defaultBranch]);
 
-    const { status, body } = await createTaskViaAPI(ctx.baseUrl, {
+    const { status, body } = await createTaskViaAPI(ctx, {
       directory: ctx.workDir,
       prompt: "Do some work on develop",
-      baseBranch: "develop",
-      planMode: false,
+      baseBranch: developBranch,
     });
 
     expect(status).toBe(201);
     const task = body as Task;
-    expect(task.config.baseBranch).toBe("develop");
+    expect(task.config.baseBranch).toBe(developBranch);
 
     const completedTask = await waitForTaskStatus(
       ctx.baseUrl,
       task.config.id,
       "completed",
     );
-    expect(completedTask.state.git?.originalBranch).toBe("develop");
+    expect(completedTask.state.git?.originalBranch).toBe(developBranch);
 
     await fetch(`${ctx.baseUrl}/api/tasks/${task.config.id}/discard`, {
       method: "POST",

@@ -331,7 +331,7 @@ describe("Plan Mode API Integration", () => {
     });
   });
 
-  describe("POST /api/tasks (plan mode)", () => {
+  describe("POST /api/tasks (mandatory planning)", () => {
     test("starts from uploaded plan as an approved plan", async () => {
       const uploadedPlanContent = `\uFEFF# Uploaded plan
 
@@ -349,7 +349,6 @@ describe("Plan Mode API Integration", () => {
           name: "Uploaded Plan Task",
           workspaceId: currentWorkspaceId,
           maxIterations: 1,
-          planMode: false,
           autoAcceptPlan: false,
           model: testModel,
           useWorktree: true,
@@ -362,7 +361,6 @@ describe("Plan Mode API Integration", () => {
       expect(response.status).toBe(201);
       const task = await response.json();
       expect(task.config.prompt).toBe(UPLOADED_PLAN_IMPLEMENTATION_PROMPT);
-      expect(task.config.planMode).toBe(true);
       expect(task.config.autoAcceptPlan).toBe(true);
       expect(task.state.planMode?.active).toBe(false);
       expect(task.state.planMode?.isPlanReady).toBe(true);
@@ -385,7 +383,6 @@ describe("Plan Mode API Integration", () => {
           name: "Empty Uploaded Plan",
           workspaceId: currentWorkspaceId,
           maxIterations: 1,
-          planMode: false,
           autoAcceptPlan: false,
           model: testModel,
           useWorktree: true,
@@ -410,7 +407,6 @@ describe("Plan Mode API Integration", () => {
           name: "Draft Uploaded Plan",
           workspaceId: currentWorkspaceId,
           maxIterations: 1,
-          planMode: false,
           autoAcceptPlan: false,
           model: testModel,
           useWorktree: true,
@@ -440,7 +436,6 @@ describe("Plan Mode API Integration", () => {
             name: "Test Task",
             workspaceId: sshWorkspaceId,
             maxIterations: 1,
-            planMode: true,
             autoAcceptPlan: false,
             model: testModel,
             useWorktree: true,
@@ -471,7 +466,7 @@ describe("Plan Mode API Integration", () => {
       }
     });
 
-    test("returns 400 if task is not in planning status", async () => {
+    test("returns 400 if the task is not in planning status", async () => {
       // Commit any previous changes first
       try {
         await runGit(currentTestWorkDir, ["add", "-A"]);
@@ -490,7 +485,7 @@ describe("Plan Mode API Integration", () => {
           name: "Test Task",
           workspaceId: currentWorkspaceId,
           maxIterations: 1,
-          planMode: false,
+          draft: true,
           model: testModel,
           useWorktree: true,
         }),

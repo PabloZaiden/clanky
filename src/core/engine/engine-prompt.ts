@@ -160,20 +160,13 @@ ${finalInstructions}`;
     ctx.emitUserMessage(ctx.state.pendingPrompt, `plan-feedback-${feedbackRounds}`, attachments);
   }
 
-  const errorContext = buildErrorContext(ctx.state.consecutiveErrors);
   const text = `The user has provided feedback on your plan:
 
 ---
 ${feedback}
 ---
-${errorContext}
-**FIRST**: Immediately add this feedback as a pending item in \`./.clanky-planning/status.md\` so it is tracked and preserved even if the conversation context is compacted.
 
-Then, update the plan in \`./.clanky-planning/plan.md\` based on this feedback.
-
-${BLOCKED_OUTCOME_INSTRUCTION}
-
-When the updated plan is ready, end your response with:
+When the plan is ready, end your response with:
 
 <promise>PLAN_READY</promise>`;
 
@@ -211,39 +204,29 @@ function buildExecutionPrompt(ctx: PromptBuildContext, model: ModelConfig | unde
   }
 
   const userMessageSection = userMessage
-    ? `\n- **User Message**: The user has added the following message. This should be your primary focus for this iteration. Address it while keeping the original goal in mind. **Before starting work on this message, immediately add it as a pending task in \`./.clanky-planning/status.md\`** so it is tracked and preserved even if the conversation context is compacted:\n\n${userMessage}\n`
+    ? `\n- Additional user input:\n${userMessage}\n`
     : "";
 
   const errorContext = buildErrorContext(ctx.state.consecutiveErrors);
 
   const text = `- Original Goal: ${ctx.config.prompt}
 ${userMessageSection}${errorContext}
-- Read the documents in the \`./.clanky-planning\` folder, pick up the most important task to continue with, and make sure you make a plan with coding tasks that includes updating the docs with your progress and what the next steps to work on are, at the end. Don't ask for confirmation and start working on it right away.
-
-- If the \`./.clanky-planning\` folder does not exist or is empty, create it and add a file called \`plan.md\` where you outline your plan to achieve the goal, and a \`status.md\` file to track progress.
-
-- If the user added a new message above, prioritize addressing it. It may change or add to the plan. If it contradicts something in the original goal or plan, follow the user's latest message.
-
-- Make sure that the implementations and fixes you make don't contradict the planning document, the existing codebase behavior, or established project conventions.
-
-- Add tasks to the plan to achieve the goal.
+- Execute the accepted plan in \`./.clanky-planning/plan.md\`.
 
 - Never ask for input from the user or any questions. This will always run unattended
 
 ${BLOCKED_OUTCOME_INSTRUCTION}
 
-- **IMPORTANT — Incremental progress tracking**: After completing each individual task, immediately update \`./.clanky-planning/status.md\` to mark the task as completed and note any relevant findings or context. Do NOT wait until the end of the iteration to update status — update it after every task so that progress is preserved even if the iteration is interrupted or the conversation context is compacted mid-work.
+- Update \`./.clanky-planning/status.md\` as you complete each task.
 
-- **IMPORTANT — Pre-compaction persistence**: Before ending your response, you MUST also update \`./.clanky-planning/status.md\` with:
+- Before your final response, update \`./.clanky-planning/status.md\` with:
   - The task you are currently working on and its current state
   - Updated status of all tasks in the plan
   - Any new learnings, discoveries, or important context gathered during this iteration
   - What the next steps should be when work resumes
-  This ensures that your progress is preserved even if the conversation context is compacted or summarized between iterations. The status file is your persistent memory — treat it as the source of truth for what has been done and what remains.
+  Keep this final status accurate so work can continue from the recorded state.
 
-- When you think you're done, check the plan and status files to ensure all tasks are actually marked as completed.
-
-- Only if you have completed every single non-manual task in the plan, end your response with:
+- When all tasks in the plan are complete, end your response with:
 
 <promise>COMPLETE</promise>`;
 

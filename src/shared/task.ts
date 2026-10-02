@@ -78,9 +78,6 @@ export interface TaskConfig {
   /** Whether to clear .clanky-planning folder on start */
   clearPlanningFolder: boolean;
 
-  /** Whether to start in plan mode (for drafts, this indicates the intended mode) */
-  planMode: boolean;
-
   /** Whether a ready plan should be automatically accepted and executed */
   autoAcceptPlan?: boolean;
 
@@ -274,7 +271,7 @@ export interface ConsecutiveErrorTracker {
 /**
  * Possible statuses for a Clanky Task.
  * 
- * Lifecycle: draft -> idle -> starting -> running <-> waiting -> completed/stopped/failed
+ * Lifecycle: draft -> planning -> starting -> running <-> waiting -> completed/stopped/failed
  * User-facing final states: accepted_local, merged, pushed, deleted (can be purged)
  */
 /**
@@ -513,7 +510,6 @@ export const DEFAULT_TASK_CONFIG = {
   activityTimeoutSeconds: null,
   useWorktree: true,
   clearPlanningFolder: false,
-  planMode: true,
   autoAcceptPlan: true,
   fullyAutonomous: false,
   cheapModel: {

@@ -21,8 +21,8 @@ export function InfoTab({
   onUpdatePlanningSettings,
 }: InfoTabProps) {
   const { config, state } = task;
-  const canEditAutoAcceptPlan = state.status === "planning" && config.planMode;
-  const canEditFullyAutonomous = config.planMode && (
+  const canEditAutoAcceptPlan = state.status === "planning" && state.planMode?.active === true;
+  const canEditFullyAutonomous = (
     canEditAutoAcceptPlan
     || (state.planMode?.active === false && POST_APPROVAL_FULLY_AUTONOMOUS_EDITABLE_STATUSES.has(state.status))
   );

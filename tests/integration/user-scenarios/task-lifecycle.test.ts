@@ -29,10 +29,9 @@ describe("Task Lifecycle User Scenarios", () => {
   test("reports max-iteration termination through the task API", async () => {
     ctx.mockBackend.reset(["Still working..."]);
 
-    const { status, body } = await createTaskViaAPI(ctx.baseUrl, {
+    const { status, body } = await createTaskViaAPI(ctx, {
       directory: ctx.workDir,
       prompt: "Keep working until the iteration limit is reached",
-      planMode: false,
       maxIterations: 2,
     });
 
@@ -53,10 +52,9 @@ describe("Task Lifecycle User Scenarios", () => {
   test("stops an active task through the task API", async () => {
     ctx.mockBackend.reset(["Still working..."]);
 
-    const { status, body } = await createTaskViaAPI(ctx.baseUrl, {
+    const { status, body } = await createTaskViaAPI(ctx, {
       directory: ctx.workDir,
       prompt: "Keep this task running until it is stopped",
-      planMode: false,
     });
 
     expect(status).toBe(201);
@@ -77,10 +75,9 @@ describe("Task Lifecycle User Scenarios", () => {
     ctx.mockBackend.reset(["Still working..."]);
     const promptStarted = ctx.mockBackend.holdNextPrompt();
 
-    const { status, body } = await createTaskViaAPI(ctx.baseUrl, {
+    const { status, body } = await createTaskViaAPI(ctx, {
       directory: ctx.workDir,
       prompt: "Keep this task running until it is stopped",
-      planMode: false,
     });
 
     expect(status).toBe(201);
@@ -103,10 +100,9 @@ describe("Task Lifecycle User Scenarios", () => {
   test("exposes backend failure through the persisted task state", async () => {
     ctx.mockBackend.reset(["ERROR:Backend crashed"]);
 
-    const { status, body } = await createTaskViaAPI(ctx.baseUrl, {
+    const { status, body } = await createTaskViaAPI(ctx, {
       directory: ctx.workDir,
       prompt: "Run a task that exercises backend failure handling",
-      planMode: false,
       maxConsecutiveErrors: 1,
     });
 

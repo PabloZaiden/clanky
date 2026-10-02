@@ -95,7 +95,7 @@ export class TaskManager {
     return startPlanModeImpl(this.ctx, taskId, options);
   }
 
-  async startDraft(taskId: string, options: { planMode: boolean; attachments?: MessageAttachment[] }): Promise<Task> {
+  async startDraft(taskId: string, options: { attachments?: MessageAttachment[] }): Promise<Task> {
     return startDraftImpl(this.ctx, taskId, options);
   }
 

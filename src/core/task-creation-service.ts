@@ -24,7 +24,7 @@ import { assertGitBackedWorkspace } from "./workspace-capabilities";
 
 const log = createLogger("core:task-creation-service");
 
-export type TaskStartPhase = "uploaded_plan" | "plan" | "task";
+export type TaskStartPhase = "uploaded_plan" | "plan";
 
 export class TaskCreationStartError extends Error {
   readonly taskId: string;
@@ -91,7 +91,6 @@ class TaskCreationService {
     task: Task,
     input: CreateTaskRequest,
     uploadedPlan: ValidatedPlanningFiles | null,
-    planMode: boolean,
   ): Promise<Task> {
     if (uploadedPlan) {
       try {
@@ -108,26 +107,14 @@ class TaskCreationService {
       }
     }
 
-    if (planMode) {
-      try {
-        await taskManager.startPlanMode(task.config.id, {
-          attachments: input.attachments,
-        });
-        return await taskManager.getTask(task.config.id) ?? task;
-      } catch (error) {
-        await this.cleanupFailedTask(task.config.id);
-        throw new TaskCreationStartError(task.config.id, "plan", error);
-      }
-    }
-
     try {
-      await taskManager.startTask(task.config.id, {
+      await taskManager.startPlanMode(task.config.id, {
         attachments: input.attachments,
       });
       return await taskManager.getTask(task.config.id) ?? task;
     } catch (error) {
       await this.cleanupFailedTask(task.config.id);
-      throw new TaskCreationStartError(task.config.id, "task", error);
+      throw new TaskCreationStartError(task.config.id, "plan", error);
     }
   }
 
@@ -147,9 +134,7 @@ class TaskCreationService {
         );
       }
     }
-
     const hasUploadedPlan = uploadedPlan !== null;
-    const effectivePlanMode = hasUploadedPlan ? true : input.planMode;
     const effectiveAutoAcceptPlan = hasUploadedPlan ? true : input.autoAcceptPlan;
     const workspace = await workspaceManager.requireWorkspace(input.workspaceId);
     assertGitBackedWorkspace(workspace, "Tasks require a Git-backed workspace.");
@@ -218,7 +203,6 @@ class TaskCreationService {
       baseBranch: effectiveBaseBranch,
       useWorktree: input.useWorktree,
       clearPlanningFolder: input.clearPlanningFolder,
-      planMode: effectivePlanMode,
       autoAcceptPlan: effectiveAutoAcceptPlan,
       fullyAutonomous: input.fullyAutonomous,
       draft: input.draft,
@@ -235,7 +219,7 @@ class TaskCreationService {
       return task;
     }
 
-    return await this.startCreatedTask(task, input, uploadedPlan, effectivePlanMode);
+    return await this.startCreatedTask(task, input, uploadedPlan);
   }
 
   async generateTitle(input: GenerateTaskTitleRequest): Promise<string> {

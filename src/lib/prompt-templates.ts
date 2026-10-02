@@ -2,18 +2,10 @@
  * Prompt templates for task creation and chat composition.
  *
  * Each template provides a predefined prompt that can be selected from
- * task creation or chat composition. Templates may also specify
- * task-only default form values (e.g., planMode) that are applied only
- * when selected from the task creation form.
+ * task creation or chat composition.
  *
  * To add a new template, append an entry to the `PROMPT_TEMPLATES` array.
  */
-
-/** Configuration defaults that a template can override on the form. */
-export interface PromptTemplateDefaults {
-  /** Whether plan mode should be enabled for this template. */
-  planMode?: boolean;
-}
 
 /** A predefined prompt template shared by task creation and chat composition. */
 export interface PromptTemplate {
@@ -25,8 +17,6 @@ export interface PromptTemplate {
   description: string;
   /** The full prompt text that autofills the textarea. */
   prompt: string;
-  /** Optional task form defaults applied when selected from task creation. */
-  taskDefaults?: PromptTemplateDefaults;
 }
 
 /**
@@ -87,9 +77,6 @@ Focus on hacky parts, repeated code hardcoded or fragile implementations.
 Regarding automated tests, less is more. Flag any test that just checks for the exact implementation, the absence of old behavior already changed, specific strings or ui things. We want to test proper behavior, not small tests for regressions already fixed or ui details that will fail if the ui changes.
 
 After finishing the whole analysis and reviewing the findings, make a single clean, complete and detailed list with all the findings.`,
-    taskDefaults: {
-      planMode: true,
-    },
   },
   {
     id: "fix-failing-tests",
@@ -112,9 +99,6 @@ After finishing the whole analysis and reviewing the findings, make a single cle
 - Never delete or skip tests to make the suite pass
 - Run the full suite (not individual tests) for final verification
 - Follow the project's existing coding conventions`,
-    taskDefaults: {
-      planMode: false,
-    },
   },
   {
     id: "continue-planned-tasks",
@@ -126,9 +110,6 @@ After finishing the whole analysis and reviewing the findings, make a single cle
 Read \`.clanky-planning/plan.md\` for the full plan and \`.clanky-planning/status.md\` for current progress. Pick up the next pending task and continue implementation.
 
 Follow the standard workflow in the planning files — update status after each completed task.`,
-    taskDefaults: {
-      planMode: false,
-    },
   },
   {
     id: "review-fix-documentation",
@@ -180,9 +161,6 @@ After making fixes, re-read the updated documentation to confirm:
 - Do not add excessive documentation — keep it concise and useful
 - Follow the project's existing conventions if they are evident in the codebase and documentation
 - Run the project's build command after all changes to verify nothing is broken`,
-    taskDefaults: {
-      planMode: true,
-    },
   },
   {
     id: "update-project-dependencies",
@@ -207,9 +185,6 @@ After making fixes, re-read the updated documentation to confirm:
 - Do not ignore failing validation. Fix compatibility issues caused by dependency updates, or revert the specific problematic update and document why.
 - Keep changes focused on dependency updates and required compatibility fixes.
 - Summarize the updated dependency groups, important major-version changes, validation commands run, and any remaining blockers.`,
-    taskDefaults: {
-      planMode: true,
-    },
   },
 ] as const;
 

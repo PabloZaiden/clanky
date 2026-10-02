@@ -533,7 +533,6 @@ Create a new task.
 | `model.variant` | string | Yes | Model variant (e.g., `"thinking"`); use `""` for the default variant |
 | `cheapModel` | object | Yes | Helper-model selection: `{ "mode": "same-as-task" }` or `{ "mode": "custom", "model": { ... } }` |
 | `useWorktree` | boolean | Yes | Whether to run the task in a dedicated git worktree |
-| `planMode` | boolean | Yes | Start in plan creation mode |
 | `maxIterations` | number \| null | Yes | Maximum iterations; use `null` for unlimited |
 | `maxConsecutiveErrors` | number | Yes | Maximum consecutive errors before the failsafe stops the task |
 | `activityTimeoutSeconds` | number \| null | No | Seconds without events before ending the current turn normally. Use `null` or omit the field for unlimited timeout; finite values must be at least 60 seconds. |
@@ -564,7 +563,6 @@ Create a new task.
   },
   "cheapModel": { "mode": "same-as-task" },
   "useWorktree": true,
-  "planMode": false,
   "maxIterations": 10,
   "maxConsecutiveErrors": 10,
   "activityTimeoutSeconds": null,
@@ -584,10 +582,12 @@ Use `POST /api/tasks/title` if you want Clanky to suggest a name from the prompt
 
 Returns the created task object with status `201 Created`.
 
-- If `draft: true`, the task is saved with status `draft` and no git branch is created
-- If `planMode: true`, the task starts in `planning` status
-- Otherwise, the task starts asynchronously and normally returns with status
-  `starting` before transitioning to `running`
+- If `draft: true`, the task is saved with status `draft` and no git branch is created.
+- Otherwise, Clanky generates a plan and the task enters `planning`. The plan is
+  accepted automatically when `autoAcceptPlan` is `true`; otherwise it waits
+  for user acceptance.
+- If `uploadedPlan` is provided, Clanky uses it instead of generating a plan
+  and starts execution from it.
 
 **Errors**
 
@@ -599,8 +599,8 @@ Returns the created task object with status `201 Created`.
 | 400 | `provider_not_found` | The specified provider was not found |
 | 400 | `model_not_found` | The specified model was not found on the provider |
 | 404 | `workspace_not_found` | Workspace not found for the given workspaceId |
-| 500 | `start_failed` | Task created but failed to start (normal mode) |
-| 500 | `start_plan_failed` | Task created but failed to start plan mode |
+| 500 | `start_plan_failed` | Task created but failed to start planning |
+| 500 | `start_uploaded_plan_failed` | Task created but failed to start from the uploaded plan |
 | 500 | `create_failed` | Task creation failed |
 
 #### POST /api/tasks/title
@@ -677,7 +677,6 @@ state.
 | `baseBranch` | string | Update base branch |
 | `useWorktree` | boolean | Update worktree usage before the task has started |
 | `clearPlanningFolder` | boolean | Update clear planning folder flag |
-| `planMode` | boolean | Update plan mode flag |
 | `autoAcceptPlan` | boolean | Update whether a ready plan is accepted automatically |
 | `fullyAutonomous` | boolean | Update the autonomous post-approval flow |
 | `isPrivate` | boolean | Update task visibility |
@@ -744,18 +743,18 @@ Delete a task.
 
 ### Task Control
 
-Tasks are automatically started when created (unless `draft: true`). The following endpoints control task lifecycle after creation.
+Tasks start by generating a plan when created (unless `draft: true`). Plans can
+be accepted manually or automatically with `autoAcceptPlan`. The following
+endpoints control task lifecycle after creation.
 
 #### POST /api/tasks/:id/draft/start
 
-Start a draft task. Transitions the task from `draft` status to either `planning`
-or `starting`; a non-plan task transitions to `running` after startup.
+Start a draft task. Transitions the task from `draft` status to `planning`.
 
 **Request Body**
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `planMode` | boolean | Yes | If true, start in plan mode; if false, start immediately |
 | `attachments` | array | Yes | Message attachments; use an empty array when there are none |
 
 **Response**
@@ -768,10 +767,8 @@ Returns the updated task object.
 |--------|-------|-------------|
 | 404 | `not_found` | Task not found |
 | 400 | `not_draft` | Task is not in draft status |
-| 400 | `validation_error` | Request body must contain planMode boolean |
 | 400 | `invalid_json` | Request body is not valid JSON |
-| 500 | `start_failed` | Failed to start task (normal mode) |
-| 500 | `start_plan_failed` | Failed to start plan mode |
+| 500 | `start_plan_failed` | Failed to start planning |
 
 #### POST /api/tasks/:id/accept
 
@@ -3243,7 +3240,7 @@ The terminal socket emits events such as `terminal.connected`,
 |--------|-------------|
 | `idle` | Created but not started |
 | `draft` | Saved as draft, not started (no git branch or session) |
-| `planning` | In plan mode, awaiting plan approval |
+| `planning` | Generating a plan or awaiting plan approval |
 | `starting` | Initializing backend connection |
 | `running` | Actively executing |
 | `waiting` | Between iterations |
@@ -3328,7 +3325,7 @@ Examples:
 
 ### Create a Task
 
-Tasks are automatically started upon creation (unless `draft: true`).
+Tasks start by generating a plan upon creation (unless `draft: true`).
 
 ```bash
 # Create a task (starts automatically)
@@ -3346,7 +3343,6 @@ curl -X POST http://localhost:3000/api/tasks \
     },
     "cheapModel": { "mode": "same-as-task" },
     "useWorktree": true,
-    "planMode": false,
     "maxIterations": 10,
     "maxConsecutiveErrors": 10,
     "activityTimeoutSeconds": null,
@@ -3359,7 +3355,7 @@ curl -X POST http://localhost:3000/api/tasks \
     "draft": false
   }'
 
-# Response: {"config":{"id":"abc-123",...},"state":{"status":"starting",...}}
+# Response: {"config":{"id":"abc-123",...},"state":{"status":"planning",...}}
 
 # Watch events via WebSocket (use wscat or similar)
 wscat -c ws://localhost:3000/api/ws?taskId=abc-123
@@ -3385,7 +3381,6 @@ curl -X POST http://localhost:3000/api/tasks \
     },
     "cheapModel": { "mode": "same-as-task" },
     "useWorktree": true,
-    "planMode": false,
     "maxIterations": 10,
     "maxConsecutiveErrors": 10,
     "activityTimeoutSeconds": null,
@@ -3410,15 +3405,16 @@ curl -X PUT http://localhost:3000/api/tasks/abc-123 \
 # Start the draft
 curl -X POST http://localhost:3000/api/tasks/abc-123/draft/start \
   -H "Content-Type: application/json" \
-  -d '{"planMode": false, "attachments": []}'
+  -d '{"attachments": []}'
 ```
 
-### Create a Task with Plan Mode
+### Create a Task and Auto-Accept Its Plan
 
-Plan mode lets you review and refine the plan before execution.
+Set `autoAcceptPlan` to `true` to start executing the generated plan without
+waiting for manual approval.
 
 ```bash
-# Create a task in plan mode
+# Create a task with an auto-accepted plan
 curl -X POST http://localhost:3000/api/tasks \
   -H "Content-Type: application/json" \
   -d '{
@@ -3433,7 +3429,6 @@ curl -X POST http://localhost:3000/api/tasks \
     },
     "cheapModel": { "mode": "same-as-task" },
     "useWorktree": true,
-    "planMode": true,
     "maxIterations": 10,
     "maxConsecutiveErrors": 10,
     "activityTimeoutSeconds": null,
@@ -3441,22 +3436,14 @@ curl -X POST http://localhost:3000/api/tasks \
     "git": { "branchPrefix": "", "commitScope": "" },
     "baseBranch": "main",
     "clearPlanningFolder": false,
-    "autoAcceptPlan": false,
+    "autoAcceptPlan": true,
     "fullyAutonomous": false,
     "draft": false
   }'
 
 # Response: {"config":{"id":"abc-123",...},"state":{"status":"planning",...}}
 
-# Send feedback on the plan
-curl -X POST http://localhost:3000/api/tasks/abc-123/plan/feedback \
-  -H "Content-Type: application/json" \
-  -d '{"feedback": "Also consider adding error handling for token expiration", "attachments": []}'
-
-# Accept the plan and start execution
-curl -X POST http://localhost:3000/api/tasks/abc-123/plan/accept \
-  -H "Content-Type: application/json" \
-  -d '{"mode": "start_task"}'
+# Once the plan is ready, Clanky accepts it and starts execution automatically.
 ```
 
 ### Modify Next Iteration Prompt

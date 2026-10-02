@@ -109,7 +109,6 @@ export const CreateTaskRequestSchema = z.object({
   baseBranch: z.string().min(1, "baseBranch is required"),
   useWorktree: z.boolean({ error: "useWorktree is required and must be a boolean (true or false)" }),
   clearPlanningFolder: z.boolean(),
-  planMode: z.boolean({ error: "planMode is required and must be a boolean (true or false)" }),
   autoAcceptPlan: z.boolean(),
   fullyAutonomous: z.boolean(),
   draft: z.boolean(),
@@ -145,7 +144,6 @@ export const UpdateTaskRequestSchema = z.object({
   baseBranch: z.string().optional(),
   useWorktree: z.boolean().optional(),
   clearPlanningFolder: z.boolean().optional(),
-  planMode: z.boolean().optional(),
   autoAcceptPlan: z.boolean().optional(),
   fullyAutonomous: z.boolean().optional(),
   isPrivate: z.boolean().optional(),
@@ -209,7 +207,6 @@ export const SetPendingRequestSchema = z.object({
  * Schema for starting a draft - POST /api/tasks/:id/draft/start
  */
 export const StartDraftRequestSchema = z.object({
-  planMode: z.boolean({ error: "planMode is required" }),
   attachments: MessageAttachmentsSchema,
 });
 

@@ -23,7 +23,6 @@ export function toDraftTaskUpdateRequest(request: CreateTaskFormSubmitRequest): 
     baseBranch: request.baseBranch,
     useWorktree: request.useWorktree,
     clearPlanningFolder: request.clearPlanningFolder,
-    planMode: request.planMode,
     autoAcceptPlan: request.autoAcceptPlan,
     fullyAutonomous: request.fullyAutonomous,
     ...(request.model ? { model: request.model } : {}),

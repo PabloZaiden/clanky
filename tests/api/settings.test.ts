@@ -83,7 +83,6 @@ describe("Settings API integration", () => {
           baseBranch,
           useWorktree: true,
           clearPlanningFolder: false,
-          planMode: false,
           autoAcceptPlan: false,
           fullyAutonomous: false,
           draft: true,

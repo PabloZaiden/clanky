@@ -35,7 +35,6 @@ export function useFormActions({
   selectedModel,
   selectedCheapModel,
   selectedModelEnabled,
-  planMode,
   autoAcceptPlan,
   fullyAutonomous,
   issueNumber,
@@ -66,7 +65,6 @@ export function useFormActions({
   selectedModel: string;
   selectedCheapModel: string;
   selectedModelEnabled: boolean;
-  planMode: boolean;
   autoAcceptPlan: boolean;
   fullyAutonomous: boolean;
   issueNumber: string;
@@ -177,9 +175,8 @@ export function useFormActions({
           prompt: effectivePrompt,
           issueNumber: parsedIssueNumber,
           attachments: attachments.length > 0 && !asDraft && !currentUploadedPlan ? toMessageAttachments(attachments) : [],
-          planMode: currentUploadedPlan ? true : planMode,
-          autoAcceptPlan: currentUploadedPlan ? true : planMode ? autoAcceptPlan : false,
-          fullyAutonomous: currentUploadedPlan ? fullyAutonomous : planMode ? fullyAutonomous : false,
+          autoAcceptPlan: currentUploadedPlan ? true : autoAcceptPlan,
+          fullyAutonomous,
           cheapModel: cheapModelValueToSelection(selectedCheapModel),
           maxIterations: maxIterations.trim()
             ? Math.max(parseInt(maxIterations, 10), 1)
@@ -228,7 +225,6 @@ export function useFormActions({
       selectedModel,
       selectedCheapModel,
       selectedModelEnabled,
-      planMode,
       autoAcceptPlan,
       fullyAutonomous,
       issueNumber,
@@ -295,7 +291,6 @@ export function useFormActions({
     canSaveDraft?: boolean;
     isEditing?: boolean;
     isEditingDraft?: boolean;
-    planMode?: boolean;
   }>({});
 
   useEffect(() => {
@@ -306,7 +301,6 @@ export function useFormActions({
       canSaveDraft: canSaveDraft !== prev.canSaveDraft,
       isEditing: isEditing !== prev.isEditing,
       isEditingDraft: isEditingDraft !== prev.isEditingDraft,
-      planMode: planMode !== prev.planMode,
     });
 
     renderActionsRef.current = {
@@ -315,7 +309,6 @@ export function useFormActions({
       canSaveDraft,
       isEditing,
       isEditingDraft,
-      planMode,
     };
 
     if (renderActions) {
@@ -325,7 +318,6 @@ export function useFormActions({
         canSaveDraft,
         isEditing,
         isEditingDraft: isEditingDraft ?? false,
-        planMode,
         onCancel: handleExternalCancel,
         onSubmit: handleExternalSubmit,
         onSaveAsDraft: handleExternalSaveAsDraft,
@@ -333,7 +325,7 @@ export function useFormActions({
     }
     // Note: renderActions intentionally NOT in deps — notify only on action state changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSubmitting, canSubmit, canSaveDraft, isEditing, isEditingDraft, planMode]);
+  }, [isSubmitting, canSubmit, canSaveDraft, isEditing, isEditingDraft]);
 
   return {
     formRef,

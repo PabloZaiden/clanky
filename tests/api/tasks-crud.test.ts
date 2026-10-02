@@ -37,7 +37,7 @@ let baseCreateTaskPayload = {
   },
   baseBranch: "",
   clearPlanningFolder: false,
-  autoAcceptPlan: false,
+  autoAcceptPlan: true,
   fullyAutonomous: false,
   draft: false,
 };
@@ -77,19 +77,26 @@ class SetupGateExecutor extends TestCommandExecutor {
     options?: Parameters<TestCommandExecutor["exec"]>[2],
   ) {
     if (command === "git" && !this.setupBlocked) {
-      this.setupBlocked = true;
-      this.resolveSetupStarted();
       if (this.blockSetup) {
+        this.setupBlocked = true;
+        this.resolveSetupStarted();
         await this.setupReleasePromise;
       }
-      if (this.failSetup) {
-        return {
-          success: false,
-          stdout: "",
-          stderr: "blocked setup failure",
-          exitCode: 1,
-        };
-      }
+    }
+
+    if (
+      this.failSetup
+      && command === "git"
+      && args.some((argument, index) => argument === "worktree" && args[index + 1] === "add")
+    ) {
+      this.setupBlocked = true;
+      this.resolveSetupStarted();
+      return {
+        success: false,
+        stdout: "",
+        stderr: "blocked setup failure",
+        exitCode: 1,
+      };
     }
 
     return super.exec(command, args, options);
@@ -103,6 +110,20 @@ describe("Tasks CRUD API Integration", () => {
   let baseUrl: string;
   let testWorkspaceId: string;
   let mockBackend: ReturnType<typeof createMockBackend>;
+  let nameCounter = 0;
+
+  const createCrudMockBackend = (): MockAcpBackend => new MockAcpBackend({
+    models: [defaultTestModel],
+    responses: ["<promise>PLAN_READY</promise>", "<promise>COMPLETE</promise>"],
+    onSendPrompt: () => {
+      nameCounter++;
+      return {
+        id: `msg-name-${Date.now()}`,
+        content: `crud-test-task-${nameCounter}`,
+        parts: [{ type: "text" as const, text: `crud-test-task-${nameCounter}` }],
+      };
+    },
+  });
 
   async function waitForTaskStatus(
     taskId: string,
@@ -175,18 +196,7 @@ describe("Tasks CRUD API Integration", () => {
 
     // Set up backend manager with test executor factory.
     // The mocked backend is also used by the explicit title-generation endpoint tests.
-    let nameCounter = 0;
-    mockBackend = new MockAcpBackend({
-      models: [defaultTestModel],
-      onSendPrompt: () => {
-        nameCounter++;
-        return {
-          id: `msg-name-${Date.now()}`,
-          content: `crud-test-task-${nameCounter}`,
-          parts: [{ type: "text" as const, text: `crud-test-task-${nameCounter}` }],
-        };
-      },
-    });
+    mockBackend = createCrudMockBackend();
     backendManager.setBackendForTesting(mockBackend);
     backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
 
@@ -220,6 +230,9 @@ describe("Tasks CRUD API Integration", () => {
     
     // Clear all running engines first
     taskManager.resetForTesting();
+    mockBackend = createCrudMockBackend();
+    backendManager.setBackendForTesting(mockBackend);
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
     
     const tasks = await listTasks();
     const activeStatuses = ["idle", "planning", "starting", "running", "waiting", "resolving_conflicts"];
@@ -254,6 +267,7 @@ describe("Tasks CRUD API Integration", () => {
           prompt: "Build something",
           name: "Test Task",
           planMode: false,
+          autoAcceptPlan: false,
           model: testModel,
           useWorktree: true,
         }),
@@ -265,8 +279,8 @@ describe("Tasks CRUD API Integration", () => {
       expect(body.config.directory).toBe(testWorkDir);
       expect(body.config.prompt).toBe("Build something");
       expect(body.config.id).toBeDefined();
-      // Tasks are auto-started on creation, so status should not be idle
-      expect(["starting", "running", "completed"]).toContain(body.state.status);
+      expect(body.state.status).toBe("planning");
+      expect(body.state.planMode.active).toBe(true);
     });
 
     test("rejects task creation for directory workspaces", async () => {
@@ -292,7 +306,6 @@ describe("Tasks CRUD API Integration", () => {
           workspaceId: workspace.id,
           prompt: "This must not create a task",
           name: "Directory Task",
-          planMode: false,
           model: testModel,
           useWorktree: false,
         }),
@@ -317,7 +330,6 @@ describe("Tasks CRUD API Integration", () => {
           issueNumber: 42,
           stopPattern: "<done>FINISHED</done>$",
           git: { branchPrefix: "custom", commitScope: "" },
-          planMode: false,
           model: testModel,
           useWorktree: true,
         }),
@@ -341,7 +353,6 @@ describe("Tasks CRUD API Integration", () => {
           workspaceId: testWorkspaceId,
           prompt: "Use the default timeout",
           name: "Unlimited Timeout Task",
-          planMode: false,
           model: testModel,
           useWorktree: true,
         }),
@@ -361,7 +372,6 @@ describe("Tasks CRUD API Integration", () => {
           workspaceId: testWorkspaceId,
           prompt: "Plan it and take it all the way through PR automation",
           name: "Fully Autonomous Task",
-          planMode: true,
           autoAcceptPlan: false,
           fullyAutonomous: true,
           model: testModel,
@@ -372,7 +382,6 @@ describe("Tasks CRUD API Integration", () => {
 
       expect(response.status).toBe(201);
       const body = await response.json();
-      expect(body.config.planMode).toBe(true);
       expect(body.config.fullyAutonomous).toBe(true);
       expect(body.config.autoAcceptPlan).toBe(false);
     });
@@ -387,7 +396,6 @@ describe("Tasks CRUD API Integration", () => {
           prompt: "Preserve this worktree configuration",
           name: "Existing Worktree Task",
           draft: true,
-          planMode: false,
           model: testModel,
           useWorktree: true,
         }),
@@ -415,7 +423,6 @@ describe("Tasks CRUD API Integration", () => {
             prompt: "Create without a worktree",
             name: "No Worktree Task",
             draft: true,
-            planMode: false,
             model: testModel,
             useWorktree: false,
           }),
@@ -440,7 +447,6 @@ describe("Tasks CRUD API Integration", () => {
             prompt: "This worktree task must be rejected",
             name: "Rejected Worktree Task",
             draft: true,
-            planMode: false,
             model: testModel,
             useWorktree: true,
           }),
@@ -477,7 +483,6 @@ describe("Tasks CRUD API Integration", () => {
           workspaceId: testWorkspaceId,
           prompt: "Persist large task content",
           name: "Task List Summary Test",
-          planMode: true,
           model: testModel,
           useWorktree: true,
           draft: true,
@@ -555,7 +560,6 @@ describe("Tasks CRUD API Integration", () => {
           workspaceId: testWorkspaceId,
           prompt: "Load a paginated task transcript",
           name: "Task Transcript Snapshot Test",
-          planMode: false,
           model: testModel,
           useWorktree: true,
           draft: true,
@@ -752,7 +756,6 @@ describe("Tasks CRUD API Integration", () => {
           prompt: "Original prompt",
           name: "Test Task",
           draft: true,
-          planMode: false,
           model: testModel,
           useWorktree: true,
         }),
@@ -801,7 +804,6 @@ describe("Tasks CRUD API Integration", () => {
           prompt: "Private flag prompt",
           name: "Private Flag Task",
           draft: true,
-          planMode: false,
           model: testModel,
           useWorktree: true,
         }),
@@ -826,7 +828,7 @@ describe("Tasks CRUD API Integration", () => {
       expect(getBody.config.isPrivate).toBe(true);
     });
 
-    test("clears fully autonomous settings when plan mode is disabled", async () => {
+    test("allows draft planning automation settings to be disabled", async () => {
       const createResponse = await fetch(`${baseUrl}/api/tasks`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -836,7 +838,6 @@ describe("Tasks CRUD API Integration", () => {
           prompt: "Original prompt",
           name: "Autonomous Draft",
           draft: true,
-          planMode: true,
           autoAcceptPlan: true,
           fullyAutonomous: true,
           model: testModel,
@@ -850,13 +851,13 @@ describe("Tasks CRUD API Integration", () => {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          planMode: false,
+          autoAcceptPlan: false,
+          fullyAutonomous: false,
         }),
       });
 
       expect(response.status).toBe(200);
       const body = await response.json();
-      expect(body.config.planMode).toBe(false);
       expect(body.config.autoAcceptPlan).toBe(false);
       expect(body.config.fullyAutonomous).toBe(false);
     });
@@ -871,7 +872,6 @@ describe("Tasks CRUD API Integration", () => {
           prompt: "Plan something carefully",
           name: "Planning Task",
           draft: false,
-          planMode: true,
           autoAcceptPlan: false,
           fullyAutonomous: false,
           model: testModel,
@@ -913,7 +913,6 @@ describe("Tasks CRUD API Integration", () => {
           prompt: "Plan something carefully",
           name: "Conflict Task",
           draft: false,
-          planMode: true,
           autoAcceptPlan: false,
           fullyAutonomous: false,
           model: testModel,
@@ -952,7 +951,6 @@ describe("Tasks CRUD API Integration", () => {
           prompt: "Plan something carefully",
           name: "Runtime Config Task",
           draft: false,
-          planMode: true,
           autoAcceptPlan: false,
           fullyAutonomous: false,
           model: testModel,
@@ -1019,7 +1017,6 @@ describe("Tasks CRUD API Integration", () => {
           prompt: "Plan something carefully",
           name: "Approved Plan Task",
           draft: false,
-          planMode: true,
           autoAcceptPlan: false,
           fullyAutonomous: false,
           model: testModel,
@@ -1069,7 +1066,6 @@ describe("Tasks CRUD API Integration", () => {
           prompt: "Plan something carefully",
           name: "Approved Plan Restrictions Task",
           draft: false,
-          planMode: true,
           autoAcceptPlan: false,
           fullyAutonomous: false,
           model: testModel,
@@ -1117,7 +1113,6 @@ describe("Tasks CRUD API Integration", () => {
           prompt: "Plan something carefully",
           name: "Planning Task",
           draft: false,
-          planMode: true,
           autoAcceptPlan: false,
           fullyAutonomous: false,
           model: testModel,
@@ -1152,7 +1147,6 @@ describe("Tasks CRUD API Integration", () => {
           prompt: "Original prompt",
           name: "Unlimited Timeout Draft",
           draft: true,
-          planMode: false,
           model: testModel,
           useWorktree: true,
         }),
@@ -1183,7 +1177,6 @@ describe("Tasks CRUD API Integration", () => {
           prompt: "Immutable worktree mode",
           name: "Test Task",
           draft: true,
-          planMode: false,
           model: testModel,
           useWorktree: true,
         }),
@@ -1197,7 +1190,13 @@ describe("Tasks CRUD API Integration", () => {
 
       await updateTaskState(taskId, {
         ...task!.state,
-        status: "completed",
+        status: "stopped",
+        planMode: {
+          active: true,
+          feedbackRounds: 0,
+          planningFolderCleared: false,
+          isPlanReady: false,
+        },
         git: {
           originalBranch: baseCreateTaskPayload.baseBranch,
           workingBranch: `${taskId}-a1b2c3d`,
@@ -1234,7 +1233,6 @@ describe("Tasks CRUD API Integration", () => {
           prompt: "Test prompt",
           name: "Test Task",
           draft: true,
-          planMode: false,
           model: testModel,
           useWorktree: true,
         }),
@@ -1269,7 +1267,6 @@ describe("Tasks CRUD API Integration", () => {
           prompt: "Purge me",
           name: "Test Task",
           draft: true,
-          planMode: false,
           model: testModel,
           useWorktree: true,
         }),
@@ -1304,7 +1301,6 @@ describe("Tasks CRUD API Integration", () => {
           prompt: "Draft task",
           name: "Test Task",
           draft: true,
-          planMode: false,
           model: testModel,
           useWorktree: true,
         }),
@@ -1328,7 +1324,6 @@ describe("Tasks CRUD API Integration", () => {
           prompt: "Original prompt",
           name: "Test Task",
           draft: true,
-          planMode: false,
           model: testModel,
           useWorktree: true,
         }),
@@ -1361,7 +1356,6 @@ describe("Tasks CRUD API Integration", () => {
           prompt: "Original prompt",
           name: "Finite Draft Task",
           draft: true,
-          planMode: false,
           model: testModel,
           useWorktree: true,
           maxIterations: 5,
@@ -1410,7 +1404,6 @@ describe("Tasks CRUD API Integration", () => {
             workspaceId,
             prompt: "Task",
             name: "Test Task",
-            planMode: false,
           model: testModel,
           useWorktree: true,
           }),
@@ -1438,7 +1431,7 @@ describe("Tasks CRUD API Integration", () => {
       }
     });
 
-    test("can start draft as immediate execution", async () => {
+    test("starts every draft in planning even when an old request asks to skip it", async () => {
       // Create draft
       const createResponse = await fetch(`${baseUrl}/api/tasks`, {
         method: "POST",
@@ -1449,7 +1442,7 @@ describe("Tasks CRUD API Integration", () => {
           prompt: "Task",
           name: "Test Task",
           draft: true,
-          planMode: false,
+          autoAcceptPlan: false,
           model: testModel,
           useWorktree: true,
         }),
@@ -1469,16 +1462,8 @@ describe("Tasks CRUD API Integration", () => {
 
       expect(startResponse.status).toBe(200);
       const startBody = await startResponse.json();
-      expect(startBody.state.status).not.toBe("draft");
-      
-      // Wait for completion
-      await waitForTaskCompletion(taskId);
-      
-      // Verify final state
-      const getResponse = await fetch(`${baseUrl}/api/tasks/${taskId}`);
-      const getBody = await getResponse.json();
-      expect(getBody.state.status).toBe("completed");
-      expect(getBody.state.git).toBeDefined();
+      expect(startBody.state.status).toBe("planning");
+      expect(startBody.state.planMode.active).toBe(true);
     });
 
     test("keeps a draft when source-checkout preflight finds uncommitted changes", async () => {
@@ -1501,7 +1486,6 @@ describe("Tasks CRUD API Integration", () => {
             prompt: "Preflight draft task",
             name: "Preflight Draft Task",
             draft: true,
-            planMode: false,
             model: testModel,
             useWorktree: false,
           }),
@@ -1514,7 +1498,7 @@ describe("Tasks CRUD API Integration", () => {
         const blockedStartResponse = await fetch(`${baseUrl}/api/tasks/${taskId}/draft/start`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ planMode: false, attachments: [] }),
+          body: JSON.stringify({ attachments: [] }),
         });
         expect(blockedStartResponse.status).toBe(409);
         expect((await blockedStartResponse.json()).error).toBe("uncommitted_changes");
@@ -1527,7 +1511,7 @@ describe("Tasks CRUD API Integration", () => {
         const retryResponse = await fetch(`${baseUrl}/api/tasks/${taskId}/draft/start`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ planMode: false, attachments: [] }),
+          body: JSON.stringify({ attachments: [] }),
         });
         expect(retryResponse.status).toBe(200);
         expect((await retryResponse.json()).state.status).not.toBe("draft");
@@ -1552,7 +1536,6 @@ describe("Tasks CRUD API Integration", () => {
             prompt: "Blocked immediate startup",
             name: "Blocked Immediate Task",
             draft: true,
-            planMode: false,
             model: testModel,
             useWorktree: true,
           }),
@@ -1563,7 +1546,7 @@ describe("Tasks CRUD API Integration", () => {
         startPromise = fetch(`${baseUrl}/api/tasks/${taskId}/draft/start`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ planMode: false, attachments: [] }),
+          body: JSON.stringify({ attachments: [] }),
         });
         await executor.waitForSetupStart();
 
@@ -1573,7 +1556,7 @@ describe("Tasks CRUD API Integration", () => {
           fetch(`${baseUrl}/api/tasks/${taskId}/draft/start`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ planMode: false, attachments: [] }),
+            body: JSON.stringify({ attachments: [] }),
           }),
           fetch(`${baseUrl}/api/tasks/${taskId}`, {
             method: "PUT",
@@ -1586,8 +1569,8 @@ describe("Tasks CRUD API Integration", () => {
         const listed = (await listResponse.json()).find(
           (task: { config: { id: string } }) => task.config.id === taskId,
         );
-        expect(detail.state.status).toBe("starting");
-        expect(listed?.state.status).toBe("starting");
+        expect(detail.state.status).toBe("planning");
+        expect(listed?.state.status).toBe("planning");
         expect(retryResponse.status).toBe(400);
         expect((await retryResponse.json()).error).toBe("not_draft");
         expect(updateResponse.status).toBe(400);
@@ -1601,51 +1584,6 @@ describe("Tasks CRUD API Integration", () => {
       } finally {
         executor.releaseSetup();
         backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
-      }
-    });
-
-    test("can start draft as plan mode", async () => {
-      // Use a unique directory to avoid branch collision with previous test
-      const uniqueWorkDir = await mkdtemp(join(tmpdir(), "clanky-draft-plan-test-"));
-      await initializeGitRepository(uniqueWorkDir, { initialCommit: "readme" });
-
-      try {
-        // Create workspace for this directory
-        const uniqueWorkspaceId = await getOrCreateWorkspace(uniqueWorkDir);
-
-        // Create draft
-        const createResponse = await fetch(`${baseUrl}/api/tasks`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ...baseCreateTaskPayload,
-            workspaceId: uniqueWorkspaceId,
-            prompt: "Plan mode draft task",
-            name: "Test Task",
-            draft: true,
-            planMode: false,
-            model: testModel,
-            useWorktree: true,
-          }),
-        });
-        const createBody = await createResponse.json();
-        const taskId = createBody.config.id;
-
-        // Start draft in plan mode
-        const startResponse = await fetch(`${baseUrl}/api/tasks/${taskId}/draft/start`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          planMode: true,
-          attachments: [],
-        }),
-        });
-
-        expect(startResponse.status).toBe(200);
-        const startBody = await startResponse.json();
-        expect(startBody.state.status).toBe("planning");
-      } finally {
-        await rm(uniqueWorkDir, { recursive: true, force: true });
       }
     });
 
@@ -1664,7 +1602,6 @@ describe("Tasks CRUD API Integration", () => {
             prompt: "Blocked plan startup",
             name: "Blocked Plan Task",
             draft: true,
-            planMode: false,
             model: testModel,
             useWorktree: true,
           }),
@@ -1675,7 +1612,7 @@ describe("Tasks CRUD API Integration", () => {
         startPromise = fetch(`${baseUrl}/api/tasks/${taskId}/draft/start`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ planMode: true, attachments: [] }),
+          body: JSON.stringify({ attachments: [] }),
         });
         await executor.waitForSetupStart();
 
@@ -1684,7 +1621,7 @@ describe("Tasks CRUD API Integration", () => {
           fetch(`${baseUrl}/api/tasks/${taskId}/draft/start`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ planMode: true, attachments: [] }),
+            body: JSON.stringify({ attachments: [] }),
           }),
           fetch(`${baseUrl}/api/tasks/${taskId}`, {
             method: "PUT",
@@ -1709,7 +1646,7 @@ describe("Tasks CRUD API Integration", () => {
       }
     });
 
-    test("keeps a draft non-draft and restartable after setup failure", async () => {
+    test("marks a draft non-restartable when plan worktree setup fails", async () => {
       const executor = new SetupGateExecutor({ failSetup: true });
       backendManager.setExecutorFactoryForTesting(() => executor);
 
@@ -1723,7 +1660,6 @@ describe("Tasks CRUD API Integration", () => {
             prompt: "Fail during startup",
             name: "Failed Startup Task",
             draft: true,
-            planMode: false,
             model: testModel,
             useWorktree: true,
           }),
@@ -1734,12 +1670,9 @@ describe("Tasks CRUD API Integration", () => {
         const startResponse = await fetch(`${baseUrl}/api/tasks/${taskId}/draft/start`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ planMode: false, attachments: [] }),
+          body: JSON.stringify({ attachments: [] }),
         });
-        expect(startResponse.status).toBe(200);
-        expect((await startResponse.json()).state.status).not.toBe("draft");
-
-        await waitForTaskCompletion(taskId);
+        expect(startResponse.status).toBe(500);
         const failedResponse = await fetch(`${baseUrl}/api/tasks/${taskId}`);
         const failedTask = await failedResponse.json();
         expect(failedTask.state.status).toBe("failed");
@@ -1747,23 +1680,11 @@ describe("Tasks CRUD API Integration", () => {
         const retryResponse = await fetch(`${baseUrl}/api/tasks/${taskId}/draft/start`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ planMode: false, attachments: [] }),
+          body: JSON.stringify({ attachments: [] }),
         });
         expect(retryResponse.status).toBe(400);
         expect((await retryResponse.json()).error).toBe("not_draft");
-
-        const followUpResponse = await fetch(`${baseUrl}/api/tasks/${taskId}/follow-up`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            message: "Retry after setup failure",
-            model: null,
-            attachments: [],
-          }),
-        });
-        expect(followUpResponse.status).toBe(200);
-        expect((await followUpResponse.json()).success).toBe(true);
-        await waitForTaskStatus(taskId, ["stopped"]);
+        await waitForTaskStatus(taskId, ["failed"]);
       } finally {
         backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
       }
@@ -1788,7 +1709,6 @@ describe("Tasks CRUD API Integration", () => {
             prompt: "Task",
             name: "Test Task",
             draft: true,
-            planMode: false,
           model: testModel,
           useWorktree: true,
           }),
@@ -1800,7 +1720,7 @@ describe("Tasks CRUD API Integration", () => {
         const startDraftResponse = await fetch(`${baseUrl}/api/tasks/${draftTaskId}/draft/start`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ planMode: false, attachments: [] }),
+          body: JSON.stringify({ attachments: [] }),
         });
         
         expect(startDraftResponse.status).toBe(200);
@@ -1812,7 +1732,6 @@ describe("Tasks CRUD API Integration", () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            planMode: false,
             attachments: [],
           }),
         });
@@ -1836,7 +1755,6 @@ describe("Tasks CRUD API Integration", () => {
           prompt: "Task",
           name: "Test Task",
           draft: true,
-          planMode: false,
           model: testModel,
           useWorktree: true,
         }),
@@ -1872,7 +1790,6 @@ describe("Tasks CRUD API Integration", () => {
           workspaceId: testWorkspaceId,
           prompt: "Test mark merged",
           name: "Test Task",
-          planMode: false,
           model: testModel,
           useWorktree: true,
         }),
@@ -1922,7 +1839,6 @@ describe("Tasks CRUD API Integration", () => {
           workspaceId: testWorkspaceId,
           prompt: "Test manual complete",
           name: "Manual Complete Task",
-          planMode: false,
           model: testModel,
           useWorktree: true,
         }),
@@ -1976,7 +1892,6 @@ describe("Tasks CRUD API Integration", () => {
           prompt: "Test rename task",
           name: "Test Task",
           draft: true,
-          planMode: false,
           model: testModel,
           useWorktree: true,
         }),
@@ -2004,7 +1919,7 @@ describe("Tasks CRUD API Integration", () => {
       expect(getBody.config.name).toBe("Renamed Task");
     });
 
-    test("rejects renaming a completed task while allowing other updates", async () => {
+    test("rejects renaming or changing configuration after plan acceptance", async () => {
       // Create a unique directory for this test
       const uniqueWorkDir = await mkdtemp(join(tmpdir(), "clanky-rename-test-"));
       await initializeGitRepository(uniqueWorkDir, { initialCommit: "readme" });
@@ -2021,7 +1936,6 @@ describe("Tasks CRUD API Integration", () => {
             workspaceId,
             prompt: "Complete me",
             name: "Before Completion",
-            planMode: false,
           model: testModel,
           useWorktree: true,
           }),
@@ -2048,10 +1962,8 @@ describe("Tasks CRUD API Integration", () => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ stopPattern: "DONE" }),
         });
-        expect(updateResponse.status).toBe(200);
-        const updateBody = await updateResponse.json();
-        expect(updateBody.config.name).toBe("Before Completion");
-        expect(updateBody.config.stopPattern).toBe("DONE");
+        expect(updateResponse.status).toBe(409);
+        expect((await updateResponse.json()).error).toBe("plan_execution_update_restricted");
       } finally {
         await rm(uniqueWorkDir, { recursive: true, force: true });
       }

@@ -44,10 +44,9 @@ describe("Review Cycle User Scenarios", () => {
 
     test("pushed task handles 3+ review cycles on same branch", async () => {
       // Create and complete initial task
-      const { body } = await createTaskViaAPI(ctx.baseUrl, {
+      const { body } = await createTaskViaAPI(ctx, {
         directory: ctx.workDir,
         prompt: "Build a complex feature",
-        planMode: false, // Regular execution, not plan mode
       });
       const task = body as Task;
 
@@ -130,10 +129,9 @@ describe("Review Cycle User Scenarios", () => {
       const originalBranch = await getCurrentBranch(ctx.workDir);
 
       // Create and complete initial task
-      const { body } = await createTaskViaAPI(ctx.baseUrl, {
+      const { body } = await createTaskViaAPI(ctx, {
         directory: ctx.workDir,
         prompt: "Complex feature",
-        planMode: false, // Regular execution, not plan mode
       });
       const task = body as Task;
 
@@ -211,10 +209,9 @@ describe("Review Cycle User Scenarios", () => {
       // which deleted all comments whenever task state was updated.
 
       // Create and complete initial task
-      const { body } = await createTaskViaAPI(ctx.baseUrl, {
+      const { body } = await createTaskViaAPI(ctx, {
         directory: ctx.workDir,
         prompt: "Build a feature",
-        planMode: false, // Regular execution, not plan mode
       });
       const task = body as Task;
 
@@ -320,10 +317,9 @@ describe("Review Cycle User Scenarios", () => {
       // causing the task to appear "running" but not actually execute.
 
       // Create and complete initial task
-      const { body } = await createTaskViaAPI(ctx.baseUrl, {
+      const { body } = await createTaskViaAPI(ctx, {
         directory: ctx.workDir,
         prompt: "Implement a feature",
-        planMode: false, // Regular execution, not plan mode
       });
       const task = body as Task;
 

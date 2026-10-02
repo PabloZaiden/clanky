@@ -34,11 +34,10 @@ describe("Mock ACP runtime integration", () => {
   });
 
   test("completes a standard task through the real ACP transport", async () => {
-    const { status, body } = await createTaskViaAPI(ctx.baseUrl, {
+    const { status, body } = await createTaskViaAPI(ctx, {
       directory: ctx.workDir,
       prompt: "Implement the requested mock ACP changes",
       name: "Mock ACP Execution Task",
-      planMode: false,
       model: mockAcpModel,
     });
 
@@ -55,11 +54,10 @@ describe("Mock ACP runtime integration", () => {
     await runGit(ctx.workDir, ["remote", "remove", "origin"]);
 
     try {
-      const { status, body } = await createTaskViaAPI(ctx.baseUrl, {
+      const { status, body } = await createTaskViaAPI(ctx, {
         directory: ctx.workDir,
         prompt: "Plan and then execute mock ACP work without a remote",
         name: "Mock ACP Local Plan Task",
-        planMode: true,
         autoAcceptPlan: false,
         model: mockAcpModel,
       });

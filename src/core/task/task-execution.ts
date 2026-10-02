@@ -301,7 +301,7 @@ export async function startPlanModeImpl(ctx: TaskCtx, taskId: string, options?: 
 export async function startDraftImpl(
   ctx: TaskCtx,
   taskId: string,
-  options: { planMode: boolean; attachments?: StartTaskOptions["attachments"] }
+  options: { attachments?: StartTaskOptions["attachments"] }
 ): Promise<Task> {
   if (ctx.tasksBeingStarted.has(taskId)) {
     throw new TaskOperationError(
@@ -342,20 +342,17 @@ export async function startDraftImpl(
       );
     }
 
-    const nextStatus = options.planMode ? "planning" : "starting";
-    assertValidTransition(task.state.status, nextStatus, "startDraft");
-    task.state.status = nextStatus;
+    assertValidTransition(task.state.status, "planning", "startDraft");
+    task.state.status = "planning";
     task.state.startedAt ??= createTimestamp();
     task.state.completedAt = undefined;
     task.state.error = undefined;
-    if (options.planMode) {
-      task.state.planMode = {
-        active: true,
-        feedbackRounds: 0,
-        planningFolderCleared: false,
-        isPlanReady: false,
-      };
-    }
+    task.state.planMode = {
+      active: true,
+      feedbackRounds: 0,
+      planningFolderCleared: false,
+      isPlanReady: false,
+    };
     await updateTaskOperationalState(taskId, task.state);
     ctx.emitter.emit({
       type: "task.starting",
@@ -363,11 +360,7 @@ export async function startDraftImpl(
       timestamp: createTimestamp(),
     });
 
-    if (options.planMode) {
-      await startPlanModeImpl(ctx, taskId, { attachments: options.attachments });
-    } else {
-      await startTaskImpl(ctx, taskId, { attachments: options.attachments });
-    }
+    await startPlanModeImpl(ctx, taskId, { attachments: options.attachments });
 
     const updatedTask = await ctx.getTask(taskId);
     return updatedTask ?? task;

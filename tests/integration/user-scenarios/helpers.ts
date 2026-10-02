@@ -117,6 +117,18 @@ export class ConfigurableMockBackend implements TaskBackend {
     this.responseIndex = 0;
   }
 
+  ensureNextResponseCreatesPlan(): void {
+    const responseIndex = this.responses.length > 0
+      ? this.responseIndex % this.responses.length
+      : 0;
+    const nextResponse = this.responses[responseIndex];
+    if (nextResponse?.includes("<promise>PLAN_READY</promise>")) {
+      return;
+    }
+    this.responseIndex = responseIndex;
+    this.responses.splice(responseIndex, 0, "Plan ready. <promise>PLAN_READY</promise>");
+  }
+
   private getNextResponse(): string {
     const response = this.responses[this.responseIndex % this.responses.length] ?? "<promise>COMPLETE</promise>";
     this.responseIndex++;
@@ -565,12 +577,11 @@ let testTaskNameCounter = 0;
  * Create a task via the API.
  */
 export async function createTaskViaAPI(
-  baseUrl: string,
+  context: TestServerContext,
   options: {
     directory: string;
     name?: string;
     prompt: string;
-    planMode: boolean;
     useWorktree?: boolean;
     model?: { providerID: string; modelID: string; variant?: string };
     maxIterations?: number;
@@ -581,11 +592,16 @@ export async function createTaskViaAPI(
     baseBranch?: string;
   }
 ): Promise<{ status: number; body: Task | { error: string; message: string } }> {
+  const baseUrl = context.baseUrl;
   // First, get or create a workspace for the directory
   const workspaceId = await getOrCreateWorkspace(baseUrl, options.directory);
 
   // Now create the task with workspaceId instead of directory
   const { directory: _directory, ...restOptions } = options;
+  const autoAcceptPlan = restOptions.autoAcceptPlan ?? true;
+  if (autoAcceptPlan) {
+    context.mockBackend.ensureNextResponseCreatesPlan();
+  }
   
   // Use provided model or default test model
   const model = restOptions.model || testModelForAPI;
@@ -610,7 +626,7 @@ export async function createTaskViaAPI(
       },
       baseBranch: restOptions.baseBranch ?? await getCurrentBranchFromFixture(options.directory),
       clearPlanningFolder: restOptions.clearPlanningFolder ?? false,
-      autoAcceptPlan: restOptions.autoAcceptPlan ?? (restOptions.planMode ? true : false),
+      autoAcceptPlan,
       fullyAutonomous: restOptions.fullyAutonomous ?? false,
       draft: false,
       useWorktree: restOptions.useWorktree ?? true,

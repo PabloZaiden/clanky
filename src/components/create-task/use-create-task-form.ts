@@ -50,8 +50,6 @@ export interface UseCreateTaskFormReturn {
   setUserChangedBranch: (v: boolean) => void;
   selectedTemplate: string;
   setSelectedTemplate: (v: string) => void;
-  planMode: boolean;
-  setPlanMode: (v: boolean) => void;
   autoAcceptPlan: boolean;
   setAutoAcceptPlan: (v: boolean) => void;
   fullyAutonomous: boolean;
@@ -188,7 +186,6 @@ export function useCreateTaskForm({
     selectedModel,
     selectedCheapModel,
     selectedModelEnabled,
-    planMode: fields.planMode,
     autoAcceptPlan: fields.autoAcceptPlan,
     fullyAutonomous: fields.fullyAutonomous,
     issueNumber: fields.issueNumber,
@@ -245,8 +242,6 @@ export function useCreateTaskForm({
     setUserChangedBranch: workspace.setUserChangedBranch,
     selectedTemplate: fields.selectedTemplate,
     setSelectedTemplate: fields.setSelectedTemplate,
-    planMode: fields.planMode,
-    setPlanMode: fields.setPlanMode,
     autoAcceptPlan: fields.autoAcceptPlan,
     setAutoAcceptPlan: fields.setAutoAcceptPlan,
     fullyAutonomous: fields.fullyAutonomous,

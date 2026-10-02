@@ -9,7 +9,6 @@ import {
   createTaskViaAPI,
   discardTaskViaAPI,
   getTaskDiffViaAPI,
-  getTaskPlanViaAPI,
   getTaskStatusFileViaAPI,
   setupTestServer,
   teardownTestServer,
@@ -23,10 +22,10 @@ describe("Regular Task User Scenarios", () => {
   beforeAll(async () => {
     ctx = await setupTestServer({
       mockResponses: [
+        "chore: remove the stale planning document",
         "Working on iteration 1...",
         "Working on iteration 2...",
         "Done! <promise>COMPLETE</promise>",
-        "<promise>COMPLETE</promise>",
       ],
       withPlanningDir: true,
     });
@@ -37,10 +36,9 @@ describe("Regular Task User Scenarios", () => {
   });
 
   test("runs iterations to completion and exposes task artifacts", async () => {
-    const { status, body } = await createTaskViaAPI(ctx.baseUrl, {
+    const { status, body } = await createTaskViaAPI(ctx, {
       directory: ctx.workDir,
       prompt: "Complete a multi-step task",
-      planMode: false,
     });
 
     expect(status).toBe(201);
@@ -53,12 +51,12 @@ describe("Regular Task User Scenarios", () => {
 
     assertTaskState(completedTask, {
       status: "completed",
-      iterationCount: 3,
+      iterationCount: 4,
       hasGitBranch: true,
       hasError: false,
     });
     expect(completedTask.state.recentIterations.map((iteration) => iteration.outcome))
-      .toEqual(["continue", "continue", "complete"]);
+      .toEqual(["plan_ready", "continue", "continue", "complete"]);
 
     const workingBranch = completedTask.state.git!.workingBranch;
     expect(await branchExists(ctx.workDir, workingBranch)).toBe(true);
@@ -66,10 +64,6 @@ describe("Regular Task User Scenarios", () => {
     const diff = await getTaskDiffViaAPI(ctx.baseUrl, task.config.id);
     expect(diff.status).toBe(200);
     expect(Array.isArray(diff.body)).toBe(true);
-
-    const plan = await getTaskPlanViaAPI(ctx.baseUrl, task.config.id);
-    expect(plan.status).toBe(200);
-    expect(plan.body).toMatchObject({ exists: true });
 
     const statusFile = await getTaskStatusFileViaAPI(ctx.baseUrl, task.config.id);
     expect(statusFile.status).toBe(200);
@@ -83,10 +77,9 @@ describe("Regular Task User Scenarios", () => {
     await runGit(ctx.workDir, ["add", "."]);
 
     try {
-      const { status, body } = await createTaskViaAPI(ctx.baseUrl, {
+      const { status, body } = await createTaskViaAPI(ctx, {
         directory: ctx.workDir,
         prompt: "Work independently of source checkout changes",
-        planMode: false,
       });
 
       expect(status).toBe(201);
