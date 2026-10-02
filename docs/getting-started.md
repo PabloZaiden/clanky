@@ -90,6 +90,34 @@ When the result is ready:
 Completed or accepted work can receive follow-up prompts and review comments.
 The dashboard exposes these actions from the task view.
 
+## Preview Markdown files and diagrams
+
+In **Code Explorer**, open a `.md` or `.markdown` file and select **Preview**.
+Extensions are case-insensitive. You can also select **Markdown** in the
+language selector for other text files. Select **Code** to return to the editor.
+
+Preview uses the current editor text, including unsaved edits. Switching views
+does not save or reload the file and keeps the editor's undo history. **Save**
+and **Refresh file** retain their usual behavior, including unsaved-change
+conflict prompts.
+
+Mermaid diagrams render in file previews and in agent messages and logs when
+Markdown rendering is enabled. Use a fenced block with the `mermaid` language:
+
+````markdown
+```mermaid
+flowchart LR
+  Editor --> Preview
+  Preview --> Editor
+```
+````
+
+Diagrams follow the light/dark theme and render locally in the browser.
+Invalid or incomplete diagrams show their source and an inline error without
+interrupting the surrounding Markdown; correcting the source updates the
+diagram. Diagram source is limited to 50,000 characters. Raw-text mode keeps
+the original Mermaid code. Raw HTML and diagram click callbacks are not enabled.
+
 ## Common next steps
 
 - [Deploy Clanky with Docker or a reverse proxy](deployment.md)
