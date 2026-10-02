@@ -45,6 +45,21 @@ runtime instead of launching a provider CLI.
 
 Run `bun run build && bun run test` before considering a change complete.
 
+## Markdown rendering validation
+
+The file preview, chat messages, and agent logs share `MarkdownRenderer`.
+Validate unsaved editor changes, undo after switching views, diagram errors,
+raw-text mode, and theme changes with a temporary Bun.WebView harness. Capture
+and review desktop and mobile screenshots; do not add browser or component
+tests to the repository.
+
+Mermaid is pinned to 11.16.1: the FastDOM dependencies in 11.17 conflict with
+Monaco's global AMD loader. Before upgrading, render the first diagram **after**
+Monaco has initialized and check both the development server and standalone
+binary. Do not work around an incompatible dependency by changing the global
+loader. The `.mermaid-measurement` container disables transitions so global
+reduced-motion styles cannot interpolate SVG geometry during measurement.
+
 ## Demo data
 
 The demo generator creates disposable data for UI validation:

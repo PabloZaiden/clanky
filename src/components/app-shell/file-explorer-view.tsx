@@ -716,6 +716,12 @@ export function FileExplorerView({
               />
             ) : (
               <WorkspaceEditorPanel
+                key={JSON.stringify([
+                  target.type,
+                  target.id,
+                  target.type === "executionHost" ? target.kind : null,
+                  target.startDirectory ?? "",
+                ])}
                 filePath={explorer.currentFile?.path}
                 pendingFilePath={explorer.pendingFilePath}
                 value={explorer.editorContent}
