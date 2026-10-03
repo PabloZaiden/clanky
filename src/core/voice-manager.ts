@@ -308,6 +308,12 @@ export class VoiceManager {
         "The text for speech is empty or too long.",
       );
     }
+    if (!(await this.piper.getStatus()).available) {
+      throw new DomainError(
+        "voice_piper_unsupported_platform",
+        "Local Piper speech is not supported on this server platform.",
+      );
+    }
 
     let speechText = normalizedText;
     if (mode === "summary") {

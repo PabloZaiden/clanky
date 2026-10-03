@@ -36,6 +36,34 @@ export interface PiperSpeechService {
   synthesizeSpeech(text: string, signal?: AbortSignal): Promise<PiperSpeechResult>;
 }
 
+export class PiperSynthesisGate {
+  private occupied = false;
+
+  acquire(signal?: AbortSignal): () => void {
+    if (signal?.aborted) {
+      throw createAbortError();
+    }
+    if (this.occupied) {
+      throw new DomainError(
+        "voice_piper_busy",
+        "Local Piper speech capacity is currently in use.",
+      );
+    }
+
+    this.occupied = true;
+    let released = false;
+    return () => {
+      if (released) {
+        return;
+      }
+      released = true;
+      this.occupied = false;
+    };
+  }
+}
+
+const piperSynthesisGate = new PiperSynthesisGate();
+
 export function detectPiperLanguage(text: string): VoiceLanguageHint {
   const languageInput = text
     .replace(/```[\s\S]*?```/g, " ")
@@ -260,10 +288,38 @@ export class PiperTtsProvider implements PiperSpeechService {
     }
 
     const language = detectPiperLanguage(text);
-    const [runtime, voice] = await Promise.all([
-      this.assets.ensureRuntime(signal),
-      this.assets.ensureVoice(language, signal),
-    ]);
+    const assetController = new AbortController();
+    const abortAssetWaiters = (): void => {
+      assetController.abort(signal?.reason);
+    };
+    signal?.addEventListener("abort", abortAssetWaiters, { once: true });
+    if (signal?.aborted) {
+      abortAssetWaiters();
+    }
+
+    let assetPromises:
+      | [Promise<PiperRuntimeFiles>, Promise<PiperVoiceFiles>]
+      | undefined;
+    let runtime: PiperRuntimeFiles;
+    let voice: PiperVoiceFiles;
+    try {
+      assetPromises = [
+        this.assets.ensureRuntime(assetController.signal),
+        this.assets.ensureVoice(language, assetController.signal),
+      ];
+      [runtime, voice] = await Promise.all(assetPromises);
+    } catch (error) {
+      assetController.abort();
+      if (assetPromises) {
+        await Promise.allSettled(assetPromises);
+      }
+      if (signal?.aborted) {
+        throw createAbortError();
+      }
+      throw error;
+    } finally {
+      signal?.removeEventListener("abort", abortAssetWaiters);
+    }
     if (signal?.aborted) {
       throw createAbortError();
     }
@@ -273,7 +329,12 @@ export class PiperTtsProvider implements PiperSpeechService {
     const temporaryDirectory = await mkdtemp(join(temporaryRoot, "speech-"));
     const outputPath = join(temporaryDirectory, "speech.wav");
     try {
-      await runPiper(runtime, voice, outputPath, text, signal);
+      const releaseSynthesis = piperSynthesisGate.acquire(signal);
+      try {
+        await runPiper(runtime, voice, outputPath, text, signal);
+      } finally {
+        releaseSynthesis();
+      }
       const output = Bun.file(outputPath);
       if (!await output.exists() || output.size === 0) {
         throw new DomainError(

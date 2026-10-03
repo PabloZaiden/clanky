@@ -292,6 +292,7 @@ const API_DOMAIN_ERROR_CODES = {
   voice_validation_stale: true,
   voice_text_too_large: true,
   voice_piper_audio_too_large: true,
+  voice_piper_busy: true,
   voice_piper_download_failed: true,
   voice_piper_invalid_audio: true,
   voice_piper_synthesis_failed: true,
@@ -1614,6 +1615,10 @@ const POLICY_PROFILES = {
       voice_piper_audio_too_large: {
         status: 502,
         message: "The generated Piper audio is too large.",
+      },
+      voice_piper_busy: {
+        status: 503,
+        message: "Local Piper speech capacity is currently in use.",
       },
       voice_piper_download_failed: {
         status: 502,

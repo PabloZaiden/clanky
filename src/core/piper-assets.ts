@@ -529,6 +529,13 @@ async function withSharedOperation<T>(
     throw createAbortError();
   }
   let pending = pendingOperations.get(key) as PendingOperation<T> | undefined;
+  if (pending?.controller.signal.aborted) {
+    await awaitWithAbort(
+      pending.promise.then(() => undefined, () => undefined),
+      signal,
+    );
+    return await withSharedOperation(key, signal, operation);
+  }
   if (!pending) {
     const controller = new AbortController();
     const entry: PendingOperation<T> = {

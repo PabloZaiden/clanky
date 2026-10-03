@@ -10,6 +10,7 @@ import {
   VOICE_AZURE_API_VERSION,
 } from "../../src/core/voice-provider";
 import { createVoiceSpeechRoutes } from "../../src/api/voice";
+import { DomainError } from "../../src/domain/domain-error";
 import { VoiceManager } from "../../src/core/voice-manager";
 import type {
   PiperSpeechResult,
@@ -35,6 +36,8 @@ describe("Voice API", () => {
   let providerRequestPaths: string[];
   let providerApiKeys: string[];
   let piperSpeechTexts: string[];
+  let piperSpeechError: DomainError | null;
+  let piperAvailable: boolean;
   let holdTextValidation: boolean;
   let textValidationStarted: Promise<void>;
   let resolveTextValidationStarted: () => void;
@@ -45,6 +48,8 @@ describe("Voice API", () => {
     providerRequestPaths = [];
     providerApiKeys = [];
     piperSpeechTexts = [];
+    piperSpeechError = null;
+    piperAvailable = true;
     holdTextValidation = false;
     resolveTextValidationStarted = () => {};
     releaseTextValidation = () => {};
@@ -76,9 +81,12 @@ describe("Voice API", () => {
     });
     const piper: PiperSpeechService = {
       async getStatus() {
-        return { available: true };
+        return { available: piperAvailable };
       },
       async synthesizeSpeech(text: string): Promise<PiperSpeechResult> {
+        if (piperSpeechError) {
+          throw piperSpeechError;
+        }
         piperSpeechTexts.push(text);
         return {
           audio: LOCAL_PIPER_AUDIO.slice().buffer,
@@ -301,6 +309,62 @@ describe("Voice API", () => {
     expect(new Uint8Array(await speech.arrayBuffer())).toEqual(LOCAL_PIPER_AUDIO);
     expect(piperSpeechTexts).toEqual(["Hello from Piper."]);
     expect(providerRequestPaths).toEqual([]);
+  });
+
+  test("returns a retryable busy response when local Piper capacity is full", async () => {
+    piperSpeechError = new DomainError(
+      "voice_piper_busy",
+      "Local Piper speech capacity is currently in use.",
+    );
+    const speech = await fetch(`${baseUrl}/api/voice/speech`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: "Hello from Piper.", mode: "full" }),
+    });
+
+    expect(speech.status).toBe(503);
+    expect(await speech.json()).toMatchObject({ error: "voice_piper_busy" });
+  });
+
+  test("rejects summaries on unsupported platforms before contacting the text provider", async () => {
+    await fetch(`${baseUrl}/api/voice/settings`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        baseUrl: providerBaseUrl,
+        apiKey: "provider-secret",
+        models: {
+          transcription: "gpt-transcribe",
+          text: "gpt-5.6-luna",
+        },
+        languageHints: [],
+      }),
+    });
+    const validation = await fetch(`${baseUrl}/api/voice/validate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ capability: "text" }),
+    });
+    expect(validation.status).toBe(200);
+
+    providerRequestPaths = [];
+    piperAvailable = false;
+    const summary = await fetch(`${baseUrl}/api/voice/speech`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text: "A complete response that must not be sent to the paid summary provider.",
+        mode: "summary",
+      }),
+    });
+
+    // Avoid sending user response text to a paid provider when local synthesis cannot run.
+    expect(summary.status).toBe(503);
+    expect(await summary.json()).toMatchObject({
+      error: "voice_piper_unsupported_platform",
+    });
+    expect(providerRequestPaths).toEqual([]);
+    expect(piperSpeechTexts).toEqual([]);
   });
 
   test("keeps transcription and summary text online while speaking locally", async () => {
