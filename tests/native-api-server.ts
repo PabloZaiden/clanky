@@ -1,4 +1,9 @@
-import { matchRoute, type RouteContext } from "@pablozaiden/webapp/server";
+import {
+  defineRoutes,
+  matchRoute,
+  type RouteContext,
+  type RouteTable,
+} from "@pablozaiden/webapp/server";
 import type { Server } from "bun";
 import { apiRoutes } from "../src/api";
 import { testOwnerUser } from "./setup";
@@ -10,15 +15,20 @@ export interface NativeApiServerOptions {
   idleTimeout?: number;
   /** User identity used by the native route harness. */
   user?: CurrentUser;
+  /** Route overrides for a test-specific domain service. */
+  routeOverrides?: RouteTable;
 }
 
 export function serveNativeApiRoutes(options: NativeApiServerOptions = {}): Server<unknown> {
   const currentUser = options.user ?? testOwnerUser;
+  const routes = options.routeOverrides
+    ? defineRoutes({ ...apiRoutes, ...options.routeOverrides })
+    : apiRoutes;
   return Bun.serve({
     port: 0,
     ...(options.idleTimeout === undefined ? {} : { idleTimeout: options.idleTimeout }),
     fetch: async (req, server) => {
-      const matched = matchRoute(apiRoutes, new URL(req.url).pathname);
+      const matched = matchRoute(routes, new URL(req.url).pathname);
       if (!matched) {
         return new Response("Not found", { status: 404 });
       }

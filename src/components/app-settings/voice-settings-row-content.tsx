@@ -14,7 +14,6 @@ interface VoiceSettingsDraft {
   baseUrl: string;
   apiKey: string;
   transcription: string;
-  speech: string;
   text: string;
   languageHints: VoiceLanguageHint[];
 }
@@ -24,7 +23,6 @@ function toDraft(settings: VoiceSettings): VoiceSettingsDraft {
     baseUrl: settings.baseUrl,
     apiKey: "",
     transcription: settings.models.transcription,
-    speech: settings.models.speech,
     text: settings.models.text,
     languageHints: settings.languageHints,
   };
@@ -33,14 +31,12 @@ function toDraft(settings: VoiceSettings): VoiceSettingsDraft {
 function draftValuesMatch(left: VoiceSettingsDraft, right: VoiceSettingsDraft): boolean {
   return left.baseUrl === right.baseUrl
     && left.transcription === right.transcription
-    && left.speech === right.speech
     && left.text === right.text
     && left.languageHints.join(",") === right.languageHints.join(",");
 }
 
 function capabilityLabel(capability: VoiceCapability): string {
   if (capability === "transcription") return "Transcription";
-  if (capability === "speech") return "Text to speech";
   return "General text";
 }
 
@@ -83,7 +79,6 @@ export function VoiceSettingsRowContent({
       clearApiKey,
       models: {
         transcription: draft.transcription,
-        speech: draft.speech,
         text: draft.text,
       },
       languageHints: draft.languageHints,
@@ -148,7 +143,7 @@ export function VoiceSettingsRowContent({
           </Button>
         ) : null}
       </div>
-      <div className="grid gap-2 sm:grid-cols-3">
+      <div className="grid gap-2 sm:grid-cols-2">
         <div>
           <label htmlFor="voice-transcription-model" className="block text-xs font-medium">STT model</label>
           <SettingsInput
@@ -158,18 +153,6 @@ export function VoiceSettingsRowContent({
             onChange={(event) => setDraft((current) => ({
               ...current,
               transcription: event.currentTarget.value,
-            }))}
-          />
-        </div>
-        <div>
-          <label htmlFor="voice-speech-model" className="block text-xs font-medium">TTS model</label>
-          <SettingsInput
-            id="voice-speech-model"
-            value={draft.speech}
-            disabled={loading || saving}
-            onChange={(event) => setDraft((current) => ({
-              ...current,
-              speech: event.currentTarget.value,
             }))}
           />
         </div>
@@ -184,6 +167,18 @@ export function VoiceSettingsRowContent({
               text: event.currentTarget.value,
             }))}
           />
+        </div>
+        <div className="space-y-1 rounded-md border border-gray-200 p-3 dark:border-gray-700">
+          <p className="text-xs font-medium">Local text to speech</p>
+          <p className="text-sm text-gray-600 dark:text-gray-300">
+            Piper uses Argentina Spanish and US English voices. The runtime and
+            selected voice download on first use and stay in Clanky&apos;s data directory.
+          </p>
+          <p className="text-sm">
+            {settings.piper.available
+              ? "Supported on this server"
+              : "Not supported on this server"}
+          </p>
         </div>
       </div>
       <div className="space-y-1">

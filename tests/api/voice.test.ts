@@ -9,12 +9,22 @@ import {
   normalizeVoiceBaseUrl,
   VOICE_AZURE_API_VERSION,
 } from "../../src/core/voice-provider";
+import { createVoiceSpeechRoutes } from "../../src/api/voice";
+import { VoiceManager } from "../../src/core/voice-manager";
+import type {
+  PiperSpeechResult,
+  PiperSpeechService,
+} from "../../src/core/piper-tts";
 import { serveNativeApiRoutes } from "../native-api-server";
 import {
   setupTestContext,
   teardownTestContext,
   type TestContext,
 } from "../setup";
+
+const LOCAL_PIPER_AUDIO = new Uint8Array([
+  82, 73, 70, 70, 4, 0, 0, 0, 87, 65, 86, 69,
+]);
 
 describe("Voice API", () => {
   let context: TestContext;
@@ -24,8 +34,7 @@ describe("Voice API", () => {
   let providerBaseUrl: string;
   let providerRequestPaths: string[];
   let providerApiKeys: string[];
-  let providerSpeechContentType: string;
-  let providerSpeechOversized: boolean;
+  let piperSpeechTexts: string[];
   let holdTextValidation: boolean;
   let textValidationStarted: Promise<void>;
   let resolveTextValidationStarted: () => void;
@@ -35,8 +44,7 @@ describe("Voice API", () => {
     context = await setupTestContext();
     providerRequestPaths = [];
     providerApiKeys = [];
-    providerSpeechContentType = "audio/mpeg";
-    providerSpeechOversized = false;
+    piperSpeechTexts = [];
     holdTextValidation = false;
     resolveTextValidationStarted = () => {};
     releaseTextValidation = () => {};
@@ -63,26 +71,24 @@ describe("Voice API", () => {
         if (path.endsWith("/audio/transcriptions")) {
           return Response.json({ text: "hola from the provider" });
         }
-        if (path.endsWith("/audio/speech")) {
-          if (providerSpeechOversized) {
-            const oversizedAudio = new Uint8Array(20 * 1024 * 1024 + 1);
-            return new Response(new ReadableStream({
-              start(controller) {
-                controller.enqueue(oversizedAudio);
-                controller.close();
-              },
-            }), {
-              headers: { "Content-Type": "audio/mpeg" },
-            });
-          }
-          return new Response(new Uint8Array([1, 2, 3, 4]), {
-            headers: { "Content-Type": providerSpeechContentType },
-          });
-        }
         return new Response("not found", { status: 404 });
       },
     });
-    server = serveNativeApiRoutes();
+    const piper: PiperSpeechService = {
+      async getStatus() {
+        return { available: true };
+      },
+      async synthesizeSpeech(text: string): Promise<PiperSpeechResult> {
+        piperSpeechTexts.push(text);
+        return {
+          audio: LOCAL_PIPER_AUDIO.slice().buffer,
+          contentType: "audio/wav",
+        };
+      },
+    };
+    server = serveNativeApiRoutes({
+      routeOverrides: createVoiceSpeechRoutes(new VoiceManager(piper)),
+    });
     baseUrl = server.url.toString().replace(/\/$/, "");
     providerBaseUrl = `${provider.url.toString().replace(/\/$/, "")}/openai/v1`;
   });
@@ -100,9 +106,9 @@ describe("Voice API", () => {
       apiKeyConfigured: false,
       capabilities: {
         transcription: { validated: false, state: "unconfigured" },
-        speech: { validated: false, state: "unconfigured" },
         text: { validated: false, state: "unconfigured" },
       },
+      piper: { available: true },
       languageHints: ["es", "en"],
     });
 
@@ -114,7 +120,6 @@ describe("Voice API", () => {
         apiKey: "provider-secret",
         models: {
           transcription: "gpt-transcribe",
-          speech: "tts",
           text: "gpt-5.6-luna",
         },
         languageHints: ["es", "en"],
@@ -150,10 +155,6 @@ describe("Voice API", () => {
       .toBe(
         `https://clanky-azure.openai.azure.com/openai/deployments/gpt-transcribe/audio/transcriptions?api-version=${VOICE_AZURE_API_VERSION}`,
       );
-    expect(buildVoiceProviderUrl(baseUrl, "/audio/speech", "tts"))
-      .toBe(
-        `https://clanky-azure.openai.azure.com/openai/deployments/tts/audio/speech?api-version=${VOICE_AZURE_API_VERSION}`,
-      );
     expect(buildVoiceProviderUrl(
       `${baseUrl}/openai/deployments/gpt-transcribe/audio/transcriptions?api-version=2025-03-01-preview`,
       "/chat/completions",
@@ -186,74 +187,6 @@ describe("Voice API", () => {
     });
   });
 
-  test("rejects non-audio speech responses", async () => {
-    await fetch(`${baseUrl}/api/voice/settings`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        baseUrl: providerBaseUrl,
-        apiKey: "provider-secret",
-        models: {
-          transcription: "gpt-transcribe",
-          speech: "tts",
-          text: "gpt-5.6-luna",
-        },
-        languageHints: [],
-      }),
-    });
-    const validation = await fetch(`${baseUrl}/api/voice/validate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ capability: "speech" }),
-    });
-    expect(validation.status).toBe(200);
-
-    providerSpeechContentType = "application/json";
-    const response = await fetch(`${baseUrl}/api/voice/speech`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: "Hello", mode: "full" }),
-    });
-    expect(response.status).toBe(502);
-    expect(await response.json()).toMatchObject({
-      error: "voice_provider_invalid_response",
-    });
-  });
-
-  test("bounds streamed speech responses without a content length", async () => {
-    await fetch(`${baseUrl}/api/voice/settings`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        baseUrl: providerBaseUrl,
-        apiKey: "provider-secret",
-        models: {
-          transcription: "gpt-transcribe",
-          speech: "tts",
-          text: "gpt-5.6-luna",
-        },
-        languageHints: [],
-      }),
-    });
-    const validation = await fetch(`${baseUrl}/api/voice/validate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ capability: "speech" }),
-    });
-    expect(validation.status).toBe(200);
-
-    providerSpeechOversized = true;
-    const response = await fetch(`${baseUrl}/api/voice/speech`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: "Hello", mode: "full" }),
-    });
-    expect(response.status).toBe(502);
-    expect(await response.json()).toMatchObject({
-      error: "voice_provider_response_too_large",
-    });
-  });
-
   test("does not apply a stale validation result after settings change", async () => {
     await fetch(`${baseUrl}/api/voice/settings`, {
       method: "PUT",
@@ -263,7 +196,6 @@ describe("Voice API", () => {
         apiKey: "provider-secret",
         models: {
           transcription: "gpt-transcribe",
-          speech: "tts",
           text: "old-text-model",
         },
         languageHints: [],
@@ -285,7 +217,6 @@ describe("Voice API", () => {
         baseUrl: providerBaseUrl,
         models: {
           transcription: "gpt-transcribe",
-          speech: "tts",
           text: "new-text-model",
         },
         languageHints: [],
@@ -322,7 +253,6 @@ describe("Voice API", () => {
           apiKey,
           models: {
             transcription: "gpt-transcribe",
-            speech: "tts",
             text: "gpt-5.6-luna",
           },
           languageHints: [],
@@ -360,7 +290,20 @@ describe("Voice API", () => {
     }
   });
 
-  test("transcribes audio and returns provider speech", async () => {
+  test("generates full speech locally without an online provider", async () => {
+    const speech = await fetch(`${baseUrl}/api/voice/speech`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: "Hello from Piper.", mode: "full" }),
+    });
+    expect(speech.status).toBe(200);
+    expect(speech.headers.get("content-type")).toContain("audio/wav");
+    expect(new Uint8Array(await speech.arrayBuffer())).toEqual(LOCAL_PIPER_AUDIO);
+    expect(piperSpeechTexts).toEqual(["Hello from Piper."]);
+    expect(providerRequestPaths).toEqual([]);
+  });
+
+  test("keeps transcription and summary text online while speaking locally", async () => {
     await fetch(`${baseUrl}/api/voice/settings`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -369,14 +312,13 @@ describe("Voice API", () => {
         apiKey: "provider-secret",
         models: {
           transcription: "gpt-transcribe",
-          speech: "tts",
           text: "gpt-5.6-luna",
         },
         languageHints: [],
       }),
     });
 
-    for (const capability of ["transcription", "speech"] as const) {
+    for (const capability of ["transcription"] as const) {
       const validation = await fetch(`${baseUrl}/api/voice/validate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -401,6 +343,9 @@ describe("Voice API", () => {
       }),
     });
     expect(summarySpeech.status).toBe(200);
+    expect(summarySpeech.headers.get("content-type")).toContain("audio/wav");
+    expect(new Uint8Array(await summarySpeech.arrayBuffer())).toEqual(LOCAL_PIPER_AUDIO);
+    expect(piperSpeechTexts).toEqual(["A concise spoken summary."]);
 
     const transcription = await fetch(`${baseUrl}/api/voice/transcribe`, {
       method: "POST",
@@ -421,9 +366,13 @@ describe("Voice API", () => {
       body: JSON.stringify({ text: "Hello", mode: "full" }),
     });
     expect(speech.status).toBe(200);
-    expect(speech.headers.get("content-type")).toContain("audio/mpeg");
-    expect(new Uint8Array(await speech.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3, 4]));
+    expect(speech.headers.get("content-type")).toContain("audio/wav");
+    expect(piperSpeechTexts).toEqual([
+      "A concise spoken summary.",
+      "Hello",
+    ]);
     expect(providerRequestPaths).toContain("/openai/v1/chat/completions");
-    expect(providerRequestPaths).toContain("/openai/v1/audio/speech");
+    expect(providerRequestPaths).toContain("/openai/v1/audio/transcriptions");
+    expect(providerRequestPaths).not.toContain("/openai/v1/audio/speech");
   });
 });
