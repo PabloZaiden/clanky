@@ -436,10 +436,10 @@ included in this table.
 | GET | `/api/tasks/:id/tool-calls/:toolCallId` | Read one complete task tool-call payload. |
 | POST | `/api/tasks/:id/update-branch` | Sync a pushed task branch with its base branch. |
 | POST | `/api/tasks/title` | Generate a task title from a prompt. |
-| GET, PUT | `/api/voice/settings` | Read or update the current user's voice provider settings. |
-| POST | `/api/voice/validate` | Validate a configured voice capability against its provider. |
-| POST | `/api/voice/transcribe` | Transcribe an uploaded audio recording. |
-| POST | `/api/voice/speech` | Generate speech for a response or summary. |
+| GET, PUT | `/api/voice/settings` | Read or update provider settings for transcription and summary text, and local Piper support status. |
+| POST | `/api/voice/validate` | Validate the configured transcription or summary-text provider capability. |
+| POST | `/api/voice/transcribe` | Transcribe an uploaded audio recording with the configured provider. |
+| POST | `/api/voice/speech` | Generate a local Piper WAV for a response or provider-generated summary; see the [voice guide](voice.md). |
 | GET, POST | `/api/workspace-worker-enrollments` | List or create workspace-exclusive Mesh worker enrollments. |
 | GET, DELETE | `/api/workspace-worker-enrollments/:id` | Read or cancel a workspace-exclusive Mesh worker enrollment. |
 | GET, POST | `/api/workspaces` | List workspaces or create a workspace. |

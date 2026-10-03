@@ -41,7 +41,6 @@ describe("Voice settings persistence", () => {
         apiKey: "repair-key",
         models: {
           transcription: "gpt-transcribe",
-          speech: "tts",
           text: "gpt-5.6-luna",
         },
         languageHints: [],
@@ -67,5 +66,36 @@ describe("Voice settings persistence", () => {
       baseUrl: "",
       apiKeyConfigured: false,
     });
+  });
+
+  test("preserves existing transcription and text settings when loading version 1 data", async () => {
+    const validation = { state: "unvalidated", checkedAt: null, error: null };
+    getDatabase()
+      .query("INSERT INTO preferences (key, user_id, value) VALUES (?, ?, ?)")
+      .run("voiceProviderSettings", "admin", JSON.stringify({
+        version: 1,
+        baseUrl: "",
+        apiKeyCiphertext: null,
+        models: {
+          transcription: "legacy-transcription",
+          speech: "legacy-tts",
+          text: "legacy-text",
+        },
+        languageHints: ["en"],
+        validation: {
+          transcription: validation,
+          speech: validation,
+          text: validation,
+        },
+      }));
+
+    const response = await fetch(`${baseUrl}/api/voice/settings`);
+    expect(response.status).toBe(200);
+    const settings = await response.json();
+    expect(settings.models).toEqual({
+      transcription: "legacy-transcription",
+      text: "legacy-text",
+    });
+    expect(settings.languageHints).toEqual(["en"]);
   });
 });

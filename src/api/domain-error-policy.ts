@@ -291,6 +291,13 @@ const API_DOMAIN_ERROR_CODES = {
   voice_unsafe_provider_url: true,
   voice_validation_stale: true,
   voice_text_too_large: true,
+  voice_piper_audio_too_large: true,
+  voice_piper_busy: true,
+  voice_piper_download_failed: true,
+  voice_piper_invalid_audio: true,
+  voice_piper_synthesis_failed: true,
+  voice_piper_timeout: true,
+  voice_piper_unsupported_platform: true,
   workspace_delete_metadata_invalid: true,
   workspace_delete_remote_failed: true,
   workspace_deletion_in_progress: true,
@@ -1604,6 +1611,34 @@ const POLICY_PROFILES = {
       voice_text_too_large: {
         status: 413,
         message: "The voice text payload is too large.",
+      },
+      voice_piper_audio_too_large: {
+        status: 502,
+        message: "The generated Piper audio is too large.",
+      },
+      voice_piper_busy: {
+        status: 503,
+        message: "Local Piper speech capacity is currently in use.",
+      },
+      voice_piper_download_failed: {
+        status: 502,
+        message: "The Piper runtime or voice model could not be downloaded.",
+      },
+      voice_piper_invalid_audio: {
+        status: 502,
+        message: "Piper returned invalid audio.",
+      },
+      voice_piper_synthesis_failed: {
+        status: 502,
+        message: "Local Piper speech synthesis failed.",
+      },
+      voice_piper_timeout: {
+        status: 504,
+        message: "The local Piper request timed out.",
+      },
+      voice_piper_unsupported_platform: {
+        status: 503,
+        message: "Local Piper speech is not supported on this server platform.",
       },
     },
   },

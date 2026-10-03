@@ -11,7 +11,6 @@ import {
 
 const VoiceModelsSchema = z.object({
   transcription: z.string().trim().max(200, "transcription model is too long"),
-  speech: z.string().trim().max(200, "speech model is too long"),
   text: z.string().trim().max(200, "text model is too long"),
 });
 
@@ -34,7 +33,6 @@ export const VoiceValidationRequestSchema = z.object({
 export const VoiceSpeechRequestSchema = z.object({
   text: z.string().trim().min(1, "text is required").max(30_000, "text is too long"),
   mode: z.enum(["full", "summary"]).default("full"),
-  voice: z.string().trim().min(1).max(100).default("alloy"),
 });
 
 export type VoiceSettingsUpdateRequest = z.infer<typeof VoiceSettingsUpdateSchema>;

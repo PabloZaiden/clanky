@@ -57,19 +57,20 @@ export function ChatDetails({
     message: { id: string; content: string },
     mode: "full" | "summary",
   ): void => {
-    const capability = mode === "summary"
-      ?       voice.capabilities.text
-      : voice.capabilities.speech;
-    if (!capability.validated) {
-      toast.error("This voice capability is not configured and validated.");
+    if (mode === "summary" && !voice.capabilities.text.validated) {
+      toast.error("The text provider must be configured and validated for summaries.");
+      return;
+    }
+    if (!voice.speechAvailable) {
+      toast.error("Local Piper speech is not supported on this server.");
       return;
     }
     void voicePlayback.play(`${message.id}:${mode}`, message.content, mode);
   }, [
     toast,
     voicePlayback,
-    voice.capabilities.speech,
     voice.capabilities.text,
+    voice.speechAvailable,
   ]);
   const composerProps = useChatComposerAdapter({
     chat,
@@ -192,9 +193,9 @@ export function ChatDetails({
         onCancelVoice={voice.composer.cancel}
         onDismissVoiceError={voice.composer.dismissError}
         onReadAloud={handleReadAloud}
-        readAloudAvailable={voice.capabilities.speech.validated}
+        readAloudAvailable={voice.speechAvailable}
         readAloudSummaryAvailable={
-          voice.capabilities.speech.validated
+          voice.speechAvailable
           && voice.capabilities.text.validated
         }
         playingReadAloudKey={voicePlayback.playingKey}
