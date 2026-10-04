@@ -13,6 +13,10 @@ import type {
   VoiceSettingsUpdate,
   VoiceSpeechMode,
 } from "@/shared";
+import {
+  piperTtsProvider,
+  type PiperSpeechService,
+} from "./piper-tts";
 import { DomainError } from "../domain/domain-error";
 import {
   getDefaultVoiceValidation,
@@ -32,20 +36,19 @@ import {
   VOICE_MAX_SUMMARY_CHARS,
   VOICE_MAX_TEXT_CHARS,
 } from "./voice-provider";
+import type { PiperSpeechStatus } from "./piper-assets";
 
 const log = createLogger("core:voice-manager");
 const DEFAULT_TRANSCRIPTION_MODEL = "gpt-transcribe";
-const DEFAULT_SPEECH_MODEL = "tts";
 const DEFAULT_TEXT_MODEL = "gpt-5.6-luna";
 
 function emptySettings(): PersistedVoiceSettings {
   return {
-    version: 1,
+    version: 2,
     baseUrl: "",
     apiKeyCiphertext: null,
     models: {
       transcription: DEFAULT_TRANSCRIPTION_MODEL,
-      speech: DEFAULT_SPEECH_MODEL,
       text: DEFAULT_TEXT_MODEL,
     },
     languageHints: [...DEFAULT_VOICE_LANGUAGE_HINTS],
@@ -84,20 +87,18 @@ function publicCapabilityStatus(
 function buildPublicSettings(
   settings: PersistedVoiceSettings,
   apiKey: string | null,
+  piper: PiperSpeechStatus,
 ): VoiceSettings {
   return {
     baseUrl: settings.baseUrl,
     apiKeyConfigured: Boolean(apiKey),
     models: settings.models,
     languageHints: settings.languageHints,
+    piper,
     capabilities: {
       transcription: publicCapabilityStatus(
         settings.validation.transcription,
         capabilityConfigured(settings, "transcription", apiKey),
-      ),
-      speech: publicCapabilityStatus(
-        settings.validation.speech,
-        capabilityConfigured(settings, "speech", apiKey),
       ),
       text: publicCapabilityStatus(
         settings.validation.text,
@@ -144,10 +145,12 @@ function shouldPersistInvalidValidation(
 }
 
 export class VoiceManager {
+  constructor(private readonly piper: PiperSpeechService = piperTtsProvider) {}
+
   async getSettings(): Promise<VoiceSettings> {
     const settings = await getPersistedVoiceSettings() ?? emptySettings();
     const apiKey = await getPersistedVoiceApiKey(settings);
-    return buildPublicSettings(settings, apiKey);
+    return buildPublicSettings(settings, apiKey, await this.piper.getStatus());
   }
 
   async updateSettings(update: VoiceSettingsUpdate): Promise<VoiceSettings> {
@@ -157,14 +160,13 @@ export class VoiceManager {
       apiKey: update.apiKey?.trim(),
       models: {
         transcription: update.models.transcription.trim(),
-        speech: update.models.speech.trim(),
         text: update.models.text.trim(),
       },
       languageHints: Array.from(new Set(update.languageHints)),
     };
     const next = await updatePersistedVoiceSettings(normalized);
     const apiKey = await getPersistedVoiceApiKey(next);
-    return buildPublicSettings(next, apiKey);
+    return buildPublicSettings(next, apiKey, await this.piper.getStatus());
   }
 
   async validateCapability(
@@ -191,13 +193,6 @@ export class VoiceManager {
           settings.languageHints,
           signal,
         );
-      } else if (capability === "speech") {
-        await provider.synthesizeSpeech({
-          text: "OK",
-          model: settings.models.speech,
-          voice: "alloy",
-          signal,
-        });
       } else {
         await provider.completeText(
           settings.models.text,
@@ -245,7 +240,7 @@ export class VoiceManager {
         "The voice settings changed while validation was running.",
       );
     }
-    return buildPublicSettings(persisted, apiKey);
+    return buildPublicSettings(persisted, apiKey, await this.piper.getStatus());
   }
 
   async transcribe(
@@ -304,9 +299,8 @@ export class VoiceManager {
   async synthesizeSpeech(
     text: string,
     mode: VoiceSpeechMode,
-    voice: string,
     signal?: AbortSignal,
-  ): Promise<{ audio: ArrayBuffer; contentType: string }> {
+  ): Promise<{ audio: ArrayBuffer; contentType: "audio/wav" }> {
     const normalizedText = text.trim();
     if (!normalizedText || normalizedText.length > VOICE_MAX_TEXT_CHARS) {
       throw new DomainError(
@@ -314,15 +308,20 @@ export class VoiceManager {
         "The text for speech is empty or too long.",
       );
     }
+    if (!(await this.piper.getStatus()).available) {
+      throw new DomainError(
+        "voice_piper_unsupported_platform",
+        "Local Piper speech is not supported on this server platform.",
+      );
+    }
 
-    const { settings, apiKey } = await this.requireConfiguredCapability("speech");
-    const provider = new OpenAiCompatibleVoiceProvider({
-      baseUrl: settings.baseUrl,
-      apiKey,
-    });
     let speechText = normalizedText;
     if (mode === "summary") {
       const textCapability = await this.requireConfiguredCapability("text");
+      const provider = new OpenAiCompatibleVoiceProvider({
+        baseUrl: textCapability.settings.baseUrl,
+        apiKey: textCapability.apiKey,
+      });
       speechText = await provider.completeText(
         textCapability.settings.models.text,
         [
@@ -337,12 +336,7 @@ export class VoiceManager {
       speechText = speechText.slice(0, VOICE_MAX_SUMMARY_CHARS).trim();
     }
 
-    return await provider.synthesizeSpeech({
-      text: speechText,
-      model: settings.models.speech,
-      voice: voice.trim() || "alloy",
-      signal,
-    });
+    return await this.piper.synthesizeSpeech(speechText, signal);
   }
 
   private async requireConfiguredCapability(

@@ -3,7 +3,6 @@
  */
 
 import { defineRoutes, type RouteContext } from "@pablozaiden/webapp/server";
-import type { VoiceCapability } from "@/shared";
 import {
   VoiceSettingsUpdateSchema,
   VoiceSpeechRequestSchema,
@@ -82,11 +81,11 @@ async function readRequestBodyWithLimit(
   return body;
 }
 
-export const voiceRoutes = defineRoutes({
+const voiceBaseRoutes = defineRoutes({
   "/api/voice/settings": {
     auth: "user",
     sameOrigin: "mutations",
-    description: "Read or update the current user's voice provider settings.",
+    description: "Read or update provider settings for transcription and summaries, plus local Piper support status.",
     requestSchema: VoiceSettingsUpdateSchema,
     async GET(_req: Request, _ctx: RouteContext): Promise<Response> {
       try {
@@ -119,10 +118,7 @@ export const voiceRoutes = defineRoutes({
         return result.response;
       }
       try {
-        const settings = await voiceManager.validateCapability(
-          result.data.capability as VoiceCapability,
-          req.signal,
-        );
+        const settings = await voiceManager.validateCapability(result.data.capability, req.signal);
         return successResponse({ settings });
       } catch (error) {
         return voiceErrorResponse(error);
@@ -181,34 +177,48 @@ export const voiceRoutes = defineRoutes({
       }
     },
   },
+});
 
-  "/api/voice/speech": {
-    auth: "user",
-    sameOrigin: "mutations",
-    description: "Generate speech for a full response or a generated summary.",
-    requestSchema: VoiceSpeechRequestSchema,
-    async POST(req: Request, _ctx: RouteContext): Promise<Response> {
-      const result = await parseAndValidate(VoiceSpeechRequestSchema, req);
-      if (!result.success) {
-        return result.response;
-      }
-      try {
-        const audio = await voiceManager.synthesizeSpeech(
-          result.data.text,
-          result.data.mode,
-          result.data.voice,
-          req.signal,
-        );
-        return new Response(audio.audio, {
-          headers: {
-            "Content-Type": audio.contentType,
-            "Cache-Control": "no-store",
-            "Content-Length": String(audio.audio.byteLength),
-          },
-        });
-      } catch (error) {
-        return voiceErrorResponse(error);
-      }
+export function createVoiceSpeechRoutes(manager: typeof voiceManager) {
+  return defineRoutes({
+    "/api/voice/speech": {
+      auth: "user",
+      sameOrigin: "mutations",
+      description: "Generate Piper speech locally for a full response or a generated summary.",
+      requestSchema: VoiceSpeechRequestSchema,
+      async POST(req: Request, _ctx: RouteContext): Promise<Response> {
+        const result = await parseAndValidate(VoiceSpeechRequestSchema, req);
+        if (!result.success) {
+          return result.response;
+        }
+        try {
+          const audio = await manager.synthesizeSpeech(
+            result.data.text,
+            result.data.mode,
+            req.signal,
+          );
+          return new Response(audio.audio, {
+            headers: {
+              "Content-Type": audio.contentType,
+              "Cache-Control": "no-store",
+              "Content-Length": String(audio.audio.byteLength),
+            },
+          });
+        } catch (error) {
+          if (
+            req.signal.aborted
+            || error instanceof DOMException && error.name === "AbortError"
+          ) {
+            throw error;
+          }
+          return voiceErrorResponse(error);
+        }
+      },
     },
-  },
+  });
+}
+
+export const voiceRoutes = defineRoutes({
+  ...voiceBaseRoutes,
+  ...createVoiceSpeechRoutes(voiceManager),
 });

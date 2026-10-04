@@ -16,19 +16,11 @@ function createDefaultSettings(): VoiceSettings {
     apiKeyConfigured: false,
     models: {
       transcription: "gpt-transcribe",
-      speech: "tts",
       text: "gpt-5.6-luna",
     },
     languageHints: [...DEFAULT_VOICE_LANGUAGE_HINTS],
     capabilities: {
       transcription: {
-        configured: false,
-        validated: false,
-        state: "unconfigured",
-        checkedAt: null,
-        error: null,
-      },
-      speech: {
         configured: false,
         validated: false,
         state: "unconfigured",
@@ -43,6 +35,7 @@ function createDefaultSettings(): VoiceSettings {
         error: null,
       },
     },
+    piper: { available: false },
   };
 }
 

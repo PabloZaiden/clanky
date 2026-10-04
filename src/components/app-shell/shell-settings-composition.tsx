@@ -177,7 +177,7 @@ export function buildShellSettingsSections({
       rows: [{
         id: "voice-provider",
         title: "Provider",
-        description: "Configure server-side transcription, speech, and text models.",
+        description: "Configure providers for transcription and summaries; speech synthesis runs locally with Piper.",
         content: <VoiceSettingsRowContent voiceSettings={voiceSettings} />,
       }],
     },

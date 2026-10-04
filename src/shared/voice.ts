@@ -2,7 +2,7 @@
  * Browser-safe types for the optional per-user voice features.
  */
 
-export const VOICE_CAPABILITIES = ["transcription", "speech", "text"] as const;
+export const VOICE_CAPABILITIES = ["transcription", "text"] as const;
 export type VoiceCapability = (typeof VOICE_CAPABILITIES)[number];
 
 export const VOICE_LANGUAGE_HINTS = ["es", "en"] as const;
@@ -42,11 +42,13 @@ export interface VoiceSettings {
   apiKeyConfigured: boolean;
   models: {
     transcription: string;
-    speech: string;
     text: string;
   };
   languageHints: VoiceLanguageHint[];
   capabilities: Record<VoiceCapability, VoiceCapabilityStatus>;
+  piper: {
+    available: boolean;
+  };
 }
 
 export interface VoiceSettingsUpdate {

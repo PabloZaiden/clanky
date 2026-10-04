@@ -11,6 +11,7 @@ import {
 } from "./encrypted-secret";
 import {
   DEFAULT_VOICE_LANGUAGE_HINTS,
+  VOICE_CAPABILITIES,
   type VoiceCapability,
   type VoiceLanguageHint,
   type VoiceSettingsUpdate,
@@ -18,7 +19,7 @@ import {
 
 const log = createLogger("persistence:voice-settings");
 const VOICE_SETTINGS_KEY = "voiceProviderSettings";
-const PERSISTED_VERSION = 1;
+const PERSISTED_VERSION = 2;
 
 export interface PersistedVoiceValidation {
   state: "unconfigured" | "unvalidated" | "valid" | "invalid";
@@ -27,12 +28,11 @@ export interface PersistedVoiceValidation {
 }
 
 export interface PersistedVoiceSettings {
-  version: 1;
+  version: 2;
   baseUrl: string;
   apiKeyCiphertext: string | null;
   models: {
     transcription: string;
-    speech: string;
     text: string;
   };
   languageHints: VoiceLanguageHint[];
@@ -40,11 +40,12 @@ export interface PersistedVoiceSettings {
 }
 
 function defaultValidation(): Record<VoiceCapability, PersistedVoiceValidation> {
-  return {
-    transcription: { state: "unconfigured", checkedAt: null, error: null },
-    speech: { state: "unconfigured", checkedAt: null, error: null },
-    text: { state: "unconfigured", checkedAt: null, error: null },
-  };
+  return Object.fromEntries(
+    VOICE_CAPABILITIES.map((capability) => [
+      capability,
+      { state: "unconfigured", checkedAt: null, error: null },
+    ]),
+  ) as Record<VoiceCapability, PersistedVoiceValidation>;
 }
 
 function getRawSettings(): string | null {
@@ -89,18 +90,20 @@ function parseSettings(raw: string): PersistedVoiceSettings {
   }
 
   const record = parsed as Record<string, unknown>;
+  const version = record["version"];
   const baseUrl = record["baseUrl"];
   const models = record["models"];
   const validation = record["validation"];
   const apiKeyCiphertext = record["apiKeyCiphertext"];
   const languageHints = record["languageHints"];
   if (
-    record["version"] !== PERSISTED_VERSION
+    (version !== 1 && version !== PERSISTED_VERSION)
     || typeof baseUrl !== "string"
     || !models || typeof models !== "object"
     || typeof (models as Record<string, unknown>)["transcription"] !== "string"
-    || typeof (models as Record<string, unknown>)["speech"] !== "string"
     || typeof (models as Record<string, unknown>)["text"] !== "string"
+    || version === 1
+      && typeof (models as Record<string, unknown>)["speech"] !== "string"
     || (languageHints !== undefined && !Array.isArray(languageHints))
     || !validation || typeof validation !== "object"
     || (
@@ -114,7 +117,7 @@ function parseSettings(raw: string): PersistedVoiceSettings {
 
   const rawValidation = validation as Record<string, unknown>;
   const parsedValidation = defaultValidation();
-  for (const capability of ["transcription", "speech", "text"] as const) {
+  for (const capability of VOICE_CAPABILITIES) {
     const item = rawValidation[capability];
     if (!item || typeof item !== "object") {
       throw new Error("Persisted voice settings have invalid validation metadata.");
@@ -141,14 +144,13 @@ function parseSettings(raw: string): PersistedVoiceSettings {
   }
 
   return {
-    version: 1,
+    version: PERSISTED_VERSION,
     baseUrl,
     apiKeyCiphertext: typeof apiKeyCiphertext === "string"
       ? apiKeyCiphertext
       : null,
     models: {
       transcription: (models as Record<string, unknown>)["transcription"] as string,
-      speech: (models as Record<string, unknown>)["speech"] as string,
       text: (models as Record<string, unknown>)["text"] as string,
     },
     languageHints: (
@@ -256,14 +258,10 @@ export async function updatePersistedVoiceSettings(
     const changedCapabilities = new Set<VoiceCapability>();
     if (baseUrlChanged || apiKeyChanged) {
       changedCapabilities.add("transcription");
-      changedCapabilities.add("speech");
       changedCapabilities.add("text");
     }
     if (!existing || existing.models.transcription !== update.models.transcription) {
       changedCapabilities.add("transcription");
-    }
-    if (!existing || existing.models.speech !== update.models.speech) {
-      changedCapabilities.add("speech");
     }
     if (!existing || existing.models.text !== update.models.text) {
       changedCapabilities.add("text");
@@ -278,7 +276,7 @@ export async function updatePersistedVoiceSettings(
     const validation = existing
       ? { ...existing.validation }
       : defaultValidation();
-    for (const capability of ["transcription", "speech", "text"] as const) {
+    for (const capability of VOICE_CAPABILITIES) {
       const configured = Boolean(
         update.baseUrl
         && nextApiKey
@@ -292,7 +290,7 @@ export async function updatePersistedVoiceSettings(
     }
 
     const next: PersistedVoiceSettings = {
-      version: 1,
+      version: PERSISTED_VERSION,
       baseUrl: update.baseUrl,
       apiKeyCiphertext,
       models: update.models,

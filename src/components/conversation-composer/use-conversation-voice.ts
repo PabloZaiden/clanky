@@ -6,6 +6,7 @@ import type { ConversationComposerVoice } from "./types";
 export interface ConversationVoiceController {
   composer: ConversationComposerVoice;
   capabilities: ReturnType<typeof useVoiceSettings>["settings"]["capabilities"];
+  speechAvailable: boolean;
 }
 
 export function useConversationVoice(): ConversationVoiceController {
@@ -73,5 +74,6 @@ export function useConversationVoice(): ConversationVoiceController {
   return {
     composer,
     capabilities: voiceSettings.settings.capabilities,
+    speechAvailable: voiceSettings.settings.piper.available,
   };
 }

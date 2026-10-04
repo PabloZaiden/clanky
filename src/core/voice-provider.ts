@@ -1,5 +1,5 @@
 /**
- * OpenAI-compatible provider adapter for transcription, speech, and text.
+ * OpenAI-compatible provider adapter for transcription and text.
  */
 
 import { DomainError } from "../domain/domain-error";
@@ -25,18 +25,6 @@ export interface VoiceTranscriptionOptions {
   model: string;
   languageHints: readonly string[];
   signal?: AbortSignal;
-}
-
-export interface VoiceSpeechOptions {
-  text: string;
-  model: string;
-  voice: string;
-  signal?: AbortSignal;
-}
-
-export interface VoiceAudioResult {
-  audio: ArrayBuffer;
-  contentType: string;
 }
 
 function isAzureOpenAiUrl(url: URL): boolean {
@@ -600,57 +588,6 @@ export class OpenAiCompatibleVoiceProvider {
           );
         }
         return text.trim();
-      },
-    );
-  }
-
-  async synthesizeSpeech(options: VoiceSpeechOptions): Promise<VoiceAudioResult> {
-    return await fetchWithTimeout(
-      this.url("/audio/speech", options.model),
-      {
-        method: "POST",
-        headers: {
-          ...this.headers,
-          "Content-Type": "application/json",
-          Accept: "audio/mpeg, audio/wav, application/octet-stream",
-        },
-        body: JSON.stringify({
-          model: options.model,
-          input: options.text,
-          voice: options.voice,
-          response_format: "mp3",
-        }),
-      },
-      options.signal,
-      async (response, requestSignal) => {
-        if (!response.ok) {
-          throw providerError(response.status, response.headers.get("retry-after"));
-        }
-
-        const contentType = response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase();
-        if (!contentType || (!contentType.startsWith("audio/") && contentType !== "application/octet-stream")) {
-          throw new DomainError(
-            "voice_provider_invalid_response",
-            "The speech provider did not return audio.",
-          );
-        }
-        const audio = await readBoundedResponseBody(
-          response,
-          VOICE_MAX_AUDIO_BYTES,
-          requestSignal,
-        );
-        if (audio.byteLength === 0) {
-          throw new DomainError(
-            "voice_provider_invalid_response",
-            "The speech provider returned invalid audio.",
-          );
-        }
-        const audioBuffer = new Uint8Array(audio.byteLength);
-        audioBuffer.set(audio);
-        return {
-          audio: audioBuffer.buffer,
-          contentType,
-        };
       },
     );
   }
