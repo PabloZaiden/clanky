@@ -143,6 +143,29 @@ export function ServerSettingsForm({
       && (target ? isSshTargetValid(target) : host !== null || dedicatedWorkerSelected);
   }
 
+  function updateSelection(change: {
+    adapter?: HarnessAdapter;
+    provider?: AgentProvider;
+    executionHost?: ExecutionHostRef | null;
+    sshTarget?: WorkspaceSshTargetRequest | null;
+  }): void {
+    const nextAdapter = change.adapter ?? adapter;
+    const nextProvider = change.provider ?? provider;
+    const nextHost = change.executionHost === undefined ? executionHost : change.executionHost;
+    const nextTarget = change.sshTarget === undefined ? sshTarget : change.sshTarget;
+    setAdapter(nextAdapter);
+    setProvider(nextProvider);
+    setExecutionHost(nextHost);
+    setSshTarget(nextTarget);
+    setTestResult(null);
+    onChangeRef.current(
+      { agent: createAgentSettings(nextAdapter, nextProvider) },
+      isSelectionValid(nextAdapter, nextHost, nextTarget),
+      nextHost,
+      nextTarget,
+    );
+  }
+
   useEffect(() => {
     onChangeRef.current({ agent: createAgentSettings(adapter, provider) }, isValid, executionHost, sshTarget);
   }, [isValid]);
@@ -165,18 +188,8 @@ export function ServerSettingsForm({
           username: "",
         }
         : null;
-    setProvider(nextProvider);
-    setAdapter(nextAdapter);
-    setExecutionHost(nextExecutionHost);
-    setSshTarget(nextSshTarget);
     setClearStoredPassword(false);
-    setTestResult(null);
-    onChangeRef.current(
-      { agent: createAgentSettings(nextAdapter, nextProvider) },
-      isSelectionValid(nextAdapter, nextExecutionHost, nextSshTarget),
-      nextExecutionHost,
-      nextSshTarget,
-    );
+    updateSelection({ adapter: nextAdapter, provider: nextProvider, executionHost: nextExecutionHost, sshTarget: nextSshTarget });
   }, [dedicatedWorkerSelected, initialExecutionHost, initialSshTarget, initialSettings]);
 
   useEffect(() => {
@@ -190,8 +203,7 @@ export function ServerSettingsForm({
       return;
     }
     const nextHost = selectableTargets[0]!.ref;
-    setExecutionHost(nextHost);
-    onChangeRef.current({ agent: createAgentSettings(adapter, provider) }, isSelectionValid(adapter, nextHost, null), nextHost);
+    updateSelection({ executionHost: nextHost, sshTarget: null });
   }, [
     dedicatedWorkerActive,
     adapter,
@@ -203,34 +215,17 @@ export function ServerSettingsForm({
   ]);
 
   function updateProvider(nextProvider: AgentProvider): void {
-    setProvider(nextProvider);
-    setTestResult(null);
-    onChangeRef.current(
-      { agent: createAgentSettings(adapter, nextProvider) },
-      isSelectionValid(adapter, executionHost, sshTarget),
-      executionHost,
-      sshTarget,
-    );
+    updateSelection({ provider: nextProvider });
   }
 
   function updateAdapter(nextAdapter: HarnessAdapter): void {
-    setAdapter(nextAdapter);
-    setTestResult(null);
-    onChangeRef.current(
-      { agent: createAgentSettings(nextAdapter, provider) },
-      isSelectionValid(nextAdapter, executionHost, sshTarget),
-      executionHost,
-      sshTarget,
-    );
+    updateSelection({ adapter: nextAdapter });
   }
 
   function updateExecutionHost(serialized: string): void {
+    setClearStoredPassword(false);
     if (serialized === "workspace-worker") {
-      setExecutionHost(null);
-      setSshTarget(null);
-      setClearStoredPassword(false);
-      setTestResult(null);
-      onChangeRef.current({ agent: createAgentSettings(adapter, provider) }, isSelectionValid(adapter, null, null), null, null);
+      updateSelection({ executionHost: null, sshTarget: null });
       return;
     }
     if (serialized === "workspace-ssh-target") {
@@ -239,24 +234,11 @@ export function ServerSettingsForm({
         port: 22,
         username: "",
       };
-      setExecutionHost(null);
-      setSshTarget(nextTarget);
-      setClearStoredPassword(false);
-      setTestResult(null);
-      onChangeRef.current(
-        { agent: createAgentSettings(adapter, provider) },
-        isSelectionValid(adapter, null, nextTarget),
-        null,
-        nextTarget,
-      );
+      updateSelection({ executionHost: null, sshTarget: nextTarget });
       return;
     }
     const nextHost = serialized ? parseExecutionHostRef(serialized) : null;
-    setExecutionHost(nextHost);
-    setSshTarget(null);
-    setClearStoredPassword(false);
-    setTestResult(null);
-    onChangeRef.current({ agent: createAgentSettings(adapter, provider) }, isSelectionValid(adapter, nextHost, null), nextHost);
+    updateSelection({ executionHost: nextHost, sshTarget: null });
   }
 
   function updateSshTarget(
@@ -270,14 +252,7 @@ export function ServerSettingsForm({
     if (field === "password" && value !== null && value !== "") {
       setClearStoredPassword(false);
     }
-    setSshTarget(nextTarget);
-    setTestResult(null);
-    onChangeRef.current(
-      { agent: createAgentSettings(adapter, provider) },
-      isSelectionValid(adapter, null, nextTarget),
-      null,
-      nextTarget,
-    );
+    updateSelection({ executionHost: null, sshTarget: nextTarget });
   }
 
   function updateClearStoredPassword(clear: boolean): void {
@@ -286,14 +261,7 @@ export function ServerSettingsForm({
       ...(sshTarget ?? { host: "", port: 22, username: "" }),
       password: clear ? null : undefined,
     };
-    setSshTarget(nextTarget);
-    setTestResult(null);
-    onChangeRef.current(
-      { agent: createAgentSettings(adapter, provider) },
-      isSelectionValid(adapter, null, nextTarget),
-      null,
-      nextTarget,
-    );
+    updateSelection({ executionHost: null, sshTarget: nextTarget });
   }
 
   async function handleTest(): Promise<void> {
