@@ -451,6 +451,10 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                 dedicatedWorkerSelected={
                   workspaceWorkerEnrollmentSelected && workspaceWorkerEnrollment !== null
                 }
+                workspaceWorkerEnrollmentId={workspaceWorkerEnrollmentSelected
+                  && workspaceWorkerEnrollment?.enrollment.status === "connected"
+                  ? workspaceWorkerEnrollment.enrollment.id
+                  : undefined}
                 onChange={(
                   settings: ServerSettings,
                   isValid: boolean,

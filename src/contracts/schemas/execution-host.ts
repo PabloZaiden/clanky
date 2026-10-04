@@ -10,6 +10,7 @@ import {
   EXECUTION_HOST_OPERATING_SYSTEMS,
 } from "@/shared/execution-host";
 import { AGENT_PROVIDER_IDS } from "@/shared/settings";
+import { HARNESS_ADAPTER_IDS } from "@/shared/harness-events";
 import { ModelConfigSchema } from "./model";
 
 const RequiredIdSchema = z.string().trim().min(1);
@@ -114,6 +115,13 @@ export const ExecutionHostDescriptorSchema = z.object({
   capabilities: ExecutionHostCapabilitiesSchema,
   revision: z.number().int().min(1),
   isPrivate: z.boolean().optional(),
+  harnessAdapters: z.array(z.enum(HARNESS_ADAPTER_IDS)),
+  harnessAdapterError: z.literal("mesh_execution_protocol_mismatch").optional(),
+}).strict();
+
+export const WorkspaceExecutionTargetsQuerySchema = z.object({
+  workspaceId: RequiredIdSchema.optional(),
+  workspaceWorkerEnrollmentId: RequiredIdSchema.optional(),
 }).strict();
 
 export const UpdateExecutionHostConfigurationSchema = z.object({

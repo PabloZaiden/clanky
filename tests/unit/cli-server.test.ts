@@ -71,6 +71,7 @@ describe("CLI server commands", () => {
           accessRequirement: { kind: "none" },
           acceptRemoteExecution: true,
           capabilities: {},
+          harnessAdapters: ["acp"],
           revision: 1,
         }]);
       }

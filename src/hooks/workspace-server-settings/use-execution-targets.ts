@@ -6,7 +6,10 @@ import { isAbortError } from "../../lib/request-lifecycle";
 
 const log = createLogger("useWorkspaceExecutionTargets");
 
-export function useWorkspaceExecutionTargets(): {
+export function useWorkspaceExecutionTargets(context: {
+  workspaceId?: string;
+  workspaceWorkerEnrollmentId?: string;
+} = {}): {
   targets: ExecutionHostDescriptor[];
   loading: boolean;
   refresh: () => Promise<void>;
@@ -16,6 +19,7 @@ export function useWorkspaceExecutionTargets(): {
   const activeControllerRef = useRef<AbortController | null>(null);
   const latestRequestIdRef = useRef(0);
   const mountedRef = useRef(false);
+  const { workspaceId, workspaceWorkerEnrollmentId } = context;
 
   const refresh = useCallback(async (): Promise<void> => {
     if (!mountedRef.current) {
@@ -34,7 +38,10 @@ export function useWorkspaceExecutionTargets(): {
 
     setLoading(true);
     try {
-      const nextTargets = await apiRequest<ExecutionHostDescriptor[]>("/api/workspaces/execution-targets", {
+      const query = new URLSearchParams();
+      if (workspaceId) query.set("workspaceId", workspaceId);
+      if (workspaceWorkerEnrollmentId) query.set("workspaceWorkerEnrollmentId", workspaceWorkerEnrollmentId);
+      const nextTargets = await apiRequest<ExecutionHostDescriptor[]>(`/api/workspaces/execution-targets?${query}`, {
         action: "Load workspace execution targets",
         fallbackMessage: "Failed to load workspace execution targets",
         signal: controller.signal,
@@ -55,7 +62,7 @@ export function useWorkspaceExecutionTargets(): {
         setLoading(false);
       }
     }
-  }, []);
+  }, [workspaceId, workspaceWorkerEnrollmentId]);
 
   useEffect(() => {
     mountedRef.current = true;

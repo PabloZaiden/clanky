@@ -3,6 +3,7 @@
  */
 
 import type { ModelConfig } from "./model";
+import type { HarnessAdapter } from "./harness-events";
 import {
   DEFAULT_EXECUTION_AGENT_PROVIDER,
   isAgentProvider,
@@ -323,6 +324,8 @@ export interface ExecutionHostDescriptor {
   acceptRemoteExecution: boolean;
   platform: ExecutionHostPlatform | null;
   capabilities: ExecutionHostCapabilities;
+  harnessAdapters: HarnessAdapter[];
+  harnessAdapterError?: "mesh_execution_protocol_mismatch";
   revision: number;
   isPrivate?: boolean;
 }

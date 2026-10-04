@@ -990,6 +990,15 @@ describe("controller-worker Mesh", () => {
         host.ref.kind === "mesh" && host.ref.nodeId === workerNodeId,
     )).toBe(false);
 
+    const enrollmentTargets = await jsonRequest(controller,
+      `/api/workspaces/execution-targets?workspaceWorkerEnrollmentId=${encodeURIComponent(enrollmentId)}`);
+    expect(enrollmentTargets.status).toBe(200);
+    expect(enrollmentTargets.body).toContainEqual(expect.objectContaining({
+      ref: { kind: "mesh", scope: "enrollment", enrollmentId, nodeId: workerNodeId },
+      harnessAdapters: ["acp", "copilot", "codex", "opencode2"],
+      isPrivate: true,
+    }));
+
     const workspace = await jsonRequest(controller, "/api/workspaces", {
       method: "POST",
       body: {
@@ -1007,6 +1016,14 @@ describe("controller-worker Mesh", () => {
       workspaceId: workspace.body.id,
       nodeId: workerNodeId,
     });
+    const workspaceTargets = await jsonRequest(controller,
+      `/api/workspaces/execution-targets?workspaceId=${encodeURIComponent(workspace.body.id)}`);
+    expect(workspaceTargets.status).toBe(200);
+    expect(workspaceTargets.body).toContainEqual(expect.objectContaining({
+      ref: workspace.body.executionHostBinding.host,
+      harnessAdapters: ["acp", "copilot", "codex", "opencode2"],
+      isPrivate: true,
+    }));
 
     const updated = await jsonRequest(
       controller,

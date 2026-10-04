@@ -27,6 +27,16 @@ A native failure does not switch to ACP; select ACP explicitly when that
 is the desired integration. See [Mesh workers](mesh-worker.md) for negotiation
 and rollout details.
 
+The adapter selector in workspace creation and settings follows the selected
+host's negotiated route, including dedicated workers. Changing hosts updates
+the available adapters and form validation together. An incompatible selection
+remains invalid until you explicitly choose a supported adapter.
+`GET /api/workspaces/execution-targets` reports this availability as
+`harnessAdapters`; `workspaceId` or `workspaceWorkerEnrollmentId` includes that
+user-owned dedicated target without making it globally discoverable.
+Unverifiable route negotiation returns no adapters and a typed
+`harnessAdapterError` for that host, without hiding other healthy execution hosts.
+
 Existing workspace settings migrate to ACP with their original harness preset.
 Selecting a different adapter does not reinterpret a saved session ID. Start a
 new conversation when changing adapters; app transcript history is preserved.

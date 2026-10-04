@@ -66,6 +66,12 @@ the application being built; they are not expected to exist beside this skill.
   generations first; keep exact v5 projections through 6.0.x and remove them
   only for 6.1.0 after fleet rollout confirmation. Direct SSH and Mesh v5 stay
   ACP-only without automatic native fallback. See `docs/mesh-worker.md`.
+- Workspace runtime forms must consume authoritative execution-host
+  `harnessAdapters` for options, validity and connection testing, not infer
+  support from local/Mesh kind or advertised generations. Scoped dedicated
+  targets come from authorized workspace/enrollment context. An unverifiable
+  route exposes `harnessAdapterError` and no adapters without breaking healthy
+  sibling hosts; never silently change the selected adapter.
 - Use scopes for API keys and device bearer tokens.
 - Keep settings framework-owned; add app-specific settings as custom sections with `scope: "user"`, `"admin"` or `"owner"`.
 - Use `useTheme()` when app logic needs the effective theme; prefer CSS when it does not. Use framework `createLogger` from `/web` and `/server`, and `useLogLevel()` when UI needs the effective client log-level state; do not fetch framework configuration to initialize a separate logger.

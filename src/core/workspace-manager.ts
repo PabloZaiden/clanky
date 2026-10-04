@@ -303,8 +303,22 @@ export class WorkspaceManager {
     );
   }
 
-  async listExecutionTargets(): Promise<ExecutionHostDescriptor[]> {
-    return await executionHostService.listHosts();
+  async listExecutionTargets(context: {
+    workspaceId?: string;
+    workspaceWorkerEnrollmentId?: string;
+  } = {}): Promise<ExecutionHostDescriptor[]> {
+    const userId = requireCurrentUserId();
+    let additionalHost: ExecutionHostRef | undefined;
+    if (context.workspaceId) {
+      additionalHost = (await this.requireWorkspace(context.workspaceId)).executionHostBinding.host;
+    }
+    if (context.workspaceWorkerEnrollmentId) {
+      const status = workspaceWorkerEnrollmentService.getStatus(userId, context.workspaceWorkerEnrollmentId);
+      if (status.enrollment.status === "connected") {
+        additionalHost = workspaceWorkerEnrollmentService.getExecutionHostBinding(userId, context.workspaceWorkerEnrollmentId).host;
+      }
+    }
+    return await executionHostService.listHosts(userId, additionalHost);
   }
 
   async createWorkspace(input: CreateWorkspaceInput): Promise<Workspace> {

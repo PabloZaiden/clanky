@@ -11,6 +11,8 @@ import { AGENT_PROVIDER_OPTIONS } from "../../constants/agent-providers";
 
 interface RuntimeFieldsProps {
   adapter: HarnessAdapter;
+  supportedAdapters: readonly HarnessAdapter[];
+  adapterAvailabilityError?: ExecutionHostDescriptor["harnessAdapterError"];
   provider: AgentProvider;
   executionHost: ExecutionHostRef | null;
   sshTarget: WorkspaceSshTargetRequest | null;
@@ -31,7 +33,7 @@ interface RuntimeFieldsProps {
   updateClearStoredPassword: (clear: boolean) => void;
 }
 
-export function RuntimeFields({ adapter, provider, executionHost, sshTarget, loading, selectableTargets, unavailableInitialTarget, initialExecutionHost, initialDedicatedWorker, dedicatedWorkerSelected, dedicatedWorkerActive, allowWorkspaceSshTarget, clearStoredPassword, updateAdapter, updateProvider, updateExecutionHost, updateSshTarget, updateClearStoredPassword, passwordConfigured }: RuntimeFieldsProps) {
+export function RuntimeFields({ adapter, supportedAdapters, adapterAvailabilityError, provider, executionHost, sshTarget, loading, selectableTargets, unavailableInitialTarget, initialExecutionHost, initialDedicatedWorker, dedicatedWorkerSelected, dedicatedWorkerActive, allowWorkspaceSshTarget, clearStoredPassword, updateAdapter, updateProvider, updateExecutionHost, updateSshTarget, updateClearStoredPassword, passwordConfigured }: RuntimeFieldsProps) {
   return (
     <div className="space-y-4 rounded-lg bg-gray-50 p-4 dark:bg-neutral-900">
         <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
@@ -48,10 +50,10 @@ export function RuntimeFields({ adapter, provider, executionHost, sshTarget, loa
               onChange={(event) => updateAdapter(event.target.value as HarnessAdapter)}
               className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100"
             >
-              <option value="acp">ACP</option>
-              <option value="copilot" disabled={executionHost?.kind !== "local"}>GitHub Copilot</option>
-              <option value="codex" disabled={executionHost?.kind !== "local"}>Codex</option>
-              <option value="opencode2" disabled={executionHost?.kind !== "local"}>OpenCode 2</option>
+              <option value="acp" disabled={!supportedAdapters.includes("acp")}>ACP</option>
+              <option value="copilot" disabled={!supportedAdapters.includes("copilot")}>GitHub Copilot</option>
+              <option value="codex" disabled={!supportedAdapters.includes("codex")}>Codex</option>
+              <option value="opencode2" disabled={!supportedAdapters.includes("opencode2")}>OpenCode 2</option>
             </select>
           </div>
           {adapter === "acp" && <div>
@@ -139,9 +141,11 @@ export function RuntimeFields({ adapter, provider, executionHost, sshTarget, loa
                 </p>
               ) : null}
           </div>
-          {adapter !== "acp" && executionHost?.kind !== "local" && (
+          {!loading && (adapterAvailabilityError || (adapter !== "acp" && !supportedAdapters.includes(adapter))) && (
             <p className="text-sm text-amber-600 dark:text-amber-400">
-              This host supports ACP only. Select ACP or a native-capable host.
+              {adapterAvailabilityError
+                ? "Harness availability could not be verified for this execution host."
+                : "This adapter is unavailable on the selected execution host."}
             </p>
           )}
         </div>
