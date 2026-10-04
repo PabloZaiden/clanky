@@ -59,6 +59,7 @@ export const CHAT_METADATA_COLUMNS = [
   "(SELECT execution_host.target_key FROM execution_hosts execution_host WHERE execution_host.id = chats.execution_host_id AND execution_host.user_id = chats.user_id) AS execution_host_target_key",
   "CASE WHEN EXISTS (SELECT 1 FROM chat_transcript_entries entry WHERE entry.chat_id = chats.id AND entry.user_id = chats.user_id AND entry.kind = 'message') THEN 1 ELSE 0 END AS has_messages",
   "CASE WHEN EXISTS (SELECT 1 FROM chat_transcript_entries entry WHERE entry.chat_id = chats.id AND entry.user_id = chats.user_id) THEN 1 ELSE 0 END AS has_transcript",
+  "(SELECT MAX(entry.timestamp) FROM chat_transcript_entries entry WHERE entry.chat_id = chats.id AND entry.user_id = chats.user_id AND entry.kind = 'message' AND entry.message_role = 'user') AS last_user_message_at",
 ].join(", ");
 
 export function createChatListSnapshot(chat: Chat): Chat {

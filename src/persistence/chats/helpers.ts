@@ -218,6 +218,9 @@ export function rowToChat(row: Record<string, unknown>): Chat {
     startedAt: (row["started_at"] as string | null) ?? undefined,
     completedAt: (row["completed_at"] as string | null) ?? undefined,
     lastActivityAt: (row["last_activity_at"] as string | null) ?? undefined,
+    ...(row["last_user_message_at"] !== null && row["last_user_message_at"] !== undefined
+      ? { lastUserMessageAt: row["last_user_message_at"] as string }
+      : {}),
     messages: [],
     logs: [],
     toolCalls: [],

@@ -519,8 +519,20 @@ describe("Tasks CRUD API Integration", () => {
 
       expect(createResponse.status).toBe(201);
       const created = await createResponse.json();
+      const initialListResponse = await fetch(`${baseUrl}/api/tasks`);
+      expect(initialListResponse.status).toBe(200);
+      const initialListedTasks = await initialListResponse.json();
+      const initialListed = initialListedTasks.find((task: { config: { id: string } }) => task.config.id === created.config.id);
+      expect(initialListed?.state.lastUserMessageAt).toBeUndefined();
+
       const timestamp = new Date().toISOString();
+      const userTimestamp = new Date(Date.parse(timestamp) - 1_000).toISOString();
       const messages: PersistedMessage[] = [{
+        id: "user-message-1",
+        role: "user",
+        content: "User message used for activity ordering",
+        timestamp: userTimestamp,
+      }, {
         id: "message-1",
         role: "assistant",
         content: "Large task transcript content that should not be returned by the list endpoint",
@@ -569,6 +581,8 @@ describe("Tasks CRUD API Integration", () => {
       expect(listed.state.toolCalls).toEqual([]);
       expect(listed.state.planMode.isPlanReady).toBe(true);
       expect(listed.state.planMode.planContent).toBeUndefined();
+      // Regression: assistant activity, logs, and tools must not replace user activity.
+      expect(listed.state.lastUserMessageAt).toBe(userTimestamp);
 
       const detailResponse = await fetch(`${baseUrl}/api/tasks/${created.config.id}`);
       expect(detailResponse.status).toBe(200);
@@ -577,6 +591,7 @@ describe("Tasks CRUD API Integration", () => {
       expect(detail.state.logs).toEqual([]);
       expect(detail.state.toolCalls).toEqual([]);
       expect(detail.state.planMode.planContent).toBeUndefined();
+      expect(detail.state.lastUserMessageAt).toBe(userTimestamp);
     });
 
     test("loads complete lightweight task transcripts and lazy-loads tool call payloads", async () => {

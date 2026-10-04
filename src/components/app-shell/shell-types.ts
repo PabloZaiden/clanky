@@ -308,9 +308,7 @@ export function buildActiveWorkSidebarItems(
   workspaceGroups: SidebarWorkspaceGroupNode[],
   options: BuildActiveWorkSidebarItemsOptions = {},
 ): SidebarActiveWorkItem[] {
-  const taskItems: SidebarActiveWorkItem[] = [];
-  const chatItems: SidebarActiveWorkItem[] = [];
-  const sessionItems: SidebarActiveWorkItem[] = [];
+  const items: SidebarActiveWorkItem[] = [];
 
   for (const group of workspaceGroups) {
     for (const workspaceNode of group.workspaces) {
@@ -321,7 +319,7 @@ export function buildActiveWorkSidebarItems(
       const workspaceName = workspaceNode.workspace.name;
 
       for (const taskNode of workspaceNode.tasks) {
-        taskItems.push({
+        items.push({
           kind: "task",
           key: `task:${taskNode.task.config.id}`,
           workspace: workspaceNode.workspace,
@@ -331,7 +329,7 @@ export function buildActiveWorkSidebarItems(
       }
 
       for (const chatNode of workspaceNode.chats) {
-        chatItems.push({
+        items.push({
           kind: "chat",
           key: `chat:${chatNode.chat.config.id}`,
           workspace: workspaceNode.workspace,
@@ -341,7 +339,7 @@ export function buildActiveWorkSidebarItems(
       }
 
       for (const terminalNode of workspaceNode.terminalSessions) {
-        sessionItems.push({
+        items.push({
           kind: "terminal-session",
           key: `terminal-session:${terminalNode.session.config.id}`,
           workspace: workspaceNode.workspace,
@@ -354,7 +352,7 @@ export function buildActiveWorkSidebarItems(
 
   for (const hostNode of options.executionHostNodes ?? []) {
     for (const chatNode of hostNode.chats) {
-      chatItems.push({
+      items.push({
         kind: "execution-host-chat",
         key: `execution-host-chat:${chatNode.chat.config.id}`,
         host: hostNode.host,
@@ -363,7 +361,7 @@ export function buildActiveWorkSidebarItems(
     }
 
     for (const sessionNode of hostNode.terminalSessions) {
-      sessionItems.push({
+      items.push({
         kind: "execution-host-terminal",
         key: `execution-host-terminal:${sessionNode.session.config.id}`,
         host: hostNode.host,
@@ -372,11 +370,28 @@ export function buildActiveWorkSidebarItems(
     }
   }
 
-  return [
-    ...taskItems,
-    ...chatItems,
-    ...sessionItems,
-  ];
+  return items.sort((left, right) => {
+    const timestampComparison = getActiveWorkItemTimestamp(right).localeCompare(
+      getActiveWorkItemTimestamp(left),
+    );
+    return timestampComparison !== 0
+      ? timestampComparison
+      : left.key.localeCompare(right.key);
+  });
+}
+
+function getActiveWorkItemTimestamp(item: SidebarActiveWorkItem): string {
+  switch (item.kind) {
+    case "task":
+      return item.taskNode.task.state.lastUserMessageAt ?? item.taskNode.task.config.createdAt;
+    case "chat":
+    case "execution-host-chat":
+      return item.chatNode.chat.state.lastUserMessageAt ?? item.chatNode.chat.config.createdAt;
+    case "terminal-session":
+      return item.sessionNode.createdAt;
+    case "execution-host-terminal":
+      return item.sessionNode.createdAt;
+  }
 }
 
 export function buildChatHistorySidebarItems(

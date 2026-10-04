@@ -286,6 +286,9 @@ export function rowToTask(row: Record<string, unknown>): Task {
   if (row["last_activity_at"] !== null) {
     state.lastActivityAt = row["last_activity_at"] as string;
   }
+  if (row["last_user_message_at"] !== null && row["last_user_message_at"] !== undefined) {
+    state.lastUserMessageAt = row["last_user_message_at"] as string;
+  }
   if (row["session_id"] !== null) {
     state.session = {
       id: row["session_id"] as string,

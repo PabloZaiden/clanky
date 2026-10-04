@@ -242,6 +242,11 @@ export function publishClankyDomainEvent(
       publishDeleted(publisher, owner, CLANKY_REALTIME_RESOURCES.tasks, event.taskId);
       return;
     case "task.message":
+      if (event.message.role === "user") {
+        publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.tasks, event.taskId);
+      }
+      publishStream(publisher, owner, event, { taskId: event.taskId });
+      return;
     case "task.message.delta":
     case "task.log":
     case "task.log.delta":
@@ -298,6 +303,11 @@ export function publishClankyDomainEvent(
       publishDeleted(publisher, owner, CLANKY_REALTIME_RESOURCES.chats, event.chatId);
       return;
     case "chat.message":
+      if (event.message.role === "user") {
+        publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.chats, event.chatId);
+      }
+      publishStream(publisher, owner, event, { chatId: event.chatId });
+      return;
     case "chat.message.delta":
     case "chat.log":
     case "chat.log.delta":

@@ -2137,8 +2137,20 @@ describe("Chats API Integration", () => {
 
     expect(createResponse.status).toBe(201);
     const created = await createResponse.json();
+    const initialListResponse = await fetch(`${baseUrl}/api/chats?workspaceId=${testWorkspaceId}`);
+    expect(initialListResponse.status).toBe(200);
+    const initialListedChats = await initialListResponse.json();
+    const initialListed = initialListedChats.find((chat: { config: { id: string } }) => chat.config.id === created.config.id);
+    expect(initialListed?.state.lastUserMessageAt).toBeUndefined();
+
     const timestamp = new Date().toISOString();
+    const userTimestamp = new Date(Date.parse(timestamp) - 1_000).toISOString();
     const messages: PersistedMessage[] = [{
+      id: "user-message-1",
+      role: "user",
+      content: "User message used for activity ordering",
+      timestamp: userTimestamp,
+    }, {
       id: "message-1",
       role: "assistant",
       content: "Large transcript content that should not be returned by the list endpoint",
@@ -2176,6 +2188,8 @@ describe("Chats API Integration", () => {
     expect(listed.state.messages).toEqual([]);
     expect(listed.state.logs).toEqual([]);
     expect(listed.state.toolCalls).toEqual([]);
+    // Regression: assistant activity, logs, and tools must not replace user activity.
+    expect(listed.state.lastUserMessageAt).toBe(userTimestamp);
 
     const detailResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}`);
     expect(detailResponse.status).toBe(200);
@@ -2183,6 +2197,7 @@ describe("Chats API Integration", () => {
     expect(detail.state.messages).toEqual([]);
     expect(detail.state.logs).toEqual([]);
     expect(detail.state.toolCalls).toEqual([]);
+    expect(detail.state.lastUserMessageAt).toBe(userTimestamp);
   });
 
   test("loads complete lightweight transcripts and lazy-loads tool call payloads", async () => {
