@@ -17,7 +17,18 @@ credentials or API keys. This document covers Clanky domain endpoints; the
 framework-owned authentication and health endpoints are listed separately
 where they affect integration.
 
-`clanky auth` uses the framework device flow, `clanky api` sends authenticated REST calls with selected framework credentials, `clanky ws` opens an authenticated JSON-lines websocket session against `/api/ws`, `clanky schema` exposes discoverability metadata for catalogued Clanky endpoints, and `clanky update` checks or installs published Clanky release binaries from GitHub Releases.
+`clanky auth` uses the framework device flow, `clanky api` sends authenticated
+REST calls with selected framework credentials, `clanky ws` opens an
+authenticated JSON-lines websocket session against `/api/ws`, `clanky schema`
+exposes discoverability metadata for catalogued Clanky endpoints, and
+`clanky update` checks or installs published Clanky release binaries from
+GitHub Releases.
+
+Updates use the latest stable release by default. Pass `--pre-release` to
+select the latest published prerelease only when it is newer than the latest
+stable release; otherwise, the stable release is selected. `--check` reports
+the selected update without replacing the installed binary. `--version VERSION`
+selects that exact release and takes precedence over `--pre-release`.
 
 ## Route security and discovery metadata
 
@@ -45,8 +56,14 @@ clanky version
 # Check whether a newer published binary is available
 clanky update --check
 
+# Check for a newer prerelease, falling back to stable when none is newer
+clanky update --check --pre-release
+
 # Update the installed release binaries in place
 clanky update
+
+# Install the newer prerelease when one is available
+clanky update --pre-release
 
 # Authenticate against a server
 clanky auth --base-url http://localhost:3000

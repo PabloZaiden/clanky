@@ -58,7 +58,11 @@ The canonical command and HTTP reference is [`docs/API.md`](../../docs/API.md).
 - Use `--payload '<json>'` for request bodies.
 - Use `clanky schema <endpoint>` before constructing payloads, especially for task, workspace, chat, or agent-related endpoints.
 - Use `clanky auth --base-url URL` to configure a profile for a server. Framework commands use the selected profile or the `CLANKY_BASE_URL`/`CLANKY_API_KEY` environment pair.
-- Use `clanky update --check` to check whether a newer Clanky release is available; only run `clanky update` when the user asks to update the CLI.
+- Use `clanky update --check` to check the latest stable release. Add
+  `--pre-release` to select the latest published prerelease only when it is
+  newer than stable; otherwise, stable is selected. `--check` never replaces
+  the installed binary. Only run an update when the user asks to update the
+  CLI; `--version VERSION` selects an exact release.
 - Purpose-built commands include `workspace`, `server`, `preview`, `mesh`, `worker`, and `relay`. Check `clanky help` for the exact command surface supported by the installed version.
 
 ## Bootstrapping a Mesh worker
