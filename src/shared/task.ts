@@ -129,6 +129,8 @@ export interface TaskState {
   completedAt?: string;
   /** ISO 8601 timestamp of the last event received */
   lastActivityAt?: string;
+  /** Latest persisted transcript message sent with the user role. */
+  lastUserMessageAt?: string;
 
   /** Backend session information for the active connection */
   session?: SessionInfo;

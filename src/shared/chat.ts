@@ -133,6 +133,8 @@ export interface ChatState {
   startedAt?: string;
   completedAt?: string;
   lastActivityAt?: string;
+  /** Latest persisted transcript message sent with the user role. */
+  lastUserMessageAt?: string;
   session?: SessionInfo;
   harness?: HarnessConversationState;
   error?: ChatError;

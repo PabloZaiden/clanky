@@ -519,8 +519,20 @@ describe("Tasks CRUD API Integration", () => {
 
       expect(createResponse.status).toBe(201);
       const created = await createResponse.json();
+      const initialListResponse = await fetch(`${baseUrl}/api/tasks`);
+      expect(initialListResponse.status).toBe(200);
+      const initialListedTasks = await initialListResponse.json();
+      const initialListed = initialListedTasks.find((task: { config: { id: string } }) => task.config.id === created.config.id);
+      expect(initialListed?.state.lastUserMessageAt).toBeUndefined();
+
       const timestamp = new Date().toISOString();
+      const userTimestamp = new Date(Date.parse(timestamp) - 1_000).toISOString();
       const messages: PersistedMessage[] = [{
+        id: "user-message-1",
+        role: "user",
+        content: "User message used for activity ordering",
+        timestamp: userTimestamp,
+      }, {
         id: "message-1",
         role: "assistant",
         content: "Large task transcript content that should not be returned by the list endpoint",
@@ -569,6 +581,8 @@ describe("Tasks CRUD API Integration", () => {
       expect(listed.state.toolCalls).toEqual([]);
       expect(listed.state.planMode.isPlanReady).toBe(true);
       expect(listed.state.planMode.planContent).toBeUndefined();
+      // Regression: assistant activity, logs, and tools must not replace user activity.
+      expect(listed.state.lastUserMessageAt).toBe(userTimestamp);
 
       const detailResponse = await fetch(`${baseUrl}/api/tasks/${created.config.id}`);
       expect(detailResponse.status).toBe(200);
@@ -577,6 +591,7 @@ describe("Tasks CRUD API Integration", () => {
       expect(detail.state.logs).toEqual([]);
       expect(detail.state.toolCalls).toEqual([]);
       expect(detail.state.planMode.planContent).toBeUndefined();
+      expect(detail.state.lastUserMessageAt).toBe(userTimestamp);
     });
 
     test("loads complete lightweight task transcripts and lazy-loads tool call payloads", async () => {
@@ -1502,6 +1517,71 @@ describe("Tasks CRUD API Integration", () => {
       const startBody = await startResponse.json();
       expect(startBody.state.status).toBe("planning");
       expect(startBody.state.planMode.active).toBe(true);
+    });
+
+    // Regression: an active engine summary must expose the persisted user
+    // message timestamp instead of falling back to task creation time.
+    test("keeps the latest user message timestamp in an active summary", async () => {
+      const createResponse = await fetch(`${baseUrl}/api/tasks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...baseCreateTaskPayload,
+          workspaceId: testWorkspaceId,
+          prompt: "Preserve active user activity",
+          name: "Active Summary Activity",
+          draft: true,
+          autoAcceptPlan: false,
+          model: testModel,
+          useWorktree: true,
+        }),
+      });
+      expect(createResponse.status).toBe(201);
+      const created = await createResponse.json() as {
+        config: { id: string; createdAt: string };
+      };
+
+      const startResponse = await fetch(`${baseUrl}/api/tasks/${created.config.id}/draft/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ planMode: false, attachments: [] }),
+      });
+      expect(startResponse.status).toBe(200);
+
+      const persistedUserMessageAt = await pollUntil(
+        async () => {
+          const response = await fetch(`${baseUrl}/api/tasks/${created.config.id}/snapshot?full=1`);
+          if (!response.ok) {
+            return undefined;
+          }
+          const snapshot = await response.json() as {
+            transcript?: { messages?: Array<{ role: string; timestamp: string }> };
+          };
+          return snapshot.transcript?.messages?.find((message) => message.role === "user")?.timestamp;
+        },
+        (timestamp): timestamp is string => timestamp !== undefined,
+        {
+          description: `task ${created.config.id} to persist its initial user message`,
+          formatLastObserved: (timestamp) => timestamp ?? "missing",
+        },
+      );
+      const lastUserMessageAt = await pollUntil(
+        async () => {
+          const response = await fetch(`${baseUrl}/api/tasks/${created.config.id}`);
+          if (!response.ok) {
+            return undefined;
+          }
+          const task = await response.json() as { state?: { lastUserMessageAt?: string } };
+          return task.state?.lastUserMessageAt;
+        },
+        (timestamp): timestamp is string => timestamp === persistedUserMessageAt,
+        {
+          description: `task ${created.config.id} to expose active user activity`,
+          formatLastObserved: (timestamp) => timestamp ?? "missing",
+        },
+      );
+
+      expect(lastUserMessageAt).toBe(persistedUserMessageAt);
     });
 
     test("keeps a draft when source-checkout preflight finds uncommitted changes", async () => {

@@ -516,6 +516,26 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: 69,
+    name: "add_user_message_activity_indexes",
+    up: (db) => {
+      if (tableExists(db, "chat_transcript_entries")) {
+        db.run(`
+          CREATE INDEX IF NOT EXISTS idx_chat_transcript_entries_user_message_activity
+          ON chat_transcript_entries(user_id, chat_id, timestamp DESC)
+          WHERE kind = 'message' AND message_role = 'user'
+        `);
+      }
+      if (tableExists(db, "task_transcript_entries")) {
+        db.run(`
+          CREATE INDEX IF NOT EXISTS idx_task_transcript_entries_user_message_activity
+          ON task_transcript_entries(user_id, task_id, timestamp DESC)
+          WHERE kind = 'message' AND message_role = 'user'
+        `);
+      }
+    },
+  },
 ];
 
 function getMigrationTableColumns(db: Database, tableName: string): string[] {

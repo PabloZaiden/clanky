@@ -142,6 +142,62 @@ describe("Clanky realtime migration", () => {
     ]);
   });
 
+  // Regression: persisted user messages must refresh summary ordering without
+  // removing the incremental transcript stream.
+  test("invalidates task and chat summaries for persisted user messages", () => {
+    const recording = createRecordingPublisher();
+    const userMessage = {
+      id: "message-1",
+      role: "user" as const,
+      content: "Move this item to the top",
+      timestamp: "2026-01-01T00:00:00.000Z",
+    };
+
+    publishClankyDomainEvent(recording.publisher, {
+      type: "task.message",
+      taskId: "task-1",
+      iteration: 1,
+      message: userMessage,
+      timestamp: userMessage.timestamp,
+    }, { userId: "user-1" });
+    publishClankyDomainEvent(recording.publisher, {
+      type: "chat.message",
+      chatId: "chat-1",
+      scope: "workspace",
+      message: userMessage,
+      timestamp: userMessage.timestamp,
+    }, { userId: "user-1" });
+
+    expect(recording.resources).toEqual([
+      {
+        ownerId: "user-1",
+        resource: CLANKY_REALTIME_RESOURCES.tasks,
+        action: "changed",
+        id: "task-1",
+        scope: undefined,
+      },
+      {
+        ownerId: "user-1",
+        resource: CLANKY_REALTIME_RESOURCES.chats,
+        action: "changed",
+        id: "chat-1",
+        scope: undefined,
+      },
+    ]);
+    expect(recording.streams).toEqual([
+      {
+        ownerId: "user-1",
+        type: "task.message",
+        target: { taskId: "task-1" },
+      },
+      {
+        ownerId: "user-1",
+        type: "chat.message",
+        target: { chatId: "chat-1" },
+      },
+    ]);
+  });
+
   test("delivers owner-targeted resource events only to matching users and filters", () => {
     const bus = new RealtimeBus<ClankyRealtimeEvent>();
     const userOne = createSocket("user-1", { resource: "tasks", id: "task-1" });

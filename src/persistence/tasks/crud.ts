@@ -73,6 +73,7 @@ export const TASK_LIST_COLUMNS = [
   "fully_autonomous_pending",
   "git_worktree_path",
   "mode",
+  "(SELECT MAX(entry.timestamp) FROM task_transcript_entries entry WHERE entry.task_id = tasks.id AND entry.user_id = tasks.user_id AND entry.kind = 'message' AND entry.message_role = 'user') AS last_user_message_at",
 ].join(", ");
 
 export function createTaskListSnapshot(task: Task): Task {

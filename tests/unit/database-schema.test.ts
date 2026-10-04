@@ -319,6 +319,33 @@ describe("database schema", () => {
       expect(indexNames("chat_transcript_entries")).toContain(
         "idx_chat_transcript_entries_assistant_page",
       );
+      expect(indexNames("chat_transcript_entries")).toContain(
+        "idx_chat_transcript_entries_user_message_activity",
+      );
+      expect(indexNames("task_transcript_entries")).toContain(
+        "idx_task_transcript_entries_user_message_activity",
+      );
+      const userMessageIndexDefinitions = getDatabase()
+        .query(
+          `SELECT name, sql FROM sqlite_master
+           WHERE type = 'index'
+             AND name IN (?, ?)`,
+        )
+        .all(
+          "idx_chat_transcript_entries_user_message_activity",
+          "idx_task_transcript_entries_user_message_activity",
+        ) as Array<{ name: string; sql: string }>;
+      expect(userMessageIndexDefinitions).toHaveLength(2);
+      expect(userMessageIndexDefinitions.every(
+        (index) => index.sql.includes("WHERE kind = 'message' AND message_role = 'user'"),
+      )).toBe(true);
+      const userMessageIndexMigration = migrations.find(
+        (migration) => migration.name === "add_user_message_activity_indexes",
+      );
+      if (!userMessageIndexMigration) {
+        throw new Error("User message activity migration is missing");
+      }
+      expect(() => userMessageIndexMigration.up(getDatabase())).not.toThrow();
       expect(getDatabase().query("PRAGMA foreign_key_check").all()).toEqual([]);
     });
   });
@@ -749,7 +776,7 @@ describe("database schema", () => {
 
   // Migration/data-safety exception: the prior persisted generation is the
   // public upgrade contract; HTTP tests cannot establish a v67 database.
-  test("Mesh v67-to-v68 rollout preserves confirmed v5 and v6 peer evidence idempotently", () => {
+  test("Mesh v67-to-v69 rollout preserves confirmed v5 and v6 peer evidence idempotently", () => {
     const database = new Database(":memory:");
     try {
       database.exec(`
@@ -773,7 +800,7 @@ describe("database schema", () => {
         INSERT INTO mesh_controller_relays VALUES ('relay5', '[5]', 5, 5), ('relay6', '[6,5]', 6, 6);
       `);
       for (let version = 1; version <= 67; version++) database.run("INSERT INTO schema_migrations VALUES (?, ?, ?)", [version, `prior-${version}`, "before-upgrade"]);
-      expect(runMigrations(database)).toBe(1);
+      expect(runMigrations(database)).toBe(2);
       expect(database.query("SELECT current_version, migrated_from_version FROM mesh_protocol_state").get()).toEqual({ current_version: 6, migrated_from_version: 5 });
       expect(database.query("SELECT * FROM mesh_worker_registrations ORDER BY worker_node_id").all()).toEqual([
         { worker_node_id: "worker5", worker_supported_protocol_versions_json: "[5]", worker_preferred_protocol_version: 5, worker_negotiated_protocol_version: 5 },
