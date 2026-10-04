@@ -18,7 +18,8 @@ import { createTimestamp } from "@/shared/events";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { HarnessError } from "../backends/harness-errors";
 import type { HarnessInputAdmission } from "@/shared/harness-control";
-import { retainHarnessInputReceipt } from "./harness-input-ledger";
+import { isHarnessInputValidationError, retainHarnessInputReceipt } from "./harness-input-ledger";
+import type { DomainError } from "../domain/domain-error";
 import { buildPromptParts } from "../backends/prompt-parts";
 import { KeyedOperationQueue } from "../utils/keyed-operation-queue";
 import { requireMatchingHarnessBinding } from "../backends/harness-binding";
@@ -258,10 +259,18 @@ export class ChatInteractionService implements ChatInteractionPort {
       });
       this.state.emitChatUpdated(chat);
       // Durable unknown admission precedes the RPC, so interruption never causes blind resend.
-      const admission = await backend.harness.steer(binding.nativeId, {
-        inputId: queuedMessageId,
-        prompt: { parts: buildPromptParts(message.content, message.attachments ?? []) },
-      });
+      let admission: HarnessInputAdmission;
+      let validationError: DomainError | undefined;
+      try {
+        admission = await backend.harness.steer(binding.nativeId, {
+          inputId: queuedMessageId,
+          prompt: { parts: buildPromptParts(message.content, message.attachments ?? []) },
+        });
+      } catch (error) {
+        if (!isHarnessInputValidationError(error)) throw error;
+        admission = { status: "rejected", inputId: queuedMessageId, code: "unsupported" };
+        validationError = error;
+      }
       if (admission.inputId !== queuedMessageId) throw new HarnessError("harness_event_gap", "Native input correlation changed during admission.");
       const latest = await this.state.getChat(chatId);
       if (!latest) throw new HarnessError("harness_session_not_found", "The chat was removed during input admission.");
@@ -279,6 +288,7 @@ export class ChatInteractionService implements ChatInteractionPort {
         });
       }
       this.state.emitChatUpdated(chat);
+      if (validationError) throw validationError;
       return { chat, admission };
     });
   }

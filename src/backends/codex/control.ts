@@ -108,9 +108,10 @@ export class CodexControl implements HarnessControl {
     if (request.prompt.model) throw new HarnessError("harness_invalid_model_option", "Steering cannot change the active model.");
     const turnId = request.expectedTurnId ?? sessions.getThread(rootId)?.turnId;
     if (!turnId) return { status: "rejected", inputId: request.inputId, code: "not-running" };
+    const input = toCodexInput(request.prompt);
     try {
       const accepted = await runtime.rpc.request("turn/steer", {
-        threadId: rootId, expectedTurnId: turnId, clientUserMessageId: request.inputId, input: toCodexInput(request.prompt),
+        threadId: rootId, expectedTurnId: turnId, clientUserMessageId: request.inputId, input,
       });
       return { status: "accepted", inputId: request.inputId, nativeClientInputId: request.inputId, nativeTurnId: accepted.turnId };
     } catch (error) {

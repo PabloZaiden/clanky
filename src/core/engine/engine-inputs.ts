@@ -10,7 +10,7 @@ import { createTimestamp } from "@/shared/events";
 import { HarnessError } from "../../backends/harness-errors";
 import { requireMatchingHarnessBinding } from "../../backends/harness-binding";
 import { buildPromptParts } from "../../backends/prompt-parts";
-import { retainHarnessInputReceipt } from "../harness-input-ledger";
+import { isHarnessInputValidationError, retainHarnessInputReceipt } from "../harness-input-ledger";
 import { KeyedOperationQueue } from "../../utils/keyed-operation-queue";
 import { TaskOperationError } from "../task/task-errors";
 
@@ -94,9 +94,17 @@ export class TaskInputService {
       this.record(receipt);
       // Claim durability precedes the native RPC; queue consumption cannot resend it.
       await this.dependencies.flushInputs();
-      const admission = await this.dependencies.backend.harness.steer(binding.nativeId, {
-        inputId, prompt: { parts: buildPromptParts(input.content, input.attachments) },
-      });
+      let admission: HarnessInputAdmission;
+      try {
+        admission = await this.dependencies.backend.harness.steer(binding.nativeId, {
+          inputId, prompt: { parts: buildPromptParts(input.content, input.attachments) },
+        });
+      } catch (error) {
+        if (isHarnessInputValidationError(error)) {
+          await this.finish(receipt, { status: "rejected", inputId, code: "unsupported" });
+        }
+        throw error;
+      }
       return this.finish(receipt, admission);
     });
   }

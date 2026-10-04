@@ -109,6 +109,7 @@ export interface HarnessControl {
   readonly capabilities: HarnessCapabilities;
   getActivity(sessionId: string): Promise<HarnessActivitySnapshot>;
   stopActivity(sessionId: string, activityId: string): Promise<HarnessActivityStopResult>;
+  /** Unsupported/model-validation errors are pre-admission; uncertain RPC outcomes return unknown. */
   steer(sessionId: string, request: HarnessSteerRequest): Promise<HarnessInputAdmission>;
   reconcileInput(sessionId: string, request: HarnessInputRecoveryRequest): Promise<HarnessInputAdmission>;
   settleOwnedWork(sessionId: string): Promise<HarnessCleanupResult>;

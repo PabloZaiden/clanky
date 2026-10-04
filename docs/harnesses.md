@@ -21,7 +21,9 @@ does not install or upgrade the harness automatically.
 
 Local hosts and end-to-end Mesh generation-6 paths support native adapters.
 Direct SSH and Mesh paths with a generation-5-only worker or relay support ACP
-only. A native failure does not switch to ACP; select ACP explicitly when that
+only. A relay hop negotiated at generation 5 also remains ACP-only even if the
+relay advertises generation 6; missing negotiated-hop metadata fails closed.
+A native failure does not switch to ACP; select ACP explicitly when that
 is the desired integration. See [Mesh workers](mesh-worker.md) for negotiation
 and rollout details.
 
@@ -55,6 +57,9 @@ finish while native background work remains observable.
 For tasks, the completion marker seals the logical result. Owned native cleanup
 and safe Git finalization happen separately. Active or unconfirmed writers can
 block acceptance/push without restarting task iterations or discarding completion.
+OpenCode also retains observed foreign or unattributed shells in the selected
+directory as unverified external activity. They can block Git finalization,
+but Clanky does not stop them individually or during owned cleanup.
 
 ## Queued input and Steer
 
@@ -69,6 +74,10 @@ retains the input and blocks deletion, replacement or blind resend. Use
 **Check delivery** to reconcile against the original owned native conversation.
 Codex can recover by the canonical input/client ID even if the admission reply,
 native message ID or turn ID was lost.
+Deterministic pre-admission validation errors retain their typed error and mark
+the input as rejected, so it can be corrected or removed. For example, Codex
+does not accept inline non-image binary attachments such as PDFs; those failures
+are not uncertain deliveries.
 
 ## HTTP and CLI
 

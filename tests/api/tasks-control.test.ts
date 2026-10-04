@@ -28,6 +28,7 @@ import { pollUntil } from "../helpers/polling";
 import { fetchTestLocalExecutionHost } from "../setup";
 import { LifetimeHarnessBackend } from "../mocks/lifetime-harness-backend";
 import { defaultTestModel } from "../mocks/mock-backend";
+import { HarnessError } from "../../src/backends/harness-errors";
 import type { Task, HarnessActivity, MessageAttachment } from "@/shared";
 
 // Default test model for task creation (model is now required)
@@ -427,6 +428,56 @@ describe("Tasks Control API Integration", () => {
       expect(recovered.state.session?.id).toBe(sessionId);
       expect(recovered.state.harness?.gitOutcome?.status).toBe("succeeded");
       expect((await runGit(worktreePath, ["show", "HEAD:native-output.txt"])).stdout).toBe("Synthetic native output\n");
+    } finally {
+      release.resolve();
+      await taskManager.shutdown();
+      if (taskId) await fetch(`${baseUrl}/api/tasks/${taskId}`, { method: "DELETE" });
+      await native.disconnect();
+    }
+  });
+
+  test("keeps deterministically rejected task steering editable without losing its pending input", async () => {
+    const release = Promise.withResolvers<void>();
+    const native = new LifetimeHarnessBackend({
+      models: [defaultTestModel], inputAdmission: "accepted",
+      streamEventSequences: [[{ type: "message.complete", content: "Principal active" }]],
+      onStreamEvent: async () => { await release.promise; },
+    });
+    // The genuine adapter's typed pre-RPC failure is covered by native-bootstrap.
+    // Here the public task boundary protects durable claim rollback and editing.
+    native.harness.steer = async () => {
+      throw new HarnessError("harness_unsupported_feature", "Unsupported inline attachment.");
+    };
+    backendManager.setBackendForTesting(native);
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
+    let taskId: string | undefined;
+    try {
+      const running = await createNativeExecution("Rejected task input");
+      taskId = running.config.id;
+      const pending = await fetch(`${baseUrl}/api/tasks/${taskId}/pending-prompt`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: "Unsupported input", attachments: [] }),
+      });
+      expect(pending.status).toBe(200);
+      const before = await (await fetch(`${baseUrl}/api/tasks/${taskId}`)).json() as Task;
+      const inputId = before.state.pendingInput!.id;
+      const rejected = await fetch(`${baseUrl}/api/tasks/${taskId}/pending-inputs/${inputId}/steer`, { method: "POST" });
+      expect(rejected.status).toBe(409);
+      expect((await rejected.json()).error).toBe("harness_unsupported_feature");
+      const after = await (await fetch(`${baseUrl}/api/tasks/${taskId}`)).json() as Task;
+      expect(after.state.status).toBe("running");
+      expect(after.state.pendingInput?.id).toBe(inputId);
+      expect(after.state.harness?.inputs?.find((entry) => entry.admission.inputId === inputId)?.admission).toEqual({
+        status: "rejected", inputId, code: "unsupported",
+      });
+      const replacement = await fetch(`${baseUrl}/api/tasks/${taskId}/pending-prompt`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: "Corrected input", attachments: [] }),
+      });
+      expect(replacement.status).toBe(200);
+      const updated = await (await fetch(`${baseUrl}/api/tasks/${taskId}`)).json() as Task;
+      expect(updated.state.pendingPrompt).toBe("Corrected input");
+      expect(updated.state.pendingInput?.id).not.toBe(inputId);
     } finally {
       release.resolve();
       await taskManager.shutdown();

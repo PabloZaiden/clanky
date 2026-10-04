@@ -38,13 +38,13 @@ export class OpenCodeControl implements HarnessControl {
     }));
     for (const shell of shells.data) {
       const owner: unknown = shell.metadata["sessionID"];
-      if (typeof owner !== "string" || !owned.has(owner)) continue;
+      const isOwned = typeof owner === "string" && owned.has(owner);
       activities.push({
-        id: `shell:${shell.id}`, parentId: owner === rootId ? undefined : owner,
-        kind: "process", description: shell.command.slice(0, 4096),
+        id: `shell:${shell.id}`, parentId: isOwned && owner !== rootId ? owner : undefined,
+        kind: isOwned ? "process" : "external", description: shell.command.slice(0, 4096),
         status: shell.status === "running" ? "running" : shell.status === "killed" ? "stopped" : shell.status === "timeout" ? "failed" : "completed",
-        ownership: "owned", workspaceWrites: "possible",
-        native: { adapter: "opencode2", conversationId: owner, commandId: shell.id },
+        ownership: isOwned ? "owned" : "unverified", workspaceWrites: "possible",
+        native: { adapter: "opencode2", conversationId: typeof owner === "string" ? owner : undefined, commandId: shell.id },
       });
     }
     if (activities.length > 2000) throw new HarnessError("harness_event_gap", "Native activity observation capacity reached.");
@@ -125,13 +125,13 @@ export class OpenCodeControl implements HarnessControl {
     await this.abort(rootId);
     const snapshot = await this.getActivity(rootId);
     if (snapshot.observation === "unavailable") return { status: "unavailable", reason: snapshot.reason };
-    for (const activity of snapshot.activities) if (activity.kind === "subagent" && activity.status === "running") await this.stopActivity(rootId, activity.id);
+    for (const activity of snapshot.activities) if (activity.ownership === "owned" && activity.kind === "subagent" && activity.status === "running") await this.stopActivity(rootId, activity.id);
     const currentShells = await this.getActivity(rootId);
     if (currentShells.observation === "unavailable") return { status: "unavailable", reason: currentShells.reason };
-    for (const activity of currentShells.activities) if (activity.kind === "process" && activity.status === "running") await this.stopActivity(rootId, activity.id);
+    for (const activity of currentShells.activities) if (activity.ownership === "owned" && activity.kind === "process" && activity.status === "running") await this.stopActivity(rootId, activity.id);
     const current = await this.getActivity(rootId);
     if (current.observation === "unavailable") return { status: "unavailable", reason: current.reason };
-    const activityIds = current.activities.filter((activity) => activity.status === "running").map((activity) => activity.id);
+    const activityIds = current.activities.filter((activity) => activity.ownership === "owned" && activity.status === "running").map((activity) => activity.id);
     if (current.principalProcessing) activityIds.push(rootId);
     return activityIds.length ? { status: "pending", activityIds } : { status: "settled", observedAt: current.observedAt };
   }

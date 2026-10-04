@@ -109,6 +109,20 @@ test("Mesh v6 native catalog, lifetime activity, steering and scoped Stop preser
     if (afterStop.observation !== "available") throw new Error("Activity unavailable after Stop");
     expect(afterStop.activities.find((entry) => entry.id === second.id)?.status).toBe("running");
     expect(await Bun.file(join(worker.dataDir, `.fixture-stopped-${first.id}`)).text()).toBe("settled");
+    const invalidInput = await meshJsonRequest<{ chat: Chat }>(controller, `/api/chats/${chatId}/messages`, { body: {
+      message: "Unsupported native attachment",
+      attachments: [{ id: crypto.randomUUID(), filename: "document.pdf", mimeType: "application/pdf", data: "JVBERg==", size: 4 }],
+    } });
+    const invalidId = invalidInput.body.chat.state.queuedMessages![0]!.id;
+    expect(await meshJsonRequest(controller, `/api/chats/${chatId}/queued-messages/${invalidId}/steer`, { body: {} })).toMatchObject({
+      status: 409, body: { error: "harness_unsupported_feature" },
+    });
+    const rejected = (await meshJsonRequest<Chat>(controller, `/api/chats/${chatId}`)).body;
+    expect(rejected.state.status).toBe("streaming");
+    expect(rejected.state.harness?.inputs?.find((receipt) => receipt.admission.inputId === invalidId)?.admission).toEqual({
+      status: "rejected", inputId: invalidId, code: "unsupported",
+    });
+    expect((await meshJsonRequest(controller, `/api/chats/${chatId}/queued-messages/${invalidId}`, { method: "DELETE" })).status).toBe(200);
     // Without native recovery references, reconciliation stays unknown. That
     // must preserve the original input and forbid discarding it.
     const lostResponse = join(worker.dataDir, ".fixture-steer-response-loss");

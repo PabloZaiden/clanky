@@ -6,10 +6,9 @@ import { MeshWorkerProtocolDescriptorSchema, type MeshWorkerProtocolDescriptor }
 import type { MeshWorkerRegistration } from "@/shared/mesh";
 import { MESH_PROTOCOL_VERSION_HEADER, MESH_PROTOCOL_VERSIONS_HEADER, MESH_SUPPORTED_PROTOCOL_VERSIONS, negotiateMeshProtocolVersion, serializeMeshProtocolVersions, parseMeshProtocolVersionsHeader, meshProtocolProjection, type MeshProtocolVersion } from "@/shared/mesh-protocol";
 import { requestMeshPeer } from "./mesh-peer-transport";
-import { meshWorkerRouteVersion } from "./mesh-route-version";
+import { meshRouteSupportedProtocolVersions, meshWorkerRouteVersion } from "./mesh-route-version";
 import { verifyMeshPayloadSignature, ensureLocalMeshNodeIdentity, signMeshPayload } from "../persistence/mesh-node-identity";
 import { DomainError } from "../domain/domain-error";
-import { listControllerRelayPairings } from "../persistence/controller-relay-pairing";
 import { requireMeshRuntimeRole } from "./mesh-runtime";
 import { getLocalMeshProtocolMetadata } from "./mesh-protocol-version";
 import { readMeshControlResponseJson } from "./mesh-control-client";
@@ -32,13 +31,8 @@ export async function describeMeshWorkerGeneration(versionsHeader: string | null
 }
 
 export async function discoverMeshWorkerGeneration(worker: MeshWorkerRegistration, signal?: AbortSignal, fetch?: typeof globalThis.fetch): Promise<MeshProtocolVersion> {
-  let versions: readonly MeshProtocolVersion[] = MESH_SUPPORTED_PROTOCOL_VERSIONS;
-  if (worker.route.kind === "relay") {
-    const route = worker.route;
-    const relay = listControllerRelayPairings().find((pairing) => pairing.relayUrl === route.relayUrl && pairing.relayFingerprint === route.relayFingerprint);
-    if (!relay?.relaySupportedProtocolVersions.includes(6)) return meshWorkerRouteVersion(worker);
-    versions = versions.filter((version) => relay.relaySupportedProtocolVersions.includes(version));
-  }
+  const versions = meshRouteSupportedProtocolVersions(worker.route);
+  if (!versions.includes(6)) return meshWorkerRouteVersion(worker);
   const nonce = crypto.randomUUID();
   const controller = new AbortController();
   const abort = (): void => controller.abort(signal?.reason);
