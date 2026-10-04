@@ -81,6 +81,15 @@ export class TaskPersistenceCoordinator {
   persistMessage(message: MessageData): void {
     this.transcript.upsertMessage(message);
     this.state.messages = this.transcript.messages;
+    if (
+      message.role === "user"
+      && (
+        this.state.lastUserMessageAt === undefined
+        || message.timestamp > this.state.lastUserMessageAt
+      )
+    ) {
+      this.state.lastUserMessageAt = message.timestamp;
+    }
   }
 
   persistToolCall(toolCall: ToolCallData): void {

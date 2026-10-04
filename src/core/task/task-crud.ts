@@ -192,6 +192,33 @@ export async function getTaskImpl(ctx: TaskCtx, taskId: string): Promise<Task | 
   return loadTask(taskId);
 }
 
+function getLatestUserMessageAt(
+  ...timestamps: Array<string | undefined>
+): string | undefined {
+  let latest: string | undefined;
+  for (const timestamp of timestamps) {
+    if (timestamp !== undefined && (latest === undefined || timestamp > latest)) {
+      latest = timestamp;
+    }
+  }
+  return latest;
+}
+
+function mergeLiveTaskSummaryState(
+  liveState: TaskState,
+  persistedState: TaskState,
+): TaskState {
+  const lastUserMessageAt = getLatestUserMessageAt(
+    liveState.lastUserMessageAt,
+    persistedState.lastUserMessageAt,
+  );
+  return {
+    ...liveState,
+    harness: persistedState.harness,
+    ...(lastUserMessageAt === undefined ? {} : { lastUserMessageAt }),
+  };
+}
+
 export async function getTaskSummaryImpl(ctx: TaskCtx, taskId: string): Promise<Task | null> {
   const persistedTask = await loadTaskSummary(taskId);
   if (!persistedTask) {
@@ -200,7 +227,10 @@ export async function getTaskSummaryImpl(ctx: TaskCtx, taskId: string): Promise<
 
   const engine = ctx.engines.get(taskId);
   if (engine) {
-    return createTaskListSnapshot({ config: persistedTask.config, state: { ...engine.state, harness: persistedTask.state.harness } });
+    return createTaskListSnapshot({
+      config: persistedTask.config,
+      state: mergeLiveTaskSummaryState(engine.state, persistedTask.state),
+    });
   }
   return persistedTask;
 }
@@ -210,7 +240,10 @@ export async function getAllTasksImpl(ctx: TaskCtx): Promise<Task[]> {
   return tasks.map((task) => {
     const engine = ctx.engines.get(task.config.id);
     if (engine) {
-      return { config: engine.config, state: { ...engine.state, harness: task.state.harness } };
+      return {
+        config: engine.config,
+        state: mergeLiveTaskSummaryState(engine.state, task.state),
+      };
     }
     return task;
   });
@@ -221,7 +254,10 @@ export async function getTaskSummariesImpl(ctx: TaskCtx): Promise<Task[]> {
   return tasks.map((task) => {
     const engine = ctx.engines.get(task.config.id);
     if (engine) {
-      return createTaskListSnapshot({ config: engine.config, state: { ...engine.state, harness: task.state.harness } });
+      return createTaskListSnapshot({
+        config: engine.config,
+        state: mergeLiveTaskSummaryState(engine.state, task.state),
+      });
     }
     return task;
   });
