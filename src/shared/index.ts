@@ -1,4 +1,7 @@
 export * from "./agent";
+export * from "./harness-events";
+export * from "./harness-input";
+export * from "./harness-control";
 export * from "./deterministic-agent";
 export * from "./chat";
 export * from "./chat-transcript";

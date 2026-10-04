@@ -1,11 +1,23 @@
 /**
- * Type definitions for ACP backends.
- * These types define the data structures used by AcpBackend.
+ * Provider-neutral backend interfaces and execution-host connection settings.
  */
 
 import type { AgentProvider } from "@/shared/settings";
 import type { EventStream } from "../utils/event-stream";
 import type { ModelInfo } from "@/contracts";
+import type { HarnessEvent } from "@/shared/harness-events";
+import type { HarnessControl, HarnessConversationBinding } from "@/shared/harness-control";
+import type { PromptInput } from "@/shared/harness-input";
+export type { HarnessEvent, QuestionInfo, QuestionOption } from "@/shared/harness-events";
+export type {
+  PromptInput,
+  PromptPart,
+  TextPromptPart,
+  ImagePromptPart,
+  ResourcePromptPart,
+  TextResourcePromptPart,
+  BlobResourcePromptPart,
+} from "@/shared/harness-input";
 
 /**
  * Connection info needed for WebSocket and other direct connections.
@@ -58,6 +70,7 @@ export interface BackendConnectionConfig {
  * Options for creating a new session.
  */
 export interface CreateSessionOptions {
+  ownership?: Omit<HarnessConversationBinding, "adapter" | "nativeId" | "directory">;
   /** Session title */
   title?: string;
   /** Working directory */
@@ -103,6 +116,7 @@ export interface ConfigOption {
  * Represents a session in the agent backend.
  */
 export interface AgentSession {
+  binding?: HarnessConversationBinding;
   /** Session ID */
   id: string;
   /** Session title */
@@ -113,105 +127,6 @@ export interface AgentSession {
   model?: string;
   /** Config options returned by the agent (per ACP session-config-options spec) */
   configOptions?: ConfigOption[];
-}
-
-export interface ImportableSession {
-  /** Provider-native session ID */
-  id: string;
-  /** Provider-native title, when available */
-  title?: string;
-  /** Working directory the provider associates with the session */
-  cwd: string;
-  /** Provider-reported update timestamp, when available */
-  updatedAt?: string;
-  /** Provider-reported model, when available */
-  model?: string;
-}
-
-export type SessionReplayEvent =
-  | { type: "user.message"; content: string }
-  | { type: "assistant.message"; content: string }
-  | { type: "reasoning"; content: string }
-  | { type: "tool.start"; toolCallId?: string; toolName: string; input: unknown }
-  | { type: "tool.complete"; toolCallId?: string; toolName: string; input?: unknown; output: unknown };
-
-export interface ImportSessionOptions {
-  sessionId: string;
-  cwd?: string;
-}
-
-export interface ImportSessionResult {
-  session: AgentSession;
-  cwd: string;
-  events: SessionReplayEvent[];
-}
-
-/**
- * Part of a prompt message.
- */
-export type PromptPart = TextPromptPart | ImagePromptPart | ResourcePromptPart;
-
-export interface TextPromptPart {
-  /** Part type */
-  type: "text";
-  /** Text content */
-  text: string;
-}
-
-export interface ImagePromptPart {
-  /** Part type */
-  type: "image";
-  /** Image MIME type */
-  mimeType: string;
-  /** Base64-encoded image data */
-  data: string;
-  /** Original filename, used for debugging/UX only */
-  filename?: string;
-}
-
-export type ResourcePromptPart = TextResourcePromptPart | BlobResourcePromptPart;
-
-export interface TextResourcePromptPart {
-  /** Part type */
-  type: "resource";
-  /** Embedded text resource contents */
-  resource: {
-    /** URI identifying the attachment */
-    uri: string;
-    /** MIME type of the text resource */
-    mimeType?: string;
-    /** Text content */
-    text: string;
-  };
-}
-
-export interface BlobResourcePromptPart {
-  /** Part type */
-  type: "resource";
-  /** Embedded binary resource contents */
-  resource: {
-    /** URI identifying the attachment */
-    uri: string;
-    /** MIME type of the binary resource */
-    mimeType?: string;
-    /** Base64-encoded binary content */
-    blob: string;
-  };
-}
-
-/**
- * Input for sending a prompt.
- */
-export interface PromptInput {
-  /** Prompt parts */
-  parts: PromptPart[];
-  /** Model override */
-  model?: {
-    providerID: string;
-    modelID: string;
-    /** Model variant (e.g., "thinking"). Empty string or undefined for default. */
-    variant?: string;
-  };
 }
 
 /**
@@ -248,48 +163,6 @@ export interface AgentResponse {
 }
 
 /**
- * Question option for question.asked events.
- */
-export interface QuestionOption {
-  label: string;
-  description: string;
-}
-
-/**
- * Question in a question.asked event.
- */
-export interface QuestionInfo {
-  question: string;
-  header: string;
-  options: QuestionOption[];
-  multiple?: boolean;
-  custom?: boolean;
-}
-
-/**
- * Events emitted by ACP backends.
- */
-export type AgentEvent =
-  | { type: "user.message"; content: string }
-  | { type: "message.start"; messageId: string }
-  | { type: "message.delta"; content: string }
-  | { type: "message.complete"; content: string }
-  | { type: "reasoning.delta"; content: string }
-  | { type: "tool.start"; toolCallId?: string; toolName: string; input: unknown }
-  | { type: "tool.complete"; toolCallId?: string; toolName: string; input?: unknown; output: unknown }
-  | { type: "error"; message: string; code?: string; details?: Readonly<Record<string, unknown>> }
-  | { type: "permission.asked"; requestId: string; sessionId: string; permission: string; patterns: string[] }
-  | { type: "question.asked"; requestId: string; sessionId: string; questions: QuestionInfo[] }
-  | {
-    type: "session.status";
-    sessionId: string;
-    status: "idle" | "busy" | "retry";
-    attempt?: number;
-    message?: string;
-    stopReason?: string;
-  };
-
-/**
  * Backend interface that all backend implementations must implement.
  * This includes both the real AcpBackend and MockAcpBackend for tests.
  * 
@@ -298,6 +171,8 @@ export type AgentEvent =
  * - Manager methods: Used by BackendManager for connection management
  */
 export interface Backend {
+  /** Controls and observations that persist beyond one prompt consumer. */
+  readonly harness: HarnessControl;
   /** Backend name identifier */
   readonly name: string;
 
@@ -321,18 +196,19 @@ export interface Backend {
 
   /** Create a new agent session */
   createSession(options: CreateSessionOptions): Promise<AgentSession>;
+  resumeSession(binding: HarnessConversationBinding): Promise<AgentSession>;
 
   /** Send a prompt synchronously and wait for response */
   sendPrompt(sessionId: string, prompt: PromptInput): Promise<AgentResponse>;
 
-  /** Send a prompt asynchronously (fire and forget, events come via subscription) */
+  /** Await prompt admission; execution events arrive through the subscription. */
   sendPromptAsync(sessionId: string, prompt: PromptInput): Promise<void>;
 
   /** Abort a session */
   abortSession(sessionId: string): Promise<void>;
 
   /** Subscribe to events from a session */
-  subscribeToEvents(sessionId: string): Promise<EventStream<AgentEvent>>;
+  subscribeToEvents(sessionId: string): Promise<EventStream<HarnessEvent>>;
 
   /** Reply to a permission request */
   replyToPermission(requestId: string, response: string): Promise<void>;
@@ -370,12 +246,6 @@ export interface Backend {
 
   /** Get an existing session by ID */
   getSession(id: string): Promise<AgentSession | null>;
-
-  /** List provider-native sessions that can be imported */
-  listSessions(directory?: string): Promise<ImportableSession[]>;
-
-  /** Load a provider-native session and capture replayed history for import */
-  importSession(options: ImportSessionOptions): Promise<ImportSessionResult>;
 
   /** Delete a session */
   deleteSession(id: string): Promise<void>;

@@ -6,7 +6,7 @@
  * to their own lifecycle and interaction policies.
  */
 
-import type { AgentEvent } from "../backends/types";
+import type { HarnessEvent as AgentEvent } from "@/shared/harness-events";
 import type { MessageData, PersistedToolCall } from "@/shared";
 import { createTimestamp } from "@/shared/events";
 import { mergeToolCallRecord } from "@/shared/tool-call";

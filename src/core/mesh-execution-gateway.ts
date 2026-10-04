@@ -20,6 +20,7 @@ import type {
 } from "@/contracts/schemas/mesh-execution";
 import {
   MESH_ACP_CHANNEL,
+  MESH_HARNESS_CHANNEL,
   MESH_EXECUTION_CHANNEL,
   MESH_EXECUTION_ASYNC_COMMAND_RETENTION_MS,
   MESH_EXECUTION_ASYNC_MAX_RETAINED_OUTPUT_BYTES,
@@ -63,6 +64,7 @@ import {
 import { DomainError } from "../domain/domain-error";
 import { buildMeshExecutionSessionSigningPayload } from "./mesh-protocol";
 import type { AgentProvider } from "@/shared/settings";
+import type { HarnessAdapter } from "@/shared/settings";
 import { requireTrustedController } from "./mesh-peer-auth";
 import { meshInboundResourceRegistry } from "./mesh-inbound-resource-registry";
 import { decryptMeshPayload } from "./mesh-payload-crypto";
@@ -149,8 +151,11 @@ interface MeshExecutionSession {
   executionRoot: string;
   pathStyle: ExecutionPathStyle;
   directory: string;
+  bindingDirectory: string;
   provider: AgentProvider;
-  channel: typeof MESH_EXECUTION_CHANNEL | typeof MESH_ACP_CHANNEL;
+  channel: typeof MESH_EXECUTION_CHANNEL | typeof MESH_ACP_CHANNEL | typeof MESH_HARNESS_CHANNEL;
+  adapter?: Exclude<HarnessAdapter, "acp">;
+  ownerId?: string;
   expiresAt: number;
   callerEncryptionPublicKey: string;
   environment?: Record<string, string>;
@@ -183,7 +188,7 @@ interface ValidatedExecutionSession {
 }
 
 interface SessionValidationOptions {
-  expectedChannel?: typeof MESH_ACP_CHANNEL;
+  expectedChannel?: typeof MESH_ACP_CHANNEL | typeof MESH_HARNESS_CHANNEL;
   expectedProtocolVersion?: MeshExecutionProtocolVersion;
   requiredCapability?: {
     id: ExecutionHostCapabilityId;
@@ -209,7 +214,7 @@ interface MeshExecutionAsyncCommand {
   workspaceId: string;
   executionRoot: string;
   provider: AgentProvider;
-  channel: typeof MESH_EXECUTION_CHANNEL | typeof MESH_ACP_CHANNEL;
+  channel: typeof MESH_EXECUTION_CHANNEL | typeof MESH_ACP_CHANNEL | typeof MESH_HARNESS_CHANNEL;
   executor: CommandExecutor;
   command: string;
   args: string[];
@@ -620,7 +625,9 @@ export class MeshExecutionGateway {
     options: SessionValidationOptions,
   ): Promise<ValidatedExecutionSession> {
     const session = this.requireSessionRecord(sessionId, sessionToken);
-    if (session.channel === MESH_ACP_CHANNEL) {
+    if (session.channel === MESH_HARNESS_CHANNEL) {
+      await requireLocalMeshExecutionCapability("commandExecution");
+    } else if (session.channel === MESH_ACP_CHANNEL) {
       await requireLocalMeshExecutionCapability("acpRuntime");
     }
     if (options.requiredCapability) {
@@ -662,7 +669,12 @@ export class MeshExecutionGateway {
 
   async createSession(request: MeshExecutionSessionRequest): Promise<MeshExecutionSessionResponse> {
     this.pruneExpired();
-    if (request.channel === MESH_ACP_CHANNEL) {
+    if (request.channel === MESH_HARNESS_CHANNEL && (request.protocolVersion !== 6 || !request.adapter || !request.ownerId)) {
+      throw new DomainError("mesh_execution_protocol_mismatch", "Native harness sessions require Mesh v6 ownership.");
+    }
+    if (request.channel === MESH_HARNESS_CHANNEL) {
+      await requireLocalMeshExecutionCapability("commandExecution");
+    } else if (request.channel === MESH_ACP_CHANNEL) {
       await requireLocalMeshExecutionCapability("acpRuntime");
     } else {
       await requireLocalMeshExecutionAnyCapability(
@@ -687,7 +699,7 @@ export class MeshExecutionGateway {
     if (new Date(request.expiresAt).getTime() <= Date.now()) {
       throw new DomainError("mesh_execution_session_expired", "The execution session request has expired.");
     }
-    const maxSessionTtl = request.channel === MESH_ACP_CHANNEL
+    const maxSessionTtl = request.channel !== MESH_EXECUTION_CHANNEL
       ? MESH_ACP_SESSION_TTL_MS
       : MESH_EXECUTION_SESSION_TTL_MS;
     if (new Date(request.expiresAt).getTime() > Date.now() + maxSessionTtl) {
@@ -727,8 +739,11 @@ export class MeshExecutionGateway {
       executionRoot,
       pathStyle,
       directory: executionRoot,
+      bindingDirectory: request.directory,
       provider: request.provider,
       channel: request.channel,
+      adapter: request.adapter,
+      ownerId: request.ownerId,
       expiresAt,
       callerEncryptionPublicKey: request.callerEncryptionPublicKey,
       environment,
@@ -755,7 +770,7 @@ export class MeshExecutionGateway {
   async renewSession(
     sessionId: string,
     sessionToken: string,
-    expectedChannel?: typeof MESH_ACP_CHANNEL,
+    expectedChannel?: typeof MESH_ACP_CHANNEL | typeof MESH_HARNESS_CHANNEL,
   ): Promise<number> {
     const validationOptions: SessionValidationOptions = {
       memberErrorCode: expectedChannel === MESH_ACP_CHANNEL
@@ -778,7 +793,7 @@ export class MeshExecutionGateway {
       throw new DomainError("mesh_execution_session_expired", "The execution session has expired.");
     }
 
-    const maxSessionTtl = session.channel === MESH_ACP_CHANNEL
+    const maxSessionTtl = session.channel !== MESH_EXECUTION_CHANNEL
       ? MESH_ACP_SESSION_TTL_MS
       : MESH_EXECUTION_SESSION_TTL_MS;
     session.expiresAt = Date.now() + maxSessionTtl;
@@ -800,6 +815,53 @@ export class MeshExecutionGateway {
     sessionToken: string,
   ): MeshExecutionProtocolVersion {
     return this.requireSessionRecord(sessionId, sessionToken).protocolVersion;
+  }
+
+  async getHarnessSessionConfig(sessionId: string, sessionToken: string): Promise<{
+    callerNodeId: string; workspaceId: string; ownerId: string;
+    executionNodeId: string;
+    adapter: Exclude<HarnessAdapter, "acp">; directory: string; bindingDirectory: string; environment?: Record<string, string>;
+  }> {
+    const { session } = await this.requireValidatedSession(sessionId, sessionToken, {
+      expectedChannel: MESH_HARNESS_CHANNEL, expectedProtocolVersion: 6,
+      memberErrorCode: "mesh_execution_context_changed",
+    });
+    if (!session.adapter || !session.ownerId) throw new DomainError("mesh_execution_session_invalid", "The native session has no ownership.");
+    return {
+      callerNodeId: session.callerNodeId, workspaceId: session.workspaceId, ownerId: session.ownerId,
+      executionNodeId: (await ensureLocalMeshNodeIdentity()).nodeId,
+      adapter: session.adapter, directory: session.directory, bindingDirectory: session.bindingDirectory, environment: session.environment,
+    };
+  }
+
+  async claimHarnessRequest(sessionId: string, sessionToken: string, requestId: string): Promise<() => void> {
+    const { session } = await this.requireValidatedSession(sessionId, sessionToken, {
+      expectedChannel: MESH_HARNESS_CHANNEL, expectedProtocolVersion: 6,
+      memberErrorCode: "mesh_execution_context_changed",
+    });
+    if (session.inFlight >= MESH_EXECUTION_MAX_IN_FLIGHT_REQUESTS) throw new DomainError("mesh_execution_limit_exceeded", "The execution session has too many in-flight requests.");
+    this.claimRequestId(session, requestId);
+    session.inFlight++;
+    let released = false;
+    return (): void => {
+      if (released) return;
+      released = true;
+      session.inFlight--;
+    };
+  }
+
+  private readonly closeListeners = new Set<(sessionId: string) => void>();
+
+  onSessionClosed(listener: (sessionId: string) => void): () => void {
+    this.closeListeners.add(listener);
+    return () => this.closeListeners.delete(listener);
+  }
+
+  closeSessionsForCaller(callerNodeId: string): void {
+    for (const session of this.sessions.values()) {
+      if (session.callerNodeId === callerNodeId) this.closeSession(session.sessionId);
+    }
+    this.abortAsyncCommandsForCaller(callerNodeId);
   }
 
   async getAcpSessionConfig(
@@ -1666,6 +1728,7 @@ export class MeshExecutionGateway {
     }
     session.activeControllers.clear();
     this.sessions.delete(sessionId);
+    for (const listener of this.closeListeners) listener(sessionId);
     if (session.expiryTimer !== undefined) {
       clearTimeout(session.expiryTimer);
       session.expiryTimer = undefined;

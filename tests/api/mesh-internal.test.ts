@@ -234,13 +234,13 @@ describe("Mesh internal controller-worker routes", () => {
     });
     const route = meshInternalRoutes["/api/mesh/internal/health"]!.POST!;
     const currentUnsigned = {
-      protocolVersion: MESH_PROTOCOL_VERSION,
+      protocolVersion: 5 as const,
       senderNodeId: "controller-1",
       senderPublicKey: controller.publicKey,
       senderFingerprint: controller.fingerprint,
       binaryVersion: "5.0.0-test",
-      supportedProtocolVersions: [...MESH_SUPPORTED_PROTOCOL_VERSIONS],
-      preferredProtocolVersion: MESH_PROTOCOL_VERSION,
+      supportedProtocolVersions: [5 as const],
+      preferredProtocolVersion: 5 as const,
       nonce: crypto.randomUUID(),
       sentAt: new Date().toISOString(),
     };
@@ -263,7 +263,7 @@ describe("Mesh internal controller-worker routes", () => {
 
     expect(currentResponse!.status).toBe(200);
     expect(await readJson(currentResponse!)).toMatchObject({
-      protocolVersion: MESH_PROTOCOL_VERSION,
+      protocolVersion: 5,
       controllerNodeId: "controller-1",
       requestNonce: currentUnsigned.nonce,
       signature: expect.any(String),
@@ -271,9 +271,9 @@ describe("Mesh internal controller-worker routes", () => {
     expect(await getControllerGrant("controller-1")).toEqual(
       expect.objectContaining({
         controllerBinaryVersion: "5.0.0-test",
-        controllerSupportedProtocolVersions: [MESH_PROTOCOL_VERSION],
-        controllerPreferredProtocolVersion: MESH_PROTOCOL_VERSION,
-        controllerNegotiatedProtocolVersion: MESH_PROTOCOL_VERSION,
+        controllerSupportedProtocolVersions: [5],
+        controllerPreferredProtocolVersion: 5,
+        controllerNegotiatedProtocolVersion: 5,
       }),
     );
 

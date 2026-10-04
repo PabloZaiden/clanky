@@ -15,7 +15,7 @@ const rootDir = `${import.meta.dir}/..`;
 const buildSteps: BuildStep[] = [
   {
     label: "typecheck",
-    cmd: [process.execPath, "run", "tsc"],
+    cmd: [process.execPath, "run", "typecheck"],
   },
   {
     label: "compile",

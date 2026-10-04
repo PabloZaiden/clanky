@@ -107,3 +107,10 @@ export const provisioningEventEmitter = new SimpleEventEmitter<ProvisioningEvent
 export const previewEventEmitter = new SimpleEventEmitter<PreviewEvent>();
 
 export const meshStateEventEmitter = new SimpleEventEmitter<MeshStateEvent>();
+
+export interface HarnessStateEvent {
+  type: "harness.changed";
+  context: { kind: "chat" | "task"; id: string };
+}
+
+export const harnessEventEmitter = new SimpleEventEmitter<HarnessStateEvent>();

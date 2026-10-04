@@ -21,7 +21,7 @@ import { ManagedPathService } from "../../src/core/managed-path-service";
 import type { Chat, Task, TaskLogEntry, PersistedMessage, PersistedToolCall } from "@/shared";
 import { DEFAULT_QUICK_CHAT_SETTINGS } from "@/shared/preferences";
 import type { ChatEvent } from "@/shared/events";
-import type { AgentEvent as BackendAgentEvent, AgentResponse } from "../../src/backends/types";
+import type { AgentResponse } from "../../src/backends/types";
 import { DEFAULT_TASK_CONFIG } from "@/shared/task";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import {
@@ -39,6 +39,8 @@ import {
 import { pollUntil } from "../helpers/polling";
 import { fetchTestLocalExecutionHost, testOwnerUser } from "../setup";
 import { runWithCurrentUser } from "../../src/context/user-context";
+import type { HarnessActivity, HarnessControl } from "@/shared/harness-control";
+import { LifetimeHarnessBackend } from "../mocks/lifetime-harness-backend";
 
 const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };
 const updatedTestModel = { providerID: "test-provider", modelID: "test-model-2", variant: "" };
@@ -120,7 +122,7 @@ describe("Chats API Integration", () => {
         name: name || directory.split("/").pop() || "Test",
         directory,
         executionHost,
-        serverSettings: { agent: { provider: "opencode" } },
+        serverSettings: { agent: { adapter: "acp", provider: "opencode" } },
       }),
     });
     const data = await createResponse.json();
@@ -323,18 +325,19 @@ describe("Chats API Integration", () => {
     expect(sendData.chat.config.id).toBe(created.config.id);
     expect(sendData.chat.state.startupStage).toBeUndefined();
 
-    const settled = await waitForChatIdle(created.config.id) as {
-      state: {
-        messages: Array<{ role: string; content: string }>;
-        session?: { id?: string };
-        status: string;
-      };
-    };
+    const settled = await waitForChatIdle(created.config.id);
     expect(settled.state.status).toBe("idle");
     expect(settled.state.messages.map((message) => message.content)).toEqual([
       "Say hello",
       "Hello from chat API",
     ]);
+    expect(settled.state.session).toBeDefined();
+    expect(settled.state.session?.binding).toEqual({
+      adapter: "acp", nativeId: settled.state.session!.id,
+      ownerId: testOwnerUser.id, contextId: created.config.id,
+      directory: settled.state.worktree?.worktreePath ?? created.config.directory,
+      executionHost: created.config.executionHostBinding,
+    });
 
     const reconnectResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/reconnect`, {
       method: "POST",
@@ -342,6 +345,7 @@ describe("Chats API Integration", () => {
     expect(reconnectResponse.status).toBe(200);
     const reconnected = await reconnectResponse.json();
     expect(reconnected.state.session.id).toBe(settled.state.session?.id);
+    expect(reconnected.state.session.binding).toEqual(settled.state.session?.binding);
     expect(reconnected.state.status).toBe("idle");
   });
 
@@ -888,181 +892,6 @@ describe("Chats API Integration", () => {
     }
   });
 
-  test("imports an existing provider session with replayed history", async () => {
-    mockBackend.addImportableSession(
-      {
-        id: "provider-session-import-1",
-        title: "Imported provider chat",
-        cwd: testWorkDir,
-        model: testModel.modelID,
-        updatedAt: new Date().toISOString(),
-      },
-      [
-        { type: "user.message", content: "Please inspect the README" },
-        { type: "reasoning", content: "I should inspect the repository first." },
-        { type: "tool.start", toolCallId: "tool-import-1", toolName: "read_file", input: { path: "README.md" } },
-        { type: "tool.complete", toolCallId: "tool-import-1", toolName: "read_file", output: "README contents" },
-        { type: "tool.start", toolName: "grep", input: { pattern: "Clanky" } },
-        { type: "tool.complete", toolName: "grep", output: "Clanky matches" },
-        { type: "assistant.message", content: "The README is present." },
-      ],
-    );
-
-    const listResponse = await fetch(`${baseUrl}/api/chats/importable-sessions?workspaceId=${testWorkspaceId}`);
-    expect(listResponse.status).toBe(200);
-    const importableSessions = await listResponse.json() as Array<{ id: string; cwd: string }>;
-    expect(importableSessions).toContainEqual(expect.objectContaining({
-      id: "provider-session-import-1",
-      cwd: testWorkDir,
-    }));
-
-    const importResponse = await fetch(`${baseUrl}/api/chats/import`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        workspaceId: testWorkspaceId,
-        model: testModel,
-        sessionId: "provider-session-import-1",
-      }),
-    });
-    expect(importResponse.status).toBe(201);
-    const imported = await importResponse.json();
-    expect(imported.config.name).toBe("Imported provider chat");
-    expect(imported.config.useWorktree).toBe(false);
-    expect(imported.config.directory).toBe(testWorkDir);
-    expect(imported.state.session.id).toBe("provider-session-import-1");
-    expect(imported.state.status).toBe("idle");
-    expect(imported.state.messages).toEqual([]);
-    expect(imported.state.logs).toEqual([]);
-    expect(imported.state.toolCalls).toEqual([]);
-
-    const importedSnapshotResponse = await fetch(`${baseUrl}/api/chats/${imported.config.id}/snapshot`);
-    expect(importedSnapshotResponse.status).toBe(200);
-    const importedSnapshot = await importedSnapshotResponse.json();
-    expect(importedSnapshot.transcript.messages.map((message: { role: string; content: string }) => [message.role, message.content])).toEqual([
-      ["user", "Please inspect the README"],
-      ["assistant", "The README is present."],
-    ]);
-    expect(importedSnapshot.transcript.logs.some((log: { details?: { logKind?: string; responseContent?: string } }) =>
-      log.details?.logKind === "reasoning"
-      && log.details.responseContent === "I should inspect the repository first."
-    )).toBe(true);
-    expect(importedSnapshot.transcript.toolCalls).toEqual([
-      expect.objectContaining({
-        id: "tool-import-1",
-        name: "read_file",
-        input: { path: "README.md" },
-        status: "completed",
-      }),
-      expect.objectContaining({
-        name: "grep",
-        input: { pattern: "Clanky" },
-        status: "completed",
-      }),
-    ]);
-    expect(importedSnapshot.transcript.toolCalls).toHaveLength(2);
-
-    const reconnectResponse = await fetch(`${baseUrl}/api/chats/${imported.config.id}/reconnect`, {
-      method: "POST",
-    });
-    expect(reconnectResponse.status).toBe(200);
-    const reconnected = await reconnectResponse.json();
-    expect(reconnected.state.messages).toEqual([]);
-
-    const sendResponse = await fetch(`${baseUrl}/api/chats/${imported.config.id}/messages`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        message: "Continue from the imported chat",
-      }),
-    });
-    expect(sendResponse.status).toBe(200);
-    const settled = await waitForChatIdle(imported.config.id) as {
-      state: {
-        messages: Array<{ role: string; content: string }>;
-        session?: { id?: string };
-        status: string;
-      };
-    };
-    expect(settled.state.session?.id).toBe("provider-session-import-1");
-    expect(settled.state.messages.map((message) => message.content).slice(0, 3)).toEqual([
-      "Please inspect the README",
-      "The README is present.",
-      "Continue from the imported chat",
-    ]);
-    expect(settled.state.messages.at(-1)?.role).toBe("assistant");
-  });
-
-  test("allows importing the same provider session more than once", async () => {
-    mockBackend.addImportableSession(
-      {
-        id: "provider-session-import-duplicate",
-        title: "Duplicate import source",
-        cwd: testWorkDir,
-        model: testModel.modelID,
-        updatedAt: new Date().toISOString(),
-      },
-      [
-        { type: "user.message", content: "Original request" },
-        { type: "assistant.message", content: "Original response" },
-      ],
-    );
-
-    const requestBody = {
-      workspaceId: testWorkspaceId,
-      model: testModel,
-      sessionId: "provider-session-import-duplicate",
-      cwd: testWorkDir,
-    };
-
-    const firstResponse = await fetch(`${baseUrl}/api/chats/import`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(requestBody),
-    });
-    expect(firstResponse.status).toBe(201);
-    const firstImport = await firstResponse.json();
-
-    const secondResponse = await fetch(`${baseUrl}/api/chats/import`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(requestBody),
-    });
-    expect(secondResponse.status).toBe(201);
-    const secondImport = await secondResponse.json();
-
-    expect(secondImport.config.id).not.toBe(firstImport.config.id);
-    expect(secondImport.state.session.id).toBe("provider-session-import-duplicate");
-    expect(secondImport.state.messages).toEqual([]);
-  });
-
-  test("preserves import failure when cleanup disconnect fails", async () => {
-    const originalDisconnectChat = backendManager.disconnectChat.bind(backendManager);
-    backendManager.disconnectChat = async (_chatId: string): Promise<void> => {
-      throw new Error("cleanup disconnect failed");
-    };
-
-    try {
-      const importResponse = await fetch(`${baseUrl}/api/chats/import`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          workspaceId: testWorkspaceId,
-          model: testModel,
-          sessionId: "provider-session-cleanup-failure",
-          cwd: testWorkDir,
-        }),
-      });
-      const errorBody = await importResponse.json() as { message: string };
-
-      expect(importResponse.status).toBe(500);
-      expect(errorBody.message).toBeString();
-      expect(errorBody.message).not.toContain("cleanup disconnect failed");
-    } finally {
-      backendManager.disconnectChat = originalDisconnectChat;
-    }
-  });
-
   test("exports chat transcript as markdown without tool call details", async () => {
     const createResponse = await fetch(`${baseUrl}/api/chats`, {
       method: "POST",
@@ -1326,7 +1155,7 @@ describe("Chats API Integration", () => {
         { type: "message.start", messageId: "lazy-message-start" },
         { type: "message.delta", content: "Done." },
         { type: "message.complete", content: "Done." },
-      ] as BackendAgentEvent[]],
+      ]],
       models: [defaultTestModel],
     });
     backendManager.setBackendForTesting(mockBackend);
@@ -1375,6 +1204,338 @@ describe("Chats API Integration", () => {
     }
   });
 
+  test("keeps a chat busy across principal messages and isolates child completion", async () => {
+    const beforeFinalMessage = Promise.withResolvers<void>();
+    const continuePrincipal = Promise.withResolvers<void>();
+    const childScope = { kind: "child", activityId: "owned-child" } as const;
+    mockBackend = new MockAcpBackend({
+      models: [defaultTestModel],
+      responses: ["Synthetic conversation"],
+      streamEventSequences: [[
+        { type: "message.start", messageId: "principal-interim" },
+        { type: "message.delta", content: "Interim parent response" },
+        { type: "message.complete", content: "Interim parent response" },
+        { type: "session.status", sessionId: "principal", status: "idle" },
+        { type: "message.start", messageId: "child-answer", scope: childScope },
+        { type: "message.delta", content: "<promise>COMPLETE</promise>", scope: childScope },
+        { type: "message.complete", content: "<promise>COMPLETE</promise>", scope: childScope },
+        { type: "error", message: "Synthetic child failure", code: "child_failed", scope: childScope },
+        { type: "prompt.complete", outcome: "completed", scope: childScope },
+        { type: "message.start", messageId: "principal-final" },
+        { type: "message.delta", content: "Final parent response" },
+        { type: "message.complete", content: "Final parent response" },
+      ]],
+      onStreamEvent: async (event) => {
+        if (event.type === "message.start" && event.messageId === "principal-final") {
+          beforeFinalMessage.resolve();
+          await continuePrincipal.promise;
+        }
+      },
+    });
+    backendManager.setBackendForTesting(mockBackend);
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
+
+    try {
+      const createResponse = await fetch(`${baseUrl}/api/chats`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspaceId: testWorkspaceId,
+          model: testModel,
+          useWorktree: false,
+          baseBranch: defaultBranch,
+        }),
+      });
+      expect(createResponse.status).toBe(201);
+      const created = await createResponse.json() as Chat;
+      const sendResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: "Synthetic parent request" }),
+      });
+      expect(sendResponse.status).toBe(200);
+      await beforeFinalMessage.promise;
+
+      const interim = await pollUntil(
+        async () => {
+          const response = await fetch(`${baseUrl}/api/chats/${created.config.id}/snapshot?full=1`);
+          expect(response.status).toBe(200);
+          return await response.json() as {
+            state: { status: Chat["state"]["status"] };
+            transcript: { messages: PersistedMessage[] };
+          };
+        },
+        (snapshot) => snapshot.transcript.messages.some(
+          (message) => message.role === "assistant" && message.content === "Interim parent response",
+        ),
+        {
+          description: "the persisted interim principal message",
+          timeoutMs: 5000,
+          formatLastObserved: (snapshot) => JSON.stringify(snapshot),
+        },
+      );
+      expect(["running", "streaming"]).toContain(interim.state.status);
+      expect(interim.transcript.messages.filter((message) => message.role === "assistant")
+        .map((message) => message.content)).toEqual(["Interim parent response"]);
+
+      continuePrincipal.resolve();
+      const settled = await waitForChatIdle(created.config.id);
+      expect(settled.state.status).toBe("idle");
+      expect(settled.state.messages.filter((message) => message.role === "assistant")
+        .map((message) => message.content)).toEqual([
+        "Interim parent response",
+        "Final parent response",
+      ]);
+    } finally {
+      continuePrincipal.resolve();
+      installMockBackend(["Hello from chat API", "Second response"]);
+    }
+  });
+
+  test("retains uncertain steering while draining unrelated queued input", async () => {
+    const continuePrincipal = Promise.withResolvers<void>();
+    const harness: HarnessControl = {
+      capabilities: { adapter: "copilot", experimental: true, steering: "active-session", activity: "unavailable", stopScopes: [] },
+      getActivity: async () => ({ observation: "unavailable", reason: "unsupported" }),
+      stopActivity: async (_id, activityId) => ({ status: "unknown", activityId }),
+      steer: async (_id, input) => ({ status: "unknown", inputId: input.inputId }),
+      reconcileInput: async (_id, input) => ({ status: "unknown", inputId: input.inputId }),
+      settleOwnedWork: async () => ({ status: "unavailable", reason: "unsupported" }),
+    };
+    mockBackend = new MockAcpBackend({
+      harness, models: [defaultTestModel],
+      streamEventSequences: [
+        [{ type: "message.complete", content: "Principal finished" }],
+        [{ type: "message.complete", content: "Unrelated input answered" }],
+      ],
+      onStreamEvent: async (event) => {
+        if (event.type === "message.complete" && event.content === "Principal finished") await continuePrincipal.promise;
+      },
+    });
+    backendManager.setBackendForTesting(mockBackend);
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
+    let chatId: string | undefined;
+    try {
+      const create = await fetch(`${baseUrl}/api/chats`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Native input admission", workspaceId: testWorkspaceId, model: testModel, useWorktree: false, baseBranch: defaultBranch }),
+      });
+      expect(create.status).toBe(201);
+      chatId = (await create.json() as Chat).config.id;
+      const send = async (message: string) => fetch(`${baseUrl}/api/chats/${chatId}/messages`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message }),
+      });
+      expect((await send("Principal request")).status).toBe(200);
+      expect((await send("Input with uncertain admission")).status).toBe(200);
+      const before = await (await fetch(`${baseUrl}/api/chats/${chatId}`)).json() as Chat;
+      const inputId = before.state.queuedMessages![0]!.id;
+      const steerUrl = `${baseUrl}/api/chats/${chatId}/queued-messages/${inputId}/steer`;
+      const first = await fetch(steerUrl, { method: "POST" });
+      expect(first.status).toBe(200);
+      expect((await first.json()).admission).toEqual({ status: "unknown", inputId });
+      const duplicate = await fetch(steerUrl, { method: "POST" });
+      expect((await duplicate.json()).admission).toEqual({ status: "unknown", inputId });
+      const removal = await fetch(`${baseUrl}/api/chats/${chatId}/queued-messages/${inputId}`, { method: "DELETE" });
+      expect(removal.status).toBe(409);
+      expect((await removal.json()).error).toBe("harness_input_unresolved");
+      expect((await send("Unrelated queued input")).status).toBe(200);
+      continuePrincipal.resolve();
+      const settled = await pollUntil(
+        async () => await (await fetch(`${baseUrl}/api/chats/${chatId}`)).json() as Chat,
+        (chat) => chat.state.status === "idle" && chat.state.queuedMessages?.length === 1,
+        { description: "unrelated queued input to drain without resending uncertain input", timeoutMs: 5000, formatLastObserved: (chat) => JSON.stringify(chat.state) },
+      );
+      expect(settled.state.queuedMessages?.map((message) => message.id)).toEqual([inputId]);
+      expect(settled.state.harness?.inputs?.map((receipt) => receipt.admission)).toEqual([{ status: "unknown", inputId }]);
+      const snapshot = await (await fetch(`${baseUrl}/api/chats/${chatId}/snapshot?full=1`)).json() as { transcript: { messages: PersistedMessage[] } };
+      expect(snapshot.transcript.messages.filter((message) => message.role === "user").map((message) => message.content))
+        .toEqual(["Principal request", "Unrelated queued input"]);
+      const originalSession = settled.state.session!;
+      await mockBackend.deleteSession(originalSession.id);
+      const reconnect = await fetch(`${baseUrl}/api/chats/${chatId}/reconnect`, { method: "POST" });
+      expect(reconnect.status).toBe(404);
+      expect((await reconnect.json()).error).toBe("harness_session_not_found");
+      const lost = await (await fetch(`${baseUrl}/api/chats/${chatId}`)).json() as Chat;
+      expect(lost.state.status).toBe("failed");
+      expect(lost.state.session).toEqual(originalSession);
+      expect(lost.state.queuedMessages?.map((message) => message.id)).toEqual([inputId]);
+      expect(lost.state.harness?.inputs?.map((receipt) => receipt.admission)).toEqual([{ status: "unknown", inputId }]);
+    } finally {
+      continuePrincipal.resolve();
+      if (chatId) await fetch(`${baseUrl}/api/chats/${chatId}`, { method: "DELETE" });
+      installMockBackend(["Hello from chat API", "Second response"]);
+    }
+  });
+
+  test("records accepted steering once and preserves continuation after a native request error", async () => {
+    const continuePrincipal = Promise.withResolvers<void>();
+    const beforeRecovery = Promise.withResolvers<void>();
+    const continueRecovery = Promise.withResolvers<void>();
+    const harness: HarnessControl = {
+      capabilities: { adapter: "copilot", experimental: true, steering: "active-session", activity: "unavailable", stopScopes: [] },
+      getActivity: async () => ({ observation: "unavailable", reason: "unsupported" }),
+      stopActivity: async (_id, activityId) => ({ status: "unknown", activityId }),
+      steer: async (_id, input) => ({ status: "accepted", inputId: input.inputId, nativeMessageId: `native-${input.inputId}` }),
+      reconcileInput: async (_id, input) => ({ status: "delivered", inputId: input.inputId, nativeMessageId: input.nativeMessageId! }),
+      settleOwnedWork: async () => ({ status: "unavailable", reason: "unsupported" }),
+    };
+    mockBackend = new MockAcpBackend({
+      harness, models: [defaultTestModel],
+      streamEventSequences: [[
+        { type: "request.error", code: "harness_request_failed", message: "Synthetic request failure before native continuation" },
+        { type: "message.start", messageId: "recovered-principal" },
+        { type: "message.complete", content: "Principal response" },
+      ]],
+      onStreamEvent: async (event) => {
+        if (event.type === "request.error") await continuePrincipal.promise;
+        if (event.type === "message.start") {
+          beforeRecovery.resolve();
+          await continueRecovery.promise;
+        }
+      },
+    });
+    backendManager.setBackendForTesting(mockBackend);
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
+    let chatId: string | undefined;
+    try {
+      const create = await fetch(`${baseUrl}/api/chats`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Accepted native input", workspaceId: testWorkspaceId, model: testModel, useWorktree: false, baseBranch: defaultBranch }),
+      });
+      expect(create.status).toBe(201);
+      chatId = (await create.json() as Chat).config.id;
+      for (const message of ["Principal request", "Steered follow-up"]) {
+        const send = await fetch(`${baseUrl}/api/chats/${chatId}/messages`, {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message }),
+        });
+        expect(send.status).toBe(200);
+      }
+      const queued = await (await fetch(`${baseUrl}/api/chats/${chatId}`)).json() as Chat;
+      const inputId = queued.state.queuedMessages![0]!.id;
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const steer = await fetch(`${baseUrl}/api/chats/${chatId}/queued-messages/${inputId}/steer`, { method: "POST" });
+        expect(steer.status).toBe(200);
+        expect((await steer.json()).admission).toEqual({ status: "accepted", inputId, nativeMessageId: `native-${inputId}` });
+      }
+      const recovered = await fetch(`${baseUrl}/api/chats/${chatId}/queued-messages/${inputId}/reconcile`, { method: "POST" });
+      expect(recovered.status).toBe(200);
+      expect((await recovered.json()).admission.status).toBe("delivered");
+      continuePrincipal.resolve();
+      await beforeRecovery.promise;
+      const recovering = await pollUntil(
+        async () => await (await fetch(`${baseUrl}/api/chats/${chatId}`)).json() as Chat,
+        (chat) => chat.state.error?.code === "harness_request_failed",
+        { description: "visible request failure without terminating the native execution", timeoutMs: 5000, formatLastObserved: (chat) => JSON.stringify(chat.state) },
+      );
+      expect(recovering.state.status).toBe("streaming");
+      continueRecovery.resolve();
+      const settled = await waitForChatIdle(chatId);
+      expect(settled.state.error).toBeUndefined();
+      expect(settled.state.messages.filter((message) => message.role === "assistant").map((message) => message.content))
+        .toEqual(["Principal response"]);
+      expect(settled.state.queuedMessages ?? []).toEqual([]);
+      expect(settled.state.messages.filter((message) => message.role === "user").map((message) => message.content))
+        .toEqual(["Principal request", "Steered follow-up"]);
+      expect(settled.state.harness?.inputs?.map((receipt) => receipt.admission.status)).toEqual(["delivered"]);
+    } finally {
+      continuePrincipal.resolve();
+      continueRecovery.resolve();
+      if (chatId) await fetch(`${baseUrl}/api/chats/${chatId}`, { method: "DELETE" });
+      installMockBackend(["Hello from chat API", "Second response"]);
+    }
+  });
+
+  test("observes activity after principal completion and preserves siblings on scoped stop", async () => {
+    const native = new LifetimeHarnessBackend({ models: [defaultTestModel], responses: ["Principal response"] });
+    mockBackend = native;
+    backendManager.setBackendForTesting(native);
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
+    let chatId: string | undefined;
+    try {
+      const create = await fetch(`${baseUrl}/api/chats`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Lifetime activity", workspaceId: testWorkspaceId, model: testModel, useWorktree: false, baseBranch: defaultBranch }),
+      });
+      expect(create.status).toBe(201);
+      chatId = (await create.json() as Chat).config.id;
+      const sent = await fetch(`${baseUrl}/api/chats/${chatId}/messages`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: "Principal request" }),
+      });
+      expect(sent.status).toBe(200);
+      const idle = await waitForChatIdle(chatId);
+      const sessionId = idle.state.session!.id;
+      const child = (id: string, ownership: HarnessActivity["ownership"]): HarnessActivity => ({
+        id, description: id, kind: "subagent", ownership, status: "running", workspaceWrites: "possible",
+        native: { adapter: "copilot", conversationId: sessionId, activityId: id },
+      });
+      native.publishActivities(sessionId, [child("owned-child", "owned"), child("owned-sibling", "owned"), child("external-child", "unverified")]);
+      const observed = await pollUntil(
+        async () => await (await fetch(`${baseUrl}/api/chats/${chatId}`)).json() as Chat,
+        (chat) => chat.state.harness?.activity?.observation === "available" && chat.state.harness.activity.activities.length === 3,
+        { description: "session-lived native activity after principal completion", timeoutMs: 5000, formatLastObserved: (chat) => JSON.stringify(chat.state.harness) },
+      );
+      expect(observed.state.status).toBe("idle");
+      expect(observed.state.harness?.capabilities?.adapter).toBe("copilot");
+      const stopped = await fetch(`${baseUrl}/api/chats/${chatId}/activity/owned-child/stop`, { method: "POST" });
+      expect(stopped.status).toBe(200);
+      const external = await fetch(`${baseUrl}/api/chats/${chatId}/activity/external-child/stop`, { method: "POST" });
+      expect(external.status).toBe(404);
+      const refreshed = await (await fetch(`${baseUrl}/api/chats/${chatId}`)).json() as Chat;
+      const activity = refreshed.state.harness!.activity!;
+      expect(activity.observation).toBe("available");
+      if (activity.observation !== "available") throw new Error("Expected authoritative activity.");
+      expect(activity.activities.map((entry) => [entry.id, entry.status])).toEqual([
+        ["owned-child", "stopped"], ["owned-sibling", "running"], ["external-child", "running"],
+      ]);
+      const snapshot = await (await fetch(`${baseUrl}/api/chats/${chatId}/snapshot?full=1`)).json() as { transcript: { messages: PersistedMessage[] } };
+      expect(snapshot.transcript.messages.filter((message) => message.role === "assistant").map((message) => message.content)).toEqual(["Principal response"]);
+    } finally {
+      if (chatId) await fetch(`${baseUrl}/api/chats/${chatId}`, { method: "DELETE" });
+      await native.disconnect();
+      installMockBackend(["Hello from chat API", "Second response"]);
+    }
+  });
+
+  test("retains queued input and fails a native execution disconnected before terminal", async () => {
+    const releaseNativePrompt = Promise.withResolvers<void>();
+    const native = new LifetimeHarnessBackend({
+      models: [defaultTestModel],
+      streamEventSequences: [[{ type: "message.complete", content: "Undelivered native response" }]],
+      onStreamEvent: async () => { await releaseNativePrompt.promise; },
+    });
+    mockBackend = native;
+    backendManager.setBackendForTesting(native);
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
+    let chatId: string | undefined;
+    try {
+      const create = await fetch(`${baseUrl}/api/chats`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Native transport loss", workspaceId: testWorkspaceId, model: testModel, useWorktree: false, baseBranch: defaultBranch }),
+      });
+      expect(create.status).toBe(201);
+      chatId = (await create.json() as Chat).config.id;
+      for (const message of ["Principal request", "Queued follow-up"]) {
+        const send = await fetch(`${baseUrl}/api/chats/${chatId}/messages`, {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message }),
+        });
+        expect(send.status).toBe(200);
+      }
+      await native.disconnect();
+      const failed = await pollUntil(
+        async () => await (await fetch(`${baseUrl}/api/chats/${chatId}`)).json() as Chat,
+        (chat) => chat.state.status === "failed",
+        { description: "native transport loss to remain failed with queued input", timeoutMs: 5000, formatLastObserved: (chat) => JSON.stringify(chat.state) },
+      );
+      expect(failed.state.error?.code).toBe("harness_transport_closed");
+      expect(failed.state.queuedMessages?.map((message) => message.content)).toEqual(["Queued follow-up"]);
+    } finally {
+      releaseNativePrompt.resolve();
+      if (chatId) await fetch(`${baseUrl}/api/chats/${chatId}`, { method: "DELETE" });
+      await native.disconnect();
+      installMockBackend(["Hello from chat API", "Second response"]);
+    }
+  });
+
   test("normalizes tool matching and completion input during chat streaming", async () => {
     mockBackend = new MockAcpBackend({
       responses: ["Scripted Chat Name"],
@@ -1386,7 +1547,7 @@ describe("Chats API Integration", () => {
         { type: "tool.complete", toolCallId: "tool-first", toolName: "read_file", output: "first contents" },
         { type: "message.delta", content: "Done" },
         { type: "message.complete", content: "Done" },
-      ] as BackendAgentEvent[]],
+      ]],
       models: [defaultTestModel],
     });
     backendManager.setBackendForTesting(mockBackend);
@@ -2411,7 +2572,7 @@ describe("Chats API Integration", () => {
           patterns: ["bun test"],
         },
         { type: "message.complete", content: "Permission completed" },
-      ] as BackendAgentEvent[]],
+      ]],
       onStreamEvent: async (event) => {
         if (event.type === "message.complete") {
           signalMessageCompleteBlocked();
@@ -2520,7 +2681,7 @@ describe("Chats API Integration", () => {
           patterns: ["second command"],
         },
         { type: "message.complete", content: "Configuration completed" },
-      ] as BackendAgentEvent[]],
+      ]],
       onStreamEvent: async (event) => {
         if (event.type === "message.delta" && event.content === "between permissions") {
           signalBeforeSecondPermission();
@@ -2937,7 +3098,7 @@ describe("Chats API Integration", () => {
       workspaceType: "directory",
       executionTargetRevision: 1,
       executionHostBinding: existingWorkspace.executionHostBinding,
-      serverSettings: { agent: { provider: "opencode" } },
+      serverSettings: { agent: { adapter: "acp", provider: "opencode" } },
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     });

@@ -3,7 +3,7 @@
  */
 
 import {
-  MESH_PROTOCOL_VERSION,
+  type MeshProtocolVersion,
   type MeshProtocolMetadata,
 } from "./mesh-protocol";
 
@@ -36,26 +36,36 @@ export interface MeshRelayEnrollmentAdmission {
   signature: string;
 }
 
-export interface MeshRelayWellKnownDescriptorV5 extends MeshProtocolMetadata {
+export interface MeshRelayWellKnownDescriptor extends MeshProtocolMetadata {
   role: "relay";
-  protocolVersion: typeof MESH_PROTOCOL_VERSION;
+  protocolVersion: MeshProtocolVersion;
   publicKey: string;
   fingerprint: string;
   controllerFingerprint: string;
   controllerNodeId: string | null;
+  controllerSupportedProtocolVersions?: MeshProtocolVersion[];
 }
 
-export interface MeshControllerWellKnownDescriptorV5 extends MeshProtocolMetadata {
+export interface MeshControllerWellKnownDescriptor extends MeshProtocolMetadata {
   role: "controller";
-  protocolVersion: typeof MESH_PROTOCOL_VERSION;
+  protocolVersion: MeshProtocolVersion;
   nodeId: string;
   publicKey: string;
   fingerprint: string;
 }
 
 export type MeshWellKnownDescriptor =
-  | MeshRelayWellKnownDescriptorV5
-  | MeshControllerWellKnownDescriptorV5;
+  | MeshRelayWellKnownDescriptor
+  | MeshControllerWellKnownDescriptor;
+
+type V5Descriptor<T> = Omit<T, "protocolVersion" | "supportedProtocolVersions" | "preferredProtocolVersion" | "negotiatedProtocolVersion" | "controllerSupportedProtocolVersions"> & {
+  protocolVersion: 5;
+  supportedProtocolVersions: [5];
+  preferredProtocolVersion: 5;
+  negotiatedProtocolVersion: 5 | null;
+};
+export type MeshRelayWellKnownDescriptorV5 = V5Descriptor<MeshRelayWellKnownDescriptor>;
+export type MeshControllerWellKnownDescriptorV5 = V5Descriptor<MeshControllerWellKnownDescriptor>;
 
 export function isMeshRelayLoopbackHostname(hostname: string): boolean {
   const normalized = hostname.replace(/^\[|\]$/g, "").toLowerCase();
@@ -101,7 +111,7 @@ export function normalizeMeshRelayOrigin(value: string): string {
 }
 
 export interface MeshRelayChallengeFrame {
-  protocolVersion: typeof MESH_PROTOCOL_VERSION;
+  protocolVersion: MeshProtocolVersion;
   type: "challenge";
   challengeId: string;
   nonce: string;
@@ -113,7 +123,7 @@ export interface MeshRelayChallengeFrame {
 }
 
 export interface MeshRelayAuthFrame {
-  protocolVersion: typeof MESH_PROTOCOL_VERSION;
+  protocolVersion: MeshProtocolVersion;
   type: "auth";
   role: MeshRelayPeerRole;
   nodeId: string;
@@ -128,7 +138,7 @@ export interface MeshRelayAuthFrame {
 }
 
 export interface MeshRelayAuthOkFrame {
-  protocolVersion: typeof MESH_PROTOCOL_VERSION;
+  protocolVersion: MeshProtocolVersion;
   type: "auth.ok";
   connectionId: string;
   role: MeshRelayPeerRole;
@@ -137,7 +147,7 @@ export interface MeshRelayAuthOkFrame {
 }
 
 export interface MeshRelayAuthorizationBeginFrame {
-  protocolVersion: typeof MESH_PROTOCOL_VERSION;
+  protocolVersion: MeshProtocolVersion;
   type: "authorization.begin";
   transactionId: string;
   workerCount: number;
@@ -145,27 +155,27 @@ export interface MeshRelayAuthorizationBeginFrame {
 }
 
 export interface MeshRelayAuthorizationChunkFrame {
-  protocolVersion: typeof MESH_PROTOCOL_VERSION;
+  protocolVersion: MeshProtocolVersion;
   type: "authorization.chunk";
   transactionId: string;
   workers: MeshRelayPeerIdentity[];
 }
 
 export interface MeshRelayAuthorizationCommitFrame {
-  protocolVersion: typeof MESH_PROTOCOL_VERSION;
+  protocolVersion: MeshProtocolVersion;
   type: "authorization.commit";
   transactionId: string;
 }
 
 export interface MeshRelayAuthorizationAckFrame {
-  protocolVersion: typeof MESH_PROTOCOL_VERSION;
+  protocolVersion: MeshProtocolVersion;
   type: "authorization.ack";
   transactionId: string;
   workerCount: number;
 }
 
 export interface MeshRelayStreamRequestFrame {
-  protocolVersion: typeof MESH_PROTOCOL_VERSION;
+  protocolVersion: MeshProtocolVersion;
   type: "stream.request";
   requestId: string;
   targetNodeId: string;
@@ -176,13 +186,13 @@ export interface MeshRelayStreamRequestFrame {
 }
 
 export interface MeshRelayStreamCancelFrame {
-  protocolVersion: typeof MESH_PROTOCOL_VERSION;
+  protocolVersion: MeshProtocolVersion;
   type: "stream.cancel";
   requestId: string;
 }
 
 export interface MeshRelayStreamTicketFrame {
-  protocolVersion: typeof MESH_PROTOCOL_VERSION;
+  protocolVersion: MeshProtocolVersion;
   type: "stream.ticket";
   requestId: string;
   streamId: string;
@@ -192,7 +202,7 @@ export interface MeshRelayStreamTicketFrame {
 }
 
 export interface MeshRelayStreamOfferFrame {
-  protocolVersion: typeof MESH_PROTOCOL_VERSION;
+  protocolVersion: MeshProtocolVersion;
   type: "stream.offer";
   requestId: string;
   streamId: string;
@@ -207,21 +217,21 @@ export interface MeshRelayStreamOfferFrame {
 }
 
 export interface MeshRelayStreamReadyFrame {
-  protocolVersion: typeof MESH_PROTOCOL_VERSION;
+  protocolVersion: MeshProtocolVersion;
   type: "stream.ready";
   requestId: string;
   streamId: string;
 }
 
 export interface MeshRelayStreamStatusFrame {
-  protocolVersion: typeof MESH_PROTOCOL_VERSION;
+  protocolVersion: MeshProtocolVersion;
   type: "stream.status";
   streamId: string;
   status: number;
 }
 
 export interface MeshRelayControlErrorFrame {
-  protocolVersion: typeof MESH_PROTOCOL_VERSION;
+  protocolVersion: MeshProtocolVersion;
   type: "stream.error";
   requestId: string;
   code: string;
@@ -230,13 +240,13 @@ export interface MeshRelayControlErrorFrame {
 }
 
 export interface MeshRelayHeartbeatFrame {
-  protocolVersion: typeof MESH_PROTOCOL_VERSION;
+  protocolVersion: MeshProtocolVersion;
   type: "heartbeat";
   sentAt: string;
 }
 
 export interface MeshRelayPongFrame {
-  protocolVersion: typeof MESH_PROTOCOL_VERSION;
+  protocolVersion: MeshProtocolVersion;
   type: "pong";
   sentAt: string;
 }

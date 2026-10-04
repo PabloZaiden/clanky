@@ -26,9 +26,7 @@ import { DEFAULT_TASK_CONFIG } from "@/shared/task";
 import type { TaskEvent, MessageData, ToolCallData, LogLevel } from "@/shared/events";
 import { createTimestamp } from "@/shared/events";
 import type { MessageAttachment } from "@/shared/message-attachments";
-import type {
-  AgentEvent,
-} from "../../backends/types";
+import type { HarnessEvent as AgentEvent } from "@/shared/harness-events";
 import { backendManager } from "../backend-manager";
 import type { GitService } from "../git";
 import { SimpleEventEmitter, taskEventEmitter } from "../event-emitter";
@@ -38,6 +36,10 @@ import { assertValidTransition } from "../task-state-machine";
 import { ensurePlanningDirectory } from "../planning-directory";
 import { ManagedPathService } from "../managed-path-service";
 import { resolveCommandExecutorDirectory } from "../command-executor";
+import { harnessActivityService } from "../harness-activity-service";
+import { mergeHarnessProjection } from "../../persistence/harness-state";
+import { getHarnessWorkspaceSafety } from "../harness-workspace-safety";
+import { isDomainError } from "../../domain/domain-error";
 
 import {
   type TaskBackend,
@@ -49,6 +51,8 @@ import {
 } from "./engine-types";
 import { TaskPersistenceCoordinator } from "./engine-persistence";
 import { TaskPromptExecutorImpl } from "./engine-prompt-executor";
+import { TaskInputService } from "./engine-inputs";
+import type { HarnessInputAdmission } from "@/shared/harness-control";
 import { resolveToolCallImagePreview, getImageViewToolPath } from "../tool-call-image-preview";
 import { upsertToolCallExtra } from "@/shared/tool-call";
 import { StopPatternDetector } from "./engine-helpers";
@@ -75,7 +79,6 @@ import {
   type AgentEventTranscriptResult,
 } from "../agent-event-transcript-interpreter";
 import {
-  AcpError,
   getAcpErrorMessage,
 } from "../../backends/acp";
 
@@ -88,6 +91,7 @@ export class TaskEngine {
   private aborted = false;
   private onPlanReady?: () => Promise<void>;
   private onCompleted?: () => Promise<void>;
+  private completionSettlement?: ReturnType<typeof Promise.withResolvers<void>>;
   /** Guard to prevent concurrent runTask() executions */
   private isTaskRunning = false;
   /** Try to recover the persisted ACP session before creating a new one. */
@@ -103,7 +107,7 @@ export class TaskEngine {
    */
   private injectionPending = false;
   private initialPromptAttachments: MessageAttachment[];
-  private pendingPromptAttachments: MessageAttachment[] = [];
+  private readonly inputs: TaskInputService;
   private readonly persistence: TaskPersistenceCoordinator;
   private readonly sessionLifecycle: TaskSessionLifecycleImpl;
   private readonly promptExecutor: TaskPromptExecutorImpl;
@@ -121,6 +125,13 @@ export class TaskEngine {
       state: this.task.state,
       onPersistState: options.onPersistState,
     });
+    this.inputs = new TaskInputService({
+      state: this.task.state,
+      backend: this.backend,
+      updateState: this.updateState.bind(this),
+      emitUserMessage: this.emitUserMessage.bind(this),
+      flushInputs: () => this.persistence.flush({ persistHarnessInputs: true }),
+    });
     this.sessionLifecycle = new TaskSessionLifecycleImpl({
       backend: this.backend,
       config: this.task.config,
@@ -128,6 +139,7 @@ export class TaskEngine {
       getWorkingDirectory: () => this.workingDirectory,
       emitLog: this.emitLog.bind(this),
       updateState: this.updateState.bind(this),
+      persistSession: this.triggerPersistence.bind(this),
     });
     this.promptExecutor = new TaskPromptExecutorImpl({
       backend: this.backend,
@@ -143,6 +155,7 @@ export class TaskEngine {
       isAborted: () => this.aborted,
       isInjectionPending: () => this.injectionPending,
       resetIterationContextForRetry,
+      isCompletionMessage: (content) => this.stopDetector.matches(content),
     });
     this.onPlanReady = options.onPlanReady;
     this.onCompleted = options.onCompleted;
@@ -161,6 +174,44 @@ export class TaskEngine {
    */
   get state(): TaskState {
     return this.task.state;
+  }
+
+  get isExecuting(): boolean { return this.isTaskRunning || this.inputs.isBusy; }
+
+  refreshHarnessState(harness: TaskState["harness"]): void {
+    const inputs = this.task.state.harness?.inputs;
+    this.task.state.harness = inputs ? { ...harness, inputs } : harness;
+  }
+
+  steerPendingInput(inputId: string): Promise<HarnessInputAdmission> { return this.inputs.steer(inputId); }
+
+  reconcilePendingInput(inputId: string): Promise<HarnessInputAdmission> { return this.inputs.reconcile(inputId); }
+
+  async waitForCompletionSettlement(): Promise<void> { await this.completionSettlement?.promise; }
+
+  get needsWorkspaceFinalization(): boolean {
+    return this.backend.harness.capabilities.adapter !== "acp"
+      && this.state.status === "completed"
+      && this.state.harness?.gitOutcome?.status !== "succeeded";
+  }
+
+  async retryWorkspaceFinalization(): Promise<void> {
+    if (this.completionSettlement) {
+      await this.completionSettlement.promise;
+      return;
+    }
+    if (!this.needsWorkspaceFinalization) return;
+    const settlement = Promise.withResolvers<void>();
+    this.completionSettlement = settlement;
+    try {
+      this.recordHarnessGitOutcome("pending");
+      const response = this.state.messages.findLast((message) => message.role === "assistant")?.content ?? "";
+      await this.finalizeWorkspace(response);
+      await this.triggerPersistence();
+    } finally {
+      settlement.resolve();
+      if (this.completionSettlement === settlement) this.completionSettlement = undefined;
+    }
   }
 
   /**
@@ -199,19 +250,14 @@ export class TaskEngine {
     attachments: MessageAttachment[] = [],
     promptMode: TaskPromptIntent = "engine_context",
   ): void {
-    this.updateState({
-      pendingPrompt: prompt,
-      pendingPromptMode: promptMode,
-    });
-    this.pendingPromptAttachments = [...attachments];
+    this.inputs.set(prompt, attachments, promptMode);
   }
 
   /**
    * Clear any pending prompt, reverting to the config.prompt.
    */
   clearPendingPrompt(): void {
-    this.updateState({ pendingPrompt: undefined, pendingPromptMode: undefined });
-    this.pendingPromptAttachments = [];
+    this.inputs.clear();
   }
 
   /**
@@ -247,8 +293,8 @@ export class TaskEngine {
    * Clear all pending values (prompt and model).
    */
   clearPending(): void {
-    this.updateState({ pendingPrompt: undefined, pendingPromptMode: undefined, pendingModel: undefined });
-    this.pendingPromptAttachments = [];
+    this.inputs.clear();
+    this.updateState({ pendingModel: undefined });
     // Emit event for UI update
     this.emitter.emit({
       type: "task.pending.updated",
@@ -276,10 +322,9 @@ export class TaskEngine {
   }): Promise<void> {
     // Set the pending values first
     if (options.message !== undefined) {
-      this.updateState({ pendingPrompt: options.message, pendingPromptMode: "direct_user" });
-      this.pendingPromptAttachments = [...(options.attachments ?? [])];
+      this.inputs.set(options.message, options.attachments ?? [], "direct_user");
     } else if (options.attachments) {
-      this.pendingPromptAttachments = [...options.attachments];
+      this.inputs.setAttachments(options.attachments);
     }
     if (options.model !== undefined) {
       this.updateState({ pendingModel: options.model });
@@ -448,8 +493,10 @@ export class TaskEngine {
    */
   async stop(reason = "User requested stop"): Promise<void> {
     this.emitLog("info", `Stopping task: ${reason}`);
+    const wasCompleted = this.task.state.status === "completed";
     this.aborted = true;
 
+    await this.settleHarnessForStop();
     await this.promptExecutor.interrupt({
       abortMessage: "Aborting backend session...",
       abortWarnMessage: "Failed to abort the backend session during stop",
@@ -458,23 +505,16 @@ export class TaskEngine {
       disconnectWarnMessage: "Failed to disconnect the backend while stopping the task",
     });
 
-    this.updateState({
-      status: "stopped",
-      completedAt: createTimestamp(),
-    });
-
-    this.emit({
-      type: "task.stopped",
-      taskId: this.config.id,
-      reason,
-      timestamp: createTimestamp(),
-    });
-
-    this.emitLog("info", "Task stopped");
+    if (!wasCompleted && this.task.state.status !== "completed") {
+      this.updateState({ status: "stopped", completedAt: createTimestamp() });
+      this.emit({ type: "task.stopped", taskId: this.config.id, reason, timestamp: createTimestamp() });
+      this.emitLog("info", "Task stopped");
+    }
 
     // Wait for the interrupted iteration to release the in-memory stream before
     // the final checkpoint, then prevent any later callbacks from persisting.
     await this.waitForTaskIdle();
+    await this.inputs.waitForIdle();
     try {
       await this.triggerPersistence();
     } catch (error) {
@@ -482,6 +522,26 @@ export class TaskEngine {
       await this.triggerPersistence();
     }
     this.persistence.disable();
+  }
+
+  private async settleHarnessForStop(): Promise<void> {
+    const binding = this.task.state.session?.binding;
+    if (!binding || binding.adapter === "acp") return;
+    const context = { kind: "task" as const, id: this.config.id };
+    try {
+      const cleanup = await harnessActivityService.settle(context, binding, this.backend);
+      const gitSafety = getHarnessWorkspaceSafety(await harnessActivityService.getActivity(context, binding, this.backend));
+      mergeHarnessProjection(context, binding, { gitSafety });
+      if (cleanup.status !== "settled") {
+        this.emitLog("warn", "Task stopped; native workspace cleanup remains unresolved", { cleanup });
+      }
+    } catch (error) {
+      mergeHarnessProjection(context, binding, {
+        cleanup: { status: "unavailable", reason: "gap" },
+        gitSafety: { status: "blocked", reason: "unavailable", activityIds: [] },
+      });
+      this.emitLog("error", "Task stop could not confirm native workspace settlement", { error: String(error) });
+    }
   }
 
   /**
@@ -508,6 +568,7 @@ export class TaskEngine {
     this.emitLog("info", "Session aborted (status preserved)");
 
     await this.waitForTaskIdle();
+    await this.inputs.waitForIdle();
     try {
       await this.triggerPersistence();
     } catch (error) {
@@ -558,8 +619,7 @@ export class TaskEngine {
    */
   async injectPlanFeedback(feedback: string, attachments: MessageAttachment[] = []): Promise<void> {
     // Set the feedback as a pending prompt
-    this.updateState({ pendingPrompt: feedback });
-    this.pendingPromptAttachments = [...attachments];
+    this.inputs.set(feedback, attachments, "engine_context");
 
     // Emit event for UI update
     this.emitter.emit({
@@ -768,7 +828,7 @@ export class TaskEngine {
     const isInPlanMode = this.task.state.status === "planning" && this.task.state.planMode?.active;
     const promptMode = isInPlanMode
       ? "engine_context"
-      : this.task.state.pendingPromptMode ?? "engine_context";
+      : this.inputs.peek()?.intent ?? "engine_context";
     this.lastPromptMode = promptMode;
     return {
       prompt: buildTaskPrompt(this.makePromptContext(), _iteration),
@@ -786,8 +846,49 @@ export class TaskEngine {
   /**
    * Commit changes after an iteration.
    */
-  private async commitIteration(iteration: number, responseContent: string): Promise<void> {
-    await commitTaskIteration(this.makeGitCommitContext(), iteration, responseContent);
+  private async commitIteration(iteration: number, responseContent: string): Promise<boolean> {
+    if (!await this.checkHarnessGitSafety()) return false;
+    const committed = await commitTaskIteration(this.makeGitCommitContext(), iteration, responseContent);
+    if (committed) this.recordHarnessGitOutcome("succeeded");
+    return committed;
+  }
+
+  private recordHarnessGitOutcome(status: "pending" | "succeeded" | "failed"): void {
+    const binding = this.task.state.session?.binding;
+    if (!binding || binding.adapter === "acp") return;
+    const gitOutcome = { status, observedAt: createTimestamp() };
+    mergeHarnessProjection({ kind: "task", id: this.config.id }, binding, { gitOutcome });
+    this.refreshHarnessState({ ...this.task.state.harness, gitOutcome });
+  }
+
+  private async prepareFinalCommit(): Promise<boolean> {
+    const binding = this.task.state.session?.binding;
+    if (this.task.state.status === "completed" && binding && this.backend.harness.capabilities.adapter !== "acp") {
+      const cleanup = await harnessActivityService.settle({ kind: "task", id: this.config.id }, binding, this.backend);
+      if (cleanup.status !== "settled") {
+        mergeHarnessProjection({ kind: "task", id: this.config.id }, binding, {
+          gitSafety: { status: "blocked", reason: "unavailable", activityIds: cleanup.status === "pending" ? cleanup.activityIds : [] },
+        });
+        this.emitLog("warn", "Final Git operation deferred because native helper cleanup remains unresolved", { cleanup });
+        return false;
+      }
+    }
+    return this.checkHarnessGitSafety();
+  }
+
+  private async checkHarnessGitSafety(): Promise<boolean> {
+    const binding = this.task.state.session?.binding;
+    if (!binding || this.backend.harness.capabilities.adapter === "acp") return true;
+    const context = { kind: "task" as const, id: this.config.id };
+    const activity = await harnessActivityService.getActivity(context, binding, this.backend);
+    const gitSafety = getHarnessWorkspaceSafety(activity);
+    mergeHarnessProjection(context, binding, { gitSafety });
+    this.refreshHarnessState({ ...this.task.state.harness, gitSafety });
+    if (gitSafety.status === "blocked") {
+      this.emitLog("warn", "Git operation deferred until native workspace writers are settled", { activityIds: gitSafety.activityIds });
+      return false;
+    }
+    return true;
   }
 
   // ---------------------------------------------------------------------------
@@ -937,6 +1038,8 @@ export class TaskEngine {
       workingDirectory: this.workingDirectory,
       backend: this.backend,
       sessionId: this.sessionLifecycle.sessionId,
+      beforeCommit: this.prepareFinalCommit.bind(this),
+      onCommitFailure: () => this.recordHarnessGitOutcome("failed"),
     };
   }
 
@@ -950,7 +1053,7 @@ export class TaskEngine {
       emitLog: this.emitLog.bind(this),
       updateState: this.updateState.bind(this),
       consumeInitialPromptAttachments: this.consumeInitialPromptAttachments.bind(this),
-      consumePendingPromptAttachments: this.consumePendingPromptAttachments.bind(this),
+      consumePendingInput: () => this.inputs.consume(),
       consumeSessionRecovery: () => this.sessionLifecycle.consumeSessionRecovery(),
     };
   }
@@ -1129,7 +1232,7 @@ export class TaskEngine {
     }
 
     if (result.outcome === "complete") {
-      return this.handleCompletedOutcome();
+      return this.handleCompletedOutcome(result);
     }
 
     if (result.outcome === "plan_ready") {
@@ -1176,7 +1279,18 @@ export class TaskEngine {
    * Updates state, marks review comments as addressed, emits completion event.
    * Always returns true (task should exit).
    */
-  private async handleCompletedOutcome(): Promise<boolean> {
+  private async handleCompletedOutcome(result: IterationResult): Promise<boolean> {
+    const settlement = Promise.withResolvers<void>();
+    this.completionSettlement = settlement;
+    try {
+      return await this.finalizeCompletedOutcome(result);
+    } finally {
+      settlement.resolve();
+      if (this.completionSettlement === settlement) this.completionSettlement = undefined;
+    }
+  }
+
+  private async finalizeCompletedOutcome(result: IterationResult): Promise<boolean> {
     this.emitLog("info", "Stop pattern detected - task completed successfully", {
       totalIterations: this.task.state.currentIteration,
     });
@@ -1186,6 +1300,7 @@ export class TaskEngine {
       completedAt: createTimestamp(),
       consecutiveErrors: undefined,
     });
+    this.recordHarnessGitOutcome("pending");
 
     // Keep review-cycle comment state in sync before observers handle completion.
     if (this.task.state.reviewMode && this.task.state.reviewMode.reviewCycles > 0) {
@@ -1212,7 +1327,9 @@ export class TaskEngine {
     // Persist immediately so callbacks (e.g., auto-push after conflict resolution)
     // can act on the completed status without waiting for the periodic persistence interval.
     await this.triggerPersistence();
-    if (this.onCompleted) {
+    const completionFollowUpSafe = await this.finalizeWorkspace(result.responseContent);
+    await this.triggerPersistence();
+    if (this.onCompleted && completionFollowUpSafe) {
       queueMicrotask(() => {
         void this.onCompleted?.().catch(async (error) => {
           this.emitLog("error", `Automatic completion follow-up failed: ${String(error)}`);
@@ -1225,6 +1342,34 @@ export class TaskEngine {
       });
     }
     return true;
+  }
+
+  private async finalizeWorkspace(responseContent: string): Promise<boolean> {
+    await this.inputs.waitForIdle();
+    let completionFollowUpSafe = true;
+    const binding = this.task.state.session?.binding;
+    if (binding && this.backend.harness.capabilities.adapter !== "acp") {
+      try {
+        const cleanup = await harnessActivityService.settle({ kind: "task", id: this.config.id }, binding, this.backend);
+        completionFollowUpSafe = cleanup.status === "settled";
+        if (!completionFollowUpSafe) this.emitLog("warn", "Task completed; owned native cleanup remains unresolved", { cleanup });
+      } catch (error) {
+        completionFollowUpSafe = false;
+        mergeHarnessProjection({ kind: "task", id: this.config.id }, binding, { cleanup: { status: "unavailable", reason: "gap" } });
+        this.emitLog("error", "Task completed; owned native cleanup failed", { error: String(error) });
+      }
+    }
+    if (completionFollowUpSafe) {
+      try {
+        completionFollowUpSafe = await this.checkHarnessGitSafety();
+        if (completionFollowUpSafe) completionFollowUpSafe = await this.commitIteration(this.task.state.currentIteration, responseContent);
+      } catch (error) {
+        completionFollowUpSafe = false;
+        this.recordHarnessGitOutcome("failed");
+        this.emitLog("error", "Task completed; final Git operation failed", { error: String(error) });
+      }
+    }
+    return completionFollowUpSafe;
   }
 
   /**
@@ -1313,6 +1458,21 @@ export class TaskEngine {
    */
   private async handleErrorOutcome(result: IterationResult): Promise<boolean> {
     const errorMessage = result.error ?? "Unknown error";
+
+    if (this.injectionPending && this.backend.harness.capabilities.adapter !== "acp") {
+      return this.continueWithAbortFallbackInjection(errorMessage);
+    }
+
+    if (this.backend.harness.capabilities.adapter !== "acp") {
+      this.emitLog("error", "Native execution failed; automatic resend is disabled", { code: result.errorCode });
+      this.updateState({
+        status: "failed", completedAt: createTimestamp(),
+        error: { message: errorMessage, iteration: this.task.state.currentIteration, timestamp: createTimestamp() },
+      });
+      this.emit({ type: "task.error", taskId: this.config.id, error: errorMessage, iteration: this.task.state.currentIteration, timestamp: createTimestamp() });
+      await this.triggerPersistence();
+      return true;
+    }
 
     // Error iterations don't count towards maxIterations - roll back the counter
     // This treats the error as a retry, not a completed iteration
@@ -1531,15 +1691,21 @@ export class TaskEngine {
       }
 
       // Commit changes after iteration
-      if (ctx.outcome !== "error") {
+      if (ctx.outcome !== "error" && ctx.outcome !== "complete") {
         this.emitLog("info", "Checking for changes to commit...");
         const responseContent = ctx.transcript.state.responseContent;
         await this.commitIteration(iteration, responseContent);
       }
     } catch (err) {
+      if (this.aborted && this.backend.harness.capabilities.adapter !== "acp") {
+        ctx.outcome = "continue";
+        ctx.error = undefined;
+        ctx.errorCode = undefined;
+        return this.buildIterationResult(ctx, startedAt);
+      }
       ctx.outcome = "error";
       ctx.error = getAcpErrorMessage(err);
-      ctx.errorCode = err instanceof AcpError ? err.code : undefined;
+      ctx.errorCode = isDomainError(err) ? err.code : undefined;
       this.emitLog("error", `Iteration error: ${ctx.error}`);
     }
 
@@ -1577,20 +1743,13 @@ export class TaskEngine {
     return attachments;
   }
 
-  private consumePendingPromptAttachments(): MessageAttachment[] {
-    const attachments = this.pendingPromptAttachments;
-    this.pendingPromptAttachments = [];
-    return attachments;
-  }
-
   private emitUserMessage(
     content: string,
-    idSuffix?: string,
+    messageId?: string,
     attachments: MessageAttachment[] = [],
   ): void {
-    const suffix = idSuffix ?? `iter-${this.task.state.currentIteration}`;
     const messageData: MessageData = {
-      id: `user-msg-${this.config.id}-${suffix}`,
+      id: messageId ?? `user-msg-${this.config.id}-iter-${this.task.state.currentIteration}`,
       role: "user",
       content,
       attachments: attachments.length > 0 ? attachments : undefined,

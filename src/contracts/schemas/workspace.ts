@@ -8,7 +8,7 @@
  */
 
 import { z } from "zod";
-import { AGENT_PROVIDER_IDS } from "@/shared";
+import { AGENT_PROVIDER_IDS, HARNESS_ADAPTER_IDS, isAgentSettings } from "@/shared";
 import { ExecutionHostRefSchema } from "./execution-host";
 
 /**
@@ -19,13 +19,12 @@ export const AgentProviderSchema = z.enum(AGENT_PROVIDER_IDS);
 export const WorkspaceTypeSchema = z.enum(["git", "directory"]);
 
 /**
- * Agent transport options.
- * - stdio: local ACP CLI process
- * - ssh: ACP CLI process started over SSH
+ * Adapter selection is independent of the execution host. ACP selects a preset.
  */
 export const AgentSettingsSchema = z.object({
+  adapter: z.enum(HARNESS_ADAPTER_IDS),
   provider: AgentProviderSchema,
-}).strict();
+}).strict().refine(isAgentSettings, { message: "The harness preset does not match the native adapter", path: ["provider"] });
 
 /**
  * Schema for workspace server settings.
@@ -46,7 +45,7 @@ export const WorkspaceSshTargetSchema = z.object({
 /**
  * Schema for CreateWorkspaceRequest - POST /api/workspaces
  *
- * serverSettings is optional - defaults to getDefaultServerSettings() if not provided.
+ * serverSettings selects the adapter/preset independently of the execution host.
  * The CreateWorkspaceRequest type in types/workspace.ts is derived from this schema.
  */
 export const CreateWorkspaceRequestSchema = z.object({

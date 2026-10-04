@@ -239,6 +239,7 @@ describe("SshTerminalBridge integration", () => {
         )),
         serverSettings: {
           agent: {
+            adapter: "acp",
             provider: "opencode",
           },
         },

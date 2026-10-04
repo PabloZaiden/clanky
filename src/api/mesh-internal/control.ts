@@ -1,4 +1,5 @@
 import { defineRoutes } from "@pablozaiden/webapp/server";
+import { describeMeshWorkerGeneration } from "../../core/mesh-worker-generation";
 import {
   MeshEnrollmentRequestSchema,
   MeshHealthCheckSchema,
@@ -27,6 +28,22 @@ import {
 import { getLocalMeshProtocolMetadata } from "../../core/mesh-protocol-version";
 
 export const meshControlRoutes = defineRoutes({
+  "/api/mesh/internal/protocol": {
+    // Peer discovery has no browser user; it reveals only signed public node
+    // identity/version metadata, never grants, users, credentials or paths.
+    auth: "public", sameOrigin: "never",
+    description: "Negotiate the worker generation before sending a Mesh contract.",
+    tags: ["mesh", "internal", "discovery"],
+    async GET(req): Promise<Response> {
+      try {
+        const descriptor = await describeMeshWorkerGeneration(req.headers.get(MESH_PROTOCOL_VERSIONS_HEADER), req.headers.get("x-clanky-mesh-request-id"));
+        return Response.json(descriptor, { headers: {
+          [MESH_PROTOCOL_VERSION_HEADER]: String(descriptor.protocolVersion),
+          [MESH_PROTOCOL_VERSIONS_HEADER]: serializeMeshProtocolVersions(),
+        } });
+      } catch (error) { return internalMeshErrorResponse(error); }
+    },
+  },
   "/api/mesh/internal/enrollment": {
     auth: "public",
     sameOrigin: "never",

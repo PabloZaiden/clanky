@@ -3,6 +3,7 @@ import { LazyDetails } from "./lazy-details";
 import { ReasoningGroupEntry } from "./reasoning-group-entry";
 import { ToolGroupEntry } from "./tool-group-entry";
 import { ActivitySpinner } from "./activity-spinner";
+import { HarnessToolActivity } from "../harness-activity";
 import type { ToolCallData } from "@/shared";
 import {
   annotateDisplayEntries,
@@ -128,6 +129,7 @@ export const WorkingGroupEntry = memo(function WorkingGroupEntry({
         triggerClassName="w-full text-left"
         panelClassName="mt-2"
       />
+      <HarnessToolActivity toolIds={groupedChildEntries.flatMap((child) => child.type === "tool-group" ? child.tools.map((tool) => tool.id) : [])} />
     </div>
   );
 });

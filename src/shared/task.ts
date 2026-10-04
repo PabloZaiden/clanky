@@ -13,6 +13,7 @@
 import type { CheapModelSelection, ModelConfig } from "./model";
 import type { MessageAttachment } from "./message-attachments";
 import type { ToolCallRecord } from "./tool-call";
+import type { HarnessConversationBinding, HarnessConversationState } from "./harness-control";
 export type { CheapModelSelection, ModelConfig };
 
 /**
@@ -131,6 +132,7 @@ export interface TaskState {
 
   /** Backend session information for the active connection */
   session?: SessionInfo;
+  harness?: HarnessConversationState;
 
   /** Error information if the task failed */
   error?: TaskError;
@@ -156,6 +158,7 @@ export interface TaskState {
   /** Pending prompt that overrides config.prompt for the next iteration only */
   pendingPrompt?: string;
   pendingPromptMode?: TaskPromptIntent;
+  pendingInput?: { id: string; attachments: MessageAttachment[] };
 
   /** Model override for the next prompt (one-time, cleared after use) */
   pendingModel?: ModelConfig;
@@ -316,6 +319,8 @@ export interface SessionInfo {
   id: string;
   /** Backend server URL (for display and reconnection) */
   serverUrl?: string;
+  /** Null denotes a corrupt stored binding; it must never be resumed as legacy ACP. */
+  binding?: HarnessConversationBinding | null;
 }
 
 /**

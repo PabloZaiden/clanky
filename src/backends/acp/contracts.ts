@@ -10,7 +10,8 @@
  */
 
 import type { AgentProvider } from "@/shared/settings";
-import type { AgentEvent, BackendConnectionConfig, ConnectionInfo } from "../types";
+import type { BackendConnectionConfig, ConnectionInfo } from "../types";
+import type { HarnessEventPayload } from "@/shared/harness-events";
 import type { JsonRpcMessage } from "./types";
 import type { AcpError } from "./errors";
 
@@ -112,7 +113,7 @@ export type AcpTransportLifecycleFactory = () => AcpTransportLifecycle;
  * to session subscribers. Implemented by the session state store.
  */
 export interface SessionEventSink {
-  emitSessionEvent(sessionId: string, event: AgentEvent): void;
+  emitSessionEvent(sessionId: string, event: HarnessEventPayload): void;
 }
 
 /**

@@ -12,6 +12,7 @@ import { meshControlRoutes } from "./control";
 import { meshExecutionRoutes } from "./execution";
 import { meshTerminalRoutes } from "./terminal";
 import { meshTunnelRoutes } from "./tunnel";
+import { meshHarnessRoutes } from "./harness";
 
 export const meshInternalRoutes = defineRoutes({
   ...meshControlRoutes,
@@ -19,6 +20,7 @@ export const meshInternalRoutes = defineRoutes({
   ...meshAcpRoutes,
   ...meshTerminalRoutes,
   ...meshTunnelRoutes,
+  ...meshHarnessRoutes,
 });
 
 export const meshControllerInternalRoutes = defineRoutes({
@@ -26,6 +28,8 @@ export const meshControllerInternalRoutes = defineRoutes({
 });
 
 export const meshWorkerInternalRoutes = defineRoutes({
+  ...meshHarnessRoutes,
+  "/api/mesh/internal/protocol": meshControlRoutes["/api/mesh/internal/protocol"]!,
   "/api/mesh/internal/revocation": meshInternalRoutes["/api/mesh/internal/revocation"]!,
   "/api/mesh/internal/kill": meshInternalRoutes["/api/mesh/internal/kill"]!,
   "/api/mesh/internal/health": meshInternalRoutes["/api/mesh/internal/health"]!,
@@ -40,4 +44,3 @@ export const meshWorkerInternalRoutes = defineRoutes({
   "/api/mesh/internal/tcp-tunnel/session": meshInternalRoutes["/api/mesh/internal/tcp-tunnel/session"]!,
   "/api/mesh/internal/tcp-tunnel": meshInternalRoutes["/api/mesh/internal/tcp-tunnel"]!,
 });
-

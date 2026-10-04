@@ -13,6 +13,8 @@
 
 import type {
   Chat,
+  Task,
+  HarnessInputAdmission,
   ReviewComment,
   SshServer,
   TerminalSession,
@@ -36,7 +38,6 @@ import {
   SpawnCurrentPlanTaskRequestSchema,
   UpdateTaskRequestSchema,
   UpdateChatRequestSchema,
-  ImportExistingChatRequestSchema,
   AddressCommentsRequestSchema,
   PlanAcceptRequestSchema,
   CreateSshServerRequestSchema,
@@ -160,7 +161,7 @@ export interface ModelInfo {
   connected: boolean;
   /**
    * Available variants for this model.
-   * Each variant name is a key from the SDK's model.variants object.
+   * Provider-native option identifiers, including reasoning effort levels.
    * An empty string ("") represents the default/no-variant option.
    * If undefined or empty, the model has no variants.
    */
@@ -186,11 +187,15 @@ export interface ModelInfo {
  * single source of truth for both validation and TypeScript types.
  */
 export type CreateTaskRequest = z.infer<typeof CreateTaskRequestSchema>;
+
+export interface TaskInputAdmissionResponse {
+  task: Task;
+  admission: HarnessInputAdmission;
+}
 export type CreateChatRequest = z.infer<typeof CreateChatRequestSchema>;
 export type CreateSshServerChatRequest = z.infer<typeof CreateSshServerChatRequestSchema>;
 export type CreateExecutionHostChatRequest = z.infer<typeof CreateExecutionHostChatRequestSchema>;
 export type ExecutionHostWorkingDirectory = z.infer<typeof ExecutionHostWorkingDirectorySchema>;
-export type ImportExistingChatRequest = z.infer<typeof ImportExistingChatRequestSchema>;
 
 /**
  * Request body for POST /api/tasks/title endpoint.

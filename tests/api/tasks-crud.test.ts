@@ -18,7 +18,12 @@ import { createMockBackend, MockAcpBackend, defaultTestModel } from "../mocks/mo
 import type { AgentResponse } from "../../src/backends/types";
 import { updateTaskState } from "../../src/persistence/tasks";
 import type { TaskLogEntry, PersistedMessage, PersistedToolCall } from "@/shared";
-import { getCurrentBranch, initializeGitRepository } from "../helpers/git-fixtures";
+import {
+  createTempBareGitRepository,
+  getCurrentBranch,
+  initializeGitRepository,
+  runGit,
+} from "../helpers/git-fixtures";
 import { pollUntil } from "../helpers/polling";
 import { fetchTestLocalExecutionHost } from "../setup";
 
@@ -163,7 +168,7 @@ describe("Tasks CRUD API Integration", () => {
         name: name || directory.split("/").pop() || "Test",
         directory,
         executionHost,
-        serverSettings: { agent: { provider: "opencode" } },
+        serverSettings: { agent: { adapter: "acp", provider: "opencode" } },
       }),
     });
     const data = await createResponse.json();
@@ -292,7 +297,7 @@ describe("Tasks CRUD API Integration", () => {
           directory: testWorkDir,
           workspaceType: "directory",
           executionHost: await fetchTestLocalExecutionHost(baseUrl),
-          serverSettings: { agent: { provider: "opencode" } },
+          serverSettings: { agent: { adapter: "acp", provider: "opencode" } },
         }),
       });
       expect(workspaceResponse.status).toBe(201);
@@ -1814,56 +1819,57 @@ describe("Tasks CRUD API Integration", () => {
   describe("POST /api/tasks/:id/mark-merged", () => {
 
     test("marks a pushed task as merged and preserves merged status", async () => {
-      // Create and complete a task
-      const createResponse = await fetch(`${baseUrl}/api/tasks`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...baseCreateTaskPayload,
-          workspaceId: testWorkspaceId,
-          prompt: "Test mark merged",
-          name: "Test Task",
-          model: testModel,
-          useWorktree: true,
-        }),
-      });
-      const createBody = await createResponse.json();
-      const taskId = createBody.config.id;
-
-      // Wait for completion
-      await waitForTaskCompletion(taskId);
-
-      const { updateTaskState, loadTask } = await import("../../src/persistence/tasks");
-      const completedTask = await loadTask(taskId);
-      if (completedTask) {
-        await updateTaskState(taskId, {
-          ...completedTask.state,
-          status: "pushed",
+      const remote = await createTempBareGitRepository({ prefix: "clanky-mark-merged-remote-" });
+      try {
+        await runGit(testWorkDir, ["remote", "add", "origin", remote]);
+        await runGit(testWorkDir, ["push", "-u", "origin", baseCreateTaskPayload.baseBranch]);
+        const createResponse = await fetch(`${baseUrl}/api/tasks`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...baseCreateTaskPayload,
+            workspaceId: testWorkspaceId,
+            prompt: "Test mark merged",
+            name: "Test Task",
+            model: testModel,
+            useWorktree: true,
+          }),
         });
-        const { taskManager } = await import("../../src/core/task-manager");
-        taskManager.resetForTesting();
+        expect(createResponse.status).toBe(201);
+        const createBody = await createResponse.json();
+        const taskId = createBody.config.id;
+
+        await waitForTaskStatus(taskId, ["completed"]);
+        const pushResponse = await fetch(`${baseUrl}/api/tasks/${taskId}/push`, { method: "POST" });
+        expect(pushResponse.status).toBe(200);
+        await waitForTaskStatus(taskId, ["pushed"]);
+
+        const response = await fetch(`${baseUrl}/api/tasks/${taskId}/mark-merged`, {
+          method: "POST",
+        });
+        expect(response.status).toBe(200);
+
+        const body = await response.json();
+        expect(body.success).toBe(true);
+
+        const getResponse = await fetch(`${baseUrl}/api/tasks/${taskId}`);
+        expect(getResponse.status).toBe(200);
+        const getBody = await getResponse.json();
+        expect(getBody.state.status).toBe("merged");
+      } finally {
+        await runGit(testWorkDir, ["remote", "remove", "origin"]);
+        await rm(remote, { recursive: true, force: true });
       }
-
-      // Mark as merged
-      const response = await fetch(`${baseUrl}/api/tasks/${taskId}/mark-merged`, {
-        method: "POST",
-      });
-      expect(response.status).toBe(200);
-
-      const body = await response.json();
-      expect(body.success).toBe(true);
-
-      // Verify task status is now merged
-      const getResponse = await fetch(`${baseUrl}/api/tasks/${taskId}`);
-      expect(getResponse.status).toBe(200);
-      const getBody = await getResponse.json();
-      expect(getBody.state.status).toBe("merged");
     });
   });
 
   describe("POST /api/tasks/:id/manual-complete", () => {
 
     test("promotes a failed task to completed and clears the persisted error", async () => {
+      backendManager.setBackendForTesting(new MockAcpBackend({
+        models: [defaultTestModel],
+        responses: ["<promise>PLAN_READY</promise>", "ERROR:synthetic execution failure"],
+      }));
       const createResponse = await fetch(`${baseUrl}/api/tasks`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1874,28 +1880,18 @@ describe("Tasks CRUD API Integration", () => {
           name: "Manual Complete Task",
           model: testModel,
           useWorktree: true,
+          maxConsecutiveErrors: 1,
         }),
       });
+      expect(createResponse.status).toBe(201);
       const createBody = await createResponse.json();
       const taskId = createBody.config.id;
 
-      await waitForTaskCompletion(taskId);
-
-      const { updateTaskState, loadTask } = await import("../../src/persistence/tasks");
-      const task = await loadTask(taskId);
-      expect(task).toBeTruthy();
-
-      await updateTaskState(taskId, {
-        ...task!.state,
-        status: "failed",
-        error: {
-          message: "Manual completion regression",
-          iteration: task!.state.currentIteration,
-          timestamp: new Date().toISOString(),
-        },
-      });
-      const { taskManager } = await import("../../src/core/task-manager");
-      taskManager.resetForTesting();
+      await waitForTaskStatus(taskId, ["failed"]);
+      const failedResponse = await fetch(`${baseUrl}/api/tasks/${taskId}`);
+      expect(failedResponse.status).toBe(200);
+      const failedBody = await failedResponse.json();
+      expect(failedBody.state.error).toBeDefined();
 
       const response = await fetch(`${baseUrl}/api/tasks/${taskId}/manual-complete`, {
         method: "POST",

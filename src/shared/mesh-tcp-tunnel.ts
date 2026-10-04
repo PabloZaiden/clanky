@@ -1,7 +1,7 @@
-import { MESH_PROTOCOL_VERSION } from "./mesh-protocol";
+import { MESH_PROTOCOL_VERSION, type MeshProtocolVersion } from "./mesh-protocol";
 
 export const MESH_TCP_TUNNEL_PROTOCOL_VERSION = MESH_PROTOCOL_VERSION;
-export type MeshTcpTunnelProtocolVersion = typeof MESH_PROTOCOL_VERSION;
+export type MeshTcpTunnelProtocolVersion = MeshProtocolVersion;
 export const MESH_TCP_TUNNEL_CAPABILITY = "tcp-tunnel-v1" as const;
 export const MESH_TCP_TUNNEL_SESSION_TTL_MS = 5 * 60_000;
 export const MESH_TCP_TUNNEL_SESSION_REQUEST_TTL_MS =

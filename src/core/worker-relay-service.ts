@@ -5,11 +5,11 @@
 import { createLogger } from "@pablozaiden/webapp/server";
 import type { MeshControllerGrant, MeshRelayPeerRoute } from "@/shared/mesh";
 import { normalizeMeshRelayOrigin } from "@/shared/mesh-relay";
-import { MESH_PROTOCOL_VERSION } from "@/shared/mesh-protocol";
 import { listControllerGrants } from "../persistence/mesh";
 import { DomainError } from "../domain/domain-error";
 import { MeshRelayConnectorManager } from "./mesh-relay-connector-manager";
 import { requireMeshRuntimeRole } from "./mesh-runtime";
+import { discoverMeshEnrollmentTarget } from "./mesh-target-discovery";
 
 type RelayDispatch = (request: Request) => Promise<Response | undefined>;
 
@@ -136,12 +136,18 @@ export class WorkerRelayService {
       await this.manager.stop();
       return;
     }
+    const discovered = await discoverMeshEnrollmentTarget(selected.route.relayUrl);
+    if (discovered.descriptor.role !== "relay"
+      || discovered.descriptor.fingerprint !== selected.route.relayFingerprint
+      || discovered.descriptor.controllerNodeId !== selected.grant.controllerNodeId
+      || discovered.descriptor.controllerFingerprint !== selected.grant.controllerFingerprint
+    ) throw new DomainError("mesh_worker_relay_grants_inconsistent", "Relay discovery does not match the enrolled controller route.");
     const expected = {
       relayUrl: selected.route.relayUrl,
       relayFingerprint: selected.route.relayFingerprint,
       role: "worker" as const,
       targetNodeId: selected.grant.controllerNodeId,
-      protocolVersion: MESH_PROTOCOL_VERSION,
+      protocolVersion: discovered.negotiatedProtocolVersion,
     };
     const active = this.manager.activeConfig;
     if (
@@ -164,8 +170,7 @@ export class WorkerRelayService {
           && current.grant.controllerNodeId === selected.grant.controllerNodeId
           && current.route.relayUrl === selected.route.relayUrl
           && current.route.relayFingerprint === selected.route.relayFingerprint
-          && current.grant.controllerNegotiatedProtocolVersion === MESH_PROTOCOL_VERSION
-          && expected.protocolVersion === MESH_PROTOCOL_VERSION;
+          && current.route.targetNodeId === expected.targetNodeId;
       },
     });
   }

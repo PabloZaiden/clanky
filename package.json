@@ -18,9 +18,11 @@
     "test:backend": "bun scripts/run-tests.ts backend",
     "test:native-worker-e2e": "bun scripts/run-tests.ts native-worker",
     "test:changed": "bun scripts/run-tests.ts all --changed=HEAD",
-    "tsc": "mkdir -p .cache/tsc && bunx tsc --noEmit --pretty false --incremental --tsBuildInfoFile .cache/tsc/build.tsbuildinfo"
+    "typecheck": "mkdir -p .cache/tsc && bunx tsc --noEmit --pretty false --incremental --tsBuildInfoFile .cache/tsc/build.tsbuildinfo"
   },
   "dependencies": {
+    "@github/copilot-sdk": "1.0.15",
+    "@opencode/client": "2.0.20",
     "@monaco-editor/react": "4.7.0",
     "@pablozaiden/webapp": "github:PabloZaiden/webapp#v1.11.6",
     "@peculiar/x509": "2.1.0",

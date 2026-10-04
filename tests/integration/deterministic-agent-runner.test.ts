@@ -73,7 +73,7 @@ describe("deterministic agent runner — API key lifecycle", () => {
       executionTargetRevision: 1,
       executionHostBinding,
       allowClankyContext: true,
-      serverSettings: { agent: { provider: "opencode" } },
+      serverSettings: { agent: { adapter: "acp", provider: "opencode" } },
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -304,7 +304,7 @@ describe("deterministic agent runner — prompt bridge route", () => {
       executionTargetRevision: 1,
       executionHostBinding,
       allowClankyContext: true,
-      serverSettings: { agent: { provider: "opencode" } },
+      serverSettings: { agent: { adapter: "acp", provider: "opencode" } },
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };

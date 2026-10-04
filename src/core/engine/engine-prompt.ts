@@ -11,6 +11,7 @@ import { buildPromptParts } from "../../backends/prompt-parts";
 import type { IterationContext } from "./engine-types";
 import { StopPatternDetector } from "./engine-helpers";
 import { detectTrailingPromiseMarker } from "../../utils/promise-markers";
+import type { PendingTaskInput } from "./engine-inputs";
 
 export interface PromptBuildContext {
   config: TaskConfig;
@@ -21,7 +22,7 @@ export interface PromptBuildContext {
   emitLog: (level: LogLevel, message: string, details?: Record<string, unknown>) => string;
   updateState: (update: Partial<TaskState>) => void;
   consumeInitialPromptAttachments: () => MessageAttachment[];
-  consumePendingPromptAttachments: () => MessageAttachment[];
+  consumePendingInput: () => PendingTaskInput | undefined;
   consumeSessionRecovery: () => boolean;
 }
 
@@ -70,8 +71,8 @@ const BLOCKED_OUTCOME_INSTRUCTION = `- If you are blocked by an external depende
 
 Do not claim completion. Clanky will stop the task without pushing it, and the user can resume it with a follow-up message.`;
 
-function consumePendingOrInitialAttachments(ctx: PromptBuildContext): MessageAttachment[] {
-  const pendingAttachments = ctx.consumePendingPromptAttachments();
+function consumePendingOrInitialAttachments(ctx: PromptBuildContext, input: PendingTaskInput | undefined): MessageAttachment[] {
+  const pendingAttachments = input?.attachments ?? [];
   if (pendingAttachments.length > 0) {
     return pendingAttachments;
   }
@@ -87,6 +88,7 @@ export function buildErrorContext(consecutiveErrors: TaskState["consecutiveError
 
 export function buildTaskPrompt(ctx: PromptBuildContext, _iteration: number): PromptInput {
   const sessionWasRecreated = ctx.consumeSessionRecovery();
+  const pending = ctx.consumePendingInput();
   let model = ctx.config.model;
   if (ctx.state.pendingModel) {
     model = ctx.state.pendingModel;
@@ -99,26 +101,26 @@ export function buildTaskPrompt(ctx: PromptBuildContext, _iteration: number): Pr
   }
 
   if (ctx.state.status === "planning" && ctx.state.planMode?.active) {
-    return buildPlanModePrompt(ctx, model, sessionWasRecreated);
+    return buildPlanModePrompt(ctx, { model, sessionWasRecreated, pending });
   }
 
-  if (ctx.state.pendingPromptMode === "direct_user") {
-    return buildDirectUserPrompt(ctx, model, sessionWasRecreated);
+  if (pending?.intent === "direct_user") {
+    return buildDirectUserPrompt(ctx, { model, sessionWasRecreated, pending });
   }
 
-  return buildExecutionPrompt(ctx, model);
+  return buildExecutionPrompt(ctx, model, pending);
 }
 
 function buildPlanModePrompt(
   ctx: PromptBuildContext,
-  model: ModelConfig | undefined,
-  sessionWasRecreated: boolean,
+  options: { model: ModelConfig | undefined; sessionWasRecreated: boolean; pending?: PendingTaskInput },
 ): PromptInput {
+  const { model, sessionWasRecreated, pending } = options;
   const feedbackRounds = ctx.state.planMode!.feedbackRounds;
 
-  if (feedbackRounds === 0 && !ctx.state.pendingPrompt) {
+  if (feedbackRounds === 0 && !pending) {
     const attachments = ctx.consumeInitialPromptAttachments();
-    ctx.emitUserMessage(ctx.config.prompt, "initial-goal", attachments);
+    ctx.emitUserMessage(ctx.config.prompt, `user-msg-${ctx.config.id}-initial-goal`, attachments);
 
     const errorContext = buildErrorContext(ctx.state.consecutiveErrors);
     const questionsInstruction = ctx.config.autoAcceptPlan === true
@@ -153,11 +155,11 @@ ${finalInstructions}`;
       : prompt;
   }
 
-  const feedback = ctx.state.pendingPrompt ?? "Please refine the plan based on feedback.";
-  const attachments = consumePendingOrInitialAttachments(ctx);
+  const feedback = pending?.content ?? "Please refine the plan based on feedback.";
+  const attachments = consumePendingOrInitialAttachments(ctx, pending);
 
-  if (ctx.state.pendingPrompt) {
-    ctx.emitUserMessage(ctx.state.pendingPrompt, `plan-feedback-${feedbackRounds}`, attachments);
+  if (pending) {
+    ctx.emitUserMessage(pending.content, pending.id, attachments);
   }
 
   const text = `The user has provided feedback on your plan:
@@ -170,8 +172,6 @@ When the plan is ready, end your response with:
 
 <promise>PLAN_READY</promise>`;
 
-  ctx.updateState({ pendingPrompt: undefined, pendingPromptMode: undefined });
-
   const prompt: PromptInput = {
     parts: buildPromptParts(text, attachments),
     model,
@@ -181,26 +181,22 @@ When the plan is ready, end your response with:
     : prompt;
 }
 
-function buildExecutionPrompt(ctx: PromptBuildContext, model: ModelConfig | undefined): PromptInput {
-  const userMessage = ctx.state.pendingPrompt;
+function buildExecutionPrompt(ctx: PromptBuildContext, model: ModelConfig | undefined, pending: PendingTaskInput | undefined): PromptInput {
+  const userMessage = pending?.content;
   const attachments = userMessage
-    ? consumePendingOrInitialAttachments(ctx)
+    ? consumePendingOrInitialAttachments(ctx, pending)
     : ctx.state.currentIteration <= 1
     ? ctx.consumeInitialPromptAttachments()
     : [];
 
   if (userMessage) {
-    ctx.emitUserMessage(userMessage, `injected-${crypto.randomUUID()}`, attachments);
+    ctx.emitUserMessage(userMessage, pending!.id, attachments);
     ctx.emitLog("info", "User injected a new message", {
       originalGoal: ctx.config.prompt.slice(0, 50) + (ctx.config.prompt.length > 50 ? "..." : ""),
       userMessage: userMessage.slice(0, 50) + (userMessage.length > 50 ? "..." : ""),
     });
-    ctx.updateState({
-      pendingPrompt: undefined,
-      pendingPromptMode: undefined,
-    });
   } else if (ctx.state.currentIteration <= 1) {
-    ctx.emitUserMessage(ctx.config.prompt, "initial-goal", attachments);
+    ctx.emitUserMessage(ctx.config.prompt, `user-msg-${ctx.config.id}-initial-goal`, attachments);
   }
 
   const userMessageSection = userMessage
@@ -238,24 +234,19 @@ ${BLOCKED_OUTCOME_INSTRUCTION}
 
 function buildDirectUserPrompt(
   ctx: PromptBuildContext,
-  model: ModelConfig | undefined,
-  sessionWasRecreated: boolean,
+  options: { model: ModelConfig | undefined; sessionWasRecreated: boolean; pending: PendingTaskInput },
 ): PromptInput {
-  const userMessage = ctx.state.pendingPrompt;
+  const { model, sessionWasRecreated, pending } = options;
+  const userMessage = pending.content;
   if (!userMessage) {
     throw new Error("Direct user prompt requested without a pending message");
   }
 
-  const attachments = consumePendingOrInitialAttachments(ctx);
-  ctx.emitUserMessage(userMessage, `user-turn-${crypto.randomUUID()}`, attachments);
+  const attachments = consumePendingOrInitialAttachments(ctx, pending);
+  ctx.emitUserMessage(userMessage, pending.id, attachments);
   ctx.emitLog("info", "User sent a direct message", {
     userMessage: userMessage.slice(0, 50) + (userMessage.length > 50 ? "..." : ""),
   });
-  ctx.updateState({
-    pendingPrompt: undefined,
-    pendingPromptMode: undefined,
-  });
-
   const prompt: PromptInput = {
     parts: buildPromptParts(userMessage, attachments),
     model,

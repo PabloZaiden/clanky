@@ -5,12 +5,10 @@
 import {
   createAcpSessionNotFoundError,
   getAcpErrorMessage,
-  isAcpError,
   isAcpErrorCode,
 } from "../backends/acp";
 import type {
   Backend,
-  ImportableSession,
 } from "../backends/types";
 import type { Chat } from "@/shared";
 import {
@@ -27,6 +25,11 @@ import { managedContextIdentityResolver } from "./managed-context-identity";
 import { managedCredentialService } from "./managed-credential-service";
 import { buildManagedContextEnvironment } from "./managed-context-environment";
 import { createLogger } from "@pablozaiden/webapp/server";
+import { requireCurrentUserId } from "../context/user-context";
+import { createOwnedHarnessSession, resumeOwnedHarnessSession } from "./harness-session";
+import { HarnessError } from "../backends/harness-errors";
+import { harnessActivityService } from "./harness-activity-service";
+import { isDomainError } from "../domain/domain-error";
 import type {
   ChatSessionPort,
   ChatStatePort,
@@ -42,7 +45,7 @@ export interface ChatSessionServiceDependencies {
   worktree: ChatWorktreePort;
   backendManager?: Pick<
     typeof backendManager,
-    "getBackendAsync" | "getChatBackend" | "disconnectChat" | "createBackendForExecutionHost" | "getWorkspaceSettings"
+    "getBackendAsync" | "getChatBackend" | "getInitializedContextBackend" | "disconnectChat" | "createBackendForExecutionHost" | "getWorkspaceSettings"
   >;
   sshCredentialManager?: Pick<typeof sshCredentialManager, "getPasswordForToken">;
   hasActiveStream?: (chatId: string) => boolean;
@@ -53,7 +56,7 @@ export class ChatSessionService implements ChatSessionPort {
   private readonly worktree: ChatWorktreePort;
   private readonly backendManager: Pick<
     typeof backendManager,
-    "getBackendAsync" | "getChatBackend" | "disconnectChat" | "createBackendForExecutionHost" | "getWorkspaceSettings"
+    "getBackendAsync" | "getChatBackend" | "getInitializedContextBackend" | "disconnectChat" | "createBackendForExecutionHost" | "getWorkspaceSettings"
   >;
   private readonly sshCredentialManager: Pick<typeof sshCredentialManager, "getPasswordForToken">;
   private readonly hasActiveStream: (chatId: string) => boolean;
@@ -78,30 +81,25 @@ export class ChatSessionService implements ChatSessionPort {
     return this.backendManager.getChatBackend(chatId, workspaceId);
   }
 
-  async getWorkspaceBackend(workspaceId: string, directory: string): Promise<Backend> {
-    const workspace = await this.state.getWorkspace(workspaceId);
-    if (!workspace) {
-      throw new Error(`Workspace not found: ${workspaceId}`);
-    }
-
-    const backend = await this.backendManager.getBackendAsync(workspaceId);
-    if (!backend.isConnected() || backend.getDirectory() !== directory) {
-      if (backend.isConnected()) {
-        await backend.disconnect();
-      }
-      const settings = await this.backendManager.getWorkspaceSettings(workspaceId);
-      await backend.connect(buildConnectionConfig(settings, directory));
-    }
-    return backend;
+  async getActivity(chatId: string) {
+    const chat = await this.state.getChatSummary(chatId);
+    if (!chat) throw new HarnessError("harness_session_not_found", "The chat is unavailable.");
+    const backend = this.directChatBackends.get(chatId) ?? this.backendManager.getInitializedContextBackend(chatId);
+    if (chat.state.session?.binding?.adapter === "acp" || backend?.harness.capabilities.activity === "unavailable") return { observation: "unavailable" as const, reason: "unsupported" as const };
+    if (!backend?.isConnected()) return { observation: "unavailable" as const, reason: "disconnected" as const };
+    const binding = chat.state.session?.binding;
+    if (!binding) throw new HarnessError("harness_session_not_owned", "Activity requires an owned conversation.");
+    return harnessActivityService.getActivity({ kind: "chat", id: chatId }, binding, backend);
   }
 
-  async listImportableSessions(workspaceId: string): Promise<ImportableSession[]> {
-    const workspace = await this.state.getWorkspace(workspaceId);
-    if (!workspace) {
-      throw new Error(`Workspace not found: ${workspaceId}`);
-    }
-    const backend = await this.getWorkspaceBackend(workspaceId, workspace.directory);
-    return backend.listSessions(workspace.directory);
+  async stopActivity(chatId: string, activityId: string) {
+    const chat = await this.state.getChatSummary(chatId);
+    if (!chat) throw new HarnessError("harness_session_not_found", "The chat is unavailable.");
+    const backend = this.directChatBackends.get(chatId) ?? this.backendManager.getInitializedContextBackend(chatId);
+    if (!backend?.isConnected()) throw new HarnessError("harness_transport_closed", "Reconnect before stopping native activity.");
+    const binding = chat.state.session?.binding;
+    if (!binding) throw new HarnessError("harness_session_not_owned", "Activity control requires an owned conversation.");
+    return harnessActivityService.stopActivity({ kind: "chat", id: chatId }, binding, backend, activityId);
   }
 
   async ensureBackendConnected(
@@ -175,11 +173,12 @@ export class ChatSessionService implements ChatSessionPort {
     if (chat.state.session?.id) {
       try {
         const existing = await raceWithAbort(
-          backend.getSession(chat.state.session.id),
+          resumeOwnedHarnessSession(backend, chat.state.session, this.sessionContext(chat, backend)),
           options?.signal,
         );
         throwIfAborted(options?.signal);
         if (existing) {
+          if (chat.state.session.binding) await harnessActivityService.observe({ kind: "chat", id: chat.config.id }, chat.state.session.binding, backend);
           return chat;
         }
         if (options?.recreateIfMissing) {
@@ -187,9 +186,9 @@ export class ChatSessionService implements ChatSessionPort {
         }
         return this.failLostSession(chat, createAcpSessionNotFoundError(chat.state.session.id));
       } catch (error) {
-        if (isAcpErrorCode(error, "acp_session_not_found")) {
+        if (isAcpErrorCode(error, "acp_session_not_found") || (error instanceof HarnessError && error.code === "harness_session_not_found")) {
           if (options?.recreateIfMissing) {
-            return this.recreateSession(chat, backend, options);
+            return this.recreateSession(chat, backend, { ...options, cause: error });
           }
           return this.failLostSession(chat, error);
         }
@@ -224,11 +223,11 @@ export class ChatSessionService implements ChatSessionPort {
       }),
     };
     throwIfAborted(options.signal);
-    const sessionPromise = backend.createSession({
+    const sessionPromise = createOwnedHarnessSession(backend, {
       title: `Clanky Chat: ${stagedWorking.chat.config.name}`,
       directory: stagedWorking.directory,
       model: stagedWorking.chat.config.model.modelID,
-    });
+    }, this.sessionContext(stagedWorking.chat, backend));
     let session: Awaited<typeof sessionPromise>;
     try {
       session = await raceWithAbort(sessionPromise, options.signal);
@@ -262,10 +261,11 @@ export class ChatSessionService implements ChatSessionPort {
     }
     throwIfAborted(options.signal);
 
-    return this.state.updateState(stagedWorking.chat, {
+    const created = await this.state.updateState(stagedWorking.chat, {
       ...stagedWorking.chat.state,
       session: {
         id: session.id,
+        binding: session.binding,
       },
       startedAt: stagedWorking.chat.state.startedAt ?? createTimestamp(),
       lastActivityAt: createTimestamp(),
@@ -273,6 +273,8 @@ export class ChatSessionService implements ChatSessionPort {
     }, {
       expectedStatus: options.signal ? stagedWorking.chat.state.status : undefined,
     });
+    if (session.binding) await harnessActivityService.observe({ kind: "chat", id: chat.config.id }, session.binding, backend);
+    return await this.state.getChat(chat.config.id) ?? created;
   }
 
   async reconnectSession(chat: Chat, options: ReconnectChatOptions = {}): Promise<Chat> {
@@ -294,7 +296,7 @@ export class ChatSessionService implements ChatSessionPort {
       }
 
       try {
-        const existing = await backend.getSession(reconnectingChat.state.session.id);
+        const existing = await resumeOwnedHarnessSession(backend, reconnectingChat.state.session, this.sessionContext(reconnectingChat, backend));
         if (!existing) {
           reconnectingChat = await this.ensureSession(reconnectingChat, backend, {
             recreateIfMissing: true,
@@ -302,8 +304,9 @@ export class ChatSessionService implements ChatSessionPort {
           });
           return this.finishReconnect(reconnectingChat);
         }
+        if (reconnectingChat.state.session.binding) await harnessActivityService.observe({ kind: "chat", id: chat.config.id }, reconnectingChat.state.session.binding, backend);
       } catch (error) {
-        if (!isAcpErrorCode(error, "acp_session_not_found")) {
+        if (!isAcpErrorCode(error, "acp_session_not_found") && !(error instanceof HarnessError && error.code === "harness_session_not_found")) {
           throw error;
         }
         reconnectingChat = await this.ensureSession(reconnectingChat, backend, {
@@ -321,6 +324,7 @@ export class ChatSessionService implements ChatSessionPort {
   }
 
   async disconnectChat(chatId: string): Promise<void> {
+    await harnessActivityService.close({ kind: "chat", id: chatId });
     const sshBackend = this.directChatBackends.get(chatId);
     let sshDisconnectError: unknown;
     if (sshBackend) {
@@ -329,6 +333,7 @@ export class ChatSessionService implements ChatSessionPort {
         if (sshBackend.isConnected()) {
           await sshBackend.disconnect();
         }
+
       } catch (error) {
         sshDisconnectError = error;
         log.error("Failed to disconnect SSH chat backend", { chatId, error: String(error) });
@@ -340,6 +345,15 @@ export class ChatSessionService implements ChatSessionPort {
     if (sshDisconnectError) {
       throw sshDisconnectError;
     }
+  }
+
+  private sessionContext(chat: Chat, backend: Backend) {
+    return {
+      ownerId: requireCurrentUserId(),
+      contextId: chat.config.id,
+      directory: backend.getDirectory(),
+      executionHost: chat.config.source?.kind === "execution_host" ? chat.config.source.executionHost : chat.config.executionHostBinding,
+    };
   }
 
   async configureSessionModel(backend: Backend, sessionId: string, desiredModel: string): Promise<void> {
@@ -463,9 +477,16 @@ export class ChatSessionService implements ChatSessionPort {
     options: {
       workingDirectory?: ChatDirectoryResolution;
       signal?: AbortSignal;
+      cause?: unknown;
     } = {},
   ): Promise<Chat> {
     throwIfAborted(options.signal);
+    if (backend.harness.capabilities.adapter !== "acp") {
+      throw new HarnessError("harness_session_not_found", "The owned native conversation is unavailable. Start a new chat instead of replacing its identity.", {
+        cause: options.cause,
+        details: { conversationId: chat.state.session?.id },
+      });
+    }
     const reconnecting = chat.state.status === "reconnecting"
       ? chat
       : await this.state.updateState(chat, {
@@ -500,7 +521,7 @@ export class ChatSessionService implements ChatSessionPort {
 
   private async failChat(chat: Chat, error: unknown): Promise<Chat> {
     const message = typeof error === "string" ? error : getAcpErrorMessage(error);
-    const errorCode = isAcpError(error) ? error.code : undefined;
+    const errorCode = isDomainError(error) ? error.code : undefined;
     log.error("Chat runtime error", { chatId: chat.config.id, error: message });
     return this.state.markChatError(chat, message, errorCode);
   }

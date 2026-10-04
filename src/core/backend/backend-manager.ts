@@ -7,14 +7,18 @@
  */
 
 import {
-  AcpBackend,
   WorkspaceAcpTransportLifecycle,
   createAcpConnectionTimeoutError,
 } from "../../backends/acp";
 import type { Backend } from "../../backends/types";
+import { createLocalHarnessBackend } from "../../backends/harness-factory";
+import { HarnessError } from "../../backends/harness-errors";
 import { getWorkspace } from "../../persistence/workspaces";
 import {
   getDefaultRuntimeServerSettings,
+  createAgentSettings,
+  areServerSettingsEqual,
+  type AgentSettings,
   type RuntimeServerSettings,
   type ServerSettings,
 } from "@/shared/settings";
@@ -55,6 +59,9 @@ import {
   type WorkspaceSshTargetInput,
 } from "../../persistence/workspace-execution-targets";
 import type { SshConnectionTarget } from "../ssh-connection-target";
+import { assertHarnessHostPolicy } from "./harness-host-policy";
+import { isRemoteOnlyMode } from "../config";
+import { MeshHarnessBackend } from "../../backends/mesh-harness-backend";
 
 interface WorkspaceBackendOptions {
   workspaceId: string;
@@ -134,20 +141,18 @@ class BackendManager {
 
   private async buildRuntimeSettings(
     binding: ExecutionHostBinding,
-    provider: AgentProvider,
+    agent: AgentSettings,
     sshPassword?: string,
     sshTargetOverride?: SshConnectionTarget,
   ): Promise<RuntimeServerSettings> {
-    executionHostService.requireBindingCapability(
-      binding,
-      "acpRuntime",
-      undefined,
-      1,
-    );
+    executionHostService.validateBinding(binding);
+    assertHarnessHostPolicy(agent, binding.host.kind);
+    if (agent.adapter === "acp") executionHostService.requireBindingCapability(binding, "acpRuntime", undefined, 1);
+    else if (binding.host.kind === "mesh") executionHostService.requireBindingCapability(binding, "commandExecution", undefined, 1);
     if (binding.host.kind !== "ssh") {
       return {
         agent: {
-          provider,
+          ...agent,
           transport: "stdio",
         },
       };
@@ -162,7 +167,7 @@ class BackendManager {
       }
       return {
         agent: {
-          provider,
+          ...agent,
           transport: "ssh",
           hostname: target.host,
           port: target.port,
@@ -177,7 +182,7 @@ class BackendManager {
     }
     return {
       agent: {
-        provider,
+        ...agent,
         transport: "ssh",
         hostname: server.address,
         port: server.port ?? 22,
@@ -203,14 +208,23 @@ class BackendManager {
             : workspaceOptions.executionHostBinding.host.nodeId,
         })
       : undefined;
-    switch (settings.agent.provider) {
-      case "opencode":
-      case "copilot":
-        // Both providers use the same backend implementation for now.
-        return new AcpBackend({ transportLifecycleFactory });
-      default:
-        return new AcpBackend({ transportLifecycleFactory });
+    if (settings.agent.adapter !== "acp") {
+      if (settings.agent.transport === "ssh") throw new HarnessError("harness_unsupported_feature", "Direct SSH supports ACP only.");
+      if (workspaceOptions && (
+        workspaceOptions.executionHostBinding.host.kind === "ssh"
+        || workspaceOptions.executionHostBinding.host.nodeId !== workspaceOptions.localNodeId
+      )) {
+        const host = workspaceOptions.executionHostBinding.host;
+        if (host.kind !== "mesh") throw new HarnessError("harness_unsupported_feature", "The selected execution host does not support native Mesh routing.");
+        return new MeshHarnessBackend({
+          adapter: settings.agent.adapter, workspaceId: workspaceOptions.workspaceId, executionNodeId: host.nodeId,
+        });
+      }
+      if (isRemoteOnlyMode()) {
+        throw new HarnessError("harness_unsupported_feature", "Local harness execution is disabled in remote-only mode.");
+      }
     }
+    return createLocalHarnessBackend(settings.agent.adapter, transportLifecycleFactory);
   }
 
   /**
@@ -235,7 +249,7 @@ class BackendManager {
 
     const settings = await this.buildRuntimeSettings(
       workspace.executionHostBinding,
-      workspace.serverSettings.agent.provider,
+      workspace.serverSettings.agent,
     );
     const workspaceOptions = await this.getWorkspaceBackendOptions(workspace);
     let state = this.connections.get(workspaceId);
@@ -255,7 +269,7 @@ class BackendManager {
     }
 
     if (
-      state.settings.agent.provider !== settings.agent.provider
+      !areServerSettingsEqual(state.settings, settings)
       || !state.executionHostBinding
       || !executionHostBindingsEqual(
         state.executionHostBinding,
@@ -672,13 +686,13 @@ class BackendManager {
     const runtimeSettings = binding
       ? await this.buildRuntimeSettings(
           binding,
-          settings.agent.provider,
+          settings.agent,
           undefined,
           directSshTarget,
         )
       : {
           agent: {
-            provider: settings.agent.provider,
+            ...settings.agent,
             transport: "ssh" as const,
             hostname: directSshTarget!.host,
             port: directSshTarget!.port,
@@ -864,6 +878,7 @@ class BackendManager {
     const status: import("@/shared/settings").ConnectionStatus = {
       connected: state?.backend.isConnected() ?? false,
       provider,
+      adapter: workspace?.serverSettings.agent.adapter ?? "acp",
       transport: workspace?.executionHostBinding.host.kind ?? "local",
       capabilities: state ? this.getAgentCapabilities(state.settings) : [],
       serverUrl: state ? buildAgentServerUrl(state.settings) : undefined,
@@ -941,7 +956,7 @@ class BackendManager {
     }
     return await this.buildRuntimeSettings(
       workspace.executionHostBinding,
-      workspace.serverSettings.agent.provider,
+      workspace.serverSettings.agent,
     );
   }
 
@@ -1053,8 +1068,9 @@ class BackendManager {
     return this.getTaskBackend(chatId, workspaceId);
   }
 
-  getInitializedChatBackend(chatId: string): Backend | null {
-    return this.taskConnections.get(chatId)?.backend ?? null;
+  getInitializedContextBackend(contextId: string): Backend | null {
+    if (this.isTestBackend && this.testBackend) return this.testBackend;
+    return this.taskConnections.get(contextId)?.backend ?? null;
   }
 
   /**
@@ -1203,7 +1219,7 @@ class BackendManager {
     const workspaceOptions = await this.getWorkspaceBackendOptions(workspace);
     const runtimeSettings = await this.buildRuntimeSettings(
       workspace.executionHostBinding,
-      settings.agent.provider,
+      settings.agent,
     );
     return this.createBackendForSettings(runtimeSettings, workspaceOptions);
   }
@@ -1214,7 +1230,7 @@ class BackendManager {
     provider: AgentProvider,
     sshPassword?: string,
   ): Promise<{ backend: Backend; settings: RuntimeServerSettings }> {
-    const settings = await this.buildRuntimeSettings(binding, provider, sshPassword);
+    const settings = await this.buildRuntimeSettings(binding, createAgentSettings("acp", provider), sshPassword);
     if (this.isTestBackend && this.testBackend) {
       this.taskConnections.set(connectionId, {
         userId: requireCurrentUserId(),

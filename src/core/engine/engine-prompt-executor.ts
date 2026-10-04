@@ -3,7 +3,8 @@
  */
 
 import type { PersistedToolCall, TaskConfig, TaskState } from "@/shared/task";
-import type { AgentEvent, PromptInput } from "../../backends/types";
+import type { PromptInput } from "../../backends/types";
+import type { HarnessEvent as AgentEvent } from "@/shared/harness-events";
 import type { AgentEventTranscriptResult } from "../agent-event-transcript-interpreter";
 import { createTimestamp, type LogLevel } from "@/shared/events";
 import {
@@ -29,6 +30,8 @@ import {
 } from "../../backends/acp";
 import { DEFAULT_TASK_CONFIG } from "@/shared/task";
 import { log } from "@pablozaiden/webapp/server";
+import { HarnessError } from "../../backends/harness-errors";
+import { waitForHarnessQuiescence } from "../harness-quiescence";
 
 export interface TaskPromptExecutorOptions {
   backend: TaskBackend;
@@ -50,6 +53,7 @@ export interface TaskPromptExecutorOptions {
   isAborted: () => boolean;
   isInjectionPending: () => boolean;
   resetIterationContextForRetry: (ctx: IterationContext) => void;
+  isCompletionMessage: (content: string) => boolean;
 }
 
 export class TaskPromptExecutorImpl implements TaskPromptExecutor {
@@ -66,6 +70,7 @@ export class TaskPromptExecutorImpl implements TaskPromptExecutor {
   private readonly isAborted: TaskPromptExecutorOptions["isAborted"];
   private readonly isInjectionPending: TaskPromptExecutorOptions["isInjectionPending"];
   private readonly resetIterationContextForRetry: TaskPromptExecutorOptions["resetIterationContextForRetry"];
+  private readonly isCompletionMessage: TaskPromptExecutorOptions["isCompletionMessage"];
   private currentStreamHandle: AgentStreamHandle | null = null;
 
   constructor(options: TaskPromptExecutorOptions) {
@@ -82,6 +87,7 @@ export class TaskPromptExecutorImpl implements TaskPromptExecutor {
     this.isAborted = options.isAborted;
     this.isInjectionPending = options.isInjectionPending;
     this.resetIterationContextForRetry = options.resetIterationContextForRetry;
+    this.isCompletionMessage = options.isCompletionMessage;
   }
 
   async execute(
@@ -98,6 +104,7 @@ export class TaskPromptExecutorImpl implements TaskPromptExecutor {
       await this.session.ensureSession();
     }
 
+    await waitForHarnessQuiescence(this.backend.harness, this.session.sessionId!, this.isAborted);
     await this.session.handlePendingModelChange();
 
     log.debug("[TaskEngine] runIteration: Building prompt");
@@ -129,7 +136,7 @@ export class TaskPromptExecutorImpl implements TaskPromptExecutor {
         streamHandle = streamController.start({
           sessionId: activeSessionId,
           prompt,
-          activityTimeoutMs: activityTimeoutSeconds * 1000,
+          activityTimeoutMs: this.backend.harness.capabilities.adapter === "acp" ? activityTimeoutSeconds * 1000 : null,
         });
         this.currentStreamHandle = streamHandle;
         const started = await streamHandle.startPrompt();
@@ -185,11 +192,26 @@ export class TaskPromptExecutorImpl implements TaskPromptExecutor {
               });
             }
 
-            if (event.type === "message.complete" || event.type === "error") {
+            if (event.type === "prompt.complete" || event.type === "error") {
               this.emitLog("debug", `Breaking out of event stream: ${event.type}`);
             }
+            if (
+              this.backend.harness.capabilities.adapter !== "acp"
+              && this.state.status !== "planning"
+              && promptResult.promptMode !== "direct_user"
+              && event.scope.kind === "principal"
+              && event.type === "message.complete"
+              && this.isCompletionMessage(event.content)
+            ) return { stop: true };
           },
         });
+        if (
+          this.backend.harness.capabilities.adapter !== "acp"
+          && !this.isAborted()
+          && streamResult.lastEvent?.type !== "prompt.complete"
+          && streamResult.lastEvent?.type !== "error"
+          && !(streamResult.lastEvent?.type === "message.complete" && this.state.status !== "planning" && promptResult.promptMode !== "direct_user" && this.isCompletionMessage(streamResult.lastEvent.content))
+        ) throw new HarnessError("harness_transport_closed", "Native execution ended without a principal terminal signal.");
         if (streamResult.endedByInactivity) {
           const inactivityMessage = "AI response stream ended after inactivity.";
           const finalizedToolCalls = this.finalizeInFlightToolCalls(

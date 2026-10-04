@@ -7,6 +7,7 @@ import type { PersistedMessage } from "@/shared/task";
 import { DEFAULT_CHAT_CONFIG } from "@/shared/chat";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { requirePersistenceUserId } from "../ownership";
+import { parseStoredHarnessBinding, parseStoredHarnessState } from "../harness-binding";
 import {
   executionHostBindingFromRow,
   resolveExecutionHostBindingId,
@@ -40,6 +41,8 @@ export const ALLOWED_CHAT_COLUMNS = new Set([
   "last_activity_at",
   "session_id",
   "session_server_url",
+  "session_binding_json",
+  "harness_state_json",
   "error_message",
   "error_timestamp",
   "error_code",
@@ -157,6 +160,8 @@ export function chatToRow(chat: Chat): Record<string, unknown> {
     last_activity_at: state.lastActivityAt ?? null,
     session_id: state.session?.id ?? null,
     session_server_url: state.session?.serverUrl ?? null,
+    session_binding_json: state.session?.binding !== undefined ? JSON.stringify(state.session.binding) : null,
+    harness_state_json: state.harness ? JSON.stringify(state.harness) : null,
     error_message: state.error?.message ?? null,
     error_timestamp: state.error?.timestamp ?? null,
     error_code: state.error?.code ?? null,
@@ -230,10 +235,12 @@ export function rowToChat(row: Record<string, unknown>): Chat {
     startupStage: (row["startup_stage"] as ChatState["startupStage"] | null) ?? undefined,
   };
 
+  state.harness = parseStoredHarnessState(row["harness_state_json"], String(rowId));
   if (row["session_id"] !== null && row["session_id"] !== undefined) {
     state.session = {
       id: row["session_id"] as string,
       serverUrl: (row["session_server_url"] as string | null) ?? undefined,
+      binding: parseStoredHarnessBinding(row["session_binding_json"], String(rowId)),
     };
   }
 

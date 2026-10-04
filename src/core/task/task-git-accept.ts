@@ -6,6 +6,7 @@ import { backendManager } from "../backend-manager";
 import { log } from "@pablozaiden/webapp/server";
 import { assertValidTransition } from "../task-state-machine";
 import { taskFailure, taskFailureFromUnknown } from "./task-errors";
+import { assertTaskHarnessWorkspaceSafe } from "./task-harness";
 
 export async function acceptTaskImpl(ctx: TaskCtx, taskId: string): Promise<AcceptTaskResult> {
   if (ctx.tasksBeingAccepted.has(taskId)) {
@@ -17,6 +18,7 @@ export async function acceptTaskImpl(ctx: TaskCtx, taskId: string): Promise<Acce
     );
   }
 
+  await ctx.engines.get(taskId)?.waitForCompletionSettlement();
   const task = await ctx.getTask(taskId);
   if (!task) {
     return taskFailure("task_not_found", "Task not found", { details: { taskId } });
@@ -42,6 +44,7 @@ export async function acceptTaskImpl(ctx: TaskCtx, taskId: string): Promise<Acce
   log.debug(`[TaskManager] acceptTask: Starting accept for task ${taskId}`);
 
   try {
+    await assertTaskHarnessWorkspaceSafe(ctx, taskId);
     const reviewMode = task.state.reviewMode
       ? {
           ...task.state.reviewMode,

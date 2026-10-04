@@ -11,19 +11,87 @@ are trusted to execute commands and access files on the worker host.
 ## Protocol generations and migration
 
 Mesh protocol generations are global and aligned with the Clanky release major.
-The current and only supported generation is v5. Controller, relay, and worker
-data directories normalize their stored Mesh metadata automatically at startup
-without replacing identities, keys, or grants. New connections advertise and
-negotiate v5 before parsing or emitting Mesh contracts; peers that do not
-support v5 are rejected rather than silently downgraded.
+Clanky 6.0.x supports v6 and v5 and chooses the highest mutually supported
+generation. For a relay route, the controller, relay **and** worker must agree.
+A v5 relay cannot carry native v6 harness traffic. Existing v5 workers still
+use the ordinary ACP backend; there is no separate legacy backend.
+
+Startup migration 68 upgrades local generation metadata without replacing
+identities, keys, grants, or confirmed peer generations. Successful signed
+worker discovery/health exchanges and relay reconnects refresh peer evidence
+after upgrades. The compatibility adapter projects exact v5 payloads, including
+`supportedProtocolVersions: [5]` and `preferredProtocolVersion: 5`; changing the
+local preferred generation does not change v5 signatures or schemas.
+
+Keep v5 throughout 6.0.x. Remove it **only for 6.1.0 after confirming that every
+controller, relay, and worker has rolled out v6**. Do not combine that cleanup
+with a breaking wire change.
 
 The Mesh status and Settings views show each controller, relay, and worker
 binary version, supported generations, and the generation observed in the last
-successful exchange. A future breaking generation should follow the same
-pattern: add the new generation behind a narrow adapter, migrate persisted
-state idempotently, negotiate before parsing or emitting contracts, run a
-short dual-version window, then delete the old adapter and its tests once
-rollout is confirmed.
+successful exchange, plus execution-host capabilities. Local protocol status
+also advertises the binary's harness adapters; an adapter being present does
+not prove its external runtime is installed or authenticated.
+
+Before selecting a native adapter, check worker and relay generations in
+`clanky mesh status` and `clanky mesh relay status`. A native request rejected
+by a v5 hop is not retried through ACP. Upgrade that hop or explicitly select
+ACP on the workspace.
+
+## Choose a harness
+
+The workspace selects the adapter; each task or chat selects its model.
+Execution-host transport and harness are independent:
+
+| Execution host | Available adapters |
+| --- | --- |
+| Local | Copilot native, Codex native, OpenCode 2 native, ACP |
+| Mesh v6, including v6 relays | Copilot native, Codex native, OpenCode 2 native, ACP |
+| Mesh v5 or a route through a v5 relay | ACP only |
+| Direct SSH | ACP only |
+
+Install and authenticate the selected runtime under the **worker service
+account**, not just on the controller. Native support uses Copilot SDK 1.0.15
+with CLI 1.0.91, Codex app-server CLI 0.159.2, and OpenCode runtime/client
+2.0.20. ACP remains an independent provider with its own selected harness
+preset, never an automatic native fallback. Existing workspace presets migrate
+to the ACP adapter without changing their original preset.
+
+Native Mesh uses a provider-neutral encrypted RPC/lifetime-event gateway,
+not ACP framing. The worker owns native subprocesses and performs repository
+operations on that host through `CommandExecutor`. Model catalogs, native
+conversation IDs, principal/child attribution, admission receipts, and scoped
+Stop retain the selected provider's capabilities and limitations.
+
+## Native lifetime, recovery, and cleanup
+
+- Assistant message completion is not principal turn completion or quiescence.
+  Lifetime activity continues after a prompt ends; stopping one owned child
+  does not stop the principal, siblings, worker, or controller.
+- Completed task results stay completed even if owned background work remains.
+  Cleanup and Git safety are separate; failed activity queries are unavailable,
+  never an empty successful graph.
+- Native admission records keep the canonical queued-input ID separately from
+  native client/message/turn IDs. An unknown admission is not unsent: reconcile
+  it before deleting, replacing, draining, or retrying that input.
+  A lost, malformed, or mismatched receipt remains unknown.
+- Native leases use the existing signed controller grant, encrypted managed
+  environment, execution-host ownership, renewal, and relay protections.
+  Expiry, revocation, disconnect, and shutdown close the lease-owned runtime
+  and its subscriptions/processes. Deleting one conversation does not release
+  unrelated conversations on the same lease.
+- Cold resume must retain the original adapter, native ID, user, workspace,
+  context, directory, and execution-host binding. Worker-side ownership is
+  durable across leases; a changed or foreign binding is rejected rather than
+  silently replaced. Resolving a selected-host working directory does not
+  rewrite the original directory in its ownership binding.
+- Event observation is bounded and has no retained global history. A sequence
+  gap or overflow invalidates observation and requires authoritative refresh
+  and owned resume, not blind prompt or steering replay.
+
+Preserve the worker data directory during upgrades and service restarts. Do
+not copy a conversation binding to another user, workspace, controller, or
+worker. The workspace directory remains a navigation root, not a sandbox.
 
 ## Choose a topology
 

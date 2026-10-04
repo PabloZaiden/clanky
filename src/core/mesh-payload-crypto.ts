@@ -77,11 +77,16 @@ export function encryptMeshPayload(
 }
 
 export async function decryptMeshPayload(value: unknown): Promise<unknown> {
+  if (!isEncryptedMeshPayload(value)) return value;
+  const key = await getLocalMeshEncryptionPrivateKey();
+  return decryptMeshPayloadWithKey(value, key.export({ format: "pem", type: "pkcs8" }).toString());
+}
+
+export function decryptMeshPayloadWithKey(value: unknown, privateKey: string): unknown {
   if (!isEncryptedMeshPayload(value)) {
     return value;
   }
   try {
-    const privateKey = await getLocalMeshEncryptionPrivateKey();
     const contentKey = privateDecrypt(
       {
         key: privateKey,

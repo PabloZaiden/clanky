@@ -31,6 +31,7 @@ import { TaskOperationError, TaskUpdateError, type TaskUpdateErrorCode } from ".
 import { getWorkspace } from "../../persistence/workspaces";
 import { assertWorktreesAllowed, isGitBackedWorkspace } from "../workspace-capabilities";
 import { createIdempotentAsyncOperation } from "../../utils/async-operation";
+import { createTransientHarnessSession, cleanupTransientHarnessSession } from "../harness-session";
 
 export async function createTaskImpl(ctx: TaskCtx, options: CreateTaskOptions): Promise<Task> {
   const id = crypto.randomUUID();
@@ -147,11 +148,11 @@ export async function generateTaskTitleImpl(
     await backendManager.connect(options.workspaceId, options.directory);
     backend = backendManager.getBackend(options.workspaceId);
   }
-  const tempSession = await backend.createSession({
+  const tempSession = await createTransientHarnessSession(backend, {
     title: "Task Title Generation",
     directory: options.directory,
   });
-  const cleanupTempSession = createIdempotentAsyncOperation(() => backend.abortSession(tempSession.id));
+  const cleanupTempSession = createIdempotentAsyncOperation(() => cleanupTransientHarnessSession(backend, tempSession.id));
 
   try {
     const helperModel = await resolveEffectiveCheapModel({
@@ -183,6 +184,9 @@ export async function generateTaskTitleImpl(
 export async function getTaskImpl(ctx: TaskCtx, taskId: string): Promise<Task | null> {
   const engine = ctx.engines.get(taskId);
   if (engine) {
+    const persisted = await loadTaskSummary(taskId);
+    if (!persisted) return null;
+    engine.refreshHarnessState(persisted.state.harness);
     return { config: engine.config, state: engine.state };
   }
   return loadTask(taskId);
@@ -196,7 +200,7 @@ export async function getTaskSummaryImpl(ctx: TaskCtx, taskId: string): Promise<
 
   const engine = ctx.engines.get(taskId);
   if (engine) {
-    return createTaskListSnapshot({ config: persistedTask.config, state: engine.state });
+    return createTaskListSnapshot({ config: persistedTask.config, state: { ...engine.state, harness: persistedTask.state.harness } });
   }
   return persistedTask;
 }
@@ -206,7 +210,7 @@ export async function getAllTasksImpl(ctx: TaskCtx): Promise<Task[]> {
   return tasks.map((task) => {
     const engine = ctx.engines.get(task.config.id);
     if (engine) {
-      return { config: engine.config, state: engine.state };
+      return { config: engine.config, state: { ...engine.state, harness: task.state.harness } };
     }
     return task;
   });
@@ -217,7 +221,7 @@ export async function getTaskSummariesImpl(ctx: TaskCtx): Promise<Task[]> {
   return tasks.map((task) => {
     const engine = ctx.engines.get(task.config.id);
     if (engine) {
-      return createTaskListSnapshot({ config: engine.config, state: engine.state });
+      return createTaskListSnapshot({ config: engine.config, state: { ...engine.state, harness: task.state.harness } });
     }
     return task;
   });

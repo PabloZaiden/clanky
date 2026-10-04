@@ -2,18 +2,17 @@
  * Central session/run state store for the ACP backend.
  *
  * This is the single owner of per-session mutable state: the session cache and
- * directory map, live/replay subscriber sets, prompt sequencing/activity flags,
+ * directory map, live subscriber sets, prompt sequencing/activity flags,
  * assistant message normalization state, reasoning-part tracking, and tool-call
  * name tracking. Collaborators mutate this state only through the explicit
  * operations declared here so that cleanup stays deterministic and no raw
  * mutable map is shared across services.
  */
 
-import type { AgentEvent, AgentSession, SessionReplayEvent } from "../types";
+import type { AgentSession } from "../types";
+import type { HarnessEvent, HarnessEventPayload } from "@/shared/harness-events";
 import type { SessionEventSink } from "./contracts";
 import type { SessionSubscriber } from "./types";
-
-export type ReplaySubscriber = (event: SessionReplayEvent) => void;
 
 export class SessionStateStore implements SessionEventSink {
   /** Default connection directory used when a session has no tracked directory. */
@@ -21,9 +20,6 @@ export class SessionStateStore implements SessionEventSink {
 
   /** Live event subscriber callbacks by session. */
   private readonly sessionSubscribers = new Map<string, Set<SessionSubscriber>>();
-
-  /** Replay subscribers capture raw session/load history without normalization. */
-  private readonly replaySubscribers = new Map<string, Set<ReplaySubscriber>>();
 
   /** Whether message.start has been emitted for the active prompt per session. */
   private readonly sessionMessageStarted = new Map<string, boolean>();
@@ -106,13 +102,20 @@ export class SessionStateStore implements SessionEventSink {
     }
   }
 
-  emitSessionEvent(sessionId: string, event: AgentEvent): void {
+  emitSessionEvent(sessionId: string, event: HarnessEventPayload): void {
     const subscribers = this.sessionSubscribers.get(sessionId);
     if (!subscribers || subscribers.size === 0) {
       return;
     }
+    const scoped: HarnessEvent = {
+      ...event,
+      scope: {
+        kind: "principal",
+        native: { adapter: "acp", conversationId: sessionId },
+      },
+    };
     for (const subscriber of subscribers) {
-      subscriber(event);
+      subscriber(scoped);
     }
   }
 
@@ -128,40 +131,6 @@ export class SessionStateStore implements SessionEventSink {
         ...(error.code ? { code: error.code } : {}),
         ...(error.details ? { details: error.details } : {}),
       });
-    }
-  }
-
-  // ---- Replay subscribers ----
-
-  addReplaySubscriber(sessionId: string, subscriber: ReplaySubscriber): void {
-    const existing = this.replaySubscribers.get(sessionId) ?? new Set<ReplaySubscriber>();
-    existing.add(subscriber);
-    this.replaySubscribers.set(sessionId, existing);
-  }
-
-  removeReplaySubscriber(sessionId: string, subscriber: ReplaySubscriber): void {
-    const existing = this.replaySubscribers.get(sessionId);
-    if (!existing) {
-      return;
-    }
-    existing.delete(subscriber);
-    if (existing.size === 0) {
-      this.replaySubscribers.delete(sessionId);
-    }
-  }
-
-  hasReplaySubscribers(sessionId: string): boolean {
-    const subscribers = this.replaySubscribers.get(sessionId);
-    return !!subscribers && subscribers.size > 0;
-  }
-
-  deliverReplayEvent(sessionId: string, event: SessionReplayEvent): void {
-    const subscribers = this.replaySubscribers.get(sessionId);
-    if (!subscribers || subscribers.size === 0) {
-      return;
-    }
-    for (const subscriber of subscribers) {
-      subscriber(event);
     }
   }
 
@@ -377,19 +346,14 @@ export class SessionStateStore implements SessionEventSink {
         type: "message.complete",
         content,
       });
+      this.emitSessionEvent(sessionId, {
+        type: "prompt.complete",
+        outcome: "completed",
+      });
     } finally {
       this.clearPromptState(sessionId);
     }
     return true;
-  }
-
-  /** Reset streaming/normalization state around an import replay. */
-  clearImportState(sessionId: string): void {
-    this.sessionMessageStarted.delete(sessionId);
-    this.sessionMessageContent.delete(sessionId);
-    this.sessionReasoningPartKeys.delete(sessionId);
-    this.sessionLastReasoningChunkSignature.delete(sessionId);
-    this.clearToolNames(sessionId);
   }
 
   /** Reset streaming/normalization state after a completed synchronous prompt. */
@@ -423,7 +387,6 @@ export class SessionStateStore implements SessionEventSink {
     this.sessionCache.delete(sessionId);
     this.sessionDirectories.delete(sessionId);
     this.sessionSubscribers.delete(sessionId);
-    this.replaySubscribers.delete(sessionId);
     this.sessionMessageStarted.delete(sessionId);
     this.sessionMessageContent.delete(sessionId);
     this.sessionPromptSequences.delete(sessionId);
@@ -441,7 +404,6 @@ export class SessionStateStore implements SessionEventSink {
   /** Clear every session's state on disconnect. */
   clearAll(): void {
     this.sessionSubscribers.clear();
-    this.replaySubscribers.clear();
     this.sessionMessageStarted.clear();
     this.sessionMessageContent.clear();
     this.sessionPromptSequences.clear();

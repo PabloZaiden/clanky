@@ -37,7 +37,7 @@ import {
   type MeshRelayStreamTicketFrame,
   type MeshRelayWorkerStatus,
 } from "@/shared/mesh-relay";
-import { MESH_PROTOCOL_VERSION } from "@/shared/mesh-protocol";
+import { MESH_PROTOCOL_VERSION, type MeshProtocolVersion } from "@/shared/mesh-protocol";
 import {
   getMeshRelayFingerprint,
   verifyMeshRelaySignature,
@@ -216,8 +216,7 @@ interface RelayControlConnection {
   protocolVersion: RelayProtocolVersion;
 }
 
-type RelayProtocolVersion =
-  typeof MESH_PROTOCOL_VERSION;
+type RelayProtocolVersion = MeshProtocolVersion;
 
 interface ValidatedStreamRequest {
   requestId: string;
@@ -584,6 +583,13 @@ export class MeshRelayBroker {
       if (ticket.receiverSocket) attachingDataSockets++;
     }
     return this.controls.size + this.dataConnections.size + attachingDataSockets;
+  }
+
+  getControllerProtocolVersion(): MeshProtocolVersion | null {
+    for (const connection of this.controls.values()) {
+      if (connection.role === "controller" && connection.identity) return connection.protocolVersion;
+    }
+    return null;
   }
 
   openControl(
@@ -1218,6 +1224,9 @@ export class MeshRelayBroker {
   ): void {
     const request = validateStreamRoute(initiator, input);
     const receiver = this.resolveReceiver(initiator, request.targetNodeId);
+    if (request.path.startsWith("/api/mesh/internal/harness/") && (
+      initiator.protocolVersion !== 6 || receiver.protocolVersion !== 6
+    )) throw new RelayRequestError("protocol_mismatch", "Native traffic requires v6 on every Mesh hop.", 406);
     this.assertNodeCapacity(initiator.id);
     this.assertNodeCapacity(receiver.id);
 

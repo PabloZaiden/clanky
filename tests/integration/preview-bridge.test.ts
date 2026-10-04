@@ -40,6 +40,7 @@ function buildWorkspace(
     executionHostBinding,
     serverSettings: {
       agent: {
+        adapter: "acp",
         provider: "opencode",
       },
     },

@@ -30,6 +30,8 @@ export interface GitOperationContext {
 export interface GitCommitContext extends GitOperationContext {
   backend: TaskBackend;
   sessionId: string | null;
+  beforeCommit: () => Promise<boolean>;
+  onCommitFailure: () => void;
 }
 
 export async function clearTaskPlanningFolder(ctx: GitOperationContext): Promise<void> {
@@ -226,13 +228,13 @@ async function setupWorktree(ctx: GitOperationContext, directory: string, branch
   return worktreePath;
 }
 
-export async function commitTaskIteration(ctx: GitCommitContext, iteration: number, responseContent: string): Promise<void> {
+export async function commitTaskIteration(ctx: GitCommitContext, iteration: number, responseContent: string): Promise<boolean> {
   const directory = ctx.workingDirectory;
   const hasChanges = await ctx.git.hasUncommittedChanges(directory);
 
   if (!hasChanges) {
     ctx.emitLog("info", "No changes to commit");
-    return;
+    return true;
   }
 
   let message: string;
@@ -245,6 +247,7 @@ export async function commitTaskIteration(ctx: GitCommitContext, iteration: numb
   }
 
   try {
+    if (!await ctx.beforeCommit()) return false;
     ctx.emitLog("info", "Committing changes...");
     const commitInfo = await ctx.git.commit(directory, message, {
       expectedBranch: ctx.state.git?.workingBranch,
@@ -279,9 +282,11 @@ export async function commitTaskIteration(ctx: GitCommitContext, iteration: numb
       commit,
       timestamp: createTimestamp(),
     });
+    return true;
   } catch (err) {
-    ctx.emitLog("warn", `Failed to commit: ${String(err)}`);
-    log.error(`Failed to commit iteration ${iteration}: ${String(err)}`);
+    ctx.onCommitFailure();
+    ctx.emitLog("error", `Failed to commit: ${String(err)}`);
+    return false;
   }
 }
 

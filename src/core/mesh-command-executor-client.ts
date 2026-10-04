@@ -14,6 +14,7 @@ import {
   MESH_EXECUTION_ASYNC_REQUEST_TIMEOUT_MS,
   MESH_EXECUTION_CHANNEL,
   MESH_ACP_CHANNEL,
+  MESH_HARNESS_CHANNEL,
   MESH_EXECUTION_DEFAULT_TIMEOUT_MS,
   MESH_EXECUTION_SESSION_REQUEST_TIMEOUT_MS,
   MESH_EXECUTION_SESSION_REQUEST_TTL_MS,
@@ -25,7 +26,8 @@ import {
   MESH_ACP_SESSION_RENEWAL_SAFETY_MARGIN_MS,
   type MeshExecutionProtocolVersion,
 } from "@/shared/mesh-execution";
-import { MESH_PROTOCOL_VERSION } from "@/shared/mesh-protocol";
+import { discoverMeshWorkerGeneration } from "./mesh-worker-generation";
+import { assertHarnessMeshProtocol } from "./backend/harness-host-policy";
 import type {
   MeshExecutionAsyncCommandSnapshot,
 } from "@/shared/mesh-execution";
@@ -56,6 +58,7 @@ import type {
   GitEnvironmentVariableName,
 } from "./command-executor";
 import type { AgentProvider } from "@/shared/settings";
+import type { HarnessAdapter } from "@/shared/settings";
 
 const log = createLogger("core:mesh-command-executor-client");
 const MAX_QUEUED_EXECUTION_REQUESTS = 1024 * 1024;
@@ -75,7 +78,8 @@ export interface MeshCommandExecutorClientConfig {
   localUserId?: string;
   requestTimeoutMs?: number;
   fetch?: typeof globalThis.fetch;
-  channel?: typeof MESH_EXECUTION_CHANNEL | typeof MESH_ACP_CHANNEL;
+  channel?: typeof MESH_EXECUTION_CHANNEL | typeof MESH_ACP_CHANNEL | typeof MESH_HARNESS_CHANNEL;
+  adapter?: Exclude<HarnessAdapter, "acp">;
   sessionTtlMs?: number;
   managedEnvironment?: Record<string, string>;
 }
@@ -84,6 +88,8 @@ export interface MeshExecutionSessionConnection {
   route: MeshPeerRoute;
   sessionId: string;
   sessionToken: string;
+  protocolVersion: MeshExecutionProtocolVersion;
+  workerEncryptionPublicKey: string;
 }
 
 interface MeshExecutionSession {
@@ -261,7 +267,8 @@ export class MeshCommandExecutorClient {
   private readonly localUserId?: string;
   private readonly requestTimeoutMs: number;
   private readonly fetchImpl: typeof globalThis.fetch;
-  private readonly channel: typeof MESH_EXECUTION_CHANNEL | typeof MESH_ACP_CHANNEL;
+  private readonly channel: typeof MESH_EXECUTION_CHANNEL | typeof MESH_ACP_CHANNEL | typeof MESH_HARNESS_CHANNEL;
+  private readonly adapter?: Exclude<HarnessAdapter, "acp">;
   private readonly sessionTtlMs: number;
   private readonly managedEnvironment?: Record<string, string>;
   private session: MeshExecutionSession | null = null;
@@ -269,6 +276,7 @@ export class MeshCommandExecutorClient {
   private openingSession: Promise<void> | null = null;
   private openingSessionController: AbortController | null = null;
   private callerNodeId: string | null = null;
+  private workerEncryptionPublicKey = "";
   private sessionGeneration = 0;
   private sessionRenewalTimer: ReturnType<typeof setTimeout> | undefined;
   private sessionRenewalController: AbortController | null = null;
@@ -287,8 +295,9 @@ export class MeshCommandExecutorClient {
     this.requestTimeoutMs = config.requestTimeoutMs ?? MESH_EXECUTION_DEFAULT_TIMEOUT_MS;
     this.fetchImpl = config.fetch ?? globalThis.fetch;
     this.channel = config.channel ?? MESH_EXECUTION_CHANNEL;
+    this.adapter = config.adapter;
     this.sessionTtlMs = config.sessionTtlMs
-      ?? (this.channel === MESH_ACP_CHANNEL
+      ?? (this.channel !== MESH_EXECUTION_CHANNEL
         ? MESH_ACP_SESSION_REQUEST_TTL_MS
         : MESH_EXECUTION_SESSION_REQUEST_TTL_MS);
     this.managedEnvironment = config.managedEnvironment;
@@ -421,7 +430,11 @@ export class MeshCommandExecutorClient {
       );
     }
     const route = registration.route;
-    const protocolVersion: MeshExecutionProtocolVersion = MESH_PROTOCOL_VERSION;
+    const protocolVersion: MeshExecutionProtocolVersion = await discoverMeshWorkerGeneration(registration, signal, this.fetchImpl);
+    if (this.channel === MESH_HARNESS_CHANNEL) {
+      if (!this.adapter) throw new DomainError("mesh_execution_protocol_mismatch", "A native Mesh lease requires an adapter.");
+      assertHarnessMeshProtocol(this.adapter, protocolVersion);
+    }
 
     const channel = this.channel;
     let encryptedEnvironment: unknown;
@@ -452,6 +465,7 @@ export class MeshCommandExecutorClient {
         directory: this.directory,
         provider: this.provider,
         channel,
+        ...(channel === MESH_HARNESS_CHANNEL ? { adapter: this.adapter, ownerId: localUserId } : {}),
         ...(encryptedEnvironment === undefined ? {} : { encryptedEnvironment }),
         nonce: crypto.randomUUID(),
         expiresAt: new Date(Date.now() + sessionTtlMs).toISOString(),
@@ -516,6 +530,7 @@ export class MeshCommandExecutorClient {
       throw new DomainError("mesh_execution_session_invalid", "The mesh execution session opening was superseded.");
     }
     this.callerNodeId = identity.nodeId;
+    this.workerEncryptionPublicKey = registration.workerEncryptionPublicKey;
     this.route = route;
     this.session = {
       sessionId: body.sessionId,
@@ -540,11 +555,13 @@ export class MeshCommandExecutorClient {
       route: this.route,
       sessionId: this.session.sessionId,
       sessionToken: this.session.sessionToken,
+      protocolVersion: this.session.protocolVersion,
+      workerEncryptionPublicKey: this.workerEncryptionPublicKey,
     };
   }
 
   startSessionRenewal(): void {
-    if (this.channel !== MESH_ACP_CHANNEL || !this.session) {
+    if (this.channel === MESH_EXECUTION_CHANNEL || !this.session) {
       return;
     }
     this.clearSessionRenewal();
@@ -563,7 +580,7 @@ export class MeshCommandExecutorClient {
 
   private scheduleSessionRenewal(generation: number, requestedDelayMs?: number): void {
     if (
-      this.channel !== MESH_ACP_CHANNEL
+      this.channel === MESH_EXECUTION_CHANNEL
       || generation !== this.sessionGeneration
       || !this.session
       || !this.route
@@ -606,7 +623,7 @@ export class MeshCommandExecutorClient {
     const attempt = this.sessionRenewalAttempt + 1;
     try {
       const response = await this.post(
-        "api/mesh/internal/execution/acp/renew",
+        this.channel === MESH_HARNESS_CHANNEL ? "api/mesh/internal/harness/renew" : "api/mesh/internal/execution/acp/renew",
         null,
         {
           "x-clanky-mesh-session-id": session.sessionId,

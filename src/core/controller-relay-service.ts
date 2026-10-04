@@ -5,7 +5,8 @@
 import { createLogger } from "@pablozaiden/webapp/server";
 import {
   ControllerRelayNameSchema,
-  MeshRelayWellKnownDescriptorSchema,
+  MeshRelayWellKnownDescriptorV5Schema,
+  MeshRelayWellKnownDescriptorV6Schema,
   type ControllerRelayPairingStatus,
   type ControllerRelayStatusItem,
 } from "@/contracts/schemas/mesh-relay";
@@ -13,10 +14,10 @@ import {
   MESH_RELAY_DESCRIPTOR_PATH,
   normalizeMeshRelayOrigin,
   type MeshRelayPeerIdentity,
-  type MeshRelayWellKnownDescriptorV5,
+  type MeshRelayWellKnownDescriptor,
 } from "@/shared/mesh-relay";
 import { MESH_PROTOCOL_VERSIONS_HEADER, serializeMeshProtocolVersions } from "@/shared/mesh-protocol";
-import { MESH_PROTOCOL_VERSION } from "@/shared/mesh-protocol";
+import { MESH_SUPPORTED_PROTOCOL_VERSIONS, negotiateMeshProtocolVersion } from "@/shared/mesh-protocol";
 import type { MeshEnrollmentRoute } from "@/contracts/schemas/mesh";
 import type { MeshRelayPeerRoute } from "@/shared/mesh";
 import {
@@ -48,6 +49,7 @@ import {
 import { setMeshRelayTransport } from "./mesh-peer-transport";
 import { createMeshRelayPeerTransport } from "./mesh-relay-transport";
 import { requireMeshRuntimeRole } from "./mesh-runtime";
+import { negotiateMeshDescriptorGeneration } from "./mesh-protocol-version";
 
 const log = createLogger("core:controller-relay-service");
 
@@ -294,7 +296,7 @@ export class ControllerRelayService {
           relayUrl: normalizedRelayUrl,
           relayFingerprint: descriptor.fingerprint,
           role: "controller",
-          protocolVersion: MESH_PROTOCOL_VERSION,
+          protocolVersion: descriptor.negotiatedProtocolVersion!,
         },
       });
       try {
@@ -502,7 +504,7 @@ export class ControllerRelayService {
 
   private async fetchDescriptor(
     relayUrl: string,
-  ): Promise<MeshRelayWellKnownDescriptorV5> {
+  ): Promise<MeshRelayWellKnownDescriptor> {
     const controller = new AbortController();
     const timer = setTimeout(
       () => controller.abort(),
@@ -555,7 +557,9 @@ export class ControllerRelayService {
           { cause: error },
         );
       }
-      const parsed = MeshRelayWellKnownDescriptorSchema.safeParse(raw);
+      const generation = negotiateMeshDescriptorGeneration(raw);
+      if (!generation) throw new DomainError("mesh_relay_descriptor_invalid", "The Mesh relay has no highest mutually supported generation.");
+      const parsed = (generation === 6 ? MeshRelayWellKnownDescriptorV6Schema : MeshRelayWellKnownDescriptorV5Schema).safeParse(raw);
       if (!parsed.success) {
         throw new DomainError(
           "mesh_relay_descriptor_invalid",
@@ -563,7 +567,7 @@ export class ControllerRelayService {
           { cause: parsed.error },
         );
       }
-      if (parsed.data.negotiatedProtocolVersion !== MESH_PROTOCOL_VERSION) {
+      if (!parsed.data.negotiatedProtocolVersion || parsed.data.negotiatedProtocolVersion !== negotiateMeshProtocolVersion(MESH_SUPPORTED_PROTOCOL_VERSIONS, parsed.data.supportedProtocolVersions)) {
         throw new DomainError(
           "mesh_relay_descriptor_invalid",
           "The Mesh relay does not negotiate the required protocol generation.",
@@ -587,7 +591,7 @@ export class ControllerRelayService {
   private async refreshPairingProtocol(
     pairing: ControllerRelayPairing,
   ): Promise<ControllerRelayPairing> {
-    let descriptor: MeshRelayWellKnownDescriptorV5;
+    let descriptor: MeshRelayWellKnownDescriptor;
     try {
       descriptor = await this.fetchDescriptor(pairing.relayUrl);
     } catch (error) {
@@ -666,7 +670,7 @@ export class ControllerRelayService {
         relayUrl,
         relayFingerprint: pairing.relayFingerprint,
         role: "controller",
-        protocolVersion: MESH_PROTOCOL_VERSION,
+        protocolVersion: pairing.relayNegotiatedProtocolVersion!,
       },
       dispatch,
       onAuthenticated: () => {

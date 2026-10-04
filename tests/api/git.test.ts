@@ -280,6 +280,7 @@ describe("Git API Integration", () => {
         updatedAt: new Date().toISOString(),
         serverSettings: {
           agent: {
+            adapter: "acp",
             provider: "opencode",
           },
         },
@@ -309,6 +310,7 @@ describe("Git API Integration", () => {
         updatedAt: new Date().toISOString(),
         serverSettings: {
           agent: {
+            adapter: "acp",
             provider: "opencode",
           },
         },

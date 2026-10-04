@@ -5,7 +5,7 @@
 import type { TaskConfig, TaskState } from "@/shared/task";
 import type { LogLevel } from "@/shared/events";
 import type { AgentSession } from "../../backends/types";
-import { AcpBackend, getAcpErrorMessage, isAcpErrorCode } from "../../backends/acp";
+import { getAcpErrorMessage, isAcpErrorCode } from "../../backends/acp";
 import { backendManager, buildConnectionConfig } from "../backend-manager";
 import { log } from "@pablozaiden/webapp/server";
 import type {
@@ -16,6 +16,10 @@ import type {
 import { managedContextIdentityResolver } from "../managed-context-identity";
 import { managedCredentialService } from "../managed-credential-service";
 import { buildManagedContextEnvironment } from "../managed-context-environment";
+import { requireCurrentUserId } from "../../context/user-context";
+import { getWorkspace } from "../../persistence/workspaces";
+import { createOwnedHarnessSession, resumeOwnedHarnessSession } from "../harness-session";
+import { HarnessError } from "../../backends/harness-errors";
 
 export interface SessionOperationContext {
   backend: TaskBackend;
@@ -70,11 +74,11 @@ export async function setupTaskSession(ctx: SessionOperationContext): Promise<st
 
   log.debug("[TaskEngine] setupSession: About to create session");
   ctx.emitLog("info", "Creating new AI session...");
-  const session = await ctx.backend.createSession({
+  const session = await createOwnedHarnessSession(ctx.backend, {
     title: `Clanky Task: ${ctx.config.name}`,
     directory: ctx.workingDirectory,
     model: ctx.config.model?.modelID,
-  });
+  }, await taskSessionContext(ctx));
   log.debug("[TaskEngine] setupSession: Session created", {
     sessionId: session.id,
     requestedModel: ctx.config.model?.modelID ?? "default",
@@ -100,6 +104,7 @@ export async function setupTaskSession(ctx: SessionOperationContext): Promise<st
     session: {
       id: session.id,
       serverUrl,
+      binding: session.binding,
     },
   });
   log.debug("[TaskEngine] setupSession: Exit point");
@@ -120,10 +125,10 @@ export async function reconnectTaskSession(ctx: SessionOperationContext): Promis
     ? {
         id: existingSessionId,
         serverUrl: ctx.state.session?.serverUrl,
+        binding: ctx.state.session?.binding,
       }
     : undefined;
   if (existingSession?.id) {
-    ctx.setSessionId(existingSession.id);
     log.debug("[TaskEngine] reconnectSession: Found existing session in state", {
       sessionId: existingSession.id,
       serverUrl: existingSession.serverUrl,
@@ -153,11 +158,13 @@ export async function reconnectTaskSession(ctx: SessionOperationContext): Promis
       ctx.emitLog("info", "Backend connection re-established");
     }
 
-    const sessionLookupBackend = ctx.backend as Partial<Pick<AcpBackend, "getSession">>;
-    if (typeof sessionLookupBackend.getSession === "function") {
+    {
       try {
-        const remoteSession = await sessionLookupBackend.getSession(existingSession.id);
+        const remoteSession = await resumeOwnedHarnessSession(ctx.backend, existingSession, await taskSessionContext(ctx));
         if (!remoteSession) {
+          if (ctx.backend.harness.capabilities.adapter !== "acp") {
+            throw new HarnessError("harness_session_not_found", "The owned native conversation is unavailable.");
+          }
           ctx.emitLog("warn", "Persisted session no longer exists - creating a new session", {
             sessionId: existingSession.id,
           });
@@ -169,8 +176,10 @@ export async function reconnectTaskSession(ctx: SessionOperationContext): Promis
             createdNew: true,
           };
         }
+        ctx.updateState({ session: { ...existingSession, binding: remoteSession.binding } });
       } catch (error) {
-        if (isAcpErrorCode(error, "acp_session_not_found")) {
+        if (ctx.backend.harness.capabilities.adapter !== "acp") throw error;
+        if (isAcpErrorCode(error, "acp_session_not_found") || (error instanceof HarnessError && error.code === "harness_session_not_found")) {
           const message = getAcpErrorMessage(error);
           ctx.emitLog("warn", "Persisted session lookup reported not found - creating a new session", {
             sessionId: existingSession.id,
@@ -185,12 +194,9 @@ export async function reconnectTaskSession(ctx: SessionOperationContext): Promis
           };
         }
 
-        const message = getAcpErrorMessage(error);
-        ctx.emitLog("warn", "Failed to verify persisted session - reusing stored session id", {
-          sessionId: existingSession.id,
-          error: message,
-        });
+        throw error;
       }
+
     }
 
     ctx.setSessionId(existingSession.id);
@@ -211,6 +217,17 @@ export async function reconnectTaskSession(ctx: SessionOperationContext): Promis
     sessionId,
     reusedExisting: false,
     createdNew: true,
+  };
+}
+
+async function taskSessionContext(ctx: SessionOperationContext) {
+  const workspace = await getWorkspace(ctx.config.workspaceId);
+  if (!workspace) throw new HarnessError("harness_session_not_owned", "The task workspace is unavailable.");
+  return {
+    ownerId: requireCurrentUserId(),
+    contextId: ctx.config.id,
+    directory: ctx.workingDirectory,
+    executionHost: workspace.executionHostBinding,
   };
 }
 

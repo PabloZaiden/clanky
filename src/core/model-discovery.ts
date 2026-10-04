@@ -10,7 +10,7 @@ import { DomainError } from "../domain/domain-error";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { workspaceManager } from "./workspace-manager";
 import type { ModelInfo } from "@/contracts";
-import type { RuntimeServerSettings, ServerSettings } from "@/shared/settings";
+import { createAgentSettings, type RuntimeServerSettings, type ServerSettings } from "@/shared/settings";
 import type { Workspace } from "@/shared/workspace";
 import type { ExecutionHostBinding } from "@/shared/execution-host";
 
@@ -58,17 +58,17 @@ function createCacheKey(parts: string[]): string {
   return JSON.stringify(parts);
 }
 
-function getModelListCacheKey(connectionId: string, provider: string, directory: string): string {
-  return createCacheKey(["models", connectionId, provider, directory]);
+function getModelListCacheKey(connectionId: string, settings: ServerSettings, directory: string): string {
+  return createCacheKey(["models", connectionId, settings.agent.adapter, settings.agent.provider, directory]);
 }
 
 function getModelVariantCacheKey(
   workspaceId: string,
-  provider: string,
+  settings: ServerSettings,
   directory: string,
   modelID: string,
 ): string {
-  return createCacheKey(["variants", workspaceId, provider, directory, modelID]);
+  return createCacheKey(["variants", workspaceId, settings.agent.adapter, settings.agent.provider, directory, modelID]);
 }
 
 export interface ModelValidationResult {
@@ -112,7 +112,7 @@ async function getAgentBackendModels(
     return await testBackend.getModels(directory);
   }
 
-  const existingBackend = backendManager.getInitializedBackend(connectionId);
+  const existingBackend = workspace ? await backendManager.getBackendAsync(connectionId) : backendManager.getInitializedBackend(connectionId);
   if (existingBackend?.isConnected()) {
     return await existingBackend.getModels(directory);
   }
@@ -155,7 +155,7 @@ async function getAgentBackendModelVariants(
     return model?.variants && model.variants.length > 0 ? model.variants : [""];
   }
 
-  const existingBackend = backendManager.getInitializedBackend(connectionId);
+  const existingBackend = workspace ? await backendManager.getBackendAsync(connectionId) : backendManager.getInitializedBackend(connectionId);
   if (existingBackend?.isConnected()) {
     if (existingBackend.getModelVariants) {
       return await existingBackend.getModelVariants(directory, modelID);
@@ -184,7 +184,7 @@ async function getAgentBackendModelVariants(
 }
 
 function normalizeDiscoveredModels(settings: ServerSettings, models: ModelInfo[]): ModelInfo[] {
-  return settings.agent.provider === "copilot"
+  return settings.agent.adapter === "acp" && settings.agent.provider === "copilot"
     ? normalizeCopilotModelInfo(models)
     : models;
 }
@@ -215,7 +215,7 @@ export async function getModelsForExecutionHost(
   sshPassword?: string,
 ): Promise<ModelInfo[]> {
   const connectionId = `execution-host:${binding.targetKey}:${provider}`;
-  const cacheKey = getModelListCacheKey(connectionId, provider, directory);
+  const cacheKey = getModelListCacheKey(connectionId, { agent: createAgentSettings("acp", provider) }, directory);
   const cached = getCacheValue(modelListCache, cacheKey);
   if (cached) {
     return cached;
@@ -244,7 +244,7 @@ export async function getModelsForSettings(
   settings: ServerSettings,
   workspaceOverride?: Workspace,
 ): Promise<ModelInfo[]> {
-  const cacheKey = getModelListCacheKey(connectionId, settings.agent.provider, directory);
+  const cacheKey = getModelListCacheKey(connectionId, settings, directory);
   const cached = getCacheValue(modelListCache, cacheKey);
   if (cached) {
     return cached;
@@ -277,7 +277,7 @@ export async function getModelVariantsForWorkspace(
 
   const directory = workspace.directory;
   const settings = workspace.serverSettings;
-  const cacheKey = getModelVariantCacheKey(workspaceId, settings.agent.provider, directory, modelID);
+  const cacheKey = getModelVariantCacheKey(workspaceId, settings, directory, modelID);
   const cached = getCacheValue(modelVariantCache, cacheKey);
   if (cached) {
     return cached;

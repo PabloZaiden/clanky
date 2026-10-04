@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, jest, test } from "bun:test";
-import { generateKeyPairSync } from "node:crypto";
+import { generateKeyPairSync, sign, type KeyObject } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { MeshCommandExecutorClient } from "../../src/core/mesh-command-executor-client";
 import { encryptMeshPayload } from "../../src/core/mesh-payload-crypto";
 import { closeDatabase, initializeDatabase } from "../../src/persistence/database";
-import { ensureLocalMeshNodeIdentity } from "../../src/persistence/mesh-node-identity";
+import { ensureLocalMeshNodeIdentity, getMeshNodeFingerprint } from "../../src/persistence/mesh-node-identity";
+import { meshWorkerGenerationSigningPayload } from "../../src/core/mesh-worker-generation";
 import { saveWorkerRegistration } from "../../src/persistence/mesh";
 import { POSIX_EXECUTION_HOST_CAPABILITIES } from "../../src/shared/execution-host";
 import {
@@ -16,10 +17,30 @@ import {
   MESH_ACP_SESSION_TTL_MS,
   MESH_EXECUTION_MAX_IN_FLIGHT_REQUESTS,
 } from "../../src/shared/mesh-execution";
-import { MESH_PROTOCOL_VERSION } from "../../src/shared/mesh-protocol";
+import { MESH_PROTOCOL_VERSION, MESH_PROTOCOL_VERSION_HEADER, meshProtocolProjection } from "../../src/shared/mesh-protocol";
 import { seedTestOwnerUser } from "../setup";
 
 let dataDir: string;
+let workerSigningKey: KeyObject;
+let workerPublicKey: string;
+let workerFingerprint: string;
+
+function withWorkerGeneration(fetchImpl: typeof globalThis.fetch): typeof globalThis.fetch {
+  return Object.assign((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    if (String(input).endsWith("/api/mesh/internal/protocol")) {
+      const descriptor = {
+        ...meshProtocolProjection(6), nodeId: "worker-1", fingerprint: workerFingerprint,
+        requestNonce: new Headers(init?.headers).get("x-clanky-mesh-request-id")!,
+        binaryVersion: "6.0.0",
+      };
+      return Promise.resolve(Response.json({
+        ...descriptor,
+        signature: sign(null, Buffer.from(meshWorkerGenerationSigningPayload(descriptor)), workerSigningKey).toString("base64"),
+      }, { headers: { [MESH_PROTOCOL_VERSION_HEADER]: "6" } }));
+    }
+    return fetchImpl(input, init);
+  }, { preconnect: () => undefined }) as typeof globalThis.fetch;
+}
 
 beforeEach(async () => {
   dataDir = await mkdtemp(join(tmpdir(), "clanky-mesh-client-"));
@@ -27,6 +48,10 @@ beforeEach(async () => {
   process.env["CLANKY_DATA_DIR"] = dataDir;
   await initializeDatabase();
   seedTestOwnerUser();
+  const keyPair = generateKeyPairSync("ed25519");
+  workerSigningKey = keyPair.privateKey;
+  workerPublicKey = keyPair.publicKey.export({ format: "pem", type: "spki" }).toString();
+  workerFingerprint = getMeshNodeFingerprint(workerPublicKey);
 });
 
 afterEach(async () => {
@@ -52,8 +77,8 @@ describe("MeshCommandExecutorClient", () => {
       workerInstanceName: "Worker",
       workerEndpoint: "http://worker.example",
       workerTransport: "http",
-      workerPublicKey: "worker-public-key",
-      workerFingerprint: "worker-fingerprint",
+      workerPublicKey,
+      workerFingerprint,
       workerEncryptionPublicKey,
       workerTlsCertificate: null,
       workerTlsFingerprint: null,
@@ -112,7 +137,7 @@ describe("MeshCommandExecutorClient", () => {
         CLANKY_BASE_URL: "https://clanky.example",
         CLANKY_API_KEY: "wapp_test_secret",
       },
-      fetch: fetchImpl,
+      fetch: withWorkerGeneration(fetchImpl),
     });
 
     const firstOpen = client.openSession();
@@ -139,8 +164,8 @@ describe("MeshCommandExecutorClient", () => {
       workerInstanceName: "Worker",
       workerEndpoint: "http://worker.example",
       workerTransport: "http",
-      workerPublicKey: "worker-public-key",
-      workerFingerprint: "worker-fingerprint",
+      workerPublicKey,
+      workerFingerprint,
       workerEncryptionPublicKey: "test-encryption-key",
       workerTlsCertificate: null,
       workerTlsFingerprint: null,
@@ -194,7 +219,7 @@ describe("MeshCommandExecutorClient", () => {
       localUserId: "admin",
       channel: "acp",
       sessionTtlMs: MESH_ACP_SESSION_RENEWAL_LEAD_MS + 100,
-      fetch: fetchImpl,
+      fetch: withWorkerGeneration(fetchImpl),
     });
 
     try {
@@ -223,8 +248,8 @@ describe("MeshCommandExecutorClient", () => {
       workerInstanceName: "Worker",
       workerEndpoint: "http://worker.example",
       workerTransport: "http",
-      workerPublicKey: "worker-public-key",
-      workerFingerprint: "worker-fingerprint",
+      workerPublicKey,
+      workerFingerprint,
       workerEncryptionPublicKey: "test-encryption-key",
       workerTlsCertificate: null,
       workerTlsFingerprint: null,
@@ -273,7 +298,7 @@ describe("MeshCommandExecutorClient", () => {
       provider: "copilot",
       localUserId: "admin",
       channel: "acp",
-      fetch: fetchImpl,
+      fetch: withWorkerGeneration(fetchImpl),
     });
     const controller = new AbortController();
     const opening = client.openSession(controller.signal);
@@ -294,8 +319,8 @@ describe("MeshCommandExecutorClient", () => {
       workerInstanceName: "Worker",
       workerEndpoint: "http://worker.example",
       workerTransport: "http",
-      workerPublicKey: "worker-public-key",
-      workerFingerprint: "worker-fingerprint",
+      workerPublicKey,
+      workerFingerprint,
       workerEncryptionPublicKey: "test-encryption-key",
       workerTlsCertificate: null,
       workerTlsFingerprint: null,
@@ -348,7 +373,7 @@ describe("MeshCommandExecutorClient", () => {
       localUserId: "admin",
       channel: "acp",
       sessionTtlMs: MESH_ACP_SESSION_RENEWAL_LEAD_MS + 100,
-      fetch: fetchImpl,
+      fetch: withWorkerGeneration(fetchImpl),
     });
 
     try {
@@ -380,8 +405,8 @@ describe("MeshCommandExecutorClient", () => {
       workerInstanceName: "Worker",
       workerEndpoint: "http://worker.example",
       workerTransport: "http",
-      workerPublicKey: "worker-public-key",
-      workerFingerprint: "worker-fingerprint",
+      workerPublicKey,
+      workerFingerprint,
       workerEncryptionPublicKey: "test-encryption-key",
       workerTlsCertificate: null,
       workerTlsFingerprint: null,
@@ -427,7 +452,7 @@ describe("MeshCommandExecutorClient", () => {
       localUserId: "admin",
       channel: "acp",
       sessionTtlMs: MESH_ACP_SESSION_RENEWAL_SAFETY_MARGIN_MS + 1,
-      fetch: fetchImpl,
+      fetch: withWorkerGeneration(fetchImpl),
     });
 
     try {
@@ -454,8 +479,8 @@ describe("MeshCommandExecutorClient", () => {
       workerInstanceName: "Worker",
       workerEndpoint: "http://worker.example",
       workerTransport: "http",
-      workerPublicKey: "worker-public-key",
-      workerFingerprint: "worker-fingerprint",
+      workerPublicKey,
+      workerFingerprint,
       workerEncryptionPublicKey: "test-encryption-key",
       workerTlsCertificate: null,
       workerTlsFingerprint: null,
@@ -512,7 +537,7 @@ describe("MeshCommandExecutorClient", () => {
       localUserId: "admin",
       channel: "acp",
       sessionTtlMs: MESH_ACP_SESSION_RENEWAL_LEAD_MS + 100,
-      fetch: fetchImpl,
+      fetch: withWorkerGeneration(fetchImpl),
     });
 
     try {
@@ -542,8 +567,8 @@ describe("MeshCommandExecutorClient", () => {
       workerInstanceName: "Worker",
       workerEndpoint: "http://worker.example",
       workerTransport: "http",
-      workerPublicKey: "worker-public-key",
-      workerFingerprint: "worker-fingerprint",
+      workerPublicKey,
+      workerFingerprint,
       workerEncryptionPublicKey: "test-encryption-key",
       workerTlsCertificate: null,
       workerTlsFingerprint: null,
@@ -606,7 +631,7 @@ describe("MeshCommandExecutorClient", () => {
       executionNodeId: "worker-1",
       provider: "copilot",
       localUserId: "admin",
-      fetch: fetchImpl,
+      fetch: withWorkerGeneration(fetchImpl),
     });
 
     await expect(client.exec("devbox", ["rebuild"], { longRunning: true })).resolves.toEqual({
@@ -627,8 +652,8 @@ describe("MeshCommandExecutorClient", () => {
       workerInstanceName: "Worker",
       workerEndpoint: "http://worker.example",
       workerTransport: "http",
-      workerPublicKey: "worker-public-key",
-      workerFingerprint: "worker-fingerprint",
+      workerPublicKey,
+      workerFingerprint,
       workerEncryptionPublicKey: "test-encryption-key",
       workerTlsCertificate: null,
       workerTlsFingerprint: null,
@@ -695,7 +720,7 @@ describe("MeshCommandExecutorClient", () => {
       executionNodeId: "worker-1",
       provider: "copilot",
       localUserId: "admin",
-      fetch: fetchImpl,
+      fetch: withWorkerGeneration(fetchImpl),
     });
 
     await expect(client.exec("devbox", ["rebuild"], {
@@ -714,8 +739,8 @@ describe("MeshCommandExecutorClient", () => {
       workerInstanceName: "Worker",
       workerEndpoint: "http://worker.example",
       workerTransport: "http",
-      workerPublicKey: "worker-public-key",
-      workerFingerprint: "worker-fingerprint",
+      workerPublicKey,
+      workerFingerprint,
       workerEncryptionPublicKey: "test-encryption-key",
       workerTlsCertificate: null,
       workerTlsFingerprint: null,
@@ -799,7 +824,7 @@ describe("MeshCommandExecutorClient", () => {
       executionNodeId: "worker-1",
       provider: "copilot",
       localUserId: "admin",
-      fetch: fetchImpl,
+      fetch: withWorkerGeneration(fetchImpl),
     });
 
     try {
@@ -897,8 +922,8 @@ describe("MeshCommandExecutorClient", () => {
       workerInstanceName: "Worker",
       workerEndpoint: "http://worker.example",
       workerTransport: "http",
-      workerPublicKey: "worker-public-key",
-      workerFingerprint: "worker-fingerprint",
+      workerPublicKey,
+      workerFingerprint,
       workerEncryptionPublicKey: "test-encryption-key",
       workerTlsCertificate: null,
       workerTlsFingerprint: null,
@@ -957,7 +982,7 @@ describe("MeshCommandExecutorClient", () => {
       executionNodeId: "worker-1",
       provider: "copilot",
       localUserId: "admin",
-      fetch: fetchImpl,
+      fetch: withWorkerGeneration(fetchImpl),
     });
     let streams: ReadableStream<Uint8Array>[] = [];
 

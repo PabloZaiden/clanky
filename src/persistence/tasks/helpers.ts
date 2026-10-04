@@ -9,6 +9,8 @@ import { normalizeCommitScope } from "@/shared";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { CheapModelSelectionSchema } from "@/contracts/schemas";
 import { requirePersistenceUserId } from "../ownership";
+import { parseStoredHarnessBinding, parseStoredHarnessState } from "../harness-binding";
+import { TaskPendingInputSchema } from "../../contracts/schemas/task";
 
 const log = createLogger("persistence:tasks");
 
@@ -53,6 +55,8 @@ export const ALLOWED_TASK_COLUMNS = new Set([
   "last_activity_at",
   "session_id",
   "session_server_url",
+  "session_binding_json",
+  "harness_state_json",
   "error_message",
   "error_iteration",
   "error_timestamp",
@@ -63,6 +67,7 @@ export const ALLOWED_TASK_COLUMNS = new Set([
   "consecutive_errors",
   "pending_prompt",
   "pending_prompt_mode",
+  "pending_input_json",
   "pending_model_provider_id",
   "pending_model_model_id",
   "pending_model_variant",
@@ -137,6 +142,8 @@ export function taskToRow(task: Task): Record<string, unknown> {
     last_activity_at: state.lastActivityAt ?? null,
     session_id: state.session?.id ?? null,
     session_server_url: state.session?.serverUrl ?? null,
+    session_binding_json: state.session?.binding !== undefined ? JSON.stringify(state.session.binding) : null,
+    harness_state_json: state.harness ? JSON.stringify(state.harness) : null,
     error_message: state.error?.message ?? null,
     error_iteration: state.error?.iteration ?? null,
     error_timestamp: state.error?.timestamp ?? null,
@@ -148,6 +155,7 @@ export function taskToRow(task: Task): Record<string, unknown> {
     consecutive_errors: state.consecutiveErrors ? JSON.stringify(state.consecutiveErrors) : null,
     pending_prompt: state.pendingPrompt ?? null,
     pending_prompt_mode: state.pendingPromptMode ?? null,
+    pending_input_json: state.pendingInput ? JSON.stringify(state.pendingInput) : null,
     pending_model_provider_id: state.pendingModel?.providerID ?? null,
     pending_model_model_id: state.pendingModel?.modelID ?? null,
     pending_model_variant: state.pendingModel?.variant ?? null,
@@ -268,6 +276,7 @@ export function rowToTask(row: Record<string, unknown>): Task {
   };
 
   // Optional state fields
+  state.harness = parseStoredHarnessState(row["harness_state_json"], String(rowId));
   if (row["started_at"] !== null) {
     state.startedAt = row["started_at"] as string;
   }
@@ -281,6 +290,7 @@ export function rowToTask(row: Record<string, unknown>): Task {
     state.session = {
       id: row["session_id"] as string,
       serverUrl: row["session_server_url"] as string | undefined,
+      binding: parseStoredHarnessBinding(row["session_binding_json"], String(rowId)),
     };
   }
   if (row["error_message"] !== null) {
@@ -305,6 +315,14 @@ export function rowToTask(row: Record<string, unknown>): Task {
   }
   if (row["pending_prompt"] !== null) {
     state.pendingPrompt = row["pending_prompt"] as string;
+  }
+  if (row["pending_input_json"] !== null && row["pending_input_json"] !== undefined) {
+    const input = TaskPendingInputSchema.safeParse(safeJsonParse(row["pending_input_json"] as string, null, "pending_input_json", rowId));
+    if (input.success) state.pendingInput = input.data;
+    else {
+      log.warn("Persisted task input identity is invalid", { taskId: rowId });
+      state.harness = { ...state.harness, integrity: "invalid" };
+    }
   }
   if (
     state.pendingPrompt !== undefined

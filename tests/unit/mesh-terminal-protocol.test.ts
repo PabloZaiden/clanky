@@ -11,12 +11,10 @@ import {
   MESH_TERMINAL_MAX_INPUT_BYTES,
   MESH_TERMINAL_PROTOCOL_VERSION,
 } from "../../src/shared/mesh-terminal";
-import { MESH_PROTOCOL_VERSION } from "../../src/shared/mesh-protocol";
+import type { MeshProtocolVersion } from "../../src/shared/mesh-protocol";
 
 function buildRequest(
-  protocolVersion:
-    | typeof MESH_TERMINAL_PROTOCOL_VERSION
-    | typeof MESH_PROTOCOL_VERSION = MESH_TERMINAL_PROTOCOL_VERSION,
+  protocolVersion: MeshProtocolVersion = MESH_TERMINAL_PROTOCOL_VERSION,
 ): Omit<MeshTerminalSessionRequest, "signature"> {
   return {
     protocolVersion,
@@ -58,7 +56,7 @@ describe("Mesh terminal protocol", () => {
   });
 
   test("uses the v5 signing domain and canonical payload order", () => {
-    const request = buildRequest(MESH_PROTOCOL_VERSION);
+    const request = buildRequest(5);
     const payload = JSON.stringify([
       "clanky-mesh-terminal-session-v5",
       request.protocolVersion,

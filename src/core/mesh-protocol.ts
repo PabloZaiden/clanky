@@ -6,26 +6,19 @@
  */
 
 import type {
-  MeshEnrollmentRequestV5,
-  MeshEnrollmentResponseV5,
-  MeshHealthCheckV5,
-  MeshHealthCheckResponseV5,
+  MeshEnrollmentRequest,
+  MeshEnrollmentResponse,
+  MeshHealthCheck,
+  MeshHealthCheckResponse,
   MeshRevocationNotice,
   MeshWorkerKillRequest,
 } from "@/contracts/schemas/mesh";
 import type { MeshExecutionSessionRequest } from "@/contracts/schemas/mesh-execution";
 
-type UnsignedEnrollmentRequestV5 = Omit<MeshEnrollmentRequestV5, "signature">;
-type UnsignedEnrollmentResponseV5 = Omit<MeshEnrollmentResponseV5, "signature">;
-type UnsignedHealthCheckV5 = Omit<MeshHealthCheckV5, "signature">;
-type UnsignedHealthCheckResponseV5 = Omit<
-  MeshHealthCheckResponseV5,
-  "signature"
->;
-type UnsignedEnrollmentRequest = UnsignedEnrollmentRequestV5;
-type UnsignedEnrollmentResponse = UnsignedEnrollmentResponseV5;
-type UnsignedHealthCheck = UnsignedHealthCheckV5;
-type UnsignedHealthCheckResponse = UnsignedHealthCheckResponseV5;
+type UnsignedEnrollmentRequest = Omit<MeshEnrollmentRequest, "signature">;
+type UnsignedEnrollmentResponse = Omit<MeshEnrollmentResponse, "signature">;
+type UnsignedHealthCheck = Omit<MeshHealthCheck, "signature">;
+type UnsignedHealthCheckResponse = Omit<MeshHealthCheckResponse, "signature">;
 type UnsignedRevocationNotice = Omit<MeshRevocationNotice, "signature">;
 type UnsignedWorkerKillRequest = Omit<MeshWorkerKillRequest, "signature">;
 type UnsignedExecutionSession = Omit<MeshExecutionSessionRequest, "signature">;
@@ -34,7 +27,7 @@ export function buildMeshEnrollmentRequestSigningPayload(
   envelope: UnsignedEnrollmentRequest,
 ): string {
   return JSON.stringify([
-    "clanky-mesh-enrollment-request-v5",
+    `clanky-mesh-enrollment-request-v${envelope.protocolVersion}`,
     envelope.protocolVersion,
     envelope.workerNodeId,
     envelope.workerInstanceName ?? null,
@@ -61,7 +54,7 @@ export function buildMeshEnrollmentResponseSigningPayload(
   envelope: UnsignedEnrollmentResponse,
 ): string {
   return JSON.stringify([
-    "clanky-mesh-enrollment-response-v5",
+    `clanky-mesh-enrollment-response-v${envelope.protocolVersion}`,
     envelope.protocolVersion,
     envelope.workerNodeId,
     envelope.controllerNodeId,
@@ -79,7 +72,7 @@ export function buildMeshHealthCheckSigningPayload(
   envelope: UnsignedHealthCheck,
 ): string {
   return JSON.stringify([
-    "clanky-mesh-health-check-v5",
+    `clanky-mesh-health-check-v${envelope.protocolVersion}`,
     envelope.protocolVersion,
     envelope.senderNodeId,
     envelope.senderPublicKey,
@@ -96,7 +89,7 @@ export function buildMeshHealthCheckResponseSigningPayload(
   envelope: UnsignedHealthCheckResponse,
 ): string {
   const payload: unknown[] = [
-    "clanky-mesh-health-check-response-v5",
+    `clanky-mesh-health-check-response-v${envelope.protocolVersion}`,
     envelope.protocolVersion,
     envelope.workerNodeId,
     envelope.controllerNodeId,
@@ -121,7 +114,7 @@ export function buildMeshRevocationNoticeSigningPayload(
   envelope: UnsignedRevocationNotice,
 ): string {
   return JSON.stringify([
-    "clanky-mesh-revocation-notice-v5",
+    `clanky-mesh-revocation-notice-v${envelope.protocolVersion}`,
     envelope.protocolVersion,
     envelope.controllerNodeId,
     envelope.workerNodeId,
@@ -136,7 +129,7 @@ export function buildMeshWorkerKillRequestSigningPayload(
   envelope: UnsignedWorkerKillRequest,
 ): string {
   return JSON.stringify([
-    "clanky-mesh-worker-kill-request-v5",
+    `clanky-mesh-worker-kill-request-v${envelope.protocolVersion}`,
     envelope.protocolVersion,
     envelope.controllerNodeId,
     envelope.workerNodeId,
@@ -151,7 +144,7 @@ export function buildMeshExecutionSessionSigningPayload(
   envelope: UnsignedExecutionSession,
 ): string {
   const payload: unknown[] = [
-    "clanky-mesh-execution-session-v5",
+    `clanky-mesh-execution-session-v${envelope.protocolVersion}`,
     envelope.protocolVersion,
     envelope.requestId,
     envelope.callerNodeId,
@@ -168,6 +161,9 @@ export function buildMeshExecutionSessionSigningPayload(
   // managed runtime environment field.
   if (envelope.encryptedEnvironment !== undefined) {
     payload.push(envelope.encryptedEnvironment);
+  }
+  if (envelope.protocolVersion === 6) {
+    payload.push(envelope.adapter ?? null, envelope.ownerId ?? null);
   }
   payload.push(envelope.nonce, envelope.expiresAt);
   return JSON.stringify(payload);

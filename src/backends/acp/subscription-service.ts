@@ -8,7 +8,7 @@
  */
 
 import { log } from "@pablozaiden/webapp/server";
-import type { AgentEvent } from "../types";
+import type { HarnessEvent } from "@/shared/harness-events";
 import { createEventStream, type EventStream } from "../../utils/event-stream";
 
 import type { SessionStateStore } from "./session-state";
@@ -37,12 +37,12 @@ export class SubscriptionService {
     }
   }
 
-  subscribe(sessionId: string): EventStream<AgentEvent> {
+  subscribe(sessionId: string): EventStream<HarnessEvent> {
     log.debug("[AcpBackend] Subscribing to session events", { sessionId });
 
     const abortController = new AbortController();
 
-    const { stream, push, end } = createEventStream<AgentEvent>();
+    const { stream, push, end } = createEventStream<HarnessEvent>();
 
     const subscriber: SessionSubscriber = (event) => {
       if (!abortController.signal.aborted) {

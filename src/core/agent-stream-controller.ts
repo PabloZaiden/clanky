@@ -1,12 +1,13 @@
 /**
- * Shared ACP turn lifecycle for chat and task streams.
+ * Shared harness prompt lifecycle for chat and task streams.
  *
  * Domain services own transcript materialization and state transitions. This
  * controller owns the transport boundary: subscribe before prompting, consume
  * events until the turn ends, and close the stream on every exit path.
  */
 
-import type { AgentEvent, PromptInput } from "../backends/types";
+import type { PromptInput } from "../backends/types";
+import type { HarnessEvent as AgentEvent } from "@/shared/harness-events";
 import type { EventStream } from "../utils/event-stream";
 import { DEFAULT_ACTIVITY_TIMEOUT_SECONDS } from "@/shared/task";
 
@@ -101,7 +102,7 @@ export interface AgentStreamHandle {
 }
 
 /**
- * Owns one ACP prompt/response turn. Calling `start()` creates a cancellable
+ * Owns one harness prompt execution. Calling `start()` creates a cancellable
  * handle before any asynchronous startup. The subscription and prompt are
  * started when the returned handle's `startPrompt()` method is called,
  * followed by event consumption through `consume()`. This lets callers
@@ -206,11 +207,20 @@ export class AgentStreamController {
           return { lastEvent, stopped: true, endedByInactivity: false };
         }
 
+        if (
+          event.scope.kind !== "principal"
+          && event.type !== "permission.asked"
+          && event.type !== "question.asked"
+        ) {
+          event = await readNextEvent();
+          continue;
+        }
+
         lastEvent = event;
         const result = await options.onEvent(event);
         if (
           result?.stop === true
-          || event.type === "message.complete"
+          || event.type === "prompt.complete"
           || event.type === "error"
         ) {
           return { lastEvent, stopped: true, endedByInactivity: false };

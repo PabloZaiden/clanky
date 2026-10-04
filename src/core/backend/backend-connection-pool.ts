@@ -5,6 +5,7 @@
 
 import type { BackendConnectionConfig } from "../../backends/types";
 import type { RuntimeServerSettings } from "@/shared/settings";
+import { HarnessError } from "../../backends/harness-errors";
 import { buildSshRemoteShellCommand } from "../remote-command-executor";
 import { buildSshProcessConfig, getSshConnectionTargetFromSettings } from "../ssh-connection-target";
 import {
@@ -23,6 +24,11 @@ function buildAgentRuntimeCommand(
   runtimeEnvironment?: Record<string, string>,
 ): { command?: string; args?: string[]; env?: NodeJS.ProcessEnv; startupStdin?: string } {
   const provider = settings.agent.provider;
+
+  if (settings.agent.adapter !== "acp") {
+    if (settings.agent.transport !== "stdio") throw new HarnessError("harness_unsupported_feature", "Native harnesses require a local or Mesh execution host.");
+    return runtimeEnvironment ? { env: runtimeEnvironment } : {};
+  }
 
   if (settings.agent.transport === "stdio") {
     return runtimeEnvironment ? { env: runtimeEnvironment } : {};

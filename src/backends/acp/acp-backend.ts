@@ -21,9 +21,11 @@
 
 import { log } from "@pablozaiden/webapp/server";
 import type { ModelInfo } from "@/contracts";
+import type { HarnessConversationBinding } from "@/shared/harness-control";
+import { HarnessError } from "../harness-errors";
 
 import type {
-  AgentEvent,
+  HarnessEvent,
   AgentResponse,
   AgentSession,
   Backend,
@@ -31,9 +33,6 @@ import type {
   ConfigOption,
   ConnectionInfo,
   CreateSessionOptions,
-  ImportSessionOptions,
-  ImportSessionResult,
-  ImportableSession,
   PromptInput,
 } from "../types";
 import type { EventStream } from "../../utils/event-stream";
@@ -54,6 +53,7 @@ import { AcpEventTranslator } from "./event-translator";
 import { SubscriptionService } from "./subscription-service";
 import { PermissionCoordinator } from "./permission-coordinator";
 import { SessionService } from "./session-service";
+import { UnavailableHarnessControl } from "../unavailable-harness-control";
 
 export interface AcpBackendOptions {
   /**
@@ -66,6 +66,7 @@ export interface AcpBackendOptions {
 
 export class AcpBackend implements Backend {
   readonly name = "acp";
+  readonly harness = new UnavailableHarnessControl();
 
   private readonly state: SessionStateStore;
   private readonly lifecycle: AcpTransportLifecycle;
@@ -218,12 +219,13 @@ export class AcpBackend implements Backend {
     return this.sessions.getSession(id);
   }
 
-  listSessions(directory?: string): Promise<ImportableSession[]> {
-    return this.sessions.listSessions(directory);
-  }
-
-  importSession(options: ImportSessionOptions): Promise<ImportSessionResult> {
-    return this.sessions.importSession(options);
+  async resumeSession(binding: HarnessConversationBinding): Promise<AgentSession> {
+    if (binding.adapter !== "acp" || binding.directory !== this.lifecycle.getDirectory()) {
+      throw new HarnessError("harness_session_not_owned", "The ACP binding does not match this execution host.");
+    }
+    const session = await this.sessions.getSession(binding.nativeId);
+    if (!session) throw new HarnessError("harness_session_not_found", "The ACP conversation is unavailable.");
+    return { ...session, binding };
   }
 
   deleteSession(id: string): Promise<void> {
@@ -272,7 +274,7 @@ export class AcpBackend implements Backend {
     this.subscriptions.abortAll();
   }
 
-  async subscribeToEvents(sessionId: string): Promise<EventStream<AgentEvent>> {
+  async subscribeToEvents(sessionId: string): Promise<EventStream<HarnessEvent>> {
     this.ensureConnected();
     return this.subscriptions.subscribe(sessionId);
   }

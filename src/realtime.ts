@@ -14,7 +14,7 @@ import type {
   TerminalSessionEvent,
   TaskEvent,
 } from "@/shared";
-import type { MeshStateEvent } from "./core/event-emitter";
+import type { MeshStateEvent, HarnessStateEvent } from "./core/event-emitter";
 import { createToolCallSummary, serializeExecutionHostRef } from "@/shared";
 import { isChatTerminalStatus } from "@/shared/chat";
 import { sanitizeProvisioningEvent } from "./lib/sensitive-data";
@@ -96,6 +96,7 @@ export type ClankyDomainEvent =
   | TerminalSessionEvent
   | ProvisioningEvent
   | PreviewEvent
+  | HarnessStateEvent
   | MeshStateEvent;
 
 export type ClankyStreamEvent =
@@ -222,6 +223,9 @@ export function publishClankyDomainEvent(
   owner: RealtimeOwner,
 ): void {
   switch (event.type) {
+    case "harness.changed":
+      publishChanged(publisher, owner, event.context.kind === "chat" ? CLANKY_REALTIME_RESOURCES.chats : CLANKY_REALTIME_RESOURCES.tasks, event.context.id);
+      return;
     case "mesh.changed":
       publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.mesh);
       if (event.executionHostsChanged) {

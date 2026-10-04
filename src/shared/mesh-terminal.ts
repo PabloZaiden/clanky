@@ -2,10 +2,10 @@
  * Bounded Mesh protocol for interactive terminal streams.
  */
 
-import { MESH_PROTOCOL_VERSION } from "./mesh-protocol";
+import { MESH_PROTOCOL_VERSION, type MeshProtocolVersion } from "./mesh-protocol";
 
 export const MESH_TERMINAL_PROTOCOL_VERSION = MESH_PROTOCOL_VERSION;
-export type MeshTerminalProtocolVersion = typeof MESH_PROTOCOL_VERSION;
+export type MeshTerminalProtocolVersion = MeshProtocolVersion;
 export const MESH_TERMINAL_CAPABILITY = "terminal-v1" as const;
 export const MESH_TERMINAL_SESSION_TTL_MS = 30 * 60 * 1000;
 export const MESH_TERMINAL_SESSION_REQUEST_TTL_MS = MESH_TERMINAL_SESSION_TTL_MS - 15_000;

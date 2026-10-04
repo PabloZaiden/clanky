@@ -11,6 +11,7 @@ import { StatusBadge } from "../common";
 import { MarkdownRenderer } from "../MarkdownRenderer";
 import type { TranscriptFileLinkContext } from "./types";
 import { ActivitySpinner } from "./activity-spinner";
+import { HarnessMessageAdmission } from "../harness-activity";
 import { TranscriptTextContent } from "./transcript-file-links";
 import { formatTime } from "./utils";
 import {
@@ -142,6 +143,7 @@ export const MessageEntry = memo(function MessageEntry({
               fileLinkContext={fileLinkContext}
             />
           )}
+          {isUser && <HarnessMessageAdmission inputId={msg.id} />}
           {outcome && (
             <div className="pt-1">
               <StatusBadge variant={getOutcomeBadgeVariant(outcome.kind)} size="sm">

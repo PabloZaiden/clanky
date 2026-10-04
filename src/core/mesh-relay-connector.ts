@@ -269,11 +269,12 @@ export function validateMeshRelayAuthorization(
 export function chunkMeshRelayAuthorization(
   transactionId: string,
   workers: readonly MeshRelayPeerIdentity[],
+  protocolVersion: MeshProtocolVersion = MESH_PROTOCOL_VERSION,
 ): MeshRelayPeerIdentity[][] {
   const chunks: MeshRelayPeerIdentity[][] = [];
   let current: MeshRelayPeerIdentity[] = [];
   const emptyFrameBytes = controlFrameBytes({
-    protocolVersion: MESH_PROTOCOL_VERSION,
+    protocolVersion,
     type: "authorization.chunk",
     transactionId,
     workers: [],
@@ -474,6 +475,7 @@ export class MeshRelayConnector {
     const chunks = chunkMeshRelayAuthorization(
       transactionId,
       validated.workers,
+      this.getRelayProtocolVersion(),
     );
     const acked = new Promise<number>((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -555,6 +557,7 @@ export class MeshRelayConnector {
       input.kind,
       input.method,
       pathname,
+      this.getRelayProtocolVersion(),
     )) {
       throw new MeshRelayStreamError(
         "mesh_relay_route_forbidden",

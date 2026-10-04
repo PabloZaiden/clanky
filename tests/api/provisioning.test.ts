@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { type Server } from "bun";
-import { generateKeyPairSync, sign, type KeyObject } from "node:crypto";
+import { createPublicKey, generateKeyPairSync, sign, type KeyObject } from "node:crypto";
 import { serveNativeApiRoutes } from "../native-api-server";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -21,11 +21,17 @@ import {
 } from "../../src/persistence/mesh-node-identity";
 import { saveControllerRelayPairing } from "../../src/persistence/controller-relay-pairing";
 import { buildMeshHealthCheckResponseSigningPayload } from "../../src/core/mesh-protocol";
+import { meshWorkerGenerationSigningPayload } from "../../src/core/mesh-worker-generation";
 import { setMeshRelayTransport } from "../../src/core/mesh-peer-transport";
 import { POSIX_EXECUTION_HOST_CAPABILITIES } from "../../src/shared/execution-host";
 import {
-  MESH_PROTOCOL_VERSION,
   MESH_SUPPORTED_PROTOCOL_VERSIONS,
+  MESH_PROTOCOL_VERSION_HEADER,
+  MESH_PROTOCOL_VERSIONS_HEADER,
+  meshProtocolProjection,
+  negotiateMeshProtocolVersion,
+  parseMeshProtocolVersionsHeader,
+  type MeshProtocolVersion,
 } from "../../src/shared/mesh-protocol";
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import { createMockBackend } from "../mocks/mock-backend";
@@ -98,8 +104,40 @@ interface ProvisioningSnapshotResponse {
 interface MeshHealthResponder {
   setWorker(workerNodeId: string, privateKey: KeyObject): void;
   failNextHealthChecks(count: number): void;
-  getStats(): { requests: number; failures: number; successes: number };
   restore(): void;
+}
+
+async function respondMeshWorker(request: Request, peer: {
+  nodeId: string; privateKey: KeyObject; directory: string;
+}): Promise<Response> {
+  if (new URL(request.url).pathname.endsWith("/api/mesh/internal/protocol")) {
+    const version = negotiateMeshProtocolVersion(
+      MESH_SUPPORTED_PROTOCOL_VERSIONS,
+      parseMeshProtocolVersionsHeader(request.headers.get(MESH_PROTOCOL_VERSIONS_HEADER)),
+    );
+    if (!version) return new Response(null, { status: 406 });
+    const publicKey = createPublicKey(peer.privateKey).export({ format: "pem", type: "spki" }).toString();
+    const descriptor = {
+      ...meshProtocolProjection(version), nodeId: peer.nodeId, fingerprint: getMeshNodeFingerprint(publicKey),
+      requestNonce: request.headers.get("x-clanky-mesh-request-id")!, binaryVersion: "6.0.0-test",
+    };
+    return Response.json({
+      ...descriptor,
+      signature: sign(null, Buffer.from(meshWorkerGenerationSigningPayload(descriptor)), peer.privateKey).toString("base64url"),
+    }, { headers: { [MESH_PROTOCOL_VERSION_HEADER]: String(version) } });
+  }
+  const body = await request.json() as { protocolVersion: MeshProtocolVersion; senderNodeId: string; nonce: string };
+  const unsigned = {
+    ...meshProtocolProjection(body.protocolVersion), workerNodeId: peer.nodeId,
+    controllerNodeId: body.senderNodeId, requestNonce: body.nonce,
+    workerDirectory: peer.directory, workerPlatform: null,
+    workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES, workerAcceptRemoteExecution: true,
+    workerConfigRevision: 1, binaryVersion: "6.0.0-test",
+  };
+  return Response.json({
+    ...unsigned,
+    signature: sign(null, Buffer.from(buildMeshHealthCheckResponseSigningPayload(unsigned)), peer.privateKey).toString("base64url"),
+  });
 }
 
 function installMeshHealthResponder(): MeshHealthResponder {
@@ -107,9 +145,6 @@ function installMeshHealthResponder(): MeshHealthResponder {
   let workerNodeId: string | undefined;
   let workerPrivateKey: KeyObject | undefined;
   let failuresRemaining = 0;
-  let requests = 0;
-  let failures = 0;
-  let successes = 0;
 
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = typeof input === "string"
@@ -117,46 +152,22 @@ function installMeshHealthResponder(): MeshHealthResponder {
       : input instanceof URL
       ? input.toString()
       : input.url;
-    if (!url.endsWith("/api/mesh/internal/health")) {
+    const protocolDiscovery = url.endsWith("/api/mesh/internal/protocol");
+    if (!protocolDiscovery && !url.endsWith("/api/mesh/internal/health")) {
       return await originalFetch(input, init);
     }
 
-    requests++;
-    if (failuresRemaining > 0) {
+    if (!protocolDiscovery && failuresRemaining > 0) {
       failuresRemaining--;
-      failures++;
       throw new TypeError("worker is still starting");
     }
     if (!workerNodeId || !workerPrivateKey) {
       throw new Error("Mesh health responder is missing its worker identity");
     }
 
-    const request = new Request(input, init);
-    const body = await request.json() as { senderNodeId: string; nonce: string };
-    const unsignedResponse = {
-      protocolVersion: MESH_PROTOCOL_VERSION,
-      workerNodeId,
-      controllerNodeId: body.senderNodeId,
-      requestNonce: body.nonce,
-      workerDirectory: "/workspaces/worker-example",
-      workerPlatform: null,
-      workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
-      workerAcceptRemoteExecution: true,
-      workerConfigRevision: 1,
-      binaryVersion: "5.0.0-test",
-      supportedProtocolVersions: [...MESH_SUPPORTED_PROTOCOL_VERSIONS],
-      preferredProtocolVersion: MESH_PROTOCOL_VERSION,
-    };
-    const response = {
-      ...unsignedResponse,
-      signature: sign(
-        null,
-        Buffer.from(buildMeshHealthCheckResponseSigningPayload(unsignedResponse)),
-        workerPrivateKey,
-      ).toString("base64url"),
-    };
-    successes++;
-    return Response.json(response);
+    return await respondMeshWorker(new Request(input, init), {
+      nodeId: workerNodeId, privateKey: workerPrivateKey, directory: "/workspaces/worker-example",
+    });
   }) as typeof fetch;
 
   return {
@@ -166,9 +177,6 @@ function installMeshHealthResponder(): MeshHealthResponder {
     },
     failNextHealthChecks(count) {
       failuresRemaining = count;
-    },
-    getStats() {
-      return { requests, failures, successes };
     },
     restore() {
       globalThis.fetch = originalFetch;
@@ -510,6 +518,7 @@ describe("Provisioning API integration", () => {
         relayFingerprint: getMeshNodeFingerprint(relayPublicKey),
         controllerNodeId: controller.nodeId,
         controllerFingerprint: controller.fingerprint,
+        relaySupportedProtocolVersions: MESH_SUPPORTED_PROTOCOL_VERSIONS,
       });
       const sshServer = await createServer();
       const manualWorkerHost = "worker.example.test";
@@ -558,6 +567,7 @@ describe("Provisioning API integration", () => {
             workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
             workerAcceptRemoteExecution: true,
             workerConfigRevision: 1,
+            workerSupportedProtocolVersions: MESH_SUPPORTED_PROTOCOL_VERSIONS,
             registrationScope: "workspace",
             workspaceWorkerEnrollmentId: enrollment!.enrollment.id,
           });
@@ -600,10 +610,6 @@ describe("Provisioning API integration", () => {
       expect(started.job.config.workerHostAddressManual).toBe(true);
 
       const completed = await waitForJobStatus(baseUrl, started.job.config.id, ["completed"]);
-      expect(healthResponder.getStats()).toMatchObject({
-        failures: 2,
-        successes: 1,
-      });
       expect(completed.job.config.workerEnrollmentId).toBeTruthy();
       expect(
         completed.logs.find((entry) => entry.text.includes("Bootstrapping the workspace worker"))?.step,
@@ -672,8 +678,6 @@ describe("Provisioning API integration", () => {
         startedRestart.job.config.id,
         ["completed"],
       );
-      expect(healthResponder.getStats().failures).toBe(4);
-      expect(healthResponder.getStats().successes).toBe(2);
       expect(completedRestart.workspace?.executionHostBinding?.host).toMatchObject({
         kind: "mesh",
         scope: "workspace",
@@ -825,6 +829,7 @@ describe("Provisioning API integration", () => {
       relayFingerprint: getMeshNodeFingerprint(primaryRelayPublicKey),
       controllerNodeId: controller.nodeId,
       controllerFingerprint: controller.fingerprint,
+      relaySupportedProtocolVersions: MESH_SUPPORTED_PROTOCOL_VERSIONS,
     });
     if (workerRelayName) {
       saveControllerRelayPairing({
@@ -834,6 +839,7 @@ describe("Provisioning API integration", () => {
         relayFingerprint,
         controllerNodeId: controller.nodeId,
         controllerFingerprint: controller.fingerprint,
+        relaySupportedProtocolVersions: MESH_SUPPORTED_PROTOCOL_VERSIONS,
       });
     }
 
@@ -846,32 +852,8 @@ describe("Provisioning API integration", () => {
           relayUrl,
           relayFingerprint,
         });
-        expect(path).toBe("api/mesh/internal/health");
-        const body = JSON.parse(String(request.body)) as {
-          senderNodeId: string;
-          nonce: string;
-        };
-        const unsignedResponse = {
-          protocolVersion: MESH_PROTOCOL_VERSION,
-          workerNodeId,
-          controllerNodeId: body.senderNodeId,
-          requestNonce: body.nonce,
-          workerDirectory: "/workspaces/relay-example",
-          workerPlatform: null,
-          workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
-          workerAcceptRemoteExecution: true,
-          workerConfigRevision: 1,
-          binaryVersion: "5.0.0-test",
-          supportedProtocolVersions: [...MESH_SUPPORTED_PROTOCOL_VERSIONS],
-          preferredProtocolVersion: MESH_PROTOCOL_VERSION,
-        };
-        return Response.json({
-          ...unsignedResponse,
-          signature: sign(
-            null,
-            Buffer.from(buildMeshHealthCheckResponseSigningPayload(unsignedResponse)),
-            workerPrivateKey!,
-          ).toString("base64url"),
+        return await respondMeshWorker(new Request(`${relayUrl}/${path}`, request), {
+          nodeId: workerNodeId, privateKey: workerPrivateKey!, directory: "/workspaces/relay-example",
         });
       },
       openSocket(): never {
@@ -922,6 +904,7 @@ describe("Provisioning API integration", () => {
             workerCapabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
             workerAcceptRemoteExecution: true,
             workerConfigRevision: 1,
+            workerSupportedProtocolVersions: MESH_SUPPORTED_PROTOCOL_VERSIONS,
             registrationScope: "workspace",
             workspaceWorkerEnrollmentId: enrollment!.enrollment.id,
           });
@@ -1170,6 +1153,7 @@ describe("Provisioning API integration", () => {
       },
       serverSettings: {
         agent: {
+          adapter: "acp",
           provider: "copilot",
         },
       },

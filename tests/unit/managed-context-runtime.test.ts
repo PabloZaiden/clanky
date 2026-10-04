@@ -29,6 +29,7 @@ const sshWorkspace: Workspace = {
   allowClankyContext: true,
   serverSettings: {
     agent: {
+      adapter: "acp",
       provider: "opencode",
     },
   },
@@ -63,6 +64,7 @@ describe("managed runtime environment propagation", () => {
     const stdio = buildConnectionConfig(
       {
         agent: {
+          adapter: "acp",
           provider: "opencode",
           transport: "stdio",
         },
@@ -77,6 +79,7 @@ describe("managed runtime environment propagation", () => {
     const remote = buildConnectionConfig(
       {
         agent: {
+          adapter: "acp",
           provider: "opencode",
           transport: "ssh",
           hostname: "example.test",

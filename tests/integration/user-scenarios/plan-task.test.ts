@@ -588,6 +588,7 @@ describe("Plan + Task User Scenarios", () => {
 
       const updatedSettings = {
         agent: {
+          adapter: "acp",
           provider: currentSettings.agent.provider === "opencode" ? "copilot" : "opencode",
         },
       };

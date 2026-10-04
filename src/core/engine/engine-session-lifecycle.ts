@@ -17,6 +17,7 @@ import {
   setupTaskSession,
   type SessionOperationContext,
 } from "./engine-session";
+import { harnessActivityService } from "../harness-activity-service";
 
 export interface TaskSessionLifecycleOptions {
   backend: TaskBackend;
@@ -25,6 +26,7 @@ export interface TaskSessionLifecycleOptions {
   getWorkingDirectory: () => string;
   emitLog: (level: LogLevel, message: string, details?: Record<string, unknown>) => string;
   updateState: (update: Partial<TaskState>) => void;
+  persistSession: () => Promise<void>;
 }
 
 /**
@@ -38,6 +40,7 @@ export class TaskSessionLifecycleImpl implements TaskSessionLifecycle {
   private readonly getWorkingDirectory: () => string;
   private readonly emitLog: TaskSessionLifecycleOptions["emitLog"];
   private readonly updateState: TaskSessionLifecycleOptions["updateState"];
+  private readonly persistSession: TaskSessionLifecycleOptions["persistSession"];
   private currentSessionId: string | null = null;
   private sessionRecoveryPending = false;
   private activeInterrupt: Promise<void> | null = null;
@@ -49,6 +52,7 @@ export class TaskSessionLifecycleImpl implements TaskSessionLifecycle {
     this.getWorkingDirectory = options.getWorkingDirectory;
     this.emitLog = options.emitLog;
     this.updateState = options.updateState;
+    this.persistSession = options.persistSession;
   }
 
   get sessionId(): string | null {
@@ -64,12 +68,15 @@ export class TaskSessionLifecycleImpl implements TaskSessionLifecycle {
   }
 
   async setup(): Promise<string> {
-    return setupTaskSession(this.makeContext());
+    const sessionId = await setupTaskSession(this.makeContext());
+    await this.observeSession();
+    return sessionId;
   }
 
   async reconnect(): Promise<SessionReconnectResult> {
     const result = await reconnectTaskSession(this.makeContext());
     this.sessionRecoveryPending = result.createdNew;
+    await this.observeSession();
     return result;
   }
 
@@ -83,6 +90,7 @@ export class TaskSessionLifecycleImpl implements TaskSessionLifecycle {
   async recreateAfterLoss(reason: string): Promise<string> {
     const sessionId = await recreateSessionAfterLoss(this.makeContext(), reason);
     this.sessionRecoveryPending = true;
+    await this.observeSession();
     return sessionId;
   }
 
@@ -150,6 +158,12 @@ export class TaskSessionLifecycleImpl implements TaskSessionLifecycle {
     });
     this.activeInterrupt = trackedInterrupt;
     await trackedInterrupt;
+  }
+
+  private async observeSession(): Promise<void> {
+    await this.persistSession();
+    const binding = this.state.session?.binding;
+    if (binding) await harnessActivityService.observe({ kind: "task", id: this.config.id }, binding, this.backend);
   }
 
   private makeContext(): SessionOperationContext {

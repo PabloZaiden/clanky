@@ -51,6 +51,9 @@ import type { CreateTaskFormSubmitRequest } from "@/lib/task-request";
 
 export interface ShellMainContentProps {
   route: WebAppRoute;
+  activityRoute: WebAppRoute | null;
+  closeHarnessActivity: () => void;
+  openHarnessActivity: (route: WebAppRoute) => void;
   shellLoading: boolean;
   shellErrors: string[];
   navigateWithinShell: (route: WebAppRoute) => void;
@@ -110,7 +113,6 @@ export interface ShellMainContentProps {
   setComposeActionState: (state: CreateTaskFormActionState | null) => void;
   handleTaskSubmit: (request: CreateTaskFormSubmitRequest) => Promise<boolean>;
   createChat: (request: import("@/contracts").CreateChatRequest) => Promise<import("@/shared").Chat | null>;
-  importExistingChat: (request: import("@/contracts").ImportExistingChatRequest) => Promise<import("@/shared").Chat | null>;
 
   // Workspace create
   workspaceCreate: UseWorkspaceCreateResult;
@@ -335,7 +337,6 @@ function renderMainContent(props: ShellMainContentProps) {
     dashboardData,
     schedulerTimezone,
     createChat,
-    importExistingChat,
     workspaceSettings,
     workspacesSaving,
     agents,
@@ -428,6 +429,9 @@ function renderMainContent(props: ShellMainContentProps) {
       <TaskDetails
         key={`task:${taskId}`}
         taskId={taskId}
+        showActivity={props.activityRoute?.view === "task" && props.activityRoute["taskId"] === taskId}
+        onCloseActivity={props.closeHarnessActivity}
+        onOpenActivity={() => props.openHarnessActivity({ view: "task", taskId })}
         onBack={() => {
           navigateWithinShell({ view: "home" });
           void refreshTasks();
@@ -479,6 +483,9 @@ function renderMainContent(props: ShellMainContentProps) {
       <ChatDetails
         key={`chat:${chatId}`}
         chatId={chatId}
+        showActivity={props.activityRoute?.view === "chat" && props.activityRoute["chatId"] === chatId}
+        onCloseActivity={props.closeHarnessActivity}
+        onOpenActivity={() => props.openHarnessActivity({ view: "chat", chatId })}
       />
     );
   }
@@ -716,7 +723,6 @@ function renderMainContent(props: ShellMainContentProps) {
         setComposeActionState={props.setComposeActionState}
         handleTaskSubmit={props.handleTaskSubmit}
         createChat={createChat}
-        importExistingChat={importExistingChat}
         dashboardData={dashboardData}
         agents={agents}
         schedulerTimezone={schedulerTimezone}
