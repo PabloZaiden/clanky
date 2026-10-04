@@ -45,8 +45,8 @@ action targets task execution. Returning preserves the composer draft and
 transcript position. Related tool rows show compact background-work status and
 an Activity link without adding a permanent panel.
 
-The activity page lists observed subagents and processes, their state and
-available details. **Stop** targets that owned activity, not the principal,
+Activity updates automatically, including after the principal turn finishes.
+Subagent rows show their title, reported model and status. **Stop** targets that owned activity, not the principal,
 siblings, worker or independently managed Clanky terminals/previews. A
 `stopping` or `unknown` result is not confirmed termination.
 
@@ -79,6 +79,44 @@ the input as rejected, so it can be corrected or removed. For example, Codex
 does not accept inline non-image binary attachments such as PDFs; those failures
 are not uncertain deliveries.
 
+## Questions
+
+Interactive chats show native questions inline. Choose an offered option or
+enter another answer when the harness permits it, then use **Send answer**.
+Multiple-selection requests accept more than one choice. A blocking question
+shows the chat as waiting; normal composer messages remain queued rather than
+being interpreted as the answer. **Stop** interrupts the pending execution.
+Task-attached chats use the same interactive behavior.
+
+Task execution, task planning, helper sessions and autonomous scheduled runs
+use unattended policy. Copilot excludes `ask_user`; OpenCode denies `question`;
+Codex disables ordinary `request_user_input` and denies both question variants
+through a session-owned native `PreToolUse` hook. These controls apply on creation
+and cold resume without changing YOLO permissions or global harness settings.
+OpenCode reapplies question denial to owned persisted descendants on resume,
+preserving their other permission rules and leaving unrelated sessions untouched.
+Native Mesh workers must advertise session question-policy support; update a
+worker that reports this capability as unsupported.
+
+Codex can advertise `request_user_input_async` independently of the ordinary
+tool gate. In interactive chats its question is nonblocking and its answer is
+a normal conversation input, not a callback. Unattended sessions deny invocation
+of `request_user_input`, `request_user_input_async` and the native legacy alias
+`send_user_message_async` before execution. Only Clanky's own hook is trusted;
+other hook trust decisions and YOLO permissions remain unchanged. A Codex
+profile that disables hooks or permits only managed hooks cannot enforce this
+policy and is rejected explicitly for unattended execution. Unexpected native
+human-input callbacks are rejected or cancelled, never answered automatically.
+Tasks that need missing human information use the existing blocked outcome.
+ACP has no universal tool-exclusion mechanism; unsupported replies are explicit
+errors.
+
+Reloading the browser retains answerable pending questions. Interrupting or
+replacing the native connection expires live questions. An unconfirmed answer
+delivery must not be resent blindly; stop or reconnect instead. Copilot's
+legacy callback supplies no child identity, so its question is not falsely
+attributed to a particular subagent.
+
 ## HTTP and CLI
 
 These user-owned routes use the normal authentication and browser same-origin
@@ -91,6 +129,7 @@ inventing IDs or calling Steer repeatedly.
 | GET | `/api/tasks/:id/activity` | Read native task activity |
 | POST | `/api/chats/:id/activity/:activityId/stop` | Stop one owned chat activity |
 | POST | `/api/tasks/:id/activity/:activityId/stop` | Stop one owned task activity |
+| POST | `/api/chats/:id/questions/:requestId` | Answer one current native question |
 | POST | `/api/chats/:id/queued-messages/:messageId/steer` | Steer an existing queued chat message |
 | POST | `/api/chats/:id/queued-messages/:messageId/reconcile` | Recover native chat input delivery |
 | POST | `/api/tasks/:id/pending-inputs/:inputId/steer` | Steer the current pending task input |

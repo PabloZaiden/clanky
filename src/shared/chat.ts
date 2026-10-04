@@ -102,6 +102,7 @@ export type ChatStatus =
   | "idle"
   | "starting"
   | "streaming"
+  | "waiting"
   | "interrupting"
   | "reconnecting"
   | "stopped"
@@ -176,7 +177,7 @@ export function createInitialChatState(id: string): ChatState {
 }
 
 export function isChatBusyStatus(status: ChatStatus): boolean {
-  return status === "starting" || status === "streaming" || status === "interrupting";
+  return status === "starting" || status === "streaming" || status === "waiting" || status === "interrupting";
 }
 
 export function isChatTerminalStatus(status: ChatStatus): boolean {

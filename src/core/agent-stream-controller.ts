@@ -84,6 +84,7 @@ export interface AgentStreamStartOptions {
 export interface AgentStreamRunOptions {
   shouldStop?: () => boolean | Promise<boolean>;
   onInactivity?: () => void | Promise<void>;
+  isWaitingForInput?: () => boolean | Promise<boolean>;
   onEvent: (
     event: AgentEvent,
   ) => AgentStreamEventResult | void | Promise<AgentStreamEventResult | void>;
@@ -191,7 +192,7 @@ export class AgentStreamController {
     try {
       const readNextEvent = async (): Promise<AgentEvent | null> => {
         try {
-          return await this.nextEvent(stream, activityTimeoutMs);
+          return await this.nextEvent(stream, activityTimeoutMs, options.isWaitingForInput);
         } catch (error) {
           if (!(error instanceof AgentStreamActivityTimeoutError)) {
             throw error;
@@ -211,6 +212,7 @@ export class AgentStreamController {
           event.scope.kind !== "principal"
           && event.type !== "permission.asked"
           && event.type !== "question.asked"
+          && event.type !== "question.resolved"
         ) {
           event = await readNextEvent();
           continue;
@@ -240,12 +242,33 @@ export class AgentStreamController {
 
   private nextEvent(
     stream: EventStream<AgentEvent>,
-    activityTimeoutMs: number | null,
+    timeoutMs: number | null,
+    isWaiting?: AgentStreamRunOptions["isWaitingForInput"],
   ): Promise<AgentEvent | null> {
-    if (activityTimeoutMs === null) {
-      return stream.next();
-    }
-    return nextWithTimeout(stream, activityTimeoutMs);
+    if (!isWaiting) return timeoutMs === null ? stream.next() : nextWithTimeout(stream, timeoutMs);
+    return new Promise((resolve, reject) => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let completed = false;
+      const finish = (operation: () => void): void => {
+        if (completed) return;
+        completed = true;
+        clearTimeout(timer);
+        operation();
+      };
+      // One reader and one timer stay bounded even for long human waits.
+      stream.next().then((event) => finish(() => resolve(event)), (error: unknown) => finish(() => reject(error)));
+      const check = async (): Promise<void> => {
+        try {
+          const waiting = await isWaiting();
+          if (completed) return;
+          if (waiting) timer = setTimeout(() => void check(), 1000);
+          else if (timeoutMs !== null) timer = setTimeout(() => finish(() => reject(new AgentStreamActivityTimeoutError(timeoutMs))), timeoutMs);
+        } catch (error) {
+          finish(() => reject(error));
+        }
+      };
+      void check();
+    });
   }
 }
 

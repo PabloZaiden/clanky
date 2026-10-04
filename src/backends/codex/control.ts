@@ -19,6 +19,7 @@ export class CodexControl implements HarnessControl {
   readonly capabilities: HarnessCapabilities = {
     adapter: "codex", experimental: true, steering: "expected-turn", activity: "partial",
     stopScopes: ["child-execution", "command"],
+    questionPolicy: "session",
   };
   constructor(private readonly resolve: () => { runtime: CodexRuntime; sessions: CodexSessionService }) {}
 
@@ -38,6 +39,7 @@ export class CodexControl implements HarnessControl {
           : thread.status.type === "idle" ? "idle" : thread.status.type === "systemError" ? "failed" : "unknown",
         ownership: "owned", workspaceWrites: thread.status.type === "notLoaded" ? "unknown" : "possible",
         spawningToolCallId: sessions.getThread(thread.id)?.spawningToolCallId,
+        requestedModel: thread.model ?? undefined,
         native: { adapter: "codex", conversationId: thread.id, activityId: thread.id },
       });
       if (thread.status.type === "notLoaded") continue;

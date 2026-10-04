@@ -20,6 +20,7 @@ import { HarnessError } from "../backends/harness-errors";
 import type { HarnessInputAdmission } from "@/shared/harness-control";
 import { isHarnessInputValidationError, retainHarnessInputReceipt } from "./harness-input-ledger";
 import type { DomainError } from "../domain/domain-error";
+import type { ChatQuestionService } from "./chat-question-service";
 import { buildPromptParts } from "../backends/prompt-parts";
 import { KeyedOperationQueue } from "../utils/keyed-operation-queue";
 import { requireMatchingHarnessBinding } from "../backends/harness-binding";
@@ -46,10 +47,18 @@ export class ChatInteractionService implements ChatInteractionPort {
     state: ChatStatePort;
     conversation: ChatConversationPort;
     session: ChatSessionPort;
+    questions?: Pick<ChatQuestionService, "reply">;
   }) {
     this.state = dependencies.state;
     this.conversation = dependencies.conversation;
     this.session = dependencies.session;
+    this.questions = dependencies.questions;
+  }
+  private readonly questions?: Pick<ChatQuestionService, "reply">;
+
+  replyToQuestion(chatId: string, requestId: string, answers: string[][]): Promise<Chat> {
+    if (!this.questions) throw new HarnessError("harness_unsupported_feature", "Chat questions are unavailable.");
+    return this.questions.reply(chatId, requestId, answers);
   }
 
   sendMessage(chatId: string, options: ChatMessageOptions): Promise<Chat> {

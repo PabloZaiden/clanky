@@ -13,6 +13,7 @@ export const HarnessConversationBindingSchema = z.object({
   contextId: z.string().min(1),
   directory: z.string().min(1),
   executionHost: ExecutionHostBindingSchema.optional(),
+  questionPolicy: z.enum(["interactive", "unattended"]).optional(),
 });
 
 export const HarnessNativeReferencesSchema = z.object({
@@ -24,6 +25,27 @@ export const HarnessNativeReferencesSchema = z.object({
   toolCallId: z.string().optional(),
   commandId: z.string().optional(),
 });
+
+export const HarnessQuestionInfoSchema = z.object({
+  question: z.string().max(100_000), header: z.string().max(1000),
+  options: z.array(z.object({ label: z.string().max(10_000), description: z.string().max(10_000) })).max(1000),
+  multiple: z.boolean().optional(), custom: z.boolean().optional(),
+  valueType: z.enum(["string", "number", "integer"]).optional(),
+  minimum: z.number().optional(), maximum: z.number().optional(),
+  required: z.boolean().optional(),
+  minLength: z.number().int().nonnegative().optional(), maxLength: z.number().int().nonnegative().optional(),
+  minItems: z.number().int().nonnegative().optional(), maxItems: z.number().int().nonnegative().optional(),
+});
+
+export const HarnessEventScopeSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("principal"), native: HarnessNativeReferencesSchema.optional() }),
+  z.object({ kind: z.literal("child"), activityId: z.string(), native: HarnessNativeReferencesSchema.optional() }),
+  z.object({ kind: z.literal("unknown"), native: HarnessNativeReferencesSchema.optional() }),
+]);
+
+export const ReplyToChatQuestionRequestSchema = z.object({
+  answers: z.array(z.array(z.string().min(1).max(10_000)).max(100)).min(1).max(100),
+}).strict();
 
 const AcceptedInputSchema = z.object({
   status: z.enum(["accepted", "delivered"]),
@@ -43,6 +65,7 @@ export const HarnessConversationStateSchema = z.object({
     steering: z.enum(["unsupported", "active-session", "expected-turn"]),
     activity: z.enum(["unavailable", "partial", "native"]),
     stopScopes: z.array(z.enum(["child-execution", "command"])),
+    questionPolicy: z.literal("session").optional(),
   }).optional(),
   gitSafety: z.union([
     z.object({ status: z.literal("safe"), observedAt: z.string() }),
@@ -78,4 +101,14 @@ export const HarnessConversationStateSchema = z.object({
     ]),
   })).max(1000).optional(),
   integrity: z.literal("invalid").optional(),
+  questions: z.array(z.object({
+    requestId: z.string().min(1).max(500), conversation: HarnessConversationBindingSchema,
+    scope: HarnessEventScopeSchema, questions: z.array(HarnessQuestionInfoSchema).min(1).max(100),
+    blocking: z.boolean(),
+    responseMode: z.enum(["callback", "message"]).optional(),
+    status: z.enum(["pending", "submitting", "unconfirmed", "answered", "cancelled", "expired"]),
+    createdAt: z.string(), resolvedAt: z.string().optional(),
+    answers: z.array(z.array(z.string().max(10_000)).max(100)).max(100).optional(),
+    error: z.string().optional(),
+  })).max(256).optional(),
 });

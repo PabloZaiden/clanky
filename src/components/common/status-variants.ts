@@ -8,6 +8,7 @@ export function getChatStatusBadgeVariant(status: ChatStatus): BadgeVariant {
     case "reconnecting":
       return "info";
     case "interrupting":
+    case "waiting":
       return "warning";
     case "failed":
       return "error";

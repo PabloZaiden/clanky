@@ -170,7 +170,7 @@ export class MeshHarnessGateway {
       const session = await backend.createSession({
         ...operation.options,
         directory: host.config.directory,
-        ownership: { ownerId: native.ownerId, contextId: native.contextId, executionHost: native.executionHost },
+        ownership: { ownerId: native.ownerId, contextId: native.contextId, executionHost: native.executionHost, questionPolicy: native.questionPolicy },
       });
       const binding = { ...canonical, nativeId: session.id };
       try {

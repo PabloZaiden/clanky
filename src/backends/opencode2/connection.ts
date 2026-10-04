@@ -75,6 +75,7 @@ export class OpenCodeConnection {
       this.services = undefined;
       if (services) {
         await services.sessions.finishOperations();
+        try { await services.questions.close(); } catch (error) { errors.push(error); }
         const control = new OpenCodeControl(() => services);
         for (const id of services.sessions.roots()) {
           try {
@@ -84,7 +85,6 @@ export class OpenCodeConnection {
         }
         this.unsubscribeFailure?.();
         this.unsubscribeFailure = undefined;
-        try { await services.questions.close(); } catch (error) { errors.push(error); }
         try { await services.sessions.close(); } catch (error) { errors.push(error); }
         try { await services.runtime.close(); } catch (error) { errors.push(error); }
       }

@@ -25,7 +25,7 @@ import type {
   ChatStreamEvent,
 } from "./types";
 
-const ACTIVE_CHAT_STATUSES = new Set(["starting", "streaming", "interrupting", "reconnecting"]);
+const ACTIVE_CHAT_STATUSES = new Set(["starting", "streaming", "waiting", "interrupting", "reconnecting"]);
 
 export function getChatErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);

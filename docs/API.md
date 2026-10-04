@@ -136,6 +136,26 @@ filesystem permissions. Access outside the initial directory is intentional
 and an accepted product risk; authentication, workspace ownership and
 execution-host authorization still apply.
 
+### Native chat questions
+
+Read `state.harness.questions` from the chat or snapshot response. Each request
+contains its `requestId`, owned conversation binding, principal/child/unknown
+scope, question fields, blocking flag and lifecycle status. Options use their
+native values; free text is allowed unless `custom` is false.
+
+Submit `POST /api/chats/:id/questions/:requestId` with
+`{ "answers": [["selected value"], ["free-text answer"]] }`: one array per
+question, with multiple values only for multiple-selection fields. Optional
+fields may use an empty array. Numeric bounds and supported string/selection
+constraints are validated before native admission.
+
+The response contains the current `chat`. Invalid answers return 400, a missing
+owned request returns 404, and a closed or conflicting reply returns 409.
+Repeating the same confirmed answer is idempotent. `submitting` and `unconfirmed`
+requests cannot be resent; native acknowledgement and model continuation are
+different outcomes. Stop the chat or reconnect after uncertain delivery.
+Interrupt, disconnect and restart expire callbacks that are no longer live.
+
 ### Workspace WebDAV and exact-path file operations
 
 ```bash
@@ -348,6 +368,7 @@ included in this table.
 | POST | `/api/chats/:id/interrupt` | Interrupt an active chat run. |
 | POST | `/api/chats/:id/messages` | Send a message to a chat session. |
 | POST | `/api/chats/:id/permissions/:requestId` | Approve or deny a pending chat permission request. |
+| POST | `/api/chats/:id/questions/:requestId` | Answer a native question owned by the current chat conversation. |
 | DELETE | `/api/chats/:id/queued-messages/:messageId` | Delete a queued chat message. |
 | POST | `/api/chats/:id/queued-messages/:messageId/steer` | Steer an existing queued input without interrupting the execution. |
 | POST | `/api/chats/:id/queued-messages/:messageId/reconcile` | Recover native delivery without resending the input. |

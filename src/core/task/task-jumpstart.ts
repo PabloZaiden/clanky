@@ -31,6 +31,7 @@ export async function jumpstartTaskFromEngine(
   taskId: string,
   options: { message?: string; model?: ModelConfig; attachments?: MessageAttachment[] }
 ): Promise<TaskResult> {
+  await ctx.engines.get(taskId)?.waitForCompletionSettlement();
   const task = await loadTask(taskId);
   if (!task) {
     return taskFailure("task_not_found", "Task not found", { details: { taskId } });

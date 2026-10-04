@@ -211,6 +211,7 @@ export interface ChatConversationPort {
 }
 
 export interface ChatInteractionPort {
+  replyToQuestion(chatId: string, requestId: string, answers: string[][]): Promise<Chat>;
   reconcileQueuedMessage(chatId: string, queuedMessageId: string): Promise<{ chat: Chat; admission: HarnessInputAdmission }>;
   steerQueuedMessage(chatId: string, queuedMessageId: string): Promise<{ chat: Chat; admission: HarnessInputAdmission }>;
   sendMessage(chatId: string, options: ChatMessageOptions): Promise<Chat>;

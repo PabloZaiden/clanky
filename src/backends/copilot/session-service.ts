@@ -59,7 +59,9 @@ export class CopilotSessionService {
       reasoningEffort: choice?.reasoningEffort,
       streaming: true,
       onPermissionRequest: approveAll,
-      onUserInputRequest: this.questions.handle,
+      excludedTools: options.ownership.questionPolicy === "interactive" ? [] : ["ask_user"],
+      askUserVariant: "legacy",
+      onUserInputRequest: this.questions.handler(options.ownership.questionPolicy),
     });
     const binding: HarnessConversationBinding = {
       ...options.ownership,
@@ -101,11 +103,14 @@ export class CopilotSessionService {
       streaming: true,
       continuePendingWork: false,
       onPermissionRequest: approveAll,
-      onUserInputRequest: this.questions.handle,
+      excludedTools: binding.questionPolicy === "interactive" ? [] : ["ask_user"],
+      askUserVariant: "legacy",
+      onUserInputRequest: this.questions.handler(binding.questionPolicy),
     });
     try {
       const metadata = await session.rpc.metadata.getClientMetadata();
       requireMatchingHarnessBinding(metadata["clanky/binding"], binding);
+      await session.rpc.metadata.updateClientMetadata({ set: { "clanky/binding": JSON.stringify(binding) } });
       return await this.attach(session, binding);
     } catch (error) {
       await this.rollback(session, error);
@@ -126,6 +131,7 @@ export class CopilotSessionService {
   async abort(sessionId: string): Promise<void> {
     const conversation = this.get(sessionId);
     conversation.translator.interrupted = true;
+    this.questions.expire(sessionId);
     await conversation.native.abort();
   }
 
@@ -203,6 +209,7 @@ export class CopilotSessionService {
 
   private async closeSession(sessionId: string): Promise<void> {
     const conversation = this.get(sessionId);
+    this.questions.expire(sessionId);
     const errors: unknown[] = [];
     try {
       const cleanup = await settleCopilotWork(conversation.native);
@@ -212,7 +219,6 @@ export class CopilotSessionService {
     }
     this.conversations.delete(sessionId);
     conversation.unsubscribe();
-    this.questions.expire(sessionId);
     this.events.closeSession(sessionId);
     try { await conversation.native.disconnect(); } catch (error) { errors.push(error); }
     if (errors.length) throw new AggregateError(errors, "Native conversation teardown failed.");

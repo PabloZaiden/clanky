@@ -41,7 +41,7 @@ export class CodexConnection {
       }, this.startupAbort?.signal);
       const catalog = new CodexModelCatalog(runtime.rpc);
       const sessions = new CodexSessionService({ runtime, catalog, events: this.events });
-      const questions = new CodexQuestionCoordinator({ sessions, events: this.events });
+      const questions = new CodexQuestionCoordinator({ sessions, events: this.events, runtime });
       runtime.rpc.setRequestHandler((request) => questions.handle(request));
       this.services = { runtime, catalog, sessions, questions };
     })().finally(() => {
@@ -77,6 +77,7 @@ export class CodexConnection {
             if (cleanup.status !== "settled") throw new HarnessError("harness_request_failed", "Native work did not settle before disconnect.");
           } catch (error) { errors.push(error); }
         }
+        services.questions.close();
         services.sessions.close();
         try { await services.runtime.close(); } catch (error) { errors.push(error); }
       }

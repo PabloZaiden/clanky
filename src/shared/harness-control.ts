@@ -5,6 +5,9 @@
 import type { HarnessNativeReferences } from "./harness-events";
 import type { PromptInput } from "./harness-input";
 import type { ExecutionHostBinding } from "./execution-host";
+import type { HarnessQuestionRequest } from "./harness-questions";
+
+export type HarnessQuestionPolicy = "interactive" | "unattended";
 
 export interface HarnessConversationBinding {
   adapter: HarnessNativeReferences["adapter"];
@@ -13,6 +16,7 @@ export interface HarnessConversationBinding {
   contextId: string;
   directory: string;
   executionHost?: ExecutionHostBinding;
+  questionPolicy?: HarnessQuestionPolicy;
 }
 
 export interface HarnessCapabilities {
@@ -21,6 +25,7 @@ export interface HarnessCapabilities {
   steering: "unsupported" | "active-session" | "expected-turn";
   activity: "unavailable" | "partial" | "native";
   stopScopes: readonly ("child-execution" | "command")[];
+  questionPolicy?: "session";
 }
 
 export interface HarnessActivity {
@@ -90,6 +95,7 @@ export interface HarnessConversationState {
   gitOutcome?: { status: "pending" | "succeeded" | "failed"; observedAt: string };
   inputs?: HarnessInputReceipt[];
   integrity?: "invalid";
+  questions?: HarnessQuestionRequest[];
 }
 
 export type HarnessGitSafety =

@@ -337,6 +337,7 @@ describe("Chats API Integration", () => {
       ownerId: testOwnerUser.id, contextId: created.config.id,
       directory: settled.state.worktree?.worktreePath ?? created.config.directory,
       executionHost: created.config.executionHostBinding,
+      questionPolicy: "interactive",
     });
 
     const reconnectResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/reconnect`, {

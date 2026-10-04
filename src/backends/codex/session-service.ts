@@ -15,6 +15,7 @@ import { HarnessError } from "../harness-errors";
 import { requireMatchingHarnessBinding } from "../harness-binding";
 import { CodexEventTranslator } from "./event-translator";
 import { toCodexInput } from "./prompt";
+import { codexQuestionConfig } from "./question-policy";
 
 interface Conversation {
   info: AgentSession;
@@ -69,6 +70,7 @@ export class CodexSessionService {
     const result = await this.dependencies.runtime.rpc.request("thread/start", {
       cwd: options.directory, model: options.model, ephemeral: false,
       approvalPolicy: "never", sandbox: "danger-full-access", allowProviderModelFallback: false,
+      config: await codexQuestionConfig(this.dependencies.runtime, options.ownership.questionPolicy),
     });
     const binding: HarnessConversationBinding = {
       ...options.ownership, adapter: "codex", nativeId: result.thread.id, directory: options.directory,
@@ -107,10 +109,12 @@ export class CodexSessionService {
     const result = await this.dependencies.runtime.rpc.request("thread/resume", {
       threadId: binding.nativeId, excludeTurns: true, cwd: binding.directory,
       approvalPolicy: "never", sandbox: "danger-full-access",
+      config: await codexQuestionConfig(this.dependencies.runtime, binding.questionPolicy),
     });
     if (result.thread.cwd !== binding.directory || result.thread.parentThreadId !== null) {
       throw new HarnessError("harness_session_not_owned", "The native root thread does not match its persisted binding.");
     }
+
     return this.attach(result.thread, binding);
   }
 

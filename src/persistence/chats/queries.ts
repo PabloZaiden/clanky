@@ -9,6 +9,8 @@ import { rowToChat } from "./helpers";
 import { CHAT_METADATA_COLUMNS } from "./crud";
 import { requirePersistenceUserId } from "../ownership";
 import { chatTranscriptStore } from "../transcripts/chat-store";
+import { parseStoredHarnessState } from "../harness-binding";
+import { expireQuestions } from "@/shared/harness-questions";
 
 const log = createLogger("persistence:chats");
 const STALE_CHAT_RESET_MESSAGE = "Forcefully stopped by connection reset";
@@ -17,6 +19,7 @@ const ACTIVE_CHAT_STATUSES: ChatStatus[] = [
   "idle",
   "starting",
   "streaming",
+  "waiting",
   "interrupting",
   "reconnecting",
 ];
@@ -24,6 +27,7 @@ const ACTIVE_CHAT_STATUSES: ChatStatus[] = [
 const STALE_CHAT_STATUSES: ChatStatus[] = [
   "starting",
   "streaming",
+  "waiting",
   "interrupting",
   "reconnecting",
 ];
@@ -52,11 +56,22 @@ export function isStaleChatStatus(status: ChatStatus): boolean {
   return STALE_CHAT_STATUSES.includes(status);
 }
 
-export async function resetStaleChat(chatId: string): Promise<boolean> {
+function resetStale(chatId?: string): number {
   const now = new Date().toISOString();
   const placeholders = STALE_CHAT_STATUSES.map(() => "?").join(", ");
   const userId = requirePersistenceUserId();
-  const result = getDatabase().prepare(`
+  const db = getDatabase();
+  return db.transaction(() => {
+    const rows = db.query<{ id: string; harness_state_json: string | null }, (string)[]>(`
+      SELECT id, harness_state_json FROM chats WHERE user_id = ? AND status IN (${placeholders})
+      ${chatId ? "AND id = ?" : ""}
+    `).all(userId, ...STALE_CHAT_STATUSES, ...(chatId ? [chatId] : []));
+    for (const row of rows) {
+      const harness = parseStoredHarnessState(row.harness_state_json, row.id);
+      if (harness?.questions?.length) db.query("UPDATE chats SET harness_state_json = ? WHERE id = ? AND user_id = ?")
+        .run(JSON.stringify({ ...harness, questions: expireQuestions(harness.questions) }), row.id, userId);
+    }
+    const result = db.prepare(`
     UPDATE chats
     SET status = 'stopped',
         error_message = ?,
@@ -67,34 +82,18 @@ export async function resetStaleChat(chatId: string): Promise<boolean> {
         pending_permission_requests = '[]',
         connection_status = 'disconnected',
         startup_stage = NULL
-    WHERE id = ? AND user_id = ? AND status IN (${placeholders})
-  `).run(STALE_CHAT_RESET_MESSAGE, now, now, chatId, userId, ...STALE_CHAT_STATUSES);
+    WHERE user_id = ? AND status IN (${placeholders}) ${chatId ? "AND id = ?" : ""}
+  `).run(STALE_CHAT_RESET_MESSAGE, now, now, userId, ...STALE_CHAT_STATUSES, ...(chatId ? [chatId] : []));
+    return result.changes;
+  })();
+}
 
-  if (result.changes > 0) {
-    log.info("Reset stale chat", { chatId });
-    return true;
-  }
-
-  return false;
+export async function resetStaleChat(chatId: string): Promise<boolean> {
+  const changed = resetStale(chatId);
+  if (changed) log.info("Reset stale chat", { chatId });
+  return changed > 0;
 }
 
 export async function resetStaleChats(): Promise<number> {
-  const now = new Date().toISOString();
-  const placeholders = STALE_CHAT_STATUSES.map(() => "?").join(", ");
-  const userId = requirePersistenceUserId();
-  const result = getDatabase().prepare(`
-    UPDATE chats
-    SET status = 'stopped',
-        error_message = ?,
-        error_timestamp = ?,
-        completed_at = ?,
-        interrupt_requested = 0,
-        active_message_id = NULL,
-        pending_permission_requests = '[]',
-        connection_status = 'disconnected',
-        startup_stage = NULL
-    WHERE user_id = ? AND status IN (${placeholders})
-  `).run(STALE_CHAT_RESET_MESSAGE, now, now, userId, ...STALE_CHAT_STATUSES);
-
-  return result.changes;
+  return resetStale();
 }
