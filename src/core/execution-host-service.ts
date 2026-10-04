@@ -29,7 +29,14 @@ import {
   type PersistedExecutionHost,
 } from "../persistence/execution-hosts";
 import { ensureLocalMeshNodeIdentity } from "../persistence/mesh-node-identity";
-import { listGloballyDiscoverableWorkerRegistrations } from "../persistence/mesh";
+import {
+  getWorkerRegistration,
+  getWorkerRegistrationExecutionHostRef,
+  listGloballyDiscoverableWorkerRegistrations,
+} from "../persistence/mesh";
+import type { MeshWorkerRegistration } from "@/shared/mesh";
+import { HARNESS_ADAPTER_IDS } from "@/shared/harness-events";
+import { meshWorkerRouteVersion } from "./mesh-route-version";
 import {
   listSshServerConfigs,
 } from "../persistence/ssh-servers";
@@ -183,7 +190,10 @@ export class ExecutionHostService {
     return persisted;
   }
 
-  async listHosts(userId: string = requireCurrentUserId()): Promise<ExecutionHostDescriptor[]> {
+  async listHosts(
+    userId: string = requireCurrentUserId(),
+    additionalHost?: ExecutionHostRef,
+  ): Promise<ExecutionHostDescriptor[]> {
     const descriptors: ExecutionHostDescriptor[] = [];
     const identity = await ensureLocalMeshNodeIdentity();
     const localRuntime = createExecutionHostRuntimeSnapshot(
@@ -210,6 +220,7 @@ export class ExecutionHostService {
         acceptRemoteExecution: true,
         platform: localHost.runtime.platform,
         capabilities: localHost.runtime.capabilities,
+        harnessAdapters: [...HARNESS_ADAPTER_IDS],
         revision: localHost.revision,
       });
     }
@@ -218,32 +229,15 @@ export class ExecutionHostService {
       if (worker.workerNodeId === identity.nodeId || !worker.workerAcceptRemoteExecution) {
         continue;
       }
-      const host = ensureExecutionHost(
-        userId,
-        { kind: "mesh", nodeId: worker.workerNodeId },
-        buildMeshTargetKey(worker.workerNodeId),
-        {
-          runtime: {
-            platform: worker.workerPlatform,
-            capabilities: worker.workerCapabilities ?? {},
-          },
-        },
-      );
-      descriptors.push({
-        ref: host.ref,
-        targetKey: host.targetKey,
-        name: worker.workerInstanceName || worker.workerNodeId,
-        endpoint: worker.workerEndpoint,
-        meshRouteKind: worker.route.kind,
-        repositoriesBasePath: worker.workerDirectory,
-        preferredModel: null,
-        configurationRevision: worker.workerConfigRevision,
-        accessRequirement: { kind: "none" },
-        acceptRemoteExecution: true,
-        platform: host.runtime.platform,
-        capabilities: host.runtime.capabilities,
-        revision: host.revision,
-      });
+      descriptors.push(this.describeMeshWorker(worker, userId));
+    }
+
+    if (additionalHost?.kind === "mesh" && isPrivateMeshExecutionHostRef(additionalHost)) {
+      const worker = getWorkerRegistration(additionalHost.nodeId, userId);
+      if (!worker || !executionHostRefsEqual(getWorkerRegistrationExecutionHostRef(worker), additionalHost)) {
+        throw new DomainError("execution_host_unavailable", "The workspace worker execution host is unavailable.");
+      }
+      descriptors.push(this.describeMeshWorker(worker, userId));
     }
 
     for (const server of await listSshServerConfigs()) {
@@ -275,12 +269,54 @@ export class ExecutionHostService {
         acceptRemoteExecution: !host.revokedAt,
         platform: host.runtime.platform,
         capabilities: host.runtime.capabilities,
+        harnessAdapters: ["acp"],
         revision: host.revision,
         isPrivate: server.isPrivate,
       });
     }
 
     return descriptors;
+  }
+
+  private describeMeshWorker(worker: MeshWorkerRegistration, userId: string): ExecutionHostDescriptor {
+    const ref = getWorkerRegistrationExecutionHostRef(worker);
+    const persisted = getExecutionHostByRef(userId, ref);
+    if (isPrivateMeshExecutionHostRef(ref) && !persisted) {
+      throw new DomainError("execution_host_unavailable", "The workspace worker execution host is unavailable.");
+    }
+    const host = ensureExecutionHost(userId, ref, persisted?.targetKey ?? buildMeshTargetKey(worker.workerNodeId), {
+      runtime: { platform: worker.workerPlatform, capabilities: worker.workerCapabilities ?? {} },
+    });
+    const available = !host.revokedAt && worker.grantStatus === "active" && worker.workerAcceptRemoteExecution;
+    let harnessAdapters: ExecutionHostDescriptor["harnessAdapters"] = [];
+    let harnessAdapterError: ExecutionHostDescriptor["harnessAdapterError"];
+    if (available) {
+      try {
+        harnessAdapters = meshWorkerRouteVersion(worker) === 6 ? [...HARNESS_ADAPTER_IDS] : ["acp"];
+      } catch (error) {
+        if (!(error instanceof DomainError) || error.code !== "mesh_execution_protocol_mismatch") throw error;
+        harnessAdapterError = error.code;
+        log.warn("Harness adapter availability could not be verified", { workerNodeId: worker.workerNodeId, code: error.code });
+      }
+    }
+    return {
+      ref: host.ref,
+      targetKey: host.targetKey,
+      name: worker.workerInstanceName || worker.workerNodeId,
+      endpoint: worker.workerEndpoint,
+      meshRouteKind: worker.route.kind,
+      repositoriesBasePath: worker.workerDirectory,
+      preferredModel: null,
+      configurationRevision: worker.workerConfigRevision,
+      accessRequirement: { kind: "none" },
+      acceptRemoteExecution: available,
+      platform: host.runtime.platform,
+      capabilities: host.runtime.capabilities,
+      harnessAdapters,
+      ...(harnessAdapterError ? { harnessAdapterError } : {}),
+      revision: host.revision,
+      ...(isPrivateMeshExecutionHostRef(ref) ? { isPrivate: true } : {}),
+    };
   }
 
   async requireCapability(

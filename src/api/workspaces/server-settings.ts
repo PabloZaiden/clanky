@@ -6,7 +6,7 @@ import { z } from "zod";
 
 import { createLogger } from "@pablozaiden/webapp/server";
 import { workspaceManager } from "../../core/workspace-manager";
-import { parseAndValidate } from "../validation";
+import { parseAndValidate, validateRequest } from "../validation";
 import {
   requireWorkspace,
   errorResponse,
@@ -17,6 +17,7 @@ import {
   ExecutionHostDescriptorSchema,
   ServerSettingsSchema,
   TestConnectionRequestSchema,
+  WorkspaceExecutionTargetsQuerySchema,
 } from "@/contracts/schemas";
 import { SensitiveQuerySchema } from "../route-schemas";
 
@@ -253,18 +254,23 @@ export const serverSettingsRoutes = defineRoutes({
   "/api/workspaces/execution-targets": {
     auth: "user",
     sameOrigin: "mutations",
-    description: "List local and paired mesh stdio execution targets.",
+    description: "List execution targets and their available harness adapters, including an authorized workspace or enrollment target.",
+    querySchema: WorkspaceExecutionTargetsQuerySchema,
     responseSchema: z.array(ExecutionHostDescriptorSchema),
-    async GET() {
+    async GET(req: Request) {
+      const query = validateRequest(WorkspaceExecutionTargetsQuerySchema, Object.fromEntries(new URL(req.url).searchParams));
+      if (!query.success) return query.response;
       try {
-        return Response.json(await workspaceManager.listExecutionTargets());
+        return Response.json(await workspaceManager.listExecutionTargets(query.data));
       } catch (error) {
-        log.error("Failed to list workspace execution targets:", String(error));
-        return internalErrorResponse(error, {
+        const response = internalErrorResponse(error, {
           error: "execution_targets_failed",
           message: "Failed to list workspace execution targets",
           status: 500,
         });
+        if (response.status >= 500) log.error("Failed to list workspace execution targets:", String(error));
+        else log.warn("Failed to list workspace execution targets:", String(error));
+        return response;
       }
     },
   },

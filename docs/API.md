@@ -497,11 +497,25 @@ included in this table.
 | GET, PUT | `/api/workspaces/:id/server-settings` | Read or update workspace server settings. |
 | GET | `/api/workspaces/:id/server-settings/status` | Read the current workspace connection status. |
 | POST | `/api/workspaces/:id/server-settings/test` | Test the configured workspace connection using workspace settings. |
-| GET | `/api/workspaces/execution-targets` | List local and paired Mesh stdio execution targets. |
+| GET | `/api/workspaces/execution-targets` | List execution hosts and available harness adapters for workspace configuration. |
 | GET | `/api/workspaces/:workspaceId/previews` | List previews associated with a workspace. |
 | GET | `/api/execution-hosts/:kind/:id/previews` | List direct previews for a local or Mesh execution host. |
 
 </details>
+
+### Workspace execution targets
+
+`GET /api/workspaces/execution-targets` returns the current user's execution-host
+descriptors. Harness availability is part of each descriptor:
+
+| Field | Contract |
+| --- | --- |
+| `harnessAdapters` | Available adapters: `acp`, `copilot`, `codex`, `opencode2`, constrained by the execution host and Mesh route. |
+| `harnessAdapterError` | Optional `mesh_execution_protocol_mismatch` when route negotiation cannot be verified; `harnessAdapters` is empty. |
+
+The optional `workspaceId` or connected `workspaceWorkerEnrollmentId` query
+includes that user's dedicated worker. Its reference retains the workspace or
+enrollment scope; dedicated workers are not listed in global host discovery.
 
 ### Tasks CRUD
 

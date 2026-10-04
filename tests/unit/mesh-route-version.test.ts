@@ -16,6 +16,8 @@ import { getMeshNodeFingerprint } from "../../src/persistence/mesh-node-identity
 import { meshWorkerRouteVersion } from "../../src/core/mesh-route-version";
 import { discoverMeshWorkerGeneration } from "../../src/core/mesh-worker-generation";
 import { seedTestOwnerUser } from "../setup";
+import { serveNativeApiRoutes } from "../native-api-server";
+import type { ExecutionHostDescriptor } from "../../src/shared/execution-host";
 
 let dataDir: string;
 
@@ -33,7 +35,7 @@ afterEach(async () => {
   await rm(dataDir, { recursive: true, force: true });
 });
 
-async function pairedWorker(negotiated: 5 | 6 | null) {
+async function pairedWorker(negotiated: 5 | 6 | null, supportedProtocolVersions: readonly (5 | 6)[] = [6, 5]) {
   const publicKey = generateKeyPairSync("ed25519").publicKey.export({ format: "pem", type: "spki" }).toString();
   const pairing = saveControllerRelayPairing({
     name: "dual-generation", relayUrl: "https://relay.example", relayPublicKey: publicKey,
@@ -51,14 +53,26 @@ async function pairedWorker(negotiated: 5 | 6 | null) {
     workerFingerprint: getMeshNodeFingerprint(publicKey), workerEncryptionPublicKey: "fixture-encryption",
     workerTlsCertificate: null, workerTlsFingerprint: null, workerDirectory: "/workspace",
     workerCapabilities: {}, workerAcceptRemoteExecution: true, workerConfigRevision: 1,
-    workerSupportedProtocolVersions: [6, 5],
+    workerSupportedProtocolVersions: supportedProtocolVersions,
     route: { kind: "relay", relayUrl: pairing.relayUrl, relayFingerprint: pairing.relayFingerprint, targetNodeId: "worker" },
   });
 }
 
-test("Mesh route stays on the negotiated v5 relay hop despite advertised v6", async () => {
-  const worker = await pairedWorker(5);
-  expect(meshWorkerRouteVersion(worker)).toBe(5);
+test.each([
+  [5, [6, 5], ["acp"]],
+  [6, [6, 5], ["acp", "copilot", "codex", "opencode2"]],
+  [6, [5], ["acp"]],
+] as const)("Execution-target adapters follow relay generation %i and worker generations %j", async (negotiated, supported, expected) => {
+  await pairedWorker(negotiated, supported);
+  const server = serveNativeApiRoutes();
+  try {
+    const response = await fetch(new URL("/api/workspaces/execution-targets", server.url));
+    expect(response.status).toBe(200);
+    const hosts = await response.json() as ExecutionHostDescriptor[];
+    expect(hosts.find((host) => host.ref.kind === "mesh")?.harnessAdapters).toEqual([...expected]);
+  } finally {
+    await server.stop(true);
+  }
 });
 
 test("Mesh discovery stays on the negotiated v5 relay hop despite advertised v6", async () => {
@@ -70,6 +84,18 @@ test("Mesh route and discovery fail closed without a negotiated relay hop", asyn
   const worker = await pairedWorker(null);
   expect(() => meshWorkerRouteVersion(worker)).toThrow(expect.objectContaining({ code: "mesh_execution_protocol_mismatch" }));
   await expect(discoverMeshWorkerGeneration(worker)).rejects.toMatchObject({ code: "mesh_execution_protocol_mismatch" });
+  const server = serveNativeApiRoutes();
+  try {
+    const response = await fetch(new URL("/api/execution-hosts", server.url));
+    expect(response.status).toBe(200);
+    const hosts = await response.json() as ExecutionHostDescriptor[];
+    expect(hosts.find((host) => host.ref.kind === "mesh")).toMatchObject({
+      harnessAdapters: [], harnessAdapterError: "mesh_execution_protocol_mismatch",
+    });
+    expect(hosts.find((host) => host.ref.kind === "local")?.harnessAdapters).toEqual(["acp", "copilot", "codex", "opencode2"]);
+  } finally {
+    await server.stop(true);
+  }
 });
 
 test("Mesh v6 relay routes preserve legacy worker ACP and mutually supported native generations", async () => {

@@ -7,6 +7,7 @@ import type { Chat } from "../../src/shared/chat";
 import type { HarnessActivitySnapshot } from "../../src/shared/harness-control";
 import { createNativeMeshPeer } from "../helpers/mesh-native-peer";
 import type { AgentSession } from "../../src/backends/types";
+import type { ExecutionHostDescriptor } from "../../src/shared/execution-host";
 
 const root = resolve(".cache/mesh-native-tests");
 
@@ -70,6 +71,10 @@ test("Mesh v6 native catalog, lifetime activity, steering and scoped Stop preser
     const status = await meshJsonRequest<{ workers: Array<{ workerNodeId: string; workerNegotiatedProtocolVersion: number }> }>(controller, "/api/mesh/status");
     expect(status.body.workers[0]!.workerNegotiatedProtocolVersion).toBe(6);
     const workerId = status.body.workers[0]!.workerNodeId;
+    const targets = await meshJsonRequest<ExecutionHostDescriptor[]>(controller, "/api/workspaces/execution-targets");
+    expect(targets.status).toBe(200);
+    expect(targets.body.find((host) => host.ref.kind === "mesh" && host.ref.nodeId === workerId)?.harnessAdapters)
+      .toEqual(["acp", "copilot", "codex", "opencode2"]);
     const git = Bun.spawnSync(["git", "-C", worker.dataDir, "init"], { stdout: "ignore", stderr: "pipe" });
     expect(git.exitCode).toBe(0);
     const workspace = await meshJsonRequest<{ id: string }>(controller, "/api/workspaces", { body: {
@@ -78,6 +83,11 @@ test("Mesh v6 native catalog, lifetime activity, steering and scoped Stop preser
       serverSettings: { agent: { adapter: "codex", provider: "codex" } },
     } });
     expect(workspace.status).toBe(201);
+    const connection = await meshJsonRequest<{ success: boolean }>(controller, "/api/server-settings/test", { body: {
+      directory: worker.dataDir, executionHost: { kind: "mesh", nodeId: workerId },
+      settings: { agent: { adapter: "codex", provider: "codex" } },
+    } });
+    expect(connection).toMatchObject({ status: 200, body: { success: true } });
     const catalog = await meshJsonRequest<Array<{ modelID: string }>>(controller, `/api/models?workspaceId=${workspace.body.id}`);
     expect(catalog.status).toBe(200);
     expect(catalog.body.some((model) => model.modelID === "fixture-model")).toBe(true);
@@ -275,6 +285,10 @@ test("Mesh v6 native harness executes and observes owned descendants through a r
     const status = await meshJsonRequest<{ workers: Array<{ workerNodeId: string; workerNegotiatedProtocolVersion: number; route: { kind: string } }> }>(controller, "/api/mesh/status");
     const registered = status.body.workers[0]!;
     expect(registered).toMatchObject({ workerNegotiatedProtocolVersion: 6, route: { kind: "relay" } });
+    const targets = await meshJsonRequest<ExecutionHostDescriptor[]>(controller, "/api/workspaces/execution-targets");
+    expect(targets.status).toBe(200);
+    expect(targets.body.find((host) => host.ref.kind === "mesh" && host.ref.nodeId === registered.workerNodeId)?.harnessAdapters)
+      .toEqual(["acp", "copilot", "codex", "opencode2"]);
     expect(Bun.spawnSync(["git", "-C", worker.dataDir, "init"], { stdout: "ignore", stderr: "ignore" }).exitCode).toBe(0);
     const workspace = await meshJsonRequest<{ id: string }>(controller, "/api/workspaces", { body: {
       name: "native relay", directory: worker.dataDir, executionHost: { kind: "mesh", nodeId: registered.workerNodeId },

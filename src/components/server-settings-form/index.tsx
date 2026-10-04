@@ -15,7 +15,9 @@ import {
   type ServerSettings,
 } from "@/shared";
 import {
+  isEnrollmentMeshExecutionHostRef,
   isPrivateMeshExecutionHostRef,
+  isWorkspaceMeshExecutionHostRef,
   isWorkspaceSshExecutionHostRef,
 } from "@/shared/execution-host";
 import type { WorkspaceSshTargetRequest } from "@/contracts/schemas";
@@ -42,6 +44,7 @@ export interface ServerSettingsFormProps {
   remoteOnly?: boolean;
   allowWorkspaceSshTarget?: boolean;
   dedicatedWorkerSelected?: boolean;
+  workspaceWorkerEnrollmentId?: string;
 }
 
 export function ServerSettingsForm({
@@ -54,13 +57,25 @@ export function ServerSettingsForm({
   remoteOnly = false,
   allowWorkspaceSshTarget = false,
   dedicatedWorkerSelected = false,
+  workspaceWorkerEnrollmentId,
 }: ServerSettingsFormProps) {
-  const { targets, loading } = useWorkspaceExecutionTargets();
+  const enrollmentId = dedicatedWorkerSelected
+    ? workspaceWorkerEnrollmentId
+    : initialExecutionHost && isEnrollmentMeshExecutionHostRef(initialExecutionHost)
+      ? initialExecutionHost.enrollmentId
+      : undefined;
+  const { targets, loading } = useWorkspaceExecutionTargets({
+    workspaceId: initialExecutionHost && isWorkspaceMeshExecutionHostRef(initialExecutionHost)
+      ? initialExecutionHost.workspaceId
+      : undefined,
+    workspaceWorkerEnrollmentId: enrollmentId,
+  });
   const selectableTargets = useMemo(
     () => targets.filter((target) =>
       target.acceptRemoteExecution
       && (!remoteOnly || target.ref.kind !== "local")
       && supportsWorkspaceExecutionHost(target.capabilities)
+      && !isPrivateMeshExecutionHostRef(target.ref)
     ),
     [remoteOnly, targets],
   );
@@ -68,10 +83,12 @@ export function ServerSettingsForm({
     () => initialExecutionHost
       ? targets.find((target) =>
           executionHostRefsEqual(target.ref, initialExecutionHost)
-          && !selectableTargets.includes(target)
+          && (!target.acceptRemoteExecution
+            || (remoteOnly && target.ref.kind === "local")
+            || !supportsWorkspaceExecutionHost(target.capabilities))
         )
       : undefined,
-    [initialExecutionHost, selectableTargets, targets],
+    [initialExecutionHost, remoteOnly, targets],
   );
   const [provider, setProvider] = useState<AgentProvider>(
     initialSettings?.agent.provider ?? DEFAULT_SERVER_AGENT_PROVIDER,
@@ -96,6 +113,62 @@ export function ServerSettingsForm({
     initialExecutionHost && isPrivateMeshExecutionHostRef(initialExecutionHost),
   );
   const dedicatedWorkerActive = dedicatedWorkerSelected || initialDedicatedWorker;
+  const supportedAdapters = getSupportedAdapters(executionHost, sshTarget);
+  const isValid = isSelectionValid(adapter, executionHost, sshTarget);
+
+  function getTarget(host: ExecutionHostRef | null) {
+    return targets.find((candidate) => host
+      ? executionHostRefsEqual(candidate.ref, host)
+      : isEnrollmentMeshExecutionHostRef(candidate.ref)
+        && candidate.ref.enrollmentId === enrollmentId,
+    );
+  }
+
+  function getSupportedAdapters(host: ExecutionHostRef | null, target: WorkspaceSshTargetRequest | null): readonly HarnessAdapter[] {
+    if (target) return ["acp"];
+    const descriptor = getTarget(host);
+    if (descriptor) {
+      return descriptor.acceptRemoteExecution
+        && (!remoteOnly || descriptor.ref.kind !== "local")
+        && supportsWorkspaceExecutionHost(descriptor.capabilities)
+        ? descriptor.harnessAdapters
+        : [];
+    }
+    return !host && dedicatedWorkerSelected ? ["acp"] : [];
+  }
+
+  function isSelectionValid(nextAdapter: HarnessAdapter, host: ExecutionHostRef | null, target: WorkspaceSshTargetRequest | null): boolean {
+    return !loading
+      && getSupportedAdapters(host, target).includes(nextAdapter)
+      && (target ? isSshTargetValid(target) : host !== null || dedicatedWorkerSelected);
+  }
+
+  function updateSelection(change: {
+    adapter?: HarnessAdapter;
+    provider?: AgentProvider;
+    executionHost?: ExecutionHostRef | null;
+    sshTarget?: WorkspaceSshTargetRequest | null;
+  }): void {
+    const nextAdapter = change.adapter ?? adapter;
+    const nextProvider = change.provider ?? provider;
+    const nextHost = change.executionHost === undefined ? executionHost : change.executionHost;
+    const nextTarget = change.sshTarget === undefined ? sshTarget : change.sshTarget;
+    setAdapter(nextAdapter);
+    setProvider(nextProvider);
+    setExecutionHost(nextHost);
+    setSshTarget(nextTarget);
+    setTestResult(null);
+    onChangeRef.current(
+      { agent: createAgentSettings(nextAdapter, nextProvider) },
+      isSelectionValid(nextAdapter, nextHost, nextTarget),
+      nextHost,
+      nextTarget,
+    );
+  }
+
+  useEffect(() => {
+    onChangeRef.current({ agent: createAgentSettings(adapter, provider) }, isValid, executionHost, sshTarget);
+  }, [isValid]);
 
   useEffect(() => {
     const nextProvider =
@@ -115,20 +188,8 @@ export function ServerSettingsForm({
           username: "",
         }
         : null;
-    setProvider(nextProvider);
-    setAdapter(nextAdapter);
-    setExecutionHost(nextExecutionHost);
-    setSshTarget(nextSshTarget);
     setClearStoredPassword(false);
-    setTestResult(null);
-    onChangeRef.current(
-      { agent: createAgentSettings(nextAdapter, nextProvider) },
-      (nextAdapter === "acp" || nextExecutionHost?.kind === "local") && (dedicatedWorkerSelected
-        || nextExecutionHost !== null
-        || isSshTargetValid(nextSshTarget)),
-      nextExecutionHost,
-      nextSshTarget,
-    );
+    updateSelection({ adapter: nextAdapter, provider: nextProvider, executionHost: nextExecutionHost, sshTarget: nextSshTarget });
   }, [dedicatedWorkerSelected, initialExecutionHost, initialSshTarget, initialSettings]);
 
   useEffect(() => {
@@ -142,8 +203,7 @@ export function ServerSettingsForm({
       return;
     }
     const nextHost = selectableTargets[0]!.ref;
-    setExecutionHost(nextHost);
-    onChangeRef.current({ agent: createAgentSettings(adapter, provider) }, adapter === "acp" || nextHost.kind === "local", nextHost);
+    updateSelection({ executionHost: nextHost, sshTarget: null });
   }, [
     dedicatedWorkerActive,
     adapter,
@@ -155,34 +215,17 @@ export function ServerSettingsForm({
   ]);
 
   function updateProvider(nextProvider: AgentProvider): void {
-    setProvider(nextProvider);
-    setTestResult(null);
-    onChangeRef.current(
-      { agent: createAgentSettings(adapter, nextProvider) },
-      dedicatedWorkerActive || executionHost !== null || isSshTargetValid(sshTarget),
-      executionHost,
-      sshTarget,
-    );
+    updateSelection({ provider: nextProvider });
   }
 
   function updateAdapter(nextAdapter: HarnessAdapter): void {
-    setAdapter(nextAdapter);
-    setTestResult(null);
-    onChangeRef.current(
-      { agent: createAgentSettings(nextAdapter, provider) },
-      (nextAdapter === "acp" || executionHost?.kind === "local") && (dedicatedWorkerActive || executionHost !== null || isSshTargetValid(sshTarget)),
-      executionHost,
-      sshTarget,
-    );
+    updateSelection({ adapter: nextAdapter });
   }
 
   function updateExecutionHost(serialized: string): void {
+    setClearStoredPassword(false);
     if (serialized === "workspace-worker") {
-      setExecutionHost(null);
-      setSshTarget(null);
-      setClearStoredPassword(false);
-      setTestResult(null);
-      onChangeRef.current({ agent: createAgentSettings(adapter, provider) }, adapter === "acp", null, null);
+      updateSelection({ executionHost: null, sshTarget: null });
       return;
     }
     if (serialized === "workspace-ssh-target") {
@@ -191,24 +234,11 @@ export function ServerSettingsForm({
         port: 22,
         username: "",
       };
-      setExecutionHost(null);
-      setSshTarget(nextTarget);
-      setClearStoredPassword(false);
-      setTestResult(null);
-      onChangeRef.current(
-        { agent: createAgentSettings(adapter, provider) },
-        adapter === "acp" && isSshTargetValid(nextTarget),
-        null,
-        nextTarget,
-      );
+      updateSelection({ executionHost: null, sshTarget: nextTarget });
       return;
     }
     const nextHost = serialized ? parseExecutionHostRef(serialized) : null;
-    setExecutionHost(nextHost);
-    setSshTarget(null);
-    setClearStoredPassword(false);
-    setTestResult(null);
-    onChangeRef.current({ agent: createAgentSettings(adapter, provider) }, nextHost !== null && (adapter === "acp" || nextHost.kind === "local"), nextHost);
+    updateSelection({ executionHost: nextHost, sshTarget: null });
   }
 
   function updateSshTarget(
@@ -222,14 +252,7 @@ export function ServerSettingsForm({
     if (field === "password" && value !== null && value !== "") {
       setClearStoredPassword(false);
     }
-    setSshTarget(nextTarget);
-    setTestResult(null);
-    onChangeRef.current(
-      { agent: createAgentSettings(adapter, provider) },
-      adapter === "acp" && isSshTargetValid(nextTarget),
-      null,
-      nextTarget,
-    );
+    updateSelection({ executionHost: null, sshTarget: nextTarget });
   }
 
   function updateClearStoredPassword(clear: boolean): void {
@@ -238,24 +261,13 @@ export function ServerSettingsForm({
       ...(sshTarget ?? { host: "", port: 22, username: "" }),
       password: clear ? null : undefined,
     };
-    setSshTarget(nextTarget);
-    setTestResult(null);
-    onChangeRef.current(
-      { agent: createAgentSettings(adapter, provider) },
-      adapter === "acp" && isSshTargetValid(nextTarget),
-      null,
-      nextTarget,
-    );
+    updateSelection({ executionHost: null, sshTarget: nextTarget });
   }
 
   async function handleTest(): Promise<void> {
     if (
       !onTest
-      || (
-        !executionHost
-        && !isSshTargetValid(sshTarget)
-        && !dedicatedWorkerActive
-      )
+      || !isValid
     ) {
       return;
     }
@@ -263,12 +275,12 @@ export function ServerSettingsForm({
     setTestResult(await onTest({ agent: createAgentSettings(adapter, provider) }, executionHost, sshTarget));
   }
 
-  const sshTargetValid = isSshTargetValid(sshTarget);
-
   return (
     <div className="space-y-6">
       <RuntimeFields
         adapter={adapter}
+        supportedAdapters={supportedAdapters}
+        adapterAvailabilityError={sshTarget ? undefined : getTarget(executionHost)?.harnessAdapterError}
         provider={provider}
         executionHost={executionHost}
         sshTarget={sshTarget}
@@ -293,7 +305,7 @@ export function ServerSettingsForm({
         <TestConnection
           onTest={handleTest}
           testing={testing}
-          disabled={(adapter !== "acp" && executionHost?.kind !== "local") || (!executionHost && !sshTargetValid && !dedicatedWorkerActive)}
+          disabled={!isValid}
           testResult={testResult}
         />
       )}

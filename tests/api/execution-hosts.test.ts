@@ -39,6 +39,7 @@ describe("Execution hosts API", () => {
     expect(localHost).toBeDefined();
     expect(localHost?.accessRequirement).toEqual({ kind: "none" });
     expect(localHost?.meshRouteKind).toBeNull();
+    expect(localHost?.harnessAdapters).toEqual(["acp", "copilot", "codex", "opencode2"]);
     expect({
       platform: localHost?.platform,
       capabilities: localHost?.capabilities,

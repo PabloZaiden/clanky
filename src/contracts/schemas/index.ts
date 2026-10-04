@@ -26,6 +26,7 @@ export {
   ExecutionHostAccessRequirementSchema,
   ExecutionHostBindingSchema,
   ExecutionHostDescriptorSchema,
+  WorkspaceExecutionTargetsQuerySchema,
   UpdateExecutionHostConfigurationSchema,
   ExecutionHostWorkingDirectorySchema,
   ResolveExecutionHostWorkingDirectoryRequestSchema,
