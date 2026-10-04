@@ -4,7 +4,7 @@
 
 import type { TaskConfig, TaskState } from "@/shared/task";
 import type { LogLevel, TaskEvent, MessageData, ToolCallData } from "@/shared/events";
-import type { AgentEvent } from "../../backends/types";
+import type { HarnessEvent as AgentEvent } from "@/shared/harness-events";
 import type {
   AgentEventTranscriptBlock,
   AgentEventTranscriptResult,
@@ -96,6 +96,10 @@ export async function processTaskAgentEvent(
     case "tool.complete":
       emitFlushedBlocks(transcriptResult.flushedBlocks, ctx.iteration, toolCtx);
       handleToolProjection(transcriptResult, ctx, toolCtx);
+      break;
+
+    case "request.error":
+      toolCtx.emitLog("warn", event.message, { code: event.code, ...event.details });
       break;
 
     case "error":

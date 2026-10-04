@@ -11,6 +11,38 @@ import { chatActionErrorResponse, toLightweightChat } from "./helpers";
 const log = createLogger("api:chats");
 
 export const chatsMessagingRoutes = defineRoutes({
+  "/api/chats/:id/queued-messages/:messageId/reconcile": {
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "Reconcile native admission of an owned input without sending it again.",
+    async POST(_req: Request, ctx): Promise<Response> {
+      try {
+        const result = await chatManager.reconcileQueuedMessage(ctx.params["id"]!, ctx.params["messageId"]!);
+        return successResponse({ admission: result.admission, chat: await toLightweightChat(result.chat) });
+      } catch (error) {
+        const known = chatActionErrorResponse(error);
+        if (known) return known;
+        log.error("Native input recovery failed", { chatId: ctx.params["id"], error: String(error) });
+        return errorResponse("input_recovery_failed", "Native input admission could not be recovered.", 500);
+      }
+    },
+  },
+  "/api/chats/:id/queued-messages/:messageId/steer": {
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "Inject an existing queued message into the active native execution without restarting it.",
+    async POST(_req: Request, ctx): Promise<Response> {
+      try {
+        const result = await chatManager.steerQueuedMessage(ctx.params["id"]!, ctx.params["messageId"]!);
+        return successResponse({ admission: result.admission, chat: await toLightweightChat(result.chat) });
+      } catch (error) {
+        const known = chatActionErrorResponse(error);
+        if (known) return known;
+        log.error("Queued input steering failed", { chatId: ctx.params["id"], error: String(error) });
+        return errorResponse("steer_failed", "Unable to determine native input admission. Refresh before retrying.", 500);
+      }
+    },
+  },
   "/api/chats/:id/messages": {
     auth: "user",
     sameOrigin: "mutations",

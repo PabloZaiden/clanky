@@ -176,7 +176,8 @@ export class ChatStateService implements ChatStatePort {
       })
       : await updateChatState(chat.config.id, state, {
         preserveQueuedMessages,
-        previousState: transcriptChanges ? chat.state : undefined,
+        preserveHarnessState: state.harness === chat.state.harness,
+        previousState: chat.state,
         transcriptChanges,
         expectedStatus: options.expectedStatus,
       });

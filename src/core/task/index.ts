@@ -22,6 +22,8 @@ import type { AutomaticPrFlowExtractedFeedbackItem } from "../automatic-pr-feedb
 
 import { TaskEngine } from "../task-engine";
 import { taskEventEmitter, SimpleEventEmitter } from "../event-emitter";
+import { getTaskHarnessActivity, stopTaskHarnessActivity } from "./task-harness";
+import { steerTaskPendingInput, reconcileTaskPendingInput } from "./task-input";
 
 import { createTaskImpl, generateTaskTitleImpl, getTaskImpl, getTaskSummaryImpl, getAllTasksImpl, getTaskSummariesImpl, updateTaskImpl, getPullRequestDestinationImpl, saveLastUsedModelImpl, saveLastUsedCheapModelImpl, isRunningImpl, getRunningTaskStateImpl } from "./task-crud";
 import { startTaskImpl, stopTaskImpl, startPlanModeImpl, startDraftImpl, recoverPlanningEngineImpl, startStatePersistenceImpl, validateMainCheckoutStartImpl, clearPlanningFilesImpl, ensureTaskBranchCheckedOutImpl } from "./task-execution";
@@ -119,6 +121,10 @@ export class TaskManager {
     return getTaskImpl(this.ctx, taskId);
   }
 
+  getActivity(taskId: string) { return getTaskHarnessActivity(this.ctx, taskId); }
+
+  stopActivity(taskId: string, activityId: string) { return stopTaskHarnessActivity(this.ctx, taskId, activityId); }
+
   async getTaskSummary(taskId: string): Promise<Task | null> {
     return getTaskSummaryImpl(this.ctx, taskId);
   }
@@ -197,6 +203,10 @@ export class TaskManager {
   async clearPendingPrompt(taskId: string): Promise<TaskResult> {
     return clearPendingPromptImpl(this.ctx, taskId);
   }
+
+  steerPendingInput(taskId: string, inputId: string) { return steerTaskPendingInput(this.ctx, taskId, inputId); }
+
+  reconcilePendingInput(taskId: string, inputId: string) { return reconcileTaskPendingInput(this.ctx, taskId, inputId); }
 
   async setPendingModel(taskId: string, model: ModelConfig): Promise<TaskResult> {
     return setPendingModelImpl(this.ctx, taskId, model);

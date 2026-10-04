@@ -3,6 +3,7 @@ import type { Chat } from "@/shared";
 import { useToast } from "@pablozaiden/webapp/web";
 import { apiRequest } from "../../lib/api-client";
 import { Button } from "../common";
+import { HarnessInputActions } from "../harness-input-actions";
 import { getChatErrorMessage } from "./chat-lifecycle";
 import type {
   ChatPermissionPanelProps,
@@ -106,6 +107,9 @@ export function ChatQueuedMessagesPanel({
   chatId,
   messages,
   onChatSnapshot,
+  harness,
+  canSteer,
+  onRefresh,
 }: ChatQueuedMessagesPanelProps) {
   const toast = useToast();
   const [removingIds, setRemovingIds] = useState<string[]>([]);
@@ -140,6 +144,8 @@ export function ChatQueuedMessagesPanel({
         {messages.map((queuedMessage, index) => {
           const isRemoving = removingIds.includes(queuedMessage.id);
           const attachmentCount = queuedMessage.attachments?.length ?? 0;
+          const receipt = harness?.inputs?.find((input) => input.admission.inputId === queuedMessage.id);
+          const claimed = receipt !== undefined && receipt.admission.status !== "rejected";
           return (
             <div
               key={queuedMessage.id}
@@ -156,7 +162,15 @@ export function ChatQueuedMessagesPanel({
                   {queuedMessage.content}
                 </p>
               )}
-              <button
+              <HarnessInputActions
+                kind="chat"
+                entityId={chatId}
+                inputId={queuedMessage.id}
+                receipt={receipt}
+                canSteer={canSteer && harness?.capabilities !== undefined && harness.capabilities.steering !== "unsupported"}
+                onUpdated={onRefresh}
+              />
+              {!claimed && <button
                 type="button"
                 onClick={() => void handleRemove(queuedMessage.id)}
                 disabled={isRemoving}
@@ -165,7 +179,7 @@ export function ChatQueuedMessagesPanel({
                 title="Remove queued message"
               >
                 <span className="text-base leading-none">×</span>
-              </button>
+              </button>}
             </div>
           );
         })}

@@ -13,9 +13,11 @@ import {
   sidebarActionItems,
   withPrivateToggleAction,
 } from "./shell-sidebar-utils";
+import { harnessActivityActions } from "./harness-actions";
 
 export interface TaskSidebarContext {
   navigateWithinShell: (route: WebAppRoute) => void;
+  openHarnessActivity: (route: WebAppRoute) => void;
   stopSidebarTask: (task: Task) => void | Promise<void>;
   toggleTaskPrivate: (task: Task) => void | Promise<void>;
   showPrivateItems: boolean;
@@ -49,7 +51,11 @@ export function getTaskSidebarActions(
       }]
     : [];
   return withPrivateToggleAction(
-    sidebarActionItems([
+    [...harnessActivityActions({
+      route: { view: "task", taskId: task.config.id },
+      capabilities: task.state.harness?.capabilities,
+      onOpenActivity: context.openHarnessActivity,
+    }), ...sidebarActionItems([
       {
         id: "open-code-explorer",
         label: "Open code explorer",
@@ -60,7 +66,7 @@ export function getTaskSidebarActions(
         }),
       },
       ...stopAction,
-    ]),
+    ])],
     task.config,
     () => void context.toggleTaskPrivate(task),
   );

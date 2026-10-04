@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { apiRequest } from "../../lib/api-client";
 import { ChatDetails } from "../ChatDetails";
 
-export function ChatTab({ taskId }: { taskId: string }) {
+export function ChatTab({ taskId, active }: { taskId: string; active: boolean }) {
   const [chatId, setChatId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -59,5 +59,5 @@ export function ChatTab({ taskId }: { taskId: string }) {
     );
   }
 
-  return <ChatDetails chatId={chatId} embeddedTaskId={taskId} />;
+  return <ChatDetails chatId={chatId} embeddedTaskId={taskId} isVisible={active} />;
 }

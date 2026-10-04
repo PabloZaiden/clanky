@@ -6,7 +6,6 @@ import { preferencesManager } from "../../core/preferences-manager";
 import { getChatWorkspaceId, isTaskChat, isWorkspaceChat, type ChatConfig } from "@/shared/chat";
 import {
   CreateChatRequestSchema,
-  ImportExistingChatRequestSchema,
   UpdateChatRequestSchema,
 } from "@/contracts/schemas";
 import { errorResponse, internalErrorResponse, requireWorkspace, successResponse } from "../helpers";
@@ -128,93 +127,6 @@ export const chatsCrudRoutes = defineRoutes({
         return internalErrorResponse(error, {
           error: "create_failed",
           message: "Failed to create chat",
-          status: 500,
-        }, undefined, "chats");
-      }
-    },
-  },
-
-  "/api/chats/importable-sessions": {
-    auth: "user",
-    sameOrigin: "mutations",
-    description: "List chat sessions available for import.",
-    async GET(req: Request, _ctx): Promise<Response> {
-      const url = new URL(req.url);
-      const workspaceId = url.searchParams.get("workspaceId")?.trim();
-      if (!workspaceId) {
-        return errorResponse("workspace_required", "workspaceId is required", 400);
-      }
-      const workspace = await requireWorkspace(workspaceId);
-      if (workspace instanceof Response) {
-        return workspace;
-      }
-
-      try {
-        const sessions = await chatManager.listImportableSessions(workspace.id);
-        return Response.json(sessions);
-      } catch (error) {
-        log.error("Failed to list importable chat sessions", {
-          workspaceId,
-          error: String(error),
-        });
-        return internalErrorResponse(error, {
-          error: "list_importable_sessions_failed",
-          message: "Failed to list importable chat sessions",
-          status: 500,
-        }, undefined, "chats");
-      }
-    },
-  },
-
-  "/api/chats/import": {
-    auth: "user",
-    sameOrigin: "mutations",
-    description: "Import an existing chat session.",
-    async POST(req: Request, _ctx): Promise<Response> {
-      const validation = await parseAndValidate(ImportExistingChatRequestSchema, req);
-      if (!validation.success) {
-        return validation.response;
-      }
-
-      const body = validation.data;
-      const workspace = await requireWorkspace(body.workspaceId);
-      if (workspace instanceof Response) {
-        return workspace;
-      }
-
-      const modelValidation = await isModelEnabled(
-        workspace.id,
-        body.model.providerID,
-        body.model.modelID,
-      );
-      if (!modelValidation.enabled) {
-        return errorResponse(
-          modelValidation.errorCode ?? "model_not_enabled",
-          modelValidation.error ?? "The selected model is not available",
-        );
-      }
-
-      try {
-        const chat = await chatManager.importExistingSession({
-          name: body.name,
-          workspaceId: workspace.id,
-          modelProviderID: body.model.providerID,
-          modelID: body.model.modelID,
-          modelVariant: body.model.variant,
-          sessionId: body.sessionId,
-          cwd: body.cwd,
-          autoApprovePermissions: body.autoApprovePermissions,
-        });
-        return Response.json(await toLightweightChat(chat), { status: 201 });
-      } catch (error) {
-        log.error("Failed to import chat session", {
-          workspaceId: body.workspaceId,
-          sessionId: body.sessionId,
-          error: String(error),
-        });
-        return internalErrorResponse(error, {
-          error: "import_session_failed",
-          message: "Failed to import chat session",
           status: 500,
         }, undefined, "chats");
       }

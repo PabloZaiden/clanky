@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readRuntimeConfig } from "@pablozaiden/webapp/server";
 import { MESH_RELAY_DESCRIPTOR_PATH } from "@/shared/mesh-relay";
+import { MESH_PROTOCOL_VERSION, MESH_SUPPORTED_PROTOCOL_VERSIONS } from "@/shared/mesh-protocol";
 import {
   startRelayServer,
   type StartedRelayServer,
@@ -164,9 +165,9 @@ describe("controller relay owner API", () => {
         pairedAt: expect.any(String),
         updatedAt: expect.any(String),
         relayBinaryVersion: expect.any(String),
-        relaySupportedProtocolVersions: [5],
-        relayPreferredProtocolVersion: 5,
-        relayNegotiatedProtocolVersion: 5,
+        relaySupportedProtocolVersions: [...MESH_SUPPORTED_PROTOCOL_VERSIONS],
+        relayPreferredProtocolVersion: MESH_PROTOCOL_VERSION,
+        relayNegotiatedProtocolVersion: MESH_PROTOCOL_VERSION,
       }],
     });
 

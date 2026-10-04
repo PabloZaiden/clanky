@@ -4,6 +4,9 @@
  */
 
 import type { ExecutionHostDescriptor, ExecutionHostRef } from "./execution-host";
+import { HARNESS_ADAPTER_IDS, type HarnessAdapter } from "./harness-events";
+export { HARNESS_ADAPTER_IDS, type HarnessAdapter } from "./harness-events";
+const NATIVE_HARNESS_PROVIDERS = { copilot: "copilot", codex: "codex", opencode2: "opencode" } as const;
 
 export const AGENT_PROVIDER_IDS = ["opencode", "copilot", "codex", "claude", "pi", "grok"] as const;
 
@@ -18,23 +21,35 @@ export function isAgentProvider(value: unknown): value is AgentProvider {
 }
 
 export interface AgentSettings {
+  adapter: HarnessAdapter;
   provider: AgentProvider;
 }
 
-export type RuntimeAgentSettings =
+export type RuntimeAgentSettings = AgentSettings & (
   | {
-      provider: AgentProvider;
       transport: "stdio";
     }
   | {
-      provider: AgentProvider;
       transport: "ssh";
       hostname: string;
       port?: number;
       username?: string;
       password?: string;
       identityFile?: string;
-    };
+    });
+
+export function createAgentSettings(adapter: HarnessAdapter, acpProvider: AgentProvider = DEFAULT_SERVER_AGENT_PROVIDER): AgentSettings {
+  return { adapter, provider: adapter === "acp" ? acpProvider : NATIVE_HARNESS_PROVIDERS[adapter] };
+}
+
+export function isAgentSettings(value: unknown): value is AgentSettings {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  const adapter = record["adapter"];
+  return HARNESS_ADAPTER_IDS.includes(adapter as HarnessAdapter)
+    && isAgentProvider(record["provider"])
+    && (adapter === "acp" || NATIVE_HARNESS_PROVIDERS[adapter as Exclude<HarnessAdapter, "acp">] === record["provider"]);
+}
 
 export interface ServerSettings {
   agent: AgentSettings;
@@ -47,6 +62,7 @@ export interface RuntimeServerSettings {
 export function getDefaultServerSettings(): ServerSettings {
   return {
     agent: {
+      adapter: "acp",
       provider: DEFAULT_SERVER_AGENT_PROVIDER,
     },
   };
@@ -57,6 +73,7 @@ export function getDefaultRuntimeServerSettings(
 ): RuntimeServerSettings {
   return {
     agent: {
+      adapter: "acp",
       provider,
       transport: "stdio",
     },
@@ -66,6 +83,7 @@ export function getDefaultRuntimeServerSettings(
 export function getCreateWorkspaceDefaultServerSettings(): ServerSettings {
   return {
     agent: {
+      adapter: "acp",
       provider: DEFAULT_EXECUTION_AGENT_PROVIDER,
     },
   };
@@ -95,16 +113,11 @@ function isServerSettings(value: unknown): value is ServerSettings {
     return false;
   }
   const agent = (value as Record<string, unknown>)["agent"];
-  if (!agent || typeof agent !== "object") {
-    return false;
-  }
-  const agentRecord = agent as Record<string, unknown>;
-  return typeof agentRecord["provider"] === "string"
-    && AGENT_PROVIDER_IDS.includes(agentRecord["provider"] as AgentProvider);
+  return isAgentSettings(agent);
 }
 
 export function areServerSettingsEqual(left: ServerSettings, right: ServerSettings): boolean {
-  return left.agent.provider === right.agent.provider;
+  return left.agent.adapter === right.agent.adapter && left.agent.provider === right.agent.provider;
 }
 
 /**
@@ -128,6 +141,7 @@ export interface ConnectionStatus {
   connected: boolean;
   /** Selected agent provider */
   provider: AgentProvider;
+  adapter: HarnessAdapter;
   /** Selected transport */
   transport: ExecutionHostRef["kind"];
   /** Provider capability list */

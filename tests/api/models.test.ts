@@ -74,6 +74,7 @@ describe("Models API", () => {
       body: JSON.stringify({
         serverSettings: {
           agent: {
+            adapter: "acp",
             provider: "copilot",
           },
         },
@@ -82,6 +83,7 @@ describe("Models API", () => {
     expect(updateResponse.status).toBe(200);
     backendManager.setSettingsForTesting({
       agent: {
+        adapter: "acp",
         provider: "copilot",
         transport: "stdio",
       },

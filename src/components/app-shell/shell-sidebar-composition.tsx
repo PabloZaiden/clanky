@@ -43,12 +43,14 @@ function buildSidebarNodes(options: ShellSidebarCompositionOptions): SidebarNode
     route: handlers.route,
     selectedChat: handlers.selectedChat,
     selectedChatActions: handlers.selectedChatActions,
+    openHarnessActivity: handlers.openHarnessActivity,
     navigateWithinShell: handlers.navigateWithinShell,
     markChatDone: handlers.markChatDone,
     toggleChatPrivate: handlers.toggleChatPrivate,
     showPrivateItems: handlers.showPrivateItems,
   };
   const taskContext = {
+    openHarnessActivity: handlers.openHarnessActivity,
     navigateWithinShell: handlers.navigateWithinShell,
     stopSidebarTask: handlers.stopSidebarTask,
     toggleTaskPrivate: handlers.toggleTaskPrivate,

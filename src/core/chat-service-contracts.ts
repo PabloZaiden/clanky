@@ -7,8 +7,6 @@
 
 import type {
   Backend,
-  ImportableSession,
-  SessionReplayEvent,
 } from "../backends/types";
 import type {
   Chat,
@@ -33,6 +31,8 @@ import type { MessageAttachment } from "@/shared/message-attachments";
 import type { Workspace } from "@/shared/workspace";
 import type { EventStream } from "../utils/event-stream";
 import type { SimpleEventEmitter } from "./event-emitter";
+import type { HarnessActivitySnapshot, HarnessActivityStopResult, HarnessInputAdmission } from "@/shared/harness-control";
+import type { QueuedChatMessage } from "@/shared/chat";
 
 export interface CreateChatOptions {
   name?: string;
@@ -59,17 +59,6 @@ export interface CreateExecutionHostChatOptions {
   modelProviderID: string;
   modelID: string;
   modelVariant?: string;
-  autoApprovePermissions?: boolean;
-}
-
-export interface ImportExistingSessionOptions {
-  name?: string;
-  workspaceId: string;
-  modelProviderID: string;
-  modelID: string;
-  modelVariant?: string;
-  sessionId: string;
-  cwd?: string;
   autoApprovePermissions?: boolean;
 }
 
@@ -166,9 +155,9 @@ export interface ChatWorktreePort {
 }
 
 export interface ChatSessionPort {
+  getActivity(chatId: string): Promise<HarnessActivitySnapshot>;
+  stopActivity(chatId: string, activityId: string): Promise<HarnessActivityStopResult>;
   getChatBackend(chatId: string, workspaceId?: string): Backend;
-  getWorkspaceBackend(workspaceId: string, directory: string): Promise<Backend>;
-  listImportableSessions(workspaceId: string): Promise<ImportableSession[]>;
   ensureBackendConnected(
     chat: Chat,
     options?: ReconnectChatOptions,
@@ -198,15 +187,15 @@ export interface ChatSessionPort {
 }
 
 export interface ChatConversationPort {
+  recordSteeredMessage(chat: Chat, message: QueuedChatMessage, admission: HarnessInputAdmission): Promise<Chat>;
   dispatchMessage(
     chat: Chat,
     input: NormalizedChatMessageInput,
     options?: {
-      clearQueuedMessages?: boolean;
+      clearQueuedMessageIds?: readonly string[];
       credentialToken?: string | null;
     },
   ): Promise<Chat>;
-  buildImportedReplayState(chat: Chat, events: SessionReplayEvent[], sessionId: string): ChatState;
   interruptChat(chatId: string, reason?: string): Promise<Chat | null>;
   waitForChatIdle(chatId: string, timeoutMs?: number): Promise<Chat>;
   closeActiveStream(chatId: string): void;
@@ -222,6 +211,8 @@ export interface ChatConversationPort {
 }
 
 export interface ChatInteractionPort {
+  reconcileQueuedMessage(chatId: string, queuedMessageId: string): Promise<{ chat: Chat; admission: HarnessInputAdmission }>;
+  steerQueuedMessage(chatId: string, queuedMessageId: string): Promise<{ chat: Chat; admission: HarnessInputAdmission }>;
   sendMessage(chatId: string, options: ChatMessageOptions): Promise<Chat>;
   removeQueuedMessage(chatId: string, queuedMessageId: string): Promise<Chat | null>;
   replyToPermission(
@@ -236,8 +227,6 @@ export interface ChatLifecyclePort {
   createChat(options: CreateChatOptions): Promise<Chat>;
   createAgentRunChat(options: CreateAgentRunChatOptions): Promise<Chat>;
   createExecutionHostChat(options: CreateExecutionHostChatOptions): Promise<Chat>;
-  listImportableSessions(workspaceId: string): Promise<ImportableSession[]>;
-  importExistingSession(options: ImportExistingSessionOptions): Promise<Chat>;
   updateChat(chatId: string, updates: ChatConfigUpdates): Promise<Chat | null>;
   updateChatStatus(chatId: string, status: ChatStatus): Promise<Chat | null>;
   markChatDone(chatId: string): Promise<Chat | null>;
@@ -262,5 +251,5 @@ export interface ChatServiceBundle {
   taskConversion: ChatTaskConversionPort;
 }
 
-export type ChatEventStream = EventStream<import("../backends/types").AgentEvent>;
+export type ChatEventStream = EventStream<import("@/shared/harness-events").HarnessEvent>;
 export type ChatEventEmitter = SimpleEventEmitter<ChatEvent>;

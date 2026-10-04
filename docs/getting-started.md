@@ -5,13 +5,13 @@ This guide takes you from an installed Clanky binary to a first task.
 ## Requirements
 
 - Git
-- An ACP-capable provider runtime:
-  `copilot`, `opencode`, `grok`, `claude-agent-acp`, `pi-acp`, or `codex-acp`
+- An installed harness runtime with its required authentication: native Copilot,
+  Codex, OpenCode 2, or an ACP-capable integration
 - Bun when running Clanky from source
 
-If the selected provider command is not installed, Clanky can use the provider
-package through `npx` or `bunx` when that provider supports it. Codex also
-requires an authenticated `codex` CLI.
+ACP presets can use their provider package through `npx` or `bunx` when supported.
+Native adapters require the installed CLI on the selected execution host.
+See [harness adapters](harnesses.md) for versions, host support and authentication.
 
 ## Start Clanky
 
@@ -67,7 +67,8 @@ logs.
 
 1. Open **Servers** and select an execution host. A local host is the simplest
    option; SSH and Mesh hosts run repository operations on another machine.
-2. Create a workspace and select its repository, host, and provider.
+2. Create a workspace and select its repository, host and harness adapter.
+   ACP additionally selects a known harness preset.
 3. Wait for the workspace to become ready.
 4. Open a chat for interactive work, or create a task for an autonomous run.
 
@@ -77,7 +78,7 @@ need a remote host, a worker, or a relay, start with the
 
 ## Run and review a task
 
-Write the task prompt and choose the provider and model. Plan mode lets you
+Write the task prompt and choose the model and variant. Plan mode lets you
 review a generated plan before code changes begin. During and after execution
 you can inspect logs, the diff, and the task state.
 

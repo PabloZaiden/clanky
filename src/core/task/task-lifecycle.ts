@@ -17,6 +17,7 @@ import { managedContextIdentityResolver } from "../managed-context-identity";
 import { managedCredentialService } from "../managed-credential-service";
 import { taskFailure, taskFailureFromUnknown, type TaskResult } from "./task-errors";
 import { resolveCommandExecutorDirectory } from "../command-executor";
+import { assertTaskHarnessWorkspaceSafe } from "./task-harness";
 
 async function deleteLinkedTaskChat(taskId: string): Promise<void> {
   const { chatManager } = await import("../chat-manager");
@@ -104,6 +105,7 @@ export async function deleteTaskImpl(ctx: TaskCtx, taskId: string): Promise<bool
     return false;
   }
   log.debug(`[TaskManager] deleteTask: Loaded task ${taskId}, status: ${task.state.status}, hasGitBranch: ${!!task.state.git?.workingBranch}`);
+  await assertTaskHarnessWorkspaceSafe(ctx, taskId, { requireFinalCommit: false });
   await revokeTaskContext(taskId, task.config.workspaceId);
 
   if (task.state.git?.workingBranch) {
@@ -164,6 +166,7 @@ export async function discardTaskImpl(ctx: TaskCtx, taskId: string): Promise<Tas
   }
 
   try {
+    await assertTaskHarnessWorkspaceSafe(ctx, taskId, { requireFinalCommit: false });
     await revokeTaskContext(taskId, task.config.workspaceId);
     await detachTaskFromMissingWorkspace(taskId);
 
@@ -207,7 +210,7 @@ export async function discardTaskImpl(ctx: TaskCtx, taskId: string): Promise<Tas
   }
 }
 
-export async function purgeTaskImpl(_ctx: TaskCtx, taskId: string): Promise<TaskResult> {
+export async function purgeTaskImpl(ctx: TaskCtx, taskId: string): Promise<TaskResult> {
   log.info("Purging task", { taskId });
   const task = await loadTask(taskId);
   if (!task) {
@@ -225,6 +228,7 @@ export async function purgeTaskImpl(_ctx: TaskCtx, taskId: string): Promise<Task
   }
 
   try {
+    await assertTaskHarnessWorkspaceSafe(ctx, taskId, { requireFinalCommit: false });
     await revokeTaskContext(taskId, task.config.workspaceId);
   } catch (error) {
     return taskFailure(
@@ -440,6 +444,7 @@ export async function manualCompleteTaskImpl(ctx: TaskCtx, taskId: string): Prom
   }
 
   try {
+    await assertTaskHarnessWorkspaceSafe(ctx, taskId, { requireFinalCommit: false });
     assertValidTransition(task.state.status, "completed", "manualCompleteTask");
 
     const updatedState = {

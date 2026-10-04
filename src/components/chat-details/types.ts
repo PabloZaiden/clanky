@@ -87,6 +87,9 @@ export interface ChatQueuedMessagesPanelProps {
   chatId: string;
   messages: QueuedChatMessage[];
   onChatSnapshot: (nextChat: Chat) => void;
+  harness?: Chat["state"]["harness"];
+  canSteer: boolean;
+  onRefresh: () => Promise<void>;
 }
 
 export type ChatSendMessageHandler = (options: {

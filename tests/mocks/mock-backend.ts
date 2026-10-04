@@ -6,19 +6,51 @@
 import type {
   AgentSession,
   AgentResponse,
-  AgentEvent,
   BackendConnectionConfig,
   ConfigOption,
   CreateSessionOptions,
   PromptInput,
   Backend,
   ConnectionInfo,
-  ImportableSession,
-  ImportSessionOptions,
-  ImportSessionResult,
-  SessionReplayEvent,
 } from "../../src/backends/types";
+import type {
+  HarnessEvent as AgentEvent,
+  HarnessEventPayload,
+  HarnessEventScope,
+} from "../../src/shared/harness-events";
 import { createEventStream, type EventStream } from "../../src/utils/event-stream";
+import { UnavailableHarnessControl } from "../../src/backends/unavailable-harness-control";
+import type { HarnessConversationBinding, HarnessControl } from "../../src/shared/harness-control";
+import { HarnessError } from "../../src/backends/harness-errors";
+
+export async function resumeMockSession(
+  backend: Pick<Backend, "getSession">,
+  binding: HarnessConversationBinding,
+): Promise<AgentSession> {
+  const session = await backend.getSession(binding.nativeId);
+  if (!session) throw new HarnessError("harness_session_not_found", "The test conversation is unavailable.");
+  return { ...session, binding };
+}
+
+type ScriptedHarnessEvent = HarnessEventPayload & { scope?: HarnessEventScope };
+
+export function createMockAgentEventStream() {
+  const producer = createEventStream<AgentEvent>();
+  return {
+    ...producer,
+    push: (event: ScriptedHarnessEvent): void => {
+      producer.push({ ...event, scope: event.scope ?? { kind: "principal" } });
+    },
+    end: (): void => {
+      producer.push({
+        type: "prompt.complete",
+        outcome: "completed",
+        scope: { kind: "principal" },
+      });
+      producer.end();
+    },
+  };
+}
 
 /**
  * Mock model information for testing.
@@ -48,6 +80,7 @@ export type MockSendPromptHandler = (
  * Options for creating a MockAcpBackend.
  */
 export interface MockBackendOptions {
+  harness?: HarnessControl;
   /** Responses to return for prompts (cycled through in order) */
   responses?: string[];
   /** Optional hook invoked while a backend connection is being established. */
@@ -58,11 +91,11 @@ export interface MockBackendOptions {
   /** Streaming response chunks to emit for async prompts, cycled independently from `responses`. */
   streamingResponseChunks?: string[][];
   /** Normalized event sequences to emit for async prompts, cycled independently from `responses`. */
-  streamEventSequences?: AgentEvent[][];
+  streamEventSequences?: ScriptedHarnessEvent[][];
   /** Optional hook invoked after a prompt is sent, before its response is emitted. */
   onPrompt?: (prompt: PromptInput, directory: string) => void | Promise<void>;
   /** Optional hook invoked before each scripted stream event is emitted. */
-  onStreamEvent?: (event: AgentEvent, index: number) => void | Promise<void>;
+  onStreamEvent?: (event: ScriptedHarnessEvent, index: number) => void | Promise<void>;
   /** Optional handler for direct prompts such as task-title and chat-name generation. */
   onSendPrompt?: MockSendPromptHandler;
   /** Optional hook invoked after a direct prompt handler and response have settled. */
@@ -156,6 +189,8 @@ async function waitForPromptStart(signal: PromptStartSignal): Promise<boolean> {
  * - Any other string - Returns as normal response
  */
 export class MockAcpBackend implements Backend {
+  resumeSession = (binding: HarnessConversationBinding): Promise<AgentSession> => resumeMockSession(this, binding);
+  readonly harness: HarnessControl;
   readonly name = "acp";
 
   private connected = false;
@@ -165,7 +200,7 @@ export class MockAcpBackend implements Backend {
   private readonly responses: string[];
   private readonly onConnect?: MockBackendOptions["onConnect"];
   private readonly streamingResponseChunks: string[][];
-  private readonly streamEventSequences: AgentEvent[][];
+  private readonly streamEventSequences: ScriptedHarnessEvent[][];
   private readonly onPrompt?: MockBackendOptions["onPrompt"];
   private readonly onStreamEvent?: MockBackendOptions["onStreamEvent"];
   private readonly onSendPrompt?: MockBackendOptions["onSendPrompt"];
@@ -175,13 +210,13 @@ export class MockAcpBackend implements Backend {
   private readonly models: MockModelInfo[];
   private readonly filterModelsByConnectionProvider: boolean;
   private readonly sessions = new Map<string, AgentSession>();
-  private readonly importableSessions = new Map<string, { session: ImportableSession; events: SessionReplayEvent[] }>();
   private readonly sentPrompts: PromptInput[] = [];
   private readonly permissionReplies: Array<{ requestId: string; response: string }> = [];
   private readonly connectionConfigs: BackendConnectionConfig[] = [];
   private responseGate: (() => Promise<void>) | undefined;
 
   constructor(options: MockBackendOptions = {}) {
+    this.harness = options.harness ?? new UnavailableHarnessControl();
     this.responses = options.responses ?? ["<promise>COMPLETE</promise>"];
     this.onConnect = options.onConnect;
     this.streamingResponseChunks = options.streamingResponseChunks ?? [];
@@ -246,6 +281,7 @@ export class MockAcpBackend implements Backend {
       createdAt: new Date().toISOString(),
       model: options.model,
     };
+    if (options.ownership) session.binding = { ...options.ownership, directory: options.directory, adapter: this.harness.capabilities.adapter, nativeId: session.id };
     this.sessions.set(session.id, session);
     return session;
   }
@@ -284,7 +320,7 @@ export class MockAcpBackend implements Backend {
   async abortSession(_sessionId: string): Promise<void> {}
 
   async subscribeToEvents(_sessionId: string): Promise<EventStream<AgentEvent>> {
-    const { stream, push, end } = createEventStream<AgentEvent>();
+    const { stream, push, end } = createMockAgentEventStream();
 
     (async () => {
       if (!(await waitForPromptStart(this.promptStartSignal))) {
@@ -417,34 +453,6 @@ export class MockAcpBackend implements Backend {
     return this.sessions.get(id) ?? null;
   }
 
-  async listSessions(directory?: string): Promise<ImportableSession[]> {
-    return Array.from(this.importableSessions.values())
-      .map((entry) => entry.session)
-      .filter((session) => !directory || session.cwd === directory);
-  }
-
-  async importSession(options: ImportSessionOptions): Promise<ImportSessionResult> {
-    const entry = this.importableSessions.get(options.sessionId);
-    if (!entry) {
-      throw new Error(`Session ${options.sessionId} not found`);
-    }
-    const session: AgentSession = {
-      id: entry.session.id,
-      title: entry.session.title,
-      createdAt: new Date().toISOString(),
-      model: entry.session.model,
-    };
-    this.sessions.set(session.id, session);
-    return {
-      session,
-      cwd: options.cwd ?? entry.session.cwd,
-      events: [...entry.events],
-    };
-  }
-
-  /**
-   * Delete a session.
-   */
   async deleteSession(id: string): Promise<void> {
     this.sessions.delete(id);
   }
@@ -465,9 +473,6 @@ export class MockAcpBackend implements Backend {
     return [...this.connectionConfigs];
   }
 
-  addImportableSession(session: ImportableSession, events: SessionReplayEvent[]): void {
-    this.importableSessions.set(session.id, { session, events });
-  }
 }
 
 /**
@@ -511,6 +516,8 @@ export interface NeverCompletingMockBackendOptions {
  * pending message handling, and other scenarios where tasks need to stay running.
  */
 export class NeverCompletingMockBackend implements Backend {
+  resumeSession = (binding: HarnessConversationBinding): Promise<AgentSession> => resumeMockSession(this, binding);
+  readonly harness = new UnavailableHarnessControl();
   readonly name = "acp";
 
   private connected = false;
@@ -566,7 +573,7 @@ export class NeverCompletingMockBackend implements Backend {
   async abortSession(_sessionId: string): Promise<void> {}
 
   async subscribeToEvents(sessionId: string): Promise<EventStream<AgentEvent>> {
-    const { stream, push, end } = createEventStream<AgentEvent>();
+    const { stream, push, end } = createMockAgentEventStream();
 
     (async () => {
       if (this.planReadyFirst && !this.planReadySessions.has(sessionId)) {
@@ -636,27 +643,6 @@ export class NeverCompletingMockBackend implements Backend {
     return this.sessions.get(id) ?? null;
   }
 
-  async listSessions(directory?: string): Promise<ImportableSession[]> {
-    return Array.from(this.sessions.values()).map((session) => ({
-      id: session.id,
-      title: session.title,
-      cwd: directory ?? this.directory,
-      model: session.model,
-    }));
-  }
-
-  async importSession(options: ImportSessionOptions): Promise<ImportSessionResult> {
-    const session = this.sessions.get(options.sessionId);
-    if (!session) {
-      throw new Error(`Session ${options.sessionId} not found`);
-    }
-    return {
-      session,
-      cwd: options.cwd ?? this.directory,
-      events: [],
-    };
-  }
-
   async deleteSession(id: string): Promise<void> {
     this.sessions.delete(id);
   }
@@ -667,6 +653,8 @@ export class NeverCompletingMockBackend implements Backend {
  * Uses sendPrompt for name generation and subscribeToEvents for planning/execution.
  */
 export class PlanModeMockBackend implements Backend {
+  resumeSession = (binding: HarnessConversationBinding): Promise<AgentSession> => resumeMockSession(this, binding);
+  readonly harness = new UnavailableHarnessControl();
   readonly name = "acp";
 
   private connected = false;
@@ -737,7 +725,7 @@ export class PlanModeMockBackend implements Backend {
   }
 
   async subscribeToEvents(sessionId: string): Promise<EventStream<AgentEvent>> {
-    const { stream, push, end } = createEventStream<AgentEvent>();
+    const { stream, push, end } = createMockAgentEventStream();
     const self = this;
 
     (async () => {
@@ -804,27 +792,6 @@ export class PlanModeMockBackend implements Backend {
 
   async getSession(id: string): Promise<AgentSession | null> {
     return this.sessions.get(id) ?? null;
-  }
-
-  async listSessions(directory?: string): Promise<ImportableSession[]> {
-    return Array.from(this.sessions.values()).map((session) => ({
-      id: session.id,
-      title: session.title,
-      cwd: directory ?? this.directory,
-      model: session.model,
-    }));
-  }
-
-  async importSession(options: ImportSessionOptions): Promise<ImportSessionResult> {
-    const session = this.sessions.get(options.sessionId);
-    if (!session) {
-      throw new Error(`Session ${options.sessionId} not found`);
-    }
-    return {
-      session,
-      cwd: options.cwd ?? this.directory,
-      events: [],
-    };
   }
 
   async deleteSession(id: string): Promise<void> {

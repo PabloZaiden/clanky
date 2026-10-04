@@ -2,7 +2,7 @@
  * Internal types and constants for the ACP backend.
  */
 
-import type { AgentEvent } from "../types";
+import type { HarnessEvent } from "@/shared/harness-events";
 
 export type JsonRpcId = number | string;
 
@@ -37,7 +37,7 @@ export type PendingRequest = {
   timeout: ReturnType<typeof setTimeout>;
 };
 
-export type SessionSubscriber = (event: AgentEvent) => void;
+export type SessionSubscriber = (event: HarnessEvent) => void;
 
 export type PermissionOption = {
   optionId: string;

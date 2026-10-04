@@ -11,6 +11,8 @@ import { taskToRow, rowToTask, validateColumnNames } from "./helpers";
 import { requirePersistenceUserId } from "../ownership";
 import { taskTranscriptStore } from "../transcripts/task-store";
 import { TASK_LIST_COLUMNS } from "./crud";
+import { requireMatchingHarnessBinding } from "../../backends/harness-binding";
+import { HarnessError } from "../../backends/harness-errors";
 
 const log = createLogger("persistence:tasks");
 
@@ -30,6 +32,7 @@ export async function updateTaskState(
 export interface UpdateTaskStateOptions {
   previousState?: TaskState;
   transcriptChanges?: TranscriptChangeSet;
+  persistHarnessInputs?: boolean;
 }
 
 /**
@@ -67,10 +70,17 @@ export async function updateTaskStateForUser(
     }
 
     const task = rowToTask(row);
+    const authoritativeHarness = task.state.harness;
+    if (options.persistHarnessInputs) {
+      const binding = state.session?.binding;
+      if (!binding) throw new HarnessError("harness_session_not_owned", "Input persistence requires an owned conversation.");
+      requireMatchingHarnessBinding(JSON.stringify(task.state.session?.binding), binding);
+    }
     task.state = state;
 
     const newRow = taskToRow(task);
-    const columns = Object.keys(newRow).filter(col => col !== "id" && col !== "user_id");
+    if (options.persistHarnessInputs) newRow["harness_state_json"] = JSON.stringify({ ...authoritativeHarness, inputs: state.harness?.inputs });
+    const columns = Object.keys(newRow).filter(col => col !== "id" && col !== "user_id" && (col !== "harness_state_json" || options.persistHarnessInputs));
     // Validate column names to prevent SQL injection
     validateColumnNames(columns);
 

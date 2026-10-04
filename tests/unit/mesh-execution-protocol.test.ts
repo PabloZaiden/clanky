@@ -9,11 +9,11 @@ import {
   MESH_ACP_CHANNEL,
   MESH_EXECUTION_PROTOCOL_VERSION,
 } from "../../src/shared/mesh-execution";
-import { MESH_PROTOCOL_VERSION } from "../../src/shared/mesh-protocol";
+import { MESH_PROTOCOL_VERSION, type MeshProtocolVersion } from "../../src/shared/mesh-protocol";
 
 function buildRequest(
   encryptedEnvironment?: unknown,
-  protocolVersion: typeof MESH_PROTOCOL_VERSION = MESH_PROTOCOL_VERSION,
+  protocolVersion: MeshProtocolVersion = MESH_PROTOCOL_VERSION,
 ): Omit<MeshExecutionSessionRequest, "signature"> {
   const request: Omit<MeshExecutionSessionRequest, "signature"> = {
     protocolVersion,
@@ -37,7 +37,7 @@ function buildRequest(
 
 describe("Mesh execution session protocol", () => {
   test("signs the canonical v5 request shape", () => {
-    const request = buildRequest();
+    const request = buildRequest(undefined, 5);
     const payload = JSON.stringify([
       "clanky-mesh-execution-session-v5",
       request.protocolVersion,

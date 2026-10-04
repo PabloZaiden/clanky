@@ -52,6 +52,11 @@ export const MessageAttachmentsSchema = z
   .array(MessageAttachmentSchema)
   .max(MESSAGE_ATTACHMENT_LIMIT, `no more than ${MESSAGE_ATTACHMENT_LIMIT} attachments can be attached`);
 
+export const TaskPendingInputSchema = z.object({
+  id: z.string().min(1),
+  attachments: MessageAttachmentsSchema,
+});
+
 /**
  * Schema for GitConfig - git integration settings.
  * Used as a partial in CreateTaskRequest and UpdateTaskRequest.

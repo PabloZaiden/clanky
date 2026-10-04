@@ -46,7 +46,6 @@ interface ComposeViewProps {
   setComposeActionState: (state: CreateTaskFormActionState | null) => void;
   handleTaskSubmit: (request: CreateTaskFormSubmitRequest) => Promise<boolean>;
   createChat: (request: import("@/contracts").CreateChatRequest) => Promise<import("@/shared").Chat | null>;
-  importExistingChat: (request: import("@/contracts").ImportExistingChatRequest) => Promise<import("@/shared").Chat | null>;
   dashboardData: UseDashboardDataResult;
   agents: UseAgentsResult;
   schedulerTimezone: string;
@@ -76,7 +75,6 @@ export function ComposeView(props: ComposeViewProps) {
     setComposeActionState,
     handleTaskSubmit,
     createChat,
-    importExistingChat,
     dashboardData,
     agents,
     schedulerTimezone,
@@ -157,7 +155,6 @@ export function ComposeView(props: ComposeViewProps) {
         dashboardData={dashboardData}
         navigateWithinShell={navigateWithinShell}
         createChat={createChat}
-        importExistingChat={importExistingChat}
       />
     );
   }

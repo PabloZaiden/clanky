@@ -62,6 +62,7 @@ describe("managed execution context credentials", () => {
       allowClankyContext: true,
       serverSettings: {
         agent: {
+          adapter: "acp",
           provider: "opencode",
         },
       },

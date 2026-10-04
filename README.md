@@ -61,8 +61,8 @@ The installer verifies the release checksum and places `clanky` in
 ### Requirements
 
 - Git
-- An ACP-capable provider runtime such as `copilot`, `opencode`, `grok`,
-  `claude-agent-acp`, `pi-acp`, or `codex-acp`
+- An installed native Copilot, Codex or OpenCode 2 runtime, or an ACP-capable
+  integration, with its required authentication; see [harness adapters](docs/harnesses.md)
 - [Bun](https://bun.sh) only when running Clanky from source
 
 ### Start the server

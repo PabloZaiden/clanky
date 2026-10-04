@@ -42,7 +42,7 @@ test("workspace WebDAV uses Mesh streaming and exec, pins its host and refuses l
     const workspace = await meshJsonRequest<{ id: string }>(controller, "/api/workspaces", {
       body: {
         name: "DAV Mesh", directory: worker.dataDir, workspaceType: "directory",
-        executionHost: workerRef, serverSettings: { agent: { provider: "opencode" } },
+        executionHost: workerRef, serverSettings: { agent: { adapter: "acp", provider: "opencode" } },
       },
     });
     expect(workspace.status).toBe(201);

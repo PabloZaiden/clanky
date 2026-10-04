@@ -44,6 +44,8 @@ const DEFAULT_MAX_BUFFER_SIZE = 10_000;
  * Options for creating an event stream.
  */
 export interface EventStreamOptions {
+  /** Protocol consumers must fail rather than silently lose execution events. */
+  overflow?: "drop-oldest" | "fail";
   /**
    * Maximum number of items to buffer before dropping oldest items.
    * When the buffer exceeds this limit, the oldest items are evicted
@@ -119,6 +121,11 @@ export function createEventStream<T>(options?: EventStreamOptions): {
     } else {
       // Evict oldest items if buffer is full
       if (items.length >= maxBufferSize) {
+        if (options?.overflow === "fail") {
+          fail(new Error("Event stream buffer overflow"));
+          items.length = 0;
+          return;
+        }
         const evictCount = Math.max(1, Math.floor(maxBufferSize * 0.1));
         items.splice(0, evictCount);
         droppedCount += evictCount;

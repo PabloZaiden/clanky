@@ -81,6 +81,7 @@ describe("workspace files API integration", () => {
         executionHost,
         serverSettings: {
           agent: {
+            adapter: "acp",
             provider: "opencode",
           },
         },

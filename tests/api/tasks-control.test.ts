@@ -12,6 +12,7 @@ import { serveNativeApiRoutes } from "../native-api-server";
 import { initializeDatabase } from "../../src/persistence/database";
 import { backendManager } from "../../src/core/backend-manager";
 import { taskManager } from "../../src/core/task-manager";
+import type { TaskTranscriptSnapshot } from "../../src/core/task-transcript-service";
 import { saveTask } from "../../src/persistence/tasks";
 import { closeDatabase } from "../../src/persistence/database";
 import { AUTOMATIC_PR_WORKFLOW_FAILURE_MESSAGE } from "../../src/core/automatic-pr-flow-github";
@@ -25,6 +26,10 @@ import {
 } from "../helpers/git-fixtures";
 import { pollUntil } from "../helpers/polling";
 import { fetchTestLocalExecutionHost } from "../setup";
+import { LifetimeHarnessBackend } from "../mocks/lifetime-harness-backend";
+import { defaultTestModel } from "../mocks/mock-backend";
+import { HarnessError } from "../../src/backends/harness-errors";
+import type { Task, HarnessActivity, MessageAttachment } from "@/shared";
 
 // Default test model for task creation (model is now required)
 const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };
@@ -87,7 +92,7 @@ describe("Tasks Control API Integration", () => {
         name: name || directory.split("/").pop() || "Test",
         directory,
         executionHost,
-        serverSettings: { agent: { provider: "opencode" } },
+        serverSettings: { agent: { adapter: "acp", provider: "opencode" } },
       }),
     });
     const data = await createResponse.json();
@@ -230,6 +235,371 @@ describe("Tasks Control API Integration", () => {
   afterEach(async () => {
     await cleanupActiveTasks();
     await cleanupTrackedTempDirs();
+  });
+
+  async function createNativeExecution(name: string): Promise<Task> {
+    const directory = await createTrackedTempDir("clanky-native-completion-");
+    await initializeGitRepository(directory, { initialCommit: "readme" });
+    const workspaceId = await getOrCreateWorkspace(directory, "Native completion workspace");
+    const baseBranch = await getCurrentBranch(directory);
+    const create = await fetch(`${baseUrl}/api/tasks`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...baseCreateTaskPayload, workspaceId, baseBranch, name,
+        prompt: "Synthetic native task", model: testModel, useWorktree: true,
+        uploadedPlan: { planContent: "# Synthetic plan\n\nComplete the synthetic task." },
+      }),
+    });
+    expect(create.status).toBe(201);
+    const taskId = (await create.json() as Task).config.id;
+    return pollUntil(
+      async () => await (await fetch(`${baseUrl}/api/tasks/${taskId}`)).json() as Task,
+      (task) => task.state.status === "running"
+        && Boolean(task.state.session?.binding)
+        && task.state.harness?.capabilities?.adapter === "copilot"
+        && task.state.harness.activity?.observation === "available",
+      { description: "native task with usable capabilities and session-lived observation", timeoutMs: 5000, formatLastObserved: (task) => JSON.stringify(task.state) },
+    );
+  }
+
+  async function waitForNativePrincipalMessages(taskId: string, count: number): Promise<TaskTranscriptSnapshot> {
+    return pollUntil(
+      async () => await (await fetch(`${baseUrl}/api/tasks/${taskId}/snapshot?full=1`)).json() as TaskTranscriptSnapshot,
+      (snapshot) => snapshot.transcript.messages.filter((message) => message.role === "assistant").length >= count,
+      { description: "native principal execution acknowledgement", timeoutMs: 5000, formatLastObserved: (snapshot) => JSON.stringify(snapshot) },
+    );
+  }
+
+  test("seals principal COMPLETE before native terminal and cleans up owned background work", async () => {
+    const releaseNativePrompt = Promise.withResolvers<void>();
+    const native = new LifetimeHarnessBackend({
+      models: [defaultTestModel], responses: ["chore: preserve native result"],
+      streamEventSequences: [[{ type: "message.complete", content: "Late native result" }]],
+      onStreamEvent: async () => { await releaseNativePrompt.promise; },
+    });
+    backendManager.setBackendForTesting(native);
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
+    let taskId: string | undefined;
+    try {
+      const running = await createNativeExecution("Native completion");
+      taskId = running.config.id;
+      const sessionId = running.state.session!.id;
+      const child: HarnessActivity = {
+        id: "owned-child", description: "Native child", kind: "subagent", status: "running",
+        ownership: "owned", workspaceWrites: "possible", native: { adapter: "copilot", conversationId: sessionId, activityId: "owned-child" },
+      };
+      native.publishActivities(sessionId, [child, { ...child, id: "owned-sibling", description: "Native sibling", native: { ...child.native, activityId: "owned-sibling" } }]);
+      native.publishEvent(sessionId, { type: "message.complete", content: "<promise>COMPLETE</promise>", scope: { kind: "child", activityId: child.id } });
+      native.publishEvent(sessionId, { type: "message.start", messageId: "principal-interim", scope: { kind: "principal" } });
+      native.publishEvent(sessionId, { type: "message.complete", content: "Still working", scope: { kind: "principal" } });
+      const interim = await pollUntil(
+        async () => await (await fetch(`${baseUrl}/api/tasks/${taskId}/snapshot?full=1`)).json() as TaskTranscriptSnapshot,
+        (snapshot) => snapshot.transcript.messages.some((message) => message.content === "Still working"),
+        { description: "principal activity after child completion", timeoutMs: 5000, formatLastObserved: (snapshot) => JSON.stringify(snapshot) },
+      );
+      expect(interim.task.state.status).toBe("running");
+      const stopped = await fetch(`${baseUrl}/api/tasks/${taskId}/activity/${child.id}/stop`, { method: "POST" });
+      expect(stopped.status).toBe(200);
+      const afterStop = await (await fetch(`${baseUrl}/api/tasks/${taskId}`)).json() as Task;
+      const observed = afterStop.state.harness?.activity;
+      expect(observed?.observation).toBe("available");
+      if (observed?.observation !== "available") throw new Error("Expected task activity.");
+      expect(observed.activities.map((entry) => [entry.id, entry.status])).toEqual([["owned-child", "stopped"], ["owned-sibling", "running"]]);
+      native.publishEvent(sessionId, { type: "message.start", messageId: "principal-complete", scope: { kind: "principal" } });
+      native.publishEvent(sessionId, { type: "message.complete", content: "<promise>COMPLETE</promise>", scope: { kind: "principal" } });
+      const completed = await pollUntil(
+        async () => await (await fetch(`${baseUrl}/api/tasks/${taskId}`)).json() as Task,
+        (task) => task.state.status === "completed" && task.state.harness?.cleanup?.status === "settled",
+        { description: "principal completion without native terminal and owned cleanup", timeoutMs: 5000, formatLastObserved: (task) => JSON.stringify(task.state) },
+      );
+      expect(completed.state.currentIteration).toBe(1);
+      releaseNativePrompt.resolve();
+      await pollUntil(
+        async () => await (await fetch(`${baseUrl}/api/tasks/${taskId}`)).json() as Task,
+        (task) => task.state.harness?.gitOutcome?.status === "succeeded",
+        { description: "native workspace finalization", timeoutMs: 5000, formatLastObserved: (task) => JSON.stringify(task.state.harness) },
+      );
+      await taskManager.shutdown();
+      const persisted = await (await fetch(`${baseUrl}/api/tasks/${taskId}`)).json() as Task;
+      expect(persisted.state.status).toBe("completed");
+    } finally {
+      releaseNativePrompt.resolve();
+      if (taskId) await fetch(`${baseUrl}/api/tasks/${taskId}/stop`, { method: "POST" });
+      await native.disconnect();
+    }
+  });
+
+  test("blocks Git acceptance until native writers settle and retries final Git without rerunning the task", async () => {
+    const release = Promise.withResolvers<void>();
+    const native = new LifetimeHarnessBackend({
+      models: [defaultTestModel], responses: ["chore: preserve native output"],
+      streamEventSequences: [[{ type: "message.complete", content: "Late native result" }]],
+      onStreamEvent: async () => { await release.promise; },
+    });
+    backendManager.setBackendForTesting(native);
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
+    let taskId: string | undefined;
+    try {
+      const running = await createNativeExecution("Native unsettled writers");
+      taskId = running.config.id;
+      const sessionId = running.state.session!.id;
+      const worktreePath = running.state.git!.worktreePath!;
+      const originalHead = (await runGit(worktreePath, ["rev-parse", "HEAD"])).stdout;
+      await writeFile(join(worktreePath, "native-output.txt"), "Synthetic native output\n");
+      native.publishActivities(sessionId, [{
+        id: "unsettled-writer", description: "Unsettled native writer", kind: "subagent",
+        ownership: "owned", workspaceWrites: "unknown", status: "unknown",
+        native: { adapter: "copilot", conversationId: sessionId, activityId: "unsettled-writer" },
+      }]);
+      native.publishEvent(sessionId, { type: "message.start", messageId: "principal-complete", scope: { kind: "principal" } });
+      native.publishEvent(sessionId, { type: "message.complete", content: "<promise>COMPLETE</promise>", scope: { kind: "principal" } });
+      await pollUntil(
+        async () => await (await fetch(`${baseUrl}/api/tasks/${taskId}`)).json() as Task,
+        (task) => task.state.status === "completed" && task.state.harness?.cleanup?.status === "pending",
+        { description: "completed task with unresolved native writer", timeoutMs: 5000, formatLastObserved: (task) => JSON.stringify(task.state) },
+      );
+      release.resolve();
+      for (const operation of ["accept", "push"]) {
+        const blocked = await fetch(`${baseUrl}/api/tasks/${taskId}/${operation}`, { method: "POST" });
+        expect(blocked.status).toBe(409);
+        expect((await blocked.json()).error).toBe("task_background_work_unsettled");
+      }
+      expect((await runGit(worktreePath, ["rev-parse", "HEAD"])).stdout).toBe(originalHead);
+      const stop = await fetch(`${baseUrl}/api/tasks/${taskId}/activity/unsettled-writer/stop`, { method: "POST" });
+      expect(stop.status).toBe(200);
+      const accepted = await fetch(`${baseUrl}/api/tasks/${taskId}/accept`, { method: "POST" });
+      expect(accepted.status).toBe(200);
+      const settled = await (await fetch(`${baseUrl}/api/tasks/${taskId}`)).json() as Task;
+      expect(settled.state.status).toBe("accepted_local");
+      expect(settled.state.currentIteration).toBe(1);
+      expect(settled.state.harness?.cleanup?.status).toBe("settled");
+      expect(settled.state.harness?.gitOutcome?.status).toBe("succeeded");
+      expect((await runGit(worktreePath, ["show", "HEAD:native-output.txt"])).stdout).toBe("Synthetic native output\n");
+    } finally {
+      release.resolve();
+      await taskManager.shutdown();
+      if (taskId) await fetch(`${baseUrl}/api/tasks/${taskId}`, { method: "DELETE" });
+      await native.disconnect();
+    }
+  });
+
+  test("preserves final Git failure through shutdown and recovers the owned session without another task iteration", async () => {
+    const release = Promise.withResolvers<void>();
+    const native = new LifetimeHarnessBackend({
+      models: [defaultTestModel], responses: ["chore: preserve native output"],
+      streamEventSequences: [[{ type: "message.complete", content: "Late native result" }]],
+      onStreamEvent: async () => { await release.promise; },
+    });
+    backendManager.setBackendForTesting(native);
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
+    let taskId: string | undefined;
+    try {
+      const running = await createNativeExecution("Native final Git failure");
+      taskId = running.config.id;
+      const sessionId = running.state.session!.id;
+      const worktreePath = running.state.git!.worktreePath!;
+      const hookPath = join(running.config.directory, ".git", "hooks", "pre-commit");
+      const originalHead = (await runGit(worktreePath, ["rev-parse", "HEAD"])).stdout;
+      await writeFile(join(worktreePath, "native-output.txt"), "Synthetic native output\n");
+      await writeFile(hookPath, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+      native.publishEvent(sessionId, { type: "message.start", messageId: "principal-complete", scope: { kind: "principal" } });
+      native.publishEvent(sessionId, { type: "message.complete", content: "<promise>COMPLETE</promise>", scope: { kind: "principal" } });
+      release.resolve();
+      await pollUntil(
+        async () => await (await fetch(`${baseUrl}/api/tasks/${taskId}`)).json() as Task,
+        (task) => task.state.status === "completed" && task.state.harness?.gitOutcome?.status === "failed",
+        { description: "logical completion with an actual failed Git hook", timeoutMs: 5000, formatLastObserved: (task) => JSON.stringify(task.state) },
+      );
+      await taskManager.shutdown();
+      const persisted = await (await fetch(`${baseUrl}/api/tasks/${taskId}`)).json() as Task;
+      expect(persisted.state.status).toBe("completed");
+      expect(persisted.state.harness?.cleanup?.status).toBe("settled");
+      expect(persisted.state.harness?.gitOutcome?.status).toBe("failed");
+      const blocked = await fetch(`${baseUrl}/api/tasks/${taskId}/accept`, { method: "POST" });
+      expect(blocked.status).toBe(409);
+      expect((await blocked.json()).error).toBe("task_final_git_failed");
+      expect((await runGit(worktreePath, ["rev-parse", "HEAD"])).stdout).toBe(originalHead);
+      await rm(hookPath);
+      const accepted = await fetch(`${baseUrl}/api/tasks/${taskId}/accept`, { method: "POST" });
+      expect(accepted.status).toBe(200);
+      const recovered = await (await fetch(`${baseUrl}/api/tasks/${taskId}`)).json() as Task;
+      expect(recovered.state.status).toBe("accepted_local");
+      expect(recovered.state.currentIteration).toBe(1);
+      expect(recovered.state.session?.id).toBe(sessionId);
+      expect(recovered.state.harness?.gitOutcome?.status).toBe("succeeded");
+      expect((await runGit(worktreePath, ["show", "HEAD:native-output.txt"])).stdout).toBe("Synthetic native output\n");
+    } finally {
+      release.resolve();
+      await taskManager.shutdown();
+      if (taskId) await fetch(`${baseUrl}/api/tasks/${taskId}`, { method: "DELETE" });
+      await native.disconnect();
+    }
+  });
+
+  test("keeps deterministically rejected task steering editable without losing its pending input", async () => {
+    const release = Promise.withResolvers<void>();
+    const native = new LifetimeHarnessBackend({
+      models: [defaultTestModel], inputAdmission: "accepted",
+      streamEventSequences: [[{ type: "message.complete", content: "Principal active" }]],
+      onStreamEvent: async () => { await release.promise; },
+    });
+    // The genuine adapter's typed pre-RPC failure is covered by native-bootstrap.
+    // Here the public task boundary protects durable claim rollback and editing.
+    native.harness.steer = async () => {
+      throw new HarnessError("harness_unsupported_feature", "Unsupported inline attachment.");
+    };
+    backendManager.setBackendForTesting(native);
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
+    let taskId: string | undefined;
+    try {
+      const running = await createNativeExecution("Rejected task input");
+      taskId = running.config.id;
+      const pending = await fetch(`${baseUrl}/api/tasks/${taskId}/pending-prompt`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: "Unsupported input", attachments: [] }),
+      });
+      expect(pending.status).toBe(200);
+      const before = await (await fetch(`${baseUrl}/api/tasks/${taskId}`)).json() as Task;
+      const inputId = before.state.pendingInput!.id;
+      const rejected = await fetch(`${baseUrl}/api/tasks/${taskId}/pending-inputs/${inputId}/steer`, { method: "POST" });
+      expect(rejected.status).toBe(409);
+      expect((await rejected.json()).error).toBe("harness_unsupported_feature");
+      const after = await (await fetch(`${baseUrl}/api/tasks/${taskId}`)).json() as Task;
+      expect(after.state.status).toBe("running");
+      expect(after.state.pendingInput?.id).toBe(inputId);
+      expect(after.state.harness?.inputs?.find((entry) => entry.admission.inputId === inputId)?.admission).toEqual({
+        status: "rejected", inputId, code: "unsupported",
+      });
+      const replacement = await fetch(`${baseUrl}/api/tasks/${taskId}/pending-prompt`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: "Corrected input", attachments: [] }),
+      });
+      expect(replacement.status).toBe(200);
+      const updated = await (await fetch(`${baseUrl}/api/tasks/${taskId}`)).json() as Task;
+      expect(updated.state.pendingPrompt).toBe("Corrected input");
+      expect(updated.state.pendingInput?.id).not.toBe(inputId);
+    } finally {
+      release.resolve();
+      await taskManager.shutdown();
+      if (taskId) await fetch(`${baseUrl}/api/tasks/${taskId}`, { method: "DELETE" });
+      await native.disconnect();
+    }
+  });
+
+  test("keeps unknown task steering through ordinary continuation and recovers content and attachments after shutdown", async () => {
+    const release = Promise.withResolvers<void>();
+    const native = new LifetimeHarnessBackend({
+      models: [defaultTestModel], inputAdmission: "unknown", acknowledgePrompts: true,
+      responses: ["chore: preserve task input"],
+      streamEventSequences: [[{ type: "message.complete", content: "Late native result" }]],
+      onStreamEvent: async () => { await release.promise; },
+    });
+    backendManager.setBackendForTesting(native);
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
+    let taskId: string | undefined;
+    try {
+      const running = await createNativeExecution("Native unknown input");
+      taskId = running.config.id;
+      const sessionId = running.state.session!.id;
+      await waitForNativePrincipalMessages(taskId, 1);
+      const attachment: MessageAttachment = {
+        id: crypto.randomUUID(), filename: "context.txt", mimeType: "text/plain",
+        data: Buffer.from("Synthetic context").toString("base64"), size: Buffer.byteLength("Synthetic context"),
+      };
+      const queued = await fetch(`${baseUrl}/api/tasks/${taskId}/pending-prompt`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: "Steer this task", attachments: [attachment] }),
+      });
+      expect(queued.status).toBe(200);
+      const pending = await (await fetch(`${baseUrl}/api/tasks/${taskId}`)).json() as Task;
+      const inputId = pending.state.pendingInput!.id;
+      expect(pending.state.pendingInput?.attachments).toEqual([attachment]);
+      const steerUrl = `${baseUrl}/api/tasks/${taskId}/pending-inputs/${inputId}/steer`;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const admission = await fetch(steerUrl, { method: "POST" });
+        expect(admission.status).toBe(200);
+        expect((await admission.json()).admission.status).toBe("unknown");
+      }
+      const remove = await fetch(`${baseUrl}/api/tasks/${taskId}/pending-prompt`, { method: "DELETE" });
+      expect(remove.status).toBe(409);
+      expect((await remove.json()).error).toBe("task_input_unresolved");
+      const replace = await fetch(`${baseUrl}/api/tasks/${taskId}/pending-prompt`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: "Do not replace an uncertain input", attachments: [] }),
+      });
+      expect(replace.status).toBe(409);
+      native.publishEvent(sessionId, { type: "prompt.complete", outcome: "completed", scope: { kind: "principal" } });
+      const continued = await waitForNativePrincipalMessages(taskId, 2);
+      expect(continued.task.state.pendingInput?.id).toBe(inputId);
+      expect(continued.transcript.messages.filter((message) => message.role === "user" && message.content === "Steer this task")).toHaveLength(0);
+      release.resolve();
+      await taskManager.shutdown();
+      const stopped = await (await fetch(`${baseUrl}/api/tasks/${taskId}`)).json() as Task;
+      expect(stopped.state.pendingInput).toEqual({ id: inputId, attachments: [attachment] });
+      expect(stopped.state.harness?.inputs?.find((entry) => entry.admission.inputId === inputId)?.admission.status).toBe("unknown");
+      const recovered = await fetch(`${baseUrl}/api/tasks/${taskId}/pending-inputs/${inputId}/reconcile`, { method: "POST" });
+      expect(recovered.status).toBe(200);
+      expect((await recovered.json()).admission.status).toBe("delivered");
+      const snapshot = await (await fetch(`${baseUrl}/api/tasks/${taskId}/snapshot?full=1`)).json() as TaskTranscriptSnapshot;
+      expect(snapshot.task.state.session?.id).toBe(sessionId);
+      expect(snapshot.task.state.currentIteration).toBe(stopped.state.currentIteration);
+      expect(snapshot.task.state.pendingInput).toBeUndefined();
+      const messages = snapshot.transcript.messages.filter((message) => message.role === "user" && message.content === "Steer this task");
+      expect(messages).toHaveLength(1);
+      expect(messages[0]?.id).toBe(inputId);
+      expect(messages[0]?.attachments).toEqual([attachment]);
+    } finally {
+      release.resolve();
+      await taskManager.shutdown();
+      if (taskId) await fetch(`${baseUrl}/api/tasks/${taskId}`, { method: "DELETE" });
+      await native.disconnect();
+    }
+  });
+
+  test("atomically records accepted task steering once and retains its delivery receipt", async () => {
+    const release = Promise.withResolvers<void>();
+    const native = new LifetimeHarnessBackend({
+      models: [defaultTestModel], inputAdmission: "accepted", acknowledgePrompts: true,
+      responses: ["chore: preserve task input"],
+      streamEventSequences: [[{ type: "message.complete", content: "Late native result" }]],
+      onStreamEvent: async () => { await release.promise; },
+    });
+    backendManager.setBackendForTesting(native);
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
+    let taskId: string | undefined;
+    try {
+      const running = await createNativeExecution("Native accepted input");
+      taskId = running.config.id;
+      await waitForNativePrincipalMessages(taskId, 1);
+      const queued = await fetch(`${baseUrl}/api/tasks/${taskId}/pending-prompt`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: "Accepted native input", attachments: [] }),
+      });
+      expect(queued.status).toBe(200);
+      const pending = await (await fetch(`${baseUrl}/api/tasks/${taskId}`)).json() as Task;
+      const inputId = pending.state.pendingInput!.id;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const admission = await fetch(`${baseUrl}/api/tasks/${taskId}/pending-inputs/${inputId}/steer`, { method: "POST" });
+        expect(admission.status).toBe(200);
+        expect((await admission.json()).admission.status).toBe("accepted");
+      }
+      let snapshot = await (await fetch(`${baseUrl}/api/tasks/${taskId}/snapshot?full=1`)).json() as TaskTranscriptSnapshot;
+      expect(snapshot.task.state.pendingInput).toBeUndefined();
+      const admittedMessages = snapshot.transcript.messages.filter((message) => message.role === "user" && message.content === "Accepted native input");
+      expect(admittedMessages).toHaveLength(1);
+      expect(admittedMessages[0]?.id).toBe(inputId);
+      const delivered = await fetch(`${baseUrl}/api/tasks/${taskId}/pending-inputs/${inputId}/reconcile`, { method: "POST" });
+      expect(delivered.status).toBe(200);
+      expect((await delivered.json()).admission.status).toBe("delivered");
+      snapshot = await (await fetch(`${baseUrl}/api/tasks/${taskId}/snapshot?full=1`)).json() as TaskTranscriptSnapshot;
+      expect(snapshot.task.state.harness?.inputs?.find((entry) => entry.admission.inputId === inputId)?.admission.status).toBe("delivered");
+      expect(snapshot.transcript.messages.filter((message) => message.role === "user" && message.content === "Accepted native input")).toHaveLength(1);
+    } finally {
+      release.resolve();
+      await taskManager.shutdown();
+      if (taskId) await fetch(`${baseUrl}/api/tasks/${taskId}`, { method: "DELETE" });
+      await native.disconnect();
+    }
   });
 
   describe("GET /api/tasks/:id/diff", () => {

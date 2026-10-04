@@ -1,20 +1,18 @@
 /**
- * ACP prompt execution and persisted conversation materialization.
+ * Harness prompt execution and persisted conversation materialization.
  */
 
 import {
   getAcpErrorMessage,
-  isAcpError,
   isAcpErrorCode,
   isAcpSshTransportFailure,
   isAcpSshTransportFailureMetadata,
 } from "../backends/acp";
 import type {
-  AgentEvent,
   Backend,
   PromptInput,
-  SessionReplayEvent,
 } from "../backends/types";
+import type { HarnessEvent as AgentEvent } from "@/shared/harness-events";
 import type {
   Chat,
   ChatConfig,
@@ -70,6 +68,12 @@ import { buildPromptParts } from "../backends/prompt-parts";
 import { createChatLatencyTimer } from "./chat-latency-instrumentation";
 import { createIdempotentAsyncOperation } from "../utils/async-operation";
 import { DEFAULT_ACTIVITY_TIMEOUT_SECONDS } from "@/shared/task";
+import type { QueuedChatMessage } from "@/shared/chat";
+import type { HarnessInputAdmission } from "@/shared/harness-control";
+import { retainHarnessInputReceipt } from "./harness-input-ledger";
+import { createTransientHarnessSession, cleanupTransientHarnessSession } from "./harness-session";
+import { HarnessError } from "../backends/harness-errors";
+import { isDomainError } from "../domain/domain-error";
 
 const log = createLogger("chat-conversation-service");
 const DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS = DEFAULT_ACTIVITY_TIMEOUT_SECONDS * 1000;
@@ -168,7 +172,7 @@ export class ChatConversationService implements ChatConversationPort {
     chat: Chat,
     input: NormalizedChatMessageInput,
     options: {
-      clearQueuedMessages?: boolean;
+      clearQueuedMessageIds?: readonly string[];
       credentialToken?: string | null;
     } = {},
   ): Promise<Chat> {
@@ -194,7 +198,9 @@ export class ChatConversationService implements ChatConversationPort {
         chat,
         userMessage,
         {
-          queuedMessages: options.clearQueuedMessages ? [] : chat.state.queuedMessages,
+          queuedMessages: options.clearQueuedMessageIds
+            ? chat.state.queuedMessages?.filter((entry) => !options.clearQueuedMessageIds!.includes(entry.id))
+            : chat.state.queuedMessages,
           status: "starting",
           startupStage,
           error: undefined,
@@ -204,7 +210,7 @@ export class ChatConversationService implements ChatConversationPort {
         },
         chat.state.status,
       ));
-      if (options.clearQueuedMessages) {
+      if (options.clearQueuedMessageIds) {
         this.emitChatUpdated(current);
       }
 
@@ -307,7 +313,8 @@ export class ChatConversationService implements ChatConversationPort {
         throw error;
       }
       const erroredChat = await this.emitChatError(latest ?? chat, error);
-      if ((erroredChat.state.queuedMessages ?? []).length > 0) {
+      const adapter = erroredChat.state.session?.binding?.adapter;
+      if ((erroredChat.state.queuedMessages ?? []).length > 0 && (!adapter || adapter === "acp")) {
         this.scheduleQueuedMessageDrain(chat.config.id);
       }
       throw error;
@@ -470,166 +477,6 @@ export class ChatConversationService implements ChatConversationPort {
     return this.activeStreams.has(chatId);
   }
 
-  buildImportedReplayState(
-    chat: Chat,
-    events: SessionReplayEvent[],
-    sessionId: string,
-  ): ChatState {
-    const messages: MessageData[] = [];
-    const logs: TaskLogEntry[] = [];
-    const toolCalls: PersistedToolCall[] = [];
-    const toolInputs = new Map<string, unknown>();
-    let pendingText: { kind: "user" | "assistant" | "reasoning"; content: string } | null = null;
-    let lastActivityAt = createTimestamp();
-
-    const flushPendingText = (): void => {
-      if (!pendingText || pendingText.content.length === 0) {
-        pendingText = null;
-        return;
-      }
-
-      const timestamp = createTimestamp();
-      lastActivityAt = timestamp;
-      if (pendingText.kind === "user") {
-        messages.push({
-          id: `chat-user-${crypto.randomUUID()}`,
-          role: "user",
-          content: pendingText.content,
-          timestamp,
-        });
-      } else if (pendingText.kind === "assistant") {
-        const messageId = `chat-assistant-${crypto.randomUUID()}`;
-        messages.push({
-          id: messageId,
-          role: "assistant",
-          content: pendingText.content,
-          timestamp,
-        });
-      } else {
-        logs.push({
-          id: `chat-log-${crypto.randomUUID()}`,
-          level: "agent",
-          message: "Imported AI reasoning",
-          details: {
-            logKind: "reasoning",
-            responseContent: pendingText.content,
-          },
-          timestamp,
-        });
-      }
-
-      pendingText = null;
-    };
-
-    const appendText = (kind: "user" | "assistant" | "reasoning", content: string): void => {
-      if (pendingText?.kind === kind) {
-        pendingText.content += content;
-        return;
-      }
-      flushPendingText();
-      pendingText = { kind, content };
-    };
-
-    for (const event of events) {
-      switch (event.type) {
-        case "user.message":
-          appendText("user", event.content);
-          break;
-        case "assistant.message":
-          appendText("assistant", event.content);
-          break;
-        case "reasoning":
-          appendText("reasoning", event.content);
-          break;
-        case "tool.start": {
-          flushPendingText();
-          const timestamp = createTimestamp();
-          lastActivityAt = timestamp;
-          const toolId = event.toolCallId ?? `chat-tool-${crypto.randomUUID()}`;
-          const toolKey = event.toolCallId ?? event.toolName;
-          toolInputs.set(toolKey, event.input);
-          toolCalls.push({
-            id: toolId,
-            name: event.toolName,
-            input: event.input,
-            status: "running",
-            timestamp,
-          });
-          logs.push({
-            id: `chat-log-${crypto.randomUUID()}`,
-            level: "agent",
-            message: `Imported tool call: ${event.toolName}`,
-            details: {
-              logKind: "tool",
-              toolCallId: toolId,
-              toolName: event.toolName,
-            },
-            timestamp,
-          });
-          break;
-        }
-        case "tool.complete": {
-          flushPendingText();
-          const timestamp = createTimestamp();
-          lastActivityAt = timestamp;
-          const existingIndex = event.toolCallId
-            ? toolCalls.findIndex((toolCall) => toolCall.id === event.toolCallId)
-            : toolCalls.findLastIndex((toolCall) =>
-              toolCall.name === event.toolName && toolCall.status === "running"
-            );
-          const toolKey = event.toolCallId ?? event.toolName;
-          const completedInput = event.input ?? (
-            existingIndex >= 0 ? toolCalls[existingIndex]?.input : undefined
-          ) ?? toolInputs.get(toolKey);
-          toolInputs.set(toolKey, completedInput);
-          const completedTool: PersistedToolCall = {
-            id: event.toolCallId ?? (existingIndex >= 0 ? toolCalls[existingIndex]!.id : `chat-tool-${crypto.randomUUID()}`),
-            name: event.toolName,
-            input: completedInput,
-            output: event.output,
-            status: "completed",
-            timestamp,
-          };
-          if (existingIndex >= 0) {
-            toolCalls[existingIndex] = mergeToolCallRecord(toolCalls[existingIndex]!, completedTool);
-          } else {
-            toolCalls.push(completedTool);
-          }
-          logs.push({
-            id: `chat-log-${crypto.randomUUID()}`,
-            level: "agent",
-            message: `Imported tool result: ${event.toolName}`,
-            details: {
-              logKind: "tool",
-              toolCallId: completedTool.id,
-              toolName: event.toolName,
-            },
-            timestamp,
-          });
-          break;
-        }
-      }
-    }
-    flushPendingText();
-
-    const startedAt = chat.state.startedAt ?? createTimestamp();
-    return {
-      ...chat.state,
-      status: "idle",
-      session: { id: sessionId },
-      startedAt,
-      completedAt: undefined,
-      lastActivityAt,
-      error: undefined,
-      messages,
-      logs,
-      toolCalls,
-      activeMessageId: undefined,
-      interruptRequested: false,
-      pendingPermissionRequests: [],
-    };
-  }
-
   private async startActivePrompt(
     chat: Chat,
     backend: Backend,
@@ -642,7 +489,7 @@ export class ChatConversationService implements ChatConversationPort {
     const handle = streamController.start({
       sessionId,
       prompt,
-      activityTimeoutMs: this.activityTimeoutMs,
+      activityTimeoutMs: backend.harness.capabilities.adapter === "acp" ? this.activityTimeoutMs : null,
     });
     const generation = this.nextActiveStreamGeneration(chat.config.id);
     const activeStream: ActiveChatStream = {
@@ -715,6 +562,7 @@ export class ChatConversationService implements ChatConversationPort {
   ): Promise<void> {
     const streamState = this.createChatStreamState(initialChat);
     const sessionId = streamState.chat.state.session?.id;
+    let canDrain = backend.harness.capabilities.adapter === "acp";
 
     try {
       const streamResult = await handle.consume({
@@ -737,6 +585,13 @@ export class ChatConversationService implements ChatConversationPort {
         onEvent: (event) =>
           this.handleChatStreamEvent(chatId, backend, generation, streamState, event),
       });
+      canDrain ||= streamResult.lastEvent?.type === "prompt.complete";
+      if (
+        backend.harness.capabilities.adapter !== "acp"
+        && this.isActiveStreamGeneration(chatId, generation)
+        && streamResult.lastEvent?.type !== "prompt.complete"
+        && streamResult.lastEvent?.type !== "error"
+      ) throw new HarnessError("harness_transport_closed", "Native execution ended without a principal terminal signal.");
       if (streamResult.endedByInactivity) {
         const blocks = streamState.interpreter.flushActiveBlocks();
         await this.flushChatStreamBlocksAfterMetadataReload(chatId, streamState, blocks);
@@ -745,7 +600,7 @@ export class ChatConversationService implements ChatConversationPort {
         }
         await this.completeChatAfterInactivity(chatId, generation, streamState);
       } else if (
-        streamResult.lastEvent?.type !== "message.complete"
+        streamResult.lastEvent?.type !== "prompt.complete"
         && streamResult.lastEvent?.type !== "error"
       ) {
         const blocks = streamState.interpreter.flushActiveBlocks();
@@ -772,6 +627,7 @@ export class ChatConversationService implements ChatConversationPort {
         generation,
         isAcpErrorCode(error, "acp_request_cancelled") ? "acp_request_cancelled" : undefined,
       )) {
+        canDrain = true;
         const latestChat = await this.loadChatIfAvailable(chatId);
         const interruptedChat = latestChat
           ? {
@@ -799,7 +655,7 @@ export class ChatConversationService implements ChatConversationPort {
       }
     } finally {
       this.clearActiveStream(chatId, generation);
-      this.scheduleQueuedMessageDrain(chatId);
+      if (canDrain) this.scheduleQueuedMessageDrain(chatId);
     }
   }
 
@@ -1012,6 +868,7 @@ export class ChatConversationService implements ChatConversationPort {
         || event.type === "tool.start"
         || event.type === "tool.complete"
         || event.type === "message.complete"
+        || event.type === "prompt.complete"
         || event.type === "permission.asked"
       )
     ) {
@@ -1118,15 +975,6 @@ export class ChatConversationService implements ChatConversationPort {
           this.clearActiveStream(chatId, generation);
           return { stop: true };
         }
-        if (event.status === "idle") {
-          streamState.chat = await this.updateState(streamState.chat, {
-            ...streamState.chat.state,
-            status: "idle",
-            startupStage: undefined,
-            interruptRequested: false,
-            lastActivityAt: now,
-          });
-        }
         break;
 
       case "message.complete":
@@ -1150,7 +998,20 @@ export class ChatConversationService implements ChatConversationPort {
           undefined,
           { memory: streamState.transcriptMemory },
         );
-        if (streamState.chat.state.interruptRequested || streamState.chat.state.status === "interrupting") {
+        streamState.interpreter.acknowledgeCheckpoint();
+        break;
+
+      case "prompt.complete":
+        await this.flushChatStreamBlocks(
+          streamState,
+          streamState.interpreter.flushActiveBlocks(now),
+          now,
+        );
+        if (
+          event.outcome === "interrupted"
+          || streamState.chat.state.interruptRequested
+          || streamState.chat.state.status === "interrupting"
+        ) {
           streamState.chat = await this.completeInterruptedChat(
             streamState.chat,
             streamState.transcriptMemory,
@@ -1160,6 +1021,7 @@ export class ChatConversationService implements ChatConversationPort {
           streamState.chat = await this.updateState(streamState.chat, {
             ...streamState.chat.state,
             status: "idle",
+            error: undefined,
             startupStage: undefined,
             activeMessageId: undefined,
             interruptRequested: false,
@@ -1169,6 +1031,22 @@ export class ChatConversationService implements ChatConversationPort {
         streamState.interpreter.acknowledgeCheckpoint();
         this.clearActiveStream(chatId, generation);
         return { stop: true };
+
+      case "request.error":
+        log.warn("Native request failed while the chat execution remains open", {
+          chatId, code: event.code, error: event.message,
+        });
+        streamState.chat = await this.emitChatLog(
+          streamState.chat, "warn", event.message,
+          { code: event.code, ...event.details },
+          undefined, now, { memory: streamState.transcriptMemory },
+        );
+        streamState.chat = await this.updateState(streamState.chat, {
+          ...streamState.chat.state,
+          error: { message: event.message, code: event.code, timestamp: now },
+          lastActivityAt: now,
+        });
+        break;
 
       case "error":
         if (this.shouldSuppressStreamError(chatId, generation, event.code)) {
@@ -1278,6 +1156,23 @@ export class ChatConversationService implements ChatConversationPort {
         });
       }
     }
+  }
+
+  async recordSteeredMessage(chat: Chat, message: QueuedChatMessage, admission: HarnessInputAdmission): Promise<Chat> {
+    const binding = chat.state.session?.binding;
+    if (!binding) throw new Error("Steered input requires an owned conversation.");
+    return this.appendMessage(chat, {
+      id: message.id, role: "user", content: message.content,
+      attachments: message.attachments, timestamp: createTimestamp(),
+    }, {
+      queuedMessages: chat.state.queuedMessages?.filter((entry) => entry.id !== message.id),
+      harness: {
+        ...chat.state.harness,
+        inputs: retainHarnessInputReceipt(chat.state.harness?.inputs ?? [], {
+          conversation: binding, admission, submittedAt: message.createdAt,
+        }),
+      },
+    });
   }
 
   private async appendMessage(
@@ -1666,7 +1561,7 @@ export class ChatConversationService implements ChatConversationPort {
     details?: Readonly<Record<string, unknown>>,
   ): Promise<Chat> {
     const message = typeof error === "string" ? error : getAcpErrorMessage(error);
-    const errorCode = code ?? (isAcpError(error) ? error.code : undefined);
+    const errorCode = code ?? (isDomainError(error) ? error.code : undefined);
     log.error("Chat runtime error", { chatId: chat.config.id, error: message });
     const connectionFailed =
       isAcpSshTransportFailure(error)
@@ -1868,12 +1763,12 @@ export class ChatConversationService implements ChatConversationPort {
         return;
       }
 
-      tempSession = await backend.createSession({
+      tempSession = await createTransientHarnessSession(backend, {
         title: "Chat Name Generation",
         directory,
       });
       const nameSession = tempSession;
-      cleanupTempSession = createIdempotentAsyncOperation(() => backend.abortSession(nameSession.id));
+      cleanupTempSession = createIdempotentAsyncOperation(() => cleanupTransientHarnessSession(backend, nameSession.id));
       const helperModel = await resolveEffectiveCheapModel({
         workspaceId,
         directory,

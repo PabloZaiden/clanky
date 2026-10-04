@@ -1,8 +1,7 @@
 /**
- * Chat creation, import, configuration, and deletion workflows.
+ * Chat creation, configuration, and deletion workflows.
  */
 
-import type { Backend } from "../backends/types";
 import type { Chat, ChatConfig, ChatStatus, SessionInfo, Task } from "@/shared";
 import {
   DEFAULT_CHAT_CONFIG,
@@ -40,7 +39,6 @@ import type {
   CreateAgentRunChatOptions,
   CreateChatOptions,
   CreateExecutionHostChatOptions,
-  ImportExistingSessionOptions,
 } from "./chat-service-contracts";
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import { requireCurrentUser, runWithCurrentUser } from "../context/user-context";
@@ -251,69 +249,6 @@ export class ChatLifecycleService implements ChatLifecyclePort {
     await this.state.saveNewChat(chat);
     this.state.emitChatCreated(chat, now);
     return chat;
-  }
-
-  async listImportableSessions(workspaceId: string) {
-    const workspace = await this.state.getWorkspace(workspaceId);
-    if (!workspace) {
-      throw new Error(`Workspace not found: ${workspaceId}`);
-    }
-    return this.session.listImportableSessions(workspaceId);
-  }
-
-  async importExistingSession(options: ImportExistingSessionOptions): Promise<Chat> {
-    const workspace = await this.state.getWorkspace(options.workspaceId);
-    if (!workspace) {
-      throw new Error(`Workspace not found: ${options.workspaceId}`);
-    }
-
-    const discoveryDirectory = options.cwd ?? workspace.directory;
-    const discoveryBackend = await this.session.getWorkspaceBackend(options.workspaceId, discoveryDirectory);
-    const listedSession = (await discoveryBackend.listSessions(options.cwd))
-      .find((session) => session.id === options.sessionId);
-    const importDirectory = options.cwd ?? listedSession?.cwd ?? workspace.directory;
-    const importedName = options.name?.trim() || listedSession?.title?.trim() || "";
-
-    const chat = await this.createChat({
-      name: importedName || undefined,
-      workspaceId: options.workspaceId,
-      modelProviderID: options.modelProviderID,
-      modelID: listedSession?.model ?? options.modelID,
-      modelVariant: options.modelVariant,
-      useWorktree: false,
-      autoApprovePermissions: options.autoApprovePermissions,
-      directory: importDirectory,
-      syncBaseBranch: false,
-      prepareWorktreeOnCreate: false,
-    });
-
-    const backend = await this.session.ensureBackendConnected(chat);
-    let imported: Awaited<ReturnType<Backend["importSession"]>>;
-    try {
-      imported = await backend.importSession({
-        sessionId: options.sessionId,
-        cwd: importDirectory,
-      });
-    } catch (error) {
-      const cleanupResults = await Promise.allSettled([
-        this.state.deletePersistedChat(chat.config.id),
-        this.session.disconnectChat(chat.config.id),
-      ]);
-      for (const result of cleanupResults) {
-        if (result.status === "rejected") {
-          log.error("Failed to clean up chat after session import failure", {
-            chatId: chat.config.id,
-            error: String(result.reason),
-          });
-        }
-      }
-      throw error;
-    }
-
-    const importedState = this.conversation.buildImportedReplayState(chat, imported.events, imported.session.id);
-    const updatedChat = await this.state.updateState(chat, importedState);
-    this.state.emitChatUpdated(updatedChat);
-    return updatedChat;
   }
 
   async getOrCreateTaskChat(taskId: string, task?: Task): Promise<{ chat: Chat; created: boolean }> {

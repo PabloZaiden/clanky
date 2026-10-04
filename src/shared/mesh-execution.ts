@@ -2,12 +2,13 @@
  * Transport-neutral contracts for execution on a mesh-owned workspace.
  */
 
-import { MESH_PROTOCOL_VERSION } from "./mesh-protocol";
+import { MESH_PROTOCOL_VERSION, type MeshProtocolVersion } from "./mesh-protocol";
 
 export const MESH_EXECUTION_PROTOCOL_VERSION = MESH_PROTOCOL_VERSION;
-export type MeshExecutionProtocolVersion = typeof MESH_PROTOCOL_VERSION;
+export type MeshExecutionProtocolVersion = MeshProtocolVersion;
 export const MESH_EXECUTION_CHANNEL = "command-executor" as const;
 export const MESH_ACP_CHANNEL = "acp" as const;
+export const MESH_HARNESS_CHANNEL = "harness" as const;
 export const MESH_EXECUTION_DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
 export const MESH_EXECUTION_MAX_IN_FLIGHT_REQUESTS = 8;
 export const MESH_EXECUTION_SESSION_TTL_MS = 60_000;

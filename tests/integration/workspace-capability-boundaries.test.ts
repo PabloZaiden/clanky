@@ -107,6 +107,7 @@ function workspace(
     executionHostBinding,
     serverSettings: {
       agent: {
+        adapter: "acp",
         provider: "copilot",
       },
     },
@@ -275,6 +276,7 @@ describe("workspace capability boundaries", () => {
         executionHost: unsupportedRef,
         serverSettings: {
           agent: {
+            adapter: "acp",
             provider: "copilot",
           },
         },
@@ -300,6 +302,7 @@ describe("workspace capability boundaries", () => {
         executionHost: noGitRef,
         serverSettings: {
           agent: {
+            adapter: "acp",
             provider: "copilot",
           },
         },
@@ -391,6 +394,7 @@ describe("workspace capability boundaries", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           agent: {
+            adapter: "acp",
             provider: "opencode",
           },
         }),

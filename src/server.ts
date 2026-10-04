@@ -38,6 +38,7 @@ import {
   taskEventEmitter,
   previewEventEmitter,
   meshStateEventEmitter,
+  harnessEventEmitter,
 } from "./core/event-emitter";
 import type { EventContext } from "./core/event-emitter";
 import {
@@ -53,6 +54,8 @@ import { isDomainError } from "./domain/domain-error";
 import { meshTerminalGateway } from "./core/mesh-terminal-gateway";
 import { meshTcpTunnelGateway } from "./core/mesh-tcp-tunnel-gateway";
 import { closeAllMeshTerminalConnections } from "./core/terminal";
+import { meshHarnessGateway } from "./core/mesh-harness-gateway";
+import { meshAcpGateway } from "./core/mesh-acp-gateway";
 import { runWithCurrentUser } from "./context/user-context";
 import {
   configureMeshRuntime,
@@ -66,7 +69,7 @@ import {
 } from "./persistence/mesh-worker-tls";
 import {
   MESH_RELAY_DESCRIPTOR_PATH,
-  type MeshControllerWellKnownDescriptorV5,
+  type MeshControllerWellKnownDescriptor,
 } from "./shared/mesh-relay";
 import {
   MESH_RUNTIME_SNAPSHOT_HEADER,
@@ -75,6 +78,7 @@ import {
 import {
   MESH_BINARY_VERSION_HEADER,
   MESH_PROTOCOL_VERSION,
+  meshProtocolProjection,
   MESH_PROTOCOL_VERSION_HEADER,
   MESH_PROTOCOL_VERSIONS_HEADER,
   MESH_SUPPORTED_PROTOCOL_VERSIONS,
@@ -158,6 +162,7 @@ function registerClankyRealtimeBridge(appServer: WebAppServer<ClankyRealtimeEven
     provisioningEventEmitter.subscribe(publishEvent),
     previewEventEmitter.subscribe(publishEvent),
     meshStateEventEmitter.subscribe(publishEvent),
+    harnessEventEmitter.subscribe(publishEvent),
   ];
 }
 
@@ -308,15 +313,13 @@ export const routes = defineRoutes<ClankyRealtimeEvent>({
         [...MESH_SUPPORTED_PROTOCOL_VERSIONS],
         requestedVersions,
       );
-      const descriptor: MeshControllerWellKnownDescriptorV5 = {
+      const descriptor: MeshControllerWellKnownDescriptor = {
         role: "controller",
-        protocolVersion: MESH_PROTOCOL_VERSION,
+        ...meshProtocolProjection(negotiatedVersion ?? MESH_PROTOCOL_VERSION),
         nodeId: identity.nodeId,
         publicKey: identity.publicKey,
         fingerprint: identity.fingerprint,
         binaryVersion: protocol.binaryVersion!,
-        supportedProtocolVersions: protocol.supportedProtocolVersions,
-        preferredProtocolVersion: protocol.preferredProtocolVersion,
         negotiatedProtocolVersion: negotiatedVersion,
       };
       return Response.json(descriptor, {
@@ -578,6 +581,8 @@ export async function getWebAppServer(
         await meshTerminalGateway.closeAll();
         await meshTcpTunnelGateway.closeAll();
         await closeAllMeshTerminalConnections();
+        await meshHarnessGateway.closeAll();
+        await meshAcpGateway.closeAll();
       },
     },
     configResponse: (req) => {

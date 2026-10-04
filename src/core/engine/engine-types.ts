@@ -2,7 +2,7 @@
  * Shared types and constants for TaskEngine internals.
  */
 
-import type { AcpBackend } from "../../backends/acp";
+import type { Backend } from "../../backends/types";
 import type { AgentStreamBackend } from "../agent-stream-controller";
 import type {
   TaskConfig,
@@ -67,7 +67,7 @@ export interface SessionInterruptOptions {
 }
 
 /**
- * Typed boundary for backend connection and ACP session ownership.
+ * Typed boundary for backend connection and harness session ownership.
  */
 export interface TaskSessionLifecycle {
   readonly sessionId: string | null;
@@ -105,21 +105,24 @@ export interface TaskPromptExecutor {
 /**
  * Backend interface for TaskEngine.
  * This is a structural type that defines the methods TaskEngine needs.
- * Both AcpBackend and MockAcpBackend satisfy this interface.
+ * Production and test harness adapters satisfy this interface.
  * Using a structural type (interface) instead of a union allows for
  * easy mocking in tests without requiring all internal class fields.
  */
 export interface TaskBackend extends AgentStreamBackend {
-  connect: AcpBackend["connect"];
-  disconnect: AcpBackend["disconnect"];
-  isConnected: AcpBackend["isConnected"];
-  createSession: AcpBackend["createSession"];
-  sendPrompt: AcpBackend["sendPrompt"];
-  abortSession: AcpBackend["abortSession"];
-  replyToPermission: AcpBackend["replyToPermission"];
-  replyToQuestion: AcpBackend["replyToQuestion"];
-  setConfigOption: AcpBackend["setConfigOption"];
-  setSessionModel: AcpBackend["setSessionModel"];
+  readonly harness: Backend["harness"];
+  connect: Backend["connect"];
+  disconnect: Backend["disconnect"];
+  isConnected: Backend["isConnected"];
+  createSession: Backend["createSession"];
+  resumeSession: Backend["resumeSession"];
+  getSession: Backend["getSession"];
+  sendPrompt: Backend["sendPrompt"];
+  abortSession: Backend["abortSession"];
+  replyToPermission: Backend["replyToPermission"];
+  replyToQuestion: Backend["replyToQuestion"];
+  setConfigOption: Backend["setConfigOption"];
+  setSessionModel: Backend["setSessionModel"];
 }
 
 /**
@@ -137,7 +140,7 @@ export interface TaskEngineOptions {
   /** Callback to persist state to disk (optional) */
   onPersistState?: (
     state: TaskState,
-    options: { transcriptChanges: TranscriptChangeSet },
+    options: { transcriptChanges: TranscriptChangeSet; persistHarnessInputs?: boolean },
   ) => Promise<void>;
   /** Callback fired after a plan becomes ready (optional) */
   onPlanReady?: () => Promise<void>;

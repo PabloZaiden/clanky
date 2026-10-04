@@ -10,12 +10,12 @@ export function startStatePersistenceImpl(ctx: TaskCtx, taskId: string): void {
       return;
     }
 
-    if (
+    if (!engine.isExecuting && !engine.needsWorkspaceFinalization && (
       engine.state.status === "completed" ||
       engine.state.status === "stopped" ||
       engine.state.status === "failed" ||
       engine.state.status === "max_iterations"
-    ) {
+    )) {
       clearInterval(interval);
       backendManager.disconnectTask(taskId).catch((error) => {
         log.error(`Failed to disconnect task backend during cleanup: ${String(error)}`);

@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Chat, Workspace } from "@/shared";
-import type { CreateChatRequest, ImportExistingChatRequest } from "@/contracts";
+import type { CreateChatRequest } from "@/contracts";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
-import { apiRequest } from "../../lib/api-client";
 import {
   getStoredChatModelPreference,
   saveStoredChatModelPreference,
@@ -23,14 +22,6 @@ import {
   type WebAppRoute,
 } from "@pablozaiden/webapp/web";
 import { Button } from "../common";
-
-interface ImportableChatSession {
-  id: string;
-  title?: string;
-  cwd: string;
-  updatedAt?: string;
-  model?: string;
-}
 
 function getPreferredModelKey(
   models: UseDashboardDataResult["models"],
@@ -76,7 +67,6 @@ export function ComposeChatView({
   dashboardData,
   navigateWithinShell,
   createChat,
-  importExistingChat,
 }: {
   composeWorkspace: Workspace | null;
   workspaces: Workspace[];
@@ -85,7 +75,6 @@ export function ComposeChatView({
   dashboardData: UseDashboardDataResult;
   navigateWithinShell: (route: WebAppRoute) => void;
   createChat: (request: CreateChatRequest) => Promise<Chat | null>;
-  importExistingChat: (request: ImportExistingChatRequest) => Promise<Chat | null>;
 }) {
   const { error: showError } = useToast();
   const {
@@ -108,10 +97,6 @@ export function ComposeChatView({
   const [autoApprovePermissions, setAutoApprovePermissions] = useState(true);
   const [baseBranch, setBaseBranch] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [importExistingSession, setImportExistingSession] = useState(false);
-  const [importSessions, setImportSessions] = useState<ImportableChatSession[]>([]);
-  const [importSessionsLoading, setImportSessionsLoading] = useState(false);
-  const [selectedImportSessionId, setSelectedImportSessionId] = useState("");
   const loadedWorkspaceRef = useRef<string | null>(null);
 
   const selectedWorkspace = useMemo(
@@ -161,7 +146,7 @@ export function ComposeChatView({
 
   const worktreesAllowed = selectedWorkspace?.workspaceType === "git"
     && selectedWorkspace.allowWorktrees !== false;
-  const worktreeControlDisabled = importExistingSession || !worktreesAllowed;
+  const worktreeControlDisabled = !worktreesAllowed;
 
   useEffect(() => {
     if (!worktreesAllowed) {
@@ -176,57 +161,6 @@ export function ComposeChatView({
     }
     setBaseBranch((current) => current || defaultBranch || currentBranch);
   }, [currentBranch, defaultBranch, selectedWorkspace?.id, selectedWorkspace?.workspaceType]);
-
-  useEffect(() => {
-    if (!importExistingSession || !selectedWorkspace) {
-      setImportSessions([]);
-      setSelectedImportSessionId("");
-      return;
-    }
-
-    const controller = new AbortController();
-    void (async () => {
-      setImportSessionsLoading(true);
-      try {
-        const sessions = await apiRequest<ImportableChatSession[]>(
-          `/api/chats/importable-sessions?workspaceId=${encodeURIComponent(selectedWorkspace.id)}`,
-          {
-            signal: controller.signal,
-            action: "List importable chat sessions",
-            fallbackMessage: "Failed to list existing sessions",
-          },
-        );
-        if (controller.signal.aborted) {
-          return;
-        }
-        setImportSessions(sessions);
-        setSelectedImportSessionId((current) => (
-          current && sessions.some((session) => session.id === current)
-            ? current
-            : sessions[0]?.id ?? ""
-        ));
-      } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") {
-          return;
-        }
-        setImportSessions([]);
-        setSelectedImportSessionId("");
-        showError(String(error));
-      } finally {
-        if (!controller.signal.aborted) {
-          setImportSessionsLoading(false);
-        }
-      }
-    })();
-
-    return () => controller.abort();
-  }, [importExistingSession, selectedWorkspace?.id, showError]);
-
-  useEffect(() => {
-    if (importExistingSession) {
-      setUseWorktree(false);
-    }
-  }, [importExistingSession]);
 
   useEffect(() => {
     if (selectedModel || models.length === 0) {
@@ -254,43 +188,6 @@ export function ComposeChatView({
 
     setIsSubmitting(true);
     try {
-      if (importExistingSession) {
-        const selectedImportSession = importSessions.find((session) => session.id === selectedImportSessionId);
-        const selectedSessionId = selectedImportSessionId.trim();
-        if (!selectedSessionId || !selectedImportSession) {
-          showError("Select an existing session");
-          return;
-        }
-        const chat = await importExistingChat({
-          name: name.trim() || selectedImportSession?.title,
-          workspaceId: selectedWorkspace.id,
-          model: {
-            providerID: parsedModel.providerID,
-            modelID: parsedModel.modelID,
-            variant: parsedModel.variant ?? "",
-          },
-          sessionId: selectedSessionId,
-          cwd: selectedImportSession.cwd,
-          autoApprovePermissions,
-        });
-        if (!chat) {
-          showError("Failed to import chat");
-          return;
-        }
-        setLastModel({
-          providerID: parsedModel.providerID,
-          modelID: parsedModel.modelID,
-          variant: parsedModel.variant,
-        });
-        saveStoredChatModelPreference({
-          providerID: parsedModel.providerID,
-          modelID: parsedModel.modelID,
-          variant: parsedModel.variant,
-        });
-        navigateWithinShell({ view: "chat", chatId: chat.config.id });
-        return;
-      }
-
       const chat = await createChat({
         name: name.trim(),
         workspaceId: selectedWorkspace.id,
@@ -336,10 +233,8 @@ export function ComposeChatView({
   const canSubmit = !isSubmitting
     && (selectedWorkspace?.workspaceType !== "git" || !branchesLoading)
     && !modelOptionsLoading
-    && !importSessionsLoading
     && Boolean(selectedWorkspace)
-    && Boolean(effectiveSelectedModel)
-    && (importExistingSession ? Boolean(selectedImportSessionId.trim()) : true);
+    && Boolean(effectiveSelectedModel);
   const headerActions = useMemo(() => (
     <Button
       type="button"
@@ -348,9 +243,9 @@ export function ComposeChatView({
       disabled={!canSubmit}
       loading={isSubmitting}
     >
-      {importExistingSession ? "Import" : "Create"}
+      Create
     </Button>
-  ), [canSubmit, handleSubmit, importExistingSession, isSubmitting]);
+  ), [canSubmit, handleSubmit, isSubmitting]);
   useHeaderActions({ primary: headerActions });
 
   return (
@@ -387,47 +282,6 @@ export function ComposeChatView({
         </div>
 
         <div>
-            <label className="flex items-start gap-3">
-              <input
-                type="checkbox"
-                checked={importExistingSession}
-                onChange={(event) => setImportExistingSession(event.target.checked)}
-                className="mt-1 h-4 w-4 rounded border-gray-300 text-gray-700 focus:ring-gray-500 disabled:opacity-50 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-300"
-              />
-              <div className="flex-1">
-                <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Import existing session
-                </span>
-              </div>
-            </label>
-
-            {importExistingSession && (
-              <div className="mt-4">
-                <div>
-                  <SelectField
-                    id="import-session-select"
-                    label="Existing sessions"
-                    value={selectedImportSessionId}
-                    onChange={(event) => setSelectedImportSessionId(event.target.value)}
-                    disabled={importSessionsLoading || importSessions.length === 0}
-                  >
-                    <option value="">
-                      {importSessionsLoading
-                        ? "Loading sessions..."
-                        : importSessions.length === 0 ? "No discoverable sessions" : "Select a session"}
-                    </option>
-                    {importSessions.map((session) => (
-                      <option key={session.id} value={session.id}>
-                        {(session.title || session.id)}{session.cwd ? ` - ${session.cwd}` : ""}
-                      </option>
-                    ))}
-                  </SelectField>
-                </div>
-              </div>
-            )}
-          </div>
-
-        <div>
           <label htmlFor="chat-model" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
             Model
           </label>
@@ -454,7 +308,6 @@ export function ComposeChatView({
           branchesLoading={branchesLoading}
           defaultBranch={defaultBranch}
           currentBranch={currentBranch}
-          disabled={importExistingSession}
           />
         )}
 
@@ -463,7 +316,7 @@ export function ComposeChatView({
           <label className="flex items-start gap-3">
             <input
               type="checkbox"
-              checked={importExistingSession ? false : worktreesAllowed ? useWorktree : false}
+              checked={worktreesAllowed ? useWorktree : false}
               onChange={(event) => setUseWorktree(event.target.checked)}
               disabled={worktreeControlDisabled}
               className="mt-1 h-4 w-4 rounded border-gray-300 text-gray-700 focus:ring-gray-500 disabled:opacity-60 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-300"

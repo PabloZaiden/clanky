@@ -78,6 +78,18 @@ interface DomainErrorPolicyProfile {
  * compile-time checked while unknown internal codes still fail safely.
  */
 const API_DOMAIN_ERROR_CODES = {
+  harness_session_not_found: true,
+  harness_session_not_owned: true,
+  harness_activity_not_owned: true,
+  harness_unsupported_feature: true,
+  harness_transport_closed: true,
+  harness_runtime_unavailable: true,
+  harness_authentication_required: true,
+  harness_model_not_available: true,
+  harness_invalid_model_option: true,
+  harness_input_not_found: true,
+  harness_input_unresolved: true,
+  harness_input_capacity: true,
   acp_connection_aborted: true,
   acp_connection_timed_out: true,
   acp_request_cancelled: true,
@@ -246,6 +258,10 @@ const API_DOMAIN_ERROR_CODES = {
   task_branch_missing: true,
   task_file_operation_failed: true,
   task_git_operation_failed: true,
+  task_background_work_unsettled: true,
+  task_final_git_failed: true,
+  task_final_git_pending: true,
+  task_input_unresolved: true,
   task_no_remote: true,
   task_not_addressable: true,
   task_not_found: true,
@@ -427,6 +443,18 @@ function retryAfterHeaders(error: DomainError): Record<string, string> | undefin
 }
 
 const COMMON_MAPPINGS = {
+  harness_session_not_found: { status: 404, message: "The owned conversation is unavailable." },
+  harness_session_not_owned: { status: 409, message: "The stored conversation does not belong to the selected adapter or execution context." },
+  harness_activity_not_owned: { status: 404, message: "The owned native activity is unavailable." },
+  harness_unsupported_feature: { status: 409, message: "The selected adapter does not support this operation." },
+  harness_transport_closed: { status: 503, message: "The harness is disconnected. Reconnect before retrying." },
+  harness_runtime_unavailable: { status: 503, message: "The native runtime is unavailable on the execution host." },
+  harness_authentication_required: { status: 401, message: "The native runtime requires authentication on the execution host." },
+  harness_model_not_available: { status: 400, message: "The selected native model is unavailable." },
+  harness_invalid_model_option: { status: 400, message: "The selected native model option is invalid." },
+  harness_input_not_found: { status: 404, message: "The queued input is unavailable." },
+  harness_input_unresolved: { status: 409, message: "Native input admission is unresolved. The message cannot be treated as unsent." },
+  harness_input_capacity: { status: 429, message: "The pending input capacity has been reached." },
   execution_host_capability_unavailable: {
     status: 409,
     message: "The execution host does not support the requested operation.",
@@ -1376,6 +1404,22 @@ const POLICY_PROFILES = {
       task_git_operation_failed: {
         status: 500,
         message: "Task git operation failed",
+      },
+      task_background_work_unsettled: {
+        status: 409,
+        message: "Native workspace writers have not been confirmed stopped.",
+      },
+      task_final_git_failed: {
+        status: 409,
+        message: "The task completed, but its final Git operation failed.",
+      },
+      task_final_git_pending: {
+        status: 409,
+        message: "The task completed, but its final Git operation is still pending.",
+      },
+      task_input_unresolved: {
+        status: 409,
+        message: "Native task input admission is unresolved.",
       },
       task_no_remote: {
         status: 400,

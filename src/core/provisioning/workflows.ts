@@ -96,6 +96,7 @@ export class ProvisioningWorkflows {
       }
       const serverSettings: ServerSettings = {
         agent: {
+          adapter: "acp",
           provider: record.job.config.provider,
         },
       };
@@ -530,6 +531,7 @@ export class ProvisioningWorkflows {
 
       const serverSettings: ServerSettings = {
         agent: {
+          adapter: "acp",
           provider: record.job.config.provider,
         },
       };

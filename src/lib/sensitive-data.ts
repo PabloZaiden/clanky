@@ -22,6 +22,7 @@ export function shouldIncludeSensitiveData(req: Request): boolean {
 export function sanitizeServerSettings(settings: ServerSettings): PublicServerSettings {
   return {
     agent: {
+      adapter: settings.agent.adapter,
       provider: settings.agent.provider,
     },
   };

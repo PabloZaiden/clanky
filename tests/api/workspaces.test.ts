@@ -17,7 +17,7 @@ import { createMockBackend } from "../mocks/mock-backend";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { fetchTestLocalExecutionHost } from "../setup";
 import { pollUntil } from "../helpers/polling";
-import type { ExecutionHostRef } from "@/shared";
+import type { ExecutionHostRef, ServerSettings } from "@/shared";
 
 import { createWorkspace, getWorkspace } from "../../src/persistence/workspaces";
 import {
@@ -31,9 +31,10 @@ import {
 // Default test model for task creation (model is now required)
 const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };
 
-function makeServerSettings(provider: "opencode" | "copilot" = "opencode") {
+function makeServerSettings(provider: "opencode" | "copilot" = "opencode"): ServerSettings {
   return {
     agent: {
+      adapter: "acp",
       provider,
     },
   };
@@ -1432,6 +1433,34 @@ describe("Workspace API Integration", () => {
   describe("Workspace Server Settings Endpoints", () => {
 
     describe("PUT /api/workspaces/:id/server-settings", () => {
+      test("round-trips native selection and rejects direct SSH without replacing the selected adapter or host", async () => {
+        const created = await fetch(`${baseUrl}/api/workspaces`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "Native selection", directory: testWorkDir, executionHost: localExecutionHost,
+            serverSettings: makeServerSettings("copilot"),
+          }),
+        });
+        expect(created.status).toBe(201);
+        const workspace = await created.json();
+        const settings = { agent: { adapter: "copilot", provider: "copilot" } };
+        const selected = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/server-settings`, {
+          method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(settings),
+        });
+        expect(selected.status).toBe(200);
+        expect(await selected.json()).toEqual(settings);
+        expect(await (await fetch(`${baseUrl}/api/workspaces/${workspace.id}/server-settings`)).json()).toEqual(settings);
+        const rejected = await fetch(`${baseUrl}/api/workspaces/${workspace.id}`, {
+          method: "PUT", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sshTarget: { host: "synthetic.invalid", port: 22, username: "synthetic" } }),
+        });
+        expect(rejected.status).toBe(409);
+        expect((await rejected.json()).error).toBe("harness_unsupported_feature");
+        const persisted = await (await fetch(`${baseUrl}/api/workspaces/${workspace.id}`)).json();
+        expect(persisted.serverSettings).toEqual(settings);
+        expect(persisted.executionHostBinding.host).toEqual(localExecutionHost);
+      });
+
       test("updates workspace server settings", async () => {
         // Create a workspace
         const createResponse = await fetch(`${baseUrl}/api/workspaces`, {

@@ -7,6 +7,7 @@
  */
 
 import type { MeshRelayPeerRole, MeshRelayStreamKind } from "@/shared/mesh-relay";
+import type { MeshProtocolVersion } from "@/shared/mesh-protocol";
 
 export const MESH_RELAY_MAX_CONTROL_FRAME_BYTES = 256 * 1_024;
 export const MESH_RELAY_MAX_STREAM_FRAME_BYTES = 2 * 1_024 * 1_024;
@@ -48,11 +49,15 @@ export const MESH_RELAY_CONTROLLER_HTTP_ROUTES: ReadonlyMap<string, ReadonlySet<
     ["/api/mesh/internal/revocation", new Set(["POST"])],
     ["/api/mesh/internal/kill", new Set(["POST"])],
     ["/api/mesh/internal/health", new Set(["POST"])],
+    ["/api/mesh/internal/protocol", new Set(["GET"])],
     ["/api/mesh/internal/execution/session", new Set(["POST", "DELETE"])],
     ["/api/mesh/internal/execution/rpc", new Set(["POST"])],
     ["/api/mesh/internal/execution/async", new Set(["POST"])],
     ["/api/mesh/internal/execution/file", new Set(["GET", "POST"])],
     ["/api/mesh/internal/execution/acp/renew", new Set(["POST"])],
+    ["/api/mesh/internal/harness/rpc", new Set(["POST"])],
+    ["/api/mesh/internal/harness/events", new Set(["POST"])],
+    ["/api/mesh/internal/harness/renew", new Set(["POST"])],
     ["/api/mesh/internal/terminal/session", new Set(["POST", "DELETE"])],
     ["/api/mesh/internal/tcp-tunnel/session", new Set(["POST"])],
   ]);
@@ -83,7 +88,9 @@ export function isMeshRelayRouteAllowed(
   kind: MeshRelayStreamKind,
   method: string | undefined,
   pathname: string,
+  protocolVersion: MeshProtocolVersion = 6,
 ): boolean {
+  if ((pathname.startsWith("/api/mesh/internal/harness/") || pathname === "/api/mesh/internal/protocol") && protocolVersion !== 6) return false;
   if (kind === "socket") {
     return method === undefined
       && initiatorRole === "controller"

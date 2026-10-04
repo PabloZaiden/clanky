@@ -14,12 +14,14 @@ import {
   withPrivateToggleAction,
 } from "./shell-sidebar-utils";
 import type { SidebarChatNode } from "./shell-types";
+import { harnessActivityActions } from "./harness-actions";
 
 export interface ChatSidebarContext {
   route: WebAppRoute;
   selectedChat: Chat | null;
   selectedChatActions: ActionMenuItem[];
   navigateWithinShell: (route: WebAppRoute) => void;
+  openHarnessActivity: (route: WebAppRoute) => void;
   markChatDone: (chat: Chat) => void | Promise<void>;
   toggleChatPrivate: (chat: Chat) => void | Promise<void>;
   showPrivateItems: boolean;
@@ -65,7 +67,11 @@ export function getChatSidebarActions(
         ...markDoneAction,
       ]);
   return withPrivateToggleAction(
-    baseActions,
+    [...harnessActivityActions({
+      route: { view: "chat", chatId },
+      capabilities: chat.state.harness?.capabilities,
+      onOpenActivity: context.openHarnessActivity,
+    }), ...baseActions],
     chat.config,
     () => void context.toggleChatPrivate(chat),
   );

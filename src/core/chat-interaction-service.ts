@@ -16,6 +16,13 @@ import {
 } from "@/shared/chat";
 import { createTimestamp } from "@/shared/events";
 import { createLogger } from "@pablozaiden/webapp/server";
+import { HarnessError } from "../backends/harness-errors";
+import type { HarnessInputAdmission } from "@/shared/harness-control";
+import { isHarnessInputValidationError, retainHarnessInputReceipt } from "./harness-input-ledger";
+import type { DomainError } from "../domain/domain-error";
+import { buildPromptParts } from "../backends/prompt-parts";
+import { KeyedOperationQueue } from "../utils/keyed-operation-queue";
+import { requireMatchingHarnessBinding } from "../backends/harness-binding";
 import type {
   ChatConversationPort,
   ChatInteractionPort,
@@ -30,6 +37,7 @@ const log = createLogger("chat-interaction-service");
 export class ChatInteractionService implements ChatInteractionPort {
   private readonly queuedMessageDrains = new Set<string>();
   private readonly queuedCredentialTokens = new Map<string, string>();
+  private readonly inputOperations = new KeyedOperationQueue();
   private readonly state: ChatStatePort;
   private readonly conversation: ChatConversationPort;
   private readonly session: ChatSessionPort;
@@ -44,11 +52,16 @@ export class ChatInteractionService implements ChatInteractionPort {
     this.session = dependencies.session;
   }
 
-  async sendMessage(chatId: string, options: ChatMessageOptions): Promise<Chat> {
+  sendMessage(chatId: string, options: ChatMessageOptions): Promise<Chat> {
+    return this.serializeInput(chatId, () => this.sendMessageUnlocked(chatId, options));
+  }
+
+  private async sendMessageUnlocked(chatId: string, options: ChatMessageOptions): Promise<Chat> {
     const chat = await this.state.getChat(chatId);
     if (!chat) {
       throw new Error(`Chat not found: ${chatId}`);
     }
+    if (chat.state.harness?.integrity === "invalid") throw new HarnessError("harness_request_failed", "Input admission history is corrupt.");
 
     const input = this.normalizeMessageInput(options);
     const activeChat = await this.reactivateDoneChat(chat);
@@ -73,13 +86,21 @@ export class ChatInteractionService implements ChatInteractionPort {
     }
   }
 
-  async removeQueuedMessage(chatId: string, queuedMessageId: string): Promise<Chat | null> {
+  removeQueuedMessage(chatId: string, queuedMessageId: string): Promise<Chat | null> {
+    return this.serializeInput(chatId, () => this.removeQueuedMessageUnlocked(chatId, queuedMessageId));
+  }
+
+  private async removeQueuedMessageUnlocked(chatId: string, queuedMessageId: string): Promise<Chat | null> {
     const chat = await this.state.getChat(chatId);
     if (!chat) {
       return null;
     }
 
     const queuedMessages = chat.state.queuedMessages ?? [];
+    if (chat.state.harness?.integrity === "invalid") throw new HarnessError("harness_request_failed", "Input admission history is corrupt.");
+    if (chat.state.harness?.inputs?.some((receipt) => receipt.admission.inputId === queuedMessageId && receipt.admission.status === "unknown")) {
+      throw new HarnessError("harness_input_unresolved", "This input has unknown native admission and cannot be removed as an unsent message.");
+    }
     const nextQueuedMessages = queuedMessages.filter((queuedMessage) => queuedMessage.id !== queuedMessageId);
     if (nextQueuedMessages.length === queuedMessages.length) {
       return chat;
@@ -197,13 +218,122 @@ export class ChatInteractionService implements ChatInteractionPort {
     this.queuedMessageDrains.add(chatId);
     void (async () => {
       try {
-        await this.drainQueuedMessages(chatId);
+        await this.serializeInput(chatId, () => this.drainQueuedMessages(chatId));
       } catch (error) {
         log.error("Failed to drain queued chat messages", { chatId, error: String(error) });
       } finally {
         this.queuedMessageDrains.delete(chatId);
       }
     })();
+  }
+
+  steerQueuedMessage(chatId: string, queuedMessageId: string): Promise<{ chat: Chat; admission: HarnessInputAdmission }> {
+    return this.serializeInput(chatId, async () => {
+      let chat = await this.state.getChat(chatId);
+      if (!chat) throw new HarnessError("harness_session_not_found", "The chat is unavailable.");
+      if (chat.state.harness?.integrity === "invalid") throw new HarnessError("harness_request_failed", "Input admission history is corrupt.");
+      const existing = chat.state.harness?.inputs?.find((receipt) => receipt.admission.inputId === queuedMessageId);
+      if (existing && existing.admission.status !== "rejected") return { chat, admission: existing.admission };
+      const message = chat.state.queuedMessages?.find((entry) => entry.id === queuedMessageId);
+      if (!message) throw new HarnessError("harness_input_not_found", "The queued input is unavailable.");
+      const binding = chat.state.session?.binding;
+      const backend = this.session.getChatBackend(chatId, chat.config.workspaceId);
+      if (binding && (binding.adapter !== backend.harness.capabilities.adapter || binding.nativeId !== chat.state.session?.id)) {
+        throw new HarnessError("harness_session_not_owned", "The input belongs to a different conversation.");
+      }
+      if (!binding || !backend.isConnected() || chat.state.status !== "streaming") {
+        return { chat, admission: { status: "rejected", inputId: queuedMessageId, code: "not-running" } };
+      }
+      if (backend.harness.capabilities.steering === "unsupported") {
+        return { chat, admission: { status: "rejected", inputId: queuedMessageId, code: "unsupported" } };
+      }
+      const unknown: HarnessInputAdmission = { status: "unknown", inputId: queuedMessageId };
+      chat = await this.state.updateState(chat, {
+        ...chat.state,
+        harness: {
+          ...chat.state.harness,
+          inputs: retainHarnessInputReceipt(chat.state.harness?.inputs ?? [], {
+            conversation: binding, admission: unknown, submittedAt: createTimestamp(),
+          }),
+        },
+      });
+      this.state.emitChatUpdated(chat);
+      // Durable unknown admission precedes the RPC, so interruption never causes blind resend.
+      let admission: HarnessInputAdmission;
+      let validationError: DomainError | undefined;
+      try {
+        admission = await backend.harness.steer(binding.nativeId, {
+          inputId: queuedMessageId,
+          prompt: { parts: buildPromptParts(message.content, message.attachments ?? []) },
+        });
+      } catch (error) {
+        if (!isHarnessInputValidationError(error)) throw error;
+        admission = { status: "rejected", inputId: queuedMessageId, code: "unsupported" };
+        validationError = error;
+      }
+      if (admission.inputId !== queuedMessageId) throw new HarnessError("harness_event_gap", "Native input correlation changed during admission.");
+      const latest = await this.state.getChat(chatId);
+      if (!latest) throw new HarnessError("harness_session_not_found", "The chat was removed during input admission.");
+      if (admission.status === "accepted" || admission.status === "delivered") {
+        chat = await this.conversation.recordSteeredMessage(latest, message, admission);
+      } else {
+        chat = await this.state.updateState(latest, {
+          ...latest.state,
+          harness: {
+            ...latest.state.harness,
+            inputs: retainHarnessInputReceipt(latest.state.harness?.inputs ?? [], {
+              conversation: binding, admission, submittedAt: createTimestamp(),
+            }),
+          },
+        });
+      }
+      this.state.emitChatUpdated(chat);
+      if (validationError) throw validationError;
+      return { chat, admission };
+    });
+  }
+
+  reconcileQueuedMessage(chatId: string, queuedMessageId: string): Promise<{ chat: Chat; admission: HarnessInputAdmission }> {
+    return this.serializeInput(chatId, async () => {
+      const chat = await this.state.getChat(chatId);
+      if (!chat) throw new HarnessError("harness_session_not_found", "The chat is unavailable.");
+      if (chat.state.harness?.integrity === "invalid") throw new HarnessError("harness_request_failed", "Input admission history is corrupt.");
+      const receipt = chat.state.harness?.inputs?.find((entry) => entry.admission.inputId === queuedMessageId);
+      if (!receipt) throw new HarnessError("harness_input_not_found", "Input admission is unavailable.");
+      if (receipt.admission.status === "rejected" || receipt.admission.status === "delivered") return { chat, admission: receipt.admission };
+      const binding = chat.state.session?.binding;
+      const backend = this.session.getChatBackend(chatId, chat.config.workspaceId);
+      if (!binding || binding.adapter !== backend.harness.capabilities.adapter) throw new HarnessError("harness_session_not_owned", "The input belongs to a replaced conversation.");
+      requireMatchingHarnessBinding(JSON.stringify(receipt.conversation), binding);
+      if (!backend.isConnected()) return { chat, admission: receipt.admission };
+      const previous = receipt.admission;
+      const admission = await backend.harness.reconcileInput(binding.nativeId, {
+        inputId: queuedMessageId,
+        nativeMessageId: previous.status === "accepted" ? previous.nativeMessageId : undefined,
+        nativeClientInputId: previous.status === "accepted" ? previous.nativeClientInputId : undefined,
+        nativeTurnId: previous.status === "accepted" ? previous.nativeTurnId : undefined,
+      });
+      if (admission.inputId !== queuedMessageId) throw new HarnessError("harness_event_gap", "Native input correlation changed during recovery.");
+      if (admission.status === "unknown") return { chat, admission };
+      const latest = await this.state.getChat(chatId);
+      if (!latest) throw new HarnessError("harness_session_not_found", "The chat was removed during recovery.");
+      const message = latest.state.queuedMessages?.find((entry) => entry.id === queuedMessageId);
+      const updated = message && (admission.status === "accepted" || admission.status === "delivered")
+        ? await this.conversation.recordSteeredMessage(latest, message, admission)
+        : await this.state.updateState(latest, {
+          ...latest.state,
+          harness: {
+            ...latest.state.harness,
+            inputs: retainHarnessInputReceipt(latest.state.harness?.inputs ?? [], { ...receipt, admission }),
+          },
+        });
+      this.state.emitChatUpdated(updated);
+      return { chat: updated, admission };
+    });
+  }
+
+  private serializeInput<T>(chatId: string, operation: () => Promise<T>): Promise<T> {
+    return this.inputOperations.run(chatId, operation);
   }
 
   private normalizeMessageInput(options: ChatMessageOptions): NormalizedChatMessageInput {
@@ -247,6 +377,7 @@ export class ChatInteractionService implements ChatInteractionPort {
       attachments: input.attachments.length > 0 ? input.attachments : undefined,
       createdAt: now,
     };
+    if ((chat.state.queuedMessages?.length ?? 0) >= 200) throw new HarnessError("harness_input_capacity", "Queued input capacity reached.");
     const updated = await this.state.updateState(chat, {
       ...chat.state,
       queuedMessages: [...(chat.state.queuedMessages ?? []), queuedMessage],
@@ -270,7 +401,9 @@ export class ChatInteractionService implements ChatInteractionPort {
       return;
     }
 
-    const queuedMessages = chat.state.queuedMessages ?? [];
+    if (chat.state.harness?.integrity === "invalid") throw new HarnessError("harness_request_failed", "Input admission history is corrupt.");
+    const blocked = new Set((chat.state.harness?.inputs ?? []).filter((receipt) => receipt.admission.status !== "rejected").map((receipt) => receipt.admission.inputId));
+    const queuedMessages = (chat.state.queuedMessages ?? []).filter((message) => !blocked.has(message.id));
     if (queuedMessages.length === 0) {
       return;
     }
@@ -284,7 +417,7 @@ export class ChatInteractionService implements ChatInteractionPort {
       this.queuedCredentialTokens.delete(chatId);
       const updated = await this.state.updateState(chat, {
         ...chat.state,
-        queuedMessages: [],
+        queuedMessages: chat.state.queuedMessages?.filter((entry) => blocked.has(entry.id)),
         lastActivityAt: createTimestamp(),
       });
       this.state.emitChatUpdated(updated);
@@ -296,7 +429,7 @@ export class ChatInteractionService implements ChatInteractionPort {
       await this.conversation.dispatchMessage(
         chat,
         { message, attachments },
-        { clearQueuedMessages: true, credentialToken },
+        { clearQueuedMessageIds: queuedMessages.map((entry) => entry.id), credentialToken },
       );
     } catch (error) {
       const latestChat = await this.state.getChat(chatId);

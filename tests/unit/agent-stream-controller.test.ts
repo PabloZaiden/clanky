@@ -1,5 +1,6 @@
 import { afterEach, expect, jest, test } from "bun:test";
-import type { AgentEvent, PromptInput } from "../../src/backends/types";
+import type { PromptInput } from "../../src/backends/types";
+import type { HarnessEvent as AgentEvent } from "../../src/shared/harness-events";
 import {
   AgentStreamController,
   type AgentStreamBackend,
