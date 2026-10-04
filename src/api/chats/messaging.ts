@@ -7,10 +7,35 @@ import {
 import { errorResponse, internalErrorResponse, successResponse } from "../helpers";
 import { parseAndValidate } from "../validation";
 import { chatActionErrorResponse, toLightweightChat } from "./helpers";
+import { ReplyToChatQuestionRequestSchema } from "@/contracts/schemas/harness";
 
 const log = createLogger("api:chats");
 
 export const chatsMessagingRoutes = defineRoutes({
+  "/api/chats/:id/questions/:requestId": {
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "Answer a pending owned chat question once.",
+    tags: ["chats"],
+    cliPath: "chats/:id/questions/:requestId",
+    requestSchema: ReplyToChatQuestionRequestSchema,
+    async POST(req: Request, ctx): Promise<Response> {
+      const validation = await parseAndValidate(ReplyToChatQuestionRequestSchema, req);
+      if (!validation.success) return validation.response;
+      try {
+        const chat = await chatManager.replyToQuestion(ctx.params["id"]!, ctx.params["requestId"]!, validation.data.answers);
+        return successResponse({ chat: await toLightweightChat(chat) });
+      } catch (error) {
+        const known = chatActionErrorResponse(error);
+        if (known) {
+          log[known.status >= 500 ? "error" : "warn"]("Chat question response failed", { chatId: ctx.params["id"], error: String(error) });
+          return known;
+        }
+        log.error("Chat question response failed", { chatId: ctx.params["id"], error: String(error) });
+        return errorResponse("question_reply_failed", "The question could not be answered.", 500);
+      }
+    },
+  },
   "/api/chats/:id/queued-messages/:messageId/reconcile": {
     auth: "user",
     sameOrigin: "mutations",

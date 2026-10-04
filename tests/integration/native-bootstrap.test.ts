@@ -55,6 +55,7 @@ try {
     stdout: "pipe",
     stderr: "pipe",
   });
+
   try {
     const [exitCode, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()]);
     expect({ exitCode, stderr }).toEqual({ exitCode: 0, stderr: "" });
@@ -62,6 +63,75 @@ try {
     expect(Number.isSafeInteger(pid) && pid > 0).toBe(true);
     // Absence is the explicit owned-process cleanup contract.
     expect(() => process.kill(pid, 0)).toThrow(expect.objectContaining({ code: "ESRCH" }));
+  } finally {
+    if (child.exitCode === null) child.kill();
+    await child.exited;
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+// Persisted native child permissions do not inherit a later root update.
+// Exercise the public adapter and native HTTP state: a controller scenario
+// cannot prepare a pre-policy descendant through the current creation API.
+test.skipIf(process.platform === "win32")("native OpenCode cold resume preserves root permissions and excludes legacy child questions", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "clanky-opencode-child-policy-"));
+  const executable = join(directory, "opencode2");
+  const driver = join(directory, "driver.ts");
+  const fixtureModule = new URL("../fixtures/opencode-question-runtime.ts", import.meta.url).pathname;
+  const backendModule = new URL("../../src/backends/opencode2/opencode-backend.ts", import.meta.url).pathname;
+  await Bun.write(executable, `#!${process.execPath}\nawait import(${JSON.stringify(fixtureModule)});\n`);
+  await chmod(executable, 0o700);
+  await Bun.write(driver, `
+import { OpenCodeBackend } from ${JSON.stringify(backendModule)};
+const directory = ${JSON.stringify(directory)};
+const backend = new OpenCodeBackend();
+const connection = { directory, env: { PATH: directory } };
+try {
+  await backend.connect(connection);
+  const session = await backend.createSession({
+    directory, ownership: { ownerId: crypto.randomUUID(), contextId: crypto.randomUUID(), questionPolicy: "interactive" },
+  });
+  const { questionPolicy, ...legacy } = session.binding;
+  const permissions = (await backend.getSdkClient().session.get({ sessionID: "foreign-root" })).permissions;
+  await backend.getSdkClient().session.update({ sessionID: session.id, permissions, metadata: { "clanky/binding": JSON.stringify(legacy) } });
+  await backend.disconnect();
+  await backend.connect(connection);
+  await backend.resumeSession({ ...legacy, questionPolicy: "interactive" });
+  const interactiveRoot = await backend.getSdkClient().session.get({ sessionID: session.id });
+  await backend.getSdkClient().session.update({ sessionID: session.id, metadata: { "clanky/binding": JSON.stringify(legacy) } });
+  await backend.disconnect();
+  await backend.connect(connection);
+  const binding = { ...legacy, questionPolicy: "unattended" };
+  await backend.resumeSession(binding);
+  const client = backend.getSdkClient();
+  await client.session.prompt({ sessionID: "legacy-child", delivery: "queue", text: "Continue autonomously" });
+  const first = await client.session.get({ sessionID: "legacy-child" });
+  const unattendedRoot = await client.session.get({ sessionID: session.id });
+  await backend.resumeSession(binding);
+  const repeated = await client.session.get({ sessionID: "legacy-child" });
+  const foreign = await client.session.get({ sessionID: "foreign-root" });
+  const repeatedRoot = await client.session.get({ sessionID: session.id });
+  await Bun.write(${JSON.stringify(join(directory, "proof.json"))}, JSON.stringify({ first, repeated, foreign, interactiveRoot, unattendedRoot, repeatedRoot }));
+} finally { await backend.disconnect(); }
+`);
+  const child = Bun.spawn([process.execPath, driver], {
+    cwd: process.cwd(), env: { ...process.env, CLANKY_DATA_DIR: directory }, stdout: "pipe", stderr: "pipe",
+  });
+  try {
+    const [exitCode, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()]);
+    expect({ exitCode, error: exitCode ? stderr : undefined }).toEqual({ exitCode: 0, error: undefined });
+    expect(await Bun.file(join(directory, "native-child-effect.txt")).text()).toBe("child continued without human input");
+    const proof = await Bun.file(join(directory, "proof.json")).json();
+    const unrelated = [
+      { action: "*", resource: "*", effect: "allow" },
+      { action: "bash", resource: "unrelated-restricted-command", effect: "deny" },
+    ];
+    expect(proof.first.permissions).toEqual([...unrelated, { action: "question", resource: "*", effect: "deny" }]);
+    expect(proof.repeated.permissions).toEqual(proof.first.permissions);
+    expect(proof.foreign.permissions).toEqual(unrelated);
+    expect(proof.interactiveRoot.permissions).toEqual(unrelated);
+    expect(proof.unattendedRoot.permissions).toEqual([...unrelated, { action: "question", resource: "*", effect: "deny" }]);
+    expect(proof.repeatedRoot.permissions).toEqual(proof.unattendedRoot.permissions);
   } finally {
     if (child.exitCode === null) child.kill();
     await child.exited;

@@ -18,6 +18,7 @@ export class OpenCodeControl implements HarnessControl {
   readonly capabilities: HarnessCapabilities = {
     adapter: "opencode2", experimental: true, activity: "native", steering: "active-session",
     stopScopes: ["child-execution", "command"],
+    questionPolicy: "session",
   };
   constructor(private readonly resolve: () => { client: OpenCodeClient; sessions: OpenCodeSessionService; directory: string }) {}
 

@@ -73,7 +73,7 @@ import {
   resetIterationContextForRetry,
 } from "./engine-session";
 import { TaskSessionLifecycleImpl } from "./engine-session-lifecycle";
-import { processTaskAgentEvent, handleQuestionAsked as handleTaskQuestionAsked, type ToolProcessingContext } from "./engine-tools";
+import { processTaskAgentEvent, type ToolProcessingContext } from "./engine-tools";
 import {
   AgentEventTranscriptInterpreter,
   type AgentEventTranscriptResult,
@@ -805,20 +805,8 @@ export class TaskEngine {
     ctx: IterationContext,
   ): Promise<AgentEventTranscriptResult> {
     const transcriptResult = ctx.transcript.handle(event);
-    if (event.type === "question.asked") {
-      await this.handleQuestionAsked(event);
-      return transcriptResult;
-    }
     await processTaskAgentEvent(event, ctx, this.makeToolContext(), transcriptResult);
     return transcriptResult;
-  }
-
-  /**
-   * Auto-respond to a question from the AI with a default answer.
-   * Exposed as a private method for testability.
-   */
-  private async handleQuestionAsked(event: AgentEvent & { type: "question.asked" }): Promise<void> {
-    await handleTaskQuestionAsked(event, this.makeToolContext());
   }
 
   /**
@@ -1686,7 +1674,7 @@ export class TaskEngine {
       // Direct user turns are conversational and must not trigger task markers
       // or an automatic follow-up iteration.
       const promptMode: string = this.lastPromptMode;
-      if (!options.skipOutcomeEvaluation && promptMode !== "direct_user") {
+      if (ctx.outcome === "continue" && !options.skipOutcomeEvaluation && promptMode !== "direct_user") {
         this.evaluateOutcome(ctx);
       }
 

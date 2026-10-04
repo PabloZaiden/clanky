@@ -135,13 +135,21 @@ export class MeshHarnessBackend implements Backend {
 
   async createSession(options: CreateSessionOptions): Promise<AgentSession> {
     if (!options.ownership) throw new HarnessError("harness_session_not_owned", "Native Mesh sessions require Clanky ownership.");
+    this.requireQuestionPolicy(options.ownership.questionPolicy);
     const session = Session.parse(await this.rpc({ operation: "create", options: { ...options, ownership: options.ownership } }));
     return await this.adopt(session);
   }
   async resumeSession(binding: HarnessConversationBinding): Promise<AgentSession> {
+    this.requireQuestionPolicy(binding.questionPolicy);
     const session = Session.parse(await this.rpc({ operation: "resume", binding }));
     requireMatchingHarnessBinding(JSON.stringify(session.binding), binding);
     return await this.adopt(session);
+  }
+
+  private requireQuestionPolicy(policy: HarnessConversationBinding["questionPolicy"]): void {
+    if (policy && this.capabilities.questionPolicy !== "session") {
+      throw new HarnessError("harness_unsupported_feature", "Update the Mesh worker to support interactive chat and unattended task question policies.");
+    }
   }
 
   private async adopt(session: AgentSession): Promise<AgentSession> {
@@ -212,6 +220,9 @@ export class MeshHarnessBackend implements Backend {
             if (event.type === "permission.asked" || event.type === "question.asked") {
               if (this.interactions.size >= 512) throw new HarnessError("harness_event_gap", "The native interaction observation limit was reached.");
               this.interactions.set(event.requestId, id);
+            }
+            if (event.type === "question.resolved" && this.interactions.get(event.requestId) === id) {
+              this.interactions.delete(event.requestId);
             }
             this.hub.publish(id, event);
           } else throw new HarnessError("harness_event_gap", "The native event stream frame is invalid.");

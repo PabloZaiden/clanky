@@ -3,6 +3,7 @@ import type { PointerEvent } from "react";
 import { ConversationViewer } from "../log-viewer";
 import { useMarkdownPreference } from "../../hooks";
 import type { ChatTranscriptProps } from "./types";
+import { ChatQuestions } from "./chat-questions";
 
 const VOICE_TRIPLE_TAP_WINDOW_MS = 750;
 const VOICE_TAP_MOVE_THRESHOLD_PX = 10;
@@ -163,6 +164,7 @@ export function ChatTranscript({
         playingReadAloudKey={playingReadAloudKey}
         readAloudStatus={readAloudStatus}
       />
+      <ChatQuestions chatId={chat.config.id} requests={chat.state.harness?.questions ?? []} />
     </div>
   );
 }

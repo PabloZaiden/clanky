@@ -2,7 +2,7 @@
  * Mesh v6 native host contract. Never interpreted as ACP JSON-RPC.
  */
 import { z } from "zod";
-import { HarnessConversationBindingSchema, HarnessNativeReferencesSchema } from "./harness";
+import { HarnessConversationBindingSchema, HarnessEventScopeSchema, HarnessQuestionInfoSchema } from "./harness";
 
 const Id = z.string().min(1).max(500);
 const Path = z.string().min(1).max(16_384);
@@ -71,20 +71,16 @@ export const MeshHarnessEventSchema = z.intersection(z.discriminatedUnion("type"
   z.object({ type: z.literal("request.error"), code: Id, message: z.string(), details: z.record(z.string(), z.unknown()).optional() }),
   z.object({ type: z.literal("error"), code: Id.optional(), message: z.string(), details: z.record(z.string(), z.unknown()).optional() }),
   z.object({ type: z.literal("permission.asked"), requestId: Id, sessionId: Id, permission: Id, patterns: z.array(z.string()).max(1000) }),
-  z.object({ type: z.literal("question.asked"), requestId: Id, sessionId: Id, questions: z.array(z.object({
-    question: z.string(), header: z.string(),
-    options: z.array(z.object({ label: z.string(), description: z.string() })).max(1000),
-    multiple: z.boolean().optional(), custom: z.boolean().optional(),
-  })).max(100) }),
+  z.object({ type: z.literal("question.asked"), requestId: Id, sessionId: Id,
+    questions: z.array(HarnessQuestionInfoSchema).min(1).max(100), blocking: z.boolean().optional(),
+    responseMode: z.enum(["callback", "message"]).optional(),
+  }),
+  z.object({ type: z.literal("question.resolved"), requestId: Id, outcome: z.enum(["answered", "cancelled", "expired"]) }),
   z.object({ type: z.literal("prompt.complete"), outcome: z.enum(["completed", "interrupted"]) }),
   z.object({ type: z.literal("session.status"), sessionId: Id, status: z.enum(["idle", "busy", "retry"]),
     attempt: z.number().optional(), message: z.string().optional(), stopReason: z.string().optional(),
   }),
 ]), z.object({
-  scope: z.discriminatedUnion("kind", [
-    z.object({ kind: z.literal("principal"), native: HarnessNativeReferencesSchema.optional() }),
-    z.object({ kind: z.literal("child"), activityId: Id, native: HarnessNativeReferencesSchema.optional() }),
-    z.object({ kind: z.literal("unknown"), native: HarnessNativeReferencesSchema.optional() }),
-  ]),
+  scope: HarnessEventScopeSchema,
   sourceEventId: Id.optional(), sourceSequence: z.number().int().nonnegative().optional(),
 }));

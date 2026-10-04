@@ -56,6 +56,8 @@ if (process.argv.includes("--version")) {
       let result: unknown;
       switch (frame.method) {
         case "initialize": result = {}; break;
+        case "config/read": result = { config: { features: { hooks: true } }, origins: {} }; break;
+        case "configRequirements/read": result = { requirements: null }; break;
         case "model/list":
         case "thread/list":
         case "thread/backgroundTerminals/list":

@@ -17,6 +17,7 @@ export function createTransientHarnessSession(
 ): Promise<AgentSession> {
   return createOwnedHarnessSession(backend, options, {
     ownerId: requireCurrentUserId(), contextId: `helper-${crypto.randomUUID()}`, directory: options.directory,
+    questionPolicy: "unattended",
   });
 }
 

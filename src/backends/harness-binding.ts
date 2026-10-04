@@ -17,6 +17,7 @@ export function requireMatchingHarnessBinding(raw: string | undefined, expected:
       actual.adapter !== expected.adapter || actual.nativeId !== expected.nativeId
       || actual.ownerId !== expected.ownerId || actual.contextId !== expected.contextId
       || actual.directory !== expected.directory || !hostMatches
+      || (actual.questionPolicy !== undefined && actual.questionPolicy !== expected.questionPolicy)
     ) throw new Error("Native ownership binding mismatch.");
   } catch (error) {
     throw new HarnessError("harness_session_not_owned", "The native conversation has no matching Clanky ownership binding.", { cause: error });

@@ -19,6 +19,7 @@ import { ChatWorktreeService } from "./chat-worktree-service";
 import { ChatSessionService } from "./chat-session-service";
 import { ChatConversationService } from "./chat-conversation-service";
 import { ChatInteractionService } from "./chat-interaction-service";
+import { ChatQuestionService } from "./chat-question-service";
 import { ChatTaskConversionService } from "./chat-task-conversion-service";
 import type {
   ChatConfigUpdates,
@@ -49,10 +50,15 @@ function createChatServices(emitter: SimpleEventEmitter<ChatEvent>): ChatService
 
   let conversation: ChatConversationService | undefined;
   let interaction: ChatInteractionService | undefined;
+  let questions: ChatQuestionService | undefined;
   const session = new ChatSessionService({
     state,
     worktree,
     hasActiveStream: (chatId: string) => conversation?.hasActiveStream(chatId) ?? false,
+    onHarnessEvent: async (chatId, binding, event) => {
+      if (!questions) throw new Error("Chat question service is not initialized");
+      await questions.handle(chatId, binding, event);
+    },
   });
   const conversationService = new ChatConversationService({
     state,
@@ -67,11 +73,23 @@ function createChatServices(emitter: SimpleEventEmitter<ChatEvent>): ChatService
     },
   });
   conversation = conversationService;
+  questions = new ChatQuestionService({ state, session,
+    hasActiveStream: (id: string) => conversationService.hasActiveStream(id),
+    sendMessage: async (id, message) => {
+      if (!interaction) throw new Error("Chat interaction service is not initialized");
+      return interaction.sendMessage(id, { message });
+    } });
+  const questionService = questions;
+  conversationService.setQuestionHandler(async (chat, event) => {
+    if (!chat.state.session?.binding) throw new Error("Questions require an owned conversation");
+    await questionService.handle(chat.config.id, chat.state.session.binding, event);
+  });
 
   const interactionService = new ChatInteractionService({
     state,
     conversation: conversationService,
     session,
+    questions,
   });
   interaction = interactionService;
   conversationService.setPermissionHandler((chat, backend, request) =>
@@ -249,6 +267,10 @@ export class ChatManager {
     decision: Parameters<ChatInteractionPort["replyToPermission"]>[2],
   ): Promise<Chat | null> {
     return this.services.interaction.replyToPermission(chatId, requestId, decision);
+  }
+
+  replyToQuestion(chatId: string, requestId: string, answers: string[][]): Promise<Chat> {
+    return this.services.interaction.replyToQuestion(chatId, requestId, answers);
   }
 
   async deleteChat(chatId: string, options?: DeleteChatOptions): Promise<boolean> {

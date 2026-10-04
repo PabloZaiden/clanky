@@ -131,6 +131,7 @@ export class MeshHarnessGateway {
           if (conversation.interactions.size >= 512) throw new DomainError("harness_input_capacity", "The native interaction limit was reached.");
           conversation.interactions.add(event.requestId);
         }
+        if (event.type === "question.resolved") conversation.interactions.delete(event.requestId);
         for (const subscriber of conversation.subscribers) subscriber.push(event);
       }
       if (!host.controller.signal.aborted && !conversation.closing) throw new DomainError("harness_transport_closed", "The native event source closed.");
@@ -170,7 +171,7 @@ export class MeshHarnessGateway {
       const session = await backend.createSession({
         ...operation.options,
         directory: host.config.directory,
-        ownership: { ownerId: native.ownerId, contextId: native.contextId, executionHost: native.executionHost },
+        ownership: { ownerId: native.ownerId, contextId: native.contextId, executionHost: native.executionHost, questionPolicy: native.questionPolicy },
       });
       const binding = { ...canonical, nativeId: session.id };
       try {

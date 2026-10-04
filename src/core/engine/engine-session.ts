@@ -226,6 +226,7 @@ async function taskSessionContext(ctx: SessionOperationContext) {
   return {
     ownerId: requireCurrentUserId(),
     contextId: ctx.config.id,
+    questionPolicy: "unattended" as const,
     directory: ctx.workingDirectory,
     executionHost: workspace.executionHostBinding,
   };
