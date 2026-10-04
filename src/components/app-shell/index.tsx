@@ -24,12 +24,12 @@ import { useShellResources } from "./use-shell-resources";
 export function AppShell() {
   const toast = useToast();
   const [route, setRoute] = useState<WebAppRoute>(HOME_ROUTE);
+  const [activityRoute, setActivityRoute] = useState<WebAppRoute | null>(null);
   const {
     chats,
     chatsLoading,
     refreshChats,
     createChat,
-    importExistingChat,
     updateChat,
     markChatDone,
     deleteChat,
@@ -99,6 +99,15 @@ export function AppShell() {
   } = useShellNavigation({
     setRoute,
   });
+  const openHarnessActivity = useCallback((entityRoute: WebAppRoute): void => {
+    setActivityRoute(entityRoute);
+    navigateWithinShell(entityRoute);
+  }, [navigateWithinShell]);
+  const closeHarnessActivity = useCallback(() => setActivityRoute(null), []);
+  const handleRouteChange = useCallback((nextRoute: WebAppRoute): void => {
+    setActivityRoute((current) => current && Object.entries(current).every(([key, value]) => nextRoute[key] === value) ? current : null);
+    handleWebRouteChange(nextRoute);
+  }, [handleWebRouteChange]);
 
   const agentImportInputRef = useRef<HTMLInputElement>(null);
   const [agentImportWorkspaceId, setAgentImportWorkspaceId] = useState<string | null>(null);
@@ -201,6 +210,9 @@ export function AppShell() {
   });
 
   const routes = useMemo(() => buildShellRoutes({
+    activityRoute,
+    closeHarnessActivity,
+    openHarnessActivity,
     shellLoading,
     shellErrors,
     navigateWithinShell,
@@ -237,13 +249,15 @@ export function AppShell() {
     setComposeActionState: composeState.setComposeActionState,
     handleTaskSubmit: composeState.handleTaskSubmit,
     createChat,
-    importExistingChat,
     workspaceCreate,
     workspaceSettings,
     provisioning,
     toast,
     showPrivateItems: privateItemsPreference.showPrivateItems,
   } satisfies ShellRouteCompositionContext), [
+    activityRoute,
+    closeHarnessActivity,
+    openHarnessActivity,
     agents,
     chats,
     composeState.composeActionState,
@@ -257,7 +271,6 @@ export function AppShell() {
     deleteWorkspace,
     dialogs.editingAgentId,
     dialogs.handleAgentSaved,
-    importExistingChat,
     navigateWithinShell,
     privateItemsPreference.showPrivateItems,
     provisioning,
@@ -331,6 +344,7 @@ export function AppShell() {
       selectedChat,
       selectedChatActions,
       navigateWithinShell,
+      openHarnessActivity,
       onError: (message) => toast.error(message),
       toggleTaskPrivate,
       toggleChatPrivate,
@@ -363,6 +377,7 @@ export function AppShell() {
     archivingWorkspaceIds,
     dialogs.handleQuickChat,
     navigateWithinShell,
+    openHarnessActivity,
     dialogs.openDeleteTerminalSession,
     dialogs.openRenameTerminalSession,
     privateItemsPreference.showPrivateItems,
@@ -427,7 +442,7 @@ export function AppShell() {
         homeRoute={HOME_ROUTE}
         sidebar={sidebarComposition.sidebar}
         routes={routes}
-        onRouteChange={handleWebRouteChange}
+        onRouteChange={handleRouteChange}
         header={{
           renderTitle: ({ defaultTitle }) => <RouteHeaderTitle model={header.headerModel} defaultTitle={defaultTitle} />,
           getHeaderActions: () => ({

@@ -9,6 +9,7 @@ import type { AutomaticPrFlowFeedbackItem } from "./automatic-pr-flow-github";
 import { backendManager } from "./backend-manager";
 import { resolveEffectiveCheapModel } from "./cheap-model";
 import { createLogger } from "@pablozaiden/webapp/server";
+import { createTransientHarnessSession, cleanupTransientHarnessSession } from "./harness-session";
 
 const log = createLogger("core:automatic-pr-feedback");
 
@@ -314,7 +315,7 @@ export async function extractAutomaticPrFeedback(
     backend = backendManager.getBackend(task.config.workspaceId);
   }
 
-  const tempSession = await backend.createSession({
+  const tempSession = await createTransientHarnessSession(backend, {
     title: "Automatic PR Feedback Extraction",
     directory,
   });
@@ -338,7 +339,7 @@ export async function extractAutomaticPrFeedback(
     });
   } finally {
     try {
-      await backend.abortSession(tempSession.id);
+      await cleanupTransientHarnessSession(backend, tempSession.id);
     } catch (cleanupError) {
       log.warn("Failed to clean up temporary PR feedback extraction session", {
         taskId: task.config.id,

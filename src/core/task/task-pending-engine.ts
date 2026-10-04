@@ -4,9 +4,20 @@ import type { MessageAttachment } from "@/shared/message-attachments";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { isStaleTaskStatus, loadTask, resetStaleTask } from "../../persistence/tasks";
 import { jumpstartTaskFromEngine } from "./task-jumpstart";
-import { taskFailure, type TaskResult } from "./task-errors";
+import { taskFailure, taskFailureFromUnknown, type TaskResult } from "./task-errors";
+import type { TaskEngine } from "../task-engine";
 
 const log = createLogger("task:pending");
+
+async function updatePendingInput(engine: TaskEngine, operation: () => void | Promise<void>): Promise<TaskResult> {
+  try {
+    await operation();
+    await engine.flushPersistence();
+    return { success: true };
+  } catch (error) {
+    return taskFailureFromUnknown(error, "task_operation_failed", "Failed to update pending task input.");
+  }
+}
 
 export async function setPendingPromptImpl(
   ctx: TaskCtx,
@@ -36,10 +47,7 @@ export async function setPendingPromptImpl(
     );
   }
 
-  engine.setPendingPrompt(prompt, attachments, "direct_user");
-  await engine.flushPersistence();
-
-  return { success: true };
+  return updatePendingInput(engine, () => engine.setPendingPrompt(prompt, attachments, "direct_user"));
 }
 
 export async function clearPendingPromptImpl(
@@ -68,10 +76,7 @@ export async function clearPendingPromptImpl(
     );
   }
 
-  engine.clearPendingPrompt();
-  await engine.flushPersistence();
-
-  return { success: true };
+  return updatePendingInput(engine, () => engine.clearPendingPrompt());
 }
 
 export async function setPendingModelImpl(
@@ -173,10 +178,7 @@ export async function clearPendingImpl(
     );
   }
 
-  engine.clearPending();
-  await engine.flushPersistence();
-
-  return { success: true };
+  return updatePendingInput(engine, () => engine.clearPending());
 }
 
 export async function setPendingImpl(
@@ -218,15 +220,10 @@ export async function setPendingImpl(
     );
   }
 
-  if (options.message !== undefined) {
-    engine.setPendingPrompt(options.message, options.attachments, "direct_user");
-  }
-  if (options.model !== undefined) {
-    engine.setPendingModel(options.model);
-  }
-  await engine.flushPersistence();
-
-  return { success: true };
+  return updatePendingInput(engine, () => {
+    if (options.message !== undefined) engine.setPendingPrompt(options.message, options.attachments, "direct_user");
+    if (options.model !== undefined) engine.setPendingModel(options.model);
+  });
 }
 
 export async function injectPendingImpl(
@@ -289,8 +286,5 @@ export async function injectPendingImpl(
     );
   }
 
-  await engine.injectPendingNow(options);
-  await engine.flushPersistence();
-
-  return { success: true };
+  return updatePendingInput(engine, () => engine.injectPendingNow(options));
 }

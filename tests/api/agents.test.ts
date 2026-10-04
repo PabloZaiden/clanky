@@ -61,7 +61,7 @@ describe("Agents API Integration", () => {
         name: "Agent Test Workspace",
         directory,
         executionHost,
-        serverSettings: { agent: { provider: "opencode" } },
+        serverSettings: { agent: { adapter: "acp", provider: "opencode" } },
       }),
     });
     const data = await createResponse.json();
@@ -355,7 +355,7 @@ describe("Agents API Integration", () => {
         directory: testWorkDir,
         workspaceType: "directory",
         executionHost: await fetchTestLocalExecutionHost(baseUrl),
-        serverSettings: { agent: { provider: "opencode" } },
+        serverSettings: { agent: { adapter: "acp", provider: "opencode" } },
       }),
     });
     expect(workspaceResponse.status).toBe(201);
@@ -530,7 +530,7 @@ describe("Agents API Integration", () => {
         name: "Agent Import Destination",
         directory: destinationWorkDir,
         executionHost: await fetchTestLocalExecutionHost(baseUrl),
-        serverSettings: { agent: { provider: "opencode" } },
+        serverSettings: { agent: { adapter: "acp", provider: "opencode" } },
       }),
     });
     expect(destinationWorkspaceResponse.status).toBe(201);

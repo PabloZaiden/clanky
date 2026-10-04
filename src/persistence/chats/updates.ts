@@ -15,6 +15,7 @@ const log = createLogger("persistence:chats");
 
 export interface UpdateChatStateOptions {
   preserveQueuedMessages?: boolean;
+  preserveHarnessState?: boolean;
   previousState?: ChatState;
   transcriptChanges?: TranscriptChangeSet;
   expectedStatus?: ChatStatus;
@@ -84,12 +85,26 @@ export async function updateChatState(chatId: string, state: ChatState, options:
     if (options.expectedStatus !== undefined && chat.state.status !== options.expectedStatus) {
       return false;
     }
+    const previousHarness = chat.state.harness;
     chat.state = state;
     const newRow = chatToRow(chat);
+    if (state.harness && options.previousState && !options.preserveHarnessState) {
+      newRow["harness_state_json"] = JSON.stringify({
+        ...state.harness,
+        activity: state.harness.activity === options.previousState.harness?.activity ? previousHarness?.activity : state.harness.activity,
+        cleanup: state.harness.cleanup === options.previousState.harness?.cleanup ? previousHarness?.cleanup : state.harness.cleanup,
+        capabilities: state.harness.capabilities === options.previousState.harness?.capabilities ? previousHarness?.capabilities : state.harness.capabilities,
+        gitSafety: state.harness.gitSafety === options.previousState.harness?.gitSafety ? previousHarness?.gitSafety : state.harness.gitSafety,
+        gitOutcome: state.harness.gitOutcome === options.previousState.harness?.gitOutcome ? previousHarness?.gitOutcome : state.harness.gitOutcome,
+        inputs: state.harness.inputs === options.previousState.harness?.inputs ? previousHarness?.inputs : state.harness.inputs,
+        integrity: previousHarness?.integrity ?? state.harness.integrity,
+      });
+    }
     const columns = Object.keys(newRow).filter((column) => {
       if (column === "id") {
         return false;
       }
+      if (options.preserveHarnessState && column === "harness_state_json") return false;
       return !(options.preserveQueuedMessages && column === "queued_messages");
     });
     validateChatColumnNames(columns);

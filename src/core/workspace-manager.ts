@@ -29,6 +29,7 @@ import {
 } from "@/shared";
 import { DEFAULT_WORKSPACE_TYPE } from "@/shared/workspace";
 import { backendManager } from "./backend-manager";
+import { assertHarnessHostPolicy } from "./backend/harness-host-policy";
 import { DomainError } from "../domain/domain-error";
 import {
   deleteWorkspaceWithOptions,
@@ -366,6 +367,7 @@ export class WorkspaceManager {
     }
     const validationExecutionHost = registeredBinding?.host
       ?? enrollmentBinding?.host;
+    assertHarnessHostPolicy(normalized.serverSettings.agent, normalized.sshTarget ? "ssh" : validationExecutionHost!.kind);
     const validation = normalized.skipValidation
       ? { success: true, directoryExists: true, isGitRepo: true }
       : await this.validateRemoteDirectory(
@@ -619,6 +621,7 @@ export class WorkspaceManager {
         current.executionHostBinding,
         nextExecutionHostBinding,
       );
+      assertHarnessHostPolicy((updates.serverSettings ?? current.serverSettings).agent, nextExecutionHostBinding.host.kind);
       if (
         executionTargetChanged
         || (

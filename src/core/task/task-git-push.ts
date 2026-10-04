@@ -5,6 +5,7 @@ import { GitService } from "../git";
 import { log } from "@pablozaiden/webapp/server";
 import { syncWorkingBranch, syncBaseBranchAndPush } from "./task-git-push-helpers";
 import { taskFailure, taskFailureFromUnknown } from "./task-errors";
+import { assertTaskHarnessWorkspaceSafe } from "./task-harness";
 
 export async function pushTaskImpl(ctx: TaskCtx, taskId: string): Promise<PushTaskResult> {
   if (ctx.tasksBeingAccepted.has(taskId)) {
@@ -16,6 +17,7 @@ export async function pushTaskImpl(ctx: TaskCtx, taskId: string): Promise<PushTa
     );
   }
 
+  await ctx.engines.get(taskId)?.waitForCompletionSettlement();
   const task = await ctx.getTask(taskId);
   if (!task) {
     return taskFailure("task_not_found", "Task not found", { details: { taskId } });
@@ -45,6 +47,7 @@ export async function pushTaskImpl(ctx: TaskCtx, taskId: string): Promise<PushTa
   log.info(`[TaskManager] pushTask: Starting push for task ${taskId}`);
 
   try {
+    await assertTaskHarnessWorkspaceSafe(ctx, taskId);
     const executor = await backendManager.getCommandExecutorAsync(task.config.workspaceId, task.config.directory);
     const git = GitService.withExecutor(executor);
 
@@ -131,6 +134,7 @@ export async function updateBranchImpl(ctx: TaskCtx, taskId: string): Promise<Pu
       );
     }
 
+    await assertTaskHarnessWorkspaceSafe(ctx, taskId);
     const executor = await backendManager.getCommandExecutorAsync(task.config.workspaceId, task.config.directory);
     const git = GitService.withExecutor(executor);
 

@@ -900,7 +900,7 @@ function parsePersistedProtocolVersions(
   peerNodeId: string,
 ): MeshProtocolVersion[] {
   if (!value) {
-    return [MESH_PROTOCOL_VERSION];
+    return [5];
   }
   try {
     const parsed: unknown = JSON.parse(value);
@@ -910,20 +910,20 @@ function parsePersistedProtocolVersions(
     const normalized = normalizeMeshProtocolVersions(parsed);
     return normalized.length > 0
       ? normalized
-      : [MESH_PROTOCOL_VERSION];
+      : [5];
   } catch (error) {
     log.warn("Invalid persisted Mesh protocol metadata", {
       peerNodeId,
       error: String(error),
     });
-    return [MESH_PROTOCOL_VERSION];
+    return [5];
   }
 }
 
 function persistedProtocolVersion(
-  _value: number | null,
+  value: number | null,
 ): MeshProtocolVersion {
-  return MESH_PROTOCOL_VERSION;
+  return value === 6 ? 6 : 5;
 }
 
 function mapWorkerRegistrationRow(

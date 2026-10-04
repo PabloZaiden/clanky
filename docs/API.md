@@ -102,10 +102,15 @@ use their documented content type instead of this JSON format.
 
 ## Workspaces and agent sessions
 
-Agent sessions use the provider selected for the workspace. A workspace can
+Agent sessions use the adapter selected for the workspace; ACP additionally
+selects a harness preset. A workspace can
 run locally, over SSH, or through a Mesh worker. Git, file, and command
 operations run on that workspace's execution host, while the API and
 application data remain on the controller.
+
+See [harness adapters](harnesses.md) for native runtime requirements, scoped
+activity/Stop and queued-input steering. Native execution requires a local host
+or an end-to-end Mesh6 path; direct SSH and Mesh5-only paths remain ACP.
 
 `workspace.directory` is the initial navigation directory, not a filesystem
 sandbox. File operations may access parent paths, absolute paths and alternate
@@ -320,11 +325,15 @@ included in this table.
 | POST | `/api/agents/code/test/stream` | Stream deterministic agent code test output without saving an agent or run. |
 | GET, POST | `/api/chats` | List chats or create a chat session. |
 | GET, PATCH, DELETE | `/api/chats/:id` | Read, update, or delete a chat session; remote cleanup may continue after deletion. |
+| GET | `/api/chats/:id/activity` | Observe owned native background work. |
+| POST | `/api/chats/:id/activity/:activityId/stop` | Stop one owned native child or process. |
 | POST | `/api/chats/:id/done` | Mark a standalone chat as done. |
 | POST | `/api/chats/:id/interrupt` | Interrupt an active chat run. |
 | POST | `/api/chats/:id/messages` | Send a message to a chat session. |
 | POST | `/api/chats/:id/permissions/:requestId` | Approve or deny a pending chat permission request. |
 | DELETE | `/api/chats/:id/queued-messages/:messageId` | Delete a queued chat message. |
+| POST | `/api/chats/:id/queued-messages/:messageId/steer` | Steer an existing queued input without interrupting the execution. |
+| POST | `/api/chats/:id/queued-messages/:messageId/reconcile` | Recover native delivery without resending the input. |
 | POST | `/api/chats/:id/reconnect` | Reconnect a chat session to its backend runtime. |
 | GET | `/api/chats/:id/snapshot` | Read the complete lightweight transcript snapshot for a chat. |
 | POST | `/api/chats/:id/spawn-task` | Create a task from an existing chat transcript. |
@@ -332,8 +341,6 @@ included in this table.
 | GET | `/api/chats/:id/tool-calls/:toolCallId` | Read the full details for one chat tool call. |
 | GET | `/api/chats/:id/transcript.html` | Open a chat transcript as a standalone HTML document. |
 | GET | `/api/chats/:id/transcript.md` | Download a chat transcript as Markdown. |
-| POST | `/api/chats/import` | Import an existing chat session. |
-| GET | `/api/chats/importable-sessions` | List chat sessions available for import. |
 | GET | `/api/check-planning-dir` | Inspect a workspace's `.clanky-planning` files. |
 | GET | `/api/execution-hosts` | List execution hosts available to the current user. |
 | POST | `/api/execution-hosts/:kind/:id/exec` | Execute one non-interactive command on a registered execution host. |
@@ -405,6 +412,8 @@ included in this table.
 | GET | `/api/terminal` | Open the raw websocket bridge for a terminal session. |
 | GET, POST | `/api/tasks` | List tasks or create a new task. |
 | GET, PUT, PATCH, DELETE | `/api/tasks/:id` | Read, update, or delete a task. |
+| GET | `/api/tasks/:id/activity` | Observe owned native task background work. |
+| POST | `/api/tasks/:id/activity/:activityId/stop` | Stop one owned native child or process. |
 | POST | `/api/tasks/:id/accept` | Accept a completed or max-iteration task locally without pushing. |
 | POST | `/api/tasks/:id/address-comments` | Address review comments for a task. |
 | POST | `/api/tasks/:id/automatic-pr-flow/start` | Enable automatic pull request monitoring for a task. |
@@ -418,8 +427,10 @@ included in this table.
 | POST | `/api/tasks/:id/follow-up` | Send a follow-up message to a task. |
 | POST | `/api/tasks/:id/manual-complete` | Promote a stopped or failed task to completed. |
 | POST | `/api/tasks/:id/mark-merged` | Mark a task as merged after an external merge. |
-| POST, DELETE | `/api/tasks/:id/pending` | Apply a pending message or model override for the next task iteration. |
+| POST, DELETE | `/api/tasks/:id/pending` | Apply pending values through the interrupt-first path, or clear them. |
 | PUT, DELETE | `/api/tasks/:id/pending-prompt` | Set the pending prompt used for the next task iteration. |
+| POST | `/api/tasks/:id/pending-inputs/:inputId/steer` | Admit the queued input into the current native execution. |
+| POST | `/api/tasks/:id/pending-inputs/:inputId/reconcile` | Recover delivery from the original owned native conversation. |
 | GET | `/api/tasks/:id/plan` | Read a task's planning document. |
 | POST | `/api/tasks/:id/plan/accept` | Accept a generated task plan. |
 | POST | `/api/tasks/:id/plan/discard` | Discard a generated task plan and delete the task. |
@@ -1011,7 +1022,9 @@ Modify the prompt for the next iteration while a task is running.
 
 #### PUT /api/tasks/:id/pending-prompt
 
-Set the pending prompt for the next iteration.
+Set the pending prompt for the next iteration without interrupting the current
+execution. Read its stable ID from `state.pendingInput.id` in the task snapshot
+before using native Steer or reconciliation.
 
 **Request Body**
 
@@ -1902,6 +1915,7 @@ List all workspaces.
     },
     "serverSettings": {
       "agent": {
+        "adapter": "acp",
         "provider": "copilot"
       }
     },
@@ -1923,7 +1937,7 @@ any existing directory.
 |-------|------|----------|-------------|
 | `name` | string | Yes | Workspace display name |
 | `directory` | string | Yes | Path to the directory on the selected execution host |
-| `serverSettings` | object | Yes | Agent provider, for example `{ "agent": { "provider": "copilot" } }` |
+| `serverSettings` | object | Yes | Adapter and harness preset, for example `{ "agent": { "adapter": "acp", "provider": "copilot" } }` |
 | `executionHost` | object | Exactly one of `executionHost`, `sshTarget`, or `workspaceWorkerEnrollmentId` | Registered local, Mesh, or SSH execution-host reference |
 | `sshTarget` | object | Exactly one of `executionHost`, `sshTarget`, or `workspaceWorkerEnrollmentId` | Ad hoc SSH target with `host`, `port`, `username`, and optional `password` |
 | `workspaceWorkerEnrollmentId` | string | Exactly one of `executionHost`, `sshTarget`, or `workspaceWorkerEnrollmentId` | Dedicated Mesh worker enrollment |
@@ -1968,7 +1982,7 @@ Update a workspace.
 | Field | Type | Description |
 |-------|------|-------------|
 | `name` | string | Update display name |
-| `serverSettings` | object | Update the agent provider |
+| `serverSettings` | object | Update the harness adapter and preset |
 | `executionHost` | object | Replace the registered execution host |
 | `sshTarget` | object \| null | Replace or clear the ad hoc SSH target |
 | `isPrivate` | boolean | Hide the workspace when private items are hidden |
@@ -2324,20 +2338,24 @@ Apply the Clanky optimization to the workspace's AGENTS.md file. If the file alr
 
 ### Server Settings
 
-Server settings select the agent provider for a workspace. The execution host
+Server settings select the harness adapter and preset for a workspace. The execution host
 is configured separately on the workspace through `executionHost`, `sshTarget`,
 or `workspaceWorkerEnrollmentId`.
 
 ```json
 {
   "agent": {
+    "adapter": "acp",
     "provider": "opencode"
   }
 }
 ```
 
-Supported providers are `opencode`, `copilot`, `codex`, `claude`, `pi`, and
-`grok`.
+Supported adapters are `acp`, `copilot`, `codex` and `opencode2`.
+ACP presets are `opencode`, `copilot`, `codex`, `claude`, `pi` and `grok`.
+Native adapters require their matching preset: `copilot`, `codex`, and
+`opencode` respectively. Existing persisted settings migrate to ACP; public
+settings requests must include the canonical adapter field.
 
 #### GET /api/workspaces/:id/server-settings
 
@@ -2348,6 +2366,7 @@ Get server settings for a specific workspace.
 ```json
 {
   "agent": {
+    "adapter": "acp",
     "provider": "opencode"
   }
 }
@@ -2367,6 +2386,7 @@ Update server settings for a workspace.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
+| `agent.adapter` | string | Yes | `acp`, `copilot`, `codex` or `opencode2`, supported by the selected host/path |
 | `agent.provider` | string | Yes | `opencode`, `copilot`, `codex`, `claude`, `pi`, or `grok` |
 
 **Response**
@@ -2374,6 +2394,7 @@ Update server settings for a workspace.
 ```json
 {
   "agent": {
+    "adapter": "copilot",
     "provider": "copilot"
   }
 }
@@ -2396,6 +2417,7 @@ Get connection status for a workspace.
 {
   "connected": true,
   "provider": "opencode",
+  "adapter": "acp",
   "transport": "mesh",
   "capabilities": ["createSession", "sendPromptAsync", "abortSession", "subscribeToEvents", "models"],
   "directoryExists": true,
@@ -2416,16 +2438,17 @@ Get connection status for a workspace.
 
 #### POST /api/workspaces/:id/server-settings/test
 
-Test the current workspace connection, or test a proposed provider.
+Test the current workspace connection, or test a proposed adapter/preset.
 
 **Request Body**
 
 Pass `{}` or no body to use the workspace's current settings. To test a
-different provider, send a server-settings object:
+different adapter, send a server-settings object:
 
 ```json
 {
   "agent": {
+    "adapter": "codex",
     "provider": "codex"
   }
 }
@@ -2457,6 +2480,7 @@ Test a server connection before creating a workspace.
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `settings` | object | Yes | Server settings to test |
+| `settings.agent.adapter` | string | Yes | `acp`, `copilot`, `codex` or `opencode2`, supported by the selected host/path |
 | `settings.agent.provider` | string | Yes | `opencode`, `copilot`, `codex`, `claude`, `pi`, or `grok` |
 | `directory` | string | Yes | Directory path to test against |
 | `executionHost` | object | Exactly one of `executionHost`, `sshTarget`, or `workspaceWorkerEnrollmentId` | Registered execution-host reference |

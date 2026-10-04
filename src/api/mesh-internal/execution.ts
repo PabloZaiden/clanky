@@ -6,7 +6,8 @@ import {
   MeshExecutionSessionCloseRequestSchema,
   MeshExecutionSessionRequestSchema,
 } from "@/contracts/schemas/mesh-execution";
-import { MESH_ACP_CHANNEL } from "@/shared/mesh-execution";
+import { MESH_ACP_CHANNEL, MESH_HARNESS_CHANNEL } from "@/shared/mesh-execution";
+import { meshHarnessGateway } from "../../core/mesh-harness-gateway";
 import { meshExecutionGateway } from "../../core/mesh-execution-gateway";
 import { meshAcpGateway } from "../../core/mesh-acp-gateway";
 import { encryptMeshPayload } from "../../core/mesh-payload-crypto";
@@ -88,6 +89,7 @@ export const meshExecutionRoutes = defineRoutes({
         if (channel === MESH_ACP_CHANNEL) {
           await meshAcpGateway.close(parsed.data.sessionId);
         }
+        if (channel === MESH_HARNESS_CHANNEL) await meshHarnessGateway.close(parsed.data.sessionId);
         return Response.json({ success: true });
       } catch (error) {
         return internalMeshErrorResponse(error);

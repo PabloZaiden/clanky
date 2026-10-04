@@ -33,6 +33,7 @@ export interface ShellSidebarActionHandlers {
   selectedChat: Chat | null;
   selectedChatActions: ActionMenuItem[];
   navigateWithinShell: (route: WebAppRoute) => void;
+  openHarnessActivity: (route: WebAppRoute) => void;
   onError: (message: string) => void;
   toggleTaskPrivate: (task: Task) => void | Promise<void>;
   toggleChatPrivate: (chat: Chat) => void | Promise<void>;

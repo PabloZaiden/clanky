@@ -8,6 +8,49 @@ import { ensureTaskBranchCheckedOutImpl } from "./task-git-validation";
 import { startStatePersistenceImpl } from "./task-state-persistence";
 import { handleFullyAutonomousCompletionImpl } from "./task-fully-autonomous";
 import { TaskOperationError } from "./task-errors";
+import { harnessActivityService } from "../harness-activity-service";
+import { KeyedOperationQueue } from "../../utils/keyed-operation-queue";
+
+const completionRecovery = new KeyedOperationQueue();
+
+export function recoverOwnedNativeEngineImpl(
+  ctx: TaskCtx,
+  taskId: string,
+  purpose: "finalization" | "input-recovery",
+): Promise<TaskEngine> {
+  return completionRecovery.run(taskId, async () => {
+    const existing = ctx.engines.get(taskId);
+    if (existing) return existing;
+    const task = await loadTask(taskId);
+    if (!task) throw new TaskOperationError("task_not_found", "The task is unavailable.");
+    const binding = task.state.session?.binding;
+    if (!binding || binding.adapter === "acp" || (purpose === "finalization" && task.state.status !== "completed")) {
+      throw new TaskOperationError("invalid_task_state", "Recovery requires the owned native conversation.");
+    }
+    const directory = getTaskWorkingDirectory(task);
+    if (!directory) throw new TaskOperationError("task_worktree_missing", "The task worktree is unavailable.");
+    const executor = await backendManager.getCommandExecutorAsync(task.config.workspaceId, task.config.directory);
+    const git = GitService.withExecutor(executor);
+    if (task.config.useWorktree) await git.assertCanonicalManagedWorktreePath(task.config.directory, taskId, directory);
+    const engine = new TaskEngine({
+      task,
+      backend: backendManager.getTaskBackend(taskId, task.config.workspaceId),
+      gitService: git, eventEmitter: ctx.emitter, skipGitSetup: true,
+      onPersistState: async (state, options) => { await updateTaskState(taskId, state, options); },
+    });
+    try {
+      // Recovery attaches the exact owned session; it never starts another task turn.
+      await engine.reconnectSession();
+      ctx.engines.set(taskId, engine);
+      startStatePersistenceImpl(ctx, taskId);
+      return engine;
+    } catch (error) {
+      await harnessActivityService.close({ kind: "task", id: taskId });
+      await backendManager.disconnectTask(taskId);
+      throw new TaskOperationError("task_session_reconnect_failed", "Cannot recover native finalization.", { cause: error });
+    }
+  });
+}
 
 export async function recoverPlanningEngineImpl(ctx: TaskCtx, taskId: string): Promise<TaskEngine> {
   const task = await loadTask(taskId);

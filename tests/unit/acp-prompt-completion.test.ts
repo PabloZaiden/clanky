@@ -5,7 +5,8 @@ import { AcpEventTranslator } from "../../src/backends/acp/event-translator";
 import type { RpcRequester } from "../../src/backends/acp/contracts";
 import { SessionService } from "../../src/backends/acp/session-service";
 import { SessionStateStore } from "../../src/backends/acp/session-state";
-import type { AgentEvent, PromptInput } from "../../src/backends/types";
+import type { PromptInput } from "../../src/backends/types";
+import type { HarnessEvent as AgentEvent } from "../../src/shared/harness-events";
 import type { JsonRpcMessage } from "../../src/backends/acp/types";
 
 function createPrompt(): PromptInput {

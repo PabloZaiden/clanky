@@ -34,7 +34,7 @@ The build writes standalone artifacts to `dist/`.
 Useful targeted commands:
 
 ```bash
-bun run tsc
+bun run typecheck
 bun run test:backend
 bun run test:native-worker-e2e
 bun run test:changed
@@ -44,6 +44,81 @@ Set `CLANKY_MOCK_ACP=true` when local tests should use the built-in fake ACP
 runtime instead of launching a provider CLI.
 
 Run `bun run build && bun run test` before considering a change complete.
+
+## Harness execution boundaries
+
+`src/shared/harness-events.ts` is the canonical harness event contract. It is
+distinct from scheduled Clanky Agent events. Every live event identifies its
+principal or child scope; child output and failures must not enter the parent
+transcript or complete the parent execution. Child permissions/questions retain
+their origin and continue through the interaction coordinator.
+
+`message.complete` closes one assistant message, not the logical prompt.
+`prompt.complete` closes the principal prompt; `session.status: idle` alone does
+not. Neither signal proves that descendant processes have exited. ACP translates
+its explicit prompt terminal signal into the same contract; task execution
+depends on the generic `Backend` port, not the `AcpBackend` class.
+
+Test doubles at the harness seam must preserve these distinctions. Use HTTP
+state/transcript observations to check them rather than asserting internal
+translation calls.
+
+`Backend.harness` is the session-lifetime control port. Capabilities distinguish
+active-session steering from expected-turn admission, and native/partial activity
+coverage from unavailable observation. An unavailable snapshot has no fabricated
+empty activity list. Stop and owned-work settlement have separate confirmed,
+pending and unknown outcomes; a cancellation acknowledgment is not confirmation.
+
+Steering input IDs belong to Clanky's queue. Native admission/delivery identifiers
+are recorded separately and used for recovery; an unknown admission must not be
+blindly resubmitted. These controls do not imply that the model obeyed an accepted
+message. ACP explicitly reports unsupported observation/steering rather than
+emulating steering through cancellation and restart.
+
+Native Copilot runtime/catalog collaborators live in `src/backends/copilot/`.
+They use the installed execution-host CLI through explicit, attached SDK stdio,
+not in-process FFI or a shared detached server. Startup checks authentication and
+records the actual CLI/protocol version. Shutdown is awaited and idempotent;
+cleanup failures preserve their causes.
+
+Native executable discovery uses the configured execution-host `PATH`.
+Codex's CLI version check receives the same environment and working directory as
+its app-server process; it must not depend on the controller's global CLI path.
+
+The catalog queries real native model/effort metadata, checks transport health,
+rejects unavailable saved selections and leaves the profile's reasoning default
+alone when no override was requested. Copilot's catalog namespace identifies its
+serving harness, not an inferred model vendor. Workspace settings select ACP,
+native Copilot, Codex app-server or OpenCode runtime 2. Existing workspaces migrate
+to ACP with their original harness preset. Native execution uses local hosts or
+end-to-end Mesh6 paths; negotiation selects the highest mutually supported
+generation, including relay hops. Direct SSH and Mesh5-only paths remain ACP.
+Generation5 support is retained for v6.0.x and removed in v6.1.0 after confirmed
+fleet rollout. See [harness adapters](harnesses.md) for operational setup.
+
+Codex reconciliation can query paginated history across the original thread when
+an admission reply lost native references. The canonical input ID is the native
+client ID, not evidence of delivery by itself; only a matching persisted native
+user message confirms delivery. Recovery must not create a conversation or resend.
+
+Task session lifecycle starts observation only after checkpointing the owned
+binding, including uploaded-plan execution and cold reconnects. Engine-generated
+initial goals retain deterministic IDs; queued/steered user messages retain the
+queue input ID as their public message ID. This correlation also survives cold
+delivery recovery.
+
+Native registry payloads may disagree with SDK declarations. Normalize valid
+nullable metadata at the adapter boundary, and validate activity projections
+before storage; malformed observation must not overwrite unrelated input
+receipts. Invalid persisted input history stays fail-closed rather than being
+cleared by a fresh activity read.
+
+Activity opens through the framework entity menu and retains the conversation
+DOM, scroll, and composer draft on its canonical URL. An embedded task chat has a
+separate **Chat activity** header action while its tab is visible, distinct from
+the task execution's **Activity** action. Native tool rows link to their own scope.
+Steer is a text-style action beneath queued input; admission, native delivery,
+and model obedience remain separate.
 
 ## Markdown rendering validation
 

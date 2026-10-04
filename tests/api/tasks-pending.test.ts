@@ -38,7 +38,7 @@ describe("POST /api/tasks/:id/pending", () => {
         name: name || directory.split("/").pop() || "Test",
         directory,
         executionHost,
-        serverSettings: { agent: { provider: "opencode" } },
+        serverSettings: { agent: { adapter: "acp", provider: "opencode" } },
       }),
     });
     const data = await createResponse.json();

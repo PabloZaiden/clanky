@@ -1,16 +1,14 @@
 /**
- * Event translation and replay mapping for the ACP backend.
+ * Event translation for the ACP backend.
  *
  * Parses ACP `session/update`, `session/status`, and `session/question`
- * notifications into normalized {@link AgentEvent}s, and maps raw session/load
- * history into {@link SessionReplayEvent}s for import capture. All per-session
- * tracking is delegated to the state store; all emission goes through the state
- * store's session/replay sinks. This service owns no RPC request state,
- * subscription lifecycle, or permission handling.
+ * notifications into normalized harness events. All per-session tracking is
+ * delegated to the state store; all emission goes through its session sink.
+ * This service owns no RPC request state, subscription lifecycle, or permissions.
  */
 
 import { log } from "@pablozaiden/webapp/server";
-import type { AgentEvent, QuestionInfo, SessionReplayEvent } from "../types";
+import type { QuestionInfo } from "../types";
 
 import { isRecord, getString, getNumber, firstString } from "./json-helpers";
 import type { SessionStateStore } from "./session-state";
@@ -47,13 +45,6 @@ export class AcpEventTranslator {
 
     if (!sessionId || !updateType) {
       return;
-    }
-
-    if (this.state.hasReplaySubscribers(sessionId)) {
-      const replayEvent = this.mapReplayEvent(sessionId, updateObj, content, updateType);
-      if (replayEvent) {
-        this.state.deliverReplayEvent(sessionId, replayEvent);
-      }
     }
 
     if (this.state.isPromptAborted(sessionId)) {
@@ -384,79 +375,5 @@ export class AcpEventTranslator {
     return undefined;
   }
 
-  private mapReplayEvent(
-    sessionId: string,
-    updateObj: Record<string, unknown>,
-    content: Record<string, unknown>,
-    updateType: string,
-  ): SessionReplayEvent | null {
-    if (updateType === "user_message_chunk") {
-      const text = getString(content["text"]) ?? "";
-      return text.length > 0 ? { type: "user.message", content: text } : null;
-    }
 
-    if (updateType === "agent_message_chunk") {
-      const text = getString(content["text"]) ?? "";
-      return text.length > 0 ? { type: "assistant.message", content: text } : null;
-    }
-
-    if (updateType === "agent_thought_chunk") {
-      const text = getString(content["text"]) ?? "";
-      return text.length > 0 ? { type: "reasoning", content: text } : null;
-    }
-
-    if (updateType === "tool_call") {
-      const toolCallId = firstString(updateObj["toolCallId"], content["toolCallId"]);
-      const toolName = firstString(
-        content["toolName"],
-        content["name"],
-        updateObj["toolName"],
-        updateObj["name"],
-        updateObj["kind"],
-        content["kind"],
-        updateObj["title"],
-      ) ?? "unknown_tool";
-      return {
-        type: "tool.start",
-        toolCallId,
-        toolName,
-        input: content["input"] ?? updateObj["input"] ?? updateObj["rawInput"] ?? {},
-      };
-    }
-
-    if (updateType === "tool_call_update") {
-      const status = firstString(
-        content["status"],
-        updateObj["status"],
-        content["state"],
-        updateObj["state"],
-      );
-      if (status === undefined || !TOOL_TERMINAL_STATUSES.has(status)) {
-        return null;
-      }
-
-      const toolCallId = firstString(updateObj["toolCallId"], content["toolCallId"]);
-      const toolName = firstString(
-        content["toolName"],
-        content["name"],
-        updateObj["toolName"],
-        updateObj["name"],
-        updateObj["kind"],
-        toolCallId ? this.state.getToolName(sessionId, toolCallId) : undefined,
-        updateObj["title"],
-      ) ?? "unknown_tool";
-      const output = this.buildToolOutput(updateObj, content, status);
-      const completedInput = updateObj["input"] ?? updateObj["rawInput"] ?? content["input"];
-
-      return {
-        type: "tool.complete",
-        toolCallId,
-        toolName,
-        input: completedInput,
-        output,
-      };
-    }
-
-    return null;
-  }
 }

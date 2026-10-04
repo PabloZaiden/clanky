@@ -1,13 +1,14 @@
 /**
  * Global Mesh wire-generation metadata.
  *
- * Mesh v5 is aligned with the Clanky release major and covers controller,
- * relay, and worker transports as one generation.
+ * Generations cover controllers, relays and workers together. Keep v5 during
+ * the v6.0 rollout; removal requires fleet confirmation for release 6.1.
  */
 
-export const MESH_PROTOCOL_VERSION = 5 as const;
+export const MESH_PROTOCOL_VERSION = 6 as const;
 export const MESH_SUPPORTED_PROTOCOL_VERSIONS = [
   MESH_PROTOCOL_VERSION,
+  5,
 ] as const;
 export const MESH_PROTOCOL_PREFERRED_VERSION = MESH_PROTOCOL_VERSION;
 
@@ -25,6 +26,7 @@ export interface MeshProtocolMetadata {
   supportedProtocolVersions: MeshProtocolVersion[];
   preferredProtocolVersion: MeshProtocolVersion;
   negotiatedProtocolVersion: MeshProtocolVersion | null;
+  harnessAdapters?: readonly ("acp" | "copilot" | "codex" | "opencode2")[];
 }
 
 export function normalizeMeshProtocolVersions(
@@ -32,7 +34,7 @@ export function normalizeMeshProtocolVersions(
 ): MeshProtocolVersion[] {
   const normalized = new Set<MeshProtocolVersion>();
   for (const version of versions ?? []) {
-    if (version === MESH_PROTOCOL_VERSION) {
+    if (version === 5 || version === 6) {
       normalized.add(version);
     }
   }
@@ -56,8 +58,21 @@ export function parseMeshProtocolVersionsHeader(
     return [];
   }
   return normalizeMeshProtocolVersions(
-    value.split(",").map((part) => Number.parseInt(part.trim(), 10)),
+    value.split(",").map((part) => Number(part.trim())),
   );
+}
+
+/** Exact v5 projection: old strict readers require [5] and preferred 5. */
+export function meshProtocolProjection(version: MeshProtocolVersion): {
+  protocolVersion: MeshProtocolVersion;
+  supportedProtocolVersions: MeshProtocolVersion[];
+  preferredProtocolVersion: MeshProtocolVersion;
+} {
+  return {
+    protocolVersion: version,
+    supportedProtocolVersions: version === 5 ? [5] : [...MESH_SUPPORTED_PROTOCOL_VERSIONS],
+    preferredProtocolVersion: version,
+  };
 }
 
 export function serializeMeshProtocolVersions(

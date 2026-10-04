@@ -45,6 +45,7 @@ interface TaskDetailsTabContentProps {
   content: UseTaskContentResult;
   actions: UseTaskActionsResult;
   onFileOpenError: (message: string) => void;
+  activityOpen: boolean;
 }
 
 export function TaskDetailsTabContent({
@@ -69,6 +70,7 @@ export function TaskDetailsTabContent({
   content,
   actions,
   onFileOpenError,
+  activityOpen,
 }: TaskDetailsTabContentProps) {
   const { config } = task;
   const toolPathDisplayRoot = task.state.git?.worktreePath ?? config.directory;
@@ -133,7 +135,7 @@ export function TaskDetailsTabContent({
           keepMounted={hasVisitedChatTab}
           className="flex min-w-0 flex-1 min-h-0 flex-col overflow-hidden"
         >
-          <ChatTab taskId={taskId} />
+          <ChatTab taskId={taskId} active={activeTab === "chat" && !activityOpen} />
         </TabPanel>
       ) : null}
       <TabPanel

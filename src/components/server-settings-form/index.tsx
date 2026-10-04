@@ -5,11 +5,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   DEFAULT_SERVER_AGENT_PROVIDER,
+  createAgentSettings,
   executionHostRefsEqual,
   parseExecutionHostRef,
-  serializeExecutionHostRef,
   supportsWorkspaceExecutionHost,
   type AgentProvider,
+  type HarnessAdapter,
   type ExecutionHostRef,
   type ServerSettings,
 } from "@/shared";
@@ -18,7 +19,7 @@ import {
   isWorkspaceSshExecutionHostRef,
 } from "@/shared/execution-host";
 import type { WorkspaceSshTargetRequest } from "@/contracts/schemas";
-import { AGENT_PROVIDER_OPTIONS } from "../../constants/agent-providers";
+import { RuntimeFields } from "./runtime-fields";
 import { useWorkspaceExecutionTargets } from "../../hooks/workspace-server-settings";
 import { TestConnection } from "./test-connection";
 
@@ -75,6 +76,7 @@ export function ServerSettingsForm({
   const [provider, setProvider] = useState<AgentProvider>(
     initialSettings?.agent.provider ?? DEFAULT_SERVER_AGENT_PROVIDER,
   );
+  const [adapter, setAdapter] = useState<HarnessAdapter>(initialSettings?.agent.adapter ?? "acp");
   const [executionHost, setExecutionHost] = useState<ExecutionHostRef | null>(
     initialExecutionHost,
   );
@@ -98,6 +100,7 @@ export function ServerSettingsForm({
   useEffect(() => {
     const nextProvider =
       initialSettings?.agent.provider ?? DEFAULT_SERVER_AGENT_PROVIDER;
+    const nextAdapter = initialSettings?.agent.adapter ?? "acp";
     const workspaceSshRef = initialExecutionHost
       && isWorkspaceSshExecutionHostRef(initialExecutionHost);
     const nextExecutionHost = dedicatedWorkerSelected || workspaceSshRef
@@ -113,15 +116,16 @@ export function ServerSettingsForm({
         }
         : null;
     setProvider(nextProvider);
+    setAdapter(nextAdapter);
     setExecutionHost(nextExecutionHost);
     setSshTarget(nextSshTarget);
     setClearStoredPassword(false);
     setTestResult(null);
     onChangeRef.current(
-      { agent: { provider: nextProvider } },
-      dedicatedWorkerSelected
+      { agent: createAgentSettings(nextAdapter, nextProvider) },
+      (nextAdapter === "acp" || nextExecutionHost?.kind === "local") && (dedicatedWorkerSelected
         || nextExecutionHost !== null
-        || isSshTargetValid(nextSshTarget),
+        || isSshTargetValid(nextSshTarget)),
       nextExecutionHost,
       nextSshTarget,
     );
@@ -139,9 +143,10 @@ export function ServerSettingsForm({
     }
     const nextHost = selectableTargets[0]!.ref;
     setExecutionHost(nextHost);
-    onChangeRef.current({ agent: { provider } }, true, nextHost);
+    onChangeRef.current({ agent: createAgentSettings(adapter, provider) }, adapter === "acp" || nextHost.kind === "local", nextHost);
   }, [
     dedicatedWorkerActive,
+    adapter,
     executionHost,
     loading,
     provider,
@@ -153,8 +158,19 @@ export function ServerSettingsForm({
     setProvider(nextProvider);
     setTestResult(null);
     onChangeRef.current(
-      { agent: { provider: nextProvider } },
+      { agent: createAgentSettings(adapter, nextProvider) },
       dedicatedWorkerActive || executionHost !== null || isSshTargetValid(sshTarget),
+      executionHost,
+      sshTarget,
+    );
+  }
+
+  function updateAdapter(nextAdapter: HarnessAdapter): void {
+    setAdapter(nextAdapter);
+    setTestResult(null);
+    onChangeRef.current(
+      { agent: createAgentSettings(nextAdapter, provider) },
+      (nextAdapter === "acp" || executionHost?.kind === "local") && (dedicatedWorkerActive || executionHost !== null || isSshTargetValid(sshTarget)),
       executionHost,
       sshTarget,
     );
@@ -166,7 +182,7 @@ export function ServerSettingsForm({
       setSshTarget(null);
       setClearStoredPassword(false);
       setTestResult(null);
-      onChangeRef.current({ agent: { provider } }, true, null, null);
+      onChangeRef.current({ agent: createAgentSettings(adapter, provider) }, adapter === "acp", null, null);
       return;
     }
     if (serialized === "workspace-ssh-target") {
@@ -180,8 +196,8 @@ export function ServerSettingsForm({
       setClearStoredPassword(false);
       setTestResult(null);
       onChangeRef.current(
-        { agent: { provider } },
-        isSshTargetValid(nextTarget),
+        { agent: createAgentSettings(adapter, provider) },
+        adapter === "acp" && isSshTargetValid(nextTarget),
         null,
         nextTarget,
       );
@@ -192,7 +208,7 @@ export function ServerSettingsForm({
     setSshTarget(null);
     setClearStoredPassword(false);
     setTestResult(null);
-    onChangeRef.current({ agent: { provider } }, nextHost !== null, nextHost);
+    onChangeRef.current({ agent: createAgentSettings(adapter, provider) }, nextHost !== null && (adapter === "acp" || nextHost.kind === "local"), nextHost);
   }
 
   function updateSshTarget(
@@ -209,8 +225,8 @@ export function ServerSettingsForm({
     setSshTarget(nextTarget);
     setTestResult(null);
     onChangeRef.current(
-      { agent: { provider } },
-      isSshTargetValid(nextTarget),
+      { agent: createAgentSettings(adapter, provider) },
+      adapter === "acp" && isSshTargetValid(nextTarget),
       null,
       nextTarget,
     );
@@ -225,8 +241,8 @@ export function ServerSettingsForm({
     setSshTarget(nextTarget);
     setTestResult(null);
     onChangeRef.current(
-      { agent: { provider } },
-      isSshTargetValid(nextTarget),
+      { agent: createAgentSettings(adapter, provider) },
+      adapter === "acp" && isSshTargetValid(nextTarget),
       null,
       nextTarget,
     );
@@ -244,194 +260,40 @@ export function ServerSettingsForm({
       return;
     }
     setTestResult(null);
-    setTestResult(await onTest({ agent: { provider } }, executionHost, sshTarget));
+    setTestResult(await onTest({ agent: createAgentSettings(adapter, provider) }, executionHost, sshTarget));
   }
 
   const sshTargetValid = isSshTargetValid(sshTarget);
 
   return (
     <div className="space-y-6">
-      <div className="space-y-4 rounded-lg bg-gray-50 p-4 dark:bg-neutral-900">
-        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-          Runtime
-        </h3>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div>
-            <label
-              htmlFor="agent-provider"
-              className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300"
-            >
-              Provider
-            </label>
-            <select
-              id="agent-provider"
-              value={provider}
-              onChange={(event) => updateProvider(event.target.value as AgentProvider)}
-              className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100"
-            >
-              {AGENT_PROVIDER_OPTIONS.map((option) => (
-                <option key={option.id} value={option.id}>{option.label}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label
-              htmlFor="execution-host"
-              className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300"
-            >
-              Execution host
-            </label>
-            <select
-              id="execution-host"
-              value={sshTarget
-                ? "workspace-ssh-target"
-                : executionHost
-                  ? serializeExecutionHostRef(executionHost)
-                  : dedicatedWorkerActive
-                    ? "workspace-worker"
-                    : ""}
-              disabled={loading}
-              onChange={(event) => updateExecutionHost(event.target.value)}
-              className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:disabled:bg-neutral-900"
-            >
-              <option value="" disabled>
-                {loading ? "Loading execution hosts..." : "Select an execution host"}
-              </option>
-              {allowWorkspaceSshTarget && (
-                <option value="workspace-ssh-target">Direct SSH target</option>
-              )}
-              {dedicatedWorkerSelected && !initialDedicatedWorker && (
-                <option value="workspace-worker">Dedicated worker</option>
-              )}
-              {initialDedicatedWorker && initialExecutionHost && (
-                <option
-                  value={serializeExecutionHostRef(initialExecutionHost)}
-                >
-                  Dedicated worker
-                </option>
-              )}
-              {unavailableInitialTarget && (
-                <option
-                  value={serializeExecutionHostRef(
-                    unavailableInitialTarget.ref,
-                  )}
-                  disabled
-                >
-                  {unavailableInitialTarget.name} ({unavailableInitialTarget.ref.kind}) - unavailable
-                </option>
-              )}
-              {selectableTargets.map((target) => (
-                <option
-                  key={serializeExecutionHostRef(target.ref)}
-                  value={serializeExecutionHostRef(target.ref)}
-                >
-                  {target.name} ({target.ref.kind})
-                </option>
-              ))}
-            </select>
-            {unavailableInitialTarget
-              && executionHost
-              && executionHostRefsEqual(
-                unavailableInitialTarget.ref,
-                executionHost,
-              ) ? (
-                <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
-                  This execution host no longer supports workspace file and
-                  agent operations. Select another host.
-                </p>
-              ) : null}
-          </div>
-        </div>
-        {allowWorkspaceSshTarget && sshTarget && (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="sm:col-span-2">
-              <label
-                htmlFor="workspace-ssh-target-host"
-                className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300"
-              >
-                SSH host
-              </label>
-              <input
-                id="workspace-ssh-target-host"
-                value={sshTarget.host}
-                onChange={(event) => updateSshTarget("host", event.target.value)}
-                placeholder="devcontainer.example.com"
-                className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100"
-                required
-              />
-            </div>
-            <div>
-              <label
-                htmlFor="workspace-ssh-target-port"
-                className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300"
-              >
-                SSH port
-              </label>
-              <input
-                id="workspace-ssh-target-port"
-                type="number"
-                min={1}
-                max={65535}
-                value={sshTarget.port}
-                onChange={(event) => updateSshTarget("port", Number(event.target.value))}
-                className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100"
-                required
-              />
-            </div>
-            <div>
-              <label
-                htmlFor="workspace-ssh-target-username"
-                className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300"
-              >
-                SSH username
-              </label>
-              <input
-                id="workspace-ssh-target-username"
-                value={sshTarget.username}
-                onChange={(event) => updateSshTarget("username", event.target.value)}
-                placeholder="devbox"
-                className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100"
-                required
-              />
-            </div>
-            <div className="sm:col-span-2">
-              <label
-                htmlFor="workspace-ssh-target-password"
-                className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300"
-              >
-                SSH password
-              </label>
-              <input
-                id="workspace-ssh-target-password"
-                type="password"
-                value={typeof sshTarget.password === "string" ? sshTarget.password : ""}
-                onChange={(event) => updateSshTarget("password", event.target.value || undefined)}
-                placeholder={initialSshTarget?.credentialConfigured
-                  ? "Leave blank to keep the current password"
-                  : "Leave blank for key-based authentication"}
-                disabled={clearStoredPassword}
-                className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100"
-              />
-              {initialSshTarget?.credentialConfigured && (
-                <label className="mt-2 flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
-                  <input
-                    type="checkbox"
-                    checked={clearStoredPassword}
-                    onChange={(event) => updateClearStoredPassword(event.target.checked)}
-                  />
-                  Remove the stored SSH password
-                </label>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
+      <RuntimeFields
+        adapter={adapter}
+        provider={provider}
+        executionHost={executionHost}
+        sshTarget={sshTarget}
+        loading={loading}
+        selectableTargets={selectableTargets}
+        unavailableInitialTarget={unavailableInitialTarget}
+        initialExecutionHost={initialExecutionHost}
+        initialDedicatedWorker={initialDedicatedWorker}
+        dedicatedWorkerSelected={dedicatedWorkerSelected}
+        dedicatedWorkerActive={dedicatedWorkerActive}
+        allowWorkspaceSshTarget={allowWorkspaceSshTarget}
+        clearStoredPassword={clearStoredPassword}
+        updateAdapter={updateAdapter}
+        updateProvider={updateProvider}
+        updateExecutionHost={updateExecutionHost}
+        updateSshTarget={updateSshTarget}
+        updateClearStoredPassword={updateClearStoredPassword}
+        passwordConfigured={initialSshTarget?.credentialConfigured ?? false}
+      />
 
       {onTest && (
         <TestConnection
           onTest={handleTest}
           testing={testing}
-          disabled={!executionHost && !sshTargetValid && !dedicatedWorkerActive}
+          disabled={(adapter !== "acp" && executionHost?.kind !== "local") || (!executionHost && !sshTargetValid && !dedicatedWorkerActive)}
           testResult={testResult}
         />
       )}

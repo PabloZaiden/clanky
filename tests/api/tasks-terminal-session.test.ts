@@ -127,6 +127,7 @@ describe("Task terminal session API integration", () => {
         executionHost,
         serverSettings: {
           agent: {
+            adapter: "acp",
             provider: "opencode",
           },
         },

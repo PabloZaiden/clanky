@@ -28,6 +28,8 @@ import { useTaskRemoteStatus } from "./use-task-remote-status";
 import { TaskDetailsModals } from "./task-details-modals";
 import { TaskDetailsTabContent } from "./task-details-tab-content";
 import { useTaskComposerAdapter } from "./task-composer-adapter";
+import { HarnessEntityView } from "../harness-activity";
+import { TaskPendingInput } from "./pending-input";
 
 export interface TaskDetailsProps {
   /** Task ID to display */
@@ -36,15 +38,21 @@ export interface TaskDetailsProps {
   onBack?: () => void;
   /** Navigate to the terminal session details view */
   onSelectTerminalSession?: (terminalSessionId: string) => void;
+  showActivity?: boolean;
+  onCloseActivity?: () => void;
+  onOpenActivity?: () => void;
 }
 
 export function TaskDetails({
   taskId,
   onBack,
   onSelectTerminalSession,
+  showActivity = false,
+  onCloseActivity,
+  onOpenActivity,
 }: TaskDetailsProps) {
    const {
-      task, loading, error, messages, toolCalls, logs, gitChangeCounter,
+      task, loading, error, messages, toolCalls, logs, gitChangeCounter, refresh,
       hasOlderTranscript, loadingTranscript, loadMoreTranscript, loadFullTranscript,
         accept, push, updateBranch, remove, purge, markMerged, closeLocalTask, manualCompleteTask,
        stopTask, setPending, sendFollowUp, loadToolDetails,
@@ -261,6 +269,17 @@ export function TaskDetails({
   const errorBannerSpacingClassName = "mx-3 mt-3 mb-3 sm:mx-4";
 
   return (
+    <HarnessEntityView
+      kind="task"
+      entityId={taskId}
+      showActivity={showActivity}
+      snapshot={state.harness?.activity}
+      capabilities={state.harness?.capabilities}
+      inputs={state.harness?.inputs}
+      onInputUpdated={refresh}
+      onBack={() => onCloseActivity?.()}
+      onOpenActivity={onOpenActivity}
+    >
     <div className="flex h-full flex-col overflow-hidden">
       <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
         {error && (
@@ -334,13 +353,13 @@ export function TaskDetails({
             content={content}
             actions={actions}
             onFileOpenError={toast.error}
+            activityOpen={showActivity}
           />
         </div>
       </div>
 
-      {showActionBar && composerProps && (
-        <ConversationComposer {...composerProps} />
-      )}
+      <TaskPendingInput task={task} onRefresh={refresh} />
+      {showActionBar && composerProps && <ConversationComposer {...composerProps} />}
 
       <TaskDetailsModals
         taskName={config.name}
@@ -351,6 +370,7 @@ export function TaskDetails({
         remoteStatusLoading={remoteStatus.loading}
       />
     </div>
+    </HarnessEntityView>
   );
 }
 

@@ -106,7 +106,7 @@ export function createMeshRelayInboundHandler(
         "https://mesh.invalid",
       ).pathname;
       const method = offer.method?.toUpperCase();
-      if (!isMeshRelayRouteAllowed(initiatorRole, offer.kind, method, pathname)) {
+      if (!isMeshRelayRouteAllowed(initiatorRole, offer.kind, method, pathname, offer.protocolVersion)) {
         log.error("Refusing a Mesh relay offer for a route that is not allowed", {
           streamId: offer.streamId,
           kind: offer.kind,

@@ -12,9 +12,6 @@ import {
   MESH_TRANSPORTS,
 } from "@/shared/mesh";
 import {
-  MESH_PROTOCOL_VERSION,
-} from "@/shared/mesh-protocol";
-import {
   ExecutionHostCapabilitiesSchema,
   ExecutionHostPlatformSchema,
 } from "./execution-host";
@@ -55,8 +52,27 @@ export const MeshOriginSchema = MeshEndpointSchema.superRefine((value, context) 
 });
 export const MeshEnrollmentRouteSchema = z.enum(["direct", "relay"]);
 const MeshProtocolVersionsSchema = z.array(
-  z.literal(MESH_PROTOCOL_VERSION),
+  z.literal(5),
 ).length(1);
+const MeshV6Metadata = {
+  protocolVersion: z.literal(6),
+  supportedProtocolVersions: z.array(z.union([z.literal(6), z.literal(5)])).min(1).max(2)
+    .refine((versions) => versions.includes(6) && new Set(versions).size === versions.length),
+  preferredProtocolVersion: z.literal(6),
+};
+
+export const MeshWorkerProtocolDescriptorSchema = z.object({
+  protocolVersion: z.union([z.literal(6), z.literal(5)]),
+  nodeId: z.string().min(1).max(200), fingerprint: z.string().min(1).max(200),
+  requestNonce: z.string().min(1).max(200), binaryVersion: z.string().min(1).max(200),
+  supportedProtocolVersions: z.array(z.union([z.literal(6), z.literal(5)])).min(1).max(2),
+  preferredProtocolVersion: z.union([z.literal(6), z.literal(5)]),
+  signature: z.string().min(1).max(16_384),
+}).strict().refine((value) => value.preferredProtocolVersion === value.protocolVersion
+  && (value.protocolVersion === 5
+    ? value.supportedProtocolVersions.length === 1 && value.supportedProtocolVersions[0] === 5
+    : value.supportedProtocolVersions.includes(6) && new Set(value.supportedProtocolVersions).size === value.supportedProtocolVersions.length));
+export type MeshWorkerProtocolDescriptor = z.infer<typeof MeshWorkerProtocolDescriptorSchema>;
 
 // --- Controller-side enrollment token ---
 
@@ -161,17 +177,18 @@ const MeshEnrollmentV5RelayRouteSchema = z.object({
 }).strict();
 
 export const MeshEnrollmentRequestV5Schema = MeshEnrollmentRequestCommonSchema.extend({
-  protocolVersion: z.literal(MESH_PROTOCOL_VERSION),
+  protocolVersion: z.literal(5),
   binaryVersion: z.string().trim().min(1).max(200),
   supportedProtocolVersions: MeshProtocolVersionsSchema,
-  preferredProtocolVersion: z.literal(MESH_PROTOCOL_VERSION),
+  preferredProtocolVersion: z.literal(5),
   route: z.union([
     MeshEnrollmentV5DirectRouteSchema,
     MeshEnrollmentV5RelayRouteSchema,
   ]),
 }).strict();
 
-export const MeshEnrollmentRequestSchema = MeshEnrollmentRequestV5Schema;
+export const MeshEnrollmentRequestV6Schema = MeshEnrollmentRequestV5Schema.extend(MeshV6Metadata);
+export const MeshEnrollmentRequestSchema = z.union([MeshEnrollmentRequestV6Schema, MeshEnrollmentRequestV5Schema]);
 
 const MeshEnrollmentResponseCommonSchema = z.object({
   workerNodeId: z.string().trim().min(1),
@@ -185,33 +202,35 @@ const MeshEnrollmentResponseCommonSchema = z.object({
 
 export const MeshEnrollmentResponseV5Schema =
   MeshEnrollmentResponseCommonSchema.extend({
-    protocolVersion: z.literal(MESH_PROTOCOL_VERSION),
+    protocolVersion: z.literal(5),
     binaryVersion: z.string().trim().min(1).max(200),
     supportedProtocolVersions: MeshProtocolVersionsSchema,
-    preferredProtocolVersion: z.literal(MESH_PROTOCOL_VERSION),
+    preferredProtocolVersion: z.literal(5),
   }).strict();
 
-export const MeshEnrollmentResponseSchema = MeshEnrollmentResponseV5Schema;
+export const MeshEnrollmentResponseV6Schema = MeshEnrollmentResponseV5Schema.extend(MeshV6Metadata);
+export const MeshEnrollmentResponseSchema = z.union([MeshEnrollmentResponseV6Schema, MeshEnrollmentResponseV5Schema]);
 
 // --- Signed health check (controller → worker) ---
 
 export const MeshHealthCheckV5Schema = z.object({
-  protocolVersion: z.literal(MESH_PROTOCOL_VERSION),
+  protocolVersion: z.literal(5),
   senderNodeId: z.string().trim().min(1),
   senderPublicKey: z.string().min(1),
   senderFingerprint: z.string().trim().min(1),
   binaryVersion: z.string().trim().min(1).max(200),
   supportedProtocolVersions: MeshProtocolVersionsSchema,
-  preferredProtocolVersion: z.literal(MESH_PROTOCOL_VERSION),
+  preferredProtocolVersion: z.literal(5),
   nonce: z.string().trim().min(1),
   sentAt: z.string().datetime(),
   signature: z.string().trim().min(1),
 }).strict();
 
-export const MeshHealthCheckSchema = MeshHealthCheckV5Schema;
+export const MeshHealthCheckV6Schema = MeshHealthCheckV5Schema.extend(MeshV6Metadata);
+export const MeshHealthCheckSchema = z.union([MeshHealthCheckV6Schema, MeshHealthCheckV5Schema]);
 
 export const MeshHealthCheckResponseV5Schema = z.object({
-  protocolVersion: z.literal(MESH_PROTOCOL_VERSION),
+  protocolVersion: z.literal(5),
   workerNodeId: z.string().trim().min(1),
   controllerNodeId: z.string().trim().min(1),
   requestNonce: z.string().trim().min(1),
@@ -222,16 +241,17 @@ export const MeshHealthCheckResponseV5Schema = z.object({
   workerConfigRevision: z.number().int().min(1),
   binaryVersion: z.string().trim().min(1).max(200),
   supportedProtocolVersions: MeshProtocolVersionsSchema,
-  preferredProtocolVersion: z.literal(MESH_PROTOCOL_VERSION),
+  preferredProtocolVersion: z.literal(5),
   signature: z.string().trim().min(1),
 }).strict();
 
-export const MeshHealthCheckResponseSchema = MeshHealthCheckResponseV5Schema;
+export const MeshHealthCheckResponseV6Schema = MeshHealthCheckResponseV5Schema.extend(MeshV6Metadata);
+export const MeshHealthCheckResponseSchema = z.union([MeshHealthCheckResponseV6Schema, MeshHealthCheckResponseV5Schema]);
 
 // --- Signed revocation notice (controller → worker) ---
 
 export const MeshRevocationNoticeV5Schema = z.object({
-  protocolVersion: z.literal(MESH_PROTOCOL_VERSION),
+  protocolVersion: z.literal(5),
   controllerNodeId: z.string().trim().min(1),
   workerNodeId: z.string().trim().min(1),
   controllerPublicKey: z.string().min(1),
@@ -241,12 +261,15 @@ export const MeshRevocationNoticeV5Schema = z.object({
   signature: z.string().trim().min(1),
 });
 
-export const MeshRevocationNoticeSchema = MeshRevocationNoticeV5Schema;
+export const MeshRevocationNoticeSchema = z.union([
+  MeshRevocationNoticeV5Schema.extend({ protocolVersion: z.literal(6) }),
+  MeshRevocationNoticeV5Schema,
+]);
 
 // --- Signed worker kill request (controller → worker) ---
 
 export const MeshWorkerKillRequestV5Schema = z.object({
-  protocolVersion: z.literal(MESH_PROTOCOL_VERSION),
+  protocolVersion: z.literal(5),
   controllerNodeId: z.string().trim().min(1),
   workerNodeId: z.string().trim().min(1),
   controllerPublicKey: z.string().min(1),
@@ -256,7 +279,10 @@ export const MeshWorkerKillRequestV5Schema = z.object({
   signature: z.string().trim().min(1),
 });
 
-export const MeshWorkerKillRequestSchema = MeshWorkerKillRequestV5Schema;
+export const MeshWorkerKillRequestSchema = z.union([
+  MeshWorkerKillRequestV5Schema.extend({ protocolVersion: z.literal(6) }),
+  MeshWorkerKillRequestV5Schema,
+]);
 
 export type CreateMeshEnrollmentTokenRequest = z.infer<typeof CreateMeshEnrollmentTokenRequestSchema>;
 export type CreateWorkspaceWorkerEnrollmentRequest = z.infer<
@@ -268,12 +294,12 @@ export type RevokeMeshWorkerRequest = z.infer<typeof RevokeMeshWorkerRequestSche
 export type EnrollMeshWorkerRequest = z.infer<typeof EnrollMeshWorkerRequestSchema>;
 export type MeshEnrollmentRoute = z.infer<typeof MeshEnrollmentRouteSchema>;
 export type MeshEnrollmentRequestV5 = z.infer<typeof MeshEnrollmentRequestV5Schema>;
-export type MeshEnrollmentRequest = z.infer<typeof MeshEnrollmentRequestSchema>;
+export type MeshEnrollmentRequest = Omit<z.infer<typeof MeshEnrollmentRequestV6Schema>, "protocolVersion" | "preferredProtocolVersion"> & { protocolVersion: 5 | 6; preferredProtocolVersion: 5 | 6 };
 export type MeshEnrollmentResponseV5 = z.infer<typeof MeshEnrollmentResponseV5Schema>;
-export type MeshEnrollmentResponse = z.infer<typeof MeshEnrollmentResponseSchema>;
-export type MeshHealthCheck = z.infer<typeof MeshHealthCheckSchema>;
+export type MeshEnrollmentResponse = Omit<z.infer<typeof MeshEnrollmentResponseV6Schema>, "protocolVersion" | "preferredProtocolVersion"> & { protocolVersion: 5 | 6; preferredProtocolVersion: 5 | 6 };
+export type MeshHealthCheck = Omit<z.infer<typeof MeshHealthCheckV6Schema>, "protocolVersion" | "preferredProtocolVersion"> & { protocolVersion: 5 | 6; preferredProtocolVersion: 5 | 6 };
 export type MeshHealthCheckV5 = z.infer<typeof MeshHealthCheckV5Schema>;
-export type MeshHealthCheckResponse = z.infer<typeof MeshHealthCheckResponseSchema>;
+export type MeshHealthCheckResponse = Omit<z.infer<typeof MeshHealthCheckResponseV6Schema>, "protocolVersion" | "preferredProtocolVersion"> & { protocolVersion: 5 | 6; preferredProtocolVersion: 5 | 6 };
 export type MeshHealthCheckResponseV5 = z.infer<
   typeof MeshHealthCheckResponseV5Schema
 >;

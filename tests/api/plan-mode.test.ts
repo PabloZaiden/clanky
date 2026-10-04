@@ -27,7 +27,7 @@ import type { FileSystemListOptions } from "../../src/core/command-executor";
 
 // Default test model for task creation (model is now required)
 const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };
-const defaultServerSettings = { agent: { provider: "opencode" } };
+const defaultServerSettings = { agent: { adapter: "acp", provider: "opencode" } };
 interface PlanTaskResponse extends Record<string, unknown> {
   state?: {
     status?: string;

@@ -100,6 +100,7 @@ describe("Terminal sessions API integration", () => {
         executionHost,
         serverSettings: {
           agent: {
+            adapter: "acp",
             provider: "opencode",
           },
         },

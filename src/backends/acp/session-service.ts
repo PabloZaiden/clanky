@@ -1,7 +1,7 @@
 /**
  * Session operations and prompt orchestration for the ACP backend.
  *
- * Owns session CRUD/list/import/delete, session config/model calls, synchronous
+ * Owns session CRUD/delete and persisted lookup, session config/model calls, synchronous
  * and asynchronous prompt orchestration, cancellation workflow, and
  * response/session mapping. All per-session run state lives in the session
  * state store; model/config parsing and caches live in the capability service;
@@ -17,11 +17,7 @@ import type {
   AgentSession,
   ConfigOption,
   CreateSessionOptions,
-  ImportSessionOptions,
-  ImportSessionResult,
-  ImportableSession,
   PromptInput,
-  SessionReplayEvent,
 } from "../types";
 
 import { isRecord, getString } from "./json-helpers";
@@ -35,7 +31,7 @@ import { invokeOptionalMethod } from "./optional-method";
 import { PROMPT_REQUEST_TIMEOUT_MS } from "./types";
 import type { SessionSubscriber } from "./types";
 import type { RpcRequester, ConfigOptionSetter } from "./contracts";
-import type { SessionStateStore, ReplaySubscriber } from "./session-state";
+import type { SessionStateStore } from "./session-state";
 import type { CapabilityService } from "./capability-service";
 
 export class SessionService {
@@ -174,7 +170,7 @@ export class SessionService {
       return cached;
     }
 
-    const listedSession = (await this.listSessions()).find((session) => session.id === id);
+    const listedSession = await this.findPersistedSession(id);
     if (!listedSession) {
       return this.state.getCachedSession(id) ?? null;
     }
@@ -194,78 +190,35 @@ export class SessionService {
     return session;
   }
 
-  async listSessions(directory?: string): Promise<ImportableSession[]> {
+  private async findPersistedSession(id: string): Promise<{ id: string; title?: string; cwd: string } | null> {
     this.ensureConnected();
-
-    const sessions: ImportableSession[] = [];
+    const visitedCursors = new Set<string>();
     let cursor: string | undefined;
-    do {
+    for (let page = 0; page < 100; page += 1) {
       const result = await this.rpc.sendRequest<unknown>("session/list", {
-        ...(directory ? { cwd: directory } : {}),
         ...(cursor ? { cursor } : {}),
       });
       if (!isRecord(result) || !Array.isArray(result["sessions"])) {
-        return sessions;
+        throw new AcpError("acp_request_failed", "ACP persisted session lookup returned an invalid response.");
       }
 
       for (const rawSession of result["sessions"]) {
-        if (!isRecord(rawSession)) {
-          continue;
-        }
+        if (!isRecord(rawSession)) continue;
         const sessionId = getString(rawSession["sessionId"]);
-        if (!sessionId) {
-          continue;
-        }
-        const cwd = getString(rawSession["cwd"]) ?? directory ?? this.state.getSessionDirectory(sessionId);
-        sessions.push({
+        if (sessionId !== id) continue;
+        return {
           id: sessionId,
           title: getString(rawSession["title"]),
-          cwd,
-          updatedAt: getString(rawSession["updatedAt"]),
-          model: getString(rawSession["model"]),
-        });
+          cwd: getString(rawSession["cwd"]) ?? this.state.getSessionDirectory(sessionId),
+        };
       }
 
       cursor = getString(result["nextCursor"]);
-    } while (cursor);
-
-    return sessions;
-  }
-
-  async importSession(options: ImportSessionOptions): Promise<ImportSessionResult> {
-    this.ensureConnected();
-
-    const listed = (await this.listSessions(options.cwd)).find((session) => session.id === options.sessionId);
-    const cwd = options.cwd ?? listed?.cwd ?? this.state.getSessionDirectory(options.sessionId);
-    const events: SessionReplayEvent[] = [];
-    const capture: ReplaySubscriber = (event) => {
-      events.push(event);
-    };
-
-    this.state.clearImportState(options.sessionId);
-    this.state.addReplaySubscriber(options.sessionId, capture);
-    try {
-      const loaded = await this.rpc.sendRequest<unknown>("session/load", {
-        sessionId: options.sessionId,
-        cwd,
-        mcpServers: [],
-      });
-      const session = this.hydrateSessionFromResult(
-        options.sessionId,
-        loaded,
-        cwd,
-        listed?.title,
-      );
-      this.state.setCachedSession(session.id, session);
-      return {
-        session,
-        cwd,
-        events,
-      };
-    } finally {
-      this.state.removeReplaySubscriber(options.sessionId, capture);
-      this.state.clearImportState(options.sessionId);
+      if (!cursor) return null;
+      if (visitedCursors.has(cursor)) throw new AcpError("acp_request_failed", "ACP persisted session lookup repeated its cursor.");
+      visitedCursors.add(cursor);
     }
+    throw new AcpError("acp_request_failed", "ACP persisted session lookup exceeded its page limit.");
   }
 
   async deleteSession(id: string): Promise<void> {

@@ -2,19 +2,19 @@ import { z } from "zod";
 import {
   MESH_EXECUTION_CHANNEL,
   MESH_ACP_CHANNEL,
+  MESH_HARNESS_CHANNEL,
   MESH_EXECUTION_OPERATIONS,
   MESH_EXECUTION_MAX_RPC_TIMEOUT_MS,
   MESH_EXECUTION_MAX_RESULT_BYTES,
 } from "@/shared/mesh-execution";
 import { AgentProviderSchema } from "./workspace";
 import { GIT_COMMAND_SCOPES } from "@/shared/execution-host";
-import { MESH_PROTOCOL_VERSION } from "@/shared/mesh-protocol";
 
 const MeshExecutionPathSchema = z.string().min(1).max(16_384);
-const MeshExecutionProtocolVersionSchema = z.literal(MESH_PROTOCOL_VERSION);
+const MeshExecutionProtocolVersionSchema = z.union([z.literal(6), z.literal(5)]);
 
-export const MeshExecutionSessionRequestSchema = z.object({
-  protocolVersion: MeshExecutionProtocolVersionSchema,
+export const MeshExecutionSessionRequestV5Schema = z.object({
+  protocolVersion: z.literal(5),
   requestId: z.string().trim().min(1).max(200),
   callerNodeId: z.string().trim().min(1).max(200),
   callerPublicKey: z.string().min(1).max(16_384),
@@ -30,6 +30,21 @@ export const MeshExecutionSessionRequestSchema = z.object({
   expiresAt: z.string().datetime(),
   signature: z.string().trim().min(1).max(16_384),
 });
+
+export const MeshExecutionSessionRequestV6Schema = MeshExecutionSessionRequestV5Schema.extend({
+  protocolVersion: z.literal(6),
+  channel: z.enum([MESH_EXECUTION_CHANNEL, MESH_ACP_CHANNEL, MESH_HARNESS_CHANNEL]),
+  adapter: z.enum(["copilot", "codex", "opencode2"]).optional(),
+  ownerId: z.string().min(1).max(200).optional(),
+}).superRefine((value, ctx) => {
+  if (value.channel === MESH_HARNESS_CHANNEL && (!value.adapter || !value.ownerId)) {
+    ctx.addIssue({ code: "custom", path: ["channel"], message: "Native sessions require adapter and owner." });
+  }
+});
+export const MeshExecutionSessionRequestSchema = z.union([
+  MeshExecutionSessionRequestV6Schema,
+  MeshExecutionSessionRequestV5Schema,
+]);
 
 export const MeshExecutionSessionCloseRequestSchema = z.object({
   protocolVersion: MeshExecutionProtocolVersionSchema,
@@ -159,7 +174,7 @@ export const MeshExecutionFileWriteQuerySchema = z.object({
   maxBytes: z.coerce.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
 });
 
-export type MeshExecutionSessionRequest = z.infer<typeof MeshExecutionSessionRequestSchema>;
+export type MeshExecutionSessionRequest = Omit<z.infer<typeof MeshExecutionSessionRequestV6Schema>, "protocolVersion"> & { protocolVersion: 5 | 6 };
 export type MeshExecutionSessionCloseRequest = z.infer<typeof MeshExecutionSessionCloseRequestSchema>;
 export type MeshExecutionRpcRequest = z.infer<typeof MeshExecutionRpcRequestSchema>;
 export type MeshExecutionAsyncCommandRequest = z.infer<typeof MeshExecutionAsyncCommandRequestSchema>;

@@ -17,7 +17,7 @@ import {
   MESH_TERMINAL_WEBSOCKET_OPEN_TIMEOUT_MS,
   type MeshTerminalProtocolVersion,
 } from "@/shared/mesh-terminal";
-import { MESH_PROTOCOL_VERSION } from "@/shared/mesh-protocol";
+import { meshWorkerRouteVersion } from "../mesh-route-version";
 import type { AgentProvider } from "@/shared/settings";
 import type { TerminalConnectionMode } from "@/shared/terminal-session";
 import type { MeshPeerRoute } from "@/shared/mesh";
@@ -408,7 +408,7 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
       );
     }
     const peerRoute = registration.route;
-    const protocolVersion: MeshTerminalProtocolVersion = MESH_PROTOCOL_VERSION;
+    const protocolVersion: MeshTerminalProtocolVersion = meshWorkerRouteVersion(registration);
     const expiresAt = new Date(Date.now() + MESH_TERMINAL_SESSION_REQUEST_TTL_MS).toISOString();
     const buildRequest = async (): Promise<MeshTerminalSessionRequest> => {
       const unsigned: Omit<MeshTerminalSessionRequest, "signature"> = {

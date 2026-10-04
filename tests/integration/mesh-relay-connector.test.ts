@@ -395,6 +395,48 @@ describe("Mesh relay connector", () => {
     });
   });
 
+  // Wire compatibility is the public WS/HTTP contract. An old worker uses
+  // normal signed control/health streams, but cannot receive native traffic.
+  // The destination application is a genuine external HTTP seam; this adds
+  // mixed-generation coverage rather than inspecting gateway maps.
+  test("Mesh relay v6 carries ordinary v5 worker traffic and rejects native traffic on a v5 hop", async () => {
+    const legacyIdentity = createIdentity("worker-generation-five");
+    const legacy = new MeshRelayConnector({
+      config: {
+        relayUrl, relayFingerprint: relay.identity.fingerprint, role: "worker",
+        targetNodeId: controllerIdentity.nodeId, protocolVersion: 5,
+        enrollmentAdmission: await createEnrollmentAdmission(controllerIdentity),
+      },
+      identity: legacyIdentity,
+      inbound: createMeshRelayInboundHandler({ role: "worker", dispatch }),
+    });
+    try {
+      await controller.replaceAuthorization([workerIdentity.peer, legacyIdentity.peer]);
+      expect((await legacy.connect()).workerStatus).toBe("authorized");
+      const legacyRoute = { ...route(), targetNodeId: legacyIdentity.nodeId };
+      const response = await transport().request(legacyRoute, "/api/mesh/internal/health", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ senderNodeId: controllerIdentity.nodeId, nonce: "legacy-health" }),
+      });
+      expect(response.status).toBe(202);
+      expect(await response.json()).toEqual({ senderNodeId: controllerIdentity.nodeId, nonce: "legacy-health" });
+      await expect(transport().request(legacyRoute, "/api/mesh/internal/harness/rpc", {
+        method: "POST", body: "{}",
+      })).rejects.toMatchObject({ code: "mesh_relay_protocol_mismatch", status: 406 });
+      const descriptor = await fetch(`${relayUrl}/.well-known/clanky-mesh`, { headers: { "x-clanky-mesh-protocol-versions": "5" } });
+      expect(await descriptor.json()).toMatchObject({
+        protocolVersion: 5, supportedProtocolVersions: [5], preferredProtocolVersion: 5, negotiatedProtocolVersion: 5,
+      });
+      const current = await fetch(`${relayUrl}/.well-known/clanky-mesh`, { headers: { "x-clanky-mesh-protocol-versions": "5,6" } });
+      expect(await current.json()).toMatchObject({
+        protocolVersion: 6, negotiatedProtocolVersion: 6, controllerSupportedProtocolVersions: [6, 5],
+      });
+    } finally {
+      legacy.close();
+      await controller.replaceAuthorization([workerIdentity.peer]);
+    }
+  });
+
   test("passes a peer error status and body through unchanged", async () => {
     const response = await transport().request(route(), "/api/mesh/internal/kill", {
       method: "POST",

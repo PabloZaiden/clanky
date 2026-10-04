@@ -58,7 +58,7 @@ describe("Settings API integration", () => {
         name: "Second Purge Workspace",
         directory: context.workDir,
         executionHost: context.executionHostBinding.host,
-        serverSettings: { agent: { provider: "opencode" } },
+        serverSettings: { agent: { adapter: "acp", provider: "opencode" } },
       }),
     });
     expect(createWorkspaceResponse.status).toBe(201);

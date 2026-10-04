@@ -13,6 +13,7 @@ import type { Database } from "bun:sqlite";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { isIntrospectableTableName } from "../schema-inventory";
 import { repairConsolidatedSchema } from "./consolidated-schema-repair";
+import { isAgentProvider } from "@/shared/settings";
 
 const log = createLogger("persistence:migrations");
 
@@ -414,6 +415,106 @@ export const migrations: Migration[] = [
     version: MULTI_RELAY_PAIRING_MIGRATION_VERSION,
     name: "add_named_controller_relays",
     up: migrateControllerRelays,
+  },
+  {
+    version: MULTI_RELAY_PAIRING_MIGRATION_VERSION + 1,
+    name: "add_owned_harness_conversation_bindings",
+    up: (db) => {
+      if (tableExists(db, "tasks") && !getTableColumns(db, "tasks").includes("session_binding_json")) {
+        db.run("ALTER TABLE tasks ADD COLUMN session_binding_json TEXT");
+      }
+      if (tableExists(db, "chats") && !getTableColumns(db, "chats").includes("session_binding_json")) {
+        db.run("ALTER TABLE chats ADD COLUMN session_binding_json TEXT");
+      }
+    },
+  },
+  {
+    version: MULTI_RELAY_PAIRING_MIGRATION_VERSION + 2,
+    name: "add_harness_activity_and_input_receipts",
+    up: (db) => {
+      if (tableExists(db, "tasks") && !getTableColumns(db, "tasks").includes("harness_state_json")) {
+        db.run("ALTER TABLE tasks ADD COLUMN harness_state_json TEXT");
+      }
+      if (tableExists(db, "chats") && !getTableColumns(db, "chats").includes("harness_state_json")) {
+        db.run("ALTER TABLE chats ADD COLUMN harness_state_json TEXT");
+      }
+    },
+  },
+  {
+    version: MULTI_RELAY_PAIRING_MIGRATION_VERSION + 3,
+    name: "add_durable_task_pending_input",
+    up: (db) => {
+      if (!tableExists(db, "tasks")) return;
+      if (!getTableColumns(db, "tasks").includes("pending_input_json")) {
+        db.run("ALTER TABLE tasks ADD COLUMN pending_input_json TEXT");
+      }
+      if (!getTableColumns(db, "tasks").includes("pending_prompt")) return;
+      const pending = db.query<{ id: string }, []>(
+        "SELECT id FROM tasks WHERE pending_prompt IS NOT NULL AND pending_input_json IS NULL",
+      ).all();
+      const update = db.query("UPDATE tasks SET pending_input_json = ? WHERE id = ? AND pending_input_json IS NULL");
+      for (const row of pending) update.run(JSON.stringify({ id: crypto.randomUUID(), attachments: [] }), row.id);
+    },
+  },
+  {
+    version: MULTI_RELAY_PAIRING_MIGRATION_VERSION + 4,
+    name: "select_explicit_workspace_harness_adapter",
+    up: (db) => {
+      if (!tableExists(db, "workspaces") || !getTableColumns(db, "workspaces").includes("server_settings")) return;
+      const rows = db.query<{ id: string; server_settings: string }, []>("SELECT id, server_settings FROM workspaces").all();
+      const update = db.query("UPDATE workspaces SET server_settings = ? WHERE id = ?");
+      for (const row of rows) {
+        let parsed: unknown;
+        try { parsed = JSON.parse(row.server_settings); } catch (error) {
+          log.warn("Cannot migrate corrupt workspace harness settings", { workspaceId: row.id, error: String(error) });
+          continue;
+        }
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+          log.warn("Cannot migrate invalid workspace harness settings", { workspaceId: row.id });
+          continue;
+        }
+        const settings = parsed as Record<string, unknown>;
+        const agent = settings["agent"];
+        if (!agent || typeof agent !== "object" || Array.isArray(agent)) {
+          log.warn("Cannot migrate invalid workspace harness settings", { workspaceId: row.id });
+          continue;
+        }
+        const record = agent as Record<string, unknown>;
+        if (record["adapter"] !== undefined) continue;
+        if (!isAgentProvider(record["provider"])) {
+          log.warn("Cannot migrate unknown workspace ACP preset", { workspaceId: row.id });
+          continue;
+        }
+        update.run(JSON.stringify({ ...settings, agent: { ...record, adapter: "acp" } }), row.id);
+      }
+    },
+  },
+  {
+    version: 68,
+    name: "mesh_v6_dual_generation_rollout",
+    up: (db) => {
+      db.run(`CREATE TABLE IF NOT EXISTS mesh_harness_conversations (
+        adapter TEXT NOT NULL, native_id TEXT NOT NULL,
+        controller_node_id TEXT NOT NULL, workspace_id TEXT NOT NULL, owner_id TEXT NOT NULL,
+        binding_json TEXT NOT NULL, PRIMARY KEY(adapter, native_id)
+      )`);
+      // Remote records are evidence about deployed peers, not this binary.
+      // Preserve v5 (and already confirmed v6) metadata across startup.
+      if (tableExists(db, "mesh_protocol_state")) {
+        db.run("UPDATE mesh_protocol_state SET current_version = 6, updated_at = ? WHERE singleton = 1 AND current_version != 6", [new Date().toISOString()]);
+      }
+      for (const [table, prefix] of [
+        ["mesh_worker_registrations", "worker"],
+        ["mesh_controller_grants", "controller"],
+        ["mesh_controller_relays", "relay"],
+      ] as const) {
+        if (!tableExists(db, table)) continue;
+        db.run(`UPDATE ${table} SET ${prefix}_supported_protocol_versions_json = '[5]',
+          ${prefix}_preferred_protocol_version = 5, ${prefix}_negotiated_protocol_version = 5
+          WHERE ${prefix}_preferred_protocol_version NOT IN (5, 6)
+             OR ${prefix}_supported_protocol_versions_json IS NULL`);
+      }
+    },
   },
 ];
 

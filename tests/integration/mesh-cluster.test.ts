@@ -996,7 +996,7 @@ describe("controller-worker Mesh", () => {
         name: "Dedicated workspace",
         directory: workspaceDirectory,
         workspaceType: "directory",
-        serverSettings: { agent: { provider: "opencode" } },
+        serverSettings: { agent: { adapter: "acp", provider: "opencode" } },
         workspaceWorkerEnrollmentId: enrollmentId,
       },
     });
@@ -1029,7 +1029,7 @@ describe("controller-worker Mesh", () => {
         name: "Second dedicated workspace",
         directory: workspaceDirectory,
         workspaceType: "directory",
-        serverSettings: { agent: { provider: "opencode" } },
+        serverSettings: { agent: { adapter: "acp", provider: "opencode" } },
         workspaceWorkerEnrollmentId: enrollmentId,
       },
     });

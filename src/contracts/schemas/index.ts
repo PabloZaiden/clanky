@@ -7,6 +7,7 @@
  */
 
 export * from "./file-system";
+export { HarnessConversationBindingSchema, HarnessConversationStateSchema } from "./harness";
 
 export {
   ModelConfigSchema,
@@ -61,7 +62,6 @@ export {
   CreateChatRequestSchema,
   CreateSshServerChatRequestSchema,
   CreateExecutionHostChatRequestSchema,
-  ImportExistingChatRequestSchema,
   DiscoverSshServerChatProvidersRequestSchema,
   DiscoverSshServerChatModelsRequestSchema,
   DiscoverExecutionHostModelsRequestSchema,
@@ -213,6 +213,7 @@ export {
   MeshHealthCheckResponseSchema,
   MeshRevocationNoticeSchema,
   MeshWorkerKillRequestSchema,
+  MeshWorkerProtocolDescriptorSchema,
   type CreateMeshEnrollmentTokenRequest,
   type EnrollMeshWorkerRequest,
   type RevokeMeshWorkerRequest,
@@ -222,6 +223,7 @@ export {
   type MeshHealthCheckResponse,
   type MeshRevocationNotice,
   type MeshWorkerKillRequest,
+  type MeshWorkerProtocolDescriptor,
   type UpdateMeshEndpointRequest,
   type UpdateMeshInstanceNameRequest,
 } from "./mesh";
@@ -232,6 +234,15 @@ export {
   type MeshExecutionSessionRequest,
   type MeshExecutionRpcRequest,
 } from "./mesh-execution";
+
+export {
+  MeshHarnessEnvelopeSchema,
+  MeshHarnessEncryptedPayloadSchema,
+  MeshHarnessEventsRequestSchema,
+  MeshHarnessOperationSchema,
+  MeshHarnessEventSchema,
+  type MeshHarnessOperation,
+} from "./mesh-harness";
 
 export {
   CommandExecRequestSchema,

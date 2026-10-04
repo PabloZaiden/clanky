@@ -9,6 +9,7 @@ import { backendManager } from "./backend-manager";
 import { getDiff, getDiffSummary } from "./git/git-diff";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { resolveEffectiveCheapModel } from "./cheap-model";
+import { createTransientHarnessSession, cleanupTransientHarnessSession } from "./harness-session";
 import {
   buildFallbackPullRequestMetadata,
   generatePullRequestMetadata,
@@ -610,7 +611,7 @@ async function generateAutomaticPrMetadata(
       backend = backendManager.getBackend(task.config.workspaceId);
     }
 
-    const tempSession = await backend.createSession({
+    const tempSession = await createTransientHarnessSession(backend, {
       title: "Pull Request Metadata Generation",
       directory,
     });
@@ -631,7 +632,7 @@ async function generateAutomaticPrMetadata(
       });
     } finally {
       try {
-        await backend.abortSession(tempSession.id);
+        await cleanupTransientHarnessSession(backend, tempSession.id);
       } catch (cleanupError) {
         log.warn("Failed to clean up temporary PR metadata session", {
           taskId: task.config.id,

@@ -5,11 +5,10 @@ import {
   MESH_TERMINAL_MAX_INPUT_BYTES,
   MESH_TERMINAL_MAX_OUTPUT_BYTES,
 } from "@/shared/mesh-terminal";
-import { MESH_PROTOCOL_VERSION } from "@/shared/mesh-protocol";
 import { AgentProviderSchema } from "./workspace";
 
 const MeshTerminalPathSchema = z.string().min(1).max(16_384);
-const MeshTerminalProtocolVersionSchema = z.literal(MESH_PROTOCOL_VERSION);
+const MeshTerminalProtocolVersionSchema = z.union([z.literal(6), z.literal(5)]);
 const byteBoundedString = (maximumBytes: number) => z.string().refine(
   (value) => new TextEncoder().encode(value).byteLength <= maximumBytes,
   { message: `String exceeds the ${String(maximumBytes)} byte limit` },

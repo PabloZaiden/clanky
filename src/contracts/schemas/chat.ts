@@ -34,15 +34,6 @@ export const CreateExecutionHostChatRequestSchema = CreateSshServerChatRequestSc
   }),
 });
 
-export const ImportExistingChatRequestSchema = z.object({
-  name: z.string().trim().max(100, "name cannot exceed 100 characters").optional(),
-  workspaceId: z.string().min(1, "workspaceId is required"),
-  model: ModelConfigSchema,
-  sessionId: z.string().trim().min(1, "sessionId is required"),
-  cwd: z.string().trim().min(1, "cwd must be non-empty when provided").optional(),
-  autoApprovePermissions: z.boolean().default(true),
-});
-
 export const UpdateChatRequestSchema = z.object({
   name: TaskNameSchema.optional(),
   model: ModelConfigSchema.optional(),

@@ -1,5 +1,5 @@
 /**
- * Public orchestration facade for long-lived ACP-backed chats.
+ * Public orchestration facade for long-lived harness-backed chats.
  */
 
 import type {
@@ -29,10 +29,9 @@ import type {
   CreateAgentRunChatOptions,
   CreateChatOptions,
   CreateExecutionHostChatOptions,
-  ImportExistingSessionOptions,
   ReconnectChatOptions,
 } from "./chat-service-contracts";
-import type { Backend, ImportableSession } from "../backends/types";
+import type { Backend } from "../backends/types";
 
 export type {
   ChatConfigUpdates,
@@ -41,7 +40,6 @@ export type {
   CreateAgentRunChatOptions,
   CreateChatOptions,
   CreateExecutionHostChatOptions,
-  ImportExistingSessionOptions,
   ReconnectChatOptions,
 } from "./chat-service-contracts";
 
@@ -133,14 +131,6 @@ export class ChatManager {
     return this.services.lifecycle.createExecutionHostChat(options);
   }
 
-  async listImportableSessions(workspaceId: string): Promise<ImportableSession[]> {
-    return this.services.lifecycle.listImportableSessions(workspaceId);
-  }
-
-  async importExistingSession(options: ImportExistingSessionOptions): Promise<Chat> {
-    return this.services.lifecycle.importExistingSession(options);
-  }
-
   async getChat(chatId: string): Promise<Chat | null> {
     return this.services.state.getChat(chatId);
   }
@@ -148,6 +138,10 @@ export class ChatManager {
   async getChatSummary(chatId: string): Promise<Chat | null> {
     return this.services.state.getChatSummary(chatId);
   }
+
+  getActivity(chatId: string) { return this.services.session.getActivity(chatId); }
+
+  stopActivity(chatId: string, activityId: string) { return this.services.session.stopActivity(chatId, activityId); }
 
   async getAllChats(): Promise<Chat[]> {
     return this.services.state.getAllChats();
@@ -231,6 +225,14 @@ export class ChatManager {
 
   async removeQueuedMessage(chatId: string, queuedMessageId: string): Promise<Chat | null> {
     return this.services.interaction.removeQueuedMessage(chatId, queuedMessageId);
+  }
+
+  steerQueuedMessage(chatId: string, queuedMessageId: string) {
+    return this.services.interaction.steerQueuedMessage(chatId, queuedMessageId);
+  }
+
+  reconcileQueuedMessage(chatId: string, queuedMessageId: string) {
+    return this.services.interaction.reconcileQueuedMessage(chatId, queuedMessageId);
   }
 
   async waitForChatIdle(chatId: string, timeoutMs?: number): Promise<Chat> {

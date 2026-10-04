@@ -18,15 +18,15 @@ import type { TaskBackend } from "../../../src/core/task-engine";
 import type {
   AgentSession,
   AgentResponse,
-  AgentEvent,
   BackendConnectionConfig,
   CreateSessionOptions,
-  ImportableSession,
-  ImportSessionOptions,
-  ImportSessionResult,
   PromptInput,
 } from "../../../src/backends/types";
-import { createEventStream, type EventStream } from "../../../src/utils/event-stream";
+import type { HarnessEvent as AgentEvent } from "../../../src/shared/harness-events";
+import type { EventStream } from "../../../src/utils/event-stream";
+import { createMockAgentEventStream, resumeMockSession } from "../../mocks/mock-backend";
+import type { HarnessConversationBinding } from "../../../src/shared/harness-control";
+import { UnavailableHarnessControl } from "../../../src/backends/unavailable-harness-control";
 import type { Task } from "@/shared/task";
 import {
   createTempBareGitRepository,
@@ -71,6 +71,8 @@ export interface TestServerContext {
  * This enables tests to control iteration outcomes.
  */
 export class ConfigurableMockBackend implements TaskBackend {
+  resumeSession = (binding: HarnessConversationBinding): Promise<AgentSession> => resumeMockSession(this, binding);
+  readonly harness = new UnavailableHarnessControl();
   readonly name = "acp";
 
   private connected = false;
@@ -191,7 +193,7 @@ export class ConfigurableMockBackend implements TaskBackend {
   }
 
   async subscribeToEvents(_sessionId: string): Promise<EventStream<AgentEvent>> {
-    const { stream, push, end } = createEventStream<AgentEvent>();
+    const { stream, push, end } = createMockAgentEventStream();
 
     // Create a promise that will be resolved when sendPromptAsync is called
     this.promptPromise = new Promise<void>((resolve) => {
@@ -337,27 +339,6 @@ export class ConfigurableMockBackend implements TaskBackend {
 
   async getSession(id: string): Promise<AgentSession | null> {
     return this.sessions.get(id) ?? null;
-  }
-
-  async listSessions(directory?: string): Promise<ImportableSession[]> {
-    return Array.from(this.sessions.values()).map((session) => ({
-      id: session.id,
-      title: session.title,
-      cwd: directory ?? this.directory,
-      model: session.model,
-    }));
-  }
-
-  async importSession(options: ImportSessionOptions): Promise<ImportSessionResult> {
-    const session = this.sessions.get(options.sessionId);
-    if (!session) {
-      throw new Error(`Session ${options.sessionId} not found`);
-    }
-    return {
-      session,
-      cwd: options.cwd ?? this.directory,
-      events: [],
-    };
   }
 
   async deleteSession(id: string): Promise<void> {
@@ -546,7 +527,7 @@ export async function getOrCreateWorkspace(
       name: name || directory.split("/").pop() || "Test",
       directory,
       executionHost: localHost.ref,
-      serverSettings: { agent: { provider: "opencode" } },
+      serverSettings: { agent: { adapter: "acp", provider: "opencode" } },
     }),
   });
   const data = await createResponse.json();

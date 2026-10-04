@@ -17,6 +17,7 @@ function workspace(id: string, name: string): Workspace {
     },
     serverSettings: {
       agent: {
+        adapter: "acp",
         provider: "opencode",
       },
     },

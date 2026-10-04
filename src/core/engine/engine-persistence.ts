@@ -36,6 +36,8 @@ export class TaskPersistenceCoordinator {
   private readonly transcript: TranscriptStreamProjection;
   private readonly streamCheckpointPolicy = new AgentStreamCheckpointPolicy();
   private readonly persistenceQueue = new MemoryFirstPersistenceQueue();
+  private inputVersion = 0;
+  private persistedInputVersion = 0;
 
   constructor(options: TaskPersistenceCoordinatorOptions) {
     this.state = options.state;
@@ -47,7 +49,11 @@ export class TaskPersistenceCoordinator {
     });
   }
 
-  async flush(): Promise<void> {
+  async flush(options: { persistHarnessInputs?: boolean } = {}): Promise<void> {
+    if (options.persistHarnessInputs) {
+      this.inputVersion++;
+      this.markOperationalPersistenceDirty();
+    }
     await this.trigger();
   }
 
@@ -116,6 +122,7 @@ export class TaskPersistenceCoordinator {
 
     const checkpointedTextBytes = this.streamCheckpointPolicy.getPendingTextBytes();
     const operationalPersistenceVersion = this.persistenceQueue.operationalVersion;
+    const inputVersion = this.inputVersion;
     const snapshot = this.transcript.changes.snapshot(this.state);
     if (
       !this.persistenceQueue.isOperationalPersistenceDirty
@@ -128,9 +135,11 @@ export class TaskPersistenceCoordinator {
     try {
       await this.onPersistState(this.state, {
         transcriptChanges: snapshot.changes,
+        persistHarnessInputs: inputVersion !== this.persistedInputVersion,
       });
       this.transcript.changes.acknowledge(snapshot);
       this.persistenceQueue.acknowledgeOperationalPersistence(operationalPersistenceVersion);
+      this.persistedInputVersion = inputVersion;
       this.streamCheckpointPolicy.markCheckpoint(checkpointedTextBytes);
     } catch (error) {
       log.error(`Failed to persist task state: ${String(error)}`);

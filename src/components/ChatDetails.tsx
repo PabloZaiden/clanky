@@ -1,8 +1,8 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { type TranscriptFileLinkTarget } from "./log-viewer";
 import { getChatWorkspaceId, getExecutionHostSourceId } from "@/shared";
 import { appAbsoluteUrl } from "../lib/public-path";
-import { replaceWebAppRoute, routeToHash, useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { replaceWebAppRoute, routeToHash, useHeaderActions, useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { useChatLifecycle } from "./chat-details/chat-lifecycle";
 import {
   ConversationComposer,
@@ -14,6 +14,8 @@ import {
   ChatQueuedMessagesPanel,
 } from "./chat-details/chat-support-panels";
 import { ChatTranscript } from "./chat-details/chat-transcript";
+import { HarnessEntityView } from "./harness-activity";
+import { harnessActivityActions } from "./app-shell/harness-actions";
 import type { ChatSendMessageHandler } from "./chat-details/types";
 import { VoicePlaybackOverlay } from "./chat-details/voice-playback-overlay";
 import {
@@ -26,15 +28,24 @@ export function ChatDetails({
   embedded = false,
   isExternallyBusy = false,
   onSendMessage,
+  showActivity = false,
+  onCloseActivity,
+  onOpenActivity,
+  isVisible = true,
 }: {
   chatId: string;
   embeddedTaskId?: string;
   embedded?: boolean;
   isExternallyBusy?: boolean;
   onSendMessage?: ChatSendMessageHandler;
+  showActivity?: boolean;
+  onCloseActivity?: () => void;
+  onOpenActivity?: () => void;
+  isVisible?: boolean;
 }) {
   const toast = useToast();
   const isEmbedded = embedded || (typeof embeddedTaskId === "string" && embeddedTaskId.length > 0);
+  const [embeddedActivity, setEmbeddedActivity] = useState(false);
   const {
     chat,
     transcript,
@@ -51,7 +62,20 @@ export function ChatDetails({
     markChatStarting,
     handleReconnect,
   } = useChatLifecycle(chatId);
+  const openActivity = useCallback(() => {
+    if (isEmbedded) setEmbeddedActivity(true);
+    else onOpenActivity?.();
+  }, [isEmbedded, onOpenActivity]);
+  const embeddedActions = useMemo(() => isEmbedded && isVisible ? harnessActivityActions({
+    route: { view: "chat", chatId },
+    capabilities: chat?.state.harness?.capabilities,
+    onOpenActivity: openActivity,
+    embeddedChat: true,
+  }) : [], [isEmbedded, isVisible, chatId, chat?.state.harness?.capabilities, openActivity]);
+  // The embedded chat is not the active sidebar entity; expose its distinct scope through the framework header.
+  useHeaderActions({ overflow: embeddedActions });
   const voice = useConversationVoice();
+  const refreshInput = useCallback(() => refreshChat({ showLoading: false }), [refreshChat]);
   const voicePlayback = useVoicePlayback();
   const handleReadAloud = useCallback((
     message: { id: string; content: string },
@@ -169,7 +193,20 @@ export function ChatDetails({
   }
 
   return (
-    <div className="relative flex h-full min-h-0 flex-col">
+    <HarnessEntityView
+      kind="chat"
+      entityId={chatId}
+      showActivity={showActivity || (isEmbedded && embeddedActivity)}
+      snapshot={chat.state.harness?.activity}
+      capabilities={chat.state.harness?.capabilities}
+      inputs={chat.state.harness?.inputs}
+      onInputUpdated={refreshInput}
+      onBack={() => {
+        setEmbeddedActivity(false);
+        onCloseActivity?.();
+      }}
+      onOpenActivity={isEmbedded || onOpenActivity ? openActivity : undefined}
+    >
       <ChatTranscript
         chat={chat}
         transcript={transcript}
@@ -208,6 +245,9 @@ export function ChatDetails({
       <ChatQueuedMessagesPanel
         chatId={chatId}
         messages={chat.state.queuedMessages ?? []}
+        harness={chat.state.harness}
+        canSteer={chat.state.status === "streaming"}
+        onRefresh={refreshInput}
         onChatSnapshot={applyChatSnapshot}
       />
       {composerProps && <ConversationComposer {...composerProps} />}
@@ -216,6 +256,6 @@ export function ChatDetails({
         onPlay={voicePlayback.retryPlayback}
         onCancel={voicePlayback.stop}
       />
-    </div>
+    </HarnessEntityView>
   );
 }

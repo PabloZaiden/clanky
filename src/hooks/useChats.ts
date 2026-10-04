@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createLogger } from "@pablozaiden/webapp/web";
 import { apiRequest, readApiResponse, requestApiResponse } from "../lib/api-client";
 import type { Chat, ChatEvent } from "@/shared";
-import type { CreateChatRequest, ImportExistingChatRequest, InterruptChatRequest, SendChatMessageRequest, UpdateChatRequest } from "@/contracts";
+import type { CreateChatRequest, InterruptChatRequest, SendChatMessageRequest, UpdateChatRequest } from "@/contracts";
 import { DEFAULT_CHAT_INTERRUPT_REASON, isStandaloneChat } from "@/shared";
 import {
   getStreamingActivityStatus,
@@ -71,7 +71,6 @@ export interface UseChatsResult {
   refreshChat: (id: string) => Promise<void>;
   getChat: (id: string) => Chat | undefined;
   createChat: (request: CreateChatRequest) => Promise<Chat | null>;
-  importExistingChat: (request: ImportExistingChatRequest) => Promise<Chat | null>;
   updateChat: (id: string, request: UpdateChatRequest) => Promise<Chat | null>;
   markChatDone: (id: string) => Promise<Chat | null>;
   deleteChat: (id: string) => Promise<boolean>;
@@ -170,28 +169,6 @@ export function useChats(): UseChatsResult {
         error: String(createError),
       });
       setError(String(createError));
-      return null;
-    }
-  }, []);
-
-  const importExistingChat = useCallback(async (request: ImportExistingChatRequest): Promise<Chat | null> => {
-    try {
-      const chat = await apiRequest<Chat>("/api/chats/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(request),
-        action: "Import chat",
-        fallbackMessage: "Failed to import chat",
-      });
-      setChats((prev) => upsertChat(prev, chat));
-      return chat;
-    } catch (importError) {
-      log.error("Failed to import chat", {
-        workspaceId: request.workspaceId,
-        sessionId: request.sessionId,
-        error: String(importError),
-      });
-      setError(String(importError));
       return null;
     }
   }, []);
@@ -348,7 +325,6 @@ export function useChats(): UseChatsResult {
     refreshChat,
     getChat,
     createChat,
-    importExistingChat,
     updateChat,
     markChatDone,
     deleteChat,
