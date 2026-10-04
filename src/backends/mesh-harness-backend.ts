@@ -221,6 +221,9 @@ export class MeshHarnessBackend implements Backend {
               if (this.interactions.size >= 512) throw new HarnessError("harness_event_gap", "The native interaction observation limit was reached.");
               this.interactions.set(event.requestId, id);
             }
+            if (event.type === "question.resolved" && this.interactions.get(event.requestId) === id) {
+              this.interactions.delete(event.requestId);
+            }
             this.hub.publish(id, event);
           } else throw new HarnessError("harness_event_gap", "The native event stream frame is invalid.");
           newline = buffer.indexOf("\n");

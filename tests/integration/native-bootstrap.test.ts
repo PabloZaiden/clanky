@@ -73,7 +73,7 @@ try {
 // Persisted native child permissions do not inherit a later root update.
 // Exercise the public adapter and native HTTP state: a controller scenario
 // cannot prepare a pre-policy descendant through the current creation API.
-test.skipIf(process.platform === "win32")("native OpenCode cold resume excludes legacy child questions while preserving unrelated permissions and roots", async () => {
+test.skipIf(process.platform === "win32")("native OpenCode cold resume preserves root permissions and excludes legacy child questions", async () => {
   const directory = await mkdtemp(join(tmpdir(), "clanky-opencode-child-policy-"));
   const executable = join(directory, "opencode2");
   const driver = join(directory, "driver.ts");
@@ -92,6 +92,12 @@ try {
     directory, ownership: { ownerId: crypto.randomUUID(), contextId: crypto.randomUUID(), questionPolicy: "interactive" },
   });
   const { questionPolicy, ...legacy } = session.binding;
+  const permissions = (await backend.getSdkClient().session.get({ sessionID: "foreign-root" })).permissions;
+  await backend.getSdkClient().session.update({ sessionID: session.id, permissions, metadata: { "clanky/binding": JSON.stringify(legacy) } });
+  await backend.disconnect();
+  await backend.connect(connection);
+  await backend.resumeSession({ ...legacy, questionPolicy: "interactive" });
+  const interactiveRoot = await backend.getSdkClient().session.get({ sessionID: session.id });
   await backend.getSdkClient().session.update({ sessionID: session.id, metadata: { "clanky/binding": JSON.stringify(legacy) } });
   await backend.disconnect();
   await backend.connect(connection);
@@ -100,10 +106,12 @@ try {
   const client = backend.getSdkClient();
   await client.session.prompt({ sessionID: "legacy-child", delivery: "queue", text: "Continue autonomously" });
   const first = await client.session.get({ sessionID: "legacy-child" });
+  const unattendedRoot = await client.session.get({ sessionID: session.id });
   await backend.resumeSession(binding);
   const repeated = await client.session.get({ sessionID: "legacy-child" });
   const foreign = await client.session.get({ sessionID: "foreign-root" });
-  await Bun.write(${JSON.stringify(join(directory, "proof.json"))}, JSON.stringify({ first, repeated, foreign }));
+  const repeatedRoot = await client.session.get({ sessionID: session.id });
+  await Bun.write(${JSON.stringify(join(directory, "proof.json"))}, JSON.stringify({ first, repeated, foreign, interactiveRoot, unattendedRoot, repeatedRoot }));
 } finally { await backend.disconnect(); }
 `);
   const child = Bun.spawn([process.execPath, driver], {
@@ -121,6 +129,9 @@ try {
     expect(proof.first.permissions).toEqual([...unrelated, { action: "question", resource: "*", effect: "deny" }]);
     expect(proof.repeated.permissions).toEqual(proof.first.permissions);
     expect(proof.foreign.permissions).toEqual(unrelated);
+    expect(proof.interactiveRoot.permissions).toEqual(unrelated);
+    expect(proof.unattendedRoot.permissions).toEqual([...unrelated, { action: "question", resource: "*", effect: "deny" }]);
+    expect(proof.repeatedRoot.permissions).toEqual(proof.unattendedRoot.permissions);
   } finally {
     if (child.exitCode === null) child.kill();
     await child.exited;

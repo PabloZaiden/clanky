@@ -10,6 +10,7 @@ import {
   MESH_EXECUTION_PROTOCOL_VERSION,
 } from "../../src/shared/mesh-execution";
 import { MESH_PROTOCOL_VERSION, type MeshProtocolVersion } from "../../src/shared/mesh-protocol";
+import { MeshHarnessEventSchema } from "../../src/contracts/schemas/mesh-harness";
 
 function buildRequest(
   encryptedEnvironment?: unknown,
@@ -36,6 +37,19 @@ function buildRequest(
 }
 
 describe("Mesh execution session protocol", () => {
+  // A pure protocol test protects the bounded child control identity before
+  // encrypted native events become owned persisted interaction scopes.
+  test("native Mesh child scopes require activity IDs of 1-500 characters", () => {
+    const event = { type: "question.resolved", requestId: "request-1", outcome: "cancelled" };
+    const valid = (activityId: string) => MeshHarnessEventSchema.safeParse({
+      ...event, scope: { kind: "child", activityId },
+    }).success;
+    expect(valid("a")).toBe(true);
+    expect(valid("a".repeat(500))).toBe(true);
+    expect(valid("")).toBe(false);
+    expect(valid("a".repeat(501))).toBe(false);
+  });
+
   test("signs the canonical v5 request shape", () => {
     const request = buildRequest(undefined, 5);
     const payload = JSON.stringify([

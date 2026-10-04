@@ -78,7 +78,7 @@ export class OpenCodeSessionService {
       requireMatchingHarnessBinding(typeof raw === "string" ? raw : undefined, binding);
       if (native.location.directory !== binding.directory || native.parentID) throw new HarnessError("harness_session_not_owned", "The native root does not match this binding.");
       await this.dependencies.client.session.update({
-        sessionID: native.id, permissions: this.questionPermissions(binding),
+        sessionID: native.id, permissions: this.questionPermissions(binding, native.permissions),
         metadata: { "clanky/binding": JSON.stringify(binding) },
       });
       const existing = this.conversations.get(native.id);

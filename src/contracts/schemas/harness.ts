@@ -39,7 +39,7 @@ export const HarnessQuestionInfoSchema = z.object({
 
 export const HarnessEventScopeSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("principal"), native: HarnessNativeReferencesSchema.optional() }),
-  z.object({ kind: z.literal("child"), activityId: z.string(), native: HarnessNativeReferencesSchema.optional() }),
+  z.object({ kind: z.literal("child"), activityId: z.string().min(1).max(500), native: HarnessNativeReferencesSchema.optional() }),
   z.object({ kind: z.literal("unknown"), native: HarnessNativeReferencesSchema.optional() }),
 ]);
 

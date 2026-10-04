@@ -93,8 +93,9 @@ use unattended policy. Copilot excludes `ask_user`; OpenCode denies `question`;
 Codex disables ordinary `request_user_input` and denies both question variants
 through a session-owned native `PreToolUse` hook. These controls apply on creation
 and cold resume without changing YOLO permissions or global harness settings.
-OpenCode reapplies question denial to owned persisted descendants on resume,
-preserving their other permission rules and leaving unrelated sessions untouched.
+OpenCode preserves existing root permissions on resume and reapplies question
+denial to owned persisted descendants, preserving their other permission rules
+and leaving unrelated sessions untouched.
 Native Mesh workers must advertise session question-policy support; update a
 worker that reports this capability as unsupported.
 

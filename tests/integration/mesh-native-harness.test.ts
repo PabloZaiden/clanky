@@ -133,6 +133,64 @@ test("Mesh native chat questions wait, accept owned answers once and expire afte
   }
 }, 60_000);
 
+// Cancelled native questions are not pending capacity. Exceed the real Mesh
+// interaction limit across short completed turns, then require a fresh owned
+// answer and native file effect through both gateway and controller proxy.
+// Existing tests cover single cancellations, not lifetime capacity recovery.
+test("Mesh native resolved questions release capacity for later owned answers", async () => {
+  const binaryDir = await createRuntime("opencode2");
+  const nodes: ManagedMeshNode[] = [];
+  try {
+    const controller = await startNode("controller", binaryDir); nodes.push(controller);
+    const worker = await startNode("worker", binaryDir); nodes.push(worker);
+    await enrollMeshWorker(controller, worker);
+    await Bun.write(join(worker.dataDir, "confirm-native-answers"), "confirm native replies");
+    const status = await meshJsonRequest<{ workers: Array<{ workerNodeId: string }> }>(controller, "/api/mesh/status");
+    const workspace = await meshJsonRequest<{ id: string }>(controller, "/api/workspaces", { body: {
+      name: "Resolved native question capacity", directory: worker.dataDir, workspaceType: "directory",
+      executionHost: { kind: "mesh", nodeId: status.body.workers[0]!.workerNodeId },
+      serverSettings: { agent: { adapter: "opencode2", provider: "opencode" } },
+    } });
+    expect(workspace.status).toBe(201);
+    const created = await meshJsonRequest<Chat>(controller, "/api/chats", { body: {
+      name: "Resolved questions", workspaceId: workspace.body.id, useWorktree: false,
+      model: { providerID: "opencode", modelID: "fixture-model", variant: "" },
+    } });
+    expect(created.status).toBe(201);
+    const id = created.body.config.id;
+    const read = async () => (await meshJsonRequest<Chat>(controller, `/api/chats/${id}`)).body;
+    for (let cycle = 0; cycle < 33; cycle++) {
+      const sent = await meshJsonRequest(controller, `/api/chats/${id}/messages`, {
+        body: { message: `resolved-question-cycle:${cycle}` },
+      });
+      expect({ cycle, response: sent }).toMatchObject({ response: { status: 200 } });
+      await pollUntil(read, (chat) => {
+        if (chat.state.status === "failed") throw new Error(`Native question stream failed in turn ${cycle}: ${JSON.stringify(chat.state.error)}`);
+        const last = chat.state.harness?.questions?.at(-1);
+        return chat.state.status === "idle" && last?.requestId === `cycle-${cycle}-15` && last.status === "cancelled";
+      }, {
+        description: `native cancelled question turn ${cycle} settles`,
+        timeoutMs: 10_000,
+        formatLastObserved: (chat) => JSON.stringify({ status: chat.state.status, error: chat.state.error, question: chat.state.harness?.questions?.at(-1) }),
+      });
+    }
+    expect((await meshJsonRequest(controller, `/api/chats/${id}/messages`, { body: { message: "Ask for a color" } })).status).toBe(200);
+    const pending = await pollUntil(read, (chat) => chat.state.status === "waiting" && chat.state.harness?.questions?.at(-1)?.status === "pending", {
+      description: "new question remains answerable after 528 native cancellations", timeoutMs: 10_000,
+    });
+    const requestId = pending.state.harness!.questions!.at(-1)!.requestId;
+    expect((await meshJsonRequest(controller, `/api/chats/${id}/questions/${requestId}`, { body: { answers: [["Blue"]] } })).status).toBe(200);
+    const settled = await pollUntil(read, (chat) => chat.state.status === "idle" && chat.state.harness?.questions?.at(-1)?.status === "answered", {
+      description: "new owned answer reaches the native provider and settles", timeoutMs: 10_000,
+    });
+    expect(settled.state.error).toBeUndefined();
+    expect(await Bun.file(join(worker.dataDir, "native-answer-effects.json")).json()).toEqual([{ color: "Blue" }]);
+  } finally {
+    for (const node of nodes.reverse()) { node.child.kill(); await node.child.exited; await rm(node.dataDir, { recursive: true, force: true }); }
+    await rm(binaryDir, { recursive: true, force: true });
+  }
+}, 60_000);
+
 // A missing native receipt after irreversible admission must remain uncertain.
 // This HTTP workflow protects against blind retries using persisted state and
 // the provider's file effect, independently of adapter/Core decomposition.

@@ -92,8 +92,20 @@ const server = Bun.serve({
         await save();
         emit("session.execution.succeeded", { sessionID: session.id });
       } else {
+        const input = await request.json() as { text?: string };
         active = true;
         emit("session.execution.started", { sessionID: session.id });
+        const cycle = /^resolved-question-cycle:(\d+)$/.exec(input.text ?? "");
+        if (cycle) {
+          for (let index = 0; index < 16; index++) {
+            const id = `cycle-${cycle[1]}-${index}`;
+            emit("form.created", { form: { ...form, id } });
+            emit("form.cancelled", { id, sessionID: session.id });
+          }
+          active = false;
+          emit("session.execution.succeeded", { sessionID: session.id });
+          return Response.json({ data: { id: crypto.randomUUID(), sessionID: session.id, type: "user" } });
+        }
         form.status = "pending";
         emit("form.created", { form });
       }
@@ -106,6 +118,12 @@ const server = Bun.serve({
       if (history.length >= 32) throw new Error("Native fixture answer capacity reached.");
       await Bun.write(historyFile, JSON.stringify([...history, input.answer]));
       form.status = "answered";
+      if (await Bun.file(`${directory}/confirm-native-answers`).exists()) {
+        active = false;
+        emit("form.replied", { id: form.id, sessionID: session.id });
+        emit("session.execution.succeeded", { sessionID: session.id });
+        return new Response(null, { status: 204 });
+      }
       // The provider accepted the input, but both acknowledgement paths were
       // lost. No native receipt is available to justify a retry or success.
       return Response.json({ error: "Reply acknowledgement lost" }, { status: 503 });
