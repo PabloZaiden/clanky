@@ -116,6 +116,8 @@ export async function processTaskAgentEvent(
 
     case "question.asked":
       await handleQuestionAsked(event, toolCtx);
+      ctx.outcome = "blocked";
+      ctx.error = "The harness requested human input during an unattended task.";
       break;
 
     case "session.status":
@@ -272,17 +274,10 @@ export async function handleQuestionAsked(
   event: AgentEvent & { type: "question.asked" },
   toolCtx: ToolProcessingContext,
 ): Promise<void> {
-  toolCtx.emitLog("info", "Auto-responding to question from AI", {
+  toolCtx.emitLog("warn", "Stopping unexpected human input in unattended task", {
     requestId: event.requestId,
     questionCount: event.questions.length,
   });
-  try {
-    const answers = event.questions.map(() =>
-      ["take the best course of action you recommend"]
-    );
-    await toolCtx.backend.replyToQuestion(event.requestId, answers);
-    toolCtx.emitLog("info", "Question answered successfully");
-  } catch (questionErr) {
-    toolCtx.emitLog("warn", `Failed to answer question: ${String(questionErr)}`);
-  }
+  if (!toolCtx.sessionId) throw new Error("An unattended question has no active session to stop.");
+  await toolCtx.backend.abortSession(toolCtx.sessionId);
 }

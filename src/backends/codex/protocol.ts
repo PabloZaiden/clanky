@@ -7,6 +7,8 @@ import type * as P from "./generated";
 export interface CodexMethods {
   "initialize": [P.InitializeParams, P.InitializeResponse];
   "model/list": [P.ModelListParams, P.ModelListResponse];
+  "config/read": [P.ConfigReadParams, P.ConfigReadResponse];
+  "configRequirements/read": [undefined, P.ConfigRequirementsReadResponse];
   "thread/start": [P.ThreadStartParams, P.ThreadStartResponse];
   "thread/resume": [P.ThreadResumeParams, P.ThreadResumeResponse];
   "thread/read": [P.ThreadReadParams, P.ThreadReadResponse];

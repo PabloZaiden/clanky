@@ -31,6 +31,14 @@ export interface QuestionInfo {
   options: QuestionOption[];
   multiple?: boolean;
   custom?: boolean;
+  valueType?: "string" | "number" | "integer";
+  minimum?: number;
+  maximum?: number;
+  required?: boolean;
+  minLength?: number;
+  maxLength?: number;
+  minItems?: number;
+  maxItems?: number;
 }
 
 export type HarnessEventPayload =
@@ -45,7 +53,8 @@ export type HarnessEventPayload =
   | { type: "request.error"; message: string; code: string; details?: Readonly<Record<string, unknown>> }
   | { type: "error"; message: string; code?: string; details?: Readonly<Record<string, unknown>> }
   | { type: "permission.asked"; requestId: string; sessionId: string; permission: string; patterns: string[] }
-  | { type: "question.asked"; requestId: string; sessionId: string; questions: QuestionInfo[] }
+  | { type: "question.asked"; requestId: string; sessionId: string; questions: QuestionInfo[]; blocking?: boolean; responseMode?: "callback" | "message" }
+  | { type: "question.resolved"; requestId: string; outcome: "answered" | "cancelled" | "expired" }
   | { type: "prompt.complete"; outcome: "completed" | "interrupted" }
   | {
       type: "session.status";

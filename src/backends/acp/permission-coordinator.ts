@@ -16,6 +16,7 @@ import { invokeOptionalMethod } from "./optional-method";
 import type { JsonRpcMessage, PendingPermissionRequest } from "./types";
 import type { RpcRequester } from "./contracts";
 import type { SessionStateStore } from "./session-state";
+import { HarnessError } from "../harness-errors";
 
 export class PermissionCoordinator {
   /** Track active permission requests that expect a JSON-RPC response. */
@@ -155,10 +156,7 @@ export class PermissionCoordinator {
     );
 
     if (outcome.kind === "method-not-found") {
-      log.debug("[AcpBackend] Question reply is not supported by current ACP provider", {
-        requestId,
-        answersCount: answers.length,
-      });
+      throw new HarnessError("harness_unsupported_feature", "This ACP provider cannot accept question responses. Stop this turn to release the request.");
     }
   }
 }

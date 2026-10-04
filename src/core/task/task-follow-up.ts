@@ -34,6 +34,7 @@ export async function sendFollowUpImpl(
     );
   }
 
+  await ctx.engines.get(taskId)?.waitForCompletionSettlement();
   const task = await loadTask(taskId);
   if (!task) {
     return taskFailure("task_not_found", "Task not found", { details: { taskId } });

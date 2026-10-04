@@ -23,6 +23,7 @@ export class CopilotControl implements HarnessControl {
       adapter: "copilot", experimental: true,
       steering: "active-session", activity: "native",
       stopScopes: ["child-execution", "command"],
+      questionPolicy: "session",
     };
   }
 

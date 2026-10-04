@@ -34,7 +34,18 @@ export class CodexEventTranslator {
       case "item/started":
         return this.translateItem(event.params.item, false).map(wrap);
       case "item/completed":
-        return this.translateItem(event.params.item, true).map(wrap);
+        return [
+          ...this.translateItem(event.params.item, true),
+          ...(event.params.item.type === "agentMessage" && event.params.item.delivery === "async" && event.params.item.questions?.length ? [{
+            type: "question.asked" as const,
+            requestId: `async:${event.params.threadId}:${event.params.item.id}`,
+            sessionId: event.params.threadId, blocking: false, responseMode: "message" as const,
+            questions: event.params.item.questions.map((question) => ({
+              question: question.title, header: "", custom: true,
+              options: (question.options ?? []).map((label) => ({ label, description: "" })),
+            })),
+          }] : []),
+        ].map(wrap);
       case "item/commandExecution/outputDelta":
         return [wrap({ type: "activity.changed" })];
       case "error":

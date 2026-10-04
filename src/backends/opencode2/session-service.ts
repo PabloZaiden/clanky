@@ -47,7 +47,7 @@ export class OpenCodeSessionService {
       const native = await this.dependencies.client.session.create({
         title: options.title, location: { directory: options.directory },
         model: model ? { id: model.id, providerID: model.providerID } : undefined,
-        permissions: [{ action: "*", resource: "*", effect: "allow" }],
+        permissions: this.questionPermissions(options.ownership),
       });
       const binding: HarnessConversationBinding = { ...options.ownership, adapter: "opencode2", nativeId: native.id, directory: options.directory };
       try {
@@ -77,11 +77,37 @@ export class OpenCodeSessionService {
       const raw = native.metadata?.["clanky/binding"];
       requireMatchingHarnessBinding(typeof raw === "string" ? raw : undefined, binding);
       if (native.location.directory !== binding.directory || native.parentID) throw new HarnessError("harness_session_not_owned", "The native root does not match this binding.");
+      await this.dependencies.client.session.update({
+        sessionID: native.id, permissions: this.questionPermissions(binding, native.permissions),
+        metadata: { "clanky/binding": JSON.stringify(binding) },
+      });
       const existing = this.conversations.get(native.id);
-      return existing?.info ?? this.attach(native, binding);
+      const info = existing?.info ?? await this.attach(native, binding);
+      info.binding = binding;
+      if (binding.questionPolicy !== "interactive") {
+        // Persisted children retain their own permission snapshots on resume.
+        const descendants = await this.reconcileDescendants(native.id);
+        for (const descendant of descendants) {
+          const child = await this.dependencies.client.session.get({ sessionID: descendant.id });
+          if (child.parentID !== descendant.parentID) throw new HarnessError("harness_session_not_owned", "The native child lineage changed during resume.");
+          const permissions = this.questionPermissions(binding, child.permissions ?? []);
+          if (JSON.stringify(permissions) !== JSON.stringify(child.permissions)) {
+            await this.dependencies.client.session.update({ sessionID: child.id, permissions });
+          }
+        }
+      }
+      return info;
     }).finally(() => { this.resumes.delete(binding.nativeId); });
     this.resumes.set(binding.nativeId, { binding, promise });
     return promise;
+  }
+  private questionPermissions(
+    binding: Pick<HarnessConversationBinding, "questionPolicy">,
+    permissions: NonNullable<NativeSession["permissions"]> = [{ action: "*", resource: "*", effect: "allow" }],
+  ) {
+    if (binding.questionPolicy === "interactive") return permissions;
+    return [...permissions.filter((rule) => rule.action !== "question" || rule.resource !== "*"),
+      { action: "question", resource: "*", effect: "deny" as const }];
   }
   get(id: string): Conversation {
     if (this.observationFailure) throw this.observationFailure;
@@ -96,23 +122,29 @@ export class OpenCodeSessionService {
     this.get(rootId);
     return [...this.tracked.values()].filter((entry) => entry.rootId === rootId && entry.native.id !== rootId).map((entry) => entry.native);
   }
-  async reconcileDescendants(rootId: string): Promise<void> {
+  async reconcileDescendants(rootId: string): Promise<ActivitySession[]> {
     this.get(rootId);
     const parents = [rootId];
+    const descendants: ActivitySession[] = [];
     for (let index = 0; index < parents.length; index += 1) {
       let cursor: string | undefined;
       for (let page = 0; page < 20; page += 1) {
         const result = await this.dependencies.client.session.list({ parentID: parents[index]!, cursor, limit: 50 });
         for (const child of result.data) {
+          if (child.parentID !== parents[index]) throw new HarnessError("harness_session_not_owned", "The native descendant list contains a foreign session.");
           if (parents.length >= 1000) throw new HarnessError("harness_event_gap", "The native descendant graph exceeded its limit.");
           this.track(child, rootId);
-          if (!parents.includes(child.id)) parents.push(child.id);
+          if (!parents.includes(child.id)) {
+            parents.push(child.id);
+            descendants.push(child);
+          }
         }
         if (!result.cursor.next) break;
         cursor = result.cursor.next;
         if (page === 19) throw new HarnessError("harness_event_gap", "The native descendant list exceeded its limit.");
       }
     }
+    return descendants;
   }
   async send(id: string, prompt: PromptInput): Promise<void> {
     this.get(id);

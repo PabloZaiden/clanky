@@ -177,6 +177,7 @@ export class TaskPromptExecutorImpl implements TaskPromptExecutor {
             log.trace("[TaskEngine] runIteration: Received event", { type: event.type });
             this.updateState({ lastActivityAt: createTimestamp() });
             const transcriptResult = await this.processAgentEvent(event, ctx);
+            if (ctx.outcome === "blocked") return { stop: true };
             if (transcriptResult.checkpointRequested) {
               await this.triggerPersistence();
               ctx.transcript.acknowledgeCheckpoint();
@@ -207,6 +208,7 @@ export class TaskPromptExecutorImpl implements TaskPromptExecutor {
         });
         if (
           this.backend.harness.capabilities.adapter !== "acp"
+          && ctx.outcome !== "blocked"
           && !this.isAborted()
           && streamResult.lastEvent?.type !== "prompt.complete"
           && streamResult.lastEvent?.type !== "error"

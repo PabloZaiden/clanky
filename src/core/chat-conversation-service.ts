@@ -74,6 +74,7 @@ import { retainHarnessInputReceipt } from "./harness-input-ledger";
 import { createTransientHarnessSession, cleanupTransientHarnessSession } from "./harness-session";
 import { HarnessError } from "../backends/harness-errors";
 import { isDomainError } from "../domain/domain-error";
+import { expireQuestions } from "@/shared/harness-questions";
 
 const log = createLogger("chat-conversation-service");
 const DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS = DEFAULT_ACTIVITY_TIMEOUT_SECONDS * 1000;
@@ -144,6 +145,7 @@ export class ChatConversationService implements ChatConversationPort {
   private readonly emitter: SimpleEventEmitter<ChatEvent>;
   private readonly scheduleQueuedMessageDrain: (chatId: string) => void;
   private permissionHandler: ChatPermissionHandler | undefined;
+  private questionHandler?: (chat: Chat, event: AgentEvent) => Promise<void>;
   private activityTimeoutMs = DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS;
   private nameGenerationTimeoutMs = DEFAULT_CHAT_NAME_TIMEOUT_MS;
 
@@ -158,6 +160,10 @@ export class ChatConversationService implements ChatConversationPort {
 
   setPermissionHandler(handler: ChatPermissionHandler): void {
     this.permissionHandler = handler;
+  }
+
+  setQuestionHandler(handler: (chat: Chat, event: AgentEvent) => Promise<void>): void {
+    this.questionHandler = handler;
   }
 
   setActivityTimeoutForTesting(timeoutMs: number | undefined): void {
@@ -566,6 +572,9 @@ export class ChatConversationService implements ChatConversationPort {
 
     try {
       const streamResult = await handle.consume({
+        isWaitingForInput: async () => (await this.state.getChatSummary(chatId))?.state.harness?.questions?.some(
+          (request) => request.blocking && ["pending", "submitting", "unconfirmed"].includes(request.status),
+        ) ?? false,
         shouldStop: () => !this.isActiveStreamGeneration(chatId, generation),
         onInactivity: async () => {
           if (!sessionId) {
@@ -651,6 +660,11 @@ export class ChatConversationService implements ChatConversationPort {
       }
       const errorChat = await this.loadChatIfAvailable(chatId);
       if (errorChat && this.isActiveStreamGeneration(chatId, generation)) {
+        if (sessionId && backend.isConnected()) {
+          try { await backend.abortSession(sessionId); } catch (abortError) {
+            log.error("Failed to cancel chat after stream failure", { chatId, error: String(abortError) });
+          }
+        }
         await this.emitChatError(errorChat, error);
       }
     } finally {
@@ -1113,12 +1127,11 @@ export class ChatConversationService implements ChatConversationPort {
         break;
 
       case "question.asked":
-        streamState.chat = await this.emitChatError(
-          streamState.chat,
-          `Interactive question requires a UI response: ${event.questions.map((question) => question.question).join(" | ")}`,
-        );
-        streamState.interpreter.acknowledgeCheckpoint();
-        return { stop: true };
+      case "question.resolved":
+        if (!this.questionHandler) throw new HarnessError("harness_unsupported_feature", "Chat question handling is unavailable.");
+        await this.questionHandler(streamState.chat, event);
+        await this.reloadChatStreamMetadata(chatId, streamState);
+        break;
     }
 
     if (transcriptResult.checkpointRequested) {
@@ -1603,6 +1616,7 @@ export class ChatConversationService implements ChatConversationPort {
         status: "cancelled",
         resolvedAt: now,
       }),
+      harness: { ...chat.state.harness, questions: expireQuestions(chat.state.harness?.questions) },
       toolCalls,
       lastActivityAt: now,
     };

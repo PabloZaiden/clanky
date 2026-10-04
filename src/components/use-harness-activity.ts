@@ -51,7 +51,14 @@ export function useHarnessActivity({
     };
   }, [refresh]);
   // The entity lifecycle already refreshes this projection through private resource events.
-  useEffect(() => { if (snapshot) setActivity(snapshot); }, [snapshot]);
+  useEffect(() => {
+    if (snapshot) {
+      readRef.current?.abort();
+      setActivity(snapshot);
+      setLoaded(true);
+      setError(undefined);
+    }
+  }, [snapshot]);
   useEffect(() => {
     if (activity?.observation === "available" && activity.activities.some((item) =>
       item.id === unconfirmedId && (item.status === "stopped" || item.status === "completed"))) {
@@ -79,5 +86,5 @@ export function useHarnessActivity({
       if (mountedRef.current) setStoppingId(undefined);
     }
   }
-  return { activity, loaded, error, stoppingId, unconfirmedId, refresh, stop };
+  return { activity, loaded, error, stoppingId, unconfirmedId, stop };
 }

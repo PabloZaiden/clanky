@@ -12,6 +12,7 @@ import { harnessEventEmitter } from "./event-emitter";
 import { HarnessError } from "../backends/harness-errors";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { KeyedOperationQueue } from "../utils/keyed-operation-queue";
+import { isDomainError } from "../domain/domain-error";
 
 const log = createLogger("harness-activity");
 
@@ -23,8 +24,12 @@ interface Observation {
   stopped: boolean;
   interval?: ReturnType<typeof setInterval>;
   pending?: ReturnType<typeof setTimeout>;
+  reconnect?: { timer: ReturnType<typeof setTimeout>; wake: () => void };
   refresh?: Promise<void>;
   loop: Promise<void>;
+  onEvent?: (event: HarnessEvent) => Promise<void>;
+  failures: number;
+  nextRefreshAt: number;
   publish(projection: Pick<HarnessConversationState, "activity" | "cleanup">): boolean;
 }
 
@@ -32,11 +37,11 @@ export class HarnessActivityService {
   private readonly observations = new Map<string, Observation>();
   private readonly operations = new KeyedOperationQueue();
 
-  observe(context: HarnessContext, binding: HarnessConversationBinding, backend: Observation["backend"]): Promise<void> {
-    return this.operations.run(this.key(context), () => this.observeCurrent(context, binding, backend));
+  observe(context: HarnessContext, binding: HarnessConversationBinding, backend: Observation["backend"], onEvent?: Observation["onEvent"]): Promise<void> {
+    return this.operations.run(this.key(context), () => this.observeCurrent(context, binding, backend, onEvent));
   }
 
-  private async observeCurrent(context: HarnessContext, binding: HarnessConversationBinding, backend: Observation["backend"]): Promise<void> {
+  private async observeCurrent(context: HarnessContext, binding: HarnessConversationBinding, backend: Observation["backend"], onEvent?: Observation["onEvent"]): Promise<void> {
     if (backend.harness.capabilities.activity === "unavailable") return;
     const user = requireCurrentUser();
     if (binding.ownerId !== user.id || binding.contextId !== context.id || binding.adapter !== backend.harness.capabilities.adapter) {
@@ -44,12 +49,14 @@ export class HarnessActivityService {
     }
     const key = this.key(context);
     const previous = this.observations.get(key);
-    if (previous?.backend === backend && previous.binding.nativeId === binding.nativeId) return;
+    if (previous?.backend === backend && previous.binding.nativeId === binding.nativeId && !previous.stopped) return;
     await this.closeCurrent(context);
     if (this.observations.size >= 1000) throw new HarnessError("harness_request_failed", "Activity observation capacity reached.");
     const stream = await backend.subscribeToEvents(binding.nativeId);
     const observation: Observation = {
       context, binding, backend, stream, stopped: false, loop: Promise.resolve(),
+      failures: 0, nextRefreshAt: 0,
+      onEvent: onEvent ? (event) => runWithCurrentUser(user, () => onEvent(event)) : undefined,
       publish: (projection) => runWithCurrentUser(user, () => {
         const saved = mergeHarnessProjection(context, binding, projection);
         if (saved) harnessEventEmitter.emit({ type: "harness.changed", context }, { userId: user.id });
@@ -64,7 +71,7 @@ export class HarnessActivityService {
       observation.loop = this.consume(observation).catch((error) => {
         log.error("Unable to persist observation failure", { context, error: String(error) });
       });
-      await this.refresh(observation);
+      await this.refresh(observation).catch((error: unknown) => this.failedRefresh(observation, error));
       if (!observation.stopped) observation.interval = setInterval(() => this.scheduleRefresh(observation), 5_000);
     } catch (error) {
       await this.closeCurrent(context);
@@ -122,34 +129,55 @@ export class HarnessActivityService {
   }
 
   private async consume(observation: Observation): Promise<void> {
-    try {
-      while (!observation.stopped) {
+    let failures = 0;
+    while (!observation.stopped) {
+      try {
         const event = await observation.stream.next();
-        if (!event) {
-          if (!observation.stopped) observation.publish({ activity: { observation: "unavailable", reason: "disconnected" } });
-          break;
+        if (event) {
+          failures = 0;
+          if (observation.onEvent) await observation.onEvent(event);
+          if (event.type === "activity.changed" || event.type === "prompt.complete" || event.type === "session.status" || event.type === "tool.start" || event.type === "tool.complete") {
+            this.scheduleRefresh(observation);
+          }
+          continue;
         }
-        if (event.type === "activity.changed" || event.type === "prompt.complete" || event.type === "session.status" || event.type === "tool.start" || event.type === "tool.complete") {
-          this.scheduleRefresh(observation);
+        if (!observation.stopped) observation.publish({ activity: { observation: "unavailable", reason: "disconnected" } });
+      } catch (error) {
+        log.warn("Harness activity observation interrupted", { context: observation.context, error: String(error) });
+        if (!observation.stopped) observation.publish({ activity: { observation: "unavailable", reason: "gap" } });
+        if (this.isPermanentFailure(error)) {
+          this.stop(observation);
+          return;
         }
       }
-    } catch (error) {
-      log.error("Harness activity observation failed", { context: observation.context, error: String(error) });
-      observation.publish({ activity: { observation: "unavailable", reason: "gap" } });
-    } finally {
-      this.stop(observation);
-      if (this.observations.get(this.key(observation.context)) === observation) this.observations.delete(this.key(observation.context));
+      observation.stream.close();
+      while (!observation.stopped) {
+        failures = Math.min(failures + 1, 6);
+        await new Promise<void>((wake) => {
+          const timer = setTimeout(wake, Math.min(30_000, 1000 * 2 ** failures));
+          observation.reconnect = { timer, wake };
+        });
+        observation.reconnect = undefined;
+        if (observation.stopped) return;
+        try {
+          const stream = await observation.backend.subscribeToEvents(observation.binding.nativeId);
+          if (observation.stopped) { stream.close(); return; }
+          observation.stream = stream;
+          this.scheduleRefresh(observation);
+          break;
+        } catch (error) {
+          this.failedRefresh(observation, error);
+        }
+      }
     }
   }
 
   private scheduleRefresh(observation: Observation): void {
-    if (observation.stopped || observation.pending) return;
+    if (observation.stopped || observation.pending || Date.now() < observation.nextRefreshAt) return;
     observation.pending = setTimeout(() => {
       observation.pending = undefined;
       void this.refresh(observation).catch((error) => {
-        log.error("Harness activity refresh failed", { context: observation.context, error: String(error) });
-        observation.publish({ activity: { observation: "unavailable", reason: "gap" } });
-        this.stop(observation);
+        this.failedRefresh(observation, error);
       });
     }, 100);
   }
@@ -159,6 +187,8 @@ export class HarnessActivityService {
     const operation = (async () => {
       const activity = await observation.backend.harness.getActivity(observation.binding.nativeId);
       if (!observation.stopped && !observation.publish({ activity })) this.stop(observation);
+      observation.failures = 0;
+      observation.nextRefreshAt = 0;
     })();
     observation.refresh = operation;
     void operation.finally(() => { if (observation.refresh === operation) observation.refresh = undefined; }).catch((error) => {
@@ -167,11 +197,30 @@ export class HarnessActivityService {
     return operation;
   }
 
+  private failedRefresh(observation: Observation, error: unknown): void {
+    const permanent = this.isPermanentFailure(error);
+    log[permanent ? "error" : "warn"]("Harness activity refresh failed", { context: observation.context, error: String(error) });
+    if (!observation.stopped) observation.publish({ activity: { observation: "unavailable", reason: "gap" } });
+    if (permanent) this.stop(observation);
+    else {
+      observation.failures = Math.min(observation.failures + 1, 6);
+      observation.nextRefreshAt = Date.now() + Math.min(30_000, 1000 * 2 ** observation.failures);
+    }
+  }
+
   private stop(observation: Observation): void {
     observation.stopped = true;
     clearInterval(observation.interval);
     clearTimeout(observation.pending);
+    if (observation.reconnect) {
+      clearTimeout(observation.reconnect.timer);
+      observation.reconnect.wake();
+    }
     observation.stream.close();
+  }
+
+  private isPermanentFailure(error: unknown): boolean {
+    return isDomainError(error) && ["harness_session_not_owned", "harness_session_not_found", "harness_unsupported_feature"].includes(error.code);
   }
 
   private key(context: HarnessContext): string { return `${context.kind}:${context.id}`; }

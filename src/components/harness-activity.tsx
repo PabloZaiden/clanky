@@ -1,6 +1,5 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import {
-  CodeValue,
   DataList,
   DataListRow,
   EmptyState,
@@ -15,7 +14,7 @@ import type {
   HarnessCapabilities,
   HarnessInputReceipt,
 } from "@/shared/harness-control";
-import { Button, StatusBadge } from "./common";
+import { StatusBadge } from "./common";
 import { HarnessInputActions } from "./harness-input-actions";
 import { useHarnessActivity } from "./use-harness-activity";
 
@@ -94,64 +93,48 @@ function ActivityRow({
   onStop: () => void;
 }) {
   return (
-    <div>
-      <DataListRow
-        title={activity.description}
-        description={activity.kind === "subagent" ? "Subagent" : activity.kind === "process" ? "Process" : "External activity"}
-        meta={activity.lastActivity}
-        metaPlacement="below"
-        badge={<StatusBadge size="sm">{activity.status}</StatusBadge>}
-        actions={canStop ? (
-          <Button variant="danger" size="sm" loading={stopping} disabled={disabled} onClick={onStop}>Stop</Button>
-        ) : undefined}
-      />
-      <details className="px-3 pb-3 text-xs text-gray-500 dark:text-gray-400">
-        <summary className="cursor-pointer">Details</summary>
-        <div className="mt-2 space-y-2">
-          <CodeValue label="Activity" value={activity.id} />
-          {activity.parentId && <CodeValue label="Parent" value={activity.parentId} />}
-          {activity.spawningToolCallId && <CodeValue label="Tool" value={activity.spawningToolCallId} />}
-          {activity.requestedModel && <div>Requested model: {activity.requestedModel}</div>}
-          {activity.effectiveModel && <div>Effective model: {activity.effectiveModel}</div>}
-          <div>Ownership: {activity.ownership}</div>
-          <div>Workspace writes: {activity.workspaceWrites}</div>
-        </div>
-      </details>
-    </div>
+    <DataListRow
+      title={<span className="block truncate">{activity.description}</span>}
+      description={activity.kind === "subagent" ? activity.effectiveModel ?? activity.requestedModel ?? "Model not reported"
+        : activity.kind === "process" ? "Process" : "External activity"}
+      badge={<StatusBadge size="sm">{activity.status}</StatusBadge>}
+      actions={canStop ? (
+        <button type="button" className="shrink-0 py-1 text-xs text-gray-500 underline decoration-dotted underline-offset-2 hover:text-red-600 disabled:opacity-50 dark:text-gray-400" disabled={disabled || stopping} onClick={onStop}>
+          {stopping ? "Stopping" : "Stop"}
+        </button>
+      ) : undefined}
+    />
   );
 }
 
 function HarnessActivityPage({ kind, entityId, snapshot, capabilities, onBack }: HarnessActivityProps) {
-  const { activity, loaded, error, stoppingId, unconfirmedId, refresh, stop } = useHarnessActivity({ kind, entityId, snapshot });
+  const { activity, loaded, error, stoppingId, unconfirmedId, stop } = useHarnessActivity({ kind, entityId, snapshot });
   return (
     <Page className="h-full overflow-y-auto">
       <Panel
         title="Activity"
-        actions={<Button variant="ghost" size="sm" onClick={onBack}>Back to {kind}</Button>}
+        actions={<button type="button" className="py-1 text-xs text-gray-500 underline decoration-dotted underline-offset-2 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100" onClick={onBack}>Back to {kind}</button>}
       >
         {!loaded ? <LoadingState title="Observing activity" /> : error ? (
           <ErrorState
             title="Activity could not be observed"
             description={error}
-            action={<Button size="sm" onClick={() => void refresh()}>Retry</Button>}
           />
         ) : activity?.observation !== "available" ? (
           <ErrorState
             title={activity?.reason === "unsupported" ? "Activity is not supported" : "Activity is unavailable"}
             description={activity?.reason === "disconnected" ? "The native session is disconnected." : "Active work cannot be confirmed."}
-            action={<Button variant="ghost" size="sm" onClick={() => void refresh()}>Refresh</Button>}
           />
         ) : (
           <div className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
               <span>Principal: {activity.principalProcessing ? "Running" : "Idle"}</span>
-              <Button variant="ghost" size="sm" onClick={() => void refresh()}>Refresh</Button>
             </div>
             {activity.coverage === "partial" && (
               <ErrorState title="Partial observation" description="Some background work may not be visible." />
             )}
             {unconfirmedId && (
-              <ErrorState title="Termination unconfirmed" description="Refresh activity before assuming the work has stopped." />
+              <ErrorState title="Termination unconfirmed" description="Waiting for native termination confirmation." />
             )}
             <DataList>
               {activity.activities.length === 0 ? <EmptyState title="No observed background activity" /> : (

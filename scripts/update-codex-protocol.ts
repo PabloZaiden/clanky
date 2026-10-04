@@ -13,7 +13,7 @@ const destination = resolve(import.meta.dir, "../src/backends/codex/generated");
 const roots = [
   "InitializeParams", "InitializeResponse",
   ...[
-    "ModelList", "ThreadStart", "ThreadResume", "ThreadRead", "ThreadList",
+    "ModelList", "ConfigRead", "ThreadStart", "ThreadResume", "ThreadRead", "ThreadList",
     "ThreadDelete", "ThreadItemsList", "ThreadTurnsList", "TurnStart", "TurnSteer",
     "TurnInterrupt", "ThreadBackgroundTerminalsList", "ThreadBackgroundTerminalsTerminate",
   ].flatMap((name) => [`v2/${name}Params`, `v2/${name}Response`]),
@@ -24,6 +24,7 @@ const roots = [
     "ServerRequestResolved",
   ].map((name) => `v2/${name}Notification`),
   "v2/ToolRequestUserInputParams", "v2/ToolRequestUserInputResponse",
+  "v2/ConfigRequirementsReadResponse",
 ];
 try {
   const generated = Bun.spawn([executable, "app-server", "generate-ts", "--experimental", "--out", output], { stdout: "inherit", stderr: "inherit" });
