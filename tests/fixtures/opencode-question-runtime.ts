@@ -3,6 +3,7 @@
  * acknowledgement. Real adapters and application routes own the workflows.
  */
 import type { SessionInfo, PermissionRuleset } from "@opencode/client";
+import { pollUntil } from "../helpers/polling";
 
 if (process.argv.includes("--version")) {
   console.log("2.0.20");
@@ -25,6 +26,17 @@ const sessions: Session[] = await Bun.file(stateFile).exists() ? await Bun.file(
 const streams = new Set<ReadableStreamDefaultController<Uint8Array>>();
 let active = false;
 const save = async (): Promise<void> => { await Bun.write(stateFile, JSON.stringify(sessions)); };
+let overlappingRequests: Promise<boolean> | undefined;
+const waitForOverlap = async (marker: string): Promise<void> => {
+  if (!await Bun.file(`${directory}/gate-question-reconnect`).exists()) return;
+  await Bun.write(`${directory}/${marker}`, "");
+  overlappingRequests ??= pollUntil(
+    async () => await Bun.file(`${directory}/release-question-reconnect`).exists(),
+    (released) => released,
+    { description: "release overlapping native reconnect and lost answer receipt", timeoutMs: 10_000 },
+  );
+  await overlappingRequests;
+};
 const emit = (type: string, data: unknown): void => {
   const frame = new TextEncoder().encode(`data: ${JSON.stringify({ id: crypto.randomUUID(), type, created: Date.now(), data })}\n\n`);
   for (const stream of streams) stream.enqueue(frame);
@@ -80,6 +92,7 @@ const server = Bun.serve({
       if (request.method === "PATCH") {
         Object.assign(session, await request.json());
         await save();
+        await waitForOverlap("native-reconnect-ready");
       }
       return new Response(null, { status: 204 });
     }
@@ -126,6 +139,7 @@ const server = Bun.serve({
       }
       // The provider accepted the input, but both acknowledgement paths were
       // lost. No native receipt is available to justify a retry or success.
+      await waitForOverlap("native-answer-ready");
       return Response.json({ error: "Reply acknowledgement lost" }, { status: 503 });
     }
     if (suffix === "/form/native-question" && request.method === "DELETE") {

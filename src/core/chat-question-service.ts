@@ -118,24 +118,25 @@ export class ChatQuestionService {
 
   private async save(chat: Chat, questions: HarnessQuestionRequest[]): Promise<Chat> {
     // Metadata-only reads do not carry transcript counts or collections.
-    const current = await this.dependencies.state.getChat(chat.config.id);
-    if (!current?.state.session?.binding || !chat.state.session?.binding) {
-      throw new HarnessError("harness_question_closed", "The question conversation is no longer active.");
-    }
-    requireMatchingHarnessBinding(JSON.stringify(chat.state.session.binding), current.state.session.binding);
-    const next = questions.map((request) => {
-      const authoritative = current.state.harness?.questions?.find((entry) => entry.requestId === request.requestId);
-      return authoritative && !isQuestionOpen(authoritative) ? authoritative : request;
-    });
-    const waiting = next.some((request) => request.blocking && isQuestionOpen(request));
-    const active = this.dependencies.hasActiveStream(chat.config.id);
-    const status = waiting && active && !current.state.startupStage && isChatBusyStatus(current.state.status) ? "waiting"
-      : current.state.status === "waiting" && !waiting ? active ? "streaming" : "idle"
-        : current.state.status;
-    const updated = await this.dependencies.state.updateState(current, {
-      ...current.state, status,
-      harness: { ...current.state.harness, questions: next },
-      lastActivityAt: new Date().toISOString(),
+    const updated = await this.dependencies.state.mutateState(chat.config.id, (current) => {
+      if (!current.state.session?.binding || !chat.state.session?.binding) {
+        throw new HarnessError("harness_question_closed", "The question conversation is no longer active.");
+      }
+      requireMatchingHarnessBinding(JSON.stringify(chat.state.session.binding), current.state.session.binding);
+      const next = questions.map((request) => {
+        const authoritative = current.state.harness?.questions?.find((entry) => entry.requestId === request.requestId);
+        return authoritative && !isQuestionOpen(authoritative) ? authoritative : request;
+      });
+      const waiting = next.some((request) => request.blocking && isQuestionOpen(request));
+      const active = this.dependencies.hasActiveStream(chat.config.id);
+      const status = waiting && active && !current.state.startupStage && isChatBusyStatus(current.state.status) ? "waiting"
+        : current.state.status === "waiting" && !waiting ? active ? "streaming" : "idle"
+          : current.state.status;
+      return {
+        ...current.state, status,
+        harness: { ...current.state.harness, questions: next },
+        lastActivityAt: new Date().toISOString(),
+      };
     });
     this.dependencies.state.emitChatUpdated(updated);
     return updated;

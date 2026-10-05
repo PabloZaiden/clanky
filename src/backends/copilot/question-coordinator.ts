@@ -1,5 +1,5 @@
 /**
- * Owns native question callbacks and expires them with their connection.
+ * Owns native question callbacks until answer, cancellation or connection loss.
  */
 
 import type { SessionConfig } from "@github/copilot-sdk";
@@ -55,20 +55,23 @@ export class CopilotQuestionCoordinator {
     const pending = this.pending.get(requestId);
     if (!pending) throw new HarnessError("harness_request_failed", "The native question has expired.");
     const answer = answers.flat().join(", ");
+    this.pending.delete(requestId);
     pending.response.resolve({ answer, wasFreeform: !pending.choices.includes(answer) });
     this.publishResolved(requestId, pending.sessionId, "answered");
   }
 
-  expire(sessionId: string): void {
+  close(sessionId: string, outcome: "cancelled" | "expired"): void {
     for (const [id, pending] of this.pending) {
       if (pending.sessionId === sessionId) {
-        pending.response.reject(new HarnessError("harness_transport_closed", "The native question connection closed."));
-        this.publishResolved(id, sessionId, "expired");
+        this.pending.delete(id);
+        pending.response.reject(new HarnessError("harness_transport_closed", outcome === "cancelled"
+          ? "The native question was cancelled." : "The native question connection closed."));
+        this.publishResolved(id, sessionId, outcome);
       }
     }
   }
 
-  private publishResolved(requestId: string, sessionId: string, outcome: "answered" | "expired"): void {
+  private publishResolved(requestId: string, sessionId: string, outcome: "answered" | "cancelled" | "expired"): void {
     this.events.publish(sessionId, { type: "question.resolved", requestId, outcome,
       scope: { kind: "unknown", native: { adapter: "copilot", conversationId: sessionId } } });
   }

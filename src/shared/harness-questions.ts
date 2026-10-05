@@ -23,8 +23,11 @@ export function isQuestionOpen(request: HarnessQuestionRequest): boolean {
   return request.status === "pending" || request.status === "submitting" || request.status === "unconfirmed";
 }
 
-export function expireQuestions(requests: HarnessQuestionRequest[] | undefined): HarnessQuestionRequest[] | undefined {
+export function closeOpenQuestions(
+  requests: HarnessQuestionRequest[] | undefined,
+  outcome: "cancelled" | "expired",
+): HarnessQuestionRequest[] | undefined {
   return requests?.map((request) => isQuestionOpen(request)
-    ? { ...request, status: "expired", resolvedAt: new Date().toISOString() }
+    ? { ...request, status: outcome, resolvedAt: new Date().toISOString() }
     : request);
 }
