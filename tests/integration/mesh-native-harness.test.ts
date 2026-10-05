@@ -234,9 +234,26 @@ test("native chat answer admission loss preserves uncertainty without sending th
     const requestId = pending.state.harness!.questions!.at(-1)!.requestId;
     const path = `/api/chats/${id}/questions/${requestId}`;
     const answer = { answers: [["Blue"]] };
-    const result = await meshJsonRequest<{ error: string }>(controller, path, { body: answer });
+    await Bun.write(join(node.dataDir, "gate-question-reconnect"), "");
+    const reconnecting = meshJsonRequest<Chat>(node, `/api/chats/${id}/reconnect`, { body: {} });
+    await pollUntil(async () => await Bun.file(join(node.dataDir, "native-reconnect-ready")).exists(),
+      (ready) => ready, { description: "native reconnect reaches admission gate", timeoutMs: 10_000 });
+    const answering = meshJsonRequest<{ error: string }>(node, path, { body: answer });
+    await pollUntil(async () => await Bun.file(join(node.dataDir, "native-answer-ready")).exists(),
+      (ready) => ready, { description: "native answer admitted before acknowledgement loss", timeoutMs: 10_000 });
+    expect((await read()).state).toMatchObject({
+      status: "reconnecting",
+      harness: { questions: [expect.objectContaining({ requestId, status: "submitting" })] },
+    });
+    await Bun.write(join(node.dataDir, "release-question-reconnect"), "");
+    const [result, answerReconnect] = await Promise.all([
+      answering,
+      reconnecting,
+    ]);
     expect(result.status).toBe(409);
     expect(result.body.error).toBe("harness_question_unconfirmed");
+    expect(answerReconnect.status).toBe(200);
+    expect((await read()).state.status).toBe("waiting");
     expect((await read()).state.harness?.questions?.at(-1)).toMatchObject({ status: "unconfirmed", answers: [["Blue"]] });
     expect(await meshJsonRequest(controller, path, { body: answer })).toMatchObject({
       status: 409, body: { error: "harness_question_closed" },
