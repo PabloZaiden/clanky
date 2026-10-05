@@ -1,6 +1,7 @@
 import { backendManager } from "../backend-manager";
 import type { CommandExecutor } from "../command-executor";
 import { workspaceManager } from "../workspace-manager";
+import { withWorkspaceRuntimeLock } from "../workspace-execution-lock";
 import { workspaceWorkerEnrollmentService } from "../workspace-worker-enrollment-service";
 import { getWorkspace } from "../../persistence/workspaces";
 import { updateProvisioningJob } from "../../persistence/provisioning-jobs";
@@ -27,9 +28,8 @@ import {
 } from "./remote-executor";
 import {
   ProvisioningWorkerLifecycle,
-  shellQuote,
-  type WorkerPaths,
 } from "./worker-lifecycle";
+import { shellQuote, type WorkerPaths } from "./worker-assets";
 import type { ProvisioningResourceHandle } from "./attempt";
 import type { ProvisioningJobRecord } from "./types";
 
@@ -96,7 +96,7 @@ export class ProvisioningWorkflows {
       }
       const serverSettings: ServerSettings = {
         agent: {
-          adapter: "acp",
+          adapter: record.job.config.adapter ?? "acp",
           provider: record.job.config.provider,
         },
       };
@@ -359,6 +359,17 @@ export class ProvisioningWorkflows {
     password: string | undefined,
     mode: "rebuild" | "restart",
   ): Promise<void> {
+    const workspaceId = record.job.config.workspaceId;
+    const run = async () => await this.runExistingWorkspaceLocked(record, password, mode);
+    if (workspaceId) await withWorkspaceRuntimeLock(workspaceId, run);
+    else await run();
+  }
+
+  private async runExistingWorkspaceLocked(
+    record: ProvisioningJobRecord,
+    password: string | undefined,
+    mode: "rebuild" | "restart",
+  ): Promise<void> {
     const action = mode === "restart"
       ? {
           progressLabel: "Restarting devbox",
@@ -407,6 +418,9 @@ export class ProvisioningWorkflows {
           `Workspace ${workspaceId} not found`,
         );
       }
+      record.job.config.adapter = workspace.serverSettings.agent.adapter;
+      record.job.config.provider = workspace.serverSettings.agent.provider;
+      updateProvisioningJob(record.owner.id, record.job);
 
       const devcontainerSubpath =
         record.job.config.devcontainerSubpath ?? workspace.devcontainerSubpath;
@@ -529,12 +543,7 @@ export class ProvisioningWorkflows {
         );
       }
 
-      const serverSettings: ServerSettings = {
-        agent: {
-          adapter: "acp",
-          provider: record.job.config.provider,
-        },
-      };
+      const serverSettings = workspace.serverSettings;
       const sshTarget = workerTransport
         ? undefined
         : await this.remoteExecutor.buildWorkspaceSshTarget(
@@ -570,7 +579,6 @@ export class ProvisioningWorkflows {
         ...(workspace.directory !== resolvedDirectory
           ? { directory: resolvedDirectory }
           : {}),
-        serverSettings,
         ...(sshTarget
           ? { sshTarget }
           : (

@@ -4,10 +4,12 @@ import {
   dismissProvisioningJob,
   listProvisioningJobs,
 } from "../../persistence/provisioning-jobs";
-import type {
-  ProvisioningJob,
-  ProvisioningJobSnapshot,
-  ProvisioningLogEntry,
+import {
+  isAgentSettings,
+  type AgentSettings,
+  type ProvisioningJob,
+  type ProvisioningJobSnapshot,
+  type ProvisioningLogEntry,
 } from "@/shared";
 import { DEFAULT_MAX_LOG_ENTRIES } from "./constants";
 import { buildError } from "./devbox-utils";
@@ -29,6 +31,7 @@ import { ProvisioningReconciler } from "./reconciliation";
 import { ProvisioningSnapshotProjector } from "./snapshot-projector";
 import { ProvisioningWorkerLifecycle } from "./worker-lifecycle";
 import { ProvisioningWorkflows } from "./workflows";
+import { workspaceManager } from "../workspace-manager";
 
 const log = createLogger("core:provisioning-manager");
 
@@ -75,6 +78,12 @@ export class ProvisioningManager {
       workerHostAddress,
       workspaceWorkerEnrollmentId,
     } = target;
+    const runtime: AgentSettings = (mode === "rebuild" || mode === "restart") && options.workspaceId
+      ? (await workspaceManager.requireWorkspace(options.workspaceId)).serverSettings.agent
+      : { adapter: options.adapter ?? "acp", provider: options.provider };
+    if (!isAgentSettings(runtime) || (mode !== "arise" && transport !== "worker" && runtime.adapter !== "acp")) {
+      throw new ProvisioningFailedError("invalid_runtime", "verify_devbox", "The selected runtime requires a dedicated worker and matching harness preset.");
+    }
     const now = new Date().toISOString();
     const record: ProvisioningJobRecord = {
       job: {
@@ -100,7 +109,8 @@ export class ProvisioningManager {
           devcontainerSubpath: normalizeOptionalValue(options.devcontainerSubpath),
           devboxTemplate: normalizeOptionalValue(options.devboxTemplate),
           githubUser: normalizeOptionalValue(options.githubUser),
-          provider: options.provider,
+          provider: runtime.provider,
+          adapter: runtime.adapter,
           mode,
           createNewRepository: options.createNewRepository === true,
           targetDirectory: normalizeOptionalValue(options.targetDirectory),

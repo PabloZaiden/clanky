@@ -6,11 +6,13 @@ import { z } from "zod";
 
 import { createLogger } from "@pablozaiden/webapp/server";
 import { workspaceManager } from "../../core/workspace-manager";
+import { isDomainError } from "../../domain/domain-error";
 import { parseAndValidate, validateRequest } from "../validation";
 import {
   requireWorkspace,
   errorResponse,
   internalErrorResponse,
+  domainErrorResponse,
 } from "../helpers";
 import { sanitizeServerSettings, shouldIncludeSensitiveData } from "../../lib/sensitive-data";
 import {
@@ -87,12 +89,18 @@ export const serverSettingsRoutes = defineRoutes({
             : sanitizeServerSettings(workspace.serverSettings),
         );
       } catch (error) {
-        log.error("Failed to update workspace server settings:", String(error));
-        return internalErrorResponse(error, {
-          error: "update_settings_failed",
-          message: "Failed to update server settings",
-          status: 500,
+        const response = domainErrorResponse(error, {
+          policy: "workspaces",
+          fallback: { error: "update_settings_failed", message: "Failed to update server settings", status: 500 },
         });
+        if (response.status >= 500) log.error("Failed to update workspace server settings", {
+          workspaceId: id, error: String(error),
+          ...(isDomainError(error) && error.code === "workspace_runtime_install_failed"
+            ? { adapter: error.details["adapter"], diagnostic: error.details["diagnostic"] }
+            : {}),
+        });
+        else log.warn("Workspace server settings update rejected:", String(error));
+        return response;
       }
     },
   },

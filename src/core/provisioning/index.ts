@@ -14,4 +14,6 @@ export * from "./state-machine";
 export * from "./target-resolver";
 export * from "./types";
 export * from "./worker-lifecycle";
+export * from "./worker-assets";
+export * from "./worker-runtime-assets";
 export * from "./workflows";

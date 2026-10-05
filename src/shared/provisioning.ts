@@ -2,7 +2,7 @@
  * Provisioning job types for automatic workspace creation.
  */
 
-import type { AgentProvider, ServerSettings } from "./settings";
+import type { AgentProvider, HarnessAdapter, ServerSettings } from "./settings";
 import type { PublicServerSettings, PublicWorkspace, Workspace } from "./workspace";
 import type { ExecutionHostBinding } from "./execution-host";
 
@@ -78,6 +78,7 @@ export interface ProvisioningJobConfig {
   devboxTemplate?: string;
   githubUser?: string;
   provider: AgentProvider;
+  adapter?: HarnessAdapter;
   mode?: ProvisioningJobMode;
   createNewRepository?: boolean;
   /** For rebuild/restart mode: directory where the repo lives on the host */

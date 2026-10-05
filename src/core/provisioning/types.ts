@@ -1,5 +1,6 @@
 import type {
   AgentProvider,
+  HarnessAdapter,
   ExecutionHostRef,
   ProvisioningJob,
   ProvisioningJobMode,
@@ -29,6 +30,7 @@ export interface StartProvisioningJobOptions {
   devboxTemplate?: string;
   githubUser?: string;
   provider: AgentProvider;
+  adapter?: HarnessAdapter;
   mode?: ProvisioningJobMode;
   createNewRepository?: boolean;
   password?: string;

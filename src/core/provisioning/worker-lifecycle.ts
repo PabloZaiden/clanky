@@ -25,16 +25,8 @@ import {
 } from "./command-runner";
 import type { ProvisioningJobRecord } from "./types";
 import { updateProvisioningJob } from "../../persistence/provisioning-jobs";
-
-export interface WorkerPaths {
-  hostRoot: string;
-  containerRoot: string;
-  containerBinary: string;
-  containerData: string;
-  containerLauncher: string;
-  containerLog: string;
-  containerPid: string;
-}
+import { getWorkerPaths, shellQuote, type WorkerPaths } from "./worker-assets";
+import { prepareWorkerRuntimeAssets } from "./worker-runtime-assets";
 
 export interface WorkerProvisioningOptions {
   targetDirectory: string;
@@ -59,93 +51,12 @@ export interface WorkerProvisioningResult {
   processCleanup?: ProvisioningResourceHandle;
 }
 
-const WORKER_INSTALLER_REVISION =
-  "1e73c9a4b84bb2282d5a6fd8463f9a9f62c26c67";
-const WORKER_INSTALLER_SHA256 =
-  "d377a7ed04b150781b94cb0af97e6f7a2efe2c8d12dae1a1f0aa825306ea28f3";
-
 type ProvisioningCommandRunner = (
   record: ProvisioningJobRecord,
   executor: CommandExecutor,
   options: RunCommandOptions,
   maxLogEntries: number,
 ) => Promise<CommandResult>;
-
-export function shellQuote(value: string): string {
-  return `'${value.replaceAll("'", "'\\''")}'`;
-}
-
-export function getWorkerPaths(
-  targetDirectory: string,
-  containerWorkdir: string,
-): WorkerPaths {
-  const hostRoot = pathPosix.join(targetDirectory, ".devbox", "clanky-worker");
-  const containerRoot = pathPosix.join(containerWorkdir, ".devbox", "clanky-worker");
-  return {
-    hostRoot,
-    containerRoot,
-    containerBinary: pathPosix.join(containerRoot, "bin", "clanky"),
-    containerData: pathPosix.join(containerRoot, "data"),
-    containerLauncher: pathPosix.join(containerRoot, "launcher.sh"),
-    containerLog: pathPosix.join(containerRoot, "worker.log"),
-    containerPid: pathPosix.join(containerRoot, "worker.pid"),
-  };
-}
-
-function buildWorkerLauncher(paths: WorkerPaths): string {
-  return `#!/bin/sh
-set -eu
-
-bin_dir=${shellQuote(pathPosix.join(paths.containerRoot, "bin"))}
-data_dir=${shellQuote(paths.containerData)}
-binary=${shellQuote(paths.containerBinary)}
-installer=${shellQuote(pathPosix.join(paths.containerRoot, "bin", ".installer.sh"))}
-install_dir=${shellQuote(pathPosix.join(paths.containerRoot, "bin", ".install"))}
-install_home=${shellQuote(pathPosix.join(paths.containerRoot, "bin", ".install-home"))}
-installed_binary="$install_home/.local/bin/clanky"
-log_file=${shellQuote(paths.containerLog)}
-pid_file=${shellQuote(paths.containerPid)}
-
-mkdir -p "$bin_dir" "$data_dir" "$install_dir" "$install_home"
-curl -fsSL --proto '=https' --tlsv1.2 https://raw.githubusercontent.com/pablozaiden/installer/${WORKER_INSTALLER_REVISION}/install.sh -o "$installer"
-printf '%s  %s\\n' ${WORKER_INSTALLER_SHA256} "$installer" | sha256sum -c -
-HOME="$install_home" sh "$installer" pablozaiden/clanky --install-dir "$install_dir" --checksum required
-if [ -x "$install_dir/clanky" ]; then
-  source_binary="$install_dir/clanky"
-elif [ -x "$installed_binary" ]; then
-  source_binary="$installed_binary"
-else
-  echo "The Clanky installer did not produce an executable binary." >&2
-  exit 1
-fi
-mv -f "$source_binary" "$binary"
-rm -rf "$install_dir" "$install_home"
-rm -f "$installer"
-
-if [ ! -f "$data_dir/config.json" ]; then
-  exit 0
-fi
-
-if [ -s "$pid_file" ]; then
-  worker_pid=$(cat "$pid_file")
-  if kill -0 "$worker_pid" 2>/dev/null; then
-    if [ -r "/proc/$worker_pid/cmdline" ]; then
-      worker_command=$(tr '\\000' ' ' <"/proc/$worker_pid/cmdline" 2>/dev/null || true)
-      case "$worker_command" in
-        *"$binary"*) exit 0 ;;
-      esac
-    else
-      exit 0
-    fi
-  fi
-  rm -f "$pid_file"
-fi
-
-nohup env CLANKY_DATA_DIR="$data_dir" "$binary" serve </dev/null >>"$log_file" 2>&1 &
-worker_pid=$!
-printf '%s\\n' "$worker_pid" >"$pid_file"
-`;
-}
 
 export class ProvisioningWorkerLifecycle {
   constructor(
@@ -172,17 +83,10 @@ export class ProvisioningWorkerLifecycle {
       command: "chmod",
       args: ["1777", paths.hostRoot],
     });
-    const written = await executor.writeFile(
-      pathPosix.join(paths.hostRoot, "launcher.sh"),
-      buildWorkerLauncher(paths),
-    );
-    if (!written) {
-      throw new ProvisioningFailedError(
-        "worker_launcher_write_failed",
-        "prepare_directory",
-        "Failed to write the persistent worker launcher.",
-      );
-    }
+    await prepareWorkerRuntimeAssets(executor, {
+      paths,
+      runtime: { adapter: record.job.config.adapter ?? "acp", provider: record.job.config.provider },
+    });
     await this.runCommand(record, executor, {
       step: "prepare_directory",
       label: "Making the worker launcher executable",

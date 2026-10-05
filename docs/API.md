@@ -2833,7 +2833,8 @@ Create a provisioning job.
 | `devcontainerSubpath` | string \| null | Yes | Optional devcontainer subpath; use `null` when absent |
 | `devboxTemplate` | string \| null | No | Devbox template when creating a new repository |
 | `githubUser` | string \| null | No | Optional GitHub user passed to devbox |
-| `provider` | string | Yes | `opencode`, `copilot`, `codex`, `claude`, `pi`, or `grok` |
+| `adapter` | string | No | `acp` (default), `copilot`, `codex`, or `opencode2`; native adapters require worker transport |
+| `provider` | string | Yes | ACP harness preset, or the native adapter's matching provider (`opencode` for `opencode2`) |
 | `credentialToken` | string \| null | Yes | Exchanged SSH credential token; use `null` when the server needs no credential |
 | `mode` | string | Yes | `provision`, `rebuild`, `restart`, or `arise` |
 | `createNewRepository` | boolean | No | Create a new repository with a devbox template; defaults to `false` |
@@ -2854,6 +2855,7 @@ Create a provisioning job.
   "repoUrl": "https://github.com/example/repo.git",
   "basePath": "/workspaces",
   "devcontainerSubpath": null,
+  "adapter": "copilot",
   "provider": "copilot",
   "credentialToken": "token-uuid",
   "mode": "provision",
@@ -2874,6 +2876,14 @@ manually entered host value. The controller must have
 `CLANKY_PUBLIC_BASE_URL` configured. For `rebuild` and `restart`, provide
 `targetDirectory` and `workspaceId`; `arise` only needs the server context and
 mode-specific fields may be `null`.
+
+New worker workspaces persist the requested adapter. Direct SSH execution
+requires `adapter: "acp"`; the Devbox provisioning host may itself use SSH while
+creating a native worker. Rebuild/restart uses the workspace's current saved
+adapter/preset, not a stale selection in the submitted request. Existing jobs
+without an adapter retain ACP semantics. See
+[automatic runtime installation](mesh-worker.md#automatic-workspace-runtimes)
+for durable CLI installation and external Devbox rebuilds.
 
 **Response**
 
