@@ -131,7 +131,7 @@ export class CopilotSessionService {
   async abort(sessionId: string): Promise<void> {
     const conversation = this.get(sessionId);
     conversation.translator.interrupted = true;
-    this.questions.expire(sessionId);
+    this.questions.close(sessionId, "cancelled");
     await conversation.native.abort();
   }
 
@@ -209,7 +209,7 @@ export class CopilotSessionService {
 
   private async closeSession(sessionId: string): Promise<void> {
     const conversation = this.get(sessionId);
-    this.questions.expire(sessionId);
+    this.questions.close(sessionId, "expired");
     const errors: unknown[] = [];
     try {
       const cleanup = await settleCopilotWork(conversation.native);
@@ -228,7 +228,7 @@ export class CopilotSessionService {
     const conversation = this.conversations.get(session.sessionId);
     this.conversations.delete(session.sessionId);
     conversation?.unsubscribe();
-    this.questions.expire(session.sessionId);
+    this.questions.close(session.sessionId, "expired");
     this.events.closeSession(session.sessionId);
     try {
       await session.disconnect();

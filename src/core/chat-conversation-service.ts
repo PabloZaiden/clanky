@@ -74,7 +74,7 @@ import { retainHarnessInputReceipt } from "./harness-input-ledger";
 import { createTransientHarnessSession, cleanupTransientHarnessSession } from "./harness-session";
 import { HarnessError } from "../backends/harness-errors";
 import { isDomainError } from "../domain/domain-error";
-import { expireQuestions } from "@/shared/harness-questions";
+import { closeOpenQuestions } from "@/shared/harness-questions";
 
 const log = createLogger("chat-conversation-service");
 const DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS = DEFAULT_ACTIVITY_TIMEOUT_SECONDS * 1000;
@@ -377,6 +377,10 @@ export class ChatConversationService implements ChatConversationPort {
         ...candidate.state,
         status: "interrupting",
         interruptRequested: true,
+        harness: {
+          ...candidate.state.harness,
+          questions: closeOpenQuestions(candidate.state.harness?.questions, "cancelled"),
+        },
         lastActivityAt: createTimestamp(),
       }, {
         expectedStatus: candidate.state.status,
@@ -1616,7 +1620,7 @@ export class ChatConversationService implements ChatConversationPort {
         status: "cancelled",
         resolvedAt: now,
       }),
-      harness: { ...chat.state.harness, questions: expireQuestions(chat.state.harness?.questions) },
+      harness: { ...chat.state.harness, questions: closeOpenQuestions(chat.state.harness?.questions, "cancelled") },
       toolCalls,
       lastActivityAt: now,
     };

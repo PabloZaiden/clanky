@@ -41,9 +41,13 @@ import { createTimestamp } from "@/shared/events";
 import { ChatBusyError, isStandaloneChat, shouldIncludeConversationTranscriptLog } from "@/shared";
 import { chatEventEmitter, SimpleEventEmitter } from "./event-emitter";
 import type { ChatStatePort } from "./chat-service-contracts";
-import { expireQuestions } from "@/shared/harness-questions";
+import { closeOpenQuestions } from "@/shared/harness-questions";
+import { KeyedOperationQueue } from "../utils/keyed-operation-queue";
+import { HarnessError } from "../backends/harness-errors";
 
 export class ChatStateService implements ChatStatePort {
+  private readonly mutations = new KeyedOperationQueue();
+
   constructor(
     private readonly emitter: SimpleEventEmitter<ChatEvent> = chatEventEmitter,
   ) {}
@@ -153,7 +157,32 @@ export class ChatStateService implements ChatStatePort {
     return this.getChat(chatId);
   }
 
-  async updateState(
+  updateState(
+    chat: Chat,
+    state: ChatState,
+    options: {
+      transcriptChanges?: TranscriptChangeSet;
+      expectedStatus?: ChatStatus;
+      streaming?: boolean;
+    } = {},
+  ): Promise<Chat> {
+    return this.mutations.run(chat.config.id, () => this.persistState(chat, state, options));
+  }
+
+  mutateState(
+    chatId: string,
+    update: (current: Chat) => ChatState | undefined,
+  ): Promise<Chat> {
+    return this.mutations.run(chatId, async () => {
+      const current = await this.getChat(chatId);
+      if (!current) throw new HarnessError("harness_session_not_found", "The chat is unavailable.");
+      // Keep the mutation synchronous so provider I/O never holds the state queue.
+      const state = update(current);
+      return state ? await this.persistState(current, state) : current;
+    });
+  }
+
+  private async persistState(
     chat: Chat,
     state: ChatState,
     options: {
@@ -248,7 +277,7 @@ export class ChatStateService implements ChatStatePort {
         ...(code ? { code } : {}),
       },
       completedAt: now,
-      harness: { ...chat.state.harness, questions: expireQuestions(chat.state.harness?.questions) },
+      harness: { ...chat.state.harness, questions: closeOpenQuestions(chat.state.harness?.questions, "expired") },
       startupStage: undefined,
       pendingPermissionRequests: (chat.state.pendingPermissionRequests ?? []).map((request) =>
         request.status === "pending"
