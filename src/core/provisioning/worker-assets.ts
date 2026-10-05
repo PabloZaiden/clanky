@@ -38,6 +38,19 @@ const NATIVE_RUNTIME_PACKAGES = {
   opencode2: { package: "@opencode/cli", version: "2.0.20", executable: "opencode" },
 } as const;
 
+const DEV_CONTAINERS_NODE_BIN = "/usr/local/share/nvm/current/bin";
+
+function buildNodePathFallback(): string {
+  return `if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+  node_bin=${shellQuote(DEV_CONTAINERS_NODE_BIN)}
+  if [ -x "$node_bin/node" ] && [ -x "$node_bin/npm" ]; then
+    PATH="$node_bin\${PATH:+:$PATH}"
+    export PATH
+  fi
+fi
+`;
+}
+
 export function buildRuntimeInstaller(): string {
   const providers = Object.fromEntries(Object.keys(NATIVE_RUNTIME_PACKAGES).map((adapter) => [
     adapter, createAgentSettings(adapter as HarnessAdapter, "copilot").provider,
@@ -46,6 +59,7 @@ export function buildRuntimeInstaller(): string {
 set -eu
 root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 manifest=\${1:-"$root/runtime.json"}
+${buildNodePathFallback()}
 command -v node >/dev/null || { echo "Native runtime installation requires Node.js." >&2; exit 1; }
 command -v npm >/dev/null || { echo "Native runtime installation requires npm." >&2; exit 1; }
 adapter=$(node -e 'const fs = require("node:fs"); const c = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); const providers = ${JSON.stringify(providers)}; const presets = ${JSON.stringify(AGENT_PROVIDER_IDS)}; if (!c || !(c.adapter === "acp" ? presets.includes(c.provider) : Object.hasOwn(providers, c.adapter) && providers[c.adapter] === c.provider)) throw new Error("Invalid workspace runtime selection"); process.stdout.write(c.adapter);' "$manifest")
@@ -109,6 +123,7 @@ installed_binary="$install_home/.local/bin/clanky"
 log_file=${shellQuote(paths.containerLog)}
 pid_file=${shellQuote(paths.containerPid)}
 
+${buildNodePathFallback()}
 sh "$root/install-runtime.sh"
 PATH="$root/runtime/bin:$PATH"
 export PATH
