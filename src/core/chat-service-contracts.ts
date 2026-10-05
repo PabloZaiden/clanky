@@ -126,6 +126,10 @@ export interface ChatStatePort {
       streaming?: boolean;
     },
   ): Promise<Chat>;
+  mutateState(
+    chatId: string,
+    update: (current: Chat) => ChatState | undefined,
+  ): Promise<Chat>;
   updateStartupStage(
     chat: Chat,
     startupStage: ChatStartupStage | undefined,
