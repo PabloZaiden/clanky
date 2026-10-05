@@ -24,6 +24,7 @@ import type { ChatQuestionService } from "./chat-question-service";
 import { buildPromptParts } from "../backends/prompt-parts";
 import { KeyedOperationQueue } from "../utils/keyed-operation-queue";
 import { requireMatchingHarnessBinding } from "../backends/harness-binding";
+import { updateQuestionAnswerStatus } from "@/shared/harness-questions";
 import type {
   ChatConversationPort,
   ChatInteractionPort,
@@ -107,7 +108,7 @@ export class ChatInteractionService implements ChatInteractionPort {
 
     const queuedMessages = chat.state.queuedMessages ?? [];
     if (chat.state.harness?.integrity === "invalid") throw new HarnessError("harness_request_failed", "Input admission history is corrupt.");
-    if (chat.state.harness?.inputs?.some((receipt) => receipt.admission.inputId === queuedMessageId && receipt.admission.status === "unknown")) {
+    if (chat.state.harness?.inputs?.some((receipt) => receipt.admission.inputId === queuedMessageId && receipt.admission.status !== "rejected")) {
       throw new HarnessError("harness_input_unresolved", "This input has unknown native admission and cannot be removed as an unsent message.");
     }
     const nextQueuedMessages = queuedMessages.filter((queuedMessage) => queuedMessage.id !== queuedMessageId);
@@ -121,6 +122,7 @@ export class ChatInteractionService implements ChatInteractionPort {
     const updated = await this.state.updateState(chat, {
       ...chat.state,
       queuedMessages: nextQueuedMessages,
+      harness: updateQuestionAnswerStatus(chat.state.harness, queuedMessageId, "pending"),
       lastActivityAt: createTimestamp(),
     });
     this.state.emitChatUpdated(updated);
@@ -391,6 +393,7 @@ export class ChatInteractionService implements ChatInteractionPort {
     const updated = await this.state.updateState(chat, {
       ...chat.state,
       queuedMessages: [...(chat.state.queuedMessages ?? []), queuedMessage],
+      harness: updateQuestionAnswerStatus(chat.state.harness, queuedMessage.id, "queued"),
       lastActivityAt: now,
     });
     const normalizedCredentialToken = credentialToken?.trim();

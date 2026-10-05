@@ -43,7 +43,7 @@ export const HarnessEventScopeSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("unknown"), native: HarnessNativeReferencesSchema.optional() }),
 ]);
 
-const HarnessQuestionStatusSchema = z.enum(["pending", "submitting", "unconfirmed", "answered", "cancelled", "expired"]);
+const HarnessQuestionStatusSchema = z.enum(["pending", "queued", "submitting", "unconfirmed", "answered", "cancelled", "expired"]);
 
 export const HarnessQuestionMessageSchema = z.object({
   requestId: z.string(),

@@ -41,7 +41,7 @@ import { createTimestamp } from "@/shared/events";
 import { ChatBusyError, isStandaloneChat, shouldIncludeConversationTranscriptLog } from "@/shared";
 import { chatEventEmitter, SimpleEventEmitter } from "./event-emitter";
 import type { ChatStatePort } from "./chat-service-contracts";
-import { closeOpenQuestions } from "@/shared/harness-questions";
+import { closeOpenQuestions, reconcileQuestionAnswerAdmissions } from "@/shared/harness-questions";
 import { KeyedOperationQueue } from "../utils/keyed-operation-queue";
 import { HarnessError } from "../backends/harness-errors";
 import { projectQuestionMessages } from "@/shared/question-transcript";
@@ -195,6 +195,12 @@ export class ChatStateService implements ChatStatePort {
     const preserveQueuedMessages = state.queuedMessages === chat.state.queuedMessages;
     const unchangedCollections = state.messages === chat.state.messages
       && state.logs === chat.state.logs && state.toolCalls === chat.state.toolCalls;
+    if (state.harness?.inputs !== chat.state.harness?.inputs) {
+      state = {
+        ...state,
+        harness: reconcileQuestionAnswerAdmissions(state.harness, state.queuedMessages?.map((message) => message.id) ?? []),
+      };
+    }
     const questionMessages = state.harness?.questions !== chat.state.harness?.questions
       ? projectQuestionMessages(state.messages, state.harness?.questions)
       : [];

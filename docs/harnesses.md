@@ -112,7 +112,20 @@ worker that reports this capability as unsupported.
 
 Codex can advertise `request_user_input_async` independently of the ordinary
 tool gate. In interactive chats its question is nonblocking and its answer is
-a normal conversation input, not a callback. Unattended sessions deny invocation
+a normal conversation input, not a callback. An answer waiting in the input
+queue remains **Answer queued** in the transcript and exports, not answered.
+Removing a definitely unsent reply leaves its attempted message as **Answer not
+sent** and makes the question answerable again. A rejected steering attempt
+remains queued until dispatched or removed; queuing the same answer again does
+not duplicate it.
+
+Steered question answers show the normal native admission indicator and
+**Check delivery** action. Native acceptance alone leaves delivery unconfirmed;
+only a delivered receipt confirms it. Unknown admission blocks removal and
+resubmission, including after reload or reconnect. **Stop** does not discard
+queued conversation inputs or turn an uncertain admission into a safe retry.
+
+Unattended sessions deny invocation
 of `request_user_input`, `request_user_input_async` and the native legacy alias
 `send_user_message_async` before execution. Only Clanky's own hook is trusted;
 other hook trust decisions and YOLO permissions remain unchanged. A Codex
@@ -146,7 +159,11 @@ New question requests include optional `transcript` references
 (`questionMessageId`, `answerMessageId` and, once submitted, `answerTimestamp`).
 Their transcript messages use the normal `assistant`/`user` roles and carry
 optional `question` metadata (`requestId`, `scope`, `status`). Delivery updates
-retain the same message IDs.
+retain the same message IDs. For asynchronous questions, `questionMessageId`
+identifies the completed transcript segment; `scope.native.messageId` retains
+the original native message identity even when the response spans several
+segments. Continuations sort after the submitted answer even when the native
+event timestamp is earlier or equal.
 
 | Method | Path | Purpose |
 | --- | --- | --- |

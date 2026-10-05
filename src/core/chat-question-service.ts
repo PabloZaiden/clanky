@@ -8,13 +8,14 @@ import type { HarnessEvent } from "@/shared/harness-events";
 import type { HarnessConversationBinding } from "@/shared/harness-control";
 import type { HarnessQuestionRequest } from "@/shared/harness-questions";
 import { isQuestionOpen } from "@/shared/harness-questions";
-import { isChatBusyStatus, type Chat } from "@/shared/chat";
+import { ChatBusyError, isChatBusyStatus, type Chat } from "@/shared/chat";
 import { HarnessError } from "../backends/harness-errors";
 import { requireMatchingHarnessBinding } from "../backends/harness-binding";
 import { requireCurrentUserId } from "../context/user-context";
 import { KeyedOperationQueue } from "../utils/keyed-operation-queue";
 import { validateQuestionAnswers } from "./question-validation";
 import type { MessageData } from "@/shared/events";
+import { isHarnessInputValidationError } from "./harness-input-ledger";
 
 export class ChatQuestionService {
   private readonly operations = new KeyedOperationQueue();
@@ -26,7 +27,10 @@ export class ChatQuestionService {
     sendMessage?: (chatId: string, message: string, transcriptMessage?: MessageData) => Promise<Chat>;
   }) {}
 
-  handle(chatId: string, binding: HarnessConversationBinding, event: HarnessEvent): Promise<void> {
+  handle(chatId: string, binding: HarnessConversationBinding, { event, questionMessageId }: {
+    event: HarnessEvent;
+    questionMessageId?: string;
+  }): Promise<void> {
     return this.operations.run(chatId, async () => {
       if (event.type !== "question.asked" && event.type !== "question.resolved") return;
       const chat = await this.dependencies.state.getChatSummary(chatId);
@@ -66,7 +70,7 @@ export class ChatQuestionService {
         status: "pending", createdAt: event.timestamp ?? new Date().toISOString(),
         transcript: {
           questionMessageId: event.responseMode === "message" && event.scope.native?.messageId
-            ? event.scope.native.messageId : `${id}-question`,
+            ? questionMessageId ?? event.scope.native.messageId : `${id}-question`,
           answerMessageId: `${id}-answer`,
         },
       }]);
@@ -83,31 +87,42 @@ export class ChatQuestionService {
       if (!binding || binding.ownerId !== requireCurrentUserId()) throw new HarnessError("harness_session_not_owned", "The question is not owned by this conversation.");
       requireMatchingHarnessBinding(JSON.stringify(request.conversation), binding);
       validateQuestionAnswers(request.questions, answers);
-      if (request.status === "answered" && JSON.stringify(request.answers) === JSON.stringify(answers)) return chat;
+      if ((request.status === "answered" || request.status === "queued") && JSON.stringify(request.answers) === JSON.stringify(answers)) return chat;
       if (request.status !== "pending") throw new HarnessError("harness_question_closed", "This question can no longer receive an answer.");
       const backend: Backend = this.dependencies.session.getChatBackend(chatId, chat.config.workspaceId);
       if (!backend.isConnected()) throw new HarnessError("harness_transport_closed", "Reconnect the conversation before answering.");
       // Persist uncertain admission first; a lost RPC must never trigger a blind resend.
-      chat = await this.replace(chat, requestId, {
+      chat = await this.save(chat, (chat.state.harness?.questions ?? []).map((entry) => entry.requestId === requestId ? {
+        ...entry,
         status: "submitting", answers, error: undefined,
         transcript: request.transcript ? {
           ...request.transcript,
           answerTimestamp: new Date(Math.max(Date.now(), Date.parse(request.createdAt) + 1)).toISOString(),
         } : undefined,
-      });
+      } : entry));
       if (chat.state.harness?.questions?.find((entry) => entry.requestId === requestId)?.status !== "submitting") {
         throw new HarnessError("harness_question_closed", "This question was closed before answer delivery.");
       }
       try {
         if (request.responseMode === "message") {
           if (!this.dependencies.sendMessage) throw new HarnessError("harness_unsupported_feature", "Asynchronous question responses are unavailable.");
-          await this.dependencies.sendMessage(
+          return await this.dependencies.sendMessage(
             chatId,
             request.questions.map((question, index) => `${question.question}\n${answers[index]!.join(", ")}`).join("\n\n"),
             chat.state.messages.find((message) => message.id === request.transcript?.answerMessageId),
           );
         } else await backend.replyToQuestion(requestId, answers);
       } catch (error) {
+        if (request.responseMode === "message") {
+          const latest = await this.requireChat(chatId);
+          const status = latest.state.harness?.questions?.find((entry) => entry.requestId === requestId)?.status;
+          if (status === "pending" || status === "unconfirmed" || status === "answered") throw error;
+          if (error instanceof ChatBusyError || isHarnessInputValidationError(error)
+            || error instanceof HarnessError && error.code === "harness_input_capacity") {
+            await this.replace(latest, requestId, { status: "pending", error: undefined });
+            throw error;
+          }
+        }
         const unsupported = error instanceof HarnessError && error.code === "harness_unsupported_feature";
         await this.replace(await this.requireChat(chatId), requestId, {
           status: unsupported ? "pending" : "unconfirmed",

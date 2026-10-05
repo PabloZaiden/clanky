@@ -151,7 +151,7 @@ export const MessageEntry = memo(function MessageEntry({
           {answerStatus && (
             <div className="text-right text-xs text-gray-500 dark:text-gray-400" role="status">{answerStatus}</div>
           )}
-          {isUser && !msg.question && <HarnessMessageAdmission inputId={msg.id} />}
+          {isUser && <HarnessMessageAdmission inputId={msg.id} />}
           {outcome && (
             <div className="pt-1">
               <StatusBadge variant={getOutcomeBadgeVariant(outcome.kind)} size="sm">

@@ -100,7 +100,10 @@ async function request(method: string, params: Record<string, unknown>): Promise
       return { data: threads.filter((entry) => entry.parentThreadId === params["ancestorThreadId"]), nextCursor: null };
     case "thread/backgroundTerminals/list": return { data: [] };
     case "thread/turns/list": return { data: turns.has(id) ? [turns.get(id)] : [], nextCursor: null };
-    case "thread/items/list": return { data: receipts, nextCursor: null };
+    case "thread/items/list": return {
+      data: await Bun.file(join(directory, ".fixture-steer-recovery-hidden")).exists() ? [] : receipts,
+      nextCursor: null,
+    };
     case "turn/start": {
       const root = thread(id);
       root.status = { type: "active", activeFlags: [] };
@@ -111,11 +114,19 @@ async function request(method: string, params: Record<string, unknown>): Promise
       if (JSON.stringify(params["input"]).includes("question-fixture")) {
         const asyncQuestion = JSON.stringify(params["input"]).includes("async-question-fixture");
         if (asyncQuestion && !await questionDenied(id, "request_user_input_async")) {
+          const messageId = crypto.randomUUID();
+          if (JSON.stringify(params["input"]).includes("segmented-async-question-fixture")) {
+            notify("item/agentMessage/delta", { threadId: id, turnId: turn.id, itemId: messageId, delta: "Strategy context" });
+            notify("item/started", { threadId: id, turnId: turn.id, item: {
+              type: "commandExecution", id: crypto.randomUUID(), command: "git status",
+            } });
+            notify("item/agentMessage/delta", { threadId: id, turnId: turn.id, itemId: messageId, delta: "Choose a strategy" });
+          }
           notify("item/completed", { threadId: id, turnId: turn.id, item: {
-            type: "agentMessage", id: crypto.randomUUID(), text: "Choose a strategy", delivery: "async",
+            type: "agentMessage", id: messageId, text: "Choose a strategy", delivery: "async",
             questions: [{ title: "Choose a strategy", options: ["Merge"] }],
           } });
-          if (!JSON.stringify(params["input"]).includes("queued-async-question-fixture")) {
+          if (!JSON.stringify(params["input"]).includes("queued-")) {
             turn.status = "completed"; root.status = { type: "idle" };
             notify("turn/completed", { threadId: id, turn });
           }
@@ -157,9 +168,10 @@ async function request(method: string, params: Record<string, unknown>): Promise
       const clientId = params["clientUserMessageId"] as string;
       const messageId = `admitted-${clientId}`;
       receipts.push({ item: { type: "userMessage", id: messageId, clientId, content: params["input"] as unknown[] } });
+      const asyncAnswer = await consumeAsyncAnswer(id, params["input"], turn);
       if (await Bun.file(join(directory, ".fixture-steer-response-loss")).exists()) throw new Error("Native input admitted without a usable response");
       notify("item/completed", { threadId: id, turnId: turn.id, item: receipts.at(-1)!.item });
-      if (!await consumeAsyncAnswer(id, params["input"], turn) && JSON.stringify(params["input"]).includes("finish principal")) {
+      if (!asyncAnswer && JSON.stringify(params["input"]).includes("finish principal")) {
         turn.status = "completed"; thread(id).status = { type: "idle" };
         notify("turn/completed", { threadId: id, turn });
       }
@@ -188,6 +200,10 @@ for await (const line of lines) {
       item: { type: "agentMessage", id: crypto.randomUUID(), text: `Consumed answer: ${JSON.stringify(frame.result)}` } });
     notify("turn/completed", { threadId: question.threadId, turn });
     questions.delete(frame.id); await save();
+    continue;
+  }
+  if (frame.method === "turn/steer" && await Bun.file(join(directory, ".fixture-steer-reject")).exists()) {
+    console.log(JSON.stringify({ id: frame.id, error: { code: -32600, message: "Expected turn changed before admission" } }));
     continue;
   }
   try { console.log(JSON.stringify({ id: frame.id, result: await request(frame.method!, frame.params ?? {}) })); }
