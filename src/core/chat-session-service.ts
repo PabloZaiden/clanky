@@ -32,7 +32,7 @@ import { harnessActivityService } from "./harness-activity-service";
 import { isDomainError } from "../domain/domain-error";
 import type { HarnessConversationBinding } from "@/shared/harness-control";
 import type { HarnessEvent } from "@/shared/harness-events";
-import { expireQuestions, isQuestionOpen } from "@/shared/harness-questions";
+import { closeOpenQuestions, isQuestionOpen } from "@/shared/harness-questions";
 import type {
   ChatSessionPort,
   ChatStatePort,
@@ -287,9 +287,6 @@ export class ChatSessionService implements ChatSessionPort {
   }
 
   async reconnectSession(chat: Chat, options: ReconnectChatOptions = {}): Promise<Chat> {
-    const hadOpenQuestions = chat.state.harness?.questions?.some(isQuestionOpen) ?? false;
-    chat = await this.state.updateState(chat, { ...chat.state,
-      harness: { ...chat.state.harness, questions: expireQuestions(chat.state.harness?.questions) } });
     const backend = await this.ensureBackendConnected(chat, options);
     let reconnectingChat = await this.state.updateState(chat, {
       ...chat.state,
@@ -316,7 +313,6 @@ export class ChatSessionService implements ChatSessionPort {
           });
           return this.finishReconnect(reconnectingChat);
         }
-        if (hadOpenQuestions) await backend.abortSession(existing.id);
         if (existing.binding) reconnectingChat = await this.state.updateState(reconnectingChat, {
           ...reconnectingChat.state, session: { id: existing.id, binding: existing.binding },
         });
@@ -343,7 +339,7 @@ export class ChatSessionService implements ChatSessionPort {
     await harnessActivityService.close({ kind: "chat", id: chatId });
     const chat = await this.state.getChat(chatId);
     if (chat?.state.harness?.questions?.length) await this.state.updateState(chat, {
-      ...chat.state, harness: { ...chat.state.harness, questions: expireQuestions(chat.state.harness.questions) },
+      ...chat.state, harness: { ...chat.state.harness, questions: closeOpenQuestions(chat.state.harness.questions, "expired") },
     });
     const sshBackend = this.directChatBackends.get(chatId);
     let sshDisconnectError: unknown;
@@ -553,18 +549,22 @@ export class ChatSessionService implements ChatSessionPort {
   }
 
   private async finishReconnect(chat: Chat): Promise<Chat> {
-    const status = this.hasActiveStream(chat.config.id) ? "streaming" : "idle";
+    const current = await this.state.getChat(chat.config.id);
+    if (!current) throw new HarnessError("harness_session_not_found", "The chat was removed during reconnect.");
+    if (current.state.status !== "reconnecting") return current;
+    const waiting = current.state.harness?.questions?.some((request) => request.blocking && isQuestionOpen(request));
+    const status = waiting ? "waiting" : this.hasActiveStream(chat.config.id) ? "streaming" : "idle";
     const state: Chat["state"] = {
-      ...chat.state,
+      ...current.state,
       status,
       error: undefined,
-      connectionStatus: isExecutionHostChat(chat)
+      connectionStatus: isExecutionHostChat(current)
         ? "connected"
-        : chat.state.connectionStatus,
+        : current.state.connectionStatus,
       startupStage: undefined,
       lastActivityAt: createTimestamp(),
     };
-    return this.state.updateState(chat, state);
+    return this.state.updateState(current, state);
   }
 }
 

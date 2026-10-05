@@ -41,7 +41,7 @@ import { createTimestamp } from "@/shared/events";
 import { ChatBusyError, isStandaloneChat, shouldIncludeConversationTranscriptLog } from "@/shared";
 import { chatEventEmitter, SimpleEventEmitter } from "./event-emitter";
 import type { ChatStatePort } from "./chat-service-contracts";
-import { expireQuestions } from "@/shared/harness-questions";
+import { closeOpenQuestions } from "@/shared/harness-questions";
 
 export class ChatStateService implements ChatStatePort {
   constructor(
@@ -248,7 +248,7 @@ export class ChatStateService implements ChatStatePort {
         ...(code ? { code } : {}),
       },
       completedAt: now,
-      harness: { ...chat.state.harness, questions: expireQuestions(chat.state.harness?.questions) },
+      harness: { ...chat.state.harness, questions: closeOpenQuestions(chat.state.harness?.questions, "expired") },
       startupStage: undefined,
       pendingPermissionRequests: (chat.state.pendingPermissionRequests ?? []).map((request) =>
         request.status === "pending"

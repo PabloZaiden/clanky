@@ -13,11 +13,14 @@ import type { ExecutionHostDescriptor } from "../../src/shared/execution-host";
 
 const root = resolve(".cache/mesh-native-tests");
 
-// Regression: real native questions must survive the controller/worker route,
-// hydrate on repeated reads, validate owned answers and continue the same turn.
+// Regression: real native questions must survive the controller/worker route
+// and reconnects, hydrate on repeated reads, validate owned answers and continue
+// the same turn. Stop must cancel the request rather than expire it.
 // The executable is the external provider seam; assertions use HTTP, persisted
 // snapshots and the worker's observed protocol response rather than delegation.
-test("Mesh native chat questions wait, accept owned answers once and expire after restart", async () => {
+// This is the existing highest-boundary question workflow; reconnect coverage
+// does not depend on the Core/adapter decomposition.
+test("Mesh native chat questions survive reconnects, accept owned answers once and cancel on Stop", async () => {
   const binaryDir = await createRuntime();
   const nodes: ManagedMeshNode[] = [];
   try {
@@ -52,6 +55,15 @@ test("Mesh native chat questions wait, accept owned answers once and expire afte
     const request = waiting.state.harness!.questions!.at(-1)!;
     expect(waiting.state.error).toBeUndefined();
     expect((await read()).state.harness?.questions?.at(-1)).toEqual(request);
+    const reconnects = await Promise.all(Array.from({ length: 2 }, () =>
+      meshJsonRequest<Chat>(controller, `/api/chats/${id}/reconnect`, { body: {} })));
+    for (const reconnected of reconnects) {
+      expect(reconnected.status).toBe(200);
+      expect(reconnected.body.state.status).toBe("waiting");
+      expect(reconnected.body.state.session).toEqual(waiting.state.session);
+      expect(reconnected.body.state.harness?.questions?.at(-1)).toEqual(request);
+    }
+    expect((await meshJsonRequest<ChatSnapshot>(controller, `/api/chats/${id}/snapshot`)).body.state.harness?.questions?.at(-1)).toEqual(request);
     expect((await meshJsonRequest(controller, `/api/chats/${other}/questions/${request.requestId}`, { body: { answers: [["Merge"]] } })).status).toBe(404);
     expect((await meshJsonRequest(controller, `/api/chats/${id}/questions/${request.requestId}`, { body: { answers: [["Merge", "Rebase"]] } })).status).toBe(400);
     const answer = { answers: [["Keep separate branches"]] };
@@ -74,7 +86,8 @@ test("Mesh native chat questions wait, accept owned answers once and expire afte
     expect(again.state.harness?.questions?.at(-1)?.requestId).not.toBe(request.requestId);
     expect((await meshJsonRequest(controller, `/api/chats/${id}/interrupt`, { body: {} })).status).toBe(200);
     const interrupted = await pollUntil(read, (chat) => chat.state.status === "idle", { description: "Stop releases human input", timeoutMs: 10_000 });
-    expect(["expired", "cancelled"]).toContain(interrupted.state.harness?.questions?.at(-1)?.status ?? "");
+    expect(interrupted.state.harness?.questions?.at(-1)?.status).toBe("cancelled");
+    expect((await meshJsonRequest(controller, `/api/chats/${id}/questions/${again.state.harness!.questions!.at(-1)!.requestId}`, { body: answer })).status).toBe(409);
     const beforeRestart = await ask();
     const expiredId = beforeRestart.state.harness!.questions!.at(-1)!.requestId;
     await restartMeshNode(controller);
@@ -207,7 +220,7 @@ test("native chat answer admission loss preserves uncertainty without sending th
     } });
     expect(workspace.status).toBe(201);
     const created = await meshJsonRequest<Chat>(controller, "/api/chats", { body: {
-      workspaceId: workspace.body.id, useWorktree: false,
+      name: "Uncertain native answer", workspaceId: workspace.body.id, useWorktree: false,
       model: { providerID: "opencode", modelID: "fixture-model", variant: "" },
     } });
     expect(created.status).toBe(201);
@@ -229,6 +242,12 @@ test("native chat answer admission loss preserves uncertainty without sending th
       status: 409, body: { error: "harness_question_closed" },
     });
     expect(await Bun.file(join(controller.dataDir, "native-answer-effects.json")).json()).toEqual([{ color: "Blue" }]);
+    const reconnected = await meshJsonRequest<Chat>(controller, `/api/chats/${id}/reconnect`, { body: {} });
+    expect(reconnected).toMatchObject({ status: 200 });
+    expect(reconnected.body.state.status).toBe("waiting");
+    expect(reconnected.body.state.harness?.questions?.at(-1)).toMatchObject({ status: "unconfirmed", answers: [["Blue"]] });
+    expect((await meshJsonRequest(controller, path, { body: answer })).status).toBe(409);
+    expect(await Bun.file(join(controller.dataDir, "native-answer-effects.json")).json()).toEqual([{ color: "Blue" }]);
     await restartMeshNode(controller);
     expect((await read()).state.harness?.questions?.at(-1)?.status).toBe("expired");
     expect((await meshJsonRequest(controller, path, { body: answer })).status).toBe(409);
@@ -239,11 +258,88 @@ test("native chat answer admission loss preserves uncertainty without sending th
   }
 }, 30_000);
 
-async function createRuntime(adapter: "codex" | "opencode2" = "codex"): Promise<string> {
+// Regression: reconnect must preserve the actual Copilot SDK callback, not
+// merely its persisted form. This exercises HTTP and the native SDK protocol,
+// with a deterministic external runtime instead of a live provider or Backend
+// mock. Codex's existing workflow cannot prove Copilot callback cancellation.
+test("Copilot native questions survive client reconnects and Stop cancels the SDK callback", async () => {
+  const binaryDir = await createRuntime("copilot");
+  let controller: ManagedMeshNode | undefined;
+  try {
+    controller = await startNode("controller", binaryDir);
+    const node = controller;
+    const hosts = await meshJsonRequest<ExecutionHostDescriptor[]>(node, "/api/execution-hosts");
+    const workspace = await meshJsonRequest<{ id: string }>(node, "/api/workspaces", { body: {
+      name: "Copilot question reconnect", directory: node.dataDir, workspaceType: "directory",
+      executionHost: hosts.body.find((host) => host.ref.kind === "local")!.ref,
+      serverSettings: { agent: { adapter: "copilot", provider: "copilot" } },
+    } });
+    expect(workspace.status).toBe(201);
+    const ask = async () => {
+      const created = await meshJsonRequest<Chat>(node, "/api/chats", { body: {
+        name: "Native Copilot question", workspaceId: workspace.body.id, useWorktree: false,
+        model: { providerID: "copilot", modelID: "fixture-model", variant: "" },
+      } });
+      expect(created.status).toBe(201);
+      const id = created.body.config.id;
+      expect((await meshJsonRequest(node, `/api/chats/${id}/messages`, { body: { message: "Ask for a color" } })).status).toBe(200);
+      const waiting = await pollUntil(async () => (await meshJsonRequest<Chat>(node, `/api/chats/${id}`)).body,
+        (chat) => chat.state.status === "waiting" && chat.state.harness?.questions?.at(-1)?.status === "pending",
+        { description: "Copilot SDK callback remains pending", timeoutMs: 10_000, formatLastObserved: (chat) => JSON.stringify(chat.state) });
+      return waiting;
+    };
+    const waiting = await ask();
+    const id = waiting.config.id;
+    const question = waiting.state.harness!.questions!.at(-1)!;
+    const reconnects = await Promise.all(Array.from({ length: 2 }, () =>
+      meshJsonRequest<Chat>(node, `/api/chats/${id}/reconnect`, { body: {} })));
+    for (const response of reconnects) {
+      expect(response.status).toBe(200);
+      expect(response.body.state.status).toBe("waiting");
+      expect(response.body.state.session).toEqual(waiting.state.session);
+      expect(response.body.state.harness?.questions?.at(-1)).toEqual(question);
+    }
+    const reopened = await meshJsonRequest<ChatSnapshot>(node, `/api/chats/${id}/snapshot`);
+    expect(reopened.body.state.harness?.questions?.at(-1)).toEqual(question);
+    const path = `/api/chats/${id}/questions/${question.requestId}`;
+    const answer = { answers: [["Blue"]] };
+    const [answerResponse, concurrentReconnect] = await Promise.all([
+      meshJsonRequest(node, path, { body: answer }),
+      meshJsonRequest<Chat>(node, `/api/chats/${id}/reconnect`, { body: {} }),
+    ]);
+    expect(answerResponse.status).toBe(200);
+    expect(concurrentReconnect.status).toBe(200);
+    const settled = await pollUntil(async () => (await meshJsonRequest<ChatSnapshot>(node, `/api/chats/${id}/snapshot`)).body,
+      (snapshot) => snapshot.state.status === "idle" && snapshot.state.harness?.questions?.at(-1)?.status === "answered"
+        && snapshot.transcript.messages.some((message) => message.role === "assistant" && message.content.includes("Blue")),
+      { description: "original Copilot callback delivers its answer", timeoutMs: 10_000 });
+    expect(settled.state.session).toEqual(waiting.state.session);
+    expect(await Bun.file(join(node.dataDir, `copilot-answer-${waiting.state.session!.id}.json`)).json())
+      .toEqual({ answer: "Blue", wasFreeform: false });
+    expect((await meshJsonRequest(node, path, { body: answer })).status).toBe(200);
+    expect((await meshJsonRequest(node, path, { body: { answers: [["Red"]] } })).status).toBe(409);
+
+    const stopping = await ask();
+    const stopped = await meshJsonRequest<Chat>(node, `/api/chats/${stopping.config.id}/interrupt`, { body: {} });
+    expect(stopped.status).toBe(200);
+    expect(stopped.body.state.status).toBe("idle");
+    expect(stopped.body.state.harness?.questions?.at(-1)?.status).toBe("cancelled");
+    expect((await meshJsonRequest(node, `/api/chats/${stopping.config.id}/questions/${stopping.state.harness!.questions!.at(-1)!.requestId}`, { body: answer })).status).toBe(409);
+    expect(await Bun.file(join(node.dataDir, `copilot-cancelled-${stopping.state.session!.id}.json`)).json()).toMatchObject({
+      code: expect.any(Number),
+    });
+  } finally {
+    if (controller) { controller.child.kill(); await controller.child.exited; await rm(controller.dataDir, { recursive: true, force: true }); }
+    await rm(binaryDir, { recursive: true, force: true });
+  }
+}, 30_000);
+
+async function createRuntime(adapter: "codex" | "opencode2" | "copilot" = "codex"): Promise<string> {
   await mkdir(root, { recursive: true });
   const binaryDir = await mkdtemp(join(root, "runtime-"));
   const executable = join(binaryDir, adapter);
-  const fixture = adapter === "codex" ? "native-mesh-codex.ts" : "opencode-question-runtime.ts";
+  const fixture = adapter === "codex" ? "native-mesh-codex.ts"
+    : adapter === "copilot" ? "copilot-question-runtime.ts" : "opencode-question-runtime.ts";
   await Bun.write(executable, `#!/bin/sh\nexec "${process.execPath}" "${resolve(`tests/fixtures/${fixture}`)}" "$@"\n`);
   await chmod(executable, 0o755);
   return binaryDir;

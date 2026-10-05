@@ -10,7 +10,7 @@ import { CHAT_METADATA_COLUMNS } from "./crud";
 import { requirePersistenceUserId } from "../ownership";
 import { chatTranscriptStore } from "../transcripts/chat-store";
 import { parseStoredHarnessState } from "../harness-binding";
-import { expireQuestions } from "@/shared/harness-questions";
+import { closeOpenQuestions } from "@/shared/harness-questions";
 
 const log = createLogger("persistence:chats");
 const STALE_CHAT_RESET_MESSAGE = "Forcefully stopped by connection reset";
@@ -69,7 +69,7 @@ function resetStale(chatId?: string): number {
     for (const row of rows) {
       const harness = parseStoredHarnessState(row.harness_state_json, row.id);
       if (harness?.questions?.length) db.query("UPDATE chats SET harness_state_json = ? WHERE id = ? AND user_id = ?")
-        .run(JSON.stringify({ ...harness, questions: expireQuestions(harness.questions) }), row.id, userId);
+        .run(JSON.stringify({ ...harness, questions: closeOpenQuestions(harness.questions, "expired") }), row.id, userId);
     }
     const result = db.prepare(`
     UPDATE chats

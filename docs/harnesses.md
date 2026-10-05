@@ -115,11 +115,15 @@ Tasks that need missing human information use the existing blocked outcome.
 ACP has no universal tool-exclusion mechanism; unsupported replies are explicit
 errors.
 
-Reloading the browser retains answerable pending questions. Interrupting or
-replacing the native connection expires live questions. An unconfirmed answer
-delivery must not be resent blindly; stop or reconnect instead. Copilot's
-legacy callback supplies no child identity, so its question is not falsely
-attributed to a particular subagent.
+Reloading the browser, reconnecting or opening the chat on another device
+retains answerable pending questions while the native request is still alive.
+A reconnect does not abort that execution; blocking questions keep the chat
+waiting. **Stop** cancels pending questions. Losing the underlying native
+request or replacing its connection can still expire them.
+An unconfirmed answer delivery must not be resent blindly; reconnecting does
+not clear that uncertainty or submit the answer again. Copilot's legacy callback
+supplies no child identity, so its question is not falsely attributed to a
+particular subagent.
 
 ## HTTP and CLI
 

@@ -35,7 +35,7 @@ export class CodexQuestionCoordinator {
       for (const [id, pending] of this.pending) {
         if (pending.threadId === event.params.threadId && pending.turnId === event.params.turn.id) {
           pending.response.reject(new HarnessError("harness_transport_closed", "The question's native turn ended."));
-          this.publishResolved(id, pending, "expired");
+          this.publishResolved(id, pending, event.params.turn.status === "interrupted" ? "cancelled" : "expired");
         }
       }
     });
@@ -98,7 +98,7 @@ export class CodexQuestionCoordinator {
     this.pending.clear();
   }
 
-  private publishResolved(requestId: string, pending: { rootId: string; scope: HarnessEventScope }, outcome: "answered" | "expired"): void {
+  private publishResolved(requestId: string, pending: { rootId: string; scope: HarnessEventScope }, outcome: "answered" | "cancelled" | "expired"): void {
     this.dependencies.events.publish(pending.rootId, { type: "question.resolved", requestId, outcome, scope: pending.scope });
   }
 }
