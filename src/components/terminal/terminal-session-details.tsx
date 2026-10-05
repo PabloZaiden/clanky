@@ -5,7 +5,7 @@
  * canonical terminal session API and connects via /api/terminal.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Terminal } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
 import { useTerminalSession } from "../../hooks/useTerminalSession";
@@ -51,6 +51,7 @@ export function TerminalSessionDetails({
   const { session, loading, error, deleteSession: _deleteSession, refresh } = useTerminalSession(terminalSessionId);
 
   const terminalContainerRef = useRef<HTMLDivElement>(null);
+  const focusModeLayerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const [passwordPromptOpen, setPasswordPromptOpen] = useState(false);
@@ -191,6 +192,30 @@ export function TerminalSessionDetails({
 
   const { isFocusMode, toggleFocusMode } = useFocusMode(forcedFocusMode);
   const usesViewportAwareFocusMode = isFocusMode && !forcedFocusMode;
+  const hasTerminalSession = session !== null;
+
+  // Escape route-level containing blocks without mutating the framework header.
+  useLayoutEffect(() => {
+    const layer = focusModeLayerRef.current;
+    if (!layer || typeof layer.showPopover !== "function") {
+      return;
+    }
+
+    if (usesViewportAwareFocusMode) {
+      layer.setAttribute("popover", "manual");
+      if (!layer.matches(":popover-open")) {
+        layer.showPopover();
+      }
+      return () => {
+        if (layer.matches(":popover-open")) {
+          layer.hidePopover();
+        }
+        layer.removeAttribute("popover");
+      };
+    }
+
+    layer.removeAttribute("popover");
+  }, [hasTerminalSession, usesViewportAwareFocusMode]);
 
   const viewport = useVisualViewport(usesViewportAwareFocusMode);
 
@@ -276,11 +301,12 @@ export function TerminalSessionDetails({
     <div
       className={
         usesViewportAwareFocusMode
-          ? "fixed inset-0 z-50 flex min-h-0 flex-col bg-[#1e1e1e]"
+          ? "fixed inset-0 z-50 m-0 flex h-dvh min-h-0 w-screen max-h-none max-w-none flex-col border-0 bg-[#1e1e1e] p-0"
           : isFocusMode
             ? "flex min-h-0 flex-1 flex-col bg-[#1e1e1e]"
             : "flex min-h-0 flex-1 flex-col"
       }
+      ref={focusModeLayerRef}
       style={focusModeContainerStyle}
     >
       <div
