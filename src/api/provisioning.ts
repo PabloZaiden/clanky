@@ -105,6 +105,7 @@ export const provisioningRoutes = defineRoutes({
           devboxTemplate: validation.data.devboxTemplate ?? undefined,
           githubUser: validation.data.githubUser ?? undefined,
           provider: validation.data.provider,
+          adapter: validation.data.adapter,
           mode: validation.data.mode,
           createNewRepository: validation.data.createNewRepository,
           targetDirectory: validation.data.targetDirectory ?? undefined,

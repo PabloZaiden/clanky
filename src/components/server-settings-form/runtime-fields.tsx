@@ -7,7 +7,7 @@ import {
   type AgentProvider, type HarnessAdapter, type ExecutionHostRef, type ExecutionHostDescriptor,
 } from "@/shared";
 import type { WorkspaceSshTargetRequest } from "@/contracts/schemas";
-import { AGENT_PROVIDER_OPTIONS } from "../../constants/agent-providers";
+import { HarnessRuntimeSelector } from "../harness-runtime-selector";
 
 interface RuntimeFieldsProps {
   adapter: HarnessAdapter;
@@ -40,40 +40,8 @@ export function RuntimeFields({ adapter, supportedAdapters, adapterAvailabilityE
           Runtime
         </h3>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div>
-            <label htmlFor="harness-adapter" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Adapter
-            </label>
-            <select
-              id="harness-adapter"
-              value={adapter}
-              onChange={(event) => updateAdapter(event.target.value as HarnessAdapter)}
-              className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100"
-            >
-              <option value="acp" disabled={!supportedAdapters.includes("acp")}>ACP</option>
-              <option value="copilot" disabled={!supportedAdapters.includes("copilot")}>GitHub Copilot</option>
-              <option value="codex" disabled={!supportedAdapters.includes("codex")}>Codex</option>
-              <option value="opencode2" disabled={!supportedAdapters.includes("opencode2")}>OpenCode 2</option>
-            </select>
-          </div>
-          {adapter === "acp" && <div>
-            <label
-              htmlFor="agent-provider"
-              className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300"
-            >
-              Harness preset
-            </label>
-            <select
-              id="agent-provider"
-              value={provider}
-              onChange={(event) => updateProvider(event.target.value as AgentProvider)}
-              className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100"
-            >
-              {AGENT_PROVIDER_OPTIONS.map((option) => (
-                <option key={option.id} value={option.id}>{option.label}</option>
-              ))}
-            </select>
-          </div>}
+          <HarnessRuntimeSelector adapter={adapter} provider={provider} supportedAdapters={supportedAdapters}
+            onAdapterChange={updateAdapter} onProviderChange={updateProvider} />
           <div>
             <label
               htmlFor="execution-host"

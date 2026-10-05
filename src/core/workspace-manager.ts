@@ -31,6 +31,8 @@ import { DEFAULT_WORKSPACE_TYPE } from "@/shared/workspace";
 import { backendManager } from "./backend-manager";
 import { assertHarnessHostPolicy } from "./backend/harness-host-policy";
 import { DomainError } from "../domain/domain-error";
+import { getWorkerPaths } from "./provisioning/worker-assets";
+import { prepareWorkerRuntimeAssets } from "./provisioning/worker-runtime-assets";
 import {
   deleteWorkspaceWithOptions,
   type DeleteWorkspaceOptions,
@@ -38,7 +40,7 @@ import {
 } from "./workspace-deletion";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { countTerminalSessionsByWorkspace } from "../persistence/terminal-sessions";
-import { withWorkspaceExecutionLock } from "./workspace-execution-lock";
+import { withWorkspaceExecutionLock, withWorkspaceRuntimeLock } from "./workspace-execution-lock";
 import { executionHostService } from "./execution-host-service";
 import { workspaceWorkerEnrollmentService } from "./workspace-worker-enrollment-service";
 import { meshManager } from "./mesh-manager";
@@ -511,9 +513,10 @@ export class WorkspaceManager {
     id: string,
     updates: UpdateWorkspaceInput,
   ): Promise<Workspace | null> {
-    return await withWorkspaceExecutionLock(id, async () => {
+    const update = async () => await withWorkspaceExecutionLock(id, async () => {
       return await this.updateWorkspaceUnlocked(id, updates);
     });
+    return updates.serverSettings ? await withWorkspaceRuntimeLock(id, update) : await update();
   }
 
   private async updateWorkspaceUnlocked(
@@ -599,6 +602,7 @@ export class WorkspaceManager {
     let executionTargetChanged = false;
     let removeSshTarget = false;
     let workspace: Workspace | null;
+    let runtimeAssets: Awaited<ReturnType<typeof prepareWorkerRuntimeAssets>> | undefined;
     try {
       if (updates.sshTarget !== undefined) {
         if (updates.sshTarget === null) {
@@ -698,11 +702,23 @@ export class WorkspaceManager {
         normalizedUpdates.devcontainerSubpath = updates.devcontainerSubpath;
       }
 
+      if (serverSettingsChanged && !executionTargetChanged && current.sourceDirectory && current.provisioningHostBinding
+        && current.executionHostBinding?.host.kind === "mesh" && "scope" in current.executionHostBinding.host
+        && current.executionHostBinding.host.scope === "workspace") {
+        const executor = await backendManager.getCommandExecutorAsync(id, current.directory);
+        const workerDirectory = workspaceWorkerEnrollmentService.getByWorkspace(userId, id)?.worker?.workerDirectory;
+        if (!workerDirectory) throw new DomainError("workspace_runtime_assets_failed", "The managed worker directory is unavailable.");
+        const paths = getWorkerPaths(workerDirectory, workerDirectory);
+        const directory = await executor.exec("mkdir", ["-p", paths.hostRoot]);
+        if (!directory.success) throw new DomainError("workspace_runtime_assets_failed", "Cannot prepare the workspace runtime directory.");
+        runtimeAssets = await prepareWorkerRuntimeAssets(executor, { paths, runtime: updates.serverSettings!.agent, install: true });
+      }
       workspace = await updateWorkspaceRecord(id, normalizedUpdates);
       if (!workspace) {
         if (previousSshTargetState && sshTargetMutationStarted) {
           restoreWorkspaceSshTargetState(id, previousSshTargetState);
         }
+        await runtimeAssets?.rollback();
         return workspace;
       }
       if (removeSshTarget) {
@@ -710,6 +726,14 @@ export class WorkspaceManager {
         workspace = await this.getWorkspace(id);
       }
     } catch (error) {
+      if (runtimeAssets) {
+        try { await runtimeAssets.rollback(); }
+        catch (rollbackError) {
+          throw new DomainError("workspace_runtime_rollback_failed", "Workspace update failed and runtime rollback failed.", {
+            cause: new AggregateError([error, rollbackError]),
+          });
+        }
+      }
       if (previousSshTargetState && sshTargetMutationStarted) {
         try {
           restoreWorkspaceSshTargetState(id, previousSshTargetState);

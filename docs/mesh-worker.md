@@ -370,6 +370,40 @@ clanky worker service install
 
 The service installation keeps the existing worker data and Mesh identity.
 
+## Automatic workspace runtimes
+
+Automatic workspace creation selects **ACP**, **GitHub Copilot**, **Codex**, or
+**OpenCode 2**. ACP also selects a harness preset. Native adapters require a
+dedicated worker; direct SSH execution remains ACP-only. The host running
+Devbox can use local, SSH or Mesh execution independently of the container's
+adapter.
+
+The persistent `.devbox/clanky-worker` startup assets store the selected
+adapter/preset and install only its native CLI before starting the worker.
+Node/npm must be available in the container. Packages are pinned to validated
+versions: `@github/copilot@1.0.91`, `@openai/codex@0.159.2` and
+`@opencode/cli@2.0.20`. ACP does not install an additional CLI. Installation
+uses a private prefix, checks the CLI version and adds a stable private bin
+directory to the worker's PATH. OpenCode 2 is exposed as `opencode2`, without
+replacing a system OpenCode generation-1 executable.
+When npm requires install-script approval, it is recorded only for the selected
+package in this private prefix; global npm policy is not changed.
+
+Changing an existing automatic workspace's adapter installs the selected
+dependency before saving settings and updates its durable requirements.
+Failed installation leaves the saved selection unchanged. Runtime saves and
+Clanky-managed rebuild/restart jobs are serialized per workspace. Previously
+installed private runtimes remain cached; global packages and authentication
+profiles are untouched. Authentication still needs to be configured separately.
+
+Rebuild/restart preserves the current workspace runtime. The Devbox
+`startup-command` persists in its state and runs on external `devbox up`,
+`devbox rebuild` and `devbox arise`, without a running Clanky controller.
+Raw Docker restarts and other devcontainer tools do not invoke that Devbox
+hook. Existing automatic workspaces acquire these assets on their next
+Clanky-managed rebuild/restart or adapter change; existing ACP selections are
+not automatically converted to native adapters.
+
 ## GitHub CLI credentials in automatic workspaces
 
 When Devbox provisions an automatic workspace, Clanky can pass the selected

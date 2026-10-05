@@ -48,6 +48,7 @@ export function RebuildWorkspaceView({
       devcontainerSubpath: workspace.devcontainerSubpath ?? null,
       devboxTemplate: null,
       provider: workspace.serverSettings.agent.provider,
+      adapter: workspace.serverSettings.agent.adapter,
       password,
       mode,
       targetDirectory: workspace.sourceDirectory ?? null,
@@ -139,8 +140,15 @@ export function RebuildWorkspaceView({
             />
 
             <TextField
+              id={`${mode}-adapter`}
+              label="Adapter"
+              value={workspace.serverSettings.agent.adapter}
+              disabled
+            />
+
+            <TextField
               id={`${mode}-provider`}
-              label="Provider"
+              label="Harness"
               value={workspace.serverSettings.agent.provider}
               disabled
             />

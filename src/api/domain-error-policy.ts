@@ -163,6 +163,7 @@ const API_DOMAIN_ERROR_CODES = {
   provider_not_found: true,
   invalid_task_state: true,
   invalid_worker_host_address: true,
+  invalid_runtime: true,
   job_not_terminal: true,
   mesh_acp_unavailable: true,
   mesh_control_request_rejected: true,
@@ -320,6 +321,9 @@ const API_DOMAIN_ERROR_CODES = {
   voice_piper_unsupported_platform: true,
   workspace_delete_metadata_invalid: true,
   workspace_delete_remote_failed: true,
+  workspace_runtime_assets_failed: true,
+  workspace_runtime_install_failed: true,
+  workspace_runtime_rollback_failed: true,
   workspace_deletion_in_progress: true,
   workspace_execution_target_in_use: true,
   workspace_execution_target_missing: true,
@@ -1237,6 +1241,10 @@ const POLICY_PROFILES = {
         status: 400,
         message: "The execution target is invalid.",
       },
+      invalid_runtime: {
+        status: 400,
+        message: "Native adapters require a dedicated worker and matching harness preset.",
+      },
       invalid_worker_host_address: {
         status: 400,
         message: "The worker host address is invalid.",
@@ -1698,6 +1706,18 @@ const POLICY_PROFILES = {
     boundary: "authenticated",
     mappings: {
       ...COMMON_MAPPINGS,
+      workspace_runtime_assets_failed: {
+        status: 502,
+        message: "Cannot persist the automatic workspace runtime configuration.",
+      },
+      workspace_runtime_install_failed: {
+        status: 502,
+        message: "Cannot install the selected CLI in the workspace. Check Node/npm and network access on the worker.",
+      },
+      workspace_runtime_rollback_failed: {
+        status: 500,
+        message: "Runtime configuration rollback failed. Rebuild the workspace before retrying.",
+      },
       directory_not_found: {
         status: 400,
         message: "Directory does not exist on the remote server.",

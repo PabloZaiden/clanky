@@ -1,11 +1,12 @@
 import { z } from "zod";
-import { AgentProviderSchema } from "./workspace";
+import { AgentProviderSchema, AgentSettingsSchema } from "./workspace";
 import { SshCredentialTokenSchema } from "./ssh-server";
 import { ExecutionHostRefSchema } from "./execution-host";
 import {
   isIncompleteGitHubRepositoryUrl,
   isValidWorkerHostAddress,
   PROVISIONING_WORKER_ENROLLMENT_ROUTES,
+  HARNESS_ADAPTER_IDS,
 } from "@/shared";
 import { ControllerRelayNameSchema } from "./mesh-relay";
 
@@ -38,6 +39,7 @@ export const CreateProvisioningJobRequestSchema = z.object({
   devboxTemplate: z.string().trim().nullish(),
   githubUser: z.string().trim().nullish(),
   provider: AgentProviderSchema,
+  adapter: z.enum(HARNESS_ADAPTER_IDS).default("acp"),
   credentialToken: SshCredentialTokenSchema.nullable(),
   mode: ProvisioningJobModeSchema,
   createNewRepository: z.boolean().default(false),
@@ -45,6 +47,13 @@ export const CreateProvisioningJobRequestSchema = z.object({
   targetDirectory: z.string().trim().nullable(),
   /** For rebuild/restart: existing workspace ID */
   workspaceId: z.string().trim().nullable(),
+}).refine((data) => AgentSettingsSchema.safeParse({ adapter: data.adapter, provider: data.provider }).success, {
+  message: "The harness preset does not match the native adapter",
+  path: ["provider"],
+}).refine((data) => data.mode !== "provision" || data.adapter === "acp"
+  || (data.transport !== "ssh" && !data.workspaceWorkerEnrollmentId), {
+  message: "Native adapters require a dedicated worker; direct SSH supports ACP only",
+  path: ["adapter"],
 }).refine((data) => {
   if (
     data.workerRelayName

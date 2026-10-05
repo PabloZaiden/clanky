@@ -34,6 +34,7 @@ import {
   type MeshProtocolVersion,
 } from "../../src/shared/mesh-protocol";
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
+import type { Workspace } from "@/shared";
 import { createMockBackend } from "../mocks/mock-backend";
 import {
   ProvisioningTestExecutor,
@@ -52,6 +53,7 @@ interface ProvisioningSnapshotResponse {
           revision: number;
         };
         transport?: string;
+        adapter?: string;
         workerEnrollmentId?: string;
         workerEnrollmentRoute?: "direct" | "relay";
         workerRelayName?: string;
@@ -591,6 +593,7 @@ describe("Provisioning API integration", () => {
           workerEnrollmentRoute: "direct",
           workerHostAddress: manualWorkerHost,
           workerHostAddressManual: true,
+          adapter: "copilot",
           repoUrl: "https://github.com/octocat/worker-example.git",
           basePath: "/workspaces",
           devcontainerSubpath: null,
@@ -607,6 +610,7 @@ describe("Provisioning API integration", () => {
       expect(started.job.config.transport).toBe("worker");
       expect(started.job.config.workerEnrollmentRoute).toBe("direct");
       expect(started.job.config.workerHostAddress).toBe(manualWorkerHost);
+      expect(started.job.config.adapter).toBe("copilot");
       expect(started.job.config.workerHostAddressManual).toBe(true);
 
       const completed = await waitForJobStatus(baseUrl, started.job.config.id, ["completed"]);
@@ -629,6 +633,17 @@ describe("Provisioning API integration", () => {
         "admin",
       );
       expect(registrationBeforeRestart?.workerEndpoint).toBe("https://worker.example.test:5001");
+      expect(completed.workspace?.serverSettings?.agent).toEqual({ adapter: "copilot", provider: "copilot" });
+
+      // Lifecycle jobs must preserve the saved adapter, independently of a
+      // stale provider in the request made before the workspace was updated.
+      backendManager.setExecutorFactoryForTesting(() => executor);
+      const selectedRuntime = await fetch(`${baseUrl}/api/workspaces/${completed.workspace!.id}/server-settings`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agent: { adapter: "codex", provider: "codex" } }),
+      });
+      expect(selectedRuntime.status).toBe(200);
 
       const restartExecutor = new ProvisioningTestExecutor({
         existingDirectories: ["/workspaces/worker-example"],
@@ -683,8 +698,39 @@ describe("Provisioning API integration", () => {
         scope: "workspace",
         workspaceId: completed.workspace!.id,
       });
+      expect(completedRestart.workspace?.serverSettings?.agent).toEqual({ adapter: "codex", provider: "codex" });
       expect(getWorkerRegistrationByWorkspace(completed.workspace!.id, "admin")?.workerEndpoint)
         .toBe("https://worker.example.test:5002");
+
+      backendManager.setExecutorFactoryForTesting(() => new ProvisioningTestExecutor({ failRuntimeInstall: true }));
+      const failedRuntime = await fetch(`${baseUrl}/api/workspaces/${completed.workspace!.id}/server-settings`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agent: { adapter: "opencode2", provider: "opencode" } }),
+      });
+      expect(failedRuntime.status).toBe(502);
+      expect((await failedRuntime.json() as { error: string }).error).toBe("workspace_runtime_install_failed");
+      const afterFailure = await fetch(`${baseUrl}/api/workspaces/${completed.workspace!.id}`);
+      expect((await afterFailure.json() as Workspace).serverSettings.agent).toEqual({ adapter: "codex", provider: "codex" });
+
+      backendManager.setExecutorFactoryForTesting(() => restartExecutor);
+      const openCodeRuntime = await fetch(`${baseUrl}/api/workspaces/${completed.workspace!.id}/server-settings`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agent: { adapter: "opencode2", provider: "opencode" } }),
+      });
+      expect(openCodeRuntime.status).toBe(200);
+      const rebuild = await fetch(`${baseUrl}/api/provisioning-jobs`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Worker Workspace", executionHost: { kind: "ssh", serverId: sshServer.config.id },
+          repoUrl: "", basePath: "/workspaces", provider: "copilot",
+          devcontainerSubpath: null, credentialToken: null,
+          mode: "rebuild", targetDirectory: "/workspaces/worker-example", workspaceId: completed.workspace!.id,
+        }),
+      });
+      expect(rebuild.status).toBe(201);
+      const rebuildJob = await rebuild.json() as ProvisioningSnapshotResponse;
+      const rebuilt = await waitForJobStatus(baseUrl, rebuildJob.job.config.id, ["completed"]);
+      expect(rebuilt.workspace?.serverSettings?.agent).toEqual({ adapter: "opencode2", provider: "opencode" });
 
       const deleted = await fetch(
         `${baseUrl}/api/workspaces/${completed.workspace?.id}`,

@@ -8,9 +8,10 @@ import {
 } from "@/shared";
 import {
   DEFAULT_EXECUTION_AGENT_PROVIDER,
+  createAgentSettings,
   getCreateWorkspaceDefaultServerSettings,
 } from "@/shared/settings";
-import type { AgentProvider, ServerSettings } from "@/shared/settings";
+import type { AgentProvider, HarnessAdapter, ServerSettings } from "@/shared/settings";
 import type {
   CreateWorkspaceRequest,
   WorkspaceSshTargetRequest,
@@ -95,6 +96,8 @@ export interface UseWorkspaceCreateResult {
   setAutomaticGithubUser: (githubUser: string) => void;
   automaticAdvancedOpen: boolean;
   setAutomaticAdvancedOpen: (open: boolean) => void;
+  automaticAdapter: HarnessAdapter;
+  setAutomaticAdapter: (adapter: HarnessAdapter) => void;
   automaticProvider: AgentProvider;
   setAutomaticProvider: (provider: AgentProvider) => void;
   automaticPassword: string;
@@ -205,6 +208,7 @@ export function useWorkspaceCreate({
   const [automaticProvider, setAutomaticProvider] = useState<AgentProvider>(
     DEFAULT_EXECUTION_AGENT_PROVIDER,
   );
+  const [automaticAdapter, setAutomaticAdapter] = useState<HarnessAdapter>("acp");
   const [automaticPassword, setAutomaticPassword] = useState("");
   const lastProvisioningRefreshIdRef = useRef<string | null>(null);
   const wasOnComposeWorkspaceRef = useRef(false);
@@ -292,6 +296,7 @@ export function useWorkspaceCreate({
         setAutomaticGithubUser(config.githubUser ?? "");
         setAutomaticAdvancedOpen(Boolean(config.devboxTemplate ?? config.devcontainerSubpath ?? config.githubUser));
         setAutomaticProvider(config.provider);
+        setAutomaticAdapter(config.adapter ?? "acp");
         setAutomaticPassword("");
         prefilledRetryJobIdRef.current = retryJobId;
         provisioning.clearActiveJob();
@@ -623,6 +628,7 @@ export function useWorkspaceCreate({
     setAutomaticGithubUser(config.githubUser ?? "");
     setAutomaticAdvancedOpen(Boolean(config.devboxTemplate ?? config.devcontainerSubpath ?? config.githubUser));
     setAutomaticProvider(config.provider);
+    setAutomaticAdapter(config.adapter ?? "acp");
     setAutomaticPassword("");
     provisioning.clearActiveJob();
   }
@@ -693,7 +699,7 @@ export function useWorkspaceCreate({
             : automaticDevcontainerSubpath.trim() || null,
           devboxTemplate: automaticDevboxTemplate.trim() || null,
           githubUser: automaticGithubUser.trim() || null,
-          provider: automaticProvider,
+          ...createAgentSettings(automaticAdapter, automaticProvider),
           createNewRepository: automaticCreateNewRepository,
           password: automaticPassword,
           mode: "provision",
@@ -808,6 +814,8 @@ export function useWorkspaceCreate({
     setAutomaticGithubUser,
     automaticAdvancedOpen,
     setAutomaticAdvancedOpen,
+    automaticAdapter,
+    setAutomaticAdapter,
     automaticProvider,
     setAutomaticProvider,
     automaticPassword,

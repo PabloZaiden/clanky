@@ -4,7 +4,7 @@ import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import { getStoredSshServerCredential } from "../../lib/ssh-browser-credentials";
 import { useDevboxTemplates } from "../../hooks/useDevboxTemplates";
 import { useExecutionHostAddresses } from "../../hooks/workspace-server-settings";
-import { AGENT_PROVIDER_OPTIONS } from "../../constants/agent-providers";
+import { HarnessRuntimeSelector } from "../harness-runtime-selector";
 import { ServerSettingsForm } from "../server-settings-form";
 import type { ServerSettings } from "@/shared/settings";
 import {
@@ -12,10 +12,10 @@ import {
   isIncompleteGitHubRepositoryUrl,
   isValidWorkerHostAddress,
   parseExecutionHostRef,
+  HARNESS_ADAPTER_IDS,
   serializeExecutionHostRef,
   type ExecutionHostRef,
 } from "@/shared";
-import type { AgentProvider } from "@/shared/settings";
 import type { WorkspaceSshTargetRequest } from "@/contracts/schemas";
 import { Button, PASSWORD_INPUT_PROPS } from "../common";
 import {
@@ -217,6 +217,8 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     automaticAdvancedOpen,
     setAutomaticAdvancedOpen,
     automaticProvider,
+    automaticAdapter,
+    setAutomaticAdapter,
     setAutomaticProvider,
     automaticPassword,
     setAutomaticPassword,
@@ -307,6 +309,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     }
   }, [automaticCreateNewRepository, automaticDevboxTemplate, setAutomaticDevboxTemplate, templates, templatesLoading]);
   const automaticFormValid =
+    (automaticAdapter === "acp" || (automaticTransport === "worker" && !workspaceWorkerEnrollmentSelected)) &&
     workspaceName.trim().length > 0 &&
     (automaticExecutionHost !== null
       || (
@@ -711,18 +714,14 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                 required
               />
 
-              <SelectField
-                  id="automatic-provider"
-                  label="Provider"
-                  value={automaticProvider}
-                  onChange={(event) =>
-                    setAutomaticProvider(event.target.value as AgentProvider)
-                  }
-              >
-                  {AGENT_PROVIDER_OPTIONS.map((option) => (
-                    <option key={option.id} value={option.id}>{option.label}</option>
-                  ))}
-              </SelectField>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <HarnessRuntimeSelector idPrefix="automatic-" adapter={automaticAdapter} provider={automaticProvider}
+                  supportedAdapters={automaticTransport === "worker" && !workspaceWorkerEnrollmentSelected ? HARNESS_ADAPTER_IDS : ["acp"]}
+                  onAdapterChange={setAutomaticAdapter} onProviderChange={setAutomaticProvider} />
+              </div>
+              {automaticAdapter !== "acp" && (automaticTransport !== "worker" || workspaceWorkerEnrollmentSelected) && (
+                <ErrorState title="Native adapters require a dedicated worker" description="Select ACP for direct SSH execution." />
+              )}
 
               {automaticExecutionHost?.kind === "ssh" && !selectedServerHasStoredCredential && (
                 <TextField

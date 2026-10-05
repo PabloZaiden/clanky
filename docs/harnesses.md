@@ -17,7 +17,10 @@ harness subagents.
 Native adapters are experimental. Install and authenticate the harness on the
 selected execution host, not necessarily on the controller. The Clanky server
 or worker must be able to find its CLI in the configured `PATH`. Native startup
-does not install or upgrade the harness automatically.
+does not install or upgrade the harness automatically. Automatic Devbox
+workspaces are the exception: their persistent hook manages the selected native
+CLI in a private workspace prefix. See
+[automatic workspace runtimes](mesh-worker.md#automatic-workspace-runtimes).
 
 Local hosts and end-to-end Mesh generation-6 paths support native adapters.
 Direct SSH and Mesh paths with a generation-5-only worker or relay support ACP

@@ -30,6 +30,7 @@ export interface ProvisioningTestExecutorOptions {
   failDevboxArise?: boolean;
   failWorkerJoin?: boolean;
   failWorkerProcessCleanup?: boolean;
+  failRuntimeInstall?: boolean;
   devboxUpDelayMs?: number;
   devboxStatusOutput?: string;
   credentialFileContent?: string;
@@ -284,6 +285,9 @@ export class ProvisioningTestExecutor implements CommandExecutor {
     }
 
     if (command === "sh") {
+      if (this.options.failRuntimeInstall && args[0]?.includes("/install-runtime.sh")) {
+        return { success: false, stdout: "", stderr: "npm registry unavailable", exitCode: 1 };
+      }
       if (
         this.options.failWorkerProcessCleanup
         && args.some((arg) =>

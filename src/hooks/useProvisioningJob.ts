@@ -9,6 +9,7 @@ import { isAbortError } from "../lib/request-lifecycle";
 import { isProvisioningJobTerminal } from "@/shared";
 import type {
   AgentProvider,
+  HarnessAdapter,
   ProvisioningEvent,
   ProvisioningLogEntry,
   PublicProvisioningJob,
@@ -41,6 +42,7 @@ export interface StartProvisioningJobRequest {
   devboxTemplate: string | null;
   githubUser?: string | null;
   provider: AgentProvider;
+  adapter?: HarnessAdapter;
   createNewRepository?: boolean;
   password?: string;
   mode: "provision" | "rebuild" | "restart" | "arise";
