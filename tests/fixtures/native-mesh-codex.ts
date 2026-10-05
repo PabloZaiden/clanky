@@ -18,7 +18,8 @@ interface Thread {
 }
 let threads: Thread[] = await Bun.file(stateFile).exists() ? JSON.parse(await Bun.file(stateFile).text()) as Thread[] : [];
 const processes = new Map<string, Bun.Subprocess<"pipe", "ignore", "ignore">>();
-const turns = new Map<string, { id: string; status: string; items: unknown[]; error: null }>();
+interface Turn { id: string; status: string; items: unknown[]; error: null }
+const turns = new Map<string, Turn>();
 const receipts: Array<{ item: { type: string; id: string; clientId: string; content: unknown[] } }> = [];
 const questionPolicies = new Map<string, boolean>();
 const nativeConfigs = new Map<string, Record<string, unknown>>();
@@ -63,6 +64,19 @@ async function stop(id: string): Promise<void> {
   await save();
 }
 
+async function consumeAsyncAnswer(id: string, input: unknown, turn: Turn): Promise<boolean> {
+  if (!JSON.stringify(input).includes("Choose a strategy")) return false;
+  const file = Bun.file(join(directory, `async-input-${id}.json`));
+  const inputs: unknown[] = await file.exists() ? await file.json() : [];
+  if (inputs.length >= 32) throw new Error("Async fixture input capacity reached");
+  await Bun.write(file, JSON.stringify([...inputs, input]));
+  turn.status = "completed"; thread(id).status = { type: "idle" };
+  notify("item/completed", { threadId: id, turnId: turn.id, item: { type: "agentMessage", id: crypto.randomUUID(), text: "Async answer consumed" } });
+  notify("turn/completed", { threadId: id, turn });
+  await save();
+  return true;
+}
+
 async function request(method: string, params: Record<string, unknown>): Promise<unknown> {
   const id = params["threadId"] as string;
   switch (method) {
@@ -93,13 +107,18 @@ async function request(method: string, params: Record<string, unknown>): Promise
       const turn = { id: crypto.randomUUID(), status: "inProgress", items: [], error: null };
       turns.set(id, turn);
       notify("turn/started", { threadId: id, turn });
+      if (await consumeAsyncAnswer(id, params["input"], turn)) return { turn };
       if (JSON.stringify(params["input"]).includes("question-fixture")) {
         const asyncQuestion = JSON.stringify(params["input"]).includes("async-question-fixture");
         if (asyncQuestion && !await questionDenied(id, "request_user_input_async")) {
           notify("item/completed", { threadId: id, turnId: turn.id, item: {
             type: "agentMessage", id: crypto.randomUUID(), text: "Choose a strategy", delivery: "async",
-            questions: [{ id: "strategy", header: "Strategy", question: "Choose a strategy", isOther: true, options: [{ label: "Merge", description: "Preserve histories" }] }],
+            questions: [{ title: "Choose a strategy", options: ["Merge"] }],
           } });
+          if (!JSON.stringify(params["input"]).includes("queued-async-question-fixture")) {
+            turn.status = "completed"; root.status = { type: "idle" };
+            notify("turn/completed", { threadId: id, turn });
+          }
         } else if (questionPolicies.get(id)) {
           const requestId = crypto.randomUUID();
           questions.set(requestId, { threadId: id, turnId: turn.id });
@@ -140,7 +159,7 @@ async function request(method: string, params: Record<string, unknown>): Promise
       receipts.push({ item: { type: "userMessage", id: messageId, clientId, content: params["input"] as unknown[] } });
       if (await Bun.file(join(directory, ".fixture-steer-response-loss")).exists()) throw new Error("Native input admitted without a usable response");
       notify("item/completed", { threadId: id, turnId: turn.id, item: receipts.at(-1)!.item });
-      if (JSON.stringify(params["input"]).includes("finish principal")) {
+      if (!await consumeAsyncAnswer(id, params["input"], turn) && JSON.stringify(params["input"]).includes("finish principal")) {
         turn.status = "completed"; thread(id).status = { type: "idle" };
         notify("turn/completed", { threadId: id, turn });
       }

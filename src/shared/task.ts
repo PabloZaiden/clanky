@@ -14,6 +14,7 @@ import type { CheapModelSelection, ModelConfig } from "./model";
 import type { MessageAttachment } from "./message-attachments";
 import type { ToolCallRecord } from "./tool-call";
 import type { HarnessConversationBinding, HarnessConversationState } from "./harness-control";
+import type { QuestionMessageData } from "./harness-questions";
 export type { CheapModelSelection, ModelConfig };
 
 /**
@@ -250,6 +251,7 @@ export interface PersistedMessage {
   attachments?: MessageAttachment[];
   /** ISO 8601 timestamp when the message was created */
   timestamp: string;
+  question?: QuestionMessageData;
 }
 
 /**

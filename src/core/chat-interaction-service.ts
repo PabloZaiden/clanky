@@ -351,7 +351,7 @@ export class ChatInteractionService implements ChatInteractionPort {
     if (!message && attachments.length === 0) {
       throw new Error("Message or attachments are required");
     }
-    return { message, attachments };
+    return { message, attachments, transcriptMessage: options.transcriptMessage };
   }
 
   private shouldQueueMessage(chat: Chat): boolean {
@@ -381,10 +381,11 @@ export class ChatInteractionService implements ChatInteractionPort {
   ): Promise<Chat> {
     const now = createTimestamp();
     const queuedMessage = {
-      id: `chat-queued-${crypto.randomUUID()}`,
+      id: input.transcriptMessage?.id ?? `chat-queued-${crypto.randomUUID()}`,
       content: input.message,
       attachments: input.attachments.length > 0 ? input.attachments : undefined,
       createdAt: now,
+      transcriptMessage: input.transcriptMessage,
     };
     if ((chat.state.queuedMessages?.length ?? 0) >= 200) throw new HarnessError("harness_input_capacity", "Queued input capacity reached.");
     const updated = await this.state.updateState(chat, {
@@ -412,7 +413,12 @@ export class ChatInteractionService implements ChatInteractionPort {
 
     if (chat.state.harness?.integrity === "invalid") throw new HarnessError("harness_request_failed", "Input admission history is corrupt.");
     const blocked = new Set((chat.state.harness?.inputs ?? []).filter((receipt) => receipt.admission.status !== "rejected").map((receipt) => receipt.admission.inputId));
-    const queuedMessages = (chat.state.queuedMessages ?? []).filter((message) => !blocked.has(message.id));
+    const availableMessages = (chat.state.queuedMessages ?? []).filter((message) => !blocked.has(message.id));
+    // Question replies own an existing transcript message and cannot be folded
+    // into a new combined composer message.
+    const questionIndex = availableMessages.findIndex((message) => message.transcriptMessage);
+    const queuedMessages = questionIndex === 0 ? availableMessages.slice(0, 1)
+      : questionIndex > 0 ? availableMessages.slice(0, questionIndex) : availableMessages;
     if (queuedMessages.length === 0) {
       return;
     }
@@ -437,7 +443,10 @@ export class ChatInteractionService implements ChatInteractionPort {
     try {
       await this.conversation.dispatchMessage(
         chat,
-        { message, attachments },
+        {
+          message, attachments,
+          transcriptMessage: queuedMessages[0]?.transcriptMessage,
+        },
         { clearQueuedMessageIds: queuedMessages.map((entry) => entry.id), credentialToken },
       );
     } catch (error) {

@@ -91,6 +91,14 @@ shows the chat as waiting; normal composer messages remain queued rather than
 being interpreted as the answer. **Stop** interrupts the pending execution.
 Task-attached chats use the same interactive behavior.
 
+New questions appear in the transcript as assistant messages, and submitted
+answers as user messages, without opening a tool call. Requests with several
+fields remain grouped, with numbered questions and matching answers; an empty
+optional field is not treated as an answer. These messages survive reloads,
+reconnects and loading older history, and are included in Markdown/HTML exports.
+Existing tool details remain available. Earlier question history is not
+converted.
+
 Task execution, task planning, helper sessions and autonomous scheduled runs
 use unattended policy. Copilot excludes `ask_user`; OpenCode denies `question`;
 Codex disables ordinary `request_user_input` and denies both question variants
@@ -124,13 +132,21 @@ An unconfirmed answer delivery must not be resent blindly; reconnecting does
 not clear that uncertainty or submit the answer again, including when answer
 delivery and reconnect overlap. Copilot's legacy callback
 supplies no child identity, so its question is not falsely attributed to a
-particular subagent.
+particular subagent. Questions from an identified child are labeled as subagent
+questions. Attempted answers show their delivery state in the transcript;
+uncertainty remains visible even if the request later expires.
 
 ## HTTP and CLI
 
 These user-owned routes use the normal authentication and browser same-origin
 policy. Read input identities and receipts from the entity snapshot rather than
 inventing IDs or calling Steer repeatedly.
+
+New question requests include optional `transcript` references
+(`questionMessageId`, `answerMessageId` and, once submitted, `answerTimestamp`).
+Their transcript messages use the normal `assistant`/`user` roles and carry
+optional `question` metadata (`requestId`, `scope`, `status`). Delivery updates
+retain the same message IDs.
 
 | Method | Path | Purpose |
 | --- | --- | --- |

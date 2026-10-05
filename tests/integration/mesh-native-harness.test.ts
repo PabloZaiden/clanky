@@ -53,6 +53,9 @@ test("Mesh native chat questions survive reconnects, accept owned answers once a
     };
     const waiting = await ask();
     const request = waiting.state.harness!.questions!.at(-1)!;
+    expect((await meshJsonRequest<ChatSnapshot>(controller, `/api/chats/${id}/snapshot`)).body.transcript.messages
+      .filter((message) => message.question?.requestId === request.requestId))
+      .toMatchObject([{ role: "assistant", content: request.questions[0]!.question }]);
     expect(waiting.state.error).toBeUndefined();
     expect((await read()).state.harness?.questions?.at(-1)).toEqual(request);
     const reconnects = await Promise.all(Array.from({ length: 2 }, () =>
@@ -79,8 +82,29 @@ test("Mesh native chat questions survive reconnects, accept owned answers once a
     const transcript = await meshJsonRequest<ChatSnapshot>(controller, `/api/chats/${id}/snapshot?full=1`);
     expect(transcript.body.transcript.messages).toEqual(expect.arrayContaining([
       expect.objectContaining({ role: "assistant", content: expect.stringContaining("Keep separate branches") }),
+      expect.objectContaining({ role: "assistant", content: request.questions[0]!.question }),
+      expect.objectContaining({ role: "user", content: answer.answers[0]![0] }),
     ]));
+    const dialogue = transcript.body.transcript.messages.filter((message) => message.question?.requestId === request.requestId);
+    expect(dialogue).toMatchObject([
+      { role: "assistant", question: { status: "answered", scope: { kind: "principal" } } },
+      { role: "user", question: { status: "answered" } },
+    ]);
+    const continuation = transcript.body.transcript.messages.find((message) => !message.question && message.role === "assistant")!;
+    expect(dialogue[0]!.timestamp < dialogue[1]!.timestamp).toBe(true);
+    expect(dialogue[1]!.timestamp < continuation.timestamp).toBe(true);
+    expect(transcript.body.transcript.totalResponses).toBe(transcript.body.transcript.messages
+      .filter((message) => message.role === "assistant").length);
     expect((await meshJsonRequest(controller, path, { body: answer })).status).toBe(200);
+    const repeated = (await meshJsonRequest<ChatSnapshot>(controller, `/api/chats/${id}/snapshot?full=1`)).body.transcript;
+    expect(repeated.messages.filter((message) => message.question?.requestId === request.requestId)).toEqual(dialogue);
+    expect(repeated.totalEntries).toBe(transcript.body.transcript.totalEntries);
+    for (const extension of ["md", "html"]) {
+      const exported = await meshJsonRequest<string>(controller, `/api/chats/${id}/transcript.${extension}`, { responseType: "text" });
+      expect(exported.status).toBe(200);
+      expect(exported.body).toContain(request.questions[0]!.question);
+      expect(exported.body).toContain(answer.answers[0]![0]!);
+    }
     expect((await meshJsonRequest(controller, path, { body: { answers: [["Rebase"]] } })).status).toBe(409);
     const again = await ask();
     expect(again.state.harness?.questions?.at(-1)?.requestId).not.toBe(request.requestId);
@@ -92,6 +116,8 @@ test("Mesh native chat questions survive reconnects, accept owned answers once a
     const expiredId = beforeRestart.state.harness!.questions!.at(-1)!.requestId;
     await restartMeshNode(controller);
     const restarted = await read();
+    expect((await meshJsonRequest<ChatSnapshot>(controller, `/api/chats/${id}/snapshot?full=1`)).body.transcript.messages
+      .filter((message) => message.question?.requestId === request.requestId)).toEqual(dialogue);
     expect(restarted.state.status).toBe("stopped");
     expect(restarted.state.harness?.questions?.at(-1)?.status).toBe("expired");
     expect((await meshJsonRequest(controller, `/api/chats/${id}/questions/${expiredId}`, { body: answer })).status).toBe(409);
@@ -172,6 +198,24 @@ test("Mesh native resolved questions release capacity for later owned answers", 
     expect(created.status).toBe(201);
     const id = created.body.config.id;
     const read = async () => (await meshJsonRequest<Chat>(controller, `/api/chats/${id}`)).body;
+    expect((await meshJsonRequest(controller, `/api/chats/${id}/messages`, { body: { message: "multi-question-fixture" } })).status).toBe(200);
+    const first = await pollUntil(read, (chat) => chat.state.status === "waiting" && chat.state.harness?.questions?.at(-1)?.status === "pending", {
+      description: "multiple native form fields become answerable", timeoutMs: 10_000,
+    });
+    const firstRequest = first.state.harness!.questions!.at(-1)!;
+    expect(firstRequest.questions).toHaveLength(4);
+    expect((await meshJsonRequest(controller, `/api/chats/${id}/questions/${firstRequest.requestId}`, {
+      body: { answers: [["Blue"], ["Git", "Tests"], ["Keep the working tree clean"], []] },
+    })).status).toBe(200);
+    const firstAnswered = await pollUntil(read, (chat) => chat.state.status === "idle" && chat.state.harness?.questions?.at(-1)?.status === "answered", {
+      description: "multiselect and free-text native answer settles", timeoutMs: 10_000,
+    });
+    expect(firstAnswered.state.harness?.questions?.at(-1)?.status).toBe("answered");
+    const firstDialogue = (await meshJsonRequest<ChatSnapshot>(controller, `/api/chats/${id}/snapshot`)).body.transcript.messages
+      .filter((message) => message.question?.requestId === firstRequest.requestId);
+    expect(firstDialogue).toMatchObject([{ role: "assistant" }, { role: "user", question: { status: "answered" } }]);
+    for (const question of firstRequest.questions) expect(firstDialogue[0]!.content).toContain(question.question);
+    for (const value of ["Blue", "Git", "Tests", "Keep the working tree clean"]) expect(firstDialogue[1]!.content).toContain(value);
     for (let cycle = 0; cycle < 33; cycle++) {
       const sent = await meshJsonRequest(controller, `/api/chats/${id}/messages`, {
         body: { message: `resolved-question-cycle:${cycle}` },
@@ -197,7 +241,21 @@ test("Mesh native resolved questions release capacity for later owned answers", 
       description: "new owned answer reaches the native provider and settles", timeoutMs: 10_000,
     });
     expect(settled.state.error).toBeUndefined();
-    expect(await Bun.file(join(worker.dataDir, "native-answer-effects.json")).json()).toEqual([{ color: "Blue" }]);
+    expect(await Bun.file(join(worker.dataDir, "native-answer-effects.json")).json()).toEqual([
+      { color: "Blue", tools: ["Git", "Tests"], details: "Keep the working tree clean" },
+      { color: "Blue" },
+    ]);
+    let page = (await meshJsonRequest<ChatSnapshot>(controller, `/api/chats/${id}/snapshot`)).body.transcript;
+    expect(page.hasOlder).toBe(true);
+    let pages = 1;
+    while (!page.messages.some((message) => message.id === firstDialogue[0]!.id)) {
+      if (!page.nextCursor || pages++ > 10) throw new Error(`Earlier dialogue was not reachable: ${JSON.stringify(page)}`);
+      page = (await meshJsonRequest<ChatSnapshot>(controller, `/api/chats/${id}/snapshot?before=${encodeURIComponent(page.nextCursor)}`)).body.transcript;
+    }
+    expect(page.messages.filter((message) => message.question?.requestId === firstRequest.requestId)).toEqual(firstDialogue);
+    const full = (await meshJsonRequest<ChatSnapshot>(controller, `/api/chats/${id}/snapshot?full=1`)).body.transcript;
+    expect(full.messages.filter((message) => message.question?.requestId === firstRequest.requestId)).toEqual(firstDialogue);
+    expect(full.totalResponses).toBe(full.messages.filter((message) => message.role === "assistant").length);
   } finally {
     for (const node of nodes.reverse()) { node.child.kill(); await node.child.exited; await rm(node.dataDir, { recursive: true, force: true }); }
     await rm(binaryDir, { recursive: true, force: true });
@@ -255,6 +313,12 @@ test("native chat answer admission loss preserves uncertainty without sending th
     expect(answerReconnect.status).toBe(200);
     expect((await read()).state.status).toBe("waiting");
     expect((await read()).state.harness?.questions?.at(-1)).toMatchObject({ status: "unconfirmed", answers: [["Blue"]] });
+    const uncertainDialogue = (await meshJsonRequest<ChatSnapshot>(node, `/api/chats/${id}/snapshot`)).body.transcript.messages
+      .filter((message) => message.question?.requestId === requestId);
+    expect(uncertainDialogue).toMatchObject([
+      { role: "assistant", question: { status: "unconfirmed" } },
+      { role: "user", content: "Blue", question: { status: "unconfirmed" } },
+    ]);
     expect(await meshJsonRequest(controller, path, { body: answer })).toMatchObject({
       status: 409, body: { error: "harness_question_closed" },
     });
@@ -263,10 +327,15 @@ test("native chat answer admission loss preserves uncertainty without sending th
     expect(reconnected).toMatchObject({ status: 200 });
     expect(reconnected.body.state.status).toBe("waiting");
     expect(reconnected.body.state.harness?.questions?.at(-1)).toMatchObject({ status: "unconfirmed", answers: [["Blue"]] });
+    expect((await meshJsonRequest<ChatSnapshot>(node, `/api/chats/${id}/snapshot`)).body.transcript.messages
+      .filter((message) => message.question?.requestId === requestId)).toEqual(uncertainDialogue);
     expect((await meshJsonRequest(controller, path, { body: answer })).status).toBe(409);
     expect(await Bun.file(join(controller.dataDir, "native-answer-effects.json")).json()).toEqual([{ color: "Blue" }]);
     await restartMeshNode(controller);
     expect((await read()).state.harness?.questions?.at(-1)?.status).toBe("expired");
+    expect((await meshJsonRequest<ChatSnapshot>(node, `/api/chats/${id}/snapshot`)).body.transcript.messages
+      .filter((message) => message.question?.requestId === requestId))
+      .toMatchObject([{ role: "assistant" }, { role: "user", question: { status: "expired" } }]);
     expect((await meshJsonRequest(controller, path, { body: answer })).status).toBe(409);
     expect(await Bun.file(join(controller.dataDir, "native-answer-effects.json")).json()).toEqual([{ color: "Blue" }]);
   } finally {
@@ -331,6 +400,15 @@ test("Copilot native questions survive client reconnects and Stop cancels the SD
         && snapshot.transcript.messages.some((message) => message.role === "assistant" && message.content.includes("Blue")),
       { description: "original Copilot callback delivers its answer", timeoutMs: 10_000 });
     expect(settled.state.session).toEqual(waiting.state.session);
+    const dialogue = settled.transcript.messages.filter((message) => message.question?.requestId === question.requestId);
+    expect(dialogue).toMatchObject([
+      { role: "assistant", content: "Choose a color", question: { scope: { kind: "unknown" }, status: "answered" } },
+      { role: "user", content: "Blue", question: { status: "answered" } },
+    ]);
+    const context = settled.transcript.messages.find((message) => message.content === "I need your input.")!;
+    const continuation = settled.transcript.messages.find((message) => message.content === "Consumed answer: Blue")!;
+    expect(context.timestamp <= dialogue[0]!.timestamp).toBe(true);
+    expect(dialogue[1]!.timestamp < continuation.timestamp).toBe(true);
     expect(await Bun.file(join(node.dataDir, `copilot-answer-${waiting.state.session!.id}.json`)).json())
       .toEqual({ answer: "Blue", wasFreeform: false });
     expect((await meshJsonRequest(node, path, { body: answer })).status).toBe(200);
@@ -347,6 +425,70 @@ test("Copilot native questions survive client reconnects and Stop cancels the SD
     });
   } finally {
     if (controller) { controller.child.kill(); await controller.child.exited; await rm(controller.dataDir, { recursive: true, force: true }); }
+    await rm(binaryDir, { recursive: true, force: true });
+  }
+}, 30_000);
+
+// Native async questions already contain an assistant message and answer via
+// normal prompt admission. HTTP snapshots and the runtime's input effect prove
+// one durable dialogue for immediate, queued and steered delivery, not helper
+// delegation. Steering must preserve the answer's content and provenance.
+test("Codex async question dialogue reuses native messages and queued answer admission", async () => {
+  const binaryDir = await createRuntime();
+  let node: ManagedMeshNode | undefined;
+  try {
+    node = await startNode("controller", binaryDir);
+    const controller = node;
+    const hosts = await meshJsonRequest<ExecutionHostDescriptor[]>(controller, "/api/execution-hosts");
+    const workspace = await meshJsonRequest<{ id: string }>(controller, "/api/workspaces", { body: {
+      name: "Async question dialogue", directory: controller.dataDir, workspaceType: "directory",
+      executionHost: hosts.body.find((host) => host.ref.kind === "local")!.ref,
+      serverSettings: { agent: { adapter: "codex", provider: "codex" } },
+    } });
+    expect(workspace.status).toBe(201);
+    for (const mode of ["immediate", "queued", "steered"]) {
+      const queued = mode !== "immediate";
+      const created = await meshJsonRequest<Chat>(controller, "/api/chats", { body: {
+        name: "Async question", workspaceId: workspace.body.id, useWorktree: false,
+        model: { providerID: "codex", modelID: "fixture-model", variant: "" },
+      } });
+      expect(created.status).toBe(201);
+      const id = created.body.config.id;
+      const read = async () => (await meshJsonRequest<ChatSnapshot>(controller, `/api/chats/${id}/snapshot?full=1`)).body;
+      expect((await meshJsonRequest(controller, `/api/chats/${id}/messages`, { body: {
+        message: queued ? "queued-async-question-fixture" : "async-question-fixture",
+      } })).status).toBe(200);
+      const pending = await pollUntil(read, (snapshot) => snapshot.state.harness?.questions?.at(-1)?.status === "pending"
+        && snapshot.state.status === (queued ? "streaming" : "idle"),
+      { description: "native async question remains answerable", timeoutMs: 10_000 });
+      const question = pending.state.harness!.questions!.at(-1)!;
+      expect(pending.transcript.messages.filter((message) => message.role === "assistant"))
+        .toMatchObject([{ content: "Choose a strategy", question: { requestId: question.requestId } }]);
+      const answer = { answers: [["Merge"]] };
+      const path = `/api/chats/${id}/questions/${encodeURIComponent(question.requestId)}`;
+      expect((await meshJsonRequest(controller, path, { body: answer })).status).toBe(200);
+      if (queued) {
+        const queue = (await read()).state.queuedMessages!;
+        expect(queue).toHaveLength(1);
+        const deliveryPath = mode === "steered"
+          ? `queued-messages/${queue[0]!.id}/steer` : "interrupt";
+        expect((await meshJsonRequest(controller, `/api/chats/${id}/${deliveryPath}`, { body: {} })).status).toBe(200);
+      }
+      const settled = await pollUntil(read, (snapshot) => snapshot.state.status === "idle"
+        && snapshot.transcript.messages.some((message) => message.content === "Async answer consumed"),
+      { description: "async answer reaches the original native conversation", timeoutMs: 10_000, formatLastObserved: (value) => JSON.stringify(value) });
+      expect(settled.transcript.messages.filter((message) => message.role === "user"))
+        .toMatchObject([{ content: queued ? "queued-async-question-fixture" : "async-question-fixture" }, { content: "Merge" }]);
+      const dialogue = settled.transcript.messages.filter((message) => message.question?.requestId === question.requestId);
+      expect(dialogue).toMatchObject([{ role: "assistant" }, { role: "user", question: { status: "answered" } }]);
+      expect((await meshJsonRequest(controller, path, { body: answer })).status).toBe(200);
+      const reopened = await meshJsonRequest<ChatSnapshot>(controller, `/api/chats/${id}/snapshot?full=1`);
+      expect(reopened.body.transcript.messages.filter((message) => message.question?.requestId === question.requestId)).toEqual(dialogue);
+      expect(await Bun.file(join(controller.dataDir, `async-input-${settled.state.session!.id}.json`)).json())
+        .toMatchObject([[{ type: "text", text: "Choose a strategy\nMerge" }]]);
+    }
+  } finally {
+    if (node) { node.child.kill(); await node.child.exited; await rm(node.dataDir, { recursive: true, force: true }); }
     await rm(binaryDir, { recursive: true, force: true });
   }
 }, 30_000);

@@ -14,6 +14,7 @@ import { ActivitySpinner } from "./activity-spinner";
 import { HarnessMessageAdmission } from "../harness-activity";
 import { TranscriptTextContent } from "./transcript-file-links";
 import { formatTime } from "./utils";
+import { getQuestionAnswerStatus } from "@/shared/harness-questions";
 import {
   detectTrailingPromiseMarker,
   type PromiseMarkerOutcomeKind,
@@ -58,7 +59,8 @@ export const MessageEntry = memo(function MessageEntry({
   readAloudDisabled,
 }: MessageEntryProps) {
   const isUser = msg.role === "user";
-  const outcome = isUser ? null : detectTrailingPromiseMarker(msg.content);
+  const outcome = isUser || msg.question ? null : detectTrailingPromiseMarker(msg.content);
+  const answerStatus = isUser && msg.question ? getQuestionAnswerStatus(msg.question.status) : undefined;
   const displayMessage = outcome ? { ...msg, content: outcome.content } : msg;
   const shouldRenderMarkdown = markdownEnabled && msg.role === "assistant";
   const contentWidthClassName = isUser
@@ -119,6 +121,9 @@ export const MessageEntry = memo(function MessageEntry({
       )}
       <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
         <div className={contentWidthClassName}>
+          {!isUser && msg.question?.scope.kind === "child" && (
+            <div className="text-xs text-gray-500 dark:text-gray-400">Subagent question</div>
+          )}
           {isUser ? (
             <div
               className="rounded-[1.35rem] bg-gray-900 px-4 py-3 text-sm leading-7 text-white shadow-sm dark:bg-neutral-700 dark:text-gray-50"
@@ -143,7 +148,10 @@ export const MessageEntry = memo(function MessageEntry({
               fileLinkContext={fileLinkContext}
             />
           )}
-          {isUser && <HarnessMessageAdmission inputId={msg.id} />}
+          {answerStatus && (
+            <div className="text-right text-xs text-gray-500 dark:text-gray-400" role="status">{answerStatus}</div>
+          )}
+          {isUser && !msg.question && <HarnessMessageAdmission inputId={msg.id} />}
           {outcome && (
             <div className="pt-1">
               <StatusBadge variant={getOutcomeBadgeVariant(outcome.kind)} size="sm">

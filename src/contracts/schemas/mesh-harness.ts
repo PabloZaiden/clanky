@@ -82,5 +82,6 @@ export const MeshHarnessEventSchema = z.intersection(z.discriminatedUnion("type"
   }),
 ]), z.object({
   scope: HarnessEventScopeSchema,
+  timestamp: z.iso.datetime().optional(),
   sourceEventId: Id.optional(), sourceSequence: z.number().int().nonnegative().optional(),
 }));

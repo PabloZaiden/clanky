@@ -1,6 +1,7 @@
 import type { Chat } from "@/shared/chat";
 import type { PersistedMessage, PersistedToolCall } from "@/shared/task";
 import { getToolMeta } from "../components/log-viewer/tool-inference";
+import { getQuestionAnswerStatus } from "@/shared/harness-questions";
 
 type TranscriptEntry =
   | {
@@ -149,7 +150,14 @@ export function buildChatTranscriptMarkdown(chat: Chat): ChatTranscriptMarkdown 
     if (entry.type === "message") {
       lines.push(`### ${getRoleLabel(entry.message.role)} - ${formatTimestamp(entry.timestamp)}`);
       lines.push("");
+      if (entry.message.role === "assistant" && entry.message.question?.scope.kind === "child") {
+        lines.push("_Subagent question_", "");
+      }
       lines.push(formatMessageContent(entry.message));
+      if (entry.message.role === "user" && entry.message.question) {
+        const status = getQuestionAnswerStatus(entry.message.question.status);
+        if (status) lines.push("", `_${status}_`);
+      }
       continue;
     }
 

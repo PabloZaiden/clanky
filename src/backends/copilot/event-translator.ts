@@ -26,6 +26,7 @@ export class CopilotEventTranslator {
       ...payload,
       scope,
       sourceEventId: event.id,
+      timestamp: event.timestamp,
     });
     switch (event.type) {
       case "assistant.message_delta": {

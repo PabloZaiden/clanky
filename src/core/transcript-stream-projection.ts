@@ -82,6 +82,7 @@ export class TranscriptStreamProjection {
       content: message.content,
       attachments: message.attachments ?? existing?.attachments,
       timestamp: message.timestamp,
+      question: message.question ?? existing?.question,
     };
     const { evicted } = this.messageMemory.upsert(persistedMessage);
     this.recordEvictions("message", evicted);

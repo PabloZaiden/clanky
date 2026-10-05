@@ -75,9 +75,9 @@ function createChatServices(emitter: SimpleEventEmitter<ChatEvent>): ChatService
   conversation = conversationService;
   questions = new ChatQuestionService({ state, session,
     hasActiveStream: (id: string) => conversationService.hasActiveStream(id),
-    sendMessage: async (id, message) => {
+    sendMessage: async (id, message, transcriptMessage) => {
       if (!interaction) throw new Error("Chat interaction service is not initialized");
-      return interaction.sendMessage(id, { message });
+      return interaction.sendMessage(id, { message, transcriptMessage });
     } });
   const questionService = questions;
   conversationService.setQuestionHandler(async (chat, event) => {

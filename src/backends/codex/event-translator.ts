@@ -6,6 +6,7 @@ import type { HarnessEvent, HarnessEventPayload, HarnessEventScope } from "@/sha
 import type { CodexNotification } from "./protocol";
 import type { ThreadItem } from "./generated/v2/ThreadItem";
 import { HarnessError } from "../harness-errors";
+import { formatHarnessQuestions } from "@/shared/harness-questions";
 
 export class CodexEventTranslator {
   private readonly messages = new Set<string>();
@@ -45,7 +46,15 @@ export class CodexEventTranslator {
               options: (question.options ?? []).map((label) => ({ label, description: "" })),
             })),
           }] : []),
-        ].map(wrap);
+        ].map((payload) => payload.type === "question.asked"
+          ? {
+              ...payload,
+              scope: {
+                ...scope,
+                native: { adapter: "codex", ...scope.native, messageId: event.params.item.id },
+              },
+            }
+          : wrap(payload));
       case "item/commandExecution/outputDelta":
         return [wrap({ type: "activity.changed" })];
       case "error":
@@ -68,7 +77,14 @@ export class CodexEventTranslator {
     if (item.type === "agentMessage") {
       const events = this.startMessage(item.id);
       if (completed) {
-        events.push({ type: "message.complete", content: item.text });
+        events.push({
+          type: "message.complete",
+          content: item.delivery === "async" && item.questions?.length
+            ? formatHarnessQuestions(item.questions.map((question) => ({
+                question: question.title, header: "", options: [],
+              })), item.text)
+            : item.text,
+        });
         this.messages.delete(item.id);
       }
       return events;

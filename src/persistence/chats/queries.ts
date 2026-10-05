@@ -11,6 +11,8 @@ import { requirePersistenceUserId } from "../ownership";
 import { chatTranscriptStore } from "../transcripts/chat-store";
 import { parseStoredHarnessState } from "../harness-binding";
 import { closeOpenQuestions } from "@/shared/harness-questions";
+import { projectQuestionMessages } from "@/shared/question-transcript";
+import { createTranscriptChangeSet } from "@/shared/chat-transcript";
 
 const log = createLogger("persistence:chats");
 const STALE_CHAT_RESET_MESSAGE = "Forcefully stopped by connection reset";
@@ -68,8 +70,21 @@ function resetStale(chatId?: string): number {
     `).all(userId, ...STALE_CHAT_STATUSES, ...(chatId ? [chatId] : []));
     for (const row of rows) {
       const harness = parseStoredHarnessState(row.harness_state_json, row.id);
-      if (harness?.questions?.length) db.query("UPDATE chats SET harness_state_json = ? WHERE id = ? AND user_id = ?")
-        .run(JSON.stringify({ ...harness, questions: closeOpenQuestions(harness.questions, "expired") }), row.id, userId);
+      if (harness?.questions?.length) {
+        const questions = closeOpenQuestions(harness.questions, "expired")!;
+        db.query("UPDATE chats SET harness_state_json = ? WHERE id = ? AND user_id = ?")
+          .run(JSON.stringify({ ...harness, questions }), row.id, userId);
+        if (questions.some((request) => request.transcript)) {
+          const transcript = chatTranscriptStore.hydrateForUser(row.id, userId);
+          const updates = projectQuestionMessages(transcript.messages, questions);
+          chatTranscriptStore.applyChangeSetInTransaction(db, row.id, userId, createTranscriptChangeSet(
+            transcript,
+            updates.map((message) => ({
+              id: message.id, kind: "message", timestamp: message.timestamp, payload: message,
+            })),
+          ));
+        }
+      }
     }
     const result = db.prepare(`
     UPDATE chats

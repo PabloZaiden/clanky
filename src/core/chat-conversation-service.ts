@@ -75,6 +75,7 @@ import { createTransientHarnessSession, cleanupTransientHarnessSession } from ".
 import { HarnessError } from "../backends/harness-errors";
 import { isDomainError } from "../domain/domain-error";
 import { closeOpenQuestions } from "@/shared/harness-questions";
+import { projectQuestionMessages } from "@/shared/question-transcript";
 
 const log = createLogger("chat-conversation-service");
 const DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS = DEFAULT_ACTIVITY_TIMEOUT_SECONDS * 1000;
@@ -187,7 +188,10 @@ export class ChatConversationService implements ChatConversationPort {
     const startupOperation = createStartupOperation();
     this.startupOperations.set(chat.config.id, startupOperation);
 
-    const userMessage: MessageData = {
+    const transcriptMessage = input.transcriptMessage;
+    const userMessage: MessageData = (transcriptMessage && chat.state.messages.find(
+      (message) => message.id === transcriptMessage.id,
+    )) ?? transcriptMessage ?? {
       id: `chat-user-${crypto.randomUUID()}`,
       role: "user",
       content: input.message,
@@ -793,11 +797,17 @@ export class ChatConversationService implements ChatConversationPort {
     if (!latestChat) {
       return false;
     }
+    for (const message of projectQuestionMessages(
+      streamState.transcriptMemory.messages.values,
+      latestChat.state.harness?.questions,
+    )) {
+      streamState.transcriptMemory.messages.upsert(message);
+    }
     streamState.chat = {
       ...latestChat,
       state: {
         ...latestChat.state,
-        messages: streamState.chat.state.messages,
+        messages: streamState.transcriptMemory.messages.values,
         logs: streamState.chat.state.logs,
         toolCalls: streamState.chat.state.toolCalls,
         activeMessageId: streamState.chat.state.activeMessageId,
@@ -1132,6 +1142,7 @@ export class ChatConversationService implements ChatConversationPort {
 
       case "question.asked":
       case "question.resolved":
+        await this.flushChatStreamBlocks(streamState, transcriptResult.flushedBlocks, now);
         if (!this.questionHandler) throw new HarnessError("harness_unsupported_feature", "Chat question handling is unavailable.");
         await this.questionHandler(streamState.chat, event);
         await this.reloadChatStreamMetadata(chatId, streamState);
@@ -1178,7 +1189,10 @@ export class ChatConversationService implements ChatConversationPort {
   async recordSteeredMessage(chat: Chat, message: QueuedChatMessage, admission: HarnessInputAdmission): Promise<Chat> {
     const binding = chat.state.session?.binding;
     if (!binding) throw new Error("Steered input requires an owned conversation.");
-    return this.appendMessage(chat, {
+    const transcriptMessage = message.transcriptMessage;
+    return this.appendMessage(chat, (transcriptMessage && chat.state.messages.find(
+      (entry) => entry.id === transcriptMessage.id,
+    )) ?? transcriptMessage ?? {
       id: message.id, role: "user", content: message.content,
       attachments: message.attachments, timestamp: createTimestamp(),
     }, {
@@ -1246,6 +1260,16 @@ export class ChatConversationService implements ChatConversationPort {
     return segmentCount === 1 ? turnMessageId : `${turnMessageId}-segment-${segmentCount}`;
   }
 
+  private getAssistantMessageTimestamp(chat: Chat, timestamp: string): string {
+    const latestAnswer = (chat.state.harness?.questions ?? []).reduce(
+      (latest, request) => Math.max(latest, request.transcript?.answerTimestamp
+        ? Date.parse(request.transcript.answerTimestamp) : 0),
+      0,
+    );
+    return Date.parse(timestamp) === latestAnswer
+      ? new Date(latestAnswer + 1).toISOString() : timestamp;
+  }
+
   private async updateStreamingAssistantProgress(
     chat: Chat,
     {
@@ -1280,7 +1304,8 @@ export class ChatConversationService implements ChatConversationPort {
       id: nextMessageId,
       role: "assistant",
       content,
-      timestamp: existingMessage?.timestamp ?? timestamp,
+      timestamp: existingMessage?.timestamp ?? this.getAssistantMessageTimestamp(chat, timestamp),
+      question: existingMessage?.question,
     };
     const nextMessages = memory
       ? (memory.messages.upsert(assistantMessage), memory.messages.values)

@@ -41,9 +41,16 @@ const emit = (type: string, data: unknown): void => {
   const frame = new TextEncoder().encode(`data: ${JSON.stringify({ id: crypto.randomUUID(), type, created: Date.now(), data })}\n\n`);
   for (const stream of streams) stream.enqueue(frame);
 };
+interface NativeField {
+  key: string; type: "string" | "multiselect"; title: string; custom: boolean; required?: boolean;
+  options: Array<{ value: string; label: string }>;
+}
+const defaultFields: NativeField[] = [
+  { key: "color", type: "string", title: "Color", custom: true, options: [{ value: "Blue", label: "Blue" }] },
+];
 const form = {
   id: "native-question", sessionID: "owned-root", status: "pending",
-  fields: [{ key: "color", type: "string", title: "Color", custom: true, options: [{ value: "Blue", label: "Blue" }] }],
+  fields: defaultFields,
 };
 const server = Bun.serve({
   hostname: "127.0.0.1", port: 0,
@@ -119,12 +126,20 @@ const server = Bun.serve({
           emit("session.execution.succeeded", { sessionID: session.id });
           return Response.json({ data: { id: crypto.randomUUID(), sessionID: session.id, type: "user" } });
         }
+        form.id = crypto.randomUUID();
+        form.fields = input.text === "multi-question-fixture" ? [
+          ...defaultFields,
+          { key: "tools", type: "multiselect", title: "Which tools?", custom: false, options: [{ value: "Git", label: "Git" }, { value: "Tests", label: "Tests" }] },
+          { key: "details", type: "string", title: "Additional instructions?", custom: true, options: [] },
+          { key: "notes", type: "string", title: "Optional notes?", custom: true, required: false, options: [] },
+        ] : defaultFields;
         form.status = "pending";
         emit("form.created", { form });
+        if (input.text === "multi-question-fixture") emit("form.created", { form });
       }
       return Response.json({ data: { id: crypto.randomUUID(), sessionID: session.id, type: "user" } });
     }
-    if (suffix === "/form/native-question/reply") {
+    if (suffix === `/form/${form.id}/reply`) {
       const input = await request.json() as { answer: unknown };
       const historyFile = `${directory}/native-answer-effects.json`;
       const history: unknown[] = await Bun.file(historyFile).exists() ? await Bun.file(historyFile).json() : [];
@@ -142,7 +157,7 @@ const server = Bun.serve({
       await waitForOverlap("native-answer-ready");
       return Response.json({ error: "Reply acknowledgement lost" }, { status: 503 });
     }
-    if (suffix === "/form/native-question" && request.method === "DELETE") {
+    if (suffix === `/form/${form.id}` && request.method === "DELETE") {
       if (form.status === "pending") form.status = "cancelled";
       return new Response(null, { status: 204 });
     }

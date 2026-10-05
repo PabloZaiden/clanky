@@ -7,6 +7,7 @@ import { join } from "node:path";
 interface NativeSession {
   processing: boolean;
   metadata: Record<string, string>;
+  messageId?: string;
 }
 
 interface Frame {
@@ -56,6 +57,9 @@ async function request(method: string, params: Record<string, unknown>): Promise
       sessions.get(id)!.processing = true;
       questions.set(requestId, id);
       event(id, "assistant.turn_start", {});
+      const messageId = crypto.randomUUID();
+      sessions.get(id)!.messageId = messageId;
+      event(id, "assistant.message_delta", { messageId, deltaContent: "I need your input." });
       send({ jsonrpc: "2.0", id: requestId, method: "userInput.request", params: {
         sessionId: id, question: "Choose a color", choices: ["Blue", "Red"], allowFreeform: true,
       } });
@@ -93,7 +97,7 @@ async function receive(frame: Frame): Promise<void> {
   }
   await Bun.write(join(process.cwd(), `copilot-answer-${id}.json`), JSON.stringify(frame.result));
   sessions.get(id)!.processing = false;
-  event(id, "assistant.message", { messageId: crypto.randomUUID(), content: `Consumed answer: ${frame.result!.answer}` });
+  event(id, "assistant.message", { messageId: sessions.get(id)!.messageId, content: `Consumed answer: ${frame.result!.answer}` });
   event(id, "session.idle", {});
 }
 
