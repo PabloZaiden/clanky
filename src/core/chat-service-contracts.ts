@@ -25,6 +25,7 @@ import type {
   TranscriptChangeSet,
   TranscriptSnapshotOptions,
   ToolCallRecord,
+  MessageData,
 } from "@/shared";
 import type { ChatEvent } from "@/shared/events";
 import type { MessageAttachment } from "@/shared/message-attachments";
@@ -83,11 +84,13 @@ export interface ChatMessageOptions {
   message?: string;
   attachments?: MessageAttachment[];
   credentialToken?: string | null;
+  transcriptMessage?: MessageData;
 }
 
 export interface NormalizedChatMessageInput {
   message: string;
   attachments: MessageAttachment[];
+  transcriptMessage?: MessageData;
 }
 
 export interface ChatDirectoryResolution {

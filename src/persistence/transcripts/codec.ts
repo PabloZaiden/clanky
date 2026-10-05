@@ -7,6 +7,7 @@
  * remain usable.
  */
 import { createLogger } from "@pablozaiden/webapp/server";
+import { HarnessQuestionMessageSchema } from "@/contracts/schemas/harness";
 import type {
   ChatTranscriptStorageEntry,
   MessageAttachment,
@@ -51,6 +52,7 @@ export function isPersistedMessage(value: unknown): value is PersistedMessage {
     && (value["role"] === "user" || value["role"] === "assistant")
     && isString(value["content"])
     && isString(value["timestamp"])
+    && (value["question"] === undefined || HarnessQuestionMessageSchema.safeParse(value["question"]).success)
     && (
       value["attachments"] === undefined
       || (

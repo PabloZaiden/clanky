@@ -18,8 +18,7 @@
 
 import type { Agent, AgentRun, AgentRunStatus } from "./agent";
 import type { Chat, ChatConfig, ChatStatus } from "./chat";
-import type { AutomaticPrFlowState, GitCommit, TaskConfig, TaskLogEntry, ModelConfig } from "./task";
-import type { MessageAttachment } from "./message-attachments";
+import type { AutomaticPrFlowState, GitCommit, TaskConfig, TaskLogEntry, ModelConfig, PersistedMessage } from "./task";
 import type { ToolCallExtra, ToolCallRecord } from "./tool-call";
 
 /**
@@ -38,18 +37,7 @@ import type { ToolCallExtra, ToolCallRecord } from "./tool-call";
  * };
  * ```
  */
-export interface MessageData {
-  /** Unique message identifier (from the backend) */
-  id: string;
-  /** Role: "user" for prompts, "assistant" for AI responses */
-  role: "user" | "assistant";
-  /** The message content (may contain markdown) */
-  content: string;
-  /** Inline attachments carried with the message for live updates and refresh recovery */
-  attachments?: MessageAttachment[];
-  /** ISO 8601 timestamp when the message was created */
-  timestamp: string;
-}
+export interface MessageData extends PersistedMessage {}
 
 export interface MessageDeltaData {
   messageId: string;

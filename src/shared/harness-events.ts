@@ -68,6 +68,7 @@ export type HarnessEventPayload =
 /** Message completion and prompt completion do not imply descendant cleanup. */
 export type HarnessEvent = HarnessEventPayload & {
   scope: HarnessEventScope;
+  timestamp?: string;
   sourceEventId?: string;
   sourceSequence?: number;
 };

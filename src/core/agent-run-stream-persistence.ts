@@ -236,6 +236,7 @@ export class AgentRunStreamPersistence {
       role: event.role,
       content,
       timestamp: existing?.timestamp ?? event.messageTimestamp,
+      question: existing?.question,
     });
   }
 

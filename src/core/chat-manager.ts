@@ -57,7 +57,9 @@ function createChatServices(emitter: SimpleEventEmitter<ChatEvent>): ChatService
     hasActiveStream: (chatId: string) => conversation?.hasActiveStream(chatId) ?? false,
     onHarnessEvent: async (chatId, binding, event) => {
       if (!questions) throw new Error("Chat question service is not initialized");
-      await questions.handle(chatId, binding, event);
+      // The active transcript consumer owns native-message segmentation.
+      if (event.type === "question.asked" && event.responseMode === "message" && conversation?.hasActiveStream(chatId)) return;
+      await questions.handle(chatId, binding, { event });
     },
   });
   const conversationService = new ChatConversationService({
@@ -75,14 +77,14 @@ function createChatServices(emitter: SimpleEventEmitter<ChatEvent>): ChatService
   conversation = conversationService;
   questions = new ChatQuestionService({ state, session,
     hasActiveStream: (id: string) => conversationService.hasActiveStream(id),
-    sendMessage: async (id, message) => {
+    sendMessage: async (id, message, transcriptMessage) => {
       if (!interaction) throw new Error("Chat interaction service is not initialized");
-      return interaction.sendMessage(id, { message });
+      return interaction.sendMessage(id, { message, transcriptMessage });
     } });
   const questionService = questions;
-  conversationService.setQuestionHandler(async (chat, event) => {
+  conversationService.setQuestionHandler(async (chat, event, questionMessageId) => {
     if (!chat.state.session?.binding) throw new Error("Questions require an owned conversation");
-    await questionService.handle(chat.config.id, chat.state.session.binding, event);
+    await questionService.handle(chat.config.id, chat.state.session.binding, { event, questionMessageId });
   });
 
   const interactionService = new ChatInteractionService({

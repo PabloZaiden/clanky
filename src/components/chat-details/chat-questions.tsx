@@ -111,7 +111,8 @@ function QuestionForm({ chatId, request }: { chatId: string; request: HarnessQue
       ))}
       {(request.error ?? error) && <ErrorState title="Question could not be updated" description={request.error ?? error} />}
       <button type="submit" className={actionClass} disabled={disabled || answers.some((answer, index) => !answer.length && request.questions[index]!.required !== false)}>
-        {submitting || request.status === "submitting" ? "Sending answer" : request.status === "unconfirmed" ? "Delivery unconfirmed" : "Send answer"}
+        {submitting || request.status === "submitting" ? "Sending answer"
+          : request.status === "queued" ? "Answer queued" : request.status === "unconfirmed" ? "Delivery unconfirmed" : "Send answer"}
       </button>
       <button type="button" className={`${actionClass} ml-3 hover:text-red-600`} disabled={stopping} onClick={() => void stop()}>
         {stopping ? "Stopping" : "Stop"}

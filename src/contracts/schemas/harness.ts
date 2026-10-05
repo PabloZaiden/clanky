@@ -43,6 +43,14 @@ export const HarnessEventScopeSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("unknown"), native: HarnessNativeReferencesSchema.optional() }),
 ]);
 
+const HarnessQuestionStatusSchema = z.enum(["pending", "queued", "submitting", "unconfirmed", "answered", "cancelled", "expired"]);
+
+export const HarnessQuestionMessageSchema = z.object({
+  requestId: z.string(),
+  scope: HarnessEventScopeSchema,
+  status: HarnessQuestionStatusSchema,
+});
+
 export const ReplyToChatQuestionRequestSchema = z.object({
   answers: z.array(z.array(z.string().min(1).max(10_000)).max(100)).min(1).max(100),
 }).strict();
@@ -106,9 +114,14 @@ export const HarnessConversationStateSchema = z.object({
     scope: HarnessEventScopeSchema, questions: z.array(HarnessQuestionInfoSchema).min(1).max(100),
     blocking: z.boolean(),
     responseMode: z.enum(["callback", "message"]).optional(),
-    status: z.enum(["pending", "submitting", "unconfirmed", "answered", "cancelled", "expired"]),
+    status: HarnessQuestionStatusSchema,
     createdAt: z.string(), resolvedAt: z.string().optional(),
     answers: z.array(z.array(z.string().max(10_000)).max(100)).max(100).optional(),
     error: z.string().optional(),
+    transcript: z.object({
+      questionMessageId: z.string(),
+      answerMessageId: z.string(),
+      answerTimestamp: z.string().optional(),
+    }).optional(),
   })).max(256).optional(),
 });

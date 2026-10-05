@@ -163,7 +163,7 @@ export class AgentEventTranscriptInterpreter {
   }
 
   handle(event: AgentEvent): AgentEventTranscriptResult {
-    const timestamp = this.timestamp();
+    const timestamp = event.timestamp ?? this.timestamp();
     switch (event.type) {
       case "message.start":
         return this.handleMessageStart(event, timestamp);
@@ -177,6 +177,12 @@ export class AgentEventTranscriptInterpreter {
         return this.handleToolStart(event, timestamp);
       case "tool.complete":
         return this.handleToolComplete(event, timestamp);
+      case "question.asked": {
+        const flushedBlocks = this.flushActiveBlock(timestamp);
+        this.resetActiveTurn();
+        this.state.currentMessageId = null;
+        return { ...this.createResult(event, timestamp, true), flushedBlocks };
+      }
       case "error":
         return this.handleTerminalEvent(event, timestamp);
       default:

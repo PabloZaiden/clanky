@@ -24,7 +24,8 @@ export class HarnessEventHub {
   }
 
   publish(sessionId: string, event: HarnessEvent): void {
-    for (const producer of this.subscribers.get(sessionId) ?? []) producer.push(event);
+    const timestamped = { ...event, timestamp: event.timestamp ?? new Date().toISOString() };
+    for (const producer of this.subscribers.get(sessionId) ?? []) producer.push(timestamped);
   }
 
   closeSession(sessionId: string): void {

@@ -7,6 +7,8 @@ import { join } from "node:path";
 interface NativeSession {
   processing: boolean;
   metadata: Record<string, string>;
+  messageId?: string;
+  answerEventTimestamp?: string;
 }
 
 interface Frame {
@@ -23,9 +25,9 @@ const send = (frame: unknown): void => {
   const payload = JSON.stringify(frame);
   process.stdout.write(`Content-Length: ${Buffer.byteLength(payload)}\r\n\r\n${payload}`);
 };
-const event = (sessionId: string, type: string, data: Record<string, unknown>): void => {
+const event = (sessionId: string, type: string, data: Record<string, unknown>, timestamp = new Date().toISOString()): void => {
   send({ jsonrpc: "2.0", method: "session.event", params: {
-    sessionId, event: { id: crypto.randomUUID(), parentId: null, timestamp: new Date().toISOString(), type, data },
+    sessionId, event: { id: crypto.randomUUID(), parentId: null, timestamp, type, data },
   } });
 };
 
@@ -56,6 +58,10 @@ async function request(method: string, params: Record<string, unknown>): Promise
       sessions.get(id)!.processing = true;
       questions.set(requestId, id);
       event(id, "assistant.turn_start", {});
+      const messageId = crypto.randomUUID();
+      sessions.get(id)!.messageId = messageId;
+      sessions.get(id)!.answerEventTimestamp = new Date(Date.now() - 60_000).toISOString();
+      event(id, "assistant.message_delta", { messageId, deltaContent: "I need your input." });
       send({ jsonrpc: "2.0", id: requestId, method: "userInput.request", params: {
         sessionId: id, question: "Choose a color", choices: ["Blue", "Red"], allowFreeform: true,
       } });
@@ -93,7 +99,7 @@ async function receive(frame: Frame): Promise<void> {
   }
   await Bun.write(join(process.cwd(), `copilot-answer-${id}.json`), JSON.stringify(frame.result));
   sessions.get(id)!.processing = false;
-  event(id, "assistant.message", { messageId: crypto.randomUUID(), content: `Consumed answer: ${frame.result!.answer}` });
+  event(id, "assistant.message", { messageId: sessions.get(id)!.messageId, content: `Consumed answer: ${frame.result!.answer}` }, sessions.get(id)!.answerEventTimestamp);
   event(id, "session.idle", {});
 }
 
