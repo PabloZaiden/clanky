@@ -48,6 +48,20 @@ function buildNodePathFallback(): string {
     export PATH
   fi
 fi
+if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+  nvm_dir="\${NVM_DIR:-$HOME/.nvm}"
+  node_bin=$(
+    for candidate in "$nvm_dir"/versions/node/*/bin; do
+      if [ -x "$candidate/node" ] && [ -x "$candidate/npm" ]; then
+        printf '%s\\n' "$candidate"
+      fi
+    done | sort -V | tail -n 1
+  )
+  if [ -n "$node_bin" ]; then
+    PATH="$node_bin\${PATH:+:$PATH}"
+    export PATH
+  fi
+fi
 `;
 }
 
