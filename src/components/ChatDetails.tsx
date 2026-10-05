@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { type TranscriptFileLinkTarget } from "./log-viewer";
 import { getChatWorkspaceId, getExecutionHostSourceId } from "@/shared";
 import { appAbsoluteUrl } from "../lib/public-path";
@@ -46,6 +46,10 @@ export function ChatDetails({
   const toast = useToast();
   const isEmbedded = embedded || (typeof embeddedTaskId === "string" && embeddedTaskId.length > 0);
   const [embeddedActivity, setEmbeddedActivity] = useState(false);
+  const [questionAnswerInputFocused, setQuestionAnswerInputFocused] = useState(false);
+  useEffect(() => {
+    setQuestionAnswerInputFocused(false);
+  }, [chatId]);
   const {
     chat,
     transcript,
@@ -219,6 +223,7 @@ export function ChatDetails({
         onLoadMoreTranscript={loadMoreTranscript}
         onLoadFullTranscript={loadFullTranscript}
         loadingTranscript={loadingTranscript}
+        onQuestionAnswerFocusChange={setQuestionAnswerInputFocused}
         voiceInput={{
           available: voice.composer.available,
           status: voice.composer.status,
@@ -251,7 +256,12 @@ export function ChatDetails({
         onRefresh={refreshInput}
         onChatSnapshot={applyChatSnapshot}
       />
-      {composerProps && <ConversationComposer {...composerProps} />}
+      {composerProps && (
+        <ConversationComposer
+          {...composerProps}
+          questionAnswerInputFocused={questionAnswerInputFocused}
+        />
+      )}
       <VoicePlaybackOverlay
         recovery={voicePlayback.playbackRecovery}
         onPlay={voicePlayback.retryPlayback}
