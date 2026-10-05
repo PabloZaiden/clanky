@@ -448,6 +448,7 @@ export function useProvisioningJob(): UseProvisioningJobResult {
           devboxTemplate: request.devboxTemplate?.trim() ? request.devboxTemplate.trim() : null,
           githubUser: request.githubUser?.trim() ? request.githubUser.trim() : null,
           provider: request.provider,
+          adapter: request.adapter,
           credentialToken: credentialToken ?? null,
           mode: request.mode,
           createNewRepository: request.createNewRepository ?? false,
