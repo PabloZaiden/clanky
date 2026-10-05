@@ -19,6 +19,7 @@ export function ChatTranscript({
   onLoadMoreTranscript,
   onLoadFullTranscript,
   loadingTranscript,
+  onQuestionAnswerFocusChange,
   voiceInput,
   onStartVoice,
   onReadAloud,
@@ -164,7 +165,11 @@ export function ChatTranscript({
         playingReadAloudKey={playingReadAloudKey}
         readAloudStatus={readAloudStatus}
       />
-      <ChatQuestions chatId={chat.config.id} requests={chat.state.harness?.questions ?? []} />
+      <ChatQuestions
+        chatId={chat.config.id}
+        requests={chat.state.harness?.questions ?? []}
+        onAnswerInputFocusChange={onQuestionAnswerFocusChange}
+      />
     </div>
   );
 }

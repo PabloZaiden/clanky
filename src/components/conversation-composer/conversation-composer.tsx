@@ -38,6 +38,7 @@ export function ConversationComposer(props: ConversationComposerProps) {
     modelWorkspaceId,
     notice,
     status,
+    questionAnswerInputFocused = false,
     voice,
   } = props;
   const state = useConversationComposer(props);
@@ -79,6 +80,7 @@ export function ConversationComposer(props: ConversationComposerProps) {
     handleRemoveAttachment,
   } = state;
   const showVoicePanel = Boolean(voice && voice.status !== "idle");
+  const hideForQuestionAnswer = questionAnswerInputFocused && isKeyboardVisible;
   const voicePanelWasVisibleRef = useRef(false);
 
   useEffect(() => {
@@ -89,7 +91,11 @@ export function ConversationComposer(props: ConversationComposerProps) {
   }, [composerTextareaRef, showVoicePanel]);
 
   return (
-    <div className={`${isKeyboardVisible ? "" : "safe-area-bottom"} clanky-conversation-composer-surface`}>
+    <div
+      hidden={hideForQuestionAnswer}
+      aria-hidden={hideForQuestionAnswer || undefined}
+      className={`${isKeyboardVisible ? "" : "safe-area-bottom"} clanky-conversation-composer-surface`}
+    >
       {showVoicePanel && voice ? (
         <VoiceListeningPanel
           status={voice.status}

@@ -60,6 +60,7 @@ export interface ChatTranscriptProps {
   onLoadMoreTranscript: () => Promise<void>;
   onLoadFullTranscript: () => Promise<void>;
   loadingTranscript: boolean;
+  onQuestionAnswerFocusChange: (focused: boolean) => void;
   voiceInput: {
     available: boolean;
     status: VoiceRecorderStatus;

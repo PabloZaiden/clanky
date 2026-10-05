@@ -7,6 +7,11 @@ import { apiRequest } from "../../lib/api-client";
 
 const actionClass = "py-1 text-xs text-gray-500 underline decoration-dotted underline-offset-2 hover:text-gray-900 disabled:opacity-50 dark:text-gray-400 dark:hover:text-gray-100";
 
+function isQuestionAnswerInput(target: EventTarget | null): target is HTMLInputElement {
+  return target instanceof HTMLInputElement
+    && (target.type === "text" || target.type === "number");
+}
+
 function QuestionField({ question, index, requestId, values, custom, disabled, onValues, onCustom }: {
   question: QuestionInfo; index: number; requestId: string; values: string[]; custom: string;
   disabled: boolean; onValues: (values: string[]) => void; onCustom: (value: string) => void;
@@ -121,12 +126,38 @@ function QuestionForm({ chatId, request }: { chatId: string; request: HarnessQue
   );
 }
 
-export function ChatQuestions({ chatId, requests }: { chatId: string; requests: HarnessQuestionRequest[] }) {
+export function ChatQuestions({
+  chatId,
+  requests,
+  onAnswerInputFocusChange,
+}: {
+  chatId: string;
+  requests: HarnessQuestionRequest[];
+  onAnswerInputFocusChange: (focused: boolean) => void;
+}) {
   const visible = requests.filter(isQuestionOpen);
   const expired = requests.at(-1);
+
+  useEffect(() => {
+    if (!visible.length) onAnswerInputFocusChange(false);
+  }, [onAnswerInputFocusChange, visible.length]);
+
   if (!visible.length && expired?.status !== "expired") return null;
   return (
-    <div className="max-h-[55vh] shrink-0 overflow-y-auto">
+    <div
+      className="max-h-[55vh] shrink-0 overflow-y-auto"
+      onFocusCapture={(event) => {
+        if (isQuestionAnswerInput(event.target)) onAnswerInputFocusChange(true);
+      }}
+      onBlurCapture={(event) => {
+        if (
+          isQuestionAnswerInput(event.target)
+          && !isQuestionAnswerInput(event.relatedTarget)
+        ) {
+          onAnswerInputFocusChange(false);
+        }
+      }}
+    >
       {visible.map((request) => <QuestionForm key={request.requestId} chatId={chatId} request={request} />)}
       {!visible.length && expired?.status === "expired" && (
         <div className="border-t border-gray-200 px-4 py-2 text-xs text-gray-500 dark:border-gray-700 dark:text-gray-400">The previous question has expired.</div>

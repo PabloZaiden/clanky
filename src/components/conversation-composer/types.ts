@@ -51,6 +51,7 @@ export interface ConversationComposerProps {
   requireMessageForAttachments?: boolean;
   notice?: ConversationComposerNotice;
   status?: ConversationComposerStatus;
+  questionAnswerInputFocused?: boolean;
   voice?: ConversationComposerVoice;
   onSubmit: (submission: ConversationComposerSubmission) => Promise<boolean | void>;
   onInterrupt?: () => Promise<boolean | void>;
