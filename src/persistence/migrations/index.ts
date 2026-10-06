@@ -166,17 +166,17 @@ export const migrations: Migration[] = [
       addColumn(
         "mesh_worker_registrations",
         "worker_supported_protocol_versions_json",
-        "TEXT NOT NULL DEFAULT '[6]'",
+        "TEXT NOT NULL DEFAULT '[1]'",
       );
       addColumn(
         "mesh_worker_registrations",
         "worker_preferred_protocol_version",
-        "INTEGER NOT NULL DEFAULT 6",
+        "INTEGER NOT NULL DEFAULT 1",
       );
       addColumn(
         "mesh_worker_registrations",
         "worker_negotiated_protocol_version",
-        "INTEGER NOT NULL DEFAULT 6",
+        "INTEGER NOT NULL DEFAULT 1",
       );
       addColumn(
         "mesh_worker_registrations",
@@ -188,17 +188,17 @@ export const migrations: Migration[] = [
       addColumn(
         "mesh_controller_grants",
         "controller_supported_protocol_versions_json",
-        "TEXT NOT NULL DEFAULT '[6]'",
+        "TEXT NOT NULL DEFAULT '[1]'",
       );
       addColumn(
         "mesh_controller_grants",
         "controller_preferred_protocol_version",
-        "INTEGER NOT NULL DEFAULT 6",
+        "INTEGER NOT NULL DEFAULT 1",
       );
       addColumn(
         "mesh_controller_grants",
         "controller_negotiated_protocol_version",
-        "INTEGER NOT NULL DEFAULT 6",
+        "INTEGER NOT NULL DEFAULT 1",
       );
       addColumn(
         "mesh_controller_grants",
@@ -210,17 +210,17 @@ export const migrations: Migration[] = [
       addColumn(
         "mesh_controller_relay_pairing",
         "relay_supported_protocol_versions_json",
-        "TEXT NOT NULL DEFAULT '[6]'",
+        "TEXT NOT NULL DEFAULT '[1]'",
       );
       addColumn(
         "mesh_controller_relay_pairing",
         "relay_preferred_protocol_version",
-        "INTEGER NOT NULL DEFAULT 6",
+        "INTEGER NOT NULL DEFAULT 1",
       );
       addColumn(
         "mesh_controller_relay_pairing",
         "relay_negotiated_protocol_version",
-        "INTEGER NOT NULL DEFAULT 6",
+        "INTEGER NOT NULL DEFAULT 1",
       );
       addColumn(
         "mesh_controller_relay_pairing",
@@ -267,9 +267,9 @@ export const migrations: Migration[] = [
       db.run(`
         INSERT INTO mesh_protocol_state (
           singleton, current_version, migrated_from_version, migrated_at, updated_at
-        ) VALUES (1, 6, ?, ?, ?)
+        ) VALUES (1, 5, ?, ?, ?)
         ON CONFLICT(singleton) DO UPDATE SET
-          current_version = 6,
+          current_version = 5,
           updated_at = excluded.updated_at
       `, [
         hadExistingMeshState ? 1 : null,
@@ -306,17 +306,17 @@ export const migrations: Migration[] = [
         addColumn(
           "mesh_worker_registrations",
           "worker_supported_protocol_versions_json",
-          "TEXT NOT NULL DEFAULT '[6]'",
+          "TEXT NOT NULL DEFAULT '[5]'",
         );
         addColumn(
           "mesh_worker_registrations",
           "worker_preferred_protocol_version",
-          "INTEGER NOT NULL DEFAULT 6",
+          "INTEGER NOT NULL DEFAULT 5",
         );
         addColumn(
           "mesh_worker_registrations",
           "worker_negotiated_protocol_version",
-          "INTEGER NOT NULL DEFAULT 6",
+          "INTEGER NOT NULL DEFAULT 5",
         );
         addColumn(
           "mesh_worker_registrations",
@@ -325,9 +325,9 @@ export const migrations: Migration[] = [
         );
         db.run(`
           UPDATE mesh_worker_registrations
-          SET worker_supported_protocol_versions_json = '[6]',
-              worker_preferred_protocol_version = 6,
-              worker_negotiated_protocol_version = 6,
+          SET worker_supported_protocol_versions_json = '[5]',
+              worker_preferred_protocol_version = 5,
+              worker_negotiated_protocol_version = 5,
               worker_protocol_updated_at = COALESCE(
                 worker_protocol_updated_at,
                 ?
@@ -339,17 +339,17 @@ export const migrations: Migration[] = [
         addColumn(
           "mesh_controller_grants",
           "controller_supported_protocol_versions_json",
-          "TEXT NOT NULL DEFAULT '[6]'",
+          "TEXT NOT NULL DEFAULT '[5]'",
         );
         addColumn(
           "mesh_controller_grants",
           "controller_preferred_protocol_version",
-          "INTEGER NOT NULL DEFAULT 6",
+          "INTEGER NOT NULL DEFAULT 5",
         );
         addColumn(
           "mesh_controller_grants",
           "controller_negotiated_protocol_version",
-          "INTEGER NOT NULL DEFAULT 6",
+          "INTEGER NOT NULL DEFAULT 5",
         );
         addColumn(
           "mesh_controller_grants",
@@ -358,9 +358,9 @@ export const migrations: Migration[] = [
         );
         db.run(`
           UPDATE mesh_controller_grants
-          SET controller_supported_protocol_versions_json = '[6]',
-              controller_preferred_protocol_version = 6,
-              controller_negotiated_protocol_version = 6,
+          SET controller_supported_protocol_versions_json = '[5]',
+              controller_preferred_protocol_version = 5,
+              controller_negotiated_protocol_version = 5,
               controller_protocol_updated_at = COALESCE(
                 controller_protocol_updated_at,
                 ?
@@ -372,17 +372,17 @@ export const migrations: Migration[] = [
         addColumn(
           "mesh_controller_relay_pairing",
           "relay_supported_protocol_versions_json",
-          "TEXT NOT NULL DEFAULT '[6]'",
+          "TEXT NOT NULL DEFAULT '[5]'",
         );
         addColumn(
           "mesh_controller_relay_pairing",
           "relay_preferred_protocol_version",
-          "INTEGER NOT NULL DEFAULT 6",
+          "INTEGER NOT NULL DEFAULT 5",
         );
         addColumn(
           "mesh_controller_relay_pairing",
           "relay_negotiated_protocol_version",
-          "INTEGER NOT NULL DEFAULT 6",
+          "INTEGER NOT NULL DEFAULT 5",
         );
         addColumn(
           "mesh_controller_relay_pairing",
@@ -391,9 +391,9 @@ export const migrations: Migration[] = [
         );
         db.run(`
           UPDATE mesh_controller_relay_pairing
-          SET relay_supported_protocol_versions_json = '[6]',
-              relay_preferred_protocol_version = 6,
-              relay_negotiated_protocol_version = 6,
+          SET relay_supported_protocol_versions_json = '[5]',
+              relay_preferred_protocol_version = 5,
+              relay_negotiated_protocol_version = 5,
               relay_protocol_updated_at = COALESCE(
                 relay_protocol_updated_at,
                 ?
@@ -404,7 +404,7 @@ export const migrations: Migration[] = [
       if (tableExists(db, "mesh_protocol_state")) {
         db.run(`
           UPDATE mesh_protocol_state
-          SET current_version = 6,
+          SET current_version = 5,
               updated_at = ?
           WHERE singleton = 1
         `, [now]);
@@ -498,6 +498,7 @@ export const migrations: Migration[] = [
         controller_node_id TEXT NOT NULL, workspace_id TEXT NOT NULL, owner_id TEXT NOT NULL,
         binding_json TEXT NOT NULL, PRIMARY KEY(adapter, native_id)
       )`);
+      // This tracks the local protocol generation; peer capabilities are refreshed by negotiation.
       if (tableExists(db, "mesh_protocol_state")) {
         db.run("UPDATE mesh_protocol_state SET current_version = 6, updated_at = ? WHERE singleton = 1 AND current_version != 6", [new Date().toISOString()]);
       }
@@ -520,47 +521,6 @@ export const migrations: Migration[] = [
           ON task_transcript_entries(user_id, task_id, timestamp DESC)
           WHERE kind = 'message' AND message_role = 'user'
         `);
-      }
-    },
-  },
-  {
-    version: 70,
-    name: "mesh_v6_only_protocol_metadata",
-    up: (db) => {
-      const now = new Date().toISOString();
-      if (tableExists(db, "mesh_protocol_state")) {
-        db.run(
-          "UPDATE mesh_protocol_state SET current_version = 6, updated_at = ? WHERE singleton = 1 AND current_version != 6",
-          [now],
-        );
-      }
-      for (const [table, prefix] of [
-        ["mesh_worker_registrations", "worker"],
-        ["mesh_controller_grants", "controller"],
-        ["mesh_controller_relays", "relay"],
-      ] as const) {
-        if (!tableExists(db, table)) continue;
-        const metadataColumns = [
-          `${prefix}_supported_protocol_versions_json`,
-          `${prefix}_preferred_protocol_version`,
-          `${prefix}_negotiated_protocol_version`,
-          `${prefix}_protocol_updated_at`,
-        ];
-        const columns = getMigrationTableColumns(db, table);
-        const missingColumns = metadataColumns.filter((column) => !columns.includes(column));
-        if (missingColumns.length > 0) {
-          throw new Error(
-            `Cannot normalize Mesh protocol metadata in "${table}"; missing ${missingColumns.join(", ")}.`,
-          );
-        }
-        db.run(
-          `UPDATE ${table}
-           SET ${prefix}_supported_protocol_versions_json = '[6]',
-               ${prefix}_preferred_protocol_version = 6,
-               ${prefix}_negotiated_protocol_version = 6,
-               ${prefix}_protocol_updated_at = COALESCE(${prefix}_protocol_updated_at, ?)`,
-          [now],
-        );
       }
     },
   },

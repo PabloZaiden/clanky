@@ -83,6 +83,22 @@ test("Mesh execution targets expose native adapters through relay workers", asyn
   }
 });
 
+test("Mesh execution hosts hide native adapters without a supported peer generation", async () => {
+  await pairedWorker(MESH_PROTOCOL_VERSION, [MESH_PROTOCOL_VERSION + 1]);
+  const server = serveNativeApiRoutes();
+  try {
+    const response = await fetch(new URL("/api/execution-hosts", server.url));
+    expect(response.status).toBe(200);
+    const hosts = await response.json() as ExecutionHostDescriptor[];
+    expect(hosts.find((host) => host.ref.kind === "mesh")).toMatchObject({
+      harnessAdapters: [],
+      harnessAdapterError: "mesh_execution_protocol_mismatch",
+    });
+  } finally {
+    await server.stop(true);
+  }
+});
+
 test("Mesh route and discovery fail closed without a negotiated relay hop", async () => {
   const worker = await pairedWorker(null);
   expect(() => meshWorkerRouteVersion(worker)).toThrow(expect.objectContaining({ code: "mesh_execution_protocol_mismatch" }));
