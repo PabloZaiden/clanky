@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ErrorState } from "@pablozaiden/webapp/web";
 import type { HarnessQuestionRequest } from "@/shared/harness-questions";
 import type { QuestionInfo } from "@/shared/harness-events";
@@ -61,8 +61,7 @@ function QuestionForm({ chatId, request }: { chatId: string; request: HarnessQue
   const disabled = submitting || stopping || request.status !== "pending";
   const answers = values.map((selection, index) => custom[index]?.trim() ? [...selection, custom[index]!.trim()] : selection);
 
-  async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault();
+  async function submit(): Promise<void> {
     if (disabled) return;
     const controller = new AbortController();
     operation.current = controller;
@@ -80,20 +79,17 @@ function QuestionForm({ chatId, request }: { chatId: string; request: HarnessQue
     }
   }
 
-  async function stop(): Promise<void> {
-    if (stopping) return;
+  async function stopSubagent(): Promise<void> {
+    if (stopping || request.scope.kind !== "child") return;
     const controller = new AbortController();
     operation.current?.abort();
     operation.current = controller;
     setStopping(true);
     setError(undefined);
-    const path = request.scope.kind === "child"
-      ? `activity/${encodeURIComponent(request.scope.activityId)}/stop`
-      : "interrupt";
     try {
-      await apiRequest(`/api/chats/${encodeURIComponent(chatId)}/${path}`, {
+      await apiRequest(`/api/chats/${encodeURIComponent(chatId)}/activity/${encodeURIComponent(request.scope.activityId)}/stop`, {
         method: "POST", body: "{}", headers: { "content-type": "application/json" },
-        signal: controller.signal, action: "Stop pending chat question",
+        signal: controller.signal, action: "Stop subagent activity",
       });
     } catch (failure) {
       if (!controller.signal.aborted) setError(String(failure));
@@ -103,7 +99,7 @@ function QuestionForm({ chatId, request }: { chatId: string; request: HarnessQue
   }
 
   return (
-    <form onSubmit={(event) => void submit(event)} className="space-y-3 border-t border-gray-200 px-4 py-3 text-gray-900 dark:border-gray-700 dark:text-gray-100">
+    <div className="space-y-3 border-t border-gray-200 px-4 py-3 text-gray-900 dark:border-gray-700 dark:text-gray-100">
       <div className="text-xs text-gray-500 dark:text-gray-400">
         {request.blocking ? "Waiting for your answer" : "Question"}
         {request.scope.kind === "child" ? " · Subagent" : ""}
@@ -115,14 +111,16 @@ function QuestionForm({ chatId, request }: { chatId: string; request: HarnessQue
           onCustom={(text) => setCustom((current) => current.map((value, position) => position === index ? text : value))} />
       ))}
       {(request.error ?? error) && <ErrorState title="Question could not be updated" description={request.error ?? error} />}
-      <button type="submit" className={actionClass} disabled={disabled || answers.some((answer, index) => !answer.length && request.questions[index]!.required !== false)}>
+      <button type="button" className={actionClass} disabled={disabled || answers.some((answer, index) => !answer.length && request.questions[index]!.required !== false)} onClick={() => void submit()}>
         {submitting || request.status === "submitting" ? "Sending answer"
           : request.status === "queued" ? "Answer queued" : request.status === "unconfirmed" ? "Delivery unconfirmed" : "Send answer"}
       </button>
-      <button type="button" className={`${actionClass} ml-3 hover:text-red-600`} disabled={stopping} onClick={() => void stop()}>
-        {stopping ? "Stopping" : "Stop"}
-      </button>
-    </form>
+      {request.scope.kind === "child" && (
+        <button type="button" className={`${actionClass} ml-3 hover:text-red-600`} disabled={stopping} onClick={() => void stopSubagent()}>
+          {stopping ? "Stopping Subagent" : "Stop Subagent"}
+        </button>
+      )}
+    </div>
   );
 }
 
