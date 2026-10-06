@@ -43,6 +43,9 @@ function QuestionField({ question, index, requestId, values, custom, disabled, o
             step={question.valueType === "integer" ? 1 : "any"} min={question.minimum} max={question.maximum}
             minLength={question.minLength} maxLength={question.maxLength}
             className="mt-1 block w-full rounded border border-gray-200 bg-transparent px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:text-gray-100"
+            onKeyDown={(event) => {
+              if (event.key === "Enter") event.preventDefault();
+            }}
             value={custom} onChange={(event) => { onCustom(event.target.value); if (!question.multiple) onValues([]); }} />
         </label>
       )}
@@ -80,20 +83,17 @@ function QuestionForm({ chatId, request }: { chatId: string; request: HarnessQue
     }
   }
 
-  async function stop(): Promise<void> {
-    if (stopping) return;
+  async function stopSubagent(): Promise<void> {
+    if (stopping || request.scope.kind !== "child") return;
     const controller = new AbortController();
     operation.current?.abort();
     operation.current = controller;
     setStopping(true);
     setError(undefined);
-    const path = request.scope.kind === "child"
-      ? `activity/${encodeURIComponent(request.scope.activityId)}/stop`
-      : "interrupt";
     try {
-      await apiRequest(`/api/chats/${encodeURIComponent(chatId)}/${path}`, {
+      await apiRequest(`/api/chats/${encodeURIComponent(chatId)}/activity/${encodeURIComponent(request.scope.activityId)}/stop`, {
         method: "POST", body: "{}", headers: { "content-type": "application/json" },
-        signal: controller.signal, action: "Stop pending chat question",
+        signal: controller.signal, action: "Stop subagent activity",
       });
     } catch (failure) {
       if (!controller.signal.aborted) setError(String(failure));
@@ -119,9 +119,11 @@ function QuestionForm({ chatId, request }: { chatId: string; request: HarnessQue
         {submitting || request.status === "submitting" ? "Sending answer"
           : request.status === "queued" ? "Answer queued" : request.status === "unconfirmed" ? "Delivery unconfirmed" : "Send answer"}
       </button>
-      <button type="button" className={`${actionClass} ml-3 hover:text-red-600`} disabled={stopping} onClick={() => void stop()}>
-        {stopping ? "Stopping" : "Stop"}
-      </button>
+      {request.scope.kind === "child" && (
+        <button type="button" className={`${actionClass} ml-3 hover:text-red-600`} disabled={stopping} onClick={() => void stopSubagent()}>
+          {stopping ? "Stopping" : "stop (sub agent)"}
+        </button>
+      )}
     </form>
   );
 }
