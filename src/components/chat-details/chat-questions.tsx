@@ -44,7 +44,7 @@ function QuestionField({ question, index, requestId, values, custom, disabled, o
             minLength={question.minLength} maxLength={question.maxLength}
             className="mt-1 block w-full rounded border border-gray-200 bg-transparent px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:text-gray-100"
             onKeyDown={(event) => {
-              if (event.key === "Enter") event.preventDefault();
+              if (event.key === "Enter" && !event.nativeEvent.isComposing) event.preventDefault();
             }}
             value={custom} onChange={(event) => { onCustom(event.target.value); if (!question.multiple) onValues([]); }} />
         </label>
@@ -121,7 +121,7 @@ function QuestionForm({ chatId, request }: { chatId: string; request: HarnessQue
       </button>
       {request.scope.kind === "child" && (
         <button type="button" className={`${actionClass} ml-3 hover:text-red-600`} disabled={stopping} onClick={() => void stopSubagent()}>
-          {stopping ? "Stopping" : "stop (sub agent)"}
+          {stopping ? "Stopping Subagent" : "Stop Subagent"}
         </button>
       )}
     </form>
