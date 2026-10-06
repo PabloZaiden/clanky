@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ErrorState } from "@pablozaiden/webapp/web";
 import type { HarnessQuestionRequest } from "@/shared/harness-questions";
 import type { QuestionInfo } from "@/shared/harness-events";
@@ -43,9 +43,6 @@ function QuestionField({ question, index, requestId, values, custom, disabled, o
             step={question.valueType === "integer" ? 1 : "any"} min={question.minimum} max={question.maximum}
             minLength={question.minLength} maxLength={question.maxLength}
             className="mt-1 block w-full rounded border border-gray-200 bg-transparent px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:text-gray-100"
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.nativeEvent.isComposing) event.preventDefault();
-            }}
             value={custom} onChange={(event) => { onCustom(event.target.value); if (!question.multiple) onValues([]); }} />
         </label>
       )}
@@ -64,8 +61,7 @@ function QuestionForm({ chatId, request }: { chatId: string; request: HarnessQue
   const disabled = submitting || stopping || request.status !== "pending";
   const answers = values.map((selection, index) => custom[index]?.trim() ? [...selection, custom[index]!.trim()] : selection);
 
-  async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault();
+  async function submit(): Promise<void> {
     if (disabled) return;
     const controller = new AbortController();
     operation.current = controller;
@@ -103,7 +99,7 @@ function QuestionForm({ chatId, request }: { chatId: string; request: HarnessQue
   }
 
   return (
-    <form onSubmit={(event) => void submit(event)} className="space-y-3 border-t border-gray-200 px-4 py-3 text-gray-900 dark:border-gray-700 dark:text-gray-100">
+    <div className="space-y-3 border-t border-gray-200 px-4 py-3 text-gray-900 dark:border-gray-700 dark:text-gray-100">
       <div className="text-xs text-gray-500 dark:text-gray-400">
         {request.blocking ? "Waiting for your answer" : "Question"}
         {request.scope.kind === "child" ? " · Subagent" : ""}
@@ -115,7 +111,7 @@ function QuestionForm({ chatId, request }: { chatId: string; request: HarnessQue
           onCustom={(text) => setCustom((current) => current.map((value, position) => position === index ? text : value))} />
       ))}
       {(request.error ?? error) && <ErrorState title="Question could not be updated" description={request.error ?? error} />}
-      <button type="submit" className={actionClass} disabled={disabled || answers.some((answer, index) => !answer.length && request.questions[index]!.required !== false)}>
+      <button type="button" className={actionClass} disabled={disabled || answers.some((answer, index) => !answer.length && request.questions[index]!.required !== false)} onClick={() => void submit()}>
         {submitting || request.status === "submitting" ? "Sending answer"
           : request.status === "queued" ? "Answer queued" : request.status === "unconfirmed" ? "Delivery unconfirmed" : "Send answer"}
       </button>
@@ -124,7 +120,7 @@ function QuestionForm({ chatId, request }: { chatId: string; request: HarnessQue
           {stopping ? "Stopping Subagent" : "Stop Subagent"}
         </button>
       )}
-    </form>
+    </div>
   );
 }
 
