@@ -29,14 +29,14 @@ function withWorkerGeneration(fetchImpl: typeof globalThis.fetch): typeof global
   return Object.assign((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     if (String(input).endsWith("/api/mesh/internal/protocol")) {
       const descriptor = {
-        ...meshProtocolProjection(6), nodeId: "worker-1", fingerprint: workerFingerprint,
+        ...meshProtocolProjection(MESH_PROTOCOL_VERSION), nodeId: "worker-1", fingerprint: workerFingerprint,
         requestNonce: new Headers(init?.headers).get("x-clanky-mesh-request-id")!,
         binaryVersion: "6.0.0",
       };
       return Promise.resolve(Response.json({
         ...descriptor,
         signature: sign(null, Buffer.from(meshWorkerGenerationSigningPayload(descriptor)), workerSigningKey).toString("base64"),
-      }, { headers: { [MESH_PROTOCOL_VERSION_HEADER]: "6" } }));
+      }, { headers: { [MESH_PROTOCOL_VERSION_HEADER]: String(MESH_PROTOCOL_VERSION) } }));
     }
     return fetchImpl(input, init);
   }, { preconnect: () => undefined }) as typeof globalThis.fetch;

@@ -2,8 +2,9 @@ import { z } from "zod";
 import {
   MESH_TCP_TUNNEL_CAPABILITY,
 } from "@/shared/mesh-tcp-tunnel";
+import { MESH_PROTOCOL_VERSION } from "@/shared/mesh-protocol";
 
-const MeshTcpTunnelProtocolVersionSchema = z.union([z.literal(6), z.literal(5)]);
+const MeshTcpTunnelProtocolVersionSchema = z.literal(MESH_PROTOCOL_VERSION);
 
 export const MeshTcpTunnelSessionRequestSchema = z.object({
   protocolVersion: MeshTcpTunnelProtocolVersionSchema,

@@ -6,7 +6,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readRuntimeConfig } from "@pablozaiden/webapp/server";
 import { MESH_RELAY_DESCRIPTOR_PATH } from "@/shared/mesh-relay";
-import { MESH_PROTOCOL_VERSION, MESH_SUPPORTED_PROTOCOL_VERSIONS } from "@/shared/mesh-protocol";
+import {
+  MESH_PROTOCOL_VERSION,
+  MESH_PROTOCOL_VERSIONS_HEADER,
+  MESH_SUPPORTED_PROTOCOL_VERSIONS,
+} from "@/shared/mesh-protocol";
 import {
   startRelayServer,
   type StartedRelayServer,
@@ -195,6 +199,34 @@ describe("controller relay owner API", () => {
     const descriptor = await fetch(`${relayUrl}${MESH_RELAY_DESCRIPTOR_PATH}`);
     expect((await descriptor.json() as { controllerNodeId: string }).controllerNodeId)
       .toBe(identity.nodeId);
+    const commonGenerations = await fetch(
+      `${relayUrl}${MESH_RELAY_DESCRIPTOR_PATH}`,
+      {
+        headers: {
+          [MESH_PROTOCOL_VERSIONS_HEADER]: [
+            MESH_PROTOCOL_VERSION + 1,
+            MESH_PROTOCOL_VERSION,
+          ].join(","),
+        },
+      },
+    );
+    expect(await commonGenerations.json()).toMatchObject({
+      protocolVersion: MESH_PROTOCOL_VERSION,
+      supportedProtocolVersions: [...MESH_SUPPORTED_PROTOCOL_VERSIONS],
+      preferredProtocolVersion: MESH_PROTOCOL_VERSION,
+      negotiatedProtocolVersion: MESH_PROTOCOL_VERSION,
+    });
+    const unsupportedGeneration = await fetch(
+      `${relayUrl}${MESH_RELAY_DESCRIPTOR_PATH}`,
+      { headers: { [MESH_PROTOCOL_VERSIONS_HEADER]: String(MESH_PROTOCOL_VERSION + 1) } },
+    );
+    expect(await unsupportedGeneration.json()).toMatchObject({
+      protocolVersion: MESH_PROTOCOL_VERSION,
+      supportedProtocolVersions: [...MESH_SUPPORTED_PROTOCOL_VERSIONS],
+      preferredProtocolVersion: MESH_PROTOCOL_VERSION,
+      negotiatedProtocolVersion: null,
+      controllerSupportedProtocolVersions: [...MESH_SUPPORTED_PROTOCOL_VERSIONS],
+    });
 
     const unpaired = await fetch(`${api!.url}/api/mesh/relay/east`, {
       method: "DELETE",

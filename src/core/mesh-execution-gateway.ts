@@ -81,6 +81,10 @@ import {
   type ExecutionHostCapabilityId,
 } from "@/shared/execution-host";
 import type { MeshExecutionOperation } from "@/shared/mesh-execution";
+import {
+  MESH_PROTOCOL_VERSION,
+  isSupportedMeshProtocolVersion,
+} from "@/shared/mesh-protocol";
 
 const MAX_SESSIONS = 256;
 const MAX_REQUEST_IDS = 512;
@@ -671,8 +675,12 @@ export class MeshExecutionGateway {
 
   async createSession(request: MeshExecutionSessionRequest): Promise<MeshExecutionSessionResponse> {
     this.pruneExpired();
-    if (request.channel === MESH_HARNESS_CHANNEL && (request.protocolVersion !== 6 || !request.adapter || !request.ownerId)) {
-      throw new DomainError("mesh_execution_protocol_mismatch", "Native harness sessions require Mesh v6 ownership.");
+    if (request.channel === MESH_HARNESS_CHANNEL && (
+      !isSupportedMeshProtocolVersion(request.protocolVersion)
+      || !request.adapter
+      || !request.ownerId
+    )) {
+      throw new DomainError("mesh_execution_protocol_mismatch", "Native harness sessions require a supported Mesh generation and ownership.");
     }
     if (request.channel === MESH_HARNESS_CHANNEL) {
       await requireLocalMeshExecutionCapability("commandExecution");
@@ -825,7 +833,7 @@ export class MeshExecutionGateway {
     adapter: Exclude<HarnessAdapter, "acp">; directory: string; bindingDirectory: string; environment?: Record<string, string>;
   }> {
     const { session } = await this.requireValidatedSession(sessionId, sessionToken, {
-      expectedChannel: MESH_HARNESS_CHANNEL, expectedProtocolVersion: 6,
+      expectedChannel: MESH_HARNESS_CHANNEL, expectedProtocolVersion: MESH_PROTOCOL_VERSION,
       memberErrorCode: "mesh_execution_context_changed",
     });
     if (!session.adapter || !session.ownerId) throw new DomainError("mesh_execution_session_invalid", "The native session has no ownership.");
@@ -844,7 +852,8 @@ export class MeshExecutionGateway {
 
   async claimHarnessRequest(sessionId: string, sessionToken: string, requestId: string): Promise<() => void> {
     const { session } = await this.requireValidatedSession(sessionId, sessionToken, {
-      expectedChannel: MESH_HARNESS_CHANNEL, expectedProtocolVersion: 6,
+      expectedChannel: MESH_HARNESS_CHANNEL,
+      expectedProtocolVersion: MESH_PROTOCOL_VERSION,
       memberErrorCode: "mesh_execution_context_changed",
     });
     if (session.inFlight >= MESH_EXECUTION_MAX_IN_FLIGHT_REQUESTS) throw new DomainError("mesh_execution_limit_exceeded", "The execution session has too many in-flight requests.");

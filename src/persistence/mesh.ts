@@ -16,7 +16,10 @@ import type {
 } from "@/shared/mesh";
 import {
   MESH_PROTOCOL_VERSION,
+  isMeshProtocolGeneration,
+  isSupportedMeshProtocolVersion,
   normalizeMeshProtocolVersions,
+  type MeshProtocolGeneration,
   type MeshProtocolVersion,
 } from "@/shared/mesh-protocol";
 import {
@@ -67,8 +70,8 @@ export interface SaveWorkerRegistrationInput {
   workerAcceptRemoteExecution: boolean;
   workerConfigRevision: number;
   workerBinaryVersion?: string | null;
-  workerSupportedProtocolVersions?: readonly MeshProtocolVersion[];
-  workerPreferredProtocolVersion?: MeshProtocolVersion;
+  workerSupportedProtocolVersions?: readonly MeshProtocolGeneration[];
+  workerPreferredProtocolVersion?: MeshProtocolGeneration;
   workerNegotiatedProtocolVersion?: MeshProtocolVersion | null;
   registrationScope?: "global" | "workspace";
   workspaceWorkerEnrollmentId?: string;
@@ -504,8 +507,8 @@ export async function updateWorkerHealthSnapshot(input: {
   acceptRemoteExecution: boolean;
   configRevision: number;
   binaryVersion?: string | null;
-  supportedProtocolVersions?: readonly MeshProtocolVersion[];
-  preferredProtocolVersion?: MeshProtocolVersion;
+  supportedProtocolVersions?: readonly MeshProtocolGeneration[];
+  preferredProtocolVersion?: MeshProtocolGeneration;
   negotiatedProtocolVersion?: MeshProtocolVersion | null;
 }): Promise<void> {
   const db = getDatabase();
@@ -579,7 +582,7 @@ export async function updateWorkerNegotiatedProtocolVersion(input: {
   workerNodeId: string;
   localUserId: string;
   negotiatedProtocolVersion: MeshProtocolVersion;
-  preferredProtocolVersion?: MeshProtocolVersion;
+  preferredProtocolVersion?: MeshProtocolGeneration;
 }): Promise<void> {
   const db = getDatabase();
   const now = new Date().toISOString();
@@ -615,8 +618,8 @@ export interface SaveControllerGrantInput {
   controllerEncryptionPublicKey: string;
   controllerRoute?: MeshPeerRoute | null;
   controllerBinaryVersion?: string | null;
-  controllerSupportedProtocolVersions?: readonly MeshProtocolVersion[];
-  controllerPreferredProtocolVersion?: MeshProtocolVersion;
+  controllerSupportedProtocolVersions?: readonly MeshProtocolGeneration[];
+  controllerPreferredProtocolVersion?: MeshProtocolGeneration;
   controllerNegotiatedProtocolVersion?: MeshProtocolVersion | null;
 }
 
@@ -757,8 +760,8 @@ export async function listActiveControllerGrants(): Promise<
 export async function updateControllerGrantProtocolMetadata(input: {
   controllerNodeId: string;
   controllerBinaryVersion?: string | null;
-  controllerSupportedProtocolVersions: readonly MeshProtocolVersion[];
-  controllerPreferredProtocolVersion: MeshProtocolVersion;
+  controllerSupportedProtocolVersions: readonly MeshProtocolGeneration[];
+  controllerPreferredProtocolVersion: MeshProtocolGeneration;
   controllerNegotiatedProtocolVersion: MeshProtocolVersion;
 }): Promise<void> {
   const db = getDatabase();
@@ -898,32 +901,62 @@ interface WorkerRegistrationRow {
 function parsePersistedProtocolVersions(
   value: string | null,
   peerNodeId: string,
-): MeshProtocolVersion[] {
+): MeshProtocolGeneration[] {
   if (!value) {
-    return [5];
+    log.warn("Missing persisted Mesh protocol metadata", { peerNodeId });
+    return [];
   }
   try {
     const parsed: unknown = JSON.parse(value);
-    if (!Array.isArray(parsed) || parsed.some((version) => typeof version !== "number")) {
+    if (!Array.isArray(parsed) || parsed.some((version) => !isMeshProtocolGeneration(version))) {
       throw new Error("protocol versions must be an array of numbers");
     }
     const normalized = normalizeMeshProtocolVersions(parsed);
-    return normalized.length > 0
-      ? normalized
-      : [5];
+    if (normalized.length === 0) {
+      log.warn("Persisted Mesh metadata does not advertise a supported generation", {
+        peerNodeId,
+      });
+    }
+    return normalized;
   } catch (error) {
     log.warn("Invalid persisted Mesh protocol metadata", {
       peerNodeId,
       error: String(error),
     });
-    return [5];
+    return [];
   }
 }
 
 function persistedProtocolVersion(
   value: number | null,
-): MeshProtocolVersion {
-  return value === 6 ? 6 : 5;
+  peerNodeId: string,
+): MeshProtocolVersion | null {
+  if (isSupportedMeshProtocolVersion(value)) {
+    return value;
+  }
+  if (value !== null) {
+    log.warn("Unsupported persisted Mesh protocol generation", {
+      peerNodeId,
+      protocolVersion: value,
+    });
+  }
+  return null;
+}
+
+function persistedProtocolGeneration(
+  value: number | null,
+  peerNodeId: string,
+): MeshProtocolGeneration | null {
+  if (isMeshProtocolGeneration(value)) {
+    return value;
+  }
+  if (value !== null) {
+    log.warn("Invalid persisted Mesh protocol generation", {
+      peerNodeId,
+      protocolVersion: value,
+    });
+  }
+  return null;
 }
 
 function mapWorkerRegistrationRow(
@@ -1007,11 +1040,13 @@ function mapWorkerRegistrationRow(
       row.worker_supported_protocol_versions_json,
       row.worker_node_id,
     ),
-    workerPreferredProtocolVersion: persistedProtocolVersion(
+    workerPreferredProtocolVersion: persistedProtocolGeneration(
       row.worker_preferred_protocol_version,
-    ),
+      row.worker_node_id,
+    ) ?? MESH_PROTOCOL_VERSION,
     workerNegotiatedProtocolVersion: persistedProtocolVersion(
       row.worker_negotiated_protocol_version,
+      row.worker_node_id,
     ),
   };
 }
@@ -1101,11 +1136,13 @@ function mapControllerGrantRow(
       row.controller_supported_protocol_versions_json,
       row.controller_node_id,
     ),
-    controllerPreferredProtocolVersion: persistedProtocolVersion(
+    controllerPreferredProtocolVersion: persistedProtocolGeneration(
       row.controller_preferred_protocol_version,
-    ),
+      row.controller_node_id,
+    ) ?? MESH_PROTOCOL_VERSION,
     controllerNegotiatedProtocolVersion: persistedProtocolVersion(
       row.controller_negotiated_protocol_version,
+      row.controller_node_id,
     ),
   };
 }

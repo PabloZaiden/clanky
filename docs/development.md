@@ -88,13 +88,12 @@ its app-server process; it must not depend on the controller's global CLI path.
 The catalog queries real native model/effort metadata, checks transport health,
 rejects unavailable saved selections and leaves the profile's reasoning default
 alone when no override was requested. Copilot's catalog namespace identifies its
-serving harness, not an inferred model vendor. Workspace settings select ACP,
-native Copilot, Codex app-server or OpenCode runtime 2. Existing workspaces migrate
-to ACP with their original harness preset. Native execution uses local hosts or
-end-to-end Mesh6 paths; negotiation selects the highest mutually supported
-generation, including relay hops. Direct SSH and Mesh5-only paths remain ACP.
-Generation5 support is retained for v6.0.x and removed in v6.1.0 after confirmed
-fleet rollout. See [harness adapters](harnesses.md) for operational setup.
+serving harness, not an inferred model vendor. Workspace settings select ACP, native Copilot, Codex app-server or OpenCode
+runtime 2. Existing workspaces migrate to ACP with their original harness
+preset. Native execution uses local hosts or end-to-end Mesh v6 paths; every
+controller, relay, and worker on the route must support v6. Direct SSH remains
+ACP-only. Startup migration normalizes persisted Mesh protocol metadata to v6.
+See [harness adapters](harnesses.md) for operational setup.
 
 Codex reconciliation can query paginated history across the original thread when
 an admission reply lost native references. The canonical input ID is the native

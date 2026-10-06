@@ -5,7 +5,6 @@
 import { createLogger } from "@pablozaiden/webapp/server";
 import {
   ControllerRelayNameSchema,
-  MeshRelayWellKnownDescriptorV5Schema,
   MeshRelayWellKnownDescriptorV6Schema,
   type ControllerRelayPairingStatus,
   type ControllerRelayStatusItem,
@@ -559,7 +558,7 @@ export class ControllerRelayService {
       }
       const generation = negotiateMeshDescriptorGeneration(raw);
       if (!generation) throw new DomainError("mesh_relay_descriptor_invalid", "The Mesh relay has no highest mutually supported generation.");
-      const parsed = (generation === 6 ? MeshRelayWellKnownDescriptorV6Schema : MeshRelayWellKnownDescriptorV5Schema).safeParse(raw);
+      const parsed = MeshRelayWellKnownDescriptorV6Schema.safeParse(raw);
       if (!parsed.success) {
         throw new DomainError(
           "mesh_relay_descriptor_invalid",

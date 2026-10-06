@@ -292,7 +292,8 @@ export class ExecutionHostService {
     let harnessAdapterError: ExecutionHostDescriptor["harnessAdapterError"];
     if (available) {
       try {
-        harnessAdapters = meshWorkerRouteVersion(worker) === 6 ? [...HARNESS_ADAPTER_IDS] : ["acp"];
+        meshWorkerRouteVersion(worker);
+        harnessAdapters = [...HARNESS_ADAPTER_IDS];
       } catch (error) {
         if (!(error instanceof DomainError) || error.code !== "mesh_execution_protocol_mismatch") throw error;
         harnessAdapterError = error.code;

@@ -4,7 +4,7 @@
 
 import { isAgentSettings, type AgentSettings } from "@/shared/settings";
 import type { HarnessAdapter } from "@/shared/settings";
-import type { MeshProtocolVersion } from "@/shared/mesh-protocol";
+import { isSupportedMeshProtocolVersion } from "@/shared/mesh-protocol";
 import type { ExecutionHostRef } from "@/shared/execution-host";
 import { HarnessError } from "../../backends/harness-errors";
 
@@ -15,8 +15,8 @@ export function assertHarnessHostPolicy(agent: AgentSettings, host: ExecutionHos
   }
 }
 
-export function assertHarnessMeshProtocol(adapter: HarnessAdapter, generation: MeshProtocolVersion): void {
-  if (adapter !== "acp" && generation !== 6) {
-    throw new HarnessError("harness_unsupported_feature", "Native harnesses require v6 on the controller, worker and relay.");
+export function assertHarnessMeshProtocol(adapter: HarnessAdapter, generation: number): void {
+  if (adapter !== "acp" && !isSupportedMeshProtocolVersion(generation)) {
+    throw new HarnessError("harness_unsupported_feature", "Native harnesses require a supported Mesh generation on the controller, worker and relay.");
   }
 }

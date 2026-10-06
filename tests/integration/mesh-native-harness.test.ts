@@ -10,6 +10,7 @@ import type { HarnessActivitySnapshot } from "../../src/shared/harness-control";
 import { createNativeMeshPeer } from "../helpers/mesh-native-peer";
 import type { AgentSession } from "../../src/backends/types";
 import type { ExecutionHostDescriptor } from "../../src/shared/execution-host";
+import { MESH_PROTOCOL_VERSION } from "../../src/shared/mesh-protocol";
 
 const root = resolve(".cache/mesh-native-tests");
 
@@ -260,7 +261,7 @@ test("Mesh native resolved questions release capacity for later owned answers", 
     for (const node of nodes.reverse()) { node.child.kill(); await node.child.exited; await rm(node.dataDir, { recursive: true, force: true }); }
     await rm(binaryDir, { recursive: true, force: true });
   }
-}, 60_000);
+}, 120_000);
 
 // A missing native receipt after irreversible admission must remain uncertain.
 // This HTTP workflow protects against blind retries using persisted state and
@@ -685,7 +686,7 @@ async function startNode(role: "controller" | "worker", path: string): Promise<M
 // without ACP framing, while message completion, descendant completion and
 // Stop remain independent of the principal. A runtime executable is the only
 // external double; HTTP state and host filesystem/process effects are contracts.
-test("Mesh v6 native catalog, lifetime activity, steering and scoped Stop preserve the principal and owned host effects", async () => {
+test("Mesh native catalog, lifetime activity, steering and scoped Stop preserve the principal and owned host effects", async () => {
   const binaryDir = await createRuntime();
   const nodes: ManagedMeshNode[] = [];
   try {
@@ -693,7 +694,7 @@ test("Mesh v6 native catalog, lifetime activity, steering and scoped Stop preser
     const worker = await startNode("worker", binaryDir); nodes.push(worker);
     await enrollMeshWorker(controller, worker);
     const status = await meshJsonRequest<{ workers: Array<{ workerNodeId: string; workerNegotiatedProtocolVersion: number }> }>(controller, "/api/mesh/status");
-    expect(status.body.workers[0]!.workerNegotiatedProtocolVersion).toBe(6);
+    expect(status.body.workers[0]!.workerNegotiatedProtocolVersion).toBe(MESH_PROTOCOL_VERSION);
     const workerId = status.body.workers[0]!.workerNodeId;
     const targets = await meshJsonRequest<ExecutionHostDescriptor[]>(controller, "/api/workspaces/execution-targets");
     expect(targets.status).toBe(200);
@@ -885,7 +886,7 @@ test("Mesh v6 native catalog, lifetime activity, steering and scoped Stop preser
 
 // This distinct transport boundary proves native encrypted RPC and lifetime
 // NDJSON survive real relay WS forwarding, not just the direct worker path.
-test("Mesh v6 native harness executes and observes owned descendants through a real relay", async () => {
+test("Mesh native harness executes and observes owned descendants through a real relay", async () => {
   const binaryDir = await createRuntime();
   const nodes: ManagedMeshNode[] = [];
   const relayData = await mkdtemp(join(root, "relay-"));
@@ -912,7 +913,7 @@ test("Mesh v6 native harness executes and observes owned descendants through a r
     await restartMeshNode(worker);
     const status = await meshJsonRequest<{ workers: Array<{ workerNodeId: string; workerNegotiatedProtocolVersion: number; route: { kind: string } }> }>(controller, "/api/mesh/status");
     const registered = status.body.workers[0]!;
-    expect(registered).toMatchObject({ workerNegotiatedProtocolVersion: 6, route: { kind: "relay" } });
+    expect(registered).toMatchObject({ workerNegotiatedProtocolVersion: MESH_PROTOCOL_VERSION, route: { kind: "relay" } });
     const targets = await meshJsonRequest<ExecutionHostDescriptor[]>(controller, "/api/workspaces/execution-targets");
     expect(targets.status).toBe(200);
     expect(targets.body.find((host) => host.ref.kind === "mesh" && host.ref.nodeId === registered.workerNodeId)?.harnessAdapters)

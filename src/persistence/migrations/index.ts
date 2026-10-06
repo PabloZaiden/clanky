@@ -498,21 +498,9 @@ export const migrations: Migration[] = [
         controller_node_id TEXT NOT NULL, workspace_id TEXT NOT NULL, owner_id TEXT NOT NULL,
         binding_json TEXT NOT NULL, PRIMARY KEY(adapter, native_id)
       )`);
-      // Remote records are evidence about deployed peers, not this binary.
-      // Preserve v5 (and already confirmed v6) metadata across startup.
+      // This tracks the local protocol generation; peer capabilities are refreshed by negotiation.
       if (tableExists(db, "mesh_protocol_state")) {
         db.run("UPDATE mesh_protocol_state SET current_version = 6, updated_at = ? WHERE singleton = 1 AND current_version != 6", [new Date().toISOString()]);
-      }
-      for (const [table, prefix] of [
-        ["mesh_worker_registrations", "worker"],
-        ["mesh_controller_grants", "controller"],
-        ["mesh_controller_relays", "relay"],
-      ] as const) {
-        if (!tableExists(db, table)) continue;
-        db.run(`UPDATE ${table} SET ${prefix}_supported_protocol_versions_json = '[5]',
-          ${prefix}_preferred_protocol_version = 5, ${prefix}_negotiated_protocol_version = 5
-          WHERE ${prefix}_preferred_protocol_version NOT IN (5, 6)
-             OR ${prefix}_supported_protocol_versions_json IS NULL`);
       }
     },
   },
@@ -562,9 +550,9 @@ function migrateControllerRelays(db: Database): void {
       paired_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       relay_binary_version TEXT,
-      relay_supported_protocol_versions_json TEXT NOT NULL DEFAULT '[5]',
-      relay_preferred_protocol_version INTEGER NOT NULL DEFAULT 5,
-      relay_negotiated_protocol_version INTEGER NOT NULL DEFAULT 5,
+      relay_supported_protocol_versions_json TEXT NOT NULL DEFAULT '[6]',
+      relay_preferred_protocol_version INTEGER NOT NULL DEFAULT 6,
+      relay_negotiated_protocol_version INTEGER NOT NULL DEFAULT 6,
       relay_protocol_updated_at TEXT
     )
   `);
@@ -578,9 +566,9 @@ function migrateControllerRelays(db: Database): void {
       const columns = getMigrationTableColumns(db, "mesh_controller_relay_pairing");
       for (const [columnName, definition] of [
         ["relay_binary_version", "TEXT"],
-        ["relay_supported_protocol_versions_json", "TEXT NOT NULL DEFAULT '[5]'"],
-        ["relay_preferred_protocol_version", "INTEGER NOT NULL DEFAULT 5"],
-        ["relay_negotiated_protocol_version", "INTEGER NOT NULL DEFAULT 5"],
+        ["relay_supported_protocol_versions_json", "TEXT NOT NULL DEFAULT '[6]'"],
+        ["relay_preferred_protocol_version", "INTEGER NOT NULL DEFAULT 6"],
+        ["relay_negotiated_protocol_version", "INTEGER NOT NULL DEFAULT 6"],
         ["relay_protocol_updated_at", "TEXT"],
       ] as const) {
         if (!columns.includes(columnName)) {

@@ -3,8 +3,8 @@ import {
   MESH_PROTOCOL_PREFERRED_VERSION,
   MESH_PROTOCOL_VERSION,
   MESH_SUPPORTED_PROTOCOL_VERSIONS,
+  isMeshProtocolGeneration,
   negotiateMeshProtocolVersion,
-  normalizeMeshProtocolVersions,
   type MeshProtocolMetadata,
   type MeshProtocolVersion,
 } from "@/shared/mesh-protocol";
@@ -15,8 +15,8 @@ export function negotiateMeshDescriptorGeneration(value: unknown): MeshProtocolV
   if (typeof value !== "object" || value === null) return null;
   const envelope = value as Record<string, unknown>;
   const versions = envelope["supportedProtocolVersions"];
-  if (!Array.isArray(versions) || !versions.every((version: unknown) => typeof version === "number")) return null;
-  const selected = negotiateMeshProtocolVersion(MESH_SUPPORTED_PROTOCOL_VERSIONS, normalizeMeshProtocolVersions(versions));
+  if (!Array.isArray(versions) || !versions.every(isMeshProtocolGeneration)) return null;
+  const selected = negotiateMeshProtocolVersion(MESH_SUPPORTED_PROTOCOL_VERSIONS, versions);
   return selected && envelope["protocolVersion"] === selected && envelope["negotiatedProtocolVersion"] === selected ? selected : null;
 }
 

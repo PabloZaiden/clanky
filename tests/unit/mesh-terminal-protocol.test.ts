@@ -11,13 +11,10 @@ import {
   MESH_TERMINAL_MAX_INPUT_BYTES,
   MESH_TERMINAL_PROTOCOL_VERSION,
 } from "../../src/shared/mesh-terminal";
-import type { MeshProtocolVersion } from "../../src/shared/mesh-protocol";
 
-function buildRequest(
-  protocolVersion: MeshProtocolVersion = MESH_TERMINAL_PROTOCOL_VERSION,
-): Omit<MeshTerminalSessionRequest, "signature"> {
+function buildRequest(): Omit<MeshTerminalSessionRequest, "signature"> {
   return {
-    protocolVersion,
+    protocolVersion: MESH_TERMINAL_PROTOCOL_VERSION,
     capability: MESH_TERMINAL_CAPABILITY,
     requestId: "request-1",
     callerNodeId: "caller-1",
@@ -55,10 +52,11 @@ describe("Mesh terminal protocol", () => {
     })).not.toBe(payload);
   });
 
-  test("uses the v5 signing domain and canonical payload order", () => {
-    const request = buildRequest(5);
+  test("uses the current generation signing domain and canonical payload order", () => {
+    const request = buildRequest();
+    const unsupportedProtocolVersion = MESH_TERMINAL_PROTOCOL_VERSION + 1;
     const payload = JSON.stringify([
-      "clanky-mesh-terminal-session-v5",
+      "clanky-mesh-terminal-session-v6",
       request.protocolVersion,
       request.capability,
       request.requestId,
@@ -85,6 +83,11 @@ describe("Mesh terminal protocol", () => {
       ...request,
       signature: "signature",
     }).success).toBe(true);
+    expect(MeshTerminalSessionRequestSchema.safeParse({
+      ...request,
+      protocolVersion: unsupportedProtocolVersion,
+      signature: "signature",
+    }).success).toBe(false);
     expect(buildMeshTerminalSessionSigningPayload(request)).toBe(payload);
   });
 

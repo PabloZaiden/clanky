@@ -6,6 +6,10 @@ import type { MeshRelayPeerIdentity } from "@/shared/mesh-relay";
 import { normalizeMeshRelayOrigin } from "@/shared/mesh-relay";
 import {
   MESH_PROTOCOL_VERSION,
+  isMeshProtocolGeneration,
+  isSupportedMeshProtocolVersion,
+  normalizeMeshProtocolVersions,
+  type MeshProtocolGeneration,
   type MeshProtocolVersion,
 } from "@/shared/mesh-protocol";
 import { getDatabase } from "./database";
@@ -23,8 +27,8 @@ export interface ControllerRelayPairing {
   pairedAt: string;
   updatedAt: string;
   relayBinaryVersion: string | null;
-  relaySupportedProtocolVersions: MeshProtocolVersion[];
-  relayPreferredProtocolVersion: MeshProtocolVersion;
+  relaySupportedProtocolVersions: MeshProtocolGeneration[];
+  relayPreferredProtocolVersion: MeshProtocolGeneration;
   relayNegotiatedProtocolVersion: MeshProtocolVersion | null;
 }
 
@@ -36,8 +40,8 @@ export interface SaveControllerRelayPairingInput {
   controllerNodeId: string;
   controllerFingerprint: string;
   relayBinaryVersion?: string | null;
-  relaySupportedProtocolVersions?: readonly MeshProtocolVersion[];
-  relayPreferredProtocolVersion?: MeshProtocolVersion;
+  relaySupportedProtocolVersions?: readonly MeshProtocolGeneration[];
+  relayPreferredProtocolVersion?: MeshProtocolGeneration;
   relayNegotiatedProtocolVersion?: MeshProtocolVersion | null;
 }
 
@@ -82,19 +86,13 @@ export class InconsistentMeshWorkerIdentityError extends Error {
 }
 
 function mapPairing(row: ControllerRelayPairingRow): ControllerRelayPairing {
-  let supportedProtocolVersions: MeshProtocolVersion[] = [5];
+  let supportedProtocolVersions: MeshProtocolGeneration[] = [];
   try {
     const parsed: unknown = JSON.parse(
-      row.relay_supported_protocol_versions_json ?? "[5]",
+      row.relay_supported_protocol_versions_json ?? "[]",
     );
     if (Array.isArray(parsed)) {
-      const normalized = parsed.filter(
-        (version): version is MeshProtocolVersion =>
-          version === 5 || version === 6,
-      );
-      if (normalized.length > 0) {
-        supportedProtocolVersions = normalized;
-      }
+      supportedProtocolVersions = normalizeMeshProtocolVersions(parsed);
     }
   } catch {
     // Optional metadata must not make a valid pairing unreadable.
@@ -111,9 +109,12 @@ function mapPairing(row: ControllerRelayPairingRow): ControllerRelayPairing {
     updatedAt: row.updated_at,
     relayBinaryVersion: row.relay_binary_version,
     relaySupportedProtocolVersions: supportedProtocolVersions,
-    relayPreferredProtocolVersion: row.relay_preferred_protocol_version === 6 ? 6 : 5,
-    relayNegotiatedProtocolVersion: row.relay_negotiated_protocol_version === 6 ? 6
-      : row.relay_negotiated_protocol_version === 5 ? 5 : null,
+    relayPreferredProtocolVersion: isMeshProtocolGeneration(row.relay_preferred_protocol_version)
+      ? row.relay_preferred_protocol_version
+      : MESH_PROTOCOL_VERSION,
+    relayNegotiatedProtocolVersion: isSupportedMeshProtocolVersion(row.relay_negotiated_protocol_version)
+      ? row.relay_negotiated_protocol_version
+      : null,
   };
 }
 

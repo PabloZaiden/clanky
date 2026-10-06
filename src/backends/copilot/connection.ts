@@ -30,7 +30,7 @@ export class CopilotConnection {
       throw new HarnessError("harness_request_failed", "This native runtime is already connected or starting.");
     }
     if (config.transport === "ssh" || config.mesh) {
-      throw new HarnessError("harness_unsupported_feature", "Native Copilot must run on the selected local or Mesh v6 execution host.");
+      throw new HarnessError("harness_unsupported_feature", "Native Copilot must run on the selected local or Mesh execution host.");
     }
     this.directory = config.directory;
     this.startupAbort = new AbortController();

@@ -278,6 +278,7 @@ export async function createRelayServer(
   const descriptor = (
     request?: Request,
   ): MeshRelayWellKnownDescriptor => {
+    const controllerProtocolVersion = broker.getControllerProtocolVersion();
     const negotiatedProtocolVersion = negotiateMeshProtocolVersion(
       [...MESH_SUPPORTED_PROTOCOL_VERSIONS],
       parseMeshProtocolVersionsHeader(
@@ -291,9 +292,9 @@ export async function createRelayServer(
       fingerprint: identity.fingerprint,
       controllerFingerprint,
       controllerNodeId: store.getController()?.nodeId ?? null,
-      ...(negotiatedProtocolVersion === 5 ? {} : {
-        controllerSupportedProtocolVersions: broker.getControllerProtocolVersion() === 6 ? [6, 5] : [5],
-      }),
+      ...(controllerProtocolVersion ? {
+        controllerSupportedProtocolVersions: [controllerProtocolVersion],
+      } : {}),
       binaryVersion: CLANKY_VERSION,
       negotiatedProtocolVersion,
     };

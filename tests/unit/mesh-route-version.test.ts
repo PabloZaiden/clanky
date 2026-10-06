@@ -1,7 +1,5 @@
 /**
- * Protocol negotiation boundary for persisted active relay hops.
- * Normal cluster handshakes select v6; they cannot exercise a deliberately
- * lower or missing negotiated hop while the peer still advertises both.
+ * Mesh routes are usable only when every active hop supports a common generation.
  */
 
 import { afterEach, beforeEach, expect, test } from "bun:test";
@@ -15,6 +13,12 @@ import { saveControllerRelayPairing } from "../../src/persistence/controller-rel
 import { getMeshNodeFingerprint } from "../../src/persistence/mesh-node-identity";
 import { meshWorkerRouteVersion } from "../../src/core/mesh-route-version";
 import { discoverMeshWorkerGeneration } from "../../src/core/mesh-worker-generation";
+import {
+  MESH_PROTOCOL_VERSION,
+  negotiateMeshProtocolGeneration,
+  type MeshProtocolGeneration,
+  type MeshProtocolVersion,
+} from "../../src/shared/mesh-protocol";
 import { seedTestOwnerUser } from "../setup";
 import { serveNativeApiRoutes } from "../native-api-server";
 import type { ExecutionHostDescriptor } from "../../src/shared/execution-host";
@@ -35,12 +39,15 @@ afterEach(async () => {
   await rm(dataDir, { recursive: true, force: true });
 });
 
-async function pairedWorker(negotiated: 5 | 6 | null, supportedProtocolVersions: readonly (5 | 6)[] = [6, 5]) {
+async function pairedWorker(
+  negotiated: MeshProtocolVersion | null,
+  supportedProtocolVersions: readonly MeshProtocolGeneration[] = [MESH_PROTOCOL_VERSION],
+) {
   const publicKey = generateKeyPairSync("ed25519").publicKey.export({ format: "pem", type: "spki" }).toString();
   const pairing = saveControllerRelayPairing({
-    name: "dual-generation", relayUrl: "https://relay.example", relayPublicKey: publicKey,
+    name: "mesh-relay", relayUrl: "https://relay.example", relayPublicKey: publicKey,
     relayFingerprint: getMeshNodeFingerprint(publicKey), controllerNodeId: "controller", controllerFingerprint: "controller-fingerprint",
-    relaySupportedProtocolVersions: [6, 5], relayPreferredProtocolVersion: 6,
+    relaySupportedProtocolVersions: [MESH_PROTOCOL_VERSION], relayPreferredProtocolVersion: MESH_PROTOCOL_VERSION,
     relayNegotiatedProtocolVersion: negotiated,
   });
   // Invalid persisted metadata must not infer a negotiated hop from capabilities.
@@ -58,26 +65,38 @@ async function pairedWorker(negotiated: 5 | 6 | null, supportedProtocolVersions:
   });
 }
 
-test.each([
-  [5, [6, 5], ["acp"]],
-  [6, [6, 5], ["acp", "copilot", "codex", "opencode2"]],
-  [6, [5], ["acp"]],
-] as const)("Execution-target adapters follow relay generation %i and worker generations %j", async (negotiated, supported, expected) => {
-  await pairedWorker(negotiated, supported);
+test("Mesh execution targets expose native adapters through relay workers", async () => {
+  await pairedWorker(MESH_PROTOCOL_VERSION);
   const server = serveNativeApiRoutes();
   try {
     const response = await fetch(new URL("/api/workspaces/execution-targets", server.url));
     expect(response.status).toBe(200);
     const hosts = await response.json() as ExecutionHostDescriptor[];
-    expect(hosts.find((host) => host.ref.kind === "mesh")?.harnessAdapters).toEqual([...expected]);
+    expect(hosts.find((host) => host.ref.kind === "mesh")?.harnessAdapters).toEqual([
+      "acp",
+      "copilot",
+      "codex",
+      "opencode2",
+    ]);
   } finally {
     await server.stop(true);
   }
 });
 
-test("Mesh discovery stays on the negotiated v5 relay hop despite advertised v6", async () => {
-  const worker = await pairedWorker(5);
-  await expect(discoverMeshWorkerGeneration(worker)).resolves.toBe(5);
+test("Mesh execution hosts hide native adapters without a supported peer generation", async () => {
+  await pairedWorker(MESH_PROTOCOL_VERSION, [MESH_PROTOCOL_VERSION + 1]);
+  const server = serveNativeApiRoutes();
+  try {
+    const response = await fetch(new URL("/api/execution-hosts", server.url));
+    expect(response.status).toBe(200);
+    const hosts = await response.json() as ExecutionHostDescriptor[];
+    expect(hosts.find((host) => host.ref.kind === "mesh")).toMatchObject({
+      harnessAdapters: [],
+      harnessAdapterError: "mesh_execution_protocol_mismatch",
+    });
+  } finally {
+    await server.stop(true);
+  }
 });
 
 test("Mesh route and discovery fail closed without a negotiated relay hop", async () => {
@@ -98,11 +117,29 @@ test("Mesh route and discovery fail closed without a negotiated relay hop", asyn
   }
 });
 
-test("Mesh v6 relay routes preserve legacy worker ACP and mutually supported native generations", async () => {
-  const worker = await pairedWorker(6);
-  expect(meshWorkerRouteVersion(worker)).toBe(6);
-  expect(meshWorkerRouteVersion({ ...worker, workerSupportedProtocolVersions: [5] })).toBe(5);
+test("Mesh route negotiation accepts extra peer capabilities and rejects disjoint lists", async () => {
+  const extraGeneration = MESH_PROTOCOL_VERSION + 1;
+  const worker = await pairedWorker(
+    MESH_PROTOCOL_VERSION,
+    [extraGeneration, MESH_PROTOCOL_VERSION],
+  );
+  expect(worker.workerSupportedProtocolVersions).toEqual([
+    extraGeneration,
+    MESH_PROTOCOL_VERSION,
+  ]);
+  expect(meshWorkerRouteVersion(worker)).toBe(MESH_PROTOCOL_VERSION);
   expect(() => meshWorkerRouteVersion({ ...worker, workerSupportedProtocolVersions: [] })).toThrow(
     expect.objectContaining({ code: "mesh_execution_protocol_mismatch" }),
   );
+  expect(() => meshWorkerRouteVersion({
+    ...worker,
+    workerSupportedProtocolVersions: [extraGeneration],
+  })).toThrow(expect.objectContaining({ code: "mesh_execution_protocol_mismatch" }));
+});
+
+// The current build implements one local generation, so synthetic capability
+// sets preserve coverage of generic highest-common selection.
+test("Mesh generation negotiation chooses the highest common capability regardless of order", () => {
+  expect(negotiateMeshProtocolGeneration([3, 11, 8, 11], [8, 11, 4])).toBe(11);
+  expect(negotiateMeshProtocolGeneration([3, 8], [9, 12])).toBeNull();
 });

@@ -9,15 +9,12 @@ import {
   MESH_ACP_CHANNEL,
   MESH_EXECUTION_PROTOCOL_VERSION,
 } from "../../src/shared/mesh-execution";
-import { MESH_PROTOCOL_VERSION, type MeshProtocolVersion } from "../../src/shared/mesh-protocol";
+import { MESH_PROTOCOL_VERSION } from "../../src/shared/mesh-protocol";
 import { MeshHarnessEventSchema } from "../../src/contracts/schemas/mesh-harness";
 
-function buildRequest(
-  encryptedEnvironment?: unknown,
-  protocolVersion: MeshProtocolVersion = MESH_PROTOCOL_VERSION,
-): Omit<MeshExecutionSessionRequest, "signature"> {
+function buildRequest(encryptedEnvironment?: unknown): Omit<MeshExecutionSessionRequest, "signature"> {
   const request: Omit<MeshExecutionSessionRequest, "signature"> = {
-    protocolVersion,
+    protocolVersion: MESH_PROTOCOL_VERSION,
     requestId: "request-1",
     callerNodeId: "caller-1",
     callerPublicKey: "public-key",
@@ -50,10 +47,11 @@ describe("Mesh execution session protocol", () => {
     expect(valid("a".repeat(501))).toBe(false);
   });
 
-  test("signs the canonical v5 request shape", () => {
-    const request = buildRequest(undefined, 5);
+  test("signs the canonical request shape and rejects an unsupported generation", () => {
+    const request = buildRequest();
+    const unsupportedProtocolVersion = MESH_PROTOCOL_VERSION + 1;
     const payload = JSON.stringify([
-      "clanky-mesh-execution-session-v5",
+      "clanky-mesh-execution-session-v6",
       request.protocolVersion,
       request.requestId,
       request.callerNodeId,
@@ -65,6 +63,8 @@ describe("Mesh execution session protocol", () => {
       request.directory,
       request.provider,
       request.channel,
+      null,
+      null,
       request.nonce,
       request.expiresAt,
     ]);
@@ -73,6 +73,11 @@ describe("Mesh execution session protocol", () => {
       ...request,
       signature: "signature",
     }).success).toBe(true);
+    expect(MeshExecutionSessionRequestSchema.safeParse({
+      ...request,
+      protocolVersion: unsupportedProtocolVersion,
+      signature: "signature",
+    }).success).toBe(false);
     expect(buildMeshExecutionSessionSigningPayload(request)).toBe(payload);
   });
 
