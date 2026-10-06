@@ -139,6 +139,7 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
     applyTranscriptEvent,
     clearResource,
   } = transcriptResource;
+  const refreshChatCoalesced = transcriptResource.refreshCoalesced;
 
   const applyChatSnapshot = useCallback((nextChat: Chat): void => {
     if (mountedChatIdRef.current !== chatId || nextChat.config.id !== chatId) {
@@ -225,9 +226,9 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
         clearResource("Chat not found");
         return;
       }
-      return refreshChat({ showLoading: false });
+      return refreshChatCoalesced({ showLoading: false });
     },
-    onReconnect: () => refreshChat({ showLoading: false }),
+    onReconnect: () => refreshChatCoalesced({ showLoading: false }),
   });
 
   useEffect(() => {
@@ -261,6 +262,7 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
       && getRegisteredSshServerId(chat.config.source.executionHost.host) !== null
       && chat.state.connectionStatus === "needs_credentials",
     refreshChat: refreshChat as (options?: ChatRefreshOptions) => Promise<void>,
+    refreshChatCoalesced: refreshChatCoalesced as (options?: ChatRefreshOptions) => Promise<void>,
     loadMoreTranscript,
     loadFullTranscript,
     loadToolCallDetails,

@@ -59,6 +59,7 @@ export function ChatDetails({
     isActive,
     needsSshCredentials,
     refreshChat,
+    refreshChatCoalesced,
     loadMoreTranscript,
     loadFullTranscript,
     loadToolCallDetails,
@@ -79,7 +80,10 @@ export function ChatDetails({
   // The embedded chat is not the active sidebar entity; expose its distinct scope through the framework header.
   useHeaderActions({ overflow: embeddedActions });
   const voice = useConversationVoice();
-  const refreshInput = useCallback(() => refreshChat({ showLoading: false }), [refreshChat]);
+  const refreshInput = useCallback(
+    () => refreshChatCoalesced({ showLoading: false }),
+    [refreshChatCoalesced],
+  );
   const voicePlayback = useVoicePlayback();
   const handleReadAloud = useCallback((
     message: { id: string; content: string },

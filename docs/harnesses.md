@@ -74,10 +74,16 @@ Ordinary queueing and interrupt-and-send remain separate actions.
 retains the input and blocks deletion, replacement or blind resend. Clanky
 reconciles unresolved admission automatically against the original owned native
 conversation while the chat or task is open; status updates appear without a
-manual check, and transient check failures retry with backoff. Leaving and
-reopening the entity resumes reconciliation. Codex can recover by the
-canonical input/client ID even if the admission reply, native message ID or
-turn ID was lost.
+manual check. Reconciliation is serialized per entity, starts at least 250 ms
+apart, and batches up to five results before refreshing the entity. Reconciliation
+updates and realtime invalidations share a 500 ms refresh-coalescing window, so
+each receipt does not trigger a separate snapshot request. Transient network,
+timeout, rate-limit and server failures retry with backoff. Permanent request
+failures stop automatic retries and expose a **Retry check** recovery action
+that only reconciles the existing receipt; it never resends the input. Leaving
+and reopening the entity resumes reconciliation. Codex can recover by the
+canonical input/client ID even if the admission reply, native message ID or turn
+ID was lost.
 Deterministic pre-admission validation errors retain their typed error and mark
 the input as rejected, so it can be corrected or removed. For example, Codex
 does not accept inline non-image binary attachments such as PDFs; those failures

@@ -17,6 +17,7 @@ import type {
 import { StatusBadge } from "./common";
 import {
   HarnessInputReconciliationProvider,
+  useRetryHarnessInputReconciliation,
   useHarnessInputReconciliation,
 } from "./harness-input-reconciliation";
 import { useHarnessActivity } from "./use-harness-activity";
@@ -41,19 +42,45 @@ const ToolActivityContext = createContext<{
 export function HarnessMessageAdmission({ inputId }: { inputId: string }) {
   const context = useContext(ToolActivityContext);
   const reconciliation = useHarnessInputReconciliation(inputId);
+  const retryReconciliation = useRetryHarnessInputReconciliation();
   const receipt = context?.inputs.get(inputId);
   const admission = reconciliation?.admission ?? receipt?.admission;
-  if (!context || !admission || admission.status === "rejected") return null;
+  if (!context || !admission) return null;
+  const delivered = admission.status === "delivered";
+  const rejected = admission.status === "rejected";
+  const permanentReconciliationError = reconciliation?.error?.kind === "reconciliation"
+    && !reconciliation.error.retrying;
   return (
-    <div className="flex flex-wrap items-center gap-x-2 pt-1 text-xs text-gray-500 dark:text-gray-400">
-      <span>{admission.status === "unknown" ? "Steering · Delivery unconfirmed" : `Steered · ${admission.status === "delivered" ? "Delivered" : "Admitted"}`}</span>
-      {reconciliation?.checking && <span>Checking delivery…</span>}
-      {reconciliation?.error && (
-        <span className="break-words text-amber-700 dark:text-amber-300">
-          {admission.status === "delivered"
-            ? `Delivery confirmed; entity refresh failed: ${reconciliation.error}`
-            : `Delivery check failed; retrying automatically: ${reconciliation.error}`}
+    <div className="flex flex-wrap items-center gap-x-2 pt-1 text-xs">
+      <span role="status" aria-live="polite" aria-atomic="true" className="flex flex-wrap items-center gap-x-2">
+        <span className="text-gray-500 dark:text-gray-400">
+          {rejected
+            ? "Steering was not admitted."
+            : admission.status === "unknown"
+              ? "Steering · Delivery unconfirmed"
+              : `Steered · ${delivered ? "Delivered" : "Admitted"}`}
         </span>
+        {!rejected && reconciliation?.checking && <span className="text-gray-500 dark:text-gray-400">Checking delivery…</span>}
+        {reconciliation?.error && (
+          <span className="break-words text-amber-700 dark:text-amber-300">
+            {reconciliation.error.kind === "refresh"
+              ? delivered
+                ? `Delivery confirmed; entity refresh failed: ${reconciliation.error.message}`
+                : `Entity refresh failed; delivery reconciliation continues: ${reconciliation.error.message}`
+              : reconciliation.error.retrying
+                ? `Delivery check failed; retrying automatically: ${reconciliation.error.message}`
+                : `Delivery check failed; automatic retries stopped: ${reconciliation.error.message}`}
+          </span>
+        )}
+      </span>
+      {permanentReconciliationError && (
+        <button
+          type="button"
+          onClick={() => retryReconciliation(inputId)}
+          className="font-medium text-gray-500 underline decoration-dotted underline-offset-2 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
+        >
+          Retry check
+        </button>
       )}
     </div>
   );
