@@ -27,6 +27,7 @@ export interface UseTaskDataResult {
   gitChangeCounter: number;
   setGitChangeCounter: Dispatch<SetStateAction<number>>;
   refresh: (options?: TranscriptResourceRefreshOptions) => Promise<void>;
+  refreshCoalesced: (options?: TranscriptResourceRefreshOptions) => Promise<void>;
   loadToolDetails: (toolCallId: string) => Promise<ToolCallData | null>;
   loadMoreTranscript: () => Promise<void>;
   loadFullTranscript: () => Promise<void>;
@@ -74,6 +75,7 @@ export function useTaskData(taskId: string): UseTaskDataResult {
     gitChangeCounter,
     setGitChangeCounter,
     refresh: transcriptResource.refresh,
+    refreshCoalesced: transcriptResource.refreshCoalesced,
     loadToolDetails: transcriptResource.loadToolDetails,
     loadMoreTranscript: transcriptResource.loadMoreTranscript,
     loadFullTranscript: transcriptResource.loadFullTranscript,

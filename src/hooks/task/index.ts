@@ -64,6 +64,8 @@ export interface UseTaskResult {
   gitChangeCounter: number;
   /** Refresh task data */
   refresh: () => Promise<void>;
+  /** Batch realtime and input-reconciliation refreshes. */
+  refreshCoalesced: () => Promise<void>;
   /** Load one complete tool-call payload when expanded. */
   loadToolDetails: (toolCallId: string) => Promise<ToolCallData | null>;
   /** Load the next older transcript page. */
@@ -156,6 +158,7 @@ export function useTask(taskId: string): UseTaskResult {
     gitChangeCounter,
     setGitChangeCounter,
     refresh,
+    refreshCoalesced: coalescedRefresh,
     loadMoreTranscript,
     loadFullTranscript,
     loadToolDetails,
@@ -179,8 +182,8 @@ export function useTask(taskId: string): UseTaskResult {
     resources: ["tasks"],
     ids: [taskId],
     filters: { resource: "tasks", id: taskId },
-    refresh: () => refresh({ showLoading: false }),
-    onReconnect: () => refresh({ showLoading: false }),
+    refresh: () => coalescedRefresh({ showLoading: false }),
+    onReconnect: () => coalescedRefresh({ showLoading: false }),
   });
 
   // Action callbacks
@@ -221,6 +224,7 @@ export function useTask(taskId: string): UseTaskResult {
     logs: transcript.logs,
     gitChangeCounter,
     refresh,
+    refreshCoalesced: () => coalescedRefresh({ showLoading: false }),
     loadMoreTranscript,
     loadFullTranscript,
     loadToolDetails,

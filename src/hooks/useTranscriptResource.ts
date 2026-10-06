@@ -30,6 +30,16 @@ export interface TranscriptResourceRefreshOptions {
   showLoading?: boolean;
 }
 
+interface PendingTranscriptRefresh {
+  resourceId: string;
+  showLoading?: boolean;
+  waiters: Array<{
+    resolve: () => void;
+    reject: (error: unknown) => void;
+  }>;
+  timer?: ReturnType<typeof setTimeout>;
+}
+
 export interface UseTranscriptResourceOptions<TResource, TSnapshot> {
   resourceId: string;
   resourceLabel: string;
@@ -54,12 +64,16 @@ export interface UseTranscriptResourceResult<TResource> {
   error: string | null;
   setError: Dispatch<SetStateAction<string | null>>;
   refresh: (options?: TranscriptResourceRefreshOptions) => Promise<void>;
+  refreshCoalesced: (options?: TranscriptResourceRefreshOptions) => Promise<void>;
   loadMoreTranscript: () => Promise<void>;
   loadFullTranscript: () => Promise<void>;
   loadToolDetails: (toolCallId: string) => Promise<ToolCallData | null>;
   applyTranscriptEvent: (event: TranscriptStreamEvent) => void;
   clearResource: (error?: string) => void;
 }
+
+// Outlast the reconciliation queue's 250 ms request cadence so realtime invalidations share its batch refresh.
+const TRANSCRIPT_REFRESH_COALESCE_WINDOW_MS = 500;
 
 export function createEmptyTranscript(): ChatTranscript {
   return {
@@ -120,6 +134,7 @@ export function useTranscriptResource<TResource, TSnapshot>({
   const refreshRequestIdRef = useRef(0);
   const transcriptRequestIdRef = useRef(0);
   const refreshCoordinatorRef = useRef(createRefreshCoordinator<void>());
+  const coalescedRefreshRef = useRef<PendingTranscriptRefresh | null>(null);
   const snapshotEtagRef = useRef<string | null>(null);
   const refreshWindowRef = useRef<TranscriptSnapshotOptions>({});
   const toolDetailsCacheRef = useRef(new Map<string, ToolCallData>());
@@ -258,6 +273,61 @@ export function useTranscriptResource<TResource, TSnapshot>({
     setResource,
     setTranscript,
   ]);
+
+  const cancelCoalescedRefresh = useCallback((): void => {
+    const pending = coalescedRefreshRef.current;
+    if (!pending) return;
+    if (pending.timer !== undefined) clearTimeout(pending.timer);
+    coalescedRefreshRef.current = null;
+    for (const waiter of pending.waiters) waiter.resolve();
+  }, []);
+
+  const refreshCoalesced = useCallback((
+    options: TranscriptResourceRefreshOptions = {},
+  ): Promise<void> => new Promise((resolve, reject) => {
+    let pending = coalescedRefreshRef.current;
+    if (pending && pending.resourceId !== resourceId) {
+      if (pending.timer !== undefined) clearTimeout(pending.timer);
+      coalescedRefreshRef.current = null;
+      for (const waiter of pending.waiters) waiter.resolve();
+      pending = null;
+    }
+
+    if (!pending) {
+      pending = {
+        resourceId,
+        showLoading: options.showLoading,
+        waiters: [],
+      };
+      coalescedRefreshRef.current = pending;
+    } else if (options.showLoading === true) {
+      pending.showLoading = true;
+    } else if (pending.showLoading === undefined && options.showLoading === false) {
+      pending.showLoading = false;
+    }
+
+    const batch = pending;
+    batch.waiters.push({ resolve, reject });
+    if (batch.timer !== undefined) clearTimeout(batch.timer);
+    batch.timer = setTimeout(() => {
+      if (coalescedRefreshRef.current !== batch) return;
+      coalescedRefreshRef.current = null;
+      batch.timer = undefined;
+      if (!mountedRef.current || resourceIdRef.current !== batch.resourceId) {
+        for (const waiter of batch.waiters) waiter.resolve();
+        return;
+      }
+
+      void refresh({ showLoading: batch.showLoading }).then(
+        () => {
+          for (const waiter of batch.waiters) waiter.resolve();
+        },
+        (refreshError) => {
+          for (const waiter of batch.waiters) waiter.reject(refreshError);
+        },
+      );
+    }, TRANSCRIPT_REFRESH_COALESCE_WINDOW_MS);
+  }), [refresh, resourceId]);
 
   const loadTranscriptWindow = useCallback(async (
     options: TranscriptSnapshotOptions,
@@ -470,11 +540,13 @@ export function useTranscriptResource<TResource, TSnapshot>({
     refreshControllerRef.current?.abort();
     transcriptControllerRef.current?.abort();
     refreshCoordinatorRef.current.reset();
+    cancelCoalescedRefresh();
     toolDetailsCacheRef.current.clear();
     streamVersionRef.current = 0;
 
     return () => {
       mountedRef.current = false;
+      cancelCoalescedRefresh();
       refreshRequestIdRef.current += 1;
       transcriptRequestIdRef.current += 1;
       refreshControllerRef.current?.abort();
@@ -487,7 +559,7 @@ export function useTranscriptResource<TResource, TSnapshot>({
       refreshControllerRef.current = null;
       transcriptControllerRef.current = null;
     };
-  }, [resourceId]);
+  }, [cancelCoalescedRefresh, resourceId]);
 
   return {
     resource,
@@ -501,6 +573,7 @@ export function useTranscriptResource<TResource, TSnapshot>({
     error,
     setError,
     refresh,
+    refreshCoalesced,
     loadMoreTranscript,
     loadFullTranscript,
     loadToolDetails,

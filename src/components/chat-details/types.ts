@@ -40,6 +40,7 @@ export interface ChatLifecycleResult {
   isActive: boolean;
   needsSshCredentials: boolean;
   refreshChat: (options?: ChatRefreshOptions) => Promise<void>;
+  refreshChatCoalesced: (options?: ChatRefreshOptions) => Promise<void>;
   loadToolCallDetails: (toolCallId: string) => Promise<ToolCallData | null>;
   loadMoreTranscript: () => Promise<void>;
   loadFullTranscript: () => Promise<void>;
