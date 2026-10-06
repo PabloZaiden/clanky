@@ -640,7 +640,7 @@ describe("database schema", () => {
     });
   });
 
-  test("normalizes legacy Mesh peers to v5 while upgrading the local generation idempotently", async () => {
+  test("normalizes legacy Mesh peers to v6 while upgrading the local generation idempotently", async () => {
     await withTempDataDir(async (dataDir) => {
       const database = new Database(join(dataDir, "clanky.db"));
       database.exec(`
@@ -720,9 +720,9 @@ describe("database schema", () => {
         ).all(),
       ).toEqual([{
         worker_node_id: "worker-1",
-        worker_supported_protocol_versions_json: "[5]",
-        worker_preferred_protocol_version: 5,
-        worker_negotiated_protocol_version: 5,
+        worker_supported_protocol_versions_json: "[6]",
+        worker_preferred_protocol_version: 6,
+        worker_negotiated_protocol_version: 6,
       }]);
       expect(
         database.query(
@@ -730,9 +730,9 @@ describe("database schema", () => {
         ).all(),
       ).toEqual([{
         controller_node_id: "controller-1",
-        controller_supported_protocol_versions_json: "[5]",
-        controller_preferred_protocol_version: 5,
-        controller_negotiated_protocol_version: 5,
+        controller_supported_protocol_versions_json: "[6]",
+        controller_preferred_protocol_version: 6,
+        controller_negotiated_protocol_version: 6,
       }]);
       expect(database.query(
         "SELECT current_version, migrated_from_version FROM mesh_protocol_state WHERE singleton = 1",
@@ -743,9 +743,9 @@ describe("database schema", () => {
       expect(database.query(
         "SELECT relay_supported_protocol_versions_json, relay_preferred_protocol_version, relay_negotiated_protocol_version FROM mesh_controller_relays",
       ).all()).toEqual([{
-        relay_supported_protocol_versions_json: "[5]",
-        relay_preferred_protocol_version: 5,
-        relay_negotiated_protocol_version: 5,
+        relay_supported_protocol_versions_json: "[6]",
+        relay_preferred_protocol_version: 6,
+        relay_negotiated_protocol_version: 6,
       }]);
       expect(database.query(
         "SELECT worker_node_id FROM mesh_worker_registrations",
@@ -774,46 +774,65 @@ describe("database schema", () => {
     });
   });
 
-  // Migration/data-safety exception: the prior persisted generation is the
-  // public upgrade contract; HTTP tests cannot establish a v67 database.
-  test("Mesh v67-to-v69 rollout preserves confirmed v5 and v6 peer evidence idempotently", () => {
+  // Migration/data-safety exception: HTTP tests cannot establish the prior
+  // persisted state that the v6-only upgrade must normalize.
+  test("Mesh v69-to-v70 migration normalizes unsupported peer generations idempotently", () => {
     const database = new Database(":memory:");
     try {
       database.exec(`
         CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT NOT NULL);
         CREATE TABLE mesh_protocol_state (singleton INTEGER PRIMARY KEY, current_version INTEGER NOT NULL, migrated_from_version INTEGER NOT NULL, updated_at TEXT NOT NULL);
-        INSERT INTO mesh_protocol_state VALUES (1, 5, 5, 'before-upgrade');
+        INSERT INTO mesh_protocol_state VALUES (1, 6, 1, 'before-upgrade');
         CREATE TABLE mesh_worker_registrations (
-          worker_node_id TEXT PRIMARY KEY, worker_supported_protocol_versions_json TEXT,
-          worker_preferred_protocol_version INTEGER, worker_negotiated_protocol_version INTEGER
+          worker_node_id TEXT PRIMARY KEY, worker_public_key TEXT, worker_fingerprint TEXT,
+          grant_status TEXT, worker_supported_protocol_versions_json TEXT,
+          worker_preferred_protocol_version INTEGER, worker_negotiated_protocol_version INTEGER,
+          worker_protocol_updated_at TEXT
         );
-        INSERT INTO mesh_worker_registrations VALUES ('worker5', '[5]', 5, 5), ('worker6', '[6,5]', 6, 6);
+        INSERT INTO mesh_worker_registrations VALUES
+          ('unsupported-worker', 'worker-key', 'worker-fingerprint', 'active', '[99]', 99, 99, 'pre-upgrade-observation'),
+          ('mixed-worker', 'mixed-key', 'mixed-fingerprint', 'active', '[6,99]', 6, 6, 'known-observation');
         CREATE TABLE mesh_controller_grants (
-          controller_node_id TEXT PRIMARY KEY, controller_supported_protocol_versions_json TEXT,
-          controller_preferred_protocol_version INTEGER, controller_negotiated_protocol_version INTEGER
+          controller_node_id TEXT PRIMARY KEY, controller_public_key TEXT,
+          controller_fingerprint TEXT, grant_status TEXT,
+          controller_supported_protocol_versions_json TEXT,
+          controller_preferred_protocol_version INTEGER, controller_negotiated_protocol_version INTEGER,
+          controller_protocol_updated_at TEXT
         );
-        INSERT INTO mesh_controller_grants VALUES ('controller5', '[5]', 5, 5), ('controller6', '[6,5]', 6, 6);
+        INSERT INTO mesh_controller_grants VALUES
+          ('unsupported-controller', 'controller-key', 'controller-fingerprint', 'active', '[99]', 99, 99, 'pre-upgrade-observation'),
+          ('mixed-controller', 'mixed-controller-key', 'mixed-controller-fingerprint', 'active', '[6,99]', 6, 6, 'known-observation');
         CREATE TABLE mesh_controller_relays (
-          name TEXT PRIMARY KEY, relay_supported_protocol_versions_json TEXT,
-          relay_preferred_protocol_version INTEGER, relay_negotiated_protocol_version INTEGER
+          name TEXT PRIMARY KEY, relay_fingerprint TEXT,
+          relay_supported_protocol_versions_json TEXT,
+          relay_preferred_protocol_version INTEGER, relay_negotiated_protocol_version INTEGER,
+          relay_protocol_updated_at TEXT
         );
-        INSERT INTO mesh_controller_relays VALUES ('relay5', '[5]', 5, 5), ('relay6', '[6,5]', 6, 6);
+        INSERT INTO mesh_controller_relays VALUES
+          ('unsupported-relay', 'unsupported-relay-fingerprint', '[99]', 99, 99, 'pre-upgrade-observation'),
+          ('mixed-relay', 'mixed-relay-fingerprint', '[6,99]', 6, 6, 'known-observation');
       `);
-      for (let version = 1; version <= 67; version++) database.run("INSERT INTO schema_migrations VALUES (?, ?, ?)", [version, `prior-${version}`, "before-upgrade"]);
-      expect(runMigrations(database)).toBe(2);
-      expect(database.query("SELECT current_version, migrated_from_version FROM mesh_protocol_state").get()).toEqual({ current_version: 6, migrated_from_version: 5 });
+      for (let version = 1; version <= 69; version++) database.run("INSERT INTO schema_migrations VALUES (?, ?, ?)", [version, `prior-${version}`, "before-upgrade"]);
+      expect(runMigrations(database)).toBe(1);
+      expect(database.query("SELECT current_version, migrated_from_version FROM mesh_protocol_state").get()).toEqual({ current_version: 6, migrated_from_version: 1 });
       expect(database.query("SELECT * FROM mesh_worker_registrations ORDER BY worker_node_id").all()).toEqual([
-        { worker_node_id: "worker5", worker_supported_protocol_versions_json: "[5]", worker_preferred_protocol_version: 5, worker_negotiated_protocol_version: 5 },
-        { worker_node_id: "worker6", worker_supported_protocol_versions_json: "[6,5]", worker_preferred_protocol_version: 6, worker_negotiated_protocol_version: 6 },
+        { worker_node_id: "mixed-worker", worker_public_key: "mixed-key", worker_fingerprint: "mixed-fingerprint", grant_status: "active", worker_supported_protocol_versions_json: "[6]", worker_preferred_protocol_version: 6, worker_negotiated_protocol_version: 6, worker_protocol_updated_at: "known-observation" },
+        { worker_node_id: "unsupported-worker", worker_public_key: "worker-key", worker_fingerprint: "worker-fingerprint", grant_status: "active", worker_supported_protocol_versions_json: "[6]", worker_preferred_protocol_version: 6, worker_negotiated_protocol_version: 6, worker_protocol_updated_at: "pre-upgrade-observation" },
       ]);
-      expect(database.query("SELECT controller_negotiated_protocol_version AS version FROM mesh_controller_grants ORDER BY controller_node_id").all()).toEqual([{ version: 5 }, { version: 6 }]);
-      expect(database.query("SELECT relay_negotiated_protocol_version AS version FROM mesh_controller_relays ORDER BY name").all()).toEqual([{ version: 5 }, { version: 6 }]);
+      expect(database.query("SELECT controller_node_id, controller_public_key, controller_fingerprint, grant_status, controller_supported_protocol_versions_json, controller_preferred_protocol_version, controller_negotiated_protocol_version, controller_protocol_updated_at FROM mesh_controller_grants ORDER BY controller_node_id").all()).toEqual([
+        { controller_node_id: "mixed-controller", controller_public_key: "mixed-controller-key", controller_fingerprint: "mixed-controller-fingerprint", grant_status: "active", controller_supported_protocol_versions_json: "[6]", controller_preferred_protocol_version: 6, controller_negotiated_protocol_version: 6, controller_protocol_updated_at: "known-observation" },
+        { controller_node_id: "unsupported-controller", controller_public_key: "controller-key", controller_fingerprint: "controller-fingerprint", grant_status: "active", controller_supported_protocol_versions_json: "[6]", controller_preferred_protocol_version: 6, controller_negotiated_protocol_version: 6, controller_protocol_updated_at: "pre-upgrade-observation" },
+      ]);
+      expect(database.query("SELECT name, relay_fingerprint, relay_supported_protocol_versions_json, relay_preferred_protocol_version, relay_negotiated_protocol_version, relay_protocol_updated_at FROM mesh_controller_relays ORDER BY name").all()).toEqual([
+        { name: "mixed-relay", relay_fingerprint: "mixed-relay-fingerprint", relay_supported_protocol_versions_json: "[6]", relay_preferred_protocol_version: 6, relay_negotiated_protocol_version: 6, relay_protocol_updated_at: "known-observation" },
+        { name: "unsupported-relay", relay_fingerprint: "unsupported-relay-fingerprint", relay_supported_protocol_versions_json: "[6]", relay_preferred_protocol_version: 6, relay_negotiated_protocol_version: 6, relay_protocol_updated_at: "pre-upgrade-observation" },
+      ]);
       expect(runMigrations(database)).toBe(0);
       expect(database.query("SELECT current_version FROM mesh_protocol_state").get()).toEqual({ current_version: 6 });
     } finally { database.close(); }
   });
 
-  test("preserves peer trust during the legacy-to-dual-generation Mesh upgrade", async () => {
+  test("preserves peer trust while normalizing legacy Mesh metadata to v6", async () => {
     await withTempDataDir(async (dataDir) => {
       const database = new Database(join(dataDir, "clanky.db"));
       database.exec(`
@@ -873,18 +892,18 @@ describe("database schema", () => {
       database.run("INSERT INTO mesh_node_identity VALUES (?)", [1]);
       database.run(
         "INSERT INTO mesh_worker_registrations VALUES (?, ?, ?, ?, ?, ?)",
-        ["worker-1", "5.0.5", "[1]", 1, 1, "old-worker-time"],
+        ["worker-1", "worker-build-before-upgrade", "[1]", 1, 1, "old-worker-time"],
       );
       database.run(
         "INSERT INTO mesh_controller_grants VALUES (?, ?, ?, ?, ?, ?)",
-        ["controller-1", "5.0.5", "[1]", 1, 1, "old-controller-time"],
+        ["controller-1", "controller-build-before-upgrade", "[1]", 1, 1, "old-controller-time"],
       );
       database.run(
         "INSERT INTO mesh_controller_relay_pairing VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
           1, "https://relay-v1.example", "relay-key", "relay-fingerprint",
           "controller-node", "controller-fingerprint", "paired-time", "updated-time",
-          "5.0.5", "[1]", 1, 1, "old-relay-time",
+          "relay-build-before-upgrade", "[1]", 1, 1, "old-relay-time",
         ],
       );
       database.run(
@@ -896,17 +915,17 @@ describe("database schema", () => {
       expect(database.query(
         "SELECT worker_supported_protocol_versions_json, worker_preferred_protocol_version, worker_negotiated_protocol_version, worker_protocol_updated_at FROM mesh_worker_registrations",
       ).all()).toEqual([{
-        worker_supported_protocol_versions_json: "[5]",
-        worker_preferred_protocol_version: 5,
-        worker_negotiated_protocol_version: 5,
+        worker_supported_protocol_versions_json: "[6]",
+        worker_preferred_protocol_version: 6,
+        worker_negotiated_protocol_version: 6,
         worker_protocol_updated_at: "old-worker-time",
       }]);
       expect(database.query(
         "SELECT controller_supported_protocol_versions_json, controller_preferred_protocol_version, controller_negotiated_protocol_version, controller_protocol_updated_at FROM mesh_controller_grants",
       ).all()).toEqual([{
-        controller_supported_protocol_versions_json: "[5]",
-        controller_preferred_protocol_version: 5,
-        controller_negotiated_protocol_version: 5,
+        controller_supported_protocol_versions_json: "[6]",
+        controller_preferred_protocol_version: 6,
+        controller_negotiated_protocol_version: 6,
         controller_protocol_updated_at: "old-controller-time",
       }]);
       expect(database.query(
@@ -914,10 +933,10 @@ describe("database schema", () => {
       ).all()).toEqual([{
         name: "default",
         is_primary: 1,
-        relay_binary_version: "5.0.5",
-        relay_supported_protocol_versions_json: "[5]",
-        relay_preferred_protocol_version: 5,
-        relay_negotiated_protocol_version: 5,
+        relay_binary_version: "relay-build-before-upgrade",
+        relay_supported_protocol_versions_json: "[6]",
+        relay_preferred_protocol_version: 6,
+        relay_negotiated_protocol_version: 6,
         relay_protocol_updated_at: "old-relay-time",
       }]);
       expect(database.query(
@@ -960,7 +979,7 @@ describe("database schema", () => {
       `, [
         1, "https://original-relay.example", "relay-public-key", "relay-fingerprint",
         "controller-node", "controller-fingerprint", "paired-time", "updated-time",
-        "5.0.5", "[5]", 5, 5, "protocol-time",
+        "relay-build", "[99]", 99, 99, "protocol-time",
       ]);
       database.run(`
         INSERT INTO mesh_enrollment_tokens (
@@ -984,10 +1003,10 @@ describe("database schema", () => {
         controller_fingerprint: "controller-fingerprint",
         paired_at: "paired-time",
         updated_at: "updated-time",
-        relay_binary_version: "5.0.5",
-        relay_supported_protocol_versions_json: "[5]",
-        relay_preferred_protocol_version: 5,
-        relay_negotiated_protocol_version: 5,
+        relay_binary_version: "relay-build",
+        relay_supported_protocol_versions_json: "[6]",
+        relay_preferred_protocol_version: 6,
+        relay_negotiated_protocol_version: 6,
         relay_protocol_updated_at: "protocol-time",
       };
       expect(database.query("SELECT * FROM mesh_controller_relays").all()).toEqual([

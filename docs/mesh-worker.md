@@ -11,21 +11,15 @@ are trusted to execute commands and access files on the worker host.
 ## Protocol generations and migration
 
 Mesh protocol generations are global and aligned with the Clanky release major.
-Clanky 6.0.x supports v6 and v5 and chooses the highest mutually supported
-generation. For a relay route, the controller, relay **and** worker must agree.
-A v5 relay cannot carry native v6 harness traffic. Existing v5 workers still
-use the ordinary ACP backend; there is no separate legacy backend.
-
-Startup migration 68 upgrades local generation metadata without replacing
-identities, keys, grants, or confirmed peer generations. Successful signed
-worker discovery/health exchanges and relay reconnects refresh peer evidence
-after upgrades. The compatibility adapter projects exact v5 payloads, including
-`supportedProtocolVersions: [5]` and `preferredProtocolVersion: 5`; changing the
-local preferred generation does not change v5 signatures or schemas.
-
-Keep v5 throughout 6.0.x. Remove it **only for 6.1.0 after confirming that every
-controller, relay, and worker has rolled out v6**. Do not combine that cleanup
-with a breaking wire change.
+Clanky 6.1 and later uses Mesh v6 exclusively. Every controller, relay, and
+worker on a route must share a supported generation. Capability lists need not
+be identical or ordered the same: each route selects the highest generation
+shared by every hop and rejects the route when there is no intersection.
+Additional peer capabilities are metadata only; a process does not parse or
+emit contracts for generations it does not implement. Startup migration
+normalizes persisted protocol metadata to v6 without replacing identities,
+keys, or grants. Successful signed exchanges and relay reconnects refresh peer
+evidence.
 
 The Mesh status and Settings views show each controller, relay, and worker
 binary version, supported generations, and the generation observed in the last
@@ -35,8 +29,8 @@ not prove its external runtime is installed or authenticated.
 
 Before selecting a native adapter, check worker and relay generations in
 `clanky mesh status` and `clanky mesh relay status`. A native request rejected
-by a v5 hop is not retried through ACP. Upgrade that hop or explicitly select
-ACP on the workspace.
+by a Mesh route is not retried through ACP. Explicitly select ACP on the
+workspace when that is the desired integration.
 
 ## Choose a harness
 
@@ -47,7 +41,6 @@ Execution-host transport and harness are independent:
 | --- | --- |
 | Local | Copilot native, Codex native, OpenCode 2 native, ACP |
 | Mesh v6, including v6 relays | Copilot native, Codex native, OpenCode 2 native, ACP |
-| Mesh v5 or a route through a v5 relay | ACP only |
 | Direct SSH | ACP only |
 
 Install and authenticate the selected runtime under the **worker service

@@ -1,5 +1,5 @@
 /**
- * Provider-neutral v6 host proxy. ACP remains its own ordinary backend path.
+ * Provider-neutral Mesh host proxy. ACP remains its own ordinary backend path.
  */
 import { z } from "zod";
 import type { Backend, BackendConnectionConfig, AgentSession, AgentResponse, CreateSessionOptions, ConfigOption, ConnectionInfo, PromptInput } from "./types";
@@ -111,13 +111,13 @@ export class MeshHarnessBackend implements Backend {
         method: "POST", signal: controller.signal,
         headers: { "content-type": "application/json", "x-clanky-mesh-session-id": connection.sessionId, "x-clanky-mesh-request-id": requestId },
         body: JSON.stringify({
-          protocolVersion: 6, sessionId: connection.sessionId, sessionToken: connection.sessionToken, requestId,
+          protocolVersion: connection.protocolVersion, sessionId: connection.sessionId, sessionToken: connection.sessionToken, requestId,
           encryptedPayload: encryptMeshPayload(operation, connection.workerEncryptionPublicKey),
         }),
       });
       await this.assertResponse(response);
       const body = await readMeshControlResponseJson(response, { signal: controller.signal, maxBytes: MAX_FRAME_BYTES }) as { protocolVersion: unknown; requestId: unknown; encryptedPayload: unknown };
-      if (body.protocolVersion !== 6 || body.requestId !== requestId) throw new HarnessError("harness_request_failed", "The native Mesh response does not match its request.");
+      if (body.protocolVersion !== connection.protocolVersion || body.requestId !== requestId) throw new HarnessError("harness_request_failed", "The native Mesh response does not match its request.");
       return await decryptMeshPayload(MeshHarnessEncryptedPayloadSchema.parse(body.encryptedPayload)) as T;
     } catch (error) {
       if (error instanceof DomainError) throw error;
@@ -193,7 +193,7 @@ export class MeshHarnessBackend implements Backend {
     const response = await requestMeshPeer(connection.route, "api/mesh/internal/harness/events", {
       method: "POST", signal, headers: {
         "content-type": "application/json", "x-clanky-mesh-session-id": connection.sessionId, "x-clanky-mesh-request-id": requestId,
-      }, body: JSON.stringify({ protocolVersion: 6, sessionId: connection.sessionId, sessionToken: connection.sessionToken, requestId, conversationId: id, encryptedPayload: null }),
+      }, body: JSON.stringify({ protocolVersion: connection.protocolVersion, sessionId: connection.sessionId, sessionToken: connection.sessionToken, requestId, conversationId: id, encryptedPayload: null }),
     });
     await this.assertResponse(response);
     if (!response.body) throw new HarnessError("harness_event_gap", "The native event stream is unavailable.");
@@ -211,7 +211,7 @@ export class MeshHarnessBackend implements Backend {
         while (newline >= 0) {
           const frame = JSON.parse(buffer.slice(0, newline)) as { protocolVersion: unknown; sequence: unknown; encryptedPayload: unknown };
           buffer = buffer.slice(newline + 1);
-          if (frame.protocolVersion !== 6 || frame.sequence !== sequence++) throw new HarnessError("harness_event_gap", "The native event stream has a sequence gap.");
+          if (frame.protocolVersion !== connection.protocolVersion || frame.sequence !== sequence++) throw new HarnessError("harness_event_gap", "The native event stream has a sequence gap.");
           const payload = await decryptMeshPayload(MeshHarnessEncryptedPayloadSchema.parse(frame.encryptedPayload)) as { type: string; event?: unknown };
           if (payload.type === "ready" && sequence === 1) ready();
           else if (payload.type === "heartbeat") { /* Lease-owned keepalive, not a retained event. */ }

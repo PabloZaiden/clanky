@@ -1,17 +1,14 @@
 /**
  * Global Mesh wire-generation metadata.
  *
- * Generations cover controllers, relays and workers together. Keep v5 during
- * the v6.0 rollout; removal requires fleet confirmation for release 6.1.
+ * Generations cover controllers, relays and workers together.
  */
 
 export const MESH_PROTOCOL_VERSION = 6 as const;
-export const MESH_SUPPORTED_PROTOCOL_VERSIONS = [
-  MESH_PROTOCOL_VERSION,
-  5,
-] as const;
+export const MESH_SUPPORTED_PROTOCOL_VERSIONS = [MESH_PROTOCOL_VERSION] as const;
 export const MESH_PROTOCOL_PREFERRED_VERSION = MESH_PROTOCOL_VERSION;
 
+export type MeshProtocolGeneration = number;
 export type MeshProtocolVersion = typeof MESH_SUPPORTED_PROTOCOL_VERSIONS[number];
 
 export const MESH_PROTOCOL_VERSIONS_HEADER =
@@ -23,37 +20,64 @@ export const MESH_BINARY_VERSION_HEADER =
 
 export interface MeshProtocolMetadata {
   binaryVersion: string | null;
-  supportedProtocolVersions: MeshProtocolVersion[];
-  preferredProtocolVersion: MeshProtocolVersion;
+  supportedProtocolVersions: MeshProtocolGeneration[];
+  preferredProtocolVersion: MeshProtocolGeneration;
   negotiatedProtocolVersion: MeshProtocolVersion | null;
   harnessAdapters?: readonly ("acp" | "copilot" | "codex" | "opencode2")[];
 }
 
+export function isMeshProtocolGeneration(
+  value: unknown,
+): value is MeshProtocolGeneration {
+  return typeof value === "number"
+    && Number.isSafeInteger(value)
+    && value > 0;
+}
+
+export function isSupportedMeshProtocolVersion(
+  value: unknown,
+): value is MeshProtocolVersion {
+  return isMeshProtocolGeneration(value)
+    && MESH_SUPPORTED_PROTOCOL_VERSIONS.some((version) => version === value);
+}
+
 export function normalizeMeshProtocolVersions(
   versions: readonly number[] | undefined,
-): MeshProtocolVersion[] {
-  const normalized = new Set<MeshProtocolVersion>();
+): MeshProtocolGeneration[] {
+  const normalized = new Set<MeshProtocolGeneration>();
   for (const version of versions ?? []) {
-    if (version === 5 || version === 6) {
+    if (isMeshProtocolGeneration(version)) {
       normalized.add(version);
     }
   }
   return [...normalized].sort((left, right) => right - left);
 }
 
-export function negotiateMeshProtocolVersion(
-  localVersions: readonly MeshProtocolVersion[],
-  remoteVersions: readonly MeshProtocolVersion[],
-): MeshProtocolVersion | null {
-  const remote = new Set(remoteVersions);
+export function negotiateMeshProtocolGeneration(
+  localVersions: readonly MeshProtocolGeneration[],
+  remoteVersions: readonly MeshProtocolGeneration[],
+): MeshProtocolGeneration | null {
+  const remote = new Set(normalizeMeshProtocolVersions(remoteVersions));
   return normalizeMeshProtocolVersions(localVersions)
     .find((version) => remote.has(version))
     ?? null;
 }
 
+export function negotiateMeshProtocolVersion(
+  localVersions: readonly MeshProtocolVersion[],
+  remoteVersions: readonly MeshProtocolGeneration[],
+): MeshProtocolVersion | null {
+  const negotiated = negotiateMeshProtocolGeneration(localVersions, remoteVersions);
+  return negotiated !== null
+    && isSupportedMeshProtocolVersion(negotiated)
+    && localVersions.includes(negotiated)
+    ? negotiated
+    : null;
+}
+
 export function parseMeshProtocolVersionsHeader(
   value: string | null,
-): MeshProtocolVersion[] {
+): MeshProtocolGeneration[] {
   if (!value) {
     return [];
   }
@@ -62,21 +86,20 @@ export function parseMeshProtocolVersionsHeader(
   );
 }
 
-/** Exact v5 projection: old strict readers require [5] and preferred 5. */
 export function meshProtocolProjection(version: MeshProtocolVersion): {
   protocolVersion: MeshProtocolVersion;
-  supportedProtocolVersions: MeshProtocolVersion[];
-  preferredProtocolVersion: MeshProtocolVersion;
+  supportedProtocolVersions: MeshProtocolGeneration[];
+  preferredProtocolVersion: MeshProtocolGeneration;
 } {
   return {
     protocolVersion: version,
-    supportedProtocolVersions: version === 5 ? [5] : [...MESH_SUPPORTED_PROTOCOL_VERSIONS],
-    preferredProtocolVersion: version,
+    supportedProtocolVersions: [...MESH_SUPPORTED_PROTOCOL_VERSIONS],
+    preferredProtocolVersion: MESH_PROTOCOL_PREFERRED_VERSION,
   };
 }
 
 export function serializeMeshProtocolVersions(
-  versions: readonly MeshProtocolVersion[] = MESH_SUPPORTED_PROTOCOL_VERSIONS,
+  versions: readonly MeshProtocolGeneration[] = MESH_SUPPORTED_PROTOCOL_VERSIONS,
 ): string {
   return normalizeMeshProtocolVersions(versions).join(",");
 }

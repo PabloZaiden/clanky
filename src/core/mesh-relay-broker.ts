@@ -37,7 +37,11 @@ import {
   type MeshRelayStreamTicketFrame,
   type MeshRelayWorkerStatus,
 } from "@/shared/mesh-relay";
-import { MESH_PROTOCOL_VERSION, type MeshProtocolVersion } from "@/shared/mesh-protocol";
+import {
+  MESH_PROTOCOL_VERSION,
+  isSupportedMeshProtocolVersion,
+  type MeshProtocolVersion,
+} from "@/shared/mesh-protocol";
 import {
   getMeshRelayFingerprint,
   verifyMeshRelaySignature,
@@ -1225,8 +1229,9 @@ export class MeshRelayBroker {
     const request = validateStreamRoute(initiator, input);
     const receiver = this.resolveReceiver(initiator, request.targetNodeId);
     if (request.path.startsWith("/api/mesh/internal/harness/") && (
-      initiator.protocolVersion !== 6 || receiver.protocolVersion !== 6
-    )) throw new RelayRequestError("protocol_mismatch", "Native traffic requires v6 on every Mesh hop.", 406);
+      initiator.protocolVersion !== receiver.protocolVersion
+      || !isSupportedMeshProtocolVersion(initiator.protocolVersion)
+    )) throw new RelayRequestError("protocol_mismatch", "Native traffic requires a mutually supported generation on every Mesh hop.", 406);
     this.assertNodeCapacity(initiator.id);
     this.assertNodeCapacity(receiver.id);
 

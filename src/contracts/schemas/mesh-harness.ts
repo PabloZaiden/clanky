@@ -1,8 +1,9 @@
 /**
- * Mesh v6 native host contract. Never interpreted as ACP JSON-RPC.
+ * Mesh native host contract. Never interpreted as ACP JSON-RPC.
  */
 import { z } from "zod";
 import { HarnessConversationBindingSchema, HarnessEventScopeSchema, HarnessQuestionInfoSchema } from "./harness";
+import { MESH_PROTOCOL_VERSION } from "@/shared/mesh-protocol";
 
 const Id = z.string().min(1).max(500);
 const Path = z.string().min(1).max(16_384);
@@ -53,7 +54,7 @@ export const MeshHarnessEncryptedPayloadSchema = z.object({
   authTag: z.string().min(1).max(128), ciphertext: z.string().max(4 * 1024 * 1024),
 }).strict();
 export const MeshHarnessEnvelopeSchema = z.object({
-  protocolVersion: z.literal(6), sessionId: Id,
+  protocolVersion: z.literal(MESH_PROTOCOL_VERSION), sessionId: Id,
   sessionToken: z.string().min(32).max(256), requestId: Id,
   encryptedPayload: MeshHarnessEncryptedPayloadSchema,
 }).strict();

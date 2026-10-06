@@ -127,7 +127,7 @@ application data remain on the controller.
 
 See [harness adapters](harnesses.md) for native runtime requirements, scoped
 activity/Stop and queued-input steering. Native execution requires a local host
-or an end-to-end Mesh6 path; direct SSH and Mesh5-only paths remain ACP.
+or an end-to-end Mesh v6 path; direct SSH remains ACP-only.
 
 `workspace.directory` is the initial navigation directory, not a filesystem
 sandbox. File operations may access parent paths, absolute paths and alternate

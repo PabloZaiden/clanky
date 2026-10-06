@@ -2,7 +2,7 @@
  * Bounded discovery for a controller or relay enrollment target.
  */
 
-import { MeshWellKnownDescriptorV5Schema, MeshWellKnownDescriptorV6Schema } from "@/contracts/schemas/mesh-relay";
+import { MeshWellKnownDescriptorV6Schema } from "@/contracts/schemas/mesh-relay";
 import { negotiateMeshDescriptorGeneration } from "./mesh-protocol-version";
 import {
   MESH_RUNTIME_SNAPSHOT_HEADER,
@@ -14,6 +14,7 @@ import {
   type MeshWellKnownDescriptor,
 } from "@/shared/mesh-relay";
 import {
+  MESH_PROTOCOL_VERSION,
   MESH_SUPPORTED_PROTOCOL_VERSIONS,
   negotiateMeshProtocolVersion,
   MESH_PROTOCOL_VERSIONS_HEADER,
@@ -160,7 +161,7 @@ export async function discoverMeshEnrollmentTarget(
     }
     const generation = negotiateMeshDescriptorGeneration(raw);
     if (!generation) throw new DomainError("mesh_enrollment_discovery_invalid", "The Mesh target has no highest mutually supported generation.");
-    const parsed = (generation === 6 ? MeshWellKnownDescriptorV6Schema : MeshWellKnownDescriptorV5Schema).safeParse(raw);
+    const parsed = MeshWellKnownDescriptorV6Schema.safeParse(raw);
     if (!parsed.success) {
       throw new DomainError(
         "mesh_enrollment_discovery_invalid",
@@ -196,8 +197,9 @@ export async function discoverMeshEnrollmentTarget(
         ? advertisedSnapshotVersion
         : 0;
     const descriptor = parsed.data;
-    const controllerVersions = descriptor.role === "relay" && "controllerSupportedProtocolVersions" in descriptor
-      ? descriptor.controllerSupportedProtocolVersions ?? [5] : [5];
+    const controllerVersions = descriptor.role === "relay"
+      ? descriptor.controllerSupportedProtocolVersions ?? []
+      : [MESH_PROTOCOL_VERSION];
     const negotiated = descriptor.role === "relay"
       ? negotiateMeshProtocolVersion(MESH_SUPPORTED_PROTOCOL_VERSIONS, descriptor.supportedProtocolVersions.filter((version) => controllerVersions.includes(version)))
       : descriptor.negotiatedProtocolVersion;

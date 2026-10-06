@@ -5,21 +5,23 @@ import {
   MESH_RELAY_ENROLLMENT_ADMISSION_VERSION,
   normalizeMeshRelayOrigin,
 } from "@/shared/mesh-relay";
+import { MESH_PROTOCOL_VERSION } from "@/shared/mesh-protocol";
+import {
+  assertMeshProtocolMetadata,
+  MeshProtocolGenerationSchema,
+  MeshProtocolVersionsSchema,
+} from "./mesh-protocol";
 
 const RelayIdSchema = z.string().trim().min(1).max(200);
 const RelayPublicKeySchema = z.string().min(1).max(16_384);
 const RelayFingerprintSchema = z.string().trim().min(1).max(200);
 const RelaySignatureSchema = z.string().trim().min(1).max(16_384);
 const RelayTimestampSchema = z.string().datetime();
-const MeshRelayProtocolVersionSchema = z.union([z.literal(6), z.literal(5)]);
-const MeshSupportedProtocolVersionsSchema = z.array(
-  MeshRelayProtocolVersionSchema,
-).min(1).max(2).refine((versions) => new Set(versions).size === versions.length);
-const V5Versions = z.array(z.literal(5)).length(1);
+const MeshRelayProtocolVersionSchema = z.literal(MESH_PROTOCOL_VERSION);
 const V6Metadata = {
-  protocolVersion: z.literal(6),
-  supportedProtocolVersions: MeshSupportedProtocolVersionsSchema.refine((versions) => versions.includes(6)),
-  preferredProtocolVersion: z.literal(6),
+  protocolVersion: MeshRelayProtocolVersionSchema,
+  supportedProtocolVersions: MeshProtocolVersionsSchema,
+  preferredProtocolVersion: MeshProtocolGenerationSchema,
   negotiatedProtocolVersion: MeshRelayProtocolVersionSchema.nullable(),
 };
 const RelayHeadersSchema = z.record(
@@ -35,47 +37,33 @@ export const MeshRelayPeerIdentitySchema = z.object({
   fingerprint: RelayFingerprintSchema,
 }).strict();
 
-export const MeshRelayWellKnownDescriptorV5Schema = z.object({
+export const MeshRelayWellKnownDescriptorV6Schema = z.object({
+  ...V6Metadata,
   role: z.literal("relay"),
-  protocolVersion: z.literal(5),
   publicKey: RelayPublicKeySchema,
   fingerprint: RelayFingerprintSchema,
   controllerFingerprint: RelayFingerprintSchema,
   controllerNodeId: RelayIdSchema.nullable(),
   binaryVersion: z.string().trim().min(1).max(200),
-  supportedProtocolVersions: V5Versions,
-  preferredProtocolVersion: z.literal(5),
-  negotiatedProtocolVersion: z.literal(5).nullable(),
-}).strict();
+  controllerSupportedProtocolVersions: MeshProtocolVersionsSchema.optional(),
+}).strict().superRefine(assertMeshProtocolMetadata);
 
-export const MeshControllerWellKnownDescriptorV5Schema = z.object({
+export const MeshControllerWellKnownDescriptorV6Schema = z.object({
+  ...V6Metadata,
   role: z.literal("controller"),
-  protocolVersion: z.literal(5),
   nodeId: RelayIdSchema,
   publicKey: RelayPublicKeySchema,
   fingerprint: RelayFingerprintSchema,
   binaryVersion: z.string().trim().min(1).max(200),
-  supportedProtocolVersions: V5Versions,
-  preferredProtocolVersion: z.literal(5),
-  negotiatedProtocolVersion: z.literal(5).nullable(),
-}).strict();
+}).strict().superRefine(assertMeshProtocolMetadata);
 
-export const MeshRelayWellKnownDescriptorV6Schema = MeshRelayWellKnownDescriptorV5Schema.extend({
-  ...V6Metadata,
-  controllerSupportedProtocolVersions: MeshSupportedProtocolVersionsSchema.optional(),
-});
-export const MeshRelayWellKnownDescriptorSchema = z.union([
-  MeshRelayWellKnownDescriptorV6Schema, MeshRelayWellKnownDescriptorV5Schema,
+export const MeshRelayWellKnownDescriptorSchema = MeshRelayWellKnownDescriptorV6Schema;
+export const MeshControllerWellKnownDescriptorSchema = MeshControllerWellKnownDescriptorV6Schema;
+export const MeshWellKnownDescriptorV6Schema = z.union([
+  MeshRelayWellKnownDescriptorV6Schema,
+  MeshControllerWellKnownDescriptorV6Schema,
 ]);
-
-export const MeshControllerWellKnownDescriptorV6Schema = MeshControllerWellKnownDescriptorV5Schema.extend(V6Metadata);
-export const MeshControllerWellKnownDescriptorSchema = z.union([
-  MeshControllerWellKnownDescriptorV6Schema, MeshControllerWellKnownDescriptorV5Schema,
-]);
-
-export const MeshWellKnownDescriptorV5Schema = z.union([MeshRelayWellKnownDescriptorV5Schema, MeshControllerWellKnownDescriptorV5Schema]);
-export const MeshWellKnownDescriptorV6Schema = z.union([MeshRelayWellKnownDescriptorV6Schema, MeshControllerWellKnownDescriptorV6Schema]);
-export const MeshWellKnownDescriptorSchema = z.union([MeshWellKnownDescriptorV6Schema, MeshWellKnownDescriptorV5Schema]);
+export const MeshWellKnownDescriptorSchema = MeshWellKnownDescriptorV6Schema;
 
 export const ControllerRelayUrlSchema = z.string().trim().url().superRefine(
   (value, context) => {
@@ -119,8 +107,8 @@ export const ControllerRelayStatusItemSchema = z.object({
   pairedAt: RelayTimestampSchema,
   updatedAt: RelayTimestampSchema,
   relayBinaryVersion: z.string().trim().min(1).nullable(),
-  relaySupportedProtocolVersions: MeshSupportedProtocolVersionsSchema,
-  relayPreferredProtocolVersion: MeshRelayProtocolVersionSchema,
+  relaySupportedProtocolVersions: MeshProtocolVersionsSchema,
+  relayPreferredProtocolVersion: MeshProtocolGenerationSchema,
   relayNegotiatedProtocolVersion: MeshRelayProtocolVersionSchema.nullable(),
 }).strict();
 

@@ -3,12 +3,12 @@
  */
 
 import {
+  type MeshProtocolGeneration,
   type MeshProtocolVersion,
   type MeshProtocolMetadata,
 } from "./mesh-protocol";
 
-// This admission token format is part of the deployed v5 relay contract. It
-// is not a Mesh wire-generation selector.
+// Admission token versioning is independent of the Mesh wire generation.
 export const MESH_RELAY_ENROLLMENT_ADMISSION_VERSION = 1 as const;
 export const MESH_RELAY_MAX_AUTHORIZED_WORKERS = 1_000;
 export const MESH_RELAY_MAX_AUTHORIZATION_STAGED_BYTES = 4 * 1_024 * 1_024;
@@ -43,7 +43,7 @@ export interface MeshRelayWellKnownDescriptor extends MeshProtocolMetadata {
   fingerprint: string;
   controllerFingerprint: string;
   controllerNodeId: string | null;
-  controllerSupportedProtocolVersions?: MeshProtocolVersion[];
+  controllerSupportedProtocolVersions?: MeshProtocolGeneration[];
 }
 
 export interface MeshControllerWellKnownDescriptor extends MeshProtocolMetadata {
@@ -57,15 +57,6 @@ export interface MeshControllerWellKnownDescriptor extends MeshProtocolMetadata 
 export type MeshWellKnownDescriptor =
   | MeshRelayWellKnownDescriptor
   | MeshControllerWellKnownDescriptor;
-
-type V5Descriptor<T> = Omit<T, "protocolVersion" | "supportedProtocolVersions" | "preferredProtocolVersion" | "negotiatedProtocolVersion" | "controllerSupportedProtocolVersions"> & {
-  protocolVersion: 5;
-  supportedProtocolVersions: [5];
-  preferredProtocolVersion: 5;
-  negotiatedProtocolVersion: 5 | null;
-};
-export type MeshRelayWellKnownDescriptorV5 = V5Descriptor<MeshRelayWellKnownDescriptor>;
-export type MeshControllerWellKnownDescriptorV5 = V5Descriptor<MeshControllerWellKnownDescriptor>;
 
 export function isMeshRelayLoopbackHostname(hostname: string): boolean {
   const normalized = hostname.replace(/^\[|\]$/g, "").toLowerCase();

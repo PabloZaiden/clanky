@@ -7,7 +7,6 @@
  */
 
 import type { MeshRelayPeerRole, MeshRelayStreamKind } from "@/shared/mesh-relay";
-import type { MeshProtocolVersion } from "@/shared/mesh-protocol";
 
 export const MESH_RELAY_MAX_CONTROL_FRAME_BYTES = 256 * 1_024;
 export const MESH_RELAY_MAX_STREAM_FRAME_BYTES = 2 * 1_024 * 1_024;
@@ -88,9 +87,7 @@ export function isMeshRelayRouteAllowed(
   kind: MeshRelayStreamKind,
   method: string | undefined,
   pathname: string,
-  protocolVersion: MeshProtocolVersion = 6,
 ): boolean {
-  if ((pathname.startsWith("/api/mesh/internal/harness/") || pathname === "/api/mesh/internal/protocol") && protocolVersion !== 6) return false;
   if (kind === "socket") {
     return method === undefined
       && initiatorRole === "controller"

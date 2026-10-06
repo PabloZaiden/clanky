@@ -16,7 +16,7 @@ import { errorResponse } from "../helpers";
 export const meshHarnessRoutes = defineRoutes({
   "/api/mesh/internal/harness/rpc": {
     auth: "public", sameOrigin: "never",
-    description: "Operate an owned native harness on a v6 Mesh execution host.",
+    description: "Operate an owned native harness on a supported Mesh execution host.",
     tags: ["mesh", "internal", "harness"],
     async POST(req, ctx): Promise<Response> {
       ctx.server?.timeout(req, 0);
@@ -36,7 +36,7 @@ export const meshHarnessRoutes = defineRoutes({
         const result = await meshHarnessGateway.execute(envelope.sessionId, envelope.sessionToken, operation.data, req.signal);
         if (Buffer.byteLength(JSON.stringify(result)) > MESH_EXECUTION_MAX_MESSAGE_BYTES) throw new DomainError("mesh_execution_result_too_large", "The native result exceeds the Mesh limit.");
         return Response.json({
-          protocolVersion: 6, requestId: envelope.requestId,
+          protocolVersion: envelope.protocolVersion, requestId: envelope.requestId,
           encryptedPayload: encryptMeshPayload(result, encryptionKey),
         });
       } catch (error) { return internalMeshErrorResponse(error); }
@@ -73,7 +73,7 @@ export const meshHarnessRoutes = defineRoutes({
         const stream = new ReadableStream<Uint8Array>({
           start(controller): void {
             controller.enqueue(encoder.encode(`${JSON.stringify({
-              protocolVersion: 6, sequence: sequence++, encryptedPayload: encryptMeshPayload({ type: "ready" }, key),
+              protocolVersion: envelope.protocolVersion, sequence: sequence++, encryptedPayload: encryptMeshPayload({ type: "ready" }, key),
             })}\n`));
             heartbeat = setInterval(() => {
               if (closed) return;
@@ -84,7 +84,7 @@ export const meshHarnessRoutes = defineRoutes({
                 return;
               }
               controller.enqueue(encoder.encode(`${JSON.stringify({
-                protocolVersion: 6, sequence: sequence++, encryptedPayload: encryptMeshPayload({ type: "heartbeat" }, key),
+                protocolVersion: envelope.protocolVersion, sequence: sequence++, encryptedPayload: encryptMeshPayload({ type: "heartbeat" }, key),
               })}\n`));
             }, 15_000);
             heartbeat.unref?.();
@@ -94,7 +94,7 @@ export const meshHarnessRoutes = defineRoutes({
               const event = await subscription.next();
               if (!event) { close(); controller.close(); return; }
               controller.enqueue(encoder.encode(`${JSON.stringify({
-                protocolVersion: 6, sequence: sequence++, encryptedPayload: encryptMeshPayload({ type: "event", event }, key),
+                protocolVersion: envelope.protocolVersion, sequence: sequence++, encryptedPayload: encryptMeshPayload({ type: "event", event }, key),
               })}\n`));
             } catch (error) { close(); controller.error(error); }
           },
@@ -110,15 +110,16 @@ export const meshHarnessRoutes = defineRoutes({
   },
   "/api/mesh/internal/harness/renew": {
     auth: "public", sameOrigin: "never",
-    description: "Renew a native v6 Mesh execution lease without replacing its binding.",
+    description: "Renew a native Mesh execution lease without replacing its binding.",
     tags: ["mesh", "internal", "harness"],
     async POST(req): Promise<Response> {
       const id = req.headers.get("x-clanky-mesh-session-id");
       const token = req.headers.get("x-clanky-mesh-session-token");
       if (!id || !token) return errorResponse("mesh_execution_session_invalid", "Native lease headers are required.", 401);
       try {
+        const protocolVersion = meshExecutionGateway.getSessionProtocolVersion(id, token);
         const expiresAt = await meshExecutionGateway.renewSession(id, token, MESH_HARNESS_CHANNEL);
-        return Response.json({ protocolVersion: 6, sessionId: id, expiresAt: new Date(expiresAt).toISOString() });
+        return Response.json({ protocolVersion, sessionId: id, expiresAt: new Date(expiresAt).toISOString() });
       } catch (error) { return internalMeshErrorResponse(error); }
     },
   },

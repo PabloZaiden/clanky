@@ -557,7 +557,6 @@ export class MeshRelayConnector {
       input.kind,
       input.method,
       pathname,
-      this.getRelayProtocolVersion(),
     )) {
       throw new MeshRelayStreamError(
         "mesh_relay_route_forbidden",

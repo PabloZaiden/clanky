@@ -17,6 +17,7 @@ import type {
   ExecutionNodeConfiguration,
 } from "./execution-host";
 import type {
+  MeshProtocolGeneration,
   MeshProtocolMetadata,
   MeshProtocolVersion,
 } from "./mesh-protocol";
@@ -52,8 +53,8 @@ export interface MeshNodeIdentity {
   updatedAt: string;
   /** Runtime metadata is added by status/discovery boundaries. */
   binaryVersion?: string;
-  supportedProtocolVersions?: MeshProtocolVersion[];
-  preferredProtocolVersion?: MeshProtocolVersion;
+  supportedProtocolVersions?: MeshProtocolGeneration[];
+  preferredProtocolVersion?: MeshProtocolGeneration;
   negotiatedProtocolVersion?: MeshProtocolVersion | null;
 }
 
@@ -116,8 +117,8 @@ export interface MeshWorkerRegistration {
   createdAt: string;
   updatedAt: string;
   workerBinaryVersion?: string | null;
-  workerSupportedProtocolVersions?: MeshProtocolVersion[];
-  workerPreferredProtocolVersion?: MeshProtocolVersion;
+  workerSupportedProtocolVersions?: MeshProtocolGeneration[];
+  workerPreferredProtocolVersion?: MeshProtocolGeneration;
   workerNegotiatedProtocolVersion?: MeshProtocolVersion | null;
 }
 
@@ -137,8 +138,8 @@ export interface MeshControllerGrant {
   createdAt: string;
   updatedAt: string;
   controllerBinaryVersion?: string | null;
-  controllerSupportedProtocolVersions?: MeshProtocolVersion[];
-  controllerPreferredProtocolVersion?: MeshProtocolVersion;
+  controllerSupportedProtocolVersions?: MeshProtocolGeneration[];
+  controllerPreferredProtocolVersion?: MeshProtocolGeneration;
   controllerNegotiatedProtocolVersion?: MeshProtocolVersion | null;
 }
 

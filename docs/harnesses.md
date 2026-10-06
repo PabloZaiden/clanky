@@ -22,13 +22,11 @@ workspaces are the exception: their persistent hook manages the selected native
 CLI in a private workspace prefix. See
 [automatic workspace runtimes](mesh-worker.md#automatic-workspace-runtimes).
 
-Local hosts and end-to-end Mesh generation-6 paths support native adapters.
-Direct SSH and Mesh paths with a generation-5-only worker or relay support ACP
-only. A relay hop negotiated at generation 5 also remains ACP-only even if the
-relay advertises generation 6; missing negotiated-hop metadata fails closed.
-A native failure does not switch to ACP; select ACP explicitly when that
-is the desired integration. See [Mesh workers](mesh-worker.md) for negotiation
-and rollout details.
+Local hosts and end-to-end Mesh v6 paths support native adapters. Every
+controller, relay, and worker on a Mesh route must use v6; direct SSH supports
+ACP only. A native failure does not switch to ACP; select ACP explicitly when
+that is the desired integration. See [Mesh workers](mesh-worker.md) for setup
+details.
 
 Existing workspace settings migrate to ACP with their original harness preset.
 Selecting a different adapter does not reinterpret a saved session ID. Start a
