@@ -71,10 +71,13 @@ Ordinary queueing and interrupt-and-send remain separate actions.
 
 `accepted` means native admission, not delivery or model obedience.
 `delivered` means native history confirms the message. An `unknown` admission
-retains the input and blocks deletion, replacement or blind resend. Use
-**Check delivery** to reconcile against the original owned native conversation.
-Codex can recover by the canonical input/client ID even if the admission reply,
-native message ID or turn ID was lost.
+retains the input and blocks deletion, replacement or blind resend. Clanky
+reconciles unresolved admission automatically against the original owned native
+conversation while the chat or task is open; status updates appear without a
+manual check, and transient check failures retry with backoff. Leaving and
+reopening the entity resumes reconciliation. Codex can recover by the
+canonical input/client ID even if the admission reply, native message ID or
+turn ID was lost.
 Deterministic pre-admission validation errors retain their typed error and mark
 the input as rejected, so it can be corrected or removed. For example, Codex
 does not accept inline non-image binary attachments such as PDFs; those failures
@@ -117,11 +120,12 @@ sent** and makes the question answerable again. A rejected steering attempt
 remains queued until dispatched or removed; queuing the same answer again does
 not duplicate it.
 
-Steered question answers show the normal native admission indicator and
-**Check delivery** action. Native acceptance alone leaves delivery unconfirmed;
-only a delivered receipt confirms it. Unknown admission blocks removal and
-resubmission, including after reload or reconnect. **Stop** does not discard
-queued conversation inputs or turn an uncertain admission into a safe retry.
+Steered question answers show the normal native admission indicator and update
+automatically as native delivery is confirmed. Native acceptance alone leaves
+delivery unconfirmed; only a delivered receipt confirms it. Unknown admission
+blocks removal and resubmission, including after reload or reconnect.
+**Stop** does not discard queued conversation inputs or turn an uncertain
+admission into a safe retry.
 
 Unattended sessions deny invocation
 of `request_user_input`, `request_user_input_async` and the native legacy alias

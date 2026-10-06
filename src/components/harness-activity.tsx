@@ -15,7 +15,10 @@ import type {
   HarnessInputReceipt,
 } from "@/shared/harness-control";
 import { StatusBadge } from "./common";
-import { HarnessInputActions } from "./harness-input-actions";
+import {
+  HarnessInputReconciliationProvider,
+  useHarnessInputReconciliation,
+} from "./harness-input-reconciliation";
 import { useHarnessActivity } from "./use-harness-activity";
 
 interface HarnessActivityProps {
@@ -32,28 +35,25 @@ interface HarnessActivityProps {
 const ToolActivityContext = createContext<{
   byTool: ReadonlyMap<string, HarnessActivity[]>;
   onOpenActivity?: () => void;
-  kind: "chat" | "task";
-  entityId: string;
   inputs: ReadonlyMap<string, HarnessInputReceipt>;
-  onInputUpdated?: () => Promise<void>;
 } | null>(null);
 
 export function HarnessMessageAdmission({ inputId }: { inputId: string }) {
   const context = useContext(ToolActivityContext);
+  const reconciliation = useHarnessInputReconciliation(inputId);
   const receipt = context?.inputs.get(inputId);
-  if (!context || !receipt || receipt.admission.status === "rejected") return null;
+  const admission = reconciliation?.admission ?? receipt?.admission;
+  if (!context || !admission || admission.status === "rejected") return null;
   return (
-    <div className="pt-1 text-xs text-gray-500 dark:text-gray-400">
-      <span>{receipt.admission.status === "unknown" ? "Steering" : `Steered · ${receipt.admission.status === "delivered" ? "Delivered" : "Admitted"}`}</span>
-      {context.onInputUpdated && (
-        <HarnessInputActions
-          kind={context.kind}
-          entityId={context.entityId}
-          inputId={inputId}
-          canSteer={false}
-          receipt={receipt}
-          onUpdated={context.onInputUpdated}
-        />
+    <div className="flex flex-wrap items-center gap-x-2 pt-1 text-xs text-gray-500 dark:text-gray-400">
+      <span>{admission.status === "unknown" ? "Steering · Delivery unconfirmed" : `Steered · ${admission.status === "delivered" ? "Delivered" : "Admitted"}`}</span>
+      {reconciliation?.checking && <span>Checking delivery…</span>}
+      {reconciliation?.error && (
+        <span className="break-words text-amber-700 dark:text-amber-300">
+          {admission.status === "delivered"
+            ? `Delivery confirmed; entity refresh failed: ${reconciliation.error}`
+            : `Delivery check failed; retrying automatically: ${reconciliation.error}`}
+        </span>
       )}
     </div>
   );
@@ -181,27 +181,31 @@ export function HarnessEntityView({
   const toolActivity = useMemo(() => ({
     byTool,
     inputs,
-    kind: props.kind,
-    entityId: props.entityId,
     onOpenActivity: props.onOpenActivity,
-    onInputUpdated: props.onInputUpdated,
-  }), [byTool, inputs, props.kind, props.entityId, props.onOpenActivity, props.onInputUpdated]);
+  }), [byTool, inputs, props.onOpenActivity]);
   return (
-    <ToolActivityContext.Provider value={toolActivity}>
-      <div className="relative flex h-full min-h-0 flex-col">
-        <div
-          className={`flex min-h-0 flex-1 flex-col ${showActivity ? "invisible" : ""}`}
-          inert={showActivity || undefined}
-          aria-hidden={showActivity || undefined}
-        >
-          {children}
-        </div>
-        {showActivity && (
-          <div className="absolute inset-0 flex min-h-0 flex-col">
-            <HarnessActivityPage {...props} />
+    <HarnessInputReconciliationProvider
+      kind={props.kind}
+      entityId={props.entityId}
+      inputs={props.inputs}
+      onUpdated={props.onInputUpdated}
+    >
+      <ToolActivityContext.Provider value={toolActivity}>
+        <div className="relative flex h-full min-h-0 flex-col">
+          <div
+            className={`flex min-h-0 flex-1 flex-col ${showActivity ? "invisible" : ""}`}
+            inert={showActivity || undefined}
+            aria-hidden={showActivity || undefined}
+          >
+            {children}
           </div>
-        )}
-      </div>
-    </ToolActivityContext.Provider>
+          {showActivity && (
+            <div className="absolute inset-0 flex min-h-0 flex-col">
+              <HarnessActivityPage {...props} />
+            </div>
+          )}
+        </div>
+      </ToolActivityContext.Provider>
+    </HarnessInputReconciliationProvider>
   );
 }
