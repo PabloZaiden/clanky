@@ -61,6 +61,7 @@ export interface ChatTranscriptProps {
   onLoadMoreTranscript: () => Promise<void>;
   onLoadFullTranscript: () => Promise<void>;
   loadingTranscript: boolean;
+  onChatSnapshot: (nextChat: Chat) => void;
   onQuestionAnswerFocusChange: (focused: boolean) => void;
   voiceInput: {
     available: boolean;

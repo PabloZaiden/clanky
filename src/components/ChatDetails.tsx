@@ -227,6 +227,7 @@ export function ChatDetails({
         onLoadMoreTranscript={loadMoreTranscript}
         onLoadFullTranscript={loadFullTranscript}
         loadingTranscript={loadingTranscript}
+        onChatSnapshot={applyChatSnapshot}
         onQuestionAnswerFocusChange={setQuestionAnswerInputFocused}
         voiceInput={{
           available: voice.composer.available,
