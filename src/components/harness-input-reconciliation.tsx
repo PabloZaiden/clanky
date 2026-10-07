@@ -33,6 +33,24 @@ export interface HarnessInputReconciliationStatus {
   error?: ReconciliationError;
 }
 
+export function preserveDeliveredHarnessInputAdmission(
+  current: HarnessInputAdmission | undefined,
+  next: HarnessInputAdmission | undefined,
+): HarnessInputAdmission | undefined {
+  if (current?.status === "delivered" && next?.status !== "delivered") return current;
+  return next ?? current;
+}
+
+export function getEffectiveHarnessInputAdmission(
+  reconciliationAdmission: HarnessInputAdmission | undefined,
+  receiptAdmission: HarnessInputAdmission | undefined,
+): HarnessInputAdmission | undefined {
+  const effectiveAdmission = preserveDeliveredHarnessInputAdmission(reconciliationAdmission, receiptAdmission);
+  if (effectiveAdmission?.status === "delivered") return effectiveAdmission;
+  if (receiptAdmission?.status === "rejected") return receiptAdmission;
+  return reconciliationAdmission ?? receiptAdmission;
+}
+
 interface HarnessInputReconciliationContextValue {
   statuses: ReadonlyMap<string, HarnessInputReconciliationStatus>;
   reset: (inputId: string) => void;
@@ -168,10 +186,10 @@ class HarnessInputReconciliationController {
   private getAdmission(inputId: string): HarnessInputAdmission | undefined {
     const receipt = this.inputs.get(inputId);
     if (!receipt) return undefined;
-    if (receipt.admission.status === "delivered" || receipt.admission.status === "rejected") {
-      return receipt.admission;
-    }
-    return this.statuses.get(inputId)?.admission ?? receipt.admission;
+    return getEffectiveHarnessInputAdmission(
+      this.statuses.get(inputId)?.admission,
+      receipt.admission,
+    );
   }
 
   private isUnresolved(inputId: string): boolean {
@@ -184,6 +202,10 @@ class HarnessInputReconciliationController {
     status: HarnessInputReconciliationStatus | undefined,
   ): void {
     if (this.disposed) return;
+    if (status) {
+      const admission = preserveDeliveredHarnessInputAdmission(this.getAdmission(inputId), status.admission);
+      if (admission !== status.admission) status = { ...status, admission };
+    }
     if (status) this.statuses.set(inputId, status);
     else this.statuses.delete(inputId);
     this.publish(new Map(this.statuses));
