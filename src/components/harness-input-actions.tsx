@@ -4,6 +4,7 @@ import type { Chat } from "@/shared";
 import type { HarnessInputAdmission, HarnessInputReceipt } from "@/shared/harness-control";
 import { apiRequest } from "../lib/api-client";
 import {
+  getEffectiveHarnessInputAdmission,
   useHarnessInputReconciliation,
   useRetryHarnessInputReconciliation,
   useResetHarnessInputReconciliation,
@@ -32,7 +33,7 @@ export function HarnessInputActions({
   const reconciliation = useHarnessInputReconciliation(inputId);
   const resetReconciliation = useResetHarnessInputReconciliation();
   const retryReconciliation = useRetryHarnessInputReconciliation();
-  const admission = reconciliation?.admission ?? receipt?.admission;
+  const admission = getEffectiveHarnessInputAdmission(reconciliation?.admission, receipt?.admission);
   const recovering = admission?.status === "unknown" || admission?.status === "accepted";
   const delivered = admission?.status === "delivered";
   const rejected = admission?.status === "rejected";
@@ -84,11 +85,14 @@ export function HarnessInputActions({
               : `Delivery check failed; automatic retries stopped: ${reconciliation.error.message}`}
         </span>
       )}
-      {recovering && !reconciliation?.error && (
+      {recovering && (
         <span role="status" aria-live="polite" aria-atomic="true" className="text-amber-700 dark:text-amber-300">
-          {admission?.status === "accepted"
-            ? reconciliation?.checking ? "Admitted; checking delivery…" : "Admitted; delivery unconfirmed, checking automatically."
-            : reconciliation?.checking ? "Checking delivery…" : "Delivery unconfirmed; checking automatically."}
+          Admitting
+        </span>
+      )}
+      {delivered && (
+        <span role="status" aria-live="polite" aria-atomic="true" className="text-amber-700 dark:text-amber-300">
+          Steered
         </span>
       )}
       {rejected && !reconciliation?.error && (
@@ -112,7 +116,7 @@ export function HarnessInputActions({
           onClick={() => void submit()}
           className="font-medium text-gray-500 underline decoration-dotted underline-offset-2 hover:text-gray-900 disabled:opacity-50 dark:text-gray-400 dark:hover:text-gray-100"
         >
-          {pending ? "Steering..." : "Steer"}
+          {pending ? "Admitting" : "Steer"}
         </button>
       )}
     </div>

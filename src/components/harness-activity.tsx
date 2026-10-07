@@ -16,6 +16,7 @@ import type {
 } from "@/shared/harness-control";
 import { StatusBadge } from "./common";
 import {
+  getEffectiveHarnessInputAdmission,
   HarnessInputReconciliationProvider,
   useRetryHarnessInputReconciliation,
   useHarnessInputReconciliation,
@@ -44,7 +45,7 @@ export function HarnessMessageAdmission({ inputId }: { inputId: string }) {
   const reconciliation = useHarnessInputReconciliation(inputId);
   const retryReconciliation = useRetryHarnessInputReconciliation();
   const receipt = context?.inputs.get(inputId);
-  const admission = reconciliation?.admission ?? receipt?.admission;
+  const admission = getEffectiveHarnessInputAdmission(reconciliation?.admission, receipt?.admission);
   if (!context || !admission) return null;
   const delivered = admission.status === "delivered";
   const rejected = admission.status === "rejected";
@@ -56,11 +57,8 @@ export function HarnessMessageAdmission({ inputId }: { inputId: string }) {
         <span className="text-gray-500 dark:text-gray-400">
           {rejected
             ? "Steering was not admitted."
-            : admission.status === "unknown"
-              ? "Steering · Delivery unconfirmed"
-              : `Steered · ${delivered ? "Delivered" : "Admitted"}`}
+            : delivered ? "Steered" : "Admitting"}
         </span>
-        {!rejected && reconciliation?.checking && <span className="text-gray-500 dark:text-gray-400">Checking delivery…</span>}
         {reconciliation?.error && (
           <span className="break-words text-amber-700 dark:text-amber-300">
             {reconciliation.error.kind === "refresh"
