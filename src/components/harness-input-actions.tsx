@@ -55,9 +55,8 @@ export function HarnessInputActions({
       if (kind === "chat" && onChatSnapshot) {
         if (!response.chat) throw new Error("Chat steering response did not include an updated chat.");
         onChatSnapshot(response.chat);
-      } else {
-        await onUpdated();
       }
+      await onUpdated();
     } catch (inputError) {
       toast.error(String(inputError));
       await onUpdated();
