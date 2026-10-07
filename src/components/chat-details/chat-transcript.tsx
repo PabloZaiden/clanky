@@ -19,6 +19,7 @@ export function ChatTranscript({
   onLoadMoreTranscript,
   onLoadFullTranscript,
   loadingTranscript,
+  onChatSnapshot,
   onQuestionAnswerFocusChange,
   voiceInput,
   onStartVoice,
@@ -168,6 +169,7 @@ export function ChatTranscript({
       <ChatQuestions
         chatId={chat.config.id}
         requests={chat.state.harness?.questions ?? []}
+        onChatSnapshot={onChatSnapshot}
         onAnswerInputFocusChange={onQuestionAnswerFocusChange}
       />
     </div>

@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { useToast } from "@pablozaiden/webapp/web";
+import type { Chat } from "@/shared";
 import type { HarnessInputAdmission, HarnessInputReceipt } from "@/shared/harness-control";
 import { apiRequest } from "../lib/api-client";
 import {
@@ -15,6 +16,7 @@ export function HarnessInputActions({
   canSteer,
   receipt,
   onUpdated,
+  onChatSnapshot,
 }: {
   kind: "chat" | "task";
   entityId: string;
@@ -22,6 +24,7 @@ export function HarnessInputActions({
   canSteer: boolean;
   receipt?: HarnessInputReceipt;
   onUpdated: () => Promise<void>;
+  onChatSnapshot?: (chat: Chat) => void;
 }) {
   const toast = useToast();
   const [pending, setPending] = useState(false);
@@ -44,12 +47,17 @@ export function HarnessInputActions({
     setPending(true);
     const collection = kind === "chat" ? "queued-messages" : "pending-inputs";
     try {
-      await apiRequest<{ admission: HarnessInputAdmission }>(
+      const response = await apiRequest<{ admission: HarnessInputAdmission; chat?: Chat }>(
         `/api/${kind}s/${encodeURIComponent(entityId)}/${collection}/${encodeURIComponent(inputId)}/steer`,
         { method: "POST", action: "Steer queued input" },
       );
       resetReconciliation(inputId);
-      await onUpdated();
+      if (kind === "chat" && onChatSnapshot) {
+        if (!response.chat) throw new Error("Chat steering response did not include an updated chat.");
+        onChatSnapshot(response.chat);
+      } else {
+        await onUpdated();
+      }
     } catch (inputError) {
       toast.error(String(inputError));
       await onUpdated();

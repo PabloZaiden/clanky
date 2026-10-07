@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ErrorState } from "@pablozaiden/webapp/web";
+import type { Chat } from "@/shared";
 import type { HarnessQuestionRequest } from "@/shared/harness-questions";
 import type { QuestionInfo } from "@/shared/harness-events";
 import { isQuestionOpen } from "@/shared/harness-questions";
@@ -50,7 +51,15 @@ function QuestionField({ question, index, requestId, values, custom, disabled, o
   );
 }
 
-function QuestionForm({ chatId, request }: { chatId: string; request: HarnessQuestionRequest }) {
+function QuestionForm({
+  chatId,
+  request,
+  onChatSnapshot,
+}: {
+  chatId: string;
+  request: HarnessQuestionRequest;
+  onChatSnapshot: (chat: Chat) => void;
+}) {
   const [values, setValues] = useState<string[][]>(() => request.questions.map(() => []));
   const [custom, setCustom] = useState<string[]>(() => request.questions.map(() => ""));
   const [submitting, setSubmitting] = useState(false);
@@ -68,10 +77,14 @@ function QuestionForm({ chatId, request }: { chatId: string; request: HarnessQue
     setSubmitting(true);
     setError(undefined);
     try {
-      await apiRequest(`/api/chats/${encodeURIComponent(chatId)}/questions/${encodeURIComponent(request.requestId)}`, {
-        method: "POST", body: JSON.stringify({ answers }), headers: { "content-type": "application/json" },
-        signal: controller.signal, action: "Answer chat question",
-      });
+      const { chat } = await apiRequest<{ chat: Chat }>(
+        `/api/chats/${encodeURIComponent(chatId)}/questions/${encodeURIComponent(request.requestId)}`,
+        {
+          method: "POST", body: JSON.stringify({ answers }), headers: { "content-type": "application/json" },
+          signal: controller.signal, action: "Answer chat question",
+        },
+      );
+      onChatSnapshot(chat);
     } catch (failure) {
       if (!controller.signal.aborted) setError(String(failure));
     } finally {
@@ -127,10 +140,12 @@ function QuestionForm({ chatId, request }: { chatId: string; request: HarnessQue
 export function ChatQuestions({
   chatId,
   requests,
+  onChatSnapshot,
   onAnswerInputFocusChange,
 }: {
   chatId: string;
   requests: HarnessQuestionRequest[];
+  onChatSnapshot: (chat: Chat) => void;
   onAnswerInputFocusChange: (focused: boolean) => void;
 }) {
   const visible = requests.filter(isQuestionOpen);
@@ -156,7 +171,14 @@ export function ChatQuestions({
         }
       }}
     >
-      {visible.map((request) => <QuestionForm key={request.requestId} chatId={chatId} request={request} />)}
+      {visible.map((request) => (
+        <QuestionForm
+          key={request.requestId}
+          chatId={chatId}
+          request={request}
+          onChatSnapshot={onChatSnapshot}
+        />
+      ))}
       {!visible.length && expired?.status === "expired" && (
         <div className="border-t border-gray-200 px-4 py-2 text-xs text-gray-500 dark:border-gray-700 dark:text-gray-400">The previous question has expired.</div>
       )}

@@ -376,6 +376,10 @@ export function useHarnessInputReconciliation(
   return useContext(HarnessInputReconciliationContext).statuses.get(inputId);
 }
 
+export function useHarnessInputReconciliationStatuses(): ReadonlyMap<string, HarnessInputReconciliationStatus> {
+  return useContext(HarnessInputReconciliationContext).statuses;
+}
+
 export function useResetHarnessInputReconciliation(): (inputId: string) => void {
   return useContext(HarnessInputReconciliationContext).reset;
 }

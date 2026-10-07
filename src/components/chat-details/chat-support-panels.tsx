@@ -1,9 +1,10 @@
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { Chat } from "@/shared";
 import { useToast } from "@pablozaiden/webapp/web";
 import { apiRequest } from "../../lib/api-client";
 import { Button } from "../common";
 import { HarnessInputActions } from "../harness-input-actions";
+import { useHarnessInputReconciliationStatuses } from "../harness-input-reconciliation";
 import { getChatErrorMessage } from "./chat-lifecycle";
 import type {
   ChatPermissionPanelProps,
@@ -113,6 +114,12 @@ export function ChatQueuedMessagesPanel({
 }: ChatQueuedMessagesPanelProps) {
   const toast = useToast();
   const [removingIds, setRemovingIds] = useState<string[]>([]);
+  const reconciliationStatuses = useHarnessInputReconciliationStatuses();
+  const visibleMessages = useMemo(() => messages.filter((message) => {
+    const admission = reconciliationStatuses.get(message.id)?.admission
+      ?? harness?.inputs?.find((input) => input.admission.inputId === message.id)?.admission;
+    return admission?.status !== "accepted" && admission?.status !== "delivered";
+  }), [harness?.inputs, messages, reconciliationStatuses]);
 
   async function handleRemove(queuedMessageId: string): Promise<void> {
     if (removingIds.includes(queuedMessageId)) {
@@ -134,14 +141,14 @@ export function ChatQueuedMessagesPanel({
     }
   }
 
-  if (messages.length === 0) {
+  if (visibleMessages.length === 0) {
     return null;
   }
 
   return (
     <div className="px-4 py-3">
       <div className="mx-auto max-w-4xl space-y-2">
-        {messages.map((queuedMessage, index) => {
+        {visibleMessages.map((queuedMessage, index) => {
           const isRemoving = removingIds.includes(queuedMessage.id);
           const attachmentCount = queuedMessage.attachments?.length ?? 0;
           const receipt = harness?.inputs?.find((input) => input.admission.inputId === queuedMessage.id);
@@ -169,6 +176,7 @@ export function ChatQueuedMessagesPanel({
                 receipt={receipt}
                 canSteer={canSteer && harness?.capabilities !== undefined && harness.capabilities.steering !== "unsupported"}
                 onUpdated={onRefresh}
+                onChatSnapshot={onChatSnapshot}
               />
               {!claimed && <button
                 type="button"
