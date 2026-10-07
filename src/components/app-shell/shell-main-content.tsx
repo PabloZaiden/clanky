@@ -34,6 +34,7 @@ import { ExecutionHostFilesView } from "./execution-host-files-view";
 import { WorkspaceSettingsView } from "./shell-workspace-settings-view";
 import { WorkspacePreviewsView } from "./workspace-previews-view";
 import { CodeExplorerView } from "./code-explorer-view";
+import { WorkspaceScratchpadView } from "./workspace-scratchpad-view";
 import { AgentsView } from "./agents-view";
 import { ProvisioningJobView } from "../ProvisioningJobView";
 import type {
@@ -533,6 +534,19 @@ function renderMainContent(props: ShellMainContentProps) {
     );
   }
 
+  if (route.view === "scratchpad") {
+    const workspaceId = getRouteString(route, "workspaceId");
+    if (!workspaceId) {
+      return missingRouteParameter(route.view, "workspaceId");
+    }
+    return (
+      <WorkspaceScratchpadView
+        key={`workspace-scratchpad:${workspaceId}`}
+        workspaceId={workspaceId}
+      />
+    );
+  }
+
   if (route.view === "workspace-files") {
     const workspaceId = getRouteString(route, "workspaceId");
     if (!workspaceId) {
@@ -766,6 +780,7 @@ function usesFullViewportLayout(props: ShellMainContentProps): boolean {
   return props.route.view === "agent-run"
     || props.route.view === "chat"
     || props.route.view === "code-explorer"
+    || props.route.view === "scratchpad"
     || props.route.view === "terminal"
     || props.route.view === "task-files"
     || props.route.view === "workspace-files"

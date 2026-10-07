@@ -38,6 +38,8 @@ export interface Workspace {
   name: string;
   /** Absolute path to the workspace directory */
   directory: string;
+  /** Workspace-scoped Markdown notes */
+  scratchpad: string;
   /** Whether the workspace exposes Git-backed task and branch capabilities */
   workspaceType: WorkspaceType;
   /** Whether new worktree-backed execution contexts may be created */

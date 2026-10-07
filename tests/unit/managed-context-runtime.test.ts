@@ -19,6 +19,7 @@ const sshWorkspace: Workspace = {
   id: "workspace-id",
   name: "SSH workspace",
   directory: "/workspace",
+  scratchpad: "",
   workspaceType: "git",
   executionTargetRevision: 1,
   executionHostBinding: {

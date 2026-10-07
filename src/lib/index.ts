@@ -37,4 +37,11 @@ export {
   type ConversationComposerDraftPersistenceDependencies,
   type ConversationComposerDraftStorageLike,
 } from "./conversation-composer-drafts";
+export {
+  clearStoredWorkspaceScratchpadDraft,
+  getStoredWorkspaceScratchpadDraft,
+  saveStoredWorkspaceScratchpadDraft,
+  type WorkspaceScratchpadDraftDependencies,
+  type WorkspaceScratchpadDraftStorageLike,
+} from "./workspace-scratchpad-drafts";
 export { getWorkspaceServerLabel } from "./workspace-label";

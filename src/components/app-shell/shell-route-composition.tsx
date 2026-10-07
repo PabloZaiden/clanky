@@ -19,6 +19,7 @@ const ROUTE_VIEWS = [
   "agent",
   "agent-run",
   "code-explorer",
+  "scratchpad",
   "task",
   "task-files",
   "chat",
@@ -120,6 +121,7 @@ export function getShellRouteSelection(
       || route.view === "workspace-files"
       || route.view === "workspace-previews"
       || route.view === "workspace-settings"
+      || route.view === "scratchpad"
       || route.view === "rebuild-workspace"
       || route.view === "restart-workspace"
       ? (workspaceId ? (workspaces.find((workspace) => workspace.id === workspaceId) ?? null) : null)

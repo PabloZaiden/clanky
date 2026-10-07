@@ -56,6 +56,7 @@ describe("managed execution context credentials", () => {
       id: crypto.randomUUID(),
       name: "Managed Context Workspace",
       directory: join(tempDir, "workspace"),
+      scratchpad: "",
       workspaceType: "git",
       executionTargetRevision: 1,
       executionHostBinding,

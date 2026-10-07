@@ -86,13 +86,14 @@ export async function updateWorkspace(
   id: string,
   updates: Partial<Pick<
     Workspace,
-    "name" | "directory" | "serverSettings" | "executionTargetRevision" | "executionHostBinding" | "provisioningHostBinding" | "devcontainerSubpath" | "isPrivate" | "archived" | "allowClankyContext" | "allowWorktrees"
+    "name" | "directory" | "scratchpad" | "serverSettings" | "executionTargetRevision" | "executionHostBinding" | "provisioningHostBinding" | "devcontainerSubpath" | "isPrivate" | "archived" | "allowClankyContext" | "allowWorktrees"
   >>
 ): Promise<Workspace | null> {
   log.debug("Updating workspace", {
     id,
     hasNameUpdate: updates.name !== undefined,
     hasDirectoryUpdate: updates.directory !== undefined,
+    hasScratchpadUpdate: updates.scratchpad !== undefined,
     hasSettingsUpdate: updates.serverSettings !== undefined,
     hasExecutionTargetRevisionUpdate: updates.executionTargetRevision !== undefined,
     hasDevcontainerSubpathUpdate: updates.devcontainerSubpath !== undefined,
@@ -115,6 +116,11 @@ export async function updateWorkspace(
   if (updates.directory !== undefined) {
     setClauses.push("directory = ?");
     values.push(updates.directory);
+  }
+
+  if (updates.scratchpad !== undefined) {
+    setClauses.push("scratchpad = ?");
+    values.push(updates.scratchpad);
   }
 
   if (updates.serverSettings !== undefined) {

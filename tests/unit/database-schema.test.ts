@@ -361,6 +361,44 @@ describe("database schema", () => {
     });
   });
 
+  test("adds Scratchpad to existing workspaces and defaults it to empty", () => {
+    const database = new Database(":memory:");
+    try {
+      database.exec(`
+        CREATE TABLE schema_migrations (
+          version INTEGER PRIMARY KEY,
+          name TEXT NOT NULL,
+          applied_at TEXT NOT NULL
+        );
+        CREATE TABLE workspaces (id TEXT PRIMARY KEY);
+      `);
+      const scratchpadMigration = migrations.find(
+        (migration) => migration.name === "add_workspace_scratchpad",
+      );
+      if (!scratchpadMigration) {
+        throw new Error("Workspace Scratchpad migration is missing");
+      }
+      for (const migration of migrations) {
+        if (migration.version >= scratchpadMigration.version) {
+          continue;
+        }
+        database.run(
+          "INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)",
+          [migration.version, migration.name, "previously-applied"],
+        );
+      }
+      database.run("INSERT INTO workspaces (id) VALUES (?)", ["workspace-1"]);
+
+      expect(runMigrations(database)).toBe(1);
+      expect(
+        database.query("SELECT scratchpad FROM workspaces WHERE id = ?").get("workspace-1"),
+      ).toEqual({ scratchpad: "" });
+      expect(runMigrations(database)).toBe(0);
+    } finally {
+      database.close();
+    }
+  });
+
   // A fresh HTTP server cannot exercise the deployed schema's data-preserving upgrade.
   test("upgrades version 63 conversation storage without losing owned session data", () => {
     const database = new Database(":memory:");
@@ -836,7 +874,7 @@ describe("database schema", () => {
           ('mixed-relay', 'mixed-relay-fingerprint', '[6,99]', 6, 6, 'known-observation');
       `);
       for (let version = 1; version <= 67; version++) database.run("INSERT INTO schema_migrations VALUES (?, ?, ?)", [version, `prior-${version}`, "before-upgrade"]);
-      expect(runMigrations(database)).toBe(2);
+      expect(runMigrations(database)).toBe(3);
       expect(database.query("SELECT current_version, migrated_from_version FROM mesh_protocol_state").get()).toEqual({ current_version: 6, migrated_from_version: 1 });
       expect(database.query("SELECT * FROM mesh_worker_registrations ORDER BY worker_node_id").all()).toEqual([
         { worker_node_id: "mixed-worker", worker_public_key: "mixed-key", worker_fingerprint: "mixed-fingerprint", grant_status: "active", worker_supported_protocol_versions_json: "[6,99]", worker_preferred_protocol_version: 6, worker_negotiated_protocol_version: 6, worker_protocol_updated_at: "known-observation" },

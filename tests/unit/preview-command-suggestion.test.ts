@@ -8,6 +8,7 @@ function workspace(id: string, name: string): Workspace {
     id,
     name,
     directory: `/workspaces/${id}`,
+    scratchpad: "",
     workspaceType: "git",
     executionTargetRevision: 1,
     executionHostBinding: {

@@ -79,7 +79,7 @@ export interface CreateWorkspaceInput {
 }
 
 export type UpdateWorkspaceInput = Partial<
-  Pick<Workspace, "name" | "directory" | "serverSettings" | "executionTargetRevision" | "executionHostBinding" | "isPrivate" | "archived" | "allowClankyContext" | "devcontainerSubpath">
+  Pick<Workspace, "name" | "directory" | "scratchpad" | "serverSettings" | "executionTargetRevision" | "executionHostBinding" | "isPrivate" | "archived" | "allowClankyContext" | "devcontainerSubpath">
 > & {
   executionHost?: ExecutionHostRef;
   sshTarget?: WorkspaceSshTargetInput | null;
@@ -251,6 +251,7 @@ function createWorkspaceRecordFromInput(
     id: workspaceId,
     name: input.name,
     directory: input.directory,
+    scratchpad: "",
     workspaceType: input.workspaceType,
     allowWorktrees: input.allowWorktrees,
     executionTargetRevision: 1,
@@ -665,8 +666,10 @@ export class WorkspaceManager {
 
       const devcontainerSubpathChanged = updates.devcontainerSubpath !== undefined
         && updates.devcontainerSubpath !== current.devcontainerSubpath;
+      const scratchpadChanged = updates.scratchpad !== undefined
+        && updates.scratchpad !== current.scratchpad;
 
-      if (!nameChanged && !directoryChanged && !serverSettingsChanged && !executionTargetChanged && !privateChanged && !archivedChanged && !allowClankyContextChanged && !allowWorktreesChanged && !devcontainerSubpathChanged) {
+      if (!nameChanged && !directoryChanged && !scratchpadChanged && !serverSettingsChanged && !executionTargetChanged && !privateChanged && !archivedChanged && !allowClankyContextChanged && !allowWorktreesChanged && !devcontainerSubpathChanged) {
         return current;
       }
 
@@ -676,6 +679,9 @@ export class WorkspaceManager {
       }
       if (directoryChanged) {
         normalizedUpdates.directory = updates.directory;
+      }
+      if (scratchpadChanged) {
+        normalizedUpdates.scratchpad = updates.scratchpad;
       }
       if (serverSettingsChanged) {
         normalizedUpdates.serverSettings = updates.serverSettings;

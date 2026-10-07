@@ -35,6 +35,7 @@ function buildWorkspace(
     id,
     name,
     directory: `/tmp/${id}`,
+    scratchpad: "",
     workspaceType: "git",
     executionTargetRevision: 1,
     executionHostBinding,

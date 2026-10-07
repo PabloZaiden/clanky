@@ -10,6 +10,7 @@ export function MonacoCodeEditor({
   language,
   height,
   wordWrap = "on",
+  readOnly = false,
   ariaLabel = "Code editor",
   onChange,
 }: {
@@ -17,6 +18,7 @@ export function MonacoCodeEditor({
   language: string;
   height: string;
   wordWrap?: "on" | "off";
+  readOnly?: boolean;
   ariaLabel?: string;
   onChange: (value: string) => void;
 }) {
@@ -34,6 +36,7 @@ export function MonacoCodeEditor({
         fontSize: 14,
         automaticLayout: true,
         wordWrap,
+        readOnly,
         scrollBeyondLastLine: false,
         ariaLabel,
       }}

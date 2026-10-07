@@ -140,6 +140,7 @@ export function getHeaderOwnerRoute(route: WebAppRoute): WebAppRoute | null {
     case "workspace-files":
     case "workspace-previews":
     case "workspace-settings":
+    case "scratchpad":
     case "rebuild-workspace":
     case "restart-workspace":
       return getRouteString(route, "workspaceId")
