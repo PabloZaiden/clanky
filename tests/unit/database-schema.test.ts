@@ -361,38 +361,64 @@ describe("database schema", () => {
     });
   });
 
-  test("adds Scratchpad to existing workspaces and defaults it to empty", () => {
+  test("adds Scratchpad to a version-69 workspace and defaults it to empty", () => {
     const database = new Database(":memory:");
     try {
-      database.exec(`
-        CREATE TABLE schema_migrations (
-          version INTEGER PRIMARY KEY,
-          name TEXT NOT NULL,
-          applied_at TEXT NOT NULL
-        );
-        CREATE TABLE workspaces (id TEXT PRIMARY KEY);
-      `);
+      database.run("PRAGMA foreign_keys = ON");
+      createBaseSchema(database);
       const scratchpadMigration = migrations.find(
         (migration) => migration.name === "add_workspace_scratchpad",
       );
       if (!scratchpadMigration) {
         throw new Error("Workspace Scratchpad migration is missing");
       }
-      for (const migration of migrations) {
-        if (migration.version >= scratchpadMigration.version) {
-          continue;
-        }
+      for (const migration of migrations.filter(
+        (candidate) => candidate.version < scratchpadMigration.version,
+      )) {
+        migration.up(database);
         database.run(
           "INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)",
           [migration.version, migration.name, "previously-applied"],
         );
       }
-      database.run("INSERT INTO workspaces (id) VALUES (?)", ["workspace-1"]);
+      database.run(
+        `INSERT INTO execution_hosts (
+          id, user_id, kind, source_id, target_key, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        ["host-1", "owner-1", "local", "node-1", "local:node-1", "created", "updated"],
+      );
+      database.run(
+        `INSERT INTO workspaces (
+          id, user_id, name, directory, execution_host_id, execution_host_revision,
+          server_settings, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          "workspace-1",
+          "owner-1",
+          "Workspace",
+          "/synthetic",
+          "host-1",
+          1,
+          '{"agent":{"adapter":"acp","provider":"copilot"}}',
+          "created",
+          "updated",
+        ],
+      );
 
+      expect(getSchemaVersion(database)).toBe(scratchpadMigration.version - 1);
+      expect(getTableColumns(database, "workspaces")).not.toContain("scratchpad");
       expect(runMigrations(database)).toBe(1);
       expect(
-        database.query("SELECT scratchpad FROM workspaces WHERE id = ?").get("workspace-1"),
-      ).toEqual({ scratchpad: "" });
+        database.query(
+          "SELECT id, user_id, name, directory, scratchpad FROM workspaces WHERE id = ?",
+        ).get("workspace-1"),
+      ).toEqual({
+        id: "workspace-1",
+        user_id: "owner-1",
+        name: "Workspace",
+        directory: "/synthetic",
+        scratchpad: "",
+      });
       expect(runMigrations(database)).toBe(0);
     } finally {
       database.close();

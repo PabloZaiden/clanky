@@ -4,6 +4,11 @@ const log = createLogger("workspaceScratchpadDrafts");
 
 const WORKSPACE_SCRATCHPAD_DRAFT_STORAGE_PREFIX = "clanky.workspaceScratchpadDraft.v1.";
 const WORKSPACE_SCRATCHPAD_DRAFT_VERSION = 1 as const;
+const WORKSPACE_SCRATCHPAD_DRAFT_DEBOUNCE_MS = 400;
+
+type DraftTimeoutHandle = number | ReturnType<typeof setTimeout>;
+type DraftSetTimeout = (callback: () => void, delay: number) => DraftTimeoutHandle;
+type DraftClearTimeout = (timeoutId: DraftTimeoutHandle) => void;
 
 interface StoredWorkspaceScratchpadDraft {
   version: typeof WORKSPACE_SCRATCHPAD_DRAFT_VERSION;
@@ -18,6 +23,19 @@ export interface WorkspaceScratchpadDraftStorageLike {
 
 export interface WorkspaceScratchpadDraftDependencies {
   storage?: WorkspaceScratchpadDraftStorageLike;
+}
+
+export interface WorkspaceScratchpadDraftPersistenceDependencies
+  extends WorkspaceScratchpadDraftDependencies {
+  setTimeout?: DraftSetTimeout;
+  clearTimeout?: DraftClearTimeout;
+}
+
+export interface WorkspaceScratchpadDraftPersistence {
+  schedule(content: string): void;
+  flush(): void;
+  clear(): void;
+  cancel(): void;
 }
 
 function resolveStorage(
@@ -160,4 +178,53 @@ export function clearStoredWorkspaceScratchpadDraft(
   }
 
   removeStoredDraft(storage, getStorageKey(workspaceId));
+}
+
+export function createWorkspaceScratchpadDraftPersistence(
+  workspaceId: string,
+  dependencies: WorkspaceScratchpadDraftPersistenceDependencies = {},
+): WorkspaceScratchpadDraftPersistence {
+  const scheduleTimeout = dependencies.setTimeout ?? globalThis.setTimeout;
+  const clearTimeout = dependencies.clearTimeout ?? globalThis.clearTimeout;
+  let latestContent = "";
+  let timeoutHandle: DraftTimeoutHandle | null = null;
+  let dirty = false;
+
+  function cancelScheduledWrite(): void {
+    if (timeoutHandle === null) {
+      return;
+    }
+    clearTimeout(timeoutHandle);
+    timeoutHandle = null;
+  }
+
+  function flush(): void {
+    cancelScheduledWrite();
+    if (!dirty) {
+      return;
+    }
+
+    dirty = false;
+    saveStoredWorkspaceScratchpadDraft(workspaceId, latestContent, dependencies);
+  }
+
+  return {
+    schedule(content: string): void {
+      latestContent = content;
+      dirty = true;
+      cancelScheduledWrite();
+      timeoutHandle = scheduleTimeout(() => {
+        timeoutHandle = null;
+        flush();
+      }, WORKSPACE_SCRATCHPAD_DRAFT_DEBOUNCE_MS);
+    },
+    flush,
+    clear(): void {
+      cancelScheduledWrite();
+      dirty = false;
+      latestContent = "";
+      clearStoredWorkspaceScratchpadDraft(workspaceId, dependencies);
+    },
+    cancel: cancelScheduledWrite,
+  };
 }

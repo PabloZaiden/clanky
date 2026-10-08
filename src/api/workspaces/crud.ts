@@ -14,7 +14,12 @@ import {
   internalErrorResponse,
   requireWorkspace,
 } from "../helpers";
-import { sanitizeWorkspace, shouldIncludeSensitiveData } from "../../lib/sensitive-data";
+import {
+  omitWorkspaceScratchpad,
+  sanitizeWorkspace,
+  sanitizeWorkspaceSummary,
+  shouldIncludeSensitiveData,
+} from "../../lib/sensitive-data";
 import { CreateWorkspaceRequestSchema, DeleteWorkspaceRequestSchema, UpdateWorkspaceRequestSchema } from "@/contracts/schemas";
 import { SensitiveQuerySchema } from "../route-schemas";
 
@@ -66,7 +71,10 @@ export const crudRoutes = defineRoutes({
         const includeSensitive = shouldIncludeSensitiveData(req);
         const workspaces = await workspaceManager.listWorkspaces();
         log.debug("GET /api/workspaces - Retrieved workspaces", { count: workspaces.length });
-        return Response.json(includeSensitive ? workspaces : workspaces.map(sanitizeWorkspace));
+        const workspaceSummaries = includeSensitive
+          ? workspaces.map(omitWorkspaceScratchpad)
+          : workspaces.map(sanitizeWorkspaceSummary);
+        return Response.json(workspaceSummaries);
       } catch (error) {
         log.error("Failed to list workspaces:", String(error));
         return internalErrorResponse(error, {

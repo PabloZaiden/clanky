@@ -39,9 +39,12 @@ export {
 } from "./conversation-composer-drafts";
 export {
   clearStoredWorkspaceScratchpadDraft,
+  createWorkspaceScratchpadDraftPersistence,
   getStoredWorkspaceScratchpadDraft,
   saveStoredWorkspaceScratchpadDraft,
   type WorkspaceScratchpadDraftDependencies,
+  type WorkspaceScratchpadDraftPersistence,
+  type WorkspaceScratchpadDraftPersistenceDependencies,
   type WorkspaceScratchpadDraftStorageLike,
 } from "./workspace-scratchpad-drafts";
 export { getWorkspaceServerLabel } from "./workspace-label";

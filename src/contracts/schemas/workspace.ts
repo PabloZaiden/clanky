@@ -8,7 +8,13 @@
  */
 
 import { z } from "zod";
-import { AGENT_PROVIDER_IDS, HARNESS_ADAPTER_IDS, isAgentSettings } from "@/shared";
+import {
+  AGENT_PROVIDER_IDS,
+  HARNESS_ADAPTER_IDS,
+  isAgentSettings,
+  WORKSPACE_SCRATCHPAD_MAX_LENGTH,
+  WORKSPACE_SCRATCHPAD_TOO_LONG_MESSAGE,
+} from "@/shared";
 import { ExecutionHostRefSchema } from "./execution-host";
 
 /**
@@ -85,7 +91,9 @@ export const UpdateWorkspaceRequestSchema = z.object({
   archived: z.boolean().optional(),
   allowClankyContext: z.boolean().optional(),
   allowWorktrees: z.boolean().optional(),
-  scratchpad: z.string().optional(),
+  scratchpad: z.string()
+    .max(WORKSPACE_SCRATCHPAD_MAX_LENGTH, WORKSPACE_SCRATCHPAD_TOO_LONG_MESSAGE)
+    .optional(),
 });
 
 /**

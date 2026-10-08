@@ -1,16 +1,19 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ConfirmModal,
   ErrorState,
   LoadingState,
   useToast,
 } from "@pablozaiden/webapp/web";
-import type { PublicWorkspace } from "@/shared";
+import {
+  WORKSPACE_SCRATCHPAD_MAX_LENGTH,
+  WORKSPACE_SCRATCHPAD_TOO_LONG_MESSAGE,
+  type PublicWorkspace,
+} from "@/shared";
 import { apiRequest } from "../../lib/api-client";
 import {
-  clearStoredWorkspaceScratchpadDraft,
+  createWorkspaceScratchpadDraftPersistence,
   getStoredWorkspaceScratchpadDraft,
-  saveStoredWorkspaceScratchpadDraft,
 } from "../../lib/workspace-scratchpad-drafts";
 import { MarkdownRenderer } from "../MarkdownRenderer";
 import { Button } from "../common";
@@ -35,10 +38,28 @@ export function WorkspaceScratchpadView({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [preview, setPreview] = useState(false);
   const [confirmReloadOpen, setConfirmReloadOpen] = useState(false);
+  const draftPersistence = useMemo(
+    () => createWorkspaceScratchpadDraftPersistence(workspaceId),
+    [workspaceId],
+  );
   const contentRef = useRef("");
   const serverContentRef = useRef<string | null>(null);
   const dirty = serverContent !== null && content !== serverContent;
   const busy = loading || saving;
+  const contentTooLong = content.length > WORKSPACE_SCRATCHPAD_MAX_LENGTH;
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const flushDraft = () => draftPersistence.flush();
+    window.addEventListener("pagehide", flushDraft);
+    return () => {
+      window.removeEventListener("pagehide", flushDraft);
+      draftPersistence.flush();
+    };
+  }, [draftPersistence]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -67,7 +88,7 @@ export function WorkspaceScratchpadView({
         setServerContent(savedContent);
         setContent(restoredContent);
         if (restoredContent === savedContent) {
-          clearStoredWorkspaceScratchpadDraft(workspaceId);
+          draftPersistence.clear();
         }
       } catch (error) {
         if (!controller.signal.aborted) {
@@ -82,15 +103,15 @@ export function WorkspaceScratchpadView({
 
     void loadWorkspace();
     return () => controller.abort();
-  }, [workspaceId]);
+  }, [draftPersistence, workspaceId]);
 
   function handleContentChange(nextContent: string): void {
     contentRef.current = nextContent;
     setContent(nextContent);
     if (nextContent === serverContentRef.current) {
-      clearStoredWorkspaceScratchpadDraft(workspaceId);
+      draftPersistence.clear();
     } else {
-      saveStoredWorkspaceScratchpadDraft(workspaceId, nextContent);
+      draftPersistence.schedule(nextContent);
     }
   }
 
@@ -110,7 +131,7 @@ export function WorkspaceScratchpadView({
       contentRef.current = savedContent;
       setServerContent(savedContent);
       setContent(savedContent);
-      clearStoredWorkspaceScratchpadDraft(workspaceId);
+      draftPersistence.clear();
     } catch (error) {
       toast.error(String(error));
     } finally {
@@ -141,7 +162,7 @@ export function WorkspaceScratchpadView({
       contentRef.current = savedContent;
       setServerContent(savedContent);
       setContent(savedContent);
-      clearStoredWorkspaceScratchpadDraft(workspaceId);
+      draftPersistence.clear();
       toast.success("Scratchpad saved");
     } catch (error) {
       toast.error(String(error));
@@ -186,9 +207,15 @@ export function WorkspaceScratchpadView({
         className="flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-neutral-900"
       >
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 px-3 py-2 dark:border-gray-800">
-          <p className="min-w-0 flex-1 text-xs text-gray-500 dark:text-gray-400">
-            {statusText}
-          </p>
+          {contentTooLong ? (
+            <p role="alert" className="min-w-0 basis-full text-xs text-red-600 dark:text-red-400">
+              {WORKSPACE_SCRATCHPAD_TOO_LONG_MESSAGE}
+            </p>
+          ) : (
+            <p className="min-w-0 flex-1 text-xs text-gray-500 dark:text-gray-400">
+              {statusText}
+            </p>
+          )}
           <div className="flex max-w-full shrink-0 flex-wrap items-center justify-end gap-2">
             <div role="group" aria-label="Document view" className="flex shrink-0 gap-1">
               <Button
@@ -222,7 +249,7 @@ export function WorkspaceScratchpadView({
               variant="primary"
               size="sm"
               onClick={() => void saveToServer()}
-              disabled={!dirty || busy}
+              disabled={!dirty || busy || contentTooLong}
               loading={saving}
             >
               Save
