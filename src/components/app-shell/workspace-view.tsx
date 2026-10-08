@@ -12,7 +12,11 @@ import {
 } from "../common";
 import { EmptyState, ErrorState, LoadingState, Panel, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { ConfiguredAgentsSection } from "../ConfiguredAgentsSection";
-import { isEffectivelyPrivate, shouldObscurePrivateItem } from "../../lib/private-items";
+import {
+  getPrivateContainerClassName,
+  isEffectivelyPrivate,
+  shouldObscurePrivateItem,
+} from "../../lib/private-items";
 import { ClankyListRow } from "./clanky-list-row";
 import { apiRequest } from "../../lib/api-client";
 import { MarkdownRenderer } from "../MarkdownRenderer";
@@ -83,6 +87,7 @@ export function WorkspaceView({
   showPrivateItems?: boolean;
 }) {
   const scratchpadPreview = useWorkspaceScratchpadPreview(workspace.id);
+  const scratchpadPrivateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(workspace), showPrivateItems);
   const activityTasks = workspace.workspaceType === "git"
     ? relatedTasks.filter((task) => !isWorkspaceHistoryTask(task.state.status))
     : [];
@@ -152,10 +157,11 @@ export function WorkspaceView({
         </div>
       </Panel>
 
-      <Panel className="border-0">
+      <Panel className={`border-0 ${getPrivateContainerClassName(scratchpadPrivateHidden)}`.trim()}>
         <h2 className="mb-3 text-base font-semibold leading-7">
           <button
             type="button"
+            disabled={scratchpadPrivateHidden}
             className="cursor-pointer text-left hover:text-blue-600 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 dark:hover:text-blue-400 dark:focus-visible:outline-blue-400"
             onClick={() => onNavigate({ view: "scratchpad", workspaceId: workspace.id })}
           >
