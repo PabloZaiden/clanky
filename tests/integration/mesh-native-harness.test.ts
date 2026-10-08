@@ -95,7 +95,7 @@ test("Mesh native chat questions survive reconnects, accept owned answers once a
     expect(dialogue[0]!.timestamp < dialogue[1]!.timestamp).toBe(true);
     expect(dialogue[1]!.timestamp < continuation.timestamp).toBe(true);
     expect(transcript.body.transcript.totalResponses).toBe(transcript.body.transcript.messages
-      .filter((message) => message.role === "assistant").length);
+      .filter((message) => message.role === "assistant" && message.content.length > 0).length);
     expect((await meshJsonRequest(controller, path, { body: answer })).status).toBe(200);
     const repeated = (await meshJsonRequest<ChatSnapshot>(controller, `/api/chats/${id}/snapshot?full=1`)).body.transcript;
     expect(repeated.messages.filter((message) => message.question?.requestId === request.requestId)).toEqual(dialogue);
@@ -256,7 +256,9 @@ test("Mesh native resolved questions release capacity for later owned answers", 
     expect(page.messages.filter((message) => message.question?.requestId === firstRequest.requestId)).toEqual(firstDialogue);
     const full = (await meshJsonRequest<ChatSnapshot>(controller, `/api/chats/${id}/snapshot?full=1`)).body.transcript;
     expect(full.messages.filter((message) => message.question?.requestId === firstRequest.requestId)).toEqual(firstDialogue);
-    expect(full.totalResponses).toBe(full.messages.filter((message) => message.role === "assistant").length);
+    expect(full.totalResponses).toBe(full.messages.filter(
+      (message) => message.role === "assistant" && message.content.length > 0,
+    ).length);
   } finally {
     for (const node of nodes.reverse()) { node.child.kill(); await node.child.exited; await rm(node.dataDir, { recursive: true, force: true }); }
     await rm(binaryDir, { recursive: true, force: true });

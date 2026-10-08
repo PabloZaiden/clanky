@@ -98,6 +98,12 @@ export interface TranscriptSnapshotMergeOptions {
   preferIncoming?: boolean;
 }
 
+export function isCountedAssistantResponse(
+  message: Pick<PersistedMessage, "content" | "role">,
+): boolean {
+  return message.role === "assistant" && message.content.length > 0;
+}
+
 function compareTranscriptRecords(
   left: { id: string; timestamp: string },
   right: { id: string; timestamp: string },
@@ -170,7 +176,7 @@ export function mergeTranscriptSnapshot(
 
 function countAssistantResponses(messages: PersistedMessage[]): number {
   return messages.reduce(
-    (count, message) => count + (message.role === "assistant" ? 1 : 0),
+    (count, message) => count + (isCountedAssistantResponse(message) ? 1 : 0),
     0,
   );
 }

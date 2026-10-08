@@ -1,6 +1,7 @@
 import type { MessageData, ToolCallData } from "./events";
 import type { ChatTranscript } from "./chat-transcript";
 import type { TaskLogEntry } from "./task";
+import { isCountedAssistantResponse } from "./chat-transcript";
 import {
   isToolCallSummary,
   mergeToolCallDisplayData,
@@ -81,7 +82,7 @@ function withCollections(
 ): ChatTranscript {
   const messages = collections.messages ?? current.messages;
   const loadedResponses = messages.reduce(
-    (count, message) => count + (message.role === "assistant" ? 1 : 0),
+    (count, message) => count + (isCountedAssistantResponse(message) ? 1 : 0),
     0,
   );
   return {
@@ -108,7 +109,7 @@ export function applyTranscriptStreamEvent(
           current,
           { messages: result.records },
           result.added ? 1 : 0,
-          result.added && event.message.role === "assistant" ? 1 : 0,
+          result.added && isCountedAssistantResponse(event.message) ? 1 : 0,
         ),
         gapDetected: false,
       };
@@ -141,7 +142,7 @@ export function applyTranscriptStreamEvent(
           current,
           { messages: result.records },
           result.added ? 1 : 0,
-          result.added && message.role === "assistant" ? 1 : 0,
+          result.added && isCountedAssistantResponse(message) ? 1 : 0,
         ),
         gapDetected: false,
       };

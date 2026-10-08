@@ -26,7 +26,7 @@ export const chatsTranscriptRoutes = defineRoutes({
   "/api/chats/:id/snapshot": {
     auth: "user",
     sameOrigin: "mutations",
-    description: "Read the latest page of up to 100 assistant responses for a chat; use before for older history or full=1 for the complete transcript.",
+    description: "Read the latest page of up to 100 non-empty assistant responses for a chat; use before for older history or full=1 for the complete transcript.",
     async GET(req: Request, ctx): Promise<Response> {
       const options = parseTranscriptSnapshotOptions(req);
       if (options instanceof Response) {

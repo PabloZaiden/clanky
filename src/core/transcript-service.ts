@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { createToolCallSummary } from "@/shared";
+import { createToolCallSummary, isCountedAssistantResponse } from "@/shared";
 import type {
   ChatTranscript,
   ChatTranscriptStorageEntry,
@@ -128,7 +128,7 @@ export function createTranscriptFromStorageEntries(
   const toolCalls = transcriptEntries
       .filter((entry): entry is Extract<TranscriptEntry, { kind: "tool" }> => entry.kind === "tool")
       .map((entry) => createToolCallSummary(entry.tool, { hasOutput: entry.hasOutput }));
-  const loadedResponses = messages.filter((message) => message.role === "assistant").length;
+  const loadedResponses = messages.filter(isCountedAssistantResponse).length;
   const totalResponses = options.totalResponses ?? loadedResponses;
   const isPartial = options.isPartial ?? totalResponses > loadedResponses;
 

@@ -406,6 +406,13 @@ function getTranscriptResponseCount(
       AND user_id = ?
       AND kind = 'message'
       AND message_role = 'assistant'
+      AND CASE
+        WHEN json_valid(payload) = 1 THEN
+          json_extract(payload, '$.role') = 'assistant'
+          AND json_type(payload, '$.content') = 'text'
+          AND json_extract(payload, '$.content') <> ''
+        ELSE 0
+      END
   `).get(resourceId, userId) as { count: number };
   return row.count;
 }
@@ -497,6 +504,13 @@ function hasOlderTranscriptResponses(
       AND user_id = ?
       AND kind = 'message'
       AND message_role = 'assistant'
+      AND CASE
+        WHEN json_valid(payload) = 1 THEN
+          json_extract(payload, '$.role') = 'assistant'
+          AND json_type(payload, '$.content') = 'text'
+          AND json_extract(payload, '$.content') <> ''
+        ELSE 0
+      END
       AND (
         timestamp < ?
         OR (
@@ -565,6 +579,13 @@ export function listTranscriptEntriesPageForUser(
       AND user_id = ?
       AND kind = 'message'
       AND message_role = 'assistant'
+      AND CASE
+        WHEN json_valid(payload) = 1 THEN
+          json_extract(payload, '$.role') = 'assistant'
+          AND json_type(payload, '$.content') = 'text'
+          AND json_extract(payload, '$.content') <> ''
+        ELSE 0
+      END
       ${beforeClause}
     ORDER BY timestamp DESC, sequence DESC, entry_id DESC
     LIMIT ?

@@ -3,6 +3,7 @@ import {
   applyTranscriptStreamEvent,
   DEFAULT_TASK_CONFIG,
   mergeTranscriptSnapshot,
+  TRANSCRIPT_PAGE_SIZE,
   type Task,
   type TaskLogEntry,
   type PersistedMessage,
@@ -10,6 +11,7 @@ import {
 } from "@/shared";
 
 import { TaskEngine } from "../../src/core/task-engine";
+import { getTaskTranscriptSnapshot } from "../../src/core/task-transcript-service";
 import {
   deleteTask,
   loadTask,
@@ -277,12 +279,21 @@ describe("incremental transcript persistence", () => {
     });
   });
 
-  test("pages task history by assistant responses while retaining turn context and tool summaries", async () => {
+  test("pages task history by non-empty assistant responses while retaining turn context and tool summaries", async () => {
     const task = createTask(context);
     const messages: PersistedMessage[] = [];
     const toolCalls: PersistedToolCall[] = [];
+    const firstTimestamp = Date.UTC(2024, 0, 1);
+    for (let index = 0; index < TRANSCRIPT_PAGE_SIZE + 5; index += 1) {
+      messages.push({
+        id: `empty-assistant-${index}`,
+        role: "assistant",
+        content: "",
+        timestamp: new Date(firstTimestamp - (5 - index) * 1_000).toISOString(),
+      });
+    }
     for (let index = 0; index < 105; index += 1) {
-      const timestamp = new Date(Date.UTC(2024, 0, 1, 0, index)).toISOString();
+      const timestamp = new Date(firstTimestamp + index * 60_000).toISOString();
       messages.push({
         id: `user-${index}`,
         role: "user",
@@ -355,11 +366,68 @@ describe("incremental transcript persistence", () => {
       expect(fullPage.loadedResponses).toBe(105);
       expect(fullPage.hasOlder).toBe(false);
       expect(fullPage.nextCursor).toBeUndefined();
+      expect(fullPage.entries.filter((entry) => (
+        entry.kind === "message"
+        && (entry.payload as PersistedMessage).role === "assistant"
+        && (entry.payload as PersistedMessage).content.length === 0
+      ))).toHaveLength(TRANSCRIPT_PAGE_SIZE + 5);
 
       expect(() => taskTranscriptStore.listPage(task.config.id, {
         full: true,
         before: latestPage.nextCursor,
       })).toThrow(TranscriptCursorError);
+    });
+  });
+
+  // Seed the snapshot boundary directly; producing this many empty turns through a provider is impractical.
+  test("does not paginate when empty assistant messages alone exceed the response limit", async () => {
+    const task = createTask(context);
+    task.config.id = "empty-assistant-pagination-task";
+    task.state.id = task.config.id;
+    const firstTimestamp = Date.parse("2025-01-01T00:00:00.000Z");
+    const visibleResponses = Array.from(
+      { length: TRANSCRIPT_PAGE_SIZE - 1 },
+      (_, index) => ({
+        id: `visible-assistant-${index}`,
+        role: "assistant" as const,
+        content: `Answer ${index}`,
+        timestamp: new Date(firstTimestamp + (index + 1) * 1_000).toISOString(),
+      }),
+    );
+    const emptyResponses = Array.from(
+      { length: TRANSCRIPT_PAGE_SIZE + 5 },
+      (_, index) => ({
+        id: `empty-assistant-${index}`,
+        role: "assistant" as const,
+        content: "",
+        timestamp: new Date(firstTimestamp + (index + TRANSCRIPT_PAGE_SIZE + 1) * 1_000).toISOString(),
+      }),
+    );
+    task.state.messages = [
+      {
+        id: "pagination-question",
+        role: "user",
+        content: "Question",
+        timestamp: new Date(firstTimestamp).toISOString(),
+      },
+      ...visibleResponses,
+      ...emptyResponses,
+    ];
+    task.state.logs = [];
+    task.state.toolCalls = [];
+
+    await runWithCurrentUser(testOwnerUser, async () => {
+      await saveTask(task);
+      const snapshot = await getTaskTranscriptSnapshot(task.config.id);
+      expect(snapshot).not.toBeNull();
+      const transcript = snapshot!.transcript;
+      expect(transcript.totalResponses).toBe(TRANSCRIPT_PAGE_SIZE - 1);
+      expect(transcript.loadedResponses).toBe(TRANSCRIPT_PAGE_SIZE - 1);
+      expect(transcript.isPartial).toBe(false);
+      expect(transcript.hasOlder).toBe(false);
+      expect(transcript.messages.filter((message) => (
+        message.role === "assistant" && message.content.length === 0
+      ))).toHaveLength(TRANSCRIPT_PAGE_SIZE + 5);
     });
   });
 
@@ -509,7 +577,20 @@ describe("incremental transcript persistence", () => {
       totalResponses: 0,
       hasOlder: false,
     };
-    const first = applyTranscriptStreamEvent(emptyTranscript, {
+    const placeholder = applyTranscriptStreamEvent(emptyTranscript, {
+      type: "transcript.message",
+      message: {
+        id: "assistant-1",
+        role: "assistant",
+        content: "",
+        timestamp: "2024-01-01T00:00:00.000Z",
+      },
+    });
+    expect(placeholder.transcript.totalEntries).toBe(1);
+    expect(placeholder.transcript.totalResponses).toBe(0);
+    expect(placeholder.transcript.loadedResponses).toBe(0);
+
+    const first = applyTranscriptStreamEvent(placeholder.transcript, {
       type: "transcript.message.delta",
       messageId: "assistant-1",
       role: "assistant",

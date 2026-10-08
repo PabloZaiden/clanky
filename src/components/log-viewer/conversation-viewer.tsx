@@ -1,5 +1,8 @@
 import { useCallback, useMemo, memo } from "react";
-import { shouldIncludeConversationTranscriptLog } from "@/shared";
+import {
+  isCountedAssistantResponse,
+  shouldIncludeConversationTranscriptLog,
+} from "@/shared";
 import { ImageViewerModal } from "../ImageViewerModal";
 import type { ConversationViewerProps, EntryBase } from "./types";
 import {
@@ -77,7 +80,7 @@ export const ConversationViewer = memo(function ConversationViewer({
     const result: EntryBase[] = [];
 
     messages.forEach((msg) => {
-      if (msg.role === "assistant" && msg.content.length === 0) {
+      if (msg.role === "assistant" && !isCountedAssistantResponse(msg)) {
         return;
       }
       result.push({ type: "message", data: msg, timestamp: msg.timestamp });

@@ -344,7 +344,7 @@ included in this table.
 | Method(s) | Path | Description |
 |-----------|------|-------------|
 | GET, DELETE | `/api/agent-runs/:id` | Read or delete an agent run. |
-| GET | `/api/agent-runs/:id/snapshot` | Read the complete lightweight transcript snapshot for an agent run. |
+| GET | `/api/agent-runs/:id/snapshot` | Read an agent-run transcript snapshot, paged by non-empty assistant responses (page size 100). |
 | GET | `/api/agent-runs/:id/tool-calls/:toolCallId` | Read one complete agent-run tool-call payload. |
 | GET, POST | `/api/agents` | List or create scheduled agents. |
 | GET, PATCH, DELETE | `/api/agents/:id` | Read, update, or delete a scheduled agent. |
@@ -373,7 +373,7 @@ included in this table.
 | POST | `/api/chats/:id/queued-messages/:messageId/steer` | Steer an existing queued input without interrupting the execution. |
 | POST | `/api/chats/:id/queued-messages/:messageId/reconcile` | Recover native delivery without resending the input. |
 | POST | `/api/chats/:id/reconnect` | Reconnect a chat session to its backend runtime. |
-| GET | `/api/chats/:id/snapshot` | Read the complete lightweight transcript snapshot for a chat. |
+| GET | `/api/chats/:id/snapshot` | Read a chat transcript snapshot, paged by non-empty assistant responses (page size 100). |
 | POST | `/api/chats/:id/spawn-task` | Create a task from an existing chat transcript. |
 | POST | `/api/chats/:id/spawn-task-from-current-plan` | Create a task from the current plan discussed in a chat. |
 | GET | `/api/chats/:id/tool-calls/:toolCallId` | Read the full details for one chat tool call. |
@@ -478,7 +478,7 @@ included in this table.
 | POST | `/api/tasks/:id/purge` | Permanently delete a task from storage. |
 | POST | `/api/tasks/:id/push` | Push a completed, max-iteration, or locally accepted task branch to the remote repository. |
 | GET | `/api/tasks/:id/review-history` | Read review history for a task. |
-| GET | `/api/tasks/:id/snapshot` | Read the complete lightweight transcript snapshot for a task. |
+| GET | `/api/tasks/:id/snapshot` | Read a task transcript snapshot, paged by non-empty assistant responses (page size 100). |
 | GET, POST | `/api/tasks/:id/terminal-session` | Read or create a task-backed terminal session. |
 | GET | `/api/tasks/:id/status-file` | Read a task's status tracking document. |
 | POST | `/api/tasks/:id/stop` | Stop an active task run. |
