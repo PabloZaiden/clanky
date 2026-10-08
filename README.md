@@ -10,6 +10,8 @@ software tasks with Codex, Copilot, OpenCode, Claude Code, Pi, and Grok Build.
 It combines a web dashboard, an authenticated CLI, isolated workspaces, live
 task visibility, chats, and review workflows in one application.
 
+https://github.com/user-attachments/assets/25427c86-2b8b-41c0-a77f-4aad427dee93
+
 ## Why Clanky
 
 - **Safer automation:** work in isolated branches or worktrees and review
@@ -19,28 +21,26 @@ task visibility, chats, and review workflows in one application.
 - **Local or remote execution:** run locally or use a remote SSH or Mesh host
   when the repository and agent should live elsewhere.
 
-![Clanky Dashboard](assets/screenshots/desktop/home.jpg)
+![Clanky dashboard](assets/screenshots/desktop/home-promo.png)
 
-*Dashboard overview with active tasks, workspaces, and quick actions.*
+*Active work, scheduled agents, workspaces, and execution hosts in one place.*
 
 <details>
 <summary><strong>More screenshots</strong></summary>
 
-![Create Task](assets/screenshots/desktop/create-task.jpg)
+![Chat with an agent](assets/screenshots/desktop/chat-promo.png)
 
-*Create a task with prompt, model, and execution settings.*
+*Start with a conversation, then turn the work into a task.*
 
-![Status View](assets/screenshots/desktop/status.jpg)
+![Task review](assets/screenshots/desktop/task-review-promo.png)
 
-*Track iteration status and task progress in real time.*
+*Inspect the agent's changes before accepting or pushing them.*
+</details>
 
-![Diff View](assets/screenshots/desktop/diff.jpg)
+<details>
+<summary><strong>Mobile screenshots</strong></summary>
 
-*Review the accumulated changes before accepting or pushing them.*
-
-![Terminals](assets/screenshots/desktop/ssh.jpg)
-
-*Open persistent terminals alongside task execution.*
+![Clanky dashboard on mobile](assets/screenshots/mobile/home-promo.png)
 </details>
 
 ## Install
