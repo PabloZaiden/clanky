@@ -563,6 +563,67 @@ describe("incremental transcript persistence", () => {
     expect(liveWins.messages.find((message) => message.id === "streaming")?.content).toBe("Hel");
   });
 
+  // Count transitions must not let a stale partial snapshot hide older history.
+  for (const eventType of ["transcript.message", "transcript.message.delta"] as const) {
+    test(`keeps older pagination after filling an assistant placeholder via ${eventType}`, () => {
+      const timestamp = "2024-01-01T00:01:40.000Z";
+      const placeholder = {
+        id: "assistant-placeholder",
+        role: "assistant" as const,
+        content: "",
+        timestamp,
+      };
+      const current = {
+        messages: [
+          ...Array.from({ length: TRANSCRIPT_PAGE_SIZE }, (_, index) => ({
+            id: `assistant-${index}`,
+            role: "assistant" as const,
+            content: `Answer ${index}`,
+            timestamp: new Date(Date.UTC(2024, 0, 1, 0, 0, index)).toISOString(),
+          })),
+          placeholder,
+        ],
+        logs: [],
+        toolCalls: [],
+        revision: "before-placeholder",
+        totalEntries: TRANSCRIPT_PAGE_SIZE + 2,
+        isPartial: true,
+        loadedResponses: TRANSCRIPT_PAGE_SIZE,
+        totalResponses: TRANSCRIPT_PAGE_SIZE + 1,
+        hasOlder: true,
+        nextCursor: "older-cursor",
+      };
+      const staleSnapshot = {
+        ...current,
+        revision: "stale-snapshot",
+      };
+      const event = eventType === "transcript.message"
+        ? {
+            type: "transcript.message" as const,
+            message: { ...placeholder, content: "Completed response" },
+          }
+        : {
+            type: "transcript.message.delta" as const,
+            messageId: placeholder.id,
+            role: placeholder.role,
+            delta: "Completed response",
+            baseLength: 0,
+            messageTimestamp: timestamp,
+          };
+
+      const updated = applyTranscriptStreamEvent(current, event);
+      expect(updated.gapDetected).toBe(false);
+      expect(updated.transcript.totalEntries).toBe(current.totalEntries);
+      expect(updated.transcript.loadedResponses).toBe(TRANSCRIPT_PAGE_SIZE + 1);
+      expect(updated.transcript.totalResponses).toBe(TRANSCRIPT_PAGE_SIZE + 2);
+
+      const merged = mergeTranscriptSnapshot(updated.transcript, staleSnapshot);
+      expect(merged.isPartial).toBe(true);
+      expect(merged.hasOlder).toBe(true);
+      expect(merged.nextCursor).toBe("older-cursor");
+    });
+  }
+
   // Message delta identity and base lengths are a stable realtime protocol
   // boundary; a mismatch must trigger authoritative recovery without mutation.
   test("upserts message deltas and reports sequence gaps", () => {
