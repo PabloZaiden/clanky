@@ -21,8 +21,8 @@
     "typecheck": "mkdir -p .cache/tsc && bunx tsc --noEmit --pretty false --incremental --tsBuildInfoFile .cache/tsc/build.tsbuildinfo"
   },
   "dependencies": {
-    "@github/copilot-sdk": "1.0.15",
-    "@opencode/client": "2.0.20",
+    "@github/copilot-sdk": "1.0.16",
+    "@opencode/client": "2.0.22",
     "@monaco-editor/react": "4.7.0",
     "@pablozaiden/webapp": "github:PabloZaiden/webapp#v1.12.0",
     "@peculiar/x509": "2.1.0",
@@ -33,7 +33,7 @@
     "bun-plugin-tailwind": "0.1.2",
     "franc-min": "6.2.0",
     "highlight.js": "11.12.0",
-    "mermaid": "11.16.1",
+    "mermaid": "12.1.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-markdown": "10.1.0",
