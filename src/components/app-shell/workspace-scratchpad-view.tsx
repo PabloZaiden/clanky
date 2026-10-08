@@ -140,7 +140,12 @@ export function WorkspaceScratchpadView({
   }
 
   async function saveToServer(): Promise<void> {
-    if (serverContentRef.current === null || contentRef.current === serverContentRef.current) {
+    if (
+      serverContentRef.current === null
+      || contentRef.current === serverContentRef.current
+      || busy
+      || contentTooLong
+    ) {
       return;
     }
 
@@ -163,7 +168,6 @@ export function WorkspaceScratchpadView({
       setServerContent(savedContent);
       setContent(savedContent);
       draftPersistence.clear();
-      toast.success("Scratchpad saved");
     } catch (error) {
       toast.error(String(error));
     } finally {
@@ -265,6 +269,9 @@ export function WorkspaceScratchpadView({
               onChange={handleContentChange}
               readOnly={busy}
               ariaLabel="Workspace Scratchpad Markdown editor"
+              onSaveShortcut={() => {
+                void saveToServer();
+              }}
             />
           </div>
           {preview ? (
