@@ -10,11 +10,6 @@ software tasks with Codex, Copilot, OpenCode, Claude Code, Pi, and Grok Build.
 It combines a web dashboard, an authenticated CLI, isolated workspaces, live
 task visibility, chats, and review workflows in one application.
 
-## Product walkthrough
-
-A 42-second tour of chats, remote workers, workspaces, Code Explorer, and live
-previews.
-
 https://github.com/user-attachments/assets/25427c86-2b8b-41c0-a77f-4aad427dee93
 
 ## Why Clanky
@@ -40,40 +35,12 @@ https://github.com/user-attachments/assets/25427c86-2b8b-41c0-a77f-4aad427dee93
 ![Task review](assets/screenshots/desktop/task-review-promo.png)
 
 *Inspect the agent's changes before accepting or pushing them.*
-
-![Automatic workspace](assets/screenshots/desktop/automatic-workspace-promo.png)
-
-*Provision a dedicated workspace on a remote Mesh worker.*
-
-![Workers and relay](assets/screenshots/desktop/workers-relay-promo.png)
-
-*Check worker health and relay connectivity from the controller.*
-
-![Scheduled agents](assets/screenshots/desktop/scheduled-agents-promo.png)
-
-*Keep recurring agent work enabled and visible.*
-
-![Code Explorer](assets/screenshots/desktop/code-explorer-promo.png)
-
-*Browse and edit workspace files in the integrated Code Explorer.*
-
-![Integrated terminal](assets/screenshots/desktop/integrated-terminal-promo.png)
-
-*Run and inspect workspace commands alongside the code.*
-
-![Live preview manager](assets/screenshots/desktop/preview-manager-promo.png)
-
-*Open a live preview for the selected workspace.*
 </details>
 
 <details>
 <summary><strong>Mobile screenshots</strong></summary>
 
 ![Clanky dashboard on mobile](assets/screenshots/mobile/home-promo.png)
-
-![Automatic workspace setup on mobile](assets/screenshots/mobile/automatic-workspace-promo.png)
-
-![Live agent preview on mobile](assets/screenshots/mobile/live-preview-promo.png)
 </details>
 
 ## Install
