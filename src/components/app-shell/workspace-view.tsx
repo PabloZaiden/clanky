@@ -13,7 +13,6 @@ import {
 import { EmptyState, ErrorState, LoadingState, Panel, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { ConfiguredAgentsSection } from "../ConfiguredAgentsSection";
 import {
-  getPrivateContainerClassName,
   isEffectivelyPrivate,
   shouldObscurePrivateItem,
 } from "../../lib/private-items";
@@ -26,13 +25,20 @@ type WorkspaceScratchpadPreviewState =
   | { workspaceId: string; status: "loaded"; content: string }
   | { workspaceId: string; status: "error"; error: string };
 
-function useWorkspaceScratchpadPreview(workspaceId: string): WorkspaceScratchpadPreviewState {
-  const [preview, setPreview] = useState<WorkspaceScratchpadPreviewState>({
-    workspaceId,
-    status: "loading",
-  });
+function useWorkspaceScratchpadPreview(
+  workspaceId: string,
+  enabled: boolean,
+): WorkspaceScratchpadPreviewState | null {
+  const [preview, setPreview] = useState<WorkspaceScratchpadPreviewState | null>(() => (
+    enabled ? { workspaceId, status: "loading" } : null
+  ));
 
   useEffect(() => {
+    if (!enabled) {
+      setPreview(null);
+      return;
+    }
+
     const controller = new AbortController();
     setPreview({ workspaceId, status: "loading" });
 
@@ -58,9 +64,13 @@ function useWorkspaceScratchpadPreview(workspaceId: string): WorkspaceScratchpad
 
     void loadScratchpad();
     return () => controller.abort();
-  }, [workspaceId]);
+  }, [enabled, workspaceId]);
 
-  return preview.workspaceId === workspaceId
+  if (!enabled) {
+    return null;
+  }
+
+  return preview?.workspaceId === workspaceId
     ? preview
     : { workspaceId, status: "loading" };
 }
@@ -86,8 +96,8 @@ export function WorkspaceView({
   onNavigate: (route: WebAppRoute) => void;
   showPrivateItems?: boolean;
 }) {
-  const scratchpadPreview = useWorkspaceScratchpadPreview(workspace.id);
   const scratchpadPrivateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(workspace), showPrivateItems);
+  const scratchpadPreview = useWorkspaceScratchpadPreview(workspace.id, !scratchpadPrivateHidden);
   const activityTasks = workspace.workspaceType === "git"
     ? relatedTasks.filter((task) => !isWorkspaceHistoryTask(task.state.status))
     : [];
@@ -157,19 +167,26 @@ export function WorkspaceView({
         </div>
       </Panel>
 
-      <Panel className={`border-0 ${getPrivateContainerClassName(scratchpadPrivateHidden)}`.trim()}>
+      <Panel className="border-0">
         <h2 className="mb-3 text-base font-semibold leading-7">
-          <button
-            type="button"
-            disabled={scratchpadPrivateHidden}
-            className="cursor-pointer text-left hover:text-blue-600 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 dark:hover:text-blue-400 dark:focus-visible:outline-blue-400"
-            onClick={() => onNavigate({ view: "scratchpad", workspaceId: workspace.id })}
-          >
-            Scratchpad
-          </button>
+          {scratchpadPrivateHidden ? (
+            "Scratchpad"
+          ) : (
+            <button
+              type="button"
+              className="cursor-pointer text-left hover:text-blue-600 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 dark:hover:text-blue-400 dark:focus-visible:outline-blue-400"
+              onClick={() => onNavigate({ view: "scratchpad", workspaceId: workspace.id })}
+            >
+              Scratchpad
+            </button>
+          )}
         </h2>
         <div className="max-h-96 min-h-20 min-w-0 overflow-auto rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-neutral-950">
-          {scratchpadPreview.status === "loading" ? (
+          {scratchpadPrivateHidden ? (
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Scratchpad content is hidden while private items are hidden.
+            </p>
+          ) : scratchpadPreview === null || scratchpadPreview.status === "loading" ? (
             <LoadingState title="Loading Scratchpad" />
           ) : scratchpadPreview.status === "error" ? (
             <ErrorState
