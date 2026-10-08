@@ -1946,6 +1946,8 @@ Workspaces represent projects managed by Clanky. Each workspace is identified by
 
 List all workspaces.
 
+The collection response omits `scratchpad` to avoid returning every note body. Read an individual workspace to retrieve its saved note.
+
 **Response**
 
 ```json
@@ -2017,7 +2019,7 @@ Get a specific workspace by ID.
 
 **Response**
 
-Returns the workspace object.
+Returns the workspace object, including its saved `scratchpad` content. Unsaved browser-local drafts are not included.
 
 **Errors**
 
@@ -2041,6 +2043,7 @@ Update a workspace.
 | `archived` | boolean | Hide the workspace from active work surfaces |
 | `allowClankyContext` | boolean | Allow authenticated Clanky CLI access in new execution contexts |
 | `allowWorktrees` | boolean | Enable or disable creation of task, chat, and agent worktrees |
+| `scratchpad` | string | Replace the saved Markdown note (maximum 100,000 characters); send the complete content, or an empty string to clear it |
 
 **Response**
 

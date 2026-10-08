@@ -359,6 +359,26 @@ clanky api tasks --method GET | jq .
 clanky api workspaces --method GET | jq .
 ```
 
+## Working with workspace Scratchpads
+
+A Scratchpad is saved on the Clanky workspace record, not as a file on the workspace execution host. Use `clanky api`; there is no dedicated Scratchpad subcommand. The CLI must already be authenticated to the instance.
+
+Workspace collection responses omit note bodies, so first list workspaces to find the target ID, then read the individual workspace:
+
+```bash
+clanky api workspaces --method GET
+clanky api workspaces/ws-abc123 --method GET
+```
+
+Before changing a note, read its current saved value so the full-content update does not discard existing text. `PUT` accepts a `scratchpad` string and replaces that complete value; it does not append or merge. The limit is 100,000 characters:
+
+```bash
+clanky api workspaces/ws-abc123 --method PUT \
+  --payload '{"scratchpad":"# Project notes\n\nRemember to update the deployment guide."}'
+```
+
+Send the full desired note in the payload. To clear it, send `{"scratchpad":""}`. CLI reads and writes the saved server copy only; unsaved drafts in a browser are local to that browser. See the [Scratchpad guide](../../docs/scratchpad.md) and [API reference](../../docs/API.md#workspaces) for the full contract.
+
 ## Creating a task
 
 Before creating a task, discover the exact current schema:
