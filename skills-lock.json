@@ -1,6 +1,13 @@
 {
   "version": 1,
   "skills": {
+    "fframes-video": {
+      "source": "fframes.studio",
+      "sourceUrl": "https://fframes.studio",
+      "sourceType": "well-known",
+      "computedHash": "02623b7c323d58e365ad008818aeabe0f2f07ab141939bb39a0c542e90d6a71b",
+      "wellKnownDigest": "sha256:bd97b89ee7a0bf633ce31fdf75e888b86e076b9d02a61cc27fa97ec9e5a73661"
+    },
     "webapp": {
       "source": "pablozaiden/webapp",
       "sourceType": "github",
