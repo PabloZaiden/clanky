@@ -232,6 +232,7 @@ describe("SshTerminalBridge integration", () => {
         id: crypto.randomUUID(),
         name: "SSH Test Workspace",
         directory: workspaceDir,
+        scratchpad: "",
         workspaceType: "git",
         executionTargetRevision: 1,
         executionHostBinding: await runWithCurrentUser(testOwnerUser, async () => (

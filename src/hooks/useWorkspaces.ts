@@ -4,7 +4,11 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import type { PublicWorkspace, Workspace } from "@/shared/workspace";
+import type {
+  PublicWorkspace,
+  PublicWorkspaceSummary,
+  Workspace,
+} from "@/shared/workspace";
 import type { CreateWorkspaceRequest, UpdateWorkspaceRequest } from "@/contracts/schemas/workspace";
 import type { DeleteWorkspaceRequest } from "@/contracts/schemas/workspace";
 import { createLogger } from "@pablozaiden/webapp/web";
@@ -45,11 +49,12 @@ export function useWorkspaces(): UseWorkspacesResult {
   const [saving, setSaving] = useState(false);
 
   const loadWorkspaces = useCallback(async (signal: AbortSignal): Promise<PublicWorkspace[]> => {
-    return await apiRequest<PublicWorkspace[]>("/api/workspaces", {
+    const workspaces = await apiRequest<PublicWorkspaceSummary[]>("/api/workspaces", {
       signal,
       action: "Load workspaces",
       fallbackMessage: "Failed to fetch workspaces",
     });
+    return workspaces.map((workspace) => ({ ...workspace, scratchpad: "" }));
   }, []);
 
   const handleRefreshError = useCallback((refreshError: unknown) => {

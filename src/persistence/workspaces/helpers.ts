@@ -22,6 +22,7 @@ export function workspaceToRow(workspace: Workspace): Record<string, unknown> {
     user_id: userId,
     name: workspace.name,
     directory: workspace.directory,
+    scratchpad: workspace.scratchpad,
     workspace_type: workspace.workspaceType,
     allow_worktrees: workspace.allowWorktrees !== false ? 1 : 0,
     execution_target_revision: Math.max(1, Math.floor(workspace.executionTargetRevision)),
@@ -49,6 +50,7 @@ export function rowToWorkspace(row: Record<string, unknown>): Workspace {
     id: row["id"] as string,
     name: row["name"] as string,
     directory: row["directory"] as string,
+    scratchpad: typeof row["scratchpad"] === "string" ? row["scratchpad"] : "",
     workspaceType: row["workspace_type"] === "directory"
       ? "directory"
       : DEFAULT_WORKSPACE_TYPE,

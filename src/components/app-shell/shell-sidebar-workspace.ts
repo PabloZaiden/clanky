@@ -159,6 +159,14 @@ function getWorkspaceSidebarActions(
         }),
       },
       {
+        id: "open-scratchpad",
+        label: "Scratchpad",
+        onClick: () => context.navigateWithinShell({
+          view: "scratchpad",
+          workspaceId,
+        }),
+      },
+      {
         id: "workspace-previews",
         label: "Previews",
         onClick: () => context.navigateWithinShell({

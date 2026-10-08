@@ -7,6 +7,7 @@ import type {
   PublicProvisioningJobSnapshot,
   PublicServerSettings,
   PublicWorkspace,
+  PublicWorkspaceSummary,
   ServerSettings,
   Workspace,
 } from "@/shared";
@@ -33,6 +34,18 @@ export function sanitizeWorkspace(workspace: Workspace): PublicWorkspace {
     ...workspace,
     serverSettings: sanitizeServerSettings(workspace.serverSettings),
   };
+}
+
+export function omitWorkspaceScratchpad<T extends { scratchpad: string }>(
+  workspace: T,
+): Omit<T, "scratchpad"> {
+  const { scratchpad, ...summary } = workspace;
+  void scratchpad;
+  return summary;
+}
+
+export function sanitizeWorkspaceSummary(workspace: Workspace): PublicWorkspaceSummary {
+  return omitWorkspaceScratchpad(sanitizeWorkspace(workspace));
 }
 
 export function sanitizeProvisioningJob(job: ProvisioningJob): PublicProvisioningJob {

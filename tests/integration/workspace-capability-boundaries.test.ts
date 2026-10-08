@@ -102,6 +102,7 @@ function workspace(
     id,
     name: id,
     directory: dataDir,
+    scratchpad: "",
     workspaceType: "directory",
     executionTargetRevision: 1,
     executionHostBinding,

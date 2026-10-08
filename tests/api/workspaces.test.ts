@@ -17,6 +17,10 @@ import { createMockBackend } from "../mocks/mock-backend";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { fetchTestLocalExecutionHost } from "../setup";
 import { pollUntil } from "../helpers/polling";
+import {
+  WORKSPACE_SCRATCHPAD_MAX_LENGTH,
+  WORKSPACE_SCRATCHPAD_TOO_LONG_MESSAGE,
+} from "@/shared";
 import type { ExecutionHostRef, ServerSettings } from "@/shared";
 
 import { createWorkspace, getWorkspace } from "../../src/persistence/workspaces";
@@ -627,6 +631,74 @@ describe("Workspace API Integration", () => {
 
   describe("PUT /api/workspaces/:id", () => {
 
+    test("saves and reloads workspace Scratchpad content", async () => {
+      const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Scratchpad Workspace",
+          directory: testWorkDir,
+          executionHost: localExecutionHost,
+          serverSettings: makeServerSettings(),
+        }),
+      });
+      expect(createResponse.status).toBe(201);
+      const workspace = await createResponse.json() as {
+        id: string;
+        scratchpad: string;
+      };
+      expect(workspace.scratchpad).toBe("");
+
+      const markdown = "## Workspace notes\n\n- Keep this *here*.\n";
+      const saveResponse = await fetch(`${baseUrl}/api/workspaces/${workspace.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scratchpad: markdown }),
+      });
+      expect(saveResponse.status).toBe(200);
+      expect(await saveResponse.json()).toMatchObject({ scratchpad: markdown });
+
+      const oversizedSaveResponse = await fetch(`${baseUrl}/api/workspaces/${workspace.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scratchpad: "x".repeat(WORKSPACE_SCRATCHPAD_MAX_LENGTH + 1) }),
+      });
+      expect(oversizedSaveResponse.status).toBe(400);
+      const validationError = await oversizedSaveResponse.json() as {
+        error: string;
+        message: string;
+      };
+      expect(validationError.error).toBe("validation_error");
+      expect(validationError.message).toContain(WORKSPACE_SCRATCHPAD_TOO_LONG_MESSAGE);
+
+      const reloadResponse = await fetch(`${baseUrl}/api/workspaces/${workspace.id}`);
+      expect(reloadResponse.status).toBe(200);
+      expect(await reloadResponse.json()).toMatchObject({ scratchpad: markdown });
+
+      for (const query of ["", "?sensitive=true"]) {
+        const listResponse = await fetch(`${baseUrl}/api/workspaces${query}`);
+        expect(listResponse.status).toBe(200);
+        const listedWorkspaces = await listResponse.json() as Array<{
+          id: string;
+          scratchpad?: string;
+        }>;
+        const listedWorkspace = listedWorkspaces.find((item) => item.id === workspace.id);
+        expect(listedWorkspace).not.toHaveProperty("scratchpad");
+        expect(JSON.stringify(listedWorkspaces)).not.toContain(markdown);
+      }
+
+      const maxLengthContent = "x".repeat(WORKSPACE_SCRATCHPAD_MAX_LENGTH);
+      const maxLengthSaveResponse = await fetch(`${baseUrl}/api/workspaces/${workspace.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scratchpad: maxLengthContent }),
+      });
+      expect(maxLengthSaveResponse.status).toBe(200);
+      expect(await maxLengthSaveResponse.json()).toMatchObject({
+        scratchpad: maxLengthContent,
+      });
+    });
+
     test("updates and persists archived workspace state", async () => {
       const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
         method: "POST",
@@ -898,6 +970,7 @@ describe("Workspace API Integration", () => {
         id: "auto-delete-workspace",
         name: "Auto Delete Workspace",
         directory: testWorkDir,
+        scratchpad: "",
         workspaceType: "git",
         executionTargetRevision: 1,
         executionHostBinding: {
@@ -939,6 +1012,7 @@ describe("Workspace API Integration", () => {
         id: "auto-delete-trailing-base-workspace",
         name: "Auto Delete Trailing Base Workspace",
         directory: testWorkDir,
+        scratchpad: "",
         workspaceType: "git",
         executionTargetRevision: 1,
         executionHostBinding: {
@@ -980,6 +1054,7 @@ describe("Workspace API Integration", () => {
         id: "auto-preserve-workspace",
         name: "Auto Preserve Workspace",
         directory: testWorkDir,
+        scratchpad: "",
         workspaceType: "git",
         executionTargetRevision: 1,
         executionHostBinding: {
@@ -1031,6 +1106,7 @@ describe("Workspace API Integration", () => {
         id: "auto-fail-workspace",
         name: "Auto Fail Workspace",
         directory: testWorkDir,
+        scratchpad: "",
         workspaceType: "git",
         executionTargetRevision: 1,
         executionHostBinding: {
@@ -1086,6 +1162,7 @@ describe("Workspace API Integration", () => {
         id: "auto-exists-fail-workspace",
         name: "Auto Exists Fail Workspace",
         directory: testWorkDir,
+        scratchpad: "",
         workspaceType: "git",
         executionTargetRevision: 1,
         executionHostBinding: {
@@ -1127,6 +1204,7 @@ describe("Workspace API Integration", () => {
         id: "auto-token-fail-workspace",
         name: "Auto Token Fail Workspace",
         directory: testWorkDir,
+        scratchpad: "",
         workspaceType: "git",
         executionTargetRevision: 1,
         executionHostBinding: {

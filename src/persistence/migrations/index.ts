@@ -524,6 +524,18 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: 70,
+    name: "add_workspace_scratchpad",
+    up: (db) => {
+      if (
+        tableExists(db, "workspaces")
+        && !getTableColumns(db, "workspaces").includes("scratchpad")
+      ) {
+        db.run("ALTER TABLE workspaces ADD COLUMN scratchpad TEXT NOT NULL DEFAULT ''");
+      }
+    },
+  },
 ];
 
 function getMigrationTableColumns(db: Database, tableName: string): string[] {

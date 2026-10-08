@@ -170,6 +170,7 @@ export async function setupTestContext(options: SetupOptions = {}): Promise<Test
       id: testWorkspaceId,
       name: "Test Workspace",
       directory: workDir,
+      scratchpad: "",
       workspaceType: "git",
       executionTargetRevision: 1,
       executionHostBinding: binding,

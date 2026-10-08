@@ -14,6 +14,10 @@
 import type { ServerSettings } from "./settings";
 import type { ExecutionHostBinding } from "./execution-host";
 
+export const WORKSPACE_SCRATCHPAD_MAX_LENGTH = 100_000;
+export const WORKSPACE_SCRATCHPAD_TOO_LONG_MESSAGE =
+  "Scratchpad must be 100,000 characters or fewer.";
+
 export interface WorkspaceSshTarget {
   kind: "ssh";
   host: string;
@@ -38,6 +42,8 @@ export interface Workspace {
   name: string;
   /** Absolute path to the workspace directory */
   directory: string;
+  /** Workspace-scoped Markdown notes */
+  scratchpad: string;
   /** Whether the workspace exposes Git-backed task and branch capabilities */
   workspaceType: WorkspaceType;
   /** Whether new worktree-backed execution contexts may be created */
@@ -83,3 +89,5 @@ export interface PublicServerSettings {
 export interface PublicWorkspace extends Omit<Workspace, "serverSettings"> {
   serverSettings: PublicServerSettings;
 }
+
+export type PublicWorkspaceSummary = Omit<PublicWorkspace, "scratchpad">;

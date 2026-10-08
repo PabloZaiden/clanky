@@ -26,6 +26,7 @@ const workspace: Workspace = {
   id: "workspace-1",
   name: "Workspace",
   directory: "/workspace",
+  scratchpad: "",
   workspaceType: "git",
   executionTargetRevision: 1,
   executionHostBinding: binding,

@@ -185,6 +185,8 @@ function getHeaderScopeSubtitle({
       return getWorkspaceScopeSubtitle(selectedAgent?.config.workspaceId ?? agentRunWorkspaceId, workspaces);
     case "agents":
       return getWorkspaceScopeSubtitle(getRouteString(route, "workspaceId"), workspaces);
+    case "scratchpad":
+      return getWorkspaceScopeSubtitle(getRouteString(route, "workspaceId"), workspaces);
     case "code-explorer": {
       const contentType = getRouteString(route, "contentType");
       if (contentType === "task") {
@@ -317,6 +319,8 @@ export function useShellHeader({
         return nodeModel
           ? { title: nodeModel.title, detailSubtitle: "Workspace settings" }
           : { title: "Workspace settings" };
+      case "scratchpad":
+        return { title: "Scratchpad", scopeSubtitle };
       case "execution-host":
         return nodeModel ?? { title: "Execution server" };
       case "execution-host-files":

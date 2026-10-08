@@ -361,6 +361,70 @@ describe("database schema", () => {
     });
   });
 
+  test("adds Scratchpad to a version-69 workspace and defaults it to empty", () => {
+    const database = new Database(":memory:");
+    try {
+      database.run("PRAGMA foreign_keys = ON");
+      createBaseSchema(database);
+      const scratchpadMigration = migrations.find(
+        (migration) => migration.name === "add_workspace_scratchpad",
+      );
+      if (!scratchpadMigration) {
+        throw new Error("Workspace Scratchpad migration is missing");
+      }
+      for (const migration of migrations.filter(
+        (candidate) => candidate.version < scratchpadMigration.version,
+      )) {
+        migration.up(database);
+        database.run(
+          "INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)",
+          [migration.version, migration.name, "previously-applied"],
+        );
+      }
+      database.run(
+        `INSERT INTO execution_hosts (
+          id, user_id, kind, source_id, target_key, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        ["host-1", "owner-1", "local", "node-1", "local:node-1", "created", "updated"],
+      );
+      database.run(
+        `INSERT INTO workspaces (
+          id, user_id, name, directory, execution_host_id, execution_host_revision,
+          server_settings, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          "workspace-1",
+          "owner-1",
+          "Workspace",
+          "/synthetic",
+          "host-1",
+          1,
+          '{"agent":{"adapter":"acp","provider":"copilot"}}',
+          "created",
+          "updated",
+        ],
+      );
+
+      expect(getSchemaVersion(database)).toBe(scratchpadMigration.version - 1);
+      expect(getTableColumns(database, "workspaces")).not.toContain("scratchpad");
+      expect(runMigrations(database)).toBe(1);
+      expect(
+        database.query(
+          "SELECT id, user_id, name, directory, scratchpad FROM workspaces WHERE id = ?",
+        ).get("workspace-1"),
+      ).toEqual({
+        id: "workspace-1",
+        user_id: "owner-1",
+        name: "Workspace",
+        directory: "/synthetic",
+        scratchpad: "",
+      });
+      expect(runMigrations(database)).toBe(0);
+    } finally {
+      database.close();
+    }
+  });
+
   // A fresh HTTP server cannot exercise the deployed schema's data-preserving upgrade.
   test("upgrades version 63 conversation storage without losing owned session data", () => {
     const database = new Database(":memory:");
@@ -836,7 +900,7 @@ describe("database schema", () => {
           ('mixed-relay', 'mixed-relay-fingerprint', '[6,99]', 6, 6, 'known-observation');
       `);
       for (let version = 1; version <= 67; version++) database.run("INSERT INTO schema_migrations VALUES (?, ?, ?)", [version, `prior-${version}`, "before-upgrade"]);
-      expect(runMigrations(database)).toBe(2);
+      expect(runMigrations(database)).toBe(3);
       expect(database.query("SELECT current_version, migrated_from_version FROM mesh_protocol_state").get()).toEqual({ current_version: 6, migrated_from_version: 1 });
       expect(database.query("SELECT * FROM mesh_worker_registrations ORDER BY worker_node_id").all()).toEqual([
         { worker_node_id: "mixed-worker", worker_public_key: "mixed-key", worker_fingerprint: "mixed-fingerprint", grant_status: "active", worker_supported_protocol_versions_json: "[6,99]", worker_preferred_protocol_version: 6, worker_negotiated_protocol_version: 6, worker_protocol_updated_at: "known-observation" },

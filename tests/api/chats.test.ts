@@ -3111,6 +3111,7 @@ describe("Chats API Integration", () => {
       id: workspaceId,
       name: "Directory Chat Workspace",
       directory: testWorkDir,
+      scratchpad: "",
       workspaceType: "directory",
       executionTargetRevision: 1,
       executionHostBinding: existingWorkspace.executionHostBinding,
