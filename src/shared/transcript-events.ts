@@ -1,6 +1,7 @@
 import type { MessageData, ToolCallData } from "./events";
 import type { ChatTranscript } from "./chat-transcript";
 import type { TaskLogEntry } from "./task";
+import { isCountedAssistantResponse } from "./chat-transcript";
 import {
   isToolCallSummary,
   mergeToolCallDisplayData,
@@ -62,7 +63,7 @@ function compareRecords(
 function upsertRecord<T extends { id: string; timestamp: string }>(
   records: T[],
   incoming: T,
-): { records: T[]; added: boolean } {
+): { records: T[]; added: boolean; previous: T | undefined } {
   const existingIndex = records.findIndex((record) => record.id === incoming.id);
   const nextRecords = existingIndex < 0
     ? [...records, incoming]
@@ -70,6 +71,7 @@ function upsertRecord<T extends { id: string; timestamp: string }>(
   return {
     records: nextRecords.sort(compareRecords),
     added: existingIndex < 0,
+    previous: existingIndex < 0 ? undefined : records[existingIndex],
   };
 }
 
@@ -77,11 +79,11 @@ function withCollections(
   current: ChatTranscript,
   collections: Partial<Pick<ChatTranscript, "messages" | "logs" | "toolCalls">>,
   addedEntries = 0,
-  addedResponses = 0,
+  responseCountDelta = 0,
 ): ChatTranscript {
   const messages = collections.messages ?? current.messages;
   const loadedResponses = messages.reduce(
-    (count, message) => count + (message.role === "assistant" ? 1 : 0),
+    (count, message) => count + (isCountedAssistantResponse(message) ? 1 : 0),
     0,
   );
   return {
@@ -91,7 +93,7 @@ function withCollections(
     loadedResponses,
     totalResponses: Math.max(
       loadedResponses,
-      current.totalResponses + addedResponses,
+      current.totalResponses + responseCountDelta,
     ),
   };
 }
@@ -108,7 +110,8 @@ export function applyTranscriptStreamEvent(
           current,
           { messages: result.records },
           result.added ? 1 : 0,
-          result.added && event.message.role === "assistant" ? 1 : 0,
+          Number(isCountedAssistantResponse(event.message))
+            - Number(result.previous !== undefined && isCountedAssistantResponse(result.previous)),
         ),
         gapDetected: false,
       };
@@ -141,7 +144,8 @@ export function applyTranscriptStreamEvent(
           current,
           { messages: result.records },
           result.added ? 1 : 0,
-          result.added && message.role === "assistant" ? 1 : 0,
+          Number(isCountedAssistantResponse(message))
+            - Number(result.previous !== undefined && isCountedAssistantResponse(result.previous)),
         ),
         gapDetected: false,
       };

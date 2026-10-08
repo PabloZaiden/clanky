@@ -28,7 +28,7 @@ export const tasksTranscriptRoutes = defineRoutes({
   "/api/tasks/:id/snapshot": {
     auth: "user",
     sameOrigin: "mutations",
-    description: "Read the latest page of up to 100 assistant responses for a task; use before for older history or full=1 for the complete transcript.",
+    description: "Read the latest page of up to 100 non-empty assistant responses for a task; use before for older history or full=1 for the complete transcript.",
     async GET(req: Request, ctx): Promise<Response> {
       const options = parseTranscriptSnapshotOptions(req);
       if (options instanceof Response) {
