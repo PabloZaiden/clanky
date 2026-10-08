@@ -452,6 +452,15 @@ behavior-preserving refactor should not invalidate it, and whether equivalent
 coverage already exists. Delete or rewrite the test when any of those answers is
 missing.
 
+### Video creation with fframes
+
+During fframes video creation, editing, or review, do not write or modify
+automated tests of any kind, including unit, integration, snapshot,
+visual-regression, or test-harness code. Validate the result with the fframes
+CLI and media checks instead (`timeline`, `inspect`, `frame`/`strip`, audio
+analysis, and preview). This does not waive the existing build and test-suite
+verification requirements when application code changes.
+
 Use the highest practical public boundary:
 
 - API tests should exercise real HTTP requests, persistence, workspace effects,
