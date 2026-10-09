@@ -388,9 +388,9 @@ export function getActiveWorkItemTimestamp(item: SidebarActiveWorkItem): string 
     case "execution-host-chat":
       return item.chatNode.chat.state.lastUserMessageAt ?? item.chatNode.chat.config.createdAt;
     case "terminal-session":
-      return item.sessionNode.createdAt;
     case "execution-host-terminal":
-      return item.sessionNode.createdAt;
+      return item.sessionNode.session.state.lastConnectedAt
+        ?? item.sessionNode.session.config.createdAt;
   }
 }
 

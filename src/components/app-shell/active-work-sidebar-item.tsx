@@ -4,7 +4,7 @@ import {
   formatStatusLabel,
   type SidebarNode,
 } from "@pablozaiden/webapp/web";
-import { formatSidebarRelativeTime } from "../../utils/format";
+import { formatSidebarRelativeTime } from "../../utils";
 
 export type ActiveWorkSidebarItemType = "Task" | "Chat" | "Terminal";
 
