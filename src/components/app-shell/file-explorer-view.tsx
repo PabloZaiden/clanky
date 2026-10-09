@@ -26,6 +26,8 @@ import {
   getFileExplorerDownloadUrl,
 } from "../../hooks/workspaceFileActions";
 import type { FileExplorerTarget } from "../../hooks/workspaceFileActions";
+import type { ControlUiActionOutcome } from "@/shared/clanky-control";
+import type { PendingControlFileOpen } from "./use-control-ui-actions";
 
 function TerminalIcon() {
   return (
@@ -65,6 +67,26 @@ function getFileExplorerOperationFallback(operation: FileExplorerOperation): str
 
 const FILE_EXPLORER_MOBILE_MEDIA_QUERY = "(max-width: 1023px)";
 
+function getAutoOpenRouteKey(
+  target: FileExplorerTarget,
+  defaultRootDirectory: string,
+  filePath: string,
+): string {
+  return [
+    target.type,
+    target.id,
+    target.startDirectory ?? defaultRootDirectory,
+    filePath,
+  ].join("::");
+}
+
+function actionFailureForControlFile(
+  code: "editor_dirty" | "file_open_failed" | "file_not_loaded",
+  message: string,
+): ControlUiActionOutcome {
+  return { status: "failed", code, message };
+}
+
 function isFileExplorerMobileViewport(): boolean {
   return typeof window !== "undefined"
     && typeof window.matchMedia === "function"
@@ -98,6 +120,8 @@ interface FileExplorerViewProps {
   credentialPromptName?: string;
   initialFilePath?: string;
   buildRoute?: (startDirectory?: string) => WebAppRoute;
+  controlFileOpenRequest?: PendingControlFileOpen;
+  onControlFileOpenResult?: (actionId: string, outcome: ControlUiActionOutcome) => void;
 }
 
 export function FileExplorerView({
@@ -116,6 +140,8 @@ export function FileExplorerView({
   credentialPromptName,
   initialFilePath,
   buildRoute,
+  controlFileOpenRequest,
+  onControlFileOpenResult,
 }: FileExplorerViewProps) {
   const toast = useToast();
   const hasStoredServerCredential = target.type === "executionHost" && target.kind === "ssh"
@@ -162,6 +188,12 @@ export function FileExplorerView({
   const [loadFullTreeInput, setLoadFullTreeInput] = useState(fullTreePreference.enabled);
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const lastAutoOpenedFileRef = useRef<string | null>(null);
+  const lastReportedControlActionRef = useRef<string | null>(null);
+  const [autoOpenAttempt, setAutoOpenAttempt] = useState<{
+    routeKey: string;
+    status: "loading" | "complete" | "failed";
+    error?: string;
+  } | null>(null);
   const selectableSessions = useMemo(
     () => sessions.map((session) => ({
       id: session.config.id,
@@ -586,18 +618,27 @@ export function FileExplorerView({
       return;
     }
 
-    const routeKey = [
-      target.type,
-      target.id,
-      target.startDirectory ?? defaultRootDirectory,
-      initialFilePath,
-    ].join("::");
+    const routeKey = getAutoOpenRouteKey(target, defaultRootDirectory, initialFilePath);
     if (lastAutoOpenedFileRef.current === routeKey) {
       return;
     }
 
     lastAutoOpenedFileRef.current = routeKey;
-    void handleOpenFile(initialFilePath);
+    setAutoOpenAttempt({ routeKey, status: "loading" });
+    void handleOpenFile(initialFilePath).then(
+      () => setAutoOpenAttempt({ routeKey, status: "complete" }),
+      (error: unknown) => {
+        console.error("Failed to open the Code Explorer route file", {
+          filePath: initialFilePath,
+          error: String(error),
+        });
+        setAutoOpenAttempt({
+          routeKey,
+          status: "failed",
+          error: error instanceof Error ? error.message : String(error),
+        });
+      },
+    );
   }, [
     defaultRootDirectory,
     explorer.currentFile,
@@ -611,6 +652,85 @@ export function FileExplorerView({
     startupBlockedByPassword,
     target.id,
     target.startDirectory,
+    target.type,
+  ]);
+
+  useEffect(() => {
+    const request = controlFileOpenRequest;
+    if (
+      !request
+      || !onControlFileOpenResult
+      || target.type !== "workspace"
+      || target.id !== request.workspaceId
+      || initialFilePath !== request.filePath
+      || lastReportedControlActionRef.current === request.actionId
+    ) {
+      return;
+    }
+
+    const report = (outcome: ControlUiActionOutcome): void => {
+      lastReportedControlActionRef.current = request.actionId;
+      onControlFileOpenResult(request.actionId, outcome);
+    };
+    if (
+      explorer.currentFile?.path === request.filePath
+      && !explorer.loadingFile
+      && explorer.pendingFilePath !== request.filePath
+    ) {
+      report({ status: "opened", action: request.action });
+      return;
+    }
+    if (
+      explorer.currentFile
+      && explorer.isDirty
+      && explorer.currentFile.path !== request.filePath
+      && !explorer.loadingFile
+      && explorer.pendingFilePath !== request.filePath
+    ) {
+      report(actionFailureForControlFile("editor_dirty", "Save or discard the current file changes before opening another file."));
+      return;
+    }
+    if (
+      startupBlockedByPassword
+      || fullTreePreference.loading
+      || explorer.loadingTree
+      || explorer.loadingFile
+      || explorer.pendingFilePath === request.filePath
+    ) {
+      return;
+    }
+
+    const routeKey = getAutoOpenRouteKey(target, defaultRootDirectory, request.filePath);
+    if (autoOpenAttempt?.routeKey !== routeKey || autoOpenAttempt.status === "loading") {
+      return;
+    }
+    if (autoOpenAttempt.status === "failed" || explorer.error) {
+      report(actionFailureForControlFile(
+        "file_open_failed",
+        autoOpenAttempt.error ?? explorer.error ?? "The requested file could not be opened.",
+      ));
+      return;
+    }
+    if (explorer.currentFile?.path === request.filePath) {
+      report({ status: "opened", action: request.action });
+      return;
+    }
+    report(actionFailureForControlFile("file_not_loaded", "The requested file did not become the active editor file."));
+  }, [
+    autoOpenAttempt,
+    controlFileOpenRequest,
+    defaultRootDirectory,
+    explorer.currentFile,
+    explorer.error,
+    explorer.isDirty,
+    explorer.loadingFile,
+    explorer.loadingTree,
+    explorer.pendingFilePath,
+    fullTreePreference.loading,
+    initialFilePath,
+    onControlFileOpenResult,
+    startupBlockedByPassword,
+    target.id,
     target.type,
   ]);
 

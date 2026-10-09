@@ -4,6 +4,7 @@
 import { z } from "zod";
 import { HarnessConversationBindingSchema, HarnessEventScopeSchema, HarnessQuestionInfoSchema } from "./harness";
 import { MESH_PROTOCOL_VERSION } from "@/shared/mesh-protocol";
+import { ClankyControlContextSchema } from "@/shared/clanky-control";
 
 const Id = z.string().min(1).max(500);
 const Path = z.string().min(1).max(16_384);
@@ -15,6 +16,7 @@ const Prompt = z.object({
     z.object({ type: z.literal("resource"), resource: z.object({ uri: Path, mimeType: z.string().optional(), blob: z.string() }) }),
   ])).min(1).max(100),
   model: z.object({ providerID: Id, modelID: Id, variant: z.string().optional() }).optional(),
+  controlContext: ClankyControlContextSchema.optional(),
 });
 const Session = z.object({ sessionId: Id });
 const InputRecovery = z.object({

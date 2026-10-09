@@ -23,7 +23,12 @@ export const chatsMessagingRoutes = defineRoutes({
       const validation = await parseAndValidate(ReplyToChatQuestionRequestSchema, req);
       if (!validation.success) return validation.response;
       try {
-        const chat = await chatManager.replyToQuestion(ctx.params["id"]!, ctx.params["requestId"]!, validation.data.answers);
+        const chat = await chatManager.replyToQuestion(
+          ctx.params["id"]!,
+          ctx.params["requestId"]!,
+          validation.data.answers,
+          validation.data.clientId,
+        );
         return successResponse({ chat: await toLightweightChat(chat) });
       } catch (error) {
         const known = chatActionErrorResponse(error);
@@ -89,6 +94,7 @@ export const chatsMessagingRoutes = defineRoutes({
           message: validation.data.message ?? undefined,
           attachments: validation.data.attachments,
           credentialToken: validation.data.credentialToken,
+          clientId: validation.data.clientId,
         });
         return successResponse({
           chatId: ctx.params["id"]!,

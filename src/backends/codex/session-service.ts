@@ -7,20 +7,42 @@ import type { HarnessConversationBinding } from "@/shared/harness-control";
 import type { HarnessEventScope } from "@/shared/harness-events";
 import type { Thread } from "./generated/v2/Thread";
 import type { ReasoningEffort } from "./generated/ReasoningEffort";
+import type { DynamicToolSpec } from "./generated/v2/DynamicToolSpec";
 import type { CodexNotification } from "./protocol";
 import type { CodexRuntime } from "./runtime";
 import type { CodexModelCatalog } from "./model-catalog";
 import type { HarnessEventHub } from "../harness-event-hub";
+import type { ClankyControlContext } from "@/shared/clanky-control";
 import { HarnessError } from "../harness-errors";
 import { requireMatchingHarnessBinding } from "../harness-binding";
 import { CodexEventTranslator } from "./event-translator";
 import { toCodexInput } from "./prompt";
 import { codexQuestionConfig } from "./question-policy";
+import { ClankyControlToolService } from "../clanky-control-tools";
+import type { ClankyControlToolResult } from "../clanky-control-tools";
+import { z } from "zod";
+
+const DynamicToolCallParamsSchema = z.object({
+  threadId: z.string().min(1),
+  turnId: z.string().min(1),
+  callId: z.string().min(1),
+  namespace: z.string().nullable(),
+  tool: z.string().min(1),
+  arguments: z.unknown(),
+}).strict();
+
+function dynamicToolResponse(result: ClankyControlToolResult) {
+  return {
+    contentItems: [{ type: "inputText" as const, text: JSON.stringify(result) }],
+    success: result.ok,
+  };
+}
 
 interface Conversation {
   info: AgentSession;
   model?: string;
   effort?: ReasoningEffort;
+  activeControlContext?: ClankyControlContext;
 }
 
 interface TrackedThread {
@@ -40,11 +62,13 @@ export class CodexSessionService {
   private readonly operations = new Set<Promise<AgentSession>>();
   private readonly resuming = new Map<string, Promise<AgentSession>>();
   private closing = false;
+  private controlTools?: ClankyControlToolService;
 
   constructor(private readonly dependencies: {
     runtime: CodexRuntime;
     catalog: CodexModelCatalog;
     events: HarnessEventHub;
+    managedEnvironment?: Record<string, string | undefined>;
   }) {
     this.unsubscribe = dependencies.runtime.rpc.onNotification((event) => {
       try { this.receive(event); } catch (error) {
@@ -71,6 +95,7 @@ export class CodexSessionService {
       cwd: options.directory, model: options.model, ephemeral: false,
       approvalPolicy: "never", sandbox: "danger-full-access", allowProviderModelFallback: false,
       config: await codexQuestionConfig(this.dependencies.runtime, options.ownership.questionPolicy),
+      ...(options.ownership.controlTools ? { dynamicTools: this.nativeControlTools() } : {}),
     });
     const binding: HarnessConversationBinding = {
       ...options.ownership, adapter: "codex", nativeId: result.thread.id, directory: options.directory,
@@ -105,6 +130,12 @@ export class CodexSessionService {
   }
 
   private async resumeNative(binding: HarnessConversationBinding): Promise<AgentSession> {
+    if (binding.controlTools) {
+      throw new HarnessError(
+        "harness_unsupported_feature",
+        "This Codex app-server cannot restore Clanky control tools when resuming a persisted thread. Start a new control chat.",
+      );
+    }
     // Core supplies only its persisted owned binding; no native directory/session import.
     const result = await this.dependencies.runtime.rpc.request("thread/resume", {
       threadId: binding.nativeId, excludeTurns: true, cwd: binding.directory,
@@ -169,17 +200,58 @@ export class CodexSessionService {
 
   async send(id: string, prompt: PromptInput): Promise<void> {
     const conversation = this.get(id);
-    const current = await this.dependencies.runtime.rpc.request("thread/read", { threadId: id, includeTurns: false });
-    if (current.thread.status.type === "active") throw new HarnessError("harness_request_failed", "The native root already has an active turn.");
-    const choice = prompt.model ? await this.dependencies.catalog.requireModel(prompt.model.modelID, prompt.model.variant) : undefined;
-    const result = await this.dependencies.runtime.rpc.request("turn/start", {
-      threadId: id, input: toCodexInput(prompt),
-      model: choice?.model.model ?? conversation.model,
-      effort: choice?.effort ?? conversation.effort,
-      approvalPolicy: "never", sandboxPolicy: { type: "dangerFullAccess" },
-    });
-    const tracked = this.threads.get(id)!;
-    if (result.turn.status === "inProgress" && tracked.completedTurnId !== result.turn.id) tracked.turnId = result.turn.id;
+    this.activateControlContext(conversation, prompt.controlContext);
+    try {
+      const current = await this.dependencies.runtime.rpc.request("thread/read", { threadId: id, includeTurns: false });
+      if (current.thread.status.type === "active") {
+        throw new HarnessError("harness_request_failed", "The native root already has an active turn.");
+      }
+      const choice = prompt.model ? await this.dependencies.catalog.requireModel(prompt.model.modelID, prompt.model.variant) : undefined;
+      const result = await this.dependencies.runtime.rpc.request("turn/start", {
+        threadId: id, input: toCodexInput(prompt),
+        model: choice?.model.model ?? conversation.model,
+        effort: choice?.effort ?? conversation.effort,
+        approvalPolicy: "never", sandboxPolicy: { type: "dangerFullAccess" },
+      });
+      const tracked = this.threads.get(id)!;
+      if (result.turn.status === "inProgress" && tracked.completedTurnId !== result.turn.id) tracked.turnId = result.turn.id;
+    } catch (error) {
+      conversation.activeControlContext = undefined;
+      throw error;
+    }
+  }
+
+  async handleToolCall(request: { method: string; params: unknown; signal: AbortSignal }): Promise<unknown> {
+    if (request.method !== "item/tool/call") {
+      throw new HarnessError("harness_unsupported_feature", "The native callback is unsupported.");
+    }
+    const params = DynamicToolCallParamsSchema.parse(request.params);
+    const tracked = this.threads.get(params.threadId);
+    const conversation = tracked?.rootId === params.threadId
+      ? this.conversations.get(params.threadId)
+      : undefined;
+    const context = conversation?.activeControlContext;
+    if (
+      !tracked
+      || !conversation?.info.binding?.controlTools
+      || !context
+      || tracked.turnId !== params.turnId
+      || params.namespace !== null
+    ) {
+      return dynamicToolResponse({
+        ok: false,
+        error: {
+          code: "control_context_unavailable",
+          message: "This Clanky tool call is not correlated with an active control-chat turn.",
+        },
+      });
+    }
+    return dynamicToolResponse(await this.getControlToolService().invoke(
+      params.tool,
+      params.arguments,
+      context,
+      request.signal,
+    ));
   }
 
   async setModel(id: string, modelID: string, variant?: string): Promise<ConfigOption[]> {
@@ -262,8 +334,49 @@ export class CodexSessionService {
     for (const translated of entry.translator.translate(event, scope)) this.dependencies.events.publish(entry.rootId, translated);
     if (event.method === "turn/completed") {
       entry.completedTurnId = event.params.turn.id;
+      if (entry.rootId === entry.thread.id) {
+        const conversation = this.conversations.get(entry.rootId);
+        if (conversation?.activeControlContext && entry.turnId === event.params.turn.id) {
+          conversation.activeControlContext = undefined;
+        }
+      }
       if (entry.turnId === event.params.turn.id) entry.turnId = undefined;
     }
+  }
+
+  private activateControlContext(conversation: Conversation, context: ClankyControlContext | undefined): void {
+    const binding = conversation.info.binding;
+    if (binding?.controlTools !== true) {
+      if (context) throw new HarnessError("harness_session_not_owned", "Clanky control context is not enabled for this conversation.");
+      return;
+    }
+    if (!context || context.chatId !== (binding.controlChatId ?? binding.contextId) || !context.workspaceId || !context.turnId) {
+      throw new HarnessError("harness_session_not_owned", "The active Clanky control turn does not match its native conversation.");
+    }
+    if (conversation.activeControlContext) {
+      throw new HarnessError("harness_request_failed", "A Clanky control turn is already active in this conversation.");
+    }
+    conversation.activeControlContext = context;
+  }
+
+  private nativeControlTools(): DynamicToolSpec[] {
+    return this.getControlToolService().definitions.map((definition) => ({
+      type: "function",
+      name: definition.name,
+      description: definition.description,
+      inputSchema: definition.inputSchema,
+    }));
+  }
+
+  private getControlToolService(): ClankyControlToolService {
+    if (!this.controlTools) {
+      try {
+        this.controlTools = new ClankyControlToolService(this.dependencies.managedEnvironment ?? {});
+      } catch (error) {
+        throw new HarnessError("harness_runtime_unavailable", "Managed Clanky API credentials are unavailable for control tools.", { cause: error });
+      }
+    }
+    return this.controlTools;
   }
 
   private runOperation(operation: () => Promise<AgentSession>): Promise<AgentSession> {

@@ -25,7 +25,10 @@ interface TestResult {
   exitCode: number;
   output: string;
   elapsedMs: number;
+  outputStreamed?: boolean;
 }
+
+type TestOutputLineHandler = (line: string) => void;
 
 export interface ShardAssignment {
   files: string[];
@@ -36,7 +39,11 @@ interface RunTestBucketsDependencies {
     mode: TestMode,
     workerCapacity: number,
   ) => Promise<TestBucket[]>;
-  runBucket: (bucket: TestBucket, env: Record<string, string>) => Promise<TestResult>;
+  runBucket: (
+    bucket: TestBucket,
+    env: Record<string, string>,
+    onOutputLine?: TestOutputLineHandler,
+  ) => Promise<TestResult>;
   log: (message: string) => void;
 }
 
@@ -60,7 +67,7 @@ const suiteDefinitions: SuiteDefinition[] = [
     label: "tests/e2e/native-worker-registration.test.ts",
     pattern: "tests/e2e/native-worker-registration.test.ts",
     fileConcurrency: 1,
-    argsPrefix: ["test", "--dots", "--timeout", "120000", "--preload", "./tests/backend-user-context.ts", "--isolate"],
+    argsPrefix: ["test", "--timeout", "120000", "--preload", "./tests/backend-user-context.ts", "--isolate"],
     modes: ["native-worker"],
   },
   {
@@ -68,7 +75,7 @@ const suiteDefinitions: SuiteDefinition[] = [
     label: "tests/unit",
     pattern: "tests/unit/**/*.test.{ts,tsx,js,jsx}",
     fileConcurrency: 2,
-    argsPrefix: ["test", "--dots", "--timeout", "30000", "--preload", "./tests/backend-user-context.ts", "--isolate"],
+    argsPrefix: ["test", "--timeout", "30000", "--preload", "./tests/backend-user-context.ts", "--isolate"],
     modes: ["all", "backend"],
   },
   {
@@ -76,7 +83,7 @@ const suiteDefinitions: SuiteDefinition[] = [
     label: "tests/api",
     pattern: "tests/api/**/*.test.{ts,tsx,js,jsx}",
     fileConcurrency: 2,
-    argsPrefix: ["test", "--dots", "--timeout", "30000", "--preload", "./tests/backend-user-context.ts", "--isolate"],
+    argsPrefix: ["test", "--timeout", "30000", "--preload", "./tests/backend-user-context.ts", "--isolate"],
     modes: ["all", "backend"],
   },
   {
@@ -84,7 +91,7 @@ const suiteDefinitions: SuiteDefinition[] = [
     label: "tests/e2e",
     pattern: "tests/e2e/**/*.test.{ts,tsx,js,jsx}",
     fileConcurrency: 1,
-    argsPrefix: ["test", "--dots", "--timeout", "30000", "--preload", "./tests/backend-user-context.ts", "--isolate"],
+    argsPrefix: ["test", "--timeout", "30000", "--preload", "./tests/backend-user-context.ts", "--isolate"],
     modes: ["all", "backend"],
   },
   {
@@ -92,7 +99,7 @@ const suiteDefinitions: SuiteDefinition[] = [
     label: "tests/integration",
     pattern: "tests/integration/**/*.test.{ts,tsx,js,jsx}",
     fileConcurrency: 1,
-    argsPrefix: ["test", "--dots", "--timeout", "30000", "--preload", "./tests/backend-user-context.ts", "--isolate"],
+    argsPrefix: ["test", "--timeout", "30000", "--preload", "./tests/backend-user-context.ts", "--isolate"],
     modes: ["all", "backend"],
   },
 ];
@@ -133,11 +140,61 @@ function formatFullOutput(output: string): string {
   return trimmed.length > 0 ? trimmed : "(no output)";
 }
 
-async function readStream(stream: ReadableStream<Uint8Array> | null): Promise<string> {
+function isTestProgressLine(line: string): boolean {
+  const trimmed = line.trim();
+  return trimmed.startsWith("bun test v")
+    || trimmed.startsWith("--changed:")
+    || /^tests\/.*:$/.test(trimmed)
+    || /^\((pass|fail|skip)\)/.test(trimmed)
+    || /^\d+ (pass|fail|skip|expect\(\) calls)/.test(trimmed)
+    || /^Ran \d+ tests/.test(trimmed);
+}
+
+async function readStream(
+  stream: ReadableStream<Uint8Array> | null,
+  onLine?: TestOutputLineHandler,
+): Promise<string> {
   if (stream === null) {
     return "";
   }
-  return await new Response(stream).text();
+
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let output = "";
+  let pendingLine = "";
+
+  const emitLines = (chunk: string, final = false): void => {
+    pendingLine += chunk;
+    let newlineIndex = pendingLine.indexOf("\n");
+    while (newlineIndex !== -1) {
+      onLine?.(pendingLine.slice(0, newlineIndex).replace(/\r$/, ""));
+      pendingLine = pendingLine.slice(newlineIndex + 1);
+      newlineIndex = pendingLine.indexOf("\n");
+    }
+    if (final && pendingLine.length > 0) {
+      onLine?.(pendingLine.replace(/\r$/, ""));
+      pendingLine = "";
+    }
+  };
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      const chunk = decoder.decode(value, { stream: true });
+      output += chunk;
+      emitLines(chunk);
+    }
+    const finalChunk = decoder.decode();
+    output += finalChunk;
+    emitLines(finalChunk, true);
+  } finally {
+    reader.releaseLock();
+  }
+
+  return output;
 }
 
 async function listTestFiles(pattern: string): Promise<string[]> {
@@ -291,7 +348,6 @@ export function buildNativeTestArgs(
     : 1;
   return [
     "test",
-    "--dots",
     "--timeout",
     "30000",
     "--preload",
@@ -361,7 +417,11 @@ export async function buildBuckets(
   return buckets;
 }
 
-async function runBucket(bucket: TestBucket, env: Record<string, string>): Promise<TestResult> {
+async function runBucket(
+  bucket: TestBucket,
+  env: Record<string, string>,
+  onOutputLine?: TestOutputLineHandler,
+): Promise<TestResult> {
   const start = Date.now();
   const proc = Bun.spawn({
     cmd: [process.execPath, ...bucket.args],
@@ -371,9 +431,17 @@ async function runBucket(bucket: TestBucket, env: Record<string, string>): Promi
     stderr: "pipe",
   });
 
+  let streamedProgress = false;
+  const emitProgressLine = (line: string): void => {
+    if (onOutputLine === undefined || !isTestProgressLine(line)) {
+      return;
+    }
+    streamedProgress = true;
+    onOutputLine(line);
+  };
   const [stdout, stderr, exitCode] = await Promise.all([
-    readStream(proc.stdout),
-    readStream(proc.stderr),
+    readStream(proc.stdout, emitProgressLine),
+    readStream(proc.stderr, emitProgressLine),
     proc.exited,
   ]);
 
@@ -384,6 +452,7 @@ async function runBucket(bucket: TestBucket, env: Record<string, string>): Promi
     exitCode,
     output,
     elapsedMs: Date.now() - start,
+    outputStreamed: streamedProgress,
   };
 }
 
@@ -391,7 +460,10 @@ async function runBuckets(
   buckets: TestBucket[],
   env: Record<string, string>,
   maxWorkers: number,
-  runBucketImpl: (bucket: TestBucket, env: Record<string, string>) => Promise<TestResult> = runBucket,
+  runBucketImpl: (
+    bucket: TestBucket,
+    env: Record<string, string>,
+  ) => Promise<TestResult> = runBucket,
 ): Promise<TestResult[]> {
   const results: TestResult[] = [];
   let nextIndex = 0;
@@ -430,6 +502,7 @@ async function runNativeTests(
   log(`Using up to ${Math.max(1, Math.trunc(workerCapacity))} native worker process(es).`);
   log("");
 
+  const startedAt = Date.now();
   const proc = Bun.spawn({
     cmd: [process.execPath, ...args],
     cwd: rootDir,
@@ -437,16 +510,23 @@ async function runNativeTests(
     stdout: "pipe",
     stderr: "pipe",
   });
+  const emitProgressLine = (line: string): void => {
+    if (isTestProgressLine(line)) {
+      log(line);
+    }
+  };
   const [stdout, stderr, exitCode] = await Promise.all([
-    readStream(proc.stdout),
-    readStream(proc.stderr),
+    readStream(proc.stdout, emitProgressLine),
+    readStream(proc.stderr, emitProgressLine),
     proc.exited,
   ]);
-  const output = [stdout, stderr].filter((value) => value.length > 0).join("\n");
-  if (output.trim().length > 0) {
-    log(output.trim());
+  if (stdout.length === 0 && stderr.length === 0) {
+    log("(no test output)");
+  } else if (exitCode !== 0) {
+    log([stdout, stderr].filter((value) => value.length > 0).join("\n").trim());
   }
   log("");
+  log(`Native test process exited with code ${exitCode} after ${formatDuration(Date.now() - startedAt)}.`);
   return exitCode === 0 ? 0 : 1;
 }
 
@@ -475,7 +555,25 @@ async function runCustomTestBuckets(
   }
   log("");
 
-  const initialResults = await runBuckets(buckets, env, maxWorkers, runBucketImpl);
+  const executeBucketWithProgress = async (
+    bucket: TestBucket,
+    bucketEnv: Record<string, string>,
+  ): Promise<TestResult> => {
+    log(`== ${bucket.label} START ==`);
+    let streamedOutput = false;
+    const result = await runBucketImpl(bucket, bucketEnv, (line) => {
+      streamedOutput = true;
+      log(`[${bucket.label}] ${line}`);
+    });
+    const completedResult = {
+      ...result,
+      outputStreamed: result.outputStreamed ?? streamedOutput,
+    };
+    log(formatBucketHeader(completedResult));
+    return completedResult;
+  };
+
+  const initialResults = await runBuckets(buckets, env, maxWorkers, executeBucketWithProgress);
   const failedResults = initialResults.filter((result) => result.exitCode !== 0);
   const retryResults = new Map<string, TestResult>();
 
@@ -485,7 +583,7 @@ async function runCustomTestBuckets(
     );
     log("");
     for (const failedResult of failedResults) {
-      const retryResult = await runBucketImpl(createRetryBucket(failedResult.bucket), env);
+      const retryResult = await executeBucketWithProgress(createRetryBucket(failedResult.bucket), env);
       retryResults.set(failedResult.bucket.id, retryResult);
     }
   }
@@ -498,8 +596,13 @@ async function runCustomTestBuckets(
       failed = true;
     }
 
-    log(formatBucketHeader(result, retryResult));
-    const output = formatBucketOutput(result, retryResult);
+    if (retryResult !== undefined) {
+      log(formatBucketHeader(result, retryResult));
+    }
+    const wasStreamed = result.outputStreamed === true || retryResult?.outputStreamed === true;
+    const output = wasStreamed && finalExitCode === 0
+      ? null
+      : formatBucketOutput(result, retryResult);
     if (output !== null) {
       log(output);
     }

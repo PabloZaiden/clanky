@@ -14,6 +14,8 @@ export const HarnessConversationBindingSchema = z.object({
   directory: z.string().min(1),
   executionHost: ExecutionHostBindingSchema.optional(),
   questionPolicy: z.enum(["interactive", "unattended"]).optional(),
+  controlTools: z.boolean().optional(),
+  controlChatId: z.string().min(1).max(500).optional(),
 });
 
 export const HarnessNativeReferencesSchema = z.object({
@@ -53,6 +55,7 @@ export const HarnessQuestionMessageSchema = z.object({
 
 export const ReplyToChatQuestionRequestSchema = z.object({
   answers: z.array(z.array(z.string().min(1).max(10_000)).max(100)).min(1).max(100),
+  clientId: z.string().uuid().optional(),
 }).strict();
 
 const AcceptedInputSchema = z.object({
@@ -74,6 +77,7 @@ export const HarnessConversationStateSchema = z.object({
     activity: z.enum(["unavailable", "partial", "native"]),
     stopScopes: z.array(z.enum(["child-execution", "command"])),
     questionPolicy: z.literal("session").optional(),
+    clankyControlTools: z.boolean().optional(),
   }).optional(),
   gitSafety: z.union([
     z.object({ status: z.literal("safe"), observedAt: z.string() }),

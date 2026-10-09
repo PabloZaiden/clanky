@@ -45,7 +45,13 @@ export class CopilotConnection {
       }, this.startupAbort?.signal);
       const catalog = new CopilotModelCatalog(runtime);
       const questions = new CopilotQuestionCoordinator(this.events);
-      const sessions = new CopilotSessionService({ runtime, catalog, events: this.events, questions });
+      const sessions = new CopilotSessionService({
+        runtime,
+        catalog,
+        events: this.events,
+        questions,
+        managedEnvironment: config.managedEnvironment,
+      });
       this.services = { runtime, catalog, questions, sessions };
     })().finally(() => {
       signal?.removeEventListener("abort", abort);

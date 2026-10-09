@@ -22,9 +22,13 @@ import { getRegisteredSshServerId } from "@/shared/execution-host";
 import { backendManager, buildConnectionConfig } from "./backend";
 import { sshCredentialManager } from "./ssh-credential-manager";
 import { managedContextIdentityResolver } from "./managed-context-identity";
-import { managedCredentialService } from "./managed-credential-service";
+import {
+  CLANKY_CONTROL_CHAT_MANAGED_BY,
+  managedCredentialService,
+} from "./managed-credential-service";
 import { buildManagedContextEnvironment } from "./managed-context-environment";
 import { createLogger } from "@pablozaiden/webapp/server";
+import { preferencesManager } from "./preferences-manager";
 import { requireCurrentUserId } from "../context/user-context";
 import { createOwnedHarnessSession, resumeOwnedHarnessSession } from "./harness-session";
 import { HarnessError } from "../backends/harness-errors";
@@ -33,6 +37,7 @@ import { isDomainError } from "../domain/domain-error";
 import type { HarnessConversationBinding } from "@/shared/harness-control";
 import type { HarnessEvent } from "@/shared/harness-events";
 import { closeOpenQuestions, isQuestionOpen } from "@/shared/harness-questions";
+import { isClankyControlChat } from "@/shared/clanky-control";
 import type {
   ChatSessionPort,
   ChatStatePort,
@@ -147,16 +152,30 @@ export class ChatSessionService implements ChatSessionPort {
         stagedWorking.chat.config.id,
         workspaceId,
       );
+      const quickChatSettings = await preferencesManager.getQuickChatSettings();
+      const controlTools = isClankyControlChat(stagedWorking.chat, quickChatSettings.workspaceId);
       const credential = await managedCredentialService.ensureCredentialForRuntime(
         identity,
         working.chat.state.session?.id ? "recreate" : "reuse",
+        controlTools ? {
+          managedBy: CLANKY_CONTROL_CHAT_MANAGED_BY,
+          name: "Clanky control chat",
+          allowWhenWorkspaceDisabled: true,
+          reuseActiveCredential: true,
+        } : undefined,
       );
+      if (controlTools && !credential) {
+        throw new HarnessError("harness_runtime_unavailable", "Managed Clanky API credentials could not be provided to the control chat.");
+      }
       try {
-        await backend.connect(buildConnectionConfig(
-          await this.backendManager.getWorkspaceSettings(workspaceId),
-          stagedWorking.directory,
-          buildManagedContextEnvironment(credential),
-        ), options.signal);
+        await backend.connect({
+          ...buildConnectionConfig(
+            await this.backendManager.getWorkspaceSettings(workspaceId),
+            stagedWorking.directory,
+            buildManagedContextEnvironment(credential),
+          ),
+          controlTools,
+        }, options.signal);
       } catch (error) {
         await managedCredentialService.cleanupFailedLaunch(credential, error);
         throw error;
@@ -178,8 +197,9 @@ export class ChatSessionService implements ChatSessionPort {
     throwIfAborted(options?.signal);
     if (chat.state.session?.id) {
       try {
+        const context = await this.sessionContext(chat, backend);
         const existing = await raceWithAbort(
-          resumeOwnedHarnessSession(backend, chat.state.session, this.sessionContext(chat, backend)),
+          resumeOwnedHarnessSession(backend, chat.state.session, context),
           options?.signal,
         );
         throwIfAborted(options?.signal);
@@ -232,11 +252,12 @@ export class ChatSessionService implements ChatSessionPort {
       }),
     };
     throwIfAborted(options.signal);
+    const context = await this.sessionContext(stagedWorking.chat, backend);
     const sessionPromise = createOwnedHarnessSession(backend, {
       title: `Clanky Chat: ${stagedWorking.chat.config.name}`,
       directory: stagedWorking.directory,
       model: stagedWorking.chat.config.model.modelID,
-    }, this.sessionContext(stagedWorking.chat, backend));
+    }, context);
     let session: Awaited<typeof sessionPromise>;
     try {
       session = await raceWithAbort(sessionPromise, options.signal);
@@ -305,7 +326,8 @@ export class ChatSessionService implements ChatSessionPort {
       }
 
       try {
-        const existing = await resumeOwnedHarnessSession(backend, reconnectingChat.state.session, this.sessionContext(reconnectingChat, backend));
+        const context = await this.sessionContext(reconnectingChat, backend);
+        const existing = await resumeOwnedHarnessSession(backend, reconnectingChat.state.session, context);
         if (!existing) {
           reconnectingChat = await this.ensureSession(reconnectingChat, backend, {
             recreateIfMissing: true,
@@ -363,13 +385,19 @@ export class ChatSessionService implements ChatSessionPort {
     }
   }
 
-  private sessionContext(chat: Chat, backend: Backend) {
+  private async sessionContext(chat: Chat, backend: Backend): Promise<Omit<HarnessConversationBinding, "adapter" | "nativeId">> {
+    const quickChatSettings = await preferencesManager.getQuickChatSettings();
+    const controlTools = isClankyControlChat(chat, quickChatSettings.workspaceId);
+    if (controlTools && backend.harness.capabilities.clankyControlTools !== true) {
+      throw new HarnessError("harness_unsupported_feature", "This execution host does not support Clanky control tools.");
+    }
     return {
       ownerId: requireCurrentUserId(),
       contextId: chat.config.id,
       questionPolicy: chat.config.scope === "agent" ? "unattended" as const : "interactive" as const,
       directory: backend.getDirectory(),
       executionHost: chat.config.source?.kind === "execution_host" ? chat.config.source.executionHost : chat.config.executionHostBinding,
+      ...(controlTools ? { controlTools: true, controlChatId: chat.config.id } : {}),
     };
   }
 

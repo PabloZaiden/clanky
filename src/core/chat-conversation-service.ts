@@ -306,9 +306,19 @@ export class ChatConversationService implements ChatConversationPort {
       current = await this.state.updateStartupStage(current, "sending_prompt", {
         expectedStatus: current.state.status,
       });
+      const controlContext = current.state.session?.binding?.controlTools
+        ? {
+            chatId: current.config.id,
+            ...(input.clientId ? { clientId: input.clientId } : {}),
+            turnId: crypto.randomUUID(),
+            workspaceId: getChatWorkspaceId(current),
+            defaultModel: current.config.model,
+          }
+        : undefined;
       const prompt: PromptInput = {
         parts: buildPromptParts(input.message, input.attachments),
         model: current.config.model,
+        ...(controlContext ? { controlContext } : {}),
       };
       const started = await timer.measure("prompt_start", () => {
         promptAttempted = true;

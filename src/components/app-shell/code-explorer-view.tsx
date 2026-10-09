@@ -9,6 +9,8 @@ import type {
 } from "@/shared";
 import type { CreateTerminalSessionRequest } from "@/contracts";
 import { FileExplorerView } from "./file-explorer-view";
+import type { ControlUiActionOutcome } from "@/shared/clanky-control";
+import type { PendingControlFileOpen } from "./use-control-ui-actions";
 import {
   getCodeExplorerOptionGroups,
   getCodeExplorerOptions,
@@ -25,6 +27,8 @@ interface CodeExplorerViewProps {
   terminalSessions: TerminalSession[];
   createTerminalSession: (request: CreateTerminalSessionRequest) => Promise<TerminalSession>;
   onNavigate: (route: WebAppRoute) => void;
+  pendingControlFileOpen?: PendingControlFileOpen | null;
+  onControlFileOpenResult?: (actionId: string, outcome: ControlUiActionOutcome) => void;
 }
 
 export function CodeExplorerView({
@@ -36,6 +40,8 @@ export function CodeExplorerView({
   terminalSessions,
   createTerminalSession,
   onNavigate,
+  pendingControlFileOpen,
+  onControlFileOpenResult,
 }: CodeExplorerViewProps) {
   const options = useMemo(() => getCodeExplorerOptions({
     tasks,
@@ -53,6 +59,12 @@ export function CodeExplorerView({
     terminalSessions,
     createTerminalSession,
   });
+  const controlFileOpenRequest = pendingControlFileOpen
+    && resolvedTarget?.target.type === "workspace"
+    && pendingControlFileOpen.workspaceId === resolvedTarget.target.id
+    && pendingControlFileOpen.filePath === resolvedTarget.initialFilePath
+    ? pendingControlFileOpen
+    : undefined;
 
   if (!routeTarget || !resolvedTarget) {
     return (
@@ -106,6 +118,7 @@ export function CodeExplorerView({
 
   return (
     <FileExplorerView
+      key={`${resolvedTarget.target.type}:${resolvedTarget.target.id}:${resolvedTarget.target.startDirectory ?? ""}`}
       title={resolvedTarget.title}
       defaultRootDirectory={resolvedTarget.defaultRootDirectory}
       backRoute={resolvedTarget.backRoute}
@@ -121,6 +134,8 @@ export function CodeExplorerView({
       testIdPrefix={resolvedTarget.testIdPrefix}
       credentialPromptName={resolvedTarget.credentialPromptName}
       initialFilePath={resolvedTarget.initialFilePath}
+      controlFileOpenRequest={controlFileOpenRequest}
+      onControlFileOpenResult={onControlFileOpenResult}
     />
   );
 }

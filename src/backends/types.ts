@@ -57,6 +57,8 @@ export interface BackendConnectionConfig {
   startupStdin?: string;
   /** Managed Clanky runtime environment delivered separately to Mesh workers. */
   managedEnvironment?: Record<string, string>;
+  /** Enable Clanky control tools for a normal chat in the designated workspace. */
+  controlTools?: boolean;
   /** Working directory for the backend */
   directory: string;
   /** Mesh ownership metadata for remote stdio ACP transport. */
