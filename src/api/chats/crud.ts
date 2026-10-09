@@ -111,7 +111,7 @@ export const chatsCrudRoutes = defineRoutes({
           useChatNameAsBranch: body.useChatNameAsBranch,
           autoApprovePermissions: body.autoApprovePermissions,
           baseBranch: body.baseBranch,
-          directory: workspace.directory,
+          directory: body.directory ?? workspace.directory,
           syncBaseBranch: !body.quick,
           prepareWorktreeOnCreate: false,
         });

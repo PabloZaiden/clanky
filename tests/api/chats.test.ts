@@ -384,6 +384,53 @@ describe("Chats API Integration", () => {
     expect(reconnected.state.status).toBe("idle");
   });
 
+  test("creates a chat in an existing worktree without taking ownership", async () => {
+    const sharedBranch = `shared-chat-${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`;
+    const sharedDirectory = join(testDataDir, "shared-chat-worktree");
+    await runGit(testWorkDir, ["worktree", "add", "-b", sharedBranch, sharedDirectory, defaultBranch]);
+    let chatId: string | undefined;
+    let chatDeleted = false;
+
+    try {
+      const createResponse = await fetch(`${baseUrl}/api/chats`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Shared Worktree Chat",
+          workspaceId: testWorkspaceId,
+          directory: sharedDirectory,
+          model: testModel,
+          useWorktree: false,
+        }),
+      });
+
+      expect(createResponse.status).toBe(201);
+      const created = await createResponse.json() as Chat;
+      chatId = created.config.id;
+      expect(created.config.directory).toBe(sharedDirectory);
+      expect(created.config.useWorktree).toBe(false);
+      expect(created.state.worktree).toBeUndefined();
+      expect(await getCurrentBranch(sharedDirectory)).toBe(sharedBranch);
+
+      const deleteResponse = await fetch(`${baseUrl}/api/chats/${chatId}`, {
+        method: "DELETE",
+      });
+      expect(deleteResponse.status).toBe(200);
+      chatDeleted = true;
+      expect(await getCurrentBranch(sharedDirectory)).toBe(sharedBranch);
+    } finally {
+      if (chatId && !chatDeleted) {
+        const cleanupResponse = await fetch(`${baseUrl}/api/chats/${chatId}`, {
+          method: "DELETE",
+        });
+        expect([200, 404]).toContain(cleanupResponse.status);
+      }
+      await rm(sharedDirectory, { recursive: true, force: true });
+      await runGit(testWorkDir, ["worktree", "prune"]);
+      await runGit(testWorkDir, ["branch", "-D", sharedBranch]);
+    }
+  });
+
   test("deletes the chat before deferred worktree cleanup finishes", async () => {
     const cleanupExecutor = new DeferredWorktreeCleanupExecutor();
     backendManager.setExecutorFactoryForTesting(() => cleanupExecutor);

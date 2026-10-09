@@ -152,6 +152,16 @@ the same repository, creation returns HTTP 409 with
 `chat_worktree_branch_conflict` before persisting the new chat. A free existing
 branch can still be attached to the worktree.
 
+### Chat working directory
+
+`POST /api/chats` accepts an optional `directory` path on the selected
+workspace's execution host. When omitted, the workspace's configured directory
+is used. To create a separate conversation directly in an existing checkout or
+chat worktree, pass that exact path and set `useWorktree` to `false`. The new
+chat shares the checkout and branch but does not own or remove the directory
+when the chat is deleted. The path is a starting directory, not a filesystem
+sandbox.
+
 ### Native chat questions
 
 Read `state.harness.questions` from the chat or snapshot response. Each request
