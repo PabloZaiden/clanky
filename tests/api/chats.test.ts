@@ -2118,8 +2118,52 @@ describe("Chats API Integration", () => {
       },
     );
     expect(persisted.state.worktree?.originalBranch).toBe(defaultBranch);
-    expect(persisted.state.worktree?.workingBranch).toContain("chat-chat-without-base-branch-");
+    expect(persisted.state.worktree?.workingBranch).toBe(
+      `chat-chat-without-base-branch-${created.config.id.slice(0, 8)}`,
+    );
     expect(persisted?.state.worktree?.worktreePath).toBe(expectedWorktreePath);
+  });
+
+  test("uses the sanitized chat name as the worktree branch when requested", async () => {
+    const createResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Feature: Chat #1!",
+        workspaceId: testWorkspaceId,
+        model: testModel,
+        useWorktree: true,
+        useChatNameAsBranch: true,
+      }),
+    });
+
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json();
+    const expectedBranch = "feature-chat-1";
+    const expectedWorktreePath = new ManagedPathService(
+      process.platform === "win32" ? "windows" : "posix",
+    ).getManagedWorktreePath(testWorkDir, created.config.id);
+    const persisted = await pollUntil(
+      () => loadChat(created.config.id),
+      (chat): chat is Chat => chat?.config.useChatNameAsBranch === true
+        && chat.state.worktree?.workingBranch === expectedBranch
+        && chat.state.worktree?.worktreePath === expectedWorktreePath,
+      {
+        description: `chat ${created.config.id} to prepare its sanitized-name worktree branch`,
+        timeoutMs: 5000,
+        formatLastObserved: (chat) => chat === null
+          ? "not found"
+          : `branch=${chat.state.worktree?.workingBranch ?? "pending"}, worktree=${chat.state.worktree?.worktreePath ?? "pending"}`,
+      },
+    );
+
+    expect(persisted.state.worktree?.workingBranch).toBe(expectedBranch);
+    expect(persisted.state.worktree?.worktreePath).toBe(expectedWorktreePath);
+    const worktreePath = persisted.state.worktree?.worktreePath;
+    if (!worktreePath) {
+      throw new Error("Expected the chat worktree to be prepared");
+    }
+    expect(await getCurrentBranch(worktreePath)).toBe(expectedBranch);
   });
 
   test("lists chats without hydrating transcript payloads", async () => {

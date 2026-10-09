@@ -313,6 +313,7 @@ describe("database schema", () => {
       expect(columnNames("workspaces")).toContain("execution_host_id");
       expect(columnNames("workspaces")).toContain("provisioning_host_id");
       expect(columnNames("chats")).toContain("execution_host_id");
+      expect(columnNames("chats")).toContain("use_chat_name_as_branch");
       expect(columnNames("terminal_sessions")).toContain("execution_host_id");
       expect(columnNames("terminal_sessions")).not.toContain("target_transport");
       expect(columnNames("preview_sessions")).toContain("target_kind");
@@ -407,7 +408,8 @@ describe("database schema", () => {
 
       expect(getSchemaVersion(database)).toBe(scratchpadMigration.version - 1);
       expect(getTableColumns(database, "workspaces")).not.toContain("scratchpad");
-      expect(runMigrations(database)).toBe(1);
+      runMigrations(database);
+      expect(getSchemaVersion(database)).toBe(migrations.at(-1)!.version);
       expect(
         database.query(
           "SELECT id, user_id, name, directory, scratchpad FROM workspaces WHERE id = ?",
@@ -419,6 +421,66 @@ describe("database schema", () => {
         directory: "/synthetic",
         scratchpad: "",
       });
+      expect(runMigrations(database)).toBe(0);
+    } finally {
+      database.close();
+    }
+  });
+
+  test("adds chat name branch selection to a version-70 chat and defaults it off", () => {
+    const database = new Database(":memory:");
+    try {
+      database.run("PRAGMA foreign_keys = ON");
+      createBaseSchema(database);
+      const chatBranchMigration = migrations.find(
+        (migration) => migration.name === "add_chat_name_as_branch",
+      );
+      if (!chatBranchMigration) {
+        throw new Error("Chat branch naming migration is missing");
+      }
+      for (const migration of migrations.filter(
+        (candidate) => candidate.version < chatBranchMigration.version,
+      )) {
+        migration.up(database);
+        database.run(
+          "INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)",
+          [migration.version, migration.name, "previously-applied"],
+        );
+      }
+      database.run(
+        `INSERT INTO execution_hosts (
+          id, user_id, kind, source_id, target_key, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        ["host-1", "owner-1", "local", "node-1", "local:node-1", "created", "updated"],
+      );
+      database.run(
+        `INSERT INTO chats (
+          id, user_id, name, source_kind, workspace_id, directory, created_at,
+          updated_at, execution_host_id, execution_host_revision
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          "chat-before-migration",
+          "owner-1",
+          "Existing chat",
+          "execution_host",
+          null,
+          "/synthetic",
+          "created",
+          "updated",
+          "host-1",
+          1,
+        ],
+      );
+
+      expect(getSchemaVersion(database)).toBe(chatBranchMigration.version - 1);
+      expect(getTableColumns(database, "chats")).not.toContain("use_chat_name_as_branch");
+      expect(runMigrations(database)).toBe(1);
+      expect(getTableColumns(database, "chats")).toContain("use_chat_name_as_branch");
+      expect(
+        database.query(
+          "SELECT use_chat_name_as_branch FROM chats WHERE id = ?",
+        ).get("chat-before-migration"),
+      ).toEqual({ use_chat_name_as_branch: 0 });
       expect(runMigrations(database)).toBe(0);
     } finally {
       database.close();
@@ -900,7 +962,8 @@ describe("database schema", () => {
           ('mixed-relay', 'mixed-relay-fingerprint', '[6,99]', 6, 6, 'known-observation');
       `);
       for (let version = 1; version <= 67; version++) database.run("INSERT INTO schema_migrations VALUES (?, ?, ?)", [version, `prior-${version}`, "before-upgrade"]);
-      expect(runMigrations(database)).toBe(3);
+      runMigrations(database);
+      expect(getSchemaVersion(database)).toBe(migrations.at(-1)!.version);
       expect(database.query("SELECT current_version, migrated_from_version FROM mesh_protocol_state").get()).toEqual({ current_version: 6, migrated_from_version: 1 });
       expect(database.query("SELECT * FROM mesh_worker_registrations ORDER BY worker_node_id").all()).toEqual([
         { worker_node_id: "mixed-worker", worker_public_key: "mixed-key", worker_fingerprint: "mixed-fingerprint", grant_status: "active", worker_supported_protocol_versions_json: "[6,99]", worker_preferred_protocol_version: 6, worker_negotiated_protocol_version: 6, worker_protocol_updated_at: "known-observation" },

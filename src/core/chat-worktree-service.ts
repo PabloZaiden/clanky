@@ -351,6 +351,9 @@ export class ChatWorktreeService implements ChatWorktreePort {
   }
 
   private buildWorkingBranchName(chat: Chat): string {
+    if (chat.config.useChatNameAsBranch) {
+      return sanitizeBranchName(chat.config.name);
+    }
     return `chat-${sanitizeBranchName(chat.config.name)}-${chat.config.id.slice(0, 8)}`;
   }
 }

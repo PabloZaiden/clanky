@@ -536,6 +536,18 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: 71,
+    name: "add_chat_name_as_branch",
+    up: (db) => {
+      if (
+        tableExists(db, "chats")
+        && !getTableColumns(db, "chats").includes("use_chat_name_as_branch")
+      ) {
+        db.run("ALTER TABLE chats ADD COLUMN use_chat_name_as_branch INTEGER NOT NULL DEFAULT 0");
+      }
+    },
+  },
 ];
 
 function getMigrationTableColumns(db: Database, tableName: string): string[] {

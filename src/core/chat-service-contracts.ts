@@ -44,6 +44,7 @@ export interface CreateChatOptions {
   modelID: string;
   modelVariant?: string;
   useWorktree?: boolean;
+  useChatNameAsBranch?: boolean;
   autoApprovePermissions?: boolean;
   baseBranch?: string;
   directory?: string;

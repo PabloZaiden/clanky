@@ -147,6 +147,7 @@ export class ChatLifecycleService implements ChatLifecyclePort {
           variant: options.modelVariant ?? "",
         },
         useWorktree,
+        ...(useWorktree && options.useChatNameAsBranch ? { useChatNameAsBranch: true } : {}),
         autoApprovePermissions: options.autoApprovePermissions ?? DEFAULT_CHAT_CONFIG.autoApprovePermissions,
         skipBaseBranchSync: options.syncBaseBranch === false,
         baseBranch: isGitBackedWorkspace(workspace) ? options.baseBranch : undefined,

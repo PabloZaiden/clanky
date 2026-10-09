@@ -54,6 +54,7 @@ export interface ChatConfig {
   directory: string;
   model: ModelConfig;
   useWorktree: boolean;
+  useChatNameAsBranch?: boolean;
   autoApprovePermissions?: boolean;
   skipBaseBranchSync?: boolean;
   baseBranch?: string;
