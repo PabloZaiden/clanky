@@ -2,7 +2,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createLogger } from "@pablozaiden/webapp/web";
 import { apiRequest, readApiResponse, requestApiResponse } from "../lib/api-client";
 import type { Chat, ChatEvent } from "@/shared";
-import type { CreateChatRequest, InterruptChatRequest, SendChatMessageRequest, UpdateChatRequest } from "@/contracts";
+import type {
+  CreateChatRequest,
+  CreateExecutionHostChatRequest,
+  InterruptChatRequest,
+  SendChatMessageRequest,
+  UpdateChatRequest,
+} from "@/contracts";
+import { getExecutionHostSourceId, type ExecutionHostRef } from "@/shared/execution-host";
 import { DEFAULT_CHAT_INTERRUPT_REASON, isStandaloneChat } from "@/shared";
 import {
   getStreamingActivityStatus,
@@ -72,6 +79,11 @@ export interface UseChatsResult {
   refreshChat: (id: string) => Promise<void>;
   getChat: (id: string) => Chat | undefined;
   createChat: (request: CreateChatRequest) => Promise<Chat | null>;
+  createChatHere: (sourceChatId: string) => Promise<Chat>;
+  createExecutionHostChat: (
+    host: ExecutionHostRef,
+    request: CreateExecutionHostChatRequest,
+  ) => Promise<Chat>;
   updateChat: (id: string, request: UpdateChatRequest) => Promise<Chat | null>;
   markChatDone: (id: string) => Promise<Chat | null>;
   deleteChat: (id: string) => Promise<boolean>;
@@ -172,6 +184,32 @@ export function useChats(): UseChatsResult {
       setError(String(createError));
       return null;
     }
+  }, []);
+
+  const createChatHere = useCallback(async (sourceChatId: string): Promise<Chat> => {
+    const chat = await apiRequest<Chat>(`/api/chats/${encodeURIComponent(sourceChatId)}/new-here`, {
+      method: "POST",
+      action: "Create chat here",
+      fallbackMessage: "Failed to create chat here",
+    });
+    setChats((prev) => upsertChat(prev, chat));
+    return chat;
+  }, []);
+
+  const createExecutionHostChat = useCallback(async (
+    host: ExecutionHostRef,
+    request: CreateExecutionHostChatRequest,
+  ): Promise<Chat> => {
+    const hostId = getExecutionHostSourceId(host);
+    const chat = await apiRequest<Chat>(`/api/execution-hosts/${host.kind}/${encodeURIComponent(hostId)}/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+      action: "Create execution-host chat",
+      fallbackMessage: "Failed to create chat",
+    });
+    setChats((prev) => upsertChat(prev, chat));
+    return chat;
   }, []);
 
   const updateChat = useCallback(async (id: string, request: UpdateChatRequest): Promise<Chat | null> => {
@@ -326,6 +364,8 @@ export function useChats(): UseChatsResult {
     refreshChat,
     getChat,
     createChat,
+    createChatHere,
+    createExecutionHostChat,
     updateChat,
     markChatDone,
     deleteChat,

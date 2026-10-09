@@ -111,7 +111,7 @@ export const chatsCrudRoutes = defineRoutes({
           useChatNameAsBranch: body.useChatNameAsBranch,
           autoApprovePermissions: body.autoApprovePermissions,
           baseBranch: body.baseBranch,
-          directory: workspace.directory,
+          directory: body.directory,
           syncBaseBranch: !body.quick,
           prepareWorktreeOnCreate: false,
         });
@@ -123,6 +123,33 @@ export const chatsCrudRoutes = defineRoutes({
         }
         log.error("Failed to create chat", {
           workspaceId: body.workspaceId,
+          error: String(error),
+        });
+        return internalErrorResponse(error, {
+          error: "create_failed",
+          message: "Failed to create chat",
+          status: 500,
+        }, undefined, "chats");
+      }
+    },
+  },
+
+  "/api/chats/:id/new-here": {
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "Create a fresh chat in the source chat's current workspace directory.",
+    async POST(_req: Request, ctx): Promise<Response> {
+      const chatId = ctx.params["id"]!;
+      try {
+        const chat = await chatManager.createChatHere(chatId);
+        return Response.json(await toLightweightChat(chat), { status: 201 });
+      } catch (error) {
+        const knownErrorResponse = chatActionErrorResponse(error);
+        if (knownErrorResponse) {
+          return knownErrorResponse;
+        }
+        log.error("Failed to create chat in current directory", {
+          chatId,
           error: String(error),
         });
         return internalErrorResponse(error, {

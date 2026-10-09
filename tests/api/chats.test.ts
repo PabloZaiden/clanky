@@ -384,6 +384,123 @@ describe("Chats API Integration", () => {
     expect(reconnected.state.status).toBe("idle");
   });
 
+  test("creates a chat in an existing worktree without taking ownership", async () => {
+    const sharedBranch = `shared-chat-${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`;
+    const sharedDirectory = join(testDataDir, "shared-chat-worktree");
+    await runGit(testWorkDir, ["worktree", "add", "-b", sharedBranch, sharedDirectory, defaultBranch]);
+    let chatId: string | undefined;
+    let chatDeleted = false;
+
+    try {
+      const createResponse = await fetch(`${baseUrl}/api/chats`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Shared Worktree Chat",
+          workspaceId: testWorkspaceId,
+          directory: sharedDirectory,
+          model: testModel,
+          useWorktree: false,
+        }),
+      });
+
+      expect(createResponse.status).toBe(201);
+      const created = await createResponse.json() as Chat;
+      chatId = created.config.id;
+      expect(created.config.directory).toBe(sharedDirectory);
+      expect(created.config.useWorktree).toBe(false);
+      expect(created.state.worktree).toBeUndefined();
+      expect(await getCurrentBranch(sharedDirectory)).toBe(sharedBranch);
+
+      const deleteResponse = await fetch(`${baseUrl}/api/chats/${chatId}`, {
+        method: "DELETE",
+      });
+      expect(deleteResponse.status).toBe(200);
+      chatDeleted = true;
+      expect(await getCurrentBranch(sharedDirectory)).toBe(sharedBranch);
+    } finally {
+      if (chatId && !chatDeleted) {
+        const cleanupResponse = await fetch(`${baseUrl}/api/chats/${chatId}`, {
+          method: "DELETE",
+        });
+        expect([200, 404]).toContain(cleanupResponse.status);
+      }
+      await rm(sharedDirectory, { recursive: true, force: true });
+      await runGit(testWorkDir, ["worktree", "prune"]);
+      await runGit(testWorkDir, ["branch", "-D", sharedBranch]);
+    }
+  });
+
+  test("rejects an explicit chat directory that does not exist on the execution host", async () => {
+    const workspaceChatsResponse = await fetch(
+      `${baseUrl}/api/chats?workspaceId=${encodeURIComponent(testWorkspaceId)}`,
+    );
+    expect(workspaceChatsResponse.status).toBe(200);
+    const workspaceChatsBefore = await workspaceChatsResponse.json() as Chat[];
+    const invalidDirectory = join(testDataDir, `missing-chat-directory-${crypto.randomUUID()}`);
+    const response = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        workspaceId: testWorkspaceId,
+        directory: invalidDirectory,
+        model: testModel,
+        useWorktree: false,
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: "execution_host_directory_invalid" });
+    const workspaceChatsAfterResponse = await fetch(
+      `${baseUrl}/api/chats?workspaceId=${encodeURIComponent(testWorkspaceId)}`,
+    );
+    expect(workspaceChatsAfterResponse.status).toBe(200);
+    const workspaceChatsAfter = await workspaceChatsAfterResponse.json() as Chat[];
+    expect(workspaceChatsAfter.map((chat) => chat.config.id))
+      .toEqual(workspaceChatsBefore.map((chat) => chat.config.id));
+  });
+
+  test("creates an empty chat in the source chat's current directory and target", async () => {
+    const sourceResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        workspaceId: testWorkspaceId,
+        model: testModel,
+        useWorktree: false,
+        autoApprovePermissions: false,
+      }),
+    });
+    expect(sourceResponse.status).toBe(201);
+    const sourceChat = await sourceResponse.json() as Chat;
+    let createdChatId: string | undefined;
+
+    try {
+      const response = await fetch(`${baseUrl}/api/chats/${sourceChat.config.id}/new-here`, {
+        method: "POST",
+      });
+      expect(response.status).toBe(201);
+      const createdChat = await response.json() as Chat;
+      createdChatId = createdChat.config.id;
+      expect(createdChat.config.directory).toBe(sourceChat.config.directory);
+      expect(createdChat.config.executionHostBinding).toEqual(sourceChat.config.executionHostBinding);
+      expect(createdChat.config.model).toEqual(sourceChat.config.model);
+      expect(createdChat.config.autoApprovePermissions).toBe(false);
+      expect(createdChat.config.useWorktree).toBe(false);
+      expect(createdChat.state.messages).toEqual([]);
+    } finally {
+      for (const chatId of [createdChatId, sourceChat.config.id]) {
+        if (!chatId) {
+          continue;
+        }
+        const deleteResponse = await fetch(`${baseUrl}/api/chats/${chatId}`, {
+          method: "DELETE",
+        });
+        expect([200, 404]).toContain(deleteResponse.status);
+      }
+    }
+  });
+
   test("deletes the chat before deferred worktree cleanup finishes", async () => {
     const cleanupExecutor = new DeferredWorktreeCleanupExecutor();
     backendManager.setExecutorFactoryForTesting(() => cleanupExecutor);

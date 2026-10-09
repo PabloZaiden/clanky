@@ -8,7 +8,15 @@ import type {
   Workspace,
   TerminalSession,
 } from "@/shared";
+import type { CreateExecutionHostChatRequest } from "@/contracts";
 import { getChatWorkspaceId, isWorkspaceChat } from "@/shared/chat";
+import { getRegisteredSshServerId } from "@/shared/execution-host";
+import { isAgentProvider } from "@/shared/settings";
+import { isApiErrorCode } from "../../lib/api-error";
+import {
+  getStoredSshCredentialToken,
+  invalidateStoredSshCredentialToken,
+} from "../../lib/ssh-browser-credentials";
 import {
   stopTaskApi,
   type UseAgentsResult,
@@ -57,6 +65,8 @@ interface UseShellActionsOptions {
   updateTerminalSession: UseTerminalSessionsResult["updateSession"];
   deleteTerminalSession: UseTerminalSessionsResult["deleteSession"];
   createChat: UseChatsResult["createChat"];
+  createChatHere: UseChatsResult["createChatHere"];
+  createExecutionHostChat: UseChatsResult["createExecutionHostChat"];
   quickChatSettings: UseQuickChatSettingsResult;
   githubUsername: UseGithubUsernameResult;
   quickChatWorkspace: Workspace | null;
@@ -89,6 +99,8 @@ export function useShellActions({
   updateTerminalSession,
   deleteTerminalSession,
   createChat,
+  createChatHere,
+  createExecutionHostChat,
   quickChatSettings,
   githubUsername,
   quickChatWorkspace,
@@ -187,6 +199,59 @@ export function useShellActions({
   const handleSidebarMarkChatDone = useCallback(async (chat: Chat): Promise<void> => {
     await handleMarkChatDone(chat);
   }, [handleMarkChatDone]);
+  const createChatInCurrentDirectory = useCallback(async (
+    sourceChat: Chat,
+    directory: string,
+  ): Promise<void> => {
+    let createdChat: Chat;
+    if (isWorkspaceChat(sourceChat)) {
+      createdChat = await createChatHere(sourceChat.config.id);
+    } else {
+      const source = sourceChat.config.source;
+      if (source?.kind !== "execution_host") {
+        throw new Error("The current chat's execution host is unavailable.");
+      }
+
+      const executionHost = source.executionHost.host;
+      const providerID = sourceChat.config.model.providerID;
+      if (!isAgentProvider(providerID)) {
+        throw new Error("The current model provider cannot be reused on this execution host.");
+      }
+
+      const sshServerId = getRegisteredSshServerId(executionHost);
+      const credentialToken = sshServerId
+        ? await getStoredSshCredentialToken(sshServerId)
+        : null;
+      if (sshServerId && !credentialToken) {
+        throw new Error("SSH credentials are unavailable. Re-authenticate with the server before creating a chat.");
+      }
+
+      const request: CreateExecutionHostChatRequest = {
+        directory,
+        model: {
+          providerID,
+          modelID: sourceChat.config.model.modelID,
+          variant: sourceChat.config.model.variant,
+        },
+        autoApprovePermissions: sourceChat.config.autoApprovePermissions ?? true,
+        credentialToken,
+      };
+      try {
+        createdChat = await createExecutionHostChat(executionHost, request);
+      } catch (error) {
+        if (sshServerId && isApiErrorCode(error, "invalid_credential_token")) {
+          invalidateStoredSshCredentialToken(sshServerId);
+        }
+        throw error;
+      }
+    }
+
+    navigateWithinShell({ view: "chat", chatId: createdChat.config.id });
+  }, [
+    createChatHere,
+    createExecutionHostChat,
+    navigateWithinShell,
+  ]);
   const canSpawnTasksFromSelectedChat = useMemo(() => {
     if (!selectedChat || !isWorkspaceChat(selectedChat)) {
       return true;
@@ -206,6 +271,7 @@ export function useShellActions({
       contentType: "chat",
       chatId: chat.config.id,
     }),
+    onCreateChatInCurrentDirectory: createChatInCurrentDirectory,
     onTaskSpawned: (task) => navigateWithinShell({ view: "task", taskId: task.config.id }),
     onChatRenamed: refreshChats,
     onChatDone: handleMarkChatDone,

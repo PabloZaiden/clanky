@@ -6,17 +6,23 @@ import { SpawnCurrentPlanModal } from "../SpawnCurrentPlanModal";
 import { appAbsoluteUrl } from "../../lib/public-path";
 import { apiRequest } from "../../lib/api-client";
 import type { Chat, Task } from "@/shared";
-import { isChatBusyStatus, isStandaloneChat } from "@/shared/chat";
+import {
+  getCurrentChatDirectory,
+  isChatBusyStatus,
+  isStandaloneChat,
+} from "@/shared/chat";
 
 interface ChatActionItemOptions {
   chat: Chat;
   canSpawnTasks: boolean;
   hasCodeExplorerAction: boolean;
+  sameDirectoryChatPending: boolean;
   spawnPending: boolean;
   spawnCurrentPlanPending: boolean;
   markDonePending: boolean;
   onSpawnTask: () => void;
   onSpawnTaskFromCurrentPlan: () => void;
+  onCreateSameDirectoryChat: () => void;
   onOpenCodeExplorer: () => void;
   onTranscript: () => void;
   onRename: () => void;
@@ -29,6 +35,7 @@ interface UseChatActionsOptions {
   canSpawnTasks: boolean;
   hasCodeExplorerAction: boolean;
   onOpenCodeExplorer?: (chat: Chat) => void;
+  onCreateChatInCurrentDirectory: (chat: Chat, directory: string) => Promise<void>;
   onTaskSpawned?: (task: Task) => void;
   onChatRenamed?: (chat: Chat) => void | Promise<void>;
   onChatDone?: (chat: Chat) => Chat | null | Promise<Chat | null>;
@@ -59,11 +66,13 @@ function buildChatActionItems({
   chat,
   canSpawnTasks,
   hasCodeExplorerAction,
+  sameDirectoryChatPending,
   spawnPending,
   spawnCurrentPlanPending,
   markDonePending,
   onSpawnTask,
   onSpawnTaskFromCurrentPlan,
+  onCreateSameDirectoryChat,
   onOpenCodeExplorer,
   onTranscript,
   onRename,
@@ -73,6 +82,7 @@ function buildChatActionItems({
   const isActive = isChatBusyStatus(chat.state.status) || chat.state.status === "reconnecting";
   const hasMessages = chat.state.hasMessages ?? chat.state.messages.length > 0;
   const hasTranscript = chat.state.hasTranscript ?? (hasMessages || chat.state.toolCalls.length > 0);
+  const canCreateSameDirectoryChat = Boolean(getCurrentChatDirectory(chat));
 
   const taskActions: ActionMenuItem[] = canSpawnTasks ? [
     {
@@ -91,6 +101,12 @@ function buildChatActionItems({
 
   return [
     ...taskActions,
+    {
+      id: "new-chat-current-directory",
+      label: sameDirectoryChatPending ? "Creating chat..." : "New Chat here",
+      onAction: onCreateSameDirectoryChat,
+      disabled: sameDirectoryChatPending || !canCreateSameDirectoryChat,
+    },
     {
       id: "code-explorer",
       label: "Code explorer",
@@ -128,6 +144,7 @@ export function useChatActions({
   canSpawnTasks,
   hasCodeExplorerAction,
   onOpenCodeExplorer,
+  onCreateChatInCurrentDirectory,
   onTaskSpawned,
   onChatRenamed,
   onChatDone,
@@ -144,6 +161,7 @@ export function useChatActions({
   const [isSpawnCurrentPlanPending, setIsSpawnCurrentPlanPending] = useState(false);
   const [isDeletePending, setIsDeletePending] = useState(false);
   const [isMarkDonePending, setIsMarkDonePending] = useState(false);
+  const [isSameDirectoryChatPending, setIsSameDirectoryChatPending] = useState(false);
 
   async function handleRename(newName: string): Promise<void> {
     if (!renameTarget) {
@@ -263,6 +281,27 @@ export function useChatActions({
     }
   }
 
+  async function createChatInCurrentDirectory(target: Chat): Promise<void> {
+    if (isSameDirectoryChatPending) {
+      return;
+    }
+
+    const directory = getCurrentChatDirectory(target);
+    if (!directory) {
+      onActionError("The current chat worktree is not ready yet.");
+      return;
+    }
+
+    setIsSameDirectoryChatPending(true);
+    try {
+      await onCreateChatInCurrentDirectory(target, directory);
+    } catch (error) {
+      onActionError(getErrorMessage(error));
+    } finally {
+      setIsSameDirectoryChatPending(false);
+    }
+  }
+
   const items = useMemo(() => {
     if (!chat) {
       return [];
@@ -272,11 +311,13 @@ export function useChatActions({
       chat,
       canSpawnTasks,
       hasCodeExplorerAction,
+      sameDirectoryChatPending: isSameDirectoryChatPending,
       spawnPending: isSpawnPending,
       spawnCurrentPlanPending: isSpawnCurrentPlanPending,
       markDonePending: isMarkDonePending,
       onSpawnTask: () => void spawnTask(chat),
       onSpawnTaskFromCurrentPlan: () => openSpawnCurrentPlanModal(chat),
+      onCreateSameDirectoryChat: () => void createChatInCurrentDirectory(chat),
       onOpenCodeExplorer: () => onOpenCodeExplorer?.(chat),
       onTranscript: () => setTranscriptTarget(chat),
       onRename: () => setRenameTarget(chat),
@@ -287,9 +328,11 @@ export function useChatActions({
     canSpawnTasks,
     chat,
     hasCodeExplorerAction,
+    isSameDirectoryChatPending,
     isMarkDonePending,
     isSpawnCurrentPlanPending,
     isSpawnPending,
+    onCreateChatInCurrentDirectory,
     onActionError,
     onChatDeleted,
     onDeleteChat,
