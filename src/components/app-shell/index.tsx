@@ -20,6 +20,7 @@ import {
   useShellHeader,
 } from "./use-shell-header";
 import { useShellResources } from "./use-shell-resources";
+import { useControlUiActions } from "./use-control-ui-actions";
 
 export function AppShell() {
   const toast = useToast();
@@ -100,6 +101,15 @@ export function AppShell() {
     navigateWithinShell,
   } = useShellNavigation({
     setRoute,
+  });
+  const {
+    pendingFileOpen: pendingControlFileOpen,
+    reportFileOpenResult: onControlFileOpenResult,
+  } = useControlUiActions({
+    route,
+    navigateWithinShell,
+    refreshChats,
+    refreshWorkspaces,
   });
   const openHarnessActivity = useCallback((entityRoute: WebAppRoute): void => {
     setActivityRoute(entityRoute);
@@ -223,6 +233,8 @@ export function AppShell() {
     tasks,
     chats,
     workspaces,
+    pendingControlFileOpen,
+    onControlFileOpenResult,
     terminalSessions,
     executionHosts,
     servers,
@@ -277,6 +289,8 @@ export function AppShell() {
     dialogs.handleAgentSaved,
     navigateWithinShell,
     privateItemsPreference.showPrivateItems,
+    pendingControlFileOpen,
+    onControlFileOpenResult,
     provisioning,
     purgeTask,
     refreshChats,

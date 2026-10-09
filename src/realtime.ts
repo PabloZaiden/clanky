@@ -17,6 +17,7 @@ import type {
 import type { MeshStateEvent, HarnessStateEvent } from "./core/event-emitter";
 import { createToolCallSummary, serializeExecutionHostRef } from "@/shared";
 import { isChatTerminalStatus } from "@/shared/chat";
+import type { ControlUiActionEvent } from "@/shared/clanky-control";
 import { sanitizeProvisioningEvent } from "./lib/sensitive-data";
 import type {
   RealtimeBus,
@@ -102,6 +103,7 @@ export type ClankyDomainEvent =
 export type ClankyStreamEvent =
   | RetainedTaskEvent
   | RetainedChatEvent
+  | ControlUiActionEvent
   | RetainedAgentEvent
   | RetainedProvisioningEvent;
 
@@ -341,6 +343,13 @@ export function publishClankyDomainEvent(
     case "chat.interrupted":
     case "chat.error":
       publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.chats, event.chatId);
+      return;
+    case "control.ui_action":
+      publishStream(publisher, owner, event, {
+        chatId: event.chatId,
+        workspaceId: event.workspaceId,
+        clientId: event.clientId,
+      });
       return;
 
     case "agent.created":

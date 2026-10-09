@@ -99,6 +99,9 @@ export class MeshHarnessGateway {
       || binding.executionHost.host.nodeId !== host.config.executionNodeId
       || ("scope" in binding.executionHost.host && binding.executionHost.host.scope === "workspace" && binding.executionHost.host.workspaceId !== host.config.workspaceId)
     )) throw new DomainError("harness_session_not_owned", "The native conversation execution host does not match the Mesh workspace.");
+    if (binding.controlTools && host.backend.harness.capabilities.clankyControlTools !== true) {
+      throw new DomainError("harness_unsupported_feature", "The native Mesh worker does not support Clanky control tools.");
+    }
     return {
       ...binding,
       directory: host.config.directory,
@@ -171,7 +174,16 @@ export class MeshHarnessGateway {
       const session = await backend.createSession({
         ...operation.options,
         directory: host.config.directory,
-        ownership: { ownerId: native.ownerId, contextId: native.contextId, executionHost: native.executionHost, questionPolicy: native.questionPolicy },
+        ownership: {
+          ownerId: native.ownerId,
+          contextId: native.contextId,
+          executionHost: native.executionHost,
+          questionPolicy: native.questionPolicy,
+          ...(native.controlTools ? {
+            controlTools: true,
+            controlChatId: native.controlChatId,
+          } : {}),
+        },
       });
       const binding = { ...canonical, nativeId: session.id };
       try {

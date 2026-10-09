@@ -48,6 +48,7 @@ export const SendChatMessageRequestSchema = z.object({
   message: z.string().nullable().optional().transform((value) => value ?? null),
   attachments: MessageAttachmentsSchema.default([]),
   credentialToken: z.string().trim().min(1).nullable().optional(),
+  clientId: z.string().uuid().optional(),
 }).superRefine((value, ctx) => {
   const hasMessage = typeof value.message === "string" && value.message.trim().length > 0;
   const hasAttachments = Array.isArray(value.attachments) && value.attachments.length > 0;

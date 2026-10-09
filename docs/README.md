@@ -7,6 +7,7 @@ Choose the guide that matches what you are trying to do:
 | Install Clanky, start the server, create a workspace, or run a first task | [Getting started](getting-started.md) |
 | Keep Markdown notes for a workspace | [Workspace Scratchpad](scratchpad.md) |
 | Choose a native harness or ACP, observe background work, or steer queued input | [Harness adapters](harnesses.md) |
+| Control Clanky from a normal Codex or Copilot workspace chat | [Control chats](control-chats.md) |
 | Run Clanky with Docker, configure a public URL, or place it behind a proxy | [Deployment and configuration](deployment.md) |
 | Configure voice input and local spoken playback | [Voice](voice.md) |
 | Run workspaces on another machine or connect workers through a relay | [Mesh workers and relays](mesh-worker.md) |

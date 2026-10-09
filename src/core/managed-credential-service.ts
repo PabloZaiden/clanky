@@ -34,12 +34,16 @@ import { requireCurrentUser } from "../context/user-context";
 
 const MANAGED_BY = "clanky.execution-context";
 export const DETERMINISTIC_AGENT_MANAGED_BY = "clanky.deterministic-agent-runtime";
+export const CLANKY_CONTROL_CHAT_MANAGED_BY = "clanky.control-chat";
 export const DETERMINISTIC_AGENT_CREDENTIAL_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_CACHED_CREDENTIALS = 256;
 
 function canCreateWhenWorkspaceDisabled(options?: ManagedCredentialOptions): boolean {
   return options?.allowWhenWorkspaceDisabled === true
-    && options.managedBy === DETERMINISTIC_AGENT_MANAGED_BY;
+    && (
+      options.managedBy === DETERMINISTIC_AGENT_MANAGED_BY
+      || options.managedBy === CLANKY_CONTROL_CHAT_MANAGED_BY
+    );
 }
 
 export type ManagedCredentialMode = "reuse" | "recreate";
@@ -54,6 +58,8 @@ export interface ManagedCredentialOptions {
    * workspace does not expose general Clanky CLI credentials.
    */
   allowWhenWorkspaceDisabled?: boolean;
+  /** Reuse a cached key when the requested runtime-specific options are compatible. */
+  reuseActiveCredential?: boolean;
 }
 
 export type ManagedCredentialErrorCode =
@@ -152,7 +158,7 @@ export class ManagedCredentialService {
         }
       }
 
-      if (mode === "reuse" && !options) {
+      if (mode === "reuse" && (!options || options.reuseActiveCredential === true)) {
         const cached = this.activeCredentials.get(cacheKey);
         if (cached) {
           const baseUrl = await this.requirePublicBaseUrl(identity);

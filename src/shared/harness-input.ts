@@ -2,6 +2,8 @@
  * Browser/server-safe input parts accepted by harness adapters.
  */
 
+import type { ClankyControlContext } from "./clanky-control";
+
 export type PromptPart = TextPromptPart | ImagePromptPart | ResourcePromptPart;
 
 export interface TextPromptPart {
@@ -45,4 +47,5 @@ export interface PromptInput {
     modelID: string;
     variant?: string;
   };
+  controlContext?: ClankyControlContext;
 }

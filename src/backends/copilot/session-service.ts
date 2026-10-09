@@ -2,13 +2,16 @@
  * Owns Clanky-created SDK conversations, native bindings and lifetime listeners.
  */
 
-import { approveAll, type CopilotSession } from "@github/copilot-sdk";
-import type { AgentSession, CreateSessionOptions, ConfigOption } from "../types";
+import { approveAll, type CopilotSession, type Tool } from "@github/copilot-sdk";
+import type { AgentSession, CreateSessionOptions, ConfigOption, PromptInput } from "../types";
 import type { HarnessConversationBinding } from "@/shared/harness-control";
+import type { ClankyControlContext } from "@/shared/clanky-control";
+import { ClankyControlToolService } from "../clanky-control-tools";
 import type { HarnessEventHub } from "../harness-event-hub";
 import { HarnessError } from "../harness-errors";
 import { requireMatchingHarnessBinding } from "../harness-binding";
 import { CopilotEventTranslator } from "./event-translator";
+import { toCopilotMessage } from "./prompt";
 import type { CopilotRuntime } from "./runtime";
 import type { CopilotModelCatalog } from "./model-catalog";
 import type { CopilotQuestionCoordinator } from "./question-coordinator";
@@ -19,6 +22,7 @@ interface Conversation {
   info: AgentSession;
   translator: CopilotEventTranslator;
   unsubscribe: () => void;
+  activeControlContext?: ClankyControlContext;
 }
 
 interface SessionServiceDependencies {
@@ -26,6 +30,7 @@ interface SessionServiceDependencies {
   catalog: CopilotModelCatalog;
   events: HarnessEventHub;
   questions: CopilotQuestionCoordinator;
+  managedEnvironment?: Record<string, string | undefined>;
 }
 
 export class CopilotSessionService {
@@ -37,12 +42,15 @@ export class CopilotSessionService {
   private readonly catalog: CopilotModelCatalog;
   private readonly events: HarnessEventHub;
   private readonly questions: CopilotQuestionCoordinator;
+  private readonly managedEnvironment?: Record<string, string | undefined>;
+  private controlTools?: ClankyControlToolService;
 
   constructor(dependencies: SessionServiceDependencies) {
     this.runtime = dependencies.runtime;
     this.catalog = dependencies.catalog;
     this.events = dependencies.events;
     this.questions = dependencies.questions;
+    this.managedEnvironment = dependencies.managedEnvironment;
   }
 
   create(options: CreateSessionOptions): Promise<AgentSession> {
@@ -62,6 +70,7 @@ export class CopilotSessionService {
       excludedTools: options.ownership.questionPolicy === "interactive" ? [] : ["ask_user"],
       askUserVariant: "legacy",
       onUserInputRequest: this.questions.handler(options.ownership.questionPolicy),
+      ...(options.ownership.controlTools ? { tools: this.nativeControlTools() } : {}),
     });
     const binding: HarnessConversationBinding = {
       ...options.ownership,
@@ -106,6 +115,7 @@ export class CopilotSessionService {
       excludedTools: binding.questionPolicy === "interactive" ? [] : ["ask_user"],
       askUserVariant: "legacy",
       onUserInputRequest: this.questions.handler(binding.questionPolicy),
+      ...(binding.controlTools ? { tools: this.nativeControlTools() } : {}),
     });
     try {
       const metadata = await session.rpc.metadata.getClientMetadata();
@@ -132,7 +142,32 @@ export class CopilotSessionService {
     const conversation = this.get(sessionId);
     conversation.translator.interrupted = true;
     this.questions.close(sessionId, "cancelled");
-    await conversation.native.abort();
+    try {
+      await conversation.native.abort();
+    } finally {
+      conversation.activeControlContext = undefined;
+    }
+  }
+
+  async send(sessionId: string, prompt: PromptInput): Promise<void> {
+    const conversation = this.get(sessionId);
+    this.activateControlContext(conversation, prompt.controlContext);
+    try {
+      await conversation.native.send(toCopilotMessage(prompt));
+    } catch (error) {
+      conversation.activeControlContext = undefined;
+      throw error;
+    }
+  }
+
+  async sendAndWait(sessionId: string, prompt: PromptInput, timeoutMs: number): Promise<Awaited<ReturnType<CopilotSession["sendAndWait"]>>> {
+    const conversation = this.get(sessionId);
+    this.activateControlContext(conversation, prompt.controlContext);
+    try {
+      return await conversation.native.sendAndWait(toCopilotMessage(prompt), timeoutMs);
+    } finally {
+      conversation.activeControlContext = undefined;
+    }
   }
 
   async setModel(sessionId: string, modelID: string, variant?: string): Promise<ConfigOption[]> {
@@ -175,6 +210,9 @@ export class CopilotSessionService {
       translator,
       unsubscribe: session.on((event) => {
         try {
+          if (event.type === "session.idle" || event.type === "session.error") {
+            conversation.activeControlContext = undefined;
+          }
           for (const translated of translator.translate(event)) this.events.publish(session.sessionId, translated);
         } catch (error) {
           this.events.failSession(session.sessionId, new HarnessError(
@@ -205,6 +243,46 @@ export class CopilotSessionService {
         options: model.variants.map((value) => ({ value, name: value || "Default" })),
       });
     }
+  }
+
+  private activateControlContext(conversation: Conversation, context: ClankyControlContext | undefined): void {
+    const binding = conversation.info.binding;
+    if (binding?.controlTools !== true) {
+      if (context) throw new HarnessError("harness_session_not_owned", "Clanky control context is not enabled for this conversation.");
+      return;
+    }
+    if (!context || context.chatId !== (binding.controlChatId ?? binding.contextId) || !context.workspaceId || !context.turnId) {
+      throw new HarnessError("harness_session_not_owned", "The active Clanky control turn does not match its native conversation.");
+    }
+    if (conversation.activeControlContext) {
+      throw new HarnessError("harness_request_failed", "A Clanky control turn is already active in this conversation.");
+    }
+    conversation.activeControlContext = context;
+  }
+
+  private nativeControlTools(): Tool[] {
+    const service = this.getControlToolService();
+    return service.definitions.map((definition) => ({
+      name: definition.name,
+      description: definition.description,
+      parameters: definition.inputSchema,
+      skipPermission: true,
+      handler: async (args, invocation) => {
+        const context = this.conversations.get(invocation.sessionId)?.activeControlContext;
+        return await service.invoke(definition.name, args, context, invocation.signal);
+      },
+    }));
+  }
+
+  private getControlToolService(): ClankyControlToolService {
+    if (!this.controlTools) {
+      try {
+        this.controlTools = new ClankyControlToolService(this.managedEnvironment ?? {});
+      } catch (error) {
+        throw new HarnessError("harness_runtime_unavailable", "Managed Clanky API credentials are unavailable for control tools.", { cause: error });
+      }
+    }
+    return this.controlTools;
   }
 
   private async closeSession(sessionId: string): Promise<void> {

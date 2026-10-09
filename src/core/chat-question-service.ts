@@ -24,7 +24,7 @@ export class ChatQuestionService {
     state: ChatStatePort;
     session: ChatSessionPort;
     hasActiveStream: (id: string) => boolean;
-    sendMessage?: (chatId: string, message: string, transcriptMessage?: MessageData) => Promise<Chat>;
+    sendMessage?: (chatId: string, message: string, transcriptMessage?: MessageData, clientId?: string) => Promise<Chat>;
   }) {}
 
   handle(chatId: string, binding: HarnessConversationBinding, { event, questionMessageId }: {
@@ -77,7 +77,7 @@ export class ChatQuestionService {
     });
   }
 
-  reply(chatId: string, requestId: string, answers: string[][]): Promise<Chat> {
+  reply(chatId: string, requestId: string, answers: string[][], clientId?: string): Promise<Chat> {
     return this.operations.run(chatId, async () => {
       let chat = await this.dependencies.state.getChatSummary(chatId);
       if (!chat) throw new HarnessError("harness_question_not_found", "The chat question is unavailable.");
@@ -110,6 +110,7 @@ export class ChatQuestionService {
             chatId,
             request.questions.map((question, index) => `${question.question}\n${answers[index]!.join(", ")}`).join("\n\n"),
             chat.state.messages.find((message) => message.id === request.transcript?.answerMessageId),
+            clientId,
           );
         } else await backend.replyToQuestion(requestId, answers);
       } catch (error) {

@@ -49,6 +49,8 @@ import type {
   CreateTaskFormActionState,
 } from "../CreateTaskForm";
 import type { CreateTaskFormSubmitRequest } from "@/lib/task-request";
+import type { ControlUiActionOutcome } from "@/shared/clanky-control";
+import type { PendingControlFileOpen } from "./use-control-ui-actions";
 
 export interface ShellMainContentProps {
   route: WebAppRoute;
@@ -63,6 +65,8 @@ export interface ShellMainContentProps {
   tasks: Task[];
   chats: Chat[];
   workspaces: Workspace[];
+  pendingControlFileOpen: PendingControlFileOpen | null;
+  onControlFileOpenResult: (actionId: string, outcome: ControlUiActionOutcome) => void;
   terminalSessions: import("@/shared").TerminalSession[];
   executionHosts: ExecutionHostDescriptor[];
   servers: SshServer[];
@@ -663,6 +667,8 @@ function renderMainContent(props: ShellMainContentProps) {
         chats={chats}
         executionHosts={executionHosts}
         workspaces={workspaces}
+        pendingControlFileOpen={props.pendingControlFileOpen}
+        onControlFileOpenResult={props.onControlFileOpenResult}
         terminalSessions={terminalSessions}
         createTerminalSession={createTerminalSession}
         onNavigate={navigateWithinShell}

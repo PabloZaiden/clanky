@@ -24,6 +24,7 @@ export class CopilotControl implements HarnessControl {
       steering: "active-session", activity: "native",
       stopScopes: ["child-execution", "command"],
       questionPolicy: "session",
+      clankyControlTools: true,
     };
   }
 

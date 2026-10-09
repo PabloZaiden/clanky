@@ -87,12 +87,14 @@ export interface ChatMessageOptions {
   attachments?: MessageAttachment[];
   credentialToken?: string | null;
   transcriptMessage?: MessageData;
+  clientId?: string;
 }
 
 export interface NormalizedChatMessageInput {
   message: string;
   attachments: MessageAttachment[];
   transcriptMessage?: MessageData;
+  clientId?: string;
 }
 
 export interface ChatDirectoryResolution {
@@ -221,7 +223,7 @@ export interface ChatConversationPort {
 }
 
 export interface ChatInteractionPort {
-  replyToQuestion(chatId: string, requestId: string, answers: string[][]): Promise<Chat>;
+  replyToQuestion(chatId: string, requestId: string, answers: string[][], clientId?: string): Promise<Chat>;
   reconcileQueuedMessage(chatId: string, queuedMessageId: string): Promise<{ chat: Chat; admission: HarnessInputAdmission }>;
   steerQueuedMessage(chatId: string, queuedMessageId: string): Promise<{ chat: Chat; admission: HarnessInputAdmission }>;
   sendMessage(chatId: string, options: ChatMessageOptions): Promise<Chat>;

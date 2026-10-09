@@ -16,6 +16,7 @@ import {
   mergeChatSummarySnapshot,
 } from "../utils/chat-snapshot";
 import { createRefreshCoordinator } from "../lib/refresh-coordinator";
+import { getClankyClientId } from "../lib/clanky-client-id";
 import { useRealtimeRefreshWithRecovery, useRealtimeStream } from "./useRealtimeStream";
 
 const log = createLogger("useChats");
@@ -266,7 +267,7 @@ export function useChats(): UseChatsResult {
       await apiRequest<unknown>(`/api/chats/${id}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(request),
+        body: JSON.stringify({ ...request, clientId: request.clientId ?? getClankyClientId() }),
         action: "Send chat message",
         fallbackMessage: "Failed to send chat message",
       });

@@ -77,9 +77,9 @@ function createChatServices(emitter: SimpleEventEmitter<ChatEvent>): ChatService
   conversation = conversationService;
   questions = new ChatQuestionService({ state, session,
     hasActiveStream: (id: string) => conversationService.hasActiveStream(id),
-    sendMessage: async (id, message, transcriptMessage) => {
+    sendMessage: async (id, message, transcriptMessage, clientId) => {
       if (!interaction) throw new Error("Chat interaction service is not initialized");
-      return interaction.sendMessage(id, { message, transcriptMessage });
+      return interaction.sendMessage(id, { message, transcriptMessage, clientId });
     } });
   const questionService = questions;
   conversationService.setQuestionHandler(async (chat, event, questionMessageId) => {
@@ -275,8 +275,8 @@ export class ChatManager {
     return this.services.interaction.replyToPermission(chatId, requestId, decision);
   }
 
-  replyToQuestion(chatId: string, requestId: string, answers: string[][]): Promise<Chat> {
-    return this.services.interaction.replyToQuestion(chatId, requestId, answers);
+  replyToQuestion(chatId: string, requestId: string, answers: string[][], clientId?: string): Promise<Chat> {
+    return this.services.interaction.replyToQuestion(chatId, requestId, answers, clientId);
   }
 
   async deleteChat(chatId: string, options?: DeleteChatOptions): Promise<boolean> {

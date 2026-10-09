@@ -10,7 +10,6 @@ import type { HarnessConversationBinding } from "@/shared/harness-control";
 import { HarnessError } from "../harness-errors";
 import { CopilotConnection } from "./connection";
 import { CopilotControl } from "./control";
-import { toCopilotMessage } from "./prompt";
 
 export class CopilotBackend implements Backend {
   readonly name = "copilot";
@@ -31,12 +30,12 @@ export class CopilotBackend implements Backend {
   async sendPromptAsync(sessionId: string, prompt: PromptInput): Promise<void> {
     const { sessions } = this.connection.requireServices();
     if (prompt.model) await sessions.setModel(sessionId, prompt.model.modelID, prompt.model.variant);
-    await sessions.get(sessionId).native.send(toCopilotMessage(prompt));
+    await sessions.send(sessionId, prompt);
   }
   async sendPrompt(sessionId: string, prompt: PromptInput): Promise<AgentResponse> {
     const { sessions } = this.connection.requireServices();
     if (prompt.model) await sessions.setModel(sessionId, prompt.model.modelID, prompt.model.variant);
-    const response = await sessions.get(sessionId).native.sendAndWait(toCopilotMessage(prompt), 120_000);
+    const response = await sessions.sendAndWait(sessionId, prompt, 120_000);
     if (!response) throw new HarnessError("harness_request_failed", "The native prompt produced no principal response.");
     return { id: response.data.messageId, content: response.data.content, parts: [{ type: "text", text: response.data.content }] };
   }
