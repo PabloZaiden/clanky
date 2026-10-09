@@ -380,7 +380,7 @@ export function buildActiveWorkSidebarItems(
   });
 }
 
-function getActiveWorkItemTimestamp(item: SidebarActiveWorkItem): string {
+export function getActiveWorkItemTimestamp(item: SidebarActiveWorkItem): string {
   switch (item.kind) {
     case "task":
       return item.taskNode.task.state.lastUserMessageAt ?? item.taskNode.task.config.createdAt;
