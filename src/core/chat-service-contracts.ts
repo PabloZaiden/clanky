@@ -44,6 +44,7 @@ export interface CreateChatOptions {
   modelID: string;
   modelVariant?: string;
   useWorktree?: boolean;
+  useChatNameAsBranch?: boolean;
   autoApprovePermissions?: boolean;
   baseBranch?: string;
   directory?: string;
@@ -148,6 +149,7 @@ export interface ChatStatePort {
 
 export interface ChatWorktreePort {
   hasEstablishedWorkspaceContext(chat: Chat): boolean;
+  reserveWorktreeBranchForCreation(chat: Chat): Promise<() => void>;
   resolveWorkingDirectory(
     chat: Chat,
     options: { prepareWorkspace: boolean; signal?: AbortSignal },

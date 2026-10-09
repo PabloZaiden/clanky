@@ -94,6 +94,7 @@ export function ComposeChatView({
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState(composeWorkspace?.id ?? "");
   const [selectedModel, setSelectedModel] = useState("");
   const [useWorktree, setUseWorktree] = useState(true);
+  const [useChatNameAsBranch, setUseChatNameAsBranch] = useState(false);
   const [autoApprovePermissions, setAutoApprovePermissions] = useState(true);
   const [baseBranch, setBaseBranch] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -149,6 +150,12 @@ export function ComposeChatView({
   const worktreeControlDisabled = !worktreesAllowed;
 
   useEffect(() => {
+    if (!worktreesAllowed || !useWorktree) {
+      setUseChatNameAsBranch(false);
+    }
+  }, [useWorktree, worktreesAllowed]);
+
+  useEffect(() => {
     if (!worktreesAllowed) {
       setUseWorktree(false);
     }
@@ -197,6 +204,9 @@ export function ComposeChatView({
           variant: parsedModel.variant ?? "",
         },
         useWorktree: worktreesAllowed ? useWorktree : false,
+        ...(worktreesAllowed && useWorktree && useChatNameAsBranch
+          ? { useChatNameAsBranch: true }
+          : {}),
         autoApprovePermissions,
         ...(selectedWorkspace.workspaceType === "git"
           ? { baseBranch: baseBranch.trim() || currentBranch.trim() }
@@ -331,6 +341,25 @@ export function ComposeChatView({
             </div>
           </label>
         </div>
+        )}
+
+        {worktreesAllowed && useWorktree && (
+        <label className="flex items-start gap-3">
+          <input
+            type="checkbox"
+            checked={useChatNameAsBranch}
+            onChange={(event) => setUseChatNameAsBranch(event.target.checked)}
+            className="mt-1 h-4 w-4 rounded border-gray-300 text-gray-700 focus:ring-gray-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-300"
+          />
+          <div className="flex-1">
+            <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Use chat name as branch name
+            </span>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Uses a Git-safe version of this name without the usual prefix or ID suffix.
+            </p>
+          </div>
+        </label>
         )}
 
         {selectedWorkspace?.workspaceType === "directory" && (

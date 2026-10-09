@@ -108,6 +108,7 @@ export const chatsCrudRoutes = defineRoutes({
           modelID: body.model.modelID,
           modelVariant: body.model.variant,
           useWorktree: body.useWorktree,
+          useChatNameAsBranch: body.useChatNameAsBranch,
           autoApprovePermissions: body.autoApprovePermissions,
           baseBranch: body.baseBranch,
           directory: workspace.directory,

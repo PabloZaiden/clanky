@@ -83,6 +83,40 @@ class DeferredWorktreeCleanupExecutor extends TestCommandExecutor {
   }
 }
 
+class DeferredWorktreeCreationExecutor extends TestCommandExecutor {
+  worktreeAddStarted = false;
+  private worktreeAddBlocked = false;
+  private readonly worktreeAddReleased: Promise<void>;
+  private releaseWorktreeAddCallback: (() => void) | undefined;
+
+  constructor(directory: string) {
+    super(directory);
+    this.worktreeAddReleased = new Promise<void>((resolve) => {
+      this.releaseWorktreeAddCallback = resolve;
+    });
+  }
+
+  releaseWorktreeAdd(): void {
+    this.releaseWorktreeAddCallback?.();
+  }
+
+  override async exec(
+    command: string,
+    args: string[],
+    options?: Parameters<TestCommandExecutor["exec"]>[2],
+  ) {
+    const isWorktreeAdd = command === "git"
+      && args.includes("worktree")
+      && args.includes("add");
+    if (isWorktreeAdd && !this.worktreeAddBlocked) {
+      this.worktreeAddBlocked = true;
+      this.worktreeAddStarted = true;
+      await this.worktreeAddReleased;
+    }
+    return await super.exec(command, args, options);
+  }
+}
+
 describe("Chats API Integration", () => {
   let testDataDir: string;
   let testWorkDir: string;
@@ -2118,8 +2152,217 @@ describe("Chats API Integration", () => {
       },
     );
     expect(persisted.state.worktree?.originalBranch).toBe(defaultBranch);
-    expect(persisted.state.worktree?.workingBranch).toContain("chat-chat-without-base-branch-");
+    expect(persisted.state.worktree?.workingBranch).toBe(
+      `chat-chat-without-base-branch-${created.config.id.slice(0, 8)}`,
+    );
     expect(persisted?.state.worktree?.worktreePath).toBe(expectedWorktreePath);
+  });
+
+  test("uses the sanitized chat name as the worktree branch when requested", async () => {
+    const createResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Feature: Chat #1!",
+        workspaceId: testWorkspaceId,
+        model: testModel,
+        useWorktree: true,
+        useChatNameAsBranch: true,
+      }),
+    });
+
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json();
+    const expectedBranch = "feature-chat-1";
+    const expectedWorktreePath = new ManagedPathService(
+      process.platform === "win32" ? "windows" : "posix",
+    ).getManagedWorktreePath(testWorkDir, created.config.id);
+    const persisted = await pollUntil(
+      () => loadChat(created.config.id),
+      (chat): chat is Chat => chat?.config.useChatNameAsBranch === true
+        && chat.state.worktree?.workingBranch === expectedBranch
+        && chat.state.worktree?.worktreePath === expectedWorktreePath,
+      {
+        description: `chat ${created.config.id} to prepare its sanitized-name worktree branch`,
+        timeoutMs: 5000,
+        formatLastObserved: (chat) => chat === null
+          ? "not found"
+          : `branch=${chat.state.worktree?.workingBranch ?? "pending"}, worktree=${chat.state.worktree?.worktreePath ?? "pending"}`,
+      },
+    );
+
+    expect(persisted.state.worktree?.workingBranch).toBe(expectedBranch);
+    expect(persisted.state.worktree?.worktreePath).toBe(expectedWorktreePath);
+    const worktreePath = persisted.state.worktree?.worktreePath;
+    if (!worktreePath) {
+      throw new Error("Expected the chat worktree to be prepared");
+    }
+    expect(await getCurrentBranch(worktreePath)).toBe(expectedBranch);
+  });
+
+  test("rejects a chat-name branch that is already checked out before persisting", async () => {
+    const suffix = crypto.randomUUID().replaceAll("-", "").slice(0, 8);
+    const name = `Checked Out Branch ${suffix}`;
+    const branchName = `checked-out-branch-${suffix}`;
+    const worktreePath = join(testDataDir, `checked-out-branch-${suffix}`);
+    let worktreeAdded = false;
+
+    await runGit(testWorkDir, ["branch", branchName]);
+    try {
+      await runGit(testWorkDir, ["worktree", "add", worktreePath, branchName]);
+      worktreeAdded = true;
+
+      const beforeResponse = await fetch(`${baseUrl}/api/chats?workspaceId=${testWorkspaceId}`);
+      expect(beforeResponse.status).toBe(200);
+      const before = await beforeResponse.json() as Chat[];
+
+      const createResponse = await fetch(`${baseUrl}/api/chats`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          workspaceId: testWorkspaceId,
+          model: testModel,
+          useWorktree: true,
+          useChatNameAsBranch: true,
+        }),
+      });
+      expect(createResponse.status).toBe(409);
+      expect(await createResponse.json()).toMatchObject({
+        error: "chat_worktree_branch_conflict",
+      });
+
+      const afterResponse = await fetch(`${baseUrl}/api/chats?workspaceId=${testWorkspaceId}`);
+      expect(afterResponse.status).toBe(200);
+      const after = await afterResponse.json() as Chat[];
+      expect(after.map((chat) => chat.config.id)).toEqual(
+        before.map((chat) => chat.config.id),
+      );
+    } finally {
+      if (worktreeAdded) {
+        await runGit(testWorkDir, ["worktree", "remove", "--force", worktreePath]);
+      }
+      await runGit(testWorkDir, ["branch", "-D", branchName]);
+    }
+  });
+
+  test("attaches an existing chat-name branch when it is not checked out", async () => {
+    const suffix = crypto.randomUUID().replaceAll("-", "").slice(0, 8);
+    const name = `Existing Free Branch ${suffix}`;
+    const branchName = `existing-free-branch-${suffix}`;
+    await runGit(testWorkDir, ["branch", branchName]);
+
+    const createResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name,
+        workspaceId: testWorkspaceId,
+        model: testModel,
+        useWorktree: true,
+        useChatNameAsBranch: true,
+      }),
+    });
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json();
+    const expectedWorktreePath = new ManagedPathService(
+      process.platform === "win32" ? "windows" : "posix",
+    ).getManagedWorktreePath(testWorkDir, created.config.id);
+    const prepared = await pollUntil(
+      () => loadChat(created.config.id),
+      (chat): chat is Chat => chat?.state.worktree?.workingBranch === branchName
+        && chat.state.worktree?.worktreePath === expectedWorktreePath,
+      {
+        description: `chat ${created.config.id} to attach its existing branch`,
+        timeoutMs: 5000,
+        formatLastObserved: (chat) => chat?.state.worktree?.workingBranch ?? "worktree pending",
+      },
+    );
+
+    expect(prepared.state.worktree?.workingBranch).toBe(branchName);
+    expect(await getCurrentBranch(expectedWorktreePath)).toBe(branchName);
+  });
+
+  test("rejects a duplicate chat-name branch while deferred worktree preparation is pending", async () => {
+    const nestedRepositoryPath = join(testWorkDir, "nested-workspace");
+    await mkdir(nestedRepositoryPath);
+    const nestedWorkspaceId = await getOrCreateWorkspace(
+      nestedRepositoryPath,
+      "Nested repository workspace",
+    );
+    const deferredExecutor = new DeferredWorktreeCreationExecutor(testWorkDir);
+    backendManager.setExecutorFactoryForTesting(() => deferredExecutor);
+    const requestBody = {
+      name: "Pending Duplicate Branch",
+      workspaceId: testWorkspaceId,
+      model: testModel,
+      useWorktree: true,
+      useChatNameAsBranch: true,
+    };
+
+    try {
+      const createResponse = await fetch(`${baseUrl}/api/chats`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody),
+      });
+      expect(createResponse.status).toBe(201);
+      const created = await createResponse.json();
+
+      await pollUntil(
+        () => deferredExecutor.worktreeAddStarted,
+        (started) => started,
+        {
+          description: "deferred chat worktree preparation to start adding its branch",
+          timeoutMs: 5000,
+          formatLastObserved: (started) => `worktree add started=${String(started)}`,
+        },
+      );
+
+      const beforeResponse = await fetch(`${baseUrl}/api/chats?workspaceId=${nestedWorkspaceId}`);
+      expect(beforeResponse.status).toBe(200);
+      const before = await beforeResponse.json() as Chat[];
+
+      const duplicateResponse = await fetch(`${baseUrl}/api/chats`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...requestBody,
+          workspaceId: nestedWorkspaceId,
+        }),
+      });
+      expect(duplicateResponse.status).toBe(409);
+      expect(await duplicateResponse.json()).toMatchObject({
+        error: "chat_worktree_branch_conflict",
+      });
+
+      const afterResponse = await fetch(`${baseUrl}/api/chats?workspaceId=${nestedWorkspaceId}`);
+      expect(afterResponse.status).toBe(200);
+      const after = await afterResponse.json() as Chat[];
+      expect(after.map((chat) => chat.config.id)).toEqual(
+        before.map((chat) => chat.config.id),
+      );
+
+      deferredExecutor.releaseWorktreeAdd();
+      const expectedWorktreePath = new ManagedPathService(
+        process.platform === "win32" ? "windows" : "posix",
+      ).getManagedWorktreePath(testWorkDir, created.config.id);
+      const prepared = await pollUntil(
+        () => loadChat(created.config.id),
+        (chat): chat is Chat => chat?.state.worktree?.worktreePath === expectedWorktreePath,
+        {
+          description: `chat ${created.config.id} to finish deferred worktree preparation`,
+          timeoutMs: 5000,
+          formatLastObserved: (chat) => chat?.state.worktree?.worktreePath ?? "worktree pending",
+        },
+      );
+      expect(prepared.state.worktree?.workingBranch).toBe("pending-duplicate-branch");
+    } finally {
+      deferredExecutor.releaseWorktreeAdd();
+      backendManager.setExecutorFactoryForTesting(
+        (directory) => new TestCommandExecutor(directory),
+      );
+    }
   });
 
   test("lists chats without hydrating transcript payloads", async () => {

@@ -136,6 +136,22 @@ filesystem permissions. Access outside the initial directory is intentional
 and an accepted product risk; authentication, workspace ownership and
 execution-host authorization still apply.
 
+### Chat worktree branch names
+
+`POST /api/chats` accepts the optional `useChatNameAsBranch` boolean. When it
+is `true` and `useWorktree` is enabled, the working branch is the sanitized
+chat name, without the usual `chat-` prefix or chat-ID suffix. Sanitization
+lowercases the name, replaces characters outside `a-z`, `0-9`, and `-` with
+hyphens, collapses and trims hyphens, and limits the result to 40 characters;
+an empty result becomes `unnamed`. Omitted or `false` keeps the existing
+`chat-<sanitized-name>-<first-eight-chat-id-characters>` format. The named
+**New Chat** form exposes this option only for Git workspaces with **Use
+worktree** enabled; Quick Chat and non-worktree creation remain unchanged.
+If the resulting branch is already checked out or claimed by another chat in
+the same repository, creation returns HTTP 409 with
+`chat_worktree_branch_conflict` before persisting the new chat. A free existing
+branch can still be attached to the worktree.
+
 ### Native chat questions
 
 Read `state.harness.questions` from the chat or snapshot response. Each request

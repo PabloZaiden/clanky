@@ -30,7 +30,7 @@ export type {
 } from "./git-types";
 
 // Sub-module imports
-import { isGitRepo, getCurrentBranch, getLocalBranches, getDefaultBranch, verifyBranch, hasUncommittedChanges, getChangedFiles, branchExists, hasStagedChanges, isAncestor, getConflictedFiles } from "./git-repo-query";
+import { isGitRepo, getCommonGitDirectory as getCommonGitDirectoryQuery, getCurrentBranch, getLocalBranches, getDefaultBranch, verifyBranch, hasUncommittedChanges, getChangedFiles, branchExists, hasStagedChanges, isAncestor, getConflictedFiles } from "./git-repo-query";
 import { getRemoteUrl as getRemoteUrlRemote, hasRemote as hasRemoteRemote, pushBranch, fetchBranch, pull, pullBranch } from "./git-remote";
 import { assertValidBranchName, createBranch, checkoutBranch, deleteBranch, ensureBranch } from "./git-branch";
 import { stageAll, commit, getLastCommitMessage } from "./git-commit";
@@ -97,6 +97,10 @@ export class GitService {
 
   async isGitRepo(directory: string): Promise<boolean> {
     return isGitRepo(this.executor, directory);
+  }
+
+  async getCommonGitDirectory(directory: string): Promise<string> {
+    return getCommonGitDirectoryQuery(this.executor, directory);
   }
 
   async getCurrentBranch(directory: string): Promise<string> {

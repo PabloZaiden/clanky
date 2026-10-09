@@ -8,6 +8,7 @@
  */
 
 import { isDomainError, type DomainError } from "../domain/domain-error";
+import { CHAT_WORKTREE_BRANCH_CONFLICT_CODE } from "../domain/chat-worktree-errors";
 
 export type DomainErrorBoundary =
   | "authenticated"
@@ -100,6 +101,7 @@ const API_DOMAIN_ERROR_CODES = {
   acp_session_not_found: true,
   acp_ssh_authentication_failed: true,
   acp_unsupported_prompt_capability: true,
+  [CHAT_WORKTREE_BRANCH_CONFLICT_CODE]: true,
   agent_already_running: true,
   agent_chat_not_found: true,
   agent_code_generation_failed: true,
@@ -609,6 +611,10 @@ const POLICY_PROFILES = {
         status: 422,
         error: "unsupported_prompt_capability",
         message: "The connected agent does not support embedded document attachments.",
+      },
+      [CHAT_WORKTREE_BRANCH_CONFLICT_CODE]: {
+        status: 409,
+        message: "This chat worktree branch is already checked out or in use. Choose a different chat name.",
       },
       execution_host_capability_unavailable: {
         status: 409,

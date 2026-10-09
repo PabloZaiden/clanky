@@ -29,6 +29,7 @@ export const CHAT_METADATA_COLUMNS = [
   "model_model_id",
   "model_variant",
   "use_worktree",
+  "use_chat_name_as_branch",
   "auto_approve_permissions",
   "skip_base_branch_sync",
   "base_branch",

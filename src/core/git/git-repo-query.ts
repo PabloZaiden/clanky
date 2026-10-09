@@ -4,7 +4,8 @@
 
 import type { CommandExecutor } from "../command-executor";
 import { log } from "@pablozaiden/webapp/server";
-import { runGitCommand, gitError } from "./git-core";
+import { resolveExecutionPathFromDirectory } from "../execution-path";
+import { runGitCommand, gitError, resolveGitDirectory } from "./git-core";
 import type {
   GitCommandResult,
   BranchVerificationResult,
@@ -13,6 +14,28 @@ import type {
 export async function isGitRepo(executor: CommandExecutor, directory: string): Promise<boolean> {
   const result = await runGitCommand(executor, directory, ["rev-parse", "--is-inside-work-tree"]);
   return result.success && result.stdout.trim() === "true";
+}
+
+export async function getCommonGitDirectory(
+  executor: CommandExecutor,
+  directory: string,
+): Promise<string> {
+  const resolvedDirectory = await resolveGitDirectory(executor, directory);
+  const args = ["rev-parse", "--git-common-dir"];
+  const result = await runGitCommand(executor, resolvedDirectory, args);
+  if (!result.success) {
+    throw gitError("Failed to get common Git directory", result, args);
+  }
+
+  const commonGitDirectory = result.stdout.trim();
+  if (!commonGitDirectory) {
+    throw new Error("Git did not return a common directory for the repository.");
+  }
+  return resolveExecutionPathFromDirectory(
+    resolvedDirectory,
+    commonGitDirectory,
+    executor.pathStyle,
+  );
 }
 
 export async function getCurrentBranch(executor: CommandExecutor, directory: string): Promise<string> {
