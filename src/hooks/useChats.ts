@@ -78,6 +78,7 @@ export interface UseChatsResult {
   refreshChat: (id: string) => Promise<void>;
   getChat: (id: string) => Chat | undefined;
   createChat: (request: CreateChatRequest) => Promise<Chat | null>;
+  createChatHere: (sourceChatId: string) => Promise<Chat>;
   createExecutionHostChat: (
     host: ExecutionHostRef,
     request: CreateExecutionHostChatRequest,
@@ -182,6 +183,16 @@ export function useChats(): UseChatsResult {
       setError(String(createError));
       return null;
     }
+  }, []);
+
+  const createChatHere = useCallback(async (sourceChatId: string): Promise<Chat> => {
+    const chat = await apiRequest<Chat>(`/api/chats/${encodeURIComponent(sourceChatId)}/new-here`, {
+      method: "POST",
+      action: "Create chat here",
+      fallbackMessage: "Failed to create chat here",
+    });
+    setChats((prev) => upsertChat(prev, chat));
+    return chat;
   }, []);
 
   const createExecutionHostChat = useCallback(async (
@@ -352,6 +363,7 @@ export function useChats(): UseChatsResult {
     refreshChat,
     getChat,
     createChat,
+    createChatHere,
     createExecutionHostChat,
     updateChat,
     markChatDone,

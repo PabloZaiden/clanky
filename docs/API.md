@@ -156,11 +156,16 @@ branch can still be attached to the worktree.
 
 `POST /api/chats` accepts an optional `directory` path on the selected
 workspace's execution host. When omitted, the workspace's configured directory
-is used. To create a separate conversation directly in an existing checkout or
-chat worktree, pass that exact path and set `useWorktree` to `false`. The new
-chat shares the checkout and branch but does not own or remove the directory
-when the chat is deleted. The path is a starting directory, not a filesystem
-sandbox.
+is used. An explicit path must already exist on that execution host. To create
+a separate conversation directly in an existing checkout or chat worktree,
+pass that exact path and set `useWorktree` to `false`. The new chat shares the
+checkout and branch but does not own or remove the directory when the chat is
+deleted. The path is a starting directory, not a filesystem sandbox.
+
+`POST /api/chats/:id/new-here` creates an empty chat in the source chat's current
+workspace directory, reusing its model and permission setting. The server uses
+the source chat's saved execution-host binding and rejects the request if that
+binding no longer matches the workspace's current execution target.
 
 ### Native chat questions
 
@@ -388,6 +393,7 @@ included in this table.
 | POST | `/api/agents/code/test/stream` | Stream deterministic agent code test output without saving an agent or run. |
 | GET, POST | `/api/chats` | List chats or create a chat session. |
 | GET, PATCH, DELETE | `/api/chats/:id` | Read, update, or delete a chat session; remote cleanup may continue after deletion. |
+| POST | `/api/chats/:id/new-here` | Create an empty chat in the source chat's current workspace directory and execution target. |
 | GET | `/api/chats/:id/activity` | Observe owned native background work. |
 | POST | `/api/chats/:id/activity/:activityId/stop` | Stop one owned native child or process. |
 | POST | `/api/chats/:id/done` | Mark a standalone chat as done. |

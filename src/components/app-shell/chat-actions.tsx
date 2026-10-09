@@ -6,7 +6,11 @@ import { SpawnCurrentPlanModal } from "../SpawnCurrentPlanModal";
 import { appAbsoluteUrl } from "../../lib/public-path";
 import { apiRequest } from "../../lib/api-client";
 import type { Chat, Task } from "@/shared";
-import { isChatBusyStatus, isStandaloneChat } from "@/shared/chat";
+import {
+  getCurrentChatDirectory,
+  isChatBusyStatus,
+  isStandaloneChat,
+} from "@/shared/chat";
 
 interface ChatActionItemOptions {
   chat: Chat;
@@ -56,17 +60,6 @@ function getChatTranscriptViewerUrl(chat: Chat): string {
 
 function getChatTranscriptDownloadUrl(chat: Chat): string {
   return appAbsoluteUrl(`/api/chats/${encodeURIComponent(chat.config.id)}/transcript.md?download=1`);
-}
-
-function getCurrentChatDirectory(chat: Chat): string | undefined {
-  const worktreePath = chat.state.worktree?.worktreePath;
-  if (worktreePath?.trim()) {
-    return worktreePath;
-  }
-
-  return !chat.config.useWorktree && chat.config.directory.trim()
-    ? chat.config.directory
-    : undefined;
 }
 
 function buildChatActionItems({

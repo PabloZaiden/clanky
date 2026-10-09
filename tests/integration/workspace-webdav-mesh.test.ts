@@ -1,20 +1,21 @@
 /**
- * Real Mesh boundary: DAV must use the selected worker's existing filesystem
- * and exec protocols, reject target changes, and never fall back to local files.
- * Local DAV and Mesh exec scenarios do not cover this combined contract.
+ * Real Mesh boundary: DAV and source-context chat creation must use the selected
+ * worker binding, reject target changes, and never fall back to local files.
+ * Local DAV and Mesh exec scenarios do not cover these combined contracts.
  */
 
 import { expect, test } from "bun:test";
 import { createDeviceCredentialsStore } from "@pablozaiden/webapp/cli";
 import { open } from "node:fs/promises";
 import { startWorkspaceWebDav, type WebDavBridge } from "../../src/cli/webdav";
+import type { Chat } from "../../src/shared/chat";
 import {
   compiledClankyCommand, enrollMeshWorker, meshJsonRequest, startMeshNode, stopMeshNode,
   type ManagedMeshNode,
 } from "../helpers/mesh-process-cluster";
 import { pollUntil } from "../helpers/polling";
 
-test("workspace WebDAV uses Mesh streaming and exec, pins its host and refuses local fallback", async () => {
+test("workspace WebDAV and new chats remain pinned to their Mesh execution target", async () => {
   const command = await compiledClankyCommand();
   const nodes: ManagedMeshNode[] = [];
   let dav: WebDavBridge | undefined;
@@ -46,6 +47,14 @@ test("workspace WebDAV uses Mesh streaming and exec, pins its host and refuses l
       },
     });
     expect(workspace.status).toBe(201);
+    const sourceChat = await meshJsonRequest<Chat>(controller, "/api/chats", {
+      body: {
+        workspaceId: workspace.body.id,
+        useWorktree: false,
+        model: { providerID: "opencode", modelID: "mesh-context-fixture", variant: "" },
+      },
+    });
+    expect(sourceChat.status).toBe(201);
     const input = {
       fetchFn: fetch, envPrefix: "CLANKY",
       environment: { CLANKY_BASE_URL: controller.baseUrl, CLANKY_API_KEY: key.body.token },
@@ -119,6 +128,16 @@ test("workspace WebDAV uses Mesh streaming and exec, pins its host and refuses l
     expect((await meshJsonRequest(controller, `/api/workspaces/${workspace.body.id}`, {
       method: "PUT", body: { executionHost: localRef },
     })).status).toBe(200);
+    const staleNewChat = await meshJsonRequest(controller, `/api/chats/${sourceChat.body.config.id}/new-here`, {
+      body: {},
+    });
+    expect(staleNewChat.status).toBe(409);
+    const chats = await meshJsonRequest<Array<{ config: { id: string } }>>(
+      controller,
+      `/api/chats?workspaceId=${encodeURIComponent(workspace.body.id)}`,
+    );
+    expect(chats.status).toBe(200);
+    expect(chats.body.map((chat) => chat.config.id)).toEqual([sourceChat.body.config.id]);
     expect((await request(path, { method: "PUT", body: "wrong host" })).status).toBe(409);
     expect(new Uint8Array(await Bun.file(path).arrayBuffer())).toEqual(bytes);
     await expect(dav.close()).rejects.toMatchObject({ status: 409 });

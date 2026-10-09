@@ -65,6 +65,7 @@ interface UseShellActionsOptions {
   updateTerminalSession: UseTerminalSessionsResult["updateSession"];
   deleteTerminalSession: UseTerminalSessionsResult["deleteSession"];
   createChat: UseChatsResult["createChat"];
+  createChatHere: UseChatsResult["createChatHere"];
   createExecutionHostChat: UseChatsResult["createExecutionHostChat"];
   quickChatSettings: UseQuickChatSettingsResult;
   githubUsername: UseGithubUsernameResult;
@@ -98,6 +99,7 @@ export function useShellActions({
   updateTerminalSession,
   deleteTerminalSession,
   createChat,
+  createChatHere,
   createExecutionHostChat,
   quickChatSettings,
   githubUsername,
@@ -201,16 +203,9 @@ export function useShellActions({
     sourceChat: Chat,
     directory: string,
   ): Promise<void> => {
-    let createdChat: Chat | null;
+    let createdChat: Chat;
     if (isWorkspaceChat(sourceChat)) {
-      createdChat = await createChat({
-        workspaceId: getChatWorkspaceId(sourceChat),
-        directory,
-        model: sourceChat.config.model,
-        useWorktree: false,
-        autoApprovePermissions: sourceChat.config.autoApprovePermissions ?? true,
-        quick: false,
-      });
+      createdChat = await createChatHere(sourceChat.config.id);
     } else {
       const source = sourceChat.config.source;
       if (source?.kind !== "execution_host") {
@@ -251,12 +246,9 @@ export function useShellActions({
       }
     }
 
-    if (!createdChat) {
-      throw new Error("Failed to create a chat in the current directory.");
-    }
     navigateWithinShell({ view: "chat", chatId: createdChat.config.id });
   }, [
-    createChat,
+    createChatHere,
     createExecutionHostChat,
     navigateWithinShell,
   ]);

@@ -206,6 +206,17 @@ export function isWorkspaceChat(chat: Pick<Chat, "config"> | ChatConfig): boolea
   return (config.source?.kind ?? "workspace") === "workspace";
 }
 
+export function getCurrentChatDirectory(chat: Pick<Chat, "config" | "state">): string | undefined {
+  const worktreePath = chat.state.worktree?.worktreePath;
+  if (worktreePath?.trim()) {
+    return worktreePath;
+  }
+
+  return !chat.config.useWorktree && chat.config.directory.trim()
+    ? chat.config.directory
+    : undefined;
+}
+
 export function isExecutionHostChat(chat: Pick<Chat, "config"> | ChatConfig): boolean {
   const config = "config" in chat ? chat.config : chat;
   return config.source?.kind === "execution_host";

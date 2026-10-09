@@ -143,6 +143,10 @@ export class ChatManager {
     return this.services.lifecycle.createChat(options);
   }
 
+  async createChatHere(sourceChatId: string): Promise<Chat> {
+    return this.services.lifecycle.createChatHere(sourceChatId);
+  }
+
   async createAgentRunChat(options: CreateAgentRunChatOptions): Promise<Chat> {
     return this.services.lifecycle.createAgentRunChat(options);
   }

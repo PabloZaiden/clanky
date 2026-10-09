@@ -431,6 +431,76 @@ describe("Chats API Integration", () => {
     }
   });
 
+  test("rejects an explicit chat directory that does not exist on the execution host", async () => {
+    const workspaceChatsResponse = await fetch(
+      `${baseUrl}/api/chats?workspaceId=${encodeURIComponent(testWorkspaceId)}`,
+    );
+    expect(workspaceChatsResponse.status).toBe(200);
+    const workspaceChatsBefore = await workspaceChatsResponse.json() as Chat[];
+    const invalidDirectory = join(testDataDir, `missing-chat-directory-${crypto.randomUUID()}`);
+    const response = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        workspaceId: testWorkspaceId,
+        directory: invalidDirectory,
+        model: testModel,
+        useWorktree: false,
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: "execution_host_directory_invalid" });
+    const workspaceChatsAfterResponse = await fetch(
+      `${baseUrl}/api/chats?workspaceId=${encodeURIComponent(testWorkspaceId)}`,
+    );
+    expect(workspaceChatsAfterResponse.status).toBe(200);
+    const workspaceChatsAfter = await workspaceChatsAfterResponse.json() as Chat[];
+    expect(workspaceChatsAfter.map((chat) => chat.config.id))
+      .toEqual(workspaceChatsBefore.map((chat) => chat.config.id));
+  });
+
+  test("creates an empty chat in the source chat's current directory and target", async () => {
+    const sourceResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        workspaceId: testWorkspaceId,
+        model: testModel,
+        useWorktree: false,
+        autoApprovePermissions: false,
+      }),
+    });
+    expect(sourceResponse.status).toBe(201);
+    const sourceChat = await sourceResponse.json() as Chat;
+    let createdChatId: string | undefined;
+
+    try {
+      const response = await fetch(`${baseUrl}/api/chats/${sourceChat.config.id}/new-here`, {
+        method: "POST",
+      });
+      expect(response.status).toBe(201);
+      const createdChat = await response.json() as Chat;
+      createdChatId = createdChat.config.id;
+      expect(createdChat.config.directory).toBe(sourceChat.config.directory);
+      expect(createdChat.config.executionHostBinding).toEqual(sourceChat.config.executionHostBinding);
+      expect(createdChat.config.model).toEqual(sourceChat.config.model);
+      expect(createdChat.config.autoApprovePermissions).toBe(false);
+      expect(createdChat.config.useWorktree).toBe(false);
+      expect(createdChat.state.messages).toEqual([]);
+    } finally {
+      for (const chatId of [createdChatId, sourceChat.config.id]) {
+        if (!chatId) {
+          continue;
+        }
+        const deleteResponse = await fetch(`${baseUrl}/api/chats/${chatId}`, {
+          method: "DELETE",
+        });
+        expect([200, 404]).toContain(deleteResponse.status);
+      }
+    }
+  });
+
   test("deletes the chat before deferred worktree cleanup finishes", async () => {
     const cleanupExecutor = new DeferredWorktreeCleanupExecutor();
     backendManager.setExecutorFactoryForTesting(() => cleanupExecutor);
