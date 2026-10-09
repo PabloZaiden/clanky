@@ -98,6 +98,7 @@ export interface QueuedChatMessage {
   attachments?: MessageAttachment[];
   createdAt: string;
   transcriptMessage?: PersistedMessage;
+  clientId?: string;
 }
 
 export type ChatStatus =

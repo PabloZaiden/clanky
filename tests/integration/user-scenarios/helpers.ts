@@ -52,12 +52,10 @@ export interface TestServerContext {
   server: Server<unknown>;
   /** Base URL for API calls */
   baseUrl: string;
-  /**
-   * In-memory configurable backend used when useMockAcpProcess is false.
-   * Process-backed setups register AcpBackend instead, so this instance is
-   * inactive and reset() does not affect those tests.
-   */
+  /** In-memory configurable backend used by the default scenario setup. */
   mockBackend: ConfigurableMockBackend;
+  /** Whether the normal backend factory and execution-host executor are active. */
+  useRealExecutionPath: boolean;
   /** Original mock ACP environment value before test setup */
   originalMockAcpEnv?: string;
   /** Local git remote path (for push tests) */
@@ -354,10 +352,13 @@ export interface SetupServerOptions {
   mockResponses?: string[];
   /**
    * Use the process-backed mock ACP runtime instead of the in-memory backend.
-   * When enabled, backendManager uses AcpBackend and does not register
-   * ConfigurableMockBackend.
+   * By default this installs AcpBackend through the test hook and keeps the
+   * test command executor. Pair with useRealExecutionPath to exercise the
+   * normal backend factory and execution-host executor.
    */
   useMockAcpProcess?: boolean;
+  /** Use the workspace-configured backend factory and real execution-host executor. */
+  useRealExecutionPath?: boolean;
   /** Create a local git remote for push tests */
   withRemote?: boolean;
   /** Initial files to create in the work directory */
@@ -373,10 +374,15 @@ export async function setupTestServer(options: SetupServerOptions = {}): Promise
   const {
     mockResponses = ["<promise>COMPLETE</promise>"],
     useMockAcpProcess = false,
+    useRealExecutionPath = false,
     withRemote = true,
     initialFiles = {},
     withPlanningDir = false,
   } = options;
+
+  if (useRealExecutionPath && !useMockAcpProcess) {
+    throw new Error("useRealExecutionPath requires useMockAcpProcess to avoid live provider access");
+  }
 
   // Stop stale engines before replacing their persistence context.
   await taskManager.shutdown();
@@ -433,11 +439,15 @@ export async function setupTestServer(options: SetupServerOptions = {}): Promise
   const originalMockAcpEnv = process.env["CLANKY_MOCK_ACP"];
   if (useMockAcpProcess) {
     process.env["CLANKY_MOCK_ACP"] = "true";
-    backendManager.setBackendForTesting(new AcpBackend());
-  } else {
+    if (!useRealExecutionPath) {
+      backendManager.setBackendForTesting(new AcpBackend());
+    }
+  } else if (!useRealExecutionPath) {
     backendManager.setBackendForTesting(mockBackend);
   }
-  backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
+  if (!useRealExecutionPath) {
+    backendManager.setExecutorFactoryForTesting((directory) => new TestCommandExecutor(directory));
+  }
 
   // Start test server
   const server = serveNativeApiRoutes();
@@ -454,6 +464,7 @@ export async function setupTestServer(options: SetupServerOptions = {}): Promise
     server,
     baseUrl,
     mockBackend,
+    useRealExecutionPath,
     originalMockAcpEnv,
     remoteDir,
     workspaceId,
@@ -474,6 +485,10 @@ export async function teardownTestServer(ctx?: TestServerContext | null): Promis
   // Stop engines before closing the database and removing their worktrees.
   await taskManager.shutdown();
   taskManager.resetForTesting();
+
+  if (ctx.useRealExecutionPath) {
+    await backendManager.resetAllConnections();
+  }
 
   // Reset backend manager
   backendManager.resetForTesting();

@@ -7,6 +7,12 @@
  */
 
 export * from "./file-system";
+export {
+  RequestControlUiActionSchema,
+  AcknowledgeControlUiActionSchema,
+  type RequestControlUiAction,
+  type AcknowledgeControlUiAction,
+} from "./clanky-control";
 export { HarnessConversationBindingSchema, HarnessConversationStateSchema } from "./harness";
 
 export {

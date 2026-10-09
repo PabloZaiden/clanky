@@ -20,6 +20,7 @@ import type { Agent, AgentRun, AgentRunStatus } from "./agent";
 import type { Chat, ChatConfig, ChatStatus } from "./chat";
 import type { AutomaticPrFlowState, GitCommit, TaskConfig, TaskLogEntry, ModelConfig, PersistedMessage } from "./task";
 import type { ToolCallExtra, ToolCallRecord } from "./tool-call";
+import type { ControlUiActionEvent } from "./clanky-control";
 
 /**
  * Message data from the AI agent.
@@ -137,7 +138,8 @@ export type ChatEvent =
   | ChatLogDeltaEvent
   | ChatInterruptedEvent
   | ChatErrorEvent
-  | ChatDeletedEvent;
+  | ChatDeletedEvent
+  | ControlUiActionEvent;
 
 /**
  * Union type of all agent-scoped events streamed to clients.

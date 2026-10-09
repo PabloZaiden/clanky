@@ -5,6 +5,7 @@ import type { HarnessQuestionRequest } from "@/shared/harness-questions";
 import type { QuestionInfo } from "@/shared/harness-events";
 import { isQuestionOpen } from "@/shared/harness-questions";
 import { apiRequest } from "../../lib/api-client";
+import { getClankyClientId } from "../../lib/clanky-client-id";
 
 const actionClass = "py-1 text-xs text-gray-500 underline decoration-dotted underline-offset-2 hover:text-gray-900 disabled:opacity-50 dark:text-gray-400 dark:hover:text-gray-100";
 
@@ -80,7 +81,9 @@ function QuestionForm({
       const { chat } = await apiRequest<{ chat: Chat }>(
         `/api/chats/${encodeURIComponent(chatId)}/questions/${encodeURIComponent(request.requestId)}`,
         {
-          method: "POST", body: JSON.stringify({ answers }), headers: { "content-type": "application/json" },
+          method: "POST",
+          body: JSON.stringify({ answers, clientId: getClankyClientId() }),
+          headers: { "content-type": "application/json" },
           signal: controller.signal, action: "Answer chat question",
         },
       );

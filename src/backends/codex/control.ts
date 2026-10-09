@@ -20,6 +20,7 @@ export class CodexControl implements HarnessControl {
     adapter: "codex", experimental: true, steering: "expected-turn", activity: "partial",
     stopScopes: ["child-execution", "command"],
     questionPolicy: "session",
+    clankyControlTools: true,
   };
   constructor(private readonly resolve: () => { runtime: CodexRuntime; sessions: CodexSessionService }) {}
 

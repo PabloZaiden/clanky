@@ -8,6 +8,7 @@ import type {
   ConversationComposerSubmission,
 } from "../conversation-composer";
 import { apiRequest } from "../../lib/api-client";
+import { getClankyClientId } from "../../lib/clanky-client-id";
 import { getStoredSshCredentialToken } from "../../lib/ssh-browser-credentials";
 import { getChatErrorMessage } from "./chat-lifecycle";
 import type { ChatComposerAdapterOptions } from "./types";
@@ -73,6 +74,7 @@ export function useChatComposerAdapter({
         message,
         attachments,
         credentialToken,
+        clientId: getClankyClientId(),
       }),
       action: "Send chat message",
       fallbackMessage: "Failed to send chat message",

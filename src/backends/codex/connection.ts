@@ -40,9 +40,16 @@ export class CodexConnection {
         directory: config.directory, env: { ...config.env, ...config.managedEnvironment },
       }, this.startupAbort?.signal);
       const catalog = new CodexModelCatalog(runtime.rpc);
-      const sessions = new CodexSessionService({ runtime, catalog, events: this.events });
+      const sessions = new CodexSessionService({
+        runtime,
+        catalog,
+        events: this.events,
+        managedEnvironment: config.managedEnvironment,
+      });
       const questions = new CodexQuestionCoordinator({ sessions, events: this.events, runtime });
-      runtime.rpc.setRequestHandler((request) => questions.handle(request));
+      runtime.rpc.setRequestHandler((request) => request.method === "item/tool/call"
+        ? sessions.handleToolCall(request)
+        : questions.handle(request));
       this.services = { runtime, catalog, sessions, questions };
     })().finally(() => {
       this.startupAbort = undefined;

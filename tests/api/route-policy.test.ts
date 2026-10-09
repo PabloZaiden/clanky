@@ -55,6 +55,16 @@ describe("API route policy metadata", () => {
     }
   });
 
+  test("requires authenticated same-origin mutations for control UI actions", () => {
+    for (const path of [
+      "/api/control/ui-actions",
+      "/api/control/ui-actions/:actionId/ack",
+    ]) {
+      expect(routes[path]?.auth).toBe("user");
+      expect(routes[path]?.sameOrigin).toBe("mutations");
+    }
+  });
+
   test("keeps public and owner-only routes limited to the reviewed allowlists", () => {
     const declaredRoutes = Object.entries(routes).filter(([path]) => path.startsWith("/api/"));
 

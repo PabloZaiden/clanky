@@ -17,6 +17,8 @@ export interface HarnessConversationBinding {
   directory: string;
   executionHost?: ExecutionHostBinding;
   questionPolicy?: HarnessQuestionPolicy;
+  controlTools?: boolean;
+  controlChatId?: string;
 }
 
 export interface HarnessCapabilities {
@@ -26,6 +28,7 @@ export interface HarnessCapabilities {
   activity: "unavailable" | "partial" | "native";
   stopScopes: readonly ("child-execution" | "command")[];
   questionPolicy?: "session";
+  clankyControlTools?: boolean;
 }
 
 export interface HarnessActivity {
