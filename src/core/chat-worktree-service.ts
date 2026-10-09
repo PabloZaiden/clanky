@@ -10,7 +10,9 @@ import { backendManager } from "./backend";
 import { GitService, InvalidBranchNameError } from "./git";
 import { syncMainCheckoutBeforeWorktree } from "./git/worktree-sync";
 import { assertWorktreesAllowed } from "./workspace-capabilities";
+import { normalizeExecutionPath } from "./execution-path";
 import { sanitizeBranchName } from "../utils";
+import { ChatWorktreeBranchConflictError } from "../domain/chat-worktree-errors";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { createTimestamp } from "@/shared/events";
 import type {
@@ -29,6 +31,7 @@ export interface ChatWorktreeServiceDependencies {
 
 export class ChatWorktreeService implements ChatWorktreePort {
   private readonly pendingWorktreePreparations = new Map<string, Promise<Chat>>();
+  private readonly pendingWorktreeBranchReservations = new Set<string>();
   private readonly state: ChatStatePort;
   private readonly taskManager: Pick<TaskManager, "getTask">;
   private readonly executorProvider: Pick<typeof backendManager, "getCommandExecutorAsync">;
@@ -42,6 +45,88 @@ export class ChatWorktreeService implements ChatWorktreePort {
   hasEstablishedWorkspaceContext(chat: Chat): boolean {
     return Boolean(chat.config.useWorktree && chat.state.worktree?.worktreePath)
       || Boolean(chat.state.session?.id || chat.state.startedAt);
+  }
+
+  async reserveWorktreeBranchForCreation(chat: Chat): Promise<() => void> {
+    if (!chat.config.useWorktree || !chat.config.useChatNameAsBranch) {
+      return () => {};
+    }
+
+    const workspaceId = getChatWorkspaceId(chat);
+    const executor = await this.executorProvider.getCommandExecutorAsync(
+      workspaceId,
+      chat.config.directory,
+    );
+    const git = GitService.withExecutor(executor);
+    const commonGitDirectory = await git.getCommonGitDirectory(chat.config.directory);
+    const repositoryKey = normalizeWorktreeRepositoryKey(commonGitDirectory, executor.pathStyle);
+    const branchName = this.buildWorkingBranchName(chat);
+    const executionTargetKey = chat.config.executionHostBinding?.targetKey ?? workspaceId;
+    const reservationKey = JSON.stringify([executionTargetKey, repositoryKey, branchName]);
+
+    if (this.pendingWorktreeBranchReservations.has(reservationKey)) {
+      throw new ChatWorktreeBranchConflictError(branchName);
+    }
+    this.pendingWorktreeBranchReservations.add(reservationKey);
+
+    try {
+      const [worktrees, chats] = await Promise.all([
+        git.listWorktrees(chat.config.directory),
+        this.state.getChatSummaries(),
+      ]);
+      if (worktrees.some((worktree) => worktree.branch === branchName)) {
+        throw new ChatWorktreeBranchConflictError(branchName);
+      }
+
+      for (const existingChat of chats) {
+        if (
+          !existingChat.config.useWorktree
+          || this.buildWorkingBranchName(existingChat) !== branchName
+        ) {
+          continue;
+        }
+        const existingWorkspaceId = getChatWorkspaceId(existingChat);
+        const existingTargetKey = existingChat.config.executionHostBinding?.targetKey;
+        if (
+          existingTargetKey !== undefined
+          && chat.config.executionHostBinding?.targetKey !== undefined
+          && existingTargetKey !== chat.config.executionHostBinding.targetKey
+        ) {
+          continue;
+        }
+        if (
+          (existingTargetKey === undefined || chat.config.executionHostBinding?.targetKey === undefined)
+          && existingWorkspaceId !== workspaceId
+        ) {
+          continue;
+        }
+
+        let existingRepositoryKey: string;
+        if (existingChat.config.directory === chat.config.directory) {
+          existingRepositoryKey = repositoryKey;
+        } else {
+          const existingExecutor = await this.executorProvider.getCommandExecutorAsync(
+            existingWorkspaceId,
+            existingChat.config.directory,
+          );
+          const existingGit = GitService.withExecutor(existingExecutor);
+          existingRepositoryKey = normalizeWorktreeRepositoryKey(
+            await existingGit.getCommonGitDirectory(existingChat.config.directory),
+            existingExecutor.pathStyle,
+          );
+        }
+        if (existingRepositoryKey === repositoryKey) {
+          throw new ChatWorktreeBranchConflictError(branchName);
+        }
+      }
+
+      return () => {
+        this.pendingWorktreeBranchReservations.delete(reservationKey);
+      };
+    } catch (error) {
+      this.pendingWorktreeBranchReservations.delete(reservationKey);
+      throw error;
+    }
   }
 
   async resolveWorkingDirectory(
@@ -356,6 +441,14 @@ export class ChatWorktreeService implements ChatWorktreePort {
     }
     return `chat-${sanitizeBranchName(chat.config.name)}-${chat.config.id.slice(0, 8)}`;
   }
+}
+
+function normalizeWorktreeRepositoryKey(
+  repositoryRoot: string,
+  pathStyle: "posix" | "windows",
+): string {
+  const normalized = normalizeExecutionPath(repositoryRoot, pathStyle);
+  return pathStyle === "windows" ? normalized.toLowerCase() : normalized;
 }
 
 function throwIfAborted(signal: AbortSignal | undefined): void {

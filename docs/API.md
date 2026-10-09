@@ -147,6 +147,10 @@ an empty result becomes `unnamed`. Omitted or `false` keeps the existing
 `chat-<sanitized-name>-<first-eight-chat-id-characters>` format. The named
 **New Chat** form exposes this option only for Git workspaces with **Use
 worktree** enabled; Quick Chat and non-worktree creation remain unchanged.
+If the resulting branch is already checked out or claimed by another chat in
+the same repository, creation returns HTTP 409 with
+`chat_worktree_branch_conflict` before persisting the new chat. A free existing
+branch can still be attached to the worktree.
 
 ### Native chat questions
 
