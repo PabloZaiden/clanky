@@ -102,14 +102,14 @@ export class ChatLifecycleService implements ChatLifecyclePort {
       undefined,
       1,
     );
-    if (options.directory !== undefined) {
+    const scope = options.scope ?? DEFAULT_CHAT_CONFIG.scope;
+    if (options.directory !== undefined && scope !== "task") {
       await executionHostService.assertDirectoryExists(
         workspace.executionHostBinding,
         options.directory,
       );
     }
 
-    const scope = options.scope ?? DEFAULT_CHAT_CONFIG.scope;
     if (scope === "task" && !options.taskId) {
       throw new Error("Task chats require a taskId");
     }
