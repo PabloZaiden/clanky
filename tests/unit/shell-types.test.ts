@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   buildActiveWorkSidebarItems,
   type SidebarExecutionHostNode,
+  type SidebarExecutionHostTerminalNode,
   type SidebarWorkspaceGroupNode,
 } from "../../src/components/app-shell/shell-types";
 import {
@@ -112,7 +113,11 @@ function createChat(
   };
 }
 
-function createTerminalSession(id: string, createdAt: string): TerminalSession {
+function createTerminalSession(
+  id: string,
+  createdAt: string,
+  lastConnectedAt?: string,
+): TerminalSession {
   return {
     config: {
       id,
@@ -126,7 +131,7 @@ function createTerminalSession(id: string, createdAt: string): TerminalSession {
       createdAt,
       updatedAt: createdAt,
     },
-    state: { status: "ready" },
+    state: { status: "ready", lastConnectedAt },
   };
 }
 
@@ -144,6 +149,11 @@ function createSidebarGroups(): SidebarWorkspaceGroupNode[] {
   const terminal = createTerminalSession(
     "workspace-terminal",
     "2026-01-05T00:00:00.000Z",
+  );
+  const connectedTerminal = createTerminalSession(
+    "workspace-terminal-connected",
+    "2026-01-03T00:00:00.000Z",
+    "2026-01-09T00:00:00.000Z",
   );
 
   return [{
@@ -166,14 +176,14 @@ function createSidebarGroups(): SidebarWorkspaceGroupNode[] {
         badgeVariant: "default",
       }],
       historyChats: [],
-      terminalSessions: [{
-        session: terminal,
-        title: terminal.config.name,
+      terminalSessions: [terminal, connectedTerminal].map((session) => ({
+        session,
+        title: session.config.name,
         subtitle: "Direct",
         badge: "Ready",
-        badgeVariant: "success",
-        createdAt: terminal.config.createdAt,
-      }],
+        badgeVariant: "success" as const,
+        createdAt: session.config.createdAt,
+      })),
       hasActivity: true,
     }],
   }];
@@ -184,10 +194,27 @@ function createExecutionHostNodes(): SidebarExecutionHostNode[] {
     "host-chat-fallback",
     "2026-01-05T00:00:00.000Z",
   );
+  const fallbackTerminal = createTerminalSession(
+    "host-terminal-fallback",
+    "2026-01-06T00:00:00.000Z",
+  );
+  const connectedTerminal = createTerminalSession(
+    "host-terminal-connected",
+    "2026-01-02T00:00:00.000Z",
+    "2026-01-08T00:00:00.000Z",
+  );
+  const terminalSessions: SidebarExecutionHostTerminalNode[] = [fallbackTerminal, connectedTerminal].map((session) => ({
+    session,
+    title: session.config.name,
+    subtitle: "Direct",
+    badge: "Ready",
+    badgeVariant: "success",
+    createdAt: session.config.createdAt,
+  }));
   return [{
     host,
     key: host.targetKey,
-    terminalSessions: [],
+    terminalSessions,
     chats: [{
       chat: hostChat,
       title: hostChat.config.name,
@@ -200,13 +227,16 @@ function createExecutionHostNodes(): SidebarExecutionHostNode[] {
 
 describe("Active Work ordering", () => {
   // Regression: heterogeneous Active Work entries must share one deterministic
-  // user-activity ordering and use creation time when no message exists.
+  // user-activity ordering; terminal connections supersede their creation time.
   test("sorts tasks, chats, and terminal sessions by effective user activity", () => {
     const items = buildActiveWorkSidebarItems(createSidebarGroups(), {
       executionHostNodes: createExecutionHostNodes(),
     });
 
     expect(items.map((item) => item.key)).toEqual([
+      "terminal-session:workspace-terminal-connected",
+      "execution-host-terminal:host-terminal-connected",
+      "execution-host-terminal:host-terminal-fallback",
       "execution-host-chat:host-chat-fallback",
       "terminal-session:workspace-terminal",
       "chat:workspace-chat",

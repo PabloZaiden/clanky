@@ -23,6 +23,45 @@ export function formatRelativeTime(isoString: string | undefined): string {
   return `${diffDay}d ago`;
 }
 
+/**
+ * Format an activity timestamp for the Active Work sidebar.
+ * Returns null for invalid timestamps and clamps future timestamps to now.
+ */
+export function formatSidebarRelativeTime(
+  isoString: string,
+  nowMs: number = Date.now(),
+): string | null {
+  const timestampMs = Date.parse(isoString);
+  if (!Number.isFinite(timestampMs) || !Number.isFinite(nowMs)) {
+    return null;
+  }
+
+  const seconds = Math.floor(Math.max(0, nowMs - timestampMs) / 1_000);
+  if (seconds < 60) return "A few seconds ago";
+
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) {
+    return `${minutes} ${minutes === 1 ? "minute" : "minutes"} ago`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    return `${hours} ${hours === 1 ? "hour" : "hours"} ago`;
+  }
+
+  const days = Math.floor(hours / 24);
+  if (days === 1) return "Yesterday";
+  if (days < 30) return `${days} days ago`;
+
+  if (days < 365) {
+    const months = Math.floor(days / 30);
+    return months === 1 ? "Last month" : `${months} months ago`;
+  }
+
+  const years = Math.floor(days / 365);
+  return years === 1 ? "Last year" : `${years} years ago`;
+}
+
 export function formatFileSize(bytes: number): string {
   if (bytes < 1024) {
     return `${bytes} B`;

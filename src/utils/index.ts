@@ -33,7 +33,11 @@ export {
 } from "./task-status";
 
 export { sanitizeBranchName } from "./sanitize-branch-name";
-export { formatFileSize, formatRelativeTime } from "./format";
+export {
+  formatFileSize,
+  formatRelativeTime,
+  formatSidebarRelativeTime,
+} from "./format";
 export { createIdempotentAsyncOperation } from "./async-operation";
 
 
