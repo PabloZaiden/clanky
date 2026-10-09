@@ -185,9 +185,16 @@ export function getHeaderOwnerRoute(route: WebAppRoute): WebAppRoute | null {
   }
 }
 
-export function renderActiveWorkSidebarItem(itemType: ActiveWorkSidebarItemType) {
+export function renderActiveWorkSidebarItem(
+  itemType: ActiveWorkSidebarItemType,
+  lastInteractionAt: string,
+) {
   return ({ node }: SidebarItemRenderContext) => (
-    <ActiveWorkSidebarItem node={node} itemType={itemType} />
+    <ActiveWorkSidebarItem
+      node={node}
+      itemType={itemType}
+      lastInteractionAt={lastInteractionAt}
+    />
   );
 }
 

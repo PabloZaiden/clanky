@@ -125,10 +125,26 @@
 }
 
 .clanky-sidebar-item-type {
+  flex-shrink: 0;
   text-align: right;
 }
 
-.wapp-sidebar-item-subtitle-above-title > span:first-child > .clanky-sidebar-item-type {
+.clanky-sidebar-item-metadata {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.clanky-sidebar-item-age {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wapp-sidebar-item-subtitle-above-title > span:first-child > .clanky-sidebar-item-metadata {
   grid-column: 1 / -1;
   grid-row: 3;
   margin-top: 0;
