@@ -106,6 +106,12 @@ jobs:
           ./dist/clanky --help >"$help_log"
           grep -q "Usage:" "$help_log"
 
+      - name: Log in to Docker Hub
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Smoke test Docker image
         run: |
           set -euo pipefail
