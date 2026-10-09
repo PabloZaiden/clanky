@@ -70,6 +70,7 @@ export class ChatSessionService implements ChatSessionPort {
   private readonly sshCredentialManager: Pick<typeof sshCredentialManager, "getPasswordForToken">;
   private readonly hasActiveStream: (chatId: string) => boolean;
   private readonly directChatBackends = new Map<string, Backend>();
+  private readonly connectedControlModes = new WeakMap<Backend, boolean>();
   private readonly onHarnessEvent: ChatSessionServiceDependencies["onHarnessEvent"];
 
   constructor(dependencies: ChatSessionServiceDependencies) {
@@ -144,16 +145,19 @@ export class ChatSessionService implements ChatSessionPort {
         };
     await this.backendManager.getBackendAsync(workspaceId);
     const backend = this.getChatBackend(stagedWorking.chat.config.id, workspaceId);
-    if (!backend.isConnected() || backend.getDirectory() !== stagedWorking.directory) {
-      if (backend.isConnected()) {
+    const quickChatSettings = await preferencesManager.getQuickChatSettings();
+    const controlTools = isClankyControlChat(stagedWorking.chat, quickChatSettings.workspaceId);
+    const backendConnected = backend.isConnected();
+    const controlModeChanged = backendConnected
+      && this.connectedControlModes.get(backend) !== controlTools;
+    if (!backendConnected || backend.getDirectory() !== stagedWorking.directory || controlModeChanged) {
+      if (backendConnected) {
         await backend.disconnect();
       }
       const identity = await managedContextIdentityResolver.forChat(
         stagedWorking.chat.config.id,
         workspaceId,
       );
-      const quickChatSettings = await preferencesManager.getQuickChatSettings();
-      const controlTools = isClankyControlChat(stagedWorking.chat, quickChatSettings.workspaceId);
       const credential = await managedCredentialService.ensureCredentialForRuntime(
         identity,
         working.chat.state.session?.id ? "recreate" : "reuse",
@@ -176,6 +180,7 @@ export class ChatSessionService implements ChatSessionPort {
           ),
           controlTools,
         }, options.signal);
+        this.connectedControlModes.set(backend, controlTools);
       } catch (error) {
         await managedCredentialService.cleanupFailedLaunch(credential, error);
         throw error;
@@ -388,6 +393,10 @@ export class ChatSessionService implements ChatSessionPort {
   private async sessionContext(chat: Chat, backend: Backend): Promise<Omit<HarnessConversationBinding, "adapter" | "nativeId">> {
     const quickChatSettings = await preferencesManager.getQuickChatSettings();
     const controlTools = isClankyControlChat(chat, quickChatSettings.workspaceId);
+    const connectedControlMode = this.connectedControlModes.get(backend);
+    if (connectedControlMode !== undefined && connectedControlMode !== controlTools) {
+      throw new HarnessError("harness_transport_closed", "The Clanky control mode changed while the chat was connected. Reconnect before continuing.");
+    }
     if (controlTools && backend.harness.capabilities.clankyControlTools !== true) {
       throw new HarnessError("harness_unsupported_feature", "This execution host does not support Clanky control tools.");
     }

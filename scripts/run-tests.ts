@@ -51,6 +51,8 @@ export type TestRunnerName = "native" | "custom";
 
 const rootDir = `${import.meta.dir}/..`;
 const defaultMaxWorkers = 10;
+const MAX_CAPTURED_OUTPUT_CHARACTERS = 256 * 1024;
+const MAX_PENDING_LINE_CHARACTERS = 64 * 1024;
 const protectedNativeOptions = new Set([
   "--isolate",
   "--max-concurrency",
@@ -140,6 +142,48 @@ function formatFullOutput(output: string): string {
   return trimmed.length > 0 ? trimmed : "(no output)";
 }
 
+interface CapturedStreamOutput {
+  value: string;
+  truncated: boolean;
+}
+
+function appendBoundedTail(
+  current: string,
+  next: string,
+  maxCharacters: number,
+): CapturedStreamOutput {
+  const combinedLength = current.length + next.length;
+  if (combinedLength <= maxCharacters) {
+    return { value: current + next, truncated: false };
+  }
+  if (next.length >= maxCharacters) {
+    return { value: next.slice(-maxCharacters), truncated: true };
+  }
+
+  const charactersToRemove = combinedLength - maxCharacters;
+  return {
+    value: current.slice(charactersToRemove) + next,
+    truncated: true,
+  };
+}
+
+function formatCapturedOutput(
+  stdout: CapturedStreamOutput,
+  stderr: CapturedStreamOutput,
+): string {
+  const output = [stdout.value, stderr.value]
+    .filter((value) => value.length > 0)
+    .join("\n");
+  const truncationNotices = [
+    stdout.truncated ? `stdout truncated; showing the last ${MAX_CAPTURED_OUTPUT_CHARACTERS} characters` : "",
+    stderr.truncated ? `stderr truncated; showing the last ${MAX_CAPTURED_OUTPUT_CHARACTERS} characters` : "",
+  ].filter((notice) => notice.length > 0);
+
+  return truncationNotices.length > 0
+    ? `${truncationNotices.map((notice) => `[${notice}]`).join("\n")}\n${output}`
+    : output;
+}
+
 function isTestProgressLine(line: string): boolean {
   const trimmed = line.trim();
   return trimmed.startsWith("bun test v")
@@ -153,27 +197,46 @@ function isTestProgressLine(line: string): boolean {
 async function readStream(
   stream: ReadableStream<Uint8Array> | null,
   onLine?: TestOutputLineHandler,
-): Promise<string> {
+): Promise<CapturedStreamOutput> {
   if (stream === null) {
-    return "";
+    return { value: "", truncated: false };
   }
 
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   let output = "";
+  let outputTruncated = false;
   let pendingLine = "";
+  let pendingLineTruncated = false;
+
+  const appendPendingLine = (chunk: string): void => {
+    const retained = appendBoundedTail(pendingLine, chunk, MAX_PENDING_LINE_CHARACTERS);
+    pendingLine = retained.value;
+    pendingLineTruncated ||= retained.truncated;
+  };
+
+  const flushPendingLine = (): void => {
+    if (!pendingLineTruncated) {
+      onLine?.(pendingLine.replace(/\r$/, ""));
+    }
+    pendingLine = "";
+    pendingLineTruncated = false;
+  };
 
   const emitLines = (chunk: string, final = false): void => {
-    pendingLine += chunk;
-    let newlineIndex = pendingLine.indexOf("\n");
+    let start = 0;
+    let newlineIndex = chunk.indexOf("\n", start);
     while (newlineIndex !== -1) {
-      onLine?.(pendingLine.slice(0, newlineIndex).replace(/\r$/, ""));
-      pendingLine = pendingLine.slice(newlineIndex + 1);
-      newlineIndex = pendingLine.indexOf("\n");
+      appendPendingLine(chunk.slice(start, newlineIndex));
+      flushPendingLine();
+      start = newlineIndex + 1;
+      newlineIndex = chunk.indexOf("\n", start);
     }
-    if (final && pendingLine.length > 0) {
-      onLine?.(pendingLine.replace(/\r$/, ""));
-      pendingLine = "";
+    if (start < chunk.length) {
+      appendPendingLine(chunk.slice(start));
+    }
+    if (final && (pendingLine.length > 0 || pendingLineTruncated)) {
+      flushPendingLine();
     }
   };
 
@@ -184,17 +247,21 @@ async function readStream(
         break;
       }
       const chunk = decoder.decode(value, { stream: true });
-      output += chunk;
+      const retained = appendBoundedTail(output, chunk, MAX_CAPTURED_OUTPUT_CHARACTERS);
+      output = retained.value;
+      outputTruncated ||= retained.truncated;
       emitLines(chunk);
     }
     const finalChunk = decoder.decode();
-    output += finalChunk;
+    const retained = appendBoundedTail(output, finalChunk, MAX_CAPTURED_OUTPUT_CHARACTERS);
+    output = retained.value;
+    outputTruncated ||= retained.truncated;
     emitLines(finalChunk, true);
   } finally {
     reader.releaseLock();
   }
 
-  return output;
+  return { value: output, truncated: outputTruncated };
 }
 
 async function listTestFiles(pattern: string): Promise<string[]> {
@@ -445,7 +512,7 @@ async function runBucket(
     proc.exited,
   ]);
 
-  const output = [stdout, stderr].filter((value) => value.length > 0).join("\n");
+  const output = formatCapturedOutput(stdout, stderr);
 
   return {
     bucket,
@@ -520,10 +587,10 @@ async function runNativeTests(
     readStream(proc.stderr, emitProgressLine),
     proc.exited,
   ]);
-  if (stdout.length === 0 && stderr.length === 0) {
+  if (stdout.value.length === 0 && stderr.value.length === 0) {
     log("(no test output)");
   } else if (exitCode !== 0) {
-    log([stdout, stderr].filter((value) => value.length > 0).join("\n").trim());
+    log(formatCapturedOutput(stdout, stderr).trim());
   }
   log("");
   log(`Native test process exited with code ${exitCode} after ${formatDuration(Date.now() - startedAt)}.`);

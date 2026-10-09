@@ -71,12 +71,14 @@ function getAutoOpenRouteKey(
   target: FileExplorerTarget,
   defaultRootDirectory: string,
   filePath: string,
+  actionId?: string,
 ): string {
   return [
     target.type,
     target.id,
     target.startDirectory ?? defaultRootDirectory,
     filePath,
+    actionId ?? "",
   ].join("::");
 }
 
@@ -609,7 +611,6 @@ export function FileExplorerView({
       || explorer.loadingTree
       || explorer.loadingFile
       || explorer.pendingFilePath === initialFilePath
-      || explorer.currentFile?.path === initialFilePath
     ) {
       return;
     }
@@ -618,7 +619,15 @@ export function FileExplorerView({
       return;
     }
 
-    const routeKey = getAutoOpenRouteKey(target, defaultRootDirectory, initialFilePath);
+    const actionId = controlFileOpenRequest?.workspaceId === target.id
+      && controlFileOpenRequest.filePath === initialFilePath
+      ? controlFileOpenRequest.actionId
+      : undefined;
+    const routeKey = getAutoOpenRouteKey(target, defaultRootDirectory, initialFilePath, actionId);
+    if (explorer.currentFile?.path === initialFilePath) {
+      lastAutoOpenedFileRef.current = routeKey;
+      return;
+    }
     if (lastAutoOpenedFileRef.current === routeKey) {
       return;
     }
@@ -648,6 +657,7 @@ export function FileExplorerView({
     explorer.pendingFilePath,
     handleOpenFile,
     initialFilePath,
+    controlFileOpenRequest?.actionId,
     fullTreePreference.loading,
     startupBlockedByPassword,
     target.id,
@@ -672,6 +682,10 @@ export function FileExplorerView({
       lastReportedControlActionRef.current = request.actionId;
       onControlFileOpenResult(request.actionId, outcome);
     };
+    if (explorer.largeFileWarning?.file.path === request.filePath) {
+      report(actionFailureForControlFile("file_not_loaded", "The requested file is too large to load in the editor."));
+      return;
+    }
     if (
       explorer.currentFile?.path === request.filePath
       && !explorer.loadingFile
@@ -700,7 +714,7 @@ export function FileExplorerView({
       return;
     }
 
-    const routeKey = getAutoOpenRouteKey(target, defaultRootDirectory, request.filePath);
+    const routeKey = getAutoOpenRouteKey(target, defaultRootDirectory, request.filePath, request.actionId);
     if (autoOpenAttempt?.routeKey !== routeKey || autoOpenAttempt.status === "loading") {
       return;
     }
@@ -723,6 +737,7 @@ export function FileExplorerView({
     explorer.currentFile,
     explorer.error,
     explorer.isDirty,
+    explorer.largeFileWarning,
     explorer.loadingFile,
     explorer.loadingTree,
     explorer.pendingFilePath,
