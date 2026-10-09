@@ -38,6 +38,8 @@ export interface StartProvisioningJobOptions {
   targetDirectory?: string;
   /** For rebuild/restart mode: existing workspace ID */
   workspaceId?: string;
+  /** Use the latest Clanky prerelease for a dedicated worker workspace */
+  useClankyPrerelease?: boolean;
 }
 
 export interface ProvisioningJobRecord {

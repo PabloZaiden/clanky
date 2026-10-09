@@ -10,12 +10,25 @@ import { buildRuntimeInstaller, buildWorkerLauncher, type WorkerPaths } from "./
 
 export async function prepareWorkerRuntimeAssets(
   executor: CommandExecutor,
-  { paths, runtime, install = false }: { paths: WorkerPaths; runtime: AgentSettings; install?: boolean },
+  {
+    paths,
+    runtime,
+    install = false,
+    useClankyPrerelease = false,
+  }: {
+    paths: WorkerPaths;
+    runtime: AgentSettings;
+    install?: boolean;
+    useClankyPrerelease?: boolean;
+  },
 ): Promise<{ rollback: () => Promise<void> }> {
   const assets = [
     { path: pathPosix.join(paths.hostRoot, "install-runtime.sh"), content: buildRuntimeInstaller() },
     { path: pathPosix.join(paths.hostRoot, "runtime.json"), content: JSON.stringify(runtime) },
-    { path: pathPosix.join(paths.hostRoot, "launcher.sh"), content: buildWorkerLauncher(paths) },
+    {
+      path: pathPosix.join(paths.hostRoot, "launcher.sh"),
+      content: buildWorkerLauncher(paths, useClankyPrerelease),
+    },
   ];
   const suffix = `.pending-${crypto.randomUUID()}`;
   const previous = await Promise.all(assets.map(async (asset) => {

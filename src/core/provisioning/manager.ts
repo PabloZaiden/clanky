@@ -78,6 +78,16 @@ export class ProvisioningManager {
       workerHostAddress,
       workspaceWorkerEnrollmentId,
     } = target;
+    if (
+      options.useClankyPrerelease
+      && ((mode !== "rebuild" && mode !== "restart") || transport !== "worker")
+    ) {
+      throw new ProvisioningFailedError(
+        "invalid_clanky_release_channel",
+        "verify_devbox",
+        "Clanky prereleases are only supported for automatic worker workspace restarts and rebuilds.",
+      );
+    }
     const runtime: AgentSettings = (mode === "rebuild" || mode === "restart") && options.workspaceId
       ? (await workspaceManager.requireWorkspace(options.workspaceId)).serverSettings.agent
       : { adapter: options.adapter ?? "acp", provider: options.provider };
@@ -115,6 +125,7 @@ export class ProvisioningManager {
           createNewRepository: options.createNewRepository === true,
           targetDirectory: normalizeOptionalValue(options.targetDirectory),
           workspaceId: normalizeOptionalValue(options.workspaceId),
+          ...(options.useClankyPrerelease ? { useClankyPrerelease: true } : {}),
           createdAt: now,
         },
         state: {

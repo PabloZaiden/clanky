@@ -3,7 +3,7 @@ import { getStoredSshServerCredential } from "../../lib/ssh-browser-credentials"
 import { Button, PASSWORD_INPUT_PROPS } from "../common";
 import { ErrorState, FormGroup, SelectField, TextField, useHeaderActions, type WebAppRoute } from "@pablozaiden/webapp/web";
 import type { Workspace } from "@/shared/workspace";
-import { getRegisteredSshServerId } from "@/shared/execution-host";
+import { getRegisteredSshServerId, isWorkspaceMeshExecutionHostRef } from "@/shared/execution-host";
 import type { SshServer } from "@/shared/ssh-server";
 import type { ProvisioningJobMode } from "@/shared/provisioning";
 import { useState } from "react";
@@ -24,6 +24,7 @@ export function RebuildWorkspaceView({
   navigateWithinShell,
 }: RebuildWorkspaceViewProps) {
   const [password, setPassword] = useState("");
+  const [useClankyPrerelease, setUseClankyPrerelease] = useState(false);
   const actionLabel = mode === "restart" ? "Restart" : "Rebuild";
   const actionLabelLower = actionLabel.toLowerCase();
   const formId = `${mode}-workspace-form`;
@@ -36,6 +37,7 @@ export function RebuildWorkspaceView({
   const selectedServerHasStoredCredential = sshServerId
     ? getStoredSshServerCredential(sshServerId) !== null
     : false;
+  const isDedicatedWorkerWorkspace = isWorkspaceMeshExecutionHostRef(workspace.executionHostBinding.host);
 
   async function handleStartWorkspaceAction(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -53,6 +55,7 @@ export function RebuildWorkspaceView({
       mode,
       targetDirectory: workspace.sourceDirectory ?? null,
       workspaceId: workspace.id,
+      ...(useClankyPrerelease ? { useClankyPrerelease: true } : {}),
     });
 
     if (snapshot) {
@@ -173,6 +176,20 @@ export function RebuildWorkspaceView({
             )}
             </div>
           </FormGroup>
+
+          {isDedicatedWorkerWorkspace && (
+            <FormGroup title="Advanced options">
+              <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                <input
+                  type="checkbox"
+                  checked={useClankyPrerelease}
+                  onChange={(event) => setUseClankyPrerelease(event.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span>Use the latest Clanky prerelease for this and future automatic starts</span>
+              </label>
+            </FormGroup>
+          )}
 
           {provisioning.error && (
             <ErrorState title={`Unable to ${actionLabelLower} workspace`} description={provisioning.error} />

@@ -15,6 +15,37 @@ export interface WorkerPaths {
   containerPid: string;
 }
 
+const PROCESS_PRERELEASE_PAGE_SCRIPT = `let body = "";
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (chunk) => { body += chunk; });
+process.stdin.on("end", () => {
+  try {
+    const releases = JSON.parse(body);
+    if (!Array.isArray(releases)) throw new Error("GitHub returned an invalid release list.");
+    let latestTag = process.argv[1] || "";
+    let latestPublishedAt = process.argv[2] || "";
+    for (const release of releases) {
+      if (
+        release
+        && release.prerelease === true
+        && release.draft !== true
+        && typeof release.tag_name === "string"
+        && release.tag_name.trim().length > 0
+        && typeof release.published_at === "string"
+        && Number.isFinite(Date.parse(release.published_at))
+        && (!latestPublishedAt || Date.parse(release.published_at) > Date.parse(latestPublishedAt))
+      ) {
+        latestTag = release.tag_name;
+        latestPublishedAt = release.published_at;
+      }
+    }
+    process.stdout.write([releases.length, latestTag, latestPublishedAt].join("\\t"));
+  } catch (error) {
+    console.error(String(error));
+    process.exitCode = 1;
+  }
+});`;
+
 export function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
@@ -123,9 +154,10 @@ trap - EXIT
 `;
 }
 
-export function buildWorkerLauncher(paths: WorkerPaths): string {
+export function buildWorkerLauncher(paths: WorkerPaths, useClankyPrerelease = false): string {
   return `#!/bin/sh
 set -eu
+CLANKY_RELEASE_CHANNEL=${shellQuote(useClankyPrerelease ? "prerelease" : "stable")}
 root=${shellQuote(paths.containerRoot)}
 bin_dir=${shellQuote(pathPosix.join(paths.containerRoot, "bin"))}
 data_dir=${shellQuote(paths.containerData)}
@@ -142,20 +174,82 @@ sh "$root/install-runtime.sh"
 PATH="$root/runtime/bin:$PATH"
 export PATH
 mkdir -p "$bin_dir" "$data_dir" "$install_dir" "$install_home"
-curl -fsSL --proto '=https' --tlsv1.2 https://raw.githubusercontent.com/pablozaiden/installer/1e73c9a4b84bb2282d5a6fd8463f9a9f62c26c67/install.sh -o "$installer"
-printf '%s  %s\\n' d377a7ed04b150781b94cb0af97e6f7a2efe2c8d12dae1a1f0aa825306ea28f3 "$installer" | sha256sum -c -
-HOME="$install_home" sh "$installer" pablozaiden/clanky --install-dir "$install_dir" --checksum required
-if [ -x "$install_dir/clanky" ]; then
-  source_binary="$install_dir/clanky"
-elif [ -x "$installed_binary" ]; then
-  source_binary="$installed_binary"
-else
-  echo "The Clanky installer did not produce an executable binary." >&2
-  exit 1
-fi
+cleanup_installation() {
+  rm -rf -- "$install_dir" "$install_home"
+  rm -f -- "$installer"
+}
+trap cleanup_installation EXIT
+
+latest_prerelease_tag() {
+  page=1
+  latest_release_tag=""
+  latest_release_published_at=""
+  tab=$(printf '\\t')
+  while :; do
+    releases_page=$(curl -fsSL --proto '=https' --tlsv1.2 "https://api.github.com/repos/pablozaiden/clanky/releases?per_page=100&page=$page")
+    page_state=$(
+      printf '%s' "$releases_page" |
+        node -e ${shellQuote(PROCESS_PRERELEASE_PAGE_SCRIPT)} "$latest_release_tag" "$latest_release_published_at"
+    )
+    page_count=\${page_state%%"$tab"*}
+    page_state=\${page_state#*"$tab"}
+    latest_release_tag=\${page_state%%"$tab"*}
+    latest_release_published_at=\${page_state#*"$tab"}
+    if [ "$page_count" -lt 100 ]; then
+      break
+    fi
+    page=$((page + 1))
+  done
+  if [ -z "$latest_release_tag" ]; then
+    echo "No published Clanky prerelease was found." >&2
+    return 1
+  fi
+  printf '%s\\n' "$latest_release_tag"
+}
+
+case "$CLANKY_RELEASE_CHANNEL" in
+  stable)
+    curl -fsSL --proto '=https' --tlsv1.2 https://raw.githubusercontent.com/pablozaiden/installer/1e73c9a4b84bb2282d5a6fd8463f9a9f62c26c67/install.sh -o "$installer"
+    printf '%s  %s\\n' d377a7ed04b150781b94cb0af97e6f7a2efe2c8d12dae1a1f0aa825306ea28f3 "$installer" | sha256sum -c -
+    HOME="$install_home" sh "$installer" pablozaiden/clanky --install-dir "$install_dir" --checksum required
+    if [ -x "$install_dir/clanky" ]; then
+      source_binary="$install_dir/clanky"
+    elif [ -x "$installed_binary" ]; then
+      source_binary="$installed_binary"
+    else
+      echo "The Clanky installer did not produce an executable binary." >&2
+      exit 1
+    fi
+    ;;
+  prerelease)
+    release_tag=$(latest_prerelease_tag)
+    platform=$(node -p 'process.platform + "-" + process.arch')
+    asset_name="clanky-$release_tag-$platform"
+    release_binary="$install_dir/$asset_name"
+    checksum_file="$release_binary.sha256"
+    download_base="https://github.com/pablozaiden/clanky/releases/download/$release_tag"
+    echo "Downloading Clanky prerelease $release_tag for $platform."
+    curl -fsSL --proto '=https' --tlsv1.2 "$download_base/$asset_name" -o "$release_binary"
+    curl -fsSL --proto '=https' --tlsv1.2 "$download_base/$asset_name.sha256" -o "$checksum_file"
+    expected_sha=$(awk 'NF { print $1; exit }' "$checksum_file" | tr 'A-F' 'a-f')
+    actual_sha=$(sha256sum "$release_binary" | awk '{ print $1 }' | tr 'A-F' 'a-f')
+    if [ -z "$expected_sha" ] || [ "$expected_sha" != "$actual_sha" ]; then
+      echo "Checksum verification failed for $asset_name." >&2
+      exit 1
+    fi
+    source_binary="$release_binary"
+    echo "Verified checksum for $asset_name."
+    ;;
+  *)
+    echo "Unsupported CLANKY_RELEASE_CHANNEL: $CLANKY_RELEASE_CHANNEL" >&2
+    exit 1
+    ;;
+esac
+
 mv -f "$source_binary" "$binary"
-rm -rf "$install_dir" "$install_home"
-rm -f "$installer"
+chmod +x "$binary"
+cleanup_installation
+trap - EXIT
 
 if [ ! -f "$data_dir/config.json" ]; then exit 0; fi
 if [ -s "$pid_file" ]; then

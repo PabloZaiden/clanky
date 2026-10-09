@@ -397,6 +397,19 @@ hook. Existing automatic workspaces acquire these assets on their next
 Clanky-managed rebuild/restart or adapter change; existing ACP selections are
 not automatically converted to native adapters.
 
+To manually select the Clanky binary channel for an automatic worker, edit
+`.devbox/clanky-worker/launcher.sh` in the workspace repository on its
+execution host. Set `CLANKY_RELEASE_CHANNEL='prerelease'` to install the latest
+published prerelease on each automatic start; set it to `stable` to use the
+latest stable release. Prerelease downloads require and verify the release
+asset's SHA-256 checksum, and do not fall back to stable if no prerelease is
+available.
+
+The **Restart** and **Rebuild** views expose the same choice under **Advanced
+options** for worker-backed workspaces. Selecting it stores the prerelease
+channel in the persistent launcher for future automatic starts. Leaving it
+unchecked writes the stable channel.
+
 ## GitHub CLI credentials in automatic workspaces
 
 When Devbox provisions an automatic workspace, Clanky can pass the selected

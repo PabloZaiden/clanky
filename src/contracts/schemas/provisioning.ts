@@ -47,6 +47,8 @@ export const CreateProvisioningJobRequestSchema = z.object({
   targetDirectory: z.string().trim().nullable(),
   /** For rebuild/restart: existing workspace ID */
   workspaceId: z.string().trim().nullable(),
+  /** Select the prerelease channel for an automatic worker restart/rebuild */
+  useClankyPrerelease: z.boolean().optional(),
 }).refine((data) => AgentSettingsSchema.safeParse({ adapter: data.adapter, provider: data.provider }).success, {
   message: "The harness preset does not match the native adapter",
   path: ["provider"],
@@ -54,6 +56,11 @@ export const CreateProvisioningJobRequestSchema = z.object({
   || (data.transport !== "ssh" && !data.workspaceWorkerEnrollmentId), {
   message: "Native adapters require a dedicated worker; direct SSH supports ACP only",
   path: ["adapter"],
+}).refine((data) => !data.useClankyPrerelease
+  || data.mode === "rebuild"
+  || data.mode === "restart", {
+  message: "Clanky prereleases can only be selected for automatic workspace restart or rebuild",
+  path: ["useClankyPrerelease"],
 }).refine((data) => {
   if (
     data.workerRelayName
