@@ -57,23 +57,54 @@ function getComposerRowsMeasurement(textarea: HTMLTextAreaElement): ComposerRows
   const singleLineContentHeight = getComposerLineHeight(styles)
     + parsePixelValue(styles.paddingTop)
     + parsePixelValue(styles.paddingBottom);
+  const parent = textarea.parentElement;
+  if (!parent) {
+    throw new Error("Cannot measure an unattached composer textarea.");
+  }
 
-  const previousRows = textarea.rows;
-  const previousHeight = textarea.style.height;
-  const previousMinHeight = textarea.style.minHeight;
-  const previousOverflowY = textarea.style.overflowY;
+  // Keep per-keystroke wrap checks from changing the visible composer's layout.
+  const measurementTextarea = textarea.cloneNode(false) as HTMLTextAreaElement;
+  measurementTextarea.removeAttribute("id");
+  measurementTextarea.removeAttribute("name");
+  measurementTextarea.removeAttribute("required");
+  measurementTextarea.removeAttribute("autofocus");
+  measurementTextarea.disabled = true;
+  measurementTextarea.setAttribute("aria-hidden", "true");
+  measurementTextarea.tabIndex = -1;
+  measurementTextarea.value = textarea.value;
+  measurementTextarea.rows = SINGLE_LINE_ROWS;
 
-  textarea.rows = SINGLE_LINE_ROWS;
-  textarea.style.height = "0px";
-  textarea.style.minHeight = "0px";
-  textarea.style.overflowY = "hidden";
+  const textareaRect = textarea.getBoundingClientRect();
+  const measurementWidth = styles.boxSizing === "border-box"
+    ? textareaRect.width
+    : Math.max(
+      0,
+      textareaRect.width
+        - parsePixelValue(styles.paddingLeft)
+        - parsePixelValue(styles.paddingRight)
+        - parsePixelValue(styles.borderLeftWidth)
+        - parsePixelValue(styles.borderRightWidth),
+    );
 
-  const contentHeight = textarea.scrollHeight;
+  measurementTextarea.style.position = "fixed";
+  measurementTextarea.style.top = "0px";
+  measurementTextarea.style.left = "0px";
+  measurementTextarea.style.width = `${measurementWidth}px`;
+  measurementTextarea.style.boxSizing = styles.boxSizing;
+  measurementTextarea.style.height = "0px";
+  measurementTextarea.style.minHeight = "0px";
+  measurementTextarea.style.overflowY = "hidden";
+  measurementTextarea.style.resize = "none";
+  measurementTextarea.style.visibility = "hidden";
+  measurementTextarea.style.pointerEvents = "none";
 
-  textarea.rows = previousRows;
-  textarea.style.height = previousHeight;
-  textarea.style.minHeight = previousMinHeight;
-  textarea.style.overflowY = previousOverflowY;
+  parent.append(measurementTextarea);
+  let contentHeight: number;
+  try {
+    contentHeight = measurementTextarea.scrollHeight;
+  } finally {
+    measurementTextarea.remove();
+  }
 
   return {
     contentHeight,
