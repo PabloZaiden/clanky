@@ -305,6 +305,7 @@ test("compiled controller and worker execute an ACP chat across Mesh and reconne
     const models = await meshJsonRequest<Model[]>(
       controller,
       `/api/models?workspaceId=${encodeURIComponent(createdWorkspace.body.id)}`,
+      { timeoutMs: 10_000 },
     );
     if (models.status !== 200) {
       throw new Error(

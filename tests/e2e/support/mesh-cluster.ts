@@ -469,6 +469,7 @@ export async function meshJsonRequest<T>(
     rawBody?: BodyInit;
     responseType?: "json" | "text";
     signal?: AbortSignal;
+    timeoutMs?: number;
   } = {},
 ): Promise<MeshJsonResponse<T>> {
   if (options.body !== undefined && options.rawBody !== undefined) {
@@ -476,18 +477,23 @@ export async function meshJsonRequest<T>(
   }
   const method = options.method
     ?? (options.body === undefined && options.rawBody === undefined ? "GET" : "POST");
-  const response = await fetch(`${node.baseUrl}${path}`, {
-    method,
-    headers: {
-      ...(node.apiKey ? { authorization: `Bearer ${node.apiKey}` } : {}),
-      ...(method === "GET" ? {} : { origin: node.baseUrl }),
-      ...(options.body === undefined ? {} : { "content-type": "application/json" }),
-    },
-    body: options.rawBody
-      ?? (options.body === undefined ? undefined : JSON.stringify(options.body)),
-    signal: operationSignal(options.signal),
-    tls: node.tlsCertificate ? { ca: node.tlsCertificate } : undefined,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${node.baseUrl}${path}`, {
+      method,
+      headers: {
+        ...(node.apiKey ? { authorization: `Bearer ${node.apiKey}` } : {}),
+        ...(method === "GET" ? {} : { origin: node.baseUrl }),
+        ...(options.body === undefined ? {} : { "content-type": "application/json" }),
+      },
+      body: options.rawBody
+        ?? (options.body === undefined ? undefined : JSON.stringify(options.body)),
+      signal: operationSignal(options.signal, options.timeoutMs),
+      tls: node.tlsCertificate ? { ca: node.tlsCertificate } : undefined,
+    });
+  } catch (error) {
+    throw new Error(`Mesh request ${method} ${path} failed`, { cause: error });
+  }
   return {
     status: response.status,
     body: options.responseType === "text"
