@@ -7,7 +7,12 @@ import { MeshHarnessEnvelopeSchema, MeshHarnessEventsRequestSchema, MeshHarnessO
 import { meshHarnessGateway } from "../../core/mesh-harness-gateway";
 import { meshExecutionGateway } from "../../core/mesh-execution-gateway";
 import { encryptMeshPayload, decryptMeshPayload } from "../../core/mesh-payload-crypto";
-import { MESH_HARNESS_CHANNEL, MESH_EXECUTION_MAX_MESSAGE_BYTES } from "@/shared/mesh-execution";
+import {
+  MESH_HARNESS_CHANNEL,
+  MESH_EXECUTION_MAX_MESSAGE_BYTES,
+  MESH_HARNESS_MAX_OPERATION_BYTES,
+  MESH_HARNESS_MAX_REQUEST_BYTES,
+} from "@/shared/mesh-execution";
 import { DomainError } from "../../domain/domain-error";
 import { parseAndValidate } from "../validation";
 import { internalMeshErrorResponse, validateMeshSessionHeaders } from "./shared";
@@ -20,7 +25,9 @@ export const meshHarnessRoutes = defineRoutes({
     tags: ["mesh", "internal", "harness"],
     async POST(req, ctx): Promise<Response> {
       ctx.server?.timeout(req, 0);
-      const parsed = await parseAndValidate(MeshHarnessEnvelopeSchema, req);
+      const parsed = await parseAndValidate(MeshHarnessEnvelopeSchema, req, {
+        maxBodyBytes: MESH_HARNESS_MAX_REQUEST_BYTES,
+      });
       if (!parsed.success) return parsed.response;
       const envelope = parsed.data;
       const headerError = validateMeshSessionHeaders(req, envelope.sessionId, envelope.requestId, "Native Mesh headers do not match the lease.");
@@ -30,7 +37,7 @@ export const meshHarnessRoutes = defineRoutes({
         release = await meshExecutionGateway.claimHarnessRequest(envelope.sessionId, envelope.sessionToken, envelope.requestId);
         const encryptionKey = meshExecutionGateway.getSessionEncryptionPublicKey(envelope.sessionId, envelope.sessionToken);
         const raw = await decryptMeshPayload(envelope.encryptedPayload);
-        if (Buffer.byteLength(JSON.stringify(raw)) > MESH_EXECUTION_MAX_MESSAGE_BYTES) throw new DomainError("mesh_execution_request_too_large", "The native operation exceeds the Mesh limit.");
+        if (Buffer.byteLength(JSON.stringify(raw)) > MESH_HARNESS_MAX_OPERATION_BYTES) throw new DomainError("mesh_execution_request_too_large", "The native Mesh harness request exceeds the supported size limit.");
         const operation = MeshHarnessOperationSchema.safeParse(raw);
         if (!operation.success) return errorResponse("mesh_execution_request_invalid", "The native operation is invalid.", 400);
         const result = await meshHarnessGateway.execute(envelope.sessionId, envelope.sessionToken, operation.data, req.signal);

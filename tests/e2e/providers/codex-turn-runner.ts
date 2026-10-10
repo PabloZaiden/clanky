@@ -6,6 +6,7 @@ import type { ActiveTurn, CodexFixtureStore } from "./codex-state";
 import type { CodexJsonRpcSession } from "./codex-json-rpc";
 import { buildTurn } from "./codex-protocol";
 import { randomUUID } from "node:crypto";
+import { readCodexImageReceipts } from "./image-input";
 
 const TOOL_NAME = "clanky_list_workspaces";
 
@@ -17,6 +18,13 @@ function persistedTool(thread: ActiveTurn["thread"]): boolean {
   return thread.dynamicTools.some(
     (definition) => isRecord(definition) && definition["name"] === TOOL_NAME,
   );
+}
+
+function imageReceipts(turn: ActiveTurn["turn"]): string[] {
+  return turn.items.flatMap((item) => {
+    if (!isRecord(item) || item["type"] !== "userMessage") return [];
+    return readCodexImageReceipts(item["content"]);
+  });
 }
 
 function readToolText(value: unknown): { contentItems: unknown[]; success: boolean; text: string } {
@@ -132,7 +140,13 @@ export async function runCodexTurn(
   const assistantText = persistedTool(thread)
     ? await runWorkspaceListTool(active, rpc)
     : "The persisted control tool definition was unavailable after resume.";
-  emitAssistantMessage(active, steering ? `${assistantText}\nSteered instruction: ${steering}` : answer ? `${assistantText}\nQuestion answer: ${answer}` : assistantText, rpc);
+  const responseText = steering
+    ? `${assistantText}\nSteered instruction: ${steering}`
+    : answer
+      ? `${assistantText}\nQuestion answer: ${answer}`
+      : assistantText;
+  const imageReceiptText = imageReceipts(turn).join("\n");
+  emitAssistantMessage(active, imageReceiptText ? `${responseText}\n${imageReceiptText}` : responseText, rpc);
   await store.completeTurn(active);
   rpc.notify("thread/status/changed", {
     threadId: thread.id,

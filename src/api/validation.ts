@@ -22,6 +22,7 @@ export type ValidationResult<T> =
 export interface ParseAndValidateOptions {
   allowEmptyBody?: boolean;
   emptyBodyValue?: unknown;
+  maxBodyBytes?: number;
 }
 
 /**
@@ -98,6 +99,54 @@ function invalidJsonResponse(): Response {
   return Response.json(body, { status: 400 });
 }
 
+function requestBodyTooLargeResponse(): Response {
+  const body: ErrorResponse = {
+    error: "request_body_too_large",
+    message: "Request body exceeds the supported size limit.",
+  };
+  return Response.json(body, { status: 413 });
+}
+
+async function readRequestBody(req: Request, maxBodyBytes?: number): Promise<string | Response> {
+  if (maxBodyBytes === undefined) return await req.text();
+  if (!Number.isSafeInteger(maxBodyBytes) || maxBodyBytes < 0) {
+    throw new Error("maxBodyBytes must be a non-negative safe integer.");
+  }
+  const contentLength = req.headers.get("content-length");
+  if (contentLength !== null) {
+    const declaredBytes = Number(contentLength);
+    if (Number.isSafeInteger(declaredBytes) && declaredBytes > maxBodyBytes) {
+      return requestBodyTooLargeResponse();
+    }
+  }
+
+  const reader = req.body?.getReader();
+  if (!reader) return "";
+  const chunks: Uint8Array[] = [];
+  let byteLength = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      byteLength += value.byteLength;
+      if (byteLength > maxBodyBytes) {
+        await reader.cancel();
+        return requestBodyTooLargeResponse();
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(byteLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
+}
+
 /**
  * Parse request body as JSON and validate against a schema.
  * Combines JSON parsing and validation into a single operation.
@@ -122,7 +171,9 @@ export async function parseAndValidate<T>(
 ): Promise<ValidationResult<T>> {
   let rawBody: string;
   try {
-    rawBody = await req.text();
+    const read = await readRequestBody(req, options?.maxBodyBytes);
+    if (read instanceof Response) return { success: false, response: read };
+    rawBody = read;
   } catch {
     return { success: false, response: invalidJsonResponse() };
   }

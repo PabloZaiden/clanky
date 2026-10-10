@@ -5,6 +5,9 @@ import { pollUntil } from "./support/polling";
 import { installExternalCodexProvider, installExternalNativeCopilotProvider } from "./support/provider";
 import { startVoiceProvider, stopVoiceProvider, type ManagedVoiceProvider } from "./support/voice-provider";
 
+const E2E_IMAGE_DATA = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
+const E2E_IMAGE_RECEIPT = "E2E image received: image/png; PNG signature OK";
+
 interface ExecutionHost {
   ref: Record<string, string>;
 }
@@ -41,6 +44,16 @@ interface ChatSnapshot {
   };
 }
 
+function createImageAttachment() {
+  return {
+    id: crypto.randomUUID(),
+    filename: "e2e-image.png",
+    mimeType: "image/png",
+    data: E2E_IMAGE_DATA,
+    size: Buffer.from(E2E_IMAGE_DATA, "base64").byteLength,
+  };
+}
+
 async function waitForChatIdle(application: E2EApplication, chatId: string): Promise<Chat> {
   const chat = await pollUntil(
     async () => (await application.json<Chat>(`/api/chats/${chatId}`)).data,
@@ -70,6 +83,30 @@ async function waitForToolResult(
     ).length >= expectedCount,
     {
       description: `Codex to return ${String(expectedCount)} public workspace-list results`,
+      timeoutMs: 10_000,
+      formatLastObserved: (snapshot) => JSON.stringify({
+        assistantMessages: snapshot.transcript.messages
+          .filter((message) => message.role === "assistant")
+          .map((message) => message.content.slice(0, 300)),
+      }),
+    },
+  );
+}
+
+async function waitForImageReceipt(
+  application: E2EApplication,
+  chatId: string,
+  expectedCount = 1,
+): Promise<ChatSnapshot> {
+  return await pollUntil(
+    async () => (
+      await application.json<ChatSnapshot>(`/api/chats/${chatId}/snapshot?full=1`)
+    ).data,
+    (snapshot) => snapshot.transcript.messages
+      .filter((message) => message.role === "assistant")
+      .reduce((count, message) => count + message.content.split(E2E_IMAGE_RECEIPT).length - 1, 0) >= expectedCount,
+    {
+      description: `provider response in chat ${chatId} to confirm image receipt`,
       timeoutMs: 10_000,
       formatLastObserved: (snapshot) => JSON.stringify({
         assistantMessages: snapshot.transcript.messages
@@ -123,6 +160,29 @@ test("Codex control chat resumes with its tools after restarting Clanky", async 
       modelID: model!.modelID,
       variant: "",
     };
+    const ordinaryChat = (await application.json<Chat>(
+      "/api/chats",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          name: "Codex ordinary image chat",
+          workspaceId: workspace.id,
+          model: modelConfig,
+          useWorktree: false,
+          baseBranch: git.branch,
+        }),
+      },
+      201,
+    )).data;
+    await application.json(`/api/chats/${ordinaryChat.config.id}/messages`, {
+      method: "POST",
+      body: JSON.stringify({
+        message: "Inspect this attached image.",
+        attachments: [createImageAttachment()],
+      }),
+    });
+    await waitForChatIdle(application, ordinaryChat.config.id);
+    await waitForImageReceipt(application, ordinaryChat.config.id);
 
     await application.json("/api/preferences/quick-chat", {
       method: "PUT",
@@ -153,11 +213,14 @@ test("Codex control chat resumes with its tools after restarting Clanky", async 
       method: "POST",
       body: JSON.stringify({
         message: "List the workspaces available in Clanky.",
-        attachments: [],
+        attachments: [createImageAttachment()],
       }),
     });
     await waitForChatIdle(application, chat.config.id);
-    await waitForToolResult(application, chat.config.id, workspaceName, 1);
+    const firstControlSnapshot = await waitForToolResult(application, chat.config.id, workspaceName, 1);
+    expect(firstControlSnapshot.transcript.messages.some(
+      (message) => message.role === "assistant" && message.content.includes(E2E_IMAGE_RECEIPT),
+    )).toBe(true);
 
     await application.restart({ env: environment });
     const reconnected = (await application.json<Chat>(
@@ -182,7 +245,11 @@ test("Codex control chat resumes with its tools after restarting Clanky", async 
     const steeredText = "Include the workspace name in the result of this active turn.";
     const queued = (await application.json<{ chat: Chat }>(`/api/chats/${chat.config.id}/messages`, {
       method: "POST",
-      body: JSON.stringify({ message: steeredText, attachments: [], clientId: crypto.randomUUID() }),
+      body: JSON.stringify({
+        message: steeredText,
+        attachments: [createImageAttachment()],
+        clientId: crypto.randomUUID(),
+      }),
     })).data.chat;
     const input = queued.state.queuedMessages?.find((message) => message.content === steeredText);
     expect(input).toBeDefined();
@@ -203,6 +270,7 @@ test("Codex control chat resumes with its tools after restarting Clanky", async 
         (message) => message.role === "assistant" && message.content.includes(workspaceName),
       ),
     ).toHaveLength(2);
+    await waitForImageReceipt(application, chat.config.id, 2);
     expect(resumedSnapshot.transcript.messages.some(
       (message) => message.role === "assistant" && message.content.includes(steeredText),
     )).toBe(true);
@@ -345,6 +413,15 @@ test("Copilot shares ordinary Live and queued turns while control steering prese
       `/api/chats/${ordinaryId}/live-voice/${call.id}/close`, { method: "POST" },
     )).data;
     expect(closed).toMatchObject({ status: "closed", summarySaved: true });
+    await application.json<{ chat: Chat }>(`/api/chats/${ordinaryId}/messages`, {
+      method: "POST",
+      body: JSON.stringify({
+        message: "Inspect this attached image.",
+        attachments: [createImageAttachment()],
+      }),
+    });
+    await waitForChatIdle(application, ordinaryId);
+    await waitForImageReceipt(application, ordinaryId);
 
     await application.json("/api/preferences/quick-chat", {
       method: "PUT", body: JSON.stringify({ workspaceId: workspace.id, model: modelConfig, useWorktree: false }),
@@ -376,12 +453,20 @@ test("Copilot shares ordinary Live and queued turns while control steering prese
     await pollUntil(() => sockets.map((socket) => socket.readyState),
       (states) => states.every((state) => state === WebSocket.OPEN),
       { description: "two Copilot browser clients to connect", timeoutMs: 5_000 });
-    const send = async (message: string, clientId: string) => (await application.json<{ chat: Chat }>(
+    const send = async (
+      message: string,
+      clientId: string,
+      attachments: ReturnType<typeof createImageAttachment>[] = [],
+    ) => (await application.json<{ chat: Chat }>(
       `/api/chats/${chatId}/messages`,
-      { method: "POST", body: JSON.stringify({ message, attachments: [], clientId }) },
+      { method: "POST", body: JSON.stringify({ message, attachments, clientId }) },
     )).data.chat;
-    const steer = async (message: string, clientId: string) => {
-      const queued = await send(message, clientId);
+    const steer = async (
+      message: string,
+      clientId: string,
+      attachments: ReturnType<typeof createImageAttachment>[] = [],
+    ) => {
+      const queued = await send(message, clientId, attachments);
       const input = queued.state.queuedMessages!.find((entry) => entry.content === message)!;
       const admission = (await application.json<{ admission: { status: string } }>(
         `/api/chats/${chatId}/queued-messages/${input.id}/steer`, { method: "POST", body: "{}" },
@@ -392,16 +477,18 @@ test("Copilot shares ordinary Live and queued turns while control steering prese
       async () => (await application.json<Chat>(`/api/chats/${chatId}`)).data.state.status,
       (status) => status === "streaming", { description: "Copilot native turn to become active", timeoutMs: 10_000 },
     );
-    await send("Wait for a steering instruction, then open the workspace.", clients[0]!);
+    await send("Wait for a steering instruction, then open the workspace.", clients[0]!, [createImageAttachment()]);
     await waitForActive();
-    await steer("Change the request, but keep waiting.", clients[1]!);
+    await steer("Change the request, but keep waiting.", clients[1]!, [createImageAttachment()]);
     await steer("Finish the request and open the workspace.", clients[0]!);
     await waitForChatIdle(application, chatId);
     const mixed = await waitForToolResult(application, chatId, workspaceName, 1);
     expect(mixed.transcript.messages.some((message) => message.role === "assistant"
       && message.content.includes("Change the request, but keep waiting.")
       && message.content.includes("Finish the request and open the workspace.")
-      && message.content.includes("control_client_unavailable"))).toBe(true);
+      && message.content.includes("control_client_unavailable")
+      && message.content.includes(E2E_IMAGE_RECEIPT))).toBe(true);
+    await waitForImageReceipt(application, chatId, 2);
     expect(actions.flat()).toHaveLength(0);
 
     await send("Wait for a steering instruction before starting the queued work.", clients[0]!);

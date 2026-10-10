@@ -4,6 +4,9 @@
 
 import { join } from "node:path";
 import { parseJsonRpcMessage, type JsonRpcId, type JsonRpcMessage } from "./codex-json-rpc";
+import { readCopilotImageReceipts } from "./image-input";
+
+const MAX_FRAME_BYTES = 32 * 1024 * 1024;
 
 interface Session {
   id: string;
@@ -95,15 +98,16 @@ async function sendInput(session: Session | undefined, params: Record<string, un
   if (!session) throw new Error("Copilot session unavailable.");
   const messageId = crypto.randomUUID();
   const prompt = String(params["prompt"]);
+  const promptWithImages = [prompt, ...readCopilotImageReceipts(params["attachments"])].join("\n");
   if (session.processing && params["mode"] !== "immediate") throw new Error("Active input requires immediate mode.");
   write({ id, result: { messageId } });
   event(session, "user.message", { messageId, content: prompt });
   if (session.processing) {
-    session.prompt += `\nSteered instruction: ${prompt}`;
+    session.prompt += `\nSteered instruction: ${promptWithImages}`;
     if (!prompt.includes("keep waiting")) execute(session);
   } else {
     session.processing = true;
-    session.prompt = prompt;
+    session.prompt = promptWithImages;
     event(session, "assistant.turn_start", { turnId: crypto.randomUUID() });
     if (!prompt.startsWith("Wait for a steering instruction")) execute(session);
   }
@@ -128,7 +132,7 @@ async function dispatch(frame: JsonRpcMessage): Promise<void> {
       break;
     case "models.list":
       result = { models: [{ id: "e2e-copilot-model", name: "E2E Copilot", capabilities: {
-        supports: { vision: false, reasoningEffort: false }, limits: { max_prompt_tokens: 32_000 },
+        supports: { vision: true, reasoningEffort: false }, limits: { max_prompt_tokens: 32_000 },
       } }] };
       break;
     case "session.create": {
@@ -217,7 +221,7 @@ process.stdin.on("data", (chunk: Buffer) => {
     const boundary = buffer.indexOf("\r\n\r\n");
     if (boundary < 0) break;
     const length = Number(/Content-Length:\s*(\d+)/i.exec(buffer.subarray(0, boundary).toString())?.[1]);
-    if (!Number.isInteger(length) || length < 1 || length > 1_000_000) throw new Error("Invalid Copilot frame length.");
+    if (!Number.isInteger(length) || length < 1 || length > MAX_FRAME_BYTES) throw new Error("Invalid Copilot frame length.");
     if (buffer.length < boundary + 4 + length) break;
     const frame = parseJsonRpcMessage(JSON.parse(buffer.subarray(boundary + 4, boundary + 4 + length).toString()));
     buffer = buffer.subarray(boundary + 4 + length);

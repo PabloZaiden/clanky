@@ -8,6 +8,8 @@
 
 export const MESSAGE_ATTACHMENT_LIMIT = 8;
 export const MESSAGE_ATTACHMENT_MAX_BYTES = 20 * 1024 * 1024;
+export const MESSAGE_ATTACHMENT_MAX_PROMPT_BYTES =
+  Math.ceil(MESSAGE_ATTACHMENT_MAX_BYTES * 4 / 3) + 2 * 1024 * 1024;
 
 /** Explicit image MIME allowlist — excludes image/svg+xml to avoid script injection risks. */
 export const MESSAGE_IMAGE_ALLOWED_MIME_TYPES = [
