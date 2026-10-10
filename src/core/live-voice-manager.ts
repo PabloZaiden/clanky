@@ -3,13 +3,11 @@
  */
 
 import { createLogger } from "@pablozaiden/webapp/server";
-import type { LiveVoiceCallState, LiveVoiceSessionResponse } from "@/shared";
-import { isClankyControlChat } from "@/shared/clanky-control";
+import { supportsLiveVoice, type LiveVoiceCallState, type LiveVoiceSessionResponse } from "@/shared/voice";
 import { DomainError, isDomainError } from "../domain/domain-error";
 import { requireCurrentUser, runWithCurrentUser } from "../context/user-context";
 import { voiceManager } from "./voice-manager";
 import { chatManager } from "./chat-manager";
-import { preferencesManager } from "./preferences-manager";
 import { createLiveVoiceSession, type LiveVoiceCredentials } from "./live-voice-provider";
 import { LiveVoiceCall } from "./live-voice-call";
 import { OpenAiCompatibleVoiceProvider } from "./voice-provider";
@@ -33,9 +31,9 @@ export class LiveVoiceManager {
     const user = requireCurrentUser();
     const chat = await chatManager.getChatSummary(chatId);
     if (!chat) throw new DomainError("chat_not_found", "The chat is unavailable.");
-    const quickChat = await preferencesManager.getQuickChatSettings();
-    if (!isClankyControlChat(chat, quickChat.workspaceId)) {
-      throw new DomainError("harness_unsupported_feature", "Live voice requires a native Quick Chat control workspace.");
+    const adapter = chatManager.getChatBackend(chatId, chat.config.workspaceId).harness.capabilities.adapter;
+    if (!supportsLiveVoice(chat) || (adapter !== "codex" && adapter !== "copilot")) {
+      throw new DomainError("harness_unsupported_feature", "Live voice requires a native Codex or Copilot chat.");
     }
     const owner = `${user.id}:${chatId}`;
     if (this.creating.has(owner) || [...this.calls.values()].some((call) =>

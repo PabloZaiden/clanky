@@ -101,7 +101,7 @@ export async function startVoiceProvider(
           }
           const id = crypto.randomUUID();
           const offer = String(body.transport.sdp);
-          const mode = offer.includes("question") ? "question" : offer.includes("cut") ? "cut" : offer.includes("hold") ? "hold" : "steer";
+          const mode = offer.includes("ordinary") ? "ordinary" : offer.includes("question") ? "question" : offer.includes("cut") ? "cut" : offer.includes("hold") ? "hold" : "steer";
           sessions.set(id, { id, stage: 0, streaming: false, active: false, mode });
           return Response.json({ session: { id }, transport: { type: "webrtc", sdp: "v=0\r\ns=external-live-provider\r\n" } }, { status: 201 });
         }

@@ -38,7 +38,7 @@ export const MeshHarnessOperationSchema = z.discriminatedUnion("operation", [
   Session.extend({ operation: z.literal("stop"), activityId: Id }),
   Session.extend({ operation: z.literal("settle") }),
   Session.extend({ operation: z.literal("steer"), request: z.object({
-    inputId: Id, prompt: Prompt, expectedTurnId: Id.optional(),
+    inputId: Id, prompt: Prompt, expectedTurnId: Id.optional(), clientId: z.string().uuid().optional(),
   }) }),
   Session.extend({ operation: z.literal("reconcile"), request: InputRecovery }),
   Session.extend({ operation: z.literal("config"), configId: Id, value: z.string().max(1000) }),

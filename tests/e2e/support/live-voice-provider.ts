@@ -7,7 +7,7 @@ export interface LiveFixture {
   stage: number;
   streaming: boolean;
   active: boolean;
-  mode: "steer" | "hold" | "cut" | "question";
+  mode: "steer" | "hold" | "cut" | "question" | "ordinary";
   waiting?: boolean;
   questionId?: string;
   queuedId?: string;
@@ -24,7 +24,7 @@ function responseEvent(session: LiveFixture, event: Record<string, unknown>): vo
 
 function pump(session: LiveFixture): void {
   if (session.mode === "cut") { session.socket?.close(); return; }
-  if (session.active || session.stage > 2 || (session.mode === "hold" && session.stage > 0)
+  if (session.active || session.stage > 2 || ((session.mode === "hold" || session.mode === "ordinary") && session.stage > 0)
     || (session.stage === 1 && !(session.mode === "question" ? session.waiting : session.streaming))) return;
   session.active = true;
   const delegationId = `${session.id}-${session.stage}`;
@@ -33,7 +33,9 @@ function pump(session: LiveFixture): void {
     delegation: { id: delegationId, target: "responses", response_id: delegationId },
   });
   responseEvent(session, { type: "response.created", response: { id: delegationId } });
-  const action = session.mode === "question"
+  const action = session.mode === "ordinary"
+    ? { name: "send", arguments: { message: "Describe the ordinary Live chat request." } }
+    : session.mode === "question"
     ? session.stage === 0
       ? { name: "send", arguments: { message: "Ask one Live question, then list the workspaces." } }
       : session.stage === 1 ? { name: "get_status", arguments: {} }

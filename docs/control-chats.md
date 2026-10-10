@@ -5,6 +5,12 @@ can operate Clanky on the signed-in user's behalf. It uses the user's configured
 Quick Chat workspace; there is no separate conversation type or control-workspace
 setting.
 
+Sending, queueing, steering, questions, streaming and persistence use the same
+services as other chats. Consecutive queued instructions from the same browser
+tab are grouped into a turn; instructions from another tab and question replies
+start separate turns. This rule does not depend on whether control tools are
+enabled.
+
 ## Setup
 
 1. Choose a workspace in **Quick Chat settings**.
@@ -64,7 +70,7 @@ its own browser provenance.
 
 ## Live voice
 
-Control chats can optionally use [Live voice](voice.md#live-voice-for-quick-chat).
+All native Codex and Copilot chats can optionally use [Live voice](voice.md#live-voice).
 GPT-Live carries the conversation and delegates interpretation to a Responses
 model; that model directs the linked chat through bounded functions while the
 native workspace agent retains its existing tools. Live can continue speaking

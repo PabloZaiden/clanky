@@ -19,12 +19,14 @@ summaries use `/v1/responses` (Azure: `/openai/v1/responses`), with the model or
 deployment name in the request body. Clanky does not fall back to Chat
 Completions. Transcription routing is unchanged.
 
-## Live voice for Quick Chat
+## Live voice
 
 Live voice is a separate option from **Talk** (record, transcribe, send) and
-Piper read aloud. Choose a Quick Chat workspace with a native Codex or Copilot
-agent, then open a chat in that workspace and select **Message actions → Live
-voice**. The agent can already be working when you start the call.
+Piper read aloud. Open any chat with a native Codex or Copilot agent and select
+**Message actions → Live voice**. The agent can already be working when you
+start the call. Quick Chat uses the same chat and voice workflows; its agent
+additionally receives the Clanky control tools. Enabling Live in another chat
+does not grant those tools. ACP chats are not supported.
 
 In **Settings → Voice → Live voice**, configure a base API URL, a Live
 model/deployment and a delegated Responses model/deployment. Reuse the existing

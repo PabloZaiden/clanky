@@ -2,6 +2,12 @@
  * Browser-safe types for the optional per-user voice features.
  */
 
+import type { Chat } from "./chat";
+
+export function supportsLiveVoice(chat: Pick<Chat, "config">): boolean {
+  return chat.config.model.providerID === "codex" || chat.config.model.providerID === "copilot";
+}
+
 export const VOICE_CAPABILITIES = ["transcription", "text"] as const;
 export type VoiceCapability = (typeof VOICE_CAPABILITIES)[number];
 
