@@ -468,6 +468,22 @@ test("compiled controller and worker execute an ACP chat across Mesh and reconne
     expect(
       snapshot.body.transcript.messages.filter((message) => message.role === "assistant"),
     ).toHaveLength(2);
+
+    const deletedChat = await meshJsonRequest<{ success: boolean }>(
+      controller,
+      `/api/chats/${encodeURIComponent(chatId)}`,
+      { method: "DELETE" },
+    );
+    expect(deletedChat.status).toBe(200);
+    const deletedWorkspace = await meshJsonRequest<{ success: boolean }>(
+      controller,
+      `/api/workspaces/${encodeURIComponent(createdWorkspace.body.id)}`,
+      {
+        method: "DELETE",
+        body: { deleteServerDirectory: false },
+      },
+    );
+    expect(deletedWorkspace.status).toBe(200);
   } catch (error) {
     for (const node of nodes) {
       const diagnostics = meshNodeDiagnostics(node);
