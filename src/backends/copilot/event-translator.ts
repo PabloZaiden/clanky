@@ -5,14 +5,24 @@
 import type { SessionEvent } from "@github/copilot-sdk";
 import type { HarnessEvent, HarnessEventPayload, HarnessEventScope } from "@/shared/harness-events";
 import { HarnessError } from "../harness-errors";
+import {
+  ProviderImageOutputBudget,
+  projectProviderImageOutput,
+  redactProviderImagePayloads,
+} from "../provider-image-output";
 
 export class CopilotEventTranslator {
   private readonly messages = new Set<string>();
   private readonly tools = new Map<string, string>();
+  private readonly imageOutputBudget = new ProviderImageOutputBudget();
   private queryError?: Extract<HarnessEventPayload, { type: "request.error" }>;
   interrupted = false;
 
   constructor(private readonly sessionId: string) {}
+
+  beginPrompt(): void {
+    this.imageOutputBudget.reset();
+  }
 
   translate(event: SessionEvent): HarnessEvent[] {
     const scope: HarnessEventScope = event.agentId
@@ -62,12 +72,24 @@ export class CopilotEventTranslator {
             message: "A native tool completed without its observed start.",
           })];
         }
-        return [wrap({
-          type: "tool.complete",
-          toolCallId: event.data.toolCallId,
-          toolName: name,
-          output: event.data.result ?? event.data.error,
-        })];
+        const output = event.data.result ?? event.data.error;
+        const failed = event.data.error !== undefined && event.data.error !== null;
+        const projection = failed
+          ? undefined
+          : projectProviderImageOutput(
+              output,
+              `copilot-tool:${event.data.toolCallId}`,
+              this.imageOutputBudget,
+            );
+        return [
+          wrap({
+            type: "tool.complete",
+            toolCallId: event.data.toolCallId,
+            toolName: name,
+            output: projection?.output ?? redactProviderImagePayloads(output),
+          }),
+          ...(projection?.events ?? []).map(wrap),
+        ];
       }
       case "session.error":
         return [wrap(this.translateFailure(event, scope.kind === "principal"))];

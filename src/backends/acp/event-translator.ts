@@ -13,6 +13,11 @@ import type { QuestionInfo } from "../types";
 import { isRecord, getString, getNumber, firstString } from "./json-helpers";
 import type { SessionStateStore } from "./session-state";
 import type { CapabilityService } from "./capability-service";
+import {
+  projectProviderImageOutput,
+  redactProviderImagePayloads,
+  type ProviderImageOutputProjection,
+} from "../provider-image-output";
 
 const TOOL_TERMINAL_STATUSES: ReadonlySet<string> = new Set([
   "completed",
@@ -38,9 +43,9 @@ export class AcpEventTranslator {
     log.trace("[AcpBackend] Raw session/update", {
       sessionId,
       updateType,
-      params,
-      updateObj,
-      content,
+      params: redactProviderImagePayloads(params),
+      updateObj: redactProviderImagePayloads(updateObj),
+      content: redactProviderImagePayloads(content),
     });
 
     if (!sessionId || !updateType) {
@@ -102,25 +107,36 @@ export class AcpEventTranslator {
     }
 
     if (updateType === "agent_message_chunk") {
-      const text = getString(content["text"]) ?? "";
-      if (text.length === 0) {
-        return;
-      }
-      this.state.markPromptActivity(sessionId);
-      this.state.clearIgnoreStatusUntilActivity(sessionId);
-      if (!this.state.isMessageStarted(sessionId)) {
-        this.state.startMessage(sessionId);
-        this.state.emitSessionEvent(sessionId, {
-          type: "message.start",
-          messageId: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        });
-      }
-      const delta = this.state.normalizeMessageChunk(sessionId, text);
-      if (delta.length > 0) {
-        this.state.emitSessionEvent(sessionId, {
-          type: "message.delta",
-          content: delta,
-        });
+      const rawContent = updateObj["content"];
+      const contentBlocks = Array.isArray(rawContent) ? rawContent : [rawContent ?? content];
+      for (const [index, block] of contentBlocks.entries()) {
+        const imageProjection = projectProviderImageOutput(
+          block,
+          `acp-message:${sessionId}:${crypto.randomUUID()}:${String(index)}`,
+          this.state.getProviderImageOutputBudget(sessionId),
+        );
+        const includesImageMessage = imageProjection.events.some(
+          (payload) => payload.type === "message.start",
+        );
+        if (imageProjection.events.length > 0) {
+          this.state.markPromptActivity(sessionId);
+          this.state.clearIgnoreStatusUntilActivity(sessionId);
+          if (includesImageMessage && this.state.isMessageStarted(sessionId)) {
+            this.state.emitSessionEvent(sessionId, {
+              type: "message.complete",
+              content: "",
+            });
+            this.state.endMessage(sessionId);
+          }
+          this.emitProviderImageEvents(sessionId, imageProjection);
+        }
+
+        const text = typeof block === "string"
+          ? block
+          : isRecord(block)
+            ? getString(block["text"]) ?? ""
+            : "";
+        this.emitAgentMessageText(sessionId, text);
       }
       return;
     }
@@ -163,10 +179,10 @@ export class AcpEventTranslator {
         sessionId,
         toolCallId,
         toolName,
-        contentInput: content["input"],
-        updateInput: updateObj["input"],
-        rawInput: updateObj["rawInput"],
-        fullUpdate: updateObj,
+        contentInput: redactProviderImagePayloads(content["input"]),
+        updateInput: redactProviderImagePayloads(updateObj["input"]),
+        rawInput: redactProviderImagePayloads(updateObj["rawInput"]),
+        fullUpdate: redactProviderImagePayloads(updateObj),
       });
       this.state.emitSessionEvent(sessionId, {
         type: "tool.start",
@@ -202,22 +218,34 @@ export class AcpEventTranslator {
         toolCallId,
         toolName,
         status,
-        contentOutput: content["output"],
-        updateOutput: updateObj["output"],
-        rawOutput: updateObj["rawOutput"],
-        fullUpdate: updateObj,
+        contentOutput: redactProviderImagePayloads(content["output"]),
+        updateOutput: redactProviderImagePayloads(updateObj["output"]),
+        rawOutput: redactProviderImagePayloads(updateObj["rawOutput"]),
+        fullUpdate: redactProviderImagePayloads(updateObj),
       });
 
       if (status !== undefined && TOOL_TERMINAL_STATUSES.has(status)) {
         const output = this.buildToolOutput(updateObj, content, status);
         const completedInput = updateObj["input"] ?? updateObj["rawInput"] ?? content["input"];
+        const isFailure = status === "failed" || status === "error"
+          || status === "cancelled" || status === "canceled";
+        const projection = isFailure
+          ? undefined
+          : projectProviderImageOutput(
+              output,
+              `acp-tool:${sessionId}:${toolCallId ?? crypto.randomUUID()}`,
+              this.state.getProviderImageOutputBudget(sessionId),
+            );
         this.state.emitSessionEvent(sessionId, {
           type: "tool.complete",
           toolCallId,
           toolName,
           input: completedInput,
-          output,
+          output: projection?.output ?? redactProviderImagePayloads(output),
         });
+        if (projection) {
+          this.emitProviderImageEvents(sessionId, projection);
+        }
         if (toolCallId) {
           this.state.deleteToolName(sessionId, toolCallId);
         }
@@ -344,6 +372,40 @@ export class AcpEventTranslator {
         ...(errorMessage ? { error: errorMessage } : {}),
         ...(baseOutput !== undefined ? { output: baseOutput } : {}),
       };
+  }
+
+  private emitProviderImageEvents(
+    sessionId: string,
+    projection: ProviderImageOutputProjection,
+  ): void {
+    for (const payload of projection.events) {
+      this.state.emitSessionEvent(sessionId, payload);
+    }
+    if (projection.events.some((payload) => payload.type === "message.start")) {
+      this.state.endMessage(sessionId);
+    }
+  }
+
+  private emitAgentMessageText(sessionId: string, text: string): void {
+    if (text.length === 0) {
+      return;
+    }
+    this.state.markPromptActivity(sessionId);
+    this.state.clearIgnoreStatusUntilActivity(sessionId);
+    if (!this.state.isMessageStarted(sessionId)) {
+      this.state.startMessage(sessionId);
+      this.state.emitSessionEvent(sessionId, {
+        type: "message.start",
+        messageId: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      });
+    }
+    const delta = this.state.normalizeMessageChunk(sessionId, text);
+    if (delta.length > 0) {
+      this.state.emitSessionEvent(sessionId, {
+        type: "message.delta",
+        content: delta,
+      });
+    }
   }
 
   private getReasoningPartKey(

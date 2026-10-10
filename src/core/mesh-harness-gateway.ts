@@ -129,7 +129,43 @@ export class MeshHarnessGateway {
   private async observe(host: Host, conversation: Conversation): Promise<void> {
     try {
       for (let event = await conversation.source.next(); event; event = await conversation.source.next()) {
-        if (Buffer.byteLength(JSON.stringify(event)) > MAX_EVENT_BYTES) throw new DomainError("harness_event_gap", "The native event exceeds the stream limit.");
+        const imageDataBytes = event.type === "message.complete"
+          ? event.attachments?.reduce((total, attachment) => total + Buffer.byteLength(attachment.data), 0) ?? 0
+          : 0;
+        const eventBytes = imageDataBytes > MAX_EVENT_BYTES
+          ? MAX_EVENT_BYTES + 1
+          : Buffer.byteLength(JSON.stringify(event));
+        if (eventBytes > MAX_EVENT_BYTES) {
+          if (event.type === "message.complete" && event.attachments?.length) {
+            const { attachments: _attachments, ...messageWithoutImages } = event;
+            const textEventBytes = Buffer.byteLength(JSON.stringify(messageWithoutImages));
+            if (event.content.length > 0) {
+              if (textEventBytes > MAX_EVENT_BYTES) {
+                throw new DomainError("harness_event_gap", "The native event exceeds the stream limit.");
+              }
+              for (const subscriber of conversation.subscribers) {
+                subscriber.push(messageWithoutImages);
+              }
+            }
+            const warning: HarnessEvent = {
+              type: "request.error",
+              code: "mesh_image_omitted",
+              message: "A provider-generated image exceeded the Mesh event limit and was omitted.",
+              scope: event.scope,
+              ...(event.timestamp ? { timestamp: event.timestamp } : {}),
+              ...(event.sourceEventId ? { sourceEventId: event.sourceEventId } : {}),
+              ...(event.sourceSequence !== undefined ? { sourceSequence: event.sourceSequence } : {}),
+            };
+            log.warn("Provider-generated image exceeded the Mesh event limit", {
+              adapter: host.config.adapter,
+              eventBytes,
+              imageDataBytes,
+            });
+            for (const subscriber of conversation.subscribers) subscriber.push(warning);
+            continue;
+          }
+          throw new DomainError("harness_event_gap", "The native event exceeds the stream limit.");
+        }
         if (event.type === "permission.asked" || event.type === "question.asked") {
           if (conversation.interactions.size >= 512) throw new DomainError("harness_input_capacity", "The native interaction limit was reached.");
           conversation.interactions.add(event.requestId);

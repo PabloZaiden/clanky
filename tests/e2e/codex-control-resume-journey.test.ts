@@ -4,8 +4,8 @@ import { createGitFixture } from "./support/git";
 import { pollUntil } from "./support/polling";
 import { installExternalCodexProvider, installExternalNativeCopilotProvider } from "./support/provider";
 import { startVoiceProvider, stopVoiceProvider, type ManagedVoiceProvider } from "./support/voice-provider";
+import { E2E_IMAGE_DATA } from "./providers/image-input";
 
-const E2E_IMAGE_DATA = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
 const E2E_IMAGE_RECEIPT = "E2E image received: image/png; PNG signature OK";
 
 interface ExecutionHost {
@@ -39,7 +39,9 @@ interface ChatSnapshot {
     messages: Array<{
       content: string;
       role: string;
+      attachments?: Array<{ data: string; mimeType: string }>;
     }>;
+    toolCalls?: Array<{ output: unknown }>;
     logs: Array<{ id: string; message: string; details?: { logKind?: string; callId?: string } }>;
   };
 }
@@ -117,6 +119,35 @@ async function waitForImageReceipt(
   );
 }
 
+async function waitForGeneratedImage(
+  application: E2EApplication,
+  chatId: string,
+  expectedCount = 1,
+): Promise<ChatSnapshot> {
+  return await pollUntil(
+    async () => (
+      await application.json<ChatSnapshot>(`/api/chats/${chatId}/snapshot?full=1`)
+    ).data,
+    (snapshot) => snapshot.transcript.messages
+      .filter((message) => message.role === "assistant")
+      .reduce((count, message) => count + (message.attachments?.filter(
+        (attachment) => attachment.mimeType === "image/png" && attachment.data === E2E_IMAGE_DATA,
+      ).length ?? 0), 0) >= expectedCount,
+    {
+      description: `Codex to return ${String(expectedCount)} generated assistant image message(s)`,
+      timeoutMs: 10_000,
+      formatLastObserved: (snapshot) => JSON.stringify({
+        assistantMessages: snapshot.transcript.messages
+          .filter((message) => message.role === "assistant")
+          .map((message) => ({
+            content: message.content.slice(0, 300),
+            imageCount: message.attachments?.length ?? 0,
+          })),
+      }),
+    },
+  );
+}
+
 test("Codex control chat resumes with its tools after restarting Clanky", async () => {
   const application = await E2EApplication.create();
   let voiceProvider: ManagedVoiceProvider | undefined;
@@ -183,6 +214,26 @@ test("Codex control chat resumes with its tools after restarting Clanky", async 
     });
     await waitForChatIdle(application, ordinaryChat.config.id);
     await waitForImageReceipt(application, ordinaryChat.config.id);
+    await application.json(`/api/chats/${ordinaryChat.config.id}/messages`, {
+      method: "POST",
+      body: JSON.stringify({
+        message: "Generate a deterministic image [generated-image-output].",
+        attachments: [],
+      }),
+    });
+    await waitForChatIdle(application, ordinaryChat.config.id);
+    const generatedImageSnapshot = await waitForGeneratedImage(application, ordinaryChat.config.id);
+    expect(generatedImageSnapshot.transcript.messages.some(
+      (message) => message.role === "assistant" && message.content.length > 0,
+    )).toBe(true);
+    expect(generatedImageSnapshot.transcript.messages.some(
+      (message) => message.role === "assistant"
+        && message.content === ""
+        && message.attachments?.some(
+          (attachment) => attachment.mimeType === "image/png" && attachment.data === E2E_IMAGE_DATA,
+        ),
+    )).toBe(true);
+    expect(JSON.stringify(generatedImageSnapshot.transcript.toolCalls ?? [])).not.toContain(E2E_IMAGE_DATA);
 
     await application.json("/api/preferences/quick-chat", {
       method: "PUT",
@@ -223,6 +274,16 @@ test("Codex control chat resumes with its tools after restarting Clanky", async 
     )).toBe(true);
 
     await application.restart({ env: environment });
+    const persistedImageSnapshot = (await application.json<ChatSnapshot>(
+      `/api/chats/${ordinaryChat.config.id}/snapshot?full=1`,
+    )).data;
+    expect(persistedImageSnapshot.transcript.messages.some(
+      (message) => message.role === "assistant"
+        && message.content === ""
+        && message.attachments?.some(
+          (attachment) => attachment.mimeType === "image/png" && attachment.data === E2E_IMAGE_DATA,
+        ),
+    )).toBe(true);
     const reconnected = (await application.json<Chat>(
       `/api/chats/${chat.config.id}/reconnect`,
       { method: "POST", body: "{}" },

@@ -917,6 +917,7 @@ export class ChatConversationService implements ChatConversationPort {
       if (isInterrupted) {
         return;
       }
+      streamState.completedResponse = undefined;
       streamState.chat = await this.emitChatLog(
         streamState.chat,
         "agent",
@@ -1062,23 +1063,39 @@ export class ChatConversationService implements ChatConversationPort {
             now,
           );
         }
-        streamState.chat = await this.emitChatLog(
-          streamState.chat,
-          "agent",
-          "AI finished generating response",
-          {
-            logKind: "system",
-            responseLength: transcriptResult.completedMessage?.responseLength
-              ?? streamState.interpreter.state.totalResponseLength,
-          },
-          undefined,
-          undefined,
-          { memory: streamState.transcriptMemory },
-        );
+        const completedMessage = transcriptResult.completedMessage;
+        if (completedMessage?.message.attachments?.length) {
+          streamState.chat = (
+            await this.updateStreamingAssistantProgress(streamState.chat, {
+              messageId: completedMessage.message.id,
+              content: completedMessage.message.content,
+              timestamp: completedMessage.message.timestamp,
+              activityTimestamp: now,
+              attachments: completedMessage.message.attachments,
+              persist: true,
+              emitDelta: false,
+              emitFullMessage: true,
+            }, streamState.transcriptMemory)
+          ).chat;
+        }
+        if (completedMessage && (completedMessage.responseLength > 0 || completedMessage.hadResponseBlock)) {
+          streamState.chat = await this.emitChatLog(
+            streamState.chat,
+            "agent",
+            "AI finished generating response",
+            {
+              logKind: "system",
+              responseLength: completedMessage.responseLength,
+            },
+            undefined,
+            undefined,
+            { memory: streamState.transcriptMemory },
+          );
+        }
         streamState.interpreter.acknowledgeCheckpoint();
-        streamState.completedResponse = transcriptResult.completedMessage ? {
+        streamState.completedResponse = completedMessage && completedMessage.responseLength > 0 ? {
           nativeMessageId: streamState.interpreter.state.currentMessageId,
-          transcriptMessageId: transcriptResult.completedMessage.message.id,
+          transcriptMessageId: completedMessage.message.id,
         } : undefined;
         break;
 
@@ -1356,6 +1373,7 @@ export class ChatConversationService implements ChatConversationPort {
       content,
       timestamp,
       activityTimestamp,
+      attachments,
       delta,
       persist,
       emitDelta,
@@ -1365,6 +1383,7 @@ export class ChatConversationService implements ChatConversationPort {
       content: string;
       timestamp: string;
       activityTimestamp: string;
+      attachments?: MessageData["attachments"];
       delta?: string;
       persist?: boolean;
       emitDelta?: boolean;
@@ -1385,6 +1404,9 @@ export class ChatConversationService implements ChatConversationPort {
       content,
       timestamp: existingMessage?.timestamp ?? this.getAssistantMessageTimestamp(chat, timestamp),
       question: existingMessage?.question,
+      ...(attachments ?? existingMessage?.attachments
+        ? { attachments: attachments ?? existingMessage?.attachments }
+        : {}),
     };
     const nextMessages = memory
       ? (memory.messages.upsert(assistantMessage), memory.messages.values)

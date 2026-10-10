@@ -233,7 +233,7 @@ export class AgentEventTranscriptInterpreter {
     event: Extract<AgentEvent, { type: "message.start" }>,
     timestamp: string,
   ): AgentEventTranscriptResult {
-    const flushedBlocks = this.state.activeBlockKind === "reasoning"
+    const flushedBlocks = this.state.activeBlockKind !== null
       ? this.flushActiveBlock(timestamp)
       : [];
     this.resetActiveTurn();
@@ -340,10 +340,14 @@ export class AgentEventTranscriptInterpreter {
 
     const completedMessage: AgentEventTranscriptCompletedMessage = {
       message: {
-        id: messageId ?? this.state.currentMessageId ?? this.idFactories.createResponseMessageId(this.state),
+        id: event.messageId
+          ?? messageId
+          ?? this.state.currentMessageId
+          ?? this.idFactories.createResponseMessageId(this.state),
         role: "assistant",
         content: responseContent,
         timestamp: messageTimestamp,
+        ...(event.attachments?.length ? { attachments: event.attachments } : {}),
       },
       responseLength: responseContent.length,
       hadResponseBlock,

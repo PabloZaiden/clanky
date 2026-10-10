@@ -152,6 +152,7 @@ export class CopilotSessionService {
   async send(sessionId: string, prompt: PromptInput): Promise<void> {
     const conversation = this.get(sessionId);
     this.activateControlContext(conversation, prompt.controlContext);
+    conversation.translator.beginPrompt();
     try {
       await conversation.native.send(toCopilotMessage(prompt));
     } catch (error) {
@@ -163,6 +164,7 @@ export class CopilotSessionService {
   async sendAndWait(sessionId: string, prompt: PromptInput, timeoutMs: number): Promise<Awaited<ReturnType<CopilotSession["sendAndWait"]>>> {
     const conversation = this.get(sessionId);
     this.activateControlContext(conversation, prompt.controlContext);
+    conversation.translator.beginPrompt();
     try {
       return await conversation.native.sendAndWait(toCopilotMessage(prompt), timeoutMs);
     } finally {

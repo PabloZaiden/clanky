@@ -215,11 +215,13 @@ function handleMessageComplete(
     return;
   }
 
-  toolCtx.emitLog("agent", "AI finished generating response", {
-    logKind: "system",
-    responseLength: completed.responseLength,
-  });
-  if (!completed.hadResponseBlock) {
+  if (completed.responseLength > 0 || completed.hadResponseBlock) {
+    toolCtx.emitLog("agent", "AI finished generating response", {
+      logKind: "system",
+      responseLength: completed.responseLength,
+    });
+  }
+  if (!completed.hadResponseBlock || completed.message.attachments?.length) {
     toolCtx.persistMessage(completed.message);
     toolCtx.emit({
       type: "task.message",

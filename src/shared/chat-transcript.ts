@@ -99,9 +99,10 @@ export interface TranscriptSnapshotMergeOptions {
 }
 
 export function isCountedAssistantResponse(
-  message: Pick<PersistedMessage, "content" | "role">,
+  message: Pick<PersistedMessage, "attachments" | "content" | "role">,
 ): boolean {
-  return message.role === "assistant" && message.content.length > 0;
+  return message.role === "assistant"
+    && (message.content.length > 0 || (message.attachments?.length ?? 0) > 0);
 }
 
 function compareTranscriptRecords(

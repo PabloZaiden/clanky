@@ -93,6 +93,18 @@ the input as rejected, so it can be corrected or removed. For example, Codex
 does not accept inline non-image binary attachments such as PDFs; those failures
 are not uncertain deliveries.
 
+## Provider-generated images
+
+Codex image-generation results and inline image blocks returned by providers are
+shown as separate assistant messages with image attachments. The image bytes
+are removed from tool output, so an image is not represented by a tool-call row.
+Clanky validates the actual image bytes against the existing PNG, JPEG, WebP and
+GIF allowlist and the 20 MiB per-image and 40 MiB per-turn attachment limits.
+Unsupported, malformed or oversized images are omitted with a warning while the
+provider's text response continues. On Mesh, generated images that exceed the
+2 MiB event limit are likewise omitted with a warning; other events and the text
+response continue normally.
+
 ## Questions
 
 Interactive chats show native questions inline. Choose an offered option or
