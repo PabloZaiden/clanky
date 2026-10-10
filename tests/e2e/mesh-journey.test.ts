@@ -254,7 +254,7 @@ test("compiled controller and worker execute an ACP chat across Mesh and reconne
             "-NoProfile",
             "-NonInteractive",
             "-Command",
-            `New-Item -ItemType Directory -Force -LiteralPath '${workspaceDirectory.replaceAll("'", "''")}' | Out-Null`,
+            `[System.IO.Directory]::CreateDirectory('${workspaceDirectory.replaceAll("'", "''")}') | Out-Null`,
           ],
         }
       : {

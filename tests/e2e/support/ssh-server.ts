@@ -182,6 +182,7 @@ export async function startEphemeralSshServer(
     join(options.clientHomeDirectory, ".bash_profile"),
     `export PATH='${options.providerBinDirectory.replaceAll("'", "'\\''")}':/usr/local/bin:/usr/bin:/bin\n`,
   );
+  // Hosted CI users can have a locked password while still allowing public-key login.
   await Bun.write(configPath, [
     `Port ${String(port)}`,
     "ListenAddress 127.0.0.1",
@@ -193,7 +194,7 @@ export async function startEphemeralSshServer(
     "KbdInteractiveAuthentication no",
     "ChallengeResponseAuthentication no",
     "PermitRootLogin yes",
-    "UsePAM no",
+    "UsePAM yes",
     "StrictModes no",
     `AllowUsers ${username}`,
     `SetEnv HOME=${options.clientHomeDirectory}`,
