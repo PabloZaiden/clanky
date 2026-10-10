@@ -43,6 +43,37 @@ export interface ProviderImageOutputProjection {
   rejectedImageCount: number;
 }
 
+export class ProviderImageOutputBudget {
+  private attachmentCount = 0;
+  private totalBytes = 0;
+
+  reset(): void {
+    this.attachmentCount = 0;
+    this.totalBytes = 0;
+  }
+
+  get hasCapacity(): boolean {
+    return this.attachmentCount < MESSAGE_ATTACHMENT_LIMIT
+      && this.totalBytes < MESSAGE_ATTACHMENT_MAX_TURN_BYTES;
+  }
+
+  get remainingBytes(): number {
+    return MESSAGE_ATTACHMENT_MAX_TURN_BYTES - this.totalBytes;
+  }
+
+  consume(size: number): boolean {
+    if (
+      this.attachmentCount >= MESSAGE_ATTACHMENT_LIMIT
+      || size > this.remainingBytes
+    ) {
+      return false;
+    }
+    this.attachmentCount += 1;
+    this.totalBytes += size;
+    return true;
+  }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -199,7 +230,18 @@ function collectImageCandidates(
     return;
   }
 
-  for (const key of ["content", "contentItems", "parts", "items", "output", "result", "images"]) {
+  for (const key of [
+    "attachments",
+    "content",
+    "contentItems",
+    "images",
+    "items",
+    "output",
+    "parts",
+    "result",
+    "toolOutput",
+    "update",
+  ]) {
     if (key in value) {
       collectImageCandidates(value[key], collection, depth + 1);
     }
@@ -381,6 +423,7 @@ function buildOmissionWarning(count: number): HarnessEventPayload {
 export function projectProviderImageOutput(
   value: unknown,
   sourceId: string,
+  budget: ProviderImageOutputBudget,
 ): ProviderImageOutputProjection {
   const collection: CandidateCollection = {
     candidates: [],
@@ -392,13 +435,8 @@ export function projectProviderImageOutput(
   collectImageCandidates(value, collection);
 
   const events: HarnessEventPayload[] = [];
-  let attachmentCount = 0;
-  let totalBytes = 0;
   for (const [candidateIndex, candidate] of collection.candidates.entries()) {
-    if (
-      attachmentCount >= MESSAGE_ATTACHMENT_LIMIT
-      || totalBytes >= MESSAGE_ATTACHMENT_MAX_TURN_BYTES
-    ) {
+    if (!budget.hasCapacity) {
       collection.rejectedImageCount += 1;
       continue;
     }
@@ -406,14 +444,12 @@ export function projectProviderImageOutput(
       candidate,
       sourceId,
       candidateIndex,
-      MESSAGE_ATTACHMENT_MAX_TURN_BYTES - totalBytes,
+      budget.remainingBytes,
     );
-    if (!attachment) {
+    if (!attachment || !budget.consume(attachment.size)) {
       collection.rejectedImageCount += 1;
       continue;
     }
-    attachmentCount += 1;
-    totalBytes += attachment.size;
     const messageId = stableOutputId(
       "provider-image-message",
       sourceId,

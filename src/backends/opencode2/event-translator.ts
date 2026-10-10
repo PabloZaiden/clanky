@@ -6,6 +6,7 @@ import type { OpenCodeEvent, SessionEventDurable } from "@opencode/client";
 import type { HarnessEvent, HarnessEventPayload, HarnessEventScope } from "@/shared/harness-events";
 import { HarnessError } from "../harness-errors";
 import {
+  ProviderImageOutputBudget,
   projectProviderImageOutput,
   redactProviderImagePayloads,
 } from "../provider-image-output";
@@ -13,6 +14,7 @@ import {
 export class OpenCodeEventTranslator {
   private readonly messages = new Map<string, Map<number, string>>();
   private readonly tools = new Map<string, string>();
+  private readonly imageOutputBudget = new ProviderImageOutputBudget();
   private lastSequence?: number;
 
   get sequence(): number | undefined { return this.lastSequence; }
@@ -33,6 +35,7 @@ export class OpenCodeEventTranslator {
     });
     switch (event.type) {
       case "session.execution.started":
+        this.imageOutputBudget.reset();
         return [wrap({ type: "session.status", sessionId: event.data.sessionID, status: "busy" })];
       case "session.execution.succeeded":
         return [wrap({ type: "prompt.complete", outcome: "completed" }), wrap({ type: "activity.changed" })];
@@ -79,7 +82,11 @@ export class OpenCodeEventTranslator {
         this.tools.delete(event.data.id);
         const output = event.type === "session.tool.success" ? event.data.content : event.data.error;
         const projection = event.type === "session.tool.success"
-          ? projectProviderImageOutput(output, `opencode-tool:${event.data.id}`)
+          ? projectProviderImageOutput(
+              output,
+              `opencode-tool:${event.data.id}`,
+              this.imageOutputBudget,
+            )
           : undefined;
         return [wrap({
           type: "tool.complete", toolCallId: event.data.id, toolName,

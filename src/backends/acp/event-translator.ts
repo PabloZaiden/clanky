@@ -107,43 +107,36 @@ export class AcpEventTranslator {
     }
 
     if (updateType === "agent_message_chunk") {
-      const imageProjection = projectProviderImageOutput(
-        updateObj["content"],
-        `acp-message:${sessionId}:${crypto.randomUUID()}`,
-      );
-      if (imageProjection.events.length > 0) {
-        this.state.markPromptActivity(sessionId);
-        this.state.clearIgnoreStatusUntilActivity(sessionId);
-        this.emitProviderImageEvents(sessionId, imageProjection);
-      }
-
       const rawContent = updateObj["content"];
-      const text = getString(content["text"])
-        ?? (Array.isArray(rawContent)
-          ? rawContent
-            .filter((block): block is Record<string, unknown> => isRecord(block))
-            .map((block) => getString(block["text"]))
-            .filter((blockText): blockText is string => blockText !== undefined)
-            .join("")
-          : "");
-      if (text.length === 0) {
-        return;
-      }
-      this.state.markPromptActivity(sessionId);
-      this.state.clearIgnoreStatusUntilActivity(sessionId);
-      if (!this.state.isMessageStarted(sessionId)) {
-        this.state.startMessage(sessionId);
-        this.state.emitSessionEvent(sessionId, {
-          type: "message.start",
-          messageId: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        });
-      }
-      const delta = this.state.normalizeMessageChunk(sessionId, text);
-      if (delta.length > 0) {
-        this.state.emitSessionEvent(sessionId, {
-          type: "message.delta",
-          content: delta,
-        });
+      const contentBlocks = Array.isArray(rawContent) ? rawContent : [rawContent ?? content];
+      for (const [index, block] of contentBlocks.entries()) {
+        const imageProjection = projectProviderImageOutput(
+          block,
+          `acp-message:${sessionId}:${crypto.randomUUID()}:${String(index)}`,
+          this.state.getProviderImageOutputBudget(sessionId),
+        );
+        const includesImageMessage = imageProjection.events.some(
+          (payload) => payload.type === "message.start",
+        );
+        if (imageProjection.events.length > 0) {
+          this.state.markPromptActivity(sessionId);
+          this.state.clearIgnoreStatusUntilActivity(sessionId);
+          if (includesImageMessage && this.state.isMessageStarted(sessionId)) {
+            this.state.emitSessionEvent(sessionId, {
+              type: "message.complete",
+              content: "",
+            });
+            this.state.endMessage(sessionId);
+          }
+          this.emitProviderImageEvents(sessionId, imageProjection);
+        }
+
+        const text = typeof block === "string"
+          ? block
+          : isRecord(block)
+            ? getString(block["text"]) ?? ""
+            : "";
+        this.emitAgentMessageText(sessionId, text);
       }
       return;
     }
@@ -241,6 +234,7 @@ export class AcpEventTranslator {
           : projectProviderImageOutput(
               output,
               `acp-tool:${sessionId}:${toolCallId ?? crypto.randomUUID()}`,
+              this.state.getProviderImageOutputBudget(sessionId),
             );
         this.state.emitSessionEvent(sessionId, {
           type: "tool.complete",
@@ -389,6 +383,28 @@ export class AcpEventTranslator {
     }
     if (projection.events.some((payload) => payload.type === "message.start")) {
       this.state.endMessage(sessionId);
+    }
+  }
+
+  private emitAgentMessageText(sessionId: string, text: string): void {
+    if (text.length === 0) {
+      return;
+    }
+    this.state.markPromptActivity(sessionId);
+    this.state.clearIgnoreStatusUntilActivity(sessionId);
+    if (!this.state.isMessageStarted(sessionId)) {
+      this.state.startMessage(sessionId);
+      this.state.emitSessionEvent(sessionId, {
+        type: "message.start",
+        messageId: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      });
+    }
+    const delta = this.state.normalizeMessageChunk(sessionId, text);
+    if (delta.length > 0) {
+      this.state.emitSessionEvent(sessionId, {
+        type: "message.delta",
+        content: delta,
+      });
     }
   }
 

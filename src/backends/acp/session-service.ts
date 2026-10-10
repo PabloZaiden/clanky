@@ -29,6 +29,7 @@ import {
 } from "./errors";
 import { invokeOptionalMethod } from "./optional-method";
 import { PROMPT_REQUEST_TIMEOUT_MS } from "./types";
+import { redactProviderImagePayloads } from "../provider-image-output";
 import type { SessionSubscriber } from "./types";
 import type { RpcRequester, ConfigOptionSetter } from "./contracts";
 import type { SessionStateStore } from "./session-state";
@@ -245,7 +246,7 @@ export class SessionService {
     const capture: SessionSubscriber = (event) => {
       log.trace("[AcpBackend] sendPrompt subscriber event", {
         sessionId,
-        event,
+        event: redactProviderImagePayloads(event),
       });
       if (event.type === "message.delta") {
         chunks.push(event.content);
@@ -278,7 +279,7 @@ export class SessionService {
       if (isRecord(result)) {
         log.trace("[AcpBackend] sendPrompt raw result", {
           sessionId,
-          result,
+          result: redactProviderImagePayloads(result),
         });
         const content = getString(result["content"]);
         if (content) {
@@ -304,7 +305,7 @@ export class SessionService {
     for (const part of toolParts) {
       log.trace("[AcpBackend] sendPrompt rebuilding tool part", {
         sessionId,
-        part,
+        part: redactProviderImagePayloads(part),
       });
       if (part.type === "tool_call") {
         mappedParts.push({
@@ -581,7 +582,7 @@ export class SessionService {
     for (const part of response.parts) {
       log.trace("[AcpBackend] mapResponse inspecting part", {
         messageId: response.info.id,
-        part,
+        part: redactProviderImagePayloads(part),
       });
       if (part.type === "text") {
         parts.push({

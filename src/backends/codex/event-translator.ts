@@ -8,17 +8,20 @@ import type { ThreadItem } from "./generated/v2/ThreadItem";
 import { HarnessError } from "../harness-errors";
 import { formatHarnessQuestions } from "@/shared/harness-questions";
 import {
+  ProviderImageOutputBudget,
   projectProviderImageOutput,
   redactProviderImagePayloads,
 } from "../provider-image-output";
 
 export class CodexEventTranslator {
   private readonly messages = new Set<string>();
+  private readonly imageOutputBudget = new ProviderImageOutputBudget();
 
   translate(event: CodexNotification, scope: HarnessEventScope): HarnessEvent[] {
     const wrap = (payload: HarnessEventPayload): HarnessEvent => ({ ...payload, scope });
     switch (event.method) {
       case "turn/started":
+        this.imageOutputBudget.reset();
         return [wrap({ type: "session.status", sessionId: event.params.threadId, status: "busy" })];
       case "turn/completed":
         if (event.params.turn.status === "failed") return [wrap({
@@ -80,7 +83,11 @@ export class CodexEventTranslator {
   private translateItem(item: ThreadItem, completed: boolean): HarnessEventPayload[] {
     if (item.type === "imageGeneration") {
       if (completed && item.status === "completed" && item.failure === null) {
-        return projectProviderImageOutput(item, `codex-image:${item.id}`).events;
+        return projectProviderImageOutput(
+          item,
+          `codex-image:${item.id}`,
+          this.imageOutputBudget,
+        ).events;
       }
       return [];
     }
@@ -119,7 +126,11 @@ export class CodexEventTranslator {
       && ["failed", "cancelled", "canceled", "error"].includes(status);
     const projection = failed
       ? undefined
-      : projectProviderImageOutput(item, `codex-tool:${item.id}`);
+      : projectProviderImageOutput(
+          item,
+          `codex-tool:${item.id}`,
+          this.imageOutputBudget,
+        );
     return [
       {
         type: "tool.complete",

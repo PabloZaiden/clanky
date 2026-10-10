@@ -20,6 +20,27 @@ const METHOD_NOT_FOUND_ERROR_CODE = -32601;
 const INVALID_PARAMS_ERROR_CODE = -32602;
 const INVALID_REQUEST_ERROR_CODE = -32600;
 const INTERNAL_ERROR_CODE = -32603;
+const MAX_PROVIDER_IMAGE_BYTES = 20 * 1024 * 1024;
+
+let maximumProviderImageData: string | undefined;
+
+function imageContentBlock(data: string): Record<string, unknown> {
+  return {
+    type: "image",
+    mimeType: "image/png",
+    data,
+  };
+}
+
+function getMaximumProviderImageData(): string {
+  if (maximumProviderImageData) {
+    return maximumProviderImageData;
+  }
+  const bytes = Buffer.alloc(MAX_PROVIDER_IMAGE_BYTES);
+  Buffer.from(E2E_IMAGE_DATA, "base64").copy(bytes);
+  maximumProviderImageData = bytes.toString("base64");
+  return maximumProviderImageData;
+}
 
 type JsonRpcId = number | string;
 
@@ -923,16 +944,40 @@ class MockAcpServer {
     }
 
     const imageOutputRequested = promptText.includes("[generated-image-output]");
-    if (imageOutputRequested) {
+    const imageCountBudgetRequested = promptText.includes("[generated-image-count-budget]");
+    const imageByteBudgetRequested = promptText.includes("[generated-image-byte-budget]");
+    const generatedImagesRequested = imageOutputRequested
+      || imageCountBudgetRequested
+      || imageByteBudgetRequested;
+    const maximumImageData = imageByteBudgetRequested
+      ? getMaximumProviderImageData()
+      : E2E_IMAGE_DATA;
+    if (imageByteBudgetRequested) {
       this.sendNotification("session/update", {
         sessionId: session.id,
         update: {
           sessionUpdate: "agent_message_chunk",
-          content: {
-            type: "image",
-            mimeType: "image/png",
-            data: E2E_IMAGE_DATA,
-          },
+          content: imageContentBlock(maximumImageData),
+        },
+      });
+    } else if (imageCountBudgetRequested) {
+      this.sendNotification("session/update", {
+        sessionId: session.id,
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: Array.from({ length: 5 }, () => imageContentBlock(E2E_IMAGE_DATA)),
+        },
+      });
+    } else if (imageOutputRequested) {
+      this.sendNotification("session/update", {
+        sessionId: session.id,
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: [
+            { type: "text", text: "ACP text before generated image." },
+            imageContentBlock(E2E_IMAGE_DATA),
+            { type: "text", text: "ACP text after generated image." },
+          ],
         },
       });
     }
@@ -944,14 +989,13 @@ class MockAcpServer {
           text: "Mock tool execution complete.",
         },
       },
-      ...(imageOutputRequested ? [{
-        type: "content",
-        content: {
-          type: "image",
-          mimeType: "image/png",
-          data: E2E_IMAGE_DATA,
-        },
-      }] : []),
+      ...Array.from(
+        { length: imageCountBudgetRequested ? 4 : generatedImagesRequested ? 1 : 0 },
+        () => ({
+          type: "content",
+          content: imageContentBlock(maximumImageData),
+        }),
+      ),
     ];
     this.sendNotification("session/update", {
       sessionId: session.id,
@@ -959,7 +1003,7 @@ class MockAcpServer {
         sessionUpdate: "tool_call_update",
         toolCallId,
         status: "completed",
-        ...(imageOutputRequested ? {} : {
+        ...(generatedImagesRequested ? {} : {
           rawOutput: {
             summary: "Mock ACP tool finished successfully",
             responseLength: responseText.length,
@@ -968,6 +1012,15 @@ class MockAcpServer {
         content: toolOutputContent,
       },
     });
+    if (imageByteBudgetRequested) {
+      this.sendNotification("session/update", {
+        sessionId: session.id,
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: imageContentBlock(E2E_IMAGE_DATA),
+        },
+      });
+    }
 
     if (promptText.includes("[config-update]")) {
       const thoughtLevel = session.configOptions.find((option) => option.id === "thought_level");

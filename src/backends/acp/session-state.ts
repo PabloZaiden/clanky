@@ -11,6 +11,7 @@
 
 import type { AgentSession } from "../types";
 import type { HarnessEvent, HarnessEventPayload } from "@/shared/harness-events";
+import { ProviderImageOutputBudget } from "../provider-image-output";
 import type { SessionEventSink } from "./contracts";
 import type { SessionSubscriber } from "./types";
 
@@ -60,6 +61,9 @@ export class SessionStateStore implements SessionEventSink {
 
   /** Track tool call names by session and toolCallId to resolve later updates. */
   private readonly toolCallNames = new Map<string, Map<string, string>>();
+
+  /** Generated-image budget, reset at each prompt and retained until session cleanup. */
+  private readonly sessionProviderImageBudgets = new Map<string, ProviderImageOutputBudget>();
 
   setDefaultDirectory(directory: string): void {
     this.defaultDirectory = directory;
@@ -146,6 +150,7 @@ export class SessionStateStore implements SessionEventSink {
 
   /** Begin a new async prompt run; returns the new monotonic sequence. */
   beginPrompt(sessionId: string): number {
+    this.resetProviderImageOutputBudget(sessionId);
     this.sessionMessageStarted.set(sessionId, false);
     this.sessionMessageContent.set(sessionId, "");
     this.sessionPromptCompleted.delete(sessionId);
@@ -163,7 +168,22 @@ export class SessionStateStore implements SessionEventSink {
 
   /** Prepare a synchronous prompt run (no sequence tracking). */
   beginSyncPrompt(sessionId: string): void {
+    this.resetProviderImageOutputBudget(sessionId);
     this.sessionMessageStarted.set(sessionId, false);
+  }
+
+  getProviderImageOutputBudget(sessionId: string): ProviderImageOutputBudget {
+    const existing = this.sessionProviderImageBudgets.get(sessionId);
+    if (existing) {
+      return existing;
+    }
+    const budget = new ProviderImageOutputBudget();
+    this.sessionProviderImageBudgets.set(sessionId, budget);
+    return budget;
+  }
+
+  private resetProviderImageOutputBudget(sessionId: string): void {
+    this.sessionProviderImageBudgets.set(sessionId, new ProviderImageOutputBudget());
   }
 
   /** Mark that the active prompt produced meaningful activity (guarded by an active prompt). */
@@ -389,6 +409,7 @@ export class SessionStateStore implements SessionEventSink {
 
   /** Clear all state associated with a deleted session. */
   clearSession(sessionId: string): void {
+    this.sessionProviderImageBudgets.delete(sessionId);
     this.sessionCache.delete(sessionId);
     this.sessionDirectories.delete(sessionId);
     this.sessionSubscribers.delete(sessionId);
@@ -408,6 +429,7 @@ export class SessionStateStore implements SessionEventSink {
 
   /** Clear every session's state on disconnect. */
   clearAll(): void {
+    this.sessionProviderImageBudgets.clear();
     this.sessionSubscribers.clear();
     this.sessionMessageStarted.clear();
     this.sessionMessageContent.clear();
