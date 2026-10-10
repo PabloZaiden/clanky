@@ -59,6 +59,7 @@ interface ProvisioningSnapshotResponse {
         workerRelayName?: string;
         workerHostAddress?: string;
         workerHostAddressManual?: boolean;
+        useClankyPrerelease?: boolean;
         devcontainerSubpath?: string;
         devboxTemplate?: string;
         githubUser?: string;
@@ -355,6 +356,29 @@ describe("Provisioning API integration", () => {
     expect(completed.job.state.status).toBe("completed");
     expect(completed.job.state.workspaceId).toBeTruthy();
     expect(completed.workspace?.directory).toBe("/workspaces/example");
+
+    const prereleaseRestart = await fetch(`${baseUrl}/api/provisioning-jobs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Example Workspace",
+        executionHost: { kind: "ssh", serverId: sshServer.config.id },
+        transport: "ssh",
+        repoUrl: "",
+        basePath: "/workspaces",
+        devcontainerSubpath: null,
+        provider: "copilot",
+        credentialToken: null,
+        mode: "restart",
+        targetDirectory: "/workspaces/example",
+        workspaceId: completed.workspace!.id,
+        useClankyPrerelease: true,
+      }),
+    });
+
+    expect(prereleaseRestart.status).toBe(400);
+    expect((await prereleaseRestart.json() as { error: string }).error)
+      .toBe("invalid_clanky_release_channel");
   });
 
   test("requires a worker host address when provision transport defaults to worker", async () => {
@@ -683,11 +707,13 @@ describe("Provisioning API integration", () => {
           mode: "restart",
           targetDirectory: "/workspaces/worker-example",
           workspaceId: completed.workspace!.id,
+          useClankyPrerelease: true,
         }),
       });
       expect(restartResponse.status).toBe(201);
       const startedRestart = await restartResponse.json() as ProvisioningSnapshotResponse;
       expect(startedRestart.job.config.transport).toBe("worker");
+      expect(startedRestart.job.config.useClankyPrerelease).toBe(true);
       const completedRestart = await waitForJobStatus(
         baseUrl,
         startedRestart.job.config.id,
@@ -701,6 +727,10 @@ describe("Provisioning API integration", () => {
       expect(completedRestart.workspace?.serverSettings?.agent).toEqual({ adapter: "codex", provider: "codex" });
       expect(getWorkerRegistrationByWorkspace(completed.workspace!.id, "admin")?.workerEndpoint)
         .toBe("https://worker.example.test:5002");
+      const prereleaseLauncher = await restartExecutor.readFile(
+        "/workspaces/worker-example/.devbox/clanky-worker/launcher.sh",
+      );
+      expect(prereleaseLauncher).toContain("CLANKY_RELEASE_CHANNEL='prerelease'");
 
       backendManager.setExecutorFactoryForTesting(() => new ProvisioningTestExecutor({ failRuntimeInstall: true }));
       const failedRuntime = await fetch(`${baseUrl}/api/workspaces/${completed.workspace!.id}/server-settings`, {
@@ -718,6 +748,10 @@ describe("Provisioning API integration", () => {
         body: JSON.stringify({ agent: { adapter: "opencode2", provider: "opencode" } }),
       });
       expect(openCodeRuntime.status).toBe(200);
+      const preservedPrereleaseLauncher = await restartExecutor.readFile(
+        "/workspaces/worker-example/.devbox/clanky-worker/launcher.sh",
+      );
+      expect(preservedPrereleaseLauncher).toContain("CLANKY_RELEASE_CHANNEL='prerelease'");
       const rebuild = await fetch(`${baseUrl}/api/provisioning-jobs`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -731,6 +765,10 @@ describe("Provisioning API integration", () => {
       const rebuildJob = await rebuild.json() as ProvisioningSnapshotResponse;
       const rebuilt = await waitForJobStatus(baseUrl, rebuildJob.job.config.id, ["completed"]);
       expect(rebuilt.workspace?.serverSettings?.agent).toEqual({ adapter: "opencode2", provider: "opencode" });
+      const stableLauncher = await restartExecutor.readFile(
+        "/workspaces/worker-example/.devbox/clanky-worker/launcher.sh",
+      );
+      expect(stableLauncher).toContain("CLANKY_RELEASE_CHANNEL='stable'");
 
       const deleted = await fetch(
         `${baseUrl}/api/workspaces/${completed.workspace?.id}`,

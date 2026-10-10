@@ -48,6 +48,7 @@ export interface StartProvisioningJobRequest {
   mode: "provision" | "rebuild" | "restart" | "arise";
   targetDirectory: string | null;
   workspaceId: string | null;
+  useClankyPrerelease?: boolean;
 }
 
 export interface DismissAllProvisioningJobsResult {
@@ -454,6 +455,7 @@ export function useProvisioningJob(): UseProvisioningJobResult {
           createNewRepository: request.createNewRepository ?? false,
           targetDirectory: request.targetDirectory?.trim() ? request.targetDirectory.trim() : null,
           workspaceId: request.workspaceId?.trim() ? request.workspaceId.trim() : null,
+          ...(request.useClankyPrerelease ? { useClankyPrerelease: true } : {}),
         }),
         action: "Start provisioning job",
         fallbackMessage: "Failed to start provisioning job",

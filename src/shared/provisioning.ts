@@ -85,6 +85,8 @@ export interface ProvisioningJobConfig {
   targetDirectory?: string;
   /** For rebuild/restart mode: existing workspace ID */
   workspaceId?: string;
+  /** Install the latest Clanky prerelease in an automatic worker launcher */
+  useClankyPrerelease?: boolean;
   createdAt: string;
 }
 

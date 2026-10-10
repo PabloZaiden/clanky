@@ -170,6 +170,7 @@ const API_DOMAIN_ERROR_CODES = {
   provider_not_found: true,
   invalid_task_state: true,
   invalid_worker_host_address: true,
+  invalid_clanky_release_channel: true,
   invalid_runtime: true,
   job_not_terminal: true,
   mesh_acp_unavailable: true,
@@ -1275,6 +1276,10 @@ const POLICY_PROFILES = {
       invalid_runtime: {
         status: 400,
         message: "Native adapters require a dedicated worker and matching harness preset.",
+      },
+      invalid_clanky_release_channel: {
+        status: 400,
+        message: "Clanky prereleases are only supported for automatic worker workspace restarts and rebuilds.",
       },
       invalid_worker_host_address: {
         status: 400,
