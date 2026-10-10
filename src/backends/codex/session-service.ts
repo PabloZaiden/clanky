@@ -130,12 +130,6 @@ export class CodexSessionService {
   }
 
   private async resumeNative(binding: HarnessConversationBinding): Promise<AgentSession> {
-    if (binding.controlTools) {
-      throw new HarnessError(
-        "harness_unsupported_feature",
-        "This Codex app-server cannot restore Clanky control tools when resuming a persisted thread. Start a new control chat.",
-      );
-    }
     // Core supplies only its persisted owned binding; no native directory/session import.
     const result = await this.dependencies.runtime.rpc.request("thread/resume", {
       threadId: binding.nativeId, excludeTurns: true, cwd: binding.directory,

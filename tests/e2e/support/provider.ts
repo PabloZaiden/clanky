@@ -7,8 +7,29 @@ import { join, resolve } from "node:path";
 
 const ROOT_DIR = resolve(import.meta.dir, "../../..");
 const PROVIDER_PATH = resolve(ROOT_DIR, "tests", "e2e", "providers", "acp.ts");
+const CODEX_PATH = resolve(ROOT_DIR, "tests", "e2e", "providers", "codex.ts");
 const DEVBOX_PATH = resolve(ROOT_DIR, "tests", "e2e", "providers", "devbox.ts");
 const GITHUB_PATH = resolve(ROOT_DIR, "tests", "e2e", "providers", "github.ts");
+
+export async function installExternalCodexProvider(binDirectory: string): Promise<void> {
+  await mkdir(binDirectory, { recursive: true, mode: 0o700 });
+  const executable = process.execPath;
+  if (process.platform === "win32") {
+    await Bun.write(
+      join(binDirectory, "codex.cmd"),
+      `@echo off\r\n"${executable}" "${CODEX_PATH}" %*\r\n`,
+    );
+    return;
+  }
+
+  const wrapperPath = join(binDirectory, "codex");
+  const quote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
+  await Bun.write(
+    wrapperPath,
+    `#!/bin/sh\nexec ${quote(executable)} ${quote(CODEX_PATH)} "$@"\n`,
+  );
+  await chmod(wrapperPath, 0o700);
+}
 
 export async function installExternalAcpProvider(binDirectory: string): Promise<void> {
   await mkdir(binDirectory, { recursive: true, mode: 0o700 });

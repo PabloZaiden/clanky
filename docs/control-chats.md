@@ -61,11 +61,12 @@ Only normal workspace chats using native Codex or Copilot receive these tools.
 ACP and other providers do not receive them. Use the versions and execution
 hosts supported by the [harness guide](harnesses.md).
 
-Codex exposes dynamic tools at `thread/start`, but its current
-`thread/resume` contract does not include those definitions. A control chat
-whose Codex runtime must resume from a cold, persisted session therefore fails
-explicitly instead of silently losing its control tools; start a new control
-chat after that condition. Copilot registers its tools on session creation and
+Codex persists dynamic-tool definitions with the thread history and restores
+them when `thread/resume` loads that history. The same control chat can
+therefore continue after restarting Clanky or its host, provided Codex's home
+and session data persist. As with other Codex chats, do not expect an in-flight
+turn to continue if the worker is stopped while it is running. No separate
+Codex daemon is required. Copilot registers its tools on session creation and
 resume.
 
 This feature controls Clanky through a normal chat; it does not add a standalone
