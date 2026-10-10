@@ -46,6 +46,13 @@ export function currentEnvironment(overrides: Record<string, string | undefined>
     }
   }
   for (const [name, value] of Object.entries(overrides)) {
+    if (process.platform === "win32") {
+      for (const inheritedName of Object.keys(environment)) {
+        if (inheritedName.toLowerCase() === name.toLowerCase()) {
+          delete environment[inheritedName];
+        }
+      }
+    }
     if (value === undefined) {
       delete environment[name];
     } else {

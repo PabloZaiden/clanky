@@ -12,24 +12,11 @@ const GITHUB_PATH = resolve(ROOT_DIR, "tests", "e2e", "providers", "github.ts");
 
 export async function installExternalAcpProvider(binDirectory: string): Promise<void> {
   await mkdir(binDirectory, { recursive: true, mode: 0o700 });
-  const bundledProviderPath = join(binDirectory, "acp-provider.js");
-  const build = await Bun.build({
-    entrypoints: [PROVIDER_PATH],
-    outdir: binDirectory,
-    naming: "acp-provider.js",
-    target: "bun",
-  });
-  if (!build.success) {
-    throw new AggregateError(
-      build.logs,
-      "Failed to bundle the external ACP provider fixture",
-    );
-  }
   const executable = process.execPath;
   if (process.platform === "win32") {
     await Bun.write(
       join(binDirectory, "copilot.cmd"),
-      `@echo off\r\n"${executable}" "${bundledProviderPath}" %*\r\n`,
+      `@echo off\r\n"${executable}" "${PROVIDER_PATH}" %*\r\n`,
     );
     return;
   }
@@ -38,7 +25,7 @@ export async function installExternalAcpProvider(binDirectory: string): Promise<
   const quote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
   await Bun.write(
     wrapperPath,
-    `#!/bin/sh\nexec ${quote(executable)} ${quote(bundledProviderPath)} "$@"\n`,
+    `#!/bin/sh\nexec ${quote(executable)} ${quote(PROVIDER_PATH)} "$@"\n`,
   );
   await chmod(wrapperPath, 0o700);
 }

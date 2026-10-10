@@ -7,7 +7,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pollUntil } from "./polling";
-import { waitForExit } from "./process";
+import { currentEnvironment, waitForExit } from "./process";
 import {
   LIFECYCLE_TIMEOUT_MS,
   OPERATION_TIMEOUT_MS,
@@ -273,15 +273,14 @@ export async function startMeshNode(options: {
   try {
     const port = await availablePort();
     const baseUrl = `${role === "worker" && !relayOnly ? "https" : "http"}://127.0.0.1:${String(port)}`;
-    const environment: Record<string, string | undefined> = {
-      ...process.env,
+    const environment: Record<string, string | undefined> = currentEnvironment({
       ...options.environment,
       CLANKY_DATA_DIR: dataDir,
       CLANKY_HOST: "127.0.0.1",
       CLANKY_PORT: String(port),
       CLANKY_PUBLIC_BASE_URL: baseUrl,
       CLANKY_LOG_LEVEL: options.environment?.["CLANKY_LOG_LEVEL"] ?? "fatal",
-    };
+    });
     let apiKey: string | undefined;
     let tlsCertificate: string | undefined;
 
