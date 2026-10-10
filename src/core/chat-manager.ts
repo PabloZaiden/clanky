@@ -259,6 +259,10 @@ export class ChatManager {
     return this.services.conversation.interruptChat(chatId, reason);
   }
 
+  recordVoiceCallSummary(chatId: string, callId: string, summary: string): Promise<void> {
+    return this.services.conversation.recordVoiceCallSummary(chatId, callId, summary);
+  }
+
   async replyToPermission(
     chatId: string,
     requestId: string,

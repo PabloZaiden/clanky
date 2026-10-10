@@ -70,6 +70,7 @@ export class CopilotControl implements HarnessControl {
     if (!(await session.rpc.metadata.isProcessing()).processing) {
       return { status: "rejected", inputId: request.inputId, code: "not-running" };
     }
+    this.connection.requireServices().sessions.prepareSteering(sessionId, request.clientId);
     try {
       const nativeMessageId = await session.send({ ...toCopilotMessage(request.prompt), mode: "immediate" });
       return { status: "accepted", inputId: request.inputId, nativeMessageId };

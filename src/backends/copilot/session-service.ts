@@ -245,6 +245,14 @@ export class CopilotSessionService {
     }
   }
 
+  prepareSteering(id: string, clientId: string | undefined): void {
+    const conversation = this.get(id);
+    const context = conversation.activeControlContext;
+    if (context?.clientId && context.clientId !== clientId) {
+      conversation.activeControlContext = { ...context, clientId: undefined };
+    }
+  }
+
   private activateControlContext(conversation: Conversation, context: ClankyControlContext | undefined): void {
     const binding = conversation.info.binding;
     if (binding?.controlTools !== true) {

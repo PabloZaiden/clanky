@@ -188,8 +188,9 @@ function HarnessActivityPage({ kind, entityId, snapshot, capabilities, onBack }:
 export function HarnessEntityView({
   showActivity,
   children,
+  activityFooter,
   ...props
-}: HarnessActivityProps & { showActivity: boolean; children: ReactNode }) {
+}: HarnessActivityProps & { showActivity: boolean; children: ReactNode; activityFooter?: ReactNode }) {
   const byTool = useMemo(() => {
     const result = new Map<string, HarnessActivity[]>();
     if (props.snapshot?.observation === "available") {
@@ -226,7 +227,8 @@ export function HarnessEntityView({
           </div>
           {showActivity && (
             <div className="absolute inset-0 flex min-h-0 flex-col">
-              <HarnessActivityPage {...props} />
+              <div className="flex min-h-0 flex-1 flex-col"><HarnessActivityPage {...props} /></div>
+              {activityFooter}
             </div>
           )}
         </div>

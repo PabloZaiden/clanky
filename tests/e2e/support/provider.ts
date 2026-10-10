@@ -8,6 +8,7 @@ import { join, resolve } from "node:path";
 const ROOT_DIR = resolve(import.meta.dir, "../../..");
 const PROVIDER_PATH = resolve(ROOT_DIR, "tests", "e2e", "providers", "acp.ts");
 const CODEX_PATH = resolve(ROOT_DIR, "tests", "e2e", "providers", "codex.ts");
+const COPILOT_NATIVE_PATH = resolve(ROOT_DIR, "tests", "e2e", "providers", "copilot-native.ts");
 const DEVBOX_PATH = resolve(ROOT_DIR, "tests", "e2e", "providers", "devbox.ts");
 const GITHUB_PATH = resolve(ROOT_DIR, "tests", "e2e", "providers", "github.ts");
 
@@ -32,12 +33,20 @@ export async function installExternalCodexProvider(binDirectory: string): Promis
 }
 
 export async function installExternalAcpProvider(binDirectory: string): Promise<void> {
+  await installCopilotExecutable(binDirectory, PROVIDER_PATH);
+}
+
+export async function installExternalNativeCopilotProvider(binDirectory: string): Promise<void> {
+  await installCopilotExecutable(binDirectory, COPILOT_NATIVE_PATH);
+}
+
+async function installCopilotExecutable(binDirectory: string, providerPath: string): Promise<void> {
   await mkdir(binDirectory, { recursive: true, mode: 0o700 });
   const executable = process.execPath;
   if (process.platform === "win32") {
     await Bun.write(
       join(binDirectory, "copilot.cmd"),
-      `@echo off\r\n"${executable}" "${PROVIDER_PATH}" %*\r\n`,
+      `@echo off\r\n"${executable}" "${providerPath}" %*\r\n`,
     );
     return;
   }
@@ -46,7 +55,7 @@ export async function installExternalAcpProvider(binDirectory: string): Promise<
   const quote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
   await Bun.write(
     wrapperPath,
-    `#!/bin/sh\nexec ${quote(executable)} ${quote(PROVIDER_PATH)} "$@"\n`,
+    `#!/bin/sh\nexec ${quote(executable)} ${quote(providerPath)} "$@"\n`,
   );
   await chmod(wrapperPath, 0o700);
 }

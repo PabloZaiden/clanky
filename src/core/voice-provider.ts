@@ -187,6 +187,9 @@ export function buildVoiceProviderUrl(
   const normalizedBaseUrl = normalizeVoiceBaseUrl(baseUrl);
   const base = new URL(normalizedBaseUrl);
   const normalizedPath = path.replace(/^\/+/, "");
+  if (normalizedPath === "responses") {
+    return buildVoiceV1Url(normalizedBaseUrl, normalizedPath);
+  }
 
   if (isAzureOpenAiUrl(base)) {
     if (!model?.trim()) {
@@ -212,6 +215,18 @@ export function buildVoiceProviderUrl(
     base.pathname.replace(/\/+$/, ""),
     normalizedPath,
   ].filter(Boolean).join("/");
+  return base.toString();
+}
+
+export function buildVoiceV1Url(baseUrl: string, path: string): string {
+  const base = new URL(normalizeVoiceBaseUrl(baseUrl));
+  if (isAzureOpenAiUrl(base)) {
+    base.pathname = `${azureResourcePath(base.pathname).replace(/\/+$/, "")}/openai/v1`;
+    base.search = "";
+  } else if (base.pathname === "/") {
+    base.pathname = "/v1";
+  }
+  base.pathname = `${base.pathname.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
   return base.toString();
 }
 
@@ -247,7 +262,7 @@ export function normalizeVoiceBaseUrl(value: string): string {
   return url.toString().replace(/\/+$/, "");
 }
 
-function providerError(
+export function providerError(
   status: number,
   retryAfter?: string | null,
 ): DomainError {
@@ -270,7 +285,7 @@ function providerError(
   );
 }
 
-async function assertSafeProviderDestination(url: string): Promise<void> {
+export async function assertSafeProviderDestination(url: string): Promise<void> {
   const parsed = new URL(url);
   assertSafeBaseUrlHost(parsed);
 
@@ -355,7 +370,7 @@ async function readBoundedResponseBody(
   return body;
 }
 
-async function readJsonResponse(
+export async function readJsonResponse(
   response: Response,
   signal?: AbortSignal,
 ): Promise<unknown> {
@@ -375,7 +390,7 @@ async function readJsonResponse(
   }
 }
 
-async function fetchWithTimeout<T>(
+export async function fetchWithTimeout<T>(
   url: string,
   init: RequestInit,
   signal: AbortSignal | undefined,
@@ -388,6 +403,7 @@ async function fetchWithTimeout<T>(
     VOICE_PROVIDER_TIMEOUT_MS,
   );
   const abortCaller = (): void => controller.abort();
+  if (signal?.aborted) controller.abort();
   signal?.addEventListener("abort", abortCaller, { once: true });
   try {
     const response = await fetch(url, {
@@ -433,32 +449,19 @@ function extractResponseText(value: unknown): string {
     return "";
   }
   const record = value as Record<string, unknown>;
-  const choices = record["choices"];
-  if (!Array.isArray(choices) || !choices[0] || typeof choices[0] !== "object") {
-    return "";
+  if (record["status"] !== "completed" || record["error"]) {
+    throw new DomainError("voice_provider_invalid_response", "The text provider did not complete its response.");
   }
-  const choice = choices[0] as Record<string, unknown>;
-  const message = choice["message"];
-  if (!message || typeof message !== "object") {
-    return "";
+  const output = record["output"];
+  if (!Array.isArray(output)) return "";
+  const texts: string[] = [];
+  for (const item of output) {
+    if (!item || typeof item !== "object" || item.type !== "message" || item.role !== "assistant" || !Array.isArray(item.content)) continue;
+    for (const part of item.content) {
+      if (part?.type === "output_text" && typeof part.text === "string") texts.push(part.text);
+    }
   }
-  const content = (message as Record<string, unknown>)["content"];
-  if (typeof content === "string") {
-    return content.trim();
-  }
-  if (!Array.isArray(content)) {
-    return "";
-  }
-  return content
-    .map((part) => {
-      if (!part || typeof part !== "object") {
-        return "";
-      }
-      const text = (part as Record<string, unknown>)["text"];
-      return typeof text === "string" ? text : "";
-    })
-    .join("")
-    .trim();
+  return texts.join("\n").trim();
 }
 
 function createValidationWav(): Blob {
@@ -583,7 +586,7 @@ export class OpenAiCompatibleVoiceProvider {
     signal?: AbortSignal,
   ): Promise<string> {
     return await fetchWithTimeout(
-      this.url("/chat/completions", model),
+      this.url("/responses", model),
       {
         method: "POST",
         headers: {
@@ -592,8 +595,9 @@ export class OpenAiCompatibleVoiceProvider {
         },
         body: JSON.stringify({
           model,
-          messages: [{ role: "user", content: prompt }],
-          max_completion_tokens: 512,
+          input: [{ role: "user", content: prompt }],
+          max_output_tokens: 4096,
+          store: false,
         }),
       },
       signal,

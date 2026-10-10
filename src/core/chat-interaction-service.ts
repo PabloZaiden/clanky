@@ -25,8 +25,6 @@ import { buildPromptParts } from "../backends/prompt-parts";
 import { KeyedOperationQueue } from "../utils/keyed-operation-queue";
 import { requireMatchingHarnessBinding } from "../backends/harness-binding";
 import { updateQuestionAnswerStatus } from "@/shared/harness-questions";
-import { isClankyControlChat } from "@/shared/clanky-control";
-import { preferencesManager } from "./preferences-manager";
 import type {
   ChatConversationPort,
   ChatInteractionPort,
@@ -240,11 +238,6 @@ export class ChatInteractionService implements ChatInteractionPort {
     })();
   }
 
-  private async isControlChat(chat: Chat): Promise<boolean> {
-    const settings = await preferencesManager.getQuickChatSettings();
-    return isClankyControlChat(chat, settings.workspaceId);
-  }
-
   steerQueuedMessage(chatId: string, queuedMessageId: string): Promise<{ chat: Chat; admission: HarnessInputAdmission }> {
     return this.serializeInput(chatId, async () => {
       let chat = await this.state.getChat(chatId);
@@ -252,9 +245,6 @@ export class ChatInteractionService implements ChatInteractionPort {
       if (chat.state.harness?.integrity === "invalid") throw new HarnessError("harness_request_failed", "Input admission history is corrupt.");
       const existing = chat.state.harness?.inputs?.find((receipt) => receipt.admission.inputId === queuedMessageId);
       if (existing && existing.admission.status !== "rejected") return { chat, admission: existing.admission };
-      if (await this.isControlChat(chat)) {
-        return { chat, admission: { status: "rejected", inputId: queuedMessageId, code: "unsupported" } };
-      }
       const message = chat.state.queuedMessages?.find((entry) => entry.id === queuedMessageId);
       if (!message) throw new HarnessError("harness_input_not_found", "The queued input is unavailable.");
       const binding = chat.state.session?.binding;
@@ -285,6 +275,7 @@ export class ChatInteractionService implements ChatInteractionPort {
       try {
         admission = await backend.harness.steer(binding.nativeId, {
           inputId: queuedMessageId,
+          clientId: message.clientId,
           prompt: { parts: buildPromptParts(message.content, message.attachments ?? []) },
         });
       } catch (error) {
@@ -435,11 +426,11 @@ export class ChatInteractionService implements ChatInteractionPort {
     const availableMessages = (chat.state.queuedMessages ?? []).filter((message) => !blocked.has(message.id));
     // Question replies own an existing transcript message and cannot be folded
     // into a new combined composer message.
-    const isControlChat = await this.isControlChat(chat);
-    const questionIndex = availableMessages.findIndex((message) => message.transcriptMessage);
-    const queuedMessages = isControlChat ? availableMessages.slice(0, 1)
-      : questionIndex === 0 ? availableMessages.slice(0, 1)
-        : questionIndex > 0 ? availableMessages.slice(0, questionIndex) : availableMessages;
+    const first = availableMessages[0];
+    const boundary = availableMessages.findIndex((message, index) => index > 0
+      && (message.transcriptMessage || message.clientId !== first?.clientId));
+    const queuedMessages = first?.transcriptMessage ? availableMessages.slice(0, 1)
+      : boundary > 0 ? availableMessages.slice(0, boundary) : availableMessages;
     if (queuedMessages.length === 0) {
       return;
     }
