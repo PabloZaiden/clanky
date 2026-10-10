@@ -21,12 +21,6 @@ const CLAUDE_AGENT_ACP_PACKAGE = "@agentclientprotocol/claude-agent-acp";
 const PI_ACP_PACKAGE = "pi-acp";
 const GROK_PACKAGE = "@xai-official/grok";
 const WINDOWS_COMMAND_SHIM_PATTERN = /\.(?:cmd|bat)$/i;
-const WINDOWS_COMMAND_SHIM_SCRIPT = [
-  "$commandPath = $args[0]",
-  "$commandArgs = @($args | Select-Object -Skip 1)",
-  "& $commandPath @commandArgs",
-  "exit $LASTEXITCODE",
-].join("; ");
 const CODEX_ACP_ENV = {
   INITIAL_AGENT_MODE: "agent-full-access",
   CODEX_CONFIG: JSON.stringify({
@@ -116,6 +110,22 @@ const CODEX_ACP_RESOLVER_OPTIONS: AcpResolverOptions = {
     errorMessage: "clanky: Codex CLI not found. Install and authenticate codex before using the Codex provider.",
   },
 };
+
+function quotePowerShellLiteral(value: string): string {
+  return `'${value.replaceAll("'", "''")}'`;
+}
+
+function buildWindowsCommandShimScript(
+  command: string,
+  args: string[],
+): string {
+  return [
+    `$commandPath = ${quotePowerShellLiteral(command)}`,
+    `$commandArgs = @(${args.map(quotePowerShellLiteral).join(", ")})`,
+    "& $commandPath @commandArgs",
+    "exit $LASTEXITCODE",
+  ].join("; ");
+}
 
 const COPILOT_ACP_RESOLVER_OPTIONS: AcpResolverOptions = {
   executable: "copilot",
@@ -289,9 +299,7 @@ function adaptProviderCommandForPlatform(
       "-NoProfile",
       "-NonInteractive",
       "-Command",
-      WINDOWS_COMMAND_SHIM_SCRIPT,
-      command,
-      ...args,
+      buildWindowsCommandShimScript(command, args),
     ],
     ...(env ? { env } : {}),
   };

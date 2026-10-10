@@ -17,9 +17,13 @@ const CONTROL_PATH_VERSION = "v1";
 const CONTROL_PERSIST = "60s";
 let controlDirectoryReady: Promise<void> | undefined;
 
+function getSshControlDirectory(): string {
+  return join(homedir(), ".ssh");
+}
+
 export async function ensureSshControlDirectory(): Promise<void> {
   const pending = controlDirectoryReady ??= mkdir(
-    join(homedir(), ".ssh"),
+    getSshControlDirectory(),
     { recursive: true, mode: 0o700 },
   ).then(() => undefined);
   try {
@@ -80,7 +84,10 @@ function buildSshControlPath(options: {
     .update(fingerprintInput)
     .digest("hex")
     .slice(0, 32);
-  return `~/.ssh/clanky-cm-${CONTROL_PATH_VERSION}-${fingerprint}`;
+  return join(
+    getSshControlDirectory(),
+    `clanky-cm-${CONTROL_PATH_VERSION}-${fingerprint}`,
+  );
 }
 
 export function buildSshMultiplexingArgs(options: {
