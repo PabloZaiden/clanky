@@ -101,7 +101,7 @@ export function startManagedProcess(
   };
 }
 
-async function waitForExit(child: Bun.Subprocess, timeoutMs: number): Promise<boolean> {
+export async function waitForExit(child: Bun.Subprocess, timeoutMs: number): Promise<boolean> {
   if (child.exitCode !== null) {
     return true;
   }

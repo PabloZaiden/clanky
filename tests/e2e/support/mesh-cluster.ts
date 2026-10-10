@@ -7,6 +7,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pollUntil } from "./polling";
+import { waitForExit } from "./process";
 import {
   LIFECYCLE_TIMEOUT_MS,
   OPERATION_TIMEOUT_MS,
@@ -180,7 +181,7 @@ async function stopNodeServer(node: ManagedMeshNode): Promise<string> {
           killSignal: "SIGKILL",
         },
       );
-      if (terminated.exitCode !== 0 && node.child.exitCode === null) {
+      if (!(await waitForExit(node.child, OPERATION_TIMEOUT_MS))) {
         const output = [
           terminated.stdout.toString().trim(),
           terminated.stderr.toString().trim(),
