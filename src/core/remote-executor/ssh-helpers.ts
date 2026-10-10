@@ -90,19 +90,29 @@ export function buildSshCommandArgs(options: {
   remoteCommand?: string;
   identityFile?: string;
   connectionScope?: string;
+  multiplex?: boolean;
   policy?: SshReliabilityPolicy;
 }): string[] {
   const identityFile = options.identityFile?.trim();
   const policy = options.policy ?? getSshReliabilityPolicy();
   return [
     ...getSshAuthArgs(options.authMode),
-    ...buildSshMultiplexingArgs({
-      authMode: options.authMode,
-      port: options.port,
-      target: options.target,
-      identityFile,
-      connectionScope: options.connectionScope,
-    }),
+    ...(options.multiplex === false
+      ? [
+          "-o",
+          "ControlMaster=no",
+          "-o",
+          "ControlPath=none",
+          "-o",
+          "ControlPersist=no",
+        ]
+      : buildSshMultiplexingArgs({
+          authMode: options.authMode,
+          port: options.port,
+          target: options.target,
+          identityFile,
+          connectionScope: options.connectionScope,
+        })),
     ...(identityFile
       ? [
           "-o",

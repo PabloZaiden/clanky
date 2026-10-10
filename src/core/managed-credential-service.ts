@@ -117,14 +117,6 @@ export class ManagedCredentialService {
     this.credentialLocks.clear();
   }
 
-  resetForTests(): void {
-    this.store = undefined;
-    this.publicBaseUrl = undefined;
-    this.localBaseUrl = undefined;
-    this.activeCredentials.clear();
-    this.credentialLocks.clear();
-  }
-
   async ensureCredential(
     identity: ManagedContextIdentity,
     mode: ManagedCredentialMode = "reuse",

@@ -372,6 +372,7 @@ export class CommandExecutorImpl implements CommandExecutor {
       const onStdoutChunk = options?.onStdoutChunk;
       const onStderrChunk = options?.onStderrChunk;
       const maxOutputBytes = options?.maxOutputBytes;
+      const longRunning = options?.longRunning === true;
       const result = this.provider === "ssh"
         ? await this.execSsh(
           command,
@@ -383,6 +384,7 @@ export class CommandExecutorImpl implements CommandExecutor {
           onStdoutChunk,
           onStderrChunk,
           maxOutputBytes,
+          longRunning,
         )
         : await this.execLocal(
           command,
@@ -691,6 +693,7 @@ export class CommandExecutorImpl implements CommandExecutor {
     onStdoutChunk?: (chunk: string) => void,
     onStderrChunk?: (chunk: string) => void,
     maxOutputBytes?: number,
+    longRunning = false,
   ): Promise<CommandResult> {
     if (!this.host) {
       return {
@@ -736,6 +739,7 @@ export class CommandExecutorImpl implements CommandExecutor {
             remoteCommand: remoteShellCommand,
             identityFile: this.identityFile,
             connectionScope: this.directory,
+            multiplex: !longRunning,
           }),
         ],
         "/",
@@ -745,6 +749,21 @@ export class CommandExecutorImpl implements CommandExecutor {
         onStdoutChunk,
         onStderrChunk,
         maxOutputBytes,
+      );
+    }
+
+    if (longRunning) {
+      // A dedicated connection makes abort close the owning remote channel;
+      // a multiplexed client can exit while its ControlMaster keeps work alive.
+      return await this.execBatchSshCommand(
+        sshTarget,
+        remoteShellCommand,
+        timeoutMs,
+        signal,
+        onStdoutChunk,
+        onStderrChunk,
+        maxOutputBytes,
+        false,
       );
     }
 
@@ -817,6 +836,7 @@ export class CommandExecutorImpl implements CommandExecutor {
     onStdoutChunk?: (chunk: string) => void,
     onStderrChunk?: (chunk: string) => void,
     maxOutputBytes?: number,
+    multiplex = true,
   ): Promise<CommandResult> {
     return await this.execLocal(
       "ssh",
@@ -827,6 +847,7 @@ export class CommandExecutorImpl implements CommandExecutor {
         remoteCommand: remoteShellCommand,
         identityFile: this.identityFile,
         connectionScope: this.directory,
+        multiplex,
       }),
       "/",
       timeoutMs,

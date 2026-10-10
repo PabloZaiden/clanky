@@ -22,15 +22,6 @@ export function isRemoteOnlyMode(): boolean {
 }
 
 /**
- * Check if the built-in mock ACP runtime should be used.
- *
- * Set CLANKY_MOCK_ACP=true, 1, or yes to enable.
- */
-export function isMockAcpEnabled(): boolean {
-  return isTruthyEnvFlag("CLANKY_MOCK_ACP");
-}
-
-/**
  * Check if same-origin request protection should be bypassed.
  *
  * Intended for development setups where the browser origin differs from the

@@ -22,28 +22,67 @@ The application is available at <http://localhost:3000>. Use an isolated
 
 ## Build and test
 
-Build the standalone artifacts and run the test suite:
+Build the standalone artifacts and run the black-box E2E suite:
 
 ```bash
 bun run build
 bun run test
 ```
 
-The build writes standalone artifacts to `dist/`.
+The build writes the production executable to `dist/`. Every automated test
+starts that executable and interacts with it only through public CLI, HTTP,
+WebSocket, WebDAV, process, filesystem, Git, or network boundaries. The suite
+does not import application internals or inspect persistence.
 
-Useful targeted commands:
+The runner discovers only `tests/e2e/**/*.test.ts`, partitions those files from
+their count and `CLANKY_TEST_MAX_WORKERS`, and never retries failures. Its
+architecture guard rejects automated tests outside `tests/e2e`, production
+source imports, in-process mocks or spies, route-handler harnesses, direct
+persistence access, and production testing hooks.
+
+Fail-fast budgets are 5 seconds for an individual request, command, local poll,
+or WebSocket operation and 10 seconds for an asynchronous task, chat, agent,
+SSH, provisioning, Mesh, startup, or recovery lifecycle. The 120-second
+whole-journey limit remains only as a final backstop for slow CI. Successful
+steps never wait out those budgets, and failures retain the named condition,
+last observed state, and process logs.
+
+Useful commands:
 
 ```bash
 bun run typecheck
-bun run test:backend
-bun run test:native-worker-e2e
-bun run test:changed
+CLANKY_TEST_MAX_WORKERS=1 bun run test
+bun run test:mesh
 ```
 
-Set `CLANKY_MOCK_ACP=true` when local tests should use the built-in fake ACP
-runtime instead of launching a provider CLI.
+Provider-dependent E2E scenarios put deterministic provider executables first
+in an isolated `PATH`. Clanky discovers and launches the fixtures in
+`tests/e2e/providers/` through the same process, adapter, transport, and
+lifecycle boundaries used for a real provider; production has no test-only
+backend switch. The provisioning journey likewise invokes an external
+deterministic `devbox` executable through real SSH and validates successful,
+failed, cancelled, and restarted jobs at the public API boundary. Harnesses
+allocate isolated data directories and ports, bound their polling, capture
+subprocess logs for failure diagnostics, and clean up their process groups.
+
+Voice E2E coverage uses an external HTTPS OpenAI-compatible provider and checks
+settings, destination safety, capability validation, transcription, and
+persistence. Positive Piper synthesis is intentionally not part of the
+hermetic PR gate: a real run requires downloading or versioning roughly 90 MB
+of checksum-pinned runtime and voice assets. Do not fake Piper by pre-populating
+its private cache layout; use real assets for an optional manual smoke instead.
+
+Add or change an automated test only for a considerable user, API, CLI, or
+protocol workflow. Extend a compact journey instead of creating endpoint,
+component, hook, class, or helper tests. UI-only behavior is validated manually
+with `Bun.WebView`, not committed browser automation.
 
 Run `bun run build && bun run test` before considering a change complete.
+
+The complete Linux suite also starts an isolated OpenSSH server. Install
+`openssh-server` and `sshpass` before running it; the harness creates its own
+host key, client key, agent socket, port, configuration, and data directory.
+It does not modify the user's SSH keys or contact an external host.
 
 ## Harness execution boundaries
 

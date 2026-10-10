@@ -1,6 +1,4 @@
 import type { AgentProvider, AgentTransport } from "@/shared/settings";
-import { getMockAcpCommand } from "../backends/acp/mock-acp-command";
-import { isMockAcpEnabled } from "./config";
 import { mergeRuntimeEnvironment } from "./managed-context-environment";
 import { buildEnvAssignments, quoteShell } from "./remote-executor/utils";
 
@@ -193,9 +191,6 @@ export function getProviderAcpCommand(
   provider: AgentProvider,
   transport: AgentTransport = "stdio",
 ): AgentRuntimeCommand {
-  if (transport === "stdio" && isMockAcpEnabled()) {
-    return getMockAcpCommand();
-  }
   const runtime = AGENT_PROVIDER_RUNTIMES[provider];
   if (transport === "ssh") {
     return buildAcpResolverCommand(
@@ -212,9 +207,6 @@ export function resolveProviderAcpCommand(
   which: (command: string) => string | null = Bun.which,
   platform: NodeJS.Platform = process.platform,
 ): AgentRuntimeCommand {
-  if (isMockAcpEnabled()) {
-    return getMockAcpCommand();
-  }
   const runtime = AGENT_PROVIDER_RUNTIMES[provider];
   const requiredCli = runtime.options.requiredCli;
   if (requiredCli && !which(requiredCli.command)) {

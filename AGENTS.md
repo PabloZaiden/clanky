@@ -13,7 +13,9 @@ When working on tasks, follow this general workflow to ensure clarity and goal a
 - Make sure that the goals you are trying to achieve are written down, in a way that you can properly verify them later.
 - When you need to fix a bug, first make sure you can reproduce it locally unless the user is explicit that reproduction is not needed. Trying to fix a bug before reproducing it can make things worse.
 - When you need to see how something works or looks in the UI, use `Bun.WebView` from Bun 1.4+ for manual browser validation during development.
-- Do not add browser automation tests to this repository; prefer lower-level automated tests and keep `Bun.WebView` as a development tool rather than a committed test layer.
+- Do not add browser automation tests to this repository. Automated coverage
+  must use the black-box E2E boundaries defined below; keep `Bun.WebView` as a
+  development tool rather than a committed test layer.
 - Tasks that involve UI changes or adjustments must finish, whenever possible, with one desktop screenshot and one mobile screenshot for each UI change made. If screenshots cannot be captured, document why.
 - Don't say something is done until you have verified that all the goals are met.
 - The general task then is:
@@ -53,7 +55,7 @@ new generation; do not mix cleanup with wire-contract changes.
 - Use app-owned websocket upgrade/proxy handlers only for raw transports such as SSH terminal and preview bridges. Do not retain or add normal app-state event subscriptions in raw transport handlers; normal app-state updates should use framework realtime.
 - Use framework resource events (`publishChanged`, `publishEntityChanged`, and `publishDeleted`) plus `useRealtimeRefresh` for ordinary private entity and collection invalidation. Resource publications must target the authoritative current user, including background and scheduled work.
 - Keep custom framework realtime events only for incremental task, chat, agent-run, or provisioning deltas that would be unnecessarily expensive or disruptive to recover with a full refetch. Use a narrow no-history stream adapter, bound accumulated browser state, and refresh authoritative state after reconnects or delta gaps; do not recreate a global event history or duplicate invalidation path.
-- Keep resource event names and retained stream classification centralized at the server realtime boundary. Internal domain event emitters may remain for orchestration and tests, but they are not a browser transport contract.
+- Keep resource event names and retained stream classification centralized at the server realtime boundary. Internal domain event emitters may remain for orchestration, but they are not a browser transport or test contract.
 - Add route metadata directly to framework route definitions when API/CLI discovery is needed; do not maintain a separate hand-written route catalog unless it is a temporary migration bridge.
 - Use framework settings for generic theme, log level, passkeys, device sessions, API keys, users, and server operations. Keep only Clanky-specific settings in app-owned settings sections.
 - Consume framework-owned client log-level state and adapt it to Clanky's logger. Do not fetch webapp configuration from app-local initializer components or duplicate settings state.
@@ -419,125 +421,126 @@ const result = await Bun.$`ls -la`.text();
 
 ## Testing
 
-First of all, remember to run `bun install` when working on a new task, to make sure all dependencies are installed.
-Always run `bun run build` before running tests, to make sure there are no build errors.
-Use `bun run test` to run all the tests. Don't do `bun test` directly, since the script cleans a lot of the logs that add noise to the tests.
+Use `bun run test`, not `bun test` directly. Always run
+`bun run build && bun run test` before considering application changes
+complete. Never report completion while any required E2E is failing.
 
-Always run `bun run build && bun run test` when you think you are done making changes.
-Never say a task is done when there are still failing tests, even if you think they're unrelated to your changes.
+### Only black-box E2E tests
 
-### Test orchestration
+The only automated tests committed to this repository are black-box E2E
+scenarios under `tests/e2e/`. Do not add unit, component, hook, repository,
+handler, in-process API, or in-process integration tests.
 
-Test orchestration must not rely on manually maintained per-file runtime
-weights or arbitrary fixed shard counts. Prefer deterministic generic
-partitioning and serialize only for documented resource/isolation constraints.
-`CLANKY_TEST_MAX_WORKERS` is the primary setting for test worker capacity;
-derive each suite's shard count at runtime from its discovered file count and
-that capacity rather than maintaining a separate shard-count configuration.
+Every E2E scenario must:
 
-```typescript
-import { test, expect } from "bun:test";
+- start or connect to the compiled `dist/clanky` application and its real
+  WebApp server;
+- interact only through a documented public boundary such as the CLI, HTTP,
+  WebSocket, WebDAV, filesystem/Git effects, or a real network protocol;
+- exercise real persistence, authorization, process lifecycle, execution-host
+  selection, and cleanup that are part of the scenario;
+- assert user-observable responses and external effects, including behavior
+  after restart when persistence or recovery is the contract;
+- own isolated data directories, homes, repositories, ports, credentials, and
+  subprocesses, then clean them deterministically.
 
-test("hello world", () => {
-  expect(1).toBe(1);
-});
-```
+Tests and test support must not import `src/core`, `src/persistence`, `src/api`,
+`src/backends`, `src/server`, or other application internals. Do not call route
+handlers directly, inspect SQLite as an assertion surface, inject managers or
+executors, use `*ForTesting` hooks, or assert private fields, maps, refs,
+counters, helper results, call order, or implementation-only event sequences.
 
-### Test decision gate
+### Keep the suite small and fast
 
-Prefer no test over a low-value test. Before adding, retaining, or
-substantially changing a test, record the concrete regression it catches, the
-public boundary or justified pure contract it exercises, why a
-behavior-preserving refactor should not invalidate it, and whether equivalent
-coverage already exists. Delete or rewrite the test when any of those answers is
-missing.
+The suite exists to answer whether the application itself broke through a real
+user/API/CLI/protocol journey. Prefer a few broad, coherent scenarios over
+endpoint matrices or permutations. Extend an existing journey before adding a
+new test when the resulting failure remains diagnosable.
 
-### Video creation with fframes
+Only add or materially modify an E2E when a change considerably affects an
+observable real-world scenario, for example:
 
-During fframes video creation, editing, or review, do not write or modify
-automated tests of any kind, including unit, integration, snapshot,
-visual-regression, or test-harness code. Validate the result with the fframes
-CLI and media checks instead (`timeline`, `inspect`, `frame`/`strip`, audio
-analysis, and preview). This does not waive the existing build and test-suite
-verification requirements when application code changes.
+- task, plan, chat, workspace, agent, provisioning, or review lifecycle;
+- authentication, authorization, per-user isolation, or destructive safety;
+- persisted data, upgrade/recovery, Git, filesystem, or process cleanup;
+- CLI, HTTP, WebSocket, WebDAV, terminal, preview, SSH, Mesh, or provider
+  protocol behavior;
+- standalone binary, Docker image, or supported-platform packaging.
 
-Use the highest practical public boundary:
+Do not add or update tests merely because implementation code changed. Private
+refactors, helpers, types, internal error composition, generated queries,
+implementation tables, copy, labels, DOM structure, CSS, hook plumbing, or
+removed implementation details do not justify test churn when the real
+scenario is unchanged. Prefer no new test over a low-value test.
 
-- API tests should exercise real HTTP requests, persistence, workspace effects,
-  authorization, and observable responses.
-- Integration/user-scenario tests should cover workflows crossing subsystems,
-  including task/chat/workspace lifecycle, Git, branch safety, SSH, Mesh,
-  provisioning, and review cycles.
-- E2E tests should be sparse and exercise the real application boundary.
-- Unit tests are exceptional and must protect a small, stable security,
-  data-safety, migration, containment, protocol, scheduling, cancellation, or
-  lifecycle contract that is impractical or unsafe to prove publicly. Add a
-  short rationale beside every non-obvious exception.
+Before changing the suite, record:
 
-Tests must assert behavior, not implementation. Do not test private fields,
-maps, refs, counters, helper results, event ordering, internal state
-transitions, or implementation-only sequences. Do not test mocks or fakes:
-call counts, call order, configured return values, and delegation are not
-contracts. Use deterministic local doubles only at genuine external seams and
-assert the resulting public response, persisted state, filesystem effect,
-process cleanup, or protocol payload.
+1. the concrete user-visible regression the scenario catches;
+2. the public boundary it traverses;
+3. the external effect or public state it observes;
+4. why an existing E2E does not already cover the risk.
 
-Do not add tests for internal prompt wording, headings, logs, generated
-SQL/GraphQL/request construction, generated code, error-message composition, or
-other exact text when stable status, structured data, or an external protocol
-is sufficient. Exact text is valid only when required by an external protocol,
-security boundary, or explicitly documented compatibility contract. Do not add
-tests for UI copy, labels, punctuation, DOM structure, CSS classes, fetch/click
-plumbing, modal mechanics, accessibility wording, or visibility-only behavior.
-UI-only changes should be validated manually when needed; do not add frontend
-component or hook tests.
+If those answers are not concrete, do not add or modify a test.
+
+### Provider mocks
+
+Committed E2E must never depend on live AI providers, external credentials,
+usage quotas, or nondeterministic model output. Provider-dependent scenarios
+must use deterministic provider mocks.
+
+Provider mocks are allowed only as separate processes or network services
+outside Clanky. Clanky must discover and invoke them through the same
+production command resolution, adapter, stdio/RPC, HTTP, SSH, or Mesh transport
+used for a real provider. Do not inject a mock backend or bypass production
+transport. Provider mocks may model success, streaming, tools, questions,
+permissions, failure, cancellation, reconnect, and session loss; assertions
+must target Clanky's public result and external effects, never mock call counts
+or mock internals.
+
+Other unavoidable third-party seams may use the same external-process rule.
+Use real local Git repositories/remotes, real Clanky Mesh processes, and a real
+ephemeral SSH server rather than in-process doubles.
+
+### Scenario quality
+
+Tests must assert behavior, not implementation. Do not reimplement production
+logic in expectations. Exact text is valid only when required by an external
+protocol, security boundary, or documented compatibility contract. Do not add
+tests for UI copy, punctuation, DOM structure, CSS classes, modal mechanics, or
+visibility-only behavior.
 
 Never add a test whose primary purpose is proving that a removed table, field,
-route, option, label, or behavior is absent. Keep a negative assertion only
-when absence is itself an explicit security, containment, compatibility,
-validation, or data-loss contract, and explain non-obvious cases next to the
-test. Do not duplicate one rule across API, integration, and E2E layers.
-Retain lower-level coverage only for a distinct status/error contract,
-security boundary, state transition, data-safety property, external protocol
-guarantee, or cleanup behavior that the higher boundary cannot prove.
+route, option, label, or behavior is absent unless absence is itself an
+explicit security, compatibility, validation, or data-loss contract.
 
-Tests must be deterministic. Fixed delays are not synchronization: use explicit
-deferred signals, server/stream/process completion, emitted events, or bounded
-polling of named observable state with last-observed-state diagnostics. Keep a
-timer only when timeout, deadline, cancellation, or scheduling is the
-contract, and control or document that timer. Do not lengthen sleeps or add
-arbitrary retries to hide races. Remove mocks, fixtures, helpers, and hooks
-when their last meaningful test is removed, and do not leave empty suites.
+Use `CLANKY_DISABLE_PASSKEY=true` for unattended scenarios unless
+authentication behavior is the scenario. Visual/UI-only behavior is validated
+manually with `Bun.WebView`; do not add browser automation or frontend
+component tests.
 
-Do not reimplement production logic in expectations. Prefer a few meaningful
-scenarios over exhaustive matrices for tiny helpers or implementation tables.
-Committed tests must not depend on live providers. Use
-`CLANKY_DISABLE_PASSKEY=true` for unattended tests unless passkey behavior is
-the contract being tested. A test using `serveNativeApiRoutes()` does not cover
-framework authentication, authorization middleware, CSRF, or same-origin
-enforcement; those require the real framework/server boundary. API tests must
-not import persistence modules or spy on managers to prove delegation.
+### Determinism, orchestration, and diagnostics
 
-Before review, confirm the scenario is not already covered at a higher
-boundary, explain any exceptional unit-test rationale, and verify the suite
-still discovers at least one meaningful test per bucket. The complete suite
-must pass deterministically before the change is considered complete.
+Fixed delays are not synchronization. Wait on health endpoints, public states,
+WebSocket frames, process completion, filesystem/Git effects, or bounded
+polling with a named condition and last-observed-state diagnostics. Keep a
+timer only when timeout, deadline, cancellation, or scheduling is the contract.
+Do not add blind retries or lengthen delays to hide a race.
 
-Use the test utilities from `tests/setup.ts`:
+Use a 5-second budget for an individual request, command, local poll, or
+WebSocket operation and 10 seconds for an asynchronous task, chat, agent, SSH,
+provisioning, Mesh, startup, or recovery lifecycle. The 120-second test limit is
+only a final whole-journey backstop for slow CI, not a substitute for a specific
+operation or lifecycle timeout.
 
-```typescript
-import { setupTestContext, teardownTestContext } from "../setup";
+On failure, preserve the original error and report the relevant Clanky/provider
+logs, last public state, process status, and Git state. Teardown must await all
+cleanup and must not leave child processes, sockets, worktrees, or temporary
+directories behind.
 
-let context: Awaited<ReturnType<typeof setupTestContext>>;
-
-beforeEach(async () => {
-  context = await setupTestContext({ initGit: true });
-});
-
-afterEach(async () => {
-  await teardownTestContext(context);
-});
-```
+Test orchestration must not use manually maintained per-file runtime weights or
+arbitrary fixed shard counts. `CLANKY_TEST_MAX_WORKERS` is the primary worker
+capacity; derive concurrency from discovered E2E files and serialize only for a
+documented resource or isolation constraint.
 
 ### Git Branch Names in Tests
 
@@ -563,38 +566,18 @@ a bounded timeout, short interval, and last-observed-state diagnostics. Never
 lengthen a sleep to hide a race. Fixed delays are inherently flaky because
 execution time varies across environments.
 
-Instead, use polling helpers that wait for a specific condition to be met:
+Polling helpers belong in `tests/e2e/support/` and must observe a public
+boundary or external effect, never an in-process manager or repository. Use
+reasonable bounded timeouts, short intervals, and error messages containing
+the last observed value.
 
-```typescript
-// WRONG - flaky, timing-dependent
-await delay(500);
-const task = await manager.getTask(taskId);
-expect(task.state.status).toBe("completed");
+### Video creation with fframes
 
-// CORRECT - polls until condition is met
-const task = await waitForTaskStatus(manager, taskId, ["completed"]);
-expect(task.state.status).toBe("completed");
-```
-
-**Available polling helpers in `tests/setup.ts`:**
-
-- `waitForTaskStatus(manager, taskId, expectedStatuses[], timeoutMs?)` - Wait for task to reach status
-- `waitForPlanReady(manager, taskId, timeoutMs?)` - Wait for plan's `isPlanReady` to be true
-- `waitForFileDeleted(filePath, timeoutMs?)` - Wait for file to be deleted
-- `waitForFileExists(filePath, timeoutMs?)` - Wait for file to appear
-- `waitForEvent(events, eventType, timeoutMs?)` - Wait for specific event to be emitted
-
-**For HTTP API tests**, use helpers from `tests/integration/user-scenarios/helpers.ts`:
-
-- `waitForTaskStatus(baseUrl, taskId, expectedStatus, timeoutMs?)` - HTTP-based status polling
-- `waitForPlanReady(baseUrl, taskId, timeoutMs?)` - HTTP-based plan ready polling
-
-**Guidelines:**
-
-1. Polling helpers should have reasonable timeouts (10s default) with informative error messages
-2. Poll interval should be short (50ms) to minimize test duration
-3. Error messages should include the last observed state for debugging
-4. If you need to wait for a condition, create a new polling helper rather than using `delay()`
+During fframes video creation, editing, or review, do not write or modify
+automated tests or test-harness code. Validate the result with the fframes CLI
+and media checks instead (`timeline`, `inspect`, `frame`/`strip`, audio
+analysis, and preview). This does not waive existing build and E2E verification
+requirements when application code changes.
 
 ## General Guidelines
 
@@ -705,7 +688,8 @@ The existing Error Handling section covers try/catch syntax. Additionally:
 1. Add the route handler in the appropriate `src/api/*.ts` file
 2. Export from `src/api/index.ts`
 3. Add public request/response types in `src/contracts/api.ts` or the appropriate contract module if needed
-4. Add tests in `tests/api/`
+4. Add or update an E2E only if the endpoint considerably changes a real
+   user/API/CLI scenario under the test decision gate above
 
 ### Fixing TypeScript Errors
 
@@ -753,17 +737,19 @@ When you need to add a new column, table, or modify the schema:
 
 2. **Do NOT modify the base schema** in `src/persistence/database.ts` for ordinary schema evolution after the Clanky reset. New columns/tables should be added via migrations so existing databases are properly upgraded.
 
-3. **Add a test** in `tests/unit/migrations.test.ts` to verify:
-   - The migration applies correctly to databases without the new column
-   - The migration is idempotent (doesn't fail if run twice)
+3. Add or update an E2E only when the migration considerably changes a real
+   upgrade or data-safety scenario. Start the current binary against a fixture
+   produced by the prior Clanky schema and verify the migrated behavior through
+   public APIs, including a second restart when idempotency is part of the risk.
 
 ### Migration Guidelines
 
 - **Always check if changes already exist** before applying (idempotent)
 - **Use sequential version numbers** starting from 1
 - **Use descriptive snake_case names** - e.g., `add_user_preferences`
-- **Test migrations thoroughly**
-- **Verify real upgrade paths, not just happy-path migrations** — future migrations should be tested against the prior Clanky schema version they upgrade from.
+- **Verify real upgrade paths when the change is scenario-significant** — use
+  the prior Clanky schema version and the current application boundary, not a
+  unit test of the migration function.
 
 ### Resetting the Database
 

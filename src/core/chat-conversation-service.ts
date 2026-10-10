@@ -148,8 +148,6 @@ export class ChatConversationService implements ChatConversationPort {
   private readonly scheduleQueuedMessageDrain: (chatId: string) => void;
   private permissionHandler: ChatPermissionHandler | undefined;
   private questionHandler?: (chat: Chat, event: AgentEvent, questionMessageId?: string) => Promise<void>;
-  private activityTimeoutMs = DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS;
-  private nameGenerationTimeoutMs = DEFAULT_CHAT_NAME_TIMEOUT_MS;
 
   constructor(dependencies: ChatConversationServiceDependencies) {
     this.state = dependencies.state;
@@ -166,14 +164,6 @@ export class ChatConversationService implements ChatConversationPort {
 
   setQuestionHandler(handler: (chat: Chat, event: AgentEvent, questionMessageId?: string) => Promise<void>): void {
     this.questionHandler = handler;
-  }
-
-  setActivityTimeoutForTesting(timeoutMs: number | undefined): void {
-    this.activityTimeoutMs = timeoutMs ?? DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS;
-  }
-
-  setNameGenerationTimeoutForTesting(timeoutMs: number | undefined): void {
-    this.nameGenerationTimeoutMs = timeoutMs ?? DEFAULT_CHAT_NAME_TIMEOUT_MS;
   }
 
   async dispatchMessage(
@@ -539,7 +529,9 @@ export class ChatConversationService implements ChatConversationPort {
     const handle = streamController.start({
       sessionId,
       prompt,
-      activityTimeoutMs: backend.harness.capabilities.adapter === "acp" ? this.activityTimeoutMs : null,
+      activityTimeoutMs: backend.harness.capabilities.adapter === "acp"
+        ? DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS
+        : null,
     });
     const generation = this.nextActiveStreamGeneration(chat.config.id);
     const activeStream: ActiveChatStream = {
@@ -1878,7 +1870,7 @@ export class ChatConversationService implements ChatConversationPort {
         backend,
         sessionId: nameSession.id,
         model: helperModel,
-        timeoutMs: this.nameGenerationTimeoutMs,
+        timeoutMs: DEFAULT_CHAT_NAME_TIMEOUT_MS,
         cancelSession: cleanupTempSession,
       }));
 

@@ -524,9 +524,3 @@ export async function forceResetAllImpl(ctx: TaskCtx): Promise<{ enginesCleared:
     tasksReset,
   };
 }
-
-export function resetForTestingImpl(ctx: TaskCtx): void {
-  ctx.engines.clear();
-  ctx.tasksBeingAccepted.clear();
-  ctx.tasksBeingStarted.clear();
-}
