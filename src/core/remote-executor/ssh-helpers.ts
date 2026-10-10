@@ -3,6 +3,9 @@
  */
 
 import { createHash } from "node:crypto";
+import { mkdir } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import {
   getSshReliabilityPolicy,
   type SshReliabilityPolicy,
@@ -12,6 +15,24 @@ import { quoteShell } from "./utils";
 
 const CONTROL_PATH_VERSION = "v1";
 const CONTROL_PERSIST = "60s";
+let controlDirectoryReady: Promise<void> | undefined;
+
+export async function ensureSshControlDirectory(): Promise<void> {
+  const pending = controlDirectoryReady ??= mkdir(
+    join(homedir(), ".ssh"),
+    { recursive: true, mode: 0o700 },
+  ).then(() => undefined);
+  try {
+    await pending;
+  } catch (error) {
+    if (controlDirectoryReady === pending) {
+      controlDirectoryReady = undefined;
+    }
+    throw new Error("Failed to create the local SSH control directory", {
+      cause: error,
+    });
+  }
+}
 
 export function buildSshRemoteShellCommand(remoteCommand: string): string {
   const shellBootstrapCommand = [

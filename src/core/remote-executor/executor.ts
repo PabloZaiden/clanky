@@ -28,7 +28,11 @@ import { CommandOutputLimitError } from "../command-executor";
 import { log } from "@pablozaiden/webapp/server";
 import type { CommandExecutorConfig } from "./types";
 import { quoteShell, buildEnvAssignments, readProcessStream } from "./utils";
-import { buildSshRemoteShellCommand, buildSshCommandArgs } from "./ssh-helpers";
+import {
+  buildSshRemoteShellCommand,
+  buildSshCommandArgs,
+  ensureSshControlDirectory,
+} from "./ssh-helpers";
 import { LocalFileSystem } from "./local-filesystem";
 import {
   normalizeExecutionRoot,
@@ -838,6 +842,9 @@ export class CommandExecutorImpl implements CommandExecutor {
     maxOutputBytes?: number,
     multiplex = true,
   ): Promise<CommandResult> {
+    if (multiplex) {
+      await ensureSshControlDirectory();
+    }
     return await this.execLocal(
       "ssh",
       buildSshCommandArgs({
@@ -899,6 +906,9 @@ export class CommandExecutorImpl implements CommandExecutor {
 
     const remoteShellCommand = `cat -- ${quoteShell(path)}`;
     const sshTarget = this.user ? `${this.user}@${this.host}` : this.host;
+    if (!this.password?.trim()) {
+      await ensureSshControlDirectory();
+    }
 
     const proc = this.password && this.password.trim().length > 0
       ? Bun.spawn([
@@ -965,6 +975,9 @@ export class CommandExecutorImpl implements CommandExecutor {
       `cat ${writeOperator} ${quoteShell(path)}`,
     ].join(" ");
     const sshTarget = this.user ? `${this.user}@${this.host}` : this.host;
+    if (!this.password?.trim()) {
+      await ensureSshControlDirectory();
+    }
     const proc = this.password && this.password.trim().length > 0
       ? Bun.spawn([
           "sshpass",

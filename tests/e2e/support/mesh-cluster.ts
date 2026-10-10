@@ -255,7 +255,7 @@ export async function startMeshNode(options: {
       CLANKY_HOST: "127.0.0.1",
       CLANKY_PORT: String(port),
       CLANKY_PUBLIC_BASE_URL: baseUrl,
-      CLANKY_LOG_LEVEL: "fatal",
+      CLANKY_LOG_LEVEL: options.environment?.["CLANKY_LOG_LEVEL"] ?? "fatal",
     };
     let apiKey: string | undefined;
     let tlsCertificate: string | undefined;

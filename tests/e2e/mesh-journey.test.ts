@@ -192,7 +192,10 @@ test("compiled controller and worker execute an ACP chat across Mesh and reconne
       role: "controller",
       command,
       instanceName: "e2e-controller",
-      environment: { HOME: homeDirectory },
+      environment: {
+        HOME: homeDirectory,
+        CLANKY_LOG_LEVEL: process.platform === "win32" ? "error" : undefined,
+      },
     });
     nodes.push(controller);
     const worker = await startMeshNode({
@@ -202,6 +205,7 @@ test("compiled controller and worker execute an ACP chat across Mesh and reconne
       environment: {
         HOME: homeDirectory,
         PATH: `${providerBinDirectory}${delimiter}${process.env["PATH"] ?? ""}`,
+        CLANKY_LOG_LEVEL: process.platform === "win32" ? "error" : undefined,
       },
     });
     nodes.push(worker);
@@ -302,7 +306,11 @@ test("compiled controller and worker execute an ACP chat across Mesh and reconne
       controller,
       `/api/models?workspaceId=${encodeURIComponent(createdWorkspace.body.id)}`,
     );
-    expect(models.status).toBe(200);
+    if (models.status !== 200) {
+      throw new Error(
+        `Mesh model discovery failed: HTTP ${String(models.status)} ${JSON.stringify(models.body)}`,
+      );
+    }
     const discoveredModel = models.body.find(
       (model) => model.providerID === "copilot" && model.connected,
     );
