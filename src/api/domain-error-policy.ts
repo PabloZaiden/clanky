@@ -102,6 +102,8 @@ const API_DOMAIN_ERROR_CODES = {
   acp_ssh_authentication_failed: true,
   acp_unsupported_prompt_capability: true,
   [CHAT_WORKTREE_BRANCH_CONFLICT_CODE]: true,
+  chat_context_unavailable: true,
+  chat_not_found: true,
   agent_already_running: true,
   agent_chat_not_found: true,
   agent_code_generation_failed: true,
@@ -168,6 +170,7 @@ const API_DOMAIN_ERROR_CODES = {
   provider_not_found: true,
   invalid_task_state: true,
   invalid_worker_host_address: true,
+  invalid_clanky_release_channel: true,
   invalid_runtime: true,
   job_not_terminal: true,
   mesh_acp_unavailable: true,
@@ -588,6 +591,15 @@ const POLICY_PROFILES = {
     boundary: "authenticated",
     mappings: {
       ...COMMON_MAPPINGS,
+      chat_context_unavailable: {
+        status: 409,
+        message: "The source chat's workspace directory or execution target is unavailable.",
+      },
+      chat_not_found: {
+        status: 404,
+        error: "not_found",
+        message: "Chat not found.",
+      },
       acp_connection_aborted: {
         status: 409,
         error: "connection_aborted",
@@ -626,6 +638,14 @@ const POLICY_PROFILES = {
         status: 409,
         message: "This execution host does not support ACP chats.",
         extra: capabilityDetails,
+      },
+      execution_host_binding_stale: {
+        status: 409,
+        message: "The workspace execution host changed. Create a new chat from the current target.",
+      },
+      execution_host_directory_invalid: {
+        status: 400,
+        message: "The selected directory does not exist on the execution host.",
       },
     },
   },
@@ -1256,6 +1276,10 @@ const POLICY_PROFILES = {
       invalid_runtime: {
         status: 400,
         message: "Native adapters require a dedicated worker and matching harness preset.",
+      },
+      invalid_clanky_release_channel: {
+        status: 400,
+        message: "Clanky prereleases are only supported for automatic worker workspace restarts and rebuilds.",
       },
       invalid_worker_host_address: {
         status: 400,

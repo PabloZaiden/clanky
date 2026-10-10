@@ -8,6 +8,7 @@ import {
   createInitialChatState,
   ChatBusyError,
   ChatNotMarkableError,
+  getCurrentChatDirectory,
   isChatBusyStatus,
   isStandaloneChat,
   isTaskChat,
@@ -43,7 +44,11 @@ import type {
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import { requireCurrentUser, runWithCurrentUser } from "../context/user-context";
 import { executionHostService } from "./execution-host-service";
-import { getRegisteredSshServerId } from "@/shared/execution-host";
+import {
+  executionHostBindingsEqual,
+  getRegisteredSshServerId,
+} from "@/shared/execution-host";
+import { DomainError } from "../domain/domain-error";
 
 const log = createLogger("chat-lifecycle-service");
 
@@ -79,14 +84,32 @@ export class ChatLifecycleService implements ChatLifecyclePort {
     if (!workspace) {
       throw new Error(`Workspace not found: ${options.workspaceId}`);
     }
+    if (
+      options.expectedExecutionHostBinding
+      && !executionHostBindingsEqual(
+        options.expectedExecutionHostBinding,
+        workspace.executionHostBinding,
+      )
+    ) {
+      throw new DomainError(
+        "execution_host_binding_stale",
+        "The workspace execution host changed while creating the chat.",
+      );
+    }
     executionHostService.requireBindingCapability(
       workspace.executionHostBinding,
       "acpRuntime",
       undefined,
       1,
     );
-
     const scope = options.scope ?? DEFAULT_CHAT_CONFIG.scope;
+    if (options.directory !== undefined && scope !== "task") {
+      await executionHostService.assertDirectoryExists(
+        workspace.executionHostBinding,
+        options.directory,
+      );
+    }
+
     if (scope === "task" && !options.taskId) {
       throw new Error("Task chats require a taskId");
     }
@@ -201,6 +224,58 @@ export class ChatLifecycleService implements ChatLifecyclePort {
     } finally {
       releaseWorktreeBranch();
     }
+  }
+
+  async createChatHere(sourceChatId: string): Promise<Chat> {
+    const sourceChat = await this.state.getChat(sourceChatId);
+    if (!sourceChat) {
+      throw new DomainError("chat_not_found", "Chat not found.");
+    }
+    if (!isWorkspaceChat(sourceChat)) {
+      throw new DomainError(
+        "chat_context_unavailable",
+        "The source chat does not have a workspace directory.",
+      );
+    }
+
+    const workspaceId = sourceChat.config.source?.kind === "workspace"
+      ? sourceChat.config.source.workspaceId
+      : sourceChat.config.workspaceId;
+    const sourceBinding = sourceChat.config.executionHostBinding;
+    const directory = getCurrentChatDirectory(sourceChat);
+    if (!workspaceId || !sourceBinding || !directory) {
+      throw new DomainError(
+        "chat_context_unavailable",
+        "The source chat's workspace directory or execution target is unavailable.",
+      );
+    }
+
+    const workspace = await this.state.getWorkspace(workspaceId);
+    if (!workspace) {
+      throw new DomainError(
+        "chat_context_unavailable",
+        "The source chat's workspace is unavailable.",
+      );
+    }
+    if (!executionHostBindingsEqual(sourceBinding, workspace.executionHostBinding)) {
+      throw new DomainError(
+        "execution_host_binding_stale",
+        "The workspace execution host changed after the source chat was created.",
+      );
+    }
+
+    return await this.createChat({
+      workspaceId,
+      expectedExecutionHostBinding: sourceBinding,
+      directory,
+      modelProviderID: sourceChat.config.model.providerID,
+      modelID: sourceChat.config.model.modelID,
+      modelVariant: sourceChat.config.model.variant,
+      useWorktree: false,
+      autoApprovePermissions: sourceChat.config.autoApprovePermissions
+        ?? DEFAULT_CHAT_CONFIG.autoApprovePermissions,
+      syncBaseBranch: true,
+    });
   }
 
   async createAgentRunChat(options: CreateAgentRunChatOptions): Promise<Chat> {

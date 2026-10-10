@@ -468,7 +468,7 @@ export class ExecutionHostService {
   }
 
   async assertDirectoryExists(
-    ref: ExecutionHostRef,
+    target: ExecutionHostRef | ExecutionHostBinding,
     directory: string,
     options: {
       userId?: string;
@@ -476,8 +476,14 @@ export class ExecutionHostService {
     } = {},
   ): Promise<void> {
     const userId = options.userId ?? requireCurrentUserId();
-    await this.requireCapability(ref, "fileOperations", userId);
-    const binding = this.getBinding(ref, userId);
+    let binding: ExecutionHostBinding;
+    if ("targetKey" in target) {
+      binding = target;
+      this.requireBindingCapability(binding, "fileOperations", userId);
+    } else {
+      await this.requireCapability(target, "fileOperations", userId);
+      binding = this.getBinding(target, userId);
+    }
     const executor = await this.getCommandExecutor(binding, {
       operationId: `validate-directory:${binding.targetKey}`,
       directory: ".",

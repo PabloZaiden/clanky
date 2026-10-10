@@ -718,6 +718,7 @@ function renderMainContent(props: ShellMainContentProps) {
     }
     return (
       <RebuildWorkspaceView
+        key={`${route.view}:${selectedWorkspace.id}`}
         mode={route.view === "restart-workspace" ? "restart" : "rebuild"}
         workspace={selectedWorkspace}
         servers={servers}

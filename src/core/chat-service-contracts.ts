@@ -48,6 +48,7 @@ export interface CreateChatOptions {
   autoApprovePermissions?: boolean;
   baseBranch?: string;
   directory?: string;
+  expectedExecutionHostBinding?: ExecutionHostBinding;
   syncBaseBranch?: boolean;
   prepareWorktreeOnCreate?: boolean;
 }
@@ -237,6 +238,7 @@ export interface ChatInteractionPort {
 
 export interface ChatLifecyclePort {
   createChat(options: CreateChatOptions): Promise<Chat>;
+  createChatHere(sourceChatId: string): Promise<Chat>;
   createAgentRunChat(options: CreateAgentRunChatOptions): Promise<Chat>;
   createExecutionHostChat(options: CreateExecutionHostChatOptions): Promise<Chat>;
   updateChat(chatId: string, updates: ChatConfigUpdates): Promise<Chat | null>;
