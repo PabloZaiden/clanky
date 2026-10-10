@@ -409,6 +409,8 @@ The **Restart** and **Rebuild** views expose the same choice under **Advanced
 options** for worker-backed workspaces. Selecting it stores the prerelease
 channel in the persistent launcher for future automatic starts. Leaving it
 unchecked writes the stable channel.
+Changing a worker workspace's runtime adapter preserves the channel already
+stored in the launcher.
 
 ## GitHub CLI credentials in automatic workspaces
 

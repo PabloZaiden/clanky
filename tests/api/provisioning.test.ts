@@ -748,6 +748,10 @@ describe("Provisioning API integration", () => {
         body: JSON.stringify({ agent: { adapter: "opencode2", provider: "opencode" } }),
       });
       expect(openCodeRuntime.status).toBe(200);
+      const preservedPrereleaseLauncher = await restartExecutor.readFile(
+        "/workspaces/worker-example/.devbox/clanky-worker/launcher.sh",
+      );
+      expect(preservedPrereleaseLauncher).toContain("CLANKY_RELEASE_CHANNEL='prerelease'");
       const rebuild = await fetch(`${baseUrl}/api/provisioning-jobs`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

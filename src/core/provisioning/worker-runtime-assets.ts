@@ -8,13 +8,25 @@ import { DomainError } from "../../domain/domain-error";
 import type { CommandExecutor } from "../command-executor";
 import { buildRuntimeInstaller, buildWorkerLauncher, type WorkerPaths } from "./worker-assets";
 
+function getExistingPrereleaseSelection(
+  launcher: string | null | undefined,
+): boolean | undefined {
+  const assignment = launcher?.match(
+    /^\s*(?:export\s+)?CLANKY_RELEASE_CHANNEL\s*=\s*(?:(['"])(stable|prerelease)\1|(stable|prerelease))\s*(?:#.*)?$/m,
+  );
+  const channel = assignment?.[2] ?? assignment?.[3];
+  if (channel === "prerelease") return true;
+  if (channel === "stable") return false;
+  return undefined;
+}
+
 export async function prepareWorkerRuntimeAssets(
   executor: CommandExecutor,
   {
     paths,
     runtime,
     install = false,
-    useClankyPrerelease = false,
+    useClankyPrerelease,
   }: {
     paths: WorkerPaths;
     runtime: AgentSettings;
@@ -22,21 +34,29 @@ export async function prepareWorkerRuntimeAssets(
     useClankyPrerelease?: boolean;
   },
 ): Promise<{ rollback: () => Promise<void> }> {
-  const assets = [
-    { path: pathPosix.join(paths.hostRoot, "install-runtime.sh"), content: buildRuntimeInstaller() },
-    { path: pathPosix.join(paths.hostRoot, "runtime.json"), content: JSON.stringify(runtime) },
-    {
-      path: pathPosix.join(paths.hostRoot, "launcher.sh"),
-      content: buildWorkerLauncher(paths, useClankyPrerelease),
-    },
-  ];
+  const assetPaths = [
+    pathPosix.join(paths.hostRoot, "install-runtime.sh"),
+    pathPosix.join(paths.hostRoot, "runtime.json"),
+    pathPosix.join(paths.hostRoot, "launcher.sh"),
+  ] as const;
   const suffix = `.pending-${crypto.randomUUID()}`;
-  const previous = await Promise.all(assets.map(async (asset) => {
-    if (!await executor.fileExists(asset.path)) return null;
-    const content = await executor.readFile(asset.path);
+  const previous = await Promise.all(assetPaths.map(async (assetPath) => {
+    if (!await executor.fileExists(assetPath)) return null;
+    const content = await executor.readFile(assetPath);
     if (content === null) throw new DomainError("workspace_runtime_assets_failed", "Cannot read the previous workspace runtime configuration.");
     return content;
   }));
+  const effectivePrereleaseSelection = useClankyPrerelease
+    ?? getExistingPrereleaseSelection(previous[2])
+    ?? false;
+  const assets = [
+    { path: assetPaths[0], content: buildRuntimeInstaller() },
+    { path: assetPaths[1], content: JSON.stringify(runtime) },
+    {
+      path: assetPaths[2],
+      content: buildWorkerLauncher(paths, effectivePrereleaseSelection),
+    },
+  ];
   const rollback = async (): Promise<void> => {
     const errors: unknown[] = [];
     for (let index = 0; index < assets.length; index++) {
