@@ -517,8 +517,8 @@ included in this table.
 | GET | `/api/tasks/:id/tool-calls/:toolCallId` | Read one complete task tool-call payload. |
 | POST | `/api/tasks/:id/update-branch` | Sync a pushed task branch with its base branch. |
 | POST | `/api/tasks/title` | Generate a task title from a prompt. |
-| GET, PUT | `/api/voice/settings` | Read or update provider settings for transcription and summary text, and local Piper support status. |
-| POST | `/api/voice/validate` | Validate the configured transcription or summary-text provider capability. |
+| GET, PUT | `/api/voice/settings` | Read or update transcription, shared text-generation, and Live model settings, plus local Piper support status. |
+| POST | `/api/voice/validate` | Validate the configured transcription, text-generation, or Live Voice capability. |
 | POST | `/api/voice/transcribe` | Transcribe an uploaded audio recording with the configured provider. |
 | POST | `/api/voice/speech` | Generate a local Piper WAV for a response or provider-generated summary; see the [voice guide](voice.md). |
 | GET, POST | `/api/workspace-worker-enrollments` | List or create workspace-exclusive Mesh worker enrollments. |

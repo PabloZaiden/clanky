@@ -19,7 +19,7 @@ import {
 
 const log = createLogger("persistence:voice-settings");
 const VOICE_SETTINGS_KEY = "voiceProviderSettings";
-const PERSISTED_VERSION = 2;
+const PERSISTED_VERSION = 3;
 
 export interface PersistedVoiceValidation {
   state: "unconfigured" | "unvalidated" | "valid" | "invalid";
@@ -28,7 +28,7 @@ export interface PersistedVoiceValidation {
 }
 
 export interface PersistedVoiceSettings {
-  version: 2;
+  version: 3;
   baseUrl: string;
   apiKeyCiphertext: string | null;
   models: {
@@ -42,12 +42,11 @@ export interface PersistedVoiceSettings {
     baseUrl: string;
     apiKeyCiphertext: string | null;
     model: string;
-    textModel: string;
   };
 }
 
 export function getDefaultLiveVoiceSettings(): PersistedVoiceSettings["live"] {
-  return { useVoiceProvider: true, baseUrl: "", apiKeyCiphertext: null, model: "gpt-live-1", textModel: "" };
+  return { useVoiceProvider: true, baseUrl: "", apiKeyCiphertext: null, model: "" };
 }
 
 function defaultValidation(): Record<VoiceCapability, PersistedVoiceValidation> {
@@ -108,7 +107,7 @@ function parseSettings(raw: string): PersistedVoiceSettings {
   const apiKeyCiphertext = record["apiKeyCiphertext"];
   const languageHints = record["languageHints"];
   if (
-    (version !== 1 && version !== PERSISTED_VERSION)
+    (version !== 1 && version !== 2 && version !== PERSISTED_VERSION)
     || typeof baseUrl !== "string"
     || !models || typeof models !== "object"
     || typeof (models as Record<string, unknown>)["transcription"] !== "string"
@@ -132,6 +131,9 @@ function parseSettings(raw: string): PersistedVoiceSettings {
   for (const capability of VOICE_CAPABILITIES) {
     const item = rawValidation[capability];
     if (!item || typeof item !== "object") {
+      if ((version === 1 || version === 2) && capability === "live") {
+        continue;
+      }
       throw new Error("Persisted voice settings have invalid validation metadata.");
     }
     const validationRecord = item as Record<string, unknown>;
@@ -179,13 +181,13 @@ function parseLiveSettings(value: unknown): PersistedVoiceSettings["live"] {
   if (value === undefined) return getDefaultLiveVoiceSettings();
   if (!value || typeof value !== "object") throw new Error("Persisted Live voice settings are invalid.");
   const record = value as Record<string, unknown>;
-  const { useVoiceProvider, baseUrl, apiKeyCiphertext, model, textModel } = record;
+  const { useVoiceProvider, baseUrl, apiKeyCiphertext, model } = record;
   if (typeof useVoiceProvider !== "boolean" || typeof baseUrl !== "string" || typeof model !== "string"
-    || typeof textModel !== "string" || (apiKeyCiphertext !== null && typeof apiKeyCiphertext !== "string")) {
+    || (apiKeyCiphertext !== null && typeof apiKeyCiphertext !== "string")) {
     throw new Error("Persisted Live voice settings are invalid.");
   }
   validatePersistedBaseUrl(baseUrl);
-  return { useVoiceProvider, baseUrl, apiKeyCiphertext, model, textModel };
+  return { useVoiceProvider, baseUrl, apiKeyCiphertext, model };
 }
 
 export async function getPersistedVoiceSettings(): Promise<PersistedVoiceSettings | null> {
@@ -264,6 +266,7 @@ export async function updatePersistedVoiceSettings(
 ): Promise<PersistedVoiceSettings> {
   return await enqueueWrite(async () => {
     const existing = await getPersistedVoiceSettings();
+    const previousLive = existing?.live ?? getDefaultLiveVoiceSettings();
     const existingApiKey = existing
       ? await readPersistedVoiceApiKey(existing)
       : null;
@@ -277,21 +280,46 @@ export async function updatePersistedVoiceSettings(
         ? existing.apiKeyCiphertext
         : await encryptPersistedSecret(nextApiKey)
       : null;
+    let live = previousLive;
+    if (update.live) {
+      const currentKey = live.apiKeyCiphertext
+        ? await decryptPersistedSecret(live.apiKeyCiphertext)
+        : null;
+      const nextKey = update.live.clearApiKey
+        ? null
+        : update.live.apiKey?.trim() || currentKey;
+      live = {
+        useVoiceProvider: update.live.useVoiceProvider,
+        baseUrl: update.live.baseUrl,
+        model: update.live.model,
+        apiKeyCiphertext: nextKey
+          ? nextKey === currentKey
+            ? live.apiKeyCiphertext
+            : await encryptPersistedSecret(nextKey)
+          : null,
+      };
+    }
+
     const baseUrlChanged = !existing || existing.baseUrl !== update.baseUrl;
     const apiKeyChanged = !existing
       || existingApiKey !== nextApiKey
       || existing.apiKeyCiphertext === null && apiKeyCiphertext !== null
       || existing.apiKeyCiphertext !== null && apiKeyCiphertext === null;
+    const textModelChanged = !existing || existing.models.text !== update.models.text;
     const changedCapabilities = new Set<VoiceCapability>();
     if (baseUrlChanged || apiKeyChanged) {
       changedCapabilities.add("transcription");
       changedCapabilities.add("text");
+      if (previousLive.useVoiceProvider || live.useVoiceProvider) {
+        changedCapabilities.add("live");
+      }
     }
     if (!existing || existing.models.transcription !== update.models.transcription) {
       changedCapabilities.add("transcription");
     }
-    if (!existing || existing.models.text !== update.models.text) {
+    if (textModelChanged) {
       changedCapabilities.add("text");
+      changedCapabilities.add("live");
     }
     if (
       !existing
@@ -299,16 +327,28 @@ export async function updatePersistedVoiceSettings(
     ) {
       changedCapabilities.add("transcription");
     }
+    if (
+      !existing
+      || previousLive.useVoiceProvider !== live.useVoiceProvider
+      || previousLive.baseUrl !== live.baseUrl
+      || previousLive.apiKeyCiphertext !== live.apiKeyCiphertext
+      || previousLive.model !== live.model
+    ) {
+      changedCapabilities.add("live");
+    }
 
     const validation = existing
       ? { ...existing.validation }
       : defaultValidation();
     for (const capability of VOICE_CAPABILITIES) {
-      const configured = Boolean(
-        update.baseUrl
-        && nextApiKey
-        && update.models[capability],
-      );
+      const configured = capability === "live"
+        ? Boolean(
+            (live.useVoiceProvider ? update.baseUrl : live.baseUrl)
+            && (live.useVoiceProvider ? nextApiKey : live.apiKeyCiphertext)
+            && live.model
+            && update.models.text,
+          )
+        : Boolean(update.baseUrl && nextApiKey && update.models[capability]);
       if (changedCapabilities.has(capability) || !configured) {
         validation[capability] = configured
           ? { state: "unvalidated", checkedAt: null, error: null }
@@ -316,20 +356,6 @@ export async function updatePersistedVoiceSettings(
       }
     }
 
-    let live = existing?.live ?? getDefaultLiveVoiceSettings();
-    if (update.live) {
-      const currentKey = live.apiKeyCiphertext ? await decryptPersistedSecret(live.apiKeyCiphertext) : null;
-      const nextKey = update.live.clearApiKey ? null : update.live.apiKey?.trim() || currentKey;
-      live = {
-        useVoiceProvider: update.live.useVoiceProvider,
-        baseUrl: update.live.baseUrl,
-        model: update.live.model,
-        textModel: update.live.textModel,
-        apiKeyCiphertext: nextKey
-          ? nextKey === currentKey ? live.apiKeyCiphertext : await encryptPersistedSecret(nextKey)
-          : null,
-      };
-    }
     const next: PersistedVoiceSettings = {
       version: PERSISTED_VERSION,
       baseUrl: update.baseUrl,
@@ -349,19 +375,29 @@ export interface VoiceValidationIdentity {
   apiKeyCiphertext: string | null;
   model: string;
   languageHints: VoiceLanguageHint[] | null;
+  delegatedModel: string | null;
+  useVoiceProvider: boolean | null;
 }
 
 export function getVoiceValidationIdentity(
   settings: PersistedVoiceSettings,
   capability: VoiceCapability,
 ): VoiceValidationIdentity {
+  const isLive = capability === "live";
+  const usesVoiceProvider = isLive && settings.live.useVoiceProvider;
   return {
-    baseUrl: settings.baseUrl,
-    apiKeyCiphertext: settings.apiKeyCiphertext,
-    model: settings.models[capability],
+    baseUrl: isLive && !usesVoiceProvider
+      ? settings.live.baseUrl
+      : settings.baseUrl,
+    apiKeyCiphertext: isLive && !usesVoiceProvider
+      ? settings.live.apiKeyCiphertext
+      : settings.apiKeyCiphertext,
+    model: isLive ? settings.live.model : settings.models[capability],
     languageHints: capability === "transcription"
       ? [...settings.languageHints]
       : null,
+    delegatedModel: isLive ? settings.models.text : null,
+    useVoiceProvider: isLive ? settings.live.useVoiceProvider : null,
   };
 }
 
@@ -374,7 +410,9 @@ function validationIdentityMatches(
   return actual.baseUrl === expected.baseUrl
     && actual.apiKeyCiphertext === expected.apiKeyCiphertext
     && actual.model === expected.model
-    && JSON.stringify(actual.languageHints) === JSON.stringify(expected.languageHints);
+    && JSON.stringify(actual.languageHints) === JSON.stringify(expected.languageHints)
+    && actual.delegatedModel === expected.delegatedModel
+    && actual.useVoiceProvider === expected.useVoiceProvider;
 }
 
 export async function updatePersistedVoiceValidation(
