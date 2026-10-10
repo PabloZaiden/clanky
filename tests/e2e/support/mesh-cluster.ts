@@ -29,6 +29,8 @@ interface CapturedProcessOutput {
   snapshot(): string;
 }
 
+let compiledCommandPromise: Promise<string[]> | undefined;
+
 export interface ManagedMeshNode extends MeshHttpNode {
   role: "controller" | "relay" | "worker";
   command: string[];
@@ -74,11 +76,41 @@ export async function availablePort(): Promise<number> {
 }
 
 export async function compiledClankyCommand(): Promise<string[]> {
+  const pending = compiledCommandPromise ??= resolveCompiledClankyCommand();
+  try {
+    return await pending;
+  } catch (error) {
+    if (compiledCommandPromise === pending) {
+      compiledCommandPromise = undefined;
+    }
+    throw error;
+  }
+}
+
+async function resolveCompiledClankyCommand(): Promise<string[]> {
   const candidates = process.platform === "win32"
     ? [resolve(rootDirectory, "dist", "clanky.exe"), resolve(rootDirectory, "dist", "clanky")]
     : [resolve(rootDirectory, "dist", "clanky"), resolve(rootDirectory, "dist", "clanky.exe")];
   for (const candidate of candidates) {
     if (await Bun.file(candidate).exists()) {
+      const warmup = Bun.spawnSync([candidate, "--help"], {
+        cwd: rootDirectory,
+        stdout: "pipe",
+        stderr: "pipe",
+        timeout: LIFECYCLE_TIMEOUT_MS,
+        killSignal: "SIGKILL",
+      });
+      if (warmup.exitCode !== 0) {
+        const output = [
+          warmup.stdout.toString().trim(),
+          warmup.stderr.toString().trim(),
+        ].filter((value) => value.length > 0).join("\n");
+        throw new Error(
+          `Compiled Clanky binary warmup failed: ${
+            output || `exit code ${String(warmup.exitCode)}`
+          }`,
+        );
+      }
       return [candidate];
     }
   }
