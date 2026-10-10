@@ -169,7 +169,31 @@ export function meshNodeDiagnostics(node: ManagedMeshNode): string {
 
 async function stopNodeServer(node: ManagedMeshNode): Promise<string> {
   if (node.child.exitCode === null) {
-    node.child.kill();
+    if (process.platform === "win32") {
+      const terminated = Bun.spawnSync(
+        ["taskkill", "/PID", String(node.child.pid), "/T", "/F"],
+        {
+          cwd: rootDirectory,
+          stdout: "pipe",
+          stderr: "pipe",
+          timeout: OPERATION_TIMEOUT_MS,
+          killSignal: "SIGKILL",
+        },
+      );
+      if (terminated.exitCode !== 0 && node.child.exitCode === null) {
+        const output = [
+          terminated.stdout.toString().trim(),
+          terminated.stderr.toString().trim(),
+        ].filter((value) => value.length > 0).join("\n");
+        throw new Error(
+          `Failed to terminate Mesh process tree ${String(node.child.pid)}: ${
+            output || `exit code ${String(terminated.exitCode)}`
+          }`,
+        );
+      }
+    } else {
+      node.child.kill();
+    }
   }
   await node.child.exited;
   return await readProcessOutput(node);
