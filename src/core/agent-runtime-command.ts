@@ -6,6 +6,7 @@ export interface AgentRuntimeCommand {
   command: string;
   args: string[];
   env?: Record<string, string>;
+  windowsVerbatimArguments?: boolean;
 }
 
 interface AgentProviderRuntime {
@@ -21,6 +22,7 @@ const CLAUDE_AGENT_ACP_PACKAGE = "@agentclientprotocol/claude-agent-acp";
 const PI_ACP_PACKAGE = "pi-acp";
 const GROK_PACKAGE = "@xai-official/grok";
 const WINDOWS_COMMAND_SHIM_PATTERN = /\.(?:cmd|bat)$/i;
+const WINDOWS_CMD_META_PATTERN = /([()\][%!^"`<>&|;, *?])/g;
 const CODEX_ACP_ENV = {
   INITIAL_AGENT_MODE: "agent-full-access",
   CODEX_CONFIG: JSON.stringify({
@@ -111,20 +113,22 @@ const CODEX_ACP_RESOLVER_OPTIONS: AcpResolverOptions = {
   },
 };
 
-function quotePowerShellLiteral(value: string): string {
-  return `'${value.replaceAll("'", "''")}'`;
+function escapeWindowsCmdCommand(value: string): string {
+  return value.replace(WINDOWS_CMD_META_PATTERN, "^$1");
 }
 
-function buildWindowsCommandShimScript(
-  command: string,
-  args: string[],
-): string {
-  return [
-    `$commandPath = ${quotePowerShellLiteral(command)}`,
-    `$commandArgs = @(${args.map(quotePowerShellLiteral).join(", ")})`,
-    "& $commandPath @commandArgs",
-    "exit $LASTEXITCODE",
-  ].join("; ");
+function escapeWindowsCmdArgument(value: string): string {
+  const escaped = value
+    .replace(/(?=(\\+?)?)\1"/g, "$1$1\\\"")
+    .replace(/(?=(\\+?)?)\1$/, "$1$1");
+  return `"${escaped}"`.replace(WINDOWS_CMD_META_PATTERN, "^$1");
+}
+
+function buildWindowsCommandShimInvocation(command: string, args: string[]): string {
+  return `"${[
+    escapeWindowsCmdCommand(command),
+    ...args.map(escapeWindowsCmdArgument),
+  ].join(" ")}"`;
 }
 
 const COPILOT_ACP_RESOLVER_OPTIONS: AcpResolverOptions = {
@@ -285,23 +289,23 @@ function adaptProviderCommandForPlatform(
     };
   }
 
-  const powershell = which("powershell.exe") ?? which("powershell");
-  if (!powershell) {
+  const commandProcessor = which("cmd.exe") ?? which("cmd");
+  if (!commandProcessor) {
     throw new AgentRuntimeUnavailableError(
       provider,
-      "clanky: Windows PowerShell is required to run the resolved ACP command shim.",
+      "clanky: Windows Command Processor is required to run the resolved ACP command shim.",
     );
   }
   return {
-    command: powershell,
+    command: commandProcessor,
     args: [
-      "-NoLogo",
-      "-NoProfile",
-      "-NonInteractive",
-      "-Command",
-      buildWindowsCommandShimScript(command, args),
+      "/d",
+      "/s",
+      "/c",
+      buildWindowsCommandShimInvocation(command, args),
     ],
     ...(env ? { env } : {}),
+    windowsVerbatimArguments: true,
   };
 }
 

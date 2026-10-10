@@ -248,6 +248,7 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
             args,
             cwd: spawnCwd,
             env: spawnEnv,
+            windowsVerbatimArguments: providerCommand.windowsVerbatimArguments,
             authenticationMode: this.getAuthenticationMode(config),
             onLine: (source, line) => {
               if (processHandle) {
