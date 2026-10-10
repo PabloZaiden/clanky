@@ -118,7 +118,6 @@ function assertExecutionHostAllowedInCurrentMode(ref: ExecutionHostRef): void {
 }
 
 export class ExecutionHostService {
-  private testExecutorFactory: ((directory: string) => CommandExecutor) | null = null;
   private readonly refreshMeshWorkerHealth: (
     userId: string,
     workerNodeId: string,
@@ -130,12 +129,6 @@ export class ExecutionHostService {
       ?? (async (userId, workerNodeId) => {
         await meshHealthService.refreshWorker(userId, workerNodeId);
       });
-  }
-
-  setExecutorFactoryForTesting(
-    factory: ((directory: string) => CommandExecutor) | null,
-  ): void {
-    this.testExecutorFactory = factory;
   }
 
   validateBinding(
@@ -592,20 +585,6 @@ export class ExecutionHostService {
   ): Promise<CommandExecutor> {
     assertExecutionHostAllowedInCurrentMode(host);
     const userId = context.localUserId ?? requireCurrentUserId();
-    if (this.testExecutorFactory && host.kind !== "ssh") {
-      return this.testExecutorFactory(context.directory);
-    }
-    if (this.testExecutorFactory && isWorkspaceSshExecutionHostRef(host)) {
-      const target = await getWorkspaceSshTarget(host.workspaceId, userId);
-      if (!target) {
-        throw new DomainError(
-          "workspace_execution_target_missing",
-          "The workspace SSH execution target is not configured.",
-          { details: { workspaceId: host.workspaceId } },
-        );
-      }
-      return this.testExecutorFactory(context.directory);
-    }
     if (host.kind === "local") {
       const localIdentity = await ensureLocalMeshNodeIdentity();
       if (localIdentity.nodeId !== host.nodeId) {

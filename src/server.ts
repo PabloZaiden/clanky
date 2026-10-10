@@ -166,13 +166,6 @@ function registerClankyRealtimeBridge(appServer: WebAppServer<ClankyRealtimeEven
   ];
 }
 
-function unregisterClankyRealtimeBridge(): void {
-  for (const unsubscribe of realtimeBridgeUnsubscribers ?? []) {
-    unsubscribe();
-  }
-  realtimeBridgeUnsubscribers = undefined;
-}
-
 async function reconcileStartupState(): Promise<void> {
   await backendManager.initialize();
 
@@ -604,17 +597,6 @@ export async function getWebAppServer(
     realtimeHeartbeatCleanup = installRealtimeHeartbeat(app.realtime);
   }
   return app;
-}
-
-export function resetWebAppServerForTests(): void {
-  stopBackgroundWorkers();
-  realtimeHeartbeatCleanup?.();
-  realtimeHeartbeatCleanup = undefined;
-  unregisterClankyRealtimeBridge();
-  managedCredentialService.resetForTests();
-  app = undefined;
-  appMeshWorkerMode = undefined;
-  appRelayOnlyMode = undefined;
 }
 
 export async function startServer(

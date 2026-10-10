@@ -37,6 +37,11 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Install E2E system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes openssh-server sshpass
+
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
@@ -46,8 +51,8 @@ jobs:
       - name: Run tests
         run: bun run test
 
-  native-worker-e2e:
-    name: Native worker E2E (${{ matrix.expected_os }})
+  mesh-e2e:
+    name: Mesh E2E (${{ matrix.expected_os }})
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
     strategy:
@@ -76,10 +81,9 @@ jobs:
       - name: Build native binary
         run: bun run build
 
-      - name: Run native worker E2E
-        run: bun run test:native-worker-e2e
+      - name: Run distributed Mesh E2E
+        run: bun run test:mesh
         env:
-          CLANKY_NATIVE_E2E_EXPECTED_OS: ${{ matrix.expected_os }}
           CLANKY_TEST_MAX_WORKERS: 1
 
   smoke-test:
@@ -97,10 +101,12 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Build production binary
+        run: bun run build
+
       - name: Smoke test production binary
         run: |
           set -euo pipefail
-          bun scripts/production-smoke.ts
           help_log="$(mktemp)"
           trap 'rm -f "$help_log"' EXIT
           ./dist/clanky --help >"$help_log"
@@ -150,12 +156,12 @@ jobs:
           wait_for_url() {
             name="$1"
             url="$2"
-            for attempt in $(seq 1 60); do
+            for attempt in $(seq 1 10); do
               if curl --fail --silent --show-error --max-time 2 "$url" >/dev/null; then
                 return 0
               fi
               running="$(docker inspect --format='{{.State.Running}}' "$name" 2>/dev/null || echo "false")"
-              if [ "$running" != "true" ] || [ "$attempt" -eq 60 ]; then
+              if [ "$running" != "true" ] || [ "$attempt" -eq 10 ]; then
                 echo "$name failed to respond at $url"
                 docker logs "$name"
                 return 1
@@ -166,7 +172,7 @@ jobs:
 
           wait_for_url "$main_name" "${main_url}/api/health"
           wait_for_url "$relay_name" "${relay_url}/api/health"
-          if ! bun scripts/production-smoke-http.ts --base-url "$main_url"; then
+          if ! bun tests/e2e/support/http-smoke.ts --base-url "$main_url"; then
             echo "Docker smoke resource checks failed"
             docker logs "$main_name"
             exit 1

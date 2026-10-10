@@ -40,7 +40,6 @@ import {
   type TaskConnectionState,
   type ServerEvent,
 } from "./backend-state";
-import type { CommandExecutorFactory } from "./backend-executor-factory";
 import { ensureLocalMeshNodeIdentity } from "../../persistence/mesh-node-identity";
 import { getWorkerRegistration } from "../../persistence/mesh";
 import { requireCurrentUserId } from "../../context/user-context";
@@ -81,20 +80,10 @@ class BackendManager {
   /** Map of workspace execution key to command executor. */
   private commandExecutors = new Map<string, CommandExecutor>();
   private initialized = false;
-  /** Custom executor factory for testing */
-  private testExecutorFactory: CommandExecutorFactory | null = null;
-  /** Flag to indicate a test backend is being used (should be preserved on reset) */
-  private isTestBackend = false;
-  /** Test backend instance (when isTestBackend is true) */
-  private testBackend: Backend | null = null;
-  /** Test settings (when isTestBackend is true) */
-  private testSettings: RuntimeServerSettings = getDefaultRuntimeServerSettings();
-  /** Overridable connection timeout (ms) for testing. Defaults to the SSH reliability policy. */
-  private connectionTimeoutMs: number = getSshReliabilityPolicy().connectionTimeoutMs;
+  private readonly connectionTimeoutMs = getSshReliabilityPolicy().connectionTimeoutMs;
   private localMeshNodeId: string | null = null;
   private localMeshNodeIdPromise: Promise<string> | null = null;
   private localMeshNodeIdGeneration = 0;
-  private meshStateUnsubscribe: (() => void) | null = null;
 
   private async getLocalMeshNodeId(): Promise<string> {
     if (this.localMeshNodeId) {
@@ -348,7 +337,7 @@ class BackendManager {
       return;
     }
     this.initialized = true;
-    this.meshStateUnsubscribe = meshStateEventEmitter.subscribe((event, context) => {
+    meshStateEventEmitter.subscribe((event, context) => {
       if (!event.executionHostsChanged || !context.userId) {
         return;
       }
@@ -368,11 +357,6 @@ class BackendManager {
    * @param directory - The working directory for the connection
    */
   async connect(workspaceId: string, directory: string): Promise<void> {
-    // If using test backend, use that instead
-    if (this.isTestBackend && this.testBackend) {
-      return this.connectWithTestBackend(workspaceId, directory);
-    }
-
     const state = await this.ensureWorkspaceState(workspaceId);
     const settings = state.settings;
 
@@ -432,40 +416,6 @@ class BackendManager {
   }
 
   /**
-   * Connect using the test backend (for testing purposes).
-   */
-  private async connectWithTestBackend(workspaceId: string, directory: string): Promise<void> {
-    if (!this.testBackend) {
-      throw new Error("Test backend not set");
-    }
-
-    // Create connection state with test backend
-    const userId = requireCurrentUserId();
-    let state = this.connections.get(workspaceId);
-    if (!state) {
-      state = {
-        userId,
-        backend: this.testBackend,
-        settings: this.testSettings,
-        connectionError: null,
-      };
-      this.connections.set(workspaceId, state);
-    }
-
-    // If not connected, connect
-    if (!state.backend.isConnected()) {
-      const config = buildConnectionConfig(state.settings, directory);
-      await state.backend.connect(config);
-    }
-
-    this.emitEvent({
-      type: "server.connected",
-      workspaceId,
-      timestamp: new Date().toISOString(),
-    });
-  }
-
-  /**
    * Disconnect from the backend for a specific workspace.
    */
   async disconnectWorkspace(workspaceId: string): Promise<void> {
@@ -496,17 +446,6 @@ class BackendManager {
     if (state) {
       // Abort all active subscriptions first
       state.backend.abortAllSubscriptions();
-
-      // If using test backend, preserve it
-      if (this.isTestBackend) {
-        state.connectionError = null;
-        this.emitEvent({
-          type: "server.reset",
-          workspaceId,
-          timestamp: new Date().toISOString(),
-        });
-        return;
-      }
 
       // Disconnect cleanly
       if (state.backend.isConnected()) {
@@ -641,11 +580,8 @@ class BackendManager {
       }
     }
 
-    // If not using test backend, clear all connections
-    if (!this.isTestBackend) {
-      this.connections.clear();
-      this.taskConnections.clear();
-    }
+    this.connections.clear();
+    this.taskConnections.clear();
     this.clearAllCommandExecutors();
     this.invalidateLocalMeshNodeIdCache();
 
@@ -701,16 +637,16 @@ class BackendManager {
           },
         };
     const localNodeId = await this.getLocalMeshNodeId();
-    // Reuse the configured test backend when present so tests can stub connection behavior.
-    const testBackend = this.isTestBackend && this.testBackend
-      ? this.testBackend
-      : this.createBackendForSettings(runtimeSettings, binding && executionHost?.kind !== "ssh"
+    const backend = this.createBackendForSettings(
+      runtimeSettings,
+      binding && executionHost?.kind !== "ssh"
         ? {
             workspaceId: crypto.randomUUID(),
             localNodeId,
             executionHostBinding: binding,
           }
-        : undefined);
+        : undefined,
+    );
     const config = buildConnectionConfig(runtimeSettings, directory);
     const abortController = new AbortController();
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -724,16 +660,16 @@ class BackendManager {
       });
 
       await Promise.race([
-        testBackend.connect(config, abortController.signal),
+        backend.connect(config, abortController.signal),
         timeoutPromise,
       ]);
 
-      await testBackend.disconnect();
+      await backend.disconnect();
       return { success: true };
     } catch (error) {
       abortController.abort();
       try {
-        await testBackend.disconnect();
+        await backend.disconnect();
       } catch {
         // Ignore disconnect errors during cleanup
       }
@@ -763,27 +699,6 @@ class BackendManager {
       provider: settings.agent.provider,
       transport: sshTarget ? "ssh" : executionHost?.kind,
     });
-
-    // In test mode, use the test executor factory if available
-    if (this.testExecutorFactory) {
-      log.debug("Using test executor factory for directory validation");
-      const executor = this.testExecutorFactory(directory);
-
-      // First check if directory exists
-      const executionDirectory = await resolveCommandExecutorDirectory(
-        executor,
-        directory,
-      );
-      const directoryExists = await executor.directoryExists(executionDirectory);
-      if (!directoryExists) {
-        log.debug("Directory does not exist on remote server", { directory });
-        return { success: true, directoryExists: false, isGitRepo: false };
-      }
-
-      const git = GitService.withExecutor(executor);
-      const isGitRepo = await git.isGitRepo(directory);
-      return { success: true, directoryExists: true, isGitRepo };
-    }
 
     try {
       const binding = bindingOverride
@@ -853,9 +768,6 @@ class BackendManager {
     directory: string,
     executionHost: ExecutionHostRef,
   ): Promise<CommandExecutor> {
-    if (this.testExecutorFactory) {
-      return this.testExecutorFactory(directory);
-    }
     const binding = executionHostService.getBinding(executionHost);
     return await executionHostService.getCommandExecutor(
       binding,
@@ -936,20 +848,12 @@ class BackendManager {
 
   /**
    * Get server settings for a workspace.
-   * In test mode (when setBackendForTesting was called), returns test settings.
-   * In production, fetches the workspace from the database.
    *
    * @param workspaceId - The workspace ID
    * @returns The server settings for the workspace
-   * @throws Error if workspace not found (in non-test mode)
+   * @throws Error if workspace not found
    */
   async getWorkspaceSettings(workspaceId: string): Promise<RuntimeServerSettings> {
-    // In test mode, return test settings
-    if (this.isTestBackend) {
-      return this.testSettings;
-    }
-
-    // In production, fetch from database
     const workspace = await getWorkspace(workspaceId);
     if (!workspace) {
       throw new Error(`Workspace not found: ${workspaceId}`);
@@ -974,11 +878,6 @@ class BackendManager {
    *         Use getBackendAsync() or connect() to hydrate it first.
    */
   getBackend(workspaceId: string): Backend {
-    // Use test backend if set
-    if (this.isTestBackend && this.testBackend) {
-      return this.testBackend;
-    }
-
     const state = this.connections.get(workspaceId);
     if (state) {
       return state.backend;
@@ -992,10 +891,6 @@ class BackendManager {
    * Does not hydrate workspace state from persistence.
    */
   getInitializedBackend(workspaceId: string): Backend | null {
-    if (this.isTestBackend && this.testBackend) {
-      return this.testBackend;
-    }
-
     return this.connections.get(workspaceId)?.backend ?? null;
   }
 
@@ -1003,10 +898,6 @@ class BackendManager {
    * Get the backend instance for a workspace, hydrating persisted settings first.
    */
   async getBackendAsync(workspaceId: string): Promise<Backend> {
-    if (this.isTestBackend && this.testBackend) {
-      return this.testBackend;
-    }
-
     const state = await this.ensureWorkspaceState(workspaceId);
     return state.backend;
   }
@@ -1019,18 +910,11 @@ class BackendManager {
    * The actual directory binding happens later when TaskEngine calls
    * backend.connect() in setupSession() with the worktree directory.
    *
-   * In test mode, returns the shared test backend (tests manage their own isolation).
-   *
    * @param taskId - The task ID
    * @param workspaceId - The workspace ID (for settings lookup)
    * @returns A Backend instance dedicated to this task
    */
   getTaskBackend(taskId: string, workspaceId: string): Backend {
-    // Use test backend if set (tests share a single mock backend)
-    if (this.isTestBackend && this.testBackend) {
-      return this.testBackend;
-    }
-
     const existing = this.taskConnections.get(taskId);
     if (existing) {
       return existing.backend;
@@ -1069,7 +953,6 @@ class BackendManager {
   }
 
   getInitializedContextBackend(contextId: string): Backend | null {
-    if (this.isTestBackend && this.testBackend) return this.testBackend;
     return this.taskConnections.get(contextId)?.backend ?? null;
   }
 
@@ -1080,11 +963,6 @@ class BackendManager {
    * @param taskId - The task ID to clean up
    */
   async disconnectTask(taskId: string): Promise<void> {
-    // In test mode, don't disconnect the shared test backend
-    if (this.isTestBackend) {
-      return;
-    }
-
     const state = this.taskConnections.get(taskId);
     if (!state) {
       return;
@@ -1122,11 +1000,6 @@ class BackendManager {
    * Get a CommandExecutor for running deterministic commands/files via execution settings.
    */
   async getCommandExecutor(workspaceId: string, directory?: string): Promise<CommandExecutor> {
-    // Use test factory if set (for testing)
-    if (this.testExecutorFactory) {
-      return this.testExecutorFactory(directory ?? ".");
-    }
-
     const state = this.connections.get(workspaceId);
     if (!state) {
       throw new Error(`[BackendManager] Workspace ${workspaceId} not initialized`);
@@ -1170,36 +1043,9 @@ class BackendManager {
    * Get a CommandExecutor for running commands/files via execution settings.
    */
   async getCommandExecutorAsync(workspaceId: string, directory: string): Promise<CommandExecutor> {
-    // Use test factory if set (for testing)
-    if (this.testExecutorFactory) {
-      return this.testExecutorFactory(directory);
-    }
-
     await this.ensureWorkspaceState(workspaceId);
 
     return await this.getCommandExecutor(workspaceId, directory);
-  }
-
-  /**
-   * Set a custom backend instance (for testing).
-   * This bypasses the normal AcpBackend creation.
-   * Accepts AcpBackend or MockAcpBackend (both implement Backend).
-   */
-  setBackendForTesting(backend: Backend): void {
-    this.testBackend = backend;
-    this.initialized = true;
-    this.isTestBackend = true;
-  }
-
-  /**
-   * Get the test backend if set (for model validation and similar use cases).
-   * Returns null if no test backend is set.
-   */
-  getTestBackend(): Backend | null {
-    if (this.isTestBackend && this.testBackend) {
-      return this.testBackend;
-    }
-    return null;
   }
 
   /**
@@ -1212,10 +1058,6 @@ class BackendManager {
     workspace: Workspace,
     settings: ServerSettings = workspace.serverSettings,
   ): Promise<Backend> {
-    if (this.isTestBackend && this.testBackend) {
-      return this.testBackend;
-    }
-
     const workspaceOptions = await this.getWorkspaceBackendOptions(workspace);
     const runtimeSettings = await this.buildRuntimeSettings(
       workspace.executionHostBinding,
@@ -1231,15 +1073,6 @@ class BackendManager {
     sshPassword?: string,
   ): Promise<{ backend: Backend; settings: RuntimeServerSettings }> {
     const settings = await this.buildRuntimeSettings(binding, createAgentSettings("acp", provider), sshPassword);
-    if (this.isTestBackend && this.testBackend) {
-      this.taskConnections.set(connectionId, {
-        userId: requireCurrentUserId(),
-        backend: this.testBackend,
-        workspaceId: "",
-      });
-      return { backend: this.testBackend, settings };
-    }
-
     const localNodeId = await this.getLocalMeshNodeId();
     const options: WorkspaceBackendOptions = {
       workspaceId: connectionId,
@@ -1259,69 +1092,7 @@ class BackendManager {
    * Create a backend for a connection that is not owned by a workspace.
    */
   createStandaloneBackend(settings: RuntimeServerSettings): Backend {
-    if (this.isTestBackend && this.testBackend) {
-      return this.testBackend;
-    }
     return this.createBackendForSettings(settings);
-  }
-
-  /**
-   * Set test settings (for testing).
-   * Also enables test mode if not already enabled.
-   */
-  setSettingsForTesting(settings: RuntimeServerSettings): void {
-    this.testSettings = settings;
-    this.isTestBackend = true;
-    this.initialized = true;
-  }
-
-  /**
-   * Enable test mode without setting a specific backend.
-   * This causes getWorkspaceSettings() to return test settings instead
-   * of querying the database.
-   * Useful when tests create their own mock backends but still need
-   * the backend manager to return test settings.
-   */
-  enableTestMode(): void {
-    this.isTestBackend = true;
-    this.initialized = true;
-  }
-
-  /**
-   * Set a custom command executor factory (for testing).
-   * This bypasses the normal execution-provider-based executor creation.
-   */
-  setExecutorFactoryForTesting(factory: CommandExecutorFactory): void {
-    this.testExecutorFactory = factory;
-    executionHostService.setExecutorFactoryForTesting(factory);
-    this.clearAllCommandExecutors();
-  }
-
-  /**
-   * Override the connection timeout (for testing).
-   * Allows tests to use a much shorter timeout to avoid long wall-clock waits.
-   */
-  setConnectionTimeoutForTesting(timeoutMs: number): void {
-    this.connectionTimeoutMs = timeoutMs;
-  }
-
-  /**
-   * Reset the backend manager (for testing).
-   * Clears all connections and resets initialization state.
-   */
-  resetForTesting(): void {
-    this.meshStateUnsubscribe?.();
-    this.meshStateUnsubscribe = null;
-    this.connections.clear();
-    this.taskConnections.clear();
-    this.clearAllCommandExecutors();
-    this.initialized = false;
-    this.testExecutorFactory = null;
-    executionHostService.setExecutorFactoryForTesting(null);
-    this.isTestBackend = false;
-    this.testBackend = null;
-    this.testSettings = getDefaultRuntimeServerSettings();
-    this.connectionTimeoutMs = getSshReliabilityPolicy().connectionTimeoutMs;
   }
 
   /**

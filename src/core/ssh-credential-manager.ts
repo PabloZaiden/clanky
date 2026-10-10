@@ -80,11 +80,6 @@ export class SshCredentialManager {
     }
   }
 
-  getTokenCountForTesting(): number {
-    this.evictExpiredTokens();
-    return this.tokens.size;
-  }
-
   private evictExpiredTokens(): void {
     const now = this.now();
     for (const [token, record] of this.tokens.entries()) {

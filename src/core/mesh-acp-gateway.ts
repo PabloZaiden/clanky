@@ -173,6 +173,7 @@ export class MeshAcpGateway {
             globalThis.process.env,
             config.environment,
           ),
+          windowsVerbatimArguments: providerCommand.windowsVerbatimArguments,
           maxBufferedBytes: MESH_EXECUTION_MAX_MESSAGE_BYTES,
           maxLineBytes: MESH_EXECUTION_MAX_MESSAGE_BYTES,
           onLine: (source, line) => {

@@ -3,6 +3,9 @@
  */
 
 import { createHash } from "node:crypto";
+import { mkdir } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import {
   getSshReliabilityPolicy,
   type SshReliabilityPolicy,
@@ -12,6 +15,28 @@ import { quoteShell } from "./utils";
 
 const CONTROL_PATH_VERSION = "v1";
 const CONTROL_PERSIST = "60s";
+let controlDirectoryReady: Promise<void> | undefined;
+
+function getSshControlDirectory(): string {
+  return join(homedir(), ".ssh");
+}
+
+export async function ensureSshControlDirectory(): Promise<void> {
+  const pending = controlDirectoryReady ??= mkdir(
+    getSshControlDirectory(),
+    { recursive: true, mode: 0o700 },
+  ).then(() => undefined);
+  try {
+    await pending;
+  } catch (error) {
+    if (controlDirectoryReady === pending) {
+      controlDirectoryReady = undefined;
+    }
+    throw new Error("Failed to create the local SSH control directory", {
+      cause: error,
+    });
+  }
+}
 
 export function buildSshRemoteShellCommand(remoteCommand: string): string {
   const shellBootstrapCommand = [
@@ -59,7 +84,10 @@ function buildSshControlPath(options: {
     .update(fingerprintInput)
     .digest("hex")
     .slice(0, 32);
-  return `~/.ssh/clanky-cm-${CONTROL_PATH_VERSION}-${fingerprint}`;
+  return join(
+    getSshControlDirectory(),
+    `clanky-cm-${CONTROL_PATH_VERSION}-${fingerprint}`,
+  );
 }
 
 export function buildSshMultiplexingArgs(options: {
@@ -90,19 +118,29 @@ export function buildSshCommandArgs(options: {
   remoteCommand?: string;
   identityFile?: string;
   connectionScope?: string;
+  multiplex?: boolean;
   policy?: SshReliabilityPolicy;
 }): string[] {
   const identityFile = options.identityFile?.trim();
   const policy = options.policy ?? getSshReliabilityPolicy();
   return [
     ...getSshAuthArgs(options.authMode),
-    ...buildSshMultiplexingArgs({
-      authMode: options.authMode,
-      port: options.port,
-      target: options.target,
-      identityFile,
-      connectionScope: options.connectionScope,
-    }),
+    ...(options.multiplex === false
+      ? [
+          "-o",
+          "ControlMaster=no",
+          "-o",
+          "ControlPath=none",
+          "-o",
+          "ControlPersist=no",
+        ]
+      : buildSshMultiplexingArgs({
+          authMode: options.authMode,
+          port: options.port,
+          target: options.target,
+          identityFile,
+          connectionScope: options.connectionScope,
+        })),
     ...(identityFile
       ? [
           "-o",
