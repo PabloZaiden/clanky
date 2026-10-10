@@ -37,4 +37,3 @@ export type {
 export type { AcpAuthenticationMode, AcpProcessExit, AcpTransportStage } from "./types";
 export { LocalAcpTransportLifecycle } from "./transport-lifecycle";
 export { MeshAcpTransport, WorkspaceAcpTransportLifecycle } from "./mesh-transport";
-export { getMockAcpCommand } from "./mock-acp-command";

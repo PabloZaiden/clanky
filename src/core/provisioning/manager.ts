@@ -326,13 +326,6 @@ export class ProvisioningManager {
     await this.reconciler.reconcileDedicatedWorkerStartupState(requireCurrentUserId());
   }
 
-  resetForTesting(): void {
-    for (const record of this.jobs.values()) {
-      record.abortController.abort();
-    }
-    this.jobs.clear();
-  }
-
   private async getSnapshotOrThrow(jobId: string): Promise<ProvisioningJobSnapshot> {
     const snapshot = await this.getJobSnapshot(jobId);
     if (!snapshot) {

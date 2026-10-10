@@ -11,7 +11,6 @@ export const VOICE_MAX_SUMMARY_CHARS = 8_000;
 export const VOICE_PROVIDER_TIMEOUT_MS = 120_000;
 export const VOICE_AZURE_API_VERSION = "2025-03-01-preview";
 const VOICE_MAX_PROVIDER_JSON_BYTES = 1 * 1024 * 1024;
-const VOICE_TEST_CONTEXT_ENV = "CLANKY_TEST_OWNER_CONTEXT";
 
 export interface VoiceProviderCredentials {
   baseUrl: string;
@@ -29,17 +28,6 @@ export interface VoiceTranscriptionOptions {
 
 function isAzureOpenAiUrl(url: URL): boolean {
   return url.hostname.toLowerCase().endsWith(".openai.azure.com");
-}
-
-function isTestContext(): boolean {
-  return process.env[VOICE_TEST_CONTEXT_ENV] === "1";
-}
-
-function isLoopbackHostname(hostname: string): boolean {
-  const normalized = hostname.replace(/^\[|\]$/g, "").toLowerCase();
-  return normalized === "localhost"
-    || normalized === "127.0.0.1"
-    || normalized === "::1";
 }
 
 function parseIpv4(address: string): number[] | null {
@@ -156,13 +144,13 @@ function isPrivateAddress(address: string): boolean {
 
 function assertSafeBaseUrlHost(url: URL): void {
   const hostname = url.hostname;
-  if (isPrivateAddress(hostname) && !(isTestContext() && isLoopbackHostname(hostname))) {
+  if (isPrivateAddress(hostname)) {
     throw new DomainError(
       "voice_unsafe_provider_url",
       "The voice provider URL must resolve to a public address.",
     );
   }
-  if (url.protocol === "http:" && !(isTestContext() && isLoopbackHostname(hostname))) {
+  if (url.protocol === "http:") {
     throw new DomainError(
       "voice_invalid_base_url",
       "The voice provider base URL must use HTTPS.",
@@ -285,9 +273,6 @@ function providerError(
 async function assertSafeProviderDestination(url: string): Promise<void> {
   const parsed = new URL(url);
   assertSafeBaseUrlHost(parsed);
-  if (isTestContext() && isLoopbackHostname(parsed.hostname)) {
-    return;
-  }
 
   let addresses: Bun.DNSLookup[];
   try {

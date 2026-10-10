@@ -29,7 +29,7 @@ import { createTaskImpl, generateTaskTitleImpl, getTaskImpl, getTaskSummaryImpl,
 import { startTaskImpl, stopTaskImpl, startPlanModeImpl, startDraftImpl, recoverPlanningEngineImpl, startStatePersistenceImpl, validateMainCheckoutStartImpl, clearPlanningFilesImpl, ensureTaskBranchCheckedOutImpl } from "./task-execution";
 import { sendPlanFeedbackImpl, acceptPlanImpl, discardPlanImpl } from "./task-plan-mode";
 import { seedPlanFilesImpl } from "./task-seeded-plan";
-import { deleteTaskImpl, discardTaskImpl, purgeTaskImpl, markMergedImpl, closeLocalTaskImpl, manualCompleteTaskImpl, shutdownImpl, forceResetAllImpl, resetForTestingImpl } from "./task-lifecycle";
+import { deleteTaskImpl, discardTaskImpl, purgeTaskImpl, markMergedImpl, closeLocalTaskImpl, manualCompleteTaskImpl, shutdownImpl, forceResetAllImpl } from "./task-lifecycle";
 import { acceptTaskImpl, pushTaskImpl, updateBranchImpl } from "./task-git";
 import { setPendingPromptImpl, clearPendingPromptImpl, setPendingModelImpl, clearPendingModelImpl, clearPendingImpl, setPendingImpl, injectPendingImpl, sendFollowUpImpl, jumpstartTaskImpl } from "./task-pending";
 import {
@@ -46,7 +46,6 @@ import {
 export class TaskManager {
   private readonly ctx: TaskCtx;
   private readonly engines: Map<string, TaskEngine>;
-  private titleGenerationTimeoutMs: number | undefined;
 
   constructor(options?: { eventEmitter?: SimpleEventEmitter<TaskEvent> }) {
     this.engines = new Map<string, TaskEngine>();
@@ -83,14 +82,7 @@ export class TaskManager {
   }
 
   async generateTaskTitle(options: GenerateTaskTitleOptions): Promise<string> {
-    return generateTaskTitleImpl(this.ctx, {
-      ...options,
-      timeoutMs: options.timeoutMs ?? this.titleGenerationTimeoutMs,
-    });
-  }
-
-  setTitleGenerationTimeoutForTesting(timeoutMs: number | undefined): void {
-    this.titleGenerationTimeoutMs = timeoutMs;
+    return generateTaskTitleImpl(this.ctx, options);
   }
 
   async startPlanMode(taskId: string, options?: StartTaskOptions): Promise<void> {
@@ -334,10 +326,6 @@ export class TaskManager {
 
   async forceResetAll(): Promise<{ enginesCleared: number; tasksReset: number }> {
     return forceResetAllImpl(this.ctx);
-  }
-
-  resetForTesting(): void {
-    return resetForTestingImpl(this.ctx);
   }
 
   private async recoverPlanningEngine(taskId: string): Promise<TaskEngine> {

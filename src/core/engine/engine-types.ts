@@ -105,9 +105,8 @@ export interface TaskPromptExecutor {
 /**
  * Backend interface for TaskEngine.
  * This is a structural type that defines the methods TaskEngine needs.
- * Production and test harness adapters satisfy this interface.
- * Using a structural type (interface) instead of a union allows for
- * easy mocking in tests without requiring all internal class fields.
+ * Harness adapters satisfy this interface without exposing their internal
+ * class fields to the engine.
  */
 export interface TaskBackend extends AgentStreamBackend {
   readonly harness: Backend["harness"];

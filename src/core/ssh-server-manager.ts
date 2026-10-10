@@ -22,11 +22,7 @@ import type { SshConnectionTarget } from "./ssh-connection-target";
 import { getSshConnectionTargetFromServer } from "./ssh-connection-target";
 import { DomainError } from "../domain/domain-error";
 
-type SshServerExecutorFactory = (server: SshServerConfig, password: string) => CommandExecutor;
-
 export class SshServerManager {
-  private testExecutorFactory: SshServerExecutorFactory | null = null;
-
   async listServers(): Promise<SshServer[]> {
     return await listSshServers();
   }
@@ -121,14 +117,7 @@ export class SshServerManager {
     };
   }
 
-  setExecutorFactoryForTesting(factory: SshServerExecutorFactory | null): void {
-    this.testExecutorFactory = factory;
-  }
-
   private buildExecutor(server: SshServerConfig, password: string): CommandExecutor {
-    if (this.testExecutorFactory) {
-      return this.testExecutorFactory(server, password);
-    }
     const sshTarget = getSshConnectionTargetFromServer(server, password);
     return new CommandExecutorImpl({
       provider: "ssh",

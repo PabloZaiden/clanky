@@ -1,0 +1,19 @@
+{
+  "source": {
+    "tag": "v5.4.1",
+    "commit": "e6140461c471ee30ed4f919d3283c117b2605d11",
+    "schemaVersion": 63
+  },
+  "generation": {
+    "boundary": "Compiled v5.4.1 binary and its public HTTP API",
+    "externalProvider": "Deterministic ACP executable discovered through PATH",
+    "dataDirectorySnapshotSha256": "7e93e111d4f89c8407d8aa47923f2cdf77d0e8f641282c48c48f4f1697e3ae25"
+  },
+  "expected": {
+    "workspace": "v5.4.1 preserved workspace",
+    "chat": "v5.4.1 preserved chat",
+    "task": "v5.4.1 preserved draft",
+    "apiKey": "v5.4.1 upgrade key",
+    "githubUsername": "upgrade-fixture-user"
+  }
+}

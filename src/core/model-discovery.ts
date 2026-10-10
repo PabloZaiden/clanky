@@ -103,14 +103,6 @@ async function getAgentBackendModels(
   const runtimeSettings: RuntimeServerSettings = workspace
     ? await backendManager.getWorkspaceSettings(workspace.id)
     : { agent: { ...settings.agent, transport: "stdio" } };
-  const testBackend = backendManager.getTestBackend();
-  if (testBackend) {
-    if (testBackend.isConnected()) {
-      await testBackend.disconnect();
-    }
-    await testBackend.connect(buildConnectionConfig(runtimeSettings, directory));
-    return await testBackend.getModels(directory);
-  }
 
   const existingBackend = workspace ? await backendManager.getBackendAsync(connectionId) : backendManager.getInitializedBackend(connectionId);
   if (existingBackend?.isConnected()) {
@@ -142,18 +134,6 @@ async function getAgentBackendModelVariants(
   const runtimeSettings: RuntimeServerSettings = workspace
     ? await backendManager.getWorkspaceSettings(workspace.id)
     : { agent: { ...settings.agent, transport: "stdio" } };
-  const testBackend = backendManager.getTestBackend();
-  if (testBackend) {
-    if (testBackend.isConnected()) {
-      await testBackend.disconnect();
-    }
-    await testBackend.connect(buildConnectionConfig(runtimeSettings, directory));
-    if (testBackend.getModelVariants) {
-      return await testBackend.getModelVariants(directory, modelID);
-    }
-    const model = (await testBackend.getModels(directory)).find((entry) => entry.modelID === modelID);
-    return model?.variants && model.variants.length > 0 ? model.variants : [""];
-  }
 
   const existingBackend = workspace ? await backendManager.getBackendAsync(connectionId) : backendManager.getInitializedBackend(connectionId);
   if (existingBackend?.isConnected()) {

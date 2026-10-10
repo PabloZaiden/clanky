@@ -1,8 +1,8 @@
 /**
  * Outbound WebSocket seam used by the Mesh relay connector.
  *
- * The connector never touches the global `WebSocket` constructor directly so
- * that relay lifecycle behaviour can be driven deterministically in tests.
+ * The connector depends on this transport contract instead of the global
+ * `WebSocket` constructor so socket lifecycle ownership remains explicit.
  */
 
 export interface MeshRelayClientSocket {
