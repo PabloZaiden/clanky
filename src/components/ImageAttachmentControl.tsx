@@ -224,7 +224,7 @@ function ImageAttachmentControlInner({
     try {
       const nextAttachments = await createComposerAttachments(
         files,
-        attachmentsRef.current.length,
+        attachmentsRef.current,
       );
       onChange([...attachmentsRef.current, ...nextAttachments]);
     } catch (attachmentError) {

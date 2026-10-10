@@ -7,6 +7,11 @@ import type {
   Chat,
   ChatPermissionDecision,
   ChatPermissionRequest,
+  QueuedChatMessage,
+} from "@/shared";
+import {
+  getMessageAttachmentByteLength,
+  MESSAGE_ATTACHMENT_MAX_TURN_BYTES,
 } from "@/shared";
 import {
   ChatBusyError,
@@ -19,7 +24,7 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import { HarnessError } from "../backends/harness-errors";
 import type { HarnessInputAdmission } from "@/shared/harness-control";
 import { isHarnessInputValidationError, retainHarnessInputReceipt } from "./harness-input-ledger";
-import type { DomainError } from "../domain/domain-error";
+import { DomainError } from "../domain/domain-error";
 import type { ChatQuestionService } from "./chat-question-service";
 import { buildPromptParts } from "../backends/prompt-parts";
 import { KeyedOperationQueue } from "../utils/keyed-operation-queue";
@@ -35,6 +40,43 @@ import type {
 } from "./chat-service-contracts";
 
 const log = createLogger("chat-interaction-service");
+
+function chatAttachmentBudgetError(actualBytes: number): DomainError {
+  return new DomainError(
+    "chat_attachment_budget_exceeded",
+    `Attachments in a chat turn cannot exceed ${MESSAGE_ATTACHMENT_MAX_TURN_BYTES} bytes.`,
+    { details: { actualBytes, maximumBytes: MESSAGE_ATTACHMENT_MAX_TURN_BYTES } },
+  );
+}
+
+function assertChatAttachmentBudget(actualBytes: number): void {
+  if (actualBytes > MESSAGE_ATTACHMENT_MAX_TURN_BYTES) {
+    throw chatAttachmentBudgetError(actualBytes);
+  }
+}
+
+function getQueuedPromptAttachmentByteLength(
+  queuedMessages: readonly QueuedChatMessage[],
+  incoming: NormalizedChatMessageInput,
+  blockedMessageIds: ReadonlySet<string>,
+): number {
+  let totalBytes = getMessageAttachmentByteLength(incoming.attachments);
+  if (incoming.transcriptMessage) {
+    return totalBytes;
+  }
+
+  for (let index = queuedMessages.length - 1; index >= 0; index -= 1) {
+    const previous = queuedMessages[index]!;
+    if (blockedMessageIds.has(previous.id)) {
+      continue;
+    }
+    if (previous.transcriptMessage || previous.clientId !== incoming.clientId) {
+      break;
+    }
+    totalBytes += getMessageAttachmentByteLength(previous.attachments ?? []);
+  }
+  return totalBytes;
+}
 
 export class ChatInteractionService implements ChatInteractionPort {
   private readonly queuedMessageDrains = new Set<string>();
@@ -74,6 +116,7 @@ export class ChatInteractionService implements ChatInteractionPort {
     if (chat.state.harness?.integrity === "invalid") throw new HarnessError("harness_request_failed", "Input admission history is corrupt.");
 
     const input = this.normalizeMessageInput(options);
+    assertChatAttachmentBudget(getMessageAttachmentByteLength(input.attachments));
     const activeChat = await this.reactivateDoneChat(chat);
     if (this.shouldQueueMessage(activeChat)) {
       return this.enqueueMessage(activeChat, input, options.credentialToken);
@@ -258,16 +301,48 @@ export class ChatInteractionService implements ChatInteractionPort {
       if (backend.harness.capabilities.steering === "unsupported") {
         return { chat, admission: { status: "rejected", inputId: queuedMessageId, code: "unsupported" } };
       }
+      const attachmentBytes = getMessageAttachmentByteLength(message.attachments ?? []);
       const unknown: HarnessInputAdmission = { status: "unknown", inputId: queuedMessageId };
-      chat = await this.state.updateState(chat, {
-        ...chat.state,
-        harness: {
-          ...chat.state.harness,
-          inputs: retainHarnessInputReceipt(chat.state.harness?.inputs ?? [], {
-            conversation: binding, admission: unknown, submittedAt: createTimestamp(),
-          }),
-        },
+      let reserved = false;
+      chat = await this.state.mutateState(chatId, (current) => {
+        if (current.state.harness?.integrity === "invalid") {
+          throw new HarnessError("harness_request_failed", "Input admission history is corrupt.");
+        }
+        const currentMessage = current.state.queuedMessages?.find((entry) => entry.id === queuedMessageId);
+        if (!currentMessage) {
+          throw new HarnessError("harness_input_not_found", "The queued input is unavailable.");
+        }
+        const currentBinding = current.state.session?.binding;
+        if (
+          !currentBinding
+          || currentBinding.adapter !== binding.adapter
+          || currentBinding.nativeId !== binding.nativeId
+          || currentBinding.ownerId !== binding.ownerId
+          || currentBinding.contextId !== binding.contextId
+        ) {
+          throw new HarnessError("harness_session_not_owned", "The input belongs to a different conversation.");
+        }
+        if (current.state.status !== "streaming" || !backend.isConnected()) {
+          return undefined;
+        }
+        const activeTurnAttachmentBytes =
+          current.state.harness?.activeTurnAttachmentBytes ?? MESSAGE_ATTACHMENT_MAX_TURN_BYTES;
+        assertChatAttachmentBudget(activeTurnAttachmentBytes + attachmentBytes);
+        reserved = true;
+        return {
+          ...current.state,
+          harness: {
+            ...current.state.harness,
+            activeTurnAttachmentBytes: activeTurnAttachmentBytes + attachmentBytes,
+            inputs: retainHarnessInputReceipt(current.state.harness?.inputs ?? [], {
+              conversation: binding, admission: unknown, submittedAt: createTimestamp(),
+            }),
+          },
+        };
       });
+      if (!reserved) {
+        return { chat, admission: { status: "rejected", inputId: queuedMessageId, code: "not-running" } };
+      }
       this.state.emitChatUpdated(chat);
       // Durable unknown admission precedes the RPC, so interruption never causes blind resend.
       let admission: HarnessInputAdmission;
@@ -289,14 +364,22 @@ export class ChatInteractionService implements ChatInteractionPort {
       if (admission.status === "accepted" || admission.status === "delivered") {
         chat = await this.conversation.recordSteeredMessage(latest, message, admission);
       } else {
-        chat = await this.state.updateState(latest, {
-          ...latest.state,
-          harness: {
-            ...latest.state.harness,
-            inputs: retainHarnessInputReceipt(latest.state.harness?.inputs ?? [], {
-              conversation: binding, admission, submittedAt: createTimestamp(),
-            }),
-          },
+        chat = await this.state.mutateState(chatId, (current) => {
+          const activeTurnAttachmentBytes = current.state.harness?.activeTurnAttachmentBytes;
+          return {
+            ...current.state,
+            harness: {
+              ...current.state.harness,
+              ...(admission.status === "rejected" && activeTurnAttachmentBytes !== undefined
+                ? {
+                    activeTurnAttachmentBytes: Math.max(0, activeTurnAttachmentBytes - attachmentBytes),
+                  }
+                : {}),
+              inputs: retainHarnessInputReceipt(current.state.harness?.inputs ?? [], {
+                conversation: binding, admission, submittedAt: createTimestamp(),
+              }),
+            },
+          };
         });
       }
       this.state.emitChatUpdated(chat);
@@ -307,12 +390,26 @@ export class ChatInteractionService implements ChatInteractionPort {
 
   reconcileQueuedMessage(chatId: string, queuedMessageId: string): Promise<{ chat: Chat; admission: HarnessInputAdmission }> {
     return this.serializeInput(chatId, async () => {
-      const chat = await this.state.getChat(chatId);
+      let chat = await this.state.getChat(chatId);
       if (!chat) throw new HarnessError("harness_session_not_found", "The chat is unavailable.");
       if (chat.state.harness?.integrity === "invalid") throw new HarnessError("harness_request_failed", "Input admission history is corrupt.");
       const receipt = chat.state.harness?.inputs?.find((entry) => entry.admission.inputId === queuedMessageId);
       if (!receipt) throw new HarnessError("harness_input_not_found", "Input admission is unavailable.");
       if (receipt.admission.status === "rejected" || receipt.admission.status === "delivered") return { chat, admission: receipt.admission };
+      const legacyBudgetMissing = chat.state.harness?.activeTurnAttachmentBytes === undefined;
+      if (legacyBudgetMissing) {
+        chat = await this.state.mutateState(chatId, (current) => {
+          if (current.state.harness?.activeTurnAttachmentBytes !== undefined) return undefined;
+          const turnIsActive = isChatBusyStatus(current.state.status) || current.state.status === "reconnecting";
+          return {
+            ...current.state,
+            harness: {
+              ...current.state.harness,
+              activeTurnAttachmentBytes: turnIsActive ? MESSAGE_ATTACHMENT_MAX_TURN_BYTES : 0,
+            },
+          };
+        });
+      }
       const binding = chat.state.session?.binding;
       const backend = this.session.getChatBackend(chatId, chat.config.workspaceId);
       if (!binding || binding.adapter !== backend.harness.capabilities.adapter) throw new HarnessError("harness_session_not_owned", "The input belongs to a replaced conversation.");
@@ -332,12 +429,31 @@ export class ChatInteractionService implements ChatInteractionPort {
       const message = latest.state.queuedMessages?.find((entry) => entry.id === queuedMessageId);
       const updated = message && (admission.status === "accepted" || admission.status === "delivered")
         ? await this.conversation.recordSteeredMessage(latest, message, admission)
-        : await this.state.updateState(latest, {
-          ...latest.state,
-          harness: {
-            ...latest.state.harness,
-            inputs: retainHarnessInputReceipt(latest.state.harness?.inputs ?? [], { ...receipt, admission }),
-          },
+        : await this.state.mutateState(chatId, (current) => {
+          const currentReceipt = current.state.harness?.inputs?.find(
+            (entry) => entry.admission.inputId === queuedMessageId,
+          );
+          if (!currentReceipt) {
+            throw new HarnessError("harness_input_not_found", "Input admission is unavailable.");
+          }
+          const currentMessage = current.state.queuedMessages?.find((entry) => entry.id === queuedMessageId);
+          const activeTurnAttachmentBytes = current.state.harness?.activeTurnAttachmentBytes;
+          const releaseBytes = admission.status === "rejected" && !legacyBudgetMissing
+            ? getMessageAttachmentByteLength(currentMessage?.attachments ?? [])
+            : 0;
+          return {
+            ...current.state,
+            harness: {
+              ...current.state.harness,
+              ...(activeTurnAttachmentBytes !== undefined && releaseBytes > 0
+                ? { activeTurnAttachmentBytes: Math.max(0, activeTurnAttachmentBytes - releaseBytes) }
+                : {}),
+              inputs: retainHarnessInputReceipt(current.state.harness?.inputs ?? [], {
+                ...currentReceipt,
+                admission,
+              }),
+            },
+          };
         });
       this.state.emitChatUpdated(updated);
       return { chat: updated, admission };
@@ -397,6 +513,16 @@ export class ChatInteractionService implements ChatInteractionPort {
       clientId: input.clientId,
     };
     if ((chat.state.queuedMessages?.length ?? 0) >= 200) throw new HarnessError("harness_input_capacity", "Queued input capacity reached.");
+    const blockedMessageIds = new Set(
+      (chat.state.harness?.inputs ?? [])
+        .filter((receipt) => receipt.admission.status !== "rejected")
+        .map((receipt) => receipt.admission.inputId),
+    );
+    assertChatAttachmentBudget(getQueuedPromptAttachmentByteLength(
+      chat.state.queuedMessages ?? [],
+      { ...input, transcriptMessage: queuedMessage.transcriptMessage },
+      blockedMessageIds,
+    ));
     const updated = await this.state.updateState(chat, {
       ...chat.state,
       queuedMessages: [...(chat.state.queuedMessages ?? []), queuedMessage],
@@ -448,6 +574,17 @@ export class ChatInteractionService implements ChatInteractionPort {
         lastActivityAt: createTimestamp(),
       });
       this.state.emitChatUpdated(updated);
+      return;
+    }
+    const attachmentBytes = getMessageAttachmentByteLength(attachments);
+    if (attachmentBytes > MESSAGE_ATTACHMENT_MAX_TURN_BYTES) {
+      const error = chatAttachmentBudgetError(attachmentBytes);
+      log.error("Refusing to dispatch an oversized queued chat prompt", {
+        chatId,
+        actualBytes: attachmentBytes,
+        maximumBytes: MESSAGE_ATTACHMENT_MAX_TURN_BYTES,
+      });
+      await this.state.markChatError(chat, error.message, error.code);
       return;
     }
 

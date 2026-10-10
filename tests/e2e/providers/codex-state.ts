@@ -192,7 +192,13 @@ export class CodexFixtureStore {
       type: "userMessage", id: randomUUID(), clientId: params["clientUserMessageId"], content,
     });
     await this.persist();
-    this.steering.get(turn.id)?.resolve(JSON.stringify(content));
+    const instruction = content.flatMap((part) => {
+      if (!isRecord(part) || part["type"] !== "text" || typeof part["text"] !== "string") {
+        return [];
+      }
+      return [part["text"]];
+    }).join("\n");
+    this.steering.get(turn.id)?.resolve(instruction);
     return { turnId: turn.id };
   }
 

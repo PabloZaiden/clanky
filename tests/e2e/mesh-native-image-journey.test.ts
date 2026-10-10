@@ -21,6 +21,8 @@ import {
 const IMAGE_RECEIPT = "E2E image received: image/png; PNG signature OK";
 const MESH_EXECUTION_MAX_MESSAGE_BYTES = 2 * 1024 * 1024;
 const MESSAGE_ATTACHMENT_MAX_BYTES = 20 * 1024 * 1024;
+const MESSAGE_ATTACHMENT_MAX_TURN_BYTES = 40 * 1024 * 1024;
+const LARGE_IMAGE_MESH_REQUEST_TIMEOUT_MS = 30_000;
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const CRC32_TABLE = new Uint32Array(256);
 for (let value = 0; value < CRC32_TABLE.length; value += 1) {
@@ -69,6 +71,20 @@ interface Chat {
   };
   state: {
     status: string;
+    queuedMessages?: Array<{
+      id: string;
+      content: string;
+    }>;
+  };
+}
+
+interface ChatMessageResponse {
+  chat: Chat;
+}
+
+interface ChatSteerResponse {
+  admission: {
+    status: string;
   };
 }
 
@@ -95,9 +111,7 @@ function pngChunk(type: "IHDR" | "IDAT" | "IEND", data: Buffer): Buffer {
   return Buffer.concat([length, crcInput, checksum]);
 }
 
-function createLargePngAttachment() {
-  const width = 2048;
-  const height = 2558;
+function createPngAttachment(width: number, height: number, filename: string) {
   const rowBytes = width * 4 + 1;
   const pixels = Buffer.alloc(rowBytes * height);
   let seed = 0x12345678;
@@ -121,19 +135,28 @@ function createLargePngAttachment() {
     pngChunk("IDAT", deflateSync(pixels, { level: 0 })),
     pngChunk("IEND", Buffer.alloc(0)),
   ]);
-  if (
-    image.byteLength <= MESSAGE_ATTACHMENT_MAX_BYTES - 16 * 1024
-    || image.byteLength > MESSAGE_ATTACHMENT_MAX_BYTES
-  ) {
-    throw new Error("The generated PNG must be close to, but within, the 20 MiB attachment limit.");
-  }
   return {
     id: crypto.randomUUID(),
-    filename: "e2e-large-image.png",
+    filename,
     mimeType: "image/png",
     data: image.toString("base64"),
     size: image.byteLength,
   };
+}
+
+function createLargePngAttachment() {
+  const image = createPngAttachment(2048, 2558, "e2e-large-image.png");
+  if (
+    image.size <= MESSAGE_ATTACHMENT_MAX_BYTES - 16 * 1024
+    || image.size > MESSAGE_ATTACHMENT_MAX_BYTES
+  ) {
+    throw new Error("The generated PNG must be close to, but within, the 20 MiB attachment limit.");
+  }
+  return image;
+}
+
+function createSmallPngAttachment() {
+  return createPngAttachment(256, 256, "e2e-small-image.png");
 }
 
 async function executeOnWorker(
@@ -176,8 +199,30 @@ async function waitForIdleChat(controller: ManagedMeshNode, chatId: string): Pro
   return response.body;
 }
 
+async function waitForStreamingChat(controller: ManagedMeshNode, chatId: string): Promise<Chat> {
+  const response = await pollUntil(
+    async () => await meshJsonRequest<Chat>(
+      controller,
+      `/api/chats/${encodeURIComponent(chatId)}`,
+    ),
+    (candidate) => candidate.status === 200 && candidate.body.state.status === "streaming",
+    {
+      description: `Mesh image chat ${chatId} to enter its active turn`,
+      timeoutMs: 10_000,
+      formatLastObserved: (candidate) => JSON.stringify(candidate),
+    },
+  );
+  return response.body;
+}
+
 test("compiled Mesh hosts deliver large images to native Codex and Copilot", async () => {
   const image = createLargePngAttachment();
+  const secondImage = {
+    ...image,
+    id: crypto.randomUUID(),
+    filename: "e2e-large-image-2.png",
+  };
+  const smallImage = createSmallPngAttachment();
   const fixtureDirectory = await mkdtemp(join(tmpdir(), "clanky-mesh-native-image-e2e-"));
   const providerBinDirectory = join(fixtureDirectory, "bin");
   const homeDirectory = join(fixtureDirectory, "home");
@@ -186,6 +231,8 @@ test("compiled Mesh hosts deliver large images to native Codex and Copilot", asy
   try {
     expect(image.size).toBeGreaterThan(MESSAGE_ATTACHMENT_MAX_BYTES - 16 * 1024);
     expect(image.size).toBeLessThanOrEqual(MESSAGE_ATTACHMENT_MAX_BYTES);
+    expect(image.size * 2).toBeLessThanOrEqual(MESSAGE_ATTACHMENT_MAX_TURN_BYTES);
+    expect(image.size * 2 + smallImage.size).toBeGreaterThan(MESSAGE_ATTACHMENT_MAX_TURN_BYTES);
     expect(image.size).toBeGreaterThan(MESH_EXECUTION_MAX_MESSAGE_BYTES);
     expect(image.data.length).toBeGreaterThan(MESH_EXECUTION_MAX_MESSAGE_BYTES);
     await Promise.all([
@@ -298,30 +345,159 @@ test("compiled Mesh hosts deliver large images to native Codex and Copilot", asy
       );
       expect(createdChat.status).toBe(201);
 
-      const sent = await meshJsonRequest(
+      const chatId = createdChat.body.config.id;
+      const started = await meshJsonRequest<ChatMessageResponse>(
         controller,
-        `/api/chats/${encodeURIComponent(createdChat.body.config.id)}/messages`,
+        `/api/chats/${encodeURIComponent(chatId)}/messages`,
         {
           method: "POST",
           body: {
-            message: "Inspect this attached image.",
-            attachments: [image],
+            message: "Wait for a steering instruction.",
+            attachments: [],
           },
         },
       );
-      expect(sent.status).toBe(200);
-      expect((await waitForIdleChat(controller, createdChat.body.config.id)).state.status).toBe("idle");
+      expect(started.status).toBe(200);
+      await waitForStreamingChat(controller, chatId);
+
+      if (provider.provider === "codex") {
+        const excessiveSinglePrompt = await meshJsonRequest<unknown>(
+          controller,
+          `/api/chats/${encodeURIComponent(chatId)}/messages`,
+          {
+            method: "POST",
+            body: {
+              message: "This prompt exceeds the aggregate attachment limit.",
+              attachments: [image, secondImage, smallImage],
+              clientId: crypto.randomUUID(),
+            },
+          },
+        );
+        expect(excessiveSinglePrompt.status).toBe(400);
+      }
+
+      const clientId = crypto.randomUUID();
+      const queued = await meshJsonRequest<ChatMessageResponse>(
+        controller,
+        `/api/chats/${encodeURIComponent(chatId)}/messages`,
+        {
+          method: "POST",
+          body: {
+            message: provider.provider === "copilot"
+              ? "Add both images and keep waiting."
+              : "Inspect both attached images.",
+            attachments: [image, secondImage],
+            clientId,
+          },
+        },
+      );
+      expect(queued.status).toBe(200);
+      const queuedInput = queued.body.chat.state.queuedMessages?.find(
+        (message) => message.content === (
+          provider.provider === "copilot"
+            ? "Add both images and keep waiting."
+            : "Inspect both attached images."
+        ),
+      );
+      expect(queuedInput).toBeDefined();
+
+      const excessiveQueued = await meshJsonRequest<unknown>(
+        controller,
+        `/api/chats/${encodeURIComponent(chatId)}/messages`,
+        {
+          method: "POST",
+          body: {
+            message: "Add one more attachment to the same turn.",
+            attachments: [smallImage],
+            clientId,
+          },
+        },
+      );
+      expect(excessiveQueued.status).toBe(413);
+
+      const steered = await meshJsonRequest<ChatSteerResponse>(
+        controller,
+        `/api/chats/${encodeURIComponent(chatId)}/queued-messages/${encodeURIComponent(queuedInput!.id)}/steer`,
+        {
+          method: "POST",
+          body: {},
+          timeoutMs: LARGE_IMAGE_MESH_REQUEST_TIMEOUT_MS,
+        },
+      );
+      expect(steered.status).toBe(200);
+      expect(steered.body.admission.status).toBe("accepted");
+
+      if (provider.provider === "copilot") {
+        await waitForStreamingChat(controller, chatId);
+        const extraQueued = await meshJsonRequest<ChatMessageResponse>(
+          controller,
+          `/api/chats/${encodeURIComponent(chatId)}/messages`,
+          {
+            method: "POST",
+            body: {
+              message: "Try steering one more image.",
+              attachments: [smallImage],
+              clientId: crypto.randomUUID(),
+            },
+          },
+        );
+        expect(extraQueued.status).toBe(200);
+        const extraInput = extraQueued.body.chat.state.queuedMessages?.find(
+          (message) => message.content === "Try steering one more image.",
+        );
+        expect(extraInput).toBeDefined();
+        const excessiveSteering = await meshJsonRequest<unknown>(
+          controller,
+          `/api/chats/${encodeURIComponent(chatId)}/queued-messages/${encodeURIComponent(extraInput!.id)}/steer`,
+          { method: "POST", body: {} },
+        );
+        expect(excessiveSteering.status).toBe(413);
+        const removed = await meshJsonRequest<Chat>(
+          controller,
+          `/api/chats/${encodeURIComponent(chatId)}/queued-messages/${encodeURIComponent(extraInput!.id)}`,
+          { method: "DELETE" },
+        );
+        expect(removed.status).toBe(200);
+
+        const finishQueued = await meshJsonRequest<ChatMessageResponse>(
+          controller,
+          `/api/chats/${encodeURIComponent(chatId)}/messages`,
+          {
+            method: "POST",
+            body: {
+              message: "Finish the request.",
+              attachments: [],
+              clientId: crypto.randomUUID(),
+            },
+          },
+        );
+        expect(finishQueued.status).toBe(200);
+        const finishInput = finishQueued.body.chat.state.queuedMessages?.find(
+          (message) => message.content === "Finish the request.",
+        );
+        expect(finishInput).toBeDefined();
+        const finished = await meshJsonRequest<ChatSteerResponse>(
+          controller,
+          `/api/chats/${encodeURIComponent(chatId)}/queued-messages/${encodeURIComponent(finishInput!.id)}/steer`,
+          { method: "POST", body: {} },
+        );
+        expect(finished.status).toBe(200);
+        expect(finished.body.admission.status).toBe("accepted");
+      }
+
+      expect((await waitForIdleChat(controller, chatId)).state.status).toBe("idle");
       const snapshot = await pollUntil(
         async () => await meshJsonRequest<ChatSnapshot>(
           controller,
-          `/api/chats/${encodeURIComponent(createdChat.body.config.id)}/snapshot?full=1`,
+          `/api/chats/${encodeURIComponent(chatId)}/snapshot?full=1`,
         ),
         (response) => response.status === 200
           && response.body.transcript.messages.some(
-            (message) => message.role === "assistant" && message.content.includes(IMAGE_RECEIPT),
+            (message) => message.role === "assistant"
+              && message.content.split(IMAGE_RECEIPT).length - 1 === 2,
           ),
         {
-          description: `${provider.provider} public chat response to confirm large-image receipt`,
+          description: `${provider.provider} public chat response to confirm both large-image receipts`,
           timeoutMs: 10_000,
           formatLastObserved: (response) => JSON.stringify(
             response.body.transcript.messages
@@ -331,7 +507,8 @@ test("compiled Mesh hosts deliver large images to native Codex and Copilot", asy
         },
       );
       expect(snapshot.body.transcript.messages.some(
-        (message) => message.role === "assistant" && message.content.includes(IMAGE_RECEIPT),
+        (message) => message.role === "assistant"
+          && message.content.split(IMAGE_RECEIPT).length - 1 === 2,
       )).toBe(true);
     }
   } catch (error) {

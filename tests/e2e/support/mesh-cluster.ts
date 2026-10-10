@@ -10,6 +10,7 @@ import { pollUntil } from "./polling";
 import { currentEnvironment, waitForExit } from "./process";
 import {
   LIFECYCLE_TIMEOUT_MS,
+  MESH_STARTUP_TIMEOUT_MS,
   OPERATION_TIMEOUT_MS,
   operationSignal,
 } from "./timeouts";
@@ -361,7 +362,7 @@ export async function startMeshNode(options: {
     await waitForNodeHealth(
       node,
       `${role} to become healthy`,
-      options.timeoutMs ?? LIFECYCLE_TIMEOUT_MS,
+      options.timeoutMs ?? MESH_STARTUP_TIMEOUT_MS,
     );
     return node;
   } catch (error) {
@@ -419,7 +420,7 @@ export async function startMeshRelay(options: {
     await waitForNodeHealth(
       relay,
       "relay to become healthy",
-      options.timeoutMs ?? LIFECYCLE_TIMEOUT_MS,
+      options.timeoutMs ?? MESH_STARTUP_TIMEOUT_MS,
     );
     return relay;
   } catch (error) {

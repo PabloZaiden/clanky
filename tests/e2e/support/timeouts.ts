@@ -4,6 +4,7 @@
 
 export const OPERATION_TIMEOUT_MS = 5_000;
 export const LIFECYCLE_TIMEOUT_MS = 10_000;
+export const MESH_STARTUP_TIMEOUT_MS = process.platform === "win32" ? 30_000 : LIFECYCLE_TIMEOUT_MS;
 
 export function operationSignal(
   parentSignal?: AbortSignal | null,

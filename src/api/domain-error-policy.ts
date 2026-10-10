@@ -102,6 +102,7 @@ const API_DOMAIN_ERROR_CODES = {
   acp_ssh_authentication_failed: true,
   acp_unsupported_prompt_capability: true,
   [CHAT_WORKTREE_BRANCH_CONFLICT_CODE]: true,
+  chat_attachment_budget_exceeded: true,
   chat_context_unavailable: true,
   chat_not_found: true,
   agent_already_running: true,
@@ -593,6 +594,10 @@ const POLICY_PROFILES = {
     boundary: "authenticated",
     mappings: {
       ...COMMON_MAPPINGS,
+      chat_attachment_budget_exceeded: {
+        status: 413,
+        message: "The combined attachments in a chat turn cannot exceed 40 MiB.",
+      },
       chat_context_unavailable: {
         status: 409,
         message: "The source chat's workspace directory or execution target is unavailable.",

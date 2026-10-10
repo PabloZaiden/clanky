@@ -309,7 +309,11 @@ export class ChatStateService implements ChatStatePort {
         ...(code ? { code } : {}),
       },
       completedAt: now,
-      harness: { ...chat.state.harness, questions: closeOpenQuestions(chat.state.harness?.questions, "expired") },
+      harness: {
+        ...chat.state.harness,
+        activeTurnAttachmentBytes: 0,
+        questions: closeOpenQuestions(chat.state.harness?.questions, "expired"),
+      },
       startupStage: undefined,
       pendingPermissionRequests: (chat.state.pendingPermissionRequests ?? []).map((request) =>
         request.status === "pending"
