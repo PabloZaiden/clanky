@@ -328,7 +328,7 @@ test("compiled controller and worker execute an ACP chat across Mesh and reconne
                 "-Command",
                 [
                   `$tracePath = '${providerTracePath.replaceAll("'", "''")}'`,
-                  "$trace = if (Test-Path -LiteralPath $tracePath) { Get-Content -Raw -LiteralPath $tracePath } else { '<missing>' }",
+                  "$trace = if (Test-Path -LiteralPath $tracePath) { [IO.File]::ReadAllText($tracePath) } else { '<missing>' }",
                   "$processes = Get-CimInstance Win32_Process | Where-Object { $_.Name -in @('bun.exe', 'cmd.exe', 'clanky.exe') } | Select-Object ProcessId, ParentProcessId, Name, CommandLine",
                   "[pscustomobject]@{ trace = $trace; processes = @($processes) } | ConvertTo-Json -Depth 4 -Compress",
                 ].join("; "),
