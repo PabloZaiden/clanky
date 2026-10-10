@@ -11,6 +11,7 @@ import {
 } from "./process";
 
 export interface ManagedVoiceProvider {
+  apiKey: string;
   baseUrl: string;
   certificatePath: string;
   server: Bun.Server<undefined>;
@@ -35,6 +36,8 @@ export async function startVoiceProvider(
   const keyPath = join(directory, "tls.key");
   const certificatePath = join(directory, "tls.crt");
   const address = randomPublicAddress();
+  const apiKey = "voice-e2e-secret";
+  const authorization = ["Bearer", apiKey].join(" ");
   const port = await findFreeLoopbackPort();
   await mkdir(directory, { recursive: true, mode: 0o700 });
   await requireCommand([
@@ -78,8 +81,8 @@ export async function startVoiceProvider(
       fetch(request) {
         const url = new URL(request.url);
         if (
-          !request.headers.get("authorization")?.startsWith("Bearer ")
-          || !request.headers.get("api-key")
+          request.headers.get("authorization") !== authorization
+          || request.headers.get("api-key") !== apiKey
         ) {
           return Response.json({ error: "unauthorized" }, { status: 401 });
         }
@@ -101,6 +104,7 @@ export async function startVoiceProvider(
     });
     return {
       address,
+      apiKey,
       baseUrl: `https://${address}:${String(port)}/v1`,
       certificatePath,
       server,

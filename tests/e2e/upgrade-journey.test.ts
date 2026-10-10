@@ -9,6 +9,9 @@ interface UpgradeManifest {
     tag: string;
     schemaVersion: number;
   };
+  generation: {
+    dataDirectorySnapshotSha256: string;
+  };
   expected: {
     apiKey: string;
     chat: string;
@@ -75,11 +78,20 @@ async function restorePreviousVersionData(
   const manifest = await Bun.file(
     join(FIXTURE_DIRECTORY, "manifest.json"),
   ).json() as UpgradeManifest;
+  const archivePath = join(FIXTURE_DIRECTORY, "data-directory.tar.gz");
+  const actualSha256 = new Bun.CryptoHasher("sha256")
+    .update(await Bun.file(archivePath).arrayBuffer())
+    .digest("hex");
+  if (actualSha256 !== manifest.generation.dataDirectorySnapshotSha256) {
+    throw new Error(
+      `Upgrade fixture checksum mismatch: expected ${manifest.generation.dataDirectorySnapshotSha256}, received ${actualSha256}`,
+    );
+  }
   await requireCommand(
     [
       "tar",
       "-xzf",
-      join(FIXTURE_DIRECTORY, "data-directory.tar.gz"),
+      archivePath,
       "-C",
       app.dataDirectory,
     ],

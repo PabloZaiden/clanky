@@ -569,7 +569,7 @@ async function exerciseVoice(
       method: "PUT",
       body: JSON.stringify({
         baseUrl: provider.baseUrl,
-        apiKey: "voice-e2e-secret",
+        apiKey: provider.apiKey,
         models: {
           transcription: "fixture-transcription",
           text: "fixture-text",
@@ -619,23 +619,7 @@ async function exerciseVoice(
     validated: true,
   });
 
-  const form = new FormData();
-  form.append(
-    "file",
-    new File(
-      [new Uint8Array([0x52, 0x49, 0x46, 0x46, 0x57, 0x41, 0x56, 0x45])],
-      "voice-e2e.wav",
-      { type: "audio/wav" },
-    ),
-  );
-  const transcription = await app.request("/api/voice/transcribe", {
-    method: "POST",
-    body: form,
-  });
-  expect(transcription.status).toBe(200);
-  expect(await transcription.json()).toEqual({
-    text: "transcribed by the external voice fixture",
-  });
+  await expectVoiceTranscription(app);
 
   await app.restart({
     env: {
@@ -655,6 +639,27 @@ async function exerciseVoice(
         validated: true,
       },
     },
+  });
+  await expectVoiceTranscription(app);
+}
+
+async function expectVoiceTranscription(app: E2EApplication): Promise<void> {
+  const form = new FormData();
+  form.append(
+    "file",
+    new File(
+      [new Uint8Array([0x52, 0x49, 0x46, 0x46, 0x57, 0x41, 0x56, 0x45])],
+      "voice-e2e.wav",
+      { type: "audio/wav" },
+    ),
+  );
+  const transcription = await app.request("/api/voice/transcribe", {
+    method: "POST",
+    body: form,
+  });
+  expect(transcription.status).toBe(200);
+  expect(await transcription.json()).toEqual({
+    text: "transcribed by the external voice fixture",
   });
 }
 
