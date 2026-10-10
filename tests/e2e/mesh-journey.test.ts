@@ -180,6 +180,7 @@ async function waitForIdleChat(
 test("compiled controller and worker execute an ACP chat across Mesh and reconnect", async () => {
   const fixtureDirectory = await mkdtemp(join(tmpdir(), "clanky-mesh-e2e-"));
   const providerBinDirectory = join(fixtureDirectory, "bin");
+  const providerTracePath = join(fixtureDirectory, "provider-trace.log");
   const homeDirectory = join(fixtureDirectory, "home");
   const nodes: ManagedMeshNode[] = [];
   try {
@@ -205,6 +206,7 @@ test("compiled controller and worker execute an ACP chat across Mesh and reconne
       environment: {
         HOME: homeDirectory,
         PATH: `${providerBinDirectory}${delimiter}${process.env["PATH"] ?? ""}`,
+        CLANKY_E2E_ACP_TRACE_FILE: providerTracePath,
         CLANKY_LOG_LEVEL: process.platform === "win32" ? "error" : undefined,
       },
     });
@@ -302,11 +304,48 @@ test("compiled controller and worker execute an ACP chat across Mesh and reconne
     );
     expect(createdWorkspace.status).toBe(201);
 
-    const models = await meshJsonRequest<Model[]>(
-      controller,
-      `/api/models?workspaceId=${encodeURIComponent(createdWorkspace.body.id)}`,
-      { timeoutMs: 10_000 },
-    );
+    await Bun.write(providerTracePath, `${String(Date.now())} request:models\n`);
+    let models: Awaited<ReturnType<typeof meshJsonRequest<Model[]>>>;
+    try {
+      models = await meshJsonRequest<Model[]>(
+        controller,
+        `/api/models?workspaceId=${encodeURIComponent(createdWorkspace.body.id)}`,
+        { timeoutMs: 10_000 },
+      );
+    } catch (error) {
+      let diagnostics = "unavailable";
+      if (process.platform === "win32") {
+        try {
+          const diagnosticResult = await executeOnWorker(
+            controller,
+            registration.workerNodeId,
+            {
+              command: "powershell.exe",
+              args: [
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                [
+                  `$tracePath = '${providerTracePath.replaceAll("'", "''")}'`,
+                  "$trace = if (Test-Path -LiteralPath $tracePath) { Get-Content -Raw -LiteralPath $tracePath } else { '<missing>' }",
+                  "$processes = Get-CimInstance Win32_Process | Where-Object { $_.Name -in @('bun.exe', 'cmd.exe', 'clanky.exe') } | Select-Object ProcessId, ParentProcessId, Name, CommandLine",
+                  "[pscustomobject]@{ trace = $trace; processes = @($processes) } | ConvertTo-Json -Depth 4 -Compress",
+                ].join("; "),
+              ],
+              cwd: worker.dataDir,
+            },
+          );
+          diagnostics = diagnosticResult.stdout.trim();
+        } catch (diagnosticError) {
+          diagnostics = `capture failed: ${String(diagnosticError)}`;
+        }
+      }
+      throw new Error(
+        `${String(error)}\nWindows ACP diagnostics: ${diagnostics}`,
+        { cause: error },
+      );
+    }
     if (models.status !== 200) {
       throw new Error(
         `Mesh model discovery failed: HTTP ${String(models.status)} ${JSON.stringify(models.body)}`,

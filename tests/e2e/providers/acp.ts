@@ -6,6 +6,7 @@
  */
 
 import { createInterface } from "node:readline";
+import { appendFileSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 
@@ -35,6 +36,18 @@ type JsonRpcMessage = {
   result?: unknown;
   error?: JsonRpcError;
 };
+
+function traceProvider(event: string): void {
+  const tracePath = process.env["CLANKY_E2E_ACP_TRACE_FILE"];
+  if (!tracePath) {
+    return;
+  }
+  try {
+    appendFileSync(tracePath, `${String(Date.now())} ${event}\n`, "utf8");
+  } catch (error) {
+    process.stderr.write(`mock-acp-server: failed to write trace: ${String(error)}\n`);
+  }
+}
 
 type ClientCapabilities = {
   fs: {
@@ -279,6 +292,7 @@ class MockAcpServer {
   private nextQuestionId = 1;
 
   async start(): Promise<void> {
+    traceProvider("started");
     const lineReader = createInterface({ input: process.stdin, crlfDelay: Infinity });
 
     for await (const line of lineReader) {
@@ -304,6 +318,7 @@ class MockAcpServer {
     }
 
     const message = parsed as JsonRpcMessage;
+    traceProvider(`received:${message.method ?? "response"}`);
 
     if (message.method) {
       const params = isRecord(message.params) ? message.params : {};
@@ -1303,6 +1318,7 @@ class MockAcpServer {
   }
 
   private writeMessage(message: JsonRpcMessage): void {
+    traceProvider(`sent:${message.method ?? (message.error ? "error" : "response")}`);
     process.stdout.write(`${JSON.stringify(message)}\n`);
   }
 
