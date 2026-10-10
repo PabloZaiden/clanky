@@ -1,6 +1,7 @@
 /**
  * Provider-neutral execution events, separate from scheduled Clanky Agent events.
  */
+import type { MessageAttachment } from "@/shared/message-attachments";
 
 export const HARNESS_ADAPTER_IDS = ["acp", "copilot", "codex", "opencode2"] as const;
 export type HarnessAdapter = typeof HARNESS_ADAPTER_IDS[number];
@@ -46,7 +47,12 @@ export type HarnessEventPayload =
   | { type: "user.message"; content: string }
   | { type: "message.start"; messageId: string }
   | { type: "message.delta"; content: string }
-  | { type: "message.complete"; content: string }
+  | {
+      type: "message.complete";
+      content: string;
+      messageId?: string;
+      attachments?: MessageAttachment[];
+    }
   | { type: "reasoning.delta"; content: string }
   | { type: "tool.start"; toolCallId?: string; toolName: string; input: unknown }
   | { type: "tool.complete"; toolCallId?: string; toolName: string; input?: unknown; output: unknown }

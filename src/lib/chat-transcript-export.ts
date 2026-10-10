@@ -89,7 +89,9 @@ function formatMessageContent(message: PersistedMessage): string {
     return content;
   }
 
-  return "_Attachment sent. Attachment data is not included in this transcript._";
+  return message.role === "assistant"
+    ? "_Generated image attachment. Image data is not included in this transcript._"
+    : "_Attachment sent. Attachment data is not included in this transcript._";
 }
 
 function buildEntries(chat: Chat): TranscriptEntry[] {

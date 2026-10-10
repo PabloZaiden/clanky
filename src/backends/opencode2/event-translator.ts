@@ -5,6 +5,10 @@
 import type { OpenCodeEvent, SessionEventDurable } from "@opencode/client";
 import type { HarnessEvent, HarnessEventPayload, HarnessEventScope } from "@/shared/harness-events";
 import { HarnessError } from "../harness-errors";
+import {
+  projectProviderImageOutput,
+  redactProviderImagePayloads,
+} from "../provider-image-output";
 
 export class OpenCodeEventTranslator {
   private readonly messages = new Map<string, Map<number, string>>();
@@ -73,10 +77,14 @@ export class OpenCodeEventTranslator {
       case "session.tool.failed": {
         const toolName = this.requireTool(event.data.id);
         this.tools.delete(event.data.id);
+        const output = event.type === "session.tool.success" ? event.data.content : event.data.error;
+        const projection = event.type === "session.tool.success"
+          ? projectProviderImageOutput(output, `opencode-tool:${event.data.id}`)
+          : undefined;
         return [wrap({
           type: "tool.complete", toolCallId: event.data.id, toolName,
-          output: event.type === "session.tool.success" ? event.data.content : event.data.error,
-        })];
+          output: projection?.output ?? redactProviderImagePayloads(output),
+        }), ...(projection?.events ?? []).map(wrap)];
       }
       case "session.retry.scheduled":
         return [wrap({

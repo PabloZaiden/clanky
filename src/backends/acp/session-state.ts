@@ -243,6 +243,11 @@ export class SessionStateStore implements SessionEventSink {
     this.sessionMessageContent.set(sessionId, "");
   }
 
+  endMessage(sessionId: string): void {
+    this.sessionMessageStarted.set(sessionId, false);
+    this.sessionMessageContent.set(sessionId, "");
+  }
+
   /**
    * Normalize an assistant message chunk into a delta relative to previously
    * accumulated content, updating the accumulator.

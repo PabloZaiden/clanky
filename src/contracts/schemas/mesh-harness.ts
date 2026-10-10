@@ -3,9 +3,11 @@
  */
 import { z } from "zod";
 import { HarnessConversationBindingSchema, HarnessEventScopeSchema, HarnessQuestionInfoSchema } from "./harness";
+import { MessageAttachmentsSchema } from "./task";
 import { MESH_PROTOCOL_VERSION } from "@/shared/mesh-protocol";
 import { MESH_HARNESS_MAX_CIPHERTEXT_BYTES } from "@/shared/mesh-execution";
 import { ClankyControlContextSchema } from "@/shared/clanky-control";
+import { MESSAGE_IMAGE_ALLOWED_MIME_TYPES } from "@/shared/message-attachments";
 
 const Id = z.string().min(1).max(500);
 const Path = z.string().min(1).max(16_384);
@@ -22,6 +24,17 @@ const Prompt = z.object({
 const Session = z.object({ sessionId: Id });
 const InputRecovery = z.object({
   inputId: Id, nativeMessageId: Id.optional(), nativeClientInputId: Id.optional(), nativeTurnId: Id.optional(),
+});
+const ProviderImageAttachmentsSchema = MessageAttachmentsSchema.superRefine((attachments, ctx) => {
+  attachments.forEach((attachment, index) => {
+    if (!(MESSAGE_IMAGE_ALLOWED_MIME_TYPES as readonly string[]).includes(attachment.mimeType)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [index, "mimeType"],
+        message: "provider output attachments must be supported images",
+      });
+    }
+  });
 });
 
 export const MeshHarnessOperationSchema = z.discriminatedUnion("operation", [
@@ -68,7 +81,12 @@ export const MeshHarnessEventSchema = z.intersection(z.discriminatedUnion("type"
   z.object({ type: z.literal("user.message"), content: z.string() }),
   z.object({ type: z.literal("message.start"), messageId: Id }),
   z.object({ type: z.literal("message.delta"), content: z.string() }),
-  z.object({ type: z.literal("message.complete"), content: z.string() }),
+  z.object({
+    type: z.literal("message.complete"),
+    content: z.string(),
+    messageId: Id.optional(),
+    attachments: ProviderImageAttachmentsSchema.optional(),
+  }),
   z.object({ type: z.literal("reasoning.delta"), content: z.string() }),
   z.object({ type: z.literal("tool.start"), toolCallId: Id.optional(), toolName: Id, input: z.unknown() }),
   z.object({ type: z.literal("tool.complete"), toolCallId: Id.optional(), toolName: Id, input: z.unknown().optional(), output: z.unknown() }),

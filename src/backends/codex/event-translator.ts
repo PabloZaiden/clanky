@@ -7,6 +7,10 @@ import type { CodexNotification } from "./protocol";
 import type { ThreadItem } from "./generated/v2/ThreadItem";
 import { HarnessError } from "../harness-errors";
 import { formatHarnessQuestions } from "@/shared/harness-questions";
+import {
+  projectProviderImageOutput,
+  redactProviderImagePayloads,
+} from "../provider-image-output";
 
 export class CodexEventTranslator {
   private readonly messages = new Set<string>();
@@ -74,6 +78,12 @@ export class CodexEventTranslator {
   }
 
   private translateItem(item: ThreadItem, completed: boolean): HarnessEventPayload[] {
+    if (item.type === "imageGeneration") {
+      if (completed && item.status === "completed" && item.failure === null) {
+        return projectProviderImageOutput(item, `codex-image:${item.id}`).events;
+      }
+      return [];
+    }
     if (item.type === "agentMessage") {
       const events = this.startMessage(item.id);
       if (completed) {
@@ -100,8 +110,24 @@ export class CodexEventTranslator {
             : item.type === "collabAgentToolCall" ? item.tool
               : item.type === "webSearch" ? "web_search" : undefined;
     if (!toolName) return [];
-    return completed
-      ? [{ type: "tool.complete", toolCallId: item.id, toolName, output: item }]
-      : [{ type: "tool.start", toolCallId: item.id, toolName, input: item }];
+    if (!completed) {
+      return [{ type: "tool.start", toolCallId: item.id, toolName, input: item }];
+    }
+
+    const status = "status" in item ? item.status : undefined;
+    const failed = typeof status === "string"
+      && ["failed", "cancelled", "canceled", "error"].includes(status);
+    const projection = failed
+      ? undefined
+      : projectProviderImageOutput(item, `codex-tool:${item.id}`);
+    return [
+      {
+        type: "tool.complete",
+        toolCallId: item.id,
+        toolName,
+        output: projection?.output ?? redactProviderImagePayloads(item),
+      },
+      ...(projection?.events ?? []),
+    ];
   }
 }

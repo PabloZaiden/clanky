@@ -1,5 +1,6 @@
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
+export const E2E_IMAGE_DATA = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
 export const IMAGE_RECEIPT = "E2E image received: image/png; PNG signature OK";
 
 function isRecord(value: unknown): value is Record<string, unknown> {

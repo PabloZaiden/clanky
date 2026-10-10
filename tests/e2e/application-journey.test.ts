@@ -11,6 +11,7 @@ import {
 } from "./support/git";
 import { runProductionHttpSmoke } from "./support/http-smoke";
 import { pollUntil } from "./support/polling";
+import { E2E_IMAGE_DATA } from "./providers/image-input";
 
 interface ExecutionHost {
   ref: Record<string, string>;
@@ -114,7 +115,9 @@ interface ChatSnapshot {
     messages: Array<{
       role: string;
       content: string;
+      attachments?: Array<{ data: string; mimeType: string }>;
     }>;
+    toolCalls?: Array<{ output: unknown }>;
   };
 }
 
@@ -997,6 +1000,53 @@ test("compiled Clanky completes its principal local user journey", async () => {
     );
     expect((await waitForChatIdle(application, chat.config.id)).state.status).toBe("idle");
 
+    const generatedImagePrompt = "Generate a deterministic image [generated-image-output].";
+    await application.json(
+      `/api/chats/${chat.config.id}/messages`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          message: generatedImagePrompt,
+          attachments: [],
+        }),
+      },
+    );
+    expect((await waitForChatIdle(application, chat.config.id)).state.status).toBe("idle");
+    const imageSnapshot = await pollUntil(
+      async () => (
+        await application.json<ChatSnapshot>(`/api/chats/${chat.config.id}/snapshot?full=1`)
+      ).data,
+      (candidate) => candidate.transcript.messages
+        .filter((message) => message.role === "assistant")
+        .reduce((count, message) => count + (message.attachments?.filter(
+          (attachment) => attachment.mimeType === "image/png" && attachment.data === E2E_IMAGE_DATA,
+        ).length ?? 0), 0) >= 2,
+      {
+        description: "ACP image outputs to appear as standalone assistant attachments",
+        timeoutMs: 10_000,
+        formatLastObserved: (candidate) => JSON.stringify({
+          assistantMessages: candidate.transcript.messages
+            .filter((message) => message.role === "assistant")
+            .map((message) => ({
+              content: message.content.slice(0, 300),
+              attachmentCount: message.attachments?.length ?? 0,
+            })),
+        }),
+      },
+    );
+    expect(imageSnapshot.transcript.messages.some(
+      (message) => message.role === "assistant" && message.content.length > 0,
+    )).toBe(true);
+    const generatedImageMessages = imageSnapshot.transcript.messages
+      .filter((message) => message.role === "assistant")
+      .filter((message) => message.content === ""
+        && message.attachments?.some(
+          (attachment) => attachment.mimeType === "image/png" && attachment.data === E2E_IMAGE_DATA,
+        ));
+    expect(generatedImageMessages).toHaveLength(2);
+    expect(generatedImageMessages.every((message) => message.attachments?.length === 1)).toBe(true);
+    expect(JSON.stringify(imageSnapshot.transcript.toolCalls ?? [])).not.toContain(E2E_IMAGE_DATA);
+
     const snapshot = (await application.json<ChatSnapshot>(
       `/api/chats/${chat.config.id}/snapshot?full=1`,
     )).data;
@@ -1281,6 +1331,16 @@ test("compiled Clanky completes its principal local user journey", async () => {
       }));
 
       await application.restart();
+      const persistedImageSnapshot = (await application.json<ChatSnapshot>(
+        `/api/chats/${chat.config.id}/snapshot?full=1`,
+      )).data;
+      expect(persistedImageSnapshot.transcript.messages.some(
+        (message) => message.role === "assistant"
+          && message.content === ""
+          && message.attachments?.some(
+            (attachment) => attachment.mimeType === "image/png" && attachment.data === E2E_IMAGE_DATA,
+          ),
+      )).toBe(true);
       const addressedFeedbackTask = await waitForTask(
         application,
         autonomousTask.config.id,

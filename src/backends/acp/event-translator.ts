@@ -13,6 +13,11 @@ import type { QuestionInfo } from "../types";
 import { isRecord, getString, getNumber, firstString } from "./json-helpers";
 import type { SessionStateStore } from "./session-state";
 import type { CapabilityService } from "./capability-service";
+import {
+  projectProviderImageOutput,
+  redactProviderImagePayloads,
+  type ProviderImageOutputProjection,
+} from "../provider-image-output";
 
 const TOOL_TERMINAL_STATUSES: ReadonlySet<string> = new Set([
   "completed",
@@ -38,9 +43,9 @@ export class AcpEventTranslator {
     log.trace("[AcpBackend] Raw session/update", {
       sessionId,
       updateType,
-      params,
-      updateObj,
-      content,
+      params: redactProviderImagePayloads(params),
+      updateObj: redactProviderImagePayloads(updateObj),
+      content: redactProviderImagePayloads(content),
     });
 
     if (!sessionId || !updateType) {
@@ -102,7 +107,25 @@ export class AcpEventTranslator {
     }
 
     if (updateType === "agent_message_chunk") {
-      const text = getString(content["text"]) ?? "";
+      const imageProjection = projectProviderImageOutput(
+        updateObj["content"],
+        `acp-message:${sessionId}:${crypto.randomUUID()}`,
+      );
+      if (imageProjection.events.length > 0) {
+        this.state.markPromptActivity(sessionId);
+        this.state.clearIgnoreStatusUntilActivity(sessionId);
+        this.emitProviderImageEvents(sessionId, imageProjection);
+      }
+
+      const rawContent = updateObj["content"];
+      const text = getString(content["text"])
+        ?? (Array.isArray(rawContent)
+          ? rawContent
+            .filter((block): block is Record<string, unknown> => isRecord(block))
+            .map((block) => getString(block["text"]))
+            .filter((blockText): blockText is string => blockText !== undefined)
+            .join("")
+          : "");
       if (text.length === 0) {
         return;
       }
@@ -163,10 +186,10 @@ export class AcpEventTranslator {
         sessionId,
         toolCallId,
         toolName,
-        contentInput: content["input"],
-        updateInput: updateObj["input"],
-        rawInput: updateObj["rawInput"],
-        fullUpdate: updateObj,
+        contentInput: redactProviderImagePayloads(content["input"]),
+        updateInput: redactProviderImagePayloads(updateObj["input"]),
+        rawInput: redactProviderImagePayloads(updateObj["rawInput"]),
+        fullUpdate: redactProviderImagePayloads(updateObj),
       });
       this.state.emitSessionEvent(sessionId, {
         type: "tool.start",
@@ -202,22 +225,33 @@ export class AcpEventTranslator {
         toolCallId,
         toolName,
         status,
-        contentOutput: content["output"],
-        updateOutput: updateObj["output"],
-        rawOutput: updateObj["rawOutput"],
-        fullUpdate: updateObj,
+        contentOutput: redactProviderImagePayloads(content["output"]),
+        updateOutput: redactProviderImagePayloads(updateObj["output"]),
+        rawOutput: redactProviderImagePayloads(updateObj["rawOutput"]),
+        fullUpdate: redactProviderImagePayloads(updateObj),
       });
 
       if (status !== undefined && TOOL_TERMINAL_STATUSES.has(status)) {
         const output = this.buildToolOutput(updateObj, content, status);
         const completedInput = updateObj["input"] ?? updateObj["rawInput"] ?? content["input"];
+        const isFailure = status === "failed" || status === "error"
+          || status === "cancelled" || status === "canceled";
+        const projection = isFailure
+          ? undefined
+          : projectProviderImageOutput(
+              output,
+              `acp-tool:${sessionId}:${toolCallId ?? crypto.randomUUID()}`,
+            );
         this.state.emitSessionEvent(sessionId, {
           type: "tool.complete",
           toolCallId,
           toolName,
           input: completedInput,
-          output,
+          output: projection?.output ?? redactProviderImagePayloads(output),
         });
+        if (projection) {
+          this.emitProviderImageEvents(sessionId, projection);
+        }
         if (toolCallId) {
           this.state.deleteToolName(sessionId, toolCallId);
         }
@@ -344,6 +378,18 @@ export class AcpEventTranslator {
         ...(errorMessage ? { error: errorMessage } : {}),
         ...(baseOutput !== undefined ? { output: baseOutput } : {}),
       };
+  }
+
+  private emitProviderImageEvents(
+    sessionId: string,
+    projection: ProviderImageOutputProjection,
+  ): void {
+    for (const payload of projection.events) {
+      this.state.emitSessionEvent(sessionId, payload);
+    }
+    if (projection.events.some((payload) => payload.type === "message.start")) {
+      this.state.endMessage(sessionId);
+    }
   }
 
   private getReasoningPartKey(

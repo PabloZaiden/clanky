@@ -9,6 +9,7 @@ import { createInterface } from "node:readline";
 import { appendFileSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
+import { E2E_IMAGE_DATA } from "./image-input";
 
 const SUPPORTED_PROTOCOL_VERSION = 1;
 const OUTBOUND_REQUEST_TIMEOUT_MS = 5_000;
@@ -921,25 +922,50 @@ class MockAcpServer {
       session.history.push({ role: "assistant", text: chunk });
     }
 
+    const imageOutputRequested = promptText.includes("[generated-image-output]");
+    if (imageOutputRequested) {
+      this.sendNotification("session/update", {
+        sessionId: session.id,
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: {
+            type: "image",
+            mimeType: "image/png",
+            data: E2E_IMAGE_DATA,
+          },
+        },
+      });
+    }
+    const toolOutputContent = [
+      {
+        type: "content",
+        content: {
+          type: "text",
+          text: "Mock tool execution complete.",
+        },
+      },
+      ...(imageOutputRequested ? [{
+        type: "content",
+        content: {
+          type: "image",
+          mimeType: "image/png",
+          data: E2E_IMAGE_DATA,
+        },
+      }] : []),
+    ];
     this.sendNotification("session/update", {
       sessionId: session.id,
       update: {
         sessionUpdate: "tool_call_update",
         toolCallId,
         status: "completed",
-        rawOutput: {
-          summary: "Mock ACP tool finished successfully",
-          responseLength: responseText.length,
-        },
-        content: [
-          {
-            type: "content",
-            content: {
-              type: "text",
-              text: "Mock tool execution complete.",
-            },
+        ...(imageOutputRequested ? {} : {
+          rawOutput: {
+            summary: "Mock ACP tool finished successfully",
+            responseLength: responseText.length,
           },
-        ],
+        }),
+        content: toolOutputContent,
       },
     });
 
