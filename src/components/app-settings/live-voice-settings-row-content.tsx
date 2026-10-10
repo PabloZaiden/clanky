@@ -22,6 +22,7 @@ export function LiveVoiceSettingsRowContent({
   model,
   providerDraft,
   onDraftDirtyChange,
+  onProviderSettingsSaved,
 }: {
   voiceSettings: UseVoiceSettingsResult;
   model: string;
@@ -33,6 +34,7 @@ export function LiveVoiceSettingsRowContent({
     languageHints: VoiceLanguageHint[];
   };
   onDraftDirtyChange: (dirty: boolean) => void;
+  onProviderSettingsSaved: (settings: VoiceSettings) => void;
 }) {
   const { settings, loading, saving } = voiceSettings;
   const [draft, setDraft] = useState(() => toDraft(settings.live));
@@ -66,6 +68,7 @@ export function LiveVoiceSettingsRowContent({
       const next = toDraft(saved.live);
       synced.current = JSON.stringify(next);
       setDraft(next);
+      onProviderSettingsSaved(saved);
     } catch {
       // The hook exposes save errors through the shared settings error state.
     }

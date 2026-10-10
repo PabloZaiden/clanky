@@ -69,6 +69,13 @@ export function VoiceSettingsRowContent({
     || clearApiKey;
   const liveModelDraftIsDirty = draft.liveModel !== lastSyncedDraftRef.current.liveModel;
 
+  function syncSavedSettings(savedSettings: VoiceSettings): void {
+    const savedDraft = toDraft(savedSettings);
+    lastSyncedDraftRef.current = savedDraft;
+    setDraft({ ...savedDraft, apiKey: "" });
+    setClearApiKey(false);
+  }
+
   useEffect(() => {
     const nextSyncedDraft = toDraft(settings);
     const currentDraft = draftRef.current;
@@ -103,10 +110,7 @@ export function VoiceSettingsRowContent({
           model: draft.liveModel,
         },
       });
-      const savedDraft = toDraft(savedSettings);
-      lastSyncedDraftRef.current = savedDraft;
-      setDraft({ ...savedDraft, apiKey: "" });
-      setClearApiKey(false);
+      syncSavedSettings(savedSettings);
     } catch {
       // The hook exposes save errors through the shared settings error state.
     }
@@ -310,6 +314,7 @@ export function VoiceSettingsRowContent({
           languageHints: draft.languageHints,
         }}
         onDraftDirtyChange={setLiveSettingsDraftIsDirty}
+        onProviderSettingsSaved={syncSavedSettings}
       />
       {error ? <SettingsError>{error}</SettingsError> : null}
     </div>
