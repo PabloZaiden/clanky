@@ -9,29 +9,22 @@
 
 import { z } from "zod";
 import {
+  getBase64DecodedByteLength,
   getMessageAttachmentKind,
+  getMessageAttachmentByteLength,
   MESSAGE_ATTACHMENT_LIMIT,
   MESSAGE_ATTACHMENT_MAX_BYTES,
+  MESSAGE_ATTACHMENT_MAX_TURN_BYTES,
   normalizeCommitScope,
 } from "@/shared";
 import { CheapModelSelectionSchema, ModelConfigSchema } from "./model";
-
-/**
- * Approximate the decoded byte size of a base64 string.
- * base64 encodes 3 bytes into 4 characters, plus optional padding.
- */
-function approximateBase64DecodedSize(base64: string): number {
-  const len = base64.length;
-  const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
-  return Math.floor(((len * 3) / 4) - padding);
-}
 
 export const MessageAttachmentSchema = z.object({
   id: z.string().min(1, "attachment id is required"),
   filename: z.string().min(1, "attachment filename is required"),
   mimeType: z.string().min(1, "attachment MIME type is required"),
   data: z.string().min(1, "attachment data is required").refine(
-    (data) => approximateBase64DecodedSize(data) <= MESSAGE_ATTACHMENT_MAX_BYTES,
+    (data) => getBase64DecodedByteLength(data) <= MESSAGE_ATTACHMENT_MAX_BYTES,
     { message: `attachment data exceeds ${MESSAGE_ATTACHMENT_MAX_BYTES} bytes` },
   ),
   size: z.number().int().positive().max(
@@ -50,7 +43,15 @@ export const MessageAttachmentSchema = z.object({
 
 export const MessageAttachmentsSchema = z
   .array(MessageAttachmentSchema)
-  .max(MESSAGE_ATTACHMENT_LIMIT, `no more than ${MESSAGE_ATTACHMENT_LIMIT} attachments can be attached`);
+  .max(MESSAGE_ATTACHMENT_LIMIT, `no more than ${MESSAGE_ATTACHMENT_LIMIT} attachments can be attached`)
+  .superRefine((attachments, ctx) => {
+    if (getMessageAttachmentByteLength(attachments) > MESSAGE_ATTACHMENT_MAX_TURN_BYTES) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `attachments cannot exceed ${MESSAGE_ATTACHMENT_MAX_TURN_BYTES} bytes in a single turn`,
+      });
+    }
+  });
 
 export const TaskPendingInputSchema = z.object({
   id: z.string().min(1),

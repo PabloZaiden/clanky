@@ -5,6 +5,7 @@
 import { z } from "zod";
 import { ExecutionHostBindingSchema } from "./execution-host";
 import { HARNESS_ADAPTER_IDS } from "@/shared/harness-events";
+import { MESSAGE_ATTACHMENT_MAX_TURN_BYTES } from "@/shared/message-attachments";
 
 export const HarnessConversationBindingSchema = z.object({
   adapter: z.enum(HARNESS_ADAPTER_IDS),
@@ -71,6 +72,7 @@ const IdentifiedInputSchema = z.union([
 ]);
 
 export const HarnessConversationStateSchema = z.object({
+  activeTurnAttachmentBytes: z.number().int().nonnegative().max(MESSAGE_ATTACHMENT_MAX_TURN_BYTES).optional(),
   capabilities: z.object({
     adapter: z.enum(HARNESS_ADAPTER_IDS), experimental: z.boolean(),
     steering: z.enum(["unsupported", "active-session", "expected-turn"]),

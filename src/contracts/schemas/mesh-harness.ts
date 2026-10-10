@@ -4,6 +4,7 @@
 import { z } from "zod";
 import { HarnessConversationBindingSchema, HarnessEventScopeSchema, HarnessQuestionInfoSchema } from "./harness";
 import { MESH_PROTOCOL_VERSION } from "@/shared/mesh-protocol";
+import { MESH_HARNESS_MAX_CIPHERTEXT_BYTES } from "@/shared/mesh-execution";
 import { ClankyControlContextSchema } from "@/shared/clanky-control";
 
 const Id = z.string().min(1).max(500);
@@ -53,7 +54,7 @@ export type MeshHarnessOperation = z.infer<typeof MeshHarnessOperationSchema>;
 export const MeshHarnessEncryptedPayloadSchema = z.object({
   __clankyMeshEncrypted: z.literal(true), version: z.literal(1),
   wrappedKey: z.string().min(1).max(16_384), iv: z.string().min(1).max(128),
-  authTag: z.string().min(1).max(128), ciphertext: z.string().max(4 * 1024 * 1024),
+  authTag: z.string().min(1).max(128), ciphertext: z.string().max(MESH_HARNESS_MAX_CIPHERTEXT_BYTES),
 }).strict();
 export const MeshHarnessEnvelopeSchema = z.object({
   protocolVersion: z.literal(MESH_PROTOCOL_VERSION), sessionId: Id,

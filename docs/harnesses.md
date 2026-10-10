@@ -69,6 +69,10 @@ small **Steer** text action beneath that queued input to inject it into the
 current execution. This does not cancel/restart the turn or switch its model.
 Ordinary queueing and interrupt-and-send remain separate actions.
 
+Attachments are limited to 20 MiB per file and 40 MiB total per provider turn.
+The total includes messages grouped from the queue and images steered into an
+active turn.
+
 `accepted` means native admission, not delivery or model obedience.
 `delivered` means native history confirms the message. An `unknown` admission
 retains the input and blocks deletion, replacement or blind resend. Clanky

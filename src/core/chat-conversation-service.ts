@@ -27,6 +27,7 @@ import type {
   TranscriptChangeSet,
 } from "@/shared";
 import { createTranscriptChangeSet } from "@/shared";
+import { getMessageAttachmentByteLength } from "@/shared/message-attachments";
 import {
   ChatBusyError,
   getChatWorkspaceId,
@@ -216,7 +217,12 @@ export class ChatConversationService implements ChatConversationPort {
           completedAt: undefined,
           activeMessageId: undefined,
           interruptRequested: false,
-          harness: answerInputId ? updateQuestionAnswerStatus(answerHarness, answerInputId, "submitting") : chat.state.harness,
+          harness: {
+            ...(answerInputId
+              ? updateQuestionAnswerStatus(answerHarness, answerInputId, "submitting")
+              : chat.state.harness),
+            activeTurnAttachmentBytes: getMessageAttachmentByteLength(input.attachments),
+          },
         },
         chat.state.status,
       ));
@@ -773,6 +779,10 @@ export class ChatConversationService implements ChatConversationPort {
       error: undefined,
       interruptRequested: false,
       activeMessageId: undefined,
+      harness: {
+        ...streamState.chat.state.harness,
+        activeTurnAttachmentBytes: 0,
+      },
       pendingPermissionRequests: this.resolvePendingPermissionRequests(
         streamState.chat.state.pendingPermissionRequests ?? [],
         {
@@ -1096,6 +1106,10 @@ export class ChatConversationService implements ChatConversationPort {
             startupStage: undefined,
             activeMessageId: undefined,
             interruptRequested: false,
+            harness: {
+              ...streamState.chat.state.harness,
+              activeTurnAttachmentBytes: 0,
+            },
             lastActivityAt: createTimestamp(),
           });
         }
@@ -1710,7 +1724,11 @@ export class ChatConversationService implements ChatConversationPort {
         status: "cancelled",
         resolvedAt: now,
       }),
-      harness: { ...chat.state.harness, questions: closeOpenQuestions(chat.state.harness?.questions, "cancelled") },
+      harness: {
+        ...chat.state.harness,
+        activeTurnAttachmentBytes: 0,
+        questions: closeOpenQuestions(chat.state.harness?.questions, "cancelled"),
+      },
       toolCalls,
       lastActivityAt: now,
     };

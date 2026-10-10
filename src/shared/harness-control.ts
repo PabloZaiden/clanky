@@ -93,6 +93,7 @@ export interface HarnessInputReceipt {
 
 export interface HarnessConversationState {
   capabilities?: HarnessCapabilities;
+  activeTurnAttachmentBytes?: number;
   activity?: HarnessActivitySnapshot;
   cleanup?: HarnessCleanupResult;
   gitSafety?: HarnessGitSafety;

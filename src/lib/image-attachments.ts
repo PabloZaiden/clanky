@@ -2,10 +2,12 @@ import type { ComposerAttachment, MessageAttachment } from "@/shared/message-att
 import {
   getCanonicalMessageAttachmentMimeType,
   getMessageAttachmentKind,
+  getMessageAttachmentByteLength,
   MESSAGE_ATTACHMENT_ACCEPT,
   MESSAGE_ATTACHMENT_ALLOWED_MIME_TYPES,
   MESSAGE_ATTACHMENT_LIMIT,
   MESSAGE_ATTACHMENT_MAX_BYTES,
+  MESSAGE_ATTACHMENT_MAX_TURN_BYTES,
   MESSAGE_IMAGE_ALLOWED_MIME_TYPES,
   MESSAGE_IMAGE_ACCEPT,
 } from "@/shared/message-attachments";
@@ -54,14 +56,15 @@ export function getClipboardAttachmentFiles(
 
 export async function createComposerAttachments(
   files: File[],
-  existingCount = 0,
+  existingAttachments: readonly Pick<MessageAttachment, "data">[] = [],
 ): Promise<ComposerAttachment[]> {
-  if (existingCount + files.length > MESSAGE_ATTACHMENT_LIMIT) {
+  if (existingAttachments.length + files.length > MESSAGE_ATTACHMENT_LIMIT) {
     throw new Error(`You can attach up to ${MESSAGE_ATTACHMENT_LIMIT} files at a time.`);
   }
 
   const nextAttachments: ComposerAttachment[] = [];
   try {
+    let totalAttachmentBytes = getMessageAttachmentByteLength(existingAttachments);
     for (const file of files) {
       const metadata = { filename: file.name, mimeType: file.type };
       const kind = getMessageAttachmentKind(metadata);
@@ -73,6 +76,10 @@ export async function createComposerAttachments(
 
       if (file.size > MESSAGE_ATTACHMENT_MAX_BYTES) {
         throw new Error(`${file.name} is larger than ${Math.floor(MESSAGE_ATTACHMENT_MAX_BYTES / (1024 * 1024))}MB.`);
+      }
+      totalAttachmentBytes += file.size;
+      if (totalAttachmentBytes > MESSAGE_ATTACHMENT_MAX_TURN_BYTES) {
+        throw new Error("Attachments in a chat turn cannot exceed 40 MiB in total.");
       }
 
       const dataUrl = await readFileAsDataUrl(file);
@@ -126,6 +133,7 @@ export {
   MESSAGE_ATTACHMENT_ACCEPT,
   MESSAGE_ATTACHMENT_LIMIT,
   MESSAGE_ATTACHMENT_MAX_BYTES,
+  MESSAGE_ATTACHMENT_MAX_TURN_BYTES,
   MESSAGE_IMAGE_ACCEPT,
   MESSAGE_IMAGE_ALLOWED_MIME_TYPES,
 };

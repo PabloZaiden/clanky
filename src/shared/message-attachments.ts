@@ -8,6 +8,9 @@
 
 export const MESSAGE_ATTACHMENT_LIMIT = 8;
 export const MESSAGE_ATTACHMENT_MAX_BYTES = 20 * 1024 * 1024;
+export const MESSAGE_ATTACHMENT_MAX_TURN_BYTES = 40 * 1024 * 1024;
+export const MESSAGE_ATTACHMENT_MAX_PROMPT_BYTES =
+  Math.ceil(MESSAGE_ATTACHMENT_MAX_TURN_BYTES * 4 / 3) + 2 * 1024 * 1024;
 
 /** Explicit image MIME allowlist — excludes image/svg+xml to avoid script injection risks. */
 export const MESSAGE_IMAGE_ALLOWED_MIME_TYPES = [
@@ -45,6 +48,20 @@ export interface MessageAttachment {
   mimeType: string;
   data: string;
   size: number;
+}
+
+export function getBase64DecodedByteLength(base64: string): number {
+  const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
+  return Math.max(0, Math.floor((base64.length * 3) / 4) - padding);
+}
+
+export function getMessageAttachmentByteLength(
+  attachments: readonly Pick<MessageAttachment, "data">[],
+): number {
+  return attachments.reduce(
+    (total, attachment) => total + getBase64DecodedByteLength(attachment.data),
+    0,
+  );
 }
 
 export interface ComposerAttachment extends MessageAttachment {

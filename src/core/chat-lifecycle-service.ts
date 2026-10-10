@@ -394,6 +394,10 @@ export class ChatLifecycleService implements ChatLifecyclePort {
     };
     if (status === "stopped" || status === "failed") {
       state.completedAt = state.completedAt ?? state.lastActivityAt;
+      state.harness = {
+        ...chat.state.harness,
+        activeTurnAttachmentBytes: 0,
+      };
     }
 
     return this.state.updateState(chat, state);
@@ -423,6 +427,10 @@ export class ChatLifecycleService implements ChatLifecyclePort {
         completedAt: chat.state.completedAt ?? now,
         activeMessageId: undefined,
         interruptRequested: false,
+        harness: {
+          ...chat.state.harness,
+          activeTurnAttachmentBytes: 0,
+        },
         lastActivityAt: now,
       },
       { expectedStatus: chat.state.status },

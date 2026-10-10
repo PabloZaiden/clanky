@@ -129,8 +129,12 @@ export class MeshHarnessBackend implements Backend {
 
   private async assertResponse(response: Response): Promise<void> {
     if (response.ok) return;
-    const body = await readMeshControlResponseJson(response, { maxBytes: 16_384 }) as { error?: unknown };
-    throw new DomainError(typeof body.error === "string" ? body.error : "harness_request_failed", "The native Mesh host rejected the request.", { details: { status: response.status } });
+    const body = await readMeshControlResponseJson(response, { maxBytes: 16_384 }) as { error?: unknown; message?: unknown };
+    const error = typeof body.error === "string" ? body.error : "harness_request_failed";
+    const message = typeof body.message === "string" && body.message.length <= 2_000
+      ? body.message
+      : "The native Mesh host rejected the request.";
+    throw new DomainError(error, message, { details: { status: response.status } });
   }
 
   async createSession(options: CreateSessionOptions): Promise<AgentSession> {

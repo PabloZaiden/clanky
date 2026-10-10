@@ -34,7 +34,7 @@ function listModels(): Record<string, unknown> {
       hidden: false,
       supportedReasoningEfforts: [{ reasoningEffort: "medium", description: "Default" }],
       defaultReasoningEffort: "medium",
-      inputModalities: ["text"],
+      inputModalities: ["text", "image"],
       supportsPersonality: false,
       multiAgentVersion: null,
       additionalSpeedTiers: [],
