@@ -15,8 +15,8 @@ function createDefaultSettings(): VoiceSettings {
     baseUrl: "",
     apiKeyConfigured: false,
     models: {
-      transcription: "gpt-transcribe",
-      text: "gpt-5.6-luna",
+      transcription: "",
+      text: "",
     },
     languageHints: [...DEFAULT_VOICE_LANGUAGE_HINTS],
     capabilities: {
@@ -34,9 +34,22 @@ function createDefaultSettings(): VoiceSettings {
         checkedAt: null,
         error: null,
       },
+      live: {
+        configured: false,
+        validated: false,
+        state: "unconfigured",
+        checkedAt: null,
+        error: null,
+      },
     },
     piper: { available: false },
-    live: { useVoiceProvider: true, baseUrl: "", apiKeyConfigured: false, model: "gpt-live-1", textModel: "", configured: false },
+    live: {
+      useVoiceProvider: true,
+      baseUrl: "",
+      apiKeyConfigured: false,
+      model: "",
+      configured: false,
+    },
   };
 }
 

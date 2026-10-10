@@ -96,6 +96,7 @@ export async function startVoiceProvider(
         if (path === "/v1/live/sessions" && request.method === "POST") {
           const body = await request.json();
           if (body.session?.model !== "gpt-live-1" || body.session?.delegation?.type !== "responses"
+            || typeof body.session.delegation.responses.model !== "string"
             || body.transport?.type !== "webrtc" || !body.session.delegation.responses.tools?.length) {
             return Response.json({ error: "invalid_live_configuration" }, { status: 400 });
           }

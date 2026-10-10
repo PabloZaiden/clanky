@@ -8,7 +8,7 @@ export function supportsLiveVoice(chat: Pick<Chat, "config">): boolean {
   return chat.config.model.providerID === "codex" || chat.config.model.providerID === "copilot";
 }
 
-export const VOICE_CAPABILITIES = ["transcription", "text"] as const;
+export const VOICE_CAPABILITIES = ["transcription", "text", "live"] as const;
 export type VoiceCapability = (typeof VOICE_CAPABILITIES)[number];
 
 export const VOICE_LANGUAGE_HINTS = ["es", "en"] as const;
@@ -63,7 +63,6 @@ export interface LiveVoiceSettings {
   baseUrl: string;
   apiKeyConfigured: boolean;
   model: string;
-  textModel: string;
   configured: boolean;
 }
 
@@ -73,7 +72,6 @@ export interface LiveVoiceSettingsUpdate {
   apiKey?: string;
   clearApiKey?: boolean;
   model: string;
-  textModel: string;
 }
 
 export interface LiveVoiceCallState {

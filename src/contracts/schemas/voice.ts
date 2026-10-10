@@ -28,7 +28,6 @@ export const VoiceSettingsUpdateSchema = z.object({
     apiKey: z.string().trim().max(10_000).optional(),
     clearApiKey: z.boolean().optional(),
     model: z.string().trim().max(200),
-    textModel: z.string().trim().max(200),
   }).strict().optional(),
 });
 

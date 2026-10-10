@@ -85,7 +85,7 @@ const voiceBaseRoutes = defineRoutes({
   "/api/voice/settings": {
     auth: "user",
     sameOrigin: "mutations",
-    description: "Read or update provider settings for transcription and summaries, plus local Piper support status.",
+    description: "Read or update the transcription, shared text-generation, and Live Voice models, plus local Piper support status.",
     requestSchema: VoiceSettingsUpdateSchema,
     async GET(_req: Request, _ctx: RouteContext): Promise<Response> {
       try {
@@ -110,7 +110,7 @@ const voiceBaseRoutes = defineRoutes({
   "/api/voice/validate": {
     auth: "user",
     sameOrigin: "mutations",
-    description: "Validate one configured voice capability against its provider.",
+    description: "Validate the configured transcription, text-generation, or Live Voice capability.",
     requestSchema: VoiceValidationRequestSchema,
     async POST(req: Request, _ctx: RouteContext): Promise<Response> {
       const result = await parseAndValidate(VoiceValidationRequestSchema, req);

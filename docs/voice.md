@@ -7,17 +7,20 @@ Clanky server with Piper.
 ## Provider settings
 
 In user settings, configure the provider URL and API key, a transcription
-model, and a text model. These are needed for voice input and summary playback;
-full-response speech does not need a provider or a remote TTS model. Validate
-the transcription and text capabilities after changing their settings.
+model, and a text-generation model. These are needed for voice input and
+summary playback; full-response speech does not need a provider or a remote TTS
+model. Validate transcription, text generation, and Live Voice after changing
+their settings.
 
 The `languageHints` setting applies to provider-backed transcription. Piper
 detects the speech text's language locally and does not use those hints.
 
-The text model must support **Responses API**. Capability validation and spoken
-summaries use `/v1/responses` (Azure: `/openai/v1/responses`), with the model or
-deployment name in the request body. Clanky does not fall back to Chat
-Completions. Transcription routing is unchanged.
+The single text-generation model must support **Responses API**. Capability
+validation, spoken summaries, and Live delegation use that same configured
+model. Voice-provider requests use `/v1/responses` (Azure:
+`/openai/v1/responses`), with the model or deployment name in the request body.
+Clanky does not fall back to Chat Completions. Transcription routing is
+unchanged.
 
 ## Live voice
 
@@ -28,19 +31,20 @@ start the call. Quick Chat uses the same chat and voice workflows; its agent
 additionally receives the Clanky control tools. Enabling Live in another chat
 does not grant those tools. ACP chats are not supported.
 
-In **Settings → Voice → Live voice**, configure a base API URL, a Live
-model/deployment and a delegated Responses model/deployment. Reuse the existing
-voice provider URL and saved key, or configure an independent HTTPS endpoint and
-encrypted key. A blank delegated model uses the ordinary text model. Both
-models must be accessible from the **same Live endpoint**.
+In **Settings → Voice**, configure one transcription model, one shared text
+generation model, and one Live model/deployment. Reuse the existing voice
+provider URL and saved key, or configure an independent HTTPS endpoint and
+encrypted key for Live. When the Live endpoint is independent, both the Live
+model and the shared text model must be accessible from that endpoint.
 
 The endpoint must implement GPT-Live with WebRTC, authenticated sideband and
 Responses delegation, not merely offer a compatible `/responses` route.
 Compatible URL roots include `https://api.openai.com/v1` and an Azure OpenAI
 resource with `/openai/v1`. There is no Azure-only model or workspace setting.
-For Azure, use the deployment names; for example, `gpt-live-1` with `gpt-6-luna`.
-Starting a call checks session and sideband access; function access is exercised
-when the delegated model uses a tool.
+For Azure, use the deployment names. Live validation opens a temporary
+WebRTC session, checks authenticated sideband access, and closes the session
+without sending microphone audio. Function access is exercised when the shared
+text model uses a tool.
 
 The browser keeps the microphone open and plays Live audio automatically.
 The compact panel shows listening/speaking, captions and the independent agent

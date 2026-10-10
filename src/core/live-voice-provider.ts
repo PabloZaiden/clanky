@@ -197,3 +197,97 @@ export class LiveVoiceConnection {
     this.terminal.resolve();
   }
 }
+
+const LIVE_VALIDATION_SDP = [
+  "v=0",
+  "o=- 0 0 IN IP4 127.0.0.1",
+  "s=Clanky Live validation",
+  "t=0 0",
+  "a=group:BUNDLE 0",
+  "a=msid-semantic: WMS *",
+  "m=audio 9 UDP/TLS/RTP/SAVPF 111",
+  "c=IN IP4 0.0.0.0",
+  "a=rtcp:9 IN IP4 0.0.0.0",
+  "a=ice-ufrag:clanky",
+  "a=ice-pwd:ClankyLiveValidationPassword",
+  "a=fingerprint:sha-256 00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00",
+  "a=setup:actpass",
+  "a=mid:0",
+  "a=sendrecv",
+  "a=rtcp-mux",
+  "a=rtpmap:111 opus/48000/2",
+  "a=fmtp:111 minptime=10;useinbandfec=1",
+].join("\r\n");
+
+async function closeValidationSession(
+  credentials: LiveVoiceCredentials,
+  sessionId: string,
+): Promise<void> {
+  const connection = new LiveVoiceConnection({
+    event: () => {},
+    failure: () => {},
+  });
+  try {
+    await connection.connect(
+      credentials,
+      sessionId,
+      AbortSignal.timeout(10_000),
+    );
+    if (!await connection.close()) {
+      log.warn("Live validation session close was not confirmed");
+    }
+  } catch (error) {
+    log.error("Live validation session cleanup failed", { error: String(error) });
+  } finally {
+    connection.dispose();
+  }
+}
+
+export async function validateLiveVoiceConfiguration(
+  credentials: LiveVoiceCredentials,
+  signal?: AbortSignal,
+): Promise<void> {
+  const validationSignal = signal ?? new AbortController().signal;
+  const session = await createLiveVoiceSession(
+    credentials,
+    LIVE_VALIDATION_SDP,
+    validationSignal,
+  );
+  let sidebandFailed = false;
+  let sessionClosed = false;
+  const connection = new LiveVoiceConnection({
+    event: (event) => {
+      if (event.type === "error" || event.type === "session.error") {
+        sidebandFailed = true;
+      }
+    },
+    failure: () => {
+      sidebandFailed = true;
+    },
+  });
+
+  try {
+    await connection.connect(credentials, session.id, validationSignal);
+    if (sidebandFailed || !connection.connected) {
+      throw new DomainError(
+        "voice_provider_unreachable",
+        "Live session sideband validation failed.",
+      );
+    }
+    sessionClosed = await connection.close();
+    if (!sessionClosed || sidebandFailed) {
+      throw new DomainError(
+        "voice_provider_unreachable",
+        "Live validation did not complete and close its session.",
+      );
+    }
+  } catch (error) {
+    connection.dispose();
+    if (!sessionClosed) {
+      await closeValidationSession(credentials, session.id);
+    }
+    throw error;
+  } finally {
+    connection.dispose();
+  }
+}

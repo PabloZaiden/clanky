@@ -16,6 +16,7 @@ interface VoiceSettingsDraft {
   apiKey: string;
   transcription: string;
   text: string;
+  liveModel: string;
   languageHints: VoiceLanguageHint[];
 }
 
@@ -25,20 +26,27 @@ function toDraft(settings: VoiceSettings): VoiceSettingsDraft {
     apiKey: "",
     transcription: settings.models.transcription,
     text: settings.models.text,
+    liveModel: settings.live.model,
     languageHints: settings.languageHints,
   };
 }
 
-function draftValuesMatch(left: VoiceSettingsDraft, right: VoiceSettingsDraft): boolean {
+function providerDraftValuesMatch(left: VoiceSettingsDraft, right: VoiceSettingsDraft): boolean {
   return left.baseUrl === right.baseUrl
     && left.transcription === right.transcription
     && left.text === right.text
     && left.languageHints.join(",") === right.languageHints.join(",");
 }
 
+function draftValuesMatch(left: VoiceSettingsDraft, right: VoiceSettingsDraft): boolean {
+  return providerDraftValuesMatch(left, right)
+    && left.liveModel === right.liveModel;
+}
+
 function capabilityLabel(capability: VoiceCapability): string {
   if (capability === "transcription") return "Transcription";
-  return "General text";
+  if (capability === "text") return "Text generation";
+  return "Live Voice";
 }
 
 export function VoiceSettingsRowContent({
@@ -51,10 +59,22 @@ export function VoiceSettingsRowContent({
   const draftRef = useRef(draft);
   const lastSyncedDraftRef = useRef<VoiceSettingsDraft>(toDraft(settings));
   const [clearApiKey, setClearApiKey] = useState(false);
+  const [liveSettingsDraftIsDirty, setLiveSettingsDraftIsDirty] = useState(false);
   draftRef.current = draft;
-  const draftIsDirty = !draftValuesMatch(draft, lastSyncedDraftRef.current)
+  const providerDraftIsDirty = !providerDraftValuesMatch(
+    draft,
+    lastSyncedDraftRef.current,
+  )
     || draft.apiKey.length > 0
     || clearApiKey;
+  const liveModelDraftIsDirty = draft.liveModel !== lastSyncedDraftRef.current.liveModel;
+
+  function syncSavedSettings(savedSettings: VoiceSettings): void {
+    const savedDraft = toDraft(savedSettings);
+    lastSyncedDraftRef.current = savedDraft;
+    setDraft({ ...savedDraft, apiKey: "" });
+    setClearApiKey(false);
+  }
 
   useEffect(() => {
     const nextSyncedDraft = toDraft(settings);
@@ -74,20 +94,26 @@ export function VoiceSettingsRowContent({
   }, [clearApiKey, settings]);
 
   async function save(): Promise<void> {
-    const savedSettings = await voiceSettings.updateSettings({
-      baseUrl: draft.baseUrl,
-      apiKey: draft.apiKey || undefined,
-      clearApiKey,
-      models: {
-        transcription: draft.transcription,
-        text: draft.text,
-      },
-      languageHints: draft.languageHints,
-    });
-    const savedDraft = toDraft(savedSettings);
-    lastSyncedDraftRef.current = savedDraft;
-    setDraft({ ...savedDraft, apiKey: "" });
-    setClearApiKey(false);
+    try {
+      const savedSettings = await voiceSettings.updateSettings({
+        baseUrl: draft.baseUrl,
+        apiKey: draft.apiKey || undefined,
+        clearApiKey,
+        models: {
+          transcription: draft.transcription,
+          text: draft.text,
+        },
+        languageHints: draft.languageHints,
+        live: {
+          useVoiceProvider: settings.live.useVoiceProvider,
+          baseUrl: settings.live.baseUrl,
+          model: draft.liveModel,
+        },
+      });
+      syncSavedSettings(savedSettings);
+    } catch {
+      // The hook exposes save errors through the shared settings error state.
+    }
   }
 
   function toggleLanguageHint(language: VoiceLanguageHint, checked: boolean): void {
@@ -109,10 +135,10 @@ export function VoiceSettingsRowContent({
           placeholder="https://...openai.azure.com"
           autoComplete="url"
           disabled={loading || saving}
-          onChange={(event) => setDraft((current) => ({
-            ...current,
-            baseUrl: event.currentTarget.value,
-          }))}
+          onChange={(event) => {
+            const baseUrl = event.currentTarget.value;
+            setDraft((current) => ({ ...current, baseUrl }));
+          }}
         />
       </div>
       <div className="space-y-2">
@@ -125,8 +151,9 @@ export function VoiceSettingsRowContent({
           autoComplete="new-password"
           disabled={loading || saving}
           onChange={(event) => {
+            const apiKey = event.currentTarget.value;
             setClearApiKey(false);
-            setDraft((current) => ({ ...current, apiKey: event.currentTarget.value }));
+            setDraft((current) => ({ ...current, apiKey }));
           }}
         />
         {settings.apiKeyConfigured ? (
@@ -144,43 +171,61 @@ export function VoiceSettingsRowContent({
           </Button>
         ) : null}
       </div>
-      <div className="grid gap-2 sm:grid-cols-2">
-        <div>
-          <label htmlFor="voice-transcription-model" className="block text-xs font-medium">STT model</label>
-          <SettingsInput
-            id="voice-transcription-model"
-            value={draft.transcription}
-            disabled={loading || saving}
-            onChange={(event) => setDraft((current) => ({
-              ...current,
-              transcription: event.currentTarget.value,
-            }))}
-          />
+      <div className="space-y-2 rounded-md border border-gray-200 p-3 dark:border-gray-700">
+        <p className="text-xs font-medium">Models</p>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="space-y-1">
+            <label htmlFor="voice-transcription-model" className="block text-xs font-medium">Transcription model</label>
+            <SettingsInput
+              id="voice-transcription-model"
+              value={draft.transcription}
+              disabled={loading || saving}
+              onChange={(event) => {
+                const transcription = event.currentTarget.value;
+                setDraft((current) => ({ ...current, transcription }));
+              }}
+            />
+          </div>
+          <div className="space-y-1">
+            <label htmlFor="voice-text-model" className="block text-xs font-medium">Text generation model</label>
+            <SettingsInput
+              id="voice-text-model"
+              value={draft.text}
+              disabled={loading || saving}
+              onChange={(event) => {
+                const text = event.currentTarget.value;
+                setDraft((current) => ({ ...current, text }));
+              }}
+            />
+          </div>
+          <div className="space-y-1">
+            <label htmlFor="live-model" className="block text-xs font-medium">Live Voice model / deployment</label>
+            <SettingsInput
+              id="live-model"
+              value={draft.liveModel}
+              disabled={loading || saving}
+              onChange={(event) => {
+                const liveModel = event.currentTarget.value;
+                setDraft((current) => ({ ...current, liveModel }));
+              }}
+            />
+          </div>
         </div>
-        <div>
-          <label htmlFor="voice-text-model" className="block text-xs font-medium">Text model</label>
-          <SettingsInput
-            id="voice-text-model"
-            value={draft.text}
-            disabled={loading || saving}
-            onChange={(event) => setDraft((current) => ({
-              ...current,
-              text: event.currentTarget.value,
-            }))}
-          />
-        </div>
-        <div className="space-y-1 rounded-md border border-gray-200 p-3 dark:border-gray-700">
-          <p className="text-xs font-medium">Local text to speech</p>
-          <p className="text-sm text-gray-600 dark:text-gray-300">
-            Piper uses Argentina Spanish and US English voices. The runtime and
-            selected voice download on first use and stay in Clanky&apos;s data directory.
-          </p>
-          <p className="text-sm">
-            {settings.piper.available
-              ? "Supported on this server"
-              : "Not supported on this server"}
-          </p>
-        </div>
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          Text generation is shared by summaries and Live Voice.
+        </p>
+      </div>
+      <div className="space-y-1 rounded-md border border-gray-200 p-3 dark:border-gray-700">
+        <p className="text-xs font-medium">Local text to speech</p>
+        <p className="text-sm text-gray-600 dark:text-gray-300">
+          Piper uses Argentina Spanish and US English voices. The runtime and
+          selected voice download on first use and stay in Clanky&apos;s data directory.
+        </p>
+        <p className="text-sm">
+          {settings.piper.available
+            ? "Supported on this server"
+            : "Not supported on this server"}
+        </p>
       </div>
       <div className="space-y-1">
         <p className="text-xs font-medium">Language hints</p>
@@ -192,7 +237,10 @@ export function VoiceSettingsRowContent({
                 ariaLabel={`Voice language hint ${language}`}
                 checked={draft.languageHints.includes(language)}
                 disabled={loading || saving}
-                onChange={(event) => toggleLanguageHint(language, event.currentTarget.checked)}
+                onChange={(event) => {
+                  const checked = event.currentTarget.checked;
+                  toggleLanguageHint(language, checked);
+                }}
               />
               <label htmlFor={`voice-language-hint-${language}`} className="text-sm">
                 {language}
@@ -217,6 +265,9 @@ export function VoiceSettingsRowContent({
         {VOICE_CAPABILITIES.map((capability) => {
           const capabilityStatus = settings.capabilities[capability];
           const isValidating = validating === capability;
+          const capabilityDraftIsDirty = capability === "live"
+            ? providerDraftIsDirty || liveModelDraftIsDirty || liveSettingsDraftIsDirty
+            : providerDraftIsDirty;
           return (
             <div key={capability} className="flex flex-wrap items-center justify-between gap-2 text-sm">
               <span>
@@ -238,7 +289,7 @@ export function VoiceSettingsRowContent({
                   loading
                   || saving
                   || validating !== null
-                  || draftIsDirty
+                  || capabilityDraftIsDirty
                   || !capabilityStatus.configured
                 }
                 onClick={() => void voiceSettings.validateCapability(capability)}
@@ -249,7 +300,22 @@ export function VoiceSettingsRowContent({
           );
         })}
       </div>
-      <LiveVoiceSettingsRowContent voiceSettings={voiceSettings} />
+      <LiveVoiceSettingsRowContent
+        voiceSettings={voiceSettings}
+        model={draft.liveModel}
+        providerDraft={{
+          baseUrl: draft.baseUrl,
+          apiKey: draft.apiKey,
+          clearApiKey,
+          models: {
+            transcription: draft.transcription,
+            text: draft.text,
+          },
+          languageHints: draft.languageHints,
+        }}
+        onDraftDirtyChange={setLiveSettingsDraftIsDirty}
+        onProviderSettingsSaved={syncSavedSettings}
+      />
       {error ? <SettingsError>{error}</SettingsError> : null}
     </div>
   );

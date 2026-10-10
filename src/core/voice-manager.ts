@@ -39,20 +39,21 @@ import {
 } from "./voice-provider";
 import type { PiperSpeechStatus } from "./piper-assets";
 import { decryptPersistedSecret } from "../persistence/encrypted-secret";
-import type { LiveVoiceCredentials } from "./live-voice-provider";
+import {
+  validateLiveVoiceConfiguration,
+  type LiveVoiceCredentials,
+} from "./live-voice-provider";
 
 const log = createLogger("core:voice-manager");
-const DEFAULT_TRANSCRIPTION_MODEL = "gpt-transcribe";
-const DEFAULT_TEXT_MODEL = "gpt-5.6-luna";
 
 function emptySettings(): PersistedVoiceSettings {
   return {
-    version: 2,
+    version: 3,
     baseUrl: "",
     apiKeyCiphertext: null,
     models: {
-      transcription: DEFAULT_TRANSCRIPTION_MODEL,
-      text: DEFAULT_TEXT_MODEL,
+      transcription: "",
+      text: "",
     },
     languageHints: [...DEFAULT_VOICE_LANGUAGE_HINTS],
     validation: getDefaultVoiceValidation(),
@@ -62,7 +63,7 @@ function emptySettings(): PersistedVoiceSettings {
 
 function capabilityConfigured(
   settings: PersistedVoiceSettings,
-  capability: VoiceCapability,
+  capability: Exclude<VoiceCapability, "live">,
   apiKey: string | null,
 ): boolean {
   return Boolean(
@@ -93,6 +94,15 @@ function buildPublicSettings(
   apiKey: string | null,
   piper: PiperSpeechStatus,
 ): VoiceSettings {
+  const liveApiKeyConfigured = settings.live.useVoiceProvider
+    ? Boolean(apiKey)
+    : Boolean(settings.live.apiKeyCiphertext);
+  const liveConfigured = Boolean(
+    (settings.live.useVoiceProvider ? settings.baseUrl : settings.live.baseUrl)
+    && liveApiKeyConfigured
+    && settings.live.model
+    && settings.models.text,
+  );
   return {
     baseUrl: settings.baseUrl,
     apiKeyConfigured: Boolean(apiKey),
@@ -102,13 +112,9 @@ function buildPublicSettings(
     live: {
       useVoiceProvider: settings.live.useVoiceProvider,
       baseUrl: settings.live.baseUrl,
-      apiKeyConfigured: Boolean(settings.live.useVoiceProvider ? apiKey : settings.live.apiKeyCiphertext),
+      apiKeyConfigured: liveApiKeyConfigured,
       model: settings.live.model,
-      textModel: settings.live.textModel,
-      configured: Boolean(
-        (settings.live.useVoiceProvider ? settings.baseUrl && apiKey : settings.live.baseUrl && settings.live.apiKeyCiphertext)
-        && settings.live.model && (settings.live.textModel || settings.models.text),
-      ),
+      configured: liveConfigured,
     },
     capabilities: {
       transcription: publicCapabilityStatus(
@@ -119,6 +125,7 @@ function buildPublicSettings(
         settings.validation.text,
         capabilityConfigured(settings, "text", apiKey),
       ),
+      live: publicCapabilityStatus(settings.validation.live, liveConfigured),
     },
   };
 }
@@ -164,16 +171,12 @@ export class VoiceManager {
 
   async requireLiveCredentials(): Promise<LiveVoiceCredentials> {
     const settings = await getPersistedVoiceSettings() ?? emptySettings();
-    const live = settings.live;
-    const apiKey = live.useVoiceProvider
-      ? await getPersistedVoiceApiKey(settings)
-      : live.apiKeyCiphertext ? await decryptPersistedSecret(live.apiKeyCiphertext) : null;
-    const baseUrl = live.useVoiceProvider ? settings.baseUrl : live.baseUrl;
-    const textModel = live.textModel || settings.models.text;
-    if (!apiKey || !baseUrl || !live.model || !textModel) {
-      throw new DomainError("voice_capability_not_configured", "Configure Live voice and its delegated text model first.");
+    const apiKey = await getPersistedVoiceApiKey(settings);
+    const credentials = await this.resolveLiveCredentials(settings, apiKey);
+    if (!credentials) {
+      throw new DomainError("voice_capability_not_configured", "Configure Live voice and its shared text model first.");
     }
-    return { baseUrl, apiKey, model: live.model, textModel };
+    return credentials;
   }
 
   async getSettings(): Promise<VoiceSettings> {
@@ -197,7 +200,6 @@ export class VoiceManager {
           ...update.live,
           baseUrl: normalizeVoiceBaseUrl(update.live.baseUrl),
           model: update.live.model.trim(),
-          textModel: update.live.textModel.trim(),
         },
       } : {}),
     };
@@ -212,31 +214,47 @@ export class VoiceManager {
   ): Promise<VoiceSettings> {
     const settings = await getPersistedVoiceSettings() ?? emptySettings();
     const apiKey = await getPersistedVoiceApiKey(settings);
-    if (!capabilityConfigured(settings, capability, apiKey)) {
-      throw new DomainError(
-        "voice_capability_not_configured",
-        "Configure the provider URL, API key, and model before validating this capability.",
-      );
-    }
-
-    const provider = new OpenAiCompatibleVoiceProvider({
-      baseUrl: settings.baseUrl,
-      apiKey: apiKey as string,
-    });
-    try {
-      if (capability === "transcription") {
-        await provider.validateTranscription(
-          settings.models.transcription,
-          settings.languageHints,
-          signal,
-        );
-      } else {
-        await provider.completeText(
-          settings.models.text,
-          "Reply with exactly OK.",
-          signal,
+    let validationRequest: () => Promise<void>;
+    if (capability === "live") {
+      const credentials = await this.resolveLiveCredentials(settings, apiKey);
+      if (!credentials) {
+        throw new DomainError(
+          "voice_capability_not_configured",
+          "Configure the Live provider URL, API key, Live model, and shared text model before validating.",
         );
       }
+      validationRequest = async () => {
+        await validateLiveVoiceConfiguration(credentials, signal);
+      };
+    } else {
+      if (!apiKey || !capabilityConfigured(settings, capability, apiKey)) {
+        throw new DomainError(
+          "voice_capability_not_configured",
+          "Configure the provider URL, API key, and model before validating this capability.",
+        );
+      }
+      const provider = new OpenAiCompatibleVoiceProvider({
+        baseUrl: settings.baseUrl,
+        apiKey,
+      });
+      validationRequest = capability === "transcription"
+        ? async () => {
+            await provider.validateTranscription(
+              settings.models.transcription,
+              settings.languageHints,
+              signal,
+            );
+          }
+        : async () => {
+            await provider.completeText(
+              settings.models.text,
+              "Reply with exactly OK.",
+              signal,
+            );
+          };
+    }
+    try {
+      await validationRequest();
     } catch (error) {
       if (shouldPersistInvalidValidation(error, signal)) {
         const failed = markValidation(
@@ -377,7 +395,7 @@ export class VoiceManager {
   }
 
   private async requireConfiguredCapability(
-    capability: VoiceCapability,
+    capability: Exclude<VoiceCapability, "live">,
   ): Promise<{ settings: PersistedVoiceSettings; apiKey: string }> {
     const settings = await getPersistedVoiceSettings() ?? emptySettings();
     const apiKey = await getPersistedVoiceApiKey(settings);
@@ -390,6 +408,24 @@ export class VoiceManager {
       );
     }
     return { settings, apiKey };
+  }
+
+  private async resolveLiveCredentials(
+    settings: PersistedVoiceSettings,
+    voiceApiKey: string | null,
+  ): Promise<LiveVoiceCredentials | null> {
+    const live = settings.live;
+    const apiKey = live.useVoiceProvider
+      ? voiceApiKey
+      : live.apiKeyCiphertext
+        ? await decryptPersistedSecret(live.apiKeyCiphertext)
+        : null;
+    const baseUrl = live.useVoiceProvider ? settings.baseUrl : live.baseUrl;
+    const textModel = settings.models.text;
+    if (!apiKey || !baseUrl || !live.model || !textModel) {
+      return null;
+    }
+    return { baseUrl, apiKey, model: live.model, textModel };
   }
 }
 

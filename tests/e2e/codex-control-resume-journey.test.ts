@@ -213,7 +213,7 @@ test("Codex control chat resumes with its tools after restarting Clanky", async 
         body: JSON.stringify({
           baseUrl: voiceProvider.baseUrl.replace(/\/v1$/, root), apiKey: voiceProvider.apiKey,
           models: { transcription: "gpt-transcribe", text: "e2e-text" }, languageHints: ["en"],
-          live: { useVoiceProvider: true, baseUrl: "", model: "gpt-live-1", textModel: "e2e-text" },
+          live: { useVoiceProvider: true, baseUrl: "", model: "gpt-live-1" },
         }),
       })).data;
       expect(JSON.stringify(settings)).not.toContain(voiceProvider.apiKey);
@@ -322,7 +322,7 @@ test("Copilot shares ordinary Live and queued turns while control steering prese
       method: "PUT", body: JSON.stringify({
         baseUrl: voiceProvider.baseUrl, apiKey: voiceProvider.apiKey,
         models: { transcription: "gpt-transcribe", text: "e2e-text" }, languageHints: ["en"],
-        live: { useVoiceProvider: true, baseUrl: "", model: "gpt-live-1", textModel: "e2e-text" },
+        live: { useVoiceProvider: true, baseUrl: "", model: "gpt-live-1" },
       }),
     });
     const call = (await application.json<{ call: { id: string } }>(
