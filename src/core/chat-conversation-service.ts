@@ -1233,6 +1233,24 @@ export class ChatConversationService implements ChatConversationPort {
     }
   }
 
+  async recordVoiceCallSummary(chatId: string, callId: string, summary: string): Promise<void> {
+    const timestamp = createTimestamp();
+    const entry: TaskLogEntry = {
+      id: `voice-call-${callId}`, level: "agent", timestamp,
+      message: `Voice call summary\n\n${summary}`,
+      details: { logKind: "voice_call", callId },
+    };
+    const updated = await this.state.mutateState(chatId, (current) => ({
+      ...current.state,
+      logs: current.state.logs.filter((log) => log.id !== entry.id).concat(entry),
+      lastActivityAt: timestamp,
+    }));
+    this.emitter.emit({
+      type: "chat.log", chatId, scope: updated.config.scope, log: entry, timestamp,
+    });
+    this.state.emitChatUpdated(updated);
+  }
+
   async recordSteeredMessage(chat: Chat, message: QueuedChatMessage, admission: HarnessInputAdmission): Promise<Chat> {
     const binding = chat.state.session?.binding;
     if (!binding) throw new Error("Steered input requires an owned conversation.");

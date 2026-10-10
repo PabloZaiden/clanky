@@ -9,12 +9,13 @@ import {
   findFreeLoopbackPort,
   requireCommand,
 } from "./process";
+import { liveFixtureWebSocket, type LiveFixture } from "./live-voice-provider";
 
 export interface ManagedVoiceProvider {
   apiKey: string;
   baseUrl: string;
   certificatePath: string;
-  server: Bun.Server<undefined>;
+  server: Bun.Server<LiveFixture>;
   address: string;
 }
 
@@ -69,16 +70,18 @@ export async function startVoiceProvider(
     { cwd: directory },
   );
 
-  let server: Bun.Server<undefined> | undefined;
+  let server: Bun.Server<LiveFixture> | undefined;
+  const sessions = new Map<string, LiveFixture>();
   try {
-    server = Bun.serve({
+    server = Bun.serve<LiveFixture>({
       hostname: address,
       port,
       tls: {
         key: Bun.file(keyPath),
         cert: Bun.file(certificatePath),
       },
-      fetch(request) {
+      websocket: liveFixtureWebSocket,
+      async fetch(request, server) {
         const url = new URL(request.url);
         if (
           request.headers.get("authorization") !== authorization
@@ -89,13 +92,34 @@ export async function startVoiceProvider(
         if (url.pathname === "/v1/audio/transcriptions" && request.method === "POST") {
           return Response.json({ text: "transcribed by the external voice fixture" });
         }
-        if (url.pathname === "/v1/chat/completions" && request.method === "POST") {
+        const path = url.pathname.replace(/^\/openai/, "");
+        if (path === "/v1/live/sessions" && request.method === "POST") {
+          const body = await request.json();
+          if (body.session?.model !== "gpt-live-1" || body.session?.delegation?.type !== "responses"
+            || body.transport?.type !== "webrtc" || !body.session.delegation.responses.tools?.length) {
+            return Response.json({ error: "invalid_live_configuration" }, { status: 400 });
+          }
+          const id = crypto.randomUUID();
+          const offer = String(body.transport.sdp);
+          const mode = offer.includes("question") ? "question" : offer.includes("cut") ? "cut" : offer.includes("hold") ? "hold" : "steer";
+          sessions.set(id, { id, stage: 0, streaming: false, active: false, mode });
+          return Response.json({ session: { id }, transport: { type: "webrtc", sdp: "v=0\r\ns=external-live-provider\r\n" } }, { status: 201 });
+        }
+        const attach = /^\/v1\/live\/sessions\/([^/]+)\/attach$/.exec(path);
+        if (attach) {
+          const session = sessions.get(attach[1]!);
+          if (!session) return new Response("Unknown session", { status: 404 });
+          return server.upgrade(request, { data: session }) ? undefined : new Response("Expected websocket", { status: 400 });
+        }
+        if (path === "/v1/responses" && request.method === "POST") {
+          const body = await request.json();
+          const summary = JSON.stringify(body.input).includes("Transcript fragments");
           return Response.json({
-            choices: [{
-              message: {
-                role: "assistant",
-                content: "OK",
-              },
+            status: "completed",
+            output: [{
+              type: "message",
+              role: "assistant",
+              content: [{ type: "output_text", text: summary ? "The caller requested workspace discovery and steering. The agent's work remains recorded separately in the chat." : "OK" }],
             }],
           });
         }

@@ -55,6 +55,21 @@ the requested file is the active, loaded editor file. An unsaved edit in a
 different file is preserved and reported as a failure; Clanky does not discard
 local edits to complete a control action.
 
+Queued instructions can be steered into an active native turn, just as in other
+native chats. Steering preserves the domain tools. If the steered instruction
+comes from another tab, or its tab is unknown, browser-action routing is removed
+for the rest of that turn rather than attributing the action to the wrong tab.
+Domain operations remain available, and a subsequent ordinary turn can establish
+its own browser provenance.
+
+## Live voice
+
+Control chats can optionally use [Live voice](voice.md#live-voice-for-quick-chat).
+GPT-Live carries the conversation and delegates interpretation to a Responses
+model; that model directs the linked chat through bounded functions while the
+native workspace agent retains its existing tools. Live can continue speaking
+while the agent works. Closing the voice call does not interrupt agent work.
+
 ## Provider limitations
 
 Only normal workspace chats using native Codex or Copilot receive these tools.
@@ -70,5 +85,5 @@ Codex daemon is required. Copilot registers its tools on session creation and
 resume.
 
 This feature controls Clanky through a normal chat; it does not add a standalone
-command textbox, voice/full-duplex interaction, arbitrary DOM control, or
-direct repository execution by the control agent.
+command textbox, arbitrary DOM control, or direct repository execution against
+another workspace by the control agent.

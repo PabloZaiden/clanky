@@ -88,6 +88,7 @@ import {
 } from "./shared/mesh-protocol";
 import { getLocalMeshProtocolMetadata } from "./core/mesh-protocol-version";
 import { controllerRelayService } from "./core/controller-relay-service";
+import { liveVoiceManager } from "./core/live-voice-manager";
 import { workerRelayService } from "./core/worker-relay-service";
 import { meshHealthService } from "./core/mesh-health-service";
 
@@ -563,6 +564,7 @@ export async function getWebAppServer(
         }
       },
       beforeStop: async () => {
+        await liveVoiceManager.closeAll();
         if (meshWorker) {
           await workerRelayService.stopRuntime();
         } else {

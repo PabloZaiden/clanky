@@ -215,6 +215,16 @@ export class CodexSessionService {
     }
   }
 
+  prepareSteering(id: string, clientId: string | undefined): void {
+    const conversation = this.get(id);
+    const context = conversation.activeControlContext;
+    // A native turn cannot distinguish which steered input caused a UI tool.
+    // Keep domain tools active but remove UI routing after mixed provenance.
+    if (context?.clientId && context.clientId !== clientId) {
+      conversation.activeControlContext = { ...context, clientId: undefined };
+    }
+  }
+
   async handleToolCall(request: { method: string; params: unknown; signal: AbortSignal }): Promise<unknown> {
     if (request.method !== "item/tool/call") {
       throw new HarnessError("harness_unsupported_feature", "The native callback is unsupported.");

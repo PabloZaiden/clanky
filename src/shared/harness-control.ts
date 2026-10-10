@@ -61,6 +61,7 @@ export type HarnessActivitySnapshot =
 
 export interface HarnessSteerRequest {
   inputId: string;
+  clientId?: string;
   prompt: PromptInput;
   expectedTurnId?: string;
 }

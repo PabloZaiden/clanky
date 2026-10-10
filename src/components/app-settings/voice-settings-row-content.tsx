@@ -9,6 +9,7 @@ import {
 import type { UseVoiceSettingsResult } from "../../hooks";
 import { Button } from "../common";
 import { SettingsCheckbox, SettingsError, SettingsInput } from "./settings-row-controls";
+import { LiveVoiceSettingsRowContent } from "./live-voice-settings-row-content";
 
 interface VoiceSettingsDraft {
   baseUrl: string;
@@ -248,6 +249,7 @@ export function VoiceSettingsRowContent({
           );
         })}
       </div>
+      <LiveVoiceSettingsRowContent voiceSettings={voiceSettings} />
       {error ? <SettingsError>{error}</SettingsError> : null}
     </div>
   );

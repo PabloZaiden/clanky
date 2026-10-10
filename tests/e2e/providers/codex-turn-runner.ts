@@ -117,10 +117,22 @@ export async function runCodexTurn(
 ): Promise<void> {
   const { thread, turn } = active;
   rpc.notify("turn/started", { threadId: thread.id, turn: buildTurn(turn) });
+  const steering = await store.waitForSteering(active);
+  let answer = "";
+  if (JSON.stringify(turn.items).includes("Ask one Live question")) {
+    const response = await rpc.requestClient("item/tool/requestUserInput", {
+      threadId: thread.id, turnId: turn.id, itemId: randomUUID(), isBlocking: true,
+      questions: [{ id: "format", header: "Result format", question: "Which format should I use?",
+        isOther: false, isSecret: false, options: [{ label: "Names only", description: "Workspace names" }] }],
+    });
+    const value = isRecord(response.result) ? response.result["answers"] : undefined;
+    const format = isRecord(value) ? value["format"] : undefined;
+    answer = isRecord(format) && Array.isArray(format["answers"]) ? format["answers"].join(", ") : "No answer confirmed";
+  }
   const assistantText = persistedTool(thread)
     ? await runWorkspaceListTool(active, rpc)
     : "The persisted control tool definition was unavailable after resume.";
-  emitAssistantMessage(active, assistantText, rpc);
+  emitAssistantMessage(active, steering ? `${assistantText}\nSteered instruction: ${steering}` : answer ? `${assistantText}\nQuestion answer: ${answer}` : assistantText, rpc);
   await store.completeTurn(active);
   rpc.notify("thread/status/changed", {
     threadId: thread.id,

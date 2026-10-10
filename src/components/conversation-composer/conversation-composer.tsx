@@ -40,6 +40,7 @@ export function ConversationComposer(props: ConversationComposerProps) {
     status,
     questionAnswerInputFocused = false,
     voice,
+    liveVoice,
   } = props;
   const state = useConversationComposer(props);
   const {
@@ -211,14 +212,16 @@ export function ConversationComposer(props: ConversationComposerProps) {
                       </ComposerActionsMenuButton>
                     </ComposerActionsMenuSection>
                   )}
-                  {voice?.available && (
+                  {(voice?.available || liveVoice?.available) && (
                     <ComposerActionsMenuSection label="Voice">
+                      {voice?.available ? (
                       <ComposerActionsMenuButton
                         disabled={
                           controlsDisabled
                           || active
                           || voice.status !== "idle"
                           || hasContent
+                          || liveVoice?.busy
                         }
                         onClick={() => void voice.start()}
                       >
@@ -227,6 +230,16 @@ export function ConversationComposer(props: ConversationComposerProps) {
                           <MicrophoneIcon />
                         </span>
                       </ComposerActionsMenuButton>
+                      ) : null}
+                      {liveVoice?.available ? (
+                        <ComposerActionsMenuButton
+                          disabled={liveVoice.busy || (voice && voice.status !== "idle")}
+                          onClick={() => void liveVoice.onStart()}
+                        >
+                          <span>Live voice</span>
+                          <span aria-hidden="true"><MicrophoneIcon /></span>
+                        </ComposerActionsMenuButton>
+                      ) : null}
                     </ComposerActionsMenuSection>
                   )}
                 </ComposerActionsMenu>

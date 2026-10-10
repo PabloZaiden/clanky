@@ -37,6 +37,17 @@ export interface PersistedVoiceSettings {
   };
   languageHints: VoiceLanguageHint[];
   validation: Record<VoiceCapability, PersistedVoiceValidation>;
+  live: {
+    useVoiceProvider: boolean;
+    baseUrl: string;
+    apiKeyCiphertext: string | null;
+    model: string;
+    textModel: string;
+  };
+}
+
+export function getDefaultLiveVoiceSettings(): PersistedVoiceSettings["live"] {
+  return { useVoiceProvider: true, baseUrl: "", apiKeyCiphertext: null, model: "gpt-live-1", textModel: "" };
 }
 
 function defaultValidation(): Record<VoiceCapability, PersistedVoiceValidation> {
@@ -114,6 +125,7 @@ function parseSettings(raw: string): PersistedVoiceSettings {
     throw new Error("Persisted voice settings have an invalid shape.");
   }
   validatePersistedBaseUrl(baseUrl);
+  const live = parseLiveSettings(record["live"]);
 
   const rawValidation = validation as Record<string, unknown>;
   const parsedValidation = defaultValidation();
@@ -159,7 +171,21 @@ function parseSettings(raw: string): PersistedVoiceSettings {
       (hint): hint is VoiceLanguageHint => hint === "es" || hint === "en",
     ),
     validation: parsedValidation,
+    live,
   };
+}
+
+function parseLiveSettings(value: unknown): PersistedVoiceSettings["live"] {
+  if (value === undefined) return getDefaultLiveVoiceSettings();
+  if (!value || typeof value !== "object") throw new Error("Persisted Live voice settings are invalid.");
+  const record = value as Record<string, unknown>;
+  const { useVoiceProvider, baseUrl, apiKeyCiphertext, model, textModel } = record;
+  if (typeof useVoiceProvider !== "boolean" || typeof baseUrl !== "string" || typeof model !== "string"
+    || typeof textModel !== "string" || (apiKeyCiphertext !== null && typeof apiKeyCiphertext !== "string")) {
+    throw new Error("Persisted Live voice settings are invalid.");
+  }
+  validatePersistedBaseUrl(baseUrl);
+  return { useVoiceProvider, baseUrl, apiKeyCiphertext, model, textModel };
 }
 
 export async function getPersistedVoiceSettings(): Promise<PersistedVoiceSettings | null> {
@@ -199,6 +225,7 @@ function serializeSettings(settings: PersistedVoiceSettings): string {
     models: settings.models,
     languageHints: settings.languageHints,
     validation: settings.validation,
+    live: settings.live,
   });
 }
 
@@ -289,6 +316,20 @@ export async function updatePersistedVoiceSettings(
       }
     }
 
+    let live = existing?.live ?? getDefaultLiveVoiceSettings();
+    if (update.live) {
+      const currentKey = live.apiKeyCiphertext ? await decryptPersistedSecret(live.apiKeyCiphertext) : null;
+      const nextKey = update.live.clearApiKey ? null : update.live.apiKey?.trim() || currentKey;
+      live = {
+        useVoiceProvider: update.live.useVoiceProvider,
+        baseUrl: update.live.baseUrl,
+        model: update.live.model,
+        textModel: update.live.textModel,
+        apiKeyCiphertext: nextKey
+          ? nextKey === currentKey ? live.apiKeyCiphertext : await encryptPersistedSecret(nextKey)
+          : null,
+      };
+    }
     const next: PersistedVoiceSettings = {
       version: PERSISTED_VERSION,
       baseUrl: update.baseUrl,
@@ -296,6 +337,7 @@ export async function updatePersistedVoiceSettings(
       models: update.models,
       languageHints: update.languageHints,
       validation,
+      live,
     };
     await writePersistedVoiceSettings(next);
     return next;

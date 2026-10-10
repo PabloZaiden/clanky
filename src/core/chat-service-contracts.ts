@@ -199,6 +199,7 @@ export interface ChatSessionPort {
 }
 
 export interface ChatConversationPort {
+  recordVoiceCallSummary(chatId: string, callId: string, summary: string): Promise<void>;
   recordSteeredMessage(chat: Chat, message: QueuedChatMessage, admission: HarnessInputAdmission): Promise<Chat>;
   dispatchMessage(
     chat: Chat,

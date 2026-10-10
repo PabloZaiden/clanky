@@ -151,6 +151,7 @@ export {
   VoiceCapabilitySchema,
   VoiceValidationRequestSchema,
   VoiceSpeechRequestSchema,
+  LiveVoiceSessionRequestSchema,
   type VoiceSettingsUpdateRequest,
   type VoiceValidationRequest,
   type VoiceSpeechRequest,

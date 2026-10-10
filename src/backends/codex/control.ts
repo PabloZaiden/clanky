@@ -112,6 +112,7 @@ export class CodexControl implements HarnessControl {
     const turnId = request.expectedTurnId ?? sessions.getThread(rootId)?.turnId;
     if (!turnId) return { status: "rejected", inputId: request.inputId, code: "not-running" };
     const input = toCodexInput(request.prompt);
+    sessions.prepareSteering(rootId, request.clientId);
     try {
       const accepted = await runtime.rpc.request("turn/steer", {
         threadId: rootId, expectedTurnId: turnId, clientUserMessageId: request.inputId, input,

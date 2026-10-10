@@ -305,6 +305,8 @@ const API_DOMAIN_ERROR_CODES = {
   uncommitted_changes: true,
   validation_failed: true,
   voice_audio_too_large: true,
+  voice_live_busy: true,
+  voice_live_not_found: true,
   voice_capability_not_configured: true,
   voice_capability_unavailable: true,
   voice_invalid_base_url: true,
@@ -1647,6 +1649,8 @@ const POLICY_PROFILES = {
         status: 413,
         message: "The voice audio payload is too large.",
       },
+      voice_live_busy: { status: 409, message: "A Live call is already active or call capacity is in use." },
+      voice_live_not_found: { status: 404, message: "The Live call is unavailable." },
       voice_capability_not_configured: {
         status: 409,
         message: "The voice capability is not configured.",

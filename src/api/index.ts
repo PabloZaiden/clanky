@@ -45,6 +45,7 @@ import { workspaceWorkerEnrollmentRoutes } from "./workspace-worker-enrollments"
 import { executionHostRoutes } from "./execution-hosts";
 import { executionHostFilesRoutes } from "./execution-host-files";
 import { voiceRoutes } from "./voice";
+import { liveVoiceRoutes } from "./live-voice";
 import { controlUiActionRoutes } from "./control-ui-actions";
 
 /**
@@ -72,6 +73,7 @@ const nativeApiRoutes = {
   ...executionHostRoutes,
   ...executionHostFilesRoutes,
   ...voiceRoutes,
+  ...liveVoiceRoutes,
   ...controlUiActionRoutes,
   ...agentPromptBridgeRoutes,
 };
@@ -121,4 +123,5 @@ export * from "./workspace-worker-enrollments";
 export * from "./execution-hosts";
 export * from "./execution-host-files";
 export * from "./voice";
+export * from "./live-voice";
 export * from "./control-ui-actions";

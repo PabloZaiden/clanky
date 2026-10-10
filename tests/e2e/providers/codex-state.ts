@@ -90,6 +90,7 @@ function parseThread(value: unknown): PersistedThread {
 }
 
 export class CodexFixtureStore {
+  private readonly steering = new Map<string, ReturnType<typeof Promise.withResolvers<string>>>();
   private constructor(
     private readonly statePath: string,
     private readonly state: PersistedState,
@@ -153,7 +154,7 @@ export class CodexFixtureStore {
     const turn: PersistedTurn = {
       id: randomUUID(),
       status: "inProgress",
-      items: [],
+      items: [{ type: "userMessage", id: randomUUID(), clientId: null, content: params["input"] ?? [] }],
       startedAt: now,
       completedAt: null,
       error: null,
@@ -162,7 +163,37 @@ export class CodexFixtureStore {
     thread.updatedAt = now;
     thread.turns.push(turn);
     await this.persist();
+    if (JSON.stringify(params["input"]).includes("Wait for a steering instruction")) {
+      this.steering.set(turn.id, Promise.withResolvers<string>());
+    }
     return { thread, turn };
+  }
+
+  async waitForSteering(active: ActiveTurn): Promise<string | undefined> {
+    const pending = this.steering.get(active.turn.id);
+    if (!pending) return undefined;
+    const timer = setTimeout(() => pending.reject(new Error("Steering instruction did not arrive.")), 10_000);
+    try {
+      return await pending.promise;
+    } finally {
+      clearTimeout(timer);
+      this.steering.delete(active.turn.id);
+    }
+  }
+
+  async steer(params: Record<string, unknown>): Promise<{ turnId: string }> {
+    const thread = this.getThread(params);
+    const turn = thread.turns.at(-1);
+    if (!turn || turn.status !== "inProgress" || turn.id !== params["expectedTurnId"]) {
+      throw Object.assign(new Error("The active turn changed."), { code: -32600 });
+    }
+    const content = Array.isArray(params["input"]) ? params["input"] : [];
+    turn.items.push({
+      type: "userMessage", id: randomUUID(), clientId: params["clientUserMessageId"], content,
+    });
+    await this.persist();
+    this.steering.get(turn.id)?.resolve(JSON.stringify(content));
+    return { turnId: turn.id };
   }
 
   async completeTurn(active: ActiveTurn): Promise<void> {

@@ -36,6 +36,7 @@ function createDefaultSettings(): VoiceSettings {
       },
     },
     piper: { available: false },
+    live: { useVoiceProvider: true, baseUrl: "", apiKeyConfigured: false, model: "gpt-live-1", textModel: "", configured: false },
   };
 }
 

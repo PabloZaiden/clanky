@@ -82,6 +82,8 @@ export class CodexMethodDispatcher {
         return { result: {} };
       case "turn/start":
         return this.startTurn(params);
+      case "turn/steer":
+        return { result: await this.store.steer(params) };
       default:
         throw Object.assign(new Error(`Unsupported Codex fixture method: ${method}`), { code: -32601 });
     }

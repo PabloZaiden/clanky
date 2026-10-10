@@ -252,9 +252,6 @@ export class ChatInteractionService implements ChatInteractionPort {
       if (chat.state.harness?.integrity === "invalid") throw new HarnessError("harness_request_failed", "Input admission history is corrupt.");
       const existing = chat.state.harness?.inputs?.find((receipt) => receipt.admission.inputId === queuedMessageId);
       if (existing && existing.admission.status !== "rejected") return { chat, admission: existing.admission };
-      if (await this.isControlChat(chat)) {
-        return { chat, admission: { status: "rejected", inputId: queuedMessageId, code: "unsupported" } };
-      }
       const message = chat.state.queuedMessages?.find((entry) => entry.id === queuedMessageId);
       if (!message) throw new HarnessError("harness_input_not_found", "The queued input is unavailable.");
       const binding = chat.state.session?.binding;
@@ -285,6 +282,7 @@ export class ChatInteractionService implements ChatInteractionPort {
       try {
         admission = await backend.harness.steer(binding.nativeId, {
           inputId: queuedMessageId,
+          clientId: message.clientId,
           prompt: { parts: buildPromptParts(message.content, message.attachments ?? []) },
         });
       } catch (error) {

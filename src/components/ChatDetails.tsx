@@ -18,6 +18,10 @@ import { HarnessEntityView } from "./harness-activity";
 import { harnessActivityActions } from "./app-shell/harness-actions";
 import type { ChatSendMessageHandler } from "./chat-details/types";
 import { VoicePlaybackOverlay } from "./chat-details/voice-playback-overlay";
+import { LiveVoicePanel } from "./chat-details/live-voice-panel";
+import { useLiveVoice } from "../hooks/useLiveVoice";
+import { useQuickChatSettings } from "../hooks/useQuickChatSettings";
+import { isClankyControlChat } from "@/shared/clanky-control";
 import {
   useVoicePlayback,
 } from "../hooks";
@@ -80,6 +84,12 @@ export function ChatDetails({
   // The embedded chat is not the active sidebar entity; expose its distinct scope through the framework header.
   useHeaderActions({ overflow: embeddedActions });
   const voice = useConversationVoice();
+  const quickChat = useQuickChatSettings();
+  const liveVoice = useLiveVoice({
+    chatId,
+    enabled: Boolean(chat && isClankyControlChat(chat, quickChat.settings.workspaceId) && voice.liveSettings.configured),
+    isVisible,
+  });
   const refreshInput = useCallback(
     () => refreshChatCoalesced({ showLoading: false }),
     [refreshChatCoalesced],
@@ -89,6 +99,10 @@ export function ChatDetails({
     message: { id: string; content: string },
     mode: "full" | "summary",
   ): void => {
+    if (liveVoice.busy) {
+      toast.error("End Live voice before using read aloud.");
+      return;
+    }
     if (mode === "summary" && !voice.capabilities.text.validated) {
       toast.error("The text provider must be configured and validated for summaries.");
       return;
@@ -103,7 +117,12 @@ export function ChatDetails({
     voicePlayback,
     voice.capabilities.text,
     voice.speechAvailable,
+    liveVoice.busy,
   ]);
+  const startLiveVoice = useCallback(async (): Promise<void> => {
+    voicePlayback.stop();
+    await liveVoice.start();
+  }, [voicePlayback.stop, liveVoice.start]);
   const composerProps = useChatComposerAdapter({
     chat,
     chatId,
@@ -206,6 +225,7 @@ export function ChatDetails({
       kind="chat"
       entityId={chatId}
       showActivity={showActivity || (isEmbedded && embeddedActivity)}
+      activityFooter={<LiveVoicePanel voice={liveVoice} agentStatus={chat.state.status} />}
       snapshot={chat.state.harness?.activity}
       capabilities={chat.state.harness?.capabilities}
       inputs={chat.state.harness?.inputs}
@@ -230,7 +250,7 @@ export function ChatDetails({
         onChatSnapshot={applyChatSnapshot}
         onQuestionAnswerFocusChange={setQuestionAnswerInputFocused}
         voiceInput={{
-          available: voice.composer.available,
+          available: voice.composer.available && !liveVoice.busy,
           status: voice.composer.status,
           elapsedMs: voice.composer.elapsedMs,
           error: voice.composer.error,
@@ -240,9 +260,9 @@ export function ChatDetails({
         onCancelVoice={voice.composer.cancel}
         onDismissVoiceError={voice.composer.dismissError}
         onReadAloud={handleReadAloud}
-        readAloudAvailable={voice.speechAvailable}
+        readAloudAvailable={voice.speechAvailable && !liveVoice.busy}
         readAloudSummaryAvailable={
-          voice.speechAvailable
+          voice.speechAvailable && !liveVoice.busy
           && voice.capabilities.text.validated
         }
         playingReadAloudKey={voicePlayback.playingKey}
@@ -261,10 +281,12 @@ export function ChatDetails({
         onRefresh={refreshInput}
         onChatSnapshot={applyChatSnapshot}
       />
+      <LiveVoicePanel voice={liveVoice} agentStatus={chat.state.status} />
       {composerProps && (
         <ConversationComposer
           {...composerProps}
           questionAnswerInputFocused={questionAnswerInputFocused}
+          liveVoice={{ available: liveVoice.available, busy: liveVoice.busy, onStart: startLiveVoice }}
         />
       )}
       <VoicePlaybackOverlay

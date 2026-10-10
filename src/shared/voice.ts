@@ -49,6 +49,37 @@ export interface VoiceSettings {
   piper: {
     available: boolean;
   };
+  live: LiveVoiceSettings;
+}
+
+export interface LiveVoiceSettings {
+  useVoiceProvider: boolean;
+  baseUrl: string;
+  apiKeyConfigured: boolean;
+  model: string;
+  textModel: string;
+  configured: boolean;
+}
+
+export interface LiveVoiceSettingsUpdate {
+  useVoiceProvider: boolean;
+  baseUrl: string;
+  apiKey?: string;
+  clearApiKey?: boolean;
+  model: string;
+  textModel: string;
+}
+
+export interface LiveVoiceCallState {
+  id: string;
+  status: "connecting" | "active" | "closing" | "closed" | "failed";
+  error: string | null;
+  summarySaved: boolean;
+}
+
+export interface LiveVoiceSessionResponse {
+  call: LiveVoiceCallState;
+  sdp: string;
 }
 
 export interface VoiceSettingsUpdate {
@@ -57,6 +88,7 @@ export interface VoiceSettingsUpdate {
   clearApiKey?: boolean;
   models: VoiceSettings["models"];
   languageHints: VoiceLanguageHint[];
+  live?: LiveVoiceSettingsUpdate;
 }
 
 export type VoiceSpeechMode = "full" | "summary";
