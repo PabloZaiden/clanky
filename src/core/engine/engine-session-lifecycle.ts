@@ -7,6 +7,7 @@ import type { LogLevel } from "@/shared/events";
 import type {
   SessionInterruptOptions,
   SessionReconnectResult,
+  TaskSessionReconnectOptions,
   TaskBackend,
   TaskSessionLifecycle,
 } from "./engine-types";
@@ -73,10 +74,10 @@ export class TaskSessionLifecycleImpl implements TaskSessionLifecycle {
     return sessionId;
   }
 
-  async reconnect(): Promise<SessionReconnectResult> {
+  async reconnect(options: TaskSessionReconnectOptions = {}): Promise<SessionReconnectResult> {
     const result = await reconnectTaskSession(this.makeContext());
     this.sessionRecoveryPending = result.createdNew;
-    await this.observeSession();
+    await this.observeSession(options.observeHarnessActivity !== false);
     return result;
   }
 
@@ -160,10 +161,12 @@ export class TaskSessionLifecycleImpl implements TaskSessionLifecycle {
     await trackedInterrupt;
   }
 
-  private async observeSession(): Promise<void> {
+  private async observeSession(observeHarnessActivity = true): Promise<void> {
     await this.persistSession();
     const binding = this.state.session?.binding;
-    if (binding) await harnessActivityService.observe({ kind: "task", id: this.config.id }, binding, this.backend);
+    if (observeHarnessActivity && binding) {
+      await harnessActivityService.observe({ kind: "task", id: this.config.id }, binding, this.backend);
+    }
   }
 
   private makeContext(): SessionOperationContext {

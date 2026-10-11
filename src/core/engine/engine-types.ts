@@ -52,6 +52,10 @@ export interface SessionReconnectResult {
   createdNew: boolean;
 }
 
+export interface TaskSessionReconnectOptions {
+  observeHarnessActivity?: boolean;
+}
+
 export interface SessionInterruptOptions {
   abortMessage: string;
   abortWarnMessage: string;
@@ -74,7 +78,7 @@ export interface TaskSessionLifecycle {
   isConnected(): boolean;
   waitForInterrupt(): Promise<void>;
   setup(): Promise<string>;
-  reconnect(): Promise<SessionReconnectResult>;
+  reconnect(options?: TaskSessionReconnectOptions): Promise<SessionReconnectResult>;
   ensureSession(): Promise<void>;
   recreateAfterLoss(reason: string): Promise<string>;
   handlePendingModelChange(): Promise<void>;
