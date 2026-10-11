@@ -64,9 +64,9 @@ export function getWorkerPaths(targetDirectory: string, containerWorkdir: string
 }
 
 const NATIVE_RUNTIME_PACKAGES = {
-  copilot: { package: "@github/copilot", version: "1.0.91", executable: "copilot" },
-  codex: { package: "@openai/codex", version: "0.159.2", executable: "codex" },
-  opencode2: { package: "@opencode/cli", version: "2.0.20", executable: "opencode" },
+  copilot: { package: "@github/copilot", executable: "copilot" },
+  codex: { package: "@openai/codex", executable: "codex" },
+  opencode2: { package: "@opencode/cli", executable: "opencode" },
 } as const;
 
 const DEV_CONTAINERS_NODE_BIN = "/usr/local/share/nvm/current/bin";
@@ -112,26 +112,23 @@ mkdir -p "$root/runtime/bin"
 case "$adapter" in
   acp) exit 0 ;;
 ${Object.entries(NATIVE_RUNTIME_PACKAGES).map(([adapter, entry]) =>
-    `  ${adapter}) package=${shellQuote(entry.package)}; version=${shellQuote(entry.version)}; executable=${shellQuote(entry.executable)} ;;`).join("\n")}
+    `  ${adapter}) package=${shellQuote(entry.package)}; executable=${shellQuote(entry.executable)} ;;`).join("\n")}
   *) echo "Unsupported native adapter." >&2; exit 1 ;;
 esac
 platform=$(node -p 'process.platform + "-" + process.arch')
-prefix="$root/runtime/$adapter-$version-$platform"
+prefix="$root/runtime/$adapter-$platform"
 check() {
-  [ -x "$1/node_modules/.bin/$executable" ] &&
-  node -e 'const p = require(process.argv[1]); if (p.version !== process.argv[2]) process.exit(1);' "$1/node_modules/$package/package.json" "$version" &&
-  reported=$("$1/node_modules/.bin/$executable" --version) &&
-  node -e 'const versions = process.argv[1].match(/\\d+(?:\\.\\d+){2,}/g) || []; if (!versions.includes(process.argv[2])) throw new Error("Native CLI version mismatch");' "$reported" "$version"
+  [ -x "$1/node_modules/.bin/$executable" ]
 }
 valid() { check "$prefix"; }
 if ! valid; then
   stage=$(mktemp -d "$root/runtime/.install-$adapter-XXXXXX")
   trap 'rm -rf -- "$stage"' EXIT
-  echo "Installing $package@$version for this workspace."
+  echo "Installing $package for this workspace."
   node -e 'const fs = require("node:fs"); fs.writeFileSync(process.argv[1] + "/package.json", JSON.stringify({name:"clanky-workspace-runtime",private:true,allowScripts:{[process.argv[2]]:true}}));' "$stage" "$package"
-  npm install --prefix "$stage" --save-exact --omit=dev --no-audit --no-fund "$package@$version"
+  npm install --prefix "$stage" --omit=dev --no-audit --no-fund "$package"
   check "$stage"
-  echo "$package CLI version $version verified."
+  echo "$package CLI installed."
   if [ -d "$prefix" ]; then
     if valid; then
       rm -rf -- "$stage"
@@ -148,7 +145,7 @@ if ! valid; then
 fi
 link="$root/runtime/bin/.$adapter-$(node -p 'require("node:crypto").randomUUID()')"
 trap 'rm -f -- "$link"' EXIT
-ln -s "../$adapter-$version-$platform/node_modules/.bin/$executable" "$link"
+ln -s "../$adapter-$platform/node_modules/.bin/$executable" "$link"
 mv -f -- "$link" "$root/runtime/bin/$([ "$adapter" = opencode2 ] && echo opencode2 || echo "$executable")"
 trap - EXIT
 `;

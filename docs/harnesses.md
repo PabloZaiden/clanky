@@ -9,9 +9,9 @@ harness subagents.
 
 | Adapter | `agent.adapter` | `agent.provider` | Runtime |
 | --- | --- | --- | --- |
-| GitHub Copilot | `copilot` | `copilot` | Installed and authenticated Copilot CLI; validated with CLI 1.0.91 and SDK 1.0.15 |
-| Codex | `codex` | `codex` | Installed and authenticated Codex CLI 0.159.2 or newer, using app-server |
-| OpenCode 2 | `opencode2` | `opencode` | Installed `opencode2` runtime, version 2.0.20 or newer in generation 2 |
+| GitHub Copilot | `copilot` | `copilot` | Installed and authenticated current Copilot CLI |
+| Codex | `codex` | `codex` | Installed and authenticated current Codex CLI, using app-server |
+| OpenCode 2 | `opencode2` | `opencode` | Installed current `opencode2` runtime for generation 2 |
 | ACP | `acp` | Selected harness preset | Existing ACP-capable Copilot, Codex, OpenCode, Claude, Pi or Grok integration |
 
 Native adapters are experimental. Install and authenticate the harness on the

@@ -121,8 +121,8 @@ records the actual CLI/protocol version. Shutdown is awaited and idempotent;
 cleanup failures preserve their causes.
 
 Native executable discovery uses the configured execution-host `PATH`.
-Codex's CLI version check receives the same environment and working directory as
-its app-server process; it must not depend on the controller's global CLI path.
+Codex's app-server startup receives the same environment and working directory
+as its process; it must not depend on the controller's global CLI path.
 
 The catalog queries real native model/effort metadata, checks transport health,
 rejects unavailable saved selections and leaves the profile's reasoning default

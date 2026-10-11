@@ -44,11 +44,11 @@ Execution-host transport and harness are independent:
 | Direct SSH | ACP only |
 
 Install and authenticate the selected runtime under the **worker service
-account**, not just on the controller. Native support uses Copilot SDK 1.0.15
-with CLI 1.0.91, Codex app-server CLI 0.159.2, and OpenCode runtime/client
-2.0.20. ACP remains an independent provider with its own selected harness
-preset, never an automatic native fallback. Existing workspace presets migrate
-to the ACP adapter without changing their original preset.
+account**, not just on the controller. Native support uses the current
+Copilot SDK and native CLI packages for Copilot, Codex app-server, and OpenCode
+runtime/client. ACP remains an independent provider with its own selected
+harness preset, never an automatic native fallback. Existing workspace presets
+migrate to the ACP adapter without changing their original preset.
 
 Native Mesh uses a provider-neutral encrypted RPC/lifetime-event gateway,
 not ACP framing. The worker owns native subprocesses and performs repository
@@ -372,13 +372,12 @@ Devbox can use local, SSH or Mesh execution independently of the container's
 adapter.
 
 The persistent `.devbox/clanky-worker` startup assets store the selected
-adapter/preset and install only its native CLI before starting the worker.
-Node/npm must be available in the container. Packages are pinned to validated
-versions: `@github/copilot@1.0.91`, `@openai/codex@0.159.2` and
-`@opencode/cli@2.0.20`. ACP does not install an additional CLI. Installation
-uses a private prefix, checks the CLI version and adds a stable private bin
-directory to the worker's PATH. OpenCode 2 is exposed as `opencode2`, without
-replacing a system OpenCode generation-1 executable.
+adapter/preset and install only its current native CLI before starting the
+worker. Node/npm must be available in the container. ACP does not install an
+additional CLI. Installation uses a private prefix, validates only that the
+selected executable was installed, and adds a stable private bin directory to
+the worker's PATH. OpenCode 2 is exposed as `opencode2`, without replacing a
+system OpenCode generation-1 executable.
 When npm requires install-script approval, it is recorded only for the selected
 package in this private prefix; global npm policy is not changed.
 
