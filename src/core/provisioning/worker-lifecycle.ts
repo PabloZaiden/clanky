@@ -27,7 +27,7 @@ import type { ProvisioningJobRecord } from "./types";
 import { updateProvisioningJob } from "../../persistence/provisioning-jobs";
 import { getWorkerPaths, shellQuote, type WorkerPaths } from "./worker-assets";
 import { prepareWorkerRuntimeAssets } from "./worker-runtime-assets";
-import { appendSystemLog } from "./job-logger";
+import { appendSystemLog, setStep } from "./job-logger";
 
 export interface WorkerProvisioningOptions {
   targetDirectory: string;
@@ -388,11 +388,11 @@ export class ProvisioningWorkerLifecycle {
   ): Promise<void> {
     const timeoutAt = Date.now() + WORKER_READINESS_TIMEOUT_MS;
     let lastHealthError: unknown;
-    appendSystemLog(
+    setStep(
       record,
       this.maxLogEntries,
-      "Waiting for workspace worker enrollment and health",
       "test_connection",
+      "Waiting for workspace worker enrollment and health",
     );
     while (Date.now() < timeoutAt) {
       this.throwIfCancelled(record);
