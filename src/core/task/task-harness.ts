@@ -4,6 +4,7 @@
 
 import type { TaskCtx } from "./context";
 import type { Task } from "@/shared/task";
+import type { Backend } from "../../backends/types";
 import { backendManager } from "../backend-manager";
 import { harnessActivityService } from "../harness-activity-service";
 import { HarnessError } from "../../backends/harness-errors";
@@ -13,12 +14,33 @@ import { mergeHarnessProjection } from "../../persistence/harness-state";
 import {
   recoverOwnedNativeEngineImpl,
   recoverOwnedNativeEngineLocked,
+  withOwnedNativeEngineForWorkspaceSafetyImpl,
+  withOwnedNativeEngineForWorkspaceSafetyLocked,
 } from "./task-engine-recovery";
+
+type NativeTaskBinding = NonNullable<NonNullable<Task["state"]["session"]>["binding"]>;
 
 async function resolveTaskHarness(ctx: TaskCtx, taskId: string, taskSnapshot?: Task) {
   const task = taskSnapshot ?? await ctx.getTask(taskId);
   if (!task) throw new HarnessError("harness_session_not_found", "The task is unavailable.");
   return { task, backend: backendManager.getInitializedContextBackend(taskId) };
+}
+
+async function assertNativeWorkspaceSafe(
+  taskId: string,
+  binding: NativeTaskBinding,
+  backend: Backend,
+  persistProjection: boolean,
+): Promise<void> {
+  const context = { kind: "task" as const, id: taskId };
+  const cleanup = await harnessActivityService.settle(context, binding, backend);
+  const gitSafety = getHarnessWorkspaceSafety(await harnessActivityService.getActivity(context, binding, backend));
+  if (persistProjection) {
+    mergeHarnessProjection(context, binding, { gitSafety });
+  }
+  if (cleanup.status !== "settled" || gitSafety.status !== "safe") {
+    throw new TaskOperationError("task_background_work_unsettled", "Native workspace settlement is unresolved.");
+  }
 }
 
 export async function getTaskHarnessActivity(ctx: TaskCtx, taskId: string) {
@@ -76,16 +98,23 @@ export async function assertTaskHarnessWorkspaceSafe(
       }
       return;
     }
-    throw new TaskOperationError("task_background_work_unsettled", "Reconnect to confirm native workspace settlement.");
-  }
-  const context = { kind: "task" as const, id: taskId };
-  const cleanup = await harnessActivityService.settle(context, binding, backend);
-  const gitSafety = getHarnessWorkspaceSafety(await harnessActivityService.getActivity(context, binding, backend));
-  if (options.persistProjection !== false) {
-    mergeHarnessProjection(context, binding, { gitSafety });
-  }
-  if (cleanup.status !== "settled" || gitSafety.status !== "safe") {
-    throw new TaskOperationError("task_background_work_unsettled", "Native workspace settlement is unresolved.");
+    if (options.taskSnapshot) {
+      throw new TaskOperationError("task_background_work_unsettled", "Reconnect to confirm native workspace settlement.");
+    }
+    const checkRecoveredWorkspace = async (): Promise<void> => {
+      ({ task, backend } = await resolveTaskHarness(ctx, taskId));
+      if (!backend?.isConnected()) {
+        throw new TaskOperationError("task_background_work_unsettled", "Reconnect to confirm native workspace settlement.");
+      }
+      await assertNativeWorkspaceSafe(taskId, binding, backend, options.persistProjection !== false);
+    };
+    if (options.lifecycleOperationLocked) {
+      await withOwnedNativeEngineForWorkspaceSafetyLocked(ctx, taskId, checkRecoveredWorkspace);
+    } else {
+      await withOwnedNativeEngineForWorkspaceSafetyImpl(ctx, taskId, checkRecoveredWorkspace);
+    }
+  } else {
+    await assertNativeWorkspaceSafe(taskId, binding, backend, options.persistProjection !== false);
   }
   if (options.requireFinalCommit !== false && task.state.status === "completed" && task.state.harness?.gitOutcome?.status !== "succeeded") {
     throw new TaskOperationError("task_final_git_pending", "Native task Git finalization is still pending.");

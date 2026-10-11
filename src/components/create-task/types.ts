@@ -65,6 +65,8 @@ export interface CreateTaskFormProps {
   planningWarning?: string | null;
   /** Available branches for the workspace's directory */
   branches?: BranchInfo[];
+  /** Workspace that owns the available branches */
+  branchesWorkspaceId?: string | null;
   /** Whether branches are loading */
   branchesLoading?: boolean;
   /** Current branch name */

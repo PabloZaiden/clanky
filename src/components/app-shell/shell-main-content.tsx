@@ -417,6 +417,7 @@ function renderMainContent(props: ShellMainContentProps) {
           planningWarning={dashboardData.planningWarning}
           branches={dashboardData.branches}
           branchesLoading={dashboardData.branchesLoading}
+          branchesWorkspaceId={dashboardData.branchesWorkspaceId}
           currentBranch={dashboardData.currentBranch}
           defaultBranch={dashboardData.defaultBranch}
           workspaceError={workspaceError}

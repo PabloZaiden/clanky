@@ -48,6 +48,7 @@ import {
   type IterationContext,
   type TaskExecutionPolicy,
   type TaskPromptBuildResult,
+  type TaskSessionReconnectOptions,
 } from "./engine-types";
 import { TaskPersistenceCoordinator } from "./engine-persistence";
 import { TaskPromptExecutorImpl } from "./engine-prompt-executor";
@@ -807,8 +808,8 @@ export class TaskEngine {
    * This is called when the engine is recreated after a server restart
    * while a task is still in planning mode.
    */
-  async reconnectSession(): Promise<void> {
-    await this.sessionLifecycle.reconnect();
+  async reconnectSession(options: TaskSessionReconnectOptions = {}): Promise<void> {
+    await this.sessionLifecycle.reconnect(options);
   }
 
   /**
