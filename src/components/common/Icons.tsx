@@ -30,6 +30,29 @@ export function CodeIcon({ className = "", size = "h-4 w-4" }: IconProps) {
   );
 }
 
+/**
+ * Eye icon for toggling a Markdown preview.
+ */
+export function PreviewIcon({ className = "", size = "h-4 w-4" }: IconProps) {
+  return (
+    <svg
+      className={`${size} ${className}`.trim()}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2}
+      aria-hidden="true"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M2.25 12s3.5-7 9.75-7 9.75 7 9.75 7-3.5 7-9.75 7-9.75-7-9.75-7z"
+      />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
 export function ChatIcon({ className = "", size = "h-4 w-4" }: IconProps) {
   return (
     <svg
@@ -313,6 +336,30 @@ export function RefreshIcon({ className = "", size = "h-4 w-4" }: IconProps) {
         strokeLinejoin="round"
         d="M4 9a8 8 0 0113.292-4.293L20 9M20 15a8 8 0 01-13.292 4.293L4 15"
       />
+    </svg>
+  );
+}
+
+/**
+ * Save/floppy-disk icon for persisting edits.
+ */
+export function SaveIcon({ className = "", size = "h-4 w-4" }: IconProps) {
+  return (
+    <svg
+      className={`${size} ${className}`.trim()}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2}
+      aria-hidden="true"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M5 3h12l4 4v12a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z"
+      />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M7 3v6h10V3" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M7 21v-8h10v8" />
     </svg>
   );
 }

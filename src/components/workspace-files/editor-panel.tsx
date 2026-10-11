@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { MonacoCodeEditor } from "../MonacoCodeEditor";
 import { MarkdownRenderer } from "../MarkdownRenderer";
-import { Button, RefreshIcon, WrapTextIcon } from "../common";
+import { Button, PreviewIcon, RefreshIcon, SaveIcon, WrapTextIcon } from "../common";
 
 const EDITOR_LANGUAGE_OPTIONS = [
   { id: "plaintext", label: "Plain Text" },
@@ -111,26 +111,19 @@ export function WorkspaceEditorPanel({
         </div>
         <div className="flex max-w-full shrink-0 flex-wrap items-center justify-end gap-2">
           {canPreview ? (
-            <div role="group" aria-label="Document view" className="flex shrink-0 gap-1">
-              <Button
-                variant={showPreview ? "ghost" : "secondary"}
-                size="sm"
-                onClick={() => setPreviewFilePath(null)}
-                disabled={loading}
-                aria-pressed={!showPreview}
-              >
-                Code
-              </Button>
-              <Button
-                variant={showPreview ? "secondary" : "ghost"}
-                size="sm"
-                onClick={() => setPreviewFilePath(filePath ?? null)}
-                disabled={loading}
-                aria-pressed={showPreview}
-              >
-                Preview
-              </Button>
-            </div>
+            <Button
+              variant={showPreview ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setPreviewFilePath(showPreview ? null : filePath ?? null)}
+              disabled={loading}
+              icon={<PreviewIcon size="h-4 w-4" />}
+              aria-label="Markdown preview"
+              aria-pressed={showPreview}
+              title={showPreview ? "Show Markdown code" : "Show Markdown preview"}
+              className="w-9 px-0"
+            >
+              <span className="sr-only">Markdown preview</span>
+            </Button>
           ) : null}
           {filePath ? (
             <select
@@ -177,8 +170,18 @@ export function WorkspaceEditorPanel({
           >
             <span className="sr-only">Refresh file</span>
           </Button>
-          <Button variant="primary" size="sm" onClick={() => void onSave()} disabled={!filePath || !dirty || loading} loading={saving}>
-            Save
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => void onSave()}
+            disabled={!filePath || !dirty || loading}
+            loading={saving}
+            icon={<SaveIcon size="h-4 w-4" />}
+            aria-label="Save file"
+            title="Save file"
+            className="w-9 px-0"
+          >
+            <span className="sr-only">Save file</span>
           </Button>
         </div>
       </div>
