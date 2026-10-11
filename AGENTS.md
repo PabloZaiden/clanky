@@ -502,6 +502,34 @@ If the scenario can only be described by referring to a past defect or its fix,
 do not add or retain the test. Tests exist to specify required product
 scenarios, not to prove that old bugs stay fixed.
 
+Apply this decision gate to **every action and assertion**, not just the test
+name or its overall scenario. A valid journey must not become a container for
+bug-specific checks. Each step must advance the user's workflow, establish a
+necessary precondition, verify its required outcome, or clean up its resources.
+Remove extra no-op operations, lifecycle permutations, exact endpoint/session
+comparisons, and error-mechanism assertions unless they independently express
+a required public security, compatibility, or data-safety contract.
+
+Use this counterfactual before retaining coverage: **if the defect had never
+existed, would we still require this workflow and these assertions?** A rename,
+moving the reproduction into an existing journey, or obtaining approval to fix
+the bug does not satisfy that requirement. Approval of a product workflow is
+not blanket approval of every check accumulated while debugging it.
+
+Keep defect reproduction separate from committed product coverage. Reproduce
+locally with temporary scripts or validation artifacts, and remove them when
+the investigation is finished. If the investigation exposes a missing normal
+workflow, obtain independent approval for that workflow and implement its
+smallest coherent journey; do not copy the reproduction matrix into the suite.
+
+For example, working in workspace A while creating, maintaining, using, and
+retiring an automatic workspace B is a valid multi-workspace journey when its
+required results are usable work on B, authorized retirement, and completed
+work on A. Re-enrolling A without changes, inspecting invalidation events, or
+checking exact endpoint changes merely to exercise a fix does not belong in
+that journey. Conversely, grant denial after retirement is an observable
+authorization requirement, not an assertion about the cleanup implementation.
+
 ### Provider mocks
 
 Committed E2E must never depend on live AI providers, external credentials,

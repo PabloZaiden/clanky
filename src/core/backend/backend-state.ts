@@ -48,6 +48,7 @@ export interface TaskConnectionState {
   userId: string;
   backend: Backend;
   workspaceId: string;
+  executionHostBinding: ExecutionHostBinding;
 }
 
 export interface DerivedExecutionSettings {

@@ -34,6 +34,12 @@ new conversation when changing adapters; app transcript history is preserved.
 Clanky resumes its own sessions, but no longer imports external harness sessions
 or offers conversation forks.
 
+Tasks and chats have the same Mesh worker isolation: maintenance on another
+worker does not close their sessions. If their own worker is revoked or its
+route becomes invalid, the interruption remains visible and native prompts
+are not automatically resent. See
+[independent worker lifecycle](mesh-worker.md#independent-worker-lifecycle).
+
 OpenCode 2 uses a separate profile under the Clanky data directory. It does not
 upgrade an existing OpenCode generation-1 data directory in place. Configure
 the required providers for that profile or through the execution-host environment.

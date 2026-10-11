@@ -270,8 +270,8 @@ export class AcpBackend implements Backend {
   // Subscriptions and replies
   // ============================================
 
-  abortAllSubscriptions(): void {
-    this.subscriptions.abortAll();
+  abortAllSubscriptions(reason?: Error): void {
+    this.subscriptions.abortAll(reason);
   }
 
   async subscribeToEvents(sessionId: string): Promise<EventStream<HarnessEvent>> {
