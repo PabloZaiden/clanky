@@ -13,6 +13,7 @@ import { parseAndValidate } from "../validation";
 import { chatActionErrorResponse, toLightweightChat } from "./helpers";
 
 const log = createLogger("api:chats");
+const SSH_CREDENTIAL_TOKEN_HEADER = "x-clanky-ssh-credential-token";
 
 function mapChatUpdates(
   body: Partial<ChatConfig>,
@@ -164,7 +165,7 @@ export const chatsCrudRoutes = defineRoutes({
   "/api/chats/:id": {
     auth: "user",
     sameOrigin: "mutations",
-    description: "Read, update, or delete a chat session; remote cleanup may continue after deletion.",
+    description: "Read, update, or delete a chat session; remote cleanup may continue after deletion. Chat deletion accepts x-clanky-ssh-credential-token when remote history cleanup requires SSH credentials.",
     requestSchema: UpdateChatRequestSchema,
     async GET(_req: Request, ctx): Promise<Response> {
       const chat = await chatManager.getChatSummary(ctx.params["id"]!);
@@ -222,7 +223,7 @@ export const chatsCrudRoutes = defineRoutes({
       }
     },
 
-    async DELETE(_req: Request, ctx): Promise<Response> {
+    async DELETE(req: Request, ctx): Promise<Response> {
       const chat = await chatManager.getChat(ctx.params["id"]!);
       if (!chat) {
         return errorResponse("not_found", "Chat not found", 404);
@@ -232,7 +233,11 @@ export const chatsCrudRoutes = defineRoutes({
       }
 
       try {
-        const deleted = await chatManager.deleteChat(ctx.params["id"]!, { deferCleanup: true });
+        const credentialToken = req.headers.get(SSH_CREDENTIAL_TOKEN_HEADER)?.trim() || null;
+        const deleted = await chatManager.deleteChat(ctx.params["id"]!, {
+          deferCleanup: true,
+          credentialToken,
+        });
         if (!deleted) {
           return errorResponse("not_found", "Chat not found", 404);
         }

@@ -194,40 +194,36 @@ export class ChatSessionService implements ChatSessionPort {
     chat: Chat,
     backend: Backend,
     options?: {
-      recreateIfMissing?: boolean;
       workingDirectory?: ChatDirectoryResolution;
       signal?: AbortSignal;
     },
   ): Promise<Chat> {
     throwIfAborted(options?.signal);
     if (chat.state.session?.id) {
+      let existing: Awaited<ReturnType<typeof resumeOwnedHarnessSession>>;
       try {
         const context = await this.sessionContext(chat, backend);
-        const existing = await raceWithAbort(
+        existing = await raceWithAbort(
           resumeOwnedHarnessSession(backend, chat.state.session, context),
           options?.signal,
         );
         throwIfAborted(options?.signal);
-        if (existing) {
-          if (existing.binding) chat = await this.state.updateState(chat, {
-            ...chat.state, session: { id: existing.id, binding: existing.binding },
-          });
-          if (existing.binding) await this.observe(chat.config.id, existing.binding, backend);
-          return chat;
-        }
-        if (options?.recreateIfMissing) {
-          return this.recreateSession(chat, backend, options);
-        }
-        return this.failLostSession(chat, createAcpSessionNotFoundError(chat.state.session.id));
       } catch (error) {
         if (isAcpErrorCode(error, "acp_session_not_found") || (error instanceof HarnessError && error.code === "harness_session_not_found")) {
-          if (options?.recreateIfMissing) {
-            return this.recreateSession(chat, backend, { ...options, cause: error });
-          }
-          return this.failLostSession(chat, error);
+          await this.failLostSession(chat, error);
         }
         throw error;
       }
+      if (!existing) {
+        const error = createAcpSessionNotFoundError(chat.state.session.id);
+        await this.failLostSession(chat, error);
+        throw error;
+      }
+      if (existing.binding) chat = await this.state.updateState(chat, {
+        ...chat.state, session: { id: existing.id, binding: existing.binding },
+      });
+      if (existing.binding) await this.observe(chat.config.id, existing.binding, backend);
+      return chat;
     }
 
     return this.createSession(chat, backend, {
@@ -324,42 +320,89 @@ export class ChatSessionService implements ChatSessionPort {
     try {
       if (!reconnectingChat.state.session?.id) {
         reconnectingChat = await this.ensureSession(reconnectingChat, backend, {
-          recreateIfMissing: true,
           signal: options.signal,
         });
         return this.finishReconnect(reconnectingChat);
       }
 
-      try {
-        const context = await this.sessionContext(reconnectingChat, backend);
-        const existing = await resumeOwnedHarnessSession(backend, reconnectingChat.state.session, context);
-        if (!existing) {
-          reconnectingChat = await this.ensureSession(reconnectingChat, backend, {
-            recreateIfMissing: true,
-            signal: options.signal,
-          });
-          return this.finishReconnect(reconnectingChat);
-        }
-        if (existing.binding) reconnectingChat = await this.state.mutateState(chat.config.id, (current) => ({
-          ...current.state, session: { id: existing.id, binding: existing.binding },
-        }));
-        if (existing.binding) await this.observe(chat.config.id, existing.binding, backend);
-      } catch (error) {
-        if (!isAcpErrorCode(error, "acp_session_not_found") && !(error instanceof HarnessError && error.code === "harness_session_not_found")) {
-          throw error;
-        }
-        reconnectingChat = await this.ensureSession(reconnectingChat, backend, {
-          recreateIfMissing: true,
-          signal: options.signal,
-        });
-        return this.finishReconnect(reconnectingChat);
+      const context = await this.sessionContext(reconnectingChat, backend);
+      const existing = await resumeOwnedHarnessSession(
+        backend,
+        reconnectingChat.state.session,
+        context,
+      );
+      if (!existing) {
+        throw createAcpSessionNotFoundError(reconnectingChat.state.session.id);
       }
+      if (existing.binding) reconnectingChat = await this.state.mutateState(chat.config.id, (current) => ({
+        ...current.state, session: { id: existing.id, binding: existing.binding },
+      }));
+      if (existing.binding) await this.observe(chat.config.id, existing.binding, backend);
     } catch (error) {
       await this.failChat(reconnectingChat, error);
       throw error;
     }
 
     return this.finishReconnect(reconnectingChat);
+  }
+
+  async createSessionFromHistory(
+    chat: Chat,
+    options: ReconnectChatOptions & { directory: string },
+  ): Promise<Chat> {
+    const recoveryId = chat.state.harness?.historyRecovery?.id;
+    if (
+      chat.state.status !== "starting"
+      || !recoveryId
+      || chat.state.harness?.historyRecovery?.status !== "exporting"
+    ) {
+      throw new HarnessError(
+        "harness_runtime_unavailable",
+        "The chat is not in a valid history-recovery session startup.",
+      );
+    }
+
+    try {
+      const workingDirectory: ChatDirectoryResolution = {
+        chat,
+        directory: options.directory,
+      };
+      const backend = await this.ensureBackendConnected(
+        chat,
+        options,
+        workingDirectory,
+      );
+      if (backend.getDirectory() !== options.directory) {
+        throw new HarnessError(
+          "harness_runtime_unavailable",
+          "The selected execution host is not using the directory that contains the recovery history.",
+        );
+      }
+      const created = await this.createSession(chat, backend, {
+        prepareWorkspace: false,
+        workingDirectory,
+        signal: options.signal,
+      });
+      if (
+        created.state.status !== "starting"
+        || created.state.harness?.historyRecovery?.id !== recoveryId
+        || created.state.harness.historyRecovery.status !== "exporting"
+      ) {
+        throw new HarnessError(
+          "harness_runtime_unavailable",
+          "The chat changed while the replacement provider session was being created.",
+        );
+      }
+      return created;
+    } catch (error) {
+      if (!options.signal?.aborted) {
+        const latest = await this.state.getChat(chat.config.id);
+        if (latest) {
+          await this.failChat(latest, error);
+        }
+      }
+      throw error;
+    }
   }
 
   async disconnectChat(chatId: string): Promise<void> {
@@ -528,50 +571,6 @@ export class ChatSessionService implements ChatSessionPort {
       },
       lastActivityAt: createTimestamp(),
     });
-  }
-
-  private async recreateSession(
-    chat: Chat,
-    backend: Backend,
-    options: {
-      workingDirectory?: ChatDirectoryResolution;
-      signal?: AbortSignal;
-      cause?: unknown;
-    } = {},
-  ): Promise<Chat> {
-    throwIfAborted(options.signal);
-    if (backend.harness.capabilities.adapter !== "acp") {
-      throw new HarnessError("harness_session_not_found", "The owned native conversation is unavailable. Start a new chat instead of replacing its identity.", {
-        cause: options.cause,
-        details: { conversationId: chat.state.session?.id },
-      });
-    }
-    const reconnecting = chat.state.status === "reconnecting"
-      ? chat
-      : await this.state.updateState(chat, {
-          ...chat.state,
-          status: "reconnecting",
-          error: undefined,
-          completedAt: undefined,
-          activeMessageId: undefined,
-          interruptRequested: false,
-          lastActivityAt: createTimestamp(),
-          }, {
-            expectedStatus: options.signal ? chat.state.status : undefined,
-          });
-    try {
-      return await this.createSession(reconnecting, backend, {
-          prepareWorkspace: false,
-          workingDirectory: options.workingDirectory,
-          signal: options.signal,
-      });
-    } catch (error) {
-      if (options.signal?.aborted) {
-          throw error;
-      }
-      await this.failChat(reconnecting, error);
-      throw error;
-    }
   }
 
   private async failLostSession(chat: Chat, error: unknown): Promise<Chat> {

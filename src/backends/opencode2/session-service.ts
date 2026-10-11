@@ -3,6 +3,7 @@
  */
 
 import type { SessionInfo as NativeSession, OpenCodeClient, OpenCodeEvent } from "@opencode/client";
+import { ClientError } from "@opencode/client";
 import type { AgentSession, ConfigOption, CreateSessionOptions, PromptInput } from "../types";
 import type { HarnessConversationBinding } from "@/shared/harness-control";
 import type { HarnessEventScope } from "@/shared/harness-events";
@@ -16,6 +17,17 @@ import { toOpenCodePrompt } from "./prompt";
 interface Conversation { info: AgentSession; native: NativeSession }
 type ActivitySession = Pick<NativeSession, "id" | "parentID" | "projectID" | "location" | "title" | "agent" | "model" | "time" | "outcome">;
 interface TrackedSession { rootId: string; native: ActivitySession; translator: OpenCodeEventTranslator }
+
+function isSessionNotFoundHttpError(error: unknown): boolean {
+  if (!(error instanceof ClientError) || error.reason !== "UnexpectedStatus") {
+    return false;
+  }
+  const cause = error.cause;
+  return typeof cause === "object"
+    && cause !== null
+    && "status" in cause
+    && cause.status === 404;
+}
 
 export class OpenCodeSessionService {
   private readonly conversations = new Map<string, Conversation>();
@@ -73,7 +85,19 @@ export class OpenCodeSessionService {
       if (binding.adapter !== "opencode2" || binding.directory !== this.dependencies.directory) {
         throw new HarnessError("harness_session_not_owned", "The native binding does not match this execution host.");
       }
-      const native = await this.dependencies.client.session.get({ sessionID: binding.nativeId });
+      let native: NativeSession;
+      try {
+        native = await this.dependencies.client.session.get({ sessionID: binding.nativeId });
+      } catch (error) {
+        if (isSessionNotFoundHttpError(error)) {
+          throw new HarnessError(
+            "harness_session_not_found",
+            "The owned OpenCode conversation is unavailable.",
+            { cause: error },
+          );
+        }
+        throw error;
+      }
       const raw = native.metadata?.["clanky/binding"];
       requireMatchingHarnessBinding(typeof raw === "string" ? raw : undefined, binding);
       if (native.location.directory !== binding.directory || native.parentID) throw new HarnessError("harness_session_not_owned", "The native root does not match this binding.");

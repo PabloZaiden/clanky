@@ -14,6 +14,7 @@ import {
   loadChatStreamControlState,
   loadTaskChat,
   getChatTranscriptMeta,
+  listChatTranscriptEntries,
   getChatToolCallFromTranscript,
   listChatTranscriptEntriesPage,
   saveChat,
@@ -28,6 +29,7 @@ import type {
   ChatConfig,
   ChatState,
   ChatStatus,
+  ChatTranscriptStorageEntry,
   ChatStreamControlState,
   ChatStartupStage,
   TranscriptChangeSet,
@@ -96,6 +98,7 @@ export class ChatStateService implements ChatStatePort {
     if (!chatMeta) {
       return null;
     }
+
     const meta = getChatTranscriptMeta(chatId);
     if (!meta) {
       throw new Error(`Chat transcript metadata is unavailable: ${chatId}`);
@@ -105,6 +108,13 @@ export class ChatStateService implements ChatStatePort {
     return value && typeof value === "object" && !Array.isArray(value)
       ? value as ToolCallRecord
       : null;
+  }
+
+  async getChatTranscriptEntries(chatId: string): Promise<ChatTranscriptStorageEntry[]> {
+    if (!await this.getChatSummary(chatId)) {
+      return [];
+    }
+    return listChatTranscriptEntries(chatId, true);
   }
 
   async getTaskChat(taskId: string): Promise<Chat | null> {

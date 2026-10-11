@@ -15,6 +15,7 @@ import type {
   ChatSnapshot,
   ChatState,
   ChatStatus,
+  ChatTranscriptStorageEntry,
   ChatStreamControlState,
   ChatStartupStage,
   ChatWorktreeState,
@@ -76,6 +77,8 @@ export interface DeleteChatOptions {
    * Internal callers keep the synchronous cleanup behavior by default.
    */
   deferCleanup?: boolean;
+  /** Transient credential handoff for cleaning remote chat-history exports. */
+  credentialToken?: string | null;
 }
 
 export type ChatConfigUpdates = Partial<
@@ -110,6 +113,7 @@ export interface ChatStatePort {
     chatId: string,
     options?: TranscriptSnapshotOptions,
   ): Promise<ChatSnapshot | null>;
+  getChatTranscriptEntries(chatId: string): Promise<ChatTranscriptStorageEntry[]>;
   getChatToolCall(chatId: string, toolCallId: string): Promise<ToolCallRecord | null>;
   getTaskChat(taskId: string): Promise<Chat | null>;
   getAllChats(): Promise<Chat[]>;
@@ -179,10 +183,13 @@ export interface ChatSessionPort {
     chat: Chat,
     backend: Backend,
     options?: {
-      recreateIfMissing?: boolean;
       workingDirectory?: ChatDirectoryResolution;
       signal?: AbortSignal;
     },
+  ): Promise<Chat>;
+  createSessionFromHistory(
+    chat: Chat,
+    options: ReconnectChatOptions & { directory: string },
   ): Promise<Chat>;
   createSession(
     chat: Chat,
@@ -254,6 +261,13 @@ export interface ChatTaskConversionPort {
   spawnTaskFromCurrentPlan(chatId: string, planFilePath?: string): Promise<Task>;
 }
 
+export interface ChatHistoryRecoveryPort {
+  continueFromHistory(
+    chatId: string,
+    options?: ReconnectChatOptions,
+  ): Promise<Chat | null>;
+}
+
 export interface ChatServiceBundle {
   state: ChatStatePort;
   lifecycle: ChatLifecyclePort;
@@ -261,6 +275,7 @@ export interface ChatServiceBundle {
   session: ChatSessionPort;
   conversation: ChatConversationPort;
   interaction: ChatInteractionPort;
+  historyRecovery: ChatHistoryRecoveryPort;
   taskConversion: ChatTaskConversionPort;
 }
 

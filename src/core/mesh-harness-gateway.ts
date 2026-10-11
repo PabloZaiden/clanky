@@ -253,8 +253,24 @@ export class MeshHarnessGateway {
     if (operation.operation === "resume") {
       const native = this.nativeBinding(host, operation.binding);
       requireMeshHarnessConversation(host.config, operation.binding);
-      const session = await backend.resumeSession(native);
-      return await this.adopt(host, session, operation.binding);
+      try {
+        const session = await backend.resumeSession(native);
+        return await this.adopt(host, session, operation.binding);
+      } catch (error) {
+        const code = error instanceof DomainError ? error.code : undefined;
+        const context = {
+          adapter: host.config.adapter,
+          nativeId: operation.binding.nativeId,
+          ...(code ? { code } : {}),
+          errorType: error instanceof Error ? error.name : typeof error,
+        };
+        if (code === "harness_session_not_found") {
+          log.warn("Native Mesh session could not be resumed", context);
+        } else {
+          log.error("Native Mesh session resume failed", context);
+        }
+        throw error;
+      }
     }
     const conversation = host.conversations.get(operation.sessionId);
     if (!conversation) throw new DomainError("harness_session_not_owned", "The conversation is not owned by this native Mesh lease.");

@@ -13,6 +13,7 @@ import {
   type ExecutionPathStyle,
 } from "../execution-path";
 import {
+  CHAT_HISTORY_EXPORT_DIRECTORY_NAME,
   MANAGED_WORKTREE_DIRECTORY_NAME,
   ManagedPathService,
   PLANNING_DIRECTORY_NAME,
@@ -234,7 +235,11 @@ export async function ensureWorktreeExcluded(
   repoDirectory: string
 ): Promise<void> {
   const absoluteRepoDirectory = await resolveGitDirectory(executor, repoDirectory);
-  const excludePatterns = [MANAGED_WORKTREE_DIRECTORY_NAME, PLANNING_DIRECTORY_NAME];
+  const excludePatterns = [
+    MANAGED_WORKTREE_DIRECTORY_NAME,
+    CHAT_HISTORY_EXPORT_DIRECTORY_NAME,
+    PLANNING_DIRECTORY_NAME,
+  ];
   const result = await runWorktreeGitCommand(
     executor,
     absoluteRepoDirectory,

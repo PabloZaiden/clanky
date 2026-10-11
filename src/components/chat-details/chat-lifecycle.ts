@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useToast } from "@pablozaiden/webapp/web";
 import type {
   Chat,
@@ -26,6 +26,15 @@ import type {
 } from "./types";
 
 const ACTIVE_CHAT_STATUSES = new Set(["starting", "streaming", "waiting", "interrupting", "reconnecting"]);
+
+export function getChatRegisteredSshServerId(
+  chat: Chat | null | undefined,
+): string | null {
+  const binding = chat?.config.source?.kind === "execution_host"
+    ? chat.config.source.executionHost
+    : chat?.config.executionHostBinding ?? chat?.state.session?.binding?.executionHost;
+  return binding ? getRegisteredSshServerId(binding.host) : null;
+}
 
 export function getChatErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -113,6 +122,7 @@ function applyChatOperationalEvent(
 
 export function useChatLifecycle(chatId: string): ChatLifecycleResult {
   const toast = useToast();
+  const [isContinuingFromHistory, setIsContinuingFromHistory] = useState(false);
   const mountedChatIdRef = useRef(chatId);
   const reconnectAttemptedRef = useRef(false);
   mountedChatIdRef.current = chatId;
@@ -172,12 +182,8 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
 
   const handleReconnect = useCallback(async (): Promise<void> => {
     try {
-      const source = getChat()?.config.source;
-      const serverId = source?.kind === "execution_host"
-        && source.executionHost.host.kind === "ssh"
-        ? getRegisteredSshServerId(source.executionHost.host)
-        : null;
-      const credentialToken = source?.kind === "execution_host" && serverId
+      const serverId = getChatRegisteredSshServerId(getChat());
+      const credentialToken = serverId
         ? await getStoredSshCredentialToken(serverId)
         : null;
       const nextChat = await apiRequest<Chat>(`/api/chats/${chatId}/reconnect`, {
@@ -192,6 +198,43 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
       toast.error(String(reconnectError));
     }
   }, [applyChatSnapshot, chatId, getChat, toast]);
+
+  const handleContinueFromHistory = useCallback(async (): Promise<boolean> => {
+    if (isContinuingFromHistory) {
+      return false;
+    }
+    setIsContinuingFromHistory(true);
+    try {
+      const serverId = getChatRegisteredSshServerId(getChat());
+      const credentialToken = serverId
+        ? await getStoredSshCredentialToken(serverId)
+        : null;
+      const recoveredChat = await apiRequest<Chat>(
+        `/api/chats/${chatId}/continue-from-history`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(credentialToken ? { credentialToken } : {}),
+          action: "Continue chat from history",
+          fallbackMessage: "Failed to continue chat from history",
+        },
+      );
+      applyChatSnapshot(recoveredChat);
+      toast.success("Chat continued in a new agent session.");
+      return true;
+    } catch (recoveryError) {
+      toast.error(String(recoveryError));
+      return false;
+    } finally {
+      setIsContinuingFromHistory(false);
+    }
+  }, [
+    applyChatSnapshot,
+    chatId,
+    getChat,
+    isContinuingFromHistory,
+    toast,
+  ]);
 
   const handleEvent = useCallback((event: ChatStreamEvent): void => {
     if (event.chatId !== chatId) {
@@ -258,8 +301,8 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
     loadingTranscript,
     error,
     isActive: chat ? ACTIVE_CHAT_STATUSES.has(chat.state.status) : false,
-    needsSshCredentials: chat?.config.source?.kind === "execution_host"
-      && getRegisteredSshServerId(chat.config.source.executionHost.host) !== null
+    needsSshCredentials: chat !== null
+      && getChatRegisteredSshServerId(chat) !== null
       && chat.state.connectionStatus === "needs_credentials",
     refreshChat: refreshChat as (options?: ChatRefreshOptions) => Promise<void>,
     refreshChatCoalesced: refreshChatCoalesced as (options?: ChatRefreshOptions) => Promise<void>,
@@ -269,5 +312,7 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
     applyChatSnapshot,
     markChatStarting,
     handleReconnect,
+    handleContinueFromHistory,
+    isContinuingFromHistory,
   };
 }

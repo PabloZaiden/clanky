@@ -125,4 +125,50 @@ export const chatsLifecycleRoutes = defineRoutes({
       }
     },
   },
+
+  "/api/chats/:id/continue-from-history": {
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "Create a fresh native chat session that can consult the persisted chat history.",
+    requestSchema: ReconnectChatRequestSchema,
+    async POST(req: Request, ctx): Promise<Response> {
+      const chatId = ctx.params["id"]!;
+      const chat = await chatManager.getChat(chatId);
+      if (!chat) {
+        return errorResponse("not_found", "Chat not found", 404);
+      }
+
+      try {
+        const validation = await parseAndValidate(
+          ReconnectChatRequestSchema,
+          req,
+          { allowEmptyBody: true },
+        );
+        if (!validation.success) {
+          return validation.response;
+        }
+        const recovered = await chatManager.continueFromHistory(chatId, {
+          credentialToken: validation.data.credentialToken,
+        });
+        if (!recovered) {
+          return errorResponse("not_found", "Chat not found", 404);
+        }
+        return Response.json(await toLightweightChat(recovered));
+      } catch (error) {
+        const knownErrorResponse = chatActionErrorResponse(error);
+        if (knownErrorResponse) {
+          return knownErrorResponse;
+        }
+        log.error("Failed to continue chat from history", {
+          chatId,
+          error: String(error),
+        });
+        return internalErrorResponse(error, {
+          error: "continue_from_history_failed",
+          message: "Failed to continue chat from history",
+          status: 500,
+        }, undefined, "chats");
+      }
+    },
+  },
 });
