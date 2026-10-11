@@ -22,14 +22,6 @@ const ACTIVE_SYNC_CONFLICT_STATUSES: ReadonlySet<TaskStatus> = new Set([
   "running",
   "waiting",
 ]);
-const SIDEBAR_HISTORY_STATUSES: ReadonlySet<TaskStatus> = new Set([
-  "failed",
-  "max_iterations",
-  "accepted_local",
-  "merged",
-  "deleted",
-]);
-
 export type TaskStatusPillVariant =
   | "default"
   | "success"
@@ -287,11 +279,10 @@ export function isWorkspaceHistoryTask(status: TaskStatus): boolean {
 
 /**
  * Check if a task belongs in the workspace sidebar's History subsection.
- * This intentionally does not derive presentation from canJumpstart:
- * stopped tasks remain visible in the active task list so they can be resumed.
+ * Only merged tasks belong in History; all other statuses remain in the task list.
  */
 export function isSidebarHistoryTask(status: TaskStatus): boolean {
-  const result = SIDEBAR_HISTORY_STATUSES.has(status);
+  const result = status === "merged";
   log.trace("isSidebarHistoryTask check", { status, result });
   return result;
 }

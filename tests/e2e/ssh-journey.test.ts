@@ -43,6 +43,20 @@ interface Workspace {
   id: string;
 }
 
+interface RestartAutomaticWorkspacesResponse {
+  totalWorkspaces: number;
+  started: Array<{
+    workspaceId: string;
+    workspaceName: string;
+    provisioningJobId: string;
+  }>;
+  failures: Array<{
+    workspaceId: string;
+    workspaceName: string;
+    error: string;
+  }>;
+}
+
 interface Model {
   connected: boolean;
   modelID: string;
@@ -335,7 +349,8 @@ async function exerciseSshTerminal(
 }
 
 test("compiled app crosses real SSH execution, files, Git, terminal, and ACP boundaries", async () => {
-  application = await E2EApplication.create();
+  const app = await E2EApplication.create();
+  application = app;
   await installFailingExternalProvider(
     application.providerBinDirectory,
     "claude-agent-acp",
@@ -639,6 +654,78 @@ test("compiled app crosses real SSH execution, files, Git, terminal, and ACP bou
       workspaceId: provisionedWorkspaceId,
     });
 
+    const secondProvisioningStarted = (await application.json<ProvisioningSnapshot>(
+      "/api/provisioning-jobs",
+      {
+        method: "POST",
+        body: JSON.stringify(provisioningRequest({
+          basePath: join(application.runDirectory, "provisioned-second"),
+          mode: "provision",
+          name: "Second provisioned SSH workspace",
+          provider: "copilot",
+          repoUrl: git.remoteDirectory,
+          serverId,
+        })),
+      },
+      201,
+    )).data;
+    const secondProvisioningCompleted = await waitForProvisioning(
+      application,
+      secondProvisioningStarted.job.config.id,
+      (candidate) => ["completed", "failed"].includes(candidate.job.state.status),
+      "second successful SSH provisioning job",
+    );
+    expect(secondProvisioningCompleted.job.state).toMatchObject({
+      status: "completed",
+      currentStep: "workspace_ready",
+      workspaceAction: "created",
+    });
+    const secondProvisionedWorkspaceId = secondProvisioningCompleted.job.state.workspaceId!;
+
+    const automaticWorkspaceRestart = (await application.json<
+      RestartAutomaticWorkspacesResponse
+    >(
+      "/api/settings/restart-automatic-workspaces",
+      {
+        method: "POST",
+        apiKey: apiKey.token,
+        body: JSON.stringify({
+          credentialTokensByServerId: {},
+          credentialUnavailableServerIds: [],
+        }),
+      },
+    )).data;
+    expect(automaticWorkspaceRestart.totalWorkspaces).toBe(2);
+    expect(automaticWorkspaceRestart.failures).toEqual([]);
+    expect(automaticWorkspaceRestart.started.map((entry) => entry.workspaceId).sort())
+      .toEqual([provisionedWorkspaceId, secondProvisionedWorkspaceId].sort());
+    expect(automaticWorkspaceRestart.started.map((entry) => entry.workspaceId))
+      .not.toContain(workspace.id);
+    const automaticWorkspaceRestartsCompleted = await Promise.all(
+      automaticWorkspaceRestart.started.map(async (entry) => ({
+        entry,
+        snapshot: await waitForProvisioning(
+          app,
+          entry.provisioningJobId,
+          (candidate) => ["completed", "failed"].includes(candidate.job.state.status),
+          `bulk restart for ${entry.workspaceName}`,
+        ),
+      })),
+    );
+    for (const { entry, snapshot } of automaticWorkspaceRestartsCompleted) {
+      expect(snapshot.job.state).toMatchObject({
+        status: "completed",
+        currentStep: "workspace_ready",
+        workspaceAction: "reused",
+        workspaceId: entry.workspaceId,
+      });
+      expect(
+        (await application.json<Workspace>(
+          `/api/workspaces/${entry.workspaceId}`,
+        )).data.id,
+      ).toBe(entry.workspaceId);
+    }
+
     const failureGit = await createGitFixture(
       join(application.runDirectory, "provision-failure-source"),
     );
@@ -766,6 +853,8 @@ test("compiled app crosses real SSH execution, files, Git, terminal, and ACP bou
     for (const jobId of [
       provisioningStarted.job.config.id,
       restartJob.job.config.id,
+      secondProvisioningStarted.job.config.id,
+      ...automaticWorkspaceRestart.started.map((entry) => entry.provisioningJobId),
       failedJob.job.config.id,
       cancellationJob.job.config.id,
     ]) {
@@ -793,6 +882,17 @@ test("compiled app crosses real SSH execution, files, Git, terminal, and ACP bou
     );
     await application.json(
       `/api/workspaces/${provisionedWorkspaceId}`,
+      {
+        method: "DELETE",
+        apiKey: apiKey.token,
+        body: JSON.stringify({
+          deleteServerDirectory: false,
+          credentialToken: null,
+        }),
+      },
+    );
+    await application.json(
+      `/api/workspaces/${secondProvisionedWorkspaceId}`,
       {
         method: "DELETE",
         apiKey: apiKey.token,

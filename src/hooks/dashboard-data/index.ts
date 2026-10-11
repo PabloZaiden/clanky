@@ -7,6 +7,10 @@
 import { useCallback } from "react";
 import { createLogger } from "@pablozaiden/webapp/web";
 import type { WorkspaceType } from "@/shared";
+import type {
+  RestartAutomaticWorkspacesRequest,
+  RestartAutomaticWorkspacesResponse,
+} from "@/contracts";
 import { useAppConfig } from "./use-app-config";
 import { useWorkspaceModels } from "./use-workspace-models";
 import { useWorkspaceBranches } from "./use-workspace-branches";
@@ -46,8 +50,12 @@ export interface UseDashboardDataResult {
   // App settings
   appSettingsResetting: boolean;
   appSettingsPurgingTerminalTasks: boolean;
+  appSettingsRestartingAutomaticWorkspaces: boolean;
   resetAllSettings: () => Promise<boolean>;
   purgeTerminalTasks: () => Promise<import("../taskActions").PurgeTerminalTasksResult | null>;
+  restartAutomaticWorkspaces: (
+    request: RestartAutomaticWorkspacesRequest,
+  ) => Promise<RestartAutomaticWorkspacesResponse | null>;
 
   // Workspace change handler
   handleWorkspaceChange: (
@@ -115,8 +123,10 @@ export function useDashboardData(): UseDashboardDataResult {
     defaultBranch: workspaceBranches.defaultBranch,
     appSettingsResetting: appConfig.appSettingsResetting,
     appSettingsPurgingTerminalTasks: appConfig.appSettingsPurgingTerminalTasks,
+    appSettingsRestartingAutomaticWorkspaces: appConfig.appSettingsRestartingAutomaticWorkspaces,
     resetAllSettings: appConfig.resetAllSettings,
     purgeTerminalTasks: appConfig.purgeTerminalTasks,
+    restartAutomaticWorkspaces: appConfig.restartAutomaticWorkspaces,
     handleWorkspaceChange,
     resetCreateModalState,
   };
