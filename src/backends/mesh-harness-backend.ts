@@ -414,7 +414,7 @@ export class MeshHarnessBackend implements Backend {
   async getModels(directory: string): Promise<ModelInfo[]> { return Models.parse(await this.rpc({ operation: "models", directory })); }
   async getModelVariants(directory: string, modelId: string): Promise<string[]> { return z.array(z.string()).max(1000).parse(await this.rpc({ operation: "variants", directory, modelId })); }
   isConnected(): boolean { try { this.connection(); return this.gaps.size === 0; } catch { return false; } }
-  abortAllSubscriptions(): void { this.hub.closeAll(); }
+  abortAllSubscriptions(reason?: Error): void { this.hub.closeAll(reason); }
   getSdkClient(): unknown { return null; }
   getDirectory(): string { return this.directory; }
   getConnectionInfo(): ConnectionInfo | null { return null; }

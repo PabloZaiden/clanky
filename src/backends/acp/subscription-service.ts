@@ -15,14 +15,14 @@ import type { SessionStateStore } from "./session-state";
 import type { SessionSubscriber } from "./types";
 
 export class SubscriptionService {
-  private readonly activeSubscriptions = new Map<string, Set<() => void>>();
+  private readonly activeSubscriptions = new Map<string, Set<(reason?: Error) => void>>();
 
   constructor(private readonly state: SessionStateStore) {}
 
-  abortAll(): void {
+  abortAll(reason?: Error): void {
     for (const closes of [...this.activeSubscriptions.values()]) {
       for (const close of [...closes]) {
-        close();
+        close(reason);
       }
     }
   }
@@ -42,7 +42,7 @@ export class SubscriptionService {
 
     const abortController = new AbortController();
 
-    const { stream, push, end } = createEventStream<HarnessEvent>();
+    const { stream, push, end, fail } = createEventStream<HarnessEvent>();
 
     const subscriber: SessionSubscriber = (event) => {
       if (!abortController.signal.aborted) {
@@ -53,7 +53,7 @@ export class SubscriptionService {
     this.state.addSessionSubscriber(sessionId, subscriber);
 
     let closed = false;
-    const close = (): void => {
+    const close = (reason?: Error): void => {
       if (closed) {
         return;
       }
@@ -65,12 +65,15 @@ export class SubscriptionService {
         this.activeSubscriptions.delete(sessionId);
       }
       this.state.removeSessionSubscriber(sessionId, subscriber);
-      stream.close();
-      end();
+      if (reason) fail(reason);
+      else {
+        stream.close();
+        end();
+      }
       log.debug("[AcpBackend] Unsubscribed from session events", { sessionId });
     };
 
-    const closes = this.activeSubscriptions.get(sessionId) ?? new Set<() => void>();
+    const closes = this.activeSubscriptions.get(sessionId) ?? new Set<(reason?: Error) => void>();
     closes.add(close);
     this.activeSubscriptions.set(sessionId, closes);
 

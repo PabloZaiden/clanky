@@ -230,9 +230,7 @@ export function publishClankyDomainEvent(
       return;
     case "mesh.changed":
       publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.mesh);
-      if (event.executionHostsChanged) {
-        publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.executionHosts);
-      }
+      publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.executionHosts);
       return;
     case "task.created":
       publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.tasks, event.taskId);

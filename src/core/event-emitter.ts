@@ -12,10 +12,19 @@ export interface EventContext {
   readonly userId?: string;
 }
 
-export interface MeshStateEvent {
+export type MeshStateEvent = {
   type: "mesh.changed";
-  executionHostsChanged: boolean;
-}
+  reason: "enrollment" | "endpoint" | "health" | "revoked" | "removed" | "identity";
+} & (
+  | { impact: "inventory" }
+  | {
+      impact: "cache" | "resources";
+      scope: {
+        userId: string;
+        workerNodeIds: readonly [string, ...string[]];
+      };
+    }
+);
 
 type EventHandler<T> = (event: T, context: EventContext) => void;
 type Unsubscribe = () => void;

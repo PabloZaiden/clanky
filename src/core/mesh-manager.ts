@@ -35,6 +35,7 @@ import {
 } from "@/shared/mesh";
 import {
   createExecutionHostRuntimeSnapshot,
+  EXECUTION_HOST_CAPABILITY_IDS,
   parseExecutionHostCapabilities,
 } from "@/shared/execution-host";
 import { createLogger } from "@pablozaiden/webapp/server";
@@ -130,7 +131,7 @@ import { MeshRelayConnector } from "./mesh-relay-connector";
 import { createMeshRelayPeerTransport } from "./mesh-relay-transport";
 import { getMeshRelayFingerprint } from "./mesh-relay-identity";
 import { workerRelayService } from "./worker-relay-service";
-import { meshStateEventEmitter } from "./event-emitter";
+import { meshStateEventEmitter, type MeshStateEvent } from "./event-emitter";
 import {
   getMeshRuntimeRole,
   getMeshWorkerDirectory,
@@ -173,6 +174,32 @@ async function ensureLocalMeshIdentityWithEndpoint(): Promise<MeshNodeIdentity> 
     endpoint,
   });
   return updatedIdentity;
+}
+
+function workerSnapshotImpact(
+  previous: MeshWorkerRegistration | null,
+  next: Pick<MeshWorkerRegistration, "workerDirectory" | "workerConfigRevision" | "workerAcceptRemoteExecution" | "workerCapabilities">
+    & { workerPlatform?: MeshWorkerRegistration["workerPlatform"] },
+): MeshStateEvent["impact"] {
+  if (!previous) return "cache";
+  if (
+    previous.workerAcceptRemoteExecution && !next.workerAcceptRemoteExecution
+    || EXECUTION_HOST_CAPABILITY_IDS.some((capability) =>
+      (next.workerCapabilities?.[capability] ?? 0) < (previous.workerCapabilities?.[capability] ?? 0))
+  ) {
+    return "resources";
+  }
+  if (
+    previous.workerDirectory !== next.workerDirectory
+    || previous.workerConfigRevision !== next.workerConfigRevision
+    || previous.workerAcceptRemoteExecution !== next.workerAcceptRemoteExecution
+    || JSON.stringify(previous.workerPlatform) !== JSON.stringify(next.workerPlatform ?? null)
+    || EXECUTION_HOST_CAPABILITY_IDS.some((capability) =>
+      (previous.workerCapabilities?.[capability] ?? 0) !== (next.workerCapabilities?.[capability] ?? 0))
+  ) {
+    return "cache";
+  }
+  return "inventory";
 }
 
 export class MeshManager {
@@ -643,8 +670,17 @@ export class MeshManager {
       });
     }
 
+    const impact = existingRegistration && (
+      existingRegistration.grantStatus !== "active"
+      || !meshRoutesEqual(existingRegistration.route, enrollmentRoute)
+    ) ? "resources" : workerSnapshotImpact(existingRegistration, { ...envelope, workerCapabilities });
     meshStateEventEmitter.emit(
-      { type: "mesh.changed", executionHostsChanged: true },
+      impact === "inventory"
+        ? { type: "mesh.changed", reason: "enrollment", impact }
+        : {
+            type: "mesh.changed", reason: "enrollment", impact,
+            scope: { userId: tokenResult.userId, workerNodeIds: [envelope.workerNodeId] },
+          },
       { userId: tokenResult.userId },
     );
 
@@ -697,7 +733,10 @@ export class MeshManager {
         workerNodeId,
       });
       await revokeWorkerRegistration(workerNodeId, userId);
-      meshStateEventEmitter.emit({ type: "mesh.changed", executionHostsChanged: true });
+      meshStateEventEmitter.emit(
+        { type: "mesh.changed", reason: "revoked", impact: "resources", scope: { userId, workerNodeIds: [workerNodeId] } },
+        { userId },
+      );
       return;
     }
     const decision = decideRevokeWorker({ registration });
@@ -713,6 +752,10 @@ export class MeshManager {
     if (decision.kind === "apply") {
       await revokeWorkerRegistration(workerNodeId, userId);
     }
+    meshStateEventEmitter.emit(
+      { type: "mesh.changed", reason: "revoked", impact: "resources", scope: { userId, workerNodeIds: [workerNodeId] } },
+      { userId },
+    );
 
     // The controller is authoritative. A worker may be offline, so failure to
     // prepare or deliver the signed notice must not undo the local revocation.
@@ -763,10 +806,6 @@ export class MeshManager {
       }
     }
 
-    meshStateEventEmitter.emit(
-      { type: "mesh.changed", executionHostsChanged: true },
-      { userId },
-    );
   }
 
   async killWorker(
@@ -834,7 +873,7 @@ export class MeshManager {
 
     await deleteRevokedWorkerRegistration(workerNodeId, userId);
     meshStateEventEmitter.emit(
-      { type: "mesh.changed", executionHostsChanged: true },
+      { type: "mesh.changed", reason: "removed", impact: "resources", scope: { userId, workerNodeIds: [workerNodeId] } },
       { userId },
     );
   }
@@ -862,7 +901,7 @@ export class MeshManager {
     }
     await deleteRevokedWorkerRegistration(workerNodeId, userId);
     meshStateEventEmitter.emit(
-      { type: "mesh.changed", executionHostsChanged: true },
+      { type: "mesh.changed", reason: "removed", impact: "resources", scope: { userId, workerNodeIds: [workerNodeId] } },
       { userId },
     );
   }
@@ -873,15 +912,17 @@ export class MeshManager {
     workerEndpoint: string,
   ): Promise<void> {
     requireMeshRuntimeRole("controller");
-    workspaceWorkerEnrollmentService.updateWorkerEndpoint(
+    const update = workspaceWorkerEnrollmentService.updateWorkerEndpoint(
       userId,
       enrollmentId,
       workerEndpoint,
     );
-    meshStateEventEmitter.emit(
-      { type: "mesh.changed", executionHostsChanged: true },
-      { userId },
-    );
+    if (update.changed) {
+      meshStateEventEmitter.emit(
+        { type: "mesh.changed", reason: "endpoint", impact: "resources", scope: { userId, workerNodeIds: [update.worker.workerNodeId] } },
+        { userId },
+      );
+    }
   }
 
   async revokeDedicatedWorker(
@@ -953,7 +994,7 @@ export class MeshManager {
         );
       }
       meshStateEventEmitter.emit(
-        { type: "mesh.changed", executionHostsChanged: true },
+        { type: "mesh.changed", reason: "revoked", impact: "resources", scope: { userId, workerNodeIds: [registration.workerNodeId] } },
         { userId },
       );
     }
@@ -1020,7 +1061,7 @@ export class MeshManager {
       worker: MeshWorkerRegistration;
       signal?: AbortSignal;
     },
-  ): Promise<boolean> {
+  ): Promise<"inventory" | "cache" | "resources"> {
     const { identity, worker } = options;
     const localProtocol = getLocalMeshProtocolMetadata();
     const negotiated = await discoverMeshWorkerGeneration(worker, options.signal);
@@ -1113,11 +1154,7 @@ export class MeshManager {
         "The worker changed configuration without advancing its revision.",
       );
     }
-    const runtimeSnapshotChanged =
-      JSON.stringify(health.workerPlatform ?? null)
-        !== JSON.stringify(worker.workerPlatform)
-      || JSON.stringify(workerCapabilities)
-        !== JSON.stringify(worker.workerCapabilities);
+    const impact = workerSnapshotImpact(worker, { ...health, workerCapabilities });
     await updateWorkerHealthSnapshot({
       workerNodeId: worker.workerNodeId,
       localUserId: options.userId,
@@ -1131,7 +1168,7 @@ export class MeshManager {
       preferredProtocolVersion: health.preferredProtocolVersion,
       negotiatedProtocolVersion: health.protocolVersion,
     });
-    return configurationChanged || runtimeSnapshotChanged;
+    return impact;
   }
 
   async checkWorkerReachability(
@@ -1148,14 +1185,16 @@ export class MeshManager {
       );
     }
     const identity = await ensureLocalMeshIdentityWithEndpoint();
-    const executionHostsChanged = await this.probeWorkerHealth({
+    const impact = await this.probeWorkerHealth({
       userId,
       identity,
       worker,
       signal: options.signal,
     });
     meshStateEventEmitter.emit(
-      { type: "mesh.changed", executionHostsChanged },
+      impact === "inventory"
+        ? { type: "mesh.changed", reason: "health", impact }
+        : { type: "mesh.changed", reason: "health", impact, scope: { userId, workerNodeIds: [workerNodeId] } },
       { userId },
     );
   }
@@ -1167,14 +1206,19 @@ export class MeshManager {
     const identity = await ensureLocalMeshIdentityWithEndpoint();
     const workers = await listActiveWorkerRegistrations(userId);
 
-    let executionHostsChanged = false;
     for (const worker of workers) {
       try {
-        executionHostsChanged ||= await this.probeWorkerHealth({
+        const impact = await this.probeWorkerHealth({
           userId,
           identity,
           worker,
         });
+        if (impact !== "inventory") {
+          meshStateEventEmitter.emit(
+            { type: "mesh.changed", reason: "health", impact, scope: { userId, workerNodeIds: [worker.workerNodeId] } },
+            { userId },
+          );
+        }
       } catch (error) {
         log.warn("Worker health check failed", {
           workerNodeId: worker.workerNodeId,
@@ -1186,7 +1230,7 @@ export class MeshManager {
     }
 
     meshStateEventEmitter.emit(
-      { type: "mesh.changed", executionHostsChanged },
+      { type: "mesh.changed", reason: "health", impact: "inventory" },
       { userId },
     );
   }
@@ -1756,7 +1800,7 @@ export class MeshManager {
     instanceName: string,
   ): Promise<MeshNodeIdentity> {
     const identity = await setLocalMeshInstanceName(instanceName);
-    meshStateEventEmitter.emit({ type: "mesh.changed", executionHostsChanged: true });
+    meshStateEventEmitter.emit({ type: "mesh.changed", reason: "identity", impact: "inventory" });
     return identity;
   }
 
@@ -1765,7 +1809,7 @@ export class MeshManager {
   ): Promise<MeshNodeIdentity> {
     assertMeshEndpointAllowed(endpoint);
     const identity = await setLocalMeshEndpoint(endpoint);
-    meshStateEventEmitter.emit({ type: "mesh.changed", executionHostsChanged: true });
+    meshStateEventEmitter.emit({ type: "mesh.changed", reason: "endpoint", impact: "inventory" });
     return identity;
   }
 }

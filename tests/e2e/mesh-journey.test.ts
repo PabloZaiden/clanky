@@ -85,6 +85,7 @@ interface Chat {
   };
   state: {
     status: string;
+    session?: { id: string };
   };
 }
 

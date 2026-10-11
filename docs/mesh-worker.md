@@ -86,6 +86,31 @@ Preserve the worker data directory during upgrades and service restarts. Do
 not copy a conversation binding to another user, workspace, controller, or
 worker. The workspace directory remains a navigation root, not a sandbox.
 
+## Independent worker lifecycle
+
+Creating, enrolling, restarting, rebuilding, revoking, or deleting a worker
+does not disconnect tasks or chats on another worker. This also applies to
+automatic workspace provisioning and maintenance. Multiple workspaces on the
+same worker share that worker's availability; restarting it can interrupt all
+of them.
+
+Inventory and health refreshes do not cancel healthy conversations. Runtime
+metadata refreshes retire only the affected worker's cached execution
+connections. Re-enrollment with the same route and configuration, an unchanged
+endpoint, and instance-name changes do not interrupt active sessions.
+
+Revocation, a changed worker route or endpoint, disabling remote execution, or
+removing execution capabilities invalidates resources belonging to that user
+and worker. Intentional connection closures report `harness_transport_closed`
+with their lifecycle reason. New execution cannot reuse a revoked grant.
+Relay maintenance affects the routes using that relay, not direct workers or
+workers using another relay. Switching the primary relay does not migrate
+existing routes.
+
+After a real interruption, native inputs are not automatically resent. Preserve
+the worker data directory and original conversation binding for recovery;
+creating a replacement worker does not transfer ownership of old sessions.
+
 ## Choose a topology
 
 | Situation | Setup |
