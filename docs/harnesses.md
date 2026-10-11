@@ -128,9 +128,13 @@ are removed from tool output, so an image is not represented by a tool-call row.
 Clanky validates the actual image bytes against the existing PNG, JPEG, WebP and
 GIF allowlist and the 20 MiB per-image and 40 MiB per-turn attachment limits.
 Unsupported, malformed or oversized images are omitted with a warning while the
-provider's text response continues. On Mesh, generated images that exceed the
-2 MiB event limit are likewise omitted with a warning; other events and the text
-response continue normally.
+provider's text response continues. Mesh normally forwards the validated inline
+image. If a Codex image exceeds Mesh's 2 MiB event limit, Clanky reloads the
+matching `savedPath` through the selected execution host and validates the file
+before attaching it to chat. If that path is unavailable or does not match the
+validated image metadata, the image is omitted with a warning; other events and
+the text response continue normally. Mesh providers without a supported file
+reference retain the omission warning when an image exceeds the event limit.
 
 ## Questions
 

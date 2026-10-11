@@ -68,6 +68,17 @@ export const meshHarnessRoutes = defineRoutes({
         let closed = false;
         let heartbeat: ReturnType<typeof setInterval> | undefined;
         const encoder = new TextEncoder();
+        const enqueueFrame = (
+          controller: ReadableStreamDefaultController<Uint8Array>,
+          payload: { type: string; event?: unknown },
+        ): void => {
+          const frameSequence = sequence++;
+          controller.enqueue(encoder.encode(`${JSON.stringify({
+            protocolVersion: envelope.protocolVersion,
+            sequence: frameSequence,
+            encryptedPayload: encryptMeshPayload(payload, key),
+          })}\n`));
+        };
         const close = (): void => {
           if (closed) return;
           closed = true;
@@ -79,9 +90,7 @@ export const meshHarnessRoutes = defineRoutes({
         req.signal.addEventListener("abort", close, { once: true });
         const stream = new ReadableStream<Uint8Array>({
           start(controller): void {
-            controller.enqueue(encoder.encode(`${JSON.stringify({
-              protocolVersion: envelope.protocolVersion, sequence: sequence++, encryptedPayload: encryptMeshPayload({ type: "ready" }, key),
-            })}\n`));
+            enqueueFrame(controller, { type: "ready" });
             heartbeat = setInterval(() => {
               if (closed) return;
               if ((controller.desiredSize ?? 0) <= 0) {
@@ -90,9 +99,7 @@ export const meshHarnessRoutes = defineRoutes({
                 controller.error(new DomainError("harness_event_gap", "The native observation consumer exceeded its buffer."));
                 return;
               }
-              controller.enqueue(encoder.encode(`${JSON.stringify({
-                protocolVersion: envelope.protocolVersion, sequence: sequence++, encryptedPayload: encryptMeshPayload({ type: "heartbeat" }, key),
-              })}\n`));
+              enqueueFrame(controller, { type: "heartbeat" });
             }, 15_000);
             heartbeat.unref?.();
           },
@@ -100,9 +107,7 @@ export const meshHarnessRoutes = defineRoutes({
             try {
               const event = await subscription.next();
               if (!event) { close(); controller.close(); return; }
-              controller.enqueue(encoder.encode(`${JSON.stringify({
-                protocolVersion: envelope.protocolVersion, sequence: sequence++, encryptedPayload: encryptMeshPayload({ type: "event", event }, key),
-              })}\n`));
+              enqueueFrame(controller, { type: "event", event });
             } catch (error) { close(); controller.error(error); }
           },
           cancel(): void {
