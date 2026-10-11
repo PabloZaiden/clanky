@@ -65,17 +65,36 @@ failed, cancelled, and restarted jobs at the public API boundary. Harnesses
 allocate isolated data directories and ports, bound their polling, capture
 subprocess logs for failure diagnostics, and clean up their process groups.
 
-Voice E2E coverage uses an external HTTPS OpenAI-compatible provider and checks
-settings, destination safety, capability validation, transcription, and
-persistence. Positive Piper synthesis is intentionally not part of the
-hermetic PR gate: a real run requires downloading or versioning roughly 90 MB
-of checksum-pinned runtime and voice assets. Do not fake Piper by pre-populating
-its private cache layout; use real assets for an optional manual smoke instead.
+The local voice E2E journey uses an external HTTPS OpenAI-compatible provider
+to check provider settings and destination safety, validate transcription/text
+capabilities, transcribe audio, and verify persistence. The separate Copilot
+journey also exercises a Live voice call. Positive Piper synthesis is
+intentionally not part of the hermetic PR gate: a real run requires downloading
+or versioning roughly 90 MB of checksum-pinned runtime and voice assets. Do not
+fake Piper by pre-populating its private cache layout; use real assets for an
+optional manual smoke instead.
 
-Add or change an automated test only for a considerable user, API, CLI, or
-protocol workflow. Extend a compact journey instead of creating endpoint,
-component, hook, class, or helper tests. UI-only behavior is validated manually
-with `Bun.WebView`, not committed browser automation.
+### Scenario-only E2E policy
+
+The suite is a small catalog of real user/API/CLI/protocol scenarios the
+application is required to support. It is not a history of bugs or a
+regression-prevention layer. Do not add tests just to reproduce a defect, prove
+that its fix works, or ensure that the same bug does not return. Remove
+regression-only checks after the fix; do not rename or relocate them into a
+broader test.
+
+A bug report alone does not establish a test scenario. Add coverage only when
+the workflow is independently identified as required product behavior, and
+test that complete user journey through the compiled app and public boundary.
+Before changing the suite, record the user/workflow, public boundary,
+observable outcome, and why that scenario merits coverage without duplicating
+an existing journey. If the rationale depends on the old bug or its
+implementation, do not add or retain the test.
+
+Keep a few broad, coherent scenarios rather than endpoint matrices or
+feature-specific regression checks. Do not add component, hook, class, or
+helper tests. UI-only behavior is validated manually with `Bun.WebView`, not
+committed browser automation.
 
 Run `bun run build && bun run test` before considering a change complete.
 

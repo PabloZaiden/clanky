@@ -6,7 +6,7 @@ import type { ActiveTurn, CodexFixtureStore } from "./codex-state";
 import type { CodexJsonRpcSession } from "./codex-json-rpc";
 import { buildTurn } from "./codex-protocol";
 import { randomUUID } from "node:crypto";
-import { E2E_IMAGE_DATA, readCodexImageReceipts } from "./image-input";
+import { readCodexImageReceipts } from "./image-input";
 
 const TOOL_NAME = "clanky_list_workspaces";
 
@@ -118,31 +118,6 @@ function emitAssistantMessage(active: ActiveTurn, text: string, rpc: CodexJsonRp
   });
 }
 
-function emitGeneratedImage(active: ActiveTurn, rpc: CodexJsonRpcSession): void {
-  const { thread, turn } = active;
-  const imageItem = {
-    type: "imageGeneration",
-    id: randomUUID(),
-    status: "completed",
-    revisedPrompt: null,
-    result: E2E_IMAGE_DATA,
-    failure: null,
-  };
-  turn.items.push(imageItem);
-  rpc.notify("item/started", {
-    item: imageItem,
-    threadId: thread.id,
-    turnId: turn.id,
-    startedAtMs: Date.now(),
-  });
-  rpc.notify("item/completed", {
-    item: imageItem,
-    threadId: thread.id,
-    turnId: turn.id,
-    completedAtMs: Date.now(),
-  });
-}
-
 export async function runCodexTurn(
   active: ActiveTurn,
   store: CodexFixtureStore,
@@ -172,9 +147,6 @@ export async function runCodexTurn(
       : assistantText;
   const imageReceiptText = imageReceipts(turn).join("\n");
   emitAssistantMessage(active, imageReceiptText ? `${responseText}\n${imageReceiptText}` : responseText, rpc);
-  if (JSON.stringify(turn.items).includes("[generated-image-output]")) {
-    emitGeneratedImage(active, rpc);
-  }
   await store.completeTurn(active);
   rpc.notify("thread/status/changed", {
     threadId: thread.id,

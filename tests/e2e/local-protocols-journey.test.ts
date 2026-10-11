@@ -9,7 +9,6 @@ import {
 } from "./support/process";
 import { operationSignal } from "./support/timeouts";
 import {
-  createFixtureLiveOffer,
   startVoiceProvider,
   stopVoiceProvider,
   type ManagedVoiceProvider,
@@ -57,11 +56,6 @@ interface VoiceSettings {
       state: string;
       validated: boolean;
     };
-    live: {
-      configured: boolean;
-      state: string;
-      validated: boolean;
-    };
     transcription: {
       state: string;
       validated: boolean;
@@ -70,10 +64,6 @@ interface VoiceSettings {
   models: {
     text: string;
     transcription: string;
-  };
-  live: {
-    configured: boolean;
-    model: string;
   };
   piper: {
     available: boolean;
@@ -556,12 +546,6 @@ async function exerciseVoice(
   expect(initial.apiKeyConfigured).toBe(false);
   expect(initial.piper.available).toBe(true);
   expect(initial.models).toEqual({ transcription: "", text: "" });
-  expect(initial.live).toMatchObject({ configured: false, model: "" });
-  expect(initial.capabilities.live).toMatchObject({
-    configured: false,
-    state: "unconfigured",
-    validated: false,
-  });
 
   const unsafe = await app.request("/api/voice/settings", {
     method: "PUT",
@@ -592,11 +576,6 @@ async function exerciseVoice(
           text: "fixture-text",
         },
         languageHints: ["es", "en"],
-        live: {
-          useVoiceProvider: true,
-          baseUrl: "",
-          model: "gpt-live-1",
-        },
       }),
     },
   )).data;
@@ -612,15 +591,8 @@ async function exerciseVoice(
         state: "unvalidated",
         validated: false,
       },
-      live: {
-        configured: true,
-        state: "unvalidated",
-        validated: false,
-      },
     },
   });
-  expect(configured.live).toMatchObject({ configured: true, model: "gpt-live-1" });
-  expect(configured.live).not.toHaveProperty("textModel");
   expect(configured).not.toHaveProperty("apiKey");
 
   const transcriptionValidation = (await app.json<{
@@ -647,24 +619,6 @@ async function exerciseVoice(
     state: "valid",
     validated: true,
   });
-  const liveWithoutOffer = await app.request("/api/voice/validate", {
-    method: "POST",
-    body: JSON.stringify({ capability: "live" }),
-  });
-  expect(liveWithoutOffer.status).toBe(400);
-  const liveValidation = (await app.json<{
-    success: boolean;
-    settings: VoiceSettings;
-  }>("/api/voice/validate", {
-    method: "POST",
-    body: JSON.stringify({ capability: "live", sdp: createFixtureLiveOffer("validation") }),
-  })).data;
-  expect(liveValidation.success).toBe(true);
-  expect(liveValidation.settings.capabilities.live).toMatchObject({
-    configured: true,
-    state: "valid",
-    validated: true,
-  });
 
   await expectVoiceTranscription(app);
 
@@ -682,10 +636,6 @@ async function exerciseVoice(
         validated: true,
       },
       text: {
-        state: "valid",
-        validated: true,
-      },
-      live: {
         state: "valid",
         validated: true,
       },
