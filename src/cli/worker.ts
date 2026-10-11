@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import {
+  createLogger,
   createManagedApiKey,
   listManagedApiKeys,
   revokeManagedApiKey,
@@ -31,6 +32,8 @@ import {
   runWorkerSshAgentCommand,
 } from "./worker-ssh-agent";
 import { resolveWorkerRuntimeConfiguration } from "./worker-runtime";
+
+const log = createLogger("cli:worker");
 
 interface WorkerBootstrapOptions {
   host: string;
@@ -322,6 +325,8 @@ async function joinWorker(
   const runtime = resolveWorkerRuntimeConfiguration({
     environment: context.environment,
   });
+  const startedAt = performance.now();
+  log.info("Initializing worker enrollment runtime");
   await getWebAppServer({
     meshWorker: true,
     relayOnly: runtime.relayOnly,
@@ -329,10 +334,16 @@ async function joinWorker(
     workerExecutionEnabled: runtime.workerExecutionEnabled,
     insecure: runtime.insecure,
   });
+  log.info("Worker enrollment runtime initialized", {
+    elapsedMs: Math.round(performance.now() - startedAt),
+  });
   const grant = await meshManager.enrollWithController({
     target: options.target,
     enrollmentToken: options.enrollmentToken,
     expectedFingerprint: options.controllerFingerprint,
+  });
+  log.info("Worker enrollment completed", {
+    elapsedMs: Math.round(performance.now() - startedAt),
   });
   context.stdout.write(`${JSON.stringify({
     controller: {

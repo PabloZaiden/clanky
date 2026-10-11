@@ -53,7 +53,12 @@ Useful commands:
 bun run typecheck
 CLANKY_TEST_MAX_WORKERS=1 bun run test
 bun run test:mesh
+CLANKY_LOG_LEVEL=info bun run test:mesh
 ```
+
+Mesh failure diagnostics include subprocess exit/signal status. Set
+`CLANKY_LOG_LEVEL=info` to include worker startup and enrollment milestones;
+automatic provisioning also streams registration progress into its job logs.
 
 `test:mesh` runs the portable controller/worker ACP and relay journeys on
 Linux, macOS, and Windows. On Linux and macOS it also runs the automatic

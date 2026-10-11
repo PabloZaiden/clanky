@@ -27,6 +27,7 @@ import type { ProvisioningJobRecord } from "./types";
 import { updateProvisioningJob } from "../../persistence/provisioning-jobs";
 import { getWorkerPaths, shellQuote, type WorkerPaths } from "./worker-assets";
 import { prepareWorkerRuntimeAssets } from "./worker-runtime-assets";
+import { appendSystemLog } from "./job-logger";
 
 export interface WorkerProvisioningOptions {
   targetDirectory: string;
@@ -241,7 +242,14 @@ export class ProvisioningWorkerLifecycle {
         errorCode: "worker_join_failed",
         errorMessage: "Failed to register the workspace worker",
         captureStdout: false,
+        streamOutput: true,
       },
+    );
+    appendSystemLog(
+      record,
+      this.maxLogEntries,
+      "Workspace worker registration command completed",
+      "devbox_up",
     );
     if (options.relayOnlyWorker) {
       await this.runDevboxExec(
@@ -397,6 +405,12 @@ export class ProvisioningWorkerLifecycle {
   ): Promise<void> {
     const timeoutAt = Date.now() + WORKER_READINESS_TIMEOUT_MS;
     let lastHealthError: unknown;
+    appendSystemLog(
+      record,
+      this.maxLogEntries,
+      "Waiting for workspace worker enrollment and health",
+      "test_connection",
+    );
     while (Date.now() < timeoutAt) {
       this.throwIfCancelled(record);
       const status = workspaceWorkerEnrollmentService.getStatus(
@@ -417,6 +431,12 @@ export class ProvisioningWorkerLifecycle {
             record.owner.id,
             status.worker.workerNodeId,
             { signal: probe.signal },
+          );
+          appendSystemLog(
+            record,
+            this.maxLogEntries,
+            "Workspace worker enrollment and health confirmed",
+            "test_connection",
           );
           return;
         } catch (error) {
@@ -465,6 +485,7 @@ export class ProvisioningWorkerLifecycle {
       errorCode: string;
       errorMessage: string;
       captureStdout?: boolean;
+      streamOutput?: boolean;
     },
   ): Promise<CommandResult> {
     return await this.runCommand(record, executor, {
@@ -476,6 +497,7 @@ export class ProvisioningWorkerLifecycle {
       errorCode: options.errorCode,
       errorMessage: options.errorMessage,
       captureStdout: options.captureStdout,
+      streamOutput: options.streamOutput,
     });
   }
 

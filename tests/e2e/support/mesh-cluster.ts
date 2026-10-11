@@ -166,7 +166,10 @@ async function readProcessOutput(node: ManagedMeshNode): Promise<string> {
 }
 
 export function meshNodeDiagnostics(node: ManagedMeshNode): string {
-  return node.output.snapshot();
+  return [
+    `Mesh ${node.role}: pid=${node.child.pid} exitCode=${String(node.child.exitCode)} signalCode=${String(node.child.signalCode)}`,
+    node.output.snapshot(),
+  ].join("\n");
 }
 
 async function stopNodeServer(node: ManagedMeshNode): Promise<string> {
@@ -280,7 +283,7 @@ export async function startMeshNode(options: {
       CLANKY_HOST: "127.0.0.1",
       CLANKY_PORT: String(port),
       CLANKY_PUBLIC_BASE_URL: baseUrl,
-      CLANKY_LOG_LEVEL: options.environment?.["CLANKY_LOG_LEVEL"] ?? "fatal",
+      CLANKY_LOG_LEVEL: options.environment?.["CLANKY_LOG_LEVEL"] ?? process.env["CLANKY_LOG_LEVEL"] ?? "fatal",
     });
     let apiKey: string | undefined;
     let tlsCertificate: string | undefined;
@@ -397,7 +400,7 @@ export async function startMeshRelay(options: {
       CLANKY_HOST: "127.0.0.1",
       CLANKY_PORT: String(port),
       CLANKY_PUBLIC_BASE_URL: baseUrl,
-      CLANKY_LOG_LEVEL: "fatal",
+      CLANKY_LOG_LEVEL: options.environment?.["CLANKY_LOG_LEVEL"] ?? process.env["CLANKY_LOG_LEVEL"] ?? "fatal",
       CLANKY_RELAY_CONTROLLER_FINGERPRINT: options.controllerFingerprint,
     };
     const serveArguments = ["relay"];
