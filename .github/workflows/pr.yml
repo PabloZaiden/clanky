@@ -85,6 +85,7 @@ jobs:
         run: bun run test:mesh
         env:
           CLANKY_TEST_MAX_WORKERS: 1
+          CLANKY_LOG_LEVEL: info
 
   smoke-test:
     runs-on: ubuntu-latest

@@ -64,9 +64,9 @@ export async function initializeDatabase(): Promise<void> {
   db = nextDatabase;
 
   try {
+    nextDatabase.run("PRAGMA busy_timeout = 5000");
     nextDatabase.run("PRAGMA foreign_keys = ON");
     nextDatabase.run("PRAGMA journal_mode = WAL");
-    nextDatabase.run("PRAGMA busy_timeout = 5000");
 
     assertSchemaBaseline(nextDatabase);
     createBaseSchema(nextDatabase);

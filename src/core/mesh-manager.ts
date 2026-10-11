@@ -1323,7 +1323,11 @@ export class MeshManager {
     expectedFingerprint: string;
   }): Promise<MeshControllerGrant> {
     requireMeshRuntimeRole("worker");
+    log.info("Discovering Mesh enrollment target");
     const discovered = await discoverMeshEnrollmentTarget(input.target);
+    log.info("Mesh enrollment target discovered", {
+      role: discovered.descriptor.role,
+    });
     const identity = discovered.descriptor.role === "controller"
       ? await ensureLocalMeshIdentityWithEndpoint()
       : await ensureLocalMeshNodeIdentity();
@@ -1517,7 +1521,11 @@ export class MeshManager {
       return { envelope, rawResponse };
     };
 
+    log.info("Sending Mesh worker enrollment request", {
+      route: controllerRoute.kind,
+    });
     const enrollmentAttempt = await sendEnrollment();
+    log.info("Mesh worker enrollment response received");
 
     const parsedResponse = MeshEnrollmentResponseSchema.safeParse(
       enrollmentAttempt.rawResponse,
@@ -1604,7 +1612,9 @@ export class MeshManager {
         }
         throw error;
       }
+      log.info("Mesh controller grant persisted");
       await workerRelayService.refresh();
+      log.info("Mesh worker relay routes refreshed");
       return grant;
     }
 
@@ -1618,6 +1628,7 @@ export class MeshManager {
     });
     const grant = await getControllerGrant(body.controllerNodeId);
     await workerRelayService.refresh();
+    log.info("Existing Mesh controller grant refreshed");
     return grant!;
   }
 

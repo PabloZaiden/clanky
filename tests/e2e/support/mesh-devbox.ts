@@ -40,7 +40,7 @@ export async function startMeshDevboxFixture(binDirectory: string): Promise<{
             CLANKY_PORT: (await Bun.file(join(root, "devbox-port")).text()).trim(),
             CLANKY_PUBLIC_BASE_URL: "", CLANKY_DISABLE_PASSKEY: undefined,
             HOME: join(root, "home"), PATH: `${binDirectory}${delimiter}${process.env["PATH"] ?? ""}`,
-            CLANKY_LOG_LEVEL: "fatal",
+            CLANKY_LOG_LEVEL: process.env["CLANKY_LOG_LEVEL"] ?? "fatal",
           }),
           stdout: "pipe", stderr: "pipe",
         });
@@ -71,7 +71,11 @@ export async function startMeshDevboxFixture(binDirectory: string): Promise<{
   ].join("\n"));
   await chmod(wrapper, 0o700);
   return {
-    diagnostics: () => outputs.join(""),
+    diagnostics: () => [
+      ...[...workers].map(([directory, child]) =>
+        `Devbox worker: directory=${directory} pid=${child.pid} exitCode=${String(child.exitCode)} signalCode=${String(child.signalCode)}`),
+      outputs.join(""),
+    ].join("\n"),
     async stop(): Promise<void> {
       await server.stop(true);
       const results = await Promise.allSettled([...workers.values()].map(stopWorker));

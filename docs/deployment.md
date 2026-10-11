@@ -73,6 +73,10 @@ The most common server settings are environment variables:
 The Docker image sets its own bind address, port, and data directory. Native
 installs keep the local defaults unless you override them.
 
+Application database initialization applies a five-second SQLite busy timeout
+before configuring the journal or schema, including worker CLI commands that
+overlap server startup. Locks that outlast that budget still fail explicitly.
+
 ## Authentication and safety
 
 Passkeys protect browser sessions. Device credentials and API keys are

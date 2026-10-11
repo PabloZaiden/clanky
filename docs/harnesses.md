@@ -142,6 +142,11 @@ validated image metadata, the image is omitted with a warning; other events and
 the text response continue normally. Mesh providers without a supported file
 reference retain the omission warning when an image exceeds the event limit.
 
+Open an image attachment to preview it, then tap or click the image in the dialog
+to open the full image alone in a new browser tab. Clanky preserves the image
+bytes received from the provider and does not force a download; use the
+browser's save or share options.
+
 ## Questions
 
 Interactive chats show native questions inline. Choose an offered option or
