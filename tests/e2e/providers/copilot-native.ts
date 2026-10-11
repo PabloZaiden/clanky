@@ -36,8 +36,15 @@ function write(message: Record<string, unknown>): void {
   process.stdout.write(`Content-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`);
 }
 
-function event(session: Session, type: string, data: Record<string, unknown>): void {
-  const value = { id: crypto.randomUUID(), timestamp: new Date().toISOString(), parentId: null, type, data };
+function event(session: Session, type: string, data: Record<string, unknown>, agentId?: string): void {
+  const value = {
+    id: crypto.randomUUID(),
+    timestamp: new Date().toISOString(),
+    parentId: null,
+    ...(agentId ? { agentId } : {}),
+    type,
+    data,
+  };
   session.events.push(value);
   session.events = session.events.slice(-500);
   write({ method: "session.event", params: { sessionId: session.id, event: value } });
@@ -53,6 +60,24 @@ function finish(session: Session, content: string): void {
     });
     event(session, "assistant.message_delta", {
       messageId: streamingMessageId,
+      deltaContent: content.slice(splitIndex),
+    });
+    event(session, "assistant.message", { messageId: crypto.randomUUID(), content });
+  } else if (session.prompt.includes("[interleaved-child-message]")) {
+    const principalMessageId = crypto.randomUUID();
+    const childActivityId = crypto.randomUUID();
+    const splitIndex = Math.floor(content.length / 2);
+    event(session, "assistant.message_delta", {
+      messageId: principalMessageId,
+      deltaContent: content.slice(0, splitIndex),
+    });
+    event(session, "assistant.message_delta", {
+      messageId: crypto.randomUUID(),
+      deltaContent: "Child activity output.",
+    }, childActivityId);
+    event(session, "session.idle", {}, childActivityId);
+    event(session, "assistant.message_delta", {
+      messageId: principalMessageId,
       deltaContent: content.slice(splitIndex),
     });
     event(session, "assistant.message", { messageId: crypto.randomUUID(), content });

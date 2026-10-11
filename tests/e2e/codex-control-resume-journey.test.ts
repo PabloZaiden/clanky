@@ -498,6 +498,70 @@ test("Copilot shares ordinary Live and queued turns while control steering prese
       (message) => message.role === "assistant" && message.content === mismatchedMessageIdContent,
     )).toHaveLength(1);
 
+    const realtimeKey = (await application.json<{ token: string }>("/api/api-keys", {
+      method: "POST", body: JSON.stringify({ name: "Copilot scope regression", scopes: ["*"] }),
+    })).data.token;
+    const interleavedDeltas: Array<{ delta: string; baseLength: number }> = [];
+    const RegressionWebSocket = WebSocket as {
+      new(url: string | URL, protocols?: string | string[]): WebSocket;
+      new(url: string | URL, options?: Bun.WebSocketOptions): WebSocket;
+    };
+    const realtimeSocket = new RegressionWebSocket(
+      `${application.baseUrl.replace("http:", "ws:")}/api/ws?chatId=${ordinaryId}`,
+      { headers: { Authorization: `Bearer ${realtimeKey}`, Origin: application.baseUrl } },
+    );
+    sockets.push(realtimeSocket);
+    realtimeSocket.addEventListener("message", (message) => {
+      if (typeof message.data !== "string") return;
+      const event = JSON.parse(message.data).event;
+      if (
+        event?.type === "chat.message.delta"
+        && event.chatId === ordinaryId
+        && typeof event.delta === "string"
+        && typeof event.baseLength === "number"
+      ) {
+        interleavedDeltas.push({ delta: event.delta, baseLength: event.baseLength });
+      }
+    });
+    await pollUntil(
+      () => realtimeSocket.readyState,
+      (state) => state === WebSocket.OPEN,
+      { description: "Copilot scope regression websocket to connect", timeoutMs: 5_000 },
+    );
+
+    const interleavedChildPrompt = "Keep the principal response intact [interleaved-child-message]";
+    const interleavedDeltaStart = interleavedDeltas.length;
+    await application.json(`/api/chats/${ordinaryId}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ message: interleavedChildPrompt, attachments: [] }),
+    });
+    await waitForChatIdle(application, ordinaryId);
+    const interleavedChildContent = `Agent received: ${interleavedChildPrompt}\nClanky tools unavailable.`;
+    const splitIndex = Math.floor(interleavedChildContent.length / 2);
+    const observedDeltas = await pollUntil(
+      () => interleavedDeltas.slice(interleavedDeltaStart),
+      (deltas) => deltas.length >= 2,
+      {
+        description: "both Copilot response deltas to reach the realtime client",
+        timeoutMs: 5_000,
+        formatLastObserved: (deltas) => JSON.stringify(deltas),
+      },
+    );
+    expect(observedDeltas.map((delta) => delta.delta)).toEqual([
+      interleavedChildContent.slice(0, splitIndex),
+      interleavedChildContent.slice(splitIndex),
+    ]);
+    expect(observedDeltas.map((delta) => delta.baseLength)).toEqual([
+      0,
+      interleavedChildContent.slice(0, splitIndex).length,
+    ]);
+    const interleavedChildSnapshot = (
+      await application.json<ChatSnapshot>(`/api/chats/${ordinaryId}/snapshot?full=1`)
+    ).data;
+    expect(interleavedChildSnapshot.transcript.messages.filter(
+      (message) => message.role === "assistant" && message.content === interleavedChildContent,
+    )).toHaveLength(1);
+
     const separateIdenticalPrompt = "Emit two separate identical responses [separate-identical-messages]";
     await application.json(`/api/chats/${ordinaryId}/messages`, {
       method: "POST",

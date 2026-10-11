@@ -22,7 +22,7 @@ const MAX_TRACKED_DELTA_CONTENT_CHARS = 1_000_000;
 export class CopilotEventTranslator {
   private readonly messages = new Map<string, ActiveMessage>();
   private trackedDeltaContentChars = 0;
-  private currentMessageKey?: string;
+  private readonly currentMessageKeys = new Map<string, string>();
   private readonly tools = new Map<string, string>();
   private readonly imageOutputBudget = new ProviderImageOutputBudget();
   private queryError?: Extract<HarnessEventPayload, { type: "request.error" }>;
@@ -51,7 +51,9 @@ export class CopilotEventTranslator {
     switch (event.type) {
       case "assistant.message_delta": {
         const messageKey = this.getMessageKey(scope, event.data.messageId);
-        const restart = this.messages.has(messageKey) && this.currentMessageKey !== messageKey;
+        const scopeKey = this.getScopeKey(scope);
+        const restart = this.messages.has(messageKey)
+          && this.currentMessageKeys.get(scopeKey) !== messageKey;
         const events = this.startMessage(scope, event.data.messageId, restart).map(wrap);
         this.appendMessageDelta(messageKey, event.data.deltaContent);
         events.push(wrap({ type: "message.delta", content: event.data.deltaContent }));
@@ -68,7 +70,11 @@ export class CopilotEventTranslator {
           ? this.messages.get(completedMessageKey)
           : undefined;
         const events = activeMessage
-          ? this.startMessage(scope, activeMessage.messageId, this.currentMessageKey !== completedMessageKey).map(wrap)
+          ? this.startMessage(
+              scope,
+              activeMessage.messageId,
+              this.currentMessageKeys.get(this.getScopeKey(scope)) !== completedMessageKey,
+            ).map(wrap)
           : this.startMessage(scope, event.data.messageId).map(wrap);
         completedMessageKey ??= nativeMessageKey;
         events.push(wrap({ type: "message.complete", content: event.data.content }));
@@ -171,12 +177,12 @@ export class CopilotEventTranslator {
     const messageKey = this.getMessageKey(scope, messageId);
     if (this.messages.has(messageKey)) {
       if (!restart) return [];
-      this.currentMessageKey = messageKey;
+      this.currentMessageKeys.set(scopeKey, messageKey);
       return [{ type: "message.start", messageId }];
     }
     if (this.messages.size >= 1024) throw new HarnessError("harness_request_failed", "Too many active native messages.");
     this.messages.set(messageKey, { messageId, scopeKey, deltaContent: "" });
-    this.currentMessageKey = messageKey;
+    this.currentMessageKeys.set(scopeKey, messageKey);
     return [{ type: "message.start", messageId }];
   }
 
@@ -208,6 +214,9 @@ export class CopilotEventTranslator {
   private deleteMessage(messageKey: string): void {
     const message = this.messages.get(messageKey);
     if (!message) return;
+    if (this.currentMessageKeys.get(message.scopeKey) === messageKey) {
+      this.currentMessageKeys.delete(message.scopeKey);
+    }
     if (message.deltaContent !== null) {
       this.trackedDeltaContentChars -= message.deltaContent.length;
     }
@@ -218,6 +227,7 @@ export class CopilotEventTranslator {
     for (const [key, message] of this.messages) {
       if (message.scopeKey === scopeKey) this.deleteMessage(key);
     }
+    this.currentMessageKeys.delete(scopeKey);
   }
 
   private getMessageKey(scope: HarnessEventScope, messageId: string): string {
