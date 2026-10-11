@@ -216,21 +216,6 @@ export class ProvisioningWorkerLifecycle {
         captureStdout: false,
       },
     );
-    if (!options.relayOnlyWorker) {
-      await this.runDevboxExec(
-        record,
-        executor,
-        options.targetDirectory,
-        ["sh", workerPaths.containerLauncher],
-        {
-          step: "devbox_up",
-          label: "Starting the workspace worker",
-          errorCode: "worker_start_failed",
-          errorMessage: "Failed to start the workspace worker",
-          captureStdout: false,
-        },
-      );
-    }
     await this.runDevboxExec(
       record,
       executor,
@@ -251,21 +236,19 @@ export class ProvisioningWorkerLifecycle {
       "Workspace worker registration command completed",
       "devbox_up",
     );
-    if (options.relayOnlyWorker) {
-      await this.runDevboxExec(
-        record,
-        executor,
-        options.targetDirectory,
-        ["sh", workerPaths.containerLauncher],
-        {
-          step: "devbox_up",
-          label: "Starting the workspace worker",
-          errorCode: "worker_start_failed",
-          errorMessage: "Failed to start the workspace worker",
-          captureStdout: false,
-        },
-      );
-    }
+    await this.runDevboxExec(
+      record,
+      executor,
+      options.targetDirectory,
+      ["sh", workerPaths.containerLauncher],
+      {
+        step: "devbox_up",
+        label: "Starting the workspace worker",
+        errorCode: "worker_start_failed",
+        errorMessage: "Failed to start the workspace worker",
+        captureStdout: false,
+      },
+    );
     await this.waitForEnrollment(record, enrollmentId);
     return { enrollmentCleanup, processCleanup };
   }
