@@ -142,6 +142,14 @@ export async function startTaskImpl(ctx: TaskCtx, taskId: string, _options?: Sta
     });
   }
 
+  if (task.state.status === "deleted") {
+    throw new TaskOperationError(
+      "invalid_task_state",
+      "Cannot start a deleted task. Revive it before starting.",
+      { details: { taskId, status: task.state.status } },
+    );
+  }
+
   await assertTaskWorktreesAllowed(task);
 
   log.info("Starting task execution", {

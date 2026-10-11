@@ -20,6 +20,9 @@ import { resolveCommandExecutorDirectory } from "../command-executor";
 import { assertTaskHarnessWorkspaceSafe } from "./task-harness";
 import type { TaskEngine } from "../task-engine";
 import { getCurrentUser, runWithCurrentUser } from "../../context/user-context";
+import {
+  runTaskLifecycleOperationWithDeferredCleanup,
+} from "./task-lifecycle-operations";
 
 type TaskCleanupOperation = "delete" | "discard" | "purge";
 
@@ -28,21 +31,26 @@ async function disconnectTaskEngine(ctx: TaskCtx, taskId: string): Promise<void>
   await backendManager.disconnectTask(taskId);
 }
 
-async function deleteLinkedTaskChat(taskId: string, operation: TaskCleanupOperation): Promise<void> {
+async function deleteLinkedTaskChat(
+  taskId: string,
+  operation: TaskCleanupOperation,
+): Promise<{ cleanup: Promise<boolean> }> {
   try {
     const { chatManager } = await import("../chat-manager");
-    await chatManager.deleteTaskChat(taskId);
+    const result = await chatManager.deleteTaskChat(taskId);
+    return { cleanup: result.cleanup };
   } catch (error) {
     log.warn("Failed to delete linked task chat after task deletion", {
       taskId,
       operation,
       error: String(error),
     });
+    return { cleanup: Promise.resolve(false) };
   }
 }
 
-async function revokeTaskContext(taskId: string, workspaceId: string): Promise<void> {
-  const identity = await managedContextIdentityResolver.forTask(taskId, workspaceId);
+async function revokeTaskContext(task: Task): Promise<void> {
+  const identity = managedContextIdentityResolver.forTaskSnapshot(task);
   await managedCredentialService.revokeContextIfConfigured(identity);
 }
 
@@ -119,7 +127,15 @@ async function runDeferredTaskCleanupStep(
   cleanup: () => Promise<unknown>,
 ): Promise<boolean> {
   try {
-    await cleanup();
+    const result = await cleanup();
+    if (result === false) {
+      log.warn("Deferred task cleanup step reported incomplete", {
+        taskId,
+        operation,
+        step,
+      });
+      return false;
+    }
     return true;
   } catch (error) {
     log.warn("Deferred task cleanup step failed", {
@@ -245,69 +261,62 @@ async function cleanupTaskGit(
   }
 }
 
-function scheduleDeferredTaskCleanup(
+function createDeferredTaskCleanup(
   ctx: TaskCtx,
   task: Task,
   engine: TaskEngine | undefined,
   operation: TaskCleanupOperation,
-): void {
+  linkedChatCleanup: Promise<boolean>,
+): () => Promise<void> {
   const user = getCurrentUser();
-  if (!user) {
-    log.error("Cannot schedule deferred task cleanup without a current user", {
-      taskId: task.config.id,
-      operation,
-    });
-    return;
-  }
+  return async () => {
+    if (!user) {
+      log.error("Cannot run deferred task cleanup without a current user", {
+        taskId: task.config.id,
+        operation,
+      });
+      return;
+    }
 
-  void runWithCurrentUser(user, async () => {
-    const runtimeCleanup = stopTaskRuntimeForDeletion(ctx, task, engine, operation);
-    const terminalSessionCleanup = runDeferredTaskCleanupStep(
-      task.config.id,
-      operation,
-      "terminal session",
-      () => terminalSessionManager.deleteSessionByTaskId(task.config.id),
-    );
-    const cleanupSteps = [
-      terminalSessionCleanup,
-      runDeferredTaskCleanupStep(
+    await runWithCurrentUser(user, async () => {
+      const runtimeCleanup = stopTaskRuntimeForDeletion(ctx, task, engine, operation);
+      const terminalSessionCleanup = runDeferredTaskCleanupStep(
+        task.config.id,
+        operation,
+        "terminal session",
+        () => terminalSessionManager.deleteSessionByTaskId(task.config.id),
+      );
+      const credentialCleanup = runDeferredTaskCleanupStep(
         task.config.id,
         operation,
         "managed credentials",
-        () => revokeTaskContext(task.config.id, task.config.workspaceId),
-      ),
-    ];
+        () => revokeTaskContext(task),
+      );
+      const [runtimeSafe, terminalSessionCleaned, , chatCleaned] = await Promise.all([
+        runtimeCleanup,
+        terminalSessionCleanup,
+        credentialCleanup,
+        linkedChatCleanup,
+      ]);
 
-    if (needsTaskGitCleanup(task, operation)) {
-      cleanupSteps.push((async () => {
-        const [runtimeSafe, terminalSessionCleaned] = await Promise.all([
-          runtimeCleanup,
-          terminalSessionCleanup,
-        ]);
-        if (!runtimeSafe || !terminalSessionCleaned) {
-          log.warn("Skipping task Git cleanup because workspace writers could not be stopped", {
-            taskId: task.config.id,
-            operation,
-          });
-          return true;
-        }
-        return runDeferredTaskCleanupStep(
-          task.config.id,
+      if (!needsTaskGitCleanup(task, operation)) {
+        return;
+      }
+      if (!runtimeSafe || !terminalSessionCleaned || !chatCleaned) {
+        log.warn("Skipping task Git cleanup because workspace writers could not be stopped", {
+          taskId: task.config.id,
           operation,
-          "Git",
-          () => cleanupTaskGit(task, operation),
-        );
-      })());
-    }
-
-    await Promise.all(cleanupSteps);
-  }).catch((error) => {
-    log.error("Deferred task cleanup failed", {
-      taskId: task.config.id,
-      operation,
-      error: String(error),
+        });
+        return;
+      }
+      await runDeferredTaskCleanupStep(
+        task.config.id,
+        operation,
+        "Git",
+        () => cleanupTaskGit(task, operation),
+      );
     });
-  });
+  };
 }
 
 function takeTaskEngineForCleanup(ctx: TaskCtx, taskId: string): TaskEngine | undefined {
@@ -317,95 +326,131 @@ function takeTaskEngineForCleanup(ctx: TaskCtx, taskId: string): TaskEngine | un
 }
 
 export async function deleteTaskImpl(ctx: TaskCtx, taskId: string): Promise<boolean> {
-  log.info("Deleting task", { taskId, hasActiveEngine: ctx.engines.has(taskId) });
-  const task = await loadTask(taskId);
-  if (!task) {
-    log.debug("Task not found during delete", { taskId });
-    return false;
-  }
-
-  const deletedTask = await markTaskDeleted(task, "deleteTask");
-  if (!deletedTask) {
-    return false;
-  }
-
-  const engine = takeTaskEngineForCleanup(ctx, taskId);
-  ctx.emitter.emit({
-    type: "task.deleted",
+  return await runTaskLifecycleOperationWithDeferredCleanup(
     taskId,
-    timestamp: createTimestamp(),
-  });
-  await deleteLinkedTaskChat(taskId, "delete");
-  scheduleDeferredTaskCleanup(ctx, deletedTask, engine, "delete");
+    async (deferCleanup) => {
+      log.info("Deleting task", { taskId, hasActiveEngine: ctx.engines.has(taskId) });
+      const task = await loadTask(taskId);
+      if (!task) {
+        log.debug("Task not found during delete", { taskId });
+        return false;
+      }
 
-  log.info("Task deleted", { taskId });
-  return true;
+      const deletedTask = await markTaskDeleted(task, "deleteTask");
+      if (!deletedTask) {
+        return false;
+      }
+
+      const engine = takeTaskEngineForCleanup(ctx, taskId);
+      ctx.emitter.emit({
+        type: "task.deleted",
+        taskId,
+        timestamp: createTimestamp(),
+      });
+      const linkedChatDeletion = await deleteLinkedTaskChat(taskId, "delete");
+      deferCleanup(createDeferredTaskCleanup(ctx, deletedTask, engine, "delete", linkedChatDeletion.cleanup));
+
+      log.info("Task deleted", { taskId });
+      return true;
+    },
+    (error) => {
+      log.error("Deferred task cleanup failed", {
+        taskId,
+        operation: "delete",
+        error: String(error),
+      });
+    },
+  );
 }
 
 export async function discardTaskImpl(ctx: TaskCtx, taskId: string): Promise<TaskResult> {
-  log.info("Discarding task", { taskId });
-  const task = await ctx.getTask(taskId);
-  if (!task) {
-    return taskFailure("task_not_found", "Task not found", { details: { taskId } });
-  }
+  return await runTaskLifecycleOperationWithDeferredCleanup(
+    taskId,
+    async (deferCleanup) => {
+      log.info("Discarding task", { taskId });
+      const task = await ctx.getTask(taskId);
+      if (!task) {
+        return taskFailure("task_not_found", "Task not found", { details: { taskId } });
+      }
 
-  try {
-    const deletedTask = await markTaskDeleted(task, "discardTask");
-    if (!deletedTask) {
-      return taskFailure("task_not_found", "Task not found", { details: { taskId } });
-    }
+      try {
+        const deletedTask = await markTaskDeleted(task, "discardTask");
+        if (!deletedTask) {
+          return taskFailure("task_not_found", "Task not found", { details: { taskId } });
+        }
 
-    const engine = takeTaskEngineForCleanup(ctx, taskId);
-    ctx.emitter.emit({
-      type: "task.discarded",
-      taskId,
-      timestamp: createTimestamp(),
-    });
-    await deleteLinkedTaskChat(taskId, "discard");
-    scheduleDeferredTaskCleanup(ctx, deletedTask, engine, "discard");
+        const engine = takeTaskEngineForCleanup(ctx, taskId);
+        ctx.emitter.emit({
+          type: "task.discarded",
+          taskId,
+          timestamp: createTimestamp(),
+        });
+        const linkedChatDeletion = await deleteLinkedTaskChat(taskId, "discard");
+        deferCleanup(createDeferredTaskCleanup(ctx, deletedTask, engine, "discard", linkedChatDeletion.cleanup));
 
-    log.info("Task discarded", { taskId });
-    return { success: true };
-  } catch (error) {
-    return taskFailureFromUnknown(
-      error,
-      "task_operation_failed",
-      "Failed to discard task",
-    );
-  }
+        log.info("Task discarded", { taskId });
+        return { success: true };
+      } catch (error) {
+        return taskFailureFromUnknown(
+          error,
+          "task_operation_failed",
+          "Failed to discard task",
+        );
+      }
+    },
+    (error) => {
+      log.error("Deferred task cleanup failed", {
+        taskId,
+        operation: "discard",
+        error: String(error),
+      });
+    },
+  );
 }
 
 export async function purgeTaskImpl(ctx: TaskCtx, taskId: string): Promise<TaskResult> {
-  log.info("Purging task", { taskId });
-  const task = await loadTask(taskId);
-  if (!task) {
-    return taskFailure("task_not_found", "Task not found", { details: { taskId } });
-  }
+  return await runTaskLifecycleOperationWithDeferredCleanup(
+    taskId,
+    async (deferCleanup) => {
+      log.info("Purging task", { taskId });
+      const task = await loadTask(taskId);
+      if (!task) {
+        return taskFailure("task_not_found", "Task not found", { details: { taskId } });
+      }
 
-  const isDraft = task.state.status === "draft";
-  if (!isDraft && task.state.status !== "accepted_local" && task.state.status !== "merged" && task.state.status !== "pushed" && task.state.status !== "deleted") {
-    return taskFailure(
-      "invalid_task_state",
-      `Cannot purge task in status: ${task.state.status}. Only draft, accepted_local, merged, pushed, or deleted tasks can be purged.`,
-      { details: { taskId, status: task.state.status } },
-    );
-  }
+      const isDraft = task.state.status === "draft";
+      if (!isDraft && task.state.status !== "accepted_local" && task.state.status !== "merged" && task.state.status !== "pushed" && task.state.status !== "deleted") {
+        return taskFailure(
+          "invalid_task_state",
+          `Cannot purge task in status: ${task.state.status}. Only draft, accepted_local, merged, pushed, or deleted tasks can be purged.`,
+          { details: { taskId, status: task.state.status } },
+        );
+      }
 
-  const deleted = await deleteTaskFile(taskId);
-  if (!deleted) {
-    return taskFailure(
-      "task_file_operation_failed",
-      "Failed to delete task file",
-      { details: { taskId } },
-    );
-  }
+      const deleted = await deleteTaskFile(taskId);
+      if (!deleted) {
+        return taskFailure(
+          "task_file_operation_failed",
+          "Failed to delete task file",
+          { details: { taskId } },
+        );
+      }
 
-  const engine = takeTaskEngineForCleanup(ctx, taskId);
-  await deleteLinkedTaskChat(taskId, "purge");
-  scheduleDeferredTaskCleanup(ctx, task, engine, "purge");
+      const engine = takeTaskEngineForCleanup(ctx, taskId);
+      const linkedChatDeletion = await deleteLinkedTaskChat(taskId, "purge");
+      deferCleanup(createDeferredTaskCleanup(ctx, task, engine, "purge", linkedChatDeletion.cleanup));
 
-  log.info("Task purged", { taskId });
-  return { success: true };
+      log.info("Task purged", { taskId });
+      return { success: true };
+    },
+    (error) => {
+      log.error("Deferred task cleanup failed", {
+        taskId,
+        operation: "purge",
+        error: String(error),
+      });
+    },
+  );
 }
 
 export async function markMergedImpl(ctx: TaskCtx, taskId: string): Promise<TaskResult> {

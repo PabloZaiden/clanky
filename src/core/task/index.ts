@@ -42,6 +42,7 @@ import {
   startFeedbackCycleImpl,
   stopAutomaticPrFlowImpl,
 } from "./task-review";
+import { runTaskLifecycleOperation } from "./task-lifecycle-operations";
 
 export class TaskManager {
   private readonly ctx: TaskCtx;
@@ -62,8 +63,8 @@ export class TaskManager {
       deleteTask: (id) => this.deleteTask(id),
       discardTask: (id) => this.discardTask(id),
       getTask: (id) => this.getTask(id),
-      startTask: (id, options) => this.startTask(id, options),
-      startPlanMode: (id, options) => this.startPlanMode(id, options),
+      startTask: (id, options) => startTaskImpl(this.ctx, id, options),
+      startPlanMode: (id, options) => startPlanModeImpl(this.ctx, id, options),
       acceptPlan: (id, options) => this.acceptPlan(id, options),
       pushTask: (id) => this.pushTask(id),
       startAutomaticPrFlow: (id) => this.startAutomaticPrFlow(id),
@@ -86,11 +87,15 @@ export class TaskManager {
   }
 
   async startPlanMode(taskId: string, options?: StartTaskOptions): Promise<void> {
-    return startPlanModeImpl(this.ctx, taskId, options);
+    return await runTaskLifecycleOperation(taskId, async () => {
+      return await startPlanModeImpl(this.ctx, taskId, options);
+    });
   }
 
   async startDraft(taskId: string, options: { attachments?: MessageAttachment[] }): Promise<Task> {
-    return startDraftImpl(this.ctx, taskId, options);
+    return await runTaskLifecycleOperation(taskId, async () => {
+      return await startDraftImpl(this.ctx, taskId, options);
+    });
   }
 
   async sendPlanFeedback(taskId: string, feedback: string, attachments?: MessageAttachment[]): Promise<void> {
@@ -145,11 +150,15 @@ export class TaskManager {
   }
 
   async startTask(taskId: string, _options?: StartTaskOptions): Promise<void> {
-    return startTaskImpl(this.ctx, taskId, _options);
+    return await runTaskLifecycleOperation(taskId, async () => {
+      return await startTaskImpl(this.ctx, taskId, _options);
+    });
   }
 
   async stopTask(taskId: string, reason?: string): Promise<void> {
-    return stopTaskImpl(this.ctx, taskId, reason);
+    return await runTaskLifecycleOperation(taskId, async () => {
+      return await stopTaskImpl(this.ctx, taskId, reason);
+    });
   }
 
   async acceptTask(taskId: string): Promise<AcceptTaskResult> {
@@ -329,7 +338,9 @@ export class TaskManager {
   }
 
   private async recoverPlanningEngine(taskId: string): Promise<TaskEngine> {
-    return recoverPlanningEngineImpl(this.ctx, taskId);
+    return await runTaskLifecycleOperation(taskId, async () => {
+      return await recoverPlanningEngineImpl(this.ctx, taskId);
+    });
   }
 }
 

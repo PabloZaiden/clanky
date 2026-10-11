@@ -32,6 +32,7 @@ import type {
   CreateAgentRunChatOptions,
   CreateChatOptions,
   CreateExecutionHostChatOptions,
+  DeleteTaskChatResult,
   ReconnectChatOptions,
 } from "./chat-service-contracts";
 import type { Backend } from "../backends/types";
@@ -43,6 +44,7 @@ export type {
   CreateAgentRunChatOptions,
   CreateChatOptions,
   CreateExecutionHostChatOptions,
+  DeleteTaskChatResult,
   ReconnectChatOptions,
 } from "./chat-service-contracts";
 
@@ -214,7 +216,7 @@ export class ChatManager {
     return this.services.lifecycle.getOrCreateTaskChat(taskId, task);
   }
 
-  async deleteTaskChat(taskId: string): Promise<boolean> {
+  async deleteTaskChat(taskId: string): Promise<DeleteTaskChatResult> {
     return this.services.lifecycle.deleteTaskChat(taskId);
   }
 
@@ -310,7 +312,7 @@ export class ChatManager {
     return this.services.session.getChatBackend(chatId, workspaceId);
   }
 
-  async disconnectChat(chatId: string): Promise<void> {
+  async disconnectChat(chatId: string): Promise<boolean> {
     return this.services.session.disconnectChat(chatId);
   }
 }

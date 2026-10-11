@@ -33,6 +33,7 @@ import type {
   ChatConfigUpdates,
   ChatConversationPort,
   DeleteChatOptions,
+  DeleteTaskChatResult,
   ChatLifecyclePort,
   ChatSessionPort,
   ChatStatePort,
@@ -377,12 +378,12 @@ export class ChatLifecycleService implements ChatLifecyclePort {
     }
   }
 
-  async deleteTaskChat(taskId: string): Promise<boolean> {
+  async deleteTaskChat(taskId: string): Promise<DeleteTaskChatResult> {
     const chat = await this.state.getTaskChat(taskId);
     if (!chat) {
-      return false;
+      return { deleted: false, cleanup: Promise.resolve(true) };
     }
-    return this.deleteChat(chat.config.id, { deferCleanup: true });
+    return await this.deleteChatDeferred(chat);
   }
 
   async updateChatStatus(chatId: string, status: ChatStatus): Promise<Chat | null> {
@@ -522,16 +523,8 @@ export class ChatLifecycleService implements ChatLifecyclePort {
     }
 
     if (options.deferCleanup) {
-      const user = requireCurrentUser();
-      this.conversation.closeActiveStream(chatId);
-      const deleted = await this.state.deletePersistedChat(chatId);
-      if (!deleted) {
-        return false;
-      }
-
-      this.state.emitChatDeleted(chat, createTimestamp());
-      this.scheduleDeferredChatCleanup(chat, user, options.credentialToken);
-      return true;
+      const result = await this.deleteChatDeferred(chat, options.credentialToken);
+      return result.deleted;
     }
 
     await this.cleanupChatRuntime(chat, {
@@ -553,8 +546,9 @@ export class ChatLifecycleService implements ChatLifecyclePort {
       closeStream?: () => void;
       credentialToken?: string | null;
     } = {},
-  ): Promise<void> {
-    const cleanupSteps: Array<{ label: string; run: () => Promise<void> }> = [];
+  ): Promise<boolean> {
+    let succeeded = true;
+    const cleanupSteps: Array<{ label: string; run: () => Promise<void | boolean> }> = [];
     const historyRecovery = chat.state.harness?.historyRecovery;
     if (
       historyRecovery
@@ -609,8 +603,12 @@ export class ChatLifecycleService implements ChatLifecyclePort {
       }
 
       try {
-        await step.run();
+        const stepSucceeded = await step.run();
+        if (stepSucceeded === false) {
+          succeeded = false;
+        }
       } catch (error) {
+        succeeded = false;
         log.error("Deferred chat cleanup step failed", {
           chatId: chat.config.id,
           step: step.label,
@@ -618,16 +616,35 @@ export class ChatLifecycleService implements ChatLifecyclePort {
         });
       }
     }
+    return succeeded;
+  }
+
+  private async deleteChatDeferred(
+    chat: Chat,
+    credentialToken?: string | null,
+  ): Promise<DeleteTaskChatResult> {
+    const user = requireCurrentUser();
+    this.conversation.closeActiveStream(chat.config.id);
+    const deleted = await this.state.deletePersistedChat(chat.config.id);
+    if (!deleted) {
+      return { deleted: false, cleanup: Promise.resolve(false) };
+    }
+
+    this.state.emitChatDeleted(chat, createTimestamp());
+    return {
+      deleted: true,
+      cleanup: this.scheduleDeferredChatCleanup(chat, user, credentialToken),
+    };
   }
 
   private scheduleDeferredChatCleanup(
     chat: Chat,
     user: CurrentUser,
     credentialToken?: string | null,
-  ): void {
+  ): Promise<boolean> {
     // The persisted chat is already deleted; remote cleanup must not delay the HTTP response.
-    void runWithCurrentUser(user, async () => {
-      await this.cleanupChatRuntime(chat, {
+    return runWithCurrentUser(user, async () => {
+      return await this.cleanupChatRuntime(chat, {
         continueOnError: true,
         credentialToken,
       });
@@ -636,6 +653,7 @@ export class ChatLifecycleService implements ChatLifecyclePort {
         chatId: chat.config.id,
         error: String(error),
       });
+      return false;
     });
   }
 }

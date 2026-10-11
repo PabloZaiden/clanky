@@ -90,6 +90,8 @@ class BackendManager {
   private connections = new Map<string, WorkspaceConnectionState>();
   /** Map of task ID to its own dedicated backend connection */
   private taskConnections = new Map<string, TaskConnectionState>();
+  /** In-flight teardown results keyed by the task/chat backend owner. */
+  private readonly taskDisconnects = new Map<string, Promise<boolean>>();
   /** Map of workspace execution key to command executor. */
   private commandExecutors = new Map<string, CachedCommandExecutor>();
   private readonly pendingExecutionHosts = new Set<PendingExecutionHost>();
@@ -489,7 +491,7 @@ class BackendManager {
       state.userId === userId
       && state.executionHostBinding?.host.kind === "mesh"
       && workerNodeIds.includes(state.executionHostBinding.host.nodeId);
-    const teardown: Promise<void>[] = [];
+    const teardown: Promise<unknown>[] = [];
     const reason = new HarnessError(
       "harness_transport_closed",
       `The Mesh worker connection was invalidated (${event.reason}).`,
@@ -510,8 +512,7 @@ class BackendManager {
     if (event.impact === "resources") {
       for (const [contextId, state] of this.taskConnections) {
         if (!matches(state)) continue;
-        this.taskConnections.delete(contextId);
-        teardown.push(this.closeBackend(state.backend, contextId, reason));
+        teardown.push(this.disconnectTask(contextId, reason).then(() => {}));
       }
     }
     log.debug("Invalidating scoped Mesh execution resources", {
@@ -538,14 +539,10 @@ class BackendManager {
     }
 
     // Reset all task-level connections
-    for (const [taskId, state] of this.taskConnections) {
-      try {
-        state.backend.abortAllSubscriptions();
-        if (state.backend.isConnected()) {
-          await state.backend.disconnect();
-        }
-      } catch (error) {
-        log.error(`Error resetting task connection for ${taskId}: ${String(error)}`);
+    for (const taskId of this.taskConnections.keys()) {
+      const disconnected = await this.disconnectTask(taskId);
+      if (!disconnected) {
+        log.error(`Error resetting task connection for ${taskId}`);
       }
     }
 
@@ -884,6 +881,9 @@ class BackendManager {
    * @returns A Backend instance dedicated to this task
    */
   getTaskBackend(taskId: string, workspaceId: string): Backend {
+    if (this.taskDisconnects.has(taskId)) {
+      throw new Error(`[BackendManager] Backend teardown is still in progress for context ${taskId}.`);
+    }
     const existing = this.taskConnections.get(taskId);
     if (existing) {
       return existing.backend;
@@ -932,31 +932,62 @@ class BackendManager {
    *
    * @param taskId - The task ID to clean up
    */
-  async disconnectTask(taskId: string): Promise<void> {
-    const state = this.taskConnections.get(taskId);
-    if (!state) {
-      return;
+  async disconnectTask(taskId: string, reason?: Error): Promise<boolean> {
+    const pending = this.taskDisconnects.get(taskId);
+    if (pending) {
+      return await pending;
     }
 
-    this.taskConnections.delete(taskId);
-    await this.closeBackend(state.backend, taskId);
-    log.debug(`[BackendManager] Cleaned up backend for task ${taskId}`);
+    const state = this.taskConnections.get(taskId);
+    if (!state) {
+      return true;
+    }
+
+    let resolveDisconnect!: (succeeded: boolean) => void;
+    const disconnect = new Promise<boolean>((resolve) => {
+      resolveDisconnect = resolve;
+    });
+    this.taskDisconnects.set(taskId, disconnect);
+
+    try {
+      const succeeded = await this.closeBackend(state.backend, taskId, reason);
+      resolveDisconnect(succeeded);
+      if (succeeded || reason) {
+        if (this.taskConnections.get(taskId) === state) {
+          this.taskConnections.delete(taskId);
+        }
+      }
+      if (succeeded) {
+        log.debug(`[BackendManager] Cleaned up backend for task ${taskId}`);
+      }
+      return succeeded;
+    } catch (error) {
+      log.error("[BackendManager] Error closing backend", { contextId: taskId, error: String(error) });
+      resolveDisconnect(false);
+      return false;
+    } finally {
+      if (this.taskDisconnects.get(taskId) === disconnect) {
+        this.taskDisconnects.delete(taskId);
+      }
+    }
   }
 
-  private async closeBackend(backend: Backend, contextId: string, reason?: Error): Promise<void> {
+  private async closeBackend(backend: Backend, contextId: string, reason?: Error): Promise<boolean> {
     try {
       backend.abortAllSubscriptions(reason);
       await backend.disconnect();
+      return true;
     } catch (error) {
       log.error("[BackendManager] Error closing backend", { contextId, error: String(error) });
+      return false;
     }
   }
 
   /**
    * Disconnect and clean up the backend for a specific chat.
    */
-  async disconnectChat(chatId: string): Promise<void> {
-    await this.disconnectTask(chatId);
+  async disconnectChat(chatId: string): Promise<boolean> {
+    return await this.disconnectTask(chatId);
   }
 
   /**
