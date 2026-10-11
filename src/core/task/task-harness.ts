@@ -76,7 +76,17 @@ export async function assertTaskHarnessWorkspaceSafe(
       }
       return;
     }
-    throw new TaskOperationError("task_background_work_unsettled", "Reconnect to confirm native workspace settlement.");
+    if (options.taskSnapshot) {
+      throw new TaskOperationError("task_background_work_unsettled", "Reconnect to confirm native workspace settlement.");
+    }
+    const recoverEngine = options.lifecycleOperationLocked
+      ? recoverOwnedNativeEngineLocked
+      : recoverOwnedNativeEngineImpl;
+    await recoverEngine(ctx, taskId, "workspace-safety");
+    ({ task, backend } = await resolveTaskHarness(ctx, taskId));
+    if (!backend?.isConnected()) {
+      throw new TaskOperationError("task_background_work_unsettled", "Reconnect to confirm native workspace settlement.");
+    }
   }
   const context = { kind: "task" as const, id: taskId };
   const cleanup = await harnessActivityService.settle(context, binding, backend);

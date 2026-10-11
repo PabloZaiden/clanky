@@ -24,6 +24,7 @@ export function DraftTaskComposer({
   planningWarning,
   branches,
   branchesLoading,
+  branchesWorkspaceId,
   currentBranch,
   defaultBranch,
   workspaceError,
@@ -46,6 +47,7 @@ export function DraftTaskComposer({
   planningWarning: string | null;
   branches: ReturnType<typeof useDashboardData>["branches"];
   branchesLoading: boolean;
+  branchesWorkspaceId: ReturnType<typeof useDashboardData>["branchesWorkspaceId"];
   currentBranch: string;
   defaultBranch: string;
   workspaceError: string | null;
@@ -208,6 +210,7 @@ export function DraftTaskComposer({
         planningWarning={planningWarning}
         branches={branches}
         branchesLoading={branchesLoading}
+        branchesWorkspaceId={branchesWorkspaceId}
         currentBranch={currentBranch}
         defaultBranch={defaultBranch}
         editTaskId={task.config.id}

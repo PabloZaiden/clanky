@@ -1,12 +1,14 @@
 /**
  * useWorkspaceSelection — manages workspace and branch selection state.
  *
- * Handles workspace ID/directory state, the onWorkspaceChange notification
- * effect, and the branch selection state that resets when workspace changes.
+ * Handles workspace ID/directory state, branch selections scoped to their
+ * workspace, and the onWorkspaceChange notification effect.
  */
 
-import { useState, useEffect, useRef } from "react";
+import { useCallback, useState, useEffect, useRef } from "react";
+import type { BranchInfo } from "@/contracts";
 import { createLogger } from "@pablozaiden/webapp/web";
+import { resolveWorkspaceBranchSelection } from "../../lib/workspace-branch-selection";
 import type { CreateTaskFormProps } from "./types";
 
 const log = createLogger("CreateTaskForm");
@@ -19,18 +21,24 @@ export interface UseWorkspaceSelectionReturn {
   handleWorkspaceSelect: (workspaceId: string | null, workspaceDirectory: string) => void;
   selectedBranch: string;
   setSelectedBranch: (v: string) => void;
-  setUserChangedBranch: (v: boolean) => void;
+  branchesReady: boolean;
 }
 
 export function useWorkspaceSelection({
-  isEditing,
   initialTaskData,
   onWorkspaceChange,
+  branches,
+  branchesLoading,
+  branchesWorkspaceId,
+  currentBranch,
   defaultBranch,
 }: {
-  isEditing: boolean;
   initialTaskData: InitialTaskData;
   onWorkspaceChange: CreateTaskFormProps["onWorkspaceChange"];
+  branches: BranchInfo[];
+  branchesLoading: boolean;
+  branchesWorkspaceId: string | null;
+  currentBranch: string;
   defaultBranch: string;
 }): UseWorkspaceSelectionReturn {
   const isInitialMount = useRef(true);
@@ -41,25 +49,58 @@ export function useWorkspaceSelection({
   const [selectedWorkspaceDirectory, setSelectedWorkspaceDirectory] = useState<string>(
     initialTaskData?.directory ?? ""
   );
-  const [selectedBranch, setSelectedBranch] = useState<string>(
-    initialTaskData?.baseBranch ?? ""
+  const [branchSelection, setBranchSelection] = useState({
+    workspaceId: initialTaskData?.workspaceId,
+    branch: initialTaskData?.baseBranch ?? "",
+  });
+  const selectedBranch = branchSelection.workspaceId === selectedWorkspaceId
+    ? branchSelection.branch
+    : "";
+  const branchesReady = Boolean(
+    selectedWorkspaceId
+      && branchesWorkspaceId === selectedWorkspaceId
+      && !branchesLoading,
   );
-  const [userChangedBranch, setUserChangedBranch] = useState(!!initialTaskData?.baseBranch);
+
+  const setSelectedBranch = useCallback((branch: string): void => {
+    setBranchSelection({ workspaceId: selectedWorkspaceId, branch });
+  }, [selectedWorkspaceId]);
 
   // Sync workspace when initialTaskData changes
   useEffect(() => {
     setSelectedWorkspaceId(initialTaskData?.workspaceId);
     setSelectedWorkspaceDirectory(initialTaskData?.directory ?? "");
-  }, [initialTaskData?.workspaceId, initialTaskData?.directory]);
+    setBranchSelection({
+      workspaceId: initialTaskData?.workspaceId,
+      branch: initialTaskData?.baseBranch ?? "",
+    });
+  }, [
+    initialTaskData?.baseBranch,
+    initialTaskData?.workspaceId,
+    initialTaskData?.directory,
+  ]);
 
-  // Reset selected branch when default branch changes (directory changed)
   useEffect(() => {
-    log.debug("useEffect 1 - branch reset", { defaultBranch, userChangedBranch, isEditing });
-    if (defaultBranch && !userChangedBranch && !isEditing) {
-      log.debug("Setting selected branch to:", defaultBranch);
-      setSelectedBranch(defaultBranch);
+    if (!branchesReady) {
+      return;
     }
-  }, [defaultBranch, userChangedBranch, isEditing]);
+    const nextBranch = resolveWorkspaceBranchSelection(
+      selectedBranch,
+      branches,
+      currentBranch,
+      defaultBranch,
+    );
+    if (selectedBranch !== nextBranch) {
+      setSelectedBranch(nextBranch);
+    }
+  }, [
+    branches,
+    branchesReady,
+    currentBranch,
+    defaultBranch,
+    selectedBranch,
+    setSelectedBranch,
+  ]);
 
   // Notify parent when workspace changes
   useEffect(() => {
@@ -95,19 +136,6 @@ export function useWorkspaceSelection({
     initialTaskData?.directory,
   ]);
 
-  // Reset branch selection flag when workspace changes
-  useEffect(() => {
-    log.debug("useEffect 4 - reset userChangedBranch", {
-      isEditing,
-      isInitialMount: isInitialMount.current,
-      selectedWorkspaceId,
-    });
-    if (!isEditing && !isInitialMount.current) {
-      log.debug("Resetting userChangedBranch to false");
-      setUserChangedBranch(false);
-    }
-  }, [selectedWorkspaceId, isEditing]);
-
   function handleWorkspaceSelect(workspaceId: string | null, workspaceDirectory: string) {
     setSelectedWorkspaceId(workspaceId || undefined);
     setSelectedWorkspaceDirectory(workspaceDirectory);
@@ -119,6 +147,6 @@ export function useWorkspaceSelection({
     handleWorkspaceSelect,
     selectedBranch,
     setSelectedBranch,
-    setUserChangedBranch,
+    branchesReady,
   };
 }

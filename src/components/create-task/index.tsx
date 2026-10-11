@@ -20,6 +20,7 @@ import { AdvancedOptions } from "./advanced-options";
 import { FormActions } from "./form-actions";
 import { useCreateTaskForm } from "./use-create-task-form";
 import { useGitHubIssues } from "./use-github-issues";
+import { resolveWorkspaceBranchSelection } from "../../lib/workspace-branch-selection";
 import { UPLOADED_PLAN_IMPLEMENTATION_PROMPT } from "../../lib/uploaded-plan";
 import type { ComposerAttachment } from "@/shared/message-attachments";
 import type { CreateTaskFormSubmitRequest } from "@/lib/task-request";
@@ -41,6 +42,7 @@ export function CreateTaskForm({
   planningWarning,
   branches = [],
   branchesLoading = false,
+  branchesWorkspaceId = null,
   currentBranch = "",
   defaultBranch = "",
   editTaskId = null,
@@ -78,7 +80,6 @@ export function CreateTaskForm({
     setSelectedCheapModel,
     selectedBranch,
     setSelectedBranch,
-    setUserChangedBranch,
     selectedTemplate,
     setSelectedTemplate,
     autoAcceptPlan,
@@ -110,7 +111,10 @@ export function CreateTaskForm({
      lastModel,
      lastCheapModel,
      onWorkspaceChange,
-    currentBranch,
+     branches,
+     branchesLoading,
+     branchesWorkspaceId,
+     currentBranch,
     defaultBranch,
     editTaskId,
     initialTaskData,
@@ -123,6 +127,22 @@ export function CreateTaskForm({
   });
   const gitBackedWorkspaces = workspaces.filter((workspace) => workspace.workspaceType === "git");
   const selectedWorkspace = gitBackedWorkspaces.find((workspace) => workspace.id === selectedWorkspaceId);
+  const branchDataReady = Boolean(
+    selectedWorkspace
+      && branchesWorkspaceId === selectedWorkspace.id
+      && !branchesLoading,
+  );
+  const selectedWorkspaceBranches = branchDataReady ? branches : [];
+  const selectedWorkspaceCurrentBranch = branchDataReady ? currentBranch : "";
+  const selectedWorkspaceDefaultBranch = branchDataReady ? defaultBranch : "";
+  const displayedSelectedBranch = branchDataReady
+    ? resolveWorkspaceBranchSelection(
+        selectedBranch,
+        selectedWorkspaceBranches,
+        selectedWorkspaceCurrentBranch,
+        selectedWorkspaceDefaultBranch,
+      )
+    : "";
   const uploadedPlanLocked = !!uploadedPlan;
   const {
     issues: githubIssues,
@@ -190,15 +210,14 @@ export function CreateTaskForm({
 
       {/* Base Branch Selection */}
       <BranchSelector
-        selectedBranch={selectedBranch}
+        selectedBranch={displayedSelectedBranch}
         onBranchChange={(branch) => {
           setSelectedBranch(branch);
-          setUserChangedBranch(true);
         }}
-        branches={branches}
-        branchesLoading={branchesLoading}
-        defaultBranch={defaultBranch}
-        currentBranch={currentBranch}
+        branches={selectedWorkspaceBranches}
+        branchesLoading={Boolean(selectedWorkspaceId && !branchDataReady)}
+        defaultBranch={selectedWorkspaceDefaultBranch}
+        currentBranch={selectedWorkspaceCurrentBranch}
       />
 
       {/* Model Selection */}

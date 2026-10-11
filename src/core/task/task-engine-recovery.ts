@@ -14,10 +14,12 @@ import { runTaskLifecycleOperation } from "./task-lifecycle-operations";
 
 const completionRecovery = new KeyedOperationQueue();
 
+type OwnedNativeRecoveryPurpose = "finalization" | "input-recovery" | "workspace-safety";
+
 export function recoverOwnedNativeEngineImpl(
   ctx: TaskCtx,
   taskId: string,
-  purpose: "finalization" | "input-recovery",
+  purpose: OwnedNativeRecoveryPurpose,
 ): Promise<TaskEngine> {
   return runTaskLifecycleOperation(taskId, () => recoverOwnedNativeEngineLocked(ctx, taskId, purpose));
 }
@@ -25,11 +27,29 @@ export function recoverOwnedNativeEngineImpl(
 export function recoverOwnedNativeEngineLocked(
   ctx: TaskCtx,
   taskId: string,
-  purpose: "finalization" | "input-recovery",
+  purpose: OwnedNativeRecoveryPurpose,
 ): Promise<TaskEngine> {
   return completionRecovery.run(taskId, async () => {
     const existing = ctx.engines.get(taskId);
-    if (existing) return existing;
+    if (existing) {
+      const backend = backendManager.getInitializedContextBackend(taskId);
+      if (purpose !== "workspace-safety" || backend?.isConnected()) {
+        return existing;
+      }
+      try {
+        await existing.reconnectSession();
+        return existing;
+      } catch (error) {
+        ctx.engines.delete(taskId);
+        await harnessActivityService.close({ kind: "task", id: taskId });
+        await backendManager.disconnectTask(taskId);
+        throw new TaskOperationError(
+          "task_session_reconnect_failed",
+          "Cannot recover native workspace safety.",
+          { cause: error },
+        );
+      }
+    }
     const task = await loadTask(taskId);
     if (!task) throw new TaskOperationError("task_not_found", "The task is unavailable.");
     if (task.state.status === "deleted") {
@@ -38,7 +58,11 @@ export function recoverOwnedNativeEngineLocked(
       });
     }
     const binding = task.state.session?.binding;
-    if (!binding || binding.adapter === "acp" || (purpose === "finalization" && task.state.status !== "completed")) {
+    if (
+      !binding
+      || binding.adapter === "acp"
+      || (purpose === "finalization" && task.state.status !== "completed")
+    ) {
       throw new TaskOperationError("invalid_task_state", "Recovery requires the owned native conversation.");
     }
     const directory = getTaskWorkingDirectory(task);
@@ -61,7 +85,11 @@ export function recoverOwnedNativeEngineLocked(
     } catch (error) {
       await harnessActivityService.close({ kind: "task", id: taskId });
       await backendManager.disconnectTask(taskId);
-      throw new TaskOperationError("task_session_reconnect_failed", "Cannot recover native finalization.", { cause: error });
+      throw new TaskOperationError(
+        "task_session_reconnect_failed",
+        "Cannot recover the owned native task session.",
+        { cause: error },
+      );
     }
   });
 }

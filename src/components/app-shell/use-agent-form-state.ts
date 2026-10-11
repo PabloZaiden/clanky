@@ -5,6 +5,10 @@ import type { CreateAgentRequest, UpdateAgentRequest } from "@/contracts/schemas
 import { useToast } from "@pablozaiden/webapp/web";
 import { makeModelKey, modelVariantExists, parseModelKey } from "../ModelSelector";
 import type { UseAgentsResult } from "../../hooks/useAgents";
+import {
+  isWorkspaceBranchSelectionValid,
+  resolveWorkspaceBranchSelection,
+} from "../../lib/workspace-branch-selection";
 
 export type AgentFormMode = "create" | "edit";
 export type AgentFormIntervalUnit = "minutes" | "hours" | "days";
@@ -83,29 +87,6 @@ function getDefaultModelKey(models: ModelInfo[], lastModel: ModelConfig | null):
   }
   const connected = models.find((model) => model.connected);
   return connected ? makeModelKey(connected.providerID, connected.modelID, connected.variants?.[0] ?? "") : "";
-}
-
-function getBranchOptions(
-  branches: { name: string }[],
-  currentBranch: string,
-  defaultBranch: string,
-): Set<string> {
-  return new Set([
-    ...branches.map((branch) => branch.name),
-    currentBranch,
-    defaultBranch,
-  ].filter(Boolean));
-}
-
-function isBranchSelectionValid(
-  baseBranch: string,
-  branches: { name: string }[],
-  currentBranch: string,
-  defaultBranch: string,
-): boolean {
-  const normalizedBranch = baseBranch.trim();
-  return normalizedBranch === ""
-    || getBranchOptions(branches, currentBranch, defaultBranch).has(normalizedBranch);
 }
 
 function createInitialDraft({
@@ -290,7 +271,7 @@ export function useAgentFormState({
   const modelSelectionValid = modelsReady && isModelKeyValid(models, draft.modelKey);
   const branchSelectionValid = !gitBackedWorkspace || (
     branchesReady
-    && isBranchSelectionValid(draft.baseBranch, branches, currentBranch, defaultBranch)
+    && isWorkspaceBranchSelectionValid(draft.baseBranch, branches, currentBranch, defaultBranch)
   );
   const workspaceSelectionsReady = modelSelectionValid && branchSelectionValid;
 
@@ -317,11 +298,13 @@ export function useAgentFormState({
     if (!gitBackedWorkspace || !branchesReady) {
       return;
     }
+    const nextBranch = resolveWorkspaceBranchSelection(
+      draft.baseBranch,
+      branches,
+      currentBranch,
+      defaultBranch,
+    );
     const normalizedBranch = draft.baseBranch.trim();
-    if (normalizedBranch && isBranchSelectionValid(normalizedBranch, branches, currentBranch, defaultBranch)) {
-      return;
-    }
-    const nextBranch = defaultBranch || currentBranch;
     if (normalizedBranch !== nextBranch) {
       dispatch({ type: "set-base-branch", value: nextBranch });
     }

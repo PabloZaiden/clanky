@@ -43,6 +43,7 @@ export function useFormActions({
   activityTimeoutSeconds,
   selectedBranch,
   currentBranch,
+  branchSelectionReady,
   clearPlanningFolder,
   useWorktree,
   nameRef,
@@ -73,6 +74,7 @@ export function useFormActions({
   activityTimeoutSeconds: string;
   selectedBranch: string;
   currentBranch: string;
+  branchSelectionReady: boolean;
   clearPlanningFolder: boolean;
   useWorktree: boolean;
   nameRef: React.MutableRefObject<string>;
@@ -111,12 +113,14 @@ export function useFormActions({
     !isSubmitting;
   const canSaveDraft =
     !!selectedWorkspaceId &&
+    branchSelectionReady &&
     !!prompt.trim() &&
     !hasUploadedPlan &&
     (isEditing ? hasName : hasName || canAutoGenerateTitle) &&
     !isSubmitting;
   const canSubmit =
     !!selectedWorkspaceId &&
+    branchSelectionReady &&
     hasTaskInput &&
     selectedModelEnabled &&
     !isSubmitting &&
@@ -145,6 +149,12 @@ export function useFormActions({
       });
 
       if (!selectedWorkspaceId) return;
+      if (!branchSelectionReady) {
+        log.warn("Cannot submit task before branches load for the selected workspace", {
+          selectedWorkspaceId,
+        });
+        return;
+      }
       if (!effectivePrompt) return;
       if (asDraft && currentUploadedPlan) return;
       if (!asDraft && !selectedModel) return;
@@ -233,6 +243,7 @@ export function useFormActions({
       activityTimeoutSeconds,
       selectedBranch,
       currentBranch,
+      branchSelectionReady,
       clearPlanningFolder,
       useWorktree,
       attachments,

@@ -21,6 +21,7 @@ import { assertTaskHarnessWorkspaceSafe } from "./task-harness";
 import type { TaskEngine } from "../task-engine";
 import { getCurrentUser, runWithCurrentUser } from "../../context/user-context";
 import {
+  runTaskLifecycleOperation,
   runTaskLifecycleOperationWithDeferredCleanup,
 } from "./task-lifecycle-operations";
 
@@ -563,6 +564,11 @@ export async function closeLocalTaskImpl(ctx: TaskCtx, taskId: string): Promise<
 }
 
 export async function manualCompleteTaskImpl(ctx: TaskCtx, taskId: string): Promise<TaskResult> {
+  await ctx.engines.get(taskId)?.waitForCompletionSettlement();
+  return await runTaskLifecycleOperation(taskId, () => manualCompleteTaskLocked(ctx, taskId));
+}
+
+async function manualCompleteTaskLocked(ctx: TaskCtx, taskId: string): Promise<TaskResult> {
   log.info("Manually completing task", { taskId });
   const task = await ctx.getTask(taskId);
   if (!task) {
@@ -589,16 +595,39 @@ export async function manualCompleteTaskImpl(ctx: TaskCtx, taskId: string): Prom
   }
 
   try {
-    await assertTaskHarnessWorkspaceSafe(ctx, taskId, { requireFinalCommit: false });
-    assertValidTransition(task.state.status, "completed", "manualCompleteTask");
+    await assertTaskHarnessWorkspaceSafe(ctx, taskId, {
+      requireFinalCommit: false,
+      lifecycleOperationLocked: true,
+    });
+    const settledTask = await ctx.getTask(taskId);
+    if (!settledTask) {
+      return taskFailure("task_not_found", "Task not found", { details: { taskId } });
+    }
+    if (!allowedStatuses.has(settledTask.state.status)) {
+      return taskFailure(
+        "invalid_task_state",
+        `Cannot manually complete task in status: ${settledTask.state.status}. Only stopped or failed tasks can be manually completed.`,
+        { details: { taskId, status: settledTask.state.status } },
+      );
+    }
+    const settledGitState = settledTask.state.git;
+    if (!settledGitState) {
+      return taskFailure(
+        "task_branch_missing",
+        "No git branch was created for this task",
+        { details: { taskId } },
+      );
+    }
+
+    assertValidTransition(settledTask.state.status, "completed", "manualCompleteTask");
 
     const updatedState = {
-      ...task.state,
+      ...settledTask.state,
       status: "completed" as const,
       completedAt: createTimestamp(),
       error: undefined,
       consecutiveErrors: undefined,
-      git: gitState,
+      git: settledGitState,
     };
 
     const engine = ctx.engines.get(taskId);
@@ -612,11 +641,11 @@ export async function manualCompleteTaskImpl(ctx: TaskCtx, taskId: string): Prom
     ctx.emitter.emit({
       type: "task.completed",
       taskId,
-      totalIterations: task.state.currentIteration,
+      totalIterations: settledTask.state.currentIteration,
       timestamp: createTimestamp(),
     });
 
-    log.info("Task manually completed", { taskId, previousStatus: task.state.status });
+    log.info("Task manually completed", { taskId, previousStatus: settledTask.state.status });
     return { success: true };
   } catch (error) {
     return taskFailureFromUnknown(
