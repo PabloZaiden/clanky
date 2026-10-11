@@ -45,6 +45,7 @@ export async function jumpstartTaskFromEngine(
       { details: { taskId, status: task.state.status } },
     );
   }
+  const revivingDeletedTask = task.state.status === "deleted";
 
   if (options.message !== undefined) {
     task.state.pendingPrompt = options.message;
@@ -73,7 +74,9 @@ export async function jumpstartTaskFromEngine(
   task.state.error = undefined;
   task.state.syncState = undefined;
 
-  await updateTaskOperationalState(taskId, task.state);
+  await updateTaskOperationalState(taskId, task.state, {
+    allowDeletedTransition: revivingDeletedTask,
+  });
   await updateTaskConfig(taskId, task.config);
 
   ctx.emitter.emit({
@@ -166,7 +169,9 @@ export async function reviveDeletedTask(taskId: string): Promise<TaskResult> {
     task.state.planMode.isPlanReady = false;
   }
 
-  await updateTaskOperationalState(taskId, task.state);
+  await updateTaskOperationalState(taskId, task.state, {
+    allowDeletedTransition: true,
+  });
   return { success: true };
 }
 

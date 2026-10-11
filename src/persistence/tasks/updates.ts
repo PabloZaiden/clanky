@@ -33,6 +33,7 @@ export interface UpdateTaskStateOptions {
   previousState?: TaskState;
   transcriptChanges?: TranscriptChangeSet;
   persistHarnessInputs?: boolean;
+  allowDeletedTransition?: boolean;
 }
 
 /**
@@ -45,9 +46,11 @@ export interface UpdateTaskStateOptions {
 export async function updateTaskOperationalState(
   taskId: string,
   state: TaskState,
+  options: Pick<UpdateTaskStateOptions, "allowDeletedTransition"> = {},
 ): Promise<boolean> {
   return updateTaskState(taskId, state, {
     transcriptChanges: createTranscriptChangeSet(state),
+    ...options,
   });
 }
 
@@ -70,6 +73,18 @@ export async function updateTaskStateForUser(
     }
 
     const task = rowToTask(row);
+    if (
+      task.state.status === "deleted"
+      && state.status !== "deleted"
+      && !options.allowDeletedTransition
+    ) {
+      log.debug("Ignoring task state update after logical deletion", {
+        taskId,
+        status: state.status,
+      });
+      return false;
+    }
+
     const authoritativeHarness = task.state.harness;
     if (options.persistHarnessInputs) {
       const binding = state.session?.binding;

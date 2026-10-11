@@ -1,8 +1,8 @@
 import type { TaskCtx } from "./context";
+import type { Task } from "@/shared/task";
 import { createTimestamp } from "@/shared/events";
 import {
   loadTask,
-  updateTaskConfig,
   updateTaskOperationalState,
   deleteTask as deleteTaskFile,
   resetStaleTasks,
@@ -18,38 +18,32 @@ import { managedCredentialService } from "../managed-credential-service";
 import { taskFailure, taskFailureFromUnknown, type TaskResult } from "./task-errors";
 import { resolveCommandExecutorDirectory } from "../command-executor";
 import { assertTaskHarnessWorkspaceSafe } from "./task-harness";
+import type { TaskEngine } from "../task-engine";
+import { getCurrentUser, runWithCurrentUser } from "../../context/user-context";
 
-async function deleteLinkedTaskChat(taskId: string): Promise<void> {
-  const { chatManager } = await import("../chat-manager");
-  await chatManager.deleteTaskChat(taskId);
-}
+type TaskCleanupOperation = "delete" | "discard" | "purge";
 
 async function disconnectTaskEngine(ctx: TaskCtx, taskId: string): Promise<void> {
   ctx.engines.delete(taskId);
   await backendManager.disconnectTask(taskId);
 }
 
+async function deleteLinkedTaskChat(taskId: string, operation: TaskCleanupOperation): Promise<void> {
+  try {
+    const { chatManager } = await import("../chat-manager");
+    await chatManager.deleteTaskChat(taskId);
+  } catch (error) {
+    log.warn("Failed to delete linked task chat after task deletion", {
+      taskId,
+      operation,
+      error: String(error),
+    });
+  }
+}
+
 async function revokeTaskContext(taskId: string, workspaceId: string): Promise<void> {
   const identity = await managedContextIdentityResolver.forTask(taskId, workspaceId);
   await managedCredentialService.revokeContextIfConfigured(identity);
-}
-
-async function detachTaskFromMissingWorkspace(taskId: string): Promise<void> {
-  const task = await loadTask(taskId);
-  if (!task || !task.config.workspaceId) {
-    return;
-  }
-
-  const workspace = await getWorkspace(task.config.workspaceId);
-  if (workspace) {
-    return;
-  }
-
-  await updateTaskConfig(taskId, {
-    ...task.config,
-    workspaceId: "",
-    updatedAt: createTimestamp(),
-  });
 }
 
 async function getTaskGitCleanupContext(workspaceId: string, directory: string): Promise<{
@@ -91,35 +85,14 @@ async function getTaskGitCleanupContext(workspaceId: string, directory: string):
   }
 }
 
-export async function deleteTaskImpl(ctx: TaskCtx, taskId: string): Promise<boolean> {
-  log.info("Deleting task", { taskId, hasActiveEngine: ctx.engines.has(taskId) });
-
-  if (ctx.engines.has(taskId)) {
-    log.debug(`[TaskManager] deleteTask: Stopping engine for task ${taskId}`);
-    await ctx.stopTask(taskId, "Task deleted");
+async function markTaskDeleted(
+  task: Task,
+  operation: "deleteTask" | "discardTask",
+): Promise<Task | null> {
+  if (task.state.status !== "deleted") {
+    assertValidTransition(task.state.status, "deleted", operation);
   }
 
-  const task = await loadTask(taskId);
-  if (!task) {
-    log.debug(`[TaskManager] deleteTask: Task ${taskId} not found`);
-    return false;
-  }
-  log.debug(`[TaskManager] deleteTask: Loaded task ${taskId}, status: ${task.state.status}, hasGitBranch: ${!!task.state.git?.workingBranch}`);
-  await assertTaskHarnessWorkspaceSafe(ctx, taskId, { requireFinalCommit: false });
-  await revokeTaskContext(taskId, task.config.workspaceId);
-
-  if (task.state.git?.workingBranch) {
-    log.debug(`[TaskManager] deleteTask: Discarding git branch for task ${taskId}`);
-    const discardResult = await discardTaskImpl(ctx, taskId);
-    if (!discardResult.success) {
-      log.warn(`Failed to discard git branch during delete: ${discardResult.error.message}`);
-    }
-  }
-
-  await detachTaskFromMissingWorkspace(taskId);
-
-  log.debug(`[TaskManager] deleteTask: Updating status to deleted for task ${taskId}`);
-  assertValidTransition(task.state.status, "deleted", "deleteTask");
   const updatedState = {
     ...task.state,
     status: "deleted" as const,
@@ -127,16 +100,243 @@ export async function deleteTaskImpl(ctx: TaskCtx, taskId: string): Promise<bool
       ? { ...task.state.reviewMode, addressable: false }
       : undefined,
   };
-  await updateTaskOperationalState(taskId, updatedState);
-  log.debug(`[TaskManager] deleteTask: Status updated to deleted for task ${taskId}`);
+  const saved = await updateTaskOperationalState(task.config.id, updatedState);
+  return saved ? { ...task, state: updatedState } : null;
+}
 
-  await deleteLinkedTaskChat(taskId);
+function needsTaskGitCleanup(task: Task, operation: TaskCleanupOperation): boolean {
+  if (operation === "purge") {
+    return task.state.status !== "draft"
+      && Boolean(task.state.git?.worktreePath || task.state.git?.workingBranch);
+  }
+  return !task.config.useWorktree && Boolean(task.state.git?.workingBranch);
+}
 
+async function runDeferredTaskCleanupStep(
+  taskId: string,
+  operation: TaskCleanupOperation,
+  step: string,
+  cleanup: () => Promise<unknown>,
+): Promise<boolean> {
+  try {
+    await cleanup();
+    return true;
+  } catch (error) {
+    log.warn("Deferred task cleanup step failed", {
+      taskId,
+      operation,
+      step,
+      error: String(error),
+    });
+    return false;
+  }
+}
+
+async function stopTaskRuntimeForDeletion(
+  ctx: TaskCtx,
+  task: Task,
+  engine: TaskEngine | undefined,
+  operation: TaskCleanupOperation,
+): Promise<boolean> {
+  const needsGitCleanup = needsTaskGitCleanup(task, operation);
+  let workspaceSafe = !needsGitCleanup;
+  if (engine) {
+    try {
+      const engineWorkspaceSafe = await engine.stopForDeletion();
+      workspaceSafe = !needsGitCleanup || engineWorkspaceSafe;
+    } catch (error) {
+      workspaceSafe = !needsGitCleanup;
+      log.warn("Failed to stop task engine during deferred cleanup", {
+        taskId: task.config.id,
+        operation,
+        error: String(error),
+      });
+    }
+  } else if (needsGitCleanup) {
+    try {
+      await assertTaskHarnessWorkspaceSafe(ctx, task.config.id, {
+        requireFinalCommit: false,
+        taskSnapshot: task,
+        persistProjection: operation !== "purge",
+      });
+      workspaceSafe = true;
+    } catch (error) {
+      workspaceSafe = false;
+      log.warn("Skipping task Git cleanup because workspace safety could not be confirmed", {
+        taskId: task.config.id,
+        operation,
+        error: String(error),
+      });
+    }
+  }
+
+  const disconnectedSuccessfully = await runDeferredTaskCleanupStep(
+    task.config.id,
+    operation,
+    "provider session",
+    () => backendManager.disconnectTask(task.config.id),
+  );
+  if (needsGitCleanup && !workspaceSafe) {
+    log.warn("Skipping task Git cleanup because workspace safety could not be confirmed", {
+      taskId: task.config.id,
+      operation,
+    });
+  }
+  return workspaceSafe && disconnectedSuccessfully;
+}
+
+async function cleanupTaskGit(
+  task: Task,
+  operation: TaskCleanupOperation,
+): Promise<void> {
+  const gitState = task.state.git;
+  if (!gitState) {
+    return;
+  }
+
+  const cleanupContext = await getTaskGitCleanupContext(
+    task.config.workspaceId,
+    task.config.directory,
+  );
+  if (!cleanupContext) {
+    return;
+  }
+
+  const { git, cleanupDirectory } = cleanupContext;
+  if (operation === "purge") {
+    if (task.state.status === "draft") {
+      return;
+    }
+    const worktreePath = gitState.worktreePath;
+    if (worktreePath) {
+      const managedWorktreePath = await git.assertCanonicalManagedWorktreePath(
+        cleanupDirectory,
+        task.config.id,
+        worktreePath,
+      );
+      await git.ensureWorktreeRemoved(cleanupDirectory, managedWorktreePath, { force: true });
+      log.debug("Removed task worktree and pruned metadata", {
+        taskId: task.config.id,
+        worktreePath: managedWorktreePath,
+      });
+    }
+
+    const workingBranch = gitState.workingBranch;
+    if (workingBranch && workingBranch !== gitState.originalBranch) {
+      try {
+        await git.deleteBranch(cleanupDirectory, workingBranch);
+        log.debug("Deleted task working branch", { taskId: task.config.id, workingBranch });
+      } catch (error) {
+        log.warn("Could not delete task working branch", {
+          taskId: task.config.id,
+          workingBranch,
+          error: String(error),
+        });
+      }
+    }
+    return;
+  }
+
+  if (!task.config.useWorktree && gitState.workingBranch && gitState.originalBranch) {
+    await git.resetHard(cleanupDirectory, {
+      expectedBranch: gitState.workingBranch,
+    });
+    await git.checkoutBranch(cleanupDirectory, gitState.originalBranch);
+  }
+}
+
+function scheduleDeferredTaskCleanup(
+  ctx: TaskCtx,
+  task: Task,
+  engine: TaskEngine | undefined,
+  operation: TaskCleanupOperation,
+): void {
+  const user = getCurrentUser();
+  if (!user) {
+    log.error("Cannot schedule deferred task cleanup without a current user", {
+      taskId: task.config.id,
+      operation,
+    });
+    return;
+  }
+
+  void runWithCurrentUser(user, async () => {
+    const runtimeCleanup = stopTaskRuntimeForDeletion(ctx, task, engine, operation);
+    const terminalSessionCleanup = runDeferredTaskCleanupStep(
+      task.config.id,
+      operation,
+      "terminal session",
+      () => terminalSessionManager.deleteSessionByTaskId(task.config.id),
+    );
+    const cleanupSteps = [
+      terminalSessionCleanup,
+      runDeferredTaskCleanupStep(
+        task.config.id,
+        operation,
+        "managed credentials",
+        () => revokeTaskContext(task.config.id, task.config.workspaceId),
+      ),
+    ];
+
+    if (needsTaskGitCleanup(task, operation)) {
+      cleanupSteps.push((async () => {
+        const [runtimeSafe, terminalSessionCleaned] = await Promise.all([
+          runtimeCleanup,
+          terminalSessionCleanup,
+        ]);
+        if (!runtimeSafe || !terminalSessionCleaned) {
+          log.warn("Skipping task Git cleanup because workspace writers could not be stopped", {
+            taskId: task.config.id,
+            operation,
+          });
+          return true;
+        }
+        return runDeferredTaskCleanupStep(
+          task.config.id,
+          operation,
+          "Git",
+          () => cleanupTaskGit(task, operation),
+        );
+      })());
+    }
+
+    await Promise.all(cleanupSteps);
+  }).catch((error) => {
+    log.error("Deferred task cleanup failed", {
+      taskId: task.config.id,
+      operation,
+      error: String(error),
+    });
+  });
+}
+
+function takeTaskEngineForCleanup(ctx: TaskCtx, taskId: string): TaskEngine | undefined {
+  const engine = ctx.engines.get(taskId);
+  ctx.engines.delete(taskId);
+  return engine;
+}
+
+export async function deleteTaskImpl(ctx: TaskCtx, taskId: string): Promise<boolean> {
+  log.info("Deleting task", { taskId, hasActiveEngine: ctx.engines.has(taskId) });
+  const task = await loadTask(taskId);
+  if (!task) {
+    log.debug("Task not found during delete", { taskId });
+    return false;
+  }
+
+  const deletedTask = await markTaskDeleted(task, "deleteTask");
+  if (!deletedTask) {
+    return false;
+  }
+
+  const engine = takeTaskEngineForCleanup(ctx, taskId);
   ctx.emitter.emit({
     type: "task.deleted",
     taskId,
     timestamp: createTimestamp(),
   });
+  await deleteLinkedTaskChat(taskId, "delete");
+  scheduleDeferredTaskCleanup(ctx, deletedTask, engine, "delete");
 
   log.info("Task deleted", { taskId });
   return true;
@@ -144,60 +344,25 @@ export async function deleteTaskImpl(ctx: TaskCtx, taskId: string): Promise<bool
 
 export async function discardTaskImpl(ctx: TaskCtx, taskId: string): Promise<TaskResult> {
   log.info("Discarding task", { taskId });
-  let task = await ctx.getTask(taskId);
+  const task = await ctx.getTask(taskId);
   if (!task) {
     return taskFailure("task_not_found", "Task not found", { details: { taskId } });
   }
 
-  if (ctx.engines.has(taskId)) {
-    await ctx.stopTask(taskId, "Task discarded");
-    task = await ctx.getTask(taskId);
-    if (!task) {
+  try {
+    const deletedTask = await markTaskDeleted(task, "discardTask");
+    if (!deletedTask) {
       return taskFailure("task_not_found", "Task not found", { details: { taskId } });
     }
-  }
 
-  if (!task.state.git) {
-    return taskFailure(
-      "task_branch_missing",
-      "No git branch was created for this task",
-      { details: { taskId } },
-    );
-  }
-
-  try {
-    await assertTaskHarnessWorkspaceSafe(ctx, taskId, { requireFinalCommit: false });
-    await revokeTaskContext(taskId, task.config.workspaceId);
-    await detachTaskFromMissingWorkspace(taskId);
-
-    if (!task.config.useWorktree) {
-      const cleanupContext = await getTaskGitCleanupContext(task.config.workspaceId, task.config.directory);
-      if (cleanupContext) {
-        await cleanupContext.git.resetHard(cleanupContext.cleanupDirectory, {
-          expectedBranch: task.state.git.workingBranch,
-        });
-        await cleanupContext.git.checkoutBranch(cleanupContext.cleanupDirectory, task.state.git.originalBranch);
-      }
-    }
-
-    assertValidTransition(task.state.status, "deleted", "discardTask");
-    const updatedState = {
-      ...task.state,
-      status: "deleted" as const,
-    };
-    await updateTaskOperationalState(taskId, updatedState);
-
-    await backendManager.disconnectTask(taskId);
-
-    ctx.engines.delete(taskId);
-
-    await deleteLinkedTaskChat(taskId);
-
+    const engine = takeTaskEngineForCleanup(ctx, taskId);
     ctx.emitter.emit({
       type: "task.discarded",
       taskId,
       timestamp: createTimestamp(),
     });
+    await deleteLinkedTaskChat(taskId, "discard");
+    scheduleDeferredTaskCleanup(ctx, deletedTask, engine, "discard");
 
     log.info("Task discarded", { taskId });
     return { success: true };
@@ -218,79 +383,12 @@ export async function purgeTaskImpl(ctx: TaskCtx, taskId: string): Promise<TaskR
   }
 
   const isDraft = task.state.status === "draft";
-
   if (!isDraft && task.state.status !== "accepted_local" && task.state.status !== "merged" && task.state.status !== "pushed" && task.state.status !== "deleted") {
     return taskFailure(
       "invalid_task_state",
       `Cannot purge task in status: ${task.state.status}. Only draft, accepted_local, merged, pushed, or deleted tasks can be purged.`,
       { details: { taskId, status: task.state.status } },
     );
-  }
-
-  try {
-    await assertTaskHarnessWorkspaceSafe(ctx, taskId, { requireFinalCommit: false });
-    await revokeTaskContext(taskId, task.config.workspaceId);
-  } catch (error) {
-    return taskFailure(
-      "task_operation_failed",
-      "Failed to revoke managed execution credentials during purge",
-      { cause: error, details: { taskId } },
-    );
-  }
-
-  try {
-    await terminalSessionManager.deleteSessionByTaskId(taskId);
-  } catch (error) {
-    return taskFailure(
-      "task_terminal_session_failed",
-      "Failed to delete linked terminal session",
-      { cause: error, details: { taskId } },
-    );
-  }
-
-  if (!isDraft) {
-    try {
-      await detachTaskFromMissingWorkspace(taskId);
-      const cleanupContext = await getTaskGitCleanupContext(task.config.workspaceId, task.config.directory);
-      if (cleanupContext) {
-        const { git, cleanupDirectory } = cleanupContext;
-
-        const worktreePath = task.state.git?.worktreePath;
-        if (worktreePath) {
-          const managedWorktreePath = await git.assertCanonicalManagedWorktreePath(
-            cleanupDirectory,
-            task.config.id,
-            worktreePath,
-          );
-          await git.ensureWorktreeRemoved(cleanupDirectory, managedWorktreePath, { force: true });
-          log.debug(`[TaskManager] purgeTask: Removed worktree and pruned metadata for task ${taskId}: ${managedWorktreePath}`);
-        }
-
-        const workingBranch = task.state.git?.workingBranch;
-        const originalBranch = task.state.git?.originalBranch;
-        if (workingBranch && workingBranch !== originalBranch) {
-          try {
-            await git.deleteBranch(cleanupDirectory, workingBranch);
-            log.debug(`[TaskManager] purgeTask: Deleted working branch for task ${taskId}`);
-          } catch (error) {
-            log.debug(`[TaskManager] purgeTask: Could not delete working branch: ${String(error)}`);
-          }
-        }
-
-      }
-    } catch (error) {
-      return taskFailure(
-        "task_git_operation_failed",
-        "Failed to clean up git state during purge",
-        { cause: error, details: { taskId } },
-      );
-    }
-  }
-
-  if (task.state.reviewMode) {
-    await detachTaskFromMissingWorkspace(taskId);
-    task.state.reviewMode.addressable = false;
-    await updateTaskOperationalState(taskId, task.state);
   }
 
   const deleted = await deleteTaskFile(taskId);
@@ -302,7 +400,9 @@ export async function purgeTaskImpl(ctx: TaskCtx, taskId: string): Promise<TaskR
     );
   }
 
-  await deleteLinkedTaskChat(taskId);
+  const engine = takeTaskEngineForCleanup(ctx, taskId);
+  await deleteLinkedTaskChat(taskId, "purge");
+  scheduleDeferredTaskCleanup(ctx, task, engine, "purge");
 
   log.info("Task purged", { taskId });
   return { success: true };
