@@ -861,7 +861,10 @@ Returns the updated task object.
 
 #### DELETE /api/tasks/:id
 
-Delete a task.
+Logically delete a task. The deleted status is persisted before provider,
+terminal-session, linked-chat, managed-credential, or Git cleanup is attempted.
+Cleanup runs best-effort; a failure can leave an external resource behind but
+does not block or undo task deletion.
 
 **Response**
 
@@ -993,7 +996,9 @@ Uses the same response shape as `POST /api/tasks/:id/push`.
 
 #### POST /api/tasks/:id/discard
 
-Discard a task and delete its git branch.
+Mark a task deleted and attempt best-effort provider, session, credential, and
+Git cleanup. A failure does not block deletion. Dedicated worktrees can remain
+until the task is purged.
 
 **Response**
 
@@ -1014,6 +1019,10 @@ Discard a task and delete its git branch.
 
 Permanently delete a draft or archived task from storage. Purge accepts
 `draft`, `accepted_local`, `merged`, `pushed`, and `deleted` statuses.
+The task record is removed before provider, terminal-session, credential, and
+Git cleanup runs. Cleanup failures do not block purging. A worktree is removed
+only when the execution engine and workspace safety checks confirm that no
+writer remains; otherwise it is left in place.
 
 **Response**
 

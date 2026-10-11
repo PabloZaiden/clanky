@@ -497,13 +497,7 @@ export class TaskEngine {
     this.aborted = true;
 
     await this.settleHarnessForStop();
-    await this.promptExecutor.interrupt({
-      abortMessage: "Aborting backend session...",
-      abortWarnMessage: "Failed to abort the backend session during stop",
-      forceDisconnect: true,
-      disconnectMessage: "Disconnecting the backend so the active turn stops immediately",
-      disconnectWarnMessage: "Failed to disconnect the backend while stopping the task",
-    });
+    await this.interruptBackendForStop();
 
     if (!wasCompleted && this.task.state.status !== "completed") {
       this.updateState({ status: "stopped", completedAt: createTimestamp() });
@@ -524,23 +518,45 @@ export class TaskEngine {
     this.persistence.disable();
   }
 
-  private async settleHarnessForStop(): Promise<void> {
+  async stopForDeletion(): Promise<boolean> {
+    this.persistence.disable();
+    this.aborted = true;
+    const workspaceSafe = await this.settleHarnessForStop();
+    await this.interruptBackendForStop();
+    await this.waitForTaskIdle();
+    await this.inputs.waitForIdle();
+    return workspaceSafe;
+  }
+
+  private async interruptBackendForStop(): Promise<void> {
+    await this.promptExecutor.interrupt({
+      abortMessage: "Aborting backend session...",
+      abortWarnMessage: "Failed to abort the backend session during stop",
+      forceDisconnect: true,
+      disconnectMessage: "Disconnecting the backend so the active turn stops immediately",
+      disconnectWarnMessage: "Failed to disconnect the backend while stopping the task",
+    });
+  }
+
+  private async settleHarnessForStop(): Promise<boolean> {
     const binding = this.task.state.session?.binding;
-    if (!binding || binding.adapter === "acp") return;
+    if (!binding || binding.adapter === "acp") return true;
     const context = { kind: "task" as const, id: this.config.id };
     try {
       const cleanup = await harnessActivityService.settle(context, binding, this.backend);
       const gitSafety = getHarnessWorkspaceSafety(await harnessActivityService.getActivity(context, binding, this.backend));
       mergeHarnessProjection(context, binding, { gitSafety });
       if (cleanup.status !== "settled") {
-        this.emitLog("warn", "Task stopped; native workspace cleanup remains unresolved", { cleanup });
+        this.emitLog("warn", "Native task workspace cleanup remains unresolved", { cleanup });
       }
+      return cleanup.status === "settled" && gitSafety.status === "safe";
     } catch (error) {
       mergeHarnessProjection(context, binding, {
         cleanup: { status: "unavailable", reason: "gap" },
         gitSafety: { status: "blocked", reason: "unavailable", activityIds: [] },
       });
-      this.emitLog("error", "Task stop could not confirm native workspace settlement", { error: String(error) });
+      this.emitLog("error", "Task runtime cleanup could not confirm native workspace settlement", { error: String(error) });
+      return false;
     }
   }
 
