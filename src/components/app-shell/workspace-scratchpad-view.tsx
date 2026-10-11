@@ -16,7 +16,7 @@ import {
   getStoredWorkspaceScratchpadDraft,
 } from "../../lib/workspace-scratchpad-drafts";
 import { MarkdownRenderer } from "../MarkdownRenderer";
-import { Button } from "../common";
+import { Button, PreviewIcon, RefreshIcon, SaveIcon } from "../common";
 import { MonacoCodeEditor } from "../MonacoCodeEditor";
 
 interface WorkspaceScratchpadViewProps {
@@ -221,33 +221,30 @@ export function WorkspaceScratchpadView({
             </p>
           )}
           <div className="flex max-w-full shrink-0 flex-wrap items-center justify-end gap-2">
-            <div role="group" aria-label="Document view" className="flex shrink-0 gap-1">
-              <Button
-                variant={preview ? "ghost" : "secondary"}
-                size="sm"
-                onClick={() => setPreview(false)}
-                disabled={busy}
-                aria-pressed={!preview}
-              >
-                Code
-              </Button>
-              <Button
-                variant={preview ? "secondary" : "ghost"}
-                size="sm"
-                onClick={() => setPreview(true)}
-                disabled={busy}
-                aria-pressed={preview}
-              >
-                Preview
-              </Button>
-            </div>
+            <Button
+              variant={preview ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setPreview((currentValue) => !currentValue)}
+              disabled={busy}
+              icon={<PreviewIcon size="h-4 w-4" />}
+              aria-label="Markdown preview"
+              aria-pressed={preview}
+              title={preview ? "Show Markdown code" : "Show Markdown preview"}
+              className="w-9 px-0"
+            >
+              <span className="sr-only">Markdown preview</span>
+            </Button>
             <Button
               variant="secondary"
               size="sm"
               onClick={requestReload}
               disabled={busy}
+              icon={<RefreshIcon size="h-4 w-4" />}
+              aria-label="Reload Scratchpad"
+              title="Reload Scratchpad"
+              className="w-9 px-0"
             >
-              Reload
+              <span className="sr-only">Reload Scratchpad</span>
             </Button>
             <Button
               variant="primary"
@@ -255,8 +252,12 @@ export function WorkspaceScratchpadView({
               onClick={() => void saveToServer()}
               disabled={!dirty || busy || contentTooLong}
               loading={saving}
+              icon={<SaveIcon size="h-4 w-4" />}
+              aria-label="Save Scratchpad"
+              title="Save Scratchpad"
+              className="w-9 px-0"
             >
-              Save
+              <span className="sr-only">Save Scratchpad</span>
             </Button>
           </div>
         </div>
