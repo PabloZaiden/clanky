@@ -2,6 +2,7 @@
  * External Copilot SDK stdio peer with durable sessions and immediate steering.
  */
 
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { parseJsonRpcMessage, type JsonRpcId, type JsonRpcMessage } from "./codex-json-rpc";
 import { readCopilotImageReceipts } from "./image-input";
@@ -10,6 +11,7 @@ const MAX_FRAME_BYTES = 64 * 1024 * 1024;
 
 interface Session {
   id: string;
+  directory: string;
   model: string;
   tools: Array<{ name: string }>;
   metadata: Record<string, string>;
@@ -21,6 +23,7 @@ interface Session {
 
 const sessions = new Map<string, Session>();
 const pending = new Map<string, { session: Session; name: string; timer: ReturnType<typeof setTimeout> }>();
+const waiting = new Map<string, AbortController>();
 const statePath = join(process.env["HOME"]!, "copilot-native-sessions.json");
 if (await Bun.file(statePath).exists()) {
   const stored: Session[] = JSON.parse(await Bun.file(statePath).text());
@@ -109,9 +112,41 @@ async function sendInput(session: Session | undefined, params: Record<string, un
     session.processing = true;
     session.prompt = promptWithImages;
     event(session, "assistant.turn_start", { turnId: crypto.randomUUID() });
-    if (!prompt.startsWith("Wait for a steering instruction")) execute(session);
+    const releaseFile = /\[wait-for-file:([^\]\r\n]+)\]/.exec(prompt)?.[1];
+    if (releaseFile) {
+      const controller = new AbortController();
+      waiting.set(session.id, controller);
+      event(session, "assistant.message", { messageId: crypto.randomUUID(), content: "Waiting for the integration input file." });
+      void completeAfterInputFile(session, releaseFile, controller).catch((error: unknown) => {
+        event(session, "session.error", { errorType: "protocol", message: String(error) });
+        session.processing = false;
+        event(session, "session.idle", {});
+      });
+    } else if (!prompt.startsWith("Wait for a steering instruction")) execute(session);
   }
   await save();
+}
+
+async function completeAfterInputFile(session: Session, path: string, controller: AbortController): Promise<void> {
+  try {
+    // The owning journey bounds each lifecycle and aborts this wait on teardown.
+    while (!controller.signal.aborted && !await Bun.file(path).exists()) {
+      await Bun.sleep(25);
+    }
+    if (controller.signal.aborted) return;
+    const input = await Bun.file(path).text();
+    if (session.prompt.includes("<promise>PLAN_READY</promise>")) {
+      await mkdir(join(session.directory, ".clanky-planning"), { recursive: true });
+      await Bun.write(join(session.directory, ".clanky-planning", "plan.md"), input);
+      await Bun.write(join(session.directory, ".clanky-planning", "status.md"), "Plan prepared for review.");
+      finish(session, `${input}\n<promise>PLAN_READY</promise>`);
+    } else {
+      finish(session, `Integration input: ${input}`);
+    }
+    await save();
+  } finally {
+    if (waiting.get(session.id) === controller) waiting.delete(session.id);
+  }
 }
 
 async function dispatch(frame: JsonRpcMessage): Promise<void> {
@@ -138,7 +173,8 @@ async function dispatch(frame: JsonRpcMessage): Promise<void> {
     case "session.create": {
       const id = String(params["sessionId"] ?? crypto.randomUUID());
       sessions.set(id, {
-        id, model: String(params["model"] ?? "e2e-copilot-model"),
+        id, directory: String(params["workingDirectory"] ?? process.cwd()),
+        model: String(params["model"] ?? "e2e-copilot-model"),
         tools: Array.isArray(params["tools"]) ? params["tools"] : [],
         metadata: {}, processing: false, prompt: "", events: [],
       });
@@ -190,6 +226,7 @@ async function dispatch(frame: JsonRpcMessage): Promise<void> {
       result = { success: true };
       break;
     case "session.abort":
+      waiting.get(session!.id)?.abort();
       session!.processing = false;
       event(session!, "session.idle", { aborted: true });
       result = {};
@@ -232,6 +269,8 @@ process.stdin.on("data", (chunk: Buffer) => {
   }
 });
 process.stdin.on("close", () => {
+  for (const controller of waiting.values()) controller.abort();
+  waiting.clear();
   for (const request of pending.values()) clearTimeout(request.timer);
   pending.clear();
 });

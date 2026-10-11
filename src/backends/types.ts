@@ -229,7 +229,7 @@ export interface Backend {
   // ============================================
 
   /** Abort all active event subscriptions */
-  abortAllSubscriptions(): void;
+  abortAllSubscriptions(reason?: Error): void;
 
   /**
    * Get the SDK/client instance.

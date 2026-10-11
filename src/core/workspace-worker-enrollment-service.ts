@@ -329,7 +329,7 @@ export class WorkspaceWorkerEnrollmentService {
     userId: string,
     enrollmentId: string,
     workerEndpoint: string,
-  ): MeshWorkerRegistration {
+  ): { worker: MeshWorkerRegistration; changed: boolean } {
     const enrollment = requireEnrollment(userId, enrollmentId);
     const registration = requireRegistration(
       enrollment,
@@ -350,11 +350,15 @@ export class WorkspaceWorkerEnrollmentService {
       workerEndpoint,
       registration.workerTransport,
     ).origin;
-    return updateWorkerRegistrationEndpoint({
+    if (registration.workerEndpoint === endpoint) {
+      return { worker: registration, changed: false };
+    }
+    const worker = updateWorkerRegistrationEndpoint({
       workerNodeId: registration.workerNodeId,
       localUserId: userId,
       workerEndpoint: endpoint,
     });
+    return { worker, changed: true };
   }
 
   markFailed(

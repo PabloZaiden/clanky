@@ -38,7 +38,10 @@ export class HarnessEventHub {
     this.subscribers.delete(sessionId);
   }
 
-  closeAll(): void {
-    for (const sessionId of this.subscribers.keys()) this.closeSession(sessionId);
+  closeAll(reason?: Error): void {
+    for (const sessionId of this.subscribers.keys()) {
+      if (reason) this.failSession(sessionId, reason);
+      else this.closeSession(sessionId);
+    }
   }
 }

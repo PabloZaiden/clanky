@@ -24,6 +24,7 @@ const testFilePattern = "tests/**/*.test.{ts,tsx,js,jsx}";
 const e2eTestFilePattern = "tests/e2e/**/*.test.{ts,tsx,js,jsx}";
 const e2eSourcePattern = "tests/e2e/**/*.{ts,tsx,js,jsx}";
 const meshTestFile = "tests/e2e/mesh-journey.test.ts";
+const meshAutomaticTestFile = "tests/e2e/mesh-automatic-workspace-journey.test.ts";
 
 const architectureRules: ArchitectureRule[] = [
   {
@@ -180,8 +181,12 @@ async function main(): Promise<void> {
   const mode = parseMode(process.argv[2]);
   await validateTestArchitecture();
   const discovered = await globFiles(e2eTestFilePattern);
+  const meshFiles = new Set([meshTestFile]);
+  if (process.platform === "linux" || process.platform === "darwin") {
+    meshFiles.add(meshAutomaticTestFile);
+  }
   const files = mode === "mesh"
-    ? discovered.filter((file) => file === meshTestFile)
+    ? discovered.filter((file) => meshFiles.has(file))
     : discovered;
   if (files.length === 0) {
     throw new Error(`No E2E tests discovered for mode ${mode}`);

@@ -197,6 +197,17 @@ Mesh access intentionally grants unrestricted command and file access to the
 worker host. Do not invent path sandboxing or assume a workspace confines Mesh
 operations.
 
+Worker lifecycle is independent, including automatic workspace provisioning,
+restart, rebuild, and deletion. Identify the worker node before maintenance:
+all workspaces sharing it can be interrupted, but tasks and chats on another
+worker must continue. Inventory, unchanged endpoints, and health metadata do
+not cancel healthy conversations. Revocation or a changed route invalidates
+only that user's resources on the affected worker; inspect the reported
+lifecycle reason rather than automatically restarting unrelated workers or
+resending native inputs. Preserve worker data and original conversation
+bindings for recovery. See
+[independent worker lifecycle](../../docs/mesh-worker.md#independent-worker-lifecycle).
+
 For scripted enrollment instead of running the generated `worker join`
 command, use:
 
