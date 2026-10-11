@@ -6,10 +6,18 @@
  */
 
 import { deleteAndReinitializeDatabase } from "../persistence/database";
+import type {
+  RestartAutomaticWorkspacesRequest,
+  RestartAutomaticWorkspacesResult,
+} from "@/contracts";
+import { isRestartableAutomaticWorkspace } from "@/shared";
+import { getRegisteredSshServerId } from "@/shared/execution-host";
 import { isArchivedTask } from "../utils";
 import { backendManager } from "./backend-manager";
-import { DomainError } from "../domain/domain-error";
+import { DomainError, isDomainError } from "../domain/domain-error";
 import { createLogger } from "@pablozaiden/webapp/server";
+import { provisioningManager } from "./provisioning-manager";
+import { sshCredentialManager } from "./ssh-credential-manager";
 import { taskManager } from "./task-manager";
 import { workspaceManager } from "./workspace-manager";
 
@@ -160,6 +168,97 @@ export class SettingsMaintenanceService {
         { cause: error },
       );
     }
+  }
+
+  async restartAutomaticWorkspaces(
+    request: RestartAutomaticWorkspacesRequest,
+  ): Promise<RestartAutomaticWorkspacesResult> {
+    const workspaces = await workspaceManager.listWorkspaces();
+    const automaticWorkspaces = workspaces.filter(isRestartableAutomaticWorkspace);
+    const unavailableCredentialServerIds = new Set(
+      request.credentialUnavailableServerIds,
+    );
+    const started: RestartAutomaticWorkspacesResult["started"] = [];
+    const failures: RestartAutomaticWorkspacesResult["failures"] = [];
+
+    for (const workspace of automaticWorkspaces) {
+      const executionHost = (
+        workspace.provisioningHostBinding ?? workspace.executionHostBinding
+      ).host;
+      const serverId = getRegisteredSshServerId(executionHost);
+
+      if (serverId && unavailableCredentialServerIds.has(serverId)) {
+        failures.push({
+          workspaceId: workspace.id,
+          workspaceName: workspace.name,
+          error: "Unable to retrieve the saved SSH credential for this server.",
+        });
+        log.warn("Skipped automatic workspace restart after SSH credential exchange failed", {
+          workspaceId: workspace.id,
+          serverId,
+        });
+        continue;
+      }
+
+      try {
+        const credentialToken = serverId
+          ? request.credentialTokensByServerId[serverId]
+          : undefined;
+        const password = serverId && credentialToken
+          ? sshCredentialManager.getPasswordForToken(serverId, credentialToken)
+          : undefined;
+        const snapshot = await provisioningManager.startJob({
+          name: workspace.name,
+          executionHost,
+          repoUrl: workspace.repoUrl ?? "",
+          basePath: workspace.basePath ?? "",
+          devcontainerSubpath: workspace.devcontainerSubpath ?? undefined,
+          provider: workspace.serverSettings.agent.provider,
+          adapter: workspace.serverSettings.agent.adapter,
+          mode: "restart",
+          targetDirectory: workspace.sourceDirectory.trim(),
+          workspaceId: workspace.id,
+          ...(password ? { password } : {}),
+        });
+        started.push({
+          workspaceId: workspace.id,
+          workspaceName: workspace.name,
+          provisioningJobId: snapshot.job.config.id,
+        });
+      } catch (error) {
+        const message = isDomainError(error)
+          ? error.message
+          : "Failed to start the workspace restart job.";
+        if (isDomainError(error)) {
+          log.warn("Unable to start automatic workspace restart", {
+            workspaceId: workspace.id,
+            code: error.code,
+            error: message,
+          });
+        } else {
+          log.error("Unexpected failure starting automatic workspace restart", {
+            workspaceId: workspace.id,
+            error: String(error),
+          });
+        }
+        failures.push({
+          workspaceId: workspace.id,
+          workspaceName: workspace.name,
+          error: message,
+        });
+      }
+    }
+
+    log.info("Automatic workspace restart jobs submitted", {
+      totalWorkspaces: automaticWorkspaces.length,
+      startedCount: started.length,
+      failureCount: failures.length,
+    });
+    return {
+      totalWorkspaces: automaticWorkspaces.length,
+      started,
+      failures,
+    };
   }
 }
 

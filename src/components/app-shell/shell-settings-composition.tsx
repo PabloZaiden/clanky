@@ -3,6 +3,7 @@ import type { Workspace } from "@/shared";
 import { DEFAULT_QUICK_CHAT_SETTINGS } from "@/shared/preferences";
 import {
   PurgeTerminalTasksAction,
+  RestartAutomaticWorkspacesAction,
   QuickChatModelRowContent,
   WorkersSettingsSection,
   SchedulerTimezoneRowContent,
@@ -33,7 +34,10 @@ export interface ShellSettingsCompositionOptions {
   privateItemsPreference: PrivateItemsPreference;
   dashboardData: Pick<
     UseDashboardDataResult,
-    "purgeTerminalTasks" | "appSettingsPurgingTerminalTasks"
+    | "purgeTerminalTasks"
+    | "appSettingsPurgingTerminalTasks"
+    | "restartAutomaticWorkspaces"
+    | "appSettingsRestartingAutomaticWorkspaces"
   >;
   workspaces: Workspace[];
   workspacesLoading: boolean;
@@ -276,23 +280,38 @@ export function buildShellSettingsSections({
       id: "clanky-danger-zone",
       title: "Maintenance",
       scope: "owner" as const,
-      rows: [{
-        id: "purge-terminal-tasks",
-        title: "Purge terminal-state tasks",
-        description: "Permanently delete archived terminal tasks across every workspace. Addressable pushed and accepted-local tasks are kept.",
-        actions: (
-          <PurgeTerminalTasksAction
-            onPurgeTerminalTasks={async () => {
-              const result = await dashboardData.purgeTerminalTasks();
-              if (result) {
-                await refreshTasks();
-              }
-              return result;
-            }}
-            purgingTerminalTasks={dashboardData.appSettingsPurgingTerminalTasks}
-          />
-        ),
-      }],
+      rows: [
+        {
+          id: "purge-terminal-tasks",
+          title: "Purge terminal-state tasks",
+          description: "Permanently delete archived terminal tasks across every workspace. Addressable pushed and accepted-local tasks are kept.",
+          actions: (
+            <PurgeTerminalTasksAction
+              onPurgeTerminalTasks={async () => {
+                const result = await dashboardData.purgeTerminalTasks();
+                if (result) {
+                  await refreshTasks();
+                }
+                return result;
+              }}
+              purgingTerminalTasks={dashboardData.appSettingsPurgingTerminalTasks}
+            />
+          ),
+        },
+        {
+          id: "restart-automatic-workspaces",
+          title: "Restart automatic workspaces",
+          description: "Start a restart job for each automatically provisioned workspace.",
+          actions: (
+            <RestartAutomaticWorkspacesAction
+              workspaces={workspaces}
+              workspacesLoading={workspacesLoading}
+              restarting={dashboardData.appSettingsRestartingAutomaticWorkspaces}
+              onRestartAutomaticWorkspaces={dashboardData.restartAutomaticWorkspaces}
+            />
+          ),
+        },
+      ],
     },
   ];
 }

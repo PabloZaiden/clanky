@@ -6,6 +6,7 @@ import type {
   Agent,
   Workspace,
 } from "@/shared";
+import { isRestartableAutomaticWorkspace } from "@/shared";
 import { normalizeGitHubRepositoryUrl } from "../../lib/github-repository-url";
 import { apiRequest } from "../../lib/api-client";
 import {
@@ -201,7 +202,7 @@ function getWorkspaceSidebarActions(
           workspaceId,
         }),
       },
-      ...(workspaceNode.workspace.sourceDirectory ? [
+      ...(isRestartableAutomaticWorkspace(workspaceNode.workspace) ? [
         {
           id: "restart-workspace",
           label: "Restart",
