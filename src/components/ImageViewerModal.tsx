@@ -1,4 +1,5 @@
-import { Modal } from "@pablozaiden/webapp/web";
+import { useEffect, useState } from "react";
+import { ErrorState, Modal, useToast } from "@pablozaiden/webapp/web";
 import { Button } from "./common";
 
 export interface ImageViewerModalImage {
@@ -15,12 +16,87 @@ interface ImageViewerModalProps {
   title?: string;
 }
 
+interface ImageOpenState {
+  src: string;
+  blob: Blob | null;
+  error: string | null;
+}
+
+function openImageWindow(blob: Blob, image: ImageViewerModalImage): void {
+  const imageWindow = window.open("about:blank", "_blank");
+  if (!imageWindow) {
+    throw new Error("Allow pop-ups to open the image in a new tab.");
+  }
+
+  try {
+    imageWindow.opener = null;
+    const imageDocument = imageWindow.document;
+    imageDocument.title = image.title;
+    const viewport = imageDocument.createElement("meta");
+    viewport.name = "viewport";
+    viewport.content = "width=device-width, initial-scale=1";
+    imageDocument.head.appendChild(viewport);
+    imageDocument.body.style.cssText = "margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; background: #111;";
+
+    const standaloneImage = imageDocument.createElement("img");
+    standaloneImage.alt = image.alt;
+    standaloneImage.style.cssText = "display: block; max-width: 100%; max-height: 100vh; object-fit: contain;";
+    // The new document owns the URL until it closes; <img> also keeps SVG scripts inert.
+    const imageUrl = (imageWindow as Window & Pick<typeof globalThis, "URL">).URL.createObjectURL(blob);
+    standaloneImage.src = imageUrl;
+    imageDocument.body.replaceChildren(standaloneImage);
+  } catch (error: unknown) {
+    imageWindow.close();
+    throw error;
+  }
+}
+
 export function ImageViewerModal({
   image,
   onClose,
   loading = false,
   title,
 }: ImageViewerModalProps) {
+  const toast = useToast();
+  const [openState, setOpenState] = useState<ImageOpenState | null>(null);
+  const src = image?.src;
+  const currentOpenState = openState?.src === src ? openState : null;
+
+  useEffect(() => {
+    setOpenState(null);
+    if (!src) {
+      return;
+    }
+
+    const controller = new AbortController();
+    // Prepare bytes before the click so opening a tab remains a synchronous user action.
+    void (async () => {
+      try {
+        const response = await fetch(src, { signal: controller.signal });
+        if (!response.ok) {
+          throw new Error(`Could not load image (HTTP ${response.status}).`);
+        }
+        const blob = await response.blob();
+        if (controller.signal.aborted) {
+          return;
+        }
+        setOpenState({ src, blob, error: null });
+      } catch (error: unknown) {
+        if (!controller.signal.aborted) {
+          setOpenState({
+            src,
+            blob: null,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+    })();
+
+    return () => {
+      controller.abort();
+    };
+  }, [src]);
+
   return (
     <Modal
       isOpen={image !== null || loading}
@@ -29,15 +105,6 @@ export function ImageViewerModal({
       size="xl"
       footer={(
         <div className="flex items-center justify-end gap-2">
-          {image && !loading && (
-            <a
-              href={image.src}
-              download={image.title}
-              className="inline-flex h-9 items-center rounded-md px-3 text-sm font-medium text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-gray-200 dark:focus-visible:ring-gray-500"
-            >
-              Download
-            </a>
-          )}
           <Button type="button" variant="ghost" onClick={onClose}>
             Close
           </Button>
@@ -52,12 +119,34 @@ export function ImageViewerModal({
       ) : image && (
         <div className="space-y-3">
           <div className="flex items-center justify-center rounded-lg bg-neutral-950 p-2 sm:p-4">
-            <img
-              src={image.src}
-              alt={image.alt}
-              className="max-h-[70vh] w-auto max-w-full rounded object-contain"
-            />
+            <button
+              type="button"
+              disabled={!currentOpenState?.blob}
+              onClick={() => {
+                if (!currentOpenState?.blob) {
+                  return;
+                }
+                try {
+                  openImageWindow(currentOpenState.blob, image);
+                } catch (error: unknown) {
+                  toast.error(error instanceof Error ? error.message : String(error));
+                }
+              }}
+              aria-label={`Open ${image.title} in a new tab`}
+              aria-busy={!currentOpenState}
+              title="Open image in a new tab"
+              className="inline-flex max-w-full cursor-pointer rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 disabled:cursor-default dark:focus-visible:ring-gray-500"
+            >
+              <img
+                src={image.src}
+                alt={image.alt}
+                className="max-h-[70vh] w-auto max-w-full rounded object-contain"
+              />
+            </button>
           </div>
+          {currentOpenState?.error && (
+            <ErrorState title="Could not open image" description={currentOpenState.error} />
+          )}
           {image.description && (
             <p className="text-sm text-gray-500 dark:text-gray-400">
               {image.description}
