@@ -49,6 +49,9 @@ import {
   UpdateWorkspaceRequestSchema,
   DeleteWorkspaceRequestSchema,
   CreateProvisioningJobRequestSchema,
+  RestartAutomaticWorkspacesRequestSchema,
+  RestartAutomaticWorkspacesResultSchema,
+  RestartAutomaticWorkspacesResponseSchema,
   CreateTerminalSessionRequestSchema,
   UpdateTerminalSessionRequestSchema,
   ListFileExplorerRequestSchema,
@@ -67,6 +70,13 @@ import {
   WorkspaceExecResponseSchema,
 } from "./schemas";
 import type { z } from "zod";
+
+export type RestartAutomaticWorkspacesRequest =
+  z.infer<typeof RestartAutomaticWorkspacesRequestSchema>;
+export type RestartAutomaticWorkspacesResult =
+  z.infer<typeof RestartAutomaticWorkspacesResultSchema>;
+export type RestartAutomaticWorkspacesResponse =
+  z.infer<typeof RestartAutomaticWorkspacesResponseSchema>;
 
 /**
  * Response from GET /api/config.

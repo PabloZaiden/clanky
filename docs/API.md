@@ -33,9 +33,10 @@ selects that exact release and takes precedence over `--pre-release`.
 ## Route security and discovery metadata
 
 Normal private REST routes require an authenticated user and enforce
-same-origin protection for browser mutations. Database reset and terminal-task
-purge are owner-only. Preview and terminal WebSocket upgrades require an
-authenticated user and always enforce same-origin checks.
+same-origin protection for browser mutations. Automatic workspace restart,
+database reset, and terminal-task purge are owner-only. Preview and terminal
+WebSocket upgrades require an authenticated user and always enforce same-origin
+checks.
 
 Use `clanky api` to list the routes exposed by the running server and
 `clanky schema <endpoint>` to inspect a route's request, response, and CLI
@@ -512,6 +513,7 @@ included in this table.
 | GET, DELETE | `/api/provisioning-jobs/:id` | Read or cancel a remote provisioning job. |
 | GET | `/api/provisioning-jobs/:id/logs` | Read logs for a remote provisioning job. |
 | POST | `/api/server-settings/test` | Test a server connection without creating a workspace. |
+| POST | `/api/settings/restart-automatic-workspaces` | Start restart jobs for the current user's automatically provisioned workspaces. |
 | POST | `/api/settings/purge-terminal-tasks` | Purge terminal-state tasks across all workspaces. |
 | POST | `/api/settings/reset-all` | Reset all persisted settings and recreate the database. |
 | GET, POST | `/api/ssh-servers` | List or create standalone SSH servers. |
@@ -2630,6 +2632,55 @@ Test a server connection before creating a workspace.
 |--------|-------|-------------|
 | 400 | `validation_error` | Missing or invalid fields |
 | 500 | — | Connection test failed (returns `{ success: false, error: "..." }`) |
+
+#### POST /api/settings/restart-automatic-workspaces
+
+Start one asynchronous provisioning restart job for each of the current user's
+workspaces with a non-empty `sourceDirectory`, matching the existing
+per-workspace Restart action. Each job uses the workspace's saved provisioning
+host, transport, target directory, and runtime settings. This endpoint starts
+jobs; it does not wait for them to finish. Read each returned job ID with
+`GET /api/provisioning-jobs/:id` to observe its final state.
+
+The route requires owner authorization and a same-origin mutation. A start
+failure for one workspace is returned in `failures` and does not prevent
+attempts for other eligible workspaces.
+
+**Request Body**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `credentialTokensByServerId` | object | No | Short-lived SSH credential tokens keyed by registered SSH server ID. Omit when no saved browser credential is available. |
+| `credentialUnavailableServerIds` | string[] | No | Registered SSH server IDs for which the browser could not exchange a saved credential. Eligible workspaces using those servers are reported as start failures. |
+
+Both fields default to empty values.
+
+**Response**
+
+```json
+{
+  "success": true,
+  "totalWorkspaces": 2,
+  "started": [
+    {
+      "workspaceId": "workspace-1",
+      "workspaceName": "First workspace",
+      "provisioningJobId": "job-1"
+    }
+  ],
+  "failures": [
+    {
+      "workspaceId": "workspace-2",
+      "workspaceName": "Second workspace",
+      "error": "Unable to retrieve the saved SSH credential for this server."
+    }
+  ]
+}
+```
+
+`totalWorkspaces` is the number of eligible workspaces. Entries in `started`
+represent jobs accepted for processing, not successful restarts. Later runtime
+failures are recorded in the provisioning job state.
 
 #### POST /api/settings/reset-all
 

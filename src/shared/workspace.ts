@@ -78,6 +78,15 @@ export interface Workspace {
   devcontainerSubpath?: string;
 }
 
+export function isRestartableAutomaticWorkspace<
+  T extends Pick<Workspace, "sourceDirectory">,
+>(
+  workspace: T,
+): workspace is T & { sourceDirectory: string } {
+  return typeof workspace.sourceDirectory === "string"
+    && workspace.sourceDirectory.trim().length > 0;
+}
+
 export type WorkspaceType = "git" | "directory";
 
 export const DEFAULT_WORKSPACE_TYPE: WorkspaceType = "git";
