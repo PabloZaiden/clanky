@@ -13,7 +13,10 @@ import {
   type Workspace,
 } from "@/shared";
 import { getRegisteredSshServerId } from "@/shared/execution-host";
-import { getStoredSshCredentialToken } from "../../lib/ssh-browser-credentials";
+import {
+  getStoredSshCredentialToken,
+  getStoredSshServerCredential,
+} from "../../lib/ssh-browser-credentials";
 import { Button } from "../common";
 
 const log = createLogger("RestartAutomaticWorkspacesAction");
@@ -56,10 +59,14 @@ export function RestartAutomaticWorkspacesAction({
       const credentialTokensByServerId: Record<string, string> = {};
       const credentialUnavailableServerIds: string[] = [];
       const credentialResults = await Promise.allSettled(
-        sshServerIds.map(async (serverId) => ({
-          serverId,
-          credentialToken: await getStoredSshCredentialToken(serverId),
-        })),
+        sshServerIds.map(async (serverId) => {
+          const hadStoredCredential = getStoredSshServerCredential(serverId) !== null;
+          return {
+            serverId,
+            hadStoredCredential,
+            credentialToken: await getStoredSshCredentialToken(serverId),
+          };
+        }),
       );
 
       credentialResults.forEach((result, index) => {
@@ -74,6 +81,11 @@ export function RestartAutomaticWorkspacesAction({
         }
         if (result.value.credentialToken) {
           credentialTokensByServerId[serverId] = result.value.credentialToken;
+        } else if (result.value.hadStoredCredential) {
+          credentialUnavailableServerIds.push(serverId);
+          log.warn("Saved SSH credential is no longer usable for automatic workspace restart", {
+            serverId,
+          });
         }
       });
 
