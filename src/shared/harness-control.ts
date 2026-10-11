@@ -21,6 +21,22 @@ export interface HarnessConversationBinding {
   controlChatId?: string;
 }
 
+export interface HarnessHistoryRecovery {
+  id: string;
+  executionHost: ExecutionHostBinding;
+  directory: string;
+  exportDirectory: string;
+  transcriptPath: string;
+  createdAt: string;
+  expiresAt: string;
+  status: "exporting" | "pending" | "cleaning" | "complete";
+  previousSession?: {
+    id: string;
+    serverUrl?: string;
+    binding?: HarnessConversationBinding | null;
+  };
+}
+
 export interface HarnessCapabilities {
   adapter: HarnessNativeReferences["adapter"];
   experimental: boolean;
@@ -98,6 +114,7 @@ export interface HarnessConversationState {
   cleanup?: HarnessCleanupResult;
   gitSafety?: HarnessGitSafety;
   gitOutcome?: { status: "pending" | "succeeded" | "failed"; observedAt: string };
+  historyRecovery?: HarnessHistoryRecovery;
   inputs?: HarnessInputReceipt[];
   integrity?: "invalid";
   questions?: HarnessQuestionRequest[];

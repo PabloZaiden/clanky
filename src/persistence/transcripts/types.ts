@@ -17,6 +17,20 @@ export interface TranscriptEntriesPage {
   nextCursor?: string;
 }
 
+export interface TranscriptStorageCursor {
+  entryId: string;
+  timestamp: string;
+  sequence: number;
+  kind: TranscriptEntryKind;
+}
+
+export interface TranscriptStoragePage {
+  entries: ChatTranscriptStorageEntry[];
+  rowCount: number;
+  invalidEntryCount: number;
+  nextCursor?: TranscriptStorageCursor;
+}
+
 export interface TranscriptPageOptions {
   full?: boolean;
   before?: string;

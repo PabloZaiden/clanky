@@ -6,9 +6,9 @@
  */
 
 import { createInterface } from "node:readline";
-import { appendFileSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
-import { isAbsolute, join } from "node:path";
+import { appendFileSync, createReadStream } from "node:fs";
+import { mkdir, readFile } from "node:fs/promises";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { E2E_IMAGE_DATA } from "./image-input";
 
 const SUPPORTED_PROTOCOL_VERSION = 1;
@@ -152,6 +152,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function isPersistedMockSession(value: unknown): value is MockSession {
+  return isRecord(value)
+    && typeof value["id"] === "string"
+    && typeof value["cwd"] === "string"
+    && (typeof value["title"] === "string" || value["title"] === null)
+    && typeof value["updatedAt"] === "string"
+    && Array.isArray(value["configOptions"])
+    && Array.isArray(value["modes"])
+    && typeof value["currentModeId"] === "string"
+    && Array.isArray(value["history"])
+    && value["history"].every((entry) => isRecord(entry)
+      && ["user", "assistant", "reasoning"].includes(String(entry["role"]))
+      && typeof entry["text"] === "string")
+    && typeof value["deleted"] === "boolean"
+    && typeof value["promptCount"] === "number"
+    && isRecord(value["metadata"]);
+}
+
 function getString(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
@@ -279,6 +297,64 @@ function firstPromptText(prompt: unknown[]): string {
     .join("\n");
 }
 
+async function buildHistoryRecoveryResponse(promptText: string): Promise<string> {
+  const pathMatch = /The complete prior conversation is available as JSON Lines at ("(?:\\.|[^"\\])*")\./
+    .exec(promptText);
+  if (!pathMatch?.[1]) {
+    throw new Error("The recovery instruction does not include a JSON Lines history path.");
+  }
+  const transcriptPath = JSON.parse(pathMatch[1]) as unknown;
+  if (typeof transcriptPath !== "string") {
+    throw new Error("The recovery transcript path is invalid.");
+  }
+
+  let secretWord: string | undefined;
+  let estimateCode: string | undefined;
+  const history = createInterface({
+    input: createReadStream(transcriptPath, { encoding: "utf8" }),
+    crlfDelay: Infinity,
+  });
+  for await (const line of history) {
+    if (line.trim().length === 0) {
+      continue;
+    }
+    const entry = JSON.parse(line) as unknown;
+    if (!isRecord(entry) || entry["kind"] !== "message" || !isRecord(entry["message"])) {
+      continue;
+    }
+    const message = entry["message"];
+    if (message["role"] === "user" && typeof message["content"] === "string") {
+      secretWord = /secret word is ([A-Z0-9-]+)/i.exec(message["content"])?.[1] ?? secretWord;
+    }
+    if (!Array.isArray(message["attachments"])) {
+      continue;
+    }
+    for (const attachment of message["attachments"]) {
+      if (!isRecord(attachment)) {
+        continue;
+      }
+      const attachmentPath = getString(attachment["path"]);
+      if (
+        getString(attachment["mimeType"]) !== "application/pdf"
+        || !attachmentPath
+        || isAbsolute(attachmentPath)
+        || !attachmentPath.startsWith("attachments/")
+        || !attachmentPath.endsWith(".pdf")
+      ) {
+        continue;
+      }
+      const pdf = await readFile(resolve(dirname(transcriptPath), attachmentPath));
+      estimateCode = /estimate code:\s*([A-Z0-9-]+)/i.exec(pdf.toString("latin1"))?.[1]
+        ?? estimateCode;
+    }
+  }
+
+  if (!secretWord || !estimateCode) {
+    throw new Error("The exported conversation or its PDF attachment is incomplete.");
+  }
+  return `The secret word was ${secretWord}, and the estimate code on the PDF was ${estimateCode}.`;
+}
+
 function makeQuestionPayload(): Array<Record<string, unknown>> {
   return [
     {
@@ -304,16 +380,19 @@ class MockAcpServer {
     terminal: false,
   };
   private readonly sessions = new Map<string, MockSession>();
+  private readonly sessionStatePath = process.env["HOME"]
+    ? join(process.env["HOME"]!, ".clanky-e2e-acp-sessions.json")
+    : undefined;
   private readonly pendingOutboundRequests = new Map<JsonRpcId, PendingOutboundRequest>();
   private readonly pendingQuestionReplies = new Map<string, Deferred<string[][]>>();
   private readonly requestAbortControllers = new Map<JsonRpcId, AbortController>();
   private readonly outboundRequestMethods = new Map<JsonRpcId, string>();
-  private nextSessionId = 1;
   private nextOutboundRequestId = 10_000;
   private nextToolCallId = 1;
   private nextQuestionId = 1;
 
   async start(): Promise<void> {
+    await this.restoreSessions();
     traceProvider("started");
     const lineReader = createInterface({ input: process.stdin, crlfDelay: Infinity });
 
@@ -324,6 +403,42 @@ class MockAcpServer {
       }
       this.handleLine(trimmed);
     }
+  }
+
+  private async restoreSessions(): Promise<void> {
+    if (!this.sessionStatePath) {
+      return;
+    }
+    const stateFile = Bun.file(this.sessionStatePath);
+    if (!await stateFile.exists()) {
+      return;
+    }
+
+    let stored: unknown;
+    try {
+      stored = JSON.parse(await stateFile.text()) as unknown;
+    } catch (error) {
+      throw new Error("The persisted ACP E2E session state is invalid JSON.", { cause: error });
+    }
+    if (!Array.isArray(stored) || !stored.every(isPersistedMockSession)) {
+      throw new Error("The persisted ACP E2E session state has an invalid shape.");
+    }
+    for (const session of stored) {
+      this.sessions.set(session.id, session);
+    }
+  }
+
+  private async persistSessions(): Promise<void> {
+    if (!this.sessionStatePath) {
+      return;
+    }
+    const stored = Array.from(this.sessions.values(), (session) => {
+      const persisted = { ...session };
+      delete persisted.activePromptAbort;
+      delete persisted.activePromptRequestId;
+      return persisted;
+    });
+    await Bun.write(this.sessionStatePath, JSON.stringify(stored));
   }
 
   private handleLine(line: string): void {
@@ -435,15 +550,15 @@ class MockAcpServer {
       case "authenticate":
         return this.handleAuthenticate(params);
       case "session/new":
-        return this.handleSessionNew(params);
+        return await this.handleSessionNew(params);
       case "session/list":
         return this.handleSessionList(params);
       case "session/load":
         return await this.handleSessionLoad(params, requestId);
       case "session/delete":
-        return this.handleSessionDelete(params);
+        return await this.handleSessionDelete(params);
       case "session/set_config_option":
-        return this.handleSetConfigOption(params);
+        return await this.handleSetConfigOption(params);
       case "session/set_mode":
         return await this.handleSetMode(params);
       case "session/prompt":
@@ -520,7 +635,7 @@ class MockAcpServer {
     return {};
   }
 
-  private handleSessionNew(params: Record<string, unknown>): Record<string, unknown> {
+  private async handleSessionNew(params: Record<string, unknown>): Promise<Record<string, unknown>> {
     const cwd = getString(params["cwd"]);
     if (!cwd || !isAbsolute(cwd)) {
       throw this.rpcError(INVALID_PARAMS_ERROR_CODE, "session/new requires an absolute cwd");
@@ -528,8 +643,7 @@ class MockAcpServer {
     if (!Array.isArray(params["mcpServers"])) {
       throw this.rpcError(INVALID_PARAMS_ERROR_CODE, "session/new requires mcpServers array");
     }
-    const sessionId = `mock-session-${this.nextSessionId}`;
-    this.nextSessionId += 1;
+    const sessionId = `mock-session-${crypto.randomUUID()}`;
     const session: MockSession = {
       id: sessionId,
       cwd,
@@ -544,6 +658,7 @@ class MockAcpServer {
       metadata: {},
     };
     this.sessions.set(sessionId, session);
+    await this.persistSessions();
     return this.buildSessionResponse(session);
   }
 
@@ -599,6 +714,9 @@ class MockAcpServer {
     }
     const abortController = this.trackRequestAbortController(requestId);
     try {
+      if (process.env["CLANKY_E2E_ACP_FAIL_SESSION_LOAD"] === "true") {
+        throw this.rpcError(INTERNAL_ERROR_CODE, "The provider session is no longer available.");
+      }
       for (const entry of session.history) {
         if (abortController?.signal.aborted) {
           throw this.rpcError(REQUEST_CANCELLED_ERROR_CODE, "Request cancelled");
@@ -623,7 +741,7 @@ class MockAcpServer {
     }
   }
 
-  private handleSessionDelete(params: Record<string, unknown>): Record<string, unknown> {
+  private async handleSessionDelete(params: Record<string, unknown>): Promise<Record<string, unknown>> {
     const sessionId = getString(params["sessionId"]);
     if (!sessionId) {
       throw this.rpcError(INVALID_PARAMS_ERROR_CODE, "session/delete requires sessionId");
@@ -633,10 +751,11 @@ class MockAcpServer {
       session.deleted = true;
       session.updatedAt = nowIso();
     }
+    await this.persistSessions();
     return {};
   }
 
-  private handleSetConfigOption(params: Record<string, unknown>): Record<string, unknown> {
+  private async handleSetConfigOption(params: Record<string, unknown>): Promise<Record<string, unknown>> {
     const session = this.getExistingSession(params["sessionId"]);
     const configId = getString(params["configId"]);
     const value = getString(params["value"]);
@@ -655,6 +774,7 @@ class MockAcpServer {
       session.currentModeId = value;
     }
     session.updatedAt = nowIso();
+    await this.persistSessions();
     return {
       configOptions: session.configOptions.map(cloneConfigOption),
     };
@@ -682,6 +802,7 @@ class MockAcpServer {
         modeId,
       },
     });
+    await this.persistSessions();
     return {};
   }
 
@@ -714,6 +835,7 @@ class MockAcpServer {
         delete session.activePromptAbort;
       }
       this.requestAbortControllers.delete(requestId);
+      await this.persistSessions();
     }
   }
 
@@ -885,7 +1007,6 @@ class MockAcpServer {
     } else if (promptText.includes("[client-terminal]") && this.clientCapabilities.terminal) {
       terminalSummary = await this.runClientTerminalTool(session.id, toolCallId, session.cwd, signal);
     }
-
     if (signal.aborted) {
       this.sendNotification("session/update", {
         sessionId: session.id,
@@ -923,7 +1044,9 @@ class MockAcpServer {
       session.history.push({ role: "reasoning", text: chunk });
     }
 
-    const responseText = this.buildResponseText(promptText, session.promptCount, fsReadSummary, terminalSummary);
+    const responseText = promptText.includes("[Clanky chat history recovery]")
+      ? await buildHistoryRecoveryResponse(promptText)
+      : this.buildResponseText(promptText, session.promptCount, fsReadSummary, terminalSummary);
     for (const chunk of splitIntoChunks(responseText, 4)) {
       await this.delay(promptText.includes("[slow]") ? SLOW_STREAM_DELAY_MS : STREAM_DELAY_MS);
       if (signal.aborted) {

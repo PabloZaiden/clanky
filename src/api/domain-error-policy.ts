@@ -104,7 +104,21 @@ const API_DOMAIN_ERROR_CODES = {
   [CHAT_WORKTREE_BRANCH_CONFLICT_CODE]: true,
   chat_attachment_budget_exceeded: true,
   chat_context_unavailable: true,
+  chat_history_export_cleanup_failed: true,
+  chat_history_export_expired: true,
+  chat_history_export_failed: true,
+  chat_history_export_host_changed: true,
+  chat_history_export_host_unavailable: true,
+  chat_history_export_incomplete: true,
+  chat_history_export_invalid: true,
+  chat_history_export_missing: true,
   chat_not_found: true,
+  chat_history_recovery_conflict: true,
+  chat_history_recovery_queued_input: true,
+  chat_history_recovery_unavailable: true,
+  chat_history_recovery_unresolved_input: true,
+  chat_history_recovery_unresolved_permission: true,
+  chat_history_recovery_unresolved_question: true,
   agent_already_running: true,
   agent_chat_not_found: true,
   agent_code_generation_failed: true,
@@ -602,10 +616,66 @@ const POLICY_PROFILES = {
         status: 409,
         message: "The source chat's workspace directory or execution target is unavailable.",
       },
+      chat_history_export_cleanup_failed: {
+        status: 502,
+        message: "History recovery could not remove its temporary files from the execution host.",
+      },
+      chat_history_export_expired: {
+        status: 410,
+        message: "The temporary history export expired. Continue from history again to create a fresh export.",
+      },
+      chat_history_export_failed: {
+        status: 502,
+        message: "The execution host could not write the complete chat history.",
+      },
+      chat_history_export_host_changed: {
+        status: 409,
+        message: "This chat's execution host changed after its history was exported. Continue from history again.",
+      },
+      chat_history_export_host_unavailable: {
+        status: 503,
+        message: "The selected execution host for this chat is unavailable.",
+      },
+      chat_history_export_incomplete: {
+        status: 409,
+        message: "The complete persisted chat history is unavailable. Reload the chat and try again.",
+      },
+      chat_history_export_invalid: {
+        status: 409,
+        message: "The saved temporary history export is invalid. Continue from history again to create a fresh export.",
+      },
+      chat_history_export_missing: {
+        status: 409,
+        message: "The temporary history export is missing from the execution host. Continue from history again to create a fresh export.",
+      },
       chat_not_found: {
         status: 404,
         error: "not_found",
         message: "Chat not found.",
+      },
+      chat_history_recovery_conflict: {
+        status: 409,
+        message: "The chat changed before history recovery could start. Refresh it and resolve any active or queued input first.",
+      },
+      chat_history_recovery_queued_input: {
+        status: 409,
+        message: "Remove or send the queued messages before continuing from history.",
+      },
+      chat_history_recovery_unavailable: {
+        status: 409,
+        message: "Continue from history is available only for a failed chat with no active run.",
+      },
+      chat_history_recovery_unresolved_input: {
+        status: 409,
+        message: "Reconcile the delivery status of pending chat input before continuing from history.",
+      },
+      chat_history_recovery_unresolved_permission: {
+        status: 409,
+        message: "Resolve the pending agent permission request before continuing from history.",
+      },
+      chat_history_recovery_unresolved_question: {
+        status: 409,
+        message: "Resolve or dismiss the pending agent question before continuing from history.",
       },
       acp_connection_aborted: {
         status: 409,

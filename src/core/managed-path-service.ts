@@ -13,9 +13,11 @@ import {
 } from "./execution-path";
 
 export const MANAGED_WORKTREE_DIRECTORY_NAME = ".clanky-worktrees";
+export const CHAT_HISTORY_EXPORT_DIRECTORY_NAME = ".clanky-chat-history";
 export const PLANNING_DIRECTORY_NAME = ".clanky-planning";
 export const PLAN_FILE_NAME = "plan.md";
 export const STATUS_FILE_NAME = "status.md";
+export const CHAT_HISTORY_TRANSCRIPT_FILE_NAME = "conversation.jsonl";
 export const DEFAULT_PLAN_DISPLAY_PATH = `${PLANNING_DIRECTORY_NAME}/${PLAN_FILE_NAME}`;
 
 export class InvalidManagedWorktreePathError extends Error {
@@ -37,6 +39,10 @@ export class ManagedPathService {
   constructor(readonly pathStyle: ExecutionPathStyle) {}
 
   normalizeManagedWorktreeIdentifier(identifier: string): string {
+    return this.normalizeManagedIdentifier(identifier, "Managed worktree");
+  }
+
+  private normalizeManagedIdentifier(identifier: string, label: string): string {
     const normalizedIdentifier = identifier.trim();
     if (
       normalizedIdentifier.length === 0
@@ -48,7 +54,7 @@ export class ManagedPathService {
     ) {
       throw new InvalidManagedWorktreePathError(
         identifier,
-        "Managed worktree identifiers must be a non-empty, single safe path component",
+        `${label} identifiers must be a non-empty, single safe path component`,
       );
     }
 
@@ -57,7 +63,7 @@ export class ManagedPathService {
     } catch (error) {
       throw new InvalidManagedWorktreePathError(
         identifier,
-        "Managed worktree identifiers must be valid on the execution host",
+        `${label} identifiers must be valid on the execution host`,
         { cause: error },
       );
     }
@@ -78,6 +84,46 @@ export class ManagedPathService {
       this.pathStyle,
       this.getManagedWorktreeRoot(repoDirectory),
       this.normalizeManagedWorktreeIdentifier(identifier),
+    );
+  }
+
+  getChatHistoryExportDirectoryPath(
+    directory: string,
+    chatId: string,
+    recoveryId: string,
+  ): string {
+    return joinExecutionPath(
+      this.pathStyle,
+      normalizeExecutionRoot(directory, this.pathStyle),
+      CHAT_HISTORY_EXPORT_DIRECTORY_NAME,
+      this.normalizeManagedIdentifier(chatId, "Chat"),
+      this.normalizeManagedIdentifier(recoveryId, "Recovery"),
+    );
+  }
+
+  getChatHistoryTranscriptPath(
+    directory: string,
+    chatId: string,
+    recoveryId: string,
+  ): string {
+    return joinExecutionPath(
+      this.pathStyle,
+      this.getChatHistoryExportDirectoryPath(directory, chatId, recoveryId),
+      CHAT_HISTORY_TRANSCRIPT_FILE_NAME,
+    );
+  }
+
+  getChatHistoryAttachmentPath(
+    directory: string,
+    chatId: string,
+    recoveryId: string,
+    fileName: string,
+  ): string {
+    return joinExecutionPath(
+      this.pathStyle,
+      this.getChatHistoryExportDirectoryPath(directory, chatId, recoveryId),
+      "attachments",
+      this.normalizeManagedIdentifier(fileName, "Attachment"),
     );
   }
 

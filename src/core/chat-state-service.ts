@@ -14,6 +14,7 @@ import {
   loadChatStreamControlState,
   loadTaskChat,
   getChatTranscriptMeta,
+  listChatTranscriptEntriesAfter,
   getChatToolCallFromTranscript,
   listChatTranscriptEntriesPage,
   saveChat,
@@ -21,6 +22,7 @@ import {
   updateChatState,
   updateChatStreamState,
 } from "../persistence/chats";
+import type { TranscriptStorageCursor } from "../persistence/transcripts/types";
 import { createTranscriptFromStoragePage } from "./transcript-service";
 import { getWorkspace, touchWorkspace } from "../persistence/workspaces";
 import type {
@@ -28,6 +30,7 @@ import type {
   ChatConfig,
   ChatState,
   ChatStatus,
+  ChatTranscriptStorageEntry,
   ChatStreamControlState,
   ChatStartupStage,
   TranscriptChangeSet,
@@ -45,6 +48,8 @@ import { closeOpenQuestions, reconcileQuestionAnswerAdmissions } from "@/shared/
 import { KeyedOperationQueue } from "../utils/keyed-operation-queue";
 import { HarnessError } from "../backends/harness-errors";
 import { projectQuestionMessages } from "@/shared/question-transcript";
+
+const CHAT_TRANSCRIPT_EXPORT_PAGE_SIZE = 4;
 
 export class ChatStateService implements ChatStatePort {
   private readonly mutations = new KeyedOperationQueue();
@@ -96,6 +101,7 @@ export class ChatStateService implements ChatStatePort {
     if (!chatMeta) {
       return null;
     }
+
     const meta = getChatTranscriptMeta(chatId);
     if (!meta) {
       throw new Error(`Chat transcript metadata is unavailable: ${chatId}`);
@@ -105,6 +111,43 @@ export class ChatStateService implements ChatStatePort {
     return value && typeof value === "object" && !Array.isArray(value)
       ? value as ToolCallRecord
       : null;
+  }
+
+  async getChatTranscriptExportMeta(
+    chatId: string,
+  ): Promise<{ revision: string; entryCount: number } | null> {
+    if (!await this.getChatSummary(chatId)) {
+      return null;
+    }
+    return getChatTranscriptMeta(chatId);
+  }
+
+  async *iterateChatTranscriptEntries(
+    chatId: string,
+  ): AsyncIterable<ChatTranscriptStorageEntry> {
+    if (!await this.getChatSummary(chatId)) {
+      return;
+    }
+    let after: TranscriptStorageCursor | undefined;
+    while (true) {
+      const page = listChatTranscriptEntriesAfter(chatId, {
+        ...(after ? { after } : {}),
+        limit: CHAT_TRANSCRIPT_EXPORT_PAGE_SIZE,
+        includeToolPayload: true,
+      });
+      if (page.invalidEntryCount > 0) {
+        throw new Error(
+          `The persisted chat transcript contains ${String(page.invalidEntryCount)} unreadable entries.`,
+        );
+      }
+      while (page.entries.length > 0) {
+        yield page.entries.shift()!;
+      }
+      if (!page.nextCursor) {
+        return;
+      }
+      after = page.nextCursor;
+    }
   }
 
   async getTaskChat(taskId: string): Promise<Chat | null> {

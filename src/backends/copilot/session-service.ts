@@ -107,6 +107,13 @@ export class CopilotSessionService {
   }
 
   private async resumeNative(binding: HarnessConversationBinding): Promise<AgentSession> {
+    const metadata = await this.runtime.client.getSessionMetadata(binding.nativeId);
+    if (!metadata) {
+      throw new HarnessError(
+        "harness_session_not_found",
+        "The Clanky-owned native conversation is unavailable.",
+      );
+    }
     const session = await this.runtime.client.resumeSession(binding.nativeId, {
       workingDirectory: binding.directory,
       streaming: true,

@@ -5,6 +5,7 @@ import type {
   ChatTranscriptStorageEntry,
   ToolCallRecord,
 } from "@/shared";
+import type { TranscriptStorageCursor, TranscriptStoragePage } from "../transcripts/types";
 import { getDatabase } from "../database";
 import { requirePersistenceUserId } from "../ownership";
 import { chatTranscriptStore } from "../transcripts/chat-store";
@@ -80,6 +81,21 @@ export function listChatTranscriptEntriesPage(
   options: { full?: boolean; before?: string } = {},
 ) {
   return chatTranscriptStore.listPage(chatId, options);
+}
+
+export function listChatTranscriptEntriesAfter(
+  chatId: string,
+  options: {
+    after?: TranscriptStorageCursor;
+    limit: number;
+    includeToolPayload?: boolean;
+  },
+): TranscriptStoragePage {
+  return chatTranscriptStore.listEntriesAfterForUser(
+    chatId,
+    requirePersistenceUserId(),
+    options,
+  );
 }
 
 export function getChatToolCallFromTranscript(

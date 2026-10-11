@@ -53,7 +53,11 @@ import {
 } from "../managed-path-service";
 import { resolveGitDirectory } from "./git-core";
 
-export { MANAGED_WORKTREE_DIRECTORY_NAME, ManagedPathService } from "../managed-path-service";
+export {
+  CHAT_HISTORY_EXPORT_DIRECTORY_NAME,
+  MANAGED_WORKTREE_DIRECTORY_NAME,
+  ManagedPathService,
+} from "../managed-path-service";
 
 import type {
   BranchVerificationResult,

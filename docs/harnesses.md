@@ -38,6 +38,33 @@ OpenCode 2 uses a separate profile under the Clanky data directory. It does not
 upgrade an existing OpenCode generation-1 data directory in place. Configure
 the required providers for that profile or through the execution-host environment.
 
+## Continue from history
+
+When a chat is failed because its provider-native session cannot be resumed,
+use **Continue from history** to explicitly create a new native session for the
+same Clanky chat. Ordinary reconnect still resumes the original session; Clanky
+does not replace, interrupt, or delete it automatically, and it may still exist.
+The chat transcript and chat ID remain unchanged. History continuation is
+blocked while the chat has an active run, queued input, unresolved delivery,
+question, or permission request.
+
+Before the new session handles its first message, Clanky writes the persisted,
+user-visible transcript as JSON Lines to
+`<chat-directory>/.clanky-chat-history/<chat-id>/<recovery-id>/conversation.jsonl`
+on the selected execution host. Attachment bytes are stored in the sibling
+`attachments/` directory and referenced by relative path. The managed export is
+excluded from Git. The new agent receives the export path and is asked to read
+it incrementally as untrusted context; old requests, uncertain or queued input,
+and tool actions are not replayed.
+
+The export is removed after the first continuation completes successfully or
+when the chat is deleted. It cannot be used after its 24-hour expiry. Expiry is
+not a background deletion job: physical cleanup is attempted when the export
+is next used/replaced or during chat deletion. For a registered SSH host, this
+needs a fresh credential; Clanky does not persist SSH credentials, so an
+unreachable or unauthenticated host may retain the expired file until the next
+authorized recovery attempt or chat deletion.
+
 ## Activity and individual Stop
 
 Open **Activity** from the existing task or chat action menu. Inside a task's
@@ -198,6 +225,7 @@ event timestamp is earlier or equal.
 | POST | `/api/chats/:id/questions/:requestId` | Answer one current native question |
 | POST | `/api/chats/:id/queued-messages/:messageId/steer` | Steer an existing queued chat message |
 | POST | `/api/chats/:id/queued-messages/:messageId/reconcile` | Recover native chat input delivery |
+| POST | `/api/chats/:id/continue-from-history` | Explicitly create a fresh native session using a temporary export of the persisted chat history |
 | POST | `/api/tasks/:id/pending-inputs/:inputId/steer` | Steer the current pending task input |
 | POST | `/api/tasks/:id/pending-inputs/:inputId/reconcile` | Recover native task input delivery |
 

@@ -49,6 +49,7 @@ import {
   getRegisteredSshServerId,
 } from "@/shared/execution-host";
 import { DomainError } from "../domain/domain-error";
+import type { ChatHistoryExportService } from "./chat-history-export-service";
 
 const log = createLogger("chat-lifecycle-service");
 
@@ -57,6 +58,7 @@ export interface ChatLifecycleServiceDependencies {
   worktree: ChatWorktreePort;
   session: ChatSessionPort;
   conversation: ChatConversationPort;
+  historyExport: Pick<ChatHistoryExportService, "cleanup">;
   taskManager: Pick<TaskManager, "getTask">;
 }
 
@@ -65,6 +67,7 @@ export class ChatLifecycleService implements ChatLifecyclePort {
   private readonly worktree: ChatWorktreePort;
   private readonly session: ChatSessionPort;
   private readonly conversation: ChatConversationPort;
+  private readonly historyExport?: Pick<ChatHistoryExportService, "cleanup">;
   private readonly taskManager: Pick<TaskManager, "getTask">;
 
   constructor(dependencies: Partial<ChatLifecycleServiceDependencies> & Pick<
@@ -75,6 +78,7 @@ export class ChatLifecycleService implements ChatLifecyclePort {
     this.worktree = dependencies.worktree;
     this.session = dependencies.session;
     this.conversation = dependencies.conversation;
+    this.historyExport = dependencies.historyExport;
     this.taskManager = dependencies.taskManager ?? taskManager;
   }
 
@@ -526,12 +530,13 @@ export class ChatLifecycleService implements ChatLifecyclePort {
       }
 
       this.state.emitChatDeleted(chat, createTimestamp());
-      this.scheduleDeferredChatCleanup(chat, user);
+      this.scheduleDeferredChatCleanup(chat, user, options.credentialToken);
       return true;
     }
 
     await this.cleanupChatRuntime(chat, {
       closeStream: () => this.conversation.closeActiveStream(chatId),
+      credentialToken: options.credentialToken,
     });
 
     const deleted = await this.state.deletePersistedChat(chatId);
@@ -543,9 +548,29 @@ export class ChatLifecycleService implements ChatLifecyclePort {
 
   private async cleanupChatRuntime(
     chat: Chat,
-    options: { continueOnError?: boolean; closeStream?: () => void } = {},
+    options: {
+      continueOnError?: boolean;
+      closeStream?: () => void;
+      credentialToken?: string | null;
+    } = {},
   ): Promise<void> {
     const cleanupSteps: Array<{ label: string; run: () => Promise<void> }> = [];
+    const historyRecovery = chat.state.harness?.historyRecovery;
+    if (
+      historyRecovery
+      && historyRecovery.status !== "complete"
+      && this.historyExport
+    ) {
+      cleanupSteps.push({
+        label: "chat history export",
+        run: () => this.historyExport!.cleanup(
+          chat,
+          historyRecovery,
+          options.credentialToken,
+          { markComplete: false },
+        ),
+      });
+    }
     if (chat.config.scope !== "task" && isWorkspaceChat(chat)) {
       cleanupSteps.push({
         label: "managed credentials",
@@ -595,10 +620,17 @@ export class ChatLifecycleService implements ChatLifecyclePort {
     }
   }
 
-  private scheduleDeferredChatCleanup(chat: Chat, user: CurrentUser): void {
+  private scheduleDeferredChatCleanup(
+    chat: Chat,
+    user: CurrentUser,
+    credentialToken?: string | null,
+  ): void {
     // The persisted chat is already deleted; remote cleanup must not delay the HTTP response.
     void runWithCurrentUser(user, async () => {
-      await this.cleanupChatRuntime(chat, { continueOnError: true });
+      await this.cleanupChatRuntime(chat, {
+        continueOnError: true,
+        credentialToken,
+      });
     }).catch((error) => {
       log.error("Deferred chat cleanup failed", {
         chatId: chat.config.id,

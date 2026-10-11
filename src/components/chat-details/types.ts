@@ -48,6 +48,8 @@ export interface ChatLifecycleResult {
   applyChatSnapshot: (nextChat: Chat) => void;
   markChatStarting: () => void;
   handleReconnect: () => Promise<void>;
+  handleContinueFromHistory: () => Promise<boolean>;
+  isContinuingFromHistory: boolean;
 }
 
 export interface ChatTranscriptProps {

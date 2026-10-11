@@ -42,6 +42,8 @@ import type {
   TranscriptResource,
   TranscriptResponseRow,
   TranscriptRow,
+  TranscriptStorageCursor,
+  TranscriptStoragePage,
   TranscriptStateEntry,
   TranscriptStateLike,
 } from "./types";
@@ -391,6 +393,99 @@ export function listTranscriptEntriesForUser(
   return rows
     .map((row) => rowToStorageEntry(row, includeToolPayload, resource))
     .filter((entry): entry is ChatTranscriptStorageEntry => entry !== null);
+}
+
+export function listTranscriptEntriesAfterForUser(
+  resource: TranscriptResource,
+  resourceId: string,
+  userId: string,
+  options: {
+    after?: TranscriptStorageCursor;
+    limit: number;
+    includeToolPayload?: boolean;
+  },
+): TranscriptStoragePage {
+  const MAX_TRANSCRIPT_STORAGE_PAGE_SIZE = 256;
+  if (
+    !Number.isInteger(options.limit)
+    || options.limit < 1
+    || options.limit > MAX_TRANSCRIPT_STORAGE_PAGE_SIZE
+  ) {
+    throw new RangeError(
+      `Transcript storage page limit must be between 1 and ${MAX_TRANSCRIPT_STORAGE_PAGE_SIZE}.`,
+    );
+  }
+
+  const config = getTableConfig(resource);
+  const cursor = options.after;
+  const afterClause = cursor
+    ? `
+      AND (
+        timestamp > ?
+        OR (timestamp = ? AND sequence > ?)
+        OR (timestamp = ? AND sequence = ? AND kind > ?)
+        OR (
+          timestamp = ?
+          AND sequence = ?
+          AND kind = ?
+          AND entry_id > ?
+        )
+      )
+    `
+    : "";
+  const cursorParameters = cursor
+    ? [
+        cursor.timestamp,
+        cursor.timestamp,
+        cursor.sequence,
+        cursor.timestamp,
+        cursor.sequence,
+        cursor.kind,
+        cursor.timestamp,
+        cursor.sequence,
+        cursor.kind,
+        cursor.entryId,
+      ]
+    : [];
+  const includeToolPayload = options.includeToolPayload ?? false;
+  const rows = getDatabase().prepare(`
+    SELECT entry_id, kind, timestamp, sequence, payload,
+      updated_at,
+      tool_name, tool_status,
+      ${includeToolPayload ? "tool_input, tool_output, tool_extras" : "tool_input, NULL AS tool_output, NULL AS tool_extras"},
+      CASE WHEN tool_output IS NOT NULL THEN 1 ELSE 0 END AS tool_has_output
+    FROM ${config.entriesTable}
+    WHERE ${config.resourceColumn} = ? AND user_id = ?
+      ${afterClause}
+    ORDER BY timestamp ASC, sequence ASC, kind ASC, entry_id ASC
+    LIMIT ?
+  `).all(
+    resourceId,
+    userId,
+    ...cursorParameters,
+    options.limit,
+  ) as TranscriptRow[];
+  const decoded = rows.map((row) => rowToStorageEntry(row, includeToolPayload, resource));
+  const entries = decoded.filter(
+    (entry): entry is ChatTranscriptStorageEntry => entry !== null,
+  );
+  const last = rows.at(-1);
+
+  return {
+    entries,
+    rowCount: rows.length,
+    invalidEntryCount: rows.length - entries.length,
+    ...(rows.length === options.limit && last
+      ? {
+          nextCursor: {
+            entryId: last.entry_id,
+            timestamp: last.timestamp,
+            sequence: last.sequence,
+            kind: last.kind,
+          },
+        }
+      : {}),
+  };
 }
 
 function getTranscriptResponseCount(

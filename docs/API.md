@@ -167,6 +167,46 @@ workspace directory, reusing its model and permission setting. The server uses
 the source chat's saved execution-host binding and rejects the request if that
 binding no longer matches the workspace's current execution target.
 
+### Continue a chat from history
+
+`POST /api/chats/:id/continue-from-history` explicitly starts a fresh
+provider-native session for a failed chat while keeping its Clanky chat ID and
+saved transcript. It uses the same workspace, execution host, directory,
+provider and model. Ordinary `/reconnect` still targets the original native
+session and never performs this replacement automatically. The old provider
+session may still exist; history continuation does not delete or interrupt it.
+Recovery is rejected while the chat has an active run, queued message,
+unresolved input delivery, open question or pending permission.
+
+The request accepts an empty body or the `ReconnectChatRequest` object used by
+`/reconnect` (including an optional short-lived `credentialToken` when the
+execution host requires it). Success returns the updated chat directly.
+
+```bash
+curl -X POST http://localhost:3000/api/chats/<chat-id>/continue-from-history \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+Before the replacement session handles its first user message, Clanky exports
+the persisted, user-visible transcript to
+`<chat-directory>/.clanky-chat-history/<chat-id>/<recovery-id>/conversation.jsonl`
+on the selected execution host. Attachment bytes are companion files in the
+`attachments/` directory, referenced by relative path; the export is excluded
+from Git. The agent is instructed to consult this file incrementally as
+untrusted context. Prior requests, queued or delivery-uncertain input, and tool
+actions are not replayed. An incomplete export prevents the replacement session
+from starting.
+
+The export is removed after the first continuation completes successfully or
+when the chat is deleted, and becomes unusable after 24 hours. Expiry does not
+run a background physical-deletion job: deletion is attempted when the export
+is next used/replaced or during chat deletion. On a registered SSH host, cleanup
+requires a fresh credential; because Clanky does not persist SSH credentials,
+an unreachable or unauthenticated host may retain the expired file until the
+next authorized recovery attempt or chat deletion. The chat's original
+persisted transcript is unaffected.
+
 ### Native chat questions
 
 Read `state.harness.questions` from the chat or snapshot response. Each request
@@ -404,6 +444,7 @@ included in this table.
 | DELETE | `/api/chats/:id/queued-messages/:messageId` | Delete a queued chat message. |
 | POST | `/api/chats/:id/queued-messages/:messageId/steer` | Steer an existing queued input without interrupting the execution. |
 | POST | `/api/chats/:id/queued-messages/:messageId/reconcile` | Recover native delivery without resending the input. |
+| POST | `/api/chats/:id/continue-from-history` | Explicitly create a fresh native chat session backed by a temporary persisted-history export. |
 | POST | `/api/chats/:id/reconnect` | Reconnect a chat session to its backend runtime. |
 | GET | `/api/chats/:id/snapshot` | Read a chat transcript snapshot, paged by non-empty assistant responses (page size 100). |
 | POST | `/api/chats/:id/spawn-task` | Create a task from an existing chat transcript. |

@@ -21,6 +21,8 @@ import { ChatConversationService } from "./chat-conversation-service";
 import { ChatInteractionService } from "./chat-interaction-service";
 import { ChatQuestionService } from "./chat-question-service";
 import { ChatTaskConversionService } from "./chat-task-conversion-service";
+import { ChatHistoryExportService } from "./chat-history-export-service";
+import { ChatHistoryRecoveryService } from "./chat-history-recovery-service";
 import type {
   ChatConfigUpdates,
   DeleteChatOptions,
@@ -47,6 +49,7 @@ export type {
 function createChatServices(emitter: SimpleEventEmitter<ChatEvent>): ChatServiceBundle {
   const state = new ChatStateService(emitter);
   const worktree = new ChatWorktreeService({ state });
+  const historyExport = new ChatHistoryExportService({ state });
 
   let conversation: ChatConversationService | undefined;
   let interaction: ChatInteractionService | undefined;
@@ -66,6 +69,7 @@ function createChatServices(emitter: SimpleEventEmitter<ChatEvent>): ChatService
     state,
     session,
     worktree,
+    historyExport,
     emitter,
     scheduleQueuedMessageDrain: (chatId: string) => {
       if (!interaction) {
@@ -103,10 +107,17 @@ function createChatServices(emitter: SimpleEventEmitter<ChatEvent>): ChatService
     worktree,
     session,
     conversation: conversationService,
+    historyExport,
   });
   const taskConversion = new ChatTaskConversionService({
     state,
     worktree,
+  });
+  const historyRecovery = new ChatHistoryRecoveryService({
+    state,
+    session,
+    conversation: conversationService,
+    historyExport,
   });
 
   return {
@@ -116,6 +127,7 @@ function createChatServices(emitter: SimpleEventEmitter<ChatEvent>): ChatService
     session,
     conversation: conversationService,
     interaction: interactionService,
+    historyRecovery,
     taskConversion,
   };
 }
@@ -233,6 +245,13 @@ export class ChatManager {
       this.services.interaction.scheduleQueuedMessageDrain(chatId);
     }
     return reconnected;
+  }
+
+  async continueFromHistory(
+    chatId: string,
+    options: ReconnectChatOptions = {},
+  ): Promise<Chat | null> {
+    return this.services.historyRecovery.continueFromHistory(chatId, options);
   }
 
   async sendMessage(chatId: string, options: ChatMessageOptions): Promise<Chat> {

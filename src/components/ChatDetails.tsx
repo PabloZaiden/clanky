@@ -14,6 +14,7 @@ import {
   ChatQueuedMessagesPanel,
 } from "./chat-details/chat-support-panels";
 import { ChatTranscript } from "./chat-details/chat-transcript";
+import { ChatHistoryRecoveryAction } from "./chat-details/chat-history-recovery-action";
 import { HarnessEntityView } from "./harness-activity";
 import { harnessActivityActions } from "./app-shell/harness-actions";
 import type { ChatSendMessageHandler } from "./chat-details/types";
@@ -69,6 +70,8 @@ export function ChatDetails({
     applyChatSnapshot,
     markChatStarting,
     handleReconnect,
+    handleContinueFromHistory,
+    isContinuingFromHistory,
   } = useChatLifecycle(chatId);
   const openActivity = useCallback(() => {
     if (isEmbedded) setEmbeddedActivity(true);
@@ -234,6 +237,11 @@ export function ChatDetails({
       }}
       onOpenActivity={isEmbedded || onOpenActivity ? openActivity : undefined}
     >
+      <ChatHistoryRecoveryAction
+        chat={chat}
+        isPending={isContinuingFromHistory}
+        onContinue={handleContinueFromHistory}
+      />
       <ChatTranscript
         chat={chat}
         transcript={transcript}

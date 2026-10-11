@@ -452,10 +452,12 @@ counters, helper results, call order, or implementation-only event sequences.
 
 ### Keep the suite small and fast
 
-The suite exists to answer whether the application itself broke through a real
-user/API/CLI/protocol journey. Prefer a few broad, coherent scenarios over
-endpoint matrices or permutations. Extend an existing journey before adding a
-new test when the resulting failure remains diagnosable.
+The suite is a compact, executable catalog of real user/API/CLI/protocol
+journeys the application is required to support. It is not a bug archive or a
+regression checklist: a past failure, bug report, or fix is never by itself a
+reason to add or retain an E2E test. Prefer a few broad, coherent scenarios
+over endpoint matrices or permutations. Extend an existing journey before
+adding a new test when the resulting failure remains diagnosable.
 
 Only add or materially modify an E2E when a change considerably affects an
 observable real-world scenario, for example:
@@ -473,14 +475,25 @@ implementation tables, copy, labels, DOM structure, CSS, hook plumbing, or
 removed implementation details do not justify test churn when the real
 scenario is unchanged. Prefer no new test over a low-value test.
 
-Before changing the suite, record:
+Never add or retain a test whose primary purpose is to reproduce a fixed defect,
+verify that its fix remains in place, or assert that a bug-specific event,
+payload, or edge case does not recur. Once the fix is made, remove that
+regression-only coverage rather than renaming it or moving it into another
+journey. A bug report may expose a missing product scenario, but coverage is
+eligible only when that scenario is independently approved as behavior Clanky
+must support and the test describes the real workflow rather than the old
+failure.
 
-1. the concrete user-visible regression the scenario catches;
+Before adding or materially changing a test, record:
+
+1. the real-world user or integration workflow Clanky is expected to support;
 2. the public boundary it traverses;
-3. the external effect or public state it observes;
-4. why an existing E2E does not already cover the risk.
+3. the required user-visible result or external effect;
+4. why this scenario belongs in the compact suite and is not already covered.
 
-If those answers are not concrete, do not add or modify a test.
+If the scenario can only be described by referring to a past defect or its fix,
+do not add or retain the test. Tests exist to specify required product
+scenarios, not to prove that old bugs stay fixed.
 
 ### Provider mocks
 

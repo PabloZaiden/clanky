@@ -1,7 +1,6 @@
 import { useCallback } from "react";
 import { DEFAULT_CHAT_INTERRUPT_REASON } from "@/shared";
 import type { Chat } from "@/shared";
-import { getRegisteredSshServerId } from "@/shared/execution-host";
 import { CHAT_STARTUP_STAGE_LABELS } from "@/shared/chat";
 import type {
   ConversationComposerProps,
@@ -10,7 +9,10 @@ import type {
 import { apiRequest } from "../../lib/api-client";
 import { getClankyClientId } from "../../lib/clanky-client-id";
 import { getStoredSshCredentialToken } from "../../lib/ssh-browser-credentials";
-import { getChatErrorMessage } from "./chat-lifecycle";
+import {
+  getChatErrorMessage,
+  getChatRegisteredSshServerId,
+} from "./chat-lifecycle";
 import type { ChatComposerAdapterOptions } from "./types";
 
 export function useChatComposerAdapter({
@@ -59,11 +61,7 @@ export function useChatComposerAdapter({
       return;
     }
 
-    const source = chat.config.source;
-    const serverId = source?.kind === "execution_host"
-      && source.executionHost.host.kind === "ssh"
-      ? getRegisteredSshServerId(source.executionHost.host)
-      : null;
+    const serverId = getChatRegisteredSshServerId(chat);
     const credentialToken = serverId
       ? await getStoredSshCredentialToken(serverId)
       : null;
