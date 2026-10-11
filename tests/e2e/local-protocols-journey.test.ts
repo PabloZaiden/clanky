@@ -9,6 +9,7 @@ import {
 } from "./support/process";
 import { operationSignal } from "./support/timeouts";
 import {
+  createFixtureLiveOffer,
   startVoiceProvider,
   stopVoiceProvider,
   type ManagedVoiceProvider,
@@ -646,12 +647,17 @@ async function exerciseVoice(
     state: "valid",
     validated: true,
   });
+  const liveWithoutOffer = await app.request("/api/voice/validate", {
+    method: "POST",
+    body: JSON.stringify({ capability: "live" }),
+  });
+  expect(liveWithoutOffer.status).toBe(400);
   const liveValidation = (await app.json<{
     success: boolean;
     settings: VoiceSettings;
   }>("/api/voice/validate", {
     method: "POST",
-    body: JSON.stringify({ capability: "live" }),
+    body: JSON.stringify({ capability: "live", sdp: createFixtureLiveOffer("validation") }),
   })).data;
   expect(liveValidation.success).toBe(true);
   expect(liveValidation.settings.capabilities.live).toMatchObject({

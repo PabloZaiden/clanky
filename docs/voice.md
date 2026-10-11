@@ -42,9 +42,11 @@ Responses delegation, not merely offer a compatible `/responses` route.
 Compatible URL roots include `https://api.openai.com/v1` and an Azure OpenAI
 resource with `/openai/v1`. There is no Azure-only model or workspace setting.
 For Azure, use the deployment names. Live validation opens a temporary
-WebRTC session, checks authenticated sideband access, and closes the session
-without sending microphone audio. Function access is exercised when the shared
-text model uses a tool.
+WebRTC session, checks authenticated sideband access, and closes the session.
+The Settings browser creates a temporary offer with an audio transceiver and
+`oai-events` data channel, gathers ICE, then closes its peer. Validation does
+not request microphone permission or send audio. Function access is exercised
+when the shared text model uses a tool.
 
 The browser keeps the microphone open and plays Live audio automatically.
 The compact panel shows listening/speaking, captions and the independent agent
@@ -102,7 +104,8 @@ the user's linked chat; provider session IDs are not accepted as authority.
 ### Validation scope
 
 The compiled-app journeys exercise both URL roots with an external deterministic
-Live peer, including parallel/duplicate functions, native steering and questions,
+Live peer that rejects incomplete WebRTC offers, including Live capability
+validation, parallel/duplicate functions, native steering and questions,
 closing without interrupting the agent, provider cuts and summary persistence.
 Azure `gpt-live-1` with `gpt-6-luna` was also exercised through Bun.WebView with
 synthesized microphone input: bidirectional audio, native Clanky tool execution,
@@ -142,6 +145,12 @@ it does not indicate whether the runtime or models have already been
 downloaded.
 
 ## API behavior
+
+`POST /api/voice/validate` accepts `{"capability":"transcription"}` or
+`{"capability":"text"}` for those checks. Live validation requires
+`{"capability":"live","sdp":"<browser-generated WebRTC offer>"}`. The Settings
+UI creates that offer without microphone capture; the provider key remains on
+the server.
 
 `POST /api/voice/speech` accepts JSON such as:
 

@@ -3,7 +3,7 @@ import { E2EApplication } from "./support/application";
 import { createGitFixture } from "./support/git";
 import { pollUntil } from "./support/polling";
 import { installExternalCodexProvider, installExternalNativeCopilotProvider } from "./support/provider";
-import { startVoiceProvider, stopVoiceProvider, type ManagedVoiceProvider } from "./support/voice-provider";
+import { createFixtureLiveOffer, startVoiceProvider, stopVoiceProvider, type ManagedVoiceProvider } from "./support/voice-provider";
 import { E2E_IMAGE_DATA } from "./providers/image-input";
 
 const E2E_IMAGE_RECEIPT = "E2E image received: image/png; PNG signature OK";
@@ -348,7 +348,7 @@ test("Codex control chat resumes with its tools after restarting Clanky", async 
       expect(JSON.stringify(settings)).not.toContain(voiceProvider.apiKey);
       const call = (await application.json<{ call: { id: string; status: string }; sdp: string }>(
         `/api/chats/${chat.config.id}/live-voice`,
-        { method: "POST", body: JSON.stringify({ clientId: crypto.randomUUID(), sdp: "v=0\r\ns=browser-offer\r\n" }) },
+        { method: "POST", body: JSON.stringify({ clientId: crypto.randomUUID(), sdp: createFixtureLiveOffer("browser-offer") }) },
         201,
       )).data;
       expect(call.call.status).toBe("active");
@@ -374,7 +374,7 @@ test("Codex control chat resumes with its tools after restarting Clanky", async 
     await application.json(`/api/chats/${chat.config.id}/reconnect`, { method: "POST", body: "{}" });
     const openCall = async (scenario: string) => (await application.json<{ call: { id: string } }>(
       `/api/chats/${chat.config.id}/live-voice`,
-      { method: "POST", body: JSON.stringify({ clientId: crypto.randomUUID(), sdp: `v=0\r\ns=${scenario}\r\n` }) }, 201,
+      { method: "POST", body: JSON.stringify({ clientId: crypto.randomUUID(), sdp: createFixtureLiveOffer(scenario) }) }, 201,
     )).data.call.id;
     const holdId = await openCall("hold");
     await pollUntil(async () => (await application.json<Chat>(`/api/chats/${chat.config.id}`)).data.state.status,
@@ -456,7 +456,7 @@ test("Copilot shares ordinary Live and queued turns while control steering prese
     });
     const call = (await application.json<{ call: { id: string } }>(
       `/api/chats/${ordinaryId}/live-voice`, {
-        method: "POST", body: JSON.stringify({ clientId: crypto.randomUUID(), sdp: "v=0\r\ns=ordinary\r\n" }),
+        method: "POST", body: JSON.stringify({ clientId: crypto.randomUUID(), sdp: createFixtureLiveOffer("ordinary") }),
       }, 201,
     )).data.call;
     await pollUntil(

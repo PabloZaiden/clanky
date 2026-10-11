@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { apiRequest } from "../lib/api-client";
 import { createRefreshCoordinator } from "../lib/refresh-coordinator";
+import { createLiveVoiceValidationOffer } from "../lib/live-voice-browser";
 import {
   DEFAULT_VOICE_LANGUAGE_HINTS,
 } from "@/shared";
@@ -171,11 +172,16 @@ export function useVoiceSettings(): UseVoiceSettingsResult {
     capability: VoiceCapability,
   ): Promise<VoiceSettings> => {
     updateState({ validating: capability });
+    const signal = AbortSignal.timeout(30_000);
     try {
+      const sdp = capability === "live"
+        ? await createLiveVoiceValidationOffer(signal)
+        : undefined;
       const result = await apiRequest<{ settings: VoiceSettings }>("/api/voice/validate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ capability }),
+        body: JSON.stringify({ capability, ...(sdp ? { sdp } : {}) }),
+        signal,
         action: `Validate ${capability} voice capability`,
         fallbackMessage: `Failed to validate ${capability} voice capability`,
       });

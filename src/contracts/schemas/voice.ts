@@ -33,9 +33,14 @@ export const VoiceSettingsUpdateSchema = z.object({
 
 export const VoiceCapabilitySchema = z.enum(VOICE_CAPABILITIES);
 
-export const VoiceValidationRequestSchema = z.object({
-  capability: VoiceCapabilitySchema,
-});
+export const VoiceValidationRequestSchema = z.discriminatedUnion("capability", [
+  z.object({ capability: z.literal("transcription") }),
+  z.object({ capability: z.literal("text") }),
+  z.object({
+    capability: z.literal("live"),
+    sdp: z.string().min(1).max(65_536),
+  }),
+]);
 
 export const VoiceSpeechRequestSchema = z.object({
   text: z.string().trim().min(1, "text is required").max(30_000, "text is too long"),

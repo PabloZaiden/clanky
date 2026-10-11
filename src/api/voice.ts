@@ -110,7 +110,7 @@ const voiceBaseRoutes = defineRoutes({
   "/api/voice/validate": {
     auth: "user",
     sameOrigin: "mutations",
-    description: "Validate the configured transcription, text-generation, or Live Voice capability.",
+    description: "Validate transcription, text-generation, or Live Voice; Live validation requires a browser-generated WebRTC offer.",
     requestSchema: VoiceValidationRequestSchema,
     async POST(req: Request, _ctx: RouteContext): Promise<Response> {
       const result = await parseAndValidate(VoiceValidationRequestSchema, req);
@@ -118,7 +118,9 @@ const voiceBaseRoutes = defineRoutes({
         return result.response;
       }
       try {
-        const settings = await voiceManager.validateCapability(result.data.capability, req.signal);
+        const options: { signal: AbortSignal; sdp?: string } = { signal: req.signal };
+        if (result.data.capability === "live") options.sdp = result.data.sdp;
+        const settings = await voiceManager.validateCapability(result.data.capability, options);
         return successResponse({ settings });
       } catch (error) {
         return voiceErrorResponse(error);
