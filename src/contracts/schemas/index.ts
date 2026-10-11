@@ -206,6 +206,12 @@ export {
   type CreateProvisioningJobRequest,
 } from "./provisioning";
 
+export {
+  RestartAutomaticWorkspacesRequestSchema,
+  RestartAutomaticWorkspacesResultSchema,
+  RestartAutomaticWorkspacesResponseSchema,
+} from "./settings";
+
 // Controller-worker mesh schemas
 export {
   MeshTransportSchema,
