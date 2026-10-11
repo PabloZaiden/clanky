@@ -5,11 +5,16 @@ import { z } from "zod";
 import type { Backend, BackendConnectionConfig, AgentSession, AgentResponse, CreateSessionOptions, ConfigOption, ConnectionInfo, PromptInput } from "./types";
 import type { HarnessAdapter } from "@/shared/settings";
 import type { HarnessControl, HarnessCapabilities, HarnessConversationBinding, HarnessActivitySnapshot, HarnessActivityStopResult, HarnessInputAdmission, HarnessSteerRequest, HarnessInputRecoveryRequest, HarnessCleanupResult } from "@/shared/harness-control";
-import type { HarnessEvent } from "@/shared/harness-events";
+import type { HarnessEvent, ProviderImageFileReference } from "@/shared/harness-events";
 import type { ModelInfo } from "@/contracts";
 import type { MeshHarnessOperation } from "@/contracts/schemas/mesh-harness";
 import { MeshHarnessEncryptedPayloadSchema, MeshHarnessEventSchema } from "@/contracts/schemas/mesh-harness";
 import { HarnessConversationBindingSchema, HarnessConversationStateSchema } from "@/contracts/schemas/harness";
+import {
+  MESSAGE_ATTACHMENT_MAX_BYTES,
+  MESSAGE_IMAGE_ALLOWED_MIME_TYPES,
+  type MessageAttachment,
+} from "@/shared/message-attachments";
 import { MeshCommandExecutorClient } from "../core/mesh-command-executor-client";
 import { requestMeshPeer } from "../core/mesh-peer-transport";
 import { encryptMeshPayload, decryptMeshPayload } from "../core/mesh-payload-crypto";
@@ -22,8 +27,10 @@ import { requireCurrentUserId } from "../context/user-context";
 import { readMeshControlResponseJson } from "../core/mesh-control-client";
 import { requireMatchingHarnessBinding } from "./harness-binding";
 import { createLogger } from "@pablozaiden/webapp/server";
+import { detectBrowserImageMimeType } from "../utils/workspace-file-images";
 
 const log = createLogger("backend:mesh-harness");
+const MAX_PENDING_RESTORED_IMAGE_WARNINGS = 128;
 const Capabilities = HarnessConversationStateSchema.shape.capabilities.unwrap();
 const Admission = HarnessConversationStateSchema.shape.inputs.unwrap().element.shape.admission;
 const Cleanup = HarnessConversationStateSchema.shape.cleanup.unwrap();
@@ -53,6 +60,7 @@ export class MeshHarnessBackend implements Backend {
   private readonly observers = new Map<string, { controller: AbortController; promise: Promise<void> }>();
   private readonly requests = new Set<AbortController>();
   private readonly interactions = new Map<string, string>();
+  private readonly restoredProviderImageWarnings = new Map<string, Set<string>>();
   private readonly sessions = new Map<string, AgentSession>();
   private readonly gaps = new Set<string>();
   private readonly deleting = new Set<string>();
@@ -171,6 +179,11 @@ export class MeshHarnessBackend implements Backend {
       reject(error);
       if (!controller.signal.aborted && !this.deleting.has(session.id)) {
         const failure = error instanceof Error ? error : new HarnessError("harness_event_gap", "Native observation was lost.");
+        log.error("Native Mesh event observation failed", {
+          adapter: this.options.adapter,
+          errorType: failure.name,
+          message: failure.message,
+        });
         for (const id of this.sessions.keys()) {
           this.gaps.add(id);
           this.hub.failSession(id, failure);
@@ -213,14 +226,55 @@ export class MeshHarnessBackend implements Backend {
         if (Buffer.byteLength(buffer) > MAX_FRAME_BYTES) throw new HarnessError("harness_event_gap", "The native event stream exceeds the frame limit.");
         let newline = buffer.indexOf("\n");
         while (newline >= 0) {
-          const frame = JSON.parse(buffer.slice(0, newline)) as { protocolVersion: unknown; sequence: unknown; encryptedPayload: unknown };
+          const frameText = buffer.slice(0, newline);
           buffer = buffer.slice(newline + 1);
+          newline = buffer.indexOf("\n");
+          if (!frameText.trim()) {
+            continue;
+          }
+          let frame: { protocolVersion: unknown; sequence: unknown; encryptedPayload: unknown };
+          try {
+            frame = JSON.parse(frameText) as typeof frame;
+          } catch (error) {
+            throw new HarnessError(
+              "harness_event_gap",
+              `The native Mesh event stream ${requestId} contains invalid JSON at sequence ${String(sequence)}.`,
+              { cause: error },
+            );
+          }
           if (frame.protocolVersion !== connection.protocolVersion || frame.sequence !== sequence++) throw new HarnessError("harness_event_gap", "The native event stream has a sequence gap.");
           const payload = await decryptMeshPayload(MeshHarnessEncryptedPayloadSchema.parse(frame.encryptedPayload)) as { type: string; event?: unknown };
           if (payload.type === "ready" && sequence === 1) ready();
           else if (payload.type === "heartbeat") { /* Lease-owned keepalive, not a retained event. */ }
           else if (payload.type === "event") {
-            const event = MeshHarnessEventSchema.parse(payload.event);
+            let event = MeshHarnessEventSchema.parse(payload.event);
+            if (event.type === "message.complete" && event.providerImageFile) {
+              const { providerImageFile, ...message } = event;
+              if (event.attachments?.length) {
+                event = message;
+              } else {
+                const attachment = await this.restoreProviderImageAttachment(providerImageFile, signal);
+                if (attachment) {
+                  event = { ...message, attachments: [attachment] };
+                  const pending = this.restoredProviderImageWarnings.get(id) ?? new Set<string>();
+                  if (pending.size < MAX_PENDING_RESTORED_IMAGE_WARNINGS) {
+                    pending.add(attachment.id);
+                    this.restoredProviderImageWarnings.set(id, pending);
+                  }
+                } else {
+                  event = message;
+                  if (message.content.length === 0) continue;
+                }
+              }
+            }
+            if (event.type === "request.error" && event.code === "mesh_image_omitted") {
+              const attachmentId = event.details?.["attachmentId"];
+              const pending = this.restoredProviderImageWarnings.get(id);
+              if (typeof attachmentId === "string" && pending?.delete(attachmentId)) {
+                if (pending.size === 0) this.restoredProviderImageWarnings.delete(id);
+                continue;
+              }
+            }
             if (event.type === "permission.asked" || event.type === "question.asked") {
               if (this.interactions.size >= 512) throw new HarnessError("harness_event_gap", "The native interaction observation limit was reached.");
               this.interactions.set(event.requestId, id);
@@ -230,10 +284,70 @@ export class MeshHarnessBackend implements Backend {
             }
             this.hub.publish(id, event);
           } else throw new HarnessError("harness_event_gap", "The native event stream frame is invalid.");
-          newline = buffer.indexOf("\n");
         }
       }
     } finally { await reader.cancel(); reader.releaseLock(); }
+  }
+
+  private async restoreProviderImageAttachment(
+    reference: ProviderImageFileReference,
+    signal: AbortSignal,
+  ): Promise<MessageAttachment | null> {
+    const expected = reference.attachment;
+    const client = this.client;
+    if (
+      !client
+      || expected.size <= 0
+      || expected.size > MESSAGE_ATTACHMENT_MAX_BYTES
+      || !(MESSAGE_IMAGE_ALLOWED_MIME_TYPES as readonly string[]).includes(expected.mimeType)
+    ) {
+      return null;
+    }
+
+    try {
+      const metadata = await client.getFileMetadata(reference.path, { signal });
+      if (metadata?.kind !== "file" || metadata.size !== expected.size) return null;
+      const stream = await client.streamFile(reference.path, signal);
+      if (!stream) return null;
+
+      const reader = stream.getReader();
+      const chunks: Uint8Array[] = [];
+      let size = 0;
+      let streamEnded = false;
+      try {
+        for (;;) {
+          const result = await reader.read();
+          if (result.done) {
+            streamEnded = true;
+            break;
+          }
+          size += result.value.byteLength;
+          if (size > expected.size || size > MESSAGE_ATTACHMENT_MAX_BYTES) return null;
+          chunks.push(result.value);
+        }
+      } finally {
+        if (!streamEnded) await reader.cancel();
+        reader.releaseLock();
+      }
+      if (size !== expected.size) return null;
+
+      const bytes = Buffer.concat(chunks, size);
+      const mimeType = detectBrowserImageMimeType(bytes);
+      if (
+        mimeType !== expected.mimeType
+        || !(MESSAGE_IMAGE_ALLOWED_MIME_TYPES as readonly string[]).includes(mimeType)
+      ) {
+        return null;
+      }
+      return { ...expected, data: bytes.toString("base64") };
+    } catch (error) {
+      if (signal.aborted) throw error;
+      log.warn("Could not restore a provider-generated Mesh image", {
+        adapter: this.options.adapter,
+        code: error instanceof DomainError ? error.code : "mesh_execution_unreachable",
+      });
+      return null;
+    }
   }
 
   private async activity(id: string): Promise<HarnessActivitySnapshot> {
@@ -295,6 +409,7 @@ export class MeshHarnessBackend implements Backend {
     catch (error) { this.deleting.delete(id); throw error; }
     this.observers.get(id)?.controller.abort(); await this.observers.get(id)?.promise;
     this.observers.delete(id); this.sessions.delete(id); this.gaps.delete(id); this.deleting.delete(id); this.hub.closeSession(id);
+    this.restoredProviderImageWarnings.delete(id);
   }
   async getModels(directory: string): Promise<ModelInfo[]> { return Models.parse(await this.rpc({ operation: "models", directory })); }
   async getModelVariants(directory: string, modelId: string): Promise<string[]> { return z.array(z.string()).max(1000).parse(await this.rpc({ operation: "variants", directory, modelId })); }
@@ -310,7 +425,7 @@ export class MeshHarnessBackend implements Backend {
     for (const controller of this.requests) controller.abort();
     for (const observer of this.observers.values()) observer.controller.abort();
     await Promise.all([...this.observers.values()].map((observer) => observer.promise));
-    this.observers.clear(); this.sessions.clear(); this.interactions.clear(); this.gaps.clear(); this.deleting.clear();
+    this.observers.clear(); this.sessions.clear(); this.interactions.clear(); this.restoredProviderImageWarnings.clear(); this.gaps.clear(); this.deleting.clear();
     await client?.releaseSession();
   }
 }

@@ -6,9 +6,12 @@ import type { ActiveTurn, CodexFixtureStore } from "./codex-state";
 import type { CodexJsonRpcSession } from "./codex-json-rpc";
 import { buildTurn } from "./codex-protocol";
 import { randomUUID } from "node:crypto";
+import { join } from "node:path";
 import { readCodexImageReceipts } from "./image-input";
+import { createPng } from "../support/png-fixtures";
 
 const TOOL_NAME = "clanky_list_workspaces";
+const GENERATED_IMAGE_PROMPT = "Generate a PNG larger than two MiB.";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -25,6 +28,10 @@ function imageReceipts(turn: ActiveTurn["turn"]): string[] {
     if (!isRecord(item) || item["type"] !== "userMessage") return [];
     return readCodexImageReceipts(item["content"]);
   });
+}
+
+function requestsGeneratedImage(turn: ActiveTurn["turn"]): boolean {
+  return JSON.stringify(turn.items).includes(GENERATED_IMAGE_PROMPT);
 }
 
 function readToolText(value: unknown): { contentItems: unknown[]; success: boolean; text: string } {
@@ -118,6 +125,43 @@ function emitAssistantMessage(active: ActiveTurn, text: string, rpc: CodexJsonRp
   });
 }
 
+async function emitGeneratedImage(active: ActiveTurn, rpc: CodexJsonRpcSession): Promise<void> {
+  const { thread, turn } = active;
+  const image = createPng(768, 700);
+  const savedPath = join(thread.cwd, ".clanky-e2e-generated-image.png");
+  const id = randomUUID();
+  await Bun.write(savedPath, image);
+  rpc.notify("item/started", {
+    item: {
+      type: "imageGeneration",
+      id,
+      status: "inProgress",
+      revisedPrompt: null,
+      result: "",
+      failure: null,
+    },
+    threadId: thread.id,
+    turnId: turn.id,
+    startedAtMs: Date.now(),
+  });
+  const item = {
+    type: "imageGeneration",
+    id,
+    status: "completed",
+    revisedPrompt: null,
+    result: image.toString("base64"),
+    failure: null,
+    savedPath,
+  };
+  turn.items.push(item);
+  rpc.notify("item/completed", {
+    item,
+    threadId: thread.id,
+    turnId: turn.id,
+    completedAtMs: Date.now(),
+  });
+}
+
 export async function runCodexTurn(
   active: ActiveTurn,
   store: CodexFixtureStore,
@@ -147,6 +191,7 @@ export async function runCodexTurn(
       : assistantText;
   const imageReceiptText = imageReceipts(turn).join("\n");
   emitAssistantMessage(active, imageReceiptText ? `${responseText}\n${imageReceiptText}` : responseText, rpc);
+  if (requestsGeneratedImage(turn)) await emitGeneratedImage(active, rpc);
   await store.completeTurn(active);
   rpc.notify("thread/status/changed", {
     threadId: thread.id,

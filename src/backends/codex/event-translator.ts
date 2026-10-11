@@ -17,6 +17,8 @@ export class CodexEventTranslator {
   private readonly messages = new Set<string>();
   private readonly imageOutputBudget = new ProviderImageOutputBudget();
 
+  constructor(private readonly options: { includeProviderImageFileReference?: boolean } = {}) {}
+
   translate(event: CodexNotification, scope: HarnessEventScope): HarnessEvent[] {
     const wrap = (payload: HarnessEventPayload): HarnessEvent => ({ ...payload, scope });
     switch (event.method) {
@@ -83,11 +85,30 @@ export class CodexEventTranslator {
   private translateItem(item: ThreadItem, completed: boolean): HarnessEventPayload[] {
     if (item.type === "imageGeneration") {
       if (completed && item.status === "completed" && item.failure === null) {
-        return projectProviderImageOutput(
+        const projection = projectProviderImageOutput(
           item,
           `codex-image:${item.id}`,
           this.imageOutputBudget,
-        ).events;
+        );
+        const savedPath = item.savedPath;
+        if (
+          !this.options.includeProviderImageFileReference
+          || typeof savedPath !== "string"
+          || savedPath.length === 0
+          || savedPath.length > 16_384
+        ) {
+          return projection.events;
+        }
+        return projection.events.map((event) => {
+          if (event.type !== "message.complete" || event.attachments?.length !== 1) {
+            return event;
+          }
+          const { data: _data, ...attachment } = event.attachments[0]!;
+          return {
+            ...event,
+            providerImageFile: { path: savedPath, attachment },
+          };
+        });
       }
       return [];
     }

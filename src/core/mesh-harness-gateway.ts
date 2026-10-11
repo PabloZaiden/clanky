@@ -7,7 +7,7 @@ import type { Backend, AgentSession } from "../backends/types";
 import { createLocalHarnessBackend } from "../backends/harness-factory";
 import type { HarnessConversationBinding } from "@/shared/harness-control";
 import type { HarnessActivitySnapshot } from "@/shared/harness-control";
-import type { HarnessEvent } from "@/shared/harness-events";
+import type { HarnessEvent, ProviderImageFileReference } from "@/shared/harness-events";
 import type { MeshHarnessOperation } from "@/contracts/schemas/mesh-harness";
 import { meshExecutionGateway, type MeshExecutionGateway } from "./mesh-execution-gateway";
 import { meshInboundResourceRegistry } from "./mesh-inbound-resource-registry";
@@ -22,6 +22,24 @@ const MAX_HOSTS = 64;
 const MAX_CONVERSATIONS = 64;
 const MAX_SUBSCRIBERS = 8;
 const MAX_EVENT_BYTES = 2 * 1024 * 1024;
+
+function matchingProviderImageFileReference(
+  event: Extract<HarnessEvent, { type: "message.complete" }>,
+): ProviderImageFileReference | undefined {
+  const reference = event.providerImageFile;
+  const attachment = event.attachments?.length === 1 ? event.attachments[0] : undefined;
+  if (
+    !reference
+    || !attachment
+    || reference.attachment.id !== attachment.id
+    || reference.attachment.filename !== attachment.filename
+    || reference.attachment.mimeType !== attachment.mimeType
+    || reference.attachment.size !== attachment.size
+  ) {
+    return undefined;
+  }
+  return reference;
+}
 
 interface Conversation {
   binding: HarnessConversationBinding;
@@ -129,6 +147,14 @@ export class MeshHarnessGateway {
   private async observe(host: Host, conversation: Conversation): Promise<void> {
     try {
       for (let event = await conversation.source.next(); event; event = await conversation.source.next()) {
+        const providerImageFile = event.type === "message.complete"
+          ? matchingProviderImageFileReference(event)
+          : undefined;
+        let eventForForwarding: HarnessEvent = event;
+        if (event.type === "message.complete" && event.providerImageFile) {
+          const { providerImageFile: _providerImageFile, ...eventWithoutFileReference } = event;
+          eventForForwarding = eventWithoutFileReference;
+        }
         const imageDataBytes = event.type === "message.complete"
           ? event.attachments?.reduce((total, attachment) => total + Buffer.byteLength(attachment.data), 0) ?? 0
           : 0;
@@ -137,20 +163,30 @@ export class MeshHarnessGateway {
           : Buffer.byteLength(JSON.stringify(event));
         if (eventBytes > MAX_EVENT_BYTES) {
           if (event.type === "message.complete" && event.attachments?.length) {
-            const { attachments: _attachments, ...messageWithoutImages } = event;
-            const textEventBytes = Buffer.byteLength(JSON.stringify(messageWithoutImages));
-            if (event.content.length > 0) {
+            const {
+              attachments: _attachments,
+              providerImageFile: _providerImageFile,
+              ...messageWithoutImages
+            } = event;
+            const messageForForwarding = providerImageFile
+              ? { ...messageWithoutImages, providerImageFile }
+              : messageWithoutImages;
+            const textEventBytes = Buffer.byteLength(JSON.stringify(messageForForwarding));
+            if (event.content.length > 0 || providerImageFile) {
               if (textEventBytes > MAX_EVENT_BYTES) {
                 throw new DomainError("harness_event_gap", "The native event exceeds the stream limit.");
               }
               for (const subscriber of conversation.subscribers) {
-                subscriber.push(messageWithoutImages);
+                subscriber.push(messageForForwarding);
               }
             }
             const warning: HarnessEvent = {
               type: "request.error",
               code: "mesh_image_omitted",
               message: "A provider-generated image exceeded the Mesh event limit and was omitted.",
+              ...(providerImageFile ? {
+                details: { attachmentId: providerImageFile.attachment.id },
+              } : {}),
               scope: event.scope,
               ...(event.timestamp ? { timestamp: event.timestamp } : {}),
               ...(event.sourceEventId ? { sourceEventId: event.sourceEventId } : {}),
@@ -171,7 +207,7 @@ export class MeshHarnessGateway {
           conversation.interactions.add(event.requestId);
         }
         if (event.type === "question.resolved") conversation.interactions.delete(event.requestId);
-        for (const subscriber of conversation.subscribers) subscriber.push(event);
+        for (const subscriber of conversation.subscribers) subscriber.push(eventForForwarding);
       }
       if (!host.controller.signal.aborted && !conversation.closing) throw new DomainError("harness_transport_closed", "The native event source closed.");
     } catch (error) {

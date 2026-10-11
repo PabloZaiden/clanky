@@ -2,7 +2,6 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
-import { deflateSync } from "node:zlib";
 import {
   compiledClankyCommand,
   enrollMeshWorker,
@@ -17,21 +16,13 @@ import {
   installExternalCodexProvider,
   installExternalNativeCopilotProvider,
 } from "./support/provider";
+import { createPng } from "./support/png-fixtures";
 
 const IMAGE_RECEIPT = "E2E image received: image/png; PNG signature OK";
 const MESH_EXECUTION_MAX_MESSAGE_BYTES = 2 * 1024 * 1024;
 const MESSAGE_ATTACHMENT_MAX_BYTES = 20 * 1024 * 1024;
 const MESSAGE_ATTACHMENT_MAX_TURN_BYTES = 40 * 1024 * 1024;
 const LARGE_IMAGE_MESH_REQUEST_TIMEOUT_MS = 30_000;
-const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-const CRC32_TABLE = new Uint32Array(256);
-for (let value = 0; value < CRC32_TABLE.length; value += 1) {
-  let crc = value;
-  for (let bit = 0; bit < 8; bit += 1) {
-    crc = (crc >>> 1) ^ ((crc & 1) === 1 ? 0xedb88320 : 0);
-  }
-  CRC32_TABLE[value] = crc >>> 0;
-}
 
 interface MeshRegistration {
   workerNodeId: string;
@@ -91,50 +82,20 @@ interface ChatSteerResponse {
 interface ChatSnapshot {
   transcript: {
     messages: Array<{
+      attachments?: Array<{
+        filename: string;
+        mimeType: string;
+        size: number;
+        data: string;
+      }>;
       content: string;
       role: string;
     }>;
   };
 }
 
-function pngChunk(type: "IHDR" | "IDAT" | "IEND", data: Buffer): Buffer {
-  const typeBytes = Buffer.from(type, "ascii");
-  const length = Buffer.alloc(4);
-  length.writeUInt32BE(data.byteLength);
-  const crcInput = Buffer.concat([typeBytes, data]);
-  let crc = 0xffffffff;
-  for (const byte of crcInput) {
-    crc = (crc >>> 8) ^ CRC32_TABLE[(crc ^ byte) & 0xff]!;
-  }
-  const checksum = Buffer.alloc(4);
-  checksum.writeUInt32BE((crc ^ 0xffffffff) >>> 0);
-  return Buffer.concat([length, crcInput, checksum]);
-}
-
 function createPngAttachment(width: number, height: number, filename: string) {
-  const rowBytes = width * 4 + 1;
-  const pixels = Buffer.alloc(rowBytes * height);
-  let seed = 0x12345678;
-  for (let y = 0; y < height; y += 1) {
-    const rowOffset = y * rowBytes;
-    pixels[rowOffset] = 0;
-    for (let x = 1; x < rowBytes; x += 1) {
-      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
-      pixels[rowOffset + x] = seed >>> 24;
-    }
-  }
-
-  const header = Buffer.alloc(13);
-  header.writeUInt32BE(width, 0);
-  header.writeUInt32BE(height, 4);
-  header[8] = 8;
-  header[9] = 6;
-  const image = Buffer.concat([
-    PNG_SIGNATURE,
-    pngChunk("IHDR", header),
-    pngChunk("IDAT", deflateSync(pixels, { level: 0 })),
-    pngChunk("IEND", Buffer.alloc(0)),
-  ]);
+  const image = createPng(width, height);
   return {
     id: crypto.randomUUID(),
     filename,
@@ -510,6 +471,61 @@ test("compiled Mesh hosts deliver large images to native Codex and Copilot", asy
         (message) => message.role === "assistant"
           && message.content.split(IMAGE_RECEIPT).length - 1 === 2,
       )).toBe(true);
+
+      if (provider.provider === "codex") {
+        const generatedImagePrompt = await meshJsonRequest<ChatMessageResponse>(
+          controller,
+          `/api/chats/${encodeURIComponent(chatId)}/messages`,
+          {
+            method: "POST",
+            body: {
+              message: "Generate a PNG larger than two MiB.",
+              attachments: [],
+              clientId: crypto.randomUUID(),
+            },
+          },
+        );
+        expect(generatedImagePrompt.status).toBe(200);
+        const generatedImageChat = await waitForIdleChat(controller, chatId);
+        if (generatedImageChat.state.status !== "idle") {
+          throw new Error(`Codex-generated Mesh image chat failed: ${JSON.stringify(generatedImageChat.state)}`);
+        }
+
+        const generatedImageSnapshot = await pollUntil(
+          async () => await meshJsonRequest<ChatSnapshot>(
+            controller,
+            `/api/chats/${encodeURIComponent(chatId)}/snapshot?full=1`,
+          ),
+          (response) => response.status === 200
+            && response.body.transcript.messages.some((message) => (
+              message.role === "assistant"
+              && message.attachments?.some((attachment) => attachment.mimeType === "image/png")
+            )),
+          {
+            description: "Codex-generated Mesh image to appear in the public chat snapshot",
+            timeoutMs: 10_000,
+            formatLastObserved: (response) => response.status === 200
+              ? JSON.stringify(response.body.transcript.messages
+                .filter((message) => message.role === "assistant")
+                .map((message) => ({
+                  content: message.content.slice(0, 160),
+                  attachments: message.attachments?.map(({ filename, mimeType, size }) => ({
+                    filename,
+                    mimeType,
+                    size,
+                  })),
+                })))
+              : JSON.stringify(response),
+          },
+        );
+        const generatedImage = generatedImageSnapshot.body.transcript.messages
+          .flatMap((message) => message.role === "assistant" ? message.attachments ?? [] : [])
+          .find((attachment) => attachment.mimeType === "image/png");
+        expect(generatedImage).toBeDefined();
+        expect(generatedImage!.size).toBeGreaterThan(MESH_EXECUTION_MAX_MESSAGE_BYTES);
+        expect(generatedImage!.data.length).toBeGreaterThan(MESH_EXECUTION_MAX_MESSAGE_BYTES);
+        expect(Buffer.byteLength(generatedImage!.data, "base64")).toBe(generatedImage!.size);
+      }
     }
   } catch (error) {
     primaryError = error;

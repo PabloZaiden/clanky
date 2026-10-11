@@ -312,7 +312,13 @@ export class CodexSessionService {
   private trackThread(thread: Thread, rootId: string): void {
     const previous = this.threads.get(thread.id);
     if (!previous && this.threads.size >= 1000) throw new HarnessError("harness_event_gap", "The native thread graph limit was exceeded.");
-    this.threads.set(thread.id, previous ? { ...previous, thread } : { thread, rootId, translator: new CodexEventTranslator() });
+    const includeProviderImageFileReference =
+      this.conversations.get(rootId)?.info.binding?.executionHost?.host.kind === "mesh";
+    this.threads.set(thread.id, previous ? { ...previous, thread } : {
+      thread,
+      rootId,
+      translator: new CodexEventTranslator({ includeProviderImageFileReference }),
+    });
   }
 
   private receive(event: CodexNotification): void {

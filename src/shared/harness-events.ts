@@ -21,6 +21,11 @@ export type HarnessEventScope =
   | { kind: "child"; activityId: string; native?: HarnessNativeReferences }
   | { kind: "unknown"; native?: HarnessNativeReferences };
 
+export interface ProviderImageFileReference {
+  path: string;
+  attachment: Omit<MessageAttachment, "data">;
+}
+
 export interface QuestionOption {
   label: string;
   description: string;
@@ -52,6 +57,7 @@ export type HarnessEventPayload =
       content: string;
       messageId?: string;
       attachments?: MessageAttachment[];
+      providerImageFile?: ProviderImageFileReference;
     }
   | { type: "reasoning.delta"; content: string }
   | { type: "tool.start"; toolCallId?: string; toolName: string; input: unknown }

@@ -7,7 +7,10 @@ import { MessageAttachmentsSchema } from "./task";
 import { MESH_PROTOCOL_VERSION } from "@/shared/mesh-protocol";
 import { MESH_HARNESS_MAX_CIPHERTEXT_BYTES } from "@/shared/mesh-execution";
 import { ClankyControlContextSchema } from "@/shared/clanky-control";
-import { MESSAGE_IMAGE_ALLOWED_MIME_TYPES } from "@/shared/message-attachments";
+import {
+  MESSAGE_ATTACHMENT_MAX_BYTES,
+  MESSAGE_IMAGE_ALLOWED_MIME_TYPES,
+} from "@/shared/message-attachments";
 
 const Id = z.string().min(1).max(500);
 const Path = z.string().min(1).max(16_384);
@@ -36,6 +39,23 @@ const ProviderImageAttachmentsSchema = MessageAttachmentsSchema.superRefine((att
     }
   });
 });
+const ProviderImageFileReferenceSchema = z.object({
+  path: Path,
+  attachment: z.object({
+    id: z.string().min(1),
+    filename: z.string().min(1),
+    mimeType: z.string().min(1),
+    size: z.number().int().positive().max(MESSAGE_ATTACHMENT_MAX_BYTES),
+  }).superRefine((attachment, ctx) => {
+    if (!(MESSAGE_IMAGE_ALLOWED_MIME_TYPES as readonly string[]).includes(attachment.mimeType)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["mimeType"],
+        message: "provider image file references must use a supported image MIME type",
+      });
+    }
+  }),
+}).strict();
 
 export const MeshHarnessOperationSchema = z.discriminatedUnion("operation", [
   z.object({ operation: z.literal("capabilities") }),
@@ -86,6 +106,7 @@ export const MeshHarnessEventSchema = z.intersection(z.discriminatedUnion("type"
     content: z.string(),
     messageId: Id.optional(),
     attachments: ProviderImageAttachmentsSchema.optional(),
+    providerImageFile: ProviderImageFileReferenceSchema.optional(),
   }),
   z.object({ type: z.literal("reasoning.delta"), content: z.string() }),
   z.object({ type: z.literal("tool.start"), toolCallId: Id.optional(), toolName: Id, input: z.unknown() }),
