@@ -484,6 +484,34 @@ test("Copilot shares ordinary Live and queued turns while control steering prese
     await waitForChatIdle(application, ordinaryId);
     await waitForImageReceipt(application, ordinaryId);
 
+    const mismatchedMessageIdPrompt = "Reconcile a streamed completion [mismatched-message-id]";
+    await application.json(`/api/chats/${ordinaryId}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ message: mismatchedMessageIdPrompt, attachments: [] }),
+    });
+    await waitForChatIdle(application, ordinaryId);
+    const mismatchedMessageIdContent = `Agent received: ${mismatchedMessageIdPrompt}\nClanky tools unavailable.`;
+    const mismatchedMessageIdSnapshot = (
+      await application.json<ChatSnapshot>(`/api/chats/${ordinaryId}/snapshot?full=1`)
+    ).data;
+    expect(mismatchedMessageIdSnapshot.transcript.messages.filter(
+      (message) => message.role === "assistant" && message.content === mismatchedMessageIdContent,
+    )).toHaveLength(1);
+
+    const separateIdenticalPrompt = "Emit two separate identical responses [separate-identical-messages]";
+    await application.json(`/api/chats/${ordinaryId}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ message: separateIdenticalPrompt, attachments: [] }),
+    });
+    await waitForChatIdle(application, ordinaryId);
+    const separateIdenticalContent = `Agent received: ${separateIdenticalPrompt}\nClanky tools unavailable.`;
+    const separateIdenticalSnapshot = (
+      await application.json<ChatSnapshot>(`/api/chats/${ordinaryId}/snapshot?full=1`)
+    ).data;
+    expect(separateIdenticalSnapshot.transcript.messages.filter(
+      (message) => message.role === "assistant" && message.content === separateIdenticalContent,
+    )).toHaveLength(2);
+
     await application.json("/api/preferences/quick-chat", {
       method: "PUT", body: JSON.stringify({ workspaceId: workspace.id, model: modelConfig, useWorktree: false }),
     });

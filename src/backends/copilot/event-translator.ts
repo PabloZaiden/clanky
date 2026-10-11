@@ -11,8 +11,18 @@ import {
   redactProviderImagePayloads,
 } from "../provider-image-output";
 
+interface ActiveMessage {
+  messageId: string;
+  scopeKey: string;
+  deltaContent: string | null;
+}
+
+const MAX_TRACKED_DELTA_CONTENT_CHARS = 1_000_000;
+
 export class CopilotEventTranslator {
-  private readonly messages = new Set<string>();
+  private readonly messages = new Map<string, ActiveMessage>();
+  private trackedDeltaContentChars = 0;
+  private currentMessageKey?: string;
   private readonly tools = new Map<string, string>();
   private readonly imageOutputBudget = new ProviderImageOutputBudget();
   private queryError?: Extract<HarnessEventPayload, { type: "request.error" }>;
@@ -40,15 +50,29 @@ export class CopilotEventTranslator {
     });
     switch (event.type) {
       case "assistant.message_delta": {
-        const events = this.startMessage(event.data.messageId).map(wrap);
+        const messageKey = this.getMessageKey(scope, event.data.messageId);
+        const restart = this.messages.has(messageKey) && this.currentMessageKey !== messageKey;
+        const events = this.startMessage(scope, event.data.messageId, restart).map(wrap);
+        this.appendMessageDelta(messageKey, event.data.deltaContent);
         events.push(wrap({ type: "message.delta", content: event.data.deltaContent }));
         return events;
       }
       case "assistant.message": {
         if (scope.kind === "principal" && event.data.content.trim()) this.queryError = undefined;
-        const events = this.startMessage(event.data.messageId).map(wrap);
+        const nativeMessageKey = this.getMessageKey(scope, event.data.messageId);
+        // Reconcile an ID mismatch only when one active delta stream exactly matches the final content.
+        let completedMessageKey = this.messages.has(nativeMessageKey)
+          ? nativeMessageKey
+          : this.findMatchingStreamedMessage(scope, event.data.content);
+        const activeMessage = completedMessageKey
+          ? this.messages.get(completedMessageKey)
+          : undefined;
+        const events = activeMessage
+          ? this.startMessage(scope, activeMessage.messageId, this.currentMessageKey !== completedMessageKey).map(wrap)
+          : this.startMessage(scope, event.data.messageId).map(wrap);
+        completedMessageKey ??= nativeMessageKey;
         events.push(wrap({ type: "message.complete", content: event.data.content }));
-        this.messages.delete(event.data.messageId);
+        this.deleteMessage(completedMessageKey);
         return events;
       }
       case "assistant.reasoning_delta":
@@ -94,9 +118,11 @@ export class CopilotEventTranslator {
       case "session.error":
         return [wrap(this.translateFailure(event, scope.kind === "principal"))];
       case "session.idle":
-        return scope.kind === "principal"
-          ? this.completePrincipalPrompt(event.data.aborted === true).map(wrap)
-          : [wrap({ type: "prompt.complete", outcome: "completed" }), wrap({ type: "activity.changed" })];
+        if (scope.kind === "principal") {
+          return this.completePrincipalPrompt(event.data.aborted === true).map(wrap);
+        }
+        this.clearMessagesInScope(this.getScopeKey(scope));
+        return [wrap({ type: "prompt.complete", outcome: "completed" }), wrap({ type: "activity.changed" })];
       case "session.background_tasks_changed":
         return [wrap({ type: "activity.changed" })];
       case "assistant.turn_start":
@@ -131,14 +157,74 @@ export class CopilotEventTranslator {
     const failure = this.queryError;
     this.queryError = undefined;
     this.interrupted = false;
+    this.clearMessagesInScope("principal");
     if (failure && outcome !== "interrupted") return [{ ...failure, type: "error" }];
     return [{ type: "prompt.complete", outcome }, { type: "activity.changed" }];
   }
 
-  private startMessage(messageId: string): HarnessEventPayload[] {
-    if (this.messages.has(messageId)) return [];
+  private startMessage(
+    scope: HarnessEventScope,
+    messageId: string,
+    restart = false,
+  ): HarnessEventPayload[] {
+    const scopeKey = this.getScopeKey(scope);
+    const messageKey = this.getMessageKey(scope, messageId);
+    if (this.messages.has(messageKey)) {
+      if (!restart) return [];
+      this.currentMessageKey = messageKey;
+      return [{ type: "message.start", messageId }];
+    }
     if (this.messages.size >= 1024) throw new HarnessError("harness_request_failed", "Too many active native messages.");
-    this.messages.add(messageId);
+    this.messages.set(messageKey, { messageId, scopeKey, deltaContent: "" });
+    this.currentMessageKey = messageKey;
     return [{ type: "message.start", messageId }];
+  }
+
+  private appendMessageDelta(messageKey: string, content: string): void {
+    if (content.length === 0) return;
+    const message = this.messages.get(messageKey);
+    if (!message || message.deltaContent === null) return;
+    if (this.trackedDeltaContentChars + content.length > MAX_TRACKED_DELTA_CONTENT_CHARS) {
+      this.trackedDeltaContentChars -= message.deltaContent.length;
+      message.deltaContent = null;
+      return;
+    }
+    message.deltaContent += content;
+    this.trackedDeltaContentChars += content.length;
+  }
+
+  private findMatchingStreamedMessage(scope: HarnessEventScope, content: string): string | undefined {
+    if (content.length === 0) return undefined;
+    const scopeKey = this.getScopeKey(scope);
+    let match: string | undefined;
+    for (const [key, message] of this.messages) {
+      if (message.scopeKey !== scopeKey || message.deltaContent !== content) continue;
+      if (match) return undefined;
+      match = key;
+    }
+    return match;
+  }
+
+  private deleteMessage(messageKey: string): void {
+    const message = this.messages.get(messageKey);
+    if (!message) return;
+    if (message.deltaContent !== null) {
+      this.trackedDeltaContentChars -= message.deltaContent.length;
+    }
+    this.messages.delete(messageKey);
+  }
+
+  private clearMessagesInScope(scopeKey: string): void {
+    for (const [key, message] of this.messages) {
+      if (message.scopeKey === scopeKey) this.deleteMessage(key);
+    }
+  }
+
+  private getMessageKey(scope: HarnessEventScope, messageId: string): string {
+    return `${this.getScopeKey(scope)}\0${messageId}`;
+  }
+
+  private getScopeKey(scope: HarnessEventScope): string {
+    return scope.kind === "child" ? `child:${scope.activityId}` : "principal";
   }
 }

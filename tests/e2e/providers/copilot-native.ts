@@ -44,7 +44,24 @@ function event(session: Session, type: string, data: Record<string, unknown>): v
 }
 
 function finish(session: Session, content: string): void {
-  event(session, "assistant.message", { messageId: crypto.randomUUID(), content });
+  if (session.prompt.includes("[mismatched-message-id]")) {
+    const streamingMessageId = crypto.randomUUID();
+    const splitIndex = Math.floor(content.length / 2);
+    event(session, "assistant.message_delta", {
+      messageId: streamingMessageId,
+      deltaContent: content.slice(0, splitIndex),
+    });
+    event(session, "assistant.message_delta", {
+      messageId: streamingMessageId,
+      deltaContent: content.slice(splitIndex),
+    });
+    event(session, "assistant.message", { messageId: crypto.randomUUID(), content });
+  } else if (session.prompt.includes("[separate-identical-messages]")) {
+    event(session, "assistant.message", { messageId: crypto.randomUUID(), content });
+    event(session, "assistant.message", { messageId: crypto.randomUUID(), content });
+  } else {
+    event(session, "assistant.message", { messageId: crypto.randomUUID(), content });
+  }
   session.processing = false;
   event(session, "session.idle", {});
 }
