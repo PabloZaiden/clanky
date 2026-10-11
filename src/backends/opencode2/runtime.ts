@@ -101,10 +101,7 @@ export class OpenCodeRuntime {
         baseUrl, headers: { authorization: `Basic ${Buffer.from(`opencode:${password}`).toString("base64")}` },
         fetch: createNativeFetch(requestAbort.signal),
       }), subprocess, stdout, stderr, profile, requestAbort);
-      const info = await runtime.client.server.info({ signal: startupAbort.signal });
-      if (!Bun.semver.satisfies(info.version, ">=2.0.20 <3.0.0")) {
-        throw new HarnessError("harness_runtime_unavailable", "The native adapter requires OpenCode runtime 2.0.20 or newer in generation 2.");
-      }
+      await runtime.client.server.info({ signal: startupAbort.signal });
       if (signal?.aborted) throw new HarnessError("harness_connection_aborted", "OpenCode startup was cancelled.");
       return runtime;
     } catch (error) {

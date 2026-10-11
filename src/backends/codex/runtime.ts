@@ -37,12 +37,6 @@ export class CodexRuntime {
     if (signal?.aborted) throw new HarnessError("harness_connection_aborted", "Codex startup was cancelled.");
     const executable = Bun.which("codex", { PATH: options.env?.["PATH"] ?? process.env["PATH"], cwd: options.directory });
     if (!executable) throw new HarnessError("harness_runtime_unavailable", "Codex CLI is not installed on the execution host.");
-    const reportedVersion = (await Bun.$`${executable} --version`
-      .env({ ...process.env, ...options.env }).cwd(options.directory).quiet().text()).trim();
-    const cliVersion = /^codex-cli (\d+\.\d+\.\d+)(?:\s|$)/.exec(reportedVersion)?.[1];
-    if (!cliVersion || !Bun.semver.satisfies(cliVersion, ">=0.159.2")) {
-      throw new HarnessError("harness_runtime_unavailable", "The native Codex adapter requires CLI 0.159.2 or newer.");
-    }
     if (signal?.aborted) throw new HarnessError("harness_connection_aborted", "Codex startup was cancelled.");
     const runtime = new CodexRuntime(options.directory, executable, options.env);
     const abort = Promise.withResolvers<never>();
