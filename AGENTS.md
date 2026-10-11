@@ -100,6 +100,13 @@ proxy, set `CLANKY_PUBLIC_BASE_URL` to the external absolute HTTPS origin
 without credentials, a path, query, or fragment, forward WebSocket upgrades,
 keep port `8080` private, and persist `/app/data`.
 
+### Production environment access
+
+When the user asks to inspect or review the production environment, use the
+configured `CLANKY_` environment variables to access the production instance
+(e.g. `CLANKY_BASE_URL` and `CLANKY_API_KEY` for API access). Do not substitute
+local development defaults or expose credential values in output.
+
 ### Testing without passkeys
 
 For unattended local browser validation, start Clanky with `CLANKY_DISABLE_PASSKEY=true` so the framework bypasses interactive passkey setup while preserving the normal browser/API surface:
