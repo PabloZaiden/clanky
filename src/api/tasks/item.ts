@@ -221,8 +221,8 @@ export const tasksItemRoutes = defineRoutes({
     /**
      * DELETE /api/tasks/:id - Delete a task.
      *
-     * Deletes a task and its associated resources. For tasks with git branches,
-     * use discard or purge endpoints instead for proper cleanup.
+     * Marks the task deleted before attempting provider, chat, credential, and Git
+     * cleanup. Cleanup runs best-effort and does not block the logical deletion.
      *
      * @returns Success response or 404 if not found
      */
@@ -235,7 +235,10 @@ export const tasksItemRoutes = defineRoutes({
       }
 
       try {
-        await taskManager.deleteTask(ctx.params["id"]!);
+        const deleted = await taskManager.deleteTask(ctx.params["id"]!);
+        if (!deleted) {
+          return errorResponse("not_found", "Task not found", 404);
+        }
         log.info("DELETE /api/tasks/:id - Task deleted", { taskId: ctx.params["id"]! });
         return successResponse();
       } catch (error) {

@@ -2,7 +2,7 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
 /**
  * Task discard and purge routes.
  *
- * - POST /api/tasks/:id/discard - Discard task and delete its git branch
+ * - POST /api/tasks/:id/discard - Mark a task deleted and attempt Git cleanup
  * - POST /api/tasks/:id/purge   - Permanently delete a task from storage
  */
 
@@ -17,12 +17,13 @@ export const tasksDiscardPurgeRoutes = defineRoutes({
   "/api/tasks/:id/discard": {
     auth: "user",
     sameOrigin: "mutations",
-    description: "Discard a task and remove its working branch.",
+    description: "Discard a task; provider, session, and Git cleanup is best-effort.",
     /**
-     * POST /api/tasks/:id/discard - Discard a task and delete its git branch.
+     * POST /api/tasks/:id/discard - Discard a task.
      *
-     * Deletes the task's working branch and marks the task as deleted.
-     * After discard, the task can be purged to permanently remove it.
+     * Marks the task as deleted before attempting provider, session, credential,
+     * and Git cleanup. A cleanup failure does not block deletion; a dedicated
+     * worktree can remain until purge.
      *
      * @returns Success response
      */
@@ -50,7 +51,7 @@ export const tasksDiscardPurgeRoutes = defineRoutes({
   "/api/tasks/:id/purge": {
     auth: "user",
     sameOrigin: "mutations",
-    description: "Permanently delete a task from storage.",
+    description: "Permanently delete an eligible task; external cleanup is best-effort.",
     /**
      * POST /api/tasks/:id/purge - Permanently delete a task from storage.
      *

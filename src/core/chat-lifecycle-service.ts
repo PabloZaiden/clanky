@@ -382,7 +382,7 @@ export class ChatLifecycleService implements ChatLifecyclePort {
     if (!chat) {
       return false;
     }
-    return this.deleteChat(chat.config.id);
+    return this.deleteChat(chat.config.id, { deferCleanup: true });
   }
 
   async updateChatStatus(chatId: string, status: ChatStatus): Promise<Chat | null> {
