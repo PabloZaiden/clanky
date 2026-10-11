@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Chat, Workspace } from "@/shared";
 import type { CreateChatRequest } from "@/contracts";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
+import { resolveWorkspaceBranchSelection } from "../../lib/workspace-branch-selection";
 import {
   getStoredChatModelPreference,
   saveStoredChatModelPreference,
@@ -80,6 +81,7 @@ export function ComposeChatView({
   const {
     branches,
     branchesLoading,
+    branchesWorkspaceId,
     currentBranch,
     defaultBranch,
     handleWorkspaceChange,
@@ -91,23 +93,62 @@ export function ComposeChatView({
   } = dashboardData;
   const storedChatModel = useMemo(() => getStoredChatModelPreference(), []);
   const [name, setName] = useState("");
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState(composeWorkspace?.id ?? "");
+  const [workspaceSelectionId, setWorkspaceSelectionId] = useState(composeWorkspace?.id ?? "");
   const [selectedModel, setSelectedModel] = useState("");
   const [useWorktree, setUseWorktree] = useState(true);
   const [useChatNameAsBranch, setUseChatNameAsBranch] = useState(false);
   const [autoApprovePermissions, setAutoApprovePermissions] = useState(true);
-  const [baseBranch, setBaseBranch] = useState("");
+  const [baseBranchSelection, setBaseBranchSelection] = useState({
+    workspaceId: composeWorkspace?.id ?? "",
+    branch: "",
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const loadedWorkspaceRef = useRef<string | null>(null);
+  const selectedWorkspaceId = composeWorkspace?.id ?? workspaceSelectionId;
 
   const selectedWorkspace = useMemo(
     () => workspaces.find((workspace) => workspace.id === selectedWorkspaceId) ?? null,
     [selectedWorkspaceId, workspaces],
   );
+  const baseBranch = baseBranchSelection.workspaceId === selectedWorkspace?.id
+    ? baseBranchSelection.branch
+    : "";
+  const setBaseBranch = useCallback((branch: string): void => {
+    const workspaceId = selectedWorkspace?.id ?? "";
+    setBaseBranchSelection((current) => {
+      if (current.workspaceId === workspaceId && current.branch === branch) {
+        return current;
+      }
+      return {
+        workspaceId,
+        branch,
+      };
+    });
+  }, [selectedWorkspace?.id]);
+  const branchDataReady = Boolean(
+    selectedWorkspace
+      && (selectedWorkspace.workspaceType !== "git" || (
+        branchesWorkspaceId === selectedWorkspace.id
+        && !branchesLoading
+      )),
+  );
+  const selectedWorkspaceBranches = branchDataReady && selectedWorkspace?.workspaceType === "git"
+    ? branches
+    : [];
+  const selectedWorkspaceCurrentBranch = branchDataReady ? currentBranch : "";
+  const selectedWorkspaceDefaultBranch = branchDataReady ? defaultBranch : "";
+  const selectedWorkspaceBaseBranch = selectedWorkspace?.workspaceType === "git" && branchDataReady
+    ? resolveWorkspaceBranchSelection(
+        baseBranch,
+        selectedWorkspaceBranches,
+        selectedWorkspaceCurrentBranch,
+        selectedWorkspaceDefaultBranch,
+      )
+    : "";
 
   useEffect(() => {
     loadedWorkspaceRef.current = null;
-    setSelectedWorkspaceId(composeWorkspace?.id ?? "");
+    setWorkspaceSelectionId(composeWorkspace?.id ?? "");
     setSelectedModel("");
   }, [composeWorkspace?.id]);
 
@@ -166,8 +207,28 @@ export function ComposeChatView({
       setBaseBranch("");
       return;
     }
-    setBaseBranch((current) => current || defaultBranch || currentBranch);
-  }, [currentBranch, defaultBranch, selectedWorkspace?.id, selectedWorkspace?.workspaceType]);
+    if (!branchDataReady) {
+      return;
+    }
+    const nextBranch = resolveWorkspaceBranchSelection(
+      baseBranch,
+      selectedWorkspaceBranches,
+      selectedWorkspaceCurrentBranch,
+      selectedWorkspaceDefaultBranch,
+    );
+    if (baseBranch !== nextBranch) {
+      setBaseBranch(nextBranch);
+    }
+  }, [
+    baseBranch,
+    branchDataReady,
+    selectedWorkspace?.id,
+    selectedWorkspace?.workspaceType,
+    selectedWorkspaceBranches,
+    selectedWorkspaceCurrentBranch,
+    selectedWorkspaceDefaultBranch,
+    setBaseBranch,
+  ]);
 
   useEffect(() => {
     if (selectedModel || models.length === 0) {
@@ -185,6 +246,10 @@ export function ComposeChatView({
   async function handleSubmit(): Promise<void> {
     if (!selectedWorkspace) {
       showError("Select a workspace first");
+      return;
+    }
+    if (selectedWorkspace.workspaceType === "git" && !branchDataReady) {
+      showError("Wait for branches to load for the selected workspace");
       return;
     }
     const parsedModel = parseModelKey(effectiveSelectedModel);
@@ -209,7 +274,7 @@ export function ComposeChatView({
           : {}),
         autoApprovePermissions,
         ...(selectedWorkspace.workspaceType === "git"
-          ? { baseBranch: baseBranch.trim() || currentBranch.trim() }
+          ? { baseBranch: selectedWorkspaceBaseBranch }
           : {}),
         quick: false,
       });
@@ -241,7 +306,7 @@ export function ComposeChatView({
       : ""
   );
   const canSubmit = !isSubmitting
-    && (selectedWorkspace?.workspaceType !== "git" || !branchesLoading)
+    && (selectedWorkspace?.workspaceType !== "git" || branchDataReady)
     && !modelOptionsLoading
     && Boolean(selectedWorkspace)
     && Boolean(effectiveSelectedModel);
@@ -274,7 +339,7 @@ export function ComposeChatView({
             id="chat-workspace"
             label="Workspace"
             value={selectedWorkspaceId}
-            onChange={(event) => setSelectedWorkspaceId(event.target.value)}
+            onChange={(event) => setWorkspaceSelectionId(event.target.value)}
             disabled={Boolean(composeWorkspace) || workspacesLoading}
           >
             <option value="">
@@ -312,12 +377,12 @@ export function ComposeChatView({
 
         {selectedWorkspace?.workspaceType === "git" && (
           <BranchSelector
-          selectedBranch={baseBranch}
-          onBranchChange={setBaseBranch}
-          branches={branches}
-          branchesLoading={branchesLoading}
-          defaultBranch={defaultBranch}
-          currentBranch={currentBranch}
+            selectedBranch={selectedWorkspaceBaseBranch}
+            onBranchChange={setBaseBranch}
+            branches={selectedWorkspaceBranches}
+            branchesLoading={!branchDataReady}
+            defaultBranch={selectedWorkspaceDefaultBranch}
+            currentBranch={selectedWorkspaceCurrentBranch}
           />
         )}
 

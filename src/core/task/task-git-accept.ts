@@ -50,9 +50,28 @@ async function acceptTaskLocked(ctx: TaskCtx, taskId: string): Promise<AcceptTas
 
   try {
     await assertTaskHarnessWorkspaceSafe(ctx, taskId, { lifecycleOperationLocked: true });
-    const reviewMode = task.state.reviewMode
+    const settledTask = await ctx.getTask(taskId);
+    if (!settledTask) {
+      return taskFailure("task_not_found", "Task not found", { details: { taskId } });
+    }
+    if (settledTask.state.status !== "completed" && settledTask.state.status !== "max_iterations") {
+      return taskFailure(
+        "invalid_task_state",
+        `Cannot accept task in status: ${settledTask.state.status}`,
+        { details: { taskId, status: settledTask.state.status } },
+      );
+    }
+    if (!settledTask.state.git) {
+      return taskFailure(
+        "task_branch_missing",
+        "No git branch was created for this task",
+        { details: { taskId } },
+      );
+    }
+
+    const reviewMode = settledTask.state.reviewMode
       ? {
-          ...task.state.reviewMode,
+          ...settledTask.state.reviewMode,
           addressable: true,
           completionAction: "local" as const,
         }
@@ -62,9 +81,9 @@ async function acceptTaskLocked(ctx: TaskCtx, taskId: string): Promise<AcceptTas
           reviewCycles: 0,
         };
 
-    assertValidTransition(task.state.status, "accepted_local", "acceptTask");
+    assertValidTransition(settledTask.state.status, "accepted_local", "acceptTask");
     const updatedState = {
-      ...task.state,
+      ...settledTask.state,
       status: "accepted_local" as const,
       reviewMode,
     };

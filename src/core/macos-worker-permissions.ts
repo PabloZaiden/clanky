@@ -51,9 +51,18 @@ interface MacPermissionNativeApi {
   isScreenRecordingAllowed(): boolean;
 }
 
-/** Options for the worker-owned macOS permission preflight. */
-export interface MacWorkerPermissionPreflightOptions {
+export interface MacWorkerPermissionPreflightRequest {
   homeDirectory: string;
+}
+
+export type MacWorkerPermissionPreflightWorkerMessage =
+  | { type: "output"; message: string }
+  | { type: "complete" }
+  | { type: "error"; error: string };
+
+/** Options for the worker-owned macOS permission preflight. */
+export interface MacWorkerPermissionPreflightOptions
+  extends MacWorkerPermissionPreflightRequest {
   output(message: string): void;
 }
 

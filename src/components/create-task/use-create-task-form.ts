@@ -9,6 +9,7 @@ import { useEffect, type FormEvent } from "react";
 import type { Workspace } from "@/shared/workspace";
 import { isModelEnabled } from "../ModelSelector";
 import type { CreateTaskFormProps } from "./types";
+import { resolveWorkspaceBranchSelection } from "../../lib/workspace-branch-selection";
 import { useFormFields } from "./use-form-fields";
 import { useWorkspaceSelection } from "./use-workspace-selection";
 import { useModelSelection } from "./use-model-selection";
@@ -47,7 +48,6 @@ export interface UseCreateTaskFormReturn {
   setSelectedCheapModel: (v: string) => void;
   selectedBranch: string;
   setSelectedBranch: (v: string) => void;
-  setUserChangedBranch: (v: boolean) => void;
   selectedTemplate: string;
   setSelectedTemplate: (v: string) => void;
   autoAcceptPlan: boolean;
@@ -87,6 +87,9 @@ export function useCreateTaskForm({
   lastModel,
   lastCheapModel,
   onWorkspaceChange,
+  branches = [],
+  branchesLoading = false,
+  branchesWorkspaceId = null,
   currentBranch = "",
   defaultBranch = "",
   editTaskId = null,
@@ -107,6 +110,9 @@ export function useCreateTaskForm({
   | "lastModel"
   | "lastCheapModel"
   | "onWorkspaceChange"
+  | "branches"
+  | "branchesLoading"
+  | "branchesWorkspaceId"
   | "currentBranch"
   | "defaultBranch"
   | "editTaskId"
@@ -124,14 +130,37 @@ export function useCreateTaskForm({
   const fields = useFormFields({ isEditing, initialTaskData });
 
   const workspace = useWorkspaceSelection({
-    isEditing,
     initialTaskData,
     onWorkspaceChange,
+    branches,
+    branchesLoading,
+    branchesWorkspaceId,
+    currentBranch,
     defaultBranch,
   });
   const selectedWorkspace = workspace.selectedWorkspaceId
     ? workspaces.find((candidate) => candidate.id === workspace.selectedWorkspaceId) ?? null
     : null;
+  const branchDataReady = Boolean(
+    workspace.selectedWorkspaceId
+      && branchesWorkspaceId === workspace.selectedWorkspaceId
+      && !branchesLoading,
+  );
+  const selectedWorkspaceBranches = branchDataReady ? branches : [];
+  const selectedWorkspaceCurrentBranch = branchDataReady ? currentBranch : "";
+  const selectedWorkspaceDefaultBranch = branchDataReady ? defaultBranch : "";
+  const selectedBranch = branchDataReady
+    ? resolveWorkspaceBranchSelection(
+        workspace.selectedBranch,
+        selectedWorkspaceBranches,
+        selectedWorkspaceCurrentBranch,
+        selectedWorkspaceDefaultBranch,
+      )
+    : "";
+  const branchSelectionReady = Boolean(
+    selectedWorkspace
+      && (selectedWorkspace.workspaceType !== "git" || workspace.branchesReady),
+  );
   const worktreesAllowed = selectedWorkspace?.workspaceType === "git"
     && selectedWorkspace.allowWorktrees !== false;
   const preserveExistingWorktree = isEditing && fields.useWorktree;
@@ -192,8 +221,9 @@ export function useCreateTaskForm({
     maxIterations: fields.maxIterations,
     maxConsecutiveErrors: fields.maxConsecutiveErrors,
     activityTimeoutSeconds: fields.activityTimeoutSeconds,
-    selectedBranch: workspace.selectedBranch,
-    currentBranch,
+    selectedBranch,
+    currentBranch: selectedWorkspaceCurrentBranch,
+    branchSelectionReady,
     clearPlanningFolder: fields.clearPlanningFolder,
     useWorktree: worktreeControlDisabled && !preserveExistingWorktree
       ? false
@@ -239,7 +269,6 @@ export function useCreateTaskForm({
     setSelectedCheapModel,
     selectedBranch: workspace.selectedBranch,
     setSelectedBranch: workspace.setSelectedBranch,
-    setUserChangedBranch: workspace.setUserChangedBranch,
     selectedTemplate: fields.selectedTemplate,
     setSelectedTemplate: fields.setSelectedTemplate,
     autoAcceptPlan: fields.autoAcceptPlan,

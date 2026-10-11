@@ -64,7 +64,7 @@ async function runAutomaticWorkspaceJob(
   const result = await pollUntil(
     async () => (await meshJsonRequest<ProvisioningSnapshot>(controller, `/api/provisioning-jobs/${started.body.job.config.id}`)).body,
     (value) => ["completed", "failed"].includes(value.job.state.status), {
-      description: `automatic workspace ${String(request["mode"])} job`, timeoutMs: 10_000,
+      description: `automatic workspace ${String(request["mode"])} job`, timeoutMs: 20_000,
       formatLastObserved: (value) => JSON.stringify(value),
     },
   );

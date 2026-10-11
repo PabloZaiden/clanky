@@ -65,6 +65,7 @@ export function ComposeTaskView(props: ComposeTaskViewProps) {
         planningWarning={dashboardData.planningWarning}
         branches={dashboardData.branches}
         branchesLoading={dashboardData.branchesLoading}
+        branchesWorkspaceId={dashboardData.branchesWorkspaceId}
         currentBranch={dashboardData.currentBranch}
         defaultBranch={dashboardData.defaultBranch}
         initialTaskData={

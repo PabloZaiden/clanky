@@ -22,6 +22,10 @@ import { resetStaleTasks } from "./persistence/tasks";
 import { resetStaleChats } from "./persistence/chats";
 import { runForEachActiveUser } from "./core/background-users";
 import { backendManager } from "./core/backend-manager";
+import type {
+  MacWorkerPermissionPreflightRequest,
+  MacWorkerPermissionPreflightWorkerMessage,
+} from "./core/macos-worker-permissions";
 import { isServerEvent, type ServerEvent } from "./core/backend/backend-state";
 import { getServerStartupMessages } from "./core/server-config";
 import { pushedTaskMonitor } from "./core/pushed-task-monitor";
@@ -228,18 +232,63 @@ function stopWorkspaceWorkerReconciliation(): void {
 }
 
 function startMacWorkerPermissionPreflight(): void {
-  // Permission dialogs and user decisions can take minutes; Mesh must bind and
-  // serve requests regardless of whether the user grants them.
-  void import("./core/macos-worker-permissions")
-    .then(({ runMacWorkerPermissionPreflight }) => runMacWorkerPermissionPreflight({
-      homeDirectory: process.env["HOME"]?.trim() || homedir(),
-      output: (message) => log.info(message),
-    }))
-    .catch((error) => {
-      log.error("macOS worker permission preflight failed", {
-        error: String(error),
-      });
+  // Native FFI calls are synchronous; keep them off the Mesh server's event loop.
+  let worker: Worker | undefined;
+  let workerSourceUrl: string | undefined;
+  const releaseWorkerSource = (): void => {
+    if (workerSourceUrl) {
+      URL.revokeObjectURL(workerSourceUrl);
+      workerSourceUrl = undefined;
+    }
+  };
+
+  try {
+    const workerSource = typeof __CLANKY_MACOS_WORKER_PERMISSION_PREFLIGHT_SOURCE__ === "string"
+      ? __CLANKY_MACOS_WORKER_PERMISSION_PREFLIGHT_SOURCE__
+      : undefined;
+    const workerUrl = workerSource
+      ? (workerSourceUrl = URL.createObjectURL(
+          new Blob([workerSource], { type: "text/javascript" }),
+        ))
+      : new URL("./core/macos-worker-permissions.worker.ts", import.meta.url);
+    worker = new Worker(workerUrl, {
+      name: "clanky-macos-worker-permission-preflight",
+      ref: false,
     });
+    const permissionWorker = worker;
+    permissionWorker.onmessage = (
+      event: MessageEvent<MacWorkerPermissionPreflightWorkerMessage>,
+    ) => {
+      const message = event.data;
+      if (message.type === "output") {
+        log.info(message.message);
+      } else if (message.type === "error") {
+        log.error("macOS worker permission preflight failed", {
+          error: message.error,
+        });
+        releaseWorkerSource();
+      } else {
+        releaseWorkerSource();
+      }
+    };
+    permissionWorker.onerror = (event) => {
+      log.error("macOS worker permission preflight failed", {
+        error: event.message,
+      });
+      permissionWorker.terminate();
+      releaseWorkerSource();
+    };
+    const request: MacWorkerPermissionPreflightRequest = {
+      homeDirectory: process.env["HOME"]?.trim() || homedir(),
+    };
+    permissionWorker.postMessage(request);
+  } catch (error) {
+    worker?.terminate();
+    releaseWorkerSource();
+    log.error("Unable to start macOS worker permission preflight", {
+      error: String(error),
+    });
+  }
 }
 
 async function initializeMeshWorkerRuntime(): Promise<void> {
