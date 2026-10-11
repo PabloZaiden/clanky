@@ -196,7 +196,7 @@ test("compiled controller and worker execute an ACP chat across Mesh and reconne
       instanceName: "e2e-controller",
       environment: {
         HOME: homeDirectory,
-        CLANKY_LOG_LEVEL: process.platform === "win32" ? "error" : undefined,
+        CLANKY_LOG_LEVEL: process.env["CLANKY_LOG_LEVEL"] ?? (process.platform === "win32" ? "error" : undefined),
       },
     });
     nodes.push(controller);
@@ -208,7 +208,7 @@ test("compiled controller and worker execute an ACP chat across Mesh and reconne
         HOME: homeDirectory,
         PATH: `${providerBinDirectory}${delimiter}${process.env["PATH"] ?? ""}`,
         CLANKY_E2E_ACP_TRACE_FILE: providerTracePath,
-        CLANKY_LOG_LEVEL: process.platform === "win32" ? "error" : undefined,
+        CLANKY_LOG_LEVEL: process.env["CLANKY_LOG_LEVEL"] ?? (process.platform === "win32" ? "error" : undefined),
       },
     });
     nodes.push(worker);

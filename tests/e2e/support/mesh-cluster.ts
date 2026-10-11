@@ -533,6 +533,7 @@ export async function enrollMeshWorker(
     throw new Error("Mesh enrollment token response is incomplete");
   }
 
+  const joinStartedAt = performance.now();
   const joinResult = Bun.spawnSync([
     ...worker.command,
     "worker",
@@ -555,7 +556,7 @@ export async function enrollMeshWorker(
       joinResult.stdout.toString().trim(),
       joinResult.stderr.toString().trim(),
     ].filter((value) => value.length > 0).join("\n");
-    throw new Error(`Worker enrollment failed: ${output || `exit code ${joinResult.exitCode}`}`);
+    throw new Error(`Worker enrollment failed (pid=${String(joinResult.pid)}, exitCode=${String(joinResult.exitCode)}, signalCode=${String(joinResult.signalCode)}, timedOut=${String(joinResult.exitedDueToTimeout)}, maxBuffer=${String(joinResult.exitedDueToMaxBuffer)}, elapsedMs=${String(Math.round(performance.now() - joinStartedAt))}): ${output}`);
   }
   return created.body;
 }

@@ -467,7 +467,13 @@ export async function getWebAppServer(
     relayOnly,
   });
   await initializeDatabase();
+  if (meshWorker) {
+    log.info("Loading Mesh worker node identity");
+  }
   const identity = await ensureLocalMeshNodeIdentity();
+  if (meshWorker) {
+    log.info("Mesh worker node identity loaded");
+  }
   let workerTls: Bun.TLSOptions | undefined;
   if (meshWorker) {
     const workerEndpoint = options.workerEndpoint ?? identity.meshEndpoint;
@@ -490,20 +496,27 @@ export async function getWebAppServer(
           "A secure Mesh worker requires an HTTPS Mesh endpoint; use --insecure for HTTP.",
         );
       }
+      log.info("Loading Mesh worker TLS identity");
       const tlsIdentity = await ensureMeshWorkerTlsIdentity(workerEndpoint, {
         rotate: options.rotateWorkerTls,
       });
+      log.info("Mesh worker TLS identity loaded");
       workerTls = getMeshWorkerServerTls(tlsIdentity);
     }
+    log.info("Configuring Mesh worker execution");
     await setLocalMeshExecutionConfiguration({
       acceptRemoteExecution: options.workerExecutionEnabled ?? true,
       repositoriesBasePath: getMeshWorkerDirectory(),
       preferredModel: null,
     });
+    log.info("Mesh worker execution configured");
   }
   const dataDir = getDataDir();
   if (meshWorker && process.env["CLANKY_DISABLE_PASSKEY"] === "true") {
     throw new Error("Mesh-worker mode cannot be combined with CLANKY_DISABLE_PASSKEY");
+  }
+  if (meshWorker) {
+    log.info("Creating Mesh worker application server");
   }
   const store = sqliteWebAppStore({ dataDir, fileName: "clanky.db" });
   app = createWebAppServer<ClankyRealtimeEvent>({
@@ -597,6 +610,9 @@ export async function getWebAppServer(
   if (!meshWorker) {
     registerClankyRealtimeBridge(app);
     realtimeHeartbeatCleanup = installRealtimeHeartbeat(app.realtime);
+  }
+  if (meshWorker) {
+    log.info("Mesh worker application server created");
   }
   return app;
 }
