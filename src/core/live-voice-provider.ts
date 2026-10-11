@@ -198,27 +198,6 @@ export class LiveVoiceConnection {
   }
 }
 
-const LIVE_VALIDATION_SDP = [
-  "v=0",
-  "o=- 0 0 IN IP4 127.0.0.1",
-  "s=Clanky Live validation",
-  "t=0 0",
-  "a=group:BUNDLE 0",
-  "a=msid-semantic: WMS *",
-  "m=audio 9 UDP/TLS/RTP/SAVPF 111",
-  "c=IN IP4 0.0.0.0",
-  "a=rtcp:9 IN IP4 0.0.0.0",
-  "a=ice-ufrag:clanky",
-  "a=ice-pwd:ClankyLiveValidationPassword",
-  "a=fingerprint:sha-256 00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00",
-  "a=setup:actpass",
-  "a=mid:0",
-  "a=sendrecv",
-  "a=rtcp-mux",
-  "a=rtpmap:111 opus/48000/2",
-  "a=fmtp:111 minptime=10;useinbandfec=1",
-].join("\r\n");
-
 async function closeValidationSession(
   credentials: LiveVoiceCredentials,
   sessionId: string,
@@ -245,12 +224,13 @@ async function closeValidationSession(
 
 export async function validateLiveVoiceConfiguration(
   credentials: LiveVoiceCredentials,
+  sdp: string,
   signal?: AbortSignal,
 ): Promise<void> {
   const validationSignal = signal ?? new AbortController().signal;
   const session = await createLiveVoiceSession(
     credentials,
-    LIVE_VALIDATION_SDP,
+    sdp,
     validationSignal,
   );
   let sidebandFailed = false;

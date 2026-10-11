@@ -210,12 +210,19 @@ export class VoiceManager {
 
   async validateCapability(
     capability: VoiceCapability,
-    signal?: AbortSignal,
+    options: { signal?: AbortSignal; sdp?: string } = {},
   ): Promise<VoiceSettings> {
+    const { signal, sdp } = options;
     const settings = await getPersistedVoiceSettings() ?? emptySettings();
     const apiKey = await getPersistedVoiceApiKey(settings);
     let validationRequest: () => Promise<void>;
     if (capability === "live") {
+      if (!sdp) {
+        throw new DomainError(
+          "voice_provider_invalid_request",
+          "A browser-generated WebRTC offer is required to validate Live voice.",
+        );
+      }
       const credentials = await this.resolveLiveCredentials(settings, apiKey);
       if (!credentials) {
         throw new DomainError(
@@ -224,7 +231,7 @@ export class VoiceManager {
         );
       }
       validationRequest = async () => {
-        await validateLiveVoiceConfiguration(credentials, signal);
+        await validateLiveVoiceConfiguration(credentials, sdp, signal);
       };
     } else {
       if (!apiKey || !capabilityConfigured(settings, capability, apiKey)) {

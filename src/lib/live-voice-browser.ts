@@ -7,6 +7,44 @@ import { getClankyClientId } from "./clanky-client-id";
 import { parseApiError } from "./api-error";
 import { appFetch } from "./public-path";
 
+async function waitForIce(peer: RTCPeerConnection, signal: AbortSignal): Promise<void> {
+  if (peer.iceGatheringState === "complete") return;
+  await new Promise<void>((resolve, reject) => {
+    const finish = (error?: Error): void => {
+      clearTimeout(timer);
+      peer.removeEventListener("icegatheringstatechange", changed);
+      signal.removeEventListener("abort", aborted);
+      if (error) reject(error); else resolve();
+    };
+    const changed = (): void => { if (peer.iceGatheringState === "complete") finish(); };
+    const aborted = (): void => finish(new DOMException("Voice call cancelled.", "AbortError"));
+    const timer = setTimeout(() => finish(new Error("Voice network negotiation timed out.")), 10_000);
+    peer.addEventListener("icegatheringstatechange", changed);
+    signal.addEventListener("abort", aborted, { once: true });
+    if (signal.aborted) aborted(); else changed();
+  });
+}
+
+async function createAndGatherOffer(peer: RTCPeerConnection, signal: AbortSignal): Promise<string> {
+  if (signal.aborted) throw new DOMException("Voice call cancelled.", "AbortError");
+  await peer.setLocalDescription(await peer.createOffer());
+  await waitForIce(peer, signal);
+  const sdp = peer.localDescription?.sdp;
+  if (!sdp) throw new Error("The voice connection could not be prepared.");
+  return sdp;
+}
+
+export async function createLiveVoiceValidationOffer(signal: AbortSignal): Promise<string> {
+  const peer = new RTCPeerConnection();
+  try {
+    peer.addTransceiver("audio", { direction: "sendrecv" });
+    peer.createDataChannel("oai-events");
+    return await createAndGatherOffer(peer, signal);
+  } finally {
+    peer.close();
+  }
+}
+
 export class LiveVoiceBrowser {
   callId?: string;
   private readonly peer = new RTCPeerConnection();
@@ -83,10 +121,7 @@ export class LiveVoiceBrowser {
       ready.reject(new Error("The Live event channel closed."));
       if (!this.stopped && !this.releasing) this.update.failure("The voice connection ended.");
     };
-    await this.peer.setLocalDescription(await this.peer.createOffer());
-    await this.waitForIce(signal);
-    const sdp = this.peer.localDescription?.sdp;
-    if (!sdp) throw new Error("The voice connection could not be prepared.");
+    const sdp = await createAndGatherOffer(this.peer, signal);
     const response = await appFetch(`/api/chats/${encodeURIComponent(chatId)}/live-voice`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -120,24 +155,6 @@ export class LiveVoiceBrowser {
       clearTimeout(timer);
       signal.removeEventListener("abort", abort);
     }
-  }
-
-  private async waitForIce(signal: AbortSignal): Promise<void> {
-    if (this.peer.iceGatheringState === "complete") return;
-    await new Promise<void>((resolve, reject) => {
-      const finish = (error?: Error): void => {
-        clearTimeout(timer);
-        this.peer.removeEventListener("icegatheringstatechange", changed);
-        signal.removeEventListener("abort", aborted);
-        if (error) reject(error); else resolve();
-      };
-      const changed = (): void => { if (this.peer.iceGatheringState === "complete") finish(); };
-      const aborted = (): void => finish(new DOMException("Voice call cancelled.", "AbortError"));
-      const timer = setTimeout(() => finish(new Error("Voice network negotiation timed out.")), 10_000);
-      this.peer.addEventListener("icegatheringstatechange", changed);
-      signal.addEventListener("abort", aborted, { once: true });
-      if (signal.aborted) aborted(); else changed();
-    });
   }
 
   mute(muted: boolean): void {

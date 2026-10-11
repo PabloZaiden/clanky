@@ -19,6 +19,52 @@ export interface ManagedVoiceProvider {
   address: string;
 }
 
+export function createFixtureLiveOffer(scenario: string): string {
+  const fingerprint = Array.from({ length: 32 }, (_, index) =>
+    (index + 1).toString(16).padStart(2, "0").toUpperCase(),
+  ).join(":");
+  const icePassword = "fixtureIcePassword0123456789";
+  return [
+    "v=0",
+    "o=- 1 2 IN IP4 127.0.0.1",
+    `s=${scenario}`,
+    "t=0 0",
+    "a=group:BUNDLE 0 1",
+    "a=msid-semantic: WMS",
+    "m=audio 9 UDP/TLS/RTP/SAVPF 111",
+    "c=IN IP4 0.0.0.0",
+    "a=ice-ufrag:fixtureUfrag",
+    `a=ice-pwd:${icePassword}`,
+    `a=fingerprint:sha-256 ${fingerprint}`,
+    "a=setup:actpass",
+    "a=mid:0",
+    "a=sendrecv",
+    "a=rtcp-mux",
+    "a=rtpmap:111 opus/48000/2",
+    "m=application 9 UDP/DTLS/SCTP webrtc-datachannel",
+    "c=IN IP4 0.0.0.0",
+    "a=ice-ufrag:fixtureUfrag",
+    `a=ice-pwd:${icePassword}`,
+    `a=fingerprint:sha-256 ${fingerprint}`,
+    "a=setup:actpass",
+    "a=mid:1",
+    "a=sctp-port:5000",
+  ].join("\r\n");
+}
+
+function isBrowserLiveOffer(sdp: unknown): sdp is string {
+  if (typeof sdp !== "string") return false;
+  const lines = sdp.split(/\r?\n/u);
+  const fingerprintLine = lines.find((line) => line.startsWith("a=fingerprint:sha-256 "));
+  const fingerprint = fingerprintLine?.slice("a=fingerprint:sha-256 ".length);
+  if (!fingerprint || !/^(?:[0-9A-F]{2}:){31}[0-9A-F]{2}$/iu.test(fingerprint)) return false;
+  return lines.some((line) => line.startsWith("m=audio ") && line.includes("UDP/TLS/RTP/SAVPF"))
+    && lines.some((line) => /^m=application \d+ UDP\/DTLS\/SCTP webrtc-datachannel$/u.test(line))
+    && lines.some((line) => /^a=ice-ufrag:\S{4,}$/u.test(line))
+    && lines.some((line) => /^a=ice-pwd:\S{22,}$/u.test(line))
+    && !/^00(?::00){31}$/u.test(fingerprint);
+}
+
 function privileged(command: readonly string[]): string[] {
   return process.getuid?.() === 0
     ? [...command]
@@ -100,8 +146,11 @@ export async function startVoiceProvider(
             || body.transport?.type !== "webrtc" || !body.session.delegation.responses.tools?.length) {
             return Response.json({ error: "invalid_live_configuration" }, { status: 400 });
           }
+          const offer = body.transport.sdp;
+          if (!isBrowserLiveOffer(offer)) {
+            return Response.json({ error: "invalid_webrtc_offer" }, { status: 400 });
+          }
           const id = crypto.randomUUID();
-          const offer = String(body.transport.sdp);
           const mode = offer.includes("ordinary") ? "ordinary" : offer.includes("question") ? "question" : offer.includes("cut") ? "cut" : offer.includes("hold") ? "hold" : "steer";
           sessions.set(id, { id, stage: 0, streaming: false, active: false, mode });
           return Response.json({ session: { id }, transport: { type: "webrtc", sdp: "v=0\r\ns=external-live-provider\r\n" } }, { status: 201 });
