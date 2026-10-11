@@ -19,44 +19,50 @@ export function recoverOwnedNativeEngineImpl(
   taskId: string,
   purpose: "finalization" | "input-recovery",
 ): Promise<TaskEngine> {
-  return runTaskLifecycleOperation(taskId, async () => {
-    return await completionRecovery.run(taskId, async () => {
-      const existing = ctx.engines.get(taskId);
-      if (existing) return existing;
-      const task = await loadTask(taskId);
-      if (!task) throw new TaskOperationError("task_not_found", "The task is unavailable.");
-      if (task.state.status === "deleted") {
-        throw new TaskOperationError("invalid_task_state", "Cannot recover a deleted task session.", {
-          details: { taskId, status: task.state.status },
-        });
-      }
-      const binding = task.state.session?.binding;
-      if (!binding || binding.adapter === "acp" || (purpose === "finalization" && task.state.status !== "completed")) {
-        throw new TaskOperationError("invalid_task_state", "Recovery requires the owned native conversation.");
-      }
-      const directory = getTaskWorkingDirectory(task);
-      if (!directory) throw new TaskOperationError("task_worktree_missing", "The task worktree is unavailable.");
-      const executor = await backendManager.getCommandExecutorAsync(task.config.workspaceId, task.config.directory);
-      const git = GitService.withExecutor(executor);
-      if (task.config.useWorktree) await git.assertCanonicalManagedWorktreePath(task.config.directory, taskId, directory);
-      const engine = new TaskEngine({
-        task,
-        backend: backendManager.getTaskBackend(taskId, task.config.workspaceId),
-        gitService: git, eventEmitter: ctx.emitter, skipGitSetup: true,
-        onPersistState: async (state, options) => { await updateTaskState(taskId, state, options); },
+  return runTaskLifecycleOperation(taskId, () => recoverOwnedNativeEngineLocked(ctx, taskId, purpose));
+}
+
+export function recoverOwnedNativeEngineLocked(
+  ctx: TaskCtx,
+  taskId: string,
+  purpose: "finalization" | "input-recovery",
+): Promise<TaskEngine> {
+  return completionRecovery.run(taskId, async () => {
+    const existing = ctx.engines.get(taskId);
+    if (existing) return existing;
+    const task = await loadTask(taskId);
+    if (!task) throw new TaskOperationError("task_not_found", "The task is unavailable.");
+    if (task.state.status === "deleted") {
+      throw new TaskOperationError("invalid_task_state", "Cannot recover a deleted task session.", {
+        details: { taskId, status: task.state.status },
       });
-      try {
-        // Recovery attaches the exact owned session; it never starts another task turn.
-        await engine.reconnectSession();
-        ctx.engines.set(taskId, engine);
-        startStatePersistenceImpl(ctx, taskId);
-        return engine;
-      } catch (error) {
-        await harnessActivityService.close({ kind: "task", id: taskId });
-        await backendManager.disconnectTask(taskId);
-        throw new TaskOperationError("task_session_reconnect_failed", "Cannot recover native finalization.", { cause: error });
-      }
+    }
+    const binding = task.state.session?.binding;
+    if (!binding || binding.adapter === "acp" || (purpose === "finalization" && task.state.status !== "completed")) {
+      throw new TaskOperationError("invalid_task_state", "Recovery requires the owned native conversation.");
+    }
+    const directory = getTaskWorkingDirectory(task);
+    if (!directory) throw new TaskOperationError("task_worktree_missing", "The task worktree is unavailable.");
+    const executor = await backendManager.getCommandExecutorAsync(task.config.workspaceId, task.config.directory);
+    const git = GitService.withExecutor(executor);
+    if (task.config.useWorktree) await git.assertCanonicalManagedWorktreePath(task.config.directory, taskId, directory);
+    const engine = new TaskEngine({
+      task,
+      backend: backendManager.getTaskBackend(taskId, task.config.workspaceId),
+      gitService: git, eventEmitter: ctx.emitter, skipGitSetup: true,
+      onPersistState: async (state, options) => { await updateTaskState(taskId, state, options); },
     });
+    try {
+      // Recovery attaches the exact owned session; it never starts another task turn.
+      await engine.reconnectSession();
+      ctx.engines.set(taskId, engine);
+      startStatePersistenceImpl(ctx, taskId);
+      return engine;
+    } catch (error) {
+      await harnessActivityService.close({ kind: "task", id: taskId });
+      await backendManager.disconnectTask(taskId);
+      throw new TaskOperationError("task_session_reconnect_failed", "Cannot recover native finalization.", { cause: error });
+    }
   });
 }
 

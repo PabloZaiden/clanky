@@ -10,7 +10,10 @@ import { HarnessError } from "../../backends/harness-errors";
 import { TaskOperationError } from "./task-errors";
 import { getHarnessWorkspaceSafety } from "../harness-workspace-safety";
 import { mergeHarnessProjection } from "../../persistence/harness-state";
-import { recoverOwnedNativeEngineImpl } from "./task-engine-recovery";
+import {
+  recoverOwnedNativeEngineImpl,
+  recoverOwnedNativeEngineLocked,
+} from "./task-engine-recovery";
 
 async function resolveTaskHarness(ctx: TaskCtx, taskId: string, taskSnapshot?: Task) {
   const task = taskSnapshot ?? await ctx.getTask(taskId);
@@ -42,15 +45,19 @@ export async function assertTaskHarnessWorkspaceSafe(
     requireFinalCommit?: boolean;
     taskSnapshot?: Task;
     persistProjection?: boolean;
+    lifecycleOperationLocked?: boolean;
   } = {},
 ): Promise<void> {
-  if (!options.taskSnapshot) {
+  if (!options.taskSnapshot && !options.lifecycleOperationLocked) {
     await ctx.engines.get(taskId)?.waitForCompletionSettlement();
   }
   let { task, backend } = await resolveTaskHarness(ctx, taskId, options.taskSnapshot);
   const nativeBinding = task.state.session?.binding;
   if (options.requireFinalCommit !== false && nativeBinding && nativeBinding.adapter !== "acp" && task.state.status === "completed" && task.state.harness?.gitOutcome?.status !== "succeeded") {
-    const engine = ctx.engines.get(taskId) ?? await recoverOwnedNativeEngineImpl(ctx, taskId, "finalization");
+    const recoverEngine = options.lifecycleOperationLocked
+      ? recoverOwnedNativeEngineLocked
+      : recoverOwnedNativeEngineImpl;
+    const engine = ctx.engines.get(taskId) ?? await recoverEngine(ctx, taskId, "finalization");
     await engine.retryWorkspaceFinalization();
     ({ task, backend } = await resolveTaskHarness(ctx, taskId, options.taskSnapshot));
   }

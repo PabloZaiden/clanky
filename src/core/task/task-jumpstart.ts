@@ -27,22 +27,22 @@ export async function jumpstartTaskImpl(
 }
 
 /** Internal helper used by pending-engine and follow-up modules. */
-export function jumpstartTaskFromEngine(
-  ctx: TaskCtx,
-  taskId: string,
-  options: { message?: string; model?: ModelConfig; attachments?: MessageAttachment[] }
-): Promise<TaskResult> {
-  return runTaskLifecycleOperation(taskId, async () => {
-    return await jumpstartTaskFromEngineLocked(ctx, taskId, options);
-  });
-}
-
-async function jumpstartTaskFromEngineLocked(
+export async function jumpstartTaskFromEngine(
   ctx: TaskCtx,
   taskId: string,
   options: { message?: string; model?: ModelConfig; attachments?: MessageAttachment[] }
 ): Promise<TaskResult> {
   await ctx.engines.get(taskId)?.waitForCompletionSettlement();
+  return await runTaskLifecycleOperation(taskId, async () => {
+    return await jumpstartTaskFromEngineLocked(ctx, taskId, options);
+  });
+}
+
+export async function jumpstartTaskFromEngineLocked(
+  ctx: TaskCtx,
+  taskId: string,
+  options: { message?: string; model?: ModelConfig; attachments?: MessageAttachment[] }
+): Promise<TaskResult> {
   const task = await loadTask(taskId);
   if (!task) {
     return taskFailure("task_not_found", "Task not found", { details: { taskId } });

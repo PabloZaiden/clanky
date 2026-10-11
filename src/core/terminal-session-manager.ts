@@ -241,7 +241,7 @@ export class TerminalSessionManager {
   async deleteSessionByTaskId(taskId: string): Promise<boolean> {
     const session = await getTerminalSessionByTaskId(taskId);
     if (!session) {
-      return false;
+      return true;
     }
     return await this.deleteSession(session.config.id);
   }

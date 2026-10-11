@@ -13,10 +13,14 @@ import { GitService } from "../git";
 import { createTimestamp } from "@/shared/events";
 import { log } from "@pablozaiden/webapp/server";
 import { assertValidTransition } from "../task-state-machine";
-import { canReuseExistingBranch, jumpstartTaskFromEngine } from "./task-jumpstart";
+import {
+  canReuseExistingBranch,
+  jumpstartTaskFromEngineLocked,
+} from "./task-jumpstart";
 import { getTaskWorkingDirectory } from "./task-types";
 import { startStatePersistenceImpl } from "./task-state-persistence";
 import { taskFailure } from "./task-errors";
+import { runTaskLifecycleOperation } from "./task-lifecycle-operations";
 
 export async function sendFollowUpImpl(
   ctx: TaskCtx,
@@ -35,6 +39,17 @@ export async function sendFollowUpImpl(
   }
 
   await ctx.engines.get(taskId)?.waitForCompletionSettlement();
+  return await runTaskLifecycleOperation(taskId, async () => {
+    return await sendFollowUpLocked(ctx, taskId, options, message);
+  });
+}
+
+async function sendFollowUpLocked(
+  ctx: TaskCtx,
+  taskId: string,
+  options: SendFollowUpOptions,
+  message: string,
+): Promise<SendFollowUpResult> {
   const task = await loadTask(taskId);
   if (!task) {
     return taskFailure("task_not_found", "Task not found", { details: { taskId } });
@@ -60,14 +75,14 @@ export async function sendFollowUpImpl(
   }
 
   if (task.state.status === "deleted") {
-    return jumpstartTaskFromEngine(ctx, taskId, {
+    return jumpstartTaskFromEngineLocked(ctx, taskId, {
       message,
       model: options.model,
       attachments: options.attachments,
     });
   }
 
-  return jumpstartTaskFromEngine(ctx, taskId, {
+  return jumpstartTaskFromEngineLocked(ctx, taskId, {
     message,
     model: options.model,
     attachments: options.attachments,

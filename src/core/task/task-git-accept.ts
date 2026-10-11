@@ -7,8 +7,14 @@ import { log } from "@pablozaiden/webapp/server";
 import { assertValidTransition } from "../task-state-machine";
 import { taskFailure, taskFailureFromUnknown } from "./task-errors";
 import { assertTaskHarnessWorkspaceSafe } from "./task-harness";
+import { runTaskLifecycleOperation } from "./task-lifecycle-operations";
 
 export async function acceptTaskImpl(ctx: TaskCtx, taskId: string): Promise<AcceptTaskResult> {
+  await ctx.engines.get(taskId)?.waitForCompletionSettlement();
+  return await runTaskLifecycleOperation(taskId, () => acceptTaskLocked(ctx, taskId));
+}
+
+async function acceptTaskLocked(ctx: TaskCtx, taskId: string): Promise<AcceptTaskResult> {
   if (ctx.tasksBeingAccepted.has(taskId)) {
     log.warn(`[TaskManager] acceptTask: Already accepting task ${taskId}, ignoring duplicate call`);
     return taskFailure(
@@ -18,7 +24,6 @@ export async function acceptTaskImpl(ctx: TaskCtx, taskId: string): Promise<Acce
     );
   }
 
-  await ctx.engines.get(taskId)?.waitForCompletionSettlement();
   const task = await ctx.getTask(taskId);
   if (!task) {
     return taskFailure("task_not_found", "Task not found", { details: { taskId } });
@@ -44,7 +49,7 @@ export async function acceptTaskImpl(ctx: TaskCtx, taskId: string): Promise<Acce
   log.debug(`[TaskManager] acceptTask: Starting accept for task ${taskId}`);
 
   try {
-    await assertTaskHarnessWorkspaceSafe(ctx, taskId);
+    await assertTaskHarnessWorkspaceSafe(ctx, taskId, { lifecycleOperationLocked: true });
     const reviewMode = task.state.reviewMode
       ? {
           ...task.state.reviewMode,

@@ -81,6 +81,11 @@ interface PendingExecutionHost {
   invalidated: boolean;
 }
 
+interface PendingTaskDisconnect {
+  state: TaskConnectionState;
+  promise: Promise<boolean>;
+}
+
 /**
  * Backend manager supporting multiple workspace connections.
  * Each workspace can have its own server settings and connection.
@@ -91,7 +96,7 @@ class BackendManager {
   /** Map of task ID to its own dedicated backend connection */
   private taskConnections = new Map<string, TaskConnectionState>();
   /** In-flight teardown results keyed by the task/chat backend owner. */
-  private readonly taskDisconnects = new Map<string, Promise<boolean>>();
+  private readonly taskDisconnects = new Map<string, PendingTaskDisconnect>();
   /** Map of workspace execution key to command executor. */
   private commandExecutors = new Map<string, CachedCommandExecutor>();
   private readonly pendingExecutionHosts = new Set<PendingExecutionHost>();
@@ -935,7 +940,20 @@ class BackendManager {
   async disconnectTask(taskId: string, reason?: Error): Promise<boolean> {
     const pending = this.taskDisconnects.get(taskId);
     if (pending) {
-      return await pending;
+      if (!reason) {
+        return await pending.promise;
+      }
+
+      this.retireTaskConnection(taskId, pending.state);
+      try {
+        pending.state.backend.abortAllSubscriptions(reason);
+      } catch (error) {
+        log.error("[BackendManager] Error aborting invalidated task subscriptions", {
+          contextId: taskId,
+          error: String(error),
+        });
+      }
+      return await pending.promise;
     }
 
     const state = this.taskConnections.get(taskId);
@@ -947,15 +965,17 @@ class BackendManager {
     const disconnect = new Promise<boolean>((resolve) => {
       resolveDisconnect = resolve;
     });
-    this.taskDisconnects.set(taskId, disconnect);
+    const pendingDisconnect = { state, promise: disconnect };
+    this.taskDisconnects.set(taskId, pendingDisconnect);
+    if (reason) {
+      this.retireTaskConnection(taskId, state);
+    }
 
     try {
       const succeeded = await this.closeBackend(state.backend, taskId, reason);
       resolveDisconnect(succeeded);
-      if (succeeded || reason) {
-        if (this.taskConnections.get(taskId) === state) {
-          this.taskConnections.delete(taskId);
-        }
+      if (succeeded) {
+        this.retireTaskConnection(taskId, state);
       }
       if (succeeded) {
         log.debug(`[BackendManager] Cleaned up backend for task ${taskId}`);
@@ -966,9 +986,15 @@ class BackendManager {
       resolveDisconnect(false);
       return false;
     } finally {
-      if (this.taskDisconnects.get(taskId) === disconnect) {
+      if (this.taskDisconnects.get(taskId) === pendingDisconnect) {
         this.taskDisconnects.delete(taskId);
       }
+    }
+  }
+
+  private retireTaskConnection(taskId: string, state: TaskConnectionState): void {
+    if (this.taskConnections.get(taskId) === state) {
+      this.taskConnections.delete(taskId);
     }
   }
 
