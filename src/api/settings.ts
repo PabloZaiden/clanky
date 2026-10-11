@@ -1,8 +1,13 @@
 import { defineRoutes, type RouteContext } from "@pablozaiden/webapp/server";
+import {
+  RestartAutomaticWorkspacesRequestSchema,
+  RestartAutomaticWorkspacesResponseSchema,
+} from "@/contracts/schemas";
 /**
  * Settings API endpoints for Clanky Tasks Management System.
  * 
  * This module provides endpoints for:
+ * - Starting restart jobs for automatic workspaces
  * - Resetting database
  * 
  * Note: Server settings and connection management are now per-workspace.
@@ -16,6 +21,7 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import { isDomainError } from "../domain/domain-error";
 import { settingsMaintenanceService } from "../core/settings-maintenance-service";
 import { internalErrorResponse, successResponse } from "./helpers";
+import { parseAndValidate } from "./validation";
 
 const log = createLogger("api:settings");
 
@@ -23,12 +29,55 @@ const log = createLogger("api:settings");
  * Settings API routes.
  * 
  * Provides endpoints for Clanky-specific management:
+ * - POST /api/settings/restart-automatic-workspaces - Restart automatic workspaces
  * - POST /api/settings/reset-all - Delete and reinitialize database
  * 
  * Note: Global server settings and connection reset endpoints have been removed.
  * Server settings and connection management are now per-workspace via the workspace API.
  */
 export const settingsRoutes = defineRoutes({
+  "/api/settings/restart-automatic-workspaces": {
+    auth: "owner",
+    sameOrigin: "mutations",
+    cliPath: "settings/restart-automatic-workspaces",
+    description: "Start restart jobs for all automatically provisioned workspaces.",
+    tags: ["settings", "maintenance"],
+    requestSchema: RestartAutomaticWorkspacesRequestSchema,
+    responseSchema: RestartAutomaticWorkspacesResponseSchema,
+    async POST(req: Request, ctx: RouteContext): Promise<Response> {
+      ctx.server?.timeout(req, 0);
+      const validation = await parseAndValidate(
+        RestartAutomaticWorkspacesRequestSchema,
+        req,
+      );
+      if (!validation.success) {
+        return validation.response;
+      }
+
+      log.info("POST /api/settings/restart-automatic-workspaces - Submitting workspace restart jobs");
+      try {
+        const result = await settingsMaintenanceService.restartAutomaticWorkspaces(
+          validation.data,
+        );
+        log.info("Automatic workspace restart jobs submitted", {
+          totalWorkspaces: result.totalWorkspaces,
+          startedCount: result.started.length,
+          failureCount: result.failures.length,
+        });
+        return successResponse(result);
+      } catch (error) {
+        log.error("Failed to start automatic workspace restart jobs", {
+          error: String(error),
+        });
+        return internalErrorResponse(error, {
+          error: "restart_automatic_workspaces_failed",
+          message: "Failed to start automatic workspace restart jobs",
+          status: 500,
+        }, undefined, "settings");
+      }
+    },
+  },
+
   "/api/settings/reset-all": {
     auth: "owner",
     sameOrigin: "mutations",
