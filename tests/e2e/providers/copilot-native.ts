@@ -128,10 +128,9 @@ async function sendInput(session: Session | undefined, params: Record<string, un
 }
 
 async function completeAfterInputFile(session: Session, path: string, controller: AbortController): Promise<void> {
-  const deadline = Date.now() + 10_000;
   try {
+    // The owning journey bounds each lifecycle and aborts this wait on teardown.
     while (!controller.signal.aborted && !await Bun.file(path).exists()) {
-      if (Date.now() >= deadline) throw new Error(`Integration input file unavailable: ${path}`);
       await Bun.sleep(25);
     }
     if (controller.signal.aborted) return;

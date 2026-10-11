@@ -55,6 +55,13 @@ CLANKY_TEST_MAX_WORKERS=1 bun run test
 bun run test:mesh
 ```
 
+`test:mesh` runs the portable controller/worker ACP and relay journeys on
+Linux, macOS, and Windows. On Linux and macOS it also runs the automatic
+workspace journey: provision, restart, rebuild, use, and retire a Devbox
+workspace while another worker prepares a plan and handles a conversation.
+Devbox supports Linux and macOS, so that journey is not selected on Windows.
+The complete Linux suite includes all of these journeys.
+
 Provider-dependent E2E scenarios put deterministic provider executables first
 in an isolated `PATH`. Clanky discovers and launches the fixtures in
 `tests/e2e/providers/` through the same process, adapter, transport, and
