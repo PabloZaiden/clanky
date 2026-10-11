@@ -6,8 +6,14 @@ import { log } from "@pablozaiden/webapp/server";
 import { syncWorkingBranch, syncBaseBranchAndPush } from "./task-git-push-helpers";
 import { taskFailure, taskFailureFromUnknown } from "./task-errors";
 import { assertTaskHarnessWorkspaceSafe } from "./task-harness";
+import { runTaskLifecycleOperation } from "./task-lifecycle-operations";
 
 export async function pushTaskImpl(ctx: TaskCtx, taskId: string): Promise<PushTaskResult> {
+  await ctx.engines.get(taskId)?.waitForCompletionSettlement();
+  return await runTaskLifecycleOperation(taskId, () => pushTaskLocked(ctx, taskId));
+}
+
+async function pushTaskLocked(ctx: TaskCtx, taskId: string): Promise<PushTaskResult> {
   if (ctx.tasksBeingAccepted.has(taskId)) {
     log.warn(`[TaskManager] pushTask: Already processing task ${taskId}, ignoring duplicate call`);
     return taskFailure(
@@ -17,7 +23,6 @@ export async function pushTaskImpl(ctx: TaskCtx, taskId: string): Promise<PushTa
     );
   }
 
-  await ctx.engines.get(taskId)?.waitForCompletionSettlement();
   const task = await ctx.getTask(taskId);
   if (!task) {
     return taskFailure("task_not_found", "Task not found", { details: { taskId } });
@@ -47,7 +52,7 @@ export async function pushTaskImpl(ctx: TaskCtx, taskId: string): Promise<PushTa
   log.info(`[TaskManager] pushTask: Starting push for task ${taskId}`);
 
   try {
-    await assertTaskHarnessWorkspaceSafe(ctx, taskId);
+    await assertTaskHarnessWorkspaceSafe(ctx, taskId, { lifecycleOperationLocked: true });
     const executor = await backendManager.getCommandExecutorAsync(task.config.workspaceId, task.config.directory);
     const git = GitService.withExecutor(executor);
 
@@ -93,6 +98,10 @@ export async function pushTaskImpl(ctx: TaskCtx, taskId: string): Promise<PushTa
 }
 
 export async function updateBranchImpl(ctx: TaskCtx, taskId: string): Promise<PushTaskResult> {
+  return await runTaskLifecycleOperation(taskId, () => updateBranchLocked(ctx, taskId));
+}
+
+async function updateBranchLocked(ctx: TaskCtx, taskId: string): Promise<PushTaskResult> {
   if (ctx.tasksBeingAccepted.has(taskId)) {
     log.warn(`[TaskManager] updateBranch: Already processing task ${taskId}, ignoring duplicate call`);
     return taskFailure(
@@ -134,7 +143,7 @@ export async function updateBranchImpl(ctx: TaskCtx, taskId: string): Promise<Pu
       );
     }
 
-    await assertTaskHarnessWorkspaceSafe(ctx, taskId);
+    await assertTaskHarnessWorkspaceSafe(ctx, taskId, { lifecycleOperationLocked: true });
     const executor = await backendManager.getCommandExecutorAsync(task.config.workspaceId, task.config.directory);
     const git = GitService.withExecutor(executor);
 

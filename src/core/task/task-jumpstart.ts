@@ -16,6 +16,7 @@ import { assertValidTransition } from "../task-state-machine";
 import { getTaskWorkingDirectory } from "./task-types";
 import { startStatePersistenceImpl } from "./task-execution";
 import { taskFailure, taskFailureFromUnknown, type TaskResult } from "./task-errors";
+import { runTaskLifecycleOperation } from "./task-lifecycle-operations";
 
 export async function jumpstartTaskImpl(
   ctx: TaskCtx,
@@ -32,6 +33,16 @@ export async function jumpstartTaskFromEngine(
   options: { message?: string; model?: ModelConfig; attachments?: MessageAttachment[] }
 ): Promise<TaskResult> {
   await ctx.engines.get(taskId)?.waitForCompletionSettlement();
+  return await runTaskLifecycleOperation(taskId, async () => {
+    return await jumpstartTaskFromEngineLocked(ctx, taskId, options);
+  });
+}
+
+export async function jumpstartTaskFromEngineLocked(
+  ctx: TaskCtx,
+  taskId: string,
+  options: { message?: string; model?: ModelConfig; attachments?: MessageAttachment[] }
+): Promise<TaskResult> {
   const task = await loadTask(taskId);
   if (!task) {
     return taskFailure("task_not_found", "Task not found", { details: { taskId } });
@@ -146,7 +157,13 @@ export async function canReuseExistingBranch(task: Task): Promise<boolean> {
   return git.worktreeExists(task.config.directory, managedWorktreePath);
 }
 
-export async function reviveDeletedTask(taskId: string): Promise<TaskResult> {
+export function reviveDeletedTask(taskId: string): Promise<TaskResult> {
+  return runTaskLifecycleOperation(taskId, async () => {
+    return await reviveDeletedTaskLocked(taskId);
+  });
+}
+
+async function reviveDeletedTaskLocked(taskId: string): Promise<TaskResult> {
   const task = await loadTask(taskId);
   if (!task) {
     return taskFailure("task_not_found", "Task not found", { details: { taskId } });

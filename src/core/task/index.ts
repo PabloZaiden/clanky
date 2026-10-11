@@ -22,6 +22,7 @@ import type { AutomaticPrFlowExtractedFeedbackItem } from "../automatic-pr-feedb
 
 import { TaskEngine } from "../task-engine";
 import { taskEventEmitter, SimpleEventEmitter } from "../event-emitter";
+import { terminalSessionManager } from "../terminal-session-manager";
 import { getTaskHarnessActivity, stopTaskHarnessActivity } from "./task-harness";
 import { steerTaskPendingInput, reconcileTaskPendingInput } from "./task-input";
 
@@ -42,6 +43,7 @@ import {
   startFeedbackCycleImpl,
   stopAutomaticPrFlowImpl,
 } from "./task-review";
+import { runTaskLifecycleOperation } from "./task-lifecycle-operations";
 
 export class TaskManager {
   private readonly ctx: TaskCtx;
@@ -62,8 +64,8 @@ export class TaskManager {
       deleteTask: (id) => this.deleteTask(id),
       discardTask: (id) => this.discardTask(id),
       getTask: (id) => this.getTask(id),
-      startTask: (id, options) => this.startTask(id, options),
-      startPlanMode: (id, options) => this.startPlanMode(id, options),
+      startTask: (id, options) => startTaskImpl(this.ctx, id, options),
+      startPlanMode: (id, options) => startPlanModeImpl(this.ctx, id, options),
       acceptPlan: (id, options) => this.acceptPlan(id, options),
       pushTask: (id) => this.pushTask(id),
       startAutomaticPrFlow: (id) => this.startAutomaticPrFlow(id),
@@ -71,7 +73,7 @@ export class TaskManager {
       ensureTaskBranchCheckedOut: (task, git, dir) => ensureTaskBranchCheckedOutImpl(this.ctx, task, git, dir),
       validateMainCheckoutStart: (task, git) => validateMainCheckoutStartImpl(this.ctx, task, git),
       clearPlanningFiles: (id, task, executor, path) => clearPlanningFilesImpl(this.ctx, id, task, executor, path),
-      recoverPlanningEngine: (id) => this.recoverPlanningEngine(id),
+      recoverPlanningEngine: (id) => recoverPlanningEngineImpl(this.ctx, id),
       startFeedbackCycle: (id, opts) => startFeedbackCycleImpl(this.ctx, id, opts),
       jumpstartTask: (id, opts) => jumpstartTaskImpl(this.ctx, id, opts),
     };
@@ -86,19 +88,27 @@ export class TaskManager {
   }
 
   async startPlanMode(taskId: string, options?: StartTaskOptions): Promise<void> {
-    return startPlanModeImpl(this.ctx, taskId, options);
+    return await runTaskLifecycleOperation(taskId, async () => {
+      return await startPlanModeImpl(this.ctx, taskId, options);
+    });
   }
 
   async startDraft(taskId: string, options: { attachments?: MessageAttachment[] }): Promise<Task> {
-    return startDraftImpl(this.ctx, taskId, options);
+    return await runTaskLifecycleOperation(taskId, async () => {
+      return await startDraftImpl(this.ctx, taskId, options);
+    });
   }
 
   async sendPlanFeedback(taskId: string, feedback: string, attachments?: MessageAttachment[]): Promise<void> {
-    return sendPlanFeedbackImpl(this.ctx, taskId, feedback, attachments);
+    return await runTaskLifecycleOperation(taskId, async () => {
+      return await sendPlanFeedbackImpl(this.ctx, taskId, feedback, attachments);
+    });
   }
 
   async acceptPlan(taskId: string, options: AcceptPlanOptions = {}): Promise<AcceptPlanResult> {
-    return acceptPlanImpl(this.ctx, taskId, options);
+    return await runTaskLifecycleOperation(taskId, async () => {
+      return await acceptPlanImpl(this.ctx, taskId, options);
+    });
   }
 
   async discardPlan(taskId: string): Promise<boolean> {
@@ -106,7 +116,15 @@ export class TaskManager {
   }
 
   async seedPlanFiles(taskId: string, options: SeedPlanFilesOptions): Promise<Task> {
-    return seedPlanFilesImpl(this.ctx, taskId, options);
+    return await runTaskLifecycleOperation(taskId, async () => {
+      return await seedPlanFilesImpl(this.ctx, taskId, options);
+    });
+  }
+
+  async getOrCreateTaskTerminalSession(taskId: string) {
+    return await runTaskLifecycleOperation(taskId, async () => {
+      return await terminalSessionManager.getOrCreateTaskSession(taskId);
+    });
   }
 
   async getTask(taskId: string): Promise<Task | null> {
@@ -145,11 +163,15 @@ export class TaskManager {
   }
 
   async startTask(taskId: string, _options?: StartTaskOptions): Promise<void> {
-    return startTaskImpl(this.ctx, taskId, _options);
+    return await runTaskLifecycleOperation(taskId, async () => {
+      return await startTaskImpl(this.ctx, taskId, _options);
+    });
   }
 
   async stopTask(taskId: string, reason?: string): Promise<void> {
-    return stopTaskImpl(this.ctx, taskId, reason);
+    return await runTaskLifecycleOperation(taskId, async () => {
+      return await stopTaskImpl(this.ctx, taskId, reason);
+    });
   }
 
   async acceptTask(taskId: string): Promise<AcceptTaskResult> {
@@ -238,7 +260,9 @@ export class TaskManager {
     comments: string,
     attachments?: MessageAttachment[],
   ): Promise<SendFollowUpResult> {
-    return addressReviewCommentsImpl(this.ctx, taskId, comments, attachments);
+    return await runTaskLifecycleOperation(taskId, async () => {
+      return await addressReviewCommentsImpl(this.ctx, taskId, comments, attachments);
+    });
   }
 
   async startAutomaticPrReviewCycle(
@@ -259,7 +283,9 @@ export class TaskManager {
       feedbackItems: AutomaticPrFlowExtractedFeedbackItem[];
     },
   ): Promise<SendFollowUpResult> {
-    return startAutomaticPrReviewCycleImpl(this.ctx, taskId, options);
+    return await runTaskLifecycleOperation(taskId, async () => {
+      return await startAutomaticPrReviewCycleImpl(this.ctx, taskId, options);
+    });
   }
 
   async startAutomaticPrFlow(
@@ -326,10 +352,6 @@ export class TaskManager {
 
   async forceResetAll(): Promise<{ enginesCleared: number; tasksReset: number }> {
     return forceResetAllImpl(this.ctx);
-  }
-
-  private async recoverPlanningEngine(taskId: string): Promise<TaskEngine> {
-    return recoverPlanningEngineImpl(this.ctx, taskId);
   }
 }
 

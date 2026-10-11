@@ -405,7 +405,7 @@ export class ChatSessionService implements ChatSessionPort {
     }
   }
 
-  async disconnectChat(chatId: string): Promise<void> {
+  async disconnectChat(chatId: string): Promise<boolean> {
     await harnessActivityService.close({ kind: "chat", id: chatId });
     const chat = await this.state.getChat(chatId);
     if (chat?.state.harness?.questions?.length) await this.state.updateState(chat, {
@@ -427,10 +427,11 @@ export class ChatSessionService implements ChatSessionPort {
         this.directChatBackends.delete(chatId);
       }
     }
-    await this.backendManager.disconnectChat(chatId);
+    const backendDisconnected = await this.backendManager.disconnectChat(chatId);
     if (sshDisconnectError) {
       throw sshDisconnectError;
     }
+    return backendDisconnected;
   }
 
   private async sessionContext(chat: Chat, backend: Backend): Promise<Omit<HarnessConversationBinding, "adapter" | "nativeId">> {

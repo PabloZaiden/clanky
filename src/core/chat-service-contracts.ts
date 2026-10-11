@@ -81,6 +81,11 @@ export interface DeleteChatOptions {
   credentialToken?: string | null;
 }
 
+export interface DeleteTaskChatResult {
+  deleted: boolean;
+  cleanup: Promise<boolean>;
+}
+
 export type ChatConfigUpdates = Partial<
   Omit<ChatConfig, "id" | "createdAt" | "workspaceId" | "mode" | "scope" | "taskId">
 >;
@@ -207,7 +212,7 @@ export interface ChatSessionPort {
   ): Promise<Chat>;
   configureSessionModel(backend: Backend, sessionId: string, desiredModel: string): Promise<void>;
   reconnectSession(chat: Chat, options?: ReconnectChatOptions): Promise<Chat>;
-  disconnectChat(chatId: string): Promise<void>;
+  disconnectChat(chatId: string): Promise<boolean>;
 }
 
 export interface ChatConversationPort {
@@ -257,7 +262,7 @@ export interface ChatLifecyclePort {
   markChatDone(chatId: string): Promise<Chat | null>;
   attachSession(chatId: string, session: SessionInfo): Promise<Chat | null>;
   getOrCreateTaskChat(taskId: string, task?: Task): Promise<{ chat: Chat; created: boolean }>;
-  deleteTaskChat(taskId: string): Promise<boolean>;
+  deleteTaskChat(taskId: string): Promise<DeleteTaskChatResult>;
   deleteChat(chatId: string, options?: DeleteChatOptions): Promise<boolean>;
 }
 

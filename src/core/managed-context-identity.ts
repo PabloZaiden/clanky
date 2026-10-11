@@ -3,6 +3,7 @@
  */
 
 import type { ManagedContextIdentity, ManagedContextType } from "@/shared/context-api-key";
+import type { Task } from "@/shared/task";
 import { getChatWorkspaceId } from "@/shared/chat";
 import { loadAgentRun, loadAgentRunByChatId } from "../persistence/agents";
 import { loadChat } from "../persistence/chats";
@@ -42,10 +43,17 @@ export class ManagedContextIdentityResolver {
     if (!task) {
       throw missingContext("task", taskId);
     }
+    return this.forTaskSnapshot(task, expectedWorkspaceId);
+  }
+
+  forTaskSnapshot(
+    task: Pick<Task, "config">,
+    expectedWorkspaceId?: string,
+  ): ManagedContextIdentity {
     return this.createIdentity(
       "task",
-      taskId,
-      ensureWorkspace("task", taskId, task.config.workspaceId, expectedWorkspaceId),
+      task.config.id,
+      ensureWorkspace("task", task.config.id, task.config.workspaceId, expectedWorkspaceId),
     );
   }
 

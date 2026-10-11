@@ -10,10 +10,19 @@ import { handleFullyAutonomousCompletionImpl } from "./task-fully-autonomous";
 import { TaskOperationError } from "./task-errors";
 import { harnessActivityService } from "../harness-activity-service";
 import { KeyedOperationQueue } from "../../utils/keyed-operation-queue";
+import { runTaskLifecycleOperation } from "./task-lifecycle-operations";
 
 const completionRecovery = new KeyedOperationQueue();
 
 export function recoverOwnedNativeEngineImpl(
+  ctx: TaskCtx,
+  taskId: string,
+  purpose: "finalization" | "input-recovery",
+): Promise<TaskEngine> {
+  return runTaskLifecycleOperation(taskId, () => recoverOwnedNativeEngineLocked(ctx, taskId, purpose));
+}
+
+export function recoverOwnedNativeEngineLocked(
   ctx: TaskCtx,
   taskId: string,
   purpose: "finalization" | "input-recovery",
@@ -23,6 +32,11 @@ export function recoverOwnedNativeEngineImpl(
     if (existing) return existing;
     const task = await loadTask(taskId);
     if (!task) throw new TaskOperationError("task_not_found", "The task is unavailable.");
+    if (task.state.status === "deleted") {
+      throw new TaskOperationError("invalid_task_state", "Cannot recover a deleted task session.", {
+        details: { taskId, status: task.state.status },
+      });
+    }
     const binding = task.state.session?.binding;
     if (!binding || binding.adapter === "acp" || (purpose === "finalization" && task.state.status !== "completed")) {
       throw new TaskOperationError("invalid_task_state", "Recovery requires the owned native conversation.");

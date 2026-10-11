@@ -59,7 +59,7 @@ export const tasksTerminalSessionRoutes = defineRoutes({
 
     async POST(_req: Request, ctx): Promise<Response> {
       try {
-        const session = await terminalSessionManager.getOrCreateTaskSession(ctx.params["id"]!);
+        const session = await taskManager.getOrCreateTaskTerminalSession(ctx.params["id"]!);
         return Response.json(session);
       } catch (error) {
         log.error("POST /api/tasks/:id/terminal-session - Failed", {

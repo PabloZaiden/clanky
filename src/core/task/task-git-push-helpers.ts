@@ -13,6 +13,7 @@ import { log } from "@pablozaiden/webapp/server";
 import { assertValidTransition } from "../task-state-machine";
 import { startStatePersistenceImpl } from "./task-execution";
 import { finalizeFullyAutonomousPushImpl } from "./task-fully-autonomous";
+import { runTaskLifecycleOperation } from "./task-lifecycle-operations";
 import {
   taskFailure,
   TASK_GIT_OPERATION_FAILURE_MESSAGE,
@@ -471,7 +472,7 @@ async function startConflictResolutionEngine(
         });
       }
       if (state.status === "completed" && !state.syncState?.autoPushOnComplete && options.onCompleted) {
-        options.onCompleted().catch((error) => {
+        runTaskLifecycleOperation(taskId, options.onCompleted).catch((error) => {
           log.error(
             `[TaskManager] ${options.completionDescription ?? "Post-conflict completion"} failed for task ${taskId}:`,
             String(error),
@@ -523,6 +524,12 @@ async function handOffEngineForConflictResolution(
 }
 
 async function handleConflictResolutionComplete(ctx: TaskCtx, taskId: string): Promise<void> {
+  await runTaskLifecycleOperation(taskId, async () => {
+    await handleConflictResolutionCompleteLocked(ctx, taskId);
+  });
+}
+
+async function handleConflictResolutionCompleteLocked(ctx: TaskCtx, taskId: string): Promise<void> {
   log.debug(`[TaskManager] handleConflictResolutionComplete: Processing task ${taskId}`);
 
   ctx.engines.delete(taskId);
