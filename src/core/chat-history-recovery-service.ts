@@ -42,7 +42,7 @@ export class ChatHistoryRecoveryService {
     chatId: string,
     options: ReconnectChatOptions = {},
   ): Promise<Chat | null> {
-    const originalChat = await this.state.getChat(chatId);
+    const originalChat = await this.state.getChatSummary(chatId);
     if (!originalChat) {
       return null;
     }
@@ -56,7 +56,7 @@ export class ChatHistoryRecoveryService {
     const originalRecoveryId = originalChat.state.harness?.historyRecovery?.id;
     try {
       let reservationValid = false;
-      const reservedChat = await this.state.mutateState(chatId, (current) => {
+      await this.state.mutateState(chatId, (current) => {
         if (
           !this.isRecoverable(current)
           || this.hasUnresolvedWork(current)
@@ -86,21 +86,13 @@ export class ChatHistoryRecoveryService {
       const previousRecovery = originalChat.state.harness?.historyRecovery;
       if (previousRecovery && previousRecovery.status !== "complete") {
         await this.historyExport.cleanup(
-          reservedChat,
+          originalChat,
           previousRecovery,
           options.credentialToken,
         );
       }
 
-      const exportChat = await this.requireChat(chatId);
-      const snapshot = await this.state.getChatSnapshot(chatId, { full: true });
-      if (!snapshot) {
-        throw new DomainError(
-          "chat_history_export_incomplete",
-          "The complete persisted chat history is not available. Reload the chat and try again.",
-        );
-      }
-
+      const exportChat = await this.requireChatSummary(chatId);
       const session = exportChat.state.session;
       const previousSession = session
         ? {
@@ -111,7 +103,7 @@ export class ChatHistoryRecoveryService {
               : {}),
           }
         : undefined;
-      const recovery = await this.historyExport.create(exportChat, snapshot, {
+      const recovery = await this.historyExport.create(exportChat, {
         credentialToken: options.credentialToken,
         previousSession,
         onAllocated: async (allocated) => {
@@ -191,7 +183,7 @@ export class ChatHistoryRecoveryService {
       recoveryCommitted = true;
       return readyChat;
     } catch (error) {
-      const latest = await this.state.getChat(chatId);
+      const latest = await this.state.getChatSummary(chatId);
       const currentSessionId = latest?.state.session?.id;
       const replacementSessionExists = Boolean(
         currentSessionId
@@ -290,6 +282,17 @@ export class ChatHistoryRecoveryService {
 
   private async requireChat(chatId: string): Promise<Chat> {
     const chat = await this.state.getChat(chatId);
+    if (!chat) {
+      throw new DomainError(
+        "chat_not_found",
+        "The chat was deleted while history recovery was in progress.",
+      );
+    }
+    return chat;
+  }
+
+  private async requireChatSummary(chatId: string): Promise<Chat> {
+    const chat = await this.state.getChatSummary(chatId);
     if (!chat) {
       throw new DomainError(
         "chat_not_found",

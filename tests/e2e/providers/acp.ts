@@ -6,9 +6,9 @@
  */
 
 import { createInterface } from "node:readline";
-import { appendFileSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
-import { isAbsolute, join } from "node:path";
+import { appendFileSync, createReadStream } from "node:fs";
+import { mkdir, readFile } from "node:fs/promises";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { E2E_IMAGE_DATA } from "./image-input";
 
 const SUPPORTED_PROTOCOL_VERSION = 1;
@@ -295,6 +295,64 @@ function firstPromptText(prompt: unknown[]): string {
     })
     .filter((part) => part.length > 0)
     .join("\n");
+}
+
+async function buildHistoryRecoveryResponse(promptText: string): Promise<string> {
+  const pathMatch = /The complete prior conversation is available as JSON Lines at ("(?:\\.|[^"\\])*")\./
+    .exec(promptText);
+  if (!pathMatch?.[1]) {
+    throw new Error("The recovery instruction does not include a JSON Lines history path.");
+  }
+  const transcriptPath = JSON.parse(pathMatch[1]) as unknown;
+  if (typeof transcriptPath !== "string") {
+    throw new Error("The recovery transcript path is invalid.");
+  }
+
+  let secretWord: string | undefined;
+  let estimateCode: string | undefined;
+  const history = createInterface({
+    input: createReadStream(transcriptPath, { encoding: "utf8" }),
+    crlfDelay: Infinity,
+  });
+  for await (const line of history) {
+    if (line.trim().length === 0) {
+      continue;
+    }
+    const entry = JSON.parse(line) as unknown;
+    if (!isRecord(entry) || entry["kind"] !== "message" || !isRecord(entry["message"])) {
+      continue;
+    }
+    const message = entry["message"];
+    if (message["role"] === "user" && typeof message["content"] === "string") {
+      secretWord = /secret word is ([A-Z0-9-]+)/i.exec(message["content"])?.[1] ?? secretWord;
+    }
+    if (!Array.isArray(message["attachments"])) {
+      continue;
+    }
+    for (const attachment of message["attachments"]) {
+      if (!isRecord(attachment)) {
+        continue;
+      }
+      const attachmentPath = getString(attachment["path"]);
+      if (
+        getString(attachment["mimeType"]) !== "application/pdf"
+        || !attachmentPath
+        || isAbsolute(attachmentPath)
+        || !attachmentPath.startsWith("attachments/")
+        || !attachmentPath.endsWith(".pdf")
+      ) {
+        continue;
+      }
+      const pdf = await readFile(resolve(dirname(transcriptPath), attachmentPath));
+      estimateCode = /estimate code:\s*([A-Z0-9-]+)/i.exec(pdf.toString("latin1"))?.[1]
+        ?? estimateCode;
+    }
+  }
+
+  if (!secretWord || !estimateCode) {
+    throw new Error("The exported conversation or its PDF attachment is incomplete.");
+  }
+  return `The secret word was ${secretWord}, and the estimate code on the PDF was ${estimateCode}.`;
 }
 
 function makeQuestionPayload(): Array<Record<string, unknown>> {
@@ -656,6 +714,9 @@ class MockAcpServer {
     }
     const abortController = this.trackRequestAbortController(requestId);
     try {
+      if (process.env["CLANKY_E2E_ACP_FAIL_SESSION_LOAD"] === "true") {
+        throw this.rpcError(INTERNAL_ERROR_CODE, "The provider session is no longer available.");
+      }
       for (const entry of session.history) {
         if (abortController?.signal.aborted) {
           throw this.rpcError(REQUEST_CANCELLED_ERROR_CODE, "Request cancelled");
@@ -983,7 +1044,9 @@ class MockAcpServer {
       session.history.push({ role: "reasoning", text: chunk });
     }
 
-    const responseText = this.buildResponseText(promptText, session.promptCount, fsReadSummary, terminalSummary);
+    const responseText = promptText.includes("[Clanky chat history recovery]")
+      ? await buildHistoryRecoveryResponse(promptText)
+      : this.buildResponseText(promptText, session.promptCount, fsReadSummary, terminalSummary);
     for (const chunk of splitIntoChunks(responseText, 4)) {
       await this.delay(promptText.includes("[slow]") ? SLOW_STREAM_DELAY_MS : STREAM_DELAY_MS);
       if (signal.aborted) {

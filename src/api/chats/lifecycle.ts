@@ -133,7 +133,7 @@ export const chatsLifecycleRoutes = defineRoutes({
     requestSchema: ReconnectChatRequestSchema,
     async POST(req: Request, ctx): Promise<Response> {
       const chatId = ctx.params["id"]!;
-      const chat = await chatManager.getChat(chatId);
+      const chat = await chatManager.getChatSummary(chatId);
       if (!chat) {
         return errorResponse("not_found", "Chat not found", 404);
       }

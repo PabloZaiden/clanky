@@ -113,7 +113,12 @@ export interface ChatStatePort {
     chatId: string,
     options?: TranscriptSnapshotOptions,
   ): Promise<ChatSnapshot | null>;
-  getChatTranscriptEntries(chatId: string): Promise<ChatTranscriptStorageEntry[]>;
+  getChatTranscriptExportMeta(
+    chatId: string,
+  ): Promise<{ revision: string; entryCount: number } | null>;
+  iterateChatTranscriptEntries(
+    chatId: string,
+  ): AsyncIterable<ChatTranscriptStorageEntry>;
   getChatToolCall(chatId: string, toolCallId: string): Promise<ToolCallRecord | null>;
   getTaskChat(taskId: string): Promise<Chat | null>;
   getAllChats(): Promise<Chat[]>;

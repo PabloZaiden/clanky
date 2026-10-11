@@ -24,6 +24,7 @@ export {
   replaceChatTranscriptEntries,
   syncChatTranscriptEntries,
   listChatTranscriptEntries,
+  listChatTranscriptEntriesAfter,
   listChatTranscriptEntriesPage,
   getChatToolCallFromTranscript,
 } from "./transcript";

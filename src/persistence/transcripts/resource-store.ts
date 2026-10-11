@@ -20,6 +20,7 @@ import {
   hydrateTranscriptState,
   hydrateTranscriptStateForUser,
   listTranscriptEntries,
+  listTranscriptEntriesAfterForUser,
   listTranscriptEntriesForUser,
   listTranscriptEntriesPage,
   listTranscriptEntriesPageForUser,
@@ -34,6 +35,8 @@ import type {
   TranscriptMeta,
   TranscriptPageOptions,
   TranscriptResource,
+  TranscriptStorageCursor,
+  TranscriptStoragePage,
   TranscriptStateLike,
 } from "./types";
 
@@ -97,6 +100,15 @@ export interface TranscriptResourceStore {
     resourceId: string,
     options?: TranscriptPageOptions,
   ): TranscriptEntriesPage;
+  listEntriesAfterForUser(
+    resourceId: string,
+    userId: string,
+    options: {
+      after?: TranscriptStorageCursor;
+      limit: number;
+      includeToolPayload?: boolean;
+    },
+  ): TranscriptStoragePage;
   getToolCallForUser(
     resourceId: string,
     userId: string,
@@ -189,6 +201,13 @@ export function createTranscriptResourceStore(
       ),
     listPage: (resourceId, options) =>
       listTranscriptEntriesPage(resource, resourceId, options),
+    listEntriesAfterForUser: (resourceId, userId, options) =>
+      listTranscriptEntriesAfterForUser(
+        resource,
+        resourceId,
+        userId,
+        options,
+      ),
     getToolCallForUser: (resourceId, userId, toolCallId) =>
       getTranscriptToolCallForUser(
         resource,

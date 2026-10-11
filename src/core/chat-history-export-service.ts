@@ -4,7 +4,6 @@
 
 import type {
   Chat,
-  ChatSnapshot,
   ExecutionHostBinding,
   HarnessHistoryRecovery,
   MessageAttachment,
@@ -32,13 +31,17 @@ import { ManagedPathService } from "./managed-path-service";
 import { requireCurrentUserId } from "../context/user-context";
 import { sshCredentialManager } from "./ssh-credential-manager";
 import type { ChatStatePort } from "./chat-service-contracts";
+import { getCanonicalMessageAttachmentMimeType } from "@/shared/message-attachments";
 
 const CHAT_HISTORY_EXPORT_TTL_MS = 24 * 60 * 60 * 1000;
 
 interface ChatHistoryExportServiceDependencies {
   state: Pick<
     ChatStatePort,
-    "getChatTranscriptEntries" | "getWorkspace" | "mutateState"
+    "getChatTranscriptExportMeta"
+    | "iterateChatTranscriptEntries"
+    | "getWorkspace"
+    | "mutateState"
   >;
   executionHostService?: Pick<typeof executionHostService, "getCommandExecutor">;
   sshCredentialManager?: Pick<typeof sshCredentialManager, "getPasswordForToken">;
@@ -86,16 +89,6 @@ export interface ChatHistoryPromptContext {
   close(): void;
 }
 
-function compareExportEntries(
-  left: ChatHistoryExportEntry,
-  right: ChatHistoryExportEntry,
-): number {
-  return left.timestamp.localeCompare(right.timestamp)
-    || left.sequence - right.sequence
-    || left.kind.localeCompare(right.kind)
-    || left.id.localeCompare(right.id);
-}
-
 function isTaskLogEntry(value: unknown): value is TaskLogEntry {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return false;
@@ -107,30 +100,51 @@ function isTaskLogEntry(value: unknown): value is TaskLogEntry {
     && typeof entry["message"] === "string";
 }
 
+function isPersistedMessage(value: unknown): value is PersistedMessage {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const message = value as Record<string, unknown>;
+  return typeof message["id"] === "string"
+    && (message["role"] === "user" || message["role"] === "assistant")
+    && typeof message["content"] === "string"
+    && typeof message["timestamp"] === "string";
+}
+
 function createJsonLinesStream(
   header: unknown,
-  entries: readonly unknown[],
+  entries: AsyncIterable<unknown>,
 ): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
-  let index = 0;
+  const iterator = entries[Symbol.asyncIterator]();
+  let headerPending = true;
 
   return new ReadableStream<Uint8Array>({
-    pull(controller) {
-      if (index > entries.length) {
-        controller.close();
-        return;
+    async pull(controller) {
+      try {
+        if (headerPending) {
+          headerPending = false;
+          controller.enqueue(encoder.encode(`${JSON.stringify(header)}\n`));
+          return;
+        }
+        const next = await iterator.next();
+        if (next.done) {
+          controller.close();
+          return;
+        }
+        controller.enqueue(encoder.encode(`${JSON.stringify(next.value)}\n`));
+      } catch (error) {
+        controller.error(error);
       }
-      const record = index === 0 ? header : entries[index - 1];
-      controller.enqueue(
-        encoder.encode(`${JSON.stringify(record)}\n`),
-      );
-      index += 1;
+    },
+    async cancel() {
+      await iterator.return?.();
     },
   });
 }
 
 function attachmentExtension(attachment: MessageAttachment): string {
-  const mimeType = attachment.mimeType.split(";", 1)[0]?.trim().toLowerCase();
+  const mimeType = getCanonicalMessageAttachmentMimeType(attachment);
   switch (mimeType) {
     case "image/png":
       return ".png";
@@ -222,10 +236,12 @@ export class ChatHistoryExportService {
 
   async create(
     chat: Chat,
-    snapshot: ChatSnapshot,
     options: CreateChatHistoryExportOptions = {},
   ): Promise<HarnessHistoryRecovery> {
-    if (snapshot.config.id !== chat.config.id || snapshot.transcript.isPartial) {
+    const transcriptMeta = await this.state.getChatTranscriptExportMeta(
+      chat.config.id,
+    );
+    if (!transcriptMeta) {
       throw new DomainError(
         "chat_history_export_incomplete",
         "The complete persisted chat history is not available. Reload the chat and try again.",
@@ -284,91 +300,6 @@ export class ChatHistoryExportService {
         await git.ensureWorktreeExcluded(directory);
       }
 
-      const messages = new Map(
-        snapshot.transcript.messages.map((message) => [message.id, message]),
-      );
-      const logs = new Map(
-        snapshot.transcript.logs.map((logEntry) => [logEntry.id, logEntry]),
-      );
-      const toolCallIds = new Set(snapshot.transcript.toolCalls.map((toolCall) => toolCall.id));
-      const entries: ChatHistoryExportEntry[] = [];
-      let attachmentIndex = 0;
-      const storedEntries = await this.state.getChatTranscriptEntries(chat.config.id);
-      for (const storedEntry of storedEntries) {
-        if (storedEntry.kind === "message") {
-          const message = messages.get(storedEntry.id);
-          if (!message) {
-            throw new DomainError(
-              "chat_history_export_incomplete",
-              "A persisted chat message could not be loaded, so the full chat history cannot be exported.",
-            );
-          }
-          const exportedMessage = await this.exportMessage(
-            executor,
-            managedPaths,
-            directory,
-            chat.config.id,
-            recoveryId,
-            message,
-            () => {
-              attachmentIndex += 1;
-              return attachmentIndex;
-            },
-          );
-          messages.delete(storedEntry.id);
-          entries.push({
-            kind: "message",
-            id: storedEntry.id,
-            timestamp: storedEntry.timestamp,
-            sequence: storedEntry.sequence,
-            message: exportedMessage,
-          });
-          continue;
-        }
-        if (storedEntry.kind === "log") {
-          const logEntry = logs.get(storedEntry.id);
-          if (!logEntry) {
-            if (isTaskLogEntry(storedEntry.payload)
-              && !shouldIncludeConversationTranscriptLog(storedEntry.payload)) {
-              continue;
-            }
-            throw new DomainError(
-              "chat_history_export_incomplete",
-              "A persisted chat log could not be loaded, so the full chat history cannot be exported.",
-            );
-          }
-          logs.delete(storedEntry.id);
-          entries.push({
-            kind: "log",
-            id: storedEntry.id,
-            timestamp: storedEntry.timestamp,
-            sequence: storedEntry.sequence,
-            log: logEntry,
-          });
-          continue;
-        }
-        if (!storedEntry.tool || !toolCallIds.delete(storedEntry.tool.id)) {
-          throw new DomainError(
-            "chat_history_export_incomplete",
-            "A persisted tool result could not be loaded, so the full chat history cannot be exported.",
-          );
-        }
-        entries.push({
-          kind: "tool_call",
-          id: storedEntry.tool.id,
-          timestamp: storedEntry.timestamp,
-          sequence: storedEntry.sequence,
-          toolCall: storedEntry.tool,
-        });
-      }
-      if (messages.size > 0 || logs.size > 0 || toolCallIds.size > 0) {
-        throw new DomainError(
-          "chat_history_export_incomplete",
-          "The persisted chat transcript changed while recovery history was being exported.",
-        );
-      }
-      entries.sort(compareExportEntries);
-
       const header = {
         kind: "metadata",
         schemaVersion: 1,
@@ -379,7 +310,7 @@ export class ChatHistoryExportService {
         directory,
         createdAt,
         expiresAt,
-        entryCount: entries.length,
+        sourceEntryCount: transcriptMeta.entryCount,
         notes: [
           "This is a reference export only; previous messages are not replayed.",
           "Pending, delivery-uncertain, and queued user inputs must not be repeated.",
@@ -387,7 +318,17 @@ export class ChatHistoryExportService {
       };
       const result = await executor.writeFileStream?.(
         transcriptPath,
-        createJsonLinesStream(header, entries),
+        createJsonLinesStream(
+          header,
+          this.exportEntries(
+            executor,
+            managedPaths,
+            directory,
+            chat.config.id,
+            recoveryId,
+            transcriptMeta,
+          ),
+        ),
       );
       if (!result?.success) {
         throw new DomainError(
@@ -420,6 +361,104 @@ export class ChatHistoryExportService {
       );
     } finally {
       closeCommandExecutor(executor);
+    }
+  }
+
+  private async *exportEntries(
+    executor: CommandExecutor,
+    managedPaths: ManagedPathService,
+    directory: string,
+    chatId: string,
+    recoveryId: string,
+    transcriptMeta: { revision: string; entryCount: number },
+  ): AsyncGenerator<ChatHistoryExportEntry> {
+    let rowCount = 0;
+    let attachmentIndex = 0;
+    for await (const storedEntry of this.state.iterateChatTranscriptEntries(chatId)) {
+      rowCount += 1;
+      if (rowCount > transcriptMeta.entryCount) {
+        throw new DomainError(
+          "chat_history_export_incomplete",
+          "The persisted chat transcript changed while recovery history was being exported.",
+        );
+      }
+
+      if (storedEntry.kind === "message") {
+        const message = storedEntry.payload;
+        if (!isPersistedMessage(message) || message.id !== storedEntry.id) {
+          throw new DomainError(
+            "chat_history_export_incomplete",
+            "A persisted chat message could not be loaded, so the full chat history cannot be exported.",
+          );
+        }
+        const exportedMessage = await this.exportMessage(
+          executor,
+          managedPaths,
+          directory,
+          chatId,
+          recoveryId,
+          message,
+          () => {
+            attachmentIndex += 1;
+            return attachmentIndex;
+          },
+        );
+        yield {
+          kind: "message",
+          id: storedEntry.id,
+          timestamp: storedEntry.timestamp,
+          sequence: storedEntry.sequence,
+          message: exportedMessage,
+        };
+        continue;
+      }
+
+      if (storedEntry.kind === "log") {
+        if (!isTaskLogEntry(storedEntry.payload)
+          || storedEntry.payload.id !== storedEntry.id) {
+          throw new DomainError(
+            "chat_history_export_incomplete",
+            "A persisted chat log could not be loaded, so the full chat history cannot be exported.",
+          );
+        }
+        if (shouldIncludeConversationTranscriptLog(storedEntry.payload)) {
+          yield {
+            kind: "log",
+            id: storedEntry.id,
+            timestamp: storedEntry.timestamp,
+            sequence: storedEntry.sequence,
+            log: storedEntry.payload,
+          };
+        }
+        continue;
+      }
+
+      if (!storedEntry.tool || storedEntry.tool.id !== storedEntry.id) {
+        throw new DomainError(
+          "chat_history_export_incomplete",
+          "A persisted tool result could not be loaded, so the full chat history cannot be exported.",
+        );
+      }
+      yield {
+        kind: "tool_call",
+        id: storedEntry.id,
+        timestamp: storedEntry.timestamp,
+        sequence: storedEntry.sequence,
+        toolCall: storedEntry.tool,
+      };
+    }
+
+    const currentMeta = await this.state.getChatTranscriptExportMeta(chatId);
+    if (
+      rowCount !== transcriptMeta.entryCount
+      || !currentMeta
+      || currentMeta.revision !== transcriptMeta.revision
+      || currentMeta.entryCount !== transcriptMeta.entryCount
+    ) {
+      throw new DomainError(
+        "chat_history_export_incomplete",
+        "The persisted chat transcript changed while recovery history was being exported.",
+      );
     }
   }
 
@@ -591,7 +630,7 @@ export class ChatHistoryExportService {
       exportedAttachments.push({
         id: attachment.id,
         filename: attachment.filename,
-        mimeType: attachment.mimeType,
+        mimeType: getCanonicalMessageAttachmentMimeType(attachment),
         size: attachment.size,
         path: `attachments/${fileName}`,
       });
