@@ -28,9 +28,20 @@ export function ImageViewerModal({
       title={title ?? image?.title ?? "Image preview"}
       size="xl"
       footer={(
-        <Button type="button" variant="ghost" onClick={onClose}>
-          Close
-        </Button>
+        <div className="flex items-center justify-end gap-2">
+          {image && !loading && (
+            <a
+              href={image.src}
+              download={image.title}
+              className="inline-flex h-9 items-center rounded-md px-3 text-sm font-medium text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-gray-200 dark:focus-visible:ring-gray-500"
+            >
+              Download
+            </a>
+          )}
+          <Button type="button" variant="ghost" onClick={onClose}>
+            Close
+          </Button>
+        </div>
       )}
     >
       {loading ? (
