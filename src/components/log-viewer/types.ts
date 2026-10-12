@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type {
   MessageData,
   TaskLogEntry,
@@ -42,8 +43,12 @@ export interface ConversationViewerProps {
   maxHeight?: string;
   /** Whether to render conversation content as markdown. */
   markdownEnabled?: boolean;
-  /** Whether the task is actively working; active work rows own the spinner when available. Default: false */
+  /** Whether the task or chat is operationally active. Default: false */
   isActive?: boolean;
+  /** Whether active-work indicators should be shown. Defaults to isActive. */
+  isWorking?: boolean;
+  /** Optional content rendered after transcript entries inside the main scroll container. */
+  scrollContentFooter?: ReactNode;
   /** ID for the root element (for accessibility) */
   id?: string;
   /** Root directory used to display tool file paths relative to the active chat/task context. */

@@ -31,6 +31,8 @@ export const ConversationViewer = memo(function ConversationViewer({
   maxHeight,
   markdownEnabled = false,
   isActive = false,
+  isWorking,
+  scrollContentFooter,
   id,
   onReadAloud,
   readAloudSummaryEnabled = false,
@@ -54,6 +56,8 @@ export const ConversationViewer = memo(function ConversationViewer({
       openImagePreview: imagePreview.openImagePreview,
     };
   }, [fileLinkContext, imagePreview.openImagePreview]);
+
+  const hasActiveWork = isWorking ?? isActive;
 
   const groupedEntries = useMemo(() => {
     // Preserve all source events for reasoning boundaries; empty response
@@ -110,8 +114,8 @@ export const ConversationViewer = memo(function ConversationViewer({
     });
 
     result.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
-    return groupConsecutiveEntries(result, isActive);
-  }, [isActive, logs, messages, toolCalls]);
+    return groupConsecutiveEntries(result, hasActiveWork);
+  }, [hasActiveWork, logs, messages, toolCalls]);
 
   const visibleEntries = useMemo(() => annotateDisplayEntries(groupedEntries), [groupedEntries]);
   const latestAssistantMessageId = useMemo(
@@ -120,7 +124,7 @@ export const ConversationViewer = memo(function ConversationViewer({
   );
   const isEmpty = groupedEntries.length === 0;
   const hasActiveWorkRow = hasActiveWorkEntry(visibleEntries);
-  const shouldShowWorkingIndicator = isActive && !isEmpty && !hasActiveWorkRow;
+  const shouldShowWorkingIndicator = hasActiveWork && !isEmpty && !hasActiveWorkRow;
   const {
     containerRef,
     contentRef,
@@ -129,6 +133,7 @@ export const ConversationViewer = memo(function ConversationViewer({
   } = useStickyBottomScroll([
     visibleEntries,
     isActive,
+    hasActiveWork,
     isEmpty,
     shouldShowWorkingIndicator,
     markdownEnabled,
@@ -182,15 +187,22 @@ export const ConversationViewer = memo(function ConversationViewer({
         style={maxHeight ? { maxHeight } : undefined}
       >
         {isEmpty ? (
-          <div className="flex items-center justify-center h-32 text-gray-500 text-xs sm:text-sm">
-            {isActive ? (
-              <div className="inline-flex max-w-full items-center gap-2 rounded-md py-0.5 text-left text-xs text-gray-400 dark:text-white/28">
-                <ActivitySpinner className="h-3.5 w-3.5" />
-                <span>Thinking…</span>
-              </div>
-            ) : (
-              "No messages yet"
-            )}
+          <div
+            ref={contentRef}
+            className="mx-auto flex min-h-full w-full max-w-7xl flex-col px-3 sm:px-4 lg:px-6 xl:px-7"
+            data-testid="conversation-transcript"
+          >
+            <div className="flex h-32 shrink-0 items-center justify-center text-gray-500 text-xs sm:text-sm">
+              {hasActiveWork ? (
+                <div className="inline-flex max-w-full items-center gap-2 rounded-md py-0.5 text-left text-xs text-gray-400 dark:text-white/28">
+                  <ActivitySpinner className="h-3.5 w-3.5" />
+                  <span>Thinking…</span>
+                </div>
+              ) : (
+                "No messages yet"
+              )}
+            </div>
+            {scrollContentFooter}
           </div>
         ) : (
           <div ref={contentRef} className="mx-auto flex w-full max-w-7xl flex-col px-3 py-5 sm:px-4 sm:py-6 lg:px-6 xl:px-7" data-testid="conversation-transcript">
@@ -221,7 +233,7 @@ export const ConversationViewer = memo(function ConversationViewer({
                     timestamp={entry.timestamp}
                     showTimestamp={entry.showTimestamp}
                     spacingClass={spacingClass}
-                    isActive={isActive && index === visibleEntries.length - 1 && isToolCallInProgress(entry.data)}
+                    isActive={hasActiveWork && index === visibleEntries.length - 1 && isToolCallInProgress(entry.data)}
                     toolPathDisplayRoot={toolPathDisplayRoot}
                     onLoadToolDetails={onLoadToolDetails}
                   />
@@ -278,6 +290,7 @@ export const ConversationViewer = memo(function ConversationViewer({
                 <span>Thinking…</span>
               </div>
             )}
+            {scrollContentFooter}
           </div>
         )}
       </div>
