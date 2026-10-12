@@ -14,6 +14,10 @@ export interface PullRequestNavigationGitService {
   getDefaultBranch(directory: string): Promise<string>;
   getRemoteUrl(directory: string, remote?: string): Promise<string>;
   hasRemote(directory: string, remote?: string): Promise<boolean>;
+  parseRemoteBranchReference(
+    directory: string,
+    branchRef: string,
+  ): Promise<{ branch: string } | null>;
 }
 
 const GH_UNAVAILABLE_REASON = "GitHub CLI is not available in the task environment.";
@@ -278,10 +282,15 @@ export async function resolvePullRequestDestination(
     return disabled(NO_GITHUB_REMOTE_REASON);
   }
 
-  const baseBranch = getBaseBranch(task) ?? await git.getDefaultBranch(directory);
+  const selectedBaseBranch = getBaseBranch(task) ?? await git.getDefaultBranch(directory);
+  const remoteBaseBranch = await git.parseRemoteBranchReference(directory, selectedBaseBranch);
   return {
     enabled: true,
     destinationType: "create_pr",
-    url: buildGitHubCompareUrl(repositoryUrl, baseBranch, workingBranch),
+    url: buildGitHubCompareUrl(
+      repositoryUrl,
+      remoteBaseBranch?.branch ?? selectedBaseBranch,
+      workingBranch,
+    ),
   };
 }

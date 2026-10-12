@@ -46,6 +46,8 @@ export interface UseDashboardDataResult {
   branchesWorkspaceId: string | null;
   currentBranch: string;
   defaultBranch: string;
+  refreshBranchData: (workspaceId: string | null) => Promise<void>;
+  refreshBranchDataIfCurrent: (workspaceId: string | null) => Promise<void>;
 
   // App settings
   appSettingsResetting: boolean;
@@ -74,6 +76,22 @@ export function useDashboardData(): UseDashboardDataResult {
   const workspaceBranches = useWorkspaceBranches();
   const planningDir = usePlanningDir();
 
+  const refreshBranchData = useCallback(async (workspaceId: string | null): Promise<void> => {
+    await Promise.all([
+      workspaceBranches.fetchBranches(workspaceId),
+      workspaceBranches.fetchDefaultBranch(workspaceId),
+    ]);
+  }, [workspaceBranches.fetchBranches, workspaceBranches.fetchDefaultBranch]);
+
+  const refreshBranchDataIfCurrent = useCallback(async (
+    workspaceId: string | null,
+  ): Promise<void> => {
+    if (!workspaceBranches.isCurrentWorkspace(workspaceId)) {
+      return;
+    }
+    await refreshBranchData(workspaceId);
+  }, [refreshBranchData, workspaceBranches.isCurrentWorkspace]);
+
   const handleWorkspaceChange = useCallback((
     workspaceId: string | null,
     _directory: string,
@@ -85,16 +103,14 @@ export function useDashboardData(): UseDashboardDataResult {
     log.debug("Fetching workspace data", { workspaceId });
     workspaceModels.fetchModels(workspaceId);
     if (workspaceType === "git") {
-      workspaceBranches.fetchBranches(workspaceId);
-      workspaceBranches.fetchDefaultBranch(workspaceId);
+      void refreshBranchData(workspaceId);
     } else {
       workspaceBranches.resetBranches();
     }
     planningDir.checkPlanningDir(workspaceId);
   }, [
     planningDir.checkPlanningDir,
-    workspaceBranches.fetchBranches,
-    workspaceBranches.fetchDefaultBranch,
+    refreshBranchData,
     workspaceBranches.resetBranches,
     workspaceModels.fetchModels,
   ]);
@@ -121,6 +137,8 @@ export function useDashboardData(): UseDashboardDataResult {
     branchesWorkspaceId: workspaceBranches.branchesWorkspaceId,
     currentBranch: workspaceBranches.currentBranch,
     defaultBranch: workspaceBranches.defaultBranch,
+    refreshBranchData,
+    refreshBranchDataIfCurrent,
     appSettingsResetting: appConfig.appSettingsResetting,
     appSettingsPurgingTerminalTasks: appConfig.appSettingsPurgingTerminalTasks,
     appSettingsRestartingAutomaticWorkspaces: appConfig.appSettingsRestartingAutomaticWorkspaces,
