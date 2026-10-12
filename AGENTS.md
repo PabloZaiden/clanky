@@ -580,6 +580,12 @@ provisioning, Mesh, startup, or recovery lifecycle. The 120-second test limit is
 only a final whole-journey backstop for slow CI, not a substitute for a specific
 operation or lifecycle timeout.
 
+Mesh E2E operations use the shared `MESH_OPERATION_TIMEOUT_MS` budget of
+20 seconds instead of the generic 5-second operation budget, including bootstrap,
+enrollment, HTTP/health requests, remote commands, and the external Devbox fixture.
+Keep existing lifecycle, startup, large-image, and whole-journey budgets unchanged;
+this exception does not change production or non-Mesh timeouts.
+
 On failure, preserve the original error and report the relevant Clanky/provider
 logs, last public state, process status, and Git state. Teardown must await all
 cleanup and must not leave child processes, sockets, worktrees, or temporary

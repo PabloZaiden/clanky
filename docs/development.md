@@ -47,6 +47,13 @@ whole-journey limit remains only as a final backstop for slow CI. Successful
 steps never wait out those budgets, and failures retain the named condition,
 last observed state, and process logs.
 
+Mesh E2E operations use `MESH_OPERATION_TIMEOUT_MS` (20 seconds) instead of
+the generic five-second operation budget. This covers bootstrap, enrollment,
+HTTP/health requests, remote command requests, Windows termination, and the
+external Mesh Devbox fixture. Existing lifecycle/polling budgets, Windows
+startup and large-image budgets, and whole-journey limits remain unchanged.
+Production timeouts and non-Mesh operation budgets are not affected.
+
 Useful commands:
 
 ```bash
@@ -56,7 +63,8 @@ bun run test:mesh
 CLANKY_LOG_LEVEL=info bun run test:mesh
 ```
 
-Mesh failure diagnostics include subprocess exit/signal status. Set
+Mesh bootstrap and enrollment failure diagnostics include subprocess exit/signal
+status, timeout/output-limit flags, and elapsed time. Set
 `CLANKY_LOG_LEVEL=info` to include worker startup and enrollment milestones;
 automatic provisioning also streams registration progress into its job logs.
 

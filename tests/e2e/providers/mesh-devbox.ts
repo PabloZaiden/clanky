@@ -4,6 +4,7 @@
 
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { MESH_OPERATION_TIMEOUT_MS } from "../support/timeouts";
 
 const args = process.argv.slice(2);
 const root = join(process.cwd(), ".devbox", "clanky-worker");
@@ -15,7 +16,7 @@ async function service(operation: string): Promise<void> {
   const response = await fetch(`${serviceUrl}/${operation}`, {
     method: "POST",
     body: JSON.stringify({ directory: process.cwd() }),
-    signal: AbortSignal.timeout(5_000),
+    signal: AbortSignal.timeout(MESH_OPERATION_TIMEOUT_MS),
   });
   if (!response.ok) throw new Error(await response.text());
 }
@@ -57,7 +58,7 @@ if (args[0] === "--help") {
         HOME: join(root, "home"),
       },
       stdout: "inherit", stderr: "inherit",
-      timeout: 5_000, killSignal: "SIGKILL",
+      timeout: MESH_OPERATION_TIMEOUT_MS, killSignal: "SIGKILL",
     });
     process.exitCode = await child.exited;
   }

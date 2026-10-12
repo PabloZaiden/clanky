@@ -15,6 +15,7 @@ import {
   type ManagedMeshNode,
 } from "./support/mesh-cluster";
 import { pollUntil } from "./support/polling";
+import { MESH_OPERATION_TIMEOUT_MS } from "./support/timeouts";
 import { installExternalAcpProvider } from "./support/provider";
 
 interface MeshRegistration {
@@ -114,7 +115,7 @@ async function executeOnWorker(
       method: "POST",
       body: {
         ...input,
-        timeoutMs: 5_000,
+        timeoutMs: MESH_OPERATION_TIMEOUT_MS,
       },
     },
   );
@@ -144,7 +145,7 @@ async function waitForWorkerExecution(options: {
         method: "POST",
         body: {
           ...options.input,
-          timeoutMs: 5_000,
+          timeoutMs: MESH_OPERATION_TIMEOUT_MS,
         },
       },
     ),
@@ -724,7 +725,7 @@ test("compiled relays route worker execution, reconnect, and enforce revocation"
         body: {
           ...probe,
           cwd: worker.dataDir,
-          timeoutMs: 5_000,
+          timeoutMs: MESH_OPERATION_TIMEOUT_MS,
         },
       },
     );

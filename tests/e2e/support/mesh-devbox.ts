@@ -5,6 +5,7 @@
 import { chmod, mkdir } from "node:fs/promises";
 import { delimiter, join, resolve } from "node:path";
 import { currentEnvironment, waitForExit } from "./process";
+import { MESH_OPERATION_TIMEOUT_MS } from "./timeouts";
 
 export async function startMeshDevboxFixture(binDirectory: string): Promise<{
   stop(): Promise<void>;
@@ -17,7 +18,7 @@ export async function startMeshDevboxFixture(binDirectory: string): Promise<{
   const readers: Promise<void>[] = [];
   async function stopWorker(child: ReturnType<typeof Bun.spawn>): Promise<void> {
     if (child.exitCode === null) child.kill();
-    if (!await waitForExit(child, 5_000)) {
+    if (!await waitForExit(child, MESH_OPERATION_TIMEOUT_MS)) {
       child.kill("SIGKILL");
       await child.exited;
       throw new Error(`Devbox worker ${child.pid} did not stop gracefully`);
