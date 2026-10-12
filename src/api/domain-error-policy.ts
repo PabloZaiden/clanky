@@ -453,6 +453,9 @@ function fileConflictDetails(error: DomainError): Record<string, unknown> | unde
       ...(typeof currentFile["isImage"] === "boolean"
         ? { isImage: currentFile["isImage"] }
         : {}),
+      ...(typeof currentFile["isVideo"] === "boolean"
+        ? { isVideo: currentFile["isVideo"] }
+        : {}),
     },
   };
 }

@@ -27,8 +27,14 @@ import {
 import { isFileExplorerConflictError } from "../core/file-explorer-errors";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { domainErrorResponse, errorResponse } from "./helpers";
-import { createFileDownloadHeadResponse, createFileDownloadResponse, createInlineImageResponse } from "./file-download-response";
+import {
+  createFileDownloadHeadResponse,
+  createFileDownloadResponse,
+  createInlineImageResponse,
+  createInlineVideoResponse,
+} from "./file-download-response";
 import { parseAndValidate, validateRequest, type ValidationResult } from "./validation";
+import { parseByteRange } from "../shared/byte-range";
 
 interface SearchSchema<T> {
   safeParse: (value: unknown) =>
@@ -243,6 +249,82 @@ export function createFileExplorerRoutes(
             path: validation.data.path,
             error: String(error),
           });
+          return mapFileExplorerError(error, config);
+        }
+      },
+    },
+
+    [`${basePath}/video-preview`]: {
+      auth: "user",
+      sameOrigin: "mutations",
+      description: `Stream a browser-renderable ${resourceDescription} video file for inline playback.`,
+      querySchema: GetFileExplorerFileRequestSchema,
+      async GET(req: Request, ctx: RouteContext): Promise<Response> {
+        const validation = parseSearchParams(GetFileExplorerFileRequestSchema, req);
+        if (!validation.success) {
+          return validation.response;
+        }
+
+        const resourceId = getResourceId(ctx);
+        try {
+          const target = await config.resolveTarget(
+            req,
+            resourceId,
+            getStartDirectory(validation.data.startDirectory),
+            {
+              allowCredentialTokenQuery: true,
+            },
+          );
+          const metadata = await fileExplorerService.getVideoPreviewMetadata(
+            target,
+            validation.data.path,
+          );
+          const rangeHeader = req.headers.get("range");
+          const range = rangeHeader === null
+            ? undefined
+            : parseByteRange(rangeHeader, metadata.file.size);
+          if (range === null) {
+            log.warn(`Rejected unsatisfiable ${resourceDescription} video preview range`, {
+              resourceId,
+              path: validation.data.path,
+            });
+            const response = errorResponse(
+              "file_range_unsatisfiable",
+              "A satisfiable single byte range is required.",
+              416,
+            );
+            response.headers.set("Content-Range", `bytes */${String(metadata.file.size)}`);
+            return response;
+          }
+
+          const video = await fileExplorerService.readVideoPreviewFile(target, metadata, {
+            signal: req.signal,
+            range,
+          });
+          if (video.rangeFallback) {
+            log.warn(`Serving full ${resourceDescription} video stream because ranged reads are unavailable`, {
+              resourceId,
+              path: validation.data.path,
+            });
+          }
+          return createInlineVideoResponse(video.stream, video.contentType, video.file, {
+            ...(video.range ? { range: video.range } : {}),
+            ...(video.rangeFallback ? { rangeFallback: true } : {}),
+          });
+        } catch (error) {
+          const metadata = {
+            resourceId,
+            path: validation.data.path,
+            error: String(error),
+          };
+          if (
+            isDomainError(error)
+            && ["file_not_found", "invalid_path_type", "invalid_preview_type", "invalid_path"].includes(error.code)
+          ) {
+            log.warn(`Rejected ${resourceDescription} video preview request`, metadata);
+          } else {
+            log.error(`Failed to preview ${resourceDescription} video`, metadata);
+          }
           return mapFileExplorerError(error, config);
         }
       },

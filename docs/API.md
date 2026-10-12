@@ -472,6 +472,7 @@ included in this table.
 | GET, HEAD | `/api/execution-hosts/:kind/:id/files/download` | Download an execution-host file. |
 | GET | `/api/execution-hosts/:kind/:id/files/metadata` | Read execution-host file metadata. |
 | GET | `/api/execution-hosts/:kind/:id/files/preview` | Preview a browser-renderable execution-host image file. |
+| GET | `/api/execution-hosts/:kind/:id/files/video-preview` | Stream a browser-renderable execution-host video for inline playback. |
 | POST | `/api/execution-hosts/:kind/:id/files/rename` | Rename an execution-host file or directory. |
 | GET | `/api/execution-hosts/:kind/:id/files/tree` | Load the full execution-host file tree. |
 | POST | `/api/execution-hosts/:kind/:id/files/write` | Write an execution-host file. |
@@ -582,6 +583,7 @@ included in this table.
 | GET, HEAD | `/api/workspaces/:id/files/download` | Stream a workspace file from the selected execution host. |
 | GET | `/api/workspaces/:id/files/metadata` | Read workspace file metadata. |
 | GET | `/api/workspaces/:id/files/preview` | Preview a browser-renderable workspace image file. |
+| GET | `/api/workspaces/:id/files/video-preview` | Stream a browser-renderable workspace video for inline playback. |
 | POST | `/api/workspaces/:id/files/rename` | Rename a workspace file or directory in the active explorer root. |
 | GET | `/api/workspaces/:id/files/tree` | Load the full workspace file tree. |
 | POST | `/api/workspaces/:id/files/upload` | Create a workspace file upload session. |
@@ -2222,6 +2224,42 @@ operation below.
 | 499 | `mesh_execution_aborted` | The request or remote execution was cancelled. |
 | 502 | `mesh_execution_unreachable` | The selected execution host is unavailable. |
 | 500 | `workspace_exec_failed` | Unexpected command execution failure. |
+
+#### GET /api/workspaces/:id/files/video-preview
+
+Stream a browser-renderable video inline from the host selected by the workspace.
+The route accepts a URL-encoded `path` query parameter and supports MP4
+(`.mp4` and `.m4v`) and WebM (`.webm`) MIME types. Codec support depends on the
+browser; Clanky does not transcode media. Other file types remain available
+through the download route.
+
+Relative paths resolve from `workspace.directory`; absolute paths are used
+directly on the selected host. The response is streamed rather than buffered as
+a complete browser `Blob`, with `Content-Disposition: inline`,
+`Cache-Control: no-store`, `Content-Type`, and `X-Content-Type-Options: nosniff`.
+The request is cancellable when the media element stops reading.
+
+A satisfiable single `Range: bytes=...` request returns `206 Partial Content`
+with `Content-Range`, `Content-Length`, and `Accept-Ranges: bytes`. Malformed,
+multiple, or unsatisfiable ranges return `416` with `Content-Range: bytes */size`.
+If the selected execution host cannot perform a ranged read, Clanky streams the
+complete video with `200 OK` and `Accept-Ranges: none`; playback can proceed
+sequentially, but seeking is not available for that response.
+
+The equivalent route is available under
+`/api/execution-hosts/:kind/:id/files/video-preview`.
+
+**Errors**
+
+| Status | Error | Description |
+|--------|-------|-------------|
+| 400 | `invalid_workspace_path` | The requested path is invalid. |
+| 400 | `invalid_path_type` | The requested path is a directory rather than a regular file. |
+| 400 | `invalid_preview_type` | The requested file is not a supported video type. |
+| 404 | `workspace_not_found` | Workspace not found or not owned by the caller. |
+| 404 | `file_not_found` | The requested file does not exist on the selected host. |
+| 416 | `file_range_unsatisfiable` | A single satisfiable byte range is required. |
+| 500 | `workspace_file_error` | Video streaming failed. |
 
 #### GET, HEAD /api/workspaces/:id/files/download
 

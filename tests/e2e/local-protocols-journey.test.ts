@@ -433,6 +433,43 @@ async function exerciseWorkspaceCli(
   expect(download.exitCode).toBe(0);
   expect(await Bun.file(downloadPath).text()).toBe(contents);
 
+  const videoSourcePath = join(app.runDirectory, "video-preview-source.mp4");
+  const videoBytes = Uint8Array.from([0, 1, 2, 3, 4, 5, 6, 7]);
+  await Bun.write(videoSourcePath, videoBytes);
+  const videoUpload = await app.cli([
+    "workspace",
+    "upload",
+    workspace.id,
+    videoSourcePath,
+    "--remote-path",
+    "video-preview.mp4",
+    "--force",
+  ], { apiKey });
+  expect(videoUpload.exitCode).toBe(0);
+
+  const videoPath = "video-preview.mp4";
+  const videoPreview = await app.request(
+    `/api/workspaces/${workspace.id}/files/video-preview?path=${encodeURIComponent(videoPath)}`,
+    {
+      apiKey,
+      headers: { range: "bytes=2-5" },
+    },
+  );
+  expect(videoPreview.status).toBe(206);
+  expect(videoPreview.headers.get("content-type")).toBe("video/mp4");
+  expect(videoPreview.headers.get("content-disposition")).toStartWith('inline; filename="video-preview.mp4"');
+  expect(videoPreview.headers.get("content-range")).toBe("bytes 2-5/8");
+  expect([...new Uint8Array(await videoPreview.arrayBuffer())]).toEqual([2, 3, 4, 5]);
+
+  const videoDownload = await app.request(
+    `/api/workspaces/${workspace.id}/files/download?path=${encodeURIComponent(videoPath)}`,
+    { apiKey },
+  );
+  expect(videoDownload.status).toBe(200);
+  expect(videoDownload.headers.get("content-type")).toBe("video/mp4");
+  expect(videoDownload.headers.get("content-disposition")).toStartWith("attachment;");
+  expect([...new Uint8Array(await videoDownload.arrayBuffer())]).toEqual([...videoBytes]);
+
   const exec = await app.cli([
     "workspace",
     "exec",
@@ -665,7 +702,7 @@ async function expectVoiceTranscription(app: E2EApplication): Promise<void> {
 }
 
 describe("compiled local protocol journey", () => {
-  test("crosses CLI file transfer, WebDAV, and terminal websocket boundaries", async () => {
+  test("crosses file transfer, video preview, WebDAV, and terminal websocket boundaries", async () => {
     application = await E2EApplication.create();
     voiceProvider = await startVoiceProvider(application.runDirectory);
     try {

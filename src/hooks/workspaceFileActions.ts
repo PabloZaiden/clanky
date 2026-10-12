@@ -338,9 +338,10 @@ export async function readFileExplorerImagePreviewApi(
   );
 }
 
-export async function getFileExplorerDownloadUrl(
+async function getFileExplorerResourceUrl(
   target: FileExplorerTarget,
   path: string,
+  resource: "download" | "video-preview",
   options?: WorkspaceFileRequestOptions,
 ): Promise<string> {
   const searchParams = buildFileExplorerSearchParams(target, {
@@ -349,7 +350,23 @@ export async function getFileExplorerDownloadUrl(
   if (target.type === "executionHost" && target.kind === "ssh") {
     searchParams.set("credentialToken", await requireFileExplorerServerCredentialToken(target.id));
   }
-  return appPath(`${getFileExplorerBasePath(target)}/download?${searchParams.toString()}`);
+  return appPath(`${getFileExplorerBasePath(target)}/${resource}?${searchParams.toString()}`);
+}
+
+export async function getFileExplorerDownloadUrl(
+  target: FileExplorerTarget,
+  path: string,
+  options?: WorkspaceFileRequestOptions,
+): Promise<string> {
+  return await getFileExplorerResourceUrl(target, path, "download", options);
+}
+
+export async function getFileExplorerVideoPreviewUrl(
+  target: FileExplorerTarget,
+  path: string,
+  options?: WorkspaceFileRequestOptions,
+): Promise<string> {
+  return await getFileExplorerResourceUrl(target, path, "video-preview", options);
 }
 
 export async function downloadFileExplorerFileApi(

@@ -111,6 +111,7 @@ export function useFileExplorer(
     showHiddenFiles: tree.showHiddenFiles,
     editorContent: document.editorContent,
     imagePreviewUrl: document.imagePreviewUrl,
+    videoPreviewUrl: document.videoPreviewUrl,
     savedContent: document.savedContent,
     loadingTree: tree.loadingTree,
     loadingFile: document.loadingFile,

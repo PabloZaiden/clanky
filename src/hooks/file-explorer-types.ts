@@ -29,6 +29,7 @@ export interface UseFileExplorerResult {
   showHiddenFiles: boolean;
   editorContent: string;
   imagePreviewUrl: string | null;
+  videoPreviewUrl: string | null;
   savedContent: string;
   loadingTree: boolean;
   loadingFile: boolean;
@@ -60,4 +61,3 @@ export interface UseFileExplorerResult {
 }
 
 export type UseWorkspaceFilesResult = UseFileExplorerResult;
-

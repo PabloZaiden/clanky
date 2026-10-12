@@ -3,13 +3,14 @@
  */
 
 import type { WorkspaceFileEntry } from "@/shared";
+import type { ByteRange } from "@/shared";
 
 function sanitizeAttachmentFileName(fileName: string): string {
   return fileName.replace(/["\r\n]/g, "_") || "download";
 }
 
-function sanitizeInlineFileName(fileName: string): string {
-  return fileName.replace(/["\r\n]/g, "_") || "image";
+function sanitizeInlineFileName(fileName: string, fallback: string): string {
+  return fileName.replace(/["\r\n]/g, "_") || fallback;
 }
 
 function encodeAttachmentFileName(fileName: string): string {
@@ -61,9 +62,43 @@ export function createInlineImageResponse(
   return new Response(body, {
     headers: {
       "Cache-Control": "no-store",
-      "Content-Disposition": `inline; filename="${sanitizeInlineFileName(fileName)}"`,
+      "Content-Disposition": `inline; filename="${sanitizeInlineFileName(fileName, "image")}"`,
       "Content-Type": contentType,
     },
+  });
+}
+
+export function createInlineVideoResponse(
+  body: ReadableStream<Uint8Array>,
+  contentType: string,
+  file: WorkspaceFileEntry,
+  options?: {
+    range?: ByteRange;
+    rangeFallback?: boolean;
+  },
+): Response {
+  const headers = new Headers({
+    "Cache-Control": "no-store",
+    "Content-Disposition": `inline; filename="${sanitizeAttachmentFileName(file.name)}"; filename*=UTF-8''${encodeAttachmentFileName(file.name)}`,
+    "Content-Type": contentType,
+    "X-Content-Type-Options": "nosniff",
+  });
+  const range = options?.range;
+
+  if (range) {
+    headers.set("Accept-Ranges", "bytes");
+    headers.set("Content-Range", `bytes ${String(range.start)}-${String(range.end)}/${String(file.size)}`);
+    headers.set("Content-Length", String(range.end - range.start + 1));
+  } else {
+    headers.set("Content-Length", String(file.size));
+    if (options?.rangeFallback) {
+      headers.set("Accept-Ranges", "none");
+    }
+  }
+
+  return new Response(body, {
+    status: range ? 206 : 200,
+    headers,
   });
 }
 
