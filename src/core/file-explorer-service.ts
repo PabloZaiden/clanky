@@ -4,7 +4,13 @@
 
 import { posix as pathPosix } from "node:path";
 import { randomUUID } from "node:crypto";
-import type { WorkspaceFileKind, WorkspaceFileEntry, WorkspaceFileNode } from "@/shared";
+import type {
+  ByteRange,
+  WorkspaceFileKind,
+  WorkspaceFileEntry,
+  WorkspaceFileNode,
+} from "@/shared";
+import { isDomainError } from "../domain/domain-error";
 import type {
   CommandExecutor,
   FileMoveResult,
@@ -20,6 +26,10 @@ import {
   detectBrowserImageMimeType,
   getBrowserImageMimeType,
 } from "../utils/workspace-file-images";
+import {
+  getBrowserVideoMimeType,
+  type BrowserRenderableVideoMimeType,
+} from "../utils/workspace-file-videos";
 import {
   basenameExecutionPath,
   executionPathsEqual,
@@ -90,6 +100,17 @@ export interface FileExplorerImageReadResult {
   file: WorkspaceFileEntry;
   contentType: string;
   data: Uint8Array;
+}
+
+export interface FileExplorerVideoPreviewMetadataResult {
+  file: WorkspaceFileEntry;
+  contentType: BrowserRenderableVideoMimeType;
+}
+
+export interface FileExplorerVideoReadResult extends FileExplorerVideoPreviewMetadataResult {
+  stream: ReadableStream<Uint8Array>;
+  range: ByteRange | undefined;
+  rangeFallback: boolean;
 }
 
 export interface FileExplorerDownloadReadResult {
@@ -428,7 +449,8 @@ function toFileEntry(
   absolutePath: string,
   metadata: FileSystemMetadata,
 ): WorkspaceFileEntry {
-  const mimeType = metadata.kind === "file" ? getBrowserImageMimeType(absolutePath) : null;
+  const imageMimeType = metadata.kind === "file" ? getBrowserImageMimeType(absolutePath) : null;
+  const videoMimeType = metadata.kind === "file" ? getBrowserVideoMimeType(absolutePath) : null;
   return {
     ...toFileNode(target, absolutePath, metadata.kind),
     absolutePath,
@@ -439,7 +461,8 @@ function toFileEntry(
       metadata.size,
       metadata.contentHash,
     ),
-    ...(mimeType ? { mimeType, isImage: true } : {}),
+    ...(imageMimeType ? { mimeType: imageMimeType, isImage: true } : {}),
+    ...(videoMimeType ? { mimeType: videoMimeType, isVideo: true } : {}),
   };
 }
 
@@ -449,7 +472,11 @@ async function getFileEntry(
   options?: FileExplorerMetadataOptions,
 ): Promise<WorkspaceFileEntry | null> {
   const absolutePath = resolveTargetPath(target, requestedPath);
-  const metadata = await getFileMetadata(target.executor, absolutePath, options);
+  const metadata = await getFileMetadata(target.executor, absolutePath, {
+    ...options,
+    includeContentHash: options?.includeContentHash
+      ?? (getBrowserVideoMimeType(absolutePath) === null ? undefined : false),
+  });
   return metadata ? toFileEntry(target, absolutePath, metadata) : null;
 }
 
@@ -665,6 +692,68 @@ export class FileExplorerService {
       },
       contentType: detectedMimeType,
       data,
+    };
+  }
+
+  async getVideoPreviewMetadata(
+    target: FileExplorerTarget,
+    requestedPath: string,
+  ): Promise<FileExplorerVideoPreviewMetadataResult> {
+    const file = assertDownloadableFile(await getFileEntry(target, requestedPath, {
+      includeContentHash: false,
+    }));
+    const contentType = getBrowserVideoMimeType(file.path);
+    if (!file.isVideo || !contentType) {
+      throw new FileExplorerError(
+        "invalid_preview_type",
+        "Requested file is not a browser-renderable video",
+      );
+    }
+
+    return { file, contentType };
+  }
+
+  async readVideoPreviewFile(
+    target: FileExplorerTarget,
+    preview: FileExplorerVideoPreviewMetadataResult,
+    options?: {
+      signal?: AbortSignal;
+      range?: ByteRange;
+    },
+  ): Promise<FileExplorerVideoReadResult> {
+    let range = options?.range;
+    let rangeFallback = false;
+    let stream: ReadableStream<Uint8Array> | null;
+
+    try {
+      stream = await target.executor.streamFile(preview.file.absolutePath, {
+        signal: options?.signal,
+        ...(range ? { range } : {}),
+      });
+    } catch (error) {
+      if (
+        !range
+        || !isDomainError(error)
+        || error.code !== "execution_host_capability_unavailable"
+      ) {
+        throw error;
+      }
+      stream = await target.executor.streamFile(preview.file.absolutePath, {
+        signal: options?.signal,
+      });
+      range = undefined;
+      rangeFallback = true;
+    }
+
+    if (!stream) {
+      throw new FileExplorerError("file_not_found", "Requested file does not exist");
+    }
+
+    return {
+      ...preview,
+      stream,
+      range,
+      rangeFallback,
     };
   }
 

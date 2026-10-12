@@ -6,8 +6,9 @@ import { apiRequest } from "../lib/api-client";
 import { isApiErrorCode } from "../lib/api-error";
 import { appPath } from "../lib/public-path";
 import {
-  getStoredSshCredentialToken,
+  getStoredSshCredentialTokenLease,
   getStoredSshServerCredential,
+  type SshCredentialTokenLease,
 } from "../lib/ssh-browser-credentials";
 import type { WorkspaceFileEntry } from "@/shared";
 import type {
@@ -99,13 +100,19 @@ function createInvalidSshCredentialError(message?: string): FileExplorerCredenti
   );
 }
 
-export async function requireFileExplorerServerCredentialToken(serverId: string): Promise<string> {
+export async function requireFileExplorerServerCredentialLease(
+  serverId: string,
+  options: { forceRefresh?: boolean } = {},
+): Promise<SshCredentialTokenLease> {
   const hadStoredCredential = getStoredSshServerCredential(serverId) !== null;
 
   try {
-    const credentialToken = await getStoredSshCredentialToken(serverId);
-    if (credentialToken) {
-      return credentialToken;
+    const credential = await getStoredSshCredentialTokenLease(
+      serverId,
+      options,
+    );
+    if (credential) {
+      return credential;
     }
   } catch (error) {
     if (
@@ -122,6 +129,11 @@ export async function requireFileExplorerServerCredentialToken(serverId: string)
   }
 
   throw createMissingSshCredentialError();
+}
+
+export async function requireFileExplorerServerCredentialToken(serverId: string): Promise<string> {
+  const credential = await requireFileExplorerServerCredentialLease(serverId);
+  return credential.credentialToken;
 }
 
 function mapWorkspaceFileError(error: unknown): never {
@@ -338,18 +350,53 @@ export async function readFileExplorerImagePreviewApi(
   );
 }
 
+export interface FileExplorerVideoPreviewResource {
+  url: string;
+  credentialExpiresAt: number | null;
+}
+
+interface FileExplorerResourceUrlOptions extends WorkspaceFileRequestOptions {
+  refreshSshCredential?: boolean;
+}
+
+async function getFileExplorerResourceUrl(
+  target: FileExplorerTarget,
+  path: string,
+  resource: "download" | "video-preview",
+  options?: FileExplorerResourceUrlOptions,
+): Promise<FileExplorerVideoPreviewResource> {
+  const searchParams = buildFileExplorerSearchParams(target, {
+    path,
+  }, options);
+  let credentialExpiresAt: number | null = null;
+  if (target.type === "executionHost" && target.kind === "ssh") {
+    const credential = await requireFileExplorerServerCredentialLease(target.id, {
+      forceRefresh: options?.refreshSshCredential,
+    });
+    searchParams.set("credentialToken", credential.credentialToken);
+    credentialExpiresAt = credential.expiresAt;
+  }
+  return {
+    url: appPath(`${getFileExplorerBasePath(target)}/${resource}?${searchParams.toString()}`),
+    credentialExpiresAt,
+  };
+}
+
 export async function getFileExplorerDownloadUrl(
   target: FileExplorerTarget,
   path: string,
   options?: WorkspaceFileRequestOptions,
 ): Promise<string> {
-  const searchParams = buildFileExplorerSearchParams(target, {
-    path,
-  }, options);
-  if (target.type === "executionHost" && target.kind === "ssh") {
-    searchParams.set("credentialToken", await requireFileExplorerServerCredentialToken(target.id));
-  }
-  return appPath(`${getFileExplorerBasePath(target)}/download?${searchParams.toString()}`);
+  const resource = await getFileExplorerResourceUrl(target, path, "download", options);
+  return resource.url;
+}
+
+export async function getFileExplorerVideoPreviewUrl(
+  target: FileExplorerTarget,
+  path: string,
+  options?: FileExplorerResourceUrlOptions,
+): Promise<FileExplorerVideoPreviewResource> {
+  return await getFileExplorerResourceUrl(target, path, "video-preview", options);
 }
 
 export async function downloadFileExplorerFileApi(
