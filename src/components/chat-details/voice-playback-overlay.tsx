@@ -15,13 +15,11 @@ export function VoicePlaybackOverlay({
     return null;
   }
 
-  const title = recovery.mode === "summary" ? "Summary audio ready" : "Audio ready";
-
   return (
     <Modal
       isOpen
       onClose={onCancel}
-      title={title}
+      title="Summary audio ready"
       showCloseButton={false}
       closeOnOverlayClick={false}
       size="sm"

@@ -26,8 +26,7 @@ interface MessageEntryProps {
   spacingClass: string;
   markdownEnabled: boolean;
   fileLinkContext?: TranscriptFileLinkContext;
-  onReadAloud?: (message: MessageData, mode: "full" | "summary") => void;
-  readAloudSummaryEnabled: boolean;
+  onReadAloud?: (messageId: string) => void;
   playingReadAloudKey: string | null;
   readAloudStatus: "generating" | "playing" | null;
 }
@@ -52,7 +51,6 @@ export const MessageEntry = memo(function MessageEntry({
   markdownEnabled,
   fileLinkContext,
   onReadAloud,
-  readAloudSummaryEnabled,
   playingReadAloudKey,
   readAloudStatus,
 }: MessageEntryProps) {
@@ -71,41 +69,8 @@ export const MessageEntry = memo(function MessageEntry({
     title: selectedAttachment.filename,
     description: `${Math.max(1, Math.round(selectedAttachment.size / 1024))} KB`,
   } : null;
-  const activeReadAloudMode = playingReadAloudKey === `${msg.id}:full`
-    ? "full"
-    : playingReadAloudKey === `${msg.id}:summary`
-      ? "summary"
-      : null;
-  const generatingReadAloudMode = readAloudStatus === "generating"
-    ? activeReadAloudMode
-    : null;
-
-  function renderReadAloudAction(
-    mode: "full" | "summary",
-    idleLabel: string,
-    activeLabel: string,
-    idleAriaLabel: string,
-    activeAriaLabel: string,
-  ) {
-    const isActive = playingReadAloudKey === `${msg.id}:${mode}`;
-    const isGenerating = isActive && readAloudStatus === "generating";
-    return (
-      <button
-        type="button"
-        className={`inline-flex items-center gap-1 text-xs text-gray-500 underline-offset-2 hover:underline dark:text-gray-400 ${isGenerating ? "no-underline" : ""}`}
-        onClick={() => onReadAloud?.(displayMessage, mode)}
-        aria-label={isGenerating ? "Cancel audio generation" : isActive ? activeAriaLabel : idleAriaLabel}
-        aria-busy={isGenerating}
-      >
-        {isGenerating ? (
-          <>
-            <ActivitySpinner className="h-3.5 w-3.5" />
-            <span>Generating audio…</span>
-          </>
-        ) : isActive ? activeLabel : idleLabel}
-      </button>
-    );
-  }
+  const isReadAloudActive = playingReadAloudKey === msg.id;
+  const isGeneratingReadAloud = isReadAloudActive && readAloudStatus === "generating";
 
   return (
     <div className={`group ${spacingClass}`.trim()} data-message-role={msg.role}>
@@ -200,42 +165,27 @@ export const MessageEntry = memo(function MessageEntry({
             </div>
           )}
           {!isUser && onReadAloud && displayMessage.content.trim() && (
-            <div className="flex flex-wrap items-center gap-0 pt-1">
-              {generatingReadAloudMode ? (
-                renderReadAloudAction(
-                  generatingReadAloudMode,
-                  generatingReadAloudMode === "summary" ? "Summary" : "Read",
-                  generatingReadAloudMode === "summary" ? "Stop summary" : "Stop reading",
-                  generatingReadAloudMode === "summary"
-                    ? "Read response summary aloud"
-                    : "Read response aloud",
-                  generatingReadAloudMode === "summary"
-                    ? "Stop reading summary"
-                    : "Stop reading response",
-                )
-              ) : (
-                <>
-                  {renderReadAloudAction(
-                    "full",
-                    "Read",
-                    "Stop reading",
-                    "Read response aloud",
-                    "Stop reading response",
-                  )}
-                  {readAloudSummaryEnabled && (
-                    <>
-                      <span aria-hidden="true" className="whitespace-pre">{" - "}</span>
-                      {renderReadAloudAction(
-                        "summary",
-                        "Summary",
-                        "Stop summary",
-                        "Read response summary aloud",
-                        "Stop reading summary",
-                      )}
-                    </>
-                  )}
-                </>
-              )}
+            <div className="pt-1">
+              <button
+                type="button"
+                className={`inline-flex items-center gap-1 text-xs text-gray-500 underline-offset-2 hover:underline dark:text-gray-400 ${isGeneratingReadAloud ? "no-underline" : ""}`}
+                onClick={() => onReadAloud(msg.id)}
+                aria-label={
+                  isGeneratingReadAloud
+                    ? "Cancel audio generation"
+                    : isReadAloudActive
+                      ? "Stop reading summary"
+                      : "Read response summary aloud"
+                }
+                aria-busy={isGeneratingReadAloud}
+              >
+                {isGeneratingReadAloud ? (
+                  <>
+                    <ActivitySpinner className="h-3.5 w-3.5" />
+                    <span>Generating audio…</span>
+                  </>
+                ) : isReadAloudActive ? "Stop summary" : "Read summary"}
+              </button>
             </div>
           )}
           <ImageViewerModal image={selectedImage} onClose={() => setSelectedAttachment(null)} />

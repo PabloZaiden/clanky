@@ -93,6 +93,7 @@ interface ActiveChatStream {
   handle: AgentStreamHandle;
   generation: number;
   completion: Promise<void>;
+  streamState?: ChatStreamConsumptionState;
 }
 
 interface StartupOperation {
@@ -550,6 +551,23 @@ export class ChatConversationService implements ChatConversationPort {
     return this.activeStreams.has(chatId);
   }
 
+  async getAssistantMessage(
+    chatId: string,
+    messageId: string,
+  ): Promise<MessageData | null> {
+    const chat = await this.state.getChat(chatId);
+    if (!chat) {
+      return null;
+    }
+
+    const activeMessage = this.activeStreams.get(chatId)?.streamState?.chat.state.messages.find(
+      (message) => message.id === messageId,
+    );
+    const message = activeMessage
+      ?? chat.state.messages.find((candidate) => candidate.id === messageId);
+    return message?.role === "assistant" ? message : null;
+  }
+
   private async startActivePrompt({ chat, backend, sessionId, prompt, signal, answerInputId, historyPromptContext }: {
     chat: Chat;
     backend: Backend;
@@ -659,6 +677,10 @@ export class ChatConversationService implements ChatConversationPort {
     historyPromptContext?: ChatHistoryPromptContext,
   ): Promise<void> {
     const streamState = this.createChatStreamState(initialChat);
+    const activeStream = this.activeStreams.get(chatId);
+    if (activeStream?.generation === generation) {
+      activeStream.streamState = streamState;
+    }
     const sessionId = streamState.chat.state.session?.id;
     let canDrain = backend.harness.capabilities.adapter === "acp";
 

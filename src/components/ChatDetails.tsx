@@ -107,15 +107,12 @@ export function ChatDetails({
   );
   const voicePlayback = useVoicePlayback();
   const playReadAloud = voicePlayback.play;
-  const handleReadAloud = useCallback((
-    message: { id: string; content: string },
-    mode: "full" | "summary",
-  ): void => {
+  const handleReadAloud = useCallback((messageId: string): void => {
     if (liveVoice.busy) {
       notifyError("End Live voice before using read aloud.");
       return;
     }
-    if (mode === "summary" && !voice.capabilities.text.validated) {
+    if (!voice.capabilities.text.validated) {
       notifyError("The text provider must be configured and validated for summaries.");
       return;
     }
@@ -123,8 +120,9 @@ export function ChatDetails({
       notifyError("Local Piper speech is not supported on this server.");
       return;
     }
-    void playReadAloud(`${message.id}:${mode}`, message.content, mode);
+    void playReadAloud(chatId, messageId);
   }, [
+    chatId,
     notifyError,
     playReadAloud,
     voice.capabilities.text.validated,
@@ -290,8 +288,7 @@ export function ChatDetails({
         onCancelVoice={voice.composer.cancel}
         onDismissVoiceError={voice.composer.dismissError}
         onReadAloud={handleReadAloud}
-        readAloudAvailable={voice.speechAvailable && !liveVoice.busy}
-        readAloudSummaryAvailable={
+        readAloudAvailable={
           voice.speechAvailable && !liveVoice.busy
           && voice.capabilities.text.validated
         }
