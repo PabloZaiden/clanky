@@ -206,6 +206,10 @@ raw-text mode, and theme changes with a temporary Bun.WebView harness. Capture
 and review desktop and mobile screenshots; do not add browser or component
 tests to the repository.
 
+For regular code blocks, verify that the copy button copies the complete block
+content without the Markdown fences and remains usable when a block scrolls
+horizontally.
+
 Mermaid is pinned to 11.16.1: the FastDOM dependencies in 11.17 conflict with
 Monaco's global AMD loader. Before upgrading, render the first diagram **after**
 Monaco has initialized and check both the development server and standalone

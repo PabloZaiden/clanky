@@ -6,7 +6,9 @@
 import Markdown, { type ExtraProps } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { createContext, useContext, type ComponentPropsWithoutRef, type ReactNode } from "react";
+import { useToast } from "@pablozaiden/webapp/web";
 import { MermaidDiagram } from "./MermaidDiagram";
+import { Button, CopyPathIcon } from "./common";
 import type { TranscriptFileLinkContext } from "./log-viewer/types";
 import {
   renderTranscriptTextNodes,
@@ -14,6 +16,7 @@ import {
   TranscriptInlineCode,
   TranscriptPathLink,
 } from "./log-viewer/transcript-file-links";
+import { writeTextToClipboard } from "../utils";
 
 // react-markdown 10 no longer passes the legacy `inline` renderer prop, so
 // block code is marked at its <pre> boundary instead.
@@ -29,12 +32,48 @@ function MarkdownPre({ children, node }: ComponentPropsWithoutRef<"pre"> & Extra
     const source = code.children.map((child) => child.type === "text" ? child.value : "").join("");
     return <MermaidDiagram source={source} />;
   }
+  const codeText = code?.type === "element"
+    ? code.children.map((child) => child.type === "text" ? child.value : "").join("")
+    : null;
   return (
     <MarkdownCodeBlockContext.Provider value={true}>
-      <pre className="max-w-full overflow-x-auto rounded-lg bg-gray-100 p-4 text-sm text-gray-900 dark:bg-neutral-800 dark:text-gray-100">
-        {children}
-      </pre>
+      <div className="relative min-w-0 max-w-full">
+        {codeText !== null && <MarkdownCodeBlockCopyButton codeText={codeText} />}
+        <pre className="max-w-full overflow-x-auto rounded-lg bg-gray-100 px-4 pb-4 pt-10 text-sm text-gray-900 dark:bg-neutral-800 dark:text-gray-100">
+          {children}
+        </pre>
+      </div>
     </MarkdownCodeBlockContext.Provider>
+  );
+}
+
+function MarkdownCodeBlockCopyButton({ codeText }: { codeText: string }) {
+  const toast = useToast();
+
+  async function handleCopyCode(): Promise<void> {
+    try {
+      await writeTextToClipboard(codeText);
+    } catch (error) {
+      toast.error(`Failed to copy code to the clipboard: ${String(error)}`);
+      return;
+    }
+    toast.success("Copied code to the clipboard");
+  }
+
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="xs"
+      className="absolute right-2 top-2 z-10 !h-7 !w-7 !min-h-7 !min-w-7 !p-1"
+      aria-label="Copy code block"
+      title="Copy code"
+      onClick={() => void handleCopyCode()}
+    >
+      <span aria-hidden="true">
+        <CopyPathIcon size="h-4 w-4" />
+      </span>
+    </Button>
   );
 }
 

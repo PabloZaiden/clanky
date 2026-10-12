@@ -166,7 +166,6 @@ export function ChatQuestions({
   if (!visible.length && !showExpiredNotice) return null;
   return (
     <div
-      className="max-h-[55vh] shrink-0 overflow-y-auto"
       onFocusCapture={(event) => {
         if (isQuestionAnswerInput(event.target)) onAnswerInputFocusChange(true);
       }}

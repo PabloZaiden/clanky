@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { PointerEvent } from "react";
+import { isQuestionOpen } from "@/shared/harness-questions";
 import { ConversationViewer } from "../log-viewer";
 import { useMarkdownPreference } from "../../hooks";
 import type { ChatTranscriptProps } from "./types";
@@ -130,6 +131,26 @@ export function ChatTranscript({
     resetTapSequence();
   }, [voiceInput.available, voiceInput.status]);
 
+  const activity = chat.state.harness?.activity;
+  const blockingQuestions = (chat.state.harness?.questions ?? [])
+    .filter((request) => request.blocking && isQuestionOpen(request));
+  const blocksPrincipal = blockingQuestions.some((request) => request.scope.kind !== "child");
+  const hasConfirmedHarnessWork = activity?.observation === "available"
+    && (
+      (activity.principalProcessing && !blocksPrincipal)
+      || activity.activities.some((item) => item.status === "stopping"
+        || item.status === "running" && !blockingQuestions.some(
+          (request) => request.scope.kind === "child" && request.scope.activityId === item.id,
+        ))
+    );
+  // The call that raised a blocking question can remain marked in progress while suspended.
+  const hasActiveTranscriptWork = transcript.toolCalls.some(
+    (toolCall) => toolCall.status === "pending" || toolCall.status === "running",
+  ) && blockingQuestions.length === 0;
+  const isWorking = isActive && (
+    chat.state.status !== "waiting" || hasConfirmedHarnessWork || hasActiveTranscriptWork
+  );
+
   return (
     <div
       className="flex min-h-0 min-w-0 flex-1 flex-col"
@@ -155,6 +176,7 @@ export function ChatTranscript({
         logs={transcript.logs}
         onLoadToolDetails={onLoadToolDetails}
         isActive={isActive}
+        isWorking={isWorking}
         markdownEnabled={markdownEnabled}
         toolPathDisplayRoot={toolPathDisplayRoot}
         fileLinkContext={fileLinkContext}
@@ -166,13 +188,15 @@ export function ChatTranscript({
         readAloudSummaryEnabled={readAloudSummaryAvailable}
         playingReadAloudKey={playingReadAloudKey}
         readAloudStatus={readAloudStatus}
-      />
-      <ChatQuestions
-        chatId={chat.config.id}
-        requests={chat.state.harness?.questions ?? []}
-        dismissedExpiredQuestionRequestId={dismissedExpiredQuestionRequestId}
-        onChatSnapshot={onChatSnapshot}
-        onAnswerInputFocusChange={onQuestionAnswerFocusChange}
+        scrollContentFooter={
+          <ChatQuestions
+            chatId={chat.config.id}
+            requests={chat.state.harness?.questions ?? []}
+            dismissedExpiredQuestionRequestId={dismissedExpiredQuestionRequestId}
+            onChatSnapshot={onChatSnapshot}
+            onAnswerInputFocusChange={onQuestionAnswerFocusChange}
+          />
+        }
       />
     </div>
   );
