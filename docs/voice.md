@@ -25,11 +25,18 @@ unchanged.
 ## Live voice
 
 Live voice is a separate option from **Talk** (record, transcribe, send) and
-Piper read aloud. Open any chat with a native Codex or Copilot agent and select
+Piper read aloud. Open any chat with a native Codex, Copilot or OpenCode 2 agent and select
 **Message actions → Live voice**. The agent can already be working when you
 start the call. Quick Chat uses the same chat and voice workflows; its agent
 additionally receives the Clanky control tools. Enabling Live in another chat
 does not grant those tools. ACP chats are not supported.
+
+OpenCode eligibility follows its native `opencode2` adapter, not the model's
+upstream provider name. Live is available before the first agent message and
+uses the same configured Live provider as Codex/Copilot; the OpenCode language
+model does not need audio capabilities. Workspace agents may run locally or
+on the selected Mesh worker while the browser and Clanky retain the existing
+WebRTC and authenticated sideband roles.
 
 In **Settings → Voice**, configure one transcription model, one shared text
 generation model, and one Live model/deployment. Reuse the existing voice
@@ -92,6 +99,11 @@ server to close abandoned calls without cancelling agent work.
 
 ### Public call endpoints
 
+`GET /api/chats/:id/live-voice` returns `{ "supported": true | false }` for the
+owned chat's current native adapter without starting an agent session. The UI
+combines this authoritative availability with the user's Live configuration.
+Availability is refreshed after workspace changes and realtime reconnects.
+
 `POST /api/chats/:id/live-voice` accepts `{ "sdp": "...", "clientId": "UUID" }`
 and returns `201` with `{ "call": { "id", "status", "error", "summarySaved" },
 "sdp": "..." }`. The server attaches sideband before returning the SDP answer.
@@ -107,6 +119,8 @@ The compiled-app journeys exercise both URL roots with an external deterministic
 Live peer that rejects incomplete WebRTC offers, including Live capability
 validation, parallel/duplicate functions, native steering and questions,
 closing without interrupting the agent, provider cuts and summary persistence.
+The OpenCode local/Mesh journeys also exercise ordinary voice instructions,
+voice-driven Control steering, native tool results and saved call summaries.
 Azure `gpt-live-1` with `gpt-6-luna` was also exercised through Bun.WebView with
 synthesized microphone input: bidirectional audio, native Clanky tool execution,
 spoken confirmed results, mute and graceful close. Desktop and mobile-width

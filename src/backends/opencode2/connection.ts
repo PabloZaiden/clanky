@@ -3,6 +3,7 @@
  */
 
 import type { BackendConnectionConfig } from "../types";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { HarnessError } from "../harness-errors";
 import { HarnessEventHub } from "../harness-event-hub";
 import { OpenCodeRuntime } from "./runtime";
@@ -10,6 +11,9 @@ import { OpenCodeModelCatalog } from "./model-catalog";
 import { OpenCodeSessionService } from "./session-service";
 import { OpenCodeControl } from "./control";
 import { OpenCodeQuestionCoordinator } from "./question-coordinator";
+import { OpenCodeControlTools } from "./control-tools";
+
+const log = createLogger("opencode2-connection");
 
 interface ConnectedServices {
   runtime: OpenCodeRuntime;
@@ -18,6 +22,7 @@ interface ConnectedServices {
   catalog: OpenCodeModelCatalog;
   sessions: OpenCodeSessionService;
   questions: OpenCodeQuestionCoordinator;
+  controlTools: OpenCodeControlTools;
 }
 
 export class OpenCodeConnection {
@@ -39,17 +44,29 @@ export class OpenCodeConnection {
     if (signal?.aborted) abort();
     this.opening = (async () => {
       await this.closing;
-      const runtime = await OpenCodeRuntime.open({
-        directory: config.directory, env: { ...config.env, ...config.managedEnvironment },
-      }, this.startupAbort?.signal);
+      const controlTools = new OpenCodeControlTools(config.managedEnvironment ?? {});
+      let runtime: OpenCodeRuntime;
+      try {
+        const env = await controlTools.open({ ...config.env, ...config.managedEnvironment });
+        runtime = await OpenCodeRuntime.open({ directory: config.directory, env }, this.startupAbort?.signal);
+      } catch (error) {
+        try { await controlTools.close(); } catch (cleanupError) {
+          throw new AggregateError([error, cleanupError], "OpenCode startup and Control cleanup failed.");
+        }
+        throw error;
+      }
       const { client, directory } = runtime;
       const catalog = new OpenCodeModelCatalog({ client, directory });
-      const sessions = new OpenCodeSessionService({ client, directory, catalog, events: this.events });
+      const sessions = new OpenCodeSessionService({ client, directory, catalog, events: this.events, controlTools });
       const questions = new OpenCodeQuestionCoordinator({ client, sessions, events: this.events });
       this.unsubscribeFailure = runtime.onFailure((error) => {
+        controlTools.cancelAll();
         for (const id of sessions.roots()) this.events.failSession(id, error);
+        void this.disconnect().catch((cleanupError: unknown) => {
+          log.error("Native connection cleanup after runtime failure failed", { error: String(cleanupError) });
+        });
       });
-      this.services = { runtime, client, directory, catalog, sessions, questions };
+      this.services = { runtime, client, directory, catalog, sessions, questions, controlTools };
     })().finally(() => {
       this.startupAbort = undefined;
       this.opening = undefined;
@@ -74,6 +91,7 @@ export class OpenCodeConnection {
       const services = this.services;
       this.services = undefined;
       if (services) {
+        services.controlTools.cancelAll();
         await services.sessions.finishOperations();
         try { await services.questions.close(); } catch (error) { errors.push(error); }
         const control = new OpenCodeControl(() => services);
@@ -87,6 +105,7 @@ export class OpenCodeConnection {
         this.unsubscribeFailure = undefined;
         try { await services.sessions.close(); } catch (error) { errors.push(error); }
         try { await services.runtime.close(); } catch (error) { errors.push(error); }
+        try { await services.controlTools.close(); } catch (error) { errors.push(error); }
       }
       this.events.closeAll();
       if (errors.length) throw new AggregateError(errors, "Native OpenCode teardown failed.");

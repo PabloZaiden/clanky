@@ -52,6 +52,12 @@ export const LiveVoiceSessionRequestSchema = z.object({
   clientId: z.string().uuid(),
 }).strict();
 
+export const LiveVoiceAvailabilityResponseSchema = z.object({
+  supported: z.boolean(),
+}).strict();
+
+export type LiveVoiceAvailabilityResponse = z.infer<typeof LiveVoiceAvailabilityResponseSchema>;
+
 export type VoiceSettingsUpdateRequest = z.infer<typeof VoiceSettingsUpdateSchema>;
 export type VoiceValidationRequest = z.infer<typeof VoiceValidationRequestSchema>;
 export type VoiceSpeechRequest = z.infer<typeof VoiceSpeechRequestSchema>;

@@ -44,6 +44,17 @@ OpenCode 2 uses a separate profile under the Clanky data directory. It does not
 upgrade an existing OpenCode generation-1 data directory in place. Configure
 the required providers for that profile or through the execution-host environment.
 
+Native OpenCode 2 chats in the configured Quick Chat workspace support
+[Clanky Control](control-chats.md), with the same shared tools as Codex and
+Copilot. Clanky loads a managed native plugin and private loopback bridge on
+the execution host; no separate plugin installation, ACP adapter or MCP
+configuration is needed. The installed runtime must support the generation-2
+Promise plugin API. Plugin activation and managed credentials are checked
+before admitting a Control conversation.
+
+All native OpenCode 2 chats also support [Live voice](voice.md#live-voice),
+independently of Quick Chat eligibility.
+
 ## Continue from history
 
 When a chat is failed because its provider-native session cannot be resumed,

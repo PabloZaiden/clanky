@@ -79,8 +79,9 @@ subprocess logs for failure diagnostics, and clean up their process groups.
 
 The local voice E2E journey uses an external HTTPS OpenAI-compatible provider
 to check provider settings and destination safety, validate transcription/text
-capabilities, transcribe audio, and verify persistence. The separate Copilot
-journey also exercises a Live voice call. Positive Piper synthesis is
+capabilities, transcribe audio, and verify persistence. The Copilot and OpenCode
+journeys also exercise Live voice, including OpenCode steering on a Mesh worker
+and persisted call summaries. Positive Piper synthesis is
 intentionally not part of the hermetic PR gate: a real run requires downloading
 or versioning roughly 90 MB of checksum-pinned runtime and voice assets. Do not
 fake Piper by pre-populating its private cache layout; use real assets for an

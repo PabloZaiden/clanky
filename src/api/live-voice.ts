@@ -25,8 +25,15 @@ export const liveVoiceRoutes = defineRoutes({
   "/api/chats/:id/live-voice": {
     auth: "user",
     sameOrigin: "mutations",
-    description: "Create a WebRTC voice session for the linked Quick Chat without exposing provider credentials.",
+    description: "Read native chat Live availability or create a WebRTC voice session without exposing provider credentials.",
     requestSchema: LiveVoiceSessionRequestSchema,
+    async GET(_req, ctx) {
+      try {
+        return Response.json(await liveVoiceManager.getAvailability(ctx.params["id"]!), {
+          headers: { "Cache-Control": "no-store" },
+        });
+      } catch (error) { return liveErrorResponse(error); }
+    },
     async POST(req, ctx) {
       const validation = await parseAndValidate(LiveVoiceSessionRequestSchema, req);
       if (!validation.success) return validation.response;

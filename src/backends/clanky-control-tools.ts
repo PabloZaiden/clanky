@@ -1,5 +1,5 @@
 /**
- * Shared API-backed tools for native Codex and Copilot control chats.
+ * Shared API-backed tools for native control chats.
  */
 
 import { z } from "zod";
@@ -253,7 +253,7 @@ const ModelSchema = z.object({
 const EmptyInputSchema = z.object({}).strict();
 const noArguments = objectSchema({});
 
-const CONTROL_TOOLS: ControlToolDefinition[] = [
+export const CLANKY_CONTROL_TOOLS: readonly ControlToolDefinition[] = [
   defineControlTool(
     "clanky_list_workspaces",
     "List the user's Clanky workspaces. Use this to find a workspace by name before operating on it.",
@@ -505,9 +505,9 @@ const CONTROL_TOOLS: ControlToolDefinition[] = [
 ];
 
 export class ClankyControlToolService {
-  readonly definitions = CONTROL_TOOLS;
+  readonly definitions = CLANKY_CONTROL_TOOLS;
   readonly api: ClankyControlApiClient;
-  private readonly toolsByName = new Map(CONTROL_TOOLS.map((tool) => [tool.name, tool]));
+  private readonly toolsByName = new Map(CLANKY_CONTROL_TOOLS.map((tool) => [tool.name, tool]));
 
   constructor(environment: Record<string, string | undefined>) {
     this.api = new ClankyControlApiClient(environment);

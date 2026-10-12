@@ -53,7 +53,7 @@ export const controlUiActionRoutes = defineRoutes({
           return errorResponse("not_found", "Chat not found.", 404);
         }
         const quickChatSettings = await preferencesManager.getQuickChatSettings();
-        if (!isClankyControlChat(chat, quickChatSettings.workspaceId)) {
+        if (!isClankyControlChat(chat, quickChatSettings.workspaceId, chat.state.session?.binding?.adapter)) {
           return errorResponse("control_chat_required", "This chat is not configured for Clanky control.", 403);
         }
 

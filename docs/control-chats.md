@@ -1,9 +1,9 @@
 # Control chats
 
-A control chat is a normal workspace chat whose native Codex or Copilot agent
-can operate Clanky on the signed-in user's behalf. It uses the user's configured
-Quick Chat workspace; there is no separate conversation type or control-workspace
-setting.
+A control chat is a normal workspace chat whose native Codex, Copilot or
+OpenCode 2 agent can operate Clanky on the signed-in user's behalf. It uses the
+user's configured Quick Chat workspace; there is no separate conversation type
+or control-workspace setting.
 
 Sending, queueing, steering, questions, streaming and persistence use the same
 services as other chats. Consecutive queued instructions from the same browser
@@ -14,12 +14,15 @@ enabled.
 ## Setup
 
 1. Choose a workspace in **Quick Chat settings**.
-2. Install and authenticate Codex or Copilot on that workspace's execution
-   host. Native runtimes run on the selected host; local and Mesh v6 paths are
+2. Install and authenticate Codex, Copilot or OpenCode 2 on that workspace's
+   execution host. Native runtimes run on the selected host; local and Mesh v6 paths are
    supported. Direct SSH supports ACP only. See
    [Harness adapters](harnesses.md#workspace-configuration) for runtime setup.
-3. Create a normal Codex or Copilot chat in that workspace and send an
-   instruction there.
+3. Create a normal native chat in that workspace and send an instruction there.
+
+For OpenCode 2, select `agent.adapter: "opencode2"` and configure a model in
+its isolated Clanky profile. Control eligibility follows the native adapter,
+not the model's upstream provider name.
 
 Clanky injects its managed API base URL and the user's API credential into
 control-chat runtime environments. If the workspace, credential, native
@@ -70,17 +73,22 @@ its own browser provenance.
 
 ## Live voice
 
-All native Codex and Copilot chats can optionally use [Live voice](voice.md#live-voice).
+All native Codex, Copilot and OpenCode 2 chats can optionally use
+[Live voice](voice.md#live-voice), including new chats before their first message.
 GPT-Live carries the conversation and delegates interpretation to a Responses
 model; that model directs the linked chat through bounded functions while the
 native workspace agent retains its existing tools. Live can continue speaking
 while the agent works. Closing the voice call does not interrupt agent work.
+OpenCode uses the same configured Live provider; its model does not need to
+generate audio. Ordinary chats do not gain Control tools by enabling voice,
+and voice-originated instructions retain the call's browser provenance.
 
 ## Provider limitations
 
-Only normal workspace chats using native Codex or Copilot receive these tools.
-ACP and other providers do not receive them. Use the versions and execution
-hosts supported by the [harness guide](harnesses.md).
+Only normal workspace chats using native Codex, Copilot or OpenCode 2 receive
+these tools. ACP, execution-host chats and unattended runs do not receive them.
+Use the versions and execution hosts supported by the
+[harness guide](harnesses.md).
 
 Codex persists dynamic-tool definitions with the thread history and restores
 them when `thread/resume` loads that history. The same control chat can
@@ -89,6 +97,26 @@ and session data persist. As with other Codex chats, do not expect an in-flight
 turn to continue if the worker is stopped while it is running. No separate
 Codex daemon is required. Copilot registers its tools on session creation and
 resume.
+
+OpenCode 2 loads a managed native Promise plugin on the selected execution
+host. It exposes the same shared tools directly, without an ACP or MCP server.
+The plugin forwards calls through a private authenticated loopback bridge;
+API credentials remain in the managed runtime environment, not in plugin files.
+Existing process-scoped OpenCode configuration and plugins are preserved;
+Clanky does not write Control settings into the workspace repository.
+Tools are available only to the owned root session's active Control turn, not
+to its native subagents or unrelated sessions.
+
+OpenCode restores the plugin and tools when resuming a persisted Control chat
+after restart. Its isolated native profile and Clanky data must persist. An
+in-flight turn does not continue after its runtime is stopped. Missing or failed
+plugin activation is reported explicitly rather than falling back to a
+tool-less Control chat. Pending Control requests are cancelled on interruption,
+session deletion, disconnect or runtime failure, and temporary plugin files
+are removed during connection cleanup.
+After abrupt Clanky process termination, abandoned plugin directories are
+removed on the next native connection; directories owned by a live Clanky
+process are preserved.
 
 This feature controls Clanky through a normal chat; it does not add a standalone
 command textbox, arbitrary DOM control, or direct repository execution against
