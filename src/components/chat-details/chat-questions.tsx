@@ -143,22 +143,27 @@ function QuestionForm({
 export function ChatQuestions({
   chatId,
   requests,
+  dismissedExpiredQuestionRequestId,
   onChatSnapshot,
   onAnswerInputFocusChange,
 }: {
   chatId: string;
   requests: HarnessQuestionRequest[];
+  dismissedExpiredQuestionRequestId?: string;
   onChatSnapshot: (chat: Chat) => void;
   onAnswerInputFocusChange: (focused: boolean) => void;
 }) {
   const visible = requests.filter(isQuestionOpen);
   const expired = requests.at(-1);
+  const showExpiredNotice = !visible.length
+    && expired?.status === "expired"
+    && expired.requestId !== dismissedExpiredQuestionRequestId;
 
   useEffect(() => {
     if (!visible.length) onAnswerInputFocusChange(false);
   }, [onAnswerInputFocusChange, visible.length]);
 
-  if (!visible.length && expired?.status !== "expired") return null;
+  if (!visible.length && !showExpiredNotice) return null;
   return (
     <div
       className="max-h-[55vh] shrink-0 overflow-y-auto"
@@ -182,7 +187,7 @@ export function ChatQuestions({
           onChatSnapshot={onChatSnapshot}
         />
       ))}
-      {!visible.length && expired?.status === "expired" && (
+      {showExpiredNotice && (
         <div className="border-t border-gray-200 px-4 py-2 text-xs text-gray-500 dark:border-gray-700 dark:text-gray-400">The previous question has expired.</div>
       )}
     </div>
