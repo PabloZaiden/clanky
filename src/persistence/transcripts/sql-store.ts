@@ -804,6 +804,31 @@ export function getTranscriptToolCallForUser(
   return rowToStorageEntry(row, true, resource)?.tool ?? null;
 }
 
+export function getTranscriptMessageForUser(
+  resource: TranscriptResource,
+  resourceId: string,
+  userId: string,
+  messageId: string,
+): PersistedMessage | null {
+  const config = getTableConfig(resource);
+  const row = getDatabase().prepare(`
+    SELECT entry_id, kind, timestamp, sequence, payload,
+      updated_at,
+      tool_name, tool_status, tool_input, tool_output, tool_extras
+    FROM ${config.entriesTable}
+    WHERE ${config.resourceColumn} = ? AND user_id = ? AND entry_id = ?
+    LIMIT 1
+  `).get(resourceId, userId, getEntryKey("message", messageId)) as TranscriptRow | null;
+  if (!row || row.kind !== "message") {
+    return null;
+  }
+
+  const entry = rowToStorageEntry(row, false, resource);
+  return entry?.kind === "message" && isPersistedMessage(entry.payload)
+    ? entry.payload
+    : null;
+}
+
 export function getTranscriptToolCall(
   resource: TranscriptResource,
   resourceId: string,

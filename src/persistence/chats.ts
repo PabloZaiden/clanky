@@ -30,6 +30,7 @@ export {
   listChatTranscriptEntries,
   listChatTranscriptEntriesAfter,
   listChatTranscriptEntriesPage,
+  getChatMessageFromTranscript,
   getChatToolCallFromTranscript,
 } from "./chats/index";
 export {

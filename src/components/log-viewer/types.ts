@@ -65,11 +65,9 @@ export interface ConversationViewerProps {
   onLoadFullTranscript?: () => Promise<void>;
   /** Whether a transcript history action is currently loading. */
   loadingTranscript?: boolean;
-  /** Start server-side speech playback for a completed assistant message. */
-  onReadAloud?: (message: MessageData, mode: "full" | "summary") => void;
-  /** Whether the summary playback action is available. */
-  readAloudSummaryEnabled?: boolean;
-  /** Current message/mode being played, if any. */
+  /** Start server-side summary playback for an assistant message. */
+  onReadAloud?: (messageId: string) => void;
+  /** Current message being played, if any. */
   playingReadAloudKey?: string | null;
   /** Current read-aloud lifecycle state. */
   readAloudStatus?: "generating" | "playing" | null;

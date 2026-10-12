@@ -4,13 +4,17 @@ Clanky uses the configured OpenAI-compatible provider for audio transcription
 and for generating concise spoken summaries. Text-to-speech runs locally on the
 Clanky server with Piper.
 
+When summary playback is available, the `Read summary` control appears as soon
+as an assistant message contains text, including while the response is still
+streaming. Playback started mid-stream summarizes the text available when
+clicked; later response text is not appended.
+
 ## Provider settings
 
 In user settings, configure the provider URL and API key, a transcription
 model, and a text-generation model. These are needed for voice input and
-summary playback; full-response speech does not need a provider or a remote TTS
-model. Validate transcription, text generation, and Live Voice after changing
-their settings.
+summary playback. Validate transcription, text generation, and Live Voice
+after changing their settings.
 
 The `languageHints` setting applies to provider-backed transcription. Piper
 detects the speech text's language locally and does not use those hints.
@@ -166,21 +170,15 @@ downloaded.
 UI creates that offer without microphone capture; the provider key remains on
 the server.
 
-`POST /api/voice/speech` accepts JSON such as:
+`POST /api/chats/:id/messages/:messageId/speech` accepts no request body. The
+server resolves the message in the authenticated user's chat and only generates
+speech for existing assistant messages; missing, non-assistant, and
+non-owned-chat messages are not found. If the assistant message is still
+streaming, the server uses its current in-memory content. The configured text
+model summarizes that content before Piper returns `audio/wav`.
 
-```json
-{
-  "text": "The change is ready to review.",
-  "mode": "full"
-}
-```
-
-`mode` can be `full` or `summary` and defaults to `full`. The endpoint returns
-`audio/wav`. Full mode synthesizes the supplied text locally without calling
-the provider. Summary mode first uses the configured text model to summarize
-the supplied text, then speaks that summary locally. The
-`/api/voice/transcribe` endpoint continues to use the configured transcription
-provider.
+The `/api/voice/transcribe` endpoint continues to use the configured
+transcription provider.
 
 ## Upstream voice assets
 

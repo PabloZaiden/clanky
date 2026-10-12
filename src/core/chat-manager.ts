@@ -173,6 +173,10 @@ export class ChatManager {
     return this.services.state.getChat(chatId);
   }
 
+  async getAssistantMessage(chatId: string, messageId: string) {
+    return this.services.conversation.getAssistantMessage(chatId, messageId);
+  }
+
   async getChatSummary(chatId: string): Promise<Chat | null> {
     return this.services.state.getChatSummary(chatId);
   }

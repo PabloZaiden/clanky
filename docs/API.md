@@ -440,6 +440,7 @@ included in this table.
 | POST | `/api/chats/:id/done` | Mark a standalone chat as done. |
 | POST | `/api/chats/:id/interrupt` | Interrupt an active chat run. |
 | POST | `/api/chats/:id/messages` | Send a message to a chat session. |
+| POST | `/api/chats/:id/messages/:messageId/speech` | Generate a spoken summary for an existing assistant message in an owned chat; no request body. |
 | POST | `/api/chats/:id/permissions/:requestId` | Approve or deny a pending chat permission request. |
 | POST | `/api/chats/:id/questions/:requestId` | Answer a native question owned by the current chat conversation. |
 | DELETE | `/api/chats/:id/queued-messages/:messageId` | Delete a queued chat message. |
@@ -564,7 +565,6 @@ included in this table.
 | GET, PUT | `/api/voice/settings` | Read or update transcription, shared text-generation, and Live model settings, plus local Piper support status. |
 | POST | `/api/voice/validate` | Validate the configured transcription, text-generation, or Live Voice capability. |
 | POST | `/api/voice/transcribe` | Transcribe an uploaded audio recording with the configured provider. |
-| POST | `/api/voice/speech` | Generate a local Piper WAV for a response or provider-generated summary; see the [voice guide](voice.md). |
 | GET, POST | `/api/workspace-worker-enrollments` | List or create workspace-exclusive Mesh worker enrollments. |
 | GET, DELETE | `/api/workspace-worker-enrollments/:id` | Read or cancel a workspace-exclusive Mesh worker enrollment. |
 | GET, POST | `/api/workspaces` | List workspaces or create a workspace. |
