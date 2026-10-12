@@ -1,7 +1,12 @@
 import { afterEach, expect, test } from "bun:test";
 import { join } from "node:path";
 import { E2EApplication } from "./support/application";
-import { commitAndPushFile, createGitFixture } from "./support/git";
+import {
+  commitAndPushFile,
+  createGitFixture,
+  createRemoteBranchWithoutTrackingRef,
+  readGitCommit,
+} from "./support/git";
 import { pollUntil } from "./support/polling";
 import { readProcessDiagnostics } from "./support/process";
 import {
@@ -66,9 +71,19 @@ interface Model {
 interface Chat {
   config: {
     id: string;
+    baseBranch?: string;
+    useWorktree?: boolean;
   };
   state: {
     status: string;
+    error?: {
+      message: string;
+    };
+    worktree?: {
+      originalBranch: string;
+      workingBranch: string;
+      worktreePath?: string;
+    };
   };
 }
 
@@ -196,6 +211,56 @@ async function waitForChatIdle(
       formatLastObserved: (chat) => JSON.stringify(chat.state),
     },
   );
+}
+
+async function waitForChatWorktree(
+  app: E2EApplication,
+  chatId: string,
+): Promise<Chat> {
+  return await pollUntil(
+    async () => (await app.json<Chat>(`/api/chats/${chatId}`)).data,
+    (chat) => Boolean(chat.state.worktree?.worktreePath) || chat.state.status === "failed",
+    {
+      description: `SSH chat ${chatId} worktree preparation`,
+      timeoutMs: 10_000,
+      formatLastObserved: (chat) => JSON.stringify({
+        status: chat.state.status,
+        error: chat.state.error,
+        worktree: chat.state.worktree,
+      }),
+    },
+  );
+}
+
+async function executeWorkspaceGitCommand(
+  app: E2EApplication,
+  workspaceId: string,
+  directory: string,
+  args: string[],
+): Promise<string> {
+  const result = (await app.json<{
+    exitCode: number;
+    stderr: string;
+    stdout: string;
+    success: boolean;
+  }>(
+    `/api/workspaces/${workspaceId}/exec`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        command: "git",
+        args,
+        cwd: directory,
+        timeoutMs: 5_000,
+      }),
+    },
+  )).data;
+  if (!result.success) {
+    throw new Error(
+      `SSH Git command failed in ${directory} (exit ${String(result.exitCode)}): ${result.stderr || result.stdout}`,
+    );
+  }
+  return result.stdout.trim();
 }
 
 async function waitForProvisioning(
@@ -490,6 +555,106 @@ test("compiled app crosses real SSH execution, files, Git, terminal, and ACP bou
     expect(branches.currentBranch).toBe(git.branch);
     expect(branches.branches.map((branch) => branch.name)).toContain(git.branch);
 
+    const remoteBranchName = "e2e/remote-choice";
+    const remoteBaseCommit = await createRemoteBranchWithoutTrackingRef(
+      git,
+      remoteBranchName,
+      "remote-base.txt",
+      "remote base commit\n",
+    );
+    const pullResult = (await application.json<{
+      currentBranch: string;
+      defaultBranch: string;
+      workspaceId: string;
+    }>(`/api/workspaces/${workspace.id}/pull-latest-changes`, {
+      method: "POST",
+    })).data;
+    expect(pullResult).toMatchObject({
+      currentBranch: git.branch,
+      defaultBranch: git.branch,
+      workspaceId: workspace.id,
+    });
+
+    const refreshedBranches = (await application.json<{
+      branches: Array<{ name: string }>;
+      currentBranch: string;
+    }>(`/api/git/branches?workspaceId=${workspace.id}`)).data;
+    const refreshedBranchNames = refreshedBranches.branches.map((branch) => branch.name);
+    expect(refreshedBranches.currentBranch).toBe(git.branch);
+    expect(refreshedBranchNames).toContain(remoteBranchName);
+    expect(refreshedBranchNames).toContain(`origin/${remoteBranchName}`);
+    expect(await readGitCommit(git, remoteBranchName)).not.toBe(remoteBaseCommit);
+    expect(await readGitCommit(git, `origin/${remoteBranchName}`)).toBe(remoteBaseCommit);
+
+    const models = (await application.json<Model[]>(
+      `/api/models?workspaceId=${workspace.id}`,
+    )).data;
+    const model = models.find(
+      (candidate) => candidate.providerID === "copilot"
+        && candidate.connected,
+    );
+    expect(model).toMatchObject({
+      connected: true,
+      providerID: "copilot",
+      modelID: "mock-model",
+    });
+
+    const remoteBaseChat = (await application.json<Chat>(
+      "/api/chats",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          name: "SSH remote-base chat",
+          workspaceId: workspace.id,
+          model: {
+            providerID: "copilot",
+            modelID: model!.modelID,
+            variant: "",
+          },
+          useWorktree: true,
+          baseBranch: `origin/${remoteBranchName}`,
+          autoApprovePermissions: true,
+        }),
+      },
+      201,
+    )).data;
+    const preparedRemoteBaseChat = await waitForChatWorktree(
+      application,
+      remoteBaseChat.config.id,
+    );
+    expect(preparedRemoteBaseChat.state.status).not.toBe("failed");
+    expect(preparedRemoteBaseChat.config).toMatchObject({
+      baseBranch: `origin/${remoteBranchName}`,
+      useWorktree: true,
+    });
+    const worktree = preparedRemoteBaseChat.state.worktree;
+    if (!worktree?.worktreePath) {
+      throw new Error("SSH remote-base chat completed without a worktree path");
+    }
+    expect(worktree.originalBranch).toBe(`origin/${remoteBranchName}`);
+    expect(await executeWorkspaceGitCommand(
+      application,
+      workspace.id,
+      worktree.worktreePath,
+      ["rev-parse", "HEAD"],
+    )).toBe(remoteBaseCommit);
+    expect(await executeWorkspaceGitCommand(
+      application,
+      workspace.id,
+      worktree.worktreePath,
+      ["symbolic-ref", "--short", "HEAD"],
+    )).toBe(worktree.workingBranch);
+    expect(await executeWorkspaceGitCommand(
+      application,
+      workspace.id,
+      git.repositoryDirectory,
+      ["symbolic-ref", "--short", "HEAD"],
+    )).toBe(git.branch);
+    await application.json(
+      `/api/chats/${remoteBaseChat.config.id}`,
+      { method: "DELETE" },
+    );
+
     const sourcePath = join(application.runDirectory, "ssh-upload-source.txt");
     const downloadPath = join(application.runDirectory, "ssh-download.txt");
     await Bun.write(sourcePath, "real SSH file transfer\n");
@@ -512,19 +677,6 @@ test("compiled app crosses real SSH execution, files, Git, terminal, and ACP bou
     ], { apiKey: apiKey.token })).exitCode).toBe(0);
     expect(await Bun.file(downloadPath).text()).toBe("real SSH file transfer\n");
 
-    const models = (await application.json<Model[]>(
-      `/api/models?workspaceId=${workspace.id}`,
-    )).data;
-    const model = models.find(
-      (candidate) => candidate.providerID === "copilot"
-        && candidate.connected,
-    );
-    expect(model).toMatchObject({
-      connected: true,
-      providerID: "copilot",
-      modelID: "mock-model",
-    });
-
     const chat = (await application.json<Chat>(
       "/api/chats",
       {
@@ -538,7 +690,7 @@ test("compiled app crosses real SSH execution, files, Git, terminal, and ACP bou
             variant: "",
           },
           useWorktree: false,
-          baseBranch: git.branch,
+          baseBranch: `origin/${remoteBranchName}`,
           autoApprovePermissions: true,
         }),
       },
@@ -554,7 +706,21 @@ test("compiled app crosses real SSH execution, files, Git, terminal, and ACP bou
         }),
       },
     );
-    expect((await waitForChatIdle(application, chat.config.id)).state.status).toBe("idle");
+    const settledStandaloneChat = await waitForChatIdle(application, chat.config.id);
+    expect(settledStandaloneChat.state.status).toBe("idle");
+    expect(settledStandaloneChat.config.baseBranch).toBe(`origin/${remoteBranchName}`);
+    expect(await executeWorkspaceGitCommand(
+      application,
+      workspace.id,
+      git.repositoryDirectory,
+      ["rev-parse", "HEAD"],
+    )).toBe(remoteBaseCommit);
+    expect(await executeWorkspaceGitCommand(
+      application,
+      workspace.id,
+      git.repositoryDirectory,
+      ["symbolic-ref", "--short", "HEAD"],
+    )).not.toBe("");
     const snapshot = (await application.json<ChatSnapshot>(
       `/api/chats/${chat.config.id}/snapshot?full=1`,
     )).data;

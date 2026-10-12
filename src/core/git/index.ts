@@ -28,11 +28,29 @@ export type {
   FileDiffWithContent,
   CommitInfo,
 } from "./git-types";
+export type { RemoteBranchReference } from "./git-remote";
 
 // Sub-module imports
-import { isGitRepo, getCommonGitDirectory as getCommonGitDirectoryQuery, getCurrentBranch, getLocalBranches, getDefaultBranch, verifyBranch, hasUncommittedChanges, getChangedFiles, branchExists, hasStagedChanges, isAncestor, getConflictedFiles } from "./git-repo-query";
-import { getRemoteUrl as getRemoteUrlRemote, hasRemote as hasRemoteRemote, pushBranch, fetchBranch, pull, pullBranch } from "./git-remote";
-import { assertValidBranchName, createBranch, checkoutBranch, deleteBranch, ensureBranch } from "./git-branch";
+import { isGitRepo, getCommonGitDirectory as getCommonGitDirectoryQuery, getCurrentBranch, getBranches, getDefaultBranch, verifyBranch, hasUncommittedChanges, getChangedFiles, branchExists, hasStagedChanges, isAncestor, getConflictedFiles } from "./git-repo-query";
+import {
+  getRemoteUrl as getRemoteUrlRemote,
+  hasRemote as hasRemoteRemote,
+  parseRemoteBranchReference as parseRemoteBranchReferenceRemote,
+  pushBranch,
+  fetchBranch,
+  fetchRemoteBranches as fetchRemoteBranchesRemote,
+  pull,
+  pullBranch,
+} from "./git-remote";
+import type { RemoteBranchReference } from "./git-remote";
+import {
+  assertValidBranchName,
+  createBranch,
+  checkoutBranch,
+  checkoutRemoteBranch as checkoutRemoteBranchOperation,
+  deleteBranch,
+  ensureBranch,
+} from "./git-branch";
 import { stageAll, commit, getLastCommitMessage } from "./git-commit";
 import { stash, stashPop } from "./git-stash";
 import { resetHard, mergeBranch, mergeWithConflictDetection, abortMerge, ensureMergeStrategy } from "./git-merge";
@@ -111,8 +129,8 @@ export class GitService {
     return getCurrentBranch(this.executor, directory);
   }
 
-  async getLocalBranches(directory: string): Promise<{ name: string; current: boolean }[]> {
-    return getLocalBranches(this.executor, directory);
+  async getBranches(directory: string): Promise<{ name: string; current: boolean }[]> {
+    return getBranches(this.executor, directory);
   }
 
   async getDefaultBranch(directory: string): Promise<string> {
@@ -125,6 +143,13 @@ export class GitService {
 
   async hasRemote(directory: string, remote = "origin"): Promise<boolean> {
     return hasRemoteRemote(this.executor, directory, remote);
+  }
+
+  async parseRemoteBranchReference(
+    directory: string,
+    branchRef: string,
+  ): Promise<RemoteBranchReference | null> {
+    return parseRemoteBranchReferenceRemote(this.executor, directory, branchRef);
   }
 
   async verifyBranch(directory: string, expectedBranch: string): Promise<BranchVerificationResult> {
@@ -171,6 +196,14 @@ export class GitService {
 
   async checkoutBranch(directory: string, branchName: string): Promise<void> {
     return checkoutBranch(this.executor, directory, branchName);
+  }
+
+  async checkoutRemoteBranch(
+    directory: string,
+    branchName: string,
+    remoteRef: string,
+  ): Promise<string> {
+    return checkoutRemoteBranchOperation(this.executor, directory, branchName, remoteRef);
   }
 
   async deleteBranch(directory: string, branchName: string): Promise<void> {
@@ -243,6 +276,10 @@ export class GitService {
 
   async fetchBranch(directory: string, branchName: string, remote = "origin"): Promise<boolean> {
     return fetchBranch(this.executor, directory, branchName, remote);
+  }
+
+  async fetchRemoteBranches(directory: string, remote: string): Promise<void> {
+    return fetchRemoteBranchesRemote(this.executor, directory, remote);
   }
 
   async pull(directory: string, branchName?: string, remote = "origin"): Promise<boolean> {

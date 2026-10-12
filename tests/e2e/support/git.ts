@@ -60,6 +60,36 @@ export async function commitAndPushFile(
   await git(fixture.repositoryDirectory, ["push", "origin", fixture.branch]);
 }
 
+export async function createRemoteBranchWithoutTrackingRef(
+  fixture: GitFixture,
+  branchName: string,
+  relativePath: string,
+  content: string,
+): Promise<string> {
+  await git(fixture.repositoryDirectory, ["branch", branchName, fixture.branch]);
+  await git(fixture.repositoryDirectory, ["checkout", branchName]);
+  await Bun.write(join(fixture.repositoryDirectory, relativePath), content);
+  await git(fixture.repositoryDirectory, ["add", relativePath]);
+  await git(fixture.repositoryDirectory, ["commit", "-m", `Create ${branchName}`]);
+  const remoteCommit = await git(fixture.repositoryDirectory, ["rev-parse", "HEAD"]);
+  await git(fixture.repositoryDirectory, ["push", "origin", branchName]);
+  await git(fixture.repositoryDirectory, ["checkout", fixture.branch]);
+  await git(fixture.repositoryDirectory, ["branch", "--force", branchName, fixture.branch]);
+  await git(fixture.repositoryDirectory, [
+    "update-ref",
+    "-d",
+    `refs/remotes/origin/${branchName}`,
+  ]);
+  return remoteCommit;
+}
+
+export async function readGitCommit(
+  fixture: GitFixture,
+  ref: string,
+): Promise<string> {
+  return await git(fixture.repositoryDirectory, ["rev-parse", `${ref}^{commit}`]);
+}
+
 export async function configureGitHubRemote(
   fixture: GitFixture,
 ): Promise<void> {

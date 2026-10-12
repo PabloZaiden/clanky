@@ -109,6 +109,7 @@ export function useShellActions({
   const archivingWorkspaceIdsRef = useRef<Set<string>>(new Set());
   const [pullingLatestWorkspaceIds, setPullingLatestWorkspaceIds] = useState<ReadonlySet<string>>(() => new Set());
   const [archivingWorkspaceIds, setArchivingWorkspaceIds] = useState<ReadonlySet<string>>(() => new Set());
+  const { refreshBranchDataIfCurrent } = dashboardData;
 
   const workspaceCreate = useWorkspaceCreate({
     route,
@@ -145,6 +146,8 @@ export function useShellActions({
         return;
       }
 
+      await refreshBranchDataIfCurrent(workspaceId);
+
       const branchLabel = result.defaultBranch ?? result.currentBranch ?? "the default branch";
       toast.success(`Pulled latest changes for "${branchLabel}".`);
     } catch (error) {
@@ -153,7 +156,7 @@ export function useShellActions({
       pullingLatestWorkspaceIdsRef.current.delete(workspaceId);
       setPullingLatestWorkspaceIds(new Set(pullingLatestWorkspaceIdsRef.current));
     }
-  }, [pullLatestChanges, toast]);
+  }, [pullLatestChanges, refreshBranchDataIfCurrent, toast]);
 
   const toggleWorkspaceArchived = useCallback(async (workspace: Workspace): Promise<void> => {
     if (archivingWorkspaceIdsRef.current.has(workspace.id)) {

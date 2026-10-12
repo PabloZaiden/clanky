@@ -113,9 +113,9 @@ export interface PasskeyAuthStatusResponse {
  * Branch information returned by the git API.
  */
 export interface BranchInfo {
-  /** Branch name (e.g., "main", "feature/auth") */
+  /** Branch or remote-tracking ref name (e.g., "main", "feature/auth", "origin/feature/auth") */
   name: string;
-  /** Whether this is the currently checked out branch */
+  /** Whether this is the currently checked out local branch */
   current: boolean;
 }
 

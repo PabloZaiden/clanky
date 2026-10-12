@@ -589,7 +589,7 @@ included in this table.
 | POST | `/api/workspaces/:id/files/upload/chunk` | Upload a raw chunk for a workspace file upload session. |
 | POST | `/api/workspaces/:id/files/upload/complete` | Complete a workspace file upload session. |
 | POST | `/api/workspaces/:id/files/write` | Write a workspace file with optional conflict checks. |
-| POST | `/api/workspaces/:id/pull-latest-changes` | Pull the latest changes for a workspace's default branch. |
+| POST | `/api/workspaces/:id/pull-latest-changes` | Pull the default branch and refresh remote-tracking branches. |
 | GET, PUT | `/api/workspaces/:id/server-settings` | Read or update workspace server settings. |
 | GET | `/api/workspaces/:id/server-settings/status` | Read the current workspace connection status. |
 | POST | `/api/workspaces/:id/server-settings/test` | Test the configured workspace connection using workspace settings. |
@@ -3141,7 +3141,10 @@ Get the collected log entries for a provisioning job.
 
 #### GET /api/git/branches
 
-Get all local branches for a workspace.
+List local branches and cached remote-tracking branches for a workspace. This
+endpoint does not contact remotes; its remote entries reflect the last fetch.
+Remote branch names include the remote name, such as `origin/feature/auth`.
+`currentBranch` identifies the checked-out local branch.
 
 **Query Parameters**
 
@@ -3157,7 +3160,8 @@ Get all local branches for a workspace.
   "branches": [
     { "name": "main", "current": true },
     { "name": "feature/auth", "current": false },
-    { "name": "add-tests-1a2b3c4", "current": false }
+    { "name": "add-tests-1a2b3c4", "current": false },
+    { "name": "origin/feature/auth", "current": false }
   ]
 }
 ```
