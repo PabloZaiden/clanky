@@ -26,6 +26,7 @@ export {
   listChatTranscriptEntries,
   listChatTranscriptEntriesAfter,
   listChatTranscriptEntriesPage,
+  getChatMessageFromTranscript,
   getChatToolCallFromTranscript,
 } from "./transcript";
 export { getActiveChatByDirectory, isStaleChatStatus, resetStaleChat, resetStaleChats } from "./queries";

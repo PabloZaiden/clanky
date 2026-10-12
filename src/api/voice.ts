@@ -11,6 +11,7 @@ import { chatManager } from "../core/chat-manager";
 import { voiceManager } from "../core/voice-manager";
 import { isDomainError } from "../domain/domain-error";
 import { DomainError } from "../domain/domain-error";
+import { detectTrailingPromiseMarker } from "../utils/promise-markers";
 import { domainErrorResponse, errorResponse, successResponse } from "./helpers";
 import { parseAndValidate } from "./validation";
 
@@ -203,8 +204,10 @@ export function createVoiceSpeechRoutes(manager: typeof voiceManager) {
           if (!message) {
             return errorResponse("not_found", "Assistant message not found", 404);
           }
+          const speechContent = detectTrailingPromiseMarker(message.content)?.content
+            ?? message.content;
           const audio = await manager.synthesizeSummarySpeech(
-            message.content,
+            speechContent,
             req.signal,
           );
           return new Response(audio.audio, {

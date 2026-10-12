@@ -555,7 +555,7 @@ export class ChatConversationService implements ChatConversationPort {
     chatId: string,
     messageId: string,
   ): Promise<MessageData | null> {
-    const chat = await this.state.getChat(chatId);
+    const chat = await this.state.getChatSummary(chatId);
     if (!chat) {
       return null;
     }
@@ -563,8 +563,7 @@ export class ChatConversationService implements ChatConversationPort {
     const activeMessage = this.activeStreams.get(chatId)?.streamState?.chat.state.messages.find(
       (message) => message.id === messageId,
     );
-    const message = activeMessage
-      ?? chat.state.messages.find((candidate) => candidate.id === messageId);
+    const message = activeMessage ?? await this.state.getChatMessage(chatId, messageId);
     return message?.role === "assistant" ? message : null;
   }
 

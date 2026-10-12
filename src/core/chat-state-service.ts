@@ -14,6 +14,7 @@ import {
   loadChatStreamControlState,
   loadTaskChat,
   getChatTranscriptMeta,
+  getChatMessageFromTranscript,
   listChatTranscriptEntriesAfter,
   getChatToolCallFromTranscript,
   listChatTranscriptEntriesPage,
@@ -33,6 +34,7 @@ import type {
   ChatTranscriptStorageEntry,
   ChatStreamControlState,
   ChatStartupStage,
+  MessageData,
   TranscriptChangeSet,
   Workspace,
   TranscriptSnapshotOptions,
@@ -64,6 +66,10 @@ export class ChatStateService implements ChatStatePort {
 
   async getChatSummary(chatId: string): Promise<Chat | null> {
     return loadChatMetadata(chatId);
+  }
+
+  async getChatMessage(chatId: string, messageId: string): Promise<MessageData | null> {
+    return getChatMessageFromTranscript(chatId, messageId);
   }
 
   async getChatStreamControlState(chatId: string): Promise<ChatStreamControlState | null> {
