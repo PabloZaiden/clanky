@@ -119,6 +119,38 @@ export function mergeChatSummarySnapshot(current: Chat, incoming: Chat): Chat {
   return mergeChatSnapshotByKind(current, incoming, "summary");
 }
 
+export function reuseChatSnapshotPresentation(current: Chat, incoming: Chat): Chat {
+  if (current === incoming) return current;
+  const withoutActivity = (chat: Chat) => ({
+    config: chat.config,
+    state: { ...chat.state, lastActivityAt: undefined },
+  });
+  if (
+    !hasSameChatPresentation(current, incoming)
+    && JSON.stringify(withoutActivity(current)) !== JSON.stringify(withoutActivity(incoming))
+  ) {
+    return incoming;
+  }
+  return current.state.lastActivityAt === incoming.state.lastActivityAt
+    ? current
+    : {
+        ...current,
+        state: { ...current.state, lastActivityAt: incoming.state.lastActivityAt },
+      };
+}
+
+export function hasSameChatPresentation(current: Chat | null, next: Chat | null): boolean {
+  if (current === next) return true;
+  if (!current || !next || current.config !== next.config) return false;
+  const keys = new Set([...Object.keys(current.state), ...Object.keys(next.state)]);
+  for (const key of keys) {
+    if (key === "lastActivityAt") continue;
+    const field = key as keyof Chat["state"];
+    if (current.state[field] !== next.state[field]) return false;
+  }
+  return true;
+}
+
 export function getStreamingActivityStatus(status: Chat["state"]["status"]): Chat["state"]["status"] {
   return status === "starting" ? "streaming" : status;
 }

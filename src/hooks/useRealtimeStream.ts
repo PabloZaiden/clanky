@@ -84,10 +84,9 @@ export function useRealtimeStream<T = unknown>({
     enabled,
     path,
     filters,
+    predicate,
+    trackLastEvent: false,
     onEvent: (event) => {
-      if (predicate && !predicate(event)) {
-        return;
-      }
       onEventRef.current?.(event);
     },
   });
@@ -118,6 +117,7 @@ export function useRealtimeRefreshWithRecovery<T = ResourceRealtimeEvent>({
   const realtime = useRealtimeRefresh<T>({
     ...options,
     enabled,
+    trackLastEvent: false,
   });
   useReconnectRecovery(realtime.status, enabled, onReconnect);
   return realtime;

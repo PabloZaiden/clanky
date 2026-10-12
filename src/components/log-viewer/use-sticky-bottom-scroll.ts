@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, type DependencyList } from "react";
+import { isDocumentVisible, useDocumentVisibility } from "../../hooks/useDocumentVisibility";
 
 const BOTTOM_THRESHOLD_PX = 48;
 
@@ -7,6 +8,7 @@ function isNearBottom(element: HTMLElement): boolean {
 }
 
 export function useStickyBottomScroll(dependencies: DependencyList) {
+  const visible = useDocumentVisibility();
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const isPinnedToBottomRef = useRef(true);
@@ -23,6 +25,9 @@ export function useStickyBottomScroll(dependencies: DependencyList) {
   }, []);
 
   const scrollToBottomIfPinned = useCallback(() => {
+    if (!isDocumentVisible()) {
+      return;
+    }
     const currentContainer = containerRef.current;
     if (!currentContainer) {
       return;
@@ -38,6 +43,9 @@ export function useStickyBottomScroll(dependencies: DependencyList) {
     cancelScheduledScroll();
     animationFrameRef.current = requestAnimationFrame(() => {
       animationFrameRef.current = null;
+      if (!isDocumentVisible()) {
+        return;
+      }
       const container = containerRef.current;
       if (!container) {
         return;
@@ -75,6 +83,9 @@ export function useStickyBottomScroll(dependencies: DependencyList) {
     }
 
     const updatePinnedState = () => {
+      if (!isDocumentVisible()) {
+        return;
+      }
       const isCurrentlyNearBottom = isNearBottom(container);
       if (
         animationFrameRef.current !== null &&
@@ -94,6 +105,9 @@ export function useStickyBottomScroll(dependencies: DependencyList) {
   }, [cancelScheduledScroll]);
 
   useLayoutEffect(() => {
+    if (!visible) {
+      return cancelScheduledScroll;
+    }
     const container = containerRef.current;
     if (!container) {
       return cancelScheduledScroll;
@@ -108,7 +122,7 @@ export function useStickyBottomScroll(dependencies: DependencyList) {
     }
     scrollToBottomIfPinned();
     return cancelScheduledScroll;
-  }, [...dependencies, scrollToBottomIfPinned, cancelScheduledScroll]);
+  }, [...dependencies, visible, scrollToBottomIfPinned, cancelScheduledScroll]);
 
   useEffect(() => {
     if (typeof ResizeObserver === "undefined") {

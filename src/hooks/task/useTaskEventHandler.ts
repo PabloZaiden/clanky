@@ -8,12 +8,14 @@ const log = createLogger("useTask");
 export interface TaskEventHandlerParams {
   isActiveTask: (expectedTaskId: string) => boolean;
   applyTranscriptEvent: (event: TranscriptStreamEvent) => void;
+  flushTranscript: () => void;
   setGitChangeCounter: Dispatch<SetStateAction<number>>;
 }
 
 export function createTaskEventHandler({
   isActiveTask,
   applyTranscriptEvent,
+  flushTranscript,
   setGitChangeCounter,
 }: TaskEventHandlerParams) {
   return function handleEvent(event: TaskEvent): void {
@@ -28,6 +30,8 @@ export function createTaskEventHandler({
     const transcriptEvent = toTranscriptStreamEvent(event);
     if (transcriptEvent) {
       applyTranscriptEvent(transcriptEvent);
+    } else {
+      flushTranscript();
     }
 
     if (event.type === "task.iteration.end" || event.type === "task.git.commit") {

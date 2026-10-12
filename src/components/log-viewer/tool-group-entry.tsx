@@ -9,7 +9,7 @@ import {
 } from "./utils";
 import { ToolEntry } from "./tool-entry";
 import { getToolMeta, type InferredToolKind } from "./tool-inference";
-import { ActivitySpinner } from "./activity-spinner";
+import { ActivityIndicator } from "./activity-indicator";
 import { HarnessToolActivity } from "../harness-activity";
 
 interface ToolGroupEntryProps {
@@ -124,9 +124,10 @@ export const ToolGroupEntry = memo(function ToolGroupEntry({
           onClick={() => setIsExpanded((current) => !current)}
           data-tool-group-toggle="true"
         >
-          {entry.isActive && showActivityIndicator && <ActivitySpinner label="Working" />}
-          <span className="shrink-0 font-medium text-gray-500 dark:text-white/42">{toolCallCountLabel}</span>
-          <span className="min-w-0 truncate">- {groupSummary}</span>
+          <ActivityIndicator active={entry.isActive && showActivityIndicator} label="Working" className="min-w-0">
+            <span className={`shrink-0 font-medium ${entry.isActive && showActivityIndicator ? "text-inherit" : "text-gray-500 dark:text-white/42"}`}>{toolCallCountLabel}</span>
+            <span className="min-w-0 truncate">- {groupSummary}</span>
+          </ActivityIndicator>
         </button>
         <div
           hidden={!isExpanded}
