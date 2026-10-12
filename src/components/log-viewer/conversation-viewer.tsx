@@ -125,10 +125,6 @@ const ConversationPresentation = memo(function ConversationPresentation({
   }, [hasActiveWork, logs, messages, toolCalls]);
 
   const visibleEntries = useMemo(() => annotateDisplayEntries(groupedEntries), [groupedEntries]);
-  const latestAssistantMessageId = useMemo(
-    () => [...messages].reverse().find((message) => message.role === "assistant")?.id ?? null,
-    [messages],
-  );
   const isEmpty = groupedEntries.length === 0;
   const hasActiveWorkRow = hasActiveWorkEntry(visibleEntries);
   const shouldShowWorkingIndicator = hasActiveWork && !isEmpty && !hasActiveWorkRow;
@@ -232,7 +228,6 @@ const ConversationPresentation = memo(function ConversationPresentation({
                     readAloudSummaryEnabled={readAloudSummaryEnabled}
                     playingReadAloudKey={messageReadAloudKey}
                     readAloudStatus={messageReadAloudKey ? readAloudStatus : null}
-                    readAloudDisabled={isActive && entry.data.id === latestAssistantMessageId}
                   />
                 );
               } else if (entry.type === "tool") {

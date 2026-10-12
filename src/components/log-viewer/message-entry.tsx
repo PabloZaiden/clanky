@@ -30,7 +30,6 @@ interface MessageEntryProps {
   readAloudSummaryEnabled: boolean;
   playingReadAloudKey: string | null;
   readAloudStatus: "generating" | "playing" | null;
-  readAloudDisabled: boolean;
 }
 
 function getOutcomeBadgeVariant(kind: PromiseMarkerOutcomeKind): BadgeVariant {
@@ -56,7 +55,6 @@ export const MessageEntry = memo(function MessageEntry({
   readAloudSummaryEnabled,
   playingReadAloudKey,
   readAloudStatus,
-  readAloudDisabled,
 }: MessageEntryProps) {
   const isUser = msg.role === "user";
   const outcome = isUser || msg.question ? null : detectTrailingPromiseMarker(msg.content);
@@ -201,12 +199,12 @@ export const MessageEntry = memo(function MessageEntry({
               ))}
             </div>
           )}
-          {!isUser && onReadAloud && displayMessage.content.trim() && (!readAloudDisabled || generatingReadAloudMode) && (
-            <div className="flex flex-wrap gap-2 pt-1">
+          {!isUser && onReadAloud && displayMessage.content.trim() && (
+            <div className="flex flex-wrap items-center gap-0 pt-1">
               {generatingReadAloudMode ? (
                 renderReadAloudAction(
                   generatingReadAloudMode,
-                  generatingReadAloudMode === "summary" ? "Read summary" : "Read aloud",
+                  generatingReadAloudMode === "summary" ? "Summary" : "Read",
                   generatingReadAloudMode === "summary" ? "Stop summary" : "Stop reading",
                   generatingReadAloudMode === "summary"
                     ? "Read response summary aloud"
@@ -219,18 +217,23 @@ export const MessageEntry = memo(function MessageEntry({
                 <>
                   {renderReadAloudAction(
                     "full",
-                    "Read aloud",
+                    "Read",
                     "Stop reading",
                     "Read response aloud",
                     "Stop reading response",
                   )}
-                  {readAloudSummaryEnabled ? renderReadAloudAction(
-                    "summary",
-                    "Read summary",
-                    "Stop summary",
-                    "Read response summary aloud",
-                    "Stop reading summary",
-                  ) : null}
+                  {readAloudSummaryEnabled && (
+                    <>
+                      <span aria-hidden="true" className="whitespace-pre">{" - "}</span>
+                      {renderReadAloudAction(
+                        "summary",
+                        "Summary",
+                        "Stop summary",
+                        "Read response summary aloud",
+                        "Stop reading summary",
+                      )}
+                    </>
+                  )}
                 </>
               )}
             </div>
