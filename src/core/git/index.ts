@@ -30,7 +30,7 @@ export type {
 } from "./git-types";
 
 // Sub-module imports
-import { isGitRepo, getCommonGitDirectory as getCommonGitDirectoryQuery, getCurrentBranch, getLocalBranches, getDefaultBranch, verifyBranch, hasUncommittedChanges, getChangedFiles, branchExists, hasStagedChanges, isAncestor, getConflictedFiles } from "./git-repo-query";
+import { isGitRepo, getCommonGitDirectory as getCommonGitDirectoryQuery, getCurrentBranch, getBranches, getDefaultBranch, verifyBranch, hasUncommittedChanges, getChangedFiles, branchExists, hasStagedChanges, isAncestor, getConflictedFiles } from "./git-repo-query";
 import { getRemoteUrl as getRemoteUrlRemote, hasRemote as hasRemoteRemote, pushBranch, fetchBranch, pull, pullBranch } from "./git-remote";
 import { assertValidBranchName, createBranch, checkoutBranch, deleteBranch, ensureBranch } from "./git-branch";
 import { stageAll, commit, getLastCommitMessage } from "./git-commit";
@@ -111,8 +111,8 @@ export class GitService {
     return getCurrentBranch(this.executor, directory);
   }
 
-  async getLocalBranches(directory: string): Promise<{ name: string; current: boolean }[]> {
-    return getLocalBranches(this.executor, directory);
+  async getBranches(directory: string): Promise<{ name: string; current: boolean }[]> {
+    return getBranches(this.executor, directory);
   }
 
   async getDefaultBranch(directory: string): Promise<string> {

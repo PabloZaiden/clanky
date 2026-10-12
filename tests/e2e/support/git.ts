@@ -60,6 +60,19 @@ export async function commitAndPushFile(
   await git(fixture.repositoryDirectory, ["push", "origin", fixture.branch]);
 }
 
+export async function createRemoteBranchWithoutTrackingRef(
+  fixture: GitFixture,
+  branchName: string,
+): Promise<void> {
+  await git(fixture.repositoryDirectory, ["branch", branchName, fixture.branch]);
+  await git(fixture.repositoryDirectory, ["push", "origin", branchName]);
+  await git(fixture.repositoryDirectory, [
+    "update-ref",
+    "-d",
+    `refs/remotes/origin/${branchName}`,
+  ]);
+}
+
 export async function configureGitHubRemote(
   fixture: GitFixture,
 ): Promise<void> {

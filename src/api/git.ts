@@ -7,7 +7,7 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
  * (local or SSH execution providers).
  * 
  * Endpoints:
- * - GET /api/git/branches - List local branches for a workspace
+ * - GET /api/git/branches - List local and cached remote-tracking branches
  * - GET /api/git/default-branch - Detect the repository default branch
  * - GET /api/git/remote-status - Check whether a remote exists
  * - GET /api/git/github-repository-url - Resolve the GitHub repository URL
@@ -39,7 +39,7 @@ const log = createLogger("api:git");
 export interface BranchesResponse {
   /** Name of the currently checked out branch */
   currentBranch: string;
-  /** All local branches in the repository */
+  /** Local branches and remote-tracking branches from the last fetch */
   branches: BranchInfo[];
 }
 
@@ -145,7 +145,7 @@ async function validateGitRequest(req: Request): Promise<
  * Git API routes.
  * 
  * Provides endpoints for git repository and GitHub information:
- * - GET /api/git/branches - List all local branches
+ * - GET /api/git/branches - List local and cached remote-tracking branches
  * - GET /api/git/default-branch - Detect the default branch
  * - GET /api/git/remote-status - Check for a configured remote
  * - GET /api/git/github-repository-url - Resolve the repository URL
@@ -153,9 +153,10 @@ async function validateGitRequest(req: Request): Promise<
  */
 export const gitRoutes = defineRoutes({
   /**
-   * GET /api/git/branches - Get all local branches for a workspace.
+   * GET /api/git/branches - Get local and cached remote-tracking branches.
    * 
-   * Returns the list of local branches and identifies which one is current.
+   * Returns local branches and remote-tracking branches from the last fetch.
+   * Identifies the currently checked out local branch.
    * Validates that the directory is a git repository.
    * 
    * Query Parameters:
@@ -171,7 +172,7 @@ export const gitRoutes = defineRoutes({
   "/api/git/branches": {
     auth: "user",
     sameOrigin: "mutations",
-    description: "List local git branches for a workspace.",
+    description: "List local and cached remote-tracking git branches for a workspace.",
     async GET(req: Request, _ctx): Promise<Response> {
       log.debug("GET /api/git/branches");
 
@@ -180,7 +181,7 @@ export const gitRoutes = defineRoutes({
         if (result instanceof Response) return result;
         const { git, directory } = result;
 
-        const branches = await git.getLocalBranches(directory);
+        const branches = await git.getBranches(directory);
         const currentBranch = branches.find((b) => b.current)?.name ?? "";
 
         const response: BranchesResponse = {

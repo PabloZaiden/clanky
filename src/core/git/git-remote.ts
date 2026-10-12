@@ -142,10 +142,10 @@ export async function pullBranch(
 ): Promise<void> {
   await getRemoteUrl(executor, directory, remote);
 
-  const fetchArgs = ["fetch", remote, branchName];
+  const fetchArgs = ["fetch", "--all", "--prune"];
   const fetchResult = await runGitCommand(executor, directory, fetchArgs);
   if (!fetchResult.success) {
-    throw gitError(`Failed to fetch ${remote}/${branchName}`, fetchResult, fetchArgs);
+    throw gitError("Failed to refresh remote branches", fetchResult, fetchArgs);
   }
 
   const mergeArgs = ["merge", "--ff-only", `${remote}/${branchName}`];

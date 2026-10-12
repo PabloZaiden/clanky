@@ -53,18 +53,18 @@ export async function getCurrentBranch(executor: CommandExecutor, directory: str
   return result.stdout.trim();
 }
 
-export async function getLocalBranches(
+export async function getBranches(
   executor: CommandExecutor,
-  directory: string
+  directory: string,
 ): Promise<{ name: string; current: boolean }[]> {
-  const args = ["branch", "--format=%(refname:short)|%(HEAD)"];
-  const result = await runGitCommand(executor, directory, args);
-  if (!result.success) {
-    throw gitError("Failed to get local branches", result, args);
+  const localArgs = ["branch", "--format=%(refname:short)|%(HEAD)"];
+  const localResult = await runGitCommand(executor, directory, localArgs);
+  if (!localResult.success) {
+    throw gitError("Failed to get local branches", localResult, localArgs);
   }
 
-  const lines = result.stdout.replace(/\r\n?/g, "\n").trim().split("\n").filter(Boolean);
-  const branches = lines.map((line) => {
+  const localLines = localResult.stdout.replace(/\r\n?/g, "\n").trim().split("\n").filter(Boolean);
+  const localBranches = localLines.map((line) => {
     const [name, head] = line.split("|");
     return {
       name: name?.trim() ?? "",
@@ -73,13 +73,35 @@ export async function getLocalBranches(
   }).filter((b) => b.name.length > 0);
 
   // Handle newly initialized repos with no commits.
-  if (branches.length === 0) {
+  if (localBranches.length === 0) {
     const symbolicResult = await runGitCommand(executor, directory, ["symbolic-ref", "--short", "HEAD"]);
     if (symbolicResult.success && symbolicResult.stdout.trim()) {
-      branches.push({ name: symbolicResult.stdout.trim(), current: true });
+      localBranches.push({ name: symbolicResult.stdout.trim(), current: true });
     }
   }
 
+  const remoteArgs = [
+    "for-each-ref",
+    "--format=%(refname:short)%09%(symref)",
+    "refs/remotes",
+  ];
+  const remoteResult = await runGitCommand(executor, directory, remoteArgs);
+  if (!remoteResult.success) {
+    throw gitError("Failed to get remote branches", remoteResult, remoteArgs);
+  }
+
+  const remoteLines = remoteResult.stdout.replace(/\r\n?/g, "\n").trim().split("\n").filter(Boolean);
+  const remoteBranches = remoteLines.map((line) => {
+    const [name, symbolicRef] = line.split("\t");
+    return {
+      name: name?.trim() ?? "",
+      current: false,
+      symbolicRef: symbolicRef?.trim() ?? "",
+    };
+  }).filter((branch) => branch.name.length > 0 && branch.symbolicRef.length === 0)
+    .map(({ name, current }) => ({ name, current }));
+
+  const branches = [...localBranches, ...remoteBranches];
   branches.sort((a, b) => a.name.localeCompare(b.name));
   return branches;
 }

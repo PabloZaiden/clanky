@@ -1,7 +1,11 @@
 import { afterEach, expect, test } from "bun:test";
 import { join } from "node:path";
 import { E2EApplication } from "./support/application";
-import { commitAndPushFile, createGitFixture } from "./support/git";
+import {
+  commitAndPushFile,
+  createGitFixture,
+  createRemoteBranchWithoutTrackingRef,
+} from "./support/git";
 import { pollUntil } from "./support/polling";
 import { readProcessDiagnostics } from "./support/process";
 import {
@@ -489,6 +493,30 @@ test("compiled app crosses real SSH execution, files, Git, terminal, and ACP bou
     }>(`/api/git/branches?workspaceId=${workspace.id}`)).data;
     expect(branches.currentBranch).toBe(git.branch);
     expect(branches.branches.map((branch) => branch.name)).toContain(git.branch);
+
+    const remoteBranchName = "e2e/remote-choice";
+    await createRemoteBranchWithoutTrackingRef(git, remoteBranchName);
+    const pullResult = (await application.json<{
+      currentBranch: string;
+      defaultBranch: string;
+      workspaceId: string;
+    }>(`/api/workspaces/${workspace.id}/pull-latest-changes`, {
+      method: "POST",
+    })).data;
+    expect(pullResult).toMatchObject({
+      currentBranch: git.branch,
+      defaultBranch: git.branch,
+      workspaceId: workspace.id,
+    });
+
+    const refreshedBranches = (await application.json<{
+      branches: Array<{ name: string }>;
+      currentBranch: string;
+    }>(`/api/git/branches?workspaceId=${workspace.id}`)).data;
+    const refreshedBranchNames = refreshedBranches.branches.map((branch) => branch.name);
+    expect(refreshedBranches.currentBranch).toBe(git.branch);
+    expect(refreshedBranchNames).toContain(remoteBranchName);
+    expect(refreshedBranchNames).toContain(`origin/${remoteBranchName}`);
 
     const sourcePath = join(application.runDirectory, "ssh-upload-source.txt");
     const downloadPath = join(application.runDirectory, "ssh-download.txt");
