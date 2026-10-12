@@ -200,11 +200,11 @@ export const MessageEntry = memo(function MessageEntry({
             </div>
           )}
           {!isUser && onReadAloud && displayMessage.content.trim() && (
-            <div className="flex flex-wrap gap-2 pt-1">
+            <div className="flex flex-wrap items-center gap-0 pt-1">
               {generatingReadAloudMode ? (
                 renderReadAloudAction(
                   generatingReadAloudMode,
-                  generatingReadAloudMode === "summary" ? "Read summary" : "Read aloud",
+                  generatingReadAloudMode === "summary" ? "Summary" : "Read",
                   generatingReadAloudMode === "summary" ? "Stop summary" : "Stop reading",
                   generatingReadAloudMode === "summary"
                     ? "Read response summary aloud"
@@ -217,18 +217,23 @@ export const MessageEntry = memo(function MessageEntry({
                 <>
                   {renderReadAloudAction(
                     "full",
-                    "Read aloud",
+                    "Read",
                     "Stop reading",
                     "Read response aloud",
                     "Stop reading response",
                   )}
-                  {readAloudSummaryEnabled ? renderReadAloudAction(
-                    "summary",
-                    "Read summary",
-                    "Stop summary",
-                    "Read response summary aloud",
-                    "Stop reading summary",
-                  ) : null}
+                  {readAloudSummaryEnabled && (
+                    <>
+                      <span aria-hidden="true" className="whitespace-pre">{" - "}</span>
+                      {renderReadAloudAction(
+                        "summary",
+                        "Summary",
+                        "Stop summary",
+                        "Read response summary aloud",
+                        "Stop reading summary",
+                      )}
+                    </>
+                  )}
                 </>
               )}
             </div>
