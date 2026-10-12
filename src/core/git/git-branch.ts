@@ -52,6 +52,76 @@ export async function checkoutBranch(
   }
 }
 
+export async function checkoutRemoteBranch(
+  executor: CommandExecutor,
+  directory: string,
+  branchName: string,
+  remoteRef: string,
+): Promise<string> {
+  await assertValidBranchName(executor, directory, branchName);
+
+  const remoteCommitArgs = ["rev-parse", "--verify", `${remoteRef}^{commit}`];
+  const remoteCommitResult = await runGitCommand(
+    executor,
+    directory,
+    remoteCommitArgs,
+    { allowFailure: true },
+  );
+  if (!remoteCommitResult.success) {
+    throw gitError(`Failed to resolve remote branch ${remoteRef}`, remoteCommitResult, remoteCommitArgs);
+  }
+  const remoteCommit = remoteCommitResult.stdout.trim();
+
+  const fallbackBranchName = `clanky/${remoteRef}`;
+  let fallbackIndex = 1;
+  let candidateBranchName = branchName;
+  while (true) {
+    const localRefArgs = [
+      "rev-parse",
+      "--verify",
+      "--quiet",
+      `refs/heads/${candidateBranchName}^{commit}`,
+    ];
+    const localRefResult = await runGitCommand(
+      executor,
+      directory,
+      localRefArgs,
+      { allowFailure: true },
+    );
+    if (localRefResult.success) {
+      if (localRefResult.stdout.trim() === remoteCommit) {
+        await checkoutBranch(executor, directory, candidateBranchName);
+        return candidateBranchName;
+      }
+
+      candidateBranchName = fallbackIndex === 1
+        ? fallbackBranchName
+        : `${fallbackBranchName}-${fallbackIndex}`;
+      fallbackIndex += 1;
+      await assertValidBranchName(executor, directory, candidateBranchName);
+      continue;
+    }
+    if (localRefResult.exitCode !== 1) {
+      throw gitError(
+        `Failed to check local branch ${candidateBranchName}`,
+        localRefResult,
+        localRefArgs,
+      );
+    }
+
+    const checkoutArgs = ["checkout", "--track", "-b", candidateBranchName, remoteRef];
+    const checkoutResult = await runGitCommand(executor, directory, checkoutArgs);
+    if (!checkoutResult.success) {
+      throw gitError(
+        `Failed to create local branch ${candidateBranchName} from ${remoteRef}`,
+        checkoutResult,
+        checkoutArgs,
+      );
+    }
+    return candidateBranchName;
+  }
+}
+
 export async function deleteBranch(
   executor: CommandExecutor,
   directory: string,

@@ -47,6 +47,7 @@ export interface UseDashboardDataResult {
   currentBranch: string;
   defaultBranch: string;
   refreshBranchData: (workspaceId: string | null) => Promise<void>;
+  refreshBranchDataIfCurrent: (workspaceId: string | null) => Promise<void>;
 
   // App settings
   appSettingsResetting: boolean;
@@ -81,6 +82,15 @@ export function useDashboardData(): UseDashboardDataResult {
       workspaceBranches.fetchDefaultBranch(workspaceId),
     ]);
   }, [workspaceBranches.fetchBranches, workspaceBranches.fetchDefaultBranch]);
+
+  const refreshBranchDataIfCurrent = useCallback(async (
+    workspaceId: string | null,
+  ): Promise<void> => {
+    if (!workspaceBranches.isCurrentWorkspace(workspaceId)) {
+      return;
+    }
+    await refreshBranchData(workspaceId);
+  }, [refreshBranchData, workspaceBranches.isCurrentWorkspace]);
 
   const handleWorkspaceChange = useCallback((
     workspaceId: string | null,
@@ -128,6 +138,7 @@ export function useDashboardData(): UseDashboardDataResult {
     currentBranch: workspaceBranches.currentBranch,
     defaultBranch: workspaceBranches.defaultBranch,
     refreshBranchData,
+    refreshBranchDataIfCurrent,
     appSettingsResetting: appConfig.appSettingsResetting,
     appSettingsPurgingTerminalTasks: appConfig.appSettingsPurgingTerminalTasks,
     appSettingsRestartingAutomaticWorkspaces: appConfig.appSettingsRestartingAutomaticWorkspaces,

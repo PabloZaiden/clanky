@@ -8,6 +8,12 @@ import { runGitCommand, gitError } from "./git-core";
 import type { GitCommandResult } from "./git-types";
 import { getCurrentBranch } from "./git-repo-query";
 
+export interface RemoteBranchReference {
+  remote: string;
+  branch: string;
+  ref: string;
+}
+
 export async function getRemoteUrl(
   executor: CommandExecutor,
   directory: string,
@@ -19,6 +25,56 @@ export async function getRemoteUrl(
     throw gitError(`Failed to get remote URL for ${remote}`, result, args);
   }
   return result.stdout.trim();
+}
+
+export async function parseRemoteBranchReference(
+  executor: CommandExecutor,
+  directory: string,
+  branchRef: string,
+): Promise<RemoteBranchReference | null> {
+  const args = ["remote"];
+  const result = await runGitCommand(executor, directory, args);
+  if (!result.success) {
+    throw gitError("Failed to list Git remotes", result, args);
+  }
+
+  const remote = result.stdout
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((name) => name.trim())
+    .filter((name) => name.length > 0 && branchRef.startsWith(`${name}/`))
+    .sort((left, right) => right.length - left.length)[0];
+  if (remote) {
+    const branch = branchRef.slice(remote.length + 1);
+    return branch ? { remote, branch, ref: branchRef } : null;
+  }
+
+  const remoteRefArgs = [
+    "for-each-ref",
+    "--format=%(refname:short)",
+    "refs/remotes",
+  ];
+  const remoteRefsResult = await runGitCommand(executor, directory, remoteRefArgs);
+  if (!remoteRefsResult.success) {
+    throw gitError("Failed to list remote-tracking branches", remoteRefsResult, remoteRefArgs);
+  }
+  const remoteRefs = remoteRefsResult.stdout
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((ref) => ref.trim());
+  if (!remoteRefs.includes(branchRef)) {
+    return null;
+  }
+
+  const separator = branchRef.indexOf("/");
+  if (separator <= 0 || separator === branchRef.length - 1) {
+    return null;
+  }
+  return {
+    remote: branchRef.slice(0, separator),
+    branch: branchRef.slice(separator + 1),
+    ref: branchRef,
+  };
 }
 
 export async function hasRemote(
@@ -134,6 +190,18 @@ export async function pull(
   return true;
 }
 
+export async function fetchRemoteBranches(
+  executor: CommandExecutor,
+  directory: string,
+  remote: string,
+): Promise<void> {
+  const args = ["fetch", "--prune", remote];
+  const result = await runGitCommand(executor, directory, args);
+  if (!result.success) {
+    throw gitError(`Failed to refresh remote branches from ${remote}`, result, args);
+  }
+}
+
 export async function pullBranch(
   executor: CommandExecutor,
   directory: string,
@@ -142,11 +210,7 @@ export async function pullBranch(
 ): Promise<void> {
   await getRemoteUrl(executor, directory, remote);
 
-  const fetchArgs = ["fetch", "--all", "--prune"];
-  const fetchResult = await runGitCommand(executor, directory, fetchArgs);
-  if (!fetchResult.success) {
-    throw gitError("Failed to refresh remote branches", fetchResult, fetchArgs);
-  }
+  await fetchRemoteBranches(executor, directory, remote);
 
   const mergeArgs = ["merge", "--ff-only", `${remote}/${branchName}`];
   const mergeResult = await runGitCommand(executor, directory, mergeArgs);

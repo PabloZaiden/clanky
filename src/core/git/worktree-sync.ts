@@ -1,7 +1,13 @@
 import type { GitService } from "../git";
 
 interface SyncMainCheckoutBeforeWorktreeOptions {
-  git: Pick<GitService, "getCurrentBranch" | "checkoutBranch" | "pull">;
+  git: Pick<
+    GitService,
+    | "getCurrentBranch"
+    | "checkoutBranch"
+    | "pull"
+    | "parseRemoteBranchReference"
+  >;
   directory: string;
   baseBranch: string;
   onInfo?: (message: string) => void;
@@ -18,6 +24,12 @@ export async function syncMainCheckoutBeforeWorktree(
     onInfo,
     onDebug,
   } = options;
+
+  const remoteBase = await git.parseRemoteBranchReference(directory, baseBranch);
+  if (remoteBase) {
+    onInfo?.(`Using fetched remote branch as worktree base: ${remoteBase.ref}`);
+    return;
+  }
 
   const currentBranch = await git.getCurrentBranch(directory);
   if (currentBranch !== baseBranch) {
