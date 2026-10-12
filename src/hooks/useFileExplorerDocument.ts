@@ -3,9 +3,11 @@ import type { WorkspaceFileEntry } from "@/shared";
 import {
   WorkspaceFileConflictError,
   getFileExplorerFileMetadataApi,
+  getFileExplorerVideoPreviewUrl,
   readFileExplorerFileApi,
   readFileExplorerImagePreviewApi,
 } from "./workspaceFileActions";
+import type { FileExplorerVideoPreviewResource } from "./workspaceFileActions";
 import type { FileExplorerRequestScope } from "./file-explorer-request-scope";
 import { isFileExplorerAbortError } from "./file-explorer-request-scope";
 import type {
@@ -34,6 +36,7 @@ export interface UseFileExplorerDocumentResult {
   pendingFilePath: string | null;
   editorContent: string;
   imagePreviewUrl: string | null;
+  videoPreviewUrl: FileExplorerVideoPreviewResource | null;
   savedContent: string;
   loadingFile: boolean;
   isDirty: boolean;
@@ -44,6 +47,7 @@ export interface UseFileExplorerDocumentResult {
   openLargeFileInEditor: (path?: string) => Promise<boolean>;
   setEditorContent: (value: string) => void;
   refreshCurrentFile: (options?: { force?: boolean }) => Promise<boolean>;
+  renewVideoPreviewUrl: () => Promise<boolean>;
   discardLocalChangesAndReload: () => Promise<boolean>;
   dismissConflict: () => void;
   checkForExternalChanges: () => Promise<void>;
@@ -73,6 +77,7 @@ export function useFileExplorerDocument(
   const [pendingFilePath, setPendingFilePath] = useState<string | null>(null);
   const [editorContent, setEditorContentState] = useState("");
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [videoPreviewUrl, setVideoPreviewUrl] = useState<FileExplorerVideoPreviewResource | null>(null);
   const [savedContent, setSavedContent] = useState("");
   const [largeFileWarning, setLargeFileWarning] = useState<WorkspaceLargeFileWarningState | null>(null);
   const [autoReloadedAt, setAutoReloadedAt] = useState<string | null>(null);
@@ -124,6 +129,7 @@ export function useFileExplorerDocument(
         return;
       }
       setPendingFilePath(path);
+      setVideoPreviewUrl(null);
       clearError();
       dismissConflictState();
       setLargeFileWarning(null);
@@ -142,6 +148,28 @@ export function useFileExplorerDocument(
           return;
         }
         const metadata = metadataResponse.file;
+        if (metadata.isVideo) {
+          const nextVideoPreviewUrl = await getFileExplorerVideoPreviewUrl(
+            scope.target,
+            path,
+            {
+              startDirectory: scope.target.startDirectory,
+              signal: operation.signal,
+            },
+          );
+          if (!operation.isCurrent() || fileLoadRequestIdRef.current !== localRequestId) {
+            return;
+          }
+          tree.setCurrentDirectoryForOperation(getParentDirectory(metadata.path), operation.isCurrent);
+          setCurrentFile(metadata);
+          tree.selectNode(metadata);
+          setVideoPreviewUrl(nextVideoPreviewUrl);
+          setEditorContentState("");
+          setSavedContent("");
+          setAutoReloadedAt(null);
+          setLargeFileWarning(null);
+          return;
+        }
         if (metadata.size > LARGE_FILE_WARNING_THRESHOLD_BYTES && !openOptions?.allowLargeFile) {
           tree.setCurrentDirectoryForOperation(getParentDirectory(metadata.path), operation.isCurrent);
           setCurrentFile(metadata);
@@ -202,6 +230,7 @@ export function useFileExplorerDocument(
         return;
       }
       replaceImagePreviewUrl(null);
+      setVideoPreviewUrl(null);
       setCurrentFile(null);
       tree.clearSelectedFileState(operation.isCurrent);
       setEditorContentState("");
@@ -259,6 +288,55 @@ export function useFileExplorerDocument(
     });
     return true;
   }, [openFile, scope, setConflictState]);
+
+  const renewVideoPreviewUrl = useCallback(async (): Promise<boolean> => {
+    const activeFile = currentFileRef.current;
+    if (
+      !activeFile?.isVideo
+      || scope.target.type !== "executionHost"
+      || scope.target.kind !== "ssh"
+      || !scope.isCurrent()
+    ) {
+      return false;
+    }
+
+    const localRequestId = fileLoadRequestIdRef.current;
+    const operation = scope.createOperation();
+    try {
+      const nextVideoPreviewUrl = await getFileExplorerVideoPreviewUrl(
+        scope.target,
+        activeFile.path,
+        {
+          startDirectory: scope.target.startDirectory,
+          signal: operation.signal,
+          refreshSshCredential: true,
+        },
+      );
+      const latestFile = currentFileRef.current;
+      if (
+        !operation.isCurrent()
+        || fileLoadRequestIdRef.current !== localRequestId
+        || latestFile?.path !== activeFile.path
+        || latestFile.versionToken !== activeFile.versionToken
+      ) {
+        return false;
+      }
+
+      setVideoPreviewUrl(nextVideoPreviewUrl);
+      return true;
+    } catch (requestError) {
+      if (
+        isFileExplorerAbortError(requestError)
+        || !operation.isCurrent()
+        || fileLoadRequestIdRef.current !== localRequestId
+      ) {
+        return false;
+      }
+      throw requestError;
+    } finally {
+      operation.release();
+    }
+  }, [scope]);
 
   const setEditorContent = useCallback((value: string) => {
     if (scope.isCurrent()) {
@@ -318,7 +396,37 @@ export function useFileExplorerDocument(
         }
 
         setCurrentFile(metadata);
+        setVideoPreviewUrl(null);
         replaceImagePreviewUrl(URL.createObjectURL(imageBlob));
+        setEditorContentState("");
+        setSavedContent("");
+        tree.updateDirectoryEntry(metadata, operation.isCurrent);
+        setAutoReloadedAt(new Date().toISOString());
+        return;
+      }
+
+      if (metadata.isVideo) {
+        const nextVideoPreviewUrl = await getFileExplorerVideoPreviewUrl(
+          scope.target,
+          activeFile.path,
+          {
+            startDirectory: scope.target.startDirectory,
+            signal: operation.signal,
+          },
+        );
+        const latestFileBeforeApply = currentFileRef.current;
+        if (
+          !operation.isCurrent()
+          || fileLoadRequestIdRef.current !== localRequestId
+          || latestFileBeforeApply?.path !== activeFile.path
+          || latestFileBeforeApply.versionToken !== activeFile.versionToken
+        ) {
+          return;
+        }
+
+        setCurrentFile(metadata);
+        replaceImagePreviewUrl(null);
+        setVideoPreviewUrl(nextVideoPreviewUrl);
         setEditorContentState("");
         setSavedContent("");
         tree.updateDirectoryEntry(metadata, operation.isCurrent);
@@ -352,6 +460,7 @@ export function useFileExplorerDocument(
 
       setCurrentFile(readResponse.file);
       replaceImagePreviewUrl(null);
+      setVideoPreviewUrl(null);
       setEditorContentState(readResponse.content);
       setSavedContent(readResponse.content);
       tree.updateDirectoryEntry(readResponse.file, operation.isCurrent);
@@ -401,6 +510,7 @@ export function useFileExplorerDocument(
     setCurrentFile(null);
     tree.clearSelectedFileState();
     replaceImagePreviewUrl(null);
+    setVideoPreviewUrl(null);
     setEditorContentState("");
     setSavedContent("");
     setLargeFileWarning(null);
@@ -421,6 +531,7 @@ export function useFileExplorerDocument(
     setPendingFilePath(null);
     setEditorContentState("");
     replaceImagePreviewUrl(null);
+    setVideoPreviewUrl(null);
     setSavedContent("");
     dismissConflictState();
     setLargeFileWarning(null);
@@ -454,6 +565,7 @@ export function useFileExplorerDocument(
     pendingFilePath: hasCurrentTargetState ? pendingFilePath : null,
     editorContent: hasCurrentTargetState ? editorContent : "",
     imagePreviewUrl: hasCurrentTargetState ? imagePreviewUrl : null,
+    videoPreviewUrl: hasCurrentTargetState ? videoPreviewUrl : null,
     savedContent: hasCurrentTargetState ? savedContent : "",
     loadingFile: hasCurrentTargetState && loadingFile,
     isDirty: hasCurrentTargetState && isDirty,
@@ -464,6 +576,7 @@ export function useFileExplorerDocument(
     openLargeFileInEditor,
     setEditorContent,
     refreshCurrentFile,
+    renewVideoPreviewUrl,
     discardLocalChangesAndReload: async () => {
       dismissConflict();
       return await refreshCurrentFile({ force: true });

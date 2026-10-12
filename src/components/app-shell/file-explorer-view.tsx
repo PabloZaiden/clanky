@@ -17,6 +17,7 @@ import { requireFileExplorerServerCredentialToken } from "../../hooks/workspaceF
 import { WorkspaceFileTree } from "../workspace-files/file-tree";
 import { WorkspaceEditorPanel } from "../workspace-files/editor-panel";
 import { WorkspaceImagePreviewPanel } from "../workspace-files/image-preview-panel";
+import { WorkspaceVideoPreviewPanel } from "../workspace-files/video-preview-panel";
 import { LargeFileWarningPanel } from "../workspace-files/large-file-warning-panel";
 import { WorkspaceFileConflictModal } from "../workspace-files/conflict-modal";
 import { ServerPasswordModal } from "./server-password-modal";
@@ -839,6 +840,25 @@ export function FileExplorerView({
                 opening={openingLargeFile}
                 onDownload={() => handleDownloadFile(explorer.largeFileWarning?.file ?? null)}
                 onOpenInCodeExplorer={() => handleOpenLargeFileInEditor(explorer.largeFileWarning?.file ?? null)}
+              />
+            ) : explorer.currentFile?.isVideo ? (
+              <WorkspaceVideoPreviewPanel
+                key={JSON.stringify([
+                  target.type,
+                  target.id,
+                  target.type === "executionHost" ? target.kind : null,
+                  target.startDirectory ?? "",
+                  explorer.currentFile.path,
+                  explorer.currentFile.versionToken,
+                ])}
+                filePath={explorer.currentFile.path}
+                pendingFilePath={explorer.pendingFilePath}
+                videoPreviewUrl={explorer.videoPreviewUrl?.url ?? null}
+                videoPreviewUrlExpiresAt={explorer.videoPreviewUrl?.credentialExpiresAt ?? null}
+                loading={explorer.loadingFile}
+                autoReloadedAt={explorer.autoReloadedAt}
+                onRefresh={handleRefreshEditor}
+                onRenewVideoPreviewUrl={explorer.renewVideoPreviewUrl}
               />
             ) : explorer.currentFile?.isImage ? (
               <WorkspaceImagePreviewPanel

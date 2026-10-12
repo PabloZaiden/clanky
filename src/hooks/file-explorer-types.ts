@@ -1,5 +1,8 @@
 import type { WorkspaceFileEntry, WorkspaceFileNode } from "@/shared";
-import type { FileExplorerCredentialErrorCode } from "./workspaceFileActions";
+import type {
+  FileExplorerCredentialErrorCode,
+  FileExplorerVideoPreviewResource,
+} from "./workspaceFileActions";
 
 export interface WorkspaceFileConflictState {
   kind: "save_conflict" | "reload_conflict";
@@ -29,6 +32,7 @@ export interface UseFileExplorerResult {
   showHiddenFiles: boolean;
   editorContent: string;
   imagePreviewUrl: string | null;
+  videoPreviewUrl: FileExplorerVideoPreviewResource | null;
   savedContent: string;
   loadingTree: boolean;
   loadingFile: boolean;
@@ -53,6 +57,7 @@ export interface UseFileExplorerResult {
   setEditorContent: (value: string) => void;
   saveCurrentFile: (options?: { overwrite?: boolean }) => Promise<boolean>;
   refreshCurrentFile: (options?: { force?: boolean }) => Promise<boolean>;
+  renewVideoPreviewUrl: () => Promise<boolean>;
   discardLocalChangesAndReload: () => Promise<boolean>;
   retrySaveWithOverwrite: () => Promise<boolean>;
   dismissConflict: () => void;
@@ -60,4 +65,3 @@ export interface UseFileExplorerResult {
 }
 
 export type UseWorkspaceFilesResult = UseFileExplorerResult;
-

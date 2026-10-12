@@ -135,6 +135,7 @@ export {
   readFileExplorerFileApi,
   downloadFileExplorerFileApi,
   getFileExplorerDownloadUrl,
+  getFileExplorerVideoPreviewUrl,
   getFileExplorerFileMetadataApi,
   writeFileExplorerFileApi,
   listWorkspaceFilesApi,

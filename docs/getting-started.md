@@ -131,6 +131,9 @@ does not save or reload the file and keeps the editor's undo history. **Save**
 and **Refresh file** retain their usual behavior, including unsaved-change
 conflict prompts.
 
+Regular fenced code blocks in Markdown previews, chat messages, and agent logs
+include a copy button that copies the code without its Markdown fences.
+
 Mermaid diagrams render in file previews and in agent messages and logs when
 Markdown rendering is enabled. Use a fenced block with the `mermaid` language:
 

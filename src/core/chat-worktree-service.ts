@@ -408,11 +408,30 @@ export class ChatWorktreeService implements ChatWorktreePort {
       throw error;
     }
 
-    let result;
+    let currentBranch: string;
+    let selectedBranch: string;
     try {
-      result = await git.ensureBranch(chat.config.directory, expectedBranch, {
-        autoCheckout: true,
-      });
+      const remoteBase = await git.parseRemoteBranchReference(
+        chat.config.directory,
+        expectedBranch,
+      );
+      currentBranch = await git.getCurrentBranch(chat.config.directory);
+      if (remoteBase) {
+        selectedBranch = await git.checkoutRemoteBranch(
+          chat.config.directory,
+          remoteBase.branch,
+          remoteBase.ref,
+        );
+      } else {
+        const result = await git.ensureBranch(chat.config.directory, expectedBranch, {
+          autoCheckout: true,
+        });
+        currentBranch = result.currentBranch;
+        selectedBranch = result.expectedBranch;
+        if (!result.checkedOut) {
+          return;
+        }
+      }
       throwIfAborted(signal);
     } catch (error) {
       if (signal?.aborted) {
@@ -425,14 +444,13 @@ export class ChatWorktreeService implements ChatWorktreePort {
       );
     }
 
-    if (result.checkedOut) {
+    if (currentBranch !== selectedBranch) {
       log.info("Checked out selected branch for standalone chat", {
         chatId: chat.config.id,
-        fromBranch: result.currentBranch,
-        toBranch: result.expectedBranch,
+        fromBranch: currentBranch,
+        toBranch: selectedBranch,
       });
     }
-
   }
 
   private buildWorkingBranchName(chat: Chat): string {

@@ -77,7 +77,7 @@ function getCachedCredentialToken(
   serverId: string,
   storedCredential: StoredSshServerCredential,
   dependencies: SshBrowserCredentialDependencies,
-): string | null {
+): CachedSshCredentialToken | null {
   const cachedToken = exchangedCredentialTokenCache.get(serverId);
   if (!cachedToken) {
     return null;
@@ -88,7 +88,7 @@ function getCachedCredentialToken(
     return null;
   }
 
-  return cachedToken.credentialToken;
+  return cachedToken;
 }
 
 function cacheCredentialToken(
@@ -280,15 +280,38 @@ export async function getStoredSshCredentialToken(
   serverId: string,
   dependencies: SshBrowserCredentialDependencies = {},
 ): Promise<string | null> {
+  const credential = await getStoredSshCredentialTokenLease(
+    serverId,
+    {},
+    dependencies,
+  );
+  return credential?.credentialToken ?? null;
+}
+
+export interface SshCredentialTokenLease {
+  credentialToken: string;
+  expiresAt: number;
+}
+
+export async function getStoredSshCredentialTokenLease(
+  serverId: string,
+  options: { forceRefresh?: boolean } = {},
+  dependencies: SshBrowserCredentialDependencies = {},
+): Promise<SshCredentialTokenLease | null> {
   const storedCredential = getStoredSshServerCredential(serverId, dependencies);
   if (!storedCredential) {
     clearCachedCredentialToken(serverId);
     return null;
   }
 
-  const cachedCredentialToken = getCachedCredentialToken(serverId, storedCredential, dependencies);
-  if (cachedCredentialToken) {
-    return cachedCredentialToken;
+  const cachedCredential = options.forceRefresh
+    ? null
+    : getCachedCredentialToken(serverId, storedCredential, dependencies);
+  if (cachedCredential) {
+    return {
+      credentialToken: cachedCredential.credentialToken,
+      expiresAt: cachedCredential.expiresAt,
+    };
   }
 
   const publicKey = await fetchSshServerPublicKey(serverId, dependencies);
@@ -303,8 +326,15 @@ export async function getStoredSshCredentialToken(
       storedCredential.encryptedCredential,
       dependencies,
     );
+    const expiresAt = Date.parse(exchange.expiresAt);
+    if (!Number.isFinite(expiresAt)) {
+      throw new Error("SSH credential exchange returned an invalid expiration.");
+    }
     cacheCredentialToken(serverId, storedCredential, exchange);
-    return exchange.credentialToken;
+    return {
+      credentialToken: exchange.credentialToken,
+      expiresAt,
+    };
   } catch (error) {
     if (isApiErrorCode(error, "invalid_encrypted_credential")) {
       clearStoredSshServerCredential(serverId, dependencies);

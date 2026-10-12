@@ -722,6 +722,7 @@ export async function ensureAutomaticPrFlowPullRequest(
   }
 
   const baseBranch = getBaseBranch(task) ?? await git.getDefaultBranch(directory);
+  const remoteBaseBranch = await git.parseRemoteBranchReference(directory, baseBranch);
   const metadata = await generateAutomaticPrMetadata(task, directory, executor, baseBranch);
   const createResult = await executor.exec(
     "gh",
@@ -729,7 +730,7 @@ export async function ensureAutomaticPrFlowPullRequest(
       "pr",
       "create",
       "--base",
-      baseBranch,
+      remoteBaseBranch?.branch ?? baseBranch,
       "--head",
       workingBranch,
       "--title",

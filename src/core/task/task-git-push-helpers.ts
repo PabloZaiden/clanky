@@ -19,6 +19,15 @@ import {
   TASK_GIT_OPERATION_FAILURE_MESSAGE,
 } from "./task-errors";
 
+async function resolveBaseBranchReference(
+  git: GitService,
+  directory: string,
+  baseBranch: string,
+): Promise<{ remote: string; branch: string; ref: string }> {
+  return await git.parseRemoteBranchReference(directory, baseBranch)
+    ?? { remote: "origin", branch: baseBranch, ref: `origin/${baseBranch}` };
+}
+
 interface ConflictResolutionOptions {
   onCompleted?: () => Promise<void>;
   completionDescription?: string;
@@ -119,6 +128,11 @@ export async function syncBaseBranchAndPush(
   git: GitService
 ): Promise<PushTaskResult> {
   const baseBranch = task.config.baseBranch ?? task.state.git!.originalBranch;
+  const remoteBaseBranch = await resolveBaseBranchReference(
+    git,
+    task.config.directory,
+    baseBranch,
+  );
   const worktreePath = task.state.git!.worktreePath ?? task.config.directory;
 
   ctx.emitter.emit({
@@ -128,17 +142,21 @@ export async function syncBaseBranchAndPush(
     timestamp: createTimestamp(),
   });
 
-  log.debug(`[TaskManager] syncBaseBranchAndPush: Fetching origin/${baseBranch} for task ${taskId}`);
-  const fetchSuccess = await git.fetchBranch(task.config.directory, baseBranch);
+  log.debug(`[TaskManager] syncBaseBranchAndPush: Fetching ${remoteBaseBranch.ref} for task ${taskId}`);
+  const fetchSuccess = await git.fetchBranch(
+    task.config.directory,
+    remoteBaseBranch.branch,
+    remoteBaseBranch.remote,
+  );
 
   let alreadyUpToDate: boolean;
   if (!fetchSuccess) {
-    log.debug(`[TaskManager] syncBaseBranchAndPush: Could not fetch origin/${baseBranch}, skipping sync`);
+    log.debug(`[TaskManager] syncBaseBranchAndPush: Could not fetch ${remoteBaseBranch.ref}, skipping sync`);
     alreadyUpToDate = true;
   } else {
     alreadyUpToDate = await git.isAncestor(
       worktreePath,
-      `origin/${baseBranch}`,
+      remoteBaseBranch.ref,
       "HEAD"
     );
   }
@@ -146,7 +164,7 @@ export async function syncBaseBranchAndPush(
   let syncStatus: "already_up_to_date" | "clean" | "conflicts_being_resolved";
 
   if (alreadyUpToDate) {
-    log.debug(`[TaskManager] syncBaseBranchAndPush: Already up to date with origin/${baseBranch}`);
+    log.debug(`[TaskManager] syncBaseBranchAndPush: Already up to date with ${remoteBaseBranch.ref}`);
     syncStatus = "already_up_to_date";
 
     ctx.emitter.emit({
@@ -156,16 +174,16 @@ export async function syncBaseBranchAndPush(
       timestamp: createTimestamp(),
     });
   } else {
-    log.debug(`[TaskManager] syncBaseBranchAndPush: Merging origin/${baseBranch} into working branch for task ${taskId}`);
+    log.debug(`[TaskManager] syncBaseBranchAndPush: Merging ${remoteBaseBranch.ref} into working branch for task ${taskId}`);
     const lastCommitMessage = await git.getLastCommitMessage(worktreePath);
     const mergeResult = await git.mergeWithConflictDetection(
       worktreePath,
-      `origin/${baseBranch}`,
+      remoteBaseBranch.ref,
       lastCommitMessage
     );
 
     if (mergeResult.success) {
-      log.debug(`[TaskManager] syncBaseBranchAndPush: Clean merge with origin/${baseBranch}`);
+      log.debug(`[TaskManager] syncBaseBranchAndPush: Clean merge with ${remoteBaseBranch.ref}`);
       syncStatus = "clean";
 
       ctx.emitter.emit({
@@ -176,7 +194,7 @@ export async function syncBaseBranchAndPush(
       });
     } else if (mergeResult.hasConflicts) {
       const conflictedFiles = mergeResult.conflictedFiles ?? [];
-      log.debug(`[TaskManager] syncBaseBranchAndPush: Merge conflicts detected with origin/${baseBranch}: ${conflictedFiles.join(", ")}`);
+      log.debug(`[TaskManager] syncBaseBranchAndPush: Merge conflicts detected with ${remoteBaseBranch.ref}: ${conflictedFiles.join(", ")}`);
 
       await git.abortMerge(worktreePath);
 
@@ -201,7 +219,7 @@ export async function syncBaseBranchAndPush(
       await updateTaskOperationalState(taskId, task.state);
 
       return startConflictResolutionEngine(
-        ctx, taskId, task, git, `origin/${baseBranch}`, conflictedFiles
+        ctx, taskId, task, git, remoteBaseBranch.ref, conflictedFiles
       );
     } else {
       const errorMsg = mergeResult.stderr || "Unknown merge error";
@@ -224,6 +242,11 @@ export async function syncBaseBranchBeforeExecution(
   currentEngine?: TaskEngine,
 ): Promise<PushTaskResult> {
   const baseBranch = task.config.baseBranch ?? task.state.git!.originalBranch;
+  const remoteBaseBranch = await resolveBaseBranchReference(
+    git,
+    task.config.directory,
+    baseBranch,
+  );
   const worktreePath = task.state.git!.worktreePath ?? task.config.directory;
 
   task.state.syncState = {
@@ -241,10 +264,13 @@ export async function syncBaseBranchBeforeExecution(
     timestamp: createTimestamp(),
   });
 
-  const hasRemote = await git.hasRemote(task.config.directory);
+  const hasRemote = await git.hasRemote(
+    task.config.directory,
+    remoteBaseBranch.remote,
+  );
   if (!hasRemote) {
     log.debug(
-      `[TaskManager] syncBaseBranchBeforeExecution: No origin remote configured for task ${taskId}, skipping base branch sync`,
+      `[TaskManager] syncBaseBranchBeforeExecution: No ${remoteBaseBranch.remote} remote configured for task ${taskId}, skipping base branch sync`,
     );
     task.state.syncState = undefined;
     await updateTaskOperationalState(taskId, task.state);
@@ -262,12 +288,16 @@ export async function syncBaseBranchBeforeExecution(
     };
   }
 
-  log.debug(`[TaskManager] syncBaseBranchBeforeExecution: Fetching origin/${baseBranch} for task ${taskId}`);
-  const fetchSuccess = await git.fetchBranch(task.config.directory, baseBranch);
+  log.debug(`[TaskManager] syncBaseBranchBeforeExecution: Fetching ${remoteBaseBranch.ref} for task ${taskId}`);
+  const fetchSuccess = await git.fetchBranch(
+    task.config.directory,
+    remoteBaseBranch.branch,
+    remoteBaseBranch.remote,
+  );
 
   let alreadyUpToDate: boolean;
   if (!fetchSuccess) {
-    const error = `Failed to fetch origin/${baseBranch} before accepted plan execution`;
+    const error = `Failed to fetch ${remoteBaseBranch.ref} before accepted plan execution`;
     log.error(`[TaskManager] syncBaseBranchBeforeExecution: ${error} for task ${taskId}`);
     task.state.syncState = undefined;
     await updateTaskOperationalState(taskId, task.state);
@@ -290,13 +320,13 @@ export async function syncBaseBranchBeforeExecution(
   } else {
     alreadyUpToDate = await git.isAncestor(
       worktreePath,
-      `origin/${baseBranch}`,
+      remoteBaseBranch.ref,
       "HEAD",
     );
   }
 
   if (alreadyUpToDate) {
-    log.debug(`[TaskManager] syncBaseBranchBeforeExecution: Already up to date with origin/${baseBranch}`);
+    log.debug(`[TaskManager] syncBaseBranchBeforeExecution: Already up to date with ${remoteBaseBranch.ref}`);
     task.state.syncState = undefined;
     await updateTaskOperationalState(taskId, task.state);
 
@@ -312,16 +342,16 @@ export async function syncBaseBranchBeforeExecution(
     };
   }
 
-  log.debug(`[TaskManager] syncBaseBranchBeforeExecution: Merging origin/${baseBranch} into working branch for task ${taskId}`);
+  log.debug(`[TaskManager] syncBaseBranchBeforeExecution: Merging ${remoteBaseBranch.ref} into working branch for task ${taskId}`);
   const lastCommitMessage = await git.getLastCommitMessage(worktreePath);
   const mergeResult = await git.mergeWithConflictDetection(
     worktreePath,
-    `origin/${baseBranch}`,
+    remoteBaseBranch.ref,
     lastCommitMessage,
   );
 
   if (mergeResult.success) {
-    log.debug(`[TaskManager] syncBaseBranchBeforeExecution: Clean merge with origin/${baseBranch}`);
+    log.debug(`[TaskManager] syncBaseBranchBeforeExecution: Clean merge with ${remoteBaseBranch.ref}`);
     task.state.syncState = undefined;
     await updateTaskOperationalState(taskId, task.state);
 
@@ -339,7 +369,7 @@ export async function syncBaseBranchBeforeExecution(
 
   if (mergeResult.hasConflicts) {
     const conflictedFiles = mergeResult.conflictedFiles ?? [];
-    log.debug(`[TaskManager] syncBaseBranchBeforeExecution: Merge conflicts detected with origin/${baseBranch}: ${conflictedFiles.join(", ")}`);
+    log.debug(`[TaskManager] syncBaseBranchBeforeExecution: Merge conflicts detected with ${remoteBaseBranch.ref}: ${conflictedFiles.join(", ")}`);
 
     await git.abortMerge(worktreePath);
 
@@ -368,7 +398,7 @@ export async function syncBaseBranchBeforeExecution(
       taskId,
       task,
       git,
-      `origin/${baseBranch}`,
+      remoteBaseBranch.ref,
       conflictedFiles,
       {
         onCompleted: onConflictsResolved,

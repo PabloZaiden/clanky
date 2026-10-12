@@ -18,4 +18,5 @@ export interface WorkspaceFileEntry extends WorkspaceFileNode {
   versionToken: string;
   mimeType?: string;
   isImage?: boolean;
+  isVideo?: boolean;
 }
