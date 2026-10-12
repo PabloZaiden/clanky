@@ -393,27 +393,22 @@ test("compiled controller and worker execute an ACP chat across Mesh and reconne
     expect(firstMessage.status).toBe(200);
     expect((await waitForIdleChat(controller, chatId)).state.status).toBe("idle");
 
-    const readFile = process.platform === "win32"
-      ? {
-          command: "powershell.exe",
-          args: [
-            "-NoLogo",
-            "-NoProfile",
-            "-NonInteractive",
-            "-Command",
-            "Get-Content -Raw -LiteralPath 'e2e-provider-change.txt'",
-          ],
-        }
-      : {
-          command: "cat",
-          args: ["e2e-provider-change.txt"],
-        };
-    expect(
-      (await executeOnWorker(controller, registration.workerNodeId, {
-        ...readFile,
-        cwd: workspaceDirectory,
-      })).stdout.trim(),
-    ).toBe("created by the external ACP provider");
+    const fileTree = await meshJsonRequest<{
+      entriesByDirectory: Record<string, Array<{ path: string; kind: string }>>;
+    }>(
+      controller,
+      `/api/workspaces/${encodeURIComponent(createdWorkspace.body.id)}/files/tree`,
+    );
+    expect(fileTree.status).toBe(200);
+    expect(fileTree.body.entriesByDirectory[""]).toContainEqual(
+      expect.objectContaining({ path: "e2e-provider-change.txt", kind: "file" }),
+    );
+    const file = await meshJsonRequest<{ content: string }>(
+      controller,
+      `/api/workspaces/${encodeURIComponent(createdWorkspace.body.id)}/files/content?path=e2e-provider-change.txt`,
+    );
+    expect(file.status).toBe(200);
+    expect(file.body.content.trim()).toBe("created by the external ACP provider");
 
     const initialHealth = await meshJsonRequest<{
       success: boolean;

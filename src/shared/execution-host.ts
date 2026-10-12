@@ -58,6 +58,7 @@ export type ExecutionHostRef =
 export const EXECUTION_HOST_CAPABILITY_IDS = [
   "commandExecution",
   "fileOperations",
+  "directoryTree",
   "git",
   "managedWorktrees",
   "acpRuntime",
@@ -79,6 +80,7 @@ export type GitEnvironmentVariableName = "GIT_SSH_COMMAND";
 export const EXECUTION_HOST_CAPABILITY_VERSIONS = {
   commandExecution: 1,
   fileOperations: 2,
+  directoryTree: 1,
   git: 2,
   managedWorktrees: 2,
   acpRuntime: 2,
@@ -214,7 +216,12 @@ export function createExecutionHostRuntimeSnapshot(
   );
   return {
     platform: normalizedPlatform,
-    capabilities: getExecutionHostCapabilitiesForPlatform(normalizedPlatform),
+    capabilities: {
+      ...getExecutionHostCapabilitiesForPlatform(normalizedPlatform),
+      ...(normalizedPlatform
+        ? { directoryTree: EXECUTION_HOST_CAPABILITY_VERSIONS.directoryTree }
+        : {}),
+    },
   };
 }
 

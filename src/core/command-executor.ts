@@ -18,6 +18,7 @@ import type {
 } from "../shared/execution-host";
 import type { AgentProvider } from "../shared/settings";
 import type { ByteRange } from "../shared/byte-range";
+import type { FileSystemTreeEntry } from "../shared/file-system";
 
 export type {
   GitCommandScope,
@@ -100,6 +101,11 @@ export interface FileSystemListOptions {
 export interface FileSystemMetadataOptions {
   includeContentHash?: boolean;
   signal?: AbortSignal;
+}
+
+export interface FileSystemTreeOptions extends FileSystemListOptions {
+  /** These directory basenames are listed, but their contents are deferred. */
+  deferredDirectoryNames: readonly string[];
 }
 
 export interface FileWriteStreamOptions {
@@ -291,6 +297,16 @@ export interface CommandExecutor {
     path: string,
     options?: FileSystemListOptions,
   ): Promise<FileSystemDirectoryEntry[]>;
+
+  /**
+   * Optional host-side aggregate. Null means unavailable or beyond the aggregate
+   * size limit; callers retain their per-directory traversal. Other errors throw.
+   * Descendant directory symlinks are listed without traversing their targets.
+   */
+  walkDirectoryTree?(
+    path: string,
+    options: FileSystemTreeOptions,
+  ): Promise<FileSystemTreeEntry[] | null>;
 
   /**
    * Write content to a file on the server.

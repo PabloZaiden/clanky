@@ -13,6 +13,7 @@ export * from "./context-api-key";
 export * from "./events";
 export * from "./execution-host";
 export * from "./file-upload";
+export * from "./file-system";
 export * from "./task";
 export * from "./message-attachments";
 export * from "./mesh";

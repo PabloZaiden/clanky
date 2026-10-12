@@ -14,6 +14,12 @@ import { GIT_COMMAND_SCOPES } from "@/shared/execution-host";
 const MeshExecutionPathSchema = z.string().min(1).max(16_384);
 const MeshExecutionProtocolVersionSchema = z.literal(MESH_PROTOCOL_VERSION);
 
+export const MeshDirectoryTreeResultSchema = z.array(z.object({
+  path: MeshExecutionPathSchema.refine((path) => !path.includes("\0")),
+  kind: z.enum(["file", "directory"]),
+  isSymbolicLink: z.boolean(),
+}));
+
 export const MeshExecutionSessionRequestV6Schema = z.object({
   protocolVersion: MeshExecutionProtocolVersionSchema,
   requestId: z.string().trim().min(1).max(200),
@@ -70,7 +76,22 @@ export const MeshExecutionRpcRequestSchema = z.object({
   overwrite: z.boolean().optional(),
   kind: z.enum(["file", "directory"]).optional(),
   recursive: z.boolean().optional(),
+  deferredDirectoryNames: z.array(
+    z.string().min(1).max(255).refine(
+      (name) => name !== "." && name !== ".." && !/[\\/\0]/.test(name),
+    ),
+  ).max(256).optional(),
 }).superRefine((value, context) => {
+  if (
+    value.operation === "walkDirectoryTree"
+    && (!value.path || !value.deferredDirectoryNames)
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["operation"],
+      message: "Directory tree operations require path and deferredDirectoryNames.",
+    });
+  }
   if (
     value.operation === "git"
     && (!value.cwd || !value.args?.length || !value.gitScope)
