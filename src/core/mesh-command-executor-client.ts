@@ -9,6 +9,8 @@ import type {
   MeshExecutionSessionCloseRequest,
   MeshExecutionSessionRequest,
 } from "@/contracts/schemas/mesh-execution";
+import { MeshDirectoryTreeResultSchema } from "@/contracts/schemas/mesh-execution";
+import type { FileSystemTreeEntry } from "@/shared/file-system";
 import {
   MESH_EXECUTION_ASYNC_POLL_INTERVAL_MS,
   MESH_EXECUTION_ASYNC_REQUEST_TIMEOUT_MS,
@@ -20,6 +22,7 @@ import {
   MESH_EXECUTION_SESSION_REQUEST_TTL_MS,
   MESH_ACP_SESSION_REQUEST_TTL_MS,
   MESH_EXECUTION_MAX_IN_FLIGHT_REQUESTS,
+  MESH_EXECUTION_MAX_RESULT_BYTES,
   MESH_ACP_SESSION_RENEWAL_LEAD_MS,
   MESH_ACP_SESSION_RENEWAL_RETRY_MS,
   MESH_ACP_SESSION_RENEWAL_MAX_RETRY_MS,
@@ -52,6 +55,7 @@ import type {
   FileSystemListOptions,
   FileSystemMetadata,
   FileSystemMetadataOptions,
+  FileSystemTreeOptions,
   FileWriteStreamOptions,
   FileWriteStreamResult,
   GitCommandOptions,
@@ -1081,6 +1085,30 @@ export class MeshCommandExecutorClient {
       path,
       includeHidden: options?.includeHidden,
     }, options?.signal);
+  }
+
+  async walkDirectoryTree(
+    path: string,
+    options: FileSystemTreeOptions,
+  ): Promise<FileSystemTreeEntry[]> {
+    const response = await this.execute<unknown>({
+      operation: "walkDirectoryTree",
+      path,
+      includeHidden: options.includeHidden,
+      deferredDirectoryNames: [...options.deferredDirectoryNames],
+    }, options.signal);
+    const parsed = MeshDirectoryTreeResultSchema.safeParse(response);
+    if (
+      !parsed.success
+      || Buffer.byteLength(JSON.stringify(parsed.data), "utf8") > MESH_EXECUTION_MAX_RESULT_BYTES
+    ) {
+      throw new DomainError(
+        "mesh_execution_response_invalid",
+        "The Mesh directory tree response is invalid.",
+        { cause: parsed.success ? undefined : parsed.error },
+      );
+    }
+    return parsed.data;
   }
 
   async writeFile(path: string, content: string): Promise<boolean> {

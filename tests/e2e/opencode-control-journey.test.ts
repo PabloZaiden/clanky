@@ -6,6 +6,7 @@ import { E2EApplication } from "./support/application";
 import { pollUntil } from "./support/polling";
 import { installExternalNativeOpenCodeProvider } from "./support/provider";
 import { createFixtureLiveOffer, startVoiceProvider, stopVoiceProvider, type ManagedVoiceProvider } from "./support/voice-provider";
+import { MESH_OPERATION_TIMEOUT_MS } from "./support/timeouts";
 import {
   compiledClankyCommand, enrollMeshWorker, meshJsonRequest, meshNodeDiagnostics,
   startMeshNode, stopMeshNode, type ManagedMeshNode,
@@ -293,7 +294,7 @@ test("Mesh users operate Clanky through OpenCode Control on their selected worke
     await client.json(`/api/execution-hosts/mesh/${host.ref["nodeId"]}/exec`, {
       method: "POST", body: JSON.stringify({
         command: process.execPath, args: ["-e", `await Bun.write(${JSON.stringify(filePath)}, "Selected execution host file");`],
-        cwd: worker.dataDir, timeoutMs: 5_000,
+        cwd: worker.dataDir, timeoutMs: MESH_OPERATION_TIMEOUT_MS,
       }),
     });
     const { workspace, modelConfig, createChat } = await prepare(client, workspaceDirectory, host.ref, "Mesh OpenCode Control");

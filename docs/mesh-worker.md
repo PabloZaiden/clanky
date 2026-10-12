@@ -32,6 +32,33 @@ Before selecting a native adapter, check worker and relay generations in
 by a Mesh route is not retried through ACP. Explicitly select ACP on the
 workspace when that is the desired integration.
 
+### Optional aggregated directory trees
+
+Workers can advertise `directoryTree: 1` alongside the unchanged
+`fileOperations: 2` capability. Controllers use it for full Code Explorer trees:
+the worker traverses its native filesystem in one encrypted execution RPC rather
+than requiring a Mesh request for every directory. This additive extension uses
+the existing Mesh generation and does not require Bash or `commandExecution`.
+
+`walkDirectoryTree` accepts a root `path`, `includeHidden` (default `false`), and
+`deferredDirectoryNames` (an array of directory basenames, including an empty
+array when nothing should be deferred). Its result is an array of
+`{ path, kind, isSymbolicLink }`, with paths relative to the root using the
+worker's POSIX or Windows path semantics, and `kind` equal to `file` or `directory`.
+The root itself is omitted. Empty directories are included; deferred directories
+are included without their contents. Descendant symlinks are classified by their
+targets where possible but never traversed. An explicitly selected root may be a
+directory symlink, just as with ordinary directory navigation.
+
+Workers without this capability receive no new operation: the controller keeps
+the existing per-directory traversal. An explicit
+`mesh_execution_capability_unavailable` or `mesh_execution_operation_unsupported`
+rejection also uses that traversal. Aggregates are bounded by the existing
+8 MiB plaintext result limit; `mesh_execution_result_too_large` selects the same
+fallback rather than returning a partial tree. Rejection-based fallbacks are
+logged. Filesystem, authorization, transport, cancellation, and malformed-result
+failures remain errors, not empty trees or compatibility fallbacks.
+
 ## Choose a harness
 
 The workspace selects the adapter; each task or chat selects its model.

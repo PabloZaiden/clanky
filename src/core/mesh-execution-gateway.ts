@@ -52,6 +52,8 @@ import { getMeshWorkerDirectory } from "./mesh-runtime";
 import { getWorkerPaths } from "./provisioning/worker-assets";
 import { posix as pathPosix } from "node:path";
 import { CommandExecutorImpl } from "./remote-command-executor";
+import { walkDirectoryTree } from "./directory-tree-walker";
+import type { FileSystemTreeEntry } from "@/shared/file-system";
 import {
   isCommandOutputLimitError,
   type CommandExecutor,
@@ -210,6 +212,7 @@ type MeshExecutionRpcResult =
   | string[]
   | FileSystemMetadata
   | FileSystemDirectoryEntry[]
+  | FileSystemTreeEntry[]
   | FileMoveResult
   | null;
 
@@ -296,11 +299,17 @@ const FILE_OPERATIONS_V2 = new Set<MeshExecutionOperation>([
 export function getMeshExecutionOperationCapability(
   operation: MeshExecutionOperation,
 ): {
-  id: "commandExecution" | "fileOperations" | "git" | "acpRuntime";
+  id: ExecutionHostCapabilityId;
   minimumVersion: number;
 } {
   if (operation === "exec") {
     return { id: "commandExecution", minimumVersion: 1 };
+  }
+  if (operation === "walkDirectoryTree") {
+    return {
+      id: "directoryTree",
+      minimumVersion: EXECUTION_HOST_CAPABILITY_VERSIONS.directoryTree,
+    };
   }
   if (operation === "git" || operation === "gitEnvironment") {
     return {
@@ -1248,13 +1257,17 @@ export class MeshExecutionGateway {
       throw new DomainError("mesh_execution_limit_exceeded", "The execution session has too many in-flight requests.");
     }
     session.inFlight += 1;
-    const releaseFileOperation = request.operation === "exec"
-      ? undefined
-      : await this.fileOperationsLock.acquire(
-          EXCLUSIVE_EXECUTION_OPERATIONS.has(request.operation) ? "write" : "read",
-        );
+    const treeOperation = request.operation === "walkDirectoryTree"
+      ? this.startSessionOperation(session, signal)
+      : undefined;
+    let releaseFileOperation: (() => void) | undefined;
 
     try {
+      if (request.operation !== "exec") {
+        releaseFileOperation = await this.fileOperationsLock.acquire(
+          EXCLUSIVE_EXECUTION_OPERATIONS.has(request.operation) ? "write" : "read",
+        );
+      }
       const cwd = resolveMeshExecutionPath(
         session,
         request.cwd ?? session.directory,
@@ -1481,6 +1494,9 @@ export class MeshExecutionGateway {
           assertStringSize(JSON.stringify(entries), "directory entry listing");
           return entries;
         }
+        case "walkDirectoryTree": {
+          return await this.executeDirectoryTree(session, request, treeOperation!.signal);
+        }
         case "movePath": {
           if (!request.sourcePath || !request.destinationPath) {
             throw new DomainError(
@@ -1526,8 +1542,65 @@ export class MeshExecutionGateway {
       }
 
     } finally {
+      treeOperation?.cleanup();
       releaseFileOperation?.();
       session.inFlight -= 1;
+    }
+  }
+
+  private async executeDirectoryTree(
+    session: MeshExecutionSession,
+    request: MeshExecutionRpcRequest,
+    signal: AbortSignal,
+  ): Promise<FileSystemTreeEntry[]> {
+    if (!request.path || !request.deferredDirectoryNames) {
+      throw new DomainError(
+        "mesh_execution_request_invalid",
+        "walkDirectoryTree requires path and deferredDirectoryNames.",
+      );
+    }
+    await requireLocalMeshExecutionCapability(
+      "fileOperations",
+      EXECUTION_HOST_CAPABILITY_VERSIONS.fileOperations,
+    );
+    try {
+      signal.throwIfAborted();
+      const root = resolveMeshExecutionPath(session, request.path);
+      const metadata = await session.executor.getFileMetadata(root, {
+        includeContentHash: false,
+        signal,
+      });
+      if (!metadata) {
+        throw new DomainError("file_not_found", "Requested path does not exist");
+      }
+      if (metadata.kind !== "directory") {
+        throw new DomainError("invalid_path_type", "Requested path is not a directory");
+      }
+      return await walkDirectoryTree(session.executor, root, {
+        includeHidden: request.includeHidden,
+        deferredDirectoryNames: request.deferredDirectoryNames,
+        maxResultBytes: MESH_EXECUTION_MAX_RESULT_BYTES,
+        signal,
+      });
+    } catch (error) {
+      if (signal.aborted) {
+        throw new DomainError(
+          "mesh_execution_aborted",
+          "The Mesh directory tree operation was aborted.",
+          { cause: error },
+        );
+      }
+      if (
+        error instanceof DomainError
+        && error.code === "directory_tree_size_limit_exceeded"
+      ) {
+        throw new DomainError(
+          "mesh_execution_result_too_large",
+          "The directory tree exceeds the Mesh execution size limit.",
+          { cause: error },
+        );
+      }
+      throw error;
     }
   }
 

@@ -311,7 +311,7 @@ export function createFileExplorerRoutes(
             resourceId,
             getStartDirectory(validation.data.startDirectory),
           );
-          const response = await fileExplorerService.loadTree(target);
+          const response = await fileExplorerService.loadTree(target, { signal: req.signal });
           return Response.json(withResourceId(config, resourceId, response));
         } catch (error) {
           log.error(`Failed to load ${resourceDescription} file tree`, {

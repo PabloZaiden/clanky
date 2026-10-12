@@ -14,12 +14,15 @@ import type {
   FileSystemListOptions,
   FileSystemMetadata,
   FileSystemMetadataOptions,
+  FileSystemTreeOptions,
   FileWriteStreamOptions,
   FileWriteStreamResult,
   GitCommandOptions,
   GitCommandScope,
   GitEnvironmentVariableName,
 } from "./command-executor";
+import type { FileSystemTreeEntry } from "@/shared/file-system";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { MeshCommandExecutorClient } from "./mesh-command-executor-client";
 import type { AgentProvider } from "@/shared/settings";
 import {
@@ -38,6 +41,8 @@ import {
   supportsExecutionHostCapability,
   type ExecutionHostCapabilities,
 } from "@/shared/execution-host";
+
+const log = createLogger("core:mesh-command-executor");
 
 export interface MeshCommandExecutorConfig {
   workspaceId: string;
@@ -198,6 +203,54 @@ export class MeshCommandExecutor implements CommandExecutor {
     options?: FileSystemListOptions,
   ): Promise<FileSystemDirectoryEntry[]> {
     return await this.client.listDirectoryEntries(path, options);
+  }
+
+  async walkDirectoryTree(
+    path: string,
+    options: FileSystemTreeOptions,
+  ): Promise<FileSystemTreeEntry[] | null> {
+    if (!supportsExecutionHostCapability(this.capabilities, "directoryTree")) {
+      log.debug("Using per-directory traversal: worker has no directoryTree capability");
+      return null;
+    }
+    let entries: FileSystemTreeEntry[];
+    try {
+      entries = await this.client.walkDirectoryTree(path, options);
+    } catch (error) {
+      if (
+        error instanceof DomainError
+        && (
+          error.code === "mesh_execution_capability_unavailable"
+          || error.code === "mesh_execution_operation_unsupported"
+          || error.code === "mesh_execution_result_too_large"
+        )
+      ) {
+        log.warn("Using per-directory traversal after aggregate tree rejection", {
+          code: error.code,
+        });
+        return null;
+      }
+      throw error;
+    }
+    const paths = new Set<string>();
+    for (const entry of entries) {
+      const segments = this.pathStyle === "windows"
+        ? entry.path.split(/[\\/]/)
+        : entry.path.split("/");
+      if (
+        isAbsoluteExecutionPath(entry.path, this.pathStyle)
+        || segments.some((segment) => !segment || segment === "." || segment === "..")
+        || (this.pathStyle === "windows" && entry.path.includes(":"))
+        || paths.has(entry.path)
+      ) {
+        throw new DomainError(
+          "mesh_execution_response_invalid",
+          "The Mesh directory tree contains an invalid relative path.",
+        );
+      }
+      paths.add(entry.path);
+    }
+    return entries;
   }
 
   async writeFile(path: string, content: string): Promise<boolean> {

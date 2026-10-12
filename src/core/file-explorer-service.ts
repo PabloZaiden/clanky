@@ -10,6 +10,7 @@ import type {
   FileMoveResult,
   FileSystemMetadata,
 } from "./command-executor";
+import { walkDirectoryTree } from "./directory-tree-walker";
 import {
   FileExplorerConflictError,
   FileExplorerError,
@@ -60,7 +61,6 @@ const FULL_TREE_DEFERRED_DIRECTORY_NAMES = [
   "Pods",
 ] as const;
 const FULL_TREE_DEFERRED_DIRECTORY_NAME_SET = new Set<string>(FULL_TREE_DEFERRED_DIRECTORY_NAMES);
-const FULL_TREE_DIRECTORY_CONCURRENCY = 8;
 
 export interface FileExplorerTarget {
   id: string;
@@ -171,6 +171,7 @@ const uploadSessions = new Map<string, FileExplorerUploadSession>();
 
 interface FileExplorerMetadataOptions {
   includeContentHash?: boolean;
+  signal?: AbortSignal;
 }
 
 function normalizeRootDirectory(
@@ -391,6 +392,7 @@ async function getFileMetadata(
 ): Promise<FileSystemMetadata | null> {
   return await executor.getFileMetadata(absolutePath, {
     includeContentHash: options?.includeContentHash,
+    signal: options?.signal,
   });
 }
 
@@ -494,11 +496,12 @@ function toEntriesByDirectory(entries: WorkspaceFileNode[]): Record<string, Work
 
 async function loadFullTree(
   target: FileExplorerTarget,
+  signal?: AbortSignal,
 ): Promise<WorkspaceFileNode[]> {
   const rootMetadata = await getFileMetadata(
     target.executor,
     target.rootDirectory,
-    { includeContentHash: false },
+    { includeContentHash: false, signal },
   );
   if (!rootMetadata) {
     throw new FileExplorerError(
@@ -513,47 +516,24 @@ async function loadFullTree(
     );
   }
 
-  const result: WorkspaceFileNode[] = [];
-  const pendingDirectories = [target.rootDirectory];
-  while (pendingDirectories.length > 0) {
-    const directories = pendingDirectories.splice(
-      0,
-      FULL_TREE_DIRECTORY_CONCURRENCY,
+  const options = {
+    includeHidden: true,
+    deferredDirectoryNames: FULL_TREE_DEFERRED_DIRECTORY_NAMES,
+    signal,
+  };
+  const entries = await target.executor.walkDirectoryTree?.(target.rootDirectory, options)
+    ?? await walkDirectoryTree(target.executor, target.rootDirectory, options);
+  return entries.map((entry) => {
+    const absolutePath = joinExecutionPath(
+      target.executor.pathStyle,
+      target.rootDirectory,
+      entry.path,
     );
-    const directoryEntries = await Promise.all(directories.map(
-      async (directory) => ({
-        directory,
-        entries: await target.executor.listDirectoryEntries(directory, {
-          includeHidden: true,
-        }),
-      }),
-    ));
-    for (const { directory, entries } of directoryEntries) {
-      for (const entry of entries) {
-        const absolutePath = joinExecutionPath(
-          target.executor.pathStyle,
-          directory,
-          entry.name,
-        );
-        const deferred = entry.kind === "directory"
-          && isDeferredFullTreeDirectory(
-            absolutePath,
-            target.executor.pathStyle,
-          );
-        result.push(toFileNode(target, absolutePath, entry.kind, {
-          loadOnExpand: deferred,
-        }));
-        if (
-          entry.kind === "directory"
-          && !entry.isSymbolicLink
-          && !deferred
-        ) {
-          pendingDirectories.push(absolutePath);
-        }
-      }
-    }
-  }
-  return result;
+    return toFileNode(target, absolutePath, entry.kind, {
+      loadOnExpand: entry.kind === "directory"
+        && isDeferredFullTreeDirectory(absolutePath, target.executor.pathStyle),
+    });
+  });
 }
 
 async function readFileBytes(
@@ -619,8 +599,9 @@ export class FileExplorerService {
 
   async loadTree(
     target: FileExplorerTarget,
+    options?: { signal?: AbortSignal },
   ): Promise<FileExplorerTreeResult> {
-    const entries = await loadFullTree(target);
+    const entries = await loadFullTree(target, options?.signal);
     return {
       entriesByDirectory: toEntriesByDirectory(entries),
     };

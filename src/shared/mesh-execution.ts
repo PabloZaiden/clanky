@@ -49,6 +49,7 @@ export const MESH_EXECUTION_OPERATIONS = [
   "copyFile",
   "getFileMetadata",
   "listDirectoryEntries",
+  "walkDirectoryTree",
   "movePath",
   "deletePath",
   "git",

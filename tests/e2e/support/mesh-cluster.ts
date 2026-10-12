@@ -10,8 +10,8 @@ import { pollUntil } from "./polling";
 import { currentEnvironment, waitForExit } from "./process";
 import {
   LIFECYCLE_TIMEOUT_MS,
+  MESH_OPERATION_TIMEOUT_MS,
   MESH_STARTUP_TIMEOUT_MS,
-  OPERATION_TIMEOUT_MS,
   operationSignal,
 } from "./timeouts";
 
@@ -181,11 +181,11 @@ async function stopNodeServer(node: ManagedMeshNode): Promise<string> {
           cwd: rootDirectory,
           stdout: "pipe",
           stderr: "pipe",
-          timeout: OPERATION_TIMEOUT_MS,
+          timeout: MESH_OPERATION_TIMEOUT_MS,
           killSignal: "SIGKILL",
         },
       );
-      if (!(await waitForExit(node.child, OPERATION_TIMEOUT_MS))) {
+      if (!(await waitForExit(node.child, MESH_OPERATION_TIMEOUT_MS))) {
         const output = [
           terminated.stdout.toString().trim(),
           terminated.stderr.toString().trim(),
@@ -211,7 +211,7 @@ async function waitForNodeHealth(
 ): Promise<void> {
   await pollUntil(
     async () => await fetch(`${node.baseUrl}/api/health`, {
-      signal: operationSignal(),
+      signal: operationSignal(undefined, MESH_OPERATION_TIMEOUT_MS),
       tls: node.tlsCertificate ? { ca: node.tlsCertificate } : undefined,
     }).then((response) => response.ok).catch(() => false),
     (ready) => ready,
@@ -292,6 +292,7 @@ export async function startMeshNode(options: {
       environment["CLANKY_DISABLE_PASSKEY"] = "true";
     } else {
       delete environment["CLANKY_DISABLE_PASSKEY"];
+      const bootstrapStartedAt = performance.now();
       const bootstrap = Bun.spawnSync([
         ...command,
         "worker",
@@ -315,7 +316,7 @@ export async function startMeshNode(options: {
         env: environment,
         stdout: "pipe",
         stderr: "pipe",
-        timeout: OPERATION_TIMEOUT_MS,
+        timeout: MESH_OPERATION_TIMEOUT_MS,
         killSignal: "SIGKILL",
       });
       if (bootstrap.exitCode !== 0) {
@@ -323,7 +324,7 @@ export async function startMeshNode(options: {
           bootstrap.stdout.toString().trim(),
           bootstrap.stderr.toString().trim(),
         ].filter((value) => value.length > 0).join("\n");
-        throw new Error(`Worker bootstrap failed: ${output || `exit code ${bootstrap.exitCode}`}`);
+        throw new Error(`Worker bootstrap failed (pid=${String(bootstrap.pid)}, exitCode=${String(bootstrap.exitCode)}, signalCode=${String(bootstrap.signalCode)}, timedOut=${String(bootstrap.exitedDueToTimeout)}, maxBuffer=${String(bootstrap.exitedDueToMaxBuffer)}, elapsedMs=${String(Math.round(performance.now() - bootstrapStartedAt))}): ${output}`);
       }
       apiKey = parseBootstrapApiKey(bootstrap.stdout.toString());
       if (!relayOnly) {
@@ -492,7 +493,7 @@ export async function meshJsonRequest<T>(
       },
       body: options.rawBody
         ?? (options.body === undefined ? undefined : JSON.stringify(options.body)),
-      signal: operationSignal(options.signal, options.timeoutMs),
+      signal: operationSignal(options.signal, options.timeoutMs ?? MESH_OPERATION_TIMEOUT_MS),
       tls: node.tlsCertificate ? { ca: node.tlsCertificate } : undefined,
     });
   } catch (error) {
@@ -548,7 +549,7 @@ export async function enrollMeshWorker(
     env: worker.environment,
     stdout: "pipe",
     stderr: "pipe",
-    timeout: OPERATION_TIMEOUT_MS,
+    timeout: MESH_OPERATION_TIMEOUT_MS,
     killSignal: "SIGKILL",
   });
   if (joinResult.exitCode !== 0) {
