@@ -1,4 +1,5 @@
 import { isChatTerminalStatus, type Chat } from "@/shared";
+import { isQuestionOpen } from "@/shared/harness-questions";
 import { mergeToolCallRecords } from "@/shared/tool-call";
 
 type ChatSnapshotKind = "full" | "summary";
@@ -54,6 +55,18 @@ function toTimestamp(value?: string): number | null {
   return Number.isNaN(timestamp) ? null : timestamp;
 }
 
+function hasResolvedBlockingQuestion(current: Chat, incoming: Chat): boolean {
+  if (current.state.status !== "waiting") return false;
+  const incomingQuestions = new Map(
+    (incoming.state.harness?.questions ?? []).map((request) => [request.requestId, request]),
+  );
+  return (current.state.harness?.questions ?? []).some((request) => {
+    if (!request.blocking || !isQuestionOpen(request)) return false;
+    const resolved = incomingQuestions.get(request.requestId);
+    return resolved !== undefined && !isQuestionOpen(resolved);
+  });
+}
+
 function mergeChatSnapshotByKind(current: Chat, incoming: Chat, kind: ChatSnapshotKind): Chat {
   if (
     current.config.id !== incoming.config.id
@@ -66,16 +79,17 @@ function mergeChatSnapshotByKind(current: Chat, incoming: Chat, kind: ChatSnapsh
   const incomingActivityAt = toTimestamp(incoming.state.lastActivityAt);
   const incomingActivityIsNotNewer = incomingActivityAt === null
     || (currentActivityAt !== null && incomingActivityAt <= currentActivityAt);
+  const incomingActivityIsOlder = currentActivityAt !== null
+    && incomingActivityAt !== null
+    && incomingActivityAt < currentActivityAt;
+  const resolvedQuestionAllowsOlderSnapshot = incomingActivityIsOlder
+    && hasResolvedBlockingQuestion(current, incoming);
   const shouldPreserveCurrentTerminalState = isChatTerminalStatus(current.state.status)
     && BUSY_CHAT_STATUSES.has(incoming.state.status)
     && incomingActivityIsNotNewer;
 
   if (
-    (
-      currentActivityAt !== null
-      && incomingActivityAt !== null
-      && incomingActivityAt < currentActivityAt
-    )
+    (incomingActivityIsOlder && !resolvedQuestionAllowsOlderSnapshot)
     || shouldPreserveCurrentTerminalState
   ) {
     return {
@@ -96,6 +110,9 @@ function mergeChatSnapshotByKind(current: Chat, incoming: Chat, kind: ChatSnapsh
     },
     state: {
       ...incoming.state,
+      ...(resolvedQuestionAllowsOlderSnapshot
+        ? { lastActivityAt: current.state.lastActivityAt }
+        : {}),
       messages: kind === "summary" && incoming.state.messages.length === 0
         ? current.state.messages
         : incoming.state.messages,
