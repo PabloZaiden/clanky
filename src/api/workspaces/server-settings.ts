@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import { createLogger } from "@pablozaiden/webapp/server";
 import { workspaceManager } from "../../core/workspace-manager";
+import { CLANKY_REALTIME_RESOURCES } from "../../realtime";
 import { isDomainError } from "../../domain/domain-error";
 import { parseAndValidate, validateRequest } from "../validation";
 import {
@@ -81,6 +82,7 @@ export const serverSettingsRoutes = defineRoutes({
         if (workspace.updatedAt === currentWorkspace.updatedAt) {
           log.info(`Server settings unchanged for workspace: ${currentWorkspace.name}`);
         } else {
+          ctx.userRealtime.publishEntityChanged(CLANKY_REALTIME_RESOURCES.workspaces, workspace.id);
           log.info(`Updated server settings for workspace: ${workspace.name}`);
         }
         return Response.json(

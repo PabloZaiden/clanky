@@ -21,8 +21,9 @@ enabled.
 3. Create a normal native chat in that workspace and send an instruction there.
 
 For OpenCode 2, select `agent.adapter: "opencode2"` and configure a model in
-its isolated Clanky profile. Control eligibility follows the native adapter,
-not the model's upstream provider name.
+its isolated Clanky profile. Control eligibility for all three runtimes follows
+the native adapter, not the model's provider name. Selecting Codex or Copilot
+as an ACP provider does not enable Control.
 
 Clanky injects its managed API base URL and the user's API credential into
 control-chat runtime environments. If the workspace, credential, native

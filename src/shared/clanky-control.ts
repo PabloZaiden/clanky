@@ -23,14 +23,13 @@ export type ClankyControlContext = z.infer<typeof ClankyControlContextSchema>;
 export function isClankyControlChat(
   chat: Pick<Chat, "config">,
   workspaceId: string | undefined,
-  adapter?: HarnessCapabilities["adapter"],
+  adapter: HarnessCapabilities["adapter"] | undefined,
 ): boolean {
-  const provider = chat.config.model.providerID;
   return Boolean(workspaceId)
     && chat.config.scope === "workspace"
     && chat.config.source?.kind !== "execution_host"
     && (chat.config.source?.workspaceId ?? chat.config.workspaceId) === workspaceId
-    && (provider === "codex" || provider === "copilot" || adapter === "opencode2");
+    && (adapter === "codex" || adapter === "copilot" || adapter === "opencode2");
 }
 
 export const ControlUiActionSchema = z.discriminatedUnion("type", [

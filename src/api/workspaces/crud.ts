@@ -7,6 +7,7 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { isDomainError } from "../../domain/domain-error";
 import { workspaceManager } from "../../core/workspace-manager";
+import { CLANKY_REALTIME_RESOURCES } from "../../realtime";
 import { parseAndValidate } from "../validation";
 import {
   domainErrorResponse,
@@ -85,7 +86,7 @@ export const crudRoutes = defineRoutes({
       }
     },
 
-    async POST(req: Request, _ctx) {
+    async POST(req: Request, ctx) {
       log.debug("POST /api/workspaces - Creating new workspace");
       const result = await parseAndValidate(CreateWorkspaceRequestSchema, req);
 
@@ -98,6 +99,7 @@ export const crudRoutes = defineRoutes({
 
       try {
         const workspace = await workspaceManager.createWorkspace(body);
+        ctx.userRealtime.publishEntityChanged(CLANKY_REALTIME_RESOURCES.workspaces, workspace.id);
         log.info(`Created workspace: ${workspace.name} (${workspace.directory})`);
         return Response.json(workspace, { status: 201 });
       } catch (error) {
@@ -172,6 +174,7 @@ export const crudRoutes = defineRoutes({
         if (workspace.updatedAt === currentWorkspace.updatedAt) {
           log.info(`Workspace unchanged: ${currentWorkspace.name}`);
         } else {
+          ctx.userRealtime.publishEntityChanged(CLANKY_REALTIME_RESOURCES.workspaces, workspace.id);
           log.info(`Updated workspace: ${workspace.name}`);
         }
         return Response.json(includeSensitive ? workspace : sanitizeWorkspace(workspace));
@@ -217,6 +220,7 @@ export const crudRoutes = defineRoutes({
             },
           });
         }
+        ctx.userRealtime.publishDeleted(CLANKY_REALTIME_RESOURCES.workspaces, id);
         log.info(`Deleted workspace: ${id}`);
         return Response.json({ success: true });
       } catch (error) {
