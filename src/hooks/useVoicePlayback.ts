@@ -68,7 +68,7 @@ export interface UseVoicePlaybackResult {
 }
 
 export function useVoicePlayback(): UseVoicePlaybackResult {
-  const toast = useToast();
+  const { error: notifyError } = useToast();
   const [playingKey, setPlayingKey] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "generating" | "playing">("idle");
   const [playbackRecovery, setPlaybackRecovery] = useState<VoicePlaybackRecovery | null>(null);
@@ -287,7 +287,7 @@ export function useVoicePlayback(): UseVoicePlaybackResult {
           });
         } else {
           releaseAudio(generation);
-          toast.error(String(playbackError));
+          notifyError(String(playbackError));
         }
       }
     } finally {
@@ -295,7 +295,7 @@ export function useVoicePlayback(): UseVoicePlaybackResult {
         requestControllerRef.current = null;
       }
     }
-  }, [configureAudioPlayback, releaseAudio, stop, toast, unlockAudio]);
+  }, [configureAudioPlayback, notifyError, releaseAudio, stop, unlockAudio]);
 
   useEffect(() => () => {
     generationRef.current += 1;

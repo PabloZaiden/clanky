@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { type TranscriptFileLinkTarget } from "./log-viewer";
+import { type TranscriptFileLinkContext, type TranscriptFileLinkTarget } from "./log-viewer";
 import { getChatWorkspaceId, getExecutionHostSourceId } from "@/shared";
 import { isQuestionOpen } from "@/shared/harness-questions";
 import { appAbsoluteUrl } from "../lib/public-path";
@@ -47,7 +47,7 @@ export function ChatDetails({
   onOpenActivity?: () => void;
   isVisible?: boolean;
 }) {
-  const toast = useToast();
+  const { error: notifyError } = useToast();
   const isEmbedded = embedded || (typeof embeddedTaskId === "string" && embeddedTaskId.length > 0);
   const [embeddedActivity, setEmbeddedActivity] = useState(false);
   const [questionAnswerInputFocused, setQuestionAnswerInputFocused] = useState(false);
@@ -106,27 +106,28 @@ export function ChatDetails({
     [refreshChatCoalesced],
   );
   const voicePlayback = useVoicePlayback();
+  const playReadAloud = voicePlayback.play;
   const handleReadAloud = useCallback((
     message: { id: string; content: string },
     mode: "full" | "summary",
   ): void => {
     if (liveVoice.busy) {
-      toast.error("End Live voice before using read aloud.");
+      notifyError("End Live voice before using read aloud.");
       return;
     }
     if (mode === "summary" && !voice.capabilities.text.validated) {
-      toast.error("The text provider must be configured and validated for summaries.");
+      notifyError("The text provider must be configured and validated for summaries.");
       return;
     }
     if (!voice.speechAvailable) {
-      toast.error("Local Piper speech is not supported on this server.");
+      notifyError("Local Piper speech is not supported on this server.");
       return;
     }
-    void voicePlayback.play(`${message.id}:${mode}`, message.content, mode);
+    void playReadAloud(`${message.id}:${mode}`, message.content, mode);
   }, [
-    toast,
-    voicePlayback,
-    voice.capabilities.text,
+    notifyError,
+    playReadAloud,
+    voice.capabilities.text.validated,
     voice.speechAvailable,
     liveVoice.busy,
   ]);
@@ -150,8 +151,18 @@ export function ChatDetails({
     voice: voice.composer,
   });
   const chatWorkingDirectory = chat?.state.worktree?.worktreePath ?? chat?.config.directory ?? "";
-  const fileLinkContext = useMemo(() => {
-    if (!chat || !chatWorkingDirectory) {
+  const linkedChatId = chat?.config.id;
+  const executionHost = chat?.config.source?.kind === "execution_host"
+    ? chat.config.source.executionHost.host
+    : undefined;
+  const executionHostKind = executionHost?.kind;
+  const fileExplorerTargetId = chat
+    ? executionHost
+      ? getExecutionHostSourceId(executionHost)
+      : getChatWorkspaceId(chat)
+    : undefined;
+  const fileLinkContext = useMemo<TranscriptFileLinkContext | undefined>(() => {
+    if (!linkedChatId || !fileExplorerTargetId || !chatWorkingDirectory) {
       return undefined;
     }
 
@@ -171,22 +182,21 @@ export function ChatDetails({
         : {
             view: "code-explorer",
             contentType: "chat",
-            chatId: chat.config.id,
+            chatId: linkedChatId,
             startDirectory,
             filePath: kind === "directory" ? undefined : path,
           }
     );
-    const source = chat.config.source;
-    const fileExplorerTarget = source?.kind === "execution_host"
+    const fileExplorerTarget = executionHostKind
       ? {
           type: "executionHost" as const,
-          id: getExecutionHostSourceId(source.executionHost.host),
-          kind: source.executionHost.host.kind,
+          id: fileExplorerTargetId,
+          kind: executionHostKind,
           startDirectory: chatWorkingDirectory,
         }
       : {
             type: "workspace" as const,
-            id: getChatWorkspaceId(chat),
+            id: fileExplorerTargetId,
             startDirectory: chatWorkingDirectory,
           };
 
@@ -200,10 +210,10 @@ export function ChatDetails({
         replaceWebAppRoute(getCodeExplorerRoute(target));
       },
       onFileOpenError: (message: string) => {
-        toast.error(message);
+        notifyError(message);
       },
     };
-  }, [chat, chatWorkingDirectory, embeddedTaskId, toast]);
+  }, [linkedChatId, fileExplorerTargetId, executionHostKind, chatWorkingDirectory, embeddedTaskId, notifyError]);
 
   if (loading && !chat) {
     return <div className="p-6 text-sm text-gray-500 dark:text-gray-400">Loading chat…</div>;

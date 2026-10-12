@@ -5,7 +5,7 @@
 
 import Markdown, { type ExtraProps } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { createContext, useContext, type ComponentPropsWithoutRef, type ReactNode } from "react";
+import { createContext, memo, useContext, type ComponentPropsWithoutRef, type ReactNode } from "react";
 import { MermaidDiagram } from "./MermaidDiagram";
 import type { TranscriptFileLinkContext } from "./log-viewer/types";
 import {
@@ -84,7 +84,7 @@ export interface MarkdownRendererProps {
  * 
  * When rawMode is true, displays the raw markdown text in a preformatted block.
  */
-export function MarkdownRenderer({
+export const MarkdownRenderer = memo(function MarkdownRenderer({
   content,
   className = "",
   dimmed = false,
@@ -186,4 +186,4 @@ export function MarkdownRenderer({
       </Markdown>
     </div>
   );
-}
+});

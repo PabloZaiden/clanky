@@ -1,4 +1,5 @@
 import { useCallback, useMemo, memo } from "react";
+import { useForegroundPresentation } from "../../hooks/useForegroundPresentation";
 import {
   isCountedAssistantResponse,
   shouldIncludeConversationTranscriptLog,
@@ -22,9 +23,14 @@ import { WorkingGroupEntry } from "./working-group-entry";
 import { LogEntryItem } from "./log-entry-item";
 import { useStickyBottomScroll } from "./use-sticky-bottom-scroll";
 import { useTranscriptImagePreview } from "./use-transcript-image-preview";
-import { ActivitySpinner } from "./activity-spinner";
+import { ActivityIndicator } from "./activity-indicator";
 
-export const ConversationViewer = memo(function ConversationViewer({
+export const ConversationViewer = memo(function ConversationViewer(props: ConversationViewerProps) {
+  const presentation = useForegroundPresentation(props);
+  return <ConversationPresentation {...presentation} />;
+});
+
+const ConversationPresentation = memo(function ConversationPresentation({
   messages,
   toolCalls,
   logs = [],
@@ -62,6 +68,7 @@ export const ConversationViewer = memo(function ConversationViewer({
     messages.forEach((msg) => {
       sourceEntries.push({ type: "message", data: msg, timestamp: msg.timestamp });
     });
+
     toolCalls.forEach((tool) => {
       sourceEntries.push({ type: "tool", data: tool, timestamp: tool.timestamp });
     });
@@ -184,10 +191,9 @@ export const ConversationViewer = memo(function ConversationViewer({
         {isEmpty ? (
           <div className="flex items-center justify-center h-32 text-gray-500 text-xs sm:text-sm">
             {isActive ? (
-              <div className="inline-flex max-w-full items-center gap-2 rounded-md py-0.5 text-left text-xs text-gray-400 dark:text-white/28">
-                <ActivitySpinner className="h-3.5 w-3.5" />
+              <ActivityIndicator className="rounded-md py-0.5 text-left text-xs text-gray-400 dark:text-white/28">
                 <span>Thinking…</span>
-              </div>
+              </ActivityIndicator>
             ) : (
               "No messages yet"
             )}
@@ -198,6 +204,10 @@ export const ConversationViewer = memo(function ConversationViewer({
             {visibleEntries.map((entry, index) => {
               const spacingClass = getEntrySpacingClass(entry, visibleEntries[index - 1]);
               if (entry.type === "message") {
+                const messageReadAloudKey = playingReadAloudKey === `${entry.data.id}:full`
+                  || playingReadAloudKey === `${entry.data.id}:summary`
+                  ? playingReadAloudKey
+                  : null;
                 return (
                   <MessageEntry
                     key={`msg-${entry.data.id}`}
@@ -208,8 +218,8 @@ export const ConversationViewer = memo(function ConversationViewer({
                     fileLinkContext={resolvedFileLinkContext}
                     onReadAloud={onReadAloud}
                     readAloudSummaryEnabled={readAloudSummaryEnabled}
-                    playingReadAloudKey={playingReadAloudKey}
-                    readAloudStatus={readAloudStatus}
+                    playingReadAloudKey={messageReadAloudKey}
+                    readAloudStatus={messageReadAloudKey ? readAloudStatus : null}
                     readAloudDisabled={isActive && entry.data.id === latestAssistantMessageId}
                   />
                 );
@@ -273,10 +283,9 @@ export const ConversationViewer = memo(function ConversationViewer({
               }
             })}
             {shouldShowWorkingIndicator && (
-              <div className="mt-4 inline-flex max-w-full items-center gap-2 rounded-md py-0.5 text-left text-xs text-gray-400 dark:text-white/28" data-testid="working-indicator">
-                <ActivitySpinner />
+              <ActivityIndicator className="mt-4 rounded-md py-0.5 text-left text-xs text-gray-400 dark:text-white/28" data-testid="working-indicator">
                 <span>Thinking…</span>
-              </div>
+              </ActivityIndicator>
             )}
           </div>
         )}

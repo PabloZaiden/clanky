@@ -15,14 +15,12 @@ import {
   type ExecutionHostRef,
 } from "@/shared/execution-host";
 import { DEFAULT_CHAT_INTERRUPT_REASON, isStandaloneChat } from "@/shared";
-import {
-  getStreamingActivityStatus,
-  mergeChatSummarySnapshot,
-} from "../utils/chat-snapshot";
+import { mergeChatSummarySnapshot } from "../utils/chat-snapshot";
 import { createRefreshCoordinator } from "../lib/refresh-coordinator";
 import { getClankyClientId } from "../lib/clanky-client-id";
 import { getStoredSshCredentialToken } from "../lib/ssh-browser-credentials";
 import { useRealtimeRefreshWithRecovery, useRealtimeStream } from "./useRealtimeStream";
+import { useChatActivityState } from "./useChatActivityState";
 
 const log = createLogger("useChats");
 function sortChats(chats: Chat[]): Chat[] {
@@ -40,40 +38,6 @@ function upsertChat(chats: Chat[], chat: Chat): Chat[] {
   const current = chats.find((item) => item.config.id === chat.config.id && isStandaloneChat(item));
   next.push(current ? mergeChatSummarySnapshot(current, chat) : chat);
   return sortChats(next);
-}
-
-function isActivityTimestampIncrease(currentTimestamp: string | undefined, nextTimestamp: string): boolean {
-  return currentTimestamp === undefined || nextTimestamp.localeCompare(currentTimestamp) > 0;
-}
-
-function updateChatStreamingActivity(chats: Chat[], id: string, timestamp: string): Chat[] {
-  let changed = chats.some((chat) => !isStandaloneChat(chat));
-  const nextChats = chats.filter(isStandaloneChat).map((chat) => {
-    if (chat.config.id !== id) {
-      return chat;
-    }
-
-    const nextStatus = getStreamingActivityStatus(chat.state.status);
-    const shouldPromoteStatus = nextStatus !== chat.state.status;
-    const shouldUpdateActivity = isActivityTimestampIncrease(chat.state.lastActivityAt, timestamp);
-
-    if (!shouldPromoteStatus && !shouldUpdateActivity) {
-      return chat;
-    }
-
-    changed = true;
-    return {
-      ...chat,
-      state: {
-        ...chat.state,
-        status: nextStatus,
-        ...(nextStatus !== "starting" ? { startupStage: undefined } : {}),
-        lastActivityAt: shouldUpdateActivity ? timestamp : chat.state.lastActivityAt,
-      },
-    };
-  });
-
-  return changed ? nextChats : chats;
 }
 
 export interface UseChatsResult {
@@ -98,11 +62,15 @@ export interface UseChatsResult {
 }
 
 export function useChats(): UseChatsResult {
-  const [chats, setChats] = useState<Chat[]>([]);
+  const { chats, setChats, getChat, recordActivity } = useChatActivityState();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const refreshCoordinatorRef = useRef(createRefreshCoordinator<void>());
+
+  const applyChat = useCallback((chat: Chat): void => {
+    setChats((current) => upsertChat(current, chat), { immediateActivityId: chat.config.id });
+  }, [setChats]);
 
   const refresh = useCallback((options: { showLoading?: boolean } = {}) => {
     return refreshCoordinatorRef.current.run(async () => {
@@ -123,7 +91,13 @@ export function useChats(): UseChatsResult {
         if (controller.signal.aborted) {
           return;
         }
-        setChats(sortChats(data.filter(isStandaloneChat)));
+        setChats((current) => {
+          const byId = new Map(current.map((chat) => [chat.config.id, chat]));
+          return sortChats(data.filter(isStandaloneChat).map((chat) => {
+            const previous = byId.get(chat.config.id);
+            return previous ? mergeChatSummarySnapshot(previous, chat) : chat;
+          }));
+        });
       } catch (refreshError) {
         if (controller.signal.aborted) {
           return;
@@ -138,7 +112,7 @@ export function useChats(): UseChatsResult {
         }
       }
     });
-  }, []);
+  }, [setChats]);
 
   const refreshChat = useCallback(async (id: string) => {
     try {
@@ -163,12 +137,7 @@ export function useChats(): UseChatsResult {
     } catch (refreshError) {
       log.error("Failed to refresh chat", { chatId: id, error: String(refreshError) });
     }
-  }, []);
-
-  const getChat = useCallback(
-    (id: string): Chat | undefined => chats.find((chat) => chat.config.id === id),
-    [chats],
-  );
+  }, [setChats]);
 
   const createChat = useCallback(async (request: CreateChatRequest): Promise<Chat | null> => {
     try {
@@ -179,7 +148,7 @@ export function useChats(): UseChatsResult {
         action: "Create chat",
         fallbackMessage: "Failed to create chat",
       });
-      setChats((prev) => upsertChat(prev, chat));
+      applyChat(chat);
       return chat;
     } catch (createError) {
       log.error("Failed to create chat", {
@@ -189,7 +158,7 @@ export function useChats(): UseChatsResult {
       setError(String(createError));
       return null;
     }
-  }, []);
+  }, [applyChat]);
 
   const createChatHere = useCallback(async (sourceChatId: string): Promise<Chat> => {
     const chat = await apiRequest<Chat>(`/api/chats/${encodeURIComponent(sourceChatId)}/new-here`, {
@@ -197,9 +166,9 @@ export function useChats(): UseChatsResult {
       action: "Create chat here",
       fallbackMessage: "Failed to create chat here",
     });
-    setChats((prev) => upsertChat(prev, chat));
+    applyChat(chat);
     return chat;
-  }, []);
+  }, [applyChat]);
 
   const createExecutionHostChat = useCallback(async (
     host: ExecutionHostRef,
@@ -213,9 +182,9 @@ export function useChats(): UseChatsResult {
       action: "Create execution-host chat",
       fallbackMessage: "Failed to create chat",
     });
-    setChats((prev) => upsertChat(prev, chat));
+    applyChat(chat);
     return chat;
-  }, []);
+  }, [applyChat]);
 
   const updateChat = useCallback(async (id: string, request: UpdateChatRequest): Promise<Chat | null> => {
     try {
@@ -226,14 +195,14 @@ export function useChats(): UseChatsResult {
         action: "Update chat",
         fallbackMessage: "Failed to update chat",
       });
-      setChats((prev) => upsertChat(prev, chat));
+      applyChat(chat);
       return chat;
     } catch (updateError) {
       log.error("Failed to update chat", { chatId: id, error: String(updateError) });
       setError(String(updateError));
       return null;
     }
-  }, []);
+  }, [applyChat]);
 
   const markChatDone = useCallback(async (id: string): Promise<Chat | null> => {
     try {
@@ -242,14 +211,14 @@ export function useChats(): UseChatsResult {
         action: "Mark chat as done",
         fallbackMessage: "Failed to mark chat as done",
       });
-      setChats((prev) => upsertChat(prev, chat));
+      applyChat(chat);
       return chat;
     } catch (doneError) {
       log.error("Failed to mark chat as done", { chatId: id, error: String(doneError) });
       setError(String(doneError));
       return null;
     }
-  }, []);
+  }, [applyChat]);
 
   const deleteChat = useCallback(async (id: string): Promise<boolean> => {
     try {
@@ -276,24 +245,25 @@ export function useChats(): UseChatsResult {
       setError(String(deleteError));
       return false;
     }
-  }, [chats]);
+  }, [chats, setChats]);
 
   const sendMessage = useCallback(async (id: string, request: SendChatMessageRequest): Promise<boolean> => {
     try {
-      await apiRequest<unknown>(`/api/chats/${id}/messages`, {
+      const result = await apiRequest<{ chat: Chat }>(`/api/chats/${id}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...request, clientId: request.clientId ?? getClankyClientId() }),
         action: "Send chat message",
         fallbackMessage: "Failed to send chat message",
       });
+      applyChat(result.chat);
       return true;
     } catch (sendError) {
       log.error("Failed to send chat message", { chatId: id, error: String(sendError) });
       setError(String(sendError));
       return false;
     }
-  }, []);
+  }, [applyChat]);
 
   const interruptChat = useCallback(async (id: string, request?: InterruptChatRequest): Promise<Chat | null> => {
     try {
@@ -306,14 +276,14 @@ export function useChats(): UseChatsResult {
         action: "Interrupt chat",
         fallbackMessage: "Failed to interrupt chat",
       });
-      setChats((prev) => upsertChat(prev, chat));
+      applyChat(chat);
       return chat;
     } catch (interruptError) {
       log.error("Failed to interrupt chat", { chatId: id, error: String(interruptError) });
       setError(String(interruptError));
       return null;
     }
-  }, []);
+  }, [applyChat]);
 
   const reconnectChat = useCallback(async (id: string): Promise<Chat | null> => {
     try {
@@ -322,14 +292,14 @@ export function useChats(): UseChatsResult {
         action: "Reconnect chat",
         fallbackMessage: "Failed to reconnect chat",
       });
-      setChats((prev) => upsertChat(prev, chat));
+      applyChat(chat);
       return chat;
     } catch (reconnectError) {
       log.error("Failed to reconnect chat", { chatId: id, error: String(reconnectError) });
       setError(String(reconnectError));
       return null;
     }
-  }, []);
+  }, [applyChat]);
 
   useRealtimeRefreshWithRecovery({
     resources: ["chats"],
@@ -345,19 +315,21 @@ export function useChats(): UseChatsResult {
       switch (event.type) {
         case "chat.message":
           if (event.message.role === "assistant") {
-            setChats((prev) => updateChatStreamingActivity(prev, event.chatId, event.timestamp));
+            recordActivity(event.chatId, event.timestamp);
+          } else if (event.message.role === "user") {
+            recordActivity(event.chatId, event.timestamp, "user");
           }
           break;
         case "chat.message.delta":
           if (event.role === "assistant") {
-            setChats((prev) => updateChatStreamingActivity(prev, event.chatId, event.timestamp));
+            recordActivity(event.chatId, event.timestamp);
           }
           break;
         case "chat.log":
         case "chat.log.delta":
         case "chat.tool_call":
         case "chat.tool_call.extra":
-          setChats((prev) => updateChatStreamingActivity(prev, event.chatId, event.timestamp));
+          recordActivity(event.chatId, event.timestamp);
           break;
       }
     },

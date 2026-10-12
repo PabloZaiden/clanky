@@ -129,6 +129,25 @@
   text-align: right;
 }
 
+.clanky-activity-breathing {
+  animation: clanky-activity-breathe 2.5s ease-in-out infinite;
+}
+
+@keyframes clanky-activity-breathe {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .clanky-activity-breathing {
+    animation: none;
+  }
+}
+
 .clanky-sidebar-item-metadata {
   align-items: center;
   display: flex;

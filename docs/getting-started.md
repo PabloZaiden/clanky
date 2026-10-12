@@ -82,6 +82,35 @@ Write the task prompt and choose the model and variant. Plan mode lets you
 review a generated plan before code changes begin. During and after execution
 you can inspect logs, the diff, and the task state.
 
+Active thinking and tool-activity labels in chat and task transcripts use a
+dot and a gentle breathing effect across the whole label. Completed activity
+stays static. The effect is disabled when your system requests reduced motion.
+
+When the browser tab is hidden, chat, task, and agent transcripts defer grouping
+and rendering new content, pause the activity animation, and stop automatic
+scrolling. Event reception and data updates continue. Returning to the tab
+shows the current transcript without reconnecting solely because visibility
+changed; drafts, expanded entries, and the scroll position remain preserved.
+
+Unchanged message rows are reused during streaming and transcript refreshes,
+and unchanged Markdown is not reparsed for playback or local UI updates.
+Content changes, display preferences, and message actions still update normally.
+
+Realtime subscriptions filter events before updating React state. Callback-only
+streams and resource refresh subscriptions do not retain an unused last-event
+state; matching events, authoritative data refreshes, and connection recovery
+continue normally.
+
+Streaming chat activity timestamps in the sidebar are grouped into one update
+per minute while activity is pending. Status changes and user actions remain
+immediate. Open chats keep their transcript live without republishing operational
+state solely because an activity timestamp advanced.
+
+Chat, task, and agent transcripts publish streamed text, reasoning, and tool
+extras to React in 200 ms batches. Incoming data and gap recovery remain current;
+complete messages, interactions, status changes, and explicit transcript loads
+publish immediately rather than waiting for the next batch.
+
 When the result is ready:
 
 - accept it locally when you want to keep the worktree without pushing;

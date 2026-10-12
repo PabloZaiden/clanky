@@ -2,7 +2,7 @@ import { memo, useCallback, useMemo } from "react";
 import { LazyDetails } from "./lazy-details";
 import { ReasoningGroupEntry } from "./reasoning-group-entry";
 import { ToolGroupEntry } from "./tool-group-entry";
-import { ActivitySpinner } from "./activity-spinner";
+import { ActivityIndicator } from "./activity-indicator";
 import { HarnessToolActivity } from "../harness-activity";
 import type { ToolCallData } from "@/shared";
 import {
@@ -115,13 +115,14 @@ export const WorkingGroupEntry = memo(function WorkingGroupEntry({
       )}
       <LazyDetails
         summary={
-          <span
-            className="inline-flex max-w-full items-center gap-2 rounded-md py-0.5 text-left text-xs text-gray-400 transition hover:text-gray-600 dark:text-white/28 dark:hover:text-white/48"
+          <ActivityIndicator
+            active={entry.isActive}
+            label="Working"
+            className="rounded-md py-0.5 text-left text-xs text-gray-400 transition hover:text-gray-600 dark:text-white/28 dark:hover:text-white/48"
             data-working-summary="true"
           >
-            {entry.isActive && <ActivitySpinner label="Working" />}
             {summary}
-          </span>
+          </ActivityIndicator>
         }
         defaultOpen={false}
         renderContent={renderContent}

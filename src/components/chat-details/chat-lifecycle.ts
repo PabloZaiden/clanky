@@ -17,7 +17,9 @@ import { getStoredSshCredentialToken } from "../../lib/ssh-browser-credentials";
 import {
   applyChatStatusEvent,
   getStreamingActivityStatus,
+  hasSameChatPresentation,
   mergeChatSummarySnapshot,
+  reuseChatSnapshotPresentation,
 } from "../../utils/chat-snapshot";
 import type {
   ChatLifecycleResult,
@@ -62,7 +64,7 @@ function mergeOperationalChatSnapshot(current: Chat | null, incoming: Chat): Cha
     return incoming;
   }
   const merged = mergeChatSummarySnapshot(current, incoming);
-  return {
+  return reuseChatSnapshotPresentation(current, {
     ...merged,
     state: {
       ...merged.state,
@@ -70,7 +72,7 @@ function mergeOperationalChatSnapshot(current: Chat | null, incoming: Chat): Cha
       logs: [],
       toolCalls: [],
     },
-  };
+  });
 }
 
 function markChatStreamingActivity(
@@ -133,6 +135,7 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
     baseUrl: `/api/chats/${encodeURIComponent(chatId)}`,
     decodeSnapshot: decodeChatSnapshot,
     mergeResource: mergeOperationalChatSnapshot,
+    isResourcePresentationEqual: hasSameChatPresentation,
   });
   const {
     resource: chat,
@@ -147,6 +150,7 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
     loadFullTranscript,
     loadToolDetails: loadToolCallDetails,
     applyTranscriptEvent,
+    flushTranscript,
     clearResource,
   } = transcriptResource;
   const refreshChatCoalesced = transcriptResource.refreshCoalesced;
@@ -244,6 +248,7 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
     if (!current) {
       return;
     }
+    if (event.type === "chat.status") flushTranscript();
     const nextChat = applyChatOperationalEvent(current, event);
     if (nextChat !== current) {
       setChat(nextChat);
@@ -252,7 +257,7 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
     if (transcriptEvent) {
       applyTranscriptEvent(transcriptEvent as TranscriptStreamEvent);
     }
-  }, [applyTranscriptEvent, chatId, getChat, setChat]);
+  }, [applyTranscriptEvent, chatId, flushTranscript, getChat, setChat]);
 
   const { status: chatSocketStatus } = useRealtimeStream<ChatStreamEvent>({
     filters: { chatId },

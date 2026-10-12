@@ -13,6 +13,7 @@ import {
   isToolCallDetailsStale,
   isToolCallSummary,
   type ChatTranscript,
+  type MessageData,
   type ToolCallData,
   type TranscriptSnapshotOptions,
   type TranscriptStreamEvent,
@@ -20,6 +21,7 @@ import {
 import { readApiResponse, requestApiResponse } from "../lib/api-client";
 import { createRefreshCoordinator } from "../lib/refresh-coordinator";
 import { isAbortError } from "../lib/request-lifecycle";
+import { useDocumentVisibility } from "./useDocumentVisibility";
 
 export interface TranscriptResourceSnapshot<TResource> {
   resource: TResource;
@@ -50,6 +52,10 @@ export interface UseTranscriptResourceOptions<TResource, TSnapshot> {
     current: TResource | null,
     incoming: TResource,
   ) => TResource;
+  isResourcePresentationEqual?: (
+    current: TResource | null,
+    next: TResource | null,
+  ) => boolean;
 }
 
 export interface UseTranscriptResourceResult<TResource> {
@@ -69,11 +75,13 @@ export interface UseTranscriptResourceResult<TResource> {
   loadFullTranscript: () => Promise<void>;
   loadToolDetails: (toolCallId: string) => Promise<ToolCallData | null>;
   applyTranscriptEvent: (event: TranscriptStreamEvent) => void;
+  flushTranscript: () => void;
   clearResource: (error?: string) => void;
 }
 
 // Outlast the reconciliation queue's 250 ms request cadence so realtime invalidations share its batch refresh.
 const TRANSCRIPT_REFRESH_COALESCE_WINDOW_MS = 500;
+const TRANSCRIPT_STREAM_PUBLISH_INTERVAL_MS = 200;
 
 export function createEmptyTranscript(): ChatTranscript {
   return {
@@ -110,6 +118,46 @@ function replaceResource<TResource>(
   return incoming;
 }
 
+function reuseUnchangedMessages(
+  current: MessageData[],
+  incoming: MessageData[],
+): MessageData[] {
+  const currentById = new Map(current.map((message) => [message.id, message]));
+  return incoming.map((message) => {
+    const previous = currentById.get(message.id);
+    if (!previous || previous === message) {
+      return message;
+    }
+    if (
+      previous.role !== message.role
+      || previous.content !== message.content
+      || previous.timestamp !== message.timestamp
+    ) {
+      return message;
+    }
+    const attachments = message.attachments;
+    const sameAttachments = previous.attachments === attachments || (
+      previous.attachments !== undefined
+      && attachments !== undefined
+      && previous.attachments.length === attachments.length
+      && previous.attachments.every((attachment, index) => {
+        const incomingAttachment = attachments[index];
+        return incomingAttachment !== undefined
+          && attachment.id === incomingAttachment.id
+          && attachment.filename === incomingAttachment.filename
+          && attachment.mimeType === incomingAttachment.mimeType
+          && attachment.data === incomingAttachment.data
+          && attachment.size === incomingAttachment.size;
+      })
+    );
+    return sameAttachments
+      && (previous.question === message.question
+        || JSON.stringify(previous.question) === JSON.stringify(message.question))
+      ? previous
+      : message;
+  });
+}
+
 export function useTranscriptResource<TResource, TSnapshot>({
   resourceId,
   resourceLabel,
@@ -117,13 +165,16 @@ export function useTranscriptResource<TResource, TSnapshot>({
   initialResource = null,
   decodeSnapshot,
   mergeResource = replaceResource,
+  isResourcePresentationEqual,
 }: UseTranscriptResourceOptions<TResource, TSnapshot>): UseTranscriptResourceResult<TResource> {
+  const isVisible = useDocumentVisibility();
   const [resource, setResourceState] = useState<TResource | null>(initialResource);
   const [transcript, setTranscriptState] = useState<ChatTranscript>(createEmptyTranscript);
   const [loading, setLoading] = useState(true);
   const [loadingTranscript, setLoadingTranscript] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const resourceRef = useRef<TResource | null>(initialResource);
+  const presentationEqualityRef = useRef(isResourcePresentationEqual);
   const transcriptRef = useRef<ChatTranscript>(createEmptyTranscript());
   const resourceIdRef = useRef(resourceId);
   const initialResourceRef = useRef(initialResource);
@@ -139,26 +190,49 @@ export function useTranscriptResource<TResource, TSnapshot>({
   const refreshWindowRef = useRef<TranscriptSnapshotOptions>({});
   const toolDetailsCacheRef = useRef(new Map<string, ToolCallData>());
   const streamVersionRef = useRef(0);
+  const publicationTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   resourceIdRef.current = resourceId;
   initialResourceRef.current = initialResource;
+  presentationEqualityRef.current = isResourcePresentationEqual;
+
+  const cancelTranscriptPublication = useCallback((): void => {
+    if (publicationTimerRef.current !== undefined) clearTimeout(publicationTimerRef.current);
+    publicationTimerRef.current = undefined;
+  }, []);
+
+  const flushTranscript = useCallback((): void => {
+    if (publicationTimerRef.current === undefined) return;
+    cancelTranscriptPublication();
+    if (mountedRef.current) setTranscriptState(transcriptRef.current);
+  }, [cancelTranscriptPublication]);
+
+  useEffect(() => {
+    if (isVisible) flushTranscript();
+  }, [flushTranscript, isVisible]);
 
   // Resolve updates before React renders so bursts of realtime events share the latest state.
   const setResource = useCallback<Dispatch<SetStateAction<TResource | null>>>((next) => {
+    const current = resourceRef.current;
     const resolved = typeof next === "function"
-      ? (next as (value: TResource | null) => TResource | null)(resourceRef.current)
+      ? (next as (value: TResource | null) => TResource | null)(current)
       : next;
+    // Freshness/recovery reads stay authoritative even when only nonvisual activity changes.
     resourceRef.current = resolved;
-    setResourceState(resolved);
-  }, []);
+    if (!presentationEqualityRef.current?.(current, resolved)) {
+      if (resolved !== current) flushTranscript();
+      setResourceState(resolved);
+    }
+  }, [flushTranscript]);
 
   const setTranscript = useCallback<Dispatch<SetStateAction<ChatTranscript>>>((next) => {
     const resolved = typeof next === "function"
       ? (next as (value: ChatTranscript) => ChatTranscript)(transcriptRef.current)
       : next;
     transcriptRef.current = resolved;
+    cancelTranscriptPublication();
     setTranscriptState(resolved);
-  }, []);
+  }, [cancelTranscriptPublication]);
 
   const clearResource = useCallback((nextError?: string): void => {
     setResource(null);
@@ -232,7 +306,10 @@ export function useTranscriptResource<TResource, TSnapshot>({
         setResource((current) => mergeResource(current, decoded.resource));
         setTranscript((current) => mergeTranscriptSnapshot(
           current,
-          decoded.transcript,
+          {
+            ...decoded.transcript,
+            messages: reuseUnchangedMessages(current.messages, decoded.transcript.messages),
+          },
           {
             direction: refreshWindow.full ? "full" : "refresh",
             preferIncoming: streamVersionRef.current === streamVersion,
@@ -248,6 +325,7 @@ export function useTranscriptResource<TResource, TSnapshot>({
         ) {
           return;
         }
+        flushTranscript();
         setError(String(refreshError));
       } finally {
         if (
@@ -267,6 +345,7 @@ export function useTranscriptResource<TResource, TSnapshot>({
     baseUrl,
     clearResource,
     decodeSnapshot,
+    flushTranscript,
     mergeResource,
     resourceId,
     resourceLabel,
@@ -386,7 +465,10 @@ export function useTranscriptResource<TResource, TSnapshot>({
       setResource((current) => mergeResource(current, decoded.resource));
       setTranscript((current) => mergeTranscriptSnapshot(
         current,
-        decoded.transcript,
+        {
+          ...decoded.transcript,
+          messages: reuseUnchangedMessages(current.messages, decoded.transcript.messages),
+        },
         {
           direction: options.full ? "full" : "older",
           preferIncoming: streamVersionRef.current === streamVersion,
@@ -407,6 +489,7 @@ export function useTranscriptResource<TResource, TSnapshot>({
       ) {
         return;
       }
+      flushTranscript();
       setError(String(transcriptError));
     } finally {
       if (transcriptControllerRef.current === controller) {
@@ -424,6 +507,7 @@ export function useTranscriptResource<TResource, TSnapshot>({
     baseUrl,
     clearResource,
     decodeSnapshot,
+    flushTranscript,
     mergeResource,
     resourceId,
     resourceLabel,
@@ -510,21 +594,40 @@ export function useTranscriptResource<TResource, TSnapshot>({
   }, [baseUrl, resourceId, resourceLabel, setTranscript]);
 
   const applyTranscriptEvent = useCallback((event: TranscriptStreamEvent): void => {
+    if (!mountedRef.current || resourceIdRef.current !== resourceId) return;
     streamVersionRef.current += 1;
     const update = applyTranscriptStreamEvent(transcriptRef.current, event);
     if (update.transcript !== transcriptRef.current) {
-      setTranscript(update.transcript);
+      if (
+        event.type === "transcript.message.delta"
+        || event.type === "transcript.log.delta"
+        || event.type === "transcript.tool.extra"
+      ) {
+        transcriptRef.current = update.transcript;
+        if (publicationTimerRef.current === undefined) {
+          publicationTimerRef.current = setTimeout(() => {
+            publicationTimerRef.current = undefined;
+            if (mountedRef.current && resourceIdRef.current === resourceId) {
+              setTranscriptState(transcriptRef.current);
+            }
+          }, TRANSCRIPT_STREAM_PUBLISH_INTERVAL_MS);
+        }
+      } else {
+        setTranscript(update.transcript);
+      }
     }
     if (update.gapDetected) {
+      flushTranscript();
       refreshControllerRef.current?.abort();
       refreshCoordinatorRef.current.reset();
       snapshotEtagRef.current = null;
       void refresh({ showLoading: false });
     }
-  }, [refresh, setTranscript]);
+  }, [flushTranscript, refresh, resourceId, setTranscript]);
 
   useEffect(() => {
     mountedRef.current = true;
+    cancelTranscriptPublication();
     resourceIdRef.current = resourceId;
     resourceRef.current = initialResourceRef.current;
     transcriptRef.current = createEmptyTranscript();
@@ -546,6 +649,7 @@ export function useTranscriptResource<TResource, TSnapshot>({
 
     return () => {
       mountedRef.current = false;
+      cancelTranscriptPublication();
       cancelCoalescedRefresh();
       refreshRequestIdRef.current += 1;
       transcriptRequestIdRef.current += 1;
@@ -559,7 +663,7 @@ export function useTranscriptResource<TResource, TSnapshot>({
       refreshControllerRef.current = null;
       transcriptControllerRef.current = null;
     };
-  }, [cancelCoalescedRefresh, resourceId]);
+  }, [cancelCoalescedRefresh, cancelTranscriptPublication, resourceId]);
 
   return {
     resource,
@@ -578,6 +682,7 @@ export function useTranscriptResource<TResource, TSnapshot>({
     loadFullTranscript,
     loadToolDetails,
     applyTranscriptEvent,
+    flushTranscript,
     clearResource,
   };
 }

@@ -7,7 +7,7 @@ import { DiffPatchViewer } from "../task-details/diff-patch-viewer";
 import { HighlightedJsonBlock } from "./highlighted-json-block";
 import { LazyDetails } from "./lazy-details";
 import { formatTime } from "./utils";
-import { ActivitySpinner } from "./activity-spinner";
+import { ActivityIndicator } from "./activity-indicator";
 import { HarnessToolActivity } from "../harness-activity";
 import {
   formatToolValue,
@@ -270,11 +270,10 @@ export const ToolEntry = memo(function ToolEntry({
       ? "text-green-600 dark:text-green-400"
       : "text-amber-600 dark:text-amber-400";
   const shouldShowStatus = tool.status !== "completed";
-  const toolSummaryClassName = "inline-flex max-w-full items-center gap-2 rounded-md py-0.5 text-xs leading-5 text-gray-400 transition hover:text-gray-600 dark:text-white/28 dark:hover:text-white/48";
+  const toolSummaryClassName = "rounded-md py-0.5 text-xs leading-5 text-gray-400 transition hover:text-gray-600 dark:text-white/28 dark:hover:text-white/48";
 
   const inputSummary = (
-    <span className={toolSummaryClassName} data-tool-summary="true">
-      {isActive && <ActivitySpinner label="Working" />}
+    <ActivityIndicator active={isActive} label="Working" className={toolSummaryClassName} data-tool-summary="true">
       {shouldShowStatus && (
         <>
           <span className={`shrink-0 font-medium ${statusClassName}`}>{tool.status}</span>
@@ -282,7 +281,7 @@ export const ToolEntry = memo(function ToolEntry({
         </>
       )}
       <span className="min-w-0 truncate">{meta.summary}</span>
-    </span>
+    </ActivityIndicator>
   );
   const hasMeaningfulInput = activeTool ? hasMeaningfulToolValue(activeTool.input) : false;
   const hasOutput = activeTool ? hasMeaningfulToolValue(activeTool.output) : false;
@@ -391,18 +390,7 @@ export const ToolEntry = memo(function ToolEntry({
             triggerClassName="w-full text-left"
             panelClassName="mt-2"
           />
-        ) : (
-          <span className={toolSummaryClassName}>
-            {isActive && <ActivitySpinner label="Working" />}
-            {shouldShowStatus && (
-              <>
-                <span className={`shrink-0 font-medium ${statusClassName}`}>{tool.status}</span>
-                <span className="shrink-0 text-gray-300 dark:text-gray-600">/</span>
-              </>
-            )}
-            <span className="min-w-0 truncate">{meta.summary}</span>
-          </span>
-        )}
+        ) : inputSummary}
       </div>
     </div>
   );

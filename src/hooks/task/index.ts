@@ -163,12 +163,14 @@ export function useTask(taskId: string): UseTaskResult {
     loadFullTranscript,
     loadToolDetails,
     applyTranscriptEvent,
+    flushTranscript,
   } = data;
 
   // WebSocket event handler
   const handleEvent = createTaskEventHandler({
     isActiveTask,
     applyTranscriptEvent,
+    flushTranscript,
     setGitChangeCounter,
   });
 

@@ -3,7 +3,7 @@ import { LazyDetails } from "./lazy-details";
 import { LogEntryItem } from "./log-entry-item";
 import { formatThoughtDuration, formatTime } from "./utils";
 import type { ReasoningGroupEntryBase, TranscriptFileLinkContext } from "./types";
-import { ActivitySpinner } from "./activity-spinner";
+import { ActivityIndicator } from "./activity-indicator";
 
 interface ReasoningGroupEntryProps {
   entry: ReasoningGroupEntryBase & {
@@ -58,13 +58,14 @@ export const ReasoningGroupEntry = memo(function ReasoningGroupEntry({
       )}
       <LazyDetails
         summary={
-          <span
-            className="inline-flex max-w-full items-center gap-2 rounded-md py-0.5 text-left text-xs text-gray-400 transition hover:text-gray-600 dark:text-white/28 dark:hover:text-white/48"
+          <ActivityIndicator
+            active={entry.isActive && showActivityIndicator}
+            label="Thinking"
+            className="rounded-md py-0.5 text-left text-xs text-gray-400 transition hover:text-gray-600 dark:text-white/28 dark:hover:text-white/48"
             data-reasoning-summary="true"
           >
-            {entry.isActive && showActivityIndicator && <ActivitySpinner label="Thinking" />}
             {summary}
-          </span>
+          </ActivityIndicator>
         }
         defaultOpen={false}
         renderContent={renderContent}
