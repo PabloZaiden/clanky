@@ -125,7 +125,7 @@ export const ToolGroupEntry = memo(function ToolGroupEntry({
           data-tool-group-toggle="true"
         >
           <ActivityIndicator active={entry.isActive && showActivityIndicator} label="Working" className="min-w-0">
-            <span className="shrink-0 font-medium text-gray-500 dark:text-white/42">{toolCallCountLabel}</span>
+            <span className={`shrink-0 font-medium ${entry.isActive && showActivityIndicator ? "text-inherit" : "text-gray-500 dark:text-white/42"}`}>{toolCallCountLabel}</span>
             <span className="min-w-0 truncate">- {groupSummary}</span>
           </ActivityIndicator>
         </button>

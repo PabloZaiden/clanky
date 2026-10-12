@@ -83,8 +83,10 @@ review a generated plan before code changes begin. During and after execution
 you can inspect logs, the diff, and the task state.
 
 Active thinking and tool-activity labels in chat and task transcripts use a
-dot and a gentle breathing effect across the whole label. Completed activity
-stays static. The effect is disabled when your system requests reduced motion.
+dot and a gentle breathing effect across the whole label. Active text uses
+contrasting colors and stays at or above 50% opacity throughout the pulse.
+Completed activity keeps its static, muted styling. The effect is disabled
+when your system requests reduced motion.
 
 When the browser tab is hidden, chat, task, and agent transcripts defer grouping
 and rendering new content, pause the activity animation, and stop automatic

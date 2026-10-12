@@ -268,7 +268,9 @@ export const ToolEntry = memo(function ToolEntry({
     ? "text-red-600 dark:text-red-400"
     : tool.status === "completed"
       ? "text-green-600 dark:text-green-400"
-      : "text-amber-600 dark:text-amber-400";
+      : isActive
+        ? "text-amber-950 dark:text-amber-200"
+        : "text-amber-600 dark:text-amber-400";
   const shouldShowStatus = tool.status !== "completed";
   const toolSummaryClassName = "rounded-md py-0.5 text-xs leading-5 text-gray-400 transition hover:text-gray-600 dark:text-white/28 dark:hover:text-white/48";
 
@@ -277,7 +279,7 @@ export const ToolEntry = memo(function ToolEntry({
       {shouldShowStatus && (
         <>
           <span className={`shrink-0 font-medium ${statusClassName}`}>{tool.status}</span>
-          <span className="shrink-0 text-gray-300 dark:text-gray-600">/</span>
+          <span className={`shrink-0 ${isActive ? "text-inherit" : "text-gray-300 dark:text-gray-600"}`}>/</span>
         </>
       )}
       <span className="min-w-0 truncate">{meta.summary}</span>

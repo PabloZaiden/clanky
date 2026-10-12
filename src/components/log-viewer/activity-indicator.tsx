@@ -17,7 +17,7 @@ export function ActivityIndicator({
   return (
     <span
       {...props}
-      className={`inline-flex max-w-full items-center gap-2 ${active && visible ? "clanky-activity-breathing" : ""} ${className}`.trim()}
+      className={`inline-flex max-w-full items-center gap-2 ${active ? "clanky-activity-active" : ""} ${active && visible ? "clanky-activity-breathing" : ""} ${className}`.trim()}
     >
       {active && (
         <>
