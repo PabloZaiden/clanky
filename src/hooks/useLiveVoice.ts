@@ -5,8 +5,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useToast } from "@pablozaiden/webapp/web";
 import type { LiveVoiceCallState } from "@/shared";
+import type { LiveVoiceAvailabilityResponse } from "@/contracts/schemas/voice";
 import { apiRequest } from "../lib/api-client";
 import { LiveVoiceBrowser } from "../lib/live-voice-browser";
+import { useRealtimeRefreshWithRecovery } from "./useRealtimeStream";
 
 interface LiveVoiceUiState {
   status: "idle" | "connecting" | "active" | "closing" | "error";
@@ -36,10 +38,43 @@ export interface UseLiveVoiceResult extends LiveVoiceUiState {
 export function useLiveVoice(options: { chatId: string; enabled: boolean; isVisible: boolean }): UseLiveVoiceResult {
   const toast = useToast();
   const [state, setState] = useState<LiveVoiceUiState>(INITIAL_STATE);
+  const [availability, setAvailability] = useState({ chatId: "", supported: false });
+  const [availabilityRevision, setAvailabilityRevision] = useState(0);
+  const enabled = options.enabled && availability.chatId === options.chatId && availability.supported;
   const active = useRef<{ browser: LiveVoiceBrowser; controller: AbortController; chatId: string; timer?: ReturnType<typeof setTimeout>; ending: boolean } | null>(null);
   const mounted = useRef(true);
   const endRef = useRef<() => Promise<void>>(async () => {});
   const mutedRef = useRef(false);
+  const refreshAvailability = useCallback(() => {
+    setAvailabilityRevision((revision) => revision + 1);
+  }, []);
+  useRealtimeRefreshWithRecovery({
+    enabled: options.enabled && options.isVisible,
+    resources: ["workspaces"],
+    refresh: refreshAvailability,
+    onReconnect: refreshAvailability,
+  });
+
+  useEffect(() => {
+    if (!options.enabled || !options.isVisible) return;
+    const controller = new AbortController();
+    async function loadAvailability(): Promise<void> {
+      try {
+        const result = await apiRequest<LiveVoiceAvailabilityResponse>(
+          `/api/chats/${encodeURIComponent(options.chatId)}/live-voice`,
+          { signal: controller.signal, action: "Check Live voice availability" },
+        );
+        if (!controller.signal.aborted) setAvailability({ chatId: options.chatId, supported: result.supported });
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          setAvailability({ chatId: options.chatId, supported: false });
+          toast.error(String(error));
+        }
+      }
+    }
+    void loadAvailability();
+    return () => controller.abort();
+  }, [options.chatId, options.enabled, options.isVisible, availabilityRevision, toast]);
 
   const end = useCallback(async (): Promise<void> => {
     const call = active.current;
@@ -75,7 +110,7 @@ export function useLiveVoice(options: { chatId: string; enabled: boolean; isVisi
   endRef.current = end;
 
   const start = useCallback(async (): Promise<void> => {
-    if (!options.enabled || !options.isVisible || active.current) return;
+    if (!enabled || !options.isVisible || active.current) return;
     setState({ ...INITIAL_STATE, status: "connecting" });
     const controller = new AbortController();
     let browser: LiveVoiceBrowser;
@@ -132,7 +167,7 @@ export function useLiveVoice(options: { chatId: string; enabled: boolean; isVisi
       }
       await endRef.current();
     }
-  }, [options.chatId, options.enabled, options.isVisible]);
+  }, [options.chatId, enabled, options.isVisible]);
 
   useEffect(() => {
     mounted.current = true;
@@ -140,8 +175,8 @@ export function useLiveVoice(options: { chatId: string; enabled: boolean; isVisi
     return () => { mounted.current = false; void endRef.current(); };
   }, [options.chatId]);
   useEffect(() => {
-    if (!options.isVisible || !options.enabled) void endRef.current();
-  }, [options.enabled, options.isVisible]);
+    if (!options.isVisible || !enabled) void endRef.current();
+  }, [enabled, options.isVisible]);
 
   const toggleMute = useCallback((): void => {
     mutedRef.current = !mutedRef.current;
@@ -151,7 +186,7 @@ export function useLiveVoice(options: { chatId: string; enabled: boolean; isVisi
   const playAudio = useCallback(async (): Promise<void> => { await active.current?.browser.playAudio(); }, []);
   const dismissError = useCallback((): void => setState(INITIAL_STATE), []);
   return {
-    ...state, available: options.enabled,
+    ...state, available: enabled,
     busy: state.status === "connecting" || state.status === "active" || state.status === "closing",
     start, end, toggleMute, playAudio, dismissError,
   };

@@ -34,7 +34,7 @@ import { createOwnedHarnessSession, resumeOwnedHarnessSession } from "./harness-
 import { HarnessError } from "../backends/harness-errors";
 import { harnessActivityService } from "./harness-activity-service";
 import { isDomainError } from "../domain/domain-error";
-import type { HarnessConversationBinding } from "@/shared/harness-control";
+import type { HarnessCapabilities, HarnessConversationBinding } from "@/shared/harness-control";
 import type { HarnessEvent } from "@/shared/harness-events";
 import { closeOpenQuestions, isQuestionOpen } from "@/shared/harness-questions";
 import { isClankyControlChat } from "@/shared/clanky-control";
@@ -80,6 +80,13 @@ export class ChatSessionService implements ChatSessionPort {
     this.sshCredentialManager = dependencies.sshCredentialManager ?? sshCredentialManager;
     this.hasActiveStream = dependencies.hasActiveStream ?? (() => false);
     this.onHarnessEvent = dependencies.onHarnessEvent;
+  }
+
+  async getChatAdapter(chat: Chat): Promise<HarnessCapabilities["adapter"]> {
+    // Standalone execution-host chats use ACP, independent of the model provider.
+    if (isExecutionHostChat(chat)) return "acp";
+    const backend = await this.backendManager.getBackendAsync(getChatWorkspaceId(chat));
+    return backend.harness.capabilities.adapter;
   }
 
   getChatBackend(chatId: string, workspaceId?: string): Backend {
@@ -146,7 +153,7 @@ export class ChatSessionService implements ChatSessionPort {
     await this.backendManager.getBackendAsync(workspaceId);
     const backend = this.getChatBackend(stagedWorking.chat.config.id, workspaceId);
     const quickChatSettings = await preferencesManager.getQuickChatSettings();
-    const controlTools = isClankyControlChat(stagedWorking.chat, quickChatSettings.workspaceId);
+    const controlTools = isClankyControlChat(stagedWorking.chat, quickChatSettings.workspaceId, backend.harness.capabilities.adapter);
     const backendConnected = backend.isConnected();
     const controlModeChanged = backendConnected
       && this.connectedControlModes.get(backend) !== controlTools;
@@ -436,7 +443,7 @@ export class ChatSessionService implements ChatSessionPort {
 
   private async sessionContext(chat: Chat, backend: Backend): Promise<Omit<HarnessConversationBinding, "adapter" | "nativeId">> {
     const quickChatSettings = await preferencesManager.getQuickChatSettings();
-    const controlTools = isClankyControlChat(chat, quickChatSettings.workspaceId);
+    const controlTools = isClankyControlChat(chat, quickChatSettings.workspaceId, backend.harness.capabilities.adapter);
     const connectedControlMode = this.connectedControlModes.get(backend);
     if (connectedControlMode !== undefined && connectedControlMode !== controlTools) {
       throw new HarnessError("harness_transport_closed", "The Clanky control mode changed while the chat was connected. Reconnect before continuing.");

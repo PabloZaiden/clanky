@@ -11,6 +11,31 @@ Use this skill when you need to operate an existing Clanky instance from a termi
 Clanky evolves over time, so prefer discovery over memorized command details. Treat the running CLI and its API/schema output as the source of truth.
 The canonical command and HTTP reference is [`docs/API.md`](../../docs/API.md).
 
+## Native Control chats
+
+Normal native Codex, Copilot and OpenCode 2 chats in the user's configured
+Quick Chat workspace receive the shared `clanky_*` Control tools. OpenCode
+eligibility follows the `opencode2` adapter, regardless of its model's upstream
+provider. Setup and restart requirements are in
+[`docs/control-chats.md`](../../docs/control-chats.md).
+
+Prefer these tools when they are available. Read another workspace through
+`clanky_read_workspace_file`; delegate repository work by creating or messaging
+that workspace's chat rather than executing Git against it from the Control
+chat. Browser-opening tools affect only the originating tab and do not return
+file contents. After steering from another or unknown tab, domain tools remain
+available but browser actions require a subsequent ordinary turn with known
+browser provenance. ACP, native subagents and unattended sessions do not
+receive these Control tools.
+
+Native OpenCode 2 also supports the existing [Live voice](../../docs/voice.md#live-voice)
+workflow before the first agent message, including local and Mesh execution.
+Voice functions operate only on the linked chat and use the call's originating
+browser identity; ordinary chats do not gain Control tools. Ending the call
+saves its summary without stopping the workspace agent. Discover eligibility
+with `GET /api/chats/:id/live-voice`; use the configured Live provider rather
+than expecting audio from the OpenCode language model.
+
 ## Core workflow
 
 1. Confirm the CLI is available and see the supported command surface:

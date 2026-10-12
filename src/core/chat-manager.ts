@@ -177,6 +177,8 @@ export class ChatManager {
     return this.services.state.getChatSummary(chatId);
   }
 
+  getChatAdapter(chat: Chat) { return this.services.session.getChatAdapter(chat); }
+
   getActivity(chatId: string) { return this.services.session.getActivity(chatId); }
 
   stopActivity(chatId: string, activityId: string) { return this.services.session.stopActivity(chatId, activityId); }

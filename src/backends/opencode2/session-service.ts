@@ -13,6 +13,7 @@ import { requireMatchingHarnessBinding } from "../harness-binding";
 import type { OpenCodeModelCatalog } from "./model-catalog";
 import { OpenCodeEventTranslator } from "./event-translator";
 import { toOpenCodePrompt } from "./prompt";
+import type { OpenCodeControlTools } from "./control-tools";
 
 interface Conversation { info: AgentSession; native: NativeSession }
 type ActivitySession = Pick<NativeSession, "id" | "parentID" | "projectID" | "location" | "title" | "agent" | "model" | "time" | "outcome">;
@@ -42,6 +43,7 @@ export class OpenCodeSessionService {
 
   constructor(private readonly dependencies: {
     client: OpenCodeClient; directory: string; catalog: OpenCodeModelCatalog; events: HarnessEventHub;
+    controlTools: OpenCodeControlTools;
   }) {
     void this.ready.promise.catch((error: unknown) => {
       this.observationFailure = error instanceof Error ? error : new Error(String(error));
@@ -55,6 +57,7 @@ export class OpenCodeSessionService {
         throw new HarnessError("harness_session_not_owned", "Native sessions require matching Clanky ownership.");
       }
       await this.ready.promise;
+      if (options.ownership.controlTools) await this.dependencies.controlTools.requireAvailable(this.dependencies.client, this.dependencies.directory);
       const model = options.model ? await this.dependencies.catalog.requireModel(options.model) : undefined;
       const native = await this.dependencies.client.session.create({
         title: options.title, location: { directory: options.directory },
@@ -101,12 +104,14 @@ export class OpenCodeSessionService {
       const raw = native.metadata?.["clanky/binding"];
       requireMatchingHarnessBinding(typeof raw === "string" ? raw : undefined, binding);
       if (native.location.directory !== binding.directory || native.parentID) throw new HarnessError("harness_session_not_owned", "The native root does not match this binding.");
+      if (binding.controlTools) await this.dependencies.controlTools.requireAvailable(this.dependencies.client, this.dependencies.directory);
       await this.dependencies.client.session.update({
         sessionID: native.id, permissions: this.questionPermissions(binding, native.permissions),
         metadata: { "clanky/binding": JSON.stringify(binding) },
       });
       const existing = this.conversations.get(native.id);
       const info = existing?.info ?? await this.attach(native, binding);
+      if (existing && existing.info.binding?.controlTools !== binding.controlTools) this.dependencies.controlTools.register(binding);
       info.binding = binding;
       if (binding.questionPolicy !== "interactive") {
         // Persisted children retain their own permission snapshots on resume.
@@ -172,8 +177,14 @@ export class OpenCodeSessionService {
   }
   async send(id: string, prompt: PromptInput): Promise<void> {
     this.get(id);
-    if (prompt.model) await this.setModel(id, prompt.model.modelID, prompt.model.variant, prompt.model.providerID);
-    await this.dependencies.client.session.prompt({ sessionID: id, delivery: "queue", ...toOpenCodePrompt(prompt) });
+    this.dependencies.controlTools.begin(id, prompt.controlContext);
+    try {
+      if (prompt.model) await this.setModel(id, prompt.model.modelID, prompt.model.variant, prompt.model.providerID);
+      await this.dependencies.client.session.prompt({ sessionID: id, delivery: "queue", ...toOpenCodePrompt(prompt) });
+    } catch (error) {
+      this.dependencies.controlTools.end(id);
+      throw error;
+    }
   }
   async setModel(id: string, modelID: string, variant?: string, providerID?: string): Promise<ConfigOption[]> {
     const session = this.get(id);
@@ -190,6 +201,7 @@ export class OpenCodeSessionService {
     await Promise.allSettled(this.operations);
   }
   async close(): Promise<void> {
+    this.dependencies.controlTools.cancelAll();
     this.observationAbort.abort();
     await this.observing;
     this.dependencies.events.closeAll();
@@ -198,6 +210,7 @@ export class OpenCodeSessionService {
   }
   forget(id: string): void {
     this.get(id);
+    this.dependencies.controlTools.forget(id);
     this.conversations.delete(id);
     for (const [key, entry] of this.tracked) if (entry.rootId === id) this.tracked.delete(key);
     this.dependencies.events.closeSession(id);
@@ -208,6 +221,7 @@ export class OpenCodeSessionService {
       native, info: { id: native.id, binding, title: native.title, createdAt: new Date(native.time.created).toISOString() },
     };
     await this.updateInfo(conversation);
+    this.dependencies.controlTools.register(binding);
     this.conversations.set(native.id, conversation);
     this.track(native, native.id);
     return conversation.info;
@@ -246,6 +260,7 @@ export class OpenCodeSessionService {
       if (this.observationAbort.signal.aborted) return;
       const failure = new HarnessError("harness_event_gap", "Native session observation failed.", { cause: error });
       this.observationFailure = failure;
+      this.dependencies.controlTools.cancelAll();
       this.ready.reject(failure);
       for (const id of this.conversations.keys()) this.dependencies.events.failSession(id, failure);
     } finally { clearTimeout(timeout); }
@@ -267,6 +282,10 @@ export class OpenCodeSessionService {
     if (!sessionID) return;
     const tracked = this.tracked.get(sessionID);
     if (!tracked) return;
+    if (tracked.rootId === sessionID && (
+      event.type === "session.execution.succeeded" || event.type === "session.execution.interrupted"
+      || event.type === "session.execution.failed"
+    )) this.dependencies.controlTools.end(sessionID);
     const native = { adapter: "opencode2" as const, conversationId: tracked.native.id, activityId: tracked.native.id };
     const scope = tracked.rootId === tracked.native.id ? { kind: "principal" as const, native }
       : { kind: "child" as const, activityId: tracked.native.id, native };

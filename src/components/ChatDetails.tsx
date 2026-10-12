@@ -22,7 +22,6 @@ import type { ChatSendMessageHandler } from "./chat-details/types";
 import { VoicePlaybackOverlay } from "./chat-details/voice-playback-overlay";
 import { LiveVoicePanel } from "./chat-details/live-voice-panel";
 import { useLiveVoice } from "../hooks/useLiveVoice";
-import { supportsLiveVoice } from "@/shared/voice";
 import {
   useVoicePlayback,
 } from "../hooks";
@@ -99,7 +98,7 @@ export function ChatDetails({
   const voice = useConversationVoice();
   const liveVoice = useLiveVoice({
     chatId,
-    enabled: Boolean(chat && supportsLiveVoice(chat) && voice.liveSettings.configured),
+    enabled: Boolean(chat && voice.liveSettings.configured),
     isVisible,
   });
   const refreshInput = useCallback(

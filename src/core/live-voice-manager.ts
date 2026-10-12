@@ -12,6 +12,7 @@ import { createLiveVoiceSession, type LiveVoiceCredentials } from "./live-voice-
 import { LiveVoiceCall } from "./live-voice-call";
 import { OpenAiCompatibleVoiceProvider } from "./voice-provider";
 import { publicLiveChatState } from "./live-voice-tools";
+import type { LiveVoiceAvailabilityResponse } from "@/contracts/schemas/voice";
 
 const log = createLogger("core:live-voice-manager");
 const LEASE_MS = 30_000;
@@ -25,15 +26,18 @@ export class LiveVoiceManager {
   private maintenance?: ReturnType<typeof setInterval>;
   private readonly providerSessions = new Map<string, string>();
 
+  async getAvailability(chatId: string): Promise<LiveVoiceAvailabilityResponse> {
+    const chat = await chatManager.getChatSummary(chatId);
+    if (!chat) throw new DomainError("chat_not_found", "The chat is unavailable.");
+    return { supported: supportsLiveVoice(await chatManager.getChatAdapter(chat)) };
+  }
+
   async create(chatId: string, sdp: string, clientId: string, signal: AbortSignal): Promise<LiveVoiceSessionResponse> {
     signal = AbortSignal.any([signal, this.shutdown.signal]);
     if (signal.aborted) throw new DomainError("voice_provider_unreachable", "Live sessions are shutting down.");
     const user = requireCurrentUser();
-    const chat = await chatManager.getChatSummary(chatId);
-    if (!chat) throw new DomainError("chat_not_found", "The chat is unavailable.");
-    const adapter = chatManager.getChatBackend(chatId, chat.config.workspaceId).harness.capabilities.adapter;
-    if (!supportsLiveVoice(chat) || (adapter !== "codex" && adapter !== "copilot")) {
-      throw new DomainError("harness_unsupported_feature", "Live voice requires a native Codex or Copilot chat.");
+    if (!(await this.getAvailability(chatId)).supported) {
+      throw new DomainError("harness_unsupported_feature", "Live voice requires a native Codex, Copilot or OpenCode 2 chat.");
     }
     const owner = `${user.id}:${chatId}`;
     if (this.creating.has(owner) || [...this.calls.values()].some((call) =>

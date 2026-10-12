@@ -11,6 +11,7 @@ import type {
 import { HarnessError } from "../harness-errors";
 import type { OpenCodeSessionService } from "./session-service";
 import { toOpenCodePrompt } from "./prompt";
+import type { OpenCodeControlTools } from "./control-tools";
 
 const log = createLogger("opencode2-control");
 
@@ -19,8 +20,11 @@ export class OpenCodeControl implements HarnessControl {
     adapter: "opencode2", experimental: true, activity: "native", steering: "active-session",
     stopScopes: ["child-execution", "command"],
     questionPolicy: "session",
+    clankyControlTools: true,
   };
-  constructor(private readonly resolve: () => { client: OpenCodeClient; sessions: OpenCodeSessionService; directory: string }) {}
+  constructor(private readonly resolve: () => {
+    client: OpenCodeClient; sessions: OpenCodeSessionService; directory: string; controlTools: OpenCodeControlTools;
+  }) {}
 
   async getActivity(rootId: string): Promise<HarnessActivitySnapshot> {
     const { client, sessions, directory } = this.resolve();
@@ -53,8 +57,9 @@ export class OpenCodeControl implements HarnessControl {
   }
 
   async abort(rootId: string): Promise<void> {
-    const { client, sessions } = this.resolve();
+    const { client, sessions, controlTools } = this.resolve();
     sessions.get(rootId);
+    controlTools.end(rootId);
     await client.session.interrupt({ sessionID: rootId });
   }
   async stopActivity(rootId: string, activityId: string): Promise<HarnessActivityStopResult> {
@@ -94,11 +99,12 @@ export class OpenCodeControl implements HarnessControl {
   }
 
   async steer(rootId: string, request: HarnessSteerRequest): Promise<HarnessInputAdmission> {
-    const { client, sessions } = this.resolve();
+    const { client, sessions, controlTools } = this.resolve();
     sessions.get(rootId);
     if (request.expectedTurnId) return { status: "rejected", inputId: request.inputId, code: "turn-changed" };
     if (request.prompt.model) throw new HarnessError("harness_invalid_model_option", "Steering cannot change the active model.");
     if (!(await client.session.active())[rootId]) return { status: "rejected", inputId: request.inputId, code: "not-running" };
+    controlTools.prepareSteering(rootId, request.clientId);
     try {
       const admitted = await client.session.prompt({ sessionID: rootId, delivery: "steer", ...toOpenCodePrompt(request.prompt) });
       return { status: "accepted", inputId: request.inputId, nativeMessageId: admitted.id };

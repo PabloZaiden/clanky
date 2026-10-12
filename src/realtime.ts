@@ -27,6 +27,7 @@ import type {
 } from "@pablozaiden/webapp/server";
 
 export const CLANKY_REALTIME_RESOURCES = {
+  workspaces: "workspaces",
   tasks: "tasks",
   chats: "chats",
   agents: "agents",

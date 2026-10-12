@@ -33,7 +33,7 @@ import type { MessageAttachment } from "@/shared/message-attachments";
 import type { Workspace } from "@/shared/workspace";
 import type { EventStream } from "../utils/event-stream";
 import type { SimpleEventEmitter } from "./event-emitter";
-import type { HarnessActivitySnapshot, HarnessActivityStopResult, HarnessInputAdmission } from "@/shared/harness-control";
+import type { HarnessActivitySnapshot, HarnessActivityStopResult, HarnessCapabilities, HarnessInputAdmission } from "@/shared/harness-control";
 import type { QueuedChatMessage } from "@/shared/chat";
 
 export interface CreateChatOptions {
@@ -181,6 +181,7 @@ export interface ChatWorktreePort {
 }
 
 export interface ChatSessionPort {
+  getChatAdapter(chat: Chat): Promise<HarnessCapabilities["adapter"]>;
   getActivity(chatId: string): Promise<HarnessActivitySnapshot>;
   stopActivity(chatId: string, activityId: string): Promise<HarnessActivityStopResult>;
   getChatBackend(chatId: string, workspaceId?: string): Backend;

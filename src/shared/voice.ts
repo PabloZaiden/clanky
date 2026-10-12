@@ -2,10 +2,10 @@
  * Browser-safe types for the optional per-user voice features.
  */
 
-import type { Chat } from "./chat";
+import type { HarnessCapabilities } from "./harness-control";
 
-export function supportsLiveVoice(chat: Pick<Chat, "config">): boolean {
-  return chat.config.model.providerID === "codex" || chat.config.model.providerID === "copilot";
+export function supportsLiveVoice(adapter: HarnessCapabilities["adapter"]): boolean {
+  return adapter === "codex" || adapter === "copilot" || adapter === "opencode2";
 }
 
 export const VOICE_CAPABILITIES = ["transcription", "text", "live"] as const;
