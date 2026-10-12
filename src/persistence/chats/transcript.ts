@@ -3,6 +3,7 @@ import type {
   Chat,
   ChatState,
   ChatTranscriptStorageEntry,
+  PersistedMessage,
   ToolCallRecord,
 } from "@/shared";
 import type { TranscriptStorageCursor, TranscriptStoragePage } from "../transcripts/types";
@@ -106,5 +107,16 @@ export function getChatToolCallFromTranscript(
     chatId,
     requirePersistenceUserId(),
     toolCallId,
+  );
+}
+
+export function getChatMessageFromTranscript(
+  chatId: string,
+  messageId: string,
+): PersistedMessage | null {
+  return chatTranscriptStore.getMessageForUser(
+    chatId,
+    requirePersistenceUserId(),
+    messageId,
   );
 }

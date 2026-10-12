@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useToast } from "@pablozaiden/webapp/web";
 import { apiRequest } from "../lib/api-client";
-import type { VoiceSpeechMode } from "@/shared";
 
 function createSilentAudioUrl(): string {
   const sampleRate = 8_000;
@@ -54,7 +53,6 @@ function getPlaybackErrorMessage(error: unknown): string {
 
 export interface VoicePlaybackRecovery {
   key: string;
-  mode: VoiceSpeechMode;
   message: string;
 }
 
@@ -62,7 +60,7 @@ export interface UseVoicePlaybackResult {
   playingKey: string | null;
   status: "idle" | "generating" | "playing";
   playbackRecovery: VoicePlaybackRecovery | null;
-  play: (key: string, text: string, mode: VoiceSpeechMode) => Promise<void>;
+  play: (chatId: string, messageId: string) => Promise<void>;
   retryPlayback: () => Promise<void>;
   stop: () => void;
 }
@@ -151,7 +149,6 @@ export function useVoicePlayback(): UseVoicePlaybackResult {
   const configureAudioPlayback = useCallback((
     audio: HTMLAudioElement,
     key: string,
-    mode: VoiceSpeechMode,
     generation: number,
   ): void => {
     audio.onended = () => releaseAudio(generation, audio);
@@ -161,7 +158,6 @@ export function useVoicePlayback(): UseVoicePlaybackResult {
       }
       setPlaybackRecovery({
         key,
-        mode,
         message: getPlaybackErrorMessage(new Error("Audio playback failed.")),
       });
     };
@@ -222,17 +218,16 @@ export function useVoicePlayback(): UseVoicePlaybackResult {
       }
       setPlaybackRecovery({
         key: recovery.key,
-        mode: recovery.mode,
         message: getPlaybackErrorMessage(playbackError),
       });
     }
   }, [playbackRecovery, releaseAudio]);
 
   const play = useCallback(async (
-    key: string,
-    text: string,
-    mode: VoiceSpeechMode,
+    chatId: string,
+    messageId: string,
   ): Promise<void> => {
+    const key = messageId;
     if (activeKeyRef.current === key) {
       stop();
       return;
@@ -248,15 +243,16 @@ export function useVoicePlayback(): UseVoicePlaybackResult {
     setPlayingKey(key);
     setStatus("generating");
     try {
-      const blob = await apiRequest("/api/voice/speech", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, mode }),
-        signal: controller.signal,
-        responseType: "blob",
-        action: mode === "summary" ? "Read response summary aloud" : "Read response aloud",
-        fallbackMessage: "Failed to generate speech",
-      });
+      const blob = await apiRequest(
+        `/api/chats/${encodeURIComponent(chatId)}/messages/${encodeURIComponent(messageId)}/speech`,
+        {
+          method: "POST",
+          signal: controller.signal,
+          responseType: "blob",
+          action: "Read response summary aloud",
+          fallbackMessage: "Failed to generate speech",
+        },
+      );
       if (controller.signal.aborted || generationRef.current !== generation) {
         return;
       }
@@ -270,7 +266,7 @@ export function useVoicePlayback(): UseVoicePlaybackResult {
       primingGenerationRef.current += 1;
       audio.pause();
       audio.src = url;
-      configureAudioPlayback(audio, key, mode, generation);
+      configureAudioPlayback(audio, key, generation);
       audio.load();
       setStatus("playing");
       await audio.play();
@@ -282,7 +278,6 @@ export function useVoicePlayback(): UseVoicePlaybackResult {
         if (generatedAudioReady) {
           setPlaybackRecovery({
             key,
-            mode,
             message: getPlaybackErrorMessage(playbackError),
           });
         } else {

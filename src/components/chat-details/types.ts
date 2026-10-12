@@ -3,7 +3,6 @@ import type {
   ChatEvent,
   ChatPermissionRequest,
   ChatTranscript,
-  MessageData,
   QueuedChatMessage,
   ToolCallData,
 } from "@/shared";
@@ -76,9 +75,8 @@ export interface ChatTranscriptProps {
   onStopVoice: () => void;
   onCancelVoice: () => void;
   onDismissVoiceError: () => void;
-  onReadAloud: (message: MessageData, mode: "full" | "summary") => void;
+  onReadAloud: (messageId: string) => void;
   readAloudAvailable: boolean;
-  readAloudSummaryAvailable: boolean;
   playingReadAloudKey: string | null;
   readAloudStatus: "generating" | "playing" | null;
 }

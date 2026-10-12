@@ -5,12 +5,13 @@
 import { defineRoutes, type RouteContext } from "@pablozaiden/webapp/server";
 import {
   VoiceSettingsUpdateSchema,
-  VoiceSpeechRequestSchema,
   VoiceValidationRequestSchema,
 } from "@/contracts/schemas";
+import { chatManager } from "../core/chat-manager";
 import { voiceManager } from "../core/voice-manager";
 import { isDomainError } from "../domain/domain-error";
 import { DomainError } from "../domain/domain-error";
+import { detectTrailingPromiseMarker } from "../utils/promise-markers";
 import { domainErrorResponse, errorResponse, successResponse } from "./helpers";
 import { parseAndValidate } from "./validation";
 
@@ -183,20 +184,30 @@ const voiceBaseRoutes = defineRoutes({
 
 export function createVoiceSpeechRoutes(manager: typeof voiceManager) {
   return defineRoutes({
-    "/api/voice/speech": {
+    "/api/chats/:id/messages/:messageId/speech": {
       auth: "user",
       sameOrigin: "mutations",
-      description: "Generate Piper speech locally for a full response or a generated summary.",
-      requestSchema: VoiceSpeechRequestSchema,
-      async POST(req: Request, _ctx: RouteContext): Promise<Response> {
-        const result = await parseAndValidate(VoiceSpeechRequestSchema, req);
-        if (!result.success) {
-          return result.response;
+      description: "Generate a spoken summary for an existing assistant message in an owned chat.",
+      async POST(req: Request, ctx: RouteContext): Promise<Response> {
+        if (req.body !== null) {
+          return errorResponse(
+            "voice_invalid_speech_request",
+            "Speech can only be generated from an existing assistant message.",
+            400,
+          );
         }
         try {
-          const audio = await manager.synthesizeSpeech(
-            result.data.text,
-            result.data.mode,
+          const message = await chatManager.getAssistantMessage(
+            ctx.params["id"]!,
+            ctx.params["messageId"]!,
+          );
+          if (!message) {
+            return errorResponse("not_found", "Assistant message not found", 404);
+          }
+          const speechContent = detectTrailingPromiseMarker(message.content)?.content
+            ?? message.content;
+          const audio = await manager.synthesizeSummarySpeech(
+            speechContent,
             req.signal,
           );
           return new Response(audio.audio, {

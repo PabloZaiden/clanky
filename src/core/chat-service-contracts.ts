@@ -113,6 +113,7 @@ export interface ChatDirectoryResolution {
 export interface ChatStatePort {
   getChat(chatId: string): Promise<Chat | null>;
   getChatSummary(chatId: string): Promise<Chat | null>;
+  getChatMessage(chatId: string, messageId: string): Promise<MessageData | null>;
   getChatStreamControlState(chatId: string): Promise<ChatStreamControlState | null>;
   getChatSnapshot(
     chatId: string,
@@ -217,6 +218,7 @@ export interface ChatSessionPort {
 }
 
 export interface ChatConversationPort {
+  getAssistantMessage(chatId: string, messageId: string): Promise<MessageData | null>;
   recordVoiceCallSummary(chatId: string, callId: string, summary: string): Promise<void>;
   recordSteeredMessage(chat: Chat, message: QueuedChatMessage, admission: HarnessInputAdmission): Promise<Chat>;
   dispatchMessage(

@@ -7,6 +7,7 @@
 import type { Database } from "bun:sqlite";
 import type {
   ChatTranscriptStorageEntry,
+  PersistedMessage,
   TaskLogEntry,
   ToolCallRecord,
   TranscriptChangeSet,
@@ -15,6 +16,7 @@ import {
   applyTranscriptChangeSetInTransaction,
   getTranscriptMeta,
   getTranscriptMetaForUser,
+  getTranscriptMessageForUser,
   getTranscriptToolCall,
   getTranscriptToolCallForUser,
   hydrateTranscriptState,
@@ -109,6 +111,11 @@ export interface TranscriptResourceStore {
       includeToolPayload?: boolean;
     },
   ): TranscriptStoragePage;
+  getMessageForUser(
+    resourceId: string,
+    userId: string,
+    messageId: string,
+  ): PersistedMessage | null;
   getToolCallForUser(
     resourceId: string,
     userId: string,
@@ -208,6 +215,8 @@ export function createTranscriptResourceStore(
         userId,
         options,
       ),
+    getMessageForUser: (resourceId, userId, messageId) =>
+      getTranscriptMessageForUser(resource, resourceId, userId, messageId),
     getToolCallForUser: (resourceId, userId, toolCallId) =>
       getTranscriptToolCallForUser(
         resource,

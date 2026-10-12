@@ -42,11 +42,6 @@ export const VoiceValidationRequestSchema = z.discriminatedUnion("capability", [
   }),
 ]);
 
-export const VoiceSpeechRequestSchema = z.object({
-  text: z.string().trim().min(1, "text is required").max(30_000, "text is too long"),
-  mode: z.enum(["full", "summary"]).default("full"),
-});
-
 export const LiveVoiceSessionRequestSchema = z.object({
   sdp: z.string().min(1).max(65_536),
   clientId: z.string().uuid(),
@@ -60,4 +55,3 @@ export type LiveVoiceAvailabilityResponse = z.infer<typeof LiveVoiceAvailability
 
 export type VoiceSettingsUpdateRequest = z.infer<typeof VoiceSettingsUpdateSchema>;
 export type VoiceValidationRequest = z.infer<typeof VoiceValidationRequestSchema>;
-export type VoiceSpeechRequest = z.infer<typeof VoiceSpeechRequestSchema>;

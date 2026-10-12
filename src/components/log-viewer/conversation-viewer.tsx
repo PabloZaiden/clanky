@@ -41,7 +41,6 @@ const ConversationPresentation = memo(function ConversationPresentation({
   scrollContentFooter,
   id,
   onReadAloud,
-  readAloudSummaryEnabled = false,
   playingReadAloudKey = null,
   readAloudStatus = null,
   toolPathDisplayRoot,
@@ -125,10 +124,6 @@ const ConversationPresentation = memo(function ConversationPresentation({
   }, [hasActiveWork, logs, messages, toolCalls]);
 
   const visibleEntries = useMemo(() => annotateDisplayEntries(groupedEntries), [groupedEntries]);
-  const latestAssistantMessageId = useMemo(
-    () => [...messages].reverse().find((message) => message.role === "assistant")?.id ?? null,
-    [messages],
-  );
   const isEmpty = groupedEntries.length === 0;
   const hasActiveWorkRow = hasActiveWorkEntry(visibleEntries);
   const shouldShowWorkingIndicator = hasActiveWork && !isEmpty && !hasActiveWorkRow;
@@ -216,9 +211,8 @@ const ConversationPresentation = memo(function ConversationPresentation({
             {visibleEntries.map((entry, index) => {
               const spacingClass = getEntrySpacingClass(entry, visibleEntries[index - 1]);
               if (entry.type === "message") {
-                const messageReadAloudKey = playingReadAloudKey === `${entry.data.id}:full`
-                  || playingReadAloudKey === `${entry.data.id}:summary`
-                  ? playingReadAloudKey
+                const messageReadAloudKey = playingReadAloudKey === entry.data.id
+                  ? entry.data.id
                   : null;
                 return (
                   <MessageEntry
@@ -229,10 +223,8 @@ const ConversationPresentation = memo(function ConversationPresentation({
                     markdownEnabled={markdownEnabled}
                     fileLinkContext={resolvedFileLinkContext}
                     onReadAloud={onReadAloud}
-                    readAloudSummaryEnabled={readAloudSummaryEnabled}
                     playingReadAloudKey={messageReadAloudKey}
                     readAloudStatus={messageReadAloudKey ? readAloudStatus : null}
-                    readAloudDisabled={isActive && entry.data.id === latestAssistantMessageId}
                   />
                 );
               } else if (entry.type === "tool") {

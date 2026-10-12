@@ -113,6 +113,7 @@ interface Chat {
 interface ChatSnapshot {
   transcript: {
     messages: Array<{
+      id: string;
       role: string;
       content: string;
       attachments?: Array<{ data: string; mimeType: string; size: number }>;
@@ -884,6 +885,28 @@ test("compiled Clanky completes its principal local user journey", async () => {
       ) ?? false,
       "chat permission request",
     );
+    const chatSnapshot = (await application.json<ChatSnapshot>(
+      `/api/chats/${chat.config.id}/snapshot?full=1`,
+    )).data;
+    const interactiveUserMessage = chatSnapshot.transcript.messages.find(
+      (message) => message.role === "user" && message.content === interactiveMessage,
+    );
+    expect(interactiveUserMessage).toBeDefined();
+    if (!interactiveUserMessage) {
+      throw new Error("The chat did not retain the submitted user message.");
+    }
+    const messageSpeechPath = `/api/chats/${chat.config.id}/messages/${interactiveUserMessage.id}/speech`;
+    await application.json(messageSpeechPath, {
+      method: "POST",
+      body: JSON.stringify({ text: "Client-supplied speech text is not allowed." }),
+    }, 400);
+    await application.json(messageSpeechPath, { method: "POST" }, 404);
+    await application.json(
+      `/api/chats/${chat.config.id}/messages/missing-message-id/speech`,
+      { method: "POST" },
+      404,
+    );
+
     const permission = awaitingPermission.state.pendingPermissionRequests!.find(
       (candidate) => candidate.status === "pending",
     )!;

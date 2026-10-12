@@ -11,7 +11,6 @@ import type {
   VoiceCapabilityStatus,
   VoiceSettings,
   VoiceSettingsUpdate,
-  VoiceSpeechMode,
 } from "@/shared";
 import {
   piperTtsProvider,
@@ -358,9 +357,8 @@ export class VoiceManager {
     }
   }
 
-  async synthesizeSpeech(
+  async synthesizeSummarySpeech(
     text: string,
-    mode: VoiceSpeechMode,
     signal?: AbortSignal,
   ): Promise<{ audio: ArrayBuffer; contentType: "audio/wav" }> {
     const normalizedText = text.trim();
@@ -377,28 +375,27 @@ export class VoiceManager {
       );
     }
 
-    let speechText = normalizedText;
-    if (mode === "summary") {
-      const textCapability = await this.requireConfiguredCapability("text");
-      const provider = new OpenAiCompatibleVoiceProvider({
-        baseUrl: textCapability.settings.baseUrl,
-        apiKey: textCapability.apiKey,
-      });
-      speechText = await provider.completeText(
-        textCapability.settings.models.text,
-        [
-          "Summarize the following assistant response for spoken playback.",
-          "Keep the important decisions, results, errors, and next actions.",
-          "Use the same language mix as the input when useful.",
-          "Return only the concise summary, without headings or preamble.",
-          normalizedText,
-        ].join("\n\n"),
-        signal,
-      );
-      speechText = speechText.slice(0, VOICE_MAX_SUMMARY_CHARS).trim();
-    }
+    const textCapability = await this.requireConfiguredCapability("text");
+    const provider = new OpenAiCompatibleVoiceProvider({
+      baseUrl: textCapability.settings.baseUrl,
+      apiKey: textCapability.apiKey,
+    });
+    const summary = await provider.completeText(
+      textCapability.settings.models.text,
+      [
+        "Summarize the following assistant response for spoken playback.",
+        "Keep the important decisions, results, errors, and next actions.",
+        "Use the same language mix as the input when useful.",
+        "Return only the concise summary, without headings or preamble.",
+        normalizedText,
+      ].join("\n\n"),
+      signal,
+    );
 
-    return await this.piper.synthesizeSpeech(speechText, signal);
+    return await this.piper.synthesizeSpeech(
+      summary.slice(0, VOICE_MAX_SUMMARY_CHARS).trim(),
+      signal,
+    );
   }
 
   private async requireConfiguredCapability(
