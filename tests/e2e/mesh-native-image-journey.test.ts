@@ -12,6 +12,7 @@ import {
   type ManagedMeshNode,
 } from "./support/mesh-cluster";
 import { pollUntil } from "./support/polling";
+import { MESH_OPERATION_TIMEOUT_MS } from "./support/timeouts";
 import {
   installExternalCodexProvider,
   installExternalNativeCopilotProvider,
@@ -134,7 +135,7 @@ async function executeOnWorker(
     `/api/execution-hosts/mesh/${encodeURIComponent(workerNodeId)}/exec`,
     {
       method: "POST",
-      body: { ...input, timeoutMs: 5_000 },
+      body: { ...input, timeoutMs: MESH_OPERATION_TIMEOUT_MS },
     },
   );
   if (response.status !== 200 || !response.body.success) {

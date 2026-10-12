@@ -12,6 +12,7 @@ import {
   type ManagedMeshNode,
 } from "./support/mesh-cluster";
 import { pollUntil } from "./support/polling";
+import { MESH_OPERATION_TIMEOUT_MS } from "./support/timeouts";
 import { installExternalNativeCopilotProvider } from "./support/provider";
 import { createGitFixture } from "./support/git";
 import { startMeshDevboxFixture } from "./support/mesh-devbox";
@@ -154,7 +155,7 @@ test("users can maintain and retire an automatic workspace while planning and ch
         targetDirectory: automatic.job.state.targetDirectory,
       });
       const checkout = await meshJsonRequest<{ exitCode: number; stdout: string }>(controller, `/api/workspaces/${automaticWorkspaceId}/exec`, {
-        method: "POST", body: { command: "git", args: ["show", "HEAD:README.md"], timeoutMs: 5_000 },
+        method: "POST", body: { command: "git", args: ["show", "HEAD:README.md"], timeoutMs: MESH_OPERATION_TIMEOUT_MS },
       });
       expect(checkout.status, JSON.stringify(checkout.body)).toBe(200);
       expect(checkout.body.exitCode).toBe(0);
@@ -185,7 +186,7 @@ test("users can maintain and retire an automatic workspace while planning and ch
     const deleted = await meshJsonRequest(controller, `/api/workspaces/${automaticWorkspaceId}`, { method: "DELETE" });
     expect(deleted.status, JSON.stringify(deleted.body)).toBe(200);
     const denied = await meshJsonRequest(controller, `/api/workspaces/${automaticWorkspaceId}/exec`, {
-      method: "POST", body: { command: "git", args: ["--version"], timeoutMs: 5_000 },
+      method: "POST", body: { command: "git", args: ["--version"], timeoutMs: MESH_OPERATION_TIMEOUT_MS },
     });
     expect(denied.status).toBe(404);
     await Bun.write(taskInput, "# Integration plan\nUse the supplied integration input.");
