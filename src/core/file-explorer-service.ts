@@ -472,7 +472,11 @@ async function getFileEntry(
   options?: FileExplorerMetadataOptions,
 ): Promise<WorkspaceFileEntry | null> {
   const absolutePath = resolveTargetPath(target, requestedPath);
-  const metadata = await getFileMetadata(target.executor, absolutePath, options);
+  const metadata = await getFileMetadata(target.executor, absolutePath, {
+    ...options,
+    includeContentHash: options?.includeContentHash
+      ?? (getBrowserVideoMimeType(absolutePath) === null ? undefined : false),
+  });
   return metadata ? toFileEntry(target, absolutePath, metadata) : null;
 }
 

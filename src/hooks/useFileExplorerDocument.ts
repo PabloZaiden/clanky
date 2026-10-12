@@ -7,6 +7,7 @@ import {
   readFileExplorerFileApi,
   readFileExplorerImagePreviewApi,
 } from "./workspaceFileActions";
+import type { FileExplorerVideoPreviewResource } from "./workspaceFileActions";
 import type { FileExplorerRequestScope } from "./file-explorer-request-scope";
 import { isFileExplorerAbortError } from "./file-explorer-request-scope";
 import type {
@@ -35,7 +36,7 @@ export interface UseFileExplorerDocumentResult {
   pendingFilePath: string | null;
   editorContent: string;
   imagePreviewUrl: string | null;
-  videoPreviewUrl: string | null;
+  videoPreviewUrl: FileExplorerVideoPreviewResource | null;
   savedContent: string;
   loadingFile: boolean;
   isDirty: boolean;
@@ -46,6 +47,7 @@ export interface UseFileExplorerDocumentResult {
   openLargeFileInEditor: (path?: string) => Promise<boolean>;
   setEditorContent: (value: string) => void;
   refreshCurrentFile: (options?: { force?: boolean }) => Promise<boolean>;
+  renewVideoPreviewUrl: () => Promise<boolean>;
   discardLocalChangesAndReload: () => Promise<boolean>;
   dismissConflict: () => void;
   checkForExternalChanges: () => Promise<void>;
@@ -75,7 +77,7 @@ export function useFileExplorerDocument(
   const [pendingFilePath, setPendingFilePath] = useState<string | null>(null);
   const [editorContent, setEditorContentState] = useState("");
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
-  const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
+  const [videoPreviewUrl, setVideoPreviewUrl] = useState<FileExplorerVideoPreviewResource | null>(null);
   const [savedContent, setSavedContent] = useState("");
   const [largeFileWarning, setLargeFileWarning] = useState<WorkspaceLargeFileWarningState | null>(null);
   const [autoReloadedAt, setAutoReloadedAt] = useState<string | null>(null);
@@ -286,6 +288,55 @@ export function useFileExplorerDocument(
     });
     return true;
   }, [openFile, scope, setConflictState]);
+
+  const renewVideoPreviewUrl = useCallback(async (): Promise<boolean> => {
+    const activeFile = currentFileRef.current;
+    if (
+      !activeFile?.isVideo
+      || scope.target.type !== "executionHost"
+      || scope.target.kind !== "ssh"
+      || !scope.isCurrent()
+    ) {
+      return false;
+    }
+
+    const localRequestId = fileLoadRequestIdRef.current;
+    const operation = scope.createOperation();
+    try {
+      const nextVideoPreviewUrl = await getFileExplorerVideoPreviewUrl(
+        scope.target,
+        activeFile.path,
+        {
+          startDirectory: scope.target.startDirectory,
+          signal: operation.signal,
+          refreshSshCredential: true,
+        },
+      );
+      const latestFile = currentFileRef.current;
+      if (
+        !operation.isCurrent()
+        || fileLoadRequestIdRef.current !== localRequestId
+        || latestFile?.path !== activeFile.path
+        || latestFile.versionToken !== activeFile.versionToken
+      ) {
+        return false;
+      }
+
+      setVideoPreviewUrl(nextVideoPreviewUrl);
+      return true;
+    } catch (requestError) {
+      if (
+        isFileExplorerAbortError(requestError)
+        || !operation.isCurrent()
+        || fileLoadRequestIdRef.current !== localRequestId
+      ) {
+        return false;
+      }
+      throw requestError;
+    } finally {
+      operation.release();
+    }
+  }, [scope]);
 
   const setEditorContent = useCallback((value: string) => {
     if (scope.isCurrent()) {
@@ -525,6 +576,7 @@ export function useFileExplorerDocument(
     openLargeFileInEditor,
     setEditorContent,
     refreshCurrentFile,
+    renewVideoPreviewUrl,
     discardLocalChangesAndReload: async () => {
       dismissConflict();
       return await refreshCurrentFile({ force: true });

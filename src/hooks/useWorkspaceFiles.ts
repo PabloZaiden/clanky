@@ -136,6 +136,7 @@ export function useFileExplorer(
     setEditorContent: document.setEditorContent,
     saveCurrentFile: mutations.saveCurrentFile,
     refreshCurrentFile: document.refreshCurrentFile,
+    renewVideoPreviewUrl: document.renewVideoPreviewUrl,
     discardLocalChangesAndReload: document.discardLocalChangesAndReload,
     retrySaveWithOverwrite: mutations.retrySaveWithOverwrite,
     dismissConflict: conflicts.dismissConflict,

@@ -848,14 +848,17 @@ export function FileExplorerView({
                   target.id,
                   target.type === "executionHost" ? target.kind : null,
                   target.startDirectory ?? "",
+                  explorer.currentFile.path,
                   explorer.currentFile.versionToken,
                 ])}
                 filePath={explorer.currentFile.path}
                 pendingFilePath={explorer.pendingFilePath}
-                videoPreviewUrl={explorer.videoPreviewUrl}
+                videoPreviewUrl={explorer.videoPreviewUrl?.url ?? null}
+                videoPreviewUrlExpiresAt={explorer.videoPreviewUrl?.credentialExpiresAt ?? null}
                 loading={explorer.loadingFile}
                 autoReloadedAt={explorer.autoReloadedAt}
                 onRefresh={handleRefreshEditor}
+                onRenewVideoPreviewUrl={explorer.renewVideoPreviewUrl}
               />
             ) : explorer.currentFile?.isImage ? (
               <WorkspaceImagePreviewPanel
