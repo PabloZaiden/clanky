@@ -4,6 +4,10 @@ Clanky uses the configured OpenAI-compatible provider for audio transcription
 and for generating concise spoken summaries. Text-to-speech runs locally on the
 Clanky server with Piper.
 
+Read-aloud controls appear as soon as an assistant message contains text,
+including while the response is still streaming. Playback started mid-stream
+uses the text available when clicked; later response text is not appended.
+
 ## Provider settings
 
 In user settings, configure the provider URL and API key, a transcription

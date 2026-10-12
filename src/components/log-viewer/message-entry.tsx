@@ -30,7 +30,6 @@ interface MessageEntryProps {
   readAloudSummaryEnabled: boolean;
   playingReadAloudKey: string | null;
   readAloudStatus: "generating" | "playing" | null;
-  readAloudDisabled: boolean;
 }
 
 function getOutcomeBadgeVariant(kind: PromiseMarkerOutcomeKind): BadgeVariant {
@@ -56,7 +55,6 @@ export const MessageEntry = memo(function MessageEntry({
   readAloudSummaryEnabled,
   playingReadAloudKey,
   readAloudStatus,
-  readAloudDisabled,
 }: MessageEntryProps) {
   const isUser = msg.role === "user";
   const outcome = isUser || msg.question ? null : detectTrailingPromiseMarker(msg.content);
@@ -201,7 +199,7 @@ export const MessageEntry = memo(function MessageEntry({
               ))}
             </div>
           )}
-          {!isUser && onReadAloud && displayMessage.content.trim() && (!readAloudDisabled || generatingReadAloudMode) && (
+          {!isUser && onReadAloud && displayMessage.content.trim() && (
             <div className="flex flex-wrap gap-2 pt-1">
               {generatingReadAloudMode ? (
                 renderReadAloudAction(
