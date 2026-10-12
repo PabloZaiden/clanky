@@ -27,7 +27,6 @@ export function ChatTranscript({
   onStartVoice,
   onReadAloud,
   readAloudAvailable,
-  readAloudSummaryAvailable,
   playingReadAloudKey,
   readAloudStatus,
 }: ChatTranscriptProps) {
@@ -185,7 +184,6 @@ export function ChatTranscript({
         onLoadFullTranscript={onLoadFullTranscript}
         loadingTranscript={loadingTranscript}
         onReadAloud={readAloudAvailable ? onReadAloud : undefined}
-        readAloudSummaryEnabled={readAloudSummaryAvailable}
         playingReadAloudKey={playingReadAloudKey}
         readAloudStatus={readAloudStatus}
         scrollContentFooter={

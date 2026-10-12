@@ -94,5 +94,3 @@ export interface VoiceSettingsUpdate {
   languageHints: VoiceLanguageHint[];
   live?: LiveVoiceSettingsUpdate;
 }
-
-export type VoiceSpeechMode = "full" | "summary";

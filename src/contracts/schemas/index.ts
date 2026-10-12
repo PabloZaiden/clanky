@@ -150,13 +150,11 @@ export {
   VoiceSettingsUpdateSchema,
   VoiceCapabilitySchema,
   VoiceValidationRequestSchema,
-  VoiceSpeechRequestSchema,
   LiveVoiceSessionRequestSchema,
   LiveVoiceAvailabilityResponseSchema,
   type LiveVoiceAvailabilityResponse,
   type VoiceSettingsUpdateRequest,
   type VoiceValidationRequest,
-  type VoiceSpeechRequest,
 } from "./voice";
 
 // Terminal session schemas

@@ -41,7 +41,6 @@ const ConversationPresentation = memo(function ConversationPresentation({
   scrollContentFooter,
   id,
   onReadAloud,
-  readAloudSummaryEnabled = false,
   playingReadAloudKey = null,
   readAloudStatus = null,
   toolPathDisplayRoot,
@@ -212,9 +211,8 @@ const ConversationPresentation = memo(function ConversationPresentation({
             {visibleEntries.map((entry, index) => {
               const spacingClass = getEntrySpacingClass(entry, visibleEntries[index - 1]);
               if (entry.type === "message") {
-                const messageReadAloudKey = playingReadAloudKey === `${entry.data.id}:full`
-                  || playingReadAloudKey === `${entry.data.id}:summary`
-                  ? playingReadAloudKey
+                const messageReadAloudKey = playingReadAloudKey === entry.data.id
+                  ? entry.data.id
                   : null;
                 return (
                   <MessageEntry
@@ -225,7 +223,6 @@ const ConversationPresentation = memo(function ConversationPresentation({
                     markdownEnabled={markdownEnabled}
                     fileLinkContext={resolvedFileLinkContext}
                     onReadAloud={onReadAloud}
-                    readAloudSummaryEnabled={readAloudSummaryEnabled}
                     playingReadAloudKey={messageReadAloudKey}
                     readAloudStatus={messageReadAloudKey ? readAloudStatus : null}
                   />
