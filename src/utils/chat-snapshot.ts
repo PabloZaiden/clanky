@@ -154,6 +154,7 @@ function mergeChatSnapshotByKind(current: Chat, incoming: Chat, kind: ChatSnapsh
     : new Map<string, HarnessQuestionRequest>();
   const terminalStateForCurrentTurn = isChatTerminalStatus(incoming.state.status)
     && BUSY_CHAT_STATUSES.has(current.state.status)
+    && current.state.status !== "reconnecting"
     && currentTurnAt !== null
     && incomingTurnAt === currentTurnAt;
   const shouldPreserveCurrentTerminalState = isChatTerminalStatus(current.state.status)
