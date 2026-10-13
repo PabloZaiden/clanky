@@ -8,6 +8,7 @@ import {
   MESSAGE_ATTACHMENT_LIMIT,
   MESSAGE_ATTACHMENT_MAX_BYTES,
   MESSAGE_ATTACHMENT_MAX_TURN_BYTES,
+  MESSAGE_ATTACHMENT_MAX_TURN_MIB,
   MESSAGE_IMAGE_ALLOWED_MIME_TYPES,
   MESSAGE_IMAGE_ACCEPT,
 } from "@/shared/message-attachments";
@@ -79,7 +80,9 @@ export async function createComposerAttachments(
       }
       totalAttachmentBytes += file.size;
       if (totalAttachmentBytes > MESSAGE_ATTACHMENT_MAX_TURN_BYTES) {
-        throw new Error("Attachments in a chat turn cannot exceed 40 MiB in total.");
+        throw new Error(
+          `Attachments in a chat turn cannot exceed ${MESSAGE_ATTACHMENT_MAX_TURN_MIB} MiB in total.`,
+        );
       }
 
       const dataUrl = await readFileAsDataUrl(file);

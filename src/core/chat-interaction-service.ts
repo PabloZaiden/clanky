@@ -12,6 +12,7 @@ import type {
 import {
   getMessageAttachmentByteLength,
   MESSAGE_ATTACHMENT_MAX_TURN_BYTES,
+  MESSAGE_ATTACHMENT_MAX_TURN_MIB,
 } from "@/shared";
 import {
   ChatBusyError,
@@ -44,7 +45,7 @@ const log = createLogger("chat-interaction-service");
 function chatAttachmentBudgetError(actualBytes: number): DomainError {
   return new DomainError(
     "chat_attachment_budget_exceeded",
-    `Attachments in a chat turn cannot exceed ${MESSAGE_ATTACHMENT_MAX_TURN_BYTES} bytes.`,
+    `Attachments in a chat turn cannot exceed ${MESSAGE_ATTACHMENT_MAX_TURN_MIB} MiB.`,
     { details: { actualBytes, maximumBytes: MESSAGE_ATTACHMENT_MAX_TURN_BYTES } },
   );
 }

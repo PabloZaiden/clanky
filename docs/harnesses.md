@@ -113,9 +113,9 @@ small **Steer** text action beneath that queued input to inject it into the
 current execution. This does not cancel/restart the turn or switch its model.
 Ordinary queueing and interrupt-and-send remain separate actions.
 
-Attachments are limited to 20 MiB per file and 40 MiB total per provider turn.
-The total includes messages grouped from the queue and images steered into an
-active turn.
+A message can include up to 20 attachments. Each attachment is limited to
+20 MiB per file and 60 MiB total per provider turn. The total includes messages
+grouped from the queue and images steered into an active turn.
 
 `accepted` means native admission, not delivery or model obedience.
 `delivered` means native history confirms the message. An `unknown` admission
@@ -143,7 +143,7 @@ Codex image-generation results and inline image blocks returned by providers are
 shown as separate assistant messages with image attachments. The image bytes
 are removed from tool output, so an image is not represented by a tool-call row.
 Clanky validates the actual image bytes against the existing PNG, JPEG, WebP and
-GIF allowlist and the 20 MiB per-image and 40 MiB per-turn attachment limits.
+GIF allowlist and the 20 MiB per-image and 60 MiB per-turn attachment limits.
 Unsupported, malformed or oversized images are omitted with a warning while the
 provider's text response continues. Mesh normally forwards the validated inline
 image. If a Codex image exceeds Mesh's 2 MiB event limit, Clanky reloads the

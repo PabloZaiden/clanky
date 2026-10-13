@@ -9,6 +9,7 @@
 
 import { isDomainError, type DomainError } from "../domain/domain-error";
 import { CHAT_WORKTREE_BRANCH_CONFLICT_CODE } from "../domain/chat-worktree-errors";
+import { MESSAGE_ATTACHMENT_MAX_TURN_MIB } from "@/shared/message-attachments";
 
 export type DomainErrorBoundary =
   | "authenticated"
@@ -618,7 +619,7 @@ const POLICY_PROFILES = {
       ...COMMON_MAPPINGS,
       chat_attachment_budget_exceeded: {
         status: 413,
-        message: "The combined attachments in a chat turn cannot exceed 40 MiB.",
+        message: `The combined attachments in a chat turn cannot exceed ${MESSAGE_ATTACHMENT_MAX_TURN_MIB} MiB.`,
       },
       chat_context_unavailable: {
         status: 409,

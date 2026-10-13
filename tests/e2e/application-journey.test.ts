@@ -1092,6 +1092,49 @@ test("compiled Clanky completes its principal local user journey", async () => {
     expect(firstGeneratedImageIndex).toBeGreaterThan(textBeforeImageIndex);
     expect(textAfterImageIndex).toBeGreaterThan(firstGeneratedImageIndex);
 
+    const twentyImagePrompt = "Review these 20 attached photos.";
+    const imageByteLength = Buffer.from(E2E_IMAGE_DATA, "base64").byteLength;
+    const twentyImageAttachments = Array.from({ length: 20 }, (_, index) => ({
+      id: crypto.randomUUID(),
+      filename: `e2e-photo-${index + 1}.png`,
+      mimeType: "image/png",
+      data: E2E_IMAGE_DATA,
+      size: imageByteLength,
+    }));
+    await application.json(
+      `/api/chats/${chat.config.id}/messages`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          message: twentyImagePrompt,
+          attachments: twentyImageAttachments,
+        }),
+      },
+    );
+    expect((await waitForChatIdle(application, chat.config.id)).state.status).toBe("idle");
+    const twentyImageSnapshot = (await application.json<ChatSnapshot>(
+      `/api/chats/${chat.config.id}/snapshot?full=1`,
+    )).data;
+    const submittedImageMessageIndex = twentyImageSnapshot.transcript.messages.findIndex(
+      (message) => message.role === "user" && message.content === twentyImagePrompt,
+    );
+    expect(submittedImageMessageIndex).toBeGreaterThanOrEqual(0);
+    const submittedImageMessage = twentyImageSnapshot.transcript.messages[submittedImageMessageIndex];
+    expect(submittedImageMessage?.attachments).toHaveLength(20);
+    expect(
+      twentyImageSnapshot.transcript.messages
+        .slice(submittedImageMessageIndex + 1)
+        .some((message) => message.role === "assistant" && message.content.length > 0),
+    ).toBe(true);
+    const providerResponseAfterImages = twentyImageSnapshot.transcript.messages
+      .slice(submittedImageMessageIndex + 1)
+      .filter((message) => message.role === "assistant")
+      .map((message) => message.content)
+      .join(" ");
+    expect(providerResponseAfterImages).toContain(
+      `E2E ACP provider received ${twentyImageAttachments.length} image attachments.`,
+    );
+
     const imageBudgetChat = (await application.json<Chat>(
       "/api/chats",
       {
@@ -1121,13 +1164,13 @@ test("compiled Clanky completes its principal local user journey", async () => {
     const countBudgetSnapshot = (await application.json<ChatSnapshot>(
       `/api/chats/${imageBudgetChat.config.id}/snapshot?full=1`,
     )).data;
-    expect(getAssistantImageAttachments(countBudgetSnapshot)).toHaveLength(8);
+    expect(getAssistantImageAttachments(countBudgetSnapshot)).toHaveLength(20);
 
     await sendImageBudgetPrompt("Start a fresh image output budget [generated-image-output].");
     const resetBudgetSnapshot = (await application.json<ChatSnapshot>(
       `/api/chats/${imageBudgetChat.config.id}/snapshot?full=1`,
     )).data;
-    expect(getAssistantImageAttachments(resetBudgetSnapshot)).toHaveLength(10);
+    expect(getAssistantImageAttachments(resetBudgetSnapshot)).toHaveLength(22);
 
     await sendImageBudgetPrompt("Exercise the aggregate byte budget [generated-image-byte-budget].");
     await sendImageBudgetPrompt("Start a fresh image budget after the byte limit [generated-image-output].");
@@ -1136,7 +1179,7 @@ test("compiled Clanky completes its principal local user journey", async () => {
     )).data;
     const byteBudgetImages = getAssistantImageAttachments(byteBudgetSnapshot);
     expect(byteBudgetImages.filter((attachment) => attachment.size === 20 * 1024 * 1024)).toHaveLength(2);
-    expect(byteBudgetImages.filter((attachment) => attachment.data === E2E_IMAGE_DATA)).toHaveLength(12);
+    expect(byteBudgetImages.filter((attachment) => attachment.data === E2E_IMAGE_DATA)).toHaveLength(25);
     await application.json(`/api/chats/${imageBudgetChat.config.id}`, { method: "DELETE" });
 
     const snapshot = (await application.json<ChatSnapshot>(

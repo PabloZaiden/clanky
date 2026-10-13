@@ -15,6 +15,7 @@ import {
   MESSAGE_ATTACHMENT_LIMIT,
   MESSAGE_ATTACHMENT_MAX_BYTES,
   MESSAGE_ATTACHMENT_MAX_TURN_BYTES,
+  MESSAGE_ATTACHMENT_MAX_TURN_MIB,
   normalizeCommitScope,
 } from "@/shared";
 import { CheapModelSelectionSchema, ModelConfigSchema } from "./model";
@@ -48,7 +49,7 @@ export const MessageAttachmentsSchema = z
     if (getMessageAttachmentByteLength(attachments) > MESSAGE_ATTACHMENT_MAX_TURN_BYTES) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: `attachments cannot exceed ${MESSAGE_ATTACHMENT_MAX_TURN_BYTES} bytes in a single turn`,
+        message: `attachments cannot exceed ${MESSAGE_ATTACHMENT_MAX_TURN_MIB} MiB in a single turn`,
       });
     }
   });

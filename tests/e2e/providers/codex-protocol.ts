@@ -4,6 +4,10 @@
 
 import type { PersistedThread, PersistedTurn } from "./codex-state";
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 export function buildThread(thread: PersistedThread, includeTurns = false): Record<string, unknown> {
   return {
     id: thread.id,
@@ -53,5 +57,14 @@ export function buildTurn(turn: PersistedTurn): Record<string, unknown> {
     durationMs: turn.completedAt === null
       ? null
       : Math.max(0, (turn.completedAt - turn.startedAt) * 1000),
+  };
+}
+
+export function buildTurnSummary(turn: PersistedTurn): Record<string, unknown> {
+  return {
+    ...buildTurn(turn),
+    // Input was already delivered with turn/start or turn/steer; avoid echoing inline image bytes.
+    items: turn.items.filter((item) => !isRecord(item) || item["type"] !== "userMessage"),
+    itemsView: "summary",
   };
 }
