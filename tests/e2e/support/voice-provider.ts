@@ -186,7 +186,11 @@ export async function startVoiceProvider(
             return Response.json({ error: "invalid_webrtc_offer" }, { status: 400 });
           }
           const id = crypto.randomUUID();
-          sessions.set(id, { id, stage: 0, global: offer.includes("global-product"), started: false, notices: [] });
+          sessions.set(id, {
+            id, stage: 0, global: offer.includes("global-product") || offer.includes("global-resume"),
+            resume: offer.includes("global-resume"), history: body.session.input,
+            started: false, notices: [],
+          });
           return Response.json({ session: { id }, transport: { type: "webrtc", sdp: "v=0\r\ns=external-live-provider\r\n" } }, { status: 201 });
         }
         const attach = /^\/v1\/live\/sessions\/([^/]+)\/attach$/.exec(path);

@@ -64,7 +64,9 @@ WebRTC session, checks authenticated sideband access, and closes the session.
 The Settings browser creates a temporary offer with an audio transceiver and
 `oai-events` data channel, gathers ICE, then closes its peer. Validation does
 not request microphone permission or send audio. Function access is exercised
-when the shared text model uses a tool.
+when the shared text model uses a tool. The provider must support strict
+Responses function schemas, including nested `anyOf` navigation variants;
+successful connection validation alone does not verify function execution.
 
 Once starting, the launcher disappears and all call controls live in one compact,
 frameless group at the bottom of the sidebar, immediately above the version.
@@ -84,6 +86,15 @@ cancelling delegated chat/task work. To stop that work, request its normal
 interrupt/stop operation explicitly. Talk and Piper cannot start while global
 Live owns audio. Starting Live stops active summary playback; it reports a
 conflict instead of discarding an ongoing Talk recording or transcription.
+
+If you start Live again less than **10 minutes after the previous call ended**,
+it continues your recent conversation, including references to work you created
+or discussed. Each subsequent Stop starts a new ten-minute window; at ten
+minutes or later, Live starts a fresh conversation. This works across tabs for
+the same signed-in user, but controls always belong to the new originating tab.
+Restarting requires an explicit click and never automatically turns on the
+microphone. Pending approvals, SSH handoffs and watches do not carry over, and
+previous actions are never automatically repeated.
 
 Destructive actions, arbitrary commands, permission changes and autonomous
 execution require a **visual approval dialog** in the originating tab. The
@@ -132,10 +143,29 @@ delegation can incur provider charges. Files, transcripts and tool results are
 untrusted data, not instructions granting new authority.
 
 Calls are ephemeral: Clanky does not persist recordings, voice transcripts or
-call summaries, and does not create a hidden chat. Normal created/instructed
-work is persisted by its own domain services. The server retains bounded
-in-memory correlation and terminal call state for cleanup and diagnostics.
-Closing the call never writes into an arbitrary chat.
+call summaries, and does not create a hidden chat or enable provider recording
+storage. For explicit restarts, the server keeps bounded recent user/assistant
+text and operation references/outcomes in private per-user memory for ten
+minutes after Stop. Older details can be omitted under the context limit; Live
+rereads current work rather than treating remembered state as authoritative.
+Transcript fragments can be incomplete and are not proof of voice approval or
+heard audio. This memory expires automatically, is never saved in browser
+storage or the database, and is cleared when Clanky restarts. Normal
+created/instructed work is persisted by its own domain services. The server
+also retains bounded in-memory correlation and terminal call state for cleanup
+and diagnostics. Closing the call never writes into an arbitrary chat.
+
+Provider failures include bounded event, code, type, parameter-path and
+incomplete-reason identifiers in the existing server error log. Unsafe
+metadata is redacted; raw provider error messages, frames, transcripts and
+tool arguments are not logged. If Live connects but fails when using tools,
+inspect these diagnostics rather than assuming a microphone or API-key issue.
+An error is not evidence that an earlier mutation did not execute.
+
+Continuation history is limited to 64 text messages and 7,000 UTF-8 bytes per
+user. The server retains at most 64 recent user conversations; if that capacity
+is reached, the oldest inactive context is discarded. These limits do not
+remove ordinary chat/task data, which Live can read again.
 
 There is one active call per user, a server capacity of eight calls and a
 limit of ten session openings per minute per endpoint/key. Provider `429`
