@@ -54,6 +54,7 @@ export interface ChatConfig {
   directory: string;
   model: ModelConfig;
   useWorktree: boolean;
+  useSelectedBranchForWorktree?: boolean;
   useChatNameAsBranch?: boolean;
   autoApprovePermissions?: boolean;
   skipBaseBranchSync?: boolean;
@@ -164,6 +165,7 @@ export const DEFAULT_CHAT_INTERRUPT_REASON = "user requested stop";
 
 export const DEFAULT_CHAT_CONFIG = {
   useWorktree: true,
+  useSelectedBranchForWorktree: false,
   autoApprovePermissions: true,
   mode: "chat" as const,
   scope: "workspace" as const,

@@ -378,6 +378,24 @@ async function assertGitArguments(
     worktreePath = args[2];
   } else if (
     action === "add"
+    && args.length === 5
+    && args[2] === "--force"
+    && isGitOperand(args[3])
+    && isGitOperand(args[4])
+  ) {
+    worktreePath = args[3];
+  } else if (
+    action === "add"
+    && args.length === 7
+    && args[2] === "--track"
+    && args[3] === "-b"
+    && isGitOperand(args[4])
+    && isGitOperand(args[5])
+    && isGitOperand(args[6])
+  ) {
+    worktreePath = args[5];
+  } else if (
+    action === "add"
     && args.length === 4
     && isGitOperand(args[2])
     && isGitOperand(args[3])
