@@ -274,9 +274,9 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
         clearResource("Chat not found");
         return;
       }
-      return refreshChatCoalesced({ showLoading: false });
+      return refreshChatCoalesced({ showLoading: false, afterCurrent: true });
     },
-    onReconnect: () => refreshChatCoalesced({ showLoading: false }),
+    onReconnect: () => refreshChatCoalesced({ showLoading: false, afterCurrent: true }),
   });
 
   useEffect(() => {

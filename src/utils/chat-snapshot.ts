@@ -143,16 +143,28 @@ function mergeChatSnapshotByKind(current: Chat, incoming: Chat, kind: ChatSnapsh
   const incomingActivityIsOlder = currentActivityAt !== null
     && incomingActivityAt !== null
     && incomingActivityAt < currentActivityAt;
-  const questionUpdates = incomingActivityIsOlder
+  const currentTurnAt = toTimestamp(current.state.lastUserMessageAt);
+  const incomingTurnAt = toTimestamp(incoming.state.lastUserMessageAt);
+  const incomingTurnIsOlder = currentTurnAt !== null
+    && (incomingTurnAt === null || incomingTurnAt < currentTurnAt);
+  const incomingTurnIsNewer = incomingTurnAt !== null
+    && (currentTurnAt === null || incomingTurnAt > currentTurnAt);
+  const questionUpdates = incomingActivityIsOlder && !incomingTurnIsNewer
     ? getResolvedBlockingQuestionUpdates(current, incoming)
     : new Map<string, HarnessQuestionRequest>();
+  const terminalStateForCurrentTurn = isChatTerminalStatus(incoming.state.status)
+    && BUSY_CHAT_STATUSES.has(current.state.status)
+    && current.state.status !== "reconnecting"
+    && currentTurnAt !== null
+    && incomingTurnAt === currentTurnAt;
   const shouldPreserveCurrentTerminalState = isChatTerminalStatus(current.state.status)
     && BUSY_CHAT_STATUSES.has(incoming.state.status)
     && incomingActivityIsNotNewer;
 
   if (
-    (incomingActivityIsOlder && questionUpdates.size === 0)
-    || shouldPreserveCurrentTerminalState
+    incomingTurnIsOlder
+    || (!incomingTurnIsNewer && incomingActivityIsOlder && questionUpdates.size === 0 && !terminalStateForCurrentTurn)
+    || (!incomingTurnIsNewer && shouldPreserveCurrentTerminalState)
   ) {
     return {
       ...incoming,
