@@ -80,6 +80,8 @@ import {
 } from "./execution-path";
 import {
   EXECUTION_HOST_CAPABILITY_VERSIONS,
+  getManagedWorktreesCommandMinimumVersion,
+  MANAGED_WORKTREES_BASE_VERSION,
   type ExecutionHostCapabilityId,
 } from "@/shared/execution-host";
 import type { MeshExecutionOperation } from "@/shared/mesh-execution";
@@ -1266,7 +1268,7 @@ export class MeshExecutionGateway {
     ) {
       await requireLocalMeshExecutionCapability(
         "managedWorktrees",
-        EXECUTION_HOST_CAPABILITY_VERSIONS.managedWorktrees,
+        MANAGED_WORKTREES_BASE_VERSION,
       );
     }
 
@@ -1339,6 +1341,17 @@ export class MeshExecutionGateway {
             );
           }
           await assertGitArguments(session, request.gitScope, request.args);
+          if (request.gitScope === "managedWorktrees") {
+            const minimumVersion = getManagedWorktreesCommandMinimumVersion(
+              request.args,
+            );
+            if (minimumVersion > MANAGED_WORKTREES_BASE_VERSION) {
+              await requireLocalMeshExecutionCapability(
+                "managedWorktrees",
+                minimumVersion,
+              );
+            }
+          }
           let result: CommandResult;
           try {
             result = await executor.execGit(cwd, request.args, {

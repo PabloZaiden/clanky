@@ -46,6 +46,7 @@ import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import { requireCurrentUser, runWithCurrentUser } from "../context/user-context";
 import { executionHostService } from "./execution-host-service";
 import {
+  EXECUTION_HOST_CAPABILITY_VERSIONS,
   executionHostBindingsEqual,
   getRegisteredSshServerId,
 } from "@/shared/execution-host";
@@ -154,6 +155,14 @@ export class ChatLifecycleService implements ChatLifecyclePort {
     ) {
       throw new Error(
         "Using the selected branch in a worktree requires a workspace chat, an enabled worktree, a selected branch, and no chat-name branch.",
+      );
+    }
+    if (options.useSelectedBranchForWorktree === true) {
+      executionHostService.requireBindingCapability(
+        workspace.executionHostBinding,
+        "managedWorktrees",
+        undefined,
+        EXECUTION_HOST_CAPABILITY_VERSIONS.managedWorktrees,
       );
     }
 
