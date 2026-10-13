@@ -9,6 +9,7 @@
 
 import { isDomainError, type DomainError } from "../domain/domain-error";
 import { CHAT_WORKTREE_BRANCH_CONFLICT_CODE } from "../domain/chat-worktree-errors";
+import { MANAGED_WORKTREES_SELECTED_BRANCH_VERSION } from "@/shared/execution-host";
 import { MESSAGE_ATTACHMENT_MAX_TURN_MIB } from "@/shared/message-attachments";
 
 export type DomainErrorBoundary =
@@ -724,7 +725,12 @@ const POLICY_PROFILES = {
       },
       execution_host_capability_unavailable: {
         status: 409,
-        message: "This execution host does not support ACP chats.",
+        messageFromDetails: (error) => error.details["capability"] === "managedWorktrees"
+          && error.details["requiredVersion"] === MANAGED_WORKTREES_SELECTED_BRANCH_VERSION
+          ? "Using the selected branch directly requires managed worktrees v3 on the execution host. Update the worker and retry."
+          : error.details["capability"] === "acpRuntime"
+            ? "This execution host does not support ACP chats."
+            : "This execution host does not support the requested chat operation.",
         extra: capabilityDetails,
       },
       execution_host_binding_stale: {

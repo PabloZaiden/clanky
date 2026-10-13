@@ -45,7 +45,7 @@ import { getWorkerRegistration } from "../../persistence/mesh";
 import { requireCurrentUserId } from "../../context/user-context";
 import { getSshReliabilityPolicy } from "../ssh-reliability-policy";
 import { executionHostService } from "../execution-host-service";
-import { executionHostBindingsEqual } from "@/shared/execution-host";
+import { executionHostBindingsEqual, getAgentExecutionHostCapability } from "@/shared/execution-host";
 import { isWorkspaceSshExecutionHostRef } from "@/shared/execution-host";
 import type {
   ExecutionHostBinding,
@@ -73,6 +73,7 @@ interface CachedCommandExecutor {
   workspaceId: string;
   userId: string;
   executionHostBinding: ExecutionHostBinding;
+  capabilitySnapshot: string | null;
 }
 
 interface PendingExecutionHost {
@@ -157,8 +158,12 @@ class BackendManager {
   ): Promise<RuntimeServerSettings> {
     executionHostService.validateBinding(binding);
     assertHarnessHostPolicy(agent, binding.host.kind);
-    if (agent.adapter === "acp") executionHostService.requireBindingCapability(binding, "acpRuntime", undefined, 1);
-    else if (binding.host.kind === "mesh") executionHostService.requireBindingCapability(binding, "commandExecution", undefined, 1);
+    executionHostService.requireBindingCapability(
+      binding,
+      getAgentExecutionHostCapability(agent.adapter),
+      undefined,
+      1,
+    );
     if (binding.host.kind !== "ssh") {
       return {
         agent: {
@@ -1035,9 +1040,15 @@ class BackendManager {
 
     const dir = directory ?? state.backend.getDirectory();
     const cacheKey = this.buildCommandExecutorCacheKey(workspaceId, dir, state.settings);
+    const capabilitySnapshot = state.executionHostBinding?.host.kind === "mesh"
+      ? JSON.stringify(executionHostService.validateBinding(state.executionHostBinding, state.userId).runtime.capabilities)
+      : null;
     const cachedExecutor = this.commandExecutors.get(cacheKey);
     if (cachedExecutor) {
-      return cachedExecutor.executor;
+      if (cachedExecutor.capabilitySnapshot === capabilitySnapshot) {
+        return cachedExecutor.executor;
+      }
+      this.evictCommandExecutor(cacheKey);
     }
 
     const execution = deriveExecutionSettings(state.settings);
@@ -1069,12 +1080,16 @@ class BackendManager {
     }
     const concurrent = this.commandExecutors.get(cacheKey);
     if (concurrent) {
-      closeCommandExecutor(executor);
-      return concurrent.executor;
+      if (concurrent.capabilitySnapshot === capabilitySnapshot) {
+        closeCommandExecutor(executor);
+        return concurrent.executor;
+      }
+      this.evictCommandExecutor(cacheKey);
     }
     this.commandExecutors.set(cacheKey, {
       executor, workspaceId, userId: state.userId,
       executionHostBinding: structuredClone(state.executionHostBinding),
+      capabilitySnapshot,
     });
     return executor;
   }

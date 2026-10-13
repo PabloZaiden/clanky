@@ -96,8 +96,13 @@ export const EXECUTION_HOST_CAPABILITY_VERSIONS = {
 
 export const WORKSPACE_EXECUTION_HOST_CAPABILITIES = [
   "fileOperations",
-  "acpRuntime",
 ] as const satisfies readonly ExecutionHostCapabilityId[];
+
+export function getAgentExecutionHostCapability(
+  adapter: HarnessAdapter,
+): "acpRuntime" | "commandExecution" {
+  return adapter === "acp" ? "acpRuntime" : "commandExecution";
+}
 
 /**
  * Capability values are protocol versions. Missing capabilities are not
@@ -564,8 +569,13 @@ export function getUnavailableGitCommandCapability(
 
 export function supportsWorkspaceExecutionHost(
   capabilities: ExecutionHostCapabilities,
+  adapter: HarnessAdapter,
 ): boolean {
   return WORKSPACE_EXECUTION_HOST_CAPABILITIES.every((capability) =>
     supportsExecutionHostCapability(capabilities, capability)
+  ) && supportsExecutionHostCapability(
+    capabilities,
+    getAgentExecutionHostCapability(adapter),
+    1,
   );
 }

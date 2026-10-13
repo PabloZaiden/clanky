@@ -74,7 +74,8 @@ export function ServerSettingsForm({
     () => targets.filter((target) =>
       target.acceptRemoteExecution
       && (!remoteOnly || target.ref.kind !== "local")
-      && supportsWorkspaceExecutionHost(target.capabilities)
+      && target.harnessAdapters.some((candidate) =>
+        supportsWorkspaceExecutionHost(target.capabilities, candidate))
       && !isPrivateMeshExecutionHostRef(target.ref)
     ),
     [remoteOnly, targets],
@@ -85,7 +86,8 @@ export function ServerSettingsForm({
           executionHostRefsEqual(target.ref, initialExecutionHost)
           && (!target.acceptRemoteExecution
             || (remoteOnly && target.ref.kind === "local")
-            || !supportsWorkspaceExecutionHost(target.capabilities))
+            || !target.harnessAdapters.some((candidate) =>
+              supportsWorkspaceExecutionHost(target.capabilities, candidate)))
         )
       : undefined,
     [initialExecutionHost, remoteOnly, targets],
@@ -130,8 +132,8 @@ export function ServerSettingsForm({
     if (descriptor) {
       return descriptor.acceptRemoteExecution
         && (!remoteOnly || descriptor.ref.kind !== "local")
-        && supportsWorkspaceExecutionHost(descriptor.capabilities)
-        ? descriptor.harnessAdapters
+        ? descriptor.harnessAdapters.filter((candidate) =>
+          supportsWorkspaceExecutionHost(descriptor.capabilities, candidate))
         : [];
     }
     return !host && dedicatedWorkerSelected ? ["acp"] : [];
