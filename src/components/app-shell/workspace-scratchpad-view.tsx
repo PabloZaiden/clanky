@@ -27,6 +27,8 @@ function getWorkspaceApiPath(workspaceId: string): string {
   return `/api/workspaces/${encodeURIComponent(workspaceId)}`;
 }
 
+const scratchpadActionButtonClassName = "w-9 px-0 !border-0 !bg-transparent";
+
 export function WorkspaceScratchpadView({
   workspaceId,
 }: WorkspaceScratchpadViewProps) {
@@ -222,7 +224,7 @@ export function WorkspaceScratchpadView({
           )}
           <div className="flex max-w-full shrink-0 flex-wrap items-center justify-end gap-2">
             <Button
-              variant={preview ? "secondary" : "ghost"}
+              variant="ghost"
               size="sm"
               onClick={() => setPreview((currentValue) => !currentValue)}
               disabled={busy}
@@ -230,24 +232,24 @@ export function WorkspaceScratchpadView({
               aria-label="Markdown preview"
               aria-pressed={preview}
               title={preview ? "Show Markdown code" : "Show Markdown preview"}
-              className="w-9 px-0"
+              className={scratchpadActionButtonClassName}
             >
               <span className="sr-only">Markdown preview</span>
             </Button>
             <Button
-              variant="secondary"
+              variant="ghost"
               size="sm"
               onClick={requestReload}
               disabled={busy}
               icon={<RefreshIcon size="h-4 w-4" />}
               aria-label="Reload Scratchpad"
               title="Reload Scratchpad"
-              className="w-9 px-0"
+              className={scratchpadActionButtonClassName}
             >
               <span className="sr-only">Reload Scratchpad</span>
             </Button>
             <Button
-              variant="primary"
+              variant="ghost"
               size="sm"
               onClick={() => void saveToServer()}
               disabled={!dirty || busy || contentTooLong}
@@ -255,7 +257,7 @@ export function WorkspaceScratchpadView({
               icon={<SaveIcon size="h-4 w-4" />}
               aria-label="Save Scratchpad"
               title="Save Scratchpad"
-              className="w-9 px-0"
+              className={scratchpadActionButtonClassName}
             >
               <span className="sr-only">Save Scratchpad</span>
             </Button>
