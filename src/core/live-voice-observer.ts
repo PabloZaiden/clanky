@@ -45,21 +45,35 @@ export class LiveVoiceObserver {
 
   private key(target: Target): string { return `${target.kind}:${target.id}`; }
 
+  private assertCapacity(additions: number): void {
+    if (this.watches.size + additions > 16) {
+      throw new DomainError("voice_live_busy", "At most 16 work items may be watched.");
+    }
+  }
+
   async change(input: { command: "add" | "remove" | "list"; targets: Target[] }) {
     if (this.controller.signal.aborted) throw new DomainError("voice_live_not_found", "The call has ended.");
     if (input.command === "remove") {
       for (const target of input.targets) this.remove(this.key(target));
     }
     if (input.command === "add") {
-      const additions = input.targets.filter((target) => !this.watches.has(this.key(target)));
-      if (this.watches.size + new Set(additions.map((target) => this.key(target))).size > 16) {
-        throw new DomainError("voice_live_busy", "At most 16 work items may be watched.");
-      }
+      const additions = [...new Map(input.targets.map((target) => [this.key(target), target])).values()]
+        .filter((target) => !this.watches.has(this.key(target)));
+      this.assertCapacity(additions.length);
+      const validated: Watch[] = [];
       for (const target of additions) {
         const summary = await this.read(target);
         if (!summary.ok) throw new DomainError("voice_operation_target", "The selected work is unavailable.");
-        this.watches.set(this.key(target), { target, last: this.signature(summary.data), dirty: false, reading: false });
+        validated.push({ target, last: this.signature(summary.data), dirty: false, reading: false });
       }
+      if (this.controller.signal.aborted) throw new DomainError("voice_live_not_found", "The call has ended.");
+      const pending = validated.filter(({ target }) => !this.watches.has(this.key(target)));
+      this.assertCapacity(pending.length);
+      for (const watch of pending) {
+        this.watches.set(this.key(watch.target), watch);
+      }
+      // Recover changes that occurred while the batch was being validated.
+      for (const { target } of pending) this.schedule(target);
     }
     return { ok: true, watching: [...this.watches.values()].map(({ target }) => target) };
   }

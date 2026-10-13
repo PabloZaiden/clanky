@@ -32,13 +32,17 @@ The [Live voice assistant](../../docs/voice.md#live-voice) is global and
 independent of native Control chats. It starts beside Quick Chat in the sidebar
 and operates authorized JSON APIs through six catalog-backed tools. Discover
 availability with `GET /api/voice/live`; do not use chat-local Live endpoints.
-Browser navigation targets only the originating call's tab. High-risk actions
-need visual approval: supply `confirmationDescription` as one or two short
+Browser navigation targets only the originating call's tab and acknowledges
+entity routes after their refreshed shell data is rendered. Treat a failed
+navigation result as a failure, not an opened entity. Multi-target watch
+additions are atomic: a failed addition leaves existing watches unchanged.
+High-risk actions need visual approval: supply `confirmationDescription` as one or two short
 sentences in the user's language, naming the action, current target names and
 important consequences. Ground it in the frozen arguments; do not show endpoints,
 JSON, technical identifiers or secrets. Use `null` for operations that do not
-require confirmation. Registered SSH credentials use private browser
-handoffs, never model arguments. Read
+require confirmation. API cross-field validation runs before the dialog;
+invalid arguments do not request approval. Registered SSH credentials use
+private browser handoffs, never model arguments. Read
 `GET /api/workspaces/:id/task-creation-context` before constructing task inputs;
 apply explicit intent and valid saved browser preferences without inventing a
 model or branch. Accepted/queued work is not completed work, and unknown

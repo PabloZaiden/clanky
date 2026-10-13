@@ -211,6 +211,7 @@ export function useShellResources(route: WebAppRoute) {
     terminalSessions,
     executionHosts: executionHosts.hosts,
     executionHostsLoading: executionHosts.loading,
+    executionHostsError: executionHosts.error,
     refreshExecutionHosts: executionHosts.refresh,
     terminalSessionsLoading,
     terminalSessionsError,

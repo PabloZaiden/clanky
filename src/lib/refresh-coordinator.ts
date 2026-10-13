@@ -3,7 +3,8 @@
  *
  * A new refresh shares the active promise instead of aborting the request that
  * is already recovering the resource. `reset` is reserved for an identity
- * change or teardown, where the next call must not reuse the old operation.
+ * change or teardown, where queued fresh reads are cancelled and the next call
+ * must not reuse the old operation.
  * `runAfterCurrent` is for mutations that need a fresh operation after an
  * already-running refresh settles.
  */
@@ -15,6 +16,7 @@ export interface RefreshCoordinator<T> {
 
 export function createRefreshCoordinator<T>(): RefreshCoordinator<T> {
   let activePromise: Promise<T> | null = null;
+  let generation = 0;
 
   const run = (operation: () => Promise<T> | T): Promise<T> => {
     if (activePromise) {
@@ -38,12 +40,17 @@ export function createRefreshCoordinator<T>(): RefreshCoordinator<T> {
       if (!currentPromise) {
         return run(operation);
       }
-      return currentPromise.then(
-        () => run(operation),
-        () => run(operation),
-      );
+      const requestedGeneration = generation;
+      const runNext = () => {
+        if (requestedGeneration !== generation) {
+          throw new DOMException("The queued refresh was cancelled.", "AbortError");
+        }
+        return run(operation);
+      };
+      return currentPromise.then(runNext, runNext);
     },
     reset() {
+      generation += 1;
       activePromise = null;
     },
   };

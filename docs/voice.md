@@ -84,8 +84,10 @@ dialog shows a short model-written description in the user's language, with
 the named target and important consequences, plus **Approve** and **Reject**.
 It does not show API endpoints or JSON payloads. The model supplies the text
 alongside the actual arguments in the same turn; both are frozen together.
-The server rechecks the target before dispatch. The model cannot approve the
-operation or override its arguments after approval. Task creation first
+The original API validator, including cross-field requirements, is checked
+before approval is requested; hidden browser-supplied inputs are not model
+arguments. The server rechecks the target before dispatch. The model cannot
+approve the operation or override its arguments after approval. Task creation first
 reads the workspace's effective defaults, connected models and real host
 branches, then applies explicit intent and the browser's saved preferences.
 
@@ -99,9 +101,12 @@ rejected rather than guessing which credential to use.
 The textual model has six tools: discover operations, describe a contract,
 execute it, read fresh client context, request a client action, and watch
 selected work. API results distinguish completed operations from admitted or
-queued background work. Selective watches reread authorized state without
-streaming all chats' transcripts. If a mutation's result is uncertain, inspect
-its state before repeating it; Clanky never automatically replays mutations.
+queued background work. Entity navigation refreshes its shell data and reports
+opened only when the originating tab has committed the route and target data.
+Selective watches reread authorized state without streaming all chats'
+transcripts. Adding several watches either installs the complete authorized
+batch or leaves existing watches unchanged. If a mutation's result is uncertain,
+inspect its state before repeating it; Clanky never automatically replays mutations.
 The execute tool's required `confirmationDescription` is 1–500 trimmed
 characters for `confirm` operations and `null` for other automation policies.
 It is separate from the ordinary operation's API body.

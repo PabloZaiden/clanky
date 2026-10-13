@@ -29,6 +29,7 @@ export function AppShell() {
   const toast = useToast();
   const [route, setRoute] = useState<WebAppRoute>(HOME_ROUTE);
   const [activityRoute, setActivityRoute] = useState<WebAppRoute | null>(null);
+  const resources = useShellResources(route);
   const {
     chats,
     chatsLoading,
@@ -96,7 +97,7 @@ export function AppShell() {
     composeServer,
     composeExecutionHost,
     selectedAgent,
-  } = useShellResources(route);
+  } = resources;
 
   const {
     webAppRootRef,
@@ -116,8 +117,7 @@ export function AppShell() {
   } = useControlUiActions({
     route,
     navigateWithinShell,
-    refreshChats,
-    refreshWorkspaces,
+    resources,
     handleClientAction: voiceClient.handleAction,
   });
   const openHarnessActivity = useCallback((entityRoute: WebAppRoute): void => {

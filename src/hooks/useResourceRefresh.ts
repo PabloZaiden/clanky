@@ -4,6 +4,8 @@ import { createRefreshCoordinator } from "../lib/refresh-coordinator";
 
 export interface ResourceRefreshOptions {
   showLoading?: boolean;
+  /** Read again after an in-flight refresh instead of sharing its older snapshot. */
+  afterCurrent?: boolean;
 }
 
 export interface UseResourceRefreshOptions<T> {
@@ -40,7 +42,8 @@ export function useResourceRefresh<T>({
   onErrorRef.current = onError;
 
   const refresh = useCallback((options: ResourceRefreshOptions = {}) => {
-    return refreshCoordinatorRef.current.run(async () => {
+    const method = options.afterCurrent ? "runAfterCurrent" : "run";
+    return refreshCoordinatorRef.current[method](async () => {
       if (!isMountedRef.current) {
         return;
       }

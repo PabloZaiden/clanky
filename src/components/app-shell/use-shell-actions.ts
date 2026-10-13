@@ -276,7 +276,7 @@ export function useShellActions({
     }),
     onCreateChatInCurrentDirectory: createChatInCurrentDirectory,
     onTaskSpawned: (task) => navigateWithinShell({ view: "task", taskId: task.config.id }),
-    onChatRenamed: refreshChats,
+    onChatRenamed: () => refreshChats(),
     onChatDone: handleMarkChatDone,
     onDeleteChat: deleteChat,
     onChatDeleted: () => navigateWithinShell({ view: "home" }),
