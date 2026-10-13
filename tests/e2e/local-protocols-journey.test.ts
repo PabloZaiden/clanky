@@ -742,6 +742,16 @@ async function expectVoiceTranslations(app: E2EApplication): Promise<void> {
     }),
   })).data;
   expect(longEnglish.translatedText.match(/The server restarted\./gu)).toHaveLength(1_250);
+
+  const longSpanish = (await app.json<{ translatedText: string }>("/api/voice/translate", {
+    method: "POST",
+    body: JSON.stringify({
+      text: longText,
+      targetLanguage: "es",
+    }),
+  })).data;
+  expect(longSpanish.translatedText.length).toBeGreaterThan(longText.trim().length);
+  expect(longSpanish.translatedText.match(/El servidor se ha reiniciado\./gu)).toHaveLength(1_250);
 }
 
 async function expectVoiceTranscription(app: E2EApplication): Promise<void> {

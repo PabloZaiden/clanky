@@ -202,7 +202,9 @@ export async function startVoiceProvider(
           const responseText = sourceSentenceCount > 0 && prompt.includes("Target language: English.")
             ? "The server restarted. ".repeat(sourceSentenceCount).trim()
             : sourceSentenceCount > 0 && prompt.includes("Target language: Spanish.")
-              ? "El servidor se reinició. ".repeat(sourceSentenceCount).trim()
+              ? (sourceSentenceCount > 1
+                ? "El servidor se ha reiniciado. "
+                : "El servidor se reinició. ").repeat(sourceSentenceCount).trim()
               : "OK";
           return Response.json({
             status: "completed",
