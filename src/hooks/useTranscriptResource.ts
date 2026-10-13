@@ -30,11 +30,13 @@ export interface TranscriptResourceSnapshot<TResource> {
 
 export interface TranscriptResourceRefreshOptions {
   showLoading?: boolean;
+  afterCurrent?: boolean;
 }
 
 interface PendingTranscriptRefresh {
   resourceId: string;
   showLoading?: boolean;
+  afterCurrent?: boolean;
   waiters: Array<{
     resolve: () => void;
     reject: (error: unknown) => void;
@@ -245,7 +247,8 @@ export function useTranscriptResource<TResource, TSnapshot>({
   const refresh = useCallback((
     options: TranscriptResourceRefreshOptions = {},
   ): Promise<void> => {
-    return refreshCoordinatorRef.current.run(async () => {
+    const method = options.afterCurrent ? "runAfterCurrent" : "run";
+    return refreshCoordinatorRef.current[method](async () => {
       const requestResourceId = resourceId;
       const requestId = refreshRequestIdRef.current + 1;
       refreshRequestIdRef.current = requestId;
@@ -376,6 +379,7 @@ export function useTranscriptResource<TResource, TSnapshot>({
       pending = {
         resourceId,
         showLoading: options.showLoading,
+        afterCurrent: options.afterCurrent,
         waiters: [],
       };
       coalescedRefreshRef.current = pending;
@@ -384,6 +388,7 @@ export function useTranscriptResource<TResource, TSnapshot>({
     } else if (pending.showLoading === undefined && options.showLoading === false) {
       pending.showLoading = false;
     }
+    if (options.afterCurrent) pending.afterCurrent = true;
 
     const batch = pending;
     batch.waiters.push({ resolve, reject });
@@ -397,7 +402,7 @@ export function useTranscriptResource<TResource, TSnapshot>({
         return;
       }
 
-      void refresh({ showLoading: batch.showLoading }).then(
+      void refresh({ showLoading: batch.showLoading, afterCurrent: batch.afterCurrent }).then(
         () => {
           for (const waiter of batch.waiters) waiter.resolve();
         },

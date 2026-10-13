@@ -306,8 +306,8 @@ export function useChats(): UseChatsResult {
   useRealtimeRefreshWithRecovery({
     resources: ["chats"],
     filters: { resource: "chats" },
-    refresh: () => refresh({ showLoading: false }),
-    onReconnect: () => refresh({ showLoading: false }),
+    refresh: () => refresh({ showLoading: false, afterCurrent: true }),
+    onReconnect: () => refresh({ showLoading: false, afterCurrent: true }),
   });
 
   useRealtimeStream<ChatEvent>({

@@ -94,7 +94,10 @@ export function useChatActivityState() {
     const activityAdvanced = current.state.lastActivityAt === undefined
       || timestamp.localeCompare(current.state.lastActivityAt) > 0;
     const statusChanged = status !== current.state.status;
-    if (!activityAdvanced && !statusChanged) return;
+    const userMessageAdvanced = source === "user"
+      && (current.state.lastUserMessageAt === undefined
+        || timestamp.localeCompare(current.state.lastUserMessageAt) > 0);
+    if (!activityAdvanced && !statusChanged && !userMessageAdvanced) return;
     const next: Chat = {
       ...current,
       state: {
@@ -102,6 +105,7 @@ export function useChatActivityState() {
         status,
         ...(statusChanged ? { startupStage: undefined } : {}),
         lastActivityAt: activityAdvanced ? timestamp : current.state.lastActivityAt,
+        ...(userMessageAdvanced ? { lastUserMessageAt: timestamp } : {}),
       },
     };
     latestRef.current.set(id, next);
