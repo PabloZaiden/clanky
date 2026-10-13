@@ -8,6 +8,8 @@ import {
   DEFAULT_VOICE_LANGUAGE_HINTS,
   VOICE_CAPABILITIES,
   VOICE_LANGUAGE_HINTS,
+  VOICE_MAX_TEXT_CHARS,
+  VOICE_TRANSLATION_LANGUAGES,
 } from "@/shared";
 
 const VoiceModelsSchema = z.object({
@@ -33,6 +35,15 @@ export const VoiceSettingsUpdateSchema = z.object({
 });
 
 export const VoiceCapabilitySchema = z.enum(VOICE_CAPABILITIES);
+
+export const VoiceTranslationRequestSchema = z.object({
+  text: z.string().trim().min(1, "Text is required").max(VOICE_MAX_TEXT_CHARS, "Text is too long"),
+  targetLanguage: z.enum(VOICE_TRANSLATION_LANGUAGES),
+}).strict();
+
+export const VoiceTranslationResponseSchema = z.object({
+  translatedText: z.string().min(1, "Translated text is required"),
+}).strict();
 
 export const VoiceValidationRequestSchema = z.discriminatedUnion("capability", [
   z.object({ capability: z.literal("transcription") }),
@@ -70,4 +81,6 @@ export const LiveVoiceAvailabilityResponseSchema = z.object({
 export type LiveVoiceAvailabilityResponse = z.infer<typeof LiveVoiceAvailabilityResponseSchema>;
 
 export type VoiceSettingsUpdateRequest = z.infer<typeof VoiceSettingsUpdateSchema>;
+export type VoiceTranslationRequest = z.infer<typeof VoiceTranslationRequestSchema>;
+export type VoiceTranslationResponse = z.infer<typeof VoiceTranslationResponseSchema>;
 export type VoiceValidationRequest = z.infer<typeof VoiceValidationRequestSchema>;

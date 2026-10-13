@@ -1,5 +1,9 @@
 import { useCallback, useMemo, memo } from "react";
+import { useToast } from "@pablozaiden/webapp/web";
+import type { VoiceTranslationResponse } from "@/contracts/schemas";
+import type { VoiceTranslationLanguage } from "@/shared";
 import { useForegroundPresentation } from "../../hooks/useForegroundPresentation";
+import { apiRequest } from "../../lib/api-client";
 import {
   isCountedAssistantResponse,
   shouldIncludeConversationTranscriptLog,
@@ -24,6 +28,13 @@ import { LogEntryItem } from "./log-entry-item";
 import { useStickyBottomScroll } from "./use-sticky-bottom-scroll";
 import { useTranscriptImagePreview } from "./use-transcript-image-preview";
 import { ActivityIndicator } from "./activity-indicator";
+
+function isAbortError(error: unknown): boolean {
+  return typeof error === "object"
+    && error !== null
+    && "name" in error
+    && error.name === "AbortError";
+}
 
 export const ConversationViewer = memo(function ConversationViewer(props: ConversationViewerProps) {
   const presentation = useForegroundPresentation(props);
@@ -51,6 +62,33 @@ const ConversationPresentation = memo(function ConversationPresentation({
   onLoadFullTranscript,
   loadingTranscript = false,
 }: ConversationViewerProps) {
+  const { error: notifyError } = useToast();
+  const translateMessage = useCallback(async (
+    text: string,
+    targetLanguage: VoiceTranslationLanguage,
+    signal: AbortSignal,
+  ): Promise<string> => {
+    const language = targetLanguage === "en" ? "English" : "Spanish";
+    const response = await apiRequest<VoiceTranslationResponse>("/api/voice/translate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, targetLanguage }),
+      signal,
+      action: `Translate transcript to ${language}`,
+      fallbackMessage: `Failed to translate transcript to ${language}`,
+    });
+    const translatedText = response.translatedText.trim();
+    if (!translatedText) {
+      throw new Error("The text provider returned an empty translation.");
+    }
+    return translatedText;
+  }, []);
+  const handleTranslationError = useCallback((error: unknown): void => {
+    if (!isAbortError(error)) {
+      notifyError(String(error));
+    }
+  }, [notifyError]);
+
   const imagePreview = useTranscriptImagePreview(fileLinkContext);
   const resolvedFileLinkContext = useMemo(() => {
     if (!fileLinkContext) {
@@ -222,6 +260,8 @@ const ConversationPresentation = memo(function ConversationPresentation({
                     spacingClass={spacingClass}
                     markdownEnabled={markdownEnabled}
                     fileLinkContext={resolvedFileLinkContext}
+                    onTranslate={translateMessage}
+                    onTranslationError={handleTranslationError}
                     onReadAloud={onReadAloud}
                     playingReadAloudKey={messageReadAloudKey}
                     readAloudStatus={messageReadAloudKey ? readAloudStatus : null}

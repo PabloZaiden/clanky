@@ -657,6 +657,7 @@ async function exerciseVoice(
     validated: true,
   });
 
+  await expectVoiceTranslations(app);
   await expectVoiceTranscription(app);
 
   await app.restart({
@@ -679,6 +680,68 @@ async function exerciseVoice(
     },
   });
   await expectVoiceTranscription(app);
+}
+
+async function expectVoiceTranslations(app: E2EApplication): Promise<void> {
+  const routeSchemaResult = await app.cli(["schema", "voice/translate"]);
+  expect(routeSchemaResult.exitCode).toBe(0);
+  const routeSchema = JSON.parse(routeSchemaResult.stdout) as {
+    responseSchema: {
+      properties?: Record<string, { type?: string }>;
+      required?: string[];
+    };
+    operations: {
+      POST?: {
+        responseSchema: {
+          properties?: Record<string, { type?: string }>;
+          required?: string[];
+        };
+      };
+    };
+  };
+  for (const responseSchema of [
+    routeSchema.responseSchema,
+    routeSchema.operations.POST?.responseSchema,
+  ]) {
+    expect(responseSchema?.properties?.["translatedText"]?.type).toBe("string");
+    expect(responseSchema?.required).toContain("translatedText");
+  }
+
+  const english = (await app.json<{ translatedText: string }>("/api/voice/translate", {
+    method: "POST",
+    body: JSON.stringify({
+      text: "Le serveur a redémarré.",
+      targetLanguage: "en",
+    }),
+  })).data;
+  expect(english.translatedText).toBe("The server restarted.");
+
+  const spanish = (await app.json<{ translatedText: string }>("/api/voice/translate", {
+    method: "POST",
+    body: JSON.stringify({
+      text: "Le serveur a redémarré.",
+      targetLanguage: "es",
+    }),
+  })).data;
+  expect(spanish.translatedText).toBe("El servidor se reinició.");
+
+  const repeatedSentence = "Le serveur a redémarré.";
+  const longText = Array.from({ length: 1_250 }, () => repeatedSentence)
+    .join(" ")
+    .replace(
+      `${repeatedSentence} ${repeatedSentence}`,
+      `${repeatedSentence}  ${repeatedSentence}`,
+    );
+  expect(longText.length).toBe(30_000);
+  expect(longText.trim().length).toBe(30_000);
+  const longEnglish = (await app.json<{ translatedText: string }>("/api/voice/translate", {
+    method: "POST",
+    body: JSON.stringify({
+      text: longText,
+      targetLanguage: "en",
+    }),
+  })).data;
+  expect(longEnglish.translatedText.match(/The server restarted\./gu)).toHaveLength(1_250);
 }
 
 async function expectVoiceTranscription(app: E2EApplication): Promise<void> {
