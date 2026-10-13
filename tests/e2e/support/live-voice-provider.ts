@@ -19,13 +19,11 @@ interface OperationDescription { operationId: string; parameters: string[] }
 interface OperationPage { operations: Array<{ operationId: string }>; nextCursor: number | null }
 interface Workspace { id: string; name: string }
 interface Host { ref: { kind: string; serverId?: string } }
-interface Server { config: { id: string; repositoriesBasePath: string } }
-interface Chat {
-  config: { id: string; name: string };
-  state: { status: string; harness?: { questions?: Array<{ requestId: string; status: string }> } };
-}
-interface Task { config: { id: string; name: string; prompt: string }; state: { status: string } }
-interface Snapshot { transcript: { messages: Array<{ role: string; content: string }> } }
+interface Server { id: string; repositoriesBasePath: string }
+interface Chat { id: string; name: string; status: string }
+interface Task { id: string; name: string; status: string }
+interface ConversationMessage { id: string; role: string; content: string; offset: number }
+interface ContentPart { path: Array<string | number>; value: unknown; offset: number; complete: boolean }
 interface CreationContext {
   ready: boolean;
   defaults: Record<string, unknown> & {
@@ -65,6 +63,31 @@ function successful<T>(value: unknown): T {
   return (result["data"] ?? result) as T;
 }
 
+function restoreContent(parts: ContentPart[]): unknown {
+  let root: unknown;
+  for (const part of parts) {
+    if (!part.path.length) {
+      root = typeof part.value === "string" && part.offset ? String(root) + part.value : part.value;
+      continue;
+    }
+    root ??= typeof part.path[0] === "number" ? [] : Object.create(null);
+    let parent = root as Record<string, unknown>;
+    for (const [index, key] of part.path.entries()) {
+      if (index === part.path.length - 1) {
+        Object.defineProperty(parent, key, { configurable: true, enumerable: true, writable: true,
+          value: typeof part.value === "string" && part.offset ? String(parent[key]) + part.value : part.value });
+      } else {
+        if (!Object.hasOwn(parent, key)) Object.defineProperty(parent, key, {
+          configurable: true, enumerable: true, writable: true,
+          value: typeof part.path[index + 1] === "number" ? [] : Object.create(null),
+        });
+        parent = parent[key] as Record<string, unknown>;
+      }
+    }
+  }
+  return root;
+}
+
 function operationTools() {
   const descriptions = new Map<string, OperationDescription>();
   return function* operation<T>(id: string, options: {
@@ -88,22 +111,34 @@ function operationTools() {
       } while (!found && cursor !== null);
       if (!found) throw new Error(`Required product operation is unavailable: ${id}`);
       description = (yield {
-        name: "clanky_describe_operation", arguments: { operationId: found },
+        name: "clanky_describe_operation", arguments: { operationId: found, section: null, cursor: null },
       }) as OperationDescription;
       descriptions.set(id, description);
     }
-    let result = record(yield {
-      name: "clanky_execute_operation",
-      arguments: {
-        operationId: description.operationId,
-        parameters: description.parameters.map((name) => ({ name, value: options.parameters?.[name] })),
-        query: Object.entries(options.query ?? {}).map(([name, value]) => ({ name, value })),
-        bodyJson: options.body === undefined ? null : JSON.stringify(options.body),
-        confirmationDescription: options.confirmationDescription ?? null,
-      },
-    });
-    if (result["code"] === "confirmation_required") result = record(yield { wait: "confirmation" });
-    return successful<T>(result);
+    let cursor: string | null = null;
+    const items: unknown[] = [];
+    do {
+      let result = record(yield {
+        name: "clanky_execute_operation",
+        arguments: {
+          operationId: description.operationId,
+          parameters: description.parameters.map((name) => ({ name, value: options.parameters?.[name] })),
+          query: Object.entries({ ...options.query, ...(cursor ? { cursor } : {}) }).map(([name, value]) => ({ name, value })),
+          bodyJson: options.body === undefined ? null : JSON.stringify(options.body),
+          confirmationDescription: options.confirmationDescription ?? null,
+        },
+      });
+      if (result["code"] === "confirmation_required") result = record(yield { wait: "confirmation" });
+      const data = successful<unknown>(result);
+      if (!data || typeof data !== "object" || !("items" in data) || !Array.isArray(data.items)) return data as T;
+      items.push(...data.items);
+      if (!("nextCursor" in data) || data.nextCursor !== null && typeof data.nextCursor !== "string") {
+        throw new Error("The public read page has no continuation contract.");
+      }
+      cursor = data.nextCursor;
+    } while (cursor !== null);
+    if (items.length && Array.isArray(record(items[0])["path"])) return restoreContent(items as ContentPart[]) as T;
+    return items as T;
   };
 }
 
@@ -121,19 +156,21 @@ function* globalJourney(): Generator<FixtureStep, void, unknown> {
     throw new Error("The caller's local and SSH execution hosts are unavailable.");
   }
   const servers = yield* operation<Server[]>("GET /api/ssh-servers");
-  const server = servers.find((entry) => entry.config.id === ssh.ref.serverId)!;
+  const server = servers.find((entry) => entry.id === ssh.ref.serverId)!;
   const hostFile = yield* operation<{ content: string }>("GET /api/execution-hosts/:kind/:id/files/content", {
-    parameters: { kind: ssh.ref.kind, id: server.config.id },
-    query: { path: GLOBAL_LIVE_INTENT.hostFile, startDirectory: server.config.repositoriesBasePath },
+    parameters: { kind: ssh.ref.kind, id: server.id },
+    query: { path: GLOBAL_LIVE_INTENT.hostFile, startDirectory: server.repositoriesBasePath },
   });
   const chats = yield* operation<Chat[]>("GET /api/chats", { query: { workspaceId: workspaceA.id } });
-  const sourceChat = chats.find((chat) => chat.config.name === GLOBAL_LIVE_INTENT.sourceChat)!;
-  const chat = yield* operation<Chat>("GET /api/chats/:id", { parameters: { id: sourceChat.config.id } });
-  const snapshot = yield* operation<Snapshot>("GET /api/chats/:id/snapshot", { parameters: { id: chat.config.id } });
-  const answer = snapshot.transcript.messages.findLast((message) => message.role === "assistant" && message.content.trim())!;
+  const sourceChat = chats.find((chat) => chat.name === GLOBAL_LIVE_INTENT.sourceChat)!;
+  const chat = yield* operation<Chat>("GET /api/chats/:id", { parameters: { id: sourceChat.id } });
+  const conversation = yield* operation<ConversationMessage[]>("GET /api/chats/:id/snapshot", { parameters: { id: chat.id } });
+  const answerParts = conversation.filter((message) => message.id === conversation.findLast((entry) => entry.role === "assistant" && entry.content.trim())?.id);
+  const answer = answerParts.map((part) => part.content).join("");
   const tasks = yield* operation<Task[]>("GET /api/tasks");
-  const sourceTask = tasks.find((task) => task.config.name === GLOBAL_LIVE_INTENT.sourceTask)!;
-  const task = yield* operation<Task>("GET /api/tasks/:id", { parameters: { id: sourceTask.config.id } });
+  const sourceTask = tasks.find((task) => task.name === GLOBAL_LIVE_INTENT.sourceTask)!;
+  const task = yield* operation<Task>("GET /api/tasks/:id", { parameters: { id: sourceTask.id } });
+  const prompt = yield* operation<string>("GET /api/tasks/:id", { parameters: { id: task.id }, query: { section: "prompt" } });
   const creation = yield* operation<CreationContext>("GET /api/workspaces/:id/task-creation-context", {
     parameters: { id: workspaceB.id },
   });
@@ -142,14 +179,14 @@ function* globalJourney(): Generator<FixtureStep, void, unknown> {
     throw new Error("The selected workspace is not ready for the requested work.");
   }
   const selectedModel = { providerID: model.providerID, modelID: model.modelID, variant: "variant" in model ? model.variant : "" };
-  const handoff = `${task.config.prompt}\nTask status: ${task.state.status}; chat status: ${chat.state.status}.\nLatest answer: ${answer.content}\nSSH handoff: ${hostFile.content}`;
+  const handoff = `${prompt}\nTask status: ${task.status}; chat status: ${chat.status}.\nLatest answer: ${answer}\nSSH handoff: ${hostFile.content}`;
 
   // The user declines retirement of A, then explicitly approves new work on B.
   yield* operation("DELETE /api/tasks/:id", {
-    parameters: { id: task.config.id },
-    confirmationDescription: `Delete the saved task "${task.config.name}" in "${workspaceA.name}". This permanently removes its task data.`,
+    parameters: { id: task.id },
+    confirmationDescription: `Delete the saved task "${task.name}" in "${workspaceA.name}". This permanently removes its task data.`,
   });
-  yield* operation("GET /api/tasks/:id", { parameters: { id: task.config.id } });
+  yield* operation("GET /api/tasks/:id", { parameters: { id: task.id } });
   yield* operation("POST /api/tasks", {
     confirmationDescription: `Create the draft task "${GLOBAL_LIVE_INTENT.createdTask}" in "${workspaceB.name}" from the source conversation and host guidance. It will wait for your approval before running or accepting its plan.`,
     body: {
@@ -160,9 +197,9 @@ function* globalJourney(): Generator<FixtureStep, void, unknown> {
     },
   });
   const createdTask = (yield* operation<Task[]>("GET /api/tasks"))
-    .find((entry) => entry.config.name === GLOBAL_LIVE_INTENT.createdTask)!;
+    .find((entry) => entry.name === GLOBAL_LIVE_INTENT.createdTask)!;
   successful(yield {
-    name: "clanky_ui_action", arguments: { action: { type: "open_task", taskId: createdTask.config.id } },
+    name: "clanky_ui_action", arguments: { action: { type: "open_task", taskId: createdTask.id } },
   });
   yield* operation("POST /api/chats", {
     confirmationDescription: `Create the chat "${GLOBAL_LIVE_INTENT.createdChat}" in "${workspaceB.name}" with the saved model and branch choices. Permission requests will require your approval.`,
@@ -173,19 +210,19 @@ function* globalJourney(): Generator<FixtureStep, void, unknown> {
     },
   });
   const createdChat = (yield* operation<Chat[]>("GET /api/chats", { query: { workspaceId: workspaceB.id } }))
-    .find((entry) => entry.config.name === GLOBAL_LIVE_INTENT.createdChat)!;
+    .find((entry) => entry.name === GLOBAL_LIVE_INTENT.createdChat)!;
   successful(yield {
     name: "clanky_watch_work",
     arguments: { command: "add", targets: [
-      { kind: "task", id: createdTask.config.id }, { kind: "chat", id: createdChat.config.id },
+      { kind: "task", id: createdTask.id }, { kind: "chat", id: createdChat.id },
     ] },
   });
   yield* operation("POST /api/chats/:id/messages", {
-    parameters: { id: createdChat.config.id },
+    parameters: { id: createdChat.id },
     body: { message: `${handoff}\n[question] [provider-write] Ask before continuing the delegated work.`, attachments: [] },
   });
-  yield { wait: "work", chatId: createdChat.config.id };
-  yield* operation("GET /api/chats/:id", { parameters: { id: createdChat.config.id } });
+  yield { wait: "work", chatId: createdChat.id };
+  yield* operation("GET /api/chats/:id", { parameters: { id: createdChat.id } });
   const watched = successful<{ watching: Array<{ kind: string; id: string }> }>(
     yield { name: "clanky_watch_work", arguments: { command: "list", targets: [] } },
   );
@@ -224,14 +261,17 @@ function* resumedJourney(session: LiveFixture): Generator<FixtureStep, void, unk
   const operation = operationTools();
   const id = rememberedReference(session, GLOBAL_LIVE_INTENT.createdChat);
   const chat = yield* operation<Chat>("GET /api/chats/:id", { parameters: { id } });
-  const question = chat.state.harness?.questions?.find((entry) => entry.status === "pending");
+  const questions = yield* operation<Array<{ requestId: string; status: string }>>("GET /api/chats/:id", {
+    parameters: { id }, query: { section: "questions" },
+  });
+  const question = questions.find((entry) => entry.status === "pending");
   if (!question) throw new Error("The previously delegated conversation has no pending question.");
   yield* operation("POST /api/chats/:id/questions/:requestId", {
-    parameters: { id: chat.config.id, requestId: question.requestId },
+    parameters: { id: chat.id, requestId: question.requestId },
     body: { answers: [["Concise"]] },
   });
   successful(yield {
-    name: "clanky_ui_action", arguments: { action: { type: "open_chat", chatId: chat.config.id } },
+    name: "clanky_ui_action", arguments: { action: { type: "open_chat", chatId: chat.id } },
   });
 }
 

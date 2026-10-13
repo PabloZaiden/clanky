@@ -8,6 +8,9 @@ import {
   parseTranscriptSnapshotOptions,
   transcriptSnapshotErrorResponse,
 } from "../transcript-snapshot";
+import { ConversationReadOptionsSchema } from "@/contracts/schemas/resource-read";
+import { readConversationPage } from "../../core/conversation-read-service";
+import { readScope } from "../../core/resource-read-service";
 
 const log = createLogger("api:chats");
 
@@ -32,11 +35,19 @@ export const chatsTranscriptRoutes = defineRoutes({
       GET: {
         description: "Read one bounded page of chat history; use before to load older history.",
         requestSchema: undefined,
-        querySchema: TranscriptSnapshotQuerySchema,
+        querySchema: TranscriptSnapshotQuerySchema.extend(ConversationReadOptionsSchema.shape),
         automation: { policy: "read", hiddenQuery: ["full"] },
       },
     },
     async GET(req: Request, ctx): Promise<Response> {
+      if (new URL(req.url).searchParams.get("view") === "conversation") {
+        const page = readConversationPage({
+          resource: "chat", id: ctx.params["id"]!,
+          options: ConversationReadOptionsSchema.parse(Object.fromEntries(new URL(req.url).searchParams)),
+          scope: readScope(ctx.requireUser().id, new URL(req.url)),
+        });
+        return page ? Response.json(page) : errorResponse("not_found", "Chat not found", 404);
+      }
       const options = parseTranscriptSnapshotOptions(req);
       if (options instanceof Response) {
         return options;

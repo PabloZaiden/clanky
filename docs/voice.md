@@ -128,6 +128,31 @@ inspect its state before repeating it; Clanky never automatically replays mutati
 The execute tool's required `confirmationDescription` is 1–500 trimmed
 characters for `confirm` operations and `null` for other automation policies.
 It is separate from the ordinary operation's API body.
+
+Live selects [compact API representations and literal conversation
+pages](API.md#compact-reads-and-literal-conversations) from the same route
+contracts used by ordinary API/CLI clients. Listings do not carry expanded
+runtime state. Large prompts, questions, files and tool outputs use targeted
+sections and resumable content parts. Conversation review returns the actual
+human-readable exchange, not tool events or an AI-generated summary. The model
+must follow `nextCursor` until it is null before claiming complete coverage.
+Operation descriptions can also be read as separate query/body contract pages;
+large client preferences use route/preferences sections.
+
+Each delegated response admits at most eight function calls. Clanky budgets
+**28,000 UTF-8 bytes for the complete serialized result batch**, including
+JSON escaping and provider envelopes, below the provider's 32,768-byte queue.
+The API read budget is allocated according to the number of calls in that
+batch. Only one batch is queued until the provider acknowledges its next
+response, including when delegations overlap. Selected-work observers read
+compact status/input counts instead of whole harness snapshots.
+
+An unexpected oversized result explicitly reports that its data was not
+delivered while retaining the operation outcome. Inspect the target with a
+targeted read; never replay a mutation to recover omitted data. Diagnostics
+record canonical tool/operation identifiers, a hashed request correlation and
+wire-byte counts, not result bodies or private credentials.
+
 Browser microphone permission, HTTPS (or localhost), provider connectivity and
 audio playback permission are required.
 

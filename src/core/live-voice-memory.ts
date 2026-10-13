@@ -41,6 +41,7 @@ function references(value: unknown, depth = 0): Array<Record<string, string>> {
   if (Array.isArray(value)) return value.slice(0, 8).flatMap((entry: unknown) => references(entry, depth + 1)).slice(0, 8);
   const entity = record(value);
   if (!entity) return [];
+  if (entity["role"] === "user" || entity["role"] === "assistant") return [];
   const config = record(entity["config"]) ?? entity;
   const state = record(entity["state"]) ?? entity;
   const ref: Record<string, string> = {};
@@ -49,7 +50,7 @@ function references(value: unknown, depth = 0): Array<Record<string, string>> {
   }
   if (typeof state["status"] === "string") ref["status"] = excerpt(state["status"], 100);
   if (ref["id"]) return [ref];
-  return ["data", "job", "chat", "task", "workspace"].flatMap((key) => references(entity[key], depth + 1)).slice(0, 8);
+  return ["data", "items", "job", "chat", "task", "workspace"].flatMap((key) => references(entity[key], depth + 1)).slice(0, 8);
 }
 
 export class LiveVoiceConversation {
