@@ -14,8 +14,9 @@ Open the workspace settings and use the **Workspace icon** section. You can:
 - Upload an SVG or ICO file from your computer, up to 1 MB.
 - Remove the current icon and return to the default workspace mark.
 
-For Git workspaces, Clanky searches every directory on the selected execution
-host for tracked files and unignored untracked files named `*icon*.svg` or
+For Git workspaces, Clanky searches within that workspace's Git repository on
+its selected execution host; it does not scan the rest of the host. Discovery
+includes tracked files and unignored untracked files named `*icon*.svg` or
 `*logo*.svg`. It also offers
 `*icon*.ico`, `*logo*.ico`, and `favicon*.ico` files. Up to 200 candidates are
 shown. Repository discovery is not available for directory-only workspaces;

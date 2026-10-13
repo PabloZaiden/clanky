@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ErrorState, useToast } from "@pablozaiden/webapp/web";
+import { ConfirmModal, ErrorState, useToast } from "@pablozaiden/webapp/web";
 import type {
   WorkspaceIconCandidatesResponse,
   WorkspaceIconMetadataResponse,
@@ -36,6 +36,7 @@ export function WorkspaceIconSection({ workspace, onChanged }: WorkspaceIconSect
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const discoveryControllerRef = useRef<AbortController | null>(null);
   const [icon, setIcon] = useState<WorkspaceIconMetadataResponse | undefined>(workspace.workspaceIcon);
+  const [showRemoveConfirmation, setShowRemoveConfirmation] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [candidates, setCandidates] = useState<WorkspaceIconCandidatesResponse>({
     candidates: [],
@@ -50,6 +51,7 @@ export function WorkspaceIconSection({ workspace, onChanged }: WorkspaceIconSect
 
   useEffect(() => {
     setIcon(workspace.workspaceIcon);
+    setShowRemoveConfirmation(false);
     setSelectedFile(null);
     setOperationError(null);
     setRefreshError(null);
@@ -185,6 +187,7 @@ export function WorkspaceIconSection({ workspace, onChanged }: WorkspaceIconSect
     } catch (error) {
       setOperationError(String(error));
     } finally {
+      setShowRemoveConfirmation(false);
       setSaving(false);
     }
   }
@@ -215,7 +218,7 @@ export function WorkspaceIconSection({ workspace, onChanged }: WorkspaceIconSect
           size="sm"
           variant="danger"
           disabled={!icon || saving}
-          onClick={() => void removeIcon()}
+          onClick={() => setShowRemoveConfirmation(true)}
         >
           Remove
         </Button>
@@ -318,6 +321,16 @@ export function WorkspaceIconSection({ workspace, onChanged }: WorkspaceIconSect
           </p>
         ) : null}
       </div>
+      <ConfirmModal
+        isOpen={showRemoveConfirmation}
+        onClose={() => setShowRemoveConfirmation(false)}
+        onConfirm={removeIcon}
+        title="Remove workspace icon"
+        message={`Remove the saved icon for "${workspace.name}"? The workspace will use its default mark.`}
+        confirmLabel="Remove icon"
+        loading={saving}
+        variant="danger"
+      />
     </section>
   );
 }

@@ -13,7 +13,7 @@ import { DomainError } from "../domain/domain-error";
 import { deleteWorkspaceIcon, getWorkspaceIcon, saveWorkspaceIcon } from "../persistence/workspaces";
 import { backendManager } from "./backend-manager";
 import { joinExecutionPath } from "./execution-path";
-import type { CommandExecutor } from "./command-executor";
+import type { CommandExecutor, CommandResult } from "./command-executor";
 
 export interface WorkspaceIconContent {
   content: Uint8Array;
@@ -28,7 +28,7 @@ export interface WorkspaceIconCandidateList {
 export const WORKSPACE_ICON_MAX_BYTES = 1024 * 1024;
 
 const MAX_CANDIDATES = 200;
-const MAX_CANDIDATE_LIST_BYTES = 512 * 1024;
+const MAX_CANDIDATE_LIST_BYTES = 2 * 1024 * 1024;
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 export const WORKSPACE_ICON_MULTIPART_BODY_LIMIT = WORKSPACE_ICON_MAX_BYTES + 32 * 1024;
 
@@ -338,9 +338,19 @@ function getCandidateMimeType(path: string): WorkspaceIconMimeType | null {
 }
 
 function normalizeCandidatePath(path: string): string {
+  const normalizedPath = tryNormalizeCandidatePath(path);
+  if (normalizedPath === null) {
+    throw invalidIcon();
+  }
+  return normalizedPath;
+}
+
+function tryNormalizeCandidatePath(path: string): string | null {
   const segments = path.split("/");
+  const filename = segments[segments.length - 1] ?? "";
   if (
     path.length > 2048
+    || filename.length > 255
     || path.startsWith("/")
     || path.includes("\\")
     || /^[A-Za-z]:/.test(path)
@@ -348,9 +358,15 @@ function normalizeCandidatePath(path: string): string {
     || segments.some((segment) => segment === "" || segment === "." || segment === "..")
     || !getCandidateMimeType(path)
   ) {
-    throw invalidIcon();
+    return null;
   }
   return path;
+}
+
+function isExpectedMeshExecutionAbort(error: unknown): boolean {
+  return error instanceof DomainError
+    && error.code === "mesh_execution_aborted"
+    && error.cause === undefined;
 }
 
 async function getWorkspaceExecutor(workspace: Workspace): Promise<CommandExecutor> {
@@ -453,46 +469,112 @@ export async function listWorkspaceIconCandidates(
     throw new DomainError("not_git_repo", "The workspace directory is not a Git repository.");
   }
 
-  const result = await executor.exec(
-    "git",
-    [
-      "-C",
-      workspace.directory,
-      "ls-files",
-      "-z",
-      "--cached",
-      "--others",
-      "--exclude-standard",
-      "--",
-      ":(icase,glob)**/*icon*.svg",
-      ":(icase,glob)**/*logo*.svg",
-      ":(icase,glob)**/*icon*.ico",
-      ":(icase,glob)**/*logo*.ico",
-      ":(icase,glob)**/favicon*.ico",
-    ],
-    {
-      timeout: 5_000,
-      signal,
-      maxOutputBytes: MAX_CANDIDATE_LIST_BYTES,
-      logFailures: false,
-    },
-  );
-  if (!result.success) {
+  const paths: Array<{ path: string; mimeType: WorkspaceIconMimeType }> = [];
+  const seenPaths = new Set<string>();
+  const executionController = new AbortController();
+  const abortForRequest = (): void => {
+    executionController.abort(signal?.reason);
+  };
+  if (signal?.aborted) {
+    abortForRequest();
+  } else {
+    signal?.addEventListener("abort", abortForRequest, { once: true });
+  }
+  let pendingPath = "";
+  let truncated = false;
+  let result: CommandResult | undefined;
+
+  const addCandidate = (path: string): void => {
+    const normalizedPath = tryNormalizeCandidatePath(path);
+    if (!normalizedPath || seenPaths.has(normalizedPath)) {
+      return;
+    }
+    const mimeType = getCandidateMimeType(normalizedPath);
+    if (!mimeType) {
+      return;
+    }
+    seenPaths.add(normalizedPath);
+    paths.push({ path: normalizedPath, mimeType });
+    if (paths.length > MAX_CANDIDATES) {
+      truncated = true;
+      executionController.abort();
+    }
+  };
+
+  try {
+    result = await executor.exec(
+      "git",
+      [
+        "-C",
+        workspace.directory,
+        "ls-files",
+        "-z",
+        "--cached",
+        "--others",
+        "--exclude-standard",
+        "--",
+        ":(icase,glob)**/*icon*.svg",
+        ":(icase,glob)**/*logo*.svg",
+        ":(icase,glob)**/*icon*.ico",
+        ":(icase,glob)**/*logo*.ico",
+        ":(icase,glob)**/favicon*.ico",
+      ],
+      {
+        timeout: 5_000,
+        signal: executionController.signal,
+        maxOutputBytes: MAX_CANDIDATE_LIST_BYTES,
+        longRunning: true,
+        logFailures: false,
+        onStdoutChunk: (chunk) => {
+          if (truncated) {
+            return;
+          }
+          let chunkOffset = 0;
+          while (chunkOffset < chunk.length) {
+            const delimiterOffset = chunk.indexOf("\0", chunkOffset);
+            if (delimiterOffset < 0) {
+              pendingPath += chunk.slice(chunkOffset);
+              return;
+            }
+            addCandidate(pendingPath + chunk.slice(chunkOffset, delimiterOffset));
+            pendingPath = "";
+            if (truncated) {
+              return;
+            }
+            chunkOffset = delimiterOffset + 1;
+          }
+        },
+      },
+    );
+  } catch (error) {
+    if (!truncated || signal?.aborted || !isExpectedMeshExecutionAbort(error)) {
+      throw error;
+    }
+  } finally {
+    signal?.removeEventListener("abort", abortForRequest);
+  }
+
+  const expectedLocalAbort = result?.exitCode === 130
+    && !result.stderr.includes("Process-tree cleanup failed:");
+  if (
+    signal?.aborted
+    || (!truncated && !result?.success)
+    || (truncated && result && !result.success && !expectedLocalAbort)
+  ) {
     throw new DomainError(
       "workspace_icon_discovery_failed",
       "Cannot discover workspace icons on the selected execution host.",
     );
   }
 
-  const paths = [...new Set(result.stdout.split("\0")
-    .filter((path) => path && getCandidateMimeType(path)))]
-    .sort((left, right) => left.localeCompare(right));
-  const truncated = paths.length > MAX_CANDIDATES;
-  const candidates = paths.slice(0, MAX_CANDIDATES).map((path) => ({
-    path,
-    name: path.slice(path.lastIndexOf("/") + 1),
-    mimeType: getCandidateMimeType(path)!,
-  }));
+  const candidates = paths
+    .slice(0, MAX_CANDIDATES)
+    .sort((left, right) => left.path.localeCompare(right.path))
+    .map(({ path, mimeType }) => ({
+      path,
+      name: path.slice(path.lastIndexOf("/") + 1),
+      mimeType,
+    }));
   return { candidates, truncated };
 }
 
