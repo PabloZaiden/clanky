@@ -6,7 +6,6 @@ import { DomainError } from "../domain/domain-error";
 import { getVoiceAudioExtension } from "@/shared";
 
 export const VOICE_MAX_AUDIO_BYTES = 20 * 1024 * 1024;
-export const VOICE_MAX_TEXT_CHARS = 30_000;
 export const VOICE_MAX_SUMMARY_CHARS = 8_000;
 export const VOICE_PROVIDER_TIMEOUT_MS = 120_000;
 export const VOICE_AZURE_API_VERSION = "2025-03-01-preview";

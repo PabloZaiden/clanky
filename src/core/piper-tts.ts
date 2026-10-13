@@ -6,13 +6,10 @@ import { franc } from "franc-min";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
-import type { VoiceLanguageHint } from "@/shared";
+import { VOICE_MAX_TEXT_CHARS, type VoiceLanguageHint } from "@/shared";
 import { getDataDir } from "../persistence/database";
 import { DomainError } from "../domain/domain-error";
-import {
-  VOICE_MAX_AUDIO_BYTES,
-  VOICE_MAX_TEXT_CHARS,
-} from "./voice-provider";
+import { VOICE_MAX_AUDIO_BYTES } from "./voice-provider";
 import {
   piperAssetManager,
   type PiperAssets,

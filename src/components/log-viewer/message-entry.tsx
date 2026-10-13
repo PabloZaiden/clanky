@@ -1,5 +1,9 @@
-import { memo, useState } from "react";
-import type { MessageData } from "@/shared";
+import { memo, useEffect, useRef, useState } from "react";
+import {
+  VOICE_MAX_TEXT_CHARS,
+  type MessageData,
+  type VoiceTranslationLanguage,
+} from "@/shared";
 import type { BadgeVariant } from "../common";
 import {
   getMessageAttachmentExtension,
@@ -27,6 +31,12 @@ interface MessageEntryProps {
   markdownEnabled: boolean;
   fileLinkContext?: TranscriptFileLinkContext;
   onReadAloud?: (messageId: string) => void;
+  onTranslate: (
+    sourceText: string,
+    targetLanguage: VoiceTranslationLanguage,
+    signal: AbortSignal,
+  ) => Promise<string>;
+  onTranslationError: (error: unknown) => void;
   playingReadAloudKey: string | null;
   readAloudStatus: "generating" | "playing" | null;
 }
@@ -51,6 +61,8 @@ export const MessageEntry = memo(function MessageEntry({
   markdownEnabled,
   fileLinkContext,
   onReadAloud,
+  onTranslate,
+  onTranslationError,
   playingReadAloudKey,
   readAloudStatus,
 }: MessageEntryProps) {
@@ -69,8 +81,66 @@ export const MessageEntry = memo(function MessageEntry({
     title: selectedAttachment.filename,
     description: `${Math.max(1, Math.round(selectedAttachment.size / 1024))} KB`,
   } : null;
+  const sourceText = displayMessage.content;
+  const [translation, setTranslation] = useState<{ source: string; text: string } | null>(null);
+  const [translationRequest, setTranslationRequest] = useState<{
+    source: string;
+    language: VoiceTranslationLanguage;
+  } | null>(null);
+  const translationControllerRef = useRef<AbortController | null>(null);
+  const currentTranslation = translation?.source === sourceText ? translation : null;
+  const currentTranslationRequest = translationRequest?.source === sourceText
+    ? translationRequest
+    : null;
+  const renderedContent = currentTranslation?.text ?? sourceText;
+  const hasMessageText = sourceText.trim().length > 0;
+  const canReadAloud = !isUser && Boolean(onReadAloud) && hasMessageText;
+  const canTranslate = msg.role === "assistant"
+    && hasMessageText
+    && sourceText.trim().length <= VOICE_MAX_TEXT_CHARS;
   const isReadAloudActive = playingReadAloudKey === msg.id;
   const isGeneratingReadAloud = isReadAloudActive && readAloudStatus === "generating";
+  const isTranslationBusy = currentTranslationRequest !== null;
+
+  useEffect(() => () => {
+    translationControllerRef.current?.abort();
+    translationControllerRef.current = null;
+  }, [msg.id, sourceText]);
+
+  async function handleTranslate(targetLanguage: VoiceTranslationLanguage): Promise<void> {
+    translationControllerRef.current?.abort();
+    const controller = new AbortController();
+    translationControllerRef.current = controller;
+    const requestedSource = sourceText;
+    setTranslationRequest({ source: requestedSource, language: targetLanguage });
+
+    try {
+      const translatedText = await onTranslate(
+        requestedSource,
+        targetLanguage,
+        controller.signal,
+      );
+      if (
+        controller.signal.aborted
+        || translationControllerRef.current !== controller
+      ) {
+        return;
+      }
+      setTranslation({ source: requestedSource, text: translatedText });
+    } catch (error) {
+      if (
+        !controller.signal.aborted
+        && translationControllerRef.current === controller
+      ) {
+        onTranslationError(error);
+      }
+    } finally {
+      if (translationControllerRef.current === controller) {
+        translationControllerRef.current = null;
+        setTranslationRequest(null);
+      }
+    }
+  }
 
   return (
     <div className={`group ${spacingClass}`.trim()} data-message-role={msg.role}>
@@ -100,13 +170,13 @@ export const MessageEntry = memo(function MessageEntry({
             </div>
           ) : shouldRenderMarkdown ? (
             <MarkdownRenderer
-              content={displayMessage.content}
+              content={renderedContent}
               className="text-sm leading-7 text-gray-900 dark:text-white"
               fileLinkContext={fileLinkContext}
             />
           ) : (
             <TranscriptTextContent
-              content={displayMessage.content}
+              content={renderedContent}
               className="whitespace-pre-wrap break-words text-sm leading-7 text-gray-900 dark:text-white"
               fileLinkContext={fileLinkContext}
             />
@@ -164,28 +234,64 @@ export const MessageEntry = memo(function MessageEntry({
               ))}
             </div>
           )}
-          {!isUser && onReadAloud && displayMessage.content.trim() && (
-            <div className="pt-1">
-              <button
-                type="button"
-                className={`inline-flex items-center gap-1 text-xs text-gray-500 underline-offset-2 hover:underline dark:text-gray-400 ${isGeneratingReadAloud ? "no-underline" : ""}`}
-                onClick={() => onReadAloud(msg.id)}
-                aria-label={
-                  isGeneratingReadAloud
-                    ? "Cancel audio generation"
-                    : isReadAloudActive
-                      ? "Stop reading summary"
-                      : "Read response summary aloud"
-                }
-                aria-busy={isGeneratingReadAloud}
-              >
-                {isGeneratingReadAloud ? (
-                  <>
-                    <ActivitySpinner className="h-3.5 w-3.5" />
-                    <span>Generating audio…</span>
-                  </>
-                ) : isReadAloudActive ? "Stop summary" : "Read summary"}
-              </button>
+          {(canReadAloud || canTranslate) && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-1">
+              {canReadAloud && onReadAloud && (
+                <button
+                  type="button"
+                  className={`inline-flex items-center gap-1 text-xs text-gray-500 underline-offset-2 hover:underline dark:text-gray-400 ${isGeneratingReadAloud ? "no-underline" : ""}`}
+                  onClick={() => onReadAloud(msg.id)}
+                  aria-label={
+                    isGeneratingReadAloud
+                      ? "Cancel audio generation"
+                      : isReadAloudActive
+                        ? "Stop reading summary"
+                        : "Read response summary aloud"
+                  }
+                  aria-busy={isGeneratingReadAloud}
+                >
+                  {isGeneratingReadAloud ? (
+                    <>
+                      <ActivitySpinner className="h-3.5 w-3.5" />
+                      <span>Generating audio…</span>
+                    </>
+                  ) : isReadAloudActive ? "Stop summary" : "Read summary"}
+                </button>
+              )}
+              {canTranslate && (
+                <>
+                  <button
+                    type="button"
+                    className={`inline-flex items-center gap-1 text-xs text-gray-500 underline-offset-2 hover:underline disabled:cursor-wait disabled:opacity-60 dark:text-gray-400 ${currentTranslationRequest?.language === "en" ? "no-underline" : ""}`}
+                    onClick={() => { void handleTranslate("en"); }}
+                    disabled={isTranslationBusy}
+                    aria-label="Translate to English"
+                    aria-busy={currentTranslationRequest?.language === "en"}
+                  >
+                    {currentTranslationRequest?.language === "en" ? (
+                      <>
+                        <ActivitySpinner className="h-3.5 w-3.5" />
+                        <span>Translating to English…</span>
+                      </>
+                    ) : "Translate to English"}
+                  </button>
+                  <button
+                    type="button"
+                    className={`inline-flex items-center gap-1 text-xs text-gray-500 underline-offset-2 hover:underline disabled:cursor-wait disabled:opacity-60 dark:text-gray-400 ${currentTranslationRequest?.language === "es" ? "no-underline" : ""}`}
+                    onClick={() => { void handleTranslate("es"); }}
+                    disabled={isTranslationBusy}
+                    aria-label="Translate to Spanish"
+                    aria-busy={currentTranslationRequest?.language === "es"}
+                  >
+                    {currentTranslationRequest?.language === "es" ? (
+                      <>
+                        <ActivitySpinner className="h-3.5 w-3.5" />
+                        <span>Translating to Spanish…</span>
+                      </>
+                    ) : "Translate to Spanish"}
+                  </button>
+                </>
+              )}
             </div>
           )}
           <ImageViewerModal image={selectedImage} onClose={() => setSelectedAttachment(null)} />

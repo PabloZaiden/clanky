@@ -20,6 +20,10 @@ export interface ManagedVoiceProvider {
   diagnostics(): string;
 }
 
+// Approximate the provider's completion limit so the long-translation journey detects truncation.
+const DEFAULT_FIXTURE_OUTPUT_TOKENS = 4_096;
+const APPROXIMATE_OUTPUT_CHARS_PER_TOKEN = 4;
+
 export function createFixtureLiveOffer(scenario: string): string {
   const fingerprint = Array.from({ length: 32 }, (_, index) =>
     (index + 1).toString(16).padStart(2, "0").toUpperCase(),
@@ -75,6 +79,36 @@ function privileged(command: readonly string[]): string[] {
 function randomPublicAddress(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(3));
   return `11.${String(bytes[0] || 1)}.${String(bytes[1] || 1)}.${String(bytes[2] || 1)}`;
+}
+
+function getResponsesInputText(payload: unknown): string {
+  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+    return "";
+  }
+  const input = (payload as Record<string, unknown>)["input"];
+  if (!Array.isArray(input)) {
+    return "";
+  }
+  return input.map((entry) => {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+      return "";
+    }
+    const content = (entry as Record<string, unknown>)["content"];
+    return typeof content === "string" ? content : "";
+  }).join("\n\n");
+}
+
+function getResponsesOutputCharacterLimit(payload: unknown): number {
+  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+    return DEFAULT_FIXTURE_OUTPUT_TOKENS * APPROXIMATE_OUTPUT_CHARS_PER_TOKEN;
+  }
+  const maxOutputTokens = (payload as Record<string, unknown>)["max_output_tokens"];
+  const outputTokens = typeof maxOutputTokens === "number"
+    && Number.isSafeInteger(maxOutputTokens)
+    && maxOutputTokens > 0
+    ? maxOutputTokens
+    : DEFAULT_FIXTURE_OUTPUT_TOKENS;
+  return outputTokens * APPROXIMATE_OUTPUT_CHARS_PER_TOKEN;
 }
 
 export async function startVoiceProvider(
@@ -166,13 +200,23 @@ export async function startVoiceProvider(
           return server.upgrade(request, { data: session }) ? undefined : new Response("Expected websocket", { status: 400 });
         }
         if (path === "/v1/responses" && request.method === "POST") {
-          await request.json();
+          const payload: unknown = await request.json();
+          const prompt = getResponsesInputText(payload);
+          const sourceSentenceCount = prompt.match(/Le serveur a redémarré\./gu)?.length ?? 0;
+          const responseText = sourceSentenceCount > 0 && prompt.includes("Target language: English.")
+            ? "The server restarted. ".repeat(sourceSentenceCount).trim()
+            : sourceSentenceCount > 0 && prompt.includes("Target language: Spanish.")
+              ? "El servidor se reinició. ".repeat(sourceSentenceCount).trim()
+              : "OK";
           return Response.json({
             status: "completed",
             output: [{
               type: "message",
               role: "assistant",
-              content: [{ type: "output_text", text: "OK" }],
+              content: [{
+                type: "output_text",
+                text: responseText.slice(0, getResponsesOutputCharacterLimit(payload)),
+              }],
             }],
           });
         }
