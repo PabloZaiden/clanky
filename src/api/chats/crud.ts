@@ -13,6 +13,10 @@ import { parseAndValidate } from "../validation";
 import { chatActionErrorResponse, toLightweightChat } from "./helpers";
 import { WorkspaceFilterQuerySchema } from "../route-schemas";
 import { z } from "zod";
+import { CollectionReadOptionsSchema } from "@/contracts/schemas/resource-read";
+import { readWorkCollection, readWorkCollectionItem } from "../../core/work-read-service";
+import { readScope } from "../../core/resource-read-service";
+import { resourcePageResponse, workMetadataResponse } from "../resource-reads";
 
 const log = createLogger("api:chats");
 const SSH_CREDENTIAL_TOKEN_HEADER = "x-clanky-ssh-credential-token";
@@ -94,6 +98,19 @@ export const chatsCrudRoutes = defineRoutes({
     async GET(req: Request, _ctx): Promise<Response> {
       const url = new URL(req.url);
       const workspaceId = url.searchParams.get("workspaceId");
+      if (url.searchParams.get("view") === "compact" && url.searchParams.get("section") === "details" && url.searchParams.has("item")) {
+        return Response.json(await readWorkCollectionItem({
+          resource: "chat", workspaceId: workspaceId ?? undefined,
+          options: CollectionReadOptionsSchema.parse(Object.fromEntries(url.searchParams)),
+        }));
+      }
+      if (url.searchParams.get("view") === "compact" && !url.searchParams.has("section") && !url.searchParams.has("item")) {
+        return resourcePageResponse(readWorkCollection({
+          resource: "chat", workspaceId: workspaceId ?? undefined,
+          options: CollectionReadOptionsSchema.parse(Object.fromEntries(url.searchParams)),
+          scope: readScope(_ctx.requireUser().id, url),
+        }));
+      }
       const chats = workspaceId
         ? await chatManager.getChatSummariesByWorkspace(workspaceId)
         : await chatManager.getChatSummaries();
@@ -223,6 +240,8 @@ export const chatsCrudRoutes = defineRoutes({
       },
     },
     async GET(_req: Request, ctx): Promise<Response> {
+      const compact = workMetadataResponse(_req, { resource: "chat", id: ctx.params["id"]!, notFound: { code: "not_found", message: "Chat not found" } });
+      if (compact) return compact;
       const chat = await chatManager.getChatSummary(ctx.params["id"]!);
       if (!chat) {
         return errorResponse("not_found", "Chat not found", 404);

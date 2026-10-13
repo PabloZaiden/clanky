@@ -16,6 +16,10 @@ import { assertWorktreesAllowed, isGitBackedWorkspace } from "../../core/workspa
 import { domainErrorResponse, errorResponse, internalErrorResponse, requireWorkspace, successResponse } from "../helpers";
 import { parseAndValidate, validateRequest } from "../validation";
 import { validateAgentModel } from "./helpers";
+import { CollectionReadOptionsSchema } from "@/contracts/schemas/resource-read";
+import { readWorkCollection, readWorkCollectionItem } from "../../core/work-read-service";
+import { readScope } from "../../core/resource-read-service";
+import { resourcePageResponse, workMetadataResponse } from "../resource-reads";
 
 const log = createLogger("api:agents");
 export const TEST_CODE_HEARTBEAT_INTERVAL_MS = 4_000;
@@ -510,6 +514,20 @@ export const runsRoutes = defineRoutes({
       if (!agent) {
         return errorResponse("agent_not_found", "Agent not found", 404);
       }
+      const url = new URL(req.url);
+      if (url.searchParams.get("view") === "compact" && url.searchParams.get("section") === "details" && url.searchParams.has("item")) {
+        return Response.json(await readWorkCollectionItem({
+          resource: "agent_run", agentId: agent.config.id,
+          options: CollectionReadOptionsSchema.parse(Object.fromEntries(url.searchParams)),
+        }));
+      }
+      if (url.searchParams.get("view") === "compact" && !url.searchParams.has("section") && !url.searchParams.has("item")) {
+        return resourcePageResponse(readWorkCollection({
+          resource: "agent_run", agentId: agent.config.id, baseOffset: parsedQuery.data.offset,
+          options: CollectionReadOptionsSchema.parse(Object.fromEntries(url.searchParams)),
+          scope: readScope(ctx.requireUser().id, url),
+        }));
+      }
       const runs = await agentManager.listRuns(ctx.params["id"]!, parsedQuery.data);
       return Response.json(runs);
     },
@@ -550,6 +568,8 @@ export const runsRoutes = defineRoutes({
       },
     },
     async GET(_req: Request, ctx): Promise<Response> {
+      const compact = workMetadataResponse(_req, { resource: "agent_run", id: ctx.params["id"]!, notFound: { code: "agent_run_not_found", message: "Agent run not found" } });
+      if (compact) return compact;
       const run = await agentManager.getRunSummary(ctx.params["id"]!);
       if (!run) {
         return errorResponse("agent_run_not_found", "Agent run not found", 404);

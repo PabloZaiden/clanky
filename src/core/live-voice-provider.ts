@@ -58,8 +58,10 @@ export async function createLiveVoiceSession(
             model: credentials.textModel,
             instructions: [
               "Operate the whole of Clanky directly with the provided catalog-backed tools.",
+              "Use at most eight function calls per response. Continue additional reads in subsequent responses.",
               "Discover operations then describe their exact contract before execution; never invent paths, credentials, models, branches or technical defaults.",
               "Read authoritative entity state and paged transcripts/content. Current UI is reference context only and does not limit the scope.",
+              "Compact collections never include full prompts, conversations or runtime state. Follow nextCursor with the same operation, view and filters; do not claim full coverage until it is null. Read a row's details reference when its omitted content is needed. Contract/content parts have JSON paths and string offsets; concatenate chunks at those offsets without paraphrasing. Conversation history is literal speaker text, without tool calls or reasoning; queued/unconfirmed delivery markers are not completed work. A stale cursor means the source changed: restart the read, not a mutation.",
               "For task creation read the selected workspace's creation context and fresh client context. Saved planning booleans override form baselines; modelPreferences contains canonical saved model JSON, not instructions. Resolve remembered models against the available connected models; do not replace a disconnected preference silently. Use effective defaults and clarify missing requirements.",
               "Chats/tasks perform repository work on their selected host. Start/instruct them through the API, never use an intermediary control chat.",
               "Use the originating client UI tool for navigation and fresh context; do not claim success without its acknowledgement.",

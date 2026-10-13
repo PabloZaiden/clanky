@@ -10,6 +10,8 @@ import type { LiveVoiceActions } from "./live-voice-actions";
 import type { LiveVoiceObserver } from "./live-voice-observer";
 import { isDomainError } from "../domain/domain-error";
 import { createLogger } from "@pablozaiden/webapp/server";
+import { contentReadPage, readBytes, readRevision } from "./resource-read-service";
+import { LIVE_READ_BYTES } from "./live-voice-output";
 
 const log = createLogger("core:voice-tools");
 const schemas = {
@@ -19,11 +21,18 @@ const schemas = {
     method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]).nullable(),
     cursor: z.number().int().nonnegative().max(10_000).nullable(),
   }).strict(),
-  clanky_describe_operation: z.object({ operationId: z.string().min(1).max(500) }).strict(),
+  clanky_describe_operation: z.object({
+    operationId: z.string().min(1).max(500),
+    section: z.enum(["overview", "query", "body"]).nullable().default(null),
+    cursor: z.string().max(4096).nullable().default(null),
+  }).strict(),
   clanky_execute_operation: ExecuteOperationSchema.extend({
     confirmationDescription: VoiceConfirmationDescriptionSchema.nullable(),
   }),
-  clanky_get_ui_state: z.object({}).strict(),
+  clanky_get_ui_state: z.object({
+    section: z.enum(["route", "preferences"]).nullable().default(null),
+    cursor: z.string().max(4096).nullable().default(null),
+  }).strict(),
   clanky_ui_action: z.object({ action: ControlNavigationActionSchema }).strict(),
   clanky_watch_work: z.object({
     command: z.enum(["add", "remove", "list"]),
@@ -36,9 +45,9 @@ const schemas = {
 
 const descriptions: Record<keyof typeof schemas, string> = {
   clanky_find_operations: "Find authorized Clanky operations by words/domain/method. Empty text lists a page. Discover before acting.",
-  clanky_describe_operation: "Read the exact path/query/body contract and risk/completion policy for an operation.",
-  clanky_execute_operation: "Execute a described API operation with exact parameters/query and bodyJson (null without a body). For policy confirm, supply confirmationDescription: one or two short plain-text sentences in the user's language describing the exact action, named target and material consequences. No API paths, technical identifiers, JSON or credentials. Use null for other policies. Mutations are never retried automatically. High-risk actions prepare a visual confirmation, not execution.",
-  clanky_get_ui_state: "Read a fresh acknowledged snapshot of the originating client's route and saved task planning preferences. UI context is not authoritative entity state.",
+  clanky_describe_operation: "Read the exact contract and risk/completion policy. Start with section/cursor null; if contractSections are returned, read query/body separately. Content parts identify JSON paths; continue with nextCursor until null to obtain the complete schema.",
+  clanky_execute_operation: "Execute a described API operation with exact parameters/query and bodyJson (null without a body). Reads automatically select compact pages or literal conversation history. Follow nextCursor with the same read operation, filters and public body to read more; section=details and item read a row's original content. Content parts contain JSON paths and string offsets, not a generated summary. For policy confirm, supply confirmationDescription: one or two short plain-text sentences in the user's language describing the exact action, named target and material consequences. No API paths, technical identifiers, JSON or credentials. Use null for other policies. Mutations are never retried automatically. High-risk actions prepare a visual confirmation, not execution.",
+  clanky_get_ui_state: "Read fresh acknowledged originating-client context, not authoritative entity state. Start with section/cursor null; use route/preferences sections and nextCursor if the snapshot is large. Preferences include saved planning booleans and canonical model JSON.",
   clanky_ui_action: "Navigate the originating client or control its sidebar. Returns success only after that tab acknowledges the effect. Never supplies confirmation approval.",
   clanky_watch_work: "Watch selected owned chats/tasks/provisioning jobs for meaningful state changes. Ending voice stops watching, not the work.",
 };
@@ -46,6 +55,9 @@ const descriptions: Record<keyof typeof schemas, string> = {
 export const liveVoiceToolDefinitions = Object.entries(schemas).map(([name, schema]) => {
   const { $schema: _schema, ...parameters } = z.toJSONSchema(schema, {
     override: ({ zodSchema, jsonSchema }) => {
+      if (jsonSchema.type === "object" && jsonSchema.properties) {
+        jsonSchema.required = Object.keys(jsonSchema.properties);
+      }
       if (zodSchema === ControlNavigationActionSchema && jsonSchema.oneOf) {
         // Distinct type literals make anyOf equivalent; strict Responses tools do not support oneOf.
         jsonSchema.anyOf = jsonSchema.oneOf;
@@ -63,23 +75,44 @@ export async function executeLiveVoiceTool(options: {
   requestId: string;
   name: string;
   rawArguments: string;
+  maxReadBytes?: number;
 }): Promise<unknown> {
   try {
     if (options.actions.signal.aborted) return { ok: false, code: "voice_live_not_found", completion: "not_executed" };
     const args: unknown = JSON.parse(options.rawArguments);
     const { actions, service, requestId, observer } = options;
+    const maxBytes = options.maxReadBytes ?? LIVE_READ_BYTES;
     switch (options.name) {
       case "clanky_find_operations":
-        return service.find(actions.authority, schemas.clanky_find_operations.parse(args));
-      case "clanky_describe_operation":
-        return service.describe(actions.authority, schemas.clanky_describe_operation.parse(args).operationId);
+        return service.find(actions.authority, schemas.clanky_find_operations.parse(args), maxBytes);
+      case "clanky_describe_operation": {
+        const { operationId, section, cursor } = schemas.clanky_describe_operation.parse(args);
+        return service.describe(actions.authority, operationId, {
+          maxBytes,
+          ...(section ? { section } : {}), ...(cursor ? { cursor } : {}),
+        });
+      }
       case "clanky_execute_operation": {
         const { confirmationDescription, ...input } = schemas.clanky_execute_operation.parse(args);
-        return await actions.execute(input, requestId, confirmationDescription);
+        return await actions.execute(input, { requestId, confirmationDescription, maxBytes });
       }
-      case "clanky_get_ui_state":
-        schemas.clanky_get_ui_state.parse(args);
-        return await actions.getUiState(requestId);
+      case "clanky_get_ui_state": {
+        const { section, cursor } = schemas.clanky_get_ui_state.parse(args);
+        const outcome = await actions.getUiState(requestId);
+        if (outcome.status !== "context") return outcome;
+        if (!section && !cursor && readBytes(outcome) <= maxBytes) return outcome;
+        if (!section) {
+          return { status: "context", revision: outcome.context.revision, sections: ["route", "preferences"] };
+        }
+        const source = section === "route" ? outcome.context.route : {
+          planningPreferences: outcome.context.planningPreferences ?? null,
+          modelPreferences: outcome.context.modelPreferences ?? null,
+        };
+        return contentReadPage({
+          source, options: { ...(cursor ? { cursor } : {}), maxBytes },
+          scope: readRevision(["originating_ui", section]),
+        });
+      }
       case "clanky_ui_action":
         return await actions.uiAction(schemas.clanky_ui_action.parse(args).action, requestId);
       case "clanky_watch_work":

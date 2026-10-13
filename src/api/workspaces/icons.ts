@@ -288,6 +288,9 @@ export const workspaceIconRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Find workspace SVG and ICO icons available in a Git repository.",
     responseSchema: WorkspaceIconCandidatesResponseSchema,
+    operations: {
+      GET: { requestSchema: undefined, querySchema: undefined, automation: { policy: "read" } },
+    },
     async GET(req: Request, ctx) {
       const workspaceResult = await requireWorkspace(workspaceIdFromContext(ctx));
       if (workspaceResult instanceof Response) {

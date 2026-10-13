@@ -13,6 +13,8 @@ import {
   type RouteCatalogEntry,
 } from "@pablozaiden/webapp/server";
 import { DomainError } from "../domain/domain-error";
+import { contentReadPage, readBytes, readRevision } from "./resource-read-service";
+import { LIVE_READ_BYTES } from "./live-voice-output";
 
 export interface OperationRequest {
   method: HttpMethod;
@@ -143,7 +145,7 @@ export class ClankyOperationService {
     return { ...operation, metadata };
   }
 
-  find(authority: OperationAuthority, input: { text: string; domain: string | null; method: HttpMethod | null; cursor: number | null }) {
+  find(authority: OperationAuthority, input: { text: string; domain: string | null; method: HttpMethod | null; cursor: number | null }, maxBytes = LIVE_READ_BYTES) {
     const words = input.text.toLowerCase().split(/\s+/).filter(Boolean);
     const entries = [...this.operations].flatMap(([id, { entry, method }]) => {
       const metadata = resolveRouteOperation(entry, method);
@@ -157,13 +159,28 @@ export class ClankyOperationService {
       return [{ operationId: id, description, policy }];
     });
     const offset = input.cursor ?? 0;
-    return { operations: entries.slice(offset, offset + 20), nextCursor: offset + 20 < entries.length ? offset + 20 : null };
+    const operations: typeof entries = [];
+    for (const entry of entries.slice(offset, offset + 20)) {
+      operations.push(entry);
+      if (readBytes({ operations, nextCursor: offset + operations.length }) > maxBytes) {
+        operations.pop();
+        break;
+      }
+    }
+    if (!operations.length && offset < entries.length) {
+      operations.push({ ...entries[offset]!, description: "Describe this operation for its complete contract." });
+    }
+    return { operations, nextCursor: offset + operations.length < entries.length ? offset + operations.length : null };
   }
 
-  describe(authority: OperationAuthority, id: string) {
+  describe(authority: OperationAuthority, id: string, options: {
+    section?: "overview" | "query" | "body";
+    cursor?: string;
+    maxBytes?: number;
+  } = {}) {
     const { entry, method, metadata } = this.requireOperation(id, authority);
     const automation = metadata.automation!;
-    return {
+    const description = {
       operationId: id,
       description: metadata.description,
       policy: automation.policy,
@@ -174,9 +191,26 @@ export class ClankyOperationService {
       method,
       requirements: automation.credential ? ["Originating browser SSH credential handoff"] : [],
     };
+    const source = (options.section === "query" ? description.querySchema
+      : options.section === "body" ? description.requestSchema : description) ?? null;
+    const maxBytes = options.maxBytes ?? LIVE_READ_BYTES;
+    if (!options.cursor && readBytes(source) <= maxBytes) return source;
+    if (!options.section || options.section === "overview") {
+      return {
+        ...description,
+        querySchema: undefined,
+        requestSchema: undefined,
+        contractSections: ["query", "body"],
+        message: "Read the query and body sections separately; follow their nextCursor to read complete contracts.",
+      };
+    }
+    return contentReadPage({
+      source: source ?? null, options: { cursor: options.cursor, maxBytes },
+      scope: readRevision([id, options.section]),
+    });
   }
 
-  prepare(authority: OperationAuthority, input: ExecuteOperationInput): PreparedOperation {
+  prepare(authority: OperationAuthority, input: ExecuteOperationInput, options: { bounded?: boolean; maxBytes?: number } = {}): PreparedOperation {
     const { entry, method, metadata } = this.requireOperation(input.operationId, authority);
     const automation = metadata.automation!;
     const patterns = compileRoutePatterns(entry.path, entry.cliPath);
@@ -201,6 +235,13 @@ export class ClankyOperationService {
       throw new DomainError("voice_operation_invalid", "This query input is not available through voice.");
     }
     const querySchema = executableSchema(metadata.querySchema);
+    if (options.bounded && querySchema instanceof z.ZodObject && Object.hasOwn(querySchema.shape, "view")) {
+      const viewSchema = querySchema.shape["view"];
+      query["view"] ??= viewSchema instanceof z.ZodType && viewSchema.safeParse("conversation").success
+        ? "conversation" : "compact";
+      const maxBytes = options.maxBytes ?? LIVE_READ_BYTES;
+      query["maxBytes"] = String(Math.min(Number(query["maxBytes"] ?? maxBytes), maxBytes));
+    }
     if (!querySchema && Object.keys(query).length) throw new DomainError("voice_operation_invalid", "This operation has no query inputs.");
     assertPublicInputs(querySchema, query, automation.hiddenQuery);
     const parsedQuery = querySchema?.parse(query);

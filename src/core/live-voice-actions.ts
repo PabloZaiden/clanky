@@ -110,8 +110,11 @@ export class LiveVoiceActions {
     if (!result.ok) throw new DomainError("voice_operation_target", "The requested UI target is unavailable.");
   }
 
-  async execute(input: ExecuteOperationInput, requestId: string, confirmationDescription: string | null): Promise<OperationResult | Record<string, unknown>> {
-    const prepared = this.options.service.prepare(this.authority, input);
+  async execute(input: ExecuteOperationInput, options: {
+    requestId: string; confirmationDescription: string | null; maxBytes?: number;
+  }): Promise<OperationResult | Record<string, unknown>> {
+    const { requestId, confirmationDescription, maxBytes } = options;
+    const prepared = this.options.service.prepare(this.authority, input, { bounded: true, maxBytes });
     if (prepared.metadata.automation!.policy === "read") return await this.perform(prepared, requestId);
     return await this.serial(async () => {
       if (prepared.metadata.automation!.policy !== "confirm") return await this.perform(prepared, requestId);

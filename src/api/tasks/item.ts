@@ -22,6 +22,7 @@ import type { TaskConfig, Task } from "@/shared/task";
 import type { z } from "zod";
 import { UpdateTaskRequestSchema } from "@/contracts/schemas";
 import { isDomainError } from "../../domain/domain-error";
+import { workMetadataResponse } from "../resource-reads";
 
 const log = createLogger("api:tasks");
 
@@ -168,6 +169,8 @@ export const tasksItemRoutes = defineRoutes({
      * @returns Task object or 404 if not found
      */
     async GET(_req: Request, ctx): Promise<Response> {
+      const compact = workMetadataResponse(_req, { resource: "task", id: ctx.params["id"]!, notFound: { code: "not_found", message: "Task not found" } });
+      if (compact) return compact;
       log.debug("GET /api/tasks/:id", { taskId: ctx.params["id"]! });
       const task = await taskManager.getTaskSummary(ctx.params["id"]!);
       if (!task) {

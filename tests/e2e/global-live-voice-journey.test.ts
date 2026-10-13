@@ -266,7 +266,8 @@ test("global Live discovers owned work, resumes its conversation and leaves dele
         }, 404);
       },
     });
-    const createdTask = taskDecision["data"] as Task;
+    const taskReceipt = taskDecision["data"] as { id: string };
+    const createdTask = (await application.json<Task>(`/api/tasks/${taskReceipt.id}`)).data;
     expect(createdTask).toMatchObject({
       config: {
         workspaceId: workspaceB.id, baseBranch: repositoryB.branch, model,
@@ -285,7 +286,8 @@ test("global Live discovers owned work, resumes its conversation and leaves dele
     const chatDecision = await visualDecision({
       application, client, callId, approved: true,
     });
-    const createdChat = chatDecision["data"] as Chat;
+    const chatReceipt = chatDecision["data"] as { id: string };
+    const createdChat = (await application.json<Chat>(`/api/chats/${chatReceipt.id}`)).data;
     await client.open("open_chat", createdChat.config.id);
     const fresh = await client.next("get_context");
     await client.ack(fresh, { status: "context", context: client.context });

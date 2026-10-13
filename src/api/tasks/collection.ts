@@ -14,6 +14,10 @@ import { CreateTaskRequestSchema, GenerateTaskTitleRequestSchema } from "@/contr
 import { domainErrorResponse, errorResponse, internalErrorResponse } from "../helpers";
 import { parseAndValidate } from "../validation";
 import { startErrorResponse } from "./helpers";
+import { CollectionReadOptionsSchema } from "@/contracts/schemas/resource-read";
+import { readWorkCollection, readWorkCollectionItem } from "../../core/work-read-service";
+import { readScope } from "../../core/resource-read-service";
+import { resourcePageResponse } from "../resource-reads";
 
 const log = createLogger("api:tasks");
 
@@ -86,7 +90,21 @@ export const tasksCollectionRoutes = defineRoutes({
         automation: { policy: "confirm", reason: "Task settings may enable automatic plan acceptance or autonomous execution.", completion: "admission" },
       },
     },
-    async GET(_req: Request): Promise<Response> {
+    async GET(req: Request, ctx): Promise<Response> {
+      const url = new URL(req.url);
+      if (url.searchParams.get("view") === "compact" && url.searchParams.get("section") === "details" && url.searchParams.has("item")) {
+        return Response.json(await readWorkCollectionItem({
+          resource: "task",
+          options: CollectionReadOptionsSchema.parse(Object.fromEntries(url.searchParams)),
+        }));
+      }
+      if (url.searchParams.get("view") === "compact" && !url.searchParams.has("section") && !url.searchParams.has("item")) {
+        return resourcePageResponse(readWorkCollection({
+          resource: "task",
+          options: CollectionReadOptionsSchema.parse(Object.fromEntries(url.searchParams)),
+          scope: readScope(ctx.requireUser().id, url),
+        }));
+      }
       log.debug("GET /api/tasks - Listing all tasks");
       const tasks = await taskManager.getTaskSummaries();
       log.debug("GET /api/tasks - Retrieved tasks", { count: tasks.length });
