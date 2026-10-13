@@ -77,6 +77,23 @@ function randomPublicAddress(): string {
   return `11.${String(bytes[0] || 1)}.${String(bytes[1] || 1)}.${String(bytes[2] || 1)}`;
 }
 
+function getResponsesInputText(payload: unknown): string {
+  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+    return "";
+  }
+  const input = (payload as Record<string, unknown>)["input"];
+  if (!Array.isArray(input)) {
+    return "";
+  }
+  return input.map((entry) => {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+      return "";
+    }
+    const content = (entry as Record<string, unknown>)["content"];
+    return typeof content === "string" ? content : "";
+  }).join("\n\n");
+}
+
 export async function startVoiceProvider(
   runDirectory: string,
 ): Promise<ManagedVoiceProvider> {
@@ -162,13 +179,20 @@ export async function startVoiceProvider(
           return server.upgrade(request, { data: session }) ? undefined : new Response("Expected websocket", { status: 400 });
         }
         if (path === "/v1/responses" && request.method === "POST") {
-          await request.json();
+          const prompt = getResponsesInputText(await request.json());
+          const responseText = prompt.includes("Target language: English.")
+            && prompt.includes("Le serveur a redémarré.")
+            ? "The server restarted."
+            : prompt.includes("Target language: Spanish.")
+              && prompt.includes("Le serveur a redémarré.")
+              ? "El servidor se reinició."
+              : "OK";
           return Response.json({
             status: "completed",
             output: [{
               type: "message",
               role: "assistant",
-              content: [{ type: "output_text", text: "OK" }],
+              content: [{ type: "output_text", text: responseText }],
             }],
           });
         }

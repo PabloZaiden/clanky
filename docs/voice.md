@@ -13,8 +13,15 @@ clicked; later response text is not appended.
 
 In user settings, configure the provider URL and API key, a transcription
 model, and a text-generation model. These are needed for voice input and
-summary playback. Validate transcription, text generation, and Live Voice
-after changing their settings.
+summary playback and transcript translation. Validate transcription, text
+generation, and Live Voice after changing their settings.
+
+Assistant response blocks in chat, task, and agent-run transcripts can be
+translated to English or Spanish. Translation sends the selected block's text
+to the configured, validated shared text-generation model. Clanky returns the
+result to the browser for display in that block only; it does not modify or
+persist the original conversation. The configured provider receives the
+selected text and applies its own data handling.
 
 The `languageHints` setting applies to provider-backed transcription. Piper
 detects the speech text's language locally and does not use those hints.
@@ -220,6 +227,12 @@ model summarizes that content before Piper returns `audio/wav`.
 
 The `/api/voice/transcribe` endpoint continues to use the configured
 transcription provider.
+
+`POST /api/voice/translate` accepts
+`{"text":"<selected message text>","targetLanguage":"en"|"es"}` and returns
+`{"translatedText":"<translation>"}`. It requires the user's validated shared
+text-generation capability, accepts at most 30,000 characters, and does not
+persist or associate the submitted text with a chat, task, or agent run.
 
 ## Upstream voice assets
 

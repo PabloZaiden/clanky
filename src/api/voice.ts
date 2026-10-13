@@ -5,6 +5,7 @@
 import { defineRoutes, type RouteContext } from "@pablozaiden/webapp/server";
 import {
   VoiceSettingsUpdateSchema,
+  VoiceTranslationRequestSchema,
   VoiceValidationRequestSchema,
 } from "@/contracts/schemas";
 import { chatManager } from "../core/chat-manager";
@@ -198,6 +199,45 @@ const voiceBaseRoutes = defineRoutes({
         );
         return Response.json({ text });
       } catch (error) {
+        return voiceErrorResponse(error);
+      }
+    },
+  },
+
+  "/api/voice/translate": {
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "Translate selected transcript text with the user's validated shared text-generation model.",
+    requestSchema: VoiceTranslationRequestSchema,
+    operations: {
+      POST: {
+        requestSchema: VoiceTranslationRequestSchema,
+        querySchema: undefined,
+        automation: {
+          policy: "excluded",
+          reason: "Interactive transcript translation sends selected text to the user's configured provider.",
+        },
+      },
+    },
+    async POST(req: Request, _ctx: RouteContext): Promise<Response> {
+      const result = await parseAndValidate(VoiceTranslationRequestSchema, req);
+      if (!result.success) {
+        return result.response;
+      }
+      try {
+        const translatedText = await voiceManager.translateText(
+          result.data.text,
+          result.data.targetLanguage,
+          req.signal,
+        );
+        return Response.json({ translatedText });
+      } catch (error) {
+        if (
+          req.signal.aborted
+          || error instanceof DOMException && error.name === "AbortError"
+        ) {
+          throw error;
+        }
         return voiceErrorResponse(error);
       }
     },

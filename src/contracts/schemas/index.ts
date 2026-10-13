@@ -161,11 +161,15 @@ export {
 export {
   VoiceSettingsUpdateSchema,
   VoiceCapabilitySchema,
+  VoiceTranslationRequestSchema,
+  VoiceTranslationResponseSchema,
   VoiceValidationRequestSchema,
   LiveVoiceSessionRequestSchema,
   LiveVoiceAvailabilityResponseSchema,
   type LiveVoiceAvailabilityResponse,
   type VoiceSettingsUpdateRequest,
+  type VoiceTranslationRequest,
+  type VoiceTranslationResponse,
   type VoiceValidationRequest,
 } from "./voice";
 

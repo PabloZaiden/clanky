@@ -657,6 +657,7 @@ async function exerciseVoice(
     validated: true,
   });
 
+  await expectVoiceTranslations(app);
   await expectVoiceTranscription(app);
 
   await app.restart({
@@ -679,6 +680,26 @@ async function exerciseVoice(
     },
   });
   await expectVoiceTranscription(app);
+}
+
+async function expectVoiceTranslations(app: E2EApplication): Promise<void> {
+  const english = (await app.json<{ translatedText: string }>("/api/voice/translate", {
+    method: "POST",
+    body: JSON.stringify({
+      text: "Le serveur a redémarré.",
+      targetLanguage: "en",
+    }),
+  })).data;
+  expect(english.translatedText).toBe("The server restarted.");
+
+  const spanish = (await app.json<{ translatedText: string }>("/api/voice/translate", {
+    method: "POST",
+    body: JSON.stringify({
+      text: "Le serveur a redémarré.",
+      targetLanguage: "es",
+    }),
+  })).data;
+  expect(spanish.translatedText).toBe("El servidor se reinició.");
 }
 
 async function expectVoiceTranscription(app: E2EApplication): Promise<void> {
