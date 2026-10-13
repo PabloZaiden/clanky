@@ -1,29 +1,46 @@
 /**
- * Limited domain functions for the voice session's linked chat.
+ * Small model-facing tools for the user's global Clanky assistant.
  */
 
 import { z } from "zod";
-import { chatManager } from "./chat-manager";
-import { DomainError, isDomainError } from "../domain/domain-error";
-import type { Chat } from "@/shared";
+import { ControlNavigationActionSchema } from "@/shared/clanky-control";
+import { ExecuteOperationSchema, type ClankyOperationService } from "./clanky-operation-service";
+import { VoiceConfirmationDescriptionSchema } from "@/shared/live-voice";
+import type { LiveVoiceActions } from "./live-voice-actions";
+import type { LiveVoiceObserver } from "./live-voice-observer";
+import { isDomainError } from "../domain/domain-error";
+import { createLogger } from "@pablozaiden/webapp/server";
 
+const log = createLogger("core:voice-tools");
 const schemas = {
-  send: z.object({ message: z.string().trim().min(1).max(30_000) }).strict(),
-  steer: z.object({ inputId: z.string().min(1).max(500) }).strict(),
-  get_status: z.object({}).strict(),
-  answer_question: z.object({
-    requestId: z.string().min(1).max(500),
-    answers: z.array(z.array(z.string().max(8_000)).max(20)).min(1).max(20),
+  clanky_find_operations: z.object({
+    text: z.string().max(500),
+    domain: z.string().max(100).nullable(),
+    method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]).nullable(),
+    cursor: z.number().int().nonnegative().max(10_000).nullable(),
   }).strict(),
-  interrupt: z.object({ confirmed: z.literal(true) }).strict(),
+  clanky_describe_operation: z.object({ operationId: z.string().min(1).max(500) }).strict(),
+  clanky_execute_operation: ExecuteOperationSchema.extend({
+    confirmationDescription: VoiceConfirmationDescriptionSchema.nullable(),
+  }),
+  clanky_get_ui_state: z.object({}).strict(),
+  clanky_ui_action: z.object({ action: ControlNavigationActionSchema }).strict(),
+  clanky_watch_work: z.object({
+    command: z.enum(["add", "remove", "list"]),
+    targets: z.array(z.object({
+      kind: z.enum(["chat", "task", "provisioning"]),
+      id: z.string().min(1).max(500),
+    }).strict()).max(16),
+  }).strict(),
 };
 
 const descriptions: Record<keyof typeof schemas, string> = {
-  send: "Send an instruction to the linked agent, or queue it if busy. Does not wait for task completion.",
-  steer: "Inject an existing queued input into the active agent turn. Acceptance is not completion.",
-  get_status: "Read authoritative agent status, queued inputs, pending questions and recent completed results.",
-  answer_question: "Answer a pending agent question in the linked chat.",
-  interrupt: "Stop the agent's work only after an explicit user request. This is not voice playback interruption.",
+  clanky_find_operations: "Find authorized Clanky operations by words/domain/method. Empty text lists a page. Discover before acting.",
+  clanky_describe_operation: "Read the exact path/query/body contract and risk/completion policy for an operation.",
+  clanky_execute_operation: "Execute a described API operation with exact parameters/query and bodyJson (null without a body). For policy confirm, supply confirmationDescription: one or two short plain-text sentences in the user's language describing the exact action, named target and material consequences. No API paths, technical identifiers, JSON or credentials. Use null for other policies. Mutations are never retried automatically. High-risk actions prepare a visual confirmation, not execution.",
+  clanky_get_ui_state: "Read a fresh acknowledged snapshot of the originating client's route and saved task planning preferences. UI context is not authoritative entity state.",
+  clanky_ui_action: "Navigate the originating client or control its sidebar. Returns success only after that tab acknowledges the effect. Never supplies confirmation approval.",
+  clanky_watch_work: "Watch selected owned chats/tasks/provisioning jobs for meaningful state changes. Ending voice stops watching, not the work.",
 };
 
 export const liveVoiceToolDefinitions = Object.entries(schemas).map(([name, schema]) => {
@@ -31,66 +48,46 @@ export const liveVoiceToolDefinitions = Object.entries(schemas).map(([name, sche
   return { type: "function", name, description: descriptions[name as keyof typeof schemas], parameters, strict: true };
 });
 
-export function publicLiveChatState(chat: Chat): Record<string, unknown> {
-  return {
-    status: chat.state.status,
-    error: chat.state.error ? { code: chat.state.error.code, message: chat.state.error.message.slice(0, 1_000) } : null,
-    queued: (chat.state.queuedMessages ?? []).slice(-10).map(({ id, content }) => ({ id, content: content.slice(0, 1_000) })),
-    questions: (chat.state.harness?.questions ?? []).filter((question) => question.status === "pending").slice(-3).map((request) => ({
-      requestId: request.requestId,
-      questions: request.questions.slice(0, 3).map((question) => ({
-        ...question, question: question.question.slice(0, 1_000),
-        header: question.header.slice(0, 500),
-        options: question.options.slice(0, 10).map((option) => ({ label: option.label.slice(0, 200), description: option.description.slice(0, 200) })),
-      })),
-    })),
-    permissionsPending: (chat.state.pendingPermissionRequests ?? []).filter((request) => request.status === "pending").length,
-    results: chat.state.messages.filter((message) => message.role === "assistant" && message.id !== chat.state.activeMessageId)
-      .slice(-2).map((message) => ({ id: message.id, content: message.content.slice(-4_000) })),
-  };
-}
-
-export async function executeLiveVoiceTool(
-  scope: { chatId: string; clientId: string; canExecute?: () => boolean },
-  name: string,
-  rawArguments: string,
-): Promise<Record<string, unknown>> {
+export async function executeLiveVoiceTool(options: {
+  service: ClankyOperationService;
+  actions: LiveVoiceActions;
+  observer: LiveVoiceObserver;
+  requestId: string;
+  name: string;
+  rawArguments: string;
+}): Promise<unknown> {
   try {
-    const chat = await chatManager.getChat(scope.chatId);
-    if (!chat) throw new DomainError("chat_not_found", "The linked chat is unavailable.");
-    if (scope.canExecute?.() === false) throw new DomainError("voice_live_not_found", "The Live call has ended.");
-    const args: unknown = JSON.parse(rawArguments);
-    switch (name) {
-      case "send": {
-        const { message } = schemas.send.parse(args);
-        const updated = await chatManager.sendMessage(scope.chatId, { message, clientId: scope.clientId });
-        return { ok: true, state: publicLiveChatState(updated), completion: "not_confirmed" };
+    if (options.actions.signal.aborted) return { ok: false, code: "voice_live_not_found", completion: "not_executed" };
+    const args: unknown = JSON.parse(options.rawArguments);
+    const { actions, service, requestId, observer } = options;
+    switch (options.name) {
+      case "clanky_find_operations":
+        return service.find(actions.authority, schemas.clanky_find_operations.parse(args));
+      case "clanky_describe_operation":
+        return service.describe(actions.authority, schemas.clanky_describe_operation.parse(args).operationId);
+      case "clanky_execute_operation": {
+        const { confirmationDescription, ...input } = schemas.clanky_execute_operation.parse(args);
+        return await actions.execute(input, requestId, confirmationDescription);
       }
-      case "steer": {
-        const { inputId } = schemas.steer.parse(args);
-        const result = await chatManager.steerQueuedMessage(scope.chatId, inputId);
-        return { ok: true, admission: result.admission, completion: "not_confirmed" };
-      }
-      case "get_status":
-        schemas.get_status.parse(args);
-        return { ok: true, state: publicLiveChatState(chat) };
-      case "answer_question": {
-        const { requestId, answers } = schemas.answer_question.parse(args);
-        const updated = await chatManager.replyToQuestion(scope.chatId, requestId, answers, scope.clientId);
-        return { ok: true, state: publicLiveChatState(updated) };
-      }
-      case "interrupt":
-        schemas.interrupt.parse(args);
-        await chatManager.interruptChat(scope.chatId, "User requested stop through Live voice");
-        return { ok: true, status: "interrupt_requested", completion: "not_confirmed" };
+      case "clanky_get_ui_state":
+        schemas.clanky_get_ui_state.parse(args);
+        return await actions.getUiState(requestId);
+      case "clanky_ui_action":
+        return await actions.uiAction(schemas.clanky_ui_action.parse(args).action, requestId);
+      case "clanky_watch_work":
+        return await observer.change(schemas.clanky_watch_work.parse(args));
       default:
-        throw new DomainError("harness_unsupported_feature", "This voice action is unavailable.");
+        return { ok: false, code: "voice_tool_unavailable", message: "Discover a supported tool.", completion: "not_executed" };
     }
   } catch (error) {
     if (error instanceof z.ZodError || error instanceof SyntaxError) {
-      return { ok: false, code: "invalid_arguments", message: "The voice action arguments are invalid." };
+      log.warn("Invalid voice tool input", { tool: options.name });
+      return { ok: false, code: "invalid_arguments", message: "Use the exact documented contract.", completion: "not_executed" };
     }
-    if (isDomainError(error)) return { ok: false, code: error.code, message: "The chat action could not be completed. Check the chat state before retrying." };
+    if (isDomainError(error)) {
+      log.warn("Voice tool rejected", { tool: options.name, code: error.code });
+      return { ok: false, code: error.code, message: error.message, completion: "not_executed" };
+    }
     throw error;
   }
 }

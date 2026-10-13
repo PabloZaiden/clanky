@@ -19,6 +19,13 @@ export const chatsMessagingRoutes = defineRoutes({
     tags: ["chats"],
     cliPath: "chats/:id/questions/:requestId",
     requestSchema: ReplyToChatQuestionRequestSchema,
+    operations: {
+      POST: {
+        requestSchema: ReplyToChatQuestionRequestSchema,
+        querySchema: undefined,
+        automation: { policy: "write", hiddenInputs: ["clientId"], completion: "admission" },
+      },
+    },
     async POST(req: Request, ctx): Promise<Response> {
       const validation = await parseAndValidate(ReplyToChatQuestionRequestSchema, req);
       if (!validation.success) return validation.response;
@@ -45,6 +52,9 @@ export const chatsMessagingRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Reconcile native admission of an owned input without sending it again.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "write", completion: "admission" } },
+    },
     async POST(_req: Request, ctx): Promise<Response> {
       try {
         const result = await chatManager.reconcileQueuedMessage(ctx.params["id"]!, ctx.params["messageId"]!);
@@ -61,6 +71,9 @@ export const chatsMessagingRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Inject an existing queued message into the active native execution without restarting it.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "write", completion: "admission" } },
+    },
     async POST(_req: Request, ctx): Promise<Response> {
       try {
         const result = await chatManager.steerQueuedMessage(ctx.params["id"]!, ctx.params["messageId"]!);
@@ -78,6 +91,22 @@ export const chatsMessagingRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Send a message to a chat session.",
     requestSchema: SendChatMessageRequestSchema,
+    operations: {
+      POST: {
+        requestSchema: SendChatMessageRequestSchema,
+        querySchema: undefined,
+        automation: {
+          policy: "write",
+          hiddenInputs: ["credentialToken", "clientId"],
+          completion: "admission",
+          credential: {
+            kind: "ssh",
+            resource: { name: "chats", idParameter: "id", purpose: "connection" },
+            input: "credentialToken",
+          },
+        },
+      },
+    },
     async POST(req: Request, ctx): Promise<Response> {
       const existing = await chatManager.getChatSummary(ctx.params["id"]!);
       if (!existing) {
@@ -119,6 +148,9 @@ export const chatsMessagingRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Delete a queued chat message.",
+    operations: {
+      DELETE: { requestSchema: undefined, querySchema: undefined, automation: { policy: "confirm", reason: "Deletes a queued instruction before delivery." } },
+    },
     async DELETE(_req: Request, ctx): Promise<Response> {
       try {
         const updated = await chatManager.removeQueuedMessage(ctx.params["id"]!, ctx.params["messageId"]!);
@@ -150,6 +182,13 @@ export const chatsMessagingRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Approve or deny a pending chat permission request.",
     requestSchema: ReplyToChatPermissionRequestSchema,
+    operations: {
+      POST: {
+        requestSchema: ReplyToChatPermissionRequestSchema,
+        querySchema: undefined,
+        automation: { policy: "confirm", reason: "May grant the agent permission to act on the execution host.", completion: "admission" },
+      },
+    },
     async POST(req: Request, ctx): Promise<Response> {
       const existing = await chatManager.getChat(ctx.params["id"]!);
       if (!existing) {

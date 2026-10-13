@@ -14,7 +14,7 @@ import type { DeleteWorkspaceRequest } from "@/contracts/schemas/workspace";
 import { createLogger } from "@pablozaiden/webapp/web";
 import { apiRequest, readApiResponse, requestApiResponse } from "../lib/api-client";
 import { useRealtimeRefreshWithRecovery } from "./useRealtimeStream";
-import { useResourceRefresh } from "./useResourceRefresh";
+import { useResourceRefresh, type ResourceRefreshOptions } from "./useResourceRefresh";
 
 export interface UseWorkspacesResult {
   /** List of workspaces */
@@ -26,7 +26,7 @@ export interface UseWorkspacesResult {
   /** Whether a create/update/delete operation is in progress */
   saving: boolean;
   /** Refresh the workspaces list */
-  refresh: () => Promise<void>;
+  refresh: (options?: ResourceRefreshOptions) => Promise<void>;
   /** Create a new workspace */
   createWorkspace: (request: CreateWorkspaceRequest) => Promise<Workspace | null>;
   /** Update a workspace */
@@ -70,8 +70,8 @@ export function useWorkspaces(): UseWorkspacesResult {
     onError: handleRefreshError,
   });
 
-  const refresh = useCallback(async () => {
-    await refreshResource.refresh();
+  const refresh = useCallback(async (options: ResourceRefreshOptions = {}) => {
+    await refreshResource.refresh(options);
   }, [refreshResource.refresh]);
 
   const refreshInBackground = useCallback(

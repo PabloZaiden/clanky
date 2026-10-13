@@ -11,6 +11,8 @@ import {
 import { errorResponse, internalErrorResponse, requireWorkspace, successResponse } from "../helpers";
 import { parseAndValidate } from "../validation";
 import { chatActionErrorResponse, toLightweightChat } from "./helpers";
+import { WorkspaceFilterQuerySchema } from "../route-schemas";
+import { z } from "zod";
 
 const log = createLogger("api:chats");
 const SSH_CREDENTIAL_TOKEN_HEADER = "x-clanky-ssh-credential-token";
@@ -73,6 +75,22 @@ export const chatsCrudRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "List chats or create a chat session.",
     requestSchema: CreateChatRequestSchema,
+    operations: {
+      GET: {
+        description: "List chats, optionally filtered by workspace.",
+        requestSchema: undefined,
+        querySchema: WorkspaceFilterQuerySchema,
+        automation: { policy: "read" },
+      },
+      POST: {
+        description: "Create a chat; automatically approving permissions requires visual confirmation.",
+        requestSchema: CreateChatRequestSchema.safeExtend({
+          autoApprovePermissions: z.boolean().default(false),
+        }).strict(),
+        querySchema: undefined,
+        automation: { policy: "confirm", reason: "Creates agent work with configurable automatic permissions." },
+      },
+    },
     async GET(req: Request, _ctx): Promise<Response> {
       const url = new URL(req.url);
       const workspaceId = url.searchParams.get("workspaceId");
@@ -140,6 +158,13 @@ export const chatsCrudRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Create a fresh chat in the source chat's current workspace directory.",
+    operations: {
+      POST: {
+        requestSchema: undefined,
+        querySchema: undefined,
+        automation: { policy: "confirm", reason: "The new chat inherits the source chat's automatic permission settings." },
+      },
+    },
     async POST(_req: Request, ctx): Promise<Response> {
       const chatId = ctx.params["id"]!;
       try {
@@ -168,6 +193,35 @@ export const chatsCrudRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Read, update, or delete a chat session; remote cleanup may continue after deletion. Chat deletion accepts x-clanky-ssh-credential-token when remote history cleanup requires SSH credentials.",
     requestSchema: UpdateChatRequestSchema,
+    operations: {
+      GET: {
+        description: "Read the current chat summary and queued interactions.",
+        requestSchema: undefined,
+        querySchema: undefined,
+        automation: { policy: "read" },
+      },
+      PATCH: {
+        description: "Update a chat's name, model, branch, worktree, or privacy.",
+        requestSchema: UpdateChatRequestSchema,
+        querySchema: undefined,
+        automation: { policy: "write" },
+      },
+      DELETE: {
+        description: "Delete a chat and admit its remote cleanup.",
+        requestSchema: undefined,
+        querySchema: undefined,
+        automation: {
+          policy: "confirm",
+          reason: "Permanently deletes chat history and schedules external cleanup.",
+          completion: "admission",
+          credential: {
+            kind: "ssh",
+            resource: { name: "chats", idParameter: "id", purpose: "history-cleanup" },
+            header: SSH_CREDENTIAL_TOKEN_HEADER,
+          },
+        },
+      },
+    },
     async GET(_req: Request, ctx): Promise<Response> {
       const chat = await chatManager.getChatSummary(ctx.params["id"]!);
       if (!chat) {

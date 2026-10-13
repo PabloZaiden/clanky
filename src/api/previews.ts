@@ -26,6 +26,9 @@ export const previewRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "List previews for a workspace.",
+    operations: {
+      GET: { requestSchema: undefined, querySchema: undefined, automation: { policy: "read" } },
+    },
     async GET(_req: Request, ctx): Promise<Response> {
       try {
         const previews = await previewSessionManager.listWorkspacePreviews(ctx.params["workspaceId"]!);
@@ -44,6 +47,9 @@ export const previewRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "List direct previews for a local or Mesh execution host.",
+    operations: {
+      GET: { requestSchema: undefined, querySchema: undefined, automation: { policy: "read" } },
+    },
     async GET(_req: Request, ctx): Promise<Response> {
       const ref = executionHostRefFromParts(
         ctx.params["kind"]!,
@@ -73,6 +79,9 @@ export const previewRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "List all active previews for the current user.",
+    operations: {
+      GET: { requestSchema: undefined, querySchema: undefined, automation: { policy: "read" } },
+    },
     async GET(_req: Request, _ctx: RouteContext): Promise<Response> {
       try {
         const previews = await previewSessionManager.listActivePreviews();
@@ -88,6 +97,9 @@ export const previewRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Close an active preview.",
+    operations: {
+      DELETE: { requestSchema: undefined, querySchema: undefined, automation: { policy: "confirm", reason: "Closes an active preview and its transport." } },
+    },
     async DELETE(_req: Request, ctx): Promise<Response> {
       try {
         const closed = await previewSessionManager.closePreview(ctx.params["previewId"]!, "Closed from web UI");

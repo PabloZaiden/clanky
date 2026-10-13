@@ -24,6 +24,9 @@ export const tasksReviewRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Address review comments for a task.",
     requestSchema: AddressCommentsRequestSchema,
+    operations: {
+      POST: { requestSchema: AddressCommentsRequestSchema, querySchema: undefined, automation: { policy: "write", completion: "admission" } },
+    },
     /**
      * POST /api/tasks/:id/address-comments - Start addressing reviewer comments.
      *
@@ -97,6 +100,9 @@ export const tasksReviewRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Read review history for a task.",
+    operations: {
+      GET: { requestSchema: undefined, querySchema: undefined, automation: { policy: "read" } },
+    },
     /**
      * GET /api/tasks/:id/review-history - Get review history for a task.
      *
@@ -158,6 +164,9 @@ export const tasksReviewRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Enable automatic pull request monitoring for a task.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "confirm", reason: "Enables automatic review and pull request actions.", completion: "admission" } },
+    },
     async POST(_req: Request, ctx): Promise<Response> {
       try {
         const result = await taskManager.startAutomaticPrFlow(ctx.params["id"]!);
@@ -197,6 +206,9 @@ export const tasksReviewRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Disable automatic pull request monitoring for a task.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "write", completion: "admission" } },
+    },
     async POST(_req: Request, ctx): Promise<Response> {
       try {
         const result = await taskManager.stopAutomaticPrFlow(ctx.params["id"]!);
@@ -236,6 +248,9 @@ export const tasksReviewRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Enable pull request auto-merge for a task.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "confirm", reason: "Allows the remote pull request to merge automatically.", completion: "admission" } },
+    },
     async POST(_req: Request, ctx): Promise<Response> {
       try {
         const result = await taskManager.enablePullRequestAutoMerge(ctx.params["id"]!);

@@ -18,6 +18,9 @@ export const tasksStopRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Stop an active task run.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "write", completion: "admission" } },
+    },
     /**
      * POST /api/tasks/:id/stop - Stop an active task without deleting it.
      *

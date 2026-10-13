@@ -34,6 +34,20 @@ export const sshServersRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "List or create standalone SSH servers.",
     requestSchema: CreateSshServerRequestSchema,
+    operations: {
+      GET: {
+        description: "List standalone SSH server registrations without credentials.",
+        requestSchema: undefined,
+        querySchema: undefined,
+        automation: { policy: "read" },
+      },
+      POST: {
+        description: "Register a standalone SSH server without credential material.",
+        requestSchema: CreateSshServerRequestSchema,
+        querySchema: undefined,
+        automation: { policy: "write" },
+      },
+    },
     async GET(_req: Request, _ctx: RouteContext): Promise<Response> {
       try {
         return Response.json(await sshServerManager.listServers());
@@ -64,6 +78,26 @@ export const sshServersRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Update or delete a standalone SSH server.",
     requestSchema: UpdateSshServerRequestSchema,
+    operations: {
+      GET: {
+        description: "Read a standalone SSH server registration.",
+        requestSchema: undefined,
+        querySchema: undefined,
+        automation: { policy: "read" },
+      },
+      PATCH: {
+        description: "Update a standalone SSH server registration.",
+        requestSchema: UpdateSshServerRequestSchema,
+        querySchema: undefined,
+        automation: { policy: "confirm", reason: "May change the remote host or account used by dependent work." },
+      },
+      DELETE: {
+        description: "Delete a standalone SSH server registration.",
+        requestSchema: undefined,
+        querySchema: undefined,
+        automation: { policy: "confirm", reason: "Deletes the SSH server registration and associated credential state." },
+      },
+    },
     async GET(_req: Request, ctx): Promise<Response> {
       try {
         const server = await sshServerManager.getServer(ctx.params["id"]!);
@@ -118,6 +152,9 @@ export const sshServersRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Read the public key for a standalone SSH server.",
+    operations: {
+      GET: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Credential-encryption handshake belongs to the private browser credential exchange." } },
+    },
     async GET(_req: Request, ctx): Promise<Response> {
       try {
         const publicKey = await sshServerKeyManager.ensurePublicKey(ctx.params["id"]!);
@@ -137,6 +174,13 @@ export const sshServersRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Exchange an encrypted SSH credential for a temporary token.",
     requestSchema: SshCredentialExchangeRequestSchema,
+    operations: {
+      POST: {
+        requestSchema: SshCredentialExchangeRequestSchema,
+        querySchema: undefined,
+        automation: { policy: "excluded", reason: "Exchanges encrypted credential material for a private token; never a model operation." },
+      },
+    },
     async POST(req: Request, ctx): Promise<Response> {
       const validation = await parseAndValidate(SshCredentialExchangeRequestSchema, req);
       if (!validation.success) {

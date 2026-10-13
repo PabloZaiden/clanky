@@ -18,6 +18,7 @@ import type { MeshStateEvent, HarnessStateEvent } from "./core/event-emitter";
 import { createToolCallSummary, serializeExecutionHostRef } from "@/shared";
 import { isChatTerminalStatus } from "@/shared/chat";
 import type { ControlUiActionEvent } from "@/shared/clanky-control";
+import type { LiveVoiceActivityEvent } from "@/shared/live-voice";
 import { sanitizeProvisioningEvent } from "./lib/sensitive-data";
 import type {
   RealtimeBus,
@@ -99,12 +100,15 @@ export type ClankyDomainEvent =
   | ProvisioningEvent
   | PreviewEvent
   | HarnessStateEvent
-  | MeshStateEvent;
+  | MeshStateEvent
+  | ControlUiActionEvent
+  | LiveVoiceActivityEvent;
 
 export type ClankyStreamEvent =
   | RetainedTaskEvent
   | RetainedChatEvent
   | ControlUiActionEvent
+  | LiveVoiceActivityEvent
   | RetainedAgentEvent
   | RetainedProvisioningEvent;
 
@@ -345,10 +349,13 @@ export function publishClankyDomainEvent(
       return;
     case "control.ui_action":
       publishStream(publisher, owner, event, {
-        chatId: event.chatId,
-        workspaceId: event.workspaceId,
+        ...(event.source.kind === "chat_turn"
+          ? { chatId: event.source.chatId, workspaceId: event.source.workspaceId } : {}),
         clientId: event.clientId,
       });
+      return;
+    case "voice.activity":
+      publishStream(publisher, owner, event, { clientId: event.clientId });
       return;
 
     case "agent.created":

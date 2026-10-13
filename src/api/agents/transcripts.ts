@@ -3,6 +3,7 @@
  */
 
 import { defineRoutes } from "@pablozaiden/webapp/server";
+import { TranscriptSnapshotQuerySchema } from "../route-schemas";
 import { getAgentRunTranscriptSnapshot, getAgentRunTranscriptToolCall } from "../../core/agent-run-transcript-service";
 import { getTranscriptSnapshotEtag } from "../../core/transcript-service";
 import { errorResponse, internalErrorResponse } from "../helpers";
@@ -25,6 +26,14 @@ export const transcriptRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Read the latest page of up to 100 non-empty assistant responses for an agent run; use before for older history or full=1 for the complete transcript.",
+    operations: {
+      GET: {
+        description: "Read one bounded page of agent-run history; use before for older history.",
+        requestSchema: undefined,
+        querySchema: TranscriptSnapshotQuerySchema,
+        automation: { policy: "read", hiddenQuery: ["full"] },
+      },
+    },
     async GET(req: Request, ctx): Promise<Response> {
       const options = parseTranscriptSnapshotOptions(req);
       if (options instanceof Response) {
@@ -67,6 +76,9 @@ export const transcriptRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Read one complete agent-run tool-call payload.",
+    operations: {
+      GET: { requestSchema: undefined, querySchema: undefined, automation: { policy: "read" } },
+    },
     async GET(_req: Request, ctx): Promise<Response> {
       try {
         const toolCall = await getAgentRunTranscriptToolCall(ctx.params["id"]!, ctx.params["toolCallId"]!);

@@ -17,6 +17,13 @@ export const tasksDraftRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Start draft generation for a task.",
     requestSchema: StartDraftRequestSchema,
+    operations: {
+      POST: {
+        requestSchema: StartDraftRequestSchema,
+        querySchema: undefined,
+        automation: { policy: "write", completion: "admission" },
+      },
+    },
     /**
      * POST /api/tasks/:id/draft/start - Start a draft task.
      *

@@ -10,6 +10,9 @@ export const meshAcpRoutes = defineRoutes({
     auth: "public",
     sameOrigin: "never",
     description: "Open an authenticated mesh ACP relay for a CommandExecutor session.",
+    operations: {
+      GET: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Authenticated raw Mesh ACP WebSocket transport, not a user JSON operation." } },
+    },
     tags: ["mesh", "internal", "execution", "acp"],
     async GET(req, ctx): Promise<Response | undefined> {
       const sessionId = req.headers.get("x-clanky-mesh-session-id");
@@ -38,6 +41,9 @@ export const meshAcpRoutes = defineRoutes({
     auth: "public",
     sameOrigin: "never",
     description: "Renew an authenticated mesh ACP relay lease.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Internal authenticated Mesh execution-lease protocol." } },
+    },
     tags: ["mesh", "internal", "execution", "acp"],
     async POST(req): Promise<Response> {
       const sessionId = req.headers.get("x-clanky-mesh-session-id");

@@ -22,6 +22,9 @@ export const meshHarnessRoutes = defineRoutes({
   "/api/mesh/internal/harness/rpc": {
     auth: "public", sameOrigin: "never",
     description: "Operate an owned native harness on a supported Mesh execution host.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Internal authenticated native-harness RPC transport." } },
+    },
     tags: ["mesh", "internal", "harness"],
     async POST(req, ctx): Promise<Response> {
       ctx.server?.timeout(req, 0);
@@ -53,6 +56,9 @@ export const meshHarnessRoutes = defineRoutes({
   "/api/mesh/internal/harness/events": {
     auth: "public", sameOrigin: "never",
     description: "Observe an owned native conversation for its whole lifetime.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Internal long-lived native-harness event stream." } },
+    },
     tags: ["mesh", "internal", "harness"],
     async POST(req, ctx): Promise<Response> {
       ctx.server?.timeout(req, 0);
@@ -123,6 +129,9 @@ export const meshHarnessRoutes = defineRoutes({
   "/api/mesh/internal/harness/renew": {
     auth: "public", sameOrigin: "never",
     description: "Renew a native Mesh execution lease without replacing its binding.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Internal authenticated native-harness execution-lease protocol." } },
+    },
     tags: ["mesh", "internal", "harness"],
     async POST(req): Promise<Response> {
       const id = req.headers.get("x-clanky-mesh-session-id");

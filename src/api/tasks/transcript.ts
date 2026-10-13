@@ -1,4 +1,5 @@
 import { defineRoutes } from "@pablozaiden/webapp/server";
+import { TranscriptSnapshotQuerySchema } from "../route-schemas";
 import { errorResponse, internalErrorResponse } from "../helpers";
 import {
   getTaskTranscriptSnapshot,
@@ -29,6 +30,14 @@ export const tasksTranscriptRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Read the latest page of up to 100 non-empty assistant responses for a task; use before for older history or full=1 for the complete transcript.",
+    operations: {
+      GET: {
+        description: "Read one bounded page of task history; use before for older history.",
+        requestSchema: undefined,
+        querySchema: TranscriptSnapshotQuerySchema,
+        automation: { policy: "read", hiddenQuery: ["full"] },
+      },
+    },
     async GET(req: Request, ctx): Promise<Response> {
       const options = parseTranscriptSnapshotOptions(req);
       if (options instanceof Response) {
@@ -69,6 +78,9 @@ export const tasksTranscriptRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Read one complete task tool-call payload.",
+    operations: {
+      GET: { requestSchema: undefined, querySchema: undefined, automation: { policy: "read" } },
+    },
     async GET(_req: Request, ctx): Promise<Response> {
       try {
         const toolCall = await getTaskTranscriptToolCall(ctx.params["id"]!, ctx.params["toolCallId"]!);

@@ -53,7 +53,6 @@ export interface ConversationComposerProps {
   status?: ConversationComposerStatus;
   questionAnswerInputFocused?: boolean;
   voice?: ConversationComposerVoice;
-  liveVoice?: { available: boolean; busy: boolean; onStart: () => Promise<void> };
   onSubmit: (submission: ConversationComposerSubmission) => Promise<boolean | void>;
   onInterrupt?: () => Promise<boolean | void>;
 }

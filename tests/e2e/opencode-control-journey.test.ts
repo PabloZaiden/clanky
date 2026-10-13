@@ -5,7 +5,6 @@ import { delimiter, join } from "node:path";
 import { E2EApplication } from "./support/application";
 import { pollUntil } from "./support/polling";
 import { installExternalNativeOpenCodeProvider } from "./support/provider";
-import { createFixtureLiveOffer, startVoiceProvider, stopVoiceProvider, type ManagedVoiceProvider } from "./support/voice-provider";
 import { MESH_OPERATION_TIMEOUT_MS } from "./support/timeouts";
 import {
   compiledClankyCommand, enrollMeshWorker, meshJsonRequest, meshNodeDiagnostics,
@@ -22,7 +21,6 @@ interface Chat {
 interface Snapshot {
   transcript: {
     messages: Array<{ role: string; content: string }>;
-    logs: Array<{ details?: { logKind?: string; callId?: string } }>;
   };
 }
 interface ToolResult {
@@ -32,7 +30,8 @@ interface ToolResult {
 }
 interface Command { name: string; input: Record<string, unknown> }
 interface UiAction {
-  type: string; actionId: string; chatId: string; clientId: string; turnId: string;
+  type: string; actionId: string; clientId: string;
+  source: { kind: "chat_turn"; chatId: string; workspaceId: string; turnId: string };
   action: { type: string; workspaceId: string; filePath?: string };
 }
 
@@ -106,68 +105,19 @@ async function operateWorkspace(client: Client, id: string, workspaceId: string,
   )).toBe(true);
 }
 
-async function configureVoice(client: Client, provider: ManagedVoiceProvider): Promise<void> {
-  await client.json("/api/voice/settings", {
-    method: "PUT", body: JSON.stringify({
-      baseUrl: provider.baseUrl, apiKey: provider.apiKey,
-      models: { transcription: "gpt-transcribe", text: "e2e-text" }, languageHints: ["en"],
-      live: { useVoiceProvider: true, baseUrl: "", model: "gpt-live-1" },
-    }),
-  });
-}
-
-async function useLiveVoice(client: Client, options: {
-  chatId: string; clientId: string; scenario: "ordinary" | "steer"; expectedText: string;
-}): Promise<string> {
-  const { chatId, clientId, scenario, expectedText } = options;
-  expect((await client.json<{ supported: boolean }>(`/api/chats/${chatId}/live-voice`)).data.supported).toBe(true);
-  const call = (await client.json<{ call: { id: string; status: string } }>(`/api/chats/${chatId}/live-voice`, {
-    method: "POST", body: JSON.stringify({ clientId, sdp: createFixtureLiveOffer(scenario) }),
-  }, 201)).data.call;
-  expect(call.status).toBe("active");
-  await pollUntil(async () => (await client.json<Snapshot>(`/api/chats/${chatId}/snapshot?full=1`)).data,
-    (snapshot) => {
-      const messages = snapshot.transcript.messages;
-      const instructionIndex = messages.findLastIndex((message) => message.role === "user"
-        && message.content.includes(scenario === "ordinary"
-          ? "Describe the ordinary Live chat request."
-          : "Wait for a steering instruction, then list workspaces for the Live caller."));
-      const subsequent = messages.slice(instructionIndex + 1);
-      // Native work can finish before the steering admission is persisted in the transcript.
-      return instructionIndex >= 0 && subsequent.some((message) => message.role === "assistant" && message.content.includes(expectedText))
-        && (scenario === "ordinary" || subsequent.some((message) => message.role === "user" && message.content.includes("Live steering request ")));
-    },
-    { description: "voice instruction and native agent result", timeoutMs: 10_000, formatLastObserved: JSON.stringify });
-  await idle(client, chatId);
-  const closed = (await client.json<{ status: string; summarySaved: boolean }>(`/api/chats/${chatId}/live-voice/${call.id}/close`, {
-    method: "POST",
-  })).data;
-  expect(closed).toMatchObject({ status: "closed", summarySaved: true });
-  return call.id;
-}
-
-test("OpenCode users use Live voice, control workspaces, route browser actions, steer and resume their chat", async () => {
+test("OpenCode users control workspaces, route browser actions, steer and resume their chat", async () => {
   const application = await E2EApplication.create();
   const sockets: WebSocket[] = [];
-  let voiceProvider: ManagedVoiceProvider | undefined;
   try {
     const directory = join(application.runDirectory, "workspace");
     await mkdir(directory, { recursive: true });
     const filePath = join(directory, "control.txt");
     await Bun.write(filePath, "Selected execution host file");
     await installExternalNativeOpenCodeProvider(application.providerBinDirectory);
-    voiceProvider = await startVoiceProvider(application.runDirectory);
-    const environment = { NODE_EXTRA_CA_CERTS: voiceProvider.certificatePath };
-    await application.start({ env: environment });
+    await application.start();
     const host = (await application.json<Array<{ ref: Record<string, unknown> }>>("/api/execution-hosts"))
       .data.find((entry) => entry.ref["kind"] === "local")!;
     const { workspace, modelConfig, createChat } = await prepare(application, directory, host.ref, "OpenCode Control workspace");
-    const ordinary = await createChat("Ordinary OpenCode chat");
-    await configureVoice(application, voiceProvider);
-    await useLiveVoice(application, {
-      chatId: ordinary, clientId: crypto.randomUUID(), scenario: "ordinary",
-      expectedText: "Describe the ordinary Live chat request.",
-    });
     await application.json("/api/preferences/quick-chat", {
       method: "PUT", body: JSON.stringify({ workspaceId: workspace.id, model: modelConfig, useWorktree: false }),
     });
@@ -218,42 +168,39 @@ test("OpenCode users use Live voice, control workspaces, route browser actions, 
     await send(application, id, instruction([
       { name: "clanky_open_workspace_file", input: { workspaceId: workspace.id, filePath } },
     ]), clients[1]);
-    const action = await pollUntil(() => actions[1]!.at(-1), (value) => value?.chatId === id,
+    const action = await pollUntil(() => actions[1]!.at(-1),
+      (value) => value?.source.kind === "chat_turn" && value.source.chatId === id,
       { description: "new Control turn to open its file in the originating tab", timeoutMs: 10_000 });
     expect(action!.clientId).toBe(clients[1]!);
     expect(action!.action.filePath).toBe(filePath);
     expect(actions[0]).toHaveLength(0);
     await application.json(`/api/control/ui-actions/${action!.actionId}/ack`, {
       method: "POST", body: JSON.stringify({
-        clientId: action!.clientId, chatId: id, turnId: action!.turnId,
+        clientId: action!.clientId, source: action!.source,
         outcome: { status: "opened", action: action!.action },
       }),
     });
     expect((await results(application, id))[0]!.ok).toBe(true);
-    const voiceCallId = await useLiveVoice(application, {
-      chatId: id, clientId: clients[1]!, scenario: "steer", expectedText: "OpenCode Control workspace",
-    });
     for (const socket of sockets) socket.close();
     await pollUntil(() => sockets.map((socket) => socket.readyState),
       (states) => states.every((state) => state === WebSocket.CLOSED),
       { description: "OpenCode browser clients to disconnect", timeoutMs: 5_000 });
-    await application.restart({ env: environment });
-    expect((await application.json<{ supported: boolean }>(`/api/chats/${id}/live-voice`)).data.supported).toBe(true);
+    await application.restart();
     await send(application, id, instruction([{ name: "clanky_list_chats", input: { workspaceId: workspace.id } }]));
     const resumed = await results(application, id);
     expect(resumed[0]!.ok).toBe(true);
     expect(JSON.stringify(resumed)).toContain("Delegated OpenCode work");
-    expect((await application.json<Snapshot>(`/api/chats/${id}/snapshot?full=1`)).data.transcript.logs
-      .some((entry) => entry.details?.logKind === "voice_call" && entry.details.callId === voiceCallId)).toBe(true);
   } catch (error) {
     console.error(await application.diagnostics());
     throw error;
   } finally {
     for (const socket of sockets) socket.close();
     try {
-      await application.cleanup();
+      await pollUntil(() => sockets.map((socket) => socket.readyState),
+        (states) => states.every((state) => state === WebSocket.CLOSED),
+        { description: "OpenCode browser clients to disconnect", timeoutMs: 5_000 });
     } finally {
-      if (voiceProvider) await stopVoiceProvider(voiceProvider);
+      await application.cleanup();
     }
   }
 });
@@ -261,15 +208,12 @@ test("OpenCode users use Live voice, control workspaces, route browser actions, 
 test("Mesh users operate Clanky through OpenCode Control on their selected worker", async () => {
   const directory = await mkdtemp(join(tmpdir(), "clanky-opencode-control-e2e-"));
   const nodes: ManagedMeshNode[] = [];
-  let voiceProvider: ManagedVoiceProvider | undefined;
   try {
     const bin = join(directory, "bin");
     await installExternalNativeOpenCodeProvider(bin);
-    voiceProvider = await startVoiceProvider(directory);
     const command = await compiledClankyCommand();
     const controller = await startMeshNode({
       role: "controller", command, instanceName: "OpenCode controller",
-      environment: { NODE_EXTRA_CA_CERTS: voiceProvider.certificatePath },
     });
     nodes.push(controller);
     const worker = await startMeshNode({
@@ -303,12 +247,6 @@ test("Mesh users operate Clanky through OpenCode Control on their selected worke
     });
     const id = await createChat("Mesh Control conversation");
     await operateWorkspace(client, id, workspace.id, filePath, "Delegated Mesh work");
-    await configureVoice(client, voiceProvider);
-    const voiceCallId = await useLiveVoice(client, {
-      chatId: id, clientId: crypto.randomUUID(), scenario: "steer", expectedText: "Mesh OpenCode Control",
-    });
-    expect((await client.json<Snapshot>(`/api/chats/${id}/snapshot?full=1`)).data.transcript.logs
-      .some((entry) => entry.details?.logKind === "voice_call" && entry.details.callId === voiceCallId)).toBe(true);
   } catch (error) {
     for (const node of nodes) console.error(await meshNodeDiagnostics(node));
     throw error;
@@ -316,11 +254,7 @@ test("Mesh users operate Clanky through OpenCode Control on their selected worke
     try {
       for (const node of [...nodes].reverse()) await stopMeshNode(node);
     } finally {
-      try {
-        if (voiceProvider) await stopVoiceProvider(voiceProvider);
-      } finally {
-        await rm(directory, { recursive: true, force: true });
-      }
+      await rm(directory, { recursive: true, force: true });
     }
   }
 });

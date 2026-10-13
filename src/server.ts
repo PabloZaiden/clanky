@@ -8,7 +8,7 @@ import appleTouchIconPath from "./apple-touch-icon.png" with { type: "file" };
 import faviconPath from "./favicon.svg" with { type: "file" };
 import manifestIcon192Path from "./web-app-manifest-192x192.png" with { type: "file" };
 import manifestIcon512Path from "./web-app-manifest-512x512.png" with { type: "file" };
-import { createWebAppServer, defineRoutes, getRequestOriginInfo, log, readRuntimeConfig, sqliteWebAppStore, type WebAppServer, type WebAppWebSocketData } from "@pablozaiden/webapp/server";
+import { createWebAppServer, createRouteCatalog, defineRoutes, getRequestOriginInfo, log, readRuntimeConfig, sqliteWebAppStore, type WebAppServer, type WebAppWebSocketData } from "@pablozaiden/webapp/server";
 import { apiRoutes } from "./api";
 import {
   meshControllerInternalRoutes,
@@ -43,6 +43,7 @@ import {
   previewEventEmitter,
   meshStateEventEmitter,
   harnessEventEmitter,
+  clientActionEventEmitter,
 } from "./core/event-emitter";
 import type { EventContext } from "./core/event-emitter";
 import {
@@ -95,6 +96,9 @@ import { controllerRelayService } from "./core/controller-relay-service";
 import { liveVoiceManager } from "./core/live-voice-manager";
 import { workerRelayService } from "./core/worker-relay-service";
 import { meshHealthService } from "./core/mesh-health-service";
+import { ClankyOperationService } from "./core/clanky-operation-service";
+import { configureLiveVoiceApi } from "./api/live-voice";
+import { createVoiceOperationAuthority } from "./server/voice-operation-adapter";
 
 const PREVIEW_BRIDGE_IDLE_TIMEOUT_SECONDS = 0;
 const WORKSPACE_WORKER_RECONCILE_INTERVAL_MS = 30_000;
@@ -168,6 +172,7 @@ function registerClankyRealtimeBridge(appServer: WebAppServer<ClankyRealtimeEven
     previewEventEmitter.subscribe(publishEvent),
     meshStateEventEmitter.subscribe(publishEvent),
     harnessEventEmitter.subscribe(publishEvent),
+    clientActionEventEmitter.subscribe(publishEvent),
   ];
 }
 
@@ -346,6 +351,7 @@ export const routes = defineRoutes<ClankyRealtimeEvent>({
     sameOrigin: "never",
     description: "Describe this Clanky Mesh controller and its public identity.",
     tags: ["mesh", "discovery"],
+    operations: { GET: { automation: { policy: "excluded", reason: "Mesh wire-protocol discovery, not an app operation." } } },
     async GET(req): Promise<Response> {
       const identity = await ensureLocalMeshNodeIdentity();
       const protocol = getLocalMeshProtocolMetadata();
@@ -385,6 +391,7 @@ export const routes = defineRoutes<ClankyRealtimeEvent>({
     auth: "user",
     sameOrigin: "always",
     description: "Open the raw websocket bridge for a workspace or direct server preview.",
+    operations: { GET: { automation: { policy: "excluded", reason: "Raw websocket transport." } } },
     GET: (req, ctx) => {
       const user = ctx.requireUser();
       return authorizedRawWebSocketUpgrade(user.id, () => {
@@ -405,6 +412,7 @@ export const routes = defineRoutes<ClankyRealtimeEvent>({
     auth: "user",
     sameOrigin: "always",
     description: "Open the raw websocket bridge for a terminal session.",
+    operations: { GET: { automation: { policy: "excluded", reason: "Raw terminal websocket transport." } } },
     async GET(req, ctx): Promise<Response | undefined> {
       const user = ctx.requireUser();
       const terminalSessionId = new URL(req.url).searchParams.get("terminalSessionId")?.trim();
@@ -657,6 +665,9 @@ export async function getWebAppServer(
     localBaseUrl: getLocalManagedCredentialBaseUrl(app.config.host, app.config.port),
   });
   if (!meshWorker) {
+    const appServer = app;
+    liveVoiceManager.configure(new ClankyOperationService(createRouteCatalog(routes)));
+    configureLiveVoiceApi((req, ctx) => createVoiceOperationAuthority(appServer, req, ctx));
     registerClankyRealtimeBridge(app);
     realtimeHeartbeatCleanup = installRealtimeHeartbeat(app.realtime);
   }

@@ -21,6 +21,7 @@ import { getClankyClientId } from "../lib/clanky-client-id";
 import { getStoredSshCredentialToken } from "../lib/ssh-browser-credentials";
 import { useRealtimeRefreshWithRecovery, useRealtimeStream } from "./useRealtimeStream";
 import { useChatActivityState } from "./useChatActivityState";
+import type { ResourceRefreshOptions } from "./useResourceRefresh";
 
 const log = createLogger("useChats");
 function sortChats(chats: Chat[]): Chat[] {
@@ -44,7 +45,7 @@ export interface UseChatsResult {
   chats: Chat[];
   loading: boolean;
   error: string | null;
-  refresh: () => Promise<void>;
+  refresh: (options?: ResourceRefreshOptions) => Promise<void>;
   refreshChat: (id: string) => Promise<void>;
   getChat: (id: string) => Chat | undefined;
   createChat: (request: CreateChatRequest) => Promise<Chat | null>;
@@ -72,8 +73,9 @@ export function useChats(): UseChatsResult {
     setChats((current) => upsertChat(current, chat), { immediateActivityId: chat.config.id });
   }, [setChats]);
 
-  const refresh = useCallback((options: { showLoading?: boolean } = {}) => {
-    return refreshCoordinatorRef.current.run(async () => {
+  const refresh = useCallback((options: ResourceRefreshOptions = {}) => {
+    const method = options.afterCurrent ? "runAfterCurrent" : "run";
+    return refreshCoordinatorRef.current[method](async () => {
       const showLoading = options.showLoading ?? true;
       const controller = new AbortController();
       abortControllerRef.current = controller;

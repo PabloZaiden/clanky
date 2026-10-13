@@ -15,6 +15,9 @@ export const workspaceMaintenanceRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Pull the workspace's default branch and refresh remote-tracking branches.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "confirm", reason: "Changes the workspace repository from its remote." } },
+    },
     async POST(_req: Request, ctx): Promise<Response> {
       const workspaceResult = await requireWorkspace(ctx.params["id"]!);
       if (workspaceResult instanceof Response) {

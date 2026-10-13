@@ -3,7 +3,9 @@ import type {
   SidebarNode,
   WebAppRootProps,
   WebAppRoute,
+  SidebarAction as FrameworkSidebarAction,
 } from "@pablozaiden/webapp/web";
+import type { ReactNode } from "react";
 import type {
   Agent,
   Chat,
@@ -72,6 +74,8 @@ export interface ShellSidebarCompositionOptions {
   quickChatUnavailableReason: string | null;
   quickChatCreating: boolean;
   onQuickChat: () => void;
+  voiceActions: FrameworkSidebarAction[];
+  voiceControls: ReactNode;
 }
 
 export interface ShellSidebarComposition {

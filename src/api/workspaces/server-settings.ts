@@ -37,6 +37,20 @@ export const serverSettingsRoutes = defineRoutes({
     description: "Read or update workspace server settings.",
     requestSchema: ServerSettingsSchema,
     querySchema: SensitiveQuerySchema,
+    operations: {
+      GET: {
+        description: "Read the workspace's public agent adapter and provider settings.",
+        requestSchema: undefined,
+        querySchema: SensitiveQuerySchema,
+        automation: { policy: "read", hiddenQuery: ["sensitive"] },
+      },
+      PUT: {
+        description: "Change the workspace's agent adapter and provider.",
+        requestSchema: ServerSettingsSchema,
+        querySchema: SensitiveQuerySchema,
+        automation: { policy: "confirm", reason: "Changes the workspace runtime and may install the selected adapter.", hiddenQuery: ["sensitive"] },
+      },
+    },
     async GET(req: Request, ctx) {
         const id = ctx.params["id"]!;
         try {
@@ -114,6 +128,9 @@ export const serverSettingsRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Read the current workspace connection status.",
+    operations: {
+      GET: { requestSchema: undefined, querySchema: undefined, automation: { policy: "read" } },
+    },
     async GET(_req: Request, ctx) {
       const id = ctx.params["id"]!;
       try {
@@ -143,6 +160,13 @@ export const serverSettingsRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Test the configured workspace connection using workspace settings.",
     requestSchema: TestConnectionRequestSchema,
+    operations: {
+      POST: {
+        requestSchema: TestConnectionRequestSchema,
+        querySchema: undefined,
+        automation: { policy: "read", hiddenInputs: ["sshTarget"] },
+      },
+    },
     async POST(req: Request, ctx) {
       const id = ctx.params["id"]!;
       try {
@@ -227,6 +251,13 @@ export const serverSettingsRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Test a server connection without creating a workspace.",
     requestSchema: TestConnectionRequestSchema,
+    operations: {
+      POST: {
+        requestSchema: TestConnectionRequestSchema,
+        querySchema: undefined,
+        automation: { policy: "read", hiddenInputs: ["sshTarget"] },
+      },
+    },
     async POST(req: Request, _ctx) {
       const result = await parseAndValidate(TestConnectionRequestSchema, req);
       if (!result.success) {
@@ -266,6 +297,9 @@ export const serverSettingsRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "List execution targets and their available harness adapters, including an authorized workspace or enrollment target.",
     querySchema: WorkspaceExecutionTargetsQuerySchema,
+    operations: {
+      GET: { requestSchema: undefined, querySchema: WorkspaceExecutionTargetsQuerySchema, automation: { policy: "read" } },
+    },
     responseSchema: z.array(ExecutionHostDescriptorSchema),
     async GET(req: Request) {
       const query = validateRequest(WorkspaceExecutionTargetsQuerySchema, Object.fromEntries(new URL(req.url).searchParams));

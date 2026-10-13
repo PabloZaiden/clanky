@@ -5,6 +5,7 @@
 import { z } from "zod";
 import type { Chat } from "./chat";
 import type { HarnessCapabilities } from "./harness-control";
+import { LiveVoiceUiContextSchema, VoiceClientActionSchema } from "./live-voice";
 
 export const ClankyControlContextSchema = z.object({
   chatId: z.string().min(1).max(500),
@@ -32,7 +33,7 @@ export function isClankyControlChat(
     && (adapter === "codex" || adapter === "copilot" || adapter === "opencode2");
 }
 
-export const ControlUiActionSchema = z.discriminatedUnion("type", [
+export const ControlNavigationActionSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("open_workspace"),
     workspaceId: z.string().min(1).max(500),
@@ -46,15 +47,49 @@ export const ControlUiActionSchema = z.discriminatedUnion("type", [
     type: z.literal("open_chat"),
     chatId: z.string().min(1).max(500),
   }).strict(),
+  z.object({ type: z.literal("open_task"), taskId: z.string().min(1).max(500) }).strict(),
+  z.object({ type: z.literal("open_agent"), agentId: z.string().min(1).max(500) }).strict(),
+  z.object({ type: z.literal("open_terminal"), terminalSessionId: z.string().min(1).max(500) }).strict(),
+  z.object({ type: z.literal("open_ssh_server"), serverId: z.string().min(1).max(500) }).strict(),
+  z.object({
+    type: z.literal("open_execution_host"),
+    kind: z.enum(["local", "ssh", "mesh"]),
+    id: z.string().min(1).max(500),
+  }).strict(),
+  z.object({ type: z.literal("open_home") }).strict(),
+  z.object({ type: z.literal("open_settings") }).strict(),
+  z.object({
+    type: z.literal("sidebar"),
+    command: z.enum(["open", "search", "select_tab"]),
+    tabId: z.string().min(1).max(100).nullable(),
+  }).strict(),
 ]);
 
+export const ControlUiActionSchema = z.union([ControlNavigationActionSchema, VoiceClientActionSchema]);
 export type ControlUiAction = z.infer<typeof ControlUiActionSchema>;
+
+export const ControlUiSourceSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("chat_turn"),
+    chatId: z.string().min(1).max(500),
+    workspaceId: z.string().min(1).max(500),
+    turnId: z.string().uuid(),
+  }).strict(),
+  z.object({
+    kind: z.literal("live_voice"),
+    callId: z.string().uuid(),
+    requestId: z.string().min(1).max(500),
+  }).strict(),
+]);
+export type ControlUiSource = z.infer<typeof ControlUiSourceSchema>;
 
 export const ControlUiActionOutcomeSchema = z.discriminatedUnion("status", [
   z.object({
     status: z.literal("opened"),
     action: ControlUiActionSchema,
   }).strict(),
+  z.object({ status: z.literal("presented") }).strict(),
+  z.object({ status: z.literal("context"), context: LiveVoiceUiContextSchema }).strict(),
   z.object({
     status: z.literal("failed"),
     code: z.enum([
@@ -75,10 +110,8 @@ export type ControlUiActionOutcome = z.infer<typeof ControlUiActionOutcomeSchema
 export const ControlUiActionEventSchema = z.object({
   type: z.literal("control.ui_action"),
   actionId: z.string().uuid(),
-  chatId: z.string().min(1).max(500),
-  workspaceId: z.string().min(1).max(500),
+  source: ControlUiSourceSchema,
   clientId: z.string().uuid(),
-  turnId: z.string().uuid(),
   expiresAt: z.number().int().positive(),
   action: ControlUiActionSchema,
 }).strict();

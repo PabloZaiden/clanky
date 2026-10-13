@@ -14,7 +14,7 @@ export function useExecutionHosts() {
   const isMountedRef = useRef(false);
 
   const refresh = useCallback((options: ResourceRefreshOptions = {}) => (
-    coordinator.current.run(async () => {
+    coordinator.current[options.afterCurrent ? "runAfterCurrent" : "run"](async () => {
       const controller = new AbortController();
       abortControllerRef.current = controller;
       if ((options.showLoading ?? true) && isMountedRef.current) {

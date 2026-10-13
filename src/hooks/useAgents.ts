@@ -19,6 +19,7 @@ import {
 } from "../lib/agent-run-refresh";
 import { createRefreshCoordinator } from "../lib/refresh-coordinator";
 import { useRealtimeRefreshWithRecovery } from "./useRealtimeStream";
+import type { ResourceRefreshOptions } from "./useResourceRefresh";
 
 const log = createLogger("useAgents");
 
@@ -49,7 +50,7 @@ export interface UseAgentsResult {
   runsByAgentId: Record<string, AgentRun[]>;
   loading: boolean;
   error: string | null;
-  refresh: () => Promise<void>;
+  refresh: (options?: ResourceRefreshOptions) => Promise<void>;
   refreshRuns: (agentId: string) => Promise<void>;
   createAgent: (request: CreateAgentRequest) => Promise<Agent | null>;
   exportAgent: (id: string) => Promise<void>;
@@ -96,8 +97,9 @@ export function useAgents(): UseAgentsResult {
   const refreshRunsCoordinatorRef = useRef(createAgentRunRefreshCoordinator<AgentRun[]>());
   const isMountedRef = useRef(true);
 
-  const refresh = useCallback((options: { showLoading?: boolean } = {}) => {
-    return refreshCoordinatorRef.current.run(async () => {
+  const refresh = useCallback((options: ResourceRefreshOptions = {}) => {
+    const method = options.afterCurrent ? "runAfterCurrent" : "run";
+    return refreshCoordinatorRef.current[method](async () => {
       const showLoading = options.showLoading ?? true;
       const controller = new AbortController();
       abortControllerRef.current = controller;

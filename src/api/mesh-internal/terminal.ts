@@ -19,6 +19,10 @@ export const meshTerminalRoutes = defineRoutes({
     auth: "public",
     sameOrigin: "never",
     description: "Establish a signed, encrypted Mesh interactive terminal session.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Signed internal Mesh interactive-terminal admission protocol." } },
+      DELETE: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Signed internal Mesh interactive-terminal teardown protocol." } },
+    },
     tags: ["mesh", "internal", "terminal"],
     async POST(req): Promise<Response> {
       const parsed = await parseAndValidate(MeshTerminalSessionRequestSchema, req);
@@ -75,6 +79,9 @@ export const meshTerminalRoutes = defineRoutes({
     auth: "public",
     sameOrigin: "never",
     description: "Open an authenticated Mesh interactive terminal stream.",
+    operations: {
+      GET: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Raw authenticated internal Mesh terminal WebSocket transport." } },
+    },
     tags: ["mesh", "internal", "terminal"],
     async GET(req, ctx): Promise<Response | undefined> {
       const sessionId = req.headers.get("x-clanky-mesh-session-id");

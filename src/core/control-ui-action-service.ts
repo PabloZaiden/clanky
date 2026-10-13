@@ -2,9 +2,9 @@ import type {
   ControlUiAction,
   ControlUiActionEvent,
   ControlUiActionOutcome,
+  ControlUiSource,
 } from "@/shared/clanky-control";
-import type { ChatEvent } from "@/shared/events";
-import { chatEventEmitter } from "./event-emitter";
+import { clientActionEventEmitter } from "./event-emitter";
 import type { SimpleEventEmitter } from "./event-emitter";
 import { DomainError } from "../domain/domain-error";
 
@@ -15,17 +15,14 @@ const MAX_COMPLETED_ACTIONS = 256;
 
 export interface ControlUiActionDispatch {
   ownerId: string;
-  chatId: string;
-  workspaceId: string;
+  source: ControlUiSource;
   clientId: string;
-  turnId: string;
   action: ControlUiAction;
 }
 
 export interface ControlUiActionAcknowledgement {
   clientId: string;
-  chatId: string;
-  turnId: string;
+  source: ControlUiSource;
   outcome: ControlUiActionOutcome;
 }
 
@@ -51,7 +48,7 @@ export class ControlUiActionService {
   private readonly completed = new Map<string, CompletedControlUiAction>();
 
   constructor(
-    private readonly eventEmitter: Pick<SimpleEventEmitter<ChatEvent>, "emit"> = chatEventEmitter,
+    private readonly eventEmitter: Pick<SimpleEventEmitter<ControlUiActionEvent>, "emit"> = clientActionEventEmitter,
   ) {}
 
   async dispatch(
@@ -104,10 +101,8 @@ export class ControlUiActionService {
         const event: ControlUiActionEvent = {
           type: "control.ui_action",
           actionId: pending.actionId,
-          chatId: pending.chatId,
-          workspaceId: pending.workspaceId,
+          source: pending.source,
           clientId: pending.clientId,
-          turnId: pending.turnId,
           expiresAt: pending.expiresAt,
           action: pending.action,
         };
@@ -155,6 +150,11 @@ export class ControlUiActionService {
     ) {
       throw new DomainError("control_action_not_found", "The pending UI action is unavailable.");
     }
+    if (acknowledgement.outcome.status === "context" && pending.action.type !== "get_context"
+      || acknowledgement.outcome.status === "presented"
+        && pending.action.type !== "confirm_operation" && pending.action.type !== "request_ssh_credential") {
+      throw new DomainError("control_action_not_found", "The pending UI action is unavailable.");
+    }
     this.settle(pending, acknowledgement.outcome);
   }
 
@@ -190,9 +190,8 @@ export class ControlUiActionService {
     acknowledgement: ControlUiActionAcknowledgement,
   ): boolean {
     return request.ownerId === ownerId
-      && request.chatId === acknowledgement.chatId
       && request.clientId === acknowledgement.clientId
-      && request.turnId === acknowledgement.turnId;
+      && JSON.stringify(request.source) === JSON.stringify(acknowledgement.source);
   }
 
   private rememberCompleted(
@@ -201,10 +200,8 @@ export class ControlUiActionService {
   ): void {
     this.completed.set(request.actionId, {
       ownerId: request.ownerId,
-      chatId: request.chatId,
-      workspaceId: request.workspaceId,
+      source: request.source,
       clientId: request.clientId,
-      turnId: request.turnId,
       action: request.action,
       actionId: request.actionId,
       outcome,
@@ -227,19 +224,7 @@ export class ControlUiActionService {
   }
 
   private sameAction(left: ControlUiAction, right: ControlUiAction): boolean {
-    if (left.type !== right.type) {
-      return false;
-    }
-    switch (left.type) {
-      case "open_workspace":
-        return right.type === left.type && left.workspaceId === right.workspaceId;
-      case "open_workspace_file":
-        return right.type === left.type
-          && left.workspaceId === right.workspaceId
-          && left.filePath === right.filePath;
-      case "open_chat":
-        return right.type === left.type && left.chatId === right.chatId;
-    }
+    return JSON.stringify(left) === JSON.stringify(right);
   }
 
   private sameOutcome(left: ControlUiActionOutcome, right: ControlUiActionOutcome): boolean {
@@ -249,10 +234,7 @@ export class ControlUiActionService {
     if (left.status === "opened" && right.status === "opened") {
       return this.sameAction(left.action, right.action);
     }
-    return left.status === "failed"
-      && right.status === "failed"
-      && left.code === right.code
-      && left.message === right.message;
+    return JSON.stringify(left) === JSON.stringify(right);
   }
 }
 

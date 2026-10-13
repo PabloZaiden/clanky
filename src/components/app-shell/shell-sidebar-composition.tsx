@@ -141,6 +141,7 @@ export function buildShellSidebarComposition(
     tabs: SIDEBAR_TABS,
     pinning: { sectionTitle: "Pinned", storageKey: "clanky.frameworkSidebarPins" },
     topActions: [
+      ...options.voiceActions,
       {
         id: "quick-chat",
         title: options.quickChatUnavailableReason ?? "Start Quick Chat",
@@ -156,6 +157,7 @@ export function buildShellSidebarComposition(
         route: { view: "code-explorer" as const },
       },
     ],
+    bottomContent: options.voiceControls,
     getNodes,
   } satisfies NonNullable<WebAppRootProps["sidebar"]>;
 

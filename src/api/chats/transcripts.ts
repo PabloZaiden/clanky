@@ -1,5 +1,6 @@
 import { createLogger, defineRoutes } from "@pablozaiden/webapp/server";
 import { chatManager } from "../../core/chat-manager";
+import { TranscriptDownloadQuerySchema, TranscriptSnapshotQuerySchema } from "../route-schemas";
 import { getTranscriptSnapshotEtag } from "../../core/transcript-service";
 import { buildChatTranscriptHtml, buildChatTranscriptMarkdown } from "../../lib/chat-transcript-export";
 import { errorResponse, internalErrorResponse } from "../helpers";
@@ -27,6 +28,14 @@ export const chatsTranscriptRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Read the latest page of up to 100 non-empty assistant responses for a chat; use before for older history or full=1 for the complete transcript.",
+    operations: {
+      GET: {
+        description: "Read one bounded page of chat history; use before to load older history.",
+        requestSchema: undefined,
+        querySchema: TranscriptSnapshotQuerySchema,
+        automation: { policy: "read", hiddenQuery: ["full"] },
+      },
+    },
     async GET(req: Request, ctx): Promise<Response> {
       const options = parseTranscriptSnapshotOptions(req);
       if (options instanceof Response) {
@@ -75,6 +84,9 @@ export const chatsTranscriptRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Read the full details for one chat tool call.",
+    operations: {
+      GET: { requestSchema: undefined, querySchema: undefined, automation: { policy: "read" } },
+    },
     async GET(_req: Request, ctx): Promise<Response> {
       const toolCall = await chatManager.getChatToolCall(
         ctx.params["id"]!,
@@ -91,6 +103,13 @@ export const chatsTranscriptRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Download a chat transcript as Markdown.",
+    operations: {
+      GET: {
+        requestSchema: undefined,
+        querySchema: TranscriptDownloadQuerySchema,
+        automation: { policy: "excluded", reason: "Raw Markdown transcript download; use the paged JSON snapshot operation." },
+      },
+    },
     async GET(req: Request, ctx): Promise<Response> {
       const chat = await chatManager.getChat(ctx.params["id"]!);
       if (!chat) {
@@ -118,6 +137,9 @@ export const chatsTranscriptRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Open a chat transcript as a standalone HTML document.",
+    operations: {
+      GET: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Raw HTML transcript document; use the paged JSON snapshot operation." } },
+    },
     async GET(_req: Request, ctx): Promise<Response> {
       const chat = await chatManager.getChat(ctx.params["id"]!);
       if (!chat) {

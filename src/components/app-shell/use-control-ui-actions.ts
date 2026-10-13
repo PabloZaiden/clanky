@@ -9,6 +9,8 @@ import { ControlUiActionEventSchema } from "@/shared/clanky-control";
 import { apiRequest } from "../../lib/api-client";
 import { getClankyClientId } from "../../lib/clanky-client-id";
 import { useRealtimeStream } from "../../hooks/useRealtimeStream";
+import { getExecutionHostSourceId } from "@/shared";
+import type { useShellResources } from "./use-shell-resources";
 
 const NAVIGATION_ACK_TIMEOUT_MS = 5_000;
 const FILE_OPEN_ACK_TIMEOUT_MS = 18_000;
@@ -32,18 +34,28 @@ interface PendingNavigation {
   timer: ReturnType<typeof setTimeout>;
 }
 
+type NavigationResources = Pick<ReturnType<typeof useShellResources>,
+  | "tasks" | "tasksError" | "refreshTasks"
+  | "chats" | "chatsError" | "refreshChats"
+  | "workspaces" | "workspaceError" | "refreshWorkspaces"
+  | "agents"
+  | "terminalSessions" | "terminalSessionsError" | "refreshTerminalSessions"
+  | "servers" | "sshServersError" | "refreshSshServers"
+  | "executionHosts" | "executionHostsError" | "refreshExecutionHosts"
+>;
+
 interface UseControlUiActionsOptions {
   route: WebAppRoute;
   navigateWithinShell: (route: WebAppRoute) => void;
-  refreshChats: () => Promise<void>;
-  refreshWorkspaces: () => Promise<void>;
+  resources: NavigationResources;
+  handleClientAction: (event: ControlUiActionEvent) => Promise<ControlUiActionOutcome | null>;
 }
 
 function isRouteActive(route: WebAppRoute, expected: WebAppRoute): boolean {
   return Object.entries(expected).every(([key, value]) => route[key] === value);
 }
 
-function getActionRoute(action: ControlUiAction): WebAppRoute {
+function getActionRoute(action: ControlUiAction): WebAppRoute | null {
   switch (action.type) {
     case "open_workspace":
       return { view: "workspace", workspaceId: action.workspaceId };
@@ -56,6 +68,56 @@ function getActionRoute(action: ControlUiAction): WebAppRoute {
       };
     case "open_chat":
       return { view: "chat", chatId: action.chatId };
+    case "open_task": return { view: "task", taskId: action.taskId };
+    case "open_agent": return { view: "agent", agentId: action.agentId };
+    case "open_terminal": return { view: "terminal", terminalSessionId: action.terminalSessionId };
+    case "open_ssh_server": return { view: "execution-host", hostKind: "ssh", hostId: action.serverId };
+    case "open_execution_host": return { view: "execution-host", hostKind: action.kind, hostId: action.id };
+    case "open_home": return { view: "home" };
+    case "open_settings": return { view: "settings" };
+    default: return null;
+  }
+}
+
+async function refreshNavigationTarget(action: ControlUiAction, resources: NavigationResources): Promise<void> {
+  const options = { showLoading: false, afterCurrent: true };
+  switch (action.type) {
+    case "open_workspace":
+    case "open_workspace_file": await resources.refreshWorkspaces(options); break;
+    case "open_chat": await resources.refreshChats(options); break;
+    case "open_task": await resources.refreshTasks(options); break;
+    case "open_agent": await resources.agents.refresh(options); break;
+    case "open_terminal": await resources.refreshTerminalSessions(options); break;
+    case "open_ssh_server":
+    case "open_execution_host":
+      await Promise.all([
+        resources.refreshExecutionHosts(options),
+        ...(action.type === "open_ssh_server" || action.kind === "ssh"
+          ? [resources.refreshSshServers(options)] : []),
+      ]);
+      break;
+  }
+}
+
+function isNavigationTargetReady(expected: WebAppRoute, resources: NavigationResources): boolean {
+  switch (expected.view) {
+    case "workspace":
+    case "code-explorer":
+      return !resources.workspaceError && resources.workspaces.some((workspace) => workspace.id === expected["workspaceId"]);
+    case "chat":
+      return !resources.chatsError && resources.chats.some((chat) => chat.config.id === expected["chatId"]);
+    case "task":
+      return !resources.tasksError && resources.tasks.some((task) => task.config.id === expected["taskId"]);
+    case "agent":
+      return !resources.agents.error && resources.agents.agents.some((agent) => agent.config.id === expected["agentId"]);
+    case "terminal":
+      return !resources.terminalSessionsError && resources.terminalSessions.some((session) => session.config.id === expected["terminalSessionId"]);
+    case "execution-host":
+      return !resources.executionHostsError && resources.executionHosts.some((host) =>
+        host.ref.kind === expected["hostKind"] && getExecutionHostSourceId(host.ref) === expected["hostId"])
+        && (expected["hostKind"] !== "ssh" || !resources.sshServersError
+          && resources.servers.some((server) => server.config.id === expected["hostId"]));
+    default: return true;
   }
 }
 
@@ -69,10 +131,12 @@ function actionFailure(
 export function useControlUiActions({
   route,
   navigateWithinShell,
-  refreshChats,
-  refreshWorkspaces,
+  resources,
+  handleClientAction,
 }: UseControlUiActionsOptions) {
   const clientId = getClankyClientId();
+  const resourcesRef = useRef(resources);
+  const [navigationToCheck, setNavigationToCheck] = useState<WebAppRoute | null>(null);
   const [pendingFileOpen, setPendingFileOpen] = useState<PendingControlFileOpen | null>(null);
   const pendingFileActionRef = useRef<PendingFileAction | null>(null);
   const pendingNavigationRef = useRef<PendingNavigation | null>(null);
@@ -136,10 +200,6 @@ export function useControlUiActions({
     if (remainingTime <= 0) {
       return Promise.resolve(false);
     }
-    if (isRouteActive(route, expected)) {
-      navigateWithinShell(expected);
-      return Promise.resolve(true);
-    }
     return new Promise((resolve) => {
       let pending: PendingNavigation;
       const timer = setTimeout(() => {
@@ -150,6 +210,8 @@ export function useControlUiActions({
       }, Math.min(NAVIGATION_ACK_TIMEOUT_MS, remainingTime));
       pending = { expected, resolve, timer };
       pendingNavigationRef.current = pending;
+      // Even an already-active route must check refreshed resources after React commits.
+      setNavigationToCheck(expected);
       try {
         navigateWithinShell(expected);
       } catch {
@@ -158,17 +220,19 @@ export function useControlUiActions({
         resolve(false);
       }
     });
-  }, [navigateWithinShell, route]);
+  }, [navigateWithinShell]);
 
   useEffect(() => {
+    resourcesRef.current = resources;
     const pending = pendingNavigationRef.current;
-    if (!pending || !isRouteActive(route, pending.expected)) {
+    if (!pending || !isRouteActive(route, pending.expected)
+      || !isNavigationTargetReady(pending.expected, resources)) {
       return;
     }
     clearTimeout(pending.timer);
     pendingNavigationRef.current = null;
     pending.resolve(true);
-  }, [route]);
+  }, [route, resources, navigationToCheck]);
 
   const acknowledge = useCallback(async (
     event: ControlUiActionEvent,
@@ -179,8 +243,7 @@ export function useControlUiActions({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         clientId: event.clientId,
-        chatId: event.chatId,
-        turnId: event.turnId,
+        source: event.source,
         outcome,
       }),
       action: "acknowledge control UI action",
@@ -190,18 +253,18 @@ export function useControlUiActions({
 
   const applyAction = useCallback(async (event: ControlUiActionEvent): Promise<ControlUiActionOutcome> => {
     const action = event.action;
-    if (action.type === "open_workspace" || action.type === "open_workspace_file") {
-      try {
-        await refreshWorkspaces();
-      } catch {
-        return actionFailure("workspace_unavailable", "The requested workspace could not be loaded.");
-      }
-    } else {
-      try {
-        await refreshChats();
-      } catch {
-        return actionFailure("navigation_failed", "The requested chat could not be loaded.");
-      }
+    const clientResult = await handleClientAction(event);
+    if (clientResult) return clientResult;
+    const expected = getActionRoute(action);
+    if (!expected) return actionFailure("navigation_failed", "This client action is unavailable.");
+    try {
+      await refreshNavigationTarget(action, resourcesRef.current);
+    } catch {
+      return actionFailure(
+        action.type === "open_workspace" || action.type === "open_workspace_file"
+          ? "workspace_unavailable" : "navigation_failed",
+        "The requested navigation target could not be loaded.",
+      );
     }
 
     if (event.expiresAt <= Date.now()) {
@@ -210,7 +273,7 @@ export function useControlUiActions({
 
     if (action.type === "open_workspace_file") {
       const fileResult = waitForFileOpen(event);
-      const navigationApplied = await waitForNavigation(getActionRoute(action), event.expiresAt);
+      const navigationApplied = await waitForNavigation(expected, event.expiresAt);
       if (!navigationApplied) {
         reportFileOpenResult(
           event.actionId,
@@ -220,16 +283,15 @@ export function useControlUiActions({
       return await fileResult;
     }
 
-    const navigationApplied = await waitForNavigation(getActionRoute(action), event.expiresAt);
+    const navigationApplied = await waitForNavigation(expected, event.expiresAt);
     return navigationApplied
       ? { status: "opened", action }
-      : actionFailure("navigation_failed", "The requested route did not open in the originating tab.");
+      : actionFailure("navigation_failed", "The requested route and its data did not become available in the originating tab.");
   }, [
-    refreshChats,
-    refreshWorkspaces,
     reportFileOpenResult,
     waitForFileOpen,
     waitForNavigation,
+    handleClientAction,
   ]);
 
   const rememberOutcome = useCallback((

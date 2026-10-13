@@ -88,6 +88,9 @@ export const executionHostRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "List execution hosts available to the current user.",
     responseSchema: z.array(ExecutionHostDescriptorSchema),
+    operations: {
+      GET: { requestSchema: undefined, querySchema: undefined, automation: { policy: "read" } },
+    },
     async GET(): Promise<Response> {
       try {
         return Response.json(await executionHostService.listHosts());
@@ -106,6 +109,24 @@ export const executionHostRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Resolve the configured or current directory of an execution host.",
     requestSchema: ResolveExecutionHostWorkingDirectoryRequestSchema,
+    operations: {
+      GET: {
+        description: "Resolve an execution host's working directory without a credential handoff.",
+        requestSchema: undefined,
+        querySchema: undefined,
+        automation: { policy: "read" },
+      },
+      POST: {
+        description: "Resolve an execution host's working directory using a private credential handoff if available.",
+        requestSchema: ResolveExecutionHostWorkingDirectoryRequestSchema,
+        querySchema: undefined,
+        automation: {
+          policy: "read",
+          hiddenInputs: ["credentialToken"],
+          credential: { kind: "ssh", serverParameter: "id", input: "credentialToken" },
+        },
+      },
+    },
     async GET(_req, ctx): Promise<Response> {
       return await resolveWorkingDirectoryResponse(
         ctx.params["kind"]!,
@@ -137,6 +158,17 @@ export const executionHostRoutes = defineRoutes({
     tags: ["execution-hosts", "execution"],
     requestSchema: ExecutionHostExecRequestSchema,
     responseSchema: ExecutionHostExecResponseSchema,
+    operations: {
+      POST: {
+        requestSchema: ExecutionHostExecRequestSchema,
+        querySchema: undefined,
+        automation: {
+          policy: "confirm",
+          reason: "Runs an arbitrary command with the selected execution host's account permissions.",
+          credential: { kind: "ssh", serverParameter: "id", header: "x-clanky-ssh-credential-token" },
+        },
+      },
+    },
     async POST(req, ctx): Promise<Response> {
       const validation = await parseAndValidate(ExecutionHostExecRequestSchema, req);
       if (!validation.success) {
@@ -185,6 +217,17 @@ export const executionHostRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "List accessible IPv4 addresses on an execution host.",
     requestSchema: DiscoverExecutionHostAddressesRequestSchema,
+    operations: {
+      POST: {
+        requestSchema: DiscoverExecutionHostAddressesRequestSchema,
+        querySchema: undefined,
+        automation: {
+          policy: "read",
+          hiddenInputs: ["credentialToken"],
+          credential: { kind: "ssh", serverParameter: "id", input: "credentialToken" },
+        },
+      },
+    },
     async POST(req, ctx): Promise<Response> {
       const validation = await parseAndValidate(
         DiscoverExecutionHostAddressesRequestSchema,
@@ -233,6 +276,9 @@ export const executionHostRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Update node-owned defaults for a local or Mesh execution host.",
     requestSchema: UpdateExecutionHostConfigurationSchema,
+    operations: {
+      PATCH: { requestSchema: UpdateExecutionHostConfigurationSchema, querySchema: undefined, automation: { policy: "write" } },
+    },
     async PATCH(req, ctx): Promise<Response> {
       const validation = await parseAndValidate(
         UpdateExecutionHostConfigurationSchema,
@@ -278,6 +324,20 @@ export const executionHostRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Create a direct chat on an execution host.",
     requestSchema: CreateExecutionHostChatRequestSchema,
+    operations: {
+      POST: {
+        requestSchema: CreateExecutionHostChatRequestSchema.extend({
+          autoApprovePermissions: z.boolean().default(false),
+        }).strict(),
+        querySchema: undefined,
+        automation: {
+          policy: "confirm",
+          reason: "Creates agent work with configurable automatic permissions.",
+          hiddenInputs: ["credentialToken"],
+          credential: { kind: "ssh", serverParameter: "id", input: "credentialToken" },
+        },
+      },
+    },
     async POST(req, ctx): Promise<Response> {
       const validation = await parseAndValidate(CreateExecutionHostChatRequestSchema, req);
       if (!validation.success) {
@@ -339,6 +399,19 @@ export const executionHostRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Check prerequisites on an execution host.",
     requestSchema: CheckSshServerPrerequisitesRequestSchema,
+    operations: {
+      POST: {
+        requestSchema: CheckSshServerPrerequisitesRequestSchema.extend({
+          credentialToken: CheckSshServerPrerequisitesRequestSchema.shape.credentialToken.default(null),
+        }).strict(),
+        querySchema: undefined,
+        automation: {
+          policy: "read",
+          hiddenInputs: ["credentialToken"],
+          credential: { kind: "ssh", serverParameter: "id", input: "credentialToken" },
+        },
+      },
+    },
     async POST(req, ctx): Promise<Response> {
       const validation = await parseAndValidate(CheckSshServerPrerequisitesRequestSchema, req);
       if (!validation.success) {
@@ -382,6 +455,19 @@ export const executionHostRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "List Devbox templates on an execution host.",
     requestSchema: GetDevboxTemplatesRequestSchema,
+    operations: {
+      POST: {
+        requestSchema: GetDevboxTemplatesRequestSchema.extend({
+          credentialToken: GetDevboxTemplatesRequestSchema.shape.credentialToken.default(null),
+        }).strict(),
+        querySchema: undefined,
+        automation: {
+          policy: "read",
+          hiddenInputs: ["credentialToken"],
+          credential: { kind: "ssh", serverParameter: "id", input: "credentialToken" },
+        },
+      },
+    },
     async POST(req, ctx): Promise<Response> {
       const validation = await parseAndValidate(GetDevboxTemplatesRequestSchema, req);
       if (!validation.success) {
@@ -424,6 +510,17 @@ export const executionHostRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Discover ACP providers available on an execution host.",
     requestSchema: DiscoverExecutionHostProvidersRequestSchema,
+    operations: {
+      POST: {
+        requestSchema: DiscoverExecutionHostProvidersRequestSchema,
+        querySchema: undefined,
+        automation: {
+          policy: "read",
+          hiddenInputs: ["credentialToken"],
+          credential: { kind: "ssh", serverParameter: "id", input: "credentialToken" },
+        },
+      },
+    },
     async POST(req, ctx): Promise<Response> {
       const validation = await parseAndValidate(
         DiscoverExecutionHostProvidersRequestSchema,
@@ -474,6 +571,17 @@ export const executionHostRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Discover ACP models for a provider on an execution host.",
     requestSchema: DiscoverExecutionHostModelsRequestSchema,
+    operations: {
+      POST: {
+        requestSchema: DiscoverExecutionHostModelsRequestSchema,
+        querySchema: undefined,
+        automation: {
+          policy: "read",
+          hiddenInputs: ["credentialToken"],
+          credential: { kind: "ssh", serverParameter: "id", input: "credentialToken" },
+        },
+      },
+    },
     async POST(req, ctx): Promise<Response> {
       const validation = await parseAndValidate(
         DiscoverExecutionHostModelsRequestSchema,

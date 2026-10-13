@@ -1,4 +1,5 @@
 import { defineRoutes } from "@pablozaiden/webapp/server";
+import { GitRemoteStatusQuerySchema, WorkspaceQuerySchema } from "./route-schemas";
 /**
  * Git API endpoints for Clanky Tasks Management System.
  * 
@@ -173,6 +174,9 @@ export const gitRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "List local and cached remote-tracking git branches for a workspace.",
+    operations: {
+      GET: { requestSchema: undefined, querySchema: WorkspaceQuerySchema, automation: { policy: "read" } },
+    },
     async GET(req: Request, _ctx): Promise<Response> {
       log.debug("GET /api/git/branches");
 
@@ -222,6 +226,9 @@ export const gitRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Detect the default git branch for a workspace.",
+    operations: {
+      GET: { requestSchema: undefined, querySchema: WorkspaceQuerySchema, automation: { policy: "read" } },
+    },
     async GET(req: Request, _ctx): Promise<Response> {
       log.debug("GET /api/git/default-branch");
 
@@ -253,6 +260,9 @@ export const gitRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Check whether a git remote exists for a workspace.",
+    operations: {
+      GET: { requestSchema: undefined, querySchema: GitRemoteStatusQuerySchema, automation: { policy: "read" } },
+    },
     async GET(req: Request, _ctx): Promise<Response> {
       log.debug("GET /api/git/remote-status");
 
@@ -285,6 +295,9 @@ export const gitRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Resolve the GitHub repository URL for a workspace.",
+    operations: {
+      GET: { requestSchema: undefined, querySchema: WorkspaceQuerySchema, automation: { policy: "read" } },
+    },
     async GET(req: Request, _ctx): Promise<Response> {
       log.debug("GET /api/git/github-repository-url");
 
@@ -321,6 +334,9 @@ export const gitRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "List open GitHub issues for a workspace repository.",
+    operations: {
+      GET: { requestSchema: undefined, querySchema: WorkspaceQuerySchema, automation: { policy: "read" } },
+    },
     async GET(req: Request, _ctx): Promise<Response> {
       log.debug("GET /api/git/github-issues");
 

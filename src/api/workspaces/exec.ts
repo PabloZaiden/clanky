@@ -20,6 +20,13 @@ export const workspaceExecRoutes = defineRoutes({
     description: "Execute one command on the host selected by a workspace.",
     tags: ["workspaces", "execution"],
     requestSchema: WorkspaceExecRequestSchema,
+    operations: {
+      POST: {
+        requestSchema: WorkspaceExecRequestSchema,
+        querySchema: undefined,
+        automation: { policy: "confirm", reason: "Runs an arbitrary command with the selected execution host's account permissions." },
+      },
+    },
     responseSchema: WorkspaceExecResponseSchema,
     async POST(req, ctx): Promise<Response> {
       const parsed = await parseAndValidate(WorkspaceExecRequestSchema, req);

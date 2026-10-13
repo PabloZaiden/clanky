@@ -2,12 +2,6 @@
  * Browser-safe types for the optional per-user voice features.
  */
 
-import type { HarnessCapabilities } from "./harness-control";
-
-export function supportsLiveVoice(adapter: HarnessCapabilities["adapter"]): boolean {
-  return adapter === "codex" || adapter === "copilot" || adapter === "opencode2";
-}
-
 export const VOICE_CAPABILITIES = ["transcription", "text", "live"] as const;
 export type VoiceCapability = (typeof VOICE_CAPABILITIES)[number];
 
@@ -78,7 +72,7 @@ export interface LiveVoiceCallState {
   id: string;
   status: "connecting" | "active" | "closing" | "closed" | "failed";
   error: string | null;
-  summarySaved: boolean;
+  processing: boolean;
 }
 
 export interface LiveVoiceSessionResponse {

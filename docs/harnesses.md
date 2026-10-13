@@ -52,8 +52,8 @@ configuration is needed. The installed runtime must support the generation-2
 Promise plugin API. Plugin activation and managed credentials are checked
 before admitting a Control conversation.
 
-All native OpenCode 2 chats also support [Live voice](voice.md#live-voice),
-independently of Quick Chat eligibility.
+[Live voice](voice.md#live-voice) is a global sidebar assistant, independent of
+OpenCode, Quick Chat and any selected chat or native adapter.
 
 ## Continue from history
 

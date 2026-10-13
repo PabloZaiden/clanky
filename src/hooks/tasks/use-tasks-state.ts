@@ -7,6 +7,7 @@ import type { Task } from "@/shared";
 import { log } from "@pablozaiden/webapp/web";
 import { apiRequest, readApiResponse, requestApiResponse } from "../../lib/api-client";
 import { createRefreshCoordinator } from "../../lib/refresh-coordinator";
+import type { ResourceRefreshOptions } from "../useResourceRefresh";
 
 export interface UseTasksStateResult {
   tasks: Task[];
@@ -14,7 +15,7 @@ export interface UseTasksStateResult {
   error: string | null;
   setTasks: React.Dispatch<React.SetStateAction<Task[]>>;
   setError: React.Dispatch<React.SetStateAction<string | null>>;
-  refresh: (options?: { showLoading?: boolean }) => Promise<void>;
+  refresh: (options?: ResourceRefreshOptions) => Promise<void>;
   refreshTask: (id: string) => Promise<void>;
   markTaskStarting: (id: string, status: "starting" | "planning") => void;
   clearOptimisticTaskStart: (id: string) => void;
@@ -69,8 +70,9 @@ export function useTasksState(): UseTasksStateResult {
     return reconciledTasks;
   }, []);
 
-  const refresh = useCallback((options: { showLoading?: boolean } = {}) => {
-    return refreshCoordinatorRef.current.run(async () => {
+  const refresh = useCallback((options: ResourceRefreshOptions = {}) => {
+    const method = options.afterCurrent ? "runAfterCurrent" : "run";
+    return refreshCoordinatorRef.current[method](async () => {
       const showLoading = options.showLoading ?? true;
       const controller = new AbortController();
       abortControllerRef.current = controller;

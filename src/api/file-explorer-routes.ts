@@ -6,7 +6,7 @@
  * envelopes, streaming responses, and file-domain error mapping.
  */
 
-import { defineRoutes, type RouteContext, type RouteTable } from "@pablozaiden/webapp/server";
+import { defineRoutes, type RouteAutomationCredential, type RouteContext, type RouteTable } from "@pablozaiden/webapp/server";
 import {
   CancelFileExplorerUploadRequestSchema,
   CompleteFileExplorerUploadRequestSchema,
@@ -50,6 +50,7 @@ export interface FileExplorerRouteConfig {
   invalidPathError: "invalid_workspace_path" | "invalid_server_path";
   internalError: "workspace_file_error" | "ssh_server_file_error";
   downloadDescription?: string;
+  automationCredential?: RouteAutomationCredential;
   resolveTarget: (
     req: Request,
     resourceId: string,
@@ -162,6 +163,13 @@ export function createFileExplorerRoutes(
       sameOrigin: "mutations",
       description: `List ${resourceDescription} files in the active explorer root.`,
       querySchema: ListFileExplorerRequestSchema,
+      operations: {
+        GET: {
+          requestSchema: undefined,
+          querySchema: ListFileExplorerRequestSchema,
+          automation: { policy: "read", hiddenQuery: ["credentialToken"], credential: config.automationCredential },
+        },
+      },
       async GET(req: Request, ctx: RouteContext): Promise<Response> {
         const validation = parseSearchParams(ListFileExplorerRequestSchema, req);
         if (!validation.success) {
@@ -197,6 +205,13 @@ export function createFileExplorerRoutes(
       sameOrigin: "mutations",
       description: `Read a ${resourceDescription} file.`,
       querySchema: GetFileExplorerFileRequestSchema,
+      operations: {
+        GET: {
+          requestSchema: undefined,
+          querySchema: GetFileExplorerFileRequestSchema,
+          automation: { policy: "read", hiddenQuery: ["credentialToken"], credential: config.automationCredential },
+        },
+      },
       async GET(req: Request, ctx: RouteContext): Promise<Response> {
         const validation = parseSearchParams(GetFileExplorerFileRequestSchema, req);
         if (!validation.success) {
@@ -228,6 +243,13 @@ export function createFileExplorerRoutes(
       sameOrigin: "mutations",
       description: `Preview a browser-renderable ${resourceDescription} image file.`,
       querySchema: GetFileExplorerFileRequestSchema,
+      operations: {
+        GET: {
+          requestSchema: undefined,
+          querySchema: GetFileExplorerFileRequestSchema,
+          automation: { policy: "excluded", reason: "Raw image bytes belong to browser media rendering, not JSON automation." },
+        },
+      },
       async GET(req: Request, ctx: RouteContext): Promise<Response> {
         const validation = parseSearchParams(GetFileExplorerFileRequestSchema, req);
         if (!validation.success) {
@@ -259,6 +281,13 @@ export function createFileExplorerRoutes(
       sameOrigin: "mutations",
       description: `Stream a browser-renderable ${resourceDescription} video file for inline playback.`,
       querySchema: GetFileExplorerFileRequestSchema,
+      operations: {
+        GET: {
+          requestSchema: undefined,
+          querySchema: GetFileExplorerFileRequestSchema,
+          automation: { policy: "excluded", reason: "Raw ranged video stream and private browser credential transport." },
+        },
+      },
       async GET(req: Request, ctx: RouteContext): Promise<Response> {
         const validation = parseSearchParams(GetFileExplorerFileRequestSchema, req);
         if (!validation.success) {
@@ -336,6 +365,13 @@ export function createFileExplorerRoutes(
       description: config.downloadDescription
         ?? `Download a ${resourceDescription} file from the active explorer root.`,
       querySchema: GetFileExplorerFileRequestSchema,
+      operations: {
+        GET: {
+          requestSchema: undefined,
+          querySchema: GetFileExplorerFileRequestSchema,
+          automation: { policy: "excluded", reason: "Raw attachment download; use the JSON content or metadata operation." },
+        },
+      },
       async GET(req: Request, ctx: RouteContext): Promise<Response> {
         const validation = parseSearchParams(GetFileExplorerFileRequestSchema, req);
         if (!validation.success) {
@@ -380,6 +416,13 @@ export function createFileExplorerRoutes(
       sameOrigin: "mutations",
       description: `Load the full ${resourceDescription} file tree.`,
       querySchema: GetFileExplorerTreeRequestSchema,
+      operations: {
+        GET: {
+          requestSchema: undefined,
+          querySchema: GetFileExplorerTreeRequestSchema,
+          automation: { policy: "read", hiddenQuery: ["credentialToken"], credential: config.automationCredential },
+        },
+      },
       async GET(req: Request, ctx: RouteContext): Promise<Response> {
         const validation = parseSearchParams(GetFileExplorerTreeRequestSchema, req);
         if (!validation.success) {
@@ -410,6 +453,13 @@ export function createFileExplorerRoutes(
       sameOrigin: "mutations",
       description: `Read ${resourceDescription} file metadata.`,
       querySchema: GetFileExplorerFileRequestSchema,
+      operations: {
+        GET: {
+          requestSchema: undefined,
+          querySchema: GetFileExplorerFileRequestSchema,
+          automation: { policy: "read", hiddenQuery: ["credentialToken"], credential: config.automationCredential },
+        },
+      },
       async GET(req: Request, ctx: RouteContext): Promise<Response> {
         const validation = parseSearchParams(GetFileExplorerFileRequestSchema, req);
         if (!validation.success) {
@@ -444,6 +494,13 @@ export function createFileExplorerRoutes(
       sameOrigin: "mutations",
       description: `Write a ${resourceDescription} file with optional conflict checks.`,
       requestSchema: WriteFileExplorerRequestSchema,
+      operations: {
+        POST: {
+          requestSchema: WriteFileExplorerRequestSchema,
+          querySchema: undefined,
+          automation: { policy: "confirm", reason: "Writes or overwrites a file on the selected execution host.", credential: config.automationCredential },
+        },
+      },
       async POST(req: Request, ctx: RouteContext): Promise<Response> {
         const validation = await parseAndValidate(WriteFileExplorerRequestSchema, req);
         if (!validation.success) {
@@ -483,6 +540,13 @@ export function createFileExplorerRoutes(
       sameOrigin: "mutations",
       description: `Rename a ${resourceDescription} file or directory in the active explorer root.`,
       requestSchema: RenameFileExplorerRequestSchema,
+      operations: {
+        POST: {
+          requestSchema: RenameFileExplorerRequestSchema,
+          querySchema: undefined,
+          automation: { policy: "confirm", reason: "Renames a file or directory and may overwrite an existing target.", credential: config.automationCredential },
+        },
+      },
       async POST(req: Request, ctx: RouteContext): Promise<Response> {
         const validation = await parseAndValidate(RenameFileExplorerRequestSchema, req);
         if (!validation.success) {
@@ -522,6 +586,13 @@ export function createFileExplorerRoutes(
       sameOrigin: "mutations",
       description: `Delete a ${resourceDescription} file or directory in the active explorer root.`,
       requestSchema: DeleteFileExplorerRequestSchema,
+      operations: {
+        POST: {
+          requestSchema: DeleteFileExplorerRequestSchema,
+          querySchema: undefined,
+          automation: { policy: "confirm", reason: "Permanently deletes a file or directory on the selected execution host.", credential: config.automationCredential },
+        },
+      },
       async POST(req: Request, ctx: RouteContext): Promise<Response> {
         const validation = await parseAndValidate(DeleteFileExplorerRequestSchema, req);
         if (!validation.success) {
@@ -560,6 +631,13 @@ export function createFileExplorerRoutes(
       sameOrigin: "mutations",
       description: `Create a ${resourceDescription} file upload session.`,
       requestSchema: CreateFileExplorerUploadRequestSchema,
+      operations: {
+        POST: {
+          requestSchema: CreateFileExplorerUploadRequestSchema,
+          querySchema: undefined,
+          automation: { policy: "excluded", reason: "Browser-owned binary upload protocol requires raw chunk delivery." },
+        },
+      },
       async POST(req: Request, ctx: RouteContext): Promise<Response> {
         const validation = await parseAndValidate(CreateFileExplorerUploadRequestSchema, req);
         if (!validation.success) {
@@ -599,6 +677,13 @@ export function createFileExplorerRoutes(
       sameOrigin: "mutations",
       description: `Upload a raw chunk for a ${resourceDescription} file upload session.`,
       querySchema: UploadFileExplorerChunkRequestSchema,
+      operations: {
+        POST: {
+          requestSchema: undefined,
+          querySchema: UploadFileExplorerChunkRequestSchema,
+          automation: { policy: "excluded", reason: "Raw binary upload chunks are not JSON automation inputs." },
+        },
+      },
       async POST(req: Request, ctx: RouteContext): Promise<Response> {
         const validation = parseSearchParams(UploadFileExplorerChunkRequestSchema, req);
         if (!validation.success) {
@@ -639,6 +724,13 @@ export function createFileExplorerRoutes(
       sameOrigin: "mutations",
       description: `Complete a ${resourceDescription} file upload session.`,
       requestSchema: CompleteFileExplorerUploadRequestSchema,
+      operations: {
+        POST: {
+          requestSchema: CompleteFileExplorerUploadRequestSchema,
+          querySchema: undefined,
+          automation: { policy: "excluded", reason: "Completion belongs to the browser-owned binary upload session." },
+        },
+      },
       async POST(req: Request, ctx: RouteContext): Promise<Response> {
         const validation = await parseAndValidate(CompleteFileExplorerUploadRequestSchema, req);
         if (!validation.success) {
@@ -673,6 +765,13 @@ export function createFileExplorerRoutes(
       sameOrigin: "mutations",
       description: `Cancel a ${resourceDescription} file upload session.`,
       requestSchema: CancelFileExplorerUploadRequestSchema,
+      operations: {
+        POST: {
+          requestSchema: CancelFileExplorerUploadRequestSchema,
+          querySchema: undefined,
+          automation: { policy: "excluded", reason: "Cancellation belongs to the browser-owned binary upload session." },
+        },
+      },
       async POST(req: Request, ctx: RouteContext): Promise<Response> {
         const validation = await parseAndValidate(CancelFileExplorerUploadRequestSchema, req);
         if (!validation.success) {

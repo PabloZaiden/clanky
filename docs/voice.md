@@ -28,19 +28,19 @@ unchanged.
 
 ## Live voice
 
-Live voice is a separate option from **Talk** (record, transcribe, send) and
-Piper read aloud. Open any chat with a native Codex, Copilot or OpenCode 2 agent and select
-**Message actions → Live voice**. The agent can already be working when you
-start the call. Quick Chat uses the same chat and voice workflows; its agent
-additionally receives the Clanky control tools. Enabling Live in another chat
-does not grant those tools. ACP chats are not supported.
+Live is a **global Clanky assistant**, separate from **Talk** (record,
+transcribe, send), Piper read aloud, Quick Chat and native Control chats.
+Start it with the microphone button immediately left of Quick Chat in the
+sidebar, including on Home with no chat selected. No workspace agent or native
+adapter is required.
 
-OpenCode eligibility follows its native `opencode2` adapter, not the model's
-upstream provider name. Live is available before the first agent message and
-uses the same configured Live provider as Codex/Copilot; the OpenCode language
-model does not need audio capabilities. Workspace agents may run locally or
-on the selected Mesh worker while the browser and Clanky retain the existing
-WebRTC and authenticated sideband roles.
+The assistant can discover your chats, tasks, workspaces, servers and execution
+hosts; read their state and content; create and manage work; send or queue
+instructions; answer interactions; and navigate the originating client. It
+discovers exact per-method contracts from Clanky's real framework route catalog,
+not a separate endpoint list. Existing user ownership, scopes and selected-host
+execution still apply. Credential management, raw transports, uploads/downloads
+and browser media are not ordinary JSON assistant operations.
 
 In **Settings → Voice**, configure one transcription model, one shared text
 generation model, and one Live model/deployment. Reuse the existing voice
@@ -59,78 +59,119 @@ The Settings browser creates a temporary offer with an audio transceiver and
 not request microphone permission or send audio. Function access is exercised
 when the shared text model uses a tool.
 
-The browser keeps the microphone open and plays Live audio automatically.
-The compact panel shows listening/speaking, captions and the independent agent
-status. **Mute** stops microphone input but keeps the call and spoken output
-active. **End call** immediately releases the microphone, closes the Live
-session and saves a separate conversation summary. Leaving the linked chat
-also ends the call. Neither speaking over Live, muting nor ending the call
-stops the workspace agent. Ask explicitly to stop the agent, or use its normal
-interrupt control. Browser microphone permission, HTTPS (or localhost), network
-access to the provider and audio playback permission are required.
+Once starting, the launcher disappears and all call controls live in one compact,
+frameless group at the bottom of the sidebar, immediately above the version.
+Its buttons use the chat composer's glyph-only style without backgrounds or
+borders, retaining tooltips and keyboard focus feedback. It shows
+connecting/listening/speaking/processing/muted state, mute/unmute and stop;
+connecting can be cancelled. The bar stays outside the tree's scroll area and
+is independent of search, tabs and navigation. There are no Live controls in
+page headers or a transcript panel. Closing the sidebar only hides the bar:
+open it to control the same call. **Mute** disables microphone input without
+stopping spoken output. If playback is blocked, use its speaker button
+(**Enable Live audio playback**).
 
-Live delegates requests to the textual model, which has only linked-chat
-functions: send/queue, steer an existing queued instruction, get status, answer
-a question and explicitly interrupt work. Repository execution and Clanky
-tools remain with the existing workspace agent. Permission approvals remain in
-the chat UI. Accepted or queued input is not proof of completed work. Clanky
-feeds authoritative state and confirmed results back to Live while the normal
-chat continues updating.
+The call remains active across in-app navigation in its originating tab. Stop
+releases the physical microphone promptly and closes media and sideband without
+cancelling delegated chat/task work. To stop that work, request its normal
+interrupt/stop operation explicitly. Talk and Piper cannot start while global
+Live owns audio. Starting Live stops active summary playback; it reports a
+conflict instead of discarding an ongoing Talk recording or transcription.
+
+Destructive actions, arbitrary commands, permission changes and autonomous
+execution require a **visual approval dialog** in the originating tab. The
+dialog shows a short model-written description in the user's language, with
+the named target and important consequences, plus **Approve** and **Reject**.
+It does not show API endpoints or JSON payloads. The model supplies the text
+alongside the actual arguments in the same turn; both are frozen together.
+The original API validator, including cross-field requirements, is checked
+before approval is requested; hidden browser-supplied inputs are not model
+arguments. The server rechecks the target before dispatch. The model cannot
+approve the operation or override its arguments after approval. Task creation first
+reads the workspace's effective defaults, connected models and real host
+branches, then applies explicit intent and the browser's saved preferences.
+
+Registered SSH operations use the existing encrypted browser password store
+and a private, call-bound credential exchange. A missing credential opens an SSH
+password dialog; cancellation never silently selects another host. Credential
+tokens are not function arguments, results or realtime acknowledgements.
+Operations requiring different SSH servers through a single-token API are
+rejected rather than guessing which credential to use.
+
+The textual model has six tools: discover operations, describe a contract,
+execute it, read fresh client context, request a client action, and watch
+selected work. API results distinguish completed operations from admitted or
+queued background work. Entity navigation refreshes its shell data and reports
+opened only when the originating tab has committed the route and target data.
+Selective watches reread authorized state without streaming all chats'
+transcripts. Adding several watches either installs the complete authorized
+batch or leaves existing watches unchanged. If a mutation's result is uncertain,
+inspect its state before repeating it; Clanky never automatically replays mutations.
+The execute tool's required `confirmationDescription` is 1–500 trimmed
+characters for `confirm` operations and `null` for other automation policies.
+It is separate from the ordinary operation's API body.
+Browser microphone permission, HTTPS (or localhost), provider connectivity and
+audio playback permission are required.
 
 ### Privacy, limits and recovery
 
 Clanky creates the session and attaches its server-owned sideband using the
 private configured key. It returns only the WebRTC SDP answer and an owned
 Clanky call ID, not the provider key or a reusable provider token. Browser audio
-travels **directly to the provider** over WebRTC; the server observes captions
-and executes functions through sideband. The provider sees microphone audio
-while input is unmuted and the client's network connection. Audio, delegated
-reasoning and call summarization can incur provider charges.
+travels **directly to the provider** over WebRTC; the server executes delegated
+functions through authenticated sideband. The provider sees unmuted microphone
+audio, delegated API data and the client's network connection. Audio and text
+delegation can incur provider charges. Files, transcripts and tool results are
+untrusted data, not instructions granting new authority.
 
-Clanky stores agent instructions/results as usual and a separate voice-call
-summary, not recordings or a full voice transcript. Live captions are partial
-fragments, not authoritative completed turns. Summary generation uses bounded
-fragments and confirmed chat state; a missing transcript, failed summary or
-unconfirmed provider close is reported explicitly. Earlier fragments may be
-discarded in a long call and the summary identifies that limitation.
+Calls are ephemeral: Clanky does not persist recordings, voice transcripts or
+call summaries, and does not create a hidden chat. Normal created/instructed
+work is persisted by its own domain services. The server retains bounded
+in-memory correlation and terminal call state for cleanup and diagnostics.
+Closing the call never writes into an arbitrary chat.
 
-There is one active call per user/chat, a server capacity of eight calls and a
+There is one active call per user, a server capacity of eight calls and a
 limit of ten session openings per minute per endpoint/key. Provider `429`
 responses establish a cooldown and expose `Retry-After`; the browser does not
 automatically retry. Start a new call after a connection failure, checking the
-chat first if an instruction's outcome is unclear. A browser lease allows the
-server to close abandoned calls without cancelling agent work.
+target first if an instruction's outcome is unclear. A 30-second browser lease,
+renewed with heartbeats, closes abandoned calls without cancelling work.
+Another tab cannot adopt the call or receive its UI commands. Reloading,
+closing the tab or restarting Clanky does not automatically reconnect or turn
+the microphone back on. Mobile OS suspension may interrupt media or expire the
+lease; start a new call explicitly after returning.
 
 ### Public call endpoints
 
-`GET /api/chats/:id/live-voice` returns `{ "supported": true | false }` for the
-owned chat's current native adapter without starting an agent session. The UI
-combines this authoritative availability with the user's Live configuration.
-Availability is refreshed after workspace changes and realtime reconnects.
+`GET /api/voice/live` returns `{ "supported": true }` without starting an agent.
+`POST /api/voice/live` accepts `{ "sdp": "...", "clientId": "UUID", "context":
+{ "revision": 0, "route": { "view": "home" } } }` and returns `201` with
+`{ "call": { "id", "status", "error", "processing" }, "sdp": "..." }`.
+The server attaches sideband before returning the SDP answer.
 
-`POST /api/chats/:id/live-voice` accepts `{ "sdp": "...", "clientId": "UUID" }`
-and returns `201` with `{ "call": { "id", "status", "error", "summarySaved" },
-"sdp": "..." }`. The server attaches sideband before returning the SDP answer.
-Use `POST /api/chats/:id/live-voice/:callId/heartbeat` to renew the call lease
-and read its state, and `POST /api/chats/:id/live-voice/:callId/close` to finalize
-the call and persist the summary. These routes require an authenticated user
-and the normal same-origin mutation policy. Calls and functions are bound to
-the user's linked chat; provider session IDs are not accepted as authority.
+`GET /api/voice/live/:callId` reads owned call state. POST `heartbeat` accepts
+`{ "clientId", "context" }`; POST `close` accepts `{ "clientId" }`.
+POST `confirmations/:requestId` accepts `{ "clientId", "approved": true |
+false }`, and POST `credentials/:requestId` accepts `{ "clientId",
+"credentialToken": "UUID" | null }`. These suffixes are relative to
+`/api/voice/live/:callId`. Approval and credential IDs are one-shot, expiring,
+call-bound capabilities; they are not model tools.
+
+All call routes require authentication and normal same-origin mutation policy.
+Operations reuse the originating authorization, with an immutable role/scope
+ceiling, and pass through the framework's authenticated request pipeline.
+Provider session IDs are not accepted as authority. Old chat-local Live
+endpoints are removed rather than aliased.
 
 ### Validation scope
 
-The compiled-app journeys exercise both URL roots with an external deterministic
-Live peer that rejects incomplete WebRTC offers, including Live capability
-validation, parallel/duplicate functions, native steering and questions,
-closing without interrupting the agent, provider cuts and summary persistence.
-The OpenCode local/Mesh journeys also exercise ordinary voice instructions,
-voice-driven Control steering, native tool results and saved call summaries.
-Azure `gpt-live-1` with `gpt-6-luna` was also exercised through Bun.WebView with
-synthesized microphone input: bidirectional audio, native Clanky tool execution,
-spoken confirmed results, mute and graceful close. Desktop and mobile-width
-screenshots cover the panel and settings. Physical microphone/speaker quality,
-mobile operating-system suspension and a live OpenAI-hosted call still require
-device/provider-specific validation.
+The compiled-app global journey uses deterministic external Live and ACP
+providers, real persistence/Git/SSH boundaries, originating-tab UI
+acknowledgements and visual-approval/private-credential protocols. Native
+Control journeys remain independent of Live. The protocol fixture is not proof
+of WebRTC audio quality. Layout and media behavior are manually checked with
+Bun.WebView; physical microphone/speaker quality, mobile OS suspension and
+provider-specific connectivity require device/provider validation.
 
 ## Local Piper speech
 

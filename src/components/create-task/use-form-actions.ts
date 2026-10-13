@@ -12,7 +12,7 @@ import type { CreateTaskFormSubmitRequest } from "@/lib/task-request";
 import { toMessageAttachments } from "../../lib/image-attachments";
 import { cheapModelValueToSelection } from "./use-model-selection";
 import { parsePositiveIssueNumber } from "./issue-number";
-import { DEFAULT_TASK_CONFIG } from "@/shared/task";
+import { getTaskCreationDefaults } from "@/shared/task-creation";
 import { UPLOADED_PLAN_IMPLEMENTATION_PROMPT } from "../../lib/uploaded-plan";
 import type { UploadedPlanFile } from "./types";
 
@@ -178,6 +178,7 @@ export function useFormActions({
         const parsedModel = selectedModel ? parseModelKey(selectedModel) : null;
         if (!asDraft && !parsedModel) return;
         const parsedIssueNumber = parsePositiveIssueNumber(issueNumber);
+        const defaults = getTaskCreationDefaults();
 
         const request: CreateTaskFormSubmitRequest = {
           name: finalName,
@@ -193,15 +194,12 @@ export function useFormActions({
             : null,
           maxConsecutiveErrors: maxConsecutiveErrors.trim()
             ? Math.max(parseInt(maxConsecutiveErrors, 10), 0)
-            : DEFAULT_TASK_CONFIG.maxConsecutiveErrors,
+            : defaults.maxConsecutiveErrors,
           activityTimeoutSeconds: activityTimeoutSeconds.trim()
             ? Math.max(parseInt(activityTimeoutSeconds, 10), 60)
-            : DEFAULT_TASK_CONFIG.activityTimeoutSeconds,
-          stopPattern: DEFAULT_TASK_CONFIG.stopPattern,
-          git: {
-            branchPrefix: DEFAULT_TASK_CONFIG.git.branchPrefix,
-            commitScope: DEFAULT_TASK_CONFIG.git.commitScope,
-          },
+            : defaults.activityTimeoutSeconds,
+          stopPattern: defaults.stopPattern,
+          git: defaults.git,
           baseBranch: selectedBranch.trim() || currentBranch.trim(),
           useWorktree,
           clearPlanningFolder,

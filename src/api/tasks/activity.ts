@@ -18,6 +18,9 @@ export const tasksActivityRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Observe owned native task work independently of logical task completion.",
+    operations: {
+      GET: { requestSchema: undefined, querySchema: undefined, automation: { policy: "read" } },
+    },
     async GET(_req, ctx) {
       try { return successResponse({ activity: await taskManager.getActivity(ctx.params["id"]!) }); } catch (error) { return activityErrorResponse(error); }
     },
@@ -26,6 +29,9 @@ export const tasksActivityRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Stop one owned native child or process without escalating to the principal or siblings.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "write", completion: "admission" } },
+    },
     async POST(_req, ctx) {
       try { return successResponse({ result: await taskManager.stopActivity(ctx.params["id"]!, ctx.params["activityId"]!) }); } catch (error) { return activityErrorResponse(error); }
     },

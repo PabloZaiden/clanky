@@ -14,6 +14,9 @@ export const meshTunnelRoutes = defineRoutes({
     auth: "public",
     sameOrigin: "never",
     description: "Establish a signed Mesh TCP tunnel session.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Signed internal Mesh TCP tunnel admission protocol." } },
+    },
     tags: ["mesh", "internal", "tcp-tunnel"],
     async POST(req): Promise<Response> {
       const parsed = await parseAndValidate(MeshTcpTunnelSessionRequestSchema, req);
@@ -46,6 +49,9 @@ export const meshTunnelRoutes = defineRoutes({
     auth: "public",
     sameOrigin: "never",
     description: "Open an authenticated Mesh TCP tunnel stream.",
+    operations: {
+      GET: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Raw authenticated internal Mesh tunnel WebSocket transport." } },
+    },
     tags: ["mesh", "internal", "tcp-tunnel"],
     async GET(req, ctx): Promise<Response | undefined> {
       const sessionId = req.headers.get("x-clanky-mesh-session-id");

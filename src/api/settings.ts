@@ -44,6 +44,24 @@ export const settingsRoutes = defineRoutes({
     tags: ["settings", "maintenance"],
     requestSchema: RestartAutomaticWorkspacesRequestSchema,
     responseSchema: RestartAutomaticWorkspacesResponseSchema,
+    operations: {
+      POST: {
+        requestSchema: RestartAutomaticWorkspacesRequestSchema,
+        querySchema: undefined,
+        automation: {
+          policy: "confirm",
+          reason: "Starts restart jobs for every automatic workspace.",
+          hiddenInputs: ["credentialTokensByServerId", "credentialUnavailableServerIds"],
+          completion: "admission",
+          credential: {
+            kind: "ssh",
+            resource: { name: "workspaces", purpose: "restart-automatic" },
+            mapInput: "credentialTokensByServerId",
+            unavailableInput: "credentialUnavailableServerIds",
+          },
+        },
+      },
+    },
     async POST(req: Request, ctx: RouteContext): Promise<Response> {
       ctx.server?.timeout(req, 0);
       const validation = await parseAndValidate(
@@ -82,6 +100,9 @@ export const settingsRoutes = defineRoutes({
     auth: "owner",
     sameOrigin: "mutations",
     description: "Reset all persisted settings and recreate the database.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "confirm", reason: "Permanently deletes all tasks, chats, workspaces, settings, and credentials." } },
+    },
     /**
      * POST /api/settings/reset-all - Delete database and reinitialize.
      * 
@@ -126,6 +147,9 @@ export const settingsRoutes = defineRoutes({
     auth: "owner",
     sameOrigin: "mutations",
     description: "Purge terminal-state tasks across all workspaces.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "confirm", reason: "Permanently deletes eligible tasks across every workspace.", completion: "admission" } },
+    },
     /**
      * POST /api/settings/purge-terminal-tasks - Purge terminal-state tasks across all workspaces.
      *

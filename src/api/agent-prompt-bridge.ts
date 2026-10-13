@@ -51,6 +51,9 @@ export const agentPromptBridgeRoutes = defineRoutes({
     sameOrigin: "never",
     scopes: ["clanky:agent-prompt"],
     description: "Internal endpoint used by the workspace-side deterministic agent runner to forward workspace.prompt() calls to the authenticated user's chat.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Internal authenticated provider execution bridge, not a user automation operation." } },
+    },
     async POST(req, ctx) {
       ctx.requireUser();
       ctx.server?.timeout(req, 0);

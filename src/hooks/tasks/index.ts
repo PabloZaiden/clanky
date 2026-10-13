@@ -14,6 +14,7 @@ import type { Task } from "@/shared";
 import type { CreateTaskRequest, UpdateTaskRequest } from "@/contracts";
 import type { MessageAttachment } from "@/shared/message-attachments";
 import { useRealtimeRefreshWithRecovery } from "../useRealtimeStream";
+import type { ResourceRefreshOptions } from "../useResourceRefresh";
 
 export interface UseTasksResult {
   /** Array of all tasks */
@@ -23,7 +24,7 @@ export interface UseTasksResult {
   /** Error message if any */
   error: string | null;
   /** Refresh tasks from the server */
-  refresh: () => Promise<void>;
+  refresh: (options?: ResourceRefreshOptions) => Promise<void>;
   /** Create a new task (tasks are always started immediately) */
   createTask: (request: CreateTaskRequest) => Promise<CreateTaskResult>;
   /** Update an existing task */

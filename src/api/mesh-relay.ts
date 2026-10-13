@@ -29,6 +29,10 @@ export const meshRelayRoutes = defineRoutes({
     sameOrigin: "mutations",
     cliPath: "mesh/relay",
     description: "Inspect or pair named Mesh relays for this controller.",
+    operations: {
+      GET: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Mesh relay pairing and trust configuration are managed outside model operations." } },
+      POST: { requestSchema: PairControllerRelayRequestSchema, querySchema: undefined, automation: { policy: "excluded", reason: "Establishes Mesh relay trust; pairing is managed outside model operations." } },
+    },
     tags: ["mesh", "relay"],
     requestSchema: PairControllerRelayRequestSchema,
     responseSchema: ControllerRelayPairingStatusSchema,
@@ -62,6 +66,9 @@ export const meshRelayRoutes = defineRoutes({
     auth: "owner",
     sameOrigin: "mutations",
     description: "Select the primary Mesh relay used by default for invitations.",
+    operations: {
+      POST: { requestSchema: SelectPrimaryControllerRelayRequestSchema, querySchema: undefined, automation: { policy: "excluded", reason: "Primary Mesh relay trust routing is managed outside model operations." } },
+    },
     tags: ["mesh", "relay"],
     requestSchema: SelectPrimaryControllerRelayRequestSchema,
     responseSchema: ControllerRelayPairingStatusSchema,
@@ -84,6 +91,9 @@ export const meshRelayRoutes = defineRoutes({
     auth: "owner",
     sameOrigin: "mutations",
     description: "Unpair a named Mesh relay without changing worker enrollments.",
+    operations: {
+      DELETE: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Mesh relay trust revocation is managed outside model operations." } },
+    },
     tags: ["mesh", "relay"],
     responseSchema: ControllerRelayPairingStatusSchema,
     async DELETE(_req, ctx): Promise<Response> {

@@ -66,6 +66,20 @@ export const crudRoutes = defineRoutes({
     description: "List workspaces or create a workspace.",
     requestSchema: CreateWorkspaceRequestSchema,
     querySchema: SensitiveQuerySchema,
+    operations: {
+      GET: {
+        description: "List public workspace summaries.",
+        requestSchema: undefined,
+        querySchema: SensitiveQuerySchema,
+        automation: { policy: "read", hiddenQuery: ["sensitive"] },
+      },
+      POST: {
+        description: "Create a workspace on an explicitly selected execution host or dedicated worker enrollment.",
+        requestSchema: CreateWorkspaceRequestSchema,
+        querySchema: undefined,
+        automation: { policy: "confirm", reason: "May prepare repositories or grant Clanky context access.", hiddenInputs: ["sshTarget"] },
+      },
+    },
     async GET(req: Request, _ctx) {
       log.debug("GET /api/workspaces - Listing all workspaces");
       try {
@@ -126,6 +140,36 @@ export const crudRoutes = defineRoutes({
     description: "Read, update, or delete a workspace.",
     requestSchema: UpdateWorkspaceRequestSchema,
     querySchema: SensitiveQuerySchema,
+    operations: {
+      GET: {
+        description: "Read public workspace details and scratchpad.",
+        requestSchema: undefined,
+        querySchema: SensitiveQuerySchema,
+        automation: { policy: "read", hiddenQuery: ["sensitive"] },
+      },
+      PUT: {
+        description: "Update workspace details, execution host, adapter, privacy, or scratchpad.",
+        requestSchema: UpdateWorkspaceRequestSchema,
+        querySchema: SensitiveQuerySchema,
+        automation: { policy: "confirm", reason: "May change execution authority or grant Clanky context access.", hiddenInputs: ["sshTarget"], hiddenQuery: ["sensitive"] },
+      },
+      DELETE: {
+        description: "Delete a workspace, optionally including its server directory.",
+        requestSchema: DeleteWorkspaceRequestSchema,
+        querySchema: undefined,
+        automation: {
+          policy: "confirm",
+          reason: "Permanently deletes workspace data and may delete its repository directory.",
+          hiddenInputs: ["credentialToken"],
+          completion: "admission",
+          credential: {
+            kind: "ssh",
+            resource: { name: "workspaces", idParameter: "id", purpose: "directory-delete" },
+            input: "credentialToken",
+          },
+        },
+      },
+    },
     async GET(req: Request, ctx) {
       const id = ctx.params["id"]!;
       log.debug("GET /api/workspaces/:id", { workspaceId: id });

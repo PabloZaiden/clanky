@@ -1,4 +1,5 @@
 import { defineRoutes } from "@pablozaiden/webapp/server";
+import { ModelVariantsQuerySchema, WorkspaceQuerySchema } from "../route-schemas";
 /**
  * Models listing API routes.
  *
@@ -25,6 +26,9 @@ export const modelsRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "List available model variants for a workspace.",
+    operations: {
+      GET: { requestSchema: undefined, querySchema: ModelVariantsQuerySchema, automation: { policy: "read" } },
+    },
     /**
      * GET /api/models/variants - Get lazily discovered variants for one model.
      *
@@ -79,6 +83,9 @@ export const modelsRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "List available AI models for a workspace.",
+    operations: {
+      GET: { requestSchema: undefined, querySchema: WorkspaceQuerySchema, automation: { policy: "read" } },
+    },
     /**
      * GET /api/models - Get available AI models.
      *

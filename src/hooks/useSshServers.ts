@@ -37,8 +37,9 @@ export function useSshServers({ realtime = true }: UseSshServersOptions = {}): U
   const [error, setError] = useState<string | null>(null);
   const refreshCoordinatorRef = useRef(createRefreshCoordinator<void>());
 
-  const refresh = useCallback((options: { showLoading?: boolean } = {}) => {
-    return refreshCoordinatorRef.current.run(async () => {
+  const refresh = useCallback((options: ResourceRefreshOptions = {}) => {
+    const method = options.afterCurrent ? "runAfterCurrent" : "run";
+    return refreshCoordinatorRef.current[method](async () => {
       const showLoading = options.showLoading ?? true;
       try {
         if (showLoading) {

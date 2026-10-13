@@ -17,6 +17,9 @@ export const tasksCommentsRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "List review comments for a task.",
+    operations: {
+      GET: { requestSchema: undefined, querySchema: undefined, automation: { policy: "read" } },
+    },
     /**
      * GET /api/tasks/:id/comments - Get all review comments for a task.
      *

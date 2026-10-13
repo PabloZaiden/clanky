@@ -11,6 +11,7 @@ import { terminalSessionManager } from "../core/terminal-session-manager";
 import { domainErrorResponse, errorResponse } from "./helpers";
 import { parseAndValidate } from "./validation";
 import { CreateTerminalSessionRequestSchema, UpdateTerminalSessionRequestSchema } from "@/contracts/schemas";
+import { WorkspaceFilterQuerySchema } from "./route-schemas";
 
 const log = createLogger("api:terminal-sessions");
 
@@ -31,6 +32,19 @@ export const terminalSessionsRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Create a workspace terminal session.",
     requestSchema: CreateTerminalSessionRequestSchema,
+    operations: {
+      GET: {
+        description: "List terminal sessions, optionally filtered by workspace.",
+        requestSchema: undefined,
+        querySchema: WorkspaceFilterQuerySchema,
+        automation: { policy: "read" },
+      },
+      POST: {
+        requestSchema: CreateTerminalSessionRequestSchema,
+        querySchema: undefined,
+        automation: { policy: "write" },
+      },
+    },
     async GET(req: Request, _ctx): Promise<Response> {
       const url = new URL(req.url);
       const workspaceId = url.searchParams.get("workspaceId") ?? undefined;
@@ -64,6 +78,24 @@ export const terminalSessionsRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Update or delete a workspace terminal session.",
     requestSchema: UpdateTerminalSessionRequestSchema,
+    operations: {
+      GET: {
+        description: "Read a terminal session registration.",
+        requestSchema: undefined,
+        querySchema: undefined,
+        automation: { policy: "read" },
+      },
+      PATCH: {
+        requestSchema: UpdateTerminalSessionRequestSchema,
+        querySchema: undefined,
+        automation: { policy: "write" },
+      },
+      DELETE: {
+        requestSchema: undefined,
+        querySchema: undefined,
+        automation: { policy: "confirm", reason: "Deletes the terminal session and may terminate its process.", completion: "admission" },
+      },
+    },
     async GET(_req: Request, ctx): Promise<Response> {
       try {
         const session = await terminalSessionManager.getSession(ctx.params["id"]!);

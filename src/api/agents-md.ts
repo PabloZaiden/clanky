@@ -70,6 +70,9 @@ export const agentsMdRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Read the AGENTS.md file and optimization status for a workspace.",
+    operations: {
+      GET: { requestSchema: undefined, querySchema: undefined, automation: { policy: "read" } },
+    },
     GET: async (_req: Request, ctx) => {
       const id = ctx.params["id"]!;
       log.debug("GET /api/workspaces/:id/agents-md", { workspaceId: id });
@@ -92,6 +95,9 @@ export const agentsMdRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Preview AGENTS.md optimization changes for a workspace.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "read" } },
+    },
     POST: async (_req: Request, ctx) => {
       const id = ctx.params["id"]!;
       log.debug("POST /api/workspaces/:id/agents-md/preview", { workspaceId: id });
@@ -117,6 +123,9 @@ export const agentsMdRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Apply AGENTS.md optimization changes to a workspace.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "confirm", reason: "Rewrites the workspace's agent instructions file." } },
+    },
     POST: async (_req: Request, ctx) => {
       const id = ctx.params["id"]!;
       log.debug("POST /api/workspaces/:id/agents-md/optimize", { workspaceId: id });

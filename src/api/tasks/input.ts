@@ -29,6 +29,9 @@ export const tasksInputRoutes = defineRoutes({
     sameOrigin: "mutations",
     tags: ["tasks"],
     description: "Admit the current queued task message into the native execution without interrupting it.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "write", completion: "admission" } },
+    },
     async POST(_req, ctx) {
       return await inputResponse(() => taskManager.steerPendingInput(ctx.params["id"]!, ctx.params["inputId"]!));
     },
@@ -38,6 +41,9 @@ export const tasksInputRoutes = defineRoutes({
     sameOrigin: "mutations",
     tags: ["tasks"],
     description: "Recover an input receipt from its exact owned native conversation without resending it.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "write", completion: "admission" } },
+    },
     async POST(_req, ctx) {
       return await inputResponse(() => taskManager.reconcilePendingInput(ctx.params["id"]!, ctx.params["inputId"]!));
     },

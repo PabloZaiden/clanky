@@ -33,6 +33,9 @@ export const meshControlRoutes = defineRoutes({
     // identity/version metadata, never grants, users, credentials or paths.
     auth: "public", sameOrigin: "never",
     description: "Negotiate the worker generation before sending a Mesh contract.",
+    operations: {
+      GET: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Internal Mesh wire-generation negotiation, not user automation." } },
+    },
     tags: ["mesh", "internal", "discovery"],
     async GET(req): Promise<Response> {
       try {
@@ -48,6 +51,9 @@ export const meshControlRoutes = defineRoutes({
     auth: "public",
     sameOrigin: "never",
     description: "Receive a signed worker enrollment request.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Signed internal Mesh enrollment and trust protocol." } },
+    },
     tags: ["mesh", "internal"],
     async POST(req): Promise<Response> {
       const parsed = await parseAndValidate(MeshEnrollmentRequestSchema, req);
@@ -92,6 +98,9 @@ export const meshControlRoutes = defineRoutes({
     auth: "public",
     sameOrigin: "never",
     description: "Receive a signed revocation from an enrolled controller.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Signed internal Mesh trust-revocation protocol." } },
+    },
     tags: ["mesh", "internal"],
     async POST(req): Promise<Response> {
       const parsed = await parseAndValidate(MeshRevocationNoticeSchema, req);
@@ -116,6 +125,9 @@ export const meshControlRoutes = defineRoutes({
     auth: "public",
     sameOrigin: "never",
     description: "Receive a signed worker termination request from an enrolled controller.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Signed internal Mesh worker-lifecycle protocol." } },
+    },
     tags: ["mesh", "internal", "lifecycle"],
     async POST(req): Promise<Response> {
       const parsed = await parseAndValidate(MeshWorkerKillRequestSchema, req);
@@ -140,6 +152,9 @@ export const meshControlRoutes = defineRoutes({
     auth: "public",
     sameOrigin: "never",
     description: "Receive a signed mesh transport health check from another node.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Signed internal Mesh transport-health protocol." } },
+    },
     tags: ["mesh", "internal", "health"],
     async POST(req): Promise<Response> {
       const parsed = await parseAndValidate(MeshHealthCheckSchema, req);

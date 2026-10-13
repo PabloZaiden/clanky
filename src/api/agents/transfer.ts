@@ -16,6 +16,13 @@ export const transferRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Download a portable scheduled-agent configuration.",
+    operations: {
+      GET: {
+        requestSchema: undefined,
+        querySchema: undefined,
+        automation: { policy: "excluded", reason: "Attachment download; use the normal agent JSON detail operation." },
+      },
+    },
     async GET(_req: Request, ctx): Promise<Response> {
       const payload = await exportAgentConfig(ctx.params["id"]!);
       if (!payload) {
@@ -33,6 +40,13 @@ export const transferRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Import a portable scheduled-agent configuration into a workspace.",
+    operations: {
+      POST: {
+        requestSchema: AgentTransferPayloadSchema,
+        querySchema: undefined,
+        automation: { policy: "confirm", reason: "Imports scheduled prompts or executable code that may run automatically." },
+      },
+    },
     async POST(req: Request, ctx): Promise<Response> {
       const validation = await parseAndValidate(AgentTransferPayloadSchema, req);
       if (!validation.success) {
