@@ -84,7 +84,7 @@ export const chatsCrudRoutes = defineRoutes({
       },
       POST: {
         description: "Create a chat; automatically approving permissions requires visual confirmation.",
-        requestSchema: CreateChatRequestSchema.extend({
+        requestSchema: CreateChatRequestSchema.safeExtend({
           autoApprovePermissions: z.boolean().default(false),
         }).strict(),
         querySchema: undefined,
@@ -127,6 +127,7 @@ export const chatsCrudRoutes = defineRoutes({
           modelID: body.model.modelID,
           modelVariant: body.model.variant,
           useWorktree: body.useWorktree,
+          useSelectedBranchForWorktree: body.useSelectedBranchForWorktree,
           useChatNameAsBranch: body.useChatNameAsBranch,
           autoApprovePermissions: body.autoApprovePermissions,
           baseBranch: body.baseBranch,

@@ -31,7 +31,7 @@ export type {
 export type { RemoteBranchReference } from "./git-remote";
 
 // Sub-module imports
-import { isGitRepo, getCommonGitDirectory as getCommonGitDirectoryQuery, getCurrentBranch, getBranches, getDefaultBranch, verifyBranch, hasUncommittedChanges, getChangedFiles, branchExists, hasStagedChanges, isAncestor, getConflictedFiles } from "./git-repo-query";
+import { isGitRepo, getCommonGitDirectory as getCommonGitDirectoryQuery, getCurrentBranch, getBranches, getDefaultBranch, verifyBranch, hasUncommittedChanges, getChangedFiles, branchExists, getBranchUpstream as getBranchUpstreamQuery, hasStagedChanges, isAncestor, getConflictedFiles } from "./git-repo-query";
 import {
   getRemoteUrl as getRemoteUrlRemote,
   hasRemote as hasRemoteRemote,
@@ -58,6 +58,7 @@ import { getDiff, getDiffSummary, getFileDiffContent, getDiffWithContent } from 
 import {
   createWorktree,
   addWorktreeForExistingBranch,
+  addWorktreeForRemoteBranch,
   removeWorktree,
   ensureWorktreeRemoved,
   listWorktrees,
@@ -170,6 +171,10 @@ export class GitService {
     options: { allowFailure?: boolean } = { allowFailure: true }
   ): Promise<boolean> {
     return branchExists(this.executor, directory, branchName, options);
+  }
+
+  async getBranchUpstream(directory: string, branchName: string): Promise<string | null> {
+    return getBranchUpstreamQuery(this.executor, directory, branchName);
   }
 
   async hasStagedChanges(directory: string): Promise<boolean> {
@@ -368,9 +373,25 @@ export class GitService {
   async addWorktreeForExistingBranch(
     repoDirectory: string,
     worktreePath: string,
-    branchName: string
+    branchName: string,
+    options: { force?: boolean } = {},
   ): Promise<void> {
-    return addWorktreeForExistingBranch(this.executor, repoDirectory, worktreePath, branchName);
+    return addWorktreeForExistingBranch(this.executor, repoDirectory, worktreePath, branchName, options);
+  }
+
+  async addWorktreeForRemoteBranch(
+    repoDirectory: string,
+    worktreePath: string,
+    localBranchName: string,
+    remoteBranchRef: string,
+  ): Promise<void> {
+    return addWorktreeForRemoteBranch(
+      this.executor,
+      repoDirectory,
+      worktreePath,
+      localBranchName,
+      remoteBranchRef,
+    );
   }
 
   async removeWorktree(

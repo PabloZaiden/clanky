@@ -160,6 +160,19 @@ the same repository, creation returns HTTP 409 with
 `chat_worktree_branch_conflict` before persisting the new chat. A free existing
 branch can still be attached to the worktree.
 
+`POST /api/chats` also accepts the optional
+`useSelectedBranchForWorktree` boolean. When `true`, `useWorktree` must be
+enabled, `baseBranch` must select a branch, and `useChatNameAsBranch` must not
+be enabled. The worktree uses that selected branch directly instead of creating
+a chat-specific branch. If `baseBranch` is a remote-tracking reference such as
+`origin/feature`, Clanky creates or reuses the corresponding local branch
+`feature` tracking `origin/feature`; a local branch with a different upstream
+is rejected. The option is omitted or `false` by default, preserving the
+existing new-branch behavior. Multiple worktrees may use the same local branch,
+but they share one Git reference: commits in either worktree advance that
+branch for all of them. Deleting a chat removes its managed worktree, not the
+shared branch.
+
 ### Chat working directory
 
 `POST /api/chats` accepts an optional `directory` path on the selected

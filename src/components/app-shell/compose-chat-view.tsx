@@ -97,6 +97,7 @@ export function ComposeChatView({
   const [selectedModel, setSelectedModel] = useState("");
   const [useWorktree, setUseWorktree] = useState(true);
   const [useChatNameAsBranch, setUseChatNameAsBranch] = useState(false);
+  const [useSelectedBranchForWorktree, setUseSelectedBranchForWorktree] = useState(false);
   const [autoApprovePermissions, setAutoApprovePermissions] = useState(true);
   const [baseBranchSelection, setBaseBranchSelection] = useState({
     workspaceId: composeWorkspace?.id ?? "",
@@ -166,6 +167,8 @@ export function ComposeChatView({
     }
     loadedWorkspaceRef.current = workspaceKey;
     setSelectedModel("");
+    setUseChatNameAsBranch(false);
+    setUseSelectedBranchForWorktree(false);
     setBaseBranch("");
     handleWorkspaceChange(
       selectedWorkspace.id,
@@ -193,6 +196,7 @@ export function ComposeChatView({
   useEffect(() => {
     if (!worktreesAllowed || !useWorktree) {
       setUseChatNameAsBranch(false);
+      setUseSelectedBranchForWorktree(false);
     }
   }, [useWorktree, worktreesAllowed]);
 
@@ -252,6 +256,10 @@ export function ComposeChatView({
       showError("Wait for branches to load for the selected workspace");
       return;
     }
+    if (useSelectedBranchForWorktree && !selectedWorkspaceBaseBranch) {
+      showError("Select a branch first");
+      return;
+    }
     const parsedModel = parseModelKey(effectiveSelectedModel);
     if (!parsedModel) {
       showError("Select a model first");
@@ -269,7 +277,10 @@ export function ComposeChatView({
           variant: parsedModel.variant ?? "",
         },
         useWorktree: worktreesAllowed ? useWorktree : false,
-        ...(worktreesAllowed && useWorktree && useChatNameAsBranch
+        ...(worktreesAllowed && useWorktree && useSelectedBranchForWorktree
+          ? { useSelectedBranchForWorktree: true }
+          : {}),
+        ...(worktreesAllowed && useWorktree && !useSelectedBranchForWorktree && useChatNameAsBranch
           ? { useChatNameAsBranch: true }
           : {}),
         autoApprovePermissions,
@@ -307,6 +318,7 @@ export function ComposeChatView({
   );
   const canSubmit = !isSubmitting
     && (selectedWorkspace?.workspaceType !== "git" || branchDataReady)
+    && (!useSelectedBranchForWorktree || Boolean(selectedWorkspaceBaseBranch))
     && !modelOptionsLoading
     && Boolean(selectedWorkspace)
     && Boolean(effectiveSelectedModel);
@@ -383,6 +395,10 @@ export function ComposeChatView({
             branchesLoading={!branchDataReady}
             defaultBranch={selectedWorkspaceDefaultBranch}
             currentBranch={selectedWorkspaceCurrentBranch}
+            label={useSelectedBranchForWorktree ? "Worktree Branch" : "Base Branch"}
+            helpText={useSelectedBranchForWorktree
+              ? "The worktree uses this branch directly. A remote branch is checked out as a local tracking branch."
+              : undefined}
           />
         )}
 
@@ -409,6 +425,31 @@ export function ComposeChatView({
         )}
 
         {worktreesAllowed && useWorktree && (
+          <label className="flex items-start gap-3">
+            <input
+              type="checkbox"
+              checked={useSelectedBranchForWorktree}
+              onChange={(event) => {
+                const selected = event.target.checked;
+                setUseSelectedBranchForWorktree(selected);
+                if (selected) {
+                  setUseChatNameAsBranch(false);
+                }
+              }}
+              className="mt-1 h-4 w-4 rounded border-gray-300 text-gray-700 focus:ring-gray-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-300"
+            />
+            <div className="flex-1">
+              <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Use selected branch directly
+              </span>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Worktrees on the same branch share one Git reference; commits in either worktree advance it for both.
+              </p>
+            </div>
+          </label>
+        )}
+
+        {worktreesAllowed && useWorktree && !useSelectedBranchForWorktree && (
         <label className="flex items-start gap-3">
           <input
             type="checkbox"

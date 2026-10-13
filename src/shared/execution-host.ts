@@ -77,12 +77,15 @@ export const GIT_COMMAND_SCOPES = [
 export type GitCommandScope = typeof GIT_COMMAND_SCOPES[number];
 export type GitEnvironmentVariableName = "GIT_SSH_COMMAND";
 
+export const MANAGED_WORKTREES_BASE_VERSION = 2;
+export const MANAGED_WORKTREES_SELECTED_BRANCH_VERSION = 3;
+
 export const EXECUTION_HOST_CAPABILITY_VERSIONS = {
   commandExecution: 1,
   fileOperations: 2,
   directoryTree: 1,
   git: 2,
-  managedWorktrees: 2,
+  managedWorktrees: MANAGED_WORKTREES_SELECTED_BRANCH_VERSION,
   acpRuntime: 2,
   interactiveTerminal: 1,
   provisioning: 1,
@@ -154,7 +157,7 @@ export const POSIX_EXECUTION_HOST_CAPABILITIES: ExecutionHostCapabilities = {
   commandExecution: 1,
   fileOperations: 2,
   git: 2,
-  managedWorktrees: 2,
+  managedWorktrees: EXECUTION_HOST_CAPABILITY_VERSIONS.managedWorktrees,
   acpRuntime: 2,
   interactiveTerminal: 1,
   provisioning: 1,
@@ -167,7 +170,7 @@ export const WINDOWS_EXECUTION_HOST_CAPABILITIES: ExecutionHostCapabilities = {
   commandExecution: 1,
   fileOperations: 2,
   git: 2,
-  managedWorktrees: 2,
+  managedWorktrees: EXECUTION_HOST_CAPABILITY_VERSIONS.managedWorktrees,
   acpRuntime: 2,
   interactiveTerminal: 1,
   tcpTunnel: 1,
@@ -516,6 +519,24 @@ export function supportsPortableAcpRuntime(
   return supportsExecutionHostCapability(capabilities, "acpRuntime");
 }
 
+export function getManagedWorktreesCommandMinimumVersion(
+  args: readonly string[],
+): number {
+  const isSelectedBranchWorktreeAdd = args[0] === "worktree"
+    && args[1] === "add"
+    && (
+      (args.length === 5 && args[2] === "--force")
+      || (
+        args.length === 7
+        && args[2] === "--track"
+        && args[3] === "-b"
+      )
+    );
+  return isSelectedBranchWorktreeAdd
+    ? MANAGED_WORKTREES_SELECTED_BRANCH_VERSION
+    : MANAGED_WORKTREES_BASE_VERSION;
+}
+
 export function getUnavailableGitCommandCapability(
   capabilities: ExecutionHostCapabilities,
   scope: GitCommandScope,
@@ -531,7 +552,11 @@ export function getUnavailableGitCommandCapability(
     return null;
   }
   const supportsWorktreeRpc = supportsGitRpc
-    && supportsExecutionHostCapability(capabilities, "managedWorktrees");
+    && supportsExecutionHostCapability(
+      capabilities,
+      "managedWorktrees",
+      MANAGED_WORKTREES_BASE_VERSION,
+    );
   return supportsWorktreeRpc
     ? null
     : "managedWorktrees";

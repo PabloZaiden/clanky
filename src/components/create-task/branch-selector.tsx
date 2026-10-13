@@ -8,6 +8,7 @@ interface BranchSelectorProps {
   defaultBranch: string;
   currentBranch: string;
   disabled?: boolean;
+  label?: string;
   helpText?: string | null;
 }
 
@@ -19,6 +20,7 @@ export function BranchSelector({
   defaultBranch,
   currentBranch,
   disabled = false,
+  label = "Base Branch",
   helpText = "Branch to base the task on (default: repository's default branch)",
 }: BranchSelectorProps) {
   return (
@@ -27,7 +29,7 @@ export function BranchSelector({
         htmlFor="branch"
         className="block text-sm font-medium text-gray-700 dark:text-gray-300"
       >
-        Base Branch
+        {label}
       </label>
       <select
         id="branch"
