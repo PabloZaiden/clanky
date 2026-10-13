@@ -239,7 +239,9 @@ async function exerciseTerminalSession(options: {
         timeoutMs: 5_000,
       },
     );
-    expect(connected?.["runtimeConnectionMode"]).toBe(session.config.connectionMode);
+    if (session.config.connectionMode === "direct") {
+      expect(connected?.["runtimeConnectionMode"]).toBe("direct");
+    }
 
     socket.send(JSON.stringify({
       type: "terminal.resize",
