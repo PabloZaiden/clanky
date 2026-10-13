@@ -28,7 +28,12 @@ export async function getOrCreateTaskTerminalSessionApi(
     `/api/tasks/${taskId}/terminal-session`,
     {
       method: "POST",
-      ...(request ? { body: JSON.stringify(request) } : {}),
+      ...(request
+        ? {
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(request),
+        }
+        : {}),
     },
     "Connect task terminal session",
   );

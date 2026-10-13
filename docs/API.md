@@ -1200,6 +1200,19 @@ Returns the terminal session object.
 
 Create or reuse the terminal session linked to a task.
 
+**Request Body** (optional)
+
+```json
+{
+  "directory": "/path/to/working/directory"
+}
+```
+
+`directory` sets the working directory only when a new task-linked terminal
+session is created. If a session already exists, it is returned unchanged.
+When omitted, a new session uses the task's worktree directory, if configured,
+or its task directory otherwise.
+
 **Response**
 
 Returns the terminal session object.
