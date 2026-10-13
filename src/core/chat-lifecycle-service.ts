@@ -46,6 +46,7 @@ import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import { requireCurrentUser, runWithCurrentUser } from "../context/user-context";
 import { executionHostService } from "./execution-host-service";
 import {
+  EXECUTION_HOST_CAPABILITY_VERSIONS,
   executionHostBindingsEqual,
   getRegisteredSshServerId,
 } from "@/shared/execution-host";
@@ -126,6 +127,7 @@ export class ChatLifecycleService implements ChatLifecyclePort {
       && (
         scope === "task"
         || options.useWorktree === true
+        || options.useSelectedBranchForWorktree === true
         || options.baseBranch !== undefined
       )
     ) {
@@ -141,6 +143,27 @@ export class ChatLifecycleService implements ChatLifecyclePort {
         : false;
     if (useWorktree) {
       assertWorktreesAllowed(workspace);
+    }
+    if (
+      options.useSelectedBranchForWorktree === true
+      && (
+        scope !== "workspace"
+        || !useWorktree
+        || !options.baseBranch?.trim()
+        || options.useChatNameAsBranch
+      )
+    ) {
+      throw new Error(
+        "Using the selected branch in a worktree requires a workspace chat, an enabled worktree, a selected branch, and no chat-name branch.",
+      );
+    }
+    if (options.useSelectedBranchForWorktree === true) {
+      executionHostService.requireBindingCapability(
+        workspace.executionHostBinding,
+        "managedWorktrees",
+        undefined,
+        EXECUTION_HOST_CAPABILITY_VERSIONS.managedWorktrees,
+      );
     }
 
     const id = crypto.randomUUID();
@@ -175,6 +198,8 @@ export class ChatLifecycleService implements ChatLifecyclePort {
           variant: options.modelVariant ?? "",
         },
         useWorktree,
+        useSelectedBranchForWorktree:
+          useWorktree && options.useSelectedBranchForWorktree === true,
         ...(useWorktree && options.useChatNameAsBranch ? { useChatNameAsBranch: true } : {}),
         autoApprovePermissions: options.autoApprovePermissions ?? DEFAULT_CHAT_CONFIG.autoApprovePermissions,
         skipBaseBranchSync: options.syncBaseBranch === false,

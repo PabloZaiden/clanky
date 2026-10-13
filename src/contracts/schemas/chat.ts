@@ -16,10 +16,37 @@ export const CreateChatRequestSchema = z.object({
   directory: z.string().trim().min(1, "directory is required").optional(),
   model: ModelConfigSchema,
   useWorktree: z.boolean({ error: "useWorktree is required and must be a boolean (true or false)" }),
+  useSelectedBranchForWorktree: z.boolean().optional(),
   useChatNameAsBranch: z.boolean().optional(),
   autoApprovePermissions: z.boolean().default(true),
   baseBranch: z.string().min(1, "baseBranch must be non-empty when provided").optional(),
   quick: z.boolean().default(false),
+}).superRefine((value, context) => {
+  if (!value.useSelectedBranchForWorktree) {
+    return;
+  }
+
+  if (!value.useWorktree) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "useSelectedBranchForWorktree requires useWorktree to be true",
+      path: ["useWorktree"],
+    });
+  }
+  if (!value.baseBranch?.trim()) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "baseBranch is required when using the selected branch in a worktree",
+      path: ["baseBranch"],
+    });
+  }
+  if (value.useChatNameAsBranch) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "useChatNameAsBranch cannot be combined with useSelectedBranchForWorktree",
+      path: ["useChatNameAsBranch"],
+    });
+  }
 });
 
 export const CreateSshServerChatRequestSchema = z.object({

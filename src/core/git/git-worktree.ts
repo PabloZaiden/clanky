@@ -83,7 +83,8 @@ export async function addWorktreeForExistingBranch(
   executor: CommandExecutor,
   repoDirectory: string,
   worktreePath: string,
-  branchName: string
+  branchName: string,
+  options: { force?: boolean } = {},
 ): Promise<void> {
   const absoluteRepoDirectory = await resolveGitDirectory(executor, repoDirectory);
   const managedWorktreePath = new ManagedPathService(
@@ -91,13 +92,53 @@ export async function addWorktreeForExistingBranch(
   ).assertManagedWorktreePath(absoluteRepoDirectory, worktreePath);
   await ensureWorktreeExcluded(executor, absoluteRepoDirectory);
 
-  const args = ["worktree", "add", managedWorktreePath, branchName];
+  const args = ["worktree", "add"];
+  if (options.force) {
+    args.push("--force");
+  }
+  args.push(managedWorktreePath, branchName);
   const result = await runWorktreeGitCommand(executor, absoluteRepoDirectory, args);
   if (!result.success) {
     throw gitError(`Failed to add worktree for branch ${branchName} at ${managedWorktreePath}`, result, args);
   }
 
   log.info(`[GitService] Added worktree at ${managedWorktreePath} for existing branch ${branchName}`);
+}
+
+export async function addWorktreeForRemoteBranch(
+  executor: CommandExecutor,
+  repoDirectory: string,
+  worktreePath: string,
+  localBranchName: string,
+  remoteBranchRef: string,
+): Promise<void> {
+  const absoluteRepoDirectory = await resolveGitDirectory(executor, repoDirectory);
+  const managedWorktreePath = new ManagedPathService(
+    executor.pathStyle,
+  ).assertManagedWorktreePath(absoluteRepoDirectory, worktreePath);
+  await ensureWorktreeExcluded(executor, absoluteRepoDirectory);
+
+  const args = [
+    "worktree",
+    "add",
+    "--track",
+    "-b",
+    localBranchName,
+    managedWorktreePath,
+    remoteBranchRef,
+  ];
+  const result = await runWorktreeGitCommand(executor, absoluteRepoDirectory, args);
+  if (!result.success) {
+    throw gitError(
+      `Failed to add worktree for remote branch ${remoteBranchRef} as local branch ${localBranchName} at ${managedWorktreePath}`,
+      result,
+      args,
+    );
+  }
+
+  log.info(
+    `[GitService] Added worktree at ${managedWorktreePath} for remote branch ${remoteBranchRef} as ${localBranchName}`,
+  );
 }
 
 export async function removeWorktree(

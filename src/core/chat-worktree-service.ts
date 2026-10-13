@@ -7,6 +7,7 @@ import { ChatBranchCheckoutError, getChatWorkspaceId, InvalidChatBaseBranchError
 import { getTaskWorkingDirectory } from "./task/task-types";
 import { taskManager, type TaskManager } from "./task-manager";
 import { backendManager } from "./backend";
+import type { CommandExecutor } from "./command-executor";
 import { GitService, InvalidBranchNameError } from "./git";
 import { syncMainCheckoutBeforeWorktree } from "./git/worktree-sync";
 import { assertWorktreesAllowed } from "./workspace-capabilities";
@@ -29,9 +30,15 @@ export interface ChatWorktreeServiceDependencies {
   executorProvider?: Pick<typeof backendManager, "getCommandExecutorAsync">;
 }
 
+interface SelectedWorktreeBranch {
+  branchName: string;
+  remoteRef?: string;
+}
+
 export class ChatWorktreeService implements ChatWorktreePort {
   private readonly pendingWorktreePreparations = new Map<string, Promise<Chat>>();
   private readonly pendingWorktreeBranchReservations = new Set<string>();
+  private readonly pendingSelectedWorktreeBranchLocks = new Map<string, Promise<void>>();
   private readonly state: ChatStatePort;
   private readonly taskManager: Pick<TaskManager, "getTask">;
   private readonly executorProvider: Pick<typeof backendManager, "getCommandExecutorAsync">;
@@ -215,11 +222,15 @@ export class ChatWorktreeService implements ChatWorktreePort {
     const executor = await this.executorProvider.getCommandExecutorAsync(getChatWorkspaceId(chat), chat.config.directory);
     throwIfAborted(options.signal);
     const git = GitService.withExecutor(executor);
+    const selectedBranch = chat.config.useSelectedBranchForWorktree
+      ? await this.resolveSelectedWorktreeBranch(chat, git)
+      : undefined;
     const originalBranch = chat.state.worktree?.originalBranch
       ?? chat.config.baseBranch
       ?? await git.getCurrentBranch(chat.config.directory);
     throwIfAborted(options.signal);
     const workingBranch = chat.state.worktree?.workingBranch
+      ?? selectedBranch?.branchName
       ?? this.buildWorkingBranchName(chat);
     const persistedWorktreePath = chat.state.worktree?.worktreePath;
     const worktreePath = persistedWorktreePath
@@ -234,7 +245,7 @@ export class ChatWorktreeService implements ChatWorktreePort {
         throw new Error(`Workspace not found: ${getChatWorkspaceId(chat)}`);
       }
       assertWorktreesAllowed(workspace);
-      if (options.syncBaseBranch ?? true) {
+      if (!chat.config.useSelectedBranchForWorktree && (options.syncBaseBranch ?? true)) {
         await syncMainCheckoutBeforeWorktree({
           git,
           directory: chat.config.directory,
@@ -249,12 +260,22 @@ export class ChatWorktreeService implements ChatWorktreePort {
       }
       throwIfAborted(options.signal);
 
-      const branchExists = await git.branchExists(chat.config.directory, workingBranch);
-      throwIfAborted(options.signal);
-      if (branchExists) {
-        await git.addWorktreeForExistingBranch(chat.config.directory, worktreePath, workingBranch);
+      if (chat.config.useSelectedBranchForWorktree) {
+        await this.addSelectedBranchWorktree(
+          executor,
+          git,
+          chat,
+          worktreePath,
+          selectedBranch ?? { branchName: workingBranch },
+        );
       } else {
-        await git.createWorktree(chat.config.directory, worktreePath, workingBranch, originalBranch);
+        const branchExists = await git.branchExists(chat.config.directory, workingBranch);
+        throwIfAborted(options.signal);
+        if (branchExists) {
+          await git.addWorktreeForExistingBranch(chat.config.directory, worktreePath, workingBranch);
+        } else {
+          await git.createWorktree(chat.config.directory, worktreePath, workingBranch, originalBranch);
+        }
       }
     }
 
@@ -458,6 +479,165 @@ export class ChatWorktreeService implements ChatWorktreePort {
       return sanitizeBranchName(chat.config.name);
     }
     return `chat-${sanitizeBranchName(chat.config.name)}-${chat.config.id.slice(0, 8)}`;
+  }
+
+  private async resolveSelectedWorktreeBranch(
+    chat: Chat,
+    git: GitService,
+  ): Promise<SelectedWorktreeBranch> {
+    const persistedBranch = chat.state.worktree?.workingBranch;
+    if (persistedBranch) {
+      await git.assertValidBranchName(chat.config.directory, persistedBranch);
+      const persistedBaseBranch = chat.config.baseBranch?.trim();
+      if (persistedBaseBranch) {
+        const remoteBranch = await git.parseRemoteBranchReference(
+          chat.config.directory,
+          persistedBaseBranch,
+        );
+        if (remoteBranch?.branch === persistedBranch) {
+          return {
+            branchName: persistedBranch,
+            remoteRef: remoteBranch.ref,
+          };
+        }
+      }
+      return { branchName: persistedBranch };
+    }
+
+    const selectedBranch = chat.config.baseBranch?.trim();
+    if (!selectedBranch) {
+      throw new Error(
+        `Chat ${chat.config.id} is configured to use the selected worktree branch but has no selected branch.`,
+      );
+    }
+
+    const remoteBranch = await git.parseRemoteBranchReference(
+      chat.config.directory,
+      selectedBranch,
+    );
+    const branchName = remoteBranch?.branch ?? selectedBranch;
+    await git.assertValidBranchName(chat.config.directory, branchName);
+    return {
+      branchName,
+      ...(remoteBranch ? { remoteRef: remoteBranch.ref } : {}),
+    };
+  }
+
+  private async addSelectedBranchWorktree(
+    executor: CommandExecutor,
+    git: GitService,
+    chat: Chat,
+    worktreePath: string,
+    selectedBranch: SelectedWorktreeBranch,
+  ): Promise<void> {
+    const workspaceId = getChatWorkspaceId(chat);
+    const commonGitDirectory = await git.getCommonGitDirectory(chat.config.directory);
+    const repositoryKey = normalizeWorktreeRepositoryKey(commonGitDirectory, executor.pathStyle);
+    const executionTargetKey = chat.config.executionHostBinding?.targetKey ?? workspaceId;
+    const lockKey = JSON.stringify([
+      executionTargetKey,
+      repositoryKey,
+      selectedBranch.branchName,
+    ]);
+
+    await this.withSelectedWorktreeBranchLock(lockKey, async () => {
+      const localBranchRef = `refs/heads/${selectedBranch.branchName}`;
+      const localBranchExists = await git.branchExists(
+        chat.config.directory,
+        localBranchRef,
+      );
+
+      if (!selectedBranch.remoteRef) {
+        if (!localBranchExists) {
+          throw new Error(`Selected local branch "${selectedBranch.branchName}" does not exist.`);
+        }
+        await git.addWorktreeForExistingBranch(
+          chat.config.directory,
+          worktreePath,
+          selectedBranch.branchName,
+          { force: true },
+        );
+        return;
+      }
+
+      const remoteBranchExists = await git.branchExists(
+        chat.config.directory,
+        `refs/remotes/${selectedBranch.remoteRef}`,
+      );
+      if (!remoteBranchExists) {
+        throw new Error(`Selected remote branch "${selectedBranch.remoteRef}" does not exist.`);
+      }
+
+      if (localBranchExists) {
+        const upstream = await git.getBranchUpstream(
+          chat.config.directory,
+          selectedBranch.branchName,
+        );
+        if (upstream !== selectedBranch.remoteRef) {
+          throw new Error(
+            `Local branch "${selectedBranch.branchName}" does not track selected remote branch "${selectedBranch.remoteRef}".`,
+          );
+        }
+        await git.addWorktreeForExistingBranch(
+          chat.config.directory,
+          worktreePath,
+          selectedBranch.branchName,
+          { force: true },
+        );
+        return;
+      }
+
+      try {
+        await git.addWorktreeForRemoteBranch(
+          chat.config.directory,
+          worktreePath,
+          selectedBranch.branchName,
+          selectedBranch.remoteRef,
+        );
+      } catch (error) {
+        const branchCreatedConcurrently = await git.branchExists(
+          chat.config.directory,
+          localBranchRef,
+        );
+        if (!branchCreatedConcurrently) {
+          throw error;
+        }
+        const upstream = await git.getBranchUpstream(
+          chat.config.directory,
+          selectedBranch.branchName,
+        );
+        if (upstream !== selectedBranch.remoteRef) {
+          throw error;
+        }
+        await git.addWorktreeForExistingBranch(
+          chat.config.directory,
+          worktreePath,
+          selectedBranch.branchName,
+          { force: true },
+        );
+      }
+    });
+  }
+
+  private async withSelectedWorktreeBranchLock(
+    key: string,
+    operation: () => Promise<void>,
+  ): Promise<void> {
+    const previous = this.pendingSelectedWorktreeBranchLocks.get(key) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.pendingSelectedWorktreeBranchLocks.set(key, current);
+    await previous;
+    try {
+      await operation();
+    } finally {
+      release();
+      if (this.pendingSelectedWorktreeBranchLocks.get(key) === current) {
+        this.pendingSelectedWorktreeBranchLocks.delete(key);
+      }
+    }
   }
 }
 
