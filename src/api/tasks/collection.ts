@@ -80,7 +80,7 @@ export const tasksCollectionRoutes = defineRoutes({
       GET: {
         description: "List task summaries and current progress.",
         requestSchema: undefined,
-        querySchema: undefined,
+        querySchema: CollectionReadOptionsSchema,
         automation: { policy: "read" },
       },
       POST: {

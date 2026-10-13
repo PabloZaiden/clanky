@@ -492,7 +492,7 @@ export const runsRoutes = defineRoutes({
       GET: {
         description: "List a bounded page of agent runs.",
         requestSchema: undefined,
-        querySchema: AgentRunsQuerySchema,
+        querySchema: AgentRunsQuerySchema.safeExtend(CollectionReadOptionsSchema.omit({ limit: true }).shape),
         automation: { policy: "read" },
       },
       DELETE: {
@@ -557,7 +557,7 @@ export const runsRoutes = defineRoutes({
       GET: {
         description: "Read an agent run summary.",
         requestSchema: undefined,
-        querySchema: undefined,
+        querySchema: CollectionReadOptionsSchema,
         automation: { policy: "read" },
       },
       DELETE: {

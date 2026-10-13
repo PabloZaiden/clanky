@@ -20,7 +20,7 @@ import {
 } from "../helpers";
 import type { TaskConfig, Task } from "@/shared/task";
 import type { z } from "zod";
-import { UpdateTaskRequestSchema } from "@/contracts/schemas";
+import { CollectionReadOptionsSchema, UpdateTaskRequestSchema } from "@/contracts/schemas";
 import { isDomainError } from "../../domain/domain-error";
 import { workMetadataResponse } from "../resource-reads";
 
@@ -139,7 +139,7 @@ export const tasksItemRoutes = defineRoutes({
       GET: {
         description: "Read a task's configuration and current progress.",
         requestSchema: undefined,
-        querySchema: undefined,
+        querySchema: CollectionReadOptionsSchema,
         automation: { policy: "read" },
       },
       PATCH: {

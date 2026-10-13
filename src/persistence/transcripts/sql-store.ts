@@ -382,28 +382,26 @@ export function getConversationMessageIdsForUser(resource: TranscriptResource, r
   return rows.map((row) => row.entry_id);
 }
 
-export function getConversationMessageForUser(
-  resource: TranscriptResource,
-  resourceId: string,
-  userId: string,
-  position: number,
-): PersistedMessage | null {
-  const config = getTableConfig(resource);
-  const row = getDatabase().prepare(`
+export function getConversationMessageWindowForUser(input: {
+  resource: TranscriptResource; resourceId: string; userId: string; position: number; limit: number;
+}): PersistedMessage[] {
+  const config = getTableConfig(input.resource);
+  const rows = getDatabase().prepare(`
     SELECT entry_id, kind, timestamp, sequence, payload, updated_at,
       NULL AS tool_name, NULL AS tool_status, NULL AS tool_input,
       NULL AS tool_output, NULL AS tool_extras, 0 AS tool_has_output
     FROM ${config.entriesTable}
     WHERE ${config.resourceColumn} = ? AND user_id = ? AND kind = 'message'
     ORDER BY timestamp ASC, sequence ASC, entry_id ASC
-    LIMIT 1 OFFSET ?
-  `).get(resourceId, userId, position) as TranscriptRow | null;
-  if (!row) return null;
-  const entry = rowToStorageEntry(row, false, resource);
-  if (!entry || !isPersistedMessage(entry.payload)) {
-    throw new Error("Conversation contains an unreadable persisted message.");
-  }
-  return entry.payload;
+    LIMIT ? OFFSET ?
+  `).all(input.resourceId, input.userId, input.limit, input.position) as TranscriptRow[];
+  return rows.map((row) => {
+    const entry = rowToStorageEntry(row, false, input.resource);
+    if (!entry || !isPersistedMessage(entry.payload)) {
+      throw new Error("Conversation contains an unreadable persisted message.");
+    }
+    return entry.payload;
+  });
 }
 
 export function getConversationAdmissionsForUser(

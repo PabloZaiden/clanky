@@ -42,13 +42,14 @@ export function withResourceReads(routes: Record<string, RouteDefinition>): Rout
       if (base !== undefined && !(base instanceof z.ZodObject)) {
         throw new Error(`Resource read options require an object query contract: ${method} ${path}`);
       }
-      const conversation = base instanceof z.ZodObject && Object.hasOwn(base.shape, "view");
+      const nativeRead = base instanceof z.ZodObject && Object.hasOwn(base.shape, "view");
+      const conversation = nativeRead && base.shape["view"]?.safeParse("conversation").success === true;
       const readOnly = method === "GET" || automation.policy === "read";
       const readSchema = !readOnly ? OperationResponseOptionsSchema
         : conversation ? ConversationReadOptionsSchema : CollectionReadOptionsSchema;
       const querySchema = base instanceof z.ZodObject ? base.safeExtend({
         ...readSchema.shape,
-        ...(conversation ? { view: base.shape["view"] } : {}),
+        ...(nativeRead ? { view: base.shape["view"] } : {}),
       }) : readSchema;
       next.operations![method] = {
         ...operation, querySchema,
@@ -62,7 +63,7 @@ export function withResourceReads(routes: Record<string, RouteDefinition>): Rout
       next[method] = async (req, ctx) => {
         const url = new URL(req.url);
         if (!url.searchParams.has("view")) return await handler(req, ctx);
-        const parsed = ConversationReadOptionsSchema.safeParse(Object.fromEntries(url.searchParams));
+        const parsed = readSchema.safeParse(Object.fromEntries(url.searchParams));
         const unsupported = !readOnly && ["cursor", "section", "item", "limit"].some((key) => url.searchParams.has(key));
         const incompatible = url.searchParams.get("view") === "conversation"
           && (!conversation || ["section", "item", "before", "full"].some((key) => url.searchParams.has(key)));
@@ -85,7 +86,13 @@ export function withResourceReads(routes: Record<string, RouteDefinition>): Rout
           // Default-view ETags must not short-circuit a different representation.
           const headers = new Headers(req.headers);
           headers.delete("if-none-match");
-          const response = await handler(new Request(req, { headers }), ctx);
+          const handlerUrl = new URL(url);
+          if (!nativeRead) {
+            for (const key of Object.keys(readSchema.shape)) {
+              if (!(base instanceof z.ZodObject && Object.hasOwn(base.shape, key))) handlerUrl.searchParams.delete(key);
+            }
+          }
+          const response = await handler(new Request(handlerUrl, new Request(req, { headers })), ctx);
           if (!response || !response.ok || response.status === 204) return response;
           if (!response.headers.get("content-type")?.includes("application/json")) {
             await response.body?.cancel();

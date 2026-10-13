@@ -2,11 +2,24 @@
  * Literal chronological conversation pages, without runtime or tool payloads.
  */
 import type { ConversationMessage, Page, ResourceReadOptions } from "@/contracts/schemas/resource-read";
+import type { PersistedMessage } from "@/shared";
 import { requireCurrentUserId } from "../context/user-context";
 import { DomainError } from "../domain/domain-error";
-import { getConversationMessageForUser, getConversationMessageIdsForUser, getConversationAdmissionsForUser, getTranscriptMetaForUser } from "../persistence/transcripts/sql-store";
+import { getConversationMessageWindowForUser, getConversationMessageIdsForUser, getConversationAdmissionsForUser, getTranscriptMetaForUser } from "../persistence/transcripts/sql-store";
 import type { TranscriptResource } from "../persistence/transcripts/types";
 import { DEFAULT_READ_BYTES, decodeReadCursor, encodeReadCursor, fitReadText, readBytes, readRevision } from "./resource-read-service";
+
+function conversationPart(message: PersistedMessage, offset: number, admission: string | undefined): ConversationMessage {
+  return {
+    id: message.id, role: message.role, timestamp: message.timestamp,
+    content: message.content.slice(offset), offset, complete: true,
+    ...(message.role === "user" && admission && admission !== "delivered"
+      ? { delivery: admission === "unknown" ? "unconfirmed" : admission }
+      : message.question && message.role === "user" && message.question.status !== "answered"
+        ? { delivery: message.question.status } : {}),
+    ...(message.attachments?.length ? { attachments: message.attachments.length } : {}),
+  };
+}
 
 export function readConversationPage(input: {
   resource: TranscriptResource; id: string; scope: string; options: ResourceReadOptions;
@@ -21,10 +34,22 @@ export function readConversationPage(input: {
   ]));
   const ids = getConversationMessageIdsForUser(input.resource, input.id, userId);
   const membership = readRevision([ids, admissions]);
+  const limit = input.options.limit ?? 20;
+  let window: ReturnType<typeof getConversationMessageWindowForUser> | undefined;
+  let windowPosition = 0;
+  const messageAt = (position: number) => {
+    if (!window) {
+      windowPosition = position;
+      window = getConversationMessageWindowForUser({
+        resource: input.resource, resourceId: input.id, userId, position, limit: limit + 1,
+      });
+    }
+    return window[position - windowPosition];
+  };
   const revision = (position: number, offset: number): string => {
     if (position > ids.length) throw new DomainError("read_cursor_invalid", "Invalid conversation position.");
     if (!offset) return membership;
-    const message = getConversationMessageForUser(input.resource, input.id, userId, position);
+    const message = messageAt(position);
     if (!message) throw new DomainError("read_cursor_invalid", "Invalid conversation position.");
     return readRevision([membership, message]);
   };
@@ -33,14 +58,13 @@ export function readConversationPage(input: {
   });
   const items: ConversationMessage[] = [];
   let position = cursor.position, offset = cursor.offset;
-  const limit = input.options.limit ?? 20;
   const maxBytes = input.options.maxBytes ?? DEFAULT_READ_BYTES;
   const page = (more: boolean): Page<ConversationMessage> => ({
     items,
     nextCursor: more ? encodeReadCursor({ ...cursor, position, offset, revision: revision(position, offset) }) : null,
   });
   while (items.length < limit) {
-    const message = getConversationMessageForUser(input.resource, input.id, userId, position);
+    const message = messageAt(position);
     if (!message) {
       if (offset) throw new DomainError("read_cursor_invalid", "Invalid conversation position.");
       return page(false);
@@ -48,18 +72,9 @@ export function readConversationPage(input: {
     if (offset > message.content.length || offset && /[\uD800-\uDBFF]/u.test(message.content[offset - 1]!)) {
       throw new DomainError("read_cursor_invalid", "Invalid conversation offset.");
     }
-    const text = message.content.slice(offset);
-    const admission = delivery.get(message.id);
+    const part = conversationPart(message, offset, delivery.get(message.id));
+    const text = part.content;
     const messageRevision = readRevision([membership, message]);
-    const part: ConversationMessage = {
-      id: message.id, role: message.role, timestamp: message.timestamp,
-      content: text, offset, complete: true,
-      ...(message.role === "user" && admission && admission !== "delivered"
-        ? { delivery: admission === "unknown" ? "unconfirmed" : admission }
-        : message.question && message.role === "user" && message.question.status !== "answered"
-          ? { delivery: message.question.status } : {}),
-      ...(message.attachments?.length ? { attachments: message.attachments.length } : {}),
-    };
     items.push(part);
     const next = (): string => encodeReadCursor({ ...cursor,
       position: part.complete ? position + 1 : position,
@@ -92,5 +107,5 @@ export function readConversationPage(input: {
     position++;
     offset = 0;
   }
-  return page(getConversationMessageForUser(input.resource, input.id, userId, position) !== null);
+  return page(messageAt(position) !== undefined);
 }

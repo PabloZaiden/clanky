@@ -116,6 +116,15 @@ export function getExecutionHostById(
   return selectExecutionHost("id = ? AND user_id = ?", [hostId, userId]);
 }
 
+export function getExecutionHostRefsByIds(userId: string, hostIds: readonly string[]): Map<string, ExecutionHostRef> {
+  if (!hostIds.length) return new Map();
+  const rows = getDatabase().query(`
+    SELECT id, kind, source_id FROM execution_hosts
+    WHERE user_id = ? AND id IN (${hostIds.map(() => "?").join(", ")})
+  `).all(userId, ...hostIds) as Array<Pick<ExecutionHostRow, "id" | "kind" | "source_id">>;
+  return new Map(rows.map((row) => [row.id, refFromParts(row.kind, row.source_id)]));
+}
+
 export function getExecutionHostByRef(
   userId: string,
   ref: ExecutionHostRef,

@@ -83,7 +83,7 @@ export const chatsCrudRoutes = defineRoutes({
       GET: {
         description: "List chats, optionally filtered by workspace.",
         requestSchema: undefined,
-        querySchema: WorkspaceFilterQuerySchema,
+        querySchema: WorkspaceFilterQuerySchema.safeExtend(CollectionReadOptionsSchema.shape),
         automation: { policy: "read" },
       },
       POST: {
@@ -214,7 +214,7 @@ export const chatsCrudRoutes = defineRoutes({
       GET: {
         description: "Read the current chat summary and queued interactions.",
         requestSchema: undefined,
-        querySchema: undefined,
+        querySchema: CollectionReadOptionsSchema,
         automation: { policy: "read" },
       },
       PATCH: {
