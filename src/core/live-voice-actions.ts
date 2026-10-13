@@ -49,6 +49,7 @@ export class LiveVoiceActions {
     authority: OperationAuthority;
     service: ClankyOperationService;
     notify: (content: string) => void;
+    remember: (operation: PreparedOperation, result: OperationResult) => void;
   }) { this.context = options.context; }
 
   get signal(): AbortSignal { return this.controller.signal; }
@@ -148,6 +149,9 @@ export class LiveVoiceActions {
     if (!pending || this.signal.aborted) throw new DomainError("voice_confirmation_not_found", "The confirmation expired or was already consumed.");
     this.confirmations.delete(requestId);
     if (!approved) {
+      this.options.remember(pending.operation, {
+        ok: true, operationId: pending.operation.id, code: "confirmation_rejected", completion: "not_executed",
+      });
       this.options.notify("The user rejected the pending operation. No operation was executed.");
       return { ok: true, code: "confirmation_rejected", completion: "not_executed" };
     }
@@ -155,6 +159,9 @@ export class LiveVoiceActions {
       const revision = await this.options.service.targetRevision(this.authority, pending.operation, this.signal);
       const credentials = await resolveVoiceCredentialTargets(pending.operation);
       if (revision !== pending.revision || credentials.revision !== pending.credentialRevision) {
+        this.options.remember(pending.operation, {
+          ok: false, operationId: pending.operation.id, code: "confirmation_target_changed", completion: "not_executed",
+        });
         return { ok: false, code: "confirmation_target_changed", completion: "not_executed",
           message: "The target changed since the dialog opened. Read it again and request a new confirmation." };
       }
@@ -186,9 +193,11 @@ export class LiveVoiceActions {
           code: "voice_credential_target_changed", message: "The execution binding changed during credential handoff. Read it again before requesting the operation." };
       }
     }
-    return await this.options.service.execute(this.authority, prepared, {
+    const result = await this.options.service.execute(this.authority, prepared, {
       signal: this.signal, clientId: this.options.clientId, credentialToken, credentialTokens, unavailableServerIds,
     });
+    this.options.remember(prepared, result);
+    return result;
   }
 
   private async requestCredential(serverId: string, requestId: string): Promise<string | null> {

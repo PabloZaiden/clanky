@@ -10,6 +10,7 @@ import { requireCurrentUser, runWithCurrentUser } from "../context/user-context"
 import { voiceManager } from "./voice-manager";
 import { createLiveVoiceSession, type LiveVoiceCredentials } from "./live-voice-provider";
 import { LiveVoiceCall } from "./live-voice-call";
+import { LiveVoiceMemory } from "./live-voice-memory";
 import type { ClankyOperationService, OperationAuthority } from "./clanky-operation-service";
 import type { LiveVoiceAvailabilityResponse } from "@/contracts/schemas/voice";
 
@@ -19,6 +20,7 @@ const RETENTION_MS = 10 * 60_000;
 
 export class LiveVoiceManager {
   private readonly calls = new Map<string, LiveVoiceCall>();
+  private readonly memory = new LiveVoiceMemory();
   private readonly creating = new Map<string, Promise<void>>();
   private readonly shutdown = new AbortController();
   private readonly attempts = new Map<string, { times: number[]; retryAt: number }>();
@@ -55,7 +57,8 @@ export class LiveVoiceManager {
       if (!this.service) throw new DomainError("voice_live_unavailable", "The global operation service is unavailable.");
       const credentials = await voiceManager.requireLiveCredentials();
       const limiter = this.admit(credentials);
-      const started = await createLiveVoiceSession(credentials, sdp, signal).catch((error: unknown) => {
+      const history = this.memory.get(owner);
+      const started = await createLiveVoiceSession(credentials, sdp, { signal, history }).catch((error: unknown) => {
         if (isDomainError(error) && error.code === "voice_provider_rate_limited") {
           const retryAfter = String(error.details["retryAfter"] ?? "");
           const seconds = Number(retryAfter);
@@ -73,13 +76,14 @@ export class LiveVoiceManager {
         void runWithCurrentUser(user, () => this.close(id, clientId)).catch(() => {
           log.error("Live call finalization failed", { callId: id });
         });
-      });
+      }, history);
       this.calls.set(id, call);
       this.providerSessions.set(id, started.id);
       await call.connection.connect(credentials, started.id, signal);
       if (call.state.error || signal.aborted) throw new DomainError("voice_provider_unreachable", "Live sideband could not be established.");
       call.state.status = "active";
       call.sendContext();
+      call.started = true;
       this.startMaintenance();
       return { call: { ...call.state }, sdp: started.sdp };
     } catch (error) {
@@ -168,6 +172,7 @@ export class LiveVoiceManager {
   }
 
   private async finalize(call: LiveVoiceCall): Promise<LiveVoiceCallState> {
+    const remember = call.started;
     call.state.status = "closing";
     call.stopActions();
     let drainTimer: ReturnType<typeof setTimeout> | undefined;
@@ -194,6 +199,10 @@ export class LiveVoiceManager {
       call.state.status = call.state.error ? "failed" : "closed";
       call.state.processing = false;
       call.lastHeartbeat = Date.now();
+      if (remember) {
+        if (call.state.error) call.conversation.rememberInterruption();
+        this.memory.retain(call.scope.user.id, call.conversation.takeHistory());
+      }
       call.release();
       this.providerSessions.delete(call.scope.id);
       const retained = [...this.calls.values()].filter((entry) => ["closed", "failed"].includes(entry.state.status));
@@ -206,6 +215,7 @@ export class LiveVoiceManager {
   private startMaintenance(): void {
     if (this.maintenance) return;
     this.maintenance = setInterval(() => {
+      this.memory.prune();
       for (const [id, call] of this.calls) {
         const age = Date.now() - call.lastHeartbeat;
         if (["closed", "failed"].includes(call.state.status)) {
@@ -216,7 +226,7 @@ export class LiveVoiceManager {
           });
         }
       }
-      if (!this.calls.size && !this.creating.size) { clearInterval(this.maintenance); this.maintenance = undefined; }
+      if (!this.calls.size && !this.creating.size && !this.memory.hasEntries) { clearInterval(this.maintenance); this.maintenance = undefined; }
     }, 5_000);
     this.maintenance.unref();
   }
@@ -230,6 +240,7 @@ export class LiveVoiceManager {
     clearInterval(this.maintenance);
     this.maintenance = undefined;
     this.calls.clear();
+    this.memory.clear();
   }
 }
 

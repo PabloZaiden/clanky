@@ -13,6 +13,7 @@ import { LiveVoiceObserver } from "./live-voice-observer";
 import type { ClankyOperationService, OperationAuthority } from "./clanky-operation-service";
 import { LiveVoiceConnection, type LiveVoiceCredentials, type LiveVoiceEvent } from "./live-voice-provider";
 import { clientActionEventEmitter } from "./event-emitter";
+import { LiveVoiceConversation, type LiveVoiceHistoryMessage } from "./live-voice-memory";
 
 const log = createLogger("core:live-voice");
 interface Delegation {
@@ -27,11 +28,33 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+function providerFailureDetails(event: Record<string, unknown>, apiKey: string) {
+  const response = isRecord(event["response"]) ? event["response"] : undefined;
+  const rawError = event["type"] === "error" ? event["error"] : response?.["error"];
+  const error = isRecord(rawError) ? rawError : undefined;
+  const incomplete = isRecord(response?.["incomplete_details"]) ? response["incomplete_details"] : undefined;
+  const identifier = /^[a-zA-Z][a-zA-Z0-9_.-]{0,99}$/;
+  function metadata(value: unknown, pattern: RegExp): string | undefined {
+    if (value === null || value === undefined) return undefined;
+    if (typeof value !== "string" || !pattern.test(value) || (apiKey.length > 0 && value.includes(apiKey))) return "[redacted]";
+    return value;
+  }
+  return {
+    providerEvent: metadata(event["type"], identifier),
+    providerCode: metadata(error?.["code"], identifier),
+    providerType: metadata(error?.["type"], identifier),
+    providerParam: metadata(error?.["param"], /^[a-zA-Z0-9_.[\]-]{1,200}$/),
+    providerReason: metadata(incomplete?.["reason"], identifier),
+  };
+}
+
 export class LiveVoiceCall {
   readonly connection: LiveVoiceConnection;
   readonly state: LiveVoiceCallState;
   readonly actions: LiveVoiceActions;
   readonly observer: LiveVoiceObserver;
+  readonly conversation: LiveVoiceConversation;
+  started = false;
   lastHeartbeat = Date.now();
   closePromise?: Promise<LiveVoiceCallState>;
   readonly operations = new Set<Promise<unknown>>();
@@ -46,8 +69,9 @@ export class LiveVoiceCall {
     authority: OperationAuthority;
     context: LiveVoiceUiContext;
     service: ClankyOperationService;
-  }, private readonly ended: () => void) {
+  }, private readonly ended: () => void, history: readonly LiveVoiceHistoryMessage[] = []) {
     this.state = { id: scope.id, status: "connecting", error: null, processing: false };
+    this.conversation = new LiveVoiceConversation(history);
     this.connection = new LiveVoiceConnection({
       event: (event) => runWithCurrentUser(scope.user, () => this.receive(event)),
       failure: () => this.fail("The Live connection was interrupted."),
@@ -66,8 +90,14 @@ export class LiveVoiceCall {
     this.actions = new LiveVoiceActions({
       callId: scope.id, clientId: scope.clientId, userId: scope.user.id,
       context: scope.context, authority: scope.authority, service: scope.service, notify,
+      remember: (operation, result) => this.conversation.rememberOperation(operation, result),
     });
-    this.observer = new LiveVoiceObserver({ user: scope.user, authority: scope.authority, service: scope.service, notify });
+    this.observer = new LiveVoiceObserver({
+      user: scope.user, authority: scope.authority, service: scope.service, notify,
+      remember: (target, result) => this.conversation.rememberOperation({
+        id: result.operationId, parameters: { id: target.id },
+      }, result),
+    });
   }
 
   sendContext(): void {
@@ -78,9 +108,15 @@ export class LiveVoiceCall {
   }
 
   private receive(event: LiveVoiceEvent): void {
-    if (event.type === "session.input_transcript.delta" || event.type === "session.output_transcript.delta") return;
+    if (event.type === "session.input_transcript.delta" || event.type === "session.output_transcript.delta") {
+      if (!["closed", "failed"].includes(this.state.status)) this.conversation.transcript(event);
+      return;
+    }
     if (event.type === "session.closed") { this.ended(); return; }
-    if (event.type === "error") { this.fail("Live reported a session error. Check Voice settings."); return; }
+    if (event.type === "error") {
+      this.fail("Live reported a session error. Check Voice settings.", providerFailureDetails(event, this.scope.credentials.apiKey));
+      return;
+    }
     if (this.state.status !== "active" && this.state.status !== "connecting") return;
     if (event.type === "session.delegation.created") {
       const delegation = event["delegation"];
@@ -118,7 +154,7 @@ export class LiveVoiceCall {
       this.flushCommentary();
     }
     if (["response.failed", "response.incomplete", "error"].includes(String(nested["type"]))) {
-      this.fail("The delegated text model could not complete its response.");
+      this.fail("The delegated text model could not complete its response.", providerFailureDetails(nested, this.scope.credentials.apiKey));
     }
   }
 
@@ -186,10 +222,10 @@ export class LiveVoiceCall {
     }, { userId: this.scope.user.id });
   }
 
-  fail(message: string): void {
+  fail(message: string, provider?: ReturnType<typeof providerFailureDetails>): void {
     if (["closed", "failed"].includes(this.state.status) || this.state.error) return;
     this.state.error = message;
-    log.error("Live call failed", { callId: this.scope.id, message });
+    log.error("Live call failed", { callId: this.scope.id, message, ...provider });
     if (this.state.status === "active") this.ended();
   }
 
@@ -199,6 +235,7 @@ export class LiveVoiceCall {
     this.stopActions();
     this.delegations.clear();
     this.pendingCommentary = undefined;
+    this.conversation.dispose();
     this.scope.authority.release();
     this.scope.credentials.apiKey = "";
   }

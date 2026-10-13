@@ -32,6 +32,10 @@ The [Live voice assistant](../../docs/voice.md#live-voice) is global and
 independent of native Control chats. It starts beside Quick Chat in the sidebar
 and operates authorized JSON APIs through six catalog-backed tools. Discover
 availability with `GET /api/voice/live`; do not use chat-local Live endpoints.
+The shared text model must support strict Responses tools with nested `anyOf`.
+Connection validation does not prove tool execution. If actions fail, inspect
+the server's bounded provider event/code/type/parameter/reason diagnostics;
+never capture raw frames, transcripts, tool arguments or credentials.
 Browser navigation targets only the originating call's tab and acknowledges
 entity routes after their refreshed shell data is rendered. Treat a failed
 navigation result as a failure, not an opened entity. Multi-target watch
@@ -50,7 +54,14 @@ mutation outcomes must be inspected rather than automatically retried.
 Once starting, controls live only in the bottom sidebar bar above the version;
 open the sidebar to mute, recover blocked playback or stop. Navigation and
 closing the sidebar preserve the call. Ending voice persists no call transcript
-or summary and does not stop work.
+or summary and does not stop work. Explicitly starting Live again less than ten
+minutes after Stop continues the same user's recent conversation, including in
+another tab. Each Stop renews that inactivity window; after ten minutes or a
+Clanky restart, it starts fresh. Context is bounded private server RAM, not a
+recording or hidden chat. References and operation outcomes are historical data:
+reread current state, never replay earlier mutations, and obtain new visual
+approval/private SSH handoffs as needed. Pending approvals and watches are not
+restored; client control belongs only to the newly originating tab.
 
 ## Core workflow
 

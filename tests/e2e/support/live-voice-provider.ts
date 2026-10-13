@@ -20,7 +20,10 @@ interface OperationPage { operations: Array<{ operationId: string }>; nextCursor
 interface Workspace { id: string; name: string }
 interface Host { ref: { kind: string; serverId?: string } }
 interface Server { config: { id: string; repositoriesBasePath: string } }
-interface Chat { config: { id: string; name: string }; state: { status: string } }
+interface Chat {
+  config: { id: string; name: string };
+  state: { status: string; harness?: { questions?: Array<{ requestId: string; status: string }> } };
+}
 interface Task { config: { id: string; name: string; prompt: string }; state: { status: string } }
 interface Snapshot { transcript: { messages: Array<{ role: string; content: string }> } }
 interface CreationContext {
@@ -36,6 +39,9 @@ interface CreationContext {
 export interface LiveFixture {
   id: string;
   global: boolean;
+  resume?: boolean;
+  history?: Array<{ role: string; content: Array<{ text: string }> }>;
+  connectedAt?: number;
   stage: number;
   started: boolean;
   current?: FixtureStep;
@@ -59,9 +65,9 @@ function successful<T>(value: unknown): T {
   return (result["data"] ?? result) as T;
 }
 
-function* globalJourney(): Generator<FixtureStep, void, unknown> {
+function operationTools() {
   const descriptions = new Map<string, OperationDescription>();
-  function* operation<T>(id: string, options: {
+  return function* operation<T>(id: string, options: {
     parameters?: Record<string, string>;
     query?: Record<string, string>;
     body?: unknown;
@@ -98,8 +104,11 @@ function* globalJourney(): Generator<FixtureStep, void, unknown> {
     });
     if (result["code"] === "confirmation_required") result = record(yield { wait: "confirmation" });
     return successful<T>(result);
-  }
+  };
+}
 
+function* globalJourney(): Generator<FixtureStep, void, unknown> {
+  const operation = operationTools();
   const context = record(yield { name: "clanky_get_ui_state", arguments: {} });
   const planning = record(record(context["context"])["planningPreferences"]);
   const workspaces = yield* operation<Workspace[]>("GET /api/workspaces");
@@ -187,6 +196,45 @@ function* globalJourney(): Generator<FixtureStep, void, unknown> {
   successful(yield { name: "clanky_get_ui_state", arguments: {} });
 }
 
+function rememberedReference(session: LiveFixture, name: string): string {
+  let id: string | undefined;
+  for (const message of session.history ?? []) {
+    for (const part of message.content) {
+      const start = part.text.indexOf("{");
+      if (start < 0) continue;
+      let data: unknown;
+      try { data = JSON.parse(part.text.slice(start)); }
+      catch {
+        // Spoken prose and bounded historical excerpts need not be JSON.
+        continue;
+      }
+      const refs = record(data)["references"];
+      if (!Array.isArray(refs)) continue;
+      for (const ref of refs) {
+        const entity = record(ref);
+        if (entity["name"] === name && typeof entity["id"] === "string") id = entity["id"];
+      }
+    }
+  }
+  if (!id) throw new Error(`The previous voice context does not identify "${name}".`);
+  return id;
+}
+
+function* resumedJourney(session: LiveFixture): Generator<FixtureStep, void, unknown> {
+  const operation = operationTools();
+  const id = rememberedReference(session, GLOBAL_LIVE_INTENT.createdChat);
+  const chat = yield* operation<Chat>("GET /api/chats/:id", { parameters: { id } });
+  const question = chat.state.harness?.questions?.find((entry) => entry.status === "pending");
+  if (!question) throw new Error("The previously delegated conversation has no pending question.");
+  yield* operation("POST /api/chats/:id/questions/:requestId", {
+    parameters: { id: chat.config.id, requestId: question.requestId },
+    body: { answers: [["Concise"]] },
+  });
+  successful(yield {
+    name: "clanky_ui_action", arguments: { action: { type: "open_chat", chatId: chat.config.id } },
+  });
+}
+
 function send(session: LiveFixture, event: Record<string, unknown>): void {
   session.socket?.send(JSON.stringify(event));
 }
@@ -199,7 +247,15 @@ function advance(session: LiveFixture, result?: unknown): void {
   try {
     const next = session.journey!.next(result);
     session.current = next.done ? undefined : next.value;
-    if (!session.current) return;
+    if (!session.current) {
+      send(session, {
+        type: "session.output_transcript.delta", event_id: crypto.randomUUID(),
+        delta: session.resume ? "I answered the question in the conversation we created."
+          : `The chat "${GLOBAL_LIVE_INTENT.createdChat}" is waiting for your answer. We can continue later.`,
+        start_ms: Date.now() - session.connectedAt!, end_ms: Date.now() - session.connectedAt! + 1,
+      });
+      return;
+    }
     if ("wait" in session.current) {
       const wait = session.current;
       const index = session.notices.findIndex((notice) => notice.kind === wait.wait
@@ -229,7 +285,14 @@ function advance(session: LiveFixture, result?: unknown): void {
 export const liveFixtureWebSocket = {
   open(socket: Bun.ServerWebSocket<LiveFixture>) {
     socket.data.socket = socket;
+    socket.data.connectedAt = Date.now();
     send(socket.data, { type: "session.started" });
+    if (socket.data.global) send(socket.data, {
+      type: "session.input_transcript.delta", event_id: crypto.randomUUID(),
+      delta: socket.data.resume ? "Continue the conversation we created: answer its pending question with Concise."
+        : "Use the source work to create a task and a conversation in workspace B, and ask before continuing.",
+      start_ms: 0, end_ms: 1,
+    });
   },
   message(socket: Bun.ServerWebSocket<LiveFixture>, raw: string | Buffer) {
     const event = record(JSON.parse(String(raw)));
@@ -255,7 +318,7 @@ export const liveFixtureWebSocket = {
       session.notices = session.notices.slice(-16);
       if (!session.started) {
         session.started = true;
-        session.journey = globalJourney();
+        session.journey = session.resume ? resumedJourney(session) : globalJourney();
         advance(session);
       } else if (session.current && "wait" in session.current) {
         const wait = session.current;

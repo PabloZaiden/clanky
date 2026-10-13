@@ -139,7 +139,7 @@ async function visualDecision(options: {
   )).data;
 }
 
-test("global Live discovers owned work, delegates to a chosen workspace and leaves it usable after voice ends", async () => {
+test("global Live discovers owned work, resumes its conversation and leaves delegated work usable", async () => {
   const application = await E2EApplication.create();
   const clients: VoiceClient[] = [];
   const repositories: GitFixture[] = [];
@@ -292,19 +292,25 @@ test("global Live discovers owned work, delegates to a chosen workspace and leav
     expect(client.context.route).toEqual({ view: "chat", chatId: createdChat.config.id });
     expect(other.context.route).toEqual({ view: "home" });
     const waiting = (await application.json<Chat>(`/api/chats/${createdChat.config.id}`)).data;
-    const question = waiting.state.harness!.questions!.find((entry) => entry.status === "pending")!;
     expect(waiting.state.status).toBe("waiting");
     const closed = (await application.json<LiveState>(`/api/voice/live/${callId}/close`, {
       method: "POST", body: JSON.stringify({ clientId: client.id }),
     })).data;
     expect(closed.status).toBe("closed");
     expect((await application.json<Chat>(`/api/chats/${createdChat.config.id}`)).data.state.status).toBe("waiting");
-    await application.json(`/api/chats/${createdChat.config.id}/questions/${question.requestId}`, {
-      method: "POST", body: JSON.stringify({ answers: [["Concise"]] }),
-    });
+    const resumed = (await application.json<{ call: LiveState }>("/api/voice/live", {
+      method: "POST", apiKey: key, body: JSON.stringify({
+        clientId: other.id, context: other.context, sdp: createFixtureLiveOffer("global-resume"),
+      }),
+    }, 201)).data;
+    callId = resumed.call.id;
+    await other.open("open_chat", createdChat.config.id);
     await pollUntil(async () => (await application.json<Chat>(`/api/chats/${createdChat.config.id}`)).data.state.status,
       (status) => status === "idle",
-      { description: "delegated work to finish after voice has ended", timeoutMs: 10_000 });
+      { description: "remembered delegated work to finish after resumed voice answers it", timeoutMs: 10_000 });
+    expect((await application.json<LiveState>(`/api/voice/live/${callId}/close`, {
+      method: "POST", body: JSON.stringify({ clientId: other.id }),
+    })).data.status).toBe("closed");
     expect(await Bun.file(join(repositoryB.repositoryDirectory, "e2e-provider-change.txt")).text())
       .toContain("created by the external ACP provider");
     for (const tab of clients) tab.socket.close();

@@ -44,7 +44,15 @@ const descriptions: Record<keyof typeof schemas, string> = {
 };
 
 export const liveVoiceToolDefinitions = Object.entries(schemas).map(([name, schema]) => {
-  const { $schema: _schema, ...parameters } = z.toJSONSchema(schema);
+  const { $schema: _schema, ...parameters } = z.toJSONSchema(schema, {
+    override: ({ zodSchema, jsonSchema }) => {
+      if (zodSchema === ControlNavigationActionSchema && jsonSchema.oneOf) {
+        // Distinct type literals make anyOf equivalent; strict Responses tools do not support oneOf.
+        jsonSchema.anyOf = jsonSchema.oneOf;
+        delete jsonSchema.oneOf;
+      }
+    },
+  });
   return { type: "function", name, description: descriptions[name as keyof typeof schemas], parameters, strict: true };
 });
 
