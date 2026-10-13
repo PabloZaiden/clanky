@@ -2,6 +2,7 @@
  * Terminal session actions for tasks.
  */
 
+import type { CreateTaskTerminalSessionRequest } from "@/contracts";
 import type { TerminalSession } from "@/shared";
 import { apiCall } from "./helpers";
 
@@ -19,10 +20,21 @@ export async function getTaskTerminalSessionApi(taskId: string): Promise<Termina
 /**
  * Get or create a task's linked terminal session via the API.
  */
-export async function getOrCreateTaskTerminalSessionApi(taskId: string): Promise<TerminalSession> {
+export async function getOrCreateTaskTerminalSessionApi(
+  taskId: string,
+  request?: CreateTaskTerminalSessionRequest,
+): Promise<TerminalSession> {
   return apiCall<TerminalSession>(
     `/api/tasks/${taskId}/terminal-session`,
-    { method: "POST" },
+    {
+      method: "POST",
+      ...(request
+        ? {
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(request),
+        }
+        : {}),
+    },
     "Connect task terminal session",
   );
 }

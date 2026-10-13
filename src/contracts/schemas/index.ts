@@ -177,6 +177,7 @@ export {
 export {
   TerminalConnectionModeSchema,
   CreateTerminalSessionRequestSchema,
+  CreateTaskTerminalSessionRequestSchema,
   UpdateTerminalSessionRequestSchema,
 } from "./terminal-session";
 

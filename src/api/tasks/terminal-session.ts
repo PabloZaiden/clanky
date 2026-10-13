@@ -9,6 +9,8 @@ import { taskManager } from "../../core/task-manager";
 import { terminalSessionManager } from "../../core/terminal-session-manager";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { domainErrorResponse, errorResponse } from "../helpers";
+import { parseAndValidate } from "../validation";
+import { CreateTaskTerminalSessionRequestSchema } from "@/contracts/schemas";
 
 const log = createLogger("api:tasks");
 
@@ -44,7 +46,7 @@ export const tasksTerminalSessionRoutes = defineRoutes({
       },
       POST: {
         description: "Create or reuse a task-backed terminal session.",
-        requestSchema: undefined,
+        requestSchema: CreateTaskTerminalSessionRequestSchema,
         querySchema: undefined,
         automation: { policy: "write" },
       },
@@ -71,9 +73,21 @@ export const tasksTerminalSessionRoutes = defineRoutes({
       }
     },
 
-    async POST(_req: Request, ctx): Promise<Response> {
+    async POST(req: Request, ctx): Promise<Response> {
+      const validation = await parseAndValidate(
+        CreateTaskTerminalSessionRequestSchema,
+        req,
+        { allowEmptyBody: true },
+      );
+      if (!validation.success) {
+        return validation.response;
+      }
+
       try {
-        const session = await taskManager.getOrCreateTaskTerminalSession(ctx.params["id"]!);
+        const session = await taskManager.getOrCreateTaskTerminalSession(
+          ctx.params["id"]!,
+          validation.data.directory,
+        );
         return Response.json(session);
       } catch (error) {
         log.error("POST /api/tasks/:id/terminal-session - Failed", {

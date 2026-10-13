@@ -5,6 +5,7 @@ import { createGitFixture } from "./support/git";
 import { pollUntil } from "./support/polling";
 import {
   findFreeLoopbackPort,
+  requireCommand,
   stopManagedProcess,
 } from "./support/process";
 import { operationSignal } from "./support/timeouts";
@@ -19,6 +20,19 @@ interface Workspace {
   directory: string;
 }
 
+interface Model {
+  connected: boolean;
+  modelID: string;
+  providerID: string;
+  variant?: string;
+}
+
+interface Task {
+  config: {
+    id: string;
+  };
+}
+
 interface ApiKeyResponse {
   token: string;
 }
@@ -30,6 +44,9 @@ interface ExecutionHost {
 interface TerminalSession {
   config: {
     id: string;
+    directory: string;
+    taskId?: string;
+    connectionMode: string;
   };
 }
 
@@ -93,6 +110,7 @@ afterEach(async () => {
 
 async function createWorkspaceAndKey(app: E2EApplication): Promise<{
   apiKey: string;
+  baseBranch: string;
   workspace: Workspace;
 }> {
   const git = await createGitFixture(app.runDirectory);
@@ -128,7 +146,7 @@ async function createWorkspaceAndKey(app: E2EApplication): Promise<{
   });
   expect(keyResponse.status).toBe(200);
   const { token: apiKey } = await keyResponse.json() as ApiKeyResponse;
-  return { apiKey, workspace };
+  return { apiKey, baseBranch: git.branch, workspace };
 }
 
 function websocketUrl(app: E2EApplication, path: string): string {
@@ -155,6 +173,7 @@ async function exerciseTerminal(
   app: E2EApplication,
   workspace: Workspace,
   apiKey: string,
+  options: { directory?: string } = {},
 ): Promise<void> {
   const createResponse = await app.request("/api/terminal-sessions", {
     method: "POST",
@@ -162,13 +181,37 @@ async function exerciseTerminal(
     body: JSON.stringify({
       workspaceId: workspace.id,
       name: "E2E direct shell",
+      ...(options.directory !== undefined ? { directory: options.directory } : {}),
       connectionMode: "direct",
       useTmux: false,
     }),
   });
   expect(createResponse.status).toBe(201);
   const session = await createResponse.json() as TerminalSession;
+  const expectedDirectory = options.directory ?? workspace.directory;
+  expect(session.config.directory).toBe(expectedDirectory);
 
+  await exerciseTerminalSession({ app, session, apiKey, expectedDirectory });
+
+  const deleteResponse = await app.request(
+    `/api/terminal-sessions/${encodeURIComponent(session.config.id)}`,
+    { method: "DELETE", apiKey },
+  );
+  expect(deleteResponse.status).toBe(200);
+  const listResponse = await app.request(
+    `/api/terminal-sessions?workspaceId=${encodeURIComponent(workspace.id)}`,
+    { apiKey },
+  );
+  expect(await listResponse.json()).toEqual([]);
+}
+
+async function exerciseTerminalSession(options: {
+  app: E2EApplication;
+  session: TerminalSession;
+  apiKey: string;
+  expectedDirectory: string;
+}): Promise<void> {
+  const { app, session, apiKey, expectedDirectory } = options;
   const frames: TerminalFrame[] = [];
   let output = "";
   const socket = createAuthenticatedSocket(
@@ -196,7 +239,9 @@ async function exerciseTerminal(
         timeoutMs: 5_000,
       },
     );
-    expect(connected?.["runtimeConnectionMode"]).toBe("direct");
+    if (session.config.connectionMode === "direct") {
+      expect(connected?.["runtimeConnectionMode"]).toBe("direct");
+    }
 
     socket.send(JSON.stringify({
       type: "terminal.resize",
@@ -216,7 +261,7 @@ async function exerciseTerminal(
         timeoutMs: 5_000,
       },
     );
-    expect(terminalOutput).toContain(workspace.directory);
+    expect(terminalOutput).toContain(`CLANKY_TERMINAL_E2E:${expectedDirectory}`);
 
     socket.send(JSON.stringify({ type: "terminal.input", data: "exit\n" }));
     await pollUntil(
@@ -230,17 +275,82 @@ async function exerciseTerminal(
   } finally {
     socket.close();
   }
+}
+
+async function exerciseTaskTerminal(
+  app: E2EApplication,
+  workspace: Workspace,
+  apiKey: string,
+  baseBranch: string,
+  directory: string,
+): Promise<void> {
+  const modelsResponse = await app.request(
+    `/api/models?workspaceId=${encodeURIComponent(workspace.id)}`,
+    { apiKey },
+  );
+  expect(modelsResponse.status).toBe(200);
+  const model = (await modelsResponse.json() as Model[]).find(
+    (candidate) => candidate.providerID === "copilot" && candidate.connected,
+  );
+  expect(model).toBeDefined();
+
+  const taskResponse = await app.request("/api/tasks", {
+    method: "POST",
+    apiKey,
+    body: JSON.stringify({
+      name: "Terminal root task",
+      workspaceId: workspace.id,
+      prompt: "Create a draft task for opening its terminal at a selected root.",
+      attachments: [],
+      model: {
+        providerID: model!.providerID,
+        modelID: model!.modelID,
+        variant: model!.variant ?? "",
+      },
+      cheapModel: { mode: "same-as-task" },
+      maxIterations: 2,
+      maxConsecutiveErrors: 2,
+      activityTimeoutSeconds: null,
+      stopPattern: "<promise>COMPLETE</promise>",
+      git: { branchPrefix: "e2e/", commitScope: "" },
+      baseBranch,
+      useWorktree: false,
+      clearPlanningFolder: true,
+      autoAcceptPlan: false,
+      fullyAutonomous: false,
+      draft: true,
+    }),
+  });
+  expect(taskResponse.status).toBe(201);
+  const task = await taskResponse.json() as Task;
+
+  const terminalUrl = `/api/tasks/${encodeURIComponent(task.config.id)}/terminal-session`;
+  const terminalResponse = await app.request(terminalUrl, {
+    method: "POST",
+    apiKey,
+    body: JSON.stringify({ directory }),
+  });
+  expect(terminalResponse.status).toBe(200);
+  const session = await terminalResponse.json() as TerminalSession;
+  expect(session.config.taskId).toBe(task.config.id);
+  expect(session.config.directory).toBe(directory);
+
+  await exerciseTerminalSession({ app, session, apiKey, expectedDirectory: directory });
+
+  const reusedResponse = await app.request(terminalUrl, {
+    method: "POST",
+    apiKey,
+    body: JSON.stringify({ directory: workspace.directory }),
+  });
+  expect(reusedResponse.status).toBe(200);
+  const reusedSession = await reusedResponse.json() as TerminalSession;
+  expect(reusedSession.config.directory).toBe(directory);
 
   const deleteResponse = await app.request(
     `/api/terminal-sessions/${encodeURIComponent(session.config.id)}`,
     { method: "DELETE", apiKey },
   );
   expect(deleteResponse.status).toBe(200);
-  const listResponse = await app.request(
-    `/api/terminal-sessions?workspaceId=${encodeURIComponent(workspace.id)}`,
-    { apiKey },
-  );
-  expect(await listResponse.json()).toEqual([]);
 }
 
 async function exercisePreviewAndRealtime(
@@ -774,11 +884,30 @@ describe("compiled local protocol journey", () => {
           NODE_EXTRA_CA_CERTS: voiceProvider.certificatePath,
         },
       });
-      const { apiKey, workspace } = await createWorkspaceAndKey(application);
+      const { apiKey, baseBranch, workspace } = await createWorkspaceAndKey(application);
+      const terminalWorktreeDirectory = join(application.runDirectory, "terminal-worktree");
+      await requireCommand([
+        "git",
+        "worktree",
+        "add",
+        "--detach",
+        terminalWorktreeDirectory,
+        "HEAD",
+      ], { cwd: workspace.directory });
 
       await exerciseWorkspaceCli(application, workspace, apiKey);
       await exerciseWebDav(application, workspace, apiKey);
       await exerciseTerminal(application, workspace, apiKey);
+      await exerciseTerminal(application, workspace, apiKey, {
+        directory: terminalWorktreeDirectory,
+      });
+      await exerciseTaskTerminal(
+        application,
+        workspace,
+        apiKey,
+        baseBranch,
+        terminalWorktreeDirectory,
+      );
       await exercisePreviewAndRealtime(application, workspace, apiKey);
       await exerciseVoice(application, voiceProvider);
     } catch (error) {

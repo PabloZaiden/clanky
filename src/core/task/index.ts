@@ -121,9 +121,9 @@ export class TaskManager {
     });
   }
 
-  async getOrCreateTaskTerminalSession(taskId: string) {
+  async getOrCreateTaskTerminalSession(taskId: string, directory?: string) {
     return await runTaskLifecycleOperation(taskId, async () => {
-      return await terminalSessionManager.getOrCreateTaskSession(taskId);
+      return await terminalSessionManager.getOrCreateTaskSession(taskId, directory);
     });
   }
 

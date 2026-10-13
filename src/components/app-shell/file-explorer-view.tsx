@@ -117,7 +117,10 @@ interface FileExplorerViewProps {
   hasTerminal: boolean;
   emptyTerminalMessage: string;
   terminalSelectLabel: string;
-  onCreateTerminal: (options?: CodeExplorerTerminalOptions) => Promise<ExplorerSession>;
+  onCreateTerminal: (
+    options?: CodeExplorerTerminalOptions,
+    startDirectory?: string,
+  ) => Promise<ExplorerSession>;
   canChooseTerminalTmux: boolean;
   testIdPrefix: "workspace" | "server";
   credentialPromptName?: string;
@@ -287,7 +290,7 @@ export function FileExplorerView({
   async function createTerminal(options?: CodeExplorerTerminalOptions) {
     try {
       setCreatingTerminal(true);
-      const session = await onCreateTerminal(options);
+      const session = await onCreateTerminal(options, activeRootDirectory);
       setSelectedSessionId(session.config.id);
       setActivePane("terminal");
       setTmuxPromptOpen(false);

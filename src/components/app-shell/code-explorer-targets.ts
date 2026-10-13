@@ -64,7 +64,10 @@ export interface ResolvedCodeExplorerTarget {
   hasTerminal: boolean;
   emptyTerminalMessage: string;
   terminalSelectLabel: string;
-  onCreateTerminal: (options?: CodeExplorerTerminalOptions) => Promise<ExplorerSession>;
+  onCreateTerminal: (
+    options?: CodeExplorerTerminalOptions,
+    startDirectory?: string,
+  ) => Promise<ExplorerSession>;
   canChooseTerminalTmux: boolean;
   testIdPrefix: "workspace" | "server";
   credentialPromptName?: string;
@@ -221,12 +224,15 @@ export function resolveCodeExplorerTarget({
         hasTerminal,
         emptyTerminalMessage: "Choose an existing terminal session or create a new one.",
         terminalSelectLabel: "Select workspace terminal session",
-        onCreateTerminal: async (options?: CodeExplorerTerminalOptions) => await createTerminalSession({
-          workspaceId: workspace.id,
-          name: `${workspace.name} terminal`,
-          connectionMode: "dtach",
-          useTmux: options?.useTmux,
-        }),
+        onCreateTerminal: async (options?: CodeExplorerTerminalOptions, startDirectory?: string) => (
+          await createTerminalSession({
+            workspaceId: workspace.id,
+            name: `${workspace.name} terminal`,
+            directory: startDirectory?.trim() || defaultRootDirectory,
+            connectionMode: "dtach",
+            useTmux: options?.useTmux,
+          })
+        ),
         canChooseTerminalTmux: true,
         testIdPrefix: "workspace",
         initialFilePath: target.filePath,
@@ -270,7 +276,11 @@ export function resolveCodeExplorerTarget({
           ? "Choose the task terminal session or open the task terminal."
           : "This task does not have a task-linked terminal yet. Open the task terminal from the info tab.",
         terminalSelectLabel: "Select task terminal session",
-        onCreateTerminal: async () => await getOrCreateTaskTerminalSessionApi(task.config.id),
+        onCreateTerminal: async (_options?: CodeExplorerTerminalOptions, startDirectory?: string) => (
+          await getOrCreateTaskTerminalSessionApi(task.config.id, {
+            directory: startDirectory?.trim() || defaultRootDirectory,
+          })
+        ),
         canChooseTerminalTmux: false,
         testIdPrefix: "workspace",
         initialFilePath: target.filePath,
@@ -329,13 +339,15 @@ export function resolveCodeExplorerTarget({
         hasTerminal,
         emptyTerminalMessage: "Create a terminal on this server to open it beside the files.",
         terminalSelectLabel: "Server terminal",
-        onCreateTerminal: async (options?: CodeExplorerTerminalOptions) => await createTerminalSession({
-          executionHost: host.ref,
-          name: `${host.name} terminal`,
-          directory: target.startDirectory ?? defaultRootDirectory,
-          connectionMode: "dtach",
-          useTmux: options?.useTmux,
-        }),
+        onCreateTerminal: async (options?: CodeExplorerTerminalOptions, startDirectory?: string) => (
+          await createTerminalSession({
+            executionHost: host.ref,
+            name: `${host.name} terminal`,
+            directory: startDirectory?.trim() || target.startDirectory || defaultRootDirectory,
+            connectionMode: "dtach",
+            useTmux: options?.useTmux,
+          })
+        ),
         canChooseTerminalTmux: true,
         testIdPrefix: "server",
         credentialPromptName: host.ref.kind === "ssh" ? host.name : undefined,
@@ -387,13 +399,15 @@ export function resolveCodeExplorerTarget({
           hasTerminal: host.capabilities.interactiveTerminal !== undefined,
           emptyTerminalMessage: "Create a terminal on this server to open it beside the files.",
           terminalSelectLabel: "Server terminal",
-          onCreateTerminal: async (options?: CodeExplorerTerminalOptions) => await createTerminalSession({
-            executionHost: host.ref,
-            name: `${host.name} terminal`,
-            directory: target.startDirectory ?? defaultRootDirectory,
-            connectionMode: "dtach",
-            useTmux: options?.useTmux,
-          }),
+          onCreateTerminal: async (options?: CodeExplorerTerminalOptions, startDirectory?: string) => (
+            await createTerminalSession({
+              executionHost: host.ref,
+              name: `${host.name} terminal`,
+              directory: startDirectory?.trim() || target.startDirectory || defaultRootDirectory,
+              connectionMode: "dtach",
+              useTmux: options?.useTmux,
+            })
+          ),
           canChooseTerminalTmux: true,
           testIdPrefix: "server",
           credentialPromptName: host.ref.kind === "ssh" ? host.name : undefined,
@@ -431,12 +445,15 @@ export function resolveCodeExplorerTarget({
         hasTerminal,
         emptyTerminalMessage: "Choose an existing terminal session or create a new one.",
         terminalSelectLabel: "Select workspace terminal session",
-        onCreateTerminal: async (options?: CodeExplorerTerminalOptions) => await createTerminalSession({
-          workspaceId: workspace.id,
-          name: `${workspace.name} terminal`,
-          connectionMode: "dtach",
-          useTmux: options?.useTmux,
-        }),
+        onCreateTerminal: async (options?: CodeExplorerTerminalOptions, startDirectory?: string) => (
+          await createTerminalSession({
+            workspaceId: workspace.id,
+            name: `${workspace.name} terminal`,
+            directory: startDirectory?.trim() || defaultRootDirectory,
+            connectionMode: "dtach",
+            useTmux: options?.useTmux,
+          })
+        ),
         canChooseTerminalTmux: true,
         testIdPrefix: "workspace",
         initialFilePath: target.filePath,
