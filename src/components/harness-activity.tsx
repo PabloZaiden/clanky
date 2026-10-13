@@ -87,19 +87,14 @@ export function HarnessMessageAdmission({ inputId }: { inputId: string }) {
 export function HarnessToolActivity({ toolIds }: { toolIds: readonly string[] }) {
   const context = useContext(ToolActivityContext);
   const activities = useMemo(() => toolIds.flatMap((id) => context?.byTool.get(id) ?? []), [context, toolIds]);
-  if (!activities?.length) return null;
+  const hasRunningActivity = activities.some((activity) => activity.status === "running");
+  const onOpenActivity = context?.onOpenActivity;
+  if (!hasRunningActivity || !onOpenActivity) return null;
   return (
     <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
-      {activities.map((activity) => (
-        <span key={activity.id} className="max-w-full truncate">
-          {activity.kind === "subagent" ? "Subagent" : "Process"}: {activity.status}
-        </span>
-      ))}
-      {context?.onOpenActivity && (
-        <button type="button" className="underline decoration-dotted underline-offset-2 hover:text-gray-900 dark:hover:text-gray-100" onClick={context.onOpenActivity}>
-          Activity
-        </button>
-      )}
+      <button type="button" className="underline decoration-dotted underline-offset-2 hover:text-gray-900 dark:hover:text-gray-100" onClick={onOpenActivity}>
+        Activity
+      </button>
     </div>
   );
 }

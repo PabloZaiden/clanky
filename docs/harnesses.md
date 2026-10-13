@@ -87,8 +87,10 @@ authorized recovery attempt or chat deletion.
 Open **Activity** from the existing task or chat action menu. Inside a task's
 Chat tab, **Chat activity** targets the attached chat; the task's **Activity**
 action targets task execution. Returning preserves the composer draft and
-transcript position. Related tool rows show compact background-work status and
-an Activity link without adding a permanent panel.
+transcript position. Related tool rows never show inline activity status
+labels. They show only an **Activity** link while any associated activity is
+running; otherwise, no inline activity summary is shown. No permanent panel is
+added.
 
 Activity updates automatically, including after the principal turn finishes.
 Subagent rows show their title, reported model and status. **Stop** targets that owned activity, not the principal,
