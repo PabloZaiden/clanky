@@ -10,6 +10,13 @@ http://localhost:3000/api
 
 The port can be configured via the `CLANKY_PORT` environment variable, and the bind host can be configured via `CLANKY_HOST`.
 
+## Message attachments
+
+A message can include up to 20 supported attachments: PNG, JPEG, WebP, GIF,
+plain text, Markdown, or PDF. Each file can be up to 20 MiB. The combined
+attachments for one provider turn, including queued messages and images steered
+into an active turn, can total up to 60 MiB.
+
 ## Authentication
 
 Browser sessions use passkeys. CLI and automation clients can use device

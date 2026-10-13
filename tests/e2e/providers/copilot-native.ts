@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { parseJsonRpcMessage, type JsonRpcId, type JsonRpcMessage } from "./codex-json-rpc";
 import { readCopilotImageReceipts } from "./image-input";
 
-const MAX_FRAME_BYTES = 64 * 1024 * 1024;
+const MAX_FRAME_BYTES = 96 * 1024 * 1024;
 
 interface Session {
   id: string;

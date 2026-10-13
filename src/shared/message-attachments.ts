@@ -6,9 +6,11 @@
  * The API field remains `attachments` for both images and supported documents.
  */
 
-export const MESSAGE_ATTACHMENT_LIMIT = 8;
+export const MESSAGE_ATTACHMENT_LIMIT = 20;
 export const MESSAGE_ATTACHMENT_MAX_BYTES = 20 * 1024 * 1024;
-export const MESSAGE_ATTACHMENT_MAX_TURN_BYTES = 40 * 1024 * 1024;
+export const MESSAGE_ATTACHMENT_MAX_TURN_BYTES = 60 * 1024 * 1024;
+export const MESSAGE_ATTACHMENT_MAX_TURN_MIB =
+  MESSAGE_ATTACHMENT_MAX_TURN_BYTES / (1024 * 1024);
 export const MESSAGE_ATTACHMENT_MAX_PROMPT_BYTES =
   Math.ceil(MESSAGE_ATTACHMENT_MAX_TURN_BYTES * 4 / 3) + 2 * 1024 * 1024;
 

@@ -4,7 +4,7 @@
 
 import type { ActiveTurn, CodexFixtureStore } from "./codex-state";
 import type { CodexJsonRpcSession } from "./codex-json-rpc";
-import { buildTurn } from "./codex-protocol";
+import { buildTurn, buildTurnSummary } from "./codex-protocol";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { readCodexImageReceipts } from "./image-input";
@@ -199,6 +199,6 @@ export async function runCodexTurn(
   });
   rpc.notify("turn/completed", {
     threadId: thread.id,
-    turn: buildTurn(turn),
+    turn: buildTurnSummary(turn),
   });
 }

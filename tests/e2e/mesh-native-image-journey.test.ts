@@ -22,7 +22,7 @@ import { createPng } from "./support/png-fixtures";
 const IMAGE_RECEIPT = "E2E image received: image/png; PNG signature OK";
 const MESH_EXECUTION_MAX_MESSAGE_BYTES = 2 * 1024 * 1024;
 const MESSAGE_ATTACHMENT_MAX_BYTES = 20 * 1024 * 1024;
-const MESSAGE_ATTACHMENT_MAX_TURN_BYTES = 40 * 1024 * 1024;
+const MESSAGE_ATTACHMENT_MAX_TURN_BYTES = 60 * 1024 * 1024;
 const LARGE_IMAGE_MESH_REQUEST_TIMEOUT_MS = 30_000;
 
 interface MeshRegistration {
@@ -179,11 +179,14 @@ async function waitForStreamingChat(controller: ManagedMeshNode, chatId: string)
 
 test("compiled Mesh hosts deliver large images to native Codex and Copilot", async () => {
   const image = createLargePngAttachment();
-  const secondImage = {
-    ...image,
-    id: crypto.randomUUID(),
-    filename: "e2e-large-image-2.png",
-  };
+  const largeImages = [
+    image,
+    ...Array.from({ length: 2 }, (_, index) => ({
+      ...image,
+      id: crypto.randomUUID(),
+      filename: `e2e-large-image-${index + 2}.png`,
+    })),
+  ];
   const smallImage = createSmallPngAttachment();
   const fixtureDirectory = await mkdtemp(join(tmpdir(), "clanky-mesh-native-image-e2e-"));
   const providerBinDirectory = join(fixtureDirectory, "bin");
@@ -193,8 +196,8 @@ test("compiled Mesh hosts deliver large images to native Codex and Copilot", asy
   try {
     expect(image.size).toBeGreaterThan(MESSAGE_ATTACHMENT_MAX_BYTES - 16 * 1024);
     expect(image.size).toBeLessThanOrEqual(MESSAGE_ATTACHMENT_MAX_BYTES);
-    expect(image.size * 2).toBeLessThanOrEqual(MESSAGE_ATTACHMENT_MAX_TURN_BYTES);
-    expect(image.size * 2 + smallImage.size).toBeGreaterThan(MESSAGE_ATTACHMENT_MAX_TURN_BYTES);
+    expect(image.size * largeImages.length).toBeLessThanOrEqual(MESSAGE_ATTACHMENT_MAX_TURN_BYTES);
+    expect(image.size * largeImages.length + smallImage.size).toBeGreaterThan(MESSAGE_ATTACHMENT_MAX_TURN_BYTES);
     expect(image.size).toBeGreaterThan(MESH_EXECUTION_MAX_MESSAGE_BYTES);
     expect(image.data.length).toBeGreaterThan(MESH_EXECUTION_MAX_MESSAGE_BYTES);
     await Promise.all([
@@ -330,36 +333,35 @@ test("compiled Mesh hosts deliver large images to native Codex and Copilot", asy
             method: "POST",
             body: {
               message: "This prompt exceeds the aggregate attachment limit.",
-              attachments: [image, secondImage, smallImage],
+              attachments: [...largeImages, smallImage],
               clientId: crypto.randomUUID(),
             },
+            timeoutMs: LARGE_IMAGE_MESH_REQUEST_TIMEOUT_MS,
           },
         );
         expect(excessiveSinglePrompt.status).toBe(400);
       }
 
       const clientId = crypto.randomUUID();
+      const queuedMessage = provider.provider === "copilot"
+        ? "Add all three images and keep waiting."
+        : "Inspect all three attached images.";
       const queued = await meshJsonRequest<ChatMessageResponse>(
         controller,
         `/api/chats/${encodeURIComponent(chatId)}/messages`,
         {
           method: "POST",
           body: {
-            message: provider.provider === "copilot"
-              ? "Add both images and keep waiting."
-              : "Inspect both attached images.",
-            attachments: [image, secondImage],
+            message: queuedMessage,
+            attachments: largeImages,
             clientId,
           },
+          timeoutMs: LARGE_IMAGE_MESH_REQUEST_TIMEOUT_MS,
         },
       );
       expect(queued.status).toBe(200);
       const queuedInput = queued.body.chat.state.queuedMessages?.find(
-        (message) => message.content === (
-          provider.provider === "copilot"
-            ? "Add both images and keep waiting."
-            : "Inspect both attached images."
-        ),
+        (message) => message.content === queuedMessage,
       );
       expect(queuedInput).toBeDefined();
 
@@ -386,6 +388,11 @@ test("compiled Mesh hosts deliver large images to native Codex and Copilot", asy
           timeoutMs: LARGE_IMAGE_MESH_REQUEST_TIMEOUT_MS,
         },
       );
+      if (steered.status !== 200) {
+        throw new Error(
+          `Mesh ${provider.provider} steering failed: HTTP ${steered.status} ${JSON.stringify(steered.body)}`,
+        );
+      }
       expect(steered.status).toBe(200);
       expect(steered.body.admission.status).toBe("accepted");
 
@@ -456,10 +463,10 @@ test("compiled Mesh hosts deliver large images to native Codex and Copilot", asy
         (response) => response.status === 200
           && response.body.transcript.messages.some(
             (message) => message.role === "assistant"
-              && message.content.split(IMAGE_RECEIPT).length - 1 === 2,
+            && message.content.split(IMAGE_RECEIPT).length - 1 === largeImages.length,
           ),
         {
-          description: `${provider.provider} public chat response to confirm both large-image receipts`,
+        description: `${provider.provider} public chat response to confirm all large-image receipts`,
           timeoutMs: 10_000,
           formatLastObserved: (response) => JSON.stringify(
             response.body.transcript.messages
@@ -470,7 +477,7 @@ test("compiled Mesh hosts deliver large images to native Codex and Copilot", asy
       );
       expect(snapshot.body.transcript.messages.some(
         (message) => message.role === "assistant"
-          && message.content.split(IMAGE_RECEIPT).length - 1 === 2,
+          && message.content.split(IMAGE_RECEIPT).length - 1 === largeImages.length,
       )).toBe(true);
 
       if (provider.provider === "codex") {

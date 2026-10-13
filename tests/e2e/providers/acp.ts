@@ -861,6 +861,9 @@ class MockAcpServer {
     signal: AbortSignal,
   ): Promise<string> {
     const promptText = firstPromptText(prompt);
+    const imageAttachmentCount = prompt.filter(
+      (entry) => isRecord(entry) && entry["type"] === "image",
+    ).length;
     session.history.push({ role: "user", text: promptText });
 
     this.sendStatus(session, "busy");
@@ -1047,7 +1050,10 @@ class MockAcpServer {
     const responseText = promptText.includes("[Clanky chat history recovery]")
       ? await buildHistoryRecoveryResponse(promptText)
       : this.buildResponseText(promptText, session.promptCount, fsReadSummary, terminalSummary);
-    for (const chunk of splitIntoChunks(responseText, 4)) {
+    const responseWithImageReceipt = imageAttachmentCount > 0
+      ? `${responseText} E2E ACP provider received ${imageAttachmentCount} image attachments.`
+      : responseText;
+    for (const chunk of splitIntoChunks(responseWithImageReceipt, 4)) {
       await this.delay(promptText.includes("[slow]") ? SLOW_STREAM_DELAY_MS : STREAM_DELAY_MS);
       if (signal.aborted) {
         this.sendStatus(session, "idle");
@@ -1088,7 +1094,7 @@ class MockAcpServer {
         sessionId: session.id,
         update: {
           sessionUpdate: "agent_message_chunk",
-          content: Array.from({ length: 5 }, () => imageContentBlock(E2E_IMAGE_DATA)),
+          content: Array.from({ length: 12 }, () => imageContentBlock(E2E_IMAGE_DATA)),
         },
       });
     } else if (imageOutputRequested) {
@@ -1113,7 +1119,7 @@ class MockAcpServer {
         },
       },
       ...Array.from(
-        { length: imageCountBudgetRequested ? 4 : generatedImagesRequested ? 1 : 0 },
+        { length: imageCountBudgetRequested ? 8 : generatedImagesRequested ? 1 : 0 },
         () => ({
           type: "content",
           content: imageContentBlock(maximumImageData),

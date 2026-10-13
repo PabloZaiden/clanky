@@ -6,7 +6,7 @@ import { createInterface } from "node:readline";
 import { join } from "node:path";
 import { CodexMethodDispatcher } from "./codex-dispatcher";
 import { CodexJsonRpcSession, parseJsonRpcMessage, type JsonRpcMessage } from "./codex-json-rpc";
-import { buildTurn } from "./codex-protocol";
+import { buildTurnSummary } from "./codex-protocol";
 import { CodexFixtureStore, type ActiveTurn } from "./codex-state";
 import { runCodexTurn } from "./codex-turn-runner";
 
@@ -88,7 +88,7 @@ async function failTurn(
     await store.failTurn(active, error);
     rpc.notify("turn/completed", {
       threadId: active.thread.id,
-      turn: buildTurn(active.turn),
+      turn: buildTurnSummary(active.turn),
     });
   } catch (cleanupError) {
     process.stderr.write(
