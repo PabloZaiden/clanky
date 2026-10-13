@@ -27,7 +27,8 @@ function getWorkspaceApiPath(workspaceId: string): string {
   return `/api/workspaces/${encodeURIComponent(workspaceId)}`;
 }
 
-const scratchpadActionButtonClassName = "w-9 px-0 !border-0 !bg-transparent";
+const scratchpadActionButtonClassName =
+  "w-9 px-0 !border-0 aria-pressed:!text-blue-600 dark:aria-pressed:!text-blue-400";
 
 export function WorkspaceScratchpadView({
   workspaceId,
