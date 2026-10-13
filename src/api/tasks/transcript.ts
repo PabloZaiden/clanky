@@ -12,6 +12,9 @@ import {
   parseTranscriptSnapshotOptions,
   transcriptSnapshotErrorResponse,
 } from "../transcript-snapshot";
+import { ConversationReadOptionsSchema } from "@/contracts/schemas/resource-read";
+import { readConversationPage } from "../../core/conversation-read-service";
+import { readScope } from "../../core/resource-read-service";
 
 function transcriptResponseHeaders(revision: string): Headers {
   return new Headers({
@@ -34,11 +37,19 @@ export const tasksTranscriptRoutes = defineRoutes({
       GET: {
         description: "Read one bounded page of task history; use before for older history.",
         requestSchema: undefined,
-        querySchema: TranscriptSnapshotQuerySchema,
+        querySchema: TranscriptSnapshotQuerySchema.extend(ConversationReadOptionsSchema.shape),
         automation: { policy: "read", hiddenQuery: ["full"] },
       },
     },
     async GET(req: Request, ctx): Promise<Response> {
+      if (new URL(req.url).searchParams.get("view") === "conversation") {
+        const page = readConversationPage({
+          resource: "task", id: ctx.params["id"]!,
+          options: ConversationReadOptionsSchema.parse(Object.fromEntries(new URL(req.url).searchParams)),
+          scope: readScope(ctx.requireUser().id, new URL(req.url)),
+        });
+        return page ? Response.json(page) : errorResponse("not_found", "Task not found", 404);
+      }
       const options = parseTranscriptSnapshotOptions(req);
       if (options instanceof Response) {
         return options;

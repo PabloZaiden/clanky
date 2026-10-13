@@ -83,7 +83,8 @@ export class LiveVoiceObserver {
     const domain = target.kind === "provisioning" ? "provisioning-jobs" : `${target.kind}s`;
     const prepared = this.options.service.prepare(this.options.authority, {
       operationId: `GET /api/${domain}/:id`,
-      parameters: [{ name: "id", value: target.id }], query: [], bodyJson: null,
+      parameters: [{ name: "id", value: target.id }],
+      query: [{ name: "view", value: "compact" }, { name: "maxBytes", value: "1200" }], bodyJson: null,
     });
     return await this.options.service.execute(this.options.authority, prepared, { signal: this.controller.signal, clientId: "" });
   }
@@ -93,7 +94,7 @@ export class LiveVoiceObserver {
     const entity = "job" in data && data.job && typeof data.job === "object" ? data.job : data;
     const state = "state" in entity && entity.state && typeof entity.state === "object" ? entity.state : entity;
     return JSON.stringify(Object.fromEntries(Object.entries(state).filter(([key]) =>
-      ["status", "error", "questions", "pendingPermissionRequests", "harness", "result", "currentStep",
+      ["status", "error", "needsInput", "pendingQuestions", "pendingPermissions", "pendingInputs", "result", "currentStep",
         "currentIteration", "workspaceId", "workspaceAction", "targetDirectory", "resolvedDirectory"].includes(key))));
   }
 

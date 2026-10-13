@@ -7,13 +7,15 @@ import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import type { LiveVoiceCallState } from "@/shared";
 import type { LiveVoiceUiContext } from "@/shared/live-voice";
 import { runWithCurrentUser } from "../context/user-context";
-import { executeLiveVoiceTool } from "./live-voice-tools";
+import { executeLiveVoiceTool, liveVoiceToolDefinitions } from "./live-voice-tools";
 import { LiveVoiceActions } from "./live-voice-actions";
 import { LiveVoiceObserver } from "./live-voice-observer";
 import type { ClankyOperationService, OperationAuthority } from "./clanky-operation-service";
 import { LiveVoiceConnection, type LiveVoiceCredentials, type LiveVoiceEvent } from "./live-voice-provider";
 import { clientActionEventEmitter } from "./event-emitter";
 import { LiveVoiceConversation, type LiveVoiceHistoryMessage } from "./live-voice-memory";
+import { LIVE_MAX_PARALLEL_TOOLS, LIVE_TOOL_BATCH_BYTES, liveToolOutput } from "./live-voice-output";
+import { readRevision } from "./resource-read-service";
 
 const log = createLogger("core:live-voice");
 interface Delegation {
@@ -22,6 +24,9 @@ interface Delegation {
   collecting: boolean;
   hasTools: boolean;
   calls: Map<string, string>;
+  outputs: ReturnType<typeof liveToolOutput>[];
+  requests: Array<{ callId: string; name: string; args: string }>;
+  itemBytes: number;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -60,6 +65,7 @@ export class LiveVoiceCall {
   readonly operations = new Set<Promise<unknown>>();
   private readonly delegations = new Map<string, Delegation>();
   private pendingCommentary?: string;
+  private outputBatch?: Delegation;
 
   constructor(readonly scope: {
     id: string;
@@ -123,7 +129,10 @@ export class LiveVoiceCall {
       if (isRecord(delegation) && delegation["target"] === "responses" && typeof delegation["id"] === "string") {
         if (this.delegations.size >= 32) { this.fail("Live delegation capacity was reached."); return; }
         if (!this.delegations.has(delegation["id"])) {
-          this.delegations.set(delegation["id"], { pending: 0, collecting: true, hasTools: false, calls: new Map() });
+          this.delegations.set(delegation["id"], {
+            pending: 0, collecting: true, hasTools: false, calls: new Map(), outputs: [], requests: [],
+            itemBytes: 0,
+          });
           this.setProcessing(true);
         }
       }
@@ -137,8 +146,15 @@ export class LiveVoiceCall {
       const response = nested["response"];
       if (!isRecord(response) || typeof response["id"] !== "string") { this.fail("Live returned an invalid response."); return; }
       if (group.pending && response["id"] !== group.responseId) { this.fail("Live continued before its actions completed."); return; }
+      const acceptedBatch = this.outputBatch === group && response["id"] !== group.responseId;
       group.responseId = response["id"];
       group.collecting = true;
+      if (acceptedBatch) {
+        // The delegated response has accepted the preceding batch. Only now
+        // may another delegation put function results into the provider queue.
+        this.outputBatch = undefined;
+        for (const waiting of this.delegations.values()) this.continueResponse(waiting);
+      }
     }
     if (nested["type"] === "response.output_item.done") {
       const item = nested["item"];
@@ -148,6 +164,10 @@ export class LiveVoiceCall {
       const response = nested["response"];
       if (!isRecord(response) || response["id"] !== group.responseId) { this.fail("Live response correlation changed."); return; }
       group.collecting = false;
+      if (group.requests.length) {
+        group.itemBytes = Math.floor(LIVE_TOOL_BATCH_BYTES / (group.pending + group.outputs.length));
+        this.runPendingTools(group);
+      }
       this.continueResponse(group);
       if (!group.collecting && !group.hasTools && group.pending === 0) this.delegations.delete(id);
       this.setProcessing(this.delegations.size > 0);
@@ -162,26 +182,53 @@ export class LiveVoiceCall {
     const callId = item["call_id"], name = item["name"], args = item["arguments"];
     if (typeof callId !== "string" || typeof name !== "string" || typeof args !== "string"
       || callId.length > 500 || args.length > 45_000) { this.fail("Live returned an invalid function call."); return; }
-    const signature = `${name}:${args}`;
+    const signature = readRevision([name, args]);
     const previous = group.calls.get(callId);
     if (previous !== undefined) {
       if (previous !== signature) this.fail("Live function correlation changed.");
       return;
     }
-    if (group.calls.size >= 128 || this.operations.size >= 8) { this.fail("Live action capacity was reached."); return; }
+    if (group.calls.size >= 128
+      || group.pending + group.outputs.length >= LIVE_MAX_PARALLEL_TOOLS) {
+      this.fail("Live action capacity was reached. Inspect completed actions before repeating a mutation.");
+      return;
+    }
     group.calls.set(callId, signature);
     group.pending++;
     group.hasTools = true;
+    group.requests.push({ callId, name, args });
+  }
+
+  private runPendingTools(group: Delegation): void {
+    if (group.collecting || this.state.status !== "active") return;
+    while (group.requests.length && this.operations.size < LIVE_MAX_PARALLEL_TOOLS) {
+      const { callId, name, args } = group.requests.shift()!;
+      const readBytes = Math.min(16_384, Math.max(1024, Math.floor((group.itemBytes - 1100) / 2)));
+      this.startTool(group, { callId, name, args, readBytes });
+    }
+  }
+
+  private startTool(group: Delegation, request: { callId: string; name: string; args: string; readBytes: number }): void {
+    const { callId, name, args, readBytes } = request;
+    const itemBytes = group.itemBytes;
     const operation = (async () => {
       try {
         const result = await executeLiveVoiceTool({
           service: this.scope.service, actions: this.actions, observer: this.observer,
-          requestId: callId, name, rawArguments: args,
+          requestId: callId, name, rawArguments: args, maxReadBytes: readBytes,
         });
-        if (this.state.status === "active") this.connection.send({
-          type: "response.item.create", event_id: crypto.randomUUID(),
-          item: { type: "function_call_output", call_id: callId, output: JSON.stringify(result) },
-        });
+        if (this.state.status === "active") {
+          const output = liveToolOutput(callId, result, itemBytes);
+          log[output.reduced ? "warn" : "debug"](output.reduced
+            ? "Live result requires a targeted read" : "Live tool result prepared", {
+            callId: this.scope.id,
+            tool: liveVoiceToolDefinitions.some((tool) => tool.name === name) ? name : "unsupported",
+            requestIdHash: readRevision(callId), wireBytes: output.bytes,
+            operationId: ["clanky_execute_operation", "clanky_describe_operation"].includes(name)
+              && isRecord(result) && typeof result["operationId"] === "string" ? result["operationId"] : undefined,
+          });
+          group.outputs.push(output);
+        }
       } catch {
         this.fail("A Live action failed. Inspect its target before repeating a mutation.");
       } finally {
@@ -190,17 +237,33 @@ export class LiveVoiceCall {
       }
     })();
     this.operations.add(operation);
-    void operation.finally(() => this.operations.delete(operation)).catch(() => this.fail("Live could not continue its response."));
+    void operation.finally(() => {
+      this.operations.delete(operation);
+      for (const waiting of this.delegations.values()) this.runPendingTools(waiting);
+    }).catch(() => this.fail("Live could not continue its response."));
   }
 
   async confirm(requestId: string, approved: boolean) {
     const operation = this.actions.confirm(requestId, approved);
     this.operations.add(operation);
-    try { return await operation; } finally { this.operations.delete(operation); }
+    try { return await operation; } finally {
+      this.operations.delete(operation);
+      for (const waiting of this.delegations.values()) this.runPendingTools(waiting);
+    }
   }
 
   private continueResponse(group: Delegation): void {
-    if (group.collecting || group.pending || !group.hasTools || this.state.status !== "active") return;
+    if (group.collecting || group.pending || !group.hasTools || this.outputBatch || this.state.status !== "active") return;
+    const bytes = group.outputs.reduce((total, output) => total + output.bytes, 0);
+    if (bytes > LIVE_TOOL_BATCH_BYTES) {
+      log.error("Live tool batch exceeded admission budget", { callId: this.scope.id, wireBytes: bytes, items: group.outputs.length });
+      this.fail("Live results could not be delivered. Inspect completed actions before repeating a mutation.");
+      return;
+    }
+    this.outputBatch = group;
+    log.debug("Live tool batch admitted", { callId: this.scope.id, wireBytes: bytes, items: group.outputs.length });
+    for (const output of group.outputs) this.connection.send(output.event);
+    group.outputs.length = 0;
     group.hasTools = false;
     group.collecting = true;
     this.connection.send({ type: "response.create", event_id: crypto.randomUUID() });
@@ -234,6 +297,7 @@ export class LiveVoiceCall {
   release(): void {
     this.stopActions();
     this.delegations.clear();
+    this.outputBatch = undefined;
     this.pendingCommentary = undefined;
     this.conversation.dispose();
     this.scope.authority.release();

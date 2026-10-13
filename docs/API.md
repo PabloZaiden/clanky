@@ -50,6 +50,93 @@ Use `clanky api` to list the routes exposed by the running server and
 metadata. Public routes are exceptional and are identified explicitly in the
 route reference.
 
+## Compact reads and literal conversations
+
+Catalogued JSON operations use the same endpoints, authorization and execution
+host with an optional `view=compact`. Requests without `view` keep their
+existing response shape. Credential-management and raw/binary transports are
+not assistant read operations; inspect `clanky schema <endpoint> --method GET`
+for the supported options.
+
+All catalogued collection reads share these parameters, including read-policy
+`POST` discovery operations:
+
+| Parameter | Meaning |
+| --- | --- |
+| `view=compact` | Small metadata, rather than expanded runtime state or content. |
+| `limit` | Maximum rows or content parts, 1–100; default 20. |
+| `maxBytes` | Successful JSON response budget in UTF-8 bytes, 1,024–16,384; default 4,096. |
+| `cursor` | Opaque continuation from the preceding page. |
+| `section` | Named content/collection section supported by this resource. |
+| `item` | Stable item reference returned in a row's `details`. |
+
+Collections return `{ "items": [...], "nextCursor": "..." | null }`, optionally
+with small `context` such as the resolved directory, activity coverage or
+source truncation. This applies to chats, tasks, workspaces, execution hosts,
+SSH servers, agents/runs, terminals, provisioning/logs, models, previews,
+review comments, interactions, and exposed file/Git collections. File trees return flat entry
+pages; `loadOnExpand` still identifies deferred directories. Objects containing
+multiple collections label rows with `collection` and the matching detail
+section. `nextCursor: null` completes the exposed source, not data that the
+underlying source explicitly reports as truncated or deferred.
+
+Chat/task/run collection and item metadata are read directly from storage
+without loading their transcripts or expanded harness. Their stable order is
+descending creation time, then ID. Metadata includes identity, status, source,
+model and actionable input counts when available. Unreadable persisted state
+is marked `stateUnavailable`, not reported as an empty healthy state.
+
+Continue the **same read operation**, retaining its filters, view, section and
+public request body. `limit` and `maxBytes` may change between pages.
+Authorization and selected-host resolution run on every request. Cursors
+identify a source; they are not authorization capabilities. An incompatible
+cursor returns `read_cursor_invalid` (400); changed collection membership or
+selected content returns `read_cursor_stale` (409). Restart that read without
+its cursor, not a mutation.
+
+Small item reads return metadata with `details`. Follow the reference to read
+its original content. Named sections include `questions`, `permissions`,
+`inputs`, `activity`, `activities`, `comments`, `logs`, `prompt`, `content`, `output`, `plan` and `diff`; inspect
+the resource's contract and references for applicable sections. Missing
+sections/items are explicit 400 errors. Oversized metadata is marked
+`read_item_requires_details`, never clipped into invalid JSON.
+
+Selected details and long content use the same page envelope:
+
+```json
+{
+  "items": [
+    { "path": ["questions", 0, "text"], "value": "Literal content...", "offset": 0, "complete": false }
+  ],
+  "nextCursor": "..."
+}
+```
+
+String path segments are object keys; numeric segments are array indices, so
+numeric-looking object keys remain distinguishable. Empty objects/arrays are
+preserved as values. Concatenate string chunks at their offsets; `complete`
+marks the last chunk of that value. **Offsets count UTF-16 code units, whereas
+budgets count UTF-8 bytes of serialized JSON.** Chunks never split a surrogate
+pair. `section=details` retrieves the original response/item without compact
+field projection.
+
+Chat, task and agent-run `/snapshot` endpoints also accept
+`view=conversation`. They return chronological literal user/assistant text:
+`{ id, role, timestamp, content, offset, complete }`, with minimal optional
+delivery/attachment-count markers. Actual question/answer messages are
+included; tool calls, reasoning, logs, harness/session/config and attachment
+binaries are not. This is not a generated summary. Queued or unconfirmed
+answers are not presented as delivered. Message membership and the selected
+long message are revision-checked; unrelated tool/log updates do not invalidate
+conversation chunks. Existing `before`/`full` snapshots remain unchanged and
+cannot be combined with this view.
+
+Writes accept only `view=compact` and `maxBytes`, returning a compact receipt
+with the original HTTP outcome. They cannot be paged. A
+`read_result_requires_targeted_read` receipt means data was omitted, not that
+the operation failed: inspect the target through a read or the UI and **do not
+repeat the write** to retrieve its output.
+
 ## CLI discovery helpers
 
 The standalone `clanky` binary exposes the server and API discovery directly:

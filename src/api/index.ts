@@ -48,6 +48,7 @@ import { voiceRoutes } from "./voice";
 import { liveVoiceRoutes } from "./live-voice";
 import { controlUiActionRoutes } from "./control-ui-actions";
 import { taskCreationContextRoutes } from "./task-creation-context";
+import { withResourceReads } from "./resource-reads";
 
 /**
  * All API routes combined.
@@ -101,7 +102,7 @@ function withApiUserContext(routes: Record<string, RouteDefinition>): RouteTable
   }));
 }
 
-export const apiRoutes = defineRoutes(withApiUserContext(nativeApiRoutes));
+export const apiRoutes = defineRoutes(withApiUserContext(withResourceReads(nativeApiRoutes)));
 
 // Re-export individual route modules
 export * from "./helpers";

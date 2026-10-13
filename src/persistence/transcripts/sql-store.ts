@@ -372,6 +372,61 @@ export function getTranscriptMeta(resource: TranscriptResource, resourceId: stri
   return getTranscriptMetaForUser(resource, resourceId, requirePersistenceUserId());
 }
 
+export function getConversationMessageIdsForUser(resource: TranscriptResource, resourceId: string, userId: string): string[] {
+  const config = getTableConfig(resource);
+  const rows = getDatabase().prepare(`
+    SELECT entry_id FROM ${config.entriesTable}
+    WHERE ${config.resourceColumn} = ? AND user_id = ? AND kind = 'message'
+    ORDER BY timestamp ASC, sequence ASC, entry_id ASC
+  `).all(resourceId, userId) as Array<{ entry_id: string }>;
+  return rows.map((row) => row.entry_id);
+}
+
+export function getConversationMessageWindowForUser(input: {
+  resource: TranscriptResource; resourceId: string; userId: string; position: number; limit: number;
+}): PersistedMessage[] {
+  const config = getTableConfig(input.resource);
+  const rows = getDatabase().prepare(`
+    SELECT entry_id, kind, timestamp, sequence, payload, updated_at,
+      NULL AS tool_name, NULL AS tool_status, NULL AS tool_input,
+      NULL AS tool_output, NULL AS tool_extras, 0 AS tool_has_output
+    FROM ${config.entriesTable}
+    WHERE ${config.resourceColumn} = ? AND user_id = ? AND kind = 'message'
+    ORDER BY timestamp ASC, sequence ASC, entry_id ASC
+    LIMIT ? OFFSET ?
+  `).all(input.resourceId, input.userId, input.limit, input.position) as TranscriptRow[];
+  return rows.map((row) => {
+    const entry = rowToStorageEntry(row, false, input.resource);
+    if (!entry || !isPersistedMessage(entry.payload)) {
+      throw new Error("Conversation contains an unreadable persisted message.");
+    }
+    return entry.payload;
+  });
+}
+
+export function getConversationAdmissionsForUser(
+  resource: TranscriptResource,
+  resourceId: string,
+  userId: string,
+): Array<{ inputId: string; nativeMessageId: string | null; status: string }> {
+  const table = resource === "task" ? "tasks" : "chats";
+  const target = resource === "agent_run"
+    ? getDatabase().prepare("SELECT chat_id FROM agent_runs WHERE id = ? AND user_id = ?")
+      .get(resourceId, userId) as { chat_id: string | null } | null : null;
+  const id = resource === "agent_run" ? target?.chat_id : resourceId;
+  if (!id) return [];
+  return getDatabase().prepare(`
+    SELECT
+      json_extract(value, '$.admission.inputId') AS inputId,
+      json_extract(value, '$.admission.nativeMessageId') AS nativeMessageId,
+      json_extract(value, '$.admission.status') AS status
+    FROM ${table}, json_each(
+      CASE WHEN json_valid(harness_state_json) THEN harness_state_json ELSE '{}' END, '$.inputs'
+    )
+    WHERE ${table}.id = ? AND user_id = ? AND json_valid(value)
+  `).all(id, userId) as Array<{ inputId: string; nativeMessageId: string | null; status: string }>;
+}
+
 export function listTranscriptEntriesForUser(
   resource: TranscriptResource,
   resourceId: string,
