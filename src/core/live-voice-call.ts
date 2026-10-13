@@ -219,14 +219,14 @@ export class LiveVoiceCall {
         });
         if (this.state.status === "active") {
           const output = liveToolOutput(callId, result, itemBytes);
-          if (output.reduced) {
-            log.warn("Live result requires a targeted read", {
-              callId: this.scope.id,
-              tool: liveVoiceToolDefinitions.some((tool) => tool.name === name) ? name : "unsupported",
-              requestIdHash: readRevision(callId), wireBytes: output.bytes,
-              operationId: isRecord(result) && typeof result["operationId"] === "string" ? result["operationId"] : undefined,
-            });
-          }
+          log[output.reduced ? "warn" : "debug"](output.reduced
+            ? "Live result requires a targeted read" : "Live tool result prepared", {
+            callId: this.scope.id,
+            tool: liveVoiceToolDefinitions.some((tool) => tool.name === name) ? name : "unsupported",
+            requestIdHash: readRevision(callId), wireBytes: output.bytes,
+            operationId: ["clanky_execute_operation", "clanky_describe_operation"].includes(name)
+              && isRecord(result) && typeof result["operationId"] === "string" ? result["operationId"] : undefined,
+          });
           group.outputs.push(output);
         }
       } catch {
