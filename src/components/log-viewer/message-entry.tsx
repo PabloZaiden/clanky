@@ -1,6 +1,9 @@
 import { memo, useEffect, useRef, useState } from "react";
-import type { MessageData } from "@/shared";
-import type { VoiceTranslationLanguage } from "@/shared";
+import {
+  VOICE_MAX_TEXT_CHARS,
+  type MessageData,
+  type VoiceTranslationLanguage,
+} from "@/shared";
 import type { BadgeVariant } from "../common";
 import {
   getMessageAttachmentExtension,
@@ -92,7 +95,9 @@ export const MessageEntry = memo(function MessageEntry({
   const renderedContent = currentTranslation?.text ?? sourceText;
   const hasMessageText = sourceText.trim().length > 0;
   const canReadAloud = !isUser && Boolean(onReadAloud) && hasMessageText;
-  const canTranslate = msg.role === "assistant" && hasMessageText;
+  const canTranslate = msg.role === "assistant"
+    && hasMessageText
+    && sourceText.trim().length <= VOICE_MAX_TEXT_CHARS;
   const isReadAloudActive = playingReadAloudKey === msg.id;
   const isGeneratingReadAloud = isReadAloudActive && readAloudStatus === "generating";
   const isTranslationBusy = currentTranslationRequest !== null;
