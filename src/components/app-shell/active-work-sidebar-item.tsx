@@ -4,7 +4,9 @@ import {
   formatStatusLabel,
   type SidebarNode,
 } from "@pablozaiden/webapp/web";
+import type { Workspace } from "@/shared";
 import { formatSidebarRelativeTime } from "../../utils";
+import { WorkspaceIdentity } from "../common";
 
 export type ActiveWorkSidebarItemType = "Task" | "Chat" | "Terminal";
 
@@ -53,10 +55,12 @@ export function ActiveWorkSidebarItem({
   node,
   itemType,
   lastInteractionAt,
+  workspace,
 }: {
   node: SidebarNode;
   itemType: ActiveWorkSidebarItemType;
   lastInteractionAt: string;
+  workspace?: Workspace;
 }) {
   const nowMs = useSyncExternalStore(
     subscribeToActiveWorkClock,
@@ -71,7 +75,13 @@ export function ActiveWorkSidebarItem({
     <>
       <span>
         <strong>{node.title}</strong>
-        {node.subtitle ? <small>{node.subtitle}</small> : null}
+        {workspace ? (
+          <WorkspaceIdentity
+            workspace={workspace}
+            iconSize="h-3.5 w-3.5"
+            className="mt-0.5 text-xs text-gray-500 dark:text-gray-400"
+          />
+        ) : node.subtitle ? <small>{node.subtitle}</small> : null}
         <span className="clanky-sidebar-item-metadata">
           {relativeTime ? (
             <small className="clanky-sidebar-item-age">{relativeTime}</small>

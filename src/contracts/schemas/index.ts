@@ -118,6 +118,12 @@ export {
   AgentSettingsSchema,
   ServerSettingsSchema,
   WorkspaceSshTargetSchema,
+  WorkspaceIconCandidateRequestSchema,
+  WorkspaceIconCandidateQuerySchema,
+  WorkspaceIconMetadataSchema,
+  WorkspaceIconCandidateSchema,
+  WorkspaceIconCandidatesResponseSchema,
+  WorkspaceIconResponseSchema,
   CreateWorkspaceRequestSchema,
   DeleteWorkspaceRequestSchema,
   UpdateWorkspaceRequestSchema,
@@ -129,6 +135,12 @@ export {
   type UpdateWorkspaceRequest,
   type DeleteWorkspaceRequest,
   type WorkspaceSshTargetRequest,
+  type WorkspaceIconCandidateRequest,
+  type WorkspaceIconCandidateQuery,
+  type WorkspaceIconMetadataResponse,
+  type WorkspaceIconCandidate,
+  type WorkspaceIconCandidatesResponse,
+  type WorkspaceIconResponse,
 } from "./workspace";
 
 // Preferences schemas

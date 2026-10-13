@@ -2,7 +2,10 @@
  * Internal row-conversion helpers for workspace persistence.
  */
 
-import { DEFAULT_WORKSPACE_TYPE, type Workspace } from "@/shared/workspace";
+import {
+  DEFAULT_WORKSPACE_TYPE,
+  type Workspace,
+} from "@/shared/workspace";
 import { parseServerSettings } from "@/shared/settings";
 import { requirePersistenceUserId } from "../ownership";
 import {
@@ -46,6 +49,7 @@ export function workspaceToRow(workspace: Workspace): Record<string, unknown> {
 }
 
 export function rowToWorkspace(row: Record<string, unknown>): Workspace {
+  const workspaceIcon = rowToWorkspaceIcon(row);
   return {
     id: row["id"] as string,
     name: row["name"] as string,
@@ -75,7 +79,22 @@ export function rowToWorkspace(row: Record<string, unknown>): Workspace {
     repoUrl: (row["repo_url"] as string | null) ?? undefined,
     basePath: (row["base_path"] as string | null) ?? undefined,
     devcontainerSubpath: (row["devcontainer_subpath"] as string | null) ?? undefined,
+    ...(workspaceIcon ? { workspaceIcon } : {}),
   };
+}
+
+function rowToWorkspaceIcon(
+  row: Record<string, unknown>,
+): Workspace["workspaceIcon"] {
+  const mimeType = row["workspace_icon_mime_type"];
+  const updatedAt = row["workspace_icon_updated_at"];
+  if (
+    (mimeType !== "image/svg+xml" && mimeType !== "image/x-icon")
+    || typeof updatedAt !== "string"
+  ) {
+    return undefined;
+  }
+  return { mimeType, updatedAt };
 }
 
 function rowToWorkspaceSshTarget(

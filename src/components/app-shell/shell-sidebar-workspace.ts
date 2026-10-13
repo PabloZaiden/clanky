@@ -13,6 +13,7 @@ import {
   getPrivateHidden,
   privateActions,
   privateSidebarPresentation,
+  renderWorkspaceSidebarItem,
   sidebarActionItems,
   withPrivateToggleAction,
 } from "./shell-sidebar-utils";
@@ -381,6 +382,7 @@ export function createWorkspaceSidebarNode(
     type: "item",
     id: `workspace:${workspaceId}`,
     title: workspaceNode.workspace.name,
+    render: renderWorkspaceSidebarItem(workspaceNode.workspace),
     searchText: `${workspaceNode.workspace.directory} ${isGitBacked ? "git" : "directory"}`,
     route: { view: "workspace", workspaceId },
     actions: privateActions(

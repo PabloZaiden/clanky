@@ -548,6 +548,25 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: 72,
+    name: "add_workspace_icons",
+    up: (db) => {
+      db.run(`
+        CREATE TABLE IF NOT EXISTS workspace_icons (
+          workspace_id TEXT PRIMARY KEY REFERENCES workspaces(id) ON DELETE CASCADE,
+          user_id TEXT NOT NULL,
+          mime_type TEXT NOT NULL CHECK (mime_type IN ('image/svg+xml', 'image/x-icon')),
+          content BLOB NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+      `);
+      db.run(`
+        CREATE INDEX IF NOT EXISTS idx_workspace_icons_user_id
+        ON workspace_icons(user_id)
+      `);
+    },
+  },
 ];
 
 function getMigrationTableColumns(db: Database, tableName: string): string[] {

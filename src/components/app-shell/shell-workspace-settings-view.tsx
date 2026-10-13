@@ -90,6 +90,7 @@ export function WorkspaceSettingsView({
               }
               return success;
             }}
+            onWorkspaceIconChanged={refreshWorkspaces}
             onTest={testWorkspaceConnection}
             onPurgeArchivedTasks={
               workspaceSettingsWorkspaceId

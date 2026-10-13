@@ -48,6 +48,34 @@ export const WorkspaceSshTargetSchema = z.object({
   password: z.string().nullable().optional(),
 }).strict();
 
+export const WorkspaceIconCandidateRequestSchema = z.object({
+  path: z.string().trim().min(1).max(2048),
+}).strict();
+
+export const WorkspaceIconCandidateQuerySchema = z.object({
+  path: z.string().min(1).max(2048),
+}).strict();
+
+export const WorkspaceIconMetadataSchema = z.object({
+  mimeType: z.enum(["image/svg+xml", "image/x-icon"]),
+  updatedAt: z.string().datetime(),
+}).strict();
+
+export const WorkspaceIconCandidateSchema = z.object({
+  path: z.string().min(1).max(2048),
+  name: z.string().min(1).max(255),
+  mimeType: z.enum(["image/svg+xml", "image/x-icon"]),
+}).strict();
+
+export const WorkspaceIconCandidatesResponseSchema = z.object({
+  candidates: z.array(WorkspaceIconCandidateSchema),
+  truncated: z.boolean(),
+}).strict();
+
+export const WorkspaceIconResponseSchema = z.object({
+  workspaceIcon: WorkspaceIconMetadataSchema,
+}).strict();
+
 /**
  * Schema for CreateWorkspaceRequest - POST /api/workspaces
  *
@@ -138,3 +166,9 @@ export type CreateWorkspaceRequest = z.infer<typeof CreateWorkspaceRequestSchema
 export type UpdateWorkspaceRequest = z.infer<typeof UpdateWorkspaceRequestSchema>;
 export type DeleteWorkspaceRequest = z.infer<typeof DeleteWorkspaceRequestSchema>;
 export type WorkspaceSshTargetRequest = z.infer<typeof WorkspaceSshTargetSchema>;
+export type WorkspaceIconCandidateRequest = z.infer<typeof WorkspaceIconCandidateRequestSchema>;
+export type WorkspaceIconCandidateQuery = z.infer<typeof WorkspaceIconCandidateQuerySchema>;
+export type WorkspaceIconMetadataResponse = z.infer<typeof WorkspaceIconMetadataSchema>;
+export type WorkspaceIconCandidate = z.infer<typeof WorkspaceIconCandidateSchema>;
+export type WorkspaceIconCandidatesResponse = z.infer<typeof WorkspaceIconCandidatesResponseSchema>;
+export type WorkspaceIconResponse = z.infer<typeof WorkspaceIconResponseSchema>;

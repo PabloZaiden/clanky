@@ -28,6 +28,13 @@ export interface WorkspaceSshTarget {
   revision: number;
 }
 
+export type WorkspaceIconMimeType = "image/svg+xml" | "image/x-icon";
+
+export interface WorkspaceIconMetadata {
+  mimeType: WorkspaceIconMimeType;
+  updatedAt: string;
+}
+
 /**
  * A workspace represents a user-selected execution context for Clanky Tasks.
  *
@@ -76,6 +83,8 @@ export interface Workspace {
   basePath?: string;
   /** Optional devcontainer definition subpath used during provisioning */
   devcontainerSubpath?: string;
+  /** Private icon metadata; image bytes are served by an authenticated resource route. */
+  workspaceIcon?: WorkspaceIconMetadata;
 }
 
 export function isRestartableAutomaticWorkspace<

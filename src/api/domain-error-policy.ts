@@ -355,6 +355,11 @@ const API_DOMAIN_ERROR_CODES = {
   workspace_execution_target_not_trusted: true,
   workspace_git_required: true,
   workspace_has_tasks: true,
+  workspace_icon_candidate_not_found: true,
+  workspace_icon_discovery_failed: true,
+  workspace_icon_invalid: true,
+  workspace_icon_not_found: true,
+  workspace_icon_too_large: true,
   workspace_name_ambiguous: true,
   workspace_not_auto_provisioned: true,
   workspace_not_found: true,
@@ -1835,6 +1840,26 @@ const POLICY_PROFILES = {
       workspace_runtime_rollback_failed: {
         status: 500,
         message: "Runtime configuration rollback failed. Rebuild the workspace before retrying.",
+      },
+      workspace_icon_candidate_not_found: {
+        status: 404,
+        message: "The selected workspace icon candidate was not found.",
+      },
+      workspace_icon_discovery_failed: {
+        status: 502,
+        message: "Cannot discover workspace icons on the selected execution host.",
+      },
+      workspace_icon_invalid: {
+        status: 400,
+        message: "Choose a valid SVG or ICO workspace icon.",
+      },
+      workspace_icon_not_found: {
+        status: 404,
+        message: "This workspace does not have an icon.",
+      },
+      workspace_icon_too_large: {
+        status: 413,
+        message: "Workspace icons must be 1 MB or smaller.",
       },
       directory_not_found: {
         status: 400,
