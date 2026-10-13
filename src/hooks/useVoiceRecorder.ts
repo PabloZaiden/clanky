@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getVoiceAudioExtension } from "@/shared";
 import { apiRequest } from "../lib/api-client";
+import { acquireVoiceAudio } from "../lib/voice-audio-ownership";
 
 export const VOICE_MAX_RECORDING_MS = 10 * 60 * 1_000;
 const VOICE_RECORDING_MAX_BYTES = 20 * 1024 * 1024;
@@ -97,6 +98,11 @@ export function useVoiceRecorder({
   const mountedRef = useRef(true);
   const onTranscriptRef = useRef(onTranscript);
   const canStartRef = useRef(canStart);
+  const releaseAudioRef = useRef<(() => void) | null>(null);
+  const releaseOwnership = useCallback((expected = releaseAudioRef.current): void => {
+    expected?.();
+    if (releaseAudioRef.current === expected) releaseAudioRef.current = null;
+  }, []);
 
   const releaseStartLock = useCallback((generation: number): void => {
     if (startLockGenerationRef.current === generation) {
@@ -132,14 +138,18 @@ export function useVoiceRecorder({
 
   const fail = useCallback((message: string): void => {
     clearRecorder();
+    releaseOwnership();
     if (!mountedRef.current) {
       return;
     }
     setError(message);
     setStatus("error");
-  }, [clearRecorder]);
+  }, [clearRecorder, releaseOwnership]);
 
   const transcribeAudio = useCallback(async (audio: Blob): Promise<void> => {
+    try { releaseAudioRef.current ??= acquireVoiceAudio("talk"); }
+    catch (error) { fail(String(error)); return; }
+    const release = releaseAudioRef.current;
     if (audio.size <= 0) {
       retainedAudioRef.current = null;
       setCanRetryTranscription(false);
@@ -193,8 +203,9 @@ export function useVoiceRecorder({
       if (requestControllerRef.current === controller) {
         requestControllerRef.current = null;
       }
+      releaseOwnership(release);
     }
-  }, [fail]);
+  }, [fail, releaseOwnership]);
 
   const finalizeRecording = useCallback((
     generation: number,
@@ -214,6 +225,7 @@ export function useVoiceRecorder({
     discardRef.current = false;
     recordingErrorRef.current = null;
     if (recordingError) {
+      releaseOwnership();
       retainedAudioRef.current = null;
       if (mountedRef.current) {
         setElapsedMs(0);
@@ -224,6 +236,7 @@ export function useVoiceRecorder({
       return;
     }
     if (discard || !mountedRef.current) {
+      releaseOwnership();
       if (mountedRef.current) {
         setStatus("idle");
         setError(null);
@@ -236,7 +249,7 @@ export function useVoiceRecorder({
       : null;
     setCanRetryTranscription(retainedAudioRef.current !== null);
     void transcribeAudio(audio);
-  }, [clearRecorder, transcribeAudio]);
+  }, [clearRecorder, transcribeAudio, releaseOwnership]);
 
   const stop = useCallback((): void => {
     const recorder = recorderRef.current;
@@ -259,13 +272,14 @@ export function useVoiceRecorder({
       recorder.stop();
     }
     clearRecorder();
+    releaseOwnership();
     if (mountedRef.current) {
       setStatus("idle");
       setCanRetryTranscription(false);
       setError(null);
       setElapsedMs(0);
     }
-  }, [clearRecorder]);
+  }, [clearRecorder, releaseOwnership]);
 
   const start = useCallback(async (): Promise<void> => {
     if (
@@ -309,11 +323,15 @@ export function useVoiceRecorder({
     recordingErrorRef.current = null;
     chunksRef.current = [];
     recordedBytesRef.current = 0;
+    let release: (() => void) | null = null;
     try {
+      release = acquireVoiceAudio("talk");
+      releaseAudioRef.current = release;
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       if (!mountedRef.current || generationRef.current !== generation) {
         stream.getTracks().forEach((track) => track.stop());
         releaseStartLock(generation);
+        releaseOwnership(release);
         return;
       }
       streamRef.current = stream;
@@ -386,10 +404,11 @@ export function useVoiceRecorder({
       }
       releaseStartLock(generation);
       clearRecorder();
+      releaseOwnership(release);
       setError(getRecordingErrorMessage(recordingError));
       setStatus("error");
     }
-  }, [clearRecorder, enabled, fail, finalizeRecording, releaseStartLock, status, stop]);
+  }, [clearRecorder, enabled, fail, finalizeRecording, releaseStartLock, status, stop, releaseOwnership]);
 
   const retry = useCallback(async (): Promise<void> => {
     if (requestControllerRef.current) {
@@ -428,8 +447,9 @@ export function useVoiceRecorder({
         recorder.stop();
       }
       clearRecorder();
+      releaseOwnership();
     };
-  }, [clearRecorder]);
+  }, [clearRecorder, releaseOwnership]);
 
   return {
     status,

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useToast } from "@pablozaiden/webapp/web";
 import { apiRequest } from "../lib/api-client";
+import { acquireVoiceAudio } from "../lib/voice-audio-ownership";
 
 function createSilentAudioUrl(): string {
   const sampleRate = 8_000;
@@ -77,6 +78,7 @@ export function useVoicePlayback(): UseVoicePlaybackResult {
   const requestControllerRef = useRef<AbortController | null>(null);
   const activeKeyRef = useRef<string | null>(null);
   const generationRef = useRef(0);
+  const releaseOwnershipRef = useRef<(() => void) | null>(null);
 
   const unlockAudio = useCallback((): void => {
     // Prime the same media element that will receive the TTS response. iOS
@@ -141,6 +143,8 @@ export function useVoicePlayback(): UseVoicePlaybackResult {
       objectUrlRef.current = null;
     }
     activeKeyRef.current = null;
+    releaseOwnershipRef.current?.();
+    releaseOwnershipRef.current = null;
     setPlaybackRecovery(null);
     setPlayingKey(null);
     setStatus("idle");
@@ -191,6 +195,8 @@ export function useVoicePlayback(): UseVoicePlaybackResult {
   }, [releaseAudio]);
 
   const retryPlayback = useCallback(async (): Promise<void> => {
+    try { releaseOwnershipRef.current ??= acquireVoiceAudio("piper", stop); }
+    catch (error) { notifyError(String(error)); return; }
     const recovery = playbackRecovery;
     const audio = audioRef.current;
     const url = objectUrlRef.current;
@@ -202,9 +208,7 @@ export function useVoicePlayback(): UseVoicePlaybackResult {
       || !audio
       || !url
     ) {
-      if (recovery) {
-        releaseAudio(generation);
-      }
+      releaseAudio(generation);
       return;
     }
     audio.pause();
@@ -221,7 +225,7 @@ export function useVoicePlayback(): UseVoicePlaybackResult {
         message: getPlaybackErrorMessage(playbackError),
       });
     }
-  }, [playbackRecovery, releaseAudio]);
+  }, [playbackRecovery, releaseAudio, stop, notifyError]);
 
   const play = useCallback(async (
     chatId: string,
@@ -233,6 +237,8 @@ export function useVoicePlayback(): UseVoicePlaybackResult {
       return;
     }
     stop();
+    try { releaseOwnershipRef.current = acquireVoiceAudio("piper", stop); }
+    catch (error) { notifyError(String(error)); return; }
     unlockAudio();
     activeKeyRef.current = key;
     const generation = generationRef.current + 1;

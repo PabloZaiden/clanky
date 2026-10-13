@@ -11,7 +11,7 @@ import {
   saveStoredNewTaskPlanningPreferences,
 } from "../../lib/new-task-planning-preferences";
 import type { NewTaskPlanningPreferences } from "../../lib/new-task-planning-preferences";
-import { DEFAULT_TASK_CONFIG } from "@/shared/task";
+import { getTaskCreationDefaults } from "@/shared/task-creation";
 import type { CreateTaskFormProps } from "./types";
 
 type InitialTaskData = CreateTaskFormProps["initialTaskData"];
@@ -63,6 +63,11 @@ export function useFormFields({
       : getStoredNewTaskPlanningPreferences();
   }
   const storedPlanningPreferences = initialPlanningPreferencesRef.current;
+  const defaults = getTaskCreationDefaults({
+    initial: initialTaskData,
+    planningPreferences: storedPlanningPreferences,
+    isEditing,
+  });
 
   const [name, setName] = useState(initialTaskData?.name ?? "");
   const [prompt, setPrompt] = useState(initialTaskData?.prompt ?? "");
@@ -70,34 +75,19 @@ export function useFormFields({
     initialTaskData?.issueNumber?.toString() ?? "",
   );
   const [maxIterations, setMaxIterations] = useState<string>(
-    initialTaskData?.maxIterations?.toString() ?? ""
+    defaults.maxIterations?.toString() ?? ""
   );
   const [maxConsecutiveErrors, setMaxConsecutiveErrors] = useState<string>(
-    initialTaskData?.maxConsecutiveErrors?.toString() ?? "10"
+    defaults.maxConsecutiveErrors.toString()
   );
   const [activityTimeoutSeconds, setActivityTimeoutSeconds] = useState<string>(
-    initialTaskData?.activityTimeoutSeconds?.toString()
-      ?? DEFAULT_TASK_CONFIG.activityTimeoutSeconds.toString()
+    defaults.activityTimeoutSeconds.toString()
   );
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [autoAcceptPlan, setAutoAcceptPlan] = useState(
-    isEditing
-      ? initialTaskData?.autoAcceptPlan ?? DEFAULT_TASK_CONFIG.autoAcceptPlan
-      : storedPlanningPreferences?.autoAcceptPlan
-        ?? initialTaskData?.autoAcceptPlan
-        ?? DEFAULT_TASK_CONFIG.autoAcceptPlan
-  );
-  const [fullyAutonomous, setFullyAutonomous] = useState(
-    isEditing
-      ? initialTaskData?.fullyAutonomous ?? true
-      : storedPlanningPreferences?.fullyAutonomous ?? initialTaskData?.fullyAutonomous ?? true
-  );
-  const [useWorktree, setUseWorktree] = useState(
-    initialTaskData?.useWorktree ?? DEFAULT_TASK_CONFIG.useWorktree
-  );
-  const [clearPlanningFolder, setClearPlanningFolder] = useState(
-    initialTaskData?.clearPlanningFolder ?? false
-  );
+  const [autoAcceptPlan, setAutoAcceptPlan] = useState(defaults.autoAcceptPlan);
+  const [fullyAutonomous, setFullyAutonomous] = useState(defaults.fullyAutonomous);
+  const [useWorktree, setUseWorktree] = useState(defaults.useWorktree);
+  const [clearPlanningFolder, setClearPlanningFolder] = useState(defaults.clearPlanningFolder);
   const [selectedTemplate, setSelectedTemplate] = useState("");
 
   // Sync prompt when initialTaskData changes (safety measure for component reuse)

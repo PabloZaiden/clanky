@@ -1,11 +1,12 @@
 /**
- * Browser-owned microphone, WebRTC media and bounded caption handling.
+ * Browser-owned microphone, WebRTC media and deterministic media disposal.
  */
 
 import type { LiveVoiceSessionResponse } from "@/shared";
 import { getClankyClientId } from "./clanky-client-id";
 import { parseApiError } from "./api-error";
 import { appFetch } from "./public-path";
+import type { LiveVoiceUiContext } from "@/shared/live-voice";
 
 async function waitForIce(peer: RTCPeerConnection, signal: AbortSignal): Promise<void> {
   if (peer.iceGatheringState === "complete") return;
@@ -57,9 +58,11 @@ export class LiveVoiceBrowser {
   private releasing = false;
   private lastSpeaking = false;
   private silentInput?: MediaStream;
+  private oscillator?: OscillatorNode;
+  private volumeSource?: MediaStreamAudioSourceNode;
+  private remoteStream?: MediaStream;
 
   constructor(private readonly update: {
-    caption: (speaker: "user" | "voice", delta: string) => void;
     speaking: (speaking: boolean) => void;
     playbackBlocked: (blocked: boolean) => void;
     failure: (message: string) => void;
@@ -70,6 +73,8 @@ export class LiveVoiceBrowser {
     this.peer.ontrack = (event) => {
       if (this.stopped) return;
       const stream = new MediaStream([event.track]);
+      this.remoteStream?.getTracks().forEach((track) => track.stop());
+      this.remoteStream = stream;
       this.audio.srcObject = stream;
       void this.playAudio();
       this.monitorVolume(stream);
@@ -81,7 +86,7 @@ export class LiveVoiceBrowser {
     };
   }
 
-  async connect(chatId: string, signal: AbortSignal): Promise<void> {
+  async connect(getContext: () => LiveVoiceUiContext, signal: AbortSignal): Promise<void> {
     await this.audioContext.resume();
     const microphone = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
@@ -108,11 +113,7 @@ export class LiveVoiceBrowser {
         if (event.type === "session.started") ready.resolve();
         if (event.type === "session.closed") { this.update.closed(); return; }
         if (event.type === "error") { this.update.failure("Live reported a call error."); return; }
-        if ((event.type === "session.input_transcript.delta" || event.type === "session.output_transcript.delta")
-          && "delta" in event && typeof event.delta === "string") {
-          this.update.caption(event.type.includes("input") ? "user" : "voice", event.delta.slice(0, 4_000));
-        }
-        // Functions and workspace actions have one executor: Clanky's sideband.
+        // Functions have one executor: Clanky's sideband. No captions are retained.
       } catch {
         this.update.failure("The voice connection returned invalid data.");
       }
@@ -122,10 +123,10 @@ export class LiveVoiceBrowser {
       if (!this.stopped && !this.releasing) this.update.failure("The voice connection ended.");
     };
     const sdp = await createAndGatherOffer(this.peer, signal);
-    const response = await appFetch(`/api/chats/${encodeURIComponent(chatId)}/live-voice`, {
+    const response = await appFetch("/api/voice/live", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sdp, clientId: getClankyClientId() }),
+      body: JSON.stringify({ sdp, clientId: getClankyClientId(), context: getContext() }),
       signal,
     });
     if (!response.ok) {
@@ -181,6 +182,7 @@ export class LiveVoiceBrowser {
     if (!this.stopped && this.microphone) {
       const destination = this.audioContext.createMediaStreamDestination();
       const oscillator = this.audioContext.createOscillator();
+      this.oscillator = oscillator;
       oscillator.frequency.value = 0;
       oscillator.connect(destination);
       oscillator.start();
@@ -188,6 +190,7 @@ export class LiveVoiceBrowser {
       const track = destination.stream.getAudioTracks()[0]!;
       this.microphone.getTracks().forEach((input) => { input.onended = null; input.stop(); });
       await Promise.all(this.peer.getSenders().filter((sender) => sender.track?.kind === "audio").map((sender) => sender.replaceTrack(track)));
+      this.microphone = undefined;
     }
     this.microphone?.getTracks().forEach((track) => { track.onended = null; track.stop(); });
     this.audio.pause();
@@ -195,7 +198,9 @@ export class LiveVoiceBrowser {
 
   private monitorVolume(stream: MediaStream): void {
     clearInterval(this.volumeTimer);
+    this.volumeSource?.disconnect();
     const source = this.audioContext.createMediaStreamSource(stream);
+    this.volumeSource = source;
     const analyser = this.audioContext.createAnalyser();
     analyser.fftSize = 256;
     source.connect(analyser);
@@ -208,10 +213,15 @@ export class LiveVoiceBrowser {
   }
 
   async dispose(): Promise<void> {
+    if (this.stopped) return;
     this.stopped = true;
     clearInterval(this.volumeTimer);
     await this.releaseMicrophone();
     this.silentInput?.getTracks().forEach((track) => track.stop());
+    this.oscillator?.stop();
+    this.oscillator?.disconnect();
+    this.volumeSource?.disconnect();
+    this.remoteStream?.getTracks().forEach((track) => track.stop());
     this.peer.ontrack = this.peer.onconnectionstatechange = null;
     if (this.events) { this.events.onmessage = this.events.onclose = null; this.events.close(); }
     this.peer.close();

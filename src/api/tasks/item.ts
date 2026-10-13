@@ -134,6 +134,32 @@ export const tasksItemRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Read, update, or delete a task.",
     requestSchema: UpdateTaskRequestSchema,
+    operations: {
+      GET: {
+        description: "Read a task's configuration and current progress.",
+        requestSchema: undefined,
+        querySchema: undefined,
+        automation: { policy: "read" },
+      },
+      PATCH: {
+        description: "Update task configuration in an eligible state.",
+        requestSchema: UpdateTaskRequestSchema,
+        querySchema: undefined,
+        automation: { policy: "confirm", reason: "May enable autonomous execution or clear existing planning files." },
+      },
+      PUT: {
+        description: "Update a draft task's configuration.",
+        requestSchema: UpdateTaskRequestSchema,
+        querySchema: undefined,
+        automation: { policy: "confirm", reason: "May enable autonomous execution or clear existing planning files." },
+      },
+      DELETE: {
+        description: "Delete a task and admit its external cleanup.",
+        requestSchema: undefined,
+        querySchema: undefined,
+        automation: { policy: "confirm", reason: "Permanently deletes task data and schedules external cleanup.", completion: "admission" },
+      },
+    },
     /**
      * GET /api/tasks/:id - Get a specific task by ID.
      *

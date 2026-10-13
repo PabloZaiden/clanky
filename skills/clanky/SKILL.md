@@ -28,13 +28,25 @@ available but browser actions require a subsequent ordinary turn with known
 browser provenance. ACP, native subagents and unattended sessions do not
 receive these Control tools.
 
-Native OpenCode 2 also supports the existing [Live voice](../../docs/voice.md#live-voice)
-workflow before the first agent message, including local and Mesh execution.
-Voice functions operate only on the linked chat and use the call's originating
-browser identity; ordinary chats do not gain Control tools. Ending the call
-saves its summary without stopping the workspace agent. Discover eligibility
-with `GET /api/chats/:id/live-voice`; use the configured Live provider rather
-than expecting audio from the OpenCode language model.
+The [Live voice assistant](../../docs/voice.md#live-voice) is global and
+independent of native Control chats. It starts beside Quick Chat in the sidebar
+and operates authorized JSON APIs through six catalog-backed tools. Discover
+availability with `GET /api/voice/live`; do not use chat-local Live endpoints.
+Browser navigation targets only the originating call's tab. High-risk actions
+need visual approval: supply `confirmationDescription` as one or two short
+sentences in the user's language, naming the action, current target names and
+important consequences. Ground it in the frozen arguments; do not show endpoints,
+JSON, technical identifiers or secrets. Use `null` for operations that do not
+require confirmation. Registered SSH credentials use private browser
+handoffs, never model arguments. Read
+`GET /api/workspaces/:id/task-creation-context` before constructing task inputs;
+apply explicit intent and valid saved browser preferences without inventing a
+model or branch. Accepted/queued work is not completed work, and unknown
+mutation outcomes must be inspected rather than automatically retried.
+Once starting, controls live only in the bottom sidebar bar above the version;
+open the sidebar to mute, recover blocked playback or stop. Navigation and
+closing the sidebar preserve the call. Ending voice persists no call transcript
+or summary and does not stop work.
 
 ## Core workflow
 

@@ -343,6 +343,13 @@ export const generationRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Reject generation for unsaved agents.",
+    operations: {
+      POST: {
+        requestSchema: GenerateAgentCodeRequestSchema,
+        querySchema: undefined,
+        automation: { policy: "excluded", reason: "Unsaved-agent compatibility endpoint always rejects generation; use a saved agent." },
+      },
+    },
     async POST(req: Request, ctx): Promise<Response> {
       ctx.server?.timeout(req, 0);
       return generateAgentCodeResponse(req, null);
@@ -353,6 +360,13 @@ export const generationRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Prepare the hidden deterministic-agent generation conversation before a long generation request.",
+    operations: {
+      POST: {
+        requestSchema: PrepareGenerateAgentCodeRequestSchema,
+        querySchema: undefined,
+        automation: { policy: "confirm", reason: "Resets the agent's existing generation conversation." },
+      },
+    },
     async POST(req: Request, ctx): Promise<Response> {
       const agent = await agentManager.getAgent(ctx.params["id"]!);
       if (!agent) {
@@ -366,6 +380,13 @@ export const generationRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Generate an editable deterministic agent program without saving it.",
+    operations: {
+      POST: {
+        requestSchema: GenerateAgentCodeRequestSchema,
+        querySchema: undefined,
+        automation: { policy: "confirm", reason: "May reset the generation conversation and run agent code-generation work." },
+      },
+    },
     async POST(req: Request, ctx): Promise<Response> {
       ctx.server?.timeout(req, 0);
       const agent = await agentManager.getAgent(ctx.params["id"]!);

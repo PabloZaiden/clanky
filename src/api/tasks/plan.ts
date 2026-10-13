@@ -24,6 +24,9 @@ export const tasksPlanRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Submit feedback on a generated task plan.",
     requestSchema: PlanFeedbackRequestSchema,
+    operations: {
+      POST: { requestSchema: PlanFeedbackRequestSchema, querySchema: undefined, automation: { policy: "write", completion: "admission" } },
+    },
     /**
      * POST /api/tasks/:id/plan/feedback - Send feedback to refine the plan.
      *
@@ -84,6 +87,13 @@ export const tasksPlanRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Accept a generated task plan.",
     requestSchema: PlanAcceptRequestSchema,
+    operations: {
+      POST: {
+        requestSchema: PlanAcceptRequestSchema,
+        querySchema: undefined,
+        automation: { policy: "confirm", reason: "Approves the plan and may start execution with the task's automatic permissions.", completion: "admission" },
+      },
+    },
     /**
      * POST /api/tasks/:id/plan/accept - Accept the plan and either start execution or open a terminal.
      *
@@ -138,6 +148,9 @@ export const tasksPlanRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Discard a generated task plan and delete the task.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "confirm", reason: "Discards the generated plan and permanently deletes the task.", completion: "admission" } },
+    },
     /**
      * POST /api/tasks/:id/plan/discard - Discard the plan and delete the task.
      *

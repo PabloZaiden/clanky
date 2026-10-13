@@ -23,6 +23,9 @@ export const tasksAcceptPushRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Accept a completed task locally without pushing.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "write" } },
+    },
     /**
      * POST /api/tasks/:id/accept - Accept a completed task locally.
      *
@@ -60,6 +63,9 @@ export const tasksAcceptPushRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Push a completed task branch to the remote repository.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "confirm", reason: "Publishes task changes to the remote repository." } },
+    },
     /**
      * POST /api/tasks/:id/push - Push a completed task's branch to remote.
      *
@@ -101,6 +107,9 @@ export const tasksAcceptPushRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Sync a pushed task branch with its base branch.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "confirm", reason: "Changes and republishes the task branch." } },
+    },
     /**
      * POST /api/tasks/:id/update-branch - Update a pushed task's branch by syncing with the base branch.
      *
@@ -143,6 +152,9 @@ export const tasksAcceptPushRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Mark a task as merged after an external merge.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "write" } },
+    },
     /**
      * POST /api/tasks/:id/mark-merged - Mark an externally merged task as merged.
      *
@@ -177,6 +189,9 @@ export const tasksAcceptPushRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Close a locally accepted task without PR actions.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "write" } },
+    },
     /**
      * POST /api/tasks/:id/close-local - Stop accepting follow-up comments locally.
      *
@@ -205,6 +220,9 @@ export const tasksAcceptPushRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Promote a stopped or failed task to completed.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "write" } },
+    },
     /**
      * POST /api/tasks/:id/manual-complete - Manually finalize a halted task.
      *

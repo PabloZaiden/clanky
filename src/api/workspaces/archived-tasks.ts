@@ -22,6 +22,9 @@ export const archivedTasksRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Purge archived tasks for a workspace.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "confirm", reason: "Permanently deletes archived tasks and schedules external cleanup.", completion: "admission" } },
+    },
     async POST(req: Request, ctx) {
       ctx.server?.timeout(req, 0);
       const id = ctx.params["id"]!;

@@ -9,6 +9,7 @@ import { isGitBackedWorkspace } from "../../core/workspace-capabilities";
 import { domainErrorResponse, errorResponse, internalErrorResponse, requireWorkspace, successResponse } from "../helpers";
 import { parseAndValidate } from "../validation";
 import { validateAgentModel } from "./helpers";
+import { WorkspaceFilterQuerySchema } from "../route-schemas";
 
 const log = createLogger("api:agents");
 
@@ -17,6 +18,20 @@ export const crudRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "List or create scheduled agents.",
+    operations: {
+      GET: {
+        description: "List scheduled agents, optionally filtered by workspace.",
+        requestSchema: undefined,
+        querySchema: WorkspaceFilterQuerySchema,
+        automation: { policy: "read" },
+      },
+      POST: {
+        description: "Create a scheduled agent.",
+        requestSchema: CreateAgentRequestSchema,
+        querySchema: undefined,
+        automation: { policy: "confirm", reason: "Enables recurring headless prompts or executable deterministic code." },
+      },
+    },
     async GET(req: Request, _ctx): Promise<Response> {
       const url = new URL(req.url);
       const workspaceId = url.searchParams.get("workspaceId") ?? undefined;
@@ -82,6 +97,26 @@ export const crudRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Read, update, or delete a scheduled agent.",
+    operations: {
+      GET: {
+        description: "Read scheduled agent configuration and current state.",
+        requestSchema: undefined,
+        querySchema: undefined,
+        automation: { policy: "read" },
+      },
+      PATCH: {
+        description: "Update a scheduled agent.",
+        requestSchema: UpdateAgentRequestSchema,
+        querySchema: undefined,
+        automation: { policy: "confirm", reason: "May enable recurring execution or replace executable agent code." },
+      },
+      DELETE: {
+        description: "Delete a scheduled agent.",
+        requestSchema: undefined,
+        querySchema: undefined,
+        automation: { policy: "confirm", reason: "Permanently deletes the agent and its execution history.", completion: "admission" },
+      },
+    },
     async GET(_req: Request, ctx): Promise<Response> {
       const agent = await agentManager.getAgent(ctx.params["id"]!);
       if (!agent) {
@@ -163,6 +198,9 @@ export const crudRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Read the current generated deterministic agent draft.",
+    operations: {
+      GET: { requestSchema: undefined, querySchema: undefined, automation: { policy: "read" } },
+    },
     async GET(_req: Request, ctx): Promise<Response> {
       const agent = await agentManager.getAgent(ctx.params["id"]!);
       if (!agent) {

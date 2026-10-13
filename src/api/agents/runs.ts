@@ -312,6 +312,13 @@ export const runsRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Test deterministic agent code without saving an agent or run.",
+    operations: {
+      POST: {
+        requestSchema: TestAgentCodeRequestSchema,
+        querySchema: undefined,
+        automation: { policy: "confirm", reason: "Executes arbitrary deterministic agent code on the workspace host.", hiddenInputs: ["testRunId"] },
+      },
+    },
     async POST(req: Request, ctx): Promise<Response> {
       ctx.server?.timeout(req, 0);
       const prepared = await prepareDeterministicAgentTest(req);
@@ -326,6 +333,13 @@ export const runsRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Stream deterministic agent code test output without saving an agent or run.",
+    operations: {
+      POST: {
+        requestSchema: TestAgentCodeRequestSchema,
+        querySchema: undefined,
+        automation: { policy: "excluded", reason: "Long-lived NDJSON execution stream; use the JSON code test or an agent run." },
+      },
+    },
     async POST(req: Request, ctx): Promise<Response> {
       ctx.server?.timeout(req, 0);
       const prepared = await prepareDeterministicAgentTest(req);
@@ -340,6 +354,13 @@ export const runsRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Start an agent run immediately.",
+    operations: {
+      POST: {
+        requestSchema: RunAgentRequestSchema,
+        querySchema: undefined,
+        automation: { policy: "confirm", reason: "Starts headless agent execution with the saved prompt or deterministic code.", completion: "admission" },
+      },
+    },
     async POST(req: Request, ctx): Promise<Response> {
       const validation = await parseAndValidate(RunAgentRequestSchema, req, { allowEmptyBody: true });
       if (!validation.success) {
@@ -373,6 +394,9 @@ export const runsRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Interrupt an active agent run.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "write", completion: "admission" } },
+    },
     async POST(_req: Request, ctx): Promise<Response> {
       try {
         const run = await agentManager.interruptAgent(ctx.params["id"]!, "Agent run interrupted by user");
@@ -404,6 +428,9 @@ export const runsRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Pause a scheduled agent.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "write" } },
+    },
     async POST(_req: Request, ctx): Promise<Response> {
       try {
         const agent = await agentManager.pauseAgent(ctx.params["id"]!);
@@ -429,6 +456,9 @@ export const runsRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Resume a paused scheduled agent.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "confirm", reason: "Re-enables recurring headless agent execution." } },
+    },
     async POST(_req: Request, ctx): Promise<Response> {
       try {
         const agent = await agentManager.resumeAgent(ctx.params["id"]!);
@@ -454,6 +484,20 @@ export const runsRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "List or purge runs for an agent.",
+    operations: {
+      GET: {
+        description: "List a bounded page of agent runs.",
+        requestSchema: undefined,
+        querySchema: AgentRunsQuerySchema,
+        automation: { policy: "read" },
+      },
+      DELETE: {
+        description: "Purge eligible agent runs.",
+        requestSchema: DeleteAgentRunsRequestSchema,
+        querySchema: undefined,
+        automation: { policy: "confirm", reason: "Permanently deletes matching agent run history.", completion: "admission" },
+      },
+    },
     async GET(req: Request, ctx): Promise<Response> {
       const parsedQuery = validateRequest(
         AgentRunsQuerySchema,
@@ -491,6 +535,20 @@ export const runsRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Read or delete an agent run.",
+    operations: {
+      GET: {
+        description: "Read an agent run summary.",
+        requestSchema: undefined,
+        querySchema: undefined,
+        automation: { policy: "read" },
+      },
+      DELETE: {
+        description: "Delete an agent run.",
+        requestSchema: undefined,
+        querySchema: undefined,
+        automation: { policy: "confirm", reason: "Permanently deletes the agent run and its history.", completion: "admission" },
+      },
+    },
     async GET(_req: Request, ctx): Promise<Response> {
       const run = await agentManager.getRunSummary(ctx.params["id"]!);
       if (!run) {

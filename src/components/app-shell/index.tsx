@@ -21,6 +21,9 @@ import {
 } from "./use-shell-header";
 import { useShellResources } from "./use-shell-resources";
 import { useControlUiActions } from "./use-control-ui-actions";
+import { useLiveVoice } from "../../hooks/useLiveVoice";
+import { buildVoiceLauncherActions, LiveVoiceSidebarBar } from "./live-voice-controls";
+import { useVoiceClientActions } from "./use-voice-client-actions";
 
 export function AppShell() {
   const toast = useToast();
@@ -102,6 +105,11 @@ export function AppShell() {
   } = useShellNavigation({
     setRoute,
   });
+  const liveVoice = useLiveVoice({ enabled: voiceSettings.settings.live.configured, route });
+  const voiceClient = useVoiceClientActions({ voice: liveVoice, rootRef: webAppRootRef });
+  const voiceActions = useMemo(() => buildVoiceLauncherActions(
+    liveVoice, () => navigateWithinShell({ view: "settings" }),
+  ), [liveVoice, navigateWithinShell]);
   const {
     pendingFileOpen: pendingControlFileOpen,
     reportFileOpenResult: onControlFileOpenResult,
@@ -110,6 +118,7 @@ export function AppShell() {
     navigateWithinShell,
     refreshChats,
     refreshWorkspaces,
+    handleClientAction: voiceClient.handleAction,
   });
   const openHarnessActivity = useCallback((entityRoute: WebAppRoute): void => {
     setActivityRoute(entityRoute);
@@ -390,6 +399,8 @@ export function AppShell() {
     quickChatUnavailableReason,
     quickChatCreating: dialogs.quickChatCreating,
     onQuickChat: () => void dialogs.handleQuickChat(),
+    voiceActions,
+    voiceControls: liveVoice.busy ? <LiveVoiceSidebarBar voice={liveVoice} /> : null,
   }), [
     agents,
     archivingWorkspaceIds,
@@ -427,6 +438,8 @@ export function AppShell() {
     toggleWorkspaceArchived,
     toggleWorkspacePrivate,
     workspaces,
+    voiceActions,
+    liveVoice,
   ]);
   const header = useShellHeader({
     route,
@@ -472,6 +485,7 @@ export function AppShell() {
         version={dashboardData.version ?? undefined}
       />
       {dialogs.modals}
+      {voiceClient.dialogs}
       <input
         ref={agentImportInputRef}
         type="file"

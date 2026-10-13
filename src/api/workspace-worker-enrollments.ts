@@ -16,6 +16,10 @@ export const workspaceWorkerEnrollmentRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "List or create workspace-exclusive Mesh worker enrollments.",
     requestSchema: CreateWorkspaceWorkerEnrollmentRequestSchema,
+    operations: {
+      GET: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Dedicated worker enrollment records contain private bootstrap credentials." } },
+      POST: { requestSchema: CreateWorkspaceWorkerEnrollmentRequestSchema, querySchema: undefined, automation: { policy: "excluded", reason: "Creates private dedicated-worker bootstrap and enrollment credentials." } },
+    },
     async GET(_req, ctx): Promise<Response> {
       try {
         return Response.json(
@@ -51,6 +55,10 @@ export const workspaceWorkerEnrollmentRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Read or cancel a workspace-exclusive Mesh worker enrollment.",
+    operations: {
+      GET: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Reads private dedicated-worker bootstrap and enrollment credentials." } },
+      DELETE: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Revokes dedicated-worker enrollment credentials outside model operations." } },
+    },
     async GET(_req, ctx): Promise<Response> {
       try {
         return Response.json(

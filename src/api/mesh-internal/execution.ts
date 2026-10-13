@@ -26,6 +26,10 @@ export const meshExecutionRoutes = defineRoutes({
     auth: "public",
     sameOrigin: "never",
     description: "Establish a signed, short-lived mesh CommandExecutor session.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Signed internal Mesh command-session admission." } },
+      DELETE: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Signed internal Mesh command-session teardown." } },
+    },
     tags: ["mesh", "internal", "execution"],
     async POST(req): Promise<Response> {
       const parsed = await parseAndValidate(MeshExecutionSessionRequestSchema, req);
@@ -100,6 +104,9 @@ export const meshExecutionRoutes = defineRoutes({
     auth: "public",
     sameOrigin: "never",
     description: "Execute a bounded CommandExecutor operation in a mesh session.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Internal authenticated Mesh executor RPC bridge." } },
+    },
     tags: ["mesh", "internal", "execution"],
     async POST(req): Promise<Response> {
       const parsed = await parseAndValidate(MeshExecutionRpcRequestSchema, req);
@@ -131,6 +138,9 @@ export const meshExecutionRoutes = defineRoutes({
     auth: "public",
     sameOrigin: "never",
     description: "Start, inspect, or cancel a long-running mesh command.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Internal authenticated Mesh executor lifecycle bridge." } },
+    },
     tags: ["mesh", "internal", "execution"],
     async POST(req): Promise<Response> {
       const parsed = await parseAndValidate(MeshExecutionAsyncCommandRequestSchema, req);
@@ -183,6 +193,10 @@ export const meshExecutionRoutes = defineRoutes({
     auth: "public",
     sameOrigin: "never",
     description: "Stream a file from an authenticated Mesh CommandExecutor session.",
+    operations: {
+      GET: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Raw authenticated internal Mesh file stream." } },
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Raw authenticated internal Mesh file upload." } },
+    },
     tags: ["mesh", "internal", "execution"],
     async GET(req): Promise<Response> {
       const sessionId = req.headers.get("x-clanky-mesh-session-id");

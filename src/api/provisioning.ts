@@ -34,6 +34,31 @@ export const provisioningRoutes = defineRoutes({
     description: "Start a remote provisioning job.",
     requestSchema: CreateProvisioningJobRequestSchema,
     querySchema: SensitiveQuerySchema,
+    operations: {
+      GET: {
+        description: "List public provisioning job summaries.",
+        requestSchema: undefined,
+        querySchema: SensitiveQuerySchema,
+        automation: { policy: "read", hiddenQuery: ["sensitive"] },
+      },
+      POST: {
+        description: "Start provisioning, rebuilding, or restarting on an explicitly selected host.",
+        requestSchema: CreateProvisioningJobRequestSchema,
+        querySchema: SensitiveQuerySchema,
+        automation: {
+          policy: "confirm",
+          reason: "May create repositories, replace containers, or restart execution hosts.",
+          hiddenInputs: ["credentialToken"],
+          hiddenQuery: ["sensitive"],
+          completion: "admission",
+          credential: {
+            kind: "ssh",
+            hostInput: "executionHost",
+            input: "credentialToken",
+          },
+        },
+      },
+    },
     async GET(req: Request): Promise<Response> {
       try {
         const jobs = provisioningManager.listJobs();
@@ -130,6 +155,9 @@ export const provisioningRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Dismiss a completed, failed, cancelled, or interrupted provisioning job.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "confirm", reason: "Deletes the retained job record and logs." } },
+    },
     async POST(_req: Request, ctx): Promise<Response> {
       try {
         const dismissed = await provisioningManager.dismissJob(ctx.params["id"]!);
@@ -152,6 +180,20 @@ export const provisioningRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Read or cancel a remote provisioning job.",
     querySchema: SensitiveQuerySchema,
+    operations: {
+      GET: {
+        description: "Read public provisioning job progress.",
+        requestSchema: undefined,
+        querySchema: SensitiveQuerySchema,
+        automation: { policy: "read", hiddenQuery: ["sensitive"] },
+      },
+      DELETE: {
+        description: "Cancel a provisioning job.",
+        requestSchema: undefined,
+        querySchema: undefined,
+        automation: { policy: "confirm", reason: "Interrupts provisioning and may leave a partially prepared target.", completion: "admission" },
+      },
+    },
     async GET(req: Request, ctx): Promise<Response> {
       try {
         const snapshot = await provisioningManager.getJobSnapshot(ctx.params["id"]!);
@@ -193,6 +235,9 @@ export const provisioningRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Read logs for a remote provisioning job.",
+    operations: {
+      GET: { requestSchema: undefined, querySchema: undefined, automation: { policy: "read" } },
+    },
     async GET(_req: Request, ctx): Promise<Response> {
       try {
         const logs = provisioningManager.getJobLogs(ctx.params["id"]!);

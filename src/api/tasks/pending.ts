@@ -19,6 +19,20 @@ export const tasksPendingRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Set the pending prompt used for the next task iteration.",
     requestSchema: PendingPromptRequestSchema,
+    operations: {
+      PUT: {
+        description: "Queue a prompt for the next task iteration.",
+        requestSchema: PendingPromptRequestSchema,
+        querySchema: undefined,
+        automation: { policy: "write", completion: "admission" },
+      },
+      DELETE: {
+        description: "Remove the pending prompt before it is delivered.",
+        requestSchema: undefined,
+        querySchema: undefined,
+        automation: { policy: "confirm", reason: "Deletes a queued task instruction." },
+      },
+    },
     /**
      * PUT /api/tasks/:id/pending-prompt - Set the pending prompt for next iteration.
      *
@@ -80,6 +94,20 @@ export const tasksPendingRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Apply a pending message or model override for the next task iteration.",
     requestSchema: SetPendingRequestSchema,
+    operations: {
+      POST: {
+        description: "Queue a task message or model override.",
+        requestSchema: SetPendingRequestSchema,
+        querySchema: undefined,
+        automation: { policy: "write", completion: "admission" },
+      },
+      DELETE: {
+        description: "Remove a pending task message and model override.",
+        requestSchema: undefined,
+        querySchema: undefined,
+        automation: { policy: "confirm", reason: "Deletes queued task inputs." },
+      },
+    },
     /**
      * POST /api/tasks/:id/pending - Apply a message and/or model override for the next iteration.
      *
@@ -170,6 +198,9 @@ export const tasksPendingRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Send a follow-up message to a task.",
     requestSchema: FollowUpRequestSchema,
+    operations: {
+      POST: { requestSchema: FollowUpRequestSchema, querySchema: undefined, automation: { policy: "write", completion: "admission" } },
+    },
     /**
      * POST /api/tasks/:id/follow-up - Resume task execution from a restartable terminal state.
      */

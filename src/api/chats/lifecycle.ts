@@ -16,6 +16,9 @@ export const chatsLifecycleRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Mark a standalone chat as done.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "write" } },
+    },
     async POST(_req: Request, ctx): Promise<Response> {
       const chatId = ctx.params["id"]!;
       const existing = await chatManager.getChat(chatId);
@@ -56,6 +59,9 @@ export const chatsLifecycleRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Interrupt an active chat run.",
     requestSchema: InterruptChatRequestSchema,
+    operations: {
+      POST: { requestSchema: InterruptChatRequestSchema, querySchema: undefined, automation: { policy: "write", completion: "admission" } },
+    },
     async POST(req: Request, ctx): Promise<Response> {
       const existing = await chatManager.getChat(ctx.params["id"]!);
       if (!existing) {
@@ -93,6 +99,22 @@ export const chatsLifecycleRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Reconnect a chat session to its backend runtime.",
     requestSchema: ReconnectChatRequestSchema,
+    operations: {
+      POST: {
+        requestSchema: ReconnectChatRequestSchema,
+        querySchema: undefined,
+        automation: {
+          policy: "write",
+          hiddenInputs: ["credentialToken"],
+          completion: "admission",
+          credential: {
+            kind: "ssh",
+            resource: { name: "chats", idParameter: "id", purpose: "connection" },
+            input: "credentialToken",
+          },
+        },
+      },
+    },
     async POST(req: Request, ctx): Promise<Response> {
       const chat = await chatManager.getChat(ctx.params["id"]!);
       if (!chat) {
@@ -131,6 +153,22 @@ export const chatsLifecycleRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Create a fresh native chat session that can consult the persisted chat history.",
     requestSchema: ReconnectChatRequestSchema,
+    operations: {
+      POST: {
+        requestSchema: ReconnectChatRequestSchema,
+        querySchema: undefined,
+        automation: {
+          policy: "write",
+          hiddenInputs: ["credentialToken"],
+          completion: "admission",
+          credential: {
+            kind: "ssh",
+            resource: { name: "chats", idParameter: "id", purpose: "continue-history" },
+            input: "credentialToken",
+          },
+        },
+      },
+    },
     async POST(req: Request, ctx): Promise<Response> {
       const chatId = ctx.params["id"]!;
       const chat = await chatManager.getChatSummary(chatId);

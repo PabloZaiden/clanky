@@ -72,6 +72,20 @@ export const tasksCollectionRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "List tasks or create a new task.",
     requestSchema: CreateTaskRequestSchema,
+    operations: {
+      GET: {
+        description: "List task summaries and current progress.",
+        requestSchema: undefined,
+        querySchema: undefined,
+        automation: { policy: "read" },
+      },
+      POST: {
+        description: "Create a task using the selected workspace's creation context.",
+        requestSchema: CreateTaskRequestSchema,
+        querySchema: undefined,
+        automation: { policy: "confirm", reason: "Task settings may enable automatic plan acceptance or autonomous execution.", completion: "admission" },
+      },
+    },
     async GET(_req: Request): Promise<Response> {
       log.debug("GET /api/tasks - Listing all tasks");
       const tasks = await taskManager.getTaskSummaries();
@@ -148,6 +162,9 @@ export const tasksCollectionRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Generate a task title from a prompt.",
     requestSchema: GenerateTaskTitleRequestSchema,
+    operations: {
+      POST: { requestSchema: GenerateTaskTitleRequestSchema, querySchema: undefined, automation: { policy: "read" } },
+    },
     async POST(req: Request, _ctx): Promise<Response> {
       const validation = await parseAndValidate(GenerateTaskTitleRequestSchema, req);
       if (!validation.success) {

@@ -1,4 +1,5 @@
 import { defineRoutes } from "@pablozaiden/webapp/server";
+import { WorkspaceQuerySchema } from "../route-schemas";
 /**
  * Tasks data routes (diff, plan, status-file, check-planning-dir).
  *
@@ -26,6 +27,9 @@ export const tasksDataRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Read the git diff produced by a task.",
+    operations: {
+      GET: { requestSchema: undefined, querySchema: undefined, automation: { policy: "read" } },
+    },
     /**
      * GET /api/tasks/:id/diff - Get git diff for a task's changes.
      *
@@ -83,6 +87,9 @@ export const tasksDataRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Read a task's planning document.",
+    operations: {
+      GET: { requestSchema: undefined, querySchema: undefined, automation: { policy: "read" } },
+    },
     /**
      * GET /api/tasks/:id/plan - Get .clanky-planning/plan.md content.
      *
@@ -130,6 +137,9 @@ export const tasksDataRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Read a task's status tracking document.",
+    operations: {
+      GET: { requestSchema: undefined, querySchema: undefined, automation: { policy: "read" } },
+    },
     /**
      * GET /api/tasks/:id/status-file - Get .clanky-planning/status.md content.
      *
@@ -177,6 +187,9 @@ export const tasksDataRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Read pull request navigation details for a task.",
+    operations: {
+      GET: { requestSchema: undefined, querySchema: undefined, automation: { policy: "read" } },
+    },
     /**
      * GET /api/tasks/:id/pull-request - Get PR navigation metadata for a task.
      *
@@ -198,6 +211,9 @@ export const tasksDataRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Inspect a workspace's .clanky-planning files.",
+    operations: {
+      GET: { requestSchema: undefined, querySchema: WorkspaceQuerySchema, automation: { policy: "read" } },
+    },
     /**
      * GET /api/check-planning-dir - Check if .clanky-planning directory exists.
      *

@@ -1,4 +1,5 @@
 import { defineRoutes } from "@pablozaiden/webapp/server";
+import { TaskChatQuerySchema } from "../route-schemas";
 import { chatManager } from "../../core/chat-manager";
 import { taskManager } from "../../core/task-manager";
 import { createLogger } from "@pablozaiden/webapp/server";
@@ -11,6 +12,20 @@ export const tasksChatRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Read or create the chat session attached to a task.",
+    operations: {
+      GET: {
+        description: "Read the task's linked chat summary.",
+        requestSchema: undefined,
+        querySchema: undefined,
+        automation: { policy: "read" },
+      },
+      POST: {
+        description: "Create or reopen the task's linked chat.",
+        requestSchema: undefined,
+        querySchema: TaskChatQuerySchema,
+        automation: { policy: "write" },
+      },
+    },
     async GET(_req: Request, ctx): Promise<Response> {
       const task = await taskManager.getTaskSummary(ctx.params["id"]!);
       if (!task) {

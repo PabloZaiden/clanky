@@ -219,7 +219,6 @@ export interface ChatSessionPort {
 
 export interface ChatConversationPort {
   getAssistantMessage(chatId: string, messageId: string): Promise<MessageData | null>;
-  recordVoiceCallSummary(chatId: string, callId: string, summary: string): Promise<void>;
   recordSteeredMessage(chat: Chat, message: QueuedChatMessage, admission: HarnessInputAdmission): Promise<Chat>;
   dispatchMessage(
     chat: Chat,

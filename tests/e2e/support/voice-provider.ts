@@ -17,6 +17,7 @@ export interface ManagedVoiceProvider {
   certificatePath: string;
   server: Bun.Server<LiveFixture>;
   address: string;
+  diagnostics(): string;
 }
 
 export function createFixtureLiveOffer(scenario: string): string {
@@ -151,8 +152,7 @@ export async function startVoiceProvider(
             return Response.json({ error: "invalid_webrtc_offer" }, { status: 400 });
           }
           const id = crypto.randomUUID();
-          const mode = offer.includes("ordinary") ? "ordinary" : offer.includes("question") ? "question" : offer.includes("cut") ? "cut" : offer.includes("hold") ? "hold" : "steer";
-          sessions.set(id, { id, stage: 0, streaming: false, active: false, mode });
+          sessions.set(id, { id, stage: 0, global: offer.includes("global-product"), started: false, notices: [] });
           return Response.json({ session: { id }, transport: { type: "webrtc", sdp: "v=0\r\ns=external-live-provider\r\n" } }, { status: 201 });
         }
         const attach = /^\/v1\/live\/sessions\/([^/]+)\/attach$/.exec(path);
@@ -162,14 +162,13 @@ export async function startVoiceProvider(
           return server.upgrade(request, { data: session }) ? undefined : new Response("Expected websocket", { status: 400 });
         }
         if (path === "/v1/responses" && request.method === "POST") {
-          const body = await request.json();
-          const summary = JSON.stringify(body.input).includes("Transcript fragments");
+          await request.json();
           return Response.json({
             status: "completed",
             output: [{
               type: "message",
               role: "assistant",
-              content: [{ type: "output_text", text: summary ? "The caller requested workspace discovery and steering. The agent's work remains recorded separately in the chat." : "OK" }],
+              content: [{ type: "output_text", text: "OK" }],
             }],
           });
         }
@@ -182,6 +181,9 @@ export async function startVoiceProvider(
       baseUrl: `https://${address}:${String(port)}/v1`,
       certificatePath,
       server,
+      diagnostics: () => JSON.stringify([...sessions.values()].map((session) => ({
+        stage: session.stage, current: session.current, diagnostic: session.diagnostic,
+      }))),
     };
   } catch (error) {
     await requireCommand(

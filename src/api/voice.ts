@@ -88,6 +88,18 @@ const voiceBaseRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Read or update the transcription, shared text-generation, and Live Voice models, plus local Piper support status.",
     requestSchema: VoiceSettingsUpdateSchema,
+    operations: {
+      GET: {
+        requestSchema: undefined,
+        querySchema: undefined,
+        automation: { policy: "excluded", reason: "Voice provider credential configuration is managed privately in settings." },
+      },
+      PUT: {
+        requestSchema: VoiceSettingsUpdateSchema,
+        querySchema: undefined,
+        automation: { policy: "excluded", reason: "Updates voice provider credentials and private configuration." },
+      },
+    },
     async GET(_req: Request, _ctx: RouteContext): Promise<Response> {
       try {
         return Response.json(await voiceManager.getSettings());
@@ -113,6 +125,13 @@ const voiceBaseRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Validate transcription, text-generation, or Live Voice; Live validation requires a browser-generated WebRTC offer.",
     requestSchema: VoiceValidationRequestSchema,
+    operations: {
+      POST: {
+        requestSchema: VoiceValidationRequestSchema,
+        querySchema: undefined,
+        automation: { policy: "excluded", reason: "Private provider credential validation and browser WebRTC negotiation." },
+      },
+    },
     async POST(req: Request, _ctx: RouteContext): Promise<Response> {
       const result = await parseAndValidate(VoiceValidationRequestSchema, req);
       if (!result.success) {
@@ -133,6 +152,9 @@ const voiceBaseRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Transcribe an audio recording with the user's configured provider.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Multipart/raw audio transcription is not a JSON operation." } },
+    },
     async POST(req: Request, _ctx: RouteContext): Promise<Response> {
       let form: FormData;
       try {
@@ -188,6 +210,9 @@ export function createVoiceSpeechRoutes(manager: typeof voiceManager) {
       auth: "user",
       sameOrigin: "mutations",
       description: "Generate a spoken summary for an existing assistant message in an owned chat.",
+      operations: {
+        POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Raw synthesized audio is coordinated by the browser audio owner." } },
+      },
       async POST(req: Request, ctx: RouteContext): Promise<Response> {
         if (req.body !== null) {
           return errorResponse(

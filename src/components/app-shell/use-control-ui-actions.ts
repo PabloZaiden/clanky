@@ -37,13 +37,14 @@ interface UseControlUiActionsOptions {
   navigateWithinShell: (route: WebAppRoute) => void;
   refreshChats: () => Promise<void>;
   refreshWorkspaces: () => Promise<void>;
+  handleClientAction: (event: ControlUiActionEvent) => Promise<ControlUiActionOutcome | null>;
 }
 
 function isRouteActive(route: WebAppRoute, expected: WebAppRoute): boolean {
   return Object.entries(expected).every(([key, value]) => route[key] === value);
 }
 
-function getActionRoute(action: ControlUiAction): WebAppRoute {
+function getActionRoute(action: ControlUiAction): WebAppRoute | null {
   switch (action.type) {
     case "open_workspace":
       return { view: "workspace", workspaceId: action.workspaceId };
@@ -56,6 +57,14 @@ function getActionRoute(action: ControlUiAction): WebAppRoute {
       };
     case "open_chat":
       return { view: "chat", chatId: action.chatId };
+    case "open_task": return { view: "task", taskId: action.taskId };
+    case "open_agent": return { view: "agent", agentId: action.agentId };
+    case "open_terminal": return { view: "terminal", terminalSessionId: action.terminalSessionId };
+    case "open_ssh_server": return { view: "execution-host", hostKind: "ssh", hostId: action.serverId };
+    case "open_execution_host": return { view: "execution-host", hostKind: action.kind, hostId: action.id };
+    case "open_home": return { view: "home" };
+    case "open_settings": return { view: "settings" };
+    default: return null;
   }
 }
 
@@ -71,8 +80,11 @@ export function useControlUiActions({
   navigateWithinShell,
   refreshChats,
   refreshWorkspaces,
+  handleClientAction,
 }: UseControlUiActionsOptions) {
   const clientId = getClankyClientId();
+  const routeRef = useRef(route);
+  routeRef.current = route;
   const [pendingFileOpen, setPendingFileOpen] = useState<PendingControlFileOpen | null>(null);
   const pendingFileActionRef = useRef<PendingFileAction | null>(null);
   const pendingNavigationRef = useRef<PendingNavigation | null>(null);
@@ -136,7 +148,7 @@ export function useControlUiActions({
     if (remainingTime <= 0) {
       return Promise.resolve(false);
     }
-    if (isRouteActive(route, expected)) {
+    if (isRouteActive(routeRef.current, expected)) {
       navigateWithinShell(expected);
       return Promise.resolve(true);
     }
@@ -158,7 +170,7 @@ export function useControlUiActions({
         resolve(false);
       }
     });
-  }, [navigateWithinShell, route]);
+  }, [navigateWithinShell]);
 
   useEffect(() => {
     const pending = pendingNavigationRef.current;
@@ -179,8 +191,7 @@ export function useControlUiActions({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         clientId: event.clientId,
-        chatId: event.chatId,
-        turnId: event.turnId,
+        source: event.source,
         outcome,
       }),
       action: "acknowledge control UI action",
@@ -190,13 +201,17 @@ export function useControlUiActions({
 
   const applyAction = useCallback(async (event: ControlUiActionEvent): Promise<ControlUiActionOutcome> => {
     const action = event.action;
+    const clientResult = await handleClientAction(event);
+    if (clientResult) return clientResult;
+    const expected = getActionRoute(action);
+    if (!expected) return actionFailure("navigation_failed", "This client action is unavailable.");
     if (action.type === "open_workspace" || action.type === "open_workspace_file") {
       try {
         await refreshWorkspaces();
       } catch {
         return actionFailure("workspace_unavailable", "The requested workspace could not be loaded.");
       }
-    } else {
+    } else if (action.type === "open_chat") {
       try {
         await refreshChats();
       } catch {
@@ -210,7 +225,7 @@ export function useControlUiActions({
 
     if (action.type === "open_workspace_file") {
       const fileResult = waitForFileOpen(event);
-      const navigationApplied = await waitForNavigation(getActionRoute(action), event.expiresAt);
+      const navigationApplied = await waitForNavigation(expected, event.expiresAt);
       if (!navigationApplied) {
         reportFileOpenResult(
           event.actionId,
@@ -220,7 +235,7 @@ export function useControlUiActions({
       return await fileResult;
     }
 
-    const navigationApplied = await waitForNavigation(getActionRoute(action), event.expiresAt);
+    const navigationApplied = await waitForNavigation(expected, event.expiresAt);
     return navigationApplied
       ? { status: "opened", action }
       : actionFailure("navigation_failed", "The requested route did not open in the originating tab.");
@@ -230,6 +245,7 @@ export function useControlUiActions({
     reportFileOpenResult,
     waitForFileOpen,
     waitForNavigation,
+    handleClientAction,
   ]);
 
   const rememberOutcome = useCallback((

@@ -47,6 +47,7 @@ import { executionHostFilesRoutes } from "./execution-host-files";
 import { voiceRoutes } from "./voice";
 import { liveVoiceRoutes } from "./live-voice";
 import { controlUiActionRoutes } from "./control-ui-actions";
+import { taskCreationContextRoutes } from "./task-creation-context";
 
 /**
  * All API routes combined.
@@ -75,6 +76,7 @@ const nativeApiRoutes = {
   ...voiceRoutes,
   ...liveVoiceRoutes,
   ...controlUiActionRoutes,
+  ...taskCreationContextRoutes,
   ...agentPromptBridgeRoutes,
 };
 
@@ -125,3 +127,4 @@ export * from "./execution-host-files";
 export * from "./voice";
 export * from "./live-voice";
 export * from "./control-ui-actions";
+export * from "./task-creation-context";

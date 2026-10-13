@@ -3,6 +3,7 @@
  */
 
 import { z } from "zod";
+import { LiveVoiceUiContextSchema } from "@/shared/live-voice";
 import {
   DEFAULT_VOICE_LANGUAGE_HINTS,
   VOICE_CAPABILITIES,
@@ -45,6 +46,21 @@ export const VoiceValidationRequestSchema = z.discriminatedUnion("capability", [
 export const LiveVoiceSessionRequestSchema = z.object({
   sdp: z.string().min(1).max(65_536),
   clientId: z.string().uuid(),
+  context: LiveVoiceUiContextSchema,
+}).strict();
+
+export const LiveVoiceHeartbeatSchema = z.object({
+  clientId: z.string().uuid(),
+  context: LiveVoiceUiContextSchema,
+}).strict();
+export const LiveVoiceCloseSchema = z.object({ clientId: z.string().uuid() }).strict();
+export const LiveVoiceConfirmationResponseSchema = z.object({
+  clientId: z.string().uuid(),
+  approved: z.boolean(),
+}).strict();
+export const LiveVoiceCredentialResponseSchema = z.object({
+  clientId: z.string().uuid(),
+  credentialToken: z.string().uuid().nullable(),
 }).strict();
 
 export const LiveVoiceAvailabilityResponseSchema = z.object({

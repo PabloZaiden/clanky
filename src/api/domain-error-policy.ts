@@ -323,6 +323,8 @@ const API_DOMAIN_ERROR_CODES = {
   voice_audio_too_large: true,
   voice_live_busy: true,
   voice_live_not_found: true,
+  voice_confirmation_not_found: true,
+  voice_credential_not_found: true,
   voice_capability_not_configured: true,
   voice_capability_unavailable: true,
   voice_invalid_base_url: true,
@@ -1735,6 +1737,8 @@ const POLICY_PROFILES = {
       },
       voice_live_busy: { status: 409, message: "A Live call is already active or call capacity is in use." },
       voice_live_not_found: { status: 404, message: "The Live call is unavailable." },
+      voice_confirmation_not_found: { status: 404, message: "The voice confirmation expired or was already consumed." },
+      voice_credential_not_found: { status: 404, message: "The voice credential request expired." },
       voice_capability_not_configured: {
         status: 409,
         message: "The voice capability is not configured.",

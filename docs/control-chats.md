@@ -74,15 +74,13 @@ its own browser provenance.
 
 ## Live voice
 
-All native Codex, Copilot and OpenCode 2 chats can optionally use
-[Live voice](voice.md#live-voice), including new chats before their first message.
-GPT-Live carries the conversation and delegates interpretation to a Responses
-model; that model directs the linked chat through bounded functions while the
-native workspace agent retains its existing tools. Live can continue speaking
-while the agent works. Closing the voice call does not interrupt agent work.
-OpenCode uses the same configured Live provider; its model does not need to
-generate audio. Ordinary chats do not gain Control tools by enabling voice,
-and voice-originated instructions retain the call's browser provenance.
+[Live voice](voice.md#live-voice) is now an independent global assistant,
+started from the sidebar rather than a chat. It can operate chats, tasks,
+workspaces and servers through authorized API contracts and navigate its
+originating tab. It requires neither a native adapter nor a Quick Chat workspace.
+Native Control chats keep their existing tools and turn-based browser
+provenance; they do not become global voice sessions. Ending voice does not
+interrupt their agent work.
 
 ## Provider limitations
 

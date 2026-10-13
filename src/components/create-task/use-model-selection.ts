@@ -8,13 +8,15 @@ import {
   getStoredTaskModelPreference,
 } from "../../lib/model-selection-preferences";
 import {
-  isModelEnabled,
   makeModelKey,
-  getPreferredModelVariant,
   parseModelKey,
 } from "../ModelSelector";
 import { createLogger } from "@pablozaiden/webapp/web";
 import type { CheapModelSelection } from "@/shared";
+import {
+  resolveTaskCreationCheapModel,
+  resolveTaskCreationModel,
+} from "@/shared/task-creation";
 import type { CreateTaskFormProps } from "./types";
 
 const log = createLogger("CreateTaskForm");
@@ -27,24 +29,13 @@ function isCheapModelSelectionAvailable(
   models: CreateTaskFormProps["models"],
   selection: CheapModelSelection,
 ): boolean {
-  const availableModels = models ?? [];
   if (selection.mode === "same-as-task") {
     return true;
   }
-
-  const variant = getPreferredModelVariant(
-    availableModels,
-    selection.model.providerID,
-    selection.model.modelID,
-    selection.model.variant ?? "",
-  );
-  if (variant === null) {
-    return false;
-  }
-  return isModelEnabled(
-    availableModels,
-    makeModelKey(selection.model.providerID, selection.model.modelID, variant),
-  );
+  return resolveTaskCreationCheapModel({
+    models: models ?? [],
+    initialCheapModel: selection,
+  }).mode === "custom";
 }
 
 export function cheapModelSelectionToValue(selection?: CheapModelSelection | null): string {
@@ -86,17 +77,6 @@ export function isCheapModelValueAvailable(
   return isCheapModelSelectionAvailable(models, cheapModelValueToSelection(value));
 }
 
-function getPreferredCheapModelValue(
-  models: CreateTaskFormProps["models"],
-  selection?: CheapModelSelection | null,
-): string {
-  if (!selection || !isCheapModelSelectionAvailable(models, selection)) {
-    return SAME_AS_TASK_CHEAP_MODEL_VALUE;
-  }
-
-  return cheapModelSelectionToValue(selection);
-}
-
 export interface UseModelSelectionReturn {
   selectedModel: string;
   setSelectedModel: (v: string) => void;
@@ -132,56 +112,18 @@ export function useModelSelection({
     });
     if (selectedModel) return;
 
-    if (initialTaskData?.model && models && models.length > 0) {
-      const variant = getPreferredModelVariant(
-        models,
-        initialTaskData.model.providerID,
-        initialTaskData.model.modelID,
-        initialTaskData.model.variant ?? "",
-      );
-      if (variant !== null) {
-        const modelKey = makeModelKey(
-          initialTaskData.model.providerID,
-          initialTaskData.model.modelID,
-          variant,
-        );
-        log.debug("Setting model from initialTaskData:", modelKey);
-        setSelectedModel(modelKey);
-        return;
-      }
-    }
-
-    const fallbackModel = storedTaskModel ?? lastModel;
-    if (fallbackModel && models && models.length > 0) {
-      const variant = getPreferredModelVariant(
-        models,
-        fallbackModel.providerID,
-        fallbackModel.modelID,
-        fallbackModel.variant ?? "",
-      );
-      if (variant !== null) {
-        const modelKey = makeModelKey(
-          fallbackModel.providerID,
-          fallbackModel.modelID,
-          variant,
-        );
-        log.debug("Setting model from stored fallback:", modelKey);
-        setSelectedModel(modelKey);
-        return;
-      }
-    }
-
-    const firstConnected = models?.find((model) => model.connected);
-    if (firstConnected) {
-      const variant =
-        firstConnected.variants && firstConnected.variants.length > 0
-          ? firstConnected.variants[0]
-          : "";
-      const modelKey = makeModelKey(firstConnected.providerID, firstConnected.modelID, variant);
-      log.debug("Setting model to first connected:", modelKey);
+    const model = resolveTaskCreationModel({
+      models: models ?? [],
+      initialModel: initialTaskData?.model,
+      storedModel: storedTaskModel,
+      lastModel,
+    });
+    if (model) {
+      const modelKey = makeModelKey(model.providerID, model.modelID, model.variant);
+      log.debug("Setting preferred task model:", modelKey);
       setSelectedModel(modelKey);
     }
-  }, [lastModel, models, selectedModel, initialTaskData]);
+  }, [lastModel, models, selectedModel, initialTaskData, storedTaskModel]);
 
   const setSelectedCheapModel = useCallback((value: string) => {
     cheapModelTouchedRef.current = true;
@@ -189,11 +131,13 @@ export function useModelSelection({
   }, []);
 
   useEffect(() => {
-    const preferredCheapModel = getPreferredCheapModelValue(
-      models,
-      initialTaskData?.cheapModel
-        ?? storedTaskCheapModel
-        ?? lastCheapModel,
+    const preferredCheapModel = cheapModelSelectionToValue(
+      resolveTaskCreationCheapModel({
+        models: models ?? [],
+        initialCheapModel: initialTaskData?.cheapModel,
+        storedCheapModel: storedTaskCheapModel,
+        lastCheapModel,
+      }),
     );
 
     if (!cheapModelTouchedRef.current) {
@@ -207,7 +151,7 @@ export function useModelSelection({
       cheapModelTouchedRef.current = false;
       setSelectedCheapModelState(preferredCheapModel);
     }
-  }, [initialTaskData, lastCheapModel, models, selectedCheapModel]);
+  }, [initialTaskData, lastCheapModel, models, selectedCheapModel, storedTaskCheapModel]);
 
   return {
     selectedModel,

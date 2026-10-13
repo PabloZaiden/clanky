@@ -7,6 +7,8 @@
 import type { AgentEvent, ChatEvent, TaskEvent, ProvisioningEvent, PreviewEvent, TerminalSessionEvent } from "@/shared";
 import { log } from "@pablozaiden/webapp/server";
 import { getCurrentUserId } from "../context/user-context";
+import type { ControlUiActionEvent } from "@/shared/clanky-control";
+import type { LiveVoiceActivityEvent } from "@/shared/live-voice";
 
 export interface EventContext {
   readonly userId?: string;
@@ -94,6 +96,7 @@ export const taskEventEmitter = new SimpleEventEmitter<TaskEvent>();
  * Global event emitter instance for chat events.
  */
 export const chatEventEmitter = new SimpleEventEmitter<ChatEvent>();
+export const clientActionEventEmitter = new SimpleEventEmitter<ControlUiActionEvent | LiveVoiceActivityEvent>();
 
 /**
  * Global event emitter instance for scheduled agent events.

@@ -18,6 +18,9 @@ export const tasksDiscardPurgeRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Discard a task; provider, session, and Git cleanup is best-effort.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "confirm", reason: "Discards task work and schedules provider, session, and Git cleanup.", completion: "admission" } },
+    },
     /**
      * POST /api/tasks/:id/discard - Discard a task.
      *
@@ -52,6 +55,9 @@ export const tasksDiscardPurgeRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Permanently delete an eligible task; external cleanup is best-effort.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "confirm", reason: "Permanently deletes the task and schedules external cleanup.", completion: "admission" } },
+    },
     /**
      * POST /api/tasks/:id/purge - Permanently delete a task from storage.
      *

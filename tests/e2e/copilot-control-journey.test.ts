@@ -3,7 +3,6 @@ import { E2EApplication } from "./support/application";
 import { createGitFixture } from "./support/git";
 import { pollUntil } from "./support/polling";
 import { installExternalNativeCopilotProvider } from "./support/provider";
-import { createFixtureLiveOffer, startVoiceProvider, stopVoiceProvider, type ManagedVoiceProvider } from "./support/voice-provider";
 import { E2E_IMAGE_DATA } from "./providers/image-input";
 
 const E2E_IMAGE_RECEIPT = "E2E image received: image/png; PNG signature OK";
@@ -42,7 +41,6 @@ interface ChatSnapshot {
       attachments?: Array<{ data: string; mimeType: string }>;
     }>;
     toolCalls?: Array<{ output: unknown }>;
-    logs: Array<{ id: string; message: string; details?: { logKind?: string; callId?: string } }>;
   };
 }
 
@@ -119,15 +117,13 @@ async function waitForImageReceipt(
   );
 }
 
-test("Copilot users can use Live voice and steer queued work across clients", async () => {
+test("Copilot users inspect images and steer queued Control work across clients", async () => {
   const application = await E2EApplication.create();
-  let voiceProvider: ManagedVoiceProvider | undefined;
   const sockets: WebSocket[] = [];
   try {
     const git = await createGitFixture(application.runDirectory);
     await installExternalNativeCopilotProvider(application.providerBinDirectory);
-    voiceProvider = await startVoiceProvider(application.runDirectory);
-    await application.start({ env: { NODE_EXTRA_CA_CERTS: voiceProvider.certificatePath } });
+    await application.start();
     const local = (await application.json<ExecutionHost[]>("/api/execution-hosts")).data
       .find((host) => host.ref["kind"] === "local")!;
     const workspaceName = "Copilot shared chat workspace";
@@ -146,34 +142,7 @@ test("Copilot users can use Live voice and steer queued work across clients", as
         name, workspaceId: workspace.id, model: modelConfig, useWorktree: false, baseBranch: git.branch,
       }),
     }, 201)).data.config.id;
-    const ordinaryId = await createChat("Ordinary Copilot Live");
-    await application.json("/api/voice/settings", {
-      method: "PUT", body: JSON.stringify({
-        baseUrl: voiceProvider.baseUrl, apiKey: voiceProvider.apiKey,
-        models: { transcription: "gpt-transcribe", text: "e2e-text" }, languageHints: ["en"],
-        live: { useVoiceProvider: true, baseUrl: "", model: "gpt-live-1" },
-      }),
-    });
-    const call = (await application.json<{ call: { id: string } }>(
-      `/api/chats/${ordinaryId}/live-voice`, {
-        method: "POST", body: JSON.stringify({ clientId: crypto.randomUUID(), sdp: createFixtureLiveOffer("ordinary") }),
-      }, 201,
-    )).data.call;
-    await pollUntil(
-      async () => (await application.json<ChatSnapshot>(`/api/chats/${ordinaryId}/snapshot?full=1`)).data,
-      (snapshot) => snapshot.transcript.messages.some((message) => message.role === "assistant"
-        && message.content.includes("Describe the ordinary Live chat request.")
-        && message.content.includes("Clanky tools unavailable.")),
-      {
-        description: "ordinary Copilot chat to receive Live instructions without control tools", timeoutMs: 10_000,
-        formatLastObserved: (snapshot) => JSON.stringify(snapshot.transcript.messages),
-      },
-    );
-    await waitForChatIdle(application, ordinaryId);
-    const closed = (await application.json<{ status: string; summarySaved: boolean }>(
-      `/api/chats/${ordinaryId}/live-voice/${call.id}/close`, { method: "POST" },
-    )).data;
-    expect(closed).toMatchObject({ status: "closed", summarySaved: true });
+    const ordinaryId = await createChat("Ordinary Copilot chat");
     await application.json<{ chat: Chat }>(`/api/chats/${ordinaryId}/messages`, {
       method: "POST",
       body: JSON.stringify({
@@ -192,7 +161,8 @@ test("Copilot users can use Live voice and steer queued work across clients", as
       method: "POST", body: JSON.stringify({ name: "Copilot public realtime", scopes: ["*"] }),
     })).data.token;
     type UiAction = {
-      type: string; actionId: string; chatId: string; clientId: string; turnId: string;
+      type: string; actionId: string; clientId: string;
+      source: { kind: "chat_turn"; chatId: string; workspaceId: string; turnId: string };
       action: { type: string; workspaceId: string };
     };
     const clients = [crypto.randomUUID(), crypto.randomUUID()];
@@ -263,12 +233,12 @@ test("Copilot users can use Live voice and steer queued work across clients", as
     await steer("Finish this turn and drain the queued requests.", clients[0]!);
     for (const index of [0, 1]) {
       const action = await pollUntil(() => actions[index]!.at(-1),
-        (value) => value?.chatId === chatId,
+        (value) => value?.source.kind === "chat_turn" && value.source.chatId === chatId,
         { description: `queued turn to route its browser action to client ${index}`, timeoutMs: 10_000 });
       expect(action!.clientId).toBe(clients[index]!);
       await application.json(`/api/control/ui-actions/${action!.actionId}/ack`, {
         method: "POST", body: JSON.stringify({
-          clientId: action!.clientId, chatId, turnId: action!.turnId,
+          clientId: action!.clientId, source: action!.source,
           outcome: { status: "opened", action: action!.action },
         }),
       });
@@ -285,12 +255,10 @@ test("Copilot users can use Live voice and steer queued work across clients", as
     throw error;
   } finally {
     for (const socket of sockets) socket.close();
-    await pollUntil(() => sockets.map((socket) => socket.readyState),
-      (states) => states.every((state) => state === WebSocket.CLOSED),
-      { description: "Copilot browser clients to disconnect", timeoutMs: 5_000 });
-    await application.stop();
     try {
-      if (voiceProvider) await stopVoiceProvider(voiceProvider);
+      await pollUntil(() => sockets.map((socket) => socket.readyState),
+        (states) => states.every((state) => state === WebSocket.CLOSED),
+        { description: "Copilot browser clients to disconnect", timeoutMs: 5_000 });
     } finally {
       await application.cleanup();
     }

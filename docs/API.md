@@ -572,10 +572,17 @@ included in this table.
 | GET, PUT | `/api/voice/settings` | Read or update transcription, shared text-generation, and Live model settings, plus local Piper support status. |
 | POST | `/api/voice/validate` | Validate the configured transcription, text-generation, or Live Voice capability. |
 | POST | `/api/voice/transcribe` | Transcribe an uploaded audio recording with the configured provider. |
+| GET, POST | `/api/voice/live` | Discover or start the user's global voice assistant. |
+| GET | `/api/voice/live/:callId` | Read owned ephemeral call state. |
+| POST | `/api/voice/live/:callId/heartbeat` | Renew the originating-tab lease and UI context. |
+| POST | `/api/voice/live/:callId/close` | End voice without stopping delegated work. |
+| POST | `/api/voice/live/:callId/confirmations/:requestId` | Approve or reject a frozen, expiring operation from the originating client. |
+| POST | `/api/voice/live/:callId/credentials/:requestId` | Privately supply a request-bound SSH credential token. |
 | GET, POST | `/api/workspace-worker-enrollments` | List or create workspace-exclusive Mesh worker enrollments. |
 | GET, DELETE | `/api/workspace-worker-enrollments/:id` | Read or cancel a workspace-exclusive Mesh worker enrollment. |
 | GET, POST | `/api/workspaces` | List workspaces or create a workspace. |
 | GET, PUT, DELETE | `/api/workspaces/:id` | Read, update, or delete a workspace. |
+| GET | `/api/workspaces/:id/task-creation-context` | Read effective task defaults, connected models and usable branches on the selected host. |
 | GET | `/api/workspaces/:id/agents-md` | Read the `AGENTS.md` file and optimization status for a workspace. |
 | POST | `/api/workspaces/:id/agents-md/optimize` | Apply `AGENTS.md` optimization changes to a workspace. |
 | POST | `/api/workspaces/:id/agents-md/preview` | Preview `AGENTS.md` optimization changes for a workspace. |
@@ -623,6 +630,27 @@ includes that user's dedicated worker. Its reference retains the workspace or
 enrollment scope; dedicated workers are not listed in global host discovery.
 
 ### Tasks CRUD
+
+Before constructing a task, read
+`GET /api/workspaces/:id/task-creation-context`. It returns workspace
+capabilities, effective `defaults`, model preferences and available models,
+real host Git branches, unmet `requirements`, and `ready`. Nullable model or
+branch selections are not invented defaults. Apply explicit choices and valid
+browser-saved preferences using `preferencePrecedence`; then submit through the
+ordinary task API. This read uses the workspace's selected execution host and
+does not expose credentials or change ordinary creation authorization.
+
+The global [voice assistant](voice.md#live-voice) discovers per-method schemas
+and automation policies from actual route definitions. Reads/writes use the
+normal authenticated framework dispatch; high-risk operations require a visual
+confirmation with a short model-written action description. The voice-only tool
+field `confirmationDescription` is required (1–500 trimmed characters for
+`confirm`, `null` otherwise); it is not part of the target API body. The browser
+receives the frozen description, request identifier and expiry, not private
+operation arguments. Approval executes only the bound, revalidated operation,
+and background admission is distinct from completed work.
+Credential-management, raw transport and binary protocols remain outside its
+JSON operation surface.
 
 #### GET /api/tasks
 

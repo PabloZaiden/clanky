@@ -42,6 +42,7 @@ export const controlUiActionRoutes = defineRoutes({
     tags: ["control"],
     cliPath: "control/ui-actions",
     requestSchema: RequestControlUiActionSchema,
+    operations: { POST: { automation: { policy: "excluded", reason: "Native Control chat provenance; voice uses its call-owned UI tool." } } },
     async POST(req: Request, ctx): Promise<Response> {
       const validation = await parseAndValidate(RequestControlUiActionSchema, req);
       if (!validation.success) return validation.response;
@@ -69,10 +70,8 @@ export const controlUiActionRoutes = defineRoutes({
 
         const dispatched = await controlUiActionService.dispatch({
           ownerId: ctx.requireUser().id,
-          chatId,
-          workspaceId: getChatWorkspaceId(chat),
+          source: { kind: "chat_turn", chatId, workspaceId: getChatWorkspaceId(chat), turnId },
           clientId,
-          turnId,
           action,
         }, req.signal);
         if (dispatched.outcome.status === "failed") {
@@ -109,6 +108,7 @@ export const controlUiActionRoutes = defineRoutes({
     tags: ["control"],
     cliPath: "control/ui-actions/:actionId/ack",
     requestSchema: AcknowledgeControlUiActionSchema,
+    operations: { POST: { automation: { policy: "excluded", reason: "Only the real originating client may acknowledge commands." } } },
     async POST(req: Request, ctx): Promise<Response> {
       const validation = await parseAndValidate(AcknowledgeControlUiActionSchema, req);
       if (!validation.success) return validation.response;

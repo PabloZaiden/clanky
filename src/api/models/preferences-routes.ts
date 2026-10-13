@@ -40,6 +40,10 @@ export const preferencesRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Persist the user's most recently used model.",
     requestSchema: SetLastModelRequestSchema,
+    operations: {
+      GET: { description: "Read the last-used model.", requestSchema: undefined, querySchema: undefined, automation: { policy: "read" } },
+      PUT: { requestSchema: SetLastModelRequestSchema, querySchema: undefined, automation: { policy: "write" } },
+    },
     /**
      * GET /api/preferences/last-model - Get the last used model.
      *
@@ -90,6 +94,10 @@ export const preferencesRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Persist the user's most recently used cheap model.",
     requestSchema: SetLastCheapModelRequestSchema,
+    operations: {
+      GET: { description: "Read the last-used helper model.", requestSchema: undefined, querySchema: undefined, automation: { policy: "read" } },
+      PUT: { requestSchema: SetLastCheapModelRequestSchema, querySchema: undefined, automation: { policy: "write" } },
+    },
     /**
      * GET /api/preferences/last-cheap-model - Get the last used cheap helper-model selection.
      */
@@ -126,6 +134,10 @@ export const preferencesRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Persist the user's last selected directory.",
     requestSchema: SetLastDirectoryRequestSchema,
+    operations: {
+      GET: { description: "Read the last-selected directory.", requestSchema: undefined, querySchema: undefined, automation: { policy: "read" } },
+      PUT: { requestSchema: SetLastDirectoryRequestSchema, querySchema: undefined, automation: { policy: "write" } },
+    },
     /**
      * GET /api/preferences/last-directory - Get the last used working directory.
      *
@@ -170,6 +182,10 @@ export const preferencesRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Persist the user's optional GitHub username.",
     requestSchema: SetGithubUsernameRequestSchema,
+    operations: {
+      GET: { description: "Read the GitHub username preference.", requestSchema: undefined, querySchema: undefined, automation: { policy: "read" } },
+      PUT: { requestSchema: SetGithubUsernameRequestSchema, querySchema: undefined, automation: { policy: "write" } },
+    },
     async GET(_req: Request, _ctx: RouteContext): Promise<Response> {
       const githubUsername = await preferencesManager.getGithubUsername();
       return Response.json({ githubUsername: githubUsername ?? null });
@@ -204,6 +220,10 @@ export const preferencesRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Persist markdown rendering preferences.",
     requestSchema: SetMarkdownRenderingRequestSchema,
+    operations: {
+      GET: { description: "Read the markdown rendering preference.", requestSchema: undefined, querySchema: undefined, automation: { policy: "read" } },
+      PUT: { requestSchema: SetMarkdownRenderingRequestSchema, querySchema: undefined, automation: { policy: "write" } },
+    },
     /**
      * GET /api/preferences/markdown-rendering - Get markdown rendering preference.
      *
@@ -248,6 +268,10 @@ export const preferencesRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Persist file explorer tree loading preferences.",
     requestSchema: SetFileExplorerFullTreeRequestSchema,
+    operations: {
+      GET: { description: "Read the full-tree file explorer preference.", requestSchema: undefined, querySchema: undefined, automation: { policy: "read" } },
+      PUT: { requestSchema: SetFileExplorerFullTreeRequestSchema, querySchema: undefined, automation: { policy: "write" } },
+    },
     /**
      * GET /api/preferences/file-explorer-full-tree - Get file explorer loading preference.
      *
@@ -292,6 +316,10 @@ export const preferencesRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Persist the preferred dashboard layout.",
     requestSchema: SetDashboardViewModeRequestSchema,
+    operations: {
+      GET: { description: "Read the dashboard layout preference.", requestSchema: undefined, querySchema: undefined, automation: { policy: "read" } },
+      PUT: { requestSchema: SetDashboardViewModeRequestSchema, querySchema: undefined, automation: { policy: "write" } },
+    },
     /**
      * GET /api/preferences/dashboard-view-mode - Get dashboard view mode preference.
      *
@@ -335,6 +363,10 @@ export const preferencesRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Persist quick chat workspace and model preferences.",
     requestSchema: SetQuickChatSettingsRequestSchema,
+    operations: {
+      GET: { description: "Read Quick Chat workspace and model preferences.", requestSchema: undefined, querySchema: undefined, automation: { policy: "read" } },
+      PUT: { requestSchema: SetQuickChatSettingsRequestSchema, querySchema: undefined, automation: { policy: "write" } },
+    },
     async GET(_req: Request, _ctx: RouteContext): Promise<Response> {
       const settings = await preferencesManager.getQuickChatSettings();
       return Response.json(settings);
@@ -385,6 +417,10 @@ export const preferencesRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Persist the scheduler timezone preference.",
+    operations: {
+      GET: { description: "Read the scheduler timezone preference.", requestSchema: undefined, querySchema: undefined, automation: { policy: "read" } },
+      PUT: { requestSchema: SetSchedulerTimezoneRequestSchema, querySchema: undefined, automation: { policy: "write" } },
+    },
     async GET(_req: Request, _ctx: RouteContext): Promise<Response> {
       const timezone = await preferencesManager.getSchedulerTimezone();
       return Response.json({ timezone });

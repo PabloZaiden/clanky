@@ -93,6 +93,11 @@ const configuration: FileExplorerRouteConfig = {
   responseIdField: "serverId",
   invalidPathError: "invalid_server_path",
   internalError: "ssh_server_file_error",
+  automationCredential: {
+    kind: "ssh",
+    serverParameter: "id",
+    header: SSH_CREDENTIAL_TOKEN_HEADER,
+  },
   resolveTarget: resolveExecutionHostFileTarget,
 };
 

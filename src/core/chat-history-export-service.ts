@@ -176,8 +176,8 @@ function getChatExecutionDirectory(chat: Chat): string {
       : chat.config.directory);
 }
 
-async function getChatExecutionHostBinding(
-  state: ChatHistoryExportServiceDependencies["state"],
+export async function getChatExecutionHostBinding(
+  state: Pick<ChatStatePort, "getWorkspace">,
   chat: Chat,
 ): Promise<ExecutionHostBinding> {
   const directBinding = chat.config.source?.kind === "execution_host"

@@ -35,6 +35,20 @@ export const tasksTerminalSessionRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Read or create a task-backed terminal session.",
+    operations: {
+      GET: {
+        description: "Read the task's terminal session.",
+        requestSchema: undefined,
+        querySchema: undefined,
+        automation: { policy: "read" },
+      },
+      POST: {
+        description: "Create or reuse a task-backed terminal session.",
+        requestSchema: undefined,
+        querySchema: undefined,
+        automation: { policy: "write" },
+      },
+    },
     async GET(_req: Request, ctx): Promise<Response> {
       try {
         const task = await taskManager.getTask(ctx.params["id"]!);

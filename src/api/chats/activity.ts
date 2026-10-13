@@ -10,6 +10,9 @@ export const chatsActivityRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Observe owned native work independently of the principal prompt.",
+    operations: {
+      GET: { requestSchema: undefined, querySchema: undefined, automation: { policy: "read" } },
+    },
     async GET(_req, ctx) {
       try {
         return successResponse({ activity: await chatManager.getActivity(ctx.params["id"]!) });
@@ -25,6 +28,9 @@ export const chatsActivityRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Stop one owned child execution or process without interrupting the principal or siblings.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "write", completion: "admission" } },
+    },
     async POST(_req, ctx) {
       try {
         return successResponse({ result: await chatManager.stopActivity(ctx.params["id"]!, ctx.params["activityId"]!) });

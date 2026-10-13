@@ -73,6 +73,16 @@ export function createFileSystemRoutes(config: FileExplorerRouteConfig): RouteTa
       tags: ["files"],
       requestSchema: FileSystemCommandSchema,
       responseSchema: FileSystemInfoSchema.or(FileSystemResultSchema),
+      operations: {
+        POST: {
+          requestSchema: FileSystemCommandSchema,
+          querySchema: undefined,
+          automation: {
+            policy: "excluded",
+            reason: "The WebDAV command contract mixes filesystem mutations with private lock-owner credentials and returns lock tokens; use the JSON explorer operations.",
+          },
+        },
+      },
       async POST(req, ctx): Promise<Response> {
         const parsed = await parseAndValidate(FileSystemCommandSchema, req);
         if (!parsed.success) return parsed.response;
@@ -92,6 +102,20 @@ export function createFileSystemRoutes(config: FileExplorerRouteConfig): RouteTa
       description: `GET/HEAD stream an exact-path file; PUT stages and replaces its binary content on the ${config.resourceLabel} host.`,
       tags: ["files"],
       querySchema: FileSystemReadQuerySchema,
+      operations: {
+        GET: {
+          requestSchema: undefined,
+          querySchema: FileSystemReadQuerySchema,
+          responseSchema: undefined,
+          automation: { policy: "excluded", reason: "Raw ranged file stream for the WebDAV bridge; use JSON explorer content." },
+        },
+        PUT: {
+          requestSchema: undefined,
+          querySchema: FileSystemReadQuerySchema,
+          responseSchema: FileSystemResultSchema,
+          automation: { policy: "excluded", reason: "Raw binary replacement with header-based lock conditions belongs to the WebDAV bridge." },
+        },
+      },
       async GET(req, ctx): Promise<Response> {
         const parsed = validateRequest(FileSystemReadQuerySchema, Object.fromEntries(new URL(req.url).searchParams));
         if (!parsed.success) return parsed.response;

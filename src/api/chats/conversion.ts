@@ -14,6 +14,9 @@ export const chatsConversionRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Create a task from an existing chat transcript.",
+    operations: {
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "confirm", reason: "Creates task work using effective automatic-execution settings.", completion: "admission" } },
+    },
     async POST(_req: Request, ctx): Promise<Response> {
       const chat = await chatManager.getChat(ctx.params["id"]!);
       if (!chat) {
@@ -62,6 +65,13 @@ export const chatsConversionRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Create a task from the current plan discussed in a chat.",
+    operations: {
+      POST: {
+        requestSchema: SpawnCurrentPlanTaskRequestSchema,
+        querySchema: undefined,
+        automation: { policy: "confirm", reason: "Creates task work using effective automatic-execution settings.", completion: "admission" },
+      },
+    },
     async POST(req: Request, ctx): Promise<Response> {
       const validation = await parseAndValidate(SpawnCurrentPlanTaskRequestSchema, req, {
         allowEmptyBody: true,
