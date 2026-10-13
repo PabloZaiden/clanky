@@ -30,6 +30,10 @@ export const CreateTerminalSessionRequestSchema = z.object({
   }
 });
 
+export const CreateTaskTerminalSessionRequestSchema = z.object({
+  directory: z.string().trim().min(1).optional(),
+});
+
 export const UpdateTerminalSessionRequestSchema = z.object({
   name: z.string().trim().min(1, "name is required").optional(),
   isPrivate: z.boolean().optional(),

@@ -53,6 +53,7 @@ import {
   RestartAutomaticWorkspacesResultSchema,
   RestartAutomaticWorkspacesResponseSchema,
   CreateTerminalSessionRequestSchema,
+  CreateTaskTerminalSessionRequestSchema,
   UpdateTerminalSessionRequestSchema,
   ListFileExplorerRequestSchema,
   GetFileExplorerTreeRequestSchema,
@@ -426,6 +427,11 @@ export type WorkspaceFileConflictResponse = FileExplorerConflictResponse;
  * Request body for POST /api/terminal-sessions.
  */
 export type CreateTerminalSessionRequest = z.infer<typeof CreateTerminalSessionRequestSchema>;
+
+/**
+ * Request body for POST /api/tasks/:id/terminal-session.
+ */
+export type CreateTaskTerminalSessionRequest = z.infer<typeof CreateTaskTerminalSessionRequestSchema>;
 
 /**
  * Request body for PATCH /api/terminal-sessions/:id.

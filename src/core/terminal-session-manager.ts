@@ -127,7 +127,7 @@ export class TerminalSessionManager {
       return await this.createAndSaveSession({
         workspace,
         name: sessionName,
-        directory: workspace.directory,
+        directory: request.directory?.trim() || workspace.directory,
         connectionMode,
         useTmux,
       });
@@ -197,6 +197,7 @@ export class TerminalSessionManager {
 
   async getOrCreateTaskSession(
     taskId: string,
+    requestedDirectory?: string,
   ): Promise<TerminalSession> {
     const { taskManager } = await import("./task-manager");
     const task = await taskManager.getTask(taskId) ?? await loadTask(taskId);
@@ -216,9 +217,10 @@ export class TerminalSessionManager {
       const currentWorkspace = await requireWorkspace(workspace.id);
       await touchWorkspace(currentWorkspace.id);
 
-      const directory = task.config.useWorktree
+      const taskDirectory = task.config.useWorktree
         ? task.state.git?.worktreePath ?? null
         : task.config.directory;
+      const directory = requestedDirectory?.trim() || taskDirectory;
       if (!directory) {
         throw new DomainError(
           "task_working_directory_unavailable",
