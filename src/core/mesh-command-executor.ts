@@ -35,8 +35,9 @@ import { DomainError } from "../domain/domain-error";
 import { streamFileRange } from "./ranged-file-stream";
 import {
   EXECUTION_HOST_CAPABILITY_VERSIONS,
+  getManagedWorktreesCommandMinimumVersion,
   getUnavailableGitCommandCapability,
-  supportsGitCommandScope,
+  MANAGED_WORKTREES_BASE_VERSION,
   supportsPortableAcpRuntime,
   supportsExecutionHostCapability,
   type ExecutionHostCapabilities,
@@ -126,7 +127,7 @@ export class MeshCommandExecutor implements CommandExecutor {
     args: string[],
     options: GitCommandOptions,
   ): Promise<CommandResult> {
-    this.requireGitRpc(options.scope);
+    this.requireGitRpc(options.scope, args);
     return await this.client.execGit(directory, args, options);
   }
 
@@ -145,24 +146,51 @@ export class MeshCommandExecutor implements CommandExecutor {
     );
   }
 
-  private requireGitRpc(scope: GitCommandScope): void {
-    if (supportsGitCommandScope(this.capabilities, scope)) {
-      return;
-    }
+  private requireGitRpc(
+    scope: GitCommandScope,
+    args: readonly string[] = [],
+  ): void {
     const capability = getUnavailableGitCommandCapability(
       this.capabilities,
       scope,
-    ) ?? "git";
-    throw new DomainError(
-      "execution_host_capability_unavailable",
-      `The selected Mesh execution host does not support ${capability}.`,
-      {
-        details: {
-          capability,
-          minimumVersion: EXECUTION_HOST_CAPABILITY_VERSIONS[capability],
-        },
-      },
     );
+    if (capability) {
+      const minimumVersion = capability === "managedWorktrees"
+        ? MANAGED_WORKTREES_BASE_VERSION
+        : EXECUTION_HOST_CAPABILITY_VERSIONS[capability];
+      throw new DomainError(
+        "execution_host_capability_unavailable",
+        `The selected Mesh execution host does not support ${capability}.`,
+        {
+          details: {
+            capability,
+            minimumVersion,
+          },
+        },
+      );
+    }
+    if (scope !== "managedWorktrees") {
+      return;
+    }
+
+    const minimumVersion = getManagedWorktreesCommandMinimumVersion(args);
+    if (!supportsExecutionHostCapability(
+      this.capabilities,
+      "managedWorktrees",
+      minimumVersion,
+    )) {
+      throw new DomainError(
+        "execution_host_capability_unavailable",
+        "The selected Mesh execution host does not support managedWorktrees.",
+        {
+          details: {
+            capability: "managedWorktrees",
+            minimumVersion,
+            actualVersion: this.capabilities.managedWorktrees ?? 0,
+          },
+        },
+      );
+    }
   }
 
   async fileExists(path: string): Promise<boolean> {

@@ -567,6 +567,18 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    version: 73,
+    name: "add_chat_selected_branch_worktree_mode",
+    up: (db) => {
+      if (
+        tableExists(db, "chats")
+        && !getTableColumns(db, "chats").includes("use_selected_branch_for_worktree")
+      ) {
+        db.run("ALTER TABLE chats ADD COLUMN use_selected_branch_for_worktree INTEGER NOT NULL DEFAULT 0");
+      }
+    },
+  },
 ];
 
 function getMigrationTableColumns(db: Database, tableName: string): string[] {

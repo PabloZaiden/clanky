@@ -208,6 +208,23 @@ export async function branchExists(
   return result.success;
 }
 
+export async function getBranchUpstream(
+  executor: CommandExecutor,
+  directory: string,
+  branchName: string,
+): Promise<string | null> {
+  const args = [
+    "for-each-ref",
+    "--format=%(upstream:short)",
+    `refs/heads/${branchName}`,
+  ];
+  const result = await runGitCommand(executor, directory, args);
+  if (!result.success) {
+    throw gitError(`Failed to get upstream for branch ${branchName}`, result, args);
+  }
+  return result.stdout.trim() || null;
+}
+
 export async function hasStagedChanges(executor: CommandExecutor, directory: string): Promise<boolean> {
   const args = ["diff", "--cached", "--quiet"];
   const result = await runGitCommand(

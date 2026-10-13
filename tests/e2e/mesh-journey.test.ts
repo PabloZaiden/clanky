@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
+import { pathToFileURL } from "node:url";
 import {
   compiledClankyCommand,
   enrollMeshWorker,
@@ -61,6 +62,9 @@ interface ExecutionHost {
     kind: string;
     nodeId?: string;
   };
+  capabilities: {
+    managedWorktrees?: number;
+  };
 }
 
 interface ExecutionResult {
@@ -87,6 +91,11 @@ interface Chat {
   state: {
     status: string;
     session?: { id: string };
+    error?: { message: string };
+    worktree?: {
+      workingBranch: string;
+      worktreePath?: string;
+    };
   };
 }
 
@@ -179,7 +188,81 @@ async function waitForIdleChat(
   return observation.body;
 }
 
-test("compiled controller and worker execute an ACP chat across Mesh and reconnect", async () => {
+async function waitForMeshChatWorktree(
+  controller: ManagedMeshNode,
+  chatId: string,
+): Promise<Chat> {
+  const observation = await pollUntil(
+    async () => await meshJsonRequest<Chat>(
+      controller,
+      `/api/chats/${encodeURIComponent(chatId)}`,
+    ),
+    (response) => response.status === 200
+      && (
+        Boolean(response.body.state.worktree?.worktreePath)
+        || response.body.state.status === "failed"
+      ),
+    {
+      description: `Mesh chat ${chatId} worktree preparation`,
+      timeoutMs: 10_000,
+      formatLastObserved: (response) => JSON.stringify({
+        status: response.body.state.status,
+        error: response.body.state.error,
+        worktree: response.body.state.worktree,
+      }),
+    },
+  );
+  if (!observation.body.state.worktree?.worktreePath) {
+    throw new Error(
+      `Mesh chat ${chatId} did not prepare its worktree: ${
+        observation.body.state.error?.message ?? "no worktree path was recorded"
+      }`,
+    );
+  }
+  return observation.body;
+}
+
+async function workerGit(
+  controller: ManagedMeshNode,
+  workerNodeId: string,
+  directory: string,
+  args: string[],
+): Promise<ExecutionResult> {
+  return await executeOnWorker(controller, workerNodeId, {
+    command: "git",
+    args: ["-C", directory, ...args],
+    cwd: directory,
+  });
+}
+
+async function createMeshSelectedBranchChat(
+  controller: ManagedMeshNode,
+  workspaceId: string,
+  model: { providerID: string; modelID: string; variant: string },
+  name: string,
+  baseBranch: string,
+): Promise<Chat> {
+  const response = await meshJsonRequest<Chat>(controller, "/api/chats", {
+    method: "POST",
+    body: {
+      name,
+      workspaceId,
+      model,
+      useWorktree: true,
+      useSelectedBranchForWorktree: true,
+      baseBranch,
+      autoApprovePermissions: true,
+    },
+  });
+  if (response.status !== 201) {
+    throw new Error(
+      `Mesh selected-branch chat creation failed: HTTP ${String(response.status)} ${JSON.stringify(response.body)}`,
+    );
+  }
+  return await waitForMeshChatWorktree(controller, response.body.config.id);
+}
+
+test("compiled controller and worker support Mesh chats, shared worktrees, and reconnect", async () => {
   const fixtureDirectory = await mkdtemp(join(tmpdir(), "clanky-mesh-e2e-"));
   const providerBinDirectory = join(fixtureDirectory, "bin");
   const providerTracePath = join(fixtureDirectory, "provider-trace.log");
@@ -283,6 +366,7 @@ test("compiled controller and worker execute an ACP chat across Mesh and reconne
       (host) => host.ref.kind === "mesh" && host.ref.nodeId === registration.workerNodeId,
     );
     expect(workerHost).toBeDefined();
+    expect(workerHost!.capabilities.managedWorktrees).toBe(3);
 
     const createdWorkspace = await meshJsonRequest<Workspace>(
       controller,
@@ -362,6 +446,173 @@ test("compiled controller and worker execute an ACP chat across Mesh and reconne
       modelID: discoveredModel!.modelID,
       variant: "",
     };
+
+    const gitRepositoryDirectory = join(worker.dataDir, "shared-worktree-repo");
+    const gitRemoteDirectory = join(worker.dataDir, "shared-worktree-remote.git");
+    const gitRemoteUrl = pathToFileURL(gitRemoteDirectory).toString();
+    const sharedBranch = "mesh-shared-feature";
+    await executeOnWorker(controller, registration.workerNodeId, {
+      command: "git",
+      args: ["init", "--bare", gitRemoteDirectory],
+      cwd: worker.dataDir,
+    });
+    await executeOnWorker(controller, registration.workerNodeId, {
+      command: "git",
+      args: ["init", gitRepositoryDirectory],
+      cwd: worker.dataDir,
+    });
+    await workerGit(controller, registration.workerNodeId, gitRepositoryDirectory, [
+      "checkout",
+      "-b",
+      "e2e-base",
+    ]);
+    await workerGit(controller, registration.workerNodeId, gitRepositoryDirectory, [
+      "config",
+      "user.name",
+      "Clanky E2E",
+    ]);
+    await workerGit(controller, registration.workerNodeId, gitRepositoryDirectory, [
+      "config",
+      "user.email",
+      "clanky-e2e@example.invalid",
+    ]);
+    await workerGit(controller, registration.workerNodeId, gitRepositoryDirectory, [
+      "commit",
+      "--allow-empty",
+      "-m",
+      "Create base branch",
+    ]);
+    await workerGit(controller, registration.workerNodeId, gitRepositoryDirectory, [
+      "checkout",
+      "-b",
+      sharedBranch,
+    ]);
+    await workerGit(controller, registration.workerNodeId, gitRepositoryDirectory, [
+      "commit",
+      "--allow-empty",
+      "-m",
+      "Create shared branch",
+    ]);
+    await workerGit(controller, registration.workerNodeId, gitRepositoryDirectory, [
+      "remote",
+      "add",
+      "origin",
+      gitRemoteUrl,
+    ]);
+    await workerGit(controller, registration.workerNodeId, gitRepositoryDirectory, [
+      "push",
+      "--set-upstream",
+      "origin",
+      sharedBranch,
+    ]);
+    await workerGit(controller, registration.workerNodeId, gitRepositoryDirectory, [
+      "checkout",
+      "e2e-base",
+    ]);
+    await workerGit(controller, registration.workerNodeId, gitRepositoryDirectory, [
+      "branch",
+      "--delete",
+      "--force",
+      sharedBranch,
+    ]);
+    await workerGit(controller, registration.workerNodeId, gitRepositoryDirectory, [
+      "fetch",
+      "origin",
+      sharedBranch,
+    ]);
+
+    const gitWorkspace = await meshJsonRequest<Workspace>(
+      controller,
+      "/api/workspaces",
+      {
+        method: "POST",
+        body: {
+          name: "Mesh shared worktree workspace",
+          directory: gitRepositoryDirectory,
+          executionHost: workerHost!.ref,
+          workspaceType: "git",
+          allowWorktrees: true,
+          serverSettings: {
+            agent: {
+              adapter: "acp",
+              provider: "copilot",
+            },
+          },
+        },
+      },
+    );
+    expect(gitWorkspace.status).toBe(201);
+
+    const firstBranchChat = await createMeshSelectedBranchChat(
+      controller,
+      gitWorkspace.body.id,
+      model,
+      "First Mesh shared-branch chat",
+      `origin/${sharedBranch}`,
+    );
+    expect(firstBranchChat.state.worktree?.workingBranch).toBe(sharedBranch);
+    const firstWorktreePath = firstBranchChat.state.worktree!.worktreePath!;
+    expect((await workerGit(
+      controller,
+      registration.workerNodeId,
+      firstWorktreePath,
+      ["symbolic-ref", "--short", "HEAD"],
+    )).stdout.trim()).toBe(sharedBranch);
+    expect((await workerGit(
+      controller,
+      registration.workerNodeId,
+      firstWorktreePath,
+      ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
+    )).stdout.trim()).toBe(`origin/${sharedBranch}`);
+
+    const secondBranchChat = await createMeshSelectedBranchChat(
+      controller,
+      gitWorkspace.body.id,
+      model,
+      "Second Mesh shared-branch chat",
+      `origin/${sharedBranch}`,
+    );
+    expect(secondBranchChat.state.worktree?.workingBranch).toBe(sharedBranch);
+    const secondWorktreePath = secondBranchChat.state.worktree!.worktreePath!;
+    expect(secondWorktreePath).not.toBe(firstWorktreePath);
+    const sharedWorktrees = await workerGit(
+      controller,
+      registration.workerNodeId,
+      gitRepositoryDirectory,
+      ["worktree", "list", "--porcelain"],
+    );
+    expect(sharedWorktrees.stdout.split(/\r?\n/).filter(
+      (line) => line === `branch refs/heads/${sharedBranch}`,
+    )).toHaveLength(2);
+
+    for (const branchChat of [firstBranchChat, secondBranchChat]) {
+      const deleted = await meshJsonRequest<{ success: boolean }>(
+        controller,
+        `/api/chats/${encodeURIComponent(branchChat.config.id)}`,
+        { method: "DELETE" },
+      );
+      expect(deleted.status).toBe(200);
+    }
+    await pollUntil(
+      async () => (await workerGit(
+        controller,
+        registration.workerNodeId,
+        gitRepositoryDirectory,
+        ["worktree", "list", "--porcelain"],
+      )).stdout,
+      (listing) => !listing.split(/\r?\n/).includes(`branch refs/heads/${sharedBranch}`),
+      {
+        description: "Mesh shared-branch worktrees to be removed",
+        timeoutMs: 10_000,
+        formatLastObserved: (listing) => listing,
+      },
+    );
+    expect((await workerGit(
+      controller,
+      registration.workerNodeId,
+      gitRepositoryDirectory,
+      ["for-each-ref", "--format=%(refname:short)", `refs/heads/${sharedBranch}`],
+    )).stdout.trim()).toBe(sharedBranch);
 
     const createdChat = await meshJsonRequest<Chat>(
       controller,
