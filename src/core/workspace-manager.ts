@@ -18,9 +18,10 @@ import { areServerSettingsEqual, getDefaultServerSettings, type ServerSettings }
 import {
   executionHostBindingsEqual,
   executionHostRefsEqual,
+  getAgentExecutionHostCapability,
   getUnavailableGitCommandCapability,
   isPrivateMeshExecutionHostRef,
-  WORKSPACE_EXECUTION_HOST_CAPABILITIES,
+  type AgentSettings,
   type ExecutionHostBinding,
   type ExecutionHostDescriptor,
   type ExecutionHostRef,
@@ -183,22 +184,19 @@ function requireWorkspaceExecutionCapabilities(
   userId: string,
   workspaceType: WorkspaceType,
   allowWorktrees: boolean,
+  agent: AgentSettings,
 ): void {
-  const [primaryCapability, ...additionalCapabilities] =
-    WORKSPACE_EXECUTION_HOST_CAPABILITIES;
   const persisted = executionHostService.requireBindingCapability(
     binding,
-    primaryCapability,
+    "fileOperations",
     userId,
   );
-  for (const capability of additionalCapabilities) {
-    executionHostService.requireBindingCapability(
-      binding,
-      capability,
-      userId,
-      capability === "acpRuntime" ? 1 : undefined,
-    );
-  }
+  executionHostService.requireBindingCapability(
+    binding,
+    getAgentExecutionHostCapability(agent.adapter),
+    userId,
+    1,
+  );
   const unavailableGitCapability = workspaceType === "git"
     ? getUnavailableGitCommandCapability(
         persisted.runtime.capabilities,
@@ -219,6 +217,7 @@ async function resolveWorkspaceExecutionBinding(
   userId: string,
   workspaceType: WorkspaceType,
   allowWorktrees: boolean,
+  agent: AgentSettings,
 ): Promise<ExecutionHostBinding> {
   const descriptor = await executionHostService.requireCapability(
     ref,
@@ -235,6 +234,7 @@ async function resolveWorkspaceExecutionBinding(
     userId,
     workspaceType,
     allowWorktrees,
+    agent,
   );
   return binding;
 }
@@ -372,6 +372,7 @@ export class WorkspaceManager {
           userId,
           normalized.workspaceType,
           normalized.allowWorktrees,
+          normalized.serverSettings.agent,
         )
       : undefined;
     if (enrollmentBinding) {
@@ -380,6 +381,7 @@ export class WorkspaceManager {
         userId,
         normalized.workspaceType,
         normalized.allowWorktrees,
+        normalized.serverSettings.agent,
       );
     }
     const validationExecutionHost = registeredBinding?.host
@@ -446,6 +448,7 @@ export class WorkspaceManager {
           userId,
           normalized.workspaceType,
           normalized.allowWorktrees,
+          normalized.serverSettings.agent,
         );
       }
       if (normalized.provisioningHost && !provisioningHostBinding) {
@@ -647,12 +650,14 @@ export class WorkspaceManager {
           updates.allowWorktrees === true
           && current.allowWorktrees === false
         )
+        || serverSettingsChanged
       ) {
         requireWorkspaceExecutionCapabilities(
           nextExecutionHostBinding,
           userId,
           current.workspaceType,
           nextAllowWorktrees,
+          (updates.serverSettings ?? current.serverSettings).agent,
         );
       }
       const privateChanged = updates.isPrivate !== undefined

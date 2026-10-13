@@ -171,7 +171,12 @@ is rejected. The option is omitted or `false` by default, preserving the
 existing new-branch behavior. Multiple worktrees may use the same local branch,
 but they share one Git reference: commits in either worktree advance that
 branch for all of them. Deleting a chat removes its managed worktree, not the
-shared branch.
+shared branch. This option works with ACP and native providers alike; the
+workspace's execution host must advertise managed worktrees v3. If an older
+Mesh worker is still running, update/restart it and recheck the host before
+creating a chat. The new-chat form disables the option on unsupported hosts;
+the API returns HTTP 409 with `execution_host_capability_unavailable` and
+`capability: "managedWorktrees"` rather than silently using another branch.
 
 ### Chat working directory
 

@@ -48,6 +48,7 @@ import { executionHostService } from "./execution-host-service";
 import {
   EXECUTION_HOST_CAPABILITY_VERSIONS,
   executionHostBindingsEqual,
+  getAgentExecutionHostCapability,
   getRegisteredSshServerId,
 } from "@/shared/execution-host";
 import { DomainError } from "../domain/domain-error";
@@ -104,7 +105,7 @@ export class ChatLifecycleService implements ChatLifecyclePort {
     }
     executionHostService.requireBindingCapability(
       workspace.executionHostBinding,
-      "acpRuntime",
+      getAgentExecutionHostCapability(workspace.serverSettings.agent.adapter),
       undefined,
       1,
     );

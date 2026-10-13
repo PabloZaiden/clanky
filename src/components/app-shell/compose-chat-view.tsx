@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Chat, Workspace } from "@/shared";
+import {
+  executionHostRefsEqual,
+  MANAGED_WORKTREES_SELECTED_BRANCH_VERSION,
+  supportsExecutionHostCapability,
+} from "@/shared/execution-host";
 import type { CreateChatRequest } from "@/contracts";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
+import { useWorkspaceExecutionTargets } from "../../hooks/workspace-server-settings";
 import { resolveWorkspaceBranchSelection } from "../../lib/workspace-branch-selection";
 import {
   getStoredChatModelPreference,
@@ -111,6 +117,19 @@ export function ComposeChatView({
     () => workspaces.find((workspace) => workspace.id === selectedWorkspaceId) ?? null,
     [selectedWorkspaceId, workspaces],
   );
+  const {
+    targets: executionTargets,
+    loading: executionTargetsLoading,
+    refresh: refreshExecutionTargets,
+  } = useWorkspaceExecutionTargets({ workspaceId: selectedWorkspace?.id });
+  const selectedHost = executionTargets.find((target) => selectedWorkspace
+    && executionHostRefsEqual(target.ref, selectedWorkspace.executionHostBinding.host));
+  const selectedBranchSupported = Boolean(selectedHost
+    && supportsExecutionHostCapability(
+      selectedHost.capabilities,
+      "managedWorktrees",
+      MANAGED_WORKTREES_SELECTED_BRANCH_VERSION,
+    ));
   const baseBranch = baseBranchSelection.workspaceId === selectedWorkspace?.id
     ? baseBranchSelection.branch
     : "";
@@ -201,6 +220,12 @@ export function ComposeChatView({
   }, [useWorktree, worktreesAllowed]);
 
   useEffect(() => {
+    if (!executionTargetsLoading && !selectedBranchSupported) {
+      setUseSelectedBranchForWorktree(false);
+    }
+  }, [executionTargetsLoading, selectedBranchSupported]);
+
+  useEffect(() => {
     if (!worktreesAllowed) {
       setUseWorktree(false);
     }
@@ -258,6 +283,10 @@ export function ComposeChatView({
     }
     if (useSelectedBranchForWorktree && !selectedWorkspaceBaseBranch) {
       showError("Select a branch first");
+      return;
+    }
+    if (useSelectedBranchForWorktree && !selectedBranchSupported) {
+      showError("Using the selected branch directly requires managed worktrees v3 on the execution host");
       return;
     }
     const parsedModel = parseModelKey(effectiveSelectedModel);
@@ -319,6 +348,7 @@ export function ComposeChatView({
   const canSubmit = !isSubmitting
     && (selectedWorkspace?.workspaceType !== "git" || branchDataReady)
     && (!useSelectedBranchForWorktree || Boolean(selectedWorkspaceBaseBranch))
+    && (!useSelectedBranchForWorktree || selectedBranchSupported)
     && !modelOptionsLoading
     && Boolean(selectedWorkspace)
     && Boolean(effectiveSelectedModel);
@@ -425,28 +455,49 @@ export function ComposeChatView({
         )}
 
         {worktreesAllowed && useWorktree && (
-          <label className="flex items-start gap-3">
-            <input
-              type="checkbox"
-              checked={useSelectedBranchForWorktree}
-              onChange={(event) => {
-                const selected = event.target.checked;
-                setUseSelectedBranchForWorktree(selected);
-                if (selected) {
-                  setUseChatNameAsBranch(false);
-                }
-              }}
-              className="mt-1 h-4 w-4 rounded border-gray-300 text-gray-700 focus:ring-gray-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-300"
-            />
-            <div className="flex-1">
-              <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Use selected branch directly
-              </span>
-              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                Worktrees on the same branch share one Git reference; commits in either worktree advance it for both.
+          <div>
+            <label className="flex items-start gap-3">
+              <input
+                type="checkbox"
+                checked={useSelectedBranchForWorktree}
+                disabled={executionTargetsLoading || !selectedBranchSupported}
+                onChange={(event) => {
+                  const selected = event.target.checked;
+                  setUseSelectedBranchForWorktree(selected);
+                  if (selected) {
+                    setUseChatNameAsBranch(false);
+                  }
+                }}
+                className="mt-1 h-4 w-4 rounded border-gray-300 text-gray-700 focus:ring-gray-500 disabled:opacity-60 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-300"
+              />
+              <div className="flex-1">
+                <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Use selected branch directly
+                </span>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Worktrees on the same branch share one Git reference; commits in either worktree advance it for both.
+                </p>
+              </div>
+            </label>
+            {!selectedBranchSupported && (
+              <p className="mt-1 pl-8 text-xs text-gray-500 dark:text-gray-400">
+                {executionTargetsLoading
+                  ? "Checking execution host support..."
+                  : selectedHost
+                    ? "Update the execution host worker to support managed worktrees v3."
+                    : "Unable to verify execution host support."}
+                {!executionTargetsLoading && (
+                  <button
+                    type="button"
+                    onClick={() => void refreshExecutionTargets()}
+                    className="ml-2 underline"
+                  >
+                    Recheck
+                  </button>
+                )}
               </p>
-            </div>
-          </label>
+            )}
+          </div>
         )}
 
         {worktreesAllowed && useWorktree && !useSelectedBranchForWorktree && (
