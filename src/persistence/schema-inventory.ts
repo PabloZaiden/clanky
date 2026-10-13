@@ -132,6 +132,7 @@ export const SCHEMA_TABLE_INVENTORY: readonly SchemaTableDefinition[] = [
   }),
   currentTable("chats", "clanky"),
   currentTable("ssh_servers", "clanky"),
+  currentTable("workspace_icons", "clanky"),
   currentTable("workspaces", "clanky"),
   currentTable("execution_hosts", "clanky"),
   currentTable("preferences", "clanky"),

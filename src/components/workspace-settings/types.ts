@@ -25,6 +25,8 @@ export interface WorkspaceSettingsFormProps {
     allowClankyContext: boolean,
     allowWorktrees: boolean,
   ) => Promise<boolean>;
+  /** Refresh workspace surfaces after its icon changes */
+  onWorkspaceIconChanged?: () => Promise<void>;
   /** Callback to test connection */
   onTest: (
     settings: ServerSettings,

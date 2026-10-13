@@ -34,7 +34,9 @@ export async function listWorkspaces(): Promise<Workspace[]> {
       workspace_target.username AS workspace_ssh_target_username,
       workspace_target.password_ciphertext IS NOT NULL AS workspace_ssh_target_password_configured,
       workspace_target.target_key AS workspace_ssh_target_key,
-      workspace_target.revision AS workspace_ssh_target_revision
+      workspace_target.revision AS workspace_ssh_target_revision,
+      workspace_icon.mime_type AS workspace_icon_mime_type,
+      workspace_icon.updated_at AS workspace_icon_updated_at
     FROM workspaces workspace
     LEFT JOIN execution_hosts execution_host
       ON execution_host.id = workspace.execution_host_id
@@ -45,6 +47,9 @@ export async function listWorkspaces(): Promise<Workspace[]> {
     LEFT JOIN workspace_execution_targets workspace_target
       ON workspace_target.workspace_id = workspace.id
       AND workspace_target.user_id = workspace.user_id
+    LEFT JOIN workspace_icons workspace_icon
+      ON workspace_icon.workspace_id = workspace.id
+      AND workspace_icon.user_id = workspace.user_id
     WHERE workspace.user_id = ?
     ORDER BY workspace.name COLLATE NOCASE ASC
   `);

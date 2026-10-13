@@ -12,6 +12,7 @@ import { createLogger } from "@pablozaiden/webapp/web";
 import { AgentsMdSection } from "./agents-md-section";
 import { PurgeTasksSection } from "./purge-tasks-section";
 import { DeleteWorkspaceSection } from "./delete-workspace-section";
+import { WorkspaceIconSection } from "./workspace-icon-section";
 import type { WorkspaceSettingsFormProps } from "./types";
 
 const log = createLogger("WorkspaceSettingsForm");
@@ -20,6 +21,7 @@ export function WorkspaceSettingsForm({
   workspace,
   status,
   onSave,
+  onWorkspaceIconChanged,
   onTest,
   onPurgeArchivedTasks,
   onDeleteWorkspace,
@@ -156,6 +158,13 @@ export function WorkspaceSettingsForm({
             </div>
           </div>
         )}
+
+        {workspace && onWorkspaceIconChanged ? (
+          <WorkspaceIconSection
+            workspace={workspace}
+            onChanged={onWorkspaceIconChanged}
+          />
+        ) : null}
 
         {showConnectionStatus && (
           <div className="flex items-center gap-2 rounded-md bg-gray-50 p-3 dark:bg-neutral-900">

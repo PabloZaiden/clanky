@@ -1,0 +1,21 @@
+Provider icon assets and provenance
+
+OpenCode logos:
+  Source: https://github.com/anomalyco/opencode/tree/dev/packages/console/app/src/asset/brand
+  Copyright (c) 2025 opencode. Licensed under the MIT License.
+  See licenses/MIT-OpenCode.txt.
+
+OpenAI mark used for Codex:
+  Source: https://github.com/openai/codex/blob/12cca49c81c8aa6a37a5cc4e39964ee3b70f9458/codex-rs/tui/src/empty_state_animation/paths.rs
+  Uses the OPENAI mark geometry from OpenAI's official Codex codebase.
+  Licensed under Apache-2.0; see licenses/Apache-2.0-Codex.txt.
+
+GitHub Copilot icon:
+  Source: https://github.com/primer/octicons/blob/main/icons/copilot-24.svg
+  Copyright (c) GitHub Inc. Licensed under the MIT License.
+  See licenses/MIT-Primer.txt.
+
+ACP logomark:
+  Source: https://agentclientprotocol.com/brand
+  Official brand-kit black and white SVG variants; use according to the brand
+  guidance published at the source.

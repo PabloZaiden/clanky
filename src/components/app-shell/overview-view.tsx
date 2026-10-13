@@ -5,6 +5,7 @@ import {
   type Agent,
   type ExecutionHostDescriptor,
   type PublicProvisioningJob,
+  type Workspace,
 } from "@/shared";
 import { ConfirmModal, EmptyState, Panel, useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
 import type { DismissAllProvisioningJobsResult, useTaskGrouping } from "../../hooks";
@@ -22,6 +23,7 @@ import {
 import { isEffectivelyPrivate, shouldObscurePrivateItem } from "../../lib/private-items";
 import { ClankyListRow } from "./clanky-list-row";
 import { ServerTransportIcon } from "./server-sidebar-item";
+import { WorkspaceIdentity } from "../common";
 
 function getExecutionHostRoute(host: ExecutionHostDescriptor): WebAppRoute {
   return {
@@ -62,6 +64,12 @@ function getActiveWorkSubtitle(item: SidebarActiveWorkItem): string {
     return item.host.name;
   }
   return item.workspaceName;
+}
+
+function getActiveWorkWorkspace(item: SidebarActiveWorkItem): Workspace | null {
+  return item.kind === "task" || item.kind === "chat" || item.kind === "terminal-session"
+    ? item.workspace
+    : null;
 }
 
 function getActiveWorkBadge(item: SidebarActiveWorkItem): {
@@ -223,11 +231,14 @@ export function OverviewView({
             {activeWorkItems.map((item) => {
               const badge = getActiveWorkBadge(item);
               const privateHidden = isActiveWorkPrivateHidden(item, showPrivateItems);
+              const workspace = getActiveWorkWorkspace(item);
               return (
                 <ClankyListRow
                   key={item.key}
                   title={getActiveWorkTitle(item)}
-                  description={getActiveWorkSubtitle(item)}
+                  description={workspace
+                    ? <WorkspaceIdentity workspace={workspace} />
+                    : getActiveWorkSubtitle(item)}
                   badge={<StatusBadge variant={badge.variant}>{badge.label}</StatusBadge>}
                   onClick={!privateHidden ? () => onNavigate(getActiveWorkRoute(item)) : undefined}
                   privateHidden={privateHidden}
@@ -282,7 +293,7 @@ export function OverviewView({
                 return (
                   <ClankyListRow
                     key={group.workspace.id}
-                    title={group.workspace.name}
+                    title={<WorkspaceIdentity workspace={group.workspace} />}
                     description={group.workspace.directory}
                     meta={`${group.tasks.length} task${group.tasks.length === 1 ? "" : "s"}`}
                     onClick={!privateHidden ? () => onNavigate({ view: "workspace", workspaceId: group.workspace.id }) : undefined}

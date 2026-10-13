@@ -4,6 +4,7 @@ import type {
   SidebarNode,
   WebAppRoute,
 } from "@pablozaiden/webapp/web";
+import type { Workspace } from "@/shared";
 import {
   isEffectivelyPrivate,
   privateSidebarPresentation,
@@ -19,6 +20,7 @@ import {
   ServerSidebarItem,
   type ServerTransportKind,
 } from "./server-sidebar-item";
+import { WorkspaceIdentity } from "../common";
 import type { SearchableSidebarNode, SidebarAction } from "./shell-sidebar-types";
 
 export function sidebarActionItems(
@@ -188,12 +190,23 @@ export function getHeaderOwnerRoute(route: WebAppRoute): WebAppRoute | null {
 export function renderActiveWorkSidebarItem(
   itemType: ActiveWorkSidebarItemType,
   lastInteractionAt: string,
+  workspace?: Workspace,
 ) {
   return ({ node }: SidebarItemRenderContext) => (
     <ActiveWorkSidebarItem
       node={node}
       itemType={itemType}
       lastInteractionAt={lastInteractionAt}
+      workspace={workspace}
+    />
+  );
+}
+
+export function renderWorkspaceSidebarItem(workspace: Workspace) {
+  return () => (
+    <WorkspaceIdentity
+      workspace={workspace}
+      className="text-sm text-gray-900 dark:text-gray-100"
     />
   );
 }

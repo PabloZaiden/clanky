@@ -82,7 +82,7 @@ export function buildSidebarDomainNodes({
         badgeVariant: item.taskNode.badgeVariant,
         badgeAppearance: "text",
         itemLayout: "subtitle-above-title",
-        render: renderActiveWorkSidebarItem("Task", getActiveWorkItemTimestamp(item)),
+        render: renderActiveWorkSidebarItem("Task", getActiveWorkItemTimestamp(item), item.workspace),
         ancestors: [item.workspace],
       }, contexts.task);
     }
@@ -97,7 +97,11 @@ export function buildSidebarDomainNodes({
         subtitle: item.kind === "chat" ? item.workspaceName : item.host.name,
         badgeAppearance: "text",
         itemLayout: "subtitle-above-title",
-        render: renderActiveWorkSidebarItem("Chat", getActiveWorkItemTimestamp(item)),
+        render: renderActiveWorkSidebarItem(
+          "Chat",
+          getActiveWorkItemTimestamp(item),
+          item.kind === "chat" ? item.workspace : undefined,
+        ),
       }, contexts.chat);
     }
     if (item.kind === "terminal-session") {
@@ -118,7 +122,11 @@ export function buildSidebarDomainNodes({
         badgeVariant: item.sessionNode.badgeVariant,
         badgeAppearance: "text",
         itemLayout: "subtitle-above-title",
-        render: renderActiveWorkSidebarItem("Terminal", getActiveWorkItemTimestamp(item)),
+        render: renderActiveWorkSidebarItem(
+          "Terminal",
+          getActiveWorkItemTimestamp(item),
+          item.workspace,
+        ),
       }, contexts.terminal);
     }
     const sessionId = item.sessionNode.session.config.id;

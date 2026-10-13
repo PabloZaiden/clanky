@@ -49,6 +49,8 @@ export {
   WrapTextIcon,
   type IconProps,
 } from "./Icons";
+export { ProviderIcon, getProviderIconKind, type ProviderIconKind } from "./ProviderIcon";
+export { WorkspaceIconMark, WorkspaceIdentity } from "./WorkspaceIdentity";
 export { CollapsibleSection, type CollapsibleSectionProps } from "./CollapsibleSection";
 export { PASSWORD_INPUT_PROPS } from "./passwordInputProps";
 export {

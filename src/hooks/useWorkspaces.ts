@@ -13,6 +13,7 @@ import type { CreateWorkspaceRequest, UpdateWorkspaceRequest } from "@/contracts
 import type { DeleteWorkspaceRequest } from "@/contracts/schemas/workspace";
 import { createLogger } from "@pablozaiden/webapp/web";
 import { apiRequest, readApiResponse, requestApiResponse } from "../lib/api-client";
+import { useRealtimeRefreshWithRecovery } from "./useRealtimeStream";
 import { useResourceRefresh } from "./useResourceRefresh";
 
 export interface UseWorkspacesResult {
@@ -72,6 +73,17 @@ export function useWorkspaces(): UseWorkspacesResult {
   const refresh = useCallback(async () => {
     await refreshResource.refresh();
   }, [refreshResource.refresh]);
+
+  const refreshInBackground = useCallback(
+    () => refreshResource.refresh({ showLoading: false }),
+    [refreshResource.refresh],
+  );
+
+  useRealtimeRefreshWithRecovery({
+    resources: ["workspaces"],
+    refresh: refreshInBackground,
+    onReconnect: refreshInBackground,
+  });
 
   // Create a new workspace
   const createWorkspace = useCallback(async (request: CreateWorkspaceRequest): Promise<Workspace | null> => {
