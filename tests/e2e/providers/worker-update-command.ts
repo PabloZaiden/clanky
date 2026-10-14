@@ -32,8 +32,17 @@ if (args.length === 1 && args[0] === "update") {
     console.log("Deterministic worker update succeeded.");
   }
 } else if (args.join(" ") === "worker service restart") {
+  const release = new Promise<void>((resolve) => {
+    process.once("SIGTERM", resolve);
+  });
   await Bun.write(join(workerStateDirectory, "restart-started"), "started");
   console.log("Deterministic worker service restart invoked.");
+  await release;
+} else if (args.join(" ") === "worker service status") {
+  console.log(JSON.stringify({
+    installed: true,
+    running: await Bun.file(join(workerStateDirectory, "service-running")).exists(),
+  }));
 } else {
   throw new Error(`Unexpected worker update fixture command: ${args.join(" ")}`);
 }

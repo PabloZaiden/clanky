@@ -43,6 +43,7 @@ import {
 import { decryptMeshPayload, encryptMeshPayload } from "./mesh-payload-crypto";
 import { buildMeshExecutionSessionSigningPayload } from "./mesh-protocol";
 import { requestMeshPeer } from "./mesh-peer-transport";
+import { isMeshRelayResponseInterrupted, MeshRelayStreamError } from "./mesh-relay-errors";
 import { DomainError } from "../domain/domain-error";
 import { requireCurrentUserId } from "../context/user-context";
 import type {
@@ -773,6 +774,8 @@ export class MeshCommandExecutorClient {
   ): Promise<CommandResult> {
     let jobId: string | undefined;
     let remoteMayBeRunning = false;
+    let startDispatched = false;
+    let resultReceived = false;
     const output = {
       stdout: "",
       stderr: "",
@@ -797,13 +800,22 @@ export class MeshCommandExecutorClient {
 
       let started: MeshExecutionAsyncCommandSnapshot;
       try {
-        started = await this.sendAsyncCommandRequest(startOperation, options.signal, startRequestId);
+        started = await this.sendAsyncCommandRequest(startOperation, {
+          signal: options.signal,
+          requestId: startRequestId,
+          retry: !options.preserveOnDisconnect,
+        });
+        startDispatched = true;
       } catch (error) {
-        if (!options.signal?.aborted) {
+        startDispatched = error instanceof DomainError
+          && error.details["executionRequestDispatched"] === true;
+        const status = error instanceof DomainError ? error.details["status"] : undefined;
+        resultReceived = typeof status === "number" && ![502, 503, 504].includes(status);
+        if (options.preserveOnDisconnect || !options.signal?.aborted) {
           throw error;
         }
         try {
-          started = await this.sendAsyncCommandRequest(startOperation, undefined, startRequestId);
+          started = await this.sendAsyncCommandRequest(startOperation, { requestId: startRequestId });
           jobId = started.jobId;
           remoteMayBeRunning = started.status === "running";
           this.consumeAsyncCommandOutput(started, output, options);
@@ -840,11 +852,12 @@ export class MeshCommandExecutorClient {
           jobId,
           stdoutOffset: output.stdout.length,
           stderrOffset: output.stderr.length,
-        }, options.signal);
+        }, { signal: options.signal, retry: !options.preserveOnDisconnect });
         remoteMayBeRunning = snapshot.status === "running";
         this.consumeAsyncCommandOutput(snapshot, output, options);
       }
       remoteMayBeRunning = false;
+      resultReceived = true;
 
       if (snapshot.status === "cancelled") {
         throw new DomainError(
@@ -867,6 +880,17 @@ export class MeshCommandExecutorClient {
       this.consumeCompletedAsyncCommandOutput(snapshot.result, output, options);
       return snapshot.result;
     } catch (error) {
+      if (options.preserveOnDisconnect) {
+        if (!(error instanceof DomainError)) throw error;
+        throw new DomainError(error.code, error.message, {
+          cause: error,
+          details: {
+            ...error.details,
+            executionRequestDispatched: startDispatched,
+            executionResultReceived: resultReceived,
+          },
+        });
+      }
       if (jobId && remoteMayBeRunning) {
         try {
           const cancelled = await this.sendAsyncCommandRequest({
@@ -948,17 +972,18 @@ export class MeshCommandExecutorClient {
 
   private async sendAsyncCommandRequest(
     operation: Omit<MeshExecutionAsyncCommandRequest, "protocolVersion" | "sessionId" | "sessionToken" | "requestId">,
-    signal?: AbortSignal,
-    requestIdOverride?: string,
+    options: { signal?: AbortSignal; requestId?: string; retry?: boolean } = {},
   ): Promise<MeshExecutionAsyncCommandSnapshot> {
+    const { signal, requestId: requestIdOverride } = options;
     for (let attempt = 0; attempt < 2; attempt += 1) {
       if (signal?.aborted) {
         throw new DomainError("mesh_execution_aborted", "The mesh execution request was aborted.");
       }
       const releaseSlot = await this.acquireRequestSlot(signal);
+      let commandDispatched = false;
       try {
         if (signal?.aborted) throw this.requestAbortedError(signal);
-        await this.ensureSession();
+        await this.ensureSession(signal);
         const session = this.session;
         if (!session || !this.route) {
           throw new DomainError("mesh_execution_session_invalid", "The mesh execution session is unavailable.");
@@ -982,6 +1007,7 @@ export class MeshCommandExecutorClient {
             signal,
             MESH_EXECUTION_ASYNC_REQUEST_TIMEOUT_MS,
           );
+          commandDispatched = true;
           const body = parseResponseShape<MeshRpcResponse>(
             response,
             ["protocolVersion", "requestId", "encryptedPayload"],
@@ -995,8 +1021,11 @@ export class MeshCommandExecutorClient {
           }
           return parseAsyncCommandSnapshot(await decryptMeshPayload(body.encryptedPayload));
         } catch (error) {
+          commandDispatched ||= error instanceof DomainError
+            && error.details["requestDispatched"] === true;
           if (
             attempt === 0
+            && options.retry !== false
             && error instanceof DomainError
             && (
               error.code === "mesh_execution_session_invalid"
@@ -1013,6 +1042,12 @@ export class MeshCommandExecutorClient {
           }
           throw error;
         }
+      } catch (error) {
+        if (!(error instanceof DomainError)) throw error;
+        throw new DomainError(error.code, error.message, {
+          cause: error,
+          details: { ...error.details, executionRequestDispatched: commandDispatched },
+        });
       } finally {
         releaseSlot();
       }
@@ -1456,9 +1491,10 @@ export class MeshCommandExecutorClient {
         throw new DomainError("mesh_execution_aborted", "The mesh execution request was aborted.");
       }
       const releaseSlot = await this.acquireRequestSlot(signal);
+      let commandDispatched = false;
       try {
         if (signal?.aborted) throw this.requestAbortedError(signal);
-        await this.ensureSession();
+        await this.ensureSession(signal);
         const session = this.session;
         if (!session || !this.route) {
           throw new DomainError("mesh_execution_session_invalid", "The mesh execution session is unavailable.");
@@ -1486,6 +1522,7 @@ export class MeshCommandExecutorClient {
               ? Math.max(this.requestTimeoutMs, request.timeout + 1_000)
               : undefined,
           );
+          commandDispatched = true;
           const body = parseResponseShape<MeshRpcResponse>(
             response,
             ["protocolVersion", "requestId", "encryptedPayload"],
@@ -1496,6 +1533,8 @@ export class MeshCommandExecutorClient {
           }
           return await decryptMeshPayload(body.encryptedPayload) as T;
         } catch (error) {
+          commandDispatched ||= error instanceof DomainError
+            && error.details["requestDispatched"] === true;
           if (
             attempt === 0
             && error instanceof DomainError
@@ -1510,6 +1549,12 @@ export class MeshCommandExecutorClient {
           }
           throw error;
         }
+      } catch (error) {
+        if (!(error instanceof DomainError)) throw error;
+        throw new DomainError(error.code, error.message, {
+          cause: error,
+          details: { ...error.details, executionRequestDispatched: commandDispatched },
+        });
       } finally {
         releaseSlot();
       }
@@ -1562,9 +1607,9 @@ export class MeshCommandExecutorClient {
     this.callerNodeId = null;
   }
 
-  private async ensureSession(): Promise<void> {
+  private async ensureSession(signal?: AbortSignal): Promise<void> {
     if (!this.session || this.session.expiresAt <= Date.now()) {
-      await this.openSession();
+      await this.openSession(signal);
     }
   }
 
@@ -1587,6 +1632,7 @@ export class MeshCommandExecutorClient {
     );
     const abortHandler = () => controller.abort();
     signal?.addEventListener("abort", abortHandler, { once: true });
+    let requestDispatched = false;
     try {
       if (!route) {
         throw new DomainError(
@@ -1594,7 +1640,7 @@ export class MeshCommandExecutorClient {
           "The selected worker has no usable Mesh route.",
         );
       }
-      const response = await requestMeshPeer(route, path, {
+      const request = {
         method,
         headers: {
           "content-type": "application/json",
@@ -1603,7 +1649,9 @@ export class MeshCommandExecutorClient {
         body: JSON.stringify(body),
         signal: controller.signal,
         fetch: this.fetchImpl,
-      });
+        onDispatch: () => { requestDispatched = true; },
+      };
+      const response = await requestMeshPeer(route, path, request);
       if (!response.ok) {
         let payload: unknown = null;
         try {
@@ -1624,12 +1672,30 @@ export class MeshCommandExecutorClient {
       }
       return await response.json();
     } catch (error) {
-      if (error instanceof DomainError) throw error;
+      if (error instanceof DomainError) {
+        throw new DomainError(error.code, error.message, {
+          cause: error,
+          details: { ...error.details, requestDispatched },
+        });
+      }
+      if (error instanceof SyntaxError
+        || (error instanceof MeshRelayStreamError
+          && !isMeshRelayResponseInterrupted(error)
+          && ![503, 504].includes(error.status))) {
+        throw new DomainError("mesh_execution_response_invalid", "The mesh execution response is invalid.", {
+          cause: error,
+          details: { requestDispatched },
+        });
+      }
       if (signal?.aborted) {
-        throw new DomainError("mesh_execution_aborted", "The mesh execution request was aborted.", { cause: error });
+        throw new DomainError("mesh_execution_aborted", "The mesh execution request was aborted.", {
+          cause: error,
+          details: { requestDispatched },
+        });
       }
       throw new DomainError("mesh_execution_unreachable", "The selected mesh execution peer could not be reached.", {
         cause: error,
+        details: { requestDispatched },
       });
     } finally {
       clearTimeout(timeoutId);

@@ -4,6 +4,7 @@ import { DEFAULT_QUICK_CHAT_SETTINGS } from "@/shared/preferences";
 import {
   PurgeTerminalTasksAction,
   RestartAutomaticWorkspacesAction,
+  WorkerUpdateAction,
   QuickChatModelRowContent,
   WorkersSettingsSection,
   SchedulerTimezoneRowContent,
@@ -175,7 +176,7 @@ export function buildShellSettingsSections({
       scope: "owner" as const,
       // The framework settings row model cannot collapse a section, so this
       // custom render keeps Mesh and the owner-only relay in one collapsed list.
-      render: () => <WorkersSettingsSection mesh={mesh} workerUpdates={workerUpdates} />,
+      render: () => <WorkersSettingsSection mesh={mesh} />,
     },
     {
       id: "voice",
@@ -313,6 +314,11 @@ export function buildShellSettingsSections({
               onRestartAutomaticWorkspaces={dashboardData.restartAutomaticWorkspaces}
             />
           ),
+        },
+        {
+          id: "update-global-workers",
+          title: "Update global workers",
+          actions: <WorkerUpdateAction workerUpdates={workerUpdates} />,
         },
       ],
     },

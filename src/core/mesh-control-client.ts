@@ -2,6 +2,7 @@ import { DomainError } from "../domain/domain-error";
 import type { MeshPeerRoute } from "@/shared/mesh";
 import { requestMeshPeer } from "./mesh-peer-transport";
 import type { MeshPeerTransport } from "./mesh-peer-transport";
+import { isMeshRelayResponseInterrupted, MeshRelayStreamError } from "./mesh-relay-errors";
 
 const MESH_CONTROL_REQUEST_TIMEOUT_MS = 10_000;
 const MESH_CONTROL_RESPONSE_MAX_BYTES = 64 * 1024;
@@ -196,6 +197,14 @@ export async function readMeshControlResponseJson<T>(
   } catch (error) {
     if (error instanceof DomainError) {
       throw error;
+    }
+    if (!(error instanceof SyntaxError)
+      && (!(error instanceof MeshRelayStreamError) || isMeshRelayResponseInterrupted(error))) {
+      throw new DomainError(
+        "mesh_control_response_unreachable",
+        "The Mesh control response could not be read.",
+        { cause: error },
+      );
     }
     throw new DomainError(
       "mesh_control_response_invalid",

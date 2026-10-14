@@ -468,6 +468,17 @@ test("controller updates global Mesh workers concurrently and retains per-worker
 
     await Bun.write(updateReleasePath, "release");
 
+    await pollUntil(
+      () => Bun.file(join(updateStateDirectory, "global-update-success", "restart-started")).exists(),
+      (requested) => requested,
+      {
+        description: "successful worker service restart request",
+        timeoutMs: MESH_OPERATION_TIMEOUT_MS,
+      },
+    );
+    await restartMeshNode(successfulWorker);
+    await Bun.write(join(updateStateDirectory, "global-update-success", "service-running"), "running");
+
     const terminalSnapshots = await pollUntil(
       async () => await Promise.all(startedJobs.map((item) =>
         meshJsonRequest<WorkerUpdateJobReadResponse>(
