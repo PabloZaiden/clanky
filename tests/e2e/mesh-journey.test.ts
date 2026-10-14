@@ -251,7 +251,6 @@ async function createMeshSelectedBranchChat(
       useWorktree: true,
       useSelectedBranchForWorktree: true,
       baseBranch,
-      autoApprovePermissions: true,
     },
   });
   if (response.status !== 201) {
@@ -624,7 +623,6 @@ test("compiled controller and worker support Mesh chats, shared worktrees, and r
           workspaceId: createdWorkspace.body.id,
           model,
           useWorktree: false,
-          autoApprovePermissions: true,
         },
       },
     );

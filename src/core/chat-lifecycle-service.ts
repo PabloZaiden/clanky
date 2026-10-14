@@ -202,7 +202,7 @@ export class ChatLifecycleService implements ChatLifecyclePort {
         useSelectedBranchForWorktree:
           useWorktree && options.useSelectedBranchForWorktree === true,
         ...(useWorktree && options.useChatNameAsBranch ? { useChatNameAsBranch: true } : {}),
-        autoApprovePermissions: options.autoApprovePermissions ?? DEFAULT_CHAT_CONFIG.autoApprovePermissions,
+        autoApprovePermissions: true,
         skipBaseBranchSync: options.syncBaseBranch === false,
         baseBranch: isGitBackedWorkspace(workspace) ? options.baseBranch : undefined,
         createdAt: now,
@@ -303,8 +303,6 @@ export class ChatLifecycleService implements ChatLifecyclePort {
       modelID: sourceChat.config.model.modelID,
       modelVariant: sourceChat.config.model.variant,
       useWorktree: false,
-      autoApprovePermissions: sourceChat.config.autoApprovePermissions
-        ?? DEFAULT_CHAT_CONFIG.autoApprovePermissions,
       syncBaseBranch: true,
     });
   }
@@ -313,7 +311,6 @@ export class ChatLifecycleService implements ChatLifecyclePort {
     return this.createChat({
       ...options,
       scope: "agent",
-      autoApprovePermissions: true,
       prepareWorktreeOnCreate: options.prepareWorktreeOnCreate ?? true,
     });
   }
@@ -345,8 +342,7 @@ export class ChatLifecycleService implements ChatLifecyclePort {
           variant: options.modelVariant ?? "",
         },
         useWorktree: false,
-        autoApprovePermissions: options.autoApprovePermissions
-          ?? DEFAULT_CHAT_CONFIG.autoApprovePermissions,
+        autoApprovePermissions: true,
         createdAt: now,
         updatedAt: now,
         mode: DEFAULT_CHAT_CONFIG.mode,

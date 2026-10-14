@@ -851,7 +851,6 @@ test("compiled Clanky completes its principal local user journey", async () => {
           workspaceId: workspace.id,
           model,
           useWorktree: false,
-          autoApprovePermissions: false,
           baseBranch: git.branch,
         }),
       },
@@ -877,14 +876,6 @@ test("compiled Clanky completes its principal local user journey", async () => {
         }),
       },
     );
-    const awaitingPermission = await waitForChat(
-      application,
-      chat.config.id,
-      (candidate) => candidate.state.pendingPermissionRequests?.some(
-        (permission) => permission.status === "pending",
-      ) ?? false,
-      "chat permission request",
-    );
     const chatSnapshot = (await application.json<ChatSnapshot>(
       `/api/chats/${chat.config.id}/snapshot?full=1`,
     )).data;
@@ -907,16 +898,6 @@ test("compiled Clanky completes its principal local user journey", async () => {
       404,
     );
 
-    const permission = awaitingPermission.state.pendingPermissionRequests!.find(
-      (candidate) => candidate.status === "pending",
-    )!;
-    await application.json(
-      `/api/chats/${chat.config.id}/permissions/${permission.requestId}`,
-      {
-        method: "POST",
-        body: JSON.stringify({ decision: "allow" }),
-      },
-    );
     const awaitingAnswer = await waitForChat(
       application,
       chat.config.id,
@@ -937,11 +918,6 @@ test("compiled Clanky completes its principal local user journey", async () => {
     );
     const settledChat = await waitForChatIdle(application, chat.config.id);
     expect(settledChat.state.status).toBe("idle");
-    expect(
-      settledChat.state.pendingPermissionRequests?.find(
-        (candidate) => candidate.requestId === permission.requestId,
-      ),
-    ).toEqual(expect.objectContaining({ status: "approved", decision: "allow" }));
     expect(
       settledChat.state.harness?.questions?.find(
         (candidate) => candidate.requestId === question.requestId,
@@ -1144,7 +1120,6 @@ test("compiled Clanky completes its principal local user journey", async () => {
           workspaceId: workspace.id,
           model,
           useWorktree: false,
-          autoApprovePermissions: false,
           baseBranch: git.branch,
         }),
       },
@@ -1214,7 +1189,6 @@ test("compiled Clanky completes its principal local user journey", async () => {
           workspaceId: workspace.id,
           model,
           useWorktree: false,
-          autoApprovePermissions: true,
           baseBranch: git.branch,
         }),
       },

@@ -116,7 +116,6 @@ test("users can continue a persisted chat after its provider session is lost", a
             variant: "",
           },
           useWorktree: false,
-          autoApprovePermissions: true,
           baseBranch: git.branch,
         }),
       },
