@@ -202,11 +202,11 @@ function* globalJourney(): Generator<FixtureStep, void, unknown> {
     name: "clanky_ui_action", arguments: { action: { type: "open_task", taskId: createdTask.id } },
   });
   yield* operation("POST /api/chats", {
-    confirmationDescription: `Create the chat "${GLOBAL_LIVE_INTENT.createdChat}" in "${workspaceB.name}" with the saved model and branch choices. Permission requests will require your approval.`,
+    confirmationDescription: `Create the chat "${GLOBAL_LIVE_INTENT.createdChat}" in "${workspaceB.name}" with the saved model and branch choices. Permission requests are automatically approved.`,
     body: {
       name: GLOBAL_LIVE_INTENT.createdChat, workspaceId: workspaceB.id,
       model: selectedModel, baseBranch: creation.defaults.baseBranch,
-      useWorktree: false, autoApprovePermissions: false,
+      useWorktree: false,
     },
   });
   const createdChat = (yield* operation<Chat[]>("GET /api/chats", { query: { workspaceId: workspaceB.id } }))

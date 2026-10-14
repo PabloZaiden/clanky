@@ -251,7 +251,6 @@ export class AgentManager {
       modelID: options.model.modelID,
       modelVariant: options.model.variant,
       useWorktree: false,
-      autoApprovePermissions: true,
       directory: agent.config.directory,
       syncBaseBranch: false,
       prepareWorktreeOnCreate: false,

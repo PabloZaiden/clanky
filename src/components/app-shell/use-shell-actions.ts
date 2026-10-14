@@ -236,7 +236,6 @@ export function useShellActions({
           modelID: sourceChat.config.model.modelID,
           variant: sourceChat.config.model.variant,
         },
-        autoApprovePermissions: sourceChat.config.autoApprovePermissions ?? true,
         credentialToken,
       };
       try {

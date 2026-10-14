@@ -304,7 +304,6 @@ test("compiled Mesh hosts deliver large images to native Codex and Copilot", asy
             workspaceId: createdWorkspace.body.id,
             model: { providerID: model!.providerID, modelID: model!.modelID, variant: "" },
             useWorktree: false,
-            autoApprovePermissions: true,
           },
         },
       );

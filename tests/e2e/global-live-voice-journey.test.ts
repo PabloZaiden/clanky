@@ -232,7 +232,7 @@ test("global Live discovers owned work, resumes its conversation and leaves dele
     const sourceChat = (await application.json<Chat>("/api/chats", {
       method: "POST", body: JSON.stringify({
         name: GLOBAL_LIVE_INTENT.sourceChat, workspaceId: workspaceA.id,
-        model, baseBranch: repositoryA.branch, useWorktree: false, autoApprovePermissions: false,
+        model, baseBranch: repositoryA.branch, useWorktree: false,
       }),
     }, 201)).data;
     await application.json(`/api/chats/${sourceChat.config.id}/messages`, {
