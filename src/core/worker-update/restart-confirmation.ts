@@ -1,0 +1,121 @@
+import { z } from "zod";
+import { DomainError } from "../../domain/domain-error";
+import { closeCommandExecutor, type CommandExecutor } from "../command-executor";
+import { meshManager } from "../mesh-manager";
+
+const RESTART_RECOVERY_TIMEOUT_MS = 20_000;
+const RESTART_POLL_INTERVAL_MS = 1000;
+const RESTART_PROBE_TIMEOUT_MS = 5000;
+const WorkerServiceStatusSchema = z.object({
+  installed: z.boolean(),
+  running: z.boolean(),
+});
+
+export function isWorkerRestartConnectionLoss(error: unknown): boolean {
+  return error instanceof DomainError && (
+    error.code === "mesh_execution_unreachable"
+    || error.code === "mesh_execution_session_invalid"
+    || error.code === "mesh_execution_session_expired"
+  );
+}
+
+function isRecoverableProbeFailure(error: unknown): boolean {
+  return isWorkerRestartConnectionLoss(error)
+    || (error instanceof DomainError && (
+      error.code === "mesh_control_request_unreachable"
+      || error.code === "worker_service_not_running"
+      || ((error.code === "mesh_control_request_rejected"
+        || error.code === "mesh_execution_request_failed")
+        && [502, 503, 504].includes(Number(error.details["status"])))
+    ));
+}
+
+async function checkWorkerService(
+  executor: CommandExecutor,
+  signal: AbortSignal,
+): Promise<void> {
+  const result = await executor.exec("clanky", ["worker", "service", "status"], {
+    signal,
+    timeout: RESTART_PROBE_TIMEOUT_MS,
+    maxOutputBytes: 16 * 1024,
+    logFailures: false,
+  });
+  if (!result.success) {
+    throw new DomainError(
+      "worker_service_status_failed",
+      `Worker service status exited with code ${String(result.exitCode)}.`,
+      { details: { exitCode: result.exitCode } },
+    );
+  }
+  let status: unknown;
+  try {
+    status = JSON.parse(result.stdout);
+  } catch (error) {
+    throw new DomainError(
+      "worker_service_status_invalid",
+      "The worker service status is not valid JSON.",
+      { cause: error },
+    );
+  }
+  const parsed = WorkerServiceStatusSchema.safeParse(status);
+  if (!parsed.success) {
+    throw new DomainError(
+      "worker_service_status_invalid",
+      "The worker service status must report whether it is installed and running.",
+    );
+  }
+  if (!parsed.data.installed || !parsed.data.running) {
+    throw new DomainError(
+      "worker_service_not_running",
+      "The worker service is not installed and running yet.",
+    );
+  }
+}
+
+export async function confirmWorkerRestart({
+  userId,
+  workerNodeId,
+  createExecutor,
+  onRetry,
+}: {
+  userId: string;
+  workerNodeId: string;
+  createExecutor: () => Promise<CommandExecutor>;
+  onRetry: (error: unknown) => void;
+}): Promise<void> {
+  const deadline = performance.now() + RESTART_RECOVERY_TIMEOUT_MS;
+  let lastError: unknown;
+  while (performance.now() < deadline) {
+    const controller = new AbortController();
+    const timer = setTimeout(
+      () => controller.abort(),
+      Math.min(RESTART_PROBE_TIMEOUT_MS, deadline - performance.now()),
+    );
+    let executor: CommandExecutor | undefined;
+    try {
+      await meshManager.checkWorkerReachability(userId, workerNodeId, {
+        signal: controller.signal,
+      });
+      executor = await createExecutor();
+      await checkWorkerService(executor, controller.signal);
+      if (performance.now() < deadline) return;
+    } catch (error) {
+      if (!controller.signal.aborted && !isRecoverableProbeFailure(error)) {
+        throw error;
+      }
+      lastError = error;
+      onRetry(error);
+    } finally {
+      clearTimeout(timer);
+      if (executor) closeCommandExecutor(executor);
+    }
+    const remaining = deadline - performance.now();
+    if (remaining > 0) await Bun.sleep(Math.min(RESTART_POLL_INTERVAL_MS, remaining));
+  }
+  throw new DomainError(
+    "worker_restart_confirmation_timeout",
+    "The worker did not return with an installed, running service within 20 seconds."
+      + (lastError instanceof Error ? ` Last check: ${lastError.message}` : ""),
+    { cause: lastError },
+  );
+}

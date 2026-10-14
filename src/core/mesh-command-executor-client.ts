@@ -1458,7 +1458,7 @@ export class MeshCommandExecutorClient {
       const releaseSlot = await this.acquireRequestSlot(signal);
       try {
         if (signal?.aborted) throw this.requestAbortedError(signal);
-        await this.ensureSession();
+        await this.ensureSession(signal);
         const session = this.session;
         if (!session || !this.route) {
           throw new DomainError("mesh_execution_session_invalid", "The mesh execution session is unavailable.");
@@ -1562,9 +1562,9 @@ export class MeshCommandExecutorClient {
     this.callerNodeId = null;
   }
 
-  private async ensureSession(): Promise<void> {
+  private async ensureSession(signal?: AbortSignal): Promise<void> {
     if (!this.session || this.session.expiresAt <= Date.now()) {
-      await this.openSession();
+      await this.openSession(signal);
     }
   }
 

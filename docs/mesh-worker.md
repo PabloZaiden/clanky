@@ -417,7 +417,8 @@ The service installation keeps the existing worker data and Mesh identity.
 
 ### Update global workers in parallel
 
-From the controller, use **Settings > Workers > Update all global workers** to
+From the controller, use **Settings > Maintenance > Update all global workers**,
+directly below **Restart automatic workspaces**, to
 start one background job per active global Mesh worker. Workspace-exclusive
 workers used by automatic workspaces are excluded. The same owner-only action
 is available through `POST /api/worker-update-jobs`; read progress and logs
@@ -425,9 +426,13 @@ with `GET /api/worker-update-jobs` and `GET /api/worker-update-jobs/:id`.
 
 Jobs run concurrently across workers. Each runs `clanky update` first and
 restarts the worker service with `clanky worker service restart` only after the
-update succeeds. If the update fails, the restart is skipped. A worker service
-restart can interrupt the Mesh connection; when its result cannot be confirmed,
-the job is marked unconfirmed/interrupted rather than successful. Jobs and
+update succeeds. If the update fails, the restart is skipped. After restart,
+the job waits up to 20 seconds, polling every second, for a fresh signed Mesh
+health check and a new execution connection to confirm that the worker service
+is installed and running. Losing the restart command's response does not by
+itself interrupt the job, and the restart command is not resent. Explicit
+command failures remain failures; recovery that cannot be confirmed within the
+deadline is marked unconfirmed/interrupted rather than successful. Jobs and
 their logs remain on the Dashboard until dismissed.
 
 ## Automatic workspace runtimes
