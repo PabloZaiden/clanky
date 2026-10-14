@@ -415,6 +415,21 @@ clanky worker service install
 
 The service installation keeps the existing worker data and Mesh identity.
 
+### Update global workers in parallel
+
+From the controller, use **Settings > Workers > Update all global workers** to
+start one background job per active global Mesh worker. Workspace-exclusive
+workers used by automatic workspaces are excluded. The same owner-only action
+is available through `POST /api/worker-update-jobs`; read progress and logs
+with `GET /api/worker-update-jobs` and `GET /api/worker-update-jobs/:id`.
+
+Jobs run concurrently across workers. Each runs `clanky update` first and
+restarts the worker service with `clanky worker service restart` only after the
+update succeeds. If the update fails, the restart is skipped. A worker service
+restart can interrupt the Mesh connection; when its result cannot be confirmed,
+the job is marked unconfirmed/interrupted rather than successful. Jobs and
+their logs remain on the Dashboard until dismissed.
+
 ## Automatic workspace runtimes
 
 Automatic workspace creation selects **ACP**, **GitHub Copilot**, **Codex**, or

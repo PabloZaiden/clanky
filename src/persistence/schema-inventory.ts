@@ -103,6 +103,8 @@ export const SCHEMA_TABLE_INVENTORY: readonly SchemaTableDefinition[] = [
   currentTable("review_comments", "clanky"),
   currentTable("sessions", "clanky"),
   currentTable("terminal_sessions", "clanky"),
+  currentTable("worker_update_job_logs", "clanky"),
+  currentTable("worker_update_jobs", "clanky"),
   currentTable("provisioning_job_logs", "clanky"),
   currentTable("provisioning_jobs", "clanky"),
   currentTable("task_transcript_meta", "clanky", {

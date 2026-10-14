@@ -32,6 +32,7 @@ const ROUTE_VIEWS = [
   "execution-host",
   "execution-host-files",
   "provisioning-job",
+  "worker-update-job",
   "compose",
   "rebuild-workspace",
   "restart-workspace",

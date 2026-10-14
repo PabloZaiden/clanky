@@ -7,18 +7,27 @@ import {
   enrollMeshWorker,
   meshJsonRequest,
   meshNodeDiagnostics,
+  restartMeshNode,
   startMeshNode,
   stopMeshNode,
   type ManagedMeshNode,
 } from "./support/mesh-cluster";
 import { pollUntil } from "./support/polling";
 import { MESH_OPERATION_TIMEOUT_MS } from "./support/timeouts";
-import { installExternalNativeCopilotProvider } from "./support/provider";
-import { createGitFixture } from "./support/git";
+import {
+  installExternalNativeCopilotProvider,
+  installExternalWorkerUpdateCommand,
+} from "./support/provider";
+import { createGitFixture, gitStatus } from "./support/git";
 import { startMeshDevboxFixture } from "./support/mesh-devbox";
 
 interface ControllerStatus {
-  workers: Array<{ workerNodeId: string }>;
+  workers: Array<{
+    workerNodeId: string;
+    workerInstanceName: string | null;
+    registrationScope?: "global" | "workspace";
+    grantStatus: string;
+  }>;
 }
 
 interface ExecutionHost {
@@ -54,6 +63,52 @@ interface ChatSnapshot {
   transcript: { messages: Array<{ role: string; content: string }> };
 }
 
+interface WorkerUpdateJob {
+  config: {
+    id: string;
+    workerNodeId: string;
+    workerName: string;
+  };
+  state: {
+    status: "pending" | "running" | "completed" | "failed" | "interrupted";
+    steps: {
+      update: { status: string };
+      restart: { status: string };
+    };
+  };
+}
+
+interface WorkerUpdateJobReadResponse {
+  job?: WorkerUpdateJob;
+  logs?: Array<{ text: string }>;
+}
+
+interface StartWorkerUpdatesResponse {
+  success: boolean;
+  totalWorkers: number;
+  results: Array<
+    | {
+        workerNodeId: string;
+        workerName: string;
+        status: "started";
+        jobId: string;
+      }
+    | {
+        workerNodeId: string;
+        workerName: string;
+        status: "not_started";
+        reason: "already_active";
+        error: string;
+      }
+    | {
+        workerNodeId: string;
+        workerName: string;
+        status: "failed";
+        error: string;
+      }
+  >;
+}
+
 async function runAutomaticWorkspaceJob(
   controller: ManagedMeshNode,
   request: Record<string, unknown>,
@@ -83,7 +138,12 @@ test("users can maintain and retire an automatic workspace while planning and ch
     await installExternalNativeCopilotProvider(bin);
     devbox = await startMeshDevboxFixture(bin);
     const command = await compiledClankyCommand();
-    const controller = await startMeshNode({ role: "controller", command, instanceName: "independent-controller" });
+    const controller = await startMeshNode({
+      role: "controller",
+      command,
+      instanceName: "independent-controller",
+    });
+
     nodes.push(controller);
     const home = join(fixtureDirectory, "worker-home");
     await mkdir(home);
@@ -215,5 +275,282 @@ test("users can maintain and retire an automatic workspace while planning and ch
     const errors = cleanup.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
     await rm(fixtureDirectory, { recursive: true, force: true });
     if (errors.length) throw new AggregateError(failure ? [failure, ...errors] : errors, "Independent worker teardown failed");
+  }
+});
+
+test("controller updates global Mesh workers concurrently and retains per-worker outcomes", async () => {
+  const fixtureDirectory = await mkdtemp(join(tmpdir(), "clanky-worker-update-"));
+  const binDirectory = join(fixtureDirectory, "bin");
+  const updateStateDirectory = join(fixtureDirectory, "update-state");
+  const updateReleasePath = join(updateStateDirectory, "release-update");
+  const successHome = join(fixtureDirectory, "success-home");
+  const failureHome = join(fixtureDirectory, "failure-home");
+  const nodes: ManagedMeshNode[] = [];
+  let devbox: Awaited<ReturnType<typeof startMeshDevboxFixture>> | undefined;
+  let failure: unknown;
+  let gitStatusDescription = "not created";
+  let lastObservedPublicState = "No worker update state observed.";
+  try {
+    await Promise.all([
+      mkdir(updateStateDirectory, { recursive: true, mode: 0o700 }),
+      mkdir(successHome, { recursive: true, mode: 0o700 }),
+      mkdir(failureHome, { recursive: true, mode: 0o700 }),
+      installExternalNativeCopilotProvider(binDirectory),
+      installExternalWorkerUpdateCommand(binDirectory),
+    ]);
+    devbox = await startMeshDevboxFixture(binDirectory);
+
+    const command = await compiledClankyCommand();
+    const controller = await startMeshNode({
+      role: "controller",
+      command,
+      instanceName: "worker-update-controller",
+    });
+    nodes.push(controller);
+
+    const workerPath = `${binDirectory}${delimiter}${process.env["PATH"] ?? ""}`;
+    const successfulWorker = await startMeshNode({
+      role: "worker",
+      command,
+      instanceName: "global-update-success",
+      environment: {
+        HOME: successHome,
+        PATH: workerPath,
+        CLANKY_E2E_WORKER_UPDATE_STATE_DIR: updateStateDirectory,
+        CLANKY_E2E_WORKER_UPDATE_ID: "global-update-success",
+      },
+    });
+    nodes.push(successfulWorker);
+    const failingWorker = await startMeshNode({
+      role: "worker",
+      command,
+      instanceName: "global-update-failure",
+      environment: {
+        HOME: failureHome,
+        PATH: workerPath,
+        CLANKY_E2E_WORKER_UPDATE_STATE_DIR: updateStateDirectory,
+        CLANKY_E2E_WORKER_UPDATE_ID: "global-update-failure",
+        CLANKY_E2E_WORKER_UPDATE_FAIL: "true",
+      },
+    });
+    nodes.push(failingWorker);
+
+    await enrollMeshWorker(controller, successfulWorker);
+    await enrollMeshWorker(controller, failingWorker);
+
+    const globalRegistrations = await pollUntil(
+      async () => await meshJsonRequest<ControllerStatus>(controller, "/api/mesh/status"),
+      (response) => response.status === 200
+        && response.body.workers.filter(
+          (worker) => worker.grantStatus === "active" && worker.registrationScope !== "workspace",
+        ).length === 2,
+      {
+        description: "both global workers to become active",
+        timeoutMs: MESH_OPERATION_TIMEOUT_MS,
+        formatLastObserved: (response) => JSON.stringify(response),
+      },
+    );
+    const successfulRegistration = globalRegistrations.body.workers.find(
+      (worker) => worker.workerInstanceName === "global-update-success",
+    );
+    const failingRegistration = globalRegistrations.body.workers.find(
+      (worker) => worker.workerInstanceName === "global-update-failure",
+    );
+    if (!successfulRegistration || !failingRegistration) {
+      throw new Error("The active global worker registrations were not returned.");
+    }
+
+    const gitFixture = await createGitFixture(successfulWorker.dataDir);
+    gitStatusDescription = await gitStatus(gitFixture) || "clean";
+    const hosts = await meshJsonRequest<ExecutionHost[]>(controller, "/api/execution-hosts");
+    expect(hosts.status).toBe(200);
+    const successfulHost = hosts.body.find(
+      (host) => host.ref.kind === "mesh" && host.ref.nodeId === successfulRegistration.workerNodeId,
+    );
+    if (!successfulHost) {
+      throw new Error("The successful global worker execution host is unavailable.");
+    }
+
+    await runAutomaticWorkspaceJob(controller, {
+      name: "Workspace worker exclusion fixture",
+      executionHost: successfulHost.ref,
+      transport: "worker",
+      workerEnrollmentRoute: "direct",
+      workerHostAddress: "127.0.0.1",
+      workerHostAddressManual: true,
+      repoUrl: gitFixture.remoteDirectory,
+      basePath: join(fixtureDirectory, "automatic-workspace"),
+      devcontainerSubpath: null,
+      devboxTemplate: null,
+      githubUser: null,
+      provider: "copilot",
+      adapter: "copilot",
+      credentialToken: null,
+      mode: "provision",
+      targetDirectory: null,
+      workspaceId: null,
+    });
+    const workspaceRegistrations = await pollUntil(
+      async () => await meshJsonRequest<ControllerStatus>(controller, "/api/mesh/status"),
+      (response) => response.status === 200
+        && response.body.workers.some(
+          (worker) => worker.registrationScope === "workspace" && worker.grantStatus === "active",
+        ),
+      {
+        description: "automatic workspace worker registration",
+        timeoutMs: MESH_OPERATION_TIMEOUT_MS,
+        formatLastObserved: (response) => JSON.stringify(response),
+      },
+    );
+    const automaticWorker = workspaceRegistrations.body.workers.find(
+      (worker) => worker.registrationScope === "workspace",
+    );
+    if (!automaticWorker) {
+      throw new Error("The automatic workspace worker registration is unavailable.");
+    }
+    const expectedGlobalWorkerIds = new Set([
+      successfulRegistration.workerNodeId,
+      failingRegistration.workerNodeId,
+    ]);
+
+    const admission = await meshJsonRequest<StartWorkerUpdatesResponse>(
+      controller,
+      "/api/worker-update-jobs",
+      { method: "POST" },
+    );
+    expect(admission.status, JSON.stringify(admission.body)).toBe(202);
+    expect(admission.body.totalWorkers).toBe(2);
+    expect(admission.body.results).toHaveLength(2);
+    expect(admission.body.results.every((item) => item.status === "started")).toBe(true);
+    const startedJobs = admission.body.results.filter(
+      (item): item is Extract<StartWorkerUpdatesResponse["results"][number], { status: "started" }> =>
+        item.status === "started",
+    );
+    expect(new Set(startedJobs.map((item) => item.workerNodeId))).toEqual(expectedGlobalWorkerIds);
+    expect(startedJobs.some((item) => item.workerNodeId === automaticWorker.workerNodeId)).toBe(false);
+
+    const concurrentStarts = await pollUntil(
+      async () => ({
+        successful: await Bun.file(join(updateStateDirectory, "global-update-success", "update-started")).exists(),
+        failing: await Bun.file(join(updateStateDirectory, "global-update-failure", "update-started")).exists(),
+      }),
+      (state) => state.successful && state.failing,
+      {
+        description: "both global update commands to start concurrently",
+        timeoutMs: MESH_OPERATION_TIMEOUT_MS,
+        formatLastObserved: (state) => {
+          lastObservedPublicState = JSON.stringify(state);
+          return lastObservedPublicState;
+        },
+      },
+    );
+    expect(concurrentStarts.successful && concurrentStarts.failing).toBe(true);
+
+    const repeatedAdmissions = await Promise.all([
+      meshJsonRequest<StartWorkerUpdatesResponse>(
+        controller,
+        "/api/worker-update-jobs",
+        { method: "POST" },
+      ),
+      meshJsonRequest<StartWorkerUpdatesResponse>(
+        controller,
+        "/api/worker-update-jobs",
+        { method: "POST" },
+      ),
+    ]);
+    for (const repeatedAdmission of repeatedAdmissions) {
+      expect(repeatedAdmission.status, JSON.stringify(repeatedAdmission.body)).toBe(202);
+      expect(repeatedAdmission.body.results).toHaveLength(2);
+      expect(repeatedAdmission.body.results.every(
+        (item) => item.status === "not_started" && item.reason === "already_active",
+      )).toBe(true);
+    }
+
+    await Bun.write(updateReleasePath, "release");
+
+    const terminalSnapshots = await pollUntil(
+      async () => await Promise.all(startedJobs.map((item) =>
+        meshJsonRequest<WorkerUpdateJobReadResponse>(
+          controller,
+          `/api/worker-update-jobs/${encodeURIComponent(item.jobId)}`,
+        ),
+      )),
+      (responses) => responses.every((response) =>
+        response.status === 200
+        && ["completed", "failed", "interrupted"].includes(response.body.job?.state.status ?? ""),
+      ),
+      {
+        description: "both worker update jobs to finish",
+        timeoutMs: MESH_OPERATION_TIMEOUT_MS,
+        formatLastObserved: (responses) => {
+          lastObservedPublicState = JSON.stringify(responses);
+          return lastObservedPublicState;
+        },
+      },
+    );
+    const successfulJob = terminalSnapshots.find(
+      (response) => response.body.job?.config.workerNodeId === successfulRegistration.workerNodeId,
+    )?.body.job;
+    const failedJob = terminalSnapshots.find(
+      (response) => response.body.job?.config.workerNodeId === failingRegistration.workerNodeId,
+    )?.body.job;
+    if (!successfulJob || !failedJob) {
+      throw new Error("Per-worker update job results were not returned.");
+    }
+    expect(successfulJob.state.status).toBe("completed");
+    expect(successfulJob.state.steps.update.status).toBe("succeeded");
+    expect(successfulJob.state.steps.restart.status).toBe("succeeded");
+    expect(failedJob.state.status).toBe("failed");
+    expect(failedJob.state.steps.update.status).toBe("failed");
+    expect(failedJob.state.steps.restart.status).toBe("skipped");
+    expect(await Bun.file(join(updateStateDirectory, "global-update-success", "restart-started")).exists()).toBe(true);
+    expect(await Bun.file(join(updateStateDirectory, "global-update-failure", "restart-started")).exists()).toBe(false);
+
+    await restartMeshNode(controller);
+    const retainedJobs = await meshJsonRequest<{ jobs: WorkerUpdateJob[] }>(
+      controller,
+      "/api/worker-update-jobs",
+    );
+    expect(retainedJobs.status).toBe(200);
+    expect(retainedJobs.body.jobs).toHaveLength(2);
+    expect(new Set(retainedJobs.body.jobs.map((job) => job.config.workerNodeId)))
+      .toEqual(expectedGlobalWorkerIds);
+
+    const retainedFailure = await meshJsonRequest<WorkerUpdateJobReadResponse>(
+      controller,
+      `/api/worker-update-jobs/${encodeURIComponent(failedJob.config.id)}`,
+    );
+    expect(retainedFailure.status).toBe(200);
+    expect(retainedFailure.body.job?.state.steps.restart.status).toBe("skipped");
+    expect(retainedFailure.body.logs?.length ?? 0).toBeGreaterThan(0);
+  } catch (error) {
+    failure = new Error(
+      `Worker update journey failed: ${String(error)}\nLast public state: ${lastObservedPublicState}\nGit status: ${gitStatusDescription}\n${nodes.map(meshNodeDiagnostics).join("\n")}\n${devbox?.diagnostics() ?? ""}`,
+      { cause: error },
+    );
+    throw failure;
+  } finally {
+    let releaseError: unknown;
+    try {
+      await mkdir(updateStateDirectory, { recursive: true, mode: 0o700 });
+      await Bun.write(updateReleasePath, "release");
+    } catch (error) {
+      releaseError = error;
+    }
+    const cleanup = await Promise.allSettled([
+      ...nodes.toReversed().map(stopMeshNode),
+      devbox?.stop(),
+    ]);
+    const errors = [
+      ...(releaseError ? [releaseError] : []),
+      ...cleanup.flatMap((result) => result.status === "rejected" ? [result.reason] : []),
+    ];
+    await rm(fixtureDirectory, { recursive: true, force: true });
+    if (errors.length) {
+      throw new AggregateError(
+        failure ? [failure, ...errors] : errors,
+        "Worker update teardown failed",
+      );
+    }
   }
 });

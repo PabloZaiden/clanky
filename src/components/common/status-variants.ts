@@ -1,4 +1,11 @@
-import type { AgentStatus, ChatStatus, ProvisioningJobStatus, TerminalSessionStatus } from "@/shared";
+import type {
+  AgentStatus,
+  ChatStatus,
+  ProvisioningJobStatus,
+  TerminalSessionStatus,
+  WorkerUpdateJobStatus,
+  WorkerUpdateStepStatus,
+} from "@/shared";
 import type { BadgeVariant } from "@pablozaiden/webapp/web";
 
 export function getChatStatusBadgeVariant(status: ChatStatus): BadgeVariant {
@@ -89,5 +96,56 @@ export function getProvisioningStatusLabel(status: ProvisioningJobStatus): strin
     case "failed": return "Failed";
     case "cancelled": return "Cancelled";
     case "interrupted": return "Interrupted";
+  }
+}
+
+export function getWorkerUpdateStatusBadgeVariant(status: WorkerUpdateJobStatus): BadgeVariant {
+  switch (status) {
+    case "pending":
+    case "running":
+      return "running";
+    case "completed":
+      return "completed";
+    case "failed":
+      return "failed";
+    case "interrupted":
+      return "warning";
+  }
+}
+
+export function getWorkerUpdateStatusLabel(status: WorkerUpdateJobStatus): string {
+  switch (status) {
+    case "pending": return "Pending";
+    case "running": return "Running";
+    case "completed": return "Completed";
+    case "failed": return "Failed";
+    case "interrupted": return "Interrupted";
+  }
+}
+
+export function getWorkerUpdateStepStatusBadgeVariant(status: WorkerUpdateStepStatus): BadgeVariant {
+  switch (status) {
+    case "pending":
+      return "default";
+    case "running":
+      return "running";
+    case "succeeded":
+      return "completed";
+    case "failed":
+      return "failed";
+    case "skipped":
+    case "unconfirmed":
+      return "warning";
+  }
+}
+
+export function getWorkerUpdateStepStatusLabel(status: WorkerUpdateStepStatus): string {
+  switch (status) {
+    case "pending": return "Pending";
+    case "running": return "Running";
+    case "succeeded": return "Succeeded";
+    case "failed": return "Failed";
+    case "skipped": return "Skipped";
+    case "unconfirmed": return "Unconfirmed";
   }
 }

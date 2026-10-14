@@ -6,6 +6,7 @@ import {
   type ExecutionHostDescriptor,
   type PublicProvisioningJob,
   type Workspace,
+  type WorkerUpdateJob,
 } from "@/shared";
 import { ConfirmModal, EmptyState, Panel, useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
 import type { DismissAllProvisioningJobsResult, useTaskGrouping } from "../../hooks";
@@ -24,6 +25,7 @@ import {
 import { isEffectivelyPrivate, shouldObscurePrivateItem } from "../../lib/private-items";
 import { ClankyListRow } from "./clanky-list-row";
 import { ServerTransportIcon } from "./server-sidebar-item";
+import { WorkerUpdateJobsSection } from "./worker-update-jobs-section";
 import { WorkspaceIdentity } from "../common";
 import {
   ActiveWorkMetadata,
@@ -163,6 +165,7 @@ export function OverviewView({
   provisioningJobs,
   onDismissAllProvisioningJobs,
   dismissingAllProvisioningJobs,
+  workerUpdateJobs,
   showPrivateItems = false,
 }: {
   executionHosts: ExecutionHostDescriptor[];
@@ -176,6 +179,7 @@ export function OverviewView({
   provisioningJobs: PublicProvisioningJob[];
   onDismissAllProvisioningJobs: () => Promise<DismissAllProvisioningJobsResult>;
   dismissingAllProvisioningJobs: boolean;
+  workerUpdateJobs: WorkerUpdateJob[];
   showPrivateItems?: boolean;
 }) {
   const toast = useToast();
@@ -397,6 +401,8 @@ export function OverviewView({
           </div>
         </Panel>
       ) : null}
+
+      <WorkerUpdateJobsSection jobs={workerUpdateJobs} onNavigate={onNavigate} />
 
       <ConfirmModal
         isOpen={dismissConfirmOpen}
