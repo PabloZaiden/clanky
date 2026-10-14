@@ -6,8 +6,15 @@ export interface ImageViewerModalImage {
   src: string;
   alt: string;
   title: string;
+  mimeType?: string;
   description?: string;
 }
+
+const SVG_PREVIEW_BACKGROUND = {
+  backgroundColor: "#fff",
+  backgroundImage: "conic-gradient(#d1d5db 25%, #fff 0 50%, #d1d5db 0 75%, #fff 0)",
+  backgroundSize: "16px 16px",
+};
 
 interface ImageViewerModalProps {
   image: ImageViewerModalImage | null;
@@ -37,6 +44,9 @@ function openImageWindow(blob: Blob, image: ImageViewerModalImage): void {
     viewport.content = "width=device-width, initial-scale=1";
     imageDocument.head.appendChild(viewport);
     imageDocument.body.style.cssText = "margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; background: #111;";
+    if (image.mimeType === "image/svg+xml") {
+      Object.assign(imageDocument.body.style, SVG_PREVIEW_BACKGROUND);
+    }
 
     const standaloneImage = imageDocument.createElement("img");
     standaloneImage.alt = image.alt;
@@ -118,7 +128,10 @@ export function ImageViewerModal({
         </div>
       ) : image && (
         <div className="space-y-3">
-          <div className="flex items-center justify-center rounded-lg bg-neutral-950 p-2 sm:p-4">
+          <div
+            className="flex items-center justify-center rounded-lg bg-neutral-950 p-2 sm:p-4"
+            style={image.mimeType === "image/svg+xml" ? SVG_PREVIEW_BACKGROUND : undefined}
+          >
             <button
               type="button"
               disabled={!currentOpenState?.blob}
