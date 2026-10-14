@@ -18,6 +18,7 @@ import {
   useTaskGrouping,
   useTasks,
   useTerminalSessions,
+  useWorkerUpdateJobs,
   useWorkspaces,
   useVoiceSettings,
 } from "../../hooks";
@@ -103,6 +104,7 @@ export function useShellResources(route: WebAppRoute) {
   const voiceSettings = useVoiceSettings();
   const dashboardData = useDashboardData();
   const provisioning = useProvisioningJob();
+  const workerUpdates = useWorkerUpdateJobs();
   const { workspaceGroups: allWorkspaceGroups } = useTaskGrouping(
     tasks,
     workspaces,
@@ -168,6 +170,7 @@ export function useShellResources(route: WebAppRoute) {
     workspaceError,
     agents.error,
     provisioning.jobsError,
+    workerUpdates.jobsError,
     executionHosts.error,
   ].filter((error): error is string => Boolean(error));
   const routeSelection = getShellRouteSelection(route, {
@@ -238,6 +241,7 @@ export function useShellResources(route: WebAppRoute) {
     voiceSettings,
     dashboardData,
     provisioning,
+    workerUpdates,
     workspaceGroups,
     allWorkspaceGroups,
     sidebarWorkspaceGroups,

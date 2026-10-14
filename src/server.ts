@@ -33,6 +33,7 @@ import { agentScheduler } from "./core/agent-scheduler";
 import { getAppConfig } from "./core/config";
 import { managedCredentialService } from "./core/managed-credential-service";
 import { provisioningManager } from "./core/provisioning-manager";
+import { workerUpdateManager } from "./core/worker-update-manager";
 import { meshManager } from "./core/mesh-manager";
 import {
   agentEventEmitter,
@@ -44,6 +45,7 @@ import {
   meshStateEventEmitter,
   harnessEventEmitter,
   clientActionEventEmitter,
+  workerUpdateEventEmitter,
 } from "./core/event-emitter";
 import type { EventContext } from "./core/event-emitter";
 import {
@@ -173,6 +175,7 @@ function registerClankyRealtimeBridge(appServer: WebAppServer<ClankyRealtimeEven
     meshStateEventEmitter.subscribe(publishEvent),
     harnessEventEmitter.subscribe(publishEvent),
     clientActionEventEmitter.subscribe(publishEvent),
+    workerUpdateEventEmitter.subscribe(publishEvent),
   ];
 }
 
@@ -188,6 +191,7 @@ async function reconcileStartupState(): Promise<void> {
     staleManagedContextsRevoked += await managedCredentialService.reconcileCurrentUser();
     await meshManager.reconcileWorkspaceWorkerEnrollments(user.id);
     await provisioningManager.reconcileDedicatedWorkerStartupState();
+    workerUpdateManager.reconcileStartupState();
   });
   if (staleTasksReset > 0) {
     log.info(`Reconciled ${staleTasksReset} stale tasks during startup`);

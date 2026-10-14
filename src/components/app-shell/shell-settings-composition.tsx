@@ -24,6 +24,7 @@ import type {
   UseSchedulerTimezoneResult,
   UseVoiceSettingsResult,
 } from "../../hooks";
+import type { UseWorkerUpdateJobsResult } from "../../hooks/useWorkerUpdateJobs";
 
 export interface ShellSettingsCompositionOptions {
   quickChatSettings: UseQuickChatSettingsResult;
@@ -43,6 +44,7 @@ export interface ShellSettingsCompositionOptions {
   workspacesLoading: boolean;
   refreshTasks: () => Promise<void>;
   mesh: UseMeshResult;
+  workerUpdates: UseWorkerUpdateJobsResult;
   voiceSettings: UseVoiceSettingsResult;
 }
 
@@ -61,6 +63,7 @@ export function buildShellSettingsSections({
   workspacesLoading,
   refreshTasks,
   mesh,
+  workerUpdates,
   voiceSettings,
 }: ShellSettingsCompositionOptions): ShellSettingsSections {
   const selectedQuickChatWorkspace = workspaces.find(
@@ -172,7 +175,7 @@ export function buildShellSettingsSections({
       scope: "owner" as const,
       // The framework settings row model cannot collapse a section, so this
       // custom render keeps Mesh and the owner-only relay in one collapsed list.
-      render: () => <WorkersSettingsSection mesh={mesh} />,
+      render: () => <WorkersSettingsSection mesh={mesh} workerUpdates={workerUpdates} />,
     },
     {
       id: "voice",

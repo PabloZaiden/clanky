@@ -12,6 +12,7 @@ import {
 import {
   getExecutionHostSourceId,
   isProvisioningJobTerminal,
+  isWorkerUpdateJobTerminal,
   type Chat,
   type ExecutionHostDescriptor,
   type Task,
@@ -22,6 +23,7 @@ import type { WorkspaceGroup } from "../../hooks/useTaskGrouping";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import type { UseAgentsResult } from "../../hooks/useAgents";
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
+import type { UseWorkerUpdateJobsResult } from "../../hooks/useWorkerUpdateJobs";
 import { ChatDetails } from "../ChatDetails";
 import { TaskDetails } from "../TaskDetails";
 import { TerminalSessionDetails } from "../terminal/terminal-session-details";
@@ -37,6 +39,7 @@ import { CodeExplorerView } from "./code-explorer-view";
 import { WorkspaceScratchpadView } from "./workspace-scratchpad-view";
 import { AgentsView } from "./agents-view";
 import { ProvisioningJobView } from "../ProvisioningJobView";
+import { WorkerUpdateJobView } from "../WorkerUpdateJobView";
 import type {
   CodeExplorerTarget,
   SidebarExecutionHostNode,
@@ -127,6 +130,7 @@ export interface ShellMainContentProps {
 
   // Provisioning
   provisioning: UseProvisioningJobResult;
+  workerUpdates: UseWorkerUpdateJobsResult;
 
   // Toast
   toast: import("@pablozaiden/webapp/web").ToastService;
@@ -307,6 +311,91 @@ function ProvisioningJobRouteView({
         onConfirm={() => void handleDismiss()}
         title="Dismiss provisioning job?"
         message="This permanently removes the job, its logs, and its retry configuration."
+        confirmLabel="Dismiss"
+        loading={dismissing}
+        variant="danger"
+      />
+    </>
+  );
+}
+
+function WorkerUpdateJobRouteView({
+  route,
+  workerUpdates,
+  navigateWithinShell,
+}: {
+  route: WebAppRoute;
+  workerUpdates: UseWorkerUpdateJobsResult;
+  navigateWithinShell: (route: WebAppRoute) => void;
+}) {
+  const [dismissConfirmOpen, setDismissConfirmOpen] = useState(false);
+  const [dismissing, setDismissing] = useState(false);
+  const workerUpdateJobId = getRouteString(route, "workerUpdateJobId");
+
+  useEffect(() => {
+    if (workerUpdateJobId) {
+      workerUpdates.openJob(workerUpdateJobId);
+    }
+  }, [workerUpdateJobId, workerUpdates.openJob]);
+
+  if (!workerUpdateJobId) {
+    return missingRouteParameter(route.view, "workerUpdateJobId");
+  }
+
+  const snapshot = workerUpdates.snapshot?.job.config.id === workerUpdateJobId
+    ? workerUpdates.snapshot
+    : null;
+  const status = snapshot?.job.state.status;
+  const isTerminal = status !== undefined && isWorkerUpdateJobTerminal(status);
+
+  async function handleDismiss(): Promise<void> {
+    setDismissing(true);
+    try {
+      const dismissed = await workerUpdates.dismissJob(workerUpdateJobId);
+      if (dismissed) {
+        setDismissConfirmOpen(false);
+        navigateWithinShell({ view: "home" });
+      }
+    } finally {
+      setDismissing(false);
+    }
+  }
+
+  const headerMenuActions = useMemo<ActionMenuItem[]>(() => {
+    if (!snapshot || !isTerminal) {
+      return [];
+    }
+    return [{
+      id: "dismiss",
+      label: "Dismiss",
+      destructive: true,
+      disabled: dismissing,
+      onAction: () => setDismissConfirmOpen(true),
+    }];
+  }, [dismissing, isTerminal, snapshot]);
+  useHeaderActions({ overflow: headerMenuActions });
+
+  return (
+    <>
+      <div className="space-y-4">
+        <Panel title="Worker update">
+          <WorkerUpdateJobView
+            snapshot={snapshot}
+            loading={workerUpdates.loading || workerUpdates.activeJobId !== workerUpdateJobId}
+            error={workerUpdates.error}
+          />
+        </Panel>
+      </div>
+      <ConfirmModal
+        isOpen={dismissConfirmOpen}
+        onClose={() => {
+          if (!dismissing) {
+            setDismissConfirmOpen(false);
+          }
+        }}
+        onConfirm={() => void handleDismiss()}
+        title="Dismiss worker update job?"
+        message="This permanently removes the job and its logs."
         confirmLabel="Dismiss"
         loading={dismissing}
         variant="danger"
@@ -708,6 +797,16 @@ function renderMainContent(props: ShellMainContentProps) {
     );
   }
 
+  if (route.view === "worker-update-job") {
+    return (
+      <WorkerUpdateJobRouteView
+        route={route}
+        workerUpdates={props.workerUpdates}
+        navigateWithinShell={navigateWithinShell}
+      />
+    );
+  }
+
   if (route.view === "rebuild-workspace" || route.view === "restart-workspace") {
     if (!selectedWorkspace) {
       return (
@@ -775,6 +874,7 @@ function renderMainContent(props: ShellMainContentProps) {
       provisioningJobs={props.provisioning.jobs}
       onDismissAllProvisioningJobs={props.provisioning.dismissAllJobs}
       dismissingAllProvisioningJobs={props.provisioning.dismissingAllJobs}
+      workerUpdateJobs={props.workerUpdates.jobs}
       showPrivateItems={showPrivateItems}
     />
   );
