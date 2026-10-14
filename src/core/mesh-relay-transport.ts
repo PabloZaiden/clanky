@@ -58,6 +58,7 @@ export function createMeshRelayPeerTransport(
       return await performMeshRelayHttpRequest(stream, {
         body: request.body ?? null,
         ...(request.signal ? { signal: request.signal } : {}),
+        onDispatch: request.onDispatch,
       });
     },
 

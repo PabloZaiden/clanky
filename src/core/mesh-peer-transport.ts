@@ -9,6 +9,7 @@ export interface MeshPeerRequest {
   body?: BodyInit | null;
   signal?: AbortSignal;
   fetch?: typeof globalThis.fetch;
+  onDispatch?: () => void;
 }
 
 export interface MeshSocketEventMap {
@@ -104,10 +105,13 @@ const directTransport: MeshPeerTransport = {
         "The direct Mesh transport requires a direct route.",
       );
     }
-    const { fetch: fetchImpl = globalThis.fetch, ...init } = request;
-    return fetchImpl(resolveMeshRoute(route.endpoint, path), {
+    const { fetch: fetchImpl = globalThis.fetch, onDispatch, ...init } = request;
+    const url = resolveMeshRoute(route.endpoint, path);
+    const tls = directTlsOptions(route);
+    onDispatch?.();
+    return fetchImpl(url, {
       ...init,
-      tls: directTlsOptions(route),
+      tls,
     });
   },
 

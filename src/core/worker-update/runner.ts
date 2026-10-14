@@ -15,9 +15,14 @@ import {
   updateWorkerUpdateJob,
 } from "../../persistence/worker-update-jobs";
 import { getWorkerRegistrationExecutionHostRef } from "../../persistence/mesh";
-import { closeCommandExecutor, type CommandExecutor } from "../command-executor";
+import { closeCommandExecutor, type CommandExecutor, type CommandResult } from "../command-executor";
 import { executionHostService } from "../execution-host-service";
 import { emitWorkerUpdateJobChanged } from "./job-events";
+import {
+  confirmWorkerRestart,
+  isWorkerRestartResponseLoss,
+  WORKER_RESTART_TIMEOUT_MS,
+} from "./restart-confirmation";
 
 const log = createLogger("core:worker-update-runner");
 const MAX_COMMAND_OUTPUT_BYTES = 128 * 1024;
@@ -91,39 +96,7 @@ export class WorkerUpdateJobRunner {
         "update",
       );
 
-      job = this.beginStep(userId, job, "restart");
-      this.appendLog(
-        userId,
-        job,
-        "system",
-        "Starting clanky worker service restart.",
-        "restart",
-      );
-      commandInFlight = "restart";
-      const restartResult = await executor.exec(
-        "clanky",
-        ["worker", "service", "restart"],
-        this.commandOptions(userId, job, "restart"),
-      );
-      if (!restartResult.success) {
-        const error = new DomainError(
-          "worker_restart_command_failed",
-          `clanky worker service restart exited with code ${String(restartResult.exitCode)}.`,
-        );
-        job = this.failStep(userId, job, "restart", error, restartResult.exitCode);
-        commandInFlight = null;
-        return;
-      }
-      job = this.succeedStep(userId, job, "restart", restartResult.exitCode);
-      commandInFlight = null;
-      this.appendLog(
-        userId,
-        job,
-        "system",
-        `clanky worker service restart succeeded with exit code ${String(restartResult.exitCode)}.`,
-        "restart",
-      );
-      this.completeJob(userId, job);
+      await this.restartWorker({ userId, initialJob: job, worker, executor });
     } catch (error) {
       this.reconcileUnexpectedFailure(userId, job, commandInFlight, error);
     } finally {
@@ -139,6 +112,92 @@ export class WorkerUpdateJobRunner {
         }
       }
     }
+  }
+
+  private async restartWorker({
+    userId,
+    initialJob,
+    worker,
+    executor,
+  }: {
+    userId: string;
+    initialJob: WorkerUpdateJob;
+    worker: MeshWorkerRegistration;
+    executor: CommandExecutor;
+  }): Promise<void> {
+    let job = this.beginStep(userId, initialJob, "restart");
+    const deadline = performance.now() + WORKER_RESTART_TIMEOUT_MS;
+    this.appendLog(userId, job, "system", "Starting clanky worker service restart.", "restart");
+    let result: CommandResult | undefined;
+    const responseController = new AbortController();
+    const responseTimer = setTimeout(
+      () => responseController.abort(),
+      Math.max(1, deadline - performance.now()),
+    );
+    try {
+      result = await executor.exec(
+        "clanky",
+        ["worker", "service", "restart"],
+        {
+          ...this.commandOptions(userId, job, "restart"),
+          // Observe independently so losing the response cannot kill or replay the restart.
+          longRunning: true,
+          preserveOnDisconnect: true,
+          signal: responseController.signal,
+        },
+      );
+    } catch (error) {
+      if (!isWorkerRestartResponseLoss(error)) {
+        this.failStep(userId, job, "restart", error);
+        return;
+      }
+      this.appendLog(
+        userId, job, "system",
+        `Restart connection lost; checking worker recovery: ${getErrorMessage(error)}`,
+        "restart",
+      );
+    } finally {
+      clearTimeout(responseTimer);
+    }
+    if (result && !result.success) {
+      this.failStep(userId, job, "restart", new DomainError(
+        "worker_restart_command_failed",
+        `clanky worker service restart exited with code ${String(result.exitCode)}.`,
+      ), result.exitCode);
+      return;
+    }
+    this.appendLog(
+      userId, job, "system",
+      "Checking Mesh health and the worker service within the 20-second restart deadline.",
+      "restart",
+    );
+    try {
+      await confirmWorkerRestart({
+        userId,
+        workerNodeId: worker.workerNodeId,
+        deadline,
+        createExecutor: () => this.acquireExecutor(userId, job, worker),
+        onRetry: (error) => this.appendLog(
+          userId, job, "system",
+          `Worker is not ready; checking again: ${getErrorMessage(error)}`,
+          "restart",
+        ),
+      });
+    } catch (error) {
+      if (error instanceof DomainError && error.code === "worker_restart_confirmation_timeout") {
+        this.markCommandUnconfirmed(userId, job, "restart", error);
+      } else {
+        this.failStep(userId, job, "restart", error);
+      }
+      return;
+    }
+    job = this.succeedStep(userId, job, "restart", result?.exitCode);
+    this.appendLog(
+      userId, job, "system",
+      "Worker restart confirmed: Mesh health succeeded and the worker service is installed and running.",
+      "restart",
+    );
+    this.completeJob(userId, job);
   }
 
   private async acquireExecutor(
@@ -224,7 +283,7 @@ export class WorkerUpdateJobRunner {
     userId: string,
     job: WorkerUpdateJob,
     step: WorkerUpdateStep,
-    exitCode: number,
+    exitCode?: number,
   ): WorkerUpdateJob {
     const now = new Date().toISOString();
     return this.persistState(userId, job, {
@@ -235,7 +294,7 @@ export class WorkerUpdateJobRunner {
           ...job.state.steps[step],
           status: "succeeded",
           completedAt: now,
-          exitCode,
+          ...(exitCode === undefined ? {} : { exitCode }),
           error: undefined,
         },
       },

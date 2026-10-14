@@ -367,6 +367,7 @@ export interface MeshRelayHttpRequestInit {
   body?: BodyInit | null;
   signal?: AbortSignal;
   responseHeaderTimeoutMs?: number;
+  onDispatch?: () => void;
 }
 
 /**
@@ -416,6 +417,7 @@ export async function performMeshRelayHttpRequest(
   const pump = (async (): Promise<void> => {
     if (!source) {
       stream.send(JSON.stringify({ type: "http.request.end" }));
+      init.onDispatch?.();
       return;
     }
     bodyReader = source.getReader();
@@ -431,6 +433,7 @@ export async function performMeshRelayHttpRequest(
       }
       if (!stream.closed) {
         stream.send(JSON.stringify({ type: "http.request.end" }));
+        init.onDispatch?.();
       }
     } finally {
       bodyReader.releaseLock();

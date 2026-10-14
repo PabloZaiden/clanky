@@ -27,3 +27,13 @@ export class MeshRelayStreamError extends Error {
 export function isMeshRelayUnreachable(error: unknown): boolean {
   return error instanceof MeshRelayStreamError && error.status === 503;
 }
+
+export function isMeshRelayResponseInterrupted(error: unknown): boolean {
+  return error instanceof MeshRelayStreamError && [
+    "mesh_relay_response_truncated",
+    "mesh_relay_response_missing",
+    "mesh_relay_stream_closed",
+    "mesh_relay_stream_timeout",
+    "mesh_relay_dispatch_failed",
+  ].includes(error.code);
+}

@@ -57,6 +57,12 @@ export interface CommandOptions {
    * when one is available instead of holding a single request open.
    */
   longRunning?: boolean;
+  /**
+   * For transport-owned asynchronous commands, dispatch start only once and
+   * leave process ownership with the host if observation fails or is aborted.
+   * Requires longRunning; signal then bounds observation, not the process.
+   */
+  preserveOnDisconnect?: boolean;
 }
 
 export interface GitCommandOptions extends CommandOptions {
