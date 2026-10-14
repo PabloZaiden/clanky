@@ -62,7 +62,6 @@ export interface LiveVoiceSettings {
   apiKeyConfigured: boolean;
   model: string;
   configured: boolean;
-  jitterBufferTargetMs: 200 | null;
 }
 
 export interface LiveVoiceSettingsUpdate {
@@ -71,7 +70,6 @@ export interface LiveVoiceSettingsUpdate {
   apiKey?: string;
   clearApiKey?: boolean;
   model: string;
-  jitterBufferTargetMs?: 200 | null;
 }
 
 export interface LiveVoiceCallState {

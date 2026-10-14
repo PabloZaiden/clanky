@@ -42,12 +42,11 @@ export interface PersistedVoiceSettings {
     baseUrl: string;
     apiKeyCiphertext: string | null;
     model: string;
-    jitterBufferTargetMs: 200 | null;
   };
 }
 
 export function getDefaultLiveVoiceSettings(): PersistedVoiceSettings["live"] {
-  return { useVoiceProvider: true, baseUrl: "", apiKeyCiphertext: null, model: "", jitterBufferTargetMs: 200 };
+  return { useVoiceProvider: true, baseUrl: "", apiKeyCiphertext: null, model: "" };
 }
 
 function defaultValidation(): Record<VoiceCapability, PersistedVoiceValidation> {
@@ -188,11 +187,7 @@ function parseLiveSettings(value: unknown): PersistedVoiceSettings["live"] {
     throw new Error("Persisted Live voice settings are invalid.");
   }
   validatePersistedBaseUrl(baseUrl);
-  const jitterBufferTargetMs = record["jitterBufferTargetMs"] === undefined ? 200 : record["jitterBufferTargetMs"];
-  if (jitterBufferTargetMs !== 200 && jitterBufferTargetMs !== null) {
-    throw new Error("Persisted Live audio buffer target is invalid.");
-  }
-  return { useVoiceProvider, baseUrl, apiKeyCiphertext, model, jitterBufferTargetMs };
+  return { useVoiceProvider, baseUrl, apiKeyCiphertext, model };
 }
 
 export async function getPersistedVoiceSettings(): Promise<PersistedVoiceSettings | null> {
@@ -297,8 +292,6 @@ export async function updatePersistedVoiceSettings(
         useVoiceProvider: update.live.useVoiceProvider,
         baseUrl: update.live.baseUrl,
         model: update.live.model,
-        jitterBufferTargetMs: update.live.jitterBufferTargetMs === undefined
-          ? previousLive.jitterBufferTargetMs : update.live.jitterBufferTargetMs,
         apiKeyCiphertext: nextKey
           ? nextKey === currentKey
             ? live.apiKeyCiphertext

@@ -8,6 +8,7 @@ import { DomainError } from "../domain/domain-error";
 import {
   assertSafeProviderDestination, buildVoiceV1Url, fetchWithTimeout,
   providerError, readJsonResponse, type VoiceProviderCredentials,
+  VOICE_TEXT_REASONING,
 } from "./voice-provider";
 import { liveVoiceToolDefinitions } from "./live-voice-tools";
 import type { LiveVoiceHistoryMessage } from "./live-voice-memory";
@@ -46,6 +47,7 @@ export async function createLiveVoiceSession(
           "You are the user's global Clanky voice assistant, not part of a particular chat.",
           "Converse naturally and concisely in the user's language.",
           "Delegate app operations, questions about work and client navigation to the Responses backend.",
+          "Before delegating, give one brief spoken acknowledgement in the user's language, such as 'I'll check that now.' Do not stay silent while starting the lookup, repeat acknowledgements for each tool, or claim the action has completed.",
           "Report only confirmed results: started, queued, accepted, delivered, and completed are different.",
           "Authoritative work updates supersede earlier admissions. Read actual content before describing results.",
           "Interrupting your speech, muting, or ending this call does not stop chat/task work.",
@@ -56,6 +58,7 @@ export async function createLiveVoiceSession(
           type: "responses",
           responses: {
             model: credentials.textModel,
+            reasoning: VOICE_TEXT_REASONING,
             instructions: [
               "Operate the whole of Clanky directly with the provided catalog-backed tools.",
               "Use at most eight function calls per response. Continue additional reads in subsequent responses.",

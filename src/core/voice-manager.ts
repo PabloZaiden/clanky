@@ -196,7 +196,6 @@ function buildPublicSettings(
       apiKeyConfigured: liveApiKeyConfigured,
       model: settings.live.model,
       configured: liveConfigured,
-      jitterBufferTargetMs: settings.live.jitterBufferTargetMs,
     },
     capabilities: {
       transcription: publicCapabilityStatus(

@@ -12,7 +12,6 @@ import {
   SettingsError,
   SettingsSelect,
   VoiceSettingsRowContent,
-  LiveVoiceAudioBufferRowContent,
 } from "../app-settings";
 import type {
   PrivateItemsPreference,
@@ -187,12 +186,6 @@ export function buildShellSettingsSections({
         title: "Provider",
         description: "Configure transcription, shared text generation, and Live Voice; speech synthesis runs locally with Piper.",
         content: <VoiceSettingsRowContent voiceSettings={voiceSettings} />,
-      }, {
-        id: "live-audio-buffer",
-        title: "Live audio buffer (200 ms)",
-        description: "Off uses automatic buffering. Requires browser support; changes apply to the current call.",
-        contentPlacement: "inline" as const,
-        content: <LiveVoiceAudioBufferRowContent voiceSettings={voiceSettings} />,
       }],
     },
     {
