@@ -4,12 +4,14 @@
 import { DomainError } from "../domain/domain-error";
 import { directItems, directRecord, LiveVoiceDirectContext } from "./live-voice-direct-context";
 import type { DirectToolInput } from "./live-voice-direct-contracts";
-import { readBytes } from "./resource-read-service";
+import { isReadRecord, readBytes } from "./resource-read-service";
 import type { ChatStatus } from "@/shared/chat";
 import type { TaskStatus } from "@/shared/task";
 
 type VoiceStatusCategory = "active" | "idle" | "done" | "error";
 type WorkKind = "chat" | "task";
+const MIN_COLLECTION_PAGE_BYTES = 1024;
+const VOICE_STATUS_PROPERTY_BYTES = readBytes({ voiceStatus: "active" }) + 1;
 
 const CHAT_VOICE_STATUS: Record<ChatStatus, VoiceStatusCategory> = {
   idle: "idle",
@@ -60,11 +62,57 @@ function voiceStatusCategory(
   return TASK_VOICE_STATUS[status as TaskStatus];
 }
 
+function isDetailsOnly(item: Record<string, unknown>): boolean {
+  return item["code"] === "read_item_requires_details" && isReadRecord(item["details"]);
+}
+
+function detailsOnly(item: Record<string, unknown>): Record<string, unknown> | null {
+  if (isDetailsOnly(item)) return item;
+  return isReadRecord(item["details"])
+    ? { details: item["details"], code: "read_item_requires_details" }
+    : null;
+}
+
 function withVoiceStatus(
   kind: WorkKind,
   item: Record<string, unknown>,
 ): Record<string, unknown> {
+  if (isDetailsOnly(item)) return item;
   return { ...item, voiceStatus: voiceStatusCategory(kind, item["status"]) };
+}
+
+function statusAwarePageOptions(
+  maxBytes: number,
+  requestedLimit: number,
+): { limit: number; maxBytes: number } {
+  const statusCapacity = Math.max(
+    1,
+    Math.floor(Math.max(0, maxBytes - MIN_COLLECTION_PAGE_BYTES) / VOICE_STATUS_PROPERTY_BYTES),
+  );
+  const limit = Math.min(requestedLimit, statusCapacity);
+  return {
+    limit,
+    maxBytes: Math.max(MIN_COLLECTION_PAGE_BYTES, maxBytes - limit * VOICE_STATUS_PROPERTY_BYTES),
+  };
+}
+
+function fitVoiceStatusPage(
+  page: Record<string, unknown>,
+  kind: WorkKind,
+  maxBytes: number,
+): Record<string, unknown> {
+  const items = directItems(page).map((item) => withVoiceStatus(kind, item));
+  const result = () => ({ ...page, items });
+  if (readBytes(result()) <= maxBytes) return result();
+  for (let index = 0; index < items.length; index++) {
+    const fallback = detailsOnly(items[index]!);
+    if (fallback) items[index] = fallback;
+    if (readBytes(result()) <= maxBytes) return result();
+  }
+  throw new DomainError(
+    "voice_direct_result_too_large",
+    "The work page exceeds the Voice response budget; request a smaller page or read a targeted item.",
+  );
 }
 
 export function pendingInteractions(value: unknown): Record<string, unknown>[] {
@@ -89,18 +137,17 @@ export async function directList(
   input: DirectToolInput<"clanky_list_chats">,
 ): Promise<unknown> {
   const workspaceId = input.workspace ? String((await context.resolve("workspace", input.workspace))["id"]) : null;
+  const pageOptions = statusAwarePageOptions(context.options.maxBytes, input.limit ?? 8);
   const page = directRecord(await context.read({
     operationId: `GET /api/${kind}s`,
     query: {
-      order: "activity", limit: input.limit ?? 8,
+      order: "activity", limit: pageOptions.limit,
       ...(workspaceId ? { workspaceId } : {}), ...(input.name ? { name: input.name } : {}),
       ...(input.status ? { status: input.status } : {}), ...(input.cursor ? { cursor: input.cursor } : {}),
     },
+    maxBytes: pageOptions.maxBytes,
   }));
-  return context.bounded({
-    ...page,
-    items: directItems(page).map((item) => withVoiceStatus(kind, item)),
-  });
+  return fitVoiceStatusPage(page, kind, context.options.maxBytes);
 }
 
 export async function directRead(
@@ -155,32 +202,51 @@ export async function directOverview(
   const kinds = input.kind === "all" ? ["chat", "task"] as const : [input.kind];
   const entries: Record<string, unknown>[] = [];
   const coverage: Record<string, unknown>[] = [];
+  const requestedLimit = input.limit ?? 3;
   const pageBudget = Math.max(1024, Math.floor((context.options.maxBytes - 700) / (2 * kinds.length)));
+  const pageOptions = statusAwarePageOptions(pageBudget, requestedLimit);
   for (const kind of kinds) {
     if (continuation.completed.includes(kind)) continue;
-    const page = directRecord(await context.read({
+    const page = fitVoiceStatusPage(directRecord(await context.read({
       operationId: `GET /api/${kind}s`,
       query: {
-        order: "activity", limit: input.limit ?? 3,
+        order: "activity", limit: pageOptions.limit,
         ...(workspaceId ? { workspaceId } : {}), ...(status ? { status } : {}),
         ...(waiting ? { needsInput: "true" } : {}),
         ...(continuation[kind] ? { cursor: continuation[kind]! } : {}),
-      }, maxBytes: pageBudget,
-    }));
+      }, maxBytes: pageOptions.maxBytes,
+    })), kind, pageBudget);
     continuation[kind] = typeof page["nextCursor"] === "string" ? page["nextCursor"] : null;
     if (!continuation[kind]) continuation.completed.push(kind);
     const items = directItems(page);
     coverage.push({ kind, selectionComplete: page["nextCursor"] === null });
-    for (const target of items) entries.push({ kind, ...withVoiceStatus(kind, target) });
+    for (const target of items) entries.push({ kind, ...target });
   }
 
   entries.sort((a, b) => String(b["lastActivityAt"]).localeCompare(String(a["lastActivityAt"])));
-  let remaining = context.options.maxBytes - readBytes({ entries, coverage, continuation }) - 700;
+  const complete = kinds.every((kind) => continuation.completed.includes(kind));
+  const nextCursor = complete ? null : Buffer.from(JSON.stringify(continuation)).toString("base64url");
+  const result = () => ({
+    entries, coverage, complete, nextCursor,
+    ordering: "activity_descending_within_each_source_page",
+    limitPerKind: pageOptions.limit,
+  });
+  while (readBytes(result()) > context.options.maxBytes) {
+    const index = entries.findIndex((entry) => !isDetailsOnly(entry) && isReadRecord(entry["details"]));
+    if (index < 0) {
+      throw new DomainError("voice_direct_result_too_large", "The work overview exceeds the Voice response budget.");
+    }
+    const entry = entries[index]!;
+    entries[index] = { kind: String(entry["kind"]), ...detailsOnly(entry)! };
+  }
+  let remaining = context.options.maxBytes - readBytes(result()) - 700;
   for (const [index, target] of entries.entries()) {
+    if (isDetailsOnly(target)) continue;
     const id = String(target["id"]), kind = String(target["kind"]);
     const budget = Math.floor(remaining / (entries.length - index));
     if (budget < 1024 || target["stateUnavailable"]) {
       target["preview"] = { available: false, reason: target["stateUnavailable"] ? "state_unavailable" : "response_budget", target: id };
+      if (readBytes(result()) > context.options.maxBytes) delete target["preview"];
       continue;
     }
     const preview = waiting && kind === "chat"
@@ -190,16 +256,18 @@ export async function directOverview(
         query: { view: "conversation", range: "latest", limit: 2 }, maxBytes: budget,
       });
     if (readBytes(preview) <= budget) {
-      target["preview"] = preview; remaining -= readBytes(preview);
-    } else target["preview"] = { available: false, reason: "response_budget", target: id };
+      target["preview"] = preview;
+      if (readBytes(result()) <= context.options.maxBytes) {
+        remaining -= readBytes(preview);
+        continue;
+      }
+    }
+    target["preview"] = { available: false, reason: "response_budget", target: id };
+    if (readBytes(result()) > context.options.maxBytes) {
+      delete target["preview"];
+    }
   }
-  const complete = kinds.every((kind) => continuation.completed.includes(kind));
-  return context.bounded({
-    entries, coverage, complete,
-    nextCursor: complete ? null : Buffer.from(JSON.stringify(continuation)).toString("base64url"),
-    ordering: "activity_descending_within_each_source_page",
-    limitPerKind: input.limit ?? 3,
-  });
+  return context.bounded(result());
 }
 
 export async function directServers(context: LiveVoiceDirectContext, input: DirectToolInput<"clanky_list_servers">): Promise<unknown> {

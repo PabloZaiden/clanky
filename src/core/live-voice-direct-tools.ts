@@ -7,6 +7,7 @@ import { ControlNavigationActionSchema } from "@/shared/clanky-control";
 import { ExecutionHostRefSchema } from "@/contracts/schemas/execution-host";
 import { getExecutionHostSourceId } from "@/shared/execution-host";
 import { directRecord, LiveVoiceDirectContext } from "./live-voice-direct-context";
+import { isReadRecord } from "./resource-read-service";
 import { liveVoiceDirectSchemas, type DirectToolName } from "./live-voice-direct-contracts";
 import { directList, directOverview, directRead, directServers, pendingInteractions } from "./live-voice-direct-reads";
 import { directCreateChat, directCreateTask, directCreateWorkspace } from "./live-voice-direct-creation";
@@ -143,9 +144,30 @@ export async function executeDirectLiveVoiceTool(context: LiveVoiceDirectContext
             : typeof error?.["message"] === "string" ? { message: error["message"] } : {}),
         });
       }
-      const response = directRecord(result["data"]);
-      const admission = directRecord(response["admission"]);
-      if (response["success"] !== true || typeof admission["status"] !== "string" || admission["inputId"] !== selected!.id) {
+      const responseValue = result["data"];
+      const response = isReadRecord(responseValue) ? responseValue : undefined;
+      if (response?.["dataAvailable"] === false) {
+        return context.bounded({
+          ok: true,
+          ...(typeof result["operationId"] === "string" ? { operationId: result["operationId"] } : {}),
+          ...(typeof result["completion"] === "string" ? { completion: result["completion"] } : {}),
+          ...(typeof result["status"] === "number" ? { status: result["status"] } : {}),
+          data: {
+            chatId: id,
+            ...(typeof target["name"] === "string" ? { chatName: target["name"] } : {}),
+            messageId: selected!.id,
+            resultCode: typeof response["resultCode"] === "string"
+              ? response["resultCode"] : "read_result_requires_targeted_read",
+            dataAvailable: false,
+            message: typeof response["message"] === "string"
+              ? response["message"]
+              : "The steering operation succeeded, but its receipt was omitted. Inspect the chat; do not repeat the mutation.",
+          },
+        });
+      }
+      const receipt = directRecord(responseValue);
+      const admission = directRecord(receipt["admission"]);
+      if (receipt["success"] !== true || typeof admission["status"] !== "string" || admission["inputId"] !== selected!.id) {
         throw new DomainError("voice_operation_response", "The queued-message steer returned an invalid admission.");
       }
       return context.bounded({
