@@ -3,8 +3,11 @@
  */
 
 import { useEffect, useRef, useSyncExternalStore } from "react";
+import { createLogger } from "@pablozaiden/webapp/web";
+import { isAbortError } from "./request-lifecycle";
 
 const listeners = new Set<() => void>();
+const log = createLogger("useDocumentVisibility");
 
 export function isDocumentVisible(): boolean {
   return !document.hidden;
@@ -53,6 +56,13 @@ export function useRefreshOnForeground(refresh: () => void | Promise<void>): voi
     }
 
     wasVisibleRef.current = true;
-    void refreshRef.current();
+    void Promise.resolve()
+      .then(() => refreshRef.current())
+      .catch((error: unknown) => {
+        if (isAbortError(error)) {
+          return;
+        }
+        log.error("Failed to refresh on foreground", { error: String(error) });
+      });
   }, [visible]);
 }
