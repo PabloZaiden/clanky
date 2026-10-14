@@ -420,7 +420,6 @@ export const CLANKY_CONTROL_TOOLS: readonly ControlToolDefinition[] = [
           workspaceId: input.workspaceId ?? context.workspaceId,
           model,
           useWorktree: input.useWorktree ?? true,
-          autoApprovePermissions: true,
           quick: false,
           ...(input.name ? { name: input.name } : {}),
         },

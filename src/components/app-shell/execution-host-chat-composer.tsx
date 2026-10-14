@@ -59,7 +59,6 @@ export function ExecutionHostChatComposer({
     host.repositoriesBasePath ?? "",
   );
   const [selectedModel, setSelectedModel] = useState("");
-  const [autoApprovePermissions, setAutoApprovePermissions] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const sshServerId = getRegisteredSshServerId(host.ref);
   const [sshCredential, setSshCredential] = useState<{
@@ -230,7 +229,6 @@ export function ExecutionHostChatComposer({
           modelID: model.modelID,
           variant: model.variant,
         },
-        autoApprovePermissions,
         credentialToken,
       };
       const chat = await apiRequest<Chat>(`${apiPath}/chats`, {
@@ -252,7 +250,6 @@ export function ExecutionHostChatComposer({
     }
   }, [
     apiPath,
-    autoApprovePermissions,
     directory,
     discovery.provider,
     credentialToken,
@@ -377,17 +374,6 @@ export function ExecutionHostChatComposer({
             emptyText="Choose an available provider and directory"
           />
         </div>
-        <label className="flex items-start gap-3">
-          <input
-            type="checkbox"
-            checked={autoApprovePermissions}
-            onChange={(event) => setAutoApprovePermissions(event.target.checked)}
-            className="mt-1 h-4 w-4 rounded border-gray-300 text-gray-700 focus:ring-gray-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-300"
-          />
-          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            Auto-approve permissions
-          </span>
-        </label>
       </div>
       <Modal
         isOpen={passwordModalOpen}
