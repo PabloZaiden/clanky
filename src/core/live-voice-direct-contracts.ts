@@ -16,8 +16,11 @@ const page = {
   cursor: z.string().min(1).max(4096).nullable().default(null),
   limit: z.number().int().min(1).max(20).nullable().default(null),
 };
+const exactStatus = optionalText.describe(
+  "Exact underlying status filter. Leave null for Voice categories; use the returned voiceStatus field.",
+);
 const selection = { target, workspace };
-const listing = { workspace, status: optionalText, ...page };
+const listing = { workspace, status: exactStatus, ...page };
 
 export const liveVoiceDirectSchemas = {
   clanky_recent_work: z.object({
@@ -31,6 +34,10 @@ export const liveVoiceDirectSchemas = {
     ...selection, range: z.enum(["latest", "earliest"]).default("latest"), ...page,
   }).strict(),
   clanky_send_chat_message: z.object({ ...selection, message }).strict(),
+  clanky_steer_queued_chat_message: z.object({
+    ...selection,
+    messageId: optionalText.describe("Exact ID of an already queued message; null selects only when exactly one message is queued."),
+  }).strict(),
   clanky_create_chat: z.object({
     name: optionalText, workspace, host: optionalText,
     directory: z.string().trim().min(1).max(16_384).nullable().default(null),
@@ -87,16 +94,17 @@ export type DirectToolName = keyof typeof liveVoiceDirectSchemas;
 export type DirectToolInput<T extends DirectToolName> = z.infer<typeof liveVoiceDirectSchemas[T]>;
 
 export const liveVoiceDirectDescriptions: Record<DirectToolName, string> = {
-  clanky_recent_work: "Recent authorized chats/tasks ordered by real activity, with status and literal last-exchange previews. Direct: no discovery/description needed. kind=chat for recent chats. Cursor continues each selected source.",
-  clanky_waiting_work: "Chats/tasks needing the user: pending questions, permissions AND ready plans awaiting manual approval. Includes actionable pending interactions. Unavailable state is explicit. Direct, no discovery.",
-  clanky_list_chats: "List compact chats by workspace, exact name and status, activity ordered. Direct, no discovery.",
-  clanky_read_chat: "Read a named/ID/current chat's status, pending interactions and literal conversation together. latest selects the final messages directly; earliest starts history. Follow cursor for the selected range. Direct, no discovery.",
+  clanky_recent_work: "Recent authorized chats/tasks ordered by real activity, with raw status, Voice status category and literal last-exchange previews. For chats, voiceStatus is active for streaming/waiting, idle for idle, done for done, and error for all other chat statuses. For tasks, active means planning/starting/running/waiting/resolving_conflicts; idle means idle/draft; done means completed/accepted_local/merged/pushed/deleted; error means stopped/failed/max_iterations. Direct: no discovery. kind=chat for chats. Cursor continues each selected source.",
+  clanky_waiting_work: "Chats/tasks needing the user: pending questions, permissions AND ready plans awaiting manual approval. Includes actionable pending interactions, raw status and voiceStatus using the same chat/task categories as clanky_recent_work. Unavailable state is explicit. Direct, no discovery.",
+  clanky_list_chats: "List compact chats by workspace, exact name and raw status, activity ordered. Each item retains status and includes voiceStatus: active for streaming/waiting, idle for idle, done for done, error for starting/interrupting/reconnecting/stopped/failed. Leave status null for Voice-category queries; do not filter active chats using a made-up raw status such as working. Direct, no discovery.",
+  clanky_read_chat: "Read a named/ID/current chat's raw status, Voice status category, pending interactions and literal conversation together. latest selects the final messages directly; earliest starts history. Follow cursor for the selected range. Direct, no discovery.",
   clanky_send_chat_message: "Send one instruction to an existing named/ID/current chat. Resolves the target internally. Reports admission, not completed work. Never replay an uncertain mutation. Direct, no discovery.",
+  clanky_steer_queued_chat_message: "Steer one existing queued chat message into a streaming native execution; this does not send new content. If messageId is null, proceeds only when exactly one message is queued. When several are queued, choose one of the returned candidates and pass its messageId. Reports native admission, not delivery or completion. Direct, no discovery.",
   clanky_create_chat: "Create a workspace or direct-host chat with real models/defaults. Choose workspace OR host. Optional frozen initialMessage/open are included in the visual confirmation and run only after creation is approved. Direct, no discovery.",
   clanky_interrupt_chat: "Interrupt an active named/ID/current chat. Stopping voice is different. Direct, no discovery.",
   clanky_respond_chat_interaction: "Answer a pending chat question (answers) or decide permission (decision). requestId=null selects only an unambiguous pending interaction. Permissions require visual confirmation. Direct, no discovery.",
-  clanky_list_tasks: "List compact tasks by workspace, exact name and status, with progress and required-intervention reasons. Direct, no discovery.",
-  clanky_read_task: "Read task status and latest literal conversation, or an exact plan/diff section, together. No generated summary; do not claim complete history if omitted earlier messages or cursor remain. Direct, no discovery.",
+  clanky_list_tasks: "List compact tasks by workspace, exact name and raw status, with progress, required-intervention reasons and Voice status category. Each item retains status and includes voiceStatus: active for planning/starting/running/waiting/resolving_conflicts, idle for idle/draft, done for completed/accepted_local/merged/pushed/deleted, error for stopped/failed/max_iterations. Leave status null for Voice-category queries. Direct, no discovery.",
+  clanky_read_task: "Read task raw status, Voice status category and latest literal conversation, or an exact plan/diff section, together. No generated summary; do not claim complete history if omitted earlier messages or cursor remain. Direct, no discovery.",
   clanky_create_task: "Create a named task in a workspace, draft or planning. Resolves real models, branches, effective defaults and fresh browser preferences internally. Visual confirmation required. Direct, no discovery.",
   clanky_instruct_task: "Send a follow-up or queue a next-iteration instruction. Explicit intent; plan feedback belongs to review_task_plan. Admission is not delivery/completion. Direct, no discovery.",
   clanky_control_task: "Start planning for a draft task or stop active task execution. No invented resume behavior. Direct, no discovery.",

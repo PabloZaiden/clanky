@@ -30,12 +30,13 @@ receive these Control tools.
 
 The [Live voice assistant](../../docs/voice.md#live-voice) is global and
 independent of native Control chats. It starts beside Quick Chat in the sidebar
-and exposes twenty direct common intents, selective watching and three generic
-catalog fallback tools. Use direct intents without find/describe for covered
-workflows. Pass an exact name/ID or acknowledged `current` target; only resolve
-ambiguity if reported. Use one `clanky_waiting_work` with `kind=all` for combined
-attention, including manual plan approval. Direct reads select bounded latest
-conversation by default; omitted earlier messages are not complete history.
+and exposes twenty-one direct common intents, selective watching, three generic
+catalog fallback tools, and a Voice-session exit tool. Use direct intents
+without find/describe for covered workflows. Pass an exact name/ID or
+acknowledged `current` target; only resolve ambiguity if reported. Use one
+`clanky_waiting_work` with `kind=all` for combined attention, including manual
+plan approval. Direct reads select bounded latest conversation by default;
+omitted earlier messages are not complete history.
 Discover availability with `GET /api/voice/live`; do not use chat-local Live endpoints.
 `current` host targets require an acknowledged execution-host selection; current
 SSH servers use that selection's SSH host ID, not an app-local server route.
@@ -63,7 +64,13 @@ approval. For generic task creation, read
 `GET /api/workspaces/:id/task-creation-context` before constructing task inputs;
 apply explicit intent and valid saved browser preferences without inventing a
 model or branch. Accepted/queued work is not completed work, and unknown
-mutation outcomes must be inspected rather than automatically retried.
+mutation outcomes must be inspected rather than automatically retried. Use
+`clanky_steer_queued_chat_message` only for an existing queued message: when
+several are queued, select a returned message ID or clarify instead of
+guessing. Admission is not delivery or completion. On a clear goodbye or
+direct request to end Voice, say a brief farewell and call
+`clanky_end_voice_session` by itself; ordinary greetings and pauses do not end
+the call, and delegated work continues.
 Once starting, controls live only in the bottom sidebar bar above the version;
 open the sidebar to mute, recover blocked playback or stop. Navigation and
 closing the sidebar preserve the call. Ending voice persists no call transcript

@@ -6,7 +6,8 @@ import { DomainError } from "../domain/domain-error";
 import { ControlNavigationActionSchema } from "@/shared/clanky-control";
 import { ExecutionHostRefSchema } from "@/contracts/schemas/execution-host";
 import { getExecutionHostSourceId } from "@/shared/execution-host";
-import { LiveVoiceDirectContext } from "./live-voice-direct-context";
+import { directRecord, LiveVoiceDirectContext } from "./live-voice-direct-context";
+import { isReadRecord } from "./resource-read-service";
 import { liveVoiceDirectSchemas, type DirectToolName } from "./live-voice-direct-contracts";
 import { directList, directOverview, directRead, directServers, pendingInteractions } from "./live-voice-direct-reads";
 import { directCreateChat, directCreateTask, directCreateWorkspace } from "./live-voice-direct-creation";
@@ -77,6 +78,112 @@ export async function executeDirectLiveVoiceTool(context: LiveVoiceDirectContext
       return await context.execute({
         operationId: "POST /api/chats/:id/messages", parameters: { id },
         body: { message: input.message, attachments: [] },
+      });
+    }
+    case "clanky_steer_queued_chat_message": {
+      const input = liveVoiceDirectSchemas[name].parse(args);
+      const target = await context.resolve("chat", input.target, input.workspace);
+      const id = String(target["id"]);
+      const chat = directRecord(await context.readExact("GET /api/chats/:id", { id }));
+      const state = directRecord(chat["state"]);
+      const rawQueued = state["queuedMessages"];
+      if (rawQueued !== undefined && !Array.isArray(rawQueued)) {
+        throw new DomainError("voice_operation_response", "The chat returned an invalid queued-message list.");
+      }
+      const queued = (rawQueued ?? []).map((value: unknown) => {
+        const message = directRecord(value);
+        if (typeof message["id"] !== "string" || typeof message["content"] !== "string") {
+          throw new DomainError("voice_operation_response", "The chat returned an invalid queued message.");
+        }
+        return {
+          id: message["id"],
+          content: message["content"],
+          ...(typeof message["createdAt"] === "string" ? { createdAt: message["createdAt"] } : {}),
+        };
+      });
+      if (new Set(queued.map((message: { id: string }) => message.id)).size !== queued.length) {
+        throw new DomainError("voice_operation_response", "The chat returned duplicate queued-message IDs.");
+      }
+      let selected = input.messageId
+        ? queued.find((message: { id: string }) => message.id === input.messageId)
+        : undefined;
+      if (input.messageId && !selected) {
+        throw new DomainError("voice_queued_message_not_found", "That queued message is no longer available.");
+      }
+      if (!input.messageId) {
+        if (!queued.length) {
+          throw new DomainError("voice_queued_message_not_found", "The chat has no queued message to steer.");
+        }
+        if (queued.length > 1) {
+          const candidates = queued.slice(-8).map((message: { id: string; content: string; createdAt?: string }) => ({
+            messageId: message.id,
+            content: message.content.slice(0, 160),
+            ...(message.createdAt ? { createdAt: message.createdAt } : {}),
+          }));
+          throw new DomainError("voice_queued_message_ambiguous", "Choose one queued message before steering.", {
+            details: { candidates, omitted: Math.max(0, queued.length - candidates.length) },
+          });
+        }
+        selected = queued[0];
+      }
+      const result = directRecord(await context.execute({
+        operationId: "POST /api/chats/:id/queued-messages/:messageId/steer",
+        parameters: { id, messageId: selected!.id },
+      }));
+      if (result["ok"] !== true) {
+        const error = result["data"] && typeof result["data"] === "object"
+          && !Array.isArray(result["data"]) ? directRecord(result["data"]) : undefined;
+        return context.bounded({
+          ok: false,
+          ...(typeof result["operationId"] === "string" ? { operationId: result["operationId"] } : {}),
+          ...(typeof result["completion"] === "string" ? { completion: result["completion"] } : {}),
+          ...(typeof result["status"] === "number" ? { status: result["status"] } : {}),
+          ...(typeof result["code"] === "string" ? { code: result["code"] }
+            : typeof error?.["error"] === "string" ? { code: error["error"] } : {}),
+          ...(typeof result["message"] === "string" ? { message: result["message"] }
+            : typeof error?.["message"] === "string" ? { message: error["message"] } : {}),
+        });
+      }
+      const responseValue = result["data"];
+      const response = isReadRecord(responseValue) ? responseValue : undefined;
+      if (response?.["dataAvailable"] === false) {
+        return context.bounded({
+          ok: true,
+          ...(typeof result["operationId"] === "string" ? { operationId: result["operationId"] } : {}),
+          ...(typeof result["completion"] === "string" ? { completion: result["completion"] } : {}),
+          ...(typeof result["status"] === "number" ? { status: result["status"] } : {}),
+          data: {
+            chatId: id,
+            ...(typeof target["name"] === "string" ? { chatName: target["name"] } : {}),
+            messageId: selected!.id,
+            resultCode: typeof response["resultCode"] === "string"
+              ? response["resultCode"] : "read_result_requires_targeted_read",
+            dataAvailable: false,
+            message: typeof response["message"] === "string"
+              ? response["message"]
+              : "The steering operation succeeded, but its receipt was omitted. Inspect the chat; do not repeat the mutation.",
+          },
+        });
+      }
+      const receipt = directRecord(responseValue);
+      const admission = directRecord(receipt["admission"]);
+      if (receipt["success"] !== true || typeof admission["status"] !== "string" || admission["inputId"] !== selected!.id) {
+        throw new DomainError("voice_operation_response", "The queued-message steer returned an invalid admission.");
+      }
+      return context.bounded({
+        ok: true,
+        ...(typeof result["operationId"] === "string" ? { operationId: result["operationId"] } : {}),
+        ...(typeof result["completion"] === "string" ? { completion: result["completion"] } : {}),
+        data: {
+          chatId: id,
+          ...(typeof target["name"] === "string" ? { chatName: target["name"] } : {}),
+          messageId: selected!.id,
+          admission: {
+            status: admission["status"],
+            inputId: admission["inputId"],
+            ...(typeof admission["code"] === "string" ? { code: admission["code"] } : {}),
+          },
+        },
       });
     }
     case "clanky_interrupt_chat": {

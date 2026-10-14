@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { E2EApplication } from "./support/application";
 import { createGitFixture, gitStatus, type GitFixture } from "./support/git";
 import { GLOBAL_LIVE_INTENT } from "./support/live-voice-provider";
+import { installExternalNativeOpenCodeProvider } from "./support/provider";
 import { pollUntil } from "./support/polling";
 import { readProcessDiagnostics } from "./support/process";
 import {
@@ -17,7 +18,14 @@ interface Model { providerID: string; modelID: string; variant: string }
 interface Workspace { id: string; name: string }
 interface Chat {
   config: { id: string; name: string; workspaceId: string };
-  state: { status: string; harness?: { questions?: Array<{ requestId: string; status: string }> } };
+  state: {
+    status: string;
+    queuedMessages?: Array<{ id: string; content: string }>;
+    harness?: {
+      questions?: Array<{ requestId: string; status: string }>;
+      inputs?: Array<{ admission: { inputId: string; status: string } }>;
+    };
+  };
 }
 interface Task {
   config: {
@@ -147,13 +155,18 @@ test("global Live operates owned recent and waiting work, resumes its conversati
   let provider: ManagedVoiceProvider | undefined;
   let ssh: ManagedSshServer | undefined;
   let callId: string | undefined;
+  let streamingReleasePath: string | undefined;
+  let steeringReleasePath: string | undefined;
   try {
+    await installExternalNativeOpenCodeProvider(application.providerBinDirectory);
     for (const name of ["a", "b"]) {
       const root = join(application.runDirectory, name);
       await mkdir(root, { recursive: true });
       repositories.push(await createGitFixture(root));
     }
     const [repositoryA, repositoryB] = repositories as [GitFixture, GitFixture];
+    const statusReleasePath = join(repositoryA.repositoryDirectory, ".clanky-e2e-voice-status-release");
+    streamingReleasePath = statusReleasePath;
     const hostNote = "Use the chosen execution host's inventory when preparing workspace B.";
     await Bun.write(join(repositoryB.repositoryDirectory, GLOBAL_LIVE_INTENT.hostFile), hostNote);
     ssh = await startEphemeralSshServer({
@@ -178,6 +191,49 @@ test("global Live operates owned recent and waiting work, resumes its conversati
       }, 201)).data);
     }
     const [workspaceA, workspaceB] = workspaces as [Workspace, Workspace];
+    const steeringDirectory = join(application.runDirectory, "steering");
+    await mkdir(steeringDirectory, { recursive: true });
+    steeringReleasePath = join(steeringDirectory, ".clanky-e2e-voice-end-release");
+    const steeringWorkspace = (await application.json<Workspace>("/api/workspaces", {
+      method: "POST", body: JSON.stringify({
+        name: GLOBAL_LIVE_INTENT.steeringWorkspace, directory: steeringDirectory,
+        executionHost: local.ref, workspaceType: "directory", allowWorktrees: false,
+        serverSettings: { agent: { adapter: "opencode2", provider: "opencode" } },
+      }),
+    }, 201)).data;
+    const steeringModelOption = (await application.json<Array<{
+      providerID: string; modelID: string; variant?: string; connected: boolean;
+    }>>(`/api/models?workspaceId=${steeringWorkspace.id}`)).data.find(
+      (entry) => entry.connected && entry.modelID === "e2e-opencode-model",
+    );
+    if (!steeringModelOption) throw new Error("The external OpenCode steering model is unavailable.");
+    const steeringModel = {
+      providerID: steeringModelOption.providerID,
+      modelID: steeringModelOption.modelID,
+      variant: steeringModelOption.variant ?? "",
+    };
+    const steeringChat = (await application.json<Chat>("/api/chats", {
+      method: "POST", body: JSON.stringify({
+        name: GLOBAL_LIVE_INTENT.steeringChat, workspaceId: steeringWorkspace.id,
+        model: steeringModel, useWorktree: false,
+      }),
+    }, 201)).data;
+    await application.json(`/api/chats/${steeringChat.config.id}/messages`, {
+      method: "POST", body: JSON.stringify({ message: "Wait for steering.", attachments: [] }),
+    });
+    await pollUntil(async () => (
+      await application.json<Chat>(`/api/chats/${steeringChat.config.id}`)
+    ).data.state.status,
+    (status) => status === "streaming",
+    { description: "OpenCode chat to accept native Voice steering", timeoutMs: 10_000 });
+    const queuedResponse = await application.json<{ chat: Chat }>(
+      `/api/chats/${steeringChat.config.id}/messages`, {
+        method: "POST", body: JSON.stringify({ message: GLOBAL_LIVE_INTENT.steeringMessage, attachments: [] }),
+      },
+    );
+    const queuedMessageId = queuedResponse.data.chat.state.queuedMessages
+      ?.find((message) => message.content === GLOBAL_LIVE_INTENT.steeringMessage)?.id;
+    if (!queuedMessageId) throw new Error("The OpenCode steering message was not queued.");
     const server = (await application.json<{ config: { id: string } }>("/api/ssh-servers", {
       method: "POST", body: JSON.stringify({
         name: "Live SSH host", address: "127.0.0.1", port: ssh.port, username: ssh.username,
@@ -235,6 +291,29 @@ test("global Live operates owned recent and waiting work, resumes its conversati
     await pollUntil(async () => (await application.json<Task>(`/api/tasks/${sourceTask.config.id}`)).data.state,
       (state) => state.status === "planning" && state.planMode?.isPlanReady === true,
       { description: "source task plan awaiting the user's review", timeoutMs: 10_000 });
+    const createVoiceStatusTask = async (name: string, prompt: string): Promise<Task> => (
+      await application.json<Task>("/api/tasks", {
+        method: "POST", body: JSON.stringify({
+          ...creation.defaults, ...client.context.planningPreferences, model,
+          name, workspaceId: workspaceA.id, prompt, draft: false, autoAcceptPlan: true,
+        }),
+      }, 201)
+    ).data;
+    const completedTask = await createVoiceStatusTask(
+      GLOBAL_LIVE_INTENT.completedTask,
+      "Complete the deterministic task used to report a Voice status category.",
+    );
+    await pollUntil(async () => (await application.json<Task>(`/api/tasks/${completedTask.config.id}`)).data.state,
+      (state) => state.status === "completed",
+      { description: "completed task for Voice status category coverage", timeoutMs: 10_000 });
+    const failedTask = await createVoiceStatusTask(
+      GLOBAL_LIVE_INTENT.failedTask,
+      "[provider-error] Surface a deterministic provider failure for Voice status coverage.",
+    );
+    await pollUntil(async () => (await application.json<Task>(`/api/tasks/${failedTask.config.id}`)).data.state,
+      (state) => state.status === "failed",
+      { description: "failed task for Voice status category coverage", timeoutMs: 10_000 });
+
     const sourceChat = (await application.json<Chat>("/api/chats", {
       method: "POST", body: JSON.stringify({
         name: GLOBAL_LIVE_INTENT.sourceChat, workspaceId: workspaceA.id,
@@ -249,6 +328,46 @@ test("global Live operates owned recent and waiting work, resumes its conversati
       { description: "source conversation answer to become readable", timeoutMs: 10_000 });
     const sourceAnswer = (await application.json<Snapshot>(`/api/chats/${sourceChat.config.id}/snapshot`))
       .data.transcript.messages.findLast((message) => message.role === "assistant")!.content;
+    const streamingChat = (await application.json<Chat>("/api/chats", {
+      method: "POST", body: JSON.stringify({
+        name: GLOBAL_LIVE_INTENT.streamingChat, workspaceId: workspaceA.id,
+        model, baseBranch: repositoryA.branch, useWorktree: false,
+      }),
+    }, 201)).data;
+    await application.json(`/api/chats/${streamingChat.config.id}/messages`, {
+      method: "POST", body: JSON.stringify({
+        message: "[voice-status-stream] Hold this conversation while Voice reports active chats.",
+        attachments: [],
+      }),
+    });
+    await pollUntil(async () => (await application.json<Chat>(`/api/chats/${streamingChat.config.id}`)).data.state.status,
+      (status) => status === "streaming",
+      { description: "conversation held in streaming state for Voice status reporting", timeoutMs: 10_000 });
+    const doneChat = (await application.json<Chat>("/api/chats", {
+      method: "POST", body: JSON.stringify({
+        name: GLOBAL_LIVE_INTENT.doneChat, workspaceId: workspaceA.id,
+        model, baseBranch: repositoryA.branch, useWorktree: false,
+      }),
+    }, 201)).data;
+    await application.json(`/api/chats/${doneChat.config.id}/done`, { method: "POST" });
+    await pollUntil(async () => (await application.json<Chat>(`/api/chats/${doneChat.config.id}`)).data.state.status,
+      (status) => status === "done",
+      { description: "completed conversation for Voice status category coverage", timeoutMs: 5_000 });
+    const errorChat = (await application.json<Chat>("/api/chats", {
+      method: "POST", body: JSON.stringify({
+        name: GLOBAL_LIVE_INTENT.errorChat, workspaceId: workspaceA.id,
+        model, baseBranch: repositoryA.branch, useWorktree: false,
+      }),
+    }, 201)).data;
+    await application.json(`/api/chats/${errorChat.config.id}/messages`, {
+      method: "POST", body: JSON.stringify({
+        message: "[chat-provider-error] Fail this conversation for Voice status category coverage.",
+        attachments: [],
+      }),
+    });
+    await pollUntil(async () => (await application.json<Chat>(`/api/chats/${errorChat.config.id}`)).data.state.status,
+      (status) => status === "failed",
+      { description: "failed conversation for Voice status category coverage", timeoutMs: 10_000 });
     await client.ack(initialContext, { status: "context", context: client.context });
 
     const credential = await client.next("request_ssh_credential");
@@ -260,6 +379,20 @@ test("global Live operates owned recent and waiting work, resumes its conversati
     await visualDecision({
       application, client, callId, approved: false,
     });
+    const steeringState = (await application.json<Chat>(`/api/chats/${steeringChat.config.id}`)).data.state;
+    expect(steeringState.status).toBe("streaming");
+    expect(steeringState.queuedMessages?.some((message) => message.id === queuedMessageId)).toBe(false);
+    expect(steeringState.harness?.inputs?.find(
+      (entry) => entry.admission.inputId === queuedMessageId,
+    )?.admission.status).toBe("accepted");
+    await Bun.write(statusReleasePath, "released");
+    await pollUntil(async () => (
+      await application.json<Chat>(`/api/chats/${streamingChat.config.id}`)
+    ).data.state.status,
+    (status) => status === "idle",
+    { description: "streaming conversation to finish after Voice status report", timeoutMs: 10_000 });
+    await Bun.file(statusReleasePath).delete();
+    streamingReleasePath = undefined;
     expect((await application.json<Task>(`/api/tasks/${sourceTask.config.id}`)).data)
       .toMatchObject({ config: { prompt: sourcePrompt }, state: { status: "planning", planMode: { isPlanReady: true } } });
     const taskContext = await client.next("get_context");
@@ -268,7 +401,7 @@ test("global Live operates owned recent and waiting work, resumes its conversati
       application, client, callId, approved: true,
       async inspect(event) {
         expect((await application.json<Task[]>("/api/tasks")).data.map((task) => task.config.id))
-          .toEqual([sourceTask.config.id]);
+          .toContain(sourceTask.config.id);
         await application.json(`/api/voice/live/${callId}/confirmations/${event.action.confirmation!.requestId}`, {
           method: "POST", body: JSON.stringify({ clientId: other.id, approved: true }),
         }, 404);
@@ -315,12 +448,32 @@ test("global Live operates owned recent and waiting work, resumes its conversati
     }, 201)).data;
     callId = resumed.call.id;
     await other.open("open_chat", createdChat.config.id);
+    const ended = await pollUntil(
+      async () => (await application.json<LiveState>(`/api/voice/live/${callId}`)).data,
+      (state) => state.status === "closed" || state.status === "failed",
+      { description: "Voice call to close after the model handles the user's farewell", timeoutMs: 10_000 },
+    );
+    expect(ended.status).toBe("closed");
+    expect((await application.json<Chat>(`/api/chats/${steeringChat.config.id}`)).data.state.status)
+      .toBe("streaming");
+    await Bun.write(steeringReleasePath, "released");
+    await pollUntil(async () => (
+      await application.json<Chat>(`/api/chats/${steeringChat.config.id}`)
+    ).data.state.status,
+    (status) => status === "idle",
+    { description: "steered OpenCode work to finish after Voice closes", timeoutMs: 10_000 });
+    const steeringSnapshot = (await application.json<Snapshot>(
+      `/api/chats/${steeringChat.config.id}/snapshot?full=1`,
+    )).data;
+    expect(steeringSnapshot.transcript.messages.filter(
+      (message) => message.role === "user" && message.content === GLOBAL_LIVE_INTENT.steeringMessage,
+    )).toHaveLength(1);
+    expect(steeringSnapshot.transcript.messages.some(
+      (message) => message.role === "assistant" && message.content.includes(GLOBAL_LIVE_INTENT.steeringMessage),
+    )).toBe(true);
     await pollUntil(async () => (await application.json<Chat>(`/api/chats/${createdChat.config.id}`)).data.state.status,
       (status) => status === "idle",
       { description: "remembered delegated work to finish after resumed voice answers it", timeoutMs: 10_000 });
-    expect((await application.json<LiveState>(`/api/voice/live/${callId}/close`, {
-      method: "POST", body: JSON.stringify({ clientId: other.id }),
-    })).data.status).toBe("closed");
     expect(await Bun.file(join(repositoryB.repositoryDirectory, "e2e-provider-change.txt")).text())
       .toContain("created by the external ACP provider");
     for (const tab of clients) tab.socket.close();
@@ -348,6 +501,8 @@ test("global Live operates owned recent and waiting work, resumes its conversati
     }
     throw error;
   } finally {
+    if (streamingReleasePath) await Bun.write(streamingReleasePath, "released");
+    if (steeringReleasePath) await Bun.write(steeringReleasePath, "released");
     for (const client of clients) client.socket.close();
     try {
       await pollUntil(() => clients.map((client) => client.socket.readyState),
@@ -363,6 +518,9 @@ test("global Live operates owned recent and waiting work, resumes its conversati
           try {
             if (provider) await stopVoiceProvider(provider);
           } finally {
+            if (streamingReleasePath && await Bun.file(streamingReleasePath).exists()) {
+              await Bun.file(streamingReleasePath).delete();
+            }
             await application.cleanup();
           }
         }
