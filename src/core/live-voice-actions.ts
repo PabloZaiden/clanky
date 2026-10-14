@@ -20,13 +20,16 @@ import { DomainError } from "../domain/domain-error";
 const PENDING_TTL_MS = 60_000;
 const MAX_PENDING = 16;
 
+export type ConfirmedWriteExecutor = (input: ExecuteOperationInput, maxBytes?: number) => Promise<OperationResult>;
+export type ConfirmationContinuation = (result: OperationResult, executeWrite: ConfirmedWriteExecutor) => Promise<OperationResult>;
+
 interface PendingConfirmation {
   operation: PreparedOperation;
   description: string;
   revision: string | null;
   credentialRevision: string;
   expiresAt: number;
-  afterConfirmed?: (result: OperationResult) => Promise<OperationResult>;
+  afterConfirmed?: ConfirmationContinuation;
 }
 interface PendingCredential {
   serverId: string;
@@ -113,7 +116,7 @@ export class LiveVoiceActions {
 
   async execute(input: ExecuteOperationInput, options: {
     requestId: string; confirmationDescription: string | null; maxBytes?: number;
-    afterConfirmed?: (result: OperationResult) => Promise<OperationResult>;
+    afterConfirmed?: ConfirmationContinuation;
   }): Promise<OperationResult | Record<string, unknown>> {
     const { requestId, confirmationDescription, maxBytes } = options;
     const prepared = this.options.service.prepare(this.authority, input, { bounded: true, maxBytes });
@@ -163,7 +166,7 @@ export class LiveVoiceActions {
       this.options.notify("The user rejected the pending operation. No operation was executed.");
       return { ok: true, code: "confirmation_rejected", completion: "not_executed" };
     }
-    let result = await this.serial<OperationResult>(async () => {
+    const result = await this.serial<OperationResult>(async () => {
       const revision = await this.options.service.targetRevision(this.authority, pending.operation, this.signal);
       const credentials = await resolveVoiceCredentialTargets(pending.operation);
       if (revision !== pending.revision || credentials.revision !== pending.credentialRevision) {
@@ -173,9 +176,17 @@ export class LiveVoiceActions {
         return { ok: false, operationId: pending.operation.id, code: "confirmation_target_changed", completion: "not_executed",
           message: "The target changed since the dialog opened. Read it again and request a new confirmation." };
       }
-      return await this.perform(pending.operation, requestId);
+      const created = await this.perform(pending.operation, requestId);
+      if (!created.ok || !pending.afterConfirmed) return created;
+      return await pending.afterConfirmed(created, async (input, maxBytes) => {
+        const prepared = this.options.service.prepare(this.authority, input, { bounded: true, maxBytes });
+        if (prepared.metadata.automation!.policy !== "write") {
+          throw new DomainError("voice_operation_invalid", "Approved follow-on stages may only execute ordinary write operations.");
+        }
+        // The continuation owns this queue slot; re-entering execute() would deadlock.
+        return await this.perform(prepared, requestId);
+      });
     });
-    if (result.ok && pending.afterConfirmed) result = await pending.afterConfirmed(result);
     this.options.notify(`Visual confirmation result (authoritative data): ${JSON.stringify(result)}`);
     return result;
   }

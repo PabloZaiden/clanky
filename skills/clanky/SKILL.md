@@ -37,6 +37,8 @@ ambiguity if reported. Use one `clanky_waiting_work` with `kind=all` for combine
 attention, including manual plan approval. Direct reads select bounded latest
 conversation by default; omitted earlier messages are not complete history.
 Discover availability with `GET /api/voice/live`; do not use chat-local Live endpoints.
+`current` host targets require an acknowledged execution-host selection; current
+SSH servers use that selection's SSH host ID, not an app-local server route.
 The shared text model must support strict Responses tools with nested `anyOf`.
 Connection validation does not prove tool execution. If actions fail, inspect
 the server's bounded provider event/code/type/parameter/reason diagnostics;
@@ -55,7 +57,9 @@ private browser handoffs, never model arguments. Direct creation resolves real
 defaults/models/branches and relevant fresh browser preferences internally.
 Compound chat creation requires a separate `afterCreationDescription` for the
 frozen initial-message/open intent; all stages share the visual approval and
-report partial outcomes without replay. For generic task creation, read
+mutation queue slot through the client acknowledgement, reporting partial
+outcomes without replay. Known-invalid worktree overrides are rejected before
+approval. For generic task creation, read
 `GET /api/workspaces/:id/task-creation-context` before constructing task inputs;
 apply explicit intent and valid saved browser preferences without inventing a
 model or branch. Accepted/queued work is not completed work, and unknown

@@ -1,9 +1,9 @@
 /**
  * Authorized local composition and bounded resolution of spoken references.
  */
-import type { ClankyOperationService, OperationResult } from "./clanky-operation-service";
-import type { LiveVoiceActions } from "./live-voice-actions";
-import { isReadRecord, readBytes } from "./resource-read-service";
+import type { ClankyOperationService } from "./clanky-operation-service";
+import type { LiveVoiceActions, ConfirmationContinuation, ConfirmedWriteExecutor } from "./live-voice-actions";
+import { compactResource, isReadRecord, readBytes } from "./resource-read-service";
 import { DomainError } from "../domain/domain-error";
 import { ExecutionHostRefSchema } from "@/contracts/schemas/execution-host";
 import { getExecutionHostSourceId } from "@/shared/execution-host";
@@ -29,14 +29,16 @@ export class LiveVoiceDirectContext {
   async execute(input: {
     operationId: string; parameters?: Record<string, string>; query?: Record<string, string | number>;
     body?: unknown; confirmationDescription?: string | null; maxBytes?: number;
-    afterConfirmed?: (result: OperationResult) => Promise<OperationResult>;
-  }): Promise<unknown> {
-    return await this.options.actions.execute({
+    afterConfirmed?: ConfirmationContinuation;
+  }, executeWrite?: ConfirmedWriteExecutor): Promise<unknown> {
+    const operation = {
       operationId: input.operationId,
       parameters: Object.entries(input.parameters ?? {}).map(([name, value]) => ({ name, value })),
       query: Object.entries(input.query ?? {}).map(([name, value]) => ({ name, value: String(value) })),
       bodyJson: input.body === undefined ? null : JSON.stringify(input.body),
-    }, {
+    };
+    if (executeWrite) return await executeWrite(operation, input.maxBytes ?? this.options.maxBytes);
+    return await this.options.actions.execute(operation, {
       requestId: this.options.requestId, confirmationDescription: input.confirmationDescription ?? null,
       maxBytes: input.maxBytes ?? this.options.maxBytes,
       ...(input.afterConfirmed ? { afterConfirmed: input.afterConfirmed } : {}),
@@ -103,14 +105,25 @@ export class LiveVoiceDirectContext {
   async resolve(kind: "chat" | "task" | "workspace" | "server", target: string, workspace: string | null = null): Promise<Record<string, unknown>> {
     const paths = { chat: "chats", task: "tasks", workspace: "workspaces", server: "ssh-servers" } as const;
     if (target === "current") {
-      const context = await this.uiContext();
-      const id = context.route[`${kind}Id`];
-      if (!id) throw new DomainError("voice_target_not_found", "The originating client has no selected target of that kind.");
-      target = id;
+      if (kind === "server") {
+        const ref = ExecutionHostRefSchema.parse((await this.host(target))["ref"]);
+        if (ref.kind !== "ssh" || !("serverId" in ref)) {
+          throw new DomainError("voice_target_not_found", "The originating client has no selected standalone SSH server.");
+        }
+        target = ref.serverId;
+      } else {
+        const context = await this.uiContext();
+        const id = context.route[`${kind}Id`];
+        if (!id) throw new DomainError("voice_target_not_found", "The originating client has no selected target of that kind.");
+        target = id;
+      }
     }
     const workspaceId = workspace ? String((await this.resolve("workspace", workspace))["id"]) : undefined;
     if (/^[0-9a-f]{8}-[0-9a-f-]{27}$/iu.test(target)) {
-      const item = directRecord(await this.read({ operationId: `GET /api/${paths[kind]}/:id`, parameters: { id: target } }));
+      const operationId = `GET /api/${paths[kind]}/:id`;
+      const item = directRecord(kind === "server"
+        ? compactResource(await this.readExact(operationId, { id: target }))
+        : await this.read({ operationId, parameters: { id: target } }));
       if (workspaceId && item["workspaceId"] !== workspaceId) throw new DomainError("voice_target_not_found", "The target is not in the selected workspace.");
       return item;
     }
@@ -122,6 +135,10 @@ export class LiveVoiceDirectContext {
   }
 
   async host(target: string): Promise<Record<string, unknown>> {
+    const selected = target === "current" ? (await this.uiContext()).route : null;
+    if (selected && (selected["view"] !== "execution-host" || !selected["hostKind"] || !selected["hostId"])) {
+      throw new DomainError("voice_target_not_found", "The originating client has no selected execution host.");
+    }
     const source = await this.readExact("GET /api/execution-hosts");
     if (!Array.isArray(source)) throw new DomainError("voice_operation_response", "The execution hosts are unavailable.");
     const items = source.map((value: unknown) => {
@@ -129,6 +146,8 @@ export class LiveVoiceDirectContext {
       const ref = ExecutionHostRefSchema.parse(item["ref"]);
       return { ...item, ref, id: getExecutionHostSourceId(ref) };
     });
+    if (selected) return this.choose(items.filter((item) =>
+      item.ref.kind === selected["hostKind"] && item.id === selected["hostId"]), selected["hostId"]!);
     const kind = items.filter((item) => item.ref.kind === target);
     return this.choose(kind.length === 1 ? [{ ...kind[0]!, name: target }] : items, target);
   }

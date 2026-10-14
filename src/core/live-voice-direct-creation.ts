@@ -15,6 +15,7 @@ import { getTaskCreationDefaults, resolveTaskCreationModel, resolveTaskCreationC
 import type { DirectToolInput } from "./live-voice-direct-contracts";
 import { directRecord, LiveVoiceDirectContext } from "./live-voice-direct-context";
 import type { OperationResult } from "./clanky-operation-service";
+import type { ConfirmedWriteExecutor } from "./live-voice-actions";
 import { createLogger } from "@pablozaiden/webapp/server";
 
 const log = createLogger("core:voice-direct-creation");
@@ -88,7 +89,11 @@ export async function directCreateTask(context: LiveVoiceDirectContext, input: D
   return await context.execute({ operationId: "POST /api/tasks", body, confirmationDescription: input.confirmationDescription });
 }
 
-async function afterChatCreation(context: LiveVoiceDirectContext, input: DirectToolInput<"clanky_create_chat">, created: OperationResult): Promise<OperationResult> {
+async function afterChatCreation(options: {
+  context: LiveVoiceDirectContext; input: DirectToolInput<"clanky_create_chat">;
+  created: OperationResult; executeWrite: ConfirmedWriteExecutor;
+}): Promise<OperationResult> {
+  const { context, input, created, executeWrite } = options;
   let sent: Record<string, unknown> | null = null;
   let opened: unknown = null;
   const id = directRecord(created.data)["id"];
@@ -101,7 +106,7 @@ async function afterChatCreation(context: LiveVoiceDirectContext, input: DirectT
       sent = directRecord(await context.execute({
         operationId: "POST /api/chats/:id/messages", parameters: { id },
         body: { message: input.initialMessage, attachments: [] },
-      }));
+      }, executeWrite));
       if (sent["ok"] !== true) return {
         ...created, ok: false, code: "voice_creation_partial",
         data: { creation: created.data, message: sent, open: { completion: "not_executed" } },
@@ -138,7 +143,11 @@ export async function directCreateChat(context: LiveVoiceDirectContext, input: D
     const owned = directRecord(workspace);
     const preference = input.model ?? (last ? ModelConfigSchema.parse(last) : null);
     const model = chooseModel(ModelsSchema.parse(models), preference);
-    const useWorktree = input.useWorktree ?? (owned["workspaceType"] === "git" && owned["allowWorktrees"] !== false && DEFAULT_CHAT_CONFIG.useWorktree);
+    const worktreesAllowed = owned["workspaceType"] === "git" && owned["allowWorktrees"] !== false;
+    if (input.useWorktree === true && !worktreesAllowed) {
+      throw new DomainError("voice_worktree_unavailable", "Worktrees are unavailable for this workspace.");
+    }
+    const useWorktree = input.useWorktree ?? (worktreesAllowed && DEFAULT_CHAT_CONFIG.useWorktree);
     let baseBranch = input.baseBranch;
     if (useWorktree) {
       const creation = TaskCreationContextResponseSchema.parse(await context.readExact("GET /api/workspaces/:id/task-creation-context", { id: workspaceId }));
@@ -176,7 +185,8 @@ export async function directCreateChat(context: LiveVoiceDirectContext, input: D
     : input.confirmationDescription;
   return await context.execute({
     operationId, parameters, body, confirmationDescription: description,
-    ...(compound ? { afterConfirmed: async (created: OperationResult) => await afterChatCreation(context, input, created) } : {}),
+    ...(compound ? { afterConfirmed: async (created: OperationResult, executeWrite: ConfirmedWriteExecutor) =>
+      await afterChatCreation({ context, input, created, executeWrite }) } : {}),
   });
 }
 

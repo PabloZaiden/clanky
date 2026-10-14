@@ -156,6 +156,9 @@ resolved locally through authorized reads; an ambiguous name returns safe
 candidates instead of choosing a match. The model should pass the user's name
 directly, not list resources just to obtain IDs. A combined intervention query
 uses one `waiting_work` with `kind=all`.
+For hosts, `current` requires an execution-host selection; a current server
+requires that selection to be SSH. The fresh route's host kind and ID are
+matched against authorized resources, never guessed from a name.
 
 Creation resolves real connected models, branches and effective defaults.
 Task creation also reads fresh browser planning/model preferences; explicit
@@ -163,10 +166,14 @@ overrides include the main and cheap models. Unavailable remembered models
 require clarification rather than silent replacement. Workspace creation
 requires the execution host, directory and adapter/provider; cloning,
 provisioning and other uncovered operations use the catalog fallback.
+An explicit worktree request for a directory workspace or a workspace with
+worktrees disabled is rejected before visual approval, not silently changed.
 Compound chat creation freezes the optional message/open intent and its
 additional user-language description in the same visual approval as creation.
 Rejection executes no stage. Approved stages are individually authorized and
-return their outcomes, including partial failure; they are never replayed.
+occupy one mutation queue slot through the navigation acknowledgement. Other
+queued writes wait until the compound action completes or fails. Stages return
+their outcomes, including partial failure; they are never replayed.
 
 The session has **24 tools**: these twenty, the existing selective `watch_work`,
 and the three generic find/describe/execute tools for uncovered intents.
