@@ -32,6 +32,12 @@ interface CreationContext {
   defaults: Record<string, unknown>;
 }
 interface LiveState { id: string; status: string; error: string | null }
+interface VoicePreferences {
+  baseUrl: string;
+  languageHints: string[];
+  models: { transcription: string; text: string };
+  live: { useVoiceProvider: boolean; baseUrl: string; model: string; jitterBufferTargetMs: number | null };
+}
 interface UiAction {
   type: "control.ui_action";
   actionId: string;
@@ -72,6 +78,7 @@ class VoiceClient {
         this.actions.push(frame.event as UiAction);
         this.actions.splice(0, Math.max(0, this.actions.length - 32));
       }
+
     };
   }
 
@@ -102,6 +109,26 @@ class VoiceClient {
     };
     await this.ack(event, { status: "opened", action: event.action });
   }
+}
+
+function audioDiagnostic(clientId: string, callId: string) {
+  return {
+    clientId, callId, attemptId: crypto.randomUUID(), droppedRecords: 0, deliveryFailures: 0,
+    records: [{
+      sequence: 1, elapsedMs: 0, observedAt: new Date().toISOString(), event: "initial", error: null,
+      media: {
+        peerState: "connected", iceState: "connected",
+        audio: { paused: false, muted: false, volume: 1, readyState: 4, errorCode: null, currentTimeSeconds: 0 },
+        context: { state: "running", sampleRate: 48_000, baseLatencySeconds: null, outputLatencySeconds: null },
+        session: { supported: false, type: null, state: null },
+        microphone: { readyState: "live", enabled: true, muted: false, echoCancellation: true,
+          noiseSuppression: true, autoGainControl: true, sampleRate: 48_000, sampleSize: null,
+          channelCount: 1, latencySeconds: null },
+        remote: { readyState: "live", muted: false, enabled: true },
+        visibility: "visible", requestedTargetMs: 200, targetSupported: true, configuredTargetMs: 200,
+      },
+    }],
+  };
 }
 
 async function sshCredential(application: E2EApplication, serverId: string): Promise<string> {
@@ -160,7 +187,9 @@ test("global Live discovers owned work, resumes its conversation and leaves dele
       providerBinDirectory: application.providerBinDirectory,
     });
     provider = await startVoiceProvider(application.runDirectory);
-    const environment = { NODE_EXTRA_CA_CERTS: provider.certificatePath, SSH_AUTH_SOCK: ssh.agentSocket };
+    const environment = {
+      NODE_EXTRA_CA_CERTS: provider.certificatePath, SSH_AUTH_SOCK: ssh.agentSocket, CLANKY_LOG_LEVEL: "info",
+    };
     await application.start({ env: environment });
     const local = (await application.json<Array<{ ref: Record<string, string> }>>("/api/execution-hosts"))
       .data.find((host) => host.ref["kind"] === "local")!;
@@ -189,6 +218,9 @@ test("global Live discovers owned work, resumes its conversation and leaves dele
         live: { useVoiceProvider: true, baseUrl: "", model: "gpt-live-1" },
       }),
     });
+    const preferences = (await application.json<VoicePreferences>("/api/voice/settings")).data;
+    expect(preferences.live.jitterBufferTargetMs).toBe(200);
+    await application.json("/api/server/logs/settings", { method: "PUT", body: JSON.stringify({ enabled: true }) });
     const key = (await application.json<{ token: string }>("/api/api-keys", {
       method: "POST", body: JSON.stringify({ name: "Global Live clients", scopes: ["*"] }),
     })).data.token;
@@ -204,6 +236,29 @@ test("global Live discovers owned work, resumes its conversation and leaves dele
     callId = started.call.id;
     expect(started.call.status).toBe("active");
     expect(started.sdp).toContain("v=0");
+    const diagnostic = audioDiagnostic(client.id, callId);
+    expect((await application.json<{ accepted: number }>("/api/voice/live/audio-diagnostics", {
+      method: "POST", body: JSON.stringify(diagnostic),
+    })).data.accepted).toBe(1);
+    const logs = (await application.json<{ enabled: boolean; logs: Array<{ scope: string; line: string }> }>(
+      "/api/server/logs",
+    )).data;
+    expect(logs.enabled).toBe(true);
+    expect(logs.logs.some((entry) => entry.scope.endsWith("core:live-audio")
+      && entry.line.includes(diagnostic.attemptId) && entry.line.includes(callId!))).toBe(true);
+    await application.json("/api/voice/live/audio-diagnostics", {
+      method: "POST", body: JSON.stringify({ ...diagnostic, clientId: other.id }),
+    }, 404);
+    await application.json("/api/voice/live/audio-diagnostics", {
+      method: "POST", body: JSON.stringify({ ...diagnostic, sdp: "private transport data" }),
+    }, 400);
+    await application.json("/api/voice/settings", {
+      method: "PUT", body: JSON.stringify({
+        baseUrl: preferences.baseUrl, languageHints: preferences.languageHints, models: preferences.models,
+        live: { useVoiceProvider: preferences.live.useVoiceProvider, baseUrl: preferences.live.baseUrl,
+          model: preferences.live.model, jitterBufferTargetMs: null },
+      }),
+    });
     const initialContext = await client.next("get_context");
     expect(initialContext.source.callId).toBe(callId);
     await application.json("/api/voice/live", {
@@ -232,7 +287,7 @@ test("global Live discovers owned work, resumes its conversation and leaves dele
     const sourceChat = (await application.json<Chat>("/api/chats", {
       method: "POST", body: JSON.stringify({
         name: GLOBAL_LIVE_INTENT.sourceChat, workspaceId: workspaceA.id,
-        model, baseBranch: repositoryA.branch, useWorktree: false, autoApprovePermissions: false,
+        model, baseBranch: repositoryA.branch, useWorktree: false,
       }),
     }, 201)).data;
     await application.json(`/api/chats/${sourceChat.config.id}/messages`, {
@@ -320,6 +375,7 @@ test("global Live discovers owned work, resumes its conversation and leaves dele
       (states) => states.every((state) => state === WebSocket.CLOSED),
       { description: "Live browser clients to disconnect", timeoutMs: 5_000 });
     await application.restart({ env: environment });
+    expect((await application.json<VoicePreferences>("/api/voice/settings")).data.live.jitterBufferTargetMs).toBeNull();
     expect((await application.json<Task>(`/api/tasks/${createdTask.config.id}`)).data)
       .toMatchObject({ config: { workspaceId: workspaceB.id, name: GLOBAL_LIVE_INTENT.createdTask }, state: { status: "draft" } });
     expect((await application.json<Chat>(`/api/chats/${createdChat.config.id}`)).data)

@@ -66,7 +66,7 @@ INSERT INTO preferences (key, user_id, value) VALUES
   ('dashboard-view-mode', 'demo-user', '"cards"'),
   ('markdown-rendering', 'demo-user', '"rich"'),
   ('file-explorer-full-tree', 'demo-user', 'true'),
-  ('quick-chat', 'demo-user', '{"providerID":"copilot","modelID":"gpt-5.2","variant":"","autoApprovePermissions":false}'),
+  ('quick-chat', 'demo-user', '{"providerID":"copilot","modelID":"gpt-5.2","variant":""}'),
   ('new-task-planning', 'demo-user', '{"autoAcceptPlan":false,"fullyAutonomous":false}')
 ON CONFLICT(key, user_id) DO UPDATE SET value = excluded.value;
 

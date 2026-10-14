@@ -12,6 +12,7 @@ import type { OperationAuthority } from "../core/clanky-operation-service";
 import { DomainError, isDomainError } from "../domain/domain-error";
 import { domainErrorResponse, successResponse } from "./helpers";
 import { parseAndValidate } from "./validation";
+import { LIVE_AUDIO_DIAGNOSTICS_MAX_BYTES, LiveAudioDiagnosticsRequestSchema } from "@/contracts/schemas/live-voice-audio";
 
 const log = createLogger("api:live-voice");
 let authorityFactory: ((req: Request, ctx: RouteContext) => OperationAuthority) | undefined;
@@ -33,6 +34,26 @@ function liveErrorResponse(error: unknown): Response {
 const NO_STORE = { "Cache-Control": "no-store" };
 
 export const liveVoiceRoutes = defineRoutes({
+  "/api/voice/live/audio-diagnostics": {
+    auth: "user", sameOrigin: "mutations",
+    description: "Publish bounded, private originating-browser media diagnostics to server logs without audio or transport addresses.",
+    requestSchema: LiveAudioDiagnosticsRequestSchema,
+    operations: { POST: { automation: { policy: "excluded", reason: "Browser media diagnostics are not model tools." } } },
+    async POST(req) {
+      const validation = await parseAndValidate(LiveAudioDiagnosticsRequestSchema, req, {
+        maxBodyBytes: LIVE_AUDIO_DIAGNOSTICS_MAX_BYTES,
+      });
+      if (!validation.success) {
+        log.warn("Live audio diagnostics request rejected", { status: validation.response.status });
+        return validation.response;
+      }
+      try {
+        const response = successResponse(liveVoiceManager.recordAudioDiagnostics(validation.data));
+        response.headers.set("Cache-Control", "no-store");
+        return response;
+      } catch (error) { return liveErrorResponse(error); }
+    },
+  },
   "/api/voice/live": {
     auth: "user", sameOrigin: "mutations",
     description: "Read global Live availability or create an originating-tab-owned voice session.",

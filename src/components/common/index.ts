@@ -25,6 +25,10 @@ export {
   getTerminalSessionStatusLabel,
   getProvisioningStatusBadgeVariant,
   getProvisioningStatusLabel,
+  getWorkerUpdateStatusBadgeVariant,
+  getWorkerUpdateStatusLabel,
+  getWorkerUpdateStepStatusBadgeVariant,
+  getWorkerUpdateStepStatusLabel,
 } from "./status-variants";
 export {
   ActivityIcon,

@@ -41,9 +41,9 @@ selects that exact release and takes precedence over `--pre-release`.
 
 Normal private REST routes require an authenticated user and enforce
 same-origin protection for browser mutations. Automatic workspace restart,
-database reset, and terminal-task purge are owner-only. Preview and terminal
-WebSocket upgrades require an authenticated user and always enforce same-origin
-checks.
+global worker updates, database reset, and terminal-task purge are owner-only.
+Preview and terminal WebSocket upgrades require an authenticated user and
+always enforce same-origin checks.
 
 Use `clanky api` to list the routes exposed by the running server and
 `clanky schema <endpoint>` to inspect a route's request, response, and CLI
@@ -683,6 +683,9 @@ included in this table.
 | POST | `/api/voice/live/:callId/close` | End voice without stopping delegated work. |
 | POST | `/api/voice/live/:callId/confirmations/:requestId` | Approve or reject a frozen, expiring operation from the originating client. |
 | POST | `/api/voice/live/:callId/credentials/:requestId` | Privately supply a request-bound SSH credential token. |
+| GET, POST | `/api/worker-update-jobs` | List jobs or start updates for active global Mesh workers. |
+| GET | `/api/worker-update-jobs/:id` | Read a worker update job and its logs. |
+| POST | `/api/worker-update-jobs/:id/dismiss` | Dismiss a terminal worker update job and its logs. |
 | GET, POST | `/api/workspace-worker-enrollments` | List or create workspace-exclusive Mesh worker enrollments. |
 | GET, DELETE | `/api/workspace-worker-enrollments/:id` | Read or cancel a workspace-exclusive Mesh worker enrollment. |
 | GET, POST | `/api/workspaces` | List workspaces or create a workspace. |
@@ -3328,6 +3331,149 @@ Get the collected log entries for a provisioning job.
 
 ---
 
+### Mesh worker updates
+
+Worker update routes require owner authorization and same-origin protection for
+mutations. `POST /api/worker-update-jobs` accepts no request body and starts a
+separate background job for every active global Mesh worker registration.
+Registrations with `registrationScope: "workspace"` are excluded, so
+workspace-exclusive automatic workers are not updated by this operation.
+Different workers run concurrently; each job runs its own commands in order:
+
+1. `clanky update`
+2. `clanky worker service restart`, only after the update exits successfully.
+
+An update failure skips the restart and fails only that worker's job. A
+successful admission means the job was created, not that either command
+completed. Each worker's execution result and logs remain available on the
+Dashboard until its terminal job is dismissed. If the restart interrupts the
+Mesh connection before its result can be confirmed, the job records an
+unconfirmed/interrupted outcome rather than success.
+
+#### POST /api/worker-update-jobs
+
+Start update jobs for all active global Mesh worker registrations. The response
+is `202 Accepted`; `totalWorkers` is the number of eligible registrations, and
+`results` contains one admission result per worker.
+
+```json
+{
+  "success": true,
+  "totalWorkers": 2,
+  "results": [
+    {
+      "workerNodeId": "worker-1",
+      "workerName": "build-east",
+      "status": "started",
+      "jobId": "job-1"
+    },
+    {
+      "workerNodeId": "worker-2",
+      "workerName": "build-west",
+      "status": "failed",
+      "error": "Unable to create worker update job."
+    }
+  ]
+}
+```
+
+`status: "failed"` in this response means that the job could not be admitted;
+it is distinct from a job that was admitted and later failed while running.
+One worker's admission failure does not prevent jobs from being created for
+other eligible workers. If that owner already has a `pending` or `running`
+update job for a worker, the result for that worker is `not_started` with
+`reason: "already_active"`; no duplicate command sequence is admitted.
+
+#### GET /api/worker-update-jobs
+
+List retained worker update jobs for the owner. The collection omits logs;
+read an individual job to inspect its output.
+
+```json
+{
+  "jobs": [
+    {
+      "config": {
+        "id": "job-1",
+        "workerNodeId": "worker-1",
+        "workerName": "build-east",
+        "createdAt": "2026-06-01T12:00:00.000Z"
+      },
+      "state": {
+        "status": "running",
+        "currentStep": "update",
+        "steps": {
+          "update": { "status": "running" },
+          "restart": { "status": "pending" }
+        },
+        "updatedAt": "2026-06-01T12:00:01.000Z"
+      }
+    }
+  ]
+}
+```
+
+Job statuses are `pending`, `running`, `completed`, `failed`, and
+`interrupted`. Each `update` and `restart` step has its own status
+(`pending`, `running`, `succeeded`, `failed`, `skipped`, or `unconfirmed`),
+timestamps, optional exit code, and optional error.
+
+#### GET /api/worker-update-jobs/:id
+
+Read a job and its retained logs.
+
+```json
+{
+  "job": {
+    "config": {
+      "id": "job-1",
+      "workerNodeId": "worker-1",
+      "workerName": "build-east",
+      "createdAt": "2026-06-01T12:00:00.000Z"
+    },
+    "state": {
+      "status": "completed",
+      "currentStep": null,
+      "steps": {
+        "update": { "status": "succeeded", "exitCode": 0 },
+        "restart": { "status": "succeeded", "exitCode": 0 }
+      },
+      "startedAt": "2026-06-01T12:00:01.000Z",
+      "completedAt": "2026-06-01T12:00:08.000Z",
+      "updatedAt": "2026-06-01T12:00:08.000Z"
+    }
+  },
+  "logs": [
+    {
+      "id": "log-1",
+      "source": "system",
+      "text": "Starting clanky update.",
+      "timestamp": "2026-06-01T12:00:01.000Z",
+      "step": "update"
+    }
+  ]
+}
+```
+
+Returns `404 not_found` when the job is not available to the owner.
+
+#### POST /api/worker-update-jobs/:id/dismiss
+
+Permanently remove a terminal job and its logs.
+
+```json
+{
+  "success": true,
+  "dismissed": true
+}
+```
+
+Returns `404 not_found` when the job does not exist and `409
+worker_update_job_active` while it is pending or running. Jobs interrupted by
+a Clanky restart are retained as terminal jobs and can be dismissed.
+
+---
+
 ### Git
 
 #### GET /api/git/branches
@@ -3502,7 +3648,7 @@ parameters are combined with AND. Common filters are:
 
 | Parameter | Description |
 |-----------|-------------|
-| `resource` | Resource name for invalidation events, such as `tasks`, `chats`, `agents`, `agent-runs`, `terminal-sessions`, `provisioning-jobs`, `previews`, `mesh`, or `execution-hosts` |
+| `resource` | Resource name for invalidation events, such as `tasks`, `chats`, `agents`, `agent-runs`, `terminal-sessions`, `provisioning-jobs`, `worker-update-jobs`, `previews`, `mesh`, or `execution-hosts` |
 | `id` | Entity ID for a resource invalidation |
 | `scope` | Resource scope, such as an agent ID for `agent-runs`, a workspace ID for workspace `previews`, or a serialized execution-host reference (for example, `local:node-id` or `mesh:node-id`) for direct server `previews` |
 | `taskId` | Target a retained task stream |
@@ -3562,6 +3708,7 @@ Resource invalidations use these resource names and actions:
 | `agent-runs.changed`, `agent-runs.deleted` | Agent-run collection or entity changed/deleted |
 | `terminal-sessions.changed`, `terminal-sessions.deleted` | Workspace terminal collection or entity changed/deleted |
 | `provisioning-jobs.changed`, `provisioning-jobs.deleted` | Provisioning-job collection or entity changed/deleted |
+| `worker-update-jobs.changed`, `worker-update-jobs.deleted` | Worker update-job collection or entity changed/deleted |
 | `previews.changed`, `previews.deleted` | Preview collection or entity changed/deleted |
 | `mesh.changed`, `mesh.deleted` | Mesh controller or worker state changed/deleted |
 | `execution-hosts.changed`, `execution-hosts.deleted` | Execution-host collection or entity changed/deleted |

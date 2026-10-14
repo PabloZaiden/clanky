@@ -1,0 +1,27 @@
+diff --git a/src/web/index.ts b/src/web/index.ts
+index b64763fc7d5030f7651733316cdd333b62b61b0a..d74536dfcefafa7defb529bea7541a287127542e 100644
+--- a/src/web/index.ts
++++ b/src/web/index.ts
+@@ -15,6 +15,7 @@ export { useTheme } from "./theme";
+ export type { ResolvedTheme, WebAppThemeState } from "./theme";
+ export { useLogLevel } from "./log-level";
+ export type { WebAppLogLevelState } from "./log-level";
++export { useCurrentUser } from "./webapp-config";
+ export { createLogger, getLogLevel, log } from "./logger";
+ export { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+ export type { ThemePreference } from "../contracts";
+diff --git a/src/web/webapp-config.tsx b/src/web/webapp-config.tsx
+index 53659de6558dd6a0c9c153533d15f6c60da417bb..a2fa3782ba37fda4281ba6f23ac2f7f0c1e9f1e3 100644
+--- a/src/web/webapp-config.tsx
++++ b/src/web/webapp-config.tsx
+@@ -75,6 +75,10 @@ export function useWebAppConfig(consumer = "useWebAppConfig"): WebAppConfigState
+   return context;
+ }
+ 
++export function useCurrentUser(): WebAppConfigResponse["currentUser"] {
++  return useWebAppConfig("useCurrentUser").config?.currentUser;
++}
++
+ export function WebAppConfigProvider({ children }: { children: ReactNode }) {
+   const [config, setConfig] = useState<WebAppConfigResponse>();
+   const [loading, setLoading] = useState(true);

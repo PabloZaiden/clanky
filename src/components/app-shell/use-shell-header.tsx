@@ -329,6 +329,8 @@ export function useShellHeader({
           : { title: "Server files" };
       case "provisioning-job":
         return { title: "Provisioning" };
+      case "worker-update-job":
+        return { title: "Worker update" };
       case "agent": {
         const agentId = getRouteString(route, "agentId");
         if (agentId && !selectedAgent && !agents.loading) {

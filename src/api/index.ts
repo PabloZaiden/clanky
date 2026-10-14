@@ -36,6 +36,7 @@ import { agentsMdRoutes } from "./agents-md";
 import { sshServersRoutes } from "./ssh-servers";
 import { terminalSessionsRoutes } from "./terminal-sessions";
 import { provisioningRoutes } from "./provisioning";
+import { workerUpdateRoutes } from "./worker-update-jobs";
 import { chatsRoutes } from "./chats/index";
 import { agentsRoutes } from "./agents";
 import { previewRoutes } from "./previews";
@@ -66,6 +67,7 @@ const nativeApiRoutes = {
   ...sshServersRoutes,
   ...terminalSessionsRoutes,
   ...provisioningRoutes,
+  ...workerUpdateRoutes,
   ...chatsRoutes,
   ...agentsRoutes,
   ...previewRoutes,
@@ -116,6 +118,7 @@ export * from "./ssh-servers";
 export * from "./terminal-sessions";
 export * from "./websocket";
 export * from "./provisioning";
+export * from "./worker-update-jobs";
 export * from "./chats/index";
 export * from "./agents";
 export * from "./previews";

@@ -50,6 +50,7 @@ function createDefaultSettings(): VoiceSettings {
       apiKeyConfigured: false,
       model: "",
       configured: false,
+      jitterBufferTargetMs: 200,
     },
   };
 }

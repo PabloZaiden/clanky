@@ -204,6 +204,16 @@ async function stopNodeServer(node: ManagedMeshNode): Promise<string> {
   return await readProcessOutput(node);
 }
 
+async function removeMeshDataDirectory(dataDir: string): Promise<void> {
+  // Windows may briefly retain file handles after the Mesh process tree exits.
+  await rm(dataDir, {
+    recursive: true,
+    force: true,
+    maxRetries: 5,
+    retryDelay: 100,
+  });
+}
+
 async function waitForNodeHealth(
   node: MeshHttpNode,
   description: string,
@@ -374,7 +384,7 @@ export async function startMeshNode(options: {
     if (node) {
       output = await stopNodeServer(node);
     }
-    await rm(dataDir, { recursive: true, force: true });
+    await removeMeshDataDirectory(dataDir);
     throw new Error(
       `Failed to start ${role} Mesh node${output ? `:\n${output}` : ""}`,
       { cause: error },
@@ -432,7 +442,7 @@ export async function startMeshRelay(options: {
     if (relay) {
       output = await stopNodeServer(relay);
     }
-    await rm(dataDir, { recursive: true, force: true });
+    await removeMeshDataDirectory(dataDir);
     throw new Error(
       `Failed to start Mesh relay${output ? `:\n${output}` : ""}`,
       { cause: error },
@@ -462,7 +472,7 @@ export async function restartMeshNode(
 
 export async function stopMeshNode(node: ManagedMeshNode): Promise<void> {
   await stopNodeServer(node);
-  await rm(node.dataDir, { recursive: true, force: true });
+  await removeMeshDataDirectory(node.dataDir);
 }
 
 export async function meshJsonRequest<T>(

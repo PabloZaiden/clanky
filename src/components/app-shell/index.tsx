@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef, useState, type ChangeEvent } from "react";
 import logoSvgPath from "../../favicon.svg" with { type: "file" };
 import {
+  useCurrentUser,
   useToast,
   WebAppRoot,
   type WebAppRoute,
@@ -26,10 +27,11 @@ import { buildVoiceLauncherActions, LiveVoiceSidebarBar } from "./live-voice-con
 import { useVoiceClientActions } from "./use-voice-client-actions";
 
 export function AppShell() {
+  const currentUser = useCurrentUser();
   const toast = useToast();
   const [route, setRoute] = useState<WebAppRoute>(HOME_ROUTE);
   const [activityRoute, setActivityRoute] = useState<WebAppRoute | null>(null);
-  const resources = useShellResources(route);
+  const resources = useShellResources(route, currentUser?.isOwner === true);
   const {
     chats,
     chatsLoading,
@@ -79,6 +81,7 @@ export function AppShell() {
     voiceSettings,
     dashboardData,
     provisioning,
+    workerUpdates,
     workspaceGroups,
     allWorkspaceGroups,
     sidebarWorkspaceGroups,
@@ -106,7 +109,10 @@ export function AppShell() {
   } = useShellNavigation({
     setRoute,
   });
-  const liveVoice = useLiveVoice({ enabled: voiceSettings.settings.live.configured, route });
+  const liveVoice = useLiveVoice({
+    enabled: voiceSettings.settings.live.configured, route,
+    jitterBufferTargetMs: voiceSettings.settings.live.jitterBufferTargetMs,
+  });
   const voiceClient = useVoiceClientActions({ voice: liveVoice, rootRef: webAppRootRef });
   const voiceActions = useMemo(() => buildVoiceLauncherActions(
     liveVoice, () => navigateWithinShell({ view: "settings" }),
@@ -277,6 +283,7 @@ export function AppShell() {
     workspaceCreate,
     workspaceSettings,
     provisioning,
+    workerUpdates,
     toast,
     showPrivateItems: privateItemsPreference.showPrivateItems,
   } satisfies ShellRouteCompositionContext), [
@@ -301,6 +308,7 @@ export function AppShell() {
     pendingControlFileOpen,
     onControlFileOpenResult,
     provisioning,
+    workerUpdates,
     purgeTask,
     refreshChats,
     refreshExecutionHosts,
@@ -340,6 +348,7 @@ export function AppShell() {
     workspacesLoading,
     refreshTasks,
     mesh,
+    workerUpdates,
     voiceSettings,
   }), [
     dashboardData,
@@ -351,6 +360,7 @@ export function AppShell() {
     quickChatSettings,
     refreshTasks,
     schedulerTimezone,
+    workerUpdates,
     workspaces,
     workspacesLoading,
     voiceSettings,
