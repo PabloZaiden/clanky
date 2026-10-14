@@ -24,15 +24,6 @@ interface Chat { id: string; name: string; status: string }
 interface Task { id: string; name: string; status: string }
 interface ConversationMessage { id: string; role: string; content: string; offset: number }
 interface ContentPart { path: Array<string | number>; value: unknown; offset: number; complete: boolean }
-interface CreationContext {
-  ready: boolean;
-  defaults: Record<string, unknown> & {
-    model: { providerID: string; modelID: string; variant?: string } | null;
-    cheapModel: Record<string, unknown> | null;
-    baseBranch: string | null;
-  };
-  models: { available: Array<{ providerID: string; modelID: string; connected: boolean }> };
-}
 
 export interface LiveFixture {
   id: string;
@@ -142,43 +133,84 @@ function operationTools() {
   };
 }
 
+function* direct<T>(name: string, args: Record<string, unknown>): Generator<FixtureStep, T, unknown> {
+  let result = record(yield { name, arguments: args });
+  if (result["code"] === "confirmation_required") result = record(yield { wait: "confirmation" });
+  return successful<T>(result);
+}
+
+function* directCollection<T>(name: string, args: Record<string, unknown> = {}): Generator<FixtureStep, T[], unknown> {
+  const items: T[] = [];
+  let cursor: string | null = null;
+  do {
+    const page: { items: T[]; nextCursor: string | null } = yield* direct(name, { ...args, cursor });
+    items.push(...page.items);
+    cursor = page.nextCursor;
+  } while (cursor !== null);
+  return items;
+}
+
+function* directContent(name: string, args: Record<string, unknown>): Generator<FixtureStep, {
+  target: Chat | Task; interactions: Array<{ kind: string; requestId: string; status: string }>; content: unknown;
+}, unknown> {
+  let cursor: string | null = null;
+  let result: { target: Chat | Task; interactions: Array<{ kind: string; requestId: string; status: string }>; content: unknown } | undefined;
+  const items: unknown[] = [];
+  do {
+    const page: NonNullable<typeof result> = yield* direct(name, { ...args, cursor });
+    result = page;
+    const content = record(page.content);
+    if (!Array.isArray(content["items"])) throw new Error("The selected work content is unavailable.");
+    items.push(...content["items"]);
+    cursor = typeof content["nextCursor"] === "string" ? content["nextCursor"] : null;
+  } while (cursor !== null);
+  return {
+    ...result!,
+    content: items.length && Array.isArray(record(items[0])["path"]) ? restoreContent(items as ContentPart[]) : items,
+  };
+}
+
 function* globalJourney(): Generator<FixtureStep, void, unknown> {
   const operation = operationTools();
-  const context = record(yield { name: "clanky_get_ui_state", arguments: {} });
-  const planning = record(record(context["context"])["planningPreferences"]);
-  const workspaces = yield* operation<Workspace[]>("GET /api/workspaces");
+  yield { name: "clanky_get_ui_state", arguments: { section: null, cursor: null } };
+  const workspaces = yield* directCollection<Workspace>("clanky_list_workspaces", { limit: null });
   const workspaceA = workspaces.find((workspace) => workspace.name === GLOBAL_LIVE_INTENT.workspaceA)!;
   const workspaceB = workspaces.find((workspace) => workspace.name === GLOBAL_LIVE_INTENT.workspaceB)!;
   if (!workspaceA || !workspaceB) throw new Error("The requested workspaces are unavailable.");
-  const hosts = yield* operation<Host[]>("GET /api/execution-hosts");
+  const hosts = yield* directCollection<Host>("clanky_list_servers", { kind: "hosts", limit: null });
   const ssh = hosts.find((host) => host.ref.kind === "ssh");
   if (!hosts.some((host) => host.ref.kind === "local") || !ssh?.ref.serverId) {
     throw new Error("The caller's local and SSH execution hosts are unavailable.");
   }
-  const servers = yield* operation<Server[]>("GET /api/ssh-servers");
+  const servers = yield* directCollection<Server>("clanky_list_servers", { kind: "servers", limit: null });
   const server = servers.find((entry) => entry.id === ssh.ref.serverId)!;
   const hostFile = yield* operation<{ content: string }>("GET /api/execution-hosts/:kind/:id/files/content", {
     parameters: { kind: ssh.ref.kind, id: server.id },
     query: { path: GLOBAL_LIVE_INTENT.hostFile, startDirectory: server.repositoriesBasePath },
   });
-  const chats = yield* operation<Chat[]>("GET /api/chats", { query: { workspaceId: workspaceA.id } });
-  const sourceChat = chats.find((chat) => chat.name === GLOBAL_LIVE_INTENT.sourceChat)!;
-  const chat = yield* operation<Chat>("GET /api/chats/:id", { parameters: { id: sourceChat.id } });
-  const conversation = yield* operation<ConversationMessage[]>("GET /api/chats/:id/snapshot", { parameters: { id: chat.id } });
+  const recent = yield* direct<{ entries: Array<Chat & { kind: string }> }>("clanky_recent_work", {
+    kind: "chat", workspace: workspaceA.name, status: null, cursor: null, limit: 3,
+  });
+  const sourceChat = recent.entries.find((chat) => chat.name === GLOBAL_LIVE_INTENT.sourceChat);
+  if (!sourceChat) throw new Error("The requested recent source conversation is unavailable.");
+  const read = yield* directContent("clanky_read_chat", {
+    target: sourceChat.name, workspace: workspaceA.name, range: "latest", limit: 6,
+  });
+  const chat = read.target as Chat;
+  const conversation = read.content as ConversationMessage[];
   const answerParts = conversation.filter((message) => message.id === conversation.findLast((entry) => entry.role === "assistant" && entry.content.trim())?.id);
   const answer = answerParts.map((part) => part.content).join("");
-  const tasks = yield* operation<Task[]>("GET /api/tasks");
-  const sourceTask = tasks.find((task) => task.name === GLOBAL_LIVE_INTENT.sourceTask)!;
-  const task = yield* operation<Task>("GET /api/tasks/:id", { parameters: { id: sourceTask.id } });
-  const prompt = yield* operation<string>("GET /api/tasks/:id", { parameters: { id: task.id }, query: { section: "prompt" } });
-  const creation = yield* operation<CreationContext>("GET /api/workspaces/:id/task-creation-context", {
-    parameters: { id: workspaceB.id },
+  const waiting = yield* direct<{ entries: Array<Task & { kind: string; interventionReasons: string[] }> }>("clanky_waiting_work", {
+    kind: "task", workspace: workspaceA.name, cursor: null, limit: 3,
   });
-  const model = creation.defaults.model ?? creation.models.available.find((entry) => entry.connected);
-  if (!creation.ready || !model || !creation.defaults.baseBranch || !answer) {
-    throw new Error("The selected workspace is not ready for the requested work.");
-  }
-  const selectedModel = { providerID: model.providerID, modelID: model.modelID, variant: "variant" in model ? model.variant : "" };
+  const sourceTask = waiting.entries.find((task) => task.name === GLOBAL_LIVE_INTENT.sourceTask && task.interventionReasons.includes("plan_approval"));
+  if (!sourceTask) throw new Error("The source plan awaiting the user is unavailable.");
+  const taskRead = yield* directContent("clanky_read_task", {
+    target: sourceTask.name, workspace: workspaceA.name, section: "prompt", range: "latest", limit: null,
+  });
+  const task = taskRead.target as Task;
+  const prompt = taskRead.content;
+  if (typeof prompt !== "string" || !answer) throw new Error("The requested source work is unreadable.");
   const handoff = `${prompt}\nTask status: ${task.status}; chat status: ${chat.status}.\nLatest answer: ${answer}\nSSH handoff: ${hostFile.content}`;
 
   // The user declines retirement of A, then explicitly approves new work on B.
@@ -186,43 +218,44 @@ function* globalJourney(): Generator<FixtureStep, void, unknown> {
     parameters: { id: task.id },
     confirmationDescription: `Delete the saved task "${task.name}" in "${workspaceA.name}". This permanently removes its task data.`,
   });
-  yield* operation("GET /api/tasks/:id", { parameters: { id: task.id } });
-  yield* operation("POST /api/tasks", {
+  yield* direct("clanky_read_task", {
+    target: task.id, workspace: workspaceA.name, section: "plan", range: "latest", cursor: null, limit: null,
+  });
+  yield* direct("clanky_create_task", {
     confirmationDescription: `Create the draft task "${GLOBAL_LIVE_INTENT.createdTask}" in "${workspaceB.name}" from the source conversation and host guidance. It will wait for your approval before running or accepting its plan.`,
-    body: {
-      ...creation.defaults,
-      ...planning,
-      name: GLOBAL_LIVE_INTENT.createdTask, workspaceId: workspaceB.id, prompt: handoff,
-      model: selectedModel, cheapModel: creation.defaults.cheapModel, draft: true,
-    },
+    name: GLOBAL_LIVE_INTENT.createdTask, workspace: workspaceB.name, prompt: handoff,
+    model: null, cheapModel: null, draft: true, baseBranch: null, useWorktree: null, autoAcceptPlan: null, fullyAutonomous: null,
   });
-  const createdTask = (yield* operation<Task[]>("GET /api/tasks"))
-    .find((entry) => entry.name === GLOBAL_LIVE_INTENT.createdTask)!;
+  const createdTask = (yield* directCollection<Task>("clanky_list_tasks", {
+    name: GLOBAL_LIVE_INTENT.createdTask, workspace: workspaceB.name, status: null, limit: null,
+  }))[0]!;
   successful(yield {
-    name: "clanky_ui_action", arguments: { action: { type: "open_task", taskId: createdTask.id } },
+    name: "clanky_ui_action", arguments: { action: { type: "open_named", kind: "task", target: createdTask.name, workspace: workspaceB.name } },
   });
-  yield* operation("POST /api/chats", {
+  yield* direct("clanky_create_chat", {
     confirmationDescription: `Create the chat "${GLOBAL_LIVE_INTENT.createdChat}" in "${workspaceB.name}" with the saved model and branch choices. Permission requests are automatically approved.`,
-    body: {
-      name: GLOBAL_LIVE_INTENT.createdChat, workspaceId: workspaceB.id,
-      model: selectedModel, baseBranch: creation.defaults.baseBranch,
-      useWorktree: false,
-    },
+    name: GLOBAL_LIVE_INTENT.createdChat, workspace: workspaceB.name, host: null, directory: null,
+    model: null, baseBranch: null, useWorktree: false, initialMessage: null, open: false, afterCreationDescription: null,
   });
-  const createdChat = (yield* operation<Chat[]>("GET /api/chats", { query: { workspaceId: workspaceB.id } }))
-    .find((entry) => entry.name === GLOBAL_LIVE_INTENT.createdChat)!;
+  const createdChat = (yield* directCollection<Chat>("clanky_list_chats", {
+    name: GLOBAL_LIVE_INTENT.createdChat, workspace: workspaceB.name, status: null, limit: null,
+  }))[0]!;
   successful(yield {
     name: "clanky_watch_work",
     arguments: { command: "add", targets: [
       { kind: "task", id: createdTask.id }, { kind: "chat", id: createdChat.id },
     ] },
   });
-  yield* operation("POST /api/chats/:id/messages", {
-    parameters: { id: createdChat.id },
-    body: { message: `${handoff}\n[question] [provider-write] Ask before continuing the delegated work.`, attachments: [] },
+  yield* direct("clanky_send_chat_message", {
+    target: createdChat.name, workspace: workspaceB.name,
+    message: `${handoff}\n[question] [provider-write] Ask before continuing the delegated work.`,
   });
   yield { wait: "work", chatId: createdChat.id };
-  yield* operation("GET /api/chats/:id", { parameters: { id: createdChat.id } });
+  const attention = yield* direct<{ entries: Array<Chat & { preview: { interactions?: unknown[] } }> }>("clanky_waiting_work", {
+    kind: "all", workspace: null, cursor: null, limit: 3,
+  });
+  const needsAnswer = attention.entries.find((entry) => entry.id === createdChat.id);
+  if (!needsAnswer?.preview.interactions?.length) throw new Error("The delegated work's pending question is unavailable.");
   const watched = successful<{ watching: Array<{ kind: string; id: string }> }>(
     yield { name: "clanky_watch_work", arguments: { command: "list", targets: [] } },
   );
@@ -258,17 +291,16 @@ function rememberedReference(session: LiveFixture, name: string): string {
 }
 
 function* resumedJourney(session: LiveFixture): Generator<FixtureStep, void, unknown> {
-  const operation = operationTools();
   const id = rememberedReference(session, GLOBAL_LIVE_INTENT.createdChat);
-  const chat = yield* operation<Chat>("GET /api/chats/:id", { parameters: { id } });
-  const questions = yield* operation<Array<{ requestId: string; status: string }>>("GET /api/chats/:id", {
-    parameters: { id }, query: { section: "questions" },
+  const read = yield* directContent("clanky_read_chat", {
+    target: id, workspace: null, range: "latest", limit: 6,
   });
-  const question = questions.find((entry) => entry.status === "pending");
+  const chat = read.target as Chat;
+  const question = read.interactions.find((entry) => entry.kind === "question" && entry.status === "pending");
   if (!question) throw new Error("The previously delegated conversation has no pending question.");
-  yield* operation("POST /api/chats/:id/questions/:requestId", {
-    parameters: { id: chat.id, requestId: question.requestId },
-    body: { answers: [["Concise"]] },
+  yield* direct("clanky_respond_chat_interaction", {
+    target: chat.name, workspace: GLOBAL_LIVE_INTENT.workspaceB, kind: "question", requestId: question.requestId,
+    answers: [["Concise"]], decision: null, confirmationDescription: null,
   });
   successful(yield {
     name: "clanky_ui_action", arguments: { action: { type: "open_chat", chatId: chat.id } },

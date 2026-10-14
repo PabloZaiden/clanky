@@ -21,6 +21,7 @@ function workMetadata(row: StoredWorkReadRow, resource: WorkReadResource, hosts:
   return {
     id: row.id, name: row.name, workspaceId: row.workspaceId, directory: row.directory,
     status: row.status, createdAt: row.createdAt, updatedAt: row.updatedAt,
+    lastActivityAt: row.lastActivityAt, lastUserMessageAt: row.lastUserMessageAt,
     model: row.providerID && row.modelID ? { providerID: row.providerID, modelID: row.modelID, variant: row.variant ?? "" } : null,
     source: row.sourceKind === "execution_host" ? {
       kind: "execution_host",
@@ -31,7 +32,13 @@ function workMetadata(row: StoredWorkReadRow, resource: WorkReadResource, hosts:
     ...(row.taskId ? { taskId: row.taskId } : {}),
     ...(row.currentIteration !== null ? { currentIteration: row.currentIteration } : {}),
     ...(row.stateAvailable ? {
-      needsInput: row.pendingQuestions + row.pendingPermissions > 0,
+      needsInput: row.pendingQuestions + row.pendingPermissions + row.planApproval > 0,
+      interventionReasons: [
+        ...(row.pendingQuestions ? ["question"] : []),
+        ...(row.pendingPermissions ? ["permission"] : []),
+        ...(row.planApproval ? ["plan_approval"] : []),
+      ],
+      availableActions: resource === "task" && row.status === "completed" ? ["accept", "push"] : [],
       pendingQuestions: row.pendingQuestions, pendingPermissions: row.pendingPermissions,
       pendingInputs: row.pendingInputs,
     } : { stateUnavailable: true }),

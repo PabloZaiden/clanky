@@ -48,9 +48,10 @@ adapter is required.
 
 The assistant can discover your chats, tasks, workspaces, servers and execution
 hosts; read their state and content; create and manage work; send or queue
-instructions; answer interactions; and navigate the originating client. It
-discovers exact per-method contracts from Clanky's real framework route catalog,
-not a separate endpoint list. Existing user ownership, scopes and selected-host
+instructions; answer interactions; and navigate the originating client. Common
+intents are available immediately; uncommon operations discover exact per-method
+contracts from Clanky's real framework route catalog, not a separate endpoint
+list. Existing user ownership, scopes and selected-host
 execution still apply. Credential management, raw transports, uploads/downloads
 and browser media are not ordinary JSON assistant operations.
 
@@ -121,9 +122,63 @@ tokens are not function arguments, results or realtime acknowledgements.
 Operations requiring different SSH servers through a single-token API are
 rejected rather than guessing which credential to use.
 
-The textual model has six tools: discover operations, describe a contract,
-execute it, read fresh client context, request a client action, and watch
-selected work. API results distinguish completed operations from admitted or
+### Direct common operations
+
+Twenty common intents are available to the textual model before discovery.
+Their names below have the `clanky_` prefix:
+
+| Tool | Useful operation |
+| --- | --- |
+| `recent_work` | Recent chats/tasks by actual activity, with bounded literal previews. |
+| `waiting_work` | Questions, permissions and ready plans awaiting manual approval, together. |
+| `list_chats` | Filter chats by workspace, exact name or status. |
+| `read_chat` | State, pending interactions and latest or earliest literal conversation. |
+| `send_chat_message` | Send one instruction to a named, identified or selected chat. |
+| `create_chat` | Create in a workspace or on an execution host; optional initial message and opening. |
+| `interrupt_chat` | Interrupt active chat work, independently of stopping voice. |
+| `respond_chat_interaction` | Answer a specific or uniquely pending question, or decide a permission. |
+| `list_tasks` | Filter tasks, including progress and required-intervention reasons. |
+| `read_task` | State and literal conversation, prompt, plan or diff. |
+| `create_task` | Create a draft or planning task with actual defaults and model preferences. |
+| `instruct_task` | Send a follow-up or set the next-iteration prompt, with explicit intent. |
+| `control_task` | Start draft planning or stop execution; not a generic resume command. |
+| `review_task_plan` | Give feedback, accept, or discard the plan **and delete its task**. |
+| `finish_task` | Accept completed work locally or push it, preserving distinct approval policies. |
+| `list_workspaces` | Owned workspace metadata and execution context. |
+| `list_servers` | SSH registrations and local/SSH/Mesh hosts, without probing or credentials. |
+| `create_workspace` | Create at an explicit directory on a selected host with an explicit adapter/provider. |
+| `get_ui_state` | Fresh acknowledged route/selection and relevant browser preferences. |
+| `ui_action` | Open a named chat/task/workspace/server/host, or use canonical client actions. |
+
+Read/action targets accept an ID, exact name and optional workspace, or
+`current` for the originating client's acknowledged selection. Names are
+resolved locally through authorized reads; an ambiguous name returns safe
+candidates instead of choosing a match. The model should pass the user's name
+directly, not list resources just to obtain IDs. A combined intervention query
+uses one `waiting_work` with `kind=all`.
+For hosts, `current` requires an execution-host selection; a current server
+requires that selection to be SSH. The fresh route's host kind and ID are
+matched against authorized resources, never guessed from a name.
+
+Creation resolves real connected models, branches and effective defaults.
+Task creation also reads fresh browser planning/model preferences; explicit
+overrides include the main and cheap models. Unavailable remembered models
+require clarification rather than silent replacement. Workspace creation
+requires the execution host, directory and adapter/provider; cloning,
+provisioning and other uncovered operations use the catalog fallback.
+An explicit worktree request for a directory workspace or a workspace with
+worktrees disabled is rejected before visual approval, not silently changed.
+Compound chat creation freezes the optional message/open intent and its
+additional user-language description in the same visual approval as creation.
+Rejection executes no stage. Approved stages are individually authorized and
+occupy one mutation queue slot through the navigation acknowledgement. Other
+queued writes wait until the compound action completes or fails. Stages return
+their outcomes, including partial failure; they are never replayed.
+
+The session has **24 tools**: these twenty, the existing selective `watch_work`,
+and the three generic find/describe/execute tools for uncovered intents.
+Direct tools skip model-side discovery, not authorization, credential exchange
+or visual approval. API results distinguish completed operations from admitted or
 queued background work. Entity navigation refreshes its shell data and reports
 opened only when the originating tab has committed the route and target data.
 Selective watches reread authorized state without streaming all chats'
@@ -143,6 +198,15 @@ human-readable exchange, not tool events or an AI-generated summary. The model
 must follow `nextCursor` until it is null before claiming complete coverage.
 Operation descriptions can also be read as separate query/body contract pages;
 large client preferences use route/preferences sections.
+
+Direct conversation reads default to a bounded **latest** selection, not a
+walk through the whole history. `omittedEarlierMessages` distinguishes complete
+delivery of that selection from complete history. Recent-work previews select
+the last two messages. Combined work overviews expose `limitPerKind`, source
+coverage and a combined cursor: each source has its own activity-ordered page,
+not a global top-N or atomic cross-resource snapshot. Combined server/host
+cursors likewise continue unfinished sources without restarting completed ones.
+If previews or persisted state are unavailable, the result says so explicitly.
 
 Each delegated response admits at most eight function calls. Clanky budgets
 **28,000 UTF-8 bytes for the complete serialized result batch**, including
@@ -172,10 +236,11 @@ local prerecorded sound.
 
 Local data access is only part of a voice answer. Operation discovery, contract
 description, execution, pagination and the final explanation can require
-several separate text-model rounds. Disabling reasoning does not eliminate
-those network/model round trips. Literal conversation pages currently start
-with the oldest messages, so finding the latest event in a long conversation
-can require traversing its earlier pages.
+several separate text-model rounds for uncommon or oversized requests. Direct
+intents remove common discovery/description rounds and select recent conversation
+locally. One useful tool round normally still needs **two text-model responses**:
+the function call and the final answer from its result. Disabling reasoning
+does not eliminate those network/model round trips, approvals or remote work.
 
 The server's `core:live-voice-latency` INFO records distinguish:
 - Delegation start/end, call ID and hashed delegation correlation.
@@ -201,7 +266,7 @@ stdout/container logs. To retrieve them through `GET /api/server/logs` or
 automatically enable capture or bypass the configured log level. Timing logs
 contain no prompts, transcripts, raw arguments/results or credentials.
 
-#### Measured provider experiment
+#### Measured provider experiment before direct intents
 
 On 2026-10-14, an isolated compiled Clanky app exercised four workflows using
 the configured `gpt-6-luna`, actual catalog/tools and synthetic chats/tasks
@@ -234,9 +299,8 @@ Across 155 local tool completions, median execution/serialization time was
 time was inside external text-request/stream intervals, including network and
 provider queuing/generation, not just model computation. Generic discovery,
 contract reads, extra state reads and their serial model decisions still
-dominate with reasoning disabled. The next performance work should reduce
-those rounds, improve authoritative intervention metadata and support bounded
-latest-history reads in the existing API, rather than add artificial buffering.
+dominated with reasoning disabled. This baseline motivated the direct intents,
+authoritative intervention metadata and bounded latest-history reads above.
 
 A separate real `gpt-live-1` WebRTC smoke run accepted delegated none, reported
 zero reasoning tokens and spoke "Checking that now" while fetching the chat
@@ -244,6 +308,46 @@ list. Its spoken-transcript event followed delegation creation by about 250 ms,
 so the instruction is not a strict protocol ordering guarantee. That smoke run
 used a continuous synthetic microphone; it does not measure physical-device
 audio quality or replace the simulated-voice workflow timings above.
+
+#### Measured direct-intent experiment
+
+The same four workflows were repeated on 2026-10-14 with the final direct
+schemas/instructions: three runs each, real `gpt-6-luna` Responses, compiled
+Clanky, actual tool execution and isolated synthetic work. Only Live voice
+delegation was simulated. All twelve final runs made **one direct function
+call and two model responses**, with no find/describe or preliminary listing
+for IDs. Reasoning was none, with zero reasoning tokens in every response.
+Named-chat content and actual message admission were checked through public
+conversation; intervention answers included both the pending question and
+the manually reviewable task plan.
+
+| Workflow | Median (range) | First response median | Final response median |
+| --- | ---: | ---: | ---: |
+| Recent chats | 6.15 s (5.33–6.38 s) | 3.23 s | 2.92 s |
+| Named-chat conversation | 5.98 s (5.45–7.33 s) | 2.70 s | 2.88 s |
+| Send an instruction | 5.67 s (5.48–6.24 s) | 2.76 s | 2.89 s |
+| Chats/tasks requiring input | 5.80 s (5.71–6.22 s), complete | 2.76 s | 2.97 s |
+
+First/final response columns measure the entire external request/stream
+interval, not audible feedback or just computation; separate medians need
+not sum to the median total. Local tool execution/serialization median was
+9.7 ms, maximum 21.1 ms. More than 99% of each total remained inside the
+external text intervals. The 24 tool schemas serialized to 26,455 UTF-8 bytes;
+initial requests used 5,359–5,365 input tokens. The first recent-work request
+was uncached; later sequential requests largely cached approximately 5,300
+tokens. These small samples are not controlled cold-cache, load, p95 or
+physical voice measurements. Repeated send runs were distinct explicit commands,
+not automatic retries.
+
+An initial direct-schema experiment occasionally listed before reading or
+split the combined intervention query. The final instructions explicitly
+prefer exact-name targets and one `waiting_work kind=all`; the final table
+uses only the subsequent twelve runs. A separate native `gpt-live-1` admission
+probe accepted the final schemas/instructions through a Bun.WebView-generated
+WebRTC offer and real sideband validation (2.27 s), then closed the session.
+That verifies connection compatibility, not ASR, spoken feedback timing,
+physical playback quality or all tools' execution. No production settings or
+existing user work were changed for these experiments.
 
 ### Native audio playback
 
