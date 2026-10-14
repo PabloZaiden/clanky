@@ -6,7 +6,7 @@ import {
 } from "@pablozaiden/webapp/web";
 import type { Workspace } from "@/shared";
 import { formatSidebarRelativeTime } from "../../utils";
-import { WorkspaceIdentity } from "../common";
+import { ProviderIcon, WorkspaceIdentity } from "../common";
 
 export type ActiveWorkSidebarItemType = "Task" | "Chat" | "Terminal";
 
@@ -51,6 +51,43 @@ function subscribeToActiveWorkClock(listener: () => void): () => void {
   };
 }
 
+export function ActiveWorkMetadata({
+  itemType,
+  lastInteractionAt,
+  workspace,
+  className = "",
+}: {
+  itemType: ActiveWorkSidebarItemType;
+  lastInteractionAt: string;
+  workspace?: Workspace;
+  className?: string;
+}) {
+  const nowMs = useSyncExternalStore(
+    subscribeToActiveWorkClock,
+    getActiveWorkClockSnapshot,
+    getActiveWorkClockSnapshot,
+  );
+  const relativeTime = formatSidebarRelativeTime(lastInteractionAt, nowMs);
+
+  return (
+    <span className={`clanky-sidebar-item-metadata ${className}`.trim()}>
+      {relativeTime ? (
+        <small className="clanky-sidebar-item-age">{relativeTime}</small>
+      ) : null}
+      <span className="ml-auto inline-flex shrink-0 items-center gap-1">
+        <small className="clanky-sidebar-item-type">{itemType}</small>
+        {workspace ? (
+          <ProviderIcon
+            provider={workspace.serverSettings.agent.provider}
+            size="h-3 w-4"
+            className="opacity-80"
+          />
+        ) : null}
+      </span>
+    </span>
+  );
+}
+
 export function ActiveWorkSidebarItem({
   node,
   itemType,
@@ -62,12 +99,6 @@ export function ActiveWorkSidebarItem({
   lastInteractionAt: string;
   workspace?: Workspace;
 }) {
-  const nowMs = useSyncExternalStore(
-    subscribeToActiveWorkClock,
-    getActiveWorkClockSnapshot,
-    getActiveWorkClockSnapshot,
-  );
-  const relativeTime = formatSidebarRelativeTime(lastInteractionAt, nowMs);
   const badgeLabel = node.badge ? formatStatusLabel(node.badge) : "";
   const isTextBadge = node.badgeAppearance === "text";
 
@@ -80,14 +111,14 @@ export function ActiveWorkSidebarItem({
             workspace={workspace}
             iconSize="h-3.5 w-3.5"
             className="mt-0.5 text-xs text-gray-500 dark:text-gray-400"
+            showProviderIcon={false}
           />
         ) : node.subtitle ? <small>{node.subtitle}</small> : null}
-        <span className="clanky-sidebar-item-metadata">
-          {relativeTime ? (
-            <small className="clanky-sidebar-item-age">{relativeTime}</small>
-          ) : null}
-          <small className="clanky-sidebar-item-type">{itemType}</small>
-        </span>
+        <ActiveWorkMetadata
+          itemType={itemType}
+          lastInteractionAt={lastInteractionAt}
+          workspace={workspace}
+        />
       </span>
       {node.badge ? (
         <Badge

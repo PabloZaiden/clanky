@@ -38,10 +38,12 @@ export function WorkspaceIdentity({
   workspace,
   className = "",
   iconSize = "h-4 w-4",
+  showProviderIcon = true,
 }: {
   workspace: Workspace;
   className?: string;
   iconSize?: string;
+  showProviderIcon?: boolean;
 }) {
   return (
     <span
@@ -49,11 +51,13 @@ export function WorkspaceIdentity({
       title={workspace.name}
     >
       <WorkspaceIconMark workspace={workspace} size={iconSize} />
-      <ProviderIcon
-        provider={workspace.serverSettings.agent.provider}
-        size="h-3 w-4"
-        className="opacity-80"
-      />
+      {showProviderIcon ? (
+        <ProviderIcon
+          provider={workspace.serverSettings.agent.provider}
+          size="h-3 w-4"
+          className="opacity-80"
+        />
+      ) : null}
       <span className="min-w-0 truncate font-medium">{workspace.name}</span>
     </span>
   );
