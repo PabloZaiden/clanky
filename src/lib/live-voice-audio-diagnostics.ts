@@ -31,6 +31,7 @@ export class LiveVoiceAudioDiagnostics {
   private sampleTimer?: ReturnType<typeof setTimeout>;
   private uploadTimer?: ReturnType<typeof setTimeout>;
   private sampleInFlight?: Promise<void>;
+  private statsInFlight?: Promise<RTCStatsReport>;
   private uploadInFlight?: Promise<void>;
   private sequence = 0;
   private droppedRecords = 0;
@@ -154,10 +155,15 @@ export class LiveVoiceAudioDiagnostics {
   }
 
   private async collect(): Promise<void> {
+    if (this.statsInFlight || this.disposed) return;
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
+      // A deadline cannot cancel getStats; retain its slot until the native promise settles.
+      this.statsInFlight = this.options.peer.getStats().finally(() => {
+        this.statsInFlight = undefined;
+      });
       const report = await Promise.race([
-        this.options.peer.getStats(),
+        this.statsInFlight,
         new Promise<never>((_resolve, reject) => {
           timer = setTimeout(() => reject(new DOMException("Audio stats timed out.", "TimeoutError")), 2_000);
         }),

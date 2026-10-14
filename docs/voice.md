@@ -183,6 +183,11 @@ denominators and reset counters produce unavailable (`null`) measurements,
 not invented zero values. RTP codec clock rate, microphone sample rate and
 AudioContext sample rate describe different parts of the pipeline.
 
+Stats requests have a two-second reporting deadline. Native `getStats()` cannot
+be cancelled: if a request times out, Clanky logs the failure and starts no
+further stats request until that pending operation settles. Playback, lifecycle
+logging and delivery continue independently, and call teardown remains bounded.
+
 Snapshots also include effective microphone processing/format, requested
 processing, peer/ICE state, track state, media-element play state, AudioContext
 state/latency and supported AudioSession state/type. Visibility, device changes,
