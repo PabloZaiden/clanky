@@ -3384,14 +3384,18 @@ An update failure skips the restart and fails only that worker's job. A
 successful admission means the job was created, not that either command
 completed. Each worker's execution result and logs remain available on the
 Dashboard until its terminal job is dismissed. The restart response wait and
-recovery confirmation share a 20-second deadline. The transport waits up to
-5 seconds for the restart response without imposing that timeout on the remote
-process, then polls every second for signed Mesh health and an installed,
-running worker service through a fresh execution connection. A lost response
+recovery confirmation share a 20-second deadline. Restart uses a host-owned
+asynchronous command dispatched only once. Bounded response observation cannot
+cancel that process; an acknowledged, still-running command is observed until
+it finishes, its connection is lost, or the deadline expires. The job then
+polls every second for signed Mesh health and an installed, running worker
+service through a fresh execution connection. A lost response
 after dispatch does not by itself interrupt the job or cause the restart
 command to be resent. Failures before dispatch cannot be confirmed as successful
-restarts. Transient discovery HTTP 502/503/504 responses are retried; protocol
-and authorization failures remain terminal. Explicit command failures fail the job; recovery
+restarts, including relay setup failures before the command body is sent.
+Transient discovery HTTP 502/503/504 and interrupted response bodies are retried;
+malformed JSON, protocol and authorization failures remain terminal.
+Explicit command failures fail the job; recovery
 that cannot be confirmed within the deadline records an unconfirmed/interrupted
 outcome rather than success. If the restart exit code was lost, a confirmed
 recovery succeeds without an invented exit code.

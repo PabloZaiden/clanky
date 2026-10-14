@@ -27,7 +27,6 @@ import {
 const log = createLogger("core:worker-update-runner");
 const MAX_COMMAND_OUTPUT_BYTES = 128 * 1024;
 const MAX_LOG_TEXT_LENGTH = 16 * 1024;
-const RESTART_RESPONSE_TIMEOUT_MS = 5000;
 
 function redactLogText(text: string): string {
   return text
@@ -133,7 +132,7 @@ export class WorkerUpdateJobRunner {
     const responseController = new AbortController();
     const responseTimer = setTimeout(
       () => responseController.abort(),
-      Math.min(RESTART_RESPONSE_TIMEOUT_MS, deadline - performance.now()),
+      Math.max(1, deadline - performance.now()),
     );
     try {
       result = await executor.exec(
@@ -141,8 +140,9 @@ export class WorkerUpdateJobRunner {
         ["worker", "service", "restart"],
         {
           ...this.commandOptions(userId, job, "restart"),
-          // Async command dispatch can replay after a lost response; never replay a restart.
-          longRunning: false,
+          // Observe independently so losing the response cannot kill or replay the restart.
+          longRunning: true,
+          preserveOnDisconnect: true,
           signal: responseController.signal,
         },
       );

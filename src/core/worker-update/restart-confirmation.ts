@@ -16,6 +16,7 @@ function isWorkerRestartConnectionLoss(error: unknown): boolean {
     error.code === "mesh_execution_unreachable"
     || error.code === "mesh_execution_session_invalid"
     || error.code === "mesh_execution_session_expired"
+    || error.code === "mesh_execution_async_command_not_found"
     || ((error.code === "mesh_execution_request_failed")
       && [502, 503, 504].includes(Number(error.details["status"])))
   );
@@ -24,6 +25,7 @@ function isWorkerRestartConnectionLoss(error: unknown): boolean {
 export function isWorkerRestartResponseLoss(error: unknown): boolean {
   return error instanceof DomainError
     && error.details["executionRequestDispatched"] === true
+    && error.details["executionResultReceived"] !== true
     && (isWorkerRestartConnectionLoss(error) || error.code === "mesh_execution_aborted");
 }
 
@@ -31,6 +33,7 @@ function isRecoverableProbeFailure(error: unknown): boolean {
   return isWorkerRestartConnectionLoss(error)
     || (error instanceof DomainError && (
       error.code === "mesh_control_request_unreachable"
+      || error.code === "mesh_control_response_unreachable"
       || error.code === "worker_service_not_running"
       || ((error.code === "mesh_control_request_rejected"
         || error.code === "mesh_execution_request_failed")

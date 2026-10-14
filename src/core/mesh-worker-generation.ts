@@ -68,7 +68,11 @@ export async function discoverMeshWorkerGeneration(worker: MeshWorkerRegistratio
       throw new DomainError("mesh_execution_protocol_mismatch", "The worker selected an unsupported generation.");
     }
     const selected = selectedValue;
-    const descriptor = MeshWorkerProtocolDescriptorSchema.parse(await readMeshControlResponseJson(response, { signal: controller.signal, maxBytes: 16_384 }));
+    const parsed = MeshWorkerProtocolDescriptorSchema.safeParse(await readMeshControlResponseJson(response, { signal: controller.signal, maxBytes: 16_384 }));
+    if (!parsed.success) {
+      throw new DomainError("mesh_execution_protocol_mismatch", "The worker generation descriptor is invalid.", { cause: parsed.error });
+    }
+    const descriptor = parsed.data;
     const { signature, ...unsigned } = descriptor;
     if (descriptor.protocolVersion !== selected || descriptor.nodeId !== worker.workerNodeId
       || descriptor.requestNonce !== nonce || descriptor.fingerprint !== worker.workerFingerprint
