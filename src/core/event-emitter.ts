@@ -4,7 +4,15 @@
  * No external dependencies - uses native patterns.
  */
 
-import type { AgentEvent, ChatEvent, TaskEvent, ProvisioningEvent, PreviewEvent, TerminalSessionEvent } from "@/shared";
+import type {
+  AgentEvent,
+  ChatEvent,
+  PreviewEvent,
+  ProvisioningEvent,
+  TaskEvent,
+  TerminalSessionEvent,
+  WorkerUpdateEvent,
+} from "@/shared";
 import { log } from "@pablozaiden/webapp/server";
 import { getCurrentUserId } from "../context/user-context";
 import type { ControlUiActionEvent } from "@/shared/clanky-control";
@@ -112,6 +120,11 @@ export const terminalSessionEventEmitter = new SimpleEventEmitter<TerminalSessio
  * Global event emitter instance for provisioning job events.
  */
 export const provisioningEventEmitter = new SimpleEventEmitter<ProvisioningEvent>();
+
+/**
+ * Global event emitter for persisted Mesh worker update jobs.
+ */
+export const workerUpdateEventEmitter = new SimpleEventEmitter<WorkerUpdateEvent>();
 
 /**
  * Global event emitter instance for workspace and direct server preview events.

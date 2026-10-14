@@ -60,6 +60,10 @@ export {
   type UseProvisioningJobResult,
   type StartProvisioningJobRequest,
 } from "./useProvisioningJob";
+export {
+  useWorkerUpdateJobs,
+  type UseWorkerUpdateJobsResult,
+} from "./useWorkerUpdateJobs";
 export { useMesh, type UseMeshResult } from "./useMesh";
 export {
   useAvailableModels,

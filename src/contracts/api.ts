@@ -49,6 +49,10 @@ import {
   UpdateWorkspaceRequestSchema,
   DeleteWorkspaceRequestSchema,
   CreateProvisioningJobRequestSchema,
+  StartWorkerUpdatesResponseSchema,
+  WorkerUpdateJobsResponseSchema,
+  WorkerUpdateJobSnapshotSchema,
+  DismissWorkerUpdateJobResponseSchema,
   RestartAutomaticWorkspacesRequestSchema,
   RestartAutomaticWorkspacesResultSchema,
   RestartAutomaticWorkspacesResponseSchema,
@@ -78,6 +82,14 @@ export type RestartAutomaticWorkspacesResult =
   z.infer<typeof RestartAutomaticWorkspacesResultSchema>;
 export type RestartAutomaticWorkspacesResponse =
   z.infer<typeof RestartAutomaticWorkspacesResponseSchema>;
+export type StartWorkerUpdatesResponse =
+  z.infer<typeof StartWorkerUpdatesResponseSchema>;
+export type WorkerUpdateJobsResponse =
+  z.infer<typeof WorkerUpdateJobsResponseSchema>;
+export type WorkerUpdateJobSnapshotResponse =
+  z.infer<typeof WorkerUpdateJobSnapshotSchema>;
+export type DismissWorkerUpdateJobResponse =
+  z.infer<typeof DismissWorkerUpdateJobResponseSchema>;
 
 /**
  * Response from GET /api/config.

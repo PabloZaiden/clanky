@@ -13,6 +13,7 @@ import type {
   ProvisioningEvent,
   TerminalSessionEvent,
   TaskEvent,
+  WorkerUpdateEvent,
 } from "@/shared";
 import type { MeshStateEvent, HarnessStateEvent } from "./core/event-emitter";
 import { createToolCallSummary, serializeExecutionHostRef } from "@/shared";
@@ -35,6 +36,7 @@ export const CLANKY_REALTIME_RESOURCES = {
   agentRuns: "agent-runs",
   terminalSessions: "terminal-sessions",
   provisioningJobs: "provisioning-jobs",
+  workerUpdateJobs: "worker-update-jobs",
   previews: "previews",
   mesh: "mesh",
   executionHosts: "execution-hosts",
@@ -98,6 +100,7 @@ export type ClankyDomainEvent =
   | AgentEvent
   | TerminalSessionEvent
   | ProvisioningEvent
+  | WorkerUpdateEvent
   | PreviewEvent
   | HarnessStateEvent
   | MeshStateEvent
@@ -445,6 +448,23 @@ export function publishClankyDomainEvent(
       publishStream(publisher, owner, event, {
         provisioningJobId: event.provisioningJobId,
       });
+      return;
+
+    case "worker-update.changed":
+      publishChanged(
+        publisher,
+        owner,
+        CLANKY_REALTIME_RESOURCES.workerUpdateJobs,
+        event.workerUpdateJobId,
+      );
+      return;
+    case "worker-update.deleted":
+      publishDeleted(
+        publisher,
+        owner,
+        CLANKY_REALTIME_RESOURCES.workerUpdateJobs,
+        event.workerUpdateJobId,
+      );
       return;
 
     case "preview.created":

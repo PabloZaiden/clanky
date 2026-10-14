@@ -225,6 +225,20 @@ export {
 } from "./provisioning";
 
 export {
+  WorkerUpdateJobStatusSchema,
+  WorkerUpdateStepSchema,
+  WorkerUpdateStepStatusSchema,
+  WorkerUpdateJobErrorSchema,
+  WorkerUpdateStepResultSchema,
+  WorkerUpdateJobSchema,
+  WorkerUpdateLogEntrySchema,
+  WorkerUpdateJobSnapshotSchema,
+  WorkerUpdateJobsResponseSchema,
+  StartWorkerUpdatesResponseSchema,
+  DismissWorkerUpdateJobResponseSchema,
+} from "./worker-update";
+
+export {
   RestartAutomaticWorkspacesRequestSchema,
   RestartAutomaticWorkspacesResultSchema,
   RestartAutomaticWorkspacesResponseSchema,

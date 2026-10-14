@@ -12,6 +12,13 @@ const COPILOT_NATIVE_PATH = resolve(ROOT_DIR, "tests", "e2e", "providers", "copi
 const OPENCODE_NATIVE_PATH = resolve(ROOT_DIR, "tests", "e2e", "providers", "opencode-native.ts");
 const DEVBOX_PATH = resolve(ROOT_DIR, "tests", "e2e", "providers", "devbox.ts");
 const GITHUB_PATH = resolve(ROOT_DIR, "tests", "e2e", "providers", "github.ts");
+const WORKER_UPDATE_COMMAND_PATH = resolve(
+  ROOT_DIR,
+  "tests",
+  "e2e",
+  "providers",
+  "worker-update-command.ts",
+);
 
 export async function installExternalCodexProvider(binDirectory: string): Promise<void> {
   await mkdir(binDirectory, { recursive: true, mode: 0o700 });
@@ -84,6 +91,28 @@ export async function installExternalGitHubProvider(
   await Bun.write(
     wrapperPath,
     `#!/bin/sh\nCLANKY_E2E_GH_STATE_FILE=${quote(statePath)} exec ${quote(executable)} ${quote(GITHUB_PATH)} "$@"\n`,
+  );
+  await chmod(wrapperPath, 0o700);
+}
+
+export async function installExternalWorkerUpdateCommand(
+  binDirectory: string,
+): Promise<void> {
+  await mkdir(binDirectory, { recursive: true, mode: 0o700 });
+  const executable = process.execPath;
+  if (process.platform === "win32") {
+    await Bun.write(
+      join(binDirectory, "clanky.cmd"),
+      `@echo off\r\n"${executable}" "${WORKER_UPDATE_COMMAND_PATH}" %*\r\n`,
+    );
+    return;
+  }
+
+  const wrapperPath = join(binDirectory, "clanky");
+  const quote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
+  await Bun.write(
+    wrapperPath,
+    `#!/bin/sh\nexec ${quote(executable)} ${quote(WORKER_UPDATE_COMMAND_PATH)} "$@"\n`,
   );
   await chmod(wrapperPath, 0o700);
 }
