@@ -51,7 +51,15 @@ export async function discoverMeshWorkerGeneration(worker: MeshWorkerRegistratio
       await response.body?.cancel();
       throw new DomainError("mesh_execution_protocol_mismatch", "The worker does not expose generation discovery.");
     }
-    if (!response.ok) throw new DomainError("mesh_execution_protocol_mismatch", "The worker generation discovery request was rejected.");
+    if (!response.ok) {
+      await response.body?.cancel();
+      const transient = [502, 503, 504].includes(response.status);
+      throw new DomainError(
+        transient ? "mesh_execution_unreachable" : "mesh_execution_protocol_mismatch",
+        "The worker generation discovery request was rejected.",
+        { details: { status: response.status } },
+      );
+    }
     const selectedValue = Number(response.headers.get(MESH_PROTOCOL_VERSION_HEADER));
     if (
       !isSupportedMeshProtocolVersion(selectedValue)

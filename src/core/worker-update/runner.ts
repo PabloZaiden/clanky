@@ -18,11 +18,16 @@ import { getWorkerRegistrationExecutionHostRef } from "../../persistence/mesh";
 import { closeCommandExecutor, type CommandExecutor, type CommandResult } from "../command-executor";
 import { executionHostService } from "../execution-host-service";
 import { emitWorkerUpdateJobChanged } from "./job-events";
-import { confirmWorkerRestart, isWorkerRestartConnectionLoss } from "./restart-confirmation";
+import {
+  confirmWorkerRestart,
+  isWorkerRestartResponseLoss,
+  WORKER_RESTART_TIMEOUT_MS,
+} from "./restart-confirmation";
 
 const log = createLogger("core:worker-update-runner");
 const MAX_COMMAND_OUTPUT_BYTES = 128 * 1024;
 const MAX_LOG_TEXT_LENGTH = 16 * 1024;
+const RESTART_RESPONSE_TIMEOUT_MS = 5000;
 
 function redactLogText(text: string): string {
   return text
@@ -122,8 +127,14 @@ export class WorkerUpdateJobRunner {
     executor: CommandExecutor;
   }): Promise<void> {
     let job = this.beginStep(userId, initialJob, "restart");
+    const deadline = performance.now() + WORKER_RESTART_TIMEOUT_MS;
     this.appendLog(userId, job, "system", "Starting clanky worker service restart.", "restart");
     let result: CommandResult | undefined;
+    const responseController = new AbortController();
+    const responseTimer = setTimeout(
+      () => responseController.abort(),
+      Math.min(RESTART_RESPONSE_TIMEOUT_MS, deadline - performance.now()),
+    );
     try {
       result = await executor.exec(
         "clanky",
@@ -132,10 +143,11 @@ export class WorkerUpdateJobRunner {
           ...this.commandOptions(userId, job, "restart"),
           // Async command dispatch can replay after a lost response; never replay a restart.
           longRunning: false,
+          signal: responseController.signal,
         },
       );
     } catch (error) {
-      if (!isWorkerRestartConnectionLoss(error)) {
+      if (!isWorkerRestartResponseLoss(error)) {
         this.failStep(userId, job, "restart", error);
         return;
       }
@@ -144,6 +156,8 @@ export class WorkerUpdateJobRunner {
         `Restart connection lost; checking worker recovery: ${getErrorMessage(error)}`,
         "restart",
       );
+    } finally {
+      clearTimeout(responseTimer);
     }
     if (result && !result.success) {
       this.failStep(userId, job, "restart", new DomainError(
@@ -154,13 +168,14 @@ export class WorkerUpdateJobRunner {
     }
     this.appendLog(
       userId, job, "system",
-      "Waiting up to 20 seconds for Mesh health and the worker service to be running.",
+      "Checking Mesh health and the worker service within the 20-second restart deadline.",
       "restart",
     );
     try {
       await confirmWorkerRestart({
         userId,
         workerNodeId: worker.workerNodeId,
+        deadline,
         createExecutor: () => this.acquireExecutor(userId, job, worker),
         onRetry: (error) => this.appendLog(
           userId, job, "system",

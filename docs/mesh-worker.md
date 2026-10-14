@@ -426,11 +426,13 @@ with `GET /api/worker-update-jobs` and `GET /api/worker-update-jobs/:id`.
 
 Jobs run concurrently across workers. Each runs `clanky update` first and
 restarts the worker service with `clanky worker service restart` only after the
-update succeeds. If the update fails, the restart is skipped. After restart,
-the job waits up to 20 seconds, polling every second, for a fresh signed Mesh
+update succeeds. If the update fails, the restart is skipped. Restart response
+and recovery checks share a 20-second deadline. After waiting at most 5 seconds
+for the restart response, the job polls every second for a fresh signed Mesh
 health check and a new execution connection to confirm that the worker service
 is installed and running. Losing the restart command's response does not by
-itself interrupt the job, and the restart command is not resent. Explicit
+itself interrupt the job if the command was dispatched; failures before dispatch
+cannot count as a successful restart. The restart command is not resent. Explicit
 command failures remain failures; recovery that cannot be confirmed within the
 deadline is marked unconfirmed/interrupted rather than successful. Jobs and
 their logs remain on the Dashboard until dismissed.

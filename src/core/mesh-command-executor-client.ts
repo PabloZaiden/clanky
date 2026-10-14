@@ -1456,6 +1456,7 @@ export class MeshCommandExecutorClient {
         throw new DomainError("mesh_execution_aborted", "The mesh execution request was aborted.");
       }
       const releaseSlot = await this.acquireRequestSlot(signal);
+      let commandDispatched = false;
       try {
         if (signal?.aborted) throw this.requestAbortedError(signal);
         await this.ensureSession(signal);
@@ -1486,6 +1487,7 @@ export class MeshCommandExecutorClient {
               ? Math.max(this.requestTimeoutMs, request.timeout + 1_000)
               : undefined,
           );
+          commandDispatched = true;
           const body = parseResponseShape<MeshRpcResponse>(
             response,
             ["protocolVersion", "requestId", "encryptedPayload"],
@@ -1496,6 +1498,8 @@ export class MeshCommandExecutorClient {
           }
           return await decryptMeshPayload(body.encryptedPayload) as T;
         } catch (error) {
+          commandDispatched ||= error instanceof DomainError
+            && error.details["requestDispatched"] === true;
           if (
             attempt === 0
             && error instanceof DomainError
@@ -1510,6 +1514,12 @@ export class MeshCommandExecutorClient {
           }
           throw error;
         }
+      } catch (error) {
+        if (!(error instanceof DomainError)) throw error;
+        throw new DomainError(error.code, error.message, {
+          cause: error,
+          details: { ...error.details, executionRequestDispatched: commandDispatched },
+        });
       } finally {
         releaseSlot();
       }
@@ -1587,6 +1597,7 @@ export class MeshCommandExecutorClient {
     );
     const abortHandler = () => controller.abort();
     signal?.addEventListener("abort", abortHandler, { once: true });
+    let requestDispatched = false;
     try {
       if (!route) {
         throw new DomainError(
@@ -1594,7 +1605,7 @@ export class MeshCommandExecutorClient {
           "The selected worker has no usable Mesh route.",
         );
       }
-      const response = await requestMeshPeer(route, path, {
+      const request = {
         method,
         headers: {
           "content-type": "application/json",
@@ -1603,7 +1614,9 @@ export class MeshCommandExecutorClient {
         body: JSON.stringify(body),
         signal: controller.signal,
         fetch: this.fetchImpl,
-      });
+      };
+      requestDispatched = true;
+      const response = await requestMeshPeer(route, path, request);
       if (!response.ok) {
         let payload: unknown = null;
         try {
@@ -1624,12 +1637,21 @@ export class MeshCommandExecutorClient {
       }
       return await response.json();
     } catch (error) {
-      if (error instanceof DomainError) throw error;
+      if (error instanceof DomainError) {
+        throw new DomainError(error.code, error.message, {
+          cause: error,
+          details: { ...error.details, requestDispatched },
+        });
+      }
       if (signal?.aborted) {
-        throw new DomainError("mesh_execution_aborted", "The mesh execution request was aborted.", { cause: error });
+        throw new DomainError("mesh_execution_aborted", "The mesh execution request was aborted.", {
+          cause: error,
+          details: { requestDispatched },
+        });
       }
       throw new DomainError("mesh_execution_unreachable", "The selected mesh execution peer could not be reached.", {
         cause: error,
+        details: { requestDispatched },
       });
     } finally {
       clearTimeout(timeoutId);

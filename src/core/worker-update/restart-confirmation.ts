@@ -3,7 +3,7 @@ import { DomainError } from "../../domain/domain-error";
 import { closeCommandExecutor, type CommandExecutor } from "../command-executor";
 import { meshManager } from "../mesh-manager";
 
-const RESTART_RECOVERY_TIMEOUT_MS = 20_000;
+export const WORKER_RESTART_TIMEOUT_MS = 20_000;
 const RESTART_POLL_INTERVAL_MS = 1000;
 const RESTART_PROBE_TIMEOUT_MS = 5000;
 const WorkerServiceStatusSchema = z.object({
@@ -11,12 +11,20 @@ const WorkerServiceStatusSchema = z.object({
   running: z.boolean(),
 });
 
-export function isWorkerRestartConnectionLoss(error: unknown): boolean {
+function isWorkerRestartConnectionLoss(error: unknown): boolean {
   return error instanceof DomainError && (
     error.code === "mesh_execution_unreachable"
     || error.code === "mesh_execution_session_invalid"
     || error.code === "mesh_execution_session_expired"
+    || ((error.code === "mesh_execution_request_failed")
+      && [502, 503, 504].includes(Number(error.details["status"])))
   );
+}
+
+export function isWorkerRestartResponseLoss(error: unknown): boolean {
+  return error instanceof DomainError
+    && error.details["executionRequestDispatched"] === true
+    && (isWorkerRestartConnectionLoss(error) || error.code === "mesh_execution_aborted");
 }
 
 function isRecoverableProbeFailure(error: unknown): boolean {
@@ -75,15 +83,16 @@ async function checkWorkerService(
 export async function confirmWorkerRestart({
   userId,
   workerNodeId,
+  deadline,
   createExecutor,
   onRetry,
 }: {
   userId: string;
   workerNodeId: string;
+  deadline: number;
   createExecutor: () => Promise<CommandExecutor>;
   onRetry: (error: unknown) => void;
 }): Promise<void> {
-  const deadline = performance.now() + RESTART_RECOVERY_TIMEOUT_MS;
   let lastError: unknown;
   while (performance.now() < deadline) {
     const controller = new AbortController();
