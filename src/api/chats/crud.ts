@@ -87,7 +87,7 @@ export const chatsCrudRoutes = defineRoutes({
       },
       POST: {
         description: "Create a chat; permission requests are automatically approved.",
-        requestSchema: CreateChatRequestSchema.safeExtend({}).strict(),
+        requestSchema: CreateChatRequestSchema,
         querySchema: undefined,
         automation: { policy: "confirm", reason: "Creates agent work with automatic permission approval." },
       },

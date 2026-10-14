@@ -326,7 +326,7 @@ export const executionHostRoutes = defineRoutes({
     requestSchema: CreateExecutionHostChatRequestSchema,
     operations: {
       POST: {
-        requestSchema: CreateExecutionHostChatRequestSchema.strict(),
+        requestSchema: CreateExecutionHostChatRequestSchema,
         querySchema: undefined,
         automation: {
           policy: "confirm",

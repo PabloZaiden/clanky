@@ -20,7 +20,7 @@ export const CreateChatRequestSchema = z.object({
   useChatNameAsBranch: z.boolean().optional(),
   baseBranch: z.string().min(1, "baseBranch must be non-empty when provided").optional(),
   quick: z.boolean().default(false),
-}).superRefine((value, context) => {
+}).strict().superRefine((value, context) => {
   if (!value.useSelectedBranchForWorktree) {
     return;
   }
@@ -59,7 +59,7 @@ export const CreateExecutionHostChatRequestSchema = CreateSshServerChatRequestSc
   model: ModelConfigSchema.extend({
     providerID: AgentProviderSchema,
   }),
-});
+}).strict();
 
 export const UpdateChatRequestSchema = z.object({
   name: TaskNameSchema.optional(),
