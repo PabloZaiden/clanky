@@ -2,9 +2,12 @@
  * Shared, event-driven document visibility for client presentation.
  */
 
-import { useSyncExternalStore } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
+import { createLogger } from "@pablozaiden/webapp/web";
+import { isAbortError } from "./request-lifecycle";
 
 const listeners = new Set<() => void>();
+const log = createLogger("useDocumentVisibility");
 
 export function isDocumentVisible(): boolean {
   return !document.hidden;
@@ -35,4 +38,31 @@ function getServerSnapshot(): boolean {
 
 export function useDocumentVisibility(): boolean {
   return useSyncExternalStore(subscribe, isDocumentVisible, getServerSnapshot);
+}
+
+export function useRefreshOnForeground(refresh: () => void | Promise<void>): void {
+  const visible = useDocumentVisibility();
+  const refreshRef = useRef(refresh);
+  const wasVisibleRef = useRef(visible);
+  refreshRef.current = refresh;
+
+  useEffect(() => {
+    if (!visible) {
+      wasVisibleRef.current = false;
+      return;
+    }
+    if (wasVisibleRef.current) {
+      return;
+    }
+
+    wasVisibleRef.current = true;
+    void Promise.resolve()
+      .then(() => refreshRef.current())
+      .catch((error: unknown) => {
+        if (isAbortError(error)) {
+          return;
+        }
+        log.error("Failed to refresh on foreground", { error: String(error) });
+      });
+  }, [visible]);
 }

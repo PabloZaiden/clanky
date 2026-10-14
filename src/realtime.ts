@@ -17,7 +17,6 @@ import type {
 } from "@/shared";
 import type { MeshStateEvent, HarnessStateEvent } from "./core/event-emitter";
 import { createToolCallSummary, serializeExecutionHostRef } from "@/shared";
-import { isChatTerminalStatus } from "@/shared/chat";
 import type { ControlUiActionEvent } from "@/shared/clanky-control";
 import type { LiveVoiceActivityEvent } from "@/shared/live-voice";
 import { sanitizeProvisioningEvent } from "./lib/sensitive-data";
@@ -338,11 +337,8 @@ export function publishClankyDomainEvent(
       );
       return;
     case "chat.status":
-      // Terminal status also closes the incremental client state when the
-      // separate resource invalidation is missed.
-      if (isChatTerminalStatus(event.status)) {
-        publishStream(publisher, owner, event, { chatId: event.chatId });
-      }
+      // Status is a small chat delta; keep the full entity invalidation as well.
+      publishStream(publisher, owner, event, { chatId: event.chatId });
       publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.chats, event.chatId);
       return;
     case "chat.updated":

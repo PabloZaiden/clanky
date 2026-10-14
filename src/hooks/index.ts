@@ -11,7 +11,11 @@ export {
   type UseRealtimeStreamResult,
 } from "./useRealtimeStream";
 export { useChats, type UseChatsResult } from "./useChats";
-export { isDocumentVisible, useDocumentVisibility } from "./useDocumentVisibility";
+export {
+  isDocumentVisible,
+  useDocumentVisibility,
+  useRefreshOnForeground,
+} from "./useDocumentVisibility";
 export { useForegroundPresentation } from "./useForegroundPresentation";
 export { useAgents, type UseAgentsResult } from "./useAgents";
 export { useTasks, type UseTasksResult, type CreateTaskResult } from "./useTasks";
