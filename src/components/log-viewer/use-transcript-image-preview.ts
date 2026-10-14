@@ -103,10 +103,12 @@ export function useTranscriptImagePreview(
 
         const objectUrl = URL.createObjectURL(imageBlob);
         objectUrlRef.current = objectUrl;
+        const mimeType = imageBlob.type || file.mimeType;
         setImage({
           src: objectUrl,
           alt: file.name || title,
           title,
+          ...(mimeType ? { mimeType } : {}),
           description: getImageDescription(target, file),
         });
         setPendingPreview(null);
