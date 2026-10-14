@@ -14,7 +14,7 @@ import { CreateTaskRequestSchema, GenerateTaskTitleRequestSchema } from "@/contr
 import { domainErrorResponse, errorResponse, internalErrorResponse } from "../helpers";
 import { parseAndValidate } from "../validation";
 import { startErrorResponse } from "./helpers";
-import { CollectionReadOptionsSchema } from "@/contracts/schemas/resource-read";
+import { WorkCollectionReadOptionsSchema } from "@/contracts/schemas/resource-read";
 import { readWorkCollection, readWorkCollectionItem } from "../../core/work-read-service";
 import { readScope } from "../../core/resource-read-service";
 import { resourcePageResponse } from "../resource-reads";
@@ -80,7 +80,7 @@ export const tasksCollectionRoutes = defineRoutes({
       GET: {
         description: "List task summaries and current progress.",
         requestSchema: undefined,
-        querySchema: CollectionReadOptionsSchema,
+        querySchema: WorkCollectionReadOptionsSchema,
         automation: { policy: "read" },
       },
       POST: {
@@ -95,13 +95,13 @@ export const tasksCollectionRoutes = defineRoutes({
       if (url.searchParams.get("view") === "compact" && url.searchParams.get("section") === "details" && url.searchParams.has("item")) {
         return Response.json(await readWorkCollectionItem({
           resource: "task",
-          options: CollectionReadOptionsSchema.parse(Object.fromEntries(url.searchParams)),
+          options: WorkCollectionReadOptionsSchema.parse(Object.fromEntries(url.searchParams)),
         }));
       }
       if (url.searchParams.get("view") === "compact" && !url.searchParams.has("section") && !url.searchParams.has("item")) {
         return resourcePageResponse(readWorkCollection({
           resource: "task",
-          options: CollectionReadOptionsSchema.parse(Object.fromEntries(url.searchParams)),
+          options: WorkCollectionReadOptionsSchema.parse(Object.fromEntries(url.searchParams)),
           scope: readScope(ctx.requireUser().id, url),
         }));
       }

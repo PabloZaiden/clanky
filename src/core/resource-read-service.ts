@@ -117,8 +117,15 @@ export function compactResource(value: unknown): unknown {
   const harness = isReadRecord(state["harness"]) ? state["harness"] : undefined;
   if (harness?.["integrity"] === "invalid") {
     summary["stateUnavailable"] = true;
-  } else if (harness || state["pendingPermissionRequests"]) {
-    summary["needsInput"] = pendingCount(harness?.["questions"]) > 0 || pendingCount(state["pendingPermissionRequests"]) > 0;
+  } else if (harness || state["pendingPermissionRequests"] || state["planMode"]) {
+    const plan = isReadRecord(state["planMode"]) ? state["planMode"] : undefined;
+    const planApproval = state["status"] === "planning" && plan?.["isPlanReady"] === true && config["autoAcceptPlan"] === false;
+    summary["needsInput"] = pendingCount(harness?.["questions"]) > 0 || pendingCount(state["pendingPermissionRequests"]) > 0 || planApproval;
+    summary["interventionReasons"] = [
+      ...(pendingCount(harness?.["questions"]) ? ["question"] : []),
+      ...(pendingCount(state["pendingPermissionRequests"]) ? ["permission"] : []),
+      ...(planApproval ? ["plan_approval"] : []),
+    ];
     summary["pendingQuestions"] = pendingCount(harness?.["questions"]);
     summary["pendingPermissions"] = pendingCount(state["pendingPermissionRequests"]);
     summary["pendingInputs"] = Array.isArray(harness?.["inputs"])
@@ -147,7 +154,7 @@ export function resourceKey(value: unknown): string {
 export function fitCompactMetadata(value: Record<string, unknown>, maxBytes: number): Record<string, unknown> {
   if (readBytes(value) <= maxBytes) return value;
   const result: Record<string, unknown> = { details: value["details"], code: "read_item_requires_details" };
-  const priority = ["id", "status", "needsInput", "stateUnavailable", "pendingQuestions", "pendingPermissions", "pendingInputs", "name", "workspaceId"];
+  const priority = ["id", "status", "needsInput", "interventionReasons", "stateUnavailable", "pendingQuestions", "pendingPermissions", "pendingInputs", "name", "workspaceId"];
   for (const key of [...priority, ...Object.keys(value).filter((key) => !priority.includes(key) && key !== "details")]) {
     if (value[key] !== undefined && readBytes({ ...result, [key]: value[key] }) <= maxBytes) result[key] = value[key];
   }

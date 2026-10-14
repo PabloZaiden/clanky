@@ -24,7 +24,7 @@ interface Task {
     id: string; name: string; workspaceId: string; prompt: string; baseBranch: string; model: Model;
     autoAcceptPlan: boolean; fullyAutonomous: boolean;
   };
-  state: { status: string };
+  state: { status: string; planMode?: { isPlanReady: boolean } };
 }
 interface Snapshot { transcript: { messages: Array<{ role: string; content: string }> } }
 interface CreationContext {
@@ -140,7 +140,7 @@ async function visualDecision(options: {
   )).data;
 }
 
-test("global Live discovers owned work, resumes its conversation and leaves delegated work usable", async () => {
+test("global Live operates owned recent and waiting work, resumes its conversation and leaves delegated work usable", async () => {
   const application = await E2EApplication.create();
   const clients: VoiceClient[] = [];
   const repositories: GitFixture[] = [];
@@ -229,9 +229,12 @@ test("global Live discovers owned work, resumes its conversation and leaves dele
     const sourceTask = (await application.json<Task>("/api/tasks", {
       method: "POST", body: JSON.stringify({
         ...creation.defaults, ...client.context.planningPreferences, model,
-        name: GLOBAL_LIVE_INTENT.sourceTask, workspaceId: workspaceA.id, prompt: sourcePrompt, draft: true,
+        name: GLOBAL_LIVE_INTENT.sourceTask, workspaceId: workspaceA.id, prompt: sourcePrompt, draft: false,
       }),
     }, 201)).data;
+    await pollUntil(async () => (await application.json<Task>(`/api/tasks/${sourceTask.config.id}`)).data.state,
+      (state) => state.status === "planning" && state.planMode?.isPlanReady === true,
+      { description: "source task plan awaiting the user's review", timeoutMs: 10_000 });
     const sourceChat = (await application.json<Chat>("/api/chats", {
       method: "POST", body: JSON.stringify({
         name: GLOBAL_LIVE_INTENT.sourceChat, workspaceId: workspaceA.id,
@@ -258,7 +261,9 @@ test("global Live discovers owned work, resumes its conversation and leaves dele
       application, client, callId, approved: false,
     });
     expect((await application.json<Task>(`/api/tasks/${sourceTask.config.id}`)).data)
-      .toMatchObject({ config: { prompt: sourcePrompt }, state: { status: "draft" } });
+      .toMatchObject({ config: { prompt: sourcePrompt }, state: { status: "planning", planMode: { isPlanReady: true } } });
+    const taskContext = await client.next("get_context");
+    await client.ack(taskContext, { status: "context", context: client.context });
     const taskDecision = await visualDecision({
       application, client, callId, approved: true,
       async inspect(event) {

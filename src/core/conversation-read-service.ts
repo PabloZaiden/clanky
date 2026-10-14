@@ -54,14 +54,20 @@ export function readConversationPage(input: {
     return readRevision([membership, message]);
   };
   const cursor = decodeReadCursor({
-    ...input.options, scope: input.scope, revision: (value) => revision(value.position, value.offset),
+    ...input.options,
+    scope: input.options.range === "latest" ? readRevision([input.scope, "latest", limit]) : input.scope,
+    revision: (value) => revision(value.position, value.offset),
   });
+  const start = input.options.range === "latest" ? Math.max(0, ids.length - limit) : 0;
   const items: ConversationMessage[] = [];
-  let position = cursor.position, offset = cursor.offset;
+  let position = input.options.cursor ? cursor.position : start, offset = cursor.offset;
   const maxBytes = input.options.maxBytes ?? DEFAULT_READ_BYTES;
+  const context = input.options.range === "latest"
+    ? { range: "latest", omittedEarlierMessages: start } : undefined;
   const page = (more: boolean): Page<ConversationMessage> => ({
     items,
     nextCursor: more ? encodeReadCursor({ ...cursor, position, offset, revision: revision(position, offset) }) : null,
+    ...(context ? { context } : {}),
   });
   while (items.length < limit) {
     const message = messageAt(position);
@@ -81,11 +87,11 @@ export function readConversationPage(input: {
       offset: part.complete ? 0 : offset + part.content.length,
       revision: part.complete ? membership : messageRevision,
     });
-    if (readBytes({ items, nextCursor: next() }) > maxBytes) {
+    if (readBytes({ items, nextCursor: next(), ...(context ? { context } : {}) }) > maxBytes) {
       const fitted = fitReadText(text, (chunk) => {
         part.content = chunk;
         part.complete = chunk.length === text.length;
-        return readBytes({ items, nextCursor: next() }) <= maxBytes;
+        return readBytes({ items, nextCursor: next(), ...(context ? { context } : {}) }) <= maxBytes;
       });
       if (!fitted.length && text.length) {
         items.pop();
@@ -98,7 +104,7 @@ export function readConversationPage(input: {
         offset += fitted.length;
         return page(true);
       }
-      if (readBytes({ items, nextCursor: next() }) > maxBytes) {
+      if (readBytes({ items, nextCursor: next(), ...(context ? { context } : {}) }) > maxBytes) {
         items.pop();
         if (!items.length) throw new DomainError("read_budget_too_small", "Increase maxBytes for this message.");
         return page(true);

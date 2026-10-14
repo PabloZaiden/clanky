@@ -3,7 +3,6 @@
  */
 
 import { z } from "zod";
-import { ControlNavigationActionSchema } from "@/shared/clanky-control";
 import { ExecuteOperationSchema, type ClankyOperationService } from "./clanky-operation-service";
 import { VoiceConfirmationDescriptionSchema } from "@/shared/live-voice";
 import type { LiveVoiceActions } from "./live-voice-actions";
@@ -12,9 +11,13 @@ import { isDomainError } from "../domain/domain-error";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { contentReadPage, readBytes, readRevision } from "./resource-read-service";
 import { LIVE_READ_BYTES } from "./live-voice-output";
+import { liveVoiceDirectSchemas, liveVoiceDirectDescriptions } from "./live-voice-direct-contracts";
+import { LiveVoiceDirectContext } from "./live-voice-direct-context";
+import { directUiAction, executeDirectLiveVoiceTool, isDirectToolName, LiveVoiceNavigationActionSchema } from "./live-voice-direct-tools";
 
 const log = createLogger("core:voice-tools");
 const schemas = {
+  ...liveVoiceDirectSchemas,
   clanky_find_operations: z.object({
     text: z.string().max(500),
     domain: z.string().max(100).nullable(),
@@ -33,7 +36,7 @@ const schemas = {
     section: z.enum(["route", "preferences"]).nullable().default(null),
     cursor: z.string().max(4096).nullable().default(null),
   }).strict(),
-  clanky_ui_action: z.object({ action: ControlNavigationActionSchema }).strict(),
+  clanky_ui_action: z.object({ action: LiveVoiceNavigationActionSchema }).strict(),
   clanky_watch_work: z.object({
     command: z.enum(["add", "remove", "list"]),
     targets: z.array(z.object({
@@ -44,11 +47,12 @@ const schemas = {
 };
 
 const descriptions: Record<keyof typeof schemas, string> = {
-  clanky_find_operations: "Find authorized Clanky operations by words/domain/method. Empty text lists a page. Discover before acting.",
+  ...liveVoiceDirectDescriptions,
+  clanky_find_operations: "Fallback only for intents not covered by a direct tool. Find authorized Clanky operations by words/domain/method. Empty text lists a page.",
   clanky_describe_operation: "Read the exact contract and risk/completion policy. Start with section/cursor null; if contractSections are returned, read query/body separately. Content parts identify JSON paths; continue with nextCursor until null to obtain the complete schema.",
   clanky_execute_operation: "Execute a described API operation with exact parameters/query and bodyJson (null without a body). Reads automatically select compact pages or literal conversation history. Follow nextCursor with the same read operation, filters and public body to read more; section=details and item read a row's original content. Content parts contain JSON paths and string offsets, not a generated summary. For policy confirm, supply confirmationDescription: one or two short plain-text sentences in the user's language describing the exact action, named target and material consequences. No API paths, technical identifiers, JSON or credentials. Use null for other policies. Mutations are never retried automatically. High-risk actions prepare a visual confirmation, not execution.",
   clanky_get_ui_state: "Read fresh acknowledged originating-client context, not authoritative entity state. Start with section/cursor null; use route/preferences sections and nextCursor if the snapshot is large. Preferences include saved planning booleans and canonical model JSON.",
-  clanky_ui_action: "Navigate the originating client or control its sidebar. Returns success only after that tab acknowledges the effect. Never supplies confirmation approval.",
+  clanky_ui_action: "Navigate or control the originating client's sidebar. open_named resolves an exact chat/task/workspace/server/host name or ID directly, with optional workspace. Other actions use known canonical IDs. Returns success only after that tab acknowledges the effect. Never supplies confirmation approval.",
   clanky_watch_work: "Watch selected owned chats/tasks/provisioning jobs for meaningful state changes. Ending voice stops watching, not the work.",
 };
 
@@ -58,7 +62,7 @@ export const liveVoiceToolDefinitions = Object.entries(schemas).map(([name, sche
       if (jsonSchema.type === "object" && jsonSchema.properties) {
         jsonSchema.required = Object.keys(jsonSchema.properties);
       }
-      if (zodSchema === ControlNavigationActionSchema && jsonSchema.oneOf) {
+      if (zodSchema instanceof z.ZodDiscriminatedUnion && jsonSchema.oneOf) {
         // Distinct type literals make anyOf equivalent; strict Responses tools do not support oneOf.
         jsonSchema.anyOf = jsonSchema.oneOf;
         delete jsonSchema.oneOf;
@@ -82,6 +86,8 @@ export async function executeLiveVoiceTool(options: {
     const args: unknown = JSON.parse(options.rawArguments);
     const { actions, service, requestId, observer } = options;
     const maxBytes = options.maxReadBytes ?? LIVE_READ_BYTES;
+    const direct = new LiveVoiceDirectContext({ actions, service, requestId, maxBytes });
+    if (isDirectToolName(options.name)) return await executeDirectLiveVoiceTool(direct, options.name, args);
     switch (options.name) {
       case "clanky_find_operations":
         return service.find(actions.authority, schemas.clanky_find_operations.parse(args), maxBytes);
@@ -114,7 +120,7 @@ export async function executeLiveVoiceTool(options: {
         });
       }
       case "clanky_ui_action":
-        return await actions.uiAction(schemas.clanky_ui_action.parse(args).action, requestId);
+        return await directUiAction(direct, schemas.clanky_ui_action.parse(args).action);
       case "clanky_watch_work":
         return await observer.change(schemas.clanky_watch_work.parse(args));
       default:
@@ -127,7 +133,10 @@ export async function executeLiveVoiceTool(options: {
     }
     if (isDomainError(error)) {
       log.warn("Voice tool rejected", { tool: options.name, code: error.code });
-      return { ok: false, code: error.code, message: error.message, completion: "not_executed" };
+      return {
+        ok: false, code: error.code, message: error.message, completion: "not_executed",
+        ...(isDirectToolName(options.name) || options.name === "clanky_ui_action" ? { details: error.details } : {}),
+      };
     }
     throw error;
   }

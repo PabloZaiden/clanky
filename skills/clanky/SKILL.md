@@ -30,8 +30,13 @@ receive these Control tools.
 
 The [Live voice assistant](../../docs/voice.md#live-voice) is global and
 independent of native Control chats. It starts beside Quick Chat in the sidebar
-and operates authorized JSON APIs through six catalog-backed tools. Discover
-availability with `GET /api/voice/live`; do not use chat-local Live endpoints.
+and exposes twenty direct common intents, selective watching and three generic
+catalog fallback tools. Use direct intents without find/describe for covered
+workflows. Pass an exact name/ID or acknowledged `current` target; only resolve
+ambiguity if reported. Use one `clanky_waiting_work` with `kind=all` for combined
+attention, including manual plan approval. Direct reads select bounded latest
+conversation by default; omitted earlier messages are not complete history.
+Discover availability with `GET /api/voice/live`; do not use chat-local Live endpoints.
 The shared text model must support strict Responses tools with nested `anyOf`.
 Connection validation does not prove tool execution. If actions fail, inspect
 the server's bounded provider event/code/type/parameter/reason diagnostics;
@@ -46,7 +51,11 @@ important consequences. Ground it in the frozen arguments; do not show endpoints
 JSON, technical identifiers or secrets. Use `null` for operations that do not
 require confirmation. API cross-field validation runs before the dialog;
 invalid arguments do not request approval. Registered SSH credentials use
-private browser handoffs, never model arguments. Read
+private browser handoffs, never model arguments. Direct creation resolves real
+defaults/models/branches and relevant fresh browser preferences internally.
+Compound chat creation requires a separate `afterCreationDescription` for the
+frozen initial-message/open intent; all stages share the visual approval and
+report partial outcomes without replay. For generic task creation, read
 `GET /api/workspaces/:id/task-creation-context` before constructing task inputs;
 apply explicit intent and valid saved browser preferences without inventing a
 model or branch. Accepted/queued work is not completed work, and unknown
@@ -62,6 +71,13 @@ recording or hidden chat. References and operation outcomes are historical data:
 reread current state, never replay earlier mutations, and obtain new visual
 approval/private SSH handoffs as needed. Pending approvals and watches are not
 restored; client control belongs only to the newly originating tab.
+
+Ordinary API/CLI callers can use compact chat/task filters (`workspaceId`,
+exact `name`, `status`, `needsInput`, `order=activity`) and conversation
+`range=latest`. Follow the same filters and range on continuation; latest reads
+also retain `limit`. Shared voice text requests always use reasoning none.
+Consult [latency measurements and server timing](../../docs/voice.md#response-latency-and-feedback)
+before attributing a slow voice answer to local data access.
 
 ## Core workflow
 
