@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useCurrentUser } from "@pablozaiden/webapp/web";
 import type {
   DismissWorkerUpdateJobResponse,
   StartWorkerUpdatesResponse,
@@ -377,4 +378,9 @@ export function useWorkerUpdateJobs(
     dismissJob,
     clearActiveJob,
   };
+}
+
+export function useOwnerWorkerUpdateJobs(): UseWorkerUpdateJobsResult {
+  const currentUser = useCurrentUser();
+  return useWorkerUpdateJobs({ enabled: currentUser?.isOwner === true });
 }

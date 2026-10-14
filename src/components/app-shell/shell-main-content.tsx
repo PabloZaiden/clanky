@@ -24,6 +24,7 @@ import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import type { UseAgentsResult } from "../../hooks/useAgents";
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
 import type { UseWorkerUpdateJobsResult } from "../../hooks/useWorkerUpdateJobs";
+import { useOwnerWorkerUpdateJobs } from "../../hooks/useWorkerUpdateJobs";
 import { ChatDetails } from "../ChatDetails";
 import { TaskDetails } from "../TaskDetails";
 import { TerminalSessionDetails } from "../terminal/terminal-session-details";
@@ -130,7 +131,6 @@ export interface ShellMainContentProps {
 
   // Provisioning
   provisioning: UseProvisioningJobResult;
-  workerUpdates: UseWorkerUpdateJobsResult;
 
   // Toast
   toast: import("@pablozaiden/webapp/web").ToastService;
@@ -138,6 +138,10 @@ export interface ShellMainContentProps {
   // Privacy preference
   showPrivateItems: boolean;
 }
+
+type ShellMainContentWithWorkerUpdatesProps = ShellMainContentProps & {
+  workerUpdates: UseWorkerUpdateJobsResult;
+};
 
 function getCodeExplorerTarget(route: WebAppRoute): CodeExplorerTarget | undefined {
   if (route.view !== "code-explorer") {
@@ -423,7 +427,7 @@ function WorkerUpdateJobRouteContent({
   );
 }
 
-function renderMainContent(props: ShellMainContentProps) {
+function renderMainContent(props: ShellMainContentWithWorkerUpdatesProps) {
   const {
     route,
     shellLoading,
@@ -915,6 +919,11 @@ function usesFullViewportLayout(props: ShellMainContentProps): boolean {
 }
 
 export function AppRouteContent(props: ShellMainContentProps) {
+  const workerUpdates = useOwnerWorkerUpdateJobs();
+  const contentProps: ShellMainContentWithWorkerUpdatesProps = {
+    ...props,
+    workerUpdates,
+  };
   const fullViewport = usesFullViewportLayout(props);
   return (
     <Page layout={fullViewport ? "full" : "padded"}>
@@ -927,10 +936,10 @@ export function AppRouteContent(props: ShellMainContentProps) {
       {fullViewport
         ? (
           <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-            {renderMainContent(props)}
+            {renderMainContent(contentProps)}
           </div>
         )
-        : renderMainContent(props)}
+        : renderMainContent(contentProps)}
     </Page>
   );
 }

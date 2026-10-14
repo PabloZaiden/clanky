@@ -62,6 +62,7 @@ export {
 } from "./useProvisioningJob";
 export {
   useWorkerUpdateJobs,
+  useOwnerWorkerUpdateJobs,
   type UseWorkerUpdateJobsResult,
 } from "./useWorkerUpdateJobs";
 export { useMesh, type UseMeshResult } from "./useMesh";

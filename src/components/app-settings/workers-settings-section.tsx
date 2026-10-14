@@ -1,5 +1,5 @@
 import type { UseMeshResult } from "../../hooks";
-import type { UseWorkerUpdateJobsResult } from "../../hooks/useWorkerUpdateJobs";
+import { useOwnerWorkerUpdateJobs } from "../../hooks/useWorkerUpdateJobs";
 import { MeshSettingsContent } from "./mesh-settings-content";
 import { RelaySettingsContent } from "./relay-settings-content";
 import { WorkerUpdateAction } from "./worker-update-action";
@@ -7,11 +7,11 @@ import { Button } from "../common";
 
 export function WorkersSettingsSection({
   mesh,
-  workerUpdates,
 }: {
   mesh: UseMeshResult;
-  workerUpdates: UseWorkerUpdateJobsResult;
 }) {
+  const workerUpdates = useOwnerWorkerUpdateJobs();
+
   return (
     <details className="wapp-form-section group">
       <summary className="mb-3 flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium text-gray-900 dark:text-gray-100 [&::-webkit-details-marker]:hidden">
