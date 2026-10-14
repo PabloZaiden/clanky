@@ -5,6 +5,67 @@ import { DomainError } from "../domain/domain-error";
 import { directItems, directRecord, LiveVoiceDirectContext } from "./live-voice-direct-context";
 import type { DirectToolInput } from "./live-voice-direct-contracts";
 import { readBytes } from "./resource-read-service";
+import type { ChatStatus } from "@/shared/chat";
+import type { TaskStatus } from "@/shared/task";
+
+type VoiceStatusCategory = "active" | "idle" | "done" | "error";
+type WorkKind = "chat" | "task";
+
+const CHAT_VOICE_STATUS: Record<ChatStatus, VoiceStatusCategory> = {
+  idle: "idle",
+  starting: "error",
+  streaming: "active",
+  waiting: "active",
+  interrupting: "error",
+  reconnecting: "error",
+  stopped: "error",
+  failed: "error",
+  done: "done",
+};
+
+const TASK_VOICE_STATUS: Record<TaskStatus, VoiceStatusCategory> = {
+  idle: "idle",
+  draft: "idle",
+  planning: "active",
+  starting: "active",
+  running: "active",
+  waiting: "active",
+  completed: "done",
+  stopped: "error",
+  failed: "error",
+  max_iterations: "error",
+  resolving_conflicts: "active",
+  accepted_local: "done",
+  merged: "done",
+  pushed: "done",
+  deleted: "done",
+};
+
+function voiceStatusCategory(
+  kind: WorkKind,
+  status: unknown,
+): VoiceStatusCategory {
+  if (typeof status !== "string") {
+    throw new DomainError("voice_operation_response", "The work item has no valid status.");
+  }
+  if (kind === "chat") {
+    if (!Object.hasOwn(CHAT_VOICE_STATUS, status)) {
+      throw new DomainError("voice_operation_response", "The chat has an unknown status.");
+    }
+    return CHAT_VOICE_STATUS[status as ChatStatus];
+  }
+  if (!Object.hasOwn(TASK_VOICE_STATUS, status)) {
+    throw new DomainError("voice_operation_response", "The task has an unknown status.");
+  }
+  return TASK_VOICE_STATUS[status as TaskStatus];
+}
+
+function withVoiceStatus(
+  kind: WorkKind,
+  item: Record<string, unknown>,
+): Record<string, unknown> {
+  return { ...item, voiceStatus: voiceStatusCategory(kind, item["status"]) };
+}
 
 export function pendingInteractions(value: unknown): Record<string, unknown>[] {
   const entity = directRecord(value);
@@ -28,13 +89,17 @@ export async function directList(
   input: DirectToolInput<"clanky_list_chats">,
 ): Promise<unknown> {
   const workspaceId = input.workspace ? String((await context.resolve("workspace", input.workspace))["id"]) : null;
-  return await context.read({
+  const page = directRecord(await context.read({
     operationId: `GET /api/${kind}s`,
     query: {
       order: "activity", limit: input.limit ?? 8,
       ...(workspaceId ? { workspaceId } : {}), ...(input.name ? { name: input.name } : {}),
       ...(input.status ? { status: input.status } : {}), ...(input.cursor ? { cursor: input.cursor } : {}),
     },
+  }));
+  return context.bounded({
+    ...page,
+    items: directItems(page).map((item) => withVoiceStatus(kind, item)),
   });
 }
 
@@ -42,7 +107,7 @@ export async function directRead(
   context: LiveVoiceDirectContext, kind: "chat" | "task",
   input: DirectToolInput<"clanky_read_task"> | DirectToolInput<"clanky_read_chat">,
 ): Promise<unknown> {
-  const target = await context.resolve(kind, input.target, input.workspace);
+  const target = withVoiceStatus(kind, await context.resolve(kind, input.target, input.workspace));
   const id = String(target["id"]);
   const section = "section" in input ? input.section : "conversation";
   const budget = Math.max(1024, context.options.maxBytes - readBytes(target) - 1200);
@@ -106,7 +171,7 @@ export async function directOverview(
     if (!continuation[kind]) continuation.completed.push(kind);
     const items = directItems(page);
     coverage.push({ kind, selectionComplete: page["nextCursor"] === null });
-    for (const target of items) entries.push({ kind, ...target });
+    for (const target of items) entries.push({ kind, ...withVoiceStatus(kind, target) });
   }
 
   entries.sort((a, b) => String(b["lastActivityAt"]).localeCompare(String(a["lastActivityAt"])));

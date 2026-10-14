@@ -124,21 +124,22 @@ rejected rather than guessing which credential to use.
 
 ### Direct common operations
 
-Twenty common intents are available to the textual model before discovery.
+Twenty-one common intents are available to the textual model before discovery.
 Their names below have the `clanky_` prefix:
 
 | Tool | Useful operation |
 | --- | --- |
-| `recent_work` | Recent chats/tasks by actual activity, with bounded literal previews. |
-| `waiting_work` | Questions, permissions and ready plans awaiting manual approval, together. |
-| `list_chats` | Filter chats by workspace, exact name or status. |
-| `read_chat` | State, pending interactions and latest or earliest literal conversation. |
+| `recent_work` | Recent chats/tasks by actual activity, with Voice status categories and bounded literal previews. |
+| `waiting_work` | Questions, permissions and ready plans awaiting manual approval, with Voice status categories. |
+| `list_chats` | Filter chats by workspace, exact name or raw status; results include a Voice status category. |
+| `read_chat` | Raw and Voice status, pending interactions and latest or earliest literal conversation. |
 | `send_chat_message` | Send one instruction to a named, identified or selected chat. |
+| `steer_queued_chat_message` | Steer an existing queued message into a streaming chat execution without resending it. |
 | `create_chat` | Create in a workspace or on an execution host; optional initial message and opening. |
 | `interrupt_chat` | Interrupt active chat work, independently of stopping voice. |
 | `respond_chat_interaction` | Answer a specific or uniquely pending question, or decide a permission. |
-| `list_tasks` | Filter tasks, including progress and required-intervention reasons. |
-| `read_task` | State and literal conversation, prompt, plan or diff. |
+| `list_tasks` | Filter tasks, including Voice status, progress and required-intervention reasons. |
+| `read_task` | Raw and Voice status, plus literal conversation, prompt, plan or diff. |
 | `create_task` | Create a draft or planning task with actual defaults and model preferences. |
 | `instruct_task` | Send a follow-up or set the next-iteration prompt, with explicit intent. |
 | `control_task` | Start draft planning or stop execution; not a generic resume command. |
@@ -156,6 +157,17 @@ resolved locally through authorized reads; an ambiguous name returns safe
 candidates instead of choosing a match. The model should pass the user's name
 directly, not list resources just to obtain IDs. A combined intervention query
 uses one `waiting_work` with `kind=all`.
+
+Voice work results preserve the API's raw `status` and add `voiceStatus` for
+simple spoken categories. Chats map `streaming` and `waiting` to `active`,
+`idle` to `idle`, `done` to `done`, and `starting`, `interrupting`,
+`reconnecting`, `stopped` and `failed` to `error`. Tasks map `planning`,
+`starting`, `running`, `waiting` and `resolving_conflicts` to `active`;
+`idle` and `draft` to `idle`; `completed`, `accepted_local`, `merged`,
+`pushed` and `deleted` to `done`; and `stopped`, `failed` and
+`max_iterations` to `error`. For broad category questions such as “active
+chats”, leave the exact raw `status` filter null and use `voiceStatus`; do not
+filter on a made-up raw state such as `working`.
 For hosts, `current` requires an execution-host selection; a current server
 requires that selection to be SSH. The fresh route's host kind and ID are
 matched against authorized resources, never guessed from a name.
@@ -175,8 +187,9 @@ occupy one mutation queue slot through the navigation acknowledgement. Other
 queued writes wait until the compound action completes or fails. Stages return
 their outcomes, including partial failure; they are never replayed.
 
-The session has **24 tools**: these twenty, the existing selective `watch_work`,
-and the three generic find/describe/execute tools for uncovered intents.
+The session has **26 tools**: these twenty-one direct intents, the existing
+selective `watch_work`, the three generic find/describe/execute tools for
+uncovered intents, and the `end_voice_session` lifecycle tool.
 Direct tools skip model-side discovery, not authorization, credential exchange
 or visual approval. API results distinguish completed operations from admitted or
 queued background work. Entity navigation refreshes its shell data and reports
@@ -188,6 +201,19 @@ inspect its state before repeating it; Clanky never automatically replays mutati
 The execute tool's required `confirmationDescription` is 1–500 trimmed
 characters for `confirm` operations and `null` for other automation policies.
 It is separate from the ordinary operation's API body.
+
+`steer_queued_chat_message` operates only on messages already in a chat queue.
+With `messageId: null`, it proceeds only when the chat has exactly one queued
+message; if several exist, it returns bounded candidates and requires a
+specific ID. Steering requires a streaming execution and a backend that
+supports native steering. The result reports admission, not delivery or
+completion; do not resend a message when admission is uncertain or rejected.
+
+Use `end_voice_session` only after a clear farewell or direct request to end
+Voice. Speak a short goodbye first and call it by itself; ordinary greetings
+and pauses do not end the session. It closes only the current Voice call, not
+delegated chat/task work. Call-owned pending approvals and watches are revoked
+when Voice ends.
 
 Live selects [compact API representations and literal conversation
 pages](API.md#compact-reads-and-literal-conversations) from the same route
@@ -332,7 +358,8 @@ First/final response columns measure the entire external request/stream
 interval, not audible feedback or just computation; separate medians need
 not sum to the median total. Local tool execution/serialization median was
 9.7 ms, maximum 21.1 ms. More than 99% of each total remained inside the
-external text intervals. The 24 tool schemas serialized to 26,455 UTF-8 bytes;
+external text intervals. An earlier 24-tool measurement serialized its schemas
+to 26,455 UTF-8 bytes;
 initial requests used 5,359–5,365 input tokens. The first recent-work request
 was uncached; later sequential requests largely cached approximately 5,300
 tokens. These small samples are not controlled cold-cache, load, p95 or

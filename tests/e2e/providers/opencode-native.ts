@@ -80,6 +80,11 @@ async function save(session: Session): Promise<void> {
   await Bun.write(join(stateDirectory, `${session.id}.json`), JSON.stringify(session));
 }
 
+async function waitForVoiceEndRelease(directory: string, signal: AbortSignal): Promise<void> {
+  const releasePath = join(directory, ".clanky-e2e-voice-end-release");
+  while (!signal.aborted && !await Bun.file(releasePath).exists()) await Bun.sleep(20);
+}
+
 function broadcast(event: Record<string, unknown>): void {
   const data = new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`);
   for (const stream of streams) stream.enqueue(data);
@@ -101,6 +106,10 @@ async function execute(session: Session): Promise<void> {
   try {
     const event: ContextEvent = { sessionID: session.id, tools: Object.fromEntries(tools) };
     for (const hook of contextHooks) await hook(event);
+    if (execution.prompt.includes("[voice-end-wait]")) {
+      await waitForVoiceEndRelease(session.location.directory, execution.abort.signal);
+      if (execution.abort.signal.aborted) return;
+    }
     const requests: Array<{ name: string; input: unknown }> = execution.prompt.split("\n")
       .filter((line) => line.startsWith("Control request: "))
       .flatMap((line) => JSON.parse(line.slice("Control request: ".length)));

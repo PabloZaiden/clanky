@@ -7,7 +7,7 @@ import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import type { LiveVoiceCallState } from "@/shared";
 import type { LiveVoiceUiContext } from "@/shared/live-voice";
 import { runWithCurrentUser } from "../context/user-context";
-import { executeLiveVoiceTool, liveVoiceToolDefinitions } from "./live-voice-tools";
+import { executeLiveVoiceTool, liveVoiceToolDefinitions, LIVE_VOICE_SESSION_END_REQUEST } from "./live-voice-tools";
 import { LiveVoiceActions } from "./live-voice-actions";
 import { LiveVoiceObserver } from "./live-voice-observer";
 import type { ClankyOperationService, OperationAuthority } from "./clanky-operation-service";
@@ -227,10 +227,29 @@ export class LiveVoiceCall {
     const operation = (async () => {
       let outcome: Parameters<typeof completeTiming>[0] = { ok: false };
       try {
-        const result = await executeLiveVoiceTool({
+        let result = await executeLiveVoiceTool({
           service: this.scope.service, actions: this.actions, observer: this.observer,
           requestId: callId, name, rawArguments: args, maxReadBytes: readBytes,
         });
+        if (isRecord(result) && result["code"] === LIVE_VOICE_SESSION_END_REQUEST) {
+          if (group.pending !== 1 || group.outputs.length > 0 || group.requests.length > 0
+            || this.operations.size !== 1 || this.delegations.size !== 1) {
+            result = {
+              ok: false,
+              code: "voice_session_end_requires_standalone_action",
+              message: "End Voice in a separate response after other actions finish.",
+              completion: "not_executed",
+            };
+          } else {
+            outcome = { ok: true };
+            log.info("Live session exit requested", {
+              callId: this.scope.id,
+              requestIdHash: readRevision(callId),
+            });
+            this.ended();
+            return;
+          }
+        }
         if (this.state.status === "active") {
           const output = liveToolOutput(callId, result, itemBytes);
           outcome = {

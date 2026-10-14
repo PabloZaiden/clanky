@@ -7,7 +7,15 @@ export const GLOBAL_LIVE_INTENT = {
   workspaceA: "Live workspace A",
   workspaceB: "Live workspace B",
   sourceChat: "Live source conversation",
+  streamingChat: "Live streaming conversation",
+  steeringWorkspace: "Live steering workspace",
+  steeringChat: "Live queued-message steering chat",
+  steeringMessage: "Live steering request [voice-end-wait]: finish this accepted instruction after Voice ends.",
+  doneChat: "Live completed conversation",
+  errorChat: "Live failed conversation",
   sourceTask: "Live source task",
+  completedTask: "Live completed status task",
+  failedTask: "Live failed status task",
   createdTask: "Live delegated task",
   createdChat: "Live delegated conversation",
   hostFile: "voice-handoff.txt",
@@ -20,8 +28,9 @@ interface OperationPage { operations: Array<{ operationId: string }>; nextCursor
 interface Workspace { id: string; name: string }
 interface Host { ref: { kind: string; serverId?: string } }
 interface Server { id: string; repositoriesBasePath: string }
-interface Chat { id: string; name: string; status: string }
-interface Task { id: string; name: string; status: string }
+interface VoiceStatusWork { id: string; name: string; status: string; voiceStatus: string }
+type Chat = VoiceStatusWork;
+type Task = VoiceStatusWork;
 interface ConversationMessage { id: string; role: string; content: string; offset: number }
 interface ContentPart { path: Array<string | number>; value: unknown; offset: number; complete: boolean }
 
@@ -52,6 +61,19 @@ function successful<T>(value: unknown): T {
   const result = record(value);
   if (result["ok"] === false) throw new Error(`Global Live operation failed: ${JSON.stringify(result)}`);
   return (result["data"] ?? result) as T;
+}
+
+function assertVoiceStatus(
+  work: VoiceStatusWork | undefined,
+  status: string,
+  voiceStatus: string,
+): asserts work is VoiceStatusWork {
+  if (!work) throw new Error("The requested work item is unavailable.");
+  if (work.status !== status || work.voiceStatus !== voiceStatus) {
+    throw new Error(
+      `Expected ${work.name} to have status ${status} and voiceStatus ${voiceStatus}; received ${work.status}/${work.voiceStatus}.`,
+    );
+  }
 }
 
 function restoreContent(parts: ContentPart[]): unknown {
@@ -188,15 +210,35 @@ function* globalJourney(): Generator<FixtureStep, void, unknown> {
     parameters: { kind: ssh.ref.kind, id: server.id },
     query: { path: GLOBAL_LIVE_INTENT.hostFile, startDirectory: server.repositoriesBasePath },
   });
+  const listedChats = yield* directCollection<Chat>("clanky_list_chats", {
+    name: null, workspace: workspaceA.name, status: null, limit: 20,
+  });
+  assertVoiceStatus(listedChats.find((chat) => chat.name === GLOBAL_LIVE_INTENT.streamingChat), "streaming", "active");
+  assertVoiceStatus(listedChats.find((chat) => chat.name === GLOBAL_LIVE_INTENT.sourceChat), "idle", "idle");
+  assertVoiceStatus(listedChats.find((chat) => chat.name === GLOBAL_LIVE_INTENT.doneChat), "done", "done");
+  assertVoiceStatus(listedChats.find((chat) => chat.name === GLOBAL_LIVE_INTENT.errorChat), "failed", "error");
+  const steered = yield* direct<{
+    chatId: string; messageId: string; admission: { status: string; inputId: string };
+  }>("clanky_steer_queued_chat_message", {
+    target: GLOBAL_LIVE_INTENT.steeringChat, workspace: GLOBAL_LIVE_INTENT.steeringWorkspace, messageId: null,
+  });
+  if (steered.admission.status !== "accepted" || steered.messageId !== steered.admission.inputId) {
+    throw new Error(`The queued chat message was not admitted for native steering: ${JSON.stringify(steered)}`);
+  }
+
   const recent = yield* direct<{ entries: Array<Chat & { kind: string }> }>("clanky_recent_work", {
-    kind: "chat", workspace: workspaceA.name, status: null, cursor: null, limit: 3,
+    kind: "chat", workspace: workspaceA.name, status: null, cursor: null, limit: 20,
   });
   const sourceChat = recent.entries.find((chat) => chat.name === GLOBAL_LIVE_INTENT.sourceChat);
-  if (!sourceChat) throw new Error("The requested recent source conversation is unavailable.");
+  assertVoiceStatus(sourceChat, "idle", "idle");
+  assertVoiceStatus(recent.entries.find((chat) => chat.name === GLOBAL_LIVE_INTENT.streamingChat), "streaming", "active");
+  assertVoiceStatus(recent.entries.find((chat) => chat.name === GLOBAL_LIVE_INTENT.doneChat), "done", "done");
+  assertVoiceStatus(recent.entries.find((chat) => chat.name === GLOBAL_LIVE_INTENT.errorChat), "failed", "error");
   const read = yield* directContent("clanky_read_chat", {
     target: sourceChat.name, workspace: workspaceA.name, range: "latest", limit: 6,
   });
   const chat = read.target as Chat;
+  assertVoiceStatus(chat, "idle", "idle");
   const conversation = read.content as ConversationMessage[];
   const answerParts = conversation.filter((message) => message.id === conversation.findLast((entry) => entry.role === "assistant" && entry.content.trim())?.id);
   const answer = answerParts.map((part) => part.content).join("");
@@ -204,11 +246,23 @@ function* globalJourney(): Generator<FixtureStep, void, unknown> {
     kind: "task", workspace: workspaceA.name, cursor: null, limit: 3,
   });
   const sourceTask = waiting.entries.find((task) => task.name === GLOBAL_LIVE_INTENT.sourceTask && task.interventionReasons.includes("plan_approval"));
-  if (!sourceTask) throw new Error("The source plan awaiting the user is unavailable.");
+  assertVoiceStatus(sourceTask, "planning", "active");
   const taskRead = yield* directContent("clanky_read_task", {
     target: sourceTask.name, workspace: workspaceA.name, section: "prompt", range: "latest", limit: null,
   });
   const task = taskRead.target as Task;
+  assertVoiceStatus(task, "planning", "active");
+  const listedTasks = yield* directCollection<Task>("clanky_list_tasks", {
+    name: null, workspace: workspaceA.name, status: null, limit: 20,
+  });
+  assertVoiceStatus(listedTasks.find((entry) => entry.name === GLOBAL_LIVE_INTENT.sourceTask), "planning", "active");
+  assertVoiceStatus(listedTasks.find((entry) => entry.name === GLOBAL_LIVE_INTENT.completedTask), "completed", "done");
+  assertVoiceStatus(listedTasks.find((entry) => entry.name === GLOBAL_LIVE_INTENT.failedTask), "failed", "error");
+  const recentTasks = yield* direct<{ entries: Array<Task & { kind: string }> }>("clanky_recent_work", {
+    kind: "task", workspace: workspaceA.name, status: null, cursor: null, limit: 20,
+  });
+  assertVoiceStatus(recentTasks.entries.find((entry) => entry.name === GLOBAL_LIVE_INTENT.completedTask), "completed", "done");
+  assertVoiceStatus(recentTasks.entries.find((entry) => entry.name === GLOBAL_LIVE_INTENT.failedTask), "failed", "error");
   const prompt = taskRead.content;
   if (typeof prompt !== "string" || !answer) throw new Error("The requested source work is unreadable.");
   const handoff = `${prompt}\nTask status: ${task.status}; chat status: ${chat.status}.\nLatest answer: ${answer}\nSSH handoff: ${hostFile.content}`;
@@ -229,6 +283,7 @@ function* globalJourney(): Generator<FixtureStep, void, unknown> {
   const createdTask = (yield* directCollection<Task>("clanky_list_tasks", {
     name: GLOBAL_LIVE_INTENT.createdTask, workspace: workspaceB.name, status: null, limit: null,
   }))[0]!;
+  assertVoiceStatus(createdTask, "draft", "idle");
   successful(yield {
     name: "clanky_ui_action", arguments: { action: { type: "open_named", kind: "task", target: createdTask.name, workspace: workspaceB.name } },
   });
@@ -240,6 +295,7 @@ function* globalJourney(): Generator<FixtureStep, void, unknown> {
   const createdChat = (yield* directCollection<Chat>("clanky_list_chats", {
     name: GLOBAL_LIVE_INTENT.createdChat, workspace: workspaceB.name, status: null, limit: null,
   }))[0]!;
+  assertVoiceStatus(createdChat, "idle", "idle");
   successful(yield {
     name: "clanky_watch_work",
     arguments: { command: "add", targets: [
@@ -255,7 +311,12 @@ function* globalJourney(): Generator<FixtureStep, void, unknown> {
     kind: "all", workspace: null, cursor: null, limit: 3,
   });
   const needsAnswer = attention.entries.find((entry) => entry.id === createdChat.id);
+  assertVoiceStatus(needsAnswer, "waiting", "active");
   if (!needsAnswer?.preview.interactions?.length) throw new Error("The delegated work's pending question is unavailable.");
+  const waitingChats = yield* directCollection<Chat>("clanky_list_chats", {
+    name: GLOBAL_LIVE_INTENT.createdChat, workspace: workspaceB.name, status: null, limit: null,
+  });
+  assertVoiceStatus(waitingChats[0], "waiting", "active");
   const watched = successful<{ watching: Array<{ kind: string; id: string }> }>(
     yield { name: "clanky_watch_work", arguments: { command: "list", targets: [] } },
   );
@@ -296,6 +357,7 @@ function* resumedJourney(session: LiveFixture): Generator<FixtureStep, void, unk
     target: id, workspace: null, range: "latest", limit: 6,
   });
   const chat = read.target as Chat;
+  assertVoiceStatus(chat, "waiting", "active");
   const question = read.interactions.find((entry) => entry.kind === "question" && entry.status === "pending");
   if (!question) throw new Error("The previously delegated conversation has no pending question.");
   yield* direct("clanky_respond_chat_interaction", {
@@ -305,6 +367,7 @@ function* resumedJourney(session: LiveFixture): Generator<FixtureStep, void, unk
   successful(yield {
     name: "clanky_ui_action", arguments: { action: { type: "open_chat", chatId: chat.id } },
   });
+  yield { name: "clanky_end_voice_session", arguments: {} };
 }
 
 function send(session: LiveFixture, event: Record<string, unknown>): void {
@@ -336,6 +399,14 @@ function advance(session: LiveFixture, result?: unknown): void {
       if (index >= 0) advance(session, session.notices.splice(index, 1)[0]!.result);
       return;
     }
+    if ("name" in session.current && session.current.name === "clanky_end_voice_session") {
+      const start = Date.now() - session.connectedAt!;
+      send(session, {
+        type: "session.output_transcript.delta", event_id: crypto.randomUUID(),
+        delta: "Chau, termino esta sesión de Voice. El trabajo delegado sigue en marcha.",
+        start_ms: start, end_ms: start + 1,
+      });
+    }
     session.stage++;
     const id = `${session.id}-${session.stage}`;
     send(session, {
@@ -361,7 +432,7 @@ export const liveFixtureWebSocket = {
     send(socket.data, { type: "session.started" });
     if (socket.data.global) send(socket.data, {
       type: "session.input_transcript.delta", event_id: crypto.randomUUID(),
-      delta: socket.data.resume ? "Continue the conversation we created: answer its pending question with Concise."
+      delta: socket.data.resume ? "Continue the conversation we created, answer its pending question with Concise, then say chau and end this Voice session."
         : "Use the source work to create a task and a conversation in workspace B, and ask before continuing.",
       start_ms: 0, end_ms: 1,
     });

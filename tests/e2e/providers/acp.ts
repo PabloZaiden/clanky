@@ -912,10 +912,8 @@ class MockAcpServer {
       this.sendStatus(session, "busy");
     }
 
-    if (
-      promptText.includes("[provider-error]")
-      && /original goal:/i.test(promptText)
-    ) {
+    if (promptText.includes("[chat-provider-error]")
+      || (promptText.includes("[provider-error]") && /original goal:/i.test(promptText))) {
       this.sendStatus(session, "idle");
       throw this.rpcError(INTERNAL_ERROR_CODE, "Deterministic external provider failure");
     }
@@ -975,6 +973,10 @@ class MockAcpServer {
         ],
       },
     });
+
+    if (promptText.includes("[voice-status-stream]")) {
+      await this.waitForVoiceStatusRelease(session.cwd, signal);
+    }
 
     if (promptText.includes("[question]")) {
       await this.askQuestion(session.id, signal);
@@ -1541,6 +1543,20 @@ class MockAcpServer {
 
   private delay(ms: number): Promise<void> {
     return Bun.sleep(ms).then(() => undefined);
+  }
+
+  private async waitForVoiceStatusRelease(cwd: string, signal: AbortSignal): Promise<void> {
+    const releasePath = join(cwd, ".clanky-e2e-voice-status-release");
+    const deadline = performance.now() + 10_000;
+    while (!await Bun.file(releasePath).exists()) {
+      if (signal.aborted) {
+        throw this.rpcError(REQUEST_CANCELLED_ERROR_CODE, "Voice status fixture was cancelled.");
+      }
+      if (performance.now() >= deadline) {
+        throw new Error("Timed out waiting for the Voice status fixture release.");
+      }
+      await Bun.sleep(25);
+    }
   }
 
   private rpcError(code: number, message: string, data?: unknown): Error & { code: number; data?: unknown } {
