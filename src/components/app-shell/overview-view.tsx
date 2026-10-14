@@ -15,6 +15,7 @@ import { ConfiguredAgentsSection } from "../ConfiguredAgentsSection";
 import {
   buildActiveWorkSidebarItems,
   buildChatHistorySidebarItems,
+  getActiveWorkItemTimestamp,
   type SidebarChatHistoryItem,
   type SidebarActiveWorkItem,
   type SidebarExecutionHostNode,
@@ -24,6 +25,10 @@ import { isEffectivelyPrivate, shouldObscurePrivateItem } from "../../lib/privat
 import { ClankyListRow } from "./clanky-list-row";
 import { ServerTransportIcon } from "./server-sidebar-item";
 import { WorkspaceIdentity } from "../common";
+import {
+  ActiveWorkMetadata,
+  type ActiveWorkSidebarItemType,
+} from "./active-work-sidebar-item";
 
 function getExecutionHostRoute(host: ExecutionHostDescriptor): WebAppRoute {
   return {
@@ -57,6 +62,16 @@ function getActiveWorkTitle(item: SidebarActiveWorkItem): string {
     return item.chatNode.title;
   }
   return item.sessionNode.title;
+}
+
+function getActiveWorkItemType(item: SidebarActiveWorkItem): ActiveWorkSidebarItemType {
+  if (item.kind === "task") {
+    return "Task";
+  }
+  if (item.kind === "chat" || item.kind === "execution-host-chat") {
+    return "Chat";
+  }
+  return "Terminal";
 }
 
 function getActiveWorkSubtitle(item: SidebarActiveWorkItem): string {
@@ -237,8 +252,17 @@ export function OverviewView({
                   key={item.key}
                   title={getActiveWorkTitle(item)}
                   description={workspace
-                    ? <WorkspaceIdentity workspace={workspace} />
+                    ? <WorkspaceIdentity workspace={workspace} showProviderIcon={false} />
                     : getActiveWorkSubtitle(item)}
+                  meta={(
+                    <ActiveWorkMetadata
+                      itemType={getActiveWorkItemType(item)}
+                      lastInteractionAt={getActiveWorkItemTimestamp(item)}
+                      workspace={workspace ?? undefined}
+                      className="mt-2 w-full"
+                    />
+                  )}
+                  metaPlacement="below"
                   badge={<StatusBadge variant={badge.variant}>{badge.label}</StatusBadge>}
                   onClick={!privateHidden ? () => onNavigate(getActiveWorkRoute(item)) : undefined}
                   privateHidden={privateHidden}
