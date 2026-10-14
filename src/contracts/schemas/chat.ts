@@ -18,7 +18,6 @@ export const CreateChatRequestSchema = z.object({
   useWorktree: z.boolean({ error: "useWorktree is required and must be a boolean (true or false)" }),
   useSelectedBranchForWorktree: z.boolean().optional(),
   useChatNameAsBranch: z.boolean().optional(),
-  autoApprovePermissions: z.boolean().default(true),
   baseBranch: z.string().min(1, "baseBranch must be non-empty when provided").optional(),
   quick: z.boolean().default(false),
 }).superRefine((value, context) => {
@@ -53,7 +52,6 @@ export const CreateSshServerChatRequestSchema = z.object({
   name: z.string().trim().max(100, "name cannot exceed 100 characters").optional(),
   directory: z.string().trim().min(1, "directory is required"),
   model: ModelConfigSchema,
-  autoApprovePermissions: z.boolean().default(true),
   credentialToken: z.string().trim().min(1).nullable().optional(),
 });
 

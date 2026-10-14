@@ -195,7 +195,6 @@ export function useShellDialogComposition({
           && quickChatWorkspace.allowWorktrees !== false
           ? settings.useWorktree
           : false,
-        autoApprovePermissions: true,
         quick: true,
       } satisfies CreateChatRequest);
       if (!chat) {

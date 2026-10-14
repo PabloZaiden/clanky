@@ -322,17 +322,15 @@ export const executionHostRoutes = defineRoutes({
   "/api/execution-hosts/:kind/:id/chats": {
     auth: "user",
     sameOrigin: "mutations",
-    description: "Create a direct chat on an execution host.",
+    description: "Create a direct chat on an execution host; permission requests are automatically approved.",
     requestSchema: CreateExecutionHostChatRequestSchema,
     operations: {
       POST: {
-        requestSchema: CreateExecutionHostChatRequestSchema.extend({
-          autoApprovePermissions: z.boolean().default(false),
-        }).strict(),
+        requestSchema: CreateExecutionHostChatRequestSchema.strict(),
         querySchema: undefined,
         automation: {
           policy: "confirm",
-          reason: "Creates agent work with configurable automatic permissions.",
+          reason: "Creates agent work with automatic permission approval.",
           hiddenInputs: ["credentialToken"],
           credential: { kind: "ssh", serverParameter: "id", input: "credentialToken" },
         },
@@ -375,7 +373,6 @@ export const executionHostRoutes = defineRoutes({
           modelProviderID: validation.data.model.providerID,
           modelID: validation.data.model.modelID,
           modelVariant: validation.data.model.variant,
-          autoApprovePermissions: validation.data.autoApprovePermissions,
         });
         return Response.json(chat, { status: 201 });
       } catch (error) {

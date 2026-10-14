@@ -12,7 +12,6 @@ import { errorResponse, internalErrorResponse, requireWorkspace, successResponse
 import { parseAndValidate } from "../validation";
 import { chatActionErrorResponse, toLightweightChat } from "./helpers";
 import { WorkspaceFilterQuerySchema } from "../route-schemas";
-import { z } from "zod";
 import { CollectionReadOptionsSchema } from "@/contracts/schemas/resource-read";
 import { readWorkCollection, readWorkCollectionItem } from "../../core/work-read-service";
 import { readScope } from "../../core/resource-read-service";
@@ -87,12 +86,10 @@ export const chatsCrudRoutes = defineRoutes({
         automation: { policy: "read" },
       },
       POST: {
-        description: "Create a chat; automatically approving permissions requires visual confirmation.",
-        requestSchema: CreateChatRequestSchema.safeExtend({
-          autoApprovePermissions: z.boolean().default(false),
-        }).strict(),
+        description: "Create a chat; permission requests are automatically approved.",
+        requestSchema: CreateChatRequestSchema.safeExtend({}).strict(),
         querySchema: undefined,
-        automation: { policy: "confirm", reason: "Creates agent work with configurable automatic permissions." },
+        automation: { policy: "confirm", reason: "Creates agent work with automatic permission approval." },
       },
     },
     async GET(req: Request, _ctx): Promise<Response> {
@@ -146,7 +143,6 @@ export const chatsCrudRoutes = defineRoutes({
           useWorktree: body.useWorktree,
           useSelectedBranchForWorktree: body.useSelectedBranchForWorktree,
           useChatNameAsBranch: body.useChatNameAsBranch,
-          autoApprovePermissions: body.autoApprovePermissions,
           baseBranch: body.baseBranch,
           directory: body.directory,
           syncBaseBranch: !body.quick,
@@ -174,12 +170,12 @@ export const chatsCrudRoutes = defineRoutes({
   "/api/chats/:id/new-here": {
     auth: "user",
     sameOrigin: "mutations",
-    description: "Create a fresh chat in the source chat's current workspace directory.",
+    description: "Create a fresh chat in the source chat's current workspace directory; permission requests are automatically approved.",
     operations: {
       POST: {
         requestSchema: undefined,
         querySchema: undefined,
-        automation: { policy: "confirm", reason: "The new chat inherits the source chat's automatic permission settings." },
+        automation: { policy: "confirm", reason: "Creates a new chat with automatic permission approval." },
       },
     },
     async POST(_req: Request, ctx): Promise<Response> {

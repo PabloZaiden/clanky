@@ -47,7 +47,6 @@ export interface CreateChatOptions {
   useWorktree?: boolean;
   useSelectedBranchForWorktree?: boolean;
   useChatNameAsBranch?: boolean;
-  autoApprovePermissions?: boolean;
   baseBranch?: string;
   directory?: string;
   expectedExecutionHostBinding?: ExecutionHostBinding;
@@ -55,7 +54,7 @@ export interface CreateChatOptions {
   prepareWorktreeOnCreate?: boolean;
 }
 
-export interface CreateAgentRunChatOptions extends Omit<CreateChatOptions, "scope" | "taskId" | "autoApprovePermissions"> {}
+export interface CreateAgentRunChatOptions extends Omit<CreateChatOptions, "scope" | "taskId"> {}
 
 export interface CreateExecutionHostChatOptions {
   name?: string;
@@ -64,7 +63,6 @@ export interface CreateExecutionHostChatOptions {
   modelProviderID: string;
   modelID: string;
   modelVariant?: string;
-  autoApprovePermissions?: boolean;
 }
 
 export interface ReconnectChatOptions {
