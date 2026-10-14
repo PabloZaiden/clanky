@@ -78,7 +78,6 @@ async function createWorktreeChat(
         ...(options.useSelectedBranchForWorktree
           ? { useSelectedBranchForWorktree: true }
           : {}),
-        autoApprovePermissions: true,
         baseBranch: options.baseBranch,
       }),
     },
