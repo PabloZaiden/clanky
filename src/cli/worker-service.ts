@@ -49,6 +49,8 @@ import {
 } from "./worker-service-windows";
 
 const MACOS_LABEL = "com.pablozaiden.clanky.worker";
+const MACOS_SERVICE_POLL_INTERVAL_MS = 100;
+const MACOS_SERVICE_TRANSITION_TIMEOUT_MS = 30_000;
 const LINUX_UNIT_NAME = "clanky-worker.service";
 const SERVICE_LOG_DIRECTORY = "logs";
 const SAFE_ENVIRONMENT_KEYS = [
@@ -886,6 +888,10 @@ interface MacServiceStatus {
   running: boolean;
 }
 
+function describeMacServiceStatus(status: MacServiceStatus): string {
+  return `loaded=${String(status.loaded)}, running=${String(status.running)}`;
+}
+
 async function inspectMacService(
   paths: WorkerServicePaths,
   runner: ProcessRunner,
@@ -903,12 +909,40 @@ async function inspectMacService(
   throw commandFailure(result, "launchctl", ["print", paths.supervisorTarget]);
 }
 
+async function waitForMacServiceState(
+  paths: WorkerServicePaths,
+  runner: ProcessRunner,
+  predicate: (status: MacServiceStatus) => boolean,
+  description: string,
+): Promise<MacServiceStatus> {
+  const deadline = Date.now() + MACOS_SERVICE_TRANSITION_TIMEOUT_MS;
+  let lastStatus: MacServiceStatus | undefined;
+  while (Date.now() <= deadline) {
+    lastStatus = await inspectMacService(paths, runner);
+    if (predicate(lastStatus)) {
+      return lastStatus;
+    }
+    await Bun.sleep(MACOS_SERVICE_POLL_INTERVAL_MS);
+  }
+  throw new Error(
+    `macOS worker service ${paths.label} did not ${description} within `
+    + `${String(MACOS_SERVICE_TRANSITION_TIMEOUT_MS)}ms; last state: `
+    + describeMacServiceStatus(lastStatus ?? { loaded: false, running: false }),
+  );
+}
+
 async function unloadMacService(
   paths: WorkerServicePaths,
   runner: ProcessRunner,
 ): Promise<void> {
   if ((await inspectMacService(paths, runner)).loaded) {
     await runRequired(runner, "launchctl", ["bootout", paths.supervisorTarget]);
+    await waitForMacServiceState(
+      paths,
+      runner,
+      (status) => !status.loaded,
+      "finish unloading",
+    );
   }
 }
 
@@ -923,11 +957,15 @@ async function startMacService(
       paths.supervisorDomain!,
       paths.servicePath,
     ]);
-    return;
-  }
-  if (!status.running) {
+  } else if (!status.running) {
     await runRequired(runner, "launchctl", ["kickstart", paths.supervisorTarget]);
   }
+  await waitForMacServiceState(
+    paths,
+    runner,
+    (nextStatus) => nextStatus.loaded && nextStatus.running,
+    "reach the running state",
+  );
 }
 
 export async function runMacWorkerServiceOperation(
