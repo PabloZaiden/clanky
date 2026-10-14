@@ -7,6 +7,7 @@
  */
 
 export * from "./file-system";
+export * from "./live-voice-audio";
 export {
   RequestControlUiActionSchema,
   AcknowledgeControlUiActionSchema,
