@@ -11,6 +11,7 @@ import {
   useRealtimeStream,
   useTranscriptResource,
 } from "../../hooks";
+import { useRefreshOnForeground } from "../../hooks/useDocumentVisibility";
 import { toTranscriptStreamEvent } from "../../hooks/transcript-event-adapter";
 import { apiRequest } from "../../lib/api-client";
 import { getStoredSshCredentialToken } from "../../lib/ssh-browser-credentials";
@@ -154,6 +155,7 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
     clearResource,
   } = transcriptResource;
   const refreshChatCoalesced = transcriptResource.refreshCoalesced;
+  useRefreshOnForeground(() => refreshChatCoalesced({ showLoading: false, afterCurrent: true }));
 
   const applyChatSnapshot = useCallback((nextChat: Chat): void => {
     if (mountedChatIdRef.current !== chatId || nextChat.config.id !== chatId) {

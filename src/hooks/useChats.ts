@@ -15,12 +15,13 @@ import {
   type ExecutionHostRef,
 } from "@/shared/execution-host";
 import { DEFAULT_CHAT_INTERRUPT_REASON, isStandaloneChat } from "@/shared";
-import { mergeChatSummarySnapshot } from "../utils/chat-snapshot";
+import { applyChatStatusEvent, mergeChatSummarySnapshot } from "../utils/chat-snapshot";
 import { createRefreshCoordinator } from "../lib/refresh-coordinator";
 import { getClankyClientId } from "../lib/clanky-client-id";
 import { getStoredSshCredentialToken } from "../lib/ssh-browser-credentials";
 import { useRealtimeRefreshWithRecovery, useRealtimeStream } from "./useRealtimeStream";
 import { useChatActivityState } from "./useChatActivityState";
+import { useRefreshOnForeground } from "./useDocumentVisibility";
 import type { ResourceRefreshOptions } from "./useResourceRefresh";
 
 const log = createLogger("useChats");
@@ -115,6 +116,8 @@ export function useChats(): UseChatsResult {
       }
     });
   }, [setChats]);
+
+  useRefreshOnForeground(() => refresh({ showLoading: false, afterCurrent: true }));
 
   const refreshChat = useCallback(async (id: string) => {
     try {
@@ -315,6 +318,13 @@ export function useChats(): UseChatsResult {
     predicate: (event) => event.type.startsWith("chat."),
     onEvent: (event) => {
       switch (event.type) {
+        case "chat.status":
+          setChats((current) => current.map((chat) => (
+            chat.config.id === event.chatId
+              ? applyChatStatusEvent(chat, event.status, event.timestamp)
+              : chat
+          )));
+          break;
         case "chat.message":
           if (event.message.role === "assistant") {
             recordActivity(event.chatId, event.timestamp);
