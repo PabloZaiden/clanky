@@ -156,6 +156,78 @@ wire-byte counts, not result bodies or private credentials.
 Browser microphone permission, HTTPS (or localhost), provider connectivity and
 audio playback permission are required.
 
+### Native audio buffer and server diagnostics
+
+**Settings → Voice → Live audio buffer (200 ms)** is enabled by default,
+including for previously saved voice settings. Turning it off restores the
+browser's adaptive automatic buffering (`null`), not zero buffering. The
+per-user preference is saved as `live.jitterBufferTargetMs: 200 | null` in
+the existing voice settings API and survives restart. Changes apply to the
+current call without reconnecting or repeating operations.
+
+Clanky sets the incoming receiver's native `jitterBufferTarget` when available.
+It is a preferred target, not a guaranteed fixed delay or an extra 200 ms
+on top of the existing delay. More buffering can smooth variable packet
+arrival at the cost of conversational latency; it cannot guarantee recovery
+of lost packets or fix a local audio-rendering fault. Unsupported or rejected
+targets produce a visible warning and server diagnostic. No custom PCM queue,
+resampling or additional playback pipeline is introduced.
+
+Live collects browser-reported metadata on startup, media/lifecycle changes,
+errors and every **five seconds**, whether this setting is on or off. Logs
+include receiver codec/rate/channels, packet counts/loss/discards, jitter,
+concealment, inserted/removed samples and jitter-buffer counters. Interval
+summaries distinguish actual, target and minimum average delays and the
+concealed-sample ratio. First samples, missing browser fields, zero
+denominators and reset counters produce unavailable (`null`) measurements,
+not invented zero values. RTP codec clock rate, microphone sample rate and
+AudioContext sample rate describe different parts of the pipeline.
+
+Stats requests have a two-second reporting deadline. Native `getStats()` cannot
+be cancelled: if a request times out, Clanky logs the failure and starts no
+further stats request until that pending operation settles. Playback, lifecycle
+logging and delivery continue independently, and call teardown remains bounded.
+
+Snapshots also include effective microphone processing/format, requested
+processing, peer/ICE state, track state, media-element play state, AudioContext
+state/latency and supported AudioSession state/type. Visibility, device changes,
+mute and playback failures are recorded separately. Coarse browser/OS versions
+and capability flags help compare devices; a browser may not expose its real
+OS version.
+
+These are **server logs**, not just browser console output. The browser sends
+strict, authenticated batches to `POST /api/voice/live/audio-diagnostics`.
+The `core:live-audio` scope correlates `attemptId`, `callId`, `clientId`,
+sequence, observation time and delivery/drop counters. Startup failures before
+a call ID exists use attempt correlation; the corresponding session request
+can carry `audioAttemptId`. Samples/checkpoints use `info`, recoverable issues
+use `warn`, and failed playback/capture uses `error`.
+
+Keep the server log level at **info or more verbose** to see normal samples.
+They appear in server stdout/container logs. To retrieve them through
+`GET /api/server/logs` or `clanky logs`, an administrator must enable the
+framework's existing server-log capture (`PUT /api/server/logs/settings` with
+`{"enabled":true}`). Capture remains temporary and follows framework lifecycle;
+Clanky does not automatically enable it or bypass the configured log level.
+Compare on/off samples for the same physical device and network, using the
+interval delay and concealment values rather than the configured target alone.
+
+Delivery uses bounded batches of eight records, a 64-record pending queue,
+32 KiB requests, five-second upload deadlines and server ingestion limits.
+Unavailable delivery produces a warning, retains bounded pending data for
+retry during the call and reports cumulative failures/evictions upon delivery.
+Sequences identify gaps and possible duplicate delivery after a lost
+acknowledgement. Stop attempts a bounded final flush; page unload uses
+best-effort keepalive. Offline or suspended browsers cannot guarantee that
+every record reaches the server.
+
+Telemetry never contains audio, transcripts, provider frames/identifiers,
+raw SDP, ICE candidates/IPs, device IDs/labels, full user-agent strings,
+credentials or free-form browser error messages. Existing administrator-only
+log access remains unchanged. This instrumentation enables physical-device
+diagnosis; automated protocol validation is not proof that iPhone crackling
+has been fixed.
+
 ### Privacy, limits and recovery
 
 Clanky creates the session and attaches its server-owned sideband using the

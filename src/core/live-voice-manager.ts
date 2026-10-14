@@ -13,6 +13,8 @@ import { LiveVoiceCall } from "./live-voice-call";
 import { LiveVoiceMemory } from "./live-voice-memory";
 import type { ClankyOperationService, OperationAuthority } from "./clanky-operation-service";
 import type { LiveVoiceAvailabilityResponse } from "@/contracts/schemas/voice";
+import type { LiveAudioDiagnosticsRequest } from "@/contracts/schemas/live-voice-audio";
+import { LiveVoiceAudioDiagnosticLog } from "./live-voice-audio-diagnostics";
 
 const log = createLogger("core:live-voice-manager");
 const LEASE_MS = 30_000;
@@ -21,6 +23,7 @@ const RETENTION_MS = 10 * 60_000;
 export class LiveVoiceManager {
   private readonly calls = new Map<string, LiveVoiceCall>();
   private readonly memory = new LiveVoiceMemory();
+  private readonly audioDiagnostics = new LiveVoiceAudioDiagnosticLog();
   private readonly creating = new Map<string, Promise<void>>();
   private readonly shutdown = new AbortController();
   private readonly attempts = new Map<string, { times: number[]; retryAt: number }>();
@@ -37,6 +40,7 @@ export class LiveVoiceManager {
   async create(options: {
     sdp: string; clientId: string; context: LiveVoiceUiContext;
     authority: OperationAuthority; signal: AbortSignal;
+    audioAttemptId?: string;
   }): Promise<LiveVoiceSessionResponse> {
     const { sdp, clientId, context, authority } = options;
     let { signal } = options;
@@ -85,6 +89,7 @@ export class LiveVoiceManager {
       call.sendContext();
       call.started = true;
       this.startMaintenance();
+      log.info("Global Live call started", { callId: id, clientId, audioAttemptId: options.audioAttemptId ?? null });
       return { call: { ...call.state }, sdp: started.sdp };
     } catch (error) {
       if (call) {
@@ -121,6 +126,11 @@ export class LiveVoiceManager {
   }
 
   getState(id: string): LiveVoiceCallState { return { ...this.requireCall(id).state }; }
+
+  recordAudioDiagnostics(input: LiveAudioDiagnosticsRequest) {
+    if (input.callId !== null) this.requireCall(input.callId, input.clientId);
+    return this.audioDiagnostics.record(input);
+  }
 
   refreshAuthority(id: string, clientId: string, authority: OperationAuthority): void {
     try { this.requireCall(id, clientId).scope.authority.refresh(authority); }
@@ -241,6 +251,7 @@ export class LiveVoiceManager {
     this.maintenance = undefined;
     this.calls.clear();
     this.memory.clear();
+    this.audioDiagnostics.dispose();
   }
 }
 
