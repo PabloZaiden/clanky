@@ -4,11 +4,12 @@ import type { WorkerUpdateJob } from "@/shared/worker-update";
 export function emitWorkerUpdateJobChanged(
   job: WorkerUpdateJob,
   userId: string,
+  timestamp: string = job.state.updatedAt,
 ): void {
   workerUpdateEventEmitter.emit({
     type: "worker-update.changed",
     workerUpdateJobId: job.config.id,
-    timestamp: job.state.updatedAt,
+    timestamp,
   }, { userId });
 }
 

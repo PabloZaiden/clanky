@@ -3380,7 +3380,9 @@ is `202 Accepted`; `totalWorkers` is the number of eligible registrations, and
 `status: "failed"` in this response means that the job could not be admitted;
 it is distinct from a job that was admitted and later failed while running.
 One worker's admission failure does not prevent jobs from being created for
-other eligible workers.
+other eligible workers. If that owner already has a `pending` or `running`
+update job for a worker, the result for that worker is `not_started` with
+`reason: "already_active"`; no duplicate command sequence is admitted.
 
 #### GET /api/worker-update-jobs
 

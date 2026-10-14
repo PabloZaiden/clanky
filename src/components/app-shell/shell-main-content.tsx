@@ -328,19 +328,35 @@ function WorkerUpdateJobRouteView({
   workerUpdates: UseWorkerUpdateJobsResult;
   navigateWithinShell: (route: WebAppRoute) => void;
 }) {
-  const [dismissConfirmOpen, setDismissConfirmOpen] = useState(false);
-  const [dismissing, setDismissing] = useState(false);
   const workerUpdateJobId = getRouteString(route, "workerUpdateJobId");
-
-  useEffect(() => {
-    if (workerUpdateJobId) {
-      workerUpdates.openJob(workerUpdateJobId);
-    }
-  }, [workerUpdateJobId, workerUpdates.openJob]);
-
   if (!workerUpdateJobId) {
     return missingRouteParameter(route.view, "workerUpdateJobId");
   }
+
+  return (
+    <WorkerUpdateJobRouteContent
+      workerUpdateJobId={workerUpdateJobId}
+      workerUpdates={workerUpdates}
+      navigateWithinShell={navigateWithinShell}
+    />
+  );
+}
+
+function WorkerUpdateJobRouteContent({
+  workerUpdateJobId,
+  workerUpdates,
+  navigateWithinShell,
+}: {
+  workerUpdateJobId: string;
+  workerUpdates: UseWorkerUpdateJobsResult;
+  navigateWithinShell: (route: WebAppRoute) => void;
+}) {
+  const [dismissConfirmOpen, setDismissConfirmOpen] = useState(false);
+  const [dismissing, setDismissing] = useState(false);
+
+  useEffect(() => {
+    workerUpdates.openJob(workerUpdateJobId);
+  }, [workerUpdateJobId, workerUpdates.openJob]);
 
   const snapshot = workerUpdates.snapshot?.job.config.id === workerUpdateJobId
     ? workerUpdates.snapshot
@@ -381,8 +397,11 @@ function WorkerUpdateJobRouteView({
         <Panel title="Worker update">
           <WorkerUpdateJobView
             snapshot={snapshot}
-            loading={workerUpdates.loading || workerUpdates.activeJobId !== workerUpdateJobId}
-            error={workerUpdates.error}
+            loading={workerUpdates.enabled
+              && (workerUpdates.loading || workerUpdates.activeJobId !== workerUpdateJobId)}
+            error={workerUpdates.enabled
+              ? workerUpdates.error
+              : "Worker update jobs are only available to the owner."}
           />
         </Panel>
       </div>

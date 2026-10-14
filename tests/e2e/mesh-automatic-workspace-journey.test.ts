@@ -96,6 +96,13 @@ interface StartWorkerUpdatesResponse {
     | {
         workerNodeId: string;
         workerName: string;
+        status: "not_started";
+        reason: "already_active";
+        error: string;
+      }
+    | {
+        workerNodeId: string;
+        workerName: string;
         status: "failed";
         error: string;
       }
@@ -438,6 +445,27 @@ test("controller updates global Mesh workers concurrently and retains per-worker
       },
     );
     expect(concurrentStarts.successful && concurrentStarts.failing).toBe(true);
+
+    const repeatedAdmissions = await Promise.all([
+      meshJsonRequest<StartWorkerUpdatesResponse>(
+        controller,
+        "/api/worker-update-jobs",
+        { method: "POST" },
+      ),
+      meshJsonRequest<StartWorkerUpdatesResponse>(
+        controller,
+        "/api/worker-update-jobs",
+        { method: "POST" },
+      ),
+    ]);
+    for (const repeatedAdmission of repeatedAdmissions) {
+      expect(repeatedAdmission.status, JSON.stringify(repeatedAdmission.body)).toBe(202);
+      expect(repeatedAdmission.body.results).toHaveLength(2);
+      expect(repeatedAdmission.body.results.every(
+        (item) => item.status === "not_started" && item.reason === "already_active",
+      )).toBe(true);
+    }
+
     await Bun.write(updateReleasePath, "release");
 
     const terminalSnapshots = await pollUntil(

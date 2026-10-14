@@ -139,20 +139,40 @@ function getLogs(userId: string, jobId: string): WorkerUpdateLogEntry[] {
   });
 }
 
-export function createWorkerUpdateJob(userId: string, job: WorkerUpdateJob): void {
-  getDatabase().query(`
-    INSERT INTO worker_update_jobs (
-      id, user_id, config_json, state_json, status, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    job.config.id,
-    userId,
-    JSON.stringify(job.config),
-    JSON.stringify(job.state),
-    job.state.status,
-    job.config.createdAt,
-    job.state.updatedAt,
-  );
+export function admitWorkerUpdateJob(
+  userId: string,
+  job: WorkerUpdateJob,
+): "admitted" | "already_active" {
+  const db = getDatabase();
+  const admit = db.transaction(() => {
+    const activeJob = db.query(`
+      SELECT 1
+      FROM worker_update_jobs
+      WHERE user_id = ?
+        AND json_extract(config_json, '$.workerNodeId') = ?
+        AND status IN ('pending', 'running')
+      LIMIT 1
+    `).get(userId, job.config.workerNodeId);
+    if (activeJob !== null) {
+      return "already_active";
+    }
+
+    db.query(`
+      INSERT INTO worker_update_jobs (
+        id, user_id, config_json, state_json, status, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      job.config.id,
+      userId,
+      JSON.stringify(job.config),
+      JSON.stringify(job.state),
+      job.state.status,
+      job.config.createdAt,
+      job.state.updatedAt,
+    );
+    return "admitted";
+  });
+  return admit.immediate();
 }
 
 export function updateWorkerUpdateJob(userId: string, job: WorkerUpdateJob): void {

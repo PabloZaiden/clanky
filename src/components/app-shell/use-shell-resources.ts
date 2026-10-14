@@ -25,7 +25,7 @@ import {
 import { buildExecutionHostSidebarNodes, buildWorkspaceSidebarGroups } from "./shell-types";
 import { getShellRouteSelection } from "./shell-route-composition";
 
-export function useShellResources(route: WebAppRoute) {
+export function useShellResources(route: WebAppRoute, isOwner: boolean) {
   const {
     chats,
     loading: chatsLoading,
@@ -104,7 +104,7 @@ export function useShellResources(route: WebAppRoute) {
   const voiceSettings = useVoiceSettings();
   const dashboardData = useDashboardData();
   const provisioning = useProvisioningJob();
-  const workerUpdates = useWorkerUpdateJobs();
+  const workerUpdates = useWorkerUpdateJobs({ enabled: isOwner });
   const { workspaceGroups: allWorkspaceGroups } = useTaskGrouping(
     tasks,
     workspaces,

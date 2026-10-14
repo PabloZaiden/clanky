@@ -344,7 +344,9 @@ export class WorkerUpdateJobRunner {
           workerNodeId: job.config.workerNodeId,
           jobId: job.config.id,
         });
+        return;
       }
+      emitWorkerUpdateJobChanged(job, userId, entry.timestamp);
     } catch (error) {
       log.error("Failed to persist worker update log", {
         workerNodeId: job.config.workerNodeId,

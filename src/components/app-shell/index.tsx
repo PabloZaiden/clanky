@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef, useState, type ChangeEvent } from "react";
 import logoSvgPath from "../../favicon.svg" with { type: "file" };
 import {
+  useCurrentUser,
   useToast,
   WebAppRoot,
   type WebAppRoute,
@@ -26,10 +27,11 @@ import { buildVoiceLauncherActions, LiveVoiceSidebarBar } from "./live-voice-con
 import { useVoiceClientActions } from "./use-voice-client-actions";
 
 export function AppShell() {
+  const currentUser = useCurrentUser();
   const toast = useToast();
   const [route, setRoute] = useState<WebAppRoute>(HOME_ROUTE);
   const [activityRoute, setActivityRoute] = useState<WebAppRoute | null>(null);
-  const resources = useShellResources(route);
+  const resources = useShellResources(route, currentUser?.isOwner === true);
   const {
     chats,
     chatsLoading,

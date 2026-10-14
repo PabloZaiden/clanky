@@ -88,12 +88,21 @@ const WorkerUpdateJobAdmissionFailureSchema = z.object({
   error: RequiredStringSchema,
 });
 
+const WorkerUpdateJobAlreadyActiveSchema = z.object({
+  workerNodeId: RequiredStringSchema,
+  workerName: RequiredStringSchema,
+  status: z.literal("not_started"),
+  reason: z.literal("already_active"),
+  message: z.literal("An update job is already pending or running for this worker."),
+});
+
 export const StartWorkerUpdatesResponseSchema = z.object({
   success: z.literal(true),
   totalWorkers: z.number().int().nonnegative(),
   results: z.array(z.discriminatedUnion("status", [
     WorkerUpdateJobStartedSchema,
     WorkerUpdateJobAdmissionFailureSchema,
+    WorkerUpdateJobAlreadyActiveSchema,
   ])),
 });
 

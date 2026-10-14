@@ -15,6 +15,7 @@ export interface UseWorkerUpdateJobsResult {
   jobs: WorkerUpdateJob[];
   jobsLoading: boolean;
   jobsError: string | null;
+  enabled: boolean;
   activeJobId: string | null;
   snapshot: WorkerUpdateJobSnapshotResponse | null;
   loading: boolean;
@@ -28,7 +29,9 @@ export interface UseWorkerUpdateJobsResult {
   clearActiveJob: () => void;
 }
 
-export function useWorkerUpdateJobs(): UseWorkerUpdateJobsResult {
+export function useWorkerUpdateJobs(
+  { enabled = true }: { enabled?: boolean } = {},
+): UseWorkerUpdateJobsResult {
   const [jobs, setJobs] = useState<WorkerUpdateJob[]>([]);
   const [jobsLoading, setJobsLoading] = useState(true);
   const [jobsError, setJobsError] = useState<string | null>(null);
@@ -52,6 +55,9 @@ export function useWorkerUpdateJobs(): UseWorkerUpdateJobsResult {
   const refreshJobs = useCallback(async (
     options: { showLoading?: boolean; force?: boolean } = {},
   ): Promise<void> => {
+    if (!enabled) {
+      return;
+    }
     const refresh = async (): Promise<void> => {
       const requestId = ++jobsRequestIdRef.current;
       jobsRequestControllerRef.current?.abort();
@@ -103,7 +109,7 @@ export function useWorkerUpdateJobs(): UseWorkerUpdateJobsResult {
       ? jobsRefreshCoordinatorRef.current.runAfterCurrent(refresh)
       : jobsRefreshCoordinatorRef.current.run(refresh);
     await refreshPromise;
-  }, []);
+  }, [enabled]);
 
   const clearActiveJob = useCallback(() => {
     jobRequestControllerRef.current?.abort();
@@ -118,7 +124,7 @@ export function useWorkerUpdateJobs(): UseWorkerUpdateJobsResult {
 
   const openJob = useCallback((jobId: string) => {
     const normalizedId = jobId.trim();
-    if (!normalizedId || activeJobIdRef.current === normalizedId) {
+    if (!enabled || !normalizedId || activeJobIdRef.current === normalizedId) {
       return;
     }
     jobRequestControllerRef.current?.abort();
@@ -128,11 +134,14 @@ export function useWorkerUpdateJobs(): UseWorkerUpdateJobsResult {
     setActiveJobId(normalizedId);
     setSnapshot(null);
     setError(null);
-  }, []);
+  }, [enabled]);
 
   const refreshJob = useCallback((
     options: { showLoading?: boolean } = {},
   ): Promise<WorkerUpdateJobSnapshotResponse | null> => {
+    if (!enabled) {
+      return Promise.resolve(null);
+    }
     return jobRefreshCoordinatorRef.current.run(async () => {
       const requestJobId = activeJobIdRef.current;
       if (!requestJobId) {
@@ -196,7 +205,7 @@ export function useWorkerUpdateJobs(): UseWorkerUpdateJobsResult {
         }
       }
     });
-  }, [clearActiveJob]);
+  }, [clearActiveJob, enabled]);
 
   useRealtimeRefreshWithRecovery({
     resources: ["worker-update-jobs"],
@@ -204,7 +213,7 @@ export function useWorkerUpdateJobs(): UseWorkerUpdateJobsResult {
     filters: activeJobId
       ? { resource: "worker-update-jobs", id: activeJobId }
       : undefined,
-    enabled: activeJobId !== null,
+    enabled: enabled && activeJobId !== null,
     refresh: async (event) => {
       if (event.action === "deleted") {
         clearActiveJob();
@@ -219,6 +228,7 @@ export function useWorkerUpdateJobs(): UseWorkerUpdateJobsResult {
 
   useRealtimeRefreshWithRecovery({
     resources: ["worker-update-jobs"],
+    enabled,
     refresh: async () => {
       await refreshJobs({ showLoading: false });
     },
@@ -229,7 +239,19 @@ export function useWorkerUpdateJobs(): UseWorkerUpdateJobsResult {
 
   useEffect(() => {
     isMountedRef.current = true;
-    void refreshJobs();
+    if (enabled) {
+      void refreshJobs();
+    } else {
+      jobsRequestControllerRef.current?.abort();
+      jobsRequestControllerRef.current = null;
+      jobsRequestIdRef.current += 1;
+      setJobs([]);
+      setJobsLoading(false);
+      setJobsError(null);
+      setStarting(false);
+      setError(null);
+      clearActiveJob();
+    }
     return () => {
       isMountedRef.current = false;
       jobsRequestControllerRef.current?.abort();
@@ -243,7 +265,7 @@ export function useWorkerUpdateJobs(): UseWorkerUpdateJobsResult {
       jobsRefreshCoordinatorRef.current.reset();
       jobRefreshCoordinatorRef.current.reset();
     };
-  }, [refreshJobs]);
+  }, [clearActiveJob, enabled, refreshJobs]);
 
   useEffect(() => {
     jobRequestControllerRef.current?.abort();
@@ -260,6 +282,9 @@ export function useWorkerUpdateJobs(): UseWorkerUpdateJobsResult {
   }, [activeJobId, refreshJob]);
 
   const startUpdates = useCallback(async (): Promise<StartWorkerUpdatesResponse | null> => {
+    if (!enabled) {
+      return null;
+    }
     const controller = new AbortController();
     actionControllersRef.current.add(controller);
     try {
@@ -292,9 +317,12 @@ export function useWorkerUpdateJobs(): UseWorkerUpdateJobsResult {
         setStarting(false);
       }
     }
-  }, [refreshJobs]);
+  }, [enabled, refreshJobs]);
 
   const dismissJob = useCallback(async (jobIdOverride?: string): Promise<boolean> => {
+    if (!enabled) {
+      return false;
+    }
     const jobId = jobIdOverride ?? activeJobIdRef.current;
     if (!jobId) {
       return false;
@@ -330,12 +358,13 @@ export function useWorkerUpdateJobs(): UseWorkerUpdateJobsResult {
     } finally {
       actionControllersRef.current.delete(controller);
     }
-  }, [clearActiveJob, refreshJobs]);
+  }, [clearActiveJob, enabled, refreshJobs]);
 
   return {
     jobs,
     jobsLoading,
     jobsError,
+    enabled,
     activeJobId,
     snapshot,
     loading,

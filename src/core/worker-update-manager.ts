@@ -3,8 +3,8 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import type { MeshWorkerRegistration } from "@/shared/mesh";
 import type { WorkerUpdateJob, WorkerUpdateJobSnapshot } from "@/shared/worker-update";
 import {
+  admitWorkerUpdateJob,
   dismissWorkerUpdateJob,
-  createWorkerUpdateJob,
   listWorkerUpdateJobs,
   loadWorkerUpdateJob,
   markWorkerUpdateJobsInterrupted,
@@ -32,6 +32,13 @@ export type WorkerUpdateAdmissionResult =
       workerName: string;
       status: "failed";
       error: string;
+    }
+  | {
+      workerNodeId: string;
+      workerName: string;
+      status: "not_started";
+      reason: "already_active";
+      message: string;
     };
 
 export interface StartWorkerUpdateJobsResult {
@@ -117,19 +124,27 @@ export class WorkerUpdateManager {
       },
     };
     try {
-      createWorkerUpdateJob(owner.id, job);
+      const admission = admitWorkerUpdateJob(owner.id, job);
+      if (admission === "already_active") {
+        return {
+          workerNodeId: worker.workerNodeId,
+          workerName,
+          status: "not_started",
+          reason: "already_active",
+          message: "An update job is already pending or running for this worker.",
+        };
+      }
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
       log.error("Failed to admit worker update job", {
         workerNodeId: worker.workerNodeId,
         userId: owner.id,
-        error: message,
+        error,
       });
       return {
         workerNodeId: worker.workerNodeId,
         workerName,
         status: "failed",
-        error: message,
+        error: "Worker update job could not be admitted.",
       };
     }
 

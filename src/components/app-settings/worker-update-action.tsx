@@ -13,6 +13,7 @@ export function WorkerUpdateAction({
   const [showConfirm, setShowConfirm] = useState(false);
   const [result, setResult] = useState<StartWorkerUpdatesResponse | null>(null);
   const startedCount = result?.results.filter((item) => item.status === "started").length ?? 0;
+  const alreadyActiveCount = result?.results.filter((item) => item.status === "not_started").length ?? 0;
   const hasFailures = result?.results.some((item) => item.status === "failed") ?? false;
 
   async function startUpdates(): Promise<void> {
@@ -57,7 +58,11 @@ export function WorkerUpdateAction({
           <p className="font-medium">
             {result.totalWorkers === 0
               ? "No active global Mesh workers were found."
-              : `Started ${String(startedCount)} of ${String(result.totalWorkers)} worker update jobs.`}
+              : `Started ${String(startedCount)} of ${String(result.totalWorkers)} worker update jobs.${
+                  alreadyActiveCount > 0
+                    ? ` ${String(alreadyActiveCount)} already have an active job.`
+                    : ""
+                }`}
           </p>
           {startedCount > 0 ? (
             <p className="mt-1 text-xs">Jobs continue in the background and appear on the Dashboard.</p>
@@ -69,7 +74,9 @@ export function WorkerUpdateAction({
                   <span className="font-medium">{item.workerName}:</span>{" "}
                   {item.status === "started"
                     ? <>Started · <code>{item.jobId}</code></>
-                    : `Not started · ${item.error}`}
+                    : item.status === "not_started"
+                      ? `Not started · ${item.message}`
+                      : `Not started · ${item.error}`}
                 </li>
               ))}
             </ul>
