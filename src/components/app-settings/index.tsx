@@ -8,6 +8,7 @@ export { WorkersSettingsSection } from "./workers-settings-section";
 export { WorkerUpdateAction } from "./worker-update-action";
 export { GithubUsernameRowContent } from "./github-username-row-content";
 export { VoiceSettingsRowContent } from "./voice-settings-row-content";
+export { LiveVoiceAudioBufferRowContent } from "./live-voice-audio-buffer-row-content";
 export {
   SettingsCheckbox,
   SettingsError,

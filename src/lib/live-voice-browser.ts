@@ -7,6 +7,7 @@ import { getClankyClientId } from "./clanky-client-id";
 import { parseApiError } from "./api-error";
 import { appFetch } from "./public-path";
 import type { LiveVoiceUiContext } from "@/shared/live-voice";
+import { LiveVoiceAudioDiagnostics } from "./live-voice-audio-diagnostics";
 
 async function waitForIce(peer: RTCPeerConnection, signal: AbortSignal): Promise<void> {
   if (peer.iceGatheringState === "complete") return;
@@ -61,13 +62,19 @@ export class LiveVoiceBrowser {
   private oscillator?: OscillatorNode;
   private volumeSource?: MediaStreamAudioSourceNode;
   private remoteStream?: MediaStream;
+  private readonly diagnostics: LiveVoiceAudioDiagnostics;
 
   constructor(private readonly update: {
     speaking: (speaking: boolean) => void;
     playbackBlocked: (blocked: boolean) => void;
     failure: (message: string) => void;
     closed: () => void;
-  }) {
+    warning: (message: string) => void;
+  }, options: { jitterBufferTargetMs: 200 | null }) {
+    this.diagnostics = new LiveVoiceAudioDiagnostics({
+      peer: this.peer, audio: this.audio, context: this.audioContext,
+      target: options.jitterBufferTargetMs, warning: update.warning,
+    });
     this.audio.autoplay = true;
     this.audio.setAttribute("playsinline", "");
     this.peer.ontrack = (event) => {
@@ -76,6 +83,7 @@ export class LiveVoiceBrowser {
       this.remoteStream?.getTracks().forEach((track) => track.stop());
       this.remoteStream = stream;
       this.audio.srcObject = stream;
+      this.diagnostics.setReceiver(event.receiver);
       void this.playAudio();
       this.monitorVolume(stream);
     };
@@ -87,15 +95,15 @@ export class LiveVoiceBrowser {
   }
 
   async connect(getContext: () => LiveVoiceUiContext, signal: AbortSignal): Promise<void> {
-    await this.audioContext.resume();
-    const microphone = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-    });
+    try { await this.audioContext.resume(); }
+    catch (error) { this.diagnostics.record("context_resume_failed", error); throw error; }
+    const microphone = await this.acquireMicrophone();
     if (this.stopped || signal.aborted) {
       microphone.getTracks().forEach((track) => track.stop());
       throw new DOMException("Voice call cancelled.", "AbortError");
     }
     this.microphone = microphone;
+    this.diagnostics.setMicrophone(microphone.getAudioTracks()[0]!);
     for (const track of microphone.getAudioTracks()) {
       track.onended = () => {
         if (!this.stopped) this.update.failure("The microphone is no longer available.");
@@ -126,7 +134,7 @@ export class LiveVoiceBrowser {
     const response = await appFetch("/api/voice/live", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sdp, clientId: getClankyClientId(), context: getContext() }),
+      body: JSON.stringify({ sdp, clientId: getClankyClientId(), context: getContext(), audioAttemptId: this.diagnostics.attemptId }),
       signal,
     });
     if (!response.ok) {
@@ -142,6 +150,7 @@ export class LiveVoiceBrowser {
     }
     const session: LiveVoiceSessionResponse = await response.json();
     this.callId = session.call.id;
+    this.diagnostics.callId = this.callId;
     if (this.stopped || signal.aborted) throw new DOMException("Voice call cancelled.", "AbortError");
     await this.peer.setRemoteDescription({ type: "answer", sdp: session.sdp });
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -158,22 +167,42 @@ export class LiveVoiceBrowser {
     }
   }
 
+  private async acquireMicrophone(): Promise<MediaStream> {
+    try {
+      return await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      });
+    } catch (error) {
+      this.diagnostics.record("microphone_failed", error);
+      throw error;
+    }
+  }
+
   mute(muted: boolean): void {
     this.microphone?.getAudioTracks().forEach((track) => { track.enabled = !muted; });
+    this.diagnostics.record("mute_changed");
     if (this.events?.readyState === "open") {
       this.events.send(JSON.stringify({ type: muted ? "session.input_audio.mute" : "session.input_audio.unmute" }));
     }
   }
 
   async playAudio(): Promise<void> {
+    if (this.stopped) return;
+    this.diagnostics.record("play_requested");
+    try { await this.audioContext.resume(); }
+    catch (error) { this.diagnostics.record("context_resume_failed", error); }
+    if (this.stopped) return;
     try {
-      await this.audioContext.resume();
       await this.audio.play();
+      this.diagnostics.record("play_started");
       if (!this.stopped) this.update.playbackBlocked(false);
-    } catch {
+    } catch (error) {
+      this.diagnostics.record("play_failed", error);
       if (!this.stopped) this.update.playbackBlocked(true);
     }
   }
+
+  setJitterBufferTarget(target: 200 | null): void { this.diagnostics.setTarget(target); }
 
   async releaseMicrophone(): Promise<void> {
     this.releasing = true;
@@ -191,6 +220,7 @@ export class LiveVoiceBrowser {
       this.microphone.getTracks().forEach((input) => { input.onended = null; input.stop(); });
       await Promise.all(this.peer.getSenders().filter((sender) => sender.track?.kind === "audio").map((sender) => sender.replaceTrack(track)));
       this.microphone = undefined;
+      this.diagnostics.record("microphone_released");
     }
     this.microphone?.getTracks().forEach((track) => { track.onended = null; track.stop(); });
     this.audio.pause();
@@ -216,17 +246,22 @@ export class LiveVoiceBrowser {
     if (this.stopped) return;
     this.stopped = true;
     clearInterval(this.volumeTimer);
-    await this.releaseMicrophone();
-    this.silentInput?.getTracks().forEach((track) => track.stop());
-    this.oscillator?.stop();
-    this.oscillator?.disconnect();
-    this.volumeSource?.disconnect();
-    this.remoteStream?.getTracks().forEach((track) => track.stop());
-    this.peer.ontrack = this.peer.onconnectionstatechange = null;
-    if (this.events) { this.events.onmessage = this.events.onclose = null; this.events.close(); }
-    this.peer.close();
-    this.audio.pause();
-    this.audio.srcObject = null;
-    await this.audioContext.close();
+    try { await this.diagnostics.stopSampling(); }
+    finally {
+      try { await this.releaseMicrophone(); }
+      finally {
+        this.silentInput?.getTracks().forEach((track) => track.stop());
+        this.oscillator?.stop();
+        this.oscillator?.disconnect();
+        this.volumeSource?.disconnect();
+        this.remoteStream?.getTracks().forEach((track) => track.stop());
+        this.peer.ontrack = this.peer.onconnectionstatechange = null;
+        if (this.events) { this.events.onmessage = this.events.onclose = null; this.events.close(); }
+        this.peer.close();
+        this.audio.pause();
+        this.audio.srcObject = null;
+        try { await this.audioContext.close(); } finally { await this.diagnostics.dispose(); }
+      }
+    }
   }
 }
