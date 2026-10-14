@@ -12,7 +12,7 @@ import { errorResponse, internalErrorResponse, requireWorkspace, successResponse
 import { parseAndValidate } from "../validation";
 import { chatActionErrorResponse, toLightweightChat } from "./helpers";
 import { WorkspaceFilterQuerySchema } from "../route-schemas";
-import { CollectionReadOptionsSchema } from "@/contracts/schemas/resource-read";
+import { CollectionReadOptionsSchema, WorkCollectionReadOptionsSchema } from "@/contracts/schemas/resource-read";
 import { readWorkCollection, readWorkCollectionItem } from "../../core/work-read-service";
 import { readScope } from "../../core/resource-read-service";
 import { resourcePageResponse, workMetadataResponse } from "../resource-reads";
@@ -82,7 +82,7 @@ export const chatsCrudRoutes = defineRoutes({
       GET: {
         description: "List chats, optionally filtered by workspace.",
         requestSchema: undefined,
-        querySchema: WorkspaceFilterQuerySchema.safeExtend(CollectionReadOptionsSchema.shape),
+        querySchema: WorkspaceFilterQuerySchema.safeExtend(WorkCollectionReadOptionsSchema.shape),
         automation: { policy: "read" },
       },
       POST: {
@@ -98,13 +98,13 @@ export const chatsCrudRoutes = defineRoutes({
       if (url.searchParams.get("view") === "compact" && url.searchParams.get("section") === "details" && url.searchParams.has("item")) {
         return Response.json(await readWorkCollectionItem({
           resource: "chat", workspaceId: workspaceId ?? undefined,
-          options: CollectionReadOptionsSchema.parse(Object.fromEntries(url.searchParams)),
+          options: WorkCollectionReadOptionsSchema.parse(Object.fromEntries(url.searchParams)),
         }));
       }
       if (url.searchParams.get("view") === "compact" && !url.searchParams.has("section") && !url.searchParams.has("item")) {
         return resourcePageResponse(readWorkCollection({
           resource: "chat", workspaceId: workspaceId ?? undefined,
-          options: CollectionReadOptionsSchema.parse(Object.fromEntries(url.searchParams)),
+          options: WorkCollectionReadOptionsSchema.parse(Object.fromEntries(url.searchParams)),
           scope: readScope(_ctx.requireUser().id, url),
         }));
       }

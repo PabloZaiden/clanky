@@ -3,6 +3,8 @@
  * transcript payloads are counted in storage, never hydrated for these rows.
  */
 import { getDatabase } from "./database";
+import type { ResourceReadOptions } from "@/contracts/schemas/resource-read";
+import { getTranscriptTableConfig } from "./transcripts/table-config";
 
 export type WorkReadResource = "chat" | "task" | "agent_run";
 export interface StoredWorkReadRow {
@@ -13,6 +15,9 @@ export interface StoredWorkReadRow {
   status: string;
   createdAt: string;
   updatedAt: string;
+  lastActivityAt: string;
+  lastUserMessageAt: string | null;
+  planApproval: number;
   providerID: string | null;
   modelID: string | null;
   variant: string | null;
@@ -34,6 +39,7 @@ interface WorkReadSource {
   workspaceId?: string;
   agentId?: string;
   id?: string;
+  options?: ResourceReadOptions;
 }
 
 const TABLES = { chat: "chats", task: "tasks", agent_run: "agent_runs" } as const;
@@ -43,9 +49,10 @@ function sourceWhere(source: WorkReadSource): { clause: string; values: string[]
   const values = [source.userId];
   if (source.resource === "chat" && !source.id) clauses.push("scope = 'workspace' AND task_id IS NULL");
   if (source.id) { clauses.push("id = ?"); values.push(source.id); }
-  if (source.workspaceId && source.resource !== "agent_run") {
+  const workspaceId = source.workspaceId ?? source.options?.workspaceId;
+  if (workspaceId && source.resource !== "agent_run") {
     clauses.push("workspace_id = ?");
-    values.push(source.workspaceId);
+    values.push(workspaceId);
   }
   if (source.resource === "agent_run" && source.agentId) {
     clauses.push("agent_id = ?");
@@ -54,16 +61,7 @@ function sourceWhere(source: WorkReadSource): { clause: string; values: string[]
   return { clause: clauses.join(" AND "), values };
 }
 
-export function listWorkReadIds(source: WorkReadSource): string[] {
-  const where = sourceWhere(source);
-  const rows = getDatabase().prepare(`
-    SELECT id FROM ${TABLES[source.resource]}
-    WHERE ${where.clause} ORDER BY created_at DESC, id DESC
-  `).all(...where.values) as Array<{ id: string }>;
-  return rows.map((row) => row.id);
-}
-
-export function listWorkReadWindow(source: WorkReadSource, position: number, limit: number): StoredWorkReadRow[] {
+function workQuery(source: WorkReadSource): { sql: string; values: string[] } {
   const where = sourceWhere(source);
   const run = source.resource === "agent_run";
   const task = source.resource === "task";
@@ -98,6 +96,7 @@ export function listWorkReadWindow(source: WorkReadSource, position: number, lim
     json_extract(${snapshot}, '$.model.modelID') AS modelID,
     json_extract(${snapshot}, '$.model.variant') AS variant,
     NULL AS currentIteration, ${pendingQuestions} AS pendingQuestions, ${pendingInputs} AS pendingInputs,
+    0 AS planApproval,
     agent_id AS agentId, chat_id AS chatId, NULL AS taskId, 'workspace' AS sourceKind, NULL AS executionHostId,
     ${pendingPermissions} AS pendingPermissions,
     CASE WHEN json_valid(config_snapshot) AND json_type(${snapshot}) = 'object' AND ${harnessAvailable}
@@ -112,13 +111,43 @@ export function listWorkReadWindow(source: WorkReadSource, position: number, lim
     ${task ? "NULL" : "execution_host_id"} AS executionHostId,
     ${pendingQuestions} AS pendingQuestions, ${pendingInputs} AS pendingInputs,
     ${task ? "0" : pendingPermissions} AS pendingPermissions,
+    ${task ? "(status = 'planning' AND plan_is_ready = 1 AND auto_accept_plan = 0)" : "0"} AS planApproval,
     CASE WHEN ${harnessAvailable}
       ${task ? "" : `AND ${permissionsAvailable}`}
       THEN 1 ELSE 0 END AS stateAvailable
   `;
-  return getDatabase().prepare(`
-    SELECT id, status, created_at AS createdAt, updated_at AS updatedAt, ${select}
+  const transcript = getTranscriptTableConfig(source.resource);
+  const table = TABLES[source.resource];
+  const lastUser = `(SELECT MAX(timestamp) FROM ${transcript.entriesTable} entry
+    WHERE entry.${transcript.resourceColumn} = ${table}.id AND entry.user_id = ${table}.user_id
+      AND entry.kind = 'message' AND entry.message_role = 'user')`;
+  const clauses: string[] = [];
+  if (source.options?.name) { clauses.push("name = ? COLLATE NOCASE"); where.values.push(source.options.name); }
+  if (source.options?.status) { clauses.push("status = ?"); where.values.push(source.options.status); }
+  if (source.options?.needsInput) {
+    clauses.push(source.options.needsInput === "true"
+      ? "(pendingQuestions + pendingPermissions + planApproval > 0 OR stateAvailable = 0)"
+      : "(pendingQuestions + pendingPermissions + planApproval = 0 AND stateAvailable = 1)");
+  }
+  return { sql: `
+    WITH work AS (SELECT id, status, created_at AS createdAt, updated_at AS updatedAt,
+      ${run ? "COALESCE(completed_at, started_at, created_at)" : "COALESCE(last_activity_at, created_at)"} AS lastActivityAt,
+      ${lastUser} AS lastUserMessageAt, ${select}
     FROM ${TABLES[source.resource]} WHERE ${where.clause}
-    ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?
-  `).all(...where.values, limit, position) as StoredWorkReadRow[];
+    )
+    SELECT * FROM work ${clauses.length ? `WHERE ${clauses.join(" AND ")}` : ""}
+    ORDER BY ${source.options?.order === "activity" ? "lastActivityAt" : "createdAt"} DESC, id DESC
+  `, values: where.values };
+}
+
+export function listWorkReadIds(source: WorkReadSource): string[] {
+  const { sql, values } = workQuery(source);
+  return (getDatabase().prepare(sql.replace("SELECT * FROM work", "SELECT id FROM work"))
+    .all(...values) as Array<{ id: string }>).map((row) => row.id);
+}
+
+export function listWorkReadWindow(source: WorkReadSource, position: number, limit: number): StoredWorkReadRow[] {
+  const { sql, values } = workQuery(source);
+  return getDatabase().prepare(`${sql} LIMIT ? OFFSET ?`)
+    .all(...values, limit, position) as StoredWorkReadRow[];
 }

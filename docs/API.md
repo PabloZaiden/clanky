@@ -86,6 +86,27 @@ descending creation time, then ID. Metadata includes identity, status, source,
 model and actionable input counts when available. Unreadable persisted state
 is marked `stateUnavailable`, not reported as an empty healthy state.
 
+Compact **chat/task collections** additionally accept:
+
+| Parameter | Meaning |
+| --- | --- |
+| `workspaceId` | Filter by workspace ID. |
+| `name` | Exact name, using SQLite's case-insensitive comparison, not fuzzy search. |
+| `status` | Exact public status. |
+| `needsInput=true` or `false` | Required intervention, not optional completed-work actions. |
+| `order=created` or `activity` | Descending creation (default) or actual activity, then ID. |
+
+Activity order uses the persisted work-activity timestamp, falling back to
+creation; configuration edits are not activity. Metadata includes
+`lastActivityAt`, `lastUserMessageAt` and `interventionReasons` (`question`,
+`permission`, `plan_approval`). A ready task plan in planning with manual
+approval required counts as input. Available accept/push actions on completed
+tasks are separate `availableActions`, not required intervention.
+`needsInput=true` also includes unavailable persisted state, explicitly marked,
+so callers do not mistake missing state for proof that nothing needs attention.
+These new selectors apply to compact collection reads; requests without the
+compact view retain their existing behavior.
+
 Continue the **same read operation**, retaining its filters, view, section and
 public request body. `limit` and `maxBytes` may change between pages.
 Authorization and selected-host resolution run on every request. Cursors
@@ -130,6 +151,22 @@ answers are not presented as delivered. Message membership and the selected
 long message are revision-checked; unrelated tool/log updates do not invalidate
 conversation chunks. Existing `before`/`full` snapshots remain unchanged and
 cannot be combined with this view.
+
+Conversation reads accept `range=earliest` (default) or `range=latest`.
+Latest selects the final `limit` human-readable messages directly, then delivers
+that chronological window through the ordinary byte-bounded pages and offsets.
+Its `context` includes `{ "range": "latest", "omittedEarlierMessages": N }`.
+A long selected message starts at its beginning and may require continuation;
+this is not clipped tail text. Keep **range and limit unchanged** when
+continuing latest reads; `maxBytes` can still change. A null cursor completes
+the selected window, not omitted earlier history. Membership or selected-message
+changes retain the existing stale-cursor behavior. For example:
+
+```text
+GET /api/chats?view=compact&order=activity&limit=5
+GET /api/tasks?view=compact&needsInput=true
+GET /api/chats/CHAT_ID/snapshot?view=conversation&range=latest&limit=6
+```
 
 Writes accept only `view=compact` and `maxBytes`, returning a compact receipt
 with the original HTTP outcome. They cannot be paged. A

@@ -23,6 +23,15 @@ export const CollectionReadOptionsSchema = z.object({
 
 export const ConversationReadOptionsSchema = CollectionReadOptionsSchema.extend({
   view: z.enum(["compact", "conversation"]).optional(),
+  range: z.enum(["earliest", "latest"]).optional(),
+});
+
+export const WorkCollectionReadOptionsSchema = CollectionReadOptionsSchema.extend({
+  workspaceId: z.string().min(1).max(500).optional(),
+  name: z.string().trim().min(1).max(500).optional(),
+  status: z.string().min(1).max(100).optional(),
+  needsInput: z.enum(["true", "false"]).optional(),
+  order: z.enum(["created", "activity"]).optional(),
 });
 
 export const OperationResponseOptionsSchema = CollectionReadOptionsSchema.pick({ view: true, maxBytes: true });
@@ -33,7 +42,8 @@ export const ResourcePageSchema = z.object({
   context: z.record(z.string(), z.unknown()).optional(),
 });
 
-export type ResourceReadOptions = z.infer<typeof ConversationReadOptionsSchema>;
+export type ResourceReadOptions = z.infer<typeof ConversationReadOptionsSchema>
+  & Partial<Omit<z.infer<typeof WorkCollectionReadOptionsSchema>, "view">>;
 export type ReadSection = z.infer<typeof ReadSectionSchema>;
 
 export interface Page<T> {
