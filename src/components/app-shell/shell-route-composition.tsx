@@ -1,5 +1,11 @@
-import type { ReactNode } from "react";
-import { ErrorState, Page, type WebAppRootProps, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { useEffect, type ReactNode } from "react";
+import {
+  ErrorState,
+  Page,
+  useCurrentUser,
+  type WebAppRootProps,
+  type WebAppRoute,
+} from "@pablozaiden/webapp/web";
 import type {
   Agent,
   Chat,
@@ -218,9 +224,28 @@ function renderShellRouteContent(
 
 export function buildShellRoutes(
   context: ShellRouteCompositionContext,
+  onOwnerChange: (isOwner: boolean) => void,
 ): WebAppRootProps["routes"] {
-  const renderRouteContent = (route: WebAppRoute) => renderShellRouteContent(route, context);
+  const renderRouteContent = (route: WebAppRoute) => (
+    <CurrentUserObserver onOwnerChange={onOwnerChange}>
+      {renderShellRouteContent(route, context)}
+    </CurrentUserObserver>
+  );
   return Object.fromEntries(
     ROUTE_VIEWS.map((view) => [view, renderRouteContent]),
   ) as WebAppRootProps["routes"];
+}
+
+function CurrentUserObserver({
+  children,
+  onOwnerChange,
+}: {
+  children: ReactNode;
+  onOwnerChange: (isOwner: boolean) => void;
+}) {
+  const isOwner = useCurrentUser()?.isOwner === true;
+  useEffect(() => {
+    onOwnerChange(isOwner);
+  }, [isOwner, onOwnerChange]);
+  return <>{children}</>;
 }
