@@ -2,7 +2,7 @@
  * Shared, event-driven document visibility for client presentation.
  */
 
-import { useSyncExternalStore } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 
 const listeners = new Set<() => void>();
 
@@ -35,4 +35,24 @@ function getServerSnapshot(): boolean {
 
 export function useDocumentVisibility(): boolean {
   return useSyncExternalStore(subscribe, isDocumentVisible, getServerSnapshot);
+}
+
+export function useRefreshOnForeground(refresh: () => void | Promise<void>): void {
+  const visible = useDocumentVisibility();
+  const refreshRef = useRef(refresh);
+  const wasVisibleRef = useRef(visible);
+  refreshRef.current = refresh;
+
+  useEffect(() => {
+    if (!visible) {
+      wasVisibleRef.current = false;
+      return;
+    }
+    if (wasVisibleRef.current) {
+      return;
+    }
+
+    wasVisibleRef.current = true;
+    void refreshRef.current();
+  }, [visible]);
 }
