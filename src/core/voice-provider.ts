@@ -4,11 +4,16 @@
 
 import { DomainError } from "../domain/domain-error";
 import { getVoiceAudioExtension } from "@/shared";
+import { createLogger } from "@pablozaiden/webapp/server";
+import { textResponseUsage } from "./live-voice-latency";
+
+const textLog = createLogger("core:voice-text");
 
 export const VOICE_MAX_AUDIO_BYTES = 20 * 1024 * 1024;
 export const VOICE_MAX_SUMMARY_CHARS = 8_000;
 export const VOICE_PROVIDER_TIMEOUT_MS = 120_000;
 export const VOICE_AZURE_API_VERSION = "2025-03-01-preview";
+export const VOICE_TEXT_REASONING = { effort: "none" } as const;
 const VOICE_MAX_PROVIDER_JSON_BYTES = 1 * 1024 * 1024;
 
 export interface VoiceProviderCredentials {
@@ -584,38 +589,54 @@ export class OpenAiCompatibleVoiceProvider {
     prompt: string,
     signal?: AbortSignal,
   ): Promise<string> {
-    return await fetchWithTimeout(
-      this.url("/responses", model),
-      {
-        method: "POST",
-        headers: {
-          ...this.headers,
-          "Content-Type": "application/json",
+    const requestId = crypto.randomUUID();
+    const startedAt = performance.now();
+    textLog.info("Shared text generation started", { requestId, reasoningEffort: VOICE_TEXT_REASONING.effort });
+    try {
+      return await fetchWithTimeout(
+        this.url("/responses", model),
+        {
+          method: "POST",
+          headers: {
+            ...this.headers,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model,
+            reasoning: VOICE_TEXT_REASONING,
+            input: [{ role: "user", content: prompt }],
+            max_output_tokens: 4096,
+            store: false,
+          }),
         },
-        body: JSON.stringify({
-          model,
-          input: [{ role: "user", content: prompt }],
-          max_output_tokens: 4096,
-          store: false,
-        }),
-      },
-      signal,
-      async (response, requestSignal) => {
-        if (!response.ok) {
-          throw providerError(response.status, response.headers.get("retry-after"));
-        }
+        signal,
+        async (response, requestSignal) => {
+          if (!response.ok) {
+            throw providerError(response.status, response.headers.get("retry-after"));
+          }
 
-        const payload = await readJsonResponse(response, requestSignal);
-        const text = extractResponseText(payload);
-        if (!text) {
-          throw new DomainError(
-            "voice_provider_invalid_response",
-            "The text provider returned an empty response.",
-          );
-        }
-        return text;
-      },
-    );
+          const payload = await readJsonResponse(response, requestSignal);
+          const text = extractResponseText(payload);
+          if (!text) {
+            throw new DomainError(
+              "voice_provider_invalid_response",
+              "The text provider returned an empty response.",
+            );
+          }
+          textLog.info("Shared text generation completed", {
+            requestId, elapsedMs: Math.round(performance.now() - startedAt),
+            ...textResponseUsage(payload),
+          });
+          return text;
+        },
+      );
+    } catch (error) {
+      textLog.error("Shared text generation failed", {
+        requestId, elapsedMs: Math.round(performance.now() - startedAt),
+        code: error instanceof DomainError ? error.code : "unexpected_error",
+      });
+      throw error;
+    }
   }
 
   async validateTranscription(

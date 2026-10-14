@@ -31,7 +31,6 @@ export const VoiceSettingsUpdateSchema = z.object({
     apiKey: z.string().trim().max(10_000).optional(),
     clearApiKey: z.boolean().optional(),
     model: z.string().trim().max(200),
-    jitterBufferTargetMs: z.literal(200).nullable().optional(),
   }).strict().optional(),
 });
 
@@ -59,7 +58,6 @@ export const LiveVoiceSessionRequestSchema = z.object({
   sdp: z.string().min(1).max(65_536),
   clientId: z.string().uuid(),
   context: LiveVoiceUiContextSchema,
-  audioAttemptId: z.string().uuid().optional(),
 }).strict();
 
 export const LiveVoiceHeartbeatSchema = z.object({

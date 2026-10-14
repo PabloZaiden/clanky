@@ -46,14 +46,12 @@ export interface UseLiveVoiceResult extends LiveVoiceUiState {
   getContext: () => LiveVoiceUiContext;
 }
 
-export function useLiveVoice(options: { enabled: boolean; route: WebAppRoute; jitterBufferTargetMs: 200 | null }): UseLiveVoiceResult {
+export function useLiveVoice(options: { enabled: boolean; route: WebAppRoute }): UseLiveVoiceResult {
   const toast = useToast();
   const [state, setState] = useState<LiveVoiceUiState>(INITIAL_STATE);
   const [callId, setCallId] = useState<string | null>(null);
   const active = useRef<BrowserCall | null>(null);
   const mounted = useRef(true);
-  const bufferTarget = useRef(options.jitterBufferTargetMs);
-  bufferTarget.current = options.jitterBufferTargetMs;
   const endRef = useRef<() => Promise<void>>(async () => {});
   const context = useRef<LiveVoiceUiContext>({ revision: 0, route: { view: "home" } });
   const safeRoute = Object.fromEntries(Object.entries(options.route).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
@@ -127,8 +125,7 @@ export function useLiveVoice(options: { enabled: boolean; route: WebAppRoute; ji
         playbackBlocked: (playbackBlocked) => { if (mounted.current) setState((current) => ({ ...current, playbackBlocked })); },
         failure: (message) => { if (active.current) active.current.failed = message; void endRef.current(); },
         closed: () => { void endRef.current(); },
-        warning: (message) => { if (mounted.current) toast.warning(message); },
-      }, { jitterBufferTargetMs: bufferTarget.current });
+      });
       const call: BrowserCall = { browser, controller: new AbortController(), releaseAudio };
       active.current = call;
       setState({ ...INITIAL_STATE, status: "connecting" });
@@ -183,7 +180,6 @@ export function useLiveVoice(options: { enabled: boolean; route: WebAppRoute; ji
   }, [options.enabled, getContext, toast]);
 
   useEffect(() => { void active.current?.heartbeat?.(); }, [routeJson]);
-  useEffect(() => { active.current?.browser.setJitterBufferTarget(options.jitterBufferTargetMs); }, [options.jitterBufferTargetMs]);
   useEffect(() => {
     mounted.current = true;
     const pagehide = (): void => { void endRef.current(); };

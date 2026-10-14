@@ -110,7 +110,6 @@ export function AppShell() {
   });
   const liveVoice = useLiveVoice({
     enabled: voiceSettings.settings.live.configured, route,
-    jitterBufferTargetMs: voiceSettings.settings.live.jitterBufferTargetMs,
   });
   const voiceClient = useVoiceClientActions({ voice: liveVoice, rootRef: webAppRootRef });
   const voiceActions = useMemo(() => buildVoiceLauncherActions(

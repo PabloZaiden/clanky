@@ -178,6 +178,7 @@ export async function startVoiceProvider(
           const body = await request.json();
           if (body.session?.model !== "gpt-live-1" || body.session?.delegation?.type !== "responses"
             || typeof body.session.delegation.responses.model !== "string"
+            || body.session.delegation.responses.reasoning?.effort !== "none"
             || body.transport?.type !== "webrtc" || !body.session.delegation.responses.tools?.length) {
             return Response.json({ error: "invalid_live_configuration" }, { status: 400 });
           }
@@ -201,6 +202,11 @@ export async function startVoiceProvider(
         }
         if (path === "/v1/responses" && request.method === "POST") {
           const payload: unknown = await request.json();
+          if (!payload || typeof payload !== "object" || !("reasoning" in payload)
+            || !payload.reasoning || typeof payload.reasoning !== "object"
+            || !("effort" in payload.reasoning) || payload.reasoning.effort !== "none") {
+            return Response.json({ error: "unsupported_reasoning_effort" }, { status: 400 });
+          }
           const prompt = getResponsesInputText(payload);
           const sourceSentenceCount = prompt.match(/Le serveur a redémarré\./gu)?.length ?? 0;
           const responseText = sourceSentenceCount > 0 && prompt.includes("Target language: English.")

@@ -16,16 +16,18 @@ import { clientActionEventEmitter } from "./event-emitter";
 import { LiveVoiceConversation, type LiveVoiceHistoryMessage } from "./live-voice-memory";
 import { LIVE_MAX_PARALLEL_TOOLS, LIVE_TOOL_BATCH_BYTES, liveToolOutput } from "./live-voice-output";
 import { readRevision } from "./resource-read-service";
+import { LiveVoiceLatency } from "./live-voice-latency";
 
 const log = createLogger("core:live-voice");
 interface Delegation {
+  timing: LiveVoiceLatency;
   responseId?: string;
   pending: number;
   collecting: boolean;
   hasTools: boolean;
   calls: Map<string, string>;
   outputs: ReturnType<typeof liveToolOutput>[];
-  requests: Array<{ callId: string; name: string; args: string }>;
+  requests: Array<{ callId: string; name: string; args: string; queuedAt: number }>;
   itemBytes: number;
 }
 
@@ -130,6 +132,7 @@ export class LiveVoiceCall {
         if (this.delegations.size >= 32) { this.fail("Live delegation capacity was reached."); return; }
         if (!this.delegations.has(delegation["id"])) {
           this.delegations.set(delegation["id"], {
+            timing: new LiveVoiceLatency(this.scope.id, delegation["id"]),
             pending: 0, collecting: true, hasTools: false, calls: new Map(), outputs: [], requests: [],
             itemBytes: 0,
           });
@@ -147,6 +150,7 @@ export class LiveVoiceCall {
       if (!isRecord(response) || typeof response["id"] !== "string") { this.fail("Live returned an invalid response."); return; }
       if (group.pending && response["id"] !== group.responseId) { this.fail("Live continued before its actions completed."); return; }
       const acceptedBatch = this.outputBatch === group && response["id"] !== group.responseId;
+      group.timing.responseStarted(response["id"]);
       group.responseId = response["id"];
       group.collecting = true;
       if (acceptedBatch) {
@@ -156,6 +160,9 @@ export class LiveVoiceCall {
         for (const waiting of this.delegations.values()) this.continueResponse(waiting);
       }
     }
+    if (["response.output_text.delta", "response.function_call_arguments.delta", "response.output_item.done"].includes(String(nested["type"]))) {
+      group.timing.outputStarted();
+    }
     if (nested["type"] === "response.output_item.done") {
       const item = nested["item"];
       if (isRecord(item) && item["type"] === "function_call") this.functionCall(group, item);
@@ -163,13 +170,17 @@ export class LiveVoiceCall {
     if (nested["type"] === "response.completed") {
       const response = nested["response"];
       if (!isRecord(response) || response["id"] !== group.responseId) { this.fail("Live response correlation changed."); return; }
+      group.timing.responseCompleted(response, group.pending);
       group.collecting = false;
       if (group.requests.length) {
         group.itemBytes = Math.floor(LIVE_TOOL_BATCH_BYTES / (group.pending + group.outputs.length));
         this.runPendingTools(group);
       }
       this.continueResponse(group);
-      if (!group.collecting && !group.hasTools && group.pending === 0) this.delegations.delete(id);
+      if (!group.collecting && !group.hasTools && group.pending === 0) {
+        group.timing.finish(true);
+        this.delegations.delete(id);
+      }
       this.setProcessing(this.delegations.size > 0);
       this.flushCommentary();
     }
@@ -196,22 +207,25 @@ export class LiveVoiceCall {
     group.calls.set(callId, signature);
     group.pending++;
     group.hasTools = true;
-    group.requests.push({ callId, name, args });
+    group.requests.push({ callId, name, args, queuedAt: performance.now() });
   }
 
   private runPendingTools(group: Delegation): void {
     if (group.collecting || this.state.status !== "active") return;
     while (group.requests.length && this.operations.size < LIVE_MAX_PARALLEL_TOOLS) {
-      const { callId, name, args } = group.requests.shift()!;
+      const { callId, name, args, queuedAt } = group.requests.shift()!;
       const readBytes = Math.min(16_384, Math.max(1024, Math.floor((group.itemBytes - 1100) / 2)));
-      this.startTool(group, { callId, name, args, readBytes });
+      this.startTool(group, { callId, name, args, readBytes, queuedAt });
     }
   }
 
-  private startTool(group: Delegation, request: { callId: string; name: string; args: string; readBytes: number }): void {
+  private startTool(group: Delegation, request: { callId: string; name: string; args: string; readBytes: number; queuedAt: number }): void {
     const { callId, name, args, readBytes } = request;
     const itemBytes = group.itemBytes;
+    const tool = liveVoiceToolDefinitions.some((definition) => definition.name === name) ? name : "unsupported";
+    const completeTiming = group.timing.toolStarted({ requestId: callId, tool, queuedAt: request.queuedAt });
     const operation = (async () => {
+      let outcome: Parameters<typeof completeTiming>[0] = { ok: false };
       try {
         const result = await executeLiveVoiceTool({
           service: this.scope.service, actions: this.actions, observer: this.observer,
@@ -219,10 +233,15 @@ export class LiveVoiceCall {
         });
         if (this.state.status === "active") {
           const output = liveToolOutput(callId, result, itemBytes);
+          outcome = {
+            ok: !isRecord(result) || result["ok"] !== false,
+            ...(isRecord(result) && typeof result["operationId"] === "string" ? { operationId: result["operationId"] } : {}),
+            wireBytes: output.bytes,
+          };
           log[output.reduced ? "warn" : "debug"](output.reduced
             ? "Live result requires a targeted read" : "Live tool result prepared", {
             callId: this.scope.id,
-            tool: liveVoiceToolDefinitions.some((tool) => tool.name === name) ? name : "unsupported",
+            tool,
             requestIdHash: readRevision(callId), wireBytes: output.bytes,
             operationId: ["clanky_execute_operation", "clanky_describe_operation"].includes(name)
               && isRecord(result) && typeof result["operationId"] === "string" ? result["operationId"] : undefined,
@@ -232,6 +251,7 @@ export class LiveVoiceCall {
       } catch {
         this.fail("A Live action failed. Inspect its target before repeating a mutation.");
       } finally {
+        completeTiming(outcome);
         group.pending--;
         this.continueResponse(group);
       }
@@ -261,6 +281,7 @@ export class LiveVoiceCall {
       return;
     }
     this.outputBatch = group;
+    group.timing.continued(group.outputs.length, bytes);
     log.debug("Live tool batch admitted", { callId: this.scope.id, wireBytes: bytes, items: group.outputs.length });
     for (const output of group.outputs) this.connection.send(output.event);
     group.outputs.length = 0;
@@ -296,6 +317,7 @@ export class LiveVoiceCall {
 
   release(): void {
     this.stopActions();
+    for (const group of this.delegations.values()) group.timing.finish(false);
     this.delegations.clear();
     this.outputBatch = undefined;
     this.pendingCommentary = undefined;
