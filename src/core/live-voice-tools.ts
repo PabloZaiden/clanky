@@ -17,6 +17,10 @@ import { directUiAction, executeDirectLiveVoiceTool, isDirectToolName, LiveVoice
 
 const log = createLogger("core:voice-tools");
 export const LIVE_VOICE_SESSION_END_REQUEST = "voice_session_end_requested";
+export const LIVE_VOICE_GOODBYE_GUIDANCE =
+  "After a clear goodbye (such as 'chau', 'chao', 'adiós' or 'hasta luego') or a direct request to finish, immediately delegate to Responses with clanky_accept_goodbye as the only tool call. Do not speak before or after the delegation. Do not do this for an opening greeting or pause.";
+export const LIVE_VOICE_GOODBYE_TOOL_GUIDANCE =
+  "Call this tool alone after a clear goodbye (such as 'chau', 'chao', 'adiós' or 'hasta luego') or direct request to finish. Do not use it for an opening greeting or pause. After calling it, do not call another tool or produce additional speech.";
 const schemas = {
   ...liveVoiceDirectSchemas,
   clanky_find_operations: z.object({
@@ -45,7 +49,7 @@ const schemas = {
       id: z.string().min(1).max(500),
     }).strict()).max(16),
   }).strict(),
-  clanky_end_voice_session: z.object({}).strict(),
+  clanky_accept_goodbye: z.object({}).strict(),
 };
 
 const descriptions: Record<keyof typeof schemas, string> = {
@@ -56,7 +60,7 @@ const descriptions: Record<keyof typeof schemas, string> = {
   clanky_get_ui_state: "Read fresh acknowledged originating-client context, not authoritative entity state. Start with section/cursor null; use route/preferences sections and nextCursor if the snapshot is large. Preferences include saved planning booleans and canonical model JSON.",
   clanky_ui_action: "Navigate or control the originating client's sidebar. open_named resolves an exact chat/task/workspace/server/host name or ID directly, with optional workspace. Other actions use known canonical IDs. Returns success only after that tab acknowledges the effect. Never supplies confirmation approval.",
   clanky_watch_work: "Watch selected owned chats/tasks/provisioning jobs for meaningful state changes. Ending voice stops watching, not the work.",
-  clanky_end_voice_session: "End only this Voice Live call after a clear user farewell or direct request to end Voice. Say a brief goodbye first and call this by itself; do not use for an ordinary greeting or pause. Delegated chat/task work continues.",
+  clanky_accept_goodbye: LIVE_VOICE_GOODBYE_TOOL_GUIDANCE,
 };
 
 export const liveVoiceToolDefinitions = Object.entries(schemas).map(([name, schema]) => {
@@ -126,8 +130,8 @@ export async function executeLiveVoiceTool(options: {
         return await directUiAction(direct, schemas.clanky_ui_action.parse(args).action);
       case "clanky_watch_work":
         return await observer.change(schemas.clanky_watch_work.parse(args));
-      case "clanky_end_voice_session":
-        schemas.clanky_end_voice_session.parse(args);
+      case "clanky_accept_goodbye":
+        schemas.clanky_accept_goodbye.parse(args);
         return { ok: true, code: LIVE_VOICE_SESSION_END_REQUEST, completion: "admission" };
       default:
         return { ok: false, code: "voice_tool_unavailable", message: "Discover a supported tool.", completion: "not_executed" };

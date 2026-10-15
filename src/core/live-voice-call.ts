@@ -25,6 +25,7 @@ interface Delegation {
   pending: number;
   collecting: boolean;
   hasTools: boolean;
+  endAfterCompletion?: boolean;
   calls: Map<string, string>;
   outputs: ReturnType<typeof liveToolOutput>[];
   requests: Array<{ callId: string; name: string; args: string; queuedAt: number }>;
@@ -177,6 +178,22 @@ export class LiveVoiceCall {
         this.runPendingTools(group);
       }
       this.continueResponse(group);
+      if (
+        group.endAfterCompletion
+        && !group.collecting
+        && !group.hasTools
+        && group.pending === 0
+        && group.requests.length === 0
+        && group.outputs.length === 0
+        && this.outputBatch !== group
+      ) {
+        group.timing.finish(true);
+        this.delegations.delete(id);
+        this.pendingCommentary = undefined;
+        this.setProcessing(this.delegations.size > 0);
+        this.ended();
+        return;
+      }
       if (!group.collecting && !group.hasTools && group.pending === 0) {
         group.timing.finish(true);
         this.delegations.delete(id);
@@ -205,6 +222,20 @@ export class LiveVoiceCall {
       return;
     }
     group.calls.set(callId, signature);
+    if (group.endAfterCompletion) {
+      log.warn("Live tool skipped after goodbye was accepted", {
+        callId: this.scope.id,
+        tool: name,
+        requestIdHash: readRevision(callId),
+      });
+      group.hasTools = true;
+      group.outputs.push(liveToolOutput(callId, {
+        ok: false,
+        code: "voice_goodbye_already_accepted",
+        completion: "not_executed",
+      }, group.itemBytes));
+      return;
+    }
     group.pending++;
     group.hasTools = true;
     group.requests.push({ callId, name, args, queuedAt: performance.now() });
@@ -232,22 +263,38 @@ export class LiveVoiceCall {
           requestId: callId, name, rawArguments: args, maxReadBytes: readBytes,
         });
         if (isRecord(result) && result["code"] === LIVE_VOICE_SESSION_END_REQUEST) {
-          if (group.pending !== 1 || group.outputs.length > 0 || group.requests.length > 0
-            || this.operations.size !== 1 || this.delegations.size !== 1) {
+          const blockers = [
+            ...(group.pending !== 1 ? ["other_tools_pending"] : []),
+            ...(group.outputs.length > 0 ? ["buffered_tool_results"] : []),
+            ...(group.requests.length > 0 ? ["queued_tool_requests"] : []),
+            ...(this.operations.size !== 1 ? ["other_operations_in_flight"] : []),
+            ...(this.delegations.size !== 1 ? ["other_delegations_active"] : []),
+          ];
+          if (blockers.length) {
+            log.warn("Live session exit rejected", {
+              callId: this.scope.id,
+              requestIdHash: readRevision(callId),
+              blockers,
+              pendingTools: group.pending,
+              bufferedResults: group.outputs.length,
+              queuedRequests: group.requests.length,
+              inFlightOperations: this.operations.size,
+              activeDelegations: this.delegations.size,
+            });
             result = {
               ok: false,
               code: "voice_session_end_requires_standalone_action",
-              message: "End Voice in a separate response after other actions finish.",
+              message: "Voice was not closed. Finish other actions, then call clanky_accept_goodbye as the only tool call. Do not tell the user the call ended until it closes.",
               completion: "not_executed",
             };
           } else {
             outcome = { ok: true };
+            group.endAfterCompletion = true;
             log.info("Live session exit requested", {
               callId: this.scope.id,
               requestIdHash: readRevision(callId),
             });
-            this.ended();
-            return;
+            result = { ok: true, accepted: true };
           }
         }
         if (this.state.status === "active") {

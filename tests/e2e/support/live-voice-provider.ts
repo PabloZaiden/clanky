@@ -367,7 +367,7 @@ function* resumedJourney(session: LiveFixture): Generator<FixtureStep, void, unk
   successful(yield {
     name: "clanky_ui_action", arguments: { action: { type: "open_chat", chatId: chat.id } },
   });
-  yield { name: "clanky_end_voice_session", arguments: {} };
+  yield { name: "clanky_accept_goodbye", arguments: {} };
 }
 
 function send(session: LiveFixture, event: Record<string, unknown>): void {
@@ -399,11 +399,11 @@ function advance(session: LiveFixture, result?: unknown): void {
       if (index >= 0) advance(session, session.notices.splice(index, 1)[0]!.result);
       return;
     }
-    if ("name" in session.current && session.current.name === "clanky_end_voice_session") {
+    if ("name" in session.current && session.current.name === "clanky_accept_goodbye") {
       const start = Date.now() - session.connectedAt!;
       send(session, {
         type: "session.output_transcript.delta", event_id: crypto.randomUUID(),
-        delta: "Chau, termino esta sesión de Voice. El trabajo delegado sigue en marcha.",
+        delta: "Chau, seguimos cuando quieras.",
         start_ms: start, end_ms: start + 1,
       });
     }
