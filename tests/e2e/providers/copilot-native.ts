@@ -46,10 +46,15 @@ function event(session: Session, type: string, data: Record<string, unknown>): v
   write({ method: "session.event", params: { sessionId: session.id, event: value } });
 }
 
+function idle(session: Session, data: { aborted?: boolean } = {}): void {
+  session.processing = false;
+  event(session, "assistant.idle", data);
+  event(session, "session.idle", data);
+}
+
 function finish(session: Session, content: string): void {
   event(session, "assistant.message", { messageId: crypto.randomUUID(), content });
-  session.processing = false;
-  event(session, "session.idle", {});
+  idle(session);
 }
 
 function requestTool(session: Session, name: string, args: Record<string, unknown>): void {
@@ -57,8 +62,7 @@ function requestTool(session: Session, name: string, args: Record<string, unknow
   const timer = setTimeout(() => {
     pending.delete(id);
     event(session, "session.error", { errorType: "protocol", message: `Timed out waiting for ${name}.` });
-    session.processing = false;
-    event(session, "session.idle", {});
+    idle(session);
   }, 5_000);
   pending.set(id, { session, name, timer });
   event(session, "tool.execution_start", { toolCallId: id, toolName: name, arguments: args });
@@ -119,8 +123,7 @@ async function sendInput(session: Session | undefined, params: Record<string, un
       event(session, "assistant.message", { messageId: crypto.randomUUID(), content: "Waiting for the integration input file." });
       void completeAfterInputFile(session, releaseFile, controller).catch((error: unknown) => {
         event(session, "session.error", { errorType: "protocol", message: String(error) });
-        session.processing = false;
-        event(session, "session.idle", {});
+        idle(session);
       });
     } else if (!prompt.startsWith("Wait for a steering instruction")) execute(session);
   }
@@ -227,8 +230,7 @@ async function dispatch(frame: JsonRpcMessage): Promise<void> {
       break;
     case "session.abort":
       waiting.get(session!.id)?.abort();
-      session!.processing = false;
-      event(session!, "session.idle", { aborted: true });
+      idle(session!, { aborted: true });
       result = {};
       break;
     case "session.detach":
