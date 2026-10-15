@@ -29,6 +29,7 @@ const INITIAL_STATE: LiveVoiceUiState = {
 interface BrowserCall {
   browser: LiveVoiceBrowser;
   controller: AbortController;
+  activityGeneration: number;
   timer?: ReturnType<typeof setTimeout>;
   ending?: Promise<void>;
   starting?: Promise<void>;
@@ -129,7 +130,7 @@ export function useLiveVoice(options: { enabled: boolean; route: WebAppRoute }):
         failure: (message) => { if (active.current) active.current.failed = message; void endRef.current(); },
         closed: () => { void endRef.current(); },
       });
-      const call: BrowserCall = { browser, controller: new AbortController(), releaseAudio };
+      const call: BrowserCall = { browser, controller: new AbortController(), activityGeneration: 0, releaseAudio };
       active.current = call;
       setState({ ...INITIAL_STATE, status: "connecting" });
       call.starting = browser.connect(getContext, call.controller.signal);
@@ -154,6 +155,7 @@ export function useLiveVoice(options: { enabled: boolean; route: WebAppRoute }):
         try {
           do {
             heartbeatDirty = false;
+            const activityGeneration = call.activityGeneration;
             const result = await apiRequest<LiveVoiceCallState>(
               `/api/voice/live/${encodeURIComponent(browser.callId!)}/heartbeat`,
               { method: "POST", signal: AbortSignal.any([call.controller.signal, AbortSignal.timeout(5_000)]),
@@ -161,7 +163,9 @@ export function useLiveVoice(options: { enabled: boolean; route: WebAppRoute }):
                 headers: { "Content-Type": "application/json" }, action: "Check Live voice" },
             );
             if (call.ending || active.current !== call) return;
-            setState((current) => ({ ...current, processing: result.processing, intention: result.intention }));
+            if (call.activityGeneration === activityGeneration) {
+              setState((current) => ({ ...current, processing: result.processing, intention: result.intention }));
+            }
             if (["closed", "failed"].includes(result.status)) {
               call.failed = result.error ?? undefined;
               await endRef.current();
@@ -197,7 +201,12 @@ export function useLiveVoice(options: { enabled: boolean; route: WebAppRoute }):
     enabled: options.enabled || callId !== null,
     filters: { clientId: getClankyClientId() },
     predicate: (event) => event.type === "voice.activity" && event.callId === callId,
-    onEvent: (event) => setState((current) => ({ ...current, processing: event.processing, intention: event.intention })),
+    onEvent: (event) => {
+      const call = active.current;
+      if (!call || call.ending || call.browser.callId !== event.callId) return;
+      call.activityGeneration += 1;
+      setState((current) => ({ ...current, processing: event.processing, intention: event.intention }));
+    },
     onReconnect: () => { void active.current?.heartbeat?.(); },
   });
   const toggleMute = useCallback((): void => {

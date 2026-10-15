@@ -6,7 +6,6 @@ ARG TARGETARCH
 
 # Keep dependency installation cacheable when application source changes.
 COPY package.json bun.lock bunfig.toml ./
-COPY patches ./patches
 
 RUN bun install --frozen-lockfile
 
