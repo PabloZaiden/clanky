@@ -5,11 +5,16 @@ import type {
   WorkerUpdateJobSnapshotResponse,
   WorkerUpdateJobsResponse,
 } from "@/contracts/api";
-import type { WorkerUpdateJob } from "@/shared/worker-update";
+import { isWorkerUpdateJobTerminal, type WorkerUpdateJob } from "@/shared/worker-update";
 import { apiRequest, readApiResponse, requestApiResponse } from "../lib/api-client";
 import { isAbortError } from "../lib/request-lifecycle";
 import { createRefreshCoordinator } from "../lib/refresh-coordinator";
 import { useRealtimeRefreshWithRecovery } from "./useRealtimeStream";
+
+export interface DismissAllWorkerUpdateJobsResult {
+  dismissedJobIds: string[];
+  failedJobIds: string[];
+}
 
 export interface UseWorkerUpdateJobsResult {
   jobs: WorkerUpdateJob[];
@@ -26,7 +31,21 @@ export interface UseWorkerUpdateJobsResult {
   refreshJobs: (options?: { showLoading?: boolean; force?: boolean }) => Promise<void>;
   refreshJob: (options?: { showLoading?: boolean }) => Promise<WorkerUpdateJobSnapshotResponse | null>;
   dismissJob: (jobId?: string) => Promise<boolean>;
+  dismissAllJobs: () => Promise<DismissAllWorkerUpdateJobsResult>;
+  dismissingAllJobs: boolean;
   clearActiveJob: () => void;
+}
+
+async function dismissWorkerUpdateJobRequest(jobId: string, signal: AbortSignal): Promise<void> {
+  await apiRequest<DismissWorkerUpdateJobResponse>(
+    `/api/worker-update-jobs/${encodeURIComponent(jobId)}/dismiss`,
+    {
+      method: "POST",
+      signal,
+      action: "Dismiss worker update job",
+      fallbackMessage: "Failed to dismiss worker update job",
+    },
+  );
 }
 
 export function useWorkerUpdateJobs(
@@ -40,6 +59,8 @@ export function useWorkerUpdateJobs(
   const [loading, setLoading] = useState(false);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dismissingAllJobs, setDismissingAllJobs] = useState(false);
+  const dismissAllPromiseRef = useRef<Promise<DismissAllWorkerUpdateJobsResult> | null>(null);
   const isMountedRef = useRef(false);
   const activeJobIdRef = useRef(activeJobId);
   const actionControllersRef = useRef(new Set<AbortController>());
@@ -249,6 +270,7 @@ export function useWorkerUpdateJobs(
       setJobsLoading(false);
       setJobsError(null);
       setStarting(false);
+      setDismissingAllJobs(false);
       setError(null);
       clearActiveJob();
     }
@@ -333,15 +355,7 @@ export function useWorkerUpdateJobs(
       if (isMountedRef.current) {
         setError(null);
       }
-      await apiRequest<DismissWorkerUpdateJobResponse>(
-        `/api/worker-update-jobs/${encodeURIComponent(jobId)}/dismiss`,
-        {
-          method: "POST",
-          signal: controller.signal,
-          action: "Dismiss worker update job",
-          fallbackMessage: "Failed to dismiss worker update job",
-        },
-      );
+      await dismissWorkerUpdateJobRequest(jobId, controller.signal);
       if (controller.signal.aborted || !isMountedRef.current) {
         return false;
       }
@@ -360,6 +374,55 @@ export function useWorkerUpdateJobs(
     }
   }, [clearActiveJob, enabled, refreshJobs]);
 
+  const dismissAllJobs = useCallback((): Promise<DismissAllWorkerUpdateJobsResult> => {
+    if (!enabled) {
+      return Promise.reject(new Error("Worker update jobs are only available to the owner."));
+    }
+    if (dismissAllPromiseRef.current) {
+      return dismissAllPromiseRef.current;
+    }
+    const jobIds = jobs
+      .filter((job) => isWorkerUpdateJobTerminal(job.state.status))
+      .map((job) => job.config.id);
+    const controller = new AbortController();
+    actionControllersRef.current.add(controller);
+    setDismissingAllJobs(true);
+    const dismiss = async (): Promise<DismissAllWorkerUpdateJobsResult> => {
+      const results = await Promise.allSettled(
+        jobIds.map((jobId) => dismissWorkerUpdateJobRequest(jobId, controller.signal)),
+      );
+      if (controller.signal.aborted || !isMountedRef.current) {
+        throw new DOMException("Worker update dismissal was aborted.", "AbortError");
+      }
+      const dismissedJobIds: string[] = [];
+      const failedJobIds: string[] = [];
+      results.forEach((result, index) => {
+        const jobId = jobIds[index]!;
+        if (result.status === "fulfilled") {
+          dismissedJobIds.push(jobId);
+        } else {
+          failedJobIds.push(jobId);
+        }
+      });
+      if (activeJobIdRef.current && dismissedJobIds.includes(activeJobIdRef.current)) {
+        clearActiveJob();
+      }
+      const dismissedIds = new Set(dismissedJobIds);
+      setJobs((current) => current.filter((job) => !dismissedIds.has(job.config.id)));
+      await refreshJobs({ showLoading: false, force: true });
+      return { dismissedJobIds, failedJobIds };
+    };
+    const promise = dismiss().finally(() => {
+      actionControllersRef.current.delete(controller);
+      dismissAllPromiseRef.current = null;
+      if (!controller.signal.aborted && isMountedRef.current) {
+        setDismissingAllJobs(false);
+      }
+    });
+    dismissAllPromiseRef.current = promise;
+    return promise;
+  }, [clearActiveJob, enabled, jobs, refreshJobs]);
+
   return {
     jobs,
     jobsLoading,
@@ -375,6 +438,8 @@ export function useWorkerUpdateJobs(
     refreshJobs,
     refreshJob,
     dismissJob,
+    dismissAllJobs,
+    dismissingAllJobs,
     clearActiveJob,
   };
 }

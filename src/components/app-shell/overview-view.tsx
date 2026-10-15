@@ -9,7 +9,11 @@ import {
   type WorkerUpdateJob,
 } from "@/shared";
 import { ConfirmModal, EmptyState, Panel, useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
-import type { DismissAllProvisioningJobsResult, useTaskGrouping } from "../../hooks";
+import type {
+  DismissAllProvisioningJobsResult,
+  UseWorkerUpdateJobsResult,
+  useTaskGrouping,
+} from "../../hooks";
 import { Button, StatusBadge, type BadgeVariant } from "../common";
 import { getProvisioningStatusBadgeVariant, getProvisioningStatusLabel } from "../common/status-variants";
 import { ConfiguredAgentsSection } from "../ConfiguredAgentsSection";
@@ -166,6 +170,8 @@ export function OverviewView({
   onDismissAllProvisioningJobs,
   dismissingAllProvisioningJobs,
   workerUpdateJobs,
+  onDismissAllWorkerUpdateJobs,
+  dismissingAllWorkerUpdateJobs,
   showPrivateItems = false,
 }: {
   executionHosts: ExecutionHostDescriptor[];
@@ -180,6 +186,8 @@ export function OverviewView({
   onDismissAllProvisioningJobs: () => Promise<DismissAllProvisioningJobsResult>;
   dismissingAllProvisioningJobs: boolean;
   workerUpdateJobs: WorkerUpdateJob[];
+  onDismissAllWorkerUpdateJobs: UseWorkerUpdateJobsResult["dismissAllJobs"];
+  dismissingAllWorkerUpdateJobs: boolean;
   showPrivateItems?: boolean;
 }) {
   const toast = useToast();
@@ -401,7 +409,12 @@ export function OverviewView({
         </Panel>
       ) : null}
 
-      <WorkerUpdateJobsSection jobs={workerUpdateJobs} onNavigate={onNavigate} />
+      <WorkerUpdateJobsSection
+        jobs={workerUpdateJobs}
+        onNavigate={onNavigate}
+        onDismissAll={onDismissAllWorkerUpdateJobs}
+        dismissingAll={dismissingAllWorkerUpdateJobs}
+      />
 
       <ConfirmModal
         isOpen={dismissConfirmOpen}

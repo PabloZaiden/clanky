@@ -894,6 +894,8 @@ function renderMainContent(props: ShellMainContentProps) {
       onDismissAllProvisioningJobs={props.provisioning.dismissAllJobs}
       dismissingAllProvisioningJobs={props.provisioning.dismissingAllJobs}
       workerUpdateJobs={props.workerUpdates.jobs}
+      onDismissAllWorkerUpdateJobs={props.workerUpdates.dismissAllJobs}
+      dismissingAllWorkerUpdateJobs={props.workerUpdates.dismissingAllJobs}
       showPrivateItems={showPrivateItems}
     />
   );
