@@ -67,6 +67,7 @@ export {
 export {
   useWorkerUpdateJobs,
   type UseWorkerUpdateJobsResult,
+  type DismissAllWorkerUpdateJobsResult,
 } from "./useWorkerUpdateJobs";
 export { useMesh, type UseMeshResult } from "./useMesh";
 export {

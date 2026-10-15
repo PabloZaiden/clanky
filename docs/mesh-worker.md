@@ -444,6 +444,11 @@ command failures remain failures; recovery that cannot be confirmed within the
 deadline is marked unconfirmed/interrupted rather than successful. Jobs and
 their logs remain on the Dashboard until dismissed.
 
+Use **Dismiss all** in the Dashboard's **Worker updates** panel to remove
+completed, failed, and interrupted jobs and their logs after confirmation.
+Pending and running jobs are kept. Individual jobs can still be dismissed from
+their detail view.
+
 ## Automatic workspace runtimes
 
 Automatic workspace creation selects **ACP**, **GitHub Copilot**, **Codex**, or
