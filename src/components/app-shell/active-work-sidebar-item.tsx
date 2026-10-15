@@ -55,12 +55,10 @@ export function ActiveWorkMetadata({
   itemType,
   lastInteractionAt,
   workspace,
-  className = "",
 }: {
   itemType: ActiveWorkSidebarItemType;
   lastInteractionAt: string;
   workspace?: Workspace;
-  className?: string;
 }) {
   const nowMs = useSyncExternalStore(
     subscribeToActiveWorkClock,
@@ -70,7 +68,7 @@ export function ActiveWorkMetadata({
   const relativeTime = formatSidebarRelativeTime(lastInteractionAt, nowMs);
 
   return (
-    <span className={`clanky-sidebar-item-metadata ${className}`.trim()}>
+    <span className="clanky-sidebar-item-metadata">
       {relativeTime ? (
         <small className="clanky-sidebar-item-age">{relativeTime}</small>
       ) : null}

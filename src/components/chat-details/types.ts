@@ -6,7 +6,6 @@ import type {
   QueuedChatMessage,
   ToolCallData,
 } from "@/shared";
-import type { VoiceRecorderStatus } from "../../hooks";
 import type { MessageAttachment } from "@/shared/message-attachments";
 import type {
   ConversationComposerVoice,
@@ -65,16 +64,6 @@ export interface ChatTranscriptProps {
   onChatSnapshot: (nextChat: Chat) => void;
   dismissedExpiredQuestionRequestId?: string;
   onQuestionAnswerFocusChange: (focused: boolean) => void;
-  voiceInput: {
-    available: boolean;
-    status: VoiceRecorderStatus;
-    elapsedMs: number;
-    error: string | null;
-  };
-  onStartVoice: () => Promise<void>;
-  onStopVoice: () => void;
-  onCancelVoice: () => void;
-  onDismissVoiceError: () => void;
   onReadAloud: (messageId: string) => void;
   readAloudAvailable: boolean;
   playingReadAloudKey: string | null;

@@ -25,7 +25,11 @@ export interface LiveVoiceActivityEvent {
   clientId: string;
   callId: string;
   processing: boolean;
+  intention: string | null;
 }
+
+export const LiveVoiceIntentionSchema = z.string().trim().min(1).max(80)
+  .refine((value) => !/[\r\n]/u.test(value), "Use one short line");
 
 export const VoiceConfirmationDescriptionSchema = z.string().trim().min(1).max(500);
 

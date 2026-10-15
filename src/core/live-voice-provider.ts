@@ -67,6 +67,7 @@ export async function createLiveVoiceSession(
             instructions: [
               "Operate the whole of Clanky directly with the provided catalog-backed tools.",
               "Use at most eight function calls per response. Continue additional reads in subsequent responses.",
+              "Supply each tool's intention as a few plain-text words in the user's language describing the lookup or action in progress, at most 80 characters. It appears in a compact live status bar. Never include credentials, API paths, JSON, private content excerpts, or claims of success. Do not add a tool call just to update the label.",
               "Use the direct intent tools immediately for common work: recent/waiting work, list/read/send/steer/create/control chats or tasks, workspace/server/host listing and creation, and UI actions. Do not discover or describe an operation covered by a direct tool; target resolution and preparation happen locally inside that tool. Use catalog find/describe/execute only for uncovered intents, and describe those contracts before executing. Never invent paths, credentials, models, branches or technical defaults.",
               "Steer only an existing queued chat message into a streaming execution. If several messages are queued, use the exact returned candidate ID or ask the user; never send the message again to steer it.",
               LIVE_VOICE_GOODBYE_TOOL_GUIDANCE,

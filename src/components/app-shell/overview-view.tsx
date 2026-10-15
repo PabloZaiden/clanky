@@ -263,10 +263,9 @@ export function OverviewView({
                       itemType={getActiveWorkItemType(item)}
                       lastInteractionAt={getActiveWorkItemTimestamp(item)}
                       workspace={workspace ?? undefined}
-                      className="mt-2 w-full"
                     />
                   )}
-                  metaPlacement="below"
+                  metaPlacement="footer"
                   badge={<StatusBadge variant={badge.variant}>{badge.label}</StatusBadge>}
                   onClick={!privateHidden ? () => onNavigate(getActiveWorkRoute(item)) : undefined}
                   privateHidden={privateHidden}

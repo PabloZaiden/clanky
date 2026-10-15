@@ -34,5 +34,8 @@ Provider icons follow the provider configured for the workspace, regardless
 of whether it uses a native adapter or ACP. OpenCode, Codex, and GitHub Copilot
 have distinct icons; other ACP providers use the generic ACP icon.
 
-The workspace icon and provider mark appear beside the workspace name in the
-workspace sidebar, Active Work, and dashboard.
+The workspace icon appears beside the workspace name. In Active Work, the
+provider mark follows the item type, such as **Chat**, in the sidebar and
+dashboard. Dashboard cards show the activity age on the left and the item
+type/provider on the right of a full-width footer, independently of the
+status label's width.
