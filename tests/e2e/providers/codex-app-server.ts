@@ -8,7 +8,7 @@ import { CodexMethodDispatcher } from "./codex-dispatcher";
 import { CodexJsonRpcSession, parseJsonRpcMessage, type JsonRpcMessage } from "./codex-json-rpc";
 import { buildTurnSummary } from "./codex-protocol";
 import { CodexFixtureStore, type ActiveTurn } from "./codex-state";
-import { runCodexTurn } from "./codex-turn-runner";
+import { notifyCodexTurnCompleted, runCodexTurn } from "./codex-turn-runner";
 
 function errorResponse(error: unknown): { code: number; message: string } {
   const code = typeof error === "object" && error !== null && "code" in error
@@ -30,20 +30,27 @@ export async function serveCodexAppServer(homeDirectory: string): Promise<void> 
   const turnTasks = new Set<Promise<void>>();
   const input = createInterface({ input: process.stdin, crlfDelay: Infinity });
 
-  for await (const line of input) {
-    let frame: JsonRpcMessage;
-    try {
-      frame = parseJsonRpcMessage(JSON.parse(line) as unknown);
-    } catch (error) {
-      process.stderr.write(`codex-e2e: invalid JSON-RPC frame: ${String(error)}\n`);
-      process.exitCode = 1;
-      break;
+  try {
+    for await (const line of input) {
+      let frame: JsonRpcMessage;
+      try {
+        frame = parseJsonRpcMessage(JSON.parse(line) as unknown);
+      } catch (error) {
+        process.stderr.write(`codex-e2e: invalid JSON-RPC frame: ${String(error)}\n`);
+        process.exitCode = 1;
+        break;
+      }
+      await handleFrame(frame, dispatcher, store, rpc, turnTasks);
     }
-    await handleFrame(frame, dispatcher, store, rpc, turnTasks);
+  } finally {
+    input.close();
+    rpc.close();
+    try {
+      await store.close();
+    } finally {
+      await Promise.allSettled(turnTasks);
+    }
   }
-
-  rpc.close();
-  await Promise.allSettled(turnTasks);
 }
 
 async function handleFrame(
@@ -64,11 +71,21 @@ async function handleFrame(
   try {
     const dispatched = await dispatcher.dispatch(frame.method, frame.params);
     rpc.respond(frame.id, dispatched.result);
+    if (dispatched.deletedThreadId) {
+      rpc.cancelRequests(dispatched.deletedThreadId);
+    }
+    if (dispatched.interruptedTurn) {
+      const { thread, turn } = dispatched.interruptedTurn;
+      rpc.cancelRequests(thread.id, turn.id);
+      notifyCodexTurnCompleted(dispatched.interruptedTurn, rpc);
+    }
     const activeTurn = dispatched.turn;
     if (activeTurn) {
       const task = runCodexTurn(activeTurn, store, rpc)
         .catch(async (error: unknown) => {
-          await failTurn(activeTurn, error, store, rpc);
+          if (activeTurn.turn.status !== "interrupted") {
+            await failTurn(activeTurn, error, store, rpc);
+          }
         })
         .finally(() => turnTasks.delete(task));
       turnTasks.add(task);

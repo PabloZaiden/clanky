@@ -321,7 +321,7 @@ export function useChats(): UseChatsResult {
         case "chat.status":
           setChats((current) => current.map((chat) => (
             chat.config.id === event.chatId
-              ? applyChatStatusEvent(chat, event.status, event.timestamp)
+              ? applyChatStatusEvent(chat, event)
               : chat
           )));
           break;
@@ -345,6 +345,7 @@ export function useChats(): UseChatsResult {
           break;
       }
     },
+    onReconnect: () => refresh({ showLoading: false, afterCurrent: true }),
   });
 
   useEffect(() => {

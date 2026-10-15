@@ -5,24 +5,25 @@
 import {
   constants,
   createHash,
-  generateKeyPairSync,
+  generateKeyPair,
   privateDecrypt,
 } from "node:crypto";
+import { promisify } from "node:util";
 import type { SshServerEncryptedCredential, SshServerPublicKey } from "@/shared";
 import { getSshServerConfig } from "../persistence/ssh-servers";
 import {
-  createPersistedSshServerKeyPair,
   deleteSshServerKeyPair,
-  ensureSshServerKeyPair,
   loadSshServerKeyPair,
   saveSshServerKeyPair,
   type PersistedSshServerKeyPair,
 } from "../persistence/ssh-server-keys";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { DomainError } from "../domain/domain-error";
+import { withSshServerOperation } from "./ssh-server-operations";
 
 const log = createLogger("core:ssh-server-key-manager");
 const SSH_SERVER_KEY_MODULUS_LENGTH = 4096;
+const generateKeyPairAsync = promisify(generateKeyPair);
 
 function buildPublicKeyFingerprint(publicKey: string): string {
   return createHash("sha256")
@@ -40,8 +41,8 @@ function toPublicKey(keyPair: PersistedSshServerKeyPair): SshServerPublicKey {
   };
 }
 
-function generatePersistedKeyPair(version: number): PersistedSshServerKeyPair {
-  const { publicKey, privateKey } = generateKeyPairSync("rsa", {
+export async function generateSshServerKeyPair(version: number): Promise<PersistedSshServerKeyPair> {
+  const { publicKey, privateKey } = await generateKeyPairAsync("rsa", {
     modulusLength: SSH_SERVER_KEY_MODULUS_LENGTH,
     publicKeyEncoding: {
       type: "spki",
@@ -52,56 +53,50 @@ function generatePersistedKeyPair(version: number): PersistedSshServerKeyPair {
       format: "pem",
     },
   });
-  return createPersistedSshServerKeyPair({
+  return {
+    algorithm: "RSA-OAEP-256",
     publicKey,
     privateKey,
     fingerprint: buildPublicKeyFingerprint(publicKey),
     version,
     createdAt: new Date().toISOString(),
-  });
+  };
 }
 
 export class SshServerKeyManager {
   async getPublicKey(serverId: string): Promise<SshServerPublicKey | null> {
-    const server = await getSshServerConfig(serverId);
-    if (!server) {
-      return null;
-    }
+    return await withSshServerOperation(serverId, async () => {
+      const server = await getSshServerConfig(serverId);
+      if (!server) return null;
 
-    const keyPair = await loadSshServerKeyPair(serverId);
-    return keyPair ? toPublicKey(keyPair) : null;
+      const keyPair = await loadSshServerKeyPair(serverId);
+      return keyPair ? toPublicKey(keyPair) : null;
+    });
   }
 
   async ensurePublicKey(serverId: string): Promise<SshServerPublicKey> {
-    const existing = await this.getExistingOrThrow(serverId);
-    if (existing) {
-      return toPublicKey(existing);
-    }
-
-    const generated = await ensureSshServerKeyPair(serverId);
-    log.info("Generated standalone SSH server key pair", {
-      serverId,
-      version: generated.version,
-      fingerprint: generated.fingerprint,
-    });
-    return toPublicKey(generated);
+    return toPublicKey(await this.requireKeyPair(serverId));
   }
 
   async rotateKeyPair(serverId: string): Promise<SshServerPublicKey> {
-    const existing = await this.getExistingOrThrow(serverId);
-    const nextVersion = (existing?.version ?? 0) + 1;
-    const rotated = generatePersistedKeyPair(nextVersion);
-    await saveSshServerKeyPair(serverId, rotated);
-    log.info("Rotated standalone SSH server key pair", {
-      serverId,
-      version: rotated.version,
-      fingerprint: rotated.fingerprint,
+    return await withSshServerOperation(serverId, async () => {
+      const existing = await this.getExistingOrThrow(serverId);
+      const rotated = await generateSshServerKeyPair((existing?.version ?? 0) + 1);
+      await saveSshServerKeyPair(serverId, rotated);
+      log.info("Rotated standalone SSH server key pair", {
+        serverId,
+        version: rotated.version,
+        fingerprint: rotated.fingerprint,
+      });
+      return toPublicKey(rotated);
     });
-    return toPublicKey(rotated);
   }
 
   async deleteKeyPair(serverId: string): Promise<boolean> {
-    return await deleteSshServerKeyPair(serverId);
+    return await withSshServerOperation(serverId, async () => {
+      await this.getExistingOrThrow(serverId);
+      return await deleteSshServerKeyPair(serverId);
+    });
   }
 
   async decryptCredential(serverId: string, credential: SshServerEncryptedCredential): Promise<string> {
@@ -149,20 +144,18 @@ export class SshServerKeyManager {
   }
 
   private async requireKeyPair(serverId: string): Promise<PersistedSshServerKeyPair> {
-    const existing = await this.getExistingOrThrow(serverId);
-    if (existing) {
-      return existing;
-    }
-    await this.ensurePublicKey(serverId);
-    const generated = await loadSshServerKeyPair(serverId);
-    if (!generated) {
-      throw new DomainError(
-        "ssh_server_key_generation_failed",
-        "Failed to generate the SSH server key pair",
-        { details: { serverId } },
-      );
-    }
-    return generated;
+    return await withSshServerOperation(serverId, async () => {
+      const existing = await this.getExistingOrThrow(serverId);
+      if (existing) return existing;
+      const generated = await generateSshServerKeyPair(1);
+      await saveSshServerKeyPair(serverId, generated);
+      log.info("Generated standalone SSH server key pair", {
+        serverId,
+        version: generated.version,
+        fingerprint: generated.fingerprint,
+      });
+      return generated;
+    });
   }
 }
 

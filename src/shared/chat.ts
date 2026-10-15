@@ -133,6 +133,8 @@ export const CHAT_STARTUP_STAGE_LABELS: Record<ChatStartupStage, string> = {
 
 export interface ChatState {
   id: string;
+  /** Monotonic persisted entity revision; independent of activity/provider clocks. */
+  revision: number;
   status: ChatStatus;
   startedAt?: string;
   completedAt?: string;
@@ -174,6 +176,7 @@ export const DEFAULT_CHAT_CONFIG = {
 export function createInitialChatState(id: string): ChatState {
   return {
     id,
+    revision: 0,
     status: "idle",
     messages: [],
     logs: [],

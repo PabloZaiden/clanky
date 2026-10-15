@@ -15,7 +15,9 @@ import {
   listSshServers,
   saveSshServerConfig,
 } from "../persistence/ssh-servers";
-import { sshServerKeyManager } from "./ssh-server-key-manager";
+import { generateSshServerKeyPair, sshServerKeyManager } from "./ssh-server-key-manager";
+import { deleteSshServerKeyPair, saveSshServerKeyPair } from "../persistence/ssh-server-keys";
+import { withSshServerOperation } from "./ssh-server-operations";
 import { sshCredentialManager } from "./ssh-credential-manager";
 import { CommandExecutorImpl } from "./remote-command-executor";
 import type { SshConnectionTarget } from "./ssh-connection-target";
@@ -43,47 +45,64 @@ export class SshServerManager {
       createdAt: now,
       updatedAt: now,
     };
-    await saveSshServerConfig(config);
-    await sshServerKeyManager.ensurePublicKey(config.id);
-    const server = await getSshServer(config.id);
-    if (!server) {
-      throw new DomainError(
-        "ssh_server_reload_failed",
-        "Failed to reload SSH server after creation",
-        { details: { serverId: config.id } },
-      );
-    }
-    return server;
+    return await withSshServerOperation(config.id, async () => {
+      const keyPair = await generateSshServerKeyPair(1);
+      try {
+        await saveSshServerKeyPair(config.id, keyPair);
+        await saveSshServerConfig(config);
+      } catch (error) {
+        try {
+          await deleteSshServerKeyPair(config.id);
+        } catch (cleanupError) {
+          throw new AggregateError([error, cleanupError], "SSH server registration and key cleanup failed.");
+        }
+        throw error;
+      }
+      const server = await getSshServer(config.id);
+      if (!server) {
+        throw new DomainError(
+          "ssh_server_reload_failed",
+          "Failed to reload SSH server after creation",
+          { details: { serverId: config.id } },
+        );
+      }
+      return server;
+    });
   }
 
   async updateServer(id: string, request: UpdateSshServerRequest): Promise<SshServer> {
-    const existing = await this.requireServerConfig(id);
-    await saveSshServerConfig({
-      ...existing,
-      ...(request.name !== undefined ? { name: request.name.trim() } : {}),
-      ...(request.address !== undefined ? { address: request.address.trim() } : {}),
-      ...(request.port !== undefined ? { port: request.port } : {}),
-      ...(request.username !== undefined ? { username: request.username.trim() } : {}),
-      ...(request.repositoriesBasePath !== undefined
-        ? { repositoriesBasePath: request.repositoriesBasePath?.trim() || null }
-        : {}),
-      ...(request.isPrivate !== undefined ? { isPrivate: request.isPrivate } : {}),
-      updatedAt: new Date().toISOString(),
+    await sshServerKeyManager.ensurePublicKey(id);
+    return await withSshServerOperation(id, async () => {
+      const existing = await this.requireServerConfig(id);
+      await saveSshServerConfig({
+        ...existing,
+        ...(request.name !== undefined ? { name: request.name.trim() } : {}),
+        ...(request.address !== undefined ? { address: request.address.trim() } : {}),
+        ...(request.port !== undefined ? { port: request.port } : {}),
+        ...(request.username !== undefined ? { username: request.username.trim() } : {}),
+        ...(request.repositoriesBasePath !== undefined
+          ? { repositoriesBasePath: request.repositoriesBasePath?.trim() || null }
+          : {}),
+        ...(request.isPrivate !== undefined ? { isPrivate: request.isPrivate } : {}),
+        updatedAt: new Date().toISOString(),
+      });
+      const updated = await getSshServer(id);
+      if (!updated) {
+        throw new DomainError(
+          "ssh_server_reload_failed",
+          "Failed to reload SSH server after update",
+          { details: { serverId: id } },
+        );
+      }
+      return updated;
     });
-    const updated = await getSshServer(id);
-    if (!updated) {
-      throw new DomainError(
-        "ssh_server_reload_failed",
-        "Failed to reload SSH server after update",
-        { details: { serverId: id } },
-      );
-    }
-    return updated;
   }
 
   async deleteServer(id: string): Promise<boolean> {
-    sshCredentialManager.clearTokensForServer(id);
-    return await deleteSshServer(id);
+    return await withSshServerOperation(id, async () => {
+      sshCredentialManager.clearTokensForServer(id);
+      return await deleteSshServer(id);
+    });
   }
 
   async getCommandExecutor(

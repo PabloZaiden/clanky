@@ -17,7 +17,6 @@ import { apiRequest } from "../../lib/api-client";
 import { getStoredSshCredentialToken } from "../../lib/ssh-browser-credentials";
 import {
   applyChatStatusEvent,
-  getStreamingActivityStatus,
   hasSameChatPresentation,
   mergeChatSummarySnapshot,
   reuseChatSnapshotPresentation,
@@ -76,50 +75,27 @@ function mergeOperationalChatSnapshot(current: Chat | null, incoming: Chat): Cha
   });
 }
 
-function markChatStreamingActivity(
-  chat: Chat,
-  timestamp: string,
-  updates: Partial<Chat["state"]> = {},
-): Chat {
-  return {
-    ...chat,
-    state: {
-      ...chat.state,
-      status: getStreamingActivityStatus(chat.state.status),
-      startupStage: undefined,
-      lastActivityAt: timestamp,
-      ...updates,
-    },
-  };
-}
-
 function applyChatOperationalEvent(
   current: Chat,
   event: ChatStreamEvent,
 ): Chat {
   switch (event.type) {
     case "chat.status":
-      return applyChatStatusEvent(current, event.status, event.timestamp);
+      return applyChatStatusEvent(current, event);
     case "chat.message":
-      if (event.message.role === "assistant") {
-        return markChatStreamingActivity(current, event.timestamp);
-      }
-      return {
-        ...current,
-        state: {
-          ...current.state,
-          lastActivityAt: event.timestamp,
-        },
-      };
     case "chat.message.delta":
-      return markChatStreamingActivity(current, event.timestamp, {
-        activeMessageId: event.messageId,
-      });
     case "chat.tool_call":
     case "chat.tool_call.extra":
     case "chat.log":
     case "chat.log.delta":
-      return markChatStreamingActivity(current, event.timestamp);
+      return {
+        ...current,
+        state: {
+          ...current.state,
+          lastActivityAt: event.timestamp > (current.state.lastActivityAt ?? "")
+            ? event.timestamp : current.state.lastActivityAt,
+        },
+      };
   }
 }
 
@@ -265,6 +241,7 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
     filters: { chatId },
     predicate: (event) => event.type.startsWith("chat."),
     onEvent: handleEvent,
+    onReconnect: () => refreshChatCoalesced({ showLoading: false, afterCurrent: true }),
   });
 
   useRealtimeRefreshWithRecovery({

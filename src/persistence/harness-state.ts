@@ -36,7 +36,8 @@ export function mergeHarnessProjection(
     const current = parseStoredHarnessBinding(row.session_binding_json, context.id);
     if (!current || current.nativeId !== binding.nativeId || current.adapter !== binding.adapter || current.ownerId !== binding.ownerId || current.contextId !== binding.contextId) return false;
     const state = parseStoredHarnessState(row.harness_state_json, context.id);
-    db.query(`UPDATE ${table} SET harness_state_json = ? WHERE id = ? AND user_id = ?`)
+    const revisionUpdate = context.kind === "chat" ? ", state_revision = state_revision + 1" : "";
+    db.query(`UPDATE ${table} SET harness_state_json = ?${revisionUpdate} WHERE id = ? AND user_id = ?`)
       .run(JSON.stringify({ ...state, ...projection }), context.id, userId);
     return true;
   })();

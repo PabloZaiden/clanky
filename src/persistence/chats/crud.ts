@@ -36,6 +36,7 @@ export const CHAT_METADATA_COLUMNS = [
   "base_branch",
   "mode",
   "status",
+  "state_revision",
   "started_at",
   "completed_at",
   "last_activity_at",
@@ -87,8 +88,11 @@ export async function saveChat(chat: Chat): Promise<void> {
   validateChatColumnNames(columns);
   const placeholders = columns.map(() => "?").join(", ");
   const values = Object.values(row) as (string | number | null | Uint8Array)[];
-  const updateColumns = columns.filter((column) => column !== "id");
-  const updateClause = updateColumns.map((column) => `${column} = excluded.${column}`).join(", ");
+  const updateColumns = columns.filter((column) => column !== "id" && column !== "state_revision");
+  const updateClause = [
+    ...updateColumns.map((column) => `${column} = excluded.${column}`),
+    "state_revision = chats.state_revision + 1",
+  ].join(", ");
 
   const userId = String(row["user_id"]);
   try {
@@ -100,6 +104,11 @@ export async function saveChat(chat: Chat): Promise<void> {
         WHERE chats.user_id = excluded.user_id
       `).run(...values);
       replaceChatTranscriptEntriesForUserInTransaction(db, chat, userId);
+      const saved = db.query<{ state_revision: number }, [string, string]>(
+        "SELECT state_revision FROM chats WHERE id = ? AND user_id = ?",
+      ).get(chat.config.id, userId);
+      if (!saved) throw new Error(`Failed to save chat ${chat.config.id}`);
+      chat.state.revision = saved.state_revision;
     })();
   } catch (error) {
     if (isSqliteUniqueConstraintError(error)) {

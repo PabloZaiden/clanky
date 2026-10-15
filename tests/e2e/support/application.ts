@@ -178,11 +178,15 @@ export class E2EApplication {
       headers.set("origin", this.baseUrl);
     }
     const { apiKey: _apiKey, includeOrigin: _includeOrigin, ...requestOptions } = options;
-    return await fetch(`${this.baseUrl}${path}`, {
-      ...requestOptions,
-      headers,
-      signal: operationSignal(requestOptions.signal),
-    });
+    try {
+      return await fetch(`${this.baseUrl}${path}`, {
+        ...requestOptions,
+        headers,
+        signal: operationSignal(requestOptions.signal),
+      });
+    } catch (error) {
+      throw new Error(`${method} ${new URL(path, this.baseUrl).pathname} failed: ${String(error)}`, { cause: error });
+    }
   }
 
   async json<T>(

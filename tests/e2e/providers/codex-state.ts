@@ -90,7 +90,7 @@ function parseThread(value: unknown): PersistedThread {
 }
 
 export class CodexFixtureStore {
-  private readonly steering = new Map<string, ReturnType<typeof Promise.withResolvers<string>>>();
+  private readonly steering = new Map<string, ReturnType<typeof Promise.withResolvers<string | undefined>>>();
   private constructor(
     private readonly statePath: string,
     private readonly state: PersistedState,
@@ -164,7 +164,7 @@ export class CodexFixtureStore {
     thread.turns.push(turn);
     await this.persist();
     if (JSON.stringify(params["input"]).includes("Wait for a steering instruction")) {
-      this.steering.set(turn.id, Promise.withResolvers<string>());
+      this.steering.set(turn.id, Promise.withResolvers<string | undefined>());
     }
     return { thread, turn };
   }
@@ -172,13 +172,47 @@ export class CodexFixtureStore {
   async waitForSteering(active: ActiveTurn): Promise<string | undefined> {
     const pending = this.steering.get(active.turn.id);
     if (!pending) return undefined;
-    const timer = setTimeout(() => pending.reject(new Error("Steering instruction did not arrive.")), 10_000);
     try {
       return await pending.promise;
     } finally {
-      clearTimeout(timer);
       this.steering.delete(active.turn.id);
     }
+  }
+
+  async interruptTurn(params: Record<string, unknown>): Promise<ActiveTurn | undefined> {
+    const thread = this.getThread(params);
+    const turnId = requireString(params["turnId"], "interrupt turn id");
+    const turn = thread.turns.find((entry) => entry.id === turnId);
+    if (!turn) {
+      throw Object.assign(new Error("The requested turn does not exist."), { code: -32600 });
+    }
+    if (turn.status !== "inProgress") return undefined;
+    const active = { thread, turn };
+    this.markInterrupted(active);
+    await this.persist();
+    return active;
+  }
+
+  async close(): Promise<void> {
+    let changed = false;
+    for (const thread of Object.values(this.state.threads)) {
+      for (const turn of thread.turns) {
+        if (turn.status !== "inProgress") continue;
+        this.markInterrupted({ thread, turn });
+        changed = true;
+      }
+    }
+    if (changed) await this.persist();
+  }
+
+  private markInterrupted({ thread, turn }: ActiveTurn): void {
+    const now = Date.now() / 1000;
+    turn.status = "interrupted";
+    turn.completedAt = now;
+    thread.status = "idle";
+    thread.updatedAt = now;
+    this.steering.get(turn.id)?.resolve(undefined);
+    this.steering.delete(turn.id);
   }
 
   async steer(params: Record<string, unknown>): Promise<{ turnId: string }> {
@@ -221,10 +255,14 @@ export class CodexFixtureStore {
     await this.persist();
   }
 
-  async deleteThread(params: Record<string, unknown>): Promise<void> {
-    const threadId = requireString(params["threadId"], "delete thread id");
-    delete this.state.threads[threadId];
+  async deleteThread(params: Record<string, unknown>): Promise<string> {
+    const thread = this.getThread(params);
+    for (const turn of thread.turns) {
+      if (turn.status === "inProgress") this.markInterrupted({ thread, turn });
+    }
+    delete this.state.threads[thread.id];
     await this.persist();
+    return thread.id;
   }
 
   private async persist(): Promise<void> {

@@ -181,6 +181,7 @@ export interface ChatStatusEvent {
   chatId: string;
   scope: ChatConfig["scope"];
   status: ChatStatus;
+  revision: number;
   timestamp: string;
 }
 

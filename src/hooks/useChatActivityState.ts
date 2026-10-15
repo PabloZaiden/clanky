@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type SetStateAction } from "react";
 import type { Chat } from "@/shared";
 import {
-  getStreamingActivityStatus,
   hasSameChatPresentation,
   reuseChatSnapshotPresentation,
 } from "../utils/chat-snapshot";
@@ -62,7 +61,10 @@ export function useChatActivityState() {
         && options.immediateActivityId !== chat.config.id
         && hasSameChatPresentation(visible, normalized)
       ) {
-        if (visible.state.lastActivityAt !== normalized.state.lastActivityAt) {
+        if (
+          visible.state.lastActivityAt !== normalized.state.lastActivityAt
+          || visible.state.revision !== normalized.state.revision
+        ) {
           pendingRef.current.add(chat.config.id);
         } else {
           pendingRef.current.delete(chat.config.id);
@@ -88,28 +90,22 @@ export function useChatActivityState() {
     if (!mountedRef.current) return;
     const current = latestRef.current.get(id);
     if (!current) return;
-    const status = source === "stream"
-      ? getStreamingActivityStatus(current.state.status)
-      : current.state.status;
     const activityAdvanced = current.state.lastActivityAt === undefined
       || timestamp.localeCompare(current.state.lastActivityAt) > 0;
-    const statusChanged = status !== current.state.status;
     const userMessageAdvanced = source === "user"
       && (current.state.lastUserMessageAt === undefined
         || timestamp.localeCompare(current.state.lastUserMessageAt) > 0);
-    if (!activityAdvanced && !statusChanged && !userMessageAdvanced) return;
+    if (!activityAdvanced && !userMessageAdvanced) return;
     const next: Chat = {
       ...current,
       state: {
         ...current.state,
-        status,
-        ...(statusChanged ? { startupStage: undefined } : {}),
         lastActivityAt: activityAdvanced ? timestamp : current.state.lastActivityAt,
         ...(userMessageAdvanced ? { lastUserMessageAt: timestamp } : {}),
       },
     };
     latestRef.current.set(id, next);
-    if (statusChanged || source === "user") {
+    if (source === "user") {
       pendingRef.current.delete(id);
       publish(displayedRef.current.map((chat) => chat.config.id === id ? next : chat));
     } else {

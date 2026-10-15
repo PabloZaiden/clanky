@@ -1,27 +1,13 @@
-import { isChatTerminalStatus, type Chat } from "@/shared";
-import { isQuestionOpen, type HarnessQuestionRequest } from "@/shared/harness-questions";
+import { isChatTerminalStatus, type Chat, type ChatStatusEvent } from "@/shared";
 import { mergeToolCallRecords } from "@/shared/tool-call";
 
 type ChatSnapshotKind = "full" | "summary";
 
-const BUSY_CHAT_STATUSES = new Set<Chat["state"]["status"]>([
-  "starting",
-  "streaming",
-  "interrupting",
-  "reconnecting",
-]);
-
 export function applyChatStatusEvent(
   current: Chat,
-  status: Chat["state"]["status"],
-  timestamp: string,
+  { status, timestamp, revision }: Pick<ChatStatusEvent, "status" | "timestamp" | "revision">,
 ): Chat {
-  const currentActivityAt = toTimestamp(current.state.lastActivityAt);
-  const incomingActivityAt = toTimestamp(timestamp);
-  if (
-    currentActivityAt !== null
-    && (incomingActivityAt === null || incomingActivityAt < currentActivityAt)
-  ) {
+  if (revision < current.state.revision) {
     return current;
   }
 
@@ -29,6 +15,7 @@ export function applyChatStatusEvent(
     ...current,
     state: {
       ...current.state,
+      revision,
       status,
       lastActivityAt: timestamp,
       ...(status !== "starting"
@@ -46,88 +33,6 @@ export function applyChatStatusEvent(
   };
 }
 
-function toTimestamp(value?: string): number | null {
-  if (!value) {
-    return null;
-  }
-
-  const timestamp = new Date(value).getTime();
-  return Number.isNaN(timestamp) ? null : timestamp;
-}
-
-function getResolvedBlockingQuestionUpdates(
-  current: Chat,
-  incoming: Chat,
-): Map<string, HarnessQuestionRequest> {
-  const updates = new Map<string, HarnessQuestionRequest>();
-  if (current.state.status !== "waiting") return updates;
-  const incomingQuestions = new Map(
-    (incoming.state.harness?.questions ?? []).map((request) => [request.requestId, request]),
-  );
-  for (const request of current.state.harness?.questions ?? []) {
-    if (!request.blocking || !isQuestionOpen(request)) continue;
-    const resolved = incomingQuestions.get(request.requestId);
-    if (resolved && !isQuestionOpen(resolved)) updates.set(request.requestId, resolved);
-  }
-  return updates;
-}
-
-function mergeResolvedQuestion(
-  current: HarnessQuestionRequest,
-  resolved: HarnessQuestionRequest,
-): HarnessQuestionRequest {
-  const transcript = current.transcript && resolved.transcript
-    ? {
-        ...resolved.transcript,
-        ...current.transcript,
-        answerTimestamp: resolved.transcript.answerTimestamp ?? current.transcript.answerTimestamp,
-      }
-    : current.transcript ?? resolved.transcript;
-  return {
-    ...current,
-    status: resolved.status,
-    answers: resolved.answers ?? current.answers,
-    resolvedAt: resolved.resolvedAt ?? current.resolvedAt,
-    error: resolved.error,
-    ...(transcript ? { transcript } : {}),
-  };
-}
-
-function mergeResolvedBlockingQuestionSnapshot(
-  current: Chat,
-  incoming: Chat,
-  questionUpdates: Map<string, HarnessQuestionRequest>,
-): Chat {
-  const questions = (current.state.harness?.questions ?? []).map((request) => {
-    const resolved = questionUpdates.get(request.requestId);
-    return resolved ? mergeResolvedQuestion(request, resolved) : request;
-  });
-  const hasPendingBlockingQuestion = questions.some(
-    (request) => request.blocking && isQuestionOpen(request),
-  );
-  const hasPendingPermissionRequest = (current.state.pendingPermissionRequests ?? [])
-    .some((request) => request.status === "pending");
-
-  return {
-    ...current,
-    config: {
-      ...current.config,
-      ...incoming.config,
-    },
-    state: {
-      ...current.state,
-      status: hasPendingBlockingQuestion || hasPendingPermissionRequest
-        ? current.state.status
-        : incoming.state.status,
-      lastActivityAt: current.state.lastActivityAt,
-      harness: {
-        ...current.state.harness,
-        questions,
-      },
-    },
-  };
-}
-
 function mergeChatSnapshotByKind(current: Chat, incoming: Chat, kind: ChatSnapshotKind): Chat {
   if (
     current.config.id !== incoming.config.id
@@ -136,48 +41,8 @@ function mergeChatSnapshotByKind(current: Chat, incoming: Chat, kind: ChatSnapsh
     return incoming;
   }
 
-  const currentActivityAt = toTimestamp(current.state.lastActivityAt);
-  const incomingActivityAt = toTimestamp(incoming.state.lastActivityAt);
-  const incomingActivityIsNotNewer = incomingActivityAt === null
-    || (currentActivityAt !== null && incomingActivityAt <= currentActivityAt);
-  const incomingActivityIsOlder = currentActivityAt !== null
-    && incomingActivityAt !== null
-    && incomingActivityAt < currentActivityAt;
-  const currentTurnAt = toTimestamp(current.state.lastUserMessageAt);
-  const incomingTurnAt = toTimestamp(incoming.state.lastUserMessageAt);
-  const incomingTurnIsOlder = currentTurnAt !== null
-    && (incomingTurnAt === null || incomingTurnAt < currentTurnAt);
-  const incomingTurnIsNewer = incomingTurnAt !== null
-    && (currentTurnAt === null || incomingTurnAt > currentTurnAt);
-  const questionUpdates = incomingActivityIsOlder && !incomingTurnIsNewer
-    ? getResolvedBlockingQuestionUpdates(current, incoming)
-    : new Map<string, HarnessQuestionRequest>();
-  const terminalStateForCurrentTurn = isChatTerminalStatus(incoming.state.status)
-    && BUSY_CHAT_STATUSES.has(current.state.status)
-    && current.state.status !== "reconnecting"
-    && currentTurnAt !== null
-    && incomingTurnAt === currentTurnAt;
-  const shouldPreserveCurrentTerminalState = isChatTerminalStatus(current.state.status)
-    && BUSY_CHAT_STATUSES.has(incoming.state.status)
-    && incomingActivityIsNotNewer;
-
-  if (
-    incomingTurnIsOlder
-    || (!incomingTurnIsNewer && incomingActivityIsOlder && questionUpdates.size === 0 && !terminalStateForCurrentTurn)
-    || (!incomingTurnIsNewer && shouldPreserveCurrentTerminalState)
-  ) {
-    return {
-      ...incoming,
-      config: {
-        ...current.config,
-        ...incoming.config,
-      },
-      state: current.state,
-    };
-  }
-
-  if (questionUpdates.size > 0) {
-    return mergeResolvedBlockingQuestionSnapshot(current, incoming, questionUpdates);
+  if (incoming.state.revision < current.state.revision) {
+    return current;
   }
 
   return {
@@ -213,21 +78,26 @@ export function mergeChatSummarySnapshot(current: Chat, incoming: Chat): Chat {
 
 export function reuseChatSnapshotPresentation(current: Chat, incoming: Chat): Chat {
   if (current === incoming) return current;
-  const withoutActivity = (chat: Chat) => ({
+  const presentation = (chat: Chat) => ({
     config: chat.config,
-    state: { ...chat.state, lastActivityAt: undefined },
+    state: { ...chat.state, lastActivityAt: undefined, revision: undefined },
   });
   if (
     !hasSameChatPresentation(current, incoming)
-    && JSON.stringify(withoutActivity(current)) !== JSON.stringify(withoutActivity(incoming))
+    && JSON.stringify(presentation(current)) !== JSON.stringify(presentation(incoming))
   ) {
     return incoming;
   }
   return current.state.lastActivityAt === incoming.state.lastActivityAt
+    && current.state.revision === incoming.state.revision
     ? current
     : {
         ...current,
-        state: { ...current.state, lastActivityAt: incoming.state.lastActivityAt },
+        state: {
+          ...current.state,
+          lastActivityAt: incoming.state.lastActivityAt,
+          revision: incoming.state.revision,
+        },
       };
 }
 
@@ -236,13 +106,9 @@ export function hasSameChatPresentation(current: Chat | null, next: Chat | null)
   if (!current || !next || current.config !== next.config) return false;
   const keys = new Set([...Object.keys(current.state), ...Object.keys(next.state)]);
   for (const key of keys) {
-    if (key === "lastActivityAt") continue;
+    if (key === "lastActivityAt" || key === "revision") continue;
     const field = key as keyof Chat["state"];
     if (current.state[field] !== next.state[field]) return false;
   }
   return true;
-}
-
-export function getStreamingActivityStatus(status: Chat["state"]["status"]): Chat["state"]["status"] {
-  return status === "starting" ? "streaming" : status;
 }

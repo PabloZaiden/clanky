@@ -2,7 +2,7 @@
  * Partial update operations for chats persistence.
  */
 
-import type { ChatConfig, ChatState, ChatStatus, TranscriptChangeSet } from "@/shared";
+import type { Chat, ChatConfig, ChatState, ChatStatus, TranscriptChangeSet } from "@/shared";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { getDatabase } from "../database";
 import { chatToRow, rowToChat, validateChatColumnNames } from "./helpers";
@@ -21,6 +21,11 @@ export interface UpdateChatStateOptions {
   expectedStatus?: ChatStatus;
 }
 
+interface PersistedChatState {
+  chat: Chat;
+  previousStatus: ChatStatus;
+}
+
 /**
  * Persist a live stream mutation without rebuilding the full chat row.
  *
@@ -32,30 +37,29 @@ export async function updateChatStreamState(
   chatId: string,
   lastActivityAt: string | undefined,
   options: Pick<UpdateChatStateOptions, "transcriptChanges" | "expectedStatus"> = {},
-): Promise<boolean> {
+): Promise<PersistedChatState | null> {
   const db = getDatabase();
   const userId = requirePersistenceUserId();
   const statusCondition = options.expectedStatus === undefined ? "" : " AND status = ?";
   const updateStmt = db.prepare(`
     UPDATE chats
-    SET last_activity_at = ?
+    SET last_activity_at = ?, state_revision = state_revision + 1
     WHERE id = ? AND user_id = ?${statusCondition}
   `);
-  const selectStatusStmt = db.prepare(
-    "SELECT status FROM chats WHERE id = ? AND user_id = ?",
+  const selectStmt = db.prepare(
+    `SELECT ${CHAT_METADATA_COLUMNS} FROM chats WHERE id = ? AND user_id = ?`,
   );
 
   const saved = db.transaction(() => {
+    const previous = selectStmt.get(chatId, userId) as Record<string, unknown> | null;
+    if (!previous) return null;
     const values: (string | null)[] = [lastActivityAt ?? null, chatId, userId];
     if (options.expectedStatus !== undefined) {
       values.push(options.expectedStatus);
     }
     const result = updateStmt.run(...values);
     if (result.changes === 0) {
-      const row = selectStatusStmt.get(chatId, userId) as { status: ChatStatus } | null;
-      if (!row || (options.expectedStatus !== undefined && row.status !== options.expectedStatus)) {
-        return false;
-      }
+      return null;
     }
 
     if (options.transcriptChanges) {
@@ -66,25 +70,29 @@ export async function updateChatStreamState(
         options.transcriptChanges,
       );
     }
-    return true;
+    return {
+      chat: rowToChat(selectStmt.get(chatId, userId) as Record<string, unknown>),
+      previousStatus: previous["status"] as ChatStatus,
+    };
   })();
   return saved;
 }
 
-export async function updateChatState(chatId: string, state: ChatState, options: UpdateChatStateOptions = {}): Promise<boolean> {
+export async function updateChatState(chatId: string, state: ChatState, options: UpdateChatStateOptions = {}): Promise<PersistedChatState | null> {
   const db = getDatabase();
   const userId = requirePersistenceUserId();
   const selectStmt = db.prepare(`SELECT ${CHAT_METADATA_COLUMNS} FROM chats WHERE id = ? AND user_id = ?`);
   const saved = db.transaction(() => {
     const row = selectStmt.get(chatId, userId) as Record<string, unknown> | null;
     if (!row) {
-      return false;
+      return null;
     }
 
     const chat = rowToChat(row);
     if (options.expectedStatus !== undefined && chat.state.status !== options.expectedStatus) {
-      return false;
+      return null;
     }
+    const previousStatus = chat.state.status;
     const previousHarness = chat.state.harness;
     chat.state = state;
     const newRow = chatToRow(chat);
@@ -102,14 +110,14 @@ export async function updateChatState(chatId: string, state: ChatState, options:
       });
     }
     const columns = Object.keys(newRow).filter((column) => {
-      if (column === "id") {
+      if (column === "id" || column === "state_revision") {
         return false;
       }
       if (options.preserveHarnessState && column === "harness_state_json") return false;
       return !(options.preserveQueuedMessages && column === "queued_messages");
     });
     validateChatColumnNames(columns);
-    const setClause = columns.map((column) => `${column} = ?`).join(", ");
+    const setClause = [...columns.map((column) => `${column} = ?`), "state_revision = state_revision + 1"].join(", ");
     const values = columns.map((column) => newRow[column as keyof typeof newRow]) as (string | number | null | Uint8Array)[];
     values.push(chatId, userId);
     const statusCondition = options.expectedStatus === undefined ? "" : " AND status = ?";
@@ -121,7 +129,7 @@ export async function updateChatState(chatId: string, state: ChatState, options:
     if (result.changes === 0 && options.expectedStatus !== undefined) {
       const latestRow = selectStmt.get(chatId, userId) as Record<string, unknown> | null;
       if (!latestRow || latestRow["status"] !== options.expectedStatus) {
-        return false;
+        return null;
       }
     }
     if (options.transcriptChanges) {
@@ -144,7 +152,10 @@ export async function updateChatState(chatId: string, state: ChatState, options:
       syncChatTranscriptEntriesInTransaction(db, chatId, previousState, state);
     }
     log.debug("Chat state updated", { chatId, status: state.status });
-    return true;
+    return {
+      chat: rowToChat(selectStmt.get(chatId, userId) as Record<string, unknown>),
+      previousStatus,
+    };
   })();
   return saved;
 }
@@ -167,9 +178,9 @@ export async function updateChatConfig(
     const chat = rowToChat(row);
     chat.config = config;
     const newRow = chatToRow(chat);
-    const columns = Object.keys(newRow).filter((column) => column !== "id");
+    const columns = Object.keys(newRow).filter((column) => column !== "id" && column !== "state_revision");
     validateChatColumnNames(columns);
-    const setClause = columns.map((column) => `${column} = ?`).join(", ");
+    const setClause = [...columns.map((column) => `${column} = ?`), "state_revision = state_revision + 1"].join(", ");
     const values = columns.map((column) => newRow[column as keyof typeof newRow]) as (string | number | null | Uint8Array)[];
     values.push(chatId, userId);
     const nameCondition = options.expectedName === undefined ? "" : " AND name = ?";

@@ -296,16 +296,22 @@ export class ChatStateService implements ChatStatePort {
       throw new Error(`Failed to persist chat state for ${chat.config.id}`);
     }
 
-    const updated = {
-      config: chat.config,
-      state,
+    const updated: Chat = {
+      config: saved.chat.config,
+      state: {
+        ...saved.chat.state,
+        messages: state.messages,
+        logs: state.logs,
+        toolCalls: state.toolCalls,
+      },
     };
-    if (chat.state.status !== state.status) {
+    if (saved.previousStatus !== updated.state.status) {
       this.emitter.emit({
         type: "chat.status",
         chatId: chat.config.id,
         scope: chat.config.scope,
-        status: state.status,
+        status: updated.state.status,
+        revision: updated.state.revision,
         timestamp: state.lastActivityAt ?? createTimestamp(),
       });
     }

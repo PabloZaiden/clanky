@@ -89,6 +89,7 @@ function resetStale(chatId?: string): number {
     const result = db.prepare(`
     UPDATE chats
     SET status = 'stopped',
+        state_revision = state_revision + 1,
         error_message = ?,
         error_timestamp = ?,
         completed_at = ?,

@@ -179,7 +179,7 @@ export async function startEphemeralSshServer(
   ]);
   await Bun.write(authorizedKeysFile, await Bun.file(`${identityFile}.pub`).text());
   await Bun.write(
-    join(options.clientHomeDirectory, ".bash_profile"),
+    join(options.clientHomeDirectory, ".profile"),
     `export PATH='${options.providerBinDirectory.replaceAll("'", "'\\''")}':/usr/local/bin:/usr/bin:/bin\n`,
   );
   // Hosted CI users can have a locked password while still allowing public-key login.
@@ -197,8 +197,8 @@ export async function startEphemeralSshServer(
     "UsePAM yes",
     "StrictModes no",
     `AllowUsers ${username}`,
-    `SetEnv HOME=${options.clientHomeDirectory}`,
-    `SetEnv PATH=${options.providerBinDirectory}:/usr/local/bin:/usr/bin:/bin`,
+    // OpenSSH uses the first SetEnv directive; avoid the host's Bash/NVM startup.
+    `SetEnv HOME=${options.clientHomeDirectory} PATH=${options.providerBinDirectory}:/usr/local/bin:/usr/bin:/bin SHELL=/bin/sh`,
     "Subsystem sftp internal-sftp",
     "LogLevel VERBOSE",
     "",

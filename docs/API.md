@@ -3098,6 +3098,11 @@ Create a standalone SSH server entry.
 
 Returns the created SSH server object with status `201 Created`.
 
+Registration waits for its RSA-4096 credential-encryption key to be persisted
+before returning. Key generation runs asynchronously without blocking the
+server's event loop; unrelated requests and realtime delivery remain available.
+The encryption algorithm and public-key contract remain `RSA-OAEP-256`.
+
 #### GET /api/ssh-servers/:id
 
 Get one standalone SSH server.
@@ -3710,6 +3715,20 @@ parameters are combined with AND. Common filters are:
 For example, `?taskId=abc` selects retained task events, while
 `?resource=tasks&id=abc` selects task resource invalidations. Use no filter when
 both kinds of event are needed.
+
+Chat entities and snapshots expose `state.revision`, a persisted, monotonically
+increasing integer scoped to that chat ID. Chat metadata, configuration,
+persisted stream checkpoints and harness projections advance it atomically.
+`chat.status` deltas carry the corresponding `revision`. Reconcile snapshots
+and status deltas by this revision, ignoring any older revision; a snapshot
+with the same revision as a status delta supplies the rest of that entity's
+state. Activity and provider timestamps are presentation data, not state
+versions, and transcript deltas do not imply a lifecycle transition.
+
+Realtime has no replay history. Open the subscription and then refresh the
+authoritative resources on every successful connection, including the initial
+connection. If a read is already in flight, schedule a fresh read after it.
+Recover transcript gaps from the snapshot boundary as well.
 
 **Connection URL Examples**
 

@@ -46,6 +46,8 @@ SSH, provisioning, Mesh, startup, or recovery lifecycle. The 120-second
 whole-journey limit remains only as a final backstop for slow CI. Successful
 steps never wait out those budgets, and failures retain the named condition,
 last observed state, and process logs.
+HTTP transport errors include the method and pathname, preserve the original
+cause, and omit request bodies, credentials, and query parameters.
 
 Mesh E2E operations use `MESH_OPERATION_TIMEOUT_MS` (20 seconds) instead of
 the generic five-second operation budget. This covers bootstrap, enrollment,
@@ -85,6 +87,12 @@ failed, cancelled, and restarted jobs at the public API boundary. Harnesses
 allocate isolated data directories and ports, bound their polling, capture
 subprocess logs for failure diagnostics, and clean up their process groups.
 
+Provider waits for future user input, such as Codex steering, belong to the
+turn lifecycle: they end on input, interruption, deletion, or connection closure.
+Do not add a separate provider timer that expires while the journey is still
+preparing its input. The journey's existing operation/lifecycle deadlines and
+whole-test limit remain the failure bounds.
+
 The local voice E2E journey uses an external HTTPS OpenAI-compatible provider
 to check provider settings and destination safety, validate transcription/text
 capabilities, transcribe audio, and verify persistence. The Copilot and OpenCode
@@ -123,6 +131,11 @@ The complete Linux suite also starts an isolated OpenSSH server. Install
 `openssh-server` and `sshpass` before running it; the harness creates its own
 host key, client key, agent socket, port, configuration, and data directory.
 It does not modify the user's SSH keys or contact an external host.
+Its single OpenSSH `SetEnv` directive sets an isolated `HOME`, provider `PATH`,
+and `/bin/sh` login shell with an isolated `.profile`. Keep these values in one
+directive: OpenSSH ignores subsequent `SetEnv` declarations. Using the host
+account's interactive Bash configuration would run unrelated global toolchain
+initialization on every remote operation.
 
 ## Harness execution boundaries
 

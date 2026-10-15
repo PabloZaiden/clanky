@@ -10,6 +10,8 @@ const MODEL_ID = "e2e-codex-model";
 export interface CodexDispatchResult {
   result: unknown;
   turn?: ActiveTurn;
+  interruptedTurn?: ActiveTurn;
+  deletedThreadId?: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -78,12 +80,13 @@ export class CodexMethodDispatcher {
       case "thread/backgroundTerminals/terminate":
         return { result: { terminated: true } };
       case "thread/delete":
-        await this.store.deleteThread(params);
-        return { result: {} };
+        return { result: {}, deletedThreadId: await this.store.deleteThread(params) };
       case "turn/start":
         return this.startTurn(params);
       case "turn/steer":
         return { result: await this.store.steer(params) };
+      case "turn/interrupt":
+        return { result: {}, interruptedTurn: await this.store.interruptTurn(params) };
       default:
         throw Object.assign(new Error(`Unsupported Codex fixture method: ${method}`), { code: -32601 });
     }

@@ -35,36 +35,21 @@ function useReconnectRecovery(
   enabled: boolean,
   onReconnect: (() => void | Promise<void>) | undefined,
 ): void {
-  const hasOpenedRef = useRef(false);
-  const disconnectedRef = useRef(false);
-  const wasEnabledRef = useRef(false);
+  const wasOpenRef = useRef(false);
+  const onReconnectRef = useRef(onReconnect);
+  onReconnectRef.current = onReconnect;
 
   useEffect(() => {
-    if (!enabled) {
-      hasOpenedRef.current = false;
-      disconnectedRef.current = false;
-      wasEnabledRef.current = false;
+    if (!enabled || status !== "open") {
+      wasOpenRef.current = false;
       return;
     }
-
-    if (!wasEnabledRef.current) {
-      wasEnabledRef.current = true;
-      return;
+    if (!wasOpenRef.current) {
+      wasOpenRef.current = true;
+      // The initial read may predate the subscription, just like a reconnect.
+      void onReconnectRef.current?.();
     }
-
-    if (status === "open") {
-      if (disconnectedRef.current) {
-        disconnectedRef.current = false;
-        void onReconnect?.();
-      }
-      hasOpenedRef.current = true;
-      return;
-    }
-
-    if (status === "closed" && (hasOpenedRef.current || wasEnabledRef.current)) {
-      disconnectedRef.current = true;
-    }
-  }, [enabled, onReconnect, status]);
+  }, [enabled, status]);
 }
 
 export function useRealtimeStream<T = unknown>({
