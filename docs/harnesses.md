@@ -106,8 +106,9 @@ processes. When the principal finishes, the chat becomes idle and accepts a new
 message normally, even if a background server is still running. Those processes
 remain visible and controllable in **Activity**; finishing a turn does not stop
 them. Copilot uses its principal `assistant.idle` signal rather than waiting for
-session-wide idle. Codex and OpenCode use their principal execution completion
-signals. **Steer** only applies while the principal is actually executing.
+session-wide idle, which only refreshes activity and never completes a prompt.
+Codex and OpenCode use their principal execution completion signals. **Steer**
+only applies while the principal is actually executing.
 
 For tasks, the completion marker seals the logical result. Owned native cleanup
 and safe Git finalization happen separately. Active or unconfirmed writers can

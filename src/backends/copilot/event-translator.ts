@@ -128,12 +128,12 @@ export class CopilotEventTranslator {
       case "session.error":
         return [wrap(this.translateFailure(event, scope.kind === "principal"))];
       case "assistant.idle":
-      case "session.idle":
         if (scope.kind === "principal") {
           return this.completePrincipalPrompt(event.data.aborted === true).map(wrap);
         }
         this.clearMessagesInScope(this.getScopeKey(scope));
         return [wrap({ type: "prompt.complete", outcome: "completed" }), wrap({ type: "activity.changed" })];
+      case "session.idle":
       case "session.background_tasks_changed":
         return [wrap({ type: "activity.changed" })];
       case "assistant.turn_start":
@@ -172,7 +172,6 @@ export class CopilotEventTranslator {
     this.queryError = undefined;
     this.interrupted = false;
     this.clearMessagesInScope("principal");
-    // Session-wide idle may arrive after principal idle once background work settles.
     if (!active) return [{ type: "activity.changed" }];
     if (failure && outcome !== "interrupted") return [{ ...failure, type: "error" }];
     return [{ type: "prompt.complete", outcome }, { type: "activity.changed" }];
