@@ -168,17 +168,6 @@ export class CopilotSessionService {
     }
   }
 
-  async sendAndWait(sessionId: string, prompt: PromptInput, timeoutMs: number): Promise<Awaited<ReturnType<CopilotSession["sendAndWait"]>>> {
-    const conversation = this.get(sessionId);
-    this.activateControlContext(conversation, prompt.controlContext);
-    conversation.translator.beginPrompt();
-    try {
-      return await conversation.native.sendAndWait(toCopilotMessage(prompt), timeoutMs);
-    } finally {
-      conversation.activeControlContext = undefined;
-    }
-  }
-
   async setModel(sessionId: string, modelID: string, variant?: string): Promise<ConfigOption[]> {
     const conversation = this.get(sessionId);
     if ((await conversation.native.rpc.metadata.isProcessing()).processing) {
@@ -219,10 +208,13 @@ export class CopilotSessionService {
       translator,
       unsubscribe: session.on((event) => {
         try {
-          if (event.type === "session.idle" || event.type === "session.error") {
-            conversation.activeControlContext = undefined;
+          for (const translated of translator.translate(event)) {
+            if (translated.scope.kind === "principal"
+              && (translated.type === "prompt.complete" || translated.type === "error")) {
+              conversation.activeControlContext = undefined;
+            }
+            this.events.publish(session.sessionId, translated);
           }
-          for (const translated of translator.translate(event)) this.events.publish(session.sessionId, translated);
         } catch (error) {
           this.events.failSession(session.sessionId, new HarnessError(
             "harness_event_gap", "Native event observation failed.", { cause: error },

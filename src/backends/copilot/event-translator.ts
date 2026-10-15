@@ -26,12 +26,16 @@ export class CopilotEventTranslator {
   private readonly tools = new Map<string, string>();
   private readonly imageOutputBudget = new ProviderImageOutputBudget();
   private queryError?: Extract<HarnessEventPayload, { type: "request.error" }>;
+  private principalPromptActive = false;
   interrupted = false;
 
   constructor(private readonly sessionId: string) {}
 
   beginPrompt(): void {
     this.imageOutputBudget.reset();
+    this.principalPromptActive = true;
+    this.queryError = undefined;
+    this.interrupted = false;
   }
 
   translate(event: SessionEvent): HarnessEvent[] {
@@ -123,6 +127,7 @@ export class CopilotEventTranslator {
       }
       case "session.error":
         return [wrap(this.translateFailure(event, scope.kind === "principal"))];
+      case "assistant.idle":
       case "session.idle":
         if (scope.kind === "principal") {
           return this.completePrincipalPrompt(event.data.aborted === true).map(wrap);
@@ -132,6 +137,7 @@ export class CopilotEventTranslator {
       case "session.background_tasks_changed":
         return [wrap({ type: "activity.changed" })];
       case "assistant.turn_start":
+        if (scope.kind === "principal") this.principalPromptActive = true;
         return [wrap({ type: "session.status", sessionId: this.sessionId, status: "busy" })];
       case "user.message":
         return [{
@@ -159,11 +165,15 @@ export class CopilotEventTranslator {
   }
 
   private completePrincipalPrompt(aborted: boolean): HarnessEventPayload[] {
+    const active = this.principalPromptActive;
+    this.principalPromptActive = false;
     const outcome = this.interrupted || aborted ? "interrupted" : "completed";
     const failure = this.queryError;
     this.queryError = undefined;
     this.interrupted = false;
     this.clearMessagesInScope("principal");
+    // Session-wide idle may arrive after principal idle once background work settles.
+    if (!active) return [{ type: "activity.changed" }];
     if (failure && outcome !== "interrupted") return [{ ...failure, type: "error" }];
     return [{ type: "prompt.complete", outcome }, { type: "activity.changed" }];
   }

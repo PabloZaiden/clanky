@@ -101,6 +101,14 @@ An unavailable or partial observation does not prove that no work is running.
 ACP does not advertise native activity or steering. A principal response can
 finish while native background work remains observable.
 
+Chat streaming follows the principal execution, not the lifetime of background
+processes. When the principal finishes, the chat becomes idle and accepts a new
+message normally, even if a background server is still running. Those processes
+remain visible and controllable in **Activity**; finishing a turn does not stop
+them. Copilot uses its principal `assistant.idle` signal rather than waiting for
+session-wide idle. Codex and OpenCode use their principal execution completion
+signals. **Steer** only applies while the principal is actually executing.
+
 For tasks, the completion marker seals the logical result. Owned native cleanup
 and safe Git finalization happen separately. Active or unconfirmed writers can
 block acceptance/push without restarting task iterations or discarding completion.
