@@ -20,16 +20,15 @@ esac
 echo "Installing devcontainer prerequisites..."
 sudo apt-get update
 sudo apt-get install -y --no-install-recommends \
+  7zip \
   ca-certificates \
   curl \
   dtach \
   fontconfig \
-  fonts-dejavu-core \
   fonts-liberation \
   fonts-noto-color-emoji \
-  fonts-noto-core \
-  fonts-roboto \
   jq \
+  libarchive-tools \
   libasound2t64 \
   libatk-bridge2.0-0t64 \
   libatk1.0-0t64 \
@@ -49,9 +48,9 @@ sudo apt-get install -y --no-install-recommends \
   sshpass \
   unzip
 
-sudo fc-cache -f
+bash "$(dirname "${BASH_SOURCE[0]}")/install-sf-pro.sh"
 
-sudo rm -rf /var/lib/apt/lists/*
+sudo find /var/lib/apt/lists -mindepth 1 -delete
 
 if command -v chromium >/dev/null 2>&1 && chromium --version >/dev/null 2>&1; then
   echo "Chromium is already installed."
