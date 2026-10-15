@@ -448,6 +448,9 @@ test("global Live operates owned recent and waiting work, resumes its conversati
     }, 201)).data;
     callId = resumed.call.id;
     await other.open("open_chat", createdChat.config.id);
+    await provider.waitForGoodbyeBarrier();
+    expect((await application.json<LiveState>(`/api/voice/live/${callId}`)).data.status).toBe("active");
+    provider.releaseGoodbyeBarrier();
     const ended = await pollUntil(
       async () => (await application.json<LiveState>(`/api/voice/live/${callId}`)).data,
       (state) => state.status === "closed" || state.status === "failed",

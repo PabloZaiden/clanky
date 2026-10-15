@@ -68,6 +68,8 @@ export class LiveVoiceCall {
   private readonly delegations = new Map<string, Delegation>();
   private pendingCommentary?: string;
   private outputBatch?: Delegation;
+  private goodbyeAccepted = false;
+  private goodbyeCloseRequested = false;
 
   constructor(readonly scope: {
     id: string;
@@ -182,6 +184,7 @@ export class LiveVoiceCall {
         this.delegations.delete(id);
       }
       this.setProcessing(this.delegations.size > 0);
+      if (this.finishGoodbyeIfIdle()) return;
       this.flushCommentary();
     }
     if (["response.failed", "response.incomplete", "error"].includes(String(nested["type"]))) {
@@ -205,6 +208,20 @@ export class LiveVoiceCall {
       return;
     }
     group.calls.set(callId, signature);
+    if (this.goodbyeAccepted) {
+      log.warn("Live tool skipped after goodbye was accepted", {
+        callId: this.scope.id,
+        tool: name,
+        requestIdHash: readRevision(callId),
+      });
+      group.hasTools = true;
+      group.outputs.push(liveToolOutput(callId, {
+        ok: false,
+        code: "voice_goodbye_already_accepted",
+        completion: "not_executed",
+      }, group.itemBytes));
+      return;
+    }
     group.pending++;
     group.hasTools = true;
     group.requests.push({ callId, name, args, queuedAt: performance.now() });
@@ -232,22 +249,38 @@ export class LiveVoiceCall {
           requestId: callId, name, rawArguments: args, maxReadBytes: readBytes,
         });
         if (isRecord(result) && result["code"] === LIVE_VOICE_SESSION_END_REQUEST) {
-          if (group.pending !== 1 || group.outputs.length > 0 || group.requests.length > 0
-            || this.operations.size !== 1 || this.delegations.size !== 1) {
+          const blockers = [
+            ...(group.pending !== 1 ? ["other_tools_pending"] : []),
+            ...(group.outputs.length > 0 ? ["buffered_tool_results"] : []),
+            ...(group.requests.length > 0 ? ["queued_tool_requests"] : []),
+            ...(this.operations.size !== 1 ? ["other_operations_in_flight"] : []),
+            ...(this.delegations.size !== 1 ? ["other_delegations_active"] : []),
+          ];
+          if (blockers.length) {
+            log.warn("Live session exit rejected", {
+              callId: this.scope.id,
+              requestIdHash: readRevision(callId),
+              blockers,
+              pendingTools: group.pending,
+              bufferedResults: group.outputs.length,
+              queuedRequests: group.requests.length,
+              inFlightOperations: this.operations.size,
+              activeDelegations: this.delegations.size,
+            });
             result = {
               ok: false,
               code: "voice_session_end_requires_standalone_action",
-              message: "End Voice in a separate response after other actions finish.",
+              message: "Voice was not closed. Finish other actions, then call clanky_accept_goodbye as the only tool call. Do not tell the user the call ended until it closes.",
               completion: "not_executed",
             };
           } else {
             outcome = { ok: true };
+            this.goodbyeAccepted = true;
             log.info("Live session exit requested", {
               callId: this.scope.id,
               requestIdHash: readRevision(callId),
             });
-            this.ended();
-            return;
+            result = { ok: true, accepted: true };
           }
         }
         if (this.state.status === "active") {
@@ -279,6 +312,7 @@ export class LiveVoiceCall {
     void operation.finally(() => {
       this.operations.delete(operation);
       for (const waiting of this.delegations.values()) this.runPendingTools(waiting);
+      this.finishGoodbyeIfIdle();
     }).catch(() => this.fail("Live could not continue its response."));
   }
 
@@ -288,6 +322,7 @@ export class LiveVoiceCall {
     try { return await operation; } finally {
       this.operations.delete(operation);
       for (const waiting of this.delegations.values()) this.runPendingTools(waiting);
+      this.finishGoodbyeIfIdle();
     }
   }
 
@@ -310,6 +345,7 @@ export class LiveVoiceCall {
   }
 
   private flushCommentary(): void {
+    if (this.goodbyeAccepted) { this.pendingCommentary = undefined; return; }
     if (!this.pendingCommentary || this.delegations.size || this.state.status !== "active") return;
     this.connection.send({
       type: "session.commentary.append", event_id: crypto.randomUUID(), delegation_id: null, content: this.pendingCommentary,
@@ -323,6 +359,22 @@ export class LiveVoiceCall {
     clientActionEventEmitter.emit({
       type: "voice.activity", callId: this.scope.id, clientId: this.scope.clientId, processing,
     }, { userId: this.scope.user.id });
+  }
+
+  private finishGoodbyeIfIdle(): boolean {
+    if (
+      !this.goodbyeAccepted
+      || this.goodbyeCloseRequested
+      || this.state.status !== "active"
+      || this.delegations.size > 0
+      || this.operations.size > 0
+      || this.outputBatch
+    ) return false;
+    this.goodbyeCloseRequested = true;
+    this.pendingCommentary = undefined;
+    this.setProcessing(false);
+    this.ended();
+    return true;
   }
 
   fail(message: string, provider?: ReturnType<typeof providerFailureDetails>): void {

@@ -189,7 +189,7 @@ their outcomes, including partial failure; they are never replayed.
 
 The session has **26 tools**: these twenty-one direct intents, the existing
 selective `watch_work`, the three generic find/describe/execute tools for
-uncovered intents, and the `end_voice_session` lifecycle tool.
+uncovered intents, and the `clanky_accept_goodbye` lifecycle tool.
 Direct tools skip model-side discovery, not authorization, credential exchange
 or visual approval. API results distinguish completed operations from admitted or
 queued background work. Entity navigation refreshes its shell data and reports
@@ -209,11 +209,12 @@ specific ID. Steering requires a streaming execution and a backend that
 supports native steering. The result reports admission, not delivery or
 completion; do not resend a message when admission is uncertain or rejected.
 
-Use `end_voice_session` only after a clear farewell or direct request to end
-Voice. Speak a short goodbye first and call it by itself; ordinary greetings
-and pauses do not end the session. It closes only the current Voice call, not
-delegated chat/task work. Call-owned pending approvals and watches are revoked
-when Voice ends.
+After a clear farewell (such as “chau”, “chao”, “adiós” or “hasta luego”) or
+direct request to finish, call `clanky_accept_goodbye` by itself without a
+separate spoken response. Do not call it for an opening greeting or pause; a
+verbal promise to finish is not a substitute for the tool call. After calling
+it, do not use more tools or add speech.
+Delegated chat/task work continues.
 
 Live selects [compact API representations and literal conversation
 pages](API.md#compact-reads-and-literal-conversations) from the same route
