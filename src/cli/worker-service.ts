@@ -968,6 +968,28 @@ async function startMacService(
   );
 }
 
+async function restartMacService(
+  paths: WorkerServicePaths,
+  runner: ProcessRunner,
+): Promise<void> {
+  const status = await inspectMacService(paths, runner);
+  if (!status.loaded) {
+    await startMacService(paths, runner);
+    return;
+  }
+  await runRequired(runner, "launchctl", [
+    "kickstart",
+    "-k",
+    paths.supervisorTarget,
+  ]);
+  await waitForMacServiceState(
+    paths,
+    runner,
+    (nextStatus) => nextStatus.loaded && nextStatus.running,
+    "reach the running state",
+  );
+}
+
 export async function runMacWorkerServiceOperation(
   operation: "start" | "stop" | "restart",
   paths: WorkerServicePaths,
@@ -978,7 +1000,8 @@ export async function runMacWorkerServiceOperation(
     return;
   }
   if (operation === "restart") {
-    await unloadMacService(paths, runner);
+    await restartMacService(paths, runner);
+    return;
   }
   await startMacService(paths, runner);
 }

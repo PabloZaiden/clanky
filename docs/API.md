@@ -3385,6 +3385,10 @@ Different workers run concurrently; each job runs its own commands in order:
 1. `clanky update`
 2. `clanky worker service restart`, only after the update exits successfully.
 
+On macOS, the restart command uses `launchctl kickstart` so a Mesh-issued
+command can restart the LaunchAgent that owns the worker without unloading it
+before the replacement process starts.
+
 An update failure skips the restart and fails only that worker's job. A
 successful admission means the job was created, not that either command
 completed. Each worker's execution result and logs remain available on the
