@@ -14,9 +14,9 @@ import {
   Button,
   ComposerInterruptButton,
   MicrophoneIcon,
-  FocusPreservingButton,
 } from "../common";
 import { VoiceListeningPanel } from "./voice-listening-panel";
+import { ComposerSendButton } from "./composer-send-button";
 import { useConversationComposer } from "./use-conversation-composer";
 import type { ConversationComposerProps } from "./types";
 
@@ -254,23 +254,22 @@ export function ConversationComposer(props: ConversationComposerProps) {
                     ariaLabel="Interrupt"
                   />
                 ) : (
-                  <FocusPreservingButton
-                    type="submit"
+                  <ComposerSendButton
                     disabled={
                       controlsDisabled
                       || hasAttachmentWithoutMessage
                       || (!active && selectedModel.length > 0 && !selectedModelEnabled)
                     }
-                    className="wapp-action-menu-trigger wapp-action-menu-trigger-compact flex-shrink-0"
-                    aria-label={active ? "Queue message" : "Send"}
-                    title={active ? "Queue message" : "Send"}
+                    label={active ? "Queue message" : "Send"}
+                    onStartVoice={voice?.available && !active && voice.status === "idle" && !hasContent
+                      ? voice.start : undefined}
                   >
                     {isComposerBusy ? (
                       <ThinkingSpinner />
                     ) : (
                       <span className="text-lg leading-none" aria-hidden="true">↑</span>
                     )}
-                  </FocusPreservingButton>
+                  </ComposerSendButton>
                 )}
               </div>
             </div>

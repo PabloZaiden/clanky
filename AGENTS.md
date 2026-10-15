@@ -48,6 +48,13 @@ new generation; do not mix cleanup with wire-contract changes.
 ## Webapp framework migration rules
 
 - Prefer `@pablozaiden/webapp` primitives for auth, passkeys, API keys, device auth, same-origin checks, app shell, sidebar, settings, realtime, server health, and server lifecycle actions.
+- Never patch dependencies locally: do not add dependency patch files,
+  `patchedDependencies`, or manual edits to installed packages. If Clanky needs
+  missing `@pablozaiden/webapp` functionality or a framework fix, propose it in
+  an upstream webapp PR instead of adding a local patch or app-owned workaround.
+  Consume a released tag containing the change and remove obsolete patches.
+  If the release is not available, report the dependency blocker rather than
+  silently patching locally or pinning an unreleased commit.
 - Use the webapp public `useTheme()` hook for JavaScript integrations that need preference or resolved theme state. Never observe or mutate framework-owned root classes or DOM nodes to infer the resolved theme; prefer CSS theme variants when JavaScript state is unnecessary.
 - Keep Clanky as one app and one binary. Use `clanky serve` for the server and `clanky <subcommand>` for CLI commands; do not reintroduce a separate `clanky-cli` binary.
 - Use `bun --hot src/index.ts serve` for development; do not add Vite, a separate web dev server, or `CLANKY_WEB_DIST_DIR` for dev.

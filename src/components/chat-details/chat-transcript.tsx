@@ -1,10 +1,11 @@
-import { useEffect, useRef } from "react";
+import { useContext, useEffect, useRef } from "react";
 import type { PointerEvent } from "react";
 import { isQuestionOpen } from "@/shared/harness-questions";
 import { ConversationViewer } from "../log-viewer";
 import { useMarkdownPreference } from "../../hooks";
 import type { ChatTranscriptProps } from "./types";
 import { ChatQuestions } from "./chat-questions";
+import { LiveVoiceContext } from "../../hooks/useLiveVoice";
 
 const VOICE_TRIPLE_TAP_WINDOW_MS = 750;
 const VOICE_TAP_MOVE_THRESHOLD_PX = 10;
@@ -23,14 +24,13 @@ export function ChatTranscript({
   onChatSnapshot,
   dismissedExpiredQuestionRequestId,
   onQuestionAnswerFocusChange,
-  voiceInput,
-  onStartVoice,
   onReadAloud,
   readAloudAvailable,
   playingReadAloudKey,
   readAloudStatus,
 }: ChatTranscriptProps) {
   const { enabled: markdownEnabled } = useMarkdownPreference();
+  const liveVoice = useContext(LiveVoiceContext);
   const tapCountRef = useRef(0);
   const lastTapAtRef = useRef(0);
   const pointerDownRef = useRef<{
@@ -46,9 +46,9 @@ export function ChatTranscript({
   }
 
   function isVoiceInputReady(): boolean {
-    return (
-      voiceInput.available
-      && (voiceInput.status === "idle" || voiceInput.status === "error")
+    return Boolean(
+      liveVoice?.available
+      && !liveVoice.busy
     );
   }
 
@@ -122,13 +122,13 @@ export function ChatTranscript({
     lastTapAtRef.current = now;
     if (tapCountRef.current === 3) {
       resetTapSequence();
-      void onStartVoice();
+      void liveVoice?.start();
     }
   }
 
   useEffect(() => {
     resetTapSequence();
-  }, [voiceInput.available, voiceInput.status]);
+  }, [liveVoice?.available, liveVoice?.busy]);
 
   const activity = chat.state.harness?.activity;
   const blockingQuestions = (chat.state.harness?.questions ?? [])

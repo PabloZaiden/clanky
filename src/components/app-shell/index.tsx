@@ -21,8 +21,8 @@ import {
 } from "./use-shell-header";
 import { useShellResources } from "./use-shell-resources";
 import { useControlUiActions } from "./use-control-ui-actions";
-import { useLiveVoice } from "../../hooks/useLiveVoice";
-import { buildVoiceLauncherActions, LiveVoiceSidebarBar } from "./live-voice-controls";
+import { LiveVoiceContext, useLiveVoice } from "../../hooks/useLiveVoice";
+import { buildVoiceLauncherActions, LiveVoiceControls } from "./live-voice-controls";
 import { useVoiceClientActions } from "./use-voice-client-actions";
 
 export function AppShell() {
@@ -30,6 +30,7 @@ export function AppShell() {
   const [isOwner, setIsOwner] = useState(false);
   const [route, setRoute] = useState<WebAppRoute>(HOME_ROUTE);
   const [activityRoute, setActivityRoute] = useState<WebAppRoute | null>(null);
+  const [liveVoiceExpanded, setLiveVoiceExpanded] = useState(true);
   const resources = useShellResources(route, isOwner);
   const {
     chats,
@@ -108,9 +109,19 @@ export function AppShell() {
   } = useShellNavigation({
     setRoute,
   });
-  const liveVoice = useLiveVoice({
+  const liveVoiceCall = useLiveVoice({
     enabled: voiceSettings.settings.live.configured, route,
   });
+  const startLiveVoice = useCallback(async (): Promise<void> => {
+    setLiveVoiceExpanded(true);
+    webAppRootRef.current?.sidebar.close();
+    await liveVoiceCall.start();
+  }, [liveVoiceCall.start]);
+  const liveVoice = useMemo(() => ({ ...liveVoiceCall, start: startLiveVoice }), [liveVoiceCall, startLiveVoice]);
+  const expandLiveVoice = useCallback((): void => {
+    setLiveVoiceExpanded(true);
+    webAppRootRef.current?.sidebar.close();
+  }, []);
   const voiceClient = useVoiceClientActions({ voice: liveVoice, rootRef: webAppRootRef });
   const voiceActions = useMemo(() => buildVoiceLauncherActions(
     liveVoice, () => navigateWithinShell({ view: "settings" }),
@@ -409,7 +420,8 @@ export function AppShell() {
     quickChatCreating: dialogs.quickChatCreating,
     onQuickChat: () => void dialogs.handleQuickChat(),
     voiceActions,
-    voiceControls: liveVoice.busy ? <LiveVoiceSidebarBar voice={liveVoice} /> : null,
+    voiceControls: liveVoice.busy && !liveVoiceExpanded
+      ? <LiveVoiceControls voice={liveVoice} expanded={false} onToggleExpanded={expandLiveVoice} /> : null,
   }), [
     agents,
     archivingWorkspaceIds,
@@ -449,6 +461,8 @@ export function AppShell() {
     workspaces,
     voiceActions,
     liveVoice,
+    liveVoiceExpanded,
+    expandLiveVoice,
   ]);
   const header = useShellHeader({
     route,
@@ -475,24 +489,29 @@ export function AppShell() {
 
   return (
     <>
-      <WebAppRoot
-        ref={webAppRootRef}
-        appName="Clanky"
-        appIcon={logoSvgPath}
-        homeRoute={HOME_ROUTE}
-        sidebar={sidebarComposition.sidebar}
-        routes={routes}
-        onRouteChange={handleRouteChange}
-        header={{
-          renderTitle: ({ defaultTitle }) => <RouteHeaderTitle model={header.headerModel} defaultTitle={defaultTitle} />,
-          getHeaderActions: () => ({
-            primary: header.directHeaderActions,
-            overflow: header.headerActions,
-          }),
-        }}
-        settings={{ sections: settingsSections }}
-        version={dashboardData.version ?? undefined}
-      />
+      <LiveVoiceContext.Provider value={liveVoice}>
+        <WebAppRoot
+          ref={webAppRootRef}
+          appName="Clanky"
+          appIcon={logoSvgPath}
+          homeRoute={HOME_ROUTE}
+          sidebar={sidebarComposition.sidebar}
+          mainOverlay={liveVoice.busy && liveVoiceExpanded
+            ? <LiveVoiceControls voice={liveVoice} expanded onToggleExpanded={() => setLiveVoiceExpanded(false)} />
+            : null}
+          routes={routes}
+          onRouteChange={handleRouteChange}
+          header={{
+            renderTitle: ({ defaultTitle }) => <RouteHeaderTitle model={header.headerModel} defaultTitle={defaultTitle} />,
+            getHeaderActions: () => ({
+              primary: header.directHeaderActions,
+              overflow: header.headerActions,
+            }),
+          }}
+          settings={{ sections: settingsSections }}
+          version={dashboardData.version ?? undefined}
+        />
+      </LiveVoiceContext.Provider>
       {dialogs.modals}
       {voiceClient.dialogs}
       <input

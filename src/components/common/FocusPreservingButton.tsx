@@ -1,6 +1,6 @@
 import type React from "react";
 
-export interface FocusPreservingButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+export interface FocusPreservingButtonProps extends React.ComponentPropsWithRef<"button"> {
   children: React.ReactNode;
 }
 

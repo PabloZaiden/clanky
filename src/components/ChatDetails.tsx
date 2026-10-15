@@ -267,16 +267,6 @@ export function ChatDetails({
           ? dismissedExpiredQuestion.requestId
           : undefined}
         onQuestionAnswerFocusChange={setQuestionAnswerInputFocused}
-        voiceInput={{
-          available: voice.composer.available && !liveVoiceBusy,
-          status: voice.composer.status,
-          elapsedMs: voice.composer.elapsedMs,
-          error: voice.composer.error,
-        }}
-        onStartVoice={voice.composer.start}
-        onStopVoice={voice.composer.stop}
-        onCancelVoice={voice.composer.cancel}
-        onDismissVoiceError={voice.composer.dismissError}
         onReadAloud={handleReadAloud}
         readAloudAvailable={
           voice.speechAvailable && !liveVoiceBusy
