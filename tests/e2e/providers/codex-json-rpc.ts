@@ -13,6 +13,8 @@ export interface JsonRpcMessage {
 }
 
 interface PendingClientRequest {
+  threadId: string;
+  turnId: string;
   reject: (error: Error) => void;
   resolve: (message: JsonRpcMessage) => void;
   timer: ReturnType<typeof setTimeout>;
@@ -76,7 +78,10 @@ export class CodexJsonRpcSession {
     this.writeMessage({ id, error });
   }
 
-  requestClient(method: string, params: Record<string, unknown>): Promise<JsonRpcMessage> {
+  requestClient(
+    method: string,
+    params: Record<string, unknown> & { threadId: string; turnId: string },
+  ): Promise<JsonRpcMessage> {
     const id = `clanky-tool-${String(++this.nextRequestId)}`;
     return new Promise<JsonRpcMessage>((resolvePromise, rejectPromise) => {
       const timer = setTimeout(() => {
@@ -84,6 +89,8 @@ export class CodexJsonRpcSession {
         rejectPromise(new Error(`Clanky did not answer ${method} within ${CLIENT_REQUEST_TIMEOUT_MS}ms.`));
       }, CLIENT_REQUEST_TIMEOUT_MS);
       this.pendingRequests.set(id, {
+        threadId: params.threadId,
+        turnId: params.turnId,
         resolve: resolvePromise,
         reject: rejectPromise,
         timer,
@@ -112,6 +119,15 @@ export class CodexJsonRpcSession {
       pending.reject(new Error(frame.error.message));
     } else {
       pending.resolve(frame);
+    }
+  }
+
+  cancelRequests(threadId: string, turnId?: string): void {
+    for (const [id, pending] of this.pendingRequests) {
+      if (pending.threadId !== threadId || (turnId !== undefined && pending.turnId !== turnId)) continue;
+      clearTimeout(pending.timer);
+      this.pendingRequests.delete(id);
+      pending.reject(new Error("The Codex fixture turn was interrupted."));
     }
   }
 

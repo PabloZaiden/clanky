@@ -2,15 +2,14 @@
  * File-based key storage for standalone SSH server key pairs.
  */
 
-import { chmod, mkdir, rm, unlink } from "fs/promises";
+import { chmod, mkdir, rename, rm, unlink } from "fs/promises";
 import { join } from "path";
 import {
   createHash,
   createPrivateKey,
   createPublicKey,
-  generateKeyPairSync,
 } from "node:crypto";
-import type { SshKeyAlgorithm, SshServerPublicKey } from "@/shared";
+import type { SshServerPublicKey } from "@/shared";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { getDataDir } from "./database";
 
@@ -55,42 +54,19 @@ export async function saveSshServerKeyPair(
   validatePersistedSshServerKeyPair(keyPair);
   await ensureSshServerKeysDir();
   const path = getSshServerKeyPath(serverId);
-  await Bun.write(path, JSON.stringify(keyPair));
-  await chmod(path, 0o600);
+  const temporaryPath = `${path}.tmp-${crypto.randomUUID()}`;
+  try {
+    await Bun.write(temporaryPath, JSON.stringify(keyPair));
+    await chmod(temporaryPath, 0o600);
+    await rename(temporaryPath, path);
+  } finally {
+    await rm(temporaryPath, { force: true });
+  }
   log.debug("Saved SSH server key pair", {
     serverId,
     algorithm: keyPair.algorithm,
     version: keyPair.version,
   });
-}
-
-export async function ensureSshServerKeyPair(
-  serverId: string,
-): Promise<PersistedSshServerKeyPair> {
-  const existing = await loadSshServerKeyPair(serverId);
-  if (existing) {
-    return existing;
-  }
-  const { publicKey, privateKey } = generateKeyPairSync("rsa", {
-    modulusLength: 4096,
-    publicKeyEncoding: {
-      type: "spki",
-      format: "pem",
-    },
-    privateKeyEncoding: {
-      type: "pkcs8",
-      format: "pem",
-    },
-  });
-  const keyPair = createPersistedSshServerKeyPair({
-    publicKey,
-    privateKey,
-    fingerprint: createPublicKeyFingerprint(publicKey),
-    version: 1,
-    createdAt: new Date().toISOString(),
-  });
-  await saveSshServerKeyPair(serverId, keyPair);
-  return keyPair;
 }
 
 export async function loadSshServerKeyPair(serverId: string): Promise<PersistedSshServerKeyPair | null> {
@@ -130,24 +106,6 @@ export async function deleteSshServerKeyPair(serverId: string): Promise<boolean>
 
 export async function clearSshServerKeyStore(): Promise<void> {
   await rm(getSshServerKeysDir(), { recursive: true, force: true });
-}
-
-export function createPersistedSshServerKeyPair(options: {
-  publicKey: string;
-  privateKey: string;
-  fingerprint: string;
-  version: number;
-  createdAt: string;
-  algorithm?: SshKeyAlgorithm;
-}): PersistedSshServerKeyPair {
-  return {
-    algorithm: options.algorithm ?? "RSA-OAEP-256",
-    publicKey: options.publicKey,
-    privateKey: options.privateKey,
-    fingerprint: options.fingerprint,
-    version: options.version,
-    createdAt: options.createdAt,
-  };
 }
 
 export function validatePersistedSshServerKeyPair(

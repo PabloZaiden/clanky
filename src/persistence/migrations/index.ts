@@ -617,6 +617,15 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    version: 75,
+    name: "add_chat_state_revision",
+    up: (db) => {
+      if (!getTableColumns(db, "chats").includes("state_revision")) {
+        db.run("ALTER TABLE chats ADD COLUMN state_revision INTEGER NOT NULL DEFAULT 0");
+      }
+    },
+  },
 ];
 
 function getMigrationTableColumns(db: Database, tableName: string): string[] {

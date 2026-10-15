@@ -105,10 +105,13 @@ continue normally.
 
 Streaming chat activity timestamps in the sidebar are grouped into one update
 per minute while activity is pending. Status changes and user actions remain
-immediate. A completed turn's status is reconciled from the server even if a
-provider's activity timestamp is ahead of the server clock or a refresh was
-already in progress. Open chats keep their transcript live without republishing
-operational state solely because an activity timestamp advanced.
+immediate, including blocking questions in chats that are not selected.
+Chat state is ordered by a persisted server revision, not activity timestamps,
+so provider clock skew cannot hide a transition and a delayed response cannot
+overwrite newer state. Connecting or reconnecting realtime refreshes the
+authoritative state to recover changes made before the subscription was ready.
+Open chats keep their transcript live without republishing operational state
+solely because an activity timestamp or revision advanced.
 
 Chat, task, and agent transcripts publish streamed text, reasoning, and tool
 extras to React in 200 ms batches. Incoming data and gap recovery remain current;

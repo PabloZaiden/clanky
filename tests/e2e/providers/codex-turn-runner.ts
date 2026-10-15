@@ -131,6 +131,7 @@ async function emitGeneratedImage(active: ActiveTurn, rpc: CodexJsonRpcSession):
   const savedPath = join(thread.cwd, ".clanky-e2e-generated-image.png");
   const id = randomUUID();
   await Bun.write(savedPath, image);
+  if (turn.status !== "inProgress") return;
   rpc.notify("item/started", {
     item: {
       type: "imageGeneration",
@@ -170,6 +171,7 @@ export async function runCodexTurn(
   const { thread, turn } = active;
   rpc.notify("turn/started", { threadId: thread.id, turn: buildTurn(turn) });
   const steering = await store.waitForSteering(active);
+  if (turn.status !== "inProgress") return;
   let answer = "";
   if (JSON.stringify(turn.items).includes("Ask one Live question")) {
     const response = await rpc.requestClient("item/tool/requestUserInput", {
@@ -181,9 +183,11 @@ export async function runCodexTurn(
     const format = isRecord(value) ? value["format"] : undefined;
     answer = isRecord(format) && Array.isArray(format["answers"]) ? format["answers"].join(", ") : "No answer confirmed";
   }
+  if (turn.status !== "inProgress") return;
   const assistantText = persistedTool(thread)
     ? await runWorkspaceListTool(active, rpc)
     : "The persisted control tool definition was unavailable after resume.";
+  if (turn.status !== "inProgress") return;
   const responseText = steering
     ? `${assistantText}\nSteered instruction: ${steering}`
     : answer
@@ -192,7 +196,12 @@ export async function runCodexTurn(
   const imageReceiptText = imageReceipts(turn).join("\n");
   emitAssistantMessage(active, imageReceiptText ? `${responseText}\n${imageReceiptText}` : responseText, rpc);
   if (requestsGeneratedImage(turn)) await emitGeneratedImage(active, rpc);
+  if (turn.status !== "inProgress") return;
   await store.completeTurn(active);
+  notifyCodexTurnCompleted(active, rpc);
+}
+
+export function notifyCodexTurnCompleted({ thread, turn }: ActiveTurn, rpc: CodexJsonRpcSession): void {
   rpc.notify("thread/status/changed", {
     threadId: thread.id,
     status: { type: "idle" },

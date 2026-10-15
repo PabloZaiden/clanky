@@ -38,6 +38,7 @@ export const ALLOWED_CHAT_COLUMNS = new Set([
   "base_branch",
   "mode",
   "status",
+  "state_revision",
   "started_at",
   "completed_at",
   "last_activity_at",
@@ -159,6 +160,7 @@ export function chatToRow(chat: Chat): Record<string, unknown> {
     base_branch: config.baseBranch ?? null,
     mode: config.mode,
     status: state.status,
+    state_revision: state.revision,
     started_at: state.startedAt ?? null,
     completed_at: state.completedAt ?? null,
     last_activity_at: state.lastActivityAt ?? null,
@@ -220,6 +222,7 @@ export function rowToChat(row: Record<string, unknown>): Chat {
 
   const state: ChatState = {
     id: config.id,
+    revision: row["state_revision"] as number,
     status: row["status"] as ChatState["status"],
     startedAt: (row["started_at"] as string | null) ?? undefined,
     completedAt: (row["completed_at"] as string | null) ?? undefined,

@@ -11,7 +11,6 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import { getDatabase } from "./database";
 import {
   deleteSshServerKeyPair,
-  ensureSshServerKeyPair,
   loadSshServerKeyPair,
 } from "./ssh-server-keys";
 import { requirePersistenceUserId } from "./ownership";
@@ -113,20 +112,21 @@ function persistSshServerConfig(config: SshServerConfig): void {
 }
 
 export async function saveSshServerConfig(config: SshServerConfig): Promise<void> {
-  await ensureSshServerKeyPair(config.id);
-  persistSshServerConfig(config);
-  const userId = requirePersistenceUserId();
-  ensureExecutionHost(
-    userId,
-    { kind: "ssh", serverId: config.id },
-    buildSshTargetKey(config.address, config.port ?? 22, config.username),
-    {
-      runtime: {
-        platform: null,
-        capabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
+  getDatabase().transaction(() => {
+    persistSshServerConfig(config);
+    const userId = requirePersistenceUserId();
+    ensureExecutionHost(
+      userId,
+      { kind: "ssh", serverId: config.id },
+      buildSshTargetKey(config.address, config.port ?? 22, config.username),
+      {
+        runtime: {
+          platform: null,
+          capabilities: POSIX_EXECUTION_HOST_CAPABILITIES,
+        },
       },
-    },
-  );
+    );
+  })();
 }
 
 export async function getSshServerConfig(id: string): Promise<SshServerConfig | null> {
