@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import { DataListRow } from "@pablozaiden/webapp/web";
 import { getPrivateContainerClassName } from "../../lib/private-items";
 
@@ -16,7 +16,7 @@ export function ClankyListRow({
   description?: ReactNode;
   descriptionClassName?: string;
   meta?: ReactNode;
-  metaPlacement?: "side" | "below";
+  metaPlacement?: ComponentProps<typeof DataListRow>["metaPlacement"];
   badge?: ReactNode;
   onClick?: () => void;
   privateHidden?: boolean;
