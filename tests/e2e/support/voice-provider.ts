@@ -17,6 +17,8 @@ export interface ManagedVoiceProvider {
   certificatePath: string;
   server: Bun.Server<LiveFixture>;
   address: string;
+  waitForGoodbyeBarrier(): Promise<void>;
+  releaseGoodbyeBarrier(): void;
   diagnostics(): string;
 }
 
@@ -153,6 +155,11 @@ export async function startVoiceProvider(
 
   let server: Bun.Server<LiveFixture> | undefined;
   const sessions = new Map<string, LiveFixture>();
+  let resolveGoodbyeBarrierReady: () => void = () => {};
+  const goodbyeBarrierReady = new Promise<void>((resolve) => {
+    resolveGoodbyeBarrierReady = resolve;
+  });
+  let goodbyeBarrierSession: LiveFixture | undefined;
   try {
     server = Bun.serve<LiveFixture>({
       hostname: address,
@@ -187,11 +194,17 @@ export async function startVoiceProvider(
             return Response.json({ error: "invalid_webrtc_offer" }, { status: 400 });
           }
           const id = crypto.randomUUID();
-          sessions.set(id, {
+          const resume = offer.includes("global-resume");
+          const session: LiveFixture = {
             id, stage: 0, global: offer.includes("global-product") || offer.includes("global-resume"),
-            resume: offer.includes("global-resume"), history: body.session.input,
+            resume, history: body.session.input,
             started: false, notices: [],
-          });
+          };
+          if (resume) {
+            session.notifyGoodbyeBarrierReady = resolveGoodbyeBarrierReady;
+            goodbyeBarrierSession = session;
+          }
+          sessions.set(id, session);
           return Response.json({ session: { id }, transport: { type: "webrtc", sdp: "v=0\r\ns=external-live-provider\r\n" } }, { status: 201 });
         }
         const attach = /^\/v1\/live\/sessions\/([^/]+)\/attach$/.exec(path);
@@ -235,6 +248,45 @@ export async function startVoiceProvider(
       baseUrl: `https://${address}:${String(port)}/v1`,
       certificatePath,
       server,
+      async waitForGoodbyeBarrier() {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          await Promise.race([
+            goodbyeBarrierReady,
+            new Promise<never>((_resolve, reject) => {
+              timer = setTimeout(() => reject(new Error(
+                "The Live provider did not receive the concurrent goodbye response.",
+              )), 5_000);
+            }),
+          ]);
+        } finally {
+          if (timer) clearTimeout(timer);
+        }
+      },
+      releaseGoodbyeBarrier() {
+        const session = goodbyeBarrierSession;
+        const barrier = session?.goodbyeBarrier;
+        if (!session?.socket || !barrier?.ready) {
+          throw new Error("The concurrent goodbye response is not ready to complete.");
+        }
+        session.goodbyeBarrier = undefined;
+        session.socket.send(JSON.stringify({
+          type: "response.event",
+          delegation_id: barrier.delegationId,
+          event: {
+            type: "response.in_progress",
+            response: { id: barrier.continuationResponseId },
+          },
+        }));
+        session.socket.send(JSON.stringify({
+          type: "response.event",
+          delegation_id: barrier.delegationId,
+          event: {
+            type: "response.completed",
+            response: { id: barrier.continuationResponseId, output: [] },
+          },
+        }));
+      },
       diagnostics: () => JSON.stringify([...sessions.values()].map((session) => ({
         stage: session.stage, current: session.current, diagnostic: session.diagnostic,
       }))),

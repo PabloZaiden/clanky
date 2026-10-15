@@ -45,6 +45,8 @@ export interface LiveFixture {
   current?: FixtureStep;
   journey?: Generator<FixtureStep, void, unknown>;
   result?: unknown;
+  goodbyeBarrier?: { delegationId: string; continuationResponseId: string; ready: boolean };
+  notifyGoodbyeBarrierReady?: () => void;
   notices: Array<{ kind: "confirmation" | "work"; content: string; result: unknown }>;
   diagnostic?: string;
   socket?: Bun.ServerWebSocket<LiveFixture>;
@@ -378,6 +380,57 @@ function responseEvent(session: LiveFixture, event: Record<string, unknown>): vo
   send(session, { type: "response.event", delegation_id: `${session.id}-${session.stage}`, event });
 }
 
+function responseEventFor(
+  session: LiveFixture,
+  delegationId: string,
+  event: Record<string, unknown>,
+): void {
+  send(session, { type: "response.event", delegation_id: delegationId, event });
+}
+
+function beginGoodbyeBarrier(session: LiveFixture, goodbyeResult: unknown): void {
+  const goodbyeDelegationId = `${session.id}-${session.stage}`;
+  const goodbyeResponseId = `${session.id}-continuation-${session.stage}`;
+  const siblingDelegationId = `${session.id}-goodbye-sibling`;
+  const siblingResponseId = `${siblingDelegationId}-response`;
+  session.goodbyeBarrier = {
+    delegationId: siblingDelegationId,
+    continuationResponseId: `${siblingDelegationId}-continuation`,
+    ready: false,
+  };
+  send(session, {
+    type: "session.delegation.created",
+    delegation: { id: siblingDelegationId, target: "responses", response_id: siblingResponseId },
+  });
+  responseEventFor(session, siblingDelegationId, {
+    type: "response.created",
+    response: { id: siblingResponseId },
+  });
+  responseEventFor(session, goodbyeDelegationId, {
+    type: "response.in_progress",
+    response: { id: goodbyeResponseId },
+  });
+  responseEventFor(session, goodbyeDelegationId, {
+    type: "response.completed",
+    response: { id: goodbyeResponseId, output: [] },
+  });
+  responseEventFor(session, siblingDelegationId, {
+    type: "response.output_item.done",
+    item: {
+      type: "function_call",
+      call_id: `${siblingDelegationId}-tool`,
+      name: "clanky_get_ui_state",
+      arguments: JSON.stringify({ section: null, cursor: null }),
+    },
+  });
+  responseEventFor(session, siblingDelegationId, {
+    type: "response.completed",
+    response: { id: siblingResponseId, output: [] },
+  });
+  advance(session, goodbyeResult);
+  session.result = undefined;
+}
+
 function advance(session: LiveFixture, result?: unknown): void {
   try {
     const next = session.journey!.next(result);
@@ -475,6 +528,16 @@ export const liveFixtureWebSocket = {
       session.result = JSON.parse(String(record(event["item"])["output"]));
     }
     if (event["type"] === "response.create") {
+      if (session.goodbyeBarrier && !session.goodbyeBarrier.ready) {
+        session.goodbyeBarrier.ready = true;
+        session.notifyGoodbyeBarrierReady?.();
+        return;
+      }
+      if (session.resume && session.current && "name" in session.current
+        && session.current.name === "clanky_accept_goodbye" && !session.goodbyeBarrier) {
+        beginGoodbyeBarrier(session, session.result);
+        return;
+      }
       const id = `${session.id}-continuation-${session.stage}`;
       responseEvent(session, { type: "response.in_progress", response: { id } });
       responseEvent(session, { type: "response.completed", response: { id, output: [] } });

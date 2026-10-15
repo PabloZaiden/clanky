@@ -25,7 +25,6 @@ interface Delegation {
   pending: number;
   collecting: boolean;
   hasTools: boolean;
-  endAfterCompletion?: boolean;
   calls: Map<string, string>;
   outputs: ReturnType<typeof liveToolOutput>[];
   requests: Array<{ callId: string; name: string; args: string; queuedAt: number }>;
@@ -69,6 +68,8 @@ export class LiveVoiceCall {
   private readonly delegations = new Map<string, Delegation>();
   private pendingCommentary?: string;
   private outputBatch?: Delegation;
+  private goodbyeAccepted = false;
+  private goodbyeCloseRequested = false;
 
   constructor(readonly scope: {
     id: string;
@@ -178,27 +179,12 @@ export class LiveVoiceCall {
         this.runPendingTools(group);
       }
       this.continueResponse(group);
-      if (
-        group.endAfterCompletion
-        && !group.collecting
-        && !group.hasTools
-        && group.pending === 0
-        && group.requests.length === 0
-        && group.outputs.length === 0
-        && this.outputBatch !== group
-      ) {
-        group.timing.finish(true);
-        this.delegations.delete(id);
-        this.pendingCommentary = undefined;
-        this.setProcessing(this.delegations.size > 0);
-        this.ended();
-        return;
-      }
       if (!group.collecting && !group.hasTools && group.pending === 0) {
         group.timing.finish(true);
         this.delegations.delete(id);
       }
       this.setProcessing(this.delegations.size > 0);
+      if (this.finishGoodbyeIfIdle()) return;
       this.flushCommentary();
     }
     if (["response.failed", "response.incomplete", "error"].includes(String(nested["type"]))) {
@@ -222,7 +208,7 @@ export class LiveVoiceCall {
       return;
     }
     group.calls.set(callId, signature);
-    if (group.endAfterCompletion) {
+    if (this.goodbyeAccepted) {
       log.warn("Live tool skipped after goodbye was accepted", {
         callId: this.scope.id,
         tool: name,
@@ -289,7 +275,7 @@ export class LiveVoiceCall {
             };
           } else {
             outcome = { ok: true };
-            group.endAfterCompletion = true;
+            this.goodbyeAccepted = true;
             log.info("Live session exit requested", {
               callId: this.scope.id,
               requestIdHash: readRevision(callId),
@@ -326,6 +312,7 @@ export class LiveVoiceCall {
     void operation.finally(() => {
       this.operations.delete(operation);
       for (const waiting of this.delegations.values()) this.runPendingTools(waiting);
+      this.finishGoodbyeIfIdle();
     }).catch(() => this.fail("Live could not continue its response."));
   }
 
@@ -335,6 +322,7 @@ export class LiveVoiceCall {
     try { return await operation; } finally {
       this.operations.delete(operation);
       for (const waiting of this.delegations.values()) this.runPendingTools(waiting);
+      this.finishGoodbyeIfIdle();
     }
   }
 
@@ -357,6 +345,7 @@ export class LiveVoiceCall {
   }
 
   private flushCommentary(): void {
+    if (this.goodbyeAccepted) { this.pendingCommentary = undefined; return; }
     if (!this.pendingCommentary || this.delegations.size || this.state.status !== "active") return;
     this.connection.send({
       type: "session.commentary.append", event_id: crypto.randomUUID(), delegation_id: null, content: this.pendingCommentary,
@@ -370,6 +359,22 @@ export class LiveVoiceCall {
     clientActionEventEmitter.emit({
       type: "voice.activity", callId: this.scope.id, clientId: this.scope.clientId, processing,
     }, { userId: this.scope.user.id });
+  }
+
+  private finishGoodbyeIfIdle(): boolean {
+    if (
+      !this.goodbyeAccepted
+      || this.goodbyeCloseRequested
+      || this.state.status !== "active"
+      || this.delegations.size > 0
+      || this.operations.size > 0
+      || this.outputBatch
+    ) return false;
+    this.goodbyeCloseRequested = true;
+    this.pendingCommentary = undefined;
+    this.setProcessing(false);
+    this.ended();
+    return true;
   }
 
   fail(message: string, provider?: ReturnType<typeof providerFailureDetails>): void {
