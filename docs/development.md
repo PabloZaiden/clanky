@@ -20,6 +20,13 @@ bun dev
 The application is available at <http://localhost:3000>. Use an isolated
 `CLANKY_DATA_DIR` for local experiments or visual validation.
 
+The devcontainer setup installs fontconfig, DejaVu, Noto core, Roboto,
+Liberation, and Noto Color Emoji and refreshes the font cache for local browser
+validation. To update an existing container, rerun
+`./.devcontainer/install-prerequisites.sh`; font setup runs even when Chromium,
+`sshpass`, and `dtach` are already installed. Linux fonts still differ from
+native iOS/macOS system fonts.
+
 ## Build and test
 
 Build the standalone artifacts and run the black-box E2E suite:

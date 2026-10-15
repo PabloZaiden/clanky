@@ -3,16 +3,8 @@
 set -euo pipefail
 
 if ! command -v sudo >/dev/null 2>&1; then
-  echo "sudo is required to install Chromium in the devcontainer." >&2
+  echo "sudo is required to install devcontainer prerequisites." >&2
   exit 1
-fi
-
-if command -v chromium >/dev/null 2>&1 &&
-  chromium --version >/dev/null 2>&1 &&
-  command -v sshpass >/dev/null 2>&1 &&
-  command -v dtach >/dev/null 2>&1; then
-  echo "Chromium is already installed."
-  exit 0
 fi
 
 architecture="$(dpkg --print-architecture)"
@@ -25,14 +17,18 @@ case "${architecture}" in
     ;;
 esac
 
-echo "Installing Chromium dependencies..."
+echo "Installing devcontainer prerequisites..."
 sudo apt-get update
 sudo apt-get install -y --no-install-recommends \
   ca-certificates \
   curl \
   dtach \
+  fontconfig \
+  fonts-dejavu-core \
   fonts-liberation \
   fonts-noto-color-emoji \
+  fonts-noto-core \
+  fonts-roboto \
   jq \
   libasound2t64 \
   libatk-bridge2.0-0t64 \
@@ -52,6 +48,8 @@ sudo apt-get install -y --no-install-recommends \
   libxshmfence1 \
   sshpass \
   unzip
+
+sudo fc-cache -f
 
 sudo rm -rf /var/lib/apt/lists/*
 
