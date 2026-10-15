@@ -320,6 +320,11 @@ clanky worker service restart
 clanky worker service uninstall
 ```
 
+On macOS, `restart` uses `launchctl kickstart` so a restart dispatched through
+Mesh can replace the worker without unloading the LaunchAgent that owns the
+running command. Use `clanky worker service install` when the LaunchAgent plist
+itself must be regenerated.
+
 Use `--no-start` when installation should register the service without starting
 it immediately. The service account needs access to Git, the selected provider
 runtime, the workspace directory, and any other tools used by tasks.
