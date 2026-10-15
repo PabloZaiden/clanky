@@ -8,6 +8,8 @@ const EDITOR_LANGUAGE_OPTIONS = [
   { id: "typescript", label: "TypeScript" },
   { id: "javascript", label: "JavaScript" },
   { id: "python", label: "Python" },
+  { id: "csharp", label: "C#" },
+  { id: "rust", label: "Rust" },
   { id: "json", label: "JSON" },
   { id: "markdown", label: "Markdown" },
   { id: "css", label: "CSS" },
@@ -36,6 +38,8 @@ function detectLanguage(path: string | undefined): EditorLanguageId {
     || normalizedPath.endsWith(".pxd")
     || normalizedPath.endsWith(".pxi")
   ) return "python";
+  if (normalizedPath.endsWith(".cs")) return "csharp";
+  if (normalizedPath.endsWith(".rs")) return "rust";
   if (normalizedPath.endsWith(".json")) return "json";
   if (normalizedPath.endsWith(".md") || normalizedPath.endsWith(".markdown")) return "markdown";
   if (normalizedPath.endsWith(".css")) return "css";

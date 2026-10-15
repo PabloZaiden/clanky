@@ -133,6 +133,10 @@ In **Code Explorer**, open a `.md` or `.markdown` file and select **Preview**.
 Extensions are case-insensitive. You can also select **Markdown** in the
 language selector for other text files. Select **Code** to return to the editor.
 
+Code Explorer automatically applies C# syntax highlighting to `.cs` files and
+Rust syntax highlighting to `.rs` files; extensions are case-insensitive. You
+can also select **C#** or **Rust** in the language selector for other text files.
+
 Preview uses the current editor text, including unsaved edits. Switching views
 does not save or reload the file and keeps the editor's undo history. **Save**
 and **Refresh file** retain their usual behavior, including unsaved-change
