@@ -4,7 +4,7 @@
 
 import { z } from "zod";
 import { ExecuteOperationSchema, type ClankyOperationService } from "./clanky-operation-service";
-import { VoiceConfirmationDescriptionSchema } from "@/shared/live-voice";
+import { LiveVoiceIntentionSchema, VoiceConfirmationDescriptionSchema } from "@/shared/live-voice";
 import type { LiveVoiceActions } from "./live-voice-actions";
 import type { LiveVoiceObserver } from "./live-voice-observer";
 import { isDomainError } from "../domain/domain-error";
@@ -64,7 +64,12 @@ const descriptions: Record<keyof typeof schemas, string> = {
 };
 
 export const liveVoiceToolDefinitions = Object.entries(schemas).map(([name, schema]) => {
-  const { $schema: _schema, ...parameters } = z.toJSONSchema(schema, {
+  const modelSchema = name === "clanky_accept_goodbye" ? schema : schema.extend({
+    intention: LiveVoiceIntentionSchema.describe(
+      "A few words in the user's language describing this lookup or action in progress. Plain text, at most 80 characters; no credentials, API paths, JSON or claims of completion.",
+    ),
+  });
+  const { $schema: _schema, ...parameters } = z.toJSONSchema(modelSchema, {
     override: ({ zodSchema, jsonSchema }) => {
       if (jsonSchema.type === "object" && jsonSchema.properties) {
         jsonSchema.required = Object.keys(jsonSchema.properties);
@@ -87,10 +92,17 @@ export async function executeLiveVoiceTool(options: {
   name: string;
   rawArguments: string;
   maxReadBytes?: number;
+  onIntention?: (intention: string) => void;
 }): Promise<unknown> {
   try {
     if (options.actions.signal.aborted) return { ok: false, code: "voice_live_not_found", completion: "not_executed" };
-    const args: unknown = JSON.parse(options.rawArguments);
+    let args: unknown = JSON.parse(options.rawArguments);
+    if (args && typeof args === "object" && !Array.isArray(args) && "intention" in args) {
+      const { intention, ...input } = args;
+      const label = LiveVoiceIntentionSchema.parse(intention);
+      options.onIntention?.(label);
+      args = input;
+    }
     const { actions, service, requestId, observer } = options;
     const maxBytes = options.maxReadBytes ?? LIVE_READ_BYTES;
     const direct = new LiveVoiceDirectContext({ actions, service, requestId, maxBytes });

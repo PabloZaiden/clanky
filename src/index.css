@@ -327,6 +327,12 @@
   color: var(--wapp-text);
 }
 
+.clanky-live-voice-bar {
+  border-color: var(--wapp-border-soft);
+  background: var(--wapp-surface);
+  color: var(--wapp-text);
+}
+
 .clanky-composer-button {
   border: 1px solid var(--wapp-border-soft);
   background: var(--wapp-surface);

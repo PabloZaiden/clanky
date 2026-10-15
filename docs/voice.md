@@ -44,7 +44,8 @@ Live is a **global Clanky assistant**, separate from **Talk** (record,
 transcribe, send), Piper read aloud, Quick Chat and native Control chats.
 Start it with the microphone button immediately left of Quick Chat in the
 sidebar, including on Home with no chat selected. No workspace agent or native
-adapter is required.
+adapter is required. Triple-click or triple-tap a non-interactive area of a chat
+transcript to start Live too. This gesture no longer starts Talk.
 
 The assistant can discover your chats, tasks, workspaces, servers and execution
 hosts; read their state and content; create and manage work; send or queue
@@ -74,16 +75,29 @@ when the shared text model uses a tool. The provider must support strict
 Responses function schemas, including nested `anyOf` navigation variants;
 successful connection validation alone does not verify function execution.
 
-Once starting, the launcher disappears and all call controls live in one compact,
-frameless group at the bottom of the sidebar, immediately above the version.
-Its buttons use the chat composer's glyph-only style without backgrounds or
-borders, retaining tooltips and keyboard focus feedback. It shows
+Each new call opens expanded in a full-width rectangular bar flush with the
+bottom and both edges of the main content area, with no rounded corners or
+exterior gaps. Its controls remain inside the mobile safe area.
+The desktop bar uses the framework's full sidebar-tabs strip height, including
+its padding and border, so their upper dividing lines align exactly.
+It overlays whatever screen is open, including its composer, and remains
+available across navigation, with the sidebar closed, in a fullscreen terminal,
+and on desktop or mobile. It shows
 connecting/listening/speaking/processing/muted state, mute/unmute and stop;
-connecting can be cancelled. The bar stays outside the tree's scroll area and
-is independent of search, tabs and navigation. There are no Live controls in
-page headers or a transcript panel. Closing the sidebar only hides the bar:
-open it to control the same call. **Mute** disables microphone input without
-stopping spoken output. If playback is blocked, use its speaker button
+connecting can be cancelled. Buttons retain tooltips and keyboard focus feedback.
+During delegated lookups/actions, the expanded bar also shows the model's brief
+intention in the user's language, when supplied. The description has its own
+full-width row on mobile and sits between the status and controls on desktop.
+It wraps without clipping or squeezing the controls, with reserved mobile space
+even between actions. This is a bounded current-action label, not a transcript,
+history or a claim that the work finished.
+
+**Minimize Live voice to sidebar** moves the controls to the existing position
+above the sidebar version without ending or muting the call. **Expand Live
+voice** moves them back over the main content and dismisses the mobile sidebar.
+In minimized mode, open the sidebar to reach the controls. **Stop Live voice**
+is a separate action that ends the call. **Mute** disables microphone input
+without stopping spoken output. If playback is blocked, use its speaker button
 (**Enable Live audio playback**).
 
 The call remains active across in-app navigation in its originating tab. Stop
@@ -92,6 +106,23 @@ cancelling delegated chat/task work. To stop that work, request its normal
 interrupt/stop operation explicitly. Talk and Piper cannot start while global
 Live owns audio. Starting Live stops active summary playback; it reports a
 conflict instead of discarding an ongoing Talk recording or transcription.
+
+### Talk from the composer
+
+The existing **Talk** action in the composer's three-dot menu is unchanged.
+With an empty draft and Talk available, hold the **send arrow** until a
+microphone button appears above it. Drag the mouse or finger onto that button
+and release to start the same record/transcribe/send flow. Releasing elsewhere,
+Escape, or a cancelled pointer gesture dismisses it without sending a message.
+A short click still sends normally; holding the three-dot button has no new
+gesture. The send-arrow gesture is unavailable while the conversation is
+active, another composer operation is busy, or Live owns audio.
+
+Stop the recording to transcribe and send it; cancel it to discard the recording.
+Talk still requires an empty draft, including no attachments. Its existing menu
+action remains keyboard-accessible.
+
+### Continuing a recent Live conversation
 
 If you start Live again less than **10 minutes after the previous call ended**,
 it continues your recent conversation, including references to work you created

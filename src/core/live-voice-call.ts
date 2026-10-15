@@ -80,7 +80,7 @@ export class LiveVoiceCall {
     context: LiveVoiceUiContext;
     service: ClankyOperationService;
   }, private readonly ended: () => void, history: readonly LiveVoiceHistoryMessage[] = []) {
-    this.state = { id: scope.id, status: "connecting", error: null, processing: false };
+    this.state = { id: scope.id, status: "connecting", error: null, processing: false, intention: null };
     this.conversation = new LiveVoiceConversation(history);
     this.connection = new LiveVoiceConnection({
       event: (event) => runWithCurrentUser(scope.user, () => this.receive(event)),
@@ -247,6 +247,7 @@ export class LiveVoiceCall {
         let result = await executeLiveVoiceTool({
           service: this.scope.service, actions: this.actions, observer: this.observer,
           requestId: callId, name, rawArguments: args, maxReadBytes: readBytes,
+          onIntention: (intention) => this.setProcessing(true, intention),
         });
         if (isRecord(result) && result["code"] === LIVE_VOICE_SESSION_END_REQUEST) {
           const blockers = [
@@ -353,11 +354,12 @@ export class LiveVoiceCall {
     this.pendingCommentary = undefined;
   }
 
-  private setProcessing(processing: boolean): void {
-    if (this.state.processing === processing) return;
+  private setProcessing(processing: boolean, intention = processing ? this.state.intention : null): void {
+    if (this.state.processing === processing && this.state.intention === intention) return;
     this.state.processing = processing;
+    this.state.intention = intention;
     clientActionEventEmitter.emit({
-      type: "voice.activity", callId: this.scope.id, clientId: this.scope.clientId, processing,
+      type: "voice.activity", callId: this.scope.id, clientId: this.scope.clientId, processing, intention,
     }, { userId: this.scope.user.id });
   }
 

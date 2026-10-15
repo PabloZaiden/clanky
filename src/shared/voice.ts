@@ -77,6 +77,7 @@ export interface LiveVoiceCallState {
   status: "connecting" | "active" | "closing" | "closed" | "failed";
   error: string | null;
   processing: boolean;
+  intention: string | null;
 }
 
 export interface LiveVoiceSessionResponse {

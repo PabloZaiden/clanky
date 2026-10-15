@@ -876,9 +876,11 @@ test("compiled relays route worker execution, reconnect, and enforce revocation"
           args: ["CLANKY_RELAY_E2E\\n"],
         };
     expect(
-      (await executeOnWorker(controller, registration.workerNodeId, {
-        ...probe,
-        cwd: worker.dataDir,
+      (await waitForWorkerExecution({
+        controller,
+        workerNodeId: registration.workerNodeId,
+        input: { ...probe, cwd: worker.dataDir },
+        description: "worker execution after relay enrollment",
       })).stdout.trim(),
     ).toBe("CLANKY_RELAY_E2E");
 

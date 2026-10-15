@@ -199,6 +199,7 @@ export class LiveVoiceManager {
     {
       call.state.status = call.state.error ? "failed" : "closed";
       call.state.processing = false;
+      call.state.intention = null;
       call.lastHeartbeat = Date.now();
       if (remember) {
         if (call.state.error) call.conversation.rememberInterruption();
