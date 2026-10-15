@@ -20,6 +20,26 @@ bun dev
 The application is available at <http://localhost:3000>. Use an isolated
 `CLANKY_DATA_DIR` for local experiments or visual validation.
 
+The devcontainer automatically downloads SF Pro from Apple, installs its
+variable regular and italic fonts, and configures fontconfig to use SF Pro
+for local browser UI text. It does not install DejaVu, Noto core, or Roboto.
+Existing Liberation and Noto Color Emoji packages remain available for
+monospace and missing-glyph/emoji coverage, not as the selected UI font.
+To update an existing container, rerun
+`./.devcontainer/install-prerequisites.sh`; font installation, selection, and
+cache refresh run even when Chromium, `sshpass`, and `dtach` are already
+installed. Matching installations are reused without downloading again;
+download, checksum, extraction, or font-selection failures stop setup.
+
+SF Pro is used only in the development environment for Apple-platform UI
+previews. Its files and the included Apple license stay outside the checkout;
+no font files are bundled with Clanky or added to production images. Apple's
+[SF Pro license](https://developer.apple.com/fonts/) applies. The official
+download is checksum-pinned in `.devcontainer/install-sf-pro.sh`; when Apple
+updates that download, review the new package and update its checksum and
+extraction paths together. Linux rendering can still differ from Safari on
+macOS/iOS even with the same font family.
+
 ## Build and test
 
 Build the standalone artifacts and run the black-box E2E suite:
