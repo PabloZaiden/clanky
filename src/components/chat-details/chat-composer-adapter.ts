@@ -23,7 +23,6 @@ export function useChatComposerAdapter({
   isExternallyBusy = false,
   needsSshCredentials,
   onChatSnapshot,
-  onMessageSent,
   markChatStarting,
   refreshChat,
   handleReconnect,
@@ -58,7 +57,6 @@ export function useChatComposerAdapter({
         message: message ?? undefined,
         attachments,
       });
-      onMessageSent();
       onChatSnapshot(nextChat);
       return;
     }
@@ -79,7 +77,6 @@ export function useChatComposerAdapter({
       action: "Send chat message",
       fallbackMessage: "Failed to send chat message",
     });
-    onMessageSent();
     if (data.chat) {
       onChatSnapshot(data.chat);
     } else if (isActive) {
@@ -92,7 +89,6 @@ export function useChatComposerAdapter({
     chatId,
     isActive,
     markChatStarting,
-    onMessageSent,
     onChatSnapshot,
     onSendMessage,
     refreshChat,
