@@ -56,6 +56,15 @@ list. Existing user ownership, scopes and selected-host
 execution still apply. Credential management, raw transports, uploads/downloads
 and browser media are not ordinary JSON assistant operations.
 
+Live and its delegated model are instructed to express your requests directly
+to the recipient, not narrate them as "the user asks". For example, "Ask the
+Backend chat to review the timeouts" becomes "Review the timeouts". This applies
+to chat messages, initial messages, task prompts, follow-ups and feedback,
+preserving your language, intent, details and constraints without adding
+requirements or commitments. Reported speech is reserved for an explicitly
+requested quotation, summary or relay of another person's words. Approval
+requirements and confirmed-result reporting are unchanged.
+
 In **Settings → Voice**, configure one transcription model, one shared text
 generation model, and one Live model/deployment. Reuse the existing voice
 provider URL and saved key, or configure an independent HTTPS endpoint and

@@ -18,6 +18,14 @@ import {
 import type { LiveVoiceHistoryMessage } from "./live-voice-memory";
 const log = createLogger("core:live-voice-provider");
 
+const LIVE_VOICE_DIRECT_REQUEST_GUIDANCE = [
+  "Act on the user's requests as your own, not as a narrator relaying what the user wants.",
+  "When delegating work or writing chat messages, initial messages, task prompts, follow-ups or feedback, address the recipient directly with an actionable request. Use direct imperatives or first-person requests, not third-person reports such as 'the user asks', 'the user wants' or 'I was asked to tell you'.",
+  "For example, turn 'Ask the Backend chat to review the timeouts' into 'Review the timeouts', not 'The user asks you to review the timeouts'.",
+  "Preserve the user's language, intent, details and constraints without inventing requirements, commitments, approvals or completed actions.",
+  "Use reported speech only when the user explicitly requests a quotation, a summary or relaying another person's words.",
+].join(" ");
+
 export interface LiveVoiceCredentials extends VoiceProviderCredentials {
   model: string;
   textModel: string;
@@ -51,6 +59,7 @@ export async function createLiveVoiceSession(
           "You are the user's global Clanky voice assistant, not part of a particular chat.",
           "Converse naturally and concisely in the user's language.",
           "Delegate app operations, questions about work and client navigation to the Responses backend.",
+          LIVE_VOICE_DIRECT_REQUEST_GUIDANCE,
           "Before delegating an app lookup or action, give one brief spoken acknowledgement in the user's language, such as 'I'll check that now.' For a goodbye, do not speak before the tool call; follow the immediate delegation instruction below. Do not stay silent while starting a lookup, repeat acknowledgements for each tool, or claim the action has completed.",
           "Report only confirmed results: started, queued, accepted, delivered, and completed are different.",
           "Authoritative work updates supersede earlier admissions. Read actual content before describing results.",
@@ -66,6 +75,7 @@ export async function createLiveVoiceSession(
             reasoning: VOICE_TEXT_REASONING,
             instructions: [
               "Operate the whole of Clanky directly with the provided catalog-backed tools.",
+              LIVE_VOICE_DIRECT_REQUEST_GUIDANCE,
               "Use at most eight function calls per response. Continue additional reads in subsequent responses.",
               "Supply each tool's intention as a few plain-text words in the user's language describing the lookup or action in progress, at most 80 characters. It appears in a compact live status bar. Never include credentials, API paths, JSON, private content excerpts, or claims of success. Do not add a tool call just to update the label.",
               "Use the direct intent tools immediately for common work: recent/waiting work, list/read/send/steer/create/control chats or tasks, workspace/server/host listing and creation, and UI actions. Do not discover or describe an operation covered by a direct tool; target resolution and preparation happen locally inside that tool. Use catalog find/describe/execute only for uncovered intents, and describe those contracts before executing. Never invent paths, credentials, models, branches or technical defaults.",
