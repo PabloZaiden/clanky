@@ -63,7 +63,6 @@ export interface ChatTranscriptProps {
   onLoadFullTranscript: () => Promise<void>;
   loadingTranscript: boolean;
   onChatSnapshot: (nextChat: Chat) => void;
-  dismissedExpiredQuestionRequestId?: string;
   onQuestionAnswerFocusChange: (focused: boolean) => void;
   onReadAloud: (messageId: string) => void;
   readAloudAvailable: boolean;
@@ -99,7 +98,6 @@ export interface ChatComposerAdapterOptions {
   isExternallyBusy?: boolean;
   needsSshCredentials: boolean;
   onChatSnapshot: (nextChat: Chat) => void;
-  onMessageSent: () => void;
   markChatStarting: () => void;
   refreshChat: (options?: ChatRefreshOptions) => Promise<void>;
   handleReconnect: () => Promise<void>;

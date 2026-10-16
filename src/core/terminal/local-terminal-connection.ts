@@ -816,7 +816,8 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
       );
     this.suppressNextExitNotification = false;
     if (!this.disposed && !suppressExitNotification) {
-      this.config.callbacks.onExit?.(exitCode, processHandle.signalCode);
+      const signal = processHandle.signalCode;
+      this.config.callbacks.onExit?.(exitCode, signal === null ? null : String(signal));
     }
   }
 
