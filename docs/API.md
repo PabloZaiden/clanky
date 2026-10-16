@@ -265,7 +265,8 @@ CLI supporting `serve-web`, `--port 0`, `--connection-token-file`, and
 `--default-folder`. Some Remote SSH/Codespaces `code` commands only launch an
 existing editor and cannot serve one. Clanky does not install or replace VS
 Code and does not use Microsoft's tunnel service. POSIX hosts also need
-`bash` for the session's process-group supervision. Windows uses the native
+`bash`, `ps`, and `awk` for the session's process ownership supervision,
+including inherited terminals that change process groups. Windows uses the native
 process-tree termination path.
 
 The command starts a token-protected VS Code listener on that host's
@@ -309,7 +310,9 @@ workspace target, `remoteHost: "127.0.0.1"`, `remotePort: 0`, and a loopback
 local URL at `/`. A successful `ready` additionally includes
 `code: { directory, remotePort }`. Errors include a stable `code` and safe
 `error` message. A `{ type: "close" }` request waits for cleanup before the
-bridge closes. HTTP responses stream through the preview; cancelling a local
+bridge closes. HTTP responses stream through the preview with per-request
+consumption acknowledgements and a bounded receive window, so slow readers pause
+upstream rather than overflowing a response buffer. Cancelling a local
 request sends `{ type: "request.cancel", streamId }`.
 
 ## Response Format

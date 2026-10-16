@@ -10,11 +10,10 @@ import {
   type StoredDeviceCredentials,
 } from "@pablozaiden/webapp/cli";
 import type { CodePreviewOptions, PreviewBridgeClientMessage, PreviewBridgeReadyMessage, PreviewBridgeServerMessage } from "@/shared";
-import { previewWebSocketCloseCode } from "@/shared/preview";
+import { PREVIEW_RESPONSE_WINDOW_BYTES, previewWebSocketCloseCode } from "@/shared/preview";
 
 const WS_READY_STATE_CLOSING = 2;
 const PREVIEW_LISTENER_WS_IDLE_TIMEOUT_SECONDS = 0;
-const MAX_PREVIEW_RESPONSE_BUFFER_BYTES = 8 * 1024 * 1024;
 
 export interface PreviewCommandOptions {
   code?: CodePreviewOptions;
@@ -34,6 +33,8 @@ interface PendingPreviewRequest {
   reject: (error: Error) => void;
   head: boolean;
   body?: ReadableStreamDefaultController<Uint8Array>;
+  receivedBytes: number;
+  acknowledgedBytes: number;
   cleanup(): void;
 }
 
@@ -462,6 +463,15 @@ export async function runPreviewCommand(
         return false;
       }
     };
+    const acknowledgeResponse = (streamId: string, request: PendingPreviewRequest) => {
+      if (!request.body) return;
+      const queuedBytes = PREVIEW_RESPONSE_WINDOW_BYTES - (request.body.desiredSize ?? 0);
+      const consumedBytes = request.receivedBytes - queuedBytes;
+      const bytes = consumedBytes - request.acknowledgedBytes;
+      if (bytes > 0 && sendBridgeMessage({ type: "response.ack", streamId, bytes })) {
+        request.acknowledgedBytes = consumedBytes;
+      }
+    };
     socket.addEventListener("close", () => failActiveStreams("Preview bridge closed"));
     socket.addEventListener("error", () => failActiveStreams("Preview bridge failed"));
     socket.addEventListener("message", (event) => {
@@ -501,17 +511,21 @@ export async function runPreviewCommand(
           ? null
           : new ReadableStream<Uint8Array>({
               start(controller: ReadableStreamDefaultController<Uint8Array>) { request.body = controller; },
+              pull() { acknowledgeResponse(message.streamId, request); },
               cancel() {
                 pending.delete(message.streamId);
                 request.cleanup();
                 sendBridgeMessage({ type: "request.cancel", streamId: message.streamId });
               },
-            }, new ByteLengthQueuingStrategy({ highWaterMark: MAX_PREVIEW_RESPONSE_BUFFER_BYTES }));
+            }, new ByteLengthQueuingStrategy({ highWaterMark: PREVIEW_RESPONSE_WINDOW_BYTES }));
         request.resolve(new Response(body, { status: message.status, headers: message.headers }));
         return;
       }
       if (message.type === "response.body") {
-        request.body?.enqueue(decodeBase64(message.body));
+        const bytes = decodeBase64(message.body);
+        request.receivedBytes += bytes.byteLength;
+        request.body?.enqueue(bytes);
+        acknowledgeResponse(message.streamId, request);
         if (request.body && (request.body.desiredSize ?? 0) < 0) {
           pending.delete(message.streamId);
           const error = new Error("Preview response buffer limit exceeded");
@@ -605,6 +619,7 @@ export async function runPreviewCommand(
             req.signal.addEventListener("abort", abort, { once: true });
             pending.set(streamId, {
               resolve, reject, head: req.method === "HEAD",
+              receivedBytes: 0, acknowledgedBytes: 0,
               cleanup: () => req.signal.removeEventListener("abort", abort),
             });
           });
@@ -615,6 +630,7 @@ export async function runPreviewCommand(
             path: `${url.pathname}${url.search}`,
             headers: Array.from(req.headers.entries()),
             body: bodyBytes ? encodeBase64(bodyBytes) : undefined,
+            responseFlowControl: true,
           });
           if (!sent) {
             pending.get(streamId)?.cleanup();

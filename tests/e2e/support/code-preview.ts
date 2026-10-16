@@ -49,6 +49,29 @@ async function exerciseIdeConnection(url: string, timeoutMs: number): Promise<vo
   }
 }
 
+async function closePreviewViaApi(options: {
+  baseUrl: string;
+  apiKey: string;
+  workspaceId: string;
+  localUrl: string;
+  timeoutMs: number;
+}): Promise<void> {
+  const previews = await fetch(`${options.baseUrl}/api/workspaces/${encodeURIComponent(options.workspaceId)}/previews`, {
+    headers: { authorization: `Bearer ${options.apiKey}` },
+    signal: AbortSignal.timeout(options.timeoutMs),
+  });
+  expect(previews.status).toBe(200);
+  const active = await previews.json() as Array<{ config: { id: string; localUrl: string } }>;
+  const preview = active.find((item) => item.config.localUrl === options.localUrl);
+  if (!preview) throw new Error("IDE preview is not available to close");
+  const closed = await fetch(`${options.baseUrl}/api/previews/${encodeURIComponent(preview.config.id)}`, {
+    method: "DELETE",
+    headers: { authorization: `Bearer ${options.apiKey}` },
+    signal: AbortSignal.timeout(options.timeoutMs),
+  });
+  expect(closed.status).toBe(200);
+}
+
 export async function exerciseCodePreview(options: {
   baseUrl: string;
   apiKey: string;
@@ -100,7 +123,18 @@ export async function exerciseCodePreview(options: {
 
     await exerciseIdeConnection(url.href, operationTimeoutMs);
 
-    cli.child.kill("SIGINT");
+    if (process.platform === "win32") {
+      // Bun.kill cannot deliver a console Ctrl+C event on Windows.
+      await closePreviewViaApi({
+        baseUrl: options.baseUrl,
+        apiKey: options.apiKey,
+        workspaceId: options.workspaceId ?? options.workspace,
+        localUrl: readyUrl!,
+        timeoutMs,
+      });
+    } else {
+      cli.child.kill("SIGINT");
+    }
     await pollUntil(() => cli.child.exitCode, (code) => code !== null, {
       description: "VS Code command shutdown",
       timeoutMs,

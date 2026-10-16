@@ -462,6 +462,7 @@ export class CommandExecutorImpl implements CommandExecutor {
           stdout: "",
           stderr: "Command aborted",
           exitCode: 130,
+          termination: "confirmed",
         };
       }
 
@@ -610,12 +611,14 @@ export class CommandExecutorImpl implements CommandExecutor {
               stdout: "",
               stderr: `Command timed out after ${timeoutMs}ms. ${cleanupMessage}`,
               exitCode: 124,
+              termination: "failed",
             }
           : {
               success: false,
               stdout: "",
               stderr: `Command aborted. ${cleanupMessage}`,
               exitCode: 130,
+              termination: "failed",
             };
       }
 
@@ -649,6 +652,7 @@ export class CommandExecutorImpl implements CommandExecutor {
           stdout,
           stderr: stderr || `Command timed out after ${timeoutMs}ms`,
           exitCode: 124,
+          termination: "confirmed",
         };
       }
 
@@ -658,6 +662,7 @@ export class CommandExecutorImpl implements CommandExecutor {
           stdout,
           stderr: stderr || "Command aborted",
           exitCode: 130,
+          termination: aborted ? "confirmed" : undefined,
         };
       }
 

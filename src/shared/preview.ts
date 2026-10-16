@@ -108,7 +108,11 @@ export interface PreviewBridgeRequestStartMessage {
   path: string;
   headers: Array<[string, string]>;
   body?: string;
+  responseFlowControl?: boolean;
 }
+
+export const PREVIEW_RESPONSE_WINDOW_BYTES = 256 * 1024;
+export const PREVIEW_RESPONSE_CHUNK_BYTES = 64 * 1024;
 
 export interface PreviewBridgeResponseStartMessage {
   type: "response.start";
@@ -206,6 +210,7 @@ export type PreviewBridgeClientMessage =
   | PreviewBridgeWebSocketCloseMessage
   | { type: "close" }
   | { type: "request.cancel"; streamId: string }
+  | { type: "response.ack"; streamId: string; bytes: number }
   | { type: "bridge.pong" };
 
 export type PreviewBridgeServerMessage =

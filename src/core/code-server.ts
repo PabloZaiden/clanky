@@ -5,36 +5,9 @@
 import { posix, win32 } from "node:path";
 import type { CommandExecutor, CommandResult } from "./command-executor";
 import { DomainError, isDomainError } from "../domain/domain-error";
+import { CODE_PROCESS_CLEANUP, CODE_PROCESS_WRAPPER } from "./code-process-supervision";
 
 const MAX_OUTPUT_BYTES = 1024 * 1024;
-const PROCESS_WRAPPER = [
-  "set -m",
-  'child=""',
-  "cleanup() {",
-  '  trap "" HUP INT TERM',
-  '  if [ -n "$child" ]; then',
-  '    kill -TERM -- "-$child" 2>/dev/null || :',
-  '    kill -KILL -- "-$child" 2>/dev/null || :',
-  '    wait "$child" 2>/dev/null || :',
-  "  fi",
-  "}",
-  "trap cleanup EXIT",
-  "trap 'exit 130' HUP INT TERM",
-  '"$@" &',
-  "child=$!",
-  'printf "%s\\n" "$child" > "$CLANKY_CODE_PID_FILE"',
-  'wait "$child"',
-].join("\n");
-const STOP_WRAPPER = [
-  'deadline=$((SECONDS + 4))',
-  'while [ ! -s "$1" ] && [ "$SECONDS" -lt "$deadline" ]; do sleep 0.05; done',
-  'IFS= read -r child < "$1" || exit 1',
-  '[[ "$child" =~ ^[1-9][0-9]*$ ]] || exit 1',
-  'command_line=$(ps -ww -o args= -p "$child") || exit 0',
-  'case "$command_line" in *"$2"*) ;; *) exit 1 ;; esac',
-  'kill -TERM -- "-$child" 2>/dev/null || :',
-  'kill -KILL -- "-$child" 2>/dev/null || :',
-].join("\n");
 
 export interface CodeServer {
   port: number;
@@ -84,6 +57,7 @@ function launchCodeProcess(options: {
   directory: string;
   args: string[];
   pidPath: string;
+  cleanupPath: string;
   signal: AbortSignal;
 }): { run: Promise<CommandResult>; listening: Promise<number> } {
   let output = "";
@@ -91,10 +65,10 @@ function launchCodeProcess(options: {
   const listening = new Promise<number>((resolve) => { resolvePort = resolve; });
   const run = options.executor.exec(
     options.executor.pathStyle === "windows" ? "code" : "bash",
-    options.executor.pathStyle === "windows" ? options.args : ["-c", PROCESS_WRAPPER, "clanky-code", "code", ...options.args],
+    options.executor.pathStyle === "windows" ? options.args : ["-c", CODE_PROCESS_WRAPPER, "clanky-code", "code", ...options.args],
     {
       cwd: options.directory, timeout: null, signal: options.signal,
-      env: { CLANKY_CODE_PID_FILE: options.pidPath },
+      env: { CLANKY_CODE_PID_FILE: options.pidPath, CLANKY_CODE_CLEANUP_FILE: options.cleanupPath },
       longRunning: true, logFailures: false, maxOutputBytes: MAX_OUTPUT_BYTES,
       onStdoutChunk(chunk) {
         output = `${output}${chunk}`.slice(-8192);
@@ -113,14 +87,14 @@ async function stopCodeProcess(options: {
   executor: CommandExecutor;
   directory: string;
   pidPath: string;
-  tokenPath: string;
+  cleanupPath: string;
   controller: AbortController;
   run: Promise<CommandResult> | undefined;
 }): Promise<void> {
-  const { executor, directory, pidPath, tokenPath, controller, run } = options;
+  const { executor, directory, pidPath, cleanupPath, controller, run } = options;
   let stopped = false;
   if (run && executor.pathStyle !== "windows") {
-    const result = await executor.exec("bash", ["-c", STOP_WRAPPER, "clanky-code-stop", pidPath, tokenPath], {
+    const result = await executor.exec("bash", [cleanupPath, pidPath], {
       cwd: directory, timeout: 5_000, logFailures: false,
     });
     if (!result.success) {
@@ -132,9 +106,16 @@ async function stopCodeProcess(options: {
   }
   const timer = setTimeout(() => controller.abort(), 5_000);
   try {
-    await run;
+    const result = await run;
+    if (result?.termination === "failed"
+      || (executor.pathStyle === "windows" && result && !result.success && result.termination !== "confirmed")) {
+      throw new DomainError("code_cleanup_failed", "VS Code process-tree cleanup could not be confirmed.");
+    }
   } catch (error) {
-    if (!(stopped && controller.signal.aborted && isDomainError(error) && error.code === "mesh_execution_aborted")) {
+    const confirmedCancellation = isDomainError(error)
+      && error.code === "mesh_execution_aborted"
+      && (stopped || error.details["terminationConfirmed"] === true);
+    if (!(controller.signal.aborted && confirmedCancellation)) {
       throw error;
     }
   } finally {
@@ -156,6 +137,7 @@ export async function startCodeServer(options: {
   const token = crypto.randomUUID().replaceAll("-", "");
   const tokenPath = paths.join(temporaryDirectory, "token");
   const pidPath = paths.join(temporaryDirectory, "process");
+  const cleanupPath = paths.join(temporaryDirectory, "cleanup.sh");
   const controller = new AbortController();
   const abort = () => controller.abort(signal.reason);
   signal.addEventListener("abort", abort, { once: true });
@@ -164,7 +146,7 @@ export async function startCodeServer(options: {
   let closing: Promise<void> | undefined;
   const close = (): Promise<void> => closing ??= (async () => {
     try {
-      await stopCodeProcess({ executor, directory, pidPath, tokenPath, controller, run });
+      await stopCodeProcess({ executor, directory, pidPath, cleanupPath, controller, run });
     } finally {
       controller.abort();
       signal.removeEventListener("abort", abort);
@@ -178,6 +160,17 @@ export async function startCodeServer(options: {
     if (!(await executor.writeFile(tokenPath, token))) {
       throw new DomainError("code_start_failed", "Unable to write the VS Code session credential.");
     }
+    if (executor.pathStyle !== "windows") {
+      if (!(await executor.writeFile(cleanupPath, CODE_PROCESS_CLEANUP))) {
+        throw new DomainError("code_start_failed", "Unable to write the VS Code process cleanup script.");
+      }
+      const cleanupCheck = await executor.exec("bash", [cleanupPath, pidPath], {
+        cwd: directory, timeout: 5_000, signal: controller.signal, logFailures: false,
+      });
+      if (!cleanupCheck.success) {
+        throw new DomainError("code_runtime_unavailable", "VS Code sessions require process inspection with bash, ps, awk, and sort on this workspace host.");
+      }
+    }
     controller.signal.throwIfAborted();
     const args = [
       "serve-web", "--host", "127.0.0.1", "--port", "0",
@@ -186,7 +179,7 @@ export async function startCodeServer(options: {
       "--default-folder", directory, "--log", "warn",
       ...(options.acceptServerLicenseTerms ? ["--accept-server-license-terms"] : []),
     ];
-    const launched = launchCodeProcess({ executor, directory, args, pidPath, signal: controller.signal });
+    const launched = launchCodeProcess({ executor, directory, args, pidPath, cleanupPath, signal: controller.signal });
     run = launched.run;
     // The owner handles every exit identically; close still awaits the original outcome.
     const exited = run.then(() => undefined, () => undefined);

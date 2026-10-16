@@ -40,6 +40,7 @@ import {
 } from "./workspace-execution-target";
 import { executionHostService } from "./execution-host-service";
 import { waitForProcessExit, waitForProcessTcpListener } from "./process-lifecycle";
+import { PREVIEW_RESPONSE_CHUNK_BYTES, PREVIEW_RESPONSE_WINDOW_BYTES } from "@/shared/preview";
 import { SSH_CONNECTION_TIMEOUT_MS } from "./ssh-reliability-policy";
 import { requireCurrentUser, runWithCurrentUser } from "../context/user-context";
 import { CodePreviewHelloSchema } from "../contracts/schemas/preview";
@@ -75,7 +76,10 @@ const UPSTREAM_CONTROLLED_HEADERS = new Set([
 
 interface PreviewRuntime {
   codeServer?: CodeServer;
-  requests: Map<string, AbortController>;
+  requests: Map<string, {
+    controller: AbortController;
+    creditBytes?: number;
+  }>;
   localOrigin: string;
   user: CurrentUser;
   targetBaseUrl: string;
@@ -568,7 +572,7 @@ export class PreviewSessionManager {
   async closePreview(id: string, reason = "Preview closed", closeCode = 1000): Promise<boolean> {
     const runtime = this.runtimes.get(id);
     if (runtime && runtime.user.id !== requireCurrentUser().id) return false;
-    for (const request of runtime?.requests.values() ?? []) request.abort();
+    for (const request of runtime?.requests.values() ?? []) request.controller.abort();
     const pending = this.closing.get(id);
     if (pending) return await pending;
     const closing = this.closePreviewOwned(id, reason, closeCode);
@@ -707,7 +711,20 @@ export class PreviewSessionManager {
     }
     if (message.type === "request.cancel") {
       const previewId = ws.data.previewBridgeSessionId;
-      if (previewId) this.getOwnedRuntime(ws, previewId)?.requests.get(message.streamId)?.abort();
+      if (previewId) this.getOwnedRuntime(ws, previewId)?.requests.get(message.streamId)?.controller.abort();
+      return;
+    }
+    if (message.type === "response.ack") {
+      const previewId = ws.data.previewBridgeSessionId;
+      const request = previewId ? this.getOwnedRuntime(ws, previewId)?.requests.get(message.streamId) : undefined;
+      if (request?.creditBytes !== undefined) {
+        if (!Number.isSafeInteger(message.bytes) || message.bytes <= 0 || message.bytes > PREVIEW_RESPONSE_WINDOW_BYTES - request.creditBytes) {
+          request.controller.abort();
+          ws.send(JSON.stringify({ type: "stream.error", streamId: message.streamId, error: "Invalid preview response acknowledgement" }));
+        } else {
+          request.creditBytes += message.bytes;
+        }
+      }
       return;
     }
     if (message.type === "request.start") {
@@ -870,7 +887,11 @@ export class PreviewSessionManager {
       return;
     }
     const controller = new AbortController();
-    runtime.requests.set(message.streamId, controller);
+    const request = {
+      controller,
+      creditBytes: message.responseFlowControl === true ? PREVIEW_RESPONSE_WINDOW_BYTES : undefined,
+    };
+    runtime.requests.set(message.streamId, request);
     try {
       const targetUrl = resolvePreviewDestination(runtime, message.path);
       const headers = buildUpstreamHeaders(message.headers, runtime);
@@ -892,19 +913,27 @@ export class PreviewSessionManager {
         const reader = response.body.getReader();
         try {
           while (true) {
-            const deadline = Date.now() + 30_000;
-            while ((ws.getBufferedAmount?.() ?? 0) > 512 * 1024) {
-              controller.signal.throwIfAborted();
-              if (Date.now() > deadline) throw new Error("Preview response backpressure timed out");
-              await Bun.sleep(10);
-            }
             const { done, value } = await reader.read();
             if (done) break;
-            ws.send(JSON.stringify({
-              type: "response.body",
-              streamId: message.streamId,
-              body: encodeBase64(value),
-            }));
+            for (let offset = 0; offset < value.byteLength; offset += PREVIEW_RESPONSE_CHUNK_BYTES) {
+              const chunk = value.subarray(offset, offset + PREVIEW_RESPONSE_CHUNK_BYTES);
+              const deadline = Date.now() + 30_000;
+              while (
+                (request.creditBytes !== undefined && request.creditBytes < chunk.byteLength)
+                || (ws.getBufferedAmount?.() ?? 0) > 512 * 1024
+              ) {
+                controller.signal.throwIfAborted();
+                if (Date.now() > deadline) throw new Error("Preview response backpressure timed out");
+                await Bun.sleep(10);
+              }
+              controller.signal.throwIfAborted();
+              if (request.creditBytes !== undefined) request.creditBytes -= chunk.byteLength;
+              ws.send(JSON.stringify({
+                type: "response.body",
+                streamId: message.streamId,
+                body: encodeBase64(chunk),
+              }));
+            }
           }
         } finally {
           reader.releaseLock();
@@ -916,6 +945,7 @@ export class PreviewSessionManager {
         ws.send(JSON.stringify({ type: "stream.error", streamId: message.streamId, error: getBridgeErrorMessage(error) }));
       }
     } finally {
+      controller.abort();
       runtime.requests.delete(message.streamId);
     }
   }
