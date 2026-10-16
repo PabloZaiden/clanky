@@ -168,7 +168,7 @@ export async function startCodeServer(options: {
         cwd: directory, timeout: 5_000, signal: controller.signal, logFailures: false,
       });
       if (!cleanupCheck.success) {
-        throw new DomainError("code_runtime_unavailable", "VS Code sessions require process inspection with bash, ps, awk, and sort on this workspace host.");
+        throw new DomainError("code_runtime_unavailable", `VS Code sessions require process inspection with bash, ps, awk, and sort on this workspace host (exit ${cleanupCheck.exitCode}).`);
       }
     }
     controller.signal.throwIfAborted();

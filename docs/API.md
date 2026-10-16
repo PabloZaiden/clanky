@@ -265,7 +265,7 @@ CLI supporting `serve-web`, `--port 0`, `--connection-token-file`, and
 `--default-folder`. Some Remote SSH/Codespaces `code` commands only launch an
 existing editor and cannot serve one. Clanky does not install or replace VS
 Code and does not use Microsoft's tunnel service. POSIX hosts also need
-`bash`, `ps`, and `awk` for the session's process ownership supervision,
+`bash`, `ps`, `awk`, and `sort` for the session's process ownership supervision,
 including inherited terminals that change process groups. Windows uses the native
 process-tree termination path.
 
