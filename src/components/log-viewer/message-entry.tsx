@@ -17,6 +17,7 @@ import type { TranscriptFileLinkContext } from "./types";
 import { ActivitySpinner } from "./activity-spinner";
 import { HarnessMessageAdmission } from "../harness-activity";
 import { TranscriptTextContent } from "./transcript-file-links";
+import { useStreamingTextReveal } from "./streaming-text";
 import { formatTime } from "./utils";
 import { getQuestionAnswerStatus } from "@/shared/harness-questions";
 import {
@@ -93,6 +94,12 @@ export const MessageEntry = memo(function MessageEntry({
     ? translationRequest
     : null;
   const renderedContent = currentTranslation?.text ?? sourceText;
+  const reveal = useStreamingTextReveal({
+    message: msg,
+    content: renderedContent,
+    markdown: shouldRenderMarkdown,
+    enabled: !isUser && !msg.question && !currentTranslation && !currentTranslationRequest,
+  });
   const hasMessageText = sourceText.trim().length > 0;
   const canReadAloud = !isUser && Boolean(onReadAloud) && hasMessageText;
   const canTranslate = msg.role === "assistant"
@@ -153,7 +160,7 @@ export const MessageEntry = memo(function MessageEntry({
         </time>
       )}
       <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
-        <div className={contentWidthClassName}>
+        <div ref={reveal.ref} className={contentWidthClassName}>
           {!isUser && msg.question?.scope.kind === "child" && (
             <div className="text-xs text-gray-500 dark:text-gray-400">Subagent question</div>
           )}
@@ -173,12 +180,14 @@ export const MessageEntry = memo(function MessageEntry({
               content={renderedContent}
               className="text-sm leading-7 text-gray-900 dark:text-white"
               fileLinkContext={fileLinkContext}
+              revealFrom={reveal.from}
             />
           ) : (
             <TranscriptTextContent
               content={renderedContent}
               className="whitespace-pre-wrap break-words text-sm leading-7 text-gray-900 dark:text-white"
               fileLinkContext={fileLinkContext}
+              revealFrom={reveal.from}
             />
           )}
           {answerStatus && (

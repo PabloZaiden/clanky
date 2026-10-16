@@ -5,7 +5,8 @@
 
 import Markdown, { type ExtraProps } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { createContext, memo, useContext, type ComponentPropsWithoutRef, type ReactNode } from "react";
+import { createContext, memo, useContext, useMemo, type ComponentPropsWithoutRef, type ReactNode } from "react";
+import type { Components } from "react-markdown";
 import { useToast } from "@pablozaiden/webapp/web";
 import { MermaidDiagram } from "./MermaidDiagram";
 import { Button, CopyPathIcon } from "./common";
@@ -17,6 +18,7 @@ import {
   TranscriptPathLink,
 } from "./log-viewer/transcript-file-links";
 import { writeTextToClipboard } from "../utils";
+import { rehypeStreamingText } from "./log-viewer/streaming-text";
 
 // react-markdown 10 no longer passes the legacy `inline` renderer prop, so
 // block code is marked at its <pre> boundary instead.
@@ -114,6 +116,7 @@ export interface MarkdownRendererProps {
   rawMode?: boolean;
   /** Optional chat/task-aware context for linking inline file paths. */
   fileLinkContext?: TranscriptFileLinkContext;
+  revealFrom?: number;
 }
 
 /**
@@ -129,7 +132,58 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
   dimmed = false,
   rawMode = false,
   fileLinkContext,
+  revealFrom,
 }: MarkdownRendererProps) {
+  const components = useMemo<Components>(() => ({
+    a: ({ href, children }) => {
+      const target = href && fileLinkContext
+        ? resolveMarkdownFileLinkTarget(href, fileLinkContext)
+        : null;
+      if (target && fileLinkContext) {
+        return (
+          <TranscriptPathLink
+            target={target}
+            fileLinkContext={fileLinkContext}
+            href={fileLinkContext.getFileHref(target)}
+          >
+            {children}
+          </TranscriptPathLink>
+        );
+      }
+      return (
+        <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">
+          {children}
+        </a>
+      );
+    },
+    p: ({ children, className, ...props }) => (
+      <p {...props} className={className}>{renderTranscriptTextNodes(children, fileLinkContext)}</p>
+    ),
+    li: ({ children, className, ...props }) => (
+      <li {...props} className={className}>{renderTranscriptTextNodes(children, fileLinkContext)}</li>
+    ),
+    code: ({ children, className }) => (
+      <MarkdownCode className={className} fileLinkContext={fileLinkContext}>{children}</MarkdownCode>
+    ),
+    pre: MarkdownPre,
+    table: ({ children, className, ...props }) => (
+      <div className="min-w-0 max-w-full overflow-x-auto">
+        <table {...props} className={`markdown-table min-w-full w-fit max-w-none table-auto ${className ?? ""}`.trim()}>
+          {children}
+        </table>
+      </div>
+    ),
+    th: ({ children, className, ...props }) => (
+      <th {...props} className={`markdown-table-cell whitespace-normal break-words ${className ?? ""}`.trim()}>
+        {renderTranscriptTextNodes(children, fileLinkContext)}
+      </th>
+    ),
+    td: ({ children, className, ...props }) => (
+      <td {...props} className={`markdown-table-cell whitespace-normal break-words ${className ?? ""}`.trim()}>
+        {renderTranscriptTextNodes(children, fileLinkContext)}
+      </td>
+    ),
+  }), [fileLinkContext]);
   if (!content) {
     return null;
   }
@@ -155,71 +209,8 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
     >
       <Markdown
         remarkPlugins={[remarkGfm]}
-        components={{
-          // Custom component overrides for consistent styling
-          a: ({ href, children }) => {
-            const target = href && fileLinkContext
-              ? resolveMarkdownFileLinkTarget(href, fileLinkContext)
-              : null;
-            if (target && fileLinkContext) {
-              return (
-                <TranscriptPathLink
-                  target={target}
-                  fileLinkContext={fileLinkContext}
-                  href={fileLinkContext.getFileHref(target)}
-                >
-                  {children}
-                </TranscriptPathLink>
-              );
-            }
-            return (
-              <a
-                href={href}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-600 dark:text-blue-400 hover:underline"
-              >
-                {children}
-              </a>
-            );
-          },
-          p: ({ children, className, ...props }) => (
-            <p {...props} className={className}>
-              {renderTranscriptTextNodes(children, fileLinkContext)}
-            </p>
-          ),
-          li: ({ children, className, ...props }) => (
-            <li {...props} className={className}>
-              {renderTranscriptTextNodes(children, fileLinkContext)}
-            </li>
-          ),
-          code: ({ children, className }) => (
-            <MarkdownCode
-              className={className}
-              fileLinkContext={fileLinkContext}
-            >
-              {children}
-            </MarkdownCode>
-          ),
-          pre: MarkdownPre,
-          table: ({ children, className, ...props }) => (
-            <div className="min-w-0 max-w-full overflow-x-auto">
-              <table {...props} className={`markdown-table min-w-full w-fit max-w-none table-auto ${className ?? ""}`.trim()}>
-                {children}
-              </table>
-            </div>
-          ),
-          th: ({ children, className, ...props }) => (
-            <th {...props} className={`markdown-table-cell whitespace-normal break-words ${className ?? ""}`.trim()}>
-              {renderTranscriptTextNodes(children, fileLinkContext)}
-            </th>
-          ),
-          td: ({ children, className, ...props }) => (
-            <td {...props} className={`markdown-table-cell whitespace-normal break-words ${className ?? ""}`.trim()}>
-              {renderTranscriptTextNodes(children, fileLinkContext)}
-            </td>
-          ),
-        }}
+        rehypePlugins={revealFrom === undefined ? [] : [[rehypeStreamingText, { content, from: revealFrom }]]}
+        components={components}
       >
         {content}
       </Markdown>

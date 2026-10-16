@@ -1,6 +1,6 @@
 import type { Agent } from "@/shared";
 import { DataList, DataListRow, ErrorState, LoadingState, Panel } from "@pablozaiden/webapp/web";
-import { getAgentStatusBadgeVariant, StatusBadge } from "./common";
+import { getAgentStatusBadgeVariant, StateText, StatusBadge } from "./common";
 import { getPrivateContainerClassName } from "../lib/private-items";
 
 const MAX_CONFIGURED_AGENT_PROMPT_WORDS = 20;
@@ -26,7 +26,7 @@ function formatDate(value?: string): string {
 function AgentStatusPill({ status }: { status: string }) {
   return (
     <StatusBadge variant={getAgentStatusBadgeVariant(status)} size="md">
-      {status}
+      <StateText>{status}</StateText>
     </StatusBadge>
   );
 }

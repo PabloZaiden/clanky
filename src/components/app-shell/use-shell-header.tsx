@@ -24,7 +24,7 @@ import type {
   Task,
   Workspace,
 } from "@/shared";
-import { Badge, Button, formatStatusLabel, getAgentStatusBadgeVariant, StatusBadge } from "../common";
+import { Badge, Button, formatStatusLabel, getAgentStatusBadgeVariant, StateText, StatusBadge } from "../common";
 
 export interface HeaderModel {
   title?: string;
@@ -74,7 +74,7 @@ export function RouteHeaderTitle({ model, defaultTitle }: { model: HeaderModel; 
           ) : null}
           {statusBadge ? (
             <StatusBadge variant={model.badgeVariant} size="sm" className="shrink-0">
-              {statusBadge}
+              <StateText>{statusBadge}</StateText>
             </StatusBadge>
           ) : null}
         </span>

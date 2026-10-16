@@ -53,6 +53,7 @@ import {
   getTerminalSessionStatusBadgeVariant,
   getTerminalSessionStatusLabel,
   StatusBadge,
+  StateText,
 } from "../common";
 
 interface ExecutionHostViewProps {
@@ -450,7 +451,7 @@ export function ExecutionHostView({
                 description={chat.config.directory}
                 badge={(
                   <StatusBadge variant={getChatStatusBadgeVariant(chat.state.status)}>
-                    {formatStatusLabel(chat.state.status)}
+                    <StateText>{formatStatusLabel(chat.state.status)}</StateText>
                   </StatusBadge>
                 )}
                 onClick={() => onNavigate({ view: "chat", chatId: chat.config.id })}

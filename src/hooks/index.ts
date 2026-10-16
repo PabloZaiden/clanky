@@ -17,6 +17,7 @@ export {
   useRefreshOnForeground,
 } from "./useDocumentVisibility";
 export { useForegroundPresentation } from "./useForegroundPresentation";
+export { useTextStateSwap } from "./useTextStateSwap";
 export { useAgents, type UseAgentsResult } from "./useAgents";
 export { useTasks, type UseTasksResult, type CreateTaskResult } from "./useTasks";
 export { useTask, type UseTaskResult } from "./useTask";

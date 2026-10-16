@@ -29,7 +29,7 @@ import {
   type ActionMenuItem,
   type WebAppRoute,
 } from "@pablozaiden/webapp/web";
-import { Button, getAgentStatusBadgeVariant, StatusBadge } from "../common";
+import { Button, getAgentStatusBadgeVariant, StateText, StatusBadge } from "../common";
 import { getRouteString } from "./route-fields";
 import { ClankyListRow } from "./clanky-list-row";
 import { AgentDeterministicMode } from "./agent-deterministic-mode";
@@ -52,7 +52,7 @@ function formatDate(value?: string): string {
 function AgentStatusPill({ status }: { status: string }) {
   return (
     <StatusBadge variant={getAgentStatusBadgeVariant(status)} size="md">
-      {status}
+      <StateText>{status}</StateText>
     </StatusBadge>
   );
 }

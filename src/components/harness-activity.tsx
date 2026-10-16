@@ -14,7 +14,7 @@ import type {
   HarnessCapabilities,
   HarnessInputReceipt,
 } from "@/shared/harness-control";
-import { StatusBadge } from "./common";
+import { StateText, StatusBadge } from "./common";
 import {
   getEffectiveHarnessInputAdmission,
   HarnessInputReconciliationProvider,
@@ -117,7 +117,7 @@ function ActivityRow({
       title={<span className="block truncate">{activity.description}</span>}
       description={activity.kind === "subagent" ? activity.effectiveModel ?? activity.requestedModel ?? "Model not reported"
         : activity.kind === "process" ? "Process" : "External activity"}
-      badge={<StatusBadge size="sm">{activity.status}</StatusBadge>}
+      badge={<StatusBadge size="sm"><StateText>{activity.status}</StateText></StatusBadge>}
       actions={canStop ? (
         <button type="button" className="shrink-0 py-1 text-xs text-gray-500 underline decoration-dotted underline-offset-2 hover:text-red-600 disabled:opacity-50 dark:text-gray-400" disabled={disabled || stopping} onClick={onStop}>
           {stopping ? "Stopping" : "Stop"}
@@ -148,7 +148,7 @@ function HarnessActivityPage({ kind, entityId, snapshot, capabilities, onBack }:
         ) : (
           <div className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-              <span>Principal: {activity.principalProcessing ? "Running" : "Idle"}</span>
+              <span>Principal: <StateText>{activity.principalProcessing ? "Running" : "Idle"}</StateText></span>
             </div>
             {activity.coverage === "partial" && (
               <ErrorState title="Partial observation" description="Some background work may not be visible." />

@@ -5,6 +5,7 @@ import type { UseTerminalSessionsResult } from "../../hooks/useTerminalSessions"
 import { getTaskStatusPill, isWorkspaceHistoryTask } from "../../utils";
 import {
   StatusBadge,
+  StateText,
   getChatStatusBadgeVariant,
   formatStatusLabel,
   getTerminalSessionStatusBadgeVariant,
@@ -118,7 +119,7 @@ export function WorkspaceView({
         key={task.config.id}
         title={task.config.name}
         description="Task"
-        badge={<StatusBadge variant={statusPill.variant}>{statusPill.label}</StatusBadge>}
+        badge={<StatusBadge variant={statusPill.variant}><StateText>{statusPill.label}</StateText></StatusBadge>}
         onClick={!privateHidden ? () => onNavigate(route) : undefined}
         privateHidden={privateHidden}
       />
@@ -132,7 +133,7 @@ export function WorkspaceView({
         key={chat.config.id}
         title={chat.config.name}
         description="Chat"
-        badge={<StatusBadge variant={getChatStatusBadgeVariant(chat.state.status)}>{formatStatusLabel(chat.state.status)}</StatusBadge>}
+        badge={<StatusBadge variant={getChatStatusBadgeVariant(chat.state.status)}><StateText>{formatStatusLabel(chat.state.status)}</StateText></StatusBadge>}
         onClick={!privateHidden ? () => onNavigate({ view: "chat", chatId: chat.config.id }) : undefined}
         privateHidden={privateHidden}
       />
