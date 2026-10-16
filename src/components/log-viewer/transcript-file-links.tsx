@@ -3,6 +3,7 @@ import { createLogger } from "@pablozaiden/webapp/web";
 import type { WorkspaceFileEntry } from "@/shared";
 import { getFileExplorerFileMetadataApi } from "../../hooks/workspaceFileActions";
 import type { TranscriptFileLinkContext, TranscriptFileLinkTarget } from "./types";
+import { renderRevealedText } from "./streaming-text";
 
 const log = createLogger("transcript-file-links");
 
@@ -474,9 +475,9 @@ function trimTrailingPathPunctuation(value: string): { candidate: string; traili
   return { candidate, trailing };
 }
 
-function splitPlainTextPathParts(content: string, fileLinkContext?: TranscriptFileLinkContext): ReactNode[] {
+function splitPlainTextPathParts(content: string, fileLinkContext?: TranscriptFileLinkContext, revealFrom = content.length): ReactNode[] {
   if (!fileLinkContext) {
-    return [content];
+    return [renderRevealedText(content, 0, revealFrom)];
   }
 
   const result: ReactNode[] = [];
@@ -495,7 +496,7 @@ function splitPlainTextPathParts(content: string, fileLinkContext?: TranscriptFi
     }
 
     if (candidateStartIndex > currentIndex) {
-      result.push(content.slice(currentIndex, candidateStartIndex));
+      result.push(renderRevealedText(content.slice(currentIndex, candidateStartIndex), currentIndex, revealFrom));
     }
 
     const href = fileLinkContext.getFileHref(target);
@@ -511,27 +512,29 @@ function splitPlainTextPathParts(content: string, fileLinkContext?: TranscriptFi
     );
 
     if (trailing) {
-      result.push(trailing);
+      result.push(renderRevealedText(trailing, candidateStartIndex + candidate.length, revealFrom));
     }
 
     currentIndex = matchIndex + fullMatch.length;
   }
 
   if (currentIndex < content.length) {
-    result.push(content.slice(currentIndex));
+    result.push(renderRevealedText(content.slice(currentIndex), currentIndex, revealFrom));
   }
 
-  return result.length > 0 ? result : [content];
+  return result.length > 0 ? result : [renderRevealedText(content, 0, revealFrom)];
 }
 
 export function TranscriptInlineTextContent({
   content,
   fileLinkContext,
+  revealFrom,
 }: {
   content: string;
   fileLinkContext?: TranscriptFileLinkContext;
+  revealFrom?: number;
 }) {
-  const parts = useMemo(() => splitPlainTextPathParts(content, fileLinkContext), [content, fileLinkContext]);
+  const parts = useMemo(() => splitPlainTextPathParts(content, fileLinkContext, revealFrom), [content, fileLinkContext, revealFrom]);
   return <>{parts}</>;
 }
 
@@ -561,14 +564,16 @@ export function TranscriptTextContent({
   className,
   dimmed = false,
   fileLinkContext,
+  revealFrom = content.length,
 }: {
   content: string;
   className: string;
   dimmed?: boolean;
   fileLinkContext?: TranscriptFileLinkContext;
+  revealFrom?: number;
 }) {
   const parts = useMemo(() => {
-    const result: Array<{ type: "text" | "code"; value: string }> = [];
+    const result: Array<{ type: "text" | "code"; value: string; offset: number }> = [];
     const inlineCodePattern = /`([^`\n\r]+)`/g;
     let currentIndex = 0;
 
@@ -576,14 +581,14 @@ export function TranscriptTextContent({
       const [fullMatch, inlineCodeValue = ""] = match;
       const matchIndex = match.index ?? 0;
       if (matchIndex > currentIndex) {
-        result.push({ type: "text", value: content.slice(currentIndex, matchIndex) });
+        result.push({ type: "text", value: content.slice(currentIndex, matchIndex), offset: currentIndex });
       }
-      result.push({ type: "code", value: inlineCodeValue });
+      result.push({ type: "code", value: inlineCodeValue, offset: matchIndex });
       currentIndex = matchIndex + fullMatch.length;
     }
 
     if (currentIndex < content.length) {
-      result.push({ type: "text", value: content.slice(currentIndex) });
+      result.push({ type: "text", value: content.slice(currentIndex), offset: currentIndex });
     }
 
     return result;
@@ -594,7 +599,7 @@ export function TranscriptTextContent({
       {parts.map((part, index) => (
         part.type === "code"
           ? <TranscriptInlineCode key={`code-${index}`} fileLinkContext={fileLinkContext}>{part.value}</TranscriptInlineCode>
-          : <TranscriptInlineTextContent key={`text-${index}`} content={part.value} fileLinkContext={fileLinkContext} />
+          : <TranscriptInlineTextContent key={`text-${index}`} content={part.value} fileLinkContext={fileLinkContext} revealFrom={revealFrom - part.offset} />
       ))}
     </div>
   );

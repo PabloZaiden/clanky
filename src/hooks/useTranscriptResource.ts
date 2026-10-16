@@ -22,6 +22,7 @@ import { readApiResponse, requestApiResponse } from "../lib/api-client";
 import { createRefreshCoordinator } from "../lib/refresh-coordinator";
 import { isAbortError } from "../lib/request-lifecycle";
 import { useDocumentVisibility } from "./useDocumentVisibility";
+import { markStreamingText } from "../lib/streaming-text";
 
 export interface TranscriptResourceSnapshot<TResource> {
   resource: TResource;
@@ -603,6 +604,16 @@ export function useTranscriptResource<TResource, TSnapshot>({
     streamVersionRef.current += 1;
     const update = applyTranscriptStreamEvent(transcriptRef.current, event);
     if (update.transcript !== transcriptRef.current) {
+      if (event.type === "transcript.message.delta") {
+        const message = update.transcript.messages.find((entry) => entry.id === event.messageId);
+        if (message) {
+          markStreamingText(
+            message,
+            transcriptRef.current.messages.find((entry) => entry.id === event.messageId),
+            event.baseLength,
+          );
+        }
+      }
       if (
         event.type === "transcript.message.delta"
         || event.type === "transcript.log.delta"

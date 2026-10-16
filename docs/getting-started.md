@@ -118,6 +118,19 @@ extras to React in 200 ms batches. Incoming data and gap recovery remain current
 complete messages, interactions, status changes, and explicit transcript loads
 publish immediately rather than waiting for the next batch.
 
+New assistant prose in chats, including embedded task chats, uses a brief
+opacity and light-blur reveal as streamed fragments arrive. It does not queue
+or delay text delivery, animate user messages, or replay loaded history.
+Code blocks, tables, diagrams, and explicit links keep their normal rendering.
+The reveal also works with Markdown rendering disabled and is skipped when
+the system requests reduced motion.
+
+Agent, chat, and task status text and transcript activity summaries use a brief
+fade, light blur, and small vertical movement when their actual state changes.
+The latest status is shown immediately, without queuing previous labels or
+simulating progress. Initial rendering, hidden-tab updates, and reduced-motion
+preferences do not trigger the transition.
+
 When the result is ready:
 
 - accept it locally when you want to keep the worktree without pushing;

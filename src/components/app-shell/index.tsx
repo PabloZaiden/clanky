@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef, useState, type ChangeEvent } from "react"
 import logoSvgPath from "../../favicon.svg" with { type: "file" };
 import {
   useToast,
+  routeToHash,
   WebAppRoot,
   type WebAppRoute,
 } from "@pablozaiden/webapp/web";
@@ -502,7 +503,7 @@ export function AppShell() {
           routes={routes}
           onRouteChange={handleRouteChange}
           header={{
-            renderTitle: ({ defaultTitle }) => <RouteHeaderTitle model={header.headerModel} defaultTitle={defaultTitle} />,
+            renderTitle: ({ defaultTitle }) => <RouteHeaderTitle key={routeToHash(header.headerOwnerRoute ?? route)} model={header.headerModel} defaultTitle={defaultTitle} />,
             getHeaderActions: () => ({
               primary: header.directHeaderActions,
               overflow: header.headerActions,

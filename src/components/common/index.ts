@@ -10,6 +10,7 @@ export {
   type FocusPreservingButtonProps,
 } from "./FocusPreservingButton";
 export { ComposerInterruptButton } from "./ComposerInterruptButton";
+export { StateText } from "./StateText";
 export { Card, type CardProps } from "./Card";
 export {
   Badge,

@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import type { ToolCallData, ToolCallDisplayData } from "@/shared";
 import { isToolCallDetailsStale, isToolCallSummary } from "@/shared/tool-call";
 import { getDiffFileStatusPresentation } from "../common/diff-file-status";
+import { StateText } from "../common";
 import { ImageViewerModal } from "../ImageViewerModal";
 import { DiffPatchViewer } from "../task-details/diff-patch-viewer";
 import { HighlightedJsonBlock } from "./highlighted-json-block";
@@ -278,7 +279,7 @@ export const ToolEntry = memo(function ToolEntry({
     <ActivityIndicator active={isActive} label="Working" className={toolSummaryClassName} data-tool-summary="true">
       {shouldShowStatus && (
         <>
-          <span className={`shrink-0 font-medium ${statusClassName}`}>{tool.status}</span>
+          <StateText className={`shrink-0 font-medium ${statusClassName}`}>{tool.status}</StateText>
           <span className={`shrink-0 ${isActive ? "text-inherit" : "text-gray-300 dark:text-gray-600"}`}>/</span>
         </>
       )}

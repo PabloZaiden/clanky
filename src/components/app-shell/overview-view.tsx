@@ -14,7 +14,7 @@ import type {
   UseWorkerUpdateJobsResult,
   useTaskGrouping,
 } from "../../hooks";
-import { Button, StatusBadge, type BadgeVariant } from "../common";
+import { Button, StateText, StatusBadge, type BadgeVariant } from "../common";
 import { getProvisioningStatusBadgeVariant, getProvisioningStatusLabel } from "../common/status-variants";
 import { ConfiguredAgentsSection } from "../ConfiguredAgentsSection";
 import {
@@ -274,7 +274,7 @@ export function OverviewView({
                     />
                   )}
                   metaPlacement="footer"
-                  badge={<StatusBadge variant={badge.variant}>{badge.label}</StatusBadge>}
+                  badge={<StatusBadge variant={badge.variant}><StateText>{badge.label}</StateText></StatusBadge>}
                   onClick={!privateHidden ? () => onNavigate(getActiveWorkRoute(item)) : undefined}
                   privateHidden={privateHidden}
                 />
@@ -294,7 +294,7 @@ export function OverviewView({
                   key={item.key}
                   title={item.chatNode.title}
                   description={getChatHistorySubtitle(item)}
-                  badge={<StatusBadge variant={item.chatNode.badgeVariant}>{item.chatNode.badge}</StatusBadge>}
+                  badge={<StatusBadge variant={item.chatNode.badgeVariant}><StateText>{item.chatNode.badge}</StateText></StatusBadge>}
                   onClick={!privateHidden ? () => onNavigate(getChatHistoryRoute(item)) : undefined}
                   privateHidden={privateHidden}
                 />

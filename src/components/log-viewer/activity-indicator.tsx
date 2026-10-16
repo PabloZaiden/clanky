@@ -1,5 +1,6 @@
 import type { ComponentPropsWithoutRef } from "react";
 import { useDocumentVisibility } from "../../hooks/useDocumentVisibility";
+import { useTextStateSwap } from "../../hooks/useTextStateSwap";
 
 type ActivityIndicatorProps = ComponentPropsWithoutRef<"span"> & {
   active?: boolean;
@@ -14,9 +15,11 @@ export function ActivityIndicator({
   ...props
 }: ActivityIndicatorProps) {
   const visible = useDocumentVisibility();
+  const ref = useTextStateSwap(`${active}:${label ?? ""}:${typeof children === "string" ? children : ""}`);
   return (
     <span
       {...props}
+      ref={ref}
       className={`inline-flex max-w-full items-center gap-2 ${active ? "clanky-activity-active" : ""} ${active && visible ? "clanky-activity-breathing" : ""} ${className}`.trim()}
     >
       {active && (
