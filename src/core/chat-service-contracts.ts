@@ -134,7 +134,7 @@ export interface ChatStatePort {
   getTaskChat(taskId: string): Promise<Chat | null>;
   getAllChats(): Promise<Chat[]>;
   getChatSummaries(): Promise<Chat[]>;
-  getChatsByWorkspace(workspaceId: string): Promise<Chat[]>;
+  getChatsByWorkspace(workspaceId: string, options?: { includeTaskChats?: boolean }): Promise<Chat[]>;
   getChatSummariesByWorkspace(workspaceId: string): Promise<Chat[]>;
   getWorkspace(workspaceId: string): Promise<Workspace | null>;
   touchWorkspace(workspaceId: string): Promise<void>;

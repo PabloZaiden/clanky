@@ -4,6 +4,8 @@ import { E2EApplication } from "./support/application";
 import { createGitFixture } from "./support/git";
 import { pollUntil } from "./support/polling";
 import { requireCommand } from "./support/process";
+import { installExternalCode } from "./support/provider";
+import { exerciseCodePreview } from "./support/code-preview";
 
 interface ExecutionHost {
   ref: Record<string, string>;
@@ -115,6 +117,7 @@ async function waitForManagedWorktreesRemoved(
 test("users can recover worktree chats and retire conversations on shared branches", async () => {
   const application = await E2EApplication.create();
   try {
+    await installExternalCode(application.providerBinDirectory);
     const fixture = await createGitFixture(application.runDirectory);
     const selectedBranch = "shared-feature";
     await git(fixture.repositoryDirectory, ["checkout", "-b", selectedBranch]);
@@ -234,6 +237,15 @@ test("users can recover worktree chats and retire conversations on shared branch
     expect(firstWorktree?.worktreePath).toBeDefined();
     expect(firstWorktree?.workingBranch).toBe(selectedBranch);
     await assertWorktreeUsesBranch(firstWorktree!.worktreePath!, selectedBranch);
+    const { token: apiKey } = (await application.json<{ token: string }>("/api/api-keys", {
+      method: "POST", body: JSON.stringify({ name: "chat-code", scopes: ["*"] }),
+    })).data;
+    await exerciseCodePreview({
+      baseUrl: application.baseUrl, apiKey,
+      homeDirectory: application.homeDirectory, logsDirectory: application.logsDirectory,
+      workspace: workspace.id, selector: { chat: "First shared branch chat" },
+      expectedDirectory: firstWorktree!.worktreePath!,
+    });
     expect(await git(
       firstWorktree!.worktreePath!,
       ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],

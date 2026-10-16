@@ -412,7 +412,7 @@ export class CommandExecutorImpl implements CommandExecutor {
       return result;
     };
 
-    if (this.provider === "ssh") {
+    if (this.provider === "ssh" || options?.longRunning) {
       return await executeCommand();
     }
 

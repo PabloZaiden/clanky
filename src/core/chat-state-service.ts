@@ -169,8 +169,9 @@ export class ChatStateService implements ChatStatePort {
     return (await listChatSummaries()).filter(isStandaloneChat);
   }
 
-  async getChatsByWorkspace(workspaceId: string): Promise<Chat[]> {
-    return (await listChatsByWorkspace(workspaceId)).filter(isStandaloneChat);
+  async getChatsByWorkspace(workspaceId: string, options: { includeTaskChats?: boolean } = {}): Promise<Chat[]> {
+    const chats = await listChatsByWorkspace(workspaceId, options);
+    return options.includeTaskChats ? chats : chats.filter(isStandaloneChat);
   }
 
   async getChatSummariesByWorkspace(workspaceId: string): Promise<Chat[]> {

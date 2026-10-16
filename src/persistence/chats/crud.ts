@@ -213,14 +213,14 @@ export async function listChatSummaries(): Promise<Chat[]> {
   return rows.map((row) => createChatListSnapshot(rowToChat(row)));
 }
 
-export async function listChatsByWorkspace(workspaceId: string): Promise<Chat[]> {
-  return listChatSummariesByWorkspace(workspaceId);
+export async function listChatsByWorkspace(workspaceId: string, options?: { includeTaskChats?: boolean }): Promise<Chat[]> {
+  return listChatSummariesByWorkspace(workspaceId, options);
 }
 
-export async function listChatSummariesByWorkspace(workspaceId: string): Promise<Chat[]> {
+export async function listChatSummariesByWorkspace(workspaceId: string, options: { includeTaskChats?: boolean } = {}): Promise<Chat[]> {
   const rows = getDatabase()
-    .prepare(`SELECT ${CHAT_METADATA_COLUMNS} FROM chats WHERE workspace_id = ? AND ${STANDALONE_CHAT_CONDITION} AND user_id = ? ORDER BY created_at DESC`)
-    .all(workspaceId, requirePersistenceUserId()) as Record<string, unknown>[];
+    .prepare(`SELECT ${CHAT_METADATA_COLUMNS} FROM chats WHERE workspace_id = ? AND (? = 1 OR ${STANDALONE_CHAT_CONDITION}) AND user_id = ? ORDER BY created_at DESC`)
+    .all(workspaceId, options.includeTaskChats ? 1 : 0, requirePersistenceUserId()) as Record<string, unknown>[];
   return rows.map((row) => createChatListSnapshot(rowToChat(row)));
 }
 

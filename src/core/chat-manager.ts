@@ -198,8 +198,12 @@ export class ChatManager {
     return this.services.state.getChatSummaries();
   }
 
-  async getChatsByWorkspace(workspaceId: string): Promise<Chat[]> {
-    return this.services.state.getChatsByWorkspace(workspaceId);
+  async getChatsByWorkspace(workspaceId: string, options?: { includeTaskChats?: boolean }): Promise<Chat[]> {
+    return this.services.state.getChatsByWorkspace(workspaceId, options);
+  }
+
+  async getWorkingDirectory(chat: Chat): Promise<string> {
+    return (await this.services.worktree.resolveWorkingDirectory(chat, { prepareWorkspace: false })).directory;
   }
 
   async getChatSummariesByWorkspace(workspaceId: string): Promise<Chat[]> {

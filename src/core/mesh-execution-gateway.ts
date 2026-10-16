@@ -1199,6 +1199,7 @@ export class MeshExecutionGateway {
   private async runAsyncCommand(command: MeshExecutionAsyncCommand): Promise<void> {
     try {
       const result = await command.executor.exec(command.command, command.args, {
+        longRunning: true,
         cwd: command.cwd,
         timeout: command.timeout,
         maxOutputBytes: command.maxOutputBytes,

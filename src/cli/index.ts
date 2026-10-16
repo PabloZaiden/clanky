@@ -1,4 +1,5 @@
 export { createClankyCli } from "./app";
+export { parseCodeCommandArgs } from "./code";
 export {
   parsePreviewCommandArgs,
   runPreviewCommand,

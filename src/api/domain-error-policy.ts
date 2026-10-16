@@ -81,6 +81,16 @@ interface DomainErrorPolicyProfile {
  * compile-time checked while unknown internal codes still fail safely.
  */
 const API_DOMAIN_ERROR_CODES = {
+  code_target_invalid: true,
+  code_target_ambiguous: true,
+  code_target_not_found: true,
+  code_directory_unavailable: true,
+  chat_directory_unavailable: true,
+  code_unavailable: true,
+  code_runtime_unavailable: true,
+  code_start_failed: true,
+  code_cleanup_failed: true,
+  preview_tunnel_start_failed: true,
   harness_session_not_found: true,
   harness_session_not_owned: true,
   harness_activity_not_owned: true,
@@ -628,6 +638,7 @@ const POLICY_PROFILES = {
         status: 409,
         message: "The source chat's workspace directory or execution target is unavailable.",
       },
+      chat_directory_unavailable: { status: 409, messageFromDetails: (error) => error.message },
       chat_history_export_cleanup_failed: {
         status: 502,
         message: "History recovery could not remove its temporary files from the execution host.",
@@ -1311,6 +1322,16 @@ const POLICY_PROFILES = {
     boundary: "authenticated",
     mappings: {
       ...COMMON_MAPPINGS,
+      code_target_invalid: { status: 400, messageFromDetails: (error) => error.message },
+      code_target_ambiguous: { status: 409, messageFromDetails: (error) => error.message },
+      code_target_not_found: { status: 404, messageFromDetails: (error) => error.message },
+      code_directory_unavailable: { status: 409, messageFromDetails: (error) => error.message },
+      chat_directory_unavailable: { status: 409, messageFromDetails: (error) => error.message },
+      code_unavailable: { status: 409, messageFromDetails: (error) => error.message },
+      code_runtime_unavailable: { status: 409, messageFromDetails: (error) => error.message },
+      code_start_failed: { status: 502, messageFromDetails: (error) => error.message },
+      code_cleanup_failed: { status: 502, messageFromDetails: (error) => error.message },
+      preview_tunnel_start_failed: { status: 502, messageFromDetails: (error) => error.message },
       execution_host_capability_unavailable: {
         status: 409,
         message: "This execution host does not support direct previews.",
@@ -1338,7 +1359,7 @@ const POLICY_PROFILES = {
       },
       workspace_name_ambiguous: {
         status: 409,
-        message: "The workspace name is ambiguous.",
+        messageFromDetails: (error) => error.message,
       },
       workspace_reference_required: {
         status: 400,

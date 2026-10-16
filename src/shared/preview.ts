@@ -6,11 +6,25 @@ import type { ExecutionHostBinding } from "./execution-host";
 
 export type PreviewSessionStatus = "active" | "closing" | "closed" | "failed";
 
+export function previewWebSocketCloseCode(code: number | undefined): number {
+  if (code === undefined) return 1000;
+  return Number.isInteger(code)
+    && ((code >= 1000 && code <= 1014 && ![1004, 1005, 1006].includes(code)) || (code >= 3000 && code <= 4999))
+    ? code
+    : 1011;
+}
+
 export type PreviewTargetKind = "workspace" | "server";
 
 export type PreviewTarget =
   | { kind: "workspace"; reference: string }
   | { kind: "server"; reference: string };
+
+export interface CodePreviewOptions {
+  chat?: string;
+  task?: string;
+  acceptServerLicenseTerms: boolean;
+}
 
 export interface PreviewSessionConfig {
   id: string;
@@ -42,6 +56,7 @@ export interface PreviewSession {
 }
 
 export interface RegisterCliPreviewOptions {
+  code?: CodePreviewOptions;
   target: PreviewTarget;
   remoteHost: string;
   remotePort: number;
@@ -66,6 +81,7 @@ export type PreviewEvent =
 
 export interface PreviewBridgeHelloMessage {
   type: "hello";
+  code?: CodePreviewOptions;
   target: PreviewTarget;
   remoteHost: string;
   remotePort: number;
@@ -82,6 +98,7 @@ export interface PreviewBridgeReadyMessage {
   previewId: string;
   targetKind: PreviewTargetKind;
   workspaceId?: string;
+  code?: { directory: string; remotePort: number };
 }
 
 export interface PreviewBridgeRequestStartMessage {
@@ -115,6 +132,7 @@ export interface PreviewBridgeErrorMessage {
   type: "stream.error";
   streamId?: string;
   error: string;
+  code?: string;
 }
 
 export interface PreviewBridgeWebSocketOpenMessage {
@@ -186,6 +204,8 @@ export type PreviewBridgeClientMessage =
   | PreviewBridgeWebSocketOpenMessage
   | PreviewBridgeWebSocketMessage
   | PreviewBridgeWebSocketCloseMessage
+  | { type: "close" }
+  | { type: "request.cancel"; streamId: string }
   | { type: "bridge.pong" };
 
 export type PreviewBridgeServerMessage =
