@@ -127,7 +127,6 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
     loadFullTranscript,
     loadToolDetails: loadToolCallDetails,
     applyTranscriptEvent,
-    flushTranscript,
     clearResource,
   } = transcriptResource;
   const refreshChatCoalesced = transcriptResource.refreshCoalesced;
@@ -226,7 +225,6 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
     if (!current) {
       return;
     }
-    if (event.type === "chat.status") flushTranscript();
     const nextChat = applyChatOperationalEvent(current, event);
     if (nextChat !== current) {
       setChat(nextChat);
@@ -235,7 +233,7 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
     if (transcriptEvent) {
       applyTranscriptEvent(transcriptEvent as TranscriptStreamEvent);
     }
-  }, [applyTranscriptEvent, chatId, flushTranscript, getChat, setChat]);
+  }, [applyTranscriptEvent, chatId, getChat, setChat]);
 
   const { status: chatSocketStatus } = useRealtimeStream<ChatStreamEvent>({
     filters: { chatId },

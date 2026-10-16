@@ -475,9 +475,19 @@ function trimTrailingPathPunctuation(value: string): { candidate: string; traili
   return { candidate, trailing };
 }
 
-function splitPlainTextPathParts(content: string, fileLinkContext?: TranscriptFileLinkContext, revealFrom = content.length): ReactNode[] {
+function splitPlainTextPathParts({
+  content,
+  fileLinkContext,
+  revealFrom = content.length,
+  offset = 0,
+}: {
+  content: string;
+  fileLinkContext?: TranscriptFileLinkContext;
+  revealFrom?: number;
+  offset?: number;
+}): ReactNode[] {
   if (!fileLinkContext) {
-    return [renderRevealedText(content, 0, revealFrom)];
+    return [renderRevealedText(content, offset, revealFrom)];
   }
 
   const result: ReactNode[] = [];
@@ -496,7 +506,7 @@ function splitPlainTextPathParts(content: string, fileLinkContext?: TranscriptFi
     }
 
     if (candidateStartIndex > currentIndex) {
-      result.push(renderRevealedText(content.slice(currentIndex, candidateStartIndex), currentIndex, revealFrom));
+      result.push(renderRevealedText(content.slice(currentIndex, candidateStartIndex), offset + currentIndex, revealFrom));
     }
 
     const href = fileLinkContext.getFileHref(target);
@@ -512,29 +522,34 @@ function splitPlainTextPathParts(content: string, fileLinkContext?: TranscriptFi
     );
 
     if (trailing) {
-      result.push(renderRevealedText(trailing, candidateStartIndex + candidate.length, revealFrom));
+      result.push(renderRevealedText(trailing, offset + candidateStartIndex + candidate.length, revealFrom));
     }
 
     currentIndex = matchIndex + fullMatch.length;
   }
 
   if (currentIndex < content.length) {
-    result.push(renderRevealedText(content.slice(currentIndex), currentIndex, revealFrom));
+    result.push(renderRevealedText(content.slice(currentIndex), offset + currentIndex, revealFrom));
   }
 
-  return result.length > 0 ? result : [renderRevealedText(content, 0, revealFrom)];
+  return result.length > 0 ? result : [renderRevealedText(content, offset, revealFrom)];
 }
 
 export function TranscriptInlineTextContent({
   content,
   fileLinkContext,
   revealFrom,
+  offset,
 }: {
   content: string;
   fileLinkContext?: TranscriptFileLinkContext;
   revealFrom?: number;
+  offset?: number;
 }) {
-  const parts = useMemo(() => splitPlainTextPathParts(content, fileLinkContext, revealFrom), [content, fileLinkContext, revealFrom]);
+  const parts = useMemo(
+    () => splitPlainTextPathParts({ content, fileLinkContext, revealFrom, offset }),
+    [content, fileLinkContext, revealFrom, offset],
+  );
   return <>{parts}</>;
 }
 
@@ -599,7 +614,7 @@ export function TranscriptTextContent({
       {parts.map((part, index) => (
         part.type === "code"
           ? <TranscriptInlineCode key={`code-${index}`} fileLinkContext={fileLinkContext}>{part.value}</TranscriptInlineCode>
-          : <TranscriptInlineTextContent key={`text-${index}`} content={part.value} fileLinkContext={fileLinkContext} revealFrom={revealFrom - part.offset} />
+          : <TranscriptInlineTextContent key={`text-${index}`} content={part.value} fileLinkContext={fileLinkContext} revealFrom={revealFrom} offset={part.offset} />
       ))}
     </div>
   );
