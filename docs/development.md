@@ -20,6 +20,11 @@ bun dev
 The application is available at <http://localhost:3000>. Use an isolated
 `CLANKY_DATA_DIR` for local experiments or visual validation.
 
+Transient feedback uses the webapp framework's header notifications. Desktop
+shows the message and severity; mobile shows a severity icon that opens the
+full message. Notifications expire after five seconds by default, so use
+inline errors or validation for persistent failures.
+
 The devcontainer automatically downloads SF Pro from Apple, installs its
 variable regular and italic fonts, and configures fontconfig to use SF Pro
 for local browser UI text. It does not install DejaVu, Noto core, or Roboto.

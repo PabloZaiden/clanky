@@ -12,7 +12,7 @@ export type AcpAuthenticationMode = "agent" | "identity" | "password";
 
 export type AcpProcessExit = {
   exitCode: number;
-  signalCode: NodeJS.Signals | null;
+  signalCode: Bun.Subprocess["signalCode"];
 };
 
 export type JsonRpcError = {
