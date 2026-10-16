@@ -19,6 +19,7 @@ import { assertWorktreesAllowed } from "./workspace-capabilities";
 import { normalizeExecutionPath } from "./execution-path";
 import { sanitizeBranchName } from "../utils";
 import { ChatWorktreeBranchConflictError } from "../domain/chat-worktree-errors";
+import { DomainError } from "../domain/domain-error";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { createTimestamp } from "@/shared/events";
 import { saveTrashedChatWorktree } from "../persistence/chats/trash";
@@ -156,11 +157,11 @@ export class ChatWorktreeService implements ChatWorktreePort {
       const task = await this.taskManager.getTask(taskId);
       throwIfAborted(options.signal);
       if (!task) {
-        throw new Error(`Task ${taskId} for chat ${chat.config.id} was not found`);
+        throw new DomainError("chat_directory_unavailable", "The task linked to this chat no longer exists.");
       }
       const directory = getTaskWorkingDirectory(task);
       if (!directory) {
-        throw new Error(`Task ${taskId} does not currently have a working directory for chat ${chat.config.id}`);
+        throw new DomainError("chat_directory_unavailable", "The linked task worktree has not been prepared. Nothing was created.");
       }
       if (chat.config.workspaceId !== task.config.workspaceId) {
         throw new Error(
@@ -195,9 +196,7 @@ export class ChatWorktreeService implements ChatWorktreePort {
     if (!options.prepareWorkspace) {
       const worktreePath = chat.state.worktree?.worktreePath;
       if (!worktreePath) {
-        throw new Error(
-          `Chat ${chat.config.id} is configured to use a worktree but no established worktree path was recorded`,
-        );
+        throw new DomainError("chat_directory_unavailable", "The chat worktree has not been prepared. Nothing was created.");
       }
       const executor = await this.executorProvider.getCommandExecutorAsync(getChatWorkspaceId(chat), chat.config.directory);
       throwIfAborted(options.signal);

@@ -13,6 +13,7 @@ import {
   type ExecutionPathStyle,
 } from "./execution-path";
 import type {
+  CommandTerminationOutcome,
   GitCommandScope,
   GitEnvironmentVariableName,
 } from "../shared/execution-host";
@@ -30,6 +31,7 @@ export interface CommandResult {
   stdout: string;
   stderr: string;
   exitCode: number;
+  termination?: CommandTerminationOutcome;
 }
 
 /**

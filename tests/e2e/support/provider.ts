@@ -44,6 +44,10 @@ export async function installExternalAcpProvider(binDirectory: string): Promise<
   await installProviderExecutable(binDirectory, "copilot", PROVIDER_PATH);
 }
 
+export async function installExternalCode(binDirectory: string): Promise<void> {
+  await installProviderExecutable(binDirectory, "code", resolve(ROOT_DIR, "tests", "e2e", "providers", "code.ts"));
+}
+
 export async function installExternalNativeCopilotProvider(binDirectory: string): Promise<void> {
   await installProviderExecutable(binDirectory, "copilot", COPILOT_NATIVE_PATH);
 }

@@ -76,6 +76,7 @@ export const GIT_COMMAND_SCOPES = [
 ] as const;
 export type GitCommandScope = typeof GIT_COMMAND_SCOPES[number];
 export type GitEnvironmentVariableName = "GIT_SSH_COMMAND";
+export type CommandTerminationOutcome = "confirmed" | "failed";
 
 export const MANAGED_WORKTREES_BASE_VERSION = 2;
 export const MANAGED_WORKTREES_SELECTED_BRANCH_VERSION = 3;

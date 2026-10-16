@@ -9,12 +9,14 @@ import {
   type DeviceCredentialsStore,
   type StoredDeviceCredentials,
 } from "@pablozaiden/webapp/cli";
-import type { PreviewBridgeClientMessage, PreviewBridgeReadyMessage, PreviewBridgeServerMessage } from "@/shared";
+import type { CodePreviewOptions, PreviewBridgeClientMessage, PreviewBridgeReadyMessage, PreviewBridgeServerMessage } from "@/shared";
+import { PREVIEW_RESPONSE_WINDOW_BYTES, previewWebSocketCloseCode } from "@/shared/preview";
 
 const WS_READY_STATE_CLOSING = 2;
 const PREVIEW_LISTENER_WS_IDLE_TIMEOUT_SECONDS = 0;
 
 export interface PreviewCommandOptions {
+  code?: CodePreviewOptions;
   workspace?: string;
   server?: string;
   port: number;
@@ -29,9 +31,11 @@ export interface PreviewCommandOptions {
 interface PendingPreviewRequest {
   resolve: (response: Response) => void;
   reject: (error: Error) => void;
-  status?: number;
-  headers?: Array<[string, string]>;
-  chunks: Uint8Array[];
+  head: boolean;
+  body?: ReadableStreamDefaultController<Uint8Array>;
+  receivedBytes: number;
+  acknowledgedBytes: number;
+  cleanup(): void;
 }
 
 interface PreviewBrowserSocket {
@@ -58,7 +62,7 @@ export interface CliPreviewDependencies {
   getHostname?: () => string;
   createSocket?: (url: string, options: { headers: Headers }) => WebSocket;
   serve?: typeof Bun.serve;
-  openUrl?: (url: string) => void;
+  openUrl?: (url: string) => void | Promise<void>;
   registerSignalHandler?: (signal: NodeJS.Signals, handler: () => void) => () => void;
 }
 
@@ -198,15 +202,29 @@ function registerDefaultSignalHandler(signal: NodeJS.Signals, handler: () => voi
   return () => process.off(signal, handler);
 }
 
-function defaultOpenUrl(url: string): void {
+async function defaultOpenUrl(url: string): Promise<void> {
   const command = process.platform === "darwin"
     ? "open"
     : process.platform === "win32"
       ? "cmd"
       : "xdg-open";
   const args = process.platform === "win32" ? ["/c", "start", "", url] : [url];
-  const child = spawn(command, args, { stdio: "ignore", detached: true });
-  child.unref();
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(command, args, { stdio: "ignore" });
+    const timer = setTimeout(() => {
+      child.kill("SIGTERM");
+      reject(new Error("Browser launcher timed out"));
+    }, 5_000);
+    child.once("error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.once("exit", (code) => {
+      clearTimeout(timer);
+      if (code === 0) resolve();
+      else reject(new Error(`Browser launcher exited with code ${String(code)}`));
+    });
+  });
 }
 
 function getLanUrls(host: string, port: number, path: string): string[] {
@@ -249,14 +267,14 @@ async function waitForSocketOpen(socket: WebSocket): Promise<void> {
   });
 }
 
-async function waitForReady(socket: WebSocket): Promise<PreviewBridgeReadyMessage> {
+async function waitForReady(socket: WebSocket, timeoutMs: number): Promise<PreviewBridgeReadyMessage> {
   return await new Promise((resolve, reject) => {
     const onMessage = (event: MessageEvent) => {
       if (typeof event.data !== "string") {
         return;
       }
       const message = JSON.parse(event.data) as PreviewBridgeServerMessage | { type: "connected" };
-      if (message.type === "connected") {
+      if (message.type === "connected" || message.type === "bridge.ping") {
         return;
       }
       cleanup();
@@ -264,18 +282,29 @@ async function waitForReady(socket: WebSocket): Promise<PreviewBridgeReadyMessag
         resolve(message);
         return;
       }
-      reject(new Error("Preview bridge did not become ready."));
+      reject(new Error(message.type === "stream.error" ? message.error : "Preview bridge did not become ready."));
     };
     const onError = () => {
       cleanup();
       reject(new Error("Preview bridge WebSocket failed before ready."));
     };
+    const onClose = () => {
+      cleanup();
+      reject(new Error("Preview bridge closed before ready."));
+    };
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error("Preview startup timed out."));
+    }, timeoutMs);
     const cleanup = () => {
       socket.removeEventListener("message", onMessage);
       socket.removeEventListener("error", onError);
+      socket.removeEventListener("close", onClose);
+      clearTimeout(timer);
     };
     socket.addEventListener("message", onMessage);
     socket.addEventListener("error", onError);
+    socket.addEventListener("close", onClose);
   });
 }
 
@@ -389,238 +418,362 @@ export async function runPreviewCommand(
 
   const createSocket = dependencies.createSocket ?? createDefaultSocket;
   const socket = createSocket(bridgeUrl, { headers });
-  await waitForSocketOpen(socket);
-  const pending = new Map<string, PendingPreviewRequest>();
-  const browserSockets = new Map<string, PreviewBrowserSocket>();
-  const failActiveStreams = (reason: string) => {
-    for (const request of pending.values()) {
-      request.reject(new Error(reason));
-    }
-    pending.clear();
-    for (const browserSocket of browserSockets.values()) {
-      browserSocket.close(1011, reason);
-    }
-    browserSockets.clear();
-  };
-  const sendBridgeMessage = (message: PreviewBridgeClientMessage): boolean => {
-    if (socket.readyState !== WebSocket.OPEN) {
-      return false;
-    }
-    try {
-      socket.send(JSON.stringify(message));
-      return true;
-    } catch {
-      return false;
-    }
-  };
-  socket.addEventListener("close", () => failActiveStreams("Preview bridge closed"));
-  socket.addEventListener("error", () => failActiveStreams("Preview bridge failed"));
-  socket.addEventListener("message", (event) => {
-    if (typeof event.data !== "string") {
-      return;
-    }
-    const message = JSON.parse(event.data) as PreviewBridgeServerMessage | { type: "connected" };
-    if (message.type === "connected" || message.type === "ready" || message.type === "bridge.ping") {
-      if (message.type === "bridge.ping") {
-        sendBridgeMessage({ type: "bridge.pong" });
-      }
-      return;
-    }
-    const streamId = "streamId" in message && typeof message.streamId === "string" ? message.streamId : undefined;
-    const browserSocket = streamId ? browserSockets.get(streamId) : undefined;
-    if (message.type === "websocket.message" && browserSocket) {
-      const payload = decodeBase64(message.body);
-      browserSocket.send(message.binary ? payload : new TextDecoder().decode(payload));
-      return;
-    }
-    if (message.type === "websocket.close" && streamId && browserSocket) {
-      browserSockets.delete(streamId);
-      browserSocket.close(message.code, message.reason);
-      return;
-    }
-    if (message.type === "stream.error" && streamId && browserSocket) {
-      browserSockets.delete(streamId);
-      browserSocket.close(1011, message.error);
-      return;
-    }
-    const request = streamId ? pending.get(streamId) : undefined;
-    if (!request) {
-      return;
-    }
-    if (message.type === "response.start") {
-      request.status = message.status;
-      request.headers = message.headers;
-      return;
-    }
-    if (message.type === "response.body") {
-      request.chunks.push(decodeBase64(message.body));
-      return;
-    }
-    if (message.type === "response.end") {
-      pending.delete(message.streamId);
-      request.resolve(new Response(Buffer.concat(request.chunks.map((chunk) => Buffer.from(chunk))), {
-        status: request.status ?? 502,
-        headers: request.headers,
-      }));
-      return;
-    }
-    if (message.type === "stream.error") {
-      if (streamId) {
-        pending.delete(streamId);
-      }
-      request.reject(new Error(message.error));
-    }
+  const stopped = new Promise<number>((resolve) => {
+    socket.addEventListener("close", (event) => {
+      if (event.code !== 1000) err(event.reason || "Preview bridge disconnected; the preview is no longer available.");
+      resolve(event.code === 1000 ? 0 : 1);
+    });
+    socket.addEventListener("error", () => resolve(1));
   });
+  let stopRequested = false;
+  let stopTimer: ReturnType<typeof setTimeout> | undefined;
+  let stopListener: () => Promise<void> = async () => {};
+  let requestStop = () => closeSocketIfOpen(socket);
+  const registerSignalHandler = dependencies.registerSignalHandler ?? registerDefaultSignalHandler;
+  const cleanupCallbacks = ["SIGINT", "SIGTERM"].map((signal) =>
+    registerSignalHandler(signal as NodeJS.Signals, () => {
+      stopRequested = true;
+      requestStop();
+    }),
+  );
+  try {
+    await waitForSocketOpen(socket);
+    const pending = new Map<string, PendingPreviewRequest>();
+    const browserSockets = new Map<string, PreviewBrowserSocket>();
+    const failActiveStreams = (reason: string) => {
+      for (const request of pending.values()) {
+        request.body?.error(new Error(reason));
+        request.reject(new Error(reason));
+        request.cleanup();
+      }
+      pending.clear();
+      for (const browserSocket of browserSockets.values()) {
+        browserSocket.close(1011, reason);
+      }
+      browserSockets.clear();
+    };
+    const sendBridgeMessage = (message: PreviewBridgeClientMessage): boolean => {
+      if (socket.readyState !== WebSocket.OPEN) {
+        return false;
+      }
+      try {
+        socket.send(JSON.stringify(message));
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    const acknowledgeResponse = (streamId: string, request: PendingPreviewRequest) => {
+      if (!request.body) return;
+      const queuedBytes = PREVIEW_RESPONSE_WINDOW_BYTES - (request.body.desiredSize ?? 0);
+      const consumedBytes = request.receivedBytes - queuedBytes;
+      const bytes = consumedBytes - request.acknowledgedBytes;
+      if (bytes > 0 && sendBridgeMessage({ type: "response.ack", streamId, bytes })) {
+        request.acknowledgedBytes = consumedBytes;
+      }
+    };
+    socket.addEventListener("close", () => failActiveStreams("Preview bridge closed"));
+    socket.addEventListener("error", () => failActiveStreams("Preview bridge failed"));
+    socket.addEventListener("message", (event) => {
+      if (typeof event.data !== "string") {
+        return;
+      }
+      const message = JSON.parse(event.data) as PreviewBridgeServerMessage | { type: "connected" };
+      if (message.type === "connected" || message.type === "ready" || message.type === "bridge.ping") {
+        if (message.type === "bridge.ping") {
+          sendBridgeMessage({ type: "bridge.pong" });
+        }
+        return;
+      }
+      const streamId = "streamId" in message && typeof message.streamId === "string" ? message.streamId : undefined;
+      const browserSocket = streamId ? browserSockets.get(streamId) : undefined;
+      if (message.type === "websocket.message" && browserSocket) {
+        const payload = decodeBase64(message.body);
+        browserSocket.send(message.binary ? payload : new TextDecoder().decode(payload));
+        return;
+      }
+      if (message.type === "websocket.close" && streamId && browserSocket) {
+        browserSockets.delete(streamId);
+        browserSocket.close(previewWebSocketCloseCode(message.code), message.reason);
+        return;
+      }
+      if (message.type === "stream.error" && streamId && browserSocket) {
+        browserSockets.delete(streamId);
+        browserSocket.close(1011, message.error);
+        return;
+      }
+      const request = streamId ? pending.get(streamId) : undefined;
+      if (!request) {
+        return;
+      }
+      if (message.type === "response.start") {
+        const body = request.head || [204, 205, 304].includes(message.status)
+          ? null
+          : new ReadableStream<Uint8Array>({
+              start(controller: ReadableStreamDefaultController<Uint8Array>) { request.body = controller; },
+              pull() { acknowledgeResponse(message.streamId, request); },
+              cancel() {
+                pending.delete(message.streamId);
+                request.cleanup();
+                sendBridgeMessage({ type: "request.cancel", streamId: message.streamId });
+              },
+            }, new ByteLengthQueuingStrategy({ highWaterMark: PREVIEW_RESPONSE_WINDOW_BYTES }));
+        request.resolve(new Response(body, { status: message.status, headers: message.headers }));
+        return;
+      }
+      if (message.type === "response.body") {
+        const bytes = decodeBase64(message.body);
+        request.receivedBytes += bytes.byteLength;
+        request.body?.enqueue(bytes);
+        acknowledgeResponse(message.streamId, request);
+        if (request.body && (request.body.desiredSize ?? 0) < 0) {
+          pending.delete(message.streamId);
+          const error = new Error("Preview response buffer limit exceeded");
+          request.body.error(error);
+          request.reject(error);
+          request.cleanup();
+          sendBridgeMessage({ type: "request.cancel", streamId: message.streamId });
+        }
+        return;
+      }
+      if (message.type === "response.end") {
+        pending.delete(message.streamId);
+        request.body?.close();
+        request.cleanup();
+        return;
+      }
+      if (message.type === "stream.error") {
+        if (streamId) {
+          pending.delete(streamId);
+        }
+        request.reject(new Error(message.error));
+        request.body?.error(new Error(message.error));
+        request.cleanup();
+      }
+    });
 
-  const serve = dependencies.serve ?? Bun.serve;
-  const server = serve<PreviewListenerData>({
-    hostname: command.host,
-    port: command.localPort ?? 0,
-    async fetch(req) {
-      if (req.headers.get("upgrade")?.toLowerCase() === "websocket") {
+    const serve = dependencies.serve ?? Bun.serve;
+    const listeners: Bun.Server<PreviewListenerData>[] = [];
+    let listenerShutdown: Promise<void> | undefined;
+    stopListener = () => listenerShutdown ??= Promise.all(
+      listeners.map((listener) => listener.stop(true)),
+    ).then(() => undefined);
+    const startListener = (host: string, port: number) => serve<PreviewListenerData>({
+      hostname: host,
+      port,
+      ipv6Only: host === "::1",
+      idleTimeout: 0,
+      async fetch(req, server) {
+        if (command.code) {
+          const url = new URL(req.url);
+          const origin = url.origin;
+          const allowedOrigins = ["127.0.0.1", "localhost", "[::1]"]
+            .map((host) => `http://${host}:${String(server.port)}`);
+          const requestOrigin = req.headers.get("origin");
+          const crossSite = req.headers.get("sec-fetch-site") === "cross-site";
+          const navigation = req.method === "GET" && req.headers.get("sec-fetch-mode") === "navigate";
+          if (!allowedOrigins.includes(origin) || (requestOrigin && requestOrigin !== origin) || (crossSite && !navigation)) {
+            return new Response("VS Code preview requires its local origin", { status: 403 });
+          }
+          // VS Code's generated workbench authority cannot parse an IPv6 literal.
+          if (url.hostname === "[::1]" && url.pathname === "/" && (req.method === "GET" || req.method === "HEAD")) {
+            url.hostname = "localhost";
+            return Response.redirect(url.href, 307);
+          }
+        }
+        if (req.headers.get("upgrade")?.toLowerCase() === "websocket") {
+          if (browserSockets.size >= 64) return new Response("Too many preview WebSocket connections", { status: 503 });
+          const streamId = crypto.randomUUID();
+          try {
+            const url = new URL(req.url);
+            const upgraded = server.upgrade(req, {
+              data: {
+                headers: Array.from(req.headers.entries()),
+                path: `${url.pathname}${url.search}`,
+                streamId,
+              },
+            });
+            if (!upgraded) {
+              return new Response("WebSocket upgrade failed", { status: 400 });
+            }
+            return;
+          } catch (error) {
+            return createPreviewBridgeFailureResponse(error);
+          }
+        }
+        if (pending.size >= 256) return new Response("Too many active preview requests", { status: 503 });
         const streamId = crypto.randomUUID();
         try {
           const url = new URL(req.url);
-          const upgraded = server.upgrade(req, {
-            data: {
-              headers: Array.from(req.headers.entries()),
-              path: `${url.pathname}${url.search}`,
-              streamId,
-            },
+          const bodyBytes = req.method === "GET" || req.method === "HEAD"
+            ? undefined
+            : new Uint8Array(await req.arrayBuffer());
+          const responsePromise = new Promise<Response>((resolve, reject) => {
+            const abort = () => {
+              const request = pending.get(streamId);
+              pending.delete(streamId);
+              request?.body?.error(new Error("Preview request cancelled"));
+              reject(new Error("Preview request cancelled"));
+              sendBridgeMessage({ type: "request.cancel", streamId });
+            };
+            req.signal.addEventListener("abort", abort, { once: true });
+            pending.set(streamId, {
+              resolve, reject, head: req.method === "HEAD",
+              receivedBytes: 0, acknowledgedBytes: 0,
+              cleanup: () => req.signal.removeEventListener("abort", abort),
+            });
           });
-          if (!upgraded) {
-            return new Response("WebSocket upgrade failed", { status: 400 });
+          const sent = sendBridgeMessage({
+            type: "request.start",
+            streamId,
+            method: req.method,
+            path: `${url.pathname}${url.search}`,
+            headers: Array.from(req.headers.entries()),
+            body: bodyBytes ? encodeBase64(bodyBytes) : undefined,
+            responseFlowControl: true,
+          });
+          if (!sent) {
+            pending.get(streamId)?.cleanup();
+            pending.delete(streamId);
+            return createPreviewBridgeFailureResponse("Preview bridge is not connected");
           }
-          return;
+          return await responsePromise;
         } catch (error) {
+          pending.get(streamId)?.cleanup();
+          pending.delete(streamId);
           return createPreviewBridgeFailureResponse(error);
         }
-      }
-      const streamId = crypto.randomUUID();
+      },
+      websocket: {
+        idleTimeout: PREVIEW_LISTENER_WS_IDLE_TIMEOUT_SECONDS,
+        open(ws) {
+          const { headers, path, streamId } = ws.data;
+          browserSockets.set(streamId, ws);
+          const sent = sendBridgeMessage({
+            type: "websocket.open",
+            streamId,
+            path,
+            headers,
+          });
+          if (!sent) {
+            browserSockets.delete(streamId);
+            ws.close(1011, "Preview bridge is not connected");
+          }
+        },
+        message(ws, data) {
+          const { streamId } = ws.data;
+          const body = typeof data === "string"
+            ? new TextEncoder().encode(data)
+            : data instanceof Buffer
+              ? new Uint8Array(data)
+              : data;
+          const sent = sendBridgeMessage({
+            type: "websocket.message",
+            streamId,
+            body: encodeBase64(body),
+            binary: typeof data !== "string",
+          });
+          if (!sent) {
+            browserSockets.delete(streamId);
+            ws.close(1011, "Preview bridge is not connected");
+          }
+        },
+        close(ws, code, reason) {
+          const { streamId } = ws.data;
+          browserSockets.delete(streamId);
+          sendBridgeMessage({
+            type: "websocket.close",
+            streamId,
+            code,
+            reason,
+          });
+        },
+      },
+    });
+
+    const server = startListener(command.host, command.localPort ?? 0);
+    listeners.push(server);
+    if (command.code) {
       try {
-        const url = new URL(req.url);
-        const bodyBytes = req.method === "GET" || req.method === "HEAD"
-          ? undefined
-          : new Uint8Array(await req.arrayBuffer());
-        const responsePromise = new Promise<Response>((resolve, reject) => {
-          pending.set(streamId, { resolve, reject, chunks: [] });
-        });
-        const sent = sendBridgeMessage({
-          type: "request.start",
-          streamId,
-          method: req.method,
-          path: `${url.pathname}${url.search}`,
-          headers: Array.from(req.headers.entries()),
-          body: bodyBytes ? encodeBase64(bodyBytes) : undefined,
-        });
-        if (!sent) {
-          pending.delete(streamId);
-          return createPreviewBridgeFailureResponse("Preview bridge is not connected");
-        }
-        return await responsePromise;
+        listeners.push(startListener("::1", server.port!));
       } catch (error) {
-        pending.delete(streamId);
-        return createPreviewBridgeFailureResponse(error);
+        if (
+          !(error instanceof Error)
+          || !("code" in error)
+          || (error.code !== "EAFNOSUPPORT" && error.code !== "EADDRNOTAVAIL" && error.code !== "EPROTONOSUPPORT")
+        ) throw error;
+        err(`IPv6 loopback is unavailable; this preview is listening on IPv4 only: ${String(error)}`);
       }
-    },
-    websocket: {
-      idleTimeout: PREVIEW_LISTENER_WS_IDLE_TIMEOUT_SECONDS,
-      open(ws) {
-        const { headers, path, streamId } = ws.data;
-        browserSockets.set(streamId, ws);
-        const sent = sendBridgeMessage({
-          type: "websocket.open",
-          streamId,
-          path,
-          headers,
-        });
-        if (!sent) {
-          browserSockets.delete(streamId);
-          ws.close(1011, "Preview bridge is not connected");
-        }
-      },
-      message(ws, data) {
-        const { streamId } = ws.data;
-        const body = typeof data === "string"
-          ? new TextEncoder().encode(data)
-          : data instanceof Buffer
-            ? new Uint8Array(data)
-            : data;
-        const sent = sendBridgeMessage({
-          type: "websocket.message",
-          streamId,
-          body: encodeBase64(body),
-          binary: typeof data !== "string",
-        });
-        if (!sent) {
-          browserSockets.delete(streamId);
-          ws.close(1011, "Preview bridge is not connected");
-        }
-      },
-      close(ws, code, reason) {
-        const { streamId } = ws.data;
-        browserSockets.delete(streamId);
-        sendBridgeMessage({
-          type: "websocket.close",
-          streamId,
-          code,
-          reason,
-        });
-      },
-    },
-  });
+    }
+    requestStop = () => {
+      void stopListener().catch((error: unknown) => {
+        err(`Unable to close preview listeners: ${String(error)}`);
+        socket.close(1011, "Preview listener shutdown failed");
+      });
+      if (stopTimer) return;
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: "close" } satisfies PreviewBridgeClientMessage));
+        stopTimer = setTimeout(() => {
+          err("Preview shutdown timed out; remote process cleanup could not be confirmed.");
+          socket.close(1011, "Preview shutdown timed out");
+        }, 10_000);
+      } else {
+        closeSocketIfOpen(socket);
+      }
+    };
+    if (stopRequested) {
+      requestStop();
+      return await stopped;
+    }
 
-  const serverPort = server.port;
-  if (!serverPort) {
-    throw new Error("Preview listener did not expose a local port");
-  }
-  const actualLocalUrl = `http://${command.host}:${String(serverPort)}${localPath}`;
-  socket.send(JSON.stringify({
-    type: "hello",
-    target: command.server
-      ? { kind: "server", reference: command.server }
-      : { kind: "workspace", reference: command.workspace! },
-    remoteHost: command.remoteHost,
-    remotePort: command.port,
-    localHost: command.host,
-    localPort: serverPort,
-    localUrl: actualLocalUrl,
-    initialPath: localPath,
-    cliHostname: (dependencies.getHostname ?? hostname)(),
-  } satisfies PreviewBridgeClientMessage));
+    const serverPort = server.port;
+    if (!serverPort) {
+      throw new Error("Preview listener did not expose a local port");
+    }
+    const actualLocalUrl = `http://${command.host}:${String(serverPort)}${localPath}`;
+    const readyPromise = waitForReady(socket, command.code ? 130_000 : 30_000);
+    socket.send(JSON.stringify({
+      type: "hello",
+      ...(command.code ? { code: command.code } : {}),
+      target: command.server
+        ? { kind: "server", reference: command.server }
+        : { kind: "workspace", reference: command.workspace! },
+      remoteHost: command.remoteHost,
+      remotePort: command.port,
+      localHost: command.host,
+      localPort: serverPort,
+      localUrl: actualLocalUrl,
+      initialPath: localPath,
+      cliHostname: (dependencies.getHostname ?? hostname)(),
+    } satisfies PreviewBridgeClientMessage));
 
-  await waitForReady(socket);
-  out(`Preview ready: ${actualLocalUrl}`);
-  const targetLabel = command.server
-    ? `server ${command.server}`
-    : `workspace ${command.workspace}`;
-  out(`Remote target: ${command.remoteHost}:${String(command.port)} (${targetLabel})`);
-  for (const lanUrl of getLanUrls(command.host, serverPort, localPath)) {
-    out(`LAN URL: ${lanUrl}`);
-  }
-  if (command.open) {
-    (dependencies.openUrl ?? defaultOpenUrl)(actualLocalUrl);
-  }
+    const ready = await readyPromise;
+    out(`${command.code ? "VS Code" : "Preview"} ready: ${actualLocalUrl}`);
+    if (command.code) out(`Localhost URL: http://localhost:${String(serverPort)}/`);
+    if (ready.code) out(`Directory: ${ready.code.directory}`);
+    const targetLabel = command.server
+      ? `server ${command.server}`
+      : `workspace ${command.workspace}`;
+    out(`Remote target: ${command.remoteHost}:${String(ready.code?.remotePort ?? command.port)} (${targetLabel})`);
+    for (const lanUrl of getLanUrls(command.host, serverPort, localPath)) {
+      out(`LAN URL: ${lanUrl}`);
+    }
+    if (command.open) {
+      try {
+        await (dependencies.openUrl ?? defaultOpenUrl)(actualLocalUrl);
+      } catch (error) {
+        err(`Unable to open the browser: ${String(error)}. Open the URL above manually.`);
+      }
+    }
 
-  const registerSignalHandler = dependencies.registerSignalHandler ?? registerDefaultSignalHandler;
-  const cleanupCallbacks = [
-    registerSignalHandler("SIGINT", () => {
-      closeSocketIfOpen(socket);
-      server.stop(true);
-    }),
-    registerSignalHandler("SIGTERM", () => {
-      closeSocketIfOpen(socket);
-      server.stop(true);
-    }),
-  ];
-
-  const result = await new Promise<number>((resolve) => {
-    socket.addEventListener("close", () => resolve(0));
-    socket.addEventListener("error", () => resolve(1));
-  });
-  server.stop(true);
-  for (const cleanup of cleanupCallbacks) {
-    cleanup();
+    return await stopped;
+  } catch (error) {
+    if (stopRequested) return await stopped;
+    throw error;
+  } finally {
+    if (stopTimer) clearTimeout(stopTimer);
+    closeSocketIfOpen(socket);
+    for (const cleanup of cleanupCallbacks) cleanup();
+    await stopListener();
   }
-  return result;
 }

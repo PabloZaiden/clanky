@@ -12,7 +12,9 @@ import { readProcessDiagnostics } from "./support/process";
 import {
   installExternalDevboxProvider,
   installFailingExternalProvider,
+  installExternalCode,
 } from "./support/provider";
+import { exerciseCodePreview } from "./support/code-preview";
 import {
   restartEphemeralSshServer,
   startEphemeralSshServer,
@@ -416,6 +418,7 @@ async function exerciseSshTerminal(
 test("compiled app crosses real SSH execution, files, Git, terminal, and ACP boundaries", async () => {
   const app = await E2EApplication.create();
   application = app;
+  await installExternalCode(application.providerBinDirectory);
   await installFailingExternalProvider(
     application.providerBinDirectory,
     "claude-agent-acp",
@@ -548,6 +551,11 @@ test("compiled app crosses real SSH execution, files, Git, terminal, and ACP bou
       },
       201,
     )).data;
+    await exerciseCodePreview({
+      baseUrl: application.baseUrl, apiKey: apiKey.token,
+      homeDirectory: application.homeDirectory, logsDirectory: application.logsDirectory,
+      workspace: workspace.id, expectedDirectory: workspace.directory,
+    });
     const branches = (await application.json<{
       branches: Array<{ name: string }>;
       currentBranch: string;

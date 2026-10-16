@@ -1,4 +1,54 @@
 import type { ChildProcess } from "node:child_process";
+import { createConnection, type Socket } from "node:net";
+
+export async function waitForProcessTcpListener(
+  child: ChildProcess,
+  options: { host: string; port: number; timeoutMs: number; signal?: AbortSignal },
+): Promise<void> {
+  options.signal?.throwIfAborted();
+  await new Promise<void>((resolve, reject) => {
+    let finished = false;
+    let socket: Socket | undefined;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    const deadline = setTimeout(() => finish(new Error("Process TCP listener startup timed out")), options.timeoutMs);
+    const finish = (error?: unknown) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(deadline);
+      if (retry) clearTimeout(retry);
+      socket?.destroy();
+      child.off("exit", onExit);
+      child.off("error", onError);
+      options.signal?.removeEventListener("abort", onAbort);
+      if (error !== undefined) reject(error);
+      else resolve();
+    };
+    const onExit = () => finish(new Error("Process exited before its TCP listener was ready"));
+    const onError = (error: Error) => finish(error);
+    const onAbort = () => finish(options.signal?.reason);
+    const probe = () => {
+      if (finished) return;
+      if (child.exitCode !== null || child.signalCode !== null) {
+        onExit();
+        return;
+      }
+      socket = createConnection({ host: options.host, port: options.port });
+      socket.once("connect", () => finish());
+      socket.once("error", (error: NodeJS.ErrnoException) => {
+        if (finished) return;
+        if (error.code !== "ECONNREFUSED") {
+          finish(error);
+          return;
+        }
+        retry = setTimeout(probe, 50);
+      });
+    };
+    child.once("exit", onExit);
+    child.once("error", onError);
+    options.signal?.addEventListener("abort", onAbort, { once: true });
+    probe();
+  });
+}
 
 export async function waitForProcessStartup(child: ChildProcess, startupGraceMs = 500): Promise<void> {
   await new Promise<void>((resolve, reject) => {

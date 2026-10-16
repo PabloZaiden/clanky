@@ -9,6 +9,8 @@ import {
   stopManagedProcess,
 } from "./support/process";
 import { operationSignal } from "./support/timeouts";
+import { installExternalCode } from "./support/provider";
+import { exerciseCodePreview } from "./support/code-preview";
 import {
   startVoiceProvider,
   stopVoiceProvider,
@@ -323,6 +325,12 @@ async function exerciseTaskTerminal(
   });
   expect(taskResponse.status).toBe(201);
   const task = await taskResponse.json() as Task;
+  await exerciseCodePreview({
+    baseUrl: app.baseUrl, apiKey,
+    homeDirectory: app.homeDirectory, logsDirectory: app.logsDirectory,
+    workspace: workspace.id, selector: { task: task.config.id },
+    expectedDirectory: workspace.directory,
+  });
 
   const terminalUrl = `/api/tasks/${encodeURIComponent(task.config.id)}/terminal-session`;
   const terminalResponse = await app.request(terminalUrl, {
@@ -877,6 +885,7 @@ async function expectVoiceTranscription(app: E2EApplication): Promise<void> {
 describe("compiled local protocol journey", () => {
   test("crosses file transfer, video preview, WebDAV, and terminal websocket boundaries", async () => {
     application = await E2EApplication.create();
+    await installExternalCode(application.providerBinDirectory);
     voiceProvider = await startVoiceProvider(application.runDirectory);
     try {
       await application.start({
@@ -885,6 +894,11 @@ describe("compiled local protocol journey", () => {
         },
       });
       const { apiKey, baseBranch, workspace } = await createWorkspaceAndKey(application);
+      await exerciseCodePreview({
+        baseUrl: application.baseUrl, apiKey,
+        homeDirectory: application.homeDirectory, logsDirectory: application.logsDirectory,
+        workspace: "Local protocols", workspaceId: workspace.id, expectedDirectory: workspace.directory,
+      });
       const terminalWorktreeDirectory = join(application.runDirectory, "terminal-worktree");
       await requireCommand([
         "git",

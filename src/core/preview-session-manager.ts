@@ -17,6 +17,7 @@ import {
   type RegisterCliPreviewOptions,
   type Workspace,
   parsePreviewBridgePath,
+  previewWebSocketCloseCode,
 } from "@/shared";
 import { getWorkspace, listWorkspaces, touchWorkspace } from "../persistence/workspaces";
 import {
@@ -38,12 +39,16 @@ import {
   type ResolvedWorkspaceExecutionTarget,
 } from "./workspace-execution-target";
 import { executionHostService } from "./execution-host-service";
-import { waitForProcessExit, waitForProcessStartup } from "./process-lifecycle";
+import { waitForProcessExit, waitForProcessTcpListener } from "./process-lifecycle";
+import { PREVIEW_RESPONSE_CHUNK_BYTES, PREVIEW_RESPONSE_WINDOW_BYTES } from "@/shared/preview";
+import { SSH_CONNECTION_TIMEOUT_MS } from "./ssh-reliability-policy";
 import { requireCurrentUser, runWithCurrentUser } from "../context/user-context";
+import { CodePreviewHelloSchema } from "../contracts/schemas/preview";
+import { resolveCodePreviewTarget } from "./code-preview-target";
+import { startCodeServer, waitForCodeEditor, type CodeServer } from "./code-server";
 
 const log = createLogger("core:preview-session-manager");
 const LOCAL_TUNNEL_HOST = "127.0.0.1";
-const STARTUP_GRACE_MS = 500;
 const STOP_TIMEOUT_MS = 2000;
 const WS_READY_STATE_CLOSING = 2;
 const PREVIEW_DESTINATION_REJECTED_MESSAGE = "Preview destination rejected";
@@ -70,6 +75,12 @@ const UPSTREAM_CONTROLLED_HEADERS = new Set([
 ]);
 
 interface PreviewRuntime {
+  codeServer?: CodeServer;
+  requests: Map<string, {
+    controller: AbortController;
+    creditBytes?: number;
+    lastAcknowledgedAt: number;
+  }>;
   localOrigin: string;
   user: CurrentUser;
   targetBaseUrl: string;
@@ -86,12 +97,14 @@ interface PreviewBridgeSocket {
     user?: CurrentUser;
   };
   send(data: string | Uint8Array): void;
+  getBufferedAmount?(): number;
   close(code?: number, reason?: string): void;
 }
 
 interface UpstreamWebSocketState {
   socket: WebSocket;
   queuedMessages: Array<string | ArrayBuffer>;
+  queuedBytes: number;
 }
 
 export interface PreviewSessionManagerDependencies {
@@ -198,6 +211,16 @@ function buildUpstreamHeaders(
     result[name] = value;
   }
   applyUpstreamForwardedHeaders(result, headers, runtime);
+  if (runtime.codeServer) {
+    const cookies = (getHeaderValue(headers, "cookie") ?? "")
+      .split(";").map((cookie) => cookie.trim())
+      .filter((cookie) => cookie && !cookie.startsWith("vscode-tkn="));
+    for (const name of Object.keys(result)) {
+      if (name.toLowerCase() === "cookie") delete result[name];
+    }
+    // VS Code's native cookie authenticates HTTP and seeds its browser RPC handshake.
+    result["cookie"] = [...cookies, `vscode-tkn=${runtime.codeServer.token}`].join("; ");
+  }
   return result;
 }
 
@@ -283,6 +306,8 @@ export class PreviewSessionManager {
   private bridgeSockets = new Map<string, PreviewBridgeSocket>();
   private initializedUserIds = new Set<string>();
   private initializingByUserId = new Map<string, Promise<void>>();
+  private starting = new Map<PreviewBridgeSocket, { controller: AbortController; promise: Promise<void> }>();
+  private closing = new Map<string, Promise<boolean>>();
 
   constructor(
     private readonly dependencies: PreviewSessionManagerDependencies = {},
@@ -328,7 +353,7 @@ export class PreviewSessionManager {
     if (matches.length > 1) {
       throw new DomainError(
         "workspace_name_ambiguous",
-        "Workspace name is ambiguous",
+        `Workspace name is ambiguous; use an ID: ${matches.map((workspace) => workspace.id).join(", ")}`,
         {
           details: {
             reference: normalized,
@@ -346,7 +371,6 @@ export class PreviewSessionManager {
   private async resolvePreviewTarget(target: PreviewTarget): Promise<ResolvedPreviewTarget> {
     if (target.kind === "workspace") {
       const workspace = await this.resolveWorkspaceReference(target.reference);
-      await touchWorkspace(workspace.id);
       const executionTarget = await resolveWorkspaceExecutionTarget(workspace);
       return {
         kind: "workspace",
@@ -372,8 +396,9 @@ export class PreviewSessionManager {
     };
   }
 
-  async registerCliPreview(options: RegisterCliPreviewOptions): Promise<{ preview: PreviewSession; targetBaseUrl: string; tunnel?: ChildProcess }> {
+  async registerCliPreview(options: RegisterCliPreviewOptions, signal?: AbortSignal): Promise<{ preview: PreviewSession; targetBaseUrl: string; tunnel?: ChildProcess; codeServer?: CodeServer }> {
     await this.initialize();
+    signal?.throwIfAborted();
     const target = await this.resolvePreviewTarget(options.target);
     const workspace = target.kind === "workspace" ? target.workspace : undefined;
     let sshTunnel: { child: ChildProcess; localPort: number } | undefined;
@@ -381,10 +406,30 @@ export class PreviewSessionManager {
     let preview: PreviewSession | undefined;
     let previewSaved = false;
     let runtimeRegistered = false;
+    let codeServer: CodeServer | undefined;
 
     try {
+      if (options.code) {
+        if (target.kind !== "workspace") {
+          throw new DomainError("code_target_invalid", "VS Code requires a workspace.");
+        }
+        const resolved = await resolveCodePreviewTarget(target.workspace, options.code);
+        codeServer = await startCodeServer({
+          ...resolved,
+          acceptServerLicenseTerms: options.code.acceptServerLicenseTerms,
+          signal: signal ?? new AbortController().signal,
+        });
+      }
+      signal?.throwIfAborted();
+      const remotePort = codeServer?.port ?? options.remotePort;
       sshTunnel = target.kind === "workspace" && target.executionTarget.kind === "ssh"
-        ? await this.startSshTunnel(target.workspace, target.executionTarget, options.remoteHost, options.remotePort)
+        ? await this.startSshTunnel({
+            workspace: target.workspace,
+            executionTarget: target.executionTarget,
+            remoteHost: options.remoteHost,
+            remotePort,
+            signal,
+          })
         : undefined;
       const transportKind = target.kind === "workspace"
         ? target.executionTarget.kind
@@ -392,11 +437,22 @@ export class PreviewSessionManager {
       meshForward = transportKind === "mesh"
         ? await (this.dependencies.openPreviewTcpForward ?? openPreviewTcpForward)(
           target.binding,
-          options.remotePort,
+          remotePort,
         )
         : undefined;
-      const targetPort = sshTunnel?.localPort ?? meshForward?.localPort ?? options.remotePort;
+      const targetPort = sshTunnel?.localPort ?? meshForward?.localPort ?? remotePort;
       const targetHost = sshTunnel || meshForward ? LOCAL_TUNNEL_HOST : options.remoteHost;
+      const targetBaseUrl = `http://${targetHost}:${String(targetPort)}`;
+      if (codeServer) {
+        await Promise.race([
+          waitForCodeEditor(codeServer, targetBaseUrl, signal ?? new AbortController().signal),
+          codeServer.exited.then(() => {
+            throw new DomainError("code_start_failed", "VS Code stopped while preparing the editor.");
+          }),
+        ]);
+      }
+      signal?.throwIfAborted();
+      if (workspace) await touchWorkspace(workspace.id);
       const now = new Date().toISOString();
       preview = {
         config: {
@@ -405,7 +461,7 @@ export class PreviewSessionManager {
           workspaceId: workspace?.id,
           executionHostBinding: target.binding,
           remoteHost: options.remoteHost,
-          remotePort: options.remotePort,
+          remotePort,
           localHost: options.localHost,
           localPort: options.localPort,
           localUrl: options.localUrl,
@@ -422,8 +478,9 @@ export class PreviewSessionManager {
       };
       await savePreviewSession(preview);
       previewSaved = true;
-      const targetBaseUrl = `http://${targetHost}:${String(targetPort)}`;
       this.runtimes.set(preview.config.id, {
+        codeServer,
+        requests: new Map(),
         localOrigin: derivePreviewLocalOrigin(options.localUrl, options.localHost, options.localPort),
         user: requireCurrentUser(),
         targetBaseUrl,
@@ -449,28 +506,33 @@ export class PreviewSessionManager {
         preview,
         timestamp: now,
       });
-      return { preview, targetBaseUrl, tunnel: sshTunnel?.child };
+      return { preview, targetBaseUrl, tunnel: sshTunnel?.child, codeServer };
     } catch (error) {
+      const cleanupErrors: unknown[] = [];
       if (preview && runtimeRegistered) {
         this.runtimes.delete(preview.config.id);
         this.closeUpstreamSockets(preview.config.id);
+      }
+      try {
+        await codeServer?.close();
+      } catch (cleanupError) {
+        cleanupErrors.push(cleanupError);
       }
       if (preview && previewSaved) {
         try {
           await deletePreviewSession(preview.config.id);
         } catch (cleanupError) {
-          log.error("Unable to remove failed preview session", {
-            previewId: preview.config.id,
-            error: String(cleanupError),
-          });
+          cleanupErrors.push(cleanupError);
         }
       }
       try {
         await this.closePreviewTransports(sshTunnel?.child, meshForward);
       } catch (cleanupError) {
-        log.error("Unable to clean up failed preview transport", {
-          workspaceId: workspace?.id,
-          error: String(cleanupError),
+        cleanupErrors.push(cleanupError);
+      }
+      if (cleanupErrors.length) {
+        throw new DomainError("code_cleanup_failed", "Failed preview startup could not clean up all owned resources.", {
+          cause: new AggregateError([error, ...cleanupErrors]),
         });
       }
       throw error;
@@ -508,20 +570,37 @@ export class PreviewSessionManager {
     return await getPreviewSession(id);
   }
 
-  async closePreview(id: string, reason = "Preview closed"): Promise<boolean> {
+  async closePreview(id: string, reason = "Preview closed", closeCode = 1000): Promise<boolean> {
+    const runtime = this.runtimes.get(id);
+    if (runtime && runtime.user.id !== requireCurrentUser().id) return false;
+    for (const request of runtime?.requests.values() ?? []) request.controller.abort();
+    const pending = this.closing.get(id);
+    if (pending) return await pending;
+    const closing = this.closePreviewOwned(id, reason, closeCode);
+    this.closing.set(id, closing);
+    try {
+      return await closing;
+    } finally {
+      this.closing.delete(id);
+    }
+  }
+
+  private async closePreviewOwned(id: string, reason: string, closeCode: number): Promise<boolean> {
     await this.initialize();
     const preview = await getPreviewSession(id);
     if (!preview) {
       return false;
     }
     const runtime = this.runtimes.get(id);
-    await this.closePreviewTransports(runtime?.tunnel, runtime?.meshForward);
+    const cleanup = await Promise.allSettled([
+      runtime?.codeServer?.close(),
+      this.closePreviewTransports(runtime?.tunnel, runtime?.meshForward),
+    ]);
     this.closeUpstreamSockets(id);
     const bridgeSocket = this.bridgeSockets.get(id);
     if (bridgeSocket) {
       this.bridgeSockets.delete(id);
       bridgeSocket.data.previewBridgeSessionId = undefined;
-      bridgeSocket.close(1000, reason);
     }
     this.runtimes.delete(id);
     const now = new Date().toISOString();
@@ -543,7 +622,29 @@ export class PreviewSessionManager {
       preview: closedPreview,
       timestamp: now,
     });
+    const failure = cleanup.find((result) => result.status === "rejected");
+    bridgeSocket?.close(failure ? 1011 : closeCode, failure ? "Preview cleanup failed" : reason);
+    if (failure?.status === "rejected") {
+      throw new DomainError("code_cleanup_failed", "Preview process or transport cleanup failed.", { cause: failure.reason });
+    }
     return true;
+  }
+
+  async closeAll(): Promise<void> {
+    const starting = [...this.starting.values()];
+    for (const entry of starting) entry.controller.abort();
+    const cancelled = await Promise.allSettled(starting.map((entry) => entry.promise));
+    const failures = cancelled.flatMap((result) =>
+      result.status === "rejected" && result.reason instanceof DomainError && result.reason.code === "code_cleanup_failed"
+        ? [result.reason] : [],
+    );
+    const closed = await Promise.allSettled([...this.runtimes.entries()].map(async ([id, runtime]) => {
+      await runWithCurrentUser(runtime.user, () => this.closePreview(id, "Clanky server stopped"));
+    }));
+    failures.push(...closed.flatMap((result) => result.status === "rejected" ? [result.reason] : []));
+    if (failures.length) {
+      throw new AggregateError(failures, "Preview shutdown could not clean up all owned resources.");
+    }
   }
 
   private async closePreviewTransports(
@@ -604,6 +705,30 @@ export class PreviewSessionManager {
       await this.handleHello(ws, message);
       return;
     }
+    if (message.type === "close") {
+      await this.closeBridgeSession(ws, "Closed from CLI");
+      ws.close(1000, "Closed from CLI");
+      return;
+    }
+    if (message.type === "request.cancel") {
+      const previewId = ws.data.previewBridgeSessionId;
+      if (previewId) this.getOwnedRuntime(ws, previewId)?.requests.get(message.streamId)?.controller.abort();
+      return;
+    }
+    if (message.type === "response.ack") {
+      const previewId = ws.data.previewBridgeSessionId;
+      const request = previewId ? this.getOwnedRuntime(ws, previewId)?.requests.get(message.streamId) : undefined;
+      if (request?.creditBytes !== undefined) {
+        if (!Number.isSafeInteger(message.bytes) || message.bytes <= 0 || message.bytes > PREVIEW_RESPONSE_WINDOW_BYTES - request.creditBytes) {
+          request.controller.abort();
+          ws.send(JSON.stringify({ type: "stream.error", streamId: message.streamId, error: "Invalid preview response acknowledgement" }));
+        } else {
+          request.creditBytes += message.bytes;
+          request.lastAcknowledgedAt = Date.now();
+        }
+      }
+      return;
+    }
     if (message.type === "request.start") {
       await this.handleRequest(ws, message);
       return;
@@ -622,6 +747,14 @@ export class PreviewSessionManager {
   }
 
   async closeBridgeSession(ws: PreviewBridgeSocket, reason: string): Promise<void> {
+    const starting = this.starting.get(ws);
+    if (starting) {
+      starting.controller.abort();
+      const [result] = await Promise.allSettled([starting.promise]);
+      if (result?.status === "rejected" && result.reason instanceof DomainError && result.reason.code === "code_cleanup_failed") {
+        throw result.reason;
+      }
+    }
     const previewId = ws.data.previewBridgeSessionId;
     if (!previewId || !ws.data.user) {
       return;
@@ -658,22 +791,82 @@ export class PreviewSessionManager {
         "Authenticated user context is required for preview bridges",
       );
     }
-    if (ws.data.previewBridgeSessionId) {
+    if (ws.data.previewBridgeSessionId || this.starting.has(ws)) {
       ws.send(JSON.stringify({
         type: "stream.error",
         error: "Preview bridge is already ready",
       }));
       return;
     }
-    const { preview } = await this.registerCliPreview(message);
-    ws.data.previewBridgeSessionId = preview.config.id;
-    this.bridgeSockets.set(preview.config.id, ws);
-    ws.send(JSON.stringify({
-      type: "ready",
-      previewId: preview.config.id,
-      targetKind: preview.config.targetKind,
-      workspaceId: preview.config.workspaceId,
-    }));
+    if (message.code !== undefined) {
+      const parsed = CodePreviewHelloSchema.safeParse(message);
+      if (!parsed.success) {
+        throw new DomainError("code_target_invalid", "Invalid VS Code preview request.");
+      }
+      message = parsed.data;
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(
+      new DomainError("code_start_failed", "VS Code preview startup timed out."),
+    ), message.code ? 120_000 : 30_000);
+    const promise = this.startBridgePreview(ws, message, controller);
+    this.starting.set(ws, { controller, promise });
+    try {
+      await promise;
+    } catch (error) {
+      if (error instanceof DomainError && error.code === "code_cleanup_failed") throw error;
+      if (
+        controller.signal.aborted
+        && controller.signal.reason instanceof DOMException
+        && controller.signal.reason.name === "AbortError"
+        && !(error instanceof DomainError && error.code === "code_cleanup_failed")
+      ) return;
+      throw controller.signal.aborted ? controller.signal.reason : error;
+    } finally {
+      clearTimeout(timer);
+      this.starting.delete(ws);
+    }
+  }
+
+  private async startBridgePreview(
+    ws: PreviewBridgeSocket,
+    message: PreviewBridgeHelloMessage,
+    controller: AbortController,
+  ): Promise<void> {
+    try {
+      const user = requireCurrentUser();
+      const { preview, codeServer } = await this.registerCliPreview(message, controller.signal);
+      ws.data.previewBridgeSessionId = preview.config.id;
+      this.bridgeSockets.set(preview.config.id, ws);
+      if (controller.signal.aborted) {
+        await this.closePreview(preview.config.id, "Preview startup cancelled");
+        controller.signal.throwIfAborted();
+      }
+      if (codeServer) {
+        // The bridge owns the long-lived process; its exit terminates the preview.
+        void codeServer.exited.then(async () => {
+          if (!this.runtimes.has(preview.config.id) || this.closing.has(preview.config.id)) return;
+          await runWithCurrentUser(user, () =>
+            this.closePreview(preview.config.id, "VS Code stopped", 1011),
+          );
+        }).catch((error: unknown) => {
+          log.error("Unable to close stopped VS Code preview", { error: String(error) });
+        });
+      }
+      ws.send(JSON.stringify({
+        type: "ready",
+        previewId: preview.config.id,
+        targetKind: preview.config.targetKind,
+        workspaceId: preview.config.workspaceId,
+        ...(codeServer ? { code: { directory: codeServer.directory, remotePort: codeServer.port } } : {}),
+      }));
+    } catch (error) {
+      if (ws.data.previewBridgeSessionId) {
+        await this.closePreview(ws.data.previewBridgeSessionId, "Preview startup failed");
+      }
+      controller.abort(error);
+      throw error;
+    }
   }
 
   private async handleRequest(
@@ -691,14 +884,27 @@ export class PreviewSessionManager {
       return;
     }
 
+    if (runtime.requests.size >= 256) {
+      ws.send(JSON.stringify({ type: "stream.error", streamId: message.streamId, error: "Too many active preview requests" }));
+      return;
+    }
+    const controller = new AbortController();
+    const request = {
+      controller,
+      creditBytes: message.responseFlowControl === true ? PREVIEW_RESPONSE_WINDOW_BYTES : undefined,
+      lastAcknowledgedAt: Date.now(),
+    };
+    runtime.requests.set(message.streamId, request);
     try {
       const targetUrl = resolvePreviewDestination(runtime, message.path);
       const headers = buildUpstreamHeaders(message.headers, runtime);
       const response = await fetch(targetUrl, {
+        decompress: false,
         method: message.method,
         headers,
         body: message.body ? Buffer.from(decodeBase64(message.body)) : undefined,
         redirect: "manual",
+        signal: controller.signal,
       });
       ws.send(JSON.stringify({
         type: "response.start",
@@ -708,21 +914,44 @@ export class PreviewSessionManager {
       }));
       if (response.body) {
         const reader = response.body.getReader();
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) {
-            break;
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            for (let offset = 0; offset < value.byteLength; offset += PREVIEW_RESPONSE_CHUNK_BYTES) {
+              const chunk = value.subarray(offset, offset + PREVIEW_RESPONSE_CHUNK_BYTES);
+              const waitingSince = Date.now();
+              while (
+                (request.creditBytes !== undefined && request.creditBytes < chunk.byteLength)
+                || (ws.getBufferedAmount?.() ?? 0) > 512 * 1024
+              ) {
+                controller.signal.throwIfAborted();
+                if (Date.now() - Math.max(waitingSince, request.lastAcknowledgedAt) > 30_000) {
+                  throw new Error("Preview response backpressure timed out");
+                }
+                await Bun.sleep(10);
+              }
+              controller.signal.throwIfAborted();
+              if (request.creditBytes !== undefined) request.creditBytes -= chunk.byteLength;
+              ws.send(JSON.stringify({
+                type: "response.body",
+                streamId: message.streamId,
+                body: encodeBase64(chunk),
+              }));
+            }
           }
-          ws.send(JSON.stringify({
-            type: "response.body",
-            streamId: message.streamId,
-            body: encodeBase64(value),
-          }));
+        } finally {
+          reader.releaseLock();
         }
       }
       ws.send(JSON.stringify({ type: "response.end", streamId: message.streamId }));
     } catch (error) {
-      ws.send(JSON.stringify({ type: "stream.error", streamId: message.streamId, error: getBridgeErrorMessage(error) }));
+      if (!controller.signal.aborted) {
+        ws.send(JSON.stringify({ type: "stream.error", streamId: message.streamId, error: getBridgeErrorMessage(error) }));
+      }
+    } finally {
+      controller.abort();
+      runtime.requests.delete(message.streamId);
     }
   }
 
@@ -741,15 +970,19 @@ export class PreviewSessionManager {
     try {
       const targetUrl = resolvePreviewDestination(runtime, message.path);
       targetUrl.protocol = targetUrl.protocol === "https:" ? "wss:" : "ws:";
-      const upstream = createUpstreamWebSocket(targetUrl, buildUpstreamHeaders(message.headers, runtime));
-      const upstreamState: UpstreamWebSocketState = { socket: upstream, queuedMessages: [] };
       const sockets = this.getUpstreamSocketMap(previewId);
+      if (sockets.size >= 64 || sockets.has(message.streamId)) {
+        throw new DomainError("preview_limit_exceeded", "Too many active preview WebSocket connections.");
+      }
+      const upstream = createUpstreamWebSocket(targetUrl, buildUpstreamHeaders(message.headers, runtime));
+      const upstreamState: UpstreamWebSocketState = { socket: upstream, queuedMessages: [], queuedBytes: 0 };
       sockets.set(message.streamId, upstreamState);
 
       upstream.addEventListener("open", () => {
         for (const queuedMessage of upstreamState.queuedMessages.splice(0)) {
           upstream.send(queuedMessage);
         }
+        upstreamState.queuedBytes = 0;
       });
       upstream.addEventListener("message", (event: MessageEvent) => {
         const body = typeof event.data === "string"
@@ -806,6 +1039,11 @@ export class PreviewSessionManager {
       return;
     }
     const body = decodeBase64(message.body);
+    if (upstream.queuedBytes + upstream.socket.bufferedAmount + body.byteLength > 8 * 1024 * 1024) {
+      this.handleWebSocketClose(ws, { type: "websocket.close", streamId: message.streamId, code: 1009, reason: "Preview WebSocket buffer limit exceeded" });
+      ws.send(JSON.stringify({ type: "stream.error", streamId: message.streamId, error: "Preview WebSocket buffer limit exceeded" }));
+      return;
+    }
     const payload = message.binary
       ? toArrayBuffer(body)
       : new TextDecoder().decode(body);
@@ -813,7 +1051,12 @@ export class PreviewSessionManager {
       upstream.socket.send(payload);
       return;
     }
-    upstream.queuedMessages.push(payload);
+    if (upstream.socket.readyState === WebSocket.CONNECTING) {
+      upstream.queuedBytes += body.byteLength;
+      upstream.queuedMessages.push(payload);
+    } else {
+      ws.send(JSON.stringify({ type: "stream.error", streamId: message.streamId, error: "Preview upstream WebSocket is closed" }));
+    }
   }
 
   private handleWebSocketClose(ws: PreviewBridgeSocket, message: PreviewBridgeWebSocketCloseMessage): void {
@@ -826,7 +1069,7 @@ export class PreviewSessionManager {
       this.upstreamSockets.get(previewId)?.delete(message.streamId);
     }
     if (upstream.socket.readyState < WS_READY_STATE_CLOSING) {
-      upstream.socket.close(message.code, message.reason);
+      upstream.socket.close(previewWebSocketCloseCode(message.code), message.reason);
     }
   }
 
@@ -906,16 +1149,19 @@ export class PreviewSessionManager {
     }
   }
 
-  private async startSshTunnel(
-    workspace: Workspace,
-    executionTarget: Extract<ResolvedWorkspaceExecutionTarget, { kind: "ssh" }>,
-    remoteHost: string,
-    remotePort: number,
-  ): Promise<{ child: ChildProcess; localPort: number }> {
+  private async startSshTunnel(options: {
+    workspace: Workspace;
+    executionTarget: Extract<ResolvedWorkspaceExecutionTarget, { kind: "ssh" }>;
+    remoteHost: string;
+    remotePort: number;
+    signal?: AbortSignal;
+  }): Promise<{ child: ChildProcess; localPort: number }> {
+    const { workspace, executionTarget, remoteHost, remotePort, signal } = options;
     const localPort = await ensureLocalPortAvailable(this.getReservedTunnelPorts());
     const config = buildSshProcessConfig({
       target: executionTarget.target,
       connectionScope: workspace.directory,
+      multiplex: false,
       extraArgs: [
         "-N",
         "-T",
@@ -936,7 +1182,18 @@ export class PreviewSessionManager {
       env: config.env,
       stdio: ["ignore", "ignore", "pipe"],
     });
-    await waitForProcessStartup(child, STARTUP_GRACE_MS);
+    try {
+      await waitForProcessTcpListener(child, {
+        host: LOCAL_TUNNEL_HOST,
+        port: localPort,
+        timeoutMs: SSH_CONNECTION_TIMEOUT_MS,
+        signal,
+      });
+    } catch (error) {
+      await this.closePreviewTransports(child, undefined);
+      signal?.throwIfAborted();
+      throw new DomainError("preview_tunnel_start_failed", "SSH preview forwarding could not start. Check the host's forwarding permissions and connectivity.", { cause: error });
+    }
     return { child, localPort };
   }
 

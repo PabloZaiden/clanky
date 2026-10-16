@@ -10,6 +10,9 @@ import { createServerCommand } from "./server";
 import { createWorkerCommand } from "./worker";
 import { CLANKY_SERVE_OPTIONS } from "./serve-options";
 import { createRelayCommand } from "./relay";
+import { parseCodeCommandArgs } from "./code";
+import type { WebAppCliCommandContext } from "@pablozaiden/webapp/cli";
+import type { PreviewCommandOptions } from "./preview";
 
 const CLANKY_UPDATER_CONFIG = {
   repository: "pablozaiden/clanky",
@@ -42,6 +45,18 @@ export function createClankyCli() {
   };
   const environment = { ...process.env };
   delete environment["CLANKY_MESH_WORKER"];
+  const previewHandler = (parse: (args: readonly string[]) => PreviewCommandOptions) =>
+    async (context: WebAppCliCommandContext<ClankyCliContext>) => ({
+      exitCode: await runPreviewCommand(parse(context.args), {
+        fetchFn: context.fetchFn,
+        now: () => new Date(),
+        envPrefix: context.envPrefix,
+        environment: context.environment,
+        credentials: context.profiles.credentials(context.profile),
+        out: (message) => context.stdout.write(`${message}\n`),
+        err: (message) => context.stderr.write(`${message}\n`),
+      }),
+    });
   return createWebAppCli<ClankyCliContext>({
     appName: "Clanky",
     commandName: "clanky",
@@ -73,22 +88,15 @@ export function createClankyCli() {
     appContext,
     commands: {
       mesh: createMeshCommand(),
+      code: {
+        description: "Open an existing workspace, chat, or task directory in a VS Code web preview.",
+        usage: "code WORKSPACE [--chat NAME_OR_ID | --task NAME_OR_ID] [--open] [--accept-server-license-terms]",
+        handler: previewHandler(parseCodeCommandArgs),
+      },
       preview: {
         description: "Start a local CLI-owned live preview for a workspace or server service.",
         usage: "preview (--workspace ID_OR_NAME | --server NAME_OR_ID) --port PORT [options]",
-        handler: async (context) => {
-          const command = parsePreviewCommandArgs(context.args);
-          const exitCode = await runPreviewCommand(command, {
-            fetchFn: context.fetchFn,
-            now: () => new Date(),
-            envPrefix: context.envPrefix,
-            environment: context.environment,
-            credentials: context.profiles.credentials(context.profile),
-            out: (message) => context.stdout.write(`${message}\n`),
-            err: (message) => context.stderr.write(`${message}\n`),
-          });
-          return { exitCode };
-        },
+        handler: previewHandler(parsePreviewCommandArgs),
       },
       workspace: createWorkspaceCommand(),
       server: createServerCommand(),
