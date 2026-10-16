@@ -31,6 +31,7 @@ import {
 } from "./workspace-capabilities";
 import type {
   ChatConfigUpdates,
+  ChatCleanupCredentials,
   ChatConversationPort,
   DeleteChatOptions,
   DeleteTaskChatResult,
@@ -563,31 +564,18 @@ export class ChatLifecycleService implements ChatLifecyclePort {
 
   private async cleanupChatRuntime(
     chat: Chat,
-    options: {
+    options: ChatCleanupCredentials & {
       continueOnError?: boolean;
       closeStream?: () => void;
-      credentialToken?: string | null;
       preserveWorktree?: boolean;
     } = {},
   ): Promise<boolean> {
     let succeeded = true;
-    const cleanupSteps: Array<{ label: string; run: () => Promise<void | boolean> }> = [];
+    const cleanupSteps: Array<{ label: string; run: () => Promise<void | boolean>; requiresRuntimeCleanup?: boolean }> = [];
     const historyRecovery = chat.state.harness?.historyRecovery;
-    if (
-      historyRecovery
-      && historyRecovery.status !== "complete"
-      && this.historyExport
-    ) {
-      cleanupSteps.push({
-        label: "chat history export",
-        run: () => this.historyExport!.cleanup(
-          chat,
-          historyRecovery,
-          options.credentialToken,
-          { markComplete: false },
-        ),
-      });
-    }
+    const historyServerId = historyRecovery ? getRegisteredSshServerId(historyRecovery.executionHost.host) : null;
+    const historyCredentialToken = (historyServerId && options.credentialTokensByServerId?.[historyServerId])
+      || options.credentialToken;
     if (chat.config.scope !== "task" && isWorkspaceChat(chat)) {
       cleanupSteps.push({
         label: "managed credentials",
@@ -611,17 +599,27 @@ export class ChatLifecycleService implements ChatLifecyclePort {
     cleanupSteps.push(
       {
         label: "chat session",
-        run: async () => { await this.session.disconnectChat(chat.config.id); },
+        run: () => this.session.disconnectChat(chat.config.id),
       },
+      ...(!options.preserveWorktree && historyRecovery
+        && historyRecovery.status !== "complete" && this.historyExport ? [{
+          label: "chat history export",
+          requiresRuntimeCleanup: true,
+          run: () => this.historyExport!.cleanup(
+            chat, historyRecovery, historyCredentialToken, { markComplete: false },
+          ),
+        }] : []),
       ...(!options.preserveWorktree ? [{
         label: "chat worktree",
-        run: () => this.worktree.cleanupWorktree(chat),
+        requiresRuntimeCleanup: true,
+        run: () => this.worktree.cleanupWorktree(chat, options),
       }] : []),
     );
 
     for (const step of cleanupSteps) {
+      if (step.requiresRuntimeCleanup && !succeeded) continue;
       if (options.continueOnError !== true) {
-        await step.run();
+        if (await step.run() === false) return false;
         continue;
       }
 
@@ -644,7 +642,7 @@ export class ChatLifecycleService implements ChatLifecyclePort {
 
   async cleanupTrashResources(
     chat: Chat,
-    options: { preserveWorktree?: boolean; credentialToken?: string | null } = {},
+    options: ChatCleanupCredentials & { preserveWorktree?: boolean } = {},
   ): Promise<boolean> {
     const [runtime] = await Promise.all([
       this.cleanupChatRuntime(chat, { ...options, continueOnError: true }),

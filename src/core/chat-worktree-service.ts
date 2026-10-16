@@ -7,7 +7,12 @@ import { ChatBranchCheckoutError, getChatWorkspaceId, InvalidChatBaseBranchError
 import { getTaskWorkingDirectory } from "./task/task-types";
 import { taskManager, type TaskManager } from "./task-manager";
 import { backendManager } from "./backend";
-import type { CommandExecutor } from "./command-executor";
+import { closeCommandExecutor, type CommandExecutor } from "./command-executor";
+import { executionHostService } from "./execution-host-service";
+import { getChatExecutionHostBinding } from "./chat-history-export-service";
+import { getRegisteredSshServerId } from "@/shared/execution-host";
+import { sshCredentialManager } from "./ssh-credential-manager";
+import { requireCurrentUserId } from "../context/user-context";
 import { GitService, InvalidBranchNameError } from "./git";
 import { syncMainCheckoutBeforeWorktree } from "./git/worktree-sync";
 import { assertWorktreesAllowed } from "./workspace-capabilities";
@@ -19,6 +24,7 @@ import { createTimestamp } from "@/shared/events";
 import { saveTrashedChatWorktree } from "../persistence/chats/trash";
 import type {
   ChatDirectoryResolution,
+  ChatCleanupCredentials,
   ChatStatePort,
   ChatWorktreePort,
 } from "./chat-service-contracts";
@@ -315,7 +321,7 @@ export class ChatWorktreeService implements ChatWorktreePort {
     });
   }
 
-  async cleanupWorktree(chat: Chat): Promise<void> {
+  async cleanupWorktree(chat: Chat, credentials: ChatCleanupCredentials = {}): Promise<void> {
     if (isTaskChat(chat)) {
       return;
     }
@@ -325,16 +331,27 @@ export class ChatWorktreeService implements ChatWorktreePort {
       return;
     }
 
-    const executor = await this.executorProvider.getCommandExecutorAsync(getChatWorkspaceId(chat), chat.config.directory);
-    const git = GitService.withExecutor(executor);
-    const managedWorktreePath = await git.assertCanonicalManagedWorktreePath(
-      chat.config.directory,
-      chat.config.id,
-      worktreePath,
-    );
-    await git.ensureWorktreeRemoved(chat.config.directory, managedWorktreePath, {
-      force: true,
+    const binding = await getChatExecutionHostBinding(this.state, chat);
+    const serverId = getRegisteredSshServerId(binding.host);
+    const credentialToken = (serverId && credentials.credentialTokensByServerId?.[serverId])
+      || credentials.credentialToken;
+    const executor = await executionHostService.getCommandExecutor(binding, {
+      directory: chat.config.directory,
+      operationId: `chat-cleanup:${chat.config.id}`,
+      localUserId: requireCurrentUserId(),
+      ...(serverId && credentialToken ? {
+        sshPassword: sshCredentialManager.getPasswordForToken(serverId, credentialToken),
+      } : {}),
     });
+    try {
+      const git = GitService.withExecutor(executor);
+      const managedWorktreePath = await git.assertCanonicalManagedWorktreePath(
+        chat.config.directory, chat.config.id, worktreePath,
+      );
+      await git.ensureWorktreeRemoved(chat.config.directory, managedWorktreePath, { force: true });
+    } finally {
+      closeCommandExecutor(executor);
+    }
   }
 
   async waitForPreparation(chatId: string): Promise<void> {

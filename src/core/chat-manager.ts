@@ -125,7 +125,7 @@ function createChatServices(emitter: SimpleEventEmitter<ChatEvent>): ChatService
   });
 
   return {
-    trash: new ChatTrashService(state, lifecycle),
+    trash: new ChatTrashService(state, lifecycle, conversationService),
     state,
     lifecycle,
     worktree,
@@ -308,9 +308,10 @@ export class ChatManager {
   listTrash(options: ChatTrashQuery) { return this.services.trash.list(options); }
   trashChat(chatId: string, credentialToken?: string | null) { return this.services.trash.move(chatId, credentialToken); }
   restoreChat(chatId: string) { return this.services.trash.restore(chatId); }
-  purgeTrashedChat(chatId: string, credentialToken?: string | null) {
-    return this.services.trash.purge(chatId, { credentialToken });
+  purgeTrashedChat(chatId: string, options: Parameters<ChatTrashService["purge"]>[1] = {}) {
+    return this.services.trash.purge(chatId, options);
   }
+  getTrashCredentialTargets(chatId?: string) { return this.services.trash.credentialTargets(chatId); }
   emptyTrash(options: Parameters<ChatTrashService["empty"]>[0] = {}) { return this.services.trash.empty(options); }
   expireTrash() { return this.services.trash.expire(); }
 

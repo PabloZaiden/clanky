@@ -13,7 +13,10 @@ import { rowToChat } from "./helpers";
 import { closeOpenQuestions } from "@/shared/harness-questions";
 import { projectQuestionMessages } from "@/shared/question-transcript";
 import { createTranscriptChangeSet } from "@/shared/chat-transcript";
+import type { TranscriptChangeSet } from "@/shared/chat-transcript";
 import { chatTranscriptStore } from "../transcripts/chat-store";
+import { parseStoredHarnessState } from "../harness-binding";
+import { getRegisteredSshServerId } from "@/shared/execution-host";
 
 const STANDALONE = "scope = 'workspace' AND task_id IS NULL";
 const CursorSchema = z.object({ deletedAt: z.iso.datetime(), id: z.string().min(1) });
@@ -49,7 +52,8 @@ export function listChatTrash(options: ChatTrashQuery): ChatTrashPage {
   const rows = getDatabase().prepare(`
     SELECT chat.id, chat.name, chat.workspace_id AS workspaceId,
       COALESCE(workspace.name, server.name, host.source_id, chat.directory) AS origin,
-      ${privateExpression} AS isPrivate, chat.deleted_at AS deletedAt
+      ${privateExpression} AS isPrivate, chat.deleted_at AS deletedAt,
+      chat.harness_state_json AS harnessState, host.kind AS hostKind, host.source_id AS hostSourceId
     FROM chats chat
     LEFT JOIN workspaces workspace ON workspace.id = chat.workspace_id AND workspace.user_id = chat.user_id
     LEFT JOIN execution_hosts host ON host.id = chat.execution_host_id AND host.user_id = chat.user_id
@@ -59,13 +63,24 @@ export function listChatTrash(options: ChatTrashQuery): ChatTrashPage {
   `).all(...values) as Array<{
     id: string; name: string; workspaceId: string | null; origin: string;
     isPrivate: number; deletedAt: string;
+    harnessState: string | null; hostKind: string | null; hostSourceId: string | null;
   }>;
   const hasMore = rows.length > options.limit;
-  const items = rows.slice(0, options.limit).map((row) => ({
-    ...row,
-    isPrivate: Boolean(row.isPrivate),
-    expiresAt: new Date(Date.parse(row.deletedAt) + CHAT_TRASH_RETENTION_MS).toISOString(),
-  }));
+  const items = rows.slice(0, options.limit).map((row) => {
+    const { harnessState, hostKind, hostSourceId, ...item } = row;
+    const recovery = parseStoredHarnessState(harnessState, item.id)?.historyRecovery;
+    const recoveryServerId = recovery && recovery.status !== "complete"
+      ? getRegisteredSshServerId(recovery.executionHost.host) : null;
+    return {
+      ...item,
+      isPrivate: Boolean(item.isPrivate),
+      expiresAt: new Date(Date.parse(item.deletedAt) + CHAT_TRASH_RETENTION_MS).toISOString(),
+      credentialServerIds: [...new Set([
+        ...(hostKind === "ssh" && hostSourceId ? [hostSourceId] : []),
+        ...(recoveryServerId ? [recoveryServerId] : []),
+      ])],
+    };
+  });
   const last = items.at(-1);
   return {
     items,
@@ -75,7 +90,7 @@ export function listChatTrash(options: ChatTrashQuery): ChatTrashPage {
   };
 }
 
-export function markChatTrashed(chatId: string): Chat | null {
+export function markChatTrashed(chatId: string, checkpoint?: TranscriptChangeSet): Chat | null {
   const db = getDatabase();
   const userId = requirePersistenceUserId();
   return db.transaction(() => {
@@ -85,8 +100,11 @@ export function markChatTrashed(chatId: string): Chat | null {
     `).get(chatId, userId) as Record<string, unknown> | null;
     if (!row) return null;
     const chat = rowToChat(row);
+    if (checkpoint) {
+      chatTranscriptStore.applyChangeSetInTransaction(db, chatId, userId, checkpoint);
+    }
     const now = new Date().toISOString();
-    const questions = closeOpenQuestions(chat.state.harness?.questions, "cancelled");
+    const questions = closeOpenQuestions(chat.state.harness?.questions, "cancelled", { includeQueued: true });
     if (questions?.some((question) => question.transcript)) {
       const transcript = chatTranscriptStore.hydrateForUser(chatId, userId);
       const updates = projectQuestionMessages(transcript.messages, questions);

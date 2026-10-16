@@ -1,7 +1,32 @@
 import { useCallback, useMemo, useState } from "react";
 import { ConfirmModal, useToast, type ActionMenuItem, type WebAppRoute } from "@pablozaiden/webapp/web";
-import type { ChatTrashResult, TrashedChat } from "@/contracts/schemas/chat-trash";
+import type { ChatTrashPage, ChatTrashResult, TrashedChat } from "@/contracts/schemas/chat-trash";
 import { apiRequest } from "../../lib/api-client";
+import { getStoredSshCredentialToken } from "../../lib/ssh-browser-credentials";
+
+async function cleanupCredentials(target: TrashedChat | "all"): Promise<Record<string, string>> {
+  const serverIds = new Set<string>(target === "all" ? [] : target.credentialServerIds);
+  if (target === "all") {
+    let cursor: string | null = null;
+    do {
+      const query = new URLSearchParams({ limit: "100", includePrivate: "true" });
+      if (cursor) query.set("cursor", cursor);
+      const page: ChatTrashPage = await apiRequest(`/api/trash?${query}`, {
+        action: "Resolve Trash cleanup credentials", fallbackMessage: "Failed to load Trash cleanup targets",
+      });
+      for (const chat of page.items) {
+        for (const serverId of chat.credentialServerIds) serverIds.add(serverId);
+      }
+      cursor = page.nextCursor;
+    } while (cursor);
+  }
+  const tokens: Record<string, string> = {};
+  for (const serverId of serverIds) {
+    const token = await getStoredSshCredentialToken(serverId);
+    if (token) tokens[serverId] = token;
+  }
+  return tokens;
+}
 
 export function useChatTrashActions(
   navigate: (route: WebAppRoute) => void,
@@ -32,9 +57,14 @@ export function useChatTrashActions(
     setPending(true);
     try {
       const all = target === "all";
+      const credentialTokensByServerId = await cleanupCredentials(target);
       const result = await apiRequest<ChatTrashResult>(
         all ? "/api/trash" : `/api/trash/${encodeURIComponent(target.id)}`,
-        { method: "DELETE", action: "Permanently delete chat", fallbackMessage: "Failed to permanently delete chat" },
+        {
+          method: "DELETE", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ credentialTokensByServerId }),
+          action: "Permanently delete chat", fallbackMessage: "Failed to permanently delete chat",
+        },
       );
       setTarget(null);
       navigate({ view: "trash" });

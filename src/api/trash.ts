@@ -2,13 +2,13 @@
  * Public, owner-scoped standalone chat recovery and permanent deletion.
  */
 import { createLogger, defineRoutes } from "@pablozaiden/webapp/server";
-import { ChatTrashPageSchema, ChatTrashQuerySchema, EmptyChatTrashResponseSchema } from "@/contracts/schemas/chat-trash";
+import { ChatTrashPageSchema, ChatTrashQuerySchema, EmptyChatTrashResponseSchema, PurgeChatTrashRequestSchema } from "@/contracts/schemas/chat-trash";
 import { chatManager } from "../core/chat-manager";
 import { isDomainError } from "../domain/domain-error";
 import { domainErrorResponse, errorResponse, successResponse } from "./helpers";
+import { parseAndValidate } from "./validation";
 
 const log = createLogger("api:trash");
-const SSH_CREDENTIAL_TOKEN_HEADER = "x-clanky-ssh-credential-token";
 
 function trashError(error: unknown): Response {
   const known = isDomainError(error) && [
@@ -36,8 +36,16 @@ export const trashRoutes = defineRoutes({
     operations: {
       GET: { querySchema: ChatTrashQuerySchema, responseSchema: ChatTrashPageSchema, automation: { policy: "read" } },
       DELETE: {
+        requestSchema: PurgeChatTrashRequestSchema,
         responseSchema: EmptyChatTrashResponseSchema,
-        automation: { policy: "confirm", reason: "Permanently deletes all chats currently in your Trash. Cannot be undone." },
+        automation: {
+          policy: "confirm", reason: "Permanently deletes all chats currently in your Trash. Cannot be undone.",
+          hiddenInputs: ["credentialTokensByServerId"],
+          credential: {
+            kind: "ssh", resource: { name: "chats", purpose: "trash-cleanup" },
+            mapInput: "credentialTokensByServerId",
+          },
+        },
       },
     },
     async GET(req) {
@@ -53,10 +61,10 @@ export const trashRoutes = defineRoutes({
       }
     },
     async DELETE(req) {
+      const parsed = await parseAndValidate(PurgeChatTrashRequestSchema, req, { allowEmptyBody: true });
+      if (!parsed.success) return parsed.response;
       try {
-        const result = await chatManager.emptyTrash({
-          credentialToken: req.headers.get(SSH_CREDENTIAL_TOKEN_HEADER),
-        });
+        const result = await chatManager.emptyTrash(parsed.data);
         return Response.json({ success: result.failedCount === 0, ...result });
       } catch (error) {
         return trashError(error);
@@ -86,11 +94,23 @@ export const trashRoutes = defineRoutes({
     tags: ["trash"],
     cliPath: "trash/:id",
     operations: {
-      DELETE: { automation: { policy: "confirm", reason: "Permanently deletes this chat and its managed worktree. Cannot be undone." } },
+      DELETE: {
+        requestSchema: PurgeChatTrashRequestSchema,
+        automation: {
+          policy: "confirm", reason: "Permanently deletes this chat and its managed worktree. Cannot be undone.",
+          hiddenInputs: ["credentialTokensByServerId"],
+          credential: {
+            kind: "ssh", resource: { name: "chats", idParameter: "id", purpose: "trash-cleanup" },
+            mapInput: "credentialTokensByServerId",
+          },
+        },
+      },
     },
     async DELETE(req, ctx) {
+      const parsed = await parseAndValidate(PurgeChatTrashRequestSchema, req, { allowEmptyBody: true });
+      if (!parsed.success) return parsed.response;
       try {
-        const deleted = await chatManager.purgeTrashedChat(ctx.params["id"]!, req.headers.get(SSH_CREDENTIAL_TOKEN_HEADER));
+        const deleted = await chatManager.purgeTrashedChat(ctx.params["id"]!, parsed.data);
         return deleted ? successResponse() : errorResponse("trashed_chat_not_found", "Chat not found in Trash", 404);
       } catch (error) {
         return trashError(error);

@@ -32,6 +32,8 @@ permanently deletes them, even if their 30 days have not elapsed.
 
 Remote resource cleanup uses the original execution host. If external cleanup
 fails during ordinary permanent deletion, the chat stays in Trash for retry.
+Pending Continue from history exports are retained while a chat is in Trash;
+their existing temporary-export expiration still applies.
 Workspace deletion is not blocked by unavailable trashed-chat hosts; incomplete
 external cleanup is logged and remote resources may need manual removal.
 
@@ -57,7 +59,17 @@ Trash listing returns `{ items, nextCursor }`. `limit` defaults to 30 and accept
 1-100; pass `cursor` from the previous page to continue. `includePrivate=false`
 omits chats whose chat, workspace or registered execution server is private.
 Each item includes `id`, `name`, `workspaceId`, `origin`, `isPrivate`,
-`deletedAt` and `expiresAt`.
+`deletedAt`, `expiresAt` and `credentialServerIds`. The latter identifies owned
+SSH servers whose credentials may be needed for resource cleanup; it contains
+no credential values.
+
+Permanent deletion and emptying accept an optional JSON body
+`{ "credentialTokensByServerId": { "<server-id>": "<credential-token>" } }`.
+Obtain each short-lived token through the normal SSH credential exchange.
+The browser resolves stored credentials for all selected servers, including
+hidden private chats when emptying; CLI/automation discovery declares the same
+per-server credential mapping. Missing credentials leave affected entries in
+Trash rather than deleting their records without cleanup.
 
 Restore does not return or start a provider session. Use the normal chat endpoints
 after restoration. Trashed chats are unavailable through ordinary chat reads,

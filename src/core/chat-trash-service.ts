@@ -16,7 +16,7 @@ import {
 } from "../persistence/chats/trash";
 import { KeyedOperationQueue } from "../utils/keyed-operation-queue";
 import { withWorkspaceExecutionLock } from "./workspace-execution-lock";
-import type { ChatStatePort } from "./chat-service-contracts";
+import type { ChatCleanupCredentials, ChatConversationPort, ChatStatePort } from "./chat-service-contracts";
 import type { ChatLifecycleService } from "./chat-lifecycle-service";
 
 const log = createLogger("chat-trash");
@@ -27,6 +27,7 @@ export class ChatTrashService {
   constructor(
     private readonly state: ChatStatePort,
     private readonly lifecycle: Pick<ChatLifecycleService, "cleanupTrashResources">,
+    private readonly conversation: Pick<ChatConversationPort, "checkpointForDeletion">,
   ) {}
 
   list(options: ChatTrashQuery) { return listChatTrash(options); }
@@ -36,7 +37,7 @@ export class ChatTrashService {
       if (loadTrashedChat(chatId)) return;
       const chat = await this.state.getChatSummary(chatId);
       if (!chat || !isStandaloneChat(chat)) throw this.notFound();
-      const trashed = markChatTrashed(chatId);
+      const trashed = this.conversation.checkpointForDeletion(chatId, markChatTrashed);
       if (!trashed) throw this.notFound();
       this.state.emitChatDeleted(chat, createTimestamp());
       this.changed(chatId);
@@ -70,8 +71,8 @@ export class ChatTrashService {
     });
   }
 
-  async purge(chatId: string, options: {
-    deletedAt?: string; credentialToken?: string | null; bestEffort?: boolean;
+  async purge(chatId: string, options: ChatCleanupCredentials & {
+    deletedAt?: string; bestEffort?: boolean;
   } = {}): Promise<boolean> {
     return await this.operations.run(chatId, async () => {
       const chat = loadTrashedChat(chatId);
@@ -79,13 +80,14 @@ export class ChatTrashService {
       let complete = false;
       try {
         complete = await this.lifecycle.cleanupTrashResources(chat, {
-          preserveWorktree: true, credentialToken: options.credentialToken,
+          preserveWorktree: true, ...options,
         });
         if (complete) {
           const latest = loadTrashedChat(chatId);
           if (!latest) return false;
           complete = await this.lifecycle.cleanupTrashResources(latest, {
             credentialToken: options.credentialToken,
+            credentialTokensByServerId: options.credentialTokensByServerId,
           });
         }
       } catch (error) {
@@ -101,8 +103,8 @@ export class ChatTrashService {
     });
   }
 
-  async empty(options: {
-    cutoff?: string; workspaceId?: string; bestEffort?: boolean; credentialToken?: string | null;
+  async empty(options: ChatCleanupCredentials & {
+    cutoff?: string; workspaceId?: string; bestEffort?: boolean;
   } = {}): Promise<ChatTrashResult> {
     const cutoff = options.cutoff ?? createTimestamp();
     const result: ChatTrashResult = { deletedCount: 0, failedCount: 0, failures: [] };
@@ -128,6 +130,23 @@ export class ChatTrashService {
   async expire(): Promise<void> {
     const result = await this.empty({ cutoff: new Date(Date.now() - CHAT_TRASH_RETENTION_MS).toISOString() });
     if (result.deletedCount) log.info("Expired chats removed from Trash", { deletedCount: result.deletedCount });
+  }
+
+  credentialTargets(chatId?: string): string[] {
+    const serverIds = new Set<string>();
+    let cursor: string | undefined;
+    do {
+      const page = this.list({ limit: 100, includePrivate: "true", cursor });
+      for (const item of page.items) {
+        if (!chatId || item.id === chatId) {
+          for (const serverId of item.credentialServerIds) serverIds.add(serverId);
+          if (chatId) return [...serverIds];
+        }
+      }
+      cursor = page.nextCursor ?? undefined;
+    } while (cursor);
+    if (chatId) throw this.notFound();
+    return [...serverIds];
   }
 
   async runLiveOperation<T>(chatId: string, operation: () => Promise<T>): Promise<T> {

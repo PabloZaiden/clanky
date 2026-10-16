@@ -229,7 +229,7 @@ export function useChats(): UseChatsResult {
     try {
       const chat = chats.find((entry) => entry.config.id === id);
       const recovery = chat?.state.harness?.historyRecovery;
-      const serverId = recovery && recovery.status !== "complete"
+      const serverId = chat && !isStandaloneChat(chat) && recovery && recovery.status !== "complete"
         ? getRegisteredSshServerId(recovery.executionHost.host)
         : null;
       const credentialToken = serverId

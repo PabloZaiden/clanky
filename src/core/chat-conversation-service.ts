@@ -126,6 +126,7 @@ interface ChatStreamConsumptionState {
   interpreter: AgentEventTranscriptInterpreter;
   lastStatusReloadAt: number;
   completedResponse?: { nativeMessageId: string | null; transcriptMessageId: string };
+  deletionCheckpointed?: boolean;
 }
 
 export type ChatPermissionHandler = (
@@ -547,6 +548,30 @@ export class ChatConversationService implements ChatConversationPort {
     this.activeStreamGenerations.delete(chatId);
   }
 
+  checkpointForDeletion(
+    chatId: string,
+    markDeleted: (chatId: string, checkpoint?: TranscriptChangeSet) => Chat | null,
+  ): Chat | null {
+    const streamState = this.activeStreams.get(chatId)?.streamState;
+    const upserts: TranscriptChangeSet["upserts"] = [];
+    if (streamState?.interpreter.getPendingCheckpointBytes()) {
+      // Earlier blocks are checkpointed before the next block is displayed.
+      const message = streamState.transcriptMemory.messages.values.findLast(
+        (entry) => entry.role === "assistant" && !entry.question,
+      );
+      const reasoning = streamState.transcriptMemory.logs.values.findLast(
+        (entry) => entry.details?.["logKind"] === "reasoning",
+      );
+      if (message) upserts.push({ id: message.id, kind: "message", timestamp: message.timestamp, payload: message });
+      if (reasoning) upserts.push({ id: reasoning.id, kind: "log", timestamp: reasoning.timestamp, payload: reasoning });
+    }
+    // Capture displayed text and install the fence in one synchronous transaction.
+    const deleted = markDeleted(chatId, streamState
+      ? createTranscriptChangeSet(streamState.chat.state, upserts) : undefined);
+    if (deleted && streamState) streamState.deletionCheckpointed = true;
+    return deleted;
+  }
+
   async stopForDeletion(chatId: string): Promise<void> {
     const startup = this.startupOperations.get(chatId);
     const stream = this.activeStreams.get(chatId);
@@ -960,7 +985,7 @@ export class ChatConversationService implements ChatConversationPort {
     streamState: ChatStreamConsumptionState,
     blocks: AgentEventTranscriptBlock[],
   ): Promise<void> {
-    if (blocks.length === 0) {
+    if (blocks.length === 0 || streamState.deletionCheckpointed) {
       return;
     }
     if (!await this.reloadChatStreamMetadata(chatId, streamState)) {
@@ -988,6 +1013,7 @@ export class ChatConversationService implements ChatConversationPort {
     )) {
       return { stop: true };
     }
+    if (streamState.deletionCheckpointed) return { stop: true };
 
     const now = createTimestamp();
     const isInterrupted =

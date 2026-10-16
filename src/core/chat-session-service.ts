@@ -423,15 +423,11 @@ export class ChatSessionService implements ChatSessionPort {
     if (sshBackend) {
       try {
         sshBackend.abortAllSubscriptions();
-        if (sshBackend.isConnected()) {
-          await sshBackend.disconnect();
-        }
-
+        await sshBackend.disconnect();
+        this.directChatBackends.delete(chatId);
       } catch (error) {
         sshDisconnectError = error;
         log.error("Failed to disconnect SSH chat backend", { chatId, error: String(error) });
-      } finally {
-        this.directChatBackends.delete(chatId);
       }
     }
     const backendDisconnected = await this.backendManager.disconnectChat(chatId);
