@@ -44,10 +44,10 @@ export async function updateChatStreamState(
   const updateStmt = db.prepare(`
     UPDATE chats
     SET last_activity_at = ?, state_revision = state_revision + 1
-    WHERE id = ? AND user_id = ?${statusCondition}
+    WHERE id = ? AND user_id = ? AND deleted_at IS NULL${statusCondition}
   `);
   const selectStmt = db.prepare(
-    `SELECT ${CHAT_METADATA_COLUMNS} FROM chats WHERE id = ? AND user_id = ?`,
+    `SELECT ${CHAT_METADATA_COLUMNS} FROM chats WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
   );
 
   const saved = db.transaction(() => {
@@ -81,7 +81,7 @@ export async function updateChatStreamState(
 export async function updateChatState(chatId: string, state: ChatState, options: UpdateChatStateOptions = {}): Promise<PersistedChatState | null> {
   const db = getDatabase();
   const userId = requirePersistenceUserId();
-  const selectStmt = db.prepare(`SELECT ${CHAT_METADATA_COLUMNS} FROM chats WHERE id = ? AND user_id = ?`);
+  const selectStmt = db.prepare(`SELECT ${CHAT_METADATA_COLUMNS} FROM chats WHERE id = ? AND user_id = ? AND deleted_at IS NULL`);
   const saved = db.transaction(() => {
     const row = selectStmt.get(chatId, userId) as Record<string, unknown> | null;
     if (!row) {
@@ -125,7 +125,7 @@ export async function updateChatState(chatId: string, state: ChatState, options:
       values.push(options.expectedStatus);
     }
 
-    const result = db.prepare(`UPDATE chats SET ${setClause} WHERE id = ? AND user_id = ?${statusCondition}`).run(...values);
+    const result = db.prepare(`UPDATE chats SET ${setClause} WHERE id = ? AND user_id = ? AND deleted_at IS NULL${statusCondition}`).run(...values);
     if (result.changes === 0 && options.expectedStatus !== undefined) {
       const latestRow = selectStmt.get(chatId, userId) as Record<string, unknown> | null;
       if (!latestRow || latestRow["status"] !== options.expectedStatus) {
@@ -167,7 +167,7 @@ export async function updateChatConfig(
 ): Promise<boolean> {
   const db = getDatabase();
   const userId = requirePersistenceUserId();
-  const selectStmt = db.prepare(`SELECT ${CHAT_METADATA_COLUMNS} FROM chats WHERE id = ? AND user_id = ?`);
+  const selectStmt = db.prepare(`SELECT ${CHAT_METADATA_COLUMNS} FROM chats WHERE id = ? AND user_id = ? AND deleted_at IS NULL`);
 
   const saved = db.transaction(() => {
     const row = selectStmt.get(chatId, userId) as Record<string, unknown> | null;
@@ -188,7 +188,7 @@ export async function updateChatConfig(
       values.push(options.expectedName);
     }
 
-    const result = db.prepare(`UPDATE chats SET ${setClause} WHERE id = ? AND user_id = ?${nameCondition}`).run(...values);
+    const result = db.prepare(`UPDATE chats SET ${setClause} WHERE id = ? AND user_id = ? AND deleted_at IS NULL${nameCondition}`).run(...values);
     if (result.changes === 0) {
       log.debug("Chat config update did not modify a row", {
         chatId,

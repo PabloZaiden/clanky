@@ -92,10 +92,11 @@ export function reconcileQuestionAnswerAdmissions(
 export function closeOpenQuestions(
   requests: HarnessQuestionRequest[] | undefined,
   outcome: "cancelled" | "expired",
+  options: { includeQueued?: boolean } = {},
 ): HarnessQuestionRequest[] | undefined {
   // Enqueued replies are independent conversation inputs; interruption does
-  // not confirm or discard them before the queue dispatches or removes them.
-  return requests?.map((request) => isQuestionOpen(request) && request.status !== "queued"
+  // not confirm or discard them unless the caller also discards the queue.
+  return requests?.map((request) => isQuestionOpen(request) && (options.includeQueued || request.status !== "queued")
     ? { ...request, status: outcome, resolvedAt: new Date().toISOString() }
     : request);
 }

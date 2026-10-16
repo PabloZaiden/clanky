@@ -39,7 +39,7 @@ export async function getActiveChatByDirectory(directory: string, workspaceId: s
   const userId = requirePersistenceUserId();
   const row = getDatabase().prepare(`
     SELECT ${CHAT_METADATA_COLUMNS} FROM chats
-    WHERE directory = ? AND workspace_id = ? AND user_id = ? AND scope = 'workspace' AND status IN (${placeholders})
+    WHERE directory = ? AND workspace_id = ? AND user_id = ? AND deleted_at IS NULL AND scope = 'workspace' AND status IN (${placeholders})
     LIMIT 1
   `).get(directory, workspaceId, userId, ...ACTIVE_CHAT_STATUSES) as Record<string, unknown> | null;
 
@@ -65,7 +65,7 @@ function resetStale(chatId?: string): number {
   const db = getDatabase();
   return db.transaction(() => {
     const rows = db.query<{ id: string; harness_state_json: string | null }, (string)[]>(`
-      SELECT id, harness_state_json FROM chats WHERE user_id = ? AND status IN (${placeholders})
+      SELECT id, harness_state_json FROM chats WHERE user_id = ? AND deleted_at IS NULL AND status IN (${placeholders})
       ${chatId ? "AND id = ?" : ""}
     `).all(userId, ...STALE_CHAT_STATUSES, ...(chatId ? [chatId] : []));
     for (const row of rows) {
@@ -98,7 +98,7 @@ function resetStale(chatId?: string): number {
         pending_permission_requests = '[]',
         connection_status = 'disconnected',
         startup_stage = NULL
-    WHERE user_id = ? AND status IN (${placeholders}) ${chatId ? "AND id = ?" : ""}
+    WHERE user_id = ? AND deleted_at IS NULL AND status IN (${placeholders}) ${chatId ? "AND id = ?" : ""}
   `).run(STALE_CHAT_RESET_MESSAGE, now, now, userId, ...STALE_CHAT_STATUSES, ...(chatId ? [chatId] : []));
     return result.changes;
   })();

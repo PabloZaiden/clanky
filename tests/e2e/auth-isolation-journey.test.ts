@@ -280,6 +280,27 @@ test("passkey users see only their own Clanky data and permissions", async () =>
       (await application.request("/api/users", { apiKey: ownerApiKey })).status,
     ).toBe(200);
 
+    const memberModels = (await application.json<Array<{ providerID: string; modelID: string; connected: boolean }>>(
+      `/api/models?workspaceId=${memberWorkspace.id}`, { apiKey: memberApiKey },
+    )).data;
+    const model = memberModels.find((candidate) => candidate.connected && candidate.providerID === "copilot")!;
+    const memberChat = (await application.json<{ config: { id: string } }>("/api/chats", {
+      method: "POST", apiKey: memberApiKey,
+      body: JSON.stringify({
+        name: "Member conversation", workspaceId: memberWorkspace.id,
+        useWorktree: false, model: { providerID: model.providerID, modelID: model.modelID, variant: "" },
+      }),
+    }, 201)).data;
+    await application.json(`/api/chats/${memberChat.config.id}`, { method: "DELETE", apiKey: memberApiKey });
+    expect((await application.json<{ items: Array<{ id: string }> }>("/api/trash", { apiKey: ownerApiKey })).data.items)
+      .toHaveLength(0);
+    expect((await application.request(`/api/trash/${memberChat.config.id}/restore`, { method: "POST", apiKey: ownerApiKey })).status)
+      .toBe(404);
+    expect((await application.request(`/api/trash/${memberChat.config.id}`, { method: "DELETE", apiKey: ownerApiKey })).status)
+      .toBe(404);
+    expect((await application.json<{ items: Array<{ id: string }> }>("/api/trash", { apiKey: memberApiKey })).data.items.map((chat) => chat.id))
+      .toContain(memberChat.config.id);
+
     await application.json(
       `/api/workspaces/${memberWorkspace.id}`,
       {

@@ -20,6 +20,7 @@ import { provisioningManager } from "./provisioning-manager";
 import { sshCredentialManager } from "./ssh-credential-manager";
 import { taskManager } from "./task-manager";
 import { workspaceManager } from "./workspace-manager";
+import { stopChatTrashMaintenance, startChatTrashMaintenance } from "./chat-trash-maintenance";
 
 const log = createLogger("core:settings-maintenance");
 const ARCHIVED_TASK_PURGE_CONCURRENCY = 4;
@@ -88,6 +89,7 @@ async function purgeArchivedTasksWithConcurrency(
 
 export class SettingsMaintenanceService {
   async resetAll(): Promise<void> {
+    await stopChatTrashMaintenance();
     log.debug("Resetting all backend connections before database reset");
     try {
       await backendManager.resetAllConnections();
@@ -95,6 +97,8 @@ export class SettingsMaintenanceService {
       await deleteAndReinitializeDatabase();
     } catch (error) {
       throw new DomainError("reset_failed", String(error), { cause: error });
+    } finally {
+      startChatTrashMaintenance();
     }
   }
 

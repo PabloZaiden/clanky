@@ -626,6 +626,19 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: 76,
+    name: "add_chat_trash",
+    up: (db) => {
+      if (!getTableColumns(db, "chats").includes("deleted_at")) {
+        db.run("ALTER TABLE chats ADD COLUMN deleted_at TEXT");
+      }
+      db.run(`
+        CREATE INDEX IF NOT EXISTS idx_chats_trash
+        ON chats(user_id, deleted_at DESC, id DESC) WHERE deleted_at IS NOT NULL
+      `);
+    },
+  },
 ];
 
 function getMigrationTableColumns(db: Database, tableName: string): string[] {

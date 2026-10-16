@@ -31,6 +31,7 @@ export const CLANKY_REALTIME_RESOURCES = {
   workspaces: "workspaces",
   tasks: "tasks",
   chats: "chats",
+  trash: "trash",
   agents: "agents",
   agentRuns: "agent-runs",
   terminalSessions: "terminal-sessions",
@@ -308,6 +309,10 @@ export function publishClankyDomainEvent(
       return;
     case "chat.deleted":
       publishDeleted(publisher, owner, CLANKY_REALTIME_RESOURCES.chats, event.chatId);
+      return;
+    case "chat.trash.changed":
+      publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.trash);
+      publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.chats, event.chatId);
       return;
     case "chat.message":
       if (event.message.role === "user") {

@@ -96,6 +96,7 @@ import {
 import { getLocalMeshProtocolMetadata } from "./core/mesh-protocol-version";
 import { controllerRelayService } from "./core/controller-relay-service";
 import { liveVoiceManager } from "./core/live-voice-manager";
+import { startChatTrashMaintenance, stopChatTrashMaintenance, sweepChatTrash } from "./core/chat-trash-maintenance";
 import { workerRelayService } from "./core/worker-relay-service";
 import { meshHealthService } from "./core/mesh-health-service";
 import { ClankyOperationService } from "./core/clanky-operation-service";
@@ -202,6 +203,7 @@ async function reconcileStartupState(): Promise<void> {
   if (staleManagedContextsRevoked > 0) {
     log.info(`Revoked ${staleManagedContextsRevoked} stale managed execution contexts during startup`);
   }
+  await sweepChatTrash();
 }
 
 async function reconcileWorkspaceWorkerEnrollments(): Promise<void> {
@@ -329,6 +331,7 @@ async function completeStartup(
     pushedTaskMonitor.start();
     agentScheduler.start();
     startWorkspaceWorkerReconciliation();
+    startChatTrashMaintenance();
   }
 
   for (const message of getServerStartupMessages({
@@ -647,6 +650,7 @@ export async function getWebAppServer(
         realtimeHeartbeatCleanup?.();
         realtimeHeartbeatCleanup = undefined;
         stopBackgroundWorkers();
+        await stopChatTrashMaintenance();
         await meshTerminalGateway.closeAll();
         await meshTcpTunnelGateway.closeAll();
         await closeAllMeshTerminalConnections();

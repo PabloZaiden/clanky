@@ -3,7 +3,9 @@ import type { MeshPeerRoute } from "@/shared/mesh";
 import { requestMeshPeer } from "./mesh-peer-transport";
 import type { MeshPeerTransport } from "./mesh-peer-transport";
 import { isMeshRelayResponseInterrupted, MeshRelayStreamError } from "./mesh-relay-errors";
+import { createLogger } from "@pablozaiden/webapp/server";
 
+const log = createLogger("mesh-control-client");
 const MESH_CONTROL_REQUEST_TIMEOUT_MS = 10_000;
 const MESH_CONTROL_RESPONSE_MAX_BYTES = 64 * 1024;
 const recognizedPeerErrors = new Map<string, string>([
@@ -158,6 +160,7 @@ export async function readMeshControlResponseJson<T>(
   const decoder = new TextDecoder();
   const maxBytes = options.maxBytes ?? MESH_CONTROL_RESPONSE_MAX_BYTES;
   let abortHandler: (() => void) | undefined;
+  let cancellation: Promise<void> | undefined;
   const readBody = async (): Promise<string> => {
     let totalBytes = 0;
     let text = "";
@@ -184,7 +187,9 @@ export async function readMeshControlResponseJson<T>(
     }
     const abortPromise = new Promise<never>((_, reject) => {
       abortHandler = () => {
-        void reader.cancel();
+        cancellation = reader.cancel().catch((error: unknown) => {
+          log.debug("Mesh response reader ended during cancellation", { error: String(error) });
+        });
         reject(meshControlResponseAborted());
       };
       if (options.signal!.aborted) {
@@ -215,6 +220,7 @@ export async function readMeshControlResponseJson<T>(
     if (abortHandler && options.signal) {
       options.signal.removeEventListener("abort", abortHandler);
     }
+    await cancellation;
     reader.releaseLock();
   }
 }

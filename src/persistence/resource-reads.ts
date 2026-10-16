@@ -47,6 +47,7 @@ const TABLES = { chat: "chats", task: "tasks", agent_run: "agent_runs" } as cons
 function sourceWhere(source: WorkReadSource): { clause: string; values: string[] } {
   const clauses = ["user_id = ?"];
   const values = [source.userId];
+  if (source.resource === "chat") clauses.push("deleted_at IS NULL");
   if (source.resource === "chat" && !source.id) clauses.push("scope = 'workspace' AND task_id IS NULL");
   if (source.id) { clauses.push("id = ?"); values.push(source.id); }
   const workspaceId = source.workspaceId ?? source.options?.workspaceId;

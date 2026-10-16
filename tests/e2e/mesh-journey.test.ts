@@ -591,6 +591,12 @@ test("compiled controller and worker support Mesh chats, shared worktrees, and r
         { method: "DELETE" },
       );
       expect(deleted.status).toBe(200);
+      const purged = await meshJsonRequest<{ success: boolean }>(
+        controller,
+        `/api/trash/${encodeURIComponent(branchChat.config.id)}`,
+        { method: "DELETE" },
+      );
+      expect(purged.status).toBe(200);
     }
     await pollUntil(
       async () => (await workerGit(

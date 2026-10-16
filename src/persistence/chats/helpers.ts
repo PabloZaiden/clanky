@@ -213,6 +213,7 @@ export function rowToChat(row: Record<string, unknown>): Chat {
     baseBranch: (row["base_branch"] as string | null) ?? undefined,
     createdAt: row["created_at"] as string,
     updatedAt: row["updated_at"] as string,
+    deletedAt: (row["deleted_at"] as string | null) ?? undefined,
     isPrivate: row["is_private"] === 1,
     mode: ((row["mode"] as ChatConfig["mode"] | null) ?? DEFAULT_CHAT_CONFIG.mode),
   };
