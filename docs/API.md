@@ -312,8 +312,11 @@ local URL at `/`. A successful `ready` additionally includes
 `error` message. A `{ type: "close" }` request waits for cleanup before the
 bridge closes. HTTP responses stream through the preview with per-request
 consumption acknowledgements and a bounded receive window, so slow readers pause
-upstream rather than overflowing a response buffer. Cancelling a local
-request sends `{ type: "request.cancel", streamId }`.
+upstream rather than overflowing a response buffer. Bridge clients opt in with
+`request.start.responseFlowControl: true` and acknowledge consumed bytes with
+`{ type: "response.ack", streamId, bytes }`. The receive window is 256 KiB;
+30 seconds without consumption progress cancels the upstream response.
+Cancelling a local request sends `{ type: "request.cancel", streamId }`.
 
 ## Response Format
 

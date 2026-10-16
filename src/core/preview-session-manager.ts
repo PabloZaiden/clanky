@@ -79,6 +79,7 @@ interface PreviewRuntime {
   requests: Map<string, {
     controller: AbortController;
     creditBytes?: number;
+    lastAcknowledgedAt: number;
   }>;
   localOrigin: string;
   user: CurrentUser;
@@ -723,6 +724,7 @@ export class PreviewSessionManager {
           ws.send(JSON.stringify({ type: "stream.error", streamId: message.streamId, error: "Invalid preview response acknowledgement" }));
         } else {
           request.creditBytes += message.bytes;
+          request.lastAcknowledgedAt = Date.now();
         }
       }
       return;
@@ -890,6 +892,7 @@ export class PreviewSessionManager {
     const request = {
       controller,
       creditBytes: message.responseFlowControl === true ? PREVIEW_RESPONSE_WINDOW_BYTES : undefined,
+      lastAcknowledgedAt: Date.now(),
     };
     runtime.requests.set(message.streamId, request);
     try {
@@ -917,13 +920,15 @@ export class PreviewSessionManager {
             if (done) break;
             for (let offset = 0; offset < value.byteLength; offset += PREVIEW_RESPONSE_CHUNK_BYTES) {
               const chunk = value.subarray(offset, offset + PREVIEW_RESPONSE_CHUNK_BYTES);
-              const deadline = Date.now() + 30_000;
+              const waitingSince = Date.now();
               while (
                 (request.creditBytes !== undefined && request.creditBytes < chunk.byteLength)
                 || (ws.getBufferedAmount?.() ?? 0) > 512 * 1024
               ) {
                 controller.signal.throwIfAborted();
-                if (Date.now() > deadline) throw new Error("Preview response backpressure timed out");
+                if (Date.now() - Math.max(waitingSince, request.lastAcknowledgedAt) > 30_000) {
+                  throw new Error("Preview response backpressure timed out");
+                }
                 await Bun.sleep(10);
               }
               controller.signal.throwIfAborted();
