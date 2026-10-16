@@ -244,6 +244,12 @@ function* globalJourney(): Generator<FixtureStep, void, unknown> {
   const conversation = read.content as ConversationMessage[];
   const answerParts = conversation.filter((message) => message.id === conversation.findLast((entry) => entry.role === "assistant" && entry.content.trim())?.id);
   const answer = answerParts.map((part) => part.content).join("");
+  yield* direct("clanky_update_chat_lifecycle", {
+    target: sourceChat.name,
+    workspace: workspaceA.name,
+    action: "mark_done",
+    confirmationDescription: null,
+  });
   const waiting = yield* direct<{ entries: Array<Task & { kind: string; interventionReasons: string[] }> }>("clanky_waiting_work", {
     kind: "task", workspace: workspaceA.name, cursor: null, limit: 3,
   });
@@ -327,6 +333,12 @@ function* globalJourney(): Generator<FixtureStep, void, unknown> {
     name: "clanky_ui_action", arguments: { action: { type: "open_chat", chatId: followed.id } },
   });
   successful(yield { name: "clanky_get_ui_state", arguments: {} });
+  yield* direct("clanky_update_chat_lifecycle", {
+    target: GLOBAL_LIVE_INTENT.errorChat,
+    workspace: GLOBAL_LIVE_INTENT.workspaceA,
+    action: "move_to_trash",
+    confirmationDescription: `Move "${GLOBAL_LIVE_INTENT.errorChat}" to Trash for 30 days. Its active work will stop; its conversation and worktree remain recoverable.`,
+  });
 }
 
 function rememberedReference(session: LiveFixture, name: string): string {

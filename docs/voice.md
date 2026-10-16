@@ -164,7 +164,7 @@ rejected rather than guessing which credential to use.
 
 ### Direct common operations
 
-Twenty-one common intents are available to the textual model before discovery.
+Twenty-two common intents are available to the textual model before discovery.
 Their names below have the `clanky_` prefix:
 
 | Tool | Useful operation |
@@ -177,6 +177,7 @@ Their names below have the `clanky_` prefix:
 | `steer_queued_chat_message` | Steer an existing queued message into a streaming chat execution without resending it. |
 | `create_chat` | Create in a workspace or on an execution host; optional initial message and opening. |
 | `interrupt_chat` | Interrupt active chat work, independently of stopping voice. |
+| `update_chat_lifecycle` | Mark a standalone chat done or move it to recoverable Trash after visual approval. |
 | `respond_chat_interaction` | Answer a specific or uniquely pending question, or decide a permission. |
 | `list_tasks` | Filter tasks, including Voice status, progress and required-intervention reasons. |
 | `read_task` | Raw and Voice status, plus literal conversation, prompt, plan or diff. |
@@ -227,7 +228,7 @@ occupy one mutation queue slot through the navigation acknowledgement. Other
 queued writes wait until the compound action completes or fails. Stages return
 their outcomes, including partial failure; they are never replayed.
 
-The session has **26 tools**: these twenty-one direct intents, the existing
+The session has **27 tools**: these twenty-two direct intents, the existing
 selective `watch_work`, the three generic find/describe/execute tools for
 uncovered intents, and the `clanky_accept_goodbye` lifecycle tool.
 Direct tools skip model-side discovery, not authorization, credential exchange
@@ -241,6 +242,14 @@ inspect its state before repeating it; Clanky never automatically replays mutati
 The execute tool's required `confirmationDescription` is 1–500 trimmed
 characters for `confirm` operations and `null` for other automation policies.
 It is separate from the ordinary operation's API body.
+
+`update_chat_lifecycle` supports only `mark_done` and `move_to_trash` for
+standalone chats. Marking done does not interrupt active work; the chat API
+rejects busy or reconnecting chats. Moving a chat to Trash stops active work
+and keeps its history and worktree recoverable for 30 days, but requires the
+originating user's visual approval. This tool cannot set runtime statuses or
+permanently purge chats. Task chats remain task-managed, and agent chats are
+excluded because their existing delete path is permanent.
 
 `steer_queued_chat_message` operates only on messages already in a chat queue.
 With `messageId: null`, it proceeds only when the chat has exactly one queued

@@ -35,6 +35,9 @@ interface Task {
   state: { status: string; planMode?: { isPlanReady: boolean } };
 }
 interface Snapshot { transcript: { messages: Array<{ role: string; content: string }> } }
+interface TrashPage {
+  items: Array<{ id: string; deletedAt: string; expiresAt: string }>;
+}
 interface CreationContext {
   ready: boolean;
   defaults: Record<string, unknown>;
@@ -402,6 +405,8 @@ test("global Live operates owned recent and waiting work, resumes its conversati
       async inspect(event) {
         expect((await application.json<Task[]>("/api/tasks")).data.map((task) => task.config.id))
           .toContain(sourceTask.config.id);
+        expect((await application.json<Chat>(`/api/chats/${sourceChat.config.id}`)).data.state.status)
+          .toBe("done");
         await application.json(`/api/voice/live/${callId}/confirmations/${event.action.confirmation!.requestId}`, {
           method: "POST", body: JSON.stringify({ clientId: other.id, approved: true }),
         }, 404);
@@ -436,6 +441,25 @@ test("global Live operates owned recent and waiting work, resumes its conversati
     expect(other.context.route).toEqual({ view: "home" });
     const waiting = (await application.json<Chat>(`/api/chats/${createdChat.config.id}`)).data;
     expect(waiting.state.status).toBe("waiting");
+    const trashDecision = await visualDecision({
+      application, client, callId, approved: true,
+      async inspect(event) {
+        const description = event.action.confirmation?.description ?? "";
+        expect(description).toContain(errorChat.config.name);
+        expect(description).toMatch(/Trash/u);
+        expect(description).toMatch(/30 days/u);
+        expect((await application.request(`/api/chats/${errorChat.config.id}`)).status).toBe(200);
+        expect((await application.json<TrashPage>("/api/trash")).data.items
+          .some((chat) => chat.id === errorChat.config.id)).toBe(false);
+      },
+    });
+    expect(trashDecision["ok"]).toBe(true);
+    const trashed = (await application.json<TrashPage>("/api/trash")).data.items
+      .find((chat) => chat.id === errorChat.config.id);
+    expect(trashed).toBeDefined();
+    expect(Date.parse(trashed!.expiresAt) - Date.parse(trashed!.deletedAt))
+      .toBe(30 * 24 * 60 * 60 * 1000);
+    expect((await application.request(`/api/chats/${errorChat.config.id}`)).status).toBe(404);
     const closed = (await application.json<LiveState>(`/api/voice/live/${callId}/close`, {
       method: "POST", body: JSON.stringify({ clientId: client.id }),
     })).data;
