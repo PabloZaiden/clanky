@@ -64,7 +64,7 @@ export class AcpProcess {
     return this.child.exitCode;
   }
 
-  get signalCode(): NodeJS.Signals | null {
+  get signalCode(): AcpProcessExit["signalCode"] {
     return this.child.signalCode;
   }
 
