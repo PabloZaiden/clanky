@@ -5,17 +5,20 @@ import { useTextStateSwap } from "../../hooks/useTextStateSwap";
 type ActivityIndicatorProps = ComponentPropsWithoutRef<"span"> & {
   active?: boolean;
   label?: string;
+  transitionValue?: string;
 };
 
 export function ActivityIndicator({
   active = true,
   label,
+  transitionValue,
   className = "",
   children,
   ...props
 }: ActivityIndicatorProps) {
   const visible = useDocumentVisibility();
-  const ref = useTextStateSwap(`${active}:${label ?? ""}:${typeof children === "string" ? children : ""}`);
+  const text = transitionValue ?? (typeof children === "string" ? children : "");
+  const ref = useTextStateSwap(`${active}:${label ?? ""}:${text}`);
   return (
     <span
       {...props}

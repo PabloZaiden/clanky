@@ -75,17 +75,25 @@ export function useStreamingTextReveal({
   enabled: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const previous = useRef<{ id: string; content: string; markdown: boolean } | null>(null);
+  const previous = useRef<{ id: string; content: string; markdown: boolean; from: number } | null>(null);
   const prior = previous.current;
   const arrivalStart = enabled ? getStreamingTextStart(message) : undefined;
-  const from = arrivalStart !== undefined
-    && (!prior || prior.id === message.id && prior.markdown === markdown
-      && content.startsWith(prior.content))
-    ? Math.max(arrivalStart, prior?.content.length ?? 0, content.length - MAX_REVEAL_CHARACTERS)
-    : content.length;
+  let from = content.length;
+  if (enabled) {
+    if (prior?.id === message.id && prior.markdown === markdown && prior.content === content) {
+      // Keep this revision's spans stable during unrelated message UI updates.
+      from = prior.from;
+    } else if (
+      arrivalStart !== undefined
+      && (!prior || prior.id === message.id && prior.markdown === markdown
+        && content.startsWith(prior.content))
+    ) {
+      from = Math.max(arrivalStart, prior?.content.length ?? 0, content.length - MAX_REVEAL_CHARACTERS);
+    }
+  }
 
   useLayoutEffect(() => {
-    previous.current = { id: message.id, content, markdown };
+    previous.current = { id: message.id, content, markdown, from };
     if (
       !ref.current || from >= content.length || document.visibilityState === "hidden"
       || window.matchMedia("(prefers-reduced-motion: reduce)").matches
@@ -125,7 +133,7 @@ export function useStreamingTextReveal({
       if (animations.size === 0) removeListeners();
     }, { once: true }));
     return cancel;
-  }, [message.id, content, markdown]);
+  }, [message.id, content, markdown, enabled, from]);
 
   return { ref, from };
 }

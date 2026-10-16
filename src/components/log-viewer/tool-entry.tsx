@@ -276,7 +276,13 @@ export const ToolEntry = memo(function ToolEntry({
   const toolSummaryClassName = "rounded-md py-0.5 text-xs leading-5 text-gray-400 transition hover:text-gray-600 dark:text-white/28 dark:hover:text-white/48";
 
   const inputSummary = (
-    <ActivityIndicator active={isActive} label="Working" className={toolSummaryClassName} data-tool-summary="true">
+    <ActivityIndicator
+      active={isActive}
+      label="Working"
+      transitionValue={meta.summary}
+      className={toolSummaryClassName}
+      data-tool-summary="true"
+    >
       {shouldShowStatus && (
         <>
           <StateText className={`shrink-0 font-medium ${statusClassName}`}>{tool.status}</StateText>
