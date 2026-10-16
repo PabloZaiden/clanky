@@ -21,8 +21,8 @@ export const CODE_PROCESS_CLEANUP = [
   'owner=$(id -u) || exit 71',
   'deadline=$((SECONDS + 4))',
   "while :; do",
-  // The inherited marker also identifies reparented terminals and setsid jobs.
-  '  owned=$(ps "$environment_flag" -U "$owner" -o pid=,stat=,command= | awk -v needle="CLANKY_CODE_SESSION=$1" \'index(" " $0 " ", " " needle " ") && $2 !~ /^Z/ {print $1}\' | sort -rn) || exit 71',
+  // Keep the full ownership marker out of scanner argv, including BSD awk's mutable -v arguments.
+  '  owned=$(ps "$environment_flag" -U "$owner" -o pid=,stat=,command= | CLANKY_CODE_MATCH_PATH="$1" awk \'BEGIN {needle = "CLANKY_CODE_" "SESSION=" ENVIRON["CLANKY_CODE_MATCH_PATH"]} index(" " $0 " ", " " needle " ") && $2 !~ /^Z/ {print $1}\' | sort -rn) || exit 71',
   '  [ -n "$owned" ] || exit 0',
   '  [ "$SECONDS" -lt "$deadline" ] || exit 72',
   '  for child in $owned; do',
