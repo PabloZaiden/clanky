@@ -125,8 +125,8 @@ or delay text delivery, animate user messages, or replay loaded history.
 Code blocks, tables, diagrams, and explicit links keep their normal rendering.
 The reveal also works with Markdown rendering disabled and is skipped when
 the system requests reduced motion.
-Each arriving fragment finishes its reveal while subsequent fragments arrive;
-new text does not cancel or restart the preceding fragment's fade.
+Each arriving fragment finishes its 400 ms reveal while subsequent fragments
+arrive; new text does not cancel or restart the preceding fragment's fade.
 
 Agent, chat, and task status text and transcript activity summaries use a brief
 fade, light blur, and small vertical movement when their actual state changes.
