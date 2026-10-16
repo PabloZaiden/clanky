@@ -62,6 +62,7 @@ export interface ShellMainContentProps {
   openHarnessActivity: (route: WebAppRoute) => void;
   shellLoading: boolean;
   shellErrors: string[];
+  missingRouteTarget: boolean;
   navigateWithinShell: (route: WebAppRoute) => void;
 
   // Data
@@ -72,6 +73,7 @@ export interface ShellMainContentProps {
   onControlFileOpenResult: (actionId: string, outcome: ControlUiActionOutcome) => void;
   terminalSessions: import("@/shared").TerminalSession[];
   executionHosts: ExecutionHostDescriptor[];
+  executionHostsLoading: boolean;
   servers: SshServer[];
   executionHostNodes: SidebarExecutionHostNode[];
   workspaceGroups: WorkspaceGroup[];
@@ -203,6 +205,11 @@ function ProvisioningJobRouteView({
       provisioning.openJob(provisioningJobId);
     }
   }, [provisioning.openJob, provisioningJobId]);
+  useEffect(() => {
+    if (provisioningJobId && provisioning.notFoundJobId === provisioningJobId) {
+      navigateWithinShell({ view: "home" });
+    }
+  }, [navigateWithinShell, provisioning.notFoundJobId, provisioningJobId]);
 
   if (!provisioningJobId) {
     return missingRouteParameter(route.view, "provisioningJobId");
@@ -288,6 +295,10 @@ function ProvisioningJobRouteView({
   ]);
   useHeaderActions({ overflow: headerMenuActions });
 
+  if (provisioning.notFoundJobId === provisioningJobId) {
+    return null;
+  }
+
   return (
     <>
       <div className="space-y-4">
@@ -296,7 +307,7 @@ function ProvisioningJobRouteView({
             snapshot={snapshot}
             logs={provisioning.logs}
             websocketStatus={provisioning.websocketStatus}
-            loading={provisioning.loading}
+            loading={provisioning.loading || provisioning.activeJobId !== provisioningJobId}
             error={provisioning.error}
           />
         </Panel>
@@ -357,6 +368,11 @@ function WorkerUpdateJobRouteContent({
   useEffect(() => {
     workerUpdates.openJob(workerUpdateJobId);
   }, [workerUpdateJobId, workerUpdates.openJob]);
+  useEffect(() => {
+    if (workerUpdates.notFoundJobId === workerUpdateJobId) {
+      navigateWithinShell({ view: "home" });
+    }
+  }, [navigateWithinShell, workerUpdateJobId, workerUpdates.notFoundJobId]);
 
   const snapshot = workerUpdates.snapshot?.job.config.id === workerUpdateJobId
     ? workerUpdates.snapshot
@@ -390,6 +406,10 @@ function WorkerUpdateJobRouteContent({
     }];
   }, [dismissing, isTerminal, snapshot]);
   useHeaderActions({ overflow: headerMenuActions });
+
+  if (workerUpdates.notFoundJobId === workerUpdateJobId) {
+    return null;
+  }
 
   return (
     <>
@@ -543,6 +563,7 @@ function renderMainContent(props: ShellMainContentProps) {
       <TaskDetails
         key={`task:${taskId}`}
         taskId={taskId}
+        onMissingEntity={() => navigateWithinShell({ view: "home" })}
         showActivity={props.activityRoute?.view === "task" && props.activityRoute["taskId"] === taskId}
         onCloseActivity={props.closeHarnessActivity}
         onOpenActivity={() => props.openHarnessActivity({ view: "task", taskId })}
@@ -597,6 +618,7 @@ function renderMainContent(props: ShellMainContentProps) {
       <ChatDetails
         key={`chat:${chatId}`}
         chatId={chatId}
+        onMissingEntity={() => navigateWithinShell({ view: "home" })}
         showActivity={props.activityRoute?.view === "chat" && props.activityRoute["chatId"] === chatId}
         onCloseActivity={props.closeHarnessActivity}
         onOpenActivity={() => props.openHarnessActivity({ view: "chat", chatId })}
@@ -612,13 +634,18 @@ function renderMainContent(props: ShellMainContentProps) {
 
     return (
       <TerminalSessionDetails
+        key={`terminal:${terminalSessionId}`}
         terminalSessionId={terminalSessionId}
+        onMissingEntity={() => navigateWithinShell({ view: "home" })}
       />
     );
   }
 
   if (route.view === "workspace") {
     if (!selectedWorkspace) {
+      if (workspacesLoading) {
+        return <LoadingState title="Loading workspace" />;
+      }
       return (
         <ErrorState
           title="Workspace not found"
@@ -684,6 +711,9 @@ function renderMainContent(props: ShellMainContentProps) {
 
   if (route.view === "workspace-previews") {
     if (!selectedWorkspace) {
+      if (workspacesLoading) {
+        return <LoadingState title="Loading workspace" />;
+      }
       return (
         <ErrorState
           title="Workspace not found"
@@ -702,6 +732,9 @@ function renderMainContent(props: ShellMainContentProps) {
 
   if (route.view === "workspace-settings") {
     if (!selectedWorkspace) {
+      if (workspacesLoading) {
+        return <LoadingState title="Loading workspace" />;
+      }
       return (
         <ErrorState
           title="Workspace not found"
@@ -786,6 +819,9 @@ function renderMainContent(props: ShellMainContentProps) {
   }
 
   if (route.view === "execution-host-files") {
+    if (props.executionHostsLoading) {
+      return <LoadingState title="Loading server" />;
+    }
     const hostKind = getRouteString(route, "hostKind");
     const hostId = getRouteString(route, "hostId");
     const host = executionHosts.find((candidate) => {
@@ -809,6 +845,7 @@ function renderMainContent(props: ShellMainContentProps) {
   if (route.view === "provisioning-job") {
     return (
       <ProvisioningJobRouteView
+        key={getRouteString(route, "provisioningJobId")}
         route={route}
         provisioning={props.provisioning}
         navigateWithinShell={navigateWithinShell}
@@ -819,6 +856,7 @@ function renderMainContent(props: ShellMainContentProps) {
   if (route.view === "worker-update-job") {
     return (
       <WorkerUpdateJobRouteView
+        key={getRouteString(route, "workerUpdateJobId")}
         route={route}
         workerUpdates={props.workerUpdates}
         navigateWithinShell={navigateWithinShell}
@@ -828,6 +866,9 @@ function renderMainContent(props: ShellMainContentProps) {
 
   if (route.view === "rebuild-workspace" || route.view === "restart-workspace") {
     if (!selectedWorkspace) {
+      if (workspacesLoading) {
+        return <LoadingState title="Loading workspace" />;
+      }
       return (
         <ErrorState
           title="Workspace not found"
@@ -926,7 +967,9 @@ export function AppRouteContent(props: ShellMainContentProps) {
           description={props.shellErrors.join(" · ")}
         />
       )}
-      {fullViewport
+      {props.missingRouteTarget ? (
+        <LoadingState title="Returning home" />
+      ) : fullViewport
         ? (
           <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             {renderMainContent(props)}

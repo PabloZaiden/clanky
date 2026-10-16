@@ -541,10 +541,12 @@ function AgentRunDetail({
   agent,
   runId,
   initialRun,
+  onMissingEntity,
 }: {
   agent: Agent | null;
   runId: string;
   initialRun: AgentRun | null;
+  onMissingEntity: () => void;
 }) {
   const { enabled: markdownEnabled } = useMarkdownPreference();
   const transcriptResource = useTranscriptResource<AgentRun, AgentRunSnapshotResponse>({
@@ -562,6 +564,7 @@ function AgentRunDetail({
     loading,
     loadingTranscript,
     error,
+    notFound,
     refresh: refreshRun,
     loadMoreTranscript,
     loadFullTranscript,
@@ -587,6 +590,11 @@ function AgentRunDetail({
   useEffect(() => {
     void refreshRun();
   }, [refreshRun]);
+  useEffect(() => {
+    if (notFound) {
+      onMissingEntity();
+    }
+  }, [notFound, onMissingEntity]);
 
   useRealtimeStream<AgentEvent>({
     filters: { agentRunId: runId },
@@ -612,6 +620,9 @@ function AgentRunDetail({
   }
 
   if (!run) {
+    if (notFound) {
+      return null;
+    }
     return (
       <ErrorState
         title="Agent run not found"
@@ -779,6 +790,11 @@ export function AgentsView({
   editingAgentId: string | null;
   onSavedAgentEdit: (agent: Agent) => void;
 }) {
+  const navigateHome = useCallback(
+    () => navigateWithinShell({ view: "home" }),
+    [navigateWithinShell],
+  );
+
   if (route.view === "agent") {
     const agentId = getRouteString(route, "agentId");
     if (!agentId) {
@@ -843,9 +859,11 @@ export function AgentsView({
     const initialRun = (runsByAgentId[agentId] ?? []).find((run) => run.id === runId) ?? null;
     return (
       <AgentRunDetail
+        key={`agent-run:${runId}`}
         agent={agent}
         runId={runId}
         initialRun={initialRun}
+        onMissingEntity={navigateHome}
       />
     );
   }

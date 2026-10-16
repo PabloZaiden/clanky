@@ -23,7 +23,10 @@ import {
   useVoiceSettings,
 } from "../../hooks";
 import { buildExecutionHostSidebarNodes, buildWorkspaceSidebarGroups } from "./shell-types";
-import { getShellRouteSelection } from "./shell-route-composition";
+import {
+  getShellRouteSelection,
+  isMissingShellRouteTarget,
+} from "./shell-route-composition";
 
 export function useShellResources(route: WebAppRoute, isOwner: boolean) {
   const {
@@ -181,6 +184,23 @@ export function useShellResources(route: WebAppRoute, isOwner: boolean) {
     executionHosts: executionHosts.hosts,
     agents: agents.agents,
   });
+  const missingRouteTarget = isMissingShellRouteTarget(route, {
+    tasks: { items: tasks, loading: tasksLoading, error: tasksError },
+    chats: { items: chats, loading: chatsLoading, error: chatsError },
+    workspaces: { items: workspaces, loading: workspacesLoading, error: workspaceError },
+    servers: { items: servers, loading: sshServersLoading, error: sshServersError },
+    executionHosts: {
+      items: executionHosts.hosts,
+      loading: executionHosts.loading,
+      error: executionHosts.error,
+    },
+    agents: { items: agents.agents, loading: agents.loading, error: agents.error },
+    terminalSessions: {
+      items: terminalSessions,
+      loading: terminalSessionsLoading,
+      error: terminalSessionsError,
+    },
+  });
 
   return {
     chats,
@@ -250,6 +270,7 @@ export function useShellResources(route: WebAppRoute, isOwner: boolean) {
     quickChatUnavailableReason,
     shellLoading,
     shellErrors,
+    missingRouteTarget,
     ...routeSelection,
   };
 }

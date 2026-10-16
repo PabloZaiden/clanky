@@ -52,6 +52,8 @@ export interface UseTaskResult {
   hasOlderTranscript: boolean;
   /** Error message if any */
   error: string | null;
+  /** Whether the requested task returned an authoritative not-found result */
+  notFound: boolean;
   /** WebSocket connection status */
   connectionStatus: "connecting" | "open" | "closed" | "error";
   /** Messages from the current/recent iterations */
@@ -153,6 +155,7 @@ export function useTask(taskId: string): UseTaskResult {
     loadingTranscript,
     hasOlderTranscript,
     error,
+    notFound,
     setError,
     transcript,
     gitChangeCounter,
@@ -218,6 +221,7 @@ export function useTask(taskId: string): UseTaskResult {
     loadingTranscript,
     hasOlderTranscript,
     error,
+    notFound,
     connectionStatus,
     messages: transcript.messages as MessageData[],
     toolCalls: transcript.toolCalls as ToolCallDisplayData[],

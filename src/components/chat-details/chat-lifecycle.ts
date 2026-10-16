@@ -122,6 +122,7 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
     loading,
     loadingTranscript,
     error,
+    notFound,
     refresh: refreshChat,
     loadMoreTranscript,
     loadFullTranscript,
@@ -282,6 +283,7 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
     loading,
     loadingTranscript,
     error,
+    notFound,
     isActive: chat ? ACTIVE_CHAT_STATUSES.has(chat.state.status) : false,
     needsSshCredentials: chat !== null
       && getChatRegisteredSshServerId(chat) !== null

@@ -23,6 +23,7 @@ export interface UseTaskDataResult {
   loadingTranscript: boolean;
   hasOlderTranscript: boolean;
   error: string | null;
+  notFound: boolean;
   setError: Dispatch<SetStateAction<string | null>>;
   gitChangeCounter: number;
   setGitChangeCounter: Dispatch<SetStateAction<number>>;
@@ -71,6 +72,7 @@ export function useTaskData(taskId: string): UseTaskDataResult {
     loadingTranscript: transcriptResource.loadingTranscript,
     hasOlderTranscript: transcriptResource.transcript.hasOlder,
     error: transcriptResource.error,
+    notFound: transcriptResource.notFound,
     setError: transcriptResource.setError,
     gitChangeCounter,
     setGitChangeCounter,
