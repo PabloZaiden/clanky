@@ -353,7 +353,7 @@ export function useChatActions({
         onClose={() => setDeleteTarget(null)}
         onConfirm={() => void confirmDeleteChat()}
         title="Delete chat?"
-        message={`Delete "${deleteTarget?.config.name ?? "this chat"}"? This removes the saved chat session, transcript, and any worktree created for it.`}
+        message={`Move "${deleteTarget?.config.name ?? "this chat"}" to Trash? You can restore it for 30 days. Active work will stop; its history and worktree will be kept until permanent deletion.`}
         confirmLabel="Delete"
         loading={isDeletePending}
       />

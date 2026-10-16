@@ -547,6 +547,18 @@ export class ChatConversationService implements ChatConversationPort {
     this.activeStreamGenerations.delete(chatId);
   }
 
+  async stopForDeletion(chatId: string): Promise<void> {
+    const startup = this.startupOperations.get(chatId);
+    const stream = this.activeStreams.get(chatId);
+    startup?.controller.abort();
+    this.closeActiveStream(chatId);
+    await withTimeout(
+      Promise.all([startup?.settled, stream?.completion]),
+      CHAT_INTERRUPT_STARTUP_SETTLE_TIMEOUT_MS,
+      "Chat cancellation did not finish before deletion",
+    );
+  }
+
   hasActiveStream(chatId: string): boolean {
     return this.activeStreams.has(chatId);
   }

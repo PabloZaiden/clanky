@@ -567,6 +567,7 @@ export class ChatLifecycleService implements ChatLifecyclePort {
       continueOnError?: boolean;
       closeStream?: () => void;
       credentialToken?: string | null;
+      preserveWorktree?: boolean;
     } = {},
   ): Promise<boolean> {
     let succeeded = true;
@@ -591,8 +592,8 @@ export class ChatLifecycleService implements ChatLifecyclePort {
       cleanupSteps.push({
         label: "managed credentials",
         run: async () => {
-          const identity = await managedContextIdentityResolver.forChat(
-            chat.config.id,
+          const identity = await managedContextIdentityResolver.forChatSnapshot(
+            chat,
             getChatWorkspaceId(chat),
           );
           await managedCredentialService.revokeContextIfConfigured(identity);
@@ -610,12 +611,12 @@ export class ChatLifecycleService implements ChatLifecyclePort {
     cleanupSteps.push(
       {
         label: "chat session",
-        run: () => this.session.disconnectChat(chat.config.id),
+        run: async () => { await this.session.disconnectChat(chat.config.id); },
       },
-      {
+      ...(!options.preserveWorktree ? [{
         label: "chat worktree",
         run: () => this.worktree.cleanupWorktree(chat),
-      },
+      }] : []),
     );
 
     for (const step of cleanupSteps) {
@@ -639,6 +640,18 @@ export class ChatLifecycleService implements ChatLifecyclePort {
       }
     }
     return succeeded;
+  }
+
+  async cleanupTrashResources(
+    chat: Chat,
+    options: { preserveWorktree?: boolean; credentialToken?: string | null } = {},
+  ): Promise<boolean> {
+    const [runtime] = await Promise.all([
+      this.cleanupChatRuntime(chat, { ...options, continueOnError: true }),
+      this.conversation.stopForDeletion(chat.config.id),
+    ]);
+    await this.worktree.waitForPreparation(chat.config.id);
+    return runtime;
   }
 
   private async deleteChatDeferred(

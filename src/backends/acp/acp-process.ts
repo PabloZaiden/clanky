@@ -131,6 +131,7 @@ export class AcpProcess {
     const reader = stream.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
+    let bufferedBytes = 0;
     try {
       while (true) {
         const { done, value } = await reader.read();
@@ -138,20 +139,27 @@ export class AcpProcess {
           break;
         }
 
-        buffer += decoder.decode(value, { stream: true });
-        if (this.exceedsLimit(buffer, source, this.options.maxBufferedBytes)) {
+        const chunk = decoder.decode(value, { stream: true });
+        bufferedBytes += Buffer.byteLength(chunk, "utf8");
+        if (this.exceedsLimit(bufferedBytes, source, this.options.maxBufferedBytes)) {
           return;
         }
 
-        let newlineIndex = buffer.indexOf("\n");
+        // Scan only new text; rescanning a growing image frame is quadratic.
+        let start = 0;
+        let newlineIndex = chunk.indexOf("\n");
         while (newlineIndex >= 0) {
-          const line = buffer.slice(0, newlineIndex).trim();
-          buffer = buffer.slice(newlineIndex + 1);
+          const line = (buffer + chunk.slice(start, newlineIndex)).trim();
+          buffer = "";
           if (line && !this.emitLine(source, line)) {
             return;
           }
-          newlineIndex = buffer.indexOf("\n");
+          start = newlineIndex + 1;
+          newlineIndex = chunk.indexOf("\n", start);
         }
+        const remainder = chunk.slice(start);
+        buffer += remainder;
+        if (start > 0) bufferedBytes = Buffer.byteLength(remainder, "utf8");
       }
 
       const rest = buffer.trim();
@@ -177,7 +185,7 @@ export class AcpProcess {
     if (this.closed) {
       return false;
     }
-    if (this.exceedsLimit(line, source, this.options.maxLineBytes)) {
+    if (this.exceedsLimit(Buffer.byteLength(line, "utf8"), source, this.options.maxLineBytes)) {
       return false;
     }
     this.options.onLine(source, line);
@@ -185,11 +193,11 @@ export class AcpProcess {
   }
 
   private exceedsLimit(
-    value: string,
+    byteLength: number,
     source: AcpProcessStream,
     limit: number | undefined,
   ): boolean {
-    if (limit === undefined || Buffer.byteLength(value, "utf8") <= limit) {
+    if (limit === undefined || byteLength <= limit) {
       return false;
     }
     this.options.onOutputLimitExceeded?.(source);

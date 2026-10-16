@@ -101,7 +101,7 @@ function buildSidebarNodes(options: ShellSidebarCompositionOptions): SidebarNode
     },
   };
 
-  return buildSidebarDomainNodes({
+  const nodes = buildSidebarDomainNodes({
     sidebarWorkspaceGroups: options.sidebarWorkspaceGroups,
     executionHostNodes: options.executionHostNodes,
     executionHosts: options.executionHosts,
@@ -112,12 +112,31 @@ function buildSidebarNodes(options: ShellSidebarCompositionOptions): SidebarNode
     agents: options.agents,
     contexts,
   });
+  const trashIndex = nodes.findIndex((node) => node.id === "ssh-servers");
+  nodes.splice(trashIndex, 0, {
+    type: "section", id: "trash", title: "Trash",
+    action: { id: "open-trash", title: "Open Trash", label: "Open", route: { view: "trash" } },
+    children: [
+      {
+        type: "item", id: "trash-all", title: "All deleted chats", route: { view: "trash" },
+        subtitle: options.trash.error ? "Could not load Trash" : options.trash.loading ? "Loading..." : undefined,
+        actions: options.trashActions.emptyActions,
+      },
+      ...options.trash.items.map((chat): SidebarNode => ({
+        type: "item", id: `trash-chat:${chat.id}`, title: chat.name,
+        subtitle: `${chat.origin} · ${new Date(chat.deletedAt).toLocaleDateString()}`,
+        route: { view: "trash", chatId: chat.id },
+        actions: options.trashActions.items(chat),
+      })),
+    ],
+  });
+  return nodes;
 }
 
 function selectSidebarTabNodes(nodes: SidebarNode[], activeTab: string | undefined): SidebarNode[] {
   switch (activeTab) {
     case "workspaces":
-      return nodes.filter((node) => node.id === "workspaces" || node.id === "archived-workspaces");
+      return nodes.filter((node) => node.id === "workspaces" || node.id === "archived-workspaces" || node.id === "trash");
     case "servers":
       return nodes.filter((node) => node.id === "ssh-servers");
     case "active":

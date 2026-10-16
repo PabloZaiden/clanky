@@ -137,7 +137,8 @@ export type ChatEvent =
   | ChatLogDeltaEvent
   | ChatInterruptedEvent
   | ChatErrorEvent
-  | ChatDeletedEvent;
+  | ChatDeletedEvent
+  | { type: "chat.trash.changed"; chatId: string; timestamp: string };
 
 /**
  * Union type of all agent-scoped events streamed to clients.

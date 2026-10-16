@@ -17,6 +17,15 @@ plain text, Markdown, or PDF. Each file can be up to 20 MiB. The combined
 attachments for one provider turn, including queued messages and images steered
 into an active turn, can total up to 60 MiB.
 
+## Chat Trash
+
+`DELETE /api/chats/:id` moves standalone chats to recoverable Trash rather than
+destroying their history or worktrees. Use `GET /api/trash`,
+`POST /api/trash/:id/restore`, `DELETE /api/trash/:id` and `DELETE /api/trash`
+to list, restore, permanently delete or empty it. Retention is 30 days, checked
+at startup and daily. Tasks and their conversations are unchanged.
+See [Chat Trash](chat-trash.md) for pagination, cleanup and recovery semantics.
+
 ## Authentication
 
 Browser sessions use passkeys. CLI and automation clients can use device

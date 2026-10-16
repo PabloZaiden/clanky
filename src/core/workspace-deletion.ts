@@ -149,14 +149,22 @@ async function deleteWorkspaceWithOptionsUnlocked(
       );
     }
 
+    if (options.deleteServerDirectory && !isAutoProvisionedWorkspace(workspace)) {
+      return deletionFailure(
+        "workspace_not_auto_provisioned",
+        "Workspace is not an auto-provisioned workspace with a safe server directory",
+        { workspaceId: id },
+      );
+    }
+
+    const { chatManager } = await import("./chat-manager");
+    await chatManager.emptyTrash({
+      workspaceId: id,
+      bestEffort: true,
+      credentialToken: options.credentialToken,
+    });
+
     if (options.deleteServerDirectory) {
-      if (!isAutoProvisionedWorkspace(workspace)) {
-        return deletionFailure(
-          "workspace_not_auto_provisioned",
-          "Workspace is not an auto-provisioned workspace with a safe server directory",
-          { workspaceId: id },
-        );
-      }
       await deleteProvisionedServerDirectory(workspace, options.credentialToken);
     }
 

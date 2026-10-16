@@ -15,6 +15,8 @@ import type { ChatEvent } from "@/shared/events";
 import { chatEventEmitter, SimpleEventEmitter } from "./event-emitter";
 import { ChatStateService } from "./chat-state-service";
 import { ChatLifecycleService } from "./chat-lifecycle-service";
+import { ChatTrashService } from "./chat-trash-service";
+import type { ChatTrashQuery } from "@/contracts/schemas/chat-trash";
 import { ChatWorktreeService } from "./chat-worktree-service";
 import { ChatSessionService } from "./chat-session-service";
 import { ChatConversationService } from "./chat-conversation-service";
@@ -123,6 +125,7 @@ function createChatServices(emitter: SimpleEventEmitter<ChatEvent>): ChatService
   });
 
   return {
+    trash: new ChatTrashService(state, lifecycle),
     state,
     lifecycle,
     worktree,
@@ -243,23 +246,23 @@ export class ChatManager {
   }
 
   async reconnectSession(chatId: string, options: ReconnectChatOptions = {}): Promise<Chat | null> {
-    const chat = await this.services.state.getChat(chatId);
-    if (!chat) {
-      return null;
-    }
-
-    const reconnected = await this.services.session.reconnectSession(chat, options);
-    if (reconnected.state.status === "idle") {
-      this.services.interaction.scheduleQueuedMessageDrain(chatId);
-    }
-    return reconnected;
+    return await this.services.trash.runLiveOperation(chatId, async () => {
+      const chat = await this.services.state.getChat(chatId);
+      if (!chat) return null;
+      const reconnected = await this.services.session.reconnectSession(chat, options);
+      if (reconnected.state.status === "idle") {
+        this.services.interaction.scheduleQueuedMessageDrain(chatId);
+      }
+      return reconnected;
+    });
   }
 
   async continueFromHistory(
     chatId: string,
     options: ReconnectChatOptions = {},
   ): Promise<Chat | null> {
-    return this.services.historyRecovery.continueFromHistory(chatId, options);
+    return this.services.trash.runLiveOperation(chatId, () =>
+      this.services.historyRecovery.continueFromHistory(chatId, options));
   }
 
   async sendMessage(chatId: string, options: ChatMessageOptions): Promise<Chat> {
@@ -301,6 +304,15 @@ export class ChatManager {
   async deleteChat(chatId: string, options?: DeleteChatOptions): Promise<boolean> {
     return this.services.lifecycle.deleteChat(chatId, options);
   }
+
+  listTrash(options: ChatTrashQuery) { return this.services.trash.list(options); }
+  trashChat(chatId: string, credentialToken?: string | null) { return this.services.trash.move(chatId, credentialToken); }
+  restoreChat(chatId: string) { return this.services.trash.restore(chatId); }
+  purgeTrashedChat(chatId: string, credentialToken?: string | null) {
+    return this.services.trash.purge(chatId, { credentialToken });
+  }
+  emptyTrash(options: Parameters<ChatTrashService["empty"]>[0] = {}) { return this.services.trash.empty(options); }
+  expireTrash() { return this.services.trash.expire(); }
 
   async spawnTaskFromChat(chatId: string): Promise<Task> {
     return this.services.taskConversion.spawnTaskFromChat(chatId);

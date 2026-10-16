@@ -33,6 +33,10 @@ interface Chat {
   };
 }
 
+interface TrashPage {
+  items: Array<{ id: string; deletedAt: string; expiresAt: string }>;
+}
+
 async function git(directory: string, args: string[]): Promise<string> {
   return (await requireCommand(["git", ...args], { cwd: directory })).stdout.trim();
 }
@@ -108,7 +112,7 @@ async function waitForManagedWorktreesRemoved(
   );
 }
 
-test("users can create chats on the selected branch in shared worktrees", async () => {
+test("users can recover worktree chats and retire conversations on shared branches", async () => {
   const application = await E2EApplication.create();
   try {
     const fixture = await createGitFixture(application.runDirectory);
@@ -173,7 +177,44 @@ test("users can create chats on the selected branch in shared worktrees", async 
     expect(defaultWorktree?.worktreePath).toBeDefined();
     expect(defaultWorktree?.workingBranch).not.toBe(fixture.branch);
     await assertWorktreeUsesBranch(defaultWorktree!.worktreePath!, defaultWorktree!.workingBranch);
+    await application.json(`/api/chats/${defaultChat.config.id}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ message: "[question] Remember this worktree conversation.", attachments: [] }),
+    });
+    await pollUntil(
+      async () => (await application.json<Chat>(`/api/chats/${defaultChat.config.id}`)).data,
+      (chat) => chat.state.status === "waiting",
+      {
+        description: "worktree conversation to await user input",
+        timeoutMs: 10_000,
+        formatLastObserved: (chat) => JSON.stringify(chat.state),
+      },
+    );
     await application.json(`/api/chats/${defaultChat.config.id}`, { method: "DELETE" });
+    expect((await application.json<TrashPage>("/api/trash")).data.items.map((chat) => chat.id))
+      .toContain(defaultChat.config.id);
+    await application.restart();
+    await application.json(`/api/trash/${defaultChat.config.id}/restore`, { method: "POST" });
+    const restored = (await application.json<Chat>(`/api/chats/${defaultChat.config.id}`)).data;
+    expect(restored.state.status).toBe("stopped");
+    expect(restored.state.worktree?.worktreePath).toBe(defaultWorktree!.worktreePath);
+    const snapshot = (await application.json<{
+      transcript: { messages: Array<{ role: string; content: string }> };
+    }>(`/api/chats/${defaultChat.config.id}/snapshot?full=1`)).data;
+    expect(snapshot.transcript.messages.some((message) =>
+      message.role === "user" && message.content.includes("Remember this worktree conversation.")
+    )).toBe(true);
+    await assertWorktreeUsesBranch(defaultWorktree!.worktreePath!, defaultWorktree!.workingBranch);
+    await application.json(`/api/chats/${defaultChat.config.id}/messages`, {
+      method: "POST", body: JSON.stringify({ message: "Continue this conversation manually.", attachments: [] }),
+    });
+    await pollUntil(
+      async () => (await application.json<Chat>(`/api/chats/${defaultChat.config.id}`)).data,
+      (chat) => chat.state.status === "idle",
+      { description: "restored conversation to finish the manually requested turn", timeoutMs: 10_000 },
+    );
+    await application.json(`/api/chats/${defaultChat.config.id}`, { method: "DELETE" });
+    await application.json(`/api/trash/${defaultChat.config.id}`, { method: "DELETE" });
     await waitForManagedWorktreesRemoved(
       fixture.repositoryDirectory,
       [defaultWorktree!.worktreePath!],
@@ -220,6 +261,11 @@ test("users can create chats on the selected branch in shared worktrees", async 
 
     await application.json(`/api/chats/${firstChat.config.id}`, { method: "DELETE" });
     await application.json(`/api/chats/${secondChat.config.id}`, { method: "DELETE" });
+    const emptied = (await application.json<{ success: boolean; deletedCount: number }>(
+      "/api/trash", { method: "DELETE" },
+    )).data;
+    expect(emptied.success).toBe(true);
+    expect(emptied.deletedCount).toBe(2);
     await waitForManagedWorktreesRemoved(
       fixture.repositoryDirectory,
       [firstWorktree!.worktreePath!, secondWorktree!.worktreePath!],
@@ -228,6 +274,16 @@ test("users can create chats on the selected branch in shared worktrees", async 
       fixture.repositoryDirectory,
       ["for-each-ref", "--format=%(refname:short)", `refs/heads/${selectedBranch}`],
     )).toBe(selectedBranch);
+
+    const retiringChat = await createWorktreeChat(application, workspace.id, model, {
+      name: "Retiring workspace conversation", baseBranch: selectedBranch, useSelectedBranchForWorktree: true,
+    });
+    await application.json(`/api/chats/${retiringChat.config.id}`, { method: "DELETE" });
+    await application.json(`/api/workspaces/${workspace.id}`, {
+      method: "DELETE", body: JSON.stringify({ deleteServerDirectory: false }),
+    });
+    expect((await application.request(`/api/trash/${retiringChat.config.id}/restore`, { method: "POST" })).status).toBe(404);
+    await waitForManagedWorktreesRemoved(fixture.repositoryDirectory, [retiringChat.state.worktree!.worktreePath!]);
   } catch (error) {
     const diagnostics = await application.diagnostics();
     if (diagnostics.length > 0) {

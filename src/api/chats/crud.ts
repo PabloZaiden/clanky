@@ -220,13 +220,12 @@ export const chatsCrudRoutes = defineRoutes({
         automation: { policy: "write" },
       },
       DELETE: {
-        description: "Delete a chat and admit its remote cleanup.",
+        description: "Move a standalone chat to Trash for 30 days.",
         requestSchema: undefined,
         querySchema: undefined,
         automation: {
           policy: "confirm",
-          reason: "Permanently deletes chat history and schedules external cleanup.",
-          completion: "admission",
+          reason: "Moves the chat to Trash and stops its active work. Recoverable for 30 days.",
           credential: {
             kind: "ssh",
             resource: { name: "chats", idParameter: "id", purpose: "history-cleanup" },
@@ -304,13 +303,7 @@ export const chatsCrudRoutes = defineRoutes({
 
       try {
         const credentialToken = req.headers.get(SSH_CREDENTIAL_TOKEN_HEADER)?.trim() || null;
-        const deleted = await chatManager.deleteChat(ctx.params["id"]!, {
-          deferCleanup: true,
-          credentialToken,
-        });
-        if (!deleted) {
-          return errorResponse("not_found", "Chat not found", 404);
-        }
+        await chatManager.trashChat(ctx.params["id"]!, credentialToken);
         return successResponse();
       } catch (error) {
         log.error("Failed to delete chat", { chatId: ctx.params["id"]!, error: String(error) });

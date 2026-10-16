@@ -30,3 +30,4 @@ export {
   getChatToolCallFromTranscript,
 } from "./transcript";
 export { getActiveChatByDirectory, isStaleChatStatus, resetStaleChat, resetStaleChats } from "./queries";
+export { listChatTrash, loadTrashedChat, markChatTrashed, restoreTrashedChat, deleteTrashedChat, saveTrashedChatWorktree, listTrashCleanupCandidates } from "./trash";

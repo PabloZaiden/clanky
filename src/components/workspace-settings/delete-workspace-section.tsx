@@ -73,7 +73,7 @@ export function DeleteWorkspaceSection({
             <p className="text-sm text-red-700 dark:text-red-300">
               {workspaceTaskCount > 0
                 ? `Delete the remaining ${workspaceTaskCount} task${workspaceTaskCount === 1 ? "" : "s"} in this workspace before removing it from Clanky.`
-                : "This only removes the workspace record and does not delete files on disk."}
+                : "Chats in Trash and their managed worktrees will be permanently deleted."}
             </p>
           </div>
           <Button
@@ -99,8 +99,8 @@ export function DeleteWorkspaceSection({
         title="Delete Workspace"
         message={
           canDeleteServerDirectory
-            ? `Are you sure you want to delete workspace "${workspace.name}"? This removes it from Clanky.`
-            : `Are you sure you want to delete workspace "${workspace.name}"? This only removes it from Clanky and does not delete files on disk.`
+            ? `Are you sure you want to delete workspace "${workspace.name}"? Its chats in Trash will also be permanently deleted.`
+            : `Are you sure you want to delete workspace "${workspace.name}"? Its chats in Trash and their managed worktrees will also be permanently deleted. Other workspace files are kept.`
         }
         confirmLabel="Delete"
         loading={deleting}

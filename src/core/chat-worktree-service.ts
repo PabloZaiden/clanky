@@ -16,6 +16,7 @@ import { sanitizeBranchName } from "../utils";
 import { ChatWorktreeBranchConflictError } from "../domain/chat-worktree-errors";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { createTimestamp } from "@/shared/events";
+import { saveTrashedChatWorktree } from "../persistence/chats/trash";
 import type {
   ChatDirectoryResolution,
   ChatStatePort,
@@ -336,6 +337,17 @@ export class ChatWorktreeService implements ChatWorktreePort {
     });
   }
 
+  async waitForPreparation(chatId: string): Promise<void> {
+    const preparation = this.pendingWorktreePreparations.get(chatId);
+    if (preparation) {
+      try {
+        await preparation;
+      } catch (error) {
+        log.warn("Chat worktree preparation ended during deletion", { chatId, error: String(error) });
+      }
+    }
+  }
+
   private prepareAndPersistWorktree(chat: Chat, signal?: AbortSignal): Promise<Chat> {
     const existing = this.pendingWorktreePreparations.get(chat.config.id);
     if (existing) {
@@ -356,9 +368,14 @@ export class ChatWorktreeService implements ChatWorktreePort {
       syncBaseBranch: !chat.config.skipBaseBranchSync,
       signal,
     });
-    throwIfAborted(signal);
-    const latest = await this.state.getChat(chat.config.id) ?? chat;
-    throwIfAborted(signal);
+    // Record ownership even if startup was cancelled while Git was creating it.
+    const latest = await this.state.getChat(chat.config.id);
+    if (!latest) {
+      if (!saveTrashedChatWorktree(chat.config.id, nextWorktreeState)) {
+        await this.cleanupWorktree({ ...chat, state: { ...chat.state, worktree: nextWorktreeState } });
+      }
+      return { ...chat, state: { ...chat.state, worktree: nextWorktreeState } };
+    }
     const worktreeChanged =
       latest.state.worktree?.originalBranch !== nextWorktreeState.originalBranch
       || latest.state.worktree?.workingBranch !== nextWorktreeState.workingBranch
@@ -371,14 +388,21 @@ export class ChatWorktreeService implements ChatWorktreePort {
       return latest;
     }
 
-    const updated = await this.state.updateState(latest, {
-      ...latest.state,
-      worktree: nextWorktreeState,
-      ...(shouldClearCreationStage ? { startupStage: undefined } : {}),
-      lastActivityAt: latest.state.lastActivityAt ?? createTimestamp(),
-    }, {
-      expectedStatus: latest.state.status,
-    });
+    let updated: Chat;
+    try {
+      updated = await this.state.updateState(latest, {
+        ...latest.state,
+        worktree: nextWorktreeState,
+        ...(shouldClearCreationStage ? { startupStage: undefined } : {}),
+        lastActivityAt: latest.state.lastActivityAt ?? createTimestamp(),
+      }, {
+        expectedStatus: latest.state.status,
+      });
+    } catch (error) {
+      if (!saveTrashedChatWorktree(chat.config.id, nextWorktreeState)) throw error;
+      log.debug("Retained prepared worktree after concurrent chat deletion", { chatId: chat.config.id });
+      return { ...chat, state: { ...chat.state, worktree: nextWorktreeState } };
+    }
     this.state.emitChatUpdated(updated);
     return updated;
   }
