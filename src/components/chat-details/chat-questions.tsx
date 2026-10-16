@@ -14,14 +14,19 @@ function isQuestionAnswerInput(target: EventTarget | null): target is HTMLInputE
     && (target.type === "text" || target.type === "number");
 }
 
-function QuestionField({ question, index, requestId, values, custom, disabled, showQuestionLabel, onValues, onCustom }: {
+function QuestionField({ question, index, requestId, values, custom, disabled, questionLabel, onValues, onCustom }: {
   question: QuestionInfo; index: number; requestId: string; values: string[]; custom: string;
-  disabled: boolean; showQuestionLabel: boolean; onValues: (values: string[]) => void; onCustom: (value: string) => void;
+  disabled: boolean; questionLabel: string | null; onValues: (values: string[]) => void; onCustom: (value: string) => void;
 }) {
   const name = `question-${requestId}-${index}`;
   return (
     <fieldset disabled={disabled} className="min-w-0 space-y-2">
-      <legend className={showQuestionLabel ? "text-sm font-medium" : "sr-only"}>{question.question}</legend>
+      <legend className={questionLabel === null ? "sr-only" : "text-sm font-medium"}>
+        {questionLabel ?? question.question}
+        {questionLabel !== null && questionLabel !== question.question && (
+          <span className="sr-only"> {question.question}</span>
+        )}
+      </legend>
       {question.options.map((option) => (
         <label key={option.label} className="flex cursor-pointer items-start gap-2 text-sm">
           <input type={question.multiple ? "checkbox" : "radio"} name={name}
@@ -127,7 +132,9 @@ function QuestionForm({
       </div>
       {request.questions.map((question, index) => (
         <QuestionField key={index} question={question} index={index} requestId={request.requestId}
-          showQuestionLabel={!hasQuestionMessage}
+          questionLabel={!hasQuestionMessage
+            ? question.question
+            : request.questions.length > 1 ? `${index + 1}.` : null}
           values={values[index]!} custom={custom[index]!} disabled={disabled}
           onValues={(selection) => setValues((current) => current.map((value, position) => position === index ? selection : value))}
           onCustom={(text) => setCustom((current) => current.map((value, position) => position === index ? text : value))} />
