@@ -143,6 +143,11 @@ When the result is ready:
 Completed or accepted work can receive follow-up prompts and review comments.
 The dashboard exposes these actions from the task view.
 
+Dashboard **History** uses the same detailed rows as **Active Work**: workspace
+identity or server name, status, time since the last interaction, and item type.
+Workspace chats also show their harness provider icon. Private entries remain
+obscured when private items are hidden.
+
 ## Preview Markdown files and diagrams
 
 In **Code Explorer**, open a `.md` or `.markdown` file and select **Preview**.

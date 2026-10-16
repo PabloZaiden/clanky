@@ -5,7 +5,6 @@ import {
   type Agent,
   type ExecutionHostDescriptor,
   type PublicProvisioningJob,
-  type Workspace,
   type WorkerUpdateJob,
 } from "@/shared";
 import { ConfirmModal, EmptyState, Panel, useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
@@ -14,15 +13,12 @@ import type {
   UseWorkerUpdateJobsResult,
   useTaskGrouping,
 } from "../../hooks";
-import { Button, StateText, StatusBadge, type BadgeVariant } from "../common";
+import { Button, StatusBadge } from "../common";
 import { getProvisioningStatusBadgeVariant, getProvisioningStatusLabel } from "../common/status-variants";
 import { ConfiguredAgentsSection } from "../ConfiguredAgentsSection";
 import {
   buildActiveWorkSidebarItems,
   buildChatHistorySidebarItems,
-  getActiveWorkItemTimestamp,
-  type SidebarChatHistoryItem,
-  type SidebarActiveWorkItem,
   type SidebarExecutionHostNode,
   type SidebarWorkspaceGroupNode,
 } from "./shell-types";
@@ -31,10 +27,7 @@ import { ClankyListRow } from "./clanky-list-row";
 import { ServerTransportIcon } from "./server-sidebar-item";
 import { WorkerUpdateJobsSection } from "./worker-update-jobs-section";
 import { WorkspaceIdentity } from "../common";
-import {
-  ActiveWorkMetadata,
-  type ActiveWorkSidebarItemType,
-} from "./active-work-sidebar-item";
+import { OverviewWorkItem } from "./overview-work-item";
 
 function getExecutionHostRoute(host: ExecutionHostDescriptor): WebAppRoute {
   return {
@@ -42,98 +35,6 @@ function getExecutionHostRoute(host: ExecutionHostDescriptor): WebAppRoute {
     hostKind: host.ref.kind,
     hostId: getExecutionHostSourceId(host.ref),
   };
-}
-
-function getActiveWorkRoute(item: SidebarActiveWorkItem): WebAppRoute {
-  if (item.kind === "task") {
-    return { view: "task", taskId: item.taskNode.task.config.id };
-  }
-  if (item.kind === "chat") {
-    return { view: "chat", chatId: item.chatNode.chat.config.id };
-  }
-  if (item.kind === "execution-host-chat") {
-    return { view: "chat", chatId: item.chatNode.chat.config.id };
-  }
-  if (item.kind === "terminal-session") {
-    return { view: "terminal", terminalSessionId: item.sessionNode.session.config.id };
-  }
-  return { view: "terminal", terminalSessionId: item.sessionNode.session.config.id };
-}
-
-function getActiveWorkTitle(item: SidebarActiveWorkItem): string {
-  if (item.kind === "task") {
-    return item.taskNode.title;
-  }
-  if (item.kind === "chat" || item.kind === "execution-host-chat") {
-    return item.chatNode.title;
-  }
-  return item.sessionNode.title;
-}
-
-function getActiveWorkItemType(item: SidebarActiveWorkItem): ActiveWorkSidebarItemType {
-  if (item.kind === "task") {
-    return "Task";
-  }
-  if (item.kind === "chat" || item.kind === "execution-host-chat") {
-    return "Chat";
-  }
-  return "Terminal";
-}
-
-function getActiveWorkSubtitle(item: SidebarActiveWorkItem): string {
-  if (item.kind === "execution-host-terminal" || item.kind === "execution-host-chat") {
-    return item.host.name;
-  }
-  return item.workspaceName;
-}
-
-function getActiveWorkWorkspace(item: SidebarActiveWorkItem): Workspace | null {
-  return item.kind === "task" || item.kind === "chat" || item.kind === "terminal-session"
-    ? item.workspace
-    : null;
-}
-
-function getActiveWorkBadge(item: SidebarActiveWorkItem): {
-  label: string;
-  variant: BadgeVariant;
-} {
-  if (item.kind === "task") {
-    return { label: item.taskNode.badge, variant: item.taskNode.badgeVariant };
-  }
-  if (item.kind === "chat" || item.kind === "execution-host-chat") {
-    return { label: item.chatNode.badge, variant: item.chatNode.badgeVariant };
-  }
-  return { label: item.sessionNode.badge, variant: item.sessionNode.badgeVariant };
-}
-
-function isActiveWorkPrivateHidden(item: SidebarActiveWorkItem, showPrivateItems: boolean): boolean {
-  if (item.kind === "task") {
-    return shouldObscurePrivateItem(isEffectivelyPrivate(item.taskNode.task.config, [item.workspace]), showPrivateItems);
-  }
-  if (item.kind === "chat") {
-    return shouldObscurePrivateItem(isEffectivelyPrivate(item.chatNode.chat.config, [item.workspace]), showPrivateItems);
-  }
-  if (item.kind === "execution-host-chat") {
-    return shouldObscurePrivateItem(isEffectivelyPrivate(item.chatNode.chat.config, [item.host]), showPrivateItems);
-  }
-  if (item.kind === "terminal-session") {
-    return shouldObscurePrivateItem(isEffectivelyPrivate(item.sessionNode.session.config, [item.workspace]), showPrivateItems);
-  }
-  return shouldObscurePrivateItem(isEffectivelyPrivate(item.sessionNode.session.config, [item.host]), showPrivateItems);
-}
-
-function getChatHistoryRoute(item: SidebarChatHistoryItem): WebAppRoute {
-  return { view: "chat", chatId: item.chatNode.chat.config.id };
-}
-
-function getChatHistorySubtitle(item: SidebarChatHistoryItem): string {
-  return item.kind === "chat" ? item.workspaceName : item.host.name;
-}
-
-function isChatHistoryPrivateHidden(item: SidebarChatHistoryItem, showPrivateItems: boolean): boolean {
-  return item.kind === "chat"
-    ? shouldObscurePrivateItem(isEffectivelyPrivate(item.chatNode.chat.config, [item.workspace]), showPrivateItems)
-    : shouldObscurePrivateItem(isEffectivelyPrivate(item.chatNode.chat.config, [item.host]), showPrivateItems);
 }
 
 function getProvisioningJobModeLabel(job: PublicProvisioningJob): string {
@@ -255,31 +156,14 @@ export function OverviewView({
       {activeWorkItems.length > 0 && (
         <Panel data-testid="active-work-card" title="Active Work">
           <div className="space-y-2">
-            {activeWorkItems.map((item) => {
-              const badge = getActiveWorkBadge(item);
-              const privateHidden = isActiveWorkPrivateHidden(item, showPrivateItems);
-              const workspace = getActiveWorkWorkspace(item);
-              return (
-                <ClankyListRow
-                  key={item.key}
-                  title={getActiveWorkTitle(item)}
-                  description={workspace
-                    ? <WorkspaceIdentity workspace={workspace} showProviderIcon={false} />
-                    : getActiveWorkSubtitle(item)}
-                  meta={(
-                    <ActiveWorkMetadata
-                      itemType={getActiveWorkItemType(item)}
-                      lastInteractionAt={getActiveWorkItemTimestamp(item)}
-                      workspace={workspace ?? undefined}
-                    />
-                  )}
-                  metaPlacement="footer"
-                  badge={<StatusBadge variant={badge.variant}><StateText>{badge.label}</StateText></StatusBadge>}
-                  onClick={!privateHidden ? () => onNavigate(getActiveWorkRoute(item)) : undefined}
-                  privateHidden={privateHidden}
-                />
-              );
-            })}
+            {activeWorkItems.map((item) => (
+              <OverviewWorkItem
+                key={item.key}
+                item={item}
+                onNavigate={onNavigate}
+                showPrivateItems={showPrivateItems}
+              />
+            ))}
           </div>
         </Panel>
       )}
@@ -287,19 +171,14 @@ export function OverviewView({
       {chatHistoryItems.length > 0 && (
         <Panel data-testid="chat-history-card" title="History" description="Chats marked as done.">
           <div className="space-y-2">
-            {chatHistoryItems.map((item) => {
-              const privateHidden = isChatHistoryPrivateHidden(item, showPrivateItems);
-              return (
-                <ClankyListRow
-                  key={item.key}
-                  title={item.chatNode.title}
-                  description={getChatHistorySubtitle(item)}
-                  badge={<StatusBadge variant={item.chatNode.badgeVariant}><StateText>{item.chatNode.badge}</StateText></StatusBadge>}
-                  onClick={!privateHidden ? () => onNavigate(getChatHistoryRoute(item)) : undefined}
-                  privateHidden={privateHidden}
-                />
-              );
-            })}
+            {chatHistoryItems.map((item) => (
+              <OverviewWorkItem
+                key={item.key}
+                item={item}
+                onNavigate={onNavigate}
+                showPrivateItems={showPrivateItems}
+              />
+            ))}
           </div>
         </Panel>
       )}
