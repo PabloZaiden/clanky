@@ -326,3 +326,4 @@ export {
   type MeshTcpTunnelSessionRequest,
 } from "./mesh-tcp-tunnel";
 export * from "./resource-read";
+export * from "./chat-trash";

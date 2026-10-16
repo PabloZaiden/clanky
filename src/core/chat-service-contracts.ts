@@ -35,6 +35,7 @@ import type { EventStream } from "../utils/event-stream";
 import type { SimpleEventEmitter } from "./event-emitter";
 import type { HarnessActivitySnapshot, HarnessActivityStopResult, HarnessCapabilities, HarnessInputAdmission } from "@/shared/harness-control";
 import type { QueuedChatMessage } from "@/shared/chat";
+import type { ChatTrashService } from "./chat-trash-service";
 
 export interface CreateChatOptions {
   name?: string;
@@ -80,13 +81,18 @@ export interface DeleteChatOptions {
   credentialToken?: string | null;
 }
 
+export interface ChatCleanupCredentials {
+  credentialToken?: string | null;
+  credentialTokensByServerId?: Readonly<Record<string, string>>;
+}
+
 export interface DeleteTaskChatResult {
   deleted: boolean;
   cleanup: Promise<boolean>;
 }
 
 export type ChatConfigUpdates = Partial<
-  Omit<ChatConfig, "id" | "createdAt" | "workspaceId" | "mode" | "scope" | "taskId">
+  Omit<ChatConfig, "id" | "createdAt" | "workspaceId" | "mode" | "scope" | "taskId" | "deletedAt">
 >;
 
 export interface ChatMessageOptions {
@@ -177,7 +183,8 @@ export interface ChatWorktreePort {
   ): Promise<ChatWorktreeState>;
   ensureWorktree(chat: Chat, options?: { signal?: AbortSignal }): Promise<Chat>;
   prepareWorktreeInBackground(chat: Chat): void;
-  cleanupWorktree(chat: Chat): Promise<void>;
+  waitForPreparation(chatId: string): Promise<void>;
+  cleanupWorktree(chat: Chat, credentials?: ChatCleanupCredentials): Promise<void>;
 }
 
 export interface ChatSessionPort {
@@ -230,6 +237,11 @@ export interface ChatConversationPort {
   interruptChat(chatId: string, reason?: string): Promise<Chat | null>;
   waitForChatIdle(chatId: string, timeoutMs?: number): Promise<Chat>;
   closeActiveStream(chatId: string): void;
+  checkpointForDeletion(
+    chatId: string,
+    markDeleted: (chatId: string, checkpoint?: TranscriptChangeSet) => Chat | null,
+  ): Chat | null;
+  stopForDeletion(chatId: string): Promise<void>;
   hasActiveStream(chatId: string): boolean;
   emitChatLog(
     chat: Chat,
@@ -280,6 +292,7 @@ export interface ChatHistoryRecoveryPort {
 }
 
 export interface ChatServiceBundle {
+  trash: ChatTrashService;
   state: ChatStatePort;
   lifecycle: ChatLifecyclePort;
   worktree: ChatWorktreePort;

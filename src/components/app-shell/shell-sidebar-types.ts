@@ -6,6 +6,8 @@ import type {
   SidebarAction as FrameworkSidebarAction,
 } from "@pablozaiden/webapp/web";
 import type { ReactNode } from "react";
+import type { UseChatTrashResult } from "../../hooks/useChatTrash";
+import type { ChatTrashActions } from "./use-chat-trash-actions";
 import type {
   Agent,
   Chat,
@@ -61,6 +63,8 @@ export interface ShellSidebarActionHandlers {
 }
 
 export interface ShellSidebarCompositionOptions {
+  trash: UseChatTrashResult;
+  trashActions: ChatTrashActions;
   sidebarWorkspaceGroups: SidebarWorkspaceGroupNode[];
   executionHostNodes: SidebarExecutionHostNode[];
   executionHosts: ExecutionHostDescriptor[];

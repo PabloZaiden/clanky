@@ -25,6 +25,8 @@ import { useControlUiActions } from "./use-control-ui-actions";
 import { LiveVoiceContext, useLiveVoice } from "../../hooks/useLiveVoice";
 import { buildVoiceLauncherActions, LiveVoiceControls } from "./live-voice-controls";
 import { useVoiceClientActions } from "./use-voice-client-actions";
+import { useChatTrash } from "../../hooks/useChatTrash";
+import { useChatTrashActions } from "./use-chat-trash-actions";
 
 export function AppShell() {
   const toast = useToast();
@@ -122,6 +124,8 @@ export function AppShell() {
   const liveVoiceCall = useLiveVoice({
     enabled: voiceSettings.settings.live.configured, route,
   });
+  const trash = useChatTrash(privateItemsPreference.showPrivateItems);
+  const trashActions = useChatTrashActions(navigateWithinShell, refreshChats);
   const startLiveVoice = useCallback(async (): Promise<void> => {
     setLiveVoiceExpanded(true);
     webAppRootRef.current?.sidebar.close();
@@ -258,6 +262,7 @@ export function AppShell() {
   });
 
   const routes = useMemo(() => buildShellRoutes({
+    trashActions,
     activityRoute,
     closeHarnessActivity,
     openHarnessActivity,
@@ -309,6 +314,7 @@ export function AppShell() {
     toast,
     showPrivateItems: privateItemsPreference.showPrivateItems,
   } satisfies ShellRouteCompositionContext, setIsOwner), [
+    trashActions,
     activityRoute,
     closeHarnessActivity,
     openHarnessActivity,
@@ -394,6 +400,8 @@ export function AppShell() {
 
   const sidebarSnapshotReady = !shellLoading && shellErrors.length === 0;
   const sidebarComposition = useMemo(() => buildShellSidebarComposition({
+    trash,
+    trashActions,
     sidebarWorkspaceGroups,
     executionHostNodes,
     executionHosts,
@@ -439,6 +447,8 @@ export function AppShell() {
     voiceControls: liveVoice.busy && !liveVoiceExpanded
       ? <LiveVoiceControls voice={liveVoice} expanded={false} onToggleExpanded={expandLiveVoice} /> : null,
   }), [
+    trash,
+    trashActions,
     agents,
     archivingWorkspaceIds,
     dialogs.handleQuickChat,
@@ -529,6 +539,7 @@ export function AppShell() {
         />
       </LiveVoiceContext.Provider>
       {dialogs.modals}
+      {trashActions.dialogs}
       {voiceClient.dialogs}
       <input
         ref={agentImportInputRef}

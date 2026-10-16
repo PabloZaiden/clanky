@@ -3,7 +3,7 @@ import { chatManager } from "../../core/chat-manager";
 import { isDomainError } from "../../domain/domain-error";
 import { isModelEnabled } from "../../core/model-discovery";
 import { preferencesManager } from "../../core/preferences-manager";
-import { getChatWorkspaceId, isTaskChat, isWorkspaceChat, type ChatConfig } from "@/shared/chat";
+import { getChatWorkspaceId, isStandaloneChat, isTaskChat, isWorkspaceChat, type ChatConfig } from "@/shared/chat";
 import {
   CreateChatRequestSchema,
   UpdateChatRequestSchema,
@@ -220,13 +220,12 @@ export const chatsCrudRoutes = defineRoutes({
         automation: { policy: "write" },
       },
       DELETE: {
-        description: "Delete a chat and admit its remote cleanup.",
+        description: "Move a standalone chat to Trash for 30 days.",
         requestSchema: undefined,
         querySchema: undefined,
         automation: {
           policy: "confirm",
-          reason: "Permanently deletes chat history and schedules external cleanup.",
-          completion: "admission",
+          reason: "Deletes the chat and stops its active work. Standalone chats are recoverable for 30 days; agent conversations are deleted permanently.",
           credential: {
             kind: "ssh",
             resource: { name: "chats", idParameter: "id", purpose: "history-cleanup" },
@@ -304,11 +303,9 @@ export const chatsCrudRoutes = defineRoutes({
 
       try {
         const credentialToken = req.headers.get(SSH_CREDENTIAL_TOKEN_HEADER)?.trim() || null;
-        const deleted = await chatManager.deleteChat(ctx.params["id"]!, {
-          deferCleanup: true,
-          credentialToken,
-        });
-        if (!deleted) {
+        if (isStandaloneChat(chat)) {
+          await chatManager.trashChat(ctx.params["id"]!, credentialToken);
+        } else if (!await chatManager.deleteChat(ctx.params["id"]!, { credentialToken })) {
           return errorResponse("not_found", "Chat not found", 404);
         }
         return successResponse();

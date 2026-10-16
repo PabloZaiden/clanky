@@ -28,9 +28,10 @@ export function mergeHarnessProjection(
   const db = getDatabase();
   const userId = requirePersistenceUserId();
   const table = context.kind === "chat" ? "chats" : "tasks";
+  const liveCondition = context.kind === "chat" ? " AND deleted_at IS NULL" : "";
   return db.transaction(() => {
     const row = db.query<{ session_binding_json: string | null; harness_state_json: string | null }, [string, string]>(
-      `SELECT session_binding_json, harness_state_json FROM ${table} WHERE id = ? AND user_id = ?`,
+      `SELECT session_binding_json, harness_state_json FROM ${table} WHERE id = ? AND user_id = ?${liveCondition}`,
     ).get(context.id, userId);
     if (!row) return false;
     const current = parseStoredHarnessBinding(row.session_binding_json, context.id);

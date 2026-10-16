@@ -61,6 +61,7 @@ export interface ChatConfig {
   baseBranch?: string;
   createdAt: string;
   updatedAt: string;
+  deletedAt?: string;
   isPrivate?: boolean;
   mode: "chat";
 }
@@ -162,6 +163,8 @@ export interface Chat {
   config: ChatConfig;
   state: ChatState;
 }
+
+export const CHAT_TRASH_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 export const DEFAULT_CHAT_INTERRUPT_REASON = "user requested stop";
 

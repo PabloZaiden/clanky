@@ -5,6 +5,7 @@
 import { ExecutionHostRefSchema } from "@/contracts/schemas/execution-host";
 import { executionHostRefFromParts, getRegisteredSshServerId } from "@/shared/execution-host";
 import { isRestartableAutomaticWorkspace } from "@/shared/workspace";
+import { isStandaloneChat } from "@/shared/chat";
 import type { ExecutionHostRef } from "@/shared/execution-host";
 import type { PreparedOperation } from "./clanky-operation-service";
 import { chatManager } from "./chat-manager";
@@ -34,7 +35,12 @@ export async function resolveVoiceCredentialTargets(operation: PreparedOperation
   } else if (credential.resource) {
     const selector = credential.resource;
     const id = selector.idParameter ? operation.parameters[selector.idParameter] : undefined;
-    if (selector.name === "chats" && id) {
+    if (selector.name === "chats" && selector.purpose === "trash-cleanup") {
+      resources.push(id ?? "trash");
+      for (const serverId of chatManager.getTrashCredentialTargets(id)) {
+        hosts.push({ kind: "ssh", serverId });
+      }
+    } else if (selector.name === "chats" && id) {
       const chat = await chatManager.getChat(id);
       if (!chat) throw new DomainError("voice_operation_target", "The chat is unavailable.");
       const recovery = chat.state.harness?.historyRecovery;
@@ -42,7 +48,7 @@ export async function resolveVoiceCredentialTargets(operation: PreparedOperation
         if (chat.config.source?.kind === "execution_host") hosts.push(chat.config.source.executionHost.host);
         if (recovery && recovery.status !== "complete") hosts.push(recovery.executionHost.host);
       } else if (selector.purpose === "history-cleanup") {
-        if (recovery && recovery.status !== "complete") hosts.push(recovery.executionHost.host);
+        if (!isStandaloneChat(chat) && recovery && recovery.status !== "complete") hosts.push(recovery.executionHost.host);
       } else if (selector.purpose === "continue-history") {
         hosts.push((await getChatExecutionHostBinding({
           getWorkspace: (workspaceId) => workspaceManager.getWorkspace(workspaceId),

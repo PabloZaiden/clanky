@@ -4,7 +4,7 @@
 
 import type { ManagedContextIdentity, ManagedContextType } from "@/shared/context-api-key";
 import type { Task } from "@/shared/task";
-import { getChatWorkspaceId } from "@/shared/chat";
+import { getChatWorkspaceId, type Chat } from "@/shared/chat";
 import { loadAgentRun, loadAgentRunByChatId } from "../persistence/agents";
 import { loadChat } from "../persistence/chats";
 import { loadTask } from "../persistence/tasks";
@@ -62,7 +62,11 @@ export class ManagedContextIdentityResolver {
     if (!chat) {
       throw missingContext("chat", chatId);
     }
+    return await this.forChatSnapshot(chat, expectedWorkspaceId);
+  }
 
+  async forChatSnapshot(chat: Pick<Chat, "config">, expectedWorkspaceId?: string): Promise<ManagedContextIdentity> {
+    const chatId = chat.config.id;
     if (chat.config.scope === "task" && chat.config.taskId) {
       return await this.forTask(chat.config.taskId, expectedWorkspaceId ?? chat.config.workspaceId);
     }

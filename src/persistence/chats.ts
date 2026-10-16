@@ -39,3 +39,4 @@ export {
   resetStaleChat,
   resetStaleChats,
 } from "./chats/index";
+export { listChatTrash, loadTrashedChat, markChatTrashed, restoreTrashedChat, deleteTrashedChat, saveTrashedChatWorktree, listTrashCleanupCandidates } from "./chats/index";

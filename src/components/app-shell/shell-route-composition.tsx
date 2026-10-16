@@ -23,6 +23,7 @@ import { getRouteString } from "./route-fields";
 
 const ROUTE_VIEWS = [
   "home",
+  "trash",
   "agents",
   "agent",
   "agent-run",

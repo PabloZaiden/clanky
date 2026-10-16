@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { ChatTrashView } from "./chat-trash-view";
+import type { ChatTrashActions } from "./use-chat-trash-actions";
 import {
   ConfirmModal,
   ErrorState,
@@ -56,6 +58,7 @@ import type { ControlUiActionOutcome } from "@/shared/clanky-control";
 import type { PendingControlFileOpen } from "./use-control-ui-actions";
 
 export interface ShellMainContentProps {
+  trashActions: ChatTrashActions;
   route: WebAppRoute;
   activityRoute: WebAppRoute | null;
   closeHarnessActivity: () => void;
@@ -959,6 +962,17 @@ function usesFullViewportLayout(props: ShellMainContentProps): boolean {
 }
 
 export function AppRouteContent(props: ShellMainContentProps) {
+  if (props.route.view === "trash") {
+    return (
+      <Page>
+        <ChatTrashView
+          showPrivateItems={props.showPrivateItems}
+          selectedChatId={getRouteString(props.route, "chatId")}
+          actions={props.trashActions}
+        />
+      </Page>
+    );
+  }
   const fullViewport = usesFullViewportLayout(props);
   return (
     <Page layout={fullViewport ? "full" : "padded"}>

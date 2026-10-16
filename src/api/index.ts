@@ -38,6 +38,7 @@ import { terminalSessionsRoutes } from "./terminal-sessions";
 import { provisioningRoutes } from "./provisioning";
 import { workerUpdateRoutes } from "./worker-update-jobs";
 import { chatsRoutes } from "./chats/index";
+import { trashRoutes } from "./trash";
 import { agentsRoutes } from "./agents";
 import { previewRoutes } from "./previews";
 import { meshRoutes } from "./mesh";
@@ -69,6 +70,7 @@ const nativeApiRoutes = {
   ...provisioningRoutes,
   ...workerUpdateRoutes,
   ...chatsRoutes,
+  ...trashRoutes,
   ...agentsRoutes,
   ...previewRoutes,
   ...meshRoutes,
@@ -120,6 +122,7 @@ export * from "./websocket";
 export * from "./provisioning";
 export * from "./worker-update-jobs";
 export * from "./chats/index";
+export * from "./trash";
 export * from "./agents";
 export * from "./previews";
 export * from "./agent-prompt-bridge";

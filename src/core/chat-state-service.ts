@@ -69,6 +69,7 @@ export class ChatStateService implements ChatStatePort {
   }
 
   async getChatMessage(chatId: string, messageId: string): Promise<MessageData | null> {
+    if (!await this.getChatSummary(chatId)) return null;
     return getChatMessageFromTranscript(chatId, messageId);
   }
 

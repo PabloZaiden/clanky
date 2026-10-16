@@ -321,6 +321,8 @@ export function useShellHeader({
           : { title: "Workspace settings" };
       case "scratchpad":
         return { title: "Scratchpad", scopeSubtitle };
+      case "trash":
+        return { title: "Trash" };
       case "execution-host":
         return nodeModel ?? { title: "Execution server" };
       case "execution-host-files":
