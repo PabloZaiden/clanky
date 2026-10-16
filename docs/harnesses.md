@@ -186,6 +186,11 @@ reconnects and loading older history, and are included in Markdown/HTML exports.
 Existing tool details remain available. Earlier question history is not
 converted.
 
+Question text belongs only in the transcript. Answer controls contain the
+choices and permitted custom-answer fields, not another copy of the question,
+visible or hidden. Requests with several fields number their answer groups to
+match the transcript.
+
 Task execution, task planning, helper sessions and autonomous scheduled runs
 use unattended policy. Copilot excludes `ask_user`; OpenCode denies `question`;
 Codex disables ordinary `request_user_input` and denies both question variants
