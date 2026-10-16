@@ -91,8 +91,8 @@ when your system requests reduced motion.
 When the browser tab is hidden, chat, task, and agent transcripts defer grouping
 and rendering new content, pause the activity animation, and stop automatic
 scrolling. Event reception and data updates continue. Returning to the tab
-shows the current transcript without reconnecting solely because visibility
-changed; drafts, expanded entries, and the scroll position remain preserved.
+reopens realtime subscriptions and recovers the current state without a page
+reload; drafts, expanded entries, and the scroll position remain preserved.
 
 Unchanged message rows are reused during streaming and transcript refreshes,
 and unchanged Markdown is not reparsed for playback or local UI updates.
@@ -110,6 +110,14 @@ Chat state is ordered by a persisted server revision, not activity timestamps,
 so provider clock skew cannot hide a transition and a delayed response cannot
 overwrite newer state. Connecting or reconnecting realtime refreshes the
 authoritative state to recover changes made before the subscription was ready.
+Recovery runs on every physical connection opening, independently of React
+connection-status renders. Unresponsive connections reconnect automatically;
+chat-list and transcript snapshot reads have a 10-second deadline so a stalled
+request cannot indefinitely block queued recovery. Timeouts surface through
+the normal load-error state rather than triggering periodic HTTP polling.
+The header, sidebar, and open chat share that revisioned operational state:
+an accepted action response or a detailed snapshot updates all three, without
+depending on a second realtime notification reaching the sidebar.
 Open chats keep their transcript live without republishing operational state
 solely because an activity timestamp or revision advanced.
 

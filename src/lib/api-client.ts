@@ -5,6 +5,7 @@
 import { createLogger } from "@pablozaiden/webapp/web";
 import { parseApiError } from "./api-error";
 import { appFetch } from "./public-path";
+import { isTimeoutError } from "./request-lifecycle";
 
 export type ApiResponseMode = "json" | "text" | "blob" | "empty";
 
@@ -62,10 +63,11 @@ export async function requestApiResponse(
   try {
     response = await appFetch(path, init);
   } catch (error) {
-    if (init.signal?.aborted === true) {
+    const timedOut = isTimeoutError(init.signal?.reason);
+    if (init.signal?.aborted === true && !timedOut) {
       throw error;
     }
-    apiClientLog.error("API request failed before receiving a response", {
+    apiClientLog.error(timedOut ? "API request timed out" : "API request failed before receiving a response", {
       action,
       method,
       url: path,

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type SetStateAction } from "react";
-import type { Chat } from "@/shared";
+import { isStandaloneChat, type Chat } from "@/shared";
 import {
   hasSameChatPresentation,
   reuseChatSnapshotPresentation,
@@ -7,13 +7,14 @@ import {
 
 const CHAT_ACTIVITY_PUBLISH_INTERVAL_MS = 60_000;
 
-export function useChatActivityState() {
+export function useOwnedChatActivityState() {
   const [chats, publishChats] = useState<Chat[]>([]);
   const latestRef = useRef(new Map<string, Chat>());
   const displayedRef = useRef<Chat[]>([]);
   const pendingRef = useRef(new Set<string>());
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const mountedRef = useRef(true);
+  const retainedRef = useRef(new Map<string, number>());
 
   const publish = useCallback((next: Chat[]): void => {
     const previous = displayedRef.current;
@@ -116,6 +117,22 @@ export function useChatActivityState() {
 
   const getChat = useCallback((id: string): Chat | undefined => latestRef.current.get(id), []);
 
+  const retainChat = useCallback((id: string): (() => void) => {
+    retainedRef.current.set(id, (retainedRef.current.get(id) ?? 0) + 1);
+    return () => {
+      const remaining = (retainedRef.current.get(id) ?? 1) - 1;
+      if (remaining > 0) {
+        retainedRef.current.set(id, remaining);
+        return;
+      }
+      retainedRef.current.delete(id);
+      const chat = latestRef.current.get(id);
+      if (chat && !isStandaloneChat(chat)) {
+        setChats((current) => current.filter((entry) => entry.config.id !== id));
+      }
+    };
+  }, [setChats]);
+
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -126,5 +143,5 @@ export function useChatActivityState() {
     };
   }, []);
 
-  return { chats, setChats, getChat, recordActivity };
+  return { chats, setChats, getChat, recordActivity, retainChat };
 }

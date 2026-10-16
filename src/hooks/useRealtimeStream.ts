@@ -6,7 +6,6 @@
  * refetching the complete entity.
  */
 
-import { useEffect, useRef } from "react";
 import {
   useRealtime,
   useRealtimeRefresh,
@@ -30,28 +29,6 @@ export interface UseRealtimeStreamResult {
   status: RealtimeStreamStatus;
 }
 
-function useReconnectRecovery(
-  status: RealtimeStatus,
-  enabled: boolean,
-  onReconnect: (() => void | Promise<void>) | undefined,
-): void {
-  const wasOpenRef = useRef(false);
-  const onReconnectRef = useRef(onReconnect);
-  onReconnectRef.current = onReconnect;
-
-  useEffect(() => {
-    if (!enabled || status !== "open") {
-      wasOpenRef.current = false;
-      return;
-    }
-    if (!wasOpenRef.current) {
-      wasOpenRef.current = true;
-      // The initial read may predate the subscription, just like a reconnect.
-      void onReconnectRef.current?.();
-    }
-  }, [enabled, status]);
-}
-
 export function useRealtimeStream<T = unknown>({
   enabled = true,
   path,
@@ -60,23 +37,15 @@ export function useRealtimeStream<T = unknown>({
   onEvent,
   onReconnect,
 }: UseRealtimeStreamOptions<T> = {}): UseRealtimeStreamResult {
-  const onEventRef = useRef(onEvent);
-  const onReconnectRef = useRef(onReconnect);
-  onEventRef.current = onEvent;
-  onReconnectRef.current = onReconnect;
-
   const realtime = useRealtime<T>({
     enabled,
     path,
     filters,
     predicate,
     trackLastEvent: false,
-    onEvent: (event) => {
-      onEventRef.current?.(event);
-    },
+    onEvent,
+    onOpen: onReconnect,
   });
-
-  useReconnectRecovery(realtime.status, enabled, () => onReconnectRef.current?.());
 
   return {
     status: realtime.status === "closed" && enabled
@@ -99,11 +68,10 @@ export function useRealtimeRefreshWithRecovery<T = ResourceRealtimeEvent>({
   enabled = true,
   ...options
 }: UseRealtimeRefreshWithRecoveryOptions<T>) {
-  const realtime = useRealtimeRefresh<T>({
+  return useRealtimeRefresh<T>({
     ...options,
     enabled,
     trackLastEvent: false,
+    onOpen: onReconnect,
   });
-  useReconnectRecovery(realtime.status, enabled, onReconnect);
-  return realtime;
 }

@@ -12,6 +12,7 @@ import {
   useTranscriptResource,
 } from "../../hooks";
 import { useRefreshOnForeground } from "../../hooks/useDocumentVisibility";
+import { useChatActivityState, useChatResourceState } from "../../hooks/chat-state-context";
 import { toTranscriptStreamEvent } from "../../hooks/transcript-event-adapter";
 import { apiRequest } from "../../lib/api-client";
 import { getStoredSshCredentialToken } from "../../lib/ssh-browser-credentials";
@@ -75,32 +76,10 @@ function mergeOperationalChatSnapshot(current: Chat | null, incoming: Chat): Cha
   });
 }
 
-function applyChatOperationalEvent(
-  current: Chat,
-  event: ChatStreamEvent,
-): Chat {
-  switch (event.type) {
-    case "chat.status":
-      return applyChatStatusEvent(current, event);
-    case "chat.message":
-    case "chat.message.delta":
-    case "chat.tool_call":
-    case "chat.tool_call.extra":
-    case "chat.log":
-    case "chat.log.delta":
-      return {
-        ...current,
-        state: {
-          ...current.state,
-          lastActivityAt: event.timestamp > (current.state.lastActivityAt ?? "")
-            ? event.timestamp : current.state.lastActivityAt,
-        },
-      };
-  }
-}
-
 export function useChatLifecycle(chatId: string): ChatLifecycleResult {
   const toast = useToast();
+  const resourceState = useChatResourceState(chatId);
+  const { recordActivity } = useChatActivityState();
   const [isContinuingFromHistory, setIsContinuingFromHistory] = useState(false);
   const mountedChatIdRef = useRef(chatId);
   const reconnectAttemptedRef = useRef(false);
@@ -110,6 +89,7 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
     resourceId: chatId,
     resourceLabel: "chat",
     baseUrl: `/api/chats/${encodeURIComponent(chatId)}`,
+    resourceState,
     decodeSnapshot: decodeChatSnapshot,
     mergeResource: mergeOperationalChatSnapshot,
     isResourcePresentationEqual: hasSameChatPresentation,
@@ -226,15 +206,17 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
     if (!current) {
       return;
     }
-    const nextChat = applyChatOperationalEvent(current, event);
-    if (nextChat !== current) {
-      setChat(nextChat);
+    if (event.type === "chat.status") {
+      setChat(applyChatStatusEvent(current, event));
+    } else {
+      recordActivity(chatId, event.timestamp, event.type === "chat.message" && event.message.role === "user"
+        ? "user" : "stream");
     }
     const transcriptEvent = toTranscriptStreamEvent(event);
     if (transcriptEvent) {
       applyTranscriptEvent(transcriptEvent as TranscriptStreamEvent);
     }
-  }, [applyTranscriptEvent, chatId, getChat, setChat]);
+  }, [applyTranscriptEvent, chatId, getChat, recordActivity, setChat]);
 
   const { status: chatSocketStatus } = useRealtimeStream<ChatStreamEvent>({
     filters: { chatId },
