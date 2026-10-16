@@ -3,6 +3,7 @@ import type { AgentProvider } from "@/shared/settings";
 import {
   SSHPASS_INVALID_PASSWORD_EXIT_CODE,
   type AcpAuthenticationMode,
+  type AcpProcessExit,
   type AcpTransportStage,
   type JsonRpcError,
 } from "./types";
@@ -105,7 +106,7 @@ export function createAcpProcessError(
   options: {
     command?: string;
     exitCode?: number;
-    signalCode?: NodeJS.Signals | null;
+    signalCode?: AcpProcessExit["signalCode"];
     transport?: "stdio" | "ssh" | "mesh";
     authenticationMode?: AcpAuthenticationMode;
     authenticationFailure?: boolean;
