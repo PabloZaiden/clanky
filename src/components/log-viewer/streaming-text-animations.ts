@@ -73,7 +73,7 @@ export class StreamingTextAnimations {
         { opacity: 1, filter: "blur(0px)" },
       ],
       {
-        duration: 250,
+        duration: 400,
         delay: reveal.delay,
         easing: "cubic-bezier(0.22, 1, 0.36, 1)",
         fill: "backwards",
