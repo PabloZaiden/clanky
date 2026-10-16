@@ -70,6 +70,7 @@ export interface UseTranscriptResourceResult<TResource> {
   loading: boolean;
   loadingTranscript: boolean;
   error: string | null;
+  notFound: boolean;
   setError: Dispatch<SetStateAction<string | null>>;
   refresh: (options?: TranscriptResourceRefreshOptions) => Promise<void>;
   refreshCoalesced: (options?: TranscriptResourceRefreshOptions) => Promise<void>;
@@ -172,6 +173,7 @@ export function useTranscriptResource<TResource, TSnapshot>({
   const [loading, setLoading] = useState(true);
   const [loadingTranscript, setLoadingTranscript] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notFound, setNotFound] = useState(false);
   const resourceRef = useRef<TResource | null>(initialResource);
   const presentationEqualityRef = useRef(isResourcePresentationEqual);
   const transcriptRef = useRef<ChatTranscript>(createEmptyTranscript());
@@ -202,6 +204,9 @@ export function useTranscriptResource<TResource, TSnapshot>({
       : next;
     // Freshness/recovery reads stay authoritative even when only nonvisual activity changes.
     resourceRef.current = resolved;
+    if (resolved !== null) {
+      setNotFound(false);
+    }
     if (!presentationEqualityRef.current?.(current, resolved)) {
       setResourceState(resolved);
     }
@@ -219,6 +224,7 @@ export function useTranscriptResource<TResource, TSnapshot>({
     setResource(null);
     setTranscript(createEmptyTranscript());
     setError(nextError ?? null);
+    setNotFound(true);
   }, [setResource, setTranscript]);
   const getResource = useCallback(() => resourceRef.current, []);
   const getTranscript = useCallback(() => transcriptRef.current, []);
@@ -608,6 +614,7 @@ export function useTranscriptResource<TResource, TSnapshot>({
     setLoading(true);
     setLoadingTranscript(false);
     setError(null);
+    setNotFound(false);
     snapshotEtagRef.current = null;
     refreshWindowRef.current = {};
     refreshRequestIdRef.current += 1;
@@ -646,6 +653,7 @@ export function useTranscriptResource<TResource, TSnapshot>({
     loading,
     loadingTranscript,
     error,
+    notFound,
     setError,
     refresh,
     refreshCoalesced,

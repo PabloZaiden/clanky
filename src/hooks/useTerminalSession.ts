@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { TerminalSession } from "@/shared";
 import type { UpdateTerminalSessionRequest } from "@/contracts";
 import { createLogger } from "@pablozaiden/webapp/web";
+import { ApiError } from "../lib/api-error";
 import { useRealtimeRefreshWithRecovery } from "./useRealtimeStream";
 import { apiRequest } from "../lib/api-client";
 import { createRefreshCoordinator } from "../lib/refresh-coordinator";
@@ -14,6 +15,7 @@ export interface UseTerminalSessionResult {
   session: TerminalSession | null;
   loading: boolean;
   error: string | null;
+  notFound: boolean;
   refresh: () => Promise<void>;
   updateSession: (request: UpdateTerminalSessionRequest) => Promise<TerminalSession>;
   deleteSession: () => Promise<boolean>;
@@ -24,6 +26,7 @@ export function useTerminalSession(sessionId: string): UseTerminalSessionResult 
   const [session, setSession] = useState<TerminalSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notFound, setNotFound] = useState(false);
   const initialLoadDoneRef = useRef(false);
   const sessionIdRef = useRef(sessionId);
   const refreshCoordinatorRef = useRef(createRefreshCoordinator<void>());
@@ -49,11 +52,19 @@ export function useTerminalSession(sessionId: string): UseTerminalSessionResult 
           return;
         }
         setSession(next);
+        setNotFound(false);
         initialLoadDoneRef.current = true;
       } catch (err) {
         if (sessionIdRef.current !== requestSessionId) {
           return;
         }
+        if (err instanceof ApiError && err.status === 404) {
+          setSession(null);
+          setNotFound(true);
+          setError(null);
+          return;
+        }
+        setNotFound(false);
         log.error("Failed to refresh terminal session", { sessionId: requestSessionId, error: String(err) });
         setError(String(err));
       } finally {
@@ -76,6 +87,8 @@ export function useTerminalSession(sessionId: string): UseTerminalSessionResult 
     refresh: (event) => {
       if (event.action === "deleted") {
         setSession(null);
+        setNotFound(true);
+        setError(null);
         return;
       }
       return refreshInternal(false);
@@ -126,6 +139,7 @@ export function useTerminalSession(sessionId: string): UseTerminalSessionResult 
     setSession(null);
     setLoading(true);
     setError(null);
+    setNotFound(false);
     return () => {
       refreshCoordinatorRef.current.reset();
     };
@@ -139,6 +153,7 @@ export function useTerminalSession(sessionId: string): UseTerminalSessionResult 
     session,
     loading,
     error,
+    notFound,
     refresh,
     updateSession,
     deleteSession,

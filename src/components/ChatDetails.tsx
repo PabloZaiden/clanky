@@ -34,6 +34,7 @@ export function ChatDetails({
   showActivity = false,
   onCloseActivity,
   onOpenActivity,
+  onMissingEntity,
   isVisible = true,
 }: {
   chatId: string;
@@ -44,6 +45,7 @@ export function ChatDetails({
   showActivity?: boolean;
   onCloseActivity?: () => void;
   onOpenActivity?: () => void;
+  onMissingEntity?: () => void;
   isVisible?: boolean;
 }) {
   const { error: notifyError } = useToast();
@@ -63,6 +65,7 @@ export function ChatDetails({
     loading,
     loadingTranscript,
     error,
+    notFound,
     isActive,
     needsSshCredentials,
     refreshChat,
@@ -76,6 +79,11 @@ export function ChatDetails({
     handleContinueFromHistory,
     isContinuingFromHistory,
   } = useChatLifecycle(chatId);
+  useEffect(() => {
+    if (!isEmbedded && notFound) {
+      onMissingEntity?.();
+    }
+  }, [isEmbedded, notFound, onMissingEntity]);
   const handleMessageSent = useCallback(() => {
     const requests = chat?.state.harness?.questions ?? [];
     const expiredQuestion = requests.at(-1);
@@ -209,6 +217,9 @@ export function ChatDetails({
   }
 
   if (!chat) {
+    if (notFound && onMissingEntity && !isEmbedded) {
+      return null;
+    }
     if (isEmbedded) {
       return (
         <div className="flex h-full min-h-0 flex-col">

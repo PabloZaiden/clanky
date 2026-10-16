@@ -35,6 +35,7 @@ export interface ChatLifecycleResult {
   transcript: ChatTranscript;
   loading: boolean;
   error: string | null;
+  notFound: boolean;
   isActive: boolean;
   needsSshCredentials: boolean;
   refreshChat: (options?: ChatRefreshOptions) => Promise<void>;

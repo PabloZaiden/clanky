@@ -24,6 +24,7 @@ export interface UseWorkerUpdateJobsResult {
   activeJobId: string | null;
   snapshot: WorkerUpdateJobSnapshotResponse | null;
   loading: boolean;
+  notFoundJobId: string | null;
   starting: boolean;
   error: string | null;
   startUpdates: () => Promise<StartWorkerUpdatesResponse | null>;
@@ -57,6 +58,7 @@ export function useWorkerUpdateJobs(
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<WorkerUpdateJobSnapshotResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [notFoundJobId, setNotFoundJobId] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dismissingAllJobs, setDismissingAllJobs] = useState(false);
@@ -141,6 +143,7 @@ export function useWorkerUpdateJobs(
     setSnapshot(null);
     setLoading(false);
     setError(null);
+    setNotFoundJobId(null);
   }, []);
 
   const openJob = useCallback((jobId: string) => {
@@ -155,6 +158,7 @@ export function useWorkerUpdateJobs(
     setActiveJobId(normalizedId);
     setSnapshot(null);
     setError(null);
+    setNotFoundJobId(null);
   }, [enabled]);
 
   const refreshJob = useCallback((
@@ -196,6 +200,7 @@ export function useWorkerUpdateJobs(
         }
         if (response.status === 404) {
           clearActiveJob();
+          setNotFoundJobId(requestJobId);
           return null;
         }
         const nextSnapshot = await readApiResponse<WorkerUpdateJobSnapshotResponse>(response);
@@ -207,6 +212,7 @@ export function useWorkerUpdateJobs(
           return null;
         }
         setSnapshot(nextSnapshot);
+        setNotFoundJobId(null);
         return nextSnapshot;
       } catch (refreshError) {
         if (
@@ -237,7 +243,11 @@ export function useWorkerUpdateJobs(
     enabled: enabled && activeJobId !== null,
     refresh: async (event) => {
       if (event.action === "deleted") {
+        const deletedJobId = activeJobIdRef.current;
         clearActiveJob();
+        if (deletedJobId) {
+          setNotFoundJobId(deletedJobId);
+        }
         return;
       }
       await refreshJob({ showLoading: false });
@@ -431,6 +441,7 @@ export function useWorkerUpdateJobs(
     activeJobId,
     snapshot,
     loading,
+    notFoundJobId,
     starting,
     error,
     startUpdates,

@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { WebAppRoute } from "@pablozaiden/webapp/web";
 import { useRealtimeRefreshWithRecovery } from "../../hooks/useRealtimeStream";
 import {
@@ -23,7 +23,16 @@ import {
   useVoiceSettings,
 } from "../../hooks";
 import { buildExecutionHostSidebarNodes, buildWorkspaceSidebarGroups } from "./shell-types";
-import { getShellRouteSelection } from "./shell-route-composition";
+import {
+  getShellRouteSelection,
+  getShellRouteTaskId,
+  isMissingShellRouteTarget,
+} from "./shell-route-composition";
+
+interface TaskRouteVerification {
+  taskId: string;
+  status: "checking" | "missing" | "present" | "failed";
+}
 
 export function useShellResources(route: WebAppRoute, isOwner: boolean) {
   const {
@@ -44,6 +53,7 @@ export function useShellResources(route: WebAppRoute, isOwner: boolean) {
     loading: tasksLoading,
     error: tasksError,
     refresh: refreshTasks,
+    refreshTaskById,
     markTaskStarting,
     clearOptimisticTaskStart,
     createTask,
@@ -155,6 +165,40 @@ export function useShellResources(route: WebAppRoute, isOwner: boolean) {
     quickChatWorkspace,
   ]);
 
+  const taskRouteId = getShellRouteTaskId(route);
+  const [taskRouteVerification, setTaskRouteVerification] = useState<TaskRouteVerification | null>(null);
+
+  useEffect(() => {
+    if (!taskRouteId) {
+      setTaskRouteVerification(null);
+      return;
+    }
+    if (tasksLoading || tasksError !== null) {
+      return;
+    }
+
+    const controller = new AbortController();
+    setTaskRouteVerification({ taskId: taskRouteId, status: "checking" });
+    void refreshTaskById(taskRouteId, controller.signal).then((exists) => {
+      if (controller.signal.aborted) {
+        return;
+      }
+      setTaskRouteVerification({
+        taskId: taskRouteId,
+        status: exists === false ? "missing" : exists === true ? "present" : "failed",
+      });
+    });
+    return () => controller.abort();
+  }, [refreshTaskById, taskRouteId, tasksError, tasksLoading]);
+
+  const routedTaskVerification = taskRouteVerification?.taskId === taskRouteId
+    ? taskRouteVerification
+    : null;
+  const taskRouteLoading = Boolean(taskRouteId)
+    && tasksError === null
+    && (routedTaskVerification === null || routedTaskVerification.status === "checking");
+  const missingTaskRouteTarget = routedTaskVerification?.status === "missing";
+
   const shellLoading = chatsLoading
     || tasksLoading
     || sshServersLoading
@@ -180,6 +224,22 @@ export function useShellResources(route: WebAppRoute, isOwner: boolean) {
     servers,
     executionHosts: executionHosts.hosts,
     agents: agents.agents,
+  });
+  const missingRouteTarget = missingTaskRouteTarget || isMissingShellRouteTarget(route, {
+    chats: { items: chats, loading: chatsLoading, error: chatsError },
+    workspaces: { items: workspaces, loading: workspacesLoading, error: workspaceError },
+    servers: { items: servers, loading: sshServersLoading, error: sshServersError },
+    executionHosts: {
+      items: executionHosts.hosts,
+      loading: executionHosts.loading,
+      error: executionHosts.error,
+    },
+    agents: { items: agents.agents, loading: agents.loading, error: agents.error },
+    terminalSessions: {
+      items: terminalSessions,
+      loading: terminalSessionsLoading,
+      error: terminalSessionsError,
+    },
   });
 
   return {
@@ -250,6 +310,8 @@ export function useShellResources(route: WebAppRoute, isOwner: boolean) {
     quickChatUnavailableReason,
     shellLoading,
     shellErrors,
+    missingRouteTarget,
+    taskRouteLoading,
     ...routeSelection,
   };
 }

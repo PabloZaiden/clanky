@@ -37,18 +37,32 @@ import { ServerPasswordModal } from "../app-shell/server-password-modal";
 
 export interface TerminalSessionDetailsProps {
   terminalSessionId: string;
+  onMissingEntity?: () => void;
   copyTextToClipboard?: (text: string) => Promise<void>;
   forcedFocusMode?: boolean;
 }
 
 export function TerminalSessionDetails({
   terminalSessionId,
+  onMissingEntity,
   copyTextToClipboard: copyClipboardFn = writeTextToClipboard,
   forcedFocusMode = false,
 }: TerminalSessionDetailsProps) {
   const toast = useToast();
   const { error: showErrorToast } = toast;
-  const { session, loading, error, deleteSession: _deleteSession, refresh } = useTerminalSession(terminalSessionId);
+  const {
+    session,
+    loading,
+    error,
+    notFound,
+    deleteSession: _deleteSession,
+    refresh,
+  } = useTerminalSession(terminalSessionId);
+  useEffect(() => {
+    if (notFound) {
+      onMissingEntity?.();
+    }
+  }, [notFound, onMissingEntity]);
 
   const terminalContainerRef = useRef<HTMLDivElement>(null);
   const focusModeLayerRef = useRef<HTMLDivElement>(null);
@@ -263,6 +277,10 @@ export function TerminalSessionDetails({
 
   if (loading && !session) {
     return <div className="p-6 text-gray-500 dark:text-gray-400">Loading terminal session...</div>;
+  }
+
+  if (notFound && onMissingEntity) {
+    return null;
   }
 
   if (!session) {

@@ -25,6 +25,8 @@ export interface UseTasksResult {
   error: string | null;
   /** Refresh tasks from the server */
   refresh: (options?: ResourceRefreshOptions) => Promise<void>;
+  /** Refresh a routed task through its authoritative item endpoint */
+  refreshTaskById: (id: string, signal?: AbortSignal) => Promise<boolean | null>;
   /** Create a new task (tasks are always started immediately) */
   createTask: (request: CreateTaskRequest) => Promise<CreateTaskResult>;
   /** Update an existing task */
@@ -65,6 +67,7 @@ export function useTasks(): UseTasksResult {
     setError,
     refresh,
     refreshTask,
+    refreshTaskById,
     markTaskStarting,
     clearOptimisticTaskStart,
     getTask,
@@ -87,6 +90,7 @@ export function useTasks(): UseTasksResult {
     loading,
     error,
     refresh,
+    refreshTaskById,
     createTask,
     updateTask,
     deleteTask,

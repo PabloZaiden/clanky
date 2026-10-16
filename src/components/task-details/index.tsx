@@ -3,7 +3,7 @@
  */
 
 import { Tabs, useHeaderActions, useToast, type ActionMenuItem } from "@pablozaiden/webapp/web";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useTask, useMarkdownPreference } from "../../hooks";
 import {
   ConversationComposer,
@@ -41,6 +41,7 @@ export interface TaskDetailsProps {
   showActivity?: boolean;
   onCloseActivity?: () => void;
   onOpenActivity?: () => void;
+  onMissingEntity?: () => void;
 }
 
 export function TaskDetails({
@@ -50,9 +51,10 @@ export function TaskDetails({
   showActivity = false,
   onCloseActivity,
   onOpenActivity,
+  onMissingEntity,
 }: TaskDetailsProps) {
    const {
-      task, loading, error, messages, toolCalls, logs, gitChangeCounter, refresh,
+      task, loading, error, notFound, messages, toolCalls, logs, gitChangeCounter, refresh,
       refreshCoalesced,
       hasOlderTranscript, loadingTranscript, loadMoreTranscript, loadFullTranscript,
         accept, push, updateBranch, remove, purge, markMerged, closeLocalTask, manualCompleteTask,
@@ -61,6 +63,11 @@ export function TaskDetails({
       sendPlanFeedback, acceptPlan, discardPlan,
      addressReviewComments, enablePullRequestAutoMerge, startAutomaticPrFlow, stopAutomaticPrFlow, update, connectTerminal,
     } = useTask(taskId);
+  useEffect(() => {
+    if (notFound) {
+      onMissingEntity?.();
+    }
+  }, [notFound, onMissingEntity]);
 
   const { enabled: markdownEnabled } = useMarkdownPreference();
   const toast = useToast();
@@ -243,6 +250,9 @@ export function TaskDetails({
   }
 
   if (!task) {
+    if (notFound && onMissingEntity) {
+      return null;
+    }
     return (
       <div className="min-h-screen p-8">
         <div className="w-full">

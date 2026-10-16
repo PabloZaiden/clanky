@@ -64,6 +64,7 @@ export interface UseProvisioningJobResult {
   snapshot: PublicProvisioningJobSnapshot | null;
   logs: ProvisioningLogEntry[];
   loading: boolean;
+  notFoundJobId: string | null;
   starting: boolean;
   error: string | null;
   websocketStatus: RealtimeStreamStatus;
@@ -176,6 +177,7 @@ export function useProvisioningJob(): UseProvisioningJobResult {
   const [snapshot, setSnapshot] = useState<PublicProvisioningJobSnapshot | null>(null);
   const [logs, setLogs] = useState<ProvisioningLogEntry[]>([]);
   const [loading, setLoading] = useState(false);
+  const [notFoundJobId, setNotFoundJobId] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dismissingAllJobs, setDismissingAllJobs] = useState(false);
@@ -253,6 +255,7 @@ export function useProvisioningJob(): UseProvisioningJobResult {
     setSnapshot(null);
     setLogs([]);
     setError(null);
+    setNotFoundJobId(null);
   }, []);
 
   const openJob = useCallback((jobId: string) => {
@@ -267,6 +270,7 @@ export function useProvisioningJob(): UseProvisioningJobResult {
       setSnapshot(null);
       setLogs([]);
       setError(null);
+      setNotFoundJobId(null);
     }
     activeJobIdRef.current = trimmedJobId;
     setJobId(trimmedJobId);
@@ -300,6 +304,7 @@ export function useProvisioningJob(): UseProvisioningJobResult {
         }
         if (response.status === 404) {
           clearActiveJob();
+          setNotFoundJobId(requestJobId);
           return null;
         }
         const nextSnapshot = await readApiResponse<PublicProvisioningJobSnapshot>(response);
@@ -308,6 +313,7 @@ export function useProvisioningJob(): UseProvisioningJobResult {
         }
         setSnapshot(nextSnapshot);
         setLogs(nextSnapshot.logs);
+        setNotFoundJobId(null);
         return nextSnapshot;
       } catch (nextError) {
         if (controller.signal.aborted) {
@@ -335,7 +341,11 @@ export function useProvisioningJob(): UseProvisioningJobResult {
     enabled: activeJobId !== null,
     refresh: async (event) => {
       if (event.action === "deleted") {
+        const deletedJobId = activeJobIdRef.current;
         clearActiveJob();
+        if (deletedJobId) {
+          setNotFoundJobId(deletedJobId);
+        }
         return;
       }
       await refreshJob({ showLoading: false });
@@ -464,6 +474,7 @@ export function useProvisioningJob(): UseProvisioningJobResult {
       activeJobIdRef.current = nextSnapshot.job.config.id;
       setSnapshot(nextSnapshot);
       setLogs(nextSnapshot.logs);
+      setNotFoundJobId(null);
       await refreshJobs({ showLoading: false });
       return nextSnapshot;
     } catch (nextError) {
@@ -591,6 +602,7 @@ export function useProvisioningJob(): UseProvisioningJobResult {
     snapshot,
     logs,
     loading,
+    notFoundJobId,
     starting,
     error,
     websocketStatus,

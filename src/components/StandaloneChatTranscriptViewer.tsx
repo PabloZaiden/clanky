@@ -1,13 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
-import { apiRequest } from "../lib/api-client";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { readApiResponse, requestApiResponse } from "../lib/api-client";
 
 interface StandaloneChatTranscriptViewerProps {
   chatId: string;
+  onMissingEntity?: () => void;
 }
 
 type LoadState =
   | { status: "loading" }
   | { status: "loaded"; markdown: string }
+  | { status: "not-found" }
   | { status: "error"; message: string };
 
 function getTitleFromMarkdown(markdown: string): string {
@@ -15,9 +17,17 @@ function getTitleFromMarkdown(markdown: string): string {
   return heading || "Chat transcript";
 }
 
-export function StandaloneChatTranscriptViewer({ chatId }: StandaloneChatTranscriptViewerProps) {
+export function StandaloneChatTranscriptViewer({
+  chatId,
+  onMissingEntity,
+}: StandaloneChatTranscriptViewerProps) {
   const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
+  const onMissingEntityRef = useRef(onMissingEntity);
   const transcriptUrl = useMemo(() => `/api/chats/${encodeURIComponent(chatId)}/transcript.md`, [chatId]);
+
+  useEffect(() => {
+    onMissingEntityRef.current = onMissingEntity;
+  }, [onMissingEntity]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -25,12 +35,23 @@ export function StandaloneChatTranscriptViewer({ chatId }: StandaloneChatTranscr
     async function loadTranscript(): Promise<void> {
       setLoadState({ status: "loading" });
       try {
-        const markdown = await apiRequest(transcriptUrl, {
+        const response = await requestApiResponse(transcriptUrl, {
           signal: controller.signal,
-          responseType: "text",
           action: "Load chat transcript",
           fallbackMessage: "Failed to load transcript",
+          acceptedStatuses: [404],
         });
+        if (response.status === 404) {
+          const handleMissingEntity = onMissingEntityRef.current;
+          if (handleMissingEntity) {
+            setLoadState({ status: "not-found" });
+            handleMissingEntity();
+          } else {
+            setLoadState({ status: "error", message: "Chat not found" });
+          }
+          return;
+        }
+        const markdown = await readApiResponse(response, "text");
         setLoadState({ status: "loaded", markdown });
       } catch (error) {
         if (controller.signal.aborted) {
@@ -100,6 +121,7 @@ export function StandaloneChatTranscriptViewer({ chatId }: StandaloneChatTranscr
         {loadState.status === "loading" && (
           <p>Loading transcript...</p>
         )}
+        {loadState.status === "not-found" && null}
         {loadState.status === "error" && (
           <p>
             {loadState.message}

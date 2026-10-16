@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import logoSvgPath from "../../favicon.svg" with { type: "file" };
 import {
   useToast,
@@ -57,6 +57,7 @@ export function AppShell() {
     purgeArchivedWorkspaceTasks,
     terminalSessions,
     executionHosts,
+    executionHostsLoading,
     refreshExecutionHosts,
     createTerminalSession,
     updateTerminalSession,
@@ -93,6 +94,8 @@ export function AppShell() {
     quickChatUnavailableReason,
     shellLoading,
     shellErrors,
+    missingRouteTarget,
+    taskRouteLoading,
     taskId,
     chatId,
     composeKind,
@@ -112,6 +115,12 @@ export function AppShell() {
   } = useShellNavigation({
     setRoute,
   });
+  useEffect(() => {
+    if (missingRouteTarget) {
+      navigateWithinShell(HOME_ROUTE);
+    }
+  }, [missingRouteTarget, navigateWithinShell]);
+
   const liveVoiceCall = useLiveVoice({
     enabled: voiceSettings.settings.live.configured, route,
   });
@@ -259,6 +268,8 @@ export function AppShell() {
     openHarnessActivity,
     shellLoading,
     shellErrors,
+    missingRouteTarget,
+    taskRouteLoading,
     navigateWithinShell,
     tasks,
     chats,
@@ -267,6 +278,7 @@ export function AppShell() {
     onControlFileOpenResult,
     terminalSessions,
     executionHosts,
+    executionHostsLoading,
     servers,
     executionHostNodes,
     workspaceGroups,
@@ -337,10 +349,13 @@ export function AppShell() {
     servers,
     shellErrors,
     shellLoading,
+    missingRouteTarget,
+    taskRouteLoading,
     sidebarWorkspaceGroups,
     tasks,
     terminalSessions,
     executionHosts,
+    executionHostsLoading,
     toast,
     updateServer,
     setIsOwner,

@@ -7,6 +7,7 @@ import type { Task } from "@/shared";
 import { log } from "@pablozaiden/webapp/web";
 import { apiRequest, readApiResponse, requestApiResponse } from "../../lib/api-client";
 import { createRefreshCoordinator } from "../../lib/refresh-coordinator";
+import { isAbortError } from "../../lib/request-lifecycle";
 import type { ResourceRefreshOptions } from "../useResourceRefresh";
 
 export interface UseTasksStateResult {
@@ -17,6 +18,7 @@ export interface UseTasksStateResult {
   setError: React.Dispatch<React.SetStateAction<string | null>>;
   refresh: (options?: ResourceRefreshOptions) => Promise<void>;
   refreshTask: (id: string) => Promise<void>;
+  refreshTaskById: (id: string, signal?: AbortSignal) => Promise<boolean | null>;
   markTaskStarting: (id: string, status: "starting" | "planning") => void;
   clearOptimisticTaskStart: (id: string) => void;
   getTask: (id: string) => Task | undefined;
@@ -139,6 +141,52 @@ export function useTasksState(): UseTasksStateResult {
     }
   }, [reconcileTasks]);
 
+  const refreshTaskById = useCallback(async (
+    id: string,
+    signal?: AbortSignal,
+  ): Promise<boolean | null> => {
+    try {
+      const response = await requestApiResponse(`/api/tasks/${encodeURIComponent(id)}`, {
+        signal,
+        action: "Verify task",
+        fallbackMessage: "Failed to verify task",
+        acceptedStatuses: [404],
+      });
+      if (signal?.aborted) {
+        return null;
+      }
+      if (response.status === 404) {
+        optimisticTaskStatusesRef.current.delete(id);
+        setTasks((current) => current.filter((task) => task.config.id !== id));
+        return false;
+      }
+
+      const task = await readApiResponse<Task>(response);
+      if (signal?.aborted) {
+        return null;
+      }
+      const reconciledTask = reconcileTasks([task], {
+        removeMissingOptimisticTasks: false,
+      })[0] ?? task;
+      setTasks((current) => {
+        const index = current.findIndex((item) => item.config.id === id);
+        if (index < 0) {
+          return [...current, reconciledTask];
+        }
+        const nextTasks = [...current];
+        nextTasks[index] = reconciledTask;
+        return nextTasks;
+      });
+      return true;
+    } catch (refreshError) {
+      if (signal?.aborted || isAbortError(refreshError)) {
+        return null;
+      }
+      setError(String(refreshError));
+      return null;
+    }
+  }, [reconcileTasks, setError]);
+
   const markTaskStarting = useCallback((id: string, status: "starting" | "planning") => {
     optimisticTaskStatusesRef.current.set(id, status);
     setTasks((prev) => prev.map((task) => (
@@ -183,6 +231,7 @@ export function useTasksState(): UseTasksStateResult {
     setError,
     refresh,
     refreshTask,
+    refreshTaskById,
     markTaskStarting,
     clearOptimisticTaskStart,
     getTask,
