@@ -229,6 +229,7 @@ retains answerable pending questions while the native request is still alive.
 A reconnect does not abort that execution; blocking questions keep the chat
 waiting. **Stop** cancels pending questions. Losing the underlying native
 request or replacing its connection can still expire them.
+Expired questions no longer show an answer form or a separate expiry notice.
 An unconfirmed answer delivery must not be resent blindly; reconnecting does
 not clear that uncertainty or submit the answer again, including when answer
 delivery and reconnect overlap. Copilot's legacy callback

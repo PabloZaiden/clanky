@@ -157,28 +157,22 @@ export function ChatQuestions({
   chatId,
   requests,
   transcriptMessageIds,
-  dismissedExpiredQuestionRequestId,
   onChatSnapshot,
   onAnswerInputFocusChange,
 }: {
   chatId: string;
   requests: HarnessQuestionRequest[];
   transcriptMessageIds: ReadonlySet<string>;
-  dismissedExpiredQuestionRequestId?: string;
   onChatSnapshot: (chat: Chat) => void;
   onAnswerInputFocusChange: (focused: boolean) => void;
 }) {
   const visible = requests.filter(isQuestionOpen);
-  const expired = requests.at(-1);
-  const showExpiredNotice = !visible.length
-    && expired?.status === "expired"
-    && expired.requestId !== dismissedExpiredQuestionRequestId;
 
   useEffect(() => {
     if (!visible.length) onAnswerInputFocusChange(false);
   }, [onAnswerInputFocusChange, visible.length]);
 
-  if (!visible.length && !showExpiredNotice) return null;
+  if (!visible.length) return null;
   return (
     <div
       onFocusCapture={(event) => {
@@ -202,9 +196,6 @@ export function ChatQuestions({
           onChatSnapshot={onChatSnapshot}
         />
       ))}
-      {showExpiredNotice && (
-        <div className="border-t border-gray-200 px-4 py-2 text-xs text-gray-500 dark:border-gray-700 dark:text-gray-400">The previous question has expired.</div>
-      )}
     </div>
   );
 }

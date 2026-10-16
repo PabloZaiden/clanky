@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { type TranscriptFileLinkContext, type TranscriptFileLinkTarget } from "./log-viewer";
 import { getChatWorkspaceId, getExecutionHostSourceId } from "@/shared";
-import { isQuestionOpen } from "@/shared/harness-questions";
 import { appAbsoluteUrl } from "../lib/public-path";
 import { replaceWebAppRoute, routeToHash, useHeaderActions, useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { useChatLifecycle } from "./chat-details/chat-lifecycle";
@@ -52,10 +51,6 @@ export function ChatDetails({
   const isEmbedded = embedded || (typeof embeddedTaskId === "string" && embeddedTaskId.length > 0);
   const [embeddedActivity, setEmbeddedActivity] = useState(false);
   const [questionAnswerInputFocused, setQuestionAnswerInputFocused] = useState(false);
-  const [dismissedExpiredQuestion, setDismissedExpiredQuestion] = useState<{
-    chatId: string;
-    requestId: string;
-  } | null>(null);
   useEffect(() => {
     setQuestionAnswerInputFocused(false);
   }, [chatId]);
@@ -84,12 +79,6 @@ export function ChatDetails({
       onMissingEntity?.();
     }
   }, [isEmbedded, notFound, onMissingEntity]);
-  const handleMessageSent = useCallback(() => {
-    const requests = chat?.state.harness?.questions ?? [];
-    const expiredQuestion = requests.at(-1);
-    if (requests.some(isQuestionOpen) || expiredQuestion?.status !== "expired") return;
-    setDismissedExpiredQuestion({ chatId, requestId: expiredQuestion.requestId });
-  }, [chat?.state.harness?.questions, chatId]);
   const openActivity = useCallback(() => {
     if (isEmbedded) setEmbeddedActivity(true);
     else onOpenActivity?.();
@@ -140,7 +129,6 @@ export function ChatDetails({
     isExternallyBusy,
     needsSshCredentials,
     onChatSnapshot: applyChatSnapshot,
-    onMessageSent: handleMessageSent,
     markChatStarting,
     refreshChat,
     handleReconnect,
@@ -274,9 +262,6 @@ export function ChatDetails({
         onLoadFullTranscript={loadFullTranscript}
         loadingTranscript={loadingTranscript}
         onChatSnapshot={applyChatSnapshot}
-        dismissedExpiredQuestionRequestId={dismissedExpiredQuestion?.chatId === chatId
-          ? dismissedExpiredQuestion.requestId
-          : undefined}
         onQuestionAnswerFocusChange={setQuestionAnswerInputFocused}
         onReadAloud={handleReadAloud}
         readAloudAvailable={
