@@ -1,4 +1,4 @@
-import { useContext, useEffect, useMemo, useRef } from "react";
+import { useContext, useEffect, useRef } from "react";
 import type { PointerEvent } from "react";
 import { isQuestionOpen } from "@/shared/harness-questions";
 import { ConversationViewer } from "../log-viewer";
@@ -129,10 +129,6 @@ export function ChatTranscript({
     resetTapSequence();
   }, [liveVoice?.available, liveVoice?.busy]);
 
-  const transcriptMessageIds = useMemo(
-    () => new Set(transcript.messages.map((message) => message.id)),
-    [transcript.messages],
-  );
   const activity = chat.state.harness?.activity;
   const blockingQuestions = (chat.state.harness?.questions ?? [])
     .filter((request) => request.blocking && isQuestionOpen(request));
@@ -193,7 +189,6 @@ export function ChatTranscript({
           <ChatQuestions
             chatId={chat.config.id}
             requests={chat.state.harness?.questions ?? []}
-            transcriptMessageIds={transcriptMessageIds}
             onChatSnapshot={onChatSnapshot}
             onAnswerInputFocusChange={onQuestionAnswerFocusChange}
           />

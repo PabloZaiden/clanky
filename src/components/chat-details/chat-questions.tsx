@@ -14,19 +14,14 @@ function isQuestionAnswerInput(target: EventTarget | null): target is HTMLInputE
     && (target.type === "text" || target.type === "number");
 }
 
-function QuestionField({ question, index, requestId, values, custom, disabled, questionLabel, onValues, onCustom }: {
+function QuestionField({ question, index, requestId, values, custom, disabled, numbered, onValues, onCustom }: {
   question: QuestionInfo; index: number; requestId: string; values: string[]; custom: string;
-  disabled: boolean; questionLabel: string | null; onValues: (values: string[]) => void; onCustom: (value: string) => void;
+  disabled: boolean; numbered: boolean; onValues: (values: string[]) => void; onCustom: (value: string) => void;
 }) {
   const name = `question-${requestId}-${index}`;
   return (
-    <fieldset disabled={disabled} className="min-w-0 space-y-2">
-      <legend className={questionLabel === null ? "sr-only" : "text-sm font-medium"}>
-        {questionLabel ?? question.question}
-        {questionLabel !== null && questionLabel !== question.question && (
-          <span className="sr-only"> {question.question}</span>
-        )}
-      </legend>
+    <fieldset disabled={disabled} aria-label={numbered ? `Answer ${index + 1}` : "Answer"} className="min-w-0 space-y-2">
+      {numbered && <legend className="text-sm font-medium">{index + 1}.</legend>}
       {question.options.map((option) => (
         <label key={option.label} className="flex cursor-pointer items-start gap-2 text-sm">
           <input type={question.multiple ? "checkbox" : "radio"} name={name}
@@ -60,12 +55,10 @@ function QuestionField({ question, index, requestId, values, custom, disabled, q
 function QuestionForm({
   chatId,
   request,
-  transcriptMessageIds,
   onChatSnapshot,
 }: {
   chatId: string;
   request: HarnessQuestionRequest;
-  transcriptMessageIds: ReadonlySet<string>;
   onChatSnapshot: (chat: Chat) => void;
 }) {
   const [values, setValues] = useState<string[][]>(() => request.questions.map(() => []));
@@ -76,9 +69,6 @@ function QuestionForm({
   const operation = useRef<AbortController | null>(null);
   useEffect(() => () => operation.current?.abort(), []);
   const disabled = submitting || stopping || request.status !== "pending";
-  const hasQuestionMessage = request.transcript
-    ? transcriptMessageIds.has(request.transcript.questionMessageId)
-    : false;
   const answers = values.map((selection, index) => custom[index]?.trim() ? [...selection, custom[index]!.trim()] : selection);
 
   async function submit(): Promise<void> {
@@ -132,9 +122,7 @@ function QuestionForm({
       </div>
       {request.questions.map((question, index) => (
         <QuestionField key={index} question={question} index={index} requestId={request.requestId}
-          questionLabel={!hasQuestionMessage
-            ? question.question
-            : request.questions.length > 1 ? `${index + 1}.` : null}
+          numbered={request.questions.length > 1}
           values={values[index]!} custom={custom[index]!} disabled={disabled}
           onValues={(selection) => setValues((current) => current.map((value, position) => position === index ? selection : value))}
           onCustom={(text) => setCustom((current) => current.map((value, position) => position === index ? text : value))} />
@@ -156,13 +144,11 @@ function QuestionForm({
 export function ChatQuestions({
   chatId,
   requests,
-  transcriptMessageIds,
   onChatSnapshot,
   onAnswerInputFocusChange,
 }: {
   chatId: string;
   requests: HarnessQuestionRequest[];
-  transcriptMessageIds: ReadonlySet<string>;
   onChatSnapshot: (chat: Chat) => void;
   onAnswerInputFocusChange: (focused: boolean) => void;
 }) {
@@ -192,7 +178,6 @@ export function ChatQuestions({
           key={request.requestId}
           chatId={chatId}
           request={request}
-          transcriptMessageIds={transcriptMessageIds}
           onChatSnapshot={onChatSnapshot}
         />
       ))}
