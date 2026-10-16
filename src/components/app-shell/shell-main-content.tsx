@@ -63,6 +63,7 @@ export interface ShellMainContentProps {
   shellLoading: boolean;
   shellErrors: string[];
   missingRouteTarget: boolean;
+  taskRouteLoading: boolean;
   navigateWithinShell: (route: WebAppRoute) => void;
 
   // Data
@@ -969,6 +970,8 @@ export function AppRouteContent(props: ShellMainContentProps) {
       )}
       {props.missingRouteTarget ? (
         <LoadingState title="Returning home" />
+      ) : props.taskRouteLoading ? (
+        <LoadingState title="Loading task" />
       ) : fullViewport
         ? (
           <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">

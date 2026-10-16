@@ -100,7 +100,6 @@ interface ShellRouteEntityCollection<T> {
 }
 
 interface ShellRouteEntityResources {
-  tasks: ShellRouteEntityCollection<Task>;
   chats: ShellRouteEntityCollection<Chat>;
   workspaces: ShellRouteEntityCollection<Workspace>;
   servers: ShellRouteEntityCollection<SshServer>;
@@ -120,6 +119,16 @@ function isMissingFromCollection<T>(
     && !collection.items.some((item) => getId(item) === id);
 }
 
+export function getShellRouteTaskId(route: WebAppRoute): string | undefined {
+  const codeExplorerType = route.view === "code-explorer"
+    ? getRouteString(route, "contentType")
+    : undefined;
+  if (route.view === "task" || route.view === "task-files" || codeExplorerType === "task") {
+    return getRouteString(route, "taskId");
+  }
+  return undefined;
+}
+
 export function isMissingShellRouteTarget(
   route: WebAppRoute,
   resources: ShellRouteEntityResources,
@@ -127,16 +136,7 @@ export function isMissingShellRouteTarget(
   const codeExplorerType = route.view === "code-explorer"
     ? getRouteString(route, "contentType")
     : undefined;
-  const taskId = route.view === "task" || route.view === "task-files"
-    ? getRouteString(route, "taskId")
-    : codeExplorerType === "task"
-      ? getRouteString(route, "taskId")
-      : undefined;
-  if (isMissingFromCollection(taskId, resources.tasks, (task) => task.config.id)) {
-    return true;
-  }
-
-  const chatId = route.view === "chat" || route.view === "chat-transcript"
+  const chatId = route.view === "chat"
     ? getRouteString(route, "chatId")
     : codeExplorerType === "chat"
       ? getRouteString(route, "chatId")
