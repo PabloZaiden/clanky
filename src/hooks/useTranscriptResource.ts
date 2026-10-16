@@ -21,7 +21,6 @@ import {
 import { readApiResponse, requestApiResponse } from "../lib/api-client";
 import { createRefreshCoordinator } from "../lib/refresh-coordinator";
 import { isAbortError } from "../lib/request-lifecycle";
-import { useDocumentVisibility } from "./useDocumentVisibility";
 import { markStreamingText } from "../lib/streaming-text";
 
 export interface TranscriptResourceSnapshot<TResource> {
@@ -78,13 +77,11 @@ export interface UseTranscriptResourceResult<TResource> {
   loadFullTranscript: () => Promise<void>;
   loadToolDetails: (toolCallId: string) => Promise<ToolCallData | null>;
   applyTranscriptEvent: (event: TranscriptStreamEvent) => void;
-  flushTranscript: () => void;
   clearResource: (error?: string) => void;
 }
 
 // Outlast the reconciliation queue's 250 ms request cadence so realtime invalidations share its batch refresh.
 const TRANSCRIPT_REFRESH_COALESCE_WINDOW_MS = 500;
-const TRANSCRIPT_STREAM_PUBLISH_INTERVAL_MS = 200;
 
 export function createEmptyTranscript(): ChatTranscript {
   return {
@@ -170,7 +167,6 @@ export function useTranscriptResource<TResource, TSnapshot>({
   mergeResource = replaceResource,
   isResourcePresentationEqual,
 }: UseTranscriptResourceOptions<TResource, TSnapshot>): UseTranscriptResourceResult<TResource> {
-  const isVisible = useDocumentVisibility();
   const [resource, setResourceState] = useState<TResource | null>(initialResource);
   const [transcript, setTranscriptState] = useState<ChatTranscript>(createEmptyTranscript);
   const [loading, setLoading] = useState(true);
@@ -193,26 +189,10 @@ export function useTranscriptResource<TResource, TSnapshot>({
   const refreshWindowRef = useRef<TranscriptSnapshotOptions>({});
   const toolDetailsCacheRef = useRef(new Map<string, ToolCallData>());
   const streamVersionRef = useRef(0);
-  const publicationTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   resourceIdRef.current = resourceId;
   initialResourceRef.current = initialResource;
   presentationEqualityRef.current = isResourcePresentationEqual;
-
-  const cancelTranscriptPublication = useCallback((): void => {
-    if (publicationTimerRef.current !== undefined) clearTimeout(publicationTimerRef.current);
-    publicationTimerRef.current = undefined;
-  }, []);
-
-  const flushTranscript = useCallback((): void => {
-    if (publicationTimerRef.current === undefined) return;
-    cancelTranscriptPublication();
-    if (mountedRef.current) setTranscriptState(transcriptRef.current);
-  }, [cancelTranscriptPublication]);
-
-  useEffect(() => {
-    if (isVisible) flushTranscript();
-  }, [flushTranscript, isVisible]);
 
   // Resolve updates before React renders so bursts of realtime events share the latest state.
   const setResource = useCallback<Dispatch<SetStateAction<TResource | null>>>((next) => {
@@ -223,19 +203,17 @@ export function useTranscriptResource<TResource, TSnapshot>({
     // Freshness/recovery reads stay authoritative even when only nonvisual activity changes.
     resourceRef.current = resolved;
     if (!presentationEqualityRef.current?.(current, resolved)) {
-      if (resolved !== current) flushTranscript();
       setResourceState(resolved);
     }
-  }, [flushTranscript]);
+  }, []);
 
   const setTranscript = useCallback<Dispatch<SetStateAction<ChatTranscript>>>((next) => {
     const resolved = typeof next === "function"
       ? (next as (value: ChatTranscript) => ChatTranscript)(transcriptRef.current)
       : next;
     transcriptRef.current = resolved;
-    cancelTranscriptPublication();
     setTranscriptState(resolved);
-  }, [cancelTranscriptPublication]);
+  }, []);
 
   const clearResource = useCallback((nextError?: string): void => {
     setResource(null);
@@ -329,7 +307,6 @@ export function useTranscriptResource<TResource, TSnapshot>({
         ) {
           return;
         }
-        flushTranscript();
         setError(String(refreshError));
       } finally {
         if (
@@ -349,7 +326,6 @@ export function useTranscriptResource<TResource, TSnapshot>({
     baseUrl,
     clearResource,
     decodeSnapshot,
-    flushTranscript,
     mergeResource,
     resourceId,
     resourceLabel,
@@ -495,7 +471,6 @@ export function useTranscriptResource<TResource, TSnapshot>({
       ) {
         return;
       }
-      flushTranscript();
       setError(String(transcriptError));
     } finally {
       if (transcriptControllerRef.current === controller) {
@@ -513,7 +488,6 @@ export function useTranscriptResource<TResource, TSnapshot>({
     baseUrl,
     clearResource,
     decodeSnapshot,
-    flushTranscript,
     mergeResource,
     resourceId,
     resourceLabel,
@@ -614,36 +588,18 @@ export function useTranscriptResource<TResource, TSnapshot>({
           );
         }
       }
-      if (
-        event.type === "transcript.message.delta"
-        || event.type === "transcript.log.delta"
-        || event.type === "transcript.tool.extra"
-      ) {
-        transcriptRef.current = update.transcript;
-        if (publicationTimerRef.current === undefined) {
-          publicationTimerRef.current = setTimeout(() => {
-            publicationTimerRef.current = undefined;
-            if (mountedRef.current && resourceIdRef.current === resourceId) {
-              setTranscriptState(transcriptRef.current);
-            }
-          }, TRANSCRIPT_STREAM_PUBLISH_INTERVAL_MS);
-        }
-      } else {
-        setTranscript(update.transcript);
-      }
+      setTranscript(update.transcript);
     }
     if (update.gapDetected) {
-      flushTranscript();
       refreshControllerRef.current?.abort();
       refreshCoordinatorRef.current.reset();
       snapshotEtagRef.current = null;
       void refresh({ showLoading: false });
     }
-  }, [flushTranscript, refresh, resourceId, setTranscript]);
+  }, [refresh, resourceId, setTranscript]);
 
   useEffect(() => {
     mountedRef.current = true;
-    cancelTranscriptPublication();
     resourceIdRef.current = resourceId;
     resourceRef.current = initialResourceRef.current;
     transcriptRef.current = createEmptyTranscript();
@@ -665,7 +621,6 @@ export function useTranscriptResource<TResource, TSnapshot>({
 
     return () => {
       mountedRef.current = false;
-      cancelTranscriptPublication();
       cancelCoalescedRefresh();
       refreshRequestIdRef.current += 1;
       transcriptRequestIdRef.current += 1;
@@ -679,7 +634,7 @@ export function useTranscriptResource<TResource, TSnapshot>({
       refreshControllerRef.current = null;
       transcriptControllerRef.current = null;
     };
-  }, [cancelCoalescedRefresh, cancelTranscriptPublication, resourceId]);
+  }, [cancelCoalescedRefresh, resourceId]);
 
   return {
     resource,
@@ -698,7 +653,6 @@ export function useTranscriptResource<TResource, TSnapshot>({
     loadFullTranscript,
     loadToolDetails,
     applyTranscriptEvent,
-    flushTranscript,
     clearResource,
   };
 }

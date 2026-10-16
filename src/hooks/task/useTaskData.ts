@@ -32,7 +32,6 @@ export interface UseTaskDataResult {
   loadMoreTranscript: () => Promise<void>;
   loadFullTranscript: () => Promise<void>;
   applyTranscriptEvent: (event: TranscriptStreamEvent) => void;
-  flushTranscript: () => void;
 }
 
 function decodeTaskSnapshot(
@@ -81,6 +80,5 @@ export function useTaskData(taskId: string): UseTaskDataResult {
     loadMoreTranscript: transcriptResource.loadMoreTranscript,
     loadFullTranscript: transcriptResource.loadFullTranscript,
     applyTranscriptEvent: transcriptResource.applyTranscriptEvent,
-    flushTranscript: transcriptResource.flushTranscript,
   };
 }
