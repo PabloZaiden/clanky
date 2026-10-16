@@ -47,6 +47,13 @@ export const liveVoiceDirectSchemas = {
     afterCreationDescription: confirmation.describe("Required for initialMessage/open: short plain-text description in the user's language of these exact follow-on actions, shown together with creation for approval."),
   }).strict(),
   clanky_interrupt_chat: z.object({ ...selection }).strict(),
+  clanky_update_chat_lifecycle: z.object({
+    ...selection,
+    action: z.enum(["mark_done", "move_to_trash"]),
+    confirmationDescription: confirmation.describe(
+      "Required for move_to_trash: one or two short sentences in the user's language naming the chat and explaining that active work will stop and the chat is recoverable in Trash for 30 days. Null only for mark_done.",
+    ),
+  }).strict(),
   clanky_respond_chat_interaction: z.object({
     ...selection, kind: z.enum(["question", "permission"]), requestId: optionalText,
     answers: z.array(z.array(z.string().min(1).max(10_000)).max(100)).min(1).max(100).nullable().default(null),
@@ -102,6 +109,7 @@ export const liveVoiceDirectDescriptions: Record<DirectToolName, string> = {
   clanky_steer_queued_chat_message: "Steer one existing queued chat message into a streaming native execution; this does not send new content. If messageId is null, proceeds only when exactly one message is queued. When several are queued, choose one of the returned candidates and pass its messageId. Reports native admission, not delivery or completion. Direct, no discovery.",
   clanky_create_chat: "Create a workspace or direct-host chat with real models/defaults. Choose workspace OR host. Optional frozen initialMessage/open are included in the visual confirmation and run only after creation is approved. Direct, no discovery.",
   clanky_interrupt_chat: "Interrupt an active named/ID/current chat. Stopping voice is different. Direct, no discovery.",
+  clanky_update_chat_lifecycle: "Change a standalone chat's lifecycle only: mark_done uses the supported done action and does not interrupt busy work; move_to_trash stops work and keeps the chat recoverable for 30 days. move_to_trash requires a user-language confirmationDescription and the originating user's visual approval. Never set runtime statuses or permanently purge. Task chats remain task-managed; agent chats are not supported. Direct, no discovery.",
   clanky_respond_chat_interaction: "Answer a pending chat question (answers) or decide permission (decision). requestId=null selects only an unambiguous pending interaction. Permissions require visual confirmation. Direct, no discovery.",
   clanky_list_tasks: "List compact tasks by workspace, exact name and raw status, with progress, required-intervention reasons and Voice status category. Each item retains status and includes voiceStatus: active for planning/starting/running/waiting/resolving_conflicts, idle for idle/draft, done for completed/accepted_local/merged/pushed/deleted, error for stopped/failed/max_iterations. Leave status null for Voice-category queries. Direct, no discovery.",
   clanky_read_task: "Read task raw status, Voice status category and latest literal conversation, or an exact plan/diff section, together. No generated summary; do not claim complete history if omitted earlier messages or cursor remain. Direct, no discovery.",

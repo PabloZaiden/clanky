@@ -191,6 +191,36 @@ export async function executeDirectLiveVoiceTool(context: LiveVoiceDirectContext
       const id = String((await context.resolve("chat", input.target, input.workspace))["id"]);
       return await context.execute({ operationId: "POST /api/chats/:id/interrupt", parameters: { id }, body: {} });
     }
+    case "clanky_update_chat_lifecycle": {
+      const input = liveVoiceDirectSchemas[name].parse(args);
+      if (input.action === "move_to_trash" && !input.confirmationDescription) {
+        throw new DomainError(
+          "voice_confirmation_description_required",
+          "Describe the named chat and its recoverable Trash behavior before preparing this deletion.",
+        );
+      }
+      const target = await context.resolve("chat", input.target, input.workspace);
+      const id = String(target["id"]);
+      const chat = directRecord(await context.readExact("GET /api/chats/:id", { id }));
+      const config = directRecord(chat["config"]);
+      if (config["scope"] !== "workspace" || config["taskId"] !== undefined) {
+        throw new DomainError(
+          "voice_chat_lifecycle_unsupported",
+          "Live voice lifecycle actions are available only for standalone chats; task chats are managed by their task and agent chats are not supported.",
+        );
+      }
+      if (input.action === "mark_done") {
+        return await context.execute({
+          operationId: "POST /api/chats/:id/done",
+          parameters: { id },
+        });
+      }
+      return await context.execute({
+        operationId: "DELETE /api/chats/:id",
+        parameters: { id },
+        confirmationDescription: input.confirmationDescription,
+      });
+    }
     case "clanky_respond_chat_interaction": {
       const input = liveVoiceDirectSchemas[name].parse(args);
       const id = String((await context.resolve("chat", input.target, input.workspace))["id"]);
