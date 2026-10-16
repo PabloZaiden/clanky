@@ -118,6 +118,9 @@ the normal load-error state rather than triggering periodic HTTP polling.
 The header, sidebar, and open chat share that revisioned operational state:
 an accepted action response or a detailed snapshot updates all three, without
 depending on a second realtime notification reaching the sidebar.
+Detail views release their write access on close, and removing a chat revokes
+existing detail writers, so delayed action responses cannot restore removed
+metadata. New views and explicit chat creation can still load initial state.
 Open chats keep their transcript live without republishing operational state
 solely because an activity timestamp or revision advanced.
 

@@ -2,7 +2,7 @@
  * One app-scoped owner for chat metadata; transcript windows remain view-local.
  */
 
-import { createContext, useCallback, useContext, useEffect, type ReactNode, type SetStateAction } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, type ReactNode, type SetStateAction } from "react";
 import type { Chat } from "@/shared";
 import { useOwnedChatActivityState } from "./useChatActivityState";
 import type { TranscriptResourceState } from "./useTranscriptResource";
@@ -21,20 +21,24 @@ export function useChatActivityState() {
 }
 
 export function useChatResourceState(chatId: string): TranscriptResourceState<Chat> {
-  const { chats, getChat, setChats, retainChat } = useChatActivityState();
+  const { chats, getChat, retainChat } = useChatActivityState();
+  const leaseRef = useMemo<{ current: ReturnType<typeof retainChat> | null }>(
+    () => ({ current: null }),
+    [chatId, retainChat],
+  );
   const getResource = useCallback(() => getChat(chatId) ?? null, [chatId, getChat]);
   const setResource = useCallback((update: SetStateAction<Chat | null>): void => {
-    setChats((current) => {
-      const previous = current.find((chat) => chat.config.id === chatId) ?? null;
-      const next = typeof update === "function" ? update(previous) : update;
-      if (next === previous) return current;
-      if (!next) return current.filter((chat) => chat.config.id !== chatId);
-      if (!previous) return [...current, next];
-      return current.map((chat) => chat.config.id === chatId ? next : chat);
-    });
-  }, [chatId, setChats]);
+    leaseRef.current?.setChat(update);
+  }, [leaseRef]);
 
-  useEffect(() => retainChat(chatId), [chatId, retainChat]);
+  useEffect(() => {
+    const lease = retainChat(chatId);
+    leaseRef.current = lease;
+    return () => {
+      leaseRef.current = null;
+      lease.release();
+    };
+  }, [chatId, leaseRef, retainChat]);
 
   return {
     resource: chats.find((chat) => chat.config.id === chatId) ?? null,

@@ -14,7 +14,7 @@ export function useOwnedChatActivityState() {
   const pendingRef = useRef(new Set<string>());
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const mountedRef = useRef(true);
-  const retainedRef = useRef(new Map<string, number>());
+  const retainedRef = useRef(new Map<string, Set<{ active: boolean }>>());
 
   const publish = useCallback((next: Chat[]): void => {
     const previous = displayedRef.current;
@@ -75,6 +75,11 @@ export function useOwnedChatActivityState() {
       pendingRef.current.delete(chat.config.id);
       return normalized;
     });
+    for (const id of latestRef.current.keys()) {
+      if (!latest.has(id)) {
+        for (const lease of retainedRef.current.get(id) ?? []) lease.active = false;
+      }
+    }
     latestRef.current = latest;
     for (const id of pendingRef.current) {
       if (!latest.has(id)) pendingRef.current.delete(id);
@@ -117,19 +122,35 @@ export function useOwnedChatActivityState() {
 
   const getChat = useCallback((id: string): Chat | undefined => latestRef.current.get(id), []);
 
-  const retainChat = useCallback((id: string): (() => void) => {
-    retainedRef.current.set(id, (retainedRef.current.get(id) ?? 0) + 1);
-    return () => {
-      const remaining = (retainedRef.current.get(id) ?? 1) - 1;
-      if (remaining > 0) {
-        retainedRef.current.set(id, remaining);
-        return;
-      }
-      retainedRef.current.delete(id);
-      const chat = latestRef.current.get(id);
-      if (chat && !isStandaloneChat(chat)) {
-        setChats((current) => current.filter((entry) => entry.config.id !== id));
-      }
+  const retainChat = useCallback((id: string) => {
+    const lease = { active: true };
+    const leases = retainedRef.current.get(id) ?? new Set<{ active: boolean }>();
+    leases.add(lease);
+    retainedRef.current.set(id, leases);
+    return {
+      setChat(update: SetStateAction<Chat | null>): void {
+        if (!lease.active) return;
+        setChats((current) => {
+          const previous = current.find((chat) => chat.config.id === id) ?? null;
+          const next = typeof update === "function" ? update(previous) : update;
+          if (!next) {
+            for (const retained of leases) retained.active = false;
+            return current.filter((chat) => chat.config.id !== id);
+          }
+          if (next === previous) return current;
+          if (!previous) return [...current, next];
+          return current.map((chat) => chat.config.id === id ? next : chat);
+        });
+      },
+      release(): void {
+        lease.active = false;
+        if (!leases.delete(lease) || leases.size > 0) return;
+        retainedRef.current.delete(id);
+        const chat = latestRef.current.get(id);
+        if (chat && !isStandaloneChat(chat)) {
+          setChats((current) => current.filter((entry) => entry.config.id !== id));
+        }
+      },
     };
   }, [setChats]);
 

@@ -178,8 +178,8 @@ export function useTranscriptResource<TResource, TSnapshot>({
 }: UseTranscriptResourceOptions<TResource, TSnapshot>): UseTranscriptResourceResult<TResource> {
   const [localResource, setResourceState] = useState<TResource | null>(initialResource);
   const resource = resourceState ? resourceState.resource : localResource;
-  const externalStateRef = useRef(resourceState);
-  externalStateRef.current = resourceState;
+  const externalGetResource = resourceState?.getResource;
+  const externalSetResource = resourceState?.setResource;
   const [transcript, setTranscriptState] = useState<ChatTranscript>(createEmptyTranscript);
   const [loading, setLoading] = useState(true);
   const [loadingTranscript, setLoadingTranscript] = useState(false);
@@ -209,8 +209,7 @@ export function useTranscriptResource<TResource, TSnapshot>({
 
   // Resolve updates before React renders so bursts of realtime events share the latest state.
   const setResource = useCallback<Dispatch<SetStateAction<TResource | null>>>((next) => {
-    const external = externalStateRef.current;
-    const current = external ? external.getResource() : resourceRef.current;
+    const current = externalGetResource ? externalGetResource() : resourceRef.current;
     const resolved = typeof next === "function"
       ? (next as (value: TResource | null) => TResource | null)(current)
       : next;
@@ -219,12 +218,12 @@ export function useTranscriptResource<TResource, TSnapshot>({
     if (resolved !== null) {
       setNotFound(false);
     }
-    if (external) {
-      external.setResource(resolved);
+    if (externalSetResource) {
+      externalSetResource(resolved);
     } else if (!presentationEqualityRef.current?.(current, resolved)) {
       setResourceState(resolved);
     }
-  }, []);
+  }, [externalGetResource, externalSetResource]);
 
   const setTranscript = useCallback<Dispatch<SetStateAction<ChatTranscript>>>((next) => {
     const resolved = typeof next === "function"
@@ -241,9 +240,8 @@ export function useTranscriptResource<TResource, TSnapshot>({
     setNotFound(true);
   }, [setResource, setTranscript]);
   const getResource = useCallback(() => {
-    const external = externalStateRef.current;
-    return external ? external.getResource() : resourceRef.current;
-  }, []);
+    return externalGetResource ? externalGetResource() : resourceRef.current;
+  }, [externalGetResource]);
   const getTranscript = useCallback(() => transcriptRef.current, []);
 
   const refresh = useCallback((

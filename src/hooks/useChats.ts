@@ -82,8 +82,10 @@ export function useChats(): UseChatsResult {
   const abortControllerRef = useRef<AbortController | null>(null);
   const refreshCoordinatorRef = useRef(createRefreshCoordinator<void>());
 
-  const applyChat = useCallback((chat: Chat): void => {
-    setChats((current) => upsertChat(current, chat), { immediateActivityId: chat.config.id });
+  const applyChat = useCallback((chat: Chat, allowInsert = false): void => {
+    setChats((current) => allowInsert || current.some((entry) => entry.config.id === chat.config.id)
+      ? upsertChat(current, chat)
+      : current, { immediateActivityId: chat.config.id });
   }, [setChats]);
 
   const refresh = useCallback((options: ResourceRefreshOptions = {}) => {
@@ -165,7 +167,7 @@ export function useChats(): UseChatsResult {
         action: "Create chat",
         fallbackMessage: "Failed to create chat",
       });
-      applyChat(chat);
+      applyChat(chat, true);
       return chat;
     } catch (createError) {
       log.error("Failed to create chat", {
@@ -183,7 +185,7 @@ export function useChats(): UseChatsResult {
       action: "Create chat here",
       fallbackMessage: "Failed to create chat here",
     });
-    applyChat(chat);
+    applyChat(chat, true);
     return chat;
   }, [applyChat]);
 
@@ -199,7 +201,7 @@ export function useChats(): UseChatsResult {
       action: "Create execution-host chat",
       fallbackMessage: "Failed to create chat",
     });
-    applyChat(chat);
+    applyChat(chat, true);
     return chat;
   }, [applyChat]);
 
