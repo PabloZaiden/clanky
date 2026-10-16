@@ -3,6 +3,7 @@
  */
 
 import { MESSAGE_ATTACHMENT_MAX_PROMPT_BYTES } from "./message-attachments";
+import type { CommandTerminationOutcome } from "./execution-host";
 import { MESH_PROTOCOL_VERSION, type MeshProtocolVersion } from "./mesh-protocol";
 
 export const MESH_EXECUTION_PROTOCOL_VERSION = MESH_PROTOCOL_VERSION;
@@ -69,6 +70,7 @@ export interface MeshExecutionAsyncCommandResult {
   stdout: string;
   stderr: string;
   exitCode: number;
+  termination?: CommandTerminationOutcome;
 }
 
 export interface MeshExecutionAsyncCommandError {

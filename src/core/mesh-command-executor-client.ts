@@ -222,6 +222,9 @@ function parseAsyncCommandSnapshot(value: unknown): MeshExecutionAsyncCommandSna
       || typeof resultRecord["stderr"] !== "string"
       || typeof resultRecord["exitCode"] !== "number"
       || !Number.isSafeInteger(resultRecord["exitCode"])
+      || (resultRecord["termination"] !== undefined
+        && resultRecord["termination"] !== "confirmed"
+        && resultRecord["termination"] !== "failed")
     ) {
       throw new DomainError(
         "mesh_execution_response_invalid",
@@ -233,6 +236,9 @@ function parseAsyncCommandSnapshot(value: unknown): MeshExecutionAsyncCommandSna
       stdout: resultRecord["stdout"],
       stderr: resultRecord["stderr"],
       exitCode: resultRecord["exitCode"],
+      ...(resultRecord["termination"] === "confirmed" || resultRecord["termination"] === "failed"
+        ? { termination: resultRecord["termination"] }
+        : {}),
     };
   }
 
@@ -776,6 +782,7 @@ export class MeshCommandExecutorClient {
     let remoteMayBeRunning = false;
     let startDispatched = false;
     let resultReceived = false;
+    let terminationConfirmed = false;
     const output = {
       stdout: "",
       stderr: "",
@@ -795,7 +802,9 @@ export class MeshCommandExecutorClient {
     };
     try {
       if (options.signal?.aborted) {
-        throw new DomainError("mesh_execution_aborted", "The mesh execution request was aborted.");
+        throw new DomainError("mesh_execution_aborted", "The mesh execution request was aborted.", {
+          details: { terminationConfirmed: true },
+        });
       }
 
       let started: MeshExecutionAsyncCommandSnapshot;
@@ -818,6 +827,7 @@ export class MeshCommandExecutorClient {
           started = await this.sendAsyncCommandRequest(startOperation, { requestId: startRequestId });
           jobId = started.jobId;
           remoteMayBeRunning = started.status === "running";
+          terminationConfirmed = this.isAsyncTerminationConfirmed(started);
           this.consumeAsyncCommandOutput(started, output, options);
           if (remoteMayBeRunning) {
             const cancelled = await this.sendAsyncCommandRequest({
@@ -828,6 +838,7 @@ export class MeshCommandExecutorClient {
             });
             this.consumeAsyncCommandOutput(cancelled, output, options);
             remoteMayBeRunning = cancelled.status === "running";
+            terminationConfirmed = this.isAsyncTerminationConfirmed(cancelled);
           }
         } catch (reconcileError) {
           throw new DomainError(
@@ -838,6 +849,7 @@ export class MeshCommandExecutorClient {
         }
         throw new DomainError("mesh_execution_aborted", "The mesh execution request was aborted.", {
           cause: error,
+          details: { terminationConfirmed },
         });
       }
       jobId = started.jobId;
@@ -863,6 +875,7 @@ export class MeshCommandExecutorClient {
         throw new DomainError(
           "mesh_execution_aborted",
           snapshot.error?.message ?? "The asynchronous mesh command was cancelled.",
+          { details: { terminationConfirmed: this.isAsyncTerminationConfirmed(snapshot) } },
         );
       }
       if (snapshot.status === "failed") {
@@ -901,7 +914,8 @@ export class MeshCommandExecutorClient {
           });
           this.consumeAsyncCommandOutput(cancelled, output, options);
           remoteMayBeRunning = cancelled.status === "running";
-          if (remoteMayBeRunning) {
+          terminationConfirmed = this.isAsyncTerminationConfirmed(cancelled);
+          if (remoteMayBeRunning || !terminationConfirmed) {
             throw new DomainError(
               "mesh_execution_cancel_failed",
               "The asynchronous mesh command cancellation was not confirmed.",
@@ -925,8 +939,19 @@ export class MeshCommandExecutorClient {
           );
         }
       }
+      if (terminationConfirmed && error instanceof DomainError && error.code === "mesh_execution_aborted") {
+        throw new DomainError(error.code, error.message, {
+          cause: error,
+          details: { ...error.details, terminationConfirmed: true },
+        });
+      }
       throw error;
     }
+  }
+
+  private isAsyncTerminationConfirmed(snapshot: MeshExecutionAsyncCommandSnapshot): boolean {
+    return snapshot.result?.termination === "confirmed"
+      || (snapshot.status !== "running" && snapshot.result?.success === true);
   }
 
   private consumeAsyncCommandOutput(

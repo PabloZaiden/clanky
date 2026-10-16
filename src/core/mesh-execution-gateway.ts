@@ -241,6 +241,7 @@ interface MeshExecutionAsyncCommand {
   error?: MeshExecutionAsyncCommandError;
   createdAt: number;
   completedAt?: number;
+  execution?: Promise<void>;
 }
 
 function assertStringSize(value: string, field: string): void {
@@ -1019,7 +1020,7 @@ export class MeshExecutionGateway {
     this.asyncCommands.set(jobId, command);
     this.asyncCommandRequestIds.set(request.requestId, jobId);
 
-    void this.runAsyncCommand(command);
+    command.execution = this.runAsyncCommand(command);
     return this.getAsyncCommandSnapshot(command);
   }
 
@@ -1072,6 +1073,7 @@ export class MeshExecutionGateway {
         message: "The asynchronous mesh command was cancelled.",
       });
     }
+    await command.execution;
     return this.getAsyncCommandSnapshot(command, { stdoutOffset, stderrOffset });
   }
 
@@ -1093,9 +1095,7 @@ export class MeshExecutionGateway {
     if (command.status !== "running") {
       return;
     }
-    command.status = "cancelled";
     command.error = { ...error };
-    command.completedAt = Date.now();
     command.controller.abort();
   }
 
@@ -1199,6 +1199,7 @@ export class MeshExecutionGateway {
   private async runAsyncCommand(command: MeshExecutionAsyncCommand): Promise<void> {
     try {
       const result = await command.executor.exec(command.command, command.args, {
+        longRunning: true,
         cwd: command.cwd,
         timeout: command.timeout,
         maxOutputBytes: command.maxOutputBytes,
@@ -1208,6 +1209,20 @@ export class MeshExecutionGateway {
         onStdoutChunk: (chunk) => this.appendAsyncCommandOutput(command, "stdout", chunk),
         onStderrChunk: (chunk) => this.appendAsyncCommandOutput(command, "stderr", chunk),
       });
+      if (command.status === "running" && command.controller.signal.aborted) {
+        command.result = { ...result, stdout: command.stdout, stderr: command.stderr };
+        if (result.termination === "confirmed" || result.success) {
+          command.status = "cancelled";
+        } else {
+          command.status = "failed";
+          command.error = {
+            code: "mesh_execution_cancel_failed",
+            message: "The asynchronous mesh command process-tree cleanup could not be confirmed.",
+          };
+        }
+        command.completedAt = Date.now();
+        return;
+      }
       if (command.status === "running") {
         const previousOutputBytes = this.getAsyncCommandOutputBytes(command);
         command.stdout = result.stdout;
@@ -1229,16 +1244,17 @@ export class MeshExecutionGateway {
           stdout: command.stdout,
           stderr: command.stderr,
           exitCode: result.exitCode,
+          ...(result.termination ? { termination: result.termination } : {}),
         };
         command.completedAt = Date.now();
       }
     } catch (error) {
-      if (command.status === "cancelled" || command.controller.signal.aborted) {
-        return;
-      }
+      if (command.status === "failed") return;
       command.status = "failed";
       command.error = {
-        code: error instanceof DomainError
+        code: command.controller.signal.aborted
+          ? "mesh_execution_cancel_failed"
+          : error instanceof DomainError
           ? error.code
           : isCommandOutputLimitError(error)
             ? "mesh_execution_result_too_large"

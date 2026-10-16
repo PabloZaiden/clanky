@@ -11,6 +11,8 @@ import { meshAcpGateway } from "../../core/mesh-acp-gateway";
 import { meshTerminalGateway } from "../../core/mesh-terminal-gateway";
 import { meshTcpTunnelGateway } from "../../core/mesh-tcp-tunnel-gateway";
 import { MESH_TERMINAL_MAX_INPUT_BYTES } from "@/shared/mesh-terminal";
+import { domainErrorResponse } from "../helpers";
+import type { ErrorResponse } from "@/contracts";
 
 const log = createLogger("api:websocket");
 
@@ -169,13 +171,19 @@ export function createMessageHandler(helpers: TerminalHelpers) {
         ws.close(1008, "Authenticated user context is required for preview bridges");
         return;
       }
-      void runWithCurrentUser(ws.data.user, () => previewSessionManager.handleBridgeMessage(ws, msg)).catch((error: Error) => {
-        log.warn("Preview bridge message failed", {
+      void runWithCurrentUser(ws.data.user, () => previewSessionManager.handleBridgeMessage(ws, msg)).catch(async (error: unknown) => {
+        const response = domainErrorResponse(error, {
+          policy: "previews",
+          fallback: { error: "preview_error", message: "Preview operation failed", status: 500 },
+        });
+        const body = await response.json() as ErrorResponse;
+        const logFailure = response.status >= 500 ? log.error.bind(log) : log.warn.bind(log);
+        logFailure("Preview bridge message failed", {
           previewId: ws.data.previewBridgeSessionId,
           error: String(error),
         });
         try {
-          ws.send(JSON.stringify({ type: "stream.error", error: String(error) }));
+          ws.send(JSON.stringify({ type: "stream.error", code: body.error, error: body.message }));
         } catch {
           // Ignore send errors while closing a failed preview bridge.
         }

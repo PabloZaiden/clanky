@@ -17,7 +17,8 @@ import {
 } from "./support/mesh-cluster";
 import { pollUntil } from "./support/polling";
 import { MESH_OPERATION_TIMEOUT_MS } from "./support/timeouts";
-import { installExternalAcpProvider } from "./support/provider";
+import { installExternalAcpProvider, installExternalCode } from "./support/provider";
+import { exerciseCodePreview } from "./support/code-preview";
 
 interface MeshRegistration {
   workerNodeId: string;
@@ -270,6 +271,7 @@ test("compiled controller and worker support Mesh chats, shared worktrees, and r
   try {
     await Promise.all([
       installExternalAcpProvider(providerBinDirectory),
+      installExternalCode(providerBinDirectory),
       mkdir(homeDirectory, { recursive: true, mode: 0o700 }),
     ]);
     const command = await compiledClankyCommand();
@@ -388,6 +390,16 @@ test("compiled controller and worker support Mesh chats, shared worktrees, and r
       },
     );
     expect(createdWorkspace.status).toBe(201);
+    const codeKey = await meshJsonRequest<{ token: string }>(controller, "/api/api-keys", {
+      method: "POST", body: { name: "mesh-code", scopes: ["*"] },
+    });
+    expect(codeKey.status).toBe(200);
+    await exerciseCodePreview({
+      baseUrl: controller.baseUrl, apiKey: codeKey.body.token,
+      homeDirectory, logsDirectory: fixtureDirectory,
+      workspace: createdWorkspace.body.id, expectedDirectory: workspaceDirectory,
+      timeoutMs: MESH_OPERATION_TIMEOUT_MS,
+    });
 
     await Bun.write(providerTracePath, `${String(Date.now())} request:models\n`);
     let models: Awaited<ReturnType<typeof meshJsonRequest<Model[]>>>;

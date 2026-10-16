@@ -29,6 +29,7 @@ export interface BuildSshProcessConfigOptions {
   remoteCommand?: string;
   extraArgs?: string[];
   connectionScope?: string;
+  multiplex?: boolean;
   passwordHandling?: "environment" | "argument";
   baseEnv?: NodeJS.ProcessEnv;
   env?: Record<string, string>;
@@ -90,6 +91,7 @@ export function buildSshProcessConfig(options: BuildSshProcessConfigOptions): Ss
       remoteCommand: options.remoteCommand,
       identityFile: options.target.identityFile,
       connectionScope: options.connectionScope,
+      multiplex: options.multiplex,
     }),
   ];
 

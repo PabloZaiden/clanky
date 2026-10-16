@@ -243,6 +243,81 @@ Example CLI output:
 }
 ```
 
+## VS Code web from the CLI
+
+```bash
+clanky code "my-workspace"
+clanky code "my-workspace" --chat "chat-name-or-id"
+clanky code "my-workspace" --task "task-name-or-id" --open
+
+# Explicit consent when the installed VS Code CLI requires its server license:
+clanky code "my-workspace" --accept-server-license-terms --open
+```
+
+Workspace references accept an ID or exact name. `--chat` and `--task` are
+mutually exclusive and are resolved only within that workspace. Duplicate
+names require an ID. Chat/task selectors open their existing effective working
+directory, including managed worktrees and task-linked chats; a missing worktree fails without
+creating it or starting an agent.
+
+The selected workspace host (local, SSH or Mesh) must already have a `code`
+CLI supporting `serve-web`, `--port 0`, `--connection-token-file`, and
+`--default-folder`. Some Remote SSH/Codespaces `code` commands only launch an
+existing editor and cannot serve one. Clanky does not install or replace VS
+Code and does not use Microsoft's tunnel service. POSIX hosts also need
+`bash`, `ps`, `awk`, and `sort` for the session's process ownership supervision,
+including inherited terminals that change process groups. Windows uses the native
+process-tree termination path.
+
+The command starts a token-protected VS Code listener on that host's
+`127.0.0.1` and creates a normal Clanky workspace preview. It prints a
+`http://127.0.0.1:PORT/` URL and its `http://localhost:PORT/` equivalent on
+the **CLI machine**, not a public URL. The preview listens on IPv4 loopback
+and, when the operating system supports it, IPv6 loopback at the same port.
+Opening `http://[::1]:PORT/` redirects to `localhost` because VS Code's
+generated workbench authority does not support IPv6 literals; `localhost`
+can connect over either address family. If IPv6 is unavailable, the CLI
+reports that it is listening on IPv4 only. VS Code itself and the preview's internal
+forwarding use `127.0.0.1` explicitly, so `localhost` resolving to `::1`
+cannot redirect the internal connection to a different address family.
+`--open` launches that machine's browser; without a graphical environment,
+open the printed URL manually on the same machine. The local listener rejects
+foreign hosts, mismatched origins (including between loopback aliases), and
+cross-site subresource requests. VS Code credentials
+are held in the session, not printed in the URL or persisted in preview state.
+Use existing Clanky device profiles or `CLANKY_BASE_URL`/`CLANKY_API_KEY`.
+`--base-url URL` is also accepted.
+
+Keep the CLI running. Ctrl+C, closing the preview in Clanky, disconnecting the
+bridge, or stopping the Clanky server stops that session's VS Code process
+tree and removes its temporary data. Settings/extensions installed into that
+session's server data are temporary. Sessions are not shared or adopted from
+other VS Code instances. A lost execution host can prevent immediate cleanup;
+such failures are reported rather than claiming a confirmed shutdown.
+
+The first launch may download VS Code server components and needs the host's
+network access and supported system libraries. Startup waits for the editor
+to be served, not just a listening port, with a two-minute startup deadline.
+If license consent is needed, review
+[Microsoft's server terms](https://aka.ms/vscode-server-license) and explicitly
+pass `--accept-server-license-terms`; Clanky does not accept them silently.
+This integrates your installed VS Code for individual development, not a
+shared hosted IDE offering.
+
+The authenticated raw `/api/previews/bridge` accepts a `hello` with an optional
+`code: { chat?, task?, acceptServerLicenseTerms }`. Code starts require a
+workspace target, `remoteHost: "127.0.0.1"`, `remotePort: 0`, and a loopback
+local URL at `/`. A successful `ready` additionally includes
+`code: { directory, remotePort }`. Errors include a stable `code` and safe
+`error` message. A `{ type: "close" }` request waits for cleanup before the
+bridge closes. HTTP responses stream through the preview with per-request
+consumption acknowledgements and a bounded receive window, so slow readers pause
+upstream rather than overflowing a response buffer. Bridge clients opt in with
+`request.start.responseFlowControl: true` and acknowledge consumed bytes with
+`{ type: "response.ack", streamId, bytes }`. The receive window is 256 KiB;
+30 seconds without consumption progress cancels the upstream response.
+Cancelling a local request sends `{ type: "request.cancel", streamId }`.
+
 ## Response Format
 
 JSON API responses return the requested data directly on success. Error

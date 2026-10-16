@@ -97,6 +97,7 @@ import { getLocalMeshProtocolMetadata } from "./core/mesh-protocol-version";
 import { controllerRelayService } from "./core/controller-relay-service";
 import { liveVoiceManager } from "./core/live-voice-manager";
 import { startChatTrashMaintenance, stopChatTrashMaintenance, sweepChatTrash } from "./core/chat-trash-maintenance";
+import { previewSessionManager } from "./core/preview-session-manager";
 import { workerRelayService } from "./core/worker-relay-service";
 import { meshHealthService } from "./core/mesh-health-service";
 import { ClankyOperationService } from "./core/clanky-operation-service";
@@ -641,6 +642,7 @@ export async function getWebAppServer(
         }
       },
       beforeStop: async () => {
+        const [previews] = await Promise.allSettled([previewSessionManager.closeAll()]);
         await liveVoiceManager.closeAll();
         if (meshWorker) {
           await workerRelayService.stopRuntime();
@@ -656,6 +658,7 @@ export async function getWebAppServer(
         await closeAllMeshTerminalConnections();
         await meshHarnessGateway.closeAll();
         await meshAcpGateway.closeAll();
+        if (previews?.status === "rejected") throw previews.reason;
       },
     },
     configResponse: (req) => {

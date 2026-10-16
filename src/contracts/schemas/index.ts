@@ -7,6 +7,7 @@
  */
 
 export * from "./file-system";
+export { CodePreviewOptionsSchema, CodePreviewHelloSchema } from "./preview";
 export {
   RequestControlUiActionSchema,
   AcknowledgeControlUiActionSchema,
