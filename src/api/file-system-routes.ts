@@ -169,6 +169,7 @@ export function createFileSystemRoutes(config: FileExplorerRouteConfig): RouteTa
             if (entry.etag.startsWith("W/")) headers.delete("etag");
           }
           const { stream } = await fileSystemService.read(target, entry, { signal: req.signal, range: selected });
+          ctx.server?.timeout(req, 0);
           // Bun auto-ranges native file streams even when If-Range failed.
           const body = range !== null && !selected
             ? stream.pipeThrough(new TransformStream<Uint8Array, Uint8Array>())

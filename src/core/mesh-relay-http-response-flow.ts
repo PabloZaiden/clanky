@@ -12,7 +12,6 @@ import { MeshRelayStreamError } from "./mesh-relay-errors";
 export const MESH_RELAY_RESPONSE_FLOW_HEADER = "x-clanky-mesh-response-flow";
 export const MESH_RELAY_RESPONSE_FLOW_VERSION = 1;
 const MAX_IN_FLIGHT_FRAMES = 16;
-const ACKNOWLEDGEMENT_TIMEOUT_MS = 60_000;
 
 function invalidAcknowledgement(cause?: unknown): MeshRelayStreamError {
   return new MeshRelayStreamError(
@@ -49,7 +48,7 @@ export class MeshRelayHttpResponseSender {
     this.stream.send(JSON.stringify({ type: "http.response.end" }));
     // The receiver closes only after consuming the end frame. A local flush
     // cannot confirm that the relay has delivered it to the other peer.
-    const item = await this.stream.next(ACKNOWLEDGEMENT_TIMEOUT_MS);
+    const item = await this.stream.next();
     if (item.kind !== "closed") throw invalidAcknowledgement();
     if (item.code !== 1000) {
       throw new MeshRelayStreamError(
@@ -60,7 +59,8 @@ export class MeshRelayHttpResponseSender {
   }
 
   private async readAcknowledgement(): Promise<void> {
-    const item = await this.stream.next(ACKNOWLEDGEMENT_TIMEOUT_MS);
+    // Missing credit means the consumer is backpressured, not disconnected.
+    const item = await this.stream.next();
     if (item.kind === "closed") {
       throw new MeshRelayStreamError(
         "mesh_relay_stream_closed",
