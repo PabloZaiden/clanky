@@ -12,6 +12,11 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import { MeshRelayStreamError } from "./mesh-relay-errors";
 import type { MeshRelayDataStream } from "./mesh-relay-data-stream";
 import {
+  MESH_RELAY_RESPONSE_FLOW_HEADER,
+  MESH_RELAY_RESPONSE_FLOW_VERSION,
+  MeshRelayHttpResponseSender,
+} from "./mesh-relay-http-response-flow";
+import {
   MESH_RELAY_MAX_HEADER_BYTES,
   MESH_RELAY_MAX_HEADER_COUNT,
   MESH_RELAY_MAX_ENROLLMENT_BODY_BYTES,
@@ -43,6 +48,7 @@ export interface MeshRelayHttpResponseFrame {
   status: number;
   statusText: string;
   headers: Record<string, string>;
+  responseFlowControl?: typeof MESH_RELAY_RESPONSE_FLOW_VERSION;
 }
 
 export interface MeshRelayHttpResponseEndFrame {
@@ -131,6 +137,10 @@ export function parseMeshRelayHttpFrame(text: string): MeshRelayHttpFrame {
         || status < 100
         || status > 599
         || typeof record["statusText"] !== "string"
+        || (
+          record["responseFlowControl"] !== undefined
+          && record["responseFlowControl"] !== MESH_RELAY_RESPONSE_FLOW_VERSION
+        )
       ) {
         throw invalidFrame();
       }
@@ -139,6 +149,9 @@ export function parseMeshRelayHttpFrame(text: string): MeshRelayHttpFrame {
         status,
         statusText: record["statusText"].slice(0, 512),
         headers: parseHeaderRecord(record["headers"]),
+        ...(record["responseFlowControl"] === MESH_RELAY_RESPONSE_FLOW_VERSION
+          ? { responseFlowControl: MESH_RELAY_RESPONSE_FLOW_VERSION }
+          : {}),
       };
     }
     default:
@@ -231,29 +244,38 @@ function toBodyStream(
 function readBodyStream(
   stream: MeshRelayDataStream,
   finish: (code: number, reason: string) => void,
+  responseFlowControl: boolean,
 ): ReadableStream<Uint8Array> {
   let finished = false;
+  let consumedBytes = 0;
+  let deliveredBytes = 0;
   return new ReadableStream<Uint8Array>({
     async pull(controller): Promise<void> {
       if (finished) {
         return;
       }
-      const item = await stream.next();
-      if (item.kind === "binary") {
-        controller.enqueue(item.bytes);
-        return;
-      }
-      finished = true;
-      if (item.kind === "closed") {
-        finish(item.code, item.reason);
-        controller.error(new MeshRelayStreamError(
-          "mesh_relay_response_truncated",
-          item.reason.trim() || "The Mesh relay response ended before it completed.",
-          { status: 502 },
-        ));
-        return;
-      }
       try {
+        // The next pull confirms consumption, not just arrival in our queue.
+        if (responseFlowControl && consumedBytes !== deliveredBytes && !stream.closed) {
+          stream.send(JSON.stringify({ type: "http.response.ack", bytes: deliveredBytes }));
+          consumedBytes = deliveredBytes;
+        }
+        const item = await stream.next();
+        if (item.kind === "binary") {
+          deliveredBytes += item.bytes.byteLength;
+          controller.enqueue(item.bytes);
+          return;
+        }
+        finished = true;
+        if (item.kind === "closed") {
+          finish(item.code, item.reason);
+          controller.error(new MeshRelayStreamError(
+            "mesh_relay_response_truncated",
+            item.reason.trim() || "The Mesh relay response ended before it completed.",
+            { status: 502 },
+          ));
+          return;
+        }
         const frame = parseMeshRelayHttpFrame(item.text);
         if (frame.type === "http.response.end") {
           finish(1000, "The Mesh relay response completed");
@@ -276,6 +298,7 @@ function readBodyStream(
         );
         controller.error(invalidFrame());
       } catch (error) {
+        finished = true;
         finish(
           MESH_RELAY_STREAM_CLOSE_PROTOCOL_ERROR,
           "The Mesh relay response framing was invalid",
@@ -290,7 +313,7 @@ function readBodyStream(
         "The Mesh relay response body was cancelled",
       );
     },
-  });
+  }, { highWaterMark: responseFlowControl ? 0 : 1 });
 }
 
 function closeFailedHttpRequest(
@@ -368,6 +391,7 @@ export interface MeshRelayHttpRequestInit {
   signal?: AbortSignal;
   responseHeaderTimeoutMs?: number;
   onDispatch?: () => void;
+  responseFlowControl?: boolean;
 }
 
 /**
@@ -476,6 +500,9 @@ export async function performMeshRelayHttpRequest(
     if (frame.type !== "http.response") {
       throw invalidFrame();
     }
+    if (frame.responseFlowControl && !init.responseFlowControl) {
+      throw invalidFrame();
+    }
     cancelUpload();
     const finish = (code: number, reason: string): void => {
       release();
@@ -505,7 +532,7 @@ export async function performMeshRelayHttpRequest(
       finish(1000, "The Mesh relay response completed");
       body = null;
     } else {
-      body = readBodyStream(stream, finish);
+      body = readBodyStream(stream, finish, frame.responseFlowControl !== undefined);
     }
     return new Response(body, {
       status: frame.status,
@@ -633,6 +660,8 @@ export async function serveMeshRelayHttpStream(
   const controller = new AbortController();
   const url = new URL(path.startsWith("/") ? path : `/${path}`, "https://mesh.invalid");
   const bodyless = method === "GET" || method === "HEAD";
+  const responseFlowControl = options.headers[MESH_RELAY_RESPONSE_FLOW_HEADER]
+    === String(MESH_RELAY_RESPONSE_FLOW_VERSION);
   const body = new MeshRelayRequestBody(bodyless);
   const requestBodyLimit = url.pathname === "/api/mesh/internal/enrollment"
     ? MESH_RELAY_MAX_ENROLLMENT_BODY_BYTES
@@ -709,8 +738,22 @@ export async function serveMeshRelayHttpStream(
       status: response.status,
       statusText: response.statusText,
       headers: sanitizeResponseHeaders(response.headers),
+      ...(responseFlowControl ? { responseFlowControl: MESH_RELAY_RESPONSE_FLOW_VERSION } : {}),
     }));
     if (response.body && !STATUSLESS_BODY_STATUSES.has(response.status)) {
+      if (responseFlowControl) {
+        // After the headers, the initiator ends its upload. Hand the single
+        // inbound reader from the request drain to response acknowledgements.
+        if (!(await settleRequestDrain(drainFailure))) {
+          throw new MeshRelayStreamError(
+            "mesh_relay_stream_timeout",
+            "The Mesh relay request body drain timed out.",
+            { status: 504 },
+          );
+        }
+        if (drainError) throw drainError;
+      }
+      const sender = responseFlowControl ? new MeshRelayHttpResponseSender(stream) : undefined;
       responseReader = response.body.getReader();
       while (!stream.closed) {
         const { done, value } = await responseReader.read();
@@ -718,7 +761,11 @@ export async function serveMeshRelayHttpStream(
           break;
         }
         if (value.byteLength > 0) {
-          await stream.sendBinaryChunks(value);
+          if (sender) {
+            await sender.send(value);
+          } else {
+            await stream.sendBinaryChunks(value);
+          }
         }
       }
     }

@@ -15,6 +15,10 @@ import {
   sanitizeMeshRelayRequestHeaders,
 } from "./mesh-relay-http";
 import { MeshRelayDuplexSocket } from "./mesh-relay-socket";
+import {
+  MESH_RELAY_RESPONSE_FLOW_HEADER,
+  MESH_RELAY_RESPONSE_FLOW_VERSION,
+} from "./mesh-relay-http-response-flow";
 
 export type MeshRelayConnectorResolver = (
   route: MeshRelayPeerRoute,
@@ -47,16 +51,19 @@ export function createMeshRelayPeerTransport(
     ): Promise<Response> {
       const relayRoute = requireRelayRoute(route);
       const connector = resolve(relayRoute);
+      const headers = new Headers(request.headers);
+      headers.set(MESH_RELAY_RESPONSE_FLOW_HEADER, String(MESH_RELAY_RESPONSE_FLOW_VERSION));
       const stream = await connector.openStream({
         kind: "http",
         method: (request.method ?? "GET").toUpperCase(),
         path,
-        headers: sanitizeMeshRelayRequestHeaders(request.headers),
+        headers: sanitizeMeshRelayRequestHeaders(headers),
         targetNodeId: relayRoute.targetNodeId,
         ...(request.signal ? { signal: request.signal } : {}),
       });
       return await performMeshRelayHttpRequest(stream, {
         body: request.body ?? null,
+        responseFlowControl: true,
         ...(request.signal ? { signal: request.signal } : {}),
         onDispatch: request.onDispatch,
       });
