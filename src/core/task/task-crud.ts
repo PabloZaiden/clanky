@@ -139,46 +139,42 @@ export async function generateTaskTitleImpl(
   _ctx: TaskCtx,
   options: GenerateTaskTitleOptions,
 ): Promise<string> {
-  let backend = backendManager.getInitializedBackend(options.workspaceId);
-  if (
-    !backend
-    || !backendManager.isWorkspaceConnected(options.workspaceId)
-    || backend.getDirectory() !== options.directory
-  ) {
-    await backendManager.connect(options.workspaceId, options.directory);
-    backend = backendManager.getBackend(options.workspaceId);
-  }
-  const tempSession = await createTransientHarnessSession(backend, {
-    title: "Task Title Generation",
-    directory: options.directory,
-  });
-  const cleanupTempSession = createIdempotentAsyncOperation(() => cleanupTransientHarnessSession(backend, tempSession.id));
+  return await backendManager.withWorkspaceBackend(
+    { workspaceId: options.workspaceId, directory: options.directory },
+    async (backend) => {
+      const tempSession = await createTransientHarnessSession(backend, {
+        title: "Task Title Generation",
+        directory: options.directory,
+      });
+      const cleanupTempSession = createIdempotentAsyncOperation(() => cleanupTransientHarnessSession(backend, tempSession.id));
 
-  try {
-    const helperModel = await resolveEffectiveCheapModel({
-      workspaceId: options.workspaceId,
-      directory: options.directory,
-      model: options.model,
-      cheapModel: options.cheapModel,
-      operation: "task_title_generation",
-    });
-    const title = await generateTaskName({
-      prompt: options.prompt,
-      backend,
-      sessionId: tempSession.id,
-      model: helperModel,
-      timeoutMs: options.timeoutMs,
-      cancelSession: cleanupTempSession,
-    });
-    log.info(`Generated task title: ${title}`);
-    return title;
-  } finally {
-    try {
-      await cleanupTempSession();
-    } catch (cleanupError) {
-      log.warn(`Failed to clean up temporary session: ${String(cleanupError)}`);
-    }
-  }
+      try {
+        const helperModel = await resolveEffectiveCheapModel({
+          workspaceId: options.workspaceId,
+          directory: options.directory,
+          model: options.model,
+          cheapModel: options.cheapModel,
+          operation: "task_title_generation",
+        });
+        const title = await generateTaskName({
+          prompt: options.prompt,
+          backend,
+          sessionId: tempSession.id,
+          model: helperModel,
+          timeoutMs: options.timeoutMs,
+          cancelSession: cleanupTempSession,
+        });
+        log.info(`Generated task title: ${title}`);
+        return title;
+      } finally {
+        try {
+          await cleanupTempSession();
+        } catch (cleanupError) {
+          log.warn(`Failed to clean up temporary session: ${String(cleanupError)}`);
+        }
+      }
+    },
+  );
 }
 
 export async function getTaskImpl(ctx: TaskCtx, taskId: string): Promise<Task | null> {

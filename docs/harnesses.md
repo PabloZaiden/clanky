@@ -55,6 +55,35 @@ before admitting a Control conversation.
 [Live voice](voice.md#live-voice) is a global sidebar assistant, independent of
 OpenCode, Quick Chat and any selected chat or native adapter.
 
+## Connection context and helper isolation
+
+Model catalogs, variants, task titles, PR metadata and review-feedback helpers
+reuse a workspace connection only when its user, workspace, execution-host
+binding and revision, adapter/provider, runtime settings and directory match.
+An incompatible operation opens its own connection instead of reconnecting the
+shared one. Concurrent first requests for the same context share initialization.
+
+Each helper conversation has its own identity and unattended question policy.
+An isolated connection stays open through its helper's session cleanup and is
+then disconnected on success or failure. Workspace reset, shutdown and scoped
+Mesh invalidation also include these temporary connections. Execution-host model
+discovery uses independent temporary connections for concurrent requests; its
+catalog cache is separate from their operation identities. Catalog caches are
+scoped by user, workspace or host binding/revision, adapter/provider and directory.
+Catalog acquisition rejects a changed host binding instead of caching another
+host's catalog. A failed first connection can be initialized again after its
+teardown succeeds. Failed helper teardown remains tracked for a later cleanup
+attempt; resetting a workspace attempts every helper even if one fails.
+Shutdown stops background producers, rejects new backend acquisition, and awaits
+backend teardown before closing Mesh relays and gateways. Tasks first checkpoint
+under their owning user context; interrupted planning remains resumable after
+restart rather than being marked stopped or failed by transport cleanup.
+
+Task and chat connections remain dedicated to their entity and user. Helpers
+never borrow those conversations or move their worktree context. This isolation
+does not authorize resuming a saved conversation under a different binding; the
+existing session-ownership checks still apply.
+
 ## Continue from history
 
 When a chat is failed because its provider-native session cannot be resumed,

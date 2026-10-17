@@ -657,10 +657,14 @@ async function manualCompleteTaskLocked(ctx: TaskCtx, taskId: string): Promise<T
 }
 
 export async function shutdownImpl(ctx: TaskCtx): Promise<void> {
-  const promises = Array.from(ctx.engines.keys()).map((taskId) =>
-    ctx.stopTask(taskId, "Server shutdown")
+  const results = await Promise.allSettled(
+    Array.from(ctx.engines, async ([taskId, engine]) => {
+      await engine.shutdown();
+      if (ctx.engines.get(taskId) === engine) ctx.engines.delete(taskId);
+    }),
   );
-  await Promise.allSettled(promises);
+  const errors: unknown[] = results.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
+  if (errors.length > 0) throw new AggregateError(errors, "Failed to checkpoint tasks during shutdown.");
 }
 
 export async function forceResetAllImpl(ctx: TaskCtx): Promise<{ enginesCleared: number; tasksReset: number }> {

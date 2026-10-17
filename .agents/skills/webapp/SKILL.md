@@ -117,6 +117,10 @@ the application being built; they are not expected to exist beside this skill.
 - Lifecycle process ownership checks must refuse to stop an unrecognized
   process that occupies the configured port. Keep PID/log writes atomic and
   use the framework's state-directory and locking helpers.
+- Framework servers await lifecycle hooks on macOS/Linux `SIGINT`/`SIGTERM`
+  and authenticated server shutdown. Keep owned worker/subprocess cleanup in
+  those hooks; do not install competing app signal handlers. Failed process
+  cleanup logs errors and exits nonzero. Forced OS termination cannot run hooks.
 - The detached lifecycle supports Linux, macOS, and Windows. Validate build
   targets with `BUN_COMPILE_TARGETS`; Docker's supported example mapping is
   Linux `amd64` to `bun-linux-x64` and Linux `arm64` to `bun-linux-arm64`.

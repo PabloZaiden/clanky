@@ -305,46 +305,41 @@ export async function extractAutomaticPrFeedback(
     };
   }
 
-  let backend = backendManager.getInitializedBackend(task.config.workspaceId);
-  if (
-    !backend
-    || !backendManager.isWorkspaceConnected(task.config.workspaceId)
-    || backend.getDirectory() !== directory
-  ) {
-    await backendManager.connect(task.config.workspaceId, directory);
-    backend = backendManager.getBackend(task.config.workspaceId);
-  }
-
-  const tempSession = await createTransientHarnessSession(backend, {
-    title: "Automatic PR Feedback Extraction",
-    directory,
-  });
-
-  try {
-    const helperModel = await resolveEffectiveCheapModel({
-      workspaceId: task.config.workspaceId,
-      directory,
-      model: task.config.model,
-      cheapModel: task.config.cheapModel,
-      operation: "automatic_pr_feedback_extraction",
-    });
-
-    return await extractAutomaticPrFeedbackWithSession({
-      task,
-      directory,
-      feedbackItems,
-      backend,
-      sessionId: tempSession.id,
-      model: helperModel,
-    });
-  } finally {
-    try {
-      await cleanupTransientHarnessSession(backend, tempSession.id);
-    } catch (cleanupError) {
-      log.warn("Failed to clean up temporary PR feedback extraction session", {
-        taskId: task.config.id,
-        error: String(cleanupError),
+  return await backendManager.withWorkspaceBackend(
+    { workspaceId: task.config.workspaceId, directory },
+    async (backend) => {
+      const tempSession = await createTransientHarnessSession(backend, {
+        title: "Automatic PR Feedback Extraction",
+        directory,
       });
-    }
-  }
+
+      try {
+        const helperModel = await resolveEffectiveCheapModel({
+          workspaceId: task.config.workspaceId,
+          directory,
+          model: task.config.model,
+          cheapModel: task.config.cheapModel,
+          operation: "automatic_pr_feedback_extraction",
+        });
+
+        return await extractAutomaticPrFeedbackWithSession({
+          task,
+          directory,
+          feedbackItems,
+          backend,
+          sessionId: tempSession.id,
+          model: helperModel,
+        });
+      } finally {
+        try {
+          await cleanupTransientHarnessSession(backend, tempSession.id);
+        } catch (cleanupError) {
+          log.warn("Failed to clean up temporary PR feedback extraction session", {
+            taskId: task.config.id,
+            error: String(cleanupError),
+          });
+        }
+      }
+    },
+  );
 }
