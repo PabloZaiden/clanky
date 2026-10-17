@@ -20,6 +20,7 @@ import type {
 import type { AgentProvider } from "../shared/settings";
 import type { ByteRange } from "../shared/byte-range";
 import type { FileSystemTreeEntry } from "../shared/file-system";
+import type { CommandExecutionState } from "../shared/job-execution";
 
 export type {
   GitCommandScope,
@@ -54,6 +55,13 @@ export interface CommandOptions {
   onStdoutChunk?: (chunk: string) => void;
   /** Optional callback for incremental stderr chunks */
   onStderrChunk?: (chunk: string) => void;
+  /**
+   * Transport evidence only: dispatch does not establish remote process start.
+   * A started notification requires command output or host process evidence.
+   */
+  onExecutionState?: (state: Exclude<CommandExecutionState, "not_started">) => void;
+  /** Never retry an ambiguous async start when false; observation/cleanup remain transport-owned. */
+  retryStart?: boolean;
   /**
    * Run the command through a transport-owned asynchronous execution path
    * when one is available instead of holding a single request open.

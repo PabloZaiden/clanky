@@ -4,12 +4,16 @@ const TRANSITION_TABLE: Record<
   ProvisioningJobStatus,
   ReadonlySet<ProvisioningJobStatus>
 > = {
-  pending: new Set(["running", "failed", "cancelled", "interrupted"]),
-  running: new Set(["completed", "failed", "cancelled", "interrupted"]),
+  pending: new Set(["running", "not_started", "connection_failed", "failed", "cancelled", "interrupted", "unconfirmed"]),
+  running: new Set(["verifying", "completed", "not_started", "connection_failed", "failed", "cancelled", "interrupted", "unconfirmed"]),
+  verifying: new Set(["completed", "cancelled", "unconfirmed"]),
   completed: new Set(),
+  not_started: new Set(),
+  connection_failed: new Set(),
   failed: new Set(),
   cancelled: new Set(),
   interrupted: new Set(),
+  unconfirmed: new Set(),
 };
 
 export function isValidProvisioningTransition(

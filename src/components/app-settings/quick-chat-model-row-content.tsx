@@ -146,18 +146,15 @@ export function QuickChatModelRowContent({
         models={models}
         loading={modelsLoading}
         disabled={loading || saving || !workspace}
-        className={SELECT_CLASS_NAME}
+        className="wapp-input"
         {...modelOptions}
       />
       {modelsError ? <SettingsError>{modelsError}</SettingsError> : null}
       {savedModelUnavailable ? (
         <p className="text-xs text-amber-600 dark:text-amber-400">
-          The saved quick chat model is not available for this workspace. Select another model before using quick chat.
+          Saved model unavailable. Select another model.
         </p>
       ) : null}
-      <br />
     </div>
   );
 }
-
-const SELECT_CLASS_NAME = "block w-full max-w-xl rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 disabled:opacity-50 dark:border-gray-600 dark:bg-neutral-800 dark:text-gray-100 dark:focus:ring-gray-600";

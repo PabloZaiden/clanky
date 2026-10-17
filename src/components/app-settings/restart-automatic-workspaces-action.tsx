@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import {
   ConfirmModal,
+  SettingsFieldRow,
   createLogger,
   useToast,
 } from "@pablozaiden/webapp/web";
@@ -109,8 +110,8 @@ export function RestartAutomaticWorkspacesAction({
   }
 
   return (
-    <div className="space-y-2">
-      <Button
+    <>
+      <SettingsFieldRow title="Automatic workspaces" actions={<Button
         type="button"
         size="sm"
         loading={busy}
@@ -121,7 +122,8 @@ export function RestartAutomaticWorkspacesAction({
         }}
       >
         Restart all
-      </Button>
+      </Button>} feedback={<>
+      {!workspacesLoading && automaticWorkspaces.length === 0 ? <small>No automatic workspaces</small> : null}
       {restartResult ? (
         <div
           role="status"
@@ -140,7 +142,7 @@ export function RestartAutomaticWorkspacesAction({
             <ul className="mt-1 space-y-1 text-xs">
               {restartResult.started.map((entry) => (
                 <li key={entry.workspaceId}>
-                  {entry.workspaceName}: <code>{entry.provisioningJobId}</code>
+                  {entry.workspaceName}: Restart requested
                 </li>
               ))}
             </ul>
@@ -154,11 +156,9 @@ export function RestartAutomaticWorkspacesAction({
               ))}
             </ul>
           ) : null}
-          {restartResult.started.length > 0 ? (
-            <p className="mt-1 text-xs">Restart jobs continue in the background.</p>
-          ) : null}
         </div>
       ) : null}
+      </>} />
       <ConfirmModal
         isOpen={showConfirm}
         onClose={() => {
@@ -168,10 +168,10 @@ export function RestartAutomaticWorkspacesAction({
         }}
         onConfirm={() => void confirmRestart()}
         title="Restart automatic workspaces?"
-        message={`This starts restart jobs for ${automaticWorkspaces.length} automatically provisioned workspaces. Restarting may interrupt current workspace activity.`}
-        confirmLabel="Start restart jobs"
+        message={`Restart ${automaticWorkspaces.length} workspaces? Active sessions may disconnect.`}
+        confirmLabel="Restart workspaces"
         loading={busy}
       />
-    </div>
+    </>
   );
 }

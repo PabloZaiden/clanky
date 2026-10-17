@@ -39,7 +39,7 @@ export const LogEntryItem = memo(function LogEntryItem({
     : false;
   const renderDetails = useCallback(
     () => (
-      <pre className="mt-1 overflow-x-auto rounded bg-gray-100 p-2 font-mono text-xs text-gray-900 dark:bg-neutral-800 dark:text-gray-100">
+      <pre className="mt-1 overflow-x-auto rounded bg-gray-100 p-2 font-mono text-base text-gray-900 dark:bg-neutral-800 dark:text-gray-100">
         {JSON.stringify(getOtherDetails(details!), null, 2)}
       </pre>
     ),
@@ -77,21 +77,22 @@ export const LogEntryItem = memo(function LogEntryItem({
         data-log-tone={logTone}
       >
         {showMessageLabel && (
-          <span className="break-words text-sm leading-7">{log.message}</span>
+          <span className="break-words text-lg leading-7">{log.message}</span>
         )}
         {hasResponseContent && (
           <div className={showMessageLabel ? "mt-2" : ""}>
             {markdownEnabled ? (
               <MarkdownRenderer
                 content={responseContent as string}
-                className="text-sm leading-7 text-gray-500 dark:text-gray-400"
+                textSize="body"
+                className="text-lg leading-7 text-gray-500 dark:text-gray-400"
                 dimmed
                 fileLinkContext={fileLinkContext}
               />
             ) : (
               <TranscriptTextContent
                 content={responseContent as string}
-                className="text-sm leading-7 whitespace-pre-wrap break-words text-gray-500 dark:text-gray-400"
+                className="text-lg leading-7 whitespace-pre-wrap break-words text-gray-500 dark:text-gray-400"
                 dimmed
                 fileLinkContext={fileLinkContext}
               />

@@ -7,7 +7,19 @@ export function getWorkerUpdateStepLabel(step: WorkerUpdateStep): string {
   return step === "update" ? "Clanky update" : "Worker service restart";
 }
 
+export function getWorkerUpdateWorkerName(job: WorkerUpdateJob): string {
+  return job.config.workerName === job.config.workerNodeId ? "Worker" : job.config.workerName;
+}
+
 export function getWorkerUpdateProgressLabel(job: WorkerUpdateJob): string {
+  switch (job.state.status) {
+    case "not_started": return "Not started";
+    case "connection_failed": return "Could not connect";
+    case "unconfirmed": return "Outcome unconfirmed";
+    case "interrupted": return "Execution interrupted";
+    case "connecting": return "Connecting to worker";
+    case "verifying": return "Verifying worker restart";
+  }
   if (job.state.currentStep) {
     return getWorkerUpdateStepLabel(job.state.currentStep);
   }
@@ -23,7 +35,5 @@ export function getWorkerUpdateProgressLabel(job: WorkerUpdateJob): string {
       return "Update and restart completed";
     case "failed":
       return "Failed";
-    case "interrupted":
-      return "Interrupted";
   }
 }

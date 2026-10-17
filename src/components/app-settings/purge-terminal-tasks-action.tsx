@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ConfirmModal, createLogger } from "@pablozaiden/webapp/web";
+import { ConfirmModal, SettingsFieldRow, createLogger } from "@pablozaiden/webapp/web";
 import type { PurgeTerminalTasksResult } from "../../hooks";
 import { Button } from "../common";
 
@@ -34,8 +34,8 @@ export function PurgeTerminalTasksAction({
   }
 
   return (
-    <div className="clanky-purge-terminal-tasks-action space-y-2">
-      <Button
+    <>
+      <SettingsFieldRow title="Archived tasks" danger actions={<Button
         type="button"
         size="sm"
         variant="danger"
@@ -48,7 +48,7 @@ export function PurgeTerminalTasksAction({
         }}
       >
         Purge
-      </Button>
+      </Button>} feedback={<>
       {purgeResult ? (
         <div
           role="status"
@@ -59,13 +59,13 @@ export function PurgeTerminalTasksAction({
           }`}
         >
           {purgeResult.totalArchived === 0
-            ? "No terminal-state tasks were found across all workspaces."
+            ? "No archived tasks to purge."
             : purgeResult.failures.length > 0
               ? `Purged ${purgeResult.purgedCount} of ${purgeResult.totalArchived} terminal-state tasks across ${purgeResult.totalWorkspaces} workspaces.`
               : `Purged ${purgeResult.purgedCount} terminal-state tasks across ${purgeResult.totalWorkspaces} workspaces.`}
           {purgeResult.failures.length > 0 ? (
             <div className="mt-1 text-xs">
-              Failed task IDs: {purgeResult.failures.map((failure) => failure.taskId).join(", ")}
+              {purgeResult.failures.length} tasks could not be purged.
             </div>
           ) : null}
         </div>
@@ -75,6 +75,7 @@ export function PurgeTerminalTasksAction({
           Failed to purge terminal-state tasks. Please try again.
         </div>
       ) : null}
+      </>} />
       <ConfirmModal
         isOpen={showPurgeConfirm}
         onClose={() => {
@@ -87,7 +88,8 @@ export function PurgeTerminalTasksAction({
         message="This permanently deletes archived terminal tasks across every workspace. Addressable pushed and accepted-local tasks are kept."
         confirmLabel="Purge tasks"
         loading={purgingTerminalTasks}
+        variant="danger"
       />
-    </div>
+    </>
   );
 }

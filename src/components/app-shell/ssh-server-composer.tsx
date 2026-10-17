@@ -1,7 +1,6 @@
 import { useEffect, useId, useState, type FormEvent } from "react";
 import type { SshServer } from "@/shared";
 import type { CreateSshServerRequest, UpdateSshServerRequest } from "@/contracts";
-import { Button } from "../common";
 import { useHeaderActions, useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { SshServerFields } from "./ssh-server-fields";
 import {
@@ -104,11 +103,12 @@ export function SshServerComposer({
   }
 
   useHeaderActions({
-    primary: (
-      <Button type="submit" form={formId} size="sm" loading={submitting}>
-        {isEditing ? "Save" : "Create"}
-      </Button>
-    ),
+    primary: [{
+      id: "save-ssh-server",
+      label: isEditing ? "Save" : "Create",
+      form: formId,
+      loading: submitting,
+    }],
   });
 
   return (

@@ -70,13 +70,11 @@ export function persistStep(
   step: ProvisioningStep,
   message?: string,
 ): void {
-  const now = new Date().toISOString();
   persistProvisioningState(
     record,
     {
-      status: "running",
+      status: record.job.state.status === "verifying" ? "verifying" : "running",
       currentStep: step,
-      startedAt: record.job.state.startedAt ?? now,
     },
     "setStep",
   );

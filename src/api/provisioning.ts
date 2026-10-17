@@ -154,7 +154,7 @@ export const provisioningRoutes = defineRoutes({
   "/api/provisioning-jobs/:id/dismiss": {
     auth: "user",
     sameOrigin: "mutations",
-    description: "Dismiss a completed, failed, cancelled, or interrupted provisioning job.",
+    description: "Dismiss a terminal provisioning job and its retained logs.",
     operations: {
       POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "confirm", reason: "Deletes the retained job record and logs." } },
     },

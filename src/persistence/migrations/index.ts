@@ -639,6 +639,52 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    version: 77,
+    name: "add_worker_update_execution_outcomes",
+    up: (db) => {
+      const table = db.query(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?",
+      ).get("worker_update_jobs") as { sql: string } | null;
+      if (table?.sql.includes("'unconfirmed'")) return;
+      db.exec(`
+        CREATE TABLE worker_update_jobs_outcomes (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          config_json TEXT NOT NULL,
+          state_json TEXT NOT NULL,
+          status TEXT NOT NULL CHECK (
+            status IN ('pending', 'connecting', 'running', 'verifying', 'completed',
+              'not_started', 'connection_failed', 'failed', 'interrupted', 'unconfirmed')
+          ),
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        INSERT INTO worker_update_jobs_outcomes
+          SELECT id, user_id, config_json, state_json, status, created_at, updated_at
+          FROM worker_update_jobs;
+        CREATE TABLE worker_update_job_logs_outcomes (
+          id TEXT PRIMARY KEY,
+          job_id TEXT NOT NULL,
+          source TEXT NOT NULL CHECK (source IN ('stdout', 'stderr', 'system')),
+          text TEXT NOT NULL,
+          timestamp TEXT NOT NULL,
+          step TEXT CHECK (step IS NULL OR step IN ('update', 'restart')),
+          FOREIGN KEY (job_id) REFERENCES worker_update_jobs_outcomes(id) ON DELETE CASCADE
+        );
+        INSERT INTO worker_update_job_logs_outcomes
+          SELECT id, job_id, source, text, timestamp, step FROM worker_update_job_logs;
+        DROP TABLE worker_update_job_logs;
+        DROP TABLE worker_update_jobs;
+        ALTER TABLE worker_update_jobs_outcomes RENAME TO worker_update_jobs;
+        ALTER TABLE worker_update_job_logs_outcomes RENAME TO worker_update_job_logs;
+        CREATE INDEX idx_worker_update_jobs_user_updated
+          ON worker_update_jobs(user_id, updated_at DESC, created_at DESC);
+        CREATE INDEX idx_worker_update_job_logs_job_timestamp
+          ON worker_update_job_logs(job_id, timestamp ASC);
+      `);
+    },
+  },
 ];
 
 function getMigrationTableColumns(db: Database, tableName: string): string[] {

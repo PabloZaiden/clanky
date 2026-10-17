@@ -744,7 +744,7 @@ included in this table.
 | DELETE | `/api/previews/:previewId` | Close an active workspace or direct server preview. |
 | GET | `/api/previews/bridge` | Open the raw websocket bridge for a workspace or direct server preview. |
 | POST | `/api/provisioning-jobs` | Start a remote provisioning job. |
-| POST | `/api/provisioning-jobs/:id/dismiss` | Dismiss a completed, failed, cancelled, or interrupted provisioning job. |
+| POST | `/api/provisioning-jobs/:id/dismiss` | Dismiss a terminal provisioning job. |
 | GET, DELETE | `/api/provisioning-jobs/:id` | Read or cancel a remote provisioning job. |
 | GET | `/api/provisioning-jobs/:id/logs` | Read logs for a remote provisioning job. |
 | POST | `/api/server-settings/test` | Test a server connection without creating a workspace. |
@@ -3393,6 +3393,33 @@ Get the current provisioning job snapshot.
 
 Returns the provisioning job snapshot, including `job`, `logs`, and `workspace` when a workspace has already been created or reused.
 
+Provisioning, automatic-workspace restart/rebuild, and server-update jobs share
+these execution semantics:
+
+- Active statuses are `pending`, `running`, and `verifying`. Terminal statuses
+  are `completed`, `not_started`, `connection_failed`, `failed`, `cancelled`,
+  `interrupted`, and `unconfirmed`.
+- `connection_failed` means the selected host could not be reached before the
+  next command was dispatched. `failed` preserves a returned command failure.
+  `interrupted` requires observed execution and confirmed termination;
+  `unconfirmed` means execution may have happened without a confirmed outcome.
+- New snapshots include `hasDispatchedCommands` and, once a command is
+  attempted, its `execution`: `step`, `state` (`not_started`, `dispatched`, `started`, or
+  `finished`), optional `outcome`, and a returned `exitCode` when available.
+  Dispatch is not proof of process start. `startedAt` records observed
+  execution, not job admission or connection attempts. Earlier commands may
+  have completed before the current command fails to connect.
+- An uncertain automatic-workspace restart/rebuild enters `verifying`.
+  Clanky checks read-only Devbox status, then the normal worker/backend
+  connection. `recovery.status` becomes `confirmed` only after those checks
+  pass; an unverified outcome remains `unconfirmed`. The disruptive command is
+  never automatically replayed. Server `arise` has no equivalent completion
+  proof, so a lost result remains unconfirmed.
+- Controller startup does not resume or replay active commands. Affirmative
+  no-dispatch evidence becomes `not_started`; other unfinished operations
+  become `unconfirmed`. Legacy startup-interrupted records are reconciled
+  conservatively without fabricating execution evidence.
+
 **Errors**
 
 | Status | Error | Description |
@@ -3403,6 +3430,12 @@ Returns the provisioning job snapshot, including `job`, `logs`, and `workspace` 
 #### DELETE /api/provisioning-jobs/:id
 
 Cancel a provisioning job.
+
+User cancellation retains status `cancelled` and error code `cancelled`.
+Inspect `execution.outcome` separately: terminating the controller's SSH
+client cannot prove that its remote command stopped. An unconfirmed
+cancellation is not offered the Retry shortcut; inspect the host before starting
+another operation.
 
 **Response**
 
@@ -3487,11 +3520,16 @@ after dispatch does not by itself interrupt the job or cause the restart
 command to be resent. Failures before dispatch cannot be confirmed as successful
 restarts, including relay setup failures before the command body is sent.
 Transient discovery HTTP 502/503/504 and interrupted response bodies are retried;
-malformed JSON, protocol and authorization failures remain terminal.
+malformed probe responses, protocol and authorization failures stop verification.
 Explicit command failures fail the job; recovery
-that cannot be confirmed within the deadline records an unconfirmed/interrupted
-outcome rather than success. If the restart exit code was lost, a confirmed
+that cannot be confirmed records an `unconfirmed`
+outcome rather than success or interruption. If the restart exit code was lost, a confirmed
 recovery succeeds without an invented exit code.
+
+Connection establishment errors before command dispatch use `connection_failed`.
+A received nonzero command exit uses `failed`. `interrupted` requires evidence
+that execution started and termination was confirmed; lost observation alone
+uses `unconfirmed`, since the remote process may still be running.
 
 #### POST /api/worker-update-jobs
 
@@ -3556,10 +3594,21 @@ read an individual job to inspect its output.
 }
 ```
 
-Job statuses are `pending`, `running`, `completed`, `failed`, and
-`interrupted`. Each `update` and `restart` step has its own status
-(`pending`, `running`, `succeeded`, `failed`, `skipped`, or `unconfirmed`),
-timestamps, optional exit code, and optional error.
+Job statuses are `pending`, `connecting`, `running`, `verifying`, `completed`,
+`not_started`, `connection_failed`, `failed`, `interrupted`, and `unconfirmed`.
+Each `update` and `restart` step has its own status
+(`pending`, `connecting`, `running`, `verifying`, `succeeded`, `not_started`,
+`connection_failed`, `failed`, `interrupted`, `skipped`, or `unconfirmed`),
+timestamps, optional exit code, and optional error. Optional step `execution`
+records evidence: `not_started`, `dispatched`, `started`, or `finished`.
+Dispatch and an accepted asynchronous request do not prove process start;
+observed command output does. `startedAt` is recorded only when that evidence
+is observed, not during connection establishment.
+
+After controller restart, jobs without command dispatch remain `not_started`;
+possible execution without a retained result becomes `unconfirmed`. Legacy
+interrupted jobs that recorded only a lost observation are reclassified without
+inventing execution evidence. Recovery never replays either command.
 
 #### GET /api/worker-update-jobs/:id
 
@@ -3612,8 +3661,8 @@ Permanently remove a terminal job and its logs.
 ```
 
 Returns `404 not_found` when the job does not exist and `409
-worker_update_job_active` while it is pending or running. Jobs interrupted by
-a Clanky restart are retained as terminal jobs and can be dismissed.
+worker_update_job_active` while it is pending, connecting, running, or verifying.
+All terminal outcomes are retained and can be dismissed.
 
 ---
 

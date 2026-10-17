@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ConfirmModal } from "@pablozaiden/webapp/web";
+import { ConfirmModal, SettingsFieldRow } from "@pablozaiden/webapp/web";
 import type { StartWorkerUpdatesResponse } from "@/contracts";
 import type { UseWorkerUpdateJobsResult } from "../../hooks/useWorkerUpdateJobs";
 import { Button } from "../common";
@@ -25,24 +25,19 @@ export function WorkerUpdateAction({
   }
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-3">
-        <Button
+    <>
+      <SettingsFieldRow title="Global workers" actions={<Button
           type="button"
           size="sm"
           loading={workerUpdates.starting}
-          disabled={workerUpdates.starting}
+          disabled={workerUpdates.starting || !workerUpdates.enabled}
           onClick={() => {
             setResult(null);
             setShowConfirm(true);
           }}
         >
-          Update all global workers
-        </Button>
-        <span className="text-xs text-gray-600 dark:text-gray-300">
-          Starts one background job per active global Mesh worker.
-        </span>
-      </div>
+          Update all
+        </Button>} feedback={<>
 
       {workerUpdates.error ? <SettingsError>{workerUpdates.error}</SettingsError> : null}
 
@@ -64,16 +59,13 @@ export function WorkerUpdateAction({
                     : ""
                 }`}
           </p>
-          {startedCount > 0 ? (
-            <p className="mt-1 text-xs">Jobs continue in the background and appear on the Dashboard.</p>
-          ) : null}
           {result.results.length > 0 ? (
             <ul className="mt-2 space-y-1 text-xs">
               {result.results.map((item) => (
                 <li key={item.workerNodeId}>
                   <span className="font-medium">{item.workerName}:</span>{" "}
                   {item.status === "started"
-                    ? <>Started · <code>{item.jobId}</code></>
+                    ? "Update requested"
                     : item.status === "not_started"
                       ? `Not started · ${item.message}`
                       : `Not started · ${item.error}`}
@@ -83,7 +75,7 @@ export function WorkerUpdateAction({
           ) : null}
         </div>
       ) : null}
-
+      </>} />
       <ConfirmModal
         isOpen={showConfirm}
         onClose={() => {
@@ -93,10 +85,10 @@ export function WorkerUpdateAction({
         }}
         onConfirm={() => void startUpdates()}
         title="Update all global Mesh workers?"
-        message="Runs clanky update on every active global Mesh worker, excluding workers assigned to workspaces. The worker service restarts only after its update succeeds."
-        confirmLabel="Start update jobs"
+        message="Update all global workers? Their services restart after a successful update. Active connections may close."
+        confirmLabel="Update workers"
         loading={workerUpdates.starting}
       />
-    </div>
+    </>
   );
 }

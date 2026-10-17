@@ -6,6 +6,8 @@ import type {
   WorkerUpdateLogEntry,
   WorkerUpdateStep,
 } from "@/shared/worker-update";
+import type { CommandExecutionState } from "@/shared/job-execution";
+import { isWorkerUpdateJobTerminal } from "@/shared/worker-update";
 import { DEFAULT_EXECUTION_AGENT_PROVIDER } from "@/shared/settings";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { DomainError } from "../../domain/domain-error";
@@ -68,14 +70,14 @@ export class WorkerUpdateJobRunner {
 
     try {
       job = this.beginJob(userId, job);
-      this.appendLog(userId, job, "system", "Starting clanky update.", "update");
+      this.appendLog(userId, job, "system", "Connecting to worker.", "update");
       executor = await this.acquireExecutor(userId, job, worker);
 
       commandInFlight = "update";
       const updateResult = await executor.exec(
         "clanky",
         ["update"],
-        this.commandOptions(userId, job, "update"),
+        this.commandOptions(userId, () => job, "update", (next) => { job = next; }),
       );
       if (!updateResult.success) {
         const error = new DomainError(
@@ -139,7 +141,7 @@ export class WorkerUpdateJobRunner {
         "clanky",
         ["worker", "service", "restart"],
         {
-          ...this.commandOptions(userId, job, "restart"),
+          ...this.commandOptions(userId, () => job, "restart", (next) => { job = next; }),
           // Observe independently so losing the response cannot kill or replay the restart.
           longRunning: true,
           preserveOnDisconnect: true,
@@ -148,7 +150,7 @@ export class WorkerUpdateJobRunner {
       );
     } catch (error) {
       if (!isWorkerRestartResponseLoss(error)) {
-        this.failStep(userId, job, "restart", error);
+        this.finalizeCommandError(userId, job, "restart", error);
         return;
       }
       this.appendLog(
@@ -166,6 +168,13 @@ export class WorkerUpdateJobRunner {
       ), result.exitCode);
       return;
     }
+    job = this.persistState(userId, job, {
+      status: "verifying",
+      steps: {
+        ...job.state.steps,
+        restart: { ...job.state.steps.restart, status: "verifying" },
+      },
+    });
     this.appendLog(
       userId, job, "system",
       "Checking Mesh health and the worker service within the 20-second restart deadline.",
@@ -184,11 +193,8 @@ export class WorkerUpdateJobRunner {
         ),
       });
     } catch (error) {
-      if (error instanceof DomainError && error.code === "worker_restart_confirmation_timeout") {
-        this.markCommandUnconfirmed(userId, job, "restart", error);
-      } else {
-        this.failStep(userId, job, "restart", error);
-      }
+      // Probe failure cannot establish whether the already-dispatched restart failed.
+      this.markCommandUnconfirmed(userId, job, "restart", error);
       return;
     }
     job = this.succeedStep(userId, job, "restart", result?.exitCode);
@@ -228,31 +234,47 @@ export class WorkerUpdateJobRunner {
 
   private commandOptions(
     userId: string,
-    job: WorkerUpdateJob,
+    getJob: () => WorkerUpdateJob,
     step: WorkerUpdateStep,
+    onState: (job: WorkerUpdateJob) => void,
   ): Parameters<CommandExecutor["exec"]>[2] {
     return {
       timeout: null,
       maxOutputBytes: MAX_COMMAND_OUTPUT_BYTES,
       longRunning: true,
       logFailures: false,
-      onStdoutChunk: (text) => this.appendLog(userId, job, "stdout", text, step),
-      onStderrChunk: (text) => this.appendLog(userId, job, "stderr", text, step),
+      onExecutionState: (execution) => {
+        const job = getJob();
+        const now = new Date().toISOString();
+        onState(this.persistState(userId, job, {
+          status: "running",
+          ...(execution === "started" && !job.state.startedAt ? { startedAt: now } : {}),
+          steps: {
+            ...job.state.steps,
+            [step]: {
+              ...job.state.steps[step],
+              execution,
+              status: "running",
+              ...(execution === "started" ? { startedAt: now } : {}),
+            },
+          },
+        }));
+      },
+      onStdoutChunk: (text) => this.appendLog(userId, getJob(), "stdout", text, step),
+      onStderrChunk: (text) => this.appendLog(userId, getJob(), "stderr", text, step),
     };
   }
 
   private beginJob(userId: string, job: WorkerUpdateJob): WorkerUpdateJob {
-    const now = new Date().toISOString();
     return this.persistState(userId, job, {
-      status: "running",
+      status: "connecting",
       currentStep: "update",
-      startedAt: now,
       steps: {
         ...job.state.steps,
         update: {
           ...job.state.steps.update,
-          status: "running",
-          startedAt: now,
+          status: "connecting",
+          execution: "not_started",
         },
       },
     });
@@ -263,16 +285,15 @@ export class WorkerUpdateJobRunner {
     job: WorkerUpdateJob,
     step: WorkerUpdateStep,
   ): WorkerUpdateJob {
-    const now = new Date().toISOString();
     return this.persistState(userId, job, {
-      status: "running",
+      status: "connecting",
       currentStep: step,
       steps: {
         ...job.state.steps,
         [step]: {
           ...job.state.steps[step],
-          status: "running",
-          startedAt: now,
+          status: "connecting",
+          execution: "not_started",
           error: undefined,
         },
       },
@@ -293,6 +314,7 @@ export class WorkerUpdateJobRunner {
         [step]: {
           ...job.state.steps[step],
           status: "succeeded",
+          ...(exitCode === undefined ? {} : { execution: "finished" }),
           completedAt: now,
           ...(exitCode === undefined ? {} : { exitCode }),
           error: undefined,
@@ -315,6 +337,7 @@ export class WorkerUpdateJobRunner {
       [step]: {
         ...job.state.steps[step],
         status: "failed" as const,
+        ...(exitCode === undefined ? {} : { execution: "finished" as const }),
         completedAt: now,
         ...(exitCode === undefined ? {} : { exitCode }),
         error: jobError.message,
@@ -424,15 +447,11 @@ export class WorkerUpdateJobRunner {
     try {
       const persisted = loadWorkerUpdateJob(userId, job.config.id);
       const current = persisted?.job ?? job;
-      if (
-        current.state.status === "completed"
-        || current.state.status === "failed"
-        || current.state.status === "interrupted"
-      ) {
+      if (isWorkerUpdateJobTerminal(current.state.status)) {
         return;
       }
       if (commandInFlight) {
-        this.markCommandUnconfirmed(userId, current, commandInFlight, error);
+        this.finalizeCommandError(userId, current, commandInFlight, error);
         return;
       }
       if (current.state.steps.restart.status === "succeeded") {
@@ -449,7 +468,7 @@ export class WorkerUpdateJobRunner {
         this.failPipelineBeforeRestart(userId, current, error);
         return;
       }
-      this.failStep(userId, current, "update", error);
+      this.finalizeCommandError(userId, current, "update", error);
     } catch (finalizationError) {
       log.error("Failed to reconcile unexpected worker update failure", {
         workerNodeId: job.config.workerNodeId,
@@ -469,9 +488,7 @@ export class WorkerUpdateJobRunner {
     error: unknown,
   ): void {
     const now = new Date().toISOString();
-    const message = step === "restart"
-      ? `The restart command was dispatched, but its result could not be confirmed: ${getErrorMessage(error)}`
-      : `The update command result could not be confirmed; restart was skipped: ${getErrorMessage(error)}`;
+    const message = `Could not confirm ${step === "restart" ? "restart" : "update"} outcome: ${getErrorMessage(error)}`;
     const jobError: WorkerUpdateJobError = {
       code: step === "restart" ? "restart_unconfirmed" : "update_unconfirmed",
       message,
@@ -496,14 +513,75 @@ export class WorkerUpdateJobRunner {
           }
         : {}),
     };
-    const interrupted = this.persistState(userId, job, {
-      status: "interrupted",
+    const unconfirmed = this.persistState(userId, job, {
+      status: "unconfirmed",
       currentStep: null,
       steps,
       error: jobError,
       completedAt: now,
     });
-    this.appendLog(userId, interrupted, "system", message, step);
+    this.appendLog(userId, unconfirmed, "system", message, step);
+  }
+
+  private finalizeCommandError(
+    userId: string,
+    job: WorkerUpdateJob,
+    step: WorkerUpdateStep,
+    error: unknown,
+  ): void {
+    const details = error instanceof DomainError ? error.details : {};
+    const execution: CommandExecutionState | undefined = job.state.steps[step].execution;
+    const started = execution === "started" || details["executionStarted"] === true;
+    if (started && details["terminationConfirmed"] === true) {
+      this.stopStep(userId, job, step, "interrupted", error);
+    } else if (details["executionResultReceived"] === true
+      && error instanceof DomainError && error.code !== "mesh_execution_response_invalid"
+      && error.code !== "mesh_execution_output_gap"
+      && error.code !== "mesh_execution_aborted"
+      && error.code !== "mesh_execution_cancel_failed"
+      && error.code !== "mesh_execution_result_too_large") {
+      this.failStep(userId, job, step, error);
+    } else if (execution === "not_started"
+      && details["executionRequestDispatched"] !== true) {
+      this.stopStep(userId, job, step, "connection_failed", error);
+    } else {
+      this.markCommandUnconfirmed(userId, job, step, error);
+    }
+  }
+
+  private stopStep(
+    userId: string,
+    job: WorkerUpdateJob,
+    step: WorkerUpdateStep,
+    status: "connection_failed" | "interrupted",
+    error: unknown,
+  ): void {
+    const now = new Date().toISOString();
+    const jobError = toJobError(error, step, status);
+    const stopped = this.persistState(userId, job, {
+      status,
+      currentStep: null,
+      completedAt: now,
+      error: jobError,
+      steps: {
+        ...job.state.steps,
+        [step]: {
+          ...job.state.steps[step],
+          status,
+          completedAt: now,
+          error: jobError.message,
+        },
+        ...(step === "update" ? {
+          restart: {
+            status: "skipped",
+            execution: "not_started",
+            completedAt: now,
+            error: "Update did not succeed.",
+          },
+        } : {}),
+      },
+    });
+    this.appendLog(userId, stopped, "system", jobError.message, step);
   }
 
   private failPipelineBeforeRestart(
@@ -513,7 +591,7 @@ export class WorkerUpdateJobRunner {
   ): void {
     const now = new Date().toISOString();
     const message = `The update succeeded, but the restart step could not be started: ${getErrorMessage(error)}`;
-    const interrupted = this.persistState(userId, job, {
+    const failed = this.persistState(userId, job, {
       status: "failed",
       currentStep: null,
       steps: {
@@ -532,6 +610,6 @@ export class WorkerUpdateJobRunner {
       },
       completedAt: now,
     });
-    this.appendLog(userId, interrupted, "system", message, "restart");
+    this.appendLog(userId, failed, "system", message, "restart");
   }
 }

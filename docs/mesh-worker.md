@@ -8,6 +8,13 @@ Mesh access is host-level access. The worker directory is the default working
 directory, not a sandbox or filesystem allowlist. Pair only controllers that
 are trusted to execute commands and access files on the worker host.
 
+Settings separates **Workers**, **Controller**, and **Relays**. Workers contains
+the enrollment list and health action; **Enroll worker** opens a focused form
+and then the join command. Open a worker for runtime/protocol details.
+Controller contains the guarded name/endpoint form and local runtime metadata.
+Relays contains paired connections and primary selection; **Pair relay** or
+**Edit pairing** opens the URL/name form and bootstrap configuration.
+
 ## Protocol generations and migration
 
 Mesh protocol generations are global and aligned with the Clanky release major.
@@ -458,11 +465,12 @@ clanky mesh status
 clanky mesh revoke <worker-node-id>
 ```
 
-The **Settings > Mesh > Workers** view can also inspect workers, disable
-**Accept remote execution**, or use **Kill** to terminate a worker process.
-Disabling execution keeps the enrollment but prevents the worker from being
-selected for new remote work. A service supervisor can start the process again
-after it exits.
+**Settings > Workers** lists enrollments, checks health, opens worker runtime
+details, and offers **Stop** or **Revoke** for global workers. Revoked global
+registrations can be deleted. Dedicated workers remain managed by their
+workspace lifecycle. A service supervisor can start a stopped process again.
+Execution acceptance remains worker-owned configuration; disabling it keeps
+the enrollment but prevents selection for new remote work.
 
 To update a service-managed worker, replace the standalone binary and run:
 
@@ -494,12 +502,18 @@ is installed and running. Losing the restart command's response does not by
 itself interrupt the job if the command was dispatched; failures before dispatch
 cannot count as a successful restart. The restart command is not resent. Explicit
 command failures remain failures; recovery that cannot be confirmed within the
-deadline is marked unconfirmed/interrupted rather than successful. Jobs and
+deadline is marked **Outcome unconfirmed** rather than successful or interrupted.
+Failure to connect before dispatch is **Could not connect**; a returned command
+failure is **Failed**. **Interrupted** requires observed execution and confirmed
+termination. A controller restart does not prove remote execution stopped:
+undispatched jobs become **Not started**, and possible execution with no known
+result becomes **Outcome unconfirmed**. No command is automatically replayed.
+Jobs and
 their logs remain on the Dashboard until dismissed.
 
 Use **Dismiss all** in the Dashboard's **Worker updates** panel to remove
-completed, failed, and interrupted jobs and their logs after confirmation.
-Pending and running jobs are kept. Individual jobs can still be dismissed from
+terminal jobs and their logs after confirmation.
+Pending, connecting, running, and verifying jobs are kept. Individual jobs can still be dismissed from
 their detail view.
 
 ## Automatic workspace runtimes
@@ -534,6 +548,16 @@ Raw Docker restarts and other devcontainer tools do not invoke that Devbox
 hook. Existing automatic workspaces acquire these assets on their next
 Clanky-managed rebuild/restart or adapter change; existing ACP selections are
 not automatically converted to native adapters.
+
+Maintenance jobs distinguish connection failure before dispatch, returned
+command failure, confirmed interruption, and an unconfirmed remote outcome.
+If a restart/rebuild response is lost, Clanky verifies read-only Devbox status
+and the existing worker/backend connection instead of resending the command.
+Successful verification confirms recovery; failed verification leaves the
+outcome unconfirmed. A controller restart likewise does not prove that remote
+execution stopped or authorize replay. Server `arise` jobs remain unconfirmed
+when their result is lost because host reachability alone cannot prove that
+the server update completed.
 
 To manually select the Clanky binary channel for an automatic worker, edit
 `.devbox/clanky-worker/launcher.sh` in the workspace repository on its

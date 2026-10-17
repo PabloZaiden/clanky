@@ -7,6 +7,7 @@ import { getWorkspace } from "../../persistence/workspaces";
 import { updateProvisioningJob } from "../../persistence/provisioning-jobs";
 import type {
   ProvisioningJob,
+  DevboxStatusResult,
   ProvisioningTransport,
   ServerSettings,
 } from "@/shared";
@@ -200,7 +201,7 @@ export class ProvisioningWorkflows {
           record,
           executor,
           targetDirectory,
-          "Reading devbox status after configuring the worker",
+          { label: "Reading devbox status after configuring the worker" },
         );
         if (!status.running) {
           throw new ProvisioningFailedError(
@@ -492,7 +493,7 @@ export class ProvisioningWorkflows {
         : undefined;
 
       setStep(record, this.maxLogEntries, action.step, action.progressLabel);
-      await this.runCmd(record, executor, {
+      const recoveredStatus = await this.runLifecycleCommand(record, executor, {
         step: action.step,
         label: action.commandLabel,
         command: "devbox",
@@ -516,7 +517,7 @@ export class ProvisioningWorkflows {
       });
 
       setStep(record, this.maxLogEntries, "devbox_status", "Reading devbox status");
-      const status = await this.remoteExecutor.readDevboxStatus(
+      const status = recoveredStatus ?? await this.remoteExecutor.readDevboxStatus(
         record,
         executor,
         targetDirectory,
@@ -685,6 +686,28 @@ export class ProvisioningWorkflows {
     });
     record.attempt = attempt;
     return attempt;
+  }
+
+  private async runLifecycleCommand(
+    record: ProvisioningJobRecord,
+    executor: CommandExecutor,
+    options: Parameters<ProvisioningRemoteExecutor["run"]>[2],
+  ): Promise<DevboxStatusResult | undefined> {
+    try {
+      await this.runCmd(record, executor, options);
+    } catch (error) {
+      if (!(error instanceof ProvisioningFailedError)
+        || error.code !== "provisioning_execution_unconfirmed") throw error;
+      // Continue only with the existing status/worker/backend probes, never replay the command.
+      this.updateState(record, {
+        status: "verifying",
+        recovery: { step: options.step, status: "verifying" },
+      });
+      appendSystemLog(record, this.maxLogEntries, "Command response lost. Verifying workspace recovery.", options.step);
+      return await this.remoteExecutor.confirmLifecycleRecovery(
+        record, executor, options.cwd ?? record.job.config.targetDirectory ?? "/",
+      );
+    }
   }
 
   private updateState(
