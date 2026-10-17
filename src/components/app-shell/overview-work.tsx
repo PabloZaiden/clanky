@@ -36,8 +36,14 @@ export function OverviewWork({
   const recentItems = useMemo(() => {
     const history = buildChatHistorySidebarItems(sidebarWorkspaceGroups, { executionHostNodes });
     return [...activeItems, ...history]
-      .filter((item) => !getOverviewAttention(item)
-        && (item.kind !== "task" || shouldShowInRecentActivity(item.taskNode.task.state.status)))
+      .filter((item) => {
+        const isDoneChat =
+          (item.kind === "chat" || item.kind === "execution-host-chat")
+          && item.chatNode.chat.state.status === "done";
+        return !getOverviewAttention(item)
+          && !isDoneChat
+          && (item.kind !== "task" || shouldShowInRecentActivity(item.taskNode.task.state.status));
+      })
       .sort((left, right) => getOverviewActivityTimestamp(right).localeCompare(getOverviewActivityTimestamp(left)))
       .slice(0, RECENT_ACTIVITY_LIMIT);
   }, [activeItems, executionHostNodes, sidebarWorkspaceGroups]);
