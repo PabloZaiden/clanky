@@ -81,6 +81,7 @@ export {
   useTranscriptResource,
   type TranscriptResourceRefreshOptions,
   type TranscriptResourceSnapshot,
+  type TranscriptResourceState,
   type UseTranscriptResourceOptions,
   type UseTranscriptResourceResult,
 } from "./useTranscriptResource";

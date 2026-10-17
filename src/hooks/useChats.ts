@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from "react";
 import { createLogger } from "@pablozaiden/webapp/web";
 import { apiRequest, readApiResponse, requestApiResponse } from "../lib/api-client";
 import type { Chat, ChatEvent } from "@/shared";
@@ -17,10 +17,11 @@ import {
 import { DEFAULT_CHAT_INTERRUPT_REASON, isStandaloneChat } from "@/shared";
 import { applyChatStatusEvent, mergeChatSummarySnapshot } from "../utils/chat-snapshot";
 import { createRefreshCoordinator } from "../lib/refresh-coordinator";
+import { SNAPSHOT_REQUEST_TIMEOUT_MS } from "../lib/request-lifecycle";
 import { getClankyClientId } from "../lib/clanky-client-id";
 import { getStoredSshCredentialToken } from "../lib/ssh-browser-credentials";
 import { useRealtimeRefreshWithRecovery, useRealtimeStream } from "./useRealtimeStream";
-import { useChatActivityState } from "./useChatActivityState";
+import { useChatActivityState } from "./chat-state-context";
 import { useRefreshOnForeground } from "./useDocumentVisibility";
 import type { ResourceRefreshOptions } from "./useResourceRefresh";
 
@@ -64,14 +65,27 @@ export interface UseChatsResult {
 }
 
 export function useChats(): UseChatsResult {
-  const { chats, setChats, getChat, recordActivity } = useChatActivityState();
+  const { chats: allChats, setChats: setAllChats, getChat, recordActivity } = useChatActivityState();
+  const chats = useMemo(() => allChats.filter(isStandaloneChat), [allChats]);
+  const setChats = useCallback((
+    update: SetStateAction<Chat[]>,
+    options: { immediateActivityId?: string } = {},
+  ): void => {
+    setAllChats((current) => {
+      const standalone = current.filter(isStandaloneChat);
+      const next = typeof update === "function" ? update(standalone) : update;
+      return [...current.filter((chat) => !isStandaloneChat(chat)), ...next];
+    }, options);
+  }, [setAllChats]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const refreshCoordinatorRef = useRef(createRefreshCoordinator<void>());
 
-  const applyChat = useCallback((chat: Chat): void => {
-    setChats((current) => upsertChat(current, chat), { immediateActivityId: chat.config.id });
+  const applyChat = useCallback((chat: Chat, allowInsert = false): void => {
+    setChats((current) => allowInsert || current.some((entry) => entry.config.id === chat.config.id)
+      ? upsertChat(current, chat)
+      : current, { immediateActivityId: chat.config.id });
   }, [setChats]);
 
   const refresh = useCallback((options: ResourceRefreshOptions = {}) => {
@@ -87,7 +101,7 @@ export function useChats(): UseChatsResult {
         }
         setError(null);
         const data = await apiRequest<Chat[]>("/api/chats", {
-          signal: controller.signal,
+          signal: AbortSignal.any([controller.signal, AbortSignal.timeout(SNAPSHOT_REQUEST_TIMEOUT_MS)]),
           action: "Fetch chats",
           fallbackMessage: "Failed to fetch chats",
         });
@@ -153,7 +167,7 @@ export function useChats(): UseChatsResult {
         action: "Create chat",
         fallbackMessage: "Failed to create chat",
       });
-      applyChat(chat);
+      applyChat(chat, true);
       return chat;
     } catch (createError) {
       log.error("Failed to create chat", {
@@ -171,7 +185,7 @@ export function useChats(): UseChatsResult {
       action: "Create chat here",
       fallbackMessage: "Failed to create chat here",
     });
-    applyChat(chat);
+    applyChat(chat, true);
     return chat;
   }, [applyChat]);
 
@@ -187,7 +201,7 @@ export function useChats(): UseChatsResult {
       action: "Create execution-host chat",
       fallbackMessage: "Failed to create chat",
     });
-    applyChat(chat);
+    applyChat(chat, true);
     return chat;
   }, [applyChat]);
 

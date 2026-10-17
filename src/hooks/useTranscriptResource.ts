@@ -20,12 +20,18 @@ import {
 } from "@/shared";
 import { readApiResponse, requestApiResponse } from "../lib/api-client";
 import { createRefreshCoordinator } from "../lib/refresh-coordinator";
-import { isAbortError } from "../lib/request-lifecycle";
+import { isAbortError, SNAPSHOT_REQUEST_TIMEOUT_MS } from "../lib/request-lifecycle";
 import { markStreamingText } from "../lib/streaming-text";
 
 export interface TranscriptResourceSnapshot<TResource> {
   resource: TResource;
   transcript: ChatTranscript;
+}
+
+export interface TranscriptResourceState<TResource> {
+  resource: TResource | null;
+  getResource: () => TResource | null;
+  setResource: Dispatch<SetStateAction<TResource | null>>;
 }
 
 export interface TranscriptResourceRefreshOptions {
@@ -49,6 +55,7 @@ export interface UseTranscriptResourceOptions<TResource, TSnapshot> {
   resourceLabel: string;
   baseUrl: string;
   initialResource?: TResource | null;
+  resourceState?: TranscriptResourceState<TResource>;
   decodeSnapshot: (snapshot: TSnapshot) => TranscriptResourceSnapshot<TResource>;
   mergeResource?: (
     current: TResource | null,
@@ -164,11 +171,15 @@ export function useTranscriptResource<TResource, TSnapshot>({
   resourceLabel,
   baseUrl,
   initialResource = null,
+  resourceState,
   decodeSnapshot,
   mergeResource = replaceResource,
   isResourcePresentationEqual,
 }: UseTranscriptResourceOptions<TResource, TSnapshot>): UseTranscriptResourceResult<TResource> {
-  const [resource, setResourceState] = useState<TResource | null>(initialResource);
+  const [localResource, setResourceState] = useState<TResource | null>(initialResource);
+  const resource = resourceState ? resourceState.resource : localResource;
+  const externalGetResource = resourceState?.getResource;
+  const externalSetResource = resourceState?.setResource;
   const [transcript, setTranscriptState] = useState<ChatTranscript>(createEmptyTranscript);
   const [loading, setLoading] = useState(true);
   const [loadingTranscript, setLoadingTranscript] = useState(false);
@@ -198,7 +209,7 @@ export function useTranscriptResource<TResource, TSnapshot>({
 
   // Resolve updates before React renders so bursts of realtime events share the latest state.
   const setResource = useCallback<Dispatch<SetStateAction<TResource | null>>>((next) => {
-    const current = resourceRef.current;
+    const current = externalGetResource ? externalGetResource() : resourceRef.current;
     const resolved = typeof next === "function"
       ? (next as (value: TResource | null) => TResource | null)(current)
       : next;
@@ -207,10 +218,12 @@ export function useTranscriptResource<TResource, TSnapshot>({
     if (resolved !== null) {
       setNotFound(false);
     }
-    if (!presentationEqualityRef.current?.(current, resolved)) {
+    if (externalSetResource) {
+      externalSetResource(resolved);
+    } else if (!presentationEqualityRef.current?.(current, resolved)) {
       setResourceState(resolved);
     }
-  }, []);
+  }, [externalGetResource, externalSetResource]);
 
   const setTranscript = useCallback<Dispatch<SetStateAction<ChatTranscript>>>((next) => {
     const resolved = typeof next === "function"
@@ -226,7 +239,9 @@ export function useTranscriptResource<TResource, TSnapshot>({
     setError(nextError ?? null);
     setNotFound(true);
   }, [setResource, setTranscript]);
-  const getResource = useCallback(() => resourceRef.current, []);
+  const getResource = useCallback(() => {
+    return externalGetResource ? externalGetResource() : resourceRef.current;
+  }, [externalGetResource]);
   const getTranscript = useCallback(() => transcriptRef.current, []);
 
   const refresh = useCallback((
@@ -237,7 +252,7 @@ export function useTranscriptResource<TResource, TSnapshot>({
       const requestResourceId = resourceId;
       const requestId = refreshRequestIdRef.current + 1;
       refreshRequestIdRef.current = requestId;
-      const showLoading = options.showLoading ?? resourceRef.current === null;
+      const showLoading = options.showLoading ?? getResource() === null;
       const controller = new AbortController();
       refreshControllerRef.current = controller;
       const refreshWindow = refreshWindowRef.current;
@@ -257,7 +272,7 @@ export function useTranscriptResource<TResource, TSnapshot>({
         const response = await requestApiResponse(
           buildSnapshotUrl(baseUrl, refreshWindow),
           {
-            signal: controller.signal,
+            signal: AbortSignal.any([controller.signal, AbortSignal.timeout(SNAPSHOT_REQUEST_TIMEOUT_MS)]),
             headers,
             action: `Fetch ${resourceLabel} snapshot`,
             fallbackMessage: `Failed to fetch ${resourceLabel}`,
@@ -316,8 +331,7 @@ export function useTranscriptResource<TResource, TSnapshot>({
         setError(String(refreshError));
       } finally {
         if (
-          showLoading
-          && mountedRef.current
+          mountedRef.current
           && resourceIdRef.current === requestResourceId
           && refreshRequestIdRef.current === requestId
         ) {
@@ -332,6 +346,7 @@ export function useTranscriptResource<TResource, TSnapshot>({
     baseUrl,
     clearResource,
     decodeSnapshot,
+    getResource,
     mergeResource,
     resourceId,
     resourceLabel,

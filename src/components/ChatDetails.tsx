@@ -200,7 +200,7 @@ export function ChatDetails({
     };
   }, [linkedChatId, fileExplorerTargetId, executionHostKind, chatWorkingDirectory, embeddedTaskId, notifyError]);
 
-  if (loading && !chat) {
+  if (loading && (!chat || !transcript.revision)) {
     return <div className="p-6 text-sm text-gray-500 dark:text-gray-400">Loading chat…</div>;
   }
 
