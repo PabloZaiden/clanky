@@ -260,8 +260,14 @@ function getCommandUrl(command: string): string | undefined {
   return match?.[0];
 }
 
-function parsePatchFileLabels(input: string): string[] {
-  const files: string[] = [];
+interface PatchFileLabel {
+  path: string;
+  movedTo?: string;
+}
+
+function parsePatchFileLabels(input: string): PatchFileLabel[] {
+  const files: PatchFileLabel[] = [];
+  const labels = new Set<string>();
   let currentPath: string | undefined;
   let moveTo: string | undefined;
 
@@ -269,7 +275,14 @@ function parsePatchFileLabels(input: string): string[] {
     if (!currentPath) {
       return;
     }
-    files.push(moveTo ? `${currentPath} → ${moveTo}` : currentPath);
+    const label = moveTo ? `${currentPath} → ${moveTo}` : currentPath;
+    if (!labels.has(label)) {
+      labels.add(label);
+      files.push({
+        path: currentPath,
+        ...(moveTo ? { movedTo: moveTo } : {}),
+      });
+    }
     currentPath = undefined;
     moveTo = undefined;
   }
@@ -291,7 +304,7 @@ function parsePatchFileLabels(input: string): string[] {
   }
 
   flush();
-  return Array.from(new Set(files));
+  return files;
 }
 
 function getPatchInput(tool: ToolCallRecord): string | undefined {
@@ -402,11 +415,28 @@ function getOptionalPath(path: string | undefined, context: ToolCallPresentation
   return path ? formatToolPathForDisplay(path, context.pathDisplayRoot) : undefined;
 }
 
-function getGenericInputSummary(input: Record<string, unknown>): string | undefined {
+function formatPatchFileLabel(file: PatchFileLabel, context: ToolCallPresentationContext): string {
+  const path = getOptionalPath(file.path, context) ?? file.path;
+  if (!file.movedTo) {
+    return path;
+  }
+  const movedTo = getOptionalPath(file.movedTo, context) ?? file.movedTo;
+  return `${path} → ${movedTo}`;
+}
+
+function getGenericInputSummary(
+  input: Record<string, unknown>,
+  context: ToolCallPresentationContext,
+): string | undefined {
   for (const key of ["description", "operation", "action", "target", "path", "filePath", "url", "command", "query", "name"]) {
     const value = getStringField(input, key);
     if (value) {
-      return truncateSummary(value);
+      const isPathField = key === "path" || key === "filePath";
+      const isAbsoluteTargetPath = key === "target" && isAbsoluteDisplayPath(normalizeDisplayPath(value));
+      const summaryValue = isPathField || isAbsoluteTargetPath
+        ? getOptionalPath(value, context) ?? value
+        : value;
+      return truncateSummary(summaryValue);
     }
   }
   return undefined;
@@ -472,8 +502,9 @@ export function getToolCallSummary(
     case "apply_patch": {
       const patchInput = getPatchInput(tool);
       const files = patchInput ? parsePatchFileLabels(patchInput) : [];
-      if (files.length === 1) {
-        return `Patch ${files[0]}`;
+      const [file] = files;
+      if (files.length === 1 && file) {
+        return `Patch ${formatPatchFileLabel(file, context)}`;
       }
       if (files.length > 1) {
         return `Patch ${files.length} files`;
@@ -552,7 +583,7 @@ export function getToolCallSummary(
     }
     case "unknown": {
       const storedName = getStoredName(tool);
-      const inputSummary = input ? getGenericInputSummary(input) : undefined;
+      const inputSummary = input ? getGenericInputSummary(input, context) : undefined;
       if (inputSummary && storedName && storedName.toLowerCase() !== "other") {
         return `${storedName}: ${inputSummary}`;
       }
