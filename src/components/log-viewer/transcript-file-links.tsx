@@ -276,10 +276,6 @@ function resolveCandidateTarget(candidate: string, context: TranscriptFileLinkCo
     };
   }
 
-  if (normalizedCandidate.startsWith("../") || normalizedCandidate === "..") {
-    return null;
-  }
-
   return {
     kind: "file",
     path: normalizedCandidate,
@@ -491,13 +487,13 @@ function splitPlainTextPathParts({
   }
 
   const result: ReactNode[] = [];
-  const absolutePathPattern = /(^|[\s([{<])((?:\/|[A-Za-z]:\/)[^\s`<>"'|;&$]+)/g;
+  const filePathCandidatePattern = /(^|[\s([{<])([([{<]*)([^\s`<>"'|;&$([{<][^\s`<>"'|;&$]*)/g;
   let currentIndex = 0;
 
-  for (const match of content.matchAll(absolutePathPattern)) {
-    const [fullMatch, prefix = "", rawCandidate = ""] = match;
+  for (const match of content.matchAll(filePathCandidatePattern)) {
+    const [fullMatch, prefix = "", leadingDelimiters = "", rawCandidate = ""] = match;
     const matchIndex = match.index ?? 0;
-    const candidateStartIndex = matchIndex + prefix.length;
+    const candidateStartIndex = matchIndex + prefix.length + leadingDelimiters.length;
     const { candidate, trailing } = trimTrailingPathPunctuation(rawCandidate);
     const target = resolveTranscriptFileLinkTarget(candidate, fileLinkContext);
 
