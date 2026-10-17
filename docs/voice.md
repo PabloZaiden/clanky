@@ -11,10 +11,17 @@ clicked; later response text is not appended.
 
 ## Provider settings
 
-In user settings, configure the provider URL and API key, a transcription
+In **Settings → Voice**, configure the provider URL and API key, a transcription
 model, and a text-generation model. These are needed for voice input and
 summary playback and transcript translation. Validate transcription, text
-generation, and Live Voice after changing their settings.
+generation, and Live Voice after changing their settings. One **Save** persists
+the whole form, including optional independent Live credentials; it does not
+automatically validate any capability. Use **Validate** beside each model on
+saved values. **Cancel** discards the draft; navigation asks before discarding
+unsaved changes and failed saves retain the draft.
+
+Blank key fields preserve saved keys. Use the explicit remove-key checkbox and
+Save to clear a key. Provider and independent Live keys are cleared separately.
 
 Assistant response blocks in chat, task, and agent-run transcripts can be
 translated to English or Spanish. Translation sends the selected block's text

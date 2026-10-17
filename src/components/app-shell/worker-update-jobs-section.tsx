@@ -1,15 +1,15 @@
 import { memo, useState } from "react";
 import type { WebAppRoute } from "@pablozaiden/webapp/web";
-import { ConfirmModal, DataList, DataListRow, Panel, useToast } from "@pablozaiden/webapp/web";
+import { ConfirmModal, DataList, Panel, useToast } from "@pablozaiden/webapp/web";
 import { isWorkerUpdateJobTerminal, type WorkerUpdateJob } from "@/shared/worker-update";
 import type { DismissAllWorkerUpdateJobsResult } from "../../hooks/useWorkerUpdateJobs";
 import {
   Button,
   getWorkerUpdateStatusBadgeVariant,
   getWorkerUpdateStatusLabel,
-  StatusBadge,
 } from "../common";
-import { getWorkerUpdateProgressLabel } from "../worker-update/presentation";
+import { getWorkerUpdateWorkerName } from "../worker-update/presentation";
+import { JobListRow } from "../job-list-row";
 
 export const WorkerUpdateJobsSection = memo(function WorkerUpdateJobsSection({
   jobs,
@@ -55,7 +55,7 @@ export const WorkerUpdateJobsSection = memo(function WorkerUpdateJobsSection({
             type="button"
             variant="ghost"
             size="xs"
-            className="text-red-600 dark:text-red-400"
+            tone="danger"
             loading={dismissingAll}
             onClick={() => setDismissConfirmOpen(true)}
           >
@@ -65,20 +65,12 @@ export const WorkerUpdateJobsSection = memo(function WorkerUpdateJobsSection({
       >
         <DataList>
           {jobs.map((job) => (
-            <DataListRow
+            <JobListRow
               key={job.config.id}
-              title={job.config.workerName}
-              description={getWorkerUpdateProgressLabel(job)}
-              meta={new Intl.DateTimeFormat(undefined, {
-                dateStyle: "medium",
-                timeStyle: "short",
-              }).format(new Date(job.state.updatedAt))}
-              metaPlacement="below"
-              badge={(
-                <StatusBadge variant={getWorkerUpdateStatusBadgeVariant(job.state.status)}>
-                  {getWorkerUpdateStatusLabel(job.state.status)}
-                </StatusBadge>
-              )}
+              title={getWorkerUpdateWorkerName(job)}
+              timestamp={job.state.updatedAt}
+              status={getWorkerUpdateStatusLabel(job.state.status)}
+              statusVariant={getWorkerUpdateStatusBadgeVariant(job.state.status)}
               onClick={() => onNavigate({
                 view: "worker-update-job",
                 workerUpdateJobId: job.config.id,
@@ -96,7 +88,7 @@ export const WorkerUpdateJobsSection = memo(function WorkerUpdateJobsSection({
         }}
         onConfirm={() => void handleDismissAll()}
         title="Dismiss terminal worker update jobs?"
-        message="This permanently removes all completed, failed, and interrupted worker update jobs and their logs. Pending and running jobs are kept."
+        message="Permanently delete finished worker update jobs and their logs?"
         confirmLabel="Dismiss all"
         loading={dismissingAll}
         variant="danger"

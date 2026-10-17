@@ -178,17 +178,13 @@ function AgentForm({
   const handleSubmit = useCallback((): void => {
     void form.submit(generation.code);
   }, [form.submit, generation.code]);
-  const headerActions = useMemo(() => (
-    <Button
-      type="button"
-      size="sm"
-      onClick={handleSubmit}
-      disabled={!canSubmit}
-      loading={form.isSubmitting}
-    >
-      {mode === "edit" ? "Save" : "Create"}
-    </Button>
-  ), [canSubmit, form.isSubmitting, handleSubmit, mode]);
+  const headerActions = useMemo(() => [{
+    id: "save-agent",
+    label: mode === "edit" ? "Save" : "Create",
+    onAction: handleSubmit,
+    disabled: !canSubmit,
+    loading: form.isSubmitting,
+  }], [canSubmit, form.isSubmitting, handleSubmit, mode]);
   const headerMenuActions = useMemo<ActionMenuItem[]>(() => [
     {
       id: "generate-code",
@@ -343,6 +339,7 @@ function AgentRunsList({
         title="Delete agent run"
         message={`Delete the ${deleteRun?.trigger ?? "selected"} run for "${agent.config.name}" scheduled for ${formatDate(deleteRun?.scheduledFor)}? This cannot be undone.`}
         confirmLabel="Delete run"
+        variant="danger"
         loading={deletePending}
       />
     </>

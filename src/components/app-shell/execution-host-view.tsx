@@ -171,17 +171,13 @@ export function ExecutionHostView({
     provisioning.starting,
   ]);
   useHeaderActions({
-    primary: sshServer ? (
-      <Button
-        type="submit"
-        form="execution-host-ssh-settings"
-        size="sm"
-        loading={sshFormSubmitting}
-        disabled={!sshFormValid || sshFormSubmitting}
-      >
-        Save
-      </Button>
-    ) : null,
+    primary: sshServer ? [{
+      id: "save-execution-host",
+      label: "Save",
+      form: "execution-host-ssh-settings",
+      loading: sshFormSubmitting,
+      disabled: !sshFormValid || sshFormSubmitting,
+    }] : undefined,
     overflow: headerMenuActions,
   });
 

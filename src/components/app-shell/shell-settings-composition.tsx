@@ -7,6 +7,8 @@ import {
   WorkerUpdateAction,
   QuickChatModelRowContent,
   WorkersSettingsSection,
+  ControllerSettingsContent,
+  RelaySettingsContent,
   SchedulerTimezoneRowContent,
   GithubUsernameRowContent,
   SettingsCheckbox,
@@ -75,11 +77,13 @@ export function buildShellSettingsSections({
     {
       id: "quick-chat",
       title: "Quick Chat",
+      category: { id: "chats", title: "Chats" },
       scope: "user" as const,
       rows: [
         {
           id: "quick-chat-workspace",
           title: "Workspace",
+          labelFor: "quick-chat-workspace",
           content: (
             <div className="space-y-2">
               <SettingsSelect
@@ -116,6 +120,7 @@ export function buildShellSettingsSections({
         {
           id: "quick-chat-model",
           title: "Model",
+          labelFor: "quick-chat-model",
           content: (
             <QuickChatModelRowContent
               workspace={selectedQuickChatWorkspace}
@@ -129,6 +134,7 @@ export function buildShellSettingsSections({
         ...(selectedQuickChatWorkspace?.workspaceType === "git" ? [{
           id: "quick-chat-worktree",
           title: "Use worktrees for quick chats",
+          labelFor: "quick-chat-worktree",
           content: (
             <SettingsCheckbox
               id="quick-chat-worktree"
@@ -163,9 +169,7 @@ export function buildShellSettingsSections({
               || (!quickChatSettings.settings.workspaceId
                 && !quickChatSettings.settings.model
                 && !quickChatSettings.settings.useWorktree),
-            onAction: () => {
-              void quickChatSettings.updateSettings(DEFAULT_QUICK_CHAT_SETTINGS);
-            },
+            onAction: async () => { await quickChatSettings.updateSettings(DEFAULT_QUICK_CHAT_SETTINGS); },
           }],
         },
       ],
@@ -173,29 +177,44 @@ export function buildShellSettingsSections({
     {
       id: "mesh",
       title: "Workers",
+      category: { id: "workers", title: "Workers" },
       scope: "owner" as const,
-      // The framework settings row model cannot collapse a section, so this
-      // custom render keeps Mesh and the owner-only relay in one collapsed list.
+      // Worker lifecycle and enrollment need a list plus focused domain dialogs.
       render: () => <WorkersSettingsSection mesh={mesh} />,
+    },
+    {
+      id: "controller",
+      title: "Controller",
+      category: { id: "controller", title: "Controller" },
+      scope: "owner" as const,
+      // Identity has a shared guarded draft and runtime protocol metadata.
+      render: () => <ControllerSettingsContent mesh={mesh} />,
+    },
+    {
+      id: "relays",
+      title: "Relays",
+      category: { id: "relays", title: "Relays" },
+      scope: "owner" as const,
+      // Pairing needs generated bootstrap configuration and runtime health.
+      render: () => <RelaySettingsContent />,
     },
     {
       id: "voice",
       title: "Voice",
+      category: { id: "voice", title: "Voice" },
       scope: "user" as const,
-      rows: [{
-        id: "voice-provider",
-        title: "Provider",
-        description: "Configure transcription, shared text generation, and Live Voice; speech synthesis runs locally with Piper.",
-        content: <VoiceSettingsRowContent voiceSettings={voiceSettings} />,
-      }],
+      // One shared draft and submit spans provider, models and credentials.
+      render: () => <VoiceSettingsRowContent voiceSettings={voiceSettings} />,
     },
     {
       id: "agents",
       title: "Agents",
+      category: { id: "integrations", title: "Agents & integrations" },
       scope: "user" as const,
       rows: [{
         id: "scheduler-timezone",
         title: "Timezone",
+        labelFor: "scheduler-timezone",
         content: (
           <SchedulerTimezoneRowContent
             timezone={schedulerTimezone.timezone}
@@ -210,10 +229,12 @@ export function buildShellSettingsSections({
     {
       id: "github",
       title: "GitHub",
+      category: { id: "integrations", title: "Agents & integrations" },
       scope: "user" as const,
       rows: [{
         id: "github-username",
         title: "Username",
+        labelFor: "github-username",
         content: (
           <GithubUsernameRowContent
             githubUsername={githubUsername.githubUsername}
@@ -232,6 +253,7 @@ export function buildShellSettingsSections({
       rows: [{
         id: "show-private-items",
         title: "Show private items",
+        labelFor: "show-private-items",
         content: (
           <SettingsCheckbox
             id="show-private-items"
@@ -251,6 +273,7 @@ export function buildShellSettingsSections({
         {
           id: "markdown-rendering",
           title: "Render markdown",
+          labelFor: "markdown-rendering",
           content: (
             <SettingsCheckbox
               id="markdown-rendering"
@@ -266,6 +289,7 @@ export function buildShellSettingsSections({
         {
           id: "file-explorer-full-tree",
           title: "Load full file tree",
+          labelFor: "file-explorer-full-tree",
           content: (
             <SettingsCheckbox
               id="file-explorer-full-tree"
@@ -283,13 +307,10 @@ export function buildShellSettingsSections({
     {
       id: "clanky-danger-zone",
       title: "Maintenance",
+      category: { id: "maintenance", title: "Maintenance" },
       scope: "owner" as const,
-      rows: [
-        {
-          id: "purge-terminal-tasks",
-          title: "Purge terminal-state tasks",
-          description: "Permanently delete archived terminal tasks across every workspace. Addressable pushed and accepted-local tasks are kept.",
-          actions: (
+      // Domain actions own async confirmation/results, using shared field rows.
+      render: () => <>
             <PurgeTerminalTasksAction
               onPurgeTerminalTasks={async () => {
                 const result = await dashboardData.purgeTerminalTasks();
@@ -300,27 +321,14 @@ export function buildShellSettingsSections({
               }}
               purgingTerminalTasks={dashboardData.appSettingsPurgingTerminalTasks}
             />
-          ),
-        },
-        {
-          id: "restart-automatic-workspaces",
-          title: "Restart automatic workspaces",
-          description: "Start a restart job for each automatically provisioned workspace.",
-          actions: (
             <RestartAutomaticWorkspacesAction
               workspaces={workspaces}
               workspacesLoading={workspacesLoading}
               restarting={dashboardData.appSettingsRestartingAutomaticWorkspaces}
               onRestartAutomaticWorkspaces={dashboardData.restartAutomaticWorkspaces}
             />
-          ),
-        },
-        {
-          id: "update-global-workers",
-          title: "Update global workers",
-          actions: <WorkerUpdateAction workerUpdates={workerUpdates} />,
-        },
-      ],
+            <WorkerUpdateAction workerUpdates={workerUpdates} />
+      </>,
     },
   ];
 }

@@ -61,7 +61,7 @@ export const ReasoningGroupEntry = memo(function ReasoningGroupEntry({
           <ActivityIndicator
             active={entry.isActive && showActivityIndicator}
             label="Thinking"
-            className="rounded-md py-0.5 text-left text-xs text-gray-400 transition hover:text-gray-600 dark:text-white/28 dark:hover:text-white/48"
+            className="rounded-md py-0.5 text-left text-base text-gray-400 transition hover:text-gray-600 dark:text-white/28 dark:hover:text-white/48"
             data-reasoning-summary="true"
           >
             {summary}

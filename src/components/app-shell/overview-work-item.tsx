@@ -7,7 +7,8 @@ import {
   type ActiveWorkSidebarItemType,
 } from "./active-work-sidebar-item";
 import { ClankyListRow } from "./clanky-list-row";
-import { getActiveWorkItemTimestamp, type SidebarActiveWorkItem } from "./shell-types";
+import type { SidebarActiveWorkItem } from "./shell-types";
+import { getOverviewActivityTimestamp, type OverviewAttention } from "./overview-activity";
 
 function getActiveWorkRoute(item: SidebarActiveWorkItem): WebAppRoute {
   if (item.kind === "task") {
@@ -91,12 +92,14 @@ export function OverviewWorkItem({
   item,
   onNavigate,
   showPrivateItems,
+  attention,
 }: {
   item: SidebarActiveWorkItem;
   onNavigate: (route: WebAppRoute) => void;
   showPrivateItems: boolean;
+  attention?: OverviewAttention;
 }) {
-  const badge = getActiveWorkBadge(item);
+  const badge = attention ?? getActiveWorkBadge(item);
   const privateHidden = isActiveWorkPrivateHidden(item, showPrivateItems);
   const workspace = getActiveWorkWorkspace(item);
 
@@ -109,7 +112,7 @@ export function OverviewWorkItem({
       meta={(
         <ActiveWorkMetadata
           itemType={getActiveWorkItemType(item)}
-          lastInteractionAt={getActiveWorkItemTimestamp(item)}
+          lastInteractionAt={getOverviewActivityTimestamp(item)}
           workspace={workspace ?? undefined}
         />
       )}

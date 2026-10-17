@@ -1,5 +1,5 @@
 import { useCallback, useMemo, memo } from "react";
-import { useToast } from "@pablozaiden/webapp/web";
+import { Button, useToast } from "@pablozaiden/webapp/web";
 import type { VoiceTranslationResponse } from "@/contracts/schemas";
 import type { VoiceTranslationLanguage } from "@/shared";
 import { useForegroundPresentation } from "../../hooks/useForegroundPresentation";
@@ -199,22 +199,20 @@ const ConversationPresentation = memo(function ConversationPresentation({
       className="mb-5 flex flex-wrap items-center justify-center gap-2 border-b border-gray-200/70 pb-4 dark:border-white/10"
       data-testid="transcript-history-actions"
     >
-      <button
+      <Button
         type="button"
-        className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/15 dark:bg-white/5 dark:text-gray-200 dark:hover:bg-white/10"
         disabled={loadingTranscript || !onLoadMoreTranscript}
         onClick={() => void handleLoadTranscript(onLoadMoreTranscript)}
       >
         {loadingTranscript ? "Loading…" : "Load more"}
-      </button>
-      <button
+      </Button>
+      <Button
         type="button"
-        className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/15 dark:bg-white/5 dark:text-gray-200 dark:hover:bg-white/10"
         disabled={loadingTranscript || !onLoadFullTranscript}
         onClick={() => void handleLoadTranscript(onLoadFullTranscript)}
       >
         Load all
-      </button>
+      </Button>
     </div>
   );
 
@@ -223,7 +221,7 @@ const ConversationPresentation = memo(function ConversationPresentation({
       <div
         ref={containerRef}
         id={id}
-        className={`dark-scrollbar min-w-0 overflow-x-hidden overflow-y-auto bg-transparent text-xs text-gray-700 dark:text-gray-100 sm:text-sm ${!maxHeight ? "flex-1 min-h-0" : ""}`}
+        className={`dark-scrollbar min-w-0 overflow-x-hidden overflow-y-auto bg-transparent text-lg text-gray-700 dark:text-gray-100 ${!maxHeight ? "flex-1 min-h-0" : ""}`}
         style={maxHeight ? { maxHeight } : undefined}
       >
         {isEmpty ? (
@@ -234,7 +232,7 @@ const ConversationPresentation = memo(function ConversationPresentation({
           >
             <div className="flex h-32 shrink-0 items-center justify-center text-gray-500 text-xs sm:text-sm">
               {hasActiveWork ? (
-                <ActivityIndicator className="rounded-md py-0.5 text-left text-xs text-gray-400 dark:text-white/28">
+                <ActivityIndicator className="rounded-md py-0.5 text-left text-base text-gray-400 dark:text-white/28">
                   <span>Thinking…</span>
                 </ActivityIndicator>
               ) : (
@@ -327,7 +325,7 @@ const ConversationPresentation = memo(function ConversationPresentation({
               }
             })}
             {shouldShowWorkingIndicator && (
-              <ActivityIndicator className="mt-4 rounded-md py-0.5 text-left text-xs text-gray-400 dark:text-white/28" data-testid="working-indicator">
+              <ActivityIndicator className="mt-4 rounded-md py-0.5 text-left text-base text-gray-400 dark:text-white/28" data-testid="working-indicator">
                 <span>Thinking…</span>
               </ActivityIndicator>
             )}

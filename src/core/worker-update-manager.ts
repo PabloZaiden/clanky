@@ -7,7 +7,7 @@ import {
   dismissWorkerUpdateJob,
   listWorkerUpdateJobs,
   loadWorkerUpdateJob,
-  markWorkerUpdateJobsInterrupted,
+  recoverWorkerUpdateJobs,
 } from "../persistence/worker-update-jobs";
 import { requireCurrentUser, requireCurrentUserId, runWithCurrentUser } from "../context/user-context";
 import { meshManager } from "./mesh-manager";
@@ -55,11 +55,11 @@ export class WorkerUpdateManager {
   private readonly runner = new WorkerUpdateJobRunner();
 
   reconcileStartupState(): number {
-    const interrupted = markWorkerUpdateJobsInterrupted(requireCurrentUserId());
-    if (interrupted > 0) {
-      log.info(`Reconciled ${interrupted} interrupted worker update jobs`);
+    const recovered = recoverWorkerUpdateJobs(requireCurrentUserId());
+    if (recovered > 0) {
+      log.info(`Reconciled ${recovered} worker update job outcomes`);
     }
-    return interrupted;
+    return recovered;
   }
 
   async startGlobalWorkerUpdates(): Promise<StartWorkerUpdateJobsResult> {
@@ -104,7 +104,7 @@ export class WorkerUpdateManager {
     owner: CurrentUser,
     worker: MeshWorkerRegistration,
   ): WorkerUpdateAdmissionResult {
-    const workerName = worker.workerInstanceName?.trim() || worker.workerNodeId;
+    const workerName = worker.workerInstanceName?.trim() || "Worker";
     const now = new Date().toISOString();
     const job: WorkerUpdateJob = {
       config: {
@@ -117,8 +117,8 @@ export class WorkerUpdateManager {
         status: "pending",
         currentStep: null,
         steps: {
-          update: { status: "pending" },
-          restart: { status: "pending" },
+          update: { status: "pending", execution: "not_started" },
+          restart: { status: "pending", execution: "not_started" },
         },
         updatedAt: now,
       },

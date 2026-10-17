@@ -13,5 +13,7 @@ export { ConversationViewer } from "./log-viewer";
 export { ChatDetails } from "./ChatDetails";
 export { CreateTaskForm } from "./CreateTaskForm";
 export { ProvisioningJobView } from "./ProvisioningJobView";
+export { ConsoleOutput } from "./console-output";
+export { JobListRow } from "./job-list-row";
 export { RenameChatModal } from "./RenameChatModal";
 export { RenameSessionModal } from "./RenameSessionModal";

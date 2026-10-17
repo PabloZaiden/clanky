@@ -118,7 +118,7 @@ export const WorkingGroupEntry = memo(function WorkingGroupEntry({
           <ActivityIndicator
             active={entry.isActive}
             label="Working"
-            className="rounded-md py-0.5 text-left text-xs text-gray-400 transition hover:text-gray-600 dark:text-white/28 dark:hover:text-white/48"
+            className="rounded-md py-0.5 text-left text-base text-gray-400 transition hover:text-gray-600 dark:text-white/28 dark:hover:text-white/48"
             data-working-summary="true"
           >
             {summary}

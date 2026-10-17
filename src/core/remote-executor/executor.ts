@@ -377,6 +377,10 @@ export class CommandExecutorImpl implements CommandExecutor {
       const onStderrChunk = options?.onStderrChunk;
       const maxOutputBytes = options?.maxOutputBytes;
       const longRunning = options?.longRunning === true;
+      let localStarted = false;
+      if (this.provider === "ssh" && !signal?.aborted) {
+        options?.onExecutionState?.("dispatched");
+      }
       const result = this.provider === "ssh"
         ? await this.execSsh(
           command,
@@ -400,7 +404,15 @@ export class CommandExecutorImpl implements CommandExecutor {
           onStdoutChunk,
           onStderrChunk,
           maxOutputBytes,
+          (state) => {
+            if (state === "started") localStarted = true;
+            options?.onExecutionState?.(state);
+          },
         );
+      if ((this.provider !== "ssh" && (localStarted || !result.termination))
+        || (this.provider === "ssh" && result.exitCode !== 255 && !result.termination)) {
+        options?.onExecutionState?.("finished");
+      }
 
       if (!result.success && options?.logFailures !== false) {
         log.error(`${LOG_PREFIX} Command failed: ${cmdStr}`);
@@ -452,9 +464,11 @@ export class CommandExecutorImpl implements CommandExecutor {
     onStdoutChunk?: (chunk: string) => void,
     onStderrChunk?: (chunk: string) => void,
     maxOutputBytes?: number,
+    onExecutionState?: CommandOptions["onExecutionState"],
   ): Promise<CommandResult> {
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     let abortHandler: (() => void) | undefined;
+    let spawnedProcess: ReturnType<typeof Bun.spawn> | undefined;
     try {
       if (signal?.aborted) {
         return {
@@ -473,12 +487,15 @@ export class CommandExecutorImpl implements CommandExecutor {
         ...env,
       };
 
+      onExecutionState?.("dispatched");
       const subprocess = Bun.spawn([command, ...args], {
         cwd,
         stdout: "pipe",
         stderr: "pipe",
         env: commandEnv,
       });
+      spawnedProcess = subprocess;
+      onExecutionState?.("started");
       let terminationPromise: Promise<void> | undefined;
       const terminateProcess = (): Promise<void> => {
         terminationPromise ??= terminateSubprocessTree(subprocess, {
@@ -675,6 +692,9 @@ export class CommandExecutorImpl implements CommandExecutor {
     } catch (error) {
       if (error instanceof CommandOutputLimitError) {
         throw error;
+      }
+      if (spawnedProcess?.exitCode === null) {
+        await terminateSubprocessTree(spawnedProcess, { requireExit: true });
       }
       return {
         success: false,

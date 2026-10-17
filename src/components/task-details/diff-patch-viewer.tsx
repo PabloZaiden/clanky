@@ -7,7 +7,7 @@ export function DiffPatchViewer({ patch }: { patch: string }) {
   const lines = patch.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
 
   return (
-    <pre className="text-xs font-mono overflow-x-auto bg-neutral-950 p-3 rounded-b">
+    <pre className="text-base font-mono overflow-x-auto bg-neutral-950 p-3 rounded-b">
       {lines.map((line, i) => {
         let className = "text-gray-400";
         if (line.startsWith("+") && !line.startsWith("+++")) {

@@ -357,6 +357,7 @@ export function useChatActions({
           ? `Move "${deleteTarget.config.name}" to Trash? You can restore it for 30 days. Active work will stop; its history and worktree will be kept until permanent deletion.`
           : `Delete "${deleteTarget?.config.name ?? "this chat"}"? This removes the saved chat session, transcript, and any worktree created for it.`}
         confirmLabel="Delete"
+        variant={deleteTarget && isStandaloneChat(deleteTarget) ? "primary" : "danger"}
         loading={isDeletePending}
       />
       <Modal

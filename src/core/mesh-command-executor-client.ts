@@ -787,9 +787,11 @@ export class MeshCommandExecutorClient {
       timeout: options?.timeout,
       maxOutputBytes: options?.maxOutputBytes,
       env: options?.env,
-    }, options?.signal);
+    }, options?.signal, () => options?.onExecutionState?.("dispatched"));
+    if (result.stdout || result.stderr) options?.onExecutionState?.("started");
     if (result.stdout) options?.onStdoutChunk?.(result.stdout);
     if (result.stderr) options?.onStderrChunk?.(result.stderr);
+    options?.onExecutionState?.("finished");
     return result;
   }
 
@@ -836,6 +838,7 @@ export class MeshCommandExecutorClient {
     let jobId: string | undefined;
     let remoteMayBeRunning = false;
     let startDispatched = false;
+    let executionStarted = false;
     let resultReceived = false;
     let terminationConfirmed = false;
     const output = {
@@ -867,15 +870,19 @@ export class MeshCommandExecutorClient {
         started = await this.sendAsyncCommandRequest(startOperation, {
           signal: options.signal,
           requestId: startRequestId,
-          retry: !options.preserveOnDisconnect,
+          retry: options.retryStart !== false && !options.preserveOnDisconnect,
+          onDispatch: () => {
+            startDispatched = true;
+            options.onExecutionState?.("dispatched");
+          },
         });
         startDispatched = true;
       } catch (error) {
-        startDispatched = error instanceof DomainError
+        startDispatched ||= error instanceof DomainError
           && error.details["executionRequestDispatched"] === true;
         const status = error instanceof DomainError ? error.details["status"] : undefined;
         resultReceived = typeof status === "number" && ![502, 503, 504].includes(status);
-        if (options.preserveOnDisconnect || !options.signal?.aborted) {
+        if (options.preserveOnDisconnect || options.retryStart === false || !options.signal?.aborted) {
           throw error;
         }
         try {
@@ -891,9 +898,18 @@ export class MeshCommandExecutorClient {
               stdoutOffset: output.stdout.length,
               stderrOffset: output.stderr.length,
             });
+            if (!executionStarted && (cancelled.output?.stdout || cancelled.output?.stderr)) {
+              executionStarted = true;
+              options.onExecutionState?.("started");
+            }
             this.consumeAsyncCommandOutput(cancelled, output, options);
             remoteMayBeRunning = cancelled.status === "running";
             terminationConfirmed = this.isAsyncTerminationConfirmed(cancelled);
+            if (cancelled.status === "completed" && cancelled.result) {
+              this.consumeCompletedAsyncCommandOutput(cancelled.result, output, options);
+              options.onExecutionState?.("finished");
+              return cancelled.result;
+            }
           }
         } catch (reconcileError) {
           throw new DomainError(
@@ -909,6 +925,14 @@ export class MeshCommandExecutorClient {
       }
       jobId = started.jobId;
       remoteMayBeRunning = started.status === "running";
+      const observeExecution = (snapshot: MeshExecutionAsyncCommandSnapshot): void => {
+        // A running snapshot acknowledges acceptance, not successful process spawn.
+        if (!executionStarted && (snapshot.output?.stdout || snapshot.output?.stderr)) {
+          executionStarted = true;
+          options.onExecutionState?.("started");
+        }
+      };
+      observeExecution(started);
       this.consumeAsyncCommandOutput(started, output, options);
 
       let snapshot = started;
@@ -921,10 +945,12 @@ export class MeshCommandExecutorClient {
           stderrOffset: output.stderr.length,
         }, { signal: options.signal, retry: !options.preserveOnDisconnect });
         remoteMayBeRunning = snapshot.status === "running";
+        observeExecution(snapshot);
         this.consumeAsyncCommandOutput(snapshot, output, options);
       }
       remoteMayBeRunning = false;
       resultReceived = true;
+      terminationConfirmed = this.isAsyncTerminationConfirmed(snapshot);
 
       if (snapshot.status === "cancelled") {
         throw new DomainError(
@@ -946,8 +972,11 @@ export class MeshCommandExecutorClient {
         );
       }
       this.consumeCompletedAsyncCommandOutput(snapshot.result, output, options);
+      options.onExecutionState?.("finished");
       return snapshot.result;
     } catch (error) {
+      terminationConfirmed ||= error instanceof DomainError
+        && error.details["terminationConfirmed"] === true;
       if (options.preserveOnDisconnect) {
         if (!(error instanceof DomainError)) throw error;
         throw new DomainError(error.code, error.message, {
@@ -955,7 +984,9 @@ export class MeshCommandExecutorClient {
           details: {
             ...error.details,
             executionRequestDispatched: startDispatched,
+            executionStarted,
             executionResultReceived: resultReceived,
+            terminationConfirmed,
           },
         });
       }
@@ -967,9 +998,18 @@ export class MeshCommandExecutorClient {
             stdoutOffset: output.stdout.length,
             stderrOffset: output.stderr.length,
           });
+          if (!executionStarted && (cancelled.output?.stdout || cancelled.output?.stderr)) {
+            executionStarted = true;
+            options.onExecutionState?.("started");
+          }
           this.consumeAsyncCommandOutput(cancelled, output, options);
           remoteMayBeRunning = cancelled.status === "running";
           terminationConfirmed = this.isAsyncTerminationConfirmed(cancelled);
+          if (cancelled.status === "completed" && cancelled.result) {
+            this.consumeCompletedAsyncCommandOutput(cancelled.result, output, options);
+            options.onExecutionState?.("finished");
+            return cancelled.result;
+          }
           if (remoteMayBeRunning || !terminationConfirmed) {
             throw new DomainError(
               "mesh_execution_cancel_failed",
@@ -981,7 +1021,18 @@ export class MeshCommandExecutorClient {
             cancelError instanceof DomainError
             && cancelError.code === "mesh_execution_async_command_not_found"
           ) {
-            throw error;
+            throw error instanceof DomainError
+              ? new DomainError(error.code, error.message, {
+                  cause: error,
+                  details: {
+                    ...error.details,
+                    executionRequestDispatched: startDispatched,
+                    executionStarted,
+                    executionResultReceived: resultReceived,
+                    terminationConfirmed: false,
+                  },
+                })
+              : error;
           }
           throw new DomainError(
             options.signal?.aborted
@@ -990,14 +1041,28 @@ export class MeshCommandExecutorClient {
             options.signal?.aborted
               ? "The asynchronous mesh command was aborted, but remote cancellation could not be confirmed."
               : "The asynchronous mesh command failed, but remote cancellation could not be confirmed.",
-            { cause: cancelError },
+            {
+              cause: cancelError,
+              details: {
+                executionRequestDispatched: startDispatched,
+                executionStarted,
+                executionResultReceived: resultReceived,
+                terminationConfirmed: false,
+              },
+            },
           );
         }
       }
-      if (terminationConfirmed && error instanceof DomainError && error.code === "mesh_execution_aborted") {
+      if (error instanceof DomainError) {
         throw new DomainError(error.code, error.message, {
           cause: error,
-          details: { ...error.details, terminationConfirmed: true },
+          details: {
+            ...error.details,
+            executionRequestDispatched: startDispatched,
+            executionStarted,
+            executionResultReceived: resultReceived,
+            terminationConfirmed,
+          },
         });
       }
       throw error;
@@ -1005,8 +1070,7 @@ export class MeshCommandExecutorClient {
   }
 
   private isAsyncTerminationConfirmed(snapshot: MeshExecutionAsyncCommandSnapshot): boolean {
-    return snapshot.result?.termination === "confirmed"
-      || (snapshot.status !== "running" && snapshot.result?.success === true);
+    return snapshot.result?.termination === "confirmed";
   }
 
   private consumeAsyncCommandOutput(
@@ -1052,7 +1116,7 @@ export class MeshCommandExecutorClient {
 
   private async sendAsyncCommandRequest(
     operation: Omit<MeshExecutionAsyncCommandRequest, "protocolVersion" | "sessionId" | "sessionToken" | "requestId">,
-    options: { signal?: AbortSignal; requestId?: string; retry?: boolean } = {},
+    options: { signal?: AbortSignal; requestId?: string; retry?: boolean; onDispatch?: () => void } = {},
   ): Promise<MeshExecutionAsyncCommandSnapshot> {
     const { signal, requestId: requestIdOverride } = options;
     for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -1086,6 +1150,9 @@ export class MeshCommandExecutorClient {
             },
             signal,
             MESH_EXECUTION_ASYNC_REQUEST_TIMEOUT_MS,
+            "POST",
+            this.route,
+            options.onDispatch,
           );
           commandDispatched = true;
           const body = parseResponseShape<MeshRpcResponse>(
@@ -1580,6 +1647,7 @@ export class MeshCommandExecutorClient {
     operation: Omit<MeshExecutionRpcRequest, "protocolVersion" | "sessionId" | "sessionToken" | "requestId" | "operation">
       & { operation: MeshExecutionRpcRequest["operation"] },
     signal?: AbortSignal,
+    onDispatch?: () => void,
   ): Promise<T> {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       if (signal?.aborted) {
@@ -1616,6 +1684,9 @@ export class MeshCommandExecutorClient {
               && request.timeout !== null
               ? Math.max(this.requestTimeoutMs, request.timeout + 1_000)
               : undefined,
+            "POST",
+            this.route,
+            onDispatch,
           );
           commandDispatched = true;
           const body = parseResponseShape<MeshRpcResponse>(
@@ -1716,6 +1787,7 @@ export class MeshCommandExecutorClient {
     requestTimeoutMs?: number,
     method: "POST" | "DELETE" = "POST",
     route: MeshPeerRoute | null = this.route,
+    onDispatch?: () => void,
   ): Promise<unknown> {
     if (signal?.aborted) {
       throw new DomainError("mesh_execution_aborted", "The mesh execution request was aborted.");
@@ -1744,7 +1816,10 @@ export class MeshCommandExecutorClient {
         body: JSON.stringify(body),
         signal: controller.signal,
         fetch: this.fetchImpl,
-        onDispatch: () => { requestDispatched = true; },
+        onDispatch: () => {
+          requestDispatched = true;
+          onDispatch?.();
+        },
       };
       const response = await requestMeshPeer(route, path, request);
       if (!response.ok) {

@@ -1,23 +1,34 @@
 import { z } from "zod";
+import { COMMAND_EXECUTION_STATES } from "@/shared/job-execution";
 
 const RequiredStringSchema = z.string().trim().min(1);
 const TimestampSchema = z.string().datetime();
 
 export const WorkerUpdateJobStatusSchema = z.enum([
   "pending",
+  "connecting",
   "running",
+  "verifying",
   "completed",
+  "not_started",
+  "connection_failed",
   "failed",
   "interrupted",
+  "unconfirmed",
 ]);
 
 export const WorkerUpdateStepSchema = z.enum(["update", "restart"]);
 
 export const WorkerUpdateStepStatusSchema = z.enum([
   "pending",
+  "connecting",
   "running",
+  "verifying",
   "succeeded",
+  "not_started",
+  "connection_failed",
   "failed",
+  "interrupted",
   "skipped",
   "unconfirmed",
 ]);
@@ -30,6 +41,7 @@ export const WorkerUpdateJobErrorSchema = z.object({
 
 export const WorkerUpdateStepResultSchema = z.object({
   status: WorkerUpdateStepStatusSchema,
+  execution: z.enum(COMMAND_EXECUTION_STATES).optional(),
   startedAt: TimestampSchema.optional(),
   completedAt: TimestampSchema.optional(),
   exitCode: z.number().int().optional(),

@@ -1,119 +1,12 @@
-import { memo, useEffect, useMemo, useRef } from "react";
-import { Badge, getProvisioningStatusBadgeVariant, getProvisioningStatusLabel, StatusBadge } from "./common";
-import type {
-  ProvisioningJobMode,
-  ProvisioningLogEntry,
-  ProvisioningStep,
-  PublicProvisioningJobSnapshot,
-} from "@/shared";
+import { memo } from "react";
+import {
+  DataList, DataListRow, ErrorState, LoadingState, Panel,
+} from "@pablozaiden/webapp/web";
+import { getProvisioningStatusBadgeVariant, getProvisioningStatusLabel, StatusBadge } from "./common";
+import type { ProvisioningLogEntry, PublicProvisioningJobSnapshot } from "@/shared";
 import type { RealtimeStreamStatus } from "../hooks";
-
-const STEP_LABELS: Record<ProvisioningStep, string> = {
-  verify_devbox: "Verify devbox",
-  prepare_directory: "Prepare directory",
-  clone_repo: "Clone repository",
-  devbox_up: "Run devbox up",
-  devbox_rebuild: "Rebuild devbox",
-  devbox_arise: "Run devbox arise",
-  devbox_status: "Read devbox status",
-  create_workspace: "Create workspace",
-  test_connection: "Test connection",
-  workspace_ready: "Workspace Ready",
-  arise_complete: "Arise complete",
-};
-
-const PROVISION_STEPS: ProvisioningStep[] = [
-  "verify_devbox",
-  "prepare_directory",
-  "clone_repo",
-  "devbox_up",
-  "devbox_status",
-  "create_workspace",
-  "test_connection",
-  "workspace_ready",
-];
-
-const REBUILD_STEPS: ProvisioningStep[] = [
-  "verify_devbox",
-  "prepare_directory",
-  "devbox_rebuild",
-  "devbox_status",
-  "test_connection",
-  "workspace_ready",
-];
-
-const RESTART_STEPS: ProvisioningStep[] = [
-  "verify_devbox",
-  "prepare_directory",
-  "devbox_up",
-  "devbox_status",
-  "test_connection",
-  "workspace_ready",
-];
-
-const ARISE_STEPS: ProvisioningStep[] = [
-  "verify_devbox",
-  "devbox_arise",
-  "arise_complete",
-];
-
-function getStepsForMode(mode: ProvisioningJobMode | undefined): [ProvisioningStep, string][] {
-  const steps = mode === "rebuild"
-    ? REBUILD_STEPS
-    : mode === "restart"
-      ? RESTART_STEPS
-      : mode === "arise"
-        ? ARISE_STEPS
-      : PROVISION_STEPS;
-  return steps.map((step) => [step, STEP_LABELS[step]]);
-}
-
-function getPrimarySummary(mode: ProvisioningJobMode | undefined, snapshot: PublicProvisioningJobSnapshot): {
-  label: string;
-  value: string;
-} {
-  if (mode === "arise") {
-    return {
-      label: "Server name",
-      value: snapshot.job.config.name,
-    };
-  }
-
-  return {
-    label: "Workspace name",
-    value: snapshot.job.config.name,
-  };
-}
-
-function getSecondarySummary(mode: ProvisioningJobMode | undefined, snapshot: PublicProvisioningJobSnapshot): {
-  label: string;
-  value: string;
-} {
-  if (mode === "arise") {
-    return {
-      label: "Repositories base path",
-      value: snapshot.job.config.basePath || "Not set",
-    };
-  }
-
-  return {
-    label: "Target directory",
-    value: snapshot.job.state.targetDirectory ?? "Pending",
-  };
-}
-
-function getWebSocketStatusLabel(status: RealtimeStreamStatus): string {
-  switch (status) {
-    case "open":
-      return "Live";
-    case "connecting":
-      return "Connecting";
-    case "error":
-      return "Reconnecting";
-    case "closed":
-      return "Offline";
-  }
-}
+import { getProvisioningExecutionLabel, getProvisioningStepLabel } from "./provisioning/presentation";
+import { ConsoleOutput } from "./console-output";
 
 export interface ProvisioningJobViewProps {
   snapshot: PublicProvisioningJobSnapshot | null;
@@ -130,139 +23,54 @@ export const ProvisioningJobView = memo(function ProvisioningJobView({
   loading = false,
   error = null,
 }: ProvisioningJobViewProps) {
-  const logContainerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const element = logContainerRef.current;
-    if (!element) {
-      return;
-    }
-    element.scrollTop = element.scrollHeight;
-  }, [logs]);
-
-  const jobMode = snapshot?.job.config.mode;
-  const stepEntries = useMemo(() => getStepsForMode(jobMode), [jobMode]);
-
-  if (loading && !snapshot) {
-    return (
-      <div className="rounded-md border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600 dark:border-gray-700 dark:bg-neutral-900 dark:text-gray-300">
-        Loading provisioning job…
-      </div>
-    );
-  }
-
-  if (!snapshot) {
-    return (
-      <div className="rounded-md border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600 dark:border-gray-700 dark:bg-neutral-900 dark:text-gray-300">
-        No provisioning job selected.
-      </div>
-    );
-  }
-
-  const primarySummary = getPrimarySummary(jobMode, snapshot);
-  const secondarySummary = getSecondarySummary(jobMode, snapshot);
-
+  if (loading && !snapshot) return <LoadingState title="Loading provisioning job" />;
+  if (!snapshot) return <ErrorState title="Provisioning job not found" description={error ?? undefined} />;
+  const { job } = snapshot;
+  const execution = job.state.execution;
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <StatusBadge variant={getProvisioningStatusBadgeVariant(snapshot.job.state.status)}>
-          {getProvisioningStatusLabel(snapshot.job.state.status)}
+        <StatusBadge variant={getProvisioningStatusBadgeVariant(job.state.status)}>
+          {getProvisioningStatusLabel(job.state.status)}
         </StatusBadge>
-        <StatusBadge variant={websocketStatus === "open" ? "info" : "warning"}>
-          {getWebSocketStatusLabel(websocketStatus)}
-        </StatusBadge>
-        {snapshot.job.state.workspaceAction && snapshot.job.state.workspaceId && (
-          <Badge variant="success">
-            workspace {snapshot.job.state.workspaceAction}
-          </Badge>
-        )}
+        {websocketStatus !== "open" ? (
+          <StatusBadge variant="warning">
+            {websocketStatus === "closed" ? "Offline" : "Reconnecting"}
+          </StatusBadge>
+        ) : null}
+        {job.state.recovery?.status === "confirmed" ? (
+          <StatusBadge variant="completed">Recovery confirmed</StatusBadge>
+        ) : null}
+        {job.state.workspaceAction ? (
+          <StatusBadge variant="completed">Workspace {job.state.workspaceAction}</StatusBadge>
+        ) : null}
       </div>
-
-      <div className="space-y-2">
-        <div className="grid gap-2 sm:grid-cols-2">
-          <div className="rounded-md border border-gray-200 p-3 dark:border-gray-700">
-            <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-              {primarySummary.label}
-            </p>
-            <p className="mt-1 text-sm text-gray-900 dark:text-gray-100">
-              {primarySummary.value}
-            </p>
-          </div>
-          <div className="rounded-md border border-gray-200 p-3 dark:border-gray-700">
-            <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-              {secondarySummary.label}
-            </p>
-            <p className="mt-1 break-all text-sm font-mono text-gray-900 dark:text-gray-100">
-              {secondarySummary.value}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Progress</h3>
-        <div className="space-y-2">
-          {stepEntries.map(([step, label], index) => {
-            const currentStep = snapshot.job.state.currentStep;
-            const isCurrent = snapshot.job.state.status !== "completed" && currentStep === step;
-            const hasPassed = currentStep ? stepEntries.findIndex(([value]) => value === currentStep) > index : false;
-            const isDone = snapshot.job.state.status === "completed" || hasPassed;
-
-            return (
-              <div
-                key={step}
-                className={`rounded-md border px-3 py-2 text-sm ${
-                  isCurrent
-                    ? "border-blue-300 bg-blue-50 text-blue-900 dark:border-gray-700 dark:bg-neutral-900/60 dark:text-blue-100"
-                    : isDone
-                      ? "border-green-200 bg-green-50 text-green-900 dark:border-green-800 dark:bg-green-950/30 dark:text-green-100"
-                      : "border-gray-200 bg-white text-gray-600 dark:border-gray-700 dark:bg-neutral-900 dark:text-gray-300"
-                }`}
-              >
-                {label}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        <div className="flex items-center justify-between gap-2">
-          <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Provisioning log</h3>
-          <span className="text-xs text-gray-500 dark:text-gray-400">
-            {logs.length} entries
-          </span>
-        </div>
-        <div
-          ref={logContainerRef}
-          className="max-h-80 overflow-auto rounded-md border border-gray-200 bg-neutral-950 p-3 font-mono text-xs text-gray-100 dark:border-gray-700"
-        >
-          {logs.length === 0 ? (
-            <div className="text-gray-400">Waiting for output…</div>
-          ) : (
-            logs.map((entry) => (
-              <div key={entry.id} className="whitespace-pre-wrap break-words">
-                <span className="mr-2 text-gray-500">
-                  [{entry.source}]
-                </span>
-                <span>{entry.text}</span>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-
-      {snapshot.job.state.error && (
-        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
-          {snapshot.job.state.error.message}
-        </div>
-      )}
-
-      {error && (
-        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
-          {error}
-        </div>
-      )}
+      {job.state.error ? (
+        <ErrorState title={getProvisioningStatusLabel(job.state.status)} description={job.state.error.message} />
+      ) : null}
+      {job.state.status === "cancelled" && execution?.outcome === "unconfirmed" ? (
+        <ErrorState title="Command outcome unconfirmed" description="Check the execution host before retrying." />
+      ) : null}
+      {error ? <ErrorState title="Unable to refresh job" description={error} /> : null}
+      <Panel title="Target">
+        <DataList>
+          <DataListRow title={job.config.name} />
+        </DataList>
+      </Panel>
+      <Panel title="Progress">
+        <DataList>
+          <DataListRow
+            title={getProvisioningStepLabel(job.state.currentStep)}
+            description={execution && execution.step === job.state.currentStep
+              ? getProvisioningExecutionLabel(execution) : undefined}
+            meta={execution?.exitCode === undefined ? undefined : `Exit code ${execution.exitCode}`}
+            metaPlacement="inline"
+          />
+        </DataList>
+      </Panel>
+      <Panel title="Logs" description={`${logs.length} entries`}>
+        <ConsoleOutput entries={logs} />
+      </Panel>
     </div>
   );
 });
