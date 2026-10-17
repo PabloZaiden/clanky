@@ -59,6 +59,29 @@ fallback rather than returning a partial tree. Rejection-based fallbacks are
 logged. Filesystem, authorization, transport, cancellation, and malformed-result
 failures remain errors, not empty trees or compatibility fallbacks.
 
+### Relayed file downloads and response flow control
+
+Relayed HTTP responses use a negotiated, consumption-driven send window. The
+sender keeps at most 16 binary frames of up to 64 KiB in flight and waits for
+acknowledgements when the receiver consumes them. Slow downloads therefore
+backpressure the worker instead of overflowing the relay receive queue. Files
+remain streamed; the existing queue limits are not file-size limits.
+
+This is an optional extension within Mesh v6. The initiator advertises
+`x-clanky-mesh-response-flow: 1`; the peer confirms `responseFlowControl: 1`
+in the HTTP response metadata before either side uses `http.response.ack`
+frames. Acknowledgements are cumulative byte offsets at frame boundaries.
+Both peers must support the extension to protect slow downloads. During a
+gradual rollout, older peers retain the previous response behavior and never
+receive acknowledgement frames. Upgrade the controller and affected worker;
+the relay forwards these frames opaquely and does not need this extension.
+The extension does not change request uploads or raw socket streams.
+
+An unresponsive consumer times out after 60 seconds waiting for an
+acknowledgement. Cancellation, disconnection, or shutdown closes the owned
+stream and releases the pending read. A failed transfer remains an error,
+not a successful partial file.
+
 ## Choose a harness
 
 The workspace selects the adapter; each task or chat selects its model.
