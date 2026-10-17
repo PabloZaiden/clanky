@@ -9,6 +9,7 @@ import {
 import type { Agent } from "@/shared";
 import {
   buildShellRoutes,
+  CurrentUserObserver,
   type ShellRouteCompositionContext,
 } from "./shell-route-composition";
 import { buildShellSidebarComposition } from "./shell-sidebar-composition";
@@ -313,7 +314,7 @@ export function AppShell() {
     workerUpdates,
     toast,
     showPrivateItems: privateItemsPreference.showPrivateItems,
-  } satisfies ShellRouteCompositionContext, setIsOwner), [
+  } satisfies ShellRouteCompositionContext), [
     trashActions,
     activityRoute,
     closeHarnessActivity,
@@ -522,9 +523,12 @@ export function AppShell() {
           appIcon={logoSvgPath}
           homeRoute={HOME_ROUTE}
           sidebar={sidebarComposition.sidebar}
-          mainOverlay={liveVoice.busy && liveVoiceExpanded
-            ? <LiveVoiceControls voice={liveVoice} expanded onToggleExpanded={() => setLiveVoiceExpanded(false)} />
-            : null}
+          mainOverlay={<>
+            <CurrentUserObserver onOwnerChange={setIsOwner} />
+            {liveVoice.busy && liveVoiceExpanded
+              ? <LiveVoiceControls voice={liveVoice} expanded onToggleExpanded={() => setLiveVoiceExpanded(false)} />
+              : null}
+          </>}
           routes={routes}
           onRouteChange={handleRouteChange}
           header={{

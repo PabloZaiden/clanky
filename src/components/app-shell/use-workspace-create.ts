@@ -2,6 +2,7 @@ import { type FormEvent, useEffect, useRef, useState } from "react";
 import { createLogger, type ToastService, type WebAppRoute } from "@pablozaiden/webapp/web";
 import {
   getRegisteredSshServerId,
+  canRetryProvisioningJob,
   type ExecutionHostRef,
   type Workspace,
   type WorkspaceType,
@@ -264,8 +265,7 @@ export function useWorkspaceCreate({
         provisioning.openJob(retryJobId);
         return;
       }
-      const retryStatus = retrySnapshot.job.state.status;
-      if (retryStatus === "failed" || retryStatus === "cancelled" || retryStatus === "interrupted") {
+      if (canRetryProvisioningJob(retrySnapshot.job)) {
         wasOnComposeWorkspaceRef.current = true;
         const config = retrySnapshot.job.config;
         setWorkspaceCreateMode("automatic");

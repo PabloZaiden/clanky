@@ -117,7 +117,7 @@ export const ToolGroupEntry = memo(function ToolGroupEntry({
         <HarnessToolActivity toolIds={entry.tools.map((tool) => tool.id)} />
         <button
           type="button"
-          className="inline-flex max-w-full items-center gap-2 rounded-md py-0.5 text-left text-xs text-gray-400 transition hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-300 dark:text-white/28 dark:hover:text-white/48 dark:focus:ring-white/15"
+          className="inline-flex max-w-full items-center gap-2 rounded-md py-0.5 text-left text-base text-gray-400 transition hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-300 dark:text-white/28 dark:hover:text-white/48 dark:focus:ring-white/15"
           aria-expanded={isExpanded}
           aria-controls={panelId}
           id={labelId}

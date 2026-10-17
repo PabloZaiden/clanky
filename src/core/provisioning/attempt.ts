@@ -13,6 +13,7 @@ import { ProvisioningCancelledError, ProvisioningFailedError } from "./errors";
 import { isProvisioningJobTerminal } from "@/shared";
 import type { ProvisioningJobRecord } from "./types";
 import { assertValidProvisioningTransition } from "./state-machine";
+import { DomainError } from "../../domain/domain-error";
 
 const log = createLogger("core:provisioning-attempt");
 
@@ -147,13 +148,18 @@ export class ProvisioningAttempt {
       : error instanceof ProvisioningFailedError
         ? buildError(error.code, error.step, error.message)
         : buildError(
-            fallbackCode,
+            error instanceof DomainError ? error.code : fallbackCode,
             this.record.job.state.currentStep ?? fallbackStep,
             error instanceof Error ? error.message : String(error),
           );
     const cleanupErrors = await this.runCleanup();
+    const status: ProvisioningJobStatus = cancelled ? "cancelled"
+      : this.record.job.state.recovery?.status === "verifying" ? "unconfirmed"
+        : failure.code === "provisioning_connection_failed" ? "connection_failed"
+          : failure.code === "provisioning_execution_interrupted" ? "interrupted"
+            : failure.code === "provisioning_execution_unconfirmed" ? "unconfirmed" : "failed";
     this.updateTerminalState(
-      cancelled ? "cancelled" : "failed",
+      status,
       failure,
       cleanupErrors,
     );
@@ -200,7 +206,7 @@ export class ProvisioningAttempt {
   }
 
   private updateTerminalState(
-    status: Extract<ProvisioningJobStatus, "completed" | "failed" | "cancelled">,
+    status: Exclude<ProvisioningJobStatus, "pending" | "running" | "verifying">,
     error: ProvisioningJobError | undefined,
     cleanupErrors: ProvisioningCleanupError[],
   ): void {
@@ -212,6 +218,12 @@ export class ProvisioningAttempt {
       ...(cleanupErrors.length > 0 ? { cleanupErrors } : { cleanupErrors: undefined }),
       completedAt: now,
       updatedAt: now,
+      ...(this.record.job.state.recovery ? {
+        recovery: {
+          ...this.record.job.state.recovery,
+          status: status === "completed" ? "confirmed" as const : "unconfirmed" as const,
+        },
+      } : {}),
     };
     if (isProvisioningJobTerminal(this.record.job.state.status)) {
       return;

@@ -38,3 +38,4 @@ export * from "./worker-host";
 export * from "./worker-update";
 export * from "./voice";
 export * from "./byte-range";
+export * from "./job-execution";

@@ -5,7 +5,7 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { Button as FrameworkButton } from "@pablozaiden/webapp/web";
 
-export type ButtonVariant = "primary" | "secondary" | "danger" | "ghost";
+export type ButtonVariant = "primary" | "secondary" | "danger" | "ghost" | "link";
 export type ButtonSize = "xs" | "sm" | "md" | "lg";
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -15,6 +15,7 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   size?: ButtonSize;
   /** Whether the button is loading */
   loading?: boolean;
+  tone?: "neutral" | "danger";
   /** Icon to display before the label */
   icon?: ReactNode;
   /** Children (label) */
@@ -25,6 +26,7 @@ export function Button({
   variant,
   size,
   loading = false,
+  tone,
   icon,
   children,
   className = "",
@@ -33,14 +35,15 @@ export function Button({
 }: ButtonProps) {
   return (
     <FrameworkButton
-      variant={variant === "secondary" ? "default" : variant}
+      variant={variant === "danger" || variant === "secondary" ? "ghost" : variant}
+      tone={variant === "danger" ? "danger" : tone}
       size={size}
       loading={loading}
       disabled={disabled || loading}
       className={className}
       {...props}
     >
-      {!loading && icon ? (
+      {icon ? (
         <span className="inline-flex">{icon}</span>
       ) : null}
       {children}

@@ -1,6 +1,7 @@
-import { useMemo, type ReactNode } from "react";
+import { useMemo } from "react";
 import {
   type ActionMenuItem,
+  type HeaderPrimaryAction,
   type SidebarNode,
   type WebAppRoute,
 } from "@pablozaiden/webapp/web";
@@ -24,7 +25,7 @@ import type {
   Task,
   Workspace,
 } from "@/shared";
-import { Badge, Button, formatStatusLabel, getAgentStatusBadgeVariant, StateText, StatusBadge } from "../common";
+import { Badge, formatStatusLabel, getAgentStatusBadgeVariant, StateText, StatusBadge } from "../common";
 
 export interface HeaderModel {
   title?: string;
@@ -495,22 +496,18 @@ export function useShellHeader({
     headerOwnerRoute,
     route,
   ]);
-  const directHeaderActions = useMemo<ReactNode>(() => {
+  const directHeaderActions = useMemo<HeaderPrimaryAction[] | undefined>(() => {
     if (route.view === "compose" && composeKind === "task") {
-      return composeActionState ? (
-        <Button
-          type="button"
-          size="sm"
-          onClick={composeActionState.onSubmit}
-          disabled={!composeActionState.canSubmit}
-          loading={composeActionState.isSubmitting}
-        >
-          {composeActionState.isEditing ? "Start" : "Create"}
-        </Button>
-      ) : null;
+      return composeActionState ? [{
+        id: "submit-task",
+        label: composeActionState.isEditing ? "Start" : "Create",
+        onAction: composeActionState.onSubmit,
+        disabled: !composeActionState.canSubmit,
+        loading: composeActionState.isSubmitting,
+      }] : undefined;
     }
 
-    return null;
+    return undefined;
   }, [
     composeActionState,
     composeKind,

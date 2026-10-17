@@ -1,6 +1,5 @@
 import type { Workspace } from "@/shared";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
-import { Button } from "../common";
 import { WorkspaceSettingsForm } from "../workspace-settings";
 import { ErrorState, LoadingState, useHeaderActions, type WebAppRoute } from "@pablozaiden/webapp/web";
 import type { UseWorkspaceSettingsShellResult } from "./use-workspace-settings-shell";
@@ -41,17 +40,13 @@ export function WorkspaceSettingsView({
   } = workspaceSettings;
 
   useHeaderActions({
-    primary: (
-      <Button
-        type="submit"
-        form="workspace-settings-shell-form"
-        size="sm"
-        loading={workspaceSettingsSaving}
-        disabled={!workspaceSettingsFormValid || workspaceSettingsLoading || !workspaceFromHook}
-      >
-        Save
-      </Button>
-    ),
+    primary: [{
+      id: "save-workspace",
+      label: "Save",
+      form: "workspace-settings-shell-form",
+      loading: workspaceSettingsSaving,
+      disabled: !workspaceSettingsFormValid || workspaceSettingsLoading || !workspaceFromHook,
+    }],
   });
 
   return (

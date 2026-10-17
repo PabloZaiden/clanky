@@ -7,6 +7,7 @@ import type {
   WorkerUpdateJobError,
   WorkerUpdateJobStatus,
   WorkerUpdateLogEntry,
+  WorkerUpdateStepResult,
 } from "@/shared";
 import { createLogger } from "@pablozaiden/webapp/server";
 import {
@@ -19,10 +20,15 @@ const log = createLogger("persistence:worker-update-jobs");
 const MAX_WORKER_UPDATE_LOG_ENTRIES = 500;
 const WORKER_UPDATE_STATUSES = new Set<WorkerUpdateJobStatus>([
   "pending",
+  "connecting",
   "running",
+  "verifying",
   "completed",
+  "not_started",
+  "connection_failed",
   "failed",
   "interrupted",
+  "unconfirmed",
 ]);
 
 export interface PersistedWorkerUpdateJob {
@@ -99,7 +105,77 @@ function parseWorkerUpdateJobRow(row: WorkerUpdateJobRow): WorkerUpdateJob | nul
     });
     return null;
   }
-  return parsed.data;
+  const job = parsed.data;
+  // Old runners used "interrupted" for lost observations, without execution proof.
+  if (job.state.status === "interrupted"
+    && (job.state.error?.code === "update_unconfirmed"
+      || job.state.error?.code === "restart_unconfirmed"
+      || job.state.error?.code === "server_restarted"
+      || job.state.steps.update.status === "unconfirmed"
+      || job.state.steps.restart.status === "unconfirmed")) {
+    return recoverWorkerUpdateJob(job);
+  }
+  return job;
+}
+
+function mayHaveDispatched(step: WorkerUpdateStepResult): boolean {
+  if (step.status === "succeeded" || step.status === "failed") return true;
+  if (step.execution !== undefined) return step.execution !== "not_started";
+  return !["pending", "connecting", "not_started", "connection_failed", "skipped"].includes(step.status);
+}
+
+function recoverWorkerUpdateJob(job: WorkerUpdateJob): WorkerUpdateJob {
+  const now = new Date().toISOString();
+  const steps = { ...job.state.steps };
+  const currentStep = job.state.currentStep
+    ?? (["running", "connecting", "verifying", "unconfirmed"].includes(steps.restart.status)
+      ? "restart"
+      : ["running", "connecting", "verifying", "unconfirmed"].includes(steps.update.status)
+        ? "update" : undefined);
+  const notStarted = !Object.values(steps).some(mayHaveDispatched);
+  const unconfirmed = Object.values(steps).some((step) => mayHaveDispatched(step)
+    && step.status !== "succeeded" && step.status !== "failed");
+  const completed = steps.update.status === "succeeded" && steps.restart.status === "succeeded";
+  const status: WorkerUpdateJobStatus = completed
+    ? "completed" : notStarted ? "not_started" : unconfirmed ? "unconfirmed" : "failed";
+  const error: WorkerUpdateJobError | undefined = completed ? undefined : {
+    code: notStarted ? "worker_update_not_started" : unconfirmed ? "worker_update_outcome_unconfirmed" : "worker_update_pipeline_stopped",
+    message: notStarted
+      ? "The server restarted before command dispatch."
+      : unconfirmed
+        ? "The server restarted. The command outcome could not be confirmed."
+        : "The server restarted before the next step started.",
+    ...(currentStep ? { step: currentStep } : {}),
+  };
+  if (currentStep && error && steps[currentStep].status !== "succeeded"
+    && steps[currentStep].status !== "failed") {
+    steps[currentStep] = {
+      ...steps[currentStep],
+      status: mayHaveDispatched(steps[currentStep]) ? "unconfirmed" : "not_started",
+      ...(steps[currentStep].execution === undefined ? { startedAt: undefined } : {}),
+      completedAt: now,
+      error: error.message,
+    };
+  }
+  for (const step of ["update", "restart"] as const) {
+    if (steps[step].status === "pending") {
+      steps[step] = {
+        ...steps[step],
+        status: "skipped",
+        execution: "not_started",
+        completedAt: now,
+      };
+    }
+  }
+  return {
+    ...job,
+    state: {
+      ...job.state, status, currentStep: null, steps, error,
+      ...(Object.values(steps).some((step) => step.execution === "started"
+        || step.execution === "finished" || step.status === "succeeded") ? {} : { startedAt: undefined }),
+      completedAt: now, updatedAt: now,
+    },
+  };
 }
 
 function getJobRow(userId: string, jobId: string): WorkerUpdateJobRow | null {
@@ -150,7 +226,7 @@ export function admitWorkerUpdateJob(
       FROM worker_update_jobs
       WHERE user_id = ?
         AND json_extract(config_json, '$.workerNodeId') = ?
-        AND status IN ('pending', 'running')
+        AND status IN ('pending', 'connecting', 'running', 'verifying')
       LIMIT 1
     `).get(userId, job.config.workerNodeId);
     if (activeJob !== null) {
@@ -271,12 +347,12 @@ export function dismissWorkerUpdateJob(userId: string, jobId: string): boolean {
   return result.changes > 0;
 }
 
-export function markWorkerUpdateJobsInterrupted(userId: string): number {
+export function recoverWorkerUpdateJobs(userId: string): number {
   const db = getDatabase();
   const rows = db.query(`
     SELECT id, user_id, config_json, state_json, status, updated_at
     FROM worker_update_jobs
-    WHERE user_id = ? AND status IN ('pending', 'running')
+    WHERE user_id = ? AND status IN ('pending', 'connecting', 'running', 'verifying', 'interrupted')
   `).all(userId) as WorkerUpdateJobRow[];
   let updated = 0;
 
@@ -285,43 +361,20 @@ export function markWorkerUpdateJobsInterrupted(userId: string): number {
     if (!job) {
       continue;
     }
-    const now = new Date().toISOString();
-    const error: WorkerUpdateJobError = {
-      code: "server_restarted",
-      message: "The worker update was interrupted because the Clanky server restarted.",
-      ...(job.state.currentStep ? { step: job.state.currentStep } : {}),
-    };
-    const steps = { ...job.state.steps };
-    const currentStep = job.state.currentStep;
-    if (currentStep && steps[currentStep].status === "running") {
-      steps[currentStep] = {
-        ...steps[currentStep],
-        status: "unconfirmed",
-        completedAt: now,
-        error: error.message,
-      };
-    }
-    const interrupted: WorkerUpdateJob = {
-      config: job.config,
-      state: {
-        ...job.state,
-        status: "interrupted",
-        currentStep: null,
-        steps,
-        error,
-        completedAt: now,
-        updatedAt: now,
-      },
-    };
+    if (row.status === "interrupted" && job.state.status === "interrupted") continue;
+    const recovered = row.status === "interrupted" ? job : recoverWorkerUpdateJob(job);
+    const now = recovered.state.updatedAt;
     const result = db.query(`
       UPDATE worker_update_jobs
-      SET state_json = ?, status = 'interrupted', updated_at = ?
-      WHERE id = ? AND user_id = ? AND status IN ('pending', 'running')
+      SET state_json = ?, status = ?, updated_at = ?
+      WHERE id = ? AND user_id = ? AND status = ?
     `).run(
-      JSON.stringify(interrupted.state),
+      JSON.stringify(recovered.state),
+      recovered.state.status,
       now,
       row.id,
       userId,
+      row.status,
     );
     if (result.changes === 0) {
       continue;
@@ -329,12 +382,12 @@ export function markWorkerUpdateJobsInterrupted(userId: string): number {
     const entry: WorkerUpdateLogEntry = {
       id: crypto.randomUUID(),
       source: "system",
-      text: error.message,
+      text: recovered.state.error?.message ?? "Worker update completed.",
       timestamp: now,
-      ...(error.step ? { step: error.step } : {}),
+      ...(recovered.state.error?.step ? { step: recovered.state.error.step } : {}),
     };
     if (!appendWorkerUpdateJobLog(userId, row.id, entry)) {
-      log.error("Unable to persist worker update interruption log", {
+      log.error("Unable to persist worker update recovery log", {
         jobId: row.id,
         userId,
       });

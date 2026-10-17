@@ -41,7 +41,7 @@ function MarkdownPre({ children, node }: ComponentPropsWithoutRef<"pre"> & Extra
     <MarkdownCodeBlockContext.Provider value={true}>
       <div className="relative min-w-0 max-w-full">
         {codeText !== null && <MarkdownCodeBlockCopyButton codeText={codeText} />}
-        <pre className="max-w-full overflow-x-auto rounded-lg bg-gray-100 px-4 pb-4 pt-10 text-sm text-gray-900 dark:bg-neutral-800 dark:text-gray-100">
+        <pre className="max-w-full overflow-x-auto rounded-lg bg-gray-100 px-4 pb-4 pt-10 text-base text-gray-900 dark:bg-neutral-800 dark:text-gray-100">
           {children}
         </pre>
       </div>
@@ -110,6 +110,8 @@ export interface MarkdownRendererProps {
   content: string;
   /** Additional CSS classes for the container */
   className?: string;
+  /** Body typography; code blocks retain their technical output size. */
+  textSize?: "technical" | "body";
   /** Whether to apply reduced opacity (for in-progress content) */
   dimmed?: boolean;
   /** Whether to display raw markdown text instead of rendered content */
@@ -129,6 +131,7 @@ export interface MarkdownRendererProps {
 export const MarkdownRenderer = memo(function MarkdownRenderer({
   content,
   className = "",
+  textSize = "technical",
   dimmed = false,
   rawMode = false,
   fileLinkContext,
@@ -195,7 +198,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
           data-dimmed={dimmed ? "true" : "false"}
           className={`markdown-renderer min-w-0 ${dimmed ? "opacity-60" : ""} ${className}`.trim()}
         >
-        <pre className="max-w-full whitespace-pre-wrap break-words font-mono text-sm text-gray-900 dark:text-gray-100 [overflow-wrap:anywhere]">
+        <pre className={`max-w-full whitespace-pre-wrap break-words font-mono ${textSize === "body" ? "text-lg" : "text-base"} text-gray-900 dark:text-gray-100 [overflow-wrap:anywhere]`}>
           {content}
         </pre>
       </div>
@@ -205,7 +208,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
   return (
     <div
       data-dimmed={dimmed ? "true" : "false"}
-      className={`markdown-renderer prose prose-sm dark:prose-invert min-w-0 max-w-full break-words [overflow-wrap:anywhere] [&_li]:break-words [&_p]:break-words [&_td]:break-words [&_th]:break-words ${dimmed ? "opacity-60" : ""} ${className}`.trim()}
+      className={`markdown-renderer prose ${textSize === "body" ? "prose-lg" : "prose-base"} dark:prose-invert min-w-0 max-w-full break-words [overflow-wrap:anywhere] [&_li]:break-words [&_p]:break-words [&_td]:break-words [&_th]:break-words ${dimmed ? "opacity-60" : ""} ${className}`.trim()}
     >
       <Markdown
         remarkPlugins={[remarkGfm]}

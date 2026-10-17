@@ -26,7 +26,10 @@ export function isWorkerRestartResponseLoss(error: unknown): boolean {
   return error instanceof DomainError
     && error.details["executionRequestDispatched"] === true
     && error.details["executionResultReceived"] !== true
-    && (isWorkerRestartConnectionLoss(error) || error.code === "mesh_execution_aborted");
+    && (isWorkerRestartConnectionLoss(error)
+      || error.code === "mesh_execution_aborted"
+      || error.code === "mesh_execution_response_invalid"
+      || error.code === "mesh_execution_output_gap");
 }
 
 function isRecoverableProbeFailure(error: unknown): boolean {

@@ -66,7 +66,7 @@ function ApplyPatchBlockView({ block }: { block: Extract<ToolDetailBlock, { type
           return (
             <div
               key={`${file.oldPath ?? file.path}-${file.path}-${index}`}
-              className="overflow-hidden rounded bg-gray-50 text-xs sm:text-sm dark:bg-neutral-900"
+              className="overflow-hidden rounded bg-gray-50 text-base dark:bg-neutral-900 [&_pre]:text-base"
               data-tool-patch-file="true"
               data-tool-patch-status={file.status}
             >
@@ -84,7 +84,7 @@ function ApplyPatchBlockView({ block }: { block: Extract<ToolDetailBlock, { type
               {file.patch ? (
                 <DiffPatchViewer patch={file.patch} />
               ) : (
-                <div className="rounded-b bg-gray-100 px-3 py-2 font-mono text-xs text-gray-600 dark:bg-neutral-950 dark:text-gray-400">
+                <div className="rounded-b bg-gray-100 px-3 py-2 font-mono text-base text-gray-600 dark:bg-neutral-950 dark:text-gray-400">
                   {file.status === "deleted" ? "File deleted by patch." : "No diff hunks in patch."}
                 </div>
               )}
@@ -107,7 +107,7 @@ function ToolDetailBlockView({ block }: { block: ToolDetailBlock }) {
           {block.rows.map((row, index) => (
             <div key={`${row.label}-${row.value}-${index}`} className="grid gap-1 sm:grid-cols-[9rem,minmax(0,1fr)] sm:gap-3">
               <dt className="text-[11px] uppercase tracking-[0.18em] text-gray-500">{row.label}</dt>
-              <dd className="min-w-0 break-words text-sm leading-6 text-gray-900 dark:text-gray-100">{row.value}</dd>
+              <dd className="min-w-0 break-words text-base leading-6 text-gray-900 dark:text-gray-100">{row.value}</dd>
             </div>
           ))}
         </dl>
@@ -121,7 +121,7 @@ function ToolDetailBlockView({ block }: { block: ToolDetailBlock }) {
         {block.title && (
           <div className="text-[11px] uppercase tracking-[0.22em] text-gray-500">{block.title}</div>
         )}
-        <ul className="space-y-1 rounded-md border border-gray-200 bg-gray-50/80 p-3 text-sm leading-6 text-gray-900 dark:border-white/10 dark:bg-white/[0.03] dark:text-gray-100">
+        <ul className="space-y-1 rounded-md border border-gray-200 bg-gray-50/80 p-3 text-base leading-6 text-gray-900 dark:border-white/10 dark:bg-white/[0.03] dark:text-gray-100">
           {block.items.map((item, index) => (
             <li key={`${item}-${index}`} className="break-words">{item}</li>
           ))}
@@ -273,7 +273,7 @@ export const ToolEntry = memo(function ToolEntry({
         ? "text-amber-950 dark:text-amber-200"
         : "text-amber-600 dark:text-amber-400";
   const shouldShowStatus = tool.status !== "completed";
-  const toolSummaryClassName = "rounded-md py-0.5 text-xs leading-5 text-gray-400 transition hover:text-gray-600 dark:text-white/28 dark:hover:text-white/48";
+  const toolSummaryClassName = "rounded-md py-0.5 text-base leading-6 text-gray-400 transition hover:text-gray-600 dark:text-white/28 dark:hover:text-white/48";
 
   const inputSummary = (
     <ActivityIndicator

@@ -295,17 +295,13 @@ export function ExecutionHostChatComposer({
     && (host.ref.kind !== "ssh" || Boolean(credentialToken))
     && Boolean(directory.trim())
     && Boolean(selectedModel);
-  const headerActions = useMemo(() => (
-    <Button
-      type="button"
-      size="sm"
-      onClick={() => void handleSubmit()}
-      disabled={!canSubmit}
-      loading={submitting}
-    >
-      Create
-    </Button>
-  ), [canSubmit, handleSubmit, submitting]);
+  const headerActions = useMemo(() => [{
+    id: "create-host-chat",
+    label: "Create",
+    onAction: () => void handleSubmit(),
+    disabled: !canSubmit,
+    loading: submitting,
+  }], [canSubmit, handleSubmit, submitting]);
   useHeaderActions({ primary: headerActions });
 
   return (

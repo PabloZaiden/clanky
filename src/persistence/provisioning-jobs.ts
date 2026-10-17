@@ -5,7 +5,7 @@
  * credentials are never written to this store.
  */
 
-import type { ProvisioningJob, ProvisioningJobError, ProvisioningJobStatus, ProvisioningLogEntry } from "@/shared";
+import type { ProvisioningJob, ProvisioningJobStatus, ProvisioningLogEntry } from "@/shared";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { getDatabase } from "./database";
 import {
@@ -46,10 +46,14 @@ interface ProvisioningLogRow {
 const PROVISIONING_STATUSES = new Set<ProvisioningJobStatus>([
   "pending",
   "running",
+  "verifying",
   "completed",
+  "not_started",
+  "connection_failed",
   "failed",
   "cancelled",
   "interrupted",
+  "unconfirmed",
 ]);
 
 const PROVISIONING_JOB_COLUMNS = `
@@ -116,7 +120,7 @@ function parseJobRow(row: ProvisioningJobRow): ProvisioningJob | null {
     });
     return null;
   }
-  return {
+  const job: ProvisioningJob = {
     config: {
       ...(config as ProvisioningJob["config"]),
       executionHostBinding,
@@ -127,6 +131,41 @@ function parseJobRow(row: ProvisioningJobRow): ProvisioningJob | null {
       ...(row.workspace_id ? { workspaceId: row.workspace_id } : {}),
       updatedAt: typeof safeState["updatedAt"] === "string" ? safeState["updatedAt"] : row.updated_at,
     } as ProvisioningJob["state"],
+  };
+  return job.state.status === "interrupted" && job.state.error?.code === "server_restarted"
+    ? recoverProvisioningJob(job) : job;
+}
+
+function recoverProvisioningJob(job: ProvisioningJob): ProvisioningJob {
+  const now = new Date().toISOString();
+  const notStarted = job.state.status === "pending"
+    || job.state.hasDispatchedCommands === false
+    || (job.state.status === "interrupted" && !job.state.currentStep && !job.state.startedAt);
+  const status = notStarted ? "not_started" : "unconfirmed";
+  return {
+    ...job,
+    state: {
+      ...job.state,
+      status,
+      error: {
+        code: notStarted ? "provisioning_not_started" : "provisioning_outcome_unconfirmed",
+        message: notStarted ? "The server restarted before operation commands were dispatched."
+          : "The server restarted. The operation outcome could not be confirmed.",
+        step: job.state.currentStep,
+      },
+      ...(job.state.hasDispatchedCommands === undefined ? { startedAt: undefined } : {}),
+      ...(job.state.execution && job.state.execution.state !== "finished" ? {
+        execution: {
+          ...job.state.execution,
+          ...(notStarted ? {} : { outcome: "unconfirmed" as const }),
+        },
+      } : {}),
+      ...(job.state.recovery ? {
+        recovery: { ...job.state.recovery, status: "unconfirmed" as const },
+      } : {}),
+      completedAt: now,
+      updatedAt: now,
+    },
   };
 }
 
@@ -287,7 +326,7 @@ export function dismissProvisioningJob(userId: string, jobId: string): boolean {
   return result.changes > 0;
 }
 
-export function markProvisioningJobsInterrupted(userId: string): number {
+export function recoverProvisioningJobs(userId: string): number {
   const db = getDatabase();
   const rows = db.query(`
     SELECT ${PROVISIONING_JOB_COLUMNS}
@@ -295,7 +334,7 @@ export function markProvisioningJobsInterrupted(userId: string): number {
     LEFT JOIN execution_hosts execution_host
       ON execution_host.id = job.execution_host_id
       AND execution_host.user_id = job.user_id
-    WHERE job.user_id = ? AND job.status IN ('pending', 'running')
+    WHERE job.user_id = ? AND job.status IN ('pending', 'running', 'verifying', 'interrupted')
   `).all(userId) as ProvisioningJobRow[];
   let updated = 0;
 
@@ -304,36 +343,29 @@ export function markProvisioningJobsInterrupted(userId: string): number {
     if (!job) {
       continue;
     }
-    const now = new Date().toISOString();
-    const error: ProvisioningJobError = {
-      code: "server_restarted",
-      message: "Provisioning was interrupted because the Clanky server restarted.",
-      step: job.state.currentStep,
-    };
-    const nextState: ProvisioningJob["state"] = {
-      ...job.state,
-      status: "interrupted",
-      error,
-      completedAt: now,
-      updatedAt: now,
-    };
+    if (row.status === "interrupted" && job.state.status === "interrupted") continue;
+    const recovered = row.status === "interrupted" ? job : recoverProvisioningJob(job);
+    const nextState = recovered.state;
+    const now = nextState.updatedAt;
     const result = db.query(`
       UPDATE provisioning_jobs
-      SET state_json = ?, status = 'interrupted', updated_at = ?
-      WHERE id = ? AND user_id = ? AND status IN ('pending', 'running')
+      SET state_json = ?, status = ?, updated_at = ?
+      WHERE id = ? AND user_id = ? AND status = ?
     `).run(
       serializeState(nextState),
+      nextState.status,
       now,
       row.id,
       userId,
+      row.status,
     );
     if (result.changes > 0) {
       const entry: ProvisioningLogEntry = {
         id: crypto.randomUUID(),
         source: "system",
-        text: error.message,
+        text: nextState.error!.message,
         timestamp: now,
-        ...(error.step ? { step: error.step } : {}),
+        ...(nextState.error?.step ? { step: nextState.error.step } : {}),
       };
       appendProvisioningJobLog(userId, row.id, entry);
       updated += 1;

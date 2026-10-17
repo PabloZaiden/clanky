@@ -234,6 +234,7 @@ export function useShellDialogComposition({
           ? `This removes "${deleteTerminalSessionTarget.name}" from Clanky and attempts to stop any persistent session.`
           : ""}
         confirmLabel="Delete"
+        variant="danger"
         loading={deleteTerminalSessionPending}
       />
       <ConfirmModal
@@ -243,6 +244,7 @@ export function useShellDialogComposition({
         title="Delete agent"
         message={deleteAgentTarget ? `Delete "${deleteAgentTarget.config.name}" and its runs?` : ""}
         confirmLabel="Delete agent"
+        variant="danger"
         loading={deleteAgentPending}
       />
       <ConfirmModal
@@ -252,13 +254,13 @@ export function useShellDialogComposition({
         title="Purge agent runs"
         message={purgeAgentTarget ? `Purge all completed, failed, skipped, interrupted, and cancelled runs for "${purgeAgentTarget.config.name}"? This cannot be undone.` : ""}
         confirmLabel="Purge runs"
+        variant="danger"
         loading={purgeAgentPending}
       />
       <Modal
         isOpen={quickChatCreating}
         onClose={() => {}}
         title="Creating quick chat"
-        description="Your quick chat is being prepared."
         size="sm"
         showCloseButton={false}
         closeOnOverlayClick={false}

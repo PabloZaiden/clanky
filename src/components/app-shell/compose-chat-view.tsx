@@ -28,7 +28,6 @@ import {
   useToast,
   type WebAppRoute,
 } from "@pablozaiden/webapp/web";
-import { Button } from "../common";
 
 function getPreferredModelKey(
   models: UseDashboardDataResult["models"],
@@ -350,17 +349,13 @@ export function ComposeChatView({
     && !modelOptionsLoading
     && Boolean(selectedWorkspace)
     && Boolean(effectiveSelectedModel);
-  const headerActions = useMemo(() => (
-    <Button
-      type="button"
-      size="sm"
-      onClick={() => void handleSubmit()}
-      disabled={!canSubmit}
-      loading={isSubmitting}
-    >
-      Create
-    </Button>
-  ), [canSubmit, handleSubmit, isSubmitting]);
+  const headerActions = useMemo(() => [{
+    id: "create-chat",
+    label: "Create",
+    onAction: () => void handleSubmit(),
+    disabled: !canSubmit,
+    loading: isSubmitting,
+  }], [canSubmit, handleSubmit, isSubmitting]);
   useHeaderActions({ primary: headerActions });
 
   return (

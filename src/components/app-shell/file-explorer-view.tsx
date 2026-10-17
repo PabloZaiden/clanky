@@ -11,7 +11,7 @@ import { storeSshServerPassword } from "../../lib/ssh-browser-credentials";
 import { formatFileSize, writeTextToClipboard } from "../../utils";
 import { TerminalSessionDetails } from "../terminal/terminal-session-details";
 import { ConfirmModal, Modal } from "@pablozaiden/webapp/web";
-import { Button } from "../common";
+import { Button, SidebarIcon } from "../common";
 import type { CodeExplorerTerminalOptions } from "./code-explorer-targets";
 import { requireFileExplorerServerCredentialToken } from "../../hooks/workspaceFileActions";
 import { WorkspaceFileTree } from "../workspace-files/file-tree";
@@ -771,7 +771,7 @@ export function FileExplorerView({
           ].join(" ")}
         >
           <div className="flex h-full min-h-0 flex-col gap-3">
-            <div className="min-h-0 flex-1 overflow-hidden">
+            <div className={`min-h-0 flex-1 overflow-hidden${explorerCollapsed ? " hidden lg:block" : ""}`}>
               <WorkspaceFileTree
                 entriesByDirectory={explorer.directoryEntries}
                 expandedDirectories={explorer.expandedDirectories}
@@ -804,10 +804,21 @@ export function FileExplorerView({
               className={[
                 "min-w-0 shrink-0",
                 explorerCollapsed
-                  ? "grid grid-cols-2 gap-2 lg:flex lg:flex-col lg:items-center"
+                  ? "grid grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)] items-center gap-2 lg:flex lg:flex-col lg:items-center"
                   : "grid grid-cols-2 gap-2",
               ].join(" ")}
             >
+              {explorerCollapsed ? <div className="lg:hidden"><Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="w-9 px-0"
+                aria-label="Expand file explorer"
+                aria-expanded={false}
+                title="Expand file explorer"
+                icon={<SidebarIcon size="h-4 w-4" />}
+                onClick={handleToggleExplorerCollapsed}
+              ><span className="sr-only">Expand file explorer</span></Button></div> : null}
               <button
                 type="button"
                 className={tabButtonClassName("editor", explorerCollapsed)}

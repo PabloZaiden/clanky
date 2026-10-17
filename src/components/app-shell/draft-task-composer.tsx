@@ -8,7 +8,6 @@ import {
 } from "../CreateTaskForm";
 import type { CreateTaskFormSubmitRequest } from "@/lib/task-request";
 import { ConfirmModal, useHeaderActions, useToast, type ActionMenuItem, type WebAppRoute } from "@pablozaiden/webapp/web";
-import { Button } from "../common";
 import { persistDraftChanges, startDraftTask } from "../../lib/draft-task-start";
 
 export function DraftTaskComposer({
@@ -182,17 +181,13 @@ export function DraftTaskComposer({
     },
   ], [actionState, deleteSubmitting]);
   useHeaderActions({
-    primary: (
-      <Button
-        type="button"
-        size="sm"
-        onClick={actionState?.onSubmit}
-        disabled={deleteSubmitting || !actionState?.canSubmit}
-        loading={actionState?.isSubmitting ?? false}
-      >
-        Start
-      </Button>
-    ),
+    primary: [{
+      id: "start-task",
+      label: "Start",
+      onAction: () => actionState?.onSubmit(),
+      disabled: deleteSubmitting || !actionState?.canSubmit,
+      loading: actionState?.isSubmitting ?? false,
+    }],
     overflow: headerMenuActions,
   });
 

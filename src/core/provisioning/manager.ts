@@ -6,6 +6,7 @@ import {
 } from "../../persistence/provisioning-jobs";
 import {
   isAgentSettings,
+  isProvisioningJobTerminal,
   type AgentSettings,
   type ProvisioningJob,
   type ProvisioningJobSnapshot,
@@ -130,6 +131,8 @@ export class ProvisioningManager {
         },
         state: {
           status: "pending",
+          hasDispatchedCommands: false,
+          execution: { step: "verify_devbox", state: "not_started" },
           updatedAt: now,
         },
       },
@@ -263,7 +266,7 @@ export class ProvisioningManager {
       return null;
     }
 
-    if (record.job.state.status === "running" || record.job.state.status === "pending") {
+    if (!isProvisioningJobTerminal(record.job.state.status)) {
       record.abortController.abort();
       if (record.runnerActive) {
         appendSystemLog(record, this.maxLogEntries, "Cancellation requested", record.job.state.currentStep);
@@ -301,7 +304,7 @@ export class ProvisioningManager {
       return null;
     }
     const status = record.job.state.status;
-    if (record.runnerActive || status === "pending" || status === "running") {
+    if (record.runnerActive || !isProvisioningJobTerminal(status)) {
       throw new ProvisioningFailedError(
         "job_not_terminal",
         record.job.state.currentStep ?? "verify_devbox",
@@ -353,7 +356,7 @@ export class ProvisioningManager {
     for (const record of this.jobs.values()) {
       if (
         record.owner.id === ownerId
-        && (record.job.state.status === "pending" || record.job.state.status === "running")
+        && !isProvisioningJobTerminal(record.job.state.status)
         && getProvisioningTargetKey(record.job.config) === targetKey
       ) {
         return true;
@@ -361,7 +364,7 @@ export class ProvisioningManager {
     }
 
     return listProvisioningJobs(ownerId).some((job) =>
-      (job.state.status === "pending" || job.state.status === "running")
+      !isProvisioningJobTerminal(job.state.status)
       && getProvisioningTargetKey(job.config) === targetKey);
   }
 

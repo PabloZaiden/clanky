@@ -1,6 +1,6 @@
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
 import { getStoredSshServerCredential } from "../../lib/ssh-browser-credentials";
-import { Button, PASSWORD_INPUT_PROPS } from "../common";
+import { PASSWORD_INPUT_PROPS } from "../common";
 import { ErrorState, FormGroup, SelectField, TextField, useHeaderActions, type WebAppRoute } from "@pablozaiden/webapp/web";
 import type { Workspace } from "@/shared/workspace";
 import { getRegisteredSshServerId, isWorkspaceMeshExecutionHostRef } from "@/shared/execution-host";
@@ -69,17 +69,13 @@ export function RebuildWorkspaceView({
     }
   }
 
-  const headerActions = (
-    <Button
-      type="submit"
-      form={formId}
-      size="sm"
-      loading={provisioning.starting}
-      disabled={executionHost.kind === "ssh" && !selectedServer}
-    >
-      {actionLabel}
-    </Button>
-  );
+  const headerActions = [{
+    id: "start-workspace-action",
+    label: actionLabel,
+    form: formId,
+    loading: provisioning.starting,
+    disabled: executionHost.kind === "ssh" && !selectedServer,
+  }];
   useHeaderActions({ primary: headerActions });
 
   return (
