@@ -302,21 +302,6 @@ export function shouldShowInRecentActivity(status: TaskStatus): boolean {
 }
 
 /**
- * Get the timestamp used to sort tasks in the shell overview's Recent activity list.
- * Prefer actual task activity over configuration timestamps so newly completed or
- * pushed tasks surface based on when they most recently changed.
- */
-export function getRecentActivityTimestamp(task: {
-  config: Pick<TaskConfig, "createdAt"> & Partial<Pick<TaskConfig, "updatedAt">>;
-  state: Pick<TaskState, "lastActivityAt" | "completedAt">;
-}): string {
-  return task.state.lastActivityAt
-    ?? task.state.completedAt
-    ?? task.config.updatedAt
-    ?? task.config.createdAt;
-}
-
-/**
  * Get the appropriate status label for a planning task based on plan readiness.
  * Returns "Plan Ready" when the plan is ready for human review,
  * or "Planning" when the AI is still generating/revising the plan.
