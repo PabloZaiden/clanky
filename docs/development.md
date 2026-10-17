@@ -299,8 +299,10 @@ and review desktop and mobile screenshots; do not add browser or component
 tests to the repository.
 
 For regular code blocks, verify that the copy button copies the complete block
-content without the Markdown fences and remains usable when a block scrolls
-horizontally.
+content without the Markdown fences or trailing whitespace. It stays inside
+the block at the upper-right corner and remains fixed when code scrolls
+horizontally. Check the rendered code itself retains the 16px technical size,
+not a smaller typography-plugin scale inherited from the 18px transcript.
 
 Mermaid is pinned to 11.16.1: the FastDOM dependencies in 11.17 conflict with
 Monaco's global AMD loader. Before upgrading, render the first diagram **after**
