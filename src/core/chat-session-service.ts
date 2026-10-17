@@ -53,7 +53,7 @@ export interface ChatSessionServiceDependencies {
   worktree: ChatWorktreePort;
   backendManager?: Pick<
     typeof backendManager,
-    "getBackendAsync" | "getChatBackend" | "getInitializedContextBackend" | "disconnectChat" | "createBackendForExecutionHost" | "getWorkspaceSettings"
+    "getBackendAsync" | "getChatBackend" | "getInitializedContextBackend" | "disconnectChat" | "createBackendForExecutionHost" | "getConnectedExecutionHostBackend" | "getWorkspaceSettings"
   >;
   sshCredentialManager?: Pick<typeof sshCredentialManager, "getPasswordForToken">;
   hasActiveStream?: (chatId: string) => boolean;
@@ -65,7 +65,7 @@ export class ChatSessionService implements ChatSessionPort {
   private readonly worktree: ChatWorktreePort;
   private readonly backendManager: Pick<
     typeof backendManager,
-    "getBackendAsync" | "getChatBackend" | "getInitializedContextBackend" | "disconnectChat" | "createBackendForExecutionHost" | "getWorkspaceSettings"
+    "getBackendAsync" | "getChatBackend" | "getInitializedContextBackend" | "disconnectChat" | "createBackendForExecutionHost" | "getConnectedExecutionHostBackend" | "getWorkspaceSettings"
   >;
   private readonly sshCredentialManager: Pick<typeof sshCredentialManager, "getPasswordForToken">;
   private readonly hasActiveStream: (chatId: string) => boolean;
@@ -501,28 +501,28 @@ export class ChatSessionService implements ChatSessionPort {
       throw new Error(`Chat is not execution-host backed: ${chat.config.id}`);
     }
     const directory = source.directory || chat.config.directory;
-    const existing = this.directChatBackends.get(chat.config.id);
-    if (existing?.isConnected() && existing.getDirectory() === directory) {
+    const serverId = source.executionHost.host.kind === "ssh"
+      ? getRegisteredSshServerId(source.executionHost.host)
+      : null;
+    const credentialToken = options.credentialToken?.trim();
+    let password: string | undefined;
+    if (serverId && credentialToken) {
+      password = this.sshCredentialManager.getPasswordForToken(serverId, credentialToken);
+    }
+    const existing = await this.backendManager.getConnectedExecutionHostBackend({
+      connectionId: chat.config.id,
+      binding: source.executionHost,
+      provider: chat.config.model.providerID as AgentProvider,
+      directory,
+      sshPassword: password,
+    });
+    if (existing) {
+      this.directChatBackends.set(chat.config.id, existing);
       return existing;
     }
-    if (existing?.isConnected()) {
-      await existing.disconnect();
-    }
-
-    let password: string | undefined;
-    if (source.executionHost.host.kind === "ssh") {
-      const serverId = getRegisteredSshServerId(source.executionHost.host);
-      if (serverId) {
-        const credentialToken = options.credentialToken?.trim();
-        if (!credentialToken) {
-          await this.markSshCredentialsRequired(chat);
-          throw new SshCredentialsRequiredError();
-        }
-        password = this.sshCredentialManager.getPasswordForToken(
-          serverId,
-          credentialToken,
-        );
-      }
+    if (serverId && !credentialToken) {
+      await this.markSshCredentialsRequired(chat);
+      throw new SshCredentialsRequiredError();
     }
 
     try {

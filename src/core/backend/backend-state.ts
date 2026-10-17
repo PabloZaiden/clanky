@@ -7,7 +7,7 @@
 import type { Backend } from "../../backends/types";
 import type { ExecutionHostBinding } from "@/shared/execution-host";
 import type { TaskEvent } from "@/shared/events";
-import type { ConnectionStatus, RuntimeServerSettings } from "@/shared/settings";
+import { areServerSettingsEqual, type ConnectionStatus, type RuntimeServerSettings } from "@/shared/settings";
 import { getSshConnectionTargetFromSettings, type SshConnectionTarget } from "../ssh-connection-target";
 import { SSH_CONNECTION_TIMEOUT_MS } from "../ssh-reliability-policy";
 
@@ -36,6 +36,11 @@ export interface WorkspaceConnectionState {
   connectionError: string | null;
   localNodeId?: string | null;
   executionHostBinding?: ExecutionHostBinding | null;
+  connection?: {
+    directory: string;
+    controller: AbortController;
+    pending?: Promise<void>;
+  };
 }
 
 /**
@@ -48,7 +53,22 @@ export interface TaskConnectionState {
   userId: string;
   backend: Backend;
   workspaceId: string;
+  settings: RuntimeServerSettings;
   executionHostBinding: ExecutionHostBinding;
+}
+
+export function areRuntimeServerSettingsEqual(left: RuntimeServerSettings, right: RuntimeServerSettings): boolean {
+  if (!areServerSettingsEqual(left, right) || left.agent.transport !== right.agent.transport) {
+    return false;
+  }
+  if (left.agent.transport === "ssh" && right.agent.transport === "ssh") {
+    return left.agent.hostname === right.agent.hostname
+      && left.agent.port === right.agent.port
+      && left.agent.username === right.agent.username
+      && left.agent.password === right.agent.password
+      && left.agent.identityFile === right.agent.identityFile;
+  }
+  return true;
 }
 
 export interface DerivedExecutionSettings {

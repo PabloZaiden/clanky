@@ -10,7 +10,7 @@ import {
   WorkspaceAcpTransportLifecycle,
   createAcpConnectionTimeoutError,
 } from "../../backends/acp";
-import type { Backend } from "../../backends/types";
+import type { Backend, BackendConnectionConfig } from "../../backends/types";
 import { createLocalHarnessBackend } from "../../backends/harness-factory";
 import { HarnessError } from "../../backends/harness-errors";
 import { getWorkspace } from "../../persistence/workspaces";
@@ -35,6 +35,7 @@ import { log } from "@pablozaiden/webapp/server";
 import { buildConnectionConfig } from "./backend-connection-pool";
 import {
   deriveExecutionSettings,
+  areRuntimeServerSettingsEqual,
   buildAgentServerUrl,
   type WorkspaceConnectionState,
   type TaskConnectionState,
@@ -61,6 +62,7 @@ import type { SshConnectionTarget } from "../ssh-connection-target";
 import { assertHarnessHostPolicy } from "./harness-host-policy";
 import { isRemoteOnlyMode } from "../config";
 import { MeshHarnessBackend } from "../../backends/mesh-harness-backend";
+import { createRetryableAsyncOperation } from "../../utils/async-operation";
 
 interface WorkspaceBackendOptions {
   workspaceId: string;
@@ -79,12 +81,21 @@ interface CachedCommandExecutor {
 interface PendingExecutionHost {
   userId: string;
   executionHostBinding: ExecutionHostBinding;
+  workspaceId?: string;
   invalidated: boolean;
 }
 
 interface PendingTaskDisconnect {
   state: TaskConnectionState;
   promise: Promise<boolean>;
+}
+
+interface OperationConnection {
+  userId: string;
+  workspaceId: string;
+  executionHostBinding: ExecutionHostBinding;
+  controller: AbortController;
+  close: () => Promise<void>;
 }
 
 /**
@@ -98,10 +109,13 @@ class BackendManager {
   private taskConnections = new Map<string, TaskConnectionState>();
   /** In-flight teardown results keyed by the task/chat backend owner. */
   private readonly taskDisconnects = new Map<string, PendingTaskDisconnect>();
+  private readonly operationConnections = new Map<Backend, OperationConnection>();
   /** Map of workspace execution key to command executor. */
   private commandExecutors = new Map<string, CachedCommandExecutor>();
   private readonly pendingExecutionHosts = new Set<PendingExecutionHost>();
   private initialized = false;
+  private shuttingDown = false;
+  private unsubscribeMeshState: (() => void) | undefined;
   private readonly connectionTimeoutMs = getSshReliabilityPolicy().connectionTimeoutMs;
   private localMeshNodeId: string | null = null;
   private localMeshNodeIdPromise: Promise<string> | null = null;
@@ -214,6 +228,7 @@ class BackendManager {
     settings: RuntimeServerSettings,
     workspaceOptions?: WorkspaceBackendOptions,
   ): Backend {
+    this.assertAcceptingConnections();
     const transportLifecycleFactory = workspaceOptions && settings.agent.transport === "stdio"
       ? () => new WorkspaceAcpTransportLifecycle({
           workspaceId: workspaceOptions.workspaceId,
@@ -255,37 +270,44 @@ class BackendManager {
    * This avoids caching default local/stdio settings before the real workspace
    * configuration has been loaded from persistence.
    */
-  private async ensureWorkspaceState(workspaceId: string): Promise<WorkspaceConnectionState> {
+  private async ensureWorkspaceState(workspaceId: string, workspaceOverride?: Workspace): Promise<WorkspaceConnectionState> {
     const userId = requireCurrentUserId();
-    const workspace = await getWorkspace(workspaceId);
+    const workspace = workspaceOverride ?? await getWorkspace(workspaceId);
     if (!workspace) {
       throw new Error(`Workspace not found: ${workspaceId}`);
     }
 
-    const pending = this.trackPendingExecutionHost(userId, workspace.executionHostBinding);
+    const pending = this.trackPendingExecutionHost(userId, workspace.executionHostBinding, workspaceId);
     try {
       const settings = await this.buildRuntimeSettings(
         workspace.executionHostBinding,
         workspace.serverSettings.agent,
       );
       const workspaceOptions = await this.getWorkspaceBackendOptions(workspace);
+      const current = await getWorkspace(workspaceId);
       this.assertPendingExecutionHost(pending);
+      if (
+        !current
+        || !areServerSettingsEqual(current.serverSettings, workspace.serverSettings)
+        || !executionHostBindingsEqual(current.executionHostBinding, workspace.executionHostBinding)
+      ) {
+        throw new HarnessError("harness_connection_aborted", "The workspace context changed while preparing its connection.");
+      }
       const existing = this.connections.get(workspaceId);
       if (
-        existing && areServerSettingsEqual(existing.settings, settings)
+        existing && existing.userId === userId
+        && areRuntimeServerSettingsEqual(existing.settings, settings)
         && existing.executionHostBinding
         && executionHostBindingsEqual(existing.executionHostBinding, workspaceOptions.executionHostBinding)
       ) {
-        if (JSON.stringify(existing.settings) !== JSON.stringify(settings)) {
-          this.clearCommandExecutorsForWorkspace(workspaceId);
-        }
-        existing.settings = settings;
         return existing;
       }
       if (existing) {
-        this.connections.delete(workspaceId);
         this.clearCommandExecutorsForWorkspace(workspaceId);
-        await this.closeBackend(existing.backend, workspaceId);
+        if (!await this.closeWorkspaceBackend(workspaceId, existing)) {
+          throw new Error("The previous workspace backend could not be closed.");
+        }
+        if (this.connections.get(workspaceId) === existing) this.connections.delete(workspaceId);
         this.assertPendingExecutionHost(pending);
         if (this.connections.has(workspaceId)) {
           return await this.ensureWorkspaceState(workspaceId);
@@ -303,15 +325,23 @@ class BackendManager {
     }
   }
 
-  private trackPendingExecutionHost(userId: string, binding: ExecutionHostBinding): PendingExecutionHost {
-    const pending = { userId, executionHostBinding: structuredClone(binding), invalidated: false };
+  private trackPendingExecutionHost(userId: string, binding: ExecutionHostBinding, workspaceId?: string): PendingExecutionHost {
+    this.assertAcceptingConnections();
+    const pending = { userId, executionHostBinding: structuredClone(binding), workspaceId, invalidated: false };
     this.pendingExecutionHosts.add(pending);
     return pending;
   }
 
   private assertPendingExecutionHost(pending: PendingExecutionHost): void {
+    this.assertAcceptingConnections();
     if (pending.invalidated) {
       throw new HarnessError("harness_connection_aborted", "The execution host changed while preparing its connection.");
+    }
+  }
+
+  private assertAcceptingConnections(): void {
+    if (this.shuttingDown) {
+      throw new HarnessError("harness_connection_aborted", "The server is shutting down.");
     }
   }
 
@@ -365,7 +395,7 @@ class BackendManager {
       return;
     }
     this.initialized = true;
-    meshStateEventEmitter.subscribe((event) => {
+    this.unsubscribeMeshState = meshStateEventEmitter.subscribe((event) => {
       if (event.impact === "inventory") {
         return;
       }
@@ -378,29 +408,133 @@ class BackendManager {
   }
 
   /**
-   * Connect to the backend for a specific workspace.
-   * Uses the workspace's server settings for the connection.
-   *
-   * @param workspaceId - The workspace ID to connect for
-   * @param directory - The working directory for the connection
+   * Borrow only a matching workspace connection; incompatible operations own
+   * a separate backend until their callback and session cleanup have finished.
    */
-  async connect(workspaceId: string, directory: string): Promise<void> {
-    const state = await this.ensureWorkspaceState(workspaceId);
-    const settings = state.settings;
-
-    // If already connected, disconnect first
-    if (state.backend.isConnected()) {
-      await state.backend.disconnect();
+  async withWorkspaceBackend<T>(
+    options: {
+      workspaceId: string;
+      directory: string;
+      settings?: ServerSettings;
+      expectedBinding?: ExecutionHostBinding;
+    },
+    operation: (backend: Backend) => Promise<T>,
+  ): Promise<T> {
+    const userId = requireCurrentUserId();
+    const expectedBinding = options.expectedBinding && structuredClone(options.expectedBinding);
+    const workspace = await getWorkspace(options.workspaceId);
+    if (!workspace) {
+      throw new Error(`Workspace not found: ${options.workspaceId}`);
     }
+    if (expectedBinding && !executionHostBindingsEqual(expectedBinding, workspace.executionHostBinding)) {
+      throw new HarnessError("harness_connection_aborted", "The workspace execution host changed before preparing its operation.");
+    }
+    const pending = this.trackPendingExecutionHost(userId, workspace.executionHostBinding, workspace.id);
+    try {
+      const state = await this.ensureWorkspaceState(workspace.id, workspace);
+      if (!state.executionHostBinding || !executionHostBindingsEqual(state.executionHostBinding, workspace.executionHostBinding)) {
+        throw new HarnessError("harness_connection_aborted", "The workspace execution host changed while preparing its operation.");
+      }
+      const settings = options.settings
+        ? await this.buildRuntimeSettings(workspace.executionHostBinding, options.settings.agent)
+        : state.settings;
+      this.assertPendingExecutionHost(pending);
+      const backend = areRuntimeServerSettingsEqual(state.settings, settings)
+        ? await this.acquireWorkspaceBackend(workspace.id, state, options.directory)
+        : null;
+      this.assertPendingExecutionHost(pending);
+      if (this.connections.get(workspace.id) !== state) {
+        throw new HarnessError("harness_connection_aborted", "The workspace connection changed while preparing its operation.");
+      }
+      if (backend) {
+        return await operation(backend);
+      }
+      return await this.withTemporaryBackend({
+        workspaceId: workspace.id,
+        localNodeId: state.localNodeId ?? null,
+        executionHostBinding: workspace.executionHostBinding,
+        userId,
+        settings,
+        directory: options.directory,
+      }, operation);
+    } finally {
+      this.pendingExecutionHosts.delete(pending);
+    }
+  }
 
+  private async acquireWorkspaceBackend(
+    workspaceId: string,
+    state: WorkspaceConnectionState,
+    directory: string,
+  ): Promise<Backend | null> {
+    if (state.connection?.pending) {
+      if (state.connection.directory !== directory) return null;
+      await state.connection.pending;
+    }
+    if (state.connection?.controller.signal.aborted) return null;
+    if (state.backend.isConnected()) {
+      return state.backend.getDirectory() === directory ? state.backend : null;
+    }
+    if (state.connection) return null;
+    const connection: NonNullable<WorkspaceConnectionState["connection"]> = {
+      directory,
+      controller: new AbortController(),
+    };
+    state.connection = connection;
+    connection.pending = this.connectWorkspaceBackend(workspaceId, state, connection);
+    try {
+      await connection.pending;
+      return state.backend;
+    } finally {
+      delete connection.pending;
+    }
+  }
+
+  private async connectWorkspaceBackend(
+    workspaceId: string,
+    state: WorkspaceConnectionState,
+    connection: NonNullable<WorkspaceConnectionState["connection"]>,
+  ): Promise<void> {
     state.connectionError = null;
+    try {
+      await this.connectBackend(
+        state.backend,
+        buildConnectionConfig(state.settings, connection.directory),
+        connection.controller,
+      );
+      if (this.connections.get(workspaceId) === state) {
+        this.emitEvent({
+          type: "server.connected",
+          workspaceId,
+          serverUrl: buildAgentServerUrl(state.settings),
+          timestamp: new Date().toISOString(),
+        });
+      }
+    } catch (error) {
+      state.connectionError = String(error);
+      if (this.connections.get(workspaceId) === state) {
+        this.emitEvent({
+          type: "server.error",
+          workspaceId,
+          error: state.connectionError,
+          timestamp: new Date().toISOString(),
+        });
+      }
+      try {
+        await this.disconnectBackend(state.backend);
+        if (state.connection === connection) delete state.connection;
+      } catch (cleanupError) {
+        throw new AggregateError([error, cleanupError], "Workspace connection and cleanup failed.", { cause: error });
+      }
+      throw error;
+    }
+  }
 
-    const config = buildConnectionConfig(settings, directory);
-
-    // Use a timeout + AbortController to prevent indefinite hangs when the
-    // remote server is unreachable (connectToExisting disables Bun's request timeout).
-    const abortController = new AbortController();
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  private async connectBackend(
+    backend: Backend,
+    config: BackendConnectionConfig,
+    controller: AbortController,
+  ): Promise<void> {
     const timeoutError = createAcpConnectionTimeoutError(this.connectionTimeoutMs, {
       transport: config.transport,
       target: config.transport === "ssh"
@@ -412,54 +546,57 @@ class BackendManager {
         : undefined,
     });
 
+    const timeoutId = setTimeout(() => controller.abort(timeoutError), this.connectionTimeoutMs);
     try {
-      timeoutId = setTimeout(
-        () => abortController.abort(timeoutError),
-        this.connectionTimeoutMs,
-      );
       // Production backends are abort-aware and settle only after their
       // transport cleanup. A Promise.race here would return on timeout while
       // leaving a connection lifecycle running in the background.
-      await state.backend.connect(config, abortController.signal);
-
-      this.emitEvent({
-        type: "server.connected",
-        workspaceId,
-        serverUrl: buildAgentServerUrl(settings),
-        timestamp: new Date().toISOString(),
-      });
+      await backend.connect(config, controller.signal);
     } catch (error) {
-      abortController.abort();
-      state.connectionError = String(error);
-      this.emitEvent({
-        type: "server.error",
-        workspaceId,
-        error: state.connectionError,
-        timestamp: new Date().toISOString(),
-      });
+      controller.abort(error);
       throw error;
     } finally {
       clearTimeout(timeoutId);
     }
   }
 
-  /**
-   * Disconnect from the backend for a specific workspace.
-   */
-  async disconnectWorkspace(workspaceId: string): Promise<void> {
-    const state = this.connections.get(workspaceId);
-    if (state && state.backend.isConnected()) {
-      await state.backend.disconnect();
-      this.emitEvent({
-        type: "server.disconnected",
-        workspaceId,
-        timestamp: new Date().toISOString(),
-      });
-    }
-    if (state) {
-      state.connectionError = null;
-    }
-    this.clearCommandExecutorsForWorkspace(workspaceId);
+  private async withTemporaryBackend<T>(
+    context: WorkspaceBackendOptions & { userId: string; settings: RuntimeServerSettings; directory: string },
+    operation: (backend: Backend) => Promise<T>,
+  ): Promise<T> {
+    const backend = this.createBackendForSettings(context.settings, context);
+    const controller = new AbortController();
+    const close = createRetryableAsyncOperation(async () => {
+      const reason = controller.signal.aborted && controller.signal.reason instanceof Error
+        ? controller.signal.reason
+        : undefined;
+      controller.abort();
+      await this.disconnectBackend(backend, reason);
+      this.operationConnections.delete(backend);
+    });
+    this.operationConnections.set(backend, {
+      userId: context.userId,
+      workspaceId: context.workspaceId,
+      executionHostBinding: structuredClone(context.executionHostBinding),
+      controller,
+      close,
+    });
+    await using connection = { backend, [Symbol.asyncDispose]: close };
+    await this.connectBackend(
+      connection.backend,
+      buildConnectionConfig(context.settings, context.directory),
+      controller,
+    );
+    return await operation(connection.backend);
+  }
+
+  private async closeWorkspaceBackend(
+    workspaceId: string,
+    state: WorkspaceConnectionState,
+    reason?: Error,
+  ): Promise<boolean> {
+    state.connection?.controller.abort(reason);
+    return await this.closeBackend(state.backend, workspaceId, reason);
   }
 
   /**
@@ -468,20 +605,26 @@ class BackendManager {
    * Used for recovery when connections become stale.
    */
   async resetWorkspaceConnection(workspaceId: string): Promise<void> {
+    const errors: unknown[] = [];
+    for (const pending of this.pendingExecutionHosts) {
+      if (pending.workspaceId === workspaceId) pending.invalidated = true;
+    }
     const state = this.connections.get(workspaceId);
     this.clearCommandExecutorsForWorkspace(workspaceId);
 
     if (state) {
-      this.connections.delete(workspaceId);
-      // Abort all active subscriptions first
-      state.backend.abortAllSubscriptions();
-
-      // Disconnect cleanly
-      if (state.backend.isConnected()) {
-        await state.backend.disconnect();
+      if (await this.closeWorkspaceBackend(workspaceId, state)) {
+        if (this.connections.get(workspaceId) === state) this.connections.delete(workspaceId);
+      } else {
+        errors.push(new Error(`Failed to close workspace connection ${workspaceId}.`));
       }
-
-      // Remove from connections map
+    }
+    try {
+      await this.closeOperationConnections(
+        [...this.operationConnections.values()].filter((connection) => connection.workspaceId === workspaceId),
+      );
+    } catch (error) {
+      errors.push(error);
     }
 
     this.emitEvent({
@@ -489,6 +632,9 @@ class BackendManager {
       workspaceId,
       timestamp: new Date().toISOString(),
     });
+    if (errors.length > 0) {
+      throw new AggregateError(errors, "Failed to reset workspace connections.");
+    }
   }
 
   /**
@@ -516,8 +662,13 @@ class BackendManager {
     for (const [workspaceId, state] of this.connections) {
       if (!matches(state)) continue;
       this.connections.delete(workspaceId);
-      teardown.push(this.closeBackend(state.backend, workspaceId, reason));
+      teardown.push(this.closeWorkspaceBackend(workspaceId, state, reason));
       this.emitEvent({ type: "server.reset", workspaceId, timestamp: new Date().toISOString() });
+    }
+    for (const connection of this.operationConnections.values()) {
+      if (!matches(connection)) continue;
+      connection.controller.abort(reason);
+      teardown.push(connection.close());
     }
     if (event.impact === "resources") {
       for (const [contextId, state] of this.taskConnections) {
@@ -531,33 +682,61 @@ class BackendManager {
     await Promise.all(teardown);
   }
 
+  private async closeOperationConnections(connections: OperationConnection[]): Promise<void> {
+    const results = await Promise.allSettled(connections.map((connection) => connection.close()));
+    const errors: unknown[] = [];
+    for (const [index, result] of results.entries()) {
+      if (result.status === "rejected") {
+        log.error("Error closing helper connection", {
+          contextId: connections[index]!.workspaceId,
+          error: String(result.reason),
+        });
+        errors.push(result.reason);
+      }
+    }
+    if (errors.length > 0) {
+      throw new AggregateError(errors, "Failed to close helper connections.");
+    }
+  }
+
+  async shutdown(): Promise<void> {
+    this.shuttingDown = true;
+    this.unsubscribeMeshState?.();
+    this.unsubscribeMeshState = undefined;
+    await this.resetAllConnections();
+  }
+
   /**
    * Reset all workspace connections.
    * Disconnects all backends and clears all cached instances.
    */
   async resetAllConnections(): Promise<void> {
+    const errors: unknown[] = [];
+    for (const pending of this.pendingExecutionHosts) {
+      pending.invalidated = true;
+    }
     // Reset all workspace-level connections
     for (const [workspaceId, state] of this.connections) {
-      try {
-        state.backend.abortAllSubscriptions();
-        if (state.backend.isConnected()) {
-          await state.backend.disconnect();
-        }
-      } catch (error) {
-        log.error(`Error resetting connection for workspace ${workspaceId}: ${String(error)}`);
+      if (await this.closeWorkspaceBackend(workspaceId, state)) {
+        if (this.connections.get(workspaceId) === state) this.connections.delete(workspaceId);
+      } else {
+        errors.push(new Error(`Failed to close workspace connection ${workspaceId}.`));
       }
+    }
+    try {
+      await this.closeOperationConnections([...this.operationConnections.values()]);
+    } catch (error) {
+      errors.push(error);
     }
 
     // Reset all task-level connections
     for (const taskId of this.taskConnections.keys()) {
       const disconnected = await this.disconnectTask(taskId);
       if (!disconnected) {
-        log.error(`Error resetting task connection for ${taskId}`);
+        errors.push(new Error(`Failed to close task connection ${taskId}.`));
       }
     }
 
-    this.connections.clear();
-    this.taskConnections.clear();
     this.clearAllCommandExecutors();
     this.invalidateLocalMeshNodeIdCache();
 
@@ -565,6 +744,9 @@ class BackendManager {
       type: "server.reset",
       timestamp: new Date().toISOString(),
     });
+    if (errors.length > 0) {
+      throw new AggregateError(errors, "Failed to reset backend connections.");
+    }
   }
 
   /**
@@ -830,6 +1012,7 @@ class BackendManager {
    * @throws Error if workspace not found
    */
   async getWorkspaceSettings(workspaceId: string): Promise<RuntimeServerSettings> {
+    this.assertAcceptingConnections();
     const workspace = await getWorkspace(workspaceId);
     if (!workspace) {
       throw new Error(`Workspace not found: ${workspaceId}`);
@@ -838,36 +1021,6 @@ class BackendManager {
       workspace.executionHostBinding,
       workspace.serverSettings.agent,
     );
-  }
-
-  /**
-   * Get an already-initialized backend instance for a workspace
-   * (workspace-level operations only).
-   *
-   * Used for operations that don't belong to a specific task (name generation,
-   * model listing, directory validation) when the workspace state is already
-   * initialized.
-   *
-   * IMPORTANT: Do NOT use this for task execution. Use getTaskBackend() instead.
-   *
-   * @throws Error if workspace state has not been initialized yet.
-   *         Use getBackendAsync() or connect() to hydrate it first.
-   */
-  getBackend(workspaceId: string): Backend {
-    const state = this.connections.get(workspaceId);
-    if (state) {
-      return state.backend;
-    }
-
-    throw new Error(`[BackendManager] Workspace ${workspaceId} not initialized. Use getBackendAsync() or connect() first.`);
-  }
-
-  /**
-   * Get the cached backend instance for a workspace if it has already been initialized.
-   * Does not hydrate workspace state from persistence.
-   */
-  getInitializedBackend(workspaceId: string): Backend | null {
-    return this.connections.get(workspaceId)?.backend ?? null;
   }
 
   /**
@@ -891,11 +1044,15 @@ class BackendManager {
    * @returns A Backend instance dedicated to this task
    */
   getTaskBackend(taskId: string, workspaceId: string): Backend {
+    this.assertAcceptingConnections();
     if (this.taskDisconnects.has(taskId)) {
       throw new Error(`[BackendManager] Backend teardown is still in progress for context ${taskId}.`);
     }
     const existing = this.taskConnections.get(taskId);
     if (existing) {
+      if (existing.userId !== requireCurrentUserId() || existing.workspaceId !== workspaceId) {
+        throw new HarnessError("harness_session_not_owned", "The backend belongs to a different task or chat context.");
+      }
       return existing.backend;
     }
 
@@ -903,8 +1060,11 @@ class BackendManager {
     const workspaceState = this.connections.get(workspaceId);
     if (!workspaceState) {
       throw new Error(
-        `[BackendManager] Workspace ${workspaceId} not initialized. Use getBackendAsync() or connect() first.`,
+        `[BackendManager] Workspace ${workspaceId} not initialized. Use getBackendAsync() first.`,
       );
+    }
+    if (workspaceState.userId !== requireCurrentUserId()) {
+      throw new HarnessError("harness_session_not_owned", "The workspace backend belongs to a different user.");
     }
     if (!workspaceState.executionHostBinding) {
       throw new Error(`[BackendManager] Workspace ${workspaceId} has no execution-host binding.`);
@@ -918,6 +1078,7 @@ class BackendManager {
       userId: workspaceState.userId,
       backend,
       workspaceId,
+      settings: structuredClone(workspaceState.settings),
       executionHostBinding: structuredClone(workspaceState.executionHostBinding),
     });
     log.debug(`[BackendManager] Created dedicated backend for task ${taskId}`);
@@ -933,7 +1094,11 @@ class BackendManager {
   }
 
   getInitializedContextBackend(contextId: string): Backend | null {
-    return this.taskConnections.get(contextId)?.backend ?? null;
+    const state = this.taskConnections.get(contextId);
+    if (state && state.userId !== requireCurrentUserId()) {
+      throw new HarnessError("harness_session_not_owned", "The backend belongs to a different user.");
+    }
+    return state?.backend ?? null;
   }
 
   /**
@@ -1005,8 +1170,7 @@ class BackendManager {
 
   private async closeBackend(backend: Backend, contextId: string, reason?: Error): Promise<boolean> {
     try {
-      backend.abortAllSubscriptions(reason);
-      await backend.disconnect();
+      await this.disconnectBackend(backend, reason);
       return true;
     } catch (error) {
       log.error("[BackendManager] Error closing backend", { contextId, error: String(error) });
@@ -1014,19 +1178,16 @@ class BackendManager {
     }
   }
 
+  private async disconnectBackend(backend: Backend, reason?: Error): Promise<void> {
+    await using connection = { backend, [Symbol.asyncDispose]: async () => await backend.disconnect() };
+    connection.backend.abortAllSubscriptions(reason);
+  }
+
   /**
    * Disconnect and clean up the backend for a specific chat.
    */
   async disconnectChat(chatId: string): Promise<boolean> {
     return await this.disconnectTask(chatId);
-  }
-
-  /**
-   * Check if a workspace is connected.
-   */
-  isWorkspaceConnected(workspaceId: string): boolean {
-    const state = this.connections.get(workspaceId);
-    return state?.backend.isConnected() ?? false;
   }
 
   /**
@@ -1103,22 +1264,69 @@ class BackendManager {
     return await this.getCommandExecutor(workspaceId, directory);
   }
 
-  /**
-   * Create a temporary backend for a workspace-scoped operation.
-   *
-   * Unlike a settings-only backend, this preserves the workspace execution
-   * node so remote stdio uses MeshAcpTransport instead of local stdio.
-   */
-  async createBackendForWorkspace(
-    workspace: Workspace,
-    settings: ServerSettings = workspace.serverSettings,
-  ): Promise<Backend> {
-    const workspaceOptions = await this.getWorkspaceBackendOptions(workspace);
-    const runtimeSettings = await this.buildRuntimeSettings(
-      workspace.executionHostBinding,
-      settings.agent,
+  async withExecutionHostBackend<T>(
+    context: {
+      binding: ExecutionHostBinding;
+      provider: AgentProvider;
+      directory: string;
+      sshPassword?: string;
+    },
+    operation: (backend: Backend, settings: RuntimeServerSettings) => Promise<T>,
+  ): Promise<T> {
+    const userId = requireCurrentUserId();
+    const pending = this.trackPendingExecutionHost(userId, context.binding);
+    try {
+      const settings = await this.buildRuntimeSettings(
+        context.binding,
+        createAgentSettings("acp", context.provider),
+        context.sshPassword,
+      );
+      const localNodeId = await this.getLocalMeshNodeId();
+      this.assertPendingExecutionHost(pending);
+      return await this.withTemporaryBackend({
+        workspaceId: `execution-host:${crypto.randomUUID()}`,
+        localNodeId,
+        executionHostBinding: context.binding,
+        settings,
+        userId,
+        directory: context.directory,
+      }, async (backend) => await operation(backend, settings));
+    } finally {
+      this.pendingExecutionHosts.delete(pending);
+    }
+  }
+
+  async getConnectedExecutionHostBackend(context: {
+    connectionId: string;
+    binding: ExecutionHostBinding;
+    provider: AgentProvider;
+    directory: string;
+    sshPassword?: string;
+  }): Promise<Backend | null> {
+    this.assertAcceptingConnections();
+    const state = this.taskConnections.get(context.connectionId);
+    if (!state) return null;
+    if (state.userId !== requireCurrentUserId()) {
+      throw new HarnessError("harness_session_not_owned", "The backend belongs to a different user.");
+    }
+    if (
+      state.workspaceId !== ""
+      || !executionHostBindingsEqual(state.executionHostBinding, context.binding)
+      || !state.backend.isConnected()
+      || state.backend.getDirectory() !== context.directory
+    ) {
+      return null;
+    }
+    const settings = await this.buildRuntimeSettings(
+      context.binding,
+      createAgentSettings("acp", context.provider),
+      context.sshPassword ?? (state.settings.agent.transport === "ssh" ? state.settings.agent.password : undefined),
     );
-    return this.createBackendForSettings(runtimeSettings, workspaceOptions);
+    return this.taskConnections.get(context.connectionId) === state
+      && state.backend.isConnected()
+      && areRuntimeServerSettingsEqual(state.settings, settings)
+      ? state.backend
+      : null;
   }
 
   async createBackendForExecutionHost(
@@ -1136,10 +1344,13 @@ class BackendManager {
       const options: WorkspaceBackendOptions = {
         workspaceId: connectionId, localNodeId, executionHostBinding: binding,
       };
-      const backend = this.createBackendForSettings(settings, options);
       const existing = this.taskConnections.get(connectionId);
+      if (existing && (existing.userId !== userId || existing.workspaceId !== "")) {
+        throw new HarnessError("harness_session_not_owned", "The backend belongs to a different task or chat context.");
+      }
+      const backend = this.createBackendForSettings(settings, options);
       this.taskConnections.set(connectionId, {
-        userId, backend, workspaceId: "",
+        userId, backend, workspaceId: "", settings: structuredClone(settings),
         executionHostBinding: structuredClone(binding),
       });
       if (existing) await this.closeBackend(existing.backend, connectionId);
@@ -1154,13 +1365,6 @@ class BackendManager {
     } finally {
       this.pendingExecutionHosts.delete(pending);
     }
-  }
-
-  /**
-   * Create a backend for a connection that is not owned by a workspace.
-   */
-  createStandaloneBackend(settings: RuntimeServerSettings): Backend {
-    return this.createBackendForSettings(settings);
   }
 
   /**
