@@ -8,6 +8,7 @@ import type {
   MeshExecutionRpcRequest,
   MeshExecutionSessionCloseRequest,
   MeshExecutionSessionRequest,
+  MeshExecutionSessionRenewalRequest,
 } from "@/contracts/schemas/mesh-execution";
 import { MeshDirectoryTreeResultSchema } from "@/contracts/schemas/mesh-execution";
 import type { FileSystemTreeEntry } from "@/shared/file-system";
@@ -20,13 +21,14 @@ import {
   MESH_EXECUTION_DEFAULT_TIMEOUT_MS,
   MESH_EXECUTION_SESSION_REQUEST_TIMEOUT_MS,
   MESH_EXECUTION_SESSION_REQUEST_TTL_MS,
+  MESH_EXECUTION_SESSION_RENEWAL_LEAD_MS,
   MESH_ACP_SESSION_REQUEST_TTL_MS,
   MESH_EXECUTION_MAX_IN_FLIGHT_REQUESTS,
   MESH_EXECUTION_MAX_RESULT_BYTES,
   MESH_ACP_SESSION_RENEWAL_LEAD_MS,
-  MESH_ACP_SESSION_RENEWAL_RETRY_MS,
-  MESH_ACP_SESSION_RENEWAL_MAX_RETRY_MS,
-  MESH_ACP_SESSION_RENEWAL_SAFETY_MARGIN_MS,
+  MESH_SESSION_RENEWAL_RETRY_MS,
+  MESH_SESSION_RENEWAL_MAX_RETRY_MS,
+  MESH_SESSION_RENEWAL_SAFETY_MARGIN_MS,
   type MeshExecutionProtocolVersion,
 } from "@/shared/mesh-execution";
 import { discoverMeshWorkerGeneration } from "./mesh-worker-generation";
@@ -103,6 +105,7 @@ interface MeshExecutionSession {
   protocolVersion: MeshExecutionProtocolVersion;
   expiresAt: number;
   executionRoot?: string;
+  renewable?: boolean;
 }
 
 interface MeshSessionResponse {
@@ -548,6 +551,7 @@ export class MeshCommandExecutorClient {
       sessionToken,
       protocolVersion,
       expiresAt: expiresAtMs,
+      renewable: decrypted["executionSessionRenewal"] === 1,
       ...(executionRoot ? { executionRoot } : {}),
     };
   }
@@ -572,11 +576,22 @@ export class MeshCommandExecutorClient {
   }
 
   startSessionRenewal(): void {
-    if (this.channel === MESH_EXECUTION_CHANNEL || !this.session) {
+    if (!this.session || (this.channel === MESH_EXECUTION_CHANNEL && (
+      !this.session.renewable || this.activeStreamControllers.size === 0
+    ))) {
       return;
     }
     this.clearSessionRenewal();
     this.scheduleSessionRenewal(this.sessionGeneration);
+  }
+
+  private updateStreamSessionRenewal(): void {
+    if (this.channel !== MESH_EXECUTION_CHANNEL) return;
+    if (this.activeStreamControllers.size === 0) {
+      this.clearSessionRenewal();
+    } else if (!this.sessionRenewalTimer && !this.sessionRenewalController) {
+      this.startSessionRenewal();
+    }
   }
 
   private clearSessionRenewal(): void {
@@ -591,7 +606,9 @@ export class MeshCommandExecutorClient {
 
   private scheduleSessionRenewal(generation: number, requestedDelayMs?: number): void {
     if (
-      this.channel === MESH_EXECUTION_CHANNEL
+      (this.channel === MESH_EXECUTION_CHANNEL && (
+        !this.session?.renewable || this.activeStreamControllers.size === 0
+      ))
       || generation !== this.sessionGeneration
       || !this.session
       || !this.route
@@ -602,24 +619,79 @@ export class MeshCommandExecutorClient {
       clearTimeout(this.sessionRenewalTimer);
     }
     const remainingMs = Math.max(1, this.session.expiresAt - Date.now());
-    if (remainingMs <= MESH_ACP_SESSION_RENEWAL_SAFETY_MARGIN_MS) {
+    if (remainingMs <= MESH_SESSION_RENEWAL_SAFETY_MARGIN_MS && this.channel !== MESH_EXECUTION_CHANNEL) {
       return;
     }
-    const defaultDelayMs = Math.max(1, remainingMs - MESH_ACP_SESSION_RENEWAL_LEAD_MS);
-    const latestSafeDelayMs = remainingMs - MESH_ACP_SESSION_RENEWAL_SAFETY_MARGIN_MS;
+    const leadMs = this.channel === MESH_EXECUTION_CHANNEL
+      ? MESH_EXECUTION_SESSION_RENEWAL_LEAD_MS
+      : MESH_ACP_SESSION_RENEWAL_LEAD_MS;
+    const defaultDelayMs = Math.max(1, remainingMs - leadMs);
+    const latestSafeDelayMs = remainingMs - MESH_SESSION_RENEWAL_SAFETY_MARGIN_MS;
     const delayMs = Math.max(
       1,
       Math.min(requestedDelayMs ?? defaultDelayMs, latestSafeDelayMs),
     );
     const timer = setTimeout(() => {
       this.sessionRenewalTimer = undefined;
-      void this.renewAcpSession(generation);
+      void this.renewSession(generation);
     }, delayMs);
     timer.unref?.();
     this.sessionRenewalTimer = timer;
   }
 
-  private async renewAcpSession(generation: number): Promise<void> {
+  private async requestSessionRenewal(
+    session: MeshExecutionSession,
+    signal: AbortSignal,
+  ): Promise<number> {
+    const executionRenewal = this.channel === MESH_EXECUTION_CHANNEL;
+    const requestId = crypto.randomUUID();
+    const request: MeshExecutionSessionRenewalRequest | null = executionRenewal ? {
+      action: "renew",
+      protocolVersion: session.protocolVersion,
+      sessionId: session.sessionId,
+      sessionToken: session.sessionToken,
+      requestId,
+    } : null;
+    const response = await this.post(
+      executionRenewal
+        ? "api/mesh/internal/execution/session"
+        : this.channel === MESH_HARNESS_CHANNEL
+          ? "api/mesh/internal/harness/renew"
+          : "api/mesh/internal/execution/acp/renew",
+      request,
+      {
+        "x-clanky-mesh-session-id": session.sessionId,
+        "x-clanky-mesh-session-token": session.sessionToken,
+        ...(executionRenewal ? { "x-clanky-mesh-request-id": requestId } : {}),
+      },
+      signal,
+      MESH_EXECUTION_SESSION_REQUEST_TIMEOUT_MS,
+    );
+    const body = parseResponseShape<MeshSessionRenewalResponse>(
+      response,
+      ["protocolVersion", "sessionId", "expiresAt"],
+      "The mesh session renewal response is invalid.",
+    );
+    if (
+      body.protocolVersion !== session.protocolVersion
+      || body.sessionId !== session.sessionId
+    ) {
+      throw new DomainError(
+        "mesh_execution_response_invalid",
+        "The mesh session renewal response does not match the session.",
+      );
+    }
+    const expiresAt = new Date(body.expiresAt).getTime();
+    if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+      throw new DomainError(
+        "mesh_execution_session_expired",
+        "The renewed mesh session has already expired.",
+      );
+    }
+    return expiresAt;
+  }
+
+  private async renewSession(generation: number): Promise<void> {
     if (
       generation !== this.sessionGeneration
       || !this.session
@@ -633,37 +705,7 @@ export class MeshCommandExecutorClient {
     this.sessionRenewalController = controller;
     const attempt = this.sessionRenewalAttempt + 1;
     try {
-      const response = await this.post(
-        this.channel === MESH_HARNESS_CHANNEL ? "api/mesh/internal/harness/renew" : "api/mesh/internal/execution/acp/renew",
-        null,
-        {
-          "x-clanky-mesh-session-id": session.sessionId,
-          "x-clanky-mesh-session-token": session.sessionToken,
-        },
-        controller.signal,
-        MESH_EXECUTION_SESSION_REQUEST_TIMEOUT_MS,
-      );
-      const body = parseResponseShape<MeshSessionRenewalResponse>(
-        response,
-        ["protocolVersion", "sessionId", "expiresAt"],
-        "The mesh ACP session renewal response is invalid.",
-      );
-      if (
-        body.protocolVersion !== session.protocolVersion
-        || body.sessionId !== session.sessionId
-      ) {
-        throw new DomainError(
-          "mesh_execution_response_invalid",
-          "The mesh ACP session renewal response does not match the session.",
-        );
-      }
-      const expiresAt = new Date(body.expiresAt).getTime();
-      if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
-        throw new DomainError(
-          "mesh_execution_session_expired",
-          "The renewed mesh ACP session has already expired.",
-        );
-      }
+      const expiresAt = await this.requestSessionRenewal(session, controller.signal);
       if (
         generation !== this.sessionGeneration
         || this.session !== session
@@ -689,10 +731,12 @@ export class MeshCommandExecutorClient {
         || error.code === "mesh_acp_unavailable"
         || error.code === "mesh_execution_capability_unavailable"
         || error.code === "mesh_remote_execution_disabled"
+        || error.code === "mesh_peer_not_trusted"
+        || error.code === "mesh_execution_protocol_mismatch"
       );
       const retryDelayMs = Math.min(
-        MESH_ACP_SESSION_RENEWAL_MAX_RETRY_MS,
-        MESH_ACP_SESSION_RENEWAL_RETRY_MS * (2 ** Math.min(attempt - 1, 3)),
+        MESH_SESSION_RENEWAL_MAX_RETRY_MS,
+        MESH_SESSION_RENEWAL_RETRY_MS * (2 ** Math.min(attempt - 1, 3)),
       );
       const remainingMs = Math.max(0, session.expiresAt - Date.now());
       const details = {
@@ -701,12 +745,23 @@ export class MeshCommandExecutorClient {
         remainingMs,
         error: String(error),
       };
-      if (terminal) {
-        log.error("Mesh ACP session renewal became unrecoverable", details);
-      } else if (remainingMs <= MESH_ACP_SESSION_RENEWAL_SAFETY_MARGIN_MS) {
-        log.error("Mesh ACP session renewal window elapsed", details);
+      if (terminal || remainingMs <= MESH_SESSION_RENEWAL_SAFETY_MARGIN_MS) {
+        log.error(terminal
+          ? "Mesh session renewal became unrecoverable"
+          : "Mesh session renewal window elapsed", details);
+        if (this.channel === MESH_EXECUTION_CHANNEL) {
+          const failure = error instanceof DomainError ? error : new DomainError(
+            "mesh_execution_session_expired",
+            "The Mesh file transfer session could not be renewed.",
+            { cause: error },
+          );
+          for (const streamController of this.activeStreamControllers) {
+            streamController.abort(failure);
+          }
+          this.session = null;
+        }
       } else {
-        log.warn("Mesh ACP session renewal failed; retrying", details);
+        log.warn("Mesh session renewal failed; retrying", details);
         this.scheduleSessionRenewal(generation, retryDelayMs);
       }
     } finally {
@@ -1326,7 +1381,7 @@ export class MeshCommandExecutorClient {
       let slotTransferred = false;
       try {
         if (signal?.aborted) throw this.requestAbortedError(signal);
-        await this.ensureSession();
+        await this.ensureSession(signal);
         const session = this.session;
         const route = this.route;
         if (!session || !route) {
@@ -1335,9 +1390,11 @@ export class MeshCommandExecutorClient {
 
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), this.requestTimeoutMs);
-        const abortHandler = () => controller.abort();
+        const abortHandler = () => controller.abort(signal?.reason);
         signal?.addEventListener("abort", abortHandler, { once: true });
-        if (signal?.aborted) controller.abort();
+        if (signal?.aborted) controller.abort(signal.reason);
+        this.activeStreamControllers.add(controller);
+        this.updateStreamSessionRenewal();
         try {
           const query = new URLSearchParams({ path });
           const response = await requestMeshPeer(
@@ -1375,7 +1432,6 @@ export class MeshCommandExecutorClient {
           }
 
           const stream = this.wrapFileStream(response.body, controller, releaseSlot, signal);
-          this.activeStreamControllers.add(controller);
           slotTransferred = true;
           return stream;
         } catch (error) {
@@ -1396,6 +1452,10 @@ export class MeshCommandExecutorClient {
         } finally {
           clearTimeout(timeoutId);
           signal?.removeEventListener("abort", abortHandler);
+          if (!slotTransferred) {
+            this.activeStreamControllers.delete(controller);
+            this.updateStreamSessionRenewal();
+          }
         }
       } finally {
         if (!slotTransferred) releaseSlot();
@@ -1431,6 +1491,7 @@ export class MeshCommandExecutorClient {
     signal?: AbortSignal,
   ): ReadableStream<Uint8Array> {
     let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+    let output: ReadableStreamDefaultController<Uint8Array> | undefined;
     let settled = false;
     const cleanup = () => {
       if (settled) return;
@@ -1443,6 +1504,7 @@ export class MeshCommandExecutorClient {
       signal?.removeEventListener("abort", abortHandler);
       controller.signal.removeEventListener("abort", controllerAbortHandler);
       this.activeStreamControllers.delete(controller);
+      this.updateStreamSessionRenewal();
       releaseSlot();
     };
     const cancelReader = (): void => {
@@ -1450,18 +1512,31 @@ export class MeshCommandExecutorClient {
         cleanup();
         return;
       }
-      void reader.cancel().catch(() => undefined).finally(cleanup);
+      void reader.cancel(controller.signal.reason).catch((error: unknown) => {
+        log.debug("The aborted Mesh file reader could not be cancelled", { error: String(error) });
+      }).finally(cleanup);
     };
-    const abortHandler = () => controller.abort();
-    const controllerAbortHandler = cancelReader;
+    const abortHandler = () => controller.abort(signal?.reason);
+    const controllerAbortHandler = () => {
+      output?.error(controller.signal.reason instanceof DomainError
+        ? controller.signal.reason
+        : new DomainError(
+          "mesh_execution_aborted",
+          "The Mesh file transfer was aborted.",
+          { cause: controller.signal.reason },
+        ));
+      cancelReader();
+    };
     signal?.addEventListener("abort", abortHandler, { once: true });
     controller.signal.addEventListener("abort", controllerAbortHandler, { once: true });
 
     const wrappedStream = new ReadableStream<Uint8Array>({
-      start() {
+      start(outputController) {
+        output = outputController;
         reader = stream.getReader();
       },
       async pull(outputController) {
+        if (settled || controller.signal.aborted) return;
         if (!reader) {
           outputController.error(new DomainError(
             "mesh_execution_response_invalid",
@@ -1472,6 +1547,7 @@ export class MeshCommandExecutorClient {
         }
         try {
           const { done, value } = await reader.read();
+          if (settled || controller.signal.aborted) return;
           if (done) {
             outputController.close();
             cleanup();
@@ -1479,13 +1555,7 @@ export class MeshCommandExecutorClient {
           }
           outputController.enqueue(value);
         } catch (error) {
-          if (signal?.aborted) {
-            outputController.error(new DomainError("mesh_execution_aborted", "The mesh execution request was aborted.", {
-              cause: error,
-            }));
-          } else {
-            outputController.error(error);
-          }
+          if (!settled && !controller.signal.aborted) outputController.error(error);
           cleanup();
         }
       },

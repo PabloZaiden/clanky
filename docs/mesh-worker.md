@@ -71,6 +71,10 @@ This is an optional extension within Mesh v6. The initiator advertises
 `x-clanky-mesh-response-flow: 1`; the peer confirms `responseFlowControl: 1`
 in the HTTP response metadata before either side uses `http.response.ack`
 frames. Acknowledgements are cumulative byte offsets at frame boundaries.
+At EOF the sender drains acknowledgements through the final body byte, sends
+the end frame, and waits for the receiver's normal close before releasing the
+stream. Flushing a local socket alone does not confirm delivery through the
+relay; this completion handshake also protects the final partial frame.
 Both peers must support the extension to protect slow downloads. During a
 gradual rollout, older peers retain the previous response behavior and never
 receive acknowledgement frames. Upgrade the controller and affected worker;
@@ -78,9 +82,27 @@ the relay forwards these frames opaquely and does not need this extension.
 The extension does not change request uploads or raw socket streams.
 
 An unresponsive consumer times out after 60 seconds waiting for an
-acknowledgement. Cancellation, disconnection, or shutdown closes the owned
-stream and releases the pending read. A failed transfer remains an error,
-not a successful partial file.
+acknowledgement or final close confirmation. Cancellation, disconnection, or
+shutdown closes the owned stream and releases the pending read. A failed
+transfer remains an error, not a successful partial file.
+
+Long downloads also renew their short-lived execution lease. Supporting workers
+advertise `executionSessionRenewal: 1` inside the encrypted session-admission
+payload. Only after that negotiation, the controller posts
+`{ action: "renew", protocolVersion, sessionId, sessionToken, requestId }` to the
+existing `/api/mesh/internal/execution/session` route, with matching session
+and request identity headers. The worker revalidates the token, active controller
+grant, file-operation capability, execution channel and protocol before renewing
+the existing lease. The ordinary 45-second admission and 60-second maximum lease
+remain unchanged; active transfers renew before expiry instead of increasing
+these limits.
+
+The controller shares renewal across its active file streams and stops it when
+the last stream completes, fails or is cancelled, or the session closes. A
+terminal renewal failure aborts the affected streams explicitly. Older workers
+do not advertise support and receive no renewal operation; both controller and
+worker need this extension for transfers lasting beyond the original lease.
+It uses an existing HTTP route, so the relay does not need an update.
 
 ## Choose a harness
 

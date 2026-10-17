@@ -4,9 +4,9 @@ import {
   MeshExecutionRpcRequestSchema,
   MeshExecutionFileWriteQuerySchema,
   MeshExecutionSessionCloseRequestSchema,
-  MeshExecutionSessionRequestSchema,
+  MeshExecutionSessionPostRequestSchema,
 } from "@/contracts/schemas/mesh-execution";
-import { MESH_ACP_CHANNEL, MESH_HARNESS_CHANNEL } from "@/shared/mesh-execution";
+import { MESH_ACP_CHANNEL, MESH_EXECUTION_CHANNEL, MESH_HARNESS_CHANNEL } from "@/shared/mesh-execution";
 import { meshHarnessGateway } from "../../core/mesh-harness-gateway";
 import { meshExecutionGateway } from "../../core/mesh-execution-gateway";
 import { meshAcpGateway } from "../../core/mesh-acp-gateway";
@@ -25,15 +25,43 @@ export const meshExecutionRoutes = defineRoutes({
   "/api/mesh/internal/execution/session": {
     auth: "public",
     sameOrigin: "never",
-    description: "Establish a signed, short-lived mesh CommandExecutor session.",
+    description: "Establish a signed Mesh CommandExecutor session or renew an authenticated file-transfer lease.",
     operations: {
       POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Signed internal Mesh command-session admission." } },
       DELETE: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Signed internal Mesh command-session teardown." } },
     },
     tags: ["mesh", "internal", "execution"],
     async POST(req): Promise<Response> {
-      const parsed = await parseAndValidate(MeshExecutionSessionRequestSchema, req);
+      const parsed = await parseAndValidate(MeshExecutionSessionPostRequestSchema, req);
       if (!parsed.success) return parsed.response;
+      if ("action" in parsed.data) {
+        const headerError = validateMeshSessionHeaders(
+          req,
+          parsed.data.sessionId,
+          parsed.data.requestId,
+          "Mesh headers do not match the execution session renewal.",
+        );
+        if (headerError) return headerError;
+        try {
+          requireMeshRuntimeRole("worker");
+          const expiresAt = await meshExecutionGateway.renewSession(
+            parsed.data.sessionId,
+            parsed.data.sessionToken,
+            {
+              expectedChannel: MESH_EXECUTION_CHANNEL,
+              expectedProtocolVersion: parsed.data.protocolVersion,
+              requiredCapability: { id: "fileOperations" },
+            },
+          );
+          return Response.json({
+            protocolVersion: parsed.data.protocolVersion,
+            sessionId: parsed.data.sessionId,
+            expiresAt: new Date(expiresAt).toISOString(),
+          });
+        } catch (error) {
+          return internalMeshErrorResponse(error);
+        }
+      }
       if (parsed.data.callerEncryptionPublicKey.trim().length === 0) {
         return errorResponse(
           "mesh_execution_encryption_key_invalid",
@@ -66,6 +94,9 @@ export const meshExecutionRoutes = defineRoutes({
             {
               sessionToken: session.sessionToken,
               executionRoot: session.executionRoot,
+              ...(parsed.data.channel === MESH_EXECUTION_CHANNEL
+                ? { executionSessionRenewal: 1 }
+                : {}),
             },
             parsed.data.callerEncryptionPublicKey,
           ),

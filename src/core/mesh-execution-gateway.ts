@@ -13,6 +13,7 @@
  */
 
 import { randomBytes } from "node:crypto";
+import { createLogger } from "@pablozaiden/webapp/server";
 import type {
   MeshExecutionAsyncCommandRequest,
   MeshExecutionRpcRequest,
@@ -90,6 +91,7 @@ import {
   isSupportedMeshProtocolVersion,
 } from "@/shared/mesh-protocol";
 
+const log = createLogger("core:mesh-execution-gateway");
 const MAX_SESSIONS = 256;
 const MAX_REQUEST_IDS = 512;
 const EXCLUSIVE_EXECUTION_OPERATIONS = new Set<MeshExecutionOperation>([
@@ -198,7 +200,7 @@ interface ValidatedExecutionSession {
 }
 
 interface SessionValidationOptions {
-  expectedChannel?: typeof MESH_ACP_CHANNEL | typeof MESH_HARNESS_CHANNEL;
+  expectedChannel?: MeshExecutionSession["channel"];
   expectedProtocolVersion?: MeshExecutionProtocolVersion;
   requiredCapability?: {
     id: ExecutionHostCapabilityId;
@@ -810,16 +812,14 @@ export class MeshExecutionGateway {
   async renewSession(
     sessionId: string,
     sessionToken: string,
-    expectedChannel?: typeof MESH_ACP_CHANNEL | typeof MESH_HARNESS_CHANNEL,
+    options: Omit<SessionValidationOptions, "memberErrorCode"> = {},
   ): Promise<number> {
     const validationOptions: SessionValidationOptions = {
-      memberErrorCode: expectedChannel === MESH_ACP_CHANNEL
+      ...options,
+      memberErrorCode: options.expectedChannel === MESH_ACP_CHANNEL
         ? "mesh_execution_context_changed"
         : "mesh_peer_not_trusted",
     };
-    if (expectedChannel !== undefined) {
-      validationOptions.expectedChannel = expectedChannel;
-    }
     const { session } = await this.requireValidatedSession(
       sessionId,
       sessionToken,
@@ -1753,6 +1753,7 @@ export class MeshExecutionGateway {
     onClosed: () => void,
   ): ReadableStream<Uint8Array> {
     let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+    let output: ReadableStreamDefaultController<Uint8Array> | undefined;
     let closed = false;
     const finish = () => {
       if (closed) return;
@@ -1766,22 +1767,29 @@ export class MeshExecutionGateway {
       onClosed();
     };
     const abortHandler = () => {
+      output?.error(new DomainError(
+        "mesh_execution_aborted",
+        "The Mesh file transfer was aborted.",
+        { cause: signal?.reason },
+      ));
       if (!reader) {
         finish();
         return;
       }
-      void reader.cancel().catch(() => undefined).finally(finish);
+      void reader.cancel(signal?.reason).catch((error: unknown) => {
+        log.debug("The aborted Mesh file reader could not be cancelled", { error: String(error) });
+      }).finally(finish);
     };
-    signal?.addEventListener("abort", abortHandler, { once: true });
-    if (signal?.aborted) {
-      abortHandler();
-    }
 
     return new ReadableStream<Uint8Array>({
-      start() {
+      start(controller) {
+        output = controller;
         reader = stream.getReader();
+        signal?.addEventListener("abort", abortHandler, { once: true });
+        if (signal?.aborted) abortHandler();
       },
       async pull(controller) {
+        if (closed || signal?.aborted) return;
         if (!reader) {
           controller.error(new DomainError(
             "mesh_execution_response_invalid",
@@ -1792,6 +1800,7 @@ export class MeshExecutionGateway {
         }
         try {
           const { done, value } = await reader.read();
+          if (closed || signal?.aborted) return;
           if (done) {
             controller.close();
             finish();
@@ -1799,7 +1808,7 @@ export class MeshExecutionGateway {
           }
           controller.enqueue(value);
         } catch (error) {
-          controller.error(error);
+          if (!closed && !signal?.aborted) controller.error(error);
           finish();
         }
       },

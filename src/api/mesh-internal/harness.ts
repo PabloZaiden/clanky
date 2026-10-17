@@ -139,7 +139,7 @@ export const meshHarnessRoutes = defineRoutes({
       if (!id || !token) return errorResponse("mesh_execution_session_invalid", "Native lease headers are required.", 401);
       try {
         const protocolVersion = meshExecutionGateway.getSessionProtocolVersion(id, token);
-        const expiresAt = await meshExecutionGateway.renewSession(id, token, MESH_HARNESS_CHANNEL);
+        const expiresAt = await meshExecutionGateway.renewSession(id, token, { expectedChannel: MESH_HARNESS_CHANNEL });
         return Response.json({ protocolVersion, sessionId: id, expiresAt: new Date(expiresAt).toISOString() });
       } catch (error) { return internalMeshErrorResponse(error); }
     },
