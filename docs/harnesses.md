@@ -70,6 +70,14 @@ Mesh invalidation also include these temporary connections. Execution-host model
 discovery uses independent temporary connections for concurrent requests; its
 catalog cache is separate from their operation identities. Catalog caches are
 scoped by user, workspace or host binding/revision, adapter/provider and directory.
+Catalog acquisition rejects a changed host binding instead of caching another
+host's catalog. A failed first connection can be initialized again after its
+teardown succeeds. Failed helper teardown remains tracked for a later cleanup
+attempt; resetting a workspace attempts every helper even if one fails.
+Shutdown stops background producers, rejects new backend acquisition, and awaits
+backend teardown before closing Mesh relays and gateways. Tasks first checkpoint
+under their owning user context; interrupted planning remains resumable after
+restart rather than being marked stopped or failed by transport cleanup.
 
 Task and chat connections remain dedicated to their entity and user. Helpers
 never borrow those conversations or move their worktree context. This isolation

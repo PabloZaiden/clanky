@@ -40,6 +40,7 @@ import { harnessActivityService } from "../harness-activity-service";
 import { mergeHarnessProjection } from "../../persistence/harness-state";
 import { getHarnessWorkspaceSafety } from "../harness-workspace-safety";
 import { isDomainError } from "../../domain/domain-error";
+import { requireCurrentUser, runWithCurrentUser } from "../../context/user-context";
 
 import {
   type TaskBackend,
@@ -84,6 +85,7 @@ import {
 } from "../../backends/acp";
 
 export class TaskEngine {
+  private readonly owner = requireCurrentUser();
   private task: Task;
   private backend: TaskBackend;
   private git: GitService;
@@ -95,6 +97,7 @@ export class TaskEngine {
   private completionSettlement?: ReturnType<typeof Promise.withResolvers<void>>;
   /** Guard to prevent concurrent runTask() executions */
   private isTaskRunning = false;
+  private isStarting = false;
   /** Try to recover the persisted ACP session before creating a new one. */
   private reuseExistingSession: boolean;
   private lastPromptMode: TaskPromptIntent = "engine_context";
@@ -177,7 +180,7 @@ export class TaskEngine {
     return this.task.state;
   }
 
-  get isExecuting(): boolean { return this.isTaskRunning || this.inputs.isBusy; }
+  get isExecuting(): boolean { return this.isStarting || this.isTaskRunning || this.inputs.isBusy; }
 
   refreshHarnessState(harness: TaskState["harness"]): void {
     const inputs = this.task.state.harness?.inputs;
@@ -380,7 +383,7 @@ export class TaskEngine {
    */
   async waitForTaskIdle(timeoutMs = 30000): Promise<void> {
     const startTime = Date.now();
-    while (this.isTaskRunning) {
+    while (this.isStarting || this.isTaskRunning) {
       if (Date.now() - startTime > timeoutMs) {
         throw new Error(`Timed out waiting for task to become idle after ${timeoutMs}ms`);
       }
@@ -422,6 +425,7 @@ export class TaskEngine {
       error: undefined,
     });
 
+    this.isStarting = true;
     try {
       // Set up git branch first (before any file modifications)
       // Skip git setup in plan mode - already set up in startPlanMode()
@@ -456,6 +460,8 @@ export class TaskEngine {
         await this.setupSession();
       }
       log.debug("[TaskEngine] setupSession completed successfully");
+      if (this.aborted) return;
+      this.isStarting = false;
 
       // Emit started event (skip in plan mode - will emit when plan is accepted)
       if (!isInPlanMode) {
@@ -478,6 +484,11 @@ export class TaskEngine {
       await this.runWithExecutionPolicy();
       log.debug("[TaskEngine] runTask completed");
     } catch (error) {
+      if (this.aborted) {
+        this.emitLog("info", "Task startup interrupted", { error: String(error) });
+        await this.triggerPersistence();
+        return;
+      }
       this.emitLog("error", `Failed to start task: ${String(error)}`);
       this.handleError(error);
       try {
@@ -486,7 +497,14 @@ export class TaskEngine {
         log.error(`Failed to persist task startup failure: ${String(persistenceError)}`);
         throw persistenceError;
       }
+    } finally {
+      this.isStarting = false;
     }
+  }
+
+  async shutdown(): Promise<void> {
+    this.injectionPending = false;
+    await runWithCurrentUser(this.owner, () => this.abortSessionOnly("Server shutdown"));
   }
 
   /**
@@ -1167,6 +1185,7 @@ export class TaskEngine {
 
         const iterationResult = await this.runIteration();
         log.debug("[TaskEngine] runTask: runIteration completed", { outcome: iterationResult.outcome });
+        if (this.aborted && !this.injectionPending) return;
 
         if (iterationResult.promptMode === "direct_user") {
           if (this.injectionPending && this.shouldContinue()) {

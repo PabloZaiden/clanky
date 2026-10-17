@@ -22,6 +22,7 @@ import { resetStaleTasks } from "./persistence/tasks";
 import { resetStaleChats } from "./persistence/chats";
 import { runForEachActiveUser } from "./core/background-users";
 import { backendManager } from "./core/backend-manager";
+import { taskManager } from "./core/task-manager";
 import type {
   MacWorkerPermissionPreflightRequest,
   MacWorkerPermissionPreflightWorkerMessage,
@@ -642,23 +643,37 @@ export async function getWebAppServer(
         }
       },
       beforeStop: async () => {
-        const [previews] = await Promise.allSettled([previewSessionManager.closeAll()]);
-        await liveVoiceManager.closeAll();
-        if (meshWorker) {
-          await workerRelayService.stopRuntime();
-        } else {
-          await controllerRelayService.stopRuntime();
-        }
-        realtimeHeartbeatCleanup?.();
-        realtimeHeartbeatCleanup = undefined;
-        stopBackgroundWorkers();
-        await stopChatTrashMaintenance();
-        await meshTerminalGateway.closeAll();
-        await meshTcpTunnelGateway.closeAll();
-        await closeAllMeshTerminalConnections();
-        await meshHarnessGateway.closeAll();
-        await meshAcpGateway.closeAll();
-        if (previews?.status === "rejected") throw previews.reason;
+        const errors: unknown[] = [];
+        const cleanup = async (operation: () => void | Promise<void>): Promise<void> => {
+          try {
+            await operation();
+          } catch (error) {
+            errors.push(error);
+          }
+        };
+        await cleanup(stopBackgroundWorkers);
+        await cleanup(stopChatTrashMaintenance);
+        await Promise.all([
+          cleanup(() => previewSessionManager.closeAll()),
+          cleanup(() => liveVoiceManager.closeAll()),
+        ]);
+        await cleanup(() => taskManager.shutdown());
+        await cleanup(() => backendManager.shutdown());
+        // Remote clients must release their sessions before relays and gateways close.
+        await cleanup(() => meshWorker
+          ? workerRelayService.stopRuntime()
+          : controllerRelayService.stopRuntime());
+        await cleanup(() => {
+          const disposeHeartbeat = realtimeHeartbeatCleanup;
+          realtimeHeartbeatCleanup = undefined;
+          disposeHeartbeat?.();
+        });
+        await cleanup(() => meshTerminalGateway.closeAll());
+        await cleanup(() => meshTcpTunnelGateway.closeAll());
+        await cleanup(closeAllMeshTerminalConnections);
+        await cleanup(() => meshHarnessGateway.closeAll());
+        await cleanup(() => meshAcpGateway.closeAll());
+        if (errors.length > 0) throw new AggregateError(errors, "Clanky shutdown cleanup failed.");
       },
     },
     configResponse: (req) => {

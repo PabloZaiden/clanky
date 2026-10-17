@@ -156,7 +156,12 @@ export async function getModelsForDirectory(
   }
 
   const models = await backendManager.withWorkspaceBackend(
-    { workspaceId: workspace.id, directory, settings: workspace.serverSettings },
+    {
+      workspaceId: workspace.id,
+      directory,
+      settings: workspace.serverSettings,
+      expectedBinding: workspace.executionHostBinding,
+    },
     async (backend) => await backend.getModels(directory),
   );
   const normalizedModels = normalizeDiscoveredModels(workspace.serverSettings, models);
@@ -186,7 +191,12 @@ export async function getModelVariantsForWorkspace(
   }
 
   const variants = await backendManager.withWorkspaceBackend(
-    { workspaceId, directory, settings: workspace.serverSettings },
+    {
+      workspaceId,
+      directory,
+      settings: workspace.serverSettings,
+      expectedBinding: workspace.executionHostBinding,
+    },
     async (backend) => {
       if (backend.getModelVariants) {
         return await backend.getModelVariants(directory, modelID);
