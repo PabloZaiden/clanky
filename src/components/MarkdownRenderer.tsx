@@ -54,7 +54,7 @@ function MarkdownCodeBlockCopyButton({ codeText }: { codeText: string }) {
 
   async function handleCopyCode(): Promise<void> {
     try {
-      await writeTextToClipboard(codeText);
+      await writeTextToClipboard(codeText.trimEnd());
     } catch (error) {
       toast.error(`Failed to copy code to the clipboard: ${String(error)}`);
       return;
