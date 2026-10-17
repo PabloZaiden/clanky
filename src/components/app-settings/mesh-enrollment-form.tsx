@@ -11,7 +11,7 @@ export function MeshEnrollmentForm({ mesh, onClose }: { mesh: UseMeshResult; onC
   const [route, setRoute] = useState<MeshEnrollmentRoute>("direct");
   const [relayName, setRelayName] = useState("");
   const [created, setCreated] = useState<{ workerJoinCommand: string } | null>(null);
-  const relayUnavailable = Boolean(
+  const relayUnavailable = route === "relay" && Boolean(
     relayName && mesh.relayStatus
     && !mesh.relayStatus.relays.some((relay) => relay.name === relayName),
   );

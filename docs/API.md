@@ -3606,7 +3606,10 @@ observed command output does. `startedAt` is recorded only when that evidence
 is observed, not during connection establishment.
 
 After controller restart, jobs without command dispatch remain `not_started`;
-possible execution without a retained result becomes `unconfirmed`. Legacy
+possible execution without a retained result becomes `unconfirmed`. If earlier
+steps completed but the pipeline stopped before dispatching the next step,
+the job uses `failed` with `worker_update_pipeline_stopped`, preserving completed
+step results and the next step's undispatched state. Legacy
 interrupted jobs that recorded only a lost observation are reclassified without
 inventing execution evidence. Recovery never replays either command.
 

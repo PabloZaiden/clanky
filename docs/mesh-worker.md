@@ -12,6 +12,8 @@ Settings separates **Workers**, **Controller**, and **Relays**. Workers contains
 the enrollment list and health action; **Enroll worker** opens a focused form
 and then the join command. Open a worker for runtime/protocol details.
 Controller contains the guarded name/endpoint form and local runtime metadata.
+Controllers without an advertised endpoint can save their name without adding
+one; replacing an existing endpoint still requires a valid URL.
 Relays contains paired connections and primary selection; **Pair relay** or
 **Edit pairing** opens the URL/name form and bootstrap configuration.
 
@@ -508,8 +510,9 @@ failure is **Failed**. **Interrupted** requires observed execution and confirmed
 termination. A controller restart does not prove remote execution stopped:
 undispatched jobs become **Not started**, and possible execution with no known
 result becomes **Outcome unconfirmed**. No command is automatically replayed.
-Jobs and
-their logs remain on the Dashboard until dismissed.
+If update already succeeded but restart was never dispatched, the pipeline is
+**Failed** with the completed update preserved, not **Not started**.
+Jobs and their logs remain on the Dashboard until dismissed.
 
 Use **Dismiss all** in the Dashboard's **Worker updates** panel to remove
 terminal jobs and their logs after confirmation.

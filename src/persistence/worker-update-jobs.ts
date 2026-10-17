@@ -7,6 +7,7 @@ import type {
   WorkerUpdateJobError,
   WorkerUpdateJobStatus,
   WorkerUpdateLogEntry,
+  WorkerUpdateStepResult,
 } from "@/shared";
 import { createLogger } from "@pablozaiden/webapp/server";
 import {
@@ -117,6 +118,12 @@ function parseWorkerUpdateJobRow(row: WorkerUpdateJobRow): WorkerUpdateJob | nul
   return job;
 }
 
+function mayHaveDispatched(step: WorkerUpdateStepResult): boolean {
+  if (step.status === "succeeded" || step.status === "failed") return true;
+  if (step.execution !== undefined) return step.execution !== "not_started";
+  return !["pending", "connecting", "not_started", "connection_failed", "skipped"].includes(step.status);
+}
+
 function recoverWorkerUpdateJob(job: WorkerUpdateJob): WorkerUpdateJob {
   const now = new Date().toISOString();
   const steps = { ...job.state.steps };
@@ -125,25 +132,26 @@ function recoverWorkerUpdateJob(job: WorkerUpdateJob): WorkerUpdateJob {
       ? "restart"
       : ["running", "connecting", "verifying", "unconfirmed"].includes(steps.update.status)
         ? "update" : undefined);
-  const notStarted = job.state.status === "pending"
-    || (steps.update.status === "pending" && steps.restart.status === "pending")
-    || (currentStep !== undefined && steps[currentStep].execution === "not_started");
+  const notStarted = !Object.values(steps).some(mayHaveDispatched);
+  const unconfirmed = Object.values(steps).some((step) => mayHaveDispatched(step)
+    && step.status !== "succeeded" && step.status !== "failed");
   const completed = steps.update.status === "succeeded" && steps.restart.status === "succeeded";
   const status: WorkerUpdateJobStatus = completed
-    ? "completed" : notStarted ? "not_started" : currentStep ? "unconfirmed" : "not_started";
+    ? "completed" : notStarted ? "not_started" : unconfirmed ? "unconfirmed" : "failed";
   const error: WorkerUpdateJobError | undefined = completed ? undefined : {
-    code: notStarted ? "worker_update_not_started" : currentStep ? "worker_update_outcome_unconfirmed" : "worker_update_pipeline_stopped",
+    code: notStarted ? "worker_update_not_started" : unconfirmed ? "worker_update_outcome_unconfirmed" : "worker_update_pipeline_stopped",
     message: notStarted
       ? "The server restarted before command dispatch."
-      : currentStep
+      : unconfirmed
         ? "The server restarted. The command outcome could not be confirmed."
         : "The server restarted before the next step started.",
     ...(currentStep ? { step: currentStep } : {}),
   };
-  if (currentStep && error) {
+  if (currentStep && error && steps[currentStep].status !== "succeeded"
+    && steps[currentStep].status !== "failed") {
     steps[currentStep] = {
       ...steps[currentStep],
-      status: notStarted ? "not_started" : "unconfirmed",
+      status: mayHaveDispatched(steps[currentStep]) ? "unconfirmed" : "not_started",
       ...(steps[currentStep].execution === undefined ? { startedAt: undefined } : {}),
       completedAt: now,
       error: error.message,
@@ -164,7 +172,7 @@ function recoverWorkerUpdateJob(job: WorkerUpdateJob): WorkerUpdateJob {
     state: {
       ...job.state, status, currentStep: null, steps, error,
       ...(Object.values(steps).some((step) => step.execution === "started"
-        || step.execution === "finished") ? {} : { startedAt: undefined }),
+        || step.execution === "finished" || step.status === "succeeded") ? {} : { startedAt: undefined }),
       completedAt: now, updatedAt: now,
     },
   };

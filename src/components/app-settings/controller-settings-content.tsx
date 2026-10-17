@@ -9,8 +9,8 @@ export function ControllerSettingsContent({ mesh }: { mesh: UseMeshResult }) {
   const [meshEndpoint, setMeshEndpoint] = useState("");
   const identity = useRef({ instanceName, meshEndpoint });
   identity.current = { instanceName, meshEndpoint };
-  const synced = useRef<string | undefined>(undefined);
-  const dirty = synced.current !== undefined && JSON.stringify(identity.current) !== synced.current;
+  const [synced, setSynced] = useState<string | undefined>(undefined);
+  const dirty = synced !== undefined && JSON.stringify(identity.current) !== synced;
   function reset(): void {
     setInstanceName(mesh.status?.node.instanceName ?? "");
     setMeshEndpoint(mesh.status?.node.meshEndpoint ?? "");
@@ -18,22 +18,33 @@ export function ControllerSettingsContent({ mesh }: { mesh: UseMeshResult }) {
   useUnsavedChanges(dirty, reset);
   useEffect(() => {
     if (!mesh.status) return;
-    if (synced.current === undefined || JSON.stringify(identity.current) === synced.current) {
+    if (synced === undefined || JSON.stringify(identity.current) === synced) {
       setInstanceName(mesh.status.node.instanceName ?? "");
       setMeshEndpoint(mesh.status.node.meshEndpoint ?? "");
     }
-    synced.current = JSON.stringify({
+    setSynced(JSON.stringify({
       instanceName: mesh.status.node.instanceName ?? "",
       meshEndpoint: mesh.status.node.meshEndpoint ?? "",
-    });
+    }));
   }, [mesh.status?.node.instanceName, mesh.status?.node.meshEndpoint]);
   async function save(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    if (!await mesh.updateInstanceName(instanceName)) return;
-    const next = await mesh.updateMeshEndpoint(meshEndpoint);
+    let next = mesh.status;
+    if (instanceName !== (mesh.status?.node.instanceName ?? "")) {
+      next = await mesh.updateInstanceName(instanceName);
+      if (!next) return;
+    }
+    if (meshEndpoint !== (mesh.status?.node.meshEndpoint ?? "")) {
+      next = await mesh.updateMeshEndpoint(meshEndpoint);
+      if (!next) return;
+    }
     if (next) {
       setInstanceName(next.node.instanceName ?? "");
       setMeshEndpoint(next.node.meshEndpoint ?? "");
+      setSynced(JSON.stringify({
+        instanceName: next.node.instanceName ?? "",
+        meshEndpoint: next.node.meshEndpoint ?? "",
+      }));
       toast.success("Controller saved.");
     }
   }
@@ -43,7 +54,7 @@ export function ControllerSettingsContent({ mesh }: { mesh: UseMeshResult }) {
       <FormGroup>
         <TextField label="Name" required maxLength={64} value={instanceName}
           onChange={(event) => setInstanceName(event.currentTarget.value)} disabled={mesh.saving} />
-        <TextField label="Endpoint" type="url" fieldWidth="full" required value={meshEndpoint}
+        <TextField label="Endpoint" type="url" fieldWidth="full" required={Boolean(mesh.status?.node.meshEndpoint)} value={meshEndpoint}
           onChange={(event) => setMeshEndpoint(event.currentTarget.value)} disabled={mesh.saving} />
         <FormActions>
           <Button disabled={mesh.saving || !dirty} onClick={reset}>Cancel</Button>

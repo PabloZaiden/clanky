@@ -788,9 +788,10 @@ export class MeshCommandExecutorClient {
       maxOutputBytes: options?.maxOutputBytes,
       env: options?.env,
     }, options?.signal, () => options?.onExecutionState?.("dispatched"));
-    options?.onExecutionState?.("finished");
+    if (result.stdout || result.stderr) options?.onExecutionState?.("started");
     if (result.stdout) options?.onStdoutChunk?.(result.stdout);
     if (result.stderr) options?.onStderrChunk?.(result.stderr);
+    options?.onExecutionState?.("finished");
     return result;
   }
 
@@ -1069,8 +1070,7 @@ export class MeshCommandExecutorClient {
   }
 
   private isAsyncTerminationConfirmed(snapshot: MeshExecutionAsyncCommandSnapshot): boolean {
-    return snapshot.result?.termination === "confirmed"
-      || (snapshot.status !== "running" && snapshot.result?.success === true);
+    return snapshot.result?.termination === "confirmed";
   }
 
   private consumeAsyncCommandOutput(
