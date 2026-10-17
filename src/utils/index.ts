@@ -19,7 +19,6 @@ export {
   isSidebarHistoryTask,
   isWorkspaceHistoryTask,
   shouldShowInRecentActivity,
-  getRecentActivityTimestamp,
   getPlanningStatusLabel,
   getTaskStatusLabel,
   getTaskStatusPill,

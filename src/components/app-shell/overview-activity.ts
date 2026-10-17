@@ -1,7 +1,7 @@
 import { isQuestionOpen } from "@/shared/harness-questions";
-import { getRecentActivityTimestamp, isTaskPlanReady } from "../../utils";
+import { isTaskPlanReady } from "../../utils";
 import type { BadgeVariant } from "../common";
-import type { SidebarActiveWorkItem } from "./shell-types";
+import { getActiveWorkItemTimestamp, type SidebarActiveWorkItem } from "./shell-types";
 
 export interface OverviewAttention {
   label: string;
@@ -33,10 +33,5 @@ export function getOverviewAttention(item: SidebarActiveWorkItem): OverviewAtten
 }
 
 export function getOverviewActivityTimestamp(item: SidebarActiveWorkItem): string {
-  if (item.kind === "task") return getRecentActivityTimestamp(item.taskNode.task);
-  if (item.kind === "chat" || item.kind === "execution-host-chat") {
-    const { config, state } = item.chatNode.chat;
-    return state.lastActivityAt ?? state.completedAt ?? config.updatedAt ?? config.createdAt;
-  }
-  return item.sessionNode.session.state.lastConnectedAt ?? item.sessionNode.session.config.createdAt;
+  return getActiveWorkItemTimestamp(item);
 }
