@@ -334,7 +334,7 @@ async function validateFileLinkTarget(
 
 function getInlineCodeClassName(className?: string): string {
   return [
-    "break-all rounded bg-gray-100 px-1.5 py-0.5 font-mono text-sm text-gray-900 dark:bg-neutral-800 dark:text-gray-100",
+    "break-all rounded bg-gray-100 px-1.5 py-0.5 font-mono text-[1em] text-gray-900 dark:bg-neutral-800 dark:text-gray-100",
     className,
   ].filter(Boolean).join(" ");
 }

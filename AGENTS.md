@@ -79,6 +79,28 @@ new generation; do not mix cleanup with wire-contract changes.
 - Route components rendered by `WebAppRoot.routes` must use `Page` as the top-level wrapper. Do not render content directly into `.wapp-main-content`, recreate shell spacing, or duplicate the fixed framework title with an app-local heading.
 - Prefer framework main-content primitives (`Page`, `Panel`, `DataList`, `DataListRow`, `FormGroup`, `FormActions`, `DangerZone`, `LoadingState`, `ErrorState`, `CodeValue`) before custom CSS. Use `EntityHeader` only for entity-specific headings that are distinct from the fixed title bar.
 - Keep operational screens concise: use labels, values, actions, statuses, errors, and actionable warnings instead of explanatory paragraphs about workflow mechanics, navigation, persistence, or job retention. Add helper text only when it is needed to enter valid or safe data or to explain an irreversible consequence.
+- Design dark-first; Dark is the default when no preference exists. Preserve
+  saved Light/System choices and validate light mode too.
+- Do not display internal IDs or operational technical identifiers unless
+  needed to perform an action. Never use UUIDs as fallback names or move them
+  into default detail panels. Preserve identifiers in APIs/storage/protocols
+  and do not rewrite user messages, code or raw logs to conceal them.
+- Generic UI quality belongs in webapp defaults and public compositions, not
+  app-local wrappers or CSS recipes. Ordinary actions are subtle by default;
+  primary emphasis and destructive consequences are explicit.
+- Ordinary actions, including primary actions, are unboxed icons or clickable
+  labels. Show direct actions when they fit instead of hiding single actions
+  behind ellipsis. Reserve solid danger for irreversible confirmation.
+- Settings use two zones with right-aligned, vertically centered controls and
+  actions. Keep short fields compact and related fields together. Ordinary
+  validation/status feedback stays inline instead of creating another row.
+- Dialog actions stay right-aligned, on one line when possible, wrapping right
+  when required; do not create left-aligned or reversed mobile button columns.
+- Conversation messages use 18px body text and technical output uses 16px on
+  desktop and mobile. Verify rendered Markdown, raw text, code and tool details,
+  not just the transcript container's inherited font.
+- Screenshots, manifests and UI review notes are working artifacts only. Keep
+  them in an ignored directory, never under committed docs/assets.
 - Use the webapp notification service for transient feedback. Do not add
   Clanky-owned toast providers or wrappers. Use inline `ErrorState`/validation
   for persistent page state and avoid reporting one failure twice.
@@ -90,7 +112,10 @@ new generation; do not mix cleanup with wire-contract changes.
   in row `danger` presentation with framework confirmation. Use custom `render`
   sections only when the framework row model cannot represent the setting, and
   add a nearby code comment explaining every remaining limitation.
-- Header action buttons must remain visible and non-deforming; titles/subtitles should truncate before actions are clipped.
+- Declare primary header actions through semantic `HeaderPrimaryAction`
+  descriptors. The framework keeps fitting actions visible and moves them
+  first into the existing overflow menu when space narrows, preserving native
+  form validation/submission. Do not duplicate or clip actions or crowd titles.
 - Never query or portal into framework-owned shell DOM nodes. Titles and
   actions must come from route-backed `SidebarNode` data or documented
   `WebAppRoot.header` APIs. If a generic header capability is missing,
@@ -141,6 +166,11 @@ Use an isolated `CLANKY_DATA_DIR` when creating validation data so local user da
 Clanky can connect to ACP runtimes across different environments (local host via `stdio`, or remote machines via `ssh`). Workspace directory paths (like `/workspaces/myrepo`) always refer to the selected workspace host for that transport, not implicitly to the Clanky server filesystem.
 
 ### Workspace directories are navigation starting points
+
+An initial directory is not workspace identity. Use workspace IDs internally
+and human names in the UI, never directory paths as an identifying key or
+ordinary workspace/job subtitle. Show paths only for actual filesystem work
+or a specifically requested diagnostic.
 
 `workspace.directory` and the file explorer's active root are initial
 directories, not filesystem sandboxes or authorization boundaries. Access to

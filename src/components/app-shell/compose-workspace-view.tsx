@@ -373,17 +373,13 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     </>
   );
 
-  const headerActions = useMemo(() => (
-    <Button
-      type="submit"
-      form={workspaceCreateFormId}
-      size="sm"
-      loading={createActionLoading}
-      disabled={createActionDisabled}
-    >
-      {createActionLabel}
-    </Button>
-  ), [
+  const headerActions = useMemo(() => [{
+    id: "create-workspace",
+    label: createActionLabel,
+    form: workspaceCreateFormId,
+    loading: createActionLoading,
+    disabled: createActionDisabled,
+  }], [
     createActionDisabled,
     createActionLabel,
     createActionLoading,

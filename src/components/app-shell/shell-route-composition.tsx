@@ -359,28 +359,22 @@ function renderShellRouteContent(
 
 export function buildShellRoutes(
   context: ShellRouteCompositionContext,
-  onOwnerChange: (isOwner: boolean) => void,
 ): WebAppRootProps["routes"] {
-  const renderRouteContent = (route: WebAppRoute) => (
-    <CurrentUserObserver onOwnerChange={onOwnerChange}>
-      {renderShellRouteContent(route, context)}
-    </CurrentUserObserver>
-  );
+  const renderRouteContent = (route: WebAppRoute) => renderShellRouteContent(route, context);
   return Object.fromEntries(
     ROUTE_VIEWS.map((view) => [view, renderRouteContent]),
   ) as WebAppRootProps["routes"];
 }
 
-function CurrentUserObserver({
-  children,
+export function CurrentUserObserver({
   onOwnerChange,
 }: {
-  children: ReactNode;
   onOwnerChange: (isOwner: boolean) => void;
 }) {
   const isOwner = useCurrentUser()?.isOwner === true;
   useEffect(() => {
     onOwnerChange(isOwner);
+    return () => onOwnerChange(false);
   }, [isOwner, onOwnerChange]);
-  return <>{children}</>;
+  return null;
 }

@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CodeValue, ConfirmModal, useToast } from "@pablozaiden/webapp/web";
+import { CodeValue, ConfirmModal, DataList, DataListRow, EmptyState, FormActions, LoadingState, Modal, SettingsFieldRow, TextField, useToast, useUnsavedChanges } from "@pablozaiden/webapp/web";
 import type { ControllerRelayPairingStatus } from "@/contracts/relay";
 import { useRealtimeRefreshWithRecovery } from "../../hooks/useRealtimeStream";
 import { apiRequest } from "../../lib/api-client";
 import { createRefreshCoordinator } from "../../lib/refresh-coordinator";
 import { isAbortError } from "../../lib/request-lifecycle";
-import { Button } from "../common";
-import { SettingsError, SettingsInput } from "./settings-row-controls";
+import { Button, StatusBadge } from "../common";
+import { SettingsError } from "./settings-row-controls";
 
 export function RelaySettingsContent() {
   const toast = useToast();
@@ -18,9 +18,18 @@ export function RelaySettingsContent() {
   const [error, setError] = useState<string | null>(null);
   const [pairingError, setPairingError] = useState<string | null>(null);
   const [confirmUnpair, setConfirmUnpair] = useState<string | null>(null);
+  const [pairingOpen, setPairingOpen] = useState(false);
+  const selectedRelay = status?.relays.find((relay) => relay.name === relayName);
   const refreshAbortRef = useRef<AbortController | null>(null);
   const refreshCoordinatorRef = useRef(createRefreshCoordinator<void>());
   const refreshVersionRef = useRef(0);
+  function resetPairing(): void {
+    setRelayName("");
+    setRelayUrl("");
+    setPairingError(null);
+    setPairingOpen(false);
+  }
+  useUnsavedChanges(Boolean(relayName || relayUrl), resetPairing);
 
   const refresh = useCallback((): Promise<void> => {
     const controller = refreshAbortRef.current ?? new AbortController();
@@ -104,6 +113,7 @@ export function RelaySettingsContent() {
       updateStatus(next);
       setRelayName("");
       setRelayUrl("");
+      setPairingOpen(false);
       toast.success("Mesh relay paired.");
     } catch (pairError) {
       setPairingError(pairError instanceof Error ? pairError.message : String(pairError));
@@ -164,22 +174,21 @@ export function RelaySettingsContent() {
 
   return (
     <div className="space-y-3">
+      <FormActions><Button variant="primary" disabled={loading || saving} onClick={() => setPairingOpen(true)}>Pair relay</Button></FormActions>
       {error ? <SettingsError>{error}</SettingsError> : null}
+      {loading && !status ? <LoadingState title="Loading relays" /> : null}
       {status ? (
         <>
-          <CodeValue value={status.bootstrapEnvironment} />
           {status.relays.length === 0 ? (
-            <p className="text-sm text-gray-600 dark:text-gray-300">No relays paired.</p>
+            <EmptyState title="No relays" />
           ) : (
             <fieldset className="space-y-2">
               <legend className="sr-only">Primary Mesh relay</legend>
+              <DataList>
               {status.relays.map((relay) => (
-                <div
+                <DataListRow
                   key={relay.name}
-                  className="space-y-2 rounded-md border border-gray-200 p-3 text-sm dark:border-gray-700"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <label className="flex min-w-0 items-center gap-2 font-medium">
+                  title={<label className="flex min-w-0 items-center gap-2 font-medium">
                       <input
                         type="radio"
                         name="primary-mesh-relay"
@@ -188,11 +197,13 @@ export function RelaySettingsContent() {
                         disabled={saving}
                       />
                       <span className="truncate">{relay.name}</span>
-                      <span className="text-xs font-normal text-gray-500 dark:text-gray-400">
-                        {relay.isPrimary ? "Primary" : "Set as primary"}
-                      </span>
-                    </label>
-                    <div className="flex gap-2">
+                    </label>}
+                  meta={relay.isPrimary ? "Primary" : undefined}
+                  metaPlacement="inline"
+                  badge={<StatusBadge variant={relay.connected ? "success" : "warning"}>{relay.connected ? "Connected" : "Disconnected"}</StatusBadge>}
+                  description={relay.runtimeError?.message ?? relay.relayUrl}
+                  descriptionClassName={relay.runtimeError ? "text-red-600 dark:text-red-400" : "truncate"}
+                  actions={<div className="flex flex-wrap justify-end gap-1">
                       <Button
                         type="button"
                         size="sm"
@@ -200,44 +211,24 @@ export function RelaySettingsContent() {
                         onClick={() => {
                           setRelayName(relay.name);
                           setRelayUrl(relay.relayUrl);
+                          setPairingOpen(true);
                         }}
                       >
                         Edit pairing
                       </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="danger"
-                        disabled={saving}
-                        onClick={() => setConfirmUnpair(relay.name)}
-                      >
-                        Unpair
-                      </Button>
-                    </div>
-                  </div>
-                  <p className="break-all text-xs">{relay.relayUrl} · {relay.connected ? "Connected" : "Disconnected"}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Binary: {relay.relayBinaryVersion ?? "unknown"} · Protocol: v{
-                      relay.relayNegotiatedProtocolVersion
-                        ?? relay.relayPreferredProtocolVersion
-                    } · Supported: {relay.relaySupportedProtocolVersions
-                      .map((version) => `v${String(version)}`)
-                      .join(", ")}
-                  </p>
-                  {relay.runtimeError ? (
-                    <SettingsError>{relay.runtimeError.message}</SettingsError>
-                  ) : null}
-                </div>
+                      <Button size="sm" variant="danger" disabled={saving} onClick={() => setConfirmUnpair(relay.name)}>Unpair</Button>
+                    </div>}
+                />
               ))}
+              </DataList>
             </fieldset>
           )}
         </>
       ) : null}
-      <form className="space-y-2" onSubmit={(event) => void pair(event)}>
-        <label htmlFor="mesh-relay-name" className="block text-sm font-medium">
-          Relay name
-        </label>
-        <SettingsInput
+      <Modal isOpen={pairingOpen} onClose={() => { if (!saving) resetPairing(); }} title={selectedRelay ? "Edit pairing" : "Pair relay"}>
+      <form className="grid gap-3" onSubmit={(event) => void pair(event)}>
+        <TextField
+          label="Relay name"
           id="mesh-relay-name"
           required
           maxLength={64}
@@ -246,10 +237,9 @@ export function RelaySettingsContent() {
           onChange={(event) => setRelayName(event.currentTarget.value)}
           disabled={loading || saving}
         />
-        <label htmlFor="mesh-relay-url" className="block text-sm font-medium">
-          Relay URL
-        </label>
-        <SettingsInput
+        <TextField
+          label="Relay URL"
+          fieldWidth="full"
           id="mesh-relay-url"
           type="url"
           required
@@ -259,10 +249,20 @@ export function RelaySettingsContent() {
           disabled={loading || saving}
         />
         {pairingError ? <SettingsError>{pairingError}</SettingsError> : null}
-        <Button type="submit" size="sm" loading={saving} disabled={loading}>
+        {status ? <CodeValue label="Relay bootstrap configuration" value={status.bootstrapEnvironment} /> : null}
+        {selectedRelay ? <>
+          <SettingsFieldRow title="Version" content={selectedRelay.relayBinaryVersion ?? "Unknown"} />
+          <SettingsFieldRow title="Protocol" content={`v${selectedRelay.relayNegotiatedProtocolVersion ?? selectedRelay.relayPreferredProtocolVersion}`} />
+          <SettingsFieldRow title="Supported" content={selectedRelay.relaySupportedProtocolVersions.map((version) => `v${version}`).join(", ")} />
+        </> : null}
+        <FormActions>
+        <Button disabled={saving} onClick={resetPairing}>Cancel</Button>
+        <Button type="submit" size="sm" variant="primary" loading={saving} disabled={loading || !relayName || !relayUrl}>
           {status?.relays.some((relay) => relay.name === relayName) ? "Re-pair" : "Pair"}
         </Button>
+        </FormActions>
       </form>
+      </Modal>
       <ConfirmModal
         isOpen={confirmUnpair !== null}
         onClose={() => setConfirmUnpair(null)}

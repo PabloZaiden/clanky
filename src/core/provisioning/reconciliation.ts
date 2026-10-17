@@ -1,10 +1,10 @@
-import type { ProvisioningCleanupError } from "@/shared";
+import { isProvisioningJobTerminal, type ProvisioningCleanupError } from "@/shared";
 import { createLogger } from "@pablozaiden/webapp/server";
 import {
   appendProvisioningJobLog,
   listProvisioningJobs,
   loadProvisioningJob,
-  markProvisioningJobsInterrupted,
+  recoverProvisioningJobs,
   updateProvisioningJob,
 } from "../../persistence/provisioning-jobs";
 import { meshManager } from "../mesh-manager";
@@ -12,6 +12,7 @@ import { workspaceManager } from "../workspace-manager";
 import { ProvisioningRemoteExecutor } from "./remote-executor";
 import { releaseProvisioningTargetClaim } from "./target-resolver";
 import { ProvisioningWorkerLifecycle } from "./worker-lifecycle";
+import { closeCommandExecutor, type CommandExecutor } from "../command-executor";
 
 const log = createLogger("core:provisioning-reconciliation");
 
@@ -22,13 +23,13 @@ export class ProvisioningReconciler {
   ) {}
 
   reconcileStartupState(userId: string): number {
-    return markProvisioningJobsInterrupted(userId);
+    return recoverProvisioningJobs(userId);
   }
 
   async reconcileDedicatedWorkerStartupState(userId: string): Promise<void> {
     const interruptedJobs = listProvisioningJobs(userId).filter(
       (job) =>
-        (job.state.status === "pending" || job.state.status === "running")
+        !isProvisioningJobTerminal(job.state.status)
         && (job.config.mode ?? "provision") === "provision"
         && (job.config.workspaceWorkerEnrollmentId || job.config.workerEnrollmentId),
     );
@@ -52,8 +53,9 @@ export class ProvisioningReconciler {
     if (createdEnrollmentId) {
       const targetDirectory = job.state.targetDirectory ?? job.config.targetDirectory;
       if (targetDirectory) {
+        let executor: CommandExecutor | undefined;
         try {
-          const executor = await this.remoteExecutor.acquireForRecovery(
+          executor = await this.remoteExecutor.acquireForRecovery(
             job,
             userId,
             targetDirectory,
@@ -74,6 +76,8 @@ export class ProvisioningReconciler {
             enrollmentId: createdEnrollmentId,
             error: message,
           });
+        } finally {
+          if (executor) closeCommandExecutor(executor);
         }
       } else {
         const message = "The interrupted provisioning job has no target directory.";

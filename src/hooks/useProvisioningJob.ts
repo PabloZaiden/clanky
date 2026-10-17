@@ -405,7 +405,7 @@ export function useProvisioningJob(): UseProvisioningJobResult {
 
   useEffect(() => {
     const jobStatus = snapshot?.job.state.status;
-    if (!activeJobId || (jobStatus && jobStatus !== "pending" && jobStatus !== "running")) {
+    if (!activeJobId || (jobStatus && isProvisioningJobTerminal(jobStatus))) {
       return;
     }
 

@@ -2,7 +2,6 @@ import { useEffect, useId, useState, type FormEvent } from "react";
 import type { Workspace, TerminalSession, TerminalConnectionMode } from "@/shared";
 import type { CreateTerminalSessionRequest } from "@/contracts";
 import { WorkspaceSelector } from "../WorkspaceSelector";
-import { Button } from "../common";
 import { Panel, useHeaderActions, useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
 
 const TERMINAL_USE_TMUX_STORAGE_KEY = "clanky.terminalSession.useTmux";
@@ -47,11 +46,13 @@ export function TerminalSessionComposer({
   const selectedWorkspace = workspaces.find((w) => w.id === selectedWorkspaceId);
 
   useHeaderActions({
-    primary: (
-      <Button variant="primary" size="sm" type="submit" form={formId} disabled={submitting || !selectedWorkspace}>
-        {submitting ? "Creating…" : "Create"}
-      </Button>
-    ),
+    primary: [{
+      id: "create-terminal",
+      label: "Create",
+      form: formId,
+      loading: submitting,
+      disabled: !selectedWorkspace,
+    }],
   });
 
   const handleSubmit = async (e: FormEvent) => {

@@ -166,7 +166,7 @@ export const MessageEntry = memo(function MessageEntry({
           )}
           {isUser ? (
             <div
-              className="rounded-[1.35rem] bg-gray-900 px-4 py-3 text-sm leading-7 text-white shadow-sm dark:bg-neutral-700 dark:text-gray-50"
+              className="rounded-[1.35rem] bg-gray-900 px-4 py-3 text-lg leading-7 text-white shadow-sm dark:bg-neutral-700 dark:text-gray-50"
               data-message-bubble="user"
             >
               <TranscriptTextContent
@@ -178,14 +178,15 @@ export const MessageEntry = memo(function MessageEntry({
           ) : shouldRenderMarkdown ? (
             <MarkdownRenderer
               content={renderedContent}
-              className="text-sm leading-7 text-gray-900 dark:text-white"
+              textSize="body"
+              className="text-lg leading-7 text-gray-900 dark:text-white"
               fileLinkContext={fileLinkContext}
               revealFrom={reveal.from}
             />
           ) : (
             <TranscriptTextContent
               content={renderedContent}
-              className="whitespace-pre-wrap break-words text-sm leading-7 text-gray-900 dark:text-white"
+              className="whitespace-pre-wrap break-words text-lg leading-7 text-gray-900 dark:text-white"
               fileLinkContext={fileLinkContext}
               revealFrom={reveal.from}
             />

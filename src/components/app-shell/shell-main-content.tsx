@@ -13,6 +13,7 @@ import {
 } from "@pablozaiden/webapp/web";
 import {
   getExecutionHostSourceId,
+  canRetryProvisioningJob,
   isProvisioningJobTerminal,
   isWorkerUpdateJobTerminal,
   type Chat,
@@ -243,7 +244,7 @@ function ProvisioningJobRouteView({
     }
 
     return [
-      ...((status === "pending" || status === "running") ? [{
+      ...(!isTerminal ? [{
         id: "cancel",
         label: "Cancel",
         destructive: true,
@@ -269,9 +270,7 @@ function ProvisioningJobRouteView({
             hostId: getExecutionHostSourceId(snapshot.job.config.executionHostBinding.host),
           }),
         }] : []),
-      ...(isTerminal
-        && snapshot.job.config.mode === "provision"
-        && (status === "failed" || status === "cancelled" || status === "interrupted") ? [{
+      ...(canRetryProvisioningJob(snapshot.job) ? [{
           id: "retry",
           label: "Retry",
           onAction: () => navigateWithinShell({
@@ -306,7 +305,7 @@ function ProvisioningJobRouteView({
   return (
     <>
       <div className="space-y-4">
-        <Panel title="Provisioning">
+        <Panel>
           <ProvisioningJobView
             snapshot={snapshot}
             logs={provisioning.logs}
@@ -418,7 +417,7 @@ function WorkerUpdateJobRouteContent({
   return (
     <>
       <div className="space-y-4">
-        <Panel title="Worker update">
+        <Panel>
           <WorkerUpdateJobView
             snapshot={snapshot}
             loading={workerUpdates.enabled

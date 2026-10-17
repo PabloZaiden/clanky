@@ -25,6 +25,60 @@ shows the message and severity; mobile shows a severity icon that opens the
 full message. Notifications expire after five seconds by default, so use
 inline errors or validation for persistent failures.
 
+## Shared UI and webapp development
+
+Use framework defaults rather than screen-specific corrections: ordinary
+`Button` is subtle; request `variant="primary"` for the principal action,
+`variant="link"` for inline actions, and `tone="danger"` for understated
+destructive affordances. Irreversible confirmations explicitly use
+`variant="danger"`; update/restart is not deletion.
+Primary actions are unboxed too. Show actions directly when they fit; use
+ellipsis for constrained space or meaningful secondary groups. Header
+primaries are semantic `HeaderPrimaryAction[]` descriptors: the framework
+moves them first into overflow as space narrows, preserving native form
+validation and submission.
+
+Use public fields, `SettingsFieldRow`, `FormGroup`/`FormActions`, bounded
+`Page layout="form"`, `DataList` rows and toolbar slots. Associate checkbox
+titles with their input IDs. Settings sections declare category and scope;
+custom renderers need a concrete composition limitation, not different CSS.
+Use framework `Select` for toolbar dropdowns and `SelectField` for labeled
+forms; do not recreate their styling with raw native selects.
+Keep labels, values, actions and actionable errors instead of workflow
+explanations. Never use an internal ID as a visible fallback name.
+Settings have two zones, with controls and actions centered vertically and
+aligned right. Use intrinsic/bounded widths for short fields and
+`FormGroup layout="inline"` for related inputs; URLs and long values can use
+`fieldWidth="full"`. Dialog footers stay right-aligned in one wrapping row.
+
+Transcripts use 18px message text and 16px technical output in both viewports.
+Verify the actual Markdown, raw text, code and tool descendants. Job lists and
+progress rows share the compact title/date/status composition; console output
+combines every stream without adding stream-name prefixes.
+An initial directory is not workspace identity. Use the workspace ID internally
+and its name in ordinary UI; show paths only for real filesystem operations or
+requested diagnostics.
+
+Use `useUnsavedChanges(dirty, resetDraft)` for composite Settings drafts.
+Save failure retains the draft; explicit Cancel resets it. Simple preferences
+can autosave with local saving/saved/error feedback. Voice saves all settings
+together and validates each saved capability separately.
+
+Use the public `useTheme()` integration; Dark is the no-preference default,
+not a forced override of saved Light/System. Do not inspect or change
+framework root classes. When an effect sends notifications, depend on the
+stable notification method, not the reactive service object containing the
+notification list.
+
+Accumulate webapp work on one pushed upstream branch for one eventual PR.
+During development, Clanky may consume a GitHub branch or exact commit;
+prefer the SHA and update `package.json`/`bun.lock` together. Never patch the
+installed dependency. Before the final Clanky PR, finish the upstream PR,
+publish a stable release, switch to that release and repeat validation.
+
+Screenshots, capture manifests and review notes are disposable working material.
+Keep them in a git-ignored location, not in documentation or commits.
+
 The devcontainer automatically downloads SF Pro from Apple, installs its
 variable regular and italic fonts, and configures fontconfig to use SF Pro
 for local browser UI text. It does not install DejaVu, Noto core, or Roboto.

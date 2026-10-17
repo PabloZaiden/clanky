@@ -7,18 +7,15 @@ import {
   type PublicProvisioningJob,
   type WorkerUpdateJob,
 } from "@/shared";
-import { ConfirmModal, EmptyState, Panel, useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { ConfirmModal, DataList, Panel, useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
 import type {
   DismissAllProvisioningJobsResult,
   UseWorkerUpdateJobsResult,
   useTaskGrouping,
 } from "../../hooks";
-import { Button, StatusBadge } from "../common";
+import { Button } from "../common";
 import { getProvisioningStatusBadgeVariant, getProvisioningStatusLabel } from "../common/status-variants";
-import { ConfiguredAgentsSection } from "../ConfiguredAgentsSection";
 import {
-  buildActiveWorkSidebarItems,
-  buildChatHistorySidebarItems,
   type SidebarExecutionHostNode,
   type SidebarWorkspaceGroupNode,
 } from "./shell-types";
@@ -27,7 +24,9 @@ import { ClankyListRow } from "./clanky-list-row";
 import { ServerTransportIcon } from "./server-sidebar-item";
 import { WorkerUpdateJobsSection } from "./worker-update-jobs-section";
 import { WorkspaceIdentity } from "../common";
-import { OverviewWorkItem } from "./overview-work-item";
+import { OverviewAgents } from "./overview-agents";
+import { OverviewWork } from "./overview-work";
+import { JobListRow } from "../job-list-row";
 
 function getExecutionHostRoute(host: ExecutionHostDescriptor): WebAppRoute {
   return {
@@ -49,13 +48,6 @@ function getProvisioningJobModeLabel(job: PublicProvisioningJob): string {
     default:
       return "Provision";
   }
-}
-
-function getProvisioningJobDescription(job: PublicProvisioningJob): string {
-  const target = job.state.workspaceId
-    ? "Workspace"
-    : job.state.targetDirectory ?? job.config.basePath;
-  return `${getProvisioningStatusLabel(job.state.status)} · ${target || "Waiting for target"}`;
 }
 
 export function OverviewView({
@@ -93,14 +85,6 @@ export function OverviewView({
 }) {
   const toast = useToast();
   const [dismissConfirmOpen, setDismissConfirmOpen] = useState(false);
-  const activeWorkItems = useMemo(
-    () => buildActiveWorkSidebarItems(sidebarWorkspaceGroups, { executionHostNodes }),
-    [executionHostNodes, sidebarWorkspaceGroups],
-  );
-  const chatHistoryItems = useMemo(
-    () => buildChatHistorySidebarItems(sidebarWorkspaceGroups, { executionHostNodes }),
-    [executionHostNodes, sidebarWorkspaceGroups],
-  );
   const serverMapItems = useMemo(() => {
     return executionHosts
       .filter((host) => host.ref.kind !== "local")
@@ -111,11 +95,7 @@ export function OverviewView({
       }))
       .sort((left, right) => left.host.name.localeCompare(right.host.name));
   }, [executionHostNodes, executionHosts]);
-  const workspaceNamesById = useMemo(() => {
-    return Object.fromEntries(
-      workspaceGroups.map((group) => [group.workspace.id, group.workspace.name]),
-    );
-  }, [workspaceGroups]);
+  const visibleWorkspaces = useMemo(() => workspaceGroups.map((group) => group.workspace), [workspaceGroups]);
   const visibleWorkspaceIds = useMemo(
     () => new Set(workspaceGroups.map((group) => group.workspace.id)),
     [workspaceGroups],
@@ -153,98 +133,72 @@ export function OverviewView({
 
   return (
     <div className="space-y-6">
-      {activeWorkItems.length > 0 && (
-        <Panel data-testid="active-work-card" title="Active Work">
-          <div className="space-y-2">
-            {activeWorkItems.map((item) => (
-              <OverviewWorkItem
-                key={item.key}
-                item={item}
-                onNavigate={onNavigate}
-                showPrivateItems={showPrivateItems}
-              />
-            ))}
-          </div>
-        </Panel>
-      )}
-
-      {chatHistoryItems.length > 0 && (
-        <Panel data-testid="chat-history-card" title="History" description="Chats marked as done.">
-          <div className="space-y-2">
-            {chatHistoryItems.map((item) => (
-              <OverviewWorkItem
-                key={item.key}
-                item={item}
-                onNavigate={onNavigate}
-                showPrivateItems={showPrivateItems}
-              />
-            ))}
-          </div>
-        </Panel>
-      )}
-
-      <ConfiguredAgentsSection
+      <OverviewWork
+        sidebarWorkspaceGroups={sidebarWorkspaceGroups}
+        executionHostNodes={executionHostNodes}
         agents={visibleAgents}
-        loading={agentsLoading}
-        error={agentsError}
-        description="Scheduled automations configured across your workspaces."
-        workspaceNamesById={workspaceNamesById}
-        onSelectAgent={(agentId) => onNavigate({ view: "agent", agentId })}
-        isAgentPrivateHidden={(agent) => {
-          const workspace = workspaceGroups.find((group) => group.workspace.id === agent.config.workspaceId)?.workspace ?? null;
-          return shouldObscurePrivateItem(isEffectivelyPrivate(agent.config, [workspace]), showPrivateItems);
-        }}
+        workspaces={visibleWorkspaces}
+        onNavigate={onNavigate}
+        showPrivateItems={showPrivateItems}
       />
 
-      <Panel title="Workspaces">
-        <div>
-          {workspaceGroups.length === 0 ? (
-            <EmptyState title="No workspaces yet" description="Start by creating one." />
-          ) : (
-            <div className="space-y-2">
-              {workspaceGroups.map((group) => {
-                const privateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(group.workspace), showPrivateItems);
-                return (
-                  <ClankyListRow
-                    key={group.workspace.id}
-                    title={<WorkspaceIdentity workspace={group.workspace} />}
-                    description={group.workspace.directory}
-                    meta={`${group.tasks.length} task${group.tasks.length === 1 ? "" : "s"}`}
-                    onClick={!privateHidden ? () => onNavigate({ view: "workspace", workspaceId: group.workspace.id }) : undefined}
-                    privateHidden={privateHidden}
-                  />
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </Panel>
-
-      <Panel title="Servers">
-        <div>
-          {serverMapItems.length === 0 ? (
-            <EmptyState title="No servers yet" description="Add an SSH server or connect a Mesh node." />
-          ) : (
-            <div className="space-y-2">
-              {serverMapItems.map(({ host, sessionCount }) => {
-                const privateHidden = shouldObscurePrivateItem(
-                  isEffectivelyPrivate({ isPrivate: host.isPrivate }),
-                  showPrivateItems,
-                );
-                return (
-                  <ClankyListRow
-                    key={`${host.ref.kind}:${getExecutionHostSourceId(host.ref)}`}
-                    title={host.name}
-                    description={host.endpoint ?? "Endpoint unavailable"}
-                    meta={`${sessionCount} terminal${sessionCount === 1 ? "" : "s"}`}
-                    badge={<ServerTransportIcon transport={host.ref.kind} />}
-                    onClick={!privateHidden ? () => onNavigate(getExecutionHostRoute(host)) : undefined}
-                    privateHidden={privateHidden}
-                  />
-                );
-              })}
-            </div>
-          )}
+      <Panel title="Resources">
+        <div className="grid items-start gap-6 lg:grid-cols-3">
+          <section className="space-y-2" aria-label="Workspaces">
+            <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Workspaces</h3>
+            {workspaceGroups.length === 0 ? (
+              <p className="text-sm text-gray-500 dark:text-gray-400">No workspaces</p>
+            ) : (
+              <DataList>
+                {workspaceGroups.map((group) => {
+                  const privateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(group.workspace), showPrivateItems);
+                  return (
+                    <ClankyListRow
+                      key={group.workspace.id}
+                      title={<WorkspaceIdentity workspace={group.workspace} />}
+                      meta={`${group.tasks.length} task${group.tasks.length === 1 ? "" : "s"}`}
+                      onClick={!privateHidden ? () => onNavigate({ view: "workspace", workspaceId: group.workspace.id }) : undefined}
+                      privateHidden={privateHidden}
+                    />
+                  );
+                })}
+              </DataList>
+            )}
+          </section>
+          <OverviewAgents
+            agents={visibleAgents}
+            loading={agentsLoading}
+            error={agentsError}
+            workspaces={visibleWorkspaces}
+            onNavigate={onNavigate}
+            showPrivateItems={showPrivateItems}
+          />
+          <section className="space-y-2" aria-label="Servers">
+            <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Servers</h3>
+            {serverMapItems.length === 0 ? (
+              <p className="text-sm text-gray-500 dark:text-gray-400">No servers</p>
+            ) : (
+              <DataList>
+                {serverMapItems.map(({ host, sessionCount }) => {
+                  const privateHidden = shouldObscurePrivateItem(
+                    isEffectivelyPrivate({ isPrivate: host.isPrivate }),
+                    showPrivateItems,
+                  );
+                  return (
+                    <ClankyListRow
+                      key={`${host.ref.kind}:${getExecutionHostSourceId(host.ref)}`}
+                      title={host.name}
+                      description={host.endpoint ?? "Endpoint unavailable"}
+                      meta={`${sessionCount} terminal${sessionCount === 1 ? "" : "s"}`}
+                      badge={<ServerTransportIcon transport={host.ref.kind} />}
+                      onClick={!privateHidden ? () => onNavigate(getExecutionHostRoute(host)) : undefined}
+                      privateHidden={privateHidden}
+                    />
+                  );
+                })}
+              </DataList>
+            )}
+          </section>
         </div>
       </Panel>
 
@@ -257,7 +211,7 @@ export function OverviewView({
               type="button"
               variant="ghost"
               size="xs"
-              className="text-red-600 dark:text-red-400"
+              tone="danger"
               loading={dismissingAllProvisioningJobs}
               onClick={() => setDismissConfirmOpen(true)}
               data-testid="dismiss-all-provisioning-jobs"
@@ -266,17 +220,14 @@ export function OverviewView({
             </Button>
           ) : null}
         >
-          <div className="space-y-2">
+          <DataList>
             {provisioningJobs.map((job) => (
-              <ClankyListRow
+              <JobListRow
                 key={job.config.id}
                 title={`${getProvisioningJobModeLabel(job)} · ${job.config.name}`}
-                description={getProvisioningJobDescription(job)}
-                badge={(
-                  <StatusBadge variant={getProvisioningStatusBadgeVariant(job.state.status)}>
-                    {getProvisioningStatusLabel(job.state.status)}
-                  </StatusBadge>
-                )}
+                timestamp={job.state.updatedAt}
+                status={getProvisioningStatusLabel(job.state.status)}
+                statusVariant={getProvisioningStatusBadgeVariant(job.state.status)}
                 onClick={() => onNavigate({
                   view: "provisioning-job",
                   provisioningJobId: job.config.id,
@@ -284,7 +235,7 @@ export function OverviewView({
                 })}
               />
             ))}
-          </div>
+          </DataList>
         </Panel>
       ) : null}
 

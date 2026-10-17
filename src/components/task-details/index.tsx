@@ -16,6 +16,7 @@ import {
   isFinalState,
   isTaskActive,
   isTaskGenerating,
+  isTaskPlanReady,
   canSendTerminalFollowUp,
   getEntityLabel,
 } from "../../utils";
@@ -101,15 +102,7 @@ export function TaskDetails({
     ];
 
     if (state.status === "planning") {
-       const planReady = Boolean(state.planMode?.isPlanReady)
-         && Boolean(content.planContent?.content?.trim());
        menuActions.unshift(
-         {
-           id: "accept-plan-start",
-           label: "Accept plan & start",
-           disabled: actions.planActionSubmitting || !planReady,
-           onAction: () => void actions.handleAcceptPlan(),
-         },
          {
            id: "discard-plan",
            label: "Discard plan",
@@ -214,12 +207,20 @@ export function TaskDetails({
     return menuActions;
   }, [
     content.loadingPullRequestDestination,
-    content.planContent,
     content.pullRequestDestination,
     task,
     actions,
   ]);
-  useHeaderActions({ overflow: taskMenuActions });
+  useHeaderActions({
+    primary: task && isTaskPlanReady(task) ? [{
+      id: "accept-plan",
+      label: "Accept plan & start",
+      loading: actions.planActionSubmitting,
+      disabled: !content.planContent?.content?.trim(),
+      onAction: () => void actions.handleAcceptPlan(),
+    }] : undefined,
+    overflow: taskMenuActions,
+  });
   const voice = useConversationVoice();
   const remoteStatus = useTaskRemoteStatus({
     workspaceId: task?.config.workspaceId,

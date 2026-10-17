@@ -5,20 +5,36 @@
 import type { AgentProvider, HarnessAdapter, ServerSettings } from "./settings";
 import type { PublicServerSettings, PublicWorkspace, Workspace } from "./workspace";
 import type { ExecutionHostBinding } from "./execution-host";
+import type { CommandExecutionState } from "./job-execution";
 
 export type ProvisioningJobStatus =
   | "pending"
   | "running"
+  | "verifying"
   | "completed"
+  | "not_started"
+  | "connection_failed"
   | "failed"
   | "cancelled"
-  | "interrupted";
+  | "interrupted"
+  | "unconfirmed";
 
 export function isProvisioningJobTerminal(status: ProvisioningJobStatus): boolean {
   return status === "completed"
+    || status === "not_started"
+    || status === "connection_failed"
     || status === "failed"
     || status === "cancelled"
-    || status === "interrupted";
+    || status === "interrupted"
+    || status === "unconfirmed";
+}
+
+export function canRetryProvisioningJob(job: ProvisioningJob | PublicProvisioningJob): boolean {
+  return job.config.mode === "provision"
+    && isProvisioningJobTerminal(job.state.status)
+    && job.state.status !== "completed"
+    && job.state.status !== "unconfirmed"
+    && job.state.execution?.outcome !== "unconfirmed";
 }
 
 export type ProvisioningJobMode = "provision" | "rebuild" | "restart" | "arise";
@@ -61,6 +77,13 @@ export interface ProvisioningJobError {
   step?: ProvisioningStep;
 }
 
+export interface ProvisioningCommandExecution {
+  step: ProvisioningStep;
+  state: CommandExecutionState;
+  outcome?: "succeeded" | "failed" | "interrupted" | "unconfirmed";
+  exitCode?: number;
+}
+
 export interface ProvisioningJobConfig {
   id: string;
   name: string;
@@ -92,6 +115,13 @@ export interface ProvisioningJobConfig {
 
 export interface ProvisioningJobState {
   status: ProvisioningJobStatus;
+  /** Cumulative dispatch evidence; absent on legacy records. */
+  hasDispatchedCommands?: boolean;
+  execution?: ProvisioningCommandExecution;
+  recovery?: {
+    step: ProvisioningStep;
+    status: "verifying" | "confirmed" | "unconfirmed";
+  };
   currentStep?: ProvisioningStep;
   targetDirectory?: string;
   resolvedDirectory?: string;

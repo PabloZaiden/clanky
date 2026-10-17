@@ -80,9 +80,13 @@ export function getTerminalSessionStatusLabel(status: TerminalSessionStatus): st
 export function getProvisioningStatusBadgeVariant(status: ProvisioningJobStatus): BadgeVariant {
   switch (status) {
     case "running":
+    case "verifying":
     case "pending": return "running";
     case "completed": return "completed";
-    case "failed": return "failed";
+    case "failed":
+    case "connection_failed": return "failed";
+    case "not_started":
+    case "unconfirmed":
     case "cancelled": return "warning";
     case "interrupted": return "warning";
   }
@@ -92,8 +96,12 @@ export function getProvisioningStatusLabel(status: ProvisioningJobStatus): strin
   switch (status) {
     case "pending": return "Pending";
     case "running": return "Running";
+    case "verifying": return "Verifying recovery";
     case "completed": return "Completed";
     case "failed": return "Failed";
+    case "connection_failed": return "Could not connect";
+    case "not_started": return "Not started";
+    case "unconfirmed": return "Outcome unconfirmed";
     case "cancelled": return "Cancelled";
     case "interrupted": return "Interrupted";
   }
@@ -102,13 +110,18 @@ export function getProvisioningStatusLabel(status: ProvisioningJobStatus): strin
 export function getWorkerUpdateStatusBadgeVariant(status: WorkerUpdateJobStatus): BadgeVariant {
   switch (status) {
     case "pending":
+    case "connecting":
     case "running":
+    case "verifying":
       return "running";
     case "completed":
       return "completed";
+    case "connection_failed":
     case "failed":
       return "failed";
     case "interrupted":
+    case "not_started":
+    case "unconfirmed":
       return "warning";
   }
 }
@@ -116,10 +129,15 @@ export function getWorkerUpdateStatusBadgeVariant(status: WorkerUpdateJobStatus)
 export function getWorkerUpdateStatusLabel(status: WorkerUpdateJobStatus): string {
   switch (status) {
     case "pending": return "Pending";
+    case "connecting": return "Connecting";
     case "running": return "Running";
+    case "verifying": return "Verifying restart";
     case "completed": return "Completed";
+    case "not_started": return "Not started";
+    case "connection_failed": return "Could not connect";
     case "failed": return "Failed";
     case "interrupted": return "Interrupted";
+    case "unconfirmed": return "Outcome unconfirmed";
   }
 }
 
@@ -128,12 +146,17 @@ export function getWorkerUpdateStepStatusBadgeVariant(status: WorkerUpdateStepSt
     case "pending":
       return "default";
     case "running":
+    case "connecting":
+    case "verifying":
       return "running";
     case "succeeded":
       return "completed";
+    case "connection_failed":
     case "failed":
       return "failed";
     case "skipped":
+    case "not_started":
+    case "interrupted":
     case "unconfirmed":
       return "warning";
   }
@@ -142,10 +165,15 @@ export function getWorkerUpdateStepStatusBadgeVariant(status: WorkerUpdateStepSt
 export function getWorkerUpdateStepStatusLabel(status: WorkerUpdateStepStatus): string {
   switch (status) {
     case "pending": return "Pending";
+    case "connecting": return "Connecting";
     case "running": return "Running";
+    case "verifying": return "Verifying";
     case "succeeded": return "Succeeded";
+    case "not_started": return "Not started";
+    case "connection_failed": return "Could not connect";
     case "failed": return "Failed";
+    case "interrupted": return "Interrupted";
     case "skipped": return "Skipped";
-    case "unconfirmed": return "Unconfirmed";
+    case "unconfirmed": return "Outcome unconfirmed";
   }
 }

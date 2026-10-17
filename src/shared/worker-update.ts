@@ -1,22 +1,33 @@
 export type WorkerUpdateJobStatus =
   | "pending"
+  | "connecting"
   | "running"
+  | "verifying"
   | "completed"
+  | "not_started"
+  | "connection_failed"
   | "failed"
-  | "interrupted";
+  | "interrupted"
+  | "unconfirmed";
 
 export type WorkerUpdateStep = "update" | "restart";
 
 export type WorkerUpdateStepStatus =
   | "pending"
+  | "connecting"
   | "running"
+  | "verifying"
   | "succeeded"
+  | "not_started"
+  | "connection_failed"
   | "failed"
+  | "interrupted"
   | "skipped"
   | "unconfirmed";
 
 export interface WorkerUpdateStepResult {
   status: WorkerUpdateStepStatus;
+  execution?: CommandExecutionState;
   startedAt?: string;
   completedAt?: string;
   exitCode?: number;
@@ -82,6 +93,10 @@ export function isWorkerUpdateJobTerminal(
   status: WorkerUpdateJobStatus,
 ): boolean {
   return status === "completed"
+    || status === "not_started"
+    || status === "connection_failed"
     || status === "failed"
-    || status === "interrupted";
+    || status === "interrupted"
+    || status === "unconfirmed";
 }
+import type { CommandExecutionState } from "./job-execution";

@@ -1,5 +1,5 @@
 import { posix as pathPosix } from "node:path";
-import type { CommandExecutor, CommandResult } from "../command-executor";
+import { closeCommandExecutor, type CommandExecutor, type CommandResult } from "../command-executor";
 import { GitService } from "../git";
 import { executionHostService } from "../execution-host-service";
 import type {
@@ -59,13 +59,43 @@ export class ProvisioningRemoteExecutor {
         "Provisioning requires an execution host",
       );
     }
-    return await executionHostService.getCommandExecutor(binding, {
-      operationId: `provisioning:${record.job.config.id}`,
-      directory,
-      provider: record.job.config.provider,
-      localUserId: record.owner.id,
-      sshPassword: password,
-    });
+    let executor: CommandExecutor | undefined;
+    try {
+      executor = await executionHostService.getCommandExecutor(binding, {
+        operationId: `provisioning:${record.job.config.id}`,
+        directory,
+        provider: record.job.config.provider,
+        localUserId: record.owner.id,
+        sshPassword: password,
+      });
+      // A separate read-only probe establishes the connection boundary before job commands.
+      const probe = await executor.exec(
+        executor.pathStyle === "windows" ? "cmd.exe" : "true",
+        executor.pathStyle === "windows" ? ["/c", "exit", "0"] : [],
+        { cwd: "/", timeout: 5000, signal: record.abortController.signal, logFailures: false },
+      );
+      if (!probe.success) {
+        throw new ProvisioningFailedError(
+          "provisioning_connection_failed", "verify_devbox",
+          probe.stderr || "The execution host did not accept the connection probe.",
+        );
+      }
+      const ownedExecutor = executor;
+      record.attempt?.registerCleanup("Execution connection", () => closeCommandExecutor(ownedExecutor));
+      return executor;
+    } catch (error) {
+      if (executor) closeCommandExecutor(executor);
+      if (record.abortController.signal.aborted) {
+        throw new ProvisioningCancelledError("Provisioning job was cancelled", { cause: error });
+      }
+      const detail = error instanceof Error ? error.message : String(error);
+      appendSystemLog(record, this.maxLogEntries, detail, "verify_devbox");
+      throw new ProvisioningFailedError(
+        "provisioning_connection_failed", "verify_devbox",
+        "Could not connect to the execution host.",
+        { cause: error, details: { executionRequestDispatched: false } },
+      );
+    }
   }
 
   async acquireForRecovery(
@@ -207,19 +237,56 @@ export class ProvisioningRemoteExecutor {
     record: ProvisioningJobRecord,
     executor: CommandExecutor,
     cwd: string,
-    label = "Reading devbox status",
+    options: { label?: string; timeout?: number; signal?: AbortSignal } = {},
   ): Promise<DevboxStatusResult> {
     const result = await this.run(record, executor, {
       step: "devbox_status",
-      label,
+      label: options.label ?? "Reading devbox status",
       command: "devbox",
       args: ["status"],
       cwd,
       errorCode: "invalid_devbox_status",
       errorMessage: "Failed to read devbox status",
       captureStdout: false,
+      timeout: options.timeout,
+      signal: options.signal,
     });
     return parseDevboxStatusOutput(result.stdout);
+  }
+
+  async confirmLifecycleRecovery(
+    record: ProvisioningJobRecord,
+    executor: CommandExecutor,
+    directory: string,
+  ): Promise<DevboxStatusResult> {
+    const deadline = performance.now() + 20_000;
+    let lastError: unknown;
+    while (performance.now() < deadline) {
+      this.throwIfCancelled(record);
+      const controller = new AbortController();
+      const budget = Math.min(5000, deadline - performance.now());
+      const timer = setTimeout(() => controller.abort(), Math.max(1, budget));
+      try {
+        const status = await this.readDevboxStatus(record, executor, directory, {
+          label: "Checking workspace recovery", timeout: budget, signal: controller.signal,
+        });
+        if (status.running) return status;
+      } catch (error) {
+        if (!(error instanceof ProvisioningFailedError)
+          || !["provisioning_connection_failed", "provisioning_execution_unconfirmed",
+            "provisioning_execution_interrupted"].includes(error.code)) throw error;
+        lastError = error;
+      } finally {
+        clearTimeout(timer);
+      }
+      const remaining = deadline - performance.now();
+      if (remaining > 0) await Bun.sleep(Math.min(1000, remaining));
+    }
+    throw new ProvisioningFailedError(
+      "provisioning_execution_unconfirmed", "devbox_status",
+      "Workspace recovery could not be confirmed.",
+      { cause: lastError },
+    );
   }
 
   async readDevboxCredential(
