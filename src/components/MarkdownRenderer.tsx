@@ -39,9 +39,13 @@ function MarkdownPre({ children, node }: ComponentPropsWithoutRef<"pre"> & Extra
     : null;
   return (
     <MarkdownCodeBlockContext.Provider value={true}>
-      <div className="relative min-w-0 max-w-full">
-        {codeText !== null && <MarkdownCodeBlockCopyButton codeText={codeText} />}
-        <pre className="max-w-full overflow-x-auto rounded-lg bg-gray-100 px-4 pb-4 pt-10 text-base text-gray-900 dark:bg-neutral-800 dark:text-gray-100">
+      <div className="relative my-6 min-w-0 max-w-full">
+        {codeText !== null && (
+          <div className="absolute right-2 top-2 z-10">
+            <MarkdownCodeBlockCopyButton codeText={codeText} />
+          </div>
+        )}
+        <pre className="m-0 max-w-full overflow-x-auto rounded-lg bg-gray-100 px-4 pb-4 pt-10 text-base text-gray-900 dark:bg-neutral-800 dark:text-gray-100">
           {children}
         </pre>
       </div>
@@ -67,7 +71,7 @@ function MarkdownCodeBlockCopyButton({ codeText }: { codeText: string }) {
       type="button"
       variant="ghost"
       size="xs"
-      className="absolute right-2 top-2 z-10 !h-7 !w-7 !min-h-7 !min-w-7 !p-1"
+      className="!h-7 !w-7 !min-h-7 !min-w-7 !p-1"
       aria-label="Copy code block"
       title="Copy code"
       onClick={() => void handleCopyCode()}
@@ -99,7 +103,7 @@ function MarkdownCode({
   }
 
   return (
-    <code className={className}>
+    <code className={`text-base ${className ?? ""}`.trim()}>
       {renderTranscriptTextNodes(children, fileLinkContext)}
     </code>
   );
