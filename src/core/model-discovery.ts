@@ -5,16 +5,16 @@
  * model availability rules belong to Core rather than API route modules.
  */
 
-import { backendManager, buildConnectionConfig } from "./backend-manager";
+import { backendManager } from "./backend-manager";
 import { DomainError } from "../domain/domain-error";
-import { createLogger } from "@pablozaiden/webapp/server";
 import { workspaceManager } from "./workspace-manager";
 import type { ModelInfo } from "@/contracts";
-import { createAgentSettings, type RuntimeServerSettings, type ServerSettings } from "@/shared/settings";
+import { createAgentSettings, type ServerSettings } from "@/shared/settings";
 import type { Workspace } from "@/shared/workspace";
-import type { ExecutionHostBinding } from "@/shared/execution-host";
+import { getAgentExecutionHostCapability, type ExecutionHostBinding } from "@/shared/execution-host";
+import { requireCurrentUserId } from "../context/user-context";
+import { executionHostService } from "./execution-host-service";
 
-const log = createLogger("core:model-discovery");
 const MODEL_DISCOVERY_CACHE_TTL_MS = 12 * 60 * 60 * 1_000;
 
 interface TimedCacheEntry<T> {
@@ -54,21 +54,30 @@ function pruneExpiredCacheEntries<T>(cache: Map<string, TimedCacheEntry<T>>): vo
   }
 }
 
-function createCacheKey(parts: string[]): string {
-  return JSON.stringify(parts);
+function createCacheKey(parts: unknown[]): string {
+  return JSON.stringify([requireCurrentUserId(), ...parts]);
 }
 
-function getModelListCacheKey(connectionId: string, settings: ServerSettings, directory: string): string {
-  return createCacheKey(["models", connectionId, settings.agent.adapter, settings.agent.provider, directory]);
-}
-
-function getModelVariantCacheKey(
-  workspaceId: string,
-  settings: ServerSettings,
+function getWorkspaceCatalogCacheKey(
+  workspace: Workspace,
   directory: string,
-  modelID: string,
+  modelID?: string,
 ): string {
-  return createCacheKey(["variants", workspaceId, settings.agent.adapter, settings.agent.provider, directory, modelID]);
+  executionHostService.requireBindingCapability(
+    workspace.executionHostBinding,
+    getAgentExecutionHostCapability(workspace.serverSettings.agent.adapter),
+    undefined,
+    1,
+  );
+  return createCacheKey([
+    modelID === undefined ? "models" : "variants",
+    "workspace",
+    workspace.id,
+    workspace.executionHostBinding,
+    workspace.serverSettings.agent,
+    directory,
+    modelID ?? null,
+  ]);
 }
 
 export interface ModelValidationResult {
@@ -94,75 +103,6 @@ function normalizeCopilotModelInfo(models: ModelInfo[]): ModelInfo[] {
     });
 }
 
-async function getAgentBackendModels(
-  connectionId: string,
-  directory: string,
-  settings: ServerSettings,
-  workspace?: Workspace,
-): Promise<ModelInfo[]> {
-  const runtimeSettings: RuntimeServerSettings = workspace
-    ? await backendManager.getWorkspaceSettings(workspace.id)
-    : { agent: { ...settings.agent, transport: "stdio" } };
-
-  const existingBackend = workspace ? await backendManager.getBackendAsync(connectionId) : backendManager.getInitializedBackend(connectionId);
-  if (existingBackend?.isConnected()) {
-    return await existingBackend.getModels(directory);
-  }
-
-  const tempBackend = workspace
-    ? await backendManager.createBackendForWorkspace(workspace, settings)
-    : backendManager.createStandaloneBackend(runtimeSettings);
-  try {
-    await tempBackend.connect(buildConnectionConfig(runtimeSettings, directory));
-    return await tempBackend.getModels(directory);
-  } finally {
-    try {
-      await tempBackend.disconnect();
-    } catch (disconnectError) {
-      log.trace("Failed to disconnect temporary backend", { error: String(disconnectError) });
-    }
-  }
-}
-
-async function getAgentBackendModelVariants(
-  connectionId: string,
-  directory: string,
-  settings: ServerSettings,
-  modelID: string,
-  workspace?: Workspace,
-): Promise<string[]> {
-  const runtimeSettings: RuntimeServerSettings = workspace
-    ? await backendManager.getWorkspaceSettings(workspace.id)
-    : { agent: { ...settings.agent, transport: "stdio" } };
-
-  const existingBackend = workspace ? await backendManager.getBackendAsync(connectionId) : backendManager.getInitializedBackend(connectionId);
-  if (existingBackend?.isConnected()) {
-    if (existingBackend.getModelVariants) {
-      return await existingBackend.getModelVariants(directory, modelID);
-    }
-    const model = (await existingBackend.getModels(directory)).find((entry) => entry.modelID === modelID);
-    return model?.variants && model.variants.length > 0 ? model.variants : [""];
-  }
-
-  const tempBackend = workspace
-    ? await backendManager.createBackendForWorkspace(workspace, settings)
-    : backendManager.createStandaloneBackend(runtimeSettings);
-  try {
-    await tempBackend.connect(buildConnectionConfig(runtimeSettings, directory));
-    if (tempBackend.getModelVariants) {
-      return await tempBackend.getModelVariants(directory, modelID);
-    }
-    const model = (await tempBackend.getModels(directory)).find((entry) => entry.modelID === modelID);
-    return model?.variants && model.variants.length > 0 ? model.variants : [""];
-  } finally {
-    try {
-      await tempBackend.disconnect();
-    } catch (disconnectError) {
-      log.trace("Failed to disconnect temporary backend", { error: String(disconnectError) });
-    }
-  }
-}
-
 function normalizeDiscoveredModels(settings: ServerSettings, models: ModelInfo[]): ModelInfo[] {
   return settings.agent.adapter === "acp" && settings.agent.provider === "copilot"
     ? normalizeCopilotModelInfo(models)
@@ -180,12 +120,7 @@ export async function getModelsForWorkspace(
     });
   }
 
-  return await getModelsForSettings(
-    workspaceId,
-    workspace.directory,
-    workspace.serverSettings,
-    workspace,
-  );
+  return await getModelsForDirectory(workspace, workspace.directory);
 }
 
 export async function getModelsForExecutionHost(
@@ -194,49 +129,37 @@ export async function getModelsForExecutionHost(
   provider: ServerSettings["agent"]["provider"],
   sshPassword?: string,
 ): Promise<ModelInfo[]> {
-  const connectionId = `execution-host:${binding.targetKey}:${provider}`;
-  const cacheKey = getModelListCacheKey(connectionId, { agent: createAgentSettings("acp", provider) }, directory);
+  executionHostService.requireBindingCapability(binding, getAgentExecutionHostCapability("acp"), undefined, 1);
+  const cacheKey = createCacheKey(["models", "execution-host", binding, createAgentSettings("acp", provider), directory]);
   const cached = getCacheValue(modelListCache, cacheKey);
   if (cached) {
     return cached;
   }
-  const { backend, settings } = await backendManager.createBackendForExecutionHost(
-    connectionId,
-    binding,
-    provider,
-    sshPassword,
+  const models = await backendManager.withExecutionHostBackend(
+    { binding, provider, directory, sshPassword },
+    async (backend, settings) => normalizeDiscoveredModels(settings, await backend.getModels(directory)),
   );
-  try {
-    await backend.connect(buildConnectionConfig(settings, directory));
-    const models = normalizeDiscoveredModels(settings, await backend.getModels(directory));
-    if (models.length > 0) {
-      setCacheValue(modelListCache, cacheKey, models);
-    }
-    return models;
-  } finally {
-    await backendManager.disconnectChat(connectionId);
+  if (models.length > 0) {
+    setCacheValue(modelListCache, cacheKey, models);
   }
+  return models;
 }
 
-export async function getModelsForSettings(
-  connectionId: string,
+export async function getModelsForDirectory(
+  workspace: Workspace,
   directory: string,
-  settings: ServerSettings,
-  workspaceOverride?: Workspace,
 ): Promise<ModelInfo[]> {
-  const cacheKey = getModelListCacheKey(connectionId, settings, directory);
+  const cacheKey = getWorkspaceCatalogCacheKey(workspace, directory);
   const cached = getCacheValue(modelListCache, cacheKey);
   if (cached) {
     return cached;
   }
 
-  const models = await getAgentBackendModels(
-    connectionId,
-    directory,
-    settings,
-    workspaceOverride,
+  const models = await backendManager.withWorkspaceBackend(
+    { workspaceId: workspace.id, directory, settings: workspace.serverSettings },
+    async (backend) => await backend.getModels(directory),
   );
-  const normalizedModels = normalizeDiscoveredModels(settings, models);
+  const normalizedModels = normalizeDiscoveredModels(workspace.serverSettings, models);
   if (normalizedModels.length > 0) {
     setCacheValue(modelListCache, cacheKey, normalizedModels);
   }
@@ -256,19 +179,21 @@ export async function getModelVariantsForWorkspace(
   }
 
   const directory = workspace.directory;
-  const settings = workspace.serverSettings;
-  const cacheKey = getModelVariantCacheKey(workspaceId, settings, directory, modelID);
+  const cacheKey = getWorkspaceCatalogCacheKey(workspace, directory, modelID);
   const cached = getCacheValue(modelVariantCache, cacheKey);
   if (cached) {
     return cached;
   }
 
-  const variants = await getAgentBackendModelVariants(
-    workspaceId,
-    directory,
-    settings,
-    modelID,
-    workspace,
+  const variants = await backendManager.withWorkspaceBackend(
+    { workspaceId, directory, settings: workspace.serverSettings },
+    async (backend) => {
+      if (backend.getModelVariants) {
+        return await backend.getModelVariants(directory, modelID);
+      }
+      const model = (await backend.getModels(directory)).find((entry) => entry.modelID === modelID);
+      return model?.variants && model.variants.length > 0 ? model.variants : [""];
+    },
   );
   const normalizedVariants = variants.length > 0 ? variants : [""];
   setCacheValue(modelVariantCache, cacheKey, normalizedVariants);

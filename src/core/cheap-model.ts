@@ -1,5 +1,5 @@
 import { createLogger } from "@pablozaiden/webapp/server";
-import { getModelsForSettings } from "./model-discovery";
+import { getModelsForDirectory } from "./model-discovery";
 import { workspaceManager } from "./workspace-manager";
 import type { CheapModelSelection, ModelConfig } from "@/shared";
 import type { ModelInfo } from "@/contracts";
@@ -18,12 +18,7 @@ async function getWorkspaceModels(
   directory: string,
 ): Promise<ModelInfo[]> {
   const workspace = await workspaceManager.requireWorkspace(workspaceId);
-  return await getModelsForSettings(
-    workspaceId,
-    directory,
-    workspace.serverSettings,
-    workspace,
-  );
+  return await getModelsForDirectory(workspace, directory);
 }
 
 function hasEnabledModel(models: ModelInfo[], model: ModelConfig): boolean {

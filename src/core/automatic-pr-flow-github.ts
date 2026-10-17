@@ -601,45 +601,40 @@ async function generateAutomaticPrMetadata(
 ): Promise<PullRequestMetadata> {
   const metadataInput = await buildPullRequestMetadataInput(task, directory, executor, baseBranch);
   try {
-    let backend = backendManager.getInitializedBackend(task.config.workspaceId);
-    if (
-      !backend
-      || !backendManager.isWorkspaceConnected(task.config.workspaceId)
-      || backend.getDirectory() !== directory
-    ) {
-      await backendManager.connect(task.config.workspaceId, directory);
-      backend = backendManager.getBackend(task.config.workspaceId);
-    }
-
-    const tempSession = await createTransientHarnessSession(backend, {
-      title: "Pull Request Metadata Generation",
-      directory,
-    });
-
-    try {
-      const helperModel = await resolveEffectiveCheapModel({
-        workspaceId: task.config.workspaceId,
-        directory,
-        model: task.config.model,
-        cheapModel: task.config.cheapModel,
-        operation: "pull_request_metadata_generation",
-      });
-      return await generatePullRequestMetadata({
-        metadata: metadataInput,
-        backend,
-        sessionId: tempSession.id,
-        model: helperModel,
-      });
-    } finally {
-      try {
-        await cleanupTransientHarnessSession(backend, tempSession.id);
-      } catch (cleanupError) {
-        log.warn("Failed to clean up temporary PR metadata session", {
-          taskId: task.config.id,
-          error: String(cleanupError),
+    return await backendManager.withWorkspaceBackend(
+      { workspaceId: task.config.workspaceId, directory },
+      async (backend) => {
+        const tempSession = await createTransientHarnessSession(backend, {
+          title: "Pull Request Metadata Generation",
+          directory,
         });
-      }
-    }
+
+        try {
+          const helperModel = await resolveEffectiveCheapModel({
+            workspaceId: task.config.workspaceId,
+            directory,
+            model: task.config.model,
+            cheapModel: task.config.cheapModel,
+            operation: "pull_request_metadata_generation",
+          });
+          return await generatePullRequestMetadata({
+            metadata: metadataInput,
+            backend,
+            sessionId: tempSession.id,
+            model: helperModel,
+          });
+        } finally {
+          try {
+            await cleanupTransientHarnessSession(backend, tempSession.id);
+          } catch (cleanupError) {
+            log.warn("Failed to clean up temporary PR metadata session", {
+              taskId: task.config.id,
+              error: String(cleanupError),
+            });
+          }
+        }
+      },
+    );
   } catch (error) {
     log.warn("Failed to generate automatic PR metadata via backend, using fallback", {
       taskId: task.config.id,
