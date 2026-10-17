@@ -42,6 +42,23 @@ export class MeshRelayHttpResponseSender {
     }
   }
 
+  async complete(): Promise<void> {
+    while (this.outstandingFrames.length > 0) {
+      await this.readAcknowledgement();
+    }
+    this.stream.send(JSON.stringify({ type: "http.response.end" }));
+    // The receiver closes only after consuming the end frame. A local flush
+    // cannot confirm that the relay has delivered it to the other peer.
+    const item = await this.stream.next(ACKNOWLEDGEMENT_TIMEOUT_MS);
+    if (item.kind !== "closed") throw invalidAcknowledgement();
+    if (item.code !== 1000) {
+      throw new MeshRelayStreamError(
+        "mesh_relay_response_truncated",
+        item.reason.trim() || "The Mesh relay response completion was not confirmed.",
+      );
+    }
+  }
+
   private async readAcknowledgement(): Promise<void> {
     const item = await this.stream.next(ACKNOWLEDGEMENT_TIMEOUT_MS);
     if (item.kind === "closed") {

@@ -52,6 +52,15 @@ export const MeshExecutionSessionCloseRequestSchema = z.object({
   requestId: z.string().trim().min(1).max(200),
 });
 
+export const MeshExecutionSessionRenewalRequestSchema = MeshExecutionSessionCloseRequestSchema.extend({
+  action: z.literal("renew"),
+});
+
+export const MeshExecutionSessionPostRequestSchema = z.union([
+  MeshExecutionSessionRequestSchema,
+  MeshExecutionSessionRenewalRequestSchema,
+]);
+
 export const MeshExecutionRpcRequestSchema = z.object({
   protocolVersion: MeshExecutionProtocolVersionSchema,
   sessionId: z.string().trim().min(1).max(200),
@@ -190,6 +199,7 @@ export const MeshExecutionFileWriteQuerySchema = z.object({
 
 export type MeshExecutionSessionRequest = z.infer<typeof MeshExecutionSessionRequestV6Schema>;
 export type MeshExecutionSessionCloseRequest = z.infer<typeof MeshExecutionSessionCloseRequestSchema>;
+export type MeshExecutionSessionRenewalRequest = z.infer<typeof MeshExecutionSessionRenewalRequestSchema>;
 export type MeshExecutionRpcRequest = z.infer<typeof MeshExecutionRpcRequestSchema>;
 export type MeshExecutionAsyncCommandRequest = z.infer<typeof MeshExecutionAsyncCommandRequestSchema>;
 export type MeshExecutionFileWriteQuery = z.infer<typeof MeshExecutionFileWriteQuerySchema>;

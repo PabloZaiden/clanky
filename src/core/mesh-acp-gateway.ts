@@ -315,7 +315,7 @@ export class MeshAcpGateway {
       expiresAt = await meshExecutionGateway.renewSession(
         sessionId,
         sessionToken,
-        MESH_ACP_CHANNEL,
+        { expectedChannel: MESH_ACP_CHANNEL },
       );
     } catch (error) {
       if (

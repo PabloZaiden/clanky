@@ -740,20 +740,20 @@ export async function serveMeshRelayHttpStream(
       headers: sanitizeResponseHeaders(response.headers),
       ...(responseFlowControl ? { responseFlowControl: MESH_RELAY_RESPONSE_FLOW_VERSION } : {}),
     }));
-    if (response.body && !STATUSLESS_BODY_STATUSES.has(response.status)) {
-      if (responseFlowControl) {
-        // After the headers, the initiator ends its upload. Hand the single
-        // inbound reader from the request drain to response acknowledgements.
-        if (!(await settleRequestDrain(drainFailure))) {
-          throw new MeshRelayStreamError(
-            "mesh_relay_stream_timeout",
-            "The Mesh relay request body drain timed out.",
-            { status: 504 },
-          );
-        }
-        if (drainError) throw drainError;
+    const sender = responseFlowControl ? new MeshRelayHttpResponseSender(stream) : undefined;
+    if (sender) {
+      // After the headers, the initiator ends its upload. Hand the single
+      // inbound reader from the request drain to response acknowledgements.
+      if (!(await settleRequestDrain(drainFailure))) {
+        throw new MeshRelayStreamError(
+          "mesh_relay_stream_timeout",
+          "The Mesh relay request body drain timed out.",
+          { status: 504 },
+        );
       }
-      const sender = responseFlowControl ? new MeshRelayHttpResponseSender(stream) : undefined;
+      if (drainError) throw drainError;
+    }
+    if (response.body && !STATUSLESS_BODY_STATUSES.has(response.status)) {
       responseReader = response.body.getReader();
       while (!stream.closed) {
         const { done, value } = await responseReader.read();
@@ -769,7 +769,9 @@ export async function serveMeshRelayHttpStream(
         }
       }
     }
-    if (!stream.closed) {
+    if (sender) {
+      await sender.complete();
+    } else if (!stream.closed) {
       stream.send(JSON.stringify({ type: "http.response.end" }));
     }
   } catch (error) {
