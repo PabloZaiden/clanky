@@ -32,7 +32,6 @@ export const MESH_RELAY_DATA_OPEN_TIMEOUT_MS = 15_000;
 export const MESH_RELAY_BODY_CHUNK_BYTES = 64 * 1_024;
 export const MESH_RELAY_SEND_HIGH_WATER_BYTES = 1_024 * 1_024;
 const DRAIN_POLL_INTERVAL_MS = 5;
-const DRAIN_TIMEOUT_MS = 60_000;
 const FLUSH_TIMEOUT_MS = 30_000;
 /** Bound the frames buffered for a consumer that has not read them yet. */
 const MAX_QUEUED_ITEMS = 256;
@@ -214,7 +213,6 @@ export class MeshRelayDataStream {
    * limit. WebSocket has no drain event, so this polls the buffer size.
    */
   async waitForDrain(): Promise<void> {
-    const deadline = Date.now() + DRAIN_TIMEOUT_MS;
     while (
       !this.closed
       && this.socket.bufferedAmount > Math.min(
@@ -222,14 +220,6 @@ export class MeshRelayDataStream {
         MESH_RELAY_MAX_QUEUED_BYTES,
       )
     ) {
-      if (Date.now() > deadline) {
-        this.close(1013, "Mesh relay stream backpressure timeout");
-        throw new MeshRelayStreamError(
-          "mesh_relay_stream_backpressure",
-          "The Mesh relay stream stayed blocked by backpressure.",
-          { status: 504 },
-        );
-      }
       await new Promise<void>((resolve) => {
         const timer = setTimeout(resolve, DRAIN_POLL_INTERVAL_MS);
         timer.unref?.();

@@ -81,10 +81,18 @@ receive acknowledgement frames. Upgrade the controller and affected worker;
 the relay forwards these frames opaquely and does not need this extension.
 The extension does not change request uploads or raw socket streams.
 
-An unresponsive consumer times out after 60 seconds waiting for an
-acknowledgement or final close confirmation. Cancellation, disconnection, or
-shutdown closes the owned stream and releases the pending read. A failed
-transfer remains an error, not a successful partial file.
+Consumer backpressure has no elapsed-time deadline: a slow or paused reader
+withholds credit, and the sender waits without growing its bounded window.
+The same applies while waiting for the socket send buffer to drain or the
+receiver to confirm completion. Admitted file-download, streamed-video and
+filesystem-content responses opt out of the generic HTTP idle timeout, including
+direct Mesh file responses. No minimum download speed is required.
+
+Transport liveness is separate from body progress: relay WebSockets retain
+their ping/pong liveness checks, and connection setup and control requests
+retain their bounded timeouts. Cancellation, disconnection, authorization
+revocation or shutdown closes the owned stream and releases the pending wait.
+A failed transfer remains an error, not a successful partial file.
 
 Long downloads also renew their short-lived execution lease. Supporting workers
 advertise `executionSessionRenewal: 1` inside the encrypted session-admission

@@ -229,7 +229,7 @@ export const meshExecutionRoutes = defineRoutes({
       POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Raw authenticated internal Mesh file upload." } },
     },
     tags: ["mesh", "internal", "execution"],
-    async GET(req): Promise<Response> {
+    async GET(req, ctx): Promise<Response> {
       const sessionId = req.headers.get("x-clanky-mesh-session-id");
       const sessionToken = req.headers.get("x-clanky-mesh-session-token");
       const requestedPath = new URL(req.url).searchParams.get("path");
@@ -249,6 +249,7 @@ export const meshExecutionRoutes = defineRoutes({
         if (!stream) {
           return errorResponse("file_not_found", "Requested file does not exist", 404);
         }
+        ctx.server?.timeout(req, 0);
         return new Response(stream, {
           headers: {
             "cache-control": "no-store",

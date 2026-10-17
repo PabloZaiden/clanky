@@ -336,6 +336,8 @@ export function createFileExplorerRoutes(
               path: validation.data.path,
             });
           }
+          // A paused consumer must not expire an admitted file response.
+          ctx.server?.timeout(req, 0);
           return createInlineVideoResponse(video.stream, video.contentType, video.file, {
             ...(video.range ? { range: video.range } : {}),
             ...(video.rangeFallback ? { rangeFallback: true } : {}),
@@ -397,6 +399,7 @@ export function createFileExplorerRoutes(
           const response = await fileExplorerService.readDownloadFile(target, validation.data.path, {
             signal: req.signal,
           });
+          ctx.server?.timeout(req, 0);
           return createFileDownloadResponse(response.stream, response.contentType, response.file, {
             contentLength: response.file.size,
           });
