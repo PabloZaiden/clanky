@@ -7,11 +7,13 @@ import {
   Input,
   LoadingState,
   SettingsFieldRow,
+  TextAreaField,
   TextField,
   useUnsavedChanges,
 } from "@pablozaiden/webapp/web";
 import {
   VOICE_CAPABILITIES,
+  LIVE_VOICE_MAX_PERSONAL_INSTRUCTIONS_CHARS,
   VOICE_LANGUAGE_HINTS,
   type VoiceCapability,
   type VoiceLanguageHint,
@@ -29,6 +31,7 @@ function toDraft(settings: VoiceSettings) {
     text: settings.models.text,
     languageHints: settings.languageHints,
     liveModel: settings.live.model,
+    livePersonalInstructions: settings.live.personalInstructions,
     liveUseVoiceProvider: settings.live.useVoiceProvider,
     liveBaseUrl: settings.live.baseUrl,
     liveApiKey: "",
@@ -81,6 +84,7 @@ export function VoiceSettingsRowContent({ voiceSettings }: { voiceSettings: UseV
           apiKey: draft.liveApiKey || undefined,
           clearApiKey: draft.clearLiveApiKey,
           model: draft.liveModel,
+          personalInstructions: draft.livePersonalInstructions,
         },
       });
       const next = toDraft(saved);
@@ -154,6 +158,14 @@ export function VoiceSettingsRowContent({ voiceSettings }: { voiceSettings: UseV
           {settings.live.apiKeyConfigured ? <CheckboxField label="Remove saved Live key" checked={draft.clearLiveApiKey} disabled={busy}
             onChange={(event) => updateDraft({ liveApiKey: "", clearLiveApiKey: event.currentTarget.checked })} /> : null}
         </> : null}
+      </FormGroup>
+
+      <FormGroup title="Live Voice">
+        <TextAreaField label="Personal instructions" rows={6}
+          value={draft.livePersonalInstructions} disabled={busy}
+          maxLength={LIVE_VOICE_MAX_PERSONAL_INSTRUCTIONS_CHARS}
+          hint={`Language, tone, pace and speaking preferences. Sent to your Live provider; applies to your next call. ${draft.livePersonalInstructions.length.toLocaleString()} / ${LIVE_VOICE_MAX_PERSONAL_INSTRUCTIONS_CHARS.toLocaleString()} characters.`}
+          onChange={(event) => updateDraft({ livePersonalInstructions: event.currentTarget.value })} />
       </FormGroup>
 
       <FormGroup title="Languages">
