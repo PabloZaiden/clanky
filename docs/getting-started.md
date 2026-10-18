@@ -105,6 +105,14 @@ Unchanged message rows are reused during streaming and transcript refreshes,
 and unchanged Markdown is not reparsed for playback or local UI updates.
 Content changes, display preferences, and message actions still update normally.
 
+Messages longer than 100,000 characters initially show a preview in chat, task,
+and agent conversations. Select **Show full message** beside the character count
+to display that message in full; opening a very large message may briefly pause
+the browser. Shorter messages and attachments are unchanged. This display limit
+does not shorten saved messages, API responses, transcript exports, or the text
+used by message actions. Expansion is local to the mounted message and is not
+saved. A Mermaid block cut by the preview stays as code until expanded.
+
 Realtime subscriptions filter events before updating React state. Callback-only
 streams and resource refresh subscriptions do not retain an unused last-event
 state; matching events, authoritative data refreshes, and connection recovery
