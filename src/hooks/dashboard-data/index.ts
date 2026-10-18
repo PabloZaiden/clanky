@@ -5,7 +5,7 @@
  */
 
 import { useCallback } from "react";
-import { createLogger } from "@pablozaiden/webapp/web";
+import { createLogger, type ToastService } from "@pablozaiden/webapp/web";
 import type { WorkspaceType } from "@/shared";
 import type {
   RestartAutomaticWorkspacesRequest,
@@ -46,7 +46,10 @@ export interface UseDashboardDataResult {
   branchesWorkspaceId: string | null;
   currentBranch: string;
   defaultBranch: string;
-  refreshBranchData: (workspaceId: string | null) => Promise<void>;
+  refreshBranchData: (
+    workspaceId: string | null,
+    onError?: ToastService["error"],
+  ) => Promise<void>;
   refreshBranchDataIfCurrent: (workspaceId: string | null) => Promise<void>;
 
   // App settings
@@ -64,6 +67,7 @@ export interface UseDashboardDataResult {
     workspaceId: string | null,
     directory: string,
     workspaceType?: WorkspaceType,
+    onError?: ToastService["error"],
   ) => void;
 
   // Reset state when modal closes
@@ -76,10 +80,13 @@ export function useDashboardData(): UseDashboardDataResult {
   const workspaceBranches = useWorkspaceBranches();
   const planningDir = usePlanningDir();
 
-  const refreshBranchData = useCallback(async (workspaceId: string | null): Promise<void> => {
+  const refreshBranchData = useCallback(async (
+    workspaceId: string | null,
+    onError?: ToastService["error"],
+  ): Promise<void> => {
     await Promise.all([
-      workspaceBranches.fetchBranches(workspaceId),
-      workspaceBranches.fetchDefaultBranch(workspaceId),
+      workspaceBranches.fetchBranches(workspaceId, onError),
+      workspaceBranches.fetchDefaultBranch(workspaceId, onError),
     ]);
   }, [workspaceBranches.fetchBranches, workspaceBranches.fetchDefaultBranch]);
 
@@ -96,14 +103,15 @@ export function useDashboardData(): UseDashboardDataResult {
     workspaceId: string | null,
     _directory: string,
     workspaceType: WorkspaceType = "git",
+    onError?: ToastService["error"],
   ) => {
     log.debug("handleWorkspaceChange called", {
       workspaceId,
     });
     log.debug("Fetching workspace data", { workspaceId });
-    workspaceModels.fetchModels(workspaceId);
+    workspaceModels.fetchModels(workspaceId, onError);
     if (workspaceType === "git") {
-      void refreshBranchData(workspaceId);
+      void refreshBranchData(workspaceId, onError);
     } else {
       workspaceBranches.resetBranches();
     }

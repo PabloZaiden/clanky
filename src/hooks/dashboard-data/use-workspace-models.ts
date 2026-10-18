@@ -3,7 +3,7 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { createLogger } from "@pablozaiden/webapp/web";
+import { createLogger, type ToastService } from "@pablozaiden/webapp/web";
 import type { CheapModelSelection, ModelConfig } from "@/shared";
 import type { ModelInfo } from "@/contracts";
 import { apiRequest } from "../../lib/api-client";
@@ -17,7 +17,10 @@ export interface UseWorkspaceModelsResult {
   lastCheapModel: CheapModelSelection | null;
   setLastCheapModel: (selection: CheapModelSelection | null) => void;
   modelsWorkspaceId: string | null;
-  fetchModels: (workspaceId: string | null) => Promise<void>;
+  fetchModels: (
+    workspaceId: string | null,
+    onError?: ToastService["error"],
+  ) => Promise<void>;
   resetModels: () => void;
 }
 
@@ -88,7 +91,10 @@ export function useWorkspaceModels(): UseWorkspaceModelsResult {
     void fetchLastCheapModel();
   }, []);
 
-  const fetchModels = useCallback(async (workspaceId: string | null) => {
+  const fetchModels = useCallback(async (
+    workspaceId: string | null,
+    onError?: ToastService["error"],
+  ) => {
     const requestId = ++modelsRequestIdRef.current;
     modelsAbortControllerRef.current?.abort();
     setModelsWorkspaceId(workspaceId);
@@ -126,6 +132,9 @@ export function useWorkspaceModels(): UseWorkspaceModelsResult {
       });
       if (requestId === modelsRequestIdRef.current) {
         setModels([]);
+        if (!controller.signal.aborted) {
+          onError?.(String(error));
+        }
       }
     } finally {
       if (!controller.signal.aborted && requestId === modelsRequestIdRef.current) {

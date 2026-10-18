@@ -1,11 +1,11 @@
-import { useEffect } from "react";
-import type { Workspace } from "@/shared";
+import { useCallback, useEffect } from "react";
+import type { Workspace, WorkspaceType } from "@/shared";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import {
   CreateTaskForm,
 } from "../CreateTaskForm";
 import type { CreateTaskFormSubmitRequest } from "@/lib/task-request";
-import { ErrorState, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { ErrorState, useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
 
 interface ComposeTaskViewProps {
   composeWorkspace: Workspace | null;
@@ -29,6 +29,14 @@ export function ComposeTaskView(props: ComposeTaskViewProps) {
     workspacesLoading,
     workspaceError,
   } = props;
+  const { error: showError } = useToast();
+  const onWorkspaceChange = useCallback((
+    workspaceId: string | null,
+    directory: string,
+    workspaceType?: WorkspaceType,
+  ) => {
+    dashboardData.handleWorkspaceChange(workspaceId, directory, workspaceType, showError);
+  }, [dashboardData.handleWorkspaceChange, showError]);
 
   const handleComposeCancel = () =>
     navigateWithinShell(
@@ -61,7 +69,7 @@ export function ComposeTaskView(props: ComposeTaskViewProps) {
         modelsLoading={dashboardData.modelsLoading}
         lastModel={dashboardData.lastModel}
         lastCheapModel={dashboardData.lastCheapModel}
-        onWorkspaceChange={dashboardData.handleWorkspaceChange}
+        onWorkspaceChange={onWorkspaceChange}
         planningWarning={dashboardData.planningWarning}
         branches={dashboardData.branches}
         branchesLoading={dashboardData.branchesLoading}
