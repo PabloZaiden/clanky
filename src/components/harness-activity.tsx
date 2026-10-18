@@ -117,6 +117,7 @@ function ActivityRow({
       title={<span className="block truncate">{activity.description}</span>}
       description={activity.kind === "subagent" ? activity.effectiveModel ?? activity.requestedModel ?? "Model not reported"
         : activity.kind === "process" ? "Process" : "External activity"}
+      descriptionClassName="!mt-0"
       badge={<StatusBadge size="sm"><StateText>{activity.status}</StateText></StatusBadge>}
       actions={canStop ? (
         <button type="button" className="shrink-0 py-1 text-xs text-gray-500 underline decoration-dotted underline-offset-2 hover:text-red-600 disabled:opacity-50 dark:text-gray-400" disabled={disabled || stopping} onClick={onStop}>

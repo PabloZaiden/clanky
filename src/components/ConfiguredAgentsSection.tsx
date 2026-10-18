@@ -83,7 +83,7 @@ export function ConfiguredAgentsSection({
                 key={agent.config.id}
                 title={agent.config.name}
                 description={summarizeAgentPrompt(agent.config.prompt)}
-                descriptionClassName="line-clamp-2"
+                descriptionClassName="!mt-0 line-clamp-2"
                 meta={`${workspaceName ? `${workspaceName} · ` : ""}Next run: ${formatDate(agent.state.nextRunAt)} · ${getScheduleText(agent)}`}
                 metaPlacement="below"
                 badge={<AgentStatusPill status={agent.state.status} />}

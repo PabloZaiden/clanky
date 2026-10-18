@@ -63,6 +63,7 @@ export const ProvisioningJobView = memo(function ProvisioningJobView({
             title={getProvisioningStepLabel(job.state.currentStep)}
             description={execution && execution.step === job.state.currentStep
               ? getProvisioningExecutionLabel(execution) : undefined}
+            descriptionClassName="!mt-0"
             meta={execution?.exitCode === undefined ? undefined : `Exit code ${execution.exitCode}`}
             metaPlacement="inline"
           />

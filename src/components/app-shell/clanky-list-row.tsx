@@ -25,7 +25,7 @@ export function ClankyListRow({
     <DataListRow
       title={title}
       description={description}
-      descriptionClassName={`mt-1 ${descriptionClassName}`.trim()}
+      descriptionClassName={descriptionClassName}
       meta={meta}
       metaPlacement={metaPlacement}
       badge={badge}

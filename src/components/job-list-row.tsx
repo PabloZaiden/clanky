@@ -14,6 +14,7 @@ export const JobListRow = memo(function JobListRow({ title, timestamp, exitCode,
   return <DataListRow
     title={title}
     description={description}
+    descriptionClassName="!mt-0"
     meta={timestamp || exitCode !== undefined ? <>
       {timestamp ? <DateTimeValue value={timestamp} /> : null}
       {timestamp && exitCode !== undefined ? " · " : null}
