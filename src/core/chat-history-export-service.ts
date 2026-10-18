@@ -58,8 +58,19 @@ interface ExportedAttachment {
 
 interface CreateChatHistoryExportOptions {
   credentialToken?: string | null;
+  signal?: AbortSignal;
   previousSession?: HarnessHistoryRecovery["previousSession"];
   onAllocated?: (recovery: HarnessHistoryRecovery) => Promise<void>;
+}
+
+interface ChatHistoryExportContext {
+  executor: CommandExecutor;
+  managedPaths: ManagedPathService;
+  directory: string;
+  chatId: string;
+  recoveryId: string;
+  transcriptMeta: { revision: string; entryCount: number };
+  signal?: AbortSignal;
 }
 
 type ExportedHistoryMessage = Omit<PersistedMessage, "attachments"> & {
@@ -263,8 +274,11 @@ export class ChatHistoryExportService {
       options.credentialToken,
     );
     let exportDirectory: string | undefined;
+    const abort = () => closeCommandExecutor(executor);
+    options.signal?.addEventListener("abort", abort, { once: true });
 
     try {
+      options.signal?.throwIfAborted();
       const directory = await resolveCommandExecutorDirectory(
         executor,
         getChatExecutionDirectory(chat),
@@ -300,6 +314,19 @@ export class ChatHistoryExportService {
         await git.ensureWorktreeExcluded(directory);
       }
 
+      const context: ChatHistoryExportContext = {
+        executor,
+        managedPaths,
+        directory,
+        chatId: chat.config.id,
+        recoveryId,
+        transcriptMeta,
+        signal: options.signal,
+      };
+      // Mesh holds an exclusive filesystem lock while consuming the stream.
+      // Its producer must not start another upload for an attachment.
+      await this.prepareAttachments(context);
+      options.signal?.throwIfAborted();
       const header = {
         kind: "metadata",
         schemaVersion: 1,
@@ -320,15 +347,9 @@ export class ChatHistoryExportService {
         transcriptPath,
         createJsonLinesStream(
           header,
-          this.exportEntries(
-            executor,
-            managedPaths,
-            directory,
-            chat.config.id,
-            recoveryId,
-            transcriptMeta,
-          ),
+          this.exportEntries(context),
         ),
+        { signal: options.signal },
       );
       if (!result?.success) {
         throw new DomainError(
@@ -340,6 +361,7 @@ export class ChatHistoryExportService {
 
       return { ...allocatedRecovery, status: "pending" };
     } catch (error) {
+      closeCommandExecutor(executor);
       if (exportDirectory) {
         try {
           await this.deleteExportDirectory(executor, exportDirectory);
@@ -351,6 +373,7 @@ export class ChatHistoryExportService {
           );
         }
       }
+      options.signal?.throwIfAborted();
       if (error instanceof DomainError) {
         throw error;
       }
@@ -360,21 +383,41 @@ export class ChatHistoryExportService {
         { cause: error },
       );
     } finally {
+      options.signal?.removeEventListener("abort", abort);
       closeCommandExecutor(executor);
     }
   }
 
+  private async prepareAttachments(context: ChatHistoryExportContext): Promise<void> {
+    let attachmentIndex = 0;
+    for await (const entry of this.state.iterateChatTranscriptEntries(context.chatId)) {
+      context.signal?.throwIfAborted();
+      if (entry.kind !== "message") {
+        continue;
+      }
+      if (!isPersistedMessage(entry.payload) || entry.payload.id !== entry.id) {
+        throw new DomainError(
+          "chat_history_export_incomplete",
+          "A persisted chat message could not be loaded, so the full chat history cannot be exported.",
+        );
+      }
+      await this.exportMessage({
+        context,
+        message: entry.payload,
+        nextAttachmentIndex: () => ++attachmentIndex,
+        writeAttachments: true,
+      });
+    }
+  }
+
   private async *exportEntries(
-    executor: CommandExecutor,
-    managedPaths: ManagedPathService,
-    directory: string,
-    chatId: string,
-    recoveryId: string,
-    transcriptMeta: { revision: string; entryCount: number },
+    context: ChatHistoryExportContext,
   ): AsyncGenerator<ChatHistoryExportEntry> {
+    const { chatId, transcriptMeta } = context;
     let rowCount = 0;
     let attachmentIndex = 0;
     for await (const storedEntry of this.state.iterateChatTranscriptEntries(chatId)) {
+      context.signal?.throwIfAborted();
       rowCount += 1;
       if (rowCount > transcriptMeta.entryCount) {
         throw new DomainError(
@@ -391,18 +434,12 @@ export class ChatHistoryExportService {
             "A persisted chat message could not be loaded, so the full chat history cannot be exported.",
           );
         }
-        const exportedMessage = await this.exportMessage(
-          executor,
-          managedPaths,
-          directory,
-          chatId,
-          recoveryId,
+        const exportedMessage = await this.exportMessage({
+          context,
           message,
-          () => {
-            attachmentIndex += 1;
-            return attachmentIndex;
-          },
-        );
+          nextAttachmentIndex: () => ++attachmentIndex,
+          writeAttachments: false,
+        });
         yield {
           kind: "message",
           id: storedEntry.id,
@@ -465,7 +502,7 @@ export class ChatHistoryExportService {
   async prepareForPrompt(
     chat: Chat,
     recovery: HarnessHistoryRecovery,
-    credentialToken?: string | null,
+    options: { credentialToken?: string | null; signal?: AbortSignal } = {},
   ): Promise<ChatHistoryPromptContext | null> {
     if (recovery.status === "complete") {
       return null;
@@ -476,7 +513,7 @@ export class ChatHistoryExportService {
       recovery.executionHost,
       recovery.directory,
       recovery.id,
-      credentialToken,
+      options.credentialToken,
     );
     let closed = false;
     const close = () => {
@@ -484,9 +521,12 @@ export class ChatHistoryExportService {
         return;
       }
       closed = true;
+      options.signal?.removeEventListener("abort", close);
       closeCommandExecutor(executor);
     };
+    options.signal?.addEventListener("abort", close, { once: true });
     try {
+      options.signal?.throwIfAborted();
       const currentBinding = await getChatExecutionHostBinding(
         this.state,
         chat,
@@ -500,6 +540,7 @@ export class ChatHistoryExportService {
       const paths = this.assertCanonicalPaths(executor, chat, recovery);
       if (recovery.status === "cleaning") {
         await this.deleteExportDirectory(executor, paths.exportDirectory);
+        options.signal?.throwIfAborted();
         await this.updateRecoveryStatus(chat.config.id, recovery.id, "complete");
         close();
         return null;
@@ -507,6 +548,7 @@ export class ChatHistoryExportService {
       if (recovery.status === "exporting") {
         await this.updateRecoveryStatus(chat.config.id, recovery.id, "cleaning");
         await this.deleteExportDirectory(executor, paths.exportDirectory);
+        options.signal?.throwIfAborted();
         await this.updateRecoveryStatus(chat.config.id, recovery.id, "complete");
         throw new DomainError(
           "chat_history_export_incomplete",
@@ -536,6 +578,7 @@ export class ChatHistoryExportService {
           "The temporary recovery history is missing from the execution host. Choose Continue from history again to create a fresh export.",
         );
       }
+      options.signal?.throwIfAborted();
 
       let completed = false;
       return {
@@ -561,7 +604,7 @@ export class ChatHistoryExportService {
     chat: Chat,
     recovery: HarnessHistoryRecovery,
     credentialToken?: string | null,
-    options: { markComplete?: boolean } = {},
+    options: { markComplete?: boolean; signal?: AbortSignal } = {},
   ): Promise<void> {
     const executor = await this.getExecutor(
       chat,
@@ -570,26 +613,34 @@ export class ChatHistoryExportService {
       recovery.id,
       credentialToken,
     );
+    const abort = () => closeCommandExecutor(executor);
+    options.signal?.addEventListener("abort", abort, { once: true });
     try {
+      options.signal?.throwIfAborted();
       const paths = this.assertCanonicalPaths(executor, chat, recovery);
       await this.deleteExportDirectory(executor, paths.exportDirectory);
+      options.signal?.throwIfAborted();
       if (options.markComplete !== false) {
         await this.updateRecoveryStatus(chat.config.id, recovery.id, "complete");
       }
     } finally {
+      options.signal?.removeEventListener("abort", abort);
       closeCommandExecutor(executor);
     }
   }
 
-  private async exportMessage(
-    executor: CommandExecutor,
-    managedPaths: ManagedPathService,
-    directory: string,
-    chatId: string,
-    recoveryId: string,
-    message: PersistedMessage,
-    nextAttachmentIndex: () => number,
-  ): Promise<ExportedHistoryMessage> {
+  private async exportMessage({
+    context,
+    message,
+    nextAttachmentIndex,
+    writeAttachments,
+  }: {
+    context: ChatHistoryExportContext;
+    message: PersistedMessage;
+    nextAttachmentIndex: () => number;
+    writeAttachments: boolean;
+  }): Promise<ExportedHistoryMessage> {
+    const { executor, managedPaths, directory, chatId, recoveryId, signal } = context;
     const { attachments, ...messageContent } = message;
     if (!attachments?.length) {
       return messageContent;
@@ -597,18 +648,7 @@ export class ChatHistoryExportService {
 
     const exportedAttachments: ExportedAttachment[] = [];
     for (const attachment of attachments) {
-      const bytes = Buffer.from(attachment.data, "base64");
-      const canonicalBase64 = bytes.toString("base64").replace(/=+$/, "");
-      const storedBase64 = attachment.data.replace(/=+$/, "");
-      if (
-        bytes.byteLength !== attachment.size
-        || canonicalBase64 !== storedBase64
-      ) {
-        throw new DomainError(
-          "chat_history_export_incomplete",
-          `The saved attachment '${attachment.filename}' is incomplete and cannot be exported.`,
-        );
-      }
+      signal?.throwIfAborted();
       const fileName = `attachment-${String(nextAttachmentIndex()).padStart(6, "0")}${attachmentExtension(attachment)}`;
       const attachmentPath = managedPaths.getChatHistoryAttachmentPath(
         directory,
@@ -616,16 +656,29 @@ export class ChatHistoryExportService {
         recoveryId,
         fileName,
       );
-      const result = await executor.writeFileStream?.(
-        attachmentPath,
-        new Blob([Uint8Array.from(bytes)]).stream(),
-      );
-      if (!result?.success) {
-        throw new DomainError(
-          "chat_history_export_failed",
-          `The execution host could not write the recovery attachment '${attachment.filename}'.`,
-          { cause: result?.error ?? new Error("Streamed file writing is unavailable.") },
+      if (writeAttachments) {
+        const bytes = Buffer.from(attachment.data, "base64");
+        if (
+          bytes.byteLength !== attachment.size
+          || bytes.toString("base64").replace(/=+$/, "") !== attachment.data.replace(/=+$/, "")
+        ) {
+          throw new DomainError(
+            "chat_history_export_incomplete",
+            `The saved attachment '${attachment.filename}' is incomplete and cannot be exported.`,
+          );
+        }
+        const result = await executor.writeFileStream?.(
+          attachmentPath,
+          new Blob([Uint8Array.from(bytes)]).stream(),
+          { signal },
         );
+        if (!result?.success) {
+          throw new DomainError(
+            "chat_history_export_failed",
+            `The execution host could not write the recovery attachment '${attachment.filename}'.`,
+            { cause: result?.error ?? new Error("Streamed file writing is unavailable.") },
+          );
+        }
       }
       exportedAttachments.push({
         id: attachment.id,

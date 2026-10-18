@@ -224,6 +224,11 @@ export interface ChatSessionPort {
 }
 
 export interface ChatConversationPort {
+  runStartupOperation<T>(
+    chatId: string,
+    operation: (signal: AbortSignal) => Promise<T>,
+    signal?: AbortSignal,
+  ): Promise<T>;
   getAssistantMessage(chatId: string, messageId: string): Promise<MessageData | null>;
   recordSteeredMessage(chat: Chat, message: QueuedChatMessage, admission: HarnessInputAdmission): Promise<Chat>;
   dispatchMessage(

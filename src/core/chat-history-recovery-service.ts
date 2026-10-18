@@ -21,7 +21,7 @@ const log = createLogger("core:chat-history-recovery-service");
 export interface ChatHistoryRecoveryServiceDependencies {
   state: ChatStatePort;
   session: Pick<ChatSessionPort, "createSessionFromHistory">;
-  conversation: Pick<ChatConversationPort, "hasActiveStream">;
+  conversation: Pick<ChatConversationPort, "hasActiveStream" | "runStartupOperation">;
   historyExport: ChatHistoryExportService;
 }
 
@@ -42,6 +42,17 @@ export class ChatHistoryRecoveryService {
     chatId: string,
     options: ReconnectChatOptions = {},
   ): Promise<Chat | null> {
+    return await this.conversation.runStartupOperation(
+      chatId,
+      async (signal) => await this.recoverFromHistory(chatId, { ...options, signal }),
+      options.signal,
+    );
+  }
+
+  private async recoverFromHistory(
+    chatId: string,
+    options: ReconnectChatOptions,
+  ): Promise<Chat | null> {
     const originalChat = await this.state.getChatSummary(chatId);
     if (!originalChat) {
       return null;
@@ -55,6 +66,7 @@ export class ChatHistoryRecoveryService {
     const originalSessionId = originalChat.state.session?.id;
     const originalRecoveryId = originalChat.state.harness?.historyRecovery?.id;
     try {
+      options.signal?.throwIfAborted();
       let reservationValid = false;
       await this.state.mutateState(chatId, (current) => {
         if (
@@ -89,6 +101,7 @@ export class ChatHistoryRecoveryService {
           originalChat,
           previousRecovery,
           options.credentialToken,
+          { signal: options.signal },
         );
       }
 
@@ -105,6 +118,7 @@ export class ChatHistoryRecoveryService {
         : undefined;
       const recovery = await this.historyExport.create(exportChat, {
         credentialToken: options.credentialToken,
+        signal: options.signal,
         previousSession,
         onAllocated: async (allocated) => {
           exportAllocated = allocated;
@@ -136,7 +150,15 @@ export class ChatHistoryRecoveryService {
       });
       exportAllocated = { ...recovery, status: "exporting" };
 
+      options.signal?.throwIfAborted();
       const chatForSession = await this.requireChat(chatId);
+      if (chatForSession.state.status !== "starting"
+        || chatForSession.state.harness?.historyRecovery?.id !== recovery.id) {
+        throw new DomainError(
+          "chat_history_recovery_conflict",
+          "The chat changed while its history export was being prepared.",
+        );
+      }
       sessionCreationStarted = true;
       const createdSession = await this.session.createSessionFromHistory(
         chatForSession,
@@ -147,6 +169,7 @@ export class ChatHistoryRecoveryService {
         },
       );
 
+      options.signal?.throwIfAborted();
       let committed = false;
       const readyChat = await this.state.mutateState(chatId, (current) => {
         if (
@@ -222,6 +245,9 @@ export class ChatHistoryRecoveryService {
       }
       if (cleanupError) {
         throw cleanupError;
+      }
+      if (options.signal?.aborted) {
+        return await this.state.getChatSummary(chatId);
       }
       throw error;
     }
