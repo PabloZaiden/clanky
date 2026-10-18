@@ -168,13 +168,6 @@ export function buildShellSidebarComposition(
         icon: "chat" as const,
         onAction: options.onQuickChat,
       },
-      {
-        id: "code-explorer",
-        title: "Code Explorer",
-        label: "Code Explorer",
-        icon: "code" as const,
-        route: { view: "code-explorer" as const },
-      },
     ],
     bottomContent: options.voiceControls,
     getNodes,

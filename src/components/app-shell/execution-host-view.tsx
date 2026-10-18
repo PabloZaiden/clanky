@@ -39,6 +39,7 @@ import { ExecutionHostPrerequisitesSection } from "./execution-host-prerequisite
 import { SshServerSettingsForm } from "./ssh-server-settings-form";
 import { useExecutionHostPrerequisites } from "./use-execution-host-prerequisites";
 import { ClankyListRow } from "./clanky-list-row";
+import { WorkItemRow } from "./work-item-row";
 import { PreviewSessionsView } from "./preview-sessions-view";
 import { buildPreviewCliCommand } from "../../utils";
 import {
@@ -418,10 +419,13 @@ export function ExecutionHostView({
         <Panel title="Terminals">
           <div className="space-y-2">
             {sessions.map((session) => (
-              <ClankyListRow
+              <WorkItemRow
                 key={session.config.id}
                 title={session.config.name}
-                description={session.config.directory}
+                workspace={workspaces.find((workspace) => workspace.id === session.config.workspaceId)}
+                subtitle={host.name}
+                itemType="Terminal"
+                lastInteractionAt={session.state.lastConnectedAt ?? session.config.createdAt}
                 badge={(
                   <StatusBadge variant={getTerminalSessionStatusBadgeVariant(session.state.status)}>
                     {getTerminalSessionStatusLabel(session.state.status)}
@@ -441,10 +445,13 @@ export function ExecutionHostView({
         <Panel title="Chats">
           <div className="space-y-2">
             {chats.map((chat) => (
-              <ClankyListRow
+              <WorkItemRow
                 key={chat.config.id}
                 title={chat.config.name}
-                description={chat.config.directory}
+                workspace={workspaces.find((workspace) => workspace.id === chat.config.workspaceId)}
+                subtitle={host.name}
+                itemType="Chat"
+                lastInteractionAt={chat.state.lastUserMessageAt ?? chat.config.createdAt}
                 badge={(
                   <StatusBadge variant={getChatStatusBadgeVariant(chat.state.status)}>
                     <StateText>{formatStatusLabel(chat.state.status)}</StateText>
