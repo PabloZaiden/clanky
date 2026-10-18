@@ -161,8 +161,8 @@ obscured when private items are hidden.
 
 ## Manage files in Code Explorer
 
-Right-click a file or folder in the tree, or use its row menu. The menu is also
-available from the keyboard with **Shift+F10** on the focused entry.
+Right-click a file or folder in the tree to open its context menu. The menu is
+also available from the keyboard with **Shift+F10** on the focused entry.
 
 Files offer **Download**, **Rename**, and **Delete**. Folders offer **Rename**
 and **Delete**; deleting a folder also deletes its contents and requires

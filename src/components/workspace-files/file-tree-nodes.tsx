@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { ActionMenu, type ActionMenuItem, type ContextMenuPosition } from "@pablozaiden/webapp/web";
+import type { ContextMenuPosition } from "@pablozaiden/webapp/web";
 import type { WorkspaceFileNode } from "@/shared";
 
 interface WorkspaceFileTreeNodesProps {
@@ -12,7 +12,6 @@ interface WorkspaceFileTreeNodesProps {
   showHiddenFiles: boolean;
   onToggleDirectory: (path: string) => Promise<void>;
   onOpenFile: (path: string) => Promise<void>;
-  getNodeActions: (node: WorkspaceFileNode) => ActionMenuItem[];
   onContextMenu: (node: WorkspaceFileNode, position: ContextMenuPosition) => void;
 }
 
@@ -45,7 +44,6 @@ function WorkspaceFileTreeNodesComponent(props: WorkspaceFileTreeNodesProps) {
     showHiddenFiles,
     onToggleDirectory,
     onOpenFile,
-    getNodeActions,
     onContextMenu,
   } = props;
   const entries = (entriesByDirectory[path] ?? []).filter((entry) => showHiddenFiles || !entry.name.startsWith("."));
@@ -92,12 +90,6 @@ function WorkspaceFileTreeNodesComponent(props: WorkspaceFileTreeNodesProps) {
             <EntryIcon directory={isDirectory} />
             <span>{entry.name}</span>
           </button>
-          <ActionMenu
-            items={getNodeActions(entry)}
-            ariaLabel={`Actions for ${entry.name}`}
-            triggerVariant="ghost"
-            triggerSize="compact"
-          />
         </div>
         {isDirectory && isExpanded && (
           <WorkspaceFileTreeNodes {...props} path={entry.path} depth={depth + 1} />

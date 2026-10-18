@@ -273,7 +273,6 @@ function WorkspaceFileTreeComponent({
               showHiddenFiles={showHiddenFiles}
               onToggleDirectory={onToggleDirectory}
               onOpenFile={onOpenFile}
-              getNodeActions={getNodeActions}
               onContextMenu={openContextMenu}
             />
           </div>
