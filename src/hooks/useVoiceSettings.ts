@@ -49,6 +49,7 @@ function createDefaultSettings(): VoiceSettings {
       baseUrl: "",
       apiKeyConfigured: false,
       model: "",
+      personalInstructions: "",
       configured: false,
     },
   };
