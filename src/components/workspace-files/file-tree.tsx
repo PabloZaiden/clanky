@@ -3,6 +3,7 @@ import { ActionMenu, ContextMenu, type ActionMenuItem, type ContextMenuPosition 
 import type { WorkspaceFileNode } from "@/shared";
 import { Button, CopyPathIcon, RefreshIcon, SidebarIcon } from "../common";
 import { WorkspaceFileTreeNodes } from "./file-tree-nodes";
+import { useFileTreeDrop } from "./use-file-tree-drop";
 
 interface FileTreeHeaderButtonProps {
   label: string;
@@ -52,6 +53,7 @@ interface WorkspaceFileTreeProps {
   onCopySelectedFilePath: () => Promise<void>;
   onDownloadSelectedFile: () => Promise<void>;
   onUploadFile: () => void;
+  onDropFile: (file: File, targetDirectory: string) => void;
   onRenameSelectedNode: () => void;
   onDeleteSelectedNode: () => void;
   onDownloadNode: (node: WorkspaceFileNode) => Promise<void>;
@@ -83,6 +85,7 @@ function WorkspaceFileTreeComponent({
   onCopySelectedFilePath,
   onDownloadSelectedFile,
   onUploadFile,
+  onDropFile,
   onRenameSelectedNode,
   onDeleteSelectedNode,
   onDownloadNode,
@@ -98,6 +101,18 @@ function WorkspaceFileTreeComponent({
   canRenameSelectedNode,
   canDeleteSelectedNode,
 }: WorkspaceFileTreeProps) {
+  const {
+    dropTargetDirectory,
+    dropZoneRef,
+    handleDirectoryDragEnter,
+    handleDirectoryDragLeave,
+    handleDirectoryDragOver,
+    handleDirectoryDrop,
+    handleTreeDragEnter,
+    handleTreeDragLeave,
+    handleTreeDragOver,
+    handleTreeDrop,
+  } = useFileTreeDrop({ canUploadFile, onDropFile });
   const [contextMenu, setContextMenu] = useState<{
     node: WorkspaceFileNode;
     position: ContextMenuPosition;
@@ -248,11 +263,19 @@ function WorkspaceFileTreeComponent({
       </div>
       {!collapsed && (
         <div
+          ref={dropZoneRef}
           data-testid="workspace-file-tree-scroll"
           aria-busy={loading}
+          onDragEnter={handleTreeDragEnter}
+          onDragOver={handleTreeDragOver}
+          onDragLeave={handleTreeDragLeave}
+          onDrop={handleTreeDrop}
           className={[
             "relative min-h-0 flex-1 overflow-auto p-2",
             loading ? "min-h-32" : "",
+            dropTargetDirectory === ""
+              ? "ring-2 ring-inset ring-blue-500 bg-blue-50/50 dark:bg-blue-950/30"
+              : "",
           ].join(" ")}
         >
           {error && (
@@ -271,6 +294,11 @@ function WorkspaceFileTreeComponent({
               currentFilePath={currentFilePath}
               selectedNodePath={selectedNodePath}
               showHiddenFiles={showHiddenFiles}
+              dropTargetDirectory={dropTargetDirectory}
+              onDirectoryDragEnter={handleDirectoryDragEnter}
+              onDirectoryDragOver={handleDirectoryDragOver}
+              onDirectoryDragLeave={handleDirectoryDragLeave}
+              onDirectoryDrop={handleDirectoryDrop}
               onToggleDirectory={onToggleDirectory}
               onOpenFile={onOpenFile}
               onContextMenu={openContextMenu}

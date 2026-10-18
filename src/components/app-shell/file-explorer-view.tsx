@@ -593,15 +593,13 @@ export function FileExplorerView({
     uploadInputRef.current?.click();
   }, []);
 
-  const handleUploadInputChange = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0] ?? null;
-    event.target.value = "";
-    if (!file) {
-      return;
-    }
+  const uploadFile = useCallback(async (file: File, targetDirectory?: string) => {
     try {
       setUploadingFile(true);
-      const uploadedFile = await explorer.uploadFileToSelectedDirectory(file);
+      const uploadedFile = await explorer.uploadFileToSelectedDirectory(
+        file,
+        targetDirectory === undefined ? undefined : { targetDirectory },
+      );
       if (!uploadedFile) {
         return;
       }
@@ -609,7 +607,20 @@ export function FileExplorerView({
     } finally {
       setUploadingFile(false);
     }
-  }, [explorer, toast]);
+  }, [explorer.uploadFileToSelectedDirectory, toast]);
+
+  const handleUploadInputChange = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+    event.target.value = "";
+    if (!file) {
+      return;
+    }
+    await uploadFile(file);
+  }, [uploadFile]);
+
+  const handleFileDrop = useCallback((file: File, targetDirectory: string) => {
+    void uploadFile(file, targetDirectory);
+  }, [uploadFile]);
 
   useEffect(() => {
     if (
@@ -791,6 +802,7 @@ export function FileExplorerView({
                 onCopySelectedFilePath={handleCopySelectedFilePath}
                 onDownloadSelectedFile={handleDownloadFile}
                 onUploadFile={handleUploadFile}
+                onDropFile={handleFileDrop}
                 onRenameSelectedNode={openRenameModal}
                 onDeleteSelectedNode={openDeleteModal}
                 onDownloadNode={handleDownloadFile}
