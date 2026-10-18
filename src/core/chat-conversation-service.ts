@@ -561,12 +561,15 @@ export class ChatConversationService implements ChatConversationPort {
       log.info("Chat interrupted by user request", { chatId, reason });
     }
     const currentStartupOperation = this.startupOperations.get(chatId);
-    const completed = (
+    const preserveStartupFailure = startupOperation?.interrupted
+      && latestChat.state.status === "failed";
+    const shouldCompleteInterrupt = (
       startupOperation?.interrupted
       && (!currentStartupOperation || currentStartupOperation === startupOperation)
     ) || activeStream
       || latestChat.state.status === "interrupting"
-      || latestChat.state.interruptRequested
+      || latestChat.state.interruptRequested;
+    const completed = !preserveStartupFailure && shouldCompleteInterrupt
       ? await this.completeInterruptedChat(latestChat)
       : latestChat;
     this.scheduleQueuedMessageDrain(chatId);

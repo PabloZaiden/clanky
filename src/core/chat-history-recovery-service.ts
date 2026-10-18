@@ -235,7 +235,10 @@ export class ChatHistoryRecoveryService {
         }
       }
 
-      if (reservationStarted && !sessionCreationStarted) {
+      if (reservationStarted && (
+        !sessionCreationStarted
+        || (options.signal?.aborted && !replacementSessionExists)
+      )) {
         await this.restoreFailedChatState(chatId, originalChat, error);
       } else if (reservationStarted && sessionCreationStarted && latest) {
         const current = await this.state.getChat(chatId);
@@ -374,7 +377,10 @@ export class ChatHistoryRecoveryService {
     originalError: unknown,
   ): Promise<void> {
     await this.state.mutateState(chatId, (current) => {
-      if (current.state.status !== "starting") {
+      if (
+        (current.state.status !== "starting" && current.state.status !== "interrupting")
+        || current.state.session?.id !== originalChat.state.session?.id
+      ) {
         return;
       }
       return {
@@ -382,6 +388,7 @@ export class ChatHistoryRecoveryService {
         status: originalChat.state.status,
         startupStage: originalChat.state.startupStage,
         error: originalChat.state.error,
+        interruptRequested: false,
         lastActivityAt: originalChat.state.lastActivityAt,
       };
     }).catch((rollbackError) => {
