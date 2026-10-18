@@ -6,6 +6,7 @@ import { z } from "zod";
 import { LiveVoiceUiContextSchema } from "@/shared/live-voice";
 import {
   DEFAULT_VOICE_LANGUAGE_HINTS,
+  LIVE_VOICE_MAX_PERSONAL_INSTRUCTIONS_CHARS,
   VOICE_CAPABILITIES,
   VOICE_LANGUAGE_HINTS,
   VOICE_MAX_TEXT_CHARS,
@@ -31,6 +32,10 @@ export const VoiceSettingsUpdateSchema = z.object({
     apiKey: z.string().trim().max(10_000).optional(),
     clearApiKey: z.boolean().optional(),
     model: z.string().trim().max(200),
+    personalInstructions: z.string().max(
+      LIVE_VOICE_MAX_PERSONAL_INSTRUCTIONS_CHARS,
+      "Personal instructions must be at most 4,000 characters",
+    ).optional(),
   }).strict().optional(),
 });
 

@@ -6,6 +6,7 @@ export const VOICE_CAPABILITIES = ["transcription", "text", "live"] as const;
 export type VoiceCapability = (typeof VOICE_CAPABILITIES)[number];
 
 export const VOICE_MAX_TEXT_CHARS = 30_000;
+export const LIVE_VOICE_MAX_PERSONAL_INSTRUCTIONS_CHARS = 4_000;
 export const VOICE_TRANSLATION_LANGUAGES = ["en", "es"] as const;
 export type VoiceTranslationLanguage = (typeof VOICE_TRANSLATION_LANGUAGES)[number];
 
@@ -61,6 +62,7 @@ export interface LiveVoiceSettings {
   baseUrl: string;
   apiKeyConfigured: boolean;
   model: string;
+  personalInstructions: string;
   configured: boolean;
 }
 
@@ -70,6 +72,7 @@ export interface LiveVoiceSettingsUpdate {
   apiKey?: string;
   clearApiKey?: boolean;
   model: string;
+  personalInstructions?: string;
 }
 
 export interface LiveVoiceCallState {

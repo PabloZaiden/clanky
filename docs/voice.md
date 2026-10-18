@@ -72,6 +72,24 @@ requirements or commitments. Reported speech is reserved for an explicitly
 requested quotation, summary or relay of another person's words. Approval
 requirements and confirmed-result reporting are unchanged.
 
+In **Settings → Voice → Live Voice**, **Personal instructions** stores up to
+**4,000 characters** privately for your user. Use it for language, tone, form
+of address, speaking pace, pronunciation, response length and listening style.
+For example:
+
+```text
+Speak Spanish using voseo. Be calm and direct.
+Start with the result; use one or two sentences for routine questions.
+Give me time when I pause to think, and use few listening acknowledgments.
+```
+
+Save applies these preferences to your **next call**, not a call already in
+progress. The text is added as a separate section of the Live model's
+`session.instructions`; it does not change the delegated text model's prompt,
+workspace agents, tools, permissions or visual approval requirements. Leave
+it empty to keep the default behavior. The configured Live provider receives
+this text when you start a call; do not include credentials or secrets.
+
 In **Settings → Voice**, configure one transcription model, one shared text
 generation model, and one Live model/deployment. Reuse the existing voice
 provider URL and saved key, or configure an independent HTTPS endpoint and

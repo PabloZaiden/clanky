@@ -55,10 +55,10 @@ export class LiveVoiceManager {
     let call: LiveVoiceCall | undefined;
     try {
       if (!this.service) throw new DomainError("voice_live_unavailable", "The global operation service is unavailable.");
-      const credentials = await voiceManager.requireLiveCredentials();
+      const { credentials, personalInstructions } = await voiceManager.requireLiveConfiguration();
       const limiter = this.admit(credentials);
       const history = this.memory.get(owner);
-      const started = await createLiveVoiceSession(credentials, sdp, { signal, history }).catch((error: unknown) => {
+      const started = await createLiveVoiceSession(credentials, sdp, { signal, history, personalInstructions }).catch((error: unknown) => {
         if (isDomainError(error) && error.code === "voice_provider_rate_limited") {
           const retryAfter = String(error.details["retryAfter"] ?? "");
           const seconds = Number(retryAfter);
