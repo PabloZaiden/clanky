@@ -176,6 +176,31 @@ export class ChatConversationService implements ChatConversationPort {
     this.questionHandler = handler;
   }
 
+  async runStartupOperation<T>(
+    chatId: string,
+    operation: (signal: AbortSignal) => Promise<T>,
+    signal?: AbortSignal,
+  ): Promise<T> {
+    if (this.startupOperations.has(chatId)) {
+      throw new ChatBusyError();
+    }
+    const startup = createStartupOperation();
+    const abort = () => startup.controller.abort(signal?.reason);
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) abort();
+    this.startupOperations.set(chatId, startup);
+    try {
+      throwIfChatStartupAborted(startup.controller.signal);
+      return await operation(startup.controller.signal);
+    } finally {
+      signal?.removeEventListener("abort", abort);
+      if (this.startupOperations.get(chatId) === startup) {
+        this.startupOperations.delete(chatId);
+      }
+      startup.resolveSettled();
+    }
+  }
+
   async dispatchMessage(
     chat: Chat,
     input: NormalizedChatMessageInput,
@@ -186,6 +211,9 @@ export class ChatConversationService implements ChatConversationPort {
   ): Promise<Chat> {
     const timer = createChatLatencyTimer();
     this.assertChatIsAvailable(chat);
+    if (this.startupOperations.has(chat.config.id)) {
+      throw new ChatBusyError();
+    }
     const startupOperation = createStartupOperation();
     this.startupOperations.set(chat.config.id, startupOperation);
 
@@ -216,7 +244,10 @@ export class ChatConversationService implements ChatConversationPort {
         historyPromptContext = await this.historyExport.prepareForPrompt(
           chat,
           historyRecovery,
-          options.credentialToken,
+          {
+            credentialToken: options.credentialToken,
+            signal: startupOperation.controller.signal,
+          },
         );
         chat = await this.state.getChat(chat.config.id) ?? chat;
       }
@@ -530,12 +561,15 @@ export class ChatConversationService implements ChatConversationPort {
       log.info("Chat interrupted by user request", { chatId, reason });
     }
     const currentStartupOperation = this.startupOperations.get(chatId);
-    const completed = (
+    const preserveStartupFailure = startupOperation?.interrupted
+      && latestChat.state.status === "failed";
+    const shouldCompleteInterrupt = (
       startupOperation?.interrupted
       && (!currentStartupOperation || currentStartupOperation === startupOperation)
     ) || activeStream
       || latestChat.state.status === "interrupting"
-      || latestChat.state.interruptRequested
+      || latestChat.state.interruptRequested;
+    const completed = !preserveStartupFailure && shouldCompleteInterrupt
       ? await this.completeInterruptedChat(latestChat)
       : latestChat;
     this.scheduleQueuedMessageDrain(chatId);
