@@ -29,11 +29,15 @@ export const ToolImageEntry = memo(function ToolImageEntry({
   const [retry, setRetry] = useState(0);
   const [selectedImage, setSelectedImage] = useState<MessageAttachment | null>(null);
   const isSummary = isToolCallSummary(tool);
+  const { id: toolId, status, detailRevision } = tool;
+  const hasInput = isSummary && tool.hasInput;
+  const hasOutput = isSummary && tool.hasOutput;
+  const hasImagePreview = hasToolCallImagePreview(tool);
   const activeTool = !isSummary ? tool
     : details?.id === tool.id && !isToolCallDetailsStale(tool, details) ? details : null;
 
   useEffect(() => {
-    if (!isToolCallSummary(tool)) {
+    if (!isSummary) {
       return;
     }
     const controller = new AbortController();
@@ -43,7 +47,7 @@ export const ToolImageEntry = memo(function ToolImageEntry({
         if (!onLoadToolDetails) {
           throw new Error("Tool image details are unavailable.");
         }
-        const loaded = await onLoadToolDetails(tool.id, controller.signal);
+        const loaded = await onLoadToolDetails(toolId, controller.signal);
         if (controller.signal.aborted) {
           return;
         }
@@ -58,7 +62,7 @@ export const ToolImageEntry = memo(function ToolImageEntry({
       }
     })();
     return () => controller.abort();
-  }, [onLoadToolDetails, retry, tool]);
+  }, [detailRevision, hasImagePreview, hasInput, hasOutput, isSummary, onLoadToolDetails, retry, status, toolId]);
 
   if (activeTool && !hasToolCallImagePreview(activeTool)) {
     return (
