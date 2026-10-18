@@ -3,7 +3,6 @@
  */
 
 export * from "./conventional-commits";
-export * from "./agents-md-service";
 export * from "../domain/domain-error";
 export * from "./github-issues";
 export * from "./file-explorer-errors";
