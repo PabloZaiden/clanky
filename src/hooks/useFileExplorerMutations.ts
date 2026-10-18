@@ -48,7 +48,7 @@ export interface UseFileExplorerMutationsResult {
   deleteNode: (node: WorkspaceFileNode) => Promise<boolean>;
   uploadFileToSelectedDirectory: (
     file: File,
-    options?: { overwrite?: boolean; signal?: AbortSignal },
+    options?: { overwrite?: boolean; signal?: AbortSignal; targetDirectory?: string },
   ) => Promise<WorkspaceFileEntry | null>;
   saveCurrentFile: (options?: { overwrite?: boolean }) => Promise<boolean>;
   retrySaveWithOverwrite: () => Promise<boolean>;
@@ -308,7 +308,7 @@ export function useFileExplorerMutations(
 
   const uploadFileToSelectedDirectory = useCallback(async (
     file: File,
-    uploadOptions?: { overwrite?: boolean; signal?: AbortSignal },
+    uploadOptions?: { overwrite?: boolean; signal?: AbortSignal; targetDirectory?: string },
   ) => {
     if (!scope.isCurrent()) {
       return null;
@@ -317,9 +317,11 @@ export function useFileExplorerMutations(
     if (owner === null) {
       return null;
     }
-    const targetDirectory = tree.selectedNode?.kind === "directory"
-      ? tree.selectedNode.path
-      : tree.currentDirectory;
+    const targetDirectory = uploadOptions?.targetDirectory ?? (
+      tree.selectedNode?.kind === "directory"
+        ? tree.selectedNode.path
+        : tree.currentDirectory
+    );
 
     setOperationFailure(null);
     clearError();

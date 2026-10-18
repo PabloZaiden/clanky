@@ -1,4 +1,5 @@
 import { memo } from "react";
+import type { DragEvent } from "react";
 import type { ContextMenuPosition } from "@pablozaiden/webapp/web";
 import type { WorkspaceFileNode } from "@/shared";
 
@@ -10,6 +11,11 @@ interface WorkspaceFileTreeNodesProps {
   currentFilePath?: string;
   selectedNodePath?: string;
   showHiddenFiles: boolean;
+  dropTargetDirectory: string | null;
+  onDirectoryDragEnter: (event: DragEvent<HTMLDivElement>, path: string) => void;
+  onDirectoryDragOver: (event: DragEvent<HTMLDivElement>, path: string) => void;
+  onDirectoryDragLeave: (event: DragEvent<HTMLDivElement>) => void;
+  onDirectoryDrop: (event: DragEvent<HTMLDivElement>, path: string) => void;
   onToggleDirectory: (path: string) => Promise<void>;
   onOpenFile: (path: string) => Promise<void>;
   onContextMenu: (node: WorkspaceFileNode, position: ContextMenuPosition) => void;
@@ -42,6 +48,11 @@ function WorkspaceFileTreeNodesComponent(props: WorkspaceFileTreeNodesProps) {
     currentFilePath,
     selectedNodePath,
     showHiddenFiles,
+    dropTargetDirectory,
+    onDirectoryDragEnter,
+    onDirectoryDragOver,
+    onDirectoryDragLeave,
+    onDirectoryDrop,
     onToggleDirectory,
     onOpenFile,
     onContextMenu,
@@ -52,6 +63,7 @@ function WorkspaceFileTreeNodesComponent(props: WorkspaceFileTreeNodesProps) {
     const isDirectory = entry.kind === "directory";
     const isExpanded = expandedDirectories.includes(entry.path);
     const isSelected = selectedNodePath === entry.path || (!selectedNodePath && currentFilePath === entry.path);
+    const isDropTarget = isDirectory && dropTargetDirectory === entry.path;
 
     return (
       <div key={entry.path}>
@@ -61,7 +73,14 @@ function WorkspaceFileTreeNodesComponent(props: WorkspaceFileTreeNodesProps) {
             isSelected
               ? "bg-gray-900 text-white dark:bg-neutral-100 dark:text-neutral-900"
               : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-neutral-800",
+            isDropTarget
+              ? "ring-2 ring-inset ring-blue-500 bg-blue-50/80 dark:ring-blue-400 dark:bg-blue-950/50"
+              : "",
           ].join(" ")}
+          onDragEnter={isDirectory ? (event) => onDirectoryDragEnter(event, entry.path) : undefined}
+          onDragOver={isDirectory ? (event) => onDirectoryDragOver(event, entry.path) : undefined}
+          onDragLeave={isDirectory ? onDirectoryDragLeave : undefined}
+          onDrop={isDirectory ? (event) => onDirectoryDrop(event, entry.path) : undefined}
           onContextMenu={(event) => {
             event.preventDefault();
             onContextMenu(entry, { x: event.clientX, y: event.clientY });
