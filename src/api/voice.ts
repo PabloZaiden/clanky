@@ -88,7 +88,7 @@ const voiceBaseRoutes = defineRoutes({
   "/api/voice/settings": {
     auth: "user",
     sameOrigin: "mutations",
-    description: "Read or update the transcription, shared text-generation, and Live Voice models, plus local Piper support status.",
+    description: "Read or update the transcription, shared text-generation, and Live Voice models and personal speaking instructions, plus local Piper support status.",
     requestSchema: VoiceSettingsUpdateSchema,
     operations: {
       GET: {
