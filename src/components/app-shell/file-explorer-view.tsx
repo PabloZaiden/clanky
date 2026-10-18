@@ -983,9 +983,15 @@ export function FileExplorerView({
 
       <Modal
         isOpen={renameTarget !== null}
-        onClose={closeRenameModal}
+        onClose={() => {
+          if (!renamingNode) {
+            closeRenameModal();
+          }
+        }}
         title="Rename selected item"
         size="sm"
+        showCloseButton={!renamingNode}
+        closeOnOverlayClick={!renamingNode}
         footer={(
           <>
             <Button variant="ghost" onClick={closeRenameModal} disabled={renamingNode}>
@@ -1011,6 +1017,7 @@ export function FileExplorerView({
             id="file-explorer-rename-input"
             type="text"
             value={renameInputValue}
+            disabled={renamingNode}
             onChange={(event) => setRenameInputValue(event.target.value)}
             className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-neutral-800 dark:text-gray-100"
             autoFocus
@@ -1020,7 +1027,11 @@ export function FileExplorerView({
 
       <ConfirmModal
         isOpen={deleteTarget !== null}
-        onClose={() => setDeleteTarget(null)}
+        onClose={() => {
+          if (!deletingNode) {
+            setDeleteTarget(null);
+          }
+        }}
         onConfirm={() => {
           void handleConfirmDelete();
         }}

@@ -229,7 +229,8 @@ export function useFileExplorerMutations(
       if (document.currentFile && isPathWithinOrEqual(document.currentFile.path, response.previousPath)) {
         const renamedFilePath = response.file.path + document.currentFile.path.slice(response.previousPath.length);
         await document.openFile(renamedFilePath, {
-          allowLargeFile: document.currentFile.size > LARGE_FILE_WARNING_THRESHOLD_BYTES,
+          allowLargeFile: document.largeFileWarning === null
+            && document.currentFile.size > LARGE_FILE_WARNING_THRESHOLD_BYTES,
         });
       }
       return response.file;

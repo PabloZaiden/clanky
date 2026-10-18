@@ -171,7 +171,9 @@ in both workspace and server explorers.
 
 Save or discard unsaved edits before renaming or deleting the open file or a
 folder containing it. Renaming a folder keeps a clean open file available at its
-new path.
+new path. A pending rename or deletion keeps its dialog open until the operation
+finishes. Files still awaiting large-file confirmation keep that warning at the
+renamed path rather than loading automatically.
 
 ## Preview Markdown files and diagrams
 
