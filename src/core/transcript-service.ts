@@ -25,6 +25,7 @@ type TranscriptEntry =
       sequence: number;
       tool: ToolCallRecord;
       hasOutput?: boolean;
+      hasImagePreview?: boolean;
     }
   | {
       kind: "log";
@@ -85,6 +86,7 @@ function createTranscriptEntryFromStorage(
       sequence: entry.sequence,
       tool: (entry.tool ?? entry.payload) as ToolCallRecord,
       ...(entry.toolHasOutput !== undefined ? { hasOutput: entry.toolHasOutput } : {}),
+      ...(entry.toolHasImagePreview !== undefined ? { hasImagePreview: entry.toolHasImagePreview } : {}),
     };
   }
   if (entry.kind === "log" && isRecord(entry.payload)) {
@@ -127,7 +129,10 @@ export function createTranscriptFromStorageEntries(
       .map((entry) => entry.log);
   const toolCalls = transcriptEntries
       .filter((entry): entry is Extract<TranscriptEntry, { kind: "tool" }> => entry.kind === "tool")
-      .map((entry) => createToolCallSummary(entry.tool, { hasOutput: entry.hasOutput }));
+      .map((entry) => createToolCallSummary(entry.tool, {
+        hasOutput: entry.hasOutput,
+        hasImagePreview: entry.hasImagePreview,
+      }));
   const loadedResponses = messages.filter(isCountedAssistantResponse).length;
   const totalResponses = options.totalResponses ?? loadedResponses;
   const isPartial = options.isPartial ?? totalResponses > loadedResponses;

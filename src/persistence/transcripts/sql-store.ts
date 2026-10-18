@@ -50,6 +50,15 @@ import type {
 
 let nextLiveTranscriptSequence = Math.floor(Date.now() * 1000);
 
+const TOOL_IMAGE_PREVIEW_PROJECTION = `
+  CASE WHEN json_valid(tool_extras) THEN EXISTS (
+    SELECT 1 FROM json_each(tool_extras) AS extra
+    WHERE extra.type = 'object'
+      AND json_extract(extra.value, '$.type') = 'image_preview'
+      AND length(json_extract(extra.value, '$.image.data')) > 0
+  ) ELSE 0 END AS tool_has_image_preview
+`;
+
 function allocateLiveTranscriptSequence(): number {
   nextLiveTranscriptSequence += 1;
   return nextLiveTranscriptSequence;
@@ -439,7 +448,8 @@ export function listTranscriptEntriesForUser(
     SELECT entry_id, kind, timestamp, sequence, payload,
       updated_at,
       tool_name, tool_status, ${includeToolPayload ? "tool_input, tool_output, tool_extras" : "tool_input, NULL AS tool_output, NULL AS tool_extras"},
-      CASE WHEN tool_output IS NOT NULL THEN 1 ELSE 0 END AS tool_has_output
+      CASE WHEN tool_output IS NOT NULL THEN 1 ELSE 0 END AS tool_has_output,
+      ${TOOL_IMAGE_PREVIEW_PROJECTION}
     FROM ${config.entriesTable}
     WHERE ${config.resourceColumn} = ? AND user_id = ?
     ORDER BY timestamp DESC, sequence DESC, kind DESC, entry_id DESC
@@ -508,7 +518,8 @@ export function listTranscriptEntriesAfterForUser(
       updated_at,
       tool_name, tool_status,
       ${includeToolPayload ? "tool_input, tool_output, tool_extras" : "tool_input, NULL AS tool_output, NULL AS tool_extras"},
-      CASE WHEN tool_output IS NOT NULL THEN 1 ELSE 0 END AS tool_has_output
+      CASE WHEN tool_output IS NOT NULL THEN 1 ELSE 0 END AS tool_has_output,
+      ${TOOL_IMAGE_PREVIEW_PROJECTION}
     FROM ${config.entriesTable}
     WHERE ${config.resourceColumn} = ? AND user_id = ?
       ${afterClause}
@@ -617,7 +628,8 @@ function getEntriesBetween(
     SELECT entry_id, kind, timestamp, sequence, payload,
       updated_at,
       tool_name, tool_status, tool_input, NULL AS tool_output, NULL AS tool_extras,
-      CASE WHEN tool_output IS NOT NULL THEN 1 ELSE 0 END AS tool_has_output
+      CASE WHEN tool_output IS NOT NULL THEN 1 ELSE 0 END AS tool_has_output,
+      ${TOOL_IMAGE_PREVIEW_PROJECTION}
     FROM ${config.entriesTable}
     WHERE ${config.resourceColumn} = ?
       AND user_id = ?

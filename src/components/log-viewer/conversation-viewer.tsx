@@ -2,6 +2,7 @@ import { useCallback, useMemo, memo } from "react";
 import { Button, useToast } from "@pablozaiden/webapp/web";
 import type { VoiceTranslationResponse } from "@/contracts/schemas";
 import type { VoiceTranslationLanguage } from "@/shared";
+import { hasToolCallImagePreview } from "@/shared/tool-call";
 import { useForegroundPresentation } from "../../hooks/useForegroundPresentation";
 import { apiRequest } from "../../lib/api-client";
 import {
@@ -21,6 +22,7 @@ import {
 } from "./utils";
 import { MessageEntry } from "./message-entry";
 import { ToolEntry } from "./tool-entry";
+import { ToolImageEntry } from "./tool-image-entry";
 import { ToolGroupEntry } from "./tool-group-entry";
 import { ReasoningGroupEntry } from "./reasoning-group-entry";
 import { WorkingGroupEntry } from "./working-group-entry";
@@ -135,7 +137,11 @@ const ConversationPresentation = memo(function ConversationPresentation({
     });
 
     toolCalls.forEach((tool) => {
-      result.push({ type: "tool", data: tool, timestamp: tool.timestamp });
+      result.push({
+        type: hasToolCallImagePreview(tool) ? "tool-image" : "tool",
+        data: tool,
+        timestamp: tool.timestamp,
+      });
     });
 
     logs.filter(shouldIncludeConversationTranscriptLog).forEach((logEntry) => {
@@ -263,6 +269,18 @@ const ConversationPresentation = memo(function ConversationPresentation({
                     onReadAloud={onReadAloud}
                     playingReadAloudKey={messageReadAloudKey}
                     readAloudStatus={messageReadAloudKey ? readAloudStatus : null}
+                  />
+                );
+              } else if (entry.type === "tool-image") {
+                return (
+                  <ToolImageEntry
+                    key={`tool-image-${entry.data.id}`}
+                    data={entry.data}
+                    timestamp={entry.timestamp}
+                    showTimestamp={entry.showTimestamp}
+                    spacingClass={spacingClass}
+                    toolPathDisplayRoot={toolPathDisplayRoot}
+                    onLoadToolDetails={onLoadToolDetails}
                   />
                 );
               } else if (entry.type === "tool") {

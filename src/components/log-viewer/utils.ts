@@ -134,6 +134,8 @@ export function getEntryGroupKey(entry: GroupedEntryBase): string {
       return `message|${entry.data.role}`;
     case "tool":
       return `tool|${entry.data.name}`;
+    case "tool-image":
+      return "tool-image";
     case "tool-group":
       return "tool-group";
     case "reasoning-group":
