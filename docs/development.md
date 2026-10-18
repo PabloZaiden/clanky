@@ -59,6 +59,13 @@ An initial directory is not workspace identity. Use the workspace ID internally
 and its name in ordinary UI; show paths only for real filesystem operations or
 requested diagnostics.
 
+Work-item lists (Recent activity, Needs attention, workspace Activity/History,
+and server chats/terminals) use `WorkItemRow`: workspace icon/name and status
+on the first line, item name on the second, relative interaction time and
+type/provider on the third. Host-owned items use the host name instead of a
+workspace. Keep this order aligned with Active work in the sidebar; the two
+surfaces retain their existing framework controls.
+
 Use `useUnsavedChanges(dirty, resetDraft)` for composite Settings drafts.
 Save failure retains the draft; explicit Cancel resets it. Simple preferences
 can autosave with local saving/saved/error feedback. Voice saves all settings
