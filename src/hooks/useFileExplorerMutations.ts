@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { WorkspaceFileEntry } from "@/shared";
+import type { WorkspaceFileEntry, WorkspaceFileNode } from "@/shared";
 import {
   WorkspaceFileConflictError,
   deleteFileExplorerNodeApi,
@@ -40,11 +40,12 @@ export interface UseFileExplorerMutationsResult {
   savingFile: boolean;
   operationFailure: FileExplorerOperationFailure | null;
   uploadProgress: { bytesUploaded: number; totalBytes: number } | null;
-  renameSelectedNode: (
+  renameNode: (
+    node: WorkspaceFileNode,
     newName: string,
     options?: { overwrite?: boolean },
   ) => Promise<WorkspaceFileEntry | null>;
-  deleteSelectedNode: () => Promise<boolean>;
+  deleteNode: (node: WorkspaceFileNode) => Promise<boolean>;
   uploadFileToSelectedDirectory: (
     file: File,
     options?: { overwrite?: boolean; signal?: AbortSignal },
@@ -185,12 +186,12 @@ export function useFileExplorerMutations(
     scope,
   ]);
 
-  const renameSelectedNode = useCallback(async (
+  const renameNode = useCallback(async (
+    node: WorkspaceFileNode,
     newName: string,
     renameOptions?: { overwrite?: boolean },
   ) => {
-    const selectedNode = tree.selectedNode;
-    if (!selectedNode || !scope.isCurrent()) {
+    if (!scope.isCurrent()) {
       return null;
     }
     const owner = beginMutation("rename");
@@ -202,10 +203,13 @@ export function useFileExplorerMutations(
     clearError();
 
     try {
+      if (document.isDirty && document.currentFile && isPathWithinOrEqual(document.currentFile.path, node.path)) {
+        throw new Error("Save or discard local changes before modifying this item.");
+      }
       const response = await renameFileExplorerNodeApi(scope.target, {
-        path: selectedNode.path,
+        path: node.path,
         newName,
-        expectedVersionToken: document.currentFile?.path === selectedNode.path
+        expectedVersionToken: document.currentFile?.path === node.path
           ? document.currentFile.versionToken
           : null,
         overwrite: renameOptions?.overwrite ?? false,
@@ -222,9 +226,11 @@ export function useFileExplorerMutations(
       if (!isCurrentMutation(owner)) {
         return null;
       }
-      if (document.currentFile?.path === response.previousPath) {
-        await document.openFile(response.file.path, {
-          allowLargeFile: response.file.size > LARGE_FILE_WARNING_THRESHOLD_BYTES,
+      if (document.currentFile && isPathWithinOrEqual(document.currentFile.path, response.previousPath)) {
+        const renamedFilePath = response.file.path + document.currentFile.path.slice(response.previousPath.length);
+        await document.openFile(renamedFilePath, {
+          allowLargeFile: document.largeFileWarning === null
+            && document.currentFile.size > LARGE_FILE_WARNING_THRESHOLD_BYTES,
         });
       }
       return response.file;
@@ -244,9 +250,8 @@ export function useFileExplorerMutations(
     }
   }, [beginMutation, clearError, document, finishMutation, isCurrentMutation, onError, scope, tree]);
 
-  const deleteSelectedNode = useCallback(async () => {
-    const selectedNode = tree.selectedNode;
-    if (!selectedNode || !scope.isCurrent()) {
+  const deleteNode = useCallback(async (node: WorkspaceFileNode) => {
+    if (!scope.isCurrent()) {
       return false;
     }
     const owner = beginMutation("delete");
@@ -258,10 +263,13 @@ export function useFileExplorerMutations(
     clearError();
 
     try {
+      if (document.isDirty && document.currentFile && isPathWithinOrEqual(document.currentFile.path, node.path)) {
+        throw new Error("Save or discard local changes before modifying this item.");
+      }
       const response = await deleteFileExplorerNodeApi(scope.target, {
-        path: selectedNode.path,
-        kind: selectedNode.kind,
-        expectedVersionToken: document.currentFile?.path === selectedNode.path
+        path: node.path,
+        kind: node.kind,
+        expectedVersionToken: document.currentFile?.path === node.path
           ? document.currentFile.versionToken
           : null,
         startDirectory: scope.target.startDirectory ?? null,
@@ -376,8 +384,8 @@ export function useFileExplorerMutations(
     savingFile: hasCurrentTargetState ? savingFile : false,
     operationFailure: hasCurrentTargetState ? operationFailure : null,
     uploadProgress: hasCurrentTargetState ? uploadProgress : null,
-    renameSelectedNode,
-    deleteSelectedNode,
+    renameNode,
+    deleteNode,
     uploadFileToSelectedDirectory,
     saveCurrentFile,
     retrySaveWithOverwrite,

@@ -50,8 +50,8 @@ export interface UseFileExplorerResult {
   toggleDirectory: (path: string) => Promise<void>;
   openFile: (path: string) => Promise<void>;
   selectNode: (node: WorkspaceFileNode | null) => void;
-  renameSelectedNode: (newName: string, options?: { overwrite?: boolean }) => Promise<WorkspaceFileEntry | null>;
-  deleteSelectedNode: () => Promise<boolean>;
+  renameNode: (node: WorkspaceFileNode, newName: string, options?: { overwrite?: boolean }) => Promise<WorkspaceFileEntry | null>;
+  deleteNode: (node: WorkspaceFileNode) => Promise<boolean>;
   uploadFileToSelectedDirectory: (file: File, options?: { overwrite?: boolean; signal?: AbortSignal }) => Promise<WorkspaceFileEntry | null>;
   openLargeFileInEditor: (path?: string) => Promise<boolean>;
   setEditorContent: (value: string) => void;

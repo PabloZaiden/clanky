@@ -1,37 +1,8 @@
-import { memo, useMemo, type ReactNode } from "react";
-import { ActionMenu, type ActionMenuItem } from "@pablozaiden/webapp/web";
+import { memo, useCallback, useMemo, useState, type ReactNode } from "react";
+import { ActionMenu, ContextMenu, type ActionMenuItem, type ContextMenuPosition } from "@pablozaiden/webapp/web";
 import type { WorkspaceFileNode } from "@/shared";
 import { Button, CopyPathIcon, RefreshIcon, SidebarIcon } from "../common";
-
-function Chevron({ expanded }: { expanded: boolean }) {
-  return (
-    <svg
-      className={`h-4 w-4 shrink-0 transition-transform ${expanded ? "rotate-90" : ""}`}
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      strokeWidth={2}
-    >
-      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-    </svg>
-  );
-}
-
-function FolderIcon() {
-  return (
-    <svg className="h-4 w-4 shrink-0 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
-    </svg>
-  );
-}
-
-function FileIcon() {
-  return (
-    <svg className="h-4 w-4 shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M7 3h7l5 5v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" />
-    </svg>
-  );
-}
+import { WorkspaceFileTreeNodes } from "./file-tree-nodes";
 
 interface FileTreeHeaderButtonProps {
   label: string;
@@ -83,6 +54,10 @@ interface WorkspaceFileTreeProps {
   onUploadFile: () => void;
   onRenameSelectedNode: () => void;
   onDeleteSelectedNode: () => void;
+  onDownloadNode: (node: WorkspaceFileNode) => Promise<void>;
+  onRenameNode: (node: WorkspaceFileNode) => void;
+  onDeleteNode: (node: WorkspaceFileNode) => void;
+  nodeActionsDisabled: boolean;
   onToggleCollapsed: () => void;
   onToggleDirectory: (path: string) => Promise<void>;
   onOpenFile: (path: string) => Promise<void>;
@@ -91,68 +66,6 @@ interface WorkspaceFileTreeProps {
   canUploadFile: boolean;
   canRenameSelectedNode: boolean;
   canDeleteSelectedNode: boolean;
-}
-
-function isHiddenEntry(entry: WorkspaceFileNode): boolean {
-  return entry.name.startsWith(".");
-}
-
-function renderDirectory(
-  path: string,
-  entriesByDirectory: Record<string, WorkspaceFileNode[]>,
-  expandedDirectories: string[],
-  currentFilePath: string | undefined,
-  selectedNodePath: string | undefined,
-  showHiddenFiles: boolean,
-  onToggleDirectory: (path: string) => Promise<void>,
-  onOpenFile: (path: string) => Promise<void>,
-  depth = 0,
-): ReactNode {
-  const entries = (entriesByDirectory[path] ?? []).filter((entry) => showHiddenFiles || !isHiddenEntry(entry));
-  return entries.map((entry) => {
-    const isDirectory = entry.kind === "directory";
-    const isExpanded = expandedDirectories.includes(entry.path);
-    const isSelected = selectedNodePath === entry.path || (!selectedNodePath && currentFilePath === entry.path);
-
-    return (
-      <div key={entry.path}>
-        <div className="min-w-full w-max">
-          <button
-            type="button"
-            onClick={() => {
-              if (isDirectory) {
-                void onToggleDirectory(entry.path);
-                return;
-              }
-              void onOpenFile(entry.path);
-            }}
-            className={[
-              "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition whitespace-nowrap",
-              isSelected
-                ? "bg-gray-900 text-white dark:bg-neutral-100 dark:text-neutral-900"
-                : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-neutral-800",
-            ].join(" ")}
-            style={{ paddingLeft: `${depth * 14 + 8}px` }}
-          >
-            {isDirectory ? <Chevron expanded={isExpanded} /> : <span className="w-4 shrink-0" />}
-            {isDirectory ? <FolderIcon /> : <FileIcon />}
-            <span>{entry.name}</span>
-          </button>
-        </div>
-        {isDirectory && isExpanded && renderDirectory(
-          entry.path,
-          entriesByDirectory,
-          expandedDirectories,
-          currentFilePath,
-          selectedNodePath,
-          showHiddenFiles,
-          onToggleDirectory,
-          onOpenFile,
-          depth + 1,
-        )}
-      </div>
-    );
-  });
 }
 
 function WorkspaceFileTreeComponent({
@@ -172,6 +85,10 @@ function WorkspaceFileTreeComponent({
   onUploadFile,
   onRenameSelectedNode,
   onDeleteSelectedNode,
+  onDownloadNode,
+  onRenameNode,
+  onDeleteNode,
+  nodeActionsDisabled,
   onToggleCollapsed,
   onToggleDirectory,
   onOpenFile,
@@ -181,6 +98,35 @@ function WorkspaceFileTreeComponent({
   canRenameSelectedNode,
   canDeleteSelectedNode,
 }: WorkspaceFileTreeProps) {
+  const [contextMenu, setContextMenu] = useState<{
+    node: WorkspaceFileNode;
+    position: ContextMenuPosition;
+  } | null>(null);
+  const openContextMenu = useCallback((node: WorkspaceFileNode, position: ContextMenuPosition) => {
+    setContextMenu({ node, position });
+  }, []);
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
+  const getNodeActions = useCallback((node: WorkspaceFileNode): ActionMenuItem[] => [
+    ...(node.kind === "file" ? [{
+      id: "download",
+      label: "Download",
+      disabled: nodeActionsDisabled,
+      onAction: () => void onDownloadNode(node),
+    }] : []),
+    {
+      id: "rename",
+      label: "Rename",
+      disabled: nodeActionsDisabled,
+      onAction: () => onRenameNode(node),
+    },
+    {
+      id: "delete",
+      label: "Delete",
+      destructive: true,
+      disabled: nodeActionsDisabled,
+      onAction: () => onDeleteNode(node),
+    },
+  ], [nodeActionsDisabled, onDeleteNode, onDownloadNode, onRenameNode]);
   const collapseLabel = collapsed ? "Expand file explorer" : "Collapse file explorer";
   const actionItems = useMemo<ActionMenuItem[]>(() => [
     {
@@ -231,24 +177,6 @@ function WorkspaceFileTreeComponent({
     onRenameSelectedNode,
     onToggleShowHiddenFiles,
     onUploadFile,
-    showHiddenFiles,
-  ]);
-  const renderedTree = useMemo(() => renderDirectory(
-    "",
-    entriesByDirectory,
-    expandedDirectories,
-    currentFilePath,
-    selectedNodePath,
-    showHiddenFiles,
-    onToggleDirectory,
-    onOpenFile,
-  ), [
-    currentFilePath,
-    entriesByDirectory,
-    expandedDirectories,
-    onOpenFile,
-    onToggleDirectory,
-    selectedNodePath,
     showHiddenFiles,
   ]);
   const collapseButton = (
@@ -335,8 +263,19 @@ function WorkspaceFileTreeComponent({
               {error}
             </div>
           )}
-          <div data-testid="workspace-file-tree-content" className="min-w-full w-max">
-            {renderedTree}
+          <div data-testid="workspace-file-tree-content" className="min-w-max w-full">
+            <WorkspaceFileTreeNodes
+              path=""
+              entriesByDirectory={entriesByDirectory}
+              expandedDirectories={expandedDirectories}
+              currentFilePath={currentFilePath}
+              selectedNodePath={selectedNodePath}
+              showHiddenFiles={showHiddenFiles}
+              onToggleDirectory={onToggleDirectory}
+              onOpenFile={onOpenFile}
+              getNodeActions={getNodeActions}
+              onContextMenu={openContextMenu}
+            />
           </div>
           {loading && (
             <div
@@ -356,6 +295,12 @@ function WorkspaceFileTreeComponent({
           )}
         </div>
       )}
+      <ContextMenu
+        items={contextMenu ? getNodeActions(contextMenu.node) : []}
+        position={contextMenu?.position ?? null}
+        ariaLabel={contextMenu ? `Actions for ${contextMenu.node.name}` : "File actions"}
+        onClose={closeContextMenu}
+      />
     </section>
   );
 }
