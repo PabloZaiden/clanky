@@ -108,11 +108,30 @@ class AsyncReadWriteLock {
   private readonly waiters: Array<{
     mode: "read" | "write";
     resolve: (release: () => void) => void;
+    signal?: AbortSignal;
+    abort: () => void;
   }> = [];
 
-  async acquire(mode: "read" | "write"): Promise<() => void> {
-    return await new Promise<() => void>((resolve) => {
-      this.waiters.push({ mode, resolve });
+  async acquire(mode: "read" | "write", signal?: AbortSignal): Promise<() => void> {
+    return await new Promise<() => void>((resolve, reject) => {
+      const waiter = {
+        mode,
+        resolve,
+        signal,
+        abort: () => {
+          const index = this.waiters.indexOf(waiter);
+          if (index >= 0) this.waiters.splice(index, 1);
+          signal?.removeEventListener("abort", waiter.abort);
+          reject(new DomainError("mesh_execution_aborted", "The Mesh filesystem operation was aborted."));
+          this.drain();
+        },
+      };
+      if (signal?.aborted) {
+        waiter.abort();
+        return;
+      }
+      this.waiters.push(waiter);
+      signal?.addEventListener("abort", waiter.abort, { once: true });
       this.drain();
     });
   }
@@ -126,12 +145,14 @@ class AsyncReadWriteLock {
         return;
       }
       const waiter = this.waiters.shift()!;
+      waiter.signal?.removeEventListener("abort", waiter.abort);
       this.writerActive = true;
       waiter.resolve(this.createRelease("write"));
       return;
     }
     while (this.waiters[0]?.mode === "read" && !this.writerActive) {
       const waiter = this.waiters.shift()!;
+      waiter.signal?.removeEventListener("abort", waiter.abort);
       this.activeReaders += 1;
       waiter.resolve(this.createRelease("read"));
     }
@@ -1302,6 +1323,7 @@ export class MeshExecutionGateway {
       if (request.operation !== "exec") {
         releaseFileOperation = await this.fileOperationsLock.acquire(
           EXCLUSIVE_EXECUTION_OPERATIONS.has(request.operation) ? "write" : "read",
+          treeOperation?.signal ?? signal,
         );
       }
       const cwd = resolveMeshExecutionPath(
@@ -1672,26 +1694,27 @@ export class MeshExecutionGateway {
 
     const operation = this.startSessionOperation(session, signal);
     session.inFlight += 1;
-    const releaseFileOperation = await this.fileOperationsLock.acquire("read");
+    let releaseFileOperation: (() => void) | undefined;
     try {
+      releaseFileOperation = await this.fileOperationsLock.acquire("read", operation.signal);
       const path = resolveMeshExecutionPath(
         session,
         requestedPath,
       );
       const stream = await session.executor.streamFile(path, { signal: operation.signal });
       if (!stream) {
-        releaseFileOperation();
+        releaseFileOperation?.();
         operation.cleanup();
         session.inFlight -= 1;
         return null;
       }
       return this.trackStream(stream, operation.signal, () => {
-        releaseFileOperation();
+        releaseFileOperation?.();
         operation.cleanup();
         session.inFlight -= 1;
       });
     } catch (error) {
-      releaseFileOperation();
+      releaseFileOperation?.();
       operation.cleanup();
       session.inFlight -= 1;
       throw error;
@@ -1728,8 +1751,9 @@ export class MeshExecutionGateway {
 
     const operation = this.startSessionOperation(session, signal);
     session.inFlight += 1;
-    const releaseFileOperation = await this.fileOperationsLock.acquire("write");
+    let releaseFileOperation: (() => void) | undefined;
     try {
+      releaseFileOperation = await this.fileOperationsLock.acquire("write", operation.signal);
       const path = resolveMeshExecutionPath(
         session,
         requestedPath,
@@ -1741,7 +1765,7 @@ export class MeshExecutionGateway {
         signal: operation.signal,
       });
     } finally {
-      releaseFileOperation();
+      releaseFileOperation?.();
       operation.cleanup();
       session.inFlight -= 1;
     }

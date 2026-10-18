@@ -187,6 +187,7 @@ export const chatsLifecycleRoutes = defineRoutes({
         }
         const recovered = await chatManager.continueFromHistory(chatId, {
           credentialToken: validation.data.credentialToken,
+          signal: req.signal,
         });
         if (!recovered) {
           return errorResponse("not_found", "Chat not found", 404);
