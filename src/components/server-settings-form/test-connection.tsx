@@ -1,7 +1,7 @@
 /** Test connection action and result display. */
 
 import { Button } from "../common";
-import { CheckIcon, XIcon } from "./icons";
+import { SettingsFieldRow } from "@pablozaiden/webapp/web";
 
 interface TestConnectionProps {
   onTest: () => Promise<void>;
@@ -12,7 +12,11 @@ interface TestConnectionProps {
 
 export function TestConnection({ onTest, testing, disabled = false, testResult }: TestConnectionProps) {
   return (
-    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4">
+    <SettingsFieldRow title="Connection" feedback={testResult ? (
+      <span role={testResult.success ? "status" : "alert"} className={testResult.success ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}>
+        {testResult.success ? "Connected" : testResult.error ?? "Connection failed"}
+      </span>
+    ) : null} actions={
       <Button
         type="button"
         size="sm"
@@ -20,26 +24,8 @@ export function TestConnection({ onTest, testing, disabled = false, testResult }
         disabled={disabled || testing}
         onClick={() => void onTest()}
       >
-        Test Workspace connection
+        Test
       </Button>
-
-      {testResult && (
-        <div className="flex items-center gap-2">
-          {testResult.success ? (
-            <>
-              <CheckIcon className="w-5 h-5 text-green-500 flex-shrink-0" />
-              <span className="text-sm text-green-600 dark:text-green-400">Connection successful</span>
-            </>
-          ) : (
-            <>
-              <XIcon className="w-5 h-5 text-red-500 flex-shrink-0" />
-              <span className="text-sm text-red-600 dark:text-red-400 break-words">
-                {testResult.error ?? "Connection failed"}
-              </span>
-            </>
-          )}
-        </div>
-      )}
-    </div>
+    } />
   );
 }

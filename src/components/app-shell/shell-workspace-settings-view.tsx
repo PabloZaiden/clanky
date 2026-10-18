@@ -1,7 +1,7 @@
 import type { Workspace } from "@/shared";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import { WorkspaceSettingsForm } from "../workspace-settings";
-import { ErrorState, LoadingState, useHeaderActions, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { ErrorState, LoadingState, log, useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
 import type { UseWorkspaceSettingsShellResult } from "./use-workspace-settings-shell";
 
 interface WorkspaceSettingsViewProps {
@@ -21,6 +21,7 @@ export function WorkspaceSettingsView({
   deleteWorkspace,
   navigateWithinShell,
 }: WorkspaceSettingsViewProps) {
+  const toast = useToast();
   const {
     workspace: workspaceFromHook,
     status: workspaceStatus,
@@ -31,36 +32,25 @@ export function WorkspaceSettingsView({
     testConnection: testWorkspaceConnection,
     updateWorkspace: updateWorkspaceSettings,
     workspaceSettingsWorkspaceId,
-    workspaceSettingsFormValid,
-    setWorkspaceSettingsFormValid,
     workspaceArchivedTasksPurging,
     handlePurgeArchivedTasks,
     selectedWorkspaceArchivedTaskCount,
     selectedWorkspaceTaskCount,
   } = workspaceSettings;
-
-  useHeaderActions({
-    primary: [{
-      id: "save-workspace",
-      label: "Save",
-      form: "workspace-settings-shell-form",
-      loading: workspaceSettingsSaving,
-      disabled: !workspaceSettingsFormValid || workspaceSettingsLoading || !workspaceFromHook,
-    }],
-  });
+  const loadedWorkspace = workspaceFromHook?.id === selectedWorkspace.id ? workspaceFromHook : null;
 
   return (
-    <div className="space-y-6">
+    <div className="flex min-h-0 flex-1 flex-col">
       {workspaceSettingsError ? (
-        <ErrorState title="Unable to load workspace settings" description={workspaceSettingsError} />
+        <ErrorState title={loadedWorkspace ? "Unable to update workspace settings" : "Unable to load workspace settings"} description={workspaceSettingsError} />
       ) : null}
 
-      {workspaceSettingsLoading && !workspaceFromHook ? (
+      {workspaceSettingsLoading && !loadedWorkspace ? (
         <LoadingState title="Loading workspace settings" />
-      ) : workspaceFromHook ? (
-        <div className="space-y-6">
+      ) : loadedWorkspace ? (
           <WorkspaceSettingsForm
-            workspace={workspaceFromHook}
+            key={loadedWorkspace.id}
+            workspace={loadedWorkspace}
             status={workspaceStatus}
             onSave={async (
               name,
@@ -81,7 +71,12 @@ export function WorkspaceSettingsView({
                 allowWorktrees,
               );
               if (success) {
-                await refreshWorkspaces();
+                try {
+                  await refreshWorkspaces();
+                } catch (error) {
+                  log.warn("Workspace saved but workspace list refresh failed", error);
+                  toast.error("Workspace saved, but the workspace list could not refresh.");
+                }
               }
               return success;
             }}
@@ -103,13 +98,9 @@ export function WorkspaceSettingsView({
             testing={workspaceSettingsTesting}
             purgingPurgeableTasks={workspaceArchivedTasksPurging}
             remoteOnly={dashboardData.remoteOnly}
-            showConnectionStatus={false}
             formId="workspace-settings-shell-form"
-            onSaved={() => navigateWithinShell({ view: "workspace", workspaceId: selectedWorkspace.id })}
             onDeleted={() => navigateWithinShell({ view: "home" })}
-            onValidityChange={setWorkspaceSettingsFormValid}
           />
-        </div>
       ) : (
         <ErrorState title="Workspace settings unavailable" description="Workspace settings are unavailable right now." />
       )}

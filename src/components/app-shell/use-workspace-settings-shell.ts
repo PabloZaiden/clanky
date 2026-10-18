@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { WebAppRoute } from "@pablozaiden/webapp/web";
 import type { PurgeArchivedTasksResult } from "../../hooks";
 import type { WorkspaceGroup } from "../../hooks/useTaskGrouping";
@@ -7,8 +7,6 @@ import { getRouteString } from "./route-fields";
 
 export interface UseWorkspaceSettingsShellResult extends UseWorkspaceServerSettingsResult {
   workspaceSettingsWorkspaceId: string | null;
-  workspaceSettingsFormValid: boolean;
-  setWorkspaceSettingsFormValid: (valid: boolean) => void;
   workspaceArchivedTasksPurging: boolean;
   handlePurgeArchivedTasks: (workspaceId: string) => Promise<PurgeArchivedTasksResult>;
   selectedWorkspaceArchivedTaskCount: number;
@@ -29,7 +27,6 @@ export function useWorkspaceSettingsShell({
   const workspaceSettingsWorkspaceId = route.view === "workspace-settings"
     ? getRouteString(route, "workspaceId") ?? null
     : null;
-  const [workspaceSettingsFormValid, setWorkspaceSettingsFormValid] = useState(false);
   const [workspaceArchivedTasksPurging, setWorkspaceArchivedTasksPurging] = useState(false);
 
   const workspaceServerSettings = useWorkspaceServerSettings(workspaceSettingsWorkspaceId);
@@ -51,16 +48,6 @@ export function useWorkspaceSettingsShell({
     return workspaceGroups.find((group) => group.workspace.id === workspaceSettingsWorkspaceId)?.tasks.length ?? 0;
   }, [workspaceGroups, workspaceSettingsWorkspaceId]);
 
-  useEffect(() => {
-    if (route.view !== "workspace-settings") {
-      setWorkspaceSettingsFormValid(false);
-    }
-  }, [route.view]);
-
-  useEffect(() => {
-    setWorkspaceSettingsFormValid(false);
-  }, [workspaceSettingsWorkspaceId]);
-
   async function handlePurgeArchivedTasks(workspaceId: string): Promise<PurgeArchivedTasksResult> {
     try {
       setWorkspaceArchivedTasksPurging(true);
@@ -73,8 +60,6 @@ export function useWorkspaceSettingsShell({
   return {
     ...workspaceServerSettings,
     workspaceSettingsWorkspaceId,
-    workspaceSettingsFormValid,
-    setWorkspaceSettingsFormValid,
     workspaceArchivedTasksPurging,
     handlePurgeArchivedTasks,
     selectedWorkspaceArchivedTaskCount,

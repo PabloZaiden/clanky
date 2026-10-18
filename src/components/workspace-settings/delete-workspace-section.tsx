@@ -3,11 +3,10 @@
  */
 
 import { useState } from "react";
-import { ConfirmModal, useToast } from "@pablozaiden/webapp/web";
+import { Button, CheckboxField, ConfirmModal, SettingsFieldRow, useToast } from "@pablozaiden/webapp/web";
 import type { Workspace } from "@/shared/workspace";
 import { getRegisteredSshServerId } from "@/shared/execution-host";
 import type { DeleteWorkspaceRequest } from "@/contracts/schemas/workspace";
-import { Button } from "../common";
 import { getStoredSshCredentialToken } from "../../lib/ssh-browser-credentials";
 import { isAutoProvisionedWorkspace } from "../../lib/workspace-deletion-safety";
 
@@ -63,24 +62,14 @@ export function DeleteWorkspaceSection({
   }
 
   return (
-    <div className="border-t border-gray-200 dark:border-gray-700 pt-6 mt-6">
-      <div className="p-4 rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-900/20">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
-            <h3 className="text-sm font-medium text-red-800 dark:text-red-200 mb-2">
-              Delete Workspace
-            </h3>
-            <p className="text-sm text-red-700 dark:text-red-300">
-              {workspaceTaskCount > 0
+    <>
+      <SettingsFieldRow title="Delete workspace" danger
+        description={workspaceTaskCount > 0
                 ? `Delete the remaining ${workspaceTaskCount} task${workspaceTaskCount === 1 ? "" : "s"} in this workspace before removing it from Clanky.`
                 : "Chats in Trash and their managed worktrees will be permanently deleted."}
-            </p>
-          </div>
-          <Button
+        actions={<Button
             type="button"
-            size="sm"
-            variant="danger"
-            className="shrink-0"
+            tone="danger"
             disabled={disabled}
             onClick={() => {
               setDeleteServerDirectory(true);
@@ -88,9 +77,7 @@ export function DeleteWorkspaceSection({
             }}
           >
             Delete
-          </Button>
-        </div>
-      </div>
+          </Button>} />
 
       <ConfirmModal
         isOpen={showConfirm}
@@ -107,20 +94,10 @@ export function DeleteWorkspaceSection({
         variant="danger"
       >
         {canDeleteServerDirectory && workspace.sourceDirectory && (
-          <label className="mt-4 flex items-start gap-3 text-sm text-gray-700 dark:text-gray-300">
-            <input
-              type="checkbox"
-              checked={deleteServerDirectory}
-              onChange={(event) => setDeleteServerDirectory(event.currentTarget.checked)}
-              className="mt-1"
-            />
-            <span>
-              Also delete the server directory{" "}
-              <span className="font-mono break-all">{workspace.sourceDirectory}</span>
-            </span>
-          </label>
+          <CheckboxField label="Also delete the server directory" hint={workspace.sourceDirectory}
+            checked={deleteServerDirectory} onChange={(event) => setDeleteServerDirectory(event.currentTarget.checked)} />
         )}
       </ConfirmModal>
-    </div>
+    </>
   );
 }

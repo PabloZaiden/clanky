@@ -38,7 +38,7 @@ primaries are semantic `HeaderPrimaryAction[]` descriptors: the framework
 moves them first into overflow as space narrows, preserving native form
 validation and submission.
 
-Use public fields, `SettingsFieldRow`, `FormGroup`/`FormActions`, bounded
+Use public fields, `SettingsLayout`, `SettingsFieldRow`, `FormGroup`/`FormActions`, bounded
 `Page layout="form"`, `DataList` rows and toolbar slots. Associate checkbox
 titles with their input IDs. Settings sections declare category and scope;
 custom renderers need a concrete composition limitation, not different CSS.
@@ -63,6 +63,15 @@ Use `useUnsavedChanges(dirty, resetDraft)` for composite Settings drafts.
 Save failure retains the draft; explicit Cancel resets it. Simple preferences
 can autosave with local saving/saved/error feedback. Voice saves all settings
 together and validates each saved capability separately.
+
+Workspace Settings uses General, Execution, Instructions and Maintenance
+categories in the same public `SettingsLayout` as global Settings. Keep one
+draft mounted across these in-page categories: Save persists it without
+navigating away, Cancel restores current saved values, and route navigation
+uses the framework unsaved-change confirmation. Native validation reveals
+the first invalid field's category before focusing it. Icon and AGENTS.md
+actions save independently and must not reset unrelated edits. Keep workspace
+deletion restrictions and managed-directory confirmation intact.
 
 Use the public `useTheme()` integration; Dark is the no-preference default,
 not a forced override of saved Light/System. Do not inspect or change

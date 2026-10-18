@@ -1,7 +1,8 @@
 /**
- * Workspace adapter, host and SSH field presentation.
+ * Workspace adapter, host and SSH settings rows.
  */
 
+import { CheckboxField, FormGroup, Input, Select, SettingsFieldRow } from "@pablozaiden/webapp/web";
 import {
   executionHostRefsEqual, serializeExecutionHostRef,
   type AgentProvider, type HarnessAdapter, type ExecutionHostRef, type ExecutionHostDescriptor,
@@ -33,173 +34,58 @@ interface RuntimeFieldsProps {
   updateClearStoredPassword: (clear: boolean) => void;
 }
 
-export function RuntimeFields({ adapter, supportedAdapters, adapterAvailabilityError, provider, executionHost, sshTarget, loading, selectableTargets, unavailableInitialTarget, initialExecutionHost, initialDedicatedWorker, dedicatedWorkerSelected, dedicatedWorkerActive, allowWorkspaceSshTarget, clearStoredPassword, updateAdapter, updateProvider, updateExecutionHost, updateSshTarget, updateClearStoredPassword, passwordConfigured }: RuntimeFieldsProps) {
+export function RuntimeFields({
+  adapter, supportedAdapters, adapterAvailabilityError, provider, executionHost, sshTarget,
+  loading, selectableTargets, unavailableInitialTarget, initialExecutionHost,
+  initialDedicatedWorker, dedicatedWorkerSelected, dedicatedWorkerActive,
+  allowWorkspaceSshTarget, clearStoredPassword, updateAdapter, updateProvider,
+  updateExecutionHost, updateSshTarget, updateClearStoredPassword, passwordConfigured,
+}: RuntimeFieldsProps) {
+  const unavailable = unavailableInitialTarget && executionHost
+    && executionHostRefsEqual(unavailableInitialTarget.ref, executionHost);
+  const adapterError = !loading && (adapterAvailabilityError
+    ? "Harness availability could not be verified."
+    : adapter !== "acp" && !supportedAdapters.includes(adapter)
+      ? "This adapter is unavailable on the selected execution host." : null);
   return (
-    <div className="space-y-4 rounded-lg bg-gray-50 p-4 dark:bg-neutral-900">
-        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-          Runtime
-        </h3>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <HarnessRuntimeSelector adapter={adapter} provider={provider} supportedAdapters={supportedAdapters}
-            onAdapterChange={updateAdapter} onProviderChange={updateProvider} />
-          <div>
-            <label
-              htmlFor="execution-host"
-              className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300"
-            >
-              Execution host
-            </label>
-            <select
-              id="execution-host"
-              value={sshTarget
-                ? "workspace-ssh-target"
-                : executionHost
-                  ? serializeExecutionHostRef(executionHost)
-                  : dedicatedWorkerActive
-                    ? "workspace-worker"
-                    : ""}
-              disabled={loading}
-              onChange={(event) => updateExecutionHost(event.target.value)}
-              className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:disabled:bg-neutral-900"
-            >
-              <option value="" disabled>
-                {loading ? "Loading execution hosts..." : "Select an execution host"}
-              </option>
-              {allowWorkspaceSshTarget && (
-                <option value="workspace-ssh-target">Direct SSH target</option>
-              )}
-              {dedicatedWorkerSelected && !initialDedicatedWorker && (
-                <option value="workspace-worker">Dedicated worker</option>
-              )}
-              {initialDedicatedWorker && initialExecutionHost && (
-                <option
-                  value={serializeExecutionHostRef(initialExecutionHost)}
-                >
-                  Dedicated worker
-                </option>
-              )}
-              {unavailableInitialTarget && (
-                <option
-                  value={serializeExecutionHostRef(
-                    unavailableInitialTarget.ref,
-                  )}
-                  disabled
-                >
-                  {unavailableInitialTarget.name} ({unavailableInitialTarget.ref.kind}) - unavailable
-                </option>
-              )}
-              {selectableTargets.map((target) => (
-                <option
-                  key={serializeExecutionHostRef(target.ref)}
-                  value={serializeExecutionHostRef(target.ref)}
-                >
-                  {target.name} ({target.ref.kind})
-                </option>
-              ))}
-            </select>
-            {unavailableInitialTarget
-              && executionHost
-              && executionHostRefsEqual(
-                unavailableInitialTarget.ref,
-                executionHost,
-              ) ? (
-                <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
-                  This execution host no longer supports workspace file and
-                  agent operations. Select another host.
-                </p>
-              ) : null}
-          </div>
-          {!loading && (adapterAvailabilityError || (adapter !== "acp" && !supportedAdapters.includes(adapter))) && (
-            <p className="text-sm text-amber-600 dark:text-amber-400">
-              {adapterAvailabilityError
-                ? "Harness availability could not be verified for this execution host."
-                : "This adapter is unavailable on the selected execution host."}
-            </p>
-          )}
-        </div>
-        {allowWorkspaceSshTarget && sshTarget && (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="sm:col-span-2">
-              <label
-                htmlFor="workspace-ssh-target-host"
-                className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300"
-              >
-                SSH host
-              </label>
-              <input
-                id="workspace-ssh-target-host"
-                value={sshTarget.host}
-                onChange={(event) => updateSshTarget("host", event.target.value)}
-                placeholder="devcontainer.example.com"
-                className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100"
-                required
-              />
-            </div>
-            <div>
-              <label
-                htmlFor="workspace-ssh-target-port"
-                className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300"
-              >
-                SSH port
-              </label>
-              <input
-                id="workspace-ssh-target-port"
-                type="number"
-                min={1}
-                max={65535}
-                value={sshTarget.port}
-                onChange={(event) => updateSshTarget("port", Number(event.target.value))}
-                className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100"
-                required
-              />
-            </div>
-            <div>
-              <label
-                htmlFor="workspace-ssh-target-username"
-                className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300"
-              >
-                SSH username
-              </label>
-              <input
-                id="workspace-ssh-target-username"
-                value={sshTarget.username}
-                onChange={(event) => updateSshTarget("username", event.target.value)}
-                placeholder="devbox"
-                className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100"
-                required
-              />
-            </div>
-            <div className="sm:col-span-2">
-              <label
-                htmlFor="workspace-ssh-target-password"
-                className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300"
-              >
-                SSH password
-              </label>
-              <input
-                id="workspace-ssh-target-password"
-                type="password"
-                value={typeof sshTarget.password === "string" ? sshTarget.password : ""}
-                onChange={(event) => updateSshTarget("password", event.target.value || undefined)}
-                placeholder={passwordConfigured
-                  ? "Leave blank to keep the current password"
-                  : "Leave blank for key-based authentication"}
-                disabled={clearStoredPassword}
-                className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100"
-              />
-              {passwordConfigured && (
-                <label className="mt-2 flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
-                  <input
-                    type="checkbox"
-                    checked={clearStoredPassword}
-                    onChange={(event) => updateClearStoredPassword(event.target.checked)}
-                  />
-                  Remove the stored SSH password
-                </label>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
+    <FormGroup>
+      <HarnessRuntimeSelector layout="settings" adapter={adapter} provider={provider} supportedAdapters={supportedAdapters}
+        onAdapterChange={updateAdapter} onProviderChange={updateProvider} />
+      {adapterError ? <p className="text-sm text-amber-600 dark:text-amber-400" role="alert">{adapterError}</p> : null}
+      <SettingsFieldRow title="Execution host" labelFor="execution-host"
+        feedback={unavailable ? <span role="alert">Select a host that supports workspace operations.</span> : null}
+        content={<Select id="execution-host" fieldWidth="normal" required
+          value={sshTarget ? "workspace-ssh-target" : executionHost ? serializeExecutionHostRef(executionHost) : dedicatedWorkerActive ? "workspace-worker" : ""}
+          disabled={loading} onChange={(event) => updateExecutionHost(event.currentTarget.value)}>
+          <option value="" disabled>{loading ? "Loading execution hosts..." : "Select an execution host"}</option>
+          {allowWorkspaceSshTarget ? <option value="workspace-ssh-target">Direct SSH target</option> : null}
+          {dedicatedWorkerSelected && !initialDedicatedWorker ? <option value="workspace-worker">Dedicated worker</option> : null}
+          {initialDedicatedWorker && initialExecutionHost ? <option value={serializeExecutionHostRef(initialExecutionHost)}>Dedicated worker</option> : null}
+          {unavailableInitialTarget ? <option value={serializeExecutionHostRef(unavailableInitialTarget.ref)} disabled>{unavailableInitialTarget.name} - unavailable</option> : null}
+          {selectableTargets.map((target) => <option key={serializeExecutionHostRef(target.ref)} value={serializeExecutionHostRef(target.ref)}>{target.name}</option>)}
+        </Select>} />
+      {allowWorkspaceSshTarget && sshTarget ? <>
+        <SettingsFieldRow title="SSH host" labelFor="workspace-ssh-target-host" content={
+          <Input id="workspace-ssh-target-host" fieldWidth="normal" required value={sshTarget.host}
+            onChange={(event) => updateSshTarget("host", event.currentTarget.value)} placeholder="devcontainer.example.com" />
+        } />
+        <SettingsFieldRow title="SSH port" labelFor="workspace-ssh-target-port" content={
+          <Input id="workspace-ssh-target-port" fieldWidth="short" type="number" required min={1} max={65535} value={sshTarget.port}
+            onChange={(event) => updateSshTarget("port", Number(event.currentTarget.value))} />
+        } />
+        <SettingsFieldRow title="SSH username" labelFor="workspace-ssh-target-username" content={
+          <Input id="workspace-ssh-target-username" fieldWidth="short" required value={sshTarget.username}
+            onChange={(event) => updateSshTarget("username", event.currentTarget.value)} placeholder="devbox" />
+        } />
+        <SettingsFieldRow title="SSH password" labelFor="workspace-ssh-target-password"
+          description={passwordConfigured ? "Leave blank to keep the saved password." : "Leave blank for key-based authentication."}
+          content={<Input id="workspace-ssh-target-password" fieldWidth="normal" type="password" autoComplete="new-password"
+            value={typeof sshTarget.password === "string" ? sshTarget.password : ""} disabled={clearStoredPassword}
+            onChange={(event) => updateSshTarget("password", event.currentTarget.value || undefined)} />} />
+        {passwordConfigured ? <SettingsFieldRow title="Remove saved password" danger labelFor="workspace-ssh-clear-password"
+          content={<CheckboxField label="" aria-label="Remove the stored SSH password" id="workspace-ssh-clear-password"
+            checked={clearStoredPassword} onChange={(event) => updateClearStoredPassword(event.currentTarget.checked)} />} /> : null}
+      </> : null}
+    </FormGroup>
   );
 }

@@ -1,286 +1,141 @@
 /**
- * Shared workspace settings form used by the shell workspace settings page.
+ * Categorized workspace settings with one guarded, explicitly saved draft.
  */
 
-import { useState, useEffect, type FormEvent } from "react";
-import { StatusBadge } from "../common";
+import { useEffect, useRef, useState, type FormEvent, type InvalidEvent } from "react";
+import {
+  CodeValue, ErrorState, FormSection, SettingsFieldRow, SettingsLayout,
+  useHeaderActions, useToast, type SettingsCategory,
+} from "@pablozaiden/webapp/web";
 import { ServerSettingsForm } from "../server-settings-form";
-import type { ServerSettings } from "@/shared/settings";
-import type { ExecutionHostRef } from "@/shared";
-import type { WorkspaceSshTargetRequest } from "@/contracts/schemas";
-import { createLogger } from "@pablozaiden/webapp/web";
 import { AgentsMdSection } from "./agents-md-section";
 import { PurgeTasksSection } from "./purge-tasks-section";
 import { DeleteWorkspaceSection } from "./delete-workspace-section";
-import { WorkspaceIconSection } from "./workspace-icon-section";
+import { GeneralSettingsSection } from "./general-settings-section";
+import { useWorkspaceSettingsDraft } from "./use-workspace-settings-draft";
 import type { WorkspaceSettingsFormProps } from "./types";
 
-const log = createLogger("WorkspaceSettingsForm");
+const CATEGORIES: SettingsCategory[] = [
+  { id: "general", title: "General" },
+  { id: "execution", title: "Execution" },
+  { id: "instructions", title: "Instructions" },
+  { id: "maintenance", title: "Maintenance" },
+];
 
 export function WorkspaceSettingsForm({
-  workspace,
-  status,
-  onSave,
-  onWorkspaceIconChanged,
-  onTest,
-  onPurgeArchivedTasks,
-  onDeleteWorkspace,
-  purgeableTaskCount = 0,
-  workspaceTaskCount = 0,
-  saving = false,
-  testing = false,
-  purgingPurgeableTasks = false,
-  remoteOnly = false,
-  showConnectionStatus = true,
-  formId = "workspace-settings-form",
-  onSaved,
-  onDeleted,
-  onValidityChange,
+  workspace, status, onSave, onWorkspaceIconChanged, onTest, onPurgeArchivedTasks,
+  onDeleteWorkspace, purgeableTaskCount = 0, workspaceTaskCount = 0,
+  saving = false, testing = false, purgingPurgeableTasks = false, remoteOnly = false,
+  formId = "workspace-settings-form", onDeleted,
 }: WorkspaceSettingsFormProps) {
-  const [name, setName] = useState("");
-  const [archived, setArchived] = useState(false);
-  const [allowClankyContext, setAllowClankyContext] = useState(false);
-  const [allowWorktrees, setAllowWorktrees] = useState(true);
-  const [serverSettings, setServerSettings] = useState<ServerSettings | null>(null);
-  const [executionHost, setExecutionHost] = useState<ExecutionHostRef | null>(null);
-  const [sshTarget, setSshTarget] = useState<WorkspaceSshTargetRequest | null>(null);
-  const [isServerSettingsValid, setIsServerSettingsValid] = useState(true);
+  const toast = useToast();
+  const model = useWorkspaceSettingsDraft(workspace);
+  const [category, setCategory] = useState("general");
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const invalidField = useRef<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null>(null);
+  const validationFrame = useRef<number | null>(null);
+  const reportingValidity = useRef(false);
 
-  // Initialize form from workspace when the selected workspace changes
-  useEffect(() => {
-    if (workspace) {
-      setName(workspace.name);
-      setArchived(workspace.archived === true);
-      setAllowClankyContext(workspace.allowClankyContext === true);
-      setAllowWorktrees(workspace.allowWorktrees !== false);
-      setServerSettings(workspace.serverSettings);
-      setExecutionHost(workspace.executionHostBinding.host);
-      setSshTarget(
-        workspace.sshTarget
-          ? {
-            host: workspace.sshTarget.host,
-            port: workspace.sshTarget.port,
-            username: workspace.sshTarget.username,
-          }
-          : null,
-      );
-      setIsServerSettingsValid(true);
+  useHeaderActions({
+    primary: [
+      { id: "save-workspace", label: "Save", form: formId, loading: saving, disabled: !model.dirty || saving },
+      { id: "cancel-workspace", label: "Cancel", disabled: !model.dirty || saving, onAction: () => {
+        model.reset();
+        setValidationError(null);
+      } },
+    ],
+  });
+
+  useEffect(() => () => {
+    if (validationFrame.current !== null) cancelAnimationFrame(validationFrame.current);
+  }, []);
+
+  function showInvalidField(event: InvalidEvent<HTMLFormElement>): void {
+    const field = event.target;
+    if (reportingValidity.current) return;
+    if (!(field instanceof HTMLInputElement || field instanceof HTMLSelectElement || field instanceof HTMLTextAreaElement)) return;
+    event.preventDefault();
+    if (invalidField.current) return;
+    invalidField.current = field;
+    const section = field.closest<HTMLElement>("[data-workspace-settings-category]");
+    if (section?.hidden) setCategory(section.dataset["workspaceSettingsCategory"]!);
+    // Finish the native validation sweep before focusing its first invalid field.
+    validationFrame.current = requestAnimationFrame(() => {
+      validationFrame.current = null;
+      invalidField.current = null;
+      if (field.isConnected) {
+        reportingValidity.current = true;
+        try {
+          field.focus();
+          field.reportValidity();
+        } finally {
+          reportingValidity.current = false;
+        }
+      }
+    });
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (saving) return;
+    if (!model.draft.name.trim()) {
+      setCategory("general");
+      setValidationError("Enter a workspace name.");
       return;
     }
-
-    setName("");
-    setArchived(false);
-    setAllowClankyContext(false);
-    setAllowWorktrees(true);
-    setServerSettings(null);
-    setExecutionHost(null);
-    setSshTarget(null);
-    setIsServerSettingsValid(true);
-  }, [workspace]);
-
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-
-    if (!serverSettings || (!executionHost && !sshTarget)) return;
-
-    log.debug("Saving workspace settings", { workspaceName: name.trim() });
+    if (!model.runtimeValid) {
+      setCategory("execution");
+      setValidationError("Select an available execution host and supported runtime.");
+      return;
+    }
+    setValidationError(null);
+    const submitted = model.draft;
     const success = await onSave(
-      name.trim(),
-      serverSettings,
-      executionHost,
-      sshTarget,
-      archived,
-      allowClankyContext,
-      allowWorktrees,
+      submitted.name.trim(), submitted.settings, submitted.executionHost, submitted.sshTarget,
+      submitted.archived, submitted.allowClankyContext, submitted.allowWorktrees,
     );
     if (success) {
-      log.debug("Workspace settings saved successfully");
-      onSaved?.();
-    } else {
-      log.warn("Failed to save workspace settings");
+      model.markSaved(submitted);
+      toast.success("Workspace saved.");
     }
   }
 
-  function handleServerSettingsChange(
-    settings: ServerSettings,
-    isValid: boolean,
-    selectedExecutionHost: ExecutionHostRef | null,
-    selectedSshTarget?: WorkspaceSshTargetRequest | null,
-  ) {
-    log.debug("Server settings changed", {
-      provider: settings.agent.provider,
-      transport: selectedExecutionHost?.kind,
-      isValid,
-    });
-    setServerSettings(settings);
-    setExecutionHost(selectedExecutionHost);
-    setSshTarget(selectedSshTarget ?? null);
-    setIsServerSettingsValid(isValid);
-  }
-
-  const isNameValid = name.trim().length > 0;
-  const isValid = isNameValid && isServerSettingsValid;
-
-  useEffect(() => {
-    onValidityChange?.(isValid);
-  }, [isValid, onValidityChange]);
-
   return (
-    <>
-      <form id={formId} onSubmit={handleSubmit} className="space-y-6">
-        {/* Workspace Name */}
-        <div>
-          <label
-            htmlFor={`${formId}-workspace-name`}
-            className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300"
-          >
-            Workspace Name
-          </label>
-          <input
-            type="text"
-            id={`${formId}-workspace-name`}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="My Workspace"
-            required
-            className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100"
-          />
-        </div>
-
-        {/* Directory (read-only) */}
-        {workspace && (
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Directory
-            </label>
-            <div className="w-full break-all rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-mono text-gray-600 dark:border-gray-700 dark:bg-neutral-800 dark:text-gray-400">
-              {workspace.directory}
-            </div>
+    <SettingsLayout categories={CATEGORIES} category={category} onCategoryChange={setCategory}>
+      {validationError ? <ErrorState title="Check workspace settings" description={validationError} /> : null}
+      <form id={formId} onSubmit={(event) => void handleSubmit(event)} onInvalidCapture={showInvalidField}>
+        <fieldset disabled={saving} className="min-w-0">
+          <div hidden={category !== "general"} data-workspace-settings-category="general">
+            <GeneralSettingsSection workspace={workspace} draft={model.draft} onChange={model.patch}
+              onIconChanged={onWorkspaceIconChanged} formId={formId} />
           </div>
-        )}
-
-        {workspace && onWorkspaceIconChanged ? (
-          <WorkspaceIconSection
-            workspace={workspace}
-            onChanged={onWorkspaceIconChanged}
-          />
-        ) : null}
-
-        {showConnectionStatus && (
-          <div className="flex items-center gap-2 rounded-md bg-gray-50 p-3 dark:bg-neutral-900">
-            <span className="text-sm text-gray-600 dark:text-gray-400">Connection Status:</span>
-            {status?.connected ? (
-              <StatusBadge variant="success">Connected</StatusBadge>
-            ) : status?.error ? (
-              <StatusBadge variant="error">Error</StatusBadge>
-            ) : (
-              <StatusBadge variant="warning">Idle</StatusBadge>
-            )}
-            {status && (
-              <span className="text-xs text-gray-500 dark:text-gray-400">
-                {status.provider}/{status.transport}
-              </span>
-            )}
+          <div hidden={category !== "execution"} data-workspace-settings-category="execution">
+            <FormSection title="Execution">
+              <ServerSettingsForm key={model.revision}
+                initialSettings={model.seed.settings} initialExecutionHost={model.seed.executionHost}
+                initialSshTarget={model.seed.sshTarget} allowWorkspaceSshTarget
+                onChange={model.updateRuntime} onTest={onTest} testing={testing} remoteOnly={remoteOnly} />
+              <SettingsFieldRow title="Initial directory" content={<CodeValue value={workspace.directory} />} />
+              {status?.error ? <ErrorState title="Connection unavailable" description={status.error} /> : null}
+            </FormSection>
           </div>
-        )}
-
-        {workspace && (
-          <label className="flex items-start gap-3 rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700 dark:border-gray-700 dark:bg-neutral-900 dark:text-gray-300">
-            <input
-              type="checkbox"
-              checked={archived}
-              onChange={(event) => setArchived(event.currentTarget.checked)}
-              className="mt-0.5"
-            />
-            <span>
-              <span className="block font-medium text-gray-900 dark:text-gray-100">Archived workspace</span>
-              <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
-                Hide this workspace's activity from Active Work and the main dashboard.
-              </span>
-            </span>
-          </label>
-        )}
-
-        {workspace && (
-          <label className="flex items-start gap-3 rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700 dark:border-gray-700 dark:bg-neutral-900 dark:text-gray-300">
-            <input
-              type="checkbox"
-              checked={allowClankyContext}
-              onChange={(event) => setAllowClankyContext(event.currentTarget.checked)}
-              className="mt-0.5"
-            />
-            <span>
-              <span className="block font-medium text-gray-900 dark:text-gray-100">Allow Clanky CLI access</span>
-              <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
-                Allow new processes in this workspace to authenticate with Clanky.
-              </span>
-            </span>
-          </label>
-        )}
-
-        {workspace?.workspaceType === "git" && (
-          <label className="flex items-start gap-3 rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700 dark:border-gray-700 dark:bg-neutral-900 dark:text-gray-300">
-            <input
-              type="checkbox"
-              checked={allowWorktrees}
-              onChange={(event) => setAllowWorktrees(event.currentTarget.checked)}
-              className="mt-0.5"
-            />
-            <span>
-              <span className="block font-medium text-gray-900 dark:text-gray-100">Allow worktrees</span>
-              <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
-                Allow new tasks, chats, and agents in this workspace to use isolated Git worktrees.
-              </span>
-            </span>
-          </label>
-        )}
-
-        {status?.error && (
-          <div className="-mt-3 break-words text-xs text-red-600 dark:text-red-400">
-            {status.error}
-          </div>
-        )}
-
-        {/* Server Settings Form (shared component) */}
-        {serverSettings && workspace && (
-          <ServerSettingsForm
-            initialSettings={workspace.serverSettings}
-            initialExecutionHost={workspace.executionHostBinding.host}
-            initialSshTarget={workspace.sshTarget}
-            allowWorkspaceSshTarget
-            onChange={handleServerSettingsChange}
-            onTest={onTest}
-            testing={testing}
-            remoteOnly={remoteOnly}
-          />
-        )}
-
-        {/* AGENTS.md Optimization */}
-        {workspace && <AgentsMdSection workspace={workspace} />}
+        </fieldset>
       </form>
-
-      {/* Terminal-state task purge — rendered outside <form> so ConfirmModal buttons
-          do not accidentally submit the form. */}
-      {workspace && onPurgeArchivedTasks && (
-        <PurgeTasksSection
-          workspace={workspace}
-          onPurgeArchivedTasks={onPurgeArchivedTasks}
-          purgeableTaskCount={purgeableTaskCount}
-          purgingPurgeableTasks={purgingPurgeableTasks}
-        />
-      )}
-
-      {/* Delete Workspace — rendered outside <form> so ConfirmModal buttons
-          do not accidentally submit the form. */}
-      {workspace && onDeleteWorkspace && (
-        <DeleteWorkspaceSection
-          workspace={workspace}
-          onDeleteWorkspace={onDeleteWorkspace}
-          workspaceTaskCount={workspaceTaskCount}
-          saving={saving}
-          onDeleted={onDeleted}
-        />
-      )}
-    </>
+      <div hidden={category !== "instructions"}>
+        <FormSection title="Instructions"><AgentsMdSection workspace={workspace} /></FormSection>
+      </div>
+      <div hidden={category !== "maintenance"}>
+        <FormSection title="Maintenance">
+          {onPurgeArchivedTasks ? <PurgeTasksSection workspace={workspace}
+            onPurgeArchivedTasks={onPurgeArchivedTasks} purgeableTaskCount={purgeableTaskCount}
+            purgingPurgeableTasks={purgingPurgeableTasks} /> : null}
+          {onDeleteWorkspace ? <DeleteWorkspaceSection workspace={workspace} onDeleteWorkspace={onDeleteWorkspace}
+            workspaceTaskCount={workspaceTaskCount} saving={saving} onDeleted={() => {
+              model.reset();
+              onDeleted?.();
+            }} /> : null}
+        </FormSection>
+      </div>
+    </SettingsLayout>
   );
 }

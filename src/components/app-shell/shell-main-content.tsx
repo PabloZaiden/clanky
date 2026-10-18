@@ -957,6 +957,7 @@ function usesFullViewportLayout(props: ShellMainContentProps): boolean {
     || props.route.view === "terminal"
     || props.route.view === "task-files"
     || props.route.view === "workspace-files"
+    || props.route.view === "workspace-settings"
     || props.route.view === "execution-host-files";
 }
 
