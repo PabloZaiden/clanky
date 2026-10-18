@@ -195,6 +195,7 @@ function buildPublicSettings(
       baseUrl: settings.live.baseUrl,
       apiKeyConfigured: liveApiKeyConfigured,
       model: settings.live.model,
+      personalInstructions: settings.live.personalInstructions,
       configured: liveConfigured,
     },
     capabilities: {
@@ -250,14 +251,17 @@ function shouldPersistInvalidValidation(
 export class VoiceManager {
   constructor(private readonly piper: PiperSpeechService = piperTtsProvider) {}
 
-  async requireLiveCredentials(): Promise<LiveVoiceCredentials> {
+  async requireLiveConfiguration(): Promise<{
+    credentials: LiveVoiceCredentials;
+    personalInstructions: string;
+  }> {
     const settings = await getPersistedVoiceSettings() ?? emptySettings();
     const apiKey = await getPersistedVoiceApiKey(settings);
     const credentials = await this.resolveLiveCredentials(settings, apiKey);
     if (!credentials) {
       throw new DomainError("voice_capability_not_configured", "Configure Live voice and its shared text model first.");
     }
-    return credentials;
+    return { credentials, personalInstructions: settings.live.personalInstructions };
   }
 
   async getSettings(): Promise<VoiceSettings> {

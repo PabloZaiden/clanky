@@ -11,6 +11,7 @@ import {
 } from "./encrypted-secret";
 import {
   DEFAULT_VOICE_LANGUAGE_HINTS,
+  LIVE_VOICE_MAX_PERSONAL_INSTRUCTIONS_CHARS,
   VOICE_CAPABILITIES,
   type VoiceCapability,
   type VoiceLanguageHint,
@@ -42,11 +43,12 @@ export interface PersistedVoiceSettings {
     baseUrl: string;
     apiKeyCiphertext: string | null;
     model: string;
+    personalInstructions: string;
   };
 }
 
 export function getDefaultLiveVoiceSettings(): PersistedVoiceSettings["live"] {
-  return { useVoiceProvider: true, baseUrl: "", apiKeyCiphertext: null, model: "" };
+  return { useVoiceProvider: true, baseUrl: "", apiKeyCiphertext: null, model: "", personalInstructions: "" };
 }
 
 function defaultValidation(): Record<VoiceCapability, PersistedVoiceValidation> {
@@ -181,13 +183,14 @@ function parseLiveSettings(value: unknown): PersistedVoiceSettings["live"] {
   if (value === undefined) return getDefaultLiveVoiceSettings();
   if (!value || typeof value !== "object") throw new Error("Persisted Live voice settings are invalid.");
   const record = value as Record<string, unknown>;
-  const { useVoiceProvider, baseUrl, apiKeyCiphertext, model } = record;
+  const { useVoiceProvider, baseUrl, apiKeyCiphertext, model, personalInstructions = "" } = record;
   if (typeof useVoiceProvider !== "boolean" || typeof baseUrl !== "string" || typeof model !== "string"
+    || typeof personalInstructions !== "string" || personalInstructions.length > LIVE_VOICE_MAX_PERSONAL_INSTRUCTIONS_CHARS
     || (apiKeyCiphertext !== null && typeof apiKeyCiphertext !== "string")) {
     throw new Error("Persisted Live voice settings are invalid.");
   }
   validatePersistedBaseUrl(baseUrl);
-  return { useVoiceProvider, baseUrl, apiKeyCiphertext, model };
+  return { useVoiceProvider, baseUrl, apiKeyCiphertext, model, personalInstructions };
 }
 
 export async function getPersistedVoiceSettings(): Promise<PersistedVoiceSettings | null> {
@@ -292,6 +295,7 @@ export async function updatePersistedVoiceSettings(
         useVoiceProvider: update.live.useVoiceProvider,
         baseUrl: update.live.baseUrl,
         model: update.live.model,
+        personalInstructions: update.live.personalInstructions ?? live.personalInstructions,
         apiKeyCiphertext: nextKey
           ? nextKey === currentKey
             ? live.apiKeyCiphertext
