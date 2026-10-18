@@ -12,7 +12,7 @@ import type { PurgeArchivedTasksResult } from "../../hooks";
 /** Props for the shell workspace settings form. */
 export interface WorkspaceSettingsFormProps {
   /** The workspace being edited */
-  workspace: Workspace | null;
+  workspace: Workspace;
   /** Current connection status for the workspace */
   status: ConnectionStatus | null;
   /** Callback to save workspace settings */
@@ -49,14 +49,8 @@ export interface WorkspaceSettingsFormProps {
   purgingPurgeableTasks?: boolean;
   /** Whether remote-only mode is enabled (CLANKY_REMOTE_ONLY) */
   remoteOnly?: boolean;
-  /** Whether to render the inline connection status summary */
-  showConnectionStatus?: boolean;
   /** Form id for external submit buttons */
   formId?: string;
-  /** Called after a successful save */
-  onSaved?: () => void;
   /** Called after a successful delete */
   onDeleted?: () => void;
-  /** Reports current form validity */
-  onValidityChange?: (isValid: boolean) => void;
 }

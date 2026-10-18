@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ConfirmModal, ErrorState, useToast } from "@pablozaiden/webapp/web";
+import { Button, ConfirmModal, DataList, DataListRow, ErrorState, FormGroup, SettingsFieldRow, useToast } from "@pablozaiden/webapp/web";
 import type {
   WorkspaceIconCandidatesResponse,
   WorkspaceIconMetadataResponse,
@@ -8,7 +8,6 @@ import type {
 import type { Workspace } from "@/shared/workspace";
 import { appPath } from "../../lib/public-path";
 import { apiRequest } from "../../lib/api-client";
-import { Button } from "../common";
 
 interface WorkspaceIconSectionProps {
   workspace: Workspace;
@@ -193,37 +192,23 @@ export function WorkspaceIconSection({ workspace, onChanged }: WorkspaceIconSect
   }
 
   return (
-    <section className="space-y-4 rounded-lg border border-gray-200 p-4 dark:border-gray-700">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex min-w-0 items-center gap-3">
-          {icon ? (
-            <img
-              className="h-10 w-10 shrink-0 rounded-md border border-gray-200 bg-white object-contain p-1 dark:border-gray-700 dark:bg-neutral-900"
-              src={savedIconUrl(workspace, icon)}
-              alt=""
-              loading="lazy"
-              decoding="async"
-              referrerPolicy="no-referrer"
-            />
-          ) : null}
-          <div className="min-w-0">
-            <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Workspace icon</h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              Optional SVG or ICO image, up to 1 MB.
-            </p>
-          </div>
-        </div>
-        <Button
-          type="button"
-          size="sm"
-          variant="danger"
-          disabled={!icon || saving}
-          onClick={() => setShowRemoveConfirmation(true)}
-        >
-          Remove
-        </Button>
-      </div>
-
+    <>
+      <SettingsFieldRow title="Icon" description="SVG or ICO, up to 1 MB."
+        content={<>
+          {icon ? <img className="h-8 w-8 shrink-0 rounded object-contain"
+            src={savedIconUrl(workspace, icon)} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" /> : "Default"}
+          <input ref={uploadInputRef} type="file" className="hidden" aria-label="Workspace icon file"
+            accept=".svg,.ico,image/svg+xml,image/x-icon,image/vnd.microsoft.icon"
+            onChange={(event) => { setSelectedFile(event.currentTarget.files?.[0] ?? null); setOperationError(null); }} />
+        </>}
+        feedback={selectedFile ? <span className="max-w-48 truncate" title={selectedFile.name}>{selectedFile.name}</span> : null}
+        actions={<>
+          <Button disabled={saving} onClick={() => uploadInputRef.current?.click()}>Choose file</Button>
+          {selectedFile ? <Button loading={saving} onClick={() => void uploadSelectedFile()}>Upload</Button> : null}
+          {workspace.workspaceType === "git" ? <Button aria-label="Search repository icons" loading={candidatesLoading}
+            disabled={saving} onClick={() => void discoverCandidates()}>{hasSearched ? "Search again" : "Search"}</Button> : null}
+          {icon ? <Button tone="danger" disabled={saving} onClick={() => setShowRemoveConfirmation(true)}>Remove</Button> : null}
+        </>} />
       {operationError ? (
         <ErrorState title="Workspace icon update failed" description={operationError} />
       ) : null}
@@ -231,96 +216,34 @@ export function WorkspaceIconSection({ workspace, onChanged }: WorkspaceIconSect
         <ErrorState title="Workspace icon saved" description={refreshError} />
       ) : null}
 
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <input
-          ref={uploadInputRef}
-          type="file"
-          accept=".svg,.ico,image/svg+xml,image/x-icon,image/vnd.microsoft.icon"
-          onChange={(event) => {
-            setSelectedFile(event.currentTarget.files?.[0] ?? null);
-            setOperationError(null);
-          }}
-          className="min-w-0 flex-1 text-sm text-gray-700 file:mr-3 file:rounded-md file:border-0 file:bg-gray-100 file:px-3 file:py-2 file:text-sm file:font-medium dark:text-gray-300 dark:file:bg-neutral-800"
-        />
-        <Button
-          type="button"
-          size="sm"
-          loading={saving}
-          disabled={!selectedFile}
-          onClick={() => void uploadSelectedFile()}
-        >
-          Upload
-        </Button>
-      </div>
-
-      <div className="space-y-2 border-t border-gray-200 pt-4 dark:border-gray-700">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100">Repository candidates</h4>
-          {workspace.workspaceType === "git" ? (
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              aria-label="Search repository icons"
-              loading={candidatesLoading}
-              disabled={candidatesLoading || saving}
-              onClick={() => void discoverCandidates()}
-            >
-              {hasSearched ? "Search again" : "Search"}
-            </Button>
-          ) : null}
-        </div>
-        {workspace.workspaceType !== "git" ? (
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Repository icon search is available for Git workspaces.
-          </p>
-        ) : candidatesLoading ? (
-          <p className="text-sm text-gray-500 dark:text-gray-400">Searching the repository…</p>
-        ) : discoveryError ? (
+      {hasSearched ? <FormGroup title="Repository icons">
+        {discoveryError ? (
           <ErrorState title="Unable to discover icons" description={discoveryError} />
-        ) : !hasSearched ? (
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Search the repository to find matching SVG and ICO icons.
-          </p>
-        ) : candidates.candidates.length === 0 ? (
-          <p className="text-sm text-gray-500 dark:text-gray-400">No SVG or ICO candidates found.</p>
+        ) : candidatesLoading ? <span role="status">Searching...</span>
+        : candidates.candidates.length === 0 ? (
+          <span>No SVG or ICO files found.</span>
         ) : (
-          <div className="space-y-2">
+          <DataList>
             {candidates.candidates.map((candidate) => (
-              <div
-                key={candidate.path}
-                className="flex min-w-0 flex-col gap-3 rounded-md bg-gray-50 p-2 dark:bg-neutral-900 sm:flex-row sm:items-center"
-              >
-                <img
-                  className="h-10 w-10 shrink-0 rounded border border-gray-200 bg-white object-contain p-1 dark:border-gray-700 dark:bg-neutral-800"
+              <DataListRow key={candidate.path} title={<span className="flex min-w-0 items-center gap-3">
+                <img className="h-8 w-8 shrink-0 rounded object-contain"
                   src={candidatePreviewUrl(workspace.id, candidate.path)}
                   alt=""
                   loading="lazy"
                   decoding="async"
                   referrerPolicy="no-referrer"
                 />
-                <code className="min-w-0 flex-1 break-all text-xs text-gray-700 dark:text-gray-300">
-                  {candidate.path}
-                </code>
-                <Button
-                  type="button"
-                  size="xs"
-                  variant="secondary"
-                  disabled={saving}
-                  onClick={() => void selectCandidate(candidate.path)}
-                >
-                  Use icon
-                </Button>
-              </div>
+                <span className="break-all">{candidate.path}</span>
+              </span>} actions={<Button disabled={saving} onClick={() => void selectCandidate(candidate.path)}>Use icon</Button>} />
             ))}
-          </div>
+          </DataList>
         )}
         {candidates.truncated ? (
           <p className="text-xs text-amber-700 dark:text-amber-300">
             Showing the first {candidates.candidates.length} matching files.
           </p>
         ) : null}
-      </div>
+      </FormGroup> : null}
       <ConfirmModal
         isOpen={showRemoveConfirmation}
         onClose={() => setShowRemoveConfirmation(false)}
@@ -331,6 +254,6 @@ export function WorkspaceIconSection({ workspace, onChanged }: WorkspaceIconSect
         loading={saving}
         variant="danger"
       />
-    </section>
+    </>
   );
 }
