@@ -18,6 +18,7 @@ import { KeyedOperationQueue } from "../utils/keyed-operation-queue";
 import { withWorkspaceExecutionLock } from "./workspace-execution-lock";
 import type { ChatCleanupCredentials, ChatConversationPort, ChatStatePort } from "./chat-service-contracts";
 import type { ChatLifecycleService } from "./chat-lifecycle-service";
+import { conversationAttachmentService } from "./conversation-attachment-service";
 
 const log = createLogger("chat-trash");
 
@@ -140,6 +141,7 @@ export class ChatTrashService {
       for (const item of page.items) {
         if (!chatId || item.id === chatId) {
           for (const serverId of item.credentialServerIds) serverIds.add(serverId);
+          for (const serverId of conversationAttachmentService.credentialTargets({ kind: "chat", id: item.id })) serverIds.add(serverId);
           if (chatId) return [...serverIds];
         }
       }

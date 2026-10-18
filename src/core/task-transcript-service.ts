@@ -8,6 +8,34 @@ import { shouldIncludeConversationTranscriptLog } from "@/shared";
 import { taskTranscriptStore } from "../persistence/transcripts/task-store";
 import { loadTaskSummary } from "../persistence/tasks";
 import { createTranscriptFromStoragePage } from "./transcript-service";
+import { requireCurrentUserId } from "../context/user-context";
+import { isPersistedMessage } from "../persistence/transcripts/codec";
+import { DomainError } from "../domain/domain-error";
+import type { PersistedMessage } from "@/shared";
+import type { TranscriptStorageCursor } from "../persistence/transcripts/types";
+
+export async function* iterateTaskAttachmentMessages(taskId: string): AsyncIterable<PersistedMessage> {
+  const userId = requireCurrentUserId();
+  let after: TranscriptStorageCursor | undefined;
+  for (;;) {
+    const page = taskTranscriptStore.listEntriesAfterForUser(taskId, userId, {
+      after, limit: 4, includeToolPayload: false,
+    });
+    if (page.invalidEntryCount > 0) {
+      throw new DomainError("attachment_data_invalid", "The saved task transcript contains unreadable entries.");
+    }
+    while (page.entries.length) {
+      const entry = page.entries.shift()!;
+      if (entry.kind !== "message") continue;
+      if (!isPersistedMessage(entry.payload)) {
+        throw new DomainError("attachment_data_invalid", "A saved task message's attachments could not be restored.");
+      }
+      yield entry.payload;
+    }
+    if (!page.nextCursor) return;
+    after = page.nextCursor;
+  }
+}
 
 export type TaskTranscriptSnapshotTask = Omit<Task, "state"> & {
   state: Omit<Task["state"], "messages" | "logs" | "toolCalls">;

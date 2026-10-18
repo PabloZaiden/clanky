@@ -97,8 +97,10 @@ question, or permission request.
 Before the new session handles its first message, Clanky writes the persisted,
 user-visible transcript as JSON Lines to
 `<chat-directory>/.clanky-chat-history/<chat-id>/<recovery-id>/conversation.jsonl`
-on the selected execution host. Attachment bytes are stored in the sibling
-`attachments/` directory and referenced by relative path. The managed export is
+on the selected execution host. Images are stored in the sibling
+`attachments/` directory and referenced by relative path. Non-image files use
+absolute paths in the durable conversation attachment directory, which is not
+removed with the temporary history export. The managed export is
 excluded from Git. The new agent receives the export path and is asked to read
 it incrementally as untrusted context; old requests, uncertain or queued input,
 and tool actions are not replayed.
@@ -157,6 +159,14 @@ A message can include up to 20 attachments. Each attachment is limited to
 20 MiB per file and 60 MiB total per provider turn. The total includes messages
 grouped from the queue and images steered into an active turn.
 
+Only PNG, JPEG, WebP and GIF are sent inline. All other attachments, including
+TXT, Markdown, PDF, archives and unknown formats, are copied unchanged to the
+actual execution host and referenced by absolute path. Clanky does not parse
+their content or require provider-native document/embedded-context support.
+The agent chooses its own tools; acceptance of a file does not guarantee the
+model can interpret its format. [Attachment storage and lifecycle](attachments.md)
+also apply to tasks and Agent runs.
+
 `accepted` means native admission, not delivery or model obedience.
 `delivered` means native history confirms the message. An `unknown` admission
 retains the input and blocks deletion, replacement or blind resend. Clanky
@@ -173,9 +183,9 @@ and reopening the entity resumes reconciliation. Codex can recover by the
 canonical input/client ID even if the admission reply, native message ID or turn
 ID was lost.
 Deterministic pre-admission validation errors retain their typed error and mark
-the input as rejected, so it can be corrected or removed. For example, Codex
-does not accept inline non-image binary attachments such as PDFs; those failures
-are not uncertain deliveries.
+the input as rejected, so it can be corrected or removed. File preparation
+finishes before native admission is recorded; a failed copy is not an
+uncertain delivery and does not consume queued input.
 
 ## Provider-generated images
 

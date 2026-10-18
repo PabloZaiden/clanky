@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { createFileAttachment, expectedFileInspection } from "./support/attachments";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
@@ -480,14 +481,15 @@ test("compiled Mesh hosts deliver large images to native Codex and Copilot", asy
       )).toBe(true);
 
       if (provider.provider === "codex") {
+        const inputFile = createFileAttachment("estimate.pdf", "%PDF-1.4\nSynthetic Mesh document\n%%EOF\n", "application/pdf");
         const generatedImagePrompt = await meshJsonRequest<ChatMessageResponse>(
           controller,
           `/api/chats/${encodeURIComponent(chatId)}/messages`,
           {
             method: "POST",
             body: {
-              message: "Generate a PNG larger than two MiB.",
-              attachments: [],
+              message: "Inspect the attached files and image. Generate a PNG larger than two MiB.",
+              attachments: [inputFile, smallImage],
               clientId: crypto.randomUUID(),
             },
           },
@@ -532,6 +534,9 @@ test("compiled Mesh hosts deliver large images to native Codex and Copilot", asy
         expect(generatedImage!.size).toBeGreaterThan(MESH_EXECUTION_MAX_MESSAGE_BYTES);
         expect(generatedImage!.data.length).toBeGreaterThan(MESH_EXECUTION_MAX_MESSAGE_BYTES);
         expect(Buffer.byteLength(generatedImage!.data, "base64")).toBe(generatedImage!.size);
+        expect(generatedImageSnapshot.body.transcript.messages.some((message) =>
+          message.role === "assistant" && message.content.includes(expectedFileInspection(inputFile).sha256)
+        )).toBe(true);
       }
     }
   } catch (error) {

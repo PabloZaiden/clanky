@@ -720,6 +720,27 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: 79,
+    name: "add_conversation_attachment_locations",
+    up: (db) => {
+      db.run(`
+        CREATE TABLE IF NOT EXISTS conversation_attachment_locations (
+          user_id TEXT NOT NULL,
+          context_kind TEXT NOT NULL CHECK (context_kind IN ('chat', 'task')),
+          context_id TEXT NOT NULL,
+          location_id TEXT NOT NULL,
+          execution_host_json TEXT NOT NULL,
+          directory TEXT NOT NULL,
+          PRIMARY KEY (user_id, context_kind, context_id, location_id),
+          FOREIGN KEY (user_id) REFERENCES webapp_users(id) ON DELETE CASCADE
+        )
+      `);
+      if (!getTableColumns(db, "tasks").includes("initial_attachments_json")) {
+        db.run("ALTER TABLE tasks ADD COLUMN initial_attachments_json TEXT");
+      }
+    },
+  },
 ];
 
 function getMigrationTableColumns(db: Database, tableName: string): string[] {

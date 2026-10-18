@@ -7,10 +7,11 @@ conversations keep their existing deletion behavior.
 
 ## Recover and delete
 
-- **Restore** returns the same chat with its history, configuration and retained
-  worktree. A chat deleted during active work restores stopped; continue it
+- **Restore** returns the same chat with its history, original attachments,
+  configuration and retained worktree/files. A chat deleted during active work restores stopped; continue it
   manually. Restoration never automatically resumes an agent or queued input.
-- **Delete permanently** removes one trashed chat and its managed worktree.
+- **Delete permanently** removes one trashed chat, its managed attachment
+  copies and its managed worktree.
 - **Empty Trash** permanently deletes the chats currently in your Trash,
   including hidden private chats. New deletions during an empty operation are
   not added to that operation.
@@ -26,7 +27,7 @@ deadline. Restoring clears the retention clock, and deleting again starts a new
 
 ## Workspaces, storage and unavailable hosts
 
-Trash retains chat data and managed worktrees, so they continue using storage.
+Trash retains chat data, attachments and managed worktrees, so they continue using storage.
 Trashed chats do not block workspace deletion. Deleting their workspace also
 permanently deletes them, even if their 30 days have not elapsed.
 

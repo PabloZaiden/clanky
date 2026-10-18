@@ -21,3 +21,4 @@ export * from "./mesh-node-identity";
 export * from "./controller-relay-pairing";
 export * from "./execution-hosts";
 export * from "./workspace-execution-targets";
+export * from "./conversation-attachment-locations";

@@ -54,6 +54,7 @@ import {
 } from "@/shared/execution-host";
 import { DomainError } from "../domain/domain-error";
 import type { ChatHistoryExportService } from "./chat-history-export-service";
+import { conversationAttachmentService } from "./conversation-attachment-service";
 
 const log = createLogger("chat-lifecycle-service");
 
@@ -610,6 +611,10 @@ export class ChatLifecycleService implements ChatLifecyclePort {
           ),
         }] : []),
       ...(!options.preserveWorktree ? [{
+        label: "chat attachments",
+        requiresRuntimeCleanup: true,
+        run: () => conversationAttachmentService.cleanup({ kind: "chat", id: chat.config.id }, options),
+      }, {
         label: "chat worktree",
         requiresRuntimeCleanup: true,
         run: () => this.worktree.cleanupWorktree(chat, options),

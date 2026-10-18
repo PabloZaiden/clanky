@@ -20,6 +20,7 @@ import { resolveCommandExecutorDirectory } from "../command-executor";
 import { assertTaskHarnessWorkspaceSafe } from "./task-harness";
 import type { TaskEngine } from "../task-engine";
 import { getCurrentUser, runWithCurrentUser } from "../../context/user-context";
+import { conversationAttachmentService } from "../conversation-attachment-service";
 import {
   runTaskLifecycleOperation,
   runTaskLifecycleOperationWithDeferredCleanup,
@@ -300,6 +301,13 @@ function createDeferredTaskCleanup(
         linkedChatCleanup,
       ]);
 
+      if (operation === "purge" && runtimeSafe && terminalSessionCleaned && chatCleaned) {
+        const cleaned = await runDeferredTaskCleanupStep(
+          task.config.id, operation, "attachments",
+          () => conversationAttachmentService.cleanup({ kind: "task", id: task.config.id }),
+        );
+        if (!cleaned) return;
+      }
       if (!needsTaskGitCleanup(task, operation)) {
         return;
       }

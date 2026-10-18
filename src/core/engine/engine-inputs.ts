@@ -4,7 +4,7 @@
 
 import type { Backend } from "../../backends/types";
 import type { TaskPromptIntent, TaskState } from "@/shared/task";
-import type { MessageAttachment } from "@/shared/message-attachments";
+import type { PreparedAttachmentFiles, MessageAttachment } from "@/shared/message-attachments";
 import type { HarnessConversationBinding, HarnessInputAdmission, HarnessInputReceipt } from "@/shared/harness-control";
 import { createTimestamp } from "@/shared/events";
 import { HarnessError } from "../../backends/harness-errors";
@@ -27,6 +27,7 @@ interface TaskInputDependencies {
   updateState(update: Partial<TaskState>): void;
   emitUserMessage(content: string, id: string, attachments: MessageAttachment[]): void;
   flushInputs(): Promise<void>;
+  prepareAttachments(input: PendingTaskInput): Promise<PreparedAttachmentFiles>;
 }
 
 export class TaskInputService {
@@ -90,6 +91,13 @@ export class TaskInputService {
       const binding = this.binding();
       if (!["running", "planning"].includes(state.status)) return { status: "rejected", inputId, code: "not-running" };
       if (this.dependencies.backend.harness.capabilities.steering === "unsupported") return { status: "rejected", inputId, code: "unsupported" };
+      const attachmentFiles = await this.dependencies.prepareAttachments(input);
+      requireMatchingHarnessBinding(JSON.stringify(binding), this.binding());
+      const currentInput = this.peek();
+      if (currentInput?.id !== input.id || currentInput.attachments !== input.attachments) {
+        throw new HarnessError("harness_input_not_found", "The pending input changed while its attachments were prepared.");
+      }
+      if (!["running", "planning"].includes(state.status)) return { status: "rejected", inputId, code: "not-running" };
       const receipt: HarnessInputReceipt = { conversation: binding, submittedAt: createTimestamp(), admission: { status: "unknown", inputId } };
       this.record(receipt);
       // Claim durability precedes the native RPC; queue consumption cannot resend it.
@@ -97,7 +105,7 @@ export class TaskInputService {
       let admission: HarnessInputAdmission;
       try {
         admission = await this.dependencies.backend.harness.steer(binding.nativeId, {
-          inputId, prompt: { parts: buildPromptParts(input.content, input.attachments) },
+          inputId, prompt: { parts: buildPromptParts(input.content, input.attachments, attachmentFiles) },
         });
       } catch (error) {
         if (isHarnessInputValidationError(error)) {

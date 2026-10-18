@@ -120,6 +120,7 @@ export const SCHEMA_TABLE_INVENTORY: readonly SchemaTableDefinition[] = [
     resourceColumn: "task_id",
   }),
   currentTable("tasks", "clanky"),
+  currentTable("conversation_attachment_locations", "clanky"),
   currentTable("chat_transcript_meta", "clanky", {
     resource: "chat",
     role: "meta",

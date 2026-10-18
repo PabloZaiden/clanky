@@ -14,6 +14,7 @@ import {
 } from "../execution-path";
 import {
   CHAT_HISTORY_EXPORT_DIRECTORY_NAME,
+  CONVERSATION_ATTACHMENT_DIRECTORY_NAME,
   MANAGED_WORKTREE_DIRECTORY_NAME,
   ManagedPathService,
   PLANNING_DIRECTORY_NAME,
@@ -279,6 +280,7 @@ export async function ensureWorktreeExcluded(
   const excludePatterns = [
     MANAGED_WORKTREE_DIRECTORY_NAME,
     CHAT_HISTORY_EXPORT_DIRECTORY_NAME,
+    CONVERSATION_ATTACHMENT_DIRECTORY_NAME,
     PLANNING_DIRECTORY_NAME,
   ];
   const result = await runWorktreeGitCommand(

@@ -109,7 +109,7 @@ export class TaskPromptExecutorImpl implements TaskPromptExecutor {
 
     log.debug("[TaskEngine] runIteration: Building prompt");
     this.emitLog("debug", "Building prompt for AI agent");
-    let promptResult = options.buildPrompt();
+    let promptResult = await options.buildPrompt();
     let prompt = promptResult.prompt;
 
     this.logPrompt(prompt);

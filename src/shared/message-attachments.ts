@@ -1,9 +1,8 @@
 /**
  * Shared message attachment types and limits.
  *
- * Attachments are passed from the browser to ACP as inline data and may be
- * persisted with task messages so refreshed log views can still render them.
- * The API field remains `attachments` for both images and supported documents.
+ * Images are sent inline; other files are materialized on the execution host.
+ * Original bytes are persisted with messages using the same API contract.
  */
 
 export const MESSAGE_ATTACHMENT_LIMIT = 20;
@@ -22,27 +21,7 @@ export const MESSAGE_IMAGE_ALLOWED_MIME_TYPES = [
   "image/gif",
 ] as const;
 
-export const MESSAGE_DOCUMENT_ALLOWED_MIME_TYPES = [
-  "text/plain",
-  "text/markdown",
-  "application/pdf",
-] as const;
-
-export const MESSAGE_ATTACHMENT_ALLOWED_MIME_TYPES = [
-  ...MESSAGE_IMAGE_ALLOWED_MIME_TYPES,
-  ...MESSAGE_DOCUMENT_ALLOWED_MIME_TYPES,
-] as const;
-
-export const MESSAGE_DOCUMENT_ALLOWED_EXTENSIONS = [
-  ".txt",
-  ".md",
-  ".pdf",
-] as const;
-
-export type MessageAttachmentKind = "image" | "text" | "pdf";
-
-export type MessageImageMimeType = typeof MESSAGE_IMAGE_ALLOWED_MIME_TYPES[number];
-export type MessageDocumentMimeType = typeof MESSAGE_DOCUMENT_ALLOWED_MIME_TYPES[number];
+export type MessageAttachmentKind = "image" | "file";
 
 export interface MessageAttachment {
   id: string;
@@ -52,9 +31,38 @@ export interface MessageAttachment {
   size: number;
 }
 
+export interface AttachmentContext {
+  kind: "chat" | "task";
+  id: string;
+}
+
+export interface AttachmentFileReference {
+  attachmentIndex: number;
+  path: string;
+}
+
+export interface PreparedAttachmentFiles {
+  files: AttachmentFileReference[];
+  directory?: string;
+}
+
 export function getBase64DecodedByteLength(base64: string): number {
   const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
   return Math.max(0, Math.floor((base64.length * 3) / 4) - padding);
+}
+
+export function isValidAttachmentBase64(data: string): boolean {
+  if (data.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(data)) {
+    return false;
+  }
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  if (data.endsWith("==")) {
+    return (alphabet.indexOf(data.at(-3)!) & 15) === 0;
+  }
+  if (data.endsWith("=")) {
+    return (alphabet.indexOf(data.at(-2)!) & 3) === 0;
+  }
+  return true;
 }
 
 export function getMessageAttachmentByteLength(
@@ -71,11 +79,6 @@ export interface ComposerAttachment extends MessageAttachment {
   previewUrl?: string;
 }
 
-export const MESSAGE_ATTACHMENT_ACCEPT = [
-  ...MESSAGE_ATTACHMENT_ALLOWED_MIME_TYPES,
-  ...MESSAGE_DOCUMENT_ALLOWED_EXTENSIONS,
-].join(",");
-
 export const MESSAGE_IMAGE_ACCEPT = MESSAGE_IMAGE_ALLOWED_MIME_TYPES.join(",");
 
 function normalizeMimeType(mimeType: string): string {
@@ -89,39 +92,16 @@ export function getMessageAttachmentExtension(filename: string): string {
 
 export function getMessageAttachmentKind(
   attachment: Pick<MessageAttachment, "filename" | "mimeType">,
-): MessageAttachmentKind | null {
+): MessageAttachmentKind {
   const mimeType = normalizeMimeType(attachment.mimeType);
   if ((MESSAGE_IMAGE_ALLOWED_MIME_TYPES as readonly string[]).includes(mimeType)) {
     return "image";
   }
-  if (mimeType === "application/pdf" || getMessageAttachmentExtension(attachment.filename) === ".pdf") {
-    return "pdf";
-  }
-  if (
-    (MESSAGE_DOCUMENT_ALLOWED_MIME_TYPES as readonly string[]).includes(mimeType)
-    || getMessageAttachmentExtension(attachment.filename) === ".txt"
-    || getMessageAttachmentExtension(attachment.filename) === ".md"
-  ) {
-    return "text";
-  }
-  return null;
-}
-
-export function isSupportedMessageAttachment(
-  attachment: Pick<MessageAttachment, "filename" | "mimeType">,
-): boolean {
-  return getMessageAttachmentKind(attachment) !== null;
+  return "file";
 }
 
 export function getCanonicalMessageAttachmentMimeType(
   attachment: Pick<MessageAttachment, "filename" | "mimeType">,
 ): string {
-  const kind = getMessageAttachmentKind(attachment);
-  if (kind === "pdf") {
-    return "application/pdf";
-  }
-  if (kind === "text") {
-    return getMessageAttachmentExtension(attachment.filename) === ".md" ? "text/markdown" : "text/plain";
-  }
-  return normalizeMimeType(attachment.mimeType);
+  return normalizeMimeType(attachment.mimeType) || "application/octet-stream";
 }
