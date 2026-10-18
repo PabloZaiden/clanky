@@ -72,6 +72,11 @@ export function useStickyBottomScroll(dependencies: DependencyList) {
     };
   }, []);
 
+  const releaseBottomPin = useCallback(() => {
+    isPinnedToBottomRef.current = false;
+    cancelScheduledScroll();
+  }, [cancelScheduledScroll]);
+
   const cancelPreservedScrollPosition = useCallback(() => {
     pendingPrependScrollRef.current = null;
   }, []);
@@ -151,5 +156,6 @@ export function useStickyBottomScroll(dependencies: DependencyList) {
     contentRef,
     preserveScrollPosition,
     cancelPreservedScrollPosition,
+    releaseBottomPin,
   };
 }

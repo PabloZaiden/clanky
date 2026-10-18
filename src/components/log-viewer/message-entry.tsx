@@ -12,12 +12,10 @@ import {
 } from "@/shared/message-attachments";
 import { ImageViewerModal } from "../ImageViewerModal";
 import { StatusBadge } from "../common";
-import { MarkdownRenderer } from "../MarkdownRenderer";
 import type { TranscriptFileLinkContext } from "./types";
 import { ActivitySpinner } from "./activity-spinner";
 import { HarnessMessageAdmission } from "../harness-activity";
-import { TranscriptTextContent } from "./transcript-file-links";
-import { useStreamingTextReveal } from "./streaming-text";
+import { MessageBody } from "./message-body";
 import { formatTime } from "./utils";
 import { getQuestionAnswerStatus } from "@/shared/harness-questions";
 import {
@@ -40,6 +38,7 @@ interface MessageEntryProps {
   onTranslationError: (error: unknown) => void;
   playingReadAloudKey: string | null;
   readAloudStatus: "generating" | "playing" | null;
+  onBeforeExpand: () => void;
 }
 
 function getOutcomeBadgeVariant(kind: PromiseMarkerOutcomeKind): BadgeVariant {
@@ -66,6 +65,7 @@ export const MessageEntry = memo(function MessageEntry({
   onTranslationError,
   playingReadAloudKey,
   readAloudStatus,
+  onBeforeExpand,
 }: MessageEntryProps) {
   const isUser = msg.role === "user";
   const outcome = isUser || msg.question ? null : detectTrailingPromiseMarker(msg.content);
@@ -94,12 +94,6 @@ export const MessageEntry = memo(function MessageEntry({
     ? translationRequest
     : null;
   const renderedContent = currentTranslation?.text ?? sourceText;
-  const reveal = useStreamingTextReveal({
-    message: msg,
-    content: renderedContent,
-    markdown: shouldRenderMarkdown,
-    enabled: !isUser && !msg.question && !currentTranslation && !currentTranslationRequest,
-  });
   const hasMessageText = sourceText.trim().length > 0;
   const canReadAloud = !isUser && Boolean(onReadAloud) && hasMessageText;
   const canTranslate = msg.role === "assistant"
@@ -160,37 +154,19 @@ export const MessageEntry = memo(function MessageEntry({
         </time>
       )}
       <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
-        <div ref={reveal.ref} className={contentWidthClassName}>
+        <div className={contentWidthClassName}>
           {!isUser && msg.question?.scope.kind === "child" && (
             <div className="text-xs text-gray-500 dark:text-gray-400">Subagent question</div>
           )}
-          {isUser ? (
-            <div
-              className="rounded-[1.35rem] bg-gray-900 px-4 py-3 text-lg leading-7 text-white shadow-sm dark:bg-neutral-700 dark:text-gray-50"
-              data-message-bubble="user"
-            >
-              <TranscriptTextContent
-                content={displayMessage.content}
-                className="whitespace-pre-wrap break-words text-white"
-                fileLinkContext={fileLinkContext}
-              />
-            </div>
-          ) : shouldRenderMarkdown ? (
-            <MarkdownRenderer
-              content={renderedContent}
-              textSize="body"
-              className="text-lg leading-7 text-gray-900 dark:text-white"
-              fileLinkContext={fileLinkContext}
-              revealFrom={reveal.from}
-            />
-          ) : (
-            <TranscriptTextContent
-              content={renderedContent}
-              className="whitespace-pre-wrap break-words text-lg leading-7 text-gray-900 dark:text-white"
-              fileLinkContext={fileLinkContext}
-              revealFrom={reveal.from}
-            />
-          )}
+          <MessageBody
+            key={msg.id}
+            message={msg}
+            content={renderedContent}
+            markdownEnabled={shouldRenderMarkdown}
+            revealEnabled={!isUser && !msg.question && !currentTranslation && !currentTranslationRequest}
+            fileLinkContext={fileLinkContext}
+            onBeforeExpand={onBeforeExpand}
+          />
           {answerStatus && (
             <div className="text-right text-xs text-gray-500 dark:text-gray-400" role="status">{answerStatus}</div>
           )}
