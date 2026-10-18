@@ -30,7 +30,7 @@ export interface ToolCallRecord {
 /**
  * Lightweight browser representation used by paginated chat transcripts.
  * Tool inputs are included so collapsed rows can be described accurately;
- * outputs and image bytes stay on the server until the row is expanded.
+ * outputs and image bytes stay on the server until details or a preview are shown.
  */
 export interface ToolCallSummary {
   id: string;
@@ -44,6 +44,7 @@ export interface ToolCallSummary {
   outputType: "text" | "json";
   hasInput: boolean;
   hasOutput: boolean;
+  hasImagePreview?: boolean;
   detailRevision?: string;
   detailAvailable: true;
 }
@@ -55,6 +56,12 @@ export function isToolCallSummary(value: ToolCallDisplayData): value is ToolCall
   return "detailAvailable" in value && value.detailAvailable === true;
 }
 
+export function hasToolCallImagePreview(tool: ToolCallDisplayData): boolean {
+  return isToolCallSummary(tool)
+    ? tool.hasImagePreview === true
+    : tool.extras?.some((extra) => extra.type === "image_preview" && extra.image.data.length > 0) === true;
+}
+
 export function isToolCallDetailsStale(
   summary: ToolCallSummary,
   details: ToolCallRecord,
@@ -63,6 +70,7 @@ export function isToolCallDetailsStale(
     details.status !== summary.status
     || (summary.hasInput && details.input === undefined)
     || (summary.hasOutput && details.output === undefined)
+    || (summary.hasImagePreview === true && !hasToolCallImagePreview(details))
     || (
       summary.detailRevision !== undefined
       && details.detailRevision !== summary.detailRevision
@@ -72,7 +80,7 @@ export function isToolCallDetailsStale(
 
 export function createToolCallSummary(
   tool: ToolCallRecord,
-  metadata: { hasOutput?: boolean; detailRevision?: string } = {},
+  metadata: { hasOutput?: boolean; hasImagePreview?: boolean; detailRevision?: string } = {},
 ): ToolCallSummary {
   const kind = inferToolCallKind(tool);
   const detailRevision = metadata.detailRevision ?? tool.detailRevision;
@@ -88,6 +96,7 @@ export function createToolCallSummary(
     outputType: typeof tool.output === "string" ? "text" : "json",
     hasInput: tool.input !== undefined,
     hasOutput: metadata.hasOutput ?? tool.output !== undefined,
+    ...(metadata.hasImagePreview ?? hasToolCallImagePreview(tool) ? { hasImagePreview: true } : {}),
     ...(detailRevision !== undefined ? { detailRevision } : {}),
     detailAvailable: true,
   };
@@ -231,6 +240,7 @@ function mergeToolCallSummaries(
     outputLabel: getToolCallOutputLabel(kind, status),
     hasInput: existing.hasInput || incoming.hasInput || input !== undefined,
     hasOutput: existing.hasOutput || incoming.hasOutput,
+    ...(existing.hasImagePreview || incoming.hasImagePreview ? { hasImagePreview: true } : {}),
     ...(selected.detailRevision === undefined
       ? (existing.detailRevision !== undefined
         ? { detailRevision: existing.detailRevision }
@@ -251,6 +261,7 @@ function toToolCallRecord(value: ToolCallRecord): ToolCallRecord {
     outputType: _outputType,
     hasInput: _hasInput,
     hasOutput: _hasOutput,
+    hasImagePreview: _hasImagePreview,
     detailAvailable: _detailAvailable,
     ...record
   } = displayValue;
@@ -274,6 +285,9 @@ export function mergeToolCallDisplayData(
     ));
   }
   if (isToolCallSummary(incoming)) {
+    if (isToolCallDetailsStale(incoming, existing)) {
+      return mergeToolCallSummaries(createToolCallSummary(existing), incoming);
+    }
     return toToolCallRecord(mergeToolCallRecord<ToolCallRecord>(
       incoming as ToolCallRecord,
       existing,

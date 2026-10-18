@@ -298,6 +298,9 @@ export function rowToStorageEntry(
       sequence: row.sequence,
       payload: includeToolPayload ? normalizedTool : {},
       tool: normalizedTool,
+      ...(row.tool_has_image_preview !== undefined && row.tool_has_image_preview !== null
+        ? { toolHasImagePreview: row.tool_has_image_preview === 1 }
+        : {}),
       ...(row.tool_has_output !== undefined && row.tool_has_output !== null
         ? { toolHasOutput: row.tool_has_output === 1 }
         : {}),

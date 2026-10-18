@@ -82,6 +82,13 @@ Write the task prompt and choose the model and variant. Plan mode lets you
 review a generated plan before code changes begin. During and after execution
 you can inspect logs, the diff, and the task state.
 
+Image previews from supported image-reading tools appear directly in chat, task,
+and agent conversations, with the filename below the image. Select an image to
+open the full-size viewer. Images stay visible between independently collapsible
+tool or thinking groups, including when reopening or loading older conversation
+history. These image entries replace the tool's technical disclosure in the
+transcript; calls without a valid preview keep their ordinary tool details.
+
 Active thinking and tool-activity labels in chat and task transcripts use a
 dot and a gentle breathing effect across the whole label. Active text uses
 contrasting colors and stays at or above 50% opacity throughout the pulse.
