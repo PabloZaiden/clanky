@@ -2,7 +2,7 @@ import { useCallback, useRef, useState, type DragEvent } from "react";
 
 interface UseFileTreeDropOptions {
   canUploadFile: boolean;
-  onDropFile: (file: File, targetDirectory: string) => void;
+  onDropFiles: (files: readonly File[], targetDirectory: string) => void;
 }
 
 function isFileDragEvent(event: DragEvent<HTMLElement>): boolean {
@@ -13,7 +13,7 @@ function isWithinElement(target: EventTarget | null, element: HTMLElement | null
   return target instanceof Node && element?.contains(target) === true;
 }
 
-export function useFileTreeDrop({ canUploadFile, onDropFile }: UseFileTreeDropOptions) {
+export function useFileTreeDrop({ canUploadFile, onDropFiles }: UseFileTreeDropOptions) {
   const [dropTargetDirectory, setDropTargetDirectory] = useState<string | null>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
   const handleTreeDragEnter = useCallback((event: DragEvent<HTMLDivElement>) => {
@@ -92,11 +92,11 @@ export function useFileTreeDrop({ canUploadFile, onDropFile }: UseFileTreeDropOp
     event.preventDefault();
     event.stopPropagation();
     setDropTargetDirectory(null);
-    const file = event.dataTransfer.files.item(0);
-    if (canUploadFile && file) {
-      onDropFile(file, targetDirectory);
+    const files = Array.from(event.dataTransfer.files);
+    if (canUploadFile && files.length > 0) {
+      onDropFiles(files, targetDirectory);
     }
-  }, [canUploadFile, onDropFile]);
+  }, [canUploadFile, onDropFiles]);
   const handleTreeDrop = useCallback((event: DragEvent<HTMLDivElement>) => {
     handleDropFile(event, "");
   }, [handleDropFile]);

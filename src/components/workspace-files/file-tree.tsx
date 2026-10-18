@@ -46,6 +46,7 @@ interface WorkspaceFileTreeProps {
   showHiddenFiles: boolean;
   loading: boolean;
   error?: string | null;
+  dropError: string | null;
   collapsed: boolean;
   onOpenRootPicker: () => void;
   onRefresh: () => Promise<void>;
@@ -53,7 +54,7 @@ interface WorkspaceFileTreeProps {
   onCopySelectedFilePath: () => Promise<void>;
   onDownloadSelectedFile: () => Promise<void>;
   onUploadFile: () => void;
-  onDropFile: (file: File, targetDirectory: string) => void;
+  onDropFiles: (files: readonly File[], targetDirectory: string) => void;
   onRenameSelectedNode: () => void;
   onDeleteSelectedNode: () => void;
   onDownloadNode: (node: WorkspaceFileNode) => Promise<void>;
@@ -78,6 +79,7 @@ function WorkspaceFileTreeComponent({
   showHiddenFiles,
   loading,
   error,
+  dropError,
   collapsed,
   onOpenRootPicker,
   onRefresh,
@@ -85,7 +87,7 @@ function WorkspaceFileTreeComponent({
   onCopySelectedFilePath,
   onDownloadSelectedFile,
   onUploadFile,
-  onDropFile,
+  onDropFiles,
   onRenameSelectedNode,
   onDeleteSelectedNode,
   onDownloadNode,
@@ -112,7 +114,7 @@ function WorkspaceFileTreeComponent({
     handleTreeDragLeave,
     handleTreeDragOver,
     handleTreeDrop,
-  } = useFileTreeDrop({ canUploadFile, onDropFile });
+  } = useFileTreeDrop({ canUploadFile, onDropFiles });
   const [contextMenu, setContextMenu] = useState<{
     node: WorkspaceFileNode;
     position: ContextMenuPosition;
@@ -121,6 +123,9 @@ function WorkspaceFileTreeComponent({
     setContextMenu({ node, position });
   }, []);
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
+  const visibleErrors = [error, dropError].filter(
+    (message): message is string => typeof message === "string" && message.length > 0,
+  );
   const getNodeActions = useCallback((node: WorkspaceFileNode): ActionMenuItem[] => [
     ...(node.kind === "file" ? [{
       id: "download",
@@ -278,14 +283,15 @@ function WorkspaceFileTreeComponent({
               : "",
           ].join(" ")}
         >
-          {error && (
+          {visibleErrors.map((message, index) => (
             <div
+              key={`${index}-${message}`}
               role="alert"
               className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200"
             >
-              {error}
+              {message}
             </div>
-          )}
+          ))}
           <div data-testid="workspace-file-tree-content" className="min-w-max w-full">
             <WorkspaceFileTreeNodes
               path=""

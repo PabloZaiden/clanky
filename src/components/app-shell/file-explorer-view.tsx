@@ -178,6 +178,7 @@ export function FileExplorerView({
   const [deleteTarget, setDeleteTarget] = useState<WorkspaceFileNode | null>(null);
   const [deletingNode, setDeletingNode] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [uploadDropError, setUploadDropError] = useState<string | null>(null);
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
   const [tmuxPromptOpen, setTmuxPromptOpen] = useState(false);
   const [creatingTerminal, setCreatingTerminal] = useState(false);
@@ -590,6 +591,7 @@ export function FileExplorerView({
   }, [blockDirtyNodeMutation, deleteTarget, explorer, toast]);
 
   const handleUploadFile = useCallback(() => {
+    setUploadDropError(null);
     uploadInputRef.current?.click();
   }, []);
 
@@ -618,8 +620,16 @@ export function FileExplorerView({
     await uploadFile(file);
   }, [uploadFile]);
 
-  const handleFileDrop = useCallback((file: File, targetDirectory: string) => {
-    void uploadFile(file, targetDirectory);
+  const handleFilesDrop = useCallback((files: readonly File[], targetDirectory: string) => {
+    if (files.length > 1) {
+      setUploadDropError("Drop one file at a time.");
+      return;
+    }
+    setUploadDropError(null);
+    const file = files[0];
+    if (file) {
+      void uploadFile(file, targetDirectory);
+    }
   }, [uploadFile]);
 
   useEffect(() => {
@@ -795,6 +805,7 @@ export function FileExplorerView({
                 showHiddenFiles={explorer.showHiddenFiles}
                 loading={explorer.loadingTree}
                 error={shouldToastMobileUploadFailure ? null : explorer.error}
+                dropError={uploadDropError}
                 collapsed={explorerCollapsed}
                 onOpenRootPicker={openRootPicker}
                 onRefresh={explorer.refreshTree}
@@ -802,7 +813,7 @@ export function FileExplorerView({
                 onCopySelectedFilePath={handleCopySelectedFilePath}
                 onDownloadSelectedFile={handleDownloadFile}
                 onUploadFile={handleUploadFile}
-                onDropFile={handleFileDrop}
+                onDropFiles={handleFilesDrop}
                 onRenameSelectedNode={openRenameModal}
                 onDeleteSelectedNode={openDeleteModal}
                 onDownloadNode={handleDownloadFile}
