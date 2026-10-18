@@ -111,7 +111,9 @@ to display that message in full; opening a very large message may briefly pause
 the browser. Shorter messages and attachments are unchanged. This display limit
 does not shorten saved messages, API responses, transcript exports, or the text
 used by message actions. Expansion is local to the mounted message and is not
-saved. A Mermaid block cut by the preview stays as code until expanded.
+saved. A code block cut by the preview can only be copied after expansion;
+completed blocks remain copyable. A clipped Mermaid block stays as code until
+expanded.
 
 Realtime subscriptions filter events before updating React state. Callback-only
 streams and resource refresh subscriptions do not retain an unused last-event

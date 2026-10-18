@@ -37,12 +37,13 @@ function isTruncatedCodeBlock(node: ExtraProps["node"], content: string | null):
 
 function MarkdownPre({ children, node }: ComponentPropsWithoutRef<"pre"> & ExtraProps) {
   const truncatedContent = useContext(TruncatedMarkdownContext);
+  const truncated = isTruncatedCodeBlock(node, truncatedContent);
   const code = node?.children.find((child) => child.type === "element" && child.tagName === "code");
   if (
     code?.type === "element"
     && Array.isArray(code.properties["className"])
     && code.properties["className"].includes("language-mermaid")
-    && !isTruncatedCodeBlock(node, truncatedContent)
+    && !truncated
   ) {
     const source = code.children.map((child) => child.type === "text" ? child.value : "").join("");
     return <MermaidDiagram source={source} />;
@@ -53,7 +54,7 @@ function MarkdownPre({ children, node }: ComponentPropsWithoutRef<"pre"> & Extra
   return (
     <MarkdownCodeBlockContext.Provider value={true}>
       <div className="relative my-6 min-w-0 max-w-full">
-        {codeText !== null && (
+        {codeText !== null && !truncated && (
           <div className="absolute right-2 top-2 z-10">
             <MarkdownCodeBlockCopyButton codeText={codeText} />
           </div>
