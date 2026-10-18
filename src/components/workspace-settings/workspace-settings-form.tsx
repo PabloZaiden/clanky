@@ -32,14 +32,16 @@ export function WorkspaceSettingsForm({
   const model = useWorkspaceSettingsDraft(workspace);
   const [category, setCategory] = useState("general");
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const busy = saving || submitting;
   const invalidField = useRef<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null>(null);
   const validationFrame = useRef<number | null>(null);
   const reportingValidity = useRef(false);
 
   useHeaderActions({
     primary: [
-      { id: "save-workspace", label: "Save", form: formId, loading: saving, disabled: !model.dirty || saving },
-      { id: "cancel-workspace", label: "Cancel", disabled: !model.dirty || saving, onAction: () => {
+      { id: "save-workspace", label: "Save", form: formId, loading: busy, disabled: !model.dirty || busy },
+      { id: "cancel-workspace", label: "Cancel", disabled: !model.dirty || busy, onAction: () => {
         model.reset();
         setValidationError(null);
       } },
@@ -77,7 +79,7 @@ export function WorkspaceSettingsForm({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    if (saving) return;
+    if (busy) return;
     if (!model.draft.name.trim()) {
       setCategory("general");
       setValidationError("Enter a workspace name.");
@@ -90,13 +92,18 @@ export function WorkspaceSettingsForm({
     }
     setValidationError(null);
     const submitted = model.draft;
-    const success = await onSave(
-      submitted.name.trim(), submitted.settings, submitted.executionHost, submitted.sshTarget,
-      submitted.archived, submitted.allowClankyContext, submitted.allowWorktrees,
-    );
-    if (success) {
-      model.markSaved(submitted);
-      toast.success("Workspace saved.");
+    setSubmitting(true);
+    try {
+      const success = await onSave(
+        submitted.name.trim(), submitted.settings, submitted.executionHost, submitted.sshTarget,
+        submitted.archived, submitted.allowClankyContext, submitted.allowWorktrees,
+      );
+      if (success) {
+        model.markSaved(submitted);
+        toast.success("Workspace saved.");
+      }
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -104,7 +111,7 @@ export function WorkspaceSettingsForm({
     <SettingsLayout categories={CATEGORIES} category={category} onCategoryChange={setCategory}>
       {validationError ? <ErrorState title="Check workspace settings" description={validationError} /> : null}
       <form id={formId} onSubmit={(event) => void handleSubmit(event)} onInvalidCapture={showInvalidField}>
-        <fieldset disabled={saving} className="min-w-0">
+        <fieldset disabled={busy} className="min-w-0">
           <div hidden={category !== "general"} data-workspace-settings-category="general">
             <GeneralSettingsSection workspace={workspace} draft={model.draft} onChange={model.patch}
               onIconChanged={onWorkspaceIconChanged} formId={formId} />
@@ -122,7 +129,10 @@ export function WorkspaceSettingsForm({
         </fieldset>
       </form>
       <div hidden={category !== "instructions"}>
-        <FormSection title="Instructions"><AgentsMdSection workspace={workspace} /></FormSection>
+        <FormSection title="Instructions">
+          <AgentsMdSection key={JSON.stringify([workspace.id, workspace.executionTargetRevision, workspace.directory])}
+            workspace={workspace} />
+        </FormSection>
       </div>
       <div hidden={category !== "maintenance"}>
         <FormSection title="Maintenance">
@@ -130,7 +140,7 @@ export function WorkspaceSettingsForm({
             onPurgeArchivedTasks={onPurgeArchivedTasks} purgeableTaskCount={purgeableTaskCount}
             purgingPurgeableTasks={purgingPurgeableTasks} /> : null}
           {onDeleteWorkspace ? <DeleteWorkspaceSection workspace={workspace} onDeleteWorkspace={onDeleteWorkspace}
-            workspaceTaskCount={workspaceTaskCount} saving={saving} onDeleted={() => {
+            workspaceTaskCount={workspaceTaskCount} saving={busy} onDeleted={() => {
               model.reset();
               onDeleted?.();
             }} /> : null}

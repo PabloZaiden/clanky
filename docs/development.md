@@ -70,8 +70,11 @@ draft mounted across these in-page categories: Save persists it without
 navigating away, Cancel restores current saved values, and route navigation
 uses the framework unsaved-change confirmation. Native validation reveals
 the first invalid field's category before focusing it. Icon and AGENTS.md
-actions save independently and must not reset unrelated edits. Keep workspace
-deletion restrictions and managed-directory confirmation intact.
+actions save independently and must not reset unrelated edits. Keep the draft
+locked until persistence, refresh and saved-draft updates finish. Instruction
+status belongs to the saved execution-target revision and directory, not just
+the workspace ID. Keep workspace deletion restrictions and managed-directory
+confirmation intact.
 
 Use the public `useTheme()` integration; Dark is the no-preference default,
 not a forced override of saved Light/System. Do not inspect or change
