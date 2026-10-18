@@ -44,7 +44,9 @@ titles with their input IDs. Settings sections declare category and scope;
 custom renderers need a concrete composition limitation, not different CSS.
 Sidebar items and list rows share framework-owned 4 px symmetric horizontal
 padding and 8 px corners at the default root font size; keep those defaults
-instead of adding local hover or spacing overrides.
+instead of adding local hover or spacing overrides. Rounded backgrounds mark
+hover and selection without visible row borders or dividers; keyboard focus
+remains visible.
 Use framework `Select` for toolbar dropdowns and `SelectField` for labeled
 forms; do not recreate their styling with raw native selects.
 Keep labels, values, actions and actionable errors instead of workflow
