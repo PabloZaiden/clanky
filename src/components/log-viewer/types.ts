@@ -55,8 +55,8 @@ export interface ConversationViewerProps {
   toolPathDisplayRoot?: string;
   /** Optional chat/task-aware context for turning inline code paths into code explorer links. */
   fileLinkContext?: TranscriptFileLinkContext;
-  /** Fetches one full tool-call payload when its row is expanded. */
-  onLoadToolDetails?: (toolCallId: string) => Promise<ToolCallData | null>;
+  /** Fetches one full tool-call payload for expanded details or a visible image. */
+  onLoadToolDetails?: (toolCallId: string, signal?: AbortSignal) => Promise<ToolCallData | null>;
   /** Whether older transcript pages are available. */
   hasOlderTranscript?: boolean;
   /** Load the next older transcript page. */
@@ -79,6 +79,7 @@ export interface ConversationViewerProps {
 export type EntryBase =
   | { type: "message"; data: MessageData; timestamp: string }
   | { type: "tool"; data: ToolCallDisplayData; timestamp: string }
+  | { type: "tool-image"; data: ToolCallDisplayData; timestamp: string }
   | {
       type: "log";
       data: TaskLogEntry;

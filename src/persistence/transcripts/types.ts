@@ -91,4 +91,5 @@ export interface TranscriptRow {
   tool_output: string | null;
   tool_extras: string | null;
   tool_has_output?: number | null;
+  tool_has_image_preview?: number | null;
 }

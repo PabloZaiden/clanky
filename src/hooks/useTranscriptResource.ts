@@ -83,7 +83,7 @@ export interface UseTranscriptResourceResult<TResource> {
   refreshCoalesced: (options?: TranscriptResourceRefreshOptions) => Promise<void>;
   loadMoreTranscript: () => Promise<void>;
   loadFullTranscript: () => Promise<void>;
-  loadToolDetails: (toolCallId: string) => Promise<ToolCallData | null>;
+  loadToolDetails: (toolCallId: string, signal?: AbortSignal) => Promise<ToolCallData | null>;
   applyTranscriptEvent: (event: TranscriptStreamEvent) => void;
   clearResource: (error?: string) => void;
 }
@@ -533,6 +533,7 @@ export function useTranscriptResource<TResource, TSnapshot>({
 
   const loadToolDetails = useCallback(async (
     toolCallId: string,
+    signal?: AbortSignal,
   ): Promise<ToolCallData | null> => {
     const requestResourceId = resourceId;
     const currentTool = transcriptRef.current.toolCalls.find(
@@ -555,12 +556,13 @@ export function useTranscriptResource<TResource, TSnapshot>({
 
     detailControllersRef.current.get(toolCallId)?.abort();
     const controller = new AbortController();
+    const requestSignal = signal ? AbortSignal.any([controller.signal, signal]) : controller.signal;
     detailControllersRef.current.set(toolCallId, controller);
     try {
       const response = await requestApiResponse(
         `${baseUrl}/tool-calls/${encodeURIComponent(toolCallId)}`,
         {
-          signal: controller.signal,
+          signal: requestSignal,
           action: `Fetch ${resourceLabel} tool-call details`,
           fallbackMessage: `Failed to load ${resourceLabel} tool call`,
           acceptedStatuses: [404],
@@ -571,7 +573,7 @@ export function useTranscriptResource<TResource, TSnapshot>({
       }
       const tool = await readApiResponse<ToolCallData>(response);
       if (
-        controller.signal.aborted
+        requestSignal.aborted
         || !mountedRef.current
         || resourceIdRef.current !== requestResourceId
       ) {

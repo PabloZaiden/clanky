@@ -14,6 +14,7 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import { isIntrospectableTableName } from "../schema-inventory";
 import { repairConsolidatedSchema } from "./consolidated-schema-repair";
 import { isAgentProvider } from "@/shared/settings";
+import { getTranscriptTableConfig } from "../transcripts/table-config";
 
 const log = createLogger("persistence:migrations");
 
@@ -683,6 +684,40 @@ export const migrations: Migration[] = [
         CREATE INDEX idx_worker_update_job_logs_job_timestamp
           ON worker_update_job_logs(job_id, timestamp ASC);
       `);
+    },
+  },
+  {
+    version: 78,
+    name: "add_transcript_image_preview_presence",
+    up: (db) => {
+      for (const resource of ["chat", "task", "agent_run"] as const) {
+        const { entriesTable } = getTranscriptTableConfig(resource);
+        if (
+          !tableExists(db, entriesTable)
+          || getTableColumns(db, entriesTable).includes("tool_has_image_preview")
+        ) {
+          continue;
+        }
+        db.run(`
+          ALTER TABLE ${entriesTable}
+          ADD COLUMN tool_has_image_preview INTEGER NOT NULL DEFAULT 0
+          CHECK (tool_has_image_preview IN (0, 1))
+        `);
+        db.run(`
+          UPDATE ${entriesTable}
+          SET tool_has_image_preview = EXISTS (
+            SELECT 1 FROM json_each(
+              CASE WHEN json_valid(tool_extras) THEN tool_extras ELSE '[]' END
+            ) AS extra
+            WHERE CASE WHEN extra.type = 'object' THEN
+              json_extract(extra.value, '$.type') = 'image_preview'
+              AND json_type(extra.value, '$.image.data') = 'text'
+              AND length(json_extract(extra.value, '$.image.data')) > 0
+            ELSE 0 END
+          )
+          WHERE kind = 'tool' AND tool_extras IS NOT NULL
+        `);
+      }
     },
   },
 ];

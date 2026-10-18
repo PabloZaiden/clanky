@@ -6,6 +6,7 @@
  */
 import type { Database } from "bun:sqlite";
 import {
+  hasToolCallImagePreview,
   TRANSCRIPT_PAGE_SIZE,
 } from "@/shared";
 import type {
@@ -77,9 +78,9 @@ function upsertEntry(
   db.prepare(`
     INSERT INTO ${config.entriesTable} (
       ${config.resourceColumn}, user_id, entry_id, kind, timestamp, sequence,
-      payload, message_role, tool_name, tool_status, tool_input, tool_output, tool_extras,
+      payload, message_role, tool_name, tool_status, tool_input, tool_output, tool_extras, tool_has_image_preview,
       created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(${config.resourceColumn}, entry_id) DO UPDATE SET
       user_id = excluded.user_id,
       kind = excluded.kind,
@@ -92,6 +93,7 @@ function upsertEntry(
       tool_input = excluded.tool_input,
       tool_output = excluded.tool_output,
       tool_extras = excluded.tool_extras,
+      tool_has_image_preview = excluded.tool_has_image_preview,
       updated_at = excluded.updated_at
   `).run(
     resourceId,
@@ -107,6 +109,7 @@ function upsertEntry(
     input,
     output,
     extras,
+    tool && hasToolCallImagePreview(tool) ? 1 : 0,
     now,
     now,
   );
@@ -439,7 +442,8 @@ export function listTranscriptEntriesForUser(
     SELECT entry_id, kind, timestamp, sequence, payload,
       updated_at,
       tool_name, tool_status, ${includeToolPayload ? "tool_input, tool_output, tool_extras" : "tool_input, NULL AS tool_output, NULL AS tool_extras"},
-      CASE WHEN tool_output IS NOT NULL THEN 1 ELSE 0 END AS tool_has_output
+      CASE WHEN tool_output IS NOT NULL THEN 1 ELSE 0 END AS tool_has_output,
+      tool_has_image_preview
     FROM ${config.entriesTable}
     WHERE ${config.resourceColumn} = ? AND user_id = ?
     ORDER BY timestamp DESC, sequence DESC, kind DESC, entry_id DESC
@@ -508,7 +512,8 @@ export function listTranscriptEntriesAfterForUser(
       updated_at,
       tool_name, tool_status,
       ${includeToolPayload ? "tool_input, tool_output, tool_extras" : "tool_input, NULL AS tool_output, NULL AS tool_extras"},
-      CASE WHEN tool_output IS NOT NULL THEN 1 ELSE 0 END AS tool_has_output
+      CASE WHEN tool_output IS NOT NULL THEN 1 ELSE 0 END AS tool_has_output,
+      tool_has_image_preview
     FROM ${config.entriesTable}
     WHERE ${config.resourceColumn} = ? AND user_id = ?
       ${afterClause}
@@ -617,7 +622,8 @@ function getEntriesBetween(
     SELECT entry_id, kind, timestamp, sequence, payload,
       updated_at,
       tool_name, tool_status, tool_input, NULL AS tool_output, NULL AS tool_extras,
-      CASE WHEN tool_output IS NOT NULL THEN 1 ELSE 0 END AS tool_has_output
+      CASE WHEN tool_output IS NOT NULL THEN 1 ELSE 0 END AS tool_has_output,
+      tool_has_image_preview
     FROM ${config.entriesTable}
     WHERE ${config.resourceColumn} = ?
       AND user_id = ?

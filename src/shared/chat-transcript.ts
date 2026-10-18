@@ -68,6 +68,7 @@ export interface ChatTranscriptStorageEntry {
   /** Normalized tool metadata/input; output and extras are omitted from snapshots. */
   tool?: ToolCallRecord;
   toolHasOutput?: boolean;
+  toolHasImagePreview?: boolean;
 }
 
 export interface ChatTranscript {
