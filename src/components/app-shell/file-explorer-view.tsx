@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
-import type { WorkspaceFileEntry, TerminalSession } from "@/shared";
+import type { WorkspaceFileEntry, WorkspaceFileNode, TerminalSession } from "@/shared";
 import {
   useFileExplorer,
   useFileExplorerFullTreePreference,
@@ -29,6 +29,7 @@ import {
 import type { FileExplorerTarget } from "../../hooks/workspaceFileActions";
 import type { ControlUiActionOutcome } from "@/shared/clanky-control";
 import type { PendingControlFileOpen } from "./use-control-ui-actions";
+import { isPathWithinOrEqual } from "../../hooks/file-explorer-utils";
 
 function TerminalIcon() {
   return (
@@ -171,10 +172,10 @@ export function FileExplorerView({
   const [explorerCollapsed, setExplorerCollapsed] = useState(false);
   const lastHandledExplorerFailureRef = useRef<FileExplorerOperationFailure | null>(null);
   const [rootPickerOpen, setRootPickerOpen] = useState(false);
-  const [renameModalOpen, setRenameModalOpen] = useState(false);
+  const [renameTarget, setRenameTarget] = useState<WorkspaceFileNode | null>(null);
   const [renameInputValue, setRenameInputValue] = useState("");
   const [renamingNode, setRenamingNode] = useState(false);
-  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<WorkspaceFileNode | null>(null);
   const [deletingNode, setDeletingNode] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
@@ -422,7 +423,7 @@ export function FileExplorerView({
     }
   }, [selectedFileAbsolutePath, toast]);
 
-  const handleDownloadFile = useCallback(async (file: WorkspaceFileEntry | null = explorer.currentFile) => {
+  const handleDownloadFile = useCallback(async (file: WorkspaceFileNode | null = explorer.currentFile) => {
     if (!file) {
       toast.error("Select a file to download.");
       return;
@@ -438,7 +439,7 @@ export function FileExplorerView({
         startDirectory: target.startDirectory,
       });
       triggerBrowserDownload(downloadUrl, file.name);
-      toast.success(`Started download: ${file.name} (${formatFileSize(file.size)})`);
+      toast.success(`Started download: ${file.name}`);
     } catch (error) {
       toast.error(`Failed to download file: ${String(error)}`);
     } finally {
@@ -512,33 +513,36 @@ export function FileExplorerView({
 
   const selectedNode = explorer.selectedNode;
 
-  const blockDirtySelectedFileMutation = useCallback(() => {
-    if (explorer.isDirty && selectedNode?.path === explorer.currentFile?.path) {
-      toast.error("Save or discard local changes before modifying this file.");
+  const blockDirtyNodeMutation = useCallback((node: WorkspaceFileNode) => {
+    if (explorer.isDirty && explorer.currentFile && isPathWithinOrEqual(explorer.currentFile.path, node.path)) {
+      toast.error("Save or discard local changes before modifying this item.");
       return true;
     }
     return false;
-  }, [explorer.currentFile?.path, explorer.isDirty, selectedNode?.path, toast]);
+  }, [explorer.currentFile, explorer.isDirty, toast]);
 
-  const openRenameModal = useCallback(() => {
-    if (!selectedNode) {
+  const openRenameModal = useCallback((node: WorkspaceFileNode | null = selectedNode) => {
+    if (!node) {
       toast.error("Select a file or directory to rename.");
       return;
     }
-    if (blockDirtySelectedFileMutation()) {
+    if (blockDirtyNodeMutation(node)) {
       return;
     }
-    setRenameInputValue(selectedNode.name);
-    setRenameModalOpen(true);
-  }, [blockDirtySelectedFileMutation, selectedNode, toast]);
+    setRenameInputValue(node.name);
+    setRenameTarget(node);
+  }, [blockDirtyNodeMutation, selectedNode, toast]);
 
   const closeRenameModal = useCallback(() => {
-    setRenameModalOpen(false);
+    setRenameTarget(null);
     setRenameInputValue("");
   }, []);
 
   const handleRenameSubmit = useCallback(async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!renameTarget || blockDirtyNodeMutation(renameTarget)) {
+      return;
+    }
     const trimmedName = renameInputValue.trim();
     if (!trimmedName) {
       toast.error("Enter a new name.");
@@ -546,7 +550,7 @@ export function FileExplorerView({
     }
     try {
       setRenamingNode(true);
-      const renamedFile = await explorer.renameSelectedNode(trimmedName);
+      const renamedFile = await explorer.renameNode(renameTarget, trimmedName);
       if (!renamedFile) {
         return;
       }
@@ -555,35 +559,35 @@ export function FileExplorerView({
     } finally {
       setRenamingNode(false);
     }
-  }, [closeRenameModal, explorer, renameInputValue, toast]);
+  }, [blockDirtyNodeMutation, closeRenameModal, explorer, renameInputValue, renameTarget, toast]);
 
-  const openDeleteModal = useCallback(() => {
-    if (!selectedNode) {
+  const openDeleteModal = useCallback((node: WorkspaceFileNode | null = selectedNode) => {
+    if (!node) {
       toast.error("Select a file or directory to delete.");
       return;
     }
-    if (blockDirtySelectedFileMutation()) {
+    if (blockDirtyNodeMutation(node)) {
       return;
     }
-    setDeleteModalOpen(true);
-  }, [blockDirtySelectedFileMutation, selectedNode, toast]);
+    setDeleteTarget(node);
+  }, [blockDirtyNodeMutation, selectedNode, toast]);
 
   const handleConfirmDelete = useCallback(async () => {
-    if (!selectedNode) {
+    if (!deleteTarget || blockDirtyNodeMutation(deleteTarget)) {
       return;
     }
     try {
       setDeletingNode(true);
-      const deleted = await explorer.deleteSelectedNode();
+      const deleted = await explorer.deleteNode(deleteTarget);
       if (!deleted) {
         return;
       }
-      toast.success(`Deleted ${selectedNode.name}`);
-      setDeleteModalOpen(false);
+      toast.success(`Deleted ${deleteTarget.name}`);
+      setDeleteTarget(null);
     } finally {
       setDeletingNode(false);
     }
-  }, [explorer, selectedNode, toast]);
+  }, [blockDirtyNodeMutation, deleteTarget, explorer, toast]);
 
   const handleUploadFile = useCallback(() => {
     uploadInputRef.current?.click();
@@ -789,6 +793,10 @@ export function FileExplorerView({
                 onUploadFile={handleUploadFile}
                 onRenameSelectedNode={openRenameModal}
                 onDeleteSelectedNode={openDeleteModal}
+                onDownloadNode={handleDownloadFile}
+                onRenameNode={openRenameModal}
+                onDeleteNode={openDeleteModal}
+                nodeActionsDisabled={renamingNode || deletingNode || uploadingFile || explorer.savingFile || explorer.loadingFile}
                 onToggleCollapsed={handleToggleExplorerCollapsed}
                 onToggleDirectory={explorer.toggleDirectory}
                 onOpenFile={handleOpenFile}
@@ -974,7 +982,7 @@ export function FileExplorerView({
       )}
 
       <Modal
-        isOpen={renameModalOpen}
+        isOpen={renameTarget !== null}
         onClose={closeRenameModal}
         title="Rename selected item"
         size="sm"
@@ -1011,14 +1019,14 @@ export function FileExplorerView({
       </Modal>
 
       <ConfirmModal
-        isOpen={deleteModalOpen}
-        onClose={() => setDeleteModalOpen(false)}
+        isOpen={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
         onConfirm={() => {
           void handleConfirmDelete();
         }}
         title="Delete selected item"
-        message={selectedNode
-          ? `Delete ${selectedNode.kind} "${selectedNode.name}"?${selectedNode.kind === "directory" ? " This will delete its contents." : ""}`
+        message={deleteTarget
+          ? `Delete ${deleteTarget.kind} "${deleteTarget.name}"?${deleteTarget.kind === "directory" ? " This will delete its contents." : ""}`
           : "Delete the selected item?"}
         confirmLabel="Delete"
         loading={deletingNode}
