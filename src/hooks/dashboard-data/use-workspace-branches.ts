@@ -3,7 +3,7 @@
  */
 
 import { useState, useCallback, useRef } from "react";
-import { createLogger } from "@pablozaiden/webapp/web";
+import { createLogger, type ToastService } from "@pablozaiden/webapp/web";
 import type { BranchInfo } from "@/contracts";
 import { apiRequest } from "../../lib/api-client";
 
@@ -13,8 +13,14 @@ export interface UseWorkspaceBranchesResult {
   branchesWorkspaceId: string | null;
   currentBranch: string;
   defaultBranch: string;
-  fetchBranches: (workspaceId: string | null) => Promise<void>;
-  fetchDefaultBranch: (workspaceId: string | null) => Promise<void>;
+  fetchBranches: (
+    workspaceId: string | null,
+    onError?: ToastService["error"],
+  ) => Promise<void>;
+  fetchDefaultBranch: (
+    workspaceId: string | null,
+    onError?: ToastService["error"],
+  ) => Promise<void>;
   isCurrentWorkspace: (workspaceId: string | null) => boolean;
   resetBranches: () => void;
 }
@@ -44,7 +50,10 @@ export function useWorkspaceBranches(): UseWorkspaceBranchesResult {
     return currentWorkspaceIdRef.current === workspaceId;
   }, []);
 
-  const fetchBranches = useCallback(async (workspaceId: string | null) => {
+  const fetchBranches = useCallback(async (
+    workspaceId: string | null,
+    onError?: ToastService["error"],
+  ) => {
     const requestId = ++branchesRequestIdRef.current;
     resetBranchData(workspaceId);
     setBranchListLoading(Boolean(workspaceId));
@@ -79,6 +88,7 @@ export function useWorkspaceBranches(): UseWorkspaceBranchesResult {
       ) {
         setBranches([]);
         setCurrentBranch("");
+        onError?.(String(error));
       }
     } finally {
       if (
@@ -90,7 +100,10 @@ export function useWorkspaceBranches(): UseWorkspaceBranchesResult {
     }
   }, [resetBranchData]);
 
-  const fetchDefaultBranch = useCallback(async (workspaceId: string | null) => {
+  const fetchDefaultBranch = useCallback(async (
+    workspaceId: string | null,
+    onError?: ToastService["error"],
+  ) => {
     const requestId = ++defaultBranchRequestIdRef.current;
     resetBranchData(workspaceId);
     setDefaultBranchLoading(Boolean(workspaceId));
@@ -123,6 +136,7 @@ export function useWorkspaceBranches(): UseWorkspaceBranchesResult {
         && workspaceId === currentWorkspaceIdRef.current
       ) {
         setDefaultBranch("");
+        onError?.(String(error));
       }
     } finally {
       if (

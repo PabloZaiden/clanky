@@ -191,8 +191,9 @@ export function ComposeChatView({
       selectedWorkspace.id,
       selectedWorkspace.directory,
       selectedWorkspace.workspaceType,
+      showError,
     );
-  }, [handleWorkspaceChange, resetCreateModalState, selectedWorkspace?.directory, selectedWorkspace?.id]);
+  }, [handleWorkspaceChange, resetCreateModalState, selectedWorkspace?.directory, selectedWorkspace?.id, showError]);
 
   useEffect(() => {
     if (!selectedWorkspace) {
