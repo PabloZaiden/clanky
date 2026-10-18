@@ -17,7 +17,7 @@ import {
   isEffectivelyPrivate,
   shouldObscurePrivateItem,
 } from "../../lib/private-items";
-import { ClankyListRow } from "./clanky-list-row";
+import { WorkItemRow } from "./work-item-row";
 import { apiRequest } from "../../lib/api-client";
 import { MarkdownRenderer } from "../MarkdownRenderer";
 
@@ -115,10 +115,12 @@ export function WorkspaceView({
     const statusPill = getTaskStatusPill(task);
     const privateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(task.config, [workspace]), showPrivateItems);
     return (
-      <ClankyListRow
+      <WorkItemRow
         key={task.config.id}
         title={task.config.name}
-        description="Task"
+        workspace={workspace}
+        itemType="Task"
+        lastInteractionAt={task.state.lastUserMessageAt ?? task.config.createdAt}
         badge={<StatusBadge variant={statusPill.variant}><StateText>{statusPill.label}</StateText></StatusBadge>}
         onClick={!privateHidden ? () => onNavigate(route) : undefined}
         privateHidden={privateHidden}
@@ -129,10 +131,12 @@ export function WorkspaceView({
   function renderChatRow(chat: Chat) {
     const privateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(chat.config, [workspace]), showPrivateItems);
     return (
-      <ClankyListRow
+      <WorkItemRow
         key={chat.config.id}
         title={chat.config.name}
-        description="Chat"
+        workspace={workspace}
+        itemType="Chat"
+        lastInteractionAt={chat.state.lastUserMessageAt ?? chat.config.createdAt}
         badge={<StatusBadge variant={getChatStatusBadgeVariant(chat.state.status)}><StateText>{formatStatusLabel(chat.state.status)}</StateText></StatusBadge>}
         onClick={!privateHidden ? () => onNavigate({ view: "chat", chatId: chat.config.id }) : undefined}
         privateHidden={privateHidden}
@@ -151,10 +155,12 @@ export function WorkspaceView({
               {relatedTerminalSessions.map((terminal) => {
                 const privateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(terminal.config, [workspace]), showPrivateItems);
                 return (
-                  <ClankyListRow
+                  <WorkItemRow
                     key={terminal.config.id}
                     title={terminal.config.name}
-                    description={terminal.config.connectionMode === "direct" ? "Direct" : "Persistent"}
+                    workspace={workspace}
+                    itemType="Terminal"
+                    lastInteractionAt={terminal.state.lastConnectedAt ?? terminal.config.createdAt}
                     badge={<StatusBadge variant={getTerminalSessionStatusBadgeVariant(terminal.state.status)}>{getTerminalSessionStatusLabel(terminal.state.status)}</StatusBadge>}
                     onClick={!privateHidden ? () => onNavigate({ view: "terminal", terminalSessionId: terminal.config.id }) : undefined}
                     privateHidden={privateHidden}

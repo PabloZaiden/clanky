@@ -1,12 +1,9 @@
 import type { Workspace } from "@/shared";
 import type { WebAppRoute } from "@pablozaiden/webapp/web";
 import { isEffectivelyPrivate, shouldObscurePrivateItem } from "../../lib/private-items";
-import { StateText, StatusBadge, WorkspaceIdentity, type BadgeVariant } from "../common";
-import {
-  ActiveWorkMetadata,
-  type ActiveWorkSidebarItemType,
-} from "./active-work-sidebar-item";
-import { ClankyListRow } from "./clanky-list-row";
+import { StateText, StatusBadge, type BadgeVariant } from "../common";
+import type { ActiveWorkSidebarItemType } from "./active-work-sidebar-item";
+import { WorkItemRow } from "./work-item-row";
 import type { SidebarActiveWorkItem } from "./shell-types";
 import { getOverviewActivityTimestamp, type OverviewAttention } from "./overview-activity";
 
@@ -104,19 +101,12 @@ export function OverviewWorkItem({
   const workspace = getActiveWorkWorkspace(item);
 
   return (
-    <ClankyListRow
+    <WorkItemRow
       title={getActiveWorkTitle(item)}
-      description={workspace
-        ? <WorkspaceIdentity workspace={workspace} showProviderIcon={false} />
-        : getActiveWorkSubtitle(item)}
-      meta={(
-        <ActiveWorkMetadata
-          itemType={getActiveWorkItemType(item)}
-          lastInteractionAt={getOverviewActivityTimestamp(item)}
-          workspace={workspace ?? undefined}
-        />
-      )}
-      metaPlacement="footer"
+      workspace={workspace ?? undefined}
+      subtitle={getActiveWorkSubtitle(item)}
+      itemType={getActiveWorkItemType(item)}
+      lastInteractionAt={getOverviewActivityTimestamp(item)}
       badge={<StatusBadge variant={badge.variant}><StateText>{badge.label}</StateText></StatusBadge>}
       onClick={!privateHidden ? () => onNavigate(getActiveWorkRoute(item)) : undefined}
       privateHidden={privateHidden}
