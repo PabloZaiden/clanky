@@ -26,6 +26,7 @@ export function ChatTrashView({
               key={chat.id}
               title={chat.name}
               description={chat.origin}
+              descriptionClassName="!mt-0"
               className={selectedChatId === chat.id ? "ring-1 ring-gray-400" : ""}
               meta={`Deleted ${new Date(chat.deletedAt).toLocaleDateString()} · Expires ${new Date(chat.expiresAt).toLocaleDateString()}`}
               metaPlacement="footer"

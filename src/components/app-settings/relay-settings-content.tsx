@@ -202,7 +202,7 @@ export function RelaySettingsContent() {
                   metaPlacement="inline"
                   badge={<StatusBadge variant={relay.connected ? "success" : "warning"}>{relay.connected ? "Connected" : "Disconnected"}</StatusBadge>}
                   description={relay.runtimeError?.message ?? relay.relayUrl}
-                  descriptionClassName={relay.runtimeError ? "text-red-600 dark:text-red-400" : "truncate"}
+                  descriptionClassName={`!mt-0 ${relay.runtimeError ? "text-red-600 dark:text-red-400" : "truncate"}`}
                   actions={<div className="flex flex-wrap justify-end gap-1">
                       <Button
                         type="button"

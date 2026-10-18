@@ -47,6 +47,11 @@ padding and 8 px corners at the default root font size; keep those defaults
 instead of adding local hover or spacing overrides. Rounded backgrounds mark
 hover and selection without visible row borders or dividers; keyboard focus
 remains visible.
+Standard list rows use Webapp's line height and title-to-description spacing;
+do not add a redundant `mt-1` to `ClankyListRow`. Existing compact job,
+activity, Trash, configured-agent and relay rows intentionally keep their
+flush descriptions through `descriptionClassName`, preserving their density
+when upgrading the framework.
 Use framework `Select` for toolbar dropdowns and `SelectField` for labeled
 forms; do not recreate their styling with raw native selects.
 Keep labels, values, actions and actionable errors instead of workflow
