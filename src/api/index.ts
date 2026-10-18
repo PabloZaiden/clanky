@@ -10,7 +10,6 @@
  * - settings: Server configuration and connection management
  * - git: Git repository and GitHub information
  * - workspaces: Workspace CRUD, server settings, previews, and file operations
- * - agents-md: AGENTS.md optimization for Clanky
  * - ssh-servers: SSH execution-host registration and credential exchange
  * - terminal-sessions: Transport-neutral terminal sessions
  * - provisioning: Remote workspace provisioning jobs
@@ -32,7 +31,6 @@ import { modelsAndPreferencesRoutes } from "./models";
 import { settingsRoutes } from "./settings";
 import { gitRoutes } from "./git";
 import { workspacesRoutes } from "./workspaces";
-import { agentsMdRoutes } from "./agents-md";
 import { sshServersRoutes } from "./ssh-servers";
 import { terminalSessionsRoutes } from "./terminal-sessions";
 import { provisioningRoutes } from "./provisioning";
@@ -64,7 +62,6 @@ const nativeApiRoutes = {
   ...settingsRoutes,
   ...gitRoutes,
   ...workspacesRoutes,
-  ...agentsMdRoutes,
   ...sshServersRoutes,
   ...terminalSessionsRoutes,
   ...provisioningRoutes,
@@ -115,7 +112,6 @@ export * from "./models";
 export * from "./settings";
 export * from "./git";
 export * from "./workspaces";
-export * from "./agents-md";
 export * from "./ssh-servers";
 export * from "./terminal-sessions";
 export * from "./websocket";

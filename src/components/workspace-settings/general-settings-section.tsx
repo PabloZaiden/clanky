@@ -18,11 +18,9 @@ export function GeneralSettingsSection({ workspace, draft, onChange, onIconChang
       } />
       {onIconChanged ? <WorkspaceIconSection workspace={workspace} onChanged={onIconChanged} /> : null}
       <SettingsFieldRow title="Archived" labelFor={`${formId}-archived`}
-        description="Hide this workspace from Active Work and the dashboard."
         content={<CheckboxField id={`${formId}-archived`} label="" aria-label="Archived workspace"
           checked={draft.archived} onChange={(event) => onChange({ archived: event.currentTarget.checked })} />} />
       <SettingsFieldRow title="Clanky CLI access" labelFor={`${formId}-cli-access`}
-        description="Allow new workspace processes to authenticate with Clanky."
         content={<CheckboxField id={`${formId}-cli-access`} label="" aria-label="Allow Clanky CLI access"
           checked={draft.allowClankyContext} onChange={(event) => onChange({ allowClankyContext: event.currentTarget.checked })} />} />
       {workspace.workspaceType === "git" ? (

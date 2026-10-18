@@ -8,7 +8,6 @@ import {
   useHeaderActions, useToast, type SettingsCategory,
 } from "@pablozaiden/webapp/web";
 import { ServerSettingsForm } from "../server-settings-form";
-import { AgentsMdSection } from "./agents-md-section";
 import { PurgeTasksSection } from "./purge-tasks-section";
 import { DeleteWorkspaceSection } from "./delete-workspace-section";
 import { GeneralSettingsSection } from "./general-settings-section";
@@ -18,7 +17,6 @@ import type { WorkspaceSettingsFormProps } from "./types";
 const CATEGORIES: SettingsCategory[] = [
   { id: "general", title: "General" },
   { id: "execution", title: "Execution" },
-  { id: "instructions", title: "Instructions" },
   { id: "maintenance", title: "Maintenance" },
 ];
 
@@ -41,10 +39,6 @@ export function WorkspaceSettingsForm({
   useHeaderActions({
     primary: [
       { id: "save-workspace", label: "Save", form: formId, loading: busy, disabled: !model.dirty || busy },
-      { id: "cancel-workspace", label: "Cancel", disabled: !model.dirty || busy, onAction: () => {
-        model.reset();
-        setValidationError(null);
-      } },
     ],
   });
 
@@ -128,12 +122,6 @@ export function WorkspaceSettingsForm({
           </div>
         </fieldset>
       </form>
-      <div hidden={category !== "instructions"}>
-        <FormSection title="Instructions">
-          <AgentsMdSection key={JSON.stringify([workspace.id, workspace.executionTargetRevision, workspace.directory])}
-            workspace={workspace} />
-        </FormSection>
-      </div>
       <div hidden={category !== "maintenance"}>
         <FormSection title="Maintenance">
           {onPurgeArchivedTasks ? <PurgeTasksSection workspace={workspace}

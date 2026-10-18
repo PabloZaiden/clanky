@@ -22,7 +22,6 @@ export type DomainErrorBoundary =
 export type DomainErrorPolicyName =
   | "authenticated"
   | "agents"
-  | "agents-md"
   | "chats"
   | "execution-hosts"
   | "file-explorer"
@@ -137,8 +136,6 @@ const API_DOMAIN_ERROR_CODES = {
   agent_code_invalid: true,
   agent_not_found: true,
   agent_run_not_ready: true,
-  agents_md_read_failed: true,
-  agents_md_write_failed: true,
   automatic_pr_flow_busy: true,
   automatic_pr_flow_disabled: true,
   conflict: true,
@@ -602,27 +599,6 @@ const POLICY_PROFILES = {
       workspace_worktrees_disabled: {
         status: 409,
         message: "Worktrees are disabled for this workspace.",
-      },
-    },
-  },
-  "agents-md": {
-    boundary: "authenticated",
-    mappings: {
-      ...COMMON_MAPPINGS,
-      agents_md_read_failed: {
-        status: 500,
-        error: "read_failed",
-        message: "Failed to read AGENTS.md",
-      },
-      agents_md_write_failed: {
-        status: 500,
-        error: "write_failed",
-        message: "Failed to update AGENTS.md",
-      },
-      workspace_not_found: {
-        status: 404,
-        error: "workspace_not_found",
-        message: "Workspace not found",
       },
     },
   },
