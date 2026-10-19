@@ -23,13 +23,27 @@ import { rehypeStreamingText } from "./log-viewer/streaming-text";
 // react-markdown 10 no longer passes the legacy `inline` renderer prop, so
 // block code is marked at its <pre> boundary instead.
 const MarkdownCodeBlockContext = createContext(false);
+const TruncatedMarkdownContext = createContext<string | null>(null);
+
+function isTruncatedCodeBlock(node: ExtraProps["node"], content: string | null): boolean {
+  const start = node?.position?.start.offset;
+  if (content === null || start === undefined || node?.position?.end.offset !== content.length) {
+    return false;
+  }
+  const opening = content.slice(start).match(/^(`{3,}|~{3,})/)?.[0];
+  const lastLine = content.slice(content.lastIndexOf("\n") + 1).trim().replace(/^(?:>\s*)+/, "");
+  return !opening || !new RegExp(`^${opening[0]}{${opening.length},}\\s*$`).test(lastLine);
+}
 
 function MarkdownPre({ children, node }: ComponentPropsWithoutRef<"pre"> & ExtraProps) {
+  const truncatedContent = useContext(TruncatedMarkdownContext);
+  const truncated = isTruncatedCodeBlock(node, truncatedContent);
   const code = node?.children.find((child) => child.type === "element" && child.tagName === "code");
   if (
     code?.type === "element"
     && Array.isArray(code.properties["className"])
     && code.properties["className"].includes("language-mermaid")
+    && !truncated
   ) {
     const source = code.children.map((child) => child.type === "text" ? child.value : "").join("");
     return <MermaidDiagram source={source} />;
@@ -40,7 +54,7 @@ function MarkdownPre({ children, node }: ComponentPropsWithoutRef<"pre"> & Extra
   return (
     <MarkdownCodeBlockContext.Provider value={true}>
       <div className="relative my-6 min-w-0 max-w-full">
-        {codeText !== null && (
+        {codeText !== null && !truncated && (
           <div className="absolute right-2 top-2 z-10">
             <MarkdownCodeBlockCopyButton codeText={codeText} />
           </div>
@@ -123,6 +137,8 @@ export interface MarkdownRendererProps {
   /** Optional chat/task-aware context for linking inline file paths. */
   fileLinkContext?: TranscriptFileLinkContext;
   revealFrom?: number;
+  /** The displayed source ends at a message preview boundary. */
+  isTruncated?: boolean;
 }
 
 /**
@@ -140,6 +156,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
   rawMode = false,
   fileLinkContext,
   revealFrom,
+  isTruncated = false,
 }: MarkdownRendererProps) {
   const components = useMemo<Components>(() => ({
     a: ({ href, children }) => {
@@ -214,13 +231,15 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
       data-dimmed={dimmed ? "true" : "false"}
       className={`markdown-renderer prose ${textSize === "body" ? "prose-lg" : "prose-base"} dark:prose-invert min-w-0 max-w-full break-words [overflow-wrap:anywhere] [&_li]:break-words [&_p]:break-words [&_td]:break-words [&_th]:break-words ${dimmed ? "opacity-60" : ""} ${className}`.trim()}
     >
-      <Markdown
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={revealFrom === undefined ? [] : [[rehypeStreamingText, { content, from: revealFrom }]]}
-        components={components}
-      >
-        {content}
-      </Markdown>
+      <TruncatedMarkdownContext.Provider value={isTruncated ? content : null}>
+        <Markdown
+          remarkPlugins={[remarkGfm]}
+          rehypePlugins={revealFrom === undefined ? [] : [[rehypeStreamingText, { content, from: revealFrom }]]}
+          components={components}
+        >
+          {content}
+        </Markdown>
+      </TruncatedMarkdownContext.Provider>
     </div>
   );
 });
