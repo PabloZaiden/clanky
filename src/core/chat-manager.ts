@@ -158,12 +158,24 @@ function isChatServiceBundle(
 }
 
 export class ChatManager {
+  beginShutdown(): void {
+    this.services.interaction.beginShutdown();
+    this.services.conversation.beginShutdown();
+  }
+
   async shutdown(): Promise<void> {
-    const results = await Promise.allSettled([
-      this.services.interaction.shutdown(),
-      this.services.conversation.shutdown(),
-    ]);
-    const failures = results.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
+    this.beginShutdown();
+    const failures: unknown[] = [];
+    for (const shutdown of [
+      () => this.services.interaction.shutdown(),
+      () => this.services.conversation.shutdown(),
+    ]) {
+      try {
+        await shutdown();
+      } catch (error) {
+        failures.push(error);
+      }
+    }
     if (failures.length) throw new AggregateError(failures, "Chat shutdown failed.");
   }
   private readonly services: ChatServiceBundle;

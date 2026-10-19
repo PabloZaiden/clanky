@@ -74,8 +74,8 @@ Catalog acquisition rejects a changed host binding instead of caching another
 host's catalog. A failed first connection can be initialized again after its
 teardown succeeds. Failed helper teardown remains tracked for a later cleanup
 attempt; resetting a workspace attempts every helper even if one fails.
-Shutdown stops background producers and new chat input, drains chat admission,
-checkpoints conversations under their owning user context, and detaches native
+Shutdown freezes new chat input before stopping background producers, drains
+chat admission, checkpoints conversations under their owning user context, and detaches native
 observers before disconnecting backends. Backend teardown finishes before
 Mesh relays and gateways close. Tasks first checkpoint
 under their owning user context; interrupted planning remains resumable after
@@ -179,6 +179,12 @@ loss, without requiring a new message to clear a false error. An interrupted
 principal is stopped, not reported as successful; incomplete responses and
 uncertain input delivery remain available for reconciliation. Genuine provider,
 ownership and history-integrity failures remain explicit.
+
+Copilot reasoning/tool-only completions without text do not replace another
+message's active text stream. That stream still completes under its native
+identity; an unrelated textual response cannot silently replace unfinished text.
+Shutdown-cancelled admission remains stopped/disconnected with recovery guidance,
+unlike an explicit user interrupt that can return to idle.
 
 Startup invalidates saved connection and available-activity projections.
 Disconnected activity is unknown, not an empty list of background work. Resume

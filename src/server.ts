@@ -640,12 +640,18 @@ export async function getWebAppServer(
                   "controller relay authenticated",
                 );
               },
+              onReady: async () => {
+                await runForEachActiveUser(async () => {
+                  await previewSessionManager.retryPendingCleanup();
+                });
+              },
             },
           );
           meshHealthService.scheduleRefreshAllWorkers("controller startup");
         }
       },
       beforeStop: async () => {
+        chatManager.beginShutdown();
         const errors: unknown[] = [];
         const cleanup = async (operation: () => void | Promise<void>): Promise<void> => {
           try {

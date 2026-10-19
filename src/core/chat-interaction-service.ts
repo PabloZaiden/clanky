@@ -84,9 +84,13 @@ function getQueuedPromptAttachmentByteLength(
 export class ChatInteractionService implements ChatInteractionPort {
   private shuttingDown = false;
 
-  async shutdown(): Promise<void> {
+  beginShutdown(): void {
     this.shuttingDown = true;
     this.queuedCredentialTokens.clear();
+  }
+
+  async shutdown(): Promise<void> {
+    this.beginShutdown();
     await withTimeout(this.inputOperations.drain(), 5_000, "Chat input shutdown timed out");
   }
   private readonly queuedMessageDrains = new Set<string>();
@@ -324,6 +328,7 @@ export class ChatInteractionService implements ChatInteractionPort {
       const attachmentFiles = await this.attachments.prepare(chat, message, {
         credentialToken: this.queuedCredentialTokens.get(chatId),
       });
+      this.assertAcceptingInput();
       const unknown: HarnessInputAdmission = { status: "unknown", inputId: queuedMessageId };
       let reserved = false;
       chat = await this.state.mutateState(chatId, (current) => {
@@ -370,6 +375,7 @@ export class ChatInteractionService implements ChatInteractionPort {
       let admission: HarnessInputAdmission;
       let validationError: DomainError | undefined;
       try {
+        this.assertAcceptingInput();
         admission = await backend.harness.steer(binding.nativeId, {
           inputId: queuedMessageId,
           clientId: message.clientId,

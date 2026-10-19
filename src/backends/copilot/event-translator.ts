@@ -66,6 +66,8 @@ export class CopilotEventTranslator {
       case "assistant.message": {
         if (scope.kind === "principal" && event.data.content.trim()) this.queryError = undefined;
         const nativeMessageKey = this.getMessageKey(scope, event.data.messageId);
+        // Reasoning/tool-only completions may precede a different, still-streaming text message.
+        if (event.data.content.length === 0 && !this.messages.has(nativeMessageKey)) return [];
         // Reconcile an ID mismatch only when one active delta stream exactly matches the final content.
         let completedMessageKey = this.messages.has(nativeMessageKey)
           ? nativeMessageKey

@@ -338,6 +338,10 @@ error, not as a usable editor. Retry `DELETE /api/previews/:previewId` when the
 host is available; the next controller restart also retries. Workspace deletion
 waits for in-progress preview launches and requires its previews to close first
 so their cleanup records are not discarded.
+Execution-target edits also close existing previews before changing the original
+host metadata; unavailable cleanup prevents that edit. Relay-backed cleanup is
+retried after the controller connection is authenticated and worker authorization
+has synchronized.
 Pre-upgrade previews have no recoverable ownership metadata: their stale bridges
 are removed, but Clanky cannot safely infer or delete their old host resources.
 On Windows, normal shutdown uses native process-tree termination; after abrupt

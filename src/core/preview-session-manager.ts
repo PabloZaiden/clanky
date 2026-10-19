@@ -322,10 +322,17 @@ export class PreviewSessionManager {
   ) {}
 
   async initialize(): Promise<void> {
+    if (this.initializedUserIds.has(requireCurrentUser().id)) return;
+    await this.reconcilePreviewResources();
+  }
+
+  async retryPendingCleanup(): Promise<void> {
+    await this.initialize();
+    await this.reconcilePreviewResources();
+  }
+
+  private async reconcilePreviewResources(): Promise<void> {
     const user = requireCurrentUser();
-    if (this.initializedUserIds.has(user.id)) {
-      return;
-    }
     const existing = this.initializingByUserId.get(user.id);
     if (existing) {
       await existing;
@@ -649,12 +656,16 @@ export class PreviewSessionManager {
     if (runtime && runtime.user.id !== requireCurrentUser().id) return false;
     if (!await getPreviewSession(id)) return registering !== undefined;
     for (const request of runtime?.requests.values() ?? []) request.controller.abort();
+    return await this.closePreviewOnce(id, reason, closeCode) || registering !== undefined;
+  }
+
+  private async closePreviewOnce(id: string, reason: string, closeCode: number): Promise<boolean> {
     const pending = this.closing.get(id);
-    if (pending) return await pending || registering !== undefined;
+    if (pending) return await pending;
     const closing = this.closePreviewOwned(id, reason, closeCode);
     this.closing.set(id, closing);
     try {
-      return await closing || registering !== undefined;
+      return await closing;
     } finally {
       this.closing.delete(id);
     }
@@ -1206,12 +1217,12 @@ export class PreviewSessionManager {
   private async reconcileStalePreviews(): Promise<void> {
     const previews = await listPreviewSessionsByStatuses(["active", "closing", "failed"]);
     for (const preview of previews) {
-      if (this.runtimes.has(preview.config.id)) continue;
+      if (this.runtimes.has(preview.config.id) || this.registering.has(preview.config.id)) continue;
       try {
         if (!preview.config.codeCleanup) {
           log.warn("Closing stale preview without durable code ownership; host resources cannot be inferred", { previewId: preview.config.id });
         }
-        await this.closePreviewOwned(preview.config.id, "Preview closed after controller restart", 1001);
+        await this.closePreviewOnce(preview.config.id, "Preview closed after controller restart", 1001);
       } catch (error) {
         // Keep each failed cleanup independently actionable without blocking
         // reconciliation of the remaining previews.

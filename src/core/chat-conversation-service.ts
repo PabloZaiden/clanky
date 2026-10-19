@@ -524,6 +524,7 @@ export class ChatConversationService implements ChatConversationPort {
       }
       if (startupOperation.interrupted) {
         if (this.startupOperations.get(chat.config.id) === startupOperation && latest) {
+          if (this.shuttingDown) return await this.persistDisconnectedChat(chat.config.id, true);
           return await this.completeInterruptedChat(latest);
         }
         return latest ?? chat;
@@ -845,10 +846,10 @@ export class ChatConversationService implements ChatConversationPort {
       return;
     }
     log.warn("Native conversation disconnected", { chatId, interrupted, error: String(error) });
-    await this.persistNativeDisconnection(chatId, interrupted);
+    await this.persistDisconnectedChat(chatId, interrupted);
   }
 
-  private async persistNativeDisconnection(chatId: string, interrupted: boolean): Promise<Chat> {
+  private async persistDisconnectedChat(chatId: string, interrupted: boolean): Promise<Chat> {
     // Idle describes the principal, not whether background work survived.
     // Preserve its result while making the loss of observation explicit.
     const updated = await this.state.mutateState(chatId, (current) => ({
@@ -874,13 +875,17 @@ export class ChatConversationService implements ChatConversationPort {
     return updated;
   }
 
-  async shutdown(): Promise<void> {
+  beginShutdown(): void {
     this.shuttingDown = true;
-    const startups = [...this.startupOperations.values()];
-    for (const startup of startups) {
+    for (const startup of this.startupOperations.values()) {
       startup.interrupted = true;
       startup.controller.abort();
     }
+  }
+
+  async shutdown(): Promise<void> {
+    this.beginShutdown();
+    const startups = [...this.startupOperations.values()];
     const errors: unknown[] = [];
     try {
       await withTimeout(Promise.all(startups.map((startup) => startup.settled)), CHAT_INTERRUPT_STARTUP_SETTLE_TIMEOUT_MS, "Chat startup shutdown timed out");
@@ -2499,7 +2504,7 @@ export class ChatConversationService implements ChatConversationPort {
         return await this.state.getChat(chat.config.id) ?? chat;
       }
       log.warn("Native conversation disconnected during admission", { chatId: chat.config.id });
-      return this.persistNativeDisconnection(chat.config.id, isChatBusyStatus(chat.state.status)
+      return this.persistDisconnectedChat(chat.config.id, isChatBusyStatus(chat.state.status)
         || chat.state.harness?.unfinishedMessage !== undefined);
     }
     log.error("Chat runtime error", { chatId: chat.config.id, error: message });

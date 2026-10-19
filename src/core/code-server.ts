@@ -107,7 +107,7 @@ async function stopCodeProcess(options: {
 
 export async function startCodeServer(options: {
   id: string;
-  persistOwnership: (ownership: CodePreviewCleanup) => Promise<void>;
+  persistOwnership: (ownership: CodePreviewCleanup | undefined) => Promise<void>;
   executor: CommandExecutor;
   directory: string;
   acceptServerLicenseTerms: boolean;
@@ -186,6 +186,7 @@ export async function startCodeServer(options: {
   } catch (error) {
     try {
       await close();
+      await options.persistOwnership(undefined);
     } catch (cleanupError) {
       throw new DomainError("code_cleanup_failed", "Failed VS Code startup could not clean up its owned resources.", {
         cause: new AggregateError([error, cleanupError]),

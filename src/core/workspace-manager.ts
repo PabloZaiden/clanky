@@ -598,6 +598,8 @@ export class WorkspaceManager {
           { details: { workspaceId: id, terminalCount } },
         );
       }
+      const { previewSessionManager } = await import("./preview-session-manager");
+      await previewSessionManager.closeWorkspacePreviews(id);
     }
     const previousSshTargetState = updates.sshTarget !== undefined && updates.sshTarget !== null
       ? captureWorkspaceSshTargetState(id)

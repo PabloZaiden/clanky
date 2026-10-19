@@ -79,6 +79,7 @@ export interface ControllerRelayServiceOptions {
 
 export interface ControllerRelayRuntimeOptions {
   onAuthenticated?(): void;
+  onReady?(): Promise<void>;
 }
 
 type RelayDispatch = (request: Request) => Promise<Response | undefined>;
@@ -170,6 +171,7 @@ export class ControllerRelayService {
   private lifecycle = Promise.resolve();
   private usedInjectedManager = false;
   private onAuthenticated?: () => void;
+  private onReady?: () => Promise<void>;
 
   constructor(private readonly options: ControllerRelayServiceOptions = {}) {}
 
@@ -390,6 +392,7 @@ export class ControllerRelayService {
       requireMeshRuntimeRole("controller");
       this.dispatch = dispatch;
       this.onAuthenticated = options.onAuthenticated;
+      this.onReady = options.onReady;
       this.unsubscribeMesh ??= meshStateEventEmitter.subscribe(() => {
         this.requestRuntimeRefresh();
       });
@@ -424,6 +427,7 @@ export class ControllerRelayService {
       setMeshRelayTransport(null);
       this.dispatch = undefined;
       this.onAuthenticated = undefined;
+      this.onReady = undefined;
     });
   }
 
@@ -802,6 +806,13 @@ export class ControllerRelayService {
           "Relay authorization synchronization failed",
         );
         return;
+      }
+      if (runtime.manager.status === "connected") {
+        try {
+          await this.onReady?.();
+        } catch (error) {
+          log.error("Controller relay readiness callback failed", { error: String(error) });
+        }
       }
     }
   }
