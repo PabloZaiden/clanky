@@ -1,8 +1,12 @@
 /**
- * VS Code startup contract carried by the authenticated preview bridge.
+ * TLS and VS Code startup contracts carried by the authenticated preview bridge.
  */
 
 import { z } from "zod";
+
+export const PreviewUpstreamOptionsSchema = z.object({
+  protocol: z.enum(["http", "https"]).default("http"),
+});
 
 export const CodePreviewOptionsSchema = z.object({
   chat: z.string().trim().min(1).optional(),
@@ -19,6 +23,7 @@ export const CodePreviewHelloSchema = z.object({
     reference: z.string().trim().min(1),
   }),
   code: CodePreviewOptionsSchema,
+  protocol: z.literal("http").optional(),
   remoteHost: z.literal("127.0.0.1"),
   remotePort: z.literal(0),
   localHost: z.literal("127.0.0.1"),

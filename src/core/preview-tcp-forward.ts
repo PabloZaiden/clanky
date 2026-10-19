@@ -1,4 +1,5 @@
 import net from "node:net";
+import { connect as connectTls } from "node:tls";
 import type { ExecutionHostBinding } from "@/shared";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { DomainError } from "../domain/domain-error";
@@ -18,6 +19,7 @@ export interface PreviewTcpForwardDependencies {
 
 interface ForwardConnection {
   socket: net.Socket;
+  controller: AbortController;
   tunnel?: TcpTunnel;
   closed: boolean;
 }
@@ -32,9 +34,8 @@ class PreviewTcpForwarder implements PreviewTcpForward {
   private _localPort: number | undefined;
 
   constructor(
-    private readonly binding: ExecutionHostBinding,
     private readonly remotePort: number,
-    private readonly openTunnel: typeof openTcpTunnel,
+    private readonly connect: (signal: AbortSignal) => Promise<TcpTunnel>,
   ) {
     this.server = net.createServer((socket) => {
       void this.handleConnection(socket);
@@ -114,6 +115,7 @@ class PreviewTcpForwarder implements PreviewTcpForward {
   private async handleConnection(socket: net.Socket): Promise<void> {
     const connection: ForwardConnection = {
       socket,
+      controller: new AbortController(),
       closed: false,
     };
     this.connections.add(connection);
@@ -128,24 +130,26 @@ class PreviewTcpForwarder implements PreviewTcpForward {
         closeConnection();
         return;
       }
-      const tunnel = await this.openTunnel({
-        binding: this.binding,
-        remoteHost: "127.0.0.1",
-        remotePort: this.remotePort,
-      });
+      const tunnel = await this.connect(connection.controller.signal);
       connection.tunnel = tunnel;
+      tunnel.once("close", closeConnection);
+      tunnel.once("error", closeConnection);
+      if (connection.closed || this.closing || tunnel.destroyed) {
+        tunnel.destroy();
+        closeConnection();
+        return;
+      }
+      if (tunnel instanceof net.Socket) {
+        socket.pipe(tunnel);
+        tunnel.pipe(socket);
+        return;
+      }
+
       tunnel.on("data", (data) => {
         if (!connection.closed && !socket.destroyed) {
           socket.write(data);
         }
       });
-      tunnel.once("close", closeConnection);
-      tunnel.once("error", closeConnection);
-      if (connection.closed || this.closing || tunnel.destroyed) {
-        closeConnection();
-        return;
-      }
-
       socket.on("data", (data) => {
         if (connection.closed) {
           return;
@@ -163,11 +167,13 @@ class PreviewTcpForwarder implements PreviewTcpForward {
       });
       socket.resume();
     } catch (error) {
-      log.warn("Unable to connect preview TCP forward", {
-        localPort: this._localPort,
-        remotePort: this.remotePort,
-        error: String(error),
-      });
+      if (!connection.controller.signal.aborted) {
+        log.warn("Unable to connect preview TCP forward", {
+          localPort: this._localPort,
+          remotePort: this.remotePort,
+          error: String(error),
+        });
+      }
       closeConnection();
     }
   }
@@ -177,6 +183,7 @@ class PreviewTcpForwarder implements PreviewTcpForward {
       return;
     }
     connection.closed = true;
+    connection.controller.abort();
     this.connections.delete(connection);
     connection.tunnel?.destroy();
     if (!connection.socket.destroyed) {
@@ -196,11 +203,60 @@ export async function openPreviewTcpForward(
       "A Mesh execution host is required for a preview TCP forward.",
     );
   }
-  const forward = new PreviewTcpForwarder(
-    binding,
-    remotePort,
-    dependencies.openTunnel ?? openTcpTunnel,
-  );
+  return await startPreviewForward(new PreviewTcpForwarder(remotePort, async () =>
+    await (dependencies.openTunnel ?? openTcpTunnel)({
+      binding,
+      remoteHost: "127.0.0.1",
+      remotePort,
+    }),
+  ));
+}
+
+/**
+ * Keep upstream SNI separate from the loopback/tunnel dial address. Bun's
+ * WebSocket client cannot override that name, so it uses this local bridge.
+ */
+export async function openPreviewTlsForward(options: {
+  host: string;
+  port: number;
+  serverName: string;
+}): Promise<PreviewTcpForward> {
+  return await startPreviewForward(new PreviewTcpForwarder(options.port, async (signal) => {
+    const socket = connectTls({
+      host: options.host,
+      port: options.port,
+      servername: net.isIP(options.serverName) ? undefined : options.serverName,
+      rejectUnauthorized: false,
+    });
+    const onAbort = () => socket.destroy(new Error("Preview upstream TLS connection cancelled"));
+    const timer = setTimeout(() => socket.destroy(new Error("Preview upstream TLS handshake timed out")), 10_000);
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const onError = (error: Error) => {
+          socket.removeListener("secureConnect", onSecureConnect);
+          reject(error);
+        };
+        const onSecureConnect = () => {
+          socket.removeListener("error", onError);
+          resolve();
+        };
+        socket.once("error", onError);
+        socket.once("secureConnect", onSecureConnect);
+        signal.addEventListener("abort", onAbort, { once: true });
+        if (signal.aborted) onAbort();
+      });
+      return socket;
+    } catch (error) {
+      socket.destroy();
+      throw error;
+    } finally {
+      signal.removeEventListener("abort", onAbort);
+      clearTimeout(timer);
+    }
+  }));
+}
+
+async function startPreviewForward(forward: PreviewTcpForwarder): Promise<PreviewTcpForward> {
   try {
     await forward.start();
     return forward;

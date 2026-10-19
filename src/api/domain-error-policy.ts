@@ -95,6 +95,7 @@ const API_DOMAIN_ERROR_CODES = {
   code_start_failed: true,
   code_cleanup_failed: true,
   preview_tunnel_start_failed: true,
+  preview_target_invalid: true,
   harness_session_not_found: true,
   harness_session_not_owned: true,
   harness_activity_not_owned: true,
@@ -1310,6 +1311,7 @@ const POLICY_PROFILES = {
     boundary: "authenticated",
     mappings: {
       ...COMMON_MAPPINGS,
+      preview_target_invalid: { status: 400, messageFromDetails: (error) => error.message },
       code_target_invalid: { status: 400, messageFromDetails: (error) => error.message },
       code_target_ambiguous: { status: 409, messageFromDetails: (error) => error.message },
       code_target_not_found: { status: 404, messageFromDetails: (error) => error.message },
