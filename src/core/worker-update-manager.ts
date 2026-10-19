@@ -135,6 +135,8 @@ export class WorkerUpdateManager {
         };
       }
     } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      const normalizedDetail = detail.trim().replace(/\s+/g, " ").slice(0, 240);
       log.error("Failed to admit worker update job", {
         workerNodeId: worker.workerNodeId,
         userId: owner.id,
@@ -144,7 +146,9 @@ export class WorkerUpdateManager {
         workerNodeId: worker.workerNodeId,
         workerName,
         status: "failed",
-        error: "Worker update job could not be admitted.",
+        error: normalizedDetail
+          ? `Could not save the update job: ${normalizedDetail}`
+          : "Could not save the update job because of an unknown controller storage error.",
       };
     }
 
