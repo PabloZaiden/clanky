@@ -12,7 +12,7 @@ import { backendManager } from "../backend-manager";
 import { GitService } from "../git";
 import { log } from "@pablozaiden/webapp/server";
 import { assertValidTransition } from "../task-state-machine";
-import { startStatePersistenceImpl } from "./task-state-persistence";
+import { cleanupIdleTaskEngineImpl, startStatePersistenceImpl } from "./task-state-persistence";
 import { validateMainCheckoutStartImpl } from "./task-git-validation";
 import { clearPlanningFilesImpl } from "./task-planning-files";
 import { handleFullyAutonomousCompletionImpl } from "./task-fully-autonomous";
@@ -61,31 +61,18 @@ function runEngineInBackground(
 ): void {
   // Engine execution is intentionally detached because it can run for hours.
   void (async () => {
-    let startFailed = false;
     try {
       await engine.start();
+      await engine.waitForCompletionFollowUp();
     } catch (error) {
-      startFailed = true;
       log.error(failureMessage, {
         taskId,
         error: String(error),
       });
     }
 
-    if (ctx.engines.get(taskId) !== engine) {
-      return;
-    }
-
-    if (
-      !startFailed
-      && !["completed", "stopped", "failed", "max_iterations"].includes(engine.state.status)
-    ) {
-      return;
-    }
-
-    ctx.engines.delete(taskId);
     try {
-      await backendManager.disconnectTask(taskId);
+      await cleanupIdleTaskEngineImpl(ctx, taskId, engine);
     } catch (error) {
       log.error("Failed to disconnect task backend after engine completion", {
         taskId,
