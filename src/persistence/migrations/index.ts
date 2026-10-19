@@ -789,6 +789,26 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: 82,
+    name: "track_all_unfinished_native_messages",
+    up: (db) => {
+      db.run(`
+        UPDATE chats
+        SET harness_state_json = json_remove(
+          json_set(harness_state_json, '$.unfinishedMessages', json_object(
+            'nativeId', json_extract(harness_state_json, '$.unfinishedMessage.nativeId'),
+            'messageIds', json_array(json_extract(harness_state_json, '$.unfinishedMessage.messageId'))
+          )),
+          '$.unfinishedMessage'
+        )
+        WHERE CASE WHEN json_valid(harness_state_json) THEN
+          json_type(harness_state_json, '$.unfinishedMessage') IS NOT NULL
+          AND json_type(harness_state_json, '$.unfinishedMessages') IS NULL
+        ELSE 0 END
+      `);
+    },
+  },
 ];
 
 function getMigrationTableColumns(db: Database, tableName: string): string[] {

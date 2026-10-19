@@ -8,6 +8,7 @@
 
 import type { HarnessEvent as AgentEvent } from "@/shared/harness-events";
 import type { MessageData, PersistedToolCall } from "@/shared";
+import { HarnessError } from "../backends/harness-errors";
 import { createTimestamp } from "@/shared/events";
 import { mergeToolCallRecord } from "@/shared/tool-call";
 import {
@@ -53,6 +54,7 @@ export interface AgentEventTranscriptIdFactories {
 export interface AgentEventTranscriptInterpreterOptions {
   initialToolCalls?: readonly PersistedToolCall[];
   state?: AgentEventTranscriptState;
+  independentMessages?: boolean;
   checkpointPolicy?: AgentStreamCheckpointPolicy;
   createTimestamp?: () => string;
   idFactories?: Partial<AgentEventTranscriptIdFactories>;
@@ -146,14 +148,16 @@ export function createAgentEventTranscriptState(
 }
 
 export class AgentEventTranscriptInterpreter {
-  readonly state: AgentEventTranscriptState;
+  private currentState: AgentEventTranscriptState;
+  private readonly pendingMessages?: Map<string, AgentEventTranscriptState>;
   private readonly checkpointPolicy: AgentStreamCheckpointPolicy;
   private readonly timestamp: () => string;
   private readonly idFactories: AgentEventTranscriptIdFactories;
 
   constructor(options: AgentEventTranscriptInterpreterOptions = {}) {
-    this.state = options.state
+    this.currentState = options.state
       ?? createAgentEventTranscriptState(options.initialToolCalls);
+    if (options.independentMessages) this.pendingMessages = new Map();
     this.checkpointPolicy = options.checkpointPolicy ?? new AgentStreamCheckpointPolicy();
     this.timestamp = options.createTimestamp ?? createTimestamp;
     this.idFactories = {
@@ -162,8 +166,45 @@ export class AgentEventTranscriptInterpreter {
     };
   }
 
+  get state(): AgentEventTranscriptState {
+    return this.currentState;
+  }
+
   handle(event: AgentEvent): AgentEventTranscriptResult {
     const timestamp = event.timestamp ?? this.timestamp();
+    if (this.pendingMessages
+      && (event.type === "message.start" || event.type === "message.delta" || event.type === "message.complete")) {
+      if (!event.messageId) throw new HarnessError("harness_event_gap", "A native message has no observed identity.");
+      const existing = this.pendingMessages.get(event.messageId);
+      this.selectMessageState(event.messageId);
+      if (event.type === "message.start" && existing) return this.createResult(event, timestamp, true);
+    }
+    const result = this.handleEvent(event, timestamp);
+    if (event.type === "message.complete" && event.messageId) this.pendingMessages?.delete(event.messageId);
+    if (event.type === "prompt.complete" || event.type === "request.error" || event.type === "error") {
+      this.pendingMessages?.clear();
+    }
+    return result;
+  }
+
+  private selectMessageState(messageId: string): void {
+    let next = this.pendingMessages!.get(messageId);
+    if (!next) {
+      if (this.pendingMessages!.size >= 1000) {
+        throw new HarnessError("harness_event_gap", "Native execution has too many unfinished messages.");
+      }
+      next = createAgentEventTranscriptState();
+      this.pendingMessages!.set(messageId, next);
+    }
+    // Counters and tool registries belong to the stream; text belongs to its message.
+    next.messageCount = this.state.messageCount;
+    next.toolCallCount = this.state.toolCallCount;
+    next.toolCalls = this.state.toolCalls;
+    next.runningToolIdsByName = this.state.runningToolIdsByName;
+    this.currentState = next;
+  }
+
+  private handleEvent(event: AgentEvent, timestamp: string): AgentEventTranscriptResult {
     switch (event.type) {
       case "message.start":
         return this.handleMessageStart(event, timestamp);
@@ -225,6 +266,7 @@ export class AgentEventTranscriptInterpreter {
   }
 
   reset(): void {
+    this.pendingMessages?.clear();
     const nextState = createAgentEventTranscriptState();
     Object.assign(this.state, nextState);
   }
@@ -465,6 +507,12 @@ export class AgentEventTranscriptInterpreter {
   }
 
   private flushActiveBlock(timestamp: string): AgentEventTranscriptBlock[] {
+    const blocks = this.snapshotActiveBlocks(timestamp);
+    this.resetActiveBlock();
+    return blocks;
+  }
+
+  snapshotActiveBlocks(timestamp = this.timestamp()): AgentEventTranscriptBlock[] {
     if (this.state.activeBlockKind === "response") {
       const content = this.state.activeResponseContent;
       const logContent = this.state.currentResponseLogContent;
@@ -476,7 +524,6 @@ export class AgentEventTranscriptInterpreter {
         logId: this.state.currentResponseLogId!,
         logContent,
       };
-      this.resetActiveBlock();
       return content.length > 0 || logContent.length > 0 ? [block] : [];
     }
 
@@ -490,7 +537,6 @@ export class AgentEventTranscriptInterpreter {
         logId: this.state.currentReasoningLogId!,
         logContent,
       };
-      this.resetActiveBlock();
       return content.length > 0 || logContent.length > 0 ? [block] : [];
     }
 

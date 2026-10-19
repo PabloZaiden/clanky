@@ -44,6 +44,15 @@ available but browser actions require a subsequent ordinary turn with known
 browser provenance. ACP, native subagents and unattended sessions do not
 receive these Control tools.
 
+For interrupted native chats, discover and use the normal reconnect operation
+to resume the original conversation. Recovery retains unfinished partial text
+and reconciles completed messages by native ID; a partial checkpoint does not
+mean the principal is still running or that its completion must exist. Do not
+clear checkpoints, merge equal text, or resend an interrupted/uncertain request
+to bypass a failure. Use **Continue from history** only when intentionally
+starting a replacement native session. See
+[native recovery](../../docs/harnesses.md#activity-and-individual-stop).
+
 The [Live voice assistant](../../docs/voice.md#live-voice) is global and
 independent of native Control chats. It starts beside Quick Chat in the sidebar
 and exposes twenty-one direct common intents, selective watching, three generic
