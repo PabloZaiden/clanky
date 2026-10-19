@@ -95,6 +95,13 @@ export function OverviewView({
       }))
       .sort((left, right) => left.host.name.localeCompare(right.host.name));
   }, [executionHostNodes, executionHosts]);
+  const workspaceChatCounts = useMemo(
+    () => new Map(sidebarWorkspaceGroups.flatMap((group) => group.workspaces.map((node) => [
+      node.workspace.id,
+      node.chats.length + node.historyChats.length,
+    ]))),
+    [sidebarWorkspaceGroups],
+  );
   const visibleWorkspaces = useMemo(() => workspaceGroups.map((group) => group.workspace), [workspaceGroups]);
   const visibleWorkspaceIds = useMemo(
     () => new Set(workspaceGroups.map((group) => group.workspace.id)),
@@ -152,11 +159,12 @@ export function OverviewView({
               <DataList>
                 {workspaceGroups.map((group) => {
                   const privateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(group.workspace), showPrivateItems);
+                  const sessionCount = group.tasks.length + (workspaceChatCounts.get(group.workspace.id) ?? 0);
                   return (
                     <ClankyListRow
                       key={group.workspace.id}
                       title={<WorkspaceIdentity workspace={group.workspace} />}
-                      meta={`${group.tasks.length} task${group.tasks.length === 1 ? "" : "s"}`}
+                      meta={`${sessionCount} session${sessionCount === 1 ? "" : "s"}`}
                       onClick={!privateHidden ? () => onNavigate({ view: "workspace", workspaceId: group.workspace.id }) : undefined}
                       privateHidden={privateHidden}
                     />
