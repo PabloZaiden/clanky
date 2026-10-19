@@ -75,6 +75,10 @@ export function ComposerActionsMenu({
   );
 }
 
+export function useComposerActionsMenuClose() {
+  return useContext(ComposerActionsMenuCloseContext);
+}
+
 export function ComposerActionsMenuSection({
   label,
   children,
@@ -101,7 +105,7 @@ export function ComposerActionsMenuButton({
   disabled?: boolean;
   onClick: () => void;
 }) {
-  const closeMenu = useContext(ComposerActionsMenuCloseContext);
+  const closeMenu = useComposerActionsMenuClose();
 
   return (
     <button

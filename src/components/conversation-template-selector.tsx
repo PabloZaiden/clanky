@@ -1,5 +1,6 @@
 import { useId } from "react";
 
+import { useComposerActionsMenuClose } from "./ComposerActionsMenu";
 import { PROMPT_TEMPLATES, getTemplateById } from "../lib/prompt-templates";
 
 interface ConversationTemplateSelectorProps {
@@ -16,6 +17,7 @@ export function ConversationTemplateSelector({
   disabled = false,
 }: ConversationTemplateSelectorProps) {
   const templateSelectId = useId();
+  const closeMenu = useComposerActionsMenuClose();
   const template = selectedTemplate ? getTemplateById(selectedTemplate) : undefined;
 
   return (
@@ -30,6 +32,7 @@ export function ConversationTemplateSelector({
           const nextTemplate = templateId ? getTemplateById(templateId) : undefined;
           if (nextTemplate) {
             onPromptChange(nextTemplate.prompt);
+            closeMenu?.();
           }
         }}
         disabled={disabled}
