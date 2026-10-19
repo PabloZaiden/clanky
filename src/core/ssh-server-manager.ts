@@ -74,6 +74,12 @@ export class SshServerManager {
     await sshServerKeyManager.ensurePublicKey(id);
     return await withSshServerOperation(id, async () => {
       const existing = await this.requireServerConfig(id);
+      if ((request.address !== undefined && request.address.trim() !== existing.address)
+        || (request.port !== undefined && request.port !== existing.port)
+        || (request.username !== undefined && request.username.trim() !== existing.username)) {
+        const { previewSessionManager } = await import("./preview-session-manager");
+        await previewSessionManager.closeSshServerPreviews(id);
+      }
       await saveSshServerConfig({
         ...existing,
         ...(request.name !== undefined ? { name: request.name.trim() } : {}),
@@ -100,6 +106,8 @@ export class SshServerManager {
 
   async deleteServer(id: string): Promise<boolean> {
     return await withSshServerOperation(id, async () => {
+      const { previewSessionManager } = await import("./preview-session-manager");
+      await previewSessionManager.closeSshServerPreviews(id);
       sshCredentialManager.clearTokensForServer(id);
       return await deleteSshServer(id);
     });

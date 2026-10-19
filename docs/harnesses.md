@@ -184,7 +184,9 @@ Copilot reasoning/tool-only completions without text do not replace another
 message's active text stream. That stream still completes under its native
 identity; an unrelated textual response cannot silently replace unfinished text.
 Shutdown-cancelled admission remains stopped/disconnected with recovery guidance,
-unlike an explicit user interrupt that can return to idle.
+unlike an explicit user interrupt that can return to idle. Queued native input
+preserves that recovery state on transport loss. Admitted question and permission
+replies, including their resulting state writes, drain before backend teardown.
 
 Startup invalidates saved connection and available-activity projections.
 Disconnected activity is unknown, not an empty list of background work. Resume

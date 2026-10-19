@@ -16,6 +16,7 @@ import {
   type PreviewTarget,
   type RegisterCliPreviewOptions,
   type Workspace,
+  isWorkspaceSshExecutionHostRef,
   parsePreviewBridgePath,
   previewWebSocketCloseCode,
 } from "@/shared";
@@ -49,6 +50,7 @@ import { startCodeServer, waitForCodeEditor, type CodeServer } from "./code-serv
 import { cleanupCodeSession } from "./code-session-resources";
 import { closeCommandExecutor } from "./command-executor";
 import { withWorkspaceExecutionLock } from "./workspace-execution-lock";
+import { withSshServerOperation } from "./ssh-server-operations";
 
 const log = createLogger("core:preview-session-manager");
 const LOCAL_TUNNEL_HOST = "127.0.0.1";
@@ -420,19 +422,27 @@ export class PreviewSessionManager {
       const currentTarget = target.kind === "workspace"
         ? await this.resolvePreviewTarget({ kind: "workspace", reference: target.workspace.id })
         : target;
-      const id = crypto.randomUUID();
-      const controller = new AbortController();
-      const completion = Promise.withResolvers<void>();
-      this.registering.set(id, { userId: requireCurrentUser().id, controller, completion: completion.promise });
-      try {
-        return await this.registerResolvedPreview({
-          id, options, target: currentTarget,
-          signal: signal ? AbortSignal.any([signal, controller.signal]) : controller.signal,
-        });
-      } finally {
-        this.registering.delete(id);
-        completion.resolve();
-      }
+      const registerOnHost = async () => {
+        signal?.throwIfAborted();
+        executionHostService.validateBinding(currentTarget.binding);
+        const id = crypto.randomUUID();
+        const controller = new AbortController();
+        const completion = Promise.withResolvers<void>();
+        this.registering.set(id, { userId: requireCurrentUser().id, controller, completion: completion.promise });
+        try {
+          return await this.registerResolvedPreview({
+            id, options, target: currentTarget,
+            signal: signal ? AbortSignal.any([signal, controller.signal]) : controller.signal,
+          });
+        } finally {
+          this.registering.delete(id);
+          completion.resolve();
+        }
+      };
+      const host = currentTarget.binding.host;
+      return host.kind === "ssh" && !isWorkspaceSshExecutionHostRef(host)
+        ? await withSshServerOperation(host.serverId, registerOnHost)
+        : await registerOnHost();
     };
     return target.kind === "workspace"
       ? await withWorkspaceExecutionLock(target.workspace.id, register)
@@ -609,11 +619,24 @@ export class PreviewSessionManager {
   async closeWorkspacePreviews(workspaceId: string): Promise<void> {
     await this.initialize();
     const previews = await listPreviewSessionsByWorkspaceAndStatuses(workspaceId, ["active", "closing", "failed"]);
+    await this.closePreviews(previews, "Workspace deleted", "Close this workspace's pending previews before deleting it.");
+  }
+
+  async closeSshServerPreviews(serverId: string): Promise<void> {
+    await this.initialize();
+    const previews = (await listPreviewSessionsByStatuses(["active", "closing", "failed"])).filter((preview) => {
+      const host = preview.config.executionHostBinding.host;
+      return host.kind === "ssh" && !isWorkspaceSshExecutionHostRef(host) && host.serverId === serverId;
+    });
+    await this.closePreviews(previews, "SSH server changed", "Close pending previews before changing or deleting this SSH server.");
+  }
+
+  private async closePreviews(previews: PreviewSession[], reason: string, failureMessage: string): Promise<void> {
     const results = await Promise.allSettled(previews.map((preview) =>
-      this.closePreview(preview.config.id, "Workspace deleted"),
+      this.closePreview(preview.config.id, reason),
     ));
     const failures = results.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
-    if (failures.length) throw new DomainError("code_cleanup_failed", "Close this workspace's pending previews before deleting it.", {
+    if (failures.length) throw new DomainError("code_cleanup_failed", failureMessage, {
       cause: new AggregateError(failures),
     });
   }

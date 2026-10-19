@@ -339,7 +339,10 @@ host is available; the next controller restart also retries. Workspace deletion
 waits for in-progress preview launches and requires its previews to close first
 so their cleanup records are not discarded.
 Execution-target edits also close existing previews before changing the original
-host metadata; unavailable cleanup prevents that edit. Relay-backed cleanup is
+host metadata; unavailable cleanup prevents that edit. Registered SSH server
+address, port, username changes and deletion follow the same rule, retaining
+the original metadata and credentials if cleanup fails. Preview launches are
+serialized with those mutations. Relay-backed cleanup is
 retried after the controller connection is authenticated and worker authorization
 has synchronized.
 Pre-upgrade previews have no recoverable ownership metadata: their stale bridges

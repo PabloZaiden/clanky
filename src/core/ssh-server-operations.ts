@@ -1,5 +1,5 @@
 /**
- * Serializes registration and key lifecycle mutations for each SSH server.
+ * Serializes SSH server/key mutations with dependent preview registration.
  */
 
 import { KeyedOperationQueue } from "../utils/keyed-operation-queue";
