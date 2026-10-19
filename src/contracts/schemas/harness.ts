@@ -95,6 +95,7 @@ export const HarnessConversationStateSchema = z.object({
     stopScopes: z.array(z.enum(["child-execution", "command"])),
     questionPolicy: z.literal("session").optional(),
     clankyControlTools: z.boolean().optional(),
+    history: z.literal("completed").optional(),
   }).optional(),
   gitSafety: z.union([
     z.object({ status: z.literal("safe"), observedAt: z.string() }),

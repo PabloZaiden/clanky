@@ -23,6 +23,7 @@ interface Conversation {
   translator: CopilotEventTranslator;
   unsubscribe: () => void;
   activeControlContext?: ClankyControlContext;
+  admitting?: boolean;
 }
 
 interface SessionServiceDependencies {
@@ -157,26 +158,49 @@ export class CopilotSessionService {
   }
 
   async send(sessionId: string, prompt: PromptInput): Promise<void> {
-    const conversation = this.get(sessionId);
-    this.activateControlContext(conversation, prompt.controlContext);
-    conversation.translator.beginPrompt();
-    try {
-      await conversation.native.send(toCopilotMessage(prompt));
-    } catch (error) {
-      conversation.activeControlContext = undefined;
-      throw error;
-    }
+    await this.admit(sessionId, async (conversation) => {
+      await this.requireIdle(conversation);
+      if (prompt.model) await this.applyModel(conversation, prompt.model.modelID, prompt.model.variant);
+      await this.requireIdle(conversation);
+      this.activateControlContext(conversation, prompt.controlContext);
+      conversation.translator.beginPrompt();
+      try {
+        await conversation.native.send(toCopilotMessage(prompt));
+      } catch (error) {
+        conversation.activeControlContext = undefined;
+        throw error;
+      }
+    });
   }
 
   async setModel(sessionId: string, modelID: string, variant?: string): Promise<ConfigOption[]> {
-    const conversation = this.get(sessionId);
-    if ((await conversation.native.rpc.metadata.isProcessing()).processing) {
-      throw new HarnessError("harness_invalid_model_option", "Native model changes must wait for the active execution.");
-    }
+    return await this.admit(sessionId, (conversation) => this.applyModel(conversation, modelID, variant));
+  }
+
+  private async applyModel(conversation: Conversation, modelID: string, variant?: string): Promise<ConfigOption[]> {
     const choice = await this.catalog.requireModel(modelID, variant);
+    const current = await conversation.native.rpc.model.getCurrent();
+    if (current.modelId === choice.model.id
+      && (variant === undefined || (current.reasoningEffort ?? "") === (choice.reasoningEffort ?? ""))) {
+      return conversation.info.configOptions ?? [];
+    }
+    await this.requireIdle(conversation);
     await conversation.native.setModel(choice.model.id, { reasoningEffort: choice.reasoningEffort });
     await this.refreshInfo(conversation);
     return conversation.info.configOptions ?? [];
+  }
+
+  private async requireIdle(conversation: Conversation): Promise<void> {
+    if ((await conversation.native.rpc.metadata.isProcessing()).processing) {
+      throw new HarnessError("harness_session_busy", "The native conversation is already processing.");
+    }
+  }
+
+  private async admit<T>(sessionId: string, operation: (conversation: Conversation) => Promise<T>): Promise<T> {
+    const conversation = this.get(sessionId);
+    if (conversation.admitting) throw new HarnessError("harness_session_busy", "A native input or model change is already being admitted.");
+    conversation.admitting = true;
+    try { return await operation(conversation); } finally { conversation.admitting = false; }
   }
 
   async delete(sessionId: string): Promise<void> {

@@ -10,6 +10,9 @@ import { join } from "node:path";
 import { readCodexImageReceipts } from "./image-input";
 import { createPng } from "../support/png-fixtures";
 import { inspectAttachedFiles } from "./file-input";
+import {
+  BACKGROUND_DELEGATED, backgroundFollowUp, backgroundWork, readBackgroundFile, type BackgroundWork,
+} from "./background-work";
 
 const TOOL_NAME = "clanky_list_workspaces";
 const GENERATED_IMAGE_PROMPT = "Generate a PNG larger than two MiB.";
@@ -91,6 +94,7 @@ async function runWorkspaceListTool(
     durationMs: Date.now() - startedAtMs,
   };
   turn.items.push(completedToolItem);
+  turn.itemTimes[callId] = { startedAtMs, completedAtMs: Date.now() };
   rpc.notify("item/completed", {
     item: completedToolItem,
     threadId: thread.id,
@@ -112,6 +116,7 @@ function emitAssistantMessage(active: ActiveTurn, text: string, rpc: CodexJsonRp
     questions: null,
   };
   turn.items.push(messageItem);
+  turn.itemTimes[messageItem.id] = { startedAtMs: Date.now(), completedAtMs: Date.now() };
   rpc.notify("item/started", {
     item: messageItem,
     threadId: thread.id,
@@ -156,6 +161,7 @@ async function emitGeneratedImage(active: ActiveTurn, rpc: CodexJsonRpcSession):
     savedPath,
   };
   turn.items.push(item);
+  turn.itemTimes[id] = { startedAtMs: Date.now(), completedAtMs: Date.now() };
   rpc.notify("item/completed", {
     item,
     threadId: thread.id,
@@ -171,6 +177,27 @@ export async function runCodexTurn(
 ): Promise<void> {
   const { thread, turn } = active;
   rpc.notify("turn/started", { threadId: thread.id, turn: buildTurn(turn) });
+  const prompt = turn.items.flatMap((item) =>
+    isRecord(item) && item["type"] === "userMessage" && Array.isArray(item["content"])
+      ? item["content"].flatMap((part: unknown) =>
+          isRecord(part) && part["type"] === "text" && typeof part["text"] === "string" ? [part["text"]] : [],
+        )
+      : [],
+  ).join("\n");
+  const delegated = backgroundWork(prompt);
+  if (delegated) {
+    emitAssistantMessage(active, BACKGROUND_DELEGATED, rpc);
+    await store.completeTurn(active);
+    notifyCodexTurnCompleted(active, rpc);
+    await continueCodexBackground(thread.id, delegated, store, rpc);
+    return;
+  }
+  if (thread.backgroundResult) {
+    emitAssistantMessage(active, backgroundFollowUp(prompt, thread.backgroundResult), rpc);
+    await store.completeTurn(active);
+    notifyCodexTurnCompleted(active, rpc);
+    return;
+  }
   const steering = await store.waitForSteering(active);
   if (turn.status !== "inProgress") return;
   let answer = "";
@@ -195,19 +222,59 @@ export async function runCodexTurn(
       ? `${assistantText}\nQuestion answer: ${answer}`
       : assistantText;
   const imageReceiptText = imageReceipts(turn).join("\n");
-  const prompt = turn.items.flatMap((item) =>
-    isRecord(item) && item["type"] === "userMessage" && Array.isArray(item["content"])
-      ? item["content"].flatMap((part: unknown) =>
-          isRecord(part) && part["type"] === "text" && typeof part["text"] === "string" ? [part["text"]] : [],
-        )
-      : [],
-  ).join("\n");
   const fileReceipt = await inspectAttachedFiles(prompt, thread.cwd);
   emitAssistantMessage(active, [responseText, imageReceiptText, fileReceipt].filter(Boolean).join("\n"), rpc);
   if (requestsGeneratedImage(turn)) await emitGeneratedImage(active, rpc);
   if (turn.status !== "inProgress") return;
   await store.completeTurn(active);
   notifyCodexTurnCompleted(active, rpc);
+}
+
+async function continueCodexBackground(
+  threadId: string,
+  work: BackgroundWork,
+  store: CodexFixtureStore,
+  rpc: CodexJsonRpcSession,
+): Promise<void> {
+  const controller = store.ownBackground(threadId);
+  let active: ActiveTurn | undefined;
+  try {
+    const report = await readBackgroundFile(work.resultPath, controller.signal);
+    if (report === undefined) return;
+    active = await store.beginTurn({ threadId, input: [] });
+    active.thread.backgroundResult = report;
+    rpc.notify("turn/started", { threadId, turn: buildTurn(active.turn) });
+    const item = {
+      type: "dynamicToolCall", id: randomUUID(), namespace: null,
+      tool: "read_file", arguments: { path: work.resultPath },
+      status: "inProgress", contentItems: null, success: null, durationMs: null,
+    };
+    rpc.notify("item/started", { threadId, turnId: active.turn.id, item, startedAtMs: Date.now() });
+    const completed = {
+      ...item, status: "completed", success: true, durationMs: 0,
+      contentItems: [{ type: "inputText", text: report }],
+    };
+    active.turn.items.push(completed);
+    active.turn.itemTimes[item.id] = { startedAtMs: Date.now(), completedAtMs: Date.now() };
+    rpc.notify("item/completed", {
+      threadId, turnId: active.turn.id, item: completed, completedAtMs: Date.now(),
+    });
+    emitAssistantMessage(active, `Background report: ${report}`, rpc);
+    await store.persist();
+    if (await readBackgroundFile(work.releasePath, controller.signal) === undefined) return;
+    if (active.turn.status !== "inProgress") return;
+    await store.completeTurn(active);
+    notifyCodexTurnCompleted(active, rpc);
+  } catch (error) {
+    if (!controller.signal.aborted && active) {
+      await store.failTurn(active, error);
+      notifyCodexTurnCompleted(active, rpc);
+    } else if (!controller.signal.aborted) {
+      throw error;
+    }
+  } finally {
+    store.releaseBackground(threadId, controller);
+  }
 }
 
 export function notifyCodexTurnCompleted({ thread, turn }: ActiveTurn, rpc: CodexJsonRpcSession): void {

@@ -6,6 +6,7 @@ import type { AgentProvider } from "@/shared/settings";
 import type { EventStream } from "../utils/event-stream";
 import type { ModelInfo } from "@/contracts";
 import type { HarnessEvent } from "@/shared/harness-events";
+import type { HarnessSessionHistory } from "@/shared/harness-history";
 import type { HarnessControl, HarnessConversationBinding } from "@/shared/harness-control";
 import type { PromptInput } from "@/shared/harness-input";
 export type { HarnessEvent, QuestionInfo, QuestionOption } from "@/shared/harness-events";
@@ -211,6 +212,9 @@ export interface Backend {
 
   /** Subscribe to events from a session */
   subscribeToEvents(sessionId: string): Promise<EventStream<HarnessEvent>>;
+
+  /** Read completed native content without replaying inputs or restarting work. */
+  readSessionHistory?(sessionId: string, cursor?: string): Promise<HarnessSessionHistory>;
 
   /** Reply to a permission request */
   replyToPermission(requestId: string, response: string): Promise<void>;

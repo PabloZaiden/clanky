@@ -51,7 +51,7 @@ export type HarnessEventPayload =
   | { type: "activity.changed" }
   | { type: "user.message"; content: string }
   | { type: "message.start"; messageId: string }
-  | { type: "message.delta"; content: string }
+  | { type: "message.delta"; content: string; messageId?: string }
   | {
       type: "message.complete";
       content: string;

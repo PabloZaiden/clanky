@@ -21,6 +21,7 @@ export class CodexControl implements HarnessControl {
     stopScopes: ["child-execution", "command"],
     questionPolicy: "session",
     clankyControlTools: true,
+    history: "completed",
   };
   constructor(private readonly resolve: () => { runtime: CodexRuntime; sessions: CodexSessionService }) {}
 

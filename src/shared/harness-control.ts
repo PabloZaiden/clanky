@@ -45,6 +45,7 @@ export interface HarnessCapabilities {
   stopScopes: readonly ("child-execution" | "command")[];
   questionPolicy?: "session";
   clankyControlTools?: boolean;
+  history?: "completed";
 }
 
 export interface HarnessActivity {

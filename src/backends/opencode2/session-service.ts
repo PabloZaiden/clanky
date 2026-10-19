@@ -15,7 +15,7 @@ import { OpenCodeEventTranslator } from "./event-translator";
 import { toOpenCodePrompt } from "./prompt";
 import type { OpenCodeControlTools } from "./control-tools";
 
-interface Conversation { info: AgentSession; native: NativeSession }
+interface Conversation { info: AgentSession; native: NativeSession; admitting?: boolean }
 type ActivitySession = Pick<NativeSession, "id" | "parentID" | "projectID" | "location" | "title" | "agent" | "model" | "time" | "outcome">;
 interface TrackedSession { rootId: string; native: ActivitySession; translator: OpenCodeEventTranslator }
 
@@ -176,24 +176,46 @@ export class OpenCodeSessionService {
     return descendants;
   }
   async send(id: string, prompt: PromptInput): Promise<void> {
-    this.get(id);
-    this.dependencies.controlTools.begin(id, prompt.controlContext);
-    try {
-      if (prompt.model) await this.setModel(id, prompt.model.modelID, prompt.model.variant, prompt.model.providerID);
-      await this.dependencies.client.session.prompt({ sessionID: id, delivery: "queue", ...toOpenCodePrompt(prompt) });
-    } catch (error) {
-      this.dependencies.controlTools.end(id);
-      throw error;
-    }
+    await this.admit(id, async (session) => {
+      await this.requireIdle(id);
+      if (prompt.model) await this.applyModel(session, prompt.model.modelID, prompt.model.variant, prompt.model.providerID);
+      await this.requireIdle(id);
+      this.dependencies.controlTools.begin(id, prompt.controlContext);
+      try {
+        await this.dependencies.client.session.prompt({ sessionID: id, delivery: "queue", ...toOpenCodePrompt(prompt) });
+      } catch (error) {
+        this.dependencies.controlTools.end(id);
+        throw error;
+      }
+    });
   }
   async setModel(id: string, modelID: string, variant?: string, providerID?: string): Promise<ConfigOption[]> {
-    const session = this.get(id);
-    if ((await this.dependencies.client.session.active())[id]) throw new HarnessError("harness_invalid_model_option", "Native model changes must wait for the current execution.");
+    return await this.admit(id, (session) => this.applyModel(session, modelID, variant, providerID));
+  }
+  private async applyModel(session: Conversation, modelID: string, variant?: string, providerID?: string): Promise<ConfigOption[]> {
+    const id = session.info.id;
     const model = await this.dependencies.catalog.requireModel(modelID, variant, providerID);
+    const current = await this.dependencies.client.session.get({ sessionID: id });
+    if (current.model?.id === model.id && current.model.providerID === model.providerID
+      && (variant === undefined || (current.model.variant ?? "") === (variant || ""))) {
+      return session.info.configOptions ?? [];
+    }
+    await this.requireIdle(id);
     await this.dependencies.client.session.switchModel({ sessionID: id, model: { id: model.id, providerID: model.providerID, variant: variant || undefined } });
     session.native = await this.dependencies.client.session.get({ sessionID: id });
     await this.updateInfo(session);
     return session.info.configOptions ?? [];
+  }
+  private async requireIdle(id: string): Promise<void> {
+    if ((await this.dependencies.client.session.active())[id]) {
+      throw new HarnessError("harness_session_busy", "The native conversation is already processing.");
+    }
+  }
+  private async admit<T>(id: string, operation: (session: Conversation) => Promise<T>): Promise<T> {
+    const session = this.get(id);
+    if (session.admitting) throw new HarnessError("harness_session_busy", "A native input or model change is already being admitted.");
+    session.admitting = true;
+    try { return await operation(session); } finally { session.admitting = false; }
   }
   async finishOperations(): Promise<void> {
     this.closing = true;

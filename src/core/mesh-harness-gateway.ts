@@ -9,6 +9,7 @@ import type { HarnessConversationBinding } from "@/shared/harness-control";
 import type { HarnessActivitySnapshot } from "@/shared/harness-control";
 import type { HarnessEvent, ProviderImageFileReference } from "@/shared/harness-events";
 import type { MeshHarnessOperation } from "@/contracts/schemas/mesh-harness";
+import { MeshHarnessSessionHistorySchema } from "@/contracts/schemas/mesh-harness";
 import { meshExecutionGateway, type MeshExecutionGateway } from "./mesh-execution-gateway";
 import { meshInboundResourceRegistry } from "./mesh-inbound-resource-registry";
 import { DomainError } from "../domain/domain-error";
@@ -330,6 +331,14 @@ export class MeshHarnessGateway {
         : await backend.sendPromptAsync(operation.sessionId, operation.prompt) ?? null;
       case "abort": await backend.abortSession(operation.sessionId); return null;
       case "activity": return await this.activity(host, conversation, operation.sessionId);
+      case "history": {
+        if (!backend.readSessionHistory || backend.harness.capabilities.history !== "completed") {
+          throw new DomainError("harness_unsupported_feature", "This native worker does not support completed history recovery.");
+        }
+        const history = MeshHarnessSessionHistorySchema.safeParse(await backend.readSessionHistory(operation.sessionId, operation.cursor));
+        if (!history.success) throw new DomainError("harness_event_gap", "Native history is incomplete or exceeds the recovery limit.", { cause: history.error });
+        return history.data;
+      }
       case "stop": return await backend.harness.stopActivity(operation.sessionId, operation.activityId);
       case "settle": return await backend.harness.settleOwnedWork(operation.sessionId);
       case "steer": return await backend.harness.steer(operation.sessionId, operation.request);

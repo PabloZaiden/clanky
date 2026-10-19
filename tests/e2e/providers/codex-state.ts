@@ -9,6 +9,7 @@ export interface PersistedTurn {
   error: { message: string } | null;
   id: string;
   items: unknown[];
+  itemTimes: Record<string, { startedAtMs: number | null; completedAtMs: number | null }>;
   startedAt: number;
   status: "completed" | "failed" | "inProgress" | "interrupted";
 }
@@ -22,6 +23,7 @@ export interface PersistedThread {
   status: "active" | "idle";
   turns: PersistedTurn[];
   updatedAt: number;
+  backgroundResult?: string;
 }
 
 export interface ActiveTurn {
@@ -57,10 +59,21 @@ function parseTurn(value: unknown): PersistedTurn {
   ) {
     throw new Error("The persisted Codex fixture turn status is invalid.");
   }
+  const itemTimes: PersistedTurn["itemTimes"] = {};
+  if (isRecord(value["itemTimes"])) {
+    for (const [id, entry] of Object.entries(value["itemTimes"])) {
+      if (!isRecord(entry)) continue;
+      itemTimes[id] = {
+        startedAtMs: typeof entry["startedAtMs"] === "number" ? entry["startedAtMs"] : null,
+        completedAtMs: typeof entry["completedAtMs"] === "number" ? entry["completedAtMs"] : null,
+      };
+    }
+  }
   return {
     id: requireString(value["id"], "turn id"),
     status,
     items: Array.isArray(value["items"]) ? value["items"] : [],
+    itemTimes,
     startedAt: typeof value["startedAt"] === "number" ? value["startedAt"] : 0,
     completedAt: typeof value["completedAt"] === "number" ? value["completedAt"] : null,
     error: isRecord(value["error"]) && typeof value["error"]["message"] === "string"
@@ -86,11 +99,16 @@ function parseThread(value: unknown): PersistedThread {
     status,
     dynamicTools: Array.isArray(value["dynamicTools"]) ? value["dynamicTools"] : [],
     turns: Array.isArray(value["turns"]) ? value["turns"].map(parseTurn) : [],
+    backgroundResult: typeof value["backgroundResult"] === "string" ? value["backgroundResult"] : undefined,
   };
 }
 
 export class CodexFixtureStore {
   private readonly steering = new Map<string, ReturnType<typeof Promise.withResolvers<string | undefined>>>();
+  private readonly backgrounds = new Map<string, {
+    controller: AbortController;
+    finished: ReturnType<typeof Promise.withResolvers<void>>;
+  }>();
   private constructor(
     private readonly statePath: string,
     private readonly state: PersistedState,
@@ -155,6 +173,7 @@ export class CodexFixtureStore {
       id: randomUUID(),
       status: "inProgress",
       items: [{ type: "userMessage", id: randomUUID(), clientId: null, content: params["input"] ?? [] }],
+      itemTimes: {},
       startedAt: now,
       completedAt: null,
       error: null,
@@ -189,11 +208,13 @@ export class CodexFixtureStore {
     if (turn.status !== "inProgress") return undefined;
     const active = { thread, turn };
     this.markInterrupted(active);
+    await this.stopBackground(thread.id);
     await this.persist();
     return active;
   }
 
   async close(): Promise<void> {
+    await Promise.all([...this.backgrounds.keys()].map((id) => this.stopBackground(id)));
     let changed = false;
     for (const thread of Object.values(this.state.threads)) {
       for (const turn of thread.turns) {
@@ -206,6 +227,7 @@ export class CodexFixtureStore {
   }
 
   private markInterrupted({ thread, turn }: ActiveTurn): void {
+    this.backgrounds.get(thread.id)?.controller.abort();
     const now = Date.now() / 1000;
     turn.status = "interrupted";
     turn.completedAt = now;
@@ -257,6 +279,7 @@ export class CodexFixtureStore {
 
   async deleteThread(params: Record<string, unknown>): Promise<string> {
     const thread = this.getThread(params);
+    await this.stopBackground(thread.id);
     for (const turn of thread.turns) {
       if (turn.status === "inProgress") this.markInterrupted({ thread, turn });
     }
@@ -265,7 +288,27 @@ export class CodexFixtureStore {
     return thread.id;
   }
 
-  private async persist(): Promise<void> {
+  ownBackground(threadId: string): AbortController {
+    const controller = new AbortController();
+    if (this.backgrounds.has(threadId)) throw new Error("A native background process is already owned by this thread.");
+    this.backgrounds.set(threadId, { controller, finished: Promise.withResolvers<void>() });
+    return controller;
+  }
+
+  releaseBackground(threadId: string, controller: AbortController): void {
+    const background = this.backgrounds.get(threadId);
+    if (background?.controller !== controller) return;
+    this.backgrounds.delete(threadId);
+    background.finished.resolve();
+  }
+
+  private async stopBackground(threadId: string): Promise<void> {
+    const background = this.backgrounds.get(threadId);
+    background?.controller.abort();
+    await background?.finished.promise;
+  }
+
+  async persist(): Promise<void> {
     await Bun.write(this.statePath, JSON.stringify(this.state));
   }
 }

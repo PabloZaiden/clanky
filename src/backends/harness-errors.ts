@@ -7,6 +7,7 @@ import { DomainError, type DomainErrorOptions } from "../domain/domain-error";
 export type HarnessErrorCode =
   | "harness_unsupported_feature"
   | "harness_session_not_found"
+  | "harness_session_busy"
   | "harness_session_not_owned"
   | "harness_event_gap"
   | "harness_activity_not_owned"

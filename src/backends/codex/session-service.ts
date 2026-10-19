@@ -43,6 +43,7 @@ interface Conversation {
   model?: string;
   effort?: ReasoningEffort;
   activeControlContext?: ClankyControlContext;
+  admitting?: boolean;
 }
 
 interface TrackedThread {
@@ -193,26 +194,26 @@ export class CodexSessionService {
   }
 
   async send(id: string, prompt: PromptInput): Promise<void> {
-    const conversation = this.get(id);
-    this.activateControlContext(conversation, prompt.controlContext);
-    try {
-      const current = await this.dependencies.runtime.rpc.request("thread/read", { threadId: id, includeTurns: false });
-      if (current.thread.status.type === "active") {
-        throw new HarnessError("harness_request_failed", "The native root already has an active turn.");
-      }
+    await this.admit(id, async (conversation) => {
+      await this.requireIdle(id);
       const choice = prompt.model ? await this.dependencies.catalog.requireModel(prompt.model.modelID, prompt.model.variant) : undefined;
-      const result = await this.dependencies.runtime.rpc.request("turn/start", {
-        threadId: id, input: toCodexInput(prompt),
-        model: choice?.model.model ?? conversation.model,
-        effort: choice?.effort ?? conversation.effort,
-        approvalPolicy: "never", sandboxPolicy: { type: "dangerFullAccess" },
-      });
-      const tracked = this.threads.get(id)!;
-      if (result.turn.status === "inProgress" && tracked.completedTurnId !== result.turn.id) tracked.turnId = result.turn.id;
-    } catch (error) {
-      conversation.activeControlContext = undefined;
-      throw error;
-    }
+      const input = toCodexInput(prompt);
+      await this.requireIdle(id);
+      this.activateControlContext(conversation, prompt.controlContext);
+      try {
+        const result = await this.dependencies.runtime.rpc.request("turn/start", {
+          threadId: id, input,
+          model: choice?.model.model ?? conversation.model,
+          effort: choice ? choice.effort : conversation.effort,
+          approvalPolicy: "never", sandboxPolicy: { type: "dangerFullAccess" },
+        });
+        const tracked = this.threads.get(id)!;
+        if (result.turn.status === "inProgress" && tracked.completedTurnId !== result.turn.id) tracked.turnId = result.turn.id;
+      } catch (error) {
+        conversation.activeControlContext = undefined;
+        throw error;
+      }
+    });
   }
 
   prepareSteering(id: string, clientId: string | undefined): void {
@@ -259,13 +260,34 @@ export class CodexSessionService {
   }
 
   async setModel(id: string, modelID: string, variant?: string): Promise<ConfigOption[]> {
+    return await this.admit(id, async (conversation) => {
+      const choice = await this.dependencies.catalog.requireModel(modelID, variant);
+      if (conversation.model === choice.model.model && (variant === undefined || conversation.effort === choice.effort)) {
+        return conversation.info.configOptions ?? [];
+      }
+      await this.requireIdle(id);
+      conversation.model = choice.model.model;
+      conversation.effort = choice.effort;
+      await this.updateInfo(conversation);
+      return conversation.info.configOptions ?? [];
+    });
+  }
+
+  private async requireIdle(id: string): Promise<void> {
+    const current = await this.dependencies.runtime.rpc.request("thread/read", { threadId: id, includeTurns: false });
+    if (current.thread.status.type === "active") {
+      throw new HarnessError("harness_session_busy", "The native conversation is already processing.");
+    }
+    if (current.thread.status.type !== "idle") {
+      throw new HarnessError("harness_request_failed", "The native conversation is not ready for input.");
+    }
+  }
+
+  private async admit<T>(id: string, operation: (conversation: Conversation) => Promise<T>): Promise<T> {
     const conversation = this.get(id);
-    if (this.threads.get(id)?.turnId) throw new HarnessError("harness_invalid_model_option", "Native model changes must wait for the active turn.");
-    const choice = await this.dependencies.catalog.requireModel(modelID, variant);
-    conversation.model = choice.model.model;
-    conversation.effort = choice.effort;
-    await this.updateInfo(conversation);
-    return conversation.info.configOptions ?? [];
+    if (conversation.admitting) throw new HarnessError("harness_session_busy", "A native input or model change is already being admitted.");
+    conversation.admitting = true;
+    try { return await operation(conversation); } finally { conversation.admitting = false; }
   }
 
   forget(id: string): void {

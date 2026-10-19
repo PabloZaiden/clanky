@@ -66,7 +66,15 @@ function createChatServices(emitter: SimpleEventEmitter<ChatEvent>): ChatService
     state,
     worktree,
     hasActiveStream: (chatId: string) => conversation?.hasActiveStream(chatId) ?? false,
+    onNativeSession: async (chat, backend, binding, recover) => {
+      if (!conversation) throw new Error("Chat conversation service is not initialized");
+      await conversation.observeNativeSession({ chat, backend, binding, recover });
+    },
+    onNativeDisconnect: async (chatId) => {
+      await conversation?.stopNativeObservation(chatId);
+    },
     onHarnessEvent: async (chatId, binding, event) => {
+      if (binding.adapter !== "acp") return;
       if (!questions) throw new Error("Chat question service is not initialized");
       // The active transcript consumer owns native-message segmentation.
       if (event.type === "question.asked" && event.responseMode === "message" && conversation?.hasActiveStream(chatId)) return;

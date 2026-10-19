@@ -11,14 +11,23 @@ import { HarnessError } from "../harness-errors";
 import { consumeHarnessPrompt } from "../harness-prompt";
 import { OpenCodeConnection } from "./connection";
 import { OpenCodeControl } from "./control";
+import { readOpenCodeSessionHistory } from "./session-history";
+import { NativeHistoryReader } from "../native-history-reader";
 
 export class OpenCodeBackend implements Backend {
   readonly name = "opencode2";
   private readonly connection = new OpenCodeConnection();
+  private readonly history = new NativeHistoryReader();
   readonly harness = new OpenCodeControl(this.connection.requireServices.bind(this.connection));
 
-  connect(config: BackendConnectionConfig, signal?: AbortSignal): Promise<void> { return this.connection.connect(config, signal); }
-  disconnect(): Promise<void> { return this.connection.disconnect(); }
+  async connect(config: BackendConnectionConfig, signal?: AbortSignal): Promise<void> {
+    await this.history.close();
+    await this.connection.connect(config, signal);
+    this.history.open();
+  }
+  async disconnect(): Promise<void> {
+    try { await this.history.close(); } finally { await this.connection.disconnect(); }
+  }
   isConnected(): boolean { return this.connection.isConnected(); }
   createSession(options: CreateSessionOptions): Promise<AgentSession> { return this.connection.requireServices().sessions.create(options); }
   resumeSession(binding: HarnessConversationBinding): Promise<AgentSession> { return this.connection.requireServices().sessions.resume(binding); }
@@ -28,6 +37,15 @@ export class OpenCodeBackend implements Backend {
   async subscribeToEvents(id: string) {
     this.connection.requireServices().sessions.get(id);
     return this.connection.events.subscribe(id);
+  }
+  async readSessionHistory(id: string, cursor?: string) {
+    const { sessions, client } = this.connection.requireServices();
+    sessions.get(id);
+    return await this.history.read({
+      sessionId: id, cursor,
+      source: () => readOpenCodeSessionHistory(client, id),
+      processing: async () => (await client.session.active())[id] !== undefined,
+    });
   }
   async replyToPermission(_requestId: string, _response: string): Promise<void> { throw new HarnessError("harness_unsupported_feature", "Native permissions are automatically approved."); }
   replyToQuestion(requestId: string, answers: string[][]): Promise<void> { return this.connection.requireServices().questions.reply(requestId, answers); }
@@ -52,6 +70,7 @@ export class OpenCodeBackend implements Backend {
     services.sessions.get(id);
     const cleanup = await this.harness.settleOwnedWork(id);
     if (cleanup.status !== "settled") throw new HarnessError("harness_request_failed", "Owned native work has not settled.");
+    await this.history.forget(id);
     await services.client.session.remove({ sessionID: id });
     services.sessions.forget(id);
   }

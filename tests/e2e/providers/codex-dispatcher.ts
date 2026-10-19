@@ -74,7 +74,7 @@ export class CodexMethodDispatcher {
       case "thread/turns/list":
         return { result: this.listTurns(params) };
       case "thread/items/list":
-        return { result: { data: [], nextCursor: null, backwardsCursor: null } };
+        return { result: this.listItems(params) };
       case "thread/backgroundTerminals/list":
         return { result: { data: [] } };
       case "thread/backgroundTerminals/terminate":
@@ -109,7 +109,36 @@ export class CodexMethodDispatcher {
 
   private listTurns(params: Record<string, unknown>): Record<string, unknown> {
     const thread = this.store.getThread(params);
-    return { data: [...thread.turns].reverse(), nextCursor: null, backwardsCursor: null };
+    const turns = params["sortDirection"] === "asc" ? thread.turns : [...thread.turns].reverse();
+    return this.page(turns.map((turn) => params["itemsView"] === "notLoaded"
+      ? { ...buildTurn(turn), items: [], itemsView: "notLoaded" }
+      : buildTurn(turn)), params);
+  }
+
+  private listItems(params: Record<string, unknown>): Record<string, unknown> {
+    const thread = this.store.getThread(params);
+    const turn = thread.turns.find((entry) => entry.id === params["turnId"]);
+    if (!turn) throw new Error("The requested native turn does not exist.");
+    const items = params["sortDirection"] === "asc" ? turn.items : [...turn.items].reverse();
+    return this.page(items.map((item) => {
+      const id = isRecord(item) && typeof item["id"] === "string" ? item["id"] : "";
+      return {
+        turnId: turn.id, item,
+        startedAtMs: turn.itemTimes[id]?.startedAtMs ?? null,
+        completedAtMs: turn.itemTimes[id]?.completedAtMs ?? null,
+      };
+    }), params);
+  }
+
+  private page(data: unknown[], params: Record<string, unknown>): Record<string, unknown> {
+    const start = Number(params["cursor"] ?? 0);
+    const limit = typeof params["limit"] === "number" ? params["limit"] : 100;
+    const end = Math.min(data.length, start + limit);
+    return {
+      data: data.slice(start, end),
+      nextCursor: end < data.length ? String(end) : null,
+      backwardsCursor: null,
+    };
   }
 
   private async startTurn(params: Record<string, unknown>): Promise<CodexDispatchResult> {

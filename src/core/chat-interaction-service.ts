@@ -490,7 +490,7 @@ export class ChatInteractionService implements ChatInteractionPort {
   }
 
   private shouldQueueMessage(chat: Chat): boolean {
-    return isChatBusyStatus(chat.state.status) || chat.state.status === "reconnecting";
+    return this.conversation.hasActiveStream(chat.config.id) || isChatBusyStatus(chat.state.status) || chat.state.status === "reconnecting";
   }
 
   private async reactivateDoneChat(chat: Chat): Promise<Chat> {
@@ -608,6 +608,7 @@ export class ChatInteractionService implements ChatInteractionPort {
         { clearQueuedMessageIds: queuedMessages.map((entry) => entry.id), credentialToken },
       );
     } catch (error) {
+      if (error instanceof ChatBusyError) return;
       const latestChat = await this.state.getChat(chatId);
       if (latestChat) {
         const message = `Failed to send queued chat messages: ${String(error)}`;
