@@ -2587,8 +2587,8 @@ export class ChatConversationService implements ChatConversationPort {
       ?? chat.config.directory;
 
     try {
-      const current = await this.loadChatIfAvailable(chat.config.id);
-      if (!current || current.state.messages.filter((entry) => entry.role === "user").length !== 1) {
+      const current = await this.state.getChatSummary(chat.config.id);
+      if (!current || !await this.state.hasSingleUserMessage(chat.config.id)) {
         return;
       }
 
@@ -2624,17 +2624,16 @@ export class ChatConversationService implements ChatConversationPort {
         cancelSession: cleanupTempSession,
       }));
 
-      const latest = await this.loadChatIfAvailable(chat.config.id);
+      const latest = await this.state.getChatSummary(chat.config.id);
       if (!latest) {
         return;
       }
-      const latestUserMessages = latest.state.messages.filter((existingMessage) => existingMessage.role === "user");
       const latestWorkspace = isWorkspaceChat(latest)
         ? await this.state.getWorkspace(getChatWorkspaceId(latest))
         : null;
       if (
         !latestWorkspace
-        || latestUserMessages.length !== 1
+        || !await this.state.hasSingleUserMessage(chat.config.id)
         || (latest.config.name.trim() && !isGeneratedChatName(latest.config.name, latestWorkspace.name))
       ) {
         return;
