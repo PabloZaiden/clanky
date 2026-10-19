@@ -277,6 +277,77 @@ Example CLI output:
 }
 ```
 
+## Live previews from the CLI
+
+```bash
+clanky preview --workspace "my-workspace" --port 3000
+clanky preview --server "my-server" --port 3000
+
+# HTTPS development app with a self-signed certificate:
+clanky preview --workspace "my-workspace" --port 8443 --https
+
+# Preserve absolute https://localhost:8443 links on the CLI machine:
+clanky preview --workspace "my-workspace" --port 8443 --https --local-port 8443
+
+# Use a browser-trusted local development certificate instead of generating one:
+clanky preview --workspace "my-workspace" --port 8443 --https \
+  --tls-cert ./localhost.pem --tls-key ./localhost-key.pem
+```
+
+Keep the CLI running while using the printed preview URL. The destination port
+belongs to the selected execution host, not necessarily the Clanky controller.
+Workspace previews support local, SSH, and Mesh execution hosts; direct server
+previews support local and Mesh hosts. HTTP is the default. `--remote-host`
+defaults to `localhost`; `--host` selects the CLI listener address and defaults
+to `localhost`. `--path` selects the initial page and `--open` opens the preview
+in your browser.
+
+`--https` enables HTTPS to the application **and** on the local preview,
+including WSS forwarding. Preview upstream application certificates are always
+accepted without certificate verification, including self-signed certificates.
+This applies only to the preview's HTTPS and WSS connections; certificate
+validation for the authenticated connection to Clanky and Mesh transport is
+unchanged.
+
+Without `--tls-cert` and `--tls-key`, HTTPS previews generate and reuse a
+self-signed local certificate covering `localhost`, `127.0.0.1`, `::1`, and
+the listener hostname. Its private identity is stored with restrictive
+permissions under `preview-tls/` in the **CLI machine's** Clanky data directory
+(`CLANKY_DATA_DIR`, or `~/.clanky` by default). Concurrent previews reuse the
+same identity for the same hostnames. An expired or damaged saved identity fails
+explicitly; remove that identity file to generate a replacement, or supply a
+valid certificate/key pair. Replacing it requires trusting the new certificate
+again.
+
+The browser must accept the local self-signed certificate before navigation and
+secure WebSockets can work. Clanky does not modify browser or operating-system
+trust stores. For warning-free local HTTPS, supply a certificate/key pair from
+a development CA already trusted by that browser (for example, `mkcert`).
+`--tls-cert` and `--tls-key` must be supplied together and require `--https`;
+they configure only the CLI listener, not upstream trust.
+
+The local port is random unless `--local-port` is supplied. Relative URLs work
+on that port, and absolute redirects to the registered application or tunnel
+origin are rewritten to the preview origin. Absolute URLs embedded in HTML,
+JavaScript, or app configuration are not rewritten: for
+`https://localhost:8443/...`, use `--local-port 8443` on a CLI machine where
+that address and port are free, or configure the application's public origin
+to match the printed preview URL. If the app and CLI run on the same machine
+and bind the same address, they cannot both listen on that port. Links to
+other hosts or ports are not implicitly proxied.
+
+`--host 0.0.0.0` exposes the preview to the local network and prints a warning.
+For HTTPS on another device, supply a certificate covering the LAN hostname or
+IP and trusted by that device; the generated localhost certificate does not
+cover every LAN address.
+
+The authenticated `/api/previews/bridge` `hello` optionally carries
+`protocol: "http" | "https"` (default `"http"`). HTTPS upstream certificates
+are always accepted. `localUrl` advertises the actual browser-facing origin,
+including its scheme. Listener keys stay on the CLI machine and are never
+sent over the bridge. HTTPS options do not change `clanky code`, which keeps
+its existing HTTP loopback listener.
+
 ## VS Code web from the CLI
 
 ```bash

@@ -11,6 +11,7 @@ import {
 } from "@pablozaiden/webapp/cli";
 import type { CodePreviewOptions, PreviewBridgeClientMessage, PreviewBridgeReadyMessage, PreviewBridgeServerMessage } from "@/shared";
 import { PREVIEW_RESPONSE_WINDOW_BYTES, previewWebSocketCloseCode } from "@/shared/preview";
+import { getPreviewListenerTls } from "./preview-tls";
 
 const WS_READY_STATE_CLOSING = 2;
 const PREVIEW_LISTENER_WS_IDLE_TIMEOUT_SECONDS = 0;
@@ -25,6 +26,9 @@ export interface PreviewCommandOptions {
   localPort?: number;
   path: string;
   open: boolean;
+  https?: boolean;
+  tlsCert?: string;
+  tlsKey?: string;
   baseUrl?: string;
 }
 
@@ -99,7 +103,7 @@ function parsePortOption(name: string, value: string): number {
 
 export function parsePreviewCommandArgs(args: readonly string[]): PreviewCommandOptions {
   const options: Record<string, string> = {};
-  let open = false;
+  const flags = new Set<string>();
   const positionals: string[] = [];
   const allowedOptions = new Set([
     "--workspace",
@@ -110,25 +114,27 @@ export function parsePreviewCommandArgs(args: readonly string[]): PreviewCommand
     "--local-port",
     "--path",
     "--base-url",
+    "--tls-cert",
+    "--tls-key",
   ]);
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     if (!arg) continue;
-    if (arg === "--open") {
-      if (open) {
-        throw new Error("--open may only be specified once");
-      }
-      open = true;
-      continue;
-    }
     if (!arg.startsWith("--")) {
       positionals.push(arg);
       continue;
     }
 
-    const [rawName, inlineValue] = arg.split("=", 2);
-    const name = rawName ?? arg;
+    const separator = arg.indexOf("=");
+    const name = separator < 0 ? arg : arg.slice(0, separator);
+    const inlineValue = separator < 0 ? undefined : arg.slice(separator + 1);
+    if (["--open", "--https"].includes(name)) {
+      if (inlineValue !== undefined) throw new Error(`${name} does not take a value`);
+      if (flags.has(name)) throw new Error(`${name} may only be specified once`);
+      flags.add(name);
+      continue;
+    }
     if (!allowedOptions.has(name)) {
       throw new Error(`Unknown preview option: ${name}`);
     }
@@ -156,6 +162,15 @@ export function parsePreviewCommandArgs(args: readonly string[]): PreviewCommand
   if (!rawPort) {
     throw new Error("Missing required option: --port");
   }
+  const https = flags.has("--https");
+  const tlsCert = options["--tls-cert"];
+  const tlsKey = options["--tls-key"];
+  if (Boolean(tlsCert) !== Boolean(tlsKey)) {
+    throw new Error("--tls-cert and --tls-key must be supplied together");
+  }
+  if (!https && (tlsCert || tlsKey)) {
+    throw new Error("--tls-cert and --tls-key require --https");
+  }
 
   const rawBaseUrl = options["--base-url"];
   const baseUrl = rawBaseUrl === undefined ? undefined : normalizeBaseUrl(rawBaseUrl);
@@ -170,7 +185,10 @@ export function parsePreviewCommandArgs(args: readonly string[]): PreviewCommand
       ? parsePortOption("--local-port", options["--local-port"])
       : undefined,
     path: normalizePreviewPath(options["--path"] ?? "/"),
-    open,
+    open: flags.has("--open"),
+    https,
+    tlsCert,
+    tlsKey,
   };
 }
 
@@ -227,15 +245,17 @@ async function defaultOpenUrl(url: string): Promise<void> {
   });
 }
 
-function getLanUrls(host: string, port: number, path: string): string[] {
-  if (host !== "0.0.0.0") {
+function getLanUrls(localUrl: string): string[] {
+  const url = new URL(localUrl);
+  if (url.hostname !== "0.0.0.0") {
     return [];
   }
   const urls: string[] = [];
   for (const addresses of Object.values(networkInterfaces())) {
     for (const address of addresses ?? []) {
       if (address.family === "IPv4" && !address.internal) {
-        urls.push(`http://${address.address}:${String(port)}${path}`);
+        url.hostname = address.address;
+        urls.push(url.href);
       }
     }
   }
@@ -411,6 +431,10 @@ export async function runPreviewCommand(
   if (command.host === "0.0.0.0") {
     err("Warning: this preview will be exposed to other devices on your local network.");
   }
+  const protocol = command.https ? "https" : "http";
+  const tls = command.https
+    ? await getPreviewListenerTls({ host: command.host, tlsCert: command.tlsCert, tlsKey: command.tlsKey, warn: err })
+    : undefined;
 
   const bridgeUrl = buildPreviewBridgeUrl(authContext.baseUrl);
   const headers = new Headers(authContext.headers);
@@ -561,6 +585,7 @@ export async function runPreviewCommand(
     const startListener = (host: string, port: number) => serve<PreviewListenerData>({
       hostname: host,
       port,
+      tls,
       ipv6Only: host === "::1",
       idleTimeout: 0,
       async fetch(req, server) {
@@ -730,7 +755,9 @@ export async function runPreviewCommand(
     if (!serverPort) {
       throw new Error("Preview listener did not expose a local port");
     }
-    const actualLocalUrl = `http://${command.host}:${String(serverPort)}${localPath}`;
+    const localHost = command.host.includes(":") && !command.host.startsWith("[")
+      ? `[${command.host}]` : command.host;
+    const actualLocalUrl = `${protocol}://${localHost}:${String(serverPort)}${localPath}`;
     const readyPromise = waitForReady(socket, command.code ? 130_000 : 30_000);
     socket.send(JSON.stringify({
       type: "hello",
@@ -740,6 +767,7 @@ export async function runPreviewCommand(
         : { kind: "workspace", reference: command.workspace! },
       remoteHost: command.remoteHost,
       remotePort: command.port,
+      protocol,
       localHost: command.host,
       localPort: serverPort,
       localUrl: actualLocalUrl,
@@ -754,8 +782,8 @@ export async function runPreviewCommand(
     const targetLabel = command.server
       ? `server ${command.server}`
       : `workspace ${command.workspace}`;
-    out(`Remote target: ${command.remoteHost}:${String(ready.code?.remotePort ?? command.port)} (${targetLabel})`);
-    for (const lanUrl of getLanUrls(command.host, serverPort, localPath)) {
+    out(`Remote target: ${command.https ? "https://" : ""}${command.remoteHost}:${String(ready.code?.remotePort ?? command.port)} (${targetLabel})`);
+    for (const lanUrl of getLanUrls(actualLocalUrl)) {
       out(`LAN URL: ${lanUrl}`);
     }
     if (command.open) {

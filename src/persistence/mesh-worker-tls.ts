@@ -6,7 +6,6 @@
  * server.
  */
 
-import "reflect-metadata";
 import {
   createHash,
   createPrivateKey,
@@ -16,16 +15,7 @@ import {
 import { chmod, mkdir, rename, rm } from "node:fs/promises";
 import { isIP } from "node:net";
 import { dirname, join } from "node:path";
-import {
-  BasicConstraintsExtension,
-  ExtendedKeyUsage,
-  ExtendedKeyUsageExtension,
-  KeyUsageFlags,
-  KeyUsagesExtension,
-  SubjectAlternativeNameExtension,
-  SubjectKeyIdentifierExtension,
-  X509CertificateGenerator,
-} from "@peculiar/x509";
+import { createSelfSignedTlsIdentity } from "../lib/self-signed-tls";
 import { DomainError } from "../domain/domain-error";
 import { assertMeshEndpointAllowed } from "../core/mesh-transport-config";
 import { getDataDir } from "./database";
@@ -65,12 +55,6 @@ async function withTlsIdentityMutation<T>(operation: () => Promise<T>): Promise<
 
 function workerTlsFilePath(): string {
   return join(getDataDir(), "mesh", WORKER_TLS_FILE_NAME);
-}
-
-function asPem(value: ArrayBuffer): string {
-  const base64 = Buffer.from(value).toString("base64");
-  const lines = base64.match(/.{1,64}/g)?.join("\n") ?? "";
-  return `-----BEGIN PRIVATE KEY-----\n${lines}\n-----END PRIVATE KEY-----\n`;
 }
 
 export function getMeshWorkerTlsFingerprint(certificate: string): string {
@@ -238,44 +222,18 @@ async function writeStoredTlsIdentity(identity: StoredMeshWorkerTlsIdentity): Pr
 
 async function createTlsIdentity(endpoint: string): Promise<StoredMeshWorkerTlsIdentity> {
   const hostname = endpointHostname(endpoint);
-  const algorithm = {
-    name: "RSASSA-PKCS1-v1_5",
-    hash: "SHA-256",
-    publicExponent: new Uint8Array([1, 0, 1]),
-    modulusLength: 2048,
-  } as const;
-  const keys = await crypto.subtle.generateKey(algorithm, true, ["sign", "verify"]);
   const now = new Date();
-  const certificate = await X509CertificateGenerator.createSelfSigned({
+  const identity = await createSelfSignedTlsIdentity({
     name: "CN=Clanky Mesh Worker",
-    keys,
-    signingAlgorithm: algorithm,
+    hostnames: [hostname],
     notBefore: new Date(now.getTime() - WORKER_TLS_NOT_BEFORE_SKEW_MS),
     notAfter: new Date(now.getTime() + WORKER_TLS_VALIDITY_MS),
-    extensions: [
-      // Bun's per-connection CA validation requires the pinned self-signed
-      // certificate to be a trust anchor.
-      new BasicConstraintsExtension(true, 0, true),
-      new KeyUsagesExtension(
-        KeyUsageFlags.digitalSignature
-          | KeyUsageFlags.keyEncipherment
-          | KeyUsageFlags.keyCertSign,
-        true,
-      ),
-      new ExtendedKeyUsageExtension([ExtendedKeyUsage.serverAuth], true),
-      new SubjectAlternativeNameExtension([
-        { type: isIP(hostname) > 0 ? "ip" : "dns", value: hostname },
-      ]),
-      await SubjectKeyIdentifierExtension.create(keys.publicKey),
-    ],
   });
-  const certificatePem = certificate.toString("pem");
   return {
     version: WORKER_TLS_FILE_VERSION,
     endpoint,
-    certificate: certificatePem,
-    privateKey: asPem(await crypto.subtle.exportKey("pkcs8", keys.privateKey)),
-    fingerprint: getMeshWorkerTlsFingerprint(certificatePem),
+    ...identity,
+    fingerprint: getMeshWorkerTlsFingerprint(identity.certificate),
     createdAt: now.toISOString(),
   };
 }
