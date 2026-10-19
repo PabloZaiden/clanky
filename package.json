@@ -11,6 +11,7 @@
     "start:server": "bun run start",
     "build": "bun scripts/run-build.ts",
     "generate:macos-signing-cert": "bun scripts/generate-macos-signing-cert.ts",
+    "release": "bun scripts/release.ts",
     "release:metadata": "bun scripts/release-metadata.ts",
     "release:metadata:check": "bun scripts/release-metadata.ts check",
     "release:metadata:generate": "bun scripts/release-metadata.ts generate-installer",

@@ -703,6 +703,18 @@ requirements when application code changes.
   expanding or restructuring the README. Small factual corrections and link
   fixes within existing content do not require separate confirmation.
 
+## Creating GitHub releases
+
+- When asked to create a new release, always use `bun run release`; do not
+  bypass it with manual tag creation or direct `gh release create` commands.
+- Obtain the requested major, minor, or patch increment from the user if it
+  was not specified, and review the script's proposed version and target before
+  confirming publication. Do not publish merely to validate the script.
+- The script publishes the remote default branch's pinned commit, not the
+  current local branch. Tags and titles are identical `vX.Y.Z` strings, with
+  GitHub-generated release notes. See `docs/development.md` for prerequisites
+  and usage.
+
 ## Code Review Learnings — Anti-Patterns to Avoid
 
 These guidelines are distilled from a comprehensive code review (108+ findings). Follow these to avoid repeating past mistakes.
