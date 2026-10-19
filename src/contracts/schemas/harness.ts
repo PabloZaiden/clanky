@@ -73,9 +73,9 @@ const IdentifiedInputSchema = z.union([
 
 export const HarnessConversationStateSchema = z.object({
   activeTurnAttachmentBytes: z.number().int().nonnegative().max(MESSAGE_ATTACHMENT_MAX_TURN_BYTES).optional(),
-  unfinishedMessage: z.object({
+  unfinishedMessages: z.object({
     nativeId: z.string().min(1),
-    messageId: z.string().min(1),
+    messageIds: z.array(z.string().min(1)).min(1).max(1000),
   }).optional(),
   historyRecovery: z.object({
     id: z.string().uuid(),

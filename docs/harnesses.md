@@ -166,10 +166,21 @@ rather than silently reporting a complete transcript. Local and native Mesh
 conversations follow the same rules; a Mesh worker must advertise native history
 recovery support. ACP retains its existing turn-based behavior.
 
-Unfinished native responses retain a durable message checkpoint. If a provider
-replaces a provisional message identity while Clanky is disconnected and its
-history cannot establish the correlation, reconnection reports a gap before
-replaying history; it does not merge messages by matching their text. An
+Native messages have independent lifecycles identified by their provider IDs.
+Several messages may be streaming before any of them completes; reasoning,
+tool events and another message's completion do not replace their pending text.
+Authoritative completions reconcile only their own message and transcript
+segments. Clanky never merges different message IDs because their text matches.
+
+Unfinished native responses retain bounded, durable message checkpoints.
+Reconnection reconciles completed provider messages by ID and preserves any
+remaining partial text without treating it as a completed provider message.
+An interrupted response does not need a final provider record to allow the
+original conversation to reconnect and accept new input. Clanky does not resend
+the interrupted request or guess which other message replaces it. Existing
+single-message checkpoints migrate automatically on startup.
+Missing or invalid durable history still fails explicitly, as does a live
+execution claiming successful completion with messages still pending. An
 integrity/history observation failure cancels the unobserved principal with a
 bounded abort wait and disconnects its runtime if cancellation fails.
 
@@ -180,9 +191,9 @@ principal is stopped, not reported as successful; incomplete responses and
 uncertain input delivery remain available for reconciliation. Genuine provider,
 ownership and history-integrity failures remain explicit.
 
-Copilot reasoning/tool-only completions without text do not replace another
-message's active text stream. That stream still completes under its native
-identity; an unrelated textual response cannot silently replace unfinished text.
+Copilot streams and final messages use the SDK's message identities, including
+responses split around reasoning boundaries. Empty reasoning/tool-only messages
+have their own lifecycle and cannot clear another message's pending response.
 Shutdown-cancelled admission remains stopped/disconnected with recovery guidance,
 unlike an explicit user interrupt that can return to idle. Queued native input
 preserves that recovery state on transport loss. Admitted question and permission
