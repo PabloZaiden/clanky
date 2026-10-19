@@ -176,6 +176,10 @@ identity or server name, status, time since the last interaction, and item type.
 Workspace chats also show their harness provider icon. Private entries remain
 obscured when private items are hidden.
 
+In Dashboard **Resources**, each workspace's **sessions** count includes its
+tasks and standalone chats, including history. Embedded task and agent chats
+are not counted again; terminal sessions remain separate.
+
 ## Manage files in Code Explorer
 
 Right-click a file or folder in the tree to open its context menu. The menu is
