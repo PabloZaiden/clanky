@@ -4,6 +4,7 @@
 import { z } from "zod";
 import type { Backend, BackendConnectionConfig, AgentSession, AgentResponse, CreateSessionOptions, ConfigOption, ConnectionInfo, PromptInput } from "./types";
 import type { HarnessAdapter } from "@/shared/settings";
+import type { MeshPeerRoute } from "@/shared/mesh";
 import type { HarnessControl, HarnessCapabilities, HarnessConversationBinding, HarnessActivitySnapshot, HarnessActivityStopResult, HarnessInputAdmission, HarnessSteerRequest, HarnessInputRecoveryRequest, HarnessCleanupResult } from "@/shared/harness-control";
 import type { HarnessEvent, ProviderImageFileReference } from "@/shared/harness-events";
 import type { HarnessSessionHistory } from "@/shared/harness-history";
@@ -31,7 +32,6 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import { detectBrowserImageMimeType } from "../utils/workspace-file-images";
 import {
   isMeshRelayResponseInterrupted,
-  isMeshRelayUnreachable,
   MeshRelayStreamError,
 } from "../core/mesh-relay-errors";
 
@@ -55,6 +55,7 @@ const Session = z.object({
   })).optional(),
 });
 const MAX_FRAME_BYTES = 4 * 1024 * 1024;
+const OBSERVATION_PEER_PROBE_TIMEOUT_MS = 5_000;
 
 export class MeshHarnessBackend implements Backend {
   readonly name: string;
@@ -228,7 +229,7 @@ export class MeshHarnessBackend implements Backend {
       method: "POST", signal, headers: {
         "content-type": "application/json", "x-clanky-mesh-session-id": connection.sessionId, "x-clanky-mesh-request-id": requestId,
       }, body: JSON.stringify({ protocolVersion: connection.protocolVersion, sessionId: connection.sessionId, sessionToken: connection.sessionToken, requestId, conversationId: id, encryptedPayload: null }),
-    }).catch((error: unknown) => { throw this.observationTransportError(error); });
+    }).catch(async (error: unknown) => { throw await this.observationTransportError(error, connection.route, signal); });
     await this.assertResponse(response);
     if (!response.body) throw new HarnessError("harness_event_gap", "The native event stream is unavailable.");
     const reader = response.body.getReader();
@@ -237,8 +238,11 @@ export class MeshHarnessBackend implements Backend {
     let sequence = 0;
     try {
       while (true) {
-        const chunk = await reader.read().catch((error: unknown) => { throw this.observationTransportError(error); });
-        if (chunk.done) throw new HarnessError("harness_transport_closed", "The native event stream ended.");
+        const chunk = await reader.read().catch(async (error: unknown) => { throw await this.observationTransportError(error, connection.route, signal); });
+        if (chunk.done) {
+          if (buffer.trim()) throw new HarnessError("harness_event_gap", "The native event stream ended with an incomplete frame.");
+          throw new HarnessError("harness_transport_closed", "The native event stream ended.");
+        }
         buffer += decoder.decode(chunk.value, { stream: true });
         if (Buffer.byteLength(buffer) > MAX_FRAME_BYTES) throw new HarnessError("harness_event_gap", "The native event stream exceeds the frame limit.");
         let newline = buffer.indexOf("\n");
@@ -314,16 +318,47 @@ export class MeshHarnessBackend implements Backend {
     }
   }
 
-  private observationTransportError(error: unknown): Error {
-    if (error instanceof DomainError && ![
-      "mesh_relay_disconnected",
-      "mesh_relay_unavailable",
-    ].includes(error.code)) return error;
-    if (error instanceof MeshRelayStreamError
-      && error.code !== "mesh_relay_disconnected"
-      && !isMeshRelayResponseInterrupted(error)
-      && !isMeshRelayUnreachable(error)) return error;
-    return new HarnessError("harness_transport_closed", "The native Mesh event connection was lost.", { cause: error });
+  private async observationTransportError(error: unknown, route: MeshPeerRoute, signal: AbortSignal): Promise<Error> {
+    const disconnected = error instanceof DomainError && [
+      "mesh_relay_disconnected", "mesh_relay_unavailable",
+    ].includes(error.code) || error instanceof MeshRelayStreamError && (
+      ["mesh_relay_disconnected", "mesh_relay_stream_unavailable"].includes(error.code)
+      || error.code !== "mesh_relay_dispatch_failed" && isMeshRelayResponseInterrupted(error)
+    );
+    if (disconnected || route.kind === "direct" && error instanceof TypeError
+      && !signal.aborted && await this.isObservationPeerUnavailable(route, signal)) {
+      return new HarnessError("harness_transport_closed", "The native Mesh event connection was lost.", { cause: error });
+    }
+    // HTTP read failures can also be worker integrity failures; neither an
+    // unclassified exception nor status 503 alone establishes transport loss.
+    return error instanceof Error
+      ? error
+      : new HarnessError("harness_event_gap", "Native Mesh observation failed.", { cause: error });
+  }
+
+  private async isObservationPeerUnavailable(route: MeshPeerRoute, signal: AbortSignal): Promise<boolean> {
+    let response: Response;
+    try {
+      response = await requestMeshPeer(route, "api/health", {
+        signal: AbortSignal.any([signal, AbortSignal.timeout(OBSERVATION_PEER_PROBE_TIMEOUT_MS)]),
+      });
+    } catch (error) {
+      if (signal.aborted) return false;
+      if (error instanceof DOMException && error.name === "TimeoutError") return true;
+      if (error instanceof TypeError && "code" in error && [
+        "ConnectionRefused", "ConnectionClosed", "ECONNREFUSED", "ECONNRESET",
+        "ETIMEDOUT", "ENOTFOUND", "ENETUNREACH", "EHOSTUNREACH",
+      ].includes(String(error.code))) return true;
+      log.warn("Unable to establish native Mesh peer reachability", { error: String(error) });
+      return false;
+    }
+    try {
+      await response.body?.cancel();
+    } catch (error) {
+      log.warn("Unable to cancel the native Mesh health response", { error: String(error) });
+    }
+    // Any HTTP response proves reachability, not that observation was valid.
+    return false;
   }
 
   private async restoreProviderImageAttachment(

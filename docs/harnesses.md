@@ -194,12 +194,19 @@ principal is stopped, not reported as successful; incomplete responses and
 uncertain input delivery remain available for reconciliation. Genuine provider,
 ownership and history-integrity failures remain explicit.
 
-For native Mesh chats, worker restart or an interrupted direct/relayed event
-connection preserves the idle principal's result and original session binding.
+For native Mesh chats, a worker restart that ends the event stream cleanly, or
+an explicitly identified relay transport interruption, preserves the idle
+principal's result and original session binding.
 Background observation becomes unavailable with reason `disconnected`, not an
 empty successful inventory or evidence that background work survived. Resume
 the original conversation once the worker returns. Event framing, sequence and
 history-integrity failures remain errors rather than transport disconnections.
+For ambiguous direct HTTP connection errors, one bounded read-only health
+request checks the same trusted worker route. An unreachable worker is treated
+as disconnected; any HTTP response preserves the original observation error.
+Unclassified failures, relay dispatch failures and rejected relay tickets
+remain errors. The existing stream protocol cannot recover a discarded worker
+error code or prove the cause of every interrupted read.
 
 Copilot streams and final messages use the SDK's message identities, including
 responses split around reasoning boundaries. Empty reasoning/tool-only messages
