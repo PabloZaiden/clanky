@@ -136,10 +136,40 @@ Chat streaming follows the principal execution, not the lifetime of background
 processes. When the principal finishes, the chat becomes idle and accepts a new
 message normally, even if a background server is still running. Those processes
 remain visible and controllable in **Activity**; finishing a turn does not stop
-them. Copilot uses its principal `assistant.idle` signal rather than waiting for
+them. Native chat observation stays attached to the owned conversation between
+turns. If a background result starts another principal execution, its messages,
+tools and questions are saved in the same chat without another user message.
+This does not depend on keeping the chat open.
+
+Copilot uses its principal `assistant.idle` signal rather than waiting for
 session-wide idle, which only refreshes activity and never completes a prompt.
 Codex and OpenCode use their principal execution completion signals. **Steer**
-only applies while the principal is actually executing.
+only applies while the principal is actually executing. Ordinary messages queue
+while that principal is working, including autonomous continuations. A native
+execution starting during admission is a busy conversation, not an invalid
+model selection. Unchanged model settings are not reapplied to active work;
+actual model changes wait for a safe execution boundary.
+Ordinary input is durably reserved before native submission. A definite busy
+rejection leaves it queued; a lost acknowledgement leaves its delivery unknown
+and prevents an automatic resend. Successful admission records the user message
+and clears the corresponding queue and reservation together.
+
+On native chat reconnection, Clanky subscribes before reading the provider's
+persisted conversation history. Copilot, Codex and OpenCode 2 use their native
+history APIs to reconcile completed principal messages and tools by their
+stable identities. Recovery does not rerun tools or resend prompts, and does
+not promise to restart work stopped with the provider runtime. Missing,
+unsupported or over-limit history produces an explicit observation failure
+rather than silently reporting a complete transcript. Local and native Mesh
+conversations follow the same rules; a Mesh worker must advertise native history
+recovery support. ACP retains its existing turn-based behavior.
+
+Unfinished native responses retain a durable message checkpoint. If a provider
+replaces a provisional message identity while Clanky is disconnected and its
+history cannot establish the correlation, reconnection reports a gap before
+replaying history; it does not merge messages by matching their text. An
+observation failure cancels the unobserved principal with a bounded abort wait
+and disconnects its runtime if cancellation fails.
 
 For tasks, the completion marker seals the logical result. Owned native cleanup
 and safe Git finalization happen separately. Active or unconfirmed writers can

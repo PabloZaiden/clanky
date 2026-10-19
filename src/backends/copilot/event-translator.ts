@@ -60,7 +60,7 @@ export class CopilotEventTranslator {
           && this.currentMessageKeys.get(scopeKey) !== messageKey;
         const events = this.startMessage(scope, event.data.messageId, restart).map(wrap);
         this.appendMessageDelta(messageKey, event.data.deltaContent);
-        events.push(wrap({ type: "message.delta", content: event.data.deltaContent }));
+        events.push(wrap({ type: "message.delta", content: event.data.deltaContent, messageId: event.data.messageId }));
         return events;
       }
       case "assistant.message": {
@@ -81,7 +81,7 @@ export class CopilotEventTranslator {
             ).map(wrap)
           : this.startMessage(scope, event.data.messageId).map(wrap);
         completedMessageKey ??= nativeMessageKey;
-        events.push(wrap({ type: "message.complete", content: event.data.content }));
+        events.push(wrap({ type: "message.complete", content: event.data.content, messageId: event.data.messageId }));
         this.deleteMessage(completedMessageKey);
         return events;
       }

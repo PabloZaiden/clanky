@@ -21,6 +21,7 @@ export class OpenCodeControl implements HarnessControl {
     stopScopes: ["child-execution", "command"],
     questionPolicy: "session",
     clankyControlTools: true,
+    history: "completed",
   };
   constructor(private readonly resolve: () => {
     client: OpenCodeClient; sessions: OpenCodeSessionService; directory: string; controlTools: OpenCodeControlTools;

@@ -440,7 +440,7 @@ export class ChatLifecycleService implements ChatLifecyclePort {
     if (!isStandaloneChat(chat)) {
       throw new ChatNotMarkableError();
     }
-    if (isChatBusyStatus(chat.state.status) || chat.state.status === "reconnecting") {
+    if (this.conversation.hasActiveStream(chatId) || isChatBusyStatus(chat.state.status) || chat.state.status === "reconnecting") {
       throw new ChatBusyError();
     }
     if (chat.state.status === "done") {

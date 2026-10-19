@@ -41,7 +41,7 @@ export function buildThread(thread: PersistedThread, includeTurns = false): Reco
     gitInfo: null,
     name: null,
     daybreakEnabled: null,
-    turns: includeTurns ? thread.turns : [],
+    turns: includeTurns ? thread.turns.map(buildTurn) : [],
   };
 }
 
@@ -49,7 +49,7 @@ export function buildTurn(turn: PersistedTurn): Record<string, unknown> {
   return {
     id: turn.id,
     items: turn.items,
-    itemsView: "all",
+    itemsView: "full",
     status: turn.status,
     error: turn.error,
     startedAt: turn.startedAt,

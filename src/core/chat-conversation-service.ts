@@ -84,6 +84,9 @@ import { HarnessError } from "../backends/harness-errors";
 import { isDomainError } from "../domain/domain-error";
 import { closeOpenQuestions, isQuestionOpen, updateQuestionAnswerStatus } from "@/shared/harness-questions";
 import { projectQuestionMessages } from "@/shared/question-transcript";
+import { NativeChatObserver } from "./native-chat-observer";
+import type { HarnessConversationBinding } from "@/shared/harness-control";
+import { requireMatchingHarnessBinding } from "../backends/harness-binding";
 
 const log = createLogger("chat-conversation-service");
 const DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS = DEFAULT_ACTIVITY_TIMEOUT_SECONDS * 1000;
@@ -93,11 +96,22 @@ const CHAT_INTERRUPT_ABORT_TIMEOUT_MS = 5_000;
 const CHAT_INTERRUPT_STARTUP_SETTLE_TIMEOUT_MS = 5_000;
 
 interface ActiveChatStream {
-  handle: AgentStreamHandle;
+  handle: Pick<AgentStreamHandle, "close">;
   generation: number;
   completion: Promise<void>;
   streamState?: ChatStreamConsumptionState;
   stopTranscriptSynchronization?: () => void;
+  native?: {
+    observer: NativeChatObserver;
+    binding: HarnessConversationBinding;
+    backend: Backend;
+    executing: boolean;
+    historyPromptContext?: ChatHistoryPromptContext;
+    completedMessages: Set<string>;
+    completedTools: Set<string>;
+    currentMessageId?: string;
+    skipMessage?: boolean;
+  };
 }
 
 interface StartupOperation {
@@ -114,16 +128,16 @@ interface ChatTranscriptMemory {
   toolCalls: TranscriptMemoryIndex<PersistedToolCall>;
 }
 
-function createChatTranscriptMemory(state: ChatState): ChatTranscriptMemory {
+function createChatTranscriptMemory(state: ChatState, maxEntries = Number.POSITIVE_INFINITY): ChatTranscriptMemory {
   const messages = state.messages ?? [];
   const logs = state.logs ?? [];
   const toolCalls = state.toolCalls ?? [];
   const version = new StreamVersion();
   return {
     version,
-    messages: new TranscriptMemoryIndex(messages, undefined, () => version.advance()),
-    logs: new TranscriptMemoryIndex(logs, undefined, () => version.advance()),
-    toolCalls: new TranscriptMemoryIndex(toolCalls, undefined, () => version.advance()),
+    messages: new TranscriptMemoryIndex(messages, maxEntries, () => version.advance()),
+    logs: new TranscriptMemoryIndex(logs, maxEntries, () => version.advance()),
+    toolCalls: new TranscriptMemoryIndex(toolCalls, maxEntries, () => version.advance()),
   };
 }
 
@@ -134,6 +148,18 @@ interface ChatStreamConsumptionState {
   lastStatusReloadAt: number;
   completedResponse?: { nativeMessageId: string | null; transcriptMessageId: string };
   deletionCheckpointed?: boolean;
+}
+
+interface ChatPromptStartOptions {
+  chat: Chat;
+  backend: Backend;
+  sessionId: string;
+  prompt: PromptInput;
+  signal?: AbortSignal;
+  answerInputId?: string;
+  historyPromptContext?: ChatHistoryPromptContext;
+  onAdmitted?: () => Promise<void>;
+  inputIds?: readonly string[];
 }
 
 export type ChatPermissionHandler = (
@@ -403,7 +429,7 @@ export class ChatConversationService implements ChatConversationPort {
       });
       preparingAttachments = false;
       throwIfChatStartupAborted(startupOperation.controller.signal);
-      if (options.clearQueuedMessageIds?.length) {
+      if (options.clearQueuedMessageIds?.length && backend.harness.capabilities.adapter === "acp") {
         current = await this.state.mutateState(chat.config.id, (latest) => ({
           ...latest.state,
           messages: deferQueuedMessage
@@ -436,6 +462,26 @@ export class ChatConversationService implements ChatConversationPort {
           signal: startupOperation.controller.signal,
           answerInputId,
           historyPromptContext: historyPromptContext ?? undefined,
+          inputIds: options.clearQueuedMessageIds?.length ? options.clearQueuedMessageIds : [userMessage.id],
+          onAdmitted: async () => {
+            const updated = await this.state.mutateState(chat.config.id, (latest) => ({
+              ...latest.state,
+              messages: deferQueuedMessage
+                ? [...latest.state.messages.filter((message) => message.id !== userMessage.id), userMessage]
+                : latest.state.messages,
+              queuedMessages: latest.state.queuedMessages?.filter(
+                (entry) => !options.clearQueuedMessageIds?.includes(entry.id),
+              ),
+              harness: {
+                ...latest.state.harness,
+                inputs: latest.state.harness?.inputs?.filter((receipt) =>
+                  receipt.admission.inputId !== userMessage.id
+                  && !options.clearQueuedMessageIds?.includes(receipt.admission.inputId)),
+              },
+            }));
+            if (deferQueuedMessage) this.emitMessage(updated, userMessage);
+            this.emitChatUpdated(updated);
+          },
         });
       });
       historyPromptTransferred = historyPromptContext !== null;
@@ -446,6 +492,17 @@ export class ChatConversationService implements ChatConversationPort {
         historyPromptContext?.close();
       }
       let latest = await this.loadChatIfAvailable(chat.config.id);
+      if (isDomainError(error) && error.code === "harness_session_busy") {
+        const entry = this.activeStreams.get(chat.config.id);
+        if (entry?.native) entry.native.executing = true;
+        if (latest) {
+          await this.state.mutateState(chat.config.id, (current) => ({
+            ...current.state, status: "streaming", startupStage: undefined, error: undefined,
+          }));
+        }
+        if (!options.clearQueuedMessageIds?.length) input.transcriptMessage ??= userMessage;
+        throw new ChatBusyError();
+      }
       if (latest && answerInputId && !(error instanceof ChatBusyError)) {
         latest = await this.state.mutateState(chat.config.id, (current) => {
           const answered = current.state.harness?.questions?.some(
@@ -495,7 +552,7 @@ export class ChatConversationService implements ChatConversationPort {
       if (!summary) {
         throw new Error(`Chat not found: ${chatId}`);
       }
-      if (!this.activeStreams.has(chatId) && !isChatBusyStatus(summary.state.status)) {
+      if (!this.hasActiveStream(chatId) && !isChatBusyStatus(summary.state.status)) {
         return await this.state.getChat(chatId) ?? summary;
       }
       if (Date.now() - startedAt > timeoutMs) {
@@ -550,9 +607,8 @@ export class ChatConversationService implements ChatConversationPort {
       await markInterrupting(chat);
     }
 
-    if (activeStream) {
-      this.closeActiveStream(chatId);
-    }
+    if (activeStream?.native) await this.stopNativeObservation(chatId);
+    else if (activeStream) this.closeActiveStream(chatId);
 
     let backend: Backend | undefined;
     if (!startupOperation && chat.state.session?.id) {
@@ -634,8 +690,25 @@ export class ChatConversationService implements ChatConversationPort {
     const active = this.activeStreams.get(chatId);
     active?.handle.close();
     active?.stopTranscriptSynchronization?.();
+    active?.native?.historyPromptContext?.close();
     this.activeStreams.delete(chatId);
     this.activeStreamGenerations.delete(chatId);
+  }
+
+  async stopNativeObservation(chatId: string): Promise<void> {
+    const stream = this.activeStreams.get(chatId);
+    if (!stream?.native) return;
+    if (stream.native.observer.isClosed) {
+      await stream.completion;
+      return;
+    }
+    const state = stream.streamState!;
+    await stream.native.observer.serialize(async () => {
+      await this.flushChatStreamBlocksAfterMetadataReload(chatId, state, state.interpreter.flushActiveBlocks());
+      state.interpreter.acknowledgeCheckpoint();
+      this.closeActiveStream(chatId);
+    });
+    await stream.completion;
   }
 
   checkpointForDeletion(
@@ -675,7 +748,326 @@ export class ChatConversationService implements ChatConversationPort {
   }
 
   hasActiveStream(chatId: string): boolean {
-    return this.activeStreams.has(chatId);
+    const stream = this.activeStreams.get(chatId);
+    return stream !== undefined && (!stream.native || stream.native.executing);
+  }
+
+  async observeNativeSession({ chat, backend, binding, recover }: {
+    chat: Chat;
+    backend: Backend;
+    binding: HarnessConversationBinding;
+    recover: boolean;
+  }): Promise<void> {
+    const chatId = chat.config.id;
+    const previous = this.activeStreams.get(chatId);
+    if (previous?.native?.binding.nativeId === binding.nativeId && previous.native.backend === backend
+      && !previous.native.observer.isClosed) {
+      requireMatchingHarnessBinding(JSON.stringify(previous.native.binding), binding);
+      return;
+    }
+    await this.stopNativeObservation(chatId);
+    this.closeActiveStream(chatId);
+    const observer = new NativeChatObserver();
+    const generation = this.nextActiveStreamGeneration(chatId);
+    const entry: ActiveChatStream = {
+      handle: observer, generation, completion: Promise.resolve(),
+      streamState: this.createChatStreamState(chat, 1000),
+      native: { observer, backend, binding, executing: false, completedMessages: new Set(), completedTools: new Set() },
+    };
+    this.activeStreams.set(chatId, entry);
+    entry.stopTranscriptSynchronization = this.synchronizePersistedMessages(chatId, entry.streamState!);
+    try {
+      await observer.start({
+        backend, sessionId: binding.nativeId,
+        recover: async () => {
+          if (recover) await this.recoverNativeSession(chatId, entry);
+        },
+        onEvent: async (event) => {
+          if (this.activeStreams.get(chatId) !== entry) return;
+          const latest = await this.state.getChatSummary(chatId);
+          if (!latest || latest.state.session?.binding?.nativeId !== binding.nativeId) {
+            observer.close();
+            return;
+          }
+          if (latest.state.status === "done") {
+            observer.close();
+            return;
+          }
+          requireMatchingHarnessBinding(JSON.stringify(latest.state.session.binding), binding);
+          if (event.scope.kind !== "principal"
+            && event.type !== "question.asked" && event.type !== "question.resolved"
+            && event.type !== "permission.asked") return;
+          await this.consumeNativeEvent(chatId, entry, event);
+        },
+        onFailure: async (error) => {
+          if (this.activeStreams.get(chatId) !== entry) return;
+          const streamState = entry.streamState!;
+          try {
+            await this.flushChatStreamBlocksAfterMetadataReload(chatId, streamState, streamState.interpreter.flushActiveBlocks());
+          } catch (checkpointError) {
+            log.error("Failed to checkpoint native conversation after observation failure", { chatId, error: String(checkpointError) });
+          } finally {
+            await this.cancelUnobservedNativeExecution(chatId, entry);
+          }
+          const latest = await this.state.getChatSummary(chatId);
+          if (latest && this.activeStreams.get(chatId) === entry
+            && latest.state.session?.binding?.nativeId === binding.nativeId) await this.emitChatError(latest, error);
+        },
+        onClosed: () => {
+          if (this.activeStreams.get(chatId) === entry) this.closeActiveStream(chatId);
+        },
+      });
+      entry.completion = observer.completion;
+    } catch (error) {
+      try {
+        await this.cancelUnobservedNativeExecution(chatId, entry);
+      } finally {
+        if (this.activeStreams.get(chatId) === entry) this.closeActiveStream(chatId);
+      }
+      throw error;
+    }
+  }
+
+  private async cancelUnobservedNativeExecution(chatId: string, entry: ActiveChatStream): Promise<void> {
+    const native = entry.native!;
+    if (this.activeStreams.get(chatId) !== entry || !native.backend.isConnected()) return;
+    try {
+      await withTimeout(native.backend.abortSession(native.binding.nativeId), CHAT_INTERRUPT_ABORT_TIMEOUT_MS, "Unobserved native execution abort timed out");
+    } catch (error) {
+      log.error("Failed to abort unobserved native execution; disconnecting its runtime", { chatId, error: String(error) });
+      try {
+        await withTimeout(native.backend.disconnect(), CHAT_INTERRUPT_ABORT_TIMEOUT_MS, "Unobserved native runtime disconnect timed out");
+      } catch (disconnectError) {
+        log.error("Failed to disconnect unobserved native runtime", { chatId, error: String(disconnectError) });
+      }
+    }
+  }
+
+  private async consumeNativeEvent(chatId: string, entry: ActiveChatStream, event: AgentEvent, recovered = false): Promise<void> {
+    const native = entry.native!;
+    if (event.type === "message.complete") await this.reconcileNativeCompletionIdentity(chatId, entry, event);
+    if (event.type === "message.delta" || event.type === "message.complete") {
+      if (event.messageId && native.completedMessages.has(event.messageId)) return;
+      if (event.messageId && (!native.currentMessageId || native.completedMessages.has(native.currentMessageId))) {
+        await this.consumeNativeEvent(chatId, entry, {
+          type: "message.start", messageId: event.messageId, scope: event.scope, timestamp: event.timestamp,
+        }, recovered);
+      }
+    }
+    const streamState = entry.streamState!;
+    if ((event.type === "tool.start" || event.type === "tool.complete")
+      && event.toolCallId && native.completedTools.has(event.toolCallId)) return;
+    if (event.type === "message.start") {
+      if (native.currentMessageId && native.currentMessageId !== event.messageId
+        && !native.completedMessages.has(native.currentMessageId)
+        && streamState.interpreter.state.responseContent.length > 0) {
+        throw new HarnessError("harness_event_gap", "Native message identities changed before the pending response completed.");
+      }
+      native.currentMessageId = event.messageId;
+      native.skipMessage = native.completedMessages.has(event.messageId);
+    }
+    if (native.skipMessage && (event.type === "message.start" || event.type === "message.delta" || event.type === "message.complete")) return;
+    if (!recovered && event.scope.kind === "principal"
+      && (event.type === "session.status" && event.status !== "idle" || event.type === "message.start")) {
+      native.executing = true;
+      if (!await this.reloadChatStreamMetadata(chatId, streamState)) return;
+      if (!streamState.chat.state.interruptRequested) {
+        streamState.chat = await this.updateState(streamState.chat, {
+          ...streamState.chat.state, status: "streaming", startupStage: undefined,
+          error: undefined, completedAt: undefined, lastActivityAt: createTimestamp(),
+        });
+      }
+    }
+    await this.handleChatStreamEvent(chatId, native.backend, entry.generation, streamState, event);
+    if (!recovered && event.type === "message.start") {
+      await this.recordNativeMessageCheckpoint(chatId, entry, event.messageId);
+    }
+    if (event.type === "message.complete" && native.currentMessageId) {
+      this.rememberNativeCompletion(native.completedMessages, native.currentMessageId);
+      if (!recovered) await this.recordNativeMessageCheckpoint(chatId, entry, undefined);
+    }
+    if (event.type === "tool.complete" && event.toolCallId) {
+      this.rememberNativeCompletion(native.completedTools, event.toolCallId);
+    }
+    const tools = streamState.interpreter.state.toolCalls;
+    for (const [id, tool] of tools) {
+      if (tools.size <= 1000) break;
+      if (tool.status !== "running") tools.delete(id);
+    }
+    if (tools.size > 1000) throw new HarnessError("harness_event_gap", "Native conversation has too many active tools.");
+    if (event.scope.kind === "principal" && (event.type === "prompt.complete" || event.type === "error")) {
+      native.executing = false;
+      if (event.type === "prompt.complete" && event.outcome === "completed") {
+        try {
+          await native.historyPromptContext?.complete();
+        } catch (error) {
+          log.warn("Failed to clean up completed native chat history export", { chatId, error: String(error) });
+        }
+      }
+      native.historyPromptContext?.close();
+      native.historyPromptContext = undefined;
+      const completedResponse = streamState.completedResponse;
+      entry.stopTranscriptSynchronization?.();
+      entry.streamState = this.createChatStreamState(streamState.chat, 1000);
+      entry.streamState.completedResponse = completedResponse;
+      entry.stopTranscriptSynchronization = this.synchronizePersistedMessages(chatId, entry.streamState);
+      this.scheduleQueuedMessageDrain(chatId);
+    }
+  }
+
+  private async recoverNativeSession(chatId: string, entry: ActiveChatStream): Promise<void> {
+    const native = entry.native!;
+    if (!native.backend.readSessionHistory) throw new HarnessError("harness_event_gap", "This execution host cannot recover native conversation history.");
+    await this.verifyNativeMessageCheckpoint(chatId, entry);
+    let cursor: string | undefined;
+    do {
+      const history = await native.backend.readSessionHistory(native.binding.nativeId, cursor);
+      const finalMessages = new Map<string, Extract<AgentEvent, { type: "message.complete" }>>();
+      let messageId: string | undefined;
+      for (const event of history.events) {
+        if (event.scope.kind !== "principal") continue;
+        if (event.type === "message.start") messageId = event.messageId;
+        if (event.type === "message.complete" && messageId) finalMessages.set(messageId, event);
+      }
+      for (const event of history.events) {
+        if (event.scope.kind !== "principal") continue;
+        if (event.type === "message.start") {
+          const persisted = await this.state.getChatMessage(chatId, event.messageId);
+          const final = finalMessages.get(event.messageId);
+          if (persisted && final) {
+            await this.reconcileRecoveredMessage({ chatId, entry, persisted, final });
+            this.rememberNativeCompletion(native.completedMessages, event.messageId);
+          }
+        }
+        if ((event.type === "tool.start" || event.type === "tool.complete") && event.toolCallId) {
+          const tool = await this.state.getChatToolCall(chatId, event.toolCallId);
+          if (tool && tool.status !== "running") this.rememberNativeCompletion(native.completedTools, event.toolCallId);
+        }
+        await this.consumeNativeEvent(chatId, entry, event, true);
+      }
+      native.executing = history.principalProcessing;
+      cursor = history.nextCursor;
+    } while (cursor);
+    native.currentMessageId = undefined;
+    native.skipMessage = false;
+    await this.recordNativeMessageCheckpoint(chatId, entry, undefined);
+    const streamState = entry.streamState!;
+    if (!await this.reloadChatStreamMetadata(chatId, streamState)) return;
+    streamState.chat = await this.updateState(streamState.chat, {
+      ...streamState.chat.state,
+      status: streamState.chat.state.status === "starting" || streamState.chat.state.status === "reconnecting"
+        ? streamState.chat.state.status : native.executing ? "streaming" : "idle",
+      startupStage: undefined, error: undefined, interruptRequested: false,
+    });
+  }
+
+  private rememberNativeCompletion(ids: Set<string>, id: string): void {
+    ids.add(id);
+    if (ids.size > 1000) ids.delete(ids.values().next().value!);
+  }
+
+  private async recordNativeMessageCheckpoint(chatId: string, entry: ActiveChatStream, messageId: string | undefined): Promise<void> {
+    const native = entry.native!;
+    const updated = await this.state.mutateState(chatId, (current) => {
+      if (!current.state.session?.binding) throw new HarnessError("harness_session_not_found", "The native conversation is unavailable.");
+      requireMatchingHarnessBinding(JSON.stringify(native.binding), current.state.session.binding);
+      return {
+        ...current.state,
+        harness: {
+          ...current.state.harness,
+          unfinishedMessage: messageId ? { nativeId: native.binding.nativeId, messageId } : undefined,
+        },
+      };
+    });
+    const streamState = entry.streamState!;
+    streamState.chat = { ...streamState.chat, state: { ...streamState.chat.state, harness: updated.state.harness } };
+  }
+
+  private async verifyNativeMessageCheckpoint(chatId: string, entry: ActiveChatStream): Promise<void> {
+    const native = entry.native!;
+    const checkpoint = entry.streamState!.chat.state.harness?.unfinishedMessage;
+    if (!checkpoint || checkpoint.nativeId !== native.binding.nativeId
+      || !await this.state.getChatMessage(chatId, checkpoint.messageId)) return;
+    let cursor: string | undefined;
+    let matched = false;
+    do {
+      const history = await native.backend.readSessionHistory!(native.binding.nativeId, cursor);
+      let messageId: string | undefined;
+      for (const event of history.events) {
+        if (event.scope.kind !== "principal") continue;
+        if (event.type === "message.start") messageId = event.messageId;
+        if (event.type === "message.complete" && messageId === checkpoint.messageId) matched = true;
+      }
+      cursor = history.nextCursor;
+    } while (cursor);
+    if (!matched) throw new HarnessError("harness_event_gap", "An unfinished native response cannot be correlated with completed provider history.");
+  }
+
+  private async reconcileNativeCompletionIdentity(
+    chatId: string,
+    entry: ActiveChatStream,
+    event: Extract<AgentEvent, { type: "message.complete" }>,
+  ): Promise<void> {
+    const native = entry.native!;
+    const provisionalId = native.currentMessageId;
+    if (!event.messageId || !provisionalId || event.messageId === provisionalId
+      || native.completedMessages.has(provisionalId)) return;
+    const streamState = entry.streamState!;
+    const content = event.content || streamState.interpreter.state.responseContent;
+    await this.flushChatStreamBlocksAfterMetadataReload(chatId, streamState, streamState.interpreter.flushActiveBlocks());
+    const provisional = await this.state.getChatMessage(chatId, provisionalId);
+    if (provisional) {
+      await this.reconcileRecoveredMessage({
+        chatId, entry, persisted: provisional, final: { ...event, content },
+      });
+    }
+    this.rememberNativeCompletion(native.completedMessages, provisionalId);
+    native.currentMessageId = undefined;
+    native.skipMessage = false;
+  }
+
+  private async reconcileRecoveredMessage({
+    chatId,
+    entry,
+    persisted,
+    final,
+  }: {
+    chatId: string;
+    entry: ActiveChatStream;
+    persisted: MessageData;
+    final: Extract<AgentEvent, { type: "message.complete" }>;
+  }): Promise<void> {
+    const segments: MessageData[] = [persisted];
+    for (let index = 2; index <= 257; index++) {
+      const segment = await this.state.getChatMessage(chatId, this.createResponseSegmentMessageId(persisted.id, index));
+      if (!segment) break;
+      if (index === 257) throw new HarnessError("harness_event_gap", "Recovered native message has too many transcript segments.");
+      segments.push(segment);
+    }
+    const finalId = final.messageId ?? persisted.id;
+    if (finalId === persisted.id && segments.map((segment) => segment.content).join("") === final.content
+      && (!final.attachments || JSON.stringify(persisted.attachments) === JSON.stringify(final.attachments))) return;
+    const streamState = entry.streamState!;
+    if (!await this.reloadChatStreamMetadata(chatId, streamState)) return;
+    const ids = new Set([...segments.map((segment) => segment.id), finalId]);
+    const message: MessageData = { ...persisted, id: finalId, content: final.content, attachments: final.attachments ?? persisted.attachments };
+    const nextState = {
+      ...streamState.chat.state,
+      harness: streamState.chat.state.harness?.unfinishedMessage ? {
+        ...streamState.chat.state.harness,
+        unfinishedMessage: { nativeId: entry.native!.binding.nativeId, messageId: finalId },
+      } : streamState.chat.state.harness,
+      messages: [...streamState.transcriptMemory.messages.values.filter((value) => !ids.has(value.id)), message],
+    };
+    const updated = await this.updateState(streamState.chat, nextState, {
+      transcriptChanges: createTranscriptChangeSet(nextState, [{
+        id: message.id, kind: "message", timestamp: message.timestamp, payload: message,
+      }], segments.filter((segment) => segment.id !== finalId).map((segment) => ({ id: segment.id, kind: "message" as const }))),
+    });
+    entry.stopTranscriptSynchronization?.();
+    entry.streamState = this.createChatStreamState(updated, 1000);
+    entry.stopTranscriptSynchronization = this.synchronizePersistedMessages(chatId, entry.streamState);
+    this.emitMessage(updated, message);
   }
 
   async getAssistantMessage(
@@ -694,16 +1086,73 @@ export class ChatConversationService implements ChatConversationPort {
     return message?.role === "assistant" ? message : null;
   }
 
-  private async startActivePrompt({ chat, backend, sessionId, prompt, signal, answerInputId, historyPromptContext }: {
-    chat: Chat;
-    backend: Backend;
-    sessionId: string;
-    prompt: PromptInput;
-    signal?: AbortSignal;
-    answerInputId?: string;
-    historyPromptContext?: ChatHistoryPromptContext;
-  }): Promise<Chat> {
+  private async startNativePrompt(options: ChatPromptStartOptions): Promise<Chat> {
+    const { chat, backend, sessionId, prompt, signal, answerInputId, historyPromptContext, onAdmitted, inputIds = [] } = options;
+    const entry = this.activeStreams.get(chat.config.id);
+    if (!entry?.native) throw new HarnessError("harness_transport_closed", "Native conversation observation is unavailable.");
+    return entry.native.observer.serialize(async () => {
+      throwIfChatStartupAborted(signal);
+      if (entry.native!.executing) throw new HarnessError("harness_session_busy", "The native principal is already executing.");
+      const admission = { chatId: chat.config.id, binding: entry.native!.binding, inputIds };
+      await this.recordNativePromptAdmission({ ...admission, status: "unknown" });
+      try {
+        await backend.sendPromptAsync(sessionId, prompt);
+      } catch (error) {
+        if (isHarnessInputValidationError(error) || (isDomainError(error) && error.code === "harness_session_busy")) {
+          await this.recordNativePromptAdmission({ ...admission, status: null });
+        }
+        throw error;
+      }
+      throwIfChatStartupAborted(signal);
+      if (this.activeStreams.get(chat.config.id) !== entry) {
+        throw new HarnessError("harness_transport_closed", "The native conversation changed during admission.");
+      }
+      await onAdmitted?.();
+      entry.native!.historyPromptContext = historyPromptContext;
+      entry.native!.executing = true;
+      const latest = await this.state.getChatSummary(chat.config.id);
+      if (!latest) throw new HarnessError("harness_session_not_found", "The chat is unavailable.");
+      return this.updateState(latest, {
+        ...latest.state, status: "streaming", startupStage: undefined, error: undefined,
+        interruptRequested: false, completedAt: undefined, lastActivityAt: createTimestamp(),
+        harness: answerInputId
+          ? updateQuestionAnswerStatus(latest.state.harness, answerInputId, "answered")
+          : latest.state.harness,
+      });
+    });
+  }
+
+  private async recordNativePromptAdmission({ chatId, binding, inputIds, status }: {
+    chatId: string;
+    binding: HarnessConversationBinding;
+    inputIds: readonly string[];
+    status: "unknown" | null;
+  }): Promise<void> {
+    if (inputIds.length === 0) return;
+    const updated = await this.state.mutateState(chatId, (current) => {
+      if (!current.state.session?.binding) throw new HarnessError("harness_session_not_found", "The native conversation is unavailable.");
+      requireMatchingHarnessBinding(JSON.stringify(binding), current.state.session.binding);
+      let receipts = current.state.harness?.inputs ?? [];
+      for (const inputId of inputIds) {
+        const previous = receipts.find((receipt) => receipt.admission.inputId === inputId);
+        if (status === "unknown" && previous && previous.admission.status !== "rejected") {
+          throw new HarnessError("harness_input_unresolved", "This input may already have been delivered.");
+        }
+        receipts = status === null
+          ? receipts.filter((receipt) => receipt.admission.inputId !== inputId)
+          : retainHarnessInputReceipt(receipts, {
+            conversation: binding, admission: { status, inputId }, submittedAt: previous?.submittedAt ?? createTimestamp(),
+          });
+      }
+      return { ...current.state, harness: { ...current.state.harness, inputs: receipts } };
+    });
+    this.state.emitChatUpdated(updated);
+  }
+
+  private async startActivePrompt(options: ChatPromptStartOptions): Promise<Chat> {
+    const { chat, backend, sessionId, prompt, signal, answerInputId, historyPromptContext } = options;
     throwIfChatStartupAborted(signal);
+    if (backend.harness.capabilities.adapter !== "acp") return this.startNativePrompt(options);
     const streamController = new AgentStreamController(backend);
     const handle = streamController.start({
       sessionId,
@@ -774,8 +1223,8 @@ export class ChatConversationService implements ChatConversationPort {
     }
   }
 
-  private createChatStreamState(initialChat: Chat): ChatStreamConsumptionState {
-    const transcriptMemory = createChatTranscriptMemory(initialChat.state);
+  private createChatStreamState(initialChat: Chat, maxEntries = Number.POSITIVE_INFINITY): ChatStreamConsumptionState {
+    const transcriptMemory = createChatTranscriptMemory(initialChat.state, maxEntries);
     return {
       chat: initialChat,
       transcriptMemory,
@@ -1282,8 +1731,11 @@ export class ChatConversationService implements ChatConversationPort {
             streamState.interpreter,
           );
           streamState.interpreter.acknowledgeCheckpoint();
-          this.clearActiveStream(chatId, generation);
-          return { stop: true };
+          if (!this.activeStreams.get(chatId)?.native) {
+            this.clearActiveStream(chatId, generation);
+            return { stop: true };
+          }
+          break;
         }
         break;
 
@@ -1363,8 +1815,11 @@ export class ChatConversationService implements ChatConversationPort {
           });
         }
         streamState.interpreter.acknowledgeCheckpoint();
-        this.clearActiveStream(chatId, generation);
-        return { stop: true };
+        if (!this.activeStreams.get(chatId)?.native) {
+          this.clearActiveStream(chatId, generation);
+          return { stop: true };
+        }
+        break;
 
       case "request.error":
         log.warn("Native request failed while the chat execution remains open", {
@@ -1409,8 +1864,11 @@ export class ChatConversationService implements ChatConversationPort {
             );
           }
           streamState.interpreter.acknowledgeCheckpoint();
-          this.clearActiveStream(chatId, generation);
-          return { stop: true };
+          if (!this.activeStreams.get(chatId)?.native) {
+            this.clearActiveStream(chatId, generation);
+            return { stop: true };
+          }
+          break;
         }
         await this.flushChatStreamBlocks(
           streamState,
@@ -1424,8 +1882,11 @@ export class ChatConversationService implements ChatConversationPort {
           event.details,
         );
         streamState.interpreter.acknowledgeCheckpoint();
-        this.clearActiveStream(chatId, generation);
-        return { stop: true };
+        if (!this.activeStreams.get(chatId)?.native) {
+          this.clearActiveStream(chatId, generation);
+          return { stop: true };
+        }
+        break;
 
       case "permission.asked":
         if (!this.permissionHandler) {

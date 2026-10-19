@@ -31,6 +31,7 @@ export class OpenCodeEventTranslator {
     }
     const wrap = (payload: HarnessEventPayload): HarnessEvent => ({
       ...payload, scope, sourceEventId: event.id,
+      ...("created" in event ? { timestamp: new Date(event.created).toISOString() } : {}),
       sourceSequence: "durable" in event ? event.durable.seq : undefined,
     });
     switch (event.type) {
@@ -46,7 +47,10 @@ export class OpenCodeEventTranslator {
       case "session.step.started":
         return this.startMessage(event.data.assistantMessageID).map(wrap);
       case "session.text.delta":
-        return [...this.startMessage(event.data.assistantMessageID).map(wrap), wrap({ type: "message.delta", content: event.data.delta })];
+        return [
+          ...this.startMessage(event.data.assistantMessageID).map(wrap),
+          wrap({ type: "message.delta", content: event.data.delta, messageId: event.data.assistantMessageID }),
+        ];
       case "session.text.ended": {
         const events = this.startMessage(event.data.assistantMessageID).map(wrap);
         const parts = this.messages.get(event.data.assistantMessageID)!;
@@ -63,7 +67,7 @@ export class OpenCodeEventTranslator {
         if (!parts) throw new HarnessError("harness_event_gap", "A native step completed without its observed start.");
         const content = [...parts.entries()].sort(([left], [right]) => left - right).map(([, text]) => text).join("\n");
         this.messages.delete(event.data.assistantMessageID);
-        return [wrap({ type: "message.complete", content })];
+        return [wrap({ type: "message.complete", content, messageId: event.data.assistantMessageID })];
       }
       case "session.reasoning.delta":
         return [wrap({ type: "reasoning.delta", content: event.data.delta })];

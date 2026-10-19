@@ -7,6 +7,9 @@ import { join } from "node:path";
 import { parseJsonRpcMessage, type JsonRpcId, type JsonRpcMessage } from "./codex-json-rpc";
 import { readCopilotImageReceipts } from "./image-input";
 import { inspectAttachedFiles } from "./file-input";
+import {
+  BACKGROUND_DELEGATED, backgroundFollowUp, backgroundWork, readBackgroundFile, type BackgroundWork,
+} from "./background-work";
 
 const MAX_FRAME_BYTES = 96 * 1024 * 1024;
 
@@ -20,11 +23,13 @@ interface Session {
   prompt: string;
   events: Array<Record<string, unknown>>;
   result?: string;
+  backgroundResult?: string;
 }
 
 const sessions = new Map<string, Session>();
 const pending = new Map<string, { session: Session; name: string; timer: ReturnType<typeof setTimeout> }>();
 const waiting = new Map<string, AbortController>();
+const background = new Map<string, { controller: AbortController; operation: Promise<void> }>();
 const statePath = join(process.env["HOME"]!, "copilot-native-sessions.json");
 if (await Bun.file(statePath).exists()) {
   const stored: Session[] = JSON.parse(await Bun.file(statePath).text());
@@ -71,6 +76,10 @@ function requestTool(session: Session, name: string, args: Record<string, unknow
 }
 
 function execute(session: Session): void {
+  if (session.backgroundResult) {
+    finish(session, backgroundFollowUp(session.prompt, session.backgroundResult));
+    return;
+  }
   if (!session.tools.some((tool) => tool.name === "clanky_list_workspaces")) {
     finish(session, `Agent received: ${session.prompt}\nClanky tools unavailable.`);
     return;
@@ -118,8 +127,13 @@ async function sendInput(session: Session | undefined, params: Record<string, un
     session.processing = true;
     session.prompt = promptWithImages;
     event(session, "assistant.turn_start", { turnId: crypto.randomUUID() });
+    const delegated = backgroundWork(prompt);
     const releaseFile = /\[wait-for-file:([^\]\r\n]+)\]/.exec(prompt)?.[1];
-    if (releaseFile) {
+    if (delegated) {
+      finish(session, BACKGROUND_DELEGATED);
+      await save();
+      startBackground(session, delegated);
+    } else if (releaseFile) {
       const controller = new AbortController();
       waiting.set(session.id, controller);
       event(session, "assistant.message", { messageId: crypto.randomUUID(), content: "Waiting for the integration input file." });
@@ -130,6 +144,42 @@ async function sendInput(session: Session | undefined, params: Record<string, un
     } else if (!prompt.startsWith("Wait for a steering instruction")) execute(session);
   }
   await save();
+}
+
+function startBackground(session: Session, work: BackgroundWork): void {
+  const controller = new AbortController();
+  // This owned native child outlives the admitting principal turn, not its session.
+  const operation = continueBackground(session, work, controller.signal)
+    .catch((error: unknown) => {
+      if (controller.signal.aborted) return;
+      event(session, "session.error", { errorType: "protocol", message: String(error) });
+      idle(session);
+      return save();
+    })
+    .finally(() => { background.delete(session.id); });
+  background.set(session.id, { controller, operation });
+}
+
+async function continueBackground(session: Session, work: BackgroundWork, signal: AbortSignal): Promise<void> {
+  const report = await readBackgroundFile(work.resultPath, signal);
+  if (report === undefined) return;
+  session.backgroundResult = report;
+  session.processing = true;
+  event(session, "assistant.turn_start", { turnId: crypto.randomUUID() });
+  const toolCallId = crypto.randomUUID();
+  event(session, "tool.execution_start", { toolCallId, toolName: "read_file", arguments: { path: work.resultPath } });
+  event(session, "tool.execution_complete", { toolCallId, result: { contents: report }, success: true });
+  event(session, "assistant.message", { messageId: crypto.randomUUID(), content: `Background report: ${report}` });
+  await save();
+  if (await readBackgroundFile(work.releasePath, signal) === undefined) return;
+  idle(session);
+  await save();
+}
+
+async function stopBackground(sessionId: string): Promise<void> {
+  const task = background.get(sessionId);
+  task?.controller.abort();
+  await task?.operation;
 }
 
 async function completeAfterInputFile(session: Session, path: string, controller: AbortController): Promise<void> {
@@ -183,6 +233,7 @@ async function dispatch(frame: JsonRpcMessage): Promise<void> {
         tools: Array.isArray(params["tools"]) ? params["tools"] : [],
         metadata: {}, processing: false, prompt: "", events: [],
       });
+      event(sessions.get(id)!, "session.start", {});
       await save();
       result = { sessionId: id, capabilities: {} };
       break;
@@ -191,6 +242,17 @@ async function dispatch(frame: JsonRpcMessage): Promise<void> {
       if (!session) throw new Error("Copilot session unavailable.");
       session.tools = Array.isArray(params["tools"]) ? params["tools"] : session.tools;
       result = { sessionId: session.id, capabilities: {} };
+      break;
+    case "session.getMetadata":
+      result = {
+        session: session ? {
+          sessionId: session.id,
+          startTime: session.events[0]!["timestamp"],
+          modifiedTime: session.events.at(-1)!["timestamp"],
+          isRemote: false,
+          context: { cwd: session.directory },
+        } : null,
+      };
       break;
     case "session.metadata.getClientMetadata":
       result = session!.metadata;
@@ -219,9 +281,18 @@ async function dispatch(frame: JsonRpcMessage): Promise<void> {
     case "session.options.update":
       result = {};
       break;
-    case "session.eventLog.read":
-      result = { events: session!.events };
+    case "session.eventLog.read": {
+      const maximum = typeof params["max"] === "number" ? params["max"] : 200;
+      const forward = params["direction"] !== "backward";
+      const position = params["cursor"] === undefined ? (forward ? 0 : session!.events.length) : Number(params["cursor"]);
+      const start = forward ? position : Math.max(0, position - maximum);
+      const end = forward ? Math.min(session!.events.length, position + maximum) : position;
+      result = {
+        events: session!.events.slice(start, end), cursor: String(forward ? end : start),
+        hasMore: forward ? end < session!.events.length : start > 0, cursorStatus: "ok",
+      };
       break;
+    }
     case "session.send":
       await sendInput(session, params, frame.id);
       return;
@@ -231,11 +302,25 @@ async function dispatch(frame: JsonRpcMessage): Promise<void> {
       result = { success: true };
       break;
     case "session.abort":
+      await stopBackground(session!.id);
       waiting.get(session!.id)?.abort();
       idle(session!, { aborted: true });
       result = {};
       break;
     case "session.detach":
+      await stopBackground(session!.id);
+      await save();
+      result = { success: true };
+      break;
+    case "session.delete":
+      await stopBackground(session!.id);
+      waiting.get(session!.id)?.abort();
+      for (const [id, request] of pending) {
+        if (request.session !== session) continue;
+        clearTimeout(request.timer);
+        pending.delete(id);
+      }
+      sessions.delete(session!.id);
       await save();
       result = { success: true };
       break;
@@ -243,6 +328,7 @@ async function dispatch(frame: JsonRpcMessage): Promise<void> {
       result = { sessions: [] };
       break;
     case "runtime.shutdown":
+      await Promise.all([...background.keys()].map(stopBackground));
       await save();
       write({ id: frame.id, result: {} });
       process.stdin.destroy();
@@ -273,6 +359,7 @@ process.stdin.on("data", (chunk: Buffer) => {
   }
 });
 process.stdin.on("close", () => {
+  for (const task of background.values()) task.controller.abort();
   for (const controller of waiting.values()) controller.abort();
   waiting.clear();
   for (const request of pending.values()) clearTimeout(request.timer);

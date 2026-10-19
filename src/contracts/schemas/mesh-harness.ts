@@ -8,6 +8,11 @@ import { MESH_PROTOCOL_VERSION } from "@/shared/mesh-protocol";
 import { MESH_HARNESS_MAX_CIPHERTEXT_BYTES } from "@/shared/mesh-execution";
 import { ClankyControlContextSchema } from "@/shared/clanky-control";
 import {
+  HARNESS_HISTORY_MAX_BYTES,
+  HARNESS_HISTORY_MAX_EVENTS,
+  type HarnessSessionHistory,
+} from "@/shared/harness-history";
+import {
   MESSAGE_ATTACHMENT_MAX_BYTES,
   MESSAGE_IMAGE_ALLOWED_MIME_TYPES,
 } from "@/shared/message-attachments";
@@ -69,6 +74,7 @@ export const MeshHarnessOperationSchema = z.discriminatedUnion("operation", [
   Session.extend({ operation: z.literal("prompt"), prompt: Prompt, synchronous: z.boolean().optional() }),
   Session.extend({ operation: z.literal("abort") }),
   Session.extend({ operation: z.literal("activity") }),
+  Session.extend({ operation: z.literal("history"), cursor: Id.optional() }),
   Session.extend({ operation: z.literal("stop"), activityId: Id }),
   Session.extend({ operation: z.literal("settle") }),
   Session.extend({ operation: z.literal("steer"), request: z.object({
@@ -100,7 +106,7 @@ export const MeshHarnessEventSchema = z.intersection(z.discriminatedUnion("type"
   z.object({ type: z.literal("activity.changed") }),
   z.object({ type: z.literal("user.message"), content: z.string() }),
   z.object({ type: z.literal("message.start"), messageId: Id }),
-  z.object({ type: z.literal("message.delta"), content: z.string() }),
+  z.object({ type: z.literal("message.delta"), content: z.string(), messageId: Id.optional() }),
   z.object({
     type: z.literal("message.complete"),
     content: z.string(),
@@ -128,3 +134,25 @@ export const MeshHarnessEventSchema = z.intersection(z.discriminatedUnion("type"
   timestamp: z.iso.datetime().optional(),
   sourceEventId: Id.optional(), sourceSequence: z.number().int().nonnegative().optional(),
 }));
+
+export const MeshHarnessSessionHistorySchema = z.object({
+  events: z.array(MeshHarnessEventSchema).max(HARNESS_HISTORY_MAX_EVENTS),
+  principalProcessing: z.boolean(),
+  nextCursor: Id.optional(),
+}).strict().superRefine((history, ctx) => {
+  if (new TextEncoder().encode(JSON.stringify(history)).byteLength > HARNESS_HISTORY_MAX_BYTES) {
+    ctx.addIssue({ code: "custom", message: "Native history exceeds its byte limit." });
+  }
+  for (let index = 0; index < history.events.length; index += 2) {
+    const start = history.events[index]!;
+    const complete = history.events[index + 1];
+    const pair = start.type === "message.start"
+      ? complete?.type === "message.complete" && complete.messageId === start.messageId
+      : start.type === "tool.start" && start.toolCallId
+        && complete?.type === "tool.complete" && complete.toolCallId === start.toolCallId
+        && complete.toolName === start.toolName;
+    if (!pair || start.scope.kind !== "principal" || complete?.scope.kind !== "principal") {
+      ctx.addIssue({ code: "custom", path: ["events", index], message: "Native history requires completed principal message/tool pairs." });
+    }
+  }
+}).transform((history) => history as HarnessSessionHistory);

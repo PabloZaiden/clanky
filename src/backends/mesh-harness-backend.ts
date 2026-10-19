@@ -6,9 +6,10 @@ import type { Backend, BackendConnectionConfig, AgentSession, AgentResponse, Cre
 import type { HarnessAdapter } from "@/shared/settings";
 import type { HarnessControl, HarnessCapabilities, HarnessConversationBinding, HarnessActivitySnapshot, HarnessActivityStopResult, HarnessInputAdmission, HarnessSteerRequest, HarnessInputRecoveryRequest, HarnessCleanupResult } from "@/shared/harness-control";
 import type { HarnessEvent, ProviderImageFileReference } from "@/shared/harness-events";
+import type { HarnessSessionHistory } from "@/shared/harness-history";
 import type { ModelInfo } from "@/contracts";
 import type { MeshHarnessOperation } from "@/contracts/schemas/mesh-harness";
-import { MeshHarnessEncryptedPayloadSchema, MeshHarnessEventSchema } from "@/contracts/schemas/mesh-harness";
+import { MeshHarnessEncryptedPayloadSchema, MeshHarnessEventSchema, MeshHarnessSessionHistorySchema } from "@/contracts/schemas/mesh-harness";
 import { HarnessConversationBindingSchema, HarnessConversationStateSchema } from "@/contracts/schemas/harness";
 import {
   MESSAGE_ATTACHMENT_MAX_BYTES,
@@ -162,6 +163,17 @@ export class MeshHarnessBackend implements Backend {
     if (policy && this.capabilities.questionPolicy !== "session") {
       throw new HarnessError("harness_unsupported_feature", "Update the Mesh worker to support interactive chat and unattended task question policies.");
     }
+  }
+
+  async readSessionHistory(id: string, cursor?: string): Promise<HarnessSessionHistory> {
+    if (!this.sessions.has(id)) throw new HarnessError("harness_session_not_owned", "The conversation is not owned by this native Mesh proxy.");
+    if (this.capabilities.history !== "completed") {
+      throw new HarnessError("harness_unsupported_feature", "Update the Mesh worker to support completed native history recovery.");
+    }
+    const result = await this.rpc({ operation: "history", sessionId: id, cursor });
+    const parsed = MeshHarnessSessionHistorySchema.safeParse(result);
+    if (!parsed.success) throw new HarnessError("harness_event_gap", "The native Mesh history is incomplete or invalid.", { cause: parsed.error });
+    return parsed.data;
   }
 
   private async adopt(session: AgentSession): Promise<AgentSession> {

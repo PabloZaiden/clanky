@@ -45,6 +45,7 @@ export interface HarnessCapabilities {
   stopScopes: readonly ("child-execution" | "command")[];
   questionPolicy?: "session";
   clankyControlTools?: boolean;
+  history?: "completed";
 }
 
 export interface HarnessActivity {
@@ -110,6 +111,7 @@ export interface HarnessInputReceipt {
 export interface HarnessConversationState {
   capabilities?: HarnessCapabilities;
   activeTurnAttachmentBytes?: number;
+  unfinishedMessage?: { nativeId: string; messageId: string };
   activity?: HarnessActivitySnapshot;
   cleanup?: HarnessCleanupResult;
   gitSafety?: HarnessGitSafety;

@@ -19,8 +19,18 @@ export class CodexEventTranslator {
 
   constructor(private readonly options: { includeProviderImageFileReference?: boolean } = {}) {}
 
+  translateHistoryItem(item: ThreadItem, scope: HarnessEventScope): HarnessEvent[] {
+    return [...this.translateItem(item, false), ...this.translateItem(item, true)]
+      .map((payload) => ({ ...payload, scope }));
+  }
+
   translate(event: CodexNotification, scope: HarnessEventScope): HarnessEvent[] {
-    const wrap = (payload: HarnessEventPayload): HarnessEvent => ({ ...payload, scope });
+    const nativeTime = event.method === "item/started" ? event.params.startedAtMs
+      : event.method === "item/completed" ? event.params.completedAtMs : undefined;
+    const wrap = (payload: HarnessEventPayload): HarnessEvent => ({
+      ...payload, scope,
+      ...(nativeTime !== undefined ? { timestamp: new Date(nativeTime).toISOString() } : {}),
+    });
     switch (event.method) {
       case "turn/started":
         this.imageOutputBudget.reset();
@@ -37,7 +47,10 @@ export class CodexEventTranslator {
       case "thread/status/changed":
         return [wrap({ type: "activity.changed" })];
       case "item/agentMessage/delta":
-        return [...this.startMessage(event.params.itemId).map(wrap), wrap({ type: "message.delta", content: event.params.delta })];
+        return [
+          ...this.startMessage(event.params.itemId).map(wrap),
+          wrap({ type: "message.delta", content: event.params.delta, messageId: event.params.itemId }),
+        ];
       case "item/reasoning/textDelta":
       case "item/reasoning/summaryTextDelta":
         return [wrap({ type: "reasoning.delta", content: event.params.delta })];
@@ -117,6 +130,7 @@ export class CodexEventTranslator {
       if (completed) {
         events.push({
           type: "message.complete",
+          messageId: item.id,
           content: item.delivery === "async" && item.questions?.length
             ? formatHarnessQuestions(item.questions.map((question) => ({
                 question: question.title, header: "", options: [],
