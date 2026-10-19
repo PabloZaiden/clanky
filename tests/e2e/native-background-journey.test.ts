@@ -48,7 +48,7 @@ for (const provider of providers) {
   });
 }
 
-test("Mesh users receive native background work and retain it after reconnecting the controller", async () => {
+async function useMeshBackgroundConversation(restartTarget: "controller" | "worker"): Promise<void> {
   const root = resolve(".cache", "e2e-native-background");
   await mkdir(root, { recursive: true });
   const directory = await mkdtemp(join(root, "mesh-"));
@@ -101,7 +101,7 @@ test("Mesh users receive native background work and retain it after reconnecting
     await useBackgroundConversation({
       client, chatId, directory: workspaceDirectory,
       async writeFile(path: string, content: string) { await exec(`await Bun.write(${JSON.stringify(path)}, ${JSON.stringify(content)});`); },
-      async reconnect() { await restartMeshNode(controller); },
+      async reconnect() { await restartMeshNode(restartTarget === "worker" ? worker : controller); },
     });
   } catch (error) {
     for (const node of nodes) console.error(await meshNodeDiagnostics(node));
@@ -113,4 +113,10 @@ test("Mesh users receive native background work and retain it after reconnecting
       await rm(directory, { recursive: true, force: true });
     }
   }
-});
+}
+
+for (const restartTarget of ["controller", "worker"] as const) {
+  test(`Mesh users retain their background report and continue after restarting the ${restartTarget}`, async () => {
+    await useMeshBackgroundConversation(restartTarget);
+  });
+}

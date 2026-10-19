@@ -194,6 +194,13 @@ principal is stopped, not reported as successful; incomplete responses and
 uncertain input delivery remain available for reconciliation. Genuine provider,
 ownership and history-integrity failures remain explicit.
 
+For native Mesh chats, worker restart or an interrupted direct/relayed event
+connection preserves the idle principal's result and original session binding.
+Background observation becomes unavailable with reason `disconnected`, not an
+empty successful inventory or evidence that background work survived. Resume
+the original conversation once the worker returns. Event framing, sequence and
+history-integrity failures remain errors rather than transport disconnections.
+
 Copilot streams and final messages use the SDK's message identities, including
 responses split around reasoning boundaries. Empty reasoning/tool-only messages
 have their own lifecycle and cannot clear another message's pending response.
