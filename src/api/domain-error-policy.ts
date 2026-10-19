@@ -80,6 +80,11 @@ interface DomainErrorPolicyProfile {
  * compile-time checked while unknown internal codes still fail safely.
  */
 const API_DOMAIN_ERROR_CODES = {
+  attachment_context_unavailable: true,
+  attachment_location_invalid: true,
+  attachment_data_invalid: true,
+  attachment_write_failed: true,
+  attachment_cleanup_failed: true,
   code_target_invalid: true,
   code_target_ambiguous: true,
   code_target_not_found: true,
@@ -495,6 +500,11 @@ function retryAfterHeaders(error: DomainError): Record<string, string> | undefin
 }
 
 const COMMON_MAPPINGS = {
+  attachment_context_unavailable: { status: 409, message: "The attachment conversation is no longer available." },
+  attachment_location_invalid: { status: 409, message: "The managed attachment location is invalid. Check the execution host." },
+  attachment_data_invalid: { status: 409, message: "An attachment is incomplete or invalid. Attach the original file again." },
+  attachment_write_failed: { status: 502, message: "Files could not be copied to the execution host. Check its connection and write permissions." },
+  attachment_cleanup_failed: { status: 502, message: "Attachment cleanup failed on the execution host." },
   harness_session_not_found: { status: 404, message: "The owned conversation is unavailable." },
   harness_session_not_owned: { status: 409, message: "The stored conversation does not belong to the selected adapter or execution context." },
   harness_activity_not_owned: { status: 404, message: "The owned native activity is unavailable." },

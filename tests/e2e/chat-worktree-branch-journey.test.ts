@@ -6,6 +6,7 @@ import { pollUntil } from "./support/polling";
 import { requireCommand } from "./support/process";
 import { installExternalCode } from "./support/provider";
 import { exerciseCodePreview } from "./support/code-preview";
+import { createFileAttachment, expectedFileInspection } from "./support/attachments";
 
 interface ExecutionHost {
   ref: Record<string, string>;
@@ -180,9 +181,10 @@ test("users can recover worktree chats and retire conversations on shared branch
     expect(defaultWorktree?.worktreePath).toBeDefined();
     expect(defaultWorktree?.workingBranch).not.toBe(fixture.branch);
     await assertWorktreeUsesBranch(defaultWorktree!.worktreePath!, defaultWorktree!.workingBranch);
+    const brief = createFileAttachment("brief.md", "# Worktree conversation\nKeep this original for later.\n", "text/markdown");
     await application.json(`/api/chats/${defaultChat.config.id}/messages`, {
       method: "POST",
-      body: JSON.stringify({ message: "[question] Remember this worktree conversation.", attachments: [] }),
+      body: JSON.stringify({ message: "[question] Remember this worktree conversation.", attachments: [brief] }),
     });
     await pollUntil(
       async () => (await application.json<Chat>(`/api/chats/${defaultChat.config.id}`)).data,
@@ -202,20 +204,27 @@ test("users can recover worktree chats and retire conversations on shared branch
     expect(restored.state.status).toBe("stopped");
     expect(restored.state.worktree?.worktreePath).toBe(defaultWorktree!.worktreePath);
     const snapshot = (await application.json<{
-      transcript: { messages: Array<{ role: string; content: string }> };
+      transcript: { messages: Array<{ role: string; content: string; attachments?: Array<{ data: string }> }> };
     }>(`/api/chats/${defaultChat.config.id}/snapshot?full=1`)).data;
     expect(snapshot.transcript.messages.some((message) =>
       message.role === "user" && message.content.includes("Remember this worktree conversation.")
     )).toBe(true);
+    expect(snapshot.transcript.messages.find((message) => message.role === "user")?.attachments?.[0]?.data).toBe(brief.data);
     await assertWorktreeUsesBranch(defaultWorktree!.worktreePath!, defaultWorktree!.workingBranch);
     await application.json(`/api/chats/${defaultChat.config.id}/messages`, {
-      method: "POST", body: JSON.stringify({ message: "Continue this conversation manually.", attachments: [] }),
+      method: "POST", body: JSON.stringify({ message: "Inspect the attached files and continue this conversation manually.", attachments: [] }),
     });
     await pollUntil(
       async () => (await application.json<Chat>(`/api/chats/${defaultChat.config.id}`)).data,
       (chat) => chat.state.status === "idle",
       { description: "restored conversation to finish the manually requested turn", timeoutMs: 10_000 },
     );
+    const inspection = (await application.json<{
+      transcript: { messages: Array<{ role: string; content: string }> };
+    }>(`/api/chats/${defaultChat.config.id}/snapshot?full=1`)).data;
+    expect(inspection.transcript.messages.some((message) =>
+      message.role === "assistant" && message.content.includes(expectedFileInspection(brief).sha256)
+    )).toBe(true);
     await application.json(`/api/chats/${defaultChat.config.id}`, { method: "DELETE" });
     await application.json(`/api/trash/${defaultChat.config.id}`, { method: "DELETE" });
     await waitForManagedWorktreesRemoved(

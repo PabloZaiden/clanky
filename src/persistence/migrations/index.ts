@@ -15,6 +15,8 @@ import { isIntrospectableTableName } from "../schema-inventory";
 import { repairConsolidatedSchema } from "./consolidated-schema-repair";
 import { isAgentProvider } from "@/shared/settings";
 import { getTranscriptTableConfig } from "../transcripts/table-config";
+import { getMessageAttachmentKind } from "@/shared/message-attachments";
+import { isPersistedMessage } from "../transcripts/codec";
 
 const log = createLogger("persistence:migrations");
 
@@ -716,6 +718,64 @@ export const migrations: Migration[] = [
             ELSE 0 END
           )
           WHERE kind = 'tool' AND tool_extras IS NOT NULL
+        `);
+      }
+    },
+  },
+  {
+    version: 79,
+    name: "add_conversation_attachment_locations",
+    up: (db) => {
+      db.run(`
+        CREATE TABLE IF NOT EXISTS conversation_attachment_locations (
+          user_id TEXT NOT NULL,
+          context_kind TEXT NOT NULL CHECK (context_kind IN ('chat', 'task')),
+          context_id TEXT NOT NULL,
+          location_id TEXT NOT NULL,
+          execution_host_json TEXT NOT NULL,
+          directory TEXT NOT NULL,
+          PRIMARY KEY (user_id, context_kind, context_id, location_id),
+          FOREIGN KEY (user_id) REFERENCES webapp_users(id) ON DELETE CASCADE
+        )
+      `);
+      if (!getTableColumns(db, "tasks").includes("initial_attachments_json")) {
+        db.run("ALTER TABLE tasks ADD COLUMN initial_attachments_json TEXT");
+      }
+    },
+  },
+  {
+    version: 80,
+    name: "index_transcript_file_attachments",
+    up: (db) => {
+      for (const resource of ["chat", "task", "agent_run"] as const) {
+        const { entriesTable, resourceColumn } = getTranscriptTableConfig(resource);
+        if (!getTableColumns(db, entriesTable).includes("message_has_files")) {
+          db.run(`ALTER TABLE ${entriesTable} ADD COLUMN message_has_files INTEGER NOT NULL DEFAULT 0 CHECK (message_has_files IN (0, 1))`);
+        }
+        const read = db.query<{ rowid: number; payload: string }, [number]>(`
+          SELECT rowid, payload FROM ${entriesTable}
+          WHERE kind = 'message' AND rowid > ? ORDER BY rowid LIMIT 1
+        `);
+        const write = db.query(`UPDATE ${entriesTable} SET message_has_files = ? WHERE rowid = ?`);
+        let after = 0;
+        for (let row = read.get(after); row; row = read.get(after)) {
+          let hasFiles = true;
+          try {
+            const message: unknown = JSON.parse(row.payload);
+            if (!isPersistedMessage(message)) throw new Error("Invalid saved message.");
+            hasFiles = message.attachments?.some((attachment) => getMessageAttachmentKind(attachment) === "file") ?? false;
+          } catch (error) {
+            log.warn("Could not classify saved attachments; retaining the message for validation", {
+              resource, rowid: row.rowid, error: String(error),
+            });
+          }
+          write.run(hasFiles ? 1 : 0, row.rowid);
+          after = row.rowid;
+        }
+        db.run(`
+          CREATE INDEX IF NOT EXISTS idx_${entriesTable}_file_attachments
+          ON ${entriesTable} (${resourceColumn}, user_id, timestamp, sequence, kind, entry_id)
+          WHERE message_has_files = 1
         `);
       }
     },

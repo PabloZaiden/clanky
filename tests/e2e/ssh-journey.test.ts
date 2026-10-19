@@ -15,6 +15,7 @@ import {
   installExternalCode,
 } from "./support/provider";
 import { exerciseCodePreview } from "./support/code-preview";
+import { createFileAttachment, expectedFileInspection } from "./support/attachments";
 import {
   restartEphemeralSshServer,
   startEphemeralSshServer,
@@ -702,13 +703,15 @@ test("compiled app crosses real SSH execution, files, Git, terminal, and ACP bou
       },
       201,
     )).data;
+    const sshInput = createFileAttachment("remote-input.dat", new Uint8Array([0, 255, 13, 10, 42, 0]));
+    const sshMessage = "Inspect the attached files over SSH [provider-write]";
     await application.json(
       `/api/chats/${chat.config.id}/messages`,
       {
         method: "POST",
         body: JSON.stringify({
-          message: "Run the external provider over SSH [provider-write]",
-          attachments: [],
+          message: sshMessage,
+          attachments: [sshInput],
         }),
       },
     );
@@ -732,8 +735,11 @@ test("compiled app crosses real SSH execution, files, Git, terminal, and ACP bou
     )).data;
     expect(snapshot.transcript.messages).toContainEqual(expect.objectContaining({
       role: "user",
-      content: "Run the external provider over SSH [provider-write]",
+      content: sshMessage,
     }));
+    expect(snapshot.transcript.messages.some((message) =>
+      message.role === "assistant" && message.content.includes(expectedFileInspection(sshInput).sha256)
+    )).toBe(true);
     const providerDownload = join(application.runDirectory, "provider-download.txt");
     await application.cli([
       "workspace",

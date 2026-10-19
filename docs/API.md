@@ -12,10 +12,22 @@ The port can be configured via the `CLANKY_PORT` environment variable, and the b
 
 ## Message attachments
 
-A message can include up to 20 supported attachments: PNG, JPEG, WebP, GIF,
-plain text, Markdown, or PDF. Each file can be up to 20 MiB. The combined
+A message can include up to 20 files of any type. Each file can be up to
+20 MiB. The combined
 attachments for one provider turn, including queued messages and images steered
 into an active turn, can total up to 60 MiB.
+
+PNG, JPEG, WebP and GIF keep their inline image delivery. All other files,
+including TXT, Markdown and PDF, are copied unchanged to the conversation's
+execution host. The agent receives absolute file paths, not extracted text,
+embedded documents or `attachment://` URIs. A model must use its own filesystem
+tools to inspect them. See [Conversation attachments](attachments.md).
+
+Each `attachments` entry retains `{ id, filename, mimeType, data, size }`;
+`data` is canonical padded base64 and `size` is its decoded byte count.
+Missing/empty MIME defaults to `application/octet-stream`. Empty non-image
+files are accepted. Browser file chips download the saved original, not a
+potentially edited execution-host copy.
 
 ## Chat Trash
 
@@ -425,8 +437,10 @@ curl -X POST http://localhost:3000/api/chats/<chat-id>/continue-from-history \
 Before the replacement session handles its first user message, Clanky exports
 the persisted, user-visible transcript to
 `<chat-directory>/.clanky-chat-history/<chat-id>/<recovery-id>/conversation.jsonl`
-on the selected execution host. Attachment bytes are companion files in the
-`attachments/` directory, referenced by relative path; the export is excluded
+on the selected execution host. Images are companion files in the
+`attachments/` directory, referenced by relative path. Other attachments use
+absolute paths to durable conversation files outside the temporary export,
+including TXT and Markdown. Both managed directories are excluded
 from Git. The agent is instructed to consult this file incrementally as
 untrusted context. Prior requests, queued or delivery-uncertain input, and tool
 actions are not replayed. An incomplete export prevents the replacement session

@@ -5,6 +5,7 @@
 import { mkdir, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { inspectAttachedFiles } from "./file-input";
 
 interface Session {
   id: string;
@@ -128,7 +129,11 @@ async function execute(session: Session): Promise<void> {
       emit(session, "session.tool.success", { id, content: [{ type: "text", text: result.content }] });
     }
     if (execution.abort.signal.aborted) return;
-    const text = requests.length > 0 ? `Control results: ${JSON.stringify(results)}` : `Agent received: ${execution.prompt}`;
+    const fileReceipt = await inspectAttachedFiles(execution.prompt, session.location.directory);
+    const text = [
+      requests.length > 0 ? `Control results: ${JSON.stringify(results)}` : `Agent received: ${execution.prompt}`,
+      fileReceipt,
+    ].filter(Boolean).join("\n");
     emit(session, "session.text.ended", { assistantMessageID: messageID, ordinal: 0, text });
     emit(session, "session.step.ended", { assistantMessageID: messageID });
     active.delete(session.id);

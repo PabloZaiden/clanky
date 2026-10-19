@@ -162,6 +162,7 @@ export interface TaskState {
   pendingPrompt?: string;
   pendingPromptMode?: TaskPromptIntent;
   pendingInput?: { id: string; attachments: MessageAttachment[] };
+  initialPromptAttachments?: MessageAttachment[];
 
   /** Model override for the next prompt (one-time, cleared after use) */
   pendingModel?: ModelConfig;

@@ -21,7 +21,7 @@ export interface CreateTaskOptions {
   prompt: string;
   /** Optional GitHub issue number linked to this task */
   issueNumber?: number;
-  /** Transient image attachments for the initial prompt */
+  /** Original attachments for the initial prompt */
   attachments?: MessageAttachment[];
   /** Workspace ID this task belongs to */
   workspaceId: string;
@@ -65,7 +65,7 @@ export interface CreateTaskOptions {
  * in the main repository do not affect task execution.
  */
 export interface StartTaskOptions {
-  /** Transient image attachments for the first prompt sent after start */
+  /** Original attachments for the first prompt sent after start */
   attachments?: MessageAttachment[];
 }
 

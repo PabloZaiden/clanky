@@ -56,7 +56,8 @@ function findClipboardType(
 function isSupportedClipboardAttachmentType(mimeType: string): boolean {
   const normalizedMimeType = getClipboardMimeTypeWithoutParameters(mimeType);
   return (MESSAGE_IMAGE_ALLOWED_MIME_TYPES as readonly string[]).includes(normalizedMimeType)
-    || normalizedMimeType === "application/pdf";
+    || normalizedMimeType === "application/pdf"
+    || (normalizedMimeType.length > 0 && !normalizedMimeType.startsWith("text/"));
 }
 
 async function readClipboardItems(clipboard: Clipboard): Promise<ClipboardReadResult> {
@@ -68,7 +69,12 @@ async function readClipboardItems(clipboard: Clipboard): Promise<ClipboardReadRe
   }
 
   const attachmentItems = items.flatMap((item) => {
-    const attachmentType = findClipboardType(item.types, isSupportedClipboardAttachmentType);
+    const preferredType = findClipboardType(item.types, (type) =>
+      (MESSAGE_IMAGE_ALLOWED_MIME_TYPES as readonly string[]).includes(type) || type === "application/pdf"
+    );
+    const hasText = findClipboardType(item.types, (type) => type === "text/plain" || type === "text/html") !== undefined;
+    const attachmentType = preferredType
+      ?? (hasText ? undefined : findClipboardType(item.types, isSupportedClipboardAttachmentType));
     return attachmentType ? [{ item, attachmentType }] : [];
   });
 

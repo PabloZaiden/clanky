@@ -4,7 +4,7 @@
 
 import { log } from "@pablozaiden/webapp/server";
 import type { TaskConfig, TaskState, ModelConfig } from "@/shared/task";
-import type { MessageAttachment } from "@/shared/message-attachments";
+import type { PreparedAttachmentFiles, MessageAttachment } from "@/shared/message-attachments";
 import type { LogLevel } from "@/shared/events";
 import type { PromptInput } from "../../backends/types";
 import { buildPromptParts } from "../../backends/prompt-parts";
@@ -14,6 +14,7 @@ import { detectTrailingPromiseMarker } from "../../utils/promise-markers";
 import type { PendingTaskInput } from "./engine-inputs";
 
 export interface PromptBuildContext {
+  attachmentFiles: PreparedAttachmentFiles;
   config: TaskConfig;
   state: TaskState;
   workingDirectory: string;
@@ -147,7 +148,7 @@ ${errorContext}
 ${finalInstructions}`;
 
     const prompt: PromptInput = {
-      parts: buildPromptParts(text, attachments),
+      parts: buildPromptParts(text, attachments, ctx.attachmentFiles),
       model,
     };
     return sessionWasRecreated
@@ -173,7 +174,7 @@ When the plan is ready, end your response with:
 <promise>PLAN_READY</promise>`;
 
   const prompt: PromptInput = {
-    parts: buildPromptParts(text, attachments),
+    parts: buildPromptParts(text, attachments, ctx.attachmentFiles),
     model,
   };
   return sessionWasRecreated
@@ -227,7 +228,7 @@ ${BLOCKED_OUTCOME_INSTRUCTION}
 <promise>COMPLETE</promise>`;
 
   return {
-    parts: buildPromptParts(text, attachments),
+    parts: buildPromptParts(text, attachments, ctx.attachmentFiles),
     model,
   };
 }
@@ -248,7 +249,7 @@ function buildDirectUserPrompt(
     userMessage: userMessage.slice(0, 50) + (userMessage.length > 50 ? "..." : ""),
   });
   const prompt: PromptInput = {
-    parts: buildPromptParts(userMessage, attachments),
+    parts: buildPromptParts(userMessage, attachments, ctx.attachmentFiles),
     model,
   };
   return sessionWasRecreated

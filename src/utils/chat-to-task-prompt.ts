@@ -23,7 +23,7 @@ function createAttachmentReferenceLine(attachmentCount: number): string | null {
     return null;
   }
 
-  return `[${attachmentCount} image attachment${attachmentCount === 1 ? "" : "s"} referenced in the chat but not inlined here]`;
+  return `[${attachmentCount} attachment${attachmentCount === 1 ? "" : "s"} referenced in the chat but not transferred here]`;
 }
 
 function truncateContent(content: string, maxLength: number): string {
@@ -159,7 +159,7 @@ function buildOmittedTranscriptSummary(
   const summary = [
     "Earlier transcript summary:",
     `[${omittedSections.length} older ${pluralize(omittedSections.length, "message")} summarized to keep the spawned task prompt within size limits.]`,
-    `Included here: ${userTurns} user ${pluralize(userTurns, "turn")}, ${assistantTurns} assistant ${pluralize(assistantTurns, "turn")}${attachmentCount > 0 ? `, and ${attachmentCount} image attachment ${pluralize(attachmentCount, "reference")}` : ""}.`,
+    `Included here: ${userTurns} user ${pluralize(userTurns, "turn")}, ${assistantTurns} assistant ${pluralize(assistantTurns, "turn")}${attachmentCount > 0 ? `, and ${attachmentCount} attachment ${pluralize(attachmentCount, "reference")}` : ""}.`,
   ];
 
   return summary.join("\n");

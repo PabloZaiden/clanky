@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { E2EApplication } from "./support/application";
+import { createFileAttachment, expectedFileInspection } from "./support/attachments";
 import { pollUntil } from "./support/polling";
 import { installExternalNativeOpenCodeProvider } from "./support/provider";
 import { MESH_OPERATION_TIMEOUT_MS } from "./support/timeouts";
@@ -122,6 +123,16 @@ test("OpenCode users control workspaces, route browser actions, steer and resume
       method: "PUT", body: JSON.stringify({ workspaceId: workspace.id, model: modelConfig, useWorktree: false }),
     });
     const id = await createChat("OpenCode Control");
+    const inputFile = createFileAttachment("project.json", "{\"project\":\"OpenCode workspace\"}\n", "application/json");
+    await application.json(`/api/chats/${id}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ message: "Inspect the attached files before controlling this workspace.", attachments: [inputFile] }),
+    });
+    await idle(application, id);
+    const fileSnapshot = (await application.json<Snapshot>(`/api/chats/${id}/snapshot?full=1`)).data;
+    expect(fileSnapshot.transcript.messages.some((message) =>
+      message.role === "assistant" && message.content.includes(expectedFileInspection(inputFile).sha256)
+    )).toBe(true);
     await operateWorkspace(application, id, workspace.id, filePath, "Delegated OpenCode work");
 
     const key = (await application.json<{ token: string }>("/api/api-keys", {

@@ -25,6 +25,7 @@ import { ChatQuestionService } from "./chat-question-service";
 import { ChatTaskConversionService } from "./chat-task-conversion-service";
 import { ChatHistoryExportService } from "./chat-history-export-service";
 import { ChatHistoryRecoveryService } from "./chat-history-recovery-service";
+import { ChatAttachmentService } from "./chat-attachment-service";
 import type {
   ChatConfigUpdates,
   DeleteChatOptions,
@@ -54,6 +55,7 @@ function createChatServices(emitter: SimpleEventEmitter<ChatEvent>): ChatService
   const state = new ChatStateService(emitter);
   const worktree = new ChatWorktreeService({ state });
   const historyExport = new ChatHistoryExportService({ state });
+  const attachments = new ChatAttachmentService(state);
 
   let conversation: ChatConversationService | undefined;
   let interaction: ChatInteractionService | undefined;
@@ -74,6 +76,7 @@ function createChatServices(emitter: SimpleEventEmitter<ChatEvent>): ChatService
     session,
     worktree,
     historyExport,
+    attachments,
     emitter,
     scheduleQueuedMessageDrain: (chatId: string) => {
       if (!interaction) {
@@ -100,6 +103,7 @@ function createChatServices(emitter: SimpleEventEmitter<ChatEvent>): ChatService
     conversation: conversationService,
     session,
     questions,
+    attachments,
   });
   interaction = interactionService;
   conversationService.setPermissionHandler((chat, backend, request) =>

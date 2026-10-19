@@ -106,6 +106,17 @@ export async function createTaskImpl(ctx: TaskCtx, options: CreateTaskOptions): 
   };
 
   const state = createInitialState(id);
+  if (!options.draft && options.attachments?.length) {
+    state.initialPromptAttachments = structuredClone(options.attachments);
+    state.messages.push({
+      id: `user-msg-${id}-initial-goal`,
+      role: "user",
+      content: config.prompt,
+      attachments: state.initialPromptAttachments,
+      timestamp: now,
+    });
+    state.lastUserMessageAt = now;
+  }
 
   if (options.draft) {
     assertValidTransition(state.status, "draft", "createTask");

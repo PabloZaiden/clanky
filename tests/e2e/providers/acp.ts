@@ -10,6 +10,7 @@ import { appendFileSync, createReadStream } from "node:fs";
 import { mkdir, readFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { E2E_IMAGE_DATA } from "./image-input";
+import { inspectAttachedFiles } from "./file-input";
 
 const SUPPORTED_PROTOCOL_VERSION = 1;
 const OUTBOUND_REQUEST_TIMEOUT_MS = 5_000;
@@ -335,15 +336,13 @@ async function buildHistoryRecoveryResponse(promptText: string): Promise<string>
       }
       const attachmentPath = getString(attachment["path"]);
       if (
-        getString(attachment["mimeType"]) !== "application/pdf"
+        (getString(attachment["mimeType"]) !== "application/pdf"
+          && !getString(attachment["filename"])?.endsWith(".pdf"))
         || !attachmentPath
-        || isAbsolute(attachmentPath)
-        || !attachmentPath.startsWith("attachments/")
-        || !attachmentPath.endsWith(".pdf")
       ) {
         continue;
       }
-      const pdf = await readFile(resolve(dirname(transcriptPath), attachmentPath));
+      const pdf = await readFile(isAbsolute(attachmentPath) ? attachmentPath : resolve(dirname(transcriptPath), attachmentPath));
       estimateCode = /estimate code:\s*([A-Z0-9-]+)/i.exec(pdf.toString("latin1"))?.[1]
         ?? estimateCode;
     }
@@ -1052,9 +1051,11 @@ class MockAcpServer {
     const responseText = promptText.includes("[Clanky chat history recovery]")
       ? await buildHistoryRecoveryResponse(promptText)
       : this.buildResponseText(promptText, session.promptCount, fsReadSummary, terminalSummary);
-    const responseWithImageReceipt = imageAttachmentCount > 0
-      ? `${responseText} E2E ACP provider received ${imageAttachmentCount} image attachments.`
-      : responseText;
+    const fileReceipt = await inspectAttachedFiles(promptText, session.cwd, session.history.map((entry) => entry.text));
+    const responseWithImageReceipt = [
+      imageAttachmentCount > 0 ? `E2E ACP provider received ${imageAttachmentCount} image attachments.` : "",
+      fileReceipt, responseText,
+    ].filter(Boolean).join("\n");
     for (const chunk of splitIntoChunks(responseWithImageReceipt, 4)) {
       await this.delay(promptText.includes("[slow]") ? SLOW_STREAM_DELAY_MS : STREAM_DELAY_MS);
       if (signal.aborted) {

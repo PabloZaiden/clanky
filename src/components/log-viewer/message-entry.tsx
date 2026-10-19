@@ -6,7 +6,6 @@ import {
 } from "@/shared";
 import type { BadgeVariant } from "../common";
 import {
-  getMessageAttachmentExtension,
   getMessageAttachmentKind,
   type MessageAttachment,
 } from "@/shared/message-attachments";
@@ -15,6 +14,7 @@ import { StatusBadge } from "../common";
 import type { TranscriptFileLinkContext } from "./types";
 import { ActivitySpinner } from "./activity-spinner";
 import { HarnessMessageAdmission } from "../harness-activity";
+import { FileAttachment } from "./file-attachment";
 import { MessageBody } from "./message-body";
 import { formatTime } from "./utils";
 import { getQuestionAnswerStatus } from "@/shared/harness-questions";
@@ -196,26 +196,7 @@ export const MessageEntry = memo(function MessageEntry({
                     />
                   </button>
                 ) : (
-                  <div
-                    key={attachment.id}
-                    className="flex max-w-56 min-w-0 items-center gap-2 rounded-xl border border-gray-200 bg-white/80 px-3 py-2 dark:border-white/10 dark:bg-black/20"
-                    title={attachment.filename}
-                  >
-                    <span
-                      aria-hidden="true"
-                      className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded bg-gray-200 text-[10px] font-semibold text-gray-600 dark:bg-neutral-700 dark:text-gray-300"
-                    >
-                      {getMessageAttachmentExtension(attachment.filename).replace(".", "").toUpperCase() || "FILE"}
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block truncate text-xs text-gray-700 dark:text-gray-200">
-                        {attachment.filename}
-                      </span>
-                      <span className="block text-[11px] text-gray-500 dark:text-gray-400">
-                        {Math.max(1, Math.round(attachment.size / 1024))} KB
-                      </span>
-                    </span>
-                  </div>
+                  <FileAttachment key={attachment.id} attachment={attachment} />
                 )
               ))}
             </div>

@@ -5,6 +5,7 @@
 import {
   executionPathsEqual,
   isExecutionPathWithinRoot,
+  isWindowsReservedPathComponent,
   joinExecutionPath,
   normalizeExecutionPath,
   normalizeExecutionRoot,
@@ -14,6 +15,7 @@ import {
 
 export const MANAGED_WORKTREE_DIRECTORY_NAME = ".clanky-worktrees";
 export const CHAT_HISTORY_EXPORT_DIRECTORY_NAME = ".clanky-chat-history";
+export const CONVERSATION_ATTACHMENT_DIRECTORY_NAME = ".clanky-attachments";
 export const PLANNING_DIRECTORY_NAME = ".clanky-planning";
 export const PLAN_FILE_NAME = "plan.md";
 export const STATUS_FILE_NAME = "status.md";
@@ -98,6 +100,44 @@ export class ManagedPathService {
       CHAT_HISTORY_EXPORT_DIRECTORY_NAME,
       this.normalizeManagedIdentifier(chatId, "Chat"),
       this.normalizeManagedIdentifier(recoveryId, "Recovery"),
+    );
+  }
+
+  getConversationAttachmentDirectory(directory: string, context: string): string {
+    return joinExecutionPath(
+      this.pathStyle,
+      normalizeExecutionRoot(directory, this.pathStyle),
+      CONVERSATION_ATTACHMENT_DIRECTORY_NAME,
+      this.normalizeManagedIdentifier(context, "Attachment context"),
+    );
+  }
+
+  getConversationAttachmentPath(options: {
+    directory: string;
+    context: string;
+    message: string;
+    attachment: string;
+    filename: string;
+  }): string {
+    let filename = options.filename.trim()
+      .replace(/[<>:"/\\|?*\u0000-\u001f\u007f]/g, "_")
+      .replace(/[. ]+$/g, "");
+    if (!filename || isWindowsReservedPathComponent(filename)) {
+      filename = `_${filename || "file"}`;
+    }
+    if (filename.length > 160 || Buffer.byteLength(filename, "utf8") > 180) {
+      const dot = filename.lastIndexOf(".");
+      const extension = dot > 0 ? Array.from(filename.slice(dot)).slice(0, 20).join("") : "";
+      const stem = Array.from(dot > 0 ? filename.slice(0, dot) : filename).slice(0, 160 - extension.length);
+      while (Buffer.byteLength(`${stem.join("")}${extension}`, "utf8") > 180) stem.pop();
+      filename = `${stem.join("")}${extension}`;
+    }
+    return joinExecutionPath(
+      this.pathStyle,
+      this.getConversationAttachmentDirectory(options.directory, options.context),
+      this.normalizeManagedIdentifier(options.message, "Attachment message"),
+      this.normalizeManagedIdentifier(options.attachment, "Attachment"),
+      this.normalizeManagedIdentifier(filename, "Attachment filename"),
     );
   }
 

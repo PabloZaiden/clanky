@@ -3,8 +3,6 @@ import {
   getCanonicalMessageAttachmentMimeType,
   getMessageAttachmentKind,
   getMessageAttachmentByteLength,
-  MESSAGE_ATTACHMENT_ACCEPT,
-  MESSAGE_ATTACHMENT_ALLOWED_MIME_TYPES,
   MESSAGE_ATTACHMENT_LIMIT,
   MESSAGE_ATTACHMENT_MAX_BYTES,
   MESSAGE_ATTACHMENT_MAX_TURN_BYTES,
@@ -44,10 +42,7 @@ export function getClipboardAttachmentFiles(
     }
 
     const file = item.getAsFile();
-    if (
-      file !== null
-      && getMessageAttachmentKind({ filename: file.name, mimeType: file.type }) !== null
-    ) {
+    if (file !== null) {
       files.push(file);
     }
   }
@@ -69,12 +64,6 @@ export async function createComposerAttachments(
     for (const file of files) {
       const metadata = { filename: file.name, mimeType: file.type };
       const kind = getMessageAttachmentKind(metadata);
-      if (kind === null) {
-        throw new Error(
-          `${file.name} is not a supported attachment type. Accepted: ${MESSAGE_ATTACHMENT_ALLOWED_MIME_TYPES.join(", ")}, .txt, .md, .pdf.`,
-        );
-      }
-
       if (file.size > MESSAGE_ATTACHMENT_MAX_BYTES) {
         throw new Error(`${file.name} is larger than ${Math.floor(MESSAGE_ATTACHMENT_MAX_BYTES / (1024 * 1024))}MB.`);
       }
@@ -133,7 +122,6 @@ export function stripTransientAttachments<T extends { attachments?: unknown }>(r
 }
 
 export {
-  MESSAGE_ATTACHMENT_ACCEPT,
   MESSAGE_ATTACHMENT_LIMIT,
   MESSAGE_ATTACHMENT_MAX_BYTES,
   MESSAGE_ATTACHMENT_MAX_TURN_BYTES,

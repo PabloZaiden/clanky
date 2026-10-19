@@ -12,6 +12,7 @@ import {
 import { runProductionHttpSmoke } from "./support/http-smoke";
 import { pollUntil } from "./support/polling";
 import { E2E_IMAGE_DATA } from "./providers/image-input";
+import { createFileAttachment, expectedFileInspection } from "./support/attachments";
 
 interface ExecutionHost {
   ref: Record<string, string>;
@@ -416,6 +417,7 @@ test("compiled Clanky completes its principal local user journey", async () => {
       (await application.json<Workspace>(`/api/workspaces/${workspace.id}`)).data.scratchpad,
     ).toBe(scratchpad);
 
+    const taskBrief = createFileAttachment("brief.md", "# Fixture change\nCreate an externally observable file.\n", "text/markdown");
     const createdTask = (await application.json<Task>(
       "/api/tasks",
       {
@@ -423,8 +425,8 @@ test("compiled Clanky completes its principal local user journey", async () => {
         body: JSON.stringify({
           name: "External provider task",
           workspaceId: workspace.id,
-          prompt: "[provider-write] Implement the requested fixture change",
-          attachments: [],
+          prompt: "[provider-write] Inspect the attached files and implement the requested fixture change",
+          attachments: [taskBrief],
           model,
           cheapModel: { mode: "same-as-task" },
           maxIterations: 4,
@@ -453,6 +455,10 @@ test("compiled Clanky completes its principal local user journey", async () => {
       "external provider to finish task planning",
     );
     expect(plannedTask.state.status).toBe("planning");
+    const taskFileSnapshot = (await application.json<TaskSnapshot>(`/api/tasks/${createdTask.config.id}/snapshot?full=1`)).data;
+    expect(taskFileSnapshot.transcript.messages.some((message) =>
+      message.role === "assistant" && message.content.includes(expectedFileInspection(taskBrief).sha256)
+    )).toBe(true);
     const plan = (await application.json<{ content: string; exists: boolean }>(
       `/api/tasks/${createdTask.config.id}/plan`,
     )).data;
@@ -506,6 +512,7 @@ test("compiled Clanky completes its principal local user journey", async () => {
       path: "e2e-provider-change.txt",
       status: "added",
     }));
+    expect(diff.some((file) => file.path.includes(".clanky-attachments/"))).toBe(false);
 
     const pendingMessage = "Recheck the result before final acceptance";
     await application.json(
@@ -941,12 +948,13 @@ test("compiled Clanky completes its principal local user journey", async () => {
       (candidate) => candidate.state.status === "streaming",
       "chat to begin slow streaming",
     );
-    const queuedMessage = "Handle this queued follow-up after the active turn";
+    const queuedFile = createFileAttachment("follow-up.txt", "Review the completed work.\r\n", "text/plain");
+    const queuedMessage = "Inspect the attached files and handle this queued follow-up after the active turn";
     await application.json(
       `/api/chats/${chat.config.id}/messages`,
       {
         method: "POST",
-        body: JSON.stringify({ message: queuedMessage, attachments: [] }),
+        body: JSON.stringify({ message: queuedMessage, attachments: [queuedFile] }),
       },
     );
     await waitForChat(
@@ -958,6 +966,10 @@ test("compiled Clanky completes its principal local user journey", async () => {
       "chat queued follow-up",
     );
     expect((await waitForChatIdle(application, chat.config.id)).state.status).toBe("idle");
+    const queuedSnapshot = (await application.json<ChatSnapshot>(`/api/chats/${chat.config.id}/snapshot?full=1`)).data;
+    expect(queuedSnapshot.transcript.messages.some((message) =>
+      message.role === "assistant" && message.content.includes(expectedFileInspection(queuedFile).sha256)
+    )).toBe(true);
 
     await application.json(
       `/api/chats/${chat.config.id}/messages`,
@@ -1344,12 +1356,13 @@ test("compiled Clanky completes its principal local user journey", async () => {
       `/api/agents/${agent.config.id}`,
       {
         method: "PATCH",
-        body: JSON.stringify({ prompt: "Complete the manual fixture report" }),
+        body: JSON.stringify({ prompt: "Inspect the attached files and complete the manual fixture report" }),
       },
     );
+    const agentInput = createFileAttachment("agent-input.csv", "name,value\nexample,42\n", "text/csv");
     const manualRun = (await application.json<AgentRun>(
       `/api/agents/${agent.config.id}/run`,
-      { method: "POST", body: "{}" },
+      { method: "POST", body: JSON.stringify({ attachments: [agentInput] }) },
       202,
     )).data;
     const completedManualRun = await waitForAgentRun(
@@ -1359,6 +1372,10 @@ test("compiled Clanky completes its principal local user journey", async () => {
       "manual agent completion",
     );
     expect(completedManualRun.status).toBe("completed");
+    const agentFileSnapshot = (await application.json<AgentRunSnapshot>(`/api/agent-runs/${manualRun.id}/snapshot?full=1`)).data;
+    expect(agentFileSnapshot.transcript.messages.some((message) =>
+      message.role === "assistant" && message.content.includes(expectedFileInspection(agentInput).sha256)
+    )).toBe(true);
 
     const exportedAgentResponse = await application.request(
       `/api/agents/${agent.config.id}/export`,

@@ -131,6 +131,7 @@ export class ChatStateService implements ChatStatePort {
 
   async *iterateChatTranscriptEntries(
     chatId: string,
+    options: { fileAttachmentsOnly?: boolean } = {},
   ): AsyncIterable<ChatTranscriptStorageEntry> {
     if (!await this.getChatSummary(chatId)) {
       return;
@@ -140,7 +141,8 @@ export class ChatStateService implements ChatStatePort {
       const page = listChatTranscriptEntriesAfter(chatId, {
         ...(after ? { after } : {}),
         limit: CHAT_TRANSCRIPT_EXPORT_PAGE_SIZE,
-        includeToolPayload: true,
+        includeToolPayload: !options.fileAttachmentsOnly,
+        fileAttachmentsOnly: options.fileAttachmentsOnly,
       });
       if (page.invalidEntryCount > 0) {
         throw new Error(
