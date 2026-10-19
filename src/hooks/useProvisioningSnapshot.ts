@@ -4,7 +4,7 @@ import { readApiResponse, requestApiResponse } from "../lib/api-client";
 
 type ProvisioningStreamEvent = Extract<
   ProvisioningEvent,
-  { type: "provisioning.step" | "provisioning.output" }
+  { type: "provisioning.step" | "provisioning.updated" | "provisioning.output" }
 >;
 
 export function useProvisioningSnapshot(
@@ -15,7 +15,7 @@ export function useProvisioningSnapshot(
     deps: [jobId],
     enabled: jobId !== null,
     targets: { provisioningJobId: jobId ?? undefined },
-    types: ["provisioning.step", "provisioning.output"],
+    types: ["provisioning.step", "provisioning.updated", "provisioning.output"],
     trackLastEvent: false,
     load: async ({ signal }) => {
       const response = await requestApiResponse(`/api/provisioning-jobs/${encodeURIComponent(jobId!)}`, {

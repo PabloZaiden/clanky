@@ -1850,9 +1850,9 @@ export class ChatConversationService implements ChatConversationPort {
     chat: Chat,
     toolId: string,
     extra: ToolCallExtra,
-    timestamp = createTimestamp(),
-    memory?: ChatTranscriptMemory,
   ): Promise<Chat> {
+    const timestamp = createTimestamp();
+    const memory = this.activeStreams.get(chat.config.id)?.streamState?.transcriptMemory;
     const existingTool = memory
       ? memory.toolCalls.get(toolId)
       : chat.state.toolCalls.find((toolCall) => toolCall.id === toolId);

@@ -39,7 +39,7 @@ export async function getAgentRunTranscriptSnapshot(
         revision: meta.revision,
         totalEntries: meta.entryCount,
       },
-    ), agentRunner.getLiveTranscript(runId), options),
+    ), agentRunner.getLiveTranscript(runId), { window: options }),
   };
 }
 

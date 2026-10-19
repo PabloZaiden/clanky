@@ -197,6 +197,14 @@ export interface ProvisioningStepEvent {
   timestamp: string;
 }
 
+export interface ProvisioningUpdatedEvent {
+  type: "provisioning.updated";
+  streamPosition: StreamDeltaPosition;
+  provisioningJobId: string;
+  job: ProvisioningJob;
+  timestamp: string;
+}
+
 export interface ProvisioningOutputEvent {
   type: "provisioning.output";
   streamPosition: StreamDeltaPosition;
@@ -236,6 +244,7 @@ export interface ProvisioningDismissedEvent {
 export type ProvisioningEvent =
   | ProvisioningStartedEvent
   | ProvisioningStepEvent
+  | ProvisioningUpdatedEvent
   | ProvisioningOutputEvent
   | ProvisioningCompletedEvent
   | ProvisioningFailedEvent

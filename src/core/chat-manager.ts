@@ -11,6 +11,7 @@ import type {
   TranscriptSnapshotOptions,
   ToolCallRecord,
 } from "@/shared";
+import { shouldIncludeConversationTranscriptLog } from "@/shared";
 import type { ChatEvent } from "@/shared/events";
 import { chatEventEmitter, SimpleEventEmitter } from "./event-emitter";
 import { ChatStateService } from "./chat-state-service";
@@ -233,7 +234,7 @@ export class ChatManager {
       transcript: includeLiveTranscript(
         snapshot.transcript,
         this.services.conversation.getLiveTranscript(chatId),
-        options ?? {},
+        { window: options ?? {}, shouldIncludeLog: shouldIncludeConversationTranscriptLog },
       ),
     };
   }

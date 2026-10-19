@@ -109,4 +109,12 @@ export function persistProvisioningState(
     updatedAt: new Date().toISOString(),
   };
   updateProvisioningJob(record.owner.id, record.job);
+  record.version.advance();
+  provisioningEventEmitter.emit({
+    type: "provisioning.updated",
+    streamPosition: record.version.change,
+    provisioningJobId: record.job.config.id,
+    job: structuredClone(record.job),
+    timestamp: record.job.state.updatedAt,
+  }, { userId: record.owner.id });
 }

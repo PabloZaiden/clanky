@@ -74,7 +74,10 @@ export async function getTaskTranscriptSnapshot(
         totalEntries: meta.entryCount,
       },
       shouldIncludeConversationTranscriptLog,
-    ), taskManager.getLiveTranscript(taskId), options),
+    ), taskManager.getLiveTranscript(taskId), {
+      window: options,
+      shouldIncludeLog: shouldIncludeConversationTranscriptLog,
+    }),
   };
 }
 

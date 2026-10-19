@@ -90,7 +90,7 @@ type RetainedAgentEvent = Extract<
 type RetainedProvisioningEvent = Extract<
   ProvisioningEvent,
   {
-    type: "provisioning.step" | "provisioning.output";
+    type: "provisioning.step" | "provisioning.updated" | "provisioning.output";
   }
 >;
 
@@ -458,6 +458,7 @@ export function publishClankyDomainEvent(
       publishDeleted(publisher, owner, CLANKY_REALTIME_RESOURCES.provisioningJobs, event.provisioningJobId);
       return;
     case "provisioning.step":
+    case "provisioning.updated":
       publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.provisioningJobs, event.provisioningJobId);
       publishStream(publisher, owner, sanitizeProvisioningEvent(event), {
         provisioningJobId: event.provisioningJobId,

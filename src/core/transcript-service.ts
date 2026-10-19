@@ -3,7 +3,6 @@ import {
   createToolCallSummary,
   isCountedAssistantResponse,
   mergeTranscriptIncomingRecords,
-  shouldIncludeConversationTranscriptLog,
 } from "@/shared";
 import type {
   ChatTranscript,
@@ -19,9 +18,12 @@ import type { LiveTranscriptState } from "./transcript-stream-projection";
 export function includeLiveTranscript(
   persisted: ChatTranscript,
   live: LiveTranscriptState | undefined,
-  options: TranscriptSnapshotOptions,
+  options: {
+    window: TranscriptSnapshotOptions;
+    shouldIncludeLog?: (entry: TaskLogEntry) => boolean;
+  },
 ): ChatTranscript {
-  if (!live || options.before) return persisted;
+  if (!live || options.window.before) return persisted;
   const boundary = persisted.isPartial
     ? [...persisted.messages, ...persisted.logs, ...persisted.toolCalls].reduce<string | undefined>(
       (earliest, entry) => !earliest || entry.timestamp < earliest ? entry.timestamp : earliest,
@@ -32,7 +34,7 @@ export function includeLiveTranscript(
   const messages = mergeTranscriptIncomingRecords([], live.messages.filter(inWindow));
   const logs = mergeTranscriptIncomingRecords(
     [],
-    live.logs.filter((entry) => inWindow(entry) && shouldIncludeConversationTranscriptLog(entry)),
+    live.logs.filter((entry) => inWindow(entry) && (!options.shouldIncludeLog || options.shouldIncludeLog(entry))),
   );
   const toolCalls = mergeTranscriptIncomingRecords(
     [],

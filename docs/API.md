@@ -3865,7 +3865,12 @@ event types are:
 | Tasks | `task.message`, `task.message.delta`, `task.tool_call`, `task.tool_call.extra`, `task.log`, `task.log.delta`, `task.iteration.start`, `task.iteration.end`, `task.git.commit` |
 | Chats | `chat.message`, `chat.message.delta`, `chat.tool_call`, `chat.tool_call.extra`, `chat.log`, `chat.log.delta` |
 | Agent runs | `agent.run.message`, `agent.run.message.delta`, `agent.run.tool_call`, `agent.run.tool_call.extra`, `agent.run.log`, `agent.run.log.delta` |
-| Provisioning | `provisioning.step`, `provisioning.output` |
+| Provisioning | `provisioning.step`, `provisioning.updated`, `provisioning.output` |
+
+Provisioning execution/state transitions publish a positioned
+`provisioning.updated` job cut and owner-targeted resource invalidation.
+Output entries advance the same stream; active command state does not depend
+on polling or the next step transition.
 
 Other domain lifecycle notifications, including `task.accepted`, `task.merged`,
 `task.pushed`, and `task.discarded`, cause a resource invalidation rather than
