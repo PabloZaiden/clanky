@@ -2,6 +2,7 @@ export * from "./agent";
 export * from "./harness-events";
 export * from "./harness-input";
 export * from "./harness-control";
+export * from "./harness-history";
 export * from "./harness-questions";
 export * from "./question-transcript";
 export * from "./deterministic-agent";
