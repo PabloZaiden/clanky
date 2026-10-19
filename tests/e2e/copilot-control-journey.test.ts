@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { E2EApplication } from "./support/application";
+import { createFileAttachment, expectedFileInspection } from "./support/attachments";
 import { createGitFixture } from "./support/git";
 import { pollUntil } from "./support/polling";
 import { subscribeRealtime } from "./support/realtime";
@@ -144,15 +145,19 @@ test("Copilot users inspect images and steer queued Control work across clients"
       }),
     }, 201)).data.config.id;
     const ordinaryId = await createChat("Ordinary Copilot chat");
+    const inputFile = createFileAttachment("notes.txt", "Shared Copilot document\n", "text/plain");
     await application.json<{ chat: Chat }>(`/api/chats/${ordinaryId}/messages`, {
       method: "POST",
       body: JSON.stringify({
-        message: "Inspect this attached image.",
-        attachments: [createImageAttachment()],
+        message: "Inspect the attached files and this image.",
+        attachments: [createImageAttachment(), inputFile],
       }),
     });
     await waitForChatIdle(application, ordinaryId);
-    await waitForImageReceipt(application, ordinaryId);
+    const ordinarySnapshot = await waitForImageReceipt(application, ordinaryId);
+    expect(ordinarySnapshot.transcript.messages.some((message) =>
+      message.role === "assistant" && message.content.includes(expectedFileInspection(inputFile).sha256)
+    )).toBe(true);
 
     await application.json("/api/preferences/quick-chat", {
       method: "PUT", body: JSON.stringify({ workspaceId: workspace.id, model: modelConfig, useWorktree: false }),
@@ -214,13 +219,14 @@ test("Copilot users inspect images and steer queued Control work across clients"
     );
     await send("Wait for a steering instruction, then open the workspace.", clients[0]!, [createImageAttachment()]);
     await waitForActive();
-    await steer("Change the request, but keep waiting.", clients[1]!, [createImageAttachment()]);
+    await steer("Inspect the attached files. Change the request, but keep waiting.", clients[1]!, [createImageAttachment(), inputFile]);
     await steer("Finish the request and open the workspace.", clients[0]!);
     await waitForChatIdle(application, chatId);
     const mixed = await waitForToolResult(application, chatId, workspaceName, 1);
     expect(mixed.transcript.messages.some((message) => message.role === "assistant"
       && message.content.includes("Change the request, but keep waiting.")
       && message.content.includes("Finish the request and open the workspace.")
+      && message.content.includes(expectedFileInspection(inputFile).sha256)
       && message.content.includes("control_client_unavailable")
       && message.content.includes(E2E_IMAGE_RECEIPT))).toBe(true);
     await waitForImageReceipt(application, chatId, 2);

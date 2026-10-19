@@ -90,6 +90,7 @@ export function listChatTranscriptEntriesAfter(
     after?: TranscriptStorageCursor;
     limit: number;
     includeToolPayload?: boolean;
+    fileAttachmentsOnly?: boolean;
   },
 ): TranscriptStoragePage {
   return chatTranscriptStore.listEntriesAfterForUser(

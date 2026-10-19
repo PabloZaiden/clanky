@@ -14,7 +14,6 @@ import type { ComposerAttachment } from "@/shared/message-attachments";
 import {
   getMessageAttachmentExtension,
   getMessageAttachmentKind,
-  MESSAGE_ATTACHMENT_ACCEPT,
   MESSAGE_ATTACHMENT_LIMIT,
 } from "@/shared/message-attachments";
 import {
@@ -42,9 +41,9 @@ interface ImageAttachmentControlProps {
   onErrorChange?: (error: string | null) => void;
   /** When false, keep the input/ref mounted without rendering a visible picker button. */
   showTrigger?: boolean;
-  /** When true, render a clipboard paste button beside the image picker. */
+  /** When true, render a clipboard paste button beside the file picker. */
   showClipboardTrigger?: boolean;
-  /** Receives text from the clipboard when no image is present. */
+  /** Receives ordinary clipboard text when no file is present. */
   onClipboardText?: (text: string) => void;
 }
 
@@ -99,7 +98,6 @@ export function ImageAttachmentPreviewList({
           const extension = getMessageAttachmentExtension(attachment.filename)
             .replace(".", "")
             .toUpperCase();
-          const kind = getMessageAttachmentKind(attachment);
           return (
             <div
               key={attachment.id}
@@ -132,7 +130,7 @@ export function ImageAttachmentPreviewList({
                     aria-hidden="true"
                     className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded bg-gray-200 text-[10px] font-semibold text-gray-600 dark:bg-neutral-700 dark:text-gray-300"
                   >
-                    {extension || (kind === "pdf" ? "PDF" : "FILE")}
+                    {extension || "FILE"}
                   </span>
                   <div className="min-w-0">
                     <p
@@ -322,7 +320,6 @@ function ImageAttachmentControlInner({
           ref={inputRef}
           id={inputId}
           type="file"
-          accept={MESSAGE_ATTACHMENT_ACCEPT}
           multiple
           className="hidden"
           disabled={disabled}

@@ -109,6 +109,7 @@ export interface TranscriptResourceStore {
       after?: TranscriptStorageCursor;
       limit: number;
       includeToolPayload?: boolean;
+      fileAttachmentsOnly?: boolean;
     },
   ): TranscriptStoragePage;
   getMessageForUser(

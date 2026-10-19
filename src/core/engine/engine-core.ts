@@ -25,7 +25,7 @@ import type {
 import { DEFAULT_TASK_CONFIG } from "@/shared/task";
 import type { TaskEvent, MessageData, ToolCallData, LogLevel } from "@/shared/events";
 import { createTimestamp } from "@/shared/events";
-import type { MessageAttachment } from "@/shared/message-attachments";
+import { getMessageAttachmentKind, type PreparedAttachmentFiles, type MessageAttachment } from "@/shared/message-attachments";
 import type { HarnessEvent as AgentEvent } from "@/shared/harness-events";
 import { backendManager } from "../backend-manager";
 import type { GitService } from "../git";
@@ -41,6 +41,9 @@ import { mergeHarnessProjection } from "../../persistence/harness-state";
 import { getHarnessWorkspaceSafety } from "../harness-workspace-safety";
 import { isDomainError } from "../../domain/domain-error";
 import { requireCurrentUser, runWithCurrentUser } from "../../context/user-context";
+import { conversationAttachmentService } from "../conversation-attachment-service";
+import { DomainError } from "../../domain/domain-error";
+import { iterateTaskAttachmentMessages } from "../task-transcript-service";
 
 import {
   type TaskBackend,
@@ -110,7 +113,7 @@ export class TaskEngine {
    * This is different from `aborted` which stops the task entirely.
    */
   private injectionPending = false;
-  private initialPromptAttachments: MessageAttachment[];
+  private readonly attachmentPreparationControllers = new Set<AbortController>();
   private readonly inputs: TaskInputService;
   private readonly persistence: TaskPersistenceCoordinator;
   private readonly sessionLifecycle: TaskSessionLifecycleImpl;
@@ -135,6 +138,7 @@ export class TaskEngine {
       updateState: this.updateState.bind(this),
       emitUserMessage: this.emitUserMessage.bind(this),
       flushInputs: () => this.persistence.flush({ persistHarnessInputs: true }),
+      prepareAttachments: (input) => this.prepareAttachmentFiles(input.id, input.attachments),
     });
     this.sessionLifecycle = new TaskSessionLifecycleImpl({
       backend: this.backend,
@@ -166,7 +170,9 @@ export class TaskEngine {
     this.skipGitSetup = options.skipGitSetup ?? false;
     this.reuseExistingSession = options.reuseExistingSession ?? false;
     this.executionPolicy = options.executionPolicy ?? "task_loop";
-    this.initialPromptAttachments = [...(options.initialPromptAttachments ?? [])];
+    if (options.initialPromptAttachments?.length) {
+      this.task.state.initialPromptAttachments = structuredClone(options.initialPromptAttachments);
+    }
   }
 
   async flushPersistence(): Promise<void> {
@@ -356,6 +362,7 @@ export class TaskEngine {
     // Mark that we're doing an injection abort (not a user stop)
     this.injectionPending = true;
     this.aborted = true;
+    this.abortAttachmentPreparation();
 
     // Abort the current prompt through the single stream/session teardown path.
     await this.promptExecutor.interrupt({
@@ -431,6 +438,7 @@ export class TaskEngine {
 
     this.isStarting = true;
     try {
+      await this.triggerPersistence();
       // Set up git branch first (before any file modifications)
       // Skip git setup in plan mode - already set up in startPlanMode()
       // Skip git setup for review cycles - branch is already set up
@@ -518,6 +526,7 @@ export class TaskEngine {
     this.emitLog("info", `Stopping task: ${reason}`);
     const wasCompleted = this.task.state.status === "completed";
     this.aborted = true;
+    this.abortAttachmentPreparation();
 
     await this.settleHarnessForStop();
     await this.interruptBackendForStop();
@@ -544,6 +553,7 @@ export class TaskEngine {
   async stopForDeletion(): Promise<boolean> {
     this.persistence.disable();
     this.aborted = true;
+    this.abortAttachmentPreparation();
     const workspaceSafe = await this.settleHarnessForStop();
     await this.interruptBackendForStop();
     await this.waitForTaskIdle();
@@ -591,6 +601,7 @@ export class TaskEngine {
   async abortSessionOnly(reason = "Connection reset requested"): Promise<void> {
     this.emitLog("info", `Aborting session only (preserving status): ${reason}`);
     this.aborted = true;
+    this.abortAttachmentPreparation();
     await this.promptExecutor.interrupt({
       abortMessage: "Aborting backend session...",
       abortWarnMessage: "Failed to abort the backend session during session-only abort",
@@ -851,16 +862,58 @@ export class TaskEngine {
   /**
    * Build the prompt for an iteration.
    */
-  private buildPrompt(_iteration: number): TaskPromptBuildResult {
+  private async buildPrompt(_iteration: number): Promise<TaskPromptBuildResult> {
     const isInPlanMode = this.task.state.status === "planning" && this.task.state.planMode?.active;
+    const pending = this.inputs.peek();
     const promptMode = isInPlanMode
       ? "engine_context"
-      : this.inputs.peek()?.intent ?? "engine_context";
+      : pending?.intent ?? "engine_context";
+    const attachments = pending?.attachments.length
+      ? pending.attachments
+      : isInPlanMode || pending || this.state.currentIteration <= 1
+        ? this.state.initialPromptAttachments ?? []
+        : [];
+    const messageId = pending?.id ?? `user-msg-${this.config.id}-initial-goal`;
+    const files = await this.prepareAttachmentFiles(messageId, attachments);
+    if (this.aborted) throw new DOMException("Task attachment preparation was interrupted.", "AbortError");
+    const current = this.inputs.peek();
+    if (current?.id !== pending?.id || current?.attachments !== pending?.attachments) {
+      return await this.buildPrompt(_iteration);
+    }
     this.lastPromptMode = promptMode;
     return {
-      prompt: buildTaskPrompt(this.makePromptContext(), _iteration),
+      prompt: buildTaskPrompt(this.makePromptContext(files), _iteration),
       promptMode,
     };
+  }
+
+  private async prepareAttachmentFiles(messageId: string, attachments: readonly MessageAttachment[]): Promise<PreparedAttachmentFiles> {
+    const hasFiles = (values: readonly MessageAttachment[]) => values.some((attachment) => getMessageAttachmentKind(attachment) === "file");
+    if (!hasFiles(attachments)
+      && !this.state.messages.some((message) => hasFiles(message.attachments ?? []))
+      && !conversationAttachmentService.hasLocations({ kind: "task", id: this.config.id })) return { files: [] };
+    const binding = this.state.session?.binding;
+    if (!binding?.executionHost) throw new DomainError("attachment_context_unavailable", "An owned execution host is required for attachments.");
+    const controller = new AbortController();
+    this.attachmentPreparationControllers.add(controller);
+    if (this.aborted) controller.abort();
+    try {
+      await this.triggerPersistence();
+      return await conversationAttachmentService.materialize({
+        context: { kind: "task", id: this.config.id },
+        executionHost: binding.executionHost,
+        directory: binding.directory,
+        message: { id: messageId, attachments },
+        previousMessages: iterateTaskAttachmentMessages(this.config.id),
+        signal: controller.signal,
+      });
+    } finally {
+      this.attachmentPreparationControllers.delete(controller);
+    }
+  }
+
+  private abortAttachmentPreparation(): void {
+    for (const controller of this.attachmentPreparationControllers) controller.abort();
   }
 
   /**
@@ -1070,8 +1123,9 @@ export class TaskEngine {
     };
   }
 
-  private makePromptContext(): PromptBuildContext {
+  private makePromptContext(attachmentFiles: PreparedAttachmentFiles = { files: [] }): PromptBuildContext {
     return {
+      attachmentFiles,
       config: this.task.config,
       state: this.task.state,
       workingDirectory: this.workingDirectory,
@@ -1766,8 +1820,8 @@ export class TaskEngine {
    *                   Defaults to the current iteration number.
    */
   private consumeInitialPromptAttachments(): MessageAttachment[] {
-    const attachments = this.initialPromptAttachments;
-    this.initialPromptAttachments = [];
+    const attachments = this.state.initialPromptAttachments ?? [];
+    this.updateState({ initialPromptAttachments: undefined });
     return attachments;
   }
 

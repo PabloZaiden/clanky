@@ -28,6 +28,7 @@ import { isHarnessInputValidationError, retainHarnessInputReceipt } from "./harn
 import { DomainError } from "../domain/domain-error";
 import type { ChatQuestionService } from "./chat-question-service";
 import { buildPromptParts } from "../backends/prompt-parts";
+import type { ChatAttachmentService } from "./chat-attachment-service";
 import { KeyedOperationQueue } from "../utils/keyed-operation-queue";
 import { requireMatchingHarnessBinding } from "../backends/harness-binding";
 import { updateQuestionAnswerStatus } from "@/shared/harness-questions";
@@ -86,17 +87,20 @@ export class ChatInteractionService implements ChatInteractionPort {
   private readonly state: ChatStatePort;
   private readonly conversation: ChatConversationPort;
   private readonly session: ChatSessionPort;
+  private readonly attachments: ChatAttachmentService;
 
   constructor(dependencies: {
     state: ChatStatePort;
     conversation: ChatConversationPort;
     session: ChatSessionPort;
     questions?: Pick<ChatQuestionService, "reply">;
+    attachments: ChatAttachmentService;
   }) {
     this.state = dependencies.state;
     this.conversation = dependencies.conversation;
     this.session = dependencies.session;
     this.questions = dependencies.questions;
+    this.attachments = dependencies.attachments;
   }
   private readonly questions?: Pick<ChatQuestionService, "reply">;
 
@@ -119,6 +123,9 @@ export class ChatInteractionService implements ChatInteractionPort {
     const input = this.normalizeMessageInput(options);
     assertChatAttachmentBudget(getMessageAttachmentByteLength(input.attachments));
     const activeChat = await this.reactivateDoneChat(chat);
+    if (activeChat.state.queuedMessages?.length) {
+      this.rememberQueueCredentials(chatId, options.credentialToken);
+    }
     if (this.shouldQueueMessage(activeChat)) {
       return this.enqueueMessage(activeChat, input, options.credentialToken);
     }
@@ -303,6 +310,9 @@ export class ChatInteractionService implements ChatInteractionPort {
         return { chat, admission: { status: "rejected", inputId: queuedMessageId, code: "unsupported" } };
       }
       const attachmentBytes = getMessageAttachmentByteLength(message.attachments ?? []);
+      const attachmentFiles = await this.attachments.prepare(chat, message, {
+        credentialToken: this.queuedCredentialTokens.get(chatId),
+      });
       const unknown: HarnessInputAdmission = { status: "unknown", inputId: queuedMessageId };
       let reserved = false;
       chat = await this.state.mutateState(chatId, (current) => {
@@ -352,7 +362,7 @@ export class ChatInteractionService implements ChatInteractionPort {
         admission = await backend.harness.steer(binding.nativeId, {
           inputId: queuedMessageId,
           clientId: message.clientId,
-          prompt: { parts: buildPromptParts(message.content, message.attachments ?? []) },
+          prompt: { parts: buildPromptParts(message.content, message.attachments ?? [], attachmentFiles) },
         });
       } catch (error) {
         if (!isHarnessInputValidationError(error)) throw error;
@@ -530,10 +540,7 @@ export class ChatInteractionService implements ChatInteractionPort {
       harness: updateQuestionAnswerStatus(chat.state.harness, queuedMessage.id, "queued"),
       lastActivityAt: now,
     });
-    const normalizedCredentialToken = credentialToken?.trim();
-    if (normalizedCredentialToken) {
-      this.queuedCredentialTokens.set(chat.config.id, normalizedCredentialToken);
-    }
+    this.rememberQueueCredentials(chat.config.id, credentialToken);
     this.state.emitChatUpdated(updated);
     return updated;
   }
@@ -608,8 +615,14 @@ export class ChatInteractionService implements ChatInteractionPort {
         await this.state.markChatError(latestChat, message);
       }
     } finally {
-      this.queuedCredentialTokens.delete(chatId);
+      const latest = await this.state.getChat(chatId);
+      if (!latest?.state.queuedMessages?.length) this.queuedCredentialTokens.delete(chatId);
     }
+  }
+
+  private rememberQueueCredentials(chatId: string, credentialToken?: string | null): void {
+    const token = credentialToken?.trim();
+    if (token) this.queuedCredentialTokens.set(chatId, token);
   }
 
   private async upsertPermissionRequest(chat: Chat, request: ChatPermissionRequest): Promise<Chat> {

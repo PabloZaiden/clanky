@@ -72,6 +72,7 @@ import {
   type ChatHistoryPromptContext,
 } from "./chat-history-export-service";
 import { buildPromptParts } from "../backends/prompt-parts";
+import type { ChatAttachmentService } from "./chat-attachment-service";
 import { createChatLatencyTimer } from "./chat-latency-instrumentation";
 import { createIdempotentAsyncOperation } from "../utils/async-operation";
 import { DEFAULT_ACTIVITY_TIMEOUT_SECONDS } from "@/shared/task";
@@ -142,6 +143,7 @@ export type ChatPermissionHandler = (
 ) => Promise<Chat>;
 
 export interface ChatConversationServiceDependencies {
+  attachments: ChatAttachmentService;
   state: ChatStatePort;
   session: ChatSessionPort;
   worktree: ChatWorktreePort;
@@ -159,6 +161,7 @@ export class ChatConversationService implements ChatConversationPort {
   private readonly session: ChatSessionPort;
   private readonly worktree: ChatWorktreePort;
   private readonly historyExport: ChatHistoryExportService;
+  private readonly attachments: ChatAttachmentService;
   private readonly emitter: SimpleEventEmitter<ChatEvent>;
   private readonly scheduleQueuedMessageDrain: (chatId: string) => void;
   private permissionHandler: ChatPermissionHandler | undefined;
@@ -169,6 +172,7 @@ export class ChatConversationService implements ChatConversationPort {
     this.session = dependencies.session;
     this.worktree = dependencies.worktree;
     this.historyExport = dependencies.historyExport;
+    this.attachments = dependencies.attachments;
     this.emitter = dependencies.emitter ?? chatEventEmitter;
     this.scheduleQueuedMessageDrain = dependencies.scheduleQueuedMessageDrain ?? (() => {});
     this.permissionHandler = dependencies.permissionHandler;
@@ -258,10 +262,13 @@ export class ChatConversationService implements ChatConversationPort {
     let historyPromptContext: ChatHistoryPromptContext | null = null;
     let historyPromptTransferred = false;
     let promptAttempted = false;
+    let preparingAttachments = false;
     const userMessage: MessageData = (transcriptMessage && chat.state.messages.find(
       (message) => message.id === transcriptMessage.id,
     )) ?? transcriptMessage ?? {
-      id: `chat-user-${crypto.randomUUID()}`,
+      id: options.clearQueuedMessageIds?.length
+        ? `chat-user-${new Bun.CryptoHasher("sha256").update(JSON.stringify(options.clearQueuedMessageIds)).digest("hex")}`
+        : `chat-user-${crypto.randomUUID()}`,
       role: "user",
       content: input.message,
       attachments: input.attachments.length > 0 ? input.attachments : undefined,
@@ -286,28 +293,25 @@ export class ChatConversationService implements ChatConversationPort {
         || this.worktree.hasEstablishedWorkspaceContext(chat)
         ? "connecting_provider" as const
         : "preparing_workspace" as const;
-      let current = await timer.measure("message_persistence", () => this.appendMessage(
-        chat,
-        userMessage,
-        {
-          queuedMessages: options.clearQueuedMessageIds
-            ? chat.state.queuedMessages?.filter((entry) => !options.clearQueuedMessageIds!.includes(entry.id))
-            : chat.state.queuedMessages,
-          status: "starting",
-          startupStage,
-          error: undefined,
-          completedAt: undefined,
-          activeMessageId: undefined,
-          interruptRequested: false,
-          harness: {
-            ...(answerInputId
-              ? updateQuestionAnswerStatus(answerHarness, answerInputId, "submitting")
-              : chat.state.harness),
-            activeTurnAttachmentBytes: getMessageAttachmentByteLength(input.attachments),
-          },
+      const deferQueuedMessage = !transcriptMessage && Boolean(options.clearQueuedMessageIds?.length);
+      const startingState: ChatState = {
+        ...chat.state,
+        status: "starting",
+        startupStage,
+        error: undefined,
+        completedAt: undefined,
+        activeMessageId: undefined,
+        interruptRequested: false,
+        harness: {
+          ...(answerInputId
+            ? updateQuestionAnswerStatus(answerHarness, answerInputId, "submitting")
+            : chat.state.harness),
+          activeTurnAttachmentBytes: getMessageAttachmentByteLength(input.attachments),
         },
-        chat.state.status,
-      ));
+      };
+      let current = await timer.measure("message_persistence", () => deferQueuedMessage
+        ? this.updateState(chat, startingState, { expectedStatus: chat.state.status })
+        : this.appendMessage(chat, userMessage, startingState, chat.state.status));
       if (options.clearQueuedMessageIds) {
         this.emitChatUpdated(current);
       }
@@ -392,12 +396,32 @@ export class ChatConversationService implements ChatConversationPort {
             defaultModel: current.config.model,
           }
         : undefined;
+      preparingAttachments = true;
+      const attachmentFiles = await this.attachments.prepare(current, userMessage, {
+        credentialToken: options.credentialToken,
+        signal: startupOperation.controller.signal,
+      });
+      preparingAttachments = false;
+      throwIfChatStartupAborted(startupOperation.controller.signal);
+      if (options.clearQueuedMessageIds?.length) {
+        current = await this.state.mutateState(chat.config.id, (latest) => ({
+          ...latest.state,
+          messages: deferQueuedMessage
+            ? [...latest.state.messages.filter((message) => message.id !== userMessage.id), userMessage]
+            : latest.state.messages,
+          queuedMessages: latest.state.queuedMessages?.filter(
+            (entry) => !options.clearQueuedMessageIds?.includes(entry.id),
+          ),
+        }));
+        if (deferQueuedMessage) this.emitMessage(current, userMessage);
+        this.emitChatUpdated(current);
+      }
       const prompt: PromptInput = {
         parts: [
           ...(historyPromptContext
             ? [{ type: "text" as const, text: historyPromptContext.instruction }]
             : []),
-          ...buildPromptParts(input.message, input.attachments),
+          ...buildPromptParts(input.message, input.attachments, attachmentFiles),
         ],
         model: current.config.model,
         ...(controlContext ? { controlContext } : {}),
@@ -446,7 +470,7 @@ export class ChatConversationService implements ChatConversationPort {
       }
       const erroredChat = await this.emitChatError(latest ?? chat, error);
       const adapter = erroredChat.state.session?.binding?.adapter;
-      if ((erroredChat.state.queuedMessages ?? []).length > 0 && (!adapter || adapter === "acp")) {
+      if (!preparingAttachments && (erroredChat.state.queuedMessages ?? []).length > 0 && (!adapter || adapter === "acp")) {
         this.scheduleQueuedMessageDrain(chat.config.id);
       }
       throw error;
@@ -1516,14 +1540,18 @@ export class ChatConversationService implements ChatConversationPort {
       }]),
       expectedStatus,
     });
+    this.emitMessage(updated, message);
+    return updated;
+  }
+
+  private emitMessage(chat: Chat, message: MessageData): void {
     this.emitter.emit({
       type: "chat.message",
       chatId: chat.config.id,
       scope: chat.config.scope,
-      message: updated.state.messages.find((entry) => entry.id === message.id) ?? message,
+      message: chat.state.messages.find((entry) => entry.id === message.id) ?? message,
       timestamp: message.timestamp,
     });
-    return updated;
   }
 
   private findMessage(

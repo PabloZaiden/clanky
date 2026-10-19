@@ -52,7 +52,10 @@ export interface UseFileExplorerResult {
   selectNode: (node: WorkspaceFileNode | null) => void;
   renameNode: (node: WorkspaceFileNode, newName: string, options?: { overwrite?: boolean }) => Promise<WorkspaceFileEntry | null>;
   deleteNode: (node: WorkspaceFileNode) => Promise<boolean>;
-  uploadFileToSelectedDirectory: (file: File, options?: { overwrite?: boolean; signal?: AbortSignal }) => Promise<WorkspaceFileEntry | null>;
+  uploadFileToSelectedDirectory: (
+    file: File,
+    options?: { overwrite?: boolean; signal?: AbortSignal; targetDirectory?: string },
+  ) => Promise<WorkspaceFileEntry | null>;
   openLargeFileInEditor: (path?: string) => Promise<boolean>;
   setEditorContent: (value: string) => void;
   saveCurrentFile: (options?: { overwrite?: boolean }) => Promise<boolean>;

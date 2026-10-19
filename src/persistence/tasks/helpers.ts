@@ -10,7 +10,7 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import { CheapModelSelectionSchema } from "@/contracts/schemas";
 import { requirePersistenceUserId } from "../ownership";
 import { parseStoredHarnessBinding, parseStoredHarnessState } from "../harness-binding";
-import { TaskPendingInputSchema } from "../../contracts/schemas/task";
+import { MessageAttachmentsSchema, TaskPendingInputSchema } from "../../contracts/schemas/task";
 
 const log = createLogger("persistence:tasks");
 
@@ -68,6 +68,7 @@ export const ALLOWED_TASK_COLUMNS = new Set([
   "pending_prompt",
   "pending_prompt_mode",
   "pending_input_json",
+  "initial_attachments_json",
   "pending_model_provider_id",
   "pending_model_model_id",
   "pending_model_variant",
@@ -156,6 +157,7 @@ export function taskToRow(task: Task): Record<string, unknown> {
     pending_prompt: state.pendingPrompt ?? null,
     pending_prompt_mode: state.pendingPromptMode ?? null,
     pending_input_json: state.pendingInput ? JSON.stringify(state.pendingInput) : null,
+    initial_attachments_json: state.initialPromptAttachments?.length ? JSON.stringify(state.initialPromptAttachments) : null,
     pending_model_provider_id: state.pendingModel?.providerID ?? null,
     pending_model_model_id: state.pendingModel?.modelID ?? null,
     pending_model_variant: state.pendingModel?.variant ?? null,
@@ -324,6 +326,14 @@ export function rowToTask(row: Record<string, unknown>): Task {
     if (input.success) state.pendingInput = input.data;
     else {
       log.warn("Persisted task input identity is invalid", { taskId: rowId });
+      state.harness = { ...state.harness, integrity: "invalid" };
+    }
+  }
+  if (row["initial_attachments_json"] !== null && row["initial_attachments_json"] !== undefined) {
+    const attachments = MessageAttachmentsSchema.safeParse(safeJsonParse(row["initial_attachments_json"] as string, null, "initial_attachments_json", rowId));
+    if (attachments.success) state.initialPromptAttachments = attachments.data;
+    else {
+      log.warn("Persisted initial task attachments are invalid", { taskId: rowId });
       state.harness = { ...state.harness, integrity: "invalid" };
     }
   }

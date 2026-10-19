@@ -12,6 +12,7 @@ import {
   getBase64DecodedByteLength,
   getMessageAttachmentKind,
   getMessageAttachmentByteLength,
+  isValidAttachmentBase64,
   MESSAGE_ATTACHMENT_LIMIT,
   MESSAGE_ATTACHMENT_MAX_BYTES,
   MESSAGE_ATTACHMENT_MAX_TURN_BYTES,
@@ -23,21 +24,28 @@ import { CheapModelSelectionSchema, ModelConfigSchema } from "./model";
 export const MessageAttachmentSchema = z.object({
   id: z.string().min(1, "attachment id is required"),
   filename: z.string().min(1, "attachment filename is required"),
-  mimeType: z.string().min(1, "attachment MIME type is required"),
-  data: z.string().min(1, "attachment data is required").refine(
+  mimeType: z.string().trim().default("").transform((value) => value || "application/octet-stream"),
+  data: z.string().max(Math.ceil(MESSAGE_ATTACHMENT_MAX_BYTES / 3) * 4).refine(
     (data) => getBase64DecodedByteLength(data) <= MESSAGE_ATTACHMENT_MAX_BYTES,
     { message: `attachment data exceeds ${MESSAGE_ATTACHMENT_MAX_BYTES} bytes` },
-  ),
-  size: z.number().int().positive().max(
+  ).refine(isValidAttachmentBase64, { message: "attachment data must be valid base64" }),
+  size: z.number().int().nonnegative().max(
     MESSAGE_ATTACHMENT_MAX_BYTES,
     `attachments must be ${MESSAGE_ATTACHMENT_MAX_BYTES} bytes or smaller`,
   ),
 }).superRefine((attachment, ctx) => {
-  if (getMessageAttachmentKind(attachment) === null) {
+  if (getBase64DecodedByteLength(attachment.data) !== attachment.size) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      path: ["mimeType"],
-      message: "attachments must be supported images, .txt, .md, or .pdf files",
+      path: ["size"],
+      message: "attachment size must match its decoded bytes",
+    });
+  }
+  if (getMessageAttachmentKind(attachment) === "image" && attachment.size === 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["data"],
+      message: "image attachments must not be empty",
     });
   }
 });

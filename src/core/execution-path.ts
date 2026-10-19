@@ -40,16 +40,17 @@ function isWindowsDevicePath(value: string): boolean {
   return normalized.startsWith("\\\\?\\") || normalized.startsWith("\\\\.\\");
 }
 
+export function isWindowsReservedPathComponent(component: string): boolean {
+  const baseName = component.split(".", 1)[0]?.replace(/[ .]+$/g, "") ?? "";
+  return /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9]|conin\$|conout\$)$/i.test(baseName);
+}
+
 function hasWindowsReservedPathComponent(value: string): boolean {
   const root = win32.parse(value).root;
   return value
     .slice(root.length)
     .split(/[\\/]+/)
-    .some((component) => {
-      const baseName = component.split(".", 1)[0]?.replace(/[ .]+$/g, "") ?? "";
-      return /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9]|conin\$|conout\$)$/i
-        .test(baseName);
-    });
+    .some(isWindowsReservedPathComponent);
 }
 
 function hasUnstableWindowsPathComponent(value: string): boolean {

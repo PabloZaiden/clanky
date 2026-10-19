@@ -176,6 +176,7 @@ const ConversationPresentation = memo(function ConversationPresentation({
     contentRef,
     preserveScrollPosition,
     cancelPreservedScrollPosition,
+    releaseBottomPin,
   } = useStickyBottomScroll([
     visibleEntries,
     isActive,
@@ -269,6 +270,7 @@ const ConversationPresentation = memo(function ConversationPresentation({
                     onReadAloud={onReadAloud}
                     playingReadAloudKey={messageReadAloudKey}
                     readAloudStatus={messageReadAloudKey ? readAloudStatus : null}
+                    onBeforeExpand={releaseBottomPin}
                   />
                 );
               } else if (entry.type === "tool-image") {

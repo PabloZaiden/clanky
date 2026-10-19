@@ -6,6 +6,7 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { parseJsonRpcMessage, type JsonRpcId, type JsonRpcMessage } from "./codex-json-rpc";
 import { readCopilotImageReceipts } from "./image-input";
+import { inspectAttachedFiles } from "./file-input";
 
 const MAX_FRAME_BYTES = 96 * 1024 * 1024;
 
@@ -105,7 +106,8 @@ async function sendInput(session: Session | undefined, params: Record<string, un
   if (!session) throw new Error("Copilot session unavailable.");
   const messageId = crypto.randomUUID();
   const prompt = String(params["prompt"]);
-  const promptWithImages = [prompt, ...readCopilotImageReceipts(params["attachments"])].join("\n");
+  const fileReceipt = await inspectAttachedFiles(prompt, session.directory, [session.prompt]);
+  const promptWithImages = [prompt, ...readCopilotImageReceipts(params["attachments"]), fileReceipt].filter(Boolean).join("\n");
   if (session.processing && params["mode"] !== "immediate") throw new Error("Active input requires immediate mode.");
   write({ id, result: { messageId } });
   event(session, "user.message", { messageId, content: prompt });

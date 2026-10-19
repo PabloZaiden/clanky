@@ -150,6 +150,10 @@ export async function startTaskImpl(ctx: TaskCtx, taskId: string, _options?: Sta
     );
   }
 
+  if (_options?.attachments?.length) {
+    task.state.initialPromptAttachments = structuredClone(_options.attachments);
+    await updateTaskOperationalState(taskId, task.state);
+  }
   await assertTaskWorktreesAllowed(task);
 
   log.info("Starting task execution", {
@@ -239,6 +243,10 @@ export async function startPlanModeImpl(ctx: TaskCtx, taskId: string, options?: 
     );
   }
 
+  if (options?.attachments?.length) {
+    task.state.initialPromptAttachments = structuredClone(options.attachments);
+    await updateTaskOperationalState(taskId, task.state);
+  }
   await assertTaskWorktreesAllowed(task);
 
   log.info("Starting task plan mode", {

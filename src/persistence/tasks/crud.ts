@@ -57,6 +57,7 @@ export const TASK_LIST_COLUMNS = [
   "pending_prompt",
   "pending_prompt_mode",
   "pending_input_json",
+  "initial_attachments_json",
   "pending_model_provider_id",
   "pending_model_model_id",
   "pending_model_variant",
@@ -81,6 +82,7 @@ export function createTaskListSnapshot(task: Task): Task {
     config: task.config,
     state: {
       ...task.state,
+      initialPromptAttachments: undefined,
       logs: [],
       messages: [],
       toolCalls: [],

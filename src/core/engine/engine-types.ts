@@ -92,7 +92,7 @@ export interface TaskPromptBuildResult {
 }
 
 export interface TaskPromptExecutionOptions {
-  buildPrompt: () => TaskPromptBuildResult;
+  buildPrompt: () => Promise<TaskPromptBuildResult>;
 }
 
 /**

@@ -9,6 +9,7 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { readCodexImageReceipts } from "./image-input";
 import { createPng } from "../support/png-fixtures";
+import { inspectAttachedFiles } from "./file-input";
 
 const TOOL_NAME = "clanky_list_workspaces";
 const GENERATED_IMAGE_PROMPT = "Generate a PNG larger than two MiB.";
@@ -194,7 +195,15 @@ export async function runCodexTurn(
       ? `${assistantText}\nQuestion answer: ${answer}`
       : assistantText;
   const imageReceiptText = imageReceipts(turn).join("\n");
-  emitAssistantMessage(active, imageReceiptText ? `${responseText}\n${imageReceiptText}` : responseText, rpc);
+  const prompt = turn.items.flatMap((item) =>
+    isRecord(item) && item["type"] === "userMessage" && Array.isArray(item["content"])
+      ? item["content"].flatMap((part: unknown) =>
+          isRecord(part) && part["type"] === "text" && typeof part["text"] === "string" ? [part["text"]] : [],
+        )
+      : [],
+  ).join("\n");
+  const fileReceipt = await inspectAttachedFiles(prompt, thread.cwd);
+  emitAssistantMessage(active, [responseText, imageReceiptText, fileReceipt].filter(Boolean).join("\n"), rpc);
   if (requestsGeneratedImage(turn)) await emitGeneratedImage(active, rpc);
   if (turn.status !== "inProgress") return;
   await store.completeTurn(active);

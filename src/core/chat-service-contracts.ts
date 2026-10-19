@@ -130,6 +130,7 @@ export interface ChatStatePort {
   ): Promise<{ revision: string; entryCount: number } | null>;
   iterateChatTranscriptEntries(
     chatId: string,
+    options?: { fileAttachmentsOnly?: boolean },
   ): AsyncIterable<ChatTranscriptStorageEntry>;
   getChatToolCall(chatId: string, toolCallId: string): Promise<ToolCallRecord | null>;
   getTaskChat(taskId: string): Promise<Chat | null>;
