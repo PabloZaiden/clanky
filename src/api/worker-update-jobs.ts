@@ -26,7 +26,7 @@ export const workerUpdateRoutes = defineRoutes({
     auth: "owner",
     sameOrigin: "mutations",
     cliPath: "worker-update-jobs",
-    description: "Start updates on all active global Mesh workers or list update jobs.",
+    description: "Start updates on all active server and automatic workspace Mesh workers or list update jobs.",
     tags: ["mesh", "workers", "worker-updates"],
     operations: {
       GET: {
@@ -37,13 +37,13 @@ export const workerUpdateRoutes = defineRoutes({
         automation: { policy: "read" },
       },
       POST: {
-        description: "Start one update job per active global Mesh worker.",
+        description: "Start one update job per active Mesh worker, including automatic workspaces.",
         requestSchema: undefined,
         querySchema: undefined,
         responseSchema: StartWorkerUpdatesResponseSchema,
         automation: {
           policy: "confirm",
-          reason: "Runs clanky update and, only after success, restarts the worker service on every active global Mesh worker.",
+          reason: "Runs clanky update and, only after success, restarts Clanky on every active server and automatic workspace Mesh worker.",
           completion: "admission",
         },
       },
@@ -62,7 +62,7 @@ export const workerUpdateRoutes = defineRoutes({
     async POST(req, ctx): Promise<Response> {
       ctx.server?.timeout(req, 0);
       try {
-        const result = await workerUpdateManager.startGlobalWorkerUpdates();
+        const result = await workerUpdateManager.startWorkerUpdates();
         log.info("Worker update jobs admitted", {
           userId: ctx.requireOwner().id,
           totalWorkers: result.totalWorkers,

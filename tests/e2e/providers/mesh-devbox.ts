@@ -2,7 +2,7 @@
  * External Devbox command peer backed by real compiled Mesh worker processes.
  */
 
-import { mkdir } from "node:fs/promises";
+import { chmod, copyFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { MESH_OPERATION_TIMEOUT_MS } from "../support/timeouts";
 
@@ -32,10 +32,32 @@ if (args[0] === "--help") {
   }
   const binary = join(root, "bin", "clanky");
   if (!await Bun.file(binary).exists()) {
-    await Bun.write(binary, Bun.file(process.env["CLANKY_E2E_MESH_BINARY"]!));
-    const result = Bun.spawnSync(["chmod", "755", binary], { stdout: "pipe", stderr: "pipe" });
-    if (result.exitCode !== 0) throw new Error(result.stderr.toString());
+    const source = process.env["CLANKY_E2E_MESH_BINARY"]!;
+    if (process.env["CLANKY_E2E_UPDATE_ENABLED"] === "true") {
+      const runtime = join(root, "bin", "clanky-runtime");
+      await copyFile(source, runtime);
+      await chmod(runtime, 0o755);
+      const quote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
+      await Bun.write(binary, [
+        "#!/bin/sh",
+        'if [ "$#" -eq 1 ] && [ "$1" = update ]; then',
+        `  exec ${quote(process.execPath)} ${quote(process.env["CLANKY_E2E_UPDATE_COMMAND"]!)} "$@"`,
+        "fi",
+        `exec ${quote(runtime)} "$@"`,
+        "",
+      ].join("\n"));
+    } else {
+      await copyFile(source, binary);
+    }
+    await chmod(binary, 0o755);
+    await Bun.write(join(root, "release-channel"), "stable\n");
   }
+  const copilot = Bun.which("copilot");
+  if (!copilot) throw new Error("The Devbox image fixture needs the external Copilot provider.");
+  const nativeBin = join(root, "runtime", `copilot-${process.platform}-${process.arch}`, "node_modules", ".bin");
+  await mkdir(nativeBin, { recursive: true });
+  await copyFile(copilot, join(nativeBin, "copilot"));
+  await chmod(join(nativeBin, "copilot"), 0o755);
   await Bun.write(marker, "running");
   console.log(`Devbox ${args[0]} completed`);
 } else if (args[0] === "status") {

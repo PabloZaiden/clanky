@@ -178,7 +178,7 @@ export class ProvisioningWorkerLifecycle {
         await this.stopWorkerProcess(
           executor,
           options.targetDirectory,
-          workerPaths.containerPid,
+          workerPaths.containerSupervisor,
         );
       },
     );
@@ -265,7 +265,7 @@ export class ProvisioningWorkerLifecycle {
     await this.stopWorkerProcess(
       executor,
       targetDirectory,
-      workerPaths.containerPid,
+      workerPaths.containerSupervisor,
     );
   }
 
@@ -305,11 +305,7 @@ export class ProvisioningWorkerLifecycle {
       record,
       executor,
       options.targetDirectory,
-      [
-        "sh",
-        "-lc",
-        `if [ -s ${shellQuote(paths.containerPid)} ]; then kill "$(cat ${shellQuote(paths.containerPid)})" 2>/dev/null || true; rm -f ${shellQuote(paths.containerPid)}; fi`,
-      ],
+      ["sh", paths.containerSupervisor, "stop"],
       {
         step: options.step,
         label: "Restarting the workspace worker",
@@ -487,14 +483,11 @@ export class ProvisioningWorkerLifecycle {
   private async stopWorkerProcess(
     executor: CommandExecutor,
     cwd: string,
-    pidPath: string,
+    supervisorPath: string,
   ): Promise<void> {
     const result = await executor.exec(
-      "sh",
-      [
-        "-lc",
-        `if [ -s ${shellQuote(pidPath)} ]; then kill "$(cat ${shellQuote(pidPath)})" 2>/dev/null || true; rm -f ${shellQuote(pidPath)}; fi`,
-      ],
+      "devbox",
+      ["exec", "--", "sh", supervisorPath, "stop"],
       { cwd },
     );
     if (!result.success) {

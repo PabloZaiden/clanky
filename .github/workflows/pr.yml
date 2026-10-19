@@ -78,6 +78,10 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Install automatic workspace fixture dependencies
+        if: runner.os == 'macOS'
+        run: brew install flock
+
       - name: Build native binary
         run: bun run build
 

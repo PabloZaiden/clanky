@@ -183,6 +183,14 @@ before attributing a slow voice answer to local data access.
   the installed binary. Only run an update when the user asks to update the
   CLI; `--version VERSION` selects an exact release.
 - Purpose-built commands include `workspace`, `server`, `preview`, `mesh`, `worker`, and `relay`. Check `clanky help` for the exact command surface supported by the installed version.
+- When asked to update enrolled servers and automatic workspaces together, use
+  `clanky api worker-update-jobs --method POST` after user confirmation. It
+  admits one job per active Mesh worker, including workspace-dedicated workers;
+  inspect the jobs and logs until each reaches a terminal outcome. Admission is
+  not completion. Each job updates Clanky and then restarts its native service
+  or workspace shell loop. Do not use bulk provisioning restart as an updater
+  or resend a restart whose response was lost. Existing one-shot launchers need
+  manual preparation; do not migrate current Devboxes unless explicitly asked.
 
 ## Bootstrapping a Mesh worker
 

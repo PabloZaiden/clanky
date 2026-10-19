@@ -121,7 +121,6 @@ export {
   type PurgeArchivedTasksResult,
   type PurgeTerminalTasksResult,
 } from "./taskActions";
-export { restartAutomaticWorkspacesApi } from "./settingsActions";
 export {
   getSshServerApi,
   createSshServerApi,

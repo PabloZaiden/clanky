@@ -218,6 +218,9 @@ automatic provisioning also streams registration progress into its job logs.
 Linux, macOS, and Windows. On Linux and macOS it also runs the automatic
 workspace journey: provision, restart, rebuild, use, and retire a Devbox
 workspace while another worker prepares a plan and handles a conversation.
+The external Devbox fixture runs the real workspace shell loop and requires
+`flock`: use util-linux on Linux or `brew install flock` on macOS. The macOS
+Mesh CI job installs it before running the journeys.
 Devbox supports Linux and macOS, so that journey is not selected on Windows.
 The complete Linux suite includes all of these journeys.
 

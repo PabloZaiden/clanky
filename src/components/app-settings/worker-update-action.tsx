@@ -25,7 +25,7 @@ export function WorkerUpdateAction({
     const failedCount = failedResults.length;
 
     if (response.totalWorkers === 0) {
-      toast.info("No active global Mesh workers were found.");
+      toast.info("No active Mesh workers were found.");
     } else if (failedCount > 0) {
       const alreadyActiveSummary = alreadyActiveCount > 0
         ? ` ${alreadyActiveCount} already have an active job.`
@@ -34,7 +34,7 @@ export function WorkerUpdateAction({
         .map(({ workerName, error }) => `${workerName}: ${error}`)
         .join("; ");
       toast.error(
-        `Started update jobs for ${startedCount} of ${response.totalWorkers} global workers.${alreadyActiveSummary} Failed workers (${failedCount}): ${failureDetails}`,
+        `Started update jobs for ${startedCount} of ${response.totalWorkers} workers.${alreadyActiveSummary} Failed workers (${failedCount}): ${failureDetails}`,
         { duration: 0 },
       );
     } else if (startedCount > 0) {
@@ -42,18 +42,18 @@ export function WorkerUpdateAction({
         ? ` ${alreadyActiveCount} already have an active job.`
         : "";
       toast.success(
-        `Started update jobs for ${startedCount} global workers.${alreadyActiveSummary}`,
+        `Started update jobs for ${startedCount} workers.${alreadyActiveSummary}`,
       );
     } else {
       toast.info(
-        `No new update jobs started; ${alreadyActiveCount} global workers already have an active job.`,
+        `No new update jobs started; ${alreadyActiveCount} workers already have an active job.`,
       );
     }
   }
 
   return (
     <>
-      <SettingsFieldRow title="Global workers" actions={<Button
+      <SettingsFieldRow title="Clanky on servers and automatic workspaces" actions={<Button
           type="button"
           size="sm"
           loading={workerUpdates.starting}
@@ -74,8 +74,8 @@ export function WorkerUpdateAction({
           }
         }}
         onConfirm={() => void startUpdates()}
-        title="Update all global Mesh workers?"
-        message="Update all global workers? Their services restart after a successful update. Active connections may close."
+        title="Update Clanky on all workers?"
+        message="Update Clanky on all enrolled server and automatic workspace workers? Clanky restarts after each successful update. Active connections may close."
         confirmLabel="Update workers"
         loading={workerUpdates.starting}
       />

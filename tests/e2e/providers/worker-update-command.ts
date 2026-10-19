@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { chmod, copyFile, mkdir, rename } from "node:fs/promises";
 import { join } from "node:path";
 
 const args = process.argv.slice(2);
@@ -29,6 +29,15 @@ if (args.length === 1 && args[0] === "update") {
     console.error("Deterministic worker update failed.");
     process.exitCode = 42;
   } else {
+    const target = process.env["CLANKY_E2E_WORKER_UPDATE_BINARY"];
+    if (target) {
+      const source = process.env["CLANKY_E2E_MESH_BINARY"];
+      if (!source) throw new Error("The external release binary is missing.");
+      const staged = `${target}.release`;
+      await copyFile(source, staged);
+      await chmod(staged, 0o755);
+      await rename(staged, target);
+    }
     console.log("Deterministic worker update succeeded.");
   }
 } else if (args.join(" ") === "worker service restart") {
@@ -41,7 +50,11 @@ if (args.length === 1 && args[0] === "update") {
 } else if (args.join(" ") === "worker service status") {
   console.log(JSON.stringify({
     installed: true,
-    running: await Bun.file(join(workerStateDirectory, "service-running")).exists(),
+    running: !await Bun.file(join(workerStateDirectory, "restart-started")).exists()
+      || await Bun.file(join(workerStateDirectory, "service-running")).exists(),
+    instanceId: process.env["CLANKY_WORKER_INSTANCE_ID"],
+    binaryVersion: process.env["CLANKY_WORKER_RUNNING_VERSION"],
+    runningVersion: process.env["CLANKY_WORKER_RUNNING_VERSION"],
   }));
 } else {
   throw new Error(`Unexpected worker update fixture command: ${args.join(" ")}`);

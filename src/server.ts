@@ -537,6 +537,8 @@ export async function getWebAppServer(
   });
   await initializeDatabase();
   if (meshWorker) {
+    process.env["CLANKY_WORKER_INSTANCE_ID"] = crypto.randomUUID();
+    process.env["CLANKY_WORKER_RUNNING_VERSION"] = CLANKY_VERSION;
     log.info("Loading Mesh worker node identity");
   }
   const identity = await ensureLocalMeshNodeIdentity();
