@@ -74,8 +74,10 @@ Catalog acquisition rejects a changed host binding instead of caching another
 host's catalog. A failed first connection can be initialized again after its
 teardown succeeds. Failed helper teardown remains tracked for a later cleanup
 attempt; resetting a workspace attempts every helper even if one fails.
-Shutdown stops background producers, rejects new backend acquisition, and awaits
-backend teardown before closing Mesh relays and gateways. Tasks first checkpoint
+Shutdown freezes new chat input before stopping background producers, drains
+chat admission, checkpoints conversations under their owning user context, and detaches native
+observers before disconnecting backends. Backend teardown finishes before
+Mesh relays and gateways close. Tasks first checkpoint
 under their owning user context; interrupted planning remains resumable after
 restart rather than being marked stopped or failed by transport cleanup.
 
@@ -168,8 +170,29 @@ Unfinished native responses retain a durable message checkpoint. If a provider
 replaces a provisional message identity while Clanky is disconnected and its
 history cannot establish the correlation, reconnection reports a gap before
 replaying history; it does not merge messages by matching their text. An
-observation failure cancels the unobserved principal with a bounded abort wait
-and disconnects its runtime if cancellation fails.
+integrity/history observation failure cancels the unobserved principal with a
+bounded abort wait and disconnects its runtime if cancellation fails.
+
+A native transport closure alone is a disconnection, not a failed conversation.
+A completed idle chat remains idle after a normal restart, `SIGKILL`, or container
+loss, without requiring a new message to clear a false error. An interrupted
+principal is stopped, not reported as successful; incomplete responses and
+uncertain input delivery remain available for reconciliation. Genuine provider,
+ownership and history-integrity failures remain explicit.
+
+Copilot reasoning/tool-only completions without text do not replace another
+message's active text stream. That stream still completes under its native
+identity; an unrelated textual response cannot silently replace unfinished text.
+Shutdown-cancelled admission remains stopped/disconnected with recovery guidance,
+unlike an explicit user interrupt that can return to idle. Queued native input
+preserves that recovery state on transport loss. Admitted question and permission
+replies, including their resulting state writes, drain before backend teardown.
+
+Startup invalidates saved connection and available-activity projections.
+Disconnected activity is unknown, not an empty list of background work. Resume
+reconciles the original conversation before accepting another prompt. This does
+not guarantee that background work survives the death of its execution runtime
+or container; clean shutdown is an optimization, not a recovery requirement.
 
 For tasks, the completion marker seals the logical result. Owned native cleanup
 and safe Git finalization happen separately. Active or unconfirmed writers can

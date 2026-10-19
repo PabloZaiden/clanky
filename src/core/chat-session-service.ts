@@ -164,9 +164,9 @@ export class ChatSessionService implements ChatSessionPort {
     const controlModeChanged = backendConnected
       && this.connectedControlModes.get(backend) !== controlTools;
     if (!backendConnected || backend.getDirectory() !== stagedWorking.directory || controlModeChanged) {
-      if (backendConnected) {
-        await backend.disconnect();
-      }
+      await this.onNativeDisconnect?.(chat.config.id);
+      await harnessActivityService.close({ kind: "chat", id: chat.config.id });
+      await backend.disconnect();
       const identity = await managedContextIdentityResolver.forChat(
         stagedWorking.chat.config.id,
         workspaceId,
@@ -352,6 +352,7 @@ export class ChatSessionService implements ChatSessionPort {
       }));
       if (existing.binding) await this.observe(chat.config.id, existing.binding, backend, true);
     } catch (error) {
+      if (options.signal?.aborted) throw error;
       await this.failChat(reconnectingChat, error);
       throw error;
     }

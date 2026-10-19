@@ -111,5 +111,25 @@ export async function resetStaleChat(chatId: string): Promise<boolean> {
 }
 
 export async function resetStaleChats(): Promise<number> {
-  return resetStale();
+  const resetCount = resetStale();
+  const db = getDatabase();
+  const userId = requirePersistenceUserId();
+  db.transaction(() => {
+    const rows = db.query<{ id: string; harness_state_json: string | null }, [string]>(
+      "SELECT id, harness_state_json FROM chats WHERE user_id = ? AND deleted_at IS NULL",
+    ).all(userId);
+    for (const row of rows) {
+      const harness = parseStoredHarnessState(row.harness_state_json, row.id);
+      if (harness?.activity?.observation !== "available") continue;
+      db.run(
+        "UPDATE chats SET harness_state_json = ?, state_revision = state_revision + 1 WHERE id = ? AND user_id = ?",
+        [JSON.stringify({ ...harness, activity: { observation: "unavailable", reason: "disconnected" } }), row.id, userId],
+      );
+    }
+    db.run(
+      "UPDATE chats SET connection_status = 'disconnected', state_revision = state_revision + 1 WHERE user_id = ? AND deleted_at IS NULL AND connection_status IN ('connected', 'connecting')",
+      [userId],
+    );
+  })();
+  return resetCount;
 }

@@ -141,11 +141,11 @@ function signalManagedProcess(process: ManagedProcess, signal: NodeJS.Signals): 
   }
 }
 
-export async function stopManagedProcess(process: ManagedProcess): Promise<void> {
+export async function stopManagedProcess(process: ManagedProcess, options: { force?: boolean } = {}): Promise<void> {
   if (process.child.exitCode !== null) {
     return;
   }
-  signalManagedProcess(process, "SIGTERM");
+  signalManagedProcess(process, options.force ? "SIGKILL" : "SIGTERM");
   if (await waitForExit(process.child, SHUTDOWN_TIMEOUT_MS)) {
     return;
   }

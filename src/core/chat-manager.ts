@@ -158,6 +158,26 @@ function isChatServiceBundle(
 }
 
 export class ChatManager {
+  beginShutdown(): void {
+    this.services.interaction.beginShutdown();
+    this.services.conversation.beginShutdown();
+  }
+
+  async shutdown(): Promise<void> {
+    this.beginShutdown();
+    const failures: unknown[] = [];
+    for (const shutdown of [
+      () => this.services.interaction.shutdown(),
+      () => this.services.conversation.shutdown(),
+    ]) {
+      try {
+        await shutdown();
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    if (failures.length) throw new AggregateError(failures, "Chat shutdown failed.");
+  }
   private readonly services: ChatServiceBundle;
 
   constructor(emitter?: SimpleEventEmitter<ChatEvent>);
@@ -276,15 +296,15 @@ export class ChatManager {
   }
 
   async reconnectSession(chatId: string, options: ReconnectChatOptions = {}): Promise<Chat | null> {
-    return await this.services.trash.runLiveOperation(chatId, async () => {
+    return await this.services.trash.runLiveOperation(chatId, () => this.services.conversation.runStartupOperation(chatId, async (signal) => {
       const chat = await this.services.state.getChat(chatId);
       if (!chat) return null;
-      const reconnected = await this.services.session.reconnectSession(chat, options);
+      const reconnected = await this.services.session.reconnectSession(chat, { ...options, signal });
       if (reconnected.state.status === "idle") {
         this.services.interaction.scheduleQueuedMessageDrain(chatId);
       }
       return reconnected;
-    });
+    }, options.signal));
   }
 
   async continueFromHistory(

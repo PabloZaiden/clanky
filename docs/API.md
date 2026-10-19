@@ -329,6 +329,27 @@ session's server data are temporary. Sessions are not shared or adopted from
 other VS Code instances. A lost execution host can prevent immediate cleanup;
 such failures are reported rather than claiming a confirmed shutdown.
 
+VS Code resource ownership is saved before its private directory, credentials,
+or process is created. After controller loss, startup retries cleanup on the
+original execution host, including removal of that session's temporary data.
+It never sweeps the host's temporary directory or adopts other VS Code instances.
+If cleanup cannot be confirmed, the preview remains listed as `closing` with an
+error, not as a usable editor. Retry `DELETE /api/previews/:previewId` when the
+host is available; the next controller restart also retries. Workspace deletion
+waits for in-progress preview launches and requires its previews to close first
+so their cleanup records are not discarded.
+Execution-target edits also close existing previews before changing the original
+host metadata; unavailable cleanup prevents that edit. Registered SSH server
+address, port, username changes and deletion follow the same rule, retaining
+the original metadata and credentials if cleanup fails. Preview launches are
+serialized with those mutations. Relay-backed cleanup is
+retried after the controller connection is authenticated and worker authorization
+has synchronized.
+Pre-upgrade previews have no recoverable ownership metadata: their stale bridges
+are removed, but Clanky cannot safely infer or delete their old host resources.
+On Windows, normal shutdown uses native process-tree termination; after abrupt
+controller loss, resources remain pending when termination cannot be confirmed.
+
 The first launch may download VS Code server components and needs the host's
 network access and supported system libraries. Startup waits for the editor
 to be served, not just a listening port, with a two-minute startup deadline.
@@ -679,6 +700,12 @@ The operation does not start a persistent shell. Use the terminal endpoints
 for interactive sessions. SSH hosts can receive the temporary credential token
 issued by Clanky through `--credential-token TOKEN`.
 
+Terminal `connected`/`connecting` describes a live controller attachment, not the
+shell's lifetime. Startup resets those saved states to `disconnected`, including
+after an unclean shutdown, without deleting the terminal or stopping its
+persistent dtach/tmux shell. Reattach to resume the shell when its execution host
+and session survived; direct shells do not have that persistence guarantee.
+
 ## Endpoints
 
 ### Current Clanky route inventory
@@ -786,8 +813,8 @@ included in this table.
 | GET, PUT | `/api/preferences/markdown-rendering` | Persist markdown rendering preferences. |
 | GET, PUT | `/api/preferences/quick-chat` | Persist quick chat workspace and model preferences. |
 | GET, PUT | `/api/preferences/scheduler-timezone` | Persist the scheduler timezone preference. |
-| GET | `/api/previews` | List all active workspace and direct server previews. |
-| DELETE | `/api/previews/:previewId` | Close an active workspace or direct server preview. |
+| GET | `/api/previews` | List active previews and previews with pending cleanup. |
+| DELETE | `/api/previews/:previewId` | Close a preview or retry its pending cleanup on the original host. |
 | GET | `/api/previews/bridge` | Open the raw websocket bridge for a workspace or direct server preview. |
 | POST | `/api/provisioning-jobs` | Start a remote provisioning job. |
 | POST | `/api/provisioning-jobs/:id/dismiss` | Dismiss a terminal provisioning job. |

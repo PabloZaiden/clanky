@@ -1439,6 +1439,7 @@ const POLICY_PROFILES = {
     boundary: "authenticated",
     mappings: {
       ...COMMON_MAPPINGS,
+      code_cleanup_failed: { status: 502, messageFromDetails: (error) => error.message },
       invalid_encrypted_credential: {
         status: 400,
         message: "The encrypted credential is invalid.",

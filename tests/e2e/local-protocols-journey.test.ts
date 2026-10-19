@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { join } from "node:path";
+import { mkdir, readdir } from "node:fs/promises";
 import { E2EApplication } from "./support/application";
 import { createGitFixture } from "./support/git";
 import { pollUntil } from "./support/polling";
@@ -890,16 +891,29 @@ describe("compiled local protocol journey", () => {
     await installExternalCode(application.providerBinDirectory);
     voiceProvider = await startVoiceProvider(application.runDirectory);
     try {
+      const temporaryDirectory = join(application.runDirectory, "temporary");
+      await mkdir(temporaryDirectory);
+      const env = {
+        NODE_EXTRA_CA_CERTS: voiceProvider.certificatePath,
+        TMPDIR: temporaryDirectory,
+      };
       await application.start({
-        env: {
-          NODE_EXTRA_CA_CERTS: voiceProvider.certificatePath,
-        },
+        env,
       });
       const { apiKey, baseBranch, workspace } = await createWorkspaceAndKey(application);
       await exerciseCodePreview({
         baseUrl: application.baseUrl, apiKey,
         homeDirectory: application.homeDirectory, logsDirectory: application.logsDirectory,
         workspace: "Local protocols", workspaceId: workspace.id, expectedDirectory: workspace.directory,
+        ...(process.platform !== "win32" ? {
+          restartController: async () => {
+            const ownedDirectories = (await readdir(temporaryDirectory)).filter((name) => name.startsWith("clanky-code-"));
+            expect(ownedDirectories).toHaveLength(1);
+            await application!.restart({ force: true, env });
+            expect((await readdir(temporaryDirectory)).filter((name) => name.startsWith("clanky-code-"))).toEqual([]);
+            return application!.baseUrl;
+          },
+        } : {}),
       });
       const terminalWorktreeDirectory = join(application.runDirectory, "terminal-worktree");
       await requireCommand([

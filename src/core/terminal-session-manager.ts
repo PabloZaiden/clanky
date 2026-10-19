@@ -27,6 +27,7 @@ import {
   listTerminalSessions,
   listTerminalSessionsByWorkspace,
   saveTerminalSession,
+  resetTerminalConnections,
 } from "../persistence/terminal-sessions";
 import { loadTask } from "../persistence/tasks";
 import { backendManager } from "./backend-manager";
@@ -80,6 +81,9 @@ function isPersistentTerminalSession(session: TerminalSession): boolean {
 }
 
 export class TerminalSessionManager {
+  reconcileStartupState(): number {
+    return resetTerminalConnections();
+  }
   async listSessions(workspaceId?: string): Promise<TerminalSession[]> {
     if (workspaceId) {
       return await listTerminalSessionsByWorkspace(workspaceId);

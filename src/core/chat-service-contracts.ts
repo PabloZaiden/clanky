@@ -227,6 +227,8 @@ export interface ChatSessionPort {
 }
 
 export interface ChatConversationPort {
+  beginShutdown(): void;
+  shutdown(): Promise<void>;
   withLiveActivity(chat: Chat): Chat;
   getLiveTranscript(chatId: string): LiveTranscriptState | undefined;
   runStartupOperation<T>(
@@ -262,6 +264,8 @@ export interface ChatConversationPort {
 }
 
 export interface ChatInteractionPort {
+  beginShutdown(): void;
+  shutdown(): Promise<void>;
   replyToQuestion(chatId: string, requestId: string, answers: string[][], clientId?: string): Promise<Chat>;
   reconcileQueuedMessage(chatId: string, queuedMessageId: string): Promise<{ chat: Chat; admission: HarnessInputAdmission }>;
   steerQueuedMessage(chatId: string, queuedMessageId: string): Promise<{ chat: Chat; admission: HarnessInputAdmission }>;

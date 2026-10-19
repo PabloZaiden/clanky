@@ -30,14 +30,27 @@ const sessions = new Map<string, Session>();
 const pending = new Map<string, { session: Session; name: string; timer: ReturnType<typeof setTimeout> }>();
 const waiting = new Map<string, AbortController>();
 const background = new Map<string, { controller: AbortController; operation: Promise<void> }>();
-const statePath = join(process.env["HOME"]!, "copilot-native-sessions.json");
-if (await Bun.file(statePath).exists()) {
-  const stored: Session[] = JSON.parse(await Bun.file(statePath).text());
-  for (const session of stored) sessions.set(session.id, { ...session, processing: false });
+const stateDirectory = join(process.env["HOME"]!, "copilot-native-sessions");
+await mkdir(stateDirectory, { recursive: true });
+
+function sessionPath(id: string): string {
+  return join(stateDirectory, `${encodeURIComponent(id)}.json`);
+}
+
+async function loadSession(id: string): Promise<Session | undefined> {
+  const existing = sessions.get(id);
+  if (existing) return existing;
+  const file = Bun.file(sessionPath(id));
+  if (!await file.exists()) return undefined;
+  const session: Session = { ...await file.json(), processing: false };
+  sessions.set(id, session);
+  return session;
 }
 
 async function save(): Promise<void> {
-  await Bun.write(statePath, JSON.stringify([...sessions.values()]));
+  await Promise.all([...sessions.values()].map((session) =>
+    Bun.write(sessionPath(session.id), JSON.stringify(session)),
+  ));
 }
 
 function write(message: Record<string, unknown>): void {
@@ -207,7 +220,7 @@ async function completeAfterInputFile(session: Session, path: string, controller
 async function dispatch(frame: JsonRpcMessage): Promise<void> {
   if (frame.id === undefined || !frame.method) return;
   const params = frame.params && typeof frame.params === "object" ? frame.params as Record<string, unknown> : {};
-  const session = sessions.get(String(params["sessionId"]));
+  const session = typeof params["sessionId"] === "string" ? await loadSession(params["sessionId"]) : undefined;
   let result: unknown;
   switch (frame.method) {
     case "connect":
@@ -320,6 +333,7 @@ async function dispatch(frame: JsonRpcMessage): Promise<void> {
         clearTimeout(request.timer);
         pending.delete(id);
       }
+      await Bun.file(sessionPath(session!.id)).delete();
       sessions.delete(session!.id);
       await save();
       result = { success: true };

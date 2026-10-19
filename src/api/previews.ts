@@ -78,7 +78,7 @@ export const previewRoutes = defineRoutes({
   "/api/previews": {
     auth: "user",
     sameOrigin: "mutations",
-    description: "List all active previews for the current user.",
+    description: "List active previews and previews with pending cleanup for the current user.",
     operations: {
       GET: { requestSchema: undefined, querySchema: undefined, automation: { policy: "read" } },
     },
@@ -96,7 +96,7 @@ export const previewRoutes = defineRoutes({
   "/api/previews/:previewId": {
     auth: "user",
     sameOrigin: "mutations",
-    description: "Close an active preview.",
+    description: "Close a preview or retry its pending cleanup on the original execution host.",
     operations: {
       DELETE: { requestSchema: undefined, querySchema: undefined, automation: { policy: "confirm", reason: "Closes an active preview and its transport." } },
     },

@@ -11,8 +11,26 @@ import {
   resolveExecutionHostBindingId,
 } from "./execution-hosts";
 import { requirePersistenceUserId } from "./ownership";
+import { z } from "zod";
+import type { CodePreviewCleanup } from "@/shared/preview";
 
 const log = createLogger("persistence:preview-sessions");
+const CodeCleanupSchema = z.object({
+  kind: z.literal("owned"),
+  temporaryDirectory: z.string().min(1),
+  directory: z.string().min(1),
+  pathStyle: z.enum(["posix", "windows"]),
+}).strict();
+
+function parseCodeCleanup(raw: unknown, id: unknown): CodePreviewCleanup | undefined {
+  if (raw === null || raw === undefined) return undefined;
+  try {
+    return CodeCleanupSchema.parse(JSON.parse(String(raw)));
+  } catch (error) {
+    log.error("Invalid saved VS Code cleanup ownership; retaining its record", { id, error: String(error) });
+    return { kind: "invalid" };
+  }
+}
 
 function previewToRow(preview: PreviewSession): Record<string, number | string | null> {
   const userId = requirePersistenceUserId();
@@ -41,6 +59,9 @@ function previewToRow(preview: PreviewSession): Record<string, number | string |
     initial_path: preview.config.initialPath,
     cli_client_id: preview.config.cliClientId ?? null,
     cli_hostname: preview.config.cliHostname ?? null,
+    ...(preview.config.codeCleanup?.kind === "invalid" ? {} : {
+      code_cleanup_json: preview.config.codeCleanup ? JSON.stringify(preview.config.codeCleanup) : null,
+    }),
     created_at: preview.config.createdAt,
     updated_at: preview.config.updatedAt,
     status: preview.state.status,
@@ -80,6 +101,7 @@ function rowToPreview(row: Record<string, unknown>): PreviewSession {
       initialPath: row["initial_path"] as string,
       cliClientId: (row["cli_client_id"] as string | null) ?? undefined,
       cliHostname: (row["cli_hostname"] as string | null) ?? undefined,
+      codeCleanup: parseCodeCleanup(row["code_cleanup_json"], row["id"]),
       createdAt: row["created_at"] as string,
       updatedAt: row["updated_at"] as string,
     },

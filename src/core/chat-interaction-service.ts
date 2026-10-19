@@ -25,11 +25,12 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import { HarnessError } from "../backends/harness-errors";
 import type { HarnessInputAdmission } from "@/shared/harness-control";
 import { isHarnessInputValidationError, retainHarnessInputReceipt } from "./harness-input-ledger";
-import { DomainError } from "../domain/domain-error";
+import { DomainError, isDomainError } from "../domain/domain-error";
 import type { ChatQuestionService } from "./chat-question-service";
 import { buildPromptParts } from "../backends/prompt-parts";
 import type { ChatAttachmentService } from "./chat-attachment-service";
 import { KeyedOperationQueue } from "../utils/keyed-operation-queue";
+import { withTimeout } from "../utils/async-operation";
 import { requireMatchingHarnessBinding } from "../backends/harness-binding";
 import { updateQuestionAnswerStatus } from "@/shared/harness-questions";
 import type {
@@ -81,9 +82,24 @@ function getQueuedPromptAttachmentByteLength(
 }
 
 export class ChatInteractionService implements ChatInteractionPort {
+  private shuttingDown = false;
+
+  beginShutdown(): void {
+    this.shuttingDown = true;
+    this.queuedCredentialTokens.clear();
+  }
+
+  async shutdown(): Promise<void> {
+    this.beginShutdown();
+    await withTimeout(Promise.all([
+      this.inputOperations.drain(),
+      Promise.allSettled([...this.pendingReplies]),
+    ]), 5_000, "Chat input shutdown timed out");
+  }
   private readonly queuedMessageDrains = new Set<string>();
   private readonly queuedCredentialTokens = new Map<string, string>();
   private readonly inputOperations = new KeyedOperationQueue();
+  private readonly pendingReplies = new Set<Promise<unknown>>();
   private readonly state: ChatStatePort;
   private readonly conversation: ChatConversationPort;
   private readonly session: ChatSessionPort;
@@ -105,8 +121,10 @@ export class ChatInteractionService implements ChatInteractionPort {
   private readonly questions?: Pick<ChatQuestionService, "reply">;
 
   replyToQuestion(chatId: string, requestId: string, answers: string[][], clientId?: string): Promise<Chat> {
-    if (!this.questions) throw new HarnessError("harness_unsupported_feature", "Chat questions are unavailable.");
-    return this.questions.reply(chatId, requestId, answers, clientId);
+    return this.trackReply(async () => {
+      if (!this.questions) throw new HarnessError("harness_unsupported_feature", "Chat questions are unavailable.");
+      return await this.questions.reply(chatId, requestId, answers, clientId);
+    });
   }
 
   sendMessage(chatId: string, options: ChatMessageOptions): Promise<Chat> {
@@ -180,7 +198,15 @@ export class ChatInteractionService implements ChatInteractionPort {
     return updated;
   }
 
-  async replyToPermission(
+  replyToPermission(
+    chatId: string,
+    requestId: string,
+    decision: ChatPermissionDecision,
+  ): Promise<Chat | null> {
+    return this.trackReply(() => this.replyToPermissionUnlocked(chatId, requestId, decision));
+  }
+
+  private async replyToPermissionUnlocked(
     chatId: string,
     requestId: string,
     decision: ChatPermissionDecision,
@@ -273,6 +299,7 @@ export class ChatInteractionService implements ChatInteractionPort {
   }
 
   scheduleQueuedMessageDrain(chatId: string): void {
+    if (this.shuttingDown) return;
     if (this.queuedMessageDrains.has(chatId)) {
       return;
     }
@@ -313,6 +340,7 @@ export class ChatInteractionService implements ChatInteractionPort {
       const attachmentFiles = await this.attachments.prepare(chat, message, {
         credentialToken: this.queuedCredentialTokens.get(chatId),
       });
+      this.assertAcceptingInput();
       const unknown: HarnessInputAdmission = { status: "unknown", inputId: queuedMessageId };
       let reserved = false;
       chat = await this.state.mutateState(chatId, (current) => {
@@ -359,6 +387,7 @@ export class ChatInteractionService implements ChatInteractionPort {
       let admission: HarnessInputAdmission;
       let validationError: DomainError | undefined;
       try {
+        this.assertAcceptingInput();
         admission = await backend.harness.steer(binding.nativeId, {
           inputId: queuedMessageId,
           clientId: message.clientId,
@@ -471,8 +500,29 @@ export class ChatInteractionService implements ChatInteractionPort {
     });
   }
 
-  private serializeInput<T>(chatId: string, operation: () => Promise<T>): Promise<T> {
-    return this.inputOperations.run(chatId, operation);
+  private assertAcceptingInput(): void {
+    if (this.shuttingDown) throw new HarnessError("harness_transport_closed", "Chat input is shutting down.");
+  }
+
+  private async trackReply<T>(reply: () => Promise<T>): Promise<T> {
+    this.assertAcceptingInput();
+    if (this.pendingReplies.size >= 1000) throw new HarnessError("harness_input_capacity", "Pending reply capacity reached.");
+    // Question answers may re-enter sendMessage; track completion without its serial queue.
+    const operation = reply();
+    this.pendingReplies.add(operation);
+    try {
+      return await operation;
+    } finally {
+      this.pendingReplies.delete(operation);
+    }
+  }
+
+  private async serializeInput<T>(chatId: string, operation: () => Promise<T>): Promise<T> {
+    this.assertAcceptingInput();
+    return this.inputOperations.run(chatId, async () => {
+      this.assertAcceptingInput();
+      return operation();
+    });
   }
 
   private normalizeMessageInput(options: ChatMessageOptions): NormalizedChatMessageInput {
@@ -546,6 +596,7 @@ export class ChatInteractionService implements ChatInteractionPort {
   }
 
   private async drainQueuedMessages(chatId: string): Promise<void> {
+    if (this.shuttingDown) return;
     if (this.conversation.hasActiveStream(chatId)) {
       return;
     }
@@ -611,9 +662,15 @@ export class ChatInteractionService implements ChatInteractionPort {
       if (error instanceof ChatBusyError) return;
       const latestChat = await this.state.getChat(chatId);
       if (latestChat) {
+        const binding = latestChat.state.session?.binding;
+        if (isDomainError(error) && error.code === "harness_transport_closed"
+          && binding && binding.adapter !== "acp") {
+          log.warn("Queued chat admission lost its native transport; preserving recovery state", { chatId });
+          return;
+        }
         const message = `Failed to send queued chat messages: ${String(error)}`;
         log.error(message, { chatId });
-        await this.state.markChatError(latestChat, message);
+        await this.state.markChatError(latestChat, message, isDomainError(error) ? error.code : undefined);
       }
     } finally {
       const latest = await this.state.getChat(chatId);

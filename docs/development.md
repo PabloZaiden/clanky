@@ -272,9 +272,11 @@ committed browser automation.
 Run `bun run build && bun run test` before considering a change complete.
 
 The complete Linux suite also starts an isolated OpenSSH server. Install
-`openssh-server` and `sshpass` before running it; the harness creates its own
+`openssh-server`, `sshpass`, and `dtach` before running it; the harness creates its own
 host key, client key, agent socket, port, configuration, and data directory.
 It does not modify the user's SSH keys or contact an external host.
+The SSH terminal journey uses `dtach` to resume a persistent shell after
+controller loss.
 Its single OpenSSH `SetEnv` directive sets an isolated `HOME`, provider `PATH`,
 and `/bin/sh` login shell with an isolated `.profile`. Keep these values in one
 directive: OpenSSH ignores subsequent `SetEnv` declarations. Using the host

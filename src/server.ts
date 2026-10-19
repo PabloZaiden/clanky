@@ -23,6 +23,7 @@ import { resetStaleChats } from "./persistence/chats";
 import { runForEachActiveUser } from "./core/background-users";
 import { backendManager } from "./core/backend-manager";
 import { taskManager } from "./core/task-manager";
+import { chatManager } from "./core/chat-manager";
 import type {
   MacWorkerPermissionPreflightRequest,
   MacWorkerPermissionPreflightWorkerMessage,
@@ -57,6 +58,7 @@ import {
 } from "./realtime";
 import { CLANKY_VERSION } from "./version";
 import { resolveTerminal } from "./core/terminal-connection";
+import { terminalSessionManager } from "./core/terminal-session-manager";
 import { isDomainError } from "./domain/domain-error";
 import { meshTerminalGateway } from "./core/mesh-terminal-gateway";
 import { meshTcpTunnelGateway } from "./core/mesh-tcp-tunnel-gateway";
@@ -189,10 +191,13 @@ async function reconcileStartupState(): Promise<void> {
   await runForEachActiveUser(async (user) => {
     staleTasksReset += await resetStaleTasks();
     staleChatsReset += await resetStaleChats();
+    const resetTerminals = terminalSessionManager.reconcileStartupState();
+    if (resetTerminals > 0) log.info("Reconciled terminal connections during startup", { count: resetTerminals });
     staleManagedContextsRevoked += await managedCredentialService.reconcileCurrentUser();
     await meshManager.reconcileWorkspaceWorkerEnrollments(user.id);
     await provisioningManager.reconcileDedicatedWorkerStartupState();
     workerUpdateManager.reconcileStartupState();
+    await previewSessionManager.initialize();
   });
   if (staleTasksReset > 0) {
     log.info(`Reconciled ${staleTasksReset} stale tasks during startup`);
@@ -635,12 +640,18 @@ export async function getWebAppServer(
                   "controller relay authenticated",
                 );
               },
+              onReady: async () => {
+                await runForEachActiveUser(async () => {
+                  await previewSessionManager.retryPendingCleanup();
+                });
+              },
             },
           );
           meshHealthService.scheduleRefreshAllWorkers("controller startup");
         }
       },
       beforeStop: async () => {
+        chatManager.beginShutdown();
         const errors: unknown[] = [];
         const cleanup = async (operation: () => void | Promise<void>): Promise<void> => {
           try {
@@ -655,6 +666,7 @@ export async function getWebAppServer(
           cleanup(() => previewSessionManager.closeAll()),
           cleanup(() => liveVoiceManager.closeAll()),
         ]);
+        await cleanup(() => chatManager.shutdown());
         await cleanup(() => taskManager.shutdown());
         await cleanup(() => backendManager.shutdown());
         // Remote clients must release their sessions before relays and gateways close.

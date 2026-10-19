@@ -16,6 +16,7 @@ import {
   type PreviewTarget,
   type RegisterCliPreviewOptions,
   type Workspace,
+  isWorkspaceSshExecutionHostRef,
   parsePreviewBridgePath,
   previewWebSocketCloseCode,
 } from "@/shared";
@@ -46,6 +47,10 @@ import { requireCurrentUser, runWithCurrentUser } from "../context/user-context"
 import { CodePreviewHelloSchema } from "../contracts/schemas/preview";
 import { resolveCodePreviewTarget } from "./code-preview-target";
 import { startCodeServer, waitForCodeEditor, type CodeServer } from "./code-server";
+import { cleanupCodeSession } from "./code-session-resources";
+import { closeCommandExecutor } from "./command-executor";
+import { withWorkspaceExecutionLock } from "./workspace-execution-lock";
+import { withSshServerOperation } from "./ssh-server-operations";
 
 const log = createLogger("core:preview-session-manager");
 const LOCAL_TUNNEL_HOST = "127.0.0.1";
@@ -308,16 +313,28 @@ export class PreviewSessionManager {
   private initializingByUserId = new Map<string, Promise<void>>();
   private starting = new Map<PreviewBridgeSocket, { controller: AbortController; promise: Promise<void> }>();
   private closing = new Map<string, Promise<boolean>>();
+  private registering = new Map<string, {
+    userId: string;
+    controller: AbortController;
+    completion: Promise<void>;
+  }>();
 
   constructor(
     private readonly dependencies: PreviewSessionManagerDependencies = {},
   ) {}
 
   async initialize(): Promise<void> {
+    if (this.initializedUserIds.has(requireCurrentUser().id)) return;
+    await this.reconcilePreviewResources();
+  }
+
+  async retryPendingCleanup(): Promise<void> {
+    await this.initialize();
+    await this.reconcilePreviewResources();
+  }
+
+  private async reconcilePreviewResources(): Promise<void> {
     const user = requireCurrentUser();
-    if (this.initializedUserIds.has(user.id)) {
-      return;
-    }
     const existing = this.initializingByUserId.get(user.id);
     if (existing) {
       await existing;
@@ -400,10 +417,68 @@ export class PreviewSessionManager {
     await this.initialize();
     signal?.throwIfAborted();
     const target = await this.resolvePreviewTarget(options.target);
+    const register = async () => {
+      signal?.throwIfAborted();
+      const currentTarget = target.kind === "workspace"
+        ? await this.resolvePreviewTarget({ kind: "workspace", reference: target.workspace.id })
+        : target;
+      const registerOnHost = async () => {
+        signal?.throwIfAborted();
+        executionHostService.validateBinding(currentTarget.binding);
+        const id = crypto.randomUUID();
+        const controller = new AbortController();
+        const completion = Promise.withResolvers<void>();
+        this.registering.set(id, { userId: requireCurrentUser().id, controller, completion: completion.promise });
+        try {
+          return await this.registerResolvedPreview({
+            id, options, target: currentTarget,
+            signal: signal ? AbortSignal.any([signal, controller.signal]) : controller.signal,
+          });
+        } finally {
+          this.registering.delete(id);
+          completion.resolve();
+        }
+      };
+      const host = currentTarget.binding.host;
+      return host.kind === "ssh" && !isWorkspaceSshExecutionHostRef(host)
+        ? await withSshServerOperation(host.serverId, registerOnHost)
+        : await registerOnHost();
+    };
+    return target.kind === "workspace"
+      ? await withWorkspaceExecutionLock(target.workspace.id, register)
+      : await register();
+  }
+
+  private async registerResolvedPreview(context: {
+    id: string;
+    options: RegisterCliPreviewOptions;
+    target: ResolvedPreviewTarget;
+    signal: AbortSignal;
+  }): Promise<{ preview: PreviewSession; targetBaseUrl: string; tunnel?: ChildProcess; codeServer?: CodeServer }> {
+    const { id, options, target, signal } = context;
     const workspace = target.kind === "workspace" ? target.workspace : undefined;
     let sshTunnel: { child: ChildProcess; localPort: number } | undefined;
     let meshForward: PreviewTcpForward | undefined;
-    let preview: PreviewSession | undefined;
+    const createdAt = new Date().toISOString();
+    let preview: PreviewSession = {
+      config: {
+        id,
+        targetKind: target.kind,
+        workspaceId: workspace?.id,
+        executionHostBinding: target.binding,
+        remoteHost: options.remoteHost,
+        remotePort: options.remotePort,
+        localHost: options.localHost,
+        localPort: options.localPort,
+        localUrl: options.localUrl,
+        initialPath: normalizeInitialPath(options.initialPath),
+        cliClientId: options.cliClientId,
+        cliHostname: options.cliHostname,
+        createdAt,
+        updatedAt: createdAt,
+      },
+      state: { status: "closing" },
+    };
     let previewSaved = false;
     let runtimeRegistered = false;
     let codeServer: CodeServer | undefined;
@@ -416,6 +491,12 @@ export class PreviewSessionManager {
         const resolved = await resolveCodePreviewTarget(target.workspace, options.code);
         codeServer = await startCodeServer({
           ...resolved,
+          id: preview.config.id,
+          persistOwnership: async (ownership) => {
+            preview.config.codeCleanup = ownership;
+            await savePreviewSession(preview);
+            previewSaved = true;
+          },
           acceptServerLicenseTerms: options.code.acceptServerLicenseTerms,
           signal: signal ?? new AbortController().signal,
         });
@@ -456,19 +537,8 @@ export class PreviewSessionManager {
       const now = new Date().toISOString();
       preview = {
         config: {
-          id: crypto.randomUUID(),
-          targetKind: target.kind,
-          workspaceId: workspace?.id,
-          executionHostBinding: target.binding,
-          remoteHost: options.remoteHost,
+          ...preview.config,
           remotePort,
-          localHost: options.localHost,
-          localPort: options.localPort,
-          localUrl: options.localUrl,
-          initialPath: normalizeInitialPath(options.initialPath),
-          cliClientId: options.cliClientId,
-          cliHostname: options.cliHostname,
-          createdAt: now,
           updatedAt: now,
         },
         state: {
@@ -509,26 +579,28 @@ export class PreviewSessionManager {
       return { preview, targetBaseUrl, tunnel: sshTunnel?.child, codeServer };
     } catch (error) {
       const cleanupErrors: unknown[] = [];
-      if (preview && runtimeRegistered) {
+      if (runtimeRegistered) {
         this.runtimes.delete(preview.config.id);
         this.closeUpstreamSockets(preview.config.id);
       }
       try {
-        await codeServer?.close();
+        if (codeServer) await codeServer.close();
+        else if (previewSaved) await this.cleanupSavedCodeSession(preview);
       } catch (cleanupError) {
         cleanupErrors.push(cleanupError);
-      }
-      if (preview && previewSaved) {
-        try {
-          await deletePreviewSession(preview.config.id);
-        } catch (cleanupError) {
-          cleanupErrors.push(cleanupError);
-        }
       }
       try {
         await this.closePreviewTransports(sshTunnel?.child, meshForward);
       } catch (cleanupError) {
         cleanupErrors.push(cleanupError);
+      }
+      if (previewSaved) {
+        try {
+          if (cleanupErrors.length) await this.retainPendingCleanup(preview, cleanupErrors[0]);
+          else await deletePreviewSession(preview.config.id);
+        } catch (cleanupError) {
+          cleanupErrors.push(cleanupError);
+        }
       }
       if (cleanupErrors.length) {
         throw new DomainError("code_cleanup_failed", "Failed preview startup could not clean up all owned resources.", {
@@ -542,6 +614,31 @@ export class PreviewSessionManager {
   async listWorkspacePreviews(workspaceId: string): Promise<PreviewSession[]> {
     await this.initialize();
     return await listPreviewSessionsByWorkspaceAndStatuses(workspaceId, ["active", "closing"]);
+  }
+
+  async closeWorkspacePreviews(workspaceId: string): Promise<void> {
+    await this.initialize();
+    const previews = await listPreviewSessionsByWorkspaceAndStatuses(workspaceId, ["active", "closing", "failed"]);
+    await this.closePreviews(previews, "Workspace deleted", "Close this workspace's pending previews before deleting it.");
+  }
+
+  async closeSshServerPreviews(serverId: string): Promise<void> {
+    await this.initialize();
+    const previews = (await listPreviewSessionsByStatuses(["active", "closing", "failed"])).filter((preview) => {
+      const host = preview.config.executionHostBinding.host;
+      return host.kind === "ssh" && !isWorkspaceSshExecutionHostRef(host) && host.serverId === serverId;
+    });
+    await this.closePreviews(previews, "SSH server changed", "Close pending previews before changing or deleting this SSH server.");
+  }
+
+  private async closePreviews(previews: PreviewSession[], reason: string, failureMessage: string): Promise<void> {
+    const results = await Promise.allSettled(previews.map((preview) =>
+      this.closePreview(preview.config.id, reason),
+    ));
+    const failures = results.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
+    if (failures.length) throw new DomainError("code_cleanup_failed", failureMessage, {
+      cause: new AggregateError(failures),
+    });
   }
 
   async listServerPreviews(executionHostRef: ExecutionHostRef): Promise<PreviewSession[]> {
@@ -571,9 +668,21 @@ export class PreviewSessionManager {
   }
 
   async closePreview(id: string, reason = "Preview closed", closeCode = 1000): Promise<boolean> {
+    await this.initialize();
+    const registering = this.registering.get(id);
+    if (registering) {
+      if (registering.userId !== requireCurrentUser().id) return false;
+      registering.controller.abort();
+      await registering.completion;
+    }
     const runtime = this.runtimes.get(id);
     if (runtime && runtime.user.id !== requireCurrentUser().id) return false;
+    if (!await getPreviewSession(id)) return registering !== undefined;
     for (const request of runtime?.requests.values() ?? []) request.controller.abort();
+    return await this.closePreviewOnce(id, reason, closeCode) || registering !== undefined;
+  }
+
+  private async closePreviewOnce(id: string, reason: string, closeCode: number): Promise<boolean> {
     const pending = this.closing.get(id);
     if (pending) return await pending;
     const closing = this.closePreviewOwned(id, reason, closeCode);
@@ -586,14 +695,14 @@ export class PreviewSessionManager {
   }
 
   private async closePreviewOwned(id: string, reason: string, closeCode: number): Promise<boolean> {
-    await this.initialize();
     const preview = await getPreviewSession(id);
     if (!preview) {
       return false;
     }
     const runtime = this.runtimes.get(id);
+    await savePreviewSession({ ...preview, state: { ...preview.state, status: "closing" } });
     const cleanup = await Promise.allSettled([
-      runtime?.codeServer?.close(),
+      runtime?.codeServer ? runtime.codeServer.close() : this.cleanupSavedCodeSession(preview),
       this.closePreviewTransports(runtime?.tunnel, runtime?.meshForward),
     ]);
     this.closeUpstreamSockets(id);
@@ -601,6 +710,14 @@ export class PreviewSessionManager {
     if (bridgeSocket) {
       this.bridgeSockets.delete(id);
       bridgeSocket.data.previewBridgeSessionId = undefined;
+    }
+    const failures = cleanup.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
+    if (failures.length) {
+      await this.retainPendingCleanup(preview, failures[0]);
+      bridgeSocket?.close(1011, "Preview cleanup failed");
+      throw new DomainError("code_cleanup_failed", "Preview process or transport cleanup failed; cleanup remains pending.", {
+        cause: new AggregateError(failures),
+      });
     }
     this.runtimes.delete(id);
     const now = new Date().toISOString();
@@ -622,11 +739,7 @@ export class PreviewSessionManager {
       preview: closedPreview,
       timestamp: now,
     });
-    const failure = cleanup.find((result) => result.status === "rejected");
-    bridgeSocket?.close(failure ? 1011 : closeCode, failure ? "Preview cleanup failed" : reason);
-    if (failure?.status === "rejected") {
-      throw new DomainError("code_cleanup_failed", "Preview process or transport cleanup failed.", { cause: failure.reason });
-    }
+    bridgeSocket?.close(closeCode, reason);
     return true;
   }
 
@@ -687,7 +800,7 @@ export class PreviewSessionManager {
         error,
       },
     };
-    await deletePreviewSession(id);
+    await this.closePreview(id, "Preview failed", 1011);
     previewEventEmitter.emit({
       type: "preview.failed",
       previewId: id,
@@ -1125,28 +1238,57 @@ export class PreviewSessionManager {
   }
 
   private async reconcileStalePreviews(): Promise<void> {
-    const previews = await listPreviewSessionsByStatuses(["active", "closing"]);
+    const previews = await listPreviewSessionsByStatuses(["active", "closing", "failed"]);
     for (const preview of previews) {
-      const now = new Date().toISOString();
-      const closedPreview: PreviewSession = {
-        config: { ...preview.config, updatedAt: now },
-        state: {
-          ...preview.state,
-          status: "closed",
-          closedAt: now,
-          error: "Preview was closed because the server restarted or the bridge connection was lost",
-        },
-      };
-      await deletePreviewSession(preview.config.id);
-      previewEventEmitter.emit({
-        type: "preview.closed",
-        previewId: preview.config.id,
-        workspaceId: preview.config.workspaceId,
-        executionHostBinding: preview.config.executionHostBinding,
-        preview: closedPreview,
-        timestamp: now,
-      });
+      if (this.runtimes.has(preview.config.id) || this.registering.has(preview.config.id)) continue;
+      try {
+        if (!preview.config.codeCleanup) {
+          log.warn("Closing stale preview without durable code ownership; host resources cannot be inferred", { previewId: preview.config.id });
+        }
+        await this.closePreviewOnce(preview.config.id, "Preview closed after controller restart", 1001);
+      } catch (error) {
+        // Keep each failed cleanup independently actionable without blocking
+        // reconciliation of the remaining previews.
+        if (!(error instanceof DomainError && error.code === "code_cleanup_failed")) {
+          log.warn("Preview startup reconciliation could not save cleanup state", { previewId: preview.config.id, error: String(error) });
+        }
+      }
     }
+  }
+
+  private async cleanupSavedCodeSession(preview: PreviewSession): Promise<void> {
+    const ownership = preview.config.codeCleanup;
+    if (!ownership) return;
+    if (ownership.kind === "invalid") {
+      throw new DomainError("code_cleanup_failed", "The saved VS Code resource ownership is invalid; cleanup requires intervention.");
+    }
+    const executor = await executionHostService.getCommandExecutor(preview.config.executionHostBinding, {
+      operationId: preview.config.id,
+      directory: ownership.pathStyle === "windows" ? "\\" : "/",
+    });
+    try {
+      await cleanupCodeSession({ executor, id: preview.config.id, ownership });
+    } finally {
+      closeCommandExecutor(executor);
+    }
+  }
+
+  private async retainPendingCleanup(preview: PreviewSession, error: unknown): Promise<void> {
+    const pending: PreviewSession = {
+      config: { ...preview.config, updatedAt: new Date().toISOString() },
+      state: {
+        ...preview.state,
+        status: "closing",
+        error: "Cleanup is pending. Retry closing this preview when its original execution host is available.",
+      },
+    };
+    await savePreviewSession(pending);
+    log.warn("Preview resources retained for cleanup retry", { previewId: preview.config.id, error: String(error) });
+    previewEventEmitter.emit({
+      type: "preview.failed", previewId: preview.config.id, workspaceId: preview.config.workspaceId,
+      executionHostBinding: preview.config.executionHostBinding, preview: pending,
+      error: pending.state.error!, timestamp: pending.config.updatedAt,
+    });
   }
 
   private async startSshTunnel(options: {

@@ -37,7 +37,7 @@ for (const provider of providers) {
       await useBackgroundConversation({
         client: application, chatId, directory,
         async writeFile(path: string, content: string) { await Bun.write(path, content); },
-        async reconnect() { await application.restart(); },
+        async reconnect() { await application.restart({ force: provider.adapter === "codex" }); },
       });
     } catch (error) {
       console.error(await application.diagnostics());
@@ -55,13 +55,15 @@ test("Mesh users receive native background work and retain it after reconnecting
   const nodes: ManagedMeshNode[] = [];
   try {
     const bin = join(directory, "bin");
+    const home = join(directory, "home");
+    await mkdir(home);
     await installExternalNativeCopilotProvider(bin);
     const command = await compiledClankyCommand();
     const controller = await startMeshNode({ role: "controller", command, instanceName: "Background controller" });
     nodes.push(controller);
     const worker = await startMeshNode({
       role: "worker", command, instanceName: "Background worker",
-      environment: { PATH: `${bin}${delimiter}${process.env["PATH"] ?? ""}` },
+      environment: { HOME: home, PATH: `${bin}${delimiter}${process.env["PATH"] ?? ""}` },
     });
     nodes.push(worker);
     await enrollMeshWorker(controller, worker);

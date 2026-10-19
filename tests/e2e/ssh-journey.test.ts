@@ -110,6 +110,7 @@ interface TerminalSession {
   config: {
     id: string;
   };
+  state: { status: string };
 }
 
 interface TerminalFrame {
@@ -337,11 +338,13 @@ function createAuthenticatedSocket(
   });
 }
 
-async function exerciseSshTerminal(
-  app: E2EApplication,
-  workspace: Workspace,
-  apiKey: string,
-): Promise<void> {
+async function exerciseSshTerminal(options: {
+  app: E2EApplication;
+  workspace: Workspace;
+  apiKey: string;
+  restart: () => Promise<void>;
+}): Promise<void> {
+  const { app, workspace, apiKey } = options;
   const session = (await app.json<TerminalSession>(
     "/api/terminal-sessions",
     {
@@ -350,7 +353,7 @@ async function exerciseSshTerminal(
       body: JSON.stringify({
         workspaceId: workspace.id,
         name: "SSH E2E shell",
-        connectionMode: "direct",
+        connectionMode: "dtach",
         useTmux: false,
       }),
     },
@@ -358,21 +361,19 @@ async function exerciseSshTerminal(
   )).data;
   const frames: TerminalFrame[] = [];
   let output = "";
-  const socket = createAuthenticatedSocket(
-    app,
-    `/api/terminal?terminalSessionId=${encodeURIComponent(session.config.id)}`,
-    apiKey,
-  );
-  socket.addEventListener("message", (event) => {
-    const raw = typeof event.data === "string"
-      ? event.data
-      : Buffer.from(event.data as ArrayBuffer).toString("utf8");
-    const frame = JSON.parse(raw) as TerminalFrame;
-    frames.push(frame);
-    if (frame.type === "terminal.output" && typeof frame.data === "string") {
-      output += frame.data;
-    }
-  });
+  const attach = () => {
+    const socket = createAuthenticatedSocket(
+      app, `/api/terminal?terminalSessionId=${encodeURIComponent(session.config.id)}`, apiKey,
+    );
+    socket.addEventListener("message", (event) => {
+      const raw = typeof event.data === "string" ? event.data : Buffer.from(event.data as ArrayBuffer).toString("utf8");
+      const frame = JSON.parse(raw) as TerminalFrame;
+      frames.push(frame);
+      if (frame.type === "terminal.output" && typeof frame.data === "string") output += frame.data;
+    });
+    return socket;
+  };
+  let socket = attach();
 
   try {
     const connected = await pollUntil(
@@ -384,19 +385,39 @@ async function exerciseSshTerminal(
       },
     );
     expect(connected?.transport).toBe("ssh");
-    expect(connected?.["runtimeConnectionMode"]).toBe("direct");
+    expect(connected?.["runtimeConnectionMode"]).toBe("dtach");
+    const shellValue = crypto.randomUUID();
     socket.send(JSON.stringify({
       type: "terminal.input",
-      data: "printf 'SSH_TERMINAL_E2E:%s\\n' \"$PWD\"\n",
+      data: `export CLANKY_E2E_SHELL_VALUE=${shellValue}; printf 'SSH_TERMINAL_E2E:%s:%s\\n' "$CLANKY_E2E_SHELL_VALUE" "$PWD"\n`,
     }));
     expect(await pollUntil(
       () => output,
-      (value) => value.includes("SSH_TERMINAL_E2E:"),
+      (value) => value.includes(`SSH_TERMINAL_E2E:${shellValue}:${workspace.directory}`),
       {
         description: "SSH terminal command output",
         timeoutMs: 5_000,
       },
     )).toContain(workspace.directory);
+    await options.restart();
+    const disconnected = (await app.json<TerminalSession>(
+      `/api/terminal-sessions/${encodeURIComponent(session.config.id)}`, { apiKey },
+    )).data;
+    expect(disconnected.state.status).toBe("disconnected");
+    socket.close();
+    frames.length = 0;
+    output = "";
+    socket = attach();
+    await pollUntil(() => frames.some((frame) => frame.type === "terminal.connected"), Boolean, {
+      description: "SSH persistent shell reattachment", timeoutMs: 5_000,
+    });
+    socket.send(JSON.stringify({
+      type: "terminal.input",
+      data: "printf 'SSH_RESUMED:%s:%s\\n' \"$CLANKY_E2E_SHELL_VALUE\" \"$PWD\"\n",
+    }));
+    await pollUntil(() => output, (value) => value.includes(`SSH_RESUMED:${shellValue}:${workspace.directory}`), {
+      description: "retained shell environment after controller restart", timeoutMs: 5_000,
+    });
     socket.send(JSON.stringify({ type: "terminal.input", data: "exit\n" }));
     await pollUntil(
       () => frames.some((frame) => frame.type === "terminal.closed"),
@@ -754,7 +775,10 @@ test("compiled app crosses real SSH execution, files, Git, terminal, and ACP bou
       "created by the external ACP provider\n",
     );
 
-    await exerciseSshTerminal(application, workspace, apiKey.token);
+    await exerciseSshTerminal({
+      app: application, workspace, apiKey: apiKey.token,
+      restart: () => application!.restart({ force: true, env: { SSH_AUTH_SOCK: sshServer!.agentSocket } }),
+    });
 
     const provisioningBase = join(application.runDirectory, "provisioned");
     const provisioningStarted = (await application.json<ProvisioningSnapshot>(
