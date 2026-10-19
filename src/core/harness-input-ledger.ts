@@ -8,7 +8,8 @@ import { DomainError } from "../domain/domain-error";
 
 export function isHarnessInputValidationError(error: unknown): error is DomainError {
   return error instanceof DomainError
-    && (error.code === "harness_unsupported_feature" || error.code === "harness_invalid_model_option");
+    && (error.code === "harness_unsupported_feature" || error.code === "harness_invalid_model_option"
+      || error.code === "harness_model_not_available");
 }
 
 export function retainHarnessInputReceipt(receipts: readonly HarnessInputReceipt[], receipt: HarnessInputReceipt): HarnessInputReceipt[] {

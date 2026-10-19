@@ -164,6 +164,13 @@ rather than silently reporting a complete transcript. Local and native Mesh
 conversations follow the same rules; a Mesh worker must advertise native history
 recovery support. ACP retains its existing turn-based behavior.
 
+Unfinished native responses retain a durable message checkpoint. If a provider
+replaces a provisional message identity while Clanky is disconnected and its
+history cannot establish the correlation, reconnection reports a gap before
+replaying history; it does not merge messages by matching their text. An
+observation failure cancels the unobserved principal with a bounded abort wait
+and disconnects its runtime if cancellation fails.
+
 For tasks, the completion marker seals the logical result. Owned native cleanup
 and safe Git finalization happen separately. Active or unconfirmed writers can
 block acceptance/push without restarting task iterations or discarding completion.

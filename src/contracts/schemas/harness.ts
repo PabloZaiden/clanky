@@ -73,6 +73,10 @@ const IdentifiedInputSchema = z.union([
 
 export const HarnessConversationStateSchema = z.object({
   activeTurnAttachmentBytes: z.number().int().nonnegative().max(MESSAGE_ATTACHMENT_MAX_TURN_BYTES).optional(),
+  unfinishedMessage: z.object({
+    nativeId: z.string().min(1),
+    messageId: z.string().min(1),
+  }).optional(),
   historyRecovery: z.object({
     id: z.string().uuid(),
     executionHost: ExecutionHostBindingSchema,
