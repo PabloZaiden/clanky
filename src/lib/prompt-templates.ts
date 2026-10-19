@@ -27,6 +27,20 @@ export interface PromptTemplate {
  */
 export const PROMPT_TEMPLATES: readonly PromptTemplate[] = [
   {
+    id: "start-pr-with-automerge",
+    name: "Start a PR with automerge",
+    description:
+      "Starts a PR, addresses comments without requesting extra reviews, and enables automerge.",
+    prompt: "Start a PR, wait for comments and address them. Don’t ask for extra reviews and after that, enable automerge",
+  },
+  {
+    id: "start-pr",
+    name: "Start a PR",
+    description:
+      "Starts a PR and addresses comments without requesting extra reviews.",
+    prompt: "Start a PR, wait for comments and address them. Don’t ask for extra reviews",
+  },
+  {
     id: "project-analysis",
     name: "Project Analysis",
     description:
