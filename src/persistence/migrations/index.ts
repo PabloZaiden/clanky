@@ -780,6 +780,15 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: 81,
+    name: "persist_code_preview_cleanup_ownership",
+    up: (db) => {
+      if (!getTableColumns(db, "preview_sessions").includes("code_cleanup_json")) {
+        db.run("ALTER TABLE preview_sessions ADD COLUMN code_cleanup_json TEXT");
+      }
+    },
+  },
 ];
 
 function getMigrationTableColumns(db: Database, tableName: string): string[] {

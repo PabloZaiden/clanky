@@ -26,6 +26,10 @@ export interface CodePreviewOptions {
   acceptServerLicenseTerms: boolean;
 }
 
+export type CodePreviewCleanup =
+  | { kind: "owned"; temporaryDirectory: string; directory: string; pathStyle: "posix" | "windows" }
+  | { kind: "invalid" };
+
 export interface PreviewSessionConfig {
   id: string;
   targetKind: PreviewTargetKind;
@@ -39,6 +43,7 @@ export interface PreviewSessionConfig {
   initialPath: string;
   cliClientId?: string;
   cliHostname?: string;
+  codeCleanup?: CodePreviewCleanup;
   createdAt: string;
   updatedAt: string;
 }

@@ -82,9 +82,11 @@ export async function exerciseCodePreview(options: {
   expectedDirectory: string;
   selector?: { chat: string } | { task: string };
   timeoutMs?: number;
+  restartController?: () => Promise<string>;
 }): Promise<void> {
   const timeoutMs = options.timeoutMs ?? LIFECYCLE_TIMEOUT_MS;
   const operationTimeoutMs = options.timeoutMs ?? OPERATION_TIMEOUT_MS;
+  let baseUrl = options.baseUrl;
   const selector = options.selector
     ? "chat" in options.selector
       ? ["--chat", options.selector.chat]
@@ -123,7 +125,15 @@ export async function exerciseCodePreview(options: {
 
     await exerciseIdeConnection(url.href, operationTimeoutMs);
 
-    if (process.platform === "win32") {
+    if (options.restartController) {
+      baseUrl = await options.restartController();
+      const previews = await fetch(`${baseUrl}/api/workspaces/${encodeURIComponent(options.workspaceId ?? options.workspace)}/previews`, {
+        headers: { authorization: `Bearer ${options.apiKey}` },
+        signal: AbortSignal.timeout(operationTimeoutMs),
+      });
+      expect(previews.status).toBe(200);
+      expect(await previews.json()).toEqual([]);
+    } else if (process.platform === "win32") {
       // Bun.kill cannot deliver a console Ctrl+C event on Windows.
       await closePreviewViaApi({
         baseUrl: options.baseUrl,
@@ -139,9 +149,9 @@ export async function exerciseCodePreview(options: {
       description: "VS Code command shutdown",
       timeoutMs,
     });
-    expect(cli.child.exitCode).toBe(0);
+    if (!options.restartController) expect(cli.child.exitCode).toBe(0);
     await expect(fetch(url, { signal: AbortSignal.timeout(operationTimeoutMs) })).rejects.toThrow();
-    const closed = await fetch(`${options.baseUrl}/api/workspaces/${encodeURIComponent(options.workspaceId ?? options.workspace)}/exec`, {
+    const closed = await fetch(`${baseUrl}/api/workspaces/${encodeURIComponent(options.workspaceId ?? options.workspace)}/exec`, {
       method: "POST",
       headers: { authorization: `Bearer ${options.apiKey}`, "content-type": "application/json" },
       signal: AbortSignal.timeout(operationTimeoutMs),

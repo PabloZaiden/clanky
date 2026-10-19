@@ -12,7 +12,7 @@ export interface BackgroundClient {
 
 export interface BackgroundChat {
   config: { id: string };
-  state: { status: string; queuedMessages?: Array<{ content: string }> };
+  state: { status: string; error?: unknown; queuedMessages?: Array<{ content: string }> };
 }
 
 interface Snapshot {
@@ -121,6 +121,9 @@ export async function useBackgroundConversation(options: {
   const persisted = assistantMessages(completed.snapshot);
 
   await reconnect();
+  const reopened = await observe(client, chatId);
+  expect(reopened.chat.state.status).toBe("idle");
+  expect(reopened.chat.state.error).toBeUndefined();
   const resumedRequest = "Keep the inventory and prepare the documentation handoff.";
   await send(resumedRequest);
   const resumed = await pollUntil(() => observe(client, chatId),

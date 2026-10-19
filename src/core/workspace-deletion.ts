@@ -157,6 +157,8 @@ async function deleteWorkspaceWithOptionsUnlocked(
       );
     }
 
+    const { previewSessionManager } = await import("./preview-session-manager");
+    await previewSessionManager.closeWorkspacePreviews(id);
     const { chatManager } = await import("./chat-manager");
     await chatManager.emptyTrash({
       workspaceId: id,

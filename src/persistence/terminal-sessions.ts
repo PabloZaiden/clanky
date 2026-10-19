@@ -20,6 +20,13 @@ import {
 
 const log = createLogger("persistence:terminal-sessions");
 
+export function resetTerminalConnections(): number {
+  return getDatabase().run(
+    "UPDATE terminal_sessions SET status = 'disconnected' WHERE user_id = ? AND status IN ('connected', 'connecting')",
+    [requirePersistenceUserId()],
+  ).changes;
+}
+
 const ALLOWED_TERMINAL_SESSION_COLUMNS = new Set([
   "id",
   "user_id",

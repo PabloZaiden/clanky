@@ -4,12 +4,15 @@
 
 import type { BackendConnectionConfig } from "../types";
 import { HarnessError } from "../harness-errors";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { HarnessEventHub } from "../harness-event-hub";
 import { CodexRuntime } from "./runtime";
 import { CodexModelCatalog } from "./model-catalog";
 import { CodexSessionService } from "./session-service";
 import { CodexQuestionCoordinator } from "./question-coordinator";
 import { CodexControl } from "./control";
+
+const log = createLogger("codex:connection");
 
 interface ConnectedServices {
   runtime: CodexRuntime;
@@ -78,11 +81,16 @@ export class CodexConnection {
       if (services) {
         await services.sessions.finishOperations();
         const control = new CodexControl(() => services);
-        for (const rootId of services.sessions.roots()) {
-          try {
-            const cleanup = await control.settleOwnedWork(rootId);
-            if (cleanup.status !== "settled") throw new HarnessError("harness_request_failed", "Native work did not settle before disconnect.");
-          } catch (error) { errors.push(error); }
+        const roots = services.sessions.roots();
+        if (services.runtime.isOpen()) {
+          for (const rootId of roots) {
+            try {
+              const cleanup = await control.settleOwnedWork(rootId);
+              if (cleanup.status !== "settled") throw new HarnessError("harness_request_failed", "Native work did not settle before disconnect.");
+            } catch (error) { errors.push(error); }
+          }
+        } else if (roots.length) {
+          log.warn("Closed Codex runtime cannot confirm owned-work cleanup; resume must reconcile activity", { conversations: roots.length });
         }
         services.questions.close();
         services.sessions.close();

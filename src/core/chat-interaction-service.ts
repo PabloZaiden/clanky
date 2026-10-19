@@ -30,6 +30,7 @@ import type { ChatQuestionService } from "./chat-question-service";
 import { buildPromptParts } from "../backends/prompt-parts";
 import type { ChatAttachmentService } from "./chat-attachment-service";
 import { KeyedOperationQueue } from "../utils/keyed-operation-queue";
+import { withTimeout } from "../utils/async-operation";
 import { requireMatchingHarnessBinding } from "../backends/harness-binding";
 import { updateQuestionAnswerStatus } from "@/shared/harness-questions";
 import type {
@@ -81,6 +82,13 @@ function getQueuedPromptAttachmentByteLength(
 }
 
 export class ChatInteractionService implements ChatInteractionPort {
+  private shuttingDown = false;
+
+  async shutdown(): Promise<void> {
+    this.shuttingDown = true;
+    this.queuedCredentialTokens.clear();
+    await withTimeout(this.inputOperations.drain(), 5_000, "Chat input shutdown timed out");
+  }
   private readonly queuedMessageDrains = new Set<string>();
   private readonly queuedCredentialTokens = new Map<string, string>();
   private readonly inputOperations = new KeyedOperationQueue();
@@ -105,6 +113,7 @@ export class ChatInteractionService implements ChatInteractionPort {
   private readonly questions?: Pick<ChatQuestionService, "reply">;
 
   replyToQuestion(chatId: string, requestId: string, answers: string[][], clientId?: string): Promise<Chat> {
+    this.assertAcceptingInput();
     if (!this.questions) throw new HarnessError("harness_unsupported_feature", "Chat questions are unavailable.");
     return this.questions.reply(chatId, requestId, answers, clientId);
   }
@@ -185,6 +194,7 @@ export class ChatInteractionService implements ChatInteractionPort {
     requestId: string,
     decision: ChatPermissionDecision,
   ): Promise<Chat | null> {
+    this.assertAcceptingInput();
     const chat = await this.state.getChat(chatId);
     if (!chat) {
       return null;
@@ -273,6 +283,7 @@ export class ChatInteractionService implements ChatInteractionPort {
   }
 
   scheduleQueuedMessageDrain(chatId: string): void {
+    if (this.shuttingDown) return;
     if (this.queuedMessageDrains.has(chatId)) {
       return;
     }
@@ -471,8 +482,16 @@ export class ChatInteractionService implements ChatInteractionPort {
     });
   }
 
-  private serializeInput<T>(chatId: string, operation: () => Promise<T>): Promise<T> {
-    return this.inputOperations.run(chatId, operation);
+  private assertAcceptingInput(): void {
+    if (this.shuttingDown) throw new HarnessError("harness_transport_closed", "Chat input is shutting down.");
+  }
+
+  private async serializeInput<T>(chatId: string, operation: () => Promise<T>): Promise<T> {
+    this.assertAcceptingInput();
+    return this.inputOperations.run(chatId, async () => {
+      this.assertAcceptingInput();
+      return operation();
+    });
   }
 
   private normalizeMessageInput(options: ChatMessageOptions): NormalizedChatMessageInput {
@@ -546,6 +565,7 @@ export class ChatInteractionService implements ChatInteractionPort {
   }
 
   private async drainQueuedMessages(chatId: string): Promise<void> {
+    if (this.shuttingDown) return;
     if (this.conversation.hasActiveStream(chatId)) {
       return;
     }

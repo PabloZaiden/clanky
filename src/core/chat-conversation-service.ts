@@ -74,7 +74,7 @@ import {
 import { buildPromptParts } from "../backends/prompt-parts";
 import type { ChatAttachmentService } from "./chat-attachment-service";
 import { createChatLatencyTimer } from "./chat-latency-instrumentation";
-import { createIdempotentAsyncOperation } from "../utils/async-operation";
+import { createIdempotentAsyncOperation, withTimeout } from "../utils/async-operation";
 import { DEFAULT_ACTIVITY_TIMEOUT_SECONDS } from "@/shared/task";
 import type { QueuedChatMessage } from "@/shared/chat";
 import type { HarnessInputAdmission } from "@/shared/harness-control";
@@ -87,6 +87,8 @@ import { projectQuestionMessages } from "@/shared/question-transcript";
 import { NativeChatObserver } from "./native-chat-observer";
 import type { HarnessConversationBinding } from "@/shared/harness-control";
 import { requireMatchingHarnessBinding } from "../backends/harness-binding";
+import type { CurrentUser } from "@pablozaiden/webapp/contracts";
+import { requireCurrentUser, runWithCurrentUser } from "../context/user-context";
 
 const log = createLogger("chat-conversation-service");
 const DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS = DEFAULT_ACTIVITY_TIMEOUT_SECONDS * 1000;
@@ -96,6 +98,7 @@ const CHAT_INTERRUPT_ABORT_TIMEOUT_MS = 5_000;
 const CHAT_INTERRUPT_STARTUP_SETTLE_TIMEOUT_MS = 5_000;
 
 interface ActiveChatStream {
+  owner: CurrentUser;
   handle: Pick<AgentStreamHandle, "close">;
   generation: number;
   completion: Promise<void>;
@@ -180,6 +183,7 @@ export interface ChatConversationServiceDependencies {
 }
 
 export class ChatConversationService implements ChatConversationPort {
+  private shuttingDown = false;
   private readonly activeStreams = new Map<string, ActiveChatStream>();
   private readonly activeStreamGenerations = new Map<string, number>();
   private readonly startupOperations = new Map<string, StartupOperation>();
@@ -241,6 +245,7 @@ export class ChatConversationService implements ChatConversationPort {
     operation: (signal: AbortSignal) => Promise<T>,
     signal?: AbortSignal,
   ): Promise<T> {
+    this.assertRunning();
     if (this.startupOperations.has(chatId)) {
       throw new ChatBusyError();
     }
@@ -269,6 +274,7 @@ export class ChatConversationService implements ChatConversationPort {
       credentialToken?: string | null;
     } = {},
   ): Promise<Chat> {
+    this.assertRunning();
     const timer = createChatLatencyTimer();
     this.assertChatIsAvailable(chat);
     if (this.startupOperations.has(chat.config.id)) {
@@ -758,6 +764,7 @@ export class ChatConversationService implements ChatConversationPort {
     binding: HarnessConversationBinding;
     recover: boolean;
   }): Promise<void> {
+    this.assertRunning();
     const chatId = chat.config.id;
     const previous = this.activeStreams.get(chatId);
     if (previous?.native?.binding.nativeId === binding.nativeId && previous.native.backend === backend
@@ -770,6 +777,7 @@ export class ChatConversationService implements ChatConversationPort {
     const observer = new NativeChatObserver();
     const generation = this.nextActiveStreamGeneration(chatId);
     const entry: ActiveChatStream = {
+      owner: requireCurrentUser(),
       handle: observer, generation, completion: Promise.resolve(),
       streamState: this.createChatStreamState(chat, 1000),
       native: { observer, backend, binding, executing: false, completedMessages: new Set(), completedTools: new Set() },
@@ -799,20 +807,7 @@ export class ChatConversationService implements ChatConversationPort {
             && event.type !== "permission.asked") return;
           await this.consumeNativeEvent(chatId, entry, event);
         },
-        onFailure: async (error) => {
-          if (this.activeStreams.get(chatId) !== entry) return;
-          const streamState = entry.streamState!;
-          try {
-            await this.flushChatStreamBlocksAfterMetadataReload(chatId, streamState, streamState.interpreter.flushActiveBlocks());
-          } catch (checkpointError) {
-            log.error("Failed to checkpoint native conversation after observation failure", { chatId, error: String(checkpointError) });
-          } finally {
-            await this.cancelUnobservedNativeExecution(chatId, entry);
-          }
-          const latest = await this.state.getChatSummary(chatId);
-          if (latest && this.activeStreams.get(chatId) === entry
-            && latest.state.session?.binding?.nativeId === binding.nativeId) await this.emitChatError(latest, error);
-        },
+        onFailure: (error) => this.handleNativeObservationFailure(chatId, entry, error),
         onClosed: () => {
           if (this.activeStreams.get(chatId) === entry) this.closeActiveStream(chatId);
         },
@@ -826,6 +821,103 @@ export class ChatConversationService implements ChatConversationPort {
       }
       throw error;
     }
+  }
+
+  private async handleNativeObservationFailure(chatId: string, entry: ActiveChatStream, error: unknown): Promise<void> {
+    if (this.activeStreams.get(chatId) !== entry) return;
+    const streamState = entry.streamState!;
+    let failure = error;
+    try {
+      await this.flushChatStreamBlocksAfterMetadataReload(chatId, streamState, streamState.interpreter.flushActiveBlocks());
+    } catch (checkpointError) {
+      log.error("Failed to checkpoint native conversation after observation failure", { chatId, error: String(checkpointError) });
+      failure = new HarnessError("harness_request_failed", "Unable to checkpoint the native conversation.", { cause: checkpointError });
+    }
+    const latest = await this.state.getChatSummary(chatId);
+    if (!latest || this.activeStreams.get(chatId) !== entry
+      || latest.state.session?.binding?.nativeId !== entry.native!.binding.nativeId) return;
+    const transportLost = isDomainError(failure) && failure.code === "harness_transport_closed";
+    const interrupted = entry.native!.executing || isChatBusyStatus(latest.state.status)
+      || latest.state.harness?.unfinishedMessage !== undefined;
+    if (!transportLost || interrupted) await this.cancelUnobservedNativeExecution(chatId, entry);
+    if (!transportLost) {
+      await this.emitChatError(latest, failure);
+      return;
+    }
+    log.warn("Native conversation disconnected", { chatId, interrupted, error: String(error) });
+    await this.persistNativeDisconnection(chatId, interrupted);
+  }
+
+  private async persistNativeDisconnection(chatId: string, interrupted: boolean): Promise<Chat> {
+    // Idle describes the principal, not whether background work survived.
+    // Preserve its result while making the loss of observation explicit.
+    const updated = await this.state.mutateState(chatId, (current) => ({
+      ...current.state,
+      ...(interrupted && current.state.status !== "failed" && current.state.status !== "done" ? {
+        status: "stopped" as const,
+        startupStage: undefined,
+        activeMessageId: undefined,
+        interruptRequested: false,
+        pendingPermissionRequests: [],
+        error: { message: "The connection was lost. Reconnect to recover the conversation.", code: "harness_transport_closed", timestamp: createTimestamp() },
+        harness: {
+          ...current.state.harness,
+          questions: closeOpenQuestions(current.state.harness?.questions, "expired"),
+          activity: { observation: "unavailable" as const, reason: "disconnected" as const },
+        },
+      } : {
+        harness: { ...current.state.harness, activity: { observation: "unavailable" as const, reason: "disconnected" as const } },
+      }),
+      connectionStatus: "disconnected",
+    }));
+    this.state.emitChatUpdated(updated);
+    return updated;
+  }
+
+  async shutdown(): Promise<void> {
+    this.shuttingDown = true;
+    const startups = [...this.startupOperations.values()];
+    for (const startup of startups) {
+      startup.interrupted = true;
+      startup.controller.abort();
+    }
+    const errors: unknown[] = [];
+    try {
+      await withTimeout(Promise.all(startups.map((startup) => startup.settled)), CHAT_INTERRUPT_STARTUP_SETTLE_TIMEOUT_MS, "Chat startup shutdown timed out");
+    } catch (error) {
+      errors.push(error);
+    }
+    const streams = [...this.activeStreams];
+    const results = await Promise.allSettled(streams.map(([chatId, stream]) =>
+      runWithCurrentUser(stream.owner, async () => {
+        try {
+          await withTimeout((async () => {
+            if (stream.native) await this.stopNativeObservation(chatId);
+            else {
+              if (stream.streamState) {
+                await this.flushChatStreamBlocksAfterMetadataReload(chatId, stream.streamState, stream.streamState.interpreter.flushActiveBlocks());
+              }
+              this.closeActiveStream(chatId);
+              await stream.completion;
+            }
+          })(), CHAT_INTERRUPT_STARTUP_SETTLE_TIMEOUT_MS, "Chat checkpoint shutdown timed out");
+        } finally {
+          this.closeActiveStream(chatId);
+        }
+      }),
+    ));
+    const disconnected = await Promise.allSettled(streams.map(([chatId, stream]) =>
+      runWithCurrentUser(stream.owner, () => withTimeout(
+        this.session.disconnectChat(chatId), CHAT_INTERRUPT_ABORT_TIMEOUT_MS, "Chat session shutdown timed out",
+      )),
+    ));
+    errors.push(...results.flatMap((result) => result.status === "rejected" ? [result.reason] : []));
+    errors.push(...disconnected.flatMap((result) => result.status === "rejected" ? [result.reason] : []));
+    if (errors.length) throw new AggregateError(errors, "Failed to checkpoint chat conversations during shutdown.");
+  }
+
+  private assertRunning(): void {
+    if (this.shuttingDown) throw new HarnessError("harness_transport_closed", "Chat conversations are shutting down.");
   }
 
   private async cancelUnobservedNativeExecution(chatId: string, entry: ActiveChatStream): Promise<void> {
@@ -1150,6 +1242,7 @@ export class ChatConversationService implements ChatConversationPort {
   }
 
   private async startActivePrompt(options: ChatPromptStartOptions): Promise<Chat> {
+    this.assertRunning();
     const { chat, backend, sessionId, prompt, signal, answerInputId, historyPromptContext } = options;
     throwIfChatStartupAborted(signal);
     if (backend.harness.capabilities.adapter !== "acp") return this.startNativePrompt(options);
@@ -1163,6 +1256,7 @@ export class ChatConversationService implements ChatConversationPort {
     });
     const generation = this.nextActiveStreamGeneration(chat.config.id);
     const activeStream: ActiveChatStream = {
+      owner: requireCurrentUser(),
       handle,
       generation,
       completion: Promise.resolve(),
@@ -2396,6 +2490,18 @@ export class ChatConversationService implements ChatConversationPort {
   ): Promise<Chat> {
     const message = typeof error === "string" ? error : getAcpErrorMessage(error);
     const errorCode = code ?? (isDomainError(error) ? error.code : undefined);
+    if (errorCode === "harness_transport_closed" && chat.state.session?.binding
+      && chat.state.session.binding.adapter !== "acp") {
+      const entry = this.activeStreams.get(chat.config.id);
+      if (entry?.native) {
+        await this.handleNativeObservationFailure(chat.config.id, entry, new HarnessError("harness_transport_closed", message));
+        entry.native.observer.close();
+        return await this.state.getChat(chat.config.id) ?? chat;
+      }
+      log.warn("Native conversation disconnected during admission", { chatId: chat.config.id });
+      return this.persistNativeDisconnection(chat.config.id, isChatBusyStatus(chat.state.status)
+        || chat.state.harness?.unfinishedMessage !== undefined);
+    }
     log.error("Chat runtime error", { chatId: chat.config.id, error: message });
     const connectionFailed =
       isAcpSshTransportFailure(error)
@@ -2721,24 +2827,4 @@ function isRecoverableChatStartupFailure(error: unknown): boolean {
     || isAcpErrorCode(error, "acp_transport_unavailable")
     || isAcpErrorCode(error, "acp_request_timed_out")
   );
-}
-
-async function withTimeout<T>(
-  operation: Promise<T>,
-  timeoutMs: number,
-  message: string,
-): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      operation,
-      new Promise<T>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(message)), timeoutMs);
-      }),
-    ]);
-  } finally {
-    if (timer !== undefined) {
-      clearTimeout(timer);
-    }
-  }
 }

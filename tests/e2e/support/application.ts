@@ -124,11 +124,12 @@ export class E2EApplication {
   }
 
   async restart(options: {
+    force?: boolean;
     disablePasskey?: boolean;
     env?: Record<string, string>;
     requestHostname?: string;
   } = {}): Promise<void> {
-    await this.stop();
+    await this.stop({ force: options.force });
     await this.start({
       disablePasskey: options.disablePasskey ?? this.disablePasskey,
       env: options.env,
@@ -136,11 +137,11 @@ export class E2EApplication {
     });
   }
 
-  async stop(): Promise<void> {
+  async stop(options: { force?: boolean } = {}): Promise<void> {
     const server = this.server;
     this.server = null;
     if (server !== null) {
-      await stopManagedProcess(server);
+      await stopManagedProcess(server, options);
     }
   }
 

@@ -307,7 +307,10 @@ export function deleteExecutionHost(userId: string, hostId: string): boolean {
   const hasProvisioningHistory = db.query(
     "SELECT 1 FROM provisioning_jobs WHERE execution_host_id = ? AND user_id = ? LIMIT 1",
   ).get(hostId, userId) !== null;
-  if (hasProvisioningHistory) {
+  const hasOwnedPreviewResources = db.query(
+    "SELECT 1 FROM preview_sessions WHERE execution_host_id = ? AND user_id = ? AND code_cleanup_json IS NOT NULL LIMIT 1",
+  ).get(hostId, userId) !== null;
+  if (hasProvisioningHistory || hasOwnedPreviewResources) {
     revokeExecutionHost(userId, hostId);
     return false;
   }

@@ -158,6 +158,14 @@ function isChatServiceBundle(
 }
 
 export class ChatManager {
+  async shutdown(): Promise<void> {
+    const results = await Promise.allSettled([
+      this.services.interaction.shutdown(),
+      this.services.conversation.shutdown(),
+    ]);
+    const failures = results.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
+    if (failures.length) throw new AggregateError(failures, "Chat shutdown failed.");
+  }
   private readonly services: ChatServiceBundle;
 
   constructor(emitter?: SimpleEventEmitter<ChatEvent>);
@@ -276,15 +284,15 @@ export class ChatManager {
   }
 
   async reconnectSession(chatId: string, options: ReconnectChatOptions = {}): Promise<Chat | null> {
-    return await this.services.trash.runLiveOperation(chatId, async () => {
+    return await this.services.trash.runLiveOperation(chatId, () => this.services.conversation.runStartupOperation(chatId, async (signal) => {
       const chat = await this.services.state.getChat(chatId);
       if (!chat) return null;
-      const reconnected = await this.services.session.reconnectSession(chat, options);
+      const reconnected = await this.services.session.reconnectSession(chat, { ...options, signal });
       if (reconnected.state.status === "idle") {
         this.services.interaction.scheduleQueuedMessageDrain(chatId);
       }
       return reconnected;
-    });
+    }, options.signal));
   }
 
   async continueFromHistory(

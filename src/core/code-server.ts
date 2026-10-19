@@ -6,6 +6,8 @@ import { posix, win32 } from "node:path";
 import type { CommandExecutor, CommandResult } from "./command-executor";
 import { DomainError, isDomainError } from "../domain/domain-error";
 import { CODE_PROCESS_CLEANUP, CODE_PROCESS_WRAPPER } from "./code-process-supervision";
+import type { CodePreviewCleanup } from "@/shared/preview";
+import { prepareCodeSession, cleanupCodeSession } from "./code-session-resources";
 
 const MAX_OUTPUT_BYTES = 1024 * 1024;
 
@@ -15,26 +17,6 @@ export interface CodeServer {
   token: string;
   exited: Promise<void>;
   close(): Promise<void>;
-}
-
-async function createSessionDirectory(executor: CommandExecutor, directory: string): Promise<string> {
-  const result = executor.pathStyle === "windows"
-    ? await executor.exec("powershell.exe", [
-        "-NoProfile", "-NonInteractive", "-Command",
-        '$p = Join-Path ([IO.Path]::GetTempPath()) $env:CLANKY_CODE_TEMP_NAME; New-Item -ItemType Directory -Path $p -ErrorAction Stop | Out-Null; Write-Output $p',
-      ], {
-        cwd: directory, timeout: 5_000, logFailures: false,
-        env: { CLANKY_CODE_TEMP_NAME: `clanky-code-${crypto.randomUUID()}` },
-      })
-    : await executor.exec("sh", ["-c", 'umask 077; exec mktemp -d "${TMPDIR:-/tmp}/clanky-code-XXXXXXXX"'], {
-        cwd: directory, timeout: 5_000, logFailures: false,
-      });
-  const path = result.stdout.trim();
-  const paths = executor.pathStyle === "windows" ? win32 : posix;
-  if (!result.success || !paths.isAbsolute(path) || !/^clanky-code-[\w-]+$/.test(paths.basename(path))) {
-    throw new DomainError("code_start_failed", "Unable to create a private VS Code session directory.");
-  }
-  return path;
 }
 
 async function assertCodeAvailable(executor: CommandExecutor, directory: string, signal: AbortSignal): Promise<void> {
@@ -107,7 +89,7 @@ async function stopCodeProcess(options: {
   const timer = setTimeout(() => controller.abort(), 5_000);
   try {
     const result = await run;
-    if (result?.termination === "failed"
+    if ((!stopped && result?.termination === "failed")
       || (executor.pathStyle === "windows" && result && !result.success && result.termination !== "confirmed")) {
       throw new DomainError("code_cleanup_failed", "VS Code process-tree cleanup could not be confirmed.");
     }
@@ -115,7 +97,7 @@ async function stopCodeProcess(options: {
     const confirmedCancellation = isDomainError(error)
       && error.code === "mesh_execution_aborted"
       && (stopped || error.details["terminationConfirmed"] === true);
-    if (!(controller.signal.aborted && confirmedCancellation)) {
+    if (!stopped && !(controller.signal.aborted && confirmedCancellation)) {
       throw error;
     }
   } finally {
@@ -124,6 +106,8 @@ async function stopCodeProcess(options: {
 }
 
 export async function startCodeServer(options: {
+  id: string;
+  persistOwnership: (ownership: CodePreviewCleanup) => Promise<void>;
   executor: CommandExecutor;
   directory: string;
   acceptServerLicenseTerms: boolean;
@@ -132,7 +116,10 @@ export async function startCodeServer(options: {
   const { executor, directory, signal } = options;
   signal.throwIfAborted();
   await assertCodeAvailable(executor, directory, signal);
-  const temporaryDirectory = await createSessionDirectory(executor, directory);
+  const ownership = await prepareCodeSession({
+    executor, directory, id: options.id, persist: options.persistOwnership,
+  });
+  const temporaryDirectory = ownership.temporaryDirectory;
   const paths = executor.pathStyle === "windows" ? win32 : posix;
   const token = crypto.randomUUID().replaceAll("-", "");
   const tokenPath = paths.join(temporaryDirectory, "token");
@@ -147,14 +134,15 @@ export async function startCodeServer(options: {
   const close = (): Promise<void> => closing ??= (async () => {
     try {
       await stopCodeProcess({ executor, directory, pidPath, cleanupPath, controller, run });
+      await cleanupCodeSession({ executor, id: options.id, ownership, processStopped: true });
     } finally {
       controller.abort();
       signal.removeEventListener("abort", abort);
-      if (!(await executor.deletePath(temporaryDirectory, { kind: "directory", recursive: true }))) {
-        throw new DomainError("code_cleanup_failed", "Unable to remove the VS Code session directory.");
-      }
     }
-  })();
+  })().catch((error) => {
+    closing = undefined;
+    throw error;
+  });
 
   try {
     if (!(await executor.writeFile(tokenPath, token))) {
