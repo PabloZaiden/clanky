@@ -518,6 +518,7 @@ async function assertTrustedCaller(
 
 export class MeshExecutionGateway {
   private readonly sessions = new Map<string, MeshExecutionSession>();
+  private readonly pendingOperations = new Map<Promise<void>, string>();
   private readonly asyncCommands = new Map<string, MeshExecutionAsyncCommand>();
   private readonly fileOperationsLock = new AsyncReadWriteLock();
   private readonly asyncCommandRequestIds = new Map<string, string>();
@@ -925,11 +926,12 @@ export class MeshExecutionGateway {
     return () => this.closeListeners.delete(listener);
   }
 
-  closeSessionsForCaller(callerNodeId: string): void {
+  async closeSessionsForCaller(callerNodeId: string): Promise<void> {
     for (const session of this.sessions.values()) {
       if (session.callerNodeId === callerNodeId) this.closeSession(session.sessionId);
     }
     this.abortAsyncCommandsForCaller(callerNodeId);
+    await this.awaitCommandCleanup(callerNodeId);
   }
 
   async getAcpSessionConfig(
@@ -973,6 +975,7 @@ export class MeshExecutionGateway {
         },
       },
     );
+    this.requireSessionRecord(session.sessionId, session.sessionToken);
     this.pruneAsyncCommands();
     if (Buffer.byteLength(JSON.stringify(request), "utf8") > MESH_EXECUTION_MAX_MESSAGE_BYTES) {
       throw new DomainError(
@@ -1313,17 +1316,15 @@ export class MeshExecutionGateway {
     if (session.inFlight >= MESH_EXECUTION_MAX_IN_FLIGHT_REQUESTS) {
       throw new DomainError("mesh_execution_limit_exceeded", "The execution session has too many in-flight requests.");
     }
+    const operation = this.startSessionOperation(session, signal);
     session.inFlight += 1;
-    const treeOperation = request.operation === "walkDirectoryTree"
-      ? this.startSessionOperation(session, signal)
-      : undefined;
     let releaseFileOperation: (() => void) | undefined;
 
     try {
       if (request.operation !== "exec") {
         releaseFileOperation = await this.fileOperationsLock.acquire(
           EXCLUSIVE_EXECUTION_OPERATIONS.has(request.operation) ? "write" : "read",
-          treeOperation?.signal ?? signal,
+          operation.signal,
         );
       }
       const cwd = resolveMeshExecutionPath(
@@ -1343,7 +1344,7 @@ export class MeshExecutionGateway {
               timeout: request.timeout,
               maxOutputBytes: request.maxOutputBytes,
               env: request.env,
-              signal,
+              signal: operation.signal,
               logFailures: false,
             });
           } catch (error) {
@@ -1397,7 +1398,7 @@ export class MeshExecutionGateway {
               timeout: request.timeout,
               maxOutputBytes: request.maxOutputBytes,
               env: request.env,
-              signal,
+              signal: operation.signal,
               logFailures: false,
             });
           } catch (error) {
@@ -1564,7 +1565,7 @@ export class MeshExecutionGateway {
           return entries;
         }
         case "walkDirectoryTree": {
-          return await this.executeDirectoryTree(session, request, treeOperation!.signal);
+          return await this.executeDirectoryTree(session, request, operation.signal);
         }
         case "movePath": {
           if (!request.sourcePath || !request.destinationPath) {
@@ -1611,7 +1612,7 @@ export class MeshExecutionGateway {
       }
 
     } finally {
-      treeOperation?.cleanup();
+      operation.cleanup();
       releaseFileOperation?.();
       session.inFlight -= 1;
     }
@@ -1850,6 +1851,7 @@ export class MeshExecutionGateway {
     session: MeshExecutionSession,
     signal?: AbortSignal,
   ): SessionOperation {
+    this.requireSessionRecord(session.sessionId, session.sessionToken);
     const controller = new AbortController();
     const abortHandler = () => controller.abort();
     if (signal?.aborted) {
@@ -1858,6 +1860,9 @@ export class MeshExecutionGateway {
       signal?.addEventListener("abort", abortHandler, { once: true });
     }
     session.activeControllers.add(controller);
+    let complete!: () => void;
+    const completion = new Promise<void>((resolve) => { complete = resolve; });
+    this.pendingOperations.set(completion, session.callerNodeId);
     let cleaned = false;
     return {
       signal: controller.signal,
@@ -1866,11 +1871,29 @@ export class MeshExecutionGateway {
         cleaned = true;
         signal?.removeEventListener("abort", abortHandler);
         session.activeControllers.delete(controller);
+        this.pendingOperations.delete(completion);
+        complete();
       },
     };
   }
 
-  closeAll(): void {
+  private async awaitCommandCleanup(callerNodeId?: string): Promise<void> {
+    const commands = [...this.asyncCommands.values()].filter((command) =>
+      callerNodeId === undefined || command.callerNodeId === callerNodeId);
+    await Promise.all([
+      ...[...this.pendingOperations].filter(([, owner]) =>
+        callerNodeId === undefined || owner === callerNodeId).map(([completion]) => completion),
+      ...commands.flatMap((command) => command.execution ? [command.execution] : []),
+    ]);
+    if (commands.some((command) => command.error?.code === "mesh_execution_cancel_failed")) {
+      throw new DomainError(
+        "mesh_execution_cleanup_failed",
+        "Mesh command shutdown could not be confirmed.",
+      );
+    }
+  }
+
+  async closeAll(): Promise<void> {
     for (const sessionId of this.sessions.keys()) {
       this.closeSession(sessionId);
     }
@@ -1882,6 +1905,7 @@ export class MeshExecutionGateway {
         });
       }
     }
+    await this.awaitCommandCleanup();
     this.asyncCommands.clear();
     this.asyncCommandRequestIds.clear();
     this.retainedAsyncOutputBytes = 0;

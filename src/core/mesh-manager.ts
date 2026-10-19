@@ -1688,17 +1688,23 @@ export class MeshManager {
 
     if (grant.grantStatus === "active") {
       await revokeControllerGrant(envelope.controllerNodeId);
-      meshExecutionGateway.closeSessionsForCaller(envelope.controllerNodeId);
       log.info("Controller revoked this worker's grant", {
         controllerNodeId: envelope.controllerNodeId,
       });
       const supervisorStopFile = process.env["CLANKY_WORKER_SUPERVISOR_STOP_FILE"];
-      if (supervisorStopFile && !(await listControllerGrants()).some(
+      const stopWorker = supervisorStopFile && !(await listControllerGrants()).some(
         (controller) => controller.grantStatus === "active",
-      )) {
+      );
+      if (stopWorker) {
         // Persist the intentional stop before exiting so the workspace loop cannot resurrect it.
         await Bun.write(supervisorStopFile, "");
-        setTimeout(() => process.exit(0), MESH_WORKER_KILL_DELAY_MS);
+      }
+      try {
+        await meshExecutionGateway.closeSessionsForCaller(envelope.controllerNodeId);
+      } finally {
+        if (stopWorker) {
+          setTimeout(() => process.kill(process.pid, "SIGTERM"), MESH_WORKER_KILL_DELAY_MS);
+        }
       }
     }
   }

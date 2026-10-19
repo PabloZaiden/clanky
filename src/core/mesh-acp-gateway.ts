@@ -520,7 +520,7 @@ export class MeshAcpGateway {
       ...this.stopping.keys(),
     ]);
     await Promise.all([...sessionIds].map((sessionId) => this.close(sessionId)));
-    meshExecutionGateway.closeAll();
+    await meshExecutionGateway.closeAll();
   }
 
   private async handleProcessExit(

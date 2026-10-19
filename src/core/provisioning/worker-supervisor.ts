@@ -85,6 +85,10 @@ case "\${1:-start}" in
       echo "The workspace worker loop is still starting or stopping." >&2
       exit 1
     fi
+    if alive "$pid_file" "$binary"; then
+      echo "A workspace worker is still running without its loop. Run supervisor.sh stop before starting it again." >&2
+      exit 1
+    fi
     rm -f "$stop_file"
     nohup sh "$script" run </dev/null >>"$log_file" 2>&1 &
     attempts=0

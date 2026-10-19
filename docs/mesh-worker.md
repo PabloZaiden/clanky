@@ -625,7 +625,11 @@ replacement even if the Mesh connection disappears. `stop` records an intentiona
 stop, terminates the loop and worker, and waits for shutdown. Running the launcher
 explicitly starts it again. Provisioning cleanup stops the loop, and removing
 the dedicated worker's last controller grant records a permanent stop before the
-worker exits, so retiring a workspace cannot resurrect its runtime.
+worker awaits its command cleanup and normal server shutdown, so retiring a
+workspace cannot resurrect its runtime or leave its commands running.
+If the loop exits unexpectedly while its worker remains alive, startup refuses
+to replace that worker. Run the supervisor's `stop` command before starting
+the launcher again.
 
 ## GitHub CLI credentials in automatic workspaces
 
