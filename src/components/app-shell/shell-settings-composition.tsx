@@ -3,7 +3,6 @@ import type { Workspace } from "@/shared";
 import { DEFAULT_QUICK_CHAT_SETTINGS } from "@/shared/preferences";
 import {
   PurgeTerminalTasksAction,
-  RestartAutomaticWorkspacesAction,
   WorkerUpdateAction,
   QuickChatModelRowContent,
   WorkersSettingsSection,
@@ -40,8 +39,6 @@ export interface ShellSettingsCompositionOptions {
     UseDashboardDataResult,
     | "purgeTerminalTasks"
     | "appSettingsPurgingTerminalTasks"
-    | "restartAutomaticWorkspaces"
-    | "appSettingsRestartingAutomaticWorkspaces"
   >;
   workspaces: Workspace[];
   workspacesLoading: boolean;
@@ -320,12 +317,6 @@ export function buildShellSettingsSections({
                 return result;
               }}
               purgingTerminalTasks={dashboardData.appSettingsPurgingTerminalTasks}
-            />
-            <RestartAutomaticWorkspacesAction
-              workspaces={workspaces}
-              workspacesLoading={workspacesLoading}
-              restarting={dashboardData.appSettingsRestartingAutomaticWorkspaces}
-              onRestartAutomaticWorkspaces={dashboardData.restartAutomaticWorkspaces}
             />
             <WorkerUpdateAction workerUpdates={workerUpdates} />
       </>,

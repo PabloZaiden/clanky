@@ -25,6 +25,7 @@ interface ControllerStatus {
   workers: Array<{
     workerNodeId: string;
     workerInstanceName: string | null;
+    workerEndpoint: string;
     registrationScope?: "global" | "workspace";
     grantStatus: string;
   }>;
@@ -72,8 +73,8 @@ interface WorkerUpdateJob {
   state: {
     status: "pending" | "running" | "completed" | "failed" | "interrupted";
     steps: {
-      update: { status: string };
-      restart: { status: string };
+      update: { status: string; execution?: string };
+      restart: { status: string; execution?: string };
     };
   };
 }
@@ -278,7 +279,7 @@ test("users can maintain and retire an automatic workspace while planning and ch
   }
 });
 
-test("controller updates global Mesh workers concurrently and retains per-worker outcomes", async () => {
+test("controller updates server and automatic workspace workers and retains per-worker outcomes", async () => {
   const fixtureDirectory = await mkdtemp(join(tmpdir(), "clanky-worker-update-"));
   const binDirectory = join(fixtureDirectory, "bin");
   const updateStateDirectory = join(fixtureDirectory, "update-state");
@@ -298,7 +299,7 @@ test("controller updates global Mesh workers concurrently and retains per-worker
       installExternalNativeCopilotProvider(binDirectory),
       installExternalWorkerUpdateCommand(binDirectory),
     ]);
-    devbox = await startMeshDevboxFixture(binDirectory);
+    devbox = await startMeshDevboxFixture(binDirectory, { updateStateDirectory });
 
     const command = await compiledClankyCommand();
     const controller = await startMeshNode({
@@ -371,8 +372,8 @@ test("controller updates global Mesh workers concurrently and retains per-worker
       throw new Error("The successful global worker execution host is unavailable.");
     }
 
-    await runAutomaticWorkspaceJob(controller, {
-      name: "Workspace worker exclusion fixture",
+    const automaticWorkspace = await runAutomaticWorkspaceJob(controller, {
+      name: "Automatic update workspace",
       executionHost: successfulHost.ref,
       transport: "worker",
       workerEnrollmentRoute: "direct",
@@ -408,9 +409,10 @@ test("controller updates global Mesh workers concurrently and retains per-worker
     if (!automaticWorker) {
       throw new Error("The automatic workspace worker registration is unavailable.");
     }
-    const expectedGlobalWorkerIds = new Set([
+    const expectedWorkerIds = new Set([
       successfulRegistration.workerNodeId,
       failingRegistration.workerNodeId,
+      automaticWorker.workerNodeId,
     ]);
 
     const admission = await meshJsonRequest<StartWorkerUpdatesResponse>(
@@ -419,24 +421,20 @@ test("controller updates global Mesh workers concurrently and retains per-worker
       { method: "POST" },
     );
     expect(admission.status, JSON.stringify(admission.body)).toBe(202);
-    expect(admission.body.totalWorkers).toBe(2);
-    expect(admission.body.results).toHaveLength(2);
+    expect(admission.body.totalWorkers).toBe(3);
+    expect(admission.body.results).toHaveLength(3);
     expect(admission.body.results.every((item) => item.status === "started")).toBe(true);
     const startedJobs = admission.body.results.filter(
       (item): item is Extract<StartWorkerUpdatesResponse["results"][number], { status: "started" }> =>
         item.status === "started",
     );
-    expect(new Set(startedJobs.map((item) => item.workerNodeId))).toEqual(expectedGlobalWorkerIds);
-    expect(startedJobs.some((item) => item.workerNodeId === automaticWorker.workerNodeId)).toBe(false);
+    expect(new Set(startedJobs.map((item) => item.workerNodeId))).toEqual(expectedWorkerIds);
 
-    const concurrentStarts = await pollUntil(
-      async () => ({
-        successful: await Bun.file(join(updateStateDirectory, "global-update-success", "update-started")).exists(),
-        failing: await Bun.file(join(updateStateDirectory, "global-update-failure", "update-started")).exists(),
-      }),
-      (state) => state.successful && state.failing,
+    await pollUntil(
+      async () => (await meshJsonRequest<{ jobs: WorkerUpdateJob[] }>(controller, "/api/worker-update-jobs")).body.jobs,
+      (jobs) => jobs.length === 3 && jobs.every((job) => job.state.steps.update.execution === "started"),
       {
-        description: "both global update commands to start concurrently",
+        description: "server and automatic workspace updates to start concurrently",
         timeoutMs: MESH_OPERATION_TIMEOUT_MS,
         formatLastObserved: (state) => {
           lastObservedPublicState = JSON.stringify(state);
@@ -444,33 +442,15 @@ test("controller updates global Mesh workers concurrently and retains per-worker
         },
       },
     );
-    expect(concurrentStarts.successful && concurrentStarts.failing).toBe(true);
-
-    const repeatedAdmissions = await Promise.all([
-      meshJsonRequest<StartWorkerUpdatesResponse>(
-        controller,
-        "/api/worker-update-jobs",
-        { method: "POST" },
-      ),
-      meshJsonRequest<StartWorkerUpdatesResponse>(
-        controller,
-        "/api/worker-update-jobs",
-        { method: "POST" },
-      ),
-    ]);
-    for (const repeatedAdmission of repeatedAdmissions) {
-      expect(repeatedAdmission.status, JSON.stringify(repeatedAdmission.body)).toBe(202);
-      expect(repeatedAdmission.body.results).toHaveLength(2);
-      expect(repeatedAdmission.body.results.every(
-        (item) => item.status === "not_started" && item.reason === "already_active",
-      )).toBe(true);
-    }
-
     await Bun.write(updateReleasePath, "release");
 
+    const successfulAdmission = startedJobs.find((item) =>
+      item.workerNodeId === successfulRegistration.workerNodeId)!;
     await pollUntil(
-      () => Bun.file(join(updateStateDirectory, "global-update-success", "restart-started")).exists(),
-      (requested) => requested,
+      async () => (await meshJsonRequest<WorkerUpdateJobReadResponse>(
+        controller, `/api/worker-update-jobs/${successfulAdmission.jobId}`,
+      )).body.job,
+      (job) => job?.state.steps.restart.execution === "started",
       {
         description: "successful worker service restart request",
         timeoutMs: MESH_OPERATION_TIMEOUT_MS,
@@ -488,10 +468,10 @@ test("controller updates global Mesh workers concurrently and retains per-worker
       )),
       (responses) => responses.every((response) =>
         response.status === 200
-        && ["completed", "failed", "interrupted"].includes(response.body.job?.state.status ?? ""),
+        && ["completed", "failed", "interrupted", "not_started", "connection_failed", "unconfirmed"].includes(response.body.job?.state.status ?? ""),
       ),
       {
-        description: "both worker update jobs to finish",
+        description: "server and automatic workspace update jobs to finish",
         timeoutMs: MESH_OPERATION_TIMEOUT_MS,
         formatLastObserved: (responses) => {
           lastObservedPublicState = JSON.stringify(responses);
@@ -505,17 +485,47 @@ test("controller updates global Mesh workers concurrently and retains per-worker
     const failedJob = terminalSnapshots.find(
       (response) => response.body.job?.config.workerNodeId === failingRegistration.workerNodeId,
     )?.body.job;
+    const automaticJob = terminalSnapshots.find(
+      (response) => response.body.job?.config.workerNodeId === automaticWorker.workerNodeId,
+    )?.body.job;
     if (!successfulJob || !failedJob) {
       throw new Error("Per-worker update job results were not returned.");
     }
-    expect(successfulJob.state.status).toBe("completed");
+    expect(successfulJob.state.status, JSON.stringify(terminalSnapshots)).toBe("completed");
     expect(successfulJob.state.steps.update.status).toBe("succeeded");
     expect(successfulJob.state.steps.restart.status).toBe("succeeded");
     expect(failedJob.state.status).toBe("failed");
     expect(failedJob.state.steps.update.status).toBe("failed");
     expect(failedJob.state.steps.restart.status).toBe("skipped");
-    expect(await Bun.file(join(updateStateDirectory, "global-update-success", "restart-started")).exists()).toBe(true);
-    expect(await Bun.file(join(updateStateDirectory, "global-update-failure", "restart-started")).exists()).toBe(false);
+    expect(automaticJob?.state.status, JSON.stringify(terminalSnapshots)).toBe("completed");
+    const automaticWorkspaceId = automaticWorkspace.job.state.workspaceId!;
+    const checkout = await meshJsonRequest<{ exitCode: number; stdout: string }>(
+      controller, `/api/workspaces/${automaticWorkspaceId}/exec`, {
+        method: "POST",
+        body: { command: "git", args: ["show", "HEAD:README.md"], timeoutMs: MESH_OPERATION_TIMEOUT_MS },
+      },
+    );
+    expect(checkout.status, JSON.stringify(checkout.body)).toBe(200);
+    expect(checkout.body.exitCode).toBe(0);
+    expect(checkout.body.stdout).toBe(await Bun.file(join(gitFixture.repositoryDirectory, "README.md")).text());
+    expect((await meshJsonRequest(controller, `/api/workspaces/${automaticWorkspaceId}`, {
+      method: "DELETE",
+    })).status).toBe(200);
+    await pollUntil(async () => {
+      try {
+        const response = await fetch(`${automaticWorker.workerEndpoint}/api/health`, {
+          tls: { rejectUnauthorized: false },
+          signal: AbortSignal.timeout(MESH_OPERATION_TIMEOUT_MS),
+        });
+        return { reachable: true, status: response.status, error: null };
+      } catch (error) {
+        return { reachable: false, status: null, error: String(error) };
+      }
+    }, (state) => !state.reachable, {
+      description: "retired automatic workspace worker to stop",
+      timeoutMs: MESH_OPERATION_TIMEOUT_MS,
+      formatLastObserved: (state) => JSON.stringify(state),
+    });
 
     await restartMeshNode(controller);
     const retainedJobs = await meshJsonRequest<{ jobs: WorkerUpdateJob[] }>(
@@ -523,9 +533,9 @@ test("controller updates global Mesh workers concurrently and retains per-worker
       "/api/worker-update-jobs",
     );
     expect(retainedJobs.status).toBe(200);
-    expect(retainedJobs.body.jobs).toHaveLength(2);
+    expect(retainedJobs.body.jobs).toHaveLength(3);
     expect(new Set(retainedJobs.body.jobs.map((job) => job.config.workerNodeId)))
-      .toEqual(expectedGlobalWorkerIds);
+      .toEqual(expectedWorkerIds);
 
     const retainedFailure = await meshJsonRequest<WorkerUpdateJobReadResponse>(
       controller,

@@ -6,14 +6,11 @@ import { useState, useCallback, useEffect } from "react";
 import type {
   AppConfig,
   HealthResponse,
-  RestartAutomaticWorkspacesRequest,
-  RestartAutomaticWorkspacesResponse,
 } from "@/contracts";
 import { createLogger, useToast } from "@pablozaiden/webapp/web";
 import { apiRequest } from "../../lib/api-client";
 import { setConfiguredPublicBasePath } from "../../lib/public-path";
 import { purgeTerminalTasksApi, type PurgeTerminalTasksResult } from "../taskActions";
-import { restartAutomaticWorkspacesApi } from "../settingsActions";
 
 const log = createLogger("useAppConfig");
 
@@ -22,12 +19,8 @@ export interface UseAppConfigResult {
   version: string | null;
   appSettingsResetting: boolean;
   appSettingsPurgingTerminalTasks: boolean;
-  appSettingsRestartingAutomaticWorkspaces: boolean;
   resetAllSettings: () => Promise<boolean>;
   purgeTerminalTasks: () => Promise<PurgeTerminalTasksResult | null>;
-  restartAutomaticWorkspaces: (
-    request: RestartAutomaticWorkspacesRequest,
-  ) => Promise<RestartAutomaticWorkspacesResponse | null>;
 }
 
 export function useAppConfig(): UseAppConfigResult {
@@ -37,7 +30,6 @@ export function useAppConfig(): UseAppConfigResult {
   const [version, setVersion] = useState<string | null>(null);
   const [appSettingsResetting, setAppSettingsResetting] = useState(false);
   const [appSettingsPurgingTerminalTasks, setAppSettingsPurgingTerminalTasks] = useState(false);
-  const [appSettingsRestartingAutomaticWorkspaces, setAppSettingsRestartingAutomaticWorkspaces] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -112,31 +104,12 @@ export function useAppConfig(): UseAppConfigResult {
     }
   }, [toast]);
 
-  const restartAutomaticWorkspaces = useCallback(async (
-    request: RestartAutomaticWorkspacesRequest,
-  ): Promise<RestartAutomaticWorkspacesResponse | null> => {
-    setAppSettingsRestartingAutomaticWorkspaces(true);
-    try {
-      return await restartAutomaticWorkspacesApi(request);
-    } catch (error) {
-      log.error("Failed to start automatic workspace restart jobs", {
-        error: String(error),
-      });
-      toast.error("Failed to start automatic workspace restart jobs");
-      return null;
-    } finally {
-      setAppSettingsRestartingAutomaticWorkspaces(false);
-    }
-  }, [toast]);
-
   return {
     remoteOnly,
     version,
     appSettingsResetting,
     appSettingsPurgingTerminalTasks,
-    appSettingsRestartingAutomaticWorkspaces,
     resetAllSettings,
     purgeTerminalTasks,
-    restartAutomaticWorkspaces,
   };
 }

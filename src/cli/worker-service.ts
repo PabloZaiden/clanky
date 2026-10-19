@@ -35,6 +35,8 @@ import {
   type WorkerSshAgentPaths,
 } from "./worker-ssh-agent";
 import { resolveWorkerRuntimeConfiguration } from "./worker-runtime";
+import { runWorkspaceWorkerService } from "./worker-supervisor";
+import { CLANKY_VERSION } from "../version";
 import {
   getWindowsWorkerServicePaths,
   getWindowsWorkerServiceStatus,
@@ -1283,8 +1285,12 @@ async function runWorkerServiceOperation(
   command: WorkerServiceCommand,
   context: WebAppCliCommandContext<ClankyCliContext>,
 ): Promise<Record<string, unknown>> {
-  const platform = detectWorkerServicePlatform();
   const environment = context.environment;
+  const supervisor = environment["CLANKY_WORKER_SUPERVISOR"];
+  if (supervisor) {
+    return await runWorkspaceWorkerService(supervisor, command);
+  }
+  const platform = detectWorkerServicePlatform();
   assertNonRootUser(platform, resolveUid());
   const homeDirectory = resolveHomeDirectory(environment, undefined, platform);
   const runtimeConfiguration = resolveWorkerRuntimeConfiguration({
@@ -1371,15 +1377,24 @@ async function runWorkerServiceOperation(
 export async function runWorkerServiceCommand(
   context: WebAppCliCommandContext<ClankyCliContext>,
 ): Promise<CliCommandResult> {
-  const result = await runWorkerServiceOperation(parseWorkerServiceArgs(context.args), context);
-  context.stdout.write(`${JSON.stringify(result)}\n`);
+  const command = parseWorkerServiceArgs(context.args);
+  const result = await runWorkerServiceOperation(command, context);
+  context.stdout.write(`${JSON.stringify({
+    ...result,
+    ...(command.operation === "status" ? {
+      binaryVersion: CLANKY_VERSION,
+      instanceId: context.environment["CLANKY_WORKER_INSTANCE_ID"],
+      runningVersion: context.environment["CLANKY_WORKER_RUNNING_VERSION"],
+      releaseChannel: context.environment["CLANKY_WORKER_RELEASE_CHANNEL"],
+    } : {}),
+  })}\n`);
   return { exitCode: 0 };
 }
 
 export function createWorkerServiceCommand(): WebAppCliCommandDefinition<ClankyCliContext> {
   return {
     description:
-      "Install and manage the native worker service; macOS and Windows installation may request permissions.",
+      "Manage the native worker service or automatic workspace loop; native installation may request permissions.",
     usage:
       "worker service <install|uninstall|status|start|stop|restart> [--no-start]",
     handler: runWorkerServiceCommand,

@@ -62,13 +62,12 @@ export class WorkerUpdateManager {
     return recovered;
   }
 
-  async startGlobalWorkerUpdates(): Promise<StartWorkerUpdateJobsResult> {
+  async startWorkerUpdates(): Promise<StartWorkerUpdateJobsResult> {
     const owner = requireCurrentUser();
     const { workers } = await meshManager.getControllerStatus(owner.id);
     const targets = workers.filter(
       (worker) =>
-        worker.registrationScope !== "workspace"
-        && worker.grantStatus === "active",
+        worker.grantStatus === "active",
     );
     return {
       totalWorkers: targets.length,

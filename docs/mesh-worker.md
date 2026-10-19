@@ -483,24 +483,29 @@ clanky worker service install
 
 The service installation keeps the existing worker data and Mesh identity.
 
-### Update global workers in parallel
+### Update servers and automatic workspaces together
 
-From the controller, use **Settings > Maintenance > Update all global workers**,
-directly below **Restart automatic workspaces**, to
-start one background job per active global Mesh worker. Workspace-exclusive
-workers used by automatic workspaces are excluded. The same owner-only action
+From the controller, use **Settings > Maintenance > Clanky on servers and
+automatic workspaces > Update all** to start one background job per active
+Mesh worker, including workspace-exclusive automatic workers. The same owner-only action
 is available through `POST /api/worker-update-jobs`; read progress and logs
 with `GET /api/worker-update-jobs` and `GET /api/worker-update-jobs/:id`.
 
-Jobs run concurrently across workers. Each runs `clanky update` first and
+Jobs run concurrently across workers. Each checks that its service or workspace
+loop is running, then runs `clanky update` and
 restarts the worker service with `clanky worker service restart` only after the
-update succeeds. If the update fails, the restart is skipped. Restart response
+update succeeds. Automatic workers configured for prereleases add `--pre-release`.
+If the update fails, the restart is skipped. Updating a workspace worker uses
+Mesh directly: it does not need SSH credentials, contact the provisioning host,
+rerun provisioning, or restart the container. Restart response
 and recovery checks share a 20-second deadline. Restart runs as a host-owned
 asynchronous command: stopping response observation neither cancels nor resends
 it. A still-running command remains under observation until it finishes, loses
 its connection, or reaches the deadline. Recovery polls every second for a fresh signed Mesh
-health check and a new execution connection to confirm that the worker service
-is installed and running. Losing the restart command's response does not by
+health check and a new execution connection to confirm that the service or
+workspace loop is running. Workers reporting runtime metadata must return a
+different instance ID and run the version reported by the installed binary
+after updating. Losing the restart command's response does not by
 itself interrupt the job if the command was dispatched; failures before dispatch
 cannot count as a successful restart. The restart command is not resent. Explicit
 command failures remain failures; recovery that cannot be confirmed within the
@@ -513,6 +518,15 @@ result becomes **Outcome unconfirmed**. No command is automatically replayed.
 If update already succeeded but restart was never dispatched, the pipeline is
 **Failed** with the completed update preserved, not **Not started**.
 Jobs and their logs remain on the Dashboard until dismissed.
+
+Automatic workspaces created with the older one-shot launcher need a manual
+launcher upgrade before this update flow can restart them safely. There is no
+startup migration of existing Devboxes. Unmanaged or unreachable workers report
+an individual job failure rather than preventing other workers from updating.
+SSH-only automatic workspaces without a Mesh worker are not update targets.
+Use the workspace's individual **Restart** or **Rebuild** action for container
+maintenance, not for routine Clanky updates. The bulk restart API remains
+available for explicit provisioning lifecycle operations.
 
 Use **Dismiss all** in the Dashboard's **Worker updates** panel to remove
 terminal jobs and their logs after confirmation.
@@ -565,8 +579,9 @@ the server update completed.
 To manually select the Clanky binary channel for an automatic worker, edit
 `.devbox/clanky-worker/launcher.sh` in the workspace repository on its
 execution host. Set `CLANKY_RELEASE_CHANNEL='prerelease'` to install the latest
-published prerelease on each automatic start; set it to `stable` to use the
-latest stable release. Prerelease downloads require and verify the release
+published prerelease when first installing or changing channels; set it to
+`stable` to use the stable channel. Ordinary starts reuse the installed binary;
+use **Update all** for subsequent updates. Prerelease downloads require and verify the release
 asset's SHA-256 checksum, and do not fall back to stable if no prerelease is
 available.
 
@@ -576,6 +591,41 @@ channel in the persistent launcher for future automatic starts. Leaving it
 unchecked writes the stable channel.
 Changing a worker workspace's runtime adapter preserves the channel already
 stored in the launcher.
+
+### Worker process loop
+
+New automatic worker workspaces use a persistent shell loop in
+`.devbox/clanky-worker/supervisor.sh`. The launcher installs Clanky when missing
+or when its selected release channel changes, then starts the loop in the
+background. The loop runs the binary, waits for it to exit, and executes the
+same path again. Installation and runtime package setup are outside the loop;
+restarting the worker after an update does not download or reinstall anything.
+
+The loop requires `flock` from util-linux in the container. A kernel-held lock
+prevents duplicate loops and is released when the process exits. Worker output
+and restart diagnostics go to `.devbox/clanky-worker/worker.log`. The loop keeps
+retrying until explicitly stopped. It waits one second between normal launches;
+repeated launches lasting less than five seconds increase that delay
+exponentially up to 30 seconds rather than spinning. A run lasting at least five
+seconds resets the delay.
+
+Inside the worker's execution environment, `clanky worker service status`,
+`restart`, `stop`, and `start` control this loop instead of systemd. For direct
+container administration, use:
+
+```bash
+sh <workspace-directory>/.devbox/clanky-worker/supervisor.sh status
+sh <workspace-directory>/.devbox/clanky-worker/supervisor.sh restart
+sh <workspace-directory>/.devbox/clanky-worker/supervisor.sh stop
+sh <workspace-directory>/.devbox/clanky-worker/launcher.sh
+```
+
+`restart` terminates only the worker; the already-running loop starts its
+replacement even if the Mesh connection disappears. `stop` records an intentional
+stop, terminates the loop and worker, and waits for shutdown. Running the launcher
+explicitly starts it again. Provisioning cleanup stops the loop, and removing
+the dedicated worker's last controller grant records a permanent stop before the
+worker exits, so retiring a workspace cannot resurrect its runtime.
 
 ## GitHub CLI credentials in automatic workspaces
 
