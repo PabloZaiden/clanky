@@ -25,6 +25,7 @@ export {
 } from "./chats/index";
 export {
   getChatTranscriptMeta,
+  hasSingleChatUserMessage,
   replaceChatTranscriptEntries,
   syncChatTranscriptEntries,
   listChatTranscriptEntries,

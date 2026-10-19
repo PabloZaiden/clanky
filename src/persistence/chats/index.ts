@@ -21,6 +21,7 @@ export {
 export { updateChatState, updateChatStreamState, updateChatConfig } from "./updates";
 export {
   getChatTranscriptMeta,
+  hasSingleChatUserMessage,
   replaceChatTranscriptEntries,
   syncChatTranscriptEntries,
   listChatTranscriptEntries,

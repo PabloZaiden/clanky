@@ -386,6 +386,16 @@ filesystem permissions. Access outside the initial directory is intentional
 and an accepted product risk; authentication, workspace ownership and
 execution-host authorization still apply.
 
+### Automatic chat names
+
+Workspace chats created without a name start with `<workspace name> - <number>`.
+After the first user message is accepted by the backend, Clanky generates a
+short name asynchronously using the configured helper model. This applies to
+ACP and native chats and does not delay the conversation. The generated name
+is persisted only while the chat still has one user message and retains its
+provisional name; manually chosen names are preserved. If generation fails,
+the provisional name remains and the failure is logged.
+
 ### Chat worktree branch names
 
 `POST /api/chats` accepts the optional `useChatNameAsBranch` boolean. When it
