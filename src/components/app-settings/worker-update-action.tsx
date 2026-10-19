@@ -21,7 +21,8 @@ export function WorkerUpdateAction({
 
     const startedCount = response.results.filter((item) => item.status === "started").length;
     const alreadyActiveCount = response.results.filter((item) => item.status === "not_started").length;
-    const failedCount = response.results.filter((item) => item.status === "failed").length;
+    const failedResults = response.results.filter((item) => item.status === "failed");
+    const failedCount = failedResults.length;
 
     if (response.totalWorkers === 0) {
       toast.info("No active global Mesh workers were found.");
@@ -29,8 +30,12 @@ export function WorkerUpdateAction({
       const alreadyActiveSummary = alreadyActiveCount > 0
         ? ` ${alreadyActiveCount} already have an active job.`
         : "";
+      const failureDetails = failedResults
+        .map(({ workerName, error }) => `${workerName}: ${error}`)
+        .join("; ");
       toast.error(
-        `Started update jobs for ${startedCount} of ${response.totalWorkers} global workers; ${failedCount} failed.${alreadyActiveSummary}`,
+        `Started update jobs for ${startedCount} of ${response.totalWorkers} global workers.${alreadyActiveSummary} Failed workers (${failedCount}): ${failureDetails}`,
+        { duration: 0 },
       );
     } else if (startedCount > 0) {
       const alreadyActiveSummary = alreadyActiveCount > 0

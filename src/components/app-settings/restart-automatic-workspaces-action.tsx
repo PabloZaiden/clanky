@@ -96,8 +96,12 @@ export function RestartAutomaticWorkspacesAction({
       setShowConfirm(false);
       if (result) {
         if (result.failures.length > 0) {
+          const failureDetails = result.failures
+            .map(({ workspaceName, error }) => `${workspaceName}: ${error}`)
+            .join("; ");
           toast.error(
-            `Started ${result.started.length} of ${result.totalWorkspaces} automatic workspace restart jobs; ${result.failures.length} failed.`,
+            `Started ${result.started.length} of ${result.totalWorkspaces} automatic workspace restart jobs; ${result.failures.length} failed: ${failureDetails}`,
+            { duration: 0 },
           );
         } else if (result.totalWorkspaces === 0 || result.started.length === 0) {
           toast.info("No automatic workspaces are eligible for restart.");
