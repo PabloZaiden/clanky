@@ -18,6 +18,15 @@ export function getChatTranscriptMeta(chatId: string): ChatTranscriptMeta | null
   return chatTranscriptStore.getMetaForUser(chatId, requirePersistenceUserId());
 }
 
+export function hasSingleChatUserMessage(chatId: string): boolean {
+  return getDatabase().prepare(`
+    SELECT 1
+    FROM chat_transcript_entries
+    WHERE user_id = ? AND chat_id = ? AND kind = 'message' AND message_role = 'user'
+    LIMIT 2
+  `).all(requirePersistenceUserId(), chatId).length === 1;
+}
+
 export function replaceChatTranscriptEntriesForUserInTransaction(
   db: Database,
   chat: Chat,

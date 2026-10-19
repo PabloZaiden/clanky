@@ -78,6 +78,12 @@ need a remote host, a worker, or a relay, start with the
 
 ## Run and review a task
 
+Chat composition and task creation share prompt templates. The first template,
+**Start a PR with automerge**, fills in “Start a PR, wait for comments and address
+them. Don’t ask for extra reviews and after that, enable automerge”. **Start a PR**
+uses the same prompt without “ and after that, enable automerge”. Selecting a
+template fills the composer; review or edit the message before sending it.
+
 Write the task prompt and choose the model and variant. Plan mode lets you
 review a generated plan before code changes begin. During and after execution
 you can inspect logs, the diff, and the task state.

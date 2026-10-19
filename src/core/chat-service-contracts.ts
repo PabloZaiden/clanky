@@ -119,6 +119,7 @@ export interface ChatDirectoryResolution {
 export interface ChatStatePort {
   getChat(chatId: string): Promise<Chat | null>;
   getChatSummary(chatId: string): Promise<Chat | null>;
+  hasSingleUserMessage(chatId: string): Promise<boolean>;
   getChatMessage(chatId: string, messageId: string): Promise<MessageData | null>;
   getChatStreamControlState(chatId: string): Promise<ChatStreamControlState | null>;
   getChatSnapshot(

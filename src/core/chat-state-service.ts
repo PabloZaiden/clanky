@@ -14,6 +14,7 @@ import {
   loadChatStreamControlState,
   loadTaskChat,
   getChatTranscriptMeta,
+  hasSingleChatUserMessage,
   getChatMessageFromTranscript,
   listChatTranscriptEntriesAfter,
   getChatToolCallFromTranscript,
@@ -66,6 +67,10 @@ export class ChatStateService implements ChatStatePort {
 
   async getChatSummary(chatId: string): Promise<Chat | null> {
     return loadChatMetadata(chatId);
+  }
+
+  async hasSingleUserMessage(chatId: string): Promise<boolean> {
+    return hasSingleChatUserMessage(chatId);
   }
 
   async getChatMessage(chatId: string, messageId: string): Promise<MessageData | null> {
