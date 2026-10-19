@@ -60,7 +60,11 @@ export interface PreviewSession {
   state: PreviewSessionState;
 }
 
-export interface RegisterCliPreviewOptions {
+export interface PreviewUpstreamOptions {
+  protocol?: "http" | "https";
+}
+
+export interface RegisterCliPreviewOptions extends PreviewUpstreamOptions {
   code?: CodePreviewOptions;
   target: PreviewTarget;
   remoteHost: string;
@@ -84,7 +88,7 @@ export type PreviewEvent =
   | ({ type: "preview.closed"; previewId: string; preview: PreviewSession } & PreviewEventTarget & { timestamp: string })
   | ({ type: "preview.failed"; previewId: string; error: string; preview?: PreviewSession } & PreviewEventTarget & { timestamp: string });
 
-export interface PreviewBridgeHelloMessage {
+export interface PreviewBridgeHelloMessage extends PreviewUpstreamOptions {
   type: "hello";
   code?: CodePreviewOptions;
   target: PreviewTarget;

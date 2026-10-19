@@ -95,7 +95,7 @@ export function createClankyCli() {
       },
       preview: {
         description: "Start a local CLI-owned live preview for a workspace or server service.",
-        usage: "preview (--workspace ID_OR_NAME | --server NAME_OR_ID) --port PORT [options]",
+        usage: "preview (--workspace ID_OR_NAME | --server NAME_OR_ID) --port PORT [--https [--tls-cert FILE --tls-key FILE]] [options]",
         handler: previewHandler(parsePreviewCommandArgs),
       },
       workspace: createWorkspaceCommand(),
