@@ -1,37 +1,7 @@
-import { isChatTerminalStatus, type Chat, type ChatStatusEvent } from "@/shared";
+import type { Chat } from "@/shared";
 import { mergeToolCallRecords } from "@/shared/tool-call";
 
 type ChatSnapshotKind = "full" | "summary";
-
-export function applyChatStatusEvent(
-  current: Chat,
-  { status, timestamp, revision }: Pick<ChatStatusEvent, "status" | "timestamp" | "revision">,
-): Chat {
-  if (revision < current.state.revision) {
-    return current;
-  }
-
-  return {
-    ...current,
-    state: {
-      ...current.state,
-      revision,
-      status,
-      lastActivityAt: timestamp,
-      ...(status !== "starting"
-        ? {
-            startupStage: undefined,
-          }
-        : {}),
-      ...(isChatTerminalStatus(status)
-        ? {
-            activeMessageId: undefined,
-            interruptRequested: false,
-          }
-        : {}),
-    },
-  };
-}
 
 function mergeChatSnapshotByKind(current: Chat, incoming: Chat, kind: ChatSnapshotKind): Chat {
   if (
@@ -53,6 +23,14 @@ function mergeChatSnapshotByKind(current: Chat, incoming: Chat, kind: ChatSnapsh
     },
     state: {
       ...incoming.state,
+      lastActivityAt: current.state.lastActivityAt
+        && (!incoming.state.lastActivityAt || current.state.lastActivityAt > incoming.state.lastActivityAt)
+        ? current.state.lastActivityAt
+        : incoming.state.lastActivityAt,
+      lastUserMessageAt: current.state.lastUserMessageAt
+        && (!incoming.state.lastUserMessageAt || current.state.lastUserMessageAt > incoming.state.lastUserMessageAt)
+        ? current.state.lastUserMessageAt
+        : incoming.state.lastUserMessageAt,
       messages: kind === "summary" && incoming.state.messages.length === 0
         ? current.state.messages
         : incoming.state.messages,

@@ -46,6 +46,8 @@ import {
 } from "./agent-stream-controller";
 import { chatEventEmitter, SimpleEventEmitter } from "./event-emitter";
 import { TranscriptMemoryIndex } from "./transcript-memory-index";
+import { StreamVersion } from "./stream-version";
+import type { LiveTranscriptState } from "./transcript-stream-projection";
 import {
   AgentEventTranscriptInterpreter,
   type AgentEventTranscriptBlock,
@@ -95,6 +97,7 @@ interface ActiveChatStream {
   generation: number;
   completion: Promise<void>;
   streamState?: ChatStreamConsumptionState;
+  stopTranscriptSynchronization?: () => void;
 }
 
 interface StartupOperation {
@@ -105,6 +108,7 @@ interface StartupOperation {
 }
 
 interface ChatTranscriptMemory {
+  version: StreamVersion;
   messages: TranscriptMemoryIndex<PersistedMessage>;
   logs: TranscriptMemoryIndex<TaskLogEntry>;
   toolCalls: TranscriptMemoryIndex<PersistedToolCall>;
@@ -114,10 +118,12 @@ function createChatTranscriptMemory(state: ChatState): ChatTranscriptMemory {
   const messages = state.messages ?? [];
   const logs = state.logs ?? [];
   const toolCalls = state.toolCalls ?? [];
+  const version = new StreamVersion();
   return {
-    messages: new TranscriptMemoryIndex(messages),
-    logs: new TranscriptMemoryIndex(logs),
-    toolCalls: new TranscriptMemoryIndex(toolCalls),
+    version,
+    messages: new TranscriptMemoryIndex(messages, undefined, () => version.advance()),
+    logs: new TranscriptMemoryIndex(logs, undefined, () => version.advance()),
+    toolCalls: new TranscriptMemoryIndex(toolCalls, undefined, () => version.advance()),
   };
 }
 
@@ -174,6 +180,30 @@ export class ChatConversationService implements ChatConversationPort {
 
   setPermissionHandler(handler: ChatPermissionHandler): void {
     this.permissionHandler = handler;
+  }
+
+  getLiveTranscript(chatId: string): LiveTranscriptState | undefined {
+    const memory = this.activeStreams.get(chatId)?.streamState?.transcriptMemory;
+    if (!memory) return undefined;
+    return {
+      messages: [...memory.messages.values],
+      logs: [...memory.logs.values],
+      toolCalls: [...memory.toolCalls.values],
+      position: memory.version.position,
+    };
+  }
+
+  withLiveActivity(chat: Chat): Chat {
+    const live = this.activeStreams.get(chat.config.id)?.streamState?.chat.state;
+    if (!live) return chat;
+    return {
+      ...chat,
+      state: {
+        ...chat.state,
+        lastActivityAt: live.lastActivityAt,
+        lastUserMessageAt: live.lastUserMessageAt,
+      },
+    };
   }
 
   setQuestionHandler(handler: (chat: Chat, event: AgentEvent, questionMessageId?: string) => Promise<void>): void {
@@ -601,7 +631,9 @@ export class ChatConversationService implements ChatConversationPort {
   }
 
   closeActiveStream(chatId: string): void {
-    this.activeStreams.get(chatId)?.handle.close();
+    const active = this.activeStreams.get(chatId);
+    active?.handle.close();
+    active?.stopTranscriptSynchronization?.();
     this.activeStreams.delete(chatId);
     this.activeStreamGenerations.delete(chatId);
   }
@@ -772,8 +804,11 @@ export class ChatConversationService implements ChatConversationPort {
   ): Promise<void> {
     const streamState = this.createChatStreamState(initialChat);
     const activeStream = this.activeStreams.get(chatId);
+    let stopTranscriptSynchronization: (() => void) | undefined;
     if (activeStream?.generation === generation) {
       activeStream.streamState = streamState;
+      stopTranscriptSynchronization = this.synchronizePersistedMessages(chatId, streamState);
+      activeStream.stopTranscriptSynchronization = stopTranscriptSynchronization;
     }
     const sessionId = streamState.chat.state.session?.id;
     let canDrain = backend.harness.capabilities.adapter === "acp";
@@ -892,10 +927,34 @@ export class ChatConversationService implements ChatConversationPort {
         await this.emitChatError(errorChat, error);
       }
     } finally {
+      stopTranscriptSynchronization?.();
       historyPromptContext?.close();
       this.clearActiveStream(chatId, generation);
       if (canDrain) this.scheduleQueuedMessageDrain(chatId);
     }
+  }
+
+  private synchronizePersistedMessages(
+    chatId: string,
+    streamState: ChatStreamConsumptionState,
+  ): () => void {
+    return this.emitter.subscribe((event) => {
+      if (event.type !== "chat.message" || event.chatId !== chatId || event.streamPosition) return;
+      // Questions and steered inputs are persisted outside the provider's streaming loop.
+      streamState.transcriptMemory.messages.upsert(event.message);
+      const state = streamState.chat.state;
+      streamState.chat = {
+        ...streamState.chat,
+        state: {
+          ...state,
+          messages: streamState.transcriptMemory.messages.values,
+          lastActivityAt: state.lastActivityAt && state.lastActivityAt > event.timestamp
+            ? state.lastActivityAt : event.timestamp,
+          lastUserMessageAt: event.message.role === "user" && event.message.timestamp > (state.lastUserMessageAt ?? "")
+            ? event.message.timestamp : state.lastUserMessageAt,
+        },
+      };
+    });
   }
 
   private async completeChatAfterInactivity(
@@ -1584,6 +1643,7 @@ export class ChatConversationService implements ChatConversationPort {
       timestamp: assistantMessage.timestamp,
       payload: assistantMessage,
     }];
+    const streamPosition = memory?.version.change;
     const updated = shouldPersist
       ? await this.updateState(chat, nextState, {
         transcriptChanges: createTranscriptChangeSet(nextState, transcriptUpserts),
@@ -1592,6 +1652,7 @@ export class ChatConversationService implements ChatConversationPort {
     if (shouldEmitDelta && delta !== undefined) {
       this.emitter.emit({
         type: "chat.message.delta",
+        streamPosition,
         chatId: chat.config.id,
         scope: chat.config.scope,
         messageId: nextMessageId,
@@ -1606,6 +1667,7 @@ export class ChatConversationService implements ChatConversationPort {
     if (shouldEmitFullMessage) {
       this.emitter.emit({
         type: "chat.message",
+        streamPosition,
         chatId: chat.config.id,
         scope: chat.config.scope,
         message: assistantMessage,
@@ -1657,6 +1719,7 @@ export class ChatConversationService implements ChatConversationPort {
       logs,
       lastActivityAt: activityTimestamp,
     };
+    const streamPosition = options.memory?.version.change;
     const updated = shouldPersist
       ? await this.updateState(chat, nextState, {
         transcriptChanges: createTranscriptChangeSet(nextState, [{
@@ -1672,6 +1735,7 @@ export class ChatConversationService implements ChatConversationPort {
       if (typeof responseContent === "string") {
         this.emitter.emit({
           type: "chat.log.delta",
+          streamPosition,
           chatId: chat.config.id,
           scope: chat.config.scope,
           logId: id,
@@ -1689,6 +1753,7 @@ export class ChatConversationService implements ChatConversationPort {
     if (shouldEmitFull) {
       this.emitter.emit({
         type: "chat.log",
+        streamPosition,
         chatId: chat.config.id,
         scope: chat.config.scope,
         log: entry,
@@ -1718,6 +1783,7 @@ export class ChatConversationService implements ChatConversationPort {
       toolCalls,
       lastActivityAt: tool.timestamp,
     };
+    const streamPosition = memory?.version.change;
     const updated = await this.updateState(chat, nextState, {
       transcriptChanges: createTranscriptChangeSet(nextState, [{
         id: tool.id,
@@ -1729,6 +1795,7 @@ export class ChatConversationService implements ChatConversationPort {
     });
     this.emitter.emit({
       type: "chat.tool_call",
+      streamPosition,
       chatId: chat.config.id,
       scope: chat.config.scope,
       tool,
@@ -1758,6 +1825,7 @@ export class ChatConversationService implements ChatConversationPort {
       toolCalls,
       lastActivityAt: tool.timestamp,
     };
+    const streamPosition = memory?.version.change;
     const updated = await this.updateState(chat, nextState, {
       transcriptChanges: createTranscriptChangeSet(nextState, [{
         id: persistedTool.id,
@@ -1769,6 +1837,7 @@ export class ChatConversationService implements ChatConversationPort {
     });
     this.emitter.emit({
       type: "chat.tool_call",
+      streamPosition,
       chatId: chat.config.id,
       scope: chat.config.scope,
       tool: persistedTool,
@@ -1781,9 +1850,9 @@ export class ChatConversationService implements ChatConversationPort {
     chat: Chat,
     toolId: string,
     extra: ToolCallExtra,
-    timestamp = createTimestamp(),
-    memory?: ChatTranscriptMemory,
   ): Promise<Chat> {
+    const timestamp = createTimestamp();
+    const memory = this.activeStreams.get(chat.config.id)?.streamState?.transcriptMemory;
     const existingTool = memory
       ? memory.toolCalls.get(toolId)
       : chat.state.toolCalls.find((toolCall) => toolCall.id === toolId);
@@ -1802,6 +1871,7 @@ export class ChatConversationService implements ChatConversationPort {
       toolCalls,
       lastActivityAt: timestamp,
     };
+    const streamPosition = memory?.version.change;
     const updated = await this.updateState(chat, nextState, {
       transcriptChanges: createTranscriptChangeSet(nextState, [{
         id: updatedTool.id,
@@ -1813,6 +1883,7 @@ export class ChatConversationService implements ChatConversationPort {
     });
     this.emitter.emit({
       type: "chat.tool_call.extra",
+      streamPosition,
       chatId: chat.config.id,
       scope: chat.config.scope,
       toolId,
@@ -1993,6 +2064,7 @@ export class ChatConversationService implements ChatConversationPort {
 
   private clearActiveStream(chatId: string, generation: number): void {
     if (this.isActiveStreamGeneration(chatId, generation)) {
+      this.activeStreams.get(chatId)?.stopTranscriptSynchronization?.();
       this.activeStreams.delete(chatId);
     }
   }

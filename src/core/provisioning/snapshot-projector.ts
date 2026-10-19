@@ -7,6 +7,7 @@ import { loadProvisioningJob } from "../../persistence/provisioning-jobs";
 import { ProvisioningAttempt } from "./attempt";
 import { inferProvisioningTargetOwnership } from "./target-resolver";
 import type { ProvisioningJobRecord } from "./types";
+import { StreamVersion } from "../stream-version";
 
 export class ProvisioningSnapshotProjector {
   constructor(
@@ -18,6 +19,7 @@ export class ProvisioningSnapshotProjector {
       ? await getWorkspace(record.job.state.workspaceId)
       : null;
     return {
+      position: record.version.position,
       job: structuredClone(record.job),
       logs: [...record.logs],
       ...(workspace ? { workspace } : {}),
@@ -34,6 +36,7 @@ export class ProvisioningSnapshotProjector {
     }
 
     const record: ProvisioningJobRecord = {
+      version: new StreamVersion(),
       job: persisted.job,
       logs: persisted.logs,
       abortController: new AbortController(),

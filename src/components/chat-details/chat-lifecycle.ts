@@ -1,32 +1,20 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useToast } from "@pablozaiden/webapp/web";
 import type {
   Chat,
   ChatSnapshot,
-  TranscriptStreamEvent,
 } from "@/shared";
 import { getRegisteredSshServerId } from "@/shared/execution-host";
-import {
-  useRealtimeRefreshWithRecovery,
-  useRealtimeStream,
-  useTranscriptResource,
-} from "../../hooks";
-import { useRefreshOnForeground } from "../../hooks/useDocumentVisibility";
-import { useChatActivityState, useChatResourceState } from "../../hooks/chat-state-context";
-import { toTranscriptStreamEvent } from "../../hooks/transcript-event-adapter";
+import { useTranscriptResource } from "../../hooks";
+import { useChatResourceState } from "../../hooks/chat-state-context";
 import { apiRequest } from "../../lib/api-client";
 import { getStoredSshCredentialToken } from "../../lib/ssh-browser-credentials";
 import {
-  applyChatStatusEvent,
   hasSameChatPresentation,
   mergeChatSummarySnapshot,
   reuseChatSnapshotPresentation,
 } from "../../utils/chat-snapshot";
-import type {
-  ChatLifecycleResult,
-  ChatRefreshOptions,
-  ChatStreamEvent,
-} from "./types";
+import type { ChatLifecycleResult } from "./types";
 
 const ACTIVE_CHAT_STATUSES = new Set(["starting", "streaming", "waiting", "interrupting", "reconnecting"]);
 
@@ -79,15 +67,14 @@ function mergeOperationalChatSnapshot(current: Chat | null, incoming: Chat): Cha
 export function useChatLifecycle(chatId: string): ChatLifecycleResult {
   const toast = useToast();
   const resourceState = useChatResourceState(chatId);
-  const { recordActivity } = useChatActivityState();
   const [isContinuingFromHistory, setIsContinuingFromHistory] = useState(false);
   const mountedChatIdRef = useRef(chatId);
-  const reconnectAttemptedRef = useRef(false);
   mountedChatIdRef.current = chatId;
 
   const transcriptResource = useTranscriptResource<Chat, ChatSnapshot>({
     resourceId: chatId,
     resourceLabel: "chat",
+    stream: "chat",
     baseUrl: `/api/chats/${encodeURIComponent(chatId)}`,
     resourceState,
     decodeSnapshot: decodeChatSnapshot,
@@ -107,11 +94,7 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
     loadMoreTranscript,
     loadFullTranscript,
     loadToolDetails: loadToolCallDetails,
-    applyTranscriptEvent,
-    clearResource,
   } = transcriptResource;
-  const refreshChatCoalesced = transcriptResource.refreshCoalesced;
-  useRefreshOnForeground(() => refreshChatCoalesced({ showLoading: false, afterCurrent: true }));
 
   const applyChatSnapshot = useCallback((nextChat: Chat): void => {
     if (mountedChatIdRef.current !== chatId || nextChat.config.id !== chatId) {
@@ -198,67 +181,6 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
     toast,
   ]);
 
-  const handleEvent = useCallback((event: ChatStreamEvent): void => {
-    if (event.chatId !== chatId) {
-      return;
-    }
-    const current = getChat();
-    if (!current) {
-      return;
-    }
-    if (event.type === "chat.status") {
-      setChat(applyChatStatusEvent(current, event));
-    } else {
-      recordActivity(chatId, event.timestamp, event.type === "chat.message" && event.message.role === "user"
-        ? "user" : "stream");
-    }
-    const transcriptEvent = toTranscriptStreamEvent(event);
-    if (transcriptEvent) {
-      applyTranscriptEvent(transcriptEvent as TranscriptStreamEvent);
-    }
-  }, [applyTranscriptEvent, chatId, getChat, recordActivity, setChat]);
-
-  const { status: chatSocketStatus } = useRealtimeStream<ChatStreamEvent>({
-    filters: { chatId },
-    predicate: (event) => event.type.startsWith("chat."),
-    onEvent: handleEvent,
-    onReconnect: () => refreshChatCoalesced({ showLoading: false, afterCurrent: true }),
-  });
-
-  useRealtimeRefreshWithRecovery({
-    resources: ["chats"],
-    ids: [chatId],
-    filters: { resource: "chats", id: chatId },
-    refresh: (event) => {
-      if (event.action === "deleted") {
-        clearResource("Chat not found");
-        return;
-      }
-      return refreshChatCoalesced({ showLoading: false, afterCurrent: true });
-    },
-    onReconnect: () => refreshChatCoalesced({ showLoading: false, afterCurrent: true }),
-  });
-
-  useEffect(() => {
-    void refreshChat();
-  }, [refreshChat]);
-
-  useEffect(() => {
-    if (!chat || !chat.state.session?.id || !ACTIVE_CHAT_STATUSES.has(chat.state.status)) {
-      reconnectAttemptedRef.current = false;
-      return;
-    }
-    if (chatSocketStatus !== "error") {
-      reconnectAttemptedRef.current = false;
-      return;
-    }
-    if (reconnectAttemptedRef.current) {
-      return;
-    }
-    reconnectAttemptedRef.current = true;
-    void handleReconnect();
-  }, [chat, chatSocketStatus, handleReconnect]);
-
   return {
     chat,
     transcript,
@@ -270,8 +192,7 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
     needsSshCredentials: chat !== null
       && getChatRegisteredSshServerId(chat) !== null
       && chat.state.connectionStatus === "needs_credentials",
-    refreshChat: refreshChat as (options?: ChatRefreshOptions) => Promise<void>,
-    refreshChatCoalesced: refreshChatCoalesced as (options?: ChatRefreshOptions) => Promise<void>,
+    refreshChat,
     loadMoreTranscript,
     loadFullTranscript,
     loadToolCallDetails,

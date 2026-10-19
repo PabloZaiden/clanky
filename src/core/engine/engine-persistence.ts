@@ -61,6 +61,14 @@ export class TaskPersistenceCoordinator {
     return this.streamCheckpointPolicy;
   }
 
+  get liveTranscript() {
+    return this.transcript.capture();
+  }
+
+  get streamPosition() {
+    return this.transcript.version.change;
+  }
+
   disable(): void {
     this.onPersistState = undefined;
   }

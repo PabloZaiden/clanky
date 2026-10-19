@@ -48,7 +48,7 @@ export function MeshSettingsContent({ mesh }: MeshSettingsContentProps) {
     if (!killingWorkerNodeId || killCountdown !== 0) return;
     setKillingWorkerNodeId(null);
     setKillCountdown(null);
-    void mesh.refresh({ showLoading: false });
+    void mesh.refresh();
   }, [killCountdown, killingWorkerNodeId, mesh.refresh]);
 
   return (

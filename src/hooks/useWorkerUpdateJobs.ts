@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useLiveQuery } from "@pablozaiden/webapp/web";
 import type {
   DismissWorkerUpdateJobResponse,
   StartWorkerUpdatesResponse,
@@ -8,8 +9,6 @@ import type {
 import { isWorkerUpdateJobTerminal, type WorkerUpdateJob } from "@/shared/worker-update";
 import { apiRequest, readApiResponse, requestApiResponse } from "../lib/api-client";
 import { isAbortError } from "../lib/request-lifecycle";
-import { createRefreshCoordinator } from "../lib/refresh-coordinator";
-import { useRealtimeRefreshWithRecovery } from "./useRealtimeStream";
 
 export interface DismissAllWorkerUpdateJobsResult {
   dismissedJobIds: string[];
@@ -29,8 +28,8 @@ export interface UseWorkerUpdateJobsResult {
   error: string | null;
   startUpdates: () => Promise<StartWorkerUpdatesResponse | null>;
   openJob: (jobId: string) => void;
-  refreshJobs: (options?: { showLoading?: boolean; force?: boolean }) => Promise<void>;
-  refreshJob: (options?: { showLoading?: boolean }) => Promise<WorkerUpdateJobSnapshotResponse | null>;
+  refreshJobs: () => Promise<void>;
+  refreshJob: () => Promise<void>;
   dismissJob: (jobId?: string) => Promise<boolean>;
   dismissAllJobs: () => Promise<DismissAllWorkerUpdateJobsResult>;
   dismissingAllJobs: boolean;
@@ -52,402 +51,165 @@ async function dismissWorkerUpdateJobRequest(jobId: string, signal: AbortSignal)
 export function useWorkerUpdateJobs(
   { enabled = true }: { enabled?: boolean } = {},
 ): UseWorkerUpdateJobsResult {
-  const [jobs, setJobs] = useState<WorkerUpdateJob[]>([]);
-  const [jobsLoading, setJobsLoading] = useState(true);
-  const [jobsError, setJobsError] = useState<string | null>(null);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
-  const [snapshot, setSnapshot] = useState<WorkerUpdateJobSnapshotResponse | null>(null);
-  const [loading, setLoading] = useState(false);
   const [notFoundJobId, setNotFoundJobId] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dismissingAllJobs, setDismissingAllJobs] = useState(false);
   const dismissAllPromiseRef = useRef<Promise<DismissAllWorkerUpdateJobsResult> | null>(null);
-  const isMountedRef = useRef(false);
   const activeJobIdRef = useRef(activeJobId);
-  const actionControllersRef = useRef(new Set<AbortController>());
-  const jobsRequestControllerRef = useRef<AbortController | null>(null);
-  const jobsRequestIdRef = useRef(0);
-  const jobsRefreshCoordinatorRef = useRef(createRefreshCoordinator<void>());
-  const jobRequestControllerRef = useRef<AbortController | null>(null);
-  const jobRefreshCoordinatorRef = useRef(
-    createRefreshCoordinator<WorkerUpdateJobSnapshotResponse | null>(),
-  );
   activeJobIdRef.current = activeJobId;
 
-  const refreshJobs = useCallback(async (
-    options: { showLoading?: boolean; force?: boolean } = {},
-  ): Promise<void> => {
-    if (!enabled) {
-      return;
-    }
-    const refresh = async (): Promise<void> => {
-      const requestId = ++jobsRequestIdRef.current;
-      jobsRequestControllerRef.current?.abort();
-      const controller = new AbortController();
-      jobsRequestControllerRef.current = controller;
-      const showLoading = options.showLoading ?? true;
-      if (isMountedRef.current) {
-        setJobsLoading(showLoading);
-      }
-      try {
-        const response = await apiRequest<WorkerUpdateJobsResponse>(
-          "/api/worker-update-jobs",
-          {
-            signal: controller.signal,
-            action: "Load worker update jobs",
-            fallbackMessage: "Failed to load worker update jobs",
-          },
-        );
-        if (
-          controller.signal.aborted
-          || requestId !== jobsRequestIdRef.current
-          || !isMountedRef.current
-        ) {
-          return;
-        }
-        setJobs(response.jobs);
-        setJobsError(null);
-      } catch (refreshError) {
-        if (
-          controller.signal.aborted
-          || requestId !== jobsRequestIdRef.current
-          || isAbortError(refreshError)
-          || !isMountedRef.current
-        ) {
-          return;
-        }
-        setJobsError(String(refreshError));
-      } finally {
-        if (jobsRequestIdRef.current === requestId) {
-          jobsRequestControllerRef.current = null;
-          if (!controller.signal.aborted && isMountedRef.current) {
-            setJobsLoading(false);
-          }
-        }
-      }
-    };
-
-    const refreshPromise = options.force
-      ? jobsRefreshCoordinatorRef.current.runAfterCurrent(refresh)
-      : jobsRefreshCoordinatorRef.current.run(refresh);
-    await refreshPromise;
-  }, [enabled]);
+  const jobsQuery = useLiveQuery<WorkerUpdateJob[]>({
+    load: async (signal) => enabled ? (await apiRequest<WorkerUpdateJobsResponse>(
+      "/api/worker-update-jobs",
+      {
+        signal,
+        action: "Load worker update jobs",
+        fallbackMessage: "Failed to load worker update jobs",
+      },
+    )).jobs : [],
+    deps: [enabled],
+    realtime: { resources: ["worker-update-jobs"], enabled },
+  });
+  const jobQuery = useLiveQuery<{ jobId: string; snapshot: WorkerUpdateJobSnapshotResponse | null } | null>({
+    load: async (signal) => {
+      if (!enabled || !activeJobId) return null;
+      const response = await requestApiResponse(
+        `/api/worker-update-jobs/${encodeURIComponent(activeJobId)}`,
+        {
+          signal,
+          action: "Load worker update job",
+          fallbackMessage: "Failed to load worker update job",
+          acceptedStatuses: [404],
+        },
+      );
+      return {
+        jobId: activeJobId,
+        snapshot: response.status === 404 ? null : await readApiResponse<WorkerUpdateJobSnapshotResponse>(response),
+      };
+    },
+    deps: [enabled, activeJobId],
+    realtime: {
+      resources: ["worker-update-jobs"],
+      ids: activeJobId ? [activeJobId] : [],
+      enabled: enabled && activeJobId !== null,
+    },
+  });
+  const mutateJobs = jobsQuery.mutate;
+  const mutateJob = jobQuery.mutate;
+  const jobs = enabled ? jobsQuery.data ?? [] : [];
 
   const clearActiveJob = useCallback(() => {
-    jobRequestControllerRef.current?.abort();
-    jobRequestControllerRef.current = null;
-    jobRefreshCoordinatorRef.current.reset();
     activeJobIdRef.current = null;
     setActiveJobId(null);
-    setSnapshot(null);
-    setLoading(false);
     setError(null);
     setNotFoundJobId(null);
   }, []);
 
   const openJob = useCallback((jobId: string) => {
     const normalizedId = jobId.trim();
-    if (!enabled || !normalizedId || activeJobIdRef.current === normalizedId) {
-      return;
-    }
-    jobRequestControllerRef.current?.abort();
-    jobRequestControllerRef.current = null;
-    jobRefreshCoordinatorRef.current.reset();
+    if (!enabled || !normalizedId || activeJobIdRef.current === normalizedId) return;
     activeJobIdRef.current = normalizedId;
     setActiveJobId(normalizedId);
-    setSnapshot(null);
     setError(null);
     setNotFoundJobId(null);
   }, [enabled]);
 
-  const refreshJob = useCallback((
-    options: { showLoading?: boolean } = {},
-  ): Promise<WorkerUpdateJobSnapshotResponse | null> => {
-    if (!enabled) {
-      return Promise.resolve(null);
+  useEffect(() => {
+    if (jobQuery.data?.snapshot === null && jobQuery.data.jobId === activeJobIdRef.current) {
+      const jobId = jobQuery.data.jobId;
+      clearActiveJob();
+      setNotFoundJobId(jobId);
     }
-    return jobRefreshCoordinatorRef.current.run(async () => {
-      const requestJobId = activeJobIdRef.current;
-      if (!requestJobId) {
-        return null;
-      }
-      const showLoading = options.showLoading ?? true;
-      const controller = new AbortController();
-      jobRequestControllerRef.current = controller;
-      try {
-        if (showLoading && isMountedRef.current) {
-          setLoading(true);
-        }
-        if (isMountedRef.current) {
-          setError(null);
-        }
-        const response = await requestApiResponse(
-          `/api/worker-update-jobs/${encodeURIComponent(requestJobId)}`,
-          {
-            signal: controller.signal,
-            action: "Load worker update job",
-            fallbackMessage: "Failed to load worker update job",
-            acceptedStatuses: [404],
-          },
-        );
-        if (
-          controller.signal.aborted
-          || activeJobIdRef.current !== requestJobId
-          || !isMountedRef.current
-        ) {
-          return null;
-        }
-        if (response.status === 404) {
-          clearActiveJob();
-          setNotFoundJobId(requestJobId);
-          return null;
-        }
-        const nextSnapshot = await readApiResponse<WorkerUpdateJobSnapshotResponse>(response);
-        if (
-          controller.signal.aborted
-          || activeJobIdRef.current !== requestJobId
-          || !isMountedRef.current
-        ) {
-          return null;
-        }
-        setSnapshot(nextSnapshot);
-        setNotFoundJobId(null);
-        return nextSnapshot;
-      } catch (refreshError) {
-        if (
-          !controller.signal.aborted
-          && !isAbortError(refreshError)
-          && isMountedRef.current
-        ) {
-          setError(String(refreshError));
-        }
-        return null;
-      } finally {
-        if (jobRequestControllerRef.current === controller) {
-          jobRequestControllerRef.current = null;
-        }
-        if (showLoading && !controller.signal.aborted && isMountedRef.current) {
-          setLoading(false);
-        }
-      }
-    });
-  }, [clearActiveJob, enabled]);
-
-  useRealtimeRefreshWithRecovery({
-    resources: ["worker-update-jobs"],
-    ids: activeJobId ? [activeJobId] : [],
-    filters: activeJobId
-      ? { resource: "worker-update-jobs", id: activeJobId }
-      : undefined,
-    enabled: enabled && activeJobId !== null,
-    refresh: async (event) => {
-      if (event.action === "deleted") {
-        const deletedJobId = activeJobIdRef.current;
-        clearActiveJob();
-        if (deletedJobId) {
-          setNotFoundJobId(deletedJobId);
-        }
-        return;
-      }
-      await refreshJob({ showLoading: false });
-    },
-    onReconnect: async () => {
-      await refreshJob({ showLoading: false });
-    },
-  });
-
-  useRealtimeRefreshWithRecovery({
-    resources: ["worker-update-jobs"],
-    enabled,
-    refresh: async () => {
-      await refreshJobs({ showLoading: false });
-    },
-    onReconnect: async () => {
-      await refreshJobs({ showLoading: false });
-    },
-  });
+  }, [clearActiveJob, jobQuery.data]);
 
   useEffect(() => {
-    isMountedRef.current = true;
-    if (enabled) {
-      void refreshJobs();
-    } else {
-      jobsRequestControllerRef.current?.abort();
-      jobsRequestControllerRef.current = null;
-      jobsRequestIdRef.current += 1;
-      setJobs([]);
-      setJobsLoading(false);
-      setJobsError(null);
+    if (!enabled) {
+      clearActiveJob();
       setStarting(false);
       setDismissingAllJobs(false);
-      setError(null);
-      clearActiveJob();
     }
-    return () => {
-      isMountedRef.current = false;
-      jobsRequestControllerRef.current?.abort();
-      jobsRequestControllerRef.current = null;
-      jobRequestControllerRef.current?.abort();
-      jobRequestControllerRef.current = null;
-      for (const controller of actionControllersRef.current) {
-        controller.abort();
-      }
-      actionControllersRef.current.clear();
-      jobsRefreshCoordinatorRef.current.reset();
-      jobRefreshCoordinatorRef.current.reset();
-    };
-  }, [clearActiveJob, enabled, refreshJobs]);
-
-  useEffect(() => {
-    jobRequestControllerRef.current?.abort();
-    jobRequestControllerRef.current = null;
-    jobRefreshCoordinatorRef.current.reset();
-    if (activeJobId) {
-      void refreshJob();
-    }
-    return () => {
-      jobRequestControllerRef.current?.abort();
-      jobRequestControllerRef.current = null;
-      jobRefreshCoordinatorRef.current.reset();
-    };
-  }, [activeJobId, refreshJob]);
+  }, [clearActiveJob, enabled]);
 
   const startUpdates = useCallback(async (): Promise<StartWorkerUpdatesResponse | null> => {
-    if (!enabled) {
-      return null;
-    }
-    const controller = new AbortController();
-    actionControllersRef.current.add(controller);
+    if (!enabled) return null;
+    setStarting(true);
+    setError(null);
     try {
-      if (isMountedRef.current) {
-        setStarting(true);
-        setError(null);
-      }
-      const result = await apiRequest<StartWorkerUpdatesResponse>(
-        "/api/worker-update-jobs",
-        {
-          method: "POST",
-          signal: controller.signal,
-          action: "Start worker updates",
-          fallbackMessage: "Failed to start worker updates",
-        },
-      );
-      if (controller.signal.aborted || !isMountedRef.current) {
-        return null;
-      }
-      await refreshJobs({ showLoading: false, force: true });
-      return result;
-    } catch (startError) {
-      if (!controller.signal.aborted && isMountedRef.current) {
-        setError(String(startError));
-      }
+      return await mutateJobs((signal) => apiRequest<StartWorkerUpdatesResponse>("/api/worker-update-jobs", {
+        method: "POST",
+        signal,
+        action: "Start worker updates",
+        fallbackMessage: "Failed to start worker updates",
+      }));
+    } catch (error) {
+      if (!isAbortError(error)) setError(String(error));
       return null;
     } finally {
-      actionControllersRef.current.delete(controller);
-      if (!controller.signal.aborted && isMountedRef.current) {
-        setStarting(false);
-      }
+      setStarting(false);
     }
-  }, [enabled, refreshJobs]);
+  }, [enabled, mutateJobs]);
 
   const dismissJob = useCallback(async (jobIdOverride?: string): Promise<boolean> => {
-    if (!enabled) {
-      return false;
-    }
     const jobId = jobIdOverride ?? activeJobIdRef.current;
-    if (!jobId) {
-      return false;
-    }
-    const controller = new AbortController();
-    actionControllersRef.current.add(controller);
+    if (!enabled || !jobId) return false;
+    setError(null);
     try {
-      if (isMountedRef.current) {
-        setError(null);
-      }
-      await dismissWorkerUpdateJobRequest(jobId, controller.signal);
-      if (controller.signal.aborted || !isMountedRef.current) {
-        return false;
-      }
-      if (activeJobIdRef.current === jobId) {
-        clearActiveJob();
-      }
-      await refreshJobs({ showLoading: false, force: true });
+      // Both projections establish their barriers before the shared operation.
+      await mutateJobs(() => mutateJob(async (signal) => {
+        await dismissWorkerUpdateJobRequest(jobId, signal);
+      }, (previous) => previous?.jobId === jobId ? null : previous),
+      (previous) => previous?.filter((job) => job.config.id !== jobId));
+      if (activeJobIdRef.current === jobId) clearActiveJob();
       return true;
-    } catch (dismissError) {
-      if (!controller.signal.aborted && isMountedRef.current) {
-        setError(String(dismissError));
-      }
+    } catch (error) {
+      if (!isAbortError(error)) setError(String(error));
       return false;
-    } finally {
-      actionControllersRef.current.delete(controller);
     }
-  }, [clearActiveJob, enabled, refreshJobs]);
+  }, [clearActiveJob, enabled, mutateJob, mutateJobs]);
 
   const dismissAllJobs = useCallback((): Promise<DismissAllWorkerUpdateJobsResult> => {
-    if (!enabled) {
-      return Promise.reject(new Error("Worker update jobs are only available to the owner."));
-    }
-    if (dismissAllPromiseRef.current) {
-      return dismissAllPromiseRef.current;
-    }
-    const jobIds = jobs
-      .filter((job) => isWorkerUpdateJobTerminal(job.state.status))
-      .map((job) => job.config.id);
-    const controller = new AbortController();
-    actionControllersRef.current.add(controller);
+    if (!enabled) return Promise.reject(new Error("Worker update jobs are only available to the owner."));
+    if (dismissAllPromiseRef.current) return dismissAllPromiseRef.current;
+    const jobIds = jobs.filter((job) => isWorkerUpdateJobTerminal(job.state.status)).map((job) => job.config.id);
     setDismissingAllJobs(true);
-    const dismiss = async (): Promise<DismissAllWorkerUpdateJobsResult> => {
-      const results = await Promise.allSettled(
-        jobIds.map((jobId) => dismissWorkerUpdateJobRequest(jobId, controller.signal)),
-      );
-      if (controller.signal.aborted || !isMountedRef.current) {
-        throw new DOMException("Worker update dismissal was aborted.", "AbortError");
-      }
-      const dismissedJobIds: string[] = [];
-      const failedJobIds: string[] = [];
-      results.forEach((result, index) => {
-        const jobId = jobIds[index]!;
-        if (result.status === "fulfilled") {
-          dismissedJobIds.push(jobId);
-        } else {
-          failedJobIds.push(jobId);
-        }
-      });
-      if (activeJobIdRef.current && dismissedJobIds.includes(activeJobIdRef.current)) {
-        clearActiveJob();
-      }
-      const dismissedIds = new Set(dismissedJobIds);
-      setJobs((current) => current.filter((job) => !dismissedIds.has(job.config.id)));
-      await refreshJobs({ showLoading: false, force: true });
+    const promise = mutateJobs(() => mutateJob(async (signal) => {
+      const results = await Promise.allSettled(jobIds.map((jobId) => dismissWorkerUpdateJobRequest(jobId, signal)));
+      signal.throwIfAborted();
+      const dismissedJobIds = jobIds.filter((_jobId, index) => results[index]?.status === "fulfilled");
+      const failedJobIds = jobIds.filter((_jobId, index) => results[index]?.status === "rejected");
       return { dismissedJobIds, failedJobIds };
-    };
-    const promise = dismiss().finally(() => {
-      actionControllersRef.current.delete(controller);
+    }, (previous, result) => previous && result.dismissedJobIds.includes(previous.jobId) ? null : previous),
+    (previous, result) => {
+      const dismissed = new Set(result.dismissedJobIds);
+      return previous?.filter((job) => !dismissed.has(job.config.id));
+    }).then((result) => {
+      if (activeJobIdRef.current && result.dismissedJobIds.includes(activeJobIdRef.current)) clearActiveJob();
+      return result;
+    }).finally(() => {
       dismissAllPromiseRef.current = null;
-      if (!controller.signal.aborted && isMountedRef.current) {
-        setDismissingAllJobs(false);
-      }
+      setDismissingAllJobs(false);
     });
     dismissAllPromiseRef.current = promise;
     return promise;
-  }, [clearActiveJob, enabled, jobs, refreshJobs]);
+  }, [clearActiveJob, enabled, jobs, mutateJob, mutateJobs]);
 
   return {
     jobs,
-    jobsLoading,
-    jobsError,
+    jobsLoading: enabled && jobsQuery.data === undefined && jobsQuery.loading,
+    jobsError: enabled && jobsQuery.error ? String(jobsQuery.error) : null,
     enabled,
-    activeJobId,
-    snapshot,
-    loading,
+    activeJobId: enabled ? activeJobId : null,
+    snapshot: enabled && jobQuery.data?.jobId === activeJobId ? jobQuery.data.snapshot : null,
+    loading: enabled && activeJobId !== null && jobQuery.data === undefined && jobQuery.loading,
     notFoundJobId,
     starting,
-    error,
+    error: error ?? (enabled && jobQuery.error ? String(jobQuery.error) : null),
     startUpdates,
     openJob,
-    refreshJobs,
-    refreshJob,
+    refreshJobs: jobsQuery.refresh,
+    refreshJob: jobQuery.refresh,
     dismissJob,
     dismissAllJobs,
     dismissingAllJobs,

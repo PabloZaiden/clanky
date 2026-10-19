@@ -1,5 +1,6 @@
 import type {
   ChatTranscript,
+  PersistedMessage,
   Task,
   ToolCallRecord,
   TranscriptSnapshotOptions,
@@ -7,11 +8,11 @@ import type {
 import { shouldIncludeConversationTranscriptLog } from "@/shared";
 import { taskTranscriptStore } from "../persistence/transcripts/task-store";
 import { loadTaskSummary } from "../persistence/tasks";
-import { createTranscriptFromStoragePage } from "./transcript-service";
+import { createTranscriptFromStoragePage, includeLiveTranscript } from "./transcript-service";
+import { taskManager } from "./task";
 import { requireCurrentUserId } from "../context/user-context";
 import { isPersistedMessage } from "../persistence/transcripts/codec";
 import { DomainError } from "../domain/domain-error";
-import type { PersistedMessage } from "@/shared";
 import type { TranscriptStorageCursor } from "../persistence/transcripts/types";
 
 export async function* iterateTaskAttachmentMessages(taskId: string): AsyncIterable<PersistedMessage> {
@@ -66,14 +67,17 @@ export async function getTaskTranscriptSnapshot(
       config: task.config,
       state,
     },
-    transcript: createTranscriptFromStoragePage(
+    transcript: includeLiveTranscript(createTranscriptFromStoragePage(
       taskTranscriptStore.listPage(taskId, options),
       {
         revision: meta.revision,
         totalEntries: meta.entryCount,
       },
       shouldIncludeConversationTranscriptLog,
-    ),
+    ), taskManager.getLiveTranscript(taskId), {
+      window: options,
+      shouldIncludeLog: shouldIncludeConversationTranscriptLog,
+    }),
   };
 }
 

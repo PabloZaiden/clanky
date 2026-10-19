@@ -3,6 +3,7 @@ import type {
   ProvisioningJob,
   ProvisioningJobSnapshot,
   ProvisioningStepEvent,
+  ProvisioningUpdatedEvent,
   PublicProvisioningJob,
   PublicProvisioningJobSnapshot,
   PublicServerSettings,
@@ -70,12 +71,15 @@ export function sanitizeProvisioningSnapshot(
   };
 }
 
-export function sanitizeProvisioningEvent(event: ProvisioningStepEvent): ProvisioningStepEvent;
+export function sanitizeProvisioningEvent(
+  event: ProvisioningStepEvent | ProvisioningUpdatedEvent,
+): ProvisioningStepEvent | ProvisioningUpdatedEvent;
 export function sanitizeProvisioningEvent(event: ProvisioningEvent): ProvisioningEvent;
 export function sanitizeProvisioningEvent(event: ProvisioningEvent): ProvisioningEvent {
   switch (event.type) {
     case "provisioning.started":
     case "provisioning.step":
+    case "provisioning.updated":
     case "provisioning.completed":
     case "provisioning.failed":
     case "provisioning.cancelled":

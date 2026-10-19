@@ -11,6 +11,7 @@ import type {
   TaskLogEntry,
   ToolCallRecord,
   TranscriptChangeSet,
+  TranscriptSnapshotOptions,
 } from "@/shared";
 import {
   applyTranscriptChangeSetInTransaction,
@@ -35,7 +36,6 @@ import {
 import type {
   TranscriptEntriesPage,
   TranscriptMeta,
-  TranscriptPageOptions,
   TranscriptResource,
   TranscriptStorageCursor,
   TranscriptStoragePage,
@@ -96,11 +96,11 @@ export interface TranscriptResourceStore {
   listPageForUser(
     resourceId: string,
     userId: string,
-    options?: TranscriptPageOptions,
+    options?: TranscriptSnapshotOptions,
   ): TranscriptEntriesPage;
   listPage(
     resourceId: string,
-    options?: TranscriptPageOptions,
+    options?: TranscriptSnapshotOptions,
   ): TranscriptEntriesPage;
   listEntriesAfterForUser(
     resourceId: string,

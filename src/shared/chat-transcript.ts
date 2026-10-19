@@ -1,4 +1,5 @@
 import type { ChatConfig, ChatState } from "./chat";
+import type { StreamPosition } from "./stream-position";
 import type { PersistedMessage, TaskLogEntry } from "./task";
 import {
   mergeToolCallDisplayData,
@@ -17,6 +18,7 @@ export const TRANSCRIPT_PAGE_SIZE = 100;
 export interface TranscriptSnapshotOptions {
   full?: boolean;
   before?: string;
+  since?: string;
 }
 
 export interface TranscriptEntryUpsert {
@@ -76,6 +78,7 @@ export interface ChatTranscript {
   logs: TaskLogEntry[];
   toolCalls: ToolCallDisplayData[];
   revision: string;
+  position: StreamPosition;
   totalEntries: number;
   isPartial: boolean;
   loadedResponses: number;
@@ -96,7 +99,6 @@ export type TranscriptSnapshotMergeDirection = "refresh" | "older" | "full";
 
 export interface TranscriptSnapshotMergeOptions {
   direction?: TranscriptSnapshotMergeDirection;
-  preferIncoming?: boolean;
 }
 
 export function isCountedAssistantResponse(
@@ -132,42 +134,30 @@ export function mergeTranscriptSnapshot(
     return incoming;
   }
 
-  const incomingIsFull = !incoming.isPartial;
-  const currentIsFull = !current.isPartial;
   const direction = options.direction ?? "refresh";
-  const mergeRecords = options.preferIncoming === true
-    ? incomingIsFull
-      ? mergeTranscriptSnapshotRecords
-      : mergeTranscriptIncomingRecords
-    : options.preferIncoming === false
-      ? mergeTranscriptRecords
-      : incomingIsFull
-        ? mergeTranscriptSnapshotRecords
-        : mergeTranscriptRecords;
-  const messages = mergeRecords(current.messages, incoming.messages);
-  const logs = mergeRecords(current.logs, incoming.logs);
-  const toolCalls = options.preferIncoming === false
+  const olderPage = direction === "older";
+  const messages = olderPage
+    ? mergeTranscriptRecords(current.messages, incoming.messages)
+    : incoming.messages;
+  const logs = olderPage
+    ? mergeTranscriptRecords(current.logs, incoming.logs)
+    : incoming.logs;
+  const currentTools = new Map(current.toolCalls.map((tool) => [tool.id, tool]));
+  const toolCalls = olderPage
     ? mergeTranscriptToolCalls(incoming.toolCalls, current.toolCalls)
-    : incomingIsFull
-      ? mergeTranscriptSnapshotToolCalls(current.toolCalls, incoming.toolCalls)
-      : mergeTranscriptToolCalls(current.toolCalls, incoming.toolCalls);
+    : incoming.toolCalls.map((tool) => mergeToolCallDisplayData(currentTools.get(tool.id), tool));
   const loadedResponses = countAssistantResponses(messages);
-  const totalResponses = Math.max(current.totalResponses, incoming.totalResponses);
-  const isPartial = !incomingIsFull && !currentIsFull && loadedResponses < totalResponses;
-  const nextCursor = !isPartial
-    ? undefined
-    : direction === "older"
-      ? incoming.nextCursor
-      : current.loadedResponses > incoming.loadedResponses
-      ? current.nextCursor ?? incoming.nextCursor
-      : incoming.nextCursor ?? current.nextCursor;
+  const totalResponses = olderPage ? current.totalResponses : incoming.totalResponses;
+  const isPartial = loadedResponses < totalResponses;
+  const nextCursor = isPartial ? incoming.nextCursor : undefined;
 
   return {
     messages,
     logs,
     toolCalls,
-    revision: incoming.revision,
-    totalEntries: Math.max(current.totalEntries, incoming.totalEntries),
+    revision: olderPage ? current.revision : incoming.revision,
+    position: olderPage ? current.position : incoming.position,
+    totalEntries: olderPage ? current.totalEntries : incoming.totalEntries,
     isPartial,
     loadedResponses,
     totalResponses,
@@ -211,25 +201,6 @@ export function mergeTranscriptIncomingRecords<T extends { id: string; timestamp
   return Array.from(merged.values()).sort(compareTranscriptRecords);
 }
 
-export function mergeTranscriptSnapshotRecords<T extends { id: string; timestamp: string }>(
-  current: T[],
-  incoming: T[],
-): T[] {
-  const incomingIds = new Set(incoming.map((item) => item.id));
-  const latestIncomingTimestamp = incoming.reduce(
-    (latest, item) => item.timestamp.localeCompare(latest) > 0 ? item.timestamp : latest,
-    "",
-  );
-  const liveOnly = latestIncomingTimestamp.length > 0
-    ? current.filter((item) => (
-      !incomingIds.has(item.id)
-      && item.timestamp.localeCompare(latestIncomingTimestamp) >= 0
-    ))
-    : [];
-  return [...incoming, ...liveOnly]
-    .sort(compareTranscriptRecords);
-}
-
 export function mergeTranscriptToolCalls(
   current: ToolCallDisplayData[],
   incoming: ToolCallDisplayData[],
@@ -247,24 +218,6 @@ export function mergeTranscriptToolCalls(
     merged.set(toolCall.id, mergeToolCallDisplayData(toolCall, existing));
   }
   return Array.from(merged.values()).sort(compareTranscriptRecords);
-}
-
-export function mergeTranscriptSnapshotToolCalls(
-  current: ToolCallDisplayData[],
-  incoming: ToolCallDisplayData[],
-): ToolCallDisplayData[] {
-  const incomingIds = new Set(incoming.map((toolCall) => toolCall.id));
-  const latestIncomingTimestamp = incoming.reduce(
-    (latest, toolCall) => toolCall.timestamp.localeCompare(latest) > 0 ? toolCall.timestamp : latest,
-    "",
-  );
-  const currentToMerge = latestIncomingTimestamp.length > 0
-    ? current.filter((toolCall) => (
-      incomingIds.has(toolCall.id)
-      || toolCall.timestamp.localeCompare(latestIncomingTimestamp) >= 0
-    ))
-    : [];
-  return mergeTranscriptToolCalls(currentToMerge, incoming);
 }
 
 export function shouldIncludeConversationTranscriptLog(log: TaskLogEntry): boolean {

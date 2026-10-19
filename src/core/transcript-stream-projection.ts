@@ -4,15 +4,22 @@ import type {
   PersistedToolCall,
   TaskLogEntry,
   ToolCallExtra,
+  StreamPosition,
 } from "@/shared";
 import { mergeToolCallRecord, upsertToolCallExtra } from "@/shared/tool-call";
 import { TranscriptChangeTracker } from "./transcript-change-tracker";
 import { TranscriptMemoryIndex } from "./transcript-memory-index";
+import { StreamVersion } from "./stream-version";
 
 export interface TranscriptStreamState {
   messages: PersistedMessage[];
   logs: TaskLogEntry[];
   toolCalls: PersistedToolCall[];
+}
+
+/** The owner's complete retained transcript, not just mutations awaiting a checkpoint. */
+export interface LiveTranscriptState extends TranscriptStreamState {
+  position: StreamPosition;
 }
 
 export interface TranscriptStreamProjectionLimits {
@@ -30,6 +37,7 @@ export interface TranscriptStreamProjectionLimits {
  */
 export class TranscriptStreamProjection {
   readonly changes = new TranscriptChangeTracker();
+  readonly version = new StreamVersion();
   private messageMemory: TranscriptMemoryIndex<PersistedMessage>;
   private logMemory: TranscriptMemoryIndex<TaskLogEntry>;
   private toolMemory: TranscriptMemoryIndex<PersistedToolCall>;
@@ -37,9 +45,9 @@ export class TranscriptStreamProjection {
 
   constructor(state: TranscriptStreamState, limits: TranscriptStreamProjectionLimits) {
     this.limits = limits;
-    this.messageMemory = new TranscriptMemoryIndex(state.messages, limits.maxMessages);
-    this.logMemory = new TranscriptMemoryIndex(state.logs, limits.maxLogs);
-    this.toolMemory = new TranscriptMemoryIndex(state.toolCalls, limits.maxToolCalls);
+    this.messageMemory = new TranscriptMemoryIndex(state.messages, limits.maxMessages, () => this.version.advance());
+    this.logMemory = new TranscriptMemoryIndex(state.logs, limits.maxLogs, () => this.version.advance());
+    this.toolMemory = new TranscriptMemoryIndex(state.toolCalls, limits.maxToolCalls, () => this.version.advance());
   }
 
   get state(): TranscriptStreamState {
@@ -47,6 +55,15 @@ export class TranscriptStreamProjection {
       messages: this.messageMemory.values,
       logs: this.logMemory.values,
       toolCalls: this.toolMemory.values,
+    };
+  }
+
+  capture(): LiveTranscriptState {
+    return {
+      messages: [...this.messages],
+      logs: [...this.logs],
+      toolCalls: [...this.toolCalls],
+      position: this.version.position,
     };
   }
 
@@ -126,9 +143,10 @@ export class TranscriptStreamProjection {
   }
 
   replace(state: TranscriptStreamState): void {
-    this.messageMemory = new TranscriptMemoryIndex(state.messages, this.limits.maxMessages);
-    this.logMemory = new TranscriptMemoryIndex(state.logs, this.limits.maxLogs);
-    this.toolMemory = new TranscriptMemoryIndex(state.toolCalls, this.limits.maxToolCalls);
+    this.messageMemory = new TranscriptMemoryIndex(state.messages, this.limits.maxMessages, () => this.version.advance());
+    this.logMemory = new TranscriptMemoryIndex(state.logs, this.limits.maxLogs, () => this.version.advance());
+    this.toolMemory = new TranscriptMemoryIndex(state.toolCalls, this.limits.maxToolCalls, () => this.version.advance());
+    this.version.advance();
   }
 
   private recordEvictions(

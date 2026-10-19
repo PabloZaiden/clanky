@@ -1,5 +1,6 @@
 import type { AgentRun } from "@/shared/agent";
 import type { TaskLogEntry } from "@/shared/task";
+import type { StreamDeltaPosition } from "@/shared/stream-position";
 import { createTimestamp } from "@/shared/events";
 import { saveAgentRun } from "../persistence/agents";
 import { agentEventEmitter } from "./event-emitter";
@@ -18,7 +19,7 @@ export interface DeterministicAgentOutputOptions {
   emit?: boolean;
   userId?: string;
   eventAgentRunId?: string;
-  onAppend?: (entry: TaskLogEntry) => void;
+  onAppend?: (entry: TaskLogEntry) => StreamDeltaPosition | void;
 }
 
 function normalizeOutput(text: string): { message: string; truncated: boolean } {
@@ -39,7 +40,7 @@ export class DeterministicAgentOutput {
   private readonly emit: boolean;
   private readonly userId?: string;
   private readonly eventAgentRunId?: string;
-  private readonly onAppend?: (entry: TaskLogEntry) => void;
+  private readonly onAppend?: (entry: TaskLogEntry) => StreamDeltaPosition | void;
 
   constructor(run: AgentRun, options: DeterministicAgentOutputOptions = {}) {
     this.currentRun = run;
@@ -80,7 +81,7 @@ export class DeterministicAgentOutput {
       logs,
       updatedAt: timestamp,
     };
-    this.onAppend?.(entry);
+    const streamPosition = this.onAppend?.(entry);
     if (this.emit) {
       agentEventEmitter.emit(
         {
@@ -89,6 +90,7 @@ export class DeterministicAgentOutput {
           agentRunId: this.eventAgentRunId ?? this.currentRun.id,
           log: entry,
           timestamp,
+          ...(streamPosition ? { streamPosition } : {}),
         },
         this.userId ? { userId: this.userId } : undefined,
       );

@@ -186,6 +186,10 @@ export class TaskEngine {
     return this.task.state;
   }
 
+  get liveTranscript() {
+    return this.persistence.liveTranscript;
+  }
+
   get isExecuting(): boolean { return this.isStarting || this.isTaskRunning || this.inputs.isBusy; }
 
   refreshHarnessState(harness: TaskState["harness"]): void {
@@ -1971,6 +1975,6 @@ export class TaskEngine {
    * Emit a task event.
    */
   private emit(event: TaskEvent): void {
-    this.emitter.emit(event);
+    this.emitter.emit({ ...event, streamPosition: this.persistence.streamPosition });
   }
 }

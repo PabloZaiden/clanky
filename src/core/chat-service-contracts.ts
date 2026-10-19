@@ -36,6 +36,7 @@ import type { SimpleEventEmitter } from "./event-emitter";
 import type { HarnessActivitySnapshot, HarnessActivityStopResult, HarnessCapabilities, HarnessInputAdmission } from "@/shared/harness-control";
 import type { QueuedChatMessage } from "@/shared/chat";
 import type { ChatTrashService } from "./chat-trash-service";
+import type { LiveTranscriptState } from "./transcript-stream-projection";
 
 export interface CreateChatOptions {
   name?: string;
@@ -225,6 +226,8 @@ export interface ChatSessionPort {
 }
 
 export interface ChatConversationPort {
+  withLiveActivity(chat: Chat): Chat;
+  getLiveTranscript(chatId: string): LiveTranscriptState | undefined;
   runStartupOperation<T>(
     chatId: string,
     operation: (signal: AbortSignal) => Promise<T>,

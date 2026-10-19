@@ -11,7 +11,7 @@ import { LiveVoiceBrowser } from "../lib/live-voice-browser";
 import { acquireVoiceAudio } from "../lib/voice-audio-ownership";
 import { getClankyClientId } from "../lib/clanky-client-id";
 import { getStoredNewTaskPlanningPreferences } from "../lib/new-task-planning-preferences";
-import { useRealtimeStream } from "./useRealtimeStream";
+import { useRealtime } from "@pablozaiden/webapp/web";
 import type { LiveVoiceActivityEvent } from "@/shared/live-voice";
 import { getStoredTaskModelPreference, getStoredTaskCheapModelPreference } from "../lib/model-selection-preferences";
 
@@ -197,9 +197,11 @@ export function useLiveVoice(options: { enabled: boolean; route: WebAppRoute }):
       void endRef.current();
     };
   }, []);
-  useRealtimeStream<LiveVoiceActivityEvent>({
+  useRealtime<LiveVoiceActivityEvent>({
     enabled: options.enabled || callId !== null,
-    filters: { clientId: getClankyClientId() },
+    targets: { clientId: getClankyClientId() },
+    types: ["voice.activity"],
+    trackLastEvent: false,
     predicate: (event) => event.type === "voice.activity" && event.callId === callId,
     onEvent: (event) => {
       const call = active.current;
@@ -207,7 +209,7 @@ export function useLiveVoice(options: { enabled: boolean; route: WebAppRoute }):
       call.activityGeneration += 1;
       setState((current) => ({ ...current, processing: event.processing, intention: event.intention }));
     },
-    onReconnect: () => { void active.current?.heartbeat?.(); },
+    onSubscribed: () => { void active.current?.heartbeat?.(); },
   });
   const toggleMute = useCallback((): void => {
     setState((current) => {

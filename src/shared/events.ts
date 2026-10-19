@@ -20,6 +20,7 @@ import type { Agent, AgentRun, AgentRunStatus } from "./agent";
 import type { Chat, ChatConfig, ChatStatus } from "./chat";
 import type { AutomaticPrFlowState, GitCommit, TaskConfig, TaskLogEntry, ModelConfig, PersistedMessage } from "./task";
 import type { ToolCallExtra, ToolCallRecord } from "./tool-call";
+import type { StreamDeltaPosition } from "./stream-position";
 
 /**
  * Message data from the AI agent.
@@ -88,7 +89,7 @@ export interface ToolCallData extends ToolCallRecord {}
  * - **Plan mode events**: plan.ready, plan.feedback, plan.accepted, plan.discarded
  * - **State events**: pending.updated, automatic_pr_flow.updated
  */
-export type TaskEvent =
+export type TaskEvent = (
   | TaskCreatedEvent
   | TaskStartingEvent
   | TaskStartedEvent
@@ -120,12 +121,13 @@ export type TaskEvent =
   | TaskPlanAcceptedEvent
   | TaskPlanDiscardedEvent
   | TaskPendingUpdatedEvent
-  | TaskAutomaticPrFlowUpdatedEvent;
+  | TaskAutomaticPrFlowUpdatedEvent
+) & { streamPosition?: StreamDeltaPosition };
 
 /**
  * Union type of all chat-scoped events streamed to clients.
  */
-export type ChatEvent =
+export type ChatEvent = (
   | ChatCreatedEvent
   | ChatUpdatedEvent
   | ChatStatusEvent
@@ -138,12 +140,13 @@ export type ChatEvent =
   | ChatInterruptedEvent
   | ChatErrorEvent
   | ChatDeletedEvent
-  | { type: "chat.trash.changed"; chatId: string; timestamp: string };
+  | { type: "chat.trash.changed"; chatId: string; timestamp: string }
+) & { streamPosition?: StreamDeltaPosition };
 
 /**
  * Union type of all agent-scoped events streamed to clients.
  */
-export type AgentEvent =
+export type AgentEvent = (
   | AgentCreatedEvent
   | AgentUpdatedEvent
   | AgentDeletedEvent
@@ -161,7 +164,8 @@ export type AgentEvent =
   | AgentRunFailedEvent
   | AgentRunInterruptedEvent
   | AgentRunDeletedEvent
-  | AgentRunsPurgedEvent;
+  | AgentRunsPurgedEvent
+) & { streamPosition?: StreamDeltaPosition };
 
 export interface ChatCreatedEvent {
   type: "chat.created";

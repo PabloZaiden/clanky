@@ -14,7 +14,11 @@ export class TranscriptMemoryIndex<T extends { id: string }> {
   private start = 0;
   private size = 0;
 
-  constructor(entries: T[], maxEntries = Number.POSITIVE_INFINITY) {
+  constructor(
+    entries: T[],
+    maxEntries = Number.POSITIVE_INFINITY,
+    private readonly onChange?: () => void,
+  ) {
     if (!Number.isFinite(maxEntries)) {
       this.entries = entries;
       this.capacity = null;
@@ -60,6 +64,12 @@ export class TranscriptMemoryIndex<T extends { id: string }> {
   }
 
   upsert(entry: T): { evicted: T[]; inserted: boolean } {
+    const result = this.upsertEntry(entry);
+    this.onChange?.();
+    return result;
+  }
+
+  private upsertEntry(entry: T): { evicted: T[]; inserted: boolean } {
     const existingIndex = this.indexes.get(entry.id);
     if (existingIndex !== undefined) {
       if (this.capacity === null) {

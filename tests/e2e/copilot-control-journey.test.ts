@@ -3,6 +3,7 @@ import { E2EApplication } from "./support/application";
 import { createFileAttachment, expectedFileInspection } from "./support/attachments";
 import { createGitFixture } from "./support/git";
 import { pollUntil } from "./support/polling";
+import { subscribeRealtime } from "./support/realtime";
 import { installExternalNativeCopilotProvider } from "./support/provider";
 import { E2E_IMAGE_DATA } from "./providers/image-input";
 
@@ -176,8 +177,8 @@ test("Copilot users inspect images and steer queued Control work across clients"
       new(url: string | URL, protocols?: string | string[]): WebSocket;
       new(url: string | URL, options?: Bun.WebSocketOptions): WebSocket;
     };
-    for (const [index, clientId] of clients.entries()) {
-      const socket = new RuntimeWebSocket(`${application.baseUrl.replace("http:", "ws:")}/api/ws?clientId=${clientId}`, {
+    for (const [index] of clients.entries()) {
+      const socket = new RuntimeWebSocket(`${application.baseUrl.replace("http:", "ws:")}/api/ws`, {
         headers: { Authorization: `Bearer ${key}`, Origin: application.baseUrl },
       });
       sockets.push(socket);
@@ -189,6 +190,9 @@ test("Copilot users inspect images and steer queued Control work across clients"
     await pollUntil(() => sockets.map((socket) => socket.readyState),
       (states) => states.every((state) => state === WebSocket.OPEN),
       { description: "two Copilot browser clients to connect", timeoutMs: 5_000 });
+    await Promise.all(sockets.map((socket, index) => subscribeRealtime(socket, {
+      kinds: ["action"], types: ["control.ui_action"], targets: { clientId: clients[index]! },
+    })));
     const send = async (
       message: string,
       clientId: string,

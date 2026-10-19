@@ -11,6 +11,7 @@ import type {
   TranscriptSnapshotOptions,
   ToolCallRecord,
 } from "@/shared";
+import { shouldIncludeConversationTranscriptLog } from "@/shared";
 import type { ChatEvent } from "@/shared/events";
 import { chatEventEmitter, SimpleEventEmitter } from "./event-emitter";
 import { ChatStateService } from "./chat-state-service";
@@ -39,6 +40,7 @@ import type {
   ReconnectChatOptions,
 } from "./chat-service-contracts";
 import type { Backend } from "../backends/types";
+import { includeLiveTranscript } from "./transcript-service";
 
 export type {
   ChatConfigUpdates,
@@ -185,7 +187,8 @@ export class ChatManager {
   }
 
   async getChatSummary(chatId: string): Promise<Chat | null> {
-    return this.services.state.getChatSummary(chatId);
+    const chat = await this.services.state.getChatSummary(chatId);
+    return chat ? this.services.conversation.withLiveActivity(chat) : null;
   }
 
   getChatAdapter(chat: Chat) { return this.services.session.getChatAdapter(chat); }
@@ -199,7 +202,8 @@ export class ChatManager {
   }
 
   async getChatSummaries(): Promise<Chat[]> {
-    return this.services.state.getChatSummaries();
+    return (await this.services.state.getChatSummaries())
+      .map((chat) => this.services.conversation.withLiveActivity(chat));
   }
 
   async getChatsByWorkspace(workspaceId: string, options?: { includeTaskChats?: boolean }): Promise<Chat[]> {
@@ -211,7 +215,8 @@ export class ChatManager {
   }
 
   async getChatSummariesByWorkspace(workspaceId: string): Promise<Chat[]> {
-    return this.services.state.getChatSummariesByWorkspace(workspaceId);
+    return (await this.services.state.getChatSummariesByWorkspace(workspaceId))
+      .map((chat) => this.services.conversation.withLiveActivity(chat));
   }
 
   async getTaskChat(taskId: string): Promise<Chat | null> {
@@ -222,7 +227,16 @@ export class ChatManager {
     chatId: string,
     options?: TranscriptSnapshotOptions,
   ): Promise<ChatSnapshot | null> {
-    return this.services.state.getChatSnapshot(chatId, options);
+    const snapshot = await this.services.state.getChatSnapshot(chatId, options);
+    if (!snapshot) return null;
+    return {
+      ...snapshot,
+      transcript: includeLiveTranscript(
+        snapshot.transcript,
+        this.services.conversation.getLiveTranscript(chatId),
+        { window: options ?? {}, shouldIncludeLog: shouldIncludeConversationTranscriptLog },
+      ),
+    };
   }
 
   async getChatToolCall(chatId: string, toolCallId: string): Promise<ToolCallRecord | null> {

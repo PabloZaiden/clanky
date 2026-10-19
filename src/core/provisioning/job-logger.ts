@@ -34,8 +34,10 @@ export function appendLog(
     record.logs.splice(0, record.logs.length - maxLogEntries);
   }
   appendProvisioningJobLog(record.owner.id, record.job.config.id, entry);
+  record.version.advance();
   provisioningEventEmitter.emit({
     type: "provisioning.output",
+    streamPosition: record.version.change,
     provisioningJobId: record.job.config.id,
     entry,
     timestamp: entry.timestamp,
@@ -81,8 +83,10 @@ export function persistStep(
   if (message) {
     appendSystemLog(record, maxLogEntries, message, step);
   }
+  record.version.advance();
   provisioningEventEmitter.emit({
     type: "provisioning.step",
+    streamPosition: record.version.change,
     provisioningJobId: record.job.config.id,
     job: structuredClone(record.job),
     step,
@@ -105,4 +109,12 @@ export function persistProvisioningState(
     updatedAt: new Date().toISOString(),
   };
   updateProvisioningJob(record.owner.id, record.job);
+  record.version.advance();
+  provisioningEventEmitter.emit({
+    type: "provisioning.updated",
+    streamPosition: record.version.change,
+    provisioningJobId: record.job.config.id,
+    job: structuredClone(record.job),
+    timestamp: record.job.state.updatedAt,
+  }, { userId: record.owner.id });
 }

@@ -55,7 +55,6 @@ import {
   type ClankyDomainEvent,
   type ClankyRealtimeEvent,
 } from "./realtime";
-import { installRealtimeHeartbeat } from "./realtime-heartbeat";
 import { CLANKY_VERSION } from "./version";
 import { resolveTerminal } from "./core/terminal-connection";
 import { isDomainError } from "./domain/domain-error";
@@ -119,7 +118,6 @@ let app: WebAppServer<ClankyRealtimeEvent> | undefined;
 let appMeshWorkerMode: boolean | undefined;
 let appRelayOnlyMode: boolean | undefined;
 let realtimeBridgeUnsubscribers: Array<() => void> | undefined;
-let realtimeHeartbeatCleanup: (() => void) | undefined;
 let workspaceWorkerReconcileTimer: Timer | undefined;
 let workspaceWorkerReconcileRunning = false;
 
@@ -663,11 +661,6 @@ export async function getWebAppServer(
         await cleanup(() => meshWorker
           ? workerRelayService.stopRuntime()
           : controllerRelayService.stopRuntime());
-        await cleanup(() => {
-          const disposeHeartbeat = realtimeHeartbeatCleanup;
-          realtimeHeartbeatCleanup = undefined;
-          disposeHeartbeat?.();
-        });
         await cleanup(() => meshTerminalGateway.closeAll());
         await cleanup(() => meshTcpTunnelGateway.closeAll());
         await cleanup(closeAllMeshTerminalConnections);
@@ -695,7 +688,6 @@ export async function getWebAppServer(
     liveVoiceManager.configure(new ClankyOperationService(createRouteCatalog(routes)));
     configureLiveVoiceApi((req, ctx) => createVoiceOperationAuthority(appServer, req, ctx));
     registerClankyRealtimeBridge(app);
-    realtimeHeartbeatCleanup = installRealtimeHeartbeat(app.realtime);
   }
   if (meshWorker) {
     log.info("Mesh worker application server created");

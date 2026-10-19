@@ -5,14 +5,12 @@ import type {
   ProvisioningStep,
 } from "@/shared";
 import { createLogger } from "@pablozaiden/webapp/server";
-import { updateProvisioningJob } from "../../persistence/provisioning-jobs";
 import { emitJobCancelled, emitJobCompleted, emitJobFailed } from "./job-events";
 import { appendSystemLog, persistProvisioningState, persistStep } from "./job-logger";
 import { buildError } from "./devbox-utils";
 import { ProvisioningCancelledError, ProvisioningFailedError } from "./errors";
 import { isProvisioningJobTerminal } from "@/shared";
 import type { ProvisioningJobRecord } from "./types";
-import { assertValidProvisioningTransition } from "./state-machine";
 import { DomainError } from "../../domain/domain-error";
 
 const log = createLogger("core:provisioning-attempt");
@@ -228,13 +226,7 @@ export class ProvisioningAttempt {
     if (isProvisioningJobTerminal(this.record.job.state.status)) {
       return;
     }
-    assertValidProvisioningTransition(
-      this.record.job.state.status,
-      status,
-      "ProvisioningAttempt.updateTerminalState",
-    );
-    this.record.job.state = nextState;
-    updateProvisioningJob(this.record.owner.id, this.record.job);
+    persistProvisioningState(this.record, nextState, "ProvisioningAttempt.updateTerminalState");
   }
 
   private isFinalized(): boolean {

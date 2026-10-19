@@ -33,6 +33,7 @@ import { ProvisioningSnapshotProjector } from "./snapshot-projector";
 import { ProvisioningWorkerLifecycle } from "./worker-lifecycle";
 import { ProvisioningWorkflows } from "./workflows";
 import { workspaceManager } from "../workspace-manager";
+import { StreamVersion } from "../stream-version";
 
 const log = createLogger("core:provisioning-manager");
 
@@ -97,6 +98,7 @@ export class ProvisioningManager {
     }
     const now = new Date().toISOString();
     const record: ProvisioningJobRecord = {
+      version: new StreamVersion(),
       job: {
         config: {
           id: jobId,

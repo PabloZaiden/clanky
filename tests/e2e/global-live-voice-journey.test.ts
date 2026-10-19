@@ -6,6 +6,7 @@ import { createGitFixture, gitStatus, type GitFixture } from "./support/git";
 import { GLOBAL_LIVE_INTENT } from "./support/live-voice-provider";
 import { installExternalNativeOpenCodeProvider } from "./support/provider";
 import { pollUntil } from "./support/polling";
+import { subscribeRealtime } from "./support/realtime";
 import { readProcessDiagnostics } from "./support/process";
 import {
   startEphemeralSshServer, stopEphemeralSshServer, type ManagedSshServer,
@@ -74,7 +75,7 @@ class VoiceClient {
       new(url: string | URL, protocols?: string | string[]): WebSocket;
       new(url: string | URL, options?: Bun.WebSocketOptions): WebSocket;
     };
-    this.socket = new RuntimeWebSocket(`${application.baseUrl.replace("http:", "ws:")}/api/ws?clientId=${this.id}`, {
+    this.socket = new RuntimeWebSocket(`${application.baseUrl.replace("http:", "ws:")}/api/ws`, {
       headers: { Authorization: `Bearer ${apiKey}`, Origin: application.baseUrl },
     });
     this.socket.onmessage = (message) => {
@@ -258,6 +259,9 @@ test("global Live operates owned recent and waiting work, resumes its conversati
     await pollUntil(() => clients.map((client) => client.socket.readyState),
       (states) => states.every((state) => state === WebSocket.OPEN),
       { description: "Live originating and other browser tabs to connect", timeoutMs: 5_000 });
+    await Promise.all(clients.map((client) => subscribeRealtime(client.socket, {
+      kinds: ["action"], types: ["control.ui_action"], targets: { clientId: client.id },
+    })));
     const [client, other] = clients as [VoiceClient, VoiceClient];
     const startBody = { clientId: client.id, context: client.context, sdp: createFixtureLiveOffer("global-product") };
     const started = (await application.json<{ call: LiveState; sdp: string }>("/api/voice/live", {

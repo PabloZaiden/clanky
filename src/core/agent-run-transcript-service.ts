@@ -6,7 +6,8 @@ import type {
 } from "@/shared";
 import { agentRunTranscriptStore } from "../persistence/transcripts/agent-run-store";
 import { loadAgentRunSummary } from "../persistence/agents";
-import { createTranscriptFromStoragePage } from "./transcript-service";
+import { createTranscriptFromStoragePage, includeLiveTranscript } from "./transcript-service";
+import { agentRunner } from "./agent-runner";
 
 export type AgentRunTranscriptSnapshotRun = Omit<AgentRun, "messages" | "logs" | "toolCalls">;
 
@@ -32,13 +33,13 @@ export async function getAgentRunTranscriptSnapshot(
   const { messages: _messages, logs: _logs, toolCalls: _toolCalls, ...runWithoutTranscript } = run;
   return {
     run: runWithoutTranscript,
-    transcript: createTranscriptFromStoragePage(
+    transcript: includeLiveTranscript(createTranscriptFromStoragePage(
       agentRunTranscriptStore.listPage(runId, options),
       {
         revision: meta.revision,
         totalEntries: meta.entryCount,
       },
-    ),
+    ), agentRunner.getLiveTranscript(runId), { window: options }),
   };
 }
 

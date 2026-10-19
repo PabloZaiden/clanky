@@ -131,6 +131,10 @@ export class TaskManager {
     return getTaskImpl(this.ctx, taskId);
   }
 
+  getLiveTranscript(taskId: string) {
+    return this.engines.get(taskId)?.liveTranscript;
+  }
+
   getActivity(taskId: string) { return getTaskHarnessActivity(this.ctx, taskId); }
 
   stopActivity(taskId: string, activityId: string) { return stopTaskHarnessActivity(this.ctx, taskId, activityId); }

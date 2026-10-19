@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   Agent,
-  AgentEvent,
   AgentRun,
   ChatTranscript,
   ModelConfig,
@@ -10,13 +9,7 @@ import type {
 import { isAgentCodeEnabled } from "@/shared/agent";
 import type { BranchInfo, ModelInfo } from "@/contracts";
 import type { UseAgentsResult } from "../../hooks/useAgents";
-import {
-  toTranscriptStreamEvent,
-  useMarkdownPreference,
-  useRealtimeRefreshWithRecovery,
-  useRealtimeStream,
-  useTranscriptResource,
-} from "../../hooks";
+import { useMarkdownPreference, useTranscriptResource } from "../../hooks";
 import { ConversationViewer } from "../log-viewer";
 import {
   ConfirmModal,
@@ -535,12 +528,10 @@ function decodeAgentRunSnapshot(
 }
 
 function AgentRunDetail({
-  agent,
   runId,
   initialRun,
   onMissingEntity,
 }: {
-  agent: Agent | null;
   runId: string;
   initialRun: AgentRun | null;
   onMissingEntity: () => void;
@@ -549,68 +540,28 @@ function AgentRunDetail({
   const transcriptResource = useTranscriptResource<AgentRun, AgentRunSnapshotResponse>({
     resourceId: runId,
     resourceLabel: "agent run",
+    stream: "agent.run",
     baseUrl: `/api/agent-runs/${encodeURIComponent(runId)}`,
     initialResource: initialRun,
     decodeSnapshot: decodeAgentRunSnapshot,
   });
   const {
     resource: run,
-    getResource: getRun,
-    setResource: setRun,
     transcript,
     loading,
     loadingTranscript,
     error,
     notFound,
-    refresh: refreshRun,
     loadMoreTranscript,
     loadFullTranscript,
     loadToolDetails,
-    applyTranscriptEvent,
-    clearResource,
   } = transcriptResource;
 
-  useRealtimeRefreshWithRecovery({
-    resources: ["agent-runs"],
-    ids: [runId],
-    filters: { resource: "agent-runs", id: runId, scope: agent?.config.id },
-    refresh: (event) => {
-      if (event.action === "deleted") {
-        clearResource("Agent run not found");
-        return;
-      }
-      return refreshRun({ showLoading: false });
-    },
-    onReconnect: () => refreshRun({ showLoading: false }),
-  });
-
-  useEffect(() => {
-    void refreshRun();
-  }, [refreshRun]);
   useEffect(() => {
     if (notFound) {
       onMissingEntity();
     }
   }, [notFound, onMissingEntity]);
-
-  useRealtimeStream<AgentEvent>({
-    filters: { agentRunId: runId },
-    predicate: (event) => event.type.startsWith("agent.run."),
-    onEvent: (event) => {
-      const currentRun = getRun();
-      if (!currentRun || !("agentRunId" in event) || event.agentRunId !== currentRun.id) {
-        return;
-      }
-      if (event.type === "agent.run.status") {
-        setRun((current) => current ? { ...current, status: event.status, updatedAt: event.timestamp } : current);
-        return;
-      }
-      const transcriptEvent = toTranscriptStreamEvent(event);
-      if (transcriptEvent) {
-        applyTranscriptEvent(transcriptEvent);
-      }
-    },
-  });
 
   if (loading && !run) {
     return <LoadingState title="Loading agent run" />;
@@ -852,12 +803,10 @@ export function AgentsView({
         />
       );
     }
-    const agent = agents.find((item) => item.config.id === agentId) ?? null;
     const initialRun = (runsByAgentId[agentId] ?? []).find((run) => run.id === runId) ?? null;
     return (
       <AgentRunDetail
         key={`agent-run:${runId}`}
-        agent={agent}
         runId={runId}
         initialRun={initialRun}
         onMissingEntity={navigateHome}

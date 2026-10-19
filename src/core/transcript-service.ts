@@ -1,5 +1,9 @@
 import { createHash } from "node:crypto";
-import { createToolCallSummary, isCountedAssistantResponse } from "@/shared";
+import {
+  createToolCallSummary,
+  isCountedAssistantResponse,
+  mergeTranscriptIncomingRecords,
+} from "@/shared";
 import type {
   ChatTranscript,
   ChatTranscriptStorageEntry,
@@ -9,6 +13,52 @@ import type {
   ToolCallRecord,
 } from "@/shared";
 import type { TranscriptEntriesPage } from "../persistence/transcripts/types";
+import type { LiveTranscriptState } from "./transcript-stream-projection";
+
+export function includeLiveTranscript(
+  persisted: ChatTranscript,
+  live: LiveTranscriptState | undefined,
+  options: {
+    window: TranscriptSnapshotOptions;
+    shouldIncludeLog?: (entry: TaskLogEntry) => boolean;
+  },
+): ChatTranscript {
+  if (!live || options.window.before) return persisted;
+  const boundary = persisted.isPartial
+    ? [...persisted.messages, ...persisted.logs, ...persisted.toolCalls].reduce<string | undefined>(
+      (earliest, entry) => !earliest || entry.timestamp < earliest ? entry.timestamp : earliest,
+      undefined,
+    )
+    : undefined;
+  const inWindow = (entry: { timestamp: string }) => !boundary || entry.timestamp >= boundary;
+  const messages = mergeTranscriptIncomingRecords([], live.messages.filter(inWindow));
+  const logs = mergeTranscriptIncomingRecords(
+    [],
+    live.logs.filter((entry) => inWindow(entry) && (!options.shouldIncludeLog || options.shouldIncludeLog(entry))),
+  );
+  const toolCalls = mergeTranscriptIncomingRecords(
+    [],
+    live.toolCalls.filter(inWindow).map((tool) => createToolCallSummary(tool)),
+  );
+  const loadedResponses = messages.filter(isCountedAssistantResponse).length;
+  const totalResponses = live.messages.filter(isCountedAssistantResponse).length;
+  const isPartial = loadedResponses < totalResponses;
+  const { nextCursor, ...storedWindow } = persisted;
+  return {
+    ...storedWindow,
+    messages,
+    logs,
+    toolCalls,
+    position: live.position,
+    revision: `${persisted.revision}:${live.position.epoch}:${String(live.position.revision)}`,
+    loadedResponses,
+    totalResponses,
+    totalEntries: live.messages.length + live.logs.length + live.toolCalls.length,
+    isPartial,
+    hasOlder: isPartial && persisted.hasOlder,
+    ...(isPartial && nextCursor ? { nextCursor } : {}),
+  };
+}
 
 type TranscriptEntry =
   | {
@@ -40,7 +90,7 @@ export function getTranscriptSnapshotEtag(
   snapshotState: unknown,
   window: TranscriptSnapshotOptions = {},
 ): string {
-  const windowKey = window.full ? "full" : window.before ? "page" : "latest";
+  const windowKey = window.full ? "full" : window.before ? "page" : window.since ? "range" : "latest";
   const stateRevision = createHash("sha256")
     .update(JSON.stringify({ snapshotState, window }) ?? "undefined")
     .digest("hex")
@@ -142,6 +192,7 @@ export function createTranscriptFromStorageEntries(
     logs,
     toolCalls,
     revision: options.revision,
+    position: { epoch: options.revision, revision: 0 },
     totalEntries: options.totalEntries,
     isPartial,
     loadedResponses,

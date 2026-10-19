@@ -5,7 +5,8 @@ import { domainErrorResponse, errorResponse } from "./helpers";
 /**
  * Parse the paged transcript contract. An omitted option returns only the
  * latest response page; callers that need every persisted entry must request
- * `full=1`, while `before` loads the next older page.
+ * `full=1`, while `before` loads older history and `since` refreshes an
+ * explicitly loaded window from its oldest response cursor.
  */
 export function parseTranscriptSnapshotOptions(
   request: Request,
@@ -13,6 +14,7 @@ export function parseTranscriptSnapshotOptions(
   const search = new URL(request.url).searchParams;
   const full = search.get("full");
   const before = search.get("before");
+  const since = search.get("since");
 
   if (full !== null && full !== "1") {
     return errorResponse(
@@ -21,21 +23,21 @@ export function parseTranscriptSnapshotOptions(
       400,
     );
   }
-  if (before !== null && before.length === 0) {
+  if ([before, since].some((cursor) => cursor !== null && cursor.length === 0)) {
     return errorResponse(
       "invalid_transcript_options",
       "The transcript cursor must not be empty",
       400,
     );
   }
-  if (full === "1" && before !== null) {
+  if ([full === "1", before !== null, since !== null].filter(Boolean).length > 1) {
     return errorResponse(
       "invalid_transcript_options",
-      "The full transcript option cannot be combined with a cursor",
+      "Transcript window options cannot be combined",
       400,
     );
   }
-  if (before !== null && before.length > 2048) {
+  if ([before, since].some((cursor) => cursor !== null && cursor.length > 2048)) {
     return errorResponse(
       "invalid_transcript_options",
       "The transcript cursor is too long",
@@ -46,6 +48,7 @@ export function parseTranscriptSnapshotOptions(
   return {
     ...(full === "1" ? { full: true } : {}),
     ...(before !== null ? { before } : {}),
+    ...(since !== null ? { since } : {}),
   };
 }
 

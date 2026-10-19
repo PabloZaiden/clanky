@@ -8,7 +8,7 @@ import type {
 import { ControlUiActionEventSchema } from "@/shared/clanky-control";
 import { apiRequest } from "../../lib/api-client";
 import { getClankyClientId } from "../../lib/clanky-client-id";
-import { useRealtimeStream } from "../../hooks/useRealtimeStream";
+import { useRealtime } from "@pablozaiden/webapp/web";
 import { getExecutionHostSourceId } from "@/shared";
 import type { useShellResources } from "./use-shell-resources";
 
@@ -80,20 +80,19 @@ function getActionRoute(action: ControlUiAction): WebAppRoute | null {
 }
 
 async function refreshNavigationTarget(action: ControlUiAction, resources: NavigationResources): Promise<void> {
-  const options = { showLoading: false, afterCurrent: true };
   switch (action.type) {
     case "open_workspace":
-    case "open_workspace_file": await resources.refreshWorkspaces(options); break;
-    case "open_chat": await resources.refreshChats(options); break;
-    case "open_task": await resources.refreshTasks(options); break;
-    case "open_agent": await resources.agents.refresh(options); break;
-    case "open_terminal": await resources.refreshTerminalSessions(options); break;
+    case "open_workspace_file": await resources.refreshWorkspaces(); break;
+    case "open_chat": await resources.refreshChats(); break;
+    case "open_task": await resources.refreshTasks(); break;
+    case "open_agent": await resources.agents.refresh(); break;
+    case "open_terminal": await resources.refreshTerminalSessions(); break;
     case "open_ssh_server":
     case "open_execution_host":
       await Promise.all([
-        resources.refreshExecutionHosts(options),
+        resources.refreshExecutionHosts(),
         ...(action.type === "open_ssh_server" || action.kind === "ssh"
-          ? [resources.refreshSshServers(options)] : []),
+          ? [resources.refreshSshServers()] : []),
       ]);
       break;
   }
@@ -371,8 +370,11 @@ export function useControlUiActions({
     queuedActionsRef.current = queuedActionsRef.current.then(() => processAction(event));
   }, [acknowledge, clientId, processAction]);
 
-  useRealtimeStream<ControlUiActionEvent>({
-    filters: { clientId },
+  useRealtime<ControlUiActionEvent>({
+    targets: { clientId },
+    types: ["control.ui_action"],
+    kinds: ["action"],
+    trackLastEvent: false,
     predicate: (event) => event.type === "control.ui_action" && event.clientId === clientId,
     onEvent: handleRealtimeEvent,
   });

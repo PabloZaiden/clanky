@@ -4,14 +4,14 @@ import {
 } from "@pablozaiden/webapp/web";
 import { getProvisioningStatusBadgeVariant, getProvisioningStatusLabel, StatusBadge } from "./common";
 import type { ProvisioningLogEntry, PublicProvisioningJobSnapshot } from "@/shared";
-import type { RealtimeStreamStatus } from "../hooks";
+import type { RealtimeStatus } from "@pablozaiden/webapp/web";
 import { getProvisioningExecutionLabel, getProvisioningStepLabel } from "./provisioning/presentation";
 import { ConsoleOutput } from "./console-output";
 
 export interface ProvisioningJobViewProps {
   snapshot: PublicProvisioningJobSnapshot | null;
   logs: ProvisioningLogEntry[];
-  websocketStatus: RealtimeStreamStatus;
+  websocketStatus: RealtimeStatus;
   loading?: boolean;
   error?: string | null;
 }

@@ -20,6 +20,7 @@ export const GitRemoteStatusQuerySchema = WorkspaceQuerySchema.extend({
 
 export const TranscriptSnapshotQuerySchema = z.object({
   before: z.string().min(1).max(2048).optional(),
+  since: z.string().min(1).max(2048).optional(),
   full: z.literal("1").optional(),
 }).strict();
 

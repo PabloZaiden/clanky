@@ -7,6 +7,7 @@
 import type { Database } from "bun:sqlite";
 import {
   hasToolCallImagePreview,
+  isCountedAssistantResponse,
   getMessageAttachmentKind,
   TRANSCRIPT_PAGE_SIZE,
 } from "@/shared";
@@ -16,6 +17,7 @@ import type {
   PersistedMessage,
   TaskLogEntry,
   ToolCallRecord,
+  TranscriptSnapshotOptions,
 } from "@/shared";
 import { getDatabase } from "../database";
 import { requirePersistenceUserId } from "../ownership";
@@ -693,17 +695,66 @@ function hasOlderTranscriptResponses(
   return row !== null;
 }
 
+function getResponseWindowStart({ resource, resourceId, userId, oldest }: {
+  resource: TranscriptResource;
+  resourceId: string;
+  userId: string;
+  oldest: TranscriptResponseRow;
+}): TranscriptResponseRow {
+  const config = getTableConfig(resource);
+  return getDatabase().prepare(`
+    SELECT entry_id, timestamp, sequence
+    FROM ${config.entriesTable}
+    WHERE ${config.resourceColumn} = ?
+      AND user_id = ?
+      AND kind = 'message'
+      AND message_role = 'user'
+      AND (
+        timestamp < ?
+        OR (
+          timestamp = ?
+          AND (
+            sequence < ?
+            OR (sequence = ? AND entry_id < ?)
+          )
+        )
+      )
+    ORDER BY timestamp DESC, sequence DESC, entry_id DESC
+    LIMIT 1
+  `).get(
+    resourceId, userId, oldest.timestamp, oldest.timestamp,
+    oldest.sequence, oldest.sequence, oldest.entry_id,
+  ) as TranscriptResponseRow | null ?? oldest;
+}
+
 export function listTranscriptEntriesPageForUser(
   resource: TranscriptResource,
   resourceId: string,
   userId: string,
-  options: { full?: boolean; before?: string } = {},
+  options: TranscriptSnapshotOptions = {},
 ): TranscriptEntriesPage {
-  if (options.full && options.before) {
-    throw new TranscriptCursorError("Transcript page cannot be both full and cursor-based");
+  if ([options.full, options.before, options.since].filter(Boolean).length > 1) {
+    throw new TranscriptCursorError("Transcript window options cannot be combined");
   }
 
   const totalResponses = getTranscriptResponseCount(resource, resourceId, userId);
+  if (options.since) {
+    const cursor = decodeTranscriptCursor(resource, resourceId, userId, options.since);
+    const oldest = { entry_id: cursor.entryId, timestamp: cursor.timestamp, sequence: cursor.sequence };
+    const entries = getEntriesBetween(
+      resource, resourceId, userId, getResponseWindowStart({ resource, resourceId, userId, oldest }), null,
+    );
+    const hasOlder = hasOlderTranscriptResponses(resource, resourceId, userId, oldest);
+    return {
+      entries,
+      totalResponses,
+      loadedResponses: entries.filter((entry) => (
+        entry.kind === "message" && isPersistedMessage(entry.payload) && isCountedAssistantResponse(entry.payload)
+      )).length,
+      hasOlder,
+      ...(hasOlder ? { nextCursor: options.since } : {}),
+    };
+  }
   if (options.full || (!options.before && totalResponses <= TRANSCRIPT_PAGE_SIZE)) {
     return {
       entries: listTranscriptEntriesForUser(resource, resourceId, userId),
@@ -773,35 +824,7 @@ export function listTranscriptEntriesPageForUser(
   }
 
   const oldest = responseRows[responseRows.length - 1]!;
-  const configForUser = getDatabase().prepare(`
-    SELECT entry_id, timestamp, sequence
-    FROM ${config.entriesTable}
-    WHERE ${config.resourceColumn} = ?
-      AND user_id = ?
-      AND kind = 'message'
-      AND message_role = 'user'
-      AND (
-        timestamp < ?
-        OR (
-          timestamp = ?
-          AND (
-            sequence < ?
-            OR (sequence = ? AND entry_id < ?)
-          )
-        )
-      )
-    ORDER BY timestamp DESC, sequence DESC, entry_id DESC
-    LIMIT 1
-  `).get(
-    resourceId,
-    userId,
-    oldest.timestamp,
-    oldest.timestamp,
-    oldest.sequence,
-    oldest.sequence,
-    oldest.entry_id,
-  ) as TranscriptResponseRow | null;
-  const lower = configForUser ?? oldest;
+  const lower = getResponseWindowStart({ resource, resourceId, userId, oldest });
   const hasOlder = hasOlderTranscriptResponses(resource, resourceId, userId, oldest);
   const upper = cursor
     ? {
@@ -836,7 +859,7 @@ export function listTranscriptEntries(
 export function listTranscriptEntriesPage(
   resource: TranscriptResource,
   resourceId: string,
-  options: { full?: boolean; before?: string } = {},
+  options: TranscriptSnapshotOptions = {},
 ): TranscriptEntriesPage {
   return listTranscriptEntriesPageForUser(
     resource,

@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { ApiError } from "../lib/api-error";
 import { apiRequest, readApiResponse, requestApiResponse } from "../lib/api-client";
 import { isAbortError } from "../lib/request-lifecycle";
-import { createLogger } from "@pablozaiden/webapp/web";
+import { useLiveQuery } from "@pablozaiden/webapp/web";
 import type {
   Agent,
   AgentRun,
@@ -13,15 +13,6 @@ import type {
   TaskLogEntry,
 } from "@/shared";
 import type { CreateAgentRequest, DeleteAgentRunsRequest, GenerateAgentCodeRequest, PrepareGenerateAgentCodeRequest, RunAgentRequest, TestAgentCodeRequest, UpdateAgentRequest } from "@/contracts/schemas";
-import {
-  createAgentRunRefreshCoordinator,
-  type AgentRunRefreshOptions,
-} from "../lib/agent-run-refresh";
-import { createRefreshCoordinator } from "../lib/refresh-coordinator";
-import { useRealtimeRefreshWithRecovery } from "./useRealtimeStream";
-import type { ResourceRefreshOptions } from "./useResourceRefresh";
-
-const log = createLogger("useAgents");
 
 function sortAgents(agents: Agent[]): Agent[] {
   return [...agents].sort((left, right) => right.config.updatedAt.localeCompare(left.config.updatedAt));
@@ -39,6 +30,28 @@ function upsertRun(runs: AgentRun[], run: AgentRun): AgentRun[] {
   return sortRuns([...runs.filter((item) => item.id !== run.id), run]);
 }
 
+interface AgentCollection {
+  agents: Agent[];
+  runsByAgentId: Record<string, AgentRun[]>;
+}
+
+function reconcileAgent(previous: AgentCollection | undefined, agent: Agent | null): AgentCollection | undefined {
+  return agent ? {
+    agents: upsertAgent(previous?.agents ?? [], agent),
+    runsByAgentId: previous?.runsByAgentId ?? {},
+  } : previous;
+}
+
+function reconcileRun(previous: AgentCollection | undefined, run: AgentRun | null): AgentCollection | undefined {
+  return run ? {
+    agents: previous?.agents ?? [],
+    runsByAgentId: {
+      ...previous?.runsByAgentId,
+      [run.agentId]: upsertRun(previous?.runsByAgentId[run.agentId] ?? [], run),
+    },
+  } : previous;
+}
+
 function getDownloadFilename(response: Response): string {
   const disposition = response.headers.get("Content-Disposition");
   const filename = disposition?.match(/filename="([^"]+)"/i)?.[1];
@@ -50,7 +63,7 @@ export interface UseAgentsResult {
   runsByAgentId: Record<string, AgentRun[]>;
   loading: boolean;
   error: string | null;
-  refresh: (options?: ResourceRefreshOptions) => Promise<void>;
+  refresh: () => Promise<void>;
   refreshRuns: (agentId: string) => Promise<void>;
   createAgent: (request: CreateAgentRequest) => Promise<Agent | null>;
   exportAgent: (id: string) => Promise<void>;
@@ -88,95 +101,45 @@ export interface UseAgentsResult {
 }
 
 export function useAgents(): UseAgentsResult {
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [runsByAgentId, setRunsByAgentId] = useState<Record<string, AgentRun[]>>({});
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
-  const refreshCoordinatorRef = useRef(createRefreshCoordinator<void>());
-  const refreshRunsCoordinatorRef = useRef(createAgentRunRefreshCoordinator<AgentRun[]>());
-  const isMountedRef = useRef(true);
-
-  const refresh = useCallback((options: ResourceRefreshOptions = {}) => {
-    const method = options.afterCurrent ? "runAfterCurrent" : "run";
-    return refreshCoordinatorRef.current[method](async () => {
-      const showLoading = options.showLoading ?? true;
-      const controller = new AbortController();
-      abortControllerRef.current = controller;
-      try {
-        if (showLoading) {
-          setLoading(true);
-        }
-        setError(null);
-        const data = await apiRequest<Agent[]>("/api/agents", {
-          signal: controller.signal,
-          action: "Fetch agents",
-          fallbackMessage: "Failed to fetch agents",
-        });
-        if (controller.signal.aborted) {
-          return;
-        }
-        setAgents(sortAgents(data));
-      } catch (refreshError) {
-        if (controller.signal.aborted) {
-          return;
-        }
-        setError(String(refreshError));
-      } finally {
-        if (abortControllerRef.current === controller) {
-          abortControllerRef.current = null;
-        }
-        if (!controller.signal.aborted && showLoading) {
-          setLoading(false);
-        }
-      }
-    });
-  }, []);
-
-  const invalidateAgentRunRefresh = useCallback((agentId: string): void => {
-    refreshRunsCoordinatorRef.current.invalidate(agentId);
-  }, []);
-
-  const refreshRunsForAgent = useCallback((
-    agentId: string,
-    options: AgentRunRefreshOptions = {},
-  ): Promise<void> => {
-    if (!isMountedRef.current) {
-      return Promise.resolve();
-    }
-
-    return refreshRunsCoordinatorRef.current.refresh(agentId, {
-      ...options,
-      load: (signal) => apiRequest<AgentRun[]>(`/api/agents/${agentId}/runs`, {
+  const query = useLiveQuery<AgentCollection>({
+    load: async (signal, previous) => {
+      const agents = await apiRequest<Agent[]>("/api/agents", {
         signal,
-        action: "Fetch agent runs",
-        fallbackMessage: "Failed to fetch agent runs",
-      }),
-      onLoaded: (runs) => {
-        if (!isMountedRef.current) {
-          return;
-        }
-        setRunsByAgentId((prev) => ({ ...prev, [agentId]: sortRuns(runs) }));
-      },
-      onError: (refreshError) => {
-        if (!isMountedRef.current || isAbortError(refreshError)) {
-          return;
-        }
-        log.error("Failed to refresh agent runs", { agentId, error: String(refreshError) });
-        setError(String(refreshError));
-      },
-    });
-  }, []);
+        action: "Fetch agents",
+        fallbackMessage: "Failed to fetch agents",
+      });
+      const existingIds = new Set(agents.map((agent) => agent.config.id));
+      const runs = await Promise.all(Object.keys(previous?.runsByAgentId ?? {})
+        .filter((id) => existingIds.has(id))
+        .map(async (agentId) => [agentId, sortRuns(await apiRequest<AgentRun[]>(`/api/agents/${agentId}/runs`, {
+          signal,
+          action: "Fetch agent runs",
+          fallbackMessage: "Failed to fetch agent runs",
+        }))] as const));
+      return { agents: sortAgents(agents), runsByAgentId: Object.fromEntries(runs) };
+    },
+    realtime: { resources: ["agents", "agent-runs"] },
+  });
+  const agents = query.data?.agents ?? [];
+  const runsByAgentId = query.data?.runsByAgentId ?? {};
+  const mutate = query.mutate;
+  const refresh = useCallback(async () => {
+    setError(null);
+    await query.refresh();
+  }, [query.refresh]);
 
-  const refreshRuns = useCallback((agentId: string) => {
-    return refreshRunsForAgent(agentId);
-  }, [refreshRunsForAgent]);
-
-  const refreshAllRuns = useCallback(async () => {
-    await Promise.all(
-      Object.keys(runsByAgentId).map((agentId) => refreshRunsForAgent(agentId, { force: true })),
-    );
-  }, [refreshRunsForAgent, runsByAgentId]);
+  const refreshRuns = useCallback(async (agentId: string): Promise<void> => {
+    try {
+      setError(null);
+      await mutate(async () => agentId, (previous, id) => previous ? {
+        ...previous,
+        runsByAgentId: { ...previous.runsByAgentId, [id]: previous.runsByAgentId[id] ?? [] },
+      } : { agents: [], runsByAgentId: { [id]: [] } });
+    } catch (error) {
+      setError(String(error));
+    }
+  }, [mutate]);
 
   const requestAgent = useCallback(async <T>(
     path: string,
@@ -184,15 +147,19 @@ export function useAgents(): UseAgentsResult {
     fallback: string,
     requestOptions: {
       rethrowErrors?: boolean;
+      reconcile?: (previous: AgentCollection | undefined, result: T) => AgentCollection | undefined;
     } = {},
   ): Promise<T | null> => {
     try {
-      return await apiRequest<T>(path, {
+      setError(null);
+      const operation = (signal: AbortSignal) => apiRequest<T>(path, {
         ...options,
+        signal: options.signal ? AbortSignal.any([options.signal, signal]) : signal,
         headers: { "Content-Type": "application/json", ...(options.headers ?? {}) },
         action: fallback,
         fallbackMessage: fallback,
       });
+      return await mutate(operation, requestOptions.reconcile);
     } catch (requestError) {
       if (options.signal?.aborted || isAbortError(requestError)) {
         return null;
@@ -203,17 +170,13 @@ export function useAgents(): UseAgentsResult {
       }
       return null;
     }
-  }, []);
+  }, [mutate]);
 
   const createAgent = useCallback(async (request: CreateAgentRequest) => {
-    const agent = await requestAgent<Agent>("/api/agents", {
+    return await requestAgent<Agent>("/api/agents", {
       method: "POST",
       body: JSON.stringify(request),
-    }, "Failed to create agent");
-    if (agent) {
-      setAgents((prev) => upsertAgent(prev, agent));
-    }
-    return agent;
+    }, "Failed to create agent", { reconcile: reconcileAgent });
   }, [requestAgent]);
 
   const exportAgent = useCallback(async (id: string): Promise<void> => {
@@ -241,30 +204,22 @@ export function useAgents(): UseAgentsResult {
     workspaceId: string,
     payload: unknown,
   ): Promise<Agent | null> => {
-    const agent = await requestAgent<Agent>(
+    return await requestAgent<Agent>(
       `/api/workspaces/${encodeURIComponent(workspaceId)}/agents/import`,
       {
         method: "POST",
         body: JSON.stringify(payload),
       },
       "Failed to import agent",
-      { rethrowErrors: true },
+      { rethrowErrors: true, reconcile: reconcileAgent },
     );
-    if (agent) {
-      setAgents((prev) => upsertAgent(prev, agent));
-    }
-    return agent;
   }, [requestAgent]);
 
   const updateAgent = useCallback(async (id: string, request: UpdateAgentRequest) => {
-    const agent = await requestAgent<Agent>(`/api/agents/${id}`, {
+    return await requestAgent<Agent>(`/api/agents/${id}`, {
       method: "PATCH",
       body: JSON.stringify(request),
-    }, "Failed to update agent");
-    if (agent) {
-      setAgents((prev) => upsertAgent(prev, agent));
-    }
-    return agent;
+    }, "Failed to update agent", { reconcile: reconcileAgent });
   }, [requestAgent]);
 
   const prepareGenerateAgentCode = useCallback(async (
@@ -295,6 +250,7 @@ export function useAgents(): UseAgentsResult {
     } = {},
   ): Promise<(GeneratedAgentCode & { chat?: Chat }) | null> => {
     try {
+      setError(null);
       const response = await requestApiResponse(
         id ? `/api/agents/${id}/code/generate` : "/api/agents/code/generate",
         {
@@ -343,6 +299,7 @@ export function useAgents(): UseAgentsResult {
     } = {},
   ): Promise<DeterministicAgentTestResult | null> => {
     try {
+      setError(null);
       const response = await requestApiResponse("/api/agents/code/test/stream", {
         method: "POST",
         signal: options.signal,
@@ -405,138 +362,83 @@ export function useAgents(): UseAgentsResult {
   const deleteAgent = useCallback(async (id: string) => {
     const result = await requestAgent<{ success: boolean }>(`/api/agents/${id}`, {
       method: "DELETE",
-    }, "Failed to delete agent");
-    if (result?.success) {
-      invalidateAgentRunRefresh(id);
-      setAgents((prev) => prev.filter((agent) => agent.config.id !== id));
-      setRunsByAgentId((prev) => {
-        const next = { ...prev };
-        delete next[id];
-        return next;
-      });
-      return true;
-    }
-    return false;
-  }, [invalidateAgentRunRefresh, requestAgent]);
+    }, "Failed to delete agent", {
+      reconcile: (previous, result) => {
+        if (!previous || !result.success) return previous;
+        const runsByAgentId = { ...previous.runsByAgentId };
+        delete runsByAgentId[id];
+        return { agents: previous.agents.filter((agent) => agent.config.id !== id), runsByAgentId };
+      },
+    });
+    return result?.success ?? false;
+  }, [requestAgent]);
 
   const runAgent = useCallback(async (id: string, request: RunAgentRequest = { attachments: [] }) => {
-    const run = await requestAgent<AgentRun>(`/api/agents/${id}/run`, {
+    return await requestAgent<AgentRun>(`/api/agents/${id}/run`, {
       method: "POST",
       body: JSON.stringify(request),
-    }, "Failed to run agent");
-    if (run) {
-      invalidateAgentRunRefresh(run.agentId);
-      setRunsByAgentId((prev) => ({ ...prev, [run.agentId]: upsertRun(prev[run.agentId] ?? [], run) }));
-    }
-    return run;
-  }, [invalidateAgentRunRefresh, requestAgent]);
+    }, "Failed to run agent", { reconcile: reconcileRun });
+  }, [requestAgent]);
 
   const interruptAgent = useCallback(async (id: string) => {
-    const run = await requestAgent<AgentRun>(`/api/agents/${id}/interrupt`, {
+    return await requestAgent<AgentRun>(`/api/agents/${id}/interrupt`, {
       method: "POST",
       body: JSON.stringify({}),
-    }, "Failed to interrupt agent");
-    if (run) {
-      invalidateAgentRunRefresh(run.agentId);
-      setRunsByAgentId((prev) => ({ ...prev, [run.agentId]: upsertRun(prev[run.agentId] ?? [], run) }));
-    }
-    return run;
-  }, [invalidateAgentRunRefresh, requestAgent]);
+    }, "Failed to interrupt agent", { reconcile: reconcileRun });
+  }, [requestAgent]);
 
   const pauseAgent = useCallback(async (id: string) => {
-    const agent = await requestAgent<Agent>(`/api/agents/${id}/pause`, {
+    return await requestAgent<Agent>(`/api/agents/${id}/pause`, {
       method: "POST",
       body: JSON.stringify({}),
-    }, "Failed to pause agent");
-    if (agent) {
-      setAgents((prev) => upsertAgent(prev, agent));
-    }
-    return agent;
+    }, "Failed to pause agent", { reconcile: reconcileAgent });
   }, [requestAgent]);
 
   const resumeAgent = useCallback(async (id: string) => {
-    const agent = await requestAgent<Agent>(`/api/agents/${id}/resume`, {
+    return await requestAgent<Agent>(`/api/agents/${id}/resume`, {
       method: "POST",
       body: JSON.stringify({}),
-    }, "Failed to resume agent");
-    if (agent) {
-      setAgents((prev) => upsertAgent(prev, agent));
-    }
-    return agent;
+    }, "Failed to resume agent", { reconcile: reconcileAgent });
   }, [requestAgent]);
 
   const deleteRun = useCallback(async (runId: string) => {
-    const agentId = Object.entries(runsByAgentId)
-      .find(([, runs]) => runs.some((run) => run.id === runId))?.[0];
     const result = await requestAgent<{ success: boolean }>(`/api/agent-runs/${runId}`, {
       method: "DELETE",
-    }, "Failed to delete agent run");
-    if (result?.success) {
-      if (agentId) {
-        invalidateAgentRunRefresh(agentId);
-      }
-      setRunsByAgentId((prev) => Object.fromEntries(
-        Object.entries(prev).map(([currentAgentId, runs]) => [
-          currentAgentId,
-          runs.filter((run) => run.id !== runId),
-        ]),
-      ));
-      return true;
-    }
-    return false;
-  }, [invalidateAgentRunRefresh, requestAgent, runsByAgentId]);
+    }, "Failed to delete agent run", {
+      reconcile: (previous, result) => previous && result.success ? {
+        ...previous,
+        runsByAgentId: Object.fromEntries(Object.entries(previous.runsByAgentId)
+          .map(([agentId, runs]) => [agentId, runs.filter((run) => run.id !== runId)])),
+      } : previous,
+    });
+    return result?.success ?? false;
+  }, [requestAgent]);
 
   const purgeRuns = useCallback(async (agentId: string, request: Partial<DeleteAgentRunsRequest> = {}) => {
     const result = await requestAgent<{ success: boolean; deletedRunIds: string[] }>(`/api/agents/${agentId}/runs`, {
       method: "DELETE",
       body: JSON.stringify(request),
-    }, "Failed to purge agent runs");
-    const deletedRunIds = result?.deletedRunIds ?? [];
-    if (deletedRunIds.length > 0) {
-      invalidateAgentRunRefresh(agentId);
-      const deleted = new Set(deletedRunIds);
-      setRunsByAgentId((prev) => ({
-        ...prev,
-        [agentId]: (prev[agentId] ?? []).filter((run) => !deleted.has(run.id)),
-      }));
-    }
-    return deletedRunIds;
-  }, [invalidateAgentRunRefresh, requestAgent]);
-
-  useRealtimeRefreshWithRecovery({
-    resources: ["agents"],
-    filters: { resource: "agents" },
-    refresh: () => refresh({ showLoading: false }),
-    onReconnect: () => refresh({ showLoading: false }),
-  });
-
-  useRealtimeRefreshWithRecovery({
-    resources: ["agent-runs"],
-    filters: { resource: "agent-runs" },
-    refresh: (event) => event.scope
-      ? refreshRunsForAgent(event.scope, { force: true })
-      : refresh({ showLoading: false }),
-    onReconnect: refreshAllRuns,
-  });
-
-  useEffect(() => {
-    isMountedRef.current = true;
-    refreshRunsCoordinatorRef.current.setMounted(true);
-    void refresh();
-    return () => {
-      isMountedRef.current = false;
-      abortControllerRef.current?.abort();
-      abortControllerRef.current = null;
-      refreshCoordinatorRef.current.reset();
-      refreshRunsCoordinatorRef.current.setMounted(false);
-    };
-  }, [refresh]);
+    }, "Failed to purge agent runs", {
+      reconcile: (previous, result) => {
+        if (!previous) return previous;
+        const deleted = new Set(result.deletedRunIds);
+        return {
+          ...previous,
+          runsByAgentId: {
+            ...previous.runsByAgentId,
+            [agentId]: (previous.runsByAgentId[agentId] ?? []).filter((run) => !deleted.has(run.id)),
+          },
+        };
+      },
+    });
+    return result?.deletedRunIds ?? [];
+  }, [requestAgent]);
 
   return {
     agents,
     runsByAgentId,
-    loading,
-    error,
+    loading: query.data === undefined && query.loading,
+    error: error ?? (query.error ? String(query.error) : null),
     refresh,
     refreshRuns,
     createAgent,

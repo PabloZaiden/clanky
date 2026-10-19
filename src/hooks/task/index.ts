@@ -5,12 +5,10 @@
  * Aggregates sub-hooks:
  * - useTaskStaleGuard  – stale-request guard utilities
  * - useTaskData        – state management, data fetching, hydration
- * - useTaskEventHandler – incremental realtime stream processing
  * - useTaskActions     – mutating action callbacks
  * - useTaskFileQueries – read-only file/diff queries
  */
 
-import { useEffect } from "react";
 import type {
   Task,
   TaskEvent,
@@ -22,8 +20,7 @@ import type {
 } from "@/shared";
 import type { UpdateTaskRequest, FileDiff, FileContentResponse, PullRequestDestinationResponse } from "@/contracts";
 import type { MessageAttachment } from "@/shared/message-attachments";
-import { useRealtimeRefreshWithRecovery, useRealtimeStream } from "../useRealtimeStream";
-import { createLogger } from "@pablozaiden/webapp/web";
+import { createLogger, useRealtime } from "@pablozaiden/webapp/web";
 import type {
   AcceptTaskResult,
   AcceptPlanResult,
@@ -35,7 +32,6 @@ import type {
 } from "../taskActions";
 import { useTaskStaleGuard } from "./useTaskStaleGuard";
 import { useTaskData } from "./useTaskData";
-import { createTaskEventHandler } from "./useTaskEventHandler";
 import { useTaskActions } from "./useTaskActions";
 import { useTaskFileQueries } from "./useTaskFileQueries";
 
@@ -66,8 +62,6 @@ export interface UseTaskResult {
   gitChangeCounter: number;
   /** Refresh task data */
   refresh: () => Promise<void>;
-  /** Batch realtime and input-reconciliation refreshes. */
-  refreshCoalesced: () => Promise<void>;
   /** Load one complete tool-call payload when expanded. */
   loadToolDetails: (toolCallId: string) => Promise<ToolCallData | null>;
   /** Load the next older transcript page. */
@@ -161,32 +155,18 @@ export function useTask(taskId: string): UseTaskResult {
     gitChangeCounter,
     setGitChangeCounter,
     refresh,
-    refreshCoalesced: coalescedRefresh,
     loadMoreTranscript,
     loadFullTranscript,
     loadToolDetails,
-    applyTranscriptEvent,
   } = data;
 
-  // WebSocket event handler
-  const handleEvent = createTaskEventHandler({
-    isActiveTask,
-    applyTranscriptEvent,
-    setGitChangeCounter,
-  });
-
-  const { status: connectionStatus } = useRealtimeStream<TaskEvent>({
-    filters: { taskId },
-    predicate: (event) => event.type.startsWith("task."),
-    onEvent: handleEvent,
-  });
-
-  useRealtimeRefreshWithRecovery({
-    resources: ["tasks"],
-    ids: [taskId],
-    filters: { resource: "tasks", id: taskId },
-    refresh: () => coalescedRefresh({ showLoading: false }),
-    onReconnect: () => coalescedRefresh({ showLoading: false }),
+  const { status: connectionStatus } = useRealtime<TaskEvent>({
+    targets: { taskId },
+    types: ["task.iteration.end", "task.git.commit"],
+    trackLastEvent: false,
+    onEvent: (event) => {
+      if (isActiveTask(event.taskId)) setGitChangeCounter((current) => current + 1);
+    },
   });
 
   // Action callbacks
@@ -210,11 +190,6 @@ export function useTask(taskId: string): UseTaskResult {
     setError,
   });
 
-  // Initial fetch
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
   return {
     task,
     loading,
@@ -228,7 +203,6 @@ export function useTask(taskId: string): UseTaskResult {
     logs: transcript.logs,
     gitChangeCounter,
     refresh,
-    refreshCoalesced: () => coalescedRefresh({ showLoading: false }),
     loadMoreTranscript,
     loadFullTranscript,
     loadToolDetails,
