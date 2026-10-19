@@ -19,7 +19,7 @@ export async function* iterateTaskAttachmentMessages(taskId: string): AsyncItera
   let after: TranscriptStorageCursor | undefined;
   for (;;) {
     const page = taskTranscriptStore.listEntriesAfterForUser(taskId, userId, {
-      after, limit: 4, includeToolPayload: false,
+      after, limit: 4, includeToolPayload: false, fileAttachmentsOnly: true,
     });
     if (page.invalidEntryCount > 0) {
       throw new DomainError("attachment_data_invalid", "The saved task transcript contains unreadable entries.");

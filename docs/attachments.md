@@ -71,8 +71,14 @@ remote files disappeared.
 
 Write or connection failures stop file preparation before provider admission.
 No inline-document fallback is attempted, and queued originals remain available
-for correction/retry. Password-protected registered SSH hosts require their
-normal transient credential tokens; credentials are never stored with attachments.
+for correction/retry. Ordinary queued messages enter transcript history only
+after their files are prepared successfully; a failed unsent group can be
+removed from the queue instead of sent.
+
+Password-protected registered SSH hosts require their normal transient
+credential tokens; credentials are never stored with attachments. Tokens are
+retained across pending queue groups. If one expires, sending with a renewed
+credential also renews access for the remaining groups.
 
 Markdown/HTML transcript exports do not embed original attachment bytes.
 Chat-to-task conversion retains descriptive references, not a transfer of the

@@ -128,7 +128,7 @@ export class ConversationAttachmentService {
       };
       try {
         for await (const message of options.previousMessages ?? []) {
-          if (message.id !== options.message.id) await prepare(message);
+          if (message.id !== options.message.id || !options.message.attachments?.length) await prepare(message);
         }
         const files = await prepare(options.message);
         options.signal?.throwIfAborted();

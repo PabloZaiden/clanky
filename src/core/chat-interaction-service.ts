@@ -123,6 +123,9 @@ export class ChatInteractionService implements ChatInteractionPort {
     const input = this.normalizeMessageInput(options);
     assertChatAttachmentBudget(getMessageAttachmentByteLength(input.attachments));
     const activeChat = await this.reactivateDoneChat(chat);
+    if (activeChat.state.queuedMessages?.length) {
+      this.rememberQueueCredentials(chatId, options.credentialToken);
+    }
     if (this.shouldQueueMessage(activeChat)) {
       return this.enqueueMessage(activeChat, input, options.credentialToken);
     }
@@ -537,10 +540,7 @@ export class ChatInteractionService implements ChatInteractionPort {
       harness: updateQuestionAnswerStatus(chat.state.harness, queuedMessage.id, "queued"),
       lastActivityAt: now,
     });
-    const normalizedCredentialToken = credentialToken?.trim();
-    if (normalizedCredentialToken) {
-      this.queuedCredentialTokens.set(chat.config.id, normalizedCredentialToken);
-    }
+    this.rememberQueueCredentials(chat.config.id, credentialToken);
     this.state.emitChatUpdated(updated);
     return updated;
   }
@@ -615,8 +615,14 @@ export class ChatInteractionService implements ChatInteractionPort {
         await this.state.markChatError(latestChat, message);
       }
     } finally {
-      this.queuedCredentialTokens.delete(chatId);
+      const latest = await this.state.getChat(chatId);
+      if (!latest?.state.queuedMessages?.length) this.queuedCredentialTokens.delete(chatId);
     }
+  }
+
+  private rememberQueueCredentials(chatId: string, credentialToken?: string | null): void {
+    const token = credentialToken?.trim();
+    if (token) this.queuedCredentialTokens.set(chatId, token);
   }
 
   private async upsertPermissionRequest(chat: Chat, request: ChatPermissionRequest): Promise<Chat> {

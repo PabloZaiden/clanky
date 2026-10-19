@@ -31,7 +31,7 @@ export class ChatAttachmentService {
   }
 
   private async *history(chatId: string): AsyncIterable<PersistedMessage> {
-    for await (const entry of this.state.iterateChatTranscriptEntries(chatId)) {
+    for await (const entry of this.state.iterateChatTranscriptEntries(chatId, { fileAttachmentsOnly: true })) {
       if (entry.kind !== "message") continue;
       if (!isPersistedMessage(entry.payload)) {
         throw new DomainError("attachment_data_invalid", "A saved message's attachments could not be restored.");

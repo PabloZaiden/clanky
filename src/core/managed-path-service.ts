@@ -5,6 +5,7 @@
 import {
   executionPathsEqual,
   isExecutionPathWithinRoot,
+  isWindowsReservedPathComponent,
   joinExecutionPath,
   normalizeExecutionPath,
   normalizeExecutionRoot,
@@ -118,10 +119,10 @@ export class ManagedPathService {
     attachment: string;
     filename: string;
   }): string {
-    let filename = options.filename
+    let filename = options.filename.trim()
       .replace(/[<>:"/\\|?*\u0000-\u001f\u007f]/g, "_")
       .replace(/[. ]+$/g, "");
-    if (!filename || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(filename)) {
+    if (!filename || isWindowsReservedPathComponent(filename)) {
       filename = `_${filename || "file"}`;
     }
     if (filename.length > 160 || Buffer.byteLength(filename, "utf8") > 180) {

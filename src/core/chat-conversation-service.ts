@@ -263,26 +263,25 @@ export class ChatConversationService implements ChatConversationPort {
         || this.worktree.hasEstablishedWorkspaceContext(chat)
         ? "connecting_provider" as const
         : "preparing_workspace" as const;
-      let current = await timer.measure("message_persistence", () => this.appendMessage(
-        chat,
-        userMessage,
-        {
-          queuedMessages: chat.state.queuedMessages,
-          status: "starting",
-          startupStage,
-          error: undefined,
-          completedAt: undefined,
-          activeMessageId: undefined,
-          interruptRequested: false,
-          harness: {
-            ...(answerInputId
-              ? updateQuestionAnswerStatus(answerHarness, answerInputId, "submitting")
-              : chat.state.harness),
-            activeTurnAttachmentBytes: getMessageAttachmentByteLength(input.attachments),
-          },
+      const deferQueuedMessage = !transcriptMessage && Boolean(options.clearQueuedMessageIds?.length);
+      const startingState: ChatState = {
+        ...chat.state,
+        status: "starting",
+        startupStage,
+        error: undefined,
+        completedAt: undefined,
+        activeMessageId: undefined,
+        interruptRequested: false,
+        harness: {
+          ...(answerInputId
+            ? updateQuestionAnswerStatus(answerHarness, answerInputId, "submitting")
+            : chat.state.harness),
+          activeTurnAttachmentBytes: getMessageAttachmentByteLength(input.attachments),
         },
-        chat.state.status,
-      ));
+      };
+      let current = await timer.measure("message_persistence", () => deferQueuedMessage
+        ? this.updateState(chat, startingState, { expectedStatus: chat.state.status })
+        : this.appendMessage(chat, userMessage, startingState, chat.state.status));
       if (options.clearQueuedMessageIds) {
         this.emitChatUpdated(current);
       }
@@ -377,10 +376,14 @@ export class ChatConversationService implements ChatConversationPort {
       if (options.clearQueuedMessageIds?.length) {
         current = await this.state.mutateState(chat.config.id, (latest) => ({
           ...latest.state,
+          messages: deferQueuedMessage
+            ? [...latest.state.messages.filter((message) => message.id !== userMessage.id), userMessage]
+            : latest.state.messages,
           queuedMessages: latest.state.queuedMessages?.filter(
             (entry) => !options.clearQueuedMessageIds?.includes(entry.id),
           ),
         }));
+        if (deferQueuedMessage) this.emitMessage(current, userMessage);
         this.emitChatUpdated(current);
       }
       const prompt: PromptInput = {
@@ -1478,14 +1481,18 @@ export class ChatConversationService implements ChatConversationPort {
       }]),
       expectedStatus,
     });
+    this.emitMessage(updated, message);
+    return updated;
+  }
+
+  private emitMessage(chat: Chat, message: MessageData): void {
     this.emitter.emit({
       type: "chat.message",
       chatId: chat.config.id,
       scope: chat.config.scope,
-      message: updated.state.messages.find((entry) => entry.id === message.id) ?? message,
+      message: chat.state.messages.find((entry) => entry.id === message.id) ?? message,
       timestamp: message.timestamp,
     });
-    return updated;
   }
 
   private findMessage(

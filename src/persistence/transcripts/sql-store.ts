@@ -7,6 +7,7 @@
 import type { Database } from "bun:sqlite";
 import {
   hasToolCallImagePreview,
+  getMessageAttachmentKind,
   TRANSCRIPT_PAGE_SIZE,
 } from "@/shared";
 import type {
@@ -71,16 +72,14 @@ function upsertEntry(
   const input = tool?.input === undefined ? null : serializeJson(tool.input);
   const output = tool?.output === undefined ? null : serializeJson(tool.output);
   const extras = tool?.extras === undefined ? null : serializeJson(tool.extras);
-  const messageRole = entry.kind === "message" && isPersistedMessage(entry.payload)
-    ? entry.payload.role
-    : null;
+  const message = entry.kind === "message" && isPersistedMessage(entry.payload) ? entry.payload : null;
 
   db.prepare(`
     INSERT INTO ${config.entriesTable} (
       ${config.resourceColumn}, user_id, entry_id, kind, timestamp, sequence,
       payload, message_role, tool_name, tool_status, tool_input, tool_output, tool_extras, tool_has_image_preview,
-      created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      message_has_files, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(${config.resourceColumn}, entry_id) DO UPDATE SET
       user_id = excluded.user_id,
       kind = excluded.kind,
@@ -94,6 +93,7 @@ function upsertEntry(
       tool_output = excluded.tool_output,
       tool_extras = excluded.tool_extras,
       tool_has_image_preview = excluded.tool_has_image_preview,
+      message_has_files = excluded.message_has_files,
       updated_at = excluded.updated_at
   `).run(
     resourceId,
@@ -103,13 +103,14 @@ function upsertEntry(
     entry.timestamp,
     sequence,
     serializeJson(payload),
-    messageRole,
+    message?.role ?? null,
     tool?.name ?? null,
     tool?.status ?? null,
     input,
     output,
     extras,
     tool && hasToolCallImagePreview(tool) ? 1 : 0,
+    message?.attachments?.some((attachment) => getMessageAttachmentKind(attachment) === "file") ? 1 : 0,
     now,
     now,
   );
@@ -462,6 +463,7 @@ export function listTranscriptEntriesAfterForUser(
     after?: TranscriptStorageCursor;
     limit: number;
     includeToolPayload?: boolean;
+    fileAttachmentsOnly?: boolean;
   },
 ): TranscriptStoragePage {
   const MAX_TRANSCRIPT_STORAGE_PAGE_SIZE = 256;
@@ -516,6 +518,7 @@ export function listTranscriptEntriesAfterForUser(
       tool_has_image_preview
     FROM ${config.entriesTable}
     WHERE ${config.resourceColumn} = ? AND user_id = ?
+      ${options.fileAttachmentsOnly ? "AND message_has_files = 1" : ""}
       ${afterClause}
     ORDER BY timestamp ASC, sequence ASC, kind ASC, entry_id ASC
     LIMIT ?
