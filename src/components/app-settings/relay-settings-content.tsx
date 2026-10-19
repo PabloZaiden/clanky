@@ -1,28 +1,32 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { CodeValue, ConfirmModal, DataList, DataListRow, EmptyState, FormActions, LoadingState, Modal, SettingsFieldRow, TextField, useToast, useUnsavedChanges } from "@pablozaiden/webapp/web";
 import type { ControllerRelayPairingStatus } from "@/contracts/relay";
-import { useRealtimeRefreshWithRecovery } from "../../hooks/useRealtimeStream";
+import { useLiveQuery } from "@pablozaiden/webapp/web";
 import { apiRequest } from "../../lib/api-client";
-import { createRefreshCoordinator } from "../../lib/refresh-coordinator";
-import { isAbortError } from "../../lib/request-lifecycle";
 import { Button, StatusBadge } from "../common";
 import { SettingsError } from "./settings-row-controls";
 
 export function RelaySettingsContent() {
   const toast = useToast();
-  const [status, setStatus] = useState<ControllerRelayPairingStatus | null>(null);
   const [relayName, setRelayName] = useState("");
   const [relayUrl, setRelayUrl] = useState("");
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [pairingError, setPairingError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [confirmUnpair, setConfirmUnpair] = useState<string | null>(null);
   const [pairingOpen, setPairingOpen] = useState(false);
+  const query = useLiveQuery<ControllerRelayPairingStatus>({
+    load: (signal) => apiRequest<ControllerRelayPairingStatus>("/api/mesh/relay", {
+      signal,
+      action: "Load Mesh relay status",
+      fallbackMessage: "Failed to load Mesh relay status",
+    }),
+    realtime: { resources: ["mesh"] },
+  });
+  const status = query.data;
+  const loading = query.data === undefined && query.loading;
+  const error = actionError ?? (!pairingError && query.error ? String(query.error) : null);
   const selectedRelay = status?.relays.find((relay) => relay.name === relayName);
-  const refreshAbortRef = useRef<AbortController | null>(null);
-  const refreshCoordinatorRef = useRef(createRefreshCoordinator<void>());
-  const refreshVersionRef = useRef(0);
   function resetPairing(): void {
     setRelayName("");
     setRelayUrl("");
@@ -31,86 +35,23 @@ export function RelaySettingsContent() {
   }
   useUnsavedChanges(Boolean(relayName || relayUrl), resetPairing);
 
-  const refresh = useCallback((): Promise<void> => {
-    const controller = refreshAbortRef.current ?? new AbortController();
-    refreshAbortRef.current = controller;
-    refreshVersionRef.current++;
-    return refreshCoordinatorRef.current.run(async () => {
-      if (controller.signal.aborted) return;
-      setError(null);
-      try {
-        let version: number;
-        do {
-          version = refreshVersionRef.current;
-          try {
-            const next = await apiRequest<ControllerRelayPairingStatus>(
-              "/api/mesh/relay",
-              {
-                signal: controller.signal,
-                action: "Load Mesh relay status",
-                fallbackMessage: "Failed to load Mesh relay status",
-              },
-            );
-            if (controller.signal.aborted) return;
-            if (version === refreshVersionRef.current) setStatus(next);
-          } catch (loadError) {
-            if (controller.signal.aborted || isAbortError(loadError)) return;
-            if (version === refreshVersionRef.current) {
-              setError(loadError instanceof Error ? loadError.message : String(loadError));
-            }
-          }
-        } while (version !== refreshVersionRef.current);
-      } finally {
-        if (refreshAbortRef.current === controller) {
-          refreshAbortRef.current = null;
-        }
-        if (!controller.signal.aborted) {
-          setLoading(false);
-        }
-      }
-    });
-  }, []);
-
-  useEffect(() => {
-    void refresh();
-    return () => {
-      refreshAbortRef.current?.abort();
-      refreshAbortRef.current = null;
-      refreshCoordinatorRef.current.reset();
-    };
-  }, [refresh]);
-
-  useRealtimeRefreshWithRecovery({
-    resources: ["mesh"],
-    filters: { resource: "mesh" },
-    refresh,
-    onReconnect: refresh,
-  });
-
-  function updateStatus(next: ControllerRelayPairingStatus): void {
-    refreshVersionRef.current++;
-    setStatus(next);
-    setError(null);
-    setPairingError(null);
-  }
-
   async function pair(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     setSaving(true);
-    setError(null);
     setPairingError(null);
+    setActionError(null);
     try {
-      const next = await apiRequest<ControllerRelayPairingStatus>(
+      await query.mutate((signal) => apiRequest<ControllerRelayPairingStatus>(
         "/api/mesh/relay",
         {
+          signal,
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ name: relayName, relayUrl }),
           action: "Pair Mesh relay",
           fallbackMessage: "Failed to pair Mesh relay",
         },
-      );
-      updateStatus(next);
+      ), (_previous, next) => next);
       setRelayName("");
       setRelayUrl("");
       setPairingOpen(false);
@@ -124,24 +65,23 @@ export function RelaySettingsContent() {
 
   async function selectPrimary(name: string): Promise<void> {
     setSaving(true);
-    setError(null);
+    setPairingError(null);
+    setActionError(null);
     try {
-      const next = await apiRequest<ControllerRelayPairingStatus>(
+      await query.mutate((signal) => apiRequest<ControllerRelayPairingStatus>(
         "/api/mesh/relay/primary",
         {
+          signal,
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ name }),
           action: "Select primary Mesh relay",
           fallbackMessage: "Failed to select primary Mesh relay",
         },
-      );
-      updateStatus(next);
+      ), (_previous, next) => next);
       toast.success("Primary Mesh relay updated.");
-    } catch (selectionError) {
-      setError(selectionError instanceof Error
-        ? selectionError.message
-        : String(selectionError));
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : String(error));
     } finally {
       setSaving(false);
     }
@@ -150,23 +90,22 @@ export function RelaySettingsContent() {
   async function unpair(): Promise<void> {
     if (!confirmUnpair) return;
     setSaving(true);
-    setError(null);
+    setPairingError(null);
+    setActionError(null);
     try {
-      const next = await apiRequest<ControllerRelayPairingStatus>(
+      await query.mutate((signal) => apiRequest<ControllerRelayPairingStatus>(
         `/api/mesh/relay/${encodeURIComponent(confirmUnpair)}`,
         {
+          signal,
           method: "DELETE",
           action: "Unpair Mesh relay",
           fallbackMessage: "Failed to unpair Mesh relay",
         },
-      );
-      updateStatus(next);
+      ), (_previous, next) => next);
       setConfirmUnpair(null);
       toast.success("Mesh relay unpaired.");
-    } catch (unpairError) {
-      setError(unpairError instanceof Error
-        ? unpairError.message
-        : String(unpairError));
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : String(error));
     } finally {
       setSaving(false);
     }

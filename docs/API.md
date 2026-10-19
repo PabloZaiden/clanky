@@ -59,6 +59,28 @@ Use `clanky api` to list the routes exposed by the running server and
 metadata. Public routes are exceptional and are identified explicitly in the
 route reference.
 
+## Transcript snapshots
+
+Chat, task and agent-run `GET .../:id/snapshot` responses default to the
+latest 100 non-empty assistant responses. Without `view=conversation`, they
+accept mutually exclusive transcript-window options:
+
+| Parameter | Meaning |
+| --- | --- |
+| `before` | Read the next older page using `transcript.nextCursor`. This is history, not a new live baseline. |
+| `since` | Refresh the loaded window inclusively from its oldest response cursor, including newer content. |
+| `full=1` | Read all retained transcript history. |
+
+`transcript.position` contains the authoritative content `epoch` and
+`revision`, including active output ahead of its persistence checkpoint.
+Content deltas delivered through [realtime interests](#ws-apiws) include
+`streamPosition` with `baseRevision` and `revision`.
+Buffer concurrent deltas during a baseline read, discard covered updates,
+and apply only contiguous successors. An epoch change or missing predecessor
+requires a new baseline; do not compare opaque epochs or use ETags as live
+cursors. Reconnection does not replay transient commands.
+Terminal, preview and Mesh sockets remain separate raw transports.
+
 ## Compact reads and literal conversations
 
 Catalogued JSON operations use the same endpoints, authorization and execution
@@ -3715,47 +3737,60 @@ Authenticated framework realtime endpoint for private resource invalidations and
 incremental task, chat, agent-run, and provisioning events. The endpoint is protected by
 the framework's same-origin policy.
 
-**Query Parameters**
+**Dynamic Interests**
 
-Every query parameter is copied into an exact-match publication filter. Multiple
-parameters are combined with AND. Common filters are:
+Use one connection without URL filters. An open connection receives no
+application events until it has an acknowledged interest. Subscribe and
+unsubscribe on that connection as the visible resources change:
 
-| Parameter | Description |
-|-----------|-------------|
-| `resource` | Resource name for invalidation events, such as `tasks`, `chats`, `agents`, `agent-runs`, `terminal-sessions`, `provisioning-jobs`, `worker-update-jobs`, `previews`, `mesh`, or `execution-hosts` |
-| `id` | Entity ID for a resource invalidation |
-| `scope` | Resource scope, such as an agent ID for `agent-runs`, a workspace ID for workspace `previews`, or a serialized execution-host reference (for example, `local:node-id` or `mesh:node-id`) for direct server `previews` |
-| `taskId` | Target a retained task stream |
-| `chatId` | Target a retained chat stream |
-| `agentId` | Target a retained agent-run stream or an agent-run resource scope |
-| `agentRunId` | Target a retained agent-run stream |
-| `provisioningJobId` | Target a retained provisioning stream |
+```json
+{"type":"subscribe","subscriptionId":"task-content","generation":1,"interest":{"kinds":["content"],"targets":{"taskId":"abc-123"}}}
+{"type":"subscribe","subscriptionId":"task-state","generation":1,"interest":{"kinds":["state"],"resources":["tasks"],"ids":["abc-123"]}}
+{"type":"unsubscribe","subscriptionId":"task-content","generation":1}
+```
 
-For example, `?taskId=abc` selects retained task events, while
-`?resource=tasks&id=abc` selects task resource invalidations. Use no filter when
-both kinds of event are needed.
+Wait for the matching `subscribed` acknowledgement before loading an
+authoritative baseline. A subscription identity and generation distinguish
+current interests from obsolete acknowledgements and delivery.
+
+| Interest field | Description |
+| --- | --- |
+| `kinds` | Required categories: `state` invalidations, `content` deltas, or transient `action` commands |
+| `resources` | Resource names such as `tasks`, `chats`, or `agent-runs` |
+| `ids` | Entity IDs for resource invalidations |
+| `scopes` | Resource scopes, such as an agent ID for `agent-runs`, workspace ID for workspace `previews`, or serialized execution-host reference for direct server `previews` |
+| `types` | Concrete event names |
+| `targets` | Named publication targets, such as `taskId`, `chatId`, `agentId`, `agentRunId`, or `provisioningJobId`, with one or more accepted values |
+
+At least one concrete selector besides `kinds` is required. Interests only
+narrow delivery; they cannot override authenticated user ownership. Use
+separate interests for metadata and content rather than subscribing the
+sidebar to transcript bodies. Compact `chat-activity` state events update
+sidebar activity without distributing message, log or tool content.
 
 Chat entities and snapshots expose `state.revision`, a persisted, monotonically
 increasing integer scoped to that chat ID. Chat metadata, configuration,
 persisted stream checkpoints and harness projections advance it atomically.
-`chat.status` deltas carry the corresponding `revision`. Reconcile snapshots
-and status deltas by this revision, ignoring any older revision; a snapshot
-with the same revision as a status delta supplies the rest of that entity's
-state. Activity and provider timestamps are presentation data, not state
-versions, and transcript deltas do not imply a lifecycle transition.
+Metadata changes invalidate `chats`; the resulting authoritative snapshot
+supplies that revision and entity state. Activity and provider timestamps are
+presentation data, not state versions, and transcript deltas do not imply a
+lifecycle transition. Content uses the separate positions described under
+[transcript snapshots](#transcript-snapshots).
 
-Realtime has no replay history. Open the subscription and then refresh the
-authoritative resources on every successful connection, including the initial
-connection. If a read is already in flight, schedule a fresh read after it.
-Recover transcript gaps from the snapshot boundary as well.
+Realtime has no replay history. After reconnecting, restore interests, await
+activation and read fresh authoritative baselines. Buffer concurrent content
+updates and apply only contiguous successors of the snapshot position.
+Recover from gaps, changed epochs or bounded-buffer overflow with a new
+baseline; persistent failures remain visible. Do not replay non-idempotent
+transient commands. Application views use the framework's shared transport,
+live-query mutation barriers and versioned synchronization rather than
+implementing their own reconnect/read coordinators.
 
 **Connection URL Examples**
 
 ```
-ws://localhost:3000/api/ws              # All events
-ws://localhost:3000/api/ws?taskId=abc   # Retained events for task "abc"
-ws://localhost:3000/api/ws?resource=tasks&id=abc # Task invalidations for "abc"
-wss://example.com/api/ws                # Secure WebSocket
+ws://localhost:3000/api/ws   # Send subscription frames after connecting
+wss://example.com/api/ws    # Secure WebSocket
 ```
 
 **CLI bridge example**
@@ -3777,6 +3812,9 @@ Published events are wrapped in a framework envelope:
 ```json
 {
   "type": "event",
+  "subscriptions": [
+    { "subscriptionId": "task-state", "generation": 1 }
+  ],
   "event": {
     "type": "tasks.changed",
     "resource": "tasks",
@@ -3786,12 +3824,16 @@ Published events are wrapped in a framework envelope:
 }
 ```
 
+A publication matching overlapping interests is delivered once, with all
+matching subscription identities and generations listed in the envelope.
+
 Resource invalidations use these resource names and actions:
 
 | Event type | Description |
 |------------|-------------|
 | `tasks.changed`, `tasks.deleted` | Task collection or entity changed/deleted |
 | `chats.changed`, `chats.deleted` | Chat collection or entity changed/deleted |
+| `chat-activity.changed` | Compact chat activity timestamp/source update |
 | `agents.changed`, `agents.deleted` | Agent collection or entity changed/deleted |
 | `agent-runs.changed`, `agent-runs.deleted` | Agent-run collection or entity changed/deleted |
 | `terminal-sessions.changed`, `terminal-sessions.deleted` | Workspace terminal collection or entity changed/deleted |
@@ -3806,9 +3848,9 @@ event types are:
 
 | Area | Event types |
 |------|-------------|
-| Tasks | `task.message`, `task.message.delta`, `task.tool_call`, `task.log`, `task.log.delta`, `task.iteration.start`, `task.iteration.end`, `task.git.commit` |
-| Chats | `chat.status` (terminal statuses), `chat.message`, `chat.message.delta`, `chat.tool_call`, `chat.log`, `chat.log.delta` |
-| Agent runs | `agent.run.message`, `agent.run.message.delta`, `agent.run.tool_call`, `agent.run.log`, `agent.run.log.delta` |
+| Tasks | `task.message`, `task.message.delta`, `task.tool_call`, `task.tool_call.extra`, `task.log`, `task.log.delta`, `task.iteration.start`, `task.iteration.end`, `task.git.commit` |
+| Chats | `chat.message`, `chat.message.delta`, `chat.tool_call`, `chat.tool_call.extra`, `chat.log`, `chat.log.delta` |
+| Agent runs | `agent.run.message`, `agent.run.message.delta`, `agent.run.tool_call`, `agent.run.tool_call.extra`, `agent.run.log`, `agent.run.log.delta` |
 | Provisioning | `provisioning.step`, `provisioning.output` |
 
 Other domain lifecycle notifications, including `task.accepted`, `task.merged`,
@@ -3830,9 +3872,9 @@ Send a JSON ping message to receive a pong response:
 **Example Events**
 
 ```json
-{"type":"event","event":{"type":"task.iteration.start","taskId":"abc-123","iteration":3,"timestamp":"2026-01-20T10:15:00.000Z"}}
+{"type":"event","subscriptions":[{"subscriptionId":"task-content","generation":1}],"event":{"type":"task.iteration.start","taskId":"abc-123","iteration":3,"timestamp":"2026-01-20T10:15:00.000Z"}}
 
-{"type":"event","event":{"type":"task.log","taskId":"abc-123","id":"log-1","level":"info","message":"Sending prompt to AI","timestamp":"2026-01-20T10:15:01.000Z"}}
+{"type":"event","subscriptions":[{"subscriptionId":"task-content","generation":1}],"event":{"type":"task.log","taskId":"abc-123","id":"log-1","level":"info","message":"Sending prompt to AI","timestamp":"2026-01-20T10:15:01.000Z","streamPosition":{"epoch":"run-incarnation","baseRevision":0,"revision":1}}}
 ```
 
 **JavaScript Example**
@@ -3841,11 +3883,23 @@ Send a JSON ping message to receive a pong response:
 const ws = new WebSocket('ws://localhost:3000/api/ws');
 
 ws.onopen = () => {
-  console.log('Connected');
+  ws.send(JSON.stringify({
+    type: 'subscribe',
+    subscriptionId: 'task-content',
+    generation: 1,
+    interest: {
+      kinds: ['content'],
+      targets: { taskId: 'abc-123' },
+    },
+  }));
 };
 
 ws.onmessage = (event) => {
   const data = JSON.parse(event.data);
+  if (data.type === 'subscribed') {
+    console.log('Interest activated; an authoritative baseline can now be read');
+    return;
+  }
   if (data.type !== 'event' || !data.event) {
     return;
   }
@@ -3854,7 +3908,6 @@ ws.onmessage = (event) => {
 
 ws.onclose = () => {
   console.log('Disconnected');
-  // Implement reconnection logic as needed
 };
 ```
 
@@ -4009,8 +4062,14 @@ curl -X POST http://localhost:3000/api/tasks \
 
 # Response: {"config":{"id":"abc-123",...},"state":{"status":"planning",...}}
 
-# Watch events via WebSocket (use wscat or similar)
-wscat -c ws://localhost:3000/api/ws?taskId=abc-123
+# Connect using the configured profile
+clanky ws
+```
+
+Then send this JSON line on stdin:
+
+```json
+{"type":"subscribe","subscriptionId":"task-content","generation":1,"interest":{"kinds":["content"],"targets":{"taskId":"abc-123"}}}
 ```
 
 ### Create a Draft Task

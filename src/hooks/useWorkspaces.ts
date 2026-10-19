@@ -3,7 +3,7 @@
  * Provides CRUD operations for workspaces and fetches workspace list.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import type {
   PublicWorkspace,
   PublicWorkspaceSummary,
@@ -11,10 +11,8 @@ import type {
 } from "@/shared/workspace";
 import type { CreateWorkspaceRequest, UpdateWorkspaceRequest } from "@/contracts/schemas/workspace";
 import type { DeleteWorkspaceRequest } from "@/contracts/schemas/workspace";
-import { createLogger } from "@pablozaiden/webapp/web";
+import { createLogger, useLiveQuery } from "@pablozaiden/webapp/web";
 import { apiRequest, readApiResponse, requestApiResponse } from "../lib/api-client";
-import { useRealtimeRefreshWithRecovery } from "./useRealtimeStream";
-import { useResourceRefresh, type ResourceRefreshOptions } from "./useResourceRefresh";
 
 export interface UseWorkspacesResult {
   /** List of workspaces */
@@ -26,7 +24,7 @@ export interface UseWorkspacesResult {
   /** Whether a create/update/delete operation is in progress */
   saving: boolean;
   /** Refresh the workspaces list */
-  refresh: (options?: ResourceRefreshOptions) => Promise<void>;
+  refresh: () => Promise<void>;
   /** Create a new workspace */
   createWorkspace: (request: CreateWorkspaceRequest) => Promise<Workspace | null>;
   /** Update a workspace */
@@ -45,66 +43,44 @@ export interface UseWorkspacesResult {
  */
 export function useWorkspaces(): UseWorkspacesResult {
   const log = createLogger("useWorkspaces");
-  const [workspaces, setWorkspaces] = useState<PublicWorkspace[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const loadWorkspaces = useCallback(async (signal: AbortSignal): Promise<PublicWorkspace[]> => {
-    const workspaces = await apiRequest<PublicWorkspaceSummary[]>("/api/workspaces", {
-      signal,
-      action: "Load workspaces",
-      fallbackMessage: "Failed to fetch workspaces",
-    });
-    return workspaces.map((workspace) => ({ ...workspace, scratchpad: "" }));
-  }, []);
-
-  const handleRefreshError = useCallback((refreshError: unknown) => {
-    log.error("Failed to fetch workspaces", { error: String(refreshError) });
-    setError(String(refreshError));
-  }, []);
-
-  const refreshResource = useResourceRefresh({
-    load: loadWorkspaces,
-    onLoaded: setWorkspaces,
-    onRefreshStart: () => setError(null),
-    onError: handleRefreshError,
+  const query = useLiveQuery<PublicWorkspace[]>({
+    load: async (signal) => {
+      const workspaces = await apiRequest<PublicWorkspaceSummary[]>("/api/workspaces", {
+        signal,
+        action: "Load workspaces",
+        fallbackMessage: "Failed to fetch workspaces",
+      });
+      return workspaces.map((workspace) => ({ ...workspace, scratchpad: "" }));
+    },
+    realtime: { resources: ["workspaces"] },
   });
-
-  const refresh = useCallback(async (options: ResourceRefreshOptions = {}) => {
-    await refreshResource.refresh(options);
-  }, [refreshResource.refresh]);
-
-  const refreshInBackground = useCallback(
-    () => refreshResource.refresh({ showLoading: false }),
-    [refreshResource.refresh],
-  );
-
-  useRealtimeRefreshWithRecovery({
-    resources: ["workspaces"],
-    refresh: refreshInBackground,
-    onReconnect: refreshInBackground,
-  });
+  const mutate = query.mutate;
+  const refresh = useCallback(async () => {
+    setError(null);
+    await query.refresh();
+  }, [query.refresh]);
 
   // Create a new workspace
   const createWorkspace = useCallback(async (request: CreateWorkspaceRequest): Promise<Workspace | null> => {
     try {
       setSaving(true);
       setError(null);
-      const response = await requestApiResponse("/api/workspaces", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(request),
-        action: "Create workspace",
-        fallbackMessage: "Failed to create workspace",
-        acceptedStatuses: [409],
+      return await mutate(async (signal) => {
+        const response = await requestApiResponse("/api/workspaces", {
+          signal,
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(request),
+          action: "Create workspace",
+          fallbackMessage: "Failed to create workspace",
+          acceptedStatuses: [409],
+        });
+        const data = await readApiResponse<Workspace & { existingWorkspace?: Workspace }>(response);
+        return response.status === 409 && data.existingWorkspace ? data.existingWorkspace : data;
       });
-      const data = await readApiResponse<Workspace & { existingWorkspace?: Workspace }>(response);
-      if (response.status === 409 && data.existingWorkspace) {
-        return data.existingWorkspace;
-      }
-      // Refresh the list to include the new workspace
-      await refresh();
-      return data;
     } catch (err) {
       log.error("Failed to create workspace", {
         workspaceName: request.name,
@@ -116,7 +92,7 @@ export function useWorkspaces(): UseWorkspacesResult {
     } finally {
       setSaving(false);
     }
-  }, [refresh]);
+  }, [mutate]);
 
   // Update a workspace
   const updateWorkspace = useCallback(async (id: string, request: string | UpdateWorkspaceRequest): Promise<Workspace | null> => {
@@ -124,16 +100,14 @@ export function useWorkspaces(): UseWorkspacesResult {
       setSaving(true);
       setError(null);
       const body = typeof request === "string" ? { name: request } : request;
-      const workspace = await apiRequest<Workspace>(`/api/workspaces/${id}`, {
+      return await mutate((signal) => apiRequest<Workspace>(`/api/workspaces/${id}`, {
+        signal,
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
         action: "Update workspace",
         fallbackMessage: "Failed to update workspace",
-      });
-      // Refresh the list to include the updated workspace
-      await refresh();
-      return workspace;
+      }));
     } catch (err) {
       log.error("Failed to update workspace", { workspaceId: id, error: String(err) });
       setError(String(err));
@@ -141,7 +115,7 @@ export function useWorkspaces(): UseWorkspacesResult {
     } finally {
       setSaving(false);
     }
-  }, [refresh]);
+  }, [mutate]);
 
   // Delete a workspace
   const deleteWorkspace = useCallback(async (
@@ -151,15 +125,14 @@ export function useWorkspaces(): UseWorkspacesResult {
     try {
       setSaving(true);
       setError(null);
-      await apiRequest(`/api/workspaces/${id}`, {
+      await mutate((signal) => apiRequest(`/api/workspaces/${id}`, {
+        signal,
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(options),
         action: "Delete workspace",
         fallbackMessage: "Failed to delete workspace",
-      });
-      // Refresh the list to exclude the deleted workspace
-      await refresh();
+      }), (previous) => previous?.filter((workspace) => workspace.id !== id));
       return { success: true };
     } catch (err) {
       log.error("Failed to delete workspace", { workspaceId: id, error: String(err) });
@@ -168,7 +141,7 @@ export function useWorkspaces(): UseWorkspacesResult {
     } finally {
       setSaving(false);
     }
-  }, [refresh]);
+  }, [mutate]);
 
   const pullLatestChanges = useCallback(async (
     id: string,
@@ -176,15 +149,16 @@ export function useWorkspaces(): UseWorkspacesResult {
     try {
       setSaving(true);
       setError(null);
-      const body = await apiRequest<{
+      const body = await mutate((signal) => apiRequest<{
         defaultBranch?: string;
         currentBranch?: string;
         message?: string;
       }>(`/api/workspaces/${id}/pull-latest-changes`, {
+        signal,
         method: "POST",
         action: "Pull latest workspace changes",
         fallbackMessage: "Failed to pull latest changes",
-      });
+      }));
       return {
         success: true,
         defaultBranch: body.defaultBranch,
@@ -197,16 +171,12 @@ export function useWorkspaces(): UseWorkspacesResult {
     } finally {
       setSaving(false);
     }
-  }, []);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+  }, [mutate]);
 
   return {
-    workspaces,
-    loading: refreshResource.loading,
-    error,
+    workspaces: query.data ?? [],
+    loading: query.data === undefined && query.loading,
+    error: error ?? (query.error ? String(query.error) : null),
     saving,
     refresh,
     createWorkspace,

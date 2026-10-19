@@ -64,7 +64,6 @@ export function ChatDetails({
     isActive,
     needsSshCredentials,
     refreshChat,
-    refreshChatCoalesced,
     loadMoreTranscript,
     loadFullTranscript,
     loadToolCallDetails,
@@ -94,8 +93,8 @@ export function ChatDetails({
   const voice = useConversationVoice();
   const liveVoiceBusy = useLiveVoiceBusy();
   const refreshInput = useCallback(
-    () => refreshChatCoalesced({ showLoading: false }),
-    [refreshChatCoalesced],
+    () => refreshChat(),
+    [refreshChat],
   );
   const voicePlayback = useVoicePlayback();
   const playReadAloud = voicePlayback.play;

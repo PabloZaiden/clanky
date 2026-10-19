@@ -31,6 +31,7 @@ export const CLANKY_REALTIME_RESOURCES = {
   workspaces: "workspaces",
   tasks: "tasks",
   chats: "chats",
+  chatActivity: "chat-activity",
   trash: "trash",
   agents: "agents",
   agentRuns: "agent-runs",
@@ -64,7 +65,6 @@ type RetainedChatEvent = Extract<
   ChatEvent,
   {
     type:
-      | "chat.status"
       | "chat.message"
       | "chat.message.delta"
       | "chat.tool_call"
@@ -175,6 +175,7 @@ export function createClankyRealtimePublisher(
     },
     publishStream(owner, event, target): void {
       realtime.publish(event, {
+        kind: event.type === "control.ui_action" ? "action" : "content",
         target: {
           ...target,
           userId: owner.userId,
@@ -221,6 +222,22 @@ function publishStream(
   target: Omit<RealtimeTarget, "userId">,
 ): void {
   publisher.publishStream(owner, event, target);
+}
+
+function publishChatActivity(
+  publisher: ClankyRealtimePublisher,
+  owner: RealtimeOwner,
+  event: RetainedChatEvent,
+): void {
+  publisher.publishResource(owner, {
+    resource: CLANKY_REALTIME_RESOURCES.chatActivity,
+    action: "changed",
+    id: event.chatId,
+    payload: {
+      timestamp: event.timestamp,
+      source: event.type === "chat.message" && event.message.role === "user" ? "user" : "stream",
+    },
+  });
 }
 
 function assertNever(value: never): never {
@@ -318,11 +335,13 @@ export function publishClankyDomainEvent(
       if (event.message.role === "user") {
         publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.chats, event.chatId);
       }
+      publishChatActivity(publisher, owner, event);
       publishStream(publisher, owner, event, { chatId: event.chatId });
       return;
     case "chat.message.delta":
     case "chat.log":
     case "chat.log.delta":
+      publishChatActivity(publisher, owner, event);
       publishStream(publisher, owner, event, { chatId: event.chatId });
       return;
     case "chat.tool_call.extra":
@@ -331,6 +350,7 @@ export function publishClankyDomainEvent(
       publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.chats, event.chatId);
       return;
     case "chat.tool_call":
+      publishChatActivity(publisher, owner, event);
       publishStream(
         publisher,
         owner,
@@ -342,8 +362,6 @@ export function publishClankyDomainEvent(
       );
       return;
     case "chat.status":
-      // Status is a small chat delta; keep the full entity invalidation as well.
-      publishStream(publisher, owner, event, { chatId: event.chatId });
       publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.chats, event.chatId);
       return;
     case "chat.updated":

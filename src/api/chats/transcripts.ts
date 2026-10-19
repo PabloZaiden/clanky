@@ -30,13 +30,13 @@ export const chatsTranscriptRoutes = defineRoutes({
   "/api/chats/:id/snapshot": {
     auth: "user",
     sameOrigin: "mutations",
-    description: "Read the latest page of up to 100 non-empty assistant responses for a chat; use before for older history or full=1 for the complete transcript.",
+    description: "Read the latest 100 chat responses; use before for older history, since to refresh a loaded window, or full=1 for the complete transcript.",
     operations: {
       GET: {
         description: "Read one bounded page of chat history; use before to load older history.",
         requestSchema: undefined,
         querySchema: TranscriptSnapshotQuerySchema.extend(ConversationReadOptionsSchema.shape),
-        automation: { policy: "read", hiddenQuery: ["full"] },
+        automation: { policy: "read", hiddenQuery: ["full", "since"] },
       },
     },
     async GET(req: Request, ctx): Promise<Response> {

@@ -56,7 +56,6 @@ export function TaskDetails({
 }: TaskDetailsProps) {
    const {
       task, loading, error, notFound, messages, toolCalls, logs, gitChangeCounter, refresh,
-      refreshCoalesced,
       hasOlderTranscript, loadingTranscript, loadMoreTranscript, loadFullTranscript,
         accept, push, updateBranch, remove, purge, markMerged, closeLocalTask, manualCompleteTask,
        stopTask, setPending, sendFollowUp, loadToolDetails,
@@ -370,7 +369,7 @@ export function TaskDetails({
         </div>
       </div>
 
-      <TaskPendingInput task={task} onRefresh={refreshCoalesced} />
+      <TaskPendingInput task={task} onRefresh={refresh} />
       {showActionBar && composerProps && <ConversationComposer {...composerProps} />}
 
       <TaskDetailsModals

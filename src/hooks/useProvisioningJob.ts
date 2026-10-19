@@ -3,14 +3,12 @@ import {
   getStoredSshCredentialToken,
   storeSshServerPassword,
 } from "../lib/ssh-browser-credentials";
-import { apiRequest, readApiResponse, requestApiResponse } from "../lib/api-client";
+import { apiRequest } from "../lib/api-client";
 import { isApiErrorCode } from "../lib/api-error";
-import { isAbortError } from "../lib/request-lifecycle";
 import { isProvisioningJobTerminal } from "@/shared";
 import type {
   AgentProvider,
   HarnessAdapter,
-  ProvisioningEvent,
   ProvisioningLogEntry,
   PublicProvisioningJob,
   PublicProvisioningJobSnapshot,
@@ -19,13 +17,8 @@ import type {
   ProvisioningWorkerEnrollmentRoute,
 } from "@/shared";
 import { getRegisteredSshServerId } from "@/shared/execution-host";
-import { createRefreshCoordinator } from "../lib/refresh-coordinator";
-import { useRealtimeRefreshWithRecovery, useRealtimeStream, type RealtimeStreamStatus } from "./useRealtimeStream";
-
-type ProvisioningStreamEvent = Extract<
-  ProvisioningEvent,
-  { type: "provisioning.step" | "provisioning.output" }
->;
+import { useLiveQuery, type RealtimeStatus } from "@pablozaiden/webapp/web";
+import { useProvisioningSnapshot } from "./useProvisioningSnapshot";
 
 export interface StartProvisioningJobRequest {
   name: string;
@@ -67,11 +60,11 @@ export interface UseProvisioningJobResult {
   notFoundJobId: string | null;
   starting: boolean;
   error: string | null;
-  websocketStatus: RealtimeStreamStatus;
+  websocketStatus: RealtimeStatus;
   startJob: (request: StartProvisioningJobRequest) => Promise<PublicProvisioningJobSnapshot | null>;
   openJob: (jobId: string) => void;
-  refreshJobs: (options?: { showLoading?: boolean }) => Promise<void>;
-  refreshJob: (options?: { showLoading?: boolean }) => Promise<PublicProvisioningJobSnapshot | null>;
+  refreshJobs: () => Promise<void>;
+  refreshJob: () => Promise<void>;
   cancelJob: () => Promise<boolean>;
   dismissJob: (jobId?: string) => Promise<boolean>;
   dismissAllJobs: () => Promise<DismissAllProvisioningJobsResult>;
@@ -92,23 +85,6 @@ async function resolveProvisioningCredentialToken(
   return token ?? undefined;
 }
 
-function mergeLogEntry(logs: ProvisioningLogEntry[], entry: ProvisioningLogEntry): ProvisioningLogEntry[] {
-  if (logs.some((current) => current.id === entry.id)) {
-    return logs;
-  }
-  const nextLogs = [...logs, entry];
-  if (nextLogs.length > 2000) {
-    return nextLogs.slice(-2000);
-  }
-  return nextLogs;
-}
-
-function isSuccessfulConnectionLog(entry: ProvisioningLogEntry): boolean {
-  return entry.source === "system"
-    && entry.text.startsWith("Workspace connection test succeeded.");
-}
-
-const ACTIVE_JOB_REFRESH_INTERVAL_MS = 1000;
 const DISMISS_RETRY_DELAY_MS = 100;
 const MAX_DISMISS_RETRIES = 50;
 
@@ -170,13 +146,18 @@ async function dismissProvisioningJobRequest(
 }
 
 export function useProvisioningJob(): UseProvisioningJobResult {
-  const [jobs, setJobs] = useState<PublicProvisioningJob[]>([]);
-  const [jobsLoading, setJobsLoading] = useState(false);
-  const [jobsError, setJobsError] = useState<string | null>(null);
+  const jobsQuery = useLiveQuery<PublicProvisioningJob[]>({
+    load: async (signal) => (await apiRequest<{ jobs: PublicProvisioningJob[] }>("/api/provisioning-jobs", {
+      signal,
+      action: "Load provisioning jobs",
+      fallbackMessage: "Failed to load provisioning jobs",
+    })).jobs,
+    realtime: { resources: ["provisioning-jobs"] },
+  });
+  const jobs = jobsQuery.data ?? [];
+  const { refresh: refreshJobs, mutate } = jobsQuery;
   const [activeJobId, setJobId] = useState<string | null>(null);
-  const [snapshot, setSnapshot] = useState<PublicProvisioningJobSnapshot | null>(null);
-  const [logs, setLogs] = useState<ProvisioningLogEntry[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [initialSnapshot, setInitialSnapshot] = useState<PublicProvisioningJobSnapshot | null>(null);
   const [notFoundJobId, setNotFoundJobId] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -184,76 +165,12 @@ export function useProvisioningJob(): UseProvisioningJobResult {
   const dismissingAllJobsRef = useRef(false);
   const dismissingAllControllerRef = useRef<AbortController | null>(null);
   const activeJobIdRef = useRef(activeJobId);
-  const jobsRequestControllerRef = useRef<AbortController | null>(null);
-  const jobsRequestIdRef = useRef(0);
-  const jobsRefreshCoordinatorRef = useRef(createRefreshCoordinator<void>());
-  const refreshControllerRef = useRef<AbortController | null>(null);
-  const refreshCoordinatorRef = useRef(createRefreshCoordinator<PublicProvisioningJobSnapshot | null>());
   activeJobIdRef.current = activeJobId;
 
-  const refreshJobs = useCallback(async (
-    options: { showLoading?: boolean; force?: boolean } = {},
-  ): Promise<void> => {
-    const refresh = async (): Promise<void> => {
-      const requestId = ++jobsRequestIdRef.current;
-      jobsRequestControllerRef.current?.abort();
-      const controller = new AbortController();
-      jobsRequestControllerRef.current = controller;
-      const showLoading = options.showLoading ?? true;
-      setJobsLoading(showLoading);
-
-      try {
-        const response = await apiRequest<{ jobs: PublicProvisioningJob[] }>(
-          "/api/provisioning-jobs",
-          {
-            signal: controller.signal,
-            action: "Load provisioning jobs",
-            fallbackMessage: "Failed to load provisioning jobs",
-          },
-        );
-        if (
-          controller.signal.aborted
-          || requestId !== jobsRequestIdRef.current
-        ) {
-          return;
-        }
-        setJobs(response.jobs);
-        setJobsError(null);
-      } catch (nextError) {
-        if (
-          controller.signal.aborted
-          || requestId !== jobsRequestIdRef.current
-          || isAbortError(nextError)
-        ) {
-          return;
-        }
-        setJobsError(String(nextError));
-      } finally {
-        if (jobsRequestIdRef.current === requestId) {
-          jobsRequestControllerRef.current = null;
-          setJobsLoading(false);
-        }
-      }
-    };
-
-    const refreshPromise = options.force
-      ? jobsRefreshCoordinatorRef.current.runAfterCurrent(refresh)
-      : jobsRefreshCoordinatorRef.current.run(refresh);
-    await refreshPromise;
-  }, []);
-
-  const refreshJobsAfterBulk = useCallback(async (): Promise<void> => {
-    await refreshJobs({ showLoading: false, force: true });
-  }, [refreshJobs]);
-
   const clearActiveJob = useCallback(() => {
-    refreshControllerRef.current?.abort();
-    refreshControllerRef.current = null;
-    refreshCoordinatorRef.current.reset();
     activeJobIdRef.current = null;
     setJobId(null);
-    setSnapshot(null);
-    setLogs([]);
+    setInitialSnapshot(null);
     setError(null);
     setNotFoundJobId(null);
   }, []);
@@ -264,11 +181,7 @@ export function useProvisioningJob(): UseProvisioningJobResult {
       return;
     }
     if (activeJobIdRef.current !== trimmedJobId) {
-      refreshControllerRef.current?.abort();
-      refreshControllerRef.current = null;
-      refreshCoordinatorRef.current.reset();
-      setSnapshot(null);
-      setLogs([]);
+      setInitialSnapshot(null);
       setError(null);
       setNotFoundJobId(null);
     }
@@ -276,147 +189,13 @@ export function useProvisioningJob(): UseProvisioningJobResult {
     setJobId(trimmedJobId);
   }, []);
 
-  const refreshJob = useCallback((
-    options: { showLoading?: boolean } = {},
-  ): Promise<PublicProvisioningJobSnapshot | null> => {
-    return refreshCoordinatorRef.current.run(async () => {
-      const requestJobId = activeJobId;
-      if (!requestJobId) {
-        return null;
-      }
-
-      const showLoading = options.showLoading ?? true;
-      const controller = new AbortController();
-      refreshControllerRef.current = controller;
-      try {
-        if (showLoading) {
-          setLoading(true);
-        }
-        setError(null);
-        const response = await requestApiResponse(`/api/provisioning-jobs/${encodeURIComponent(requestJobId)}`, {
-          signal: controller.signal,
-          action: "Load provisioning job",
-          fallbackMessage: "Failed to load provisioning job",
-          acceptedStatuses: [404],
-        });
-        if (controller.signal.aborted || activeJobIdRef.current !== requestJobId) {
-          return null;
-        }
-        if (response.status === 404) {
-          clearActiveJob();
-          setNotFoundJobId(requestJobId);
-          return null;
-        }
-        const nextSnapshot = await readApiResponse<PublicProvisioningJobSnapshot>(response);
-        if (controller.signal.aborted || activeJobIdRef.current !== requestJobId) {
-          return null;
-        }
-        setSnapshot(nextSnapshot);
-        setLogs(nextSnapshot.logs);
-        setNotFoundJobId(null);
-        return nextSnapshot;
-      } catch (nextError) {
-        if (controller.signal.aborted) {
-          return null;
-        }
-        setError(String(nextError));
-        return null;
-      } finally {
-        if (refreshControllerRef.current === controller) {
-          refreshControllerRef.current = null;
-        }
-        if (showLoading && !controller.signal.aborted) {
-          setLoading(false);
-        }
-      }
-    });
-  }, [activeJobId, clearActiveJob]);
-
-  useRealtimeRefreshWithRecovery({
-    resources: ["provisioning-jobs"],
-    ids: activeJobId ? [activeJobId] : [],
-    filters: activeJobId
-      ? { resource: "provisioning-jobs", id: activeJobId }
-      : undefined,
-    enabled: activeJobId !== null,
-    refresh: async (event) => {
-      if (event.action === "deleted") {
-        const deletedJobId = activeJobIdRef.current;
-        clearActiveJob();
-        if (deletedJobId) {
-          setNotFoundJobId(deletedJobId);
-        }
-        return;
-      }
-      await refreshJob({ showLoading: false });
-    },
-    onReconnect: async () => {
-      await refreshJob({ showLoading: false });
-    },
-  });
-
-  useRealtimeRefreshWithRecovery({
-    resources: ["provisioning-jobs"],
-    enabled: true,
-    refresh: async () => {
-      await refreshJobs({ showLoading: false });
-    },
-    onReconnect: async () => {
-      await refreshJobs({ showLoading: false });
-    },
-  });
-
-  const handleProvisioningEvent = useCallback((event: ProvisioningStreamEvent) => {
-    switch (event.type) {
-      case "provisioning.output":
-        setLogs((current) => mergeLogEntry(current, event.entry));
-        if (isSuccessfulConnectionLog(event.entry)) {
-          void refreshJob();
-        }
-        return;
-      case "provisioning.step":
-        setSnapshot((current) => current
-          ? { ...current, job: event.job }
-          : { job: event.job, logs: [] });
-        return;
-    }
-  }, [refreshJob]);
-
-  const { status: websocketStatus } = useRealtimeStream<ProvisioningStreamEvent>({
-    enabled: activeJobId !== null,
-    filters: activeJobId ? { provisioningJobId: activeJobId } : undefined,
-    predicate: (event) => event.type.startsWith("provisioning."),
-    onEvent: handleProvisioningEvent,
-  });
-
+  const { snapshot, loading, notFound, refreshJob, websocketStatus, error: snapshotError } =
+    useProvisioningSnapshot(activeJobId, initialSnapshot);
   useEffect(() => {
-    refreshControllerRef.current?.abort();
-    refreshControllerRef.current = null;
-    refreshCoordinatorRef.current.reset();
-    if (activeJobId) {
-      void refreshJob();
-    }
-    return () => {
-      refreshControllerRef.current?.abort();
-      refreshControllerRef.current = null;
-      refreshCoordinatorRef.current.reset();
-    };
-  }, [activeJobId, refreshJob]);
-
-  useEffect(() => {
-    const jobStatus = snapshot?.job.state.status;
-    if (!activeJobId || (jobStatus && isProvisioningJobTerminal(jobStatus))) {
-      return;
-    }
-
-    const intervalId = window.setInterval(() => {
-      void refreshJob({ showLoading: false });
-    }, ACTIVE_JOB_REFRESH_INTERVAL_MS);
-
-    return () => {
-      window.clearInterval(intervalId);
-    };
-  }, [activeJobId, refreshJob, snapshot?.job.state.status]);
+    if (!notFound || !activeJobId) return;
+    clearActiveJob();
+    setNotFoundJobId(activeJobId);
+  }, [activeJobId, clearActiveJob, notFound]);
 
   const startJob = useCallback(async (
     request: StartProvisioningJobRequest,
@@ -431,7 +210,8 @@ export function useProvisioningJob(): UseProvisioningJobResult {
         ? await resolveProvisioningCredentialToken(serverId, request.password)
         : undefined;
 
-      const nextSnapshot = await apiRequest<PublicProvisioningJobSnapshot>("/api/provisioning-jobs", {
+      const nextSnapshot = await mutate((signal) => apiRequest<PublicProvisioningJobSnapshot>("/api/provisioning-jobs", {
+        signal,
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -469,13 +249,11 @@ export function useProvisioningJob(): UseProvisioningJobResult {
         }),
         action: "Start provisioning job",
         fallbackMessage: "Failed to start provisioning job",
-      });
+      }));
       setJobId(nextSnapshot.job.config.id);
       activeJobIdRef.current = nextSnapshot.job.config.id;
-      setSnapshot(nextSnapshot);
-      setLogs(nextSnapshot.logs);
+      setInitialSnapshot(nextSnapshot);
       setNotFoundJobId(null);
-      await refreshJobs({ showLoading: false });
       return nextSnapshot;
     } catch (nextError) {
       setError(String(nextError));
@@ -483,7 +261,7 @@ export function useProvisioningJob(): UseProvisioningJobResult {
     } finally {
       setStarting(false);
     }
-  }, [refreshJobs]);
+  }, [mutate]);
 
   const cancelJob = useCallback(async (): Promise<boolean> => {
     if (!activeJobId) {
@@ -492,18 +270,19 @@ export function useProvisioningJob(): UseProvisioningJobResult {
 
     try {
       setError(null);
-      await apiRequest(`/api/provisioning-jobs/${encodeURIComponent(activeJobId)}`, {
+      await mutate((signal) => apiRequest(`/api/provisioning-jobs/${encodeURIComponent(activeJobId)}`, {
+        signal,
         method: "DELETE",
         action: "Cancel provisioning job",
         fallbackMessage: "Failed to cancel provisioning job",
-      });
+      }));
       await refreshJob();
       return true;
     } catch (nextError) {
       setError(String(nextError));
       return false;
     }
-  }, [activeJobId, refreshJob]);
+  }, [activeJobId, mutate, refreshJob]);
 
   const dismissJob = useCallback(async (jobIdOverride?: string): Promise<boolean> => {
     const jobId = jobIdOverride ?? activeJobIdRef.current;
@@ -513,17 +292,16 @@ export function useProvisioningJob(): UseProvisioningJobResult {
 
     try {
       setError(null);
-      await dismissProvisioningJobRequest(jobId);
+      await mutate((signal) => dismissProvisioningJobRequest(jobId, { signal }));
       if (activeJobIdRef.current === jobId) {
         clearActiveJob();
       }
-      await refreshJobs({ showLoading: false });
       return true;
     } catch (nextError) {
       setError(String(nextError));
       return false;
     }
-  }, [clearActiveJob, refreshJobs]);
+  }, [clearActiveJob, mutate]);
 
   const dismissAllJobs = useCallback(async (): Promise<DismissAllProvisioningJobsResult> => {
     if (dismissingAllJobsRef.current) {
@@ -549,12 +327,12 @@ export function useProvisioningJob(): UseProvisioningJobResult {
     const controller = new AbortController();
     dismissingAllControllerRef.current = controller;
     try {
-      const results = await Promise.allSettled(
+      const results = await mutate((signal) => Promise.allSettled(
         jobIds.map((jobId) => dismissProvisioningJobRequest(jobId, {
-          signal: controller.signal,
+          signal: AbortSignal.any([signal, controller.signal]),
           retryOnReadiness: true,
         })),
-      );
+      ));
       const dismissedJobIds: string[] = [];
       const failedJobIds: string[] = [];
 
@@ -570,9 +348,6 @@ export function useProvisioningJob(): UseProvisioningJobResult {
       if (activeJobIdRef.current && dismissedJobIds.includes(activeJobIdRef.current)) {
         clearActiveJob();
       }
-      if (!controller.signal.aborted) {
-        await refreshJobsAfterBulk();
-      }
       return { dismissedJobIds, failedJobIds };
     } finally {
       if (dismissingAllControllerRef.current === controller) {
@@ -581,30 +356,26 @@ export function useProvisioningJob(): UseProvisioningJobResult {
       dismissingAllJobsRef.current = false;
       setDismissingAllJobs(false);
     }
-  }, [clearActiveJob, jobs, refreshJobsAfterBulk]);
+  }, [clearActiveJob, jobs, mutate]);
 
   useEffect(() => {
-    void refreshJobs();
     return () => {
-      jobsRequestControllerRef.current?.abort();
-      jobsRequestControllerRef.current = null;
       dismissingAllControllerRef.current?.abort();
       dismissingAllControllerRef.current = null;
-      jobsRefreshCoordinatorRef.current.reset();
     };
-  }, [refreshJobs]);
+  }, []);
 
   return {
     jobs,
-    jobsLoading,
-    jobsError,
+    jobsLoading: jobsQuery.loading,
+    jobsError: jobsQuery.error ? String(jobsQuery.error) : null,
     activeJobId,
     snapshot,
-    logs,
+    logs: snapshot?.logs ?? [],
     loading,
     notFoundJobId,
     starting,
-    error,
+    error: error ?? (snapshotError ? String(snapshotError) : null),
     websocketStatus,
     startJob,
     openJob,

@@ -1,6 +1,5 @@
 import type {
   Chat,
-  ChatEvent,
   ChatPermissionRequest,
   ChatTranscript,
   QueuedChatMessage,
@@ -12,24 +11,6 @@ import type {
 } from "../conversation-composer";
 import type { TranscriptFileLinkContext } from "../log-viewer";
 
-export type ChatStreamEvent = Extract<
-  ChatEvent,
-  {
-    type:
-      | "chat.status"
-      | "chat.message"
-      | "chat.message.delta"
-      | "chat.tool_call"
-      | "chat.tool_call.extra"
-      | "chat.log"
-      | "chat.log.delta";
-  }
->;
-
-export interface ChatRefreshOptions {
-  showLoading?: boolean;
-}
-
 export interface ChatLifecycleResult {
   chat: Chat | null;
   transcript: ChatTranscript;
@@ -38,8 +19,7 @@ export interface ChatLifecycleResult {
   notFound: boolean;
   isActive: boolean;
   needsSshCredentials: boolean;
-  refreshChat: (options?: ChatRefreshOptions) => Promise<void>;
-  refreshChatCoalesced: (options?: ChatRefreshOptions) => Promise<void>;
+  refreshChat: () => Promise<void>;
   loadToolCallDetails: (toolCallId: string) => Promise<ToolCallData | null>;
   loadMoreTranscript: () => Promise<void>;
   loadFullTranscript: () => Promise<void>;
@@ -99,7 +79,7 @@ export interface ChatComposerAdapterOptions {
   needsSshCredentials: boolean;
   onChatSnapshot: (nextChat: Chat) => void;
   markChatStarting: () => void;
-  refreshChat: (options?: ChatRefreshOptions) => Promise<void>;
+  refreshChat: () => Promise<void>;
   handleReconnect: () => Promise<void>;
   onSendMessage?: ChatSendMessageHandler;
   voice: ConversationComposerVoice;

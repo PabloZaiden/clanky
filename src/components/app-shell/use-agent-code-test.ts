@@ -8,7 +8,7 @@ import type {
 import type { TestAgentCodeRequest } from "@/contracts/schemas";
 import { useToast } from "@pablozaiden/webapp/web";
 import { parseModelKey } from "../ModelSelector";
-import { useRealtimeStream } from "../../hooks";
+import { useRealtime } from "@pablozaiden/webapp/web";
 import type { UseAgentsResult } from "../../hooks/useAgents";
 
 const MAX_TEST_LOGS = 1000;
@@ -76,9 +76,11 @@ export function useAgentCodeTest({
     });
   }, []);
 
-  useRealtimeStream<AgentEvent>({
+  useRealtime<AgentEvent>({
     enabled: isTestingCode && testStreamId !== null,
-    filters: { agentRunId: testStreamId ?? undefined },
+    targets: { agentRunId: testStreamId ?? undefined },
+    types: ["agent.run.log"],
+    trackLastEvent: false,
     predicate: (event) => event.type === "agent.run.log" && event.agentRunId === testStreamId,
     onEvent: (event) => {
       if (event.type === "agent.run.log") {

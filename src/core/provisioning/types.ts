@@ -14,6 +14,7 @@ import type {
   ProvisioningResourceHandle,
 } from "./attempt";
 import type { ProvisioningTargetOwnership } from "./target-resolver";
+import type { StreamVersion } from "../stream-version";
 
 export interface StartProvisioningJobOptions {
   name: string;
@@ -43,6 +44,7 @@ export interface StartProvisioningJobOptions {
 }
 
 export interface ProvisioningJobRecord {
+  version: StreamVersion;
   job: ProvisioningJob;
   logs: ProvisioningLogEntry[];
   abortController: AbortController;

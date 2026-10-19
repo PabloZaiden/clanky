@@ -28,13 +28,13 @@ export const transcriptRoutes = defineRoutes({
   "/api/agent-runs/:id/snapshot": {
     auth: "user",
     sameOrigin: "mutations",
-    description: "Read the latest page of up to 100 non-empty assistant responses for an agent run; use before for older history or full=1 for the complete transcript.",
+    description: "Read the latest 100 agent-run responses; use before for older history, since to refresh a loaded window, or full=1 for the complete transcript.",
     operations: {
       GET: {
         description: "Read one bounded page of agent-run history; use before for older history.",
         requestSchema: undefined,
         querySchema: TranscriptSnapshotQuerySchema.extend(ConversationReadOptionsSchema.shape),
-        automation: { policy: "read", hiddenQuery: ["full"] },
+        automation: { policy: "read", hiddenQuery: ["full", "since"] },
       },
     },
     async GET(req: Request, ctx): Promise<Response> {

@@ -46,6 +46,14 @@ export class AgentRunStreamPersistence {
     return this.run;
   }
 
+  get liveTranscript() {
+    return this.transcript.capture();
+  }
+
+  get streamPosition() {
+    return this.transcript.version.change;
+  }
+
   handleChatEvent(event: ChatEvent): void {
     let shouldCheckpoint = false;
     switch (event.type) {

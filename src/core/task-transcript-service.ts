@@ -7,7 +7,8 @@ import type {
 import { shouldIncludeConversationTranscriptLog } from "@/shared";
 import { taskTranscriptStore } from "../persistence/transcripts/task-store";
 import { loadTaskSummary } from "../persistence/tasks";
-import { createTranscriptFromStoragePage } from "./transcript-service";
+import { createTranscriptFromStoragePage, includeLiveTranscript } from "./transcript-service";
+import { taskManager } from "./task";
 
 export type TaskTranscriptSnapshotTask = Omit<Task, "state"> & {
   state: Omit<Task["state"], "messages" | "logs" | "toolCalls">;
@@ -38,14 +39,14 @@ export async function getTaskTranscriptSnapshot(
       config: task.config,
       state,
     },
-    transcript: createTranscriptFromStoragePage(
+    transcript: includeLiveTranscript(createTranscriptFromStoragePage(
       taskTranscriptStore.listPage(taskId, options),
       {
         revision: meta.revision,
         totalEntries: meta.entryCount,
       },
       shouldIncludeConversationTranscriptLog,
-    ),
+    ), taskManager.getLiveTranscript(taskId), options),
   };
 }
 

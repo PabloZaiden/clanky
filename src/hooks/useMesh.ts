@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import type { MeshControllerStatus } from "@/shared/mesh";
 import type { MeshEnrollmentRoute } from "@/contracts/schemas/mesh";
 import type { ControllerRelayPairingStatus } from "@/contracts/relay";
 import { apiRequest } from "../lib/api-client";
-import { createRefreshCoordinator } from "../lib/refresh-coordinator";
-import { useRealtimeRefreshWithRecovery } from "./useRealtimeStream";
+import { useLiveQuery } from "@pablozaiden/webapp/web";
 
 interface MeshResponse {
   status?: MeshControllerStatus;
@@ -40,8 +39,8 @@ export interface UseMeshResult {
   saving: boolean;
   error: string | null;
   mutationError: string | null;
-  refresh: (options?: { showLoading?: boolean }) => Promise<MeshControllerStatus | null>;
-  refreshRelayStatus: () => Promise<ControllerRelayPairingStatus | null>;
+  refresh: () => Promise<void>;
+  refreshRelayStatus: () => Promise<void>;
   updateInstanceName: (instanceName: string) => Promise<MeshControllerStatus | null>;
   updateMeshEndpoint: (meshEndpoint: string) => Promise<MeshControllerStatus | null>;
   createEnrollmentToken: (
@@ -57,124 +56,36 @@ export interface UseMeshResult {
 }
 
 export function useMesh(): UseMeshResult {
-  const [status, setStatus] = useState<MeshControllerStatus | null>(null);
-  const [relayStatus, setRelayStatus] = useState<ControllerRelayPairingStatus | null>(null);
-  const [relayStatusLoading, setRelayStatusLoading] = useState(true);
-  const [enrollmentTokens, setEnrollmentTokens] = useState<MeshEnrollmentTokenSummary[]>([]);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
-  const refreshAbortRef = useRef<AbortController | null>(null);
-  const relayRefreshAbortRef = useRef<AbortController | null>(null);
-  const relayStatusRequestIdRef = useRef(0);
-  const isMountedRef = useRef(false);
-  const refreshCoordinatorRef = useRef(createRefreshCoordinator<MeshControllerStatus | null>());
-
-  const refresh = useCallback((
-    options: { showLoading?: boolean } = {},
-  ): Promise<MeshControllerStatus | null> => refreshCoordinatorRef.current.run(async () => {
-    const controller = new AbortController();
-    const relayStatusRequestId = ++relayStatusRequestIdRef.current;
-    refreshAbortRef.current = controller;
-    if (options.showLoading !== false && isMountedRef.current) setLoading(true);
-    if (isMountedRef.current) setRelayStatusLoading(true);
-    if (isMountedRef.current) setError(null);
-    try {
-      const [body, tokens, relay] = await Promise.all([
+  const query = useLiveQuery<{
+    status: MeshControllerStatus;
+    relayStatus: ControllerRelayPairingStatus;
+    enrollmentTokens: MeshEnrollmentTokenSummary[];
+  }>({
+    load: async (signal) => {
+      const [status, enrollmentTokens, relayStatus] = await Promise.all([
         apiRequest<MeshControllerStatus>("/api/mesh/status", {
-          signal: controller.signal,
+          signal,
           action: "Load Mesh status",
           fallbackMessage: "Failed to load Mesh status",
         }),
         apiRequest<MeshEnrollmentTokenSummary[]>("/api/mesh/enrollment-tokens", {
-          signal: controller.signal,
+          signal,
           action: "Load Mesh enrollment tokens",
           fallbackMessage: "Failed to load Mesh enrollment tokens",
         }),
         apiRequest<ControllerRelayPairingStatus>("/api/mesh/relay", {
-          signal: controller.signal,
+          signal,
           action: "Load Mesh relay status",
           fallbackMessage: "Failed to load Mesh relay status",
         }),
       ]);
-      if (controller.signal.aborted || !isMountedRef.current) return null;
-      const next = body;
-      setStatus(next);
-      if (relayStatusRequestId === relayStatusRequestIdRef.current) {
-        setRelayStatus(relay);
-      }
-      setEnrollmentTokens(tokens);
-      return next;
-    } catch (refreshError) {
-      if (controller.signal.aborted || refreshError instanceof DOMException && refreshError.name === "AbortError") {
-        return null;
-      }
-      if (isMountedRef.current) setError(String(refreshError));
-      return null;
-    } finally {
-      if (refreshAbortRef.current === controller) refreshAbortRef.current = null;
-      if (
-        relayStatusRequestId === relayStatusRequestIdRef.current
-        && !controller.signal.aborted
-        && isMountedRef.current
-      ) {
-        setRelayStatusLoading(false);
-      }
-      if (!controller.signal.aborted && isMountedRef.current) setLoading(false);
-    }
-  }), []);
-
-  const refreshRelayStatus = useCallback(async (): Promise<ControllerRelayPairingStatus | null> => {
-    relayRefreshAbortRef.current?.abort();
-    const controller = new AbortController();
-    const relayStatusRequestId = ++relayStatusRequestIdRef.current;
-    relayRefreshAbortRef.current = controller;
-    if (isMountedRef.current) setRelayStatusLoading(true);
-    try {
-      const next = await apiRequest<ControllerRelayPairingStatus>("/api/mesh/relay", {
-        signal: controller.signal,
-        action: "Load Mesh relay status",
-        fallbackMessage: "Failed to load Mesh relay status",
-      });
-      if (controller.signal.aborted || !isMountedRef.current) {
-        return null;
-      }
-      if (relayStatusRequestId === relayStatusRequestIdRef.current) {
-        setRelayStatus(next);
-      }
-      return next;
-    } catch (refreshError) {
-      if (
-        controller.signal.aborted
-        || refreshError instanceof DOMException && refreshError.name === "AbortError"
-      ) {
-        return null;
-      }
-      if (isMountedRef.current) {
-        setError(String(refreshError));
-      }
-      return null;
-    } finally {
-      if (relayRefreshAbortRef.current === controller) {
-        relayRefreshAbortRef.current = null;
-      }
-      if (
-        relayStatusRequestId === relayStatusRequestIdRef.current
-        && !controller.signal.aborted
-        && isMountedRef.current
-      ) {
-        setRelayStatusLoading(false);
-      }
-    }
-  }, []);
-
-  useRealtimeRefreshWithRecovery({
-    resources: ["mesh"],
-    filters: { resource: "mesh" },
-    refresh: async () => { await refresh({ showLoading: false }); },
-    onReconnect: async () => { await refresh({ showLoading: false }); },
+      return { status, enrollmentTokens, relayStatus };
+    },
+    realtime: { resources: ["mesh"] },
   });
+  const mutateQuery = query.mutate;
 
   const mutate = useCallback(async (
     path: string,
@@ -184,21 +95,22 @@ export function useMesh(): UseMeshResult {
     setSaving(true);
     setMutationError(null);
     try {
-      const response = await apiRequest<MeshResponse>(path, {
-        method,
-        headers: body ? { "Content-Type": "application/json" } : undefined,
-        body: body ? JSON.stringify(body) : undefined,
-        action: "Update Mesh",
-        fallbackMessage: "Failed to update Mesh",
-      });
-      if (response.status) {
-        setStatus(response.status);
-        return { succeeded: true, status: response.status };
-      }
-      return {
-        succeeded: true,
-        status: await refresh({ showLoading: false }),
-      };
+      const status = await mutateQuery(async (signal) => {
+        const response = await apiRequest<MeshResponse>(path, {
+          signal,
+          method,
+          headers: body ? { "Content-Type": "application/json" } : undefined,
+          body: body ? JSON.stringify(body) : undefined,
+          action: "Update Mesh",
+          fallbackMessage: "Failed to update Mesh",
+        });
+        return response.status ?? await apiRequest<MeshControllerStatus>("/api/mesh/status", {
+          signal,
+          action: "Load Mesh status",
+          fallbackMessage: "Failed to load Mesh status",
+        });
+      }, (previous, status) => previous ? { ...previous, status } : undefined);
+      return { succeeded: true, status };
     } catch (mutationError) {
       const message = mutationError instanceof Error ? mutationError.message : String(mutationError);
       setMutationError(message);
@@ -206,7 +118,7 @@ export function useMesh(): UseMeshResult {
     } finally {
       setSaving(false);
     }
-  }, [refresh]);
+  }, [mutateQuery]);
 
   const createEnrollmentToken = useCallback(async (
     name: string,
@@ -217,7 +129,8 @@ export function useMesh(): UseMeshResult {
     setSaving(true);
     setMutationError(null);
     try {
-      const created = await apiRequest<CreatedMeshEnrollment>("/api/mesh/enrollment-tokens", {
+      return await mutateQuery((signal) => apiRequest<CreatedMeshEnrollment>("/api/mesh/enrollment-tokens", {
+        signal,
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -228,40 +141,29 @@ export function useMesh(): UseMeshResult {
         }),
         action: "Create Mesh enrollment token",
         fallbackMessage: "Failed to create Mesh enrollment token",
-      });
-      await refresh({ showLoading: false });
-      return created;
+      }), (previous, created) => previous ? {
+        ...previous,
+        enrollmentTokens: [...previous.enrollmentTokens, created.enrollment],
+      } : undefined);
     } catch (mutationError) {
       setMutationError(mutationError instanceof Error ? mutationError.message : String(mutationError));
       return null;
     } finally {
       setSaving(false);
     }
-  }, [refresh]);
-
-  useEffect(() => {
-    isMountedRef.current = true;
-    void refresh();
-    return () => {
-      isMountedRef.current = false;
-      refreshAbortRef.current?.abort();
-      relayRefreshAbortRef.current?.abort();
-      relayStatusRequestIdRef.current += 1;
-      refreshCoordinatorRef.current.reset();
-    };
-  }, [refresh]);
+  }, [mutateQuery]);
 
   return {
-    status,
-    relayStatus,
-    relayStatusLoading,
-    enrollmentTokens,
-    loading,
+    status: query.data?.status ?? null,
+    relayStatus: query.data?.relayStatus ?? null,
+    relayStatusLoading: query.data === undefined && query.loading,
+    enrollmentTokens: query.data?.enrollmentTokens ?? [],
+    loading: query.data === undefined && query.loading,
     saving,
-    error,
+    error: query.error ? String(query.error) : null,
     mutationError,
-    refresh,
-    refreshRelayStatus,
+    refresh: query.refresh,
+    refreshRelayStatus: query.refresh,
     updateInstanceName: async (instanceName) => (
       await mutate("/api/mesh/instance-name", "POST", { instanceName })
     ).status,

@@ -128,6 +128,42 @@ updates that download, review the new package and update its checksum and
 extraction paths together. Linux rendering can still differ from Safari on
 macOS/iOS even with the same font family.
 
+### Application realtime
+
+Webapp owns one authenticated application WebSocket per browser tab, including
+heartbeat, reconnect and dynamic subscriptions. Mounted consumers declare
+interests, not URL filters. Server delivery enforces authoritative user
+ownership before matching interests; no interests means no application feed.
+
+Use `useLiveQuery` for collection/entity reads and its mutation barrier for
+local operations and reconciliation. Sidebar chat activity uses compact
+metadata, never every chat's transcript body. Keep versioned deltas for
+transcript and provisioning content where refetching each chunk is disruptive.
+Supply identity dependencies when a versioned hook changes entities.
+
+Baseline reads start after subscription acknowledgement. Live transcript
+snapshots capture the domain owner's retained in-memory collections and
+position together, rather than relying on a delayed persistence checkpoint.
+Snapshots carry an epoch and revision; deltas name their predecessor.
+The framework buffers concurrent events, discards covered deltas and applies
+contiguous changes. Reconnect, gaps and buffer overflow request a new cut;
+persistent failures remain visible. Navigation and disconnect invalidate old
+reads. Applications must not add independent reconnect timers or fallback
+polling to recover the same state.
+
+Transcript snapshots default to the latest 100 responses. `before` loads an
+older page; `since` refreshes the explicitly loaded window inclusively from
+its oldest response cursor; `full=1` requests all retained history. These
+options are mutually exclusive. Preserve the currently displayed window
+while loading older history so a concurrent advancing tail cannot leave a
+gap. Recovery replaces that loaded window authoritatively, rather than
+unioning stale cached records into a new snapshot. Default live windows are
+bounded; loading additional history remains an explicit user action.
+
+There is no durable global replay log. Transient UI commands keep their own
+acknowledgement/deduplication contract and are not blindly replayed. Terminal,
+preview and Mesh sockets remain separate raw transports.
+
 ## Build and test
 
 Build the standalone artifacts and run the black-box E2E suite:

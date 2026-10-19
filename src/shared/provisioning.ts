@@ -6,6 +6,7 @@ import type { AgentProvider, HarnessAdapter, ServerSettings } from "./settings";
 import type { PublicServerSettings, PublicWorkspace, Workspace } from "./workspace";
 import type { ExecutionHostBinding } from "./execution-host";
 import type { CommandExecutionState } from "./job-execution";
+import type { StreamDeltaPosition, StreamPosition } from "./stream-position";
 
 export type ProvisioningJobStatus =
   | "pending"
@@ -149,6 +150,7 @@ export interface PublicProvisioningJob extends Omit<ProvisioningJob, "state"> {
 }
 
 export interface ProvisioningJobSnapshot {
+  position: StreamPosition;
   job: ProvisioningJob;
   logs: ProvisioningLogEntry[];
   workspace?: Workspace;
@@ -187,6 +189,7 @@ export interface ProvisioningStartedEvent {
 
 export interface ProvisioningStepEvent {
   type: "provisioning.step";
+  streamPosition: StreamDeltaPosition;
   provisioningJobId: string;
   job: ProvisioningJob;
   step: ProvisioningStep;
@@ -196,6 +199,7 @@ export interface ProvisioningStepEvent {
 
 export interface ProvisioningOutputEvent {
   type: "provisioning.output";
+  streamPosition: StreamDeltaPosition;
   provisioningJobId: string;
   entry: ProvisioningLogEntry;
   timestamp: string;

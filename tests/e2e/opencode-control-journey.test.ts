@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { E2EApplication } from "./support/application";
 import { pollUntil } from "./support/polling";
+import { subscribeRealtime } from "./support/realtime";
 import { installExternalNativeOpenCodeProvider } from "./support/provider";
 import { MESH_OPERATION_TIMEOUT_MS } from "./support/timeouts";
 import {
@@ -132,8 +133,8 @@ test("OpenCode users control workspaces, route browser actions, steer and resume
     const RuntimeWebSocket = WebSocket as {
       new(url: string | URL, options?: Bun.WebSocketOptions): WebSocket;
     };
-    for (const [index, clientId] of clients.entries()) {
-      const socket = new RuntimeWebSocket(`${application.baseUrl.replace("http:", "ws:")}/api/ws?clientId=${clientId}`, {
+    for (const [index] of clients.entries()) {
+      const socket = new RuntimeWebSocket(`${application.baseUrl.replace("http:", "ws:")}/api/ws`, {
         headers: { Authorization: `Bearer ${key}`, Origin: application.baseUrl },
       });
       sockets.push(socket);
@@ -145,6 +146,9 @@ test("OpenCode users control workspaces, route browser actions, steer and resume
     await pollUntil(() => sockets.map((socket) => socket.readyState),
       (states) => states.every((state) => state === WebSocket.OPEN),
       { description: "OpenCode browser clients to connect", timeoutMs: 5_000 });
+    await Promise.all(sockets.map((socket, index) => subscribeRealtime(socket, {
+      kinds: ["action"], types: ["control.ui_action"], targets: { clientId: clients[index]! },
+    })));
     const steer = async (message: string, clientId: string) => {
       const chat = await send(application, id, message, clientId);
       const queued = chat.state.queuedMessages!.find((entry) => entry.content === message)!;

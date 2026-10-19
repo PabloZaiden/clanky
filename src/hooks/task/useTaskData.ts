@@ -3,11 +3,9 @@ import type {
   ChatTranscript,
   Task,
   ToolCallData,
-  TranscriptStreamEvent,
 } from "@/shared";
 import {
   useTranscriptResource,
-  type TranscriptResourceRefreshOptions,
 } from "../useTranscriptResource";
 
 interface TaskSnapshotResponse {
@@ -27,12 +25,10 @@ export interface UseTaskDataResult {
   setError: Dispatch<SetStateAction<string | null>>;
   gitChangeCounter: number;
   setGitChangeCounter: Dispatch<SetStateAction<number>>;
-  refresh: (options?: TranscriptResourceRefreshOptions) => Promise<void>;
-  refreshCoalesced: (options?: TranscriptResourceRefreshOptions) => Promise<void>;
+  refresh: () => Promise<void>;
   loadToolDetails: (toolCallId: string) => Promise<ToolCallData | null>;
   loadMoreTranscript: () => Promise<void>;
   loadFullTranscript: () => Promise<void>;
-  applyTranscriptEvent: (event: TranscriptStreamEvent) => void;
 }
 
 function decodeTaskSnapshot(
@@ -56,6 +52,7 @@ export function useTaskData(taskId: string): UseTaskDataResult {
   const transcriptResource = useTranscriptResource<Task, TaskSnapshotResponse>({
     resourceId: taskId,
     resourceLabel: "task",
+    stream: "task",
     baseUrl: `/api/tasks/${encodeURIComponent(taskId)}`,
     decodeSnapshot: decodeTaskSnapshot,
   });
@@ -77,10 +74,8 @@ export function useTaskData(taskId: string): UseTaskDataResult {
     gitChangeCounter,
     setGitChangeCounter,
     refresh: transcriptResource.refresh,
-    refreshCoalesced: transcriptResource.refreshCoalesced,
     loadToolDetails: transcriptResource.loadToolDetails,
     loadMoreTranscript: transcriptResource.loadMoreTranscript,
     loadFullTranscript: transcriptResource.loadFullTranscript,
-    applyTranscriptEvent: transcriptResource.applyTranscriptEvent,
   };
 }

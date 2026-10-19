@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { E2EApplication } from "./support/application";
 import { createGitFixture } from "./support/git";
 import { pollUntil } from "./support/polling";
+import { subscribeRealtime } from "./support/realtime";
 import {
   findFreeLoopbackPort,
   requireCommand,
@@ -408,6 +409,7 @@ async function exercisePreviewAndRealtime(
       },
     );
 
+    await subscribeRealtime(realtime, { kinds: ["state"], resources: ["previews"] });
     preview.send(JSON.stringify({
       type: "hello",
       target: { kind: "workspace", reference: workspace.id },

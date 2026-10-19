@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import type { SshServer } from "@/shared";
 import type { CreateSshServerRequest, UpdateSshServerRequest } from "@/contracts";
-import { useRealtimeRefreshWithRecovery } from "./useRealtimeStream";
+import { useLiveQuery } from "@pablozaiden/webapp/web";
 import {
   createSshServerApi,
   deleteSshServerApi,
-  listSshServersApi,
   saveStandaloneSshServerPassword,
   updateSshServerApi,
 } from "./sshServerActions";
@@ -13,14 +12,13 @@ import {
   clearStoredSshServerCredential,
   getStoredSshServerCredential,
 } from "../lib/ssh-browser-credentials";
-import { createRefreshCoordinator } from "../lib/refresh-coordinator";
-import type { ResourceRefreshOptions } from "./useResourceRefresh";
+import { apiRequest } from "../lib/api-client";
 
 export interface UseSshServersResult {
   servers: SshServer[];
   loading: boolean;
   error: string | null;
-  refresh: (options?: ResourceRefreshOptions) => Promise<void>;
+  refresh: () => Promise<void>;
   createServer: (request: CreateSshServerRequest, password?: string) => Promise<SshServer | null>;
   updateServer: (id: string, request?: UpdateSshServerRequest, password?: string) => Promise<SshServer | null>;
   deleteServer: (id: string) => Promise<boolean>;
@@ -32,46 +30,38 @@ export interface UseSshServersOptions {
 }
 
 export function useSshServers({ realtime = true }: UseSshServersOptions = {}): UseSshServersResult {
-  const [servers, setServers] = useState<SshServer[]>([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const refreshCoordinatorRef = useRef(createRefreshCoordinator<void>());
-
-  const refresh = useCallback((options: ResourceRefreshOptions = {}) => {
-    const method = options.afterCurrent ? "runAfterCurrent" : "run";
-    return refreshCoordinatorRef.current[method](async () => {
-      const showLoading = options.showLoading ?? true;
-      try {
-        if (showLoading) {
-          setLoading(true);
-        }
-        setError(null);
-        const nextServers = await listSshServersApi();
-        setServers(nextServers);
-      } catch (err) {
-        setError(String(err));
-      } finally {
-        if (showLoading) {
-          setLoading(false);
-        }
-      }
-    });
-  }, []);
+  const query = useLiveQuery<SshServer[]>({
+    load: (signal) => apiRequest<SshServer[]>("/api/ssh-servers", {
+      signal,
+      action: "List SSH servers",
+      fallbackMessage: "Failed to list SSH servers",
+    }),
+    realtime: { resources: ["execution-hosts"], enabled: realtime },
+  });
+  const servers = query.data ?? [];
+  const mutate = query.mutate;
+  const refresh = useCallback(async () => {
+    setError(null);
+    await query.refresh();
+  }, [query.refresh]);
 
   const createServer = useCallback(async (request: CreateSshServerRequest, password?: string): Promise<SshServer | null> => {
     try {
       setError(null);
-      const server = await createSshServerApi(request);
-      if (password?.trim()) {
-        await saveStandaloneSshServerPassword(server.config.id, password);
-      }
-      setServers((prev) => [...prev, server].sort((left, right) => left.config.name.localeCompare(right.config.name)));
-      return server;
+      return await mutate(async () => {
+        const server = await createSshServerApi(request);
+        if (password?.trim()) {
+          await saveStandaloneSshServerPassword(server.config.id, password);
+        }
+        return server;
+      }, (previous, server) => [...(previous ?? []).filter((item) => item.config.id !== server.config.id), server]
+        .sort((left, right) => left.config.name.localeCompare(right.config.name)));
     } catch (err) {
       setError(String(err));
       return null;
     }
-  }, []);
+  }, [mutate]);
 
   const updateServer = useCallback(async (
     id: string,
@@ -80,60 +70,46 @@ export function useSshServers({ realtime = true }: UseSshServersOptions = {}): U
   ): Promise<SshServer | null> => {
     try {
       setError(null);
-      const currentServer = servers.find((item) => item.config.id === id) ?? null;
-      const server = request && Object.keys(request).length > 0
-        ? await updateSshServerApi(id, request)
-        : currentServer;
-      if (!server) {
-        throw new Error("SSH server not found");
-      }
-      if (password?.trim()) {
-        await saveStandaloneSshServerPassword(server.config.id, password);
-      }
-      setServers((prev) =>
-        prev
-          .map((item) => item.config.id === id ? server : item)
-          .sort((left, right) => left.config.name.localeCompare(right.config.name)),
-      );
-      return server;
+      return await mutate(async () => {
+        const currentServer = servers.find((item) => item.config.id === id) ?? null;
+        const server = request && Object.keys(request).length > 0
+          ? await updateSshServerApi(id, request)
+          : currentServer;
+        if (!server) {
+          throw new Error("SSH server not found");
+        }
+        if (password?.trim()) {
+          await saveStandaloneSshServerPassword(server.config.id, password);
+        }
+        return server;
+      }, (previous, server) => request && Object.keys(request).length > 0
+        ? previous?.map((item) => item.config.id === id ? server : item)
+          .sort((left, right) => left.config.name.localeCompare(right.config.name))
+        : previous);
     } catch (err) {
       setError(String(err));
       return null;
     }
-  }, [servers]);
+  }, [mutate, servers]);
 
   const deleteServer = useCallback(async (id: string): Promise<boolean> => {
     try {
       setError(null);
-      await deleteSshServerApi(id);
-      clearStoredSshServerCredential(id);
-      setServers((prev) => prev.filter((server) => server.config.id !== id));
+      await mutate(async () => {
+        await deleteSshServerApi(id);
+        clearStoredSshServerCredential(id);
+      }, (previous) => previous?.filter((server) => server.config.id !== id));
       return true;
     } catch (err) {
       setError(String(err));
       return false;
     }
-  }, []);
-
-  useRealtimeRefreshWithRecovery({
-    resources: ["execution-hosts"],
-    filters: { resource: "execution-hosts" },
-    enabled: realtime,
-    refresh: () => refresh({ showLoading: false }),
-    onReconnect: () => refresh({ showLoading: false }),
-  });
-
-  useEffect(() => {
-    void refresh();
-    return () => {
-      refreshCoordinatorRef.current.reset();
-    };
-  }, [refresh]);
+  }, [mutate]);
 
   return {
     servers,
-    loading,
-    error,
+    loading: query.data === undefined && query.loading,
+    error: error ?? (query.error ? String(query.error) : null),
     refresh,
     createServer,
     updateServer,

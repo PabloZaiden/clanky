@@ -23,6 +23,11 @@ export type { ModelConfig };
 
 export type ChatScope = "workspace" | "task" | "agent";
 
+export interface ChatActivityUpdate {
+  timestamp: string;
+  source: "stream" | "user";
+}
+
 export type ChatConnectionStatus =
   | "connected"
   | "disconnected"

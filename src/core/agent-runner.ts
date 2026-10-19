@@ -88,6 +88,10 @@ export class AgentRunner {
     return this.activeRuns.has(runId);
   }
 
+  getLiveTranscript(runId: string) {
+    return this.activeRunPersistences.get(runId)?.liveTranscript;
+  }
+
   async runAgent(
     agent: Agent,
     trigger: AgentRunTrigger,
@@ -344,8 +348,10 @@ export class AgentRunner {
           return;
         }
         streamPersistence?.handleChatEvent(event);
+        const streamPosition = streamPersistence?.streamPosition;
         if (event.type === "chat.message") {
           agentEventEmitter.emit({
+            streamPosition,
             type: "agent.run.message",
             agentId: agent.config.id,
             agentRunId: currentRun.id,
@@ -356,6 +362,7 @@ export class AgentRunner {
         }
         if (event.type === "chat.message.delta") {
           agentEventEmitter.emit({
+            streamPosition,
             type: "agent.run.message.delta",
             agentId: agent.config.id,
             agentRunId: currentRun.id,
@@ -371,6 +378,7 @@ export class AgentRunner {
         }
         if (event.type === "chat.log") {
           agentEventEmitter.emit({
+            streamPosition,
             type: "agent.run.log",
             agentId: agent.config.id,
             agentRunId: currentRun.id,
@@ -381,6 +389,7 @@ export class AgentRunner {
         }
         if (event.type === "chat.log.delta") {
           agentEventEmitter.emit({
+            streamPosition,
             type: "agent.run.log.delta",
             agentId: agent.config.id,
             agentRunId: currentRun.id,
@@ -398,6 +407,7 @@ export class AgentRunner {
         }
         if (event.type === "chat.tool_call") {
           agentEventEmitter.emit({
+            streamPosition,
             type: "agent.run.tool_call",
             agentId: agent.config.id,
             agentRunId: currentRun.id,
@@ -408,6 +418,7 @@ export class AgentRunner {
         }
         if (event.type === "chat.tool_call.extra") {
           agentEventEmitter.emit({
+            streamPosition,
             type: "agent.run.tool_call.extra",
             agentId: agent.config.id,
             agentRunId: currentRun.id,
@@ -450,7 +461,10 @@ export class AgentRunner {
       output = codeMode
         ? new DeterministicAgentOutput(currentRun, {
           persist: false,
-          onAppend: (entry) => streamPersistence?.handleOutputLog(entry),
+          onAppend: (entry) => {
+            streamPersistence?.handleOutputLog(entry);
+            return streamPersistence?.streamPosition;
+          },
         })
         : undefined;
       if (codeMode && output) {

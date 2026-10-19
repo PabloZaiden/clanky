@@ -2,14 +2,12 @@
  * Hook for a single workspace terminal session detail view.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import type { TerminalSession } from "@/shared";
 import type { UpdateTerminalSessionRequest } from "@/contracts";
-import { createLogger } from "@pablozaiden/webapp/web";
+import { createLogger, useLiveQuery } from "@pablozaiden/webapp/web";
 import { ApiError } from "../lib/api-error";
-import { useRealtimeRefreshWithRecovery } from "./useRealtimeStream";
 import { apiRequest } from "../lib/api-client";
-import { createRefreshCoordinator } from "../lib/refresh-coordinator";
 
 export interface UseTerminalSessionResult {
   session: TerminalSession | null;
@@ -21,139 +19,75 @@ export interface UseTerminalSessionResult {
   deleteSession: () => Promise<boolean>;
 }
 
+const log = createLogger("useTerminalSession");
+
 export function useTerminalSession(sessionId: string): UseTerminalSessionResult {
-  const log = createLogger("useTerminalSession");
-  const [session, setSession] = useState<TerminalSession | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [notFound, setNotFound] = useState(false);
-  const initialLoadDoneRef = useRef(false);
-  const sessionIdRef = useRef(sessionId);
-  const refreshCoordinatorRef = useRef(createRefreshCoordinator<void>());
-  sessionIdRef.current = sessionId;
-
-  const fetchSession = useCallback(async (): Promise<TerminalSession> => {
-    return await apiRequest<TerminalSession>(`/api/terminal-sessions/${sessionId}`, {
-      action: "Fetch terminal session",
-      fallbackMessage: "Failed to fetch terminal session",
-    });
-  }, [sessionId]);
-
-  const refreshInternal = useCallback((showLoading: boolean) => {
-    return refreshCoordinatorRef.current.run(async () => {
-      const requestSessionId = sessionId;
+  const [mutationError, setMutationError] = useState<{ sessionId: string; message: string } | null>(null);
+  const query = useLiveQuery<TerminalSession | null>({
+    load: async (signal) => {
       try {
-        if (showLoading) {
-          setLoading(true);
-        }
-        setError(null);
-        const next = await fetchSession();
-        if (sessionIdRef.current !== requestSessionId) {
-          return;
-        }
-        setSession(next);
-        setNotFound(false);
-        initialLoadDoneRef.current = true;
-      } catch (err) {
-        if (sessionIdRef.current !== requestSessionId) {
-          return;
-        }
-        if (err instanceof ApiError && err.status === 404) {
-          setSession(null);
-          setNotFound(true);
-          setError(null);
-          return;
-        }
-        setNotFound(false);
-        log.error("Failed to refresh terminal session", { sessionId: requestSessionId, error: String(err) });
-        setError(String(err));
-      } finally {
-        if (sessionIdRef.current === requestSessionId) {
-          setLoading(false);
-        }
+        return await apiRequest<TerminalSession>(`/api/terminal-sessions/${sessionId}`, {
+          signal,
+          action: "Fetch terminal session",
+          fallbackMessage: "Failed to fetch terminal session",
+        });
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 404) return null;
+        throw error;
       }
-    });
-  }, [fetchSession, sessionId]);
-
-  const refresh = useCallback(async () => {
-    await refreshInternal(!initialLoadDoneRef.current);
-  }, [refreshInternal]);
-
-  useRealtimeRefreshWithRecovery({
-    resources: ["terminal-sessions"],
-    ids: [sessionId],
-    filters: { resource: "terminal-sessions", id: sessionId },
-    enabled: true,
-    refresh: (event) => {
-      if (event.action === "deleted") {
-        setSession(null);
-        setNotFound(true);
-        setError(null);
-        return;
-      }
-      return refreshInternal(false);
     },
-    onReconnect: () => refreshInternal(false),
+    deps: [sessionId],
+    realtime: {
+      resources: ["terminal-sessions"],
+      ids: [sessionId],
+    },
   });
+  const mutate = query.mutate;
+  const refresh = useCallback(async () => {
+    setMutationError(null);
+    await query.refresh();
+  }, [query.refresh]);
 
   const updateSession = useCallback(async (request: UpdateTerminalSessionRequest): Promise<TerminalSession> => {
     try {
-      setError(null);
-      const updated = await apiRequest<TerminalSession>(`/api/terminal-sessions/${sessionId}`, {
+      setMutationError(null);
+      return await mutate((signal) => apiRequest<TerminalSession>(`/api/terminal-sessions/${sessionId}`, {
+        signal,
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(request),
         action: "Update terminal session",
         fallbackMessage: "Failed to update terminal session",
-      });
-      setSession(updated);
-      return updated;
-    } catch (err) {
-      const message = String(err);
-      log.error("Failed to update terminal session", { sessionId, error: message });
-      setError(message);
-      throw err instanceof Error ? err : new Error(message);
+      }), (_previous, updated) => updated);
+    } catch (error) {
+      log.error("Failed to update terminal session", { sessionId, error: String(error) });
+      setMutationError({ sessionId, message: String(error) });
+      throw error instanceof Error ? error : new Error(String(error));
     }
-  }, [sessionId]);
+  }, [mutate, sessionId]);
 
   const deleteSession = useCallback(async (): Promise<boolean> => {
     try {
-      setError(null);
-      await apiRequest<unknown>(`/api/terminal-sessions/${sessionId}`, {
+      setMutationError(null);
+      await mutate((signal) => apiRequest<unknown>(`/api/terminal-sessions/${sessionId}`, {
+        signal,
         method: "DELETE",
         action: "Delete terminal session",
         fallbackMessage: "Failed to delete terminal session",
-      });
-      setSession(null);
+      }), () => null);
       return true;
-    } catch (err) {
-      log.error("Failed to delete terminal session", { sessionId, error: String(err) });
-      setError(String(err));
+    } catch (error) {
+      log.error("Failed to delete terminal session", { sessionId, error: String(error) });
+      setMutationError({ sessionId, message: String(error) });
       return false;
     }
-  }, [sessionId]);
-
-  useEffect(() => {
-    initialLoadDoneRef.current = false;
-    refreshCoordinatorRef.current.reset();
-    setSession(null);
-    setLoading(true);
-    setError(null);
-    setNotFound(false);
-    return () => {
-      refreshCoordinatorRef.current.reset();
-    };
-  }, [sessionId]);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+  }, [mutate, sessionId]);
 
   return {
-    session,
-    loading,
-    error,
-    notFound,
+    session: query.data ?? null,
+    loading: query.data === undefined && query.loading,
+    error: mutationError?.sessionId === sessionId ? mutationError.message : query.error ? String(query.error) : null,
+    notFound: query.data === null,
     refresh,
     updateSession,
     deleteSession,

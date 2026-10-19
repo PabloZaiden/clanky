@@ -31,11 +31,6 @@ export interface TranscriptStoragePage {
   nextCursor?: TranscriptStorageCursor;
 }
 
-export interface TranscriptPageOptions {
-  full?: boolean;
-  before?: string;
-}
-
 export interface TranscriptStateLike {
   messages: PersistedMessage[];
   logs: TaskLogEntry[];

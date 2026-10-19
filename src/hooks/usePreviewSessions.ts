@@ -2,7 +2,7 @@
  * Hook for live preview sessions scoped to a workspace or execution host.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import {
   getExecutionHostSourceId,
   serializeExecutionHostRef,
@@ -10,8 +10,7 @@ import {
   type PreviewSession,
 } from "@/shared";
 import { apiRequest } from "../lib/api-client";
-import { createRefreshCoordinator } from "../lib/refresh-coordinator";
-import { useRealtimeRefreshWithRecovery } from "./useRealtimeStream";
+import { useLiveQuery, useRealtime } from "@pablozaiden/webapp/web";
 
 export type PreviewSessionScope =
   | { kind: "workspace"; workspaceId: string }
@@ -43,106 +42,52 @@ function getListUrl(scope: PreviewSessionScope): string {
 export function usePreviewSessions(scope: PreviewSessionScope): UsePreviewSessionsResult {
   const scopeKey = getScopeKey(scope);
   const listUrl = getListUrl(scope);
-  const [previews, setPreviews] = useState<PreviewSession[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
-  const isMountedRef = useRef(false);
-  const refreshCoordinatorRef = useRef(createRefreshCoordinator<void>());
-
-  const refresh = useCallback((options: { showLoading?: boolean } = {}) => (
-    refreshCoordinatorRef.current.run(async () => {
-      const showLoading = options.showLoading ?? true;
-      const controller = new AbortController();
-      abortControllerRef.current = controller;
-      try {
-        if (showLoading && isMountedRef.current) {
-          setLoading(true);
-          setError(null);
-        }
-        const nextPreviews = await apiRequest<PreviewSession[]>(
-          listUrl,
-          {
-            signal: controller.signal,
-            action: "List previews",
-            fallbackMessage: "Failed to list previews",
-          },
-        );
-        if (controller.signal.aborted || !isMountedRef.current) {
-          return;
-        }
-        setPreviews(nextPreviews);
-      } catch (err) {
-        if (controller.signal.aborted) {
-          return;
-        }
-        if (isMountedRef.current) {
-          setError(String(err));
-        }
-      } finally {
-        if (abortControllerRef.current === controller) {
-          abortControllerRef.current = null;
-        }
-        if (showLoading && !controller.signal.aborted && isMountedRef.current) {
-          setLoading(false);
-        }
-      }
-    })
-  ), [listUrl]);
+  const [mutationError, setMutationError] = useState<{ scopeKey: string; message: string } | null>(null);
+  const query = useLiveQuery<PreviewSession[]>({
+    load: (signal) => apiRequest<PreviewSession[]>(listUrl, {
+      signal,
+      action: "List previews",
+      fallbackMessage: "Failed to list previews",
+    }),
+    deps: [scopeKey],
+    realtime: {
+      resources: ["previews"],
+      scopes: [scope.kind === "workspace" ? scope.workspaceId : scopeKey],
+    },
+  });
+  const mutate = query.mutate;
+  const refresh = useCallback(async () => {
+    setMutationError(null);
+    await query.refresh();
+  }, [query.refresh]);
+  useRealtime({
+    resources: ["execution-hosts"],
+    enabled: scope.kind === "server",
+    trackLastEvent: false,
+    onEvent: () => { void query.refresh(); },
+  });
 
   const closePreview = useCallback(async (previewId: string): Promise<boolean> => {
     try {
-      if (isMountedRef.current) {
-        setError(null);
-      }
-      await apiRequest(`/api/previews/${encodeURIComponent(previewId)}`, {
+      setMutationError(null);
+      await mutate((signal) => apiRequest(`/api/previews/${encodeURIComponent(previewId)}`, {
+        signal,
         method: "DELETE",
         action: "Close preview",
         fallbackMessage: "Failed to close preview",
-      });
-      await refresh();
+      }), (previous) => previous?.filter((preview) => preview.config.id !== previewId));
       return true;
     } catch (err) {
-      if (isMountedRef.current) {
-        setError(String(err));
-      }
+      setMutationError({ scopeKey, message: String(err) });
       return false;
     }
-  }, [refresh]);
+  }, [mutate, scopeKey]);
 
-  useRealtimeRefreshWithRecovery({
-    resources: ["previews"],
-    filters: { resource: "previews", scope: scopeKey.startsWith("workspace:")
-      ? scopeKey.slice("workspace:".length)
-      : scopeKey },
-    refresh: (event) => {
-      if (event.action === "deleted") {
-        setPreviews((current) => current.filter((preview) => preview.config.id !== event.id));
-        return;
-      }
-      return refresh({ showLoading: false });
-    },
-    onReconnect: () => refresh({ showLoading: false }),
-  });
-
-  useRealtimeRefreshWithRecovery({
-    enabled: scope.kind === "server",
-    resources: ["execution-hosts"],
-    filters: { resource: "execution-hosts" },
-    refresh: () => refresh({ showLoading: false }),
-    onReconnect: () => refresh({ showLoading: false }),
-  });
-
-  useEffect(() => {
-    isMountedRef.current = true;
-    void refresh();
-    return () => {
-      isMountedRef.current = false;
-      abortControllerRef.current?.abort();
-      abortControllerRef.current = null;
-      refreshCoordinatorRef.current.reset();
-    };
-  }, [refresh]);
-
-  return { previews, loading, error, refresh, closePreview };
+  return {
+    previews: query.data ?? [],
+    loading: query.data === undefined && query.loading,
+    error: mutationError?.scopeKey === scopeKey ? mutationError.message : query.error ? String(query.error) : null,
+    refresh,
+    closePreview,
+  };
 }
