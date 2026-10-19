@@ -145,6 +145,9 @@ before attributing a slow voice answer to local data access.
    clanky ws
    ```
 
+   Activate explicit interests as described under [Realtime interests](#realtime-interests);
+   opening the bridge alone does not subscribe to events.
+
 ## Important CLI conventions
 
 - Use `clanky help` for CLI help. Do not assume every subcommand accepts `--help`.
@@ -545,6 +548,33 @@ For live updates, use the generic JSON-lines realtime bridge:
 ```bash
 clanky ws
 ```
+
+### Realtime interests
+
+Send one subscription JSON object per stdin line on the open bridge. State
+changes and content streams are separate interests on the same connection:
+
+```json
+{"type":"subscribe","subscriptionId":"tasks","generation":1,"interest":{"kinds":["state"],"resources":["tasks"]}}
+{"type":"subscribe","subscriptionId":"task-content","generation":1,"interest":{"kinds":["content"],"targets":{"taskId":"TASK_ID"}}}
+```
+
+Wait for the matching `subscribed` acknowledgement before reading an
+authoritative resource/snapshot. Event envelopes list matching subscription
+identities and generations; handle each publication once even if interests
+overlap. Stop an interest without closing the connection:
+
+```json
+{"type":"unsubscribe","subscriptionId":"task-content","generation":1}
+```
+
+After a disconnect, reopen the bridge, restore interests and read fresh
+authoritative state; there is no event replay. Content positions use
+`epoch`, `baseRevision` and `revision`: gaps or changed epochs require a new
+baseline, not guessing from arrival counts. Do not replay transient actions.
+Use resource interests for sidebar/status monitoring and entity-specific
+content interests only when the transcript/output is needed. URL filters and
+an implicit all-events feed are not supported.
 
 ## Error handling and durable behavior
 
