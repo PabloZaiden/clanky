@@ -144,7 +144,7 @@ export class HarnessActivityService {
         if (!observation.stopped) observation.publish({ activity: { observation: "unavailable", reason: "disconnected" } });
       } catch (error) {
         log.warn("Harness activity observation interrupted", { context: observation.context, error: String(error) });
-        if (!observation.stopped) observation.publish({ activity: { observation: "unavailable", reason: "gap" } });
+        this.publishUnavailable(observation, error);
         if (this.isPermanentFailure(error)) {
           this.stop(observation);
           return;
@@ -200,12 +200,21 @@ export class HarnessActivityService {
   private failedRefresh(observation: Observation, error: unknown): void {
     const permanent = this.isPermanentFailure(error);
     log[permanent ? "error" : "warn"]("Harness activity refresh failed", { context: observation.context, error: String(error) });
-    if (!observation.stopped) observation.publish({ activity: { observation: "unavailable", reason: "gap" } });
+    this.publishUnavailable(observation, error);
     if (permanent) this.stop(observation);
     else {
       observation.failures = Math.min(observation.failures + 1, 6);
       observation.nextRefreshAt = Date.now() + Math.min(30_000, 1000 * 2 ** observation.failures);
     }
+  }
+
+  private publishUnavailable(observation: Observation, error: unknown): void {
+    if (!observation.stopped) observation.publish({
+      activity: {
+        observation: "unavailable",
+        reason: isDomainError(error) && error.code === "harness_transport_closed" ? "disconnected" : "gap",
+      },
+    });
   }
 
   private stop(observation: Observation): void {

@@ -4,6 +4,7 @@
 import { z } from "zod";
 import type { Backend, BackendConnectionConfig, AgentSession, AgentResponse, CreateSessionOptions, ConfigOption, ConnectionInfo, PromptInput } from "./types";
 import type { HarnessAdapter } from "@/shared/settings";
+import type { MeshPeerRoute } from "@/shared/mesh";
 import type { HarnessControl, HarnessCapabilities, HarnessConversationBinding, HarnessActivitySnapshot, HarnessActivityStopResult, HarnessInputAdmission, HarnessSteerRequest, HarnessInputRecoveryRequest, HarnessCleanupResult } from "@/shared/harness-control";
 import type { HarnessEvent, ProviderImageFileReference } from "@/shared/harness-events";
 import type { HarnessSessionHistory } from "@/shared/harness-history";
@@ -29,6 +30,10 @@ import { readMeshControlResponseJson } from "../core/mesh-control-client";
 import { requireMatchingHarnessBinding } from "./harness-binding";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { detectBrowserImageMimeType } from "../utils/workspace-file-images";
+import {
+  isMeshRelayResponseInterrupted,
+  MeshRelayStreamError,
+} from "../core/mesh-relay-errors";
 
 const log = createLogger("backend:mesh-harness");
 const MAX_PENDING_RESTORED_IMAGE_WARNINGS = 128;
@@ -50,6 +55,7 @@ const Session = z.object({
   })).optional(),
 });
 const MAX_FRAME_BYTES = 4 * 1024 * 1024;
+const OBSERVATION_PEER_PROBE_TIMEOUT_MS = 5_000;
 
 export class MeshHarnessBackend implements Backend {
   readonly name: string;
@@ -63,7 +69,7 @@ export class MeshHarnessBackend implements Backend {
   private readonly interactions = new Map<string, string>();
   private readonly restoredProviderImageWarnings = new Map<string, Set<string>>();
   private readonly sessions = new Map<string, AgentSession>();
-  private readonly gaps = new Set<string>();
+  private readonly observationFailures = new Map<string, Error>();
   private readonly deleting = new Set<string>();
 
   constructor(private readonly options: { adapter: Exclude<HarnessAdapter, "acp">; workspaceId: string; executionNodeId: string }) {
@@ -191,18 +197,18 @@ export class MeshHarnessBackend implements Backend {
       reject(error);
       if (!controller.signal.aborted && !this.deleting.has(session.id)) {
         const failure = error instanceof Error ? error : new HarnessError("harness_event_gap", "Native observation was lost.");
-        log.error("Native Mesh event observation failed", {
+        log[failure instanceof DomainError && failure.code === "harness_transport_closed" ? "warn" : "error"]("Native Mesh event observation failed", {
           adapter: this.options.adapter,
           errorType: failure.name,
           message: failure.message,
         });
         for (const id of this.sessions.keys()) {
-          this.gaps.add(id);
+          this.observationFailures.set(id, failure);
           this.hub.failSession(id, failure);
         }
         for (const pending of this.requests) pending.abort();
         for (const observer of this.observers.values()) observer.controller.abort();
-        // A gap invalidates the owned lease, never resends an input. Core must
+        // Observation loss invalidates the owned lease, never resends an input. Core must
         // reconnect and resume the original durable binding.
         void this.client?.releaseSession().catch(() => {
           // The disconnected transport cannot acknowledge release; the worker
@@ -223,7 +229,7 @@ export class MeshHarnessBackend implements Backend {
       method: "POST", signal, headers: {
         "content-type": "application/json", "x-clanky-mesh-session-id": connection.sessionId, "x-clanky-mesh-request-id": requestId,
       }, body: JSON.stringify({ protocolVersion: connection.protocolVersion, sessionId: connection.sessionId, sessionToken: connection.sessionToken, requestId, conversationId: id, encryptedPayload: null }),
-    });
+    }).catch(async (error: unknown) => { throw await this.observationTransportError(error, connection.route, signal); });
     await this.assertResponse(response);
     if (!response.body) throw new HarnessError("harness_event_gap", "The native event stream is unavailable.");
     const reader = response.body.getReader();
@@ -232,8 +238,11 @@ export class MeshHarnessBackend implements Backend {
     let sequence = 0;
     try {
       while (true) {
-        const chunk = await reader.read();
-        if (chunk.done) throw new HarnessError("harness_event_gap", "The native event stream ended.");
+        const chunk = await reader.read().catch(async (error: unknown) => { throw await this.observationTransportError(error, connection.route, signal); });
+        if (chunk.done) {
+          if (buffer.trim()) throw new HarnessError("harness_event_gap", "The native event stream ended with an incomplete frame.");
+          throw new HarnessError("harness_transport_closed", "The native event stream ended.");
+        }
         buffer += decoder.decode(chunk.value, { stream: true });
         if (Buffer.byteLength(buffer) > MAX_FRAME_BYTES) throw new HarnessError("harness_event_gap", "The native event stream exceeds the frame limit.");
         let newline = buffer.indexOf("\n");
@@ -298,7 +307,58 @@ export class MeshHarnessBackend implements Backend {
           } else throw new HarnessError("harness_event_gap", "The native event stream frame is invalid.");
         }
       }
-    } finally { await reader.cancel(); reader.releaseLock(); }
+    } finally {
+      try {
+        await reader.cancel();
+      } catch (error) {
+        log.warn("Unable to cancel the closed native Mesh event reader", { error: String(error) });
+      } finally {
+        reader.releaseLock();
+      }
+    }
+  }
+
+  private async observationTransportError(error: unknown, route: MeshPeerRoute, signal: AbortSignal): Promise<Error> {
+    const disconnected = error instanceof DomainError && [
+      "mesh_relay_disconnected", "mesh_relay_unavailable",
+    ].includes(error.code) || error instanceof MeshRelayStreamError && (
+      ["mesh_relay_disconnected", "mesh_relay_stream_unavailable"].includes(error.code)
+      || error.code !== "mesh_relay_dispatch_failed" && isMeshRelayResponseInterrupted(error)
+    );
+    if (disconnected || route.kind === "direct" && error instanceof TypeError
+      && !signal.aborted && await this.isObservationPeerUnavailable(route, signal)) {
+      return new HarnessError("harness_transport_closed", "The native Mesh event connection was lost.", { cause: error });
+    }
+    // HTTP read failures can also be worker integrity failures; neither an
+    // unclassified exception nor status 503 alone establishes transport loss.
+    return error instanceof Error
+      ? error
+      : new HarnessError("harness_event_gap", "Native Mesh observation failed.", { cause: error });
+  }
+
+  private async isObservationPeerUnavailable(route: MeshPeerRoute, signal: AbortSignal): Promise<boolean> {
+    let response: Response;
+    try {
+      response = await requestMeshPeer(route, "api/health", {
+        signal: AbortSignal.any([signal, AbortSignal.timeout(OBSERVATION_PEER_PROBE_TIMEOUT_MS)]),
+      });
+    } catch (error) {
+      if (signal.aborted) return false;
+      if (error instanceof DOMException && error.name === "TimeoutError") return true;
+      if (error instanceof TypeError && "code" in error && [
+        "ConnectionRefused", "ConnectionClosed", "ECONNREFUSED", "ECONNRESET",
+        "ETIMEDOUT", "ENOTFOUND", "ENETUNREACH", "EHOSTUNREACH",
+      ].includes(String(error.code))) return true;
+      log.warn("Unable to establish native Mesh peer reachability", { error: String(error) });
+      return false;
+    }
+    try {
+      await response.body?.cancel();
+    } catch (error) {
+      log.warn("Unable to cancel the native Mesh health response", { error: String(error) });
+    }
+    // Any HTTP response proves reachability, not that observation was valid.
+    return false;
   }
 
   private async restoreProviderImageAttachment(
@@ -363,11 +423,13 @@ export class MeshHarnessBackend implements Backend {
   }
 
   private async activity(id: string): Promise<HarnessActivitySnapshot> {
-    if (this.gaps.has(id)) return { observation: "unavailable", reason: "gap" };
+    const failure = this.observationFailures.get(id);
+    if (failure) return {
+      observation: "unavailable",
+      reason: failure instanceof DomainError && failure.code === "harness_transport_closed" ? "disconnected" : "gap",
+    };
     if (!this.isConnected()) return { observation: "unavailable", reason: "disconnected" };
-    const snapshot = HarnessConversationStateSchema.shape.activity.unwrap().parse(await this.rpc({ operation: "activity", sessionId: id }));
-    if (snapshot.observation === "available") this.gaps.delete(id);
-    return snapshot;
+    return HarnessConversationStateSchema.shape.activity.unwrap().parse(await this.rpc({ operation: "activity", sessionId: id }));
   }
   private async stop(id: string, activityId: string): Promise<HarnessActivityStopResult> {
     const result = Stop.parse(await this.rpc({ operation: "stop", sessionId: id, activityId }));
@@ -398,7 +460,9 @@ export class MeshHarnessBackend implements Backend {
   async sendPromptAsync(id: string, prompt: PromptInput): Promise<void> { await this.rpc({ operation: "prompt", sessionId: id, prompt }); }
   async abortSession(id: string): Promise<void> { await this.rpc({ operation: "abort", sessionId: id }); }
   async subscribeToEvents(id: string): Promise<EventStream<HarnessEvent>> {
-    if (!this.sessions.has(id) || this.gaps.has(id)) throw new HarnessError("harness_event_gap", "Refresh or resume the owned conversation before observing it.");
+    const failure = this.observationFailures.get(id);
+    if (failure) throw failure;
+    if (!this.sessions.has(id)) throw new HarnessError("harness_event_gap", "Refresh or resume the owned conversation before observing it.");
     return this.hub.subscribe(id);
   }
   async replyToPermission(requestId: string, response: string): Promise<void> {
@@ -420,12 +484,12 @@ export class MeshHarnessBackend implements Backend {
     try { await this.rpc({ operation: "delete", sessionId: id }); }
     catch (error) { this.deleting.delete(id); throw error; }
     this.observers.get(id)?.controller.abort(); await this.observers.get(id)?.promise;
-    this.observers.delete(id); this.sessions.delete(id); this.gaps.delete(id); this.deleting.delete(id); this.hub.closeSession(id);
+    this.observers.delete(id); this.sessions.delete(id); this.observationFailures.delete(id); this.deleting.delete(id); this.hub.closeSession(id);
     this.restoredProviderImageWarnings.delete(id);
   }
   async getModels(directory: string): Promise<ModelInfo[]> { return Models.parse(await this.rpc({ operation: "models", directory })); }
   async getModelVariants(directory: string, modelId: string): Promise<string[]> { return z.array(z.string()).max(1000).parse(await this.rpc({ operation: "variants", directory, modelId })); }
-  isConnected(): boolean { try { this.connection(); return this.gaps.size === 0; } catch { return false; } }
+  isConnected(): boolean { try { this.connection(); return this.observationFailures.size === 0; } catch { return false; } }
   abortAllSubscriptions(reason?: Error): void { this.hub.closeAll(reason); }
   getSdkClient(): unknown { return null; }
   getDirectory(): string { return this.directory; }
@@ -437,7 +501,7 @@ export class MeshHarnessBackend implements Backend {
     for (const controller of this.requests) controller.abort();
     for (const observer of this.observers.values()) observer.controller.abort();
     await Promise.all([...this.observers.values()].map((observer) => observer.promise));
-    this.observers.clear(); this.sessions.clear(); this.interactions.clear(); this.restoredProviderImageWarnings.clear(); this.gaps.clear(); this.deleting.clear();
+    this.observers.clear(); this.sessions.clear(); this.interactions.clear(); this.restoredProviderImageWarnings.clear(); this.observationFailures.clear(); this.deleting.clear();
     await client?.releaseSession();
   }
 }

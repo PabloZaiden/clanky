@@ -53,6 +53,16 @@ to bypass a failure. Use **Continue from history** only when intentionally
 starting a replacement native session. See
 [native recovery](../../docs/harnesses.md#activity-and-individual-stop).
 
+An idle native Mesh chat can be disconnected after its worker restarts without
+having failed. Unavailable background activity is unknown, not an empty or
+successful result. Resume the original conversation when the worker returns;
+do not replace the session or relaunch background work just because observation
+was lost.
+Do not treat every stream error as a disconnect. Direct connection errors use
+one read-only health check to distinguish an unreachable worker from a
+responding worker whose observation failed. Unclassified failures, relay
+dispatch failures and ticket rejections retain their diagnostics.
+
 The [Live voice assistant](../../docs/voice.md#live-voice) is global and
 independent of native Control chats. It starts beside Quick Chat in the sidebar
 and exposes twenty-one direct common intents, selective watching, three generic
