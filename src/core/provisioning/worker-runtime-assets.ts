@@ -7,6 +7,7 @@ import type { AgentSettings } from "@/shared";
 import { DomainError } from "../../domain/domain-error";
 import type { CommandExecutor } from "../command-executor";
 import { buildRuntimeInstaller, buildWorkerLauncher, type WorkerPaths } from "./worker-assets";
+import { buildWorkerSupervisor } from "./worker-supervisor";
 
 function getExistingPrereleaseSelection(
   launcher: string | null | undefined,
@@ -38,6 +39,7 @@ export async function prepareWorkerRuntimeAssets(
     pathPosix.join(paths.hostRoot, "install-runtime.sh"),
     pathPosix.join(paths.hostRoot, "runtime.json"),
     pathPosix.join(paths.hostRoot, "launcher.sh"),
+    pathPosix.join(paths.hostRoot, "supervisor.sh"),
   ] as const;
   const suffix = `.pending-${crypto.randomUUID()}`;
   const previous = await Promise.all(assetPaths.map(async (assetPath) => {
@@ -56,6 +58,7 @@ export async function prepareWorkerRuntimeAssets(
       path: assetPaths[2],
       content: buildWorkerLauncher(paths, effectivePrereleaseSelection),
     },
+    { path: assetPaths[3], content: buildWorkerSupervisor(paths) },
   ];
   const rollback = async (): Promise<void> => {
     const errors: unknown[] = [];

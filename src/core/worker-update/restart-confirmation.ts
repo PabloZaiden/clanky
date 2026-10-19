@@ -9,7 +9,13 @@ const RESTART_PROBE_TIMEOUT_MS = 5000;
 const WorkerServiceStatusSchema = z.object({
   installed: z.boolean(),
   running: z.boolean(),
+  binaryVersion: z.string().optional(),
+  instanceId: z.string().optional(),
+  runningVersion: z.string().optional(),
+  releaseChannel: z.enum(["stable", "prerelease"]).optional(),
 });
+
+export type WorkerServiceStatus = z.infer<typeof WorkerServiceStatusSchema>;
 
 function isWorkerRestartConnectionLoss(error: unknown): boolean {
   return error instanceof DomainError && (
@@ -38,16 +44,18 @@ function isRecoverableProbeFailure(error: unknown): boolean {
       error.code === "mesh_control_request_unreachable"
       || error.code === "mesh_control_response_unreachable"
       || error.code === "worker_service_not_running"
+      || error.code === "worker_restart_not_observed"
+      || error.code === "worker_restart_version_mismatch"
       || ((error.code === "mesh_control_request_rejected"
         || error.code === "mesh_execution_request_failed")
         && [502, 503, 504].includes(Number(error.details["status"])))
     ));
 }
 
-async function checkWorkerService(
+export async function readWorkerServiceStatus(
   executor: CommandExecutor,
-  signal: AbortSignal,
-): Promise<void> {
+  signal?: AbortSignal,
+): Promise<WorkerServiceStatus> {
   const result = await executor.exec("clanky", ["worker", "service", "status"], {
     signal,
     timeout: RESTART_PROBE_TIMEOUT_MS,
@@ -57,7 +65,7 @@ async function checkWorkerService(
   if (!result.success) {
     throw new DomainError(
       "worker_service_status_failed",
-      `Worker service status exited with code ${String(result.exitCode)}.`,
+      `Could not inspect the worker service or workspace loop (exit code ${String(result.exitCode)}). Ensure its service is installed; older automatic workspaces need their launcher upgraded manually.`,
       { details: { exitCode: result.exitCode } },
     );
   }
@@ -78,7 +86,11 @@ async function checkWorkerService(
       "The worker service status must report whether it is installed and running.",
     );
   }
-  if (!parsed.data.installed || !parsed.data.running) {
+  return parsed.data;
+}
+
+function requireRunningWorker(status: WorkerServiceStatus): void {
+  if (!status.installed || !status.running) {
     throw new DomainError(
       "worker_service_not_running",
       "The worker service is not installed and running yet.",
@@ -90,12 +102,16 @@ export async function confirmWorkerRestart({
   userId,
   workerNodeId,
   deadline,
+  previousInstanceId,
+  expectedVersion,
   createExecutor,
   onRetry,
 }: {
   userId: string;
   workerNodeId: string;
   deadline: number;
+  previousInstanceId?: string;
+  expectedVersion?: string;
   createExecutor: () => Promise<CommandExecutor>;
   onRetry: (error: unknown) => void;
 }): Promise<void> {
@@ -112,7 +128,14 @@ export async function confirmWorkerRestart({
         signal: controller.signal,
       });
       executor = await createExecutor();
-      await checkWorkerService(executor, controller.signal);
+      const status = await readWorkerServiceStatus(executor, controller.signal);
+      requireRunningWorker(status);
+      if (previousInstanceId && (!status.instanceId || status.instanceId === previousInstanceId)) {
+        throw new DomainError("worker_restart_not_observed", "The previous worker instance is still running.");
+      }
+      if (expectedVersion && status.runningVersion !== expectedVersion) {
+        throw new DomainError("worker_restart_version_mismatch", "The worker has not started the updated binary yet.");
+      }
       if (performance.now() < deadline) return;
     } catch (error) {
       if (!controller.signal.aborted && !isRecoverableProbeFailure(error)) {

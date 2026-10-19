@@ -11,6 +11,7 @@ export interface WorkerPaths {
   containerBinary: string;
   containerData: string;
   containerLauncher: string;
+  containerSupervisor: string;
   containerLog: string;
   containerPid: string;
 }
@@ -58,6 +59,7 @@ export function getWorkerPaths(targetDirectory: string, containerWorkdir: string
     containerBinary: pathPosix.join(containerRoot, "bin", "clanky"),
     containerData: pathPosix.join(containerRoot, "data"),
     containerLauncher: pathPosix.join(containerRoot, "launcher.sh"),
+    containerSupervisor: pathPosix.join(containerRoot, "supervisor.sh"),
     containerLog: pathPosix.join(containerRoot, "worker.log"),
     containerPid: pathPosix.join(containerRoot, "worker.pid"),
   };
@@ -163,14 +165,13 @@ installer=${shellQuote(pathPosix.join(paths.containerRoot, "bin", ".installer.sh
 install_dir=${shellQuote(pathPosix.join(paths.containerRoot, "bin", ".install"))}
 install_home=${shellQuote(pathPosix.join(paths.containerRoot, "bin", ".install-home"))}
 installed_binary="$install_home/.local/bin/clanky"
-log_file=${shellQuote(paths.containerLog)}
-pid_file=${shellQuote(paths.containerPid)}
-
 ${buildNodePathFallback()}
 sh "$root/install-runtime.sh"
 PATH="$root/runtime/bin:$PATH"
 export PATH
-mkdir -p "$bin_dir" "$data_dir" "$install_dir" "$install_home"
+mkdir -p "$bin_dir" "$data_dir"
+if [ ! -x "$binary" ] || [ "$(cat "$root/release-channel" 2>/dev/null || true)" != "$CLANKY_RELEASE_CHANNEL" ]; then
+mkdir -p "$install_dir" "$install_home"
 cleanup_installation() {
   rm -rf -- "$install_dir" "$install_home"
   rm -f -- "$installer"
@@ -247,22 +248,11 @@ mv -f "$source_binary" "$binary"
 chmod +x "$binary"
 cleanup_installation
 trap - EXIT
+printf '%s\\n' "$CLANKY_RELEASE_CHANNEL" >"$root/release-channel"
+fi
 
 if [ ! -f "$data_dir/config.json" ]; then exit 0; fi
-if [ -s "$pid_file" ]; then
-  worker_pid=$(cat "$pid_file")
-  if kill -0 "$worker_pid" 2>/dev/null; then
-    if [ -r "/proc/$worker_pid/cmdline" ]; then
-      worker_command=$(tr '\\000' ' ' <"/proc/$worker_pid/cmdline" 2>/dev/null || true)
-      case "$worker_command" in *"$binary"*) exit 0 ;; esac
-    else
-      exit 0
-    fi
-  fi
-  rm -f "$pid_file"
-fi
-nohup env CLANKY_DATA_DIR="$data_dir" "$binary" serve </dev/null >>"$log_file" 2>&1 &
-worker_pid=$!
-printf '%s\\n' "$worker_pid" >"$pid_file"
+export CLANKY_WORKER_RELEASE_CHANNEL="$CLANKY_RELEASE_CHANNEL"
+exec sh ${shellQuote(paths.containerSupervisor)} start
 `;
 }

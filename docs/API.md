@@ -62,7 +62,7 @@ selects that exact release and takes precedence over `--pre-release`.
 
 Normal private REST routes require an authenticated user and enforce
 same-origin protection for browser mutations. Automatic workspace restart,
-global worker updates, database reset, and terminal-task purge are owner-only.
+worker updates (servers and automatic workspaces), database reset, and terminal-task purge are owner-only.
 Preview and terminal WebSocket upgrades require an authenticated user and
 always enforce same-origin checks.
 
@@ -948,7 +948,7 @@ included in this table.
 | POST | `/api/voice/live/:callId/close` | End voice without stopping delegated work. |
 | POST | `/api/voice/live/:callId/confirmations/:requestId` | Approve or reject a frozen, expiring operation from the originating client. |
 | POST | `/api/voice/live/:callId/credentials/:requestId` | Privately supply a request-bound SSH credential token. |
-| GET, POST | `/api/worker-update-jobs` | List jobs or start updates for active global Mesh workers. |
+| GET, POST | `/api/worker-update-jobs` | List jobs or start Clanky updates for active server and automatic workspace Mesh workers. |
 | GET | `/api/worker-update-jobs/:id` | Read a worker update job and its logs. |
 | POST | `/api/worker-update-jobs/:id/dismiss` | Dismiss a terminal worker update job and its logs. |
 | GET, POST | `/api/workspace-worker-enrollments` | List or create workspace-exclusive Mesh worker enrollments. |
@@ -3525,13 +3525,21 @@ Get the collected log entries for a provisioning job.
 
 Worker update routes require owner authorization and same-origin protection for
 mutations. `POST /api/worker-update-jobs` accepts no request body and starts a
-separate background job for every active global Mesh worker registration.
-Registrations with `registrationScope: "workspace"` are excluded, so
-workspace-exclusive automatic workers are not updated by this operation.
-Different workers run concurrently; each job runs its own commands in order:
+separate background job for every active Mesh worker registration, including
+`registrationScope: "workspace"` workers. SSH-only workspaces without an enrolled
+Mesh worker are not targets. Different workers run concurrently; each job checks
+for a running service or workspace loop and runs its commands in order:
 
 1. `clanky update`
 2. `clanky worker service restart`, only after the update exits successfully.
+
+Automatic workers configured for prereleases add `--pre-release` to the update.
+In new automatic workspaces the service command controls the persistent local
+shell loop; no provisioning-host access or container restart is involved.
+Existing one-shot workspace launchers require manual replacement; this operation
+does not migrate them. A missing service or loop fails that worker's job before
+updating its binary. Individual workspace restart/rebuild and the explicit bulk
+restart API retain their provisioning lifecycle behavior.
 
 On macOS, the restart command uses `launchctl kickstart` so a Mesh-issued
 command can restart the LaunchAgent that owns the worker without unloading it
@@ -3546,7 +3554,11 @@ asynchronous command dispatched only once. Bounded response observation cannot
 cancel that process; an acknowledged, still-running command is observed until
 it finishes, its connection is lost, or the deadline expires. The job then
 polls every second for signed Mesh health and an installed, running worker
-service through a fresh execution connection. A lost response
+service or workspace loop through a fresh execution connection. Runtime metadata
+reported by supported workers verifies a new instance and the expected binary
+version. `clanky worker service status` reports `binaryVersion` for the executable
+on disk and, when invoked through a worker, `instanceId` and `runningVersion`
+for that worker process. A lost response
 after dispatch does not by itself interrupt the job or cause the restart
 command to be resent. Failures before dispatch cannot be confirmed as successful
 restarts, including relay setup failures before the command body is sent.
@@ -3564,7 +3576,7 @@ uses `unconfirmed`, since the remote process may still be running.
 
 #### POST /api/worker-update-jobs
 
-Start update jobs for all active global Mesh worker registrations. The response
+Start update jobs for all active server and automatic workspace Mesh worker registrations. The response
 is `202 Accepted`; `totalWorkers` is the number of eligible registrations, and
 `results` contains one admission result per worker.
 

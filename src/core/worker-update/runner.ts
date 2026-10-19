@@ -19,11 +19,14 @@ import {
 import { getWorkerRegistrationExecutionHostRef } from "../../persistence/mesh";
 import { closeCommandExecutor, type CommandExecutor, type CommandResult } from "../command-executor";
 import { executionHostService } from "../execution-host-service";
+import { workspaceWorkerEnrollmentService } from "../workspace-worker-enrollment-service";
 import { emitWorkerUpdateJobChanged } from "./job-events";
 import {
   confirmWorkerRestart,
   isWorkerRestartResponseLoss,
   WORKER_RESTART_TIMEOUT_MS,
+  readWorkerServiceStatus,
+  type WorkerServiceStatus,
 } from "./restart-confirmation";
 
 const log = createLogger("core:worker-update-runner");
@@ -72,11 +75,18 @@ export class WorkerUpdateJobRunner {
       job = this.beginJob(userId, job);
       this.appendLog(userId, job, "system", "Connecting to worker.", "update");
       executor = await this.acquireExecutor(userId, job, worker);
+      const beforeUpdate = await readWorkerServiceStatus(executor);
+      if (!beforeUpdate.installed || !beforeUpdate.running) {
+        throw new DomainError(
+          "worker_service_not_running",
+          "Clanky needs a running worker service or workspace loop before it can be updated. Existing automatic workspaces need their launcher upgraded manually.",
+        );
+      }
 
       commandInFlight = "update";
       const updateResult = await executor.exec(
         "clanky",
-        ["update"],
+        ["update", ...(beforeUpdate.releaseChannel === "prerelease" ? ["--pre-release"] : [])],
         this.commandOptions(userId, () => job, "update", (next) => { job = next; }),
       );
       if (!updateResult.success) {
@@ -98,7 +108,11 @@ export class WorkerUpdateJobRunner {
         "update",
       );
 
-      await this.restartWorker({ userId, initialJob: job, worker, executor });
+      const updatedBinary = await readWorkerServiceStatus(executor);
+      await this.restartWorker({
+        userId, initialJob: job, worker, executor, beforeUpdate,
+        expectedVersion: updatedBinary.binaryVersion,
+      });
     } catch (error) {
       this.reconcileUnexpectedFailure(userId, job, commandInFlight, error);
     } finally {
@@ -121,11 +135,15 @@ export class WorkerUpdateJobRunner {
     initialJob,
     worker,
     executor,
+    beforeUpdate,
+    expectedVersion,
   }: {
     userId: string;
     initialJob: WorkerUpdateJob;
     worker: MeshWorkerRegistration;
     executor: CommandExecutor;
+    beforeUpdate: WorkerServiceStatus;
+    expectedVersion?: string;
   }): Promise<void> {
     let job = this.beginStep(userId, initialJob, "restart");
     const deadline = performance.now() + WORKER_RESTART_TIMEOUT_MS;
@@ -185,6 +203,8 @@ export class WorkerUpdateJobRunner {
         userId,
         workerNodeId: worker.workerNodeId,
         deadline,
+        previousInstanceId: beforeUpdate.instanceId,
+        expectedVersion,
         createExecutor: () => this.acquireExecutor(userId, job, worker),
         onRetry: (error) => this.appendLog(
           userId, job, "system",
@@ -200,7 +220,7 @@ export class WorkerUpdateJobRunner {
     job = this.succeedStep(userId, job, "restart", result?.exitCode);
     this.appendLog(
       userId, job, "system",
-      "Worker restart confirmed: Mesh health succeeded and the worker service is installed and running.",
+      "Worker restart confirmed: Mesh health succeeded and Clanky is running under its service or workspace loop.",
       "restart",
     );
     this.completeJob(userId, job);
@@ -218,7 +238,9 @@ export class WorkerUpdateJobRunner {
       );
     }
     const ref = getWorkerRegistrationExecutionHostRef(worker);
-    const binding = executionHostService.getBinding(ref, userId);
+    const binding = worker.registrationScope === "workspace" && worker.workspaceWorkerEnrollmentId
+      ? workspaceWorkerEnrollmentService.getExecutionHostBinding(userId, worker.workspaceWorkerEnrollmentId)
+      : executionHostService.getBinding(ref, userId);
     executionHostService.requireBindingCapability(
       binding,
       "commandExecution",
