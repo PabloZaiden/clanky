@@ -98,6 +98,7 @@ export class TaskEngine {
   private onPlanReady?: () => Promise<void>;
   private onCompleted?: () => Promise<void>;
   private completionSettlement?: ReturnType<typeof Promise.withResolvers<void>>;
+  private completionFollowUp?: Promise<void>;
   /** Guard to prevent concurrent runTask() executions */
   private isTaskRunning = false;
   private isStarting = false;
@@ -190,7 +191,9 @@ export class TaskEngine {
     return this.persistence.liveTranscript;
   }
 
-  get isExecuting(): boolean { return this.isStarting || this.isTaskRunning || this.inputs.isBusy; }
+  get isExecuting(): boolean {
+    return this.isStarting || this.isTaskRunning || this.inputs.isBusy || this.completionFollowUp !== undefined;
+  }
 
   refreshHarnessState(harness: TaskState["harness"]): void {
     const inputs = this.task.state.harness?.inputs;
@@ -202,6 +205,8 @@ export class TaskEngine {
   reconcilePendingInput(inputId: string): Promise<HarnessInputAdmission> { return this.inputs.reconcile(inputId); }
 
   async waitForCompletionSettlement(): Promise<void> { await this.completionSettlement?.promise; }
+
+  async waitForCompletionFollowUp(): Promise<void> { await this.completionFollowUp; }
 
   get needsWorkspaceFinalization(): boolean {
     return this.backend.harness.capabilities.adapter !== "acp"
@@ -1406,24 +1411,36 @@ export class TaskEngine {
       timestamp: createTimestamp(),
     });
 
-    // Persist immediately so callbacks (e.g., auto-push after conflict resolution)
-    // can act on the completed status without waiting for the periodic persistence interval.
+    // Persist logical completion before finalizing the workspace and its follow-up.
     await this.triggerPersistence();
     const completionFollowUpSafe = await this.finalizeWorkspace(result.responseContent);
     await this.triggerPersistence();
     if (this.onCompleted && completionFollowUpSafe) {
-      queueMicrotask(() => {
-        void this.onCompleted?.().catch(async (error) => {
-          this.emitLog("error", `Automatic completion follow-up failed: ${String(error)}`);
-          try {
-            await this.triggerPersistence();
-          } catch (persistenceError) {
-            log.error(`Failed to persist completion follow-up failure: ${String(persistenceError)}`);
-          }
-        });
-      });
+      this.startCompletionFollowUp(this.onCompleted);
     }
     return true;
+  }
+
+  private startCompletionFollowUp(onCompleted: () => Promise<void>): void {
+    const followUp = Promise.withResolvers<void>();
+    this.completionFollowUp = followUp.promise;
+    // Push waits for workspace settlement, so its lifetime must be tracked separately.
+    void (async () => {
+      try {
+        await this.waitForCompletionSettlement();
+        if (!this.aborted) await onCompleted();
+      } catch (error) {
+        this.emitLog("error", `Automatic completion follow-up failed: ${String(error)}`);
+        try {
+          await this.triggerPersistence();
+        } catch (persistenceError) {
+          log.error(`Failed to persist completion follow-up failure: ${String(persistenceError)}`);
+        }
+      } finally {
+        if (this.completionFollowUp === followUp.promise) this.completionFollowUp = undefined;
+        followUp.resolve();
+      }
+    })();
   }
 
   private async finalizeWorkspace(responseContent: string): Promise<boolean> {

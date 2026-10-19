@@ -12,7 +12,7 @@ import { GitService } from "../git";
 import { log } from "@pablozaiden/webapp/server";
 import { assertValidTransition } from "../task-state-machine";
 import { startStatePersistenceImpl } from "./task-execution";
-import { finalizeFullyAutonomousPushImpl } from "./task-fully-autonomous";
+import { finalizeFullyAutonomousPushImpl, handleFullyAutonomousCompletionImpl } from "./task-fully-autonomous";
 import { runTaskLifecycleOperation } from "./task-lifecycle-operations";
 import {
   taskFailure,
@@ -496,19 +496,6 @@ async function startConflictResolutionEngine(
     eventEmitter: ctx.emitter,
     onPersistState: async (state, persistOptions) => {
       await updateTaskState(taskId, state, persistOptions);
-      if (state.status === "completed" && state.syncState?.autoPushOnComplete) {
-        handleConflictResolutionComplete(ctx, taskId).catch((error) => {
-          log.error(`[TaskManager] Auto-push after conflict resolution failed for task ${taskId}:`, String(error));
-        });
-      }
-      if (state.status === "completed" && !state.syncState?.autoPushOnComplete && options.onCompleted) {
-        runTaskLifecycleOperation(taskId, options.onCompleted).catch((error) => {
-          log.error(
-            `[TaskManager] ${options.completionDescription ?? "Post-conflict completion"} failed for task ${taskId}:`,
-            String(error),
-          );
-        });
-      }
       if (state.status === "failed" || state.status === "max_iterations") {
         if (state.syncState?.autoPushOnComplete) {
           state.syncState.autoPushOnComplete = false;
@@ -520,6 +507,15 @@ async function startConflictResolutionEngine(
           state.syncState = undefined;
           await updateTaskOperationalState(taskId, state);
         }
+      }
+    },
+    onCompleted: async () => {
+      if (engine.state.syncState?.autoPushOnComplete) {
+        await handleConflictResolutionComplete(ctx, taskId);
+      } else if (engine.state.syncState && options.onCompleted) {
+        await runTaskLifecycleOperation(taskId, options.onCompleted);
+      } else {
+        await handleFullyAutonomousCompletionImpl(ctx, taskId);
       }
     },
     skipGitSetup: true,

@@ -1021,6 +1021,14 @@ Create a new task.
 | `draft` | boolean | Yes | Save as draft without starting |
 | `uploadedPlan` | object | No | Optional uploaded plan with required `planContent` and optional `statusContent`; cannot be combined with `draft: true` |
 
+`completed` means the agent matched the completion pattern, not that its branch
+has been published. With `fullyAutonomous: true`, Clanky finalizes the workspace
+and its commit, pushes the branch, then starts the automatic PR flow. Normal
+backend cleanup waits for this continuation, including publication after
+conflict resolution. Successful publication advances the task to `pushed`;
+`state.automaticPrFlow` reports PR-flow progress or errors. A failed autonomous
+operation is not retried automatically.
+
 **Example Request**
 
 ```json
