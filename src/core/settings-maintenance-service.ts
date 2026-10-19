@@ -195,7 +195,7 @@ export class SettingsMaintenanceService {
         failures.push({
           workspaceId: workspace.id,
           workspaceName: workspace.name,
-          error: "Unable to retrieve the saved SSH credential for this server.",
+          error: "Unable to retrieve the saved SSH credential for this server. Check that the server is reachable and update its saved SSH credential before retrying.",
         });
         log.warn("Skipped automatic workspace restart after SSH credential exchange failed", {
           workspaceId: workspace.id,

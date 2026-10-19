@@ -38,7 +38,6 @@ export function RestartAutomaticWorkspacesAction({
   const toast = useToast();
   const [showConfirm, setShowConfirm] = useState(false);
   const [preparingCredentials, setPreparingCredentials] = useState(false);
-  const [restartResult, setRestartResult] = useState<RestartAutomaticWorkspacesResponse | null>(null);
   const automaticWorkspaces = useMemo(
     () => workspaces.filter(isRestartableAutomaticWorkspace),
     [workspaces],
@@ -96,7 +95,19 @@ export function RestartAutomaticWorkspacesAction({
       });
       setShowConfirm(false);
       if (result) {
-        setRestartResult(result);
+        if (result.failures.length > 0) {
+          const failureDetails = result.failures
+            .map(({ workspaceName, error }) => `${workspaceName}: ${error}`)
+            .join("; ");
+          toast.error(
+            `Started ${result.started.length} of ${result.totalWorkspaces} automatic workspace restart jobs; ${result.failures.length} failed: ${failureDetails}`,
+            { duration: 0 },
+          );
+        } else if (result.totalWorkspaces === 0 || result.started.length === 0) {
+          toast.info("No automatic workspaces are eligible for restart.");
+        } else {
+          toast.success(`Started restart jobs for ${result.started.length} automatic workspaces.`);
+        }
       }
     } catch (error) {
       log.error("Failed to prepare automatic workspace restarts", {
@@ -116,49 +127,14 @@ export function RestartAutomaticWorkspacesAction({
         size="sm"
         loading={busy}
         disabled={busy || workspacesLoading || automaticWorkspaces.length === 0}
-        onClick={() => {
-          setRestartResult(null);
-          setShowConfirm(true);
-        }}
+        onClick={() => setShowConfirm(true)}
       >
         Restart all
-      </Button>} feedback={<>
-      {!workspacesLoading && automaticWorkspaces.length === 0 ? <small>No automatic workspaces</small> : null}
-      {restartResult ? (
-        <div
-          role="status"
-          className={`rounded px-2 py-1 text-sm ${
-            restartResult.failures.length > 0
-              ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
-              : "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300"
-          }`}
-        >
-          {restartResult.totalWorkspaces === 0
-            ? "No automatic workspaces are eligible for restart."
-            : restartResult.failures.length > 0
-              ? `Started ${restartResult.started.length} of ${restartResult.totalWorkspaces} restart jobs.`
-              : `Started restart jobs for ${restartResult.started.length} automatic workspaces.`}
-          {restartResult.started.length > 0 ? (
-            <ul className="mt-1 space-y-1 text-xs">
-              {restartResult.started.map((entry) => (
-                <li key={entry.workspaceId}>
-                  {entry.workspaceName}: Restart requested
-                </li>
-              ))}
-            </ul>
-          ) : null}
-          {restartResult.failures.length > 0 ? (
-            <ul className="mt-1 space-y-1 text-xs">
-              {restartResult.failures.map((failure) => (
-                <li key={failure.workspaceId}>
-                  {failure.workspaceName}: {failure.error}
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </div>
-      ) : null}
-      </>} />
+      </Button>} feedback={
+        !workspacesLoading && automaticWorkspaces.length === 0
+          ? <small>No automatic workspaces</small>
+          : null
+      } />
       <ConfirmModal
         isOpen={showConfirm}
         onClose={() => {

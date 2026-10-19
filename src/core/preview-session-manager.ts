@@ -34,7 +34,7 @@ import { DomainError } from "../domain/domain-error";
 import { previewEventEmitter } from "./event-emitter";
 import { ensureLocalPortAvailable } from "./local-port-allocator";
 import { buildSshProcessConfig } from "./ssh-connection-target";
-import { openPreviewTcpForward, type PreviewTcpForward } from "./preview-tcp-forward";
+import { openPreviewTcpForward, openPreviewTlsForward, type PreviewTcpForward } from "./preview-tcp-forward";
 import {
   resolveWorkspaceExecutionTarget,
   type ResolvedWorkspaceExecutionTarget,
@@ -44,7 +44,7 @@ import { waitForProcessExit, waitForProcessTcpListener } from "./process-lifecyc
 import { PREVIEW_RESPONSE_CHUNK_BYTES, PREVIEW_RESPONSE_WINDOW_BYTES } from "@/shared/preview";
 import { SSH_CONNECTION_TIMEOUT_MS } from "./ssh-reliability-policy";
 import { requireCurrentUser, runWithCurrentUser } from "../context/user-context";
-import { CodePreviewHelloSchema } from "../contracts/schemas/preview";
+import { CodePreviewHelloSchema, PreviewUpstreamOptionsSchema } from "../contracts/schemas/preview";
 import { resolveCodePreviewTarget } from "./code-preview-target";
 import { startCodeServer, waitForCodeEditor, type CodeServer } from "./code-server";
 import { cleanupCodeSession } from "./code-session-resources";
@@ -90,8 +90,11 @@ interface PreviewRuntime {
   user: CurrentUser;
   targetBaseUrl: string;
   targetOrigin: string;
+  applicationOrigin: string;
+  upstreamTls?: Bun.TLSOptions;
   tunnel?: ChildProcess;
   meshForward?: PreviewTcpForward;
+  webSocketForward?: PreviewTcpForward;
   tunnelLocalPort?: number;
 }
 
@@ -276,7 +279,7 @@ function rewritePreviewLocationHeader(value: string, runtime: PreviewRuntime): s
   } catch {
     return value;
   }
-  if (locationUrl.origin !== runtime.targetOrigin) {
+  if (locationUrl.origin !== runtime.targetOrigin && locationUrl.origin !== runtime.applicationOrigin) {
     return value;
   }
   return `${runtime.localOrigin}${locationUrl.pathname}${locationUrl.search}${locationUrl.hash}`;
@@ -414,6 +417,11 @@ export class PreviewSessionManager {
   }
 
   async registerCliPreview(options: RegisterCliPreviewOptions, signal?: AbortSignal): Promise<{ preview: PreviewSession; targetBaseUrl: string; tunnel?: ChildProcess; codeServer?: CodeServer }> {
+    const upstream = PreviewUpstreamOptionsSchema.safeParse(options);
+    if (!upstream.success) {
+      throw new DomainError("preview_target_invalid", "Invalid preview HTTPS options.");
+    }
+    options = { ...options, ...upstream.data };
     await this.initialize();
     signal?.throwIfAborted();
     const target = await this.resolvePreviewTarget(options.target);
@@ -459,6 +467,7 @@ export class PreviewSessionManager {
     const workspace = target.kind === "workspace" ? target.workspace : undefined;
     let sshTunnel: { child: ChildProcess; localPort: number } | undefined;
     let meshForward: PreviewTcpForward | undefined;
+    let webSocketForward: PreviewTcpForward | undefined;
     const createdAt = new Date().toISOString();
     let preview: PreviewSession = {
       config: {
@@ -523,7 +532,20 @@ export class PreviewSessionManager {
         : undefined;
       const targetPort = sshTunnel?.localPort ?? meshForward?.localPort ?? remotePort;
       const targetHost = sshTunnel || meshForward ? LOCAL_TUNNEL_HOST : options.remoteHost;
-      const targetBaseUrl = `http://${targetHost}:${String(targetPort)}`;
+      const protocol = options.protocol ?? "http";
+      const targetUrl = new URL(`${protocol}://localhost`);
+      targetUrl.hostname = targetHost.includes(":") && !targetHost.startsWith("[") ? `[${targetHost}]` : targetHost;
+      targetUrl.port = String(targetPort);
+      const targetBaseUrl = targetUrl.origin;
+      const applicationUrl = new URL(targetBaseUrl);
+      applicationUrl.hostname = options.remoteHost.includes(":") && !options.remoteHost.startsWith("[")
+        ? `[${options.remoteHost}]` : options.remoteHost;
+      applicationUrl.port = String(remotePort);
+      webSocketForward = protocol === "https" ? await openPreviewTlsForward({
+        host: targetHost.replace(/^\[|\]$/g, ""),
+        port: targetPort,
+        serverName: options.remoteHost.replace(/^\[|\]$/g, ""),
+      }) : undefined;
       if (codeServer) {
         await Promise.race([
           waitForCodeEditor(codeServer, targetBaseUrl, signal ?? new AbortController().signal),
@@ -555,8 +577,14 @@ export class PreviewSessionManager {
         user: requireCurrentUser(),
         targetBaseUrl,
         targetOrigin: new URL(targetBaseUrl).origin,
+        applicationOrigin: applicationUrl.origin,
+        upstreamTls: protocol === "https" ? {
+          rejectUnauthorized: false,
+          serverName: options.remoteHost.replace(/^\[|\]$/g, ""),
+        } : undefined,
         tunnel: sshTunnel?.child,
         meshForward,
+        webSocketForward,
         tunnelLocalPort: sshTunnel?.localPort ?? meshForward?.localPort,
       });
       runtimeRegistered = true;
@@ -590,7 +618,7 @@ export class PreviewSessionManager {
         cleanupErrors.push(cleanupError);
       }
       try {
-        await this.closePreviewTransports(sshTunnel?.child, meshForward);
+        await this.closePreviewTransports(sshTunnel?.child, meshForward, webSocketForward);
       } catch (cleanupError) {
         cleanupErrors.push(cleanupError);
       }
@@ -703,7 +731,7 @@ export class PreviewSessionManager {
     await savePreviewSession({ ...preview, state: { ...preview.state, status: "closing" } });
     const cleanup = await Promise.allSettled([
       runtime?.codeServer ? runtime.codeServer.close() : this.cleanupSavedCodeSession(preview),
-      this.closePreviewTransports(runtime?.tunnel, runtime?.meshForward),
+      this.closePreviewTransports(runtime?.tunnel, runtime?.meshForward, runtime?.webSocketForward),
     ]);
     this.closeUpstreamSockets(id);
     const bridgeSocket = this.bridgeSockets.get(id);
@@ -763,20 +791,23 @@ export class PreviewSessionManager {
   private async closePreviewTransports(
     tunnel: ChildProcess | undefined,
     meshForward: PreviewTcpForward | undefined,
+    webSocketForward?: PreviewTcpForward,
   ): Promise<void> {
-    try {
-      if (tunnel) {
-        tunnel.kill("SIGTERM");
-        await waitForProcessExit(tunnel, STOP_TIMEOUT_MS);
-        if (tunnel.exitCode === null) {
-          tunnel.kill("SIGKILL");
+    const cleanup = await Promise.allSettled([
+      (async () => {
+        if (tunnel) {
+          tunnel.kill("SIGTERM");
+          await waitForProcessExit(tunnel, STOP_TIMEOUT_MS);
+          if (tunnel.exitCode === null) {
+            tunnel.kill("SIGKILL");
+          }
         }
-      }
-    } finally {
-      if (meshForward) {
-        await meshForward.close();
-      }
-    }
+      })(),
+      meshForward?.close(),
+      webSocketForward?.close(),
+    ]);
+    const failures = cleanup.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
+    if (failures.length) throw new AggregateError(failures, "Preview transport cleanup failed");
   }
 
   async markPreviewFailed(id: string, error: string): Promise<void> {
@@ -1018,6 +1049,7 @@ export class PreviewSessionManager {
         body: message.body ? Buffer.from(decodeBase64(message.body)) : undefined,
         redirect: "manual",
         signal: controller.signal,
+        tls: runtime.upstreamTls,
       });
       ws.send(JSON.stringify({
         type: "response.start",
@@ -1083,6 +1115,11 @@ export class PreviewSessionManager {
     try {
       const targetUrl = resolvePreviewDestination(runtime, message.path);
       targetUrl.protocol = targetUrl.protocol === "https:" ? "wss:" : "ws:";
+      if (runtime.webSocketForward) {
+        targetUrl.protocol = "ws:";
+        targetUrl.hostname = LOCAL_TUNNEL_HOST;
+        targetUrl.port = String(runtime.webSocketForward.localPort);
+      }
       const sockets = this.getUpstreamSocketMap(previewId);
       if (sockets.size >= 64 || sockets.has(message.streamId)) {
         throw new DomainError("preview_limit_exceeded", "Too many active preview WebSocket connections.");
@@ -1097,29 +1134,9 @@ export class PreviewSessionManager {
         }
         upstreamState.queuedBytes = 0;
       });
-      upstream.addEventListener("message", (event: MessageEvent) => {
-        const body = typeof event.data === "string"
-          ? new TextEncoder().encode(event.data)
-          : event.data instanceof ArrayBuffer
-            ? new Uint8Array(event.data)
-            : event.data instanceof Blob
-              ? undefined
-              : event.data instanceof Uint8Array
-                ? event.data
-                : Buffer.from(event.data as Buffer);
-        if (!body) {
-          void event.data.arrayBuffer().then((buffer: ArrayBuffer) => {
-            ws.send(JSON.stringify({
-              type: "websocket.message",
-              streamId: message.streamId,
-              body: encodeBase64(new Uint8Array(buffer)),
-              binary: true,
-            } satisfies PreviewBridgeWebSocketMessage));
-          }).catch((error: unknown) => {
-            ws.send(JSON.stringify({ type: "stream.error", streamId: message.streamId, error: String(error) }));
-          });
-          return;
-        }
+      upstream.binaryType = "arraybuffer";
+      upstream.addEventListener("message", (event: MessageEvent<string | ArrayBuffer>) => {
+        const body = typeof event.data === "string" ? new TextEncoder().encode(event.data) : new Uint8Array(event.data);
         ws.send(JSON.stringify({
           type: "websocket.message",
           streamId: message.streamId,
