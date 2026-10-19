@@ -169,6 +169,9 @@ recovery support. ACP retains its existing turn-based behavior.
 Native messages have independent lifecycles identified by their provider IDs.
 Several messages may be streaming before any of them completes; reasoning,
 tool events and another message's completion do not replace their pending text.
+Native task transcripts select the corresponding message state too, while ACP
+retains its turn-based projection. Chat switches checkpoint the outgoing block
+without closing it, so interleaving does not create extra transcript segments.
 Authoritative completions reconcile only their own message and transcript
 segments. Clanky never merges different message IDs because their text matches.
 

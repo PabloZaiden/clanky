@@ -1755,6 +1755,7 @@ export class TaskEngine {
     const ctx: IterationContext = {
       iteration,
       transcript: new AgentEventTranscriptInterpreter({
+        independentMessages: this.backend.harness.capabilities.adapter !== "acp",
         checkpointPolicy: this.persistence.checkpointPolicy,
         idFactories: {
           createResponseMessageId: (state) =>

@@ -1029,7 +1029,7 @@ export class ChatConversationService implements ChatConversationPort {
     if (native.currentMessageId === event.messageId && native.pendingMessages.has(event.messageId)) return;
     const streamState = entry.streamState!;
     const previous = streamState.interpreter;
-    await this.flushChatStreamBlocksAfterMetadataReload(chatId, streamState, previous.flushActiveBlocks());
+    await this.flushChatStreamBlocksAfterMetadataReload(chatId, streamState, previous.snapshotActiveBlocks());
     previous.acknowledgeCheckpoint();
     let interpreter = native.pendingMessages.get(event.messageId);
     const started = interpreter === undefined;
