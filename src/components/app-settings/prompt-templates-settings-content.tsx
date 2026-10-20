@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import {
   Button,
   ConfirmModal,
@@ -37,12 +37,19 @@ export function PromptTemplatesSettingsContent() {
     loading,
     loaded,
     saving,
-    error,
-    errorOperation,
+    loadError,
+    saveError,
+    clearSaveError,
     refresh,
     updateTemplates,
   } = promptTemplates;
-  const templatesReady = loaded && !loading && errorOperation !== "load";
+  const templatesReady = loaded && !loading && !loadError;
+
+  useEffect(() => {
+    if (loadError) {
+      setDeleteTarget(null);
+    }
+  }, [loadError]);
 
   async function saveTemplate(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -93,21 +100,32 @@ export function PromptTemplatesSettingsContent() {
     setDeleteTarget(null);
   }
 
-  const errorContent = error ? (
-    <div className="flex items-center gap-2">
-      <SettingsError>{error}</SettingsError>
-      {errorOperation === "load" ? (
-        <Button
-          type="button"
-          size="sm"
-          disabled={loading}
-          onClick={() => void refresh()}
-        >
-          Retry
-        </Button>
+  function closeEditor(): void {
+    if (saving) {
+      return;
+    }
+    setDraft(null);
+    clearSaveError();
+  }
+
+  const errorContent = (
+    <>
+      {loadError ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <SettingsError>{loadError}</SettingsError>
+          <Button
+            type="button"
+            size="sm"
+            disabled={loading}
+            onClick={() => void refresh()}
+          >
+            Retry
+          </Button>
+        </div>
       ) : null}
-    </div>
-  ) : null;
+      {saveError ? <SettingsError>{saveError}</SettingsError> : null}
+    </>
+  );
 
   return (
     <div className="space-y-3">
@@ -129,7 +147,7 @@ export function PromptTemplatesSettingsContent() {
         </SettingsError>
       ) : null}
       {loading && templates.length === 0 ? <LoadingState title="Loading templates" /> : null}
-      {loaded && !loading && errorOperation !== "load" && templates.length === 0 ? (
+      {loaded && !loading && !loadError && templates.length === 0 ? (
         <EmptyState title="No templates" />
       ) : null}
       {templates.length > 0 ? (
@@ -191,11 +209,7 @@ export function PromptTemplatesSettingsContent() {
 
       <Modal
         isOpen={draft !== null}
-        onClose={() => {
-          if (!saving) {
-            setDraft(null);
-          }
-        }}
+        onClose={closeEditor}
         title={templates.some((template) => template.id === draft?.id) ? "Edit template" : "New template"}
       >
         {draft ? (
@@ -226,7 +240,7 @@ export function PromptTemplatesSettingsContent() {
               onChange={(event) => setDraft({ ...draft, prompt: event.currentTarget.value })}
             />
             <FormActions>
-              <Button type="button" disabled={saving} onClick={() => setDraft(null)}>
+              <Button type="button" disabled={saving} onClick={closeEditor}>
                 Cancel
               </Button>
               <Button
@@ -243,7 +257,7 @@ export function PromptTemplatesSettingsContent() {
       </Modal>
 
       <ConfirmModal
-        isOpen={deleteTarget !== null}
+        isOpen={deleteTarget !== null && !loadError}
         onClose={() => setDeleteTarget(null)}
         onConfirm={() => void deleteTemplate()}
         title="Delete template?"
