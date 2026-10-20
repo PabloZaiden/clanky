@@ -53,7 +53,7 @@ export function WorkerUpdateAction({
 
   return (
     <>
-      <SettingsFieldRow title="Clanky on servers and automatic workspaces" actions={<Button
+      <SettingsFieldRow title="Clanky workers" actions={<Button
           type="button"
           size="sm"
           loading={workerUpdates.starting}
