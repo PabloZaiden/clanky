@@ -269,6 +269,10 @@ export class MeshHarnessBackend implements Backend {
           else if (payload.type === "heartbeat") { /* Lease-owned keepalive, not a retained event. */ }
           else if (payload.type === "event") {
             let event = MeshHarnessEventSchema.parse(payload.event);
+            if (event.type === "error" && event.scope.kind === "principal"
+              && (event.code === "harness_event_gap" || event.code === "harness_transport_closed")) {
+              throw new HarnessError(event.code, event.message);
+            }
             if (event.type === "message.complete" && event.providerImageFile) {
               const { providerImageFile, ...message } = event;
               if (event.attachments?.length) {
