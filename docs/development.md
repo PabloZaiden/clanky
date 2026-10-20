@@ -135,6 +135,12 @@ heartbeat, reconnect and dynamic subscriptions. Mounted consumers declare
 interests, not URL filters. Server delivery enforces authoritative user
 ownership before matching interests; no interests means no application feed.
 
+Connection loss and automatic reconnection stay silent, even during extended
+outages. Keep the last loaded data visible; webapp refreshes it after the
+connection recovers. Do not translate recoverable transport status into global
+or per-resource errors. Explicit operation failures and terminal protocol or
+synchronization errors remain visible; mutations are never automatically retried.
+
 Use `useLiveQuery` for collection/entity reads and its mutation barrier for
 local operations and reconciliation. Sidebar chat activity uses compact
 metadata, never every chat's transcript body. Keep versioned deltas for
