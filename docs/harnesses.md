@@ -324,7 +324,11 @@ worker that reports this capability as unsupported.
 
 Codex can advertise `request_user_input_async` independently of the ordinary
 tool gate. In interactive chats its question is nonblocking and its answer is
-a normal conversation input, not a callback. An answer waiting in the input
+a normal conversation input, not a callback. **Send answer** automatically
+steers that reply into the active native turn; it does not wait for that turn
+to finish or require a separate **Steer** action. Ordinary composer messages
+continue to queue normally. If the turn has finished, the answer starts a new
+turn through normal input dispatch. An answer waiting in the input
 queue remains **Answer queued** in the transcript and exports, not answered.
 Removing a definitely unsent reply leaves its attempted message as **Answer not
 sent** and makes the question answerable again. A rejected steering attempt
