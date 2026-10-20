@@ -28,8 +28,10 @@ export interface UsePreferenceLifecycleOptions<T> {
 export interface UsePreferenceLifecycleResult<T> {
   value: T;
   loading: boolean;
+  loaded: boolean;
   saving: boolean;
   error: string | null;
+  errorOperation: PreferenceOperation | null;
   refresh: () => Promise<void>;
   saveValue: (value: T, options?: PreferenceSaveOptions) => Promise<void>;
 }
@@ -42,8 +44,10 @@ export function usePreferenceLifecycle<T>({
 }: UsePreferenceLifecycleOptions<T>): UsePreferenceLifecycleResult<T> {
   const [value, setValue] = useState(initialValue);
   const [loading, setLoading] = useState(true);
+  const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorOperation, setErrorOperation] = useState<PreferenceOperation | null>(null);
   const isMountedRef = useRef(true);
   const loadControllerRef = useRef<AbortController | null>(null);
   const loadRequestIdRef = useRef(0);
@@ -67,6 +71,7 @@ export function usePreferenceLifecycle<T>({
 
       setLoading(true);
       setError(null);
+      setErrorOperation(null);
 
       try {
         const nextValue = await load(controller.signal);
@@ -74,11 +79,13 @@ export function usePreferenceLifecycle<T>({
           return;
         }
         setValue(nextValue);
+        setLoaded(true);
       } catch (refreshError) {
         if (controller.signal.aborted || isAbortError(refreshError) || !isActiveRequest()) {
           return;
         }
         setError(String(refreshError));
+        setErrorOperation("load");
         onError?.({ operation: "load", error: refreshError });
       } finally {
         if (isActiveRequest()) {
@@ -108,6 +115,7 @@ export function usePreferenceLifecycle<T>({
 
     setSaving(true);
     setError(null);
+    setErrorOperation(null);
 
     try {
       const savedValue = await save(nextValue, controller.signal);
@@ -120,6 +128,7 @@ export function usePreferenceLifecycle<T>({
         return;
       }
       setError(String(saveError));
+      setErrorOperation("save");
       onError?.({ operation: "save", error: saveError, value: nextValue });
       if (options.throwOnError) {
         throw saveError;
@@ -151,8 +160,10 @@ export function usePreferenceLifecycle<T>({
   return {
     value,
     loading,
+    loaded,
     saving,
     error,
+    errorOperation,
     refresh,
     saveValue,
   };

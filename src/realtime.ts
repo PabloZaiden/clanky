@@ -15,6 +15,7 @@ import type {
   TaskEvent,
   WorkerUpdateEvent,
 } from "@/shared";
+import { PROMPT_TEMPLATES_REALTIME_RESOURCE } from "@/shared/prompt-templates";
 import type { MeshStateEvent, HarnessStateEvent } from "./core/event-emitter";
 import { createToolCallSummary, serializeExecutionHostRef } from "@/shared";
 import type { ControlUiActionEvent } from "@/shared/clanky-control";
@@ -41,6 +42,7 @@ export const CLANKY_REALTIME_RESOURCES = {
   previews: "previews",
   mesh: "mesh",
   executionHosts: "execution-hosts",
+  promptTemplates: PROMPT_TEMPLATES_REALTIME_RESOURCE,
 } as const;
 
 export type ClankyRealtimeResource = typeof CLANKY_REALTIME_RESOURCES[keyof typeof CLANKY_REALTIME_RESOURCES];

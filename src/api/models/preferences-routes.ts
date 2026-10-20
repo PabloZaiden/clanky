@@ -20,6 +20,7 @@ import { isDomainError } from "../../domain/domain-error";
 import { preferencesManager } from "../../core/preferences-manager";
 import { parseAndValidate } from "../validation";
 import { domainErrorResponse, internalErrorResponse } from "../helpers";
+import { CLANKY_REALTIME_RESOURCES } from "../../realtime";
 import {
   SetLastModelRequestSchema,
   SetLastCheapModelRequestSchema,
@@ -447,7 +448,7 @@ export const preferencesRoutes = defineRoutes({
       return Response.json({ templates });
     },
 
-    async PUT(req: Request, _ctx): Promise<Response> {
+    async PUT(req: Request, ctx): Promise<Response> {
       const result = await parseAndValidate(SetPromptTemplatesRequestSchema, req);
       if (!result.success) {
         return result.response;
@@ -455,6 +456,7 @@ export const preferencesRoutes = defineRoutes({
 
       try {
         await preferencesManager.setPromptTemplates(result.data.templates);
+        ctx.userRealtime.publishChanged(CLANKY_REALTIME_RESOURCES.promptTemplates);
         return Response.json({ success: true, templates: result.data.templates });
       } catch (error) {
         logPreferenceSaveFailure("prompt-templates", error);

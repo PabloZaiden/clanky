@@ -32,11 +32,21 @@ export function PromptTemplatesSettingsContent() {
   const [draft, setDraft] = useState<PromptTemplate | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<PromptTemplate | null>(null);
   const promptTemplates = usePromptTemplates();
-  const { templates, loading, saving, error, updateTemplates } = promptTemplates;
+  const {
+    templates,
+    loading,
+    loaded,
+    saving,
+    error,
+    errorOperation,
+    refresh,
+    updateTemplates,
+  } = promptTemplates;
+  const templatesReady = loaded && !loading && errorOperation !== "load";
 
   async function saveTemplate(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    if (!draft) {
+    if (!draft || !templatesReady || saving) {
       return;
     }
 
@@ -58,6 +68,10 @@ export function PromptTemplatesSettingsContent() {
   }
 
   async function moveTemplate(index: number, direction: -1 | 1): Promise<void> {
+    if (!templatesReady || saving) {
+      return;
+    }
+
     const targetIndex = index + direction;
     if (targetIndex < 0 || targetIndex >= templates.length) {
       return;
@@ -71,7 +85,7 @@ export function PromptTemplatesSettingsContent() {
   }
 
   async function deleteTemplate(): Promise<void> {
-    if (!deleteTarget) {
+    if (!deleteTarget || !templatesReady || saving) {
       return;
     }
     const nextTemplates = templates.filter((template) => template.id !== deleteTarget.id);
@@ -79,41 +93,64 @@ export function PromptTemplatesSettingsContent() {
     setDeleteTarget(null);
   }
 
+  const errorContent = error ? (
+    <div className="flex items-center gap-2">
+      <SettingsError>{error}</SettingsError>
+      {errorOperation === "load" ? (
+        <Button
+          type="button"
+          size="sm"
+          disabled={loading}
+          onClick={() => void refresh()}
+        >
+          Retry
+        </Button>
+      ) : null}
+    </div>
+  ) : null;
+
   return (
     <div className="space-y-3">
       <FormActions>
         <Button
           type="button"
           variant="primary"
-          disabled={loading || saving || templates.length >= PROMPT_TEMPLATE_LIMITS.count}
+          disabled={!templatesReady || saving || templates.length >= PROMPT_TEMPLATE_LIMITS.count}
           onClick={() => setDraft(createTemplateDraft())}
         >
           New
         </Button>
       </FormActions>
 
-      {error ? <SettingsError>{error}</SettingsError> : null}
+      {!draft ? errorContent : null}
       {templates.length >= PROMPT_TEMPLATE_LIMITS.count ? (
         <SettingsError>
           Maximum of {PROMPT_TEMPLATE_LIMITS.count} templates.
         </SettingsError>
       ) : null}
       {loading && templates.length === 0 ? <LoadingState title="Loading templates" /> : null}
-      {!loading && templates.length === 0 ? <EmptyState title="No templates" /> : null}
+      {loaded && !loading && errorOperation !== "load" && templates.length === 0 ? (
+        <EmptyState title="No templates" />
+      ) : null}
       {templates.length > 0 ? (
         <DataList>
           {templates.map((template, index) => (
             <DataListRow
               key={template.id}
-              title={template.name}
+              className="max-sm:flex-col max-sm:!items-stretch"
+              title={(
+                <span className="max-sm:whitespace-normal max-sm:break-words">
+                  {template.name}
+                </span>
+              )}
               description={template.description || undefined}
               actions={(
-                <div className="flex flex-wrap justify-end gap-1 max-sm:max-w-48">
+                <div className="flex flex-wrap justify-end gap-1 max-sm:w-full max-sm:max-w-none">
                   <Button
                     type="button"
                     size="sm"
                     aria-label={`Move ${template.name} up`}
-                    disabled={loading || saving || index === 0}
+                    disabled={!templatesReady || saving || index === 0}
                     onClick={() => void moveTemplate(index, -1)}
                   >
                     <ArrowUpIcon />
@@ -122,7 +159,7 @@ export function PromptTemplatesSettingsContent() {
                     type="button"
                     size="sm"
                     aria-label={`Move ${template.name} down`}
-                    disabled={loading || saving || index === templates.length - 1}
+                    disabled={!templatesReady || saving || index === templates.length - 1}
                     onClick={() => void moveTemplate(index, 1)}
                   >
                     <ArrowDownIcon />
@@ -131,7 +168,7 @@ export function PromptTemplatesSettingsContent() {
                     type="button"
                     size="sm"
                     aria-label={`Edit ${template.name}`}
-                    disabled={loading || saving}
+                    disabled={!templatesReady || saving}
                     onClick={() => setDraft({ ...template })}
                   >
                     <EditIcon />
@@ -140,7 +177,7 @@ export function PromptTemplatesSettingsContent() {
                     type="button"
                     size="sm"
                     aria-label={`Delete ${template.name}`}
-                    disabled={loading || saving}
+                    disabled={!templatesReady || saving}
                     onClick={() => setDeleteTarget(template)}
                   >
                     <CloseIcon />
@@ -163,6 +200,7 @@ export function PromptTemplatesSettingsContent() {
       >
         {draft ? (
           <form className="grid gap-4" onSubmit={(event) => void saveTemplate(event)}>
+            {errorContent}
             <TextField
               label="Name"
               required
@@ -195,7 +233,7 @@ export function PromptTemplatesSettingsContent() {
                 type="submit"
                 variant="primary"
                 loading={saving}
-                disabled={saving || !draft.name.trim() || !draft.prompt.trim()}
+                disabled={!templatesReady || saving || !draft.name.trim() || !draft.prompt.trim()}
               >
                 Save template
               </Button>
@@ -211,7 +249,7 @@ export function PromptTemplatesSettingsContent() {
         title="Delete template?"
         message={`Delete "${deleteTarget?.name ?? "template"}"? This cannot be undone.`}
         confirmLabel="Delete template"
-        loading={saving}
+        loading={saving || loading || !templatesReady}
         variant="danger"
       />
     </div>
