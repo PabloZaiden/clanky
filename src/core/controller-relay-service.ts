@@ -594,21 +594,15 @@ export class ControllerRelayService {
   private async refreshPairingProtocol(
     pairing: ControllerRelayPairing,
   ): Promise<ControllerRelayPairing> {
-    let descriptor: MeshRelayWellKnownDescriptor;
-    try {
-      descriptor = await this.fetchDescriptor(pairing.relayUrl);
-    } catch (error) {
-      log.warn("Could not renegotiate the persisted relay pairing", {
-        relayUrl: pairing.relayUrl,
-        error: String(error),
-      });
-      return pairing;
-    }
+    const descriptor = await this.fetchDescriptor(pairing.relayUrl);
     if (
       descriptor.fingerprint !== pairing.relayFingerprint
       || descriptor.controllerFingerprint !== pairing.controllerFingerprint
     ) {
-      return pairing;
+      throw new DomainError(
+        "mesh_relay_descriptor_invalid",
+        "The discovered Mesh relay does not match the persisted pairing.",
+      );
     }
     const metadata = {
       relayBinaryVersion: descriptor.binaryVersion,
@@ -644,7 +638,6 @@ export class ControllerRelayService {
     waitForConnection: boolean,
   ): Promise<void> {
     await this.stopManager(runtime);
-    pairing = await this.refreshPairingProtocol(pairing);
     const relayUrl = this.normalizeRelayUrl(pairing.relayUrl);
     const dispatch = this.dispatch;
     if (!dispatch) {
@@ -676,7 +669,10 @@ export class ControllerRelayService {
         protocolVersion: pairing.relayNegotiatedProtocolVersion!,
       },
       dispatch,
-      refreshProtocol: async () => (await this.refreshPairingProtocol(pairing)).relayNegotiatedProtocolVersion!,
+      refreshProtocol: async () => {
+        pairing = await this.refreshPairingProtocol(pairing);
+        return pairing.relayNegotiatedProtocolVersion!;
+      },
       onAuthenticated: () => {
         runtime.authorizationDirty = true;
         this.requestAuthorizationRefresh(runtime);
