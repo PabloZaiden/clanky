@@ -15,6 +15,7 @@ import {
 } from "../persistence/mesh-node-identity";
 import { DomainError } from "../domain/domain-error";
 import { meshInboundResourceRegistry } from "./mesh-inbound-resource-registry";
+import { countMeshProtocolSessions } from "./mesh-protocol-version";
 import { requireTrustedController } from "./mesh-peer-auth";
 import { buildMeshTcpTunnelSigningPayload } from "./mesh-tcp-tunnel-protocol";
 
@@ -27,6 +28,7 @@ export interface MeshTcpTunnelSocket {
 }
 
 interface TunnelLease {
+  protocolVersion: MeshTcpTunnelProtocolVersion;
   sessionId: string;
   sessionToken: string;
   callerNodeId: string;
@@ -43,6 +45,10 @@ interface TunnelRelay {
 }
 
 export class MeshTcpTunnelGateway {
+  getProtocolSessionCounts() {
+    return countMeshProtocolSessions(this.leases.values(), (lease) => lease);
+  }
+
   private readonly leases = new Map<string, TunnelLease>();
   private readonly relays = new Map<string, TunnelRelay>();
   private readonly opening = new Map<string, Promise<void>>();
@@ -100,6 +106,7 @@ export class MeshTcpTunnelGateway {
     }, Math.max(1, expiresAt - Date.now()));
     expiryTimer.unref?.();
     const lease: TunnelLease = {
+      protocolVersion: request.protocolVersion,
       sessionId,
       sessionToken: randomBytes(32).toString("base64url"),
       callerNodeId: request.callerNodeId,
@@ -118,8 +125,8 @@ export class MeshTcpTunnelGateway {
     };
   }
 
-  async authorize(sessionId: string, sessionToken: string): Promise<void> {
-    await this.requireLease(sessionId, sessionToken);
+  async authorize(sessionId: string, sessionToken: string): Promise<MeshTcpTunnelProtocolVersion> {
+    return (await this.requireLease(sessionId, sessionToken)).protocolVersion;
   }
 
   async open(

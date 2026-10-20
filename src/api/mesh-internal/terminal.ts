@@ -4,7 +4,9 @@ import {
   MeshTerminalSessionRequestSchema,
 } from "@/contracts/schemas/mesh-terminal";
 import { meshTerminalGateway } from "../../core/mesh-terminal-gateway";
-import { encryptMeshPayload } from "../../core/mesh-payload-crypto";
+import { encodeMeshPayload } from "../../core/mesh-payload";
+import { assertMeshRequestTransport } from "../../core/mesh-transport-security";
+import { DomainError } from "../../domain/domain-error";
 import { requireMeshRuntimeRole } from "../../core/mesh-runtime";
 import { errorResponse } from "../helpers";
 import { parseAndValidate } from "../validation";
@@ -35,13 +37,15 @@ export const meshTerminalRoutes = defineRoutes({
       );
       if (headerError) return headerError;
       try {
+        assertMeshRequestTransport(req, parsed.data.protocolVersion);
         const session = await meshTerminalGateway.createSession(parsed.data);
         return Response.json({
           protocolVersion: session.protocolVersion,
           capability: session.capability,
           sessionId: session.sessionId,
           expiresAt: session.expiresAt,
-          encryptedPayload: encryptMeshPayload(
+          ...encodeMeshPayload(
+            session.protocolVersion,
             { sessionToken: session.sessionToken },
             parsed.data.callerEncryptionPublicKey,
           ),
@@ -64,6 +68,12 @@ export const meshTerminalRoutes = defineRoutes({
       );
       if (headerError) return headerError;
       try {
+        const version = meshTerminalGateway.getSessionProtocolVersion(parsed.data.sessionId, parsed.data.sessionToken)
+          ?? parsed.data.protocolVersion;
+        assertMeshRequestTransport(req, version);
+        if (version !== parsed.data.protocolVersion) {
+          throw new DomainError("mesh_execution_protocol_mismatch", "The terminal release generation does not match its admitted session.");
+        }
         requireMeshRuntimeRole("worker");
         await meshTerminalGateway.releaseSession(
           parsed.data.sessionId,
@@ -90,7 +100,7 @@ export const meshTerminalRoutes = defineRoutes({
         return errorResponse("mesh_terminal_session_invalid", "Mesh terminal session headers are required.", 401);
       }
       try {
-        await meshTerminalGateway.authorize(sessionId, sessionToken);
+        assertMeshRequestTransport(req, await meshTerminalGateway.authorize(sessionId, sessionToken));
         const upgraded = ctx.server?.upgrade(req, {
           data: {
             webappSocketHandler: "clanky",

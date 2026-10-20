@@ -320,6 +320,17 @@ realtime UI, or unrelated APIs. Do not combine worker mode with
    Inspect and revoke existing enrollments from the controller with
    `clanky mesh status` and `clanky mesh revoke <worker-node-id>`.
 
+   During the Mesh 7/6 rollout, inspect worker `routeSecurity` in controller
+   status and binary/support metadata in `clanky mesh relay status`. Selection
+   is automatic: direct HTTPS needs v7 on controller and worker; relay routes
+   also need v7 on that relay and WSS on both hops. Otherwise new sessions use
+   encrypted v6. v7 trusts the relay and TLS-terminating proxies with content;
+   it is not end-to-end opaque encryption. Worker status `activeSessions`
+   counts admitted leases by generation. Preserve data directories and legacy
+   keys until all nodes and sessions have migrated; never retry an ambiguous
+   dispatched prompt or command by switching generations. See the canonical
+   guide's protocol migration section for proxy and staged-upgrade rules.
+
 Mesh access intentionally grants unrestricted command and file access to the
 worker host. Do not invent path sandboxing or assume a workspace confines Mesh
 operations.

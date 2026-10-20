@@ -17,6 +17,7 @@ import type { TranscriptChangeSet } from "@/shared/chat-transcript";
 import { chatTranscriptStore } from "../transcripts/chat-store";
 import { parseStoredHarnessState } from "../harness-binding";
 import { getRegisteredSshServerId } from "@/shared/execution-host";
+import { invalidateChatMetadata } from "./metadata-cache";
 
 const STANDALONE = "scope = 'workspace' AND task_id IS NULL";
 const CursorSchema = z.object({ deletedAt: z.iso.datetime(), id: z.string().min(1) });
@@ -93,6 +94,7 @@ export function listChatTrash(options: ChatTrashQuery): ChatTrashPage {
 export function markChatTrashed(chatId: string, checkpoint?: TranscriptChangeSet): Chat | null {
   const db = getDatabase();
   const userId = requirePersistenceUserId();
+  invalidateChatMetadata(db, userId, chatId);
   return db.transaction(() => {
     const row = db.prepare(`
       SELECT ${CHAT_METADATA_COLUMNS} FROM chats
@@ -129,25 +131,34 @@ export function markChatTrashed(chatId: string, checkpoint?: TranscriptChangeSet
 }
 
 export function restoreTrashedChat(chatId: string, deletedAt: string): boolean {
-  return getDatabase().prepare(`
+  const db = getDatabase();
+  const userId = requirePersistenceUserId();
+  invalidateChatMetadata(db, userId, chatId);
+  return db.prepare(`
     UPDATE chats SET deleted_at = NULL, state_revision = state_revision + 1
     WHERE id = ? AND user_id = ? AND deleted_at = ? AND ${STANDALONE}
-  `).run(chatId, requirePersistenceUserId(), deletedAt).changes > 0;
+  `).run(chatId, userId, deletedAt).changes > 0;
 }
 
 export function deleteTrashedChat(chatId: string, deletedAt: string): boolean {
-  return getDatabase().prepare(`
+  const db = getDatabase();
+  const userId = requirePersistenceUserId();
+  invalidateChatMetadata(db, userId, chatId);
+  return db.prepare(`
     DELETE FROM chats WHERE id = ? AND user_id = ? AND deleted_at = ? AND ${STANDALONE}
-  `).run(chatId, requirePersistenceUserId(), deletedAt).changes > 0;
+  `).run(chatId, userId, deletedAt).changes > 0;
 }
 
 export function saveTrashedChatWorktree(chatId: string, worktree: ChatWorktreeState): boolean {
-  return getDatabase().prepare(`
+  const db = getDatabase();
+  const userId = requirePersistenceUserId();
+  invalidateChatMetadata(db, userId, chatId);
+  return db.prepare(`
     UPDATE chats SET worktree_original_branch = ?, worktree_working_branch = ?,
       worktree_path = ?, state_revision = state_revision + 1
     WHERE id = ? AND user_id = ? AND deleted_at IS NOT NULL AND ${STANDALONE}
   `).run(worktree.originalBranch, worktree.workingBranch, worktree.worktreePath ?? null,
-    chatId, requirePersistenceUserId()).changes > 0;
+    chatId, userId).changes > 0;
 }
 
 export function listTrashCleanupCandidates(options: {

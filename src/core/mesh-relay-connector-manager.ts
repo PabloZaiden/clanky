@@ -9,6 +9,7 @@
 
 import { createLogger } from "@pablozaiden/webapp/server";
 import type { MeshRelayPeerRoute } from "@/shared/mesh";
+import type { MeshProtocolVersion } from "@/shared/mesh-protocol";
 import type {
   MeshRelayAuthOkFrame,
   MeshRelayPeerIdentity,
@@ -38,6 +39,7 @@ export interface MeshRelayConnectionRequest {
   onAuthenticated?(frame: MeshRelayAuthOkFrame): void;
   onStatusChange?(status: MeshRelayConnectorStatus): void;
   shouldMaintain?(): boolean | Promise<boolean>;
+  refreshProtocol?(): Promise<MeshProtocolVersion>;
 }
 
 export interface MeshRelayConnectorManagerOptions {
@@ -250,22 +252,25 @@ export class MeshRelayConnectorManager {
       });
       const create = this.options.createConnector
         ?? ((options: MeshRelayConnectorOptions) => new MeshRelayConnector(options));
-      const connector = create({
-        config: request.config,
-        inbound,
-        ...(this.options.identity ? { identity: this.options.identity } : {}),
-        ...(this.options.socketFactory
-          ? { socketFactory: this.options.socketFactory }
-          : {}),
-        onStatusChange: (status) => request.onStatusChange?.(status),
-        onAuthenticated: (frame) => {
-          this.resolveWaiters(frame);
-          request.onAuthenticated?.(frame);
-        },
-        onClosed: () => resolveClosed(),
-      });
-      this.connector = connector;
+      let connector: MeshRelayConnector | undefined;
       try {
+        if (request.refreshProtocol) {
+          request.config = { ...request.config, protocolVersion: await request.refreshProtocol() };
+        }
+        if (!this.running) return;
+        connector = create({
+          config: request.config,
+          inbound,
+          ...(this.options.identity ? { identity: this.options.identity } : {}),
+          ...(this.options.socketFactory ? { socketFactory: this.options.socketFactory } : {}),
+          onStatusChange: (status) => request.onStatusChange?.(status),
+          onAuthenticated: (frame) => {
+            this.resolveWaiters(frame);
+            request.onAuthenticated?.(frame);
+          },
+          onClosed: () => resolveClosed(),
+        });
+        this.connector = connector;
         await connector.connect();
         attempt = 0;
         await closed;
@@ -278,7 +283,7 @@ export class MeshRelayConnectorManager {
           });
         }
       } finally {
-        connector.close(1000, "Mesh relay connection replaced");
+        connector?.close(1000, "Mesh relay connection replaced");
         resolveClosed();
       }
       if (!this.running) {

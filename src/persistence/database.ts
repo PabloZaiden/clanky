@@ -10,6 +10,7 @@ import { createLogger, resolveAppDataDir } from "@pablozaiden/webapp/server";
 import { assertSchemaBaseline, runMigrations } from "./migrations";
 import { createBaseSchema } from "./base-schema";
 import { DatabaseNotInitializedError } from "./errors";
+import { clearChatMetadataCache } from "./chats/metadata-cache";
 import {
   assertSchemaInventory,
   getResettableTableNames,
@@ -54,6 +55,7 @@ export async function initializeDatabase(): Promise<void> {
       log.trace("Database already initialized with same path");
       return;
     }
+    clearChatMetadataCache(db);
     db.close();
     db = null;
   }
@@ -86,6 +88,7 @@ export function closeDatabase(): void {
     return;
   }
   log.debug("Closing database connection");
+  clearChatMetadataCache(db);
   db.close();
   db = null;
   log.info("Database connection closed");
@@ -102,6 +105,7 @@ export function resetDatabase(): void {
 
   log.warn("Resetting database - dropping all tables");
   const database = db;
+  clearChatMetadataCache(database);
 
   database.run("PRAGMA foreign_keys = OFF");
   try {

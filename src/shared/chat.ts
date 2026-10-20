@@ -17,7 +17,7 @@ import type {
 } from "./task";
 import type { MessageAttachment } from "./message-attachments";
 import type { ExecutionHostBinding } from "./execution-host";
-import type { HarnessConversationState } from "./harness-control";
+import type { HarnessConversationBinding, HarnessConversationState } from "./harness-control";
 
 export type { ModelConfig };
 
@@ -122,6 +122,7 @@ export type ChatStatus =
 export interface ChatStreamControlState {
   status: ChatStatus;
   interruptRequested: boolean;
+  binding?: HarnessConversationBinding | null;
 }
 
 export type ChatStartupStage =
@@ -167,6 +168,13 @@ export interface ChatState {
 export interface Chat {
   config: ChatConfig;
   state: ChatState;
+}
+
+export type ChatMetadataState = Omit<ChatState, "messages" | "logs" | "toolCalls">;
+
+export interface ChatMetadata {
+  config: ChatConfig;
+  state: ChatMetadataState;
 }
 
 export const CHAT_TRASH_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;

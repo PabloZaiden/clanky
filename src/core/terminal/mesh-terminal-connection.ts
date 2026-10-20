@@ -17,7 +17,7 @@ import {
   MESH_TERMINAL_WEBSOCKET_OPEN_TIMEOUT_MS,
   type MeshTerminalProtocolVersion,
 } from "@/shared/mesh-terminal";
-import { meshWorkerRouteVersion } from "../mesh-route-version";
+import { discoverMeshWorkerGeneration } from "../mesh-worker-generation";
 import type { AgentProvider } from "@/shared/settings";
 import type { TerminalConnectionMode } from "@/shared/terminal-session";
 import type { MeshPeerRoute } from "@/shared/mesh";
@@ -27,7 +27,7 @@ import {
   ensureLocalMeshNodeIdentity,
   signMeshPayload,
 } from "../../persistence/mesh-node-identity";
-import { encryptMeshPayload, decryptMeshPayload } from "../mesh-payload-crypto";
+import { encodeMeshEnvironment, decodeMeshPayload, type MeshPayloadFields } from "../mesh-payload";
 import { buildMeshTerminalSessionSigningPayload } from "../mesh-terminal-protocol";
 import { MeshRelayStreamError } from "../mesh-relay-errors";
 import {
@@ -44,12 +44,11 @@ import type {
 } from "./interactive-terminal-connection";
 import { isDomainError } from "../../domain/domain-error";
 
-interface MeshTerminalSessionResponse {
+interface MeshTerminalSessionResponse extends MeshPayloadFields {
   protocolVersion: MeshTerminalProtocolVersion;
   capability: typeof MESH_TERMINAL_CAPABILITY;
   sessionId: string;
   expiresAt: string;
-  encryptedPayload: unknown;
 }
 
 export interface MeshTerminalConnectionConfig {
@@ -207,6 +206,7 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
       throw new DomainError("mesh_terminal_connection_closed", "The Mesh terminal connection was closed while connecting.");
     }
     const socket = openMeshPeerSocket(session.route, "api/mesh/internal/terminal", {
+      "x-clanky-mesh-protocol-version": String(session.protocolVersion),
       "x-clanky-mesh-session-id": session.sessionId,
       "x-clanky-mesh-session-token": session.sessionToken,
     });
@@ -408,7 +408,7 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
       );
     }
     const peerRoute = registration.route;
-    const protocolVersion: MeshTerminalProtocolVersion = meshWorkerRouteVersion(registration);
+    const protocolVersion = await discoverMeshWorkerGeneration(registration, undefined, this.fetchImpl);
     const expiresAt = new Date(Date.now() + MESH_TERMINAL_SESSION_REQUEST_TTL_MS).toISOString();
     const buildRequest = async (): Promise<MeshTerminalSessionRequest> => {
       const unsigned: Omit<MeshTerminalSessionRequest, "signature"> = {
@@ -431,7 +431,8 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
         allowPersistentSessionCreate: this.allowPersistentSessionCreate,
         ...(this.runtimeEnvironment
           ? {
-              encryptedEnvironment: encryptMeshPayload(
+              ...encodeMeshEnvironment(
+                protocolVersion,
                 this.runtimeEnvironment,
                 registration.workerEncryptionPublicKey,
               ),
@@ -456,7 +457,7 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
     if (response.capability !== MESH_TERMINAL_CAPABILITY) {
       throw new DomainError("mesh_terminal_capability_mismatch", "The Mesh peer does not support terminal-v1.");
     }
-    const decrypted = asRecord(await decryptMeshPayload(response.encryptedPayload));
+    const decrypted = asRecord(await decodeMeshPayload(protocolVersion, response));
     const sessionToken = decrypted["sessionToken"];
     if (typeof sessionToken !== "string" || sessionToken.length < 32) {
       throw new DomainError("mesh_terminal_response_invalid", "The Mesh terminal session token is invalid.");
@@ -489,6 +490,7 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
         method: "POST",
         headers: {
           "content-type": "application/json",
+          "x-clanky-mesh-protocol-version": String(body.protocolVersion),
           ...headers,
         },
         body: JSON.stringify(body),
@@ -518,7 +520,6 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
         || typeof record["capability"] !== "string"
         || typeof record["sessionId"] !== "string"
         || typeof record["expiresAt"] !== "string"
-        || !("encryptedPayload" in record)
       ) {
         throw new DomainError("mesh_terminal_response_invalid", "The Mesh terminal response is invalid.");
       }
@@ -566,6 +567,7 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
           method: "DELETE",
           headers: {
             "content-type": "application/json",
+            "x-clanky-mesh-protocol-version": String(session.protocolVersion),
             "x-clanky-mesh-session-id": session.sessionId,
             "x-clanky-mesh-request-id": request.requestId,
           },
@@ -650,6 +652,7 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
       session.route,
       "api/mesh/internal/terminal",
       {
+        "x-clanky-mesh-protocol-version": String(session.protocolVersion),
         "x-clanky-mesh-session-id": session.sessionId,
         "x-clanky-mesh-session-token": session.sessionToken,
       },

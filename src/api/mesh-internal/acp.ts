@@ -3,7 +3,7 @@ import { meshExecutionGateway } from "../../core/mesh-execution-gateway";
 import { meshAcpGateway } from "../../core/mesh-acp-gateway";
 import { requireMeshRuntimeRole } from "../../core/mesh-runtime";
 import { errorResponse } from "../helpers";
-import { internalMeshErrorResponse } from "./shared";
+import { assertMeshExecutionTransport, internalMeshErrorResponse } from "./shared";
 
 export const meshAcpRoutes = defineRoutes({
   "/api/mesh/internal/execution/acp": {
@@ -21,6 +21,7 @@ export const meshAcpRoutes = defineRoutes({
         return errorResponse("mesh_execution_session_invalid", "Mesh ACP session headers are required.", 401);
       }
       try {
+        assertMeshExecutionTransport(req, { sessionId, sessionToken });
         await meshExecutionGateway.getAcpSessionConfig(sessionId, sessionToken);
         const upgraded = ctx.server?.upgrade(req, {
           data: {
@@ -52,6 +53,7 @@ export const meshAcpRoutes = defineRoutes({
         return errorResponse("mesh_execution_session_invalid", "Mesh ACP session headers are required.", 401);
       }
       try {
+        assertMeshExecutionTransport(req, { sessionId, sessionToken });
         requireMeshRuntimeRole("worker");
         const renewed = await meshAcpGateway.renew(sessionId, sessionToken);
         return Response.json({

@@ -89,7 +89,7 @@ import {
   MESH_PROTOCOL_VERSIONS_HEADER,
   meshProtocolProjection,
 } from "@/shared/mesh-protocol";
-import { meshWorkerRouteVersion } from "./mesh-route-version";
+import { meshWorkerRouteSecurity, meshWorkerRouteVersion } from "./mesh-route-version";
 import { discoverMeshWorkerGeneration } from "./mesh-worker-generation";
 import {
   assertMeshWorkerTlsCertificate,
@@ -115,6 +115,8 @@ import {
 } from "./mesh-control-client";
 import { assertMeshPeerIdentity } from "./mesh-peer-auth";
 import { meshExecutionGateway } from "./mesh-execution-gateway";
+import { meshTerminalGateway } from "./mesh-terminal-gateway";
+import { meshTcpTunnelGateway } from "./mesh-tcp-tunnel-gateway";
 import {
   decideEnrollWorker,
   decideRevokeWorker,
@@ -712,7 +714,7 @@ export class MeshManager {
     const workers = await listWorkerRegistrations(userId);
     return {
       node: identity,
-      workers,
+      workers: workers.map((worker) => ({ ...worker, routeSecurity: meshWorkerRouteSecurity(worker) })),
       protocol: getLocalMeshProtocolMetadata(),
     };
   }
@@ -1810,6 +1812,11 @@ export class MeshManager {
       execution,
       controllerCount: controllers.length,
       protocol: getLocalMeshProtocolMetadata(),
+      activeSessions: {
+        execution: meshExecutionGateway.getProtocolSessionCounts(),
+        terminal: meshTerminalGateway.getProtocolSessionCounts(),
+        tcpTunnel: meshTcpTunnelGateway.getProtocolSessionCounts(),
+      },
     };
   }
 

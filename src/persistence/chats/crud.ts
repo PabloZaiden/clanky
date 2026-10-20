@@ -10,6 +10,13 @@ import { requirePersistenceUserId } from "../ownership";
 import { isSqliteUniqueConstraintError, uniqueConstraintError } from "../errors";
 import { replaceChatTranscriptEntriesForUserInTransaction } from "./transcript";
 import { chatTranscriptStore } from "../transcripts/chat-store";
+import {
+  cacheChatMetadata,
+  invalidateChatMetadata,
+  invalidateChatMetadataForUser,
+  readChatMetadata,
+  readChatStreamControlState,
+} from "./metadata-cache";
 
 const log = createLogger("persistence:chats");
 const STANDALONE_CHAT_CONDITION = "scope = 'workspace' AND task_id IS NULL AND deleted_at IS NULL";
@@ -96,8 +103,9 @@ export async function saveChat(chat: Chat): Promise<void> {
   ].join(", ");
 
   const userId = String(row["user_id"]);
+  invalidateChatMetadata(db, userId, chat.config.id);
   try {
-    db.transaction(() => {
+    const saved = db.transaction(() => {
       db.prepare(`
         INSERT INTO chats (${columns.join(", ")})
         VALUES (${placeholders})
@@ -109,12 +117,14 @@ export async function saveChat(chat: Chat): Promise<void> {
         throw new Error(`Chat ${chat.config.id} is unavailable`);
       }
       replaceChatTranscriptEntriesForUserInTransaction(db, chat, userId);
-      const saved = db.query<{ state_revision: number }, [string, string]>(
-        "SELECT state_revision FROM chats WHERE id = ? AND user_id = ?",
+      const saved = db.query<Record<string, unknown>, [string, string]>(
+        `SELECT ${CHAT_METADATA_COLUMNS} FROM chats WHERE id = ? AND user_id = ? AND deleted_at IS NULL`,
       ).get(chat.config.id, userId);
       if (!saved) throw new Error(`Failed to save chat ${chat.config.id}`);
-      chat.state.revision = saved.state_revision;
+      return rowToChat(saved);
     })();
+    chat.state.revision = saved.state.revision;
+    cacheChatMetadata(db, userId, saved);
   } catch (error) {
     if (isSqliteUniqueConstraintError(error)) {
       throw uniqueConstraintError(
@@ -128,14 +138,8 @@ export async function saveChat(chat: Chat): Promise<void> {
 }
 
 export async function loadChat(chatId: string): Promise<Chat | null> {
-  const row = getDatabase()
-    .prepare(`SELECT ${CHAT_METADATA_COLUMNS} FROM chats WHERE id = ? AND user_id = ? AND deleted_at IS NULL`)
-    .get(chatId, requirePersistenceUserId()) as Record<string, unknown> | null;
-
-  if (!row) {
-    return null;
-  }
-  const chat = rowToChat(row);
+  const chat = loadMetadata(chatId);
+  if (!chat) return null;
   const transcript = chatTranscriptStore.hydrateForUser(
     chatId,
     requirePersistenceUserId(),
@@ -147,28 +151,25 @@ export async function loadChat(chatId: string): Promise<Chat | null> {
 }
 
 export async function loadChatMetadata(chatId: string): Promise<Chat | null> {
-  const row = getDatabase()
-    .prepare(`SELECT ${CHAT_METADATA_COLUMNS} FROM chats WHERE id = ? AND user_id = ? AND deleted_at IS NULL`)
-    .get(chatId, requirePersistenceUserId()) as Record<string, unknown> | null;
+  return loadMetadata(chatId);
+}
 
+function loadMetadata(chatId: string): Chat | null {
+  const db = getDatabase();
+  const userId = requirePersistenceUserId();
+  return readChatMetadata(db, userId, chatId, () => selectMetadata(chatId));
+}
+
+function selectMetadata(chatId: string): Chat | null {
+  const row = getDatabase().query(`SELECT ${CHAT_METADATA_COLUMNS} FROM chats WHERE id = ? AND user_id = ? AND deleted_at IS NULL`)
+    .get(chatId, requirePersistenceUserId()) as Record<string, unknown> | null;
   return row ? rowToChat(row) : null;
 }
 
 export function loadChatStreamControlState(chatId: string): ChatStreamControlState | null {
-  const row = getDatabase()
-    .prepare("SELECT status, interrupt_requested FROM chats WHERE id = ? AND user_id = ? AND deleted_at IS NULL")
-    .get(chatId, requirePersistenceUserId()) as {
-      status: ChatStreamControlState["status"];
-      interrupt_requested: number | null;
-    } | null;
-
-  if (!row) {
-    return null;
-  }
-  return {
-    status: row.status,
-    interruptRequested: row.interrupt_requested === 1,
-  };
+  return readChatStreamControlState(
+    getDatabase(), requirePersistenceUserId(), chatId, () => selectMetadata(chatId),
+  );
 }
 
 export async function loadTaskChat(taskId: string): Promise<Chat | null> {
@@ -192,13 +193,17 @@ export async function loadTaskChat(taskId: string): Promise<Chat | null> {
 
 export async function deleteChat(chatId: string): Promise<boolean> {
   const userId = requirePersistenceUserId();
-  const result = getDatabase().prepare("DELETE FROM chats WHERE id = ? AND user_id = ?").run(chatId, userId);
+  const db = getDatabase();
+  invalidateChatMetadata(db, userId, chatId);
+  const result = db.prepare("DELETE FROM chats WHERE id = ? AND user_id = ?").run(chatId, userId);
   return result.changes > 0;
 }
 
 export async function deleteChatsByTaskId(taskId: string): Promise<number> {
   const userId = requirePersistenceUserId();
-  const result = getDatabase().prepare("DELETE FROM chats WHERE task_id = ? AND user_id = ?").run(taskId, userId);
+  const db = getDatabase();
+  invalidateChatMetadataForUser(db, userId, (chat) => chat.config.taskId === taskId);
+  const result = db.prepare("DELETE FROM chats WHERE task_id = ? AND user_id = ?").run(taskId, userId);
   return result.changes;
 }
 

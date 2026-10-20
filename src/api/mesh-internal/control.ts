@@ -1,5 +1,6 @@
 import { defineRoutes } from "@pablozaiden/webapp/server";
 import { describeMeshWorkerGeneration } from "../../core/mesh-worker-generation";
+import { assertMeshRequestTransport, meshRequestProtocolVersions } from "../../core/mesh-transport-security";
 import {
   MeshEnrollmentRequestSchema,
   MeshHealthCheckSchema,
@@ -39,7 +40,11 @@ export const meshControlRoutes = defineRoutes({
     tags: ["mesh", "internal", "discovery"],
     async GET(req): Promise<Response> {
       try {
-        const descriptor = await describeMeshWorkerGeneration(req.headers.get(MESH_PROTOCOL_VERSIONS_HEADER), req.headers.get("x-clanky-mesh-request-id"));
+        const descriptor = await describeMeshWorkerGeneration(
+          req.headers.get(MESH_PROTOCOL_VERSIONS_HEADER),
+          req.headers.get("x-clanky-mesh-request-id"),
+          meshRequestProtocolVersions(req),
+        );
         return Response.json(descriptor, { headers: {
           [MESH_PROTOCOL_VERSION_HEADER]: String(descriptor.protocolVersion),
           [MESH_PROTOCOL_VERSIONS_HEADER]: serializeMeshProtocolVersions(),
@@ -87,6 +92,7 @@ export const meshControlRoutes = defineRoutes({
         );
       }
       try {
+        assertMeshRequestTransport(req, parsed.data.protocolVersion);
         requireMeshRuntimeRole("controller");
         return Response.json(await meshManager.receiveEnrollmentRequest(parsed.data));
       } catch (error) {
@@ -113,6 +119,7 @@ export const meshControlRoutes = defineRoutes({
       );
       if (headerError) return headerError;
       try {
+        assertMeshRequestTransport(req, parsed.data.protocolVersion);
         requireMeshRuntimeRole("worker");
         await meshManager.receiveRevocationNotice(parsed.data);
         return Response.json({ success: true });
@@ -140,6 +147,7 @@ export const meshControlRoutes = defineRoutes({
       );
       if (headerError) return headerError;
       try {
+        assertMeshRequestTransport(req, parsed.data.protocolVersion);
         requireMeshRuntimeRole("worker");
         await meshManager.receiveWorkerKillRequest(parsed.data);
         return Response.json({ success: true, message: "Worker is shutting down." });
@@ -167,6 +175,7 @@ export const meshControlRoutes = defineRoutes({
       );
       if (headerError) return headerError;
       try {
+        assertMeshRequestTransport(req, parsed.data.protocolVersion);
         requireMeshRuntimeRole("worker");
         const includeRuntimeSnapshot =
           req.headers.get(MESH_RUNTIME_SNAPSHOT_HEADER)

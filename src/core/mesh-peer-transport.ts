@@ -2,6 +2,13 @@ import type { MeshPeerRoute } from "@/shared/mesh";
 import { assertMeshWorkerTlsCertificate } from "../persistence/mesh-worker-tls";
 import { DomainError } from "../domain/domain-error";
 import { resolveMeshRoute } from "./mesh-transport-config";
+import { assertMeshTransportSecurity } from "./mesh-transport-security";
+
+function assertMeshPeerTransport(route: MeshPeerRoute, headers?: HeadersInit): void {
+  if (new Headers(headers).get("x-clanky-mesh-protocol-version") === "7") {
+    assertMeshTransportSecurity(7, new URL(route.kind === "direct" ? route.endpoint : route.relayUrl).protocol === "https:");
+  }
+}
 
 export interface MeshPeerRequest {
   method?: string;
@@ -111,6 +118,7 @@ const directTransport: MeshPeerTransport = {
     onDispatch?.();
     return fetchImpl(url, {
       ...init,
+      redirect: new Headers(init.headers).get("x-clanky-mesh-protocol-version") === "7" ? "error" : "follow",
       tls,
     });
   },
@@ -160,6 +168,7 @@ export function requestMeshPeer(
   path: string,
   request: MeshPeerRequest,
 ): Promise<Response> {
+  assertMeshPeerTransport(route, request.headers);
   return getMeshPeerTransport(route).request(route, path, request);
 }
 
@@ -168,5 +177,6 @@ export function openMeshPeerSocket(
   path: string,
   headers: Record<string, string>,
 ): MeshDuplexSocket {
+  assertMeshPeerTransport(route, headers);
   return getMeshPeerTransport(route).openSocket(route, path, headers);
 }

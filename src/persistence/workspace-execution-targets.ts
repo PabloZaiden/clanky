@@ -13,6 +13,7 @@ import {
 } from "@/shared/execution-host";
 import { getDatabase } from "./database";
 import { requirePersistenceUserId } from "./ownership";
+import { invalidateChatMetadataForUser } from "./chats/metadata-cache";
 import {
   ensureExecutionHost,
   getExecutionHostByRef,
@@ -238,6 +239,7 @@ export function restoreWorkspaceSshTargetState(
   userId: string = requirePersistenceUserId(),
 ): void {
   const db = getDatabase();
+  invalidateChatMetadataForUser(db, userId);
   const currentHost = getExecutionHostByRef(userId, workspaceTargetRef(workspaceId));
   db.transaction(() => {
     if (state.targetRow) {

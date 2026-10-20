@@ -827,6 +827,16 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: 84,
+    name: "mesh_v7_trusted_tls_rollout",
+    up: (db) => {
+      db.run(
+        "UPDATE mesh_protocol_state SET current_version = 7, updated_at = ? WHERE singleton = 1 AND current_version != 7",
+        [new Date().toISOString()],
+      );
+    },
+  },
 ];
 
 function getMigrationTableColumns(db: Database, tableName: string): string[] {

@@ -129,6 +129,7 @@ export class MeshAcpTransport implements AcpTransportLifecycle {
       );
       const session = sessionClient.getSessionConnection();
       const socket = openMeshPeerSocket(session.route, "api/mesh/internal/execution/acp", {
+        "x-clanky-mesh-protocol-version": String(session.protocolVersion),
         "x-clanky-mesh-session-id": session.sessionId,
         "x-clanky-mesh-session-token": session.sessionToken,
       });

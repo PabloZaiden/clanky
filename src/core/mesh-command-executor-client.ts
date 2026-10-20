@@ -32,6 +32,7 @@ import {
   type MeshExecutionProtocolVersion,
 } from "@/shared/mesh-execution";
 import { discoverMeshWorkerGeneration } from "./mesh-worker-generation";
+import { isSupportedMeshProtocolVersion } from "@/shared/mesh-protocol";
 import { assertHarnessMeshProtocol } from "./backend/harness-host-policy";
 import type {
   MeshExecutionAsyncCommandSnapshot,
@@ -42,7 +43,7 @@ import {
   ensureLocalMeshNodeIdentity,
   signMeshPayload,
 } from "../persistence/mesh-node-identity";
-import { decryptMeshPayload, encryptMeshPayload } from "./mesh-payload-crypto";
+import { decodeMeshPayload, encodeMeshEnvironment, type MeshPayloadFields } from "./mesh-payload";
 import { buildMeshExecutionSessionSigningPayload } from "./mesh-protocol";
 import { requestMeshPeer } from "./mesh-peer-transport";
 import { isMeshRelayResponseInterrupted, MeshRelayStreamError } from "./mesh-relay-errors";
@@ -108,11 +109,10 @@ interface MeshExecutionSession {
   renewable?: boolean;
 }
 
-interface MeshSessionResponse {
+interface MeshSessionResponse extends MeshPayloadFields {
   protocolVersion: MeshExecutionProtocolVersion;
   sessionId: string;
   expiresAt: string;
-  encryptedPayload: unknown;
 }
 
 interface MeshSessionRenewalResponse {
@@ -121,10 +121,9 @@ interface MeshSessionRenewalResponse {
   expiresAt: string;
 }
 
-interface MeshRpcResponse {
+interface MeshRpcResponse extends MeshPayloadFields {
   protocolVersion: MeshExecutionProtocolVersion;
   requestId: string;
-  encryptedPayload: unknown;
 }
 
 function asRecord(value: unknown, message: string): Record<string, unknown> {
@@ -451,7 +450,7 @@ export class MeshCommandExecutorClient {
     }
 
     const channel = this.channel;
-    let encryptedEnvironment: unknown;
+    let environmentFields: ReturnType<typeof encodeMeshEnvironment> = {};
     if (this.managedEnvironment !== undefined) {
       if (!registration.workerEncryptionPublicKey) {
         throw new DomainError(
@@ -459,7 +458,8 @@ export class MeshCommandExecutorClient {
           "The selected Mesh worker cannot receive the managed runtime environment.",
         );
       }
-      encryptedEnvironment = encryptMeshPayload(
+      environmentFields = encodeMeshEnvironment(
+        protocolVersion,
         this.managedEnvironment,
         registration.workerEncryptionPublicKey,
       );
@@ -480,7 +480,7 @@ export class MeshCommandExecutorClient {
         provider: this.provider,
         channel,
         ...(channel === MESH_HARNESS_CHANNEL ? { adapter: this.adapter, ownerId: localUserId } : {}),
-        ...(encryptedEnvironment === undefined ? {} : { encryptedEnvironment }),
+        ...environmentFields,
         nonce: crypto.randomUUID(),
         expiresAt: new Date(Date.now() + sessionTtlMs).toISOString(),
       };
@@ -501,7 +501,7 @@ export class MeshCommandExecutorClient {
     response = await postSessionRequest(request);
     const body = parseResponseShape<MeshSessionResponse>(
       response,
-      ["protocolVersion", "sessionId", "expiresAt", "encryptedPayload"],
+      ["protocolVersion", "sessionId", "expiresAt"],
       "The mesh execution session response is invalid.",
     );
     if (body.protocolVersion !== protocolVersion) {
@@ -511,7 +511,7 @@ export class MeshCommandExecutorClient {
       throw new DomainError("mesh_execution_response_invalid", "The mesh execution session ID is invalid.");
     }
     const decrypted = asRecord(
-      await decryptMeshPayload(body.encryptedPayload),
+      await decodeMeshPayload(protocolVersion, body),
       "The mesh execution session payload is invalid.",
     );
     if (typeof decrypted["sessionToken"] !== "string" || decrypted["sessionToken"].length < 32) {
@@ -660,6 +660,7 @@ export class MeshCommandExecutorClient {
           : "api/mesh/internal/execution/acp/renew",
       request,
       {
+        "x-clanky-mesh-protocol-version": String(session.protocolVersion),
         "x-clanky-mesh-session-id": session.sessionId,
         "x-clanky-mesh-session-token": session.sessionToken,
         ...(executionRenewal ? { "x-clanky-mesh-request-id": requestId } : {}),
@@ -1157,7 +1158,7 @@ export class MeshCommandExecutorClient {
           commandDispatched = true;
           const body = parseResponseShape<MeshRpcResponse>(
             response,
-            ["protocolVersion", "requestId", "encryptedPayload"],
+            ["protocolVersion", "requestId"],
             "The mesh asynchronous command response is invalid.",
           );
           if (body.protocolVersion !== session.protocolVersion || body.requestId !== requestId) {
@@ -1166,7 +1167,7 @@ export class MeshCommandExecutorClient {
               "The mesh asynchronous command response does not match the request.",
             );
           }
-          return parseAsyncCommandSnapshot(await decryptMeshPayload(body.encryptedPayload));
+          return parseAsyncCommandSnapshot(await decodeMeshPayload(session.protocolVersion, body));
         } catch (error) {
           commandDispatched ||= error instanceof DomainError
             && error.details["requestDispatched"] === true;
@@ -1368,6 +1369,7 @@ export class MeshCommandExecutorClient {
             headers: {
               accept: "application/json",
               "content-type": "application/octet-stream",
+              "x-clanky-mesh-protocol-version": String(session.protocolVersion),
               "x-clanky-mesh-session-id": session.sessionId,
               "x-clanky-mesh-session-token": session.sessionToken,
             },
@@ -1471,6 +1473,7 @@ export class MeshCommandExecutorClient {
               method: "GET",
               headers: {
                 accept: "application/octet-stream",
+                "x-clanky-mesh-protocol-version": String(session.protocolVersion),
                 "x-clanky-mesh-session-id": session.sessionId,
                 "x-clanky-mesh-session-token": session.sessionToken,
               },
@@ -1691,13 +1694,13 @@ export class MeshCommandExecutorClient {
           commandDispatched = true;
           const body = parseResponseShape<MeshRpcResponse>(
             response,
-            ["protocolVersion", "requestId", "encryptedPayload"],
+            ["protocolVersion", "requestId"],
             "The mesh execution RPC response is invalid.",
           );
           if (body.protocolVersion !== session.protocolVersion || body.requestId !== requestId) {
             throw new DomainError("mesh_execution_response_invalid", "The mesh execution RPC response does not match the request.");
           }
-          return await decryptMeshPayload(body.encryptedPayload) as T;
+          return await decodeMeshPayload(session.protocolVersion, body) as T;
         } catch (error) {
           commandDispatched ||= error instanceof DomainError
             && error.details["requestDispatched"] === true;
@@ -1811,6 +1814,9 @@ export class MeshCommandExecutorClient {
         method,
         headers: {
           "content-type": "application/json",
+          ...(typeof body === "object" && body !== null && "protocolVersion" in body
+            && isSupportedMeshProtocolVersion(body.protocolVersion)
+            ? { "x-clanky-mesh-protocol-version": String(body.protocolVersion) } : {}),
           ...headers,
         },
         body: JSON.stringify(body),

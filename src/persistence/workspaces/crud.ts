@@ -15,6 +15,7 @@ import {
   workspaceToRow,
 } from "./helpers";
 import { requirePersistenceUserId } from "../ownership";
+import { invalidateChatMetadataForUser } from "../chats/metadata-cache";
 import {
   EXECUTION_HOST_JOIN_COLUMNS,
   PROVISIONING_HOST_JOIN_COLUMNS,
@@ -230,6 +231,7 @@ export async function deleteWorkspace(id: string): Promise<boolean> {
   }
 
   const workspaceUserId = requirePersistenceUserId();
+  invalidateChatMetadataForUser(db, workspaceUserId, (chat) => chat.config.workspaceId === id);
   db.run("DELETE FROM workspaces WHERE id = ? AND user_id = ?", [id, workspaceUserId]);
   log.info("Workspace deleted", { id, name: workspace.name });
   return true;

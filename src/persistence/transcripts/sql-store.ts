@@ -21,6 +21,7 @@ import type {
 } from "@/shared";
 import { getDatabase } from "../database";
 import { requirePersistenceUserId } from "../ownership";
+import { invalidateChatMetadata } from "../chats/metadata-cache";
 import {
   decodeTranscriptCursor,
   encodeTranscriptCursor,
@@ -76,7 +77,7 @@ function upsertEntry(
   const extras = tool?.extras === undefined ? null : serializeJson(tool.extras);
   const message = entry.kind === "message" && isPersistedMessage(entry.payload) ? entry.payload : null;
 
-  db.prepare(`
+  db.query(`
     INSERT INTO ${config.entriesTable} (
       ${config.resourceColumn}, user_id, entry_id, kind, timestamp, sequence,
       payload, message_role, tool_name, tool_status, tool_input, tool_output, tool_extras, tool_has_image_preview,
@@ -128,7 +129,7 @@ function updateMeta(
   now: string,
 ): void {
   const config = getTableConfig(resource);
-  db.prepare(`
+  db.query(`
     INSERT INTO ${config.metaTable} (${config.resourceColumn}, user_id, revision, entry_count, updated_at)
     VALUES (?, ?, ?, ?, ?)
     ON CONFLICT(${config.resourceColumn}) DO UPDATE SET
@@ -147,6 +148,7 @@ export function replaceTranscriptEntriesForUserInTransaction(
   state: TranscriptStateLike,
   shouldIncludeLog: (entry: TaskLogEntry) => boolean = () => true,
 ): void {
+  if (resource === "chat") invalidateChatMetadata(db, userId, resourceId);
   const config = getTableConfig(resource);
   const entries = sortStateEntries(getTranscriptStateEntries(state, shouldIncludeLog));
   const now = new Date().toISOString();
@@ -203,6 +205,7 @@ export function syncTranscriptEntriesInTransaction(
   nextState: TranscriptStateLike,
   shouldIncludeLog: (entry: TaskLogEntry) => boolean = () => true,
 ): void {
+  if (resource === "chat") invalidateChatMetadata(db, userId, resourceId);
   const config = getTableConfig(resource);
   const previousEntries = new Map(
     getTranscriptStateEntries(previousState, shouldIncludeLog)
@@ -278,6 +281,9 @@ export function applyTranscriptChangeSetInTransaction(
   userId: string,
   changes: TranscriptChangeSet,
 ): void {
+  if (resource === "chat" && (changes.upserts.length > 0 || changes.deletes.length > 0)) {
+    invalidateChatMetadata(db, userId, resourceId);
+  }
   if (changes.upserts.length === 0 && changes.deletes.length === 0) {
     if (changes.revision !== undefined) {
       const now = new Date().toISOString();
@@ -296,13 +302,13 @@ export function applyTranscriptChangeSetInTransaction(
 
   const config = getTableConfig(resource);
   const now = new Date().toISOString();
-  const existingSequenceStmt = db.prepare(`
+  const existingSequenceStmt = db.query(`
     SELECT sequence
     FROM ${config.entriesTable}
     WHERE ${config.resourceColumn} = ? AND user_id = ? AND entry_id = ?
     LIMIT 1
   `);
-  const deleteStmt = db.prepare(`
+  const deleteStmt = db.query(`
     DELETE FROM ${config.entriesTable}
     WHERE ${config.resourceColumn} = ? AND user_id = ? AND entry_id = ?
   `);

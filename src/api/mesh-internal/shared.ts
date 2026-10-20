@@ -1,4 +1,16 @@
 import { domainErrorResponse, errorResponse } from "../helpers";
+import { meshExecutionGateway } from "../../core/mesh-execution-gateway";
+import { assertMeshRequestTransport } from "../../core/mesh-transport-security";
+import type { MeshProtocolVersion } from "@/shared/mesh-protocol";
+
+export function assertMeshExecutionTransport(
+  req: Request,
+  session: { sessionId: string; sessionToken: string; protocolVersion?: MeshProtocolVersion },
+): void {
+  assertMeshRequestTransport(req, meshExecutionGateway.getSessionProtocolVersion(
+    session.sessionId, session.sessionToken, session.protocolVersion,
+  ));
+}
 
 export function internalMeshErrorResponse(error: unknown): Response {
   return domainErrorResponse(error, {

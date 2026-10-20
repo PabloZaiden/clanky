@@ -27,6 +27,11 @@ interface MeshRegistration {
   workerTransport: string;
   grantStatus: string;
   lastSeenAt: string | null;
+  routeSecurity: {
+    protocolVersion: number;
+    payloadProtection: string;
+    fallbackReason: string | null;
+  };
   route: {
     kind: string;
     tlsTrust: string;
@@ -318,6 +323,11 @@ test("compiled controller and worker support Mesh chats, shared worktrees, and r
       workerEndpoint: worker.baseUrl,
       workerTransport: "https",
       grantStatus: "active",
+      routeSecurity: {
+        protocolVersion: 7,
+        payloadProtection: "trusted-tls",
+        fallbackReason: null,
+      },
       route: expect.objectContaining({
         kind: "direct",
         tlsTrust: "pinned",
@@ -877,6 +887,11 @@ test("compiled relays route worker execution, reconnect, and enforce revocation"
     const registration = registered.body.workers[0]!;
     expect(registration.workerEndpoint).toBe(westRelay.baseUrl);
     expect(registration.route.kind).toBe("relay");
+    expect(registration.routeSecurity).toEqual({
+      protocolVersion: 6,
+      payloadProtection: "legacy-encrypted",
+      fallbackReason: "tls-unavailable",
+    });
 
     const probe = process.platform === "win32"
       ? {

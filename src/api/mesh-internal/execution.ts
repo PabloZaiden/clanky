@@ -10,7 +10,8 @@ import { MESH_ACP_CHANNEL, MESH_EXECUTION_CHANNEL, MESH_HARNESS_CHANNEL } from "
 import { meshHarnessGateway } from "../../core/mesh-harness-gateway";
 import { meshExecutionGateway } from "../../core/mesh-execution-gateway";
 import { meshAcpGateway } from "../../core/mesh-acp-gateway";
-import { encryptMeshPayload } from "../../core/mesh-payload-crypto";
+import { encodeMeshPayload } from "../../core/mesh-payload";
+import { assertMeshRequestTransport } from "../../core/mesh-transport-security";
 import { DomainError } from "../../domain/domain-error";
 import { requireMeshRuntimeRole } from "../../core/mesh-runtime";
 import { errorResponse } from "../helpers";
@@ -19,6 +20,7 @@ import {
   internalMeshErrorResponse,
   validateMeshIdentityHeaders,
   validateMeshSessionHeaders,
+  assertMeshExecutionTransport,
 } from "./shared";
 
 export const meshExecutionRoutes = defineRoutes({
@@ -43,6 +45,7 @@ export const meshExecutionRoutes = defineRoutes({
         );
         if (headerError) return headerError;
         try {
+          assertMeshExecutionTransport(req, parsed.data);
           requireMeshRuntimeRole("worker");
           const expiresAt = await meshExecutionGateway.renewSession(
             parsed.data.sessionId,
@@ -77,6 +80,7 @@ export const meshExecutionRoutes = defineRoutes({
       );
       if (headerError) return headerError;
       try {
+        assertMeshRequestTransport(req, parsed.data.protocolVersion);
         requireMeshRuntimeRole("worker");
         const session = await meshExecutionGateway.createSession(parsed.data);
         if (req.signal.aborted) {
@@ -90,7 +94,8 @@ export const meshExecutionRoutes = defineRoutes({
           protocolVersion: session.protocolVersion,
           sessionId: session.sessionId,
           expiresAt: session.expiresAt,
-          encryptedPayload: encryptMeshPayload(
+          ...encodeMeshPayload(
+            session.protocolVersion,
             {
               sessionToken: session.sessionToken,
               executionRoot: session.executionRoot,
@@ -116,6 +121,7 @@ export const meshExecutionRoutes = defineRoutes({
       );
       if (headerError) return headerError;
       try {
+        assertMeshExecutionTransport(req, parsed.data);
         requireMeshRuntimeRole("worker");
         const channel = meshExecutionGateway.releaseSession(
           parsed.data.sessionId,
@@ -150,6 +156,7 @@ export const meshExecutionRoutes = defineRoutes({
       );
       if (headerError) return headerError;
       try {
+        assertMeshExecutionTransport(req, parsed.data);
         const encryptionPublicKey = meshExecutionGateway.getSessionEncryptionPublicKey(
           parsed.data.sessionId,
           parsed.data.sessionToken,
@@ -158,7 +165,7 @@ export const meshExecutionRoutes = defineRoutes({
         return Response.json({
           protocolVersion: parsed.data.protocolVersion,
           requestId: parsed.data.requestId,
-          encryptedPayload: encryptMeshPayload(result, encryptionPublicKey),
+          ...encodeMeshPayload(parsed.data.protocolVersion, result, encryptionPublicKey),
         });
       } catch (error) {
         return internalMeshErrorResponse(error);
@@ -184,6 +191,7 @@ export const meshExecutionRoutes = defineRoutes({
       );
       if (headerError) return headerError;
       try {
+        assertMeshExecutionTransport(req, parsed.data);
         requireMeshRuntimeRole("worker");
         const encryptionPublicKey = meshExecutionGateway.getSessionEncryptionPublicKey(
           parsed.data.sessionId,
@@ -213,7 +221,7 @@ export const meshExecutionRoutes = defineRoutes({
         return Response.json({
           protocolVersion: parsed.data.protocolVersion,
           requestId: parsed.data.requestId,
-          encryptedPayload: encryptMeshPayload(snapshot, encryptionPublicKey),
+          ...encodeMeshPayload(parsed.data.protocolVersion, snapshot, encryptionPublicKey),
         });
       } catch (error) {
         return internalMeshErrorResponse(error);
@@ -240,6 +248,7 @@ export const meshExecutionRoutes = defineRoutes({
         return errorResponse("mesh_execution_request_invalid", "A file path is required.", 400);
       }
       try {
+        assertMeshExecutionTransport(req, { sessionId, sessionToken });
         const stream = await meshExecutionGateway.streamFile(
           sessionId,
           sessionToken,
@@ -277,6 +286,7 @@ export const meshExecutionRoutes = defineRoutes({
         return errorResponse("mesh_execution_request_invalid", "A file write body is required.", 400);
       }
       try {
+        assertMeshExecutionTransport(req, { sessionId, sessionToken });
         const result = await meshExecutionGateway.writeFileStream(
           sessionId,
           sessionToken,

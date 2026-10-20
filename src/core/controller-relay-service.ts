@@ -5,7 +5,7 @@
 import { createLogger } from "@pablozaiden/webapp/server";
 import {
   ControllerRelayNameSchema,
-  MeshRelayWellKnownDescriptorV6Schema,
+  MeshRelayWellKnownDescriptorSchema,
   type ControllerRelayPairingStatus,
   type ControllerRelayStatusItem,
 } from "@/contracts/schemas/mesh-relay";
@@ -16,7 +16,7 @@ import {
   type MeshRelayWellKnownDescriptor,
 } from "@/shared/mesh-relay";
 import { MESH_PROTOCOL_VERSIONS_HEADER, serializeMeshProtocolVersions } from "@/shared/mesh-protocol";
-import { MESH_SUPPORTED_PROTOCOL_VERSIONS, negotiateMeshProtocolVersion } from "@/shared/mesh-protocol";
+import { meshTransportProtocolVersions, negotiateMeshProtocolVersion } from "@/shared/mesh-protocol";
 import type { MeshEnrollmentRoute } from "@/contracts/schemas/mesh";
 import type { MeshRelayPeerRoute } from "@/shared/mesh";
 import {
@@ -522,7 +522,7 @@ export class ControllerRelayService {
           method: "GET",
           headers: {
             accept: "application/json",
-            [MESH_PROTOCOL_VERSIONS_HEADER]: serializeMeshProtocolVersions(),
+            [MESH_PROTOCOL_VERSIONS_HEADER]: serializeMeshProtocolVersions(meshTransportProtocolVersions(relayUrl)),
           },
           signal: controller.signal,
         },
@@ -560,9 +560,9 @@ export class ControllerRelayService {
           { cause: error },
         );
       }
-      const generation = negotiateMeshDescriptorGeneration(raw);
+      const generation = negotiateMeshDescriptorGeneration(raw, meshTransportProtocolVersions(relayUrl));
       if (!generation) throw new DomainError("mesh_relay_descriptor_invalid", "The Mesh relay has no highest mutually supported generation.");
-      const parsed = MeshRelayWellKnownDescriptorV6Schema.safeParse(raw);
+      const parsed = MeshRelayWellKnownDescriptorSchema.safeParse(raw);
       if (!parsed.success) {
         throw new DomainError(
           "mesh_relay_descriptor_invalid",
@@ -570,7 +570,7 @@ export class ControllerRelayService {
           { cause: parsed.error },
         );
       }
-      if (!parsed.data.negotiatedProtocolVersion || parsed.data.negotiatedProtocolVersion !== negotiateMeshProtocolVersion(MESH_SUPPORTED_PROTOCOL_VERSIONS, parsed.data.supportedProtocolVersions)) {
+      if (!parsed.data.negotiatedProtocolVersion || parsed.data.negotiatedProtocolVersion !== negotiateMeshProtocolVersion(meshTransportProtocolVersions(relayUrl), parsed.data.supportedProtocolVersions)) {
         throw new DomainError(
           "mesh_relay_descriptor_invalid",
           "The Mesh relay does not negotiate the required protocol generation.",
@@ -676,6 +676,7 @@ export class ControllerRelayService {
         protocolVersion: pairing.relayNegotiatedProtocolVersion!,
       },
       dispatch,
+      refreshProtocol: async () => (await this.refreshPairingProtocol(pairing)).relayNegotiatedProtocolVersion!,
       onAuthenticated: () => {
         runtime.authorizationDirty = true;
         this.requestAuthorizationRefresh(runtime);

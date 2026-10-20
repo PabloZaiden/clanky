@@ -5,7 +5,7 @@
 import type { MeshRelayPeerIdentity } from "@/shared/mesh-relay";
 import { normalizeMeshRelayOrigin } from "@/shared/mesh-relay";
 import {
-  MESH_PROTOCOL_VERSION,
+  MESH_LEGACY_PROTOCOL_VERSION,
   isMeshProtocolGeneration,
   isSupportedMeshProtocolVersion,
   normalizeMeshProtocolVersions,
@@ -111,7 +111,7 @@ function mapPairing(row: ControllerRelayPairingRow): ControllerRelayPairing {
     relaySupportedProtocolVersions: supportedProtocolVersions,
     relayPreferredProtocolVersion: isMeshProtocolGeneration(row.relay_preferred_protocol_version)
       ? row.relay_preferred_protocol_version
-      : MESH_PROTOCOL_VERSION,
+      : MESH_LEGACY_PROTOCOL_VERSION,
     relayNegotiatedProtocolVersion: isSupportedMeshProtocolVersion(row.relay_negotiated_protocol_version)
       ? row.relay_negotiated_protocol_version
       : null,
@@ -188,10 +188,10 @@ export function saveControllerRelayPairing(
     input.relayBinaryVersion ?? null,
     JSON.stringify(
       input.relaySupportedProtocolVersions
-        ?? [MESH_PROTOCOL_VERSION],
+        ?? [MESH_LEGACY_PROTOCOL_VERSION],
     ),
-    input.relayPreferredProtocolVersion ?? MESH_PROTOCOL_VERSION,
-    input.relayNegotiatedProtocolVersion ?? MESH_PROTOCOL_VERSION,
+    input.relayPreferredProtocolVersion ?? MESH_LEGACY_PROTOCOL_VERSION,
+    input.relayNegotiatedProtocolVersion ?? MESH_LEGACY_PROTOCOL_VERSION,
     now,
   );
   return {
@@ -202,12 +202,12 @@ export function saveControllerRelayPairing(
     updatedAt: now,
     relayBinaryVersion: input.relayBinaryVersion ?? null,
     relaySupportedProtocolVersions: [
-      ...(input.relaySupportedProtocolVersions ?? [MESH_PROTOCOL_VERSION]),
+      ...(input.relaySupportedProtocolVersions ?? [MESH_LEGACY_PROTOCOL_VERSION]),
     ],
     relayPreferredProtocolVersion: input.relayPreferredProtocolVersion
-      ?? MESH_PROTOCOL_VERSION,
+      ?? MESH_LEGACY_PROTOCOL_VERSION,
     relayNegotiatedProtocolVersion: input.relayNegotiatedProtocolVersion
-      ?? MESH_PROTOCOL_VERSION,
+      ?? MESH_LEGACY_PROTOCOL_VERSION,
   };
 }
 

@@ -14,6 +14,7 @@ import { meshExecutionGateway } from "./mesh-execution-gateway";
 import { meshTcpTunnelGateway } from "./mesh-tcp-tunnel-gateway";
 import { meshTerminalGateway } from "./mesh-terminal-gateway";
 import { requireMeshRuntimeRole } from "./mesh-runtime";
+import { assertMeshTransportSecurity } from "./mesh-transport-security";
 
 const log = createLogger("core:mesh-inbound-socket");
 
@@ -67,7 +68,7 @@ export async function openMeshInboundSocket(
   path: string,
   headers: Record<string, string>,
   socket: MeshInboundSocket,
-  signal?: AbortSignal,
+  options?: { signal?: AbortSignal; secureTransport?: boolean },
 ): Promise<MeshInboundSocketAttachment> {
   requireMeshRuntimeRole("worker");
   const pathname = new URL(
@@ -87,8 +88,9 @@ export async function openMeshInboundSocket(
       "mesh_execution_session_invalid",
       "Mesh ACP session headers are required.",
     );
+    assertMeshTransportSecurity(meshExecutionGateway.getSessionProtocolVersion(sessionId, sessionToken), options?.secureTransport === true);
     await meshExecutionGateway.getAcpSessionConfig(sessionId, sessionToken);
-    await meshAcpGateway.open(socket, sessionId, sessionToken, signal);
+    await meshAcpGateway.open(socket, sessionId, sessionToken, options?.signal);
     return {
       path: pathname,
       sessionId,
@@ -107,8 +109,8 @@ export async function openMeshInboundSocket(
       "mesh_terminal_session_invalid",
       "Mesh terminal session headers are required.",
     );
-    await meshTerminalGateway.authorize(sessionId, sessionToken);
-    await meshTerminalGateway.open(socket, sessionId, sessionToken, signal);
+    assertMeshTransportSecurity(await meshTerminalGateway.authorize(sessionId, sessionToken), options?.secureTransport === true);
+    await meshTerminalGateway.open(socket, sessionId, sessionToken, options?.signal);
     return {
       path: pathname,
       sessionId,
@@ -137,8 +139,8 @@ export async function openMeshInboundSocket(
     "mesh_tunnel_session_invalid",
     "Mesh TCP tunnel headers are required.",
   );
-  await meshTcpTunnelGateway.authorize(sessionId, sessionToken);
-  await meshTcpTunnelGateway.open(socket, sessionId, sessionToken, signal);
+  assertMeshTransportSecurity(await meshTcpTunnelGateway.authorize(sessionId, sessionToken), options?.secureTransport === true);
+  await meshTcpTunnelGateway.open(socket, sessionId, sessionToken, options?.signal);
   return {
     path: pathname,
     sessionId,

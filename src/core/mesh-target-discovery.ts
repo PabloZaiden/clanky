@@ -2,7 +2,7 @@
  * Bounded discovery for a controller or relay enrollment target.
  */
 
-import { MeshWellKnownDescriptorV6Schema } from "@/contracts/schemas/mesh-relay";
+import { MeshWellKnownDescriptorSchema } from "@/contracts/schemas/mesh-relay";
 import { negotiateMeshDescriptorGeneration } from "./mesh-protocol-version";
 import {
   MESH_RUNTIME_SNAPSHOT_HEADER,
@@ -14,8 +14,7 @@ import {
   type MeshWellKnownDescriptor,
 } from "@/shared/mesh-relay";
 import {
-  MESH_PROTOCOL_VERSION,
-  MESH_SUPPORTED_PROTOCOL_VERSIONS,
+  meshTransportProtocolVersions,
   negotiateMeshProtocolVersion,
   MESH_PROTOCOL_VERSIONS_HEADER,
   serializeMeshProtocolVersions,
@@ -130,7 +129,7 @@ export async function discoverMeshEnrollmentTarget(
         method: "GET",
         headers: {
           accept: "application/json",
-          [MESH_PROTOCOL_VERSIONS_HEADER]: serializeMeshProtocolVersions(),
+          [MESH_PROTOCOL_VERSIONS_HEADER]: serializeMeshProtocolVersions(meshTransportProtocolVersions(normalizedTarget)),
         },
         signal: controller.signal,
       },
@@ -159,9 +158,9 @@ export async function discoverMeshEnrollmentTarget(
         { cause: error },
       );
     }
-    const generation = negotiateMeshDescriptorGeneration(raw);
+    const generation = negotiateMeshDescriptorGeneration(raw, meshTransportProtocolVersions(normalizedTarget));
     if (!generation) throw new DomainError("mesh_enrollment_discovery_invalid", "The Mesh target has no highest mutually supported generation.");
-    const parsed = MeshWellKnownDescriptorV6Schema.safeParse(raw);
+    const parsed = MeshWellKnownDescriptorSchema.safeParse(raw);
     if (!parsed.success) {
       throw new DomainError(
         "mesh_enrollment_discovery_invalid",
@@ -170,7 +169,7 @@ export async function discoverMeshEnrollmentTarget(
       );
     }
     if (!parsed.data.negotiatedProtocolVersion || parsed.data.negotiatedProtocolVersion !== negotiateMeshProtocolVersion(
-      MESH_SUPPORTED_PROTOCOL_VERSIONS, parsed.data.supportedProtocolVersions,
+      meshTransportProtocolVersions(normalizedTarget), parsed.data.supportedProtocolVersions,
     )) {
       throw new DomainError(
         "mesh_enrollment_discovery_invalid",
@@ -199,9 +198,9 @@ export async function discoverMeshEnrollmentTarget(
     const descriptor = parsed.data;
     const controllerVersions = descriptor.role === "relay"
       ? descriptor.controllerSupportedProtocolVersions ?? []
-      : [MESH_PROTOCOL_VERSION];
+      : descriptor.supportedProtocolVersions;
     const negotiated = descriptor.role === "relay"
-      ? negotiateMeshProtocolVersion(MESH_SUPPORTED_PROTOCOL_VERSIONS, descriptor.supportedProtocolVersions.filter((version) => controllerVersions.includes(version)))
+      ? negotiateMeshProtocolVersion(meshTransportProtocolVersions(normalizedTarget), descriptor.supportedProtocolVersions.filter((version) => controllerVersions.includes(version)))
       : descriptor.negotiatedProtocolVersion;
     if (!negotiated) throw new DomainError("mesh_enrollment_discovery_invalid", "The controller, relay and worker have no mutually supported generation.");
     return {

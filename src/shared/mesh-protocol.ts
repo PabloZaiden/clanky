@@ -4,12 +4,18 @@
  * Generations cover controllers, relays and workers together.
  */
 
-export const MESH_PROTOCOL_VERSION = 6 as const;
-export const MESH_SUPPORTED_PROTOCOL_VERSIONS = [MESH_PROTOCOL_VERSION] as const;
+export const MESH_PROTOCOL_VERSION = 7 as const;
+export const MESH_LEGACY_PROTOCOL_VERSION = 6 as const;
+export const MESH_SUPPORTED_PROTOCOL_VERSIONS = [MESH_PROTOCOL_VERSION, MESH_LEGACY_PROTOCOL_VERSION] as const;
 export const MESH_PROTOCOL_PREFERRED_VERSION = MESH_PROTOCOL_VERSION;
 
 export type MeshProtocolGeneration = number;
 export type MeshProtocolVersion = typeof MESH_SUPPORTED_PROTOCOL_VERSIONS[number];
+
+export function meshTransportProtocolVersions(origin: string): readonly MeshProtocolVersion[] {
+  return ["https:", "wss:"].includes(new URL(origin).protocol)
+    ? MESH_SUPPORTED_PROTOCOL_VERSIONS : [MESH_LEGACY_PROTOCOL_VERSION];
+}
 
 export const MESH_PROTOCOL_VERSIONS_HEADER =
   "x-clanky-mesh-protocol-versions";

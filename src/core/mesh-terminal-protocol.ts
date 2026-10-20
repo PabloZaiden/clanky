@@ -28,7 +28,7 @@ export function buildMeshTerminalSessionSigningPayload(
     request.connectionMode,
     request.useTmux,
     request.allowPersistentSessionCreate,
-    request.encryptedEnvironment ?? null,
+    request.protocolVersion >= 7 ? request.environment ?? null : request.encryptedEnvironment ?? null,
     request.nonce,
     request.expiresAt,
   ]);

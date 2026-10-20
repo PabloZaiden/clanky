@@ -162,6 +162,7 @@ export function buildMeshExecutionSessionSigningPayload(
   if (envelope.encryptedEnvironment !== undefined) {
     payload.push(envelope.encryptedEnvironment);
   }
+  if (envelope.protocolVersion >= 7) payload.push(envelope.environment ?? null);
   payload.push(envelope.adapter ?? null, envelope.ownerId ?? null);
   payload.push(envelope.nonce, envelope.expiresAt);
   return JSON.stringify(payload);

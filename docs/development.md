@@ -128,6 +128,56 @@ updates that download, review the new package and update its checksum and
 extraction paths together. Linux rendering can still differ from Safari on
 macOS/iOS even with the same font family.
 
+### Chat metadata reads
+
+Per-ID chat metadata and stream-control reads use a connection-scoped,
+per-user in-memory LRU cache
+(256 entries, 16 MiB of serialized metadata, at most 1 MiB per entry). Reads
+return independent copies; transcripts remain in their existing storage and
+live-stream owners. Collection queries still read SQLite.
+Stream-control reads copy only status, interruption and session-binding fields,
+including independent execution-host values, rather than the full snapshot.
+Native observers check those fresh values on every event. Stored bindings are
+validated when decoded; typed comparisons retain ownership checks without
+serializing and parsing the same binding again for each delta.
+Metadata, native activity projections, and transcript writes invalidate affected
+entries before changing SQLite, and normal chat writes repopulate them from
+committed database results.
+Reads inside transactions bypass the cache so rollback cannot publish partial
+state. Trash, cascade deletion, execution-host changes, and database reset also
+invalidate affected metadata. There is no TTL or SQLite version query on hits.
+As with the application's persistence ownership, writes must go through the
+controller; editing the database from another process while it runs is not a
+cache-coherent operation.
+
+Use `ChatStateService.mutateMetadata` for changes that do not read or modify
+transcript collections, such as native unfinished-message checkpoints and input
+admissions. It shares the serialized mutation queue and transactional write path
+with full state mutations, but avoids transcript hydration and synchronization.
+Question projections that depend on existing message bodies retain the full
+transcript path. Metadata mutations must not replace transcript counts with the
+empty metadata snapshot's collection lengths. Hot state/transcript writes use
+Bun's connection-local bounded statement cache through `db.query`; persistence
+and checkpoint timing are unchanged.
+State writes encode only changed state fields, leaving configuration and
+execution-host columns untouched. Mutation callbacks replace changed objects
+and arrays rather than mutating their input snapshots in place.
+Writes use `UPDATE RETURNING` for authoritative
+revision/status guards, reading prior status/harness only when the mutation
+needs it, and decode metadata once after transcript effects. Cache refreshes
+reuse private unchanged branches only when the cached revision matches that
+guard; changed nested values are defensively copied.
+Cold or mismatched snapshots use the full write-through path, and failed or
+enclosing transactions cannot publish partial cache state.
+
+For local profiling, subscribe to the standard `diagnostics_channel` channel
+`clanky.chat-metadata-cache` from a Bun preload and retain the channel reference
+for the observation lifetime. Events contain only
+`{ operation, count }`: `hit`, `miss`, `store`, `invalidate`, `evict`, `clear`,
+`transaction`, and `oversized`. `invalidate` counts removed cached snapshots,
+not database misses; successful writes can immediately `store` a fresh snapshot.
+The channel retains no history and publishes nothing without subscribers.
+
 ### Application realtime
 
 Webapp owns one authenticated application WebSocket per browser tab, including

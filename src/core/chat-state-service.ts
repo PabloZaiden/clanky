@@ -29,6 +29,8 @@ import { createTranscriptFromStoragePage } from "./transcript-service";
 import { getWorkspace, touchWorkspace } from "../persistence/workspaces";
 import type {
   Chat,
+  ChatMetadata,
+  ChatMetadataState,
   ChatConfig,
   ChatState,
   ChatStatus,
@@ -74,7 +76,7 @@ export class ChatStateService implements ChatStatePort {
   }
 
   async getChatMessage(chatId: string, messageId: string): Promise<MessageData | null> {
-    if (!await this.getChatSummary(chatId)) return null;
+    if (!await this.getChatStreamControlState(chatId)) return null;
     return getChatMessageFromTranscript(chatId, messageId);
   }
 
@@ -238,6 +240,38 @@ export class ChatStateService implements ChatStatePort {
       // Keep the mutation synchronous so provider I/O never holds the state queue.
       const state = update(current);
       return state ? await this.persistState(current, state) : current;
+    });
+  }
+
+  mutateMetadata(
+    chatId: string,
+    update: (current: ChatMetadata) => ChatMetadataState | undefined,
+  ): Promise<ChatMetadata> {
+    return this.mutations.run(chatId, async () => {
+      const current = await this.getChatSummary(chatId);
+      if (!current) throw new HarnessError("harness_session_not_found", "The chat is unavailable.");
+      const state = update(current);
+      if (!state) return current;
+      const questionsChanged = state.harness?.questions !== current.state.harness?.questions
+        || state.harness?.inputs !== current.state.harness?.inputs && Boolean(state.harness?.questions?.length);
+      // Question projections need the existing message bodies, unlike other metadata.
+      const transcript = questionsChanged ? await this.getChat(chatId) : current;
+      if (!transcript) throw new HarnessError("harness_session_not_found", "The chat is unavailable.");
+      const previous = {
+        ...current,
+        state: {
+          ...current.state,
+          messages: transcript.state.messages,
+          logs: transcript.state.logs,
+          toolCalls: transcript.state.toolCalls,
+        },
+      };
+      return this.persistState(previous, {
+        ...state,
+        messages: previous.state.messages,
+        logs: previous.state.logs,
+        toolCalls: previous.state.toolCalls,
+      });
     });
   }
 
@@ -417,7 +451,7 @@ export class ChatStateService implements ChatStatePort {
     });
   }
 
-  emitChatUpdated(chat: Chat, timestamp?: string): void {
+  emitChatUpdated(chat: ChatMetadata, timestamp?: string): void {
     this.emitter.emit({
       type: "chat.updated",
       chatId: chat.config.id,
