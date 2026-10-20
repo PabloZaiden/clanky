@@ -10,7 +10,7 @@ import type { HarnessEvent, ProviderImageFileReference } from "@/shared/harness-
 import type { HarnessSessionHistory } from "@/shared/harness-history";
 import type { ModelInfo } from "@/contracts";
 import type { MeshHarnessOperation } from "@/contracts/schemas/mesh-harness";
-import { MeshHarnessEncryptedPayloadSchema, MeshHarnessEventSchema, MeshHarnessSessionHistorySchema } from "@/contracts/schemas/mesh-harness";
+import { MeshHarnessEventSchema, MeshHarnessSessionHistorySchema } from "@/contracts/schemas/mesh-harness";
 import { HarnessConversationBindingSchema, HarnessConversationStateSchema } from "@/contracts/schemas/harness";
 import {
   MESSAGE_ATTACHMENT_MAX_BYTES,
@@ -19,7 +19,7 @@ import {
 } from "@/shared/message-attachments";
 import { MeshCommandExecutorClient } from "../core/mesh-command-executor-client";
 import { requestMeshPeer } from "../core/mesh-peer-transport";
-import { encryptMeshPayload, decryptMeshPayload } from "../core/mesh-payload-crypto";
+import { encodeMeshPayload, decodeMeshPayload, type MeshPayloadFields } from "../core/mesh-payload";
 import { MESH_HARNESS_CHANNEL } from "@/shared/mesh-execution";
 import { HarnessEventHub } from "./harness-event-hub";
 import { HarnessError } from "./harness-errors";
@@ -124,16 +124,16 @@ export class MeshHarnessBackend implements Backend {
     try {
       const response = await requestMeshPeer(connection.route, "api/mesh/internal/harness/rpc", {
         method: "POST", signal: controller.signal,
-        headers: { "content-type": "application/json", "x-clanky-mesh-session-id": connection.sessionId, "x-clanky-mesh-request-id": requestId },
+        headers: { "content-type": "application/json", "x-clanky-mesh-protocol-version": String(connection.protocolVersion), "x-clanky-mesh-session-id": connection.sessionId, "x-clanky-mesh-request-id": requestId },
         body: JSON.stringify({
           protocolVersion: connection.protocolVersion, sessionId: connection.sessionId, sessionToken: connection.sessionToken, requestId,
-          encryptedPayload: encryptMeshPayload(operation, connection.workerEncryptionPublicKey),
+          ...encodeMeshPayload(connection.protocolVersion, operation, connection.workerEncryptionPublicKey),
         }),
       });
       await this.assertResponse(response);
-      const body = await readMeshControlResponseJson(response, { signal: controller.signal, maxBytes: MAX_FRAME_BYTES }) as { protocolVersion: unknown; requestId: unknown; encryptedPayload: unknown };
+      const body = await readMeshControlResponseJson(response, { signal: controller.signal, maxBytes: MAX_FRAME_BYTES }) as MeshPayloadFields & { protocolVersion: unknown; requestId: unknown };
       if (body.protocolVersion !== connection.protocolVersion || body.requestId !== requestId) throw new HarnessError("harness_request_failed", "The native Mesh response does not match its request.");
-      return await decryptMeshPayload(MeshHarnessEncryptedPayloadSchema.parse(body.encryptedPayload)) as T;
+      return await decodeMeshPayload(connection.protocolVersion, body) as T;
     } catch (error) {
       if (error instanceof DomainError) throw error;
       throw new HarnessError("harness_transport_closed", "The native Mesh request could not be completed.", { cause: error });
@@ -227,8 +227,8 @@ export class MeshHarnessBackend implements Backend {
     const requestId = crypto.randomUUID();
     const response = await requestMeshPeer(connection.route, "api/mesh/internal/harness/events", {
       method: "POST", signal, headers: {
-        "content-type": "application/json", "x-clanky-mesh-session-id": connection.sessionId, "x-clanky-mesh-request-id": requestId,
-      }, body: JSON.stringify({ protocolVersion: connection.protocolVersion, sessionId: connection.sessionId, sessionToken: connection.sessionToken, requestId, conversationId: id, encryptedPayload: null }),
+        "content-type": "application/json", "x-clanky-mesh-protocol-version": String(connection.protocolVersion), "x-clanky-mesh-session-id": connection.sessionId, "x-clanky-mesh-request-id": requestId,
+      }, body: JSON.stringify({ protocolVersion: connection.protocolVersion, sessionId: connection.sessionId, sessionToken: connection.sessionToken, requestId, conversationId: id, ...(connection.protocolVersion === 6 ? { encryptedPayload: null } : {}) }),
     }).catch(async (error: unknown) => { throw await this.observationTransportError(error, connection.route, signal); });
     await this.assertResponse(response);
     if (!response.body) throw new HarnessError("harness_event_gap", "The native event stream is unavailable.");
@@ -253,7 +253,7 @@ export class MeshHarnessBackend implements Backend {
           if (!frameText.trim()) {
             continue;
           }
-          let frame: { protocolVersion: unknown; sequence: unknown; encryptedPayload: unknown };
+          let frame: MeshPayloadFields & { protocolVersion: unknown; sequence: unknown };
           try {
             frame = JSON.parse(frameText) as typeof frame;
           } catch (error) {
@@ -264,7 +264,7 @@ export class MeshHarnessBackend implements Backend {
             );
           }
           if (frame.protocolVersion !== connection.protocolVersion || frame.sequence !== sequence++) throw new HarnessError("harness_event_gap", "The native event stream has a sequence gap.");
-          const payload = await decryptMeshPayload(MeshHarnessEncryptedPayloadSchema.parse(frame.encryptedPayload)) as { type: string; event?: unknown };
+          const payload = await decodeMeshPayload(connection.protocolVersion, frame) as { type: string; event?: unknown };
           if (payload.type === "ready" && sequence === 1) ready();
           else if (payload.type === "heartbeat") { /* Lease-owned keepalive, not a retained event. */ }
           else if (payload.type === "event") {

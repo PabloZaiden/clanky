@@ -124,6 +124,59 @@ function rowToChatSource(row: Record<string, unknown>, rowId: unknown): ChatSour
   throw new Error(`Invalid chat row ${String(rowId)}: unsupported source_kind "${sourceKind}"`);
 }
 
+export type PersistedChatStateField = Exclude<keyof ChatState,
+  "id" | "revision" | "messages" | "logs" | "toolCalls"
+  | "hasMessages" | "hasTranscript" | "lastUserMessageAt"
+>;
+
+const CHAT_STATE_ENCODERS = {
+  status: (state: ChatState) => ({ status: state.status }),
+  startedAt: (state: ChatState) => ({ started_at: state.startedAt ?? null }),
+  completedAt: (state: ChatState) => ({ completed_at: state.completedAt ?? null }),
+  lastActivityAt: (state: ChatState) => ({ last_activity_at: state.lastActivityAt ?? null }),
+  session: (state: ChatState) => ({
+    session_id: state.session?.id ?? null,
+    session_server_url: state.session?.serverUrl ?? null,
+    session_binding_json: state.session?.binding !== undefined ? JSON.stringify(state.session.binding) : null,
+  }),
+  harness: (state: ChatState) => ({ harness_state_json: state.harness ? JSON.stringify(state.harness) : null }),
+  error: (state: ChatState) => ({
+    error_message: state.error?.message ?? null,
+    error_timestamp: state.error?.timestamp ?? null,
+    error_code: state.error?.code ?? null,
+  }),
+  worktree: (state: ChatState) => ({
+    worktree_original_branch: state.worktree?.originalBranch ?? null,
+    worktree_working_branch: state.worktree?.workingBranch ?? null,
+    worktree_path: state.worktree?.worktreePath ?? null,
+  }),
+  pendingPermissionRequests: (state: ChatState) => ({
+    pending_permission_requests: JSON.stringify(state.pendingPermissionRequests ?? []),
+  }),
+  queuedMessages: (state: ChatState) => ({ queued_messages: JSON.stringify(state.queuedMessages ?? []) }),
+  activeMessageId: (state: ChatState) => ({ active_message_id: state.activeMessageId ?? null }),
+  interruptRequested: (state: ChatState) => ({ interrupt_requested: state.interruptRequested ? 1 : 0 }),
+  connectionStatus: (state: ChatState) => ({ connection_status: state.connectionStatus ?? "disconnected" }),
+  startupStage: (state: ChatState) => ({ startup_stage: state.startupStage ?? null }),
+} satisfies Record<PersistedChatStateField, (state: ChatState) => Record<string, string | number | null>>;
+
+export function chatStateToRow(state: ChatState, options: {
+  previousState?: ChatState;
+  preserveHarnessState?: boolean;
+  preserveQueuedMessages?: boolean;
+} = {}): { row: Record<string, string | number | null>; fields: ReadonlySet<PersistedChatStateField> } {
+  const row: Record<string, string | number | null> = {};
+  const fields = new Set<PersistedChatStateField>();
+  for (const field of Object.keys(CHAT_STATE_ENCODERS) as PersistedChatStateField[]) {
+    if (field === "harness" && options.preserveHarnessState
+      || field === "queuedMessages" && options.preserveQueuedMessages
+      || options.previousState && state[field] === options.previousState[field]) continue;
+    Object.assign(row, CHAT_STATE_ENCODERS[field](state));
+    fields.add(field);
+  }
+  return { row, fields };
+}
+
 export function chatToRow(chat: Chat): Record<string, unknown> {
   const { config, state } = chat;
   const userId = requirePersistenceUserId();
@@ -159,27 +212,8 @@ export function chatToRow(chat: Chat): Record<string, unknown> {
     skip_base_branch_sync: config.skipBaseBranchSync ? 1 : 0,
     base_branch: config.baseBranch ?? null,
     mode: config.mode,
-    status: state.status,
     state_revision: state.revision,
-    started_at: state.startedAt ?? null,
-    completed_at: state.completedAt ?? null,
-    last_activity_at: state.lastActivityAt ?? null,
-    session_id: state.session?.id ?? null,
-    session_server_url: state.session?.serverUrl ?? null,
-    session_binding_json: state.session?.binding !== undefined ? JSON.stringify(state.session.binding) : null,
-    harness_state_json: state.harness ? JSON.stringify(state.harness) : null,
-    error_message: state.error?.message ?? null,
-    error_timestamp: state.error?.timestamp ?? null,
-    error_code: state.error?.code ?? null,
-    worktree_original_branch: state.worktree?.originalBranch ?? null,
-    worktree_working_branch: state.worktree?.workingBranch ?? null,
-    worktree_path: state.worktree?.worktreePath ?? null,
-    pending_permission_requests: JSON.stringify(state.pendingPermissionRequests ?? []),
-    queued_messages: JSON.stringify(state.queuedMessages ?? []),
-    active_message_id: state.activeMessageId ?? null,
-    interrupt_requested: state.interruptRequested ? 1 : 0,
-    connection_status: state.connectionStatus ?? "disconnected",
-    startup_stage: state.startupStage ?? null,
+    ...chatStateToRow(state).row,
     execution_host_id: resolveExecutionHostBindingId(userId, executionHostBinding),
     execution_host_revision: executionHostBinding.revision,
   };

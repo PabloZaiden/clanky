@@ -8,6 +8,7 @@ import { requirePersistenceUserId } from "./ownership";
 import { parseStoredHarnessBinding, parseStoredHarnessState } from "./harness-binding";
 import { HarnessConversationStateSchema } from "@/contracts/schemas/harness";
 import { HarnessError } from "../backends/harness-errors";
+import { invalidateChatMetadata } from "./chats/metadata-cache";
 
 export interface HarnessContext {
   kind: "chat" | "task";
@@ -37,6 +38,7 @@ export function mergeHarnessProjection(
     const current = parseStoredHarnessBinding(row.session_binding_json, context.id);
     if (!current || current.nativeId !== binding.nativeId || current.adapter !== binding.adapter || current.ownerId !== binding.ownerId || current.contextId !== binding.contextId) return false;
     const state = parseStoredHarnessState(row.harness_state_json, context.id);
+    if (context.kind === "chat") invalidateChatMetadata(db, userId, context.id);
     const revisionUpdate = context.kind === "chat" ? ", state_revision = state_revision + 1" : "";
     db.query(`UPDATE ${table} SET harness_state_json = ?${revisionUpdate} WHERE id = ? AND user_id = ?`)
       .run(JSON.stringify({ ...state, ...projection }), context.id, userId);

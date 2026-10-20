@@ -13,6 +13,7 @@ import { parseStoredHarnessState } from "../harness-binding";
 import { closeOpenQuestions } from "@/shared/harness-questions";
 import { projectQuestionMessages } from "@/shared/question-transcript";
 import { createTranscriptChangeSet } from "@/shared/chat-transcript";
+import { invalidateChatMetadataForUser } from "./metadata-cache";
 
 const log = createLogger("persistence:chats");
 const STALE_CHAT_RESET_MESSAGE = "Forcefully stopped by connection reset";
@@ -63,6 +64,8 @@ function resetStale(chatId?: string): number {
   const placeholders = STALE_CHAT_STATUSES.map(() => "?").join(", ");
   const userId = requirePersistenceUserId();
   const db = getDatabase();
+  invalidateChatMetadataForUser(db, userId, (chat) =>
+    (!chatId || chat.config.id === chatId) && isStaleChatStatus(chat.state.status));
   return db.transaction(() => {
     const rows = db.query<{ id: string; harness_state_json: string | null }, (string)[]>(`
       SELECT id, harness_state_json FROM chats WHERE user_id = ? AND deleted_at IS NULL AND status IN (${placeholders})
@@ -114,6 +117,7 @@ export async function resetStaleChats(): Promise<number> {
   const resetCount = resetStale();
   const db = getDatabase();
   const userId = requirePersistenceUserId();
+  invalidateChatMetadataForUser(db, userId);
   db.transaction(() => {
     const rows = db.query<{ id: string; harness_state_json: string | null }, [string]>(
       "SELECT id, harness_state_json FROM chats WHERE user_id = ? AND deleted_at IS NULL",

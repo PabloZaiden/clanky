@@ -10,6 +10,8 @@ import type {
 } from "../backends/types";
 import type {
   Chat,
+  ChatMetadata,
+  ChatMetadataState,
   ChatConfig,
   ChatPermissionDecision,
   ChatSnapshot,
@@ -160,6 +162,10 @@ export interface ChatStatePort {
     chatId: string,
     update: (current: Chat) => ChatState | undefined,
   ): Promise<Chat>;
+  mutateMetadata(
+    chatId: string,
+    update: (current: ChatMetadata) => ChatMetadataState | undefined,
+  ): Promise<ChatMetadata>;
   updateStartupStage(
     chat: Chat,
     startupStage: ChatStartupStage | undefined,
@@ -168,7 +174,7 @@ export interface ChatStatePort {
   markChatError(chat: Chat, message: string, code?: string): Promise<Chat>;
   deletePersistedChat(chatId: string): Promise<boolean>;
   emitChatCreated(chat: Chat, timestamp: string): void;
-  emitChatUpdated(chat: Chat, timestamp?: string): void;
+  emitChatUpdated(chat: ChatMetadata, timestamp?: string): void;
   emitChatDeleted(chat: Chat, timestamp: string): void;
   emit(event: ChatEvent): void;
 }

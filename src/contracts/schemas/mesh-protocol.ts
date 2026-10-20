@@ -1,4 +1,7 @@
 import { z } from "zod";
+import { MESH_SUPPORTED_PROTOCOL_VERSIONS } from "@/shared/mesh-protocol";
+
+export const MeshProtocolVersionSchema = z.literal(MESH_SUPPORTED_PROTOCOL_VERSIONS);
 
 export const MeshProtocolGenerationSchema = z.number().int().positive()
   .refine(Number.isSafeInteger, {

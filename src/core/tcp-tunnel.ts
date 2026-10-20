@@ -10,14 +10,14 @@ import {
   MESH_TCP_TUNNEL_SESSION_REQUEST_TTL_MS,
 } from "@/shared/mesh-tcp-tunnel";
 import type { MeshProtocolVersion } from "@/shared/mesh-protocol";
-import { meshWorkerRouteVersion } from "./mesh-route-version";
+import { discoverMeshWorkerGeneration } from "./mesh-worker-generation";
 import type { MeshTcpTunnelSessionRequest } from "@/contracts/schemas/mesh-tcp-tunnel";
 import { getWorkerRegistration } from "../persistence/mesh";
 import {
   ensureLocalMeshNodeIdentity,
   signMeshPayload,
 } from "../persistence/mesh-node-identity";
-import { decryptMeshPayload } from "./mesh-payload-crypto";
+import { decodeMeshPayload, type MeshPayloadFields } from "./mesh-payload";
 import { buildMeshTcpTunnelSigningPayload } from "./mesh-tcp-tunnel-protocol";
 import {
   openMeshPeerSocket,
@@ -95,7 +95,7 @@ class MeshTcpTunnel extends EventEmitter implements TcpTunnel {
       );
     }
     const route = registration.route;
-    const protocolVersion = meshWorkerRouteVersion(registration);
+    const protocolVersion = await discoverMeshWorkerGeneration(registration);
     const expiresAt = new Date(
       Date.now() + MESH_TCP_TUNNEL_SESSION_REQUEST_TTL_MS,
     ).toISOString();
@@ -120,16 +120,15 @@ class MeshTcpTunnel extends EventEmitter implements TcpTunnel {
       };
     };
     const request = await buildRequest();
-    const response: {
+    const response: MeshPayloadFields & {
       protocolVersion: MeshProtocolVersion;
       sessionId: string;
-      encryptedPayload: unknown;
     } = await this.post(
       route,
       "api/mesh/internal/tcp-tunnel/session",
       request,
     );
-    const decrypted = await decryptMeshPayload(response.encryptedPayload);
+    const decrypted = await decodeMeshPayload(protocolVersion, response);
     const token = typeof decrypted === "object" && decrypted
       ? (decrypted as Record<string, unknown>)["sessionToken"]
       : null;
@@ -140,6 +139,7 @@ class MeshTcpTunnel extends EventEmitter implements TcpTunnel {
       route,
       "api/mesh/internal/tcp-tunnel",
       {
+        "x-clanky-mesh-protocol-version": String(protocolVersion),
         "x-clanky-mesh-session-id": response.sessionId,
         "x-clanky-mesh-session-token": token,
       },
@@ -190,10 +190,9 @@ class MeshTcpTunnel extends EventEmitter implements TcpTunnel {
     route: MeshWorkerRegistration["route"],
     path: string,
     body: MeshTcpTunnelSessionRequest,
-  ): Promise<{
+  ): Promise<MeshPayloadFields & {
     protocolVersion: MeshProtocolVersion;
     sessionId: string;
-    encryptedPayload: unknown;
   }> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), MESH_TCP_TUNNEL_REQUEST_TIMEOUT_MS);
@@ -203,6 +202,7 @@ class MeshTcpTunnel extends EventEmitter implements TcpTunnel {
         method: "POST",
         headers: {
           "content-type": "application/json",
+          "x-clanky-mesh-protocol-version": String(body.protocolVersion),
           "x-clanky-mesh-node-id": body.callerNodeId,
           "x-clanky-mesh-request-id": body.requestId,
         },
@@ -226,7 +226,8 @@ class MeshTcpTunnel extends EventEmitter implements TcpTunnel {
       return {
         protocolVersion: body.protocolVersion,
         sessionId: payload["sessionId"],
-        encryptedPayload: payload["encryptedPayload"],
+        ...(Object.hasOwn(payload, "encryptedPayload") ? { encryptedPayload: payload["encryptedPayload"] } : {}),
+        ...(Object.hasOwn(payload, "payload") ? { payload: payload["payload"] } : {}),
       };
     } finally {
       clearTimeout(timer);

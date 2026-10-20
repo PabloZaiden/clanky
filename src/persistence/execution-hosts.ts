@@ -15,6 +15,7 @@ import {
   parseExecutionHostRuntimeSnapshot,
 } from "@/shared";
 import { getDatabase } from "./database";
+import { invalidateChatMetadataForUser } from "./chats/metadata-cache";
 
 const log = createLogger("persistence:execution-hosts");
 
@@ -186,6 +187,7 @@ export function ensureExecutionHost(
       existing.targetKey !== targetKey
       || existing.revokedAt !== null
       || options.forceRevision === true;
+    if (targetChanged) invalidateChatMetadataForUser(db, userId);
     if (options.runtime) {
       db.query(`
         UPDATE execution_hosts
@@ -294,6 +296,7 @@ export function toExecutionHostBinding(
 
 export function revokeExecutionHost(userId: string, hostId: string): boolean {
   const now = new Date().toISOString();
+  invalidateChatMetadataForUser(getDatabase(), userId);
   const result = getDatabase().query(`
     UPDATE execution_hosts
     SET revoked_at = ?, revision = revision + 1, updated_at = ?
@@ -314,6 +317,7 @@ export function deleteExecutionHost(userId: string, hostId: string): boolean {
     revokeExecutionHost(userId, hostId);
     return false;
   }
+  invalidateChatMetadataForUser(db, userId);
   const result = db.query(
     "DELETE FROM execution_hosts WHERE id = ? AND user_id = ?",
   ).run(hostId, userId);

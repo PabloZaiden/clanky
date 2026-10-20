@@ -86,7 +86,7 @@ import { closeOpenQuestions, isQuestionOpen, updateQuestionAnswerStatus } from "
 import { projectQuestionMessages } from "@/shared/question-transcript";
 import { NativeChatObserver } from "./native-chat-observer";
 import type { HarnessConversationBinding } from "@/shared/harness-control";
-import { requireMatchingHarnessBinding } from "../backends/harness-binding";
+import { requireMatchingHarnessBindings } from "../backends/harness-binding";
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import { requireCurrentUser, runWithCurrentUser } from "../context/user-context";
 
@@ -771,7 +771,7 @@ export class ChatConversationService implements ChatConversationPort {
     const previous = this.activeStreams.get(chatId);
     if (previous?.native?.binding.nativeId === binding.nativeId && previous.native.backend === backend
       && !previous.native.observer.isClosed) {
-      requireMatchingHarnessBinding(JSON.stringify(previous.native.binding), binding);
+      requireMatchingHarnessBindings(previous.native.binding, binding);
       return;
     }
     await this.stopNativeObservation(chatId);
@@ -799,16 +799,16 @@ export class ChatConversationService implements ChatConversationPort {
         },
         onEvent: async (event) => {
           if (this.activeStreams.get(chatId) !== entry) return;
-          const latest = await this.state.getChatSummary(chatId);
-          if (!latest || latest.state.session?.binding?.nativeId !== binding.nativeId) {
+          const latest = await this.state.getChatStreamControlState(chatId);
+          if (!latest || latest.binding?.nativeId !== binding.nativeId) {
             observer.close();
             return;
           }
-          if (latest.state.status === "done") {
+          if (latest.status === "done") {
             observer.close();
             return;
           }
-          requireMatchingHarnessBinding(JSON.stringify(latest.state.session.binding), binding);
+          requireMatchingHarnessBindings(latest.binding, binding);
           if (event.scope.kind !== "principal"
             && event.type !== "question.asked" && event.type !== "question.resolved"
             && event.type !== "permission.asked") return;
@@ -1132,9 +1132,9 @@ export class ChatConversationService implements ChatConversationPort {
 
   private async recordNativeMessageCheckpoint(chatId: string, entry: ActiveChatStream): Promise<void> {
     const native = entry.native!;
-    const updated = await this.state.mutateState(chatId, (current) => {
+    const updated = await this.state.mutateMetadata(chatId, (current) => {
       if (!current.state.session?.binding) throw new HarnessError("harness_session_not_found", "The native conversation is unavailable.");
-      requireMatchingHarnessBinding(JSON.stringify(native.binding), current.state.session.binding);
+      requireMatchingHarnessBindings(native.binding, current.state.session.binding);
       return {
         ...current.state,
         harness: {
@@ -1261,9 +1261,9 @@ export class ChatConversationService implements ChatConversationPort {
     status: "unknown" | null;
   }): Promise<void> {
     if (inputIds.length === 0) return;
-    const updated = await this.state.mutateState(chatId, (current) => {
+    const updated = await this.state.mutateMetadata(chatId, (current) => {
       if (!current.state.session?.binding) throw new HarnessError("harness_session_not_found", "The native conversation is unavailable.");
-      requireMatchingHarnessBinding(JSON.stringify(binding), current.state.session.binding);
+      requireMatchingHarnessBindings(binding, current.state.session.binding);
       let receipts = current.state.harness?.inputs ?? [];
       for (const inputId of inputIds) {
         const previous = receipts.find((receipt) => receipt.admission.inputId === inputId);

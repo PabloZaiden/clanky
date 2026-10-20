@@ -20,21 +20,65 @@ Relays contains paired connections and primary selection; **Pair relay** or
 ## Protocol generations and migration
 
 Mesh protocol generations are global and aligned with the Clanky release major.
-Clanky 6.1 and later uses Mesh v6 exclusively. Every controller, relay, and
-worker on a route must share a supported generation. Capability lists need not
-be identical or ordered the same: each route selects the highest generation
-shared by every hop and rejects the route when there is no intersection.
+The Mesh 7 rollout temporarily supports both v7 and v6. Every controller,
+relay, and worker on a route must share a supported generation. Capability
+lists need not be identical or ordered the same: each route selects the highest
+generation shared by every hop and rejects a route with no intersection.
 Additional peer capabilities are metadata only; a process does not parse or
-emit contracts for generations it does not implement. Startup migration
-normalizes persisted protocol metadata to v6 without replacing identities,
-keys, or grants. Successful signed exchanges and relay reconnects refresh peer
-evidence.
+emit contracts for generations it does not implement.
+
+Selection is automatic, with no activation flag:
+
+| Route | New session |
+| --- | --- |
+| Mesh 7 controller and worker, direct HTTPS | v7, trusted TLS |
+| Mesh 7 controller, selected relay and worker, HTTPS/WSS on both hops | v7, trusted TLS |
+| An older v6 peer or relay, or a permitted HTTP development route | v6, legacy payload encryption |
+
+Mesh 7 removes application RSA/AES payload envelopes. Native RPC/event frames
+and execution, terminal and tunnel admission responses use `payload` instead
+of `encryptedPayload`; managed environments use `environment` instead of
+`encryptedEnvironment`. The selected generation is checked against the
+admitted session before decoding or responding. TLS-only admissions and
+session traffic are rejected on insecure transports; HTTPS requests carrying
+v7 payloads do not follow redirects.
+
+**Relays and TLS-terminating proxies are trusted with Mesh 7 content.** This
+is hop-by-hop TLS, not an opaque end-to-end tunnel: a relay can see traffic
+after TLS termination. The relay still only authenticates nodes, routes
+bounded streams and forwards bytes with backpressure; it does not decode
+agent/tool payloads or perform application payload encryption. Node signatures,
+certificate verification, grants, ownership, tokens, expiry, renewal and
+revocation remain in place. v6 retains its existing encrypted-payload adapter
+and wire format, including when v6 streams cross differently negotiated
+relay control links.
+
+Upgrade dual-version binaries in any order, preserving their data directories.
+Startup migration advances the local protocol marker idempotently without
+replacing identities, keys, grants or enrollment. New admissions discover the
+worker's signed capabilities; relay reconnects rediscover the highest common
+control-link generation. Existing sessions retain their admitted generation.
+An admission failure or ambiguous dispatched command/prompt is never replayed
+using another generation. A reconnect can negotiate anew, but does not resend
+user input.
 
 The Mesh status and Settings views show each controller, relay, and worker
 binary version, supported generations, and the generation observed in the last
 successful exchange, plus execution-host capabilities. Local protocol status
 also advertises the binary's harness adapters; an adapter being present does
 not prove its external runtime is installed or authenticated.
+
+`clanky mesh status` also reports each controller-side worker's
+`routeSecurity`: the selected generation for new admissions,
+`payloadProtection` (`trusted-tls`, `legacy-encrypted` or `unavailable`), and
+`fallbackReason` when TLS or peer/relay support is missing. This is route
+eligibility based on the last verified capabilities, not a live health probe.
+Worker status exposes `activeSessions` counts by admitted generation for
+execution/native/ACP, terminal and TCP leases. Use those counts alongside
+binary/support metadata to confirm no legacy sessions remain. Remove Mesh 6,
+its adapter and legacy encryption keys only in a later rollout after every
+controller, relay and worker has been confirmed migrated. Publish this wire
+generation with the Clanky 7 release major, not as a Clanky 6 minor update.
 
 Before selecting a native adapter, check worker and relay generations in
 `clanky mesh status` and `clanky mesh relay status`. A native request rejected
@@ -45,7 +89,7 @@ workspace when that is the desired integration.
 
 Workers can advertise `directoryTree: 1` alongside the unchanged
 `fileOperations: 2` capability. Controllers use it for full Code Explorer trees:
-the worker traverses its native filesystem in one encrypted execution RPC rather
+the worker traverses its native filesystem in one execution RPC rather
 than requiring a Mesh request for every directory. This additive extension uses
 the existing Mesh generation and does not require Bash or `commandExecution`.
 
@@ -76,7 +120,7 @@ acknowledgements when the receiver consumes them. Slow downloads therefore
 backpressure the worker instead of overflowing the relay receive queue. Files
 remain streamed; the existing queue limits are not file-size limits.
 
-This is an optional extension within Mesh v6. The initiator advertises
+This is an optional extension supported by Mesh v6 and v7. The initiator advertises
 `x-clanky-mesh-response-flow: 1`; the peer confirms `responseFlowControl: 1`
 in the HTTP response metadata before either side uses `http.response.ack`
 frames. Acknowledgements are cumulative byte offsets at frame boundaries.
@@ -104,7 +148,7 @@ revocation or shutdown closes the owned stream and releases the pending wait.
 A failed transfer remains an error, not a successful partial file.
 
 Long downloads also renew their short-lived execution lease. Supporting workers
-advertise `executionSessionRenewal: 1` inside the encrypted session-admission
+advertise `executionSessionRenewal: 1` inside the versioned session-admission
 payload. Only after that negotiation, the controller posts
 `{ action: "renew", protocolVersion, sessionId, sessionToken, requestId }` to the
 existing `/api/mesh/internal/execution/session` route, with matching session
@@ -129,7 +173,7 @@ Execution-host transport and harness are independent:
 | Execution host | Available adapters |
 | --- | --- |
 | Local | Copilot native, Codex native, OpenCode 2 native, ACP |
-| Mesh v6, including v6 relays | Copilot native, Codex native, OpenCode 2 native, ACP |
+| Mesh v6 or v7, including relays | Copilot native, Codex native, OpenCode 2 native, ACP |
 | Direct SSH | ACP only |
 
 Install and authenticate the selected runtime under the **worker service
@@ -139,7 +183,7 @@ runtime/client. ACP remains an independent provider with its own selected
 harness preset, never an automatic native fallback. Existing workspace presets
 migrate to the ACP adapter without changing their original preset.
 
-Native Mesh uses a provider-neutral encrypted RPC/lifetime-event gateway,
+Native Mesh uses a provider-neutral versioned RPC/lifetime-event gateway,
 not ACP framing. The worker owns native subprocesses and performs repository
 operations on that host through `CommandExecutor`. Model catalogs, native
 conversation IDs, principal/child attribution, admission receipts, and scoped
@@ -157,7 +201,7 @@ Stop retain the selected provider's capabilities and limitations.
   native client/message/turn IDs. An unknown admission is not unsent: reconcile
   it before deleting, replacing, draining, or retrying that input.
   A lost, malformed, or mismatched receipt remains unknown.
-- Native leases use the existing signed controller grant, encrypted managed
+- Native leases use the existing signed controller grant, protected managed
   environment, execution-host ownership, renewal, and relay protections.
   Expiry, revocation, disconnect, and shutdown close the lease-owned runtime
   and its subscriptions/processes. Deleting one conversation does not release
@@ -178,7 +222,7 @@ events retain their order and the separate 256-event subscriber queue remains
 bounded and fails explicitly on real overflow. Heartbeats do not accumulate
 while a consumer is paused.
 
-Worker observation failures use the existing encrypted error-event contract.
+Worker observation failures use the versioned error-event contract.
 The controller retains `harness_event_gap` for observation integrity failures
 and `harness_transport_closed` for disconnection rather than replacing them
 with a generic relay error. Unknown exception details remain private. Upgrade
@@ -263,6 +307,13 @@ The relay URL must be the external HTTPS origin. Its reverse proxy must
 forward HTTP and WebSocket traffic while keeping the relay listener private.
 Persist `/app/data` so the relay signing identity and fingerprint survive
 container recreation.
+
+For TLS termination at a reverse proxy, configure `CLANKY_TRUST_PROXY=true`
+(enabled in the production image), sanitize `X-Forwarded-Proto` and the other
+configured forwarding headers, and keep the private HTTP listener inaccessible
+to clients. `CLANKY_PUBLIC_BASE_URL` alone is not proof that a particular
+connection used TLS. Do not forward caller-supplied forwarding headers
+unchanged or use an HTTP proxy-to-relay link across an untrusted network.
 
 To add another relay, run a separate relay instance with its own data volume,
 URL, and the same controller fingerprint, then pair it under a different name:

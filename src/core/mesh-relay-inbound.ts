@@ -41,6 +41,7 @@ export interface MeshRelayInboundOptions {
 async function serveSocketStream(
   stream: MeshRelayDataStream,
   offer: MeshRelayStreamOfferFrame,
+  secureTransport: boolean,
 ): Promise<void> {
   const socket: MeshInboundSocket = {
     send: (data) => stream.send(data),
@@ -59,7 +60,7 @@ async function serveSocketStream(
       offer.path,
       offer.headers,
       socket,
-      openingController.signal,
+      { signal: openingController.signal, secureTransport },
     );
   } catch (error) {
     stream.close(1011, "The Mesh socket could not be authorized");
@@ -120,8 +121,11 @@ export function createMeshRelayInboundHandler(
         );
       }
       const stream = await context.openDataStream();
+      const secureTransport = new URL(context.relayUrl).protocol === "https:"
+        && offer.protocolVersion === 7
+        && offer.headers["x-clanky-mesh-protocol-version"] === "7";
       if (offer.kind === "socket") {
-        await serveSocketStream(stream, offer);
+        await serveSocketStream(stream, offer, secureTransport);
         return;
       }
       await serveMeshRelayHttpStream({
@@ -130,6 +134,8 @@ export function createMeshRelayInboundHandler(
         path: offer.path,
         headers: offer.headers,
         initiatorNodeId: offer.initiatorNodeId,
+        secureTransport,
+        transportProtocolVersion: new URL(context.relayUrl).protocol === "https:" ? offer.protocolVersion : 6,
         dispatch: options.dispatch,
         reportStatus: context.reportStatus,
       });

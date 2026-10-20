@@ -28,7 +28,7 @@ interface EncryptedMeshPayload {
   ciphertext: string;
 }
 
-function isEncryptedMeshPayload(value: unknown): value is EncryptedMeshPayload {
+export function isEncryptedMeshPayload(value: unknown): value is EncryptedMeshPayload {
   return typeof value === "object"
     && value !== null
     && (value as Record<string, unknown>)["__clankyMeshEncrypted"] === true

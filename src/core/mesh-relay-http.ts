@@ -9,7 +9,9 @@
  */
 
 import { createLogger } from "@pablozaiden/webapp/server";
+import type { MeshProtocolVersion } from "@/shared/mesh-protocol";
 import { MeshRelayStreamError } from "./mesh-relay-errors";
+import { markMeshRelayRequestTransport } from "./mesh-transport-security";
 import type { MeshRelayDataStream } from "./mesh-relay-data-stream";
 import {
   MESH_RELAY_RESPONSE_FLOW_HEADER,
@@ -549,6 +551,8 @@ export async function performMeshRelayHttpRequest(
 }
 
 export interface ServeMeshRelayHttpStreamOptions {
+  secureTransport?: boolean;
+  transportProtocolVersion: MeshProtocolVersion;
   stream: MeshRelayDataStream;
   method: string;
   path: string;
@@ -721,6 +725,10 @@ export async function serveMeshRelayHttpStream(
     ...(bodyless ? {} : { body: body.stream, duplex: "half" }),
   } as RequestInit);
   relayRequestInitiators.set(request, options.initiatorNodeId);
+  markMeshRelayRequestTransport(request, {
+    secure: options.secureTransport === true,
+    protocolVersion: options.transportProtocolVersion,
+  });
 
   let responseReader: ReadableStreamDefaultReader<Uint8Array> | undefined;
   try {

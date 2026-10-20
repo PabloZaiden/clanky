@@ -4,6 +4,7 @@ import { requestMeshPeer } from "./mesh-peer-transport";
 import type { MeshPeerTransport } from "./mesh-peer-transport";
 import { isMeshRelayResponseInterrupted, MeshRelayStreamError } from "./mesh-relay-errors";
 import { createLogger } from "@pablozaiden/webapp/server";
+import { isSupportedMeshProtocolVersion, MESH_PROTOCOL_VERSION_HEADER } from "@/shared/mesh-protocol";
 
 const log = createLogger("mesh-control-client");
 const MESH_CONTROL_REQUEST_TIMEOUT_MS = 10_000;
@@ -76,10 +77,14 @@ export async function postMeshControlMessage(
     options.signal?.addEventListener("abort", abortListener, { once: true });
   }
   try {
+    const protocolVersion = typeof payload === "object" && payload !== null
+      && "protocolVersion" in payload ? payload.protocolVersion : undefined;
     const request = {
       method: "POST",
       headers: {
         "content-type": "application/json",
+        ...(isSupportedMeshProtocolVersion(protocolVersion)
+          ? { [MESH_PROTOCOL_VERSION_HEADER]: String(protocolVersion) } : {}),
         "x-clanky-mesh-node-id": getSenderNodeId(payload),
         "x-clanky-mesh-request-id": requestId,
         ...options.headers,

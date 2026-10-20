@@ -39,7 +39,7 @@ import {
 } from "@/shared/mesh-relay";
 import {
   MESH_PROTOCOL_VERSION,
-  isSupportedMeshProtocolVersion,
+  MESH_SUPPORTED_PROTOCOL_VERSIONS,
   type MeshProtocolVersion,
 } from "@/shared/mesh-protocol";
 import {
@@ -286,6 +286,7 @@ interface RelayLiveStream {
 
 export interface MeshRelayDataReservation {
   reservationId: string;
+  protocolVersion: RelayProtocolVersion;
 }
 
 class RelayRequestError extends Error {
@@ -594,6 +595,12 @@ export class MeshRelayBroker {
       if (connection.role === "controller" && connection.identity) return connection.protocolVersion;
     }
     return null;
+  }
+
+  getControllerSupportedProtocolVersions(): MeshProtocolVersion[] {
+    const version = this.getControllerProtocolVersion();
+    // During the dual-generation window, a Mesh 7 peer also serves Mesh 6.
+    return version ? MESH_SUPPORTED_PROTOCOL_VERSIONS.filter((candidate) => candidate <= version) : [];
   }
 
   openControl(
@@ -1228,9 +1235,8 @@ export class MeshRelayBroker {
   ): void {
     const request = validateStreamRoute(initiator, input);
     const receiver = this.resolveReceiver(initiator, request.targetNodeId);
-    if (request.path.startsWith("/api/mesh/internal/harness/") && (
-      initiator.protocolVersion !== receiver.protocolVersion
-      || !isSupportedMeshProtocolVersion(initiator.protocolVersion)
+    if (request.headers["x-clanky-mesh-protocol-version"] === "7" && (
+      initiator.protocolVersion !== 7 || receiver.protocolVersion !== 7
     )) throw new RelayRequestError("protocol_mismatch", "Native traffic requires a mutually supported generation on every Mesh hop.", 406);
     this.assertNodeCapacity(initiator.id);
     this.assertNodeCapacity(receiver.id);
@@ -1439,7 +1445,9 @@ export class MeshRelayBroker {
     } else {
       ticket.receiverReservationId = reservationId;
     }
-    return { reservationId };
+    const connection = this.controls.get(side === "initiator" ? ticket.initiatorConnectionId : ticket.receiverConnectionId);
+    if (!connection) return undefined;
+    return { reservationId, protocolVersion: connection.protocolVersion };
   }
 
   attachDataSocket(reservationId: string, socket: MeshRelaySocket): void {

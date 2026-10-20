@@ -11,21 +11,28 @@ import { DomainError } from "../domain/domain-error";
 import { requireMeshRuntimeRole } from "./mesh-runtime";
 import { getLocalMeshProtocolMetadata } from "./mesh-protocol-version";
 import { readMeshControlResponseJson } from "./mesh-control-client";
+import { updateWorkerNegotiatedProtocolVersion } from "../persistence/mesh";
 
 export function meshWorkerGenerationSigningPayload(input: Omit<MeshWorkerProtocolDescriptor, "signature">): string {
   return JSON.stringify([`clanky-mesh-worker-generation-v${input.protocolVersion}`, input.nodeId, input.fingerprint, input.requestNonce, input.binaryVersion, input.supportedProtocolVersions, input.preferredProtocolVersion]);
 }
 
-export async function describeMeshWorkerGeneration(versionsHeader: string | null, nonce: string | null): Promise<MeshWorkerProtocolDescriptor> {
+export async function describeMeshWorkerGeneration(
+  versionsHeader: string | null,
+  nonce: string | null,
+  localVersions: readonly MeshProtocolVersion[] = MESH_SUPPORTED_PROTOCOL_VERSIONS,
+): Promise<MeshWorkerProtocolDescriptor> {
   requireMeshRuntimeRole("worker");
   const selected = negotiateMeshProtocolVersion(
-    MESH_SUPPORTED_PROTOCOL_VERSIONS,
+    localVersions,
     parseMeshProtocolVersionsHeader(versionsHeader),
   );
   if (!selected || !nonce || nonce.length > 200) throw new DomainError("mesh_execution_protocol_mismatch", "Supported generations and a request nonce are required.");
   const identity = await ensureLocalMeshNodeIdentity();
   const descriptor = {
     ...meshProtocolProjection(selected),
+    supportedProtocolVersions: [...localVersions],
+    preferredProtocolVersion: localVersions[0]!,
     nodeId: identity.nodeId, fingerprint: identity.fingerprint, requestNonce: nonce,
     binaryVersion: getLocalMeshProtocolMetadata().binaryVersion!,
   };
@@ -79,6 +86,14 @@ export async function discoverMeshWorkerGeneration(worker: MeshWorkerRegistratio
       || selected !== negotiateMeshProtocolVersion(versions, descriptor.supportedProtocolVersions)
       || !verifyMeshPayloadSignature(meshWorkerGenerationSigningPayload(unsigned), signature, worker.workerPublicKey)
     ) throw new DomainError("mesh_execution_protocol_mismatch", "The worker generation descriptor is invalid.");
+    await updateWorkerNegotiatedProtocolVersion({
+      workerNodeId: worker.workerNodeId,
+      localUserId: worker.localUserId,
+      negotiatedProtocolVersion: descriptor.protocolVersion,
+      preferredProtocolVersion: descriptor.preferredProtocolVersion,
+      supportedProtocolVersions: descriptor.supportedProtocolVersions,
+      binaryVersion: descriptor.binaryVersion,
+    });
     return descriptor.protocolVersion;
   } catch (error) {
     if (error instanceof DomainError) throw error;

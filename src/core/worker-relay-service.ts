@@ -10,6 +10,8 @@ import { DomainError } from "../domain/domain-error";
 import { MeshRelayConnectorManager } from "./mesh-relay-connector-manager";
 import { requireMeshRuntimeRole } from "./mesh-runtime";
 import { discoverMeshEnrollmentTarget } from "./mesh-target-discovery";
+import { negotiateMeshDescriptorGeneration } from "./mesh-protocol-version";
+import { meshTransportProtocolVersions } from "@/shared/mesh-protocol";
 
 type RelayDispatch = (request: Request) => Promise<Response | undefined>;
 
@@ -136,18 +138,23 @@ export class WorkerRelayService {
       await this.manager.stop();
       return;
     }
-    const discovered = await discoverMeshEnrollmentTarget(selected.route.relayUrl);
-    if (discovered.descriptor.role !== "relay"
-      || discovered.descriptor.fingerprint !== selected.route.relayFingerprint
-      || discovered.descriptor.controllerNodeId !== selected.grant.controllerNodeId
-      || discovered.descriptor.controllerFingerprint !== selected.grant.controllerFingerprint
-    ) throw new DomainError("mesh_worker_relay_grants_inconsistent", "Relay discovery does not match the enrolled controller route.");
+    const refreshProtocol = async () => {
+      const discovered = await discoverMeshEnrollmentTarget(selected.route.relayUrl);
+      if (discovered.descriptor.role !== "relay"
+        || discovered.descriptor.fingerprint !== selected.route.relayFingerprint
+        || discovered.descriptor.controllerNodeId !== selected.grant.controllerNodeId
+        || discovered.descriptor.controllerFingerprint !== selected.grant.controllerFingerprint
+      ) throw new DomainError("mesh_worker_relay_grants_inconsistent", "Relay discovery does not match the enrolled controller route.");
+      const version = negotiateMeshDescriptorGeneration(discovered.descriptor, meshTransportProtocolVersions(selected.route.relayUrl));
+      if (!version) throw new DomainError("mesh_execution_protocol_mismatch", "The worker and relay have no supported generation.");
+      return version;
+    };
     const expected = {
       relayUrl: selected.route.relayUrl,
       relayFingerprint: selected.route.relayFingerprint,
       role: "worker" as const,
       targetNodeId: selected.grant.controllerNodeId,
-      protocolVersion: discovered.negotiatedProtocolVersion,
+      protocolVersion: await refreshProtocol(),
     };
     const active = this.manager.activeConfig;
     if (
@@ -163,6 +170,7 @@ export class WorkerRelayService {
     await this.manager.stop();
     this.manager.start({
       config: expected,
+      refreshProtocol,
       dispatch: this.dispatch!,
       shouldMaintain: async () => {
         const current = activeRelayGrant(await listControllerGrants());

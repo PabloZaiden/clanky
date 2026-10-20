@@ -245,6 +245,7 @@ const API_DOMAIN_ERROR_CODES = {
   mesh_execution_owner_mismatch: true,
   mesh_execution_path_invalid: true,
   mesh_execution_protocol_mismatch: true,
+  mesh_tls_required: true,
   mesh_execution_replay: true,
   mesh_execution_request_failed: true,
   mesh_execution_request_invalid: true,
@@ -1145,6 +1146,10 @@ const POLICY_PROFILES = {
       mesh_execution_protocol_mismatch: {
         status: 400,
         message: "The Mesh execution protocol is incompatible.",
+      },
+      mesh_tls_required: {
+        status: 403,
+        message: "TLS-only Mesh sessions require HTTPS/WSS on every hop.",
       },
       mesh_execution_replay: {
         status: 400,

@@ -11,7 +11,6 @@ import {
   MESH_INSTANCE_NAME_MAX_LENGTH,
   MESH_TRANSPORTS,
 } from "@/shared/mesh";
-import { MESH_PROTOCOL_VERSION } from "@/shared/mesh-protocol";
 import {
   ExecutionHostCapabilitiesSchema,
   ExecutionHostPlatformSchema,
@@ -21,6 +20,7 @@ import {
   assertMeshProtocolMetadata,
   MeshProtocolGenerationSchema,
   MeshProtocolVersionsSchema,
+  MeshProtocolVersionSchema,
 } from "./mesh-protocol";
 
 export const MeshTransportSchema = z.enum(MESH_TRANSPORTS);
@@ -57,14 +57,14 @@ export const MeshOriginSchema = MeshEndpointSchema.superRefine((value, context) 
   }
 });
 export const MeshEnrollmentRouteSchema = z.enum(["direct", "relay"]);
-const MeshV6Metadata = {
-  protocolVersion: z.literal(MESH_PROTOCOL_VERSION),
+const MeshVersionMetadata = {
+  protocolVersion: MeshProtocolVersionSchema,
   supportedProtocolVersions: MeshProtocolVersionsSchema,
   preferredProtocolVersion: MeshProtocolGenerationSchema,
 };
 
 export const MeshWorkerProtocolDescriptorSchema = z.object({
-  protocolVersion: z.literal(MESH_PROTOCOL_VERSION),
+  protocolVersion: MeshProtocolVersionSchema,
   nodeId: z.string().min(1).max(200), fingerprint: z.string().min(1).max(200),
   requestNonce: z.string().min(1).max(200), binaryVersion: z.string().min(1).max(200),
   supportedProtocolVersions: MeshProtocolVersionsSchema,
@@ -175,15 +175,14 @@ const MeshEnrollmentRelayRouteSchema = z.object({
   relayFingerprint: z.string().trim().min(1),
 }).strict();
 
-export const MeshEnrollmentRequestV6Schema = MeshEnrollmentRequestCommonSchema.extend({
-  ...MeshV6Metadata,
+export const MeshEnrollmentRequestSchema = MeshEnrollmentRequestCommonSchema.extend({
+  ...MeshVersionMetadata,
   binaryVersion: z.string().trim().min(1).max(200),
   route: z.union([
     MeshEnrollmentDirectRouteSchema,
     MeshEnrollmentRelayRouteSchema,
   ]),
 }).strict().superRefine(assertMeshProtocolMetadata);
-export const MeshEnrollmentRequestSchema = MeshEnrollmentRequestV6Schema;
 
 const MeshEnrollmentResponseCommonSchema = z.object({
   workerNodeId: z.string().trim().min(1),
@@ -195,17 +194,16 @@ const MeshEnrollmentResponseCommonSchema = z.object({
   signature: z.string().trim().min(1),
 });
 
-export const MeshEnrollmentResponseV6Schema =
+export const MeshEnrollmentResponseSchema =
   MeshEnrollmentResponseCommonSchema.extend({
-    ...MeshV6Metadata,
+    ...MeshVersionMetadata,
     binaryVersion: z.string().trim().min(1).max(200),
   }).strict().superRefine(assertMeshProtocolMetadata);
-export const MeshEnrollmentResponseSchema = MeshEnrollmentResponseV6Schema;
 
 // --- Signed health check (controller → worker) ---
 
-export const MeshHealthCheckV6Schema = z.object({
-  ...MeshV6Metadata,
+export const MeshHealthCheckSchema = z.object({
+  ...MeshVersionMetadata,
   senderNodeId: z.string().trim().min(1),
   senderPublicKey: z.string().min(1),
   senderFingerprint: z.string().trim().min(1),
@@ -215,10 +213,9 @@ export const MeshHealthCheckV6Schema = z.object({
   signature: z.string().trim().min(1),
 }).strict().superRefine(assertMeshProtocolMetadata);
 
-export const MeshHealthCheckSchema = MeshHealthCheckV6Schema;
 
-export const MeshHealthCheckResponseV6Schema = z.object({
-  ...MeshV6Metadata,
+export const MeshHealthCheckResponseSchema = z.object({
+  ...MeshVersionMetadata,
   workerNodeId: z.string().trim().min(1),
   controllerNodeId: z.string().trim().min(1),
   requestNonce: z.string().trim().min(1),
@@ -231,12 +228,11 @@ export const MeshHealthCheckResponseV6Schema = z.object({
   signature: z.string().trim().min(1),
 }).strict().superRefine(assertMeshProtocolMetadata);
 
-export const MeshHealthCheckResponseSchema = MeshHealthCheckResponseV6Schema;
 
 // --- Signed revocation notice (controller → worker) ---
 
 export const MeshRevocationNoticeSchema = z.object({
-  protocolVersion: z.literal(MESH_PROTOCOL_VERSION),
+  protocolVersion: MeshProtocolVersionSchema,
   controllerNodeId: z.string().trim().min(1),
   workerNodeId: z.string().trim().min(1),
   controllerPublicKey: z.string().min(1),
@@ -249,7 +245,7 @@ export const MeshRevocationNoticeSchema = z.object({
 // --- Signed worker kill request (controller → worker) ---
 
 export const MeshWorkerKillRequestSchema = z.object({
-  protocolVersion: z.literal(MESH_PROTOCOL_VERSION),
+  protocolVersion: MeshProtocolVersionSchema,
   controllerNodeId: z.string().trim().min(1),
   workerNodeId: z.string().trim().min(1),
   controllerPublicKey: z.string().min(1),
@@ -268,9 +264,9 @@ export type UpdateMeshEndpointRequest = z.infer<typeof UpdateMeshEndpointSchema>
 export type RevokeMeshWorkerRequest = z.infer<typeof RevokeMeshWorkerRequestSchema>;
 export type EnrollMeshWorkerRequest = z.infer<typeof EnrollMeshWorkerRequestSchema>;
 export type MeshEnrollmentRoute = z.infer<typeof MeshEnrollmentRouteSchema>;
-export type MeshEnrollmentRequest = z.infer<typeof MeshEnrollmentRequestV6Schema>;
-export type MeshEnrollmentResponse = z.infer<typeof MeshEnrollmentResponseV6Schema>;
-export type MeshHealthCheck = z.infer<typeof MeshHealthCheckV6Schema>;
-export type MeshHealthCheckResponse = z.infer<typeof MeshHealthCheckResponseV6Schema>;
+export type MeshEnrollmentRequest = z.infer<typeof MeshEnrollmentRequestSchema>;
+export type MeshEnrollmentResponse = z.infer<typeof MeshEnrollmentResponseSchema>;
+export type MeshHealthCheck = z.infer<typeof MeshHealthCheckSchema>;
+export type MeshHealthCheckResponse = z.infer<typeof MeshHealthCheckResponseSchema>;
 export type MeshRevocationNotice = z.infer<typeof MeshRevocationNoticeSchema>;
 export type MeshWorkerKillRequest = z.infer<typeof MeshWorkerKillRequestSchema>;

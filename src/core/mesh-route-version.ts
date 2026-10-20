@@ -1,9 +1,9 @@
 /**
  * One route generation, constrained by every participating hop.
  */
-import type { MeshPeerRoute, MeshWorkerRegistration } from "@/shared/mesh";
+import type { MeshPeerRoute, MeshRouteSecurity, MeshWorkerRegistration } from "@/shared/mesh";
 import {
-  MESH_SUPPORTED_PROTOCOL_VERSIONS,
+  meshTransportProtocolVersions,
   isSupportedMeshProtocolVersion,
   negotiateMeshProtocolVersion,
   type MeshProtocolVersion,
@@ -12,7 +12,7 @@ import { listControllerRelayPairings } from "../persistence/controller-relay-pai
 import { DomainError } from "../domain/domain-error";
 
 export function meshRouteSupportedProtocolVersions(route: MeshPeerRoute): readonly MeshProtocolVersion[] {
-  if (route.kind === "direct") return MESH_SUPPORTED_PROTOCOL_VERSIONS;
+  if (route.kind === "direct") return meshTransportProtocolVersions(route.endpoint);
   const relay = listControllerRelayPairings().find((pairing) => pairing.relayUrl === route.relayUrl && pairing.relayFingerprint === route.relayFingerprint);
   const relayVersion = relay?.relayNegotiatedProtocolVersion;
   if (
@@ -21,7 +21,8 @@ export function meshRouteSupportedProtocolVersions(route: MeshPeerRoute): readon
   ) {
     throw new DomainError("mesh_execution_protocol_mismatch", "The Mesh relay hop has no negotiated generation.");
   }
-  return MESH_SUPPORTED_PROTOCOL_VERSIONS.filter((version) => version === relayVersion);
+  return meshTransportProtocolVersions(route.relayUrl).filter((version) =>
+    relay.relaySupportedProtocolVersions.includes(version) && version <= relayVersion);
 }
 
 export function meshWorkerRouteVersion(worker: MeshWorkerRegistration): MeshProtocolVersion {
@@ -31,4 +32,27 @@ export function meshWorkerRouteVersion(worker: MeshWorkerRegistration): MeshProt
   );
   if (!version) throw new DomainError("mesh_execution_protocol_mismatch", "The Mesh route has no mutually supported generation.");
   return version;
+}
+
+export function meshWorkerRouteSecurity(worker: MeshWorkerRegistration): MeshRouteSecurity {
+  const unavailable = (fallbackReason: MeshRouteSecurity["fallbackReason"]): MeshRouteSecurity => ({
+    protocolVersion: null, payloadProtection: "unavailable", fallbackReason,
+  });
+  if (worker.grantStatus !== "active") return unavailable("revoked");
+  let versions: readonly MeshProtocolVersion[];
+  try {
+    versions = meshRouteSupportedProtocolVersions(worker.route);
+  } catch (error) {
+    if (!(error instanceof DomainError) || error.code !== "mesh_execution_protocol_mismatch") throw error;
+    return unavailable("protocol-unavailable");
+  }
+  const protocolVersion = negotiateMeshProtocolVersion(versions, worker.workerSupportedProtocolVersions ?? []);
+  if (!protocolVersion) return unavailable("protocol-unavailable");
+  if (protocolVersion === 7) return { protocolVersion, payloadProtection: "trusted-tls", fallbackReason: null };
+  const endpoint = worker.route.kind === "direct" ? worker.route.endpoint : worker.route.relayUrl;
+  return {
+    protocolVersion, payloadProtection: "legacy-encrypted",
+    fallbackReason: !meshTransportProtocolVersions(endpoint).includes(7) ? "tls-unavailable"
+      : !versions.includes(7) ? "relay-legacy" : "worker-legacy",
+  };
 }

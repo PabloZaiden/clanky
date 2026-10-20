@@ -26,7 +26,7 @@ import {
   requireLocalMeshExecutionCapability,
   verifyMeshPayloadSignature,
 } from "../persistence/mesh-node-identity";
-import { decryptMeshPayload } from "./mesh-payload-crypto";
+import { decodeMeshEnvironment } from "./mesh-payload";
 import { requireTrustedController } from "./mesh-peer-auth";
 import { buildMeshTerminalSessionSigningPayload } from "./mesh-terminal-protocol";
 import {
@@ -44,6 +44,7 @@ import { parseManagedContextEnvironment } from "./managed-context-environment";
 import { LocalTerminalConnection } from "./terminal";
 import type { InteractiveTerminalConnection } from "./terminal";
 import { meshInboundResourceRegistry } from "./mesh-inbound-resource-registry";
+import { countMeshProtocolSessions } from "./mesh-protocol-version";
 
 const MAX_TERMINAL_SESSIONS = 64;
 const MAX_USED_NONCES = 512;
@@ -119,6 +120,12 @@ export function splitUtf8(value: string, maximumBytes: number): string[] {
 }
 
 export class MeshTerminalGateway {
+  getProtocolSessionCounts() {
+    return countMeshProtocolSessions(this.leases.values(), (lease) => ({
+      protocolVersion: lease.request.protocolVersion, expiresAt: lease.expiresAt,
+    }));
+  }
+
   private readonly leases = new Map<string, MeshTerminalLease>();
   private readonly relays = new Map<string, MeshTerminalRelay>();
   private readonly opening = new Map<string, Promise<void>>();
@@ -185,10 +192,7 @@ export class MeshTerminalGateway {
       );
       request.executionRoot = trustedRoot.executionRoot;
       request.directory = directory;
-      const decryptedEnvironment = request.encryptedEnvironment === undefined
-        || request.encryptedEnvironment === null
-        ? undefined
-        : await decryptMeshPayload(request.encryptedEnvironment);
+      const decryptedEnvironment = await decodeMeshEnvironment(request);
       const environment = parseManagedContextEnvironment(
         decryptedEnvironment,
         "mesh_terminal_environment_invalid",
@@ -247,24 +251,25 @@ export class MeshTerminalGateway {
     }
   }
 
-  async authorize(sessionId: string, sessionToken: string): Promise<void> {
-    await this.requireValidatedLease(sessionId, sessionToken);
+  async authorize(sessionId: string, sessionToken: string): Promise<MeshTerminalProtocolVersion> {
+    return (await this.requireValidatedLease(sessionId, sessionToken)).request.protocolVersion;
+  }
+
+  getSessionProtocolVersion(sessionId: string, sessionToken: string): MeshTerminalProtocolVersion | undefined {
+    const lease = this.leases.get(sessionId);
+    if (lease && lease.sessionToken !== sessionToken) {
+      throw new DomainError("mesh_terminal_session_invalid", "The Mesh terminal session is invalid.");
+    }
+    return lease?.request.protocolVersion;
   }
 
   async releaseSession(
     sessionId: string,
     sessionToken: string,
   ): Promise<void> {
-    const lease = this.leases.get(sessionId);
-    if (!lease) {
+    if (this.getSessionProtocolVersion(sessionId, sessionToken) === undefined) {
       await this.closePromises.get(sessionId)?.promise;
       return;
-    }
-    if (lease.sessionToken !== sessionToken) {
-      throw new DomainError(
-        "mesh_terminal_session_invalid",
-        "The Mesh terminal session is invalid.",
-      );
     }
     await this.close(sessionId, true, 1000, "Mesh terminal session released");
   }

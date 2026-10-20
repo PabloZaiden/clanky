@@ -72,7 +72,7 @@ import type { AgentProvider } from "@/shared/settings";
 import type { HarnessAdapter } from "@/shared/settings";
 import { requireTrustedController } from "./mesh-peer-auth";
 import { meshInboundResourceRegistry } from "./mesh-inbound-resource-registry";
-import { decryptMeshPayload } from "./mesh-payload-crypto";
+import { decodeMeshEnvironment } from "./mesh-payload";
 import { parseManagedContextEnvironment } from "./managed-context-environment";
 import {
   executionPathStyleForPlatform,
@@ -87,9 +87,9 @@ import {
 } from "@/shared/execution-host";
 import type { MeshExecutionOperation } from "@/shared/mesh-execution";
 import {
-  MESH_PROTOCOL_VERSION,
   isSupportedMeshProtocolVersion,
 } from "@/shared/mesh-protocol";
+import { countMeshProtocolSessions } from "./mesh-protocol-version";
 
 const log = createLogger("core:mesh-execution-gateway");
 const MAX_SESSIONS = 256;
@@ -517,6 +517,10 @@ async function assertTrustedCaller(
 }
 
 export class MeshExecutionGateway {
+  getProtocolSessionCounts() {
+    return countMeshProtocolSessions(this.sessions.values(), (session) => session);
+  }
+
   private readonly sessions = new Map<string, MeshExecutionSession>();
   private readonly pendingOperations = new Map<Promise<void>, string>();
   private readonly asyncCommands = new Map<string, MeshExecutionAsyncCommand>();
@@ -782,10 +786,7 @@ export class MeshExecutionGateway {
     }
 
     const { executionRoot, pathStyle } = await assertTrustedCaller(request);
-    const decryptedEnvironment = request.encryptedEnvironment === undefined
-      || request.encryptedEnvironment === null
-      ? undefined
-      : await decryptMeshPayload(request.encryptedEnvironment);
+    const decryptedEnvironment = await decodeMeshEnvironment(request);
     const environment = parseManagedContextEnvironment(decryptedEnvironment);
     this.usedNonces.set(request.nonce, new Date(request.expiresAt).getTime());
     const sessionId = crypto.randomUUID();
@@ -875,8 +876,13 @@ export class MeshExecutionGateway {
   getSessionProtocolVersion(
     sessionId: string,
     sessionToken: string,
+    expected?: MeshExecutionProtocolVersion,
   ): MeshExecutionProtocolVersion {
-    return this.requireSessionRecord(sessionId, sessionToken).protocolVersion;
+    const version = this.requireSessionRecord(sessionId, sessionToken).protocolVersion;
+    if (expected !== undefined && expected !== version) {
+      throw new DomainError("mesh_execution_protocol_mismatch", "The request generation does not match its admitted session.");
+    }
+    return version;
   }
 
   async getHarnessSessionConfig(sessionId: string, sessionToken: string): Promise<{
@@ -885,7 +891,7 @@ export class MeshExecutionGateway {
     adapter: Exclude<HarnessAdapter, "acp">; directory: string; bindingDirectory: string; environment?: Record<string, string>;
   }> {
     const { session } = await this.requireValidatedSession(sessionId, sessionToken, {
-      expectedChannel: MESH_HARNESS_CHANNEL, expectedProtocolVersion: MESH_PROTOCOL_VERSION,
+      expectedChannel: MESH_HARNESS_CHANNEL,
       memberErrorCode: "mesh_execution_context_changed",
     });
     if (!session.adapter || !session.ownerId) throw new DomainError("mesh_execution_session_invalid", "The native session has no ownership.");
@@ -905,7 +911,6 @@ export class MeshExecutionGateway {
   async claimHarnessRequest(sessionId: string, sessionToken: string, requestId: string): Promise<() => void> {
     const { session } = await this.requireValidatedSession(sessionId, sessionToken, {
       expectedChannel: MESH_HARNESS_CHANNEL,
-      expectedProtocolVersion: MESH_PROTOCOL_VERSION,
       memberErrorCode: "mesh_execution_context_changed",
     });
     if (session.inFlight >= MESH_EXECUTION_MAX_IN_FLIGHT_REQUESTS) throw new DomainError("mesh_execution_limit_exceeded", "The execution session has too many in-flight requests.");

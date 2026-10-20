@@ -36,6 +36,7 @@ import {
   type MeshProtocolVersion,
 } from "@/shared/mesh-protocol";
 import { CLANKY_VERSION } from "../version";
+import { isSecureMeshRequest } from "./mesh-transport-security";
 import {
   MeshRelayBroker,
   RELAY_MAX_DATA_FRAME_BYTES,
@@ -293,7 +294,7 @@ export async function createRelayServer(
       controllerFingerprint,
       controllerNodeId: store.getController()?.nodeId ?? null,
       ...(controllerProtocolVersion ? {
-        controllerSupportedProtocolVersions: [controllerProtocolVersion],
+        controllerSupportedProtocolVersions: broker.getControllerSupportedProtocolVersions(),
       } : {}),
       binaryVersion: CLANKY_VERSION,
       negotiatedProtocolVersion,
@@ -338,6 +339,9 @@ export async function createRelayServer(
         }
         const protocolVersion = negotiateMeshProtocolVersion(MESH_SUPPORTED_PROTOCOL_VERSIONS, parseMeshProtocolVersionsHeader(new URL(req.url).searchParams.get("protocolVersion")));
         if (!protocolVersion) return new Response("Unsupported Mesh generation", { status: 406 });
+        if (protocolVersion === 7 && !isSecureMeshRequest(req, runtimeConfig)) {
+          return new Response("Mesh 7 requires WSS", { status: 406 });
+        }
         const upgraded = server.upgrade(req, {
           data: {
             webappSocketHandler: RELAY_WEBSOCKET_HANDLER,
@@ -370,6 +374,10 @@ export async function createRelayServer(
           return new Response("Invalid or expired relay stream ticket", {
             status: 401,
           });
+        }
+        if (reservation.protocolVersion === 7 && !isSecureMeshRequest(req, runtimeConfig)) {
+          broker.closeData(reservation.reservationId, 1008, "Mesh 7 requires WSS");
+          return new Response("Mesh 7 requires WSS", { status: 403 });
         }
         const server = upgradeServer(ctx.server);
         if (!server) {

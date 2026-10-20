@@ -143,10 +143,16 @@ export interface MeshControllerGrant {
   controllerNegotiatedProtocolVersion?: MeshProtocolVersion | null;
 }
 
+export interface MeshRouteSecurity {
+  protocolVersion: MeshProtocolVersion | null;
+  payloadProtection: "trusted-tls" | "legacy-encrypted" | "unavailable";
+  fallbackReason: "tls-unavailable" | "relay-legacy" | "worker-legacy" | "protocol-unavailable" | "revoked" | null;
+}
+
 /** Aggregated mesh status for controllers. */
 export interface MeshControllerStatus {
   node: MeshNodeIdentity;
-  workers: MeshWorkerRegistration[];
+  workers: Array<MeshWorkerRegistration & { routeSecurity: MeshRouteSecurity }>;
   protocol: MeshProtocolMetadata;
 }
 
@@ -156,6 +162,11 @@ export interface MeshWorkerStatus {
   execution: MeshWorkerExecutionConfig;
   controllerCount: number;
   protocol: MeshProtocolMetadata;
+  activeSessions: {
+    execution: Record<MeshProtocolVersion, number>;
+    terminal: Record<MeshProtocolVersion, number>;
+    tcpTunnel: Record<MeshProtocolVersion, number>;
+  };
 }
 
 export type MeshStatusRecord = MeshControllerStatus | MeshWorkerStatus;

@@ -8,6 +8,7 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import { taskToRow, rowToTask, validateColumnNames } from "./helpers";
 import { requirePersistenceUserId } from "../ownership";
 import { taskTranscriptStore } from "../transcripts/task-store";
+import { invalidateChatMetadataForUser } from "../chats/metadata-cache";
 
 const log = createLogger("persistence:tasks");
 
@@ -184,6 +185,7 @@ export async function deleteTask(taskId: string): Promise<boolean> {
   log.debug("Deleting task", { taskId });
   const db = getDatabase();
   const userId = requirePersistenceUserId();
+  invalidateChatMetadataForUser(db, userId, (chat) => chat.config.taskId === taskId);
   const stmt = db.prepare("DELETE FROM tasks WHERE id = ? AND user_id = ?");
   const result = stmt.run(taskId, userId);
 

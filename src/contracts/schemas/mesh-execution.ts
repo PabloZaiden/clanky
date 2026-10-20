@@ -7,12 +7,13 @@ import {
   MESH_EXECUTION_MAX_RPC_TIMEOUT_MS,
   MESH_EXECUTION_MAX_RESULT_BYTES,
 } from "@/shared/mesh-execution";
-import { MESH_PROTOCOL_VERSION } from "@/shared/mesh-protocol";
+import { MeshProtocolVersionSchema } from "./mesh-protocol";
+import { assertMeshEnvironmentGeneration } from "./mesh-payload";
 import { AgentProviderSchema } from "./workspace";
 import { GIT_COMMAND_SCOPES } from "@/shared/execution-host";
 
 const MeshExecutionPathSchema = z.string().min(1).max(16_384);
-const MeshExecutionProtocolVersionSchema = z.literal(MESH_PROTOCOL_VERSION);
+const MeshExecutionProtocolVersionSchema = MeshProtocolVersionSchema;
 
 export const MeshDirectoryTreeResultSchema = z.array(z.object({
   path: MeshExecutionPathSchema.refine((path) => !path.includes("\0")),
@@ -20,7 +21,7 @@ export const MeshDirectoryTreeResultSchema = z.array(z.object({
   isSymbolicLink: z.boolean(),
 }));
 
-export const MeshExecutionSessionRequestV6Schema = z.object({
+export const MeshExecutionSessionRequestSchema = z.object({
   protocolVersion: MeshExecutionProtocolVersionSchema,
   requestId: z.string().trim().min(1).max(200),
   callerNodeId: z.string().trim().min(1).max(200),
@@ -35,15 +36,16 @@ export const MeshExecutionSessionRequestV6Schema = z.object({
   adapter: z.enum(["copilot", "codex", "opencode2"]).optional(),
   ownerId: z.string().min(1).max(200).optional(),
   encryptedEnvironment: z.unknown().nullable().optional(),
+  environment: z.record(z.string(), z.string()).optional(),
   nonce: z.string().trim().min(1).max(200),
   expiresAt: z.string().datetime(),
   signature: z.string().trim().min(1).max(16_384),
 }).superRefine((value, ctx) => {
+  assertMeshEnvironmentGeneration(value, ctx);
   if (value.channel === MESH_HARNESS_CHANNEL && (!value.adapter || !value.ownerId)) {
     ctx.addIssue({ code: "custom", path: ["channel"], message: "Native sessions require adapter and owner." });
   }
 });
-export const MeshExecutionSessionRequestSchema = MeshExecutionSessionRequestV6Schema;
 
 export const MeshExecutionSessionCloseRequestSchema = z.object({
   protocolVersion: MeshExecutionProtocolVersionSchema,
@@ -197,7 +199,7 @@ export const MeshExecutionFileWriteQuerySchema = z.object({
   maxBytes: z.coerce.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
 });
 
-export type MeshExecutionSessionRequest = z.infer<typeof MeshExecutionSessionRequestV6Schema>;
+export type MeshExecutionSessionRequest = z.infer<typeof MeshExecutionSessionRequestSchema>;
 export type MeshExecutionSessionCloseRequest = z.infer<typeof MeshExecutionSessionCloseRequestSchema>;
 export type MeshExecutionSessionRenewalRequest = z.infer<typeof MeshExecutionSessionRenewalRequestSchema>;
 export type MeshExecutionRpcRequest = z.infer<typeof MeshExecutionRpcRequestSchema>;

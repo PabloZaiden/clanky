@@ -1,7 +1,8 @@
 import { defineRoutes } from "@pablozaiden/webapp/server";
 import { MeshTcpTunnelSessionRequestSchema } from "@/contracts/schemas/mesh-tcp-tunnel";
 import { meshTcpTunnelGateway } from "../../core/mesh-tcp-tunnel-gateway";
-import { encryptMeshPayload } from "../../core/mesh-payload-crypto";
+import { encodeMeshPayload } from "../../core/mesh-payload";
+import { assertMeshRequestTransport } from "../../core/mesh-transport-security";
 import { errorResponse } from "../helpers";
 import { parseAndValidate } from "../validation";
 import {
@@ -29,13 +30,15 @@ export const meshTunnelRoutes = defineRoutes({
       );
       if (headerError) return headerError;
       try {
+        assertMeshRequestTransport(req, parsed.data.protocolVersion);
         const session = await meshTcpTunnelGateway.createSession(parsed.data);
         return Response.json({
           protocolVersion: session.protocolVersion,
           capability: session.capability,
           sessionId: session.sessionId,
           expiresAt: session.expiresAt,
-          encryptedPayload: encryptMeshPayload(
+          ...encodeMeshPayload(
+            session.protocolVersion,
             { sessionToken: session.sessionToken },
             parsed.data.callerEncryptionPublicKey,
           ),
@@ -60,7 +63,7 @@ export const meshTunnelRoutes = defineRoutes({
         return errorResponse("mesh_tunnel_session_invalid", "Mesh TCP tunnel headers are required.", 401);
       }
       try {
-        await meshTcpTunnelGateway.authorize(sessionId, sessionToken);
+        assertMeshRequestTransport(req, await meshTcpTunnelGateway.authorize(sessionId, sessionToken));
         const upgraded = ctx.server?.upgrade(req, {
           data: {
             webappSocketHandler: "clanky",

@@ -17,7 +17,7 @@
  */
 
 import type { Agent, AgentRun, AgentRunStatus } from "./agent";
-import type { Chat, ChatConfig, ChatStatus } from "./chat";
+import type { ChatMetadata, ChatConfig, ChatStatus } from "./chat";
 import type { AutomaticPrFlowState, GitCommit, TaskConfig, TaskLogEntry, ModelConfig, PersistedMessage } from "./task";
 import type { ToolCallExtra, ToolCallRecord } from "./tool-call";
 import type { StreamDeltaPosition } from "./stream-position";
@@ -177,7 +177,7 @@ export interface ChatCreatedEvent {
 export interface ChatUpdatedEvent {
   type: "chat.updated";
   chatId: string;
-  chat: Chat;
+  chat: ChatMetadata;
   timestamp: string;
 }
 
