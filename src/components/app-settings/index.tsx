@@ -8,6 +8,7 @@ export { ControllerSettingsContent } from "./controller-settings-content";
 export { WorkerUpdateAction } from "./worker-update-action";
 export { GithubUsernameRowContent } from "./github-username-row-content";
 export { VoiceSettingsRowContent } from "./voice-settings-row-content";
+export { PromptTemplatesSettingsContent } from "./prompt-templates-settings-content";
 export {
   SettingsCheckbox,
   SettingsError,

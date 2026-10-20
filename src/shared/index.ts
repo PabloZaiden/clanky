@@ -25,6 +25,7 @@ export * from "./mesh-terminal";
 export * from "./mesh-tcp-tunnel";
 export * from "./model";
 export * from "./preferences";
+export * from "./prompt-templates";
 export * from "./provisioning";
 export * from "./settings";
 export * from "./ssh-server";

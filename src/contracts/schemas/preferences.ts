@@ -10,6 +10,7 @@ import { z } from "zod";
 import {
   DEFAULT_QUICK_CHAT_SETTINGS,
   isValidIanaTimeZone,
+  PROMPT_TEMPLATE_LIMITS,
   type QuickChatSettings,
 } from "@/shared";
 import { CheapModelSelectionSchema, ModelConfigSchema } from "./model";
@@ -84,6 +85,36 @@ export const QuickChatSettingsSchema = z.object({
 });
 
 export const SetQuickChatSettingsRequestSchema = QuickChatSettingsSchema;
+
+export const PromptTemplateSchema = z.object({
+  id: z.string().min(1).max(100),
+  name: z.string().trim().min(1, "name is required").max(PROMPT_TEMPLATE_LIMITS.nameLength),
+  description: z.string().trim().max(PROMPT_TEMPLATE_LIMITS.descriptionLength),
+  prompt: z.string().max(PROMPT_TEMPLATE_LIMITS.promptLength).refine(
+    (value) => value.trim().length > 0,
+    { message: "prompt is required" },
+  ),
+});
+
+export const PromptTemplateListSchema = z.array(PromptTemplateSchema)
+  .max(PROMPT_TEMPLATE_LIMITS.count)
+  .superRefine((templates, context) => {
+    const ids = new Set<string>();
+    templates.forEach((template, index) => {
+      if (ids.has(template.id)) {
+        context.addIssue({
+          code: "custom",
+          message: "template IDs must be unique",
+          path: [index, "id"],
+        });
+      }
+      ids.add(template.id);
+    });
+  });
+
+export const SetPromptTemplatesRequestSchema = z.object({
+  templates: PromptTemplateListSchema,
+});
 
 export function normalizeQuickChatSettings(value: unknown): QuickChatSettings {
   const validation = QuickChatSettingsSchema.safeParse(value);

@@ -156,6 +156,9 @@ export {
   SetSchedulerTimezoneRequestSchema,
   QuickChatSettingsSchema,
   SetQuickChatSettingsRequestSchema,
+  PromptTemplateSchema,
+  PromptTemplateListSchema,
+  SetPromptTemplatesRequestSchema,
   normalizeQuickChatSettings,
 } from "./preferences";
 

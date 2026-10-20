@@ -16,7 +16,11 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import { requirePersistenceUserId } from "./ownership";
 import { DEFAULT_QUICK_CHAT_SETTINGS, DEFAULT_SCHEDULER_TIMEZONE, isValidIanaTimeZone, type DashboardViewMode, type QuickChatSettings } from "@/shared/preferences";
 import { CheapModelSelectionSchema } from "@/contracts/schemas/model";
-import { normalizeQuickChatSettings } from "@/contracts/schemas";
+import {
+  normalizeQuickChatSettings,
+  PromptTemplateListSchema,
+} from "@/contracts/schemas";
+import type { PromptTemplate } from "@/shared/prompt-templates";
 import type { CheapModelSelection } from "@/shared";
 
 const log = createLogger("persistence:preferences");
@@ -329,6 +333,34 @@ export async function setQuickChatSettings(settings: QuickChatSettings): Promise
     hasModel: normalized.model !== null,
   });
   setPreference("quickChatSettings", JSON.stringify(normalized));
+}
+
+export async function getPromptTemplates(): Promise<PromptTemplate[]> {
+  const templatesJson = getPreference("promptTemplates");
+  if (!templatesJson) {
+    return [];
+  }
+
+  try {
+    const validation = PromptTemplateListSchema.safeParse(JSON.parse(templatesJson));
+    if (!validation.success) {
+      log.warn("Failed to validate prompt templates preference", {
+        issues: validation.error.issues.map((issue) => issue.message),
+      });
+      return [];
+    }
+    return validation.data;
+  } catch (error) {
+    log.warn("Failed to parse prompt templates preference", {
+      error: String(error),
+    });
+    return [];
+  }
+}
+
+export async function setPromptTemplates(templates: PromptTemplate[]): Promise<void> {
+  const validatedTemplates = PromptTemplateListSchema.parse(templates);
+  setPreference("promptTemplates", JSON.stringify(validatedTemplates));
 }
 
 export async function getSchedulerTimezone(): Promise<string> {

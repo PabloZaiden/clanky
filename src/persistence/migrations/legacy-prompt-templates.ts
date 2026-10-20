@@ -1,31 +1,10 @@
-/**
- * Prompt templates for task creation and chat composition.
- *
- * Each template provides a predefined prompt that can be selected from
- * task creation or chat composition.
- *
- * To add a new template, append an entry to the `PROMPT_TEMPLATES` array.
- */
-
-/** A predefined prompt template shared by task creation and chat composition. */
-export interface PromptTemplate {
-  /** Unique identifier for the template. */
-  id: string;
-  /** Short display name shown in the dropdown. */
-  name: string;
-  /** Brief description shown as helper text when the template is selected. */
-  description: string;
-  /** The full prompt text that autofills the textarea. */
-  prompt: string;
-}
+import type { PromptTemplate } from "@/shared/prompt-templates";
 
 /**
- * Predefined prompt templates.
- *
- * Add new templates by appending to this array. Each template must have
- * a unique `id`. The order here determines the order in the dropdown.
+ * Snapshot of the former global prompt templates for migration 83.
+ * Keep these values stable: existing users receive this list once.
  */
-export const PROMPT_TEMPLATES: readonly PromptTemplate[] = [
+export const LEGACY_PROMPT_TEMPLATES: readonly PromptTemplate[] = [
   {
     id: "start-pr-with-automerge",
     name: "Start a PR with automerge",
@@ -201,11 +180,3 @@ After making fixes, re-read the updated documentation to confirm:
 - Summarize the updated dependency groups, important major-version changes, validation commands run, and any remaining blockers.`,
   },
 ] as const;
-
-/**
- * Find a template by its ID.
- * Returns undefined if no template matches.
- */
-export function getTemplateById(id: string): PromptTemplate | undefined {
-  return PROMPT_TEMPLATES.find((t) => t.id === id);
-}
