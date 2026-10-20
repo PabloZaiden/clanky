@@ -330,6 +330,9 @@ realtime UI, or unrelated APIs. Do not combine worker mode with
    keys until all nodes and sessions have migrated; never retry an ambiguous
    dispatched prompt or command by switching generations. See the canonical
    guide's protocol migration section for proxy and staged-upgrade rules.
+   Failed discovery leaves new relay connections retrying without using
+   stored protocol capabilities. Check connection state as well as the last
+   reported version; do not re-pair or revoke trust for a transient failure.
 
 Mesh access intentionally grants unrestricted command and file access to the
 worker host. Do not invent path sandboxing or assume a workspace confines Mesh

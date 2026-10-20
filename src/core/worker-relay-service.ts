@@ -11,7 +11,7 @@ import { MeshRelayConnectorManager } from "./mesh-relay-connector-manager";
 import { requireMeshRuntimeRole } from "./mesh-runtime";
 import { discoverMeshEnrollmentTarget } from "./mesh-target-discovery";
 import { negotiateMeshDescriptorGeneration } from "./mesh-protocol-version";
-import { meshTransportProtocolVersions } from "@/shared/mesh-protocol";
+import { MESH_LEGACY_PROTOCOL_VERSION, meshTransportProtocolVersions } from "@/shared/mesh-protocol";
 
 type RelayDispatch = (request: Request) => Promise<Response | undefined>;
 
@@ -154,7 +154,8 @@ export class WorkerRelayService {
       relayFingerprint: selected.route.relayFingerprint,
       role: "worker" as const,
       targetNodeId: selected.grant.controllerNodeId,
-      protocolVersion: await refreshProtocol(),
+      // Only a seed: the manager discovers the version before opening a socket.
+      protocolVersion: selected.grant.controllerNegotiatedProtocolVersion ?? MESH_LEGACY_PROTOCOL_VERSION,
     };
     const active = this.manager.activeConfig;
     if (
@@ -163,7 +164,6 @@ export class WorkerRelayService {
       && active.relayFingerprint === expected.relayFingerprint
       && active.role === expected.role
       && active.targetNodeId === expected.targetNodeId
-      && active.protocolVersion === expected.protocolVersion
     ) {
       return;
     }

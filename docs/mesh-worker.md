@@ -62,6 +62,14 @@ An admission failure or ambiguous dispatched command/prompt is never replayed
 using another generation. A reconnect can negotiate anew, but does not resend
 user input.
 
+Initial relay connections and reconnects require successful discovery before
+opening the control socket. Failed discovery or a mismatched identity never
+falls back to stored protocol capabilities: the existing connection manager
+retries with bounded backoff until discovery succeeds. The link stays
+unavailable during that retry, without changing its pairing or grants.
+Successful discovery of an older peer still selects Mesh 6. Healthy connected
+links are not polled or interrupted to renegotiate.
+
 The Mesh status and Settings views show each controller, relay, and worker
 binary version, supported generations, and the generation observed in the last
 successful exchange, plus execution-host capabilities. Local protocol status
