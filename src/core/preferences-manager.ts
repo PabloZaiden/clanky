@@ -13,6 +13,7 @@ import {
   getLastDirectory as getLastDirectoryRecord,
   getLastModel as getLastModelRecord,
   getMarkdownRenderingEnabled as getMarkdownRenderingEnabledRecord,
+  getPromptTemplates as getPromptTemplatesRecord,
   getQuickChatSettings as getQuickChatSettingsRecord,
   getSchedulerTimezone as getSchedulerTimezoneRecord,
   setDashboardViewMode as setDashboardViewModeRecord,
@@ -22,10 +23,12 @@ import {
   setLastDirectory as setLastDirectoryRecord,
   setLastModel as setLastModelRecord,
   setMarkdownRenderingEnabled as setMarkdownRenderingEnabledRecord,
+  setPromptTemplates as setPromptTemplatesRecord,
   setQuickChatSettings as setQuickChatSettingsRecord,
   setSchedulerTimezone as setSchedulerTimezoneRecord,
 } from "../persistence/preferences";
 import type { CheapModelSelection } from "@/contracts/schemas/model";
+import type { PromptTemplate } from "@/shared/prompt-templates";
 import type { DashboardViewMode, QuickChatSettings } from "@/shared/preferences";
 import { DomainError } from "../domain/domain-error";
 import { workspaceManager } from "./workspace-manager";
@@ -118,6 +121,14 @@ export class PreferencesManager {
       }
     }
     await setQuickChatSettingsRecord(settings);
+  }
+
+  async getPromptTemplates(): Promise<PromptTemplate[]> {
+    return await getPromptTemplatesRecord();
+  }
+
+  async setPromptTemplates(templates: PromptTemplate[]): Promise<void> {
+    await setPromptTemplatesRecord(templates);
   }
 
   async validateQuickChatModel(request: QuickChatModelRequest): Promise<void> {

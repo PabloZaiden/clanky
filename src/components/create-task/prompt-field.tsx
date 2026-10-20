@@ -1,5 +1,4 @@
 import { useRef, type ClipboardEvent } from "react";
-import { getTemplateById } from "../../lib/prompt-templates";
 import type { ComposerAttachment } from "@/shared/message-attachments";
 import {
   ImageAttachmentControl,
@@ -12,6 +11,7 @@ interface PromptFieldProps {
   attachments: ComposerAttachment[];
   onAttachmentsChange: (attachments: ComposerAttachment[]) => void;
   selectedTemplate: string;
+  selectedTemplatePrompt?: string;
   onTemplateClear: () => void;
 }
 
@@ -21,6 +21,7 @@ export function PromptField({
   attachments,
   onAttachmentsChange,
   selectedTemplate,
+  selectedTemplatePrompt,
   onTemplateClear,
 }: PromptFieldProps) {
   const attachmentControlRef = useRef<ImageAttachmentControlHandle>(null);
@@ -33,11 +34,8 @@ export function PromptField({
   function handlePromptChange(newValue: string) {
     onChange(newValue);
     // Reset template selection if user edits the prompt away from the template text
-    if (selectedTemplate) {
-      const template = getTemplateById(selectedTemplate);
-      if (template && newValue !== template.prompt) {
-        onTemplateClear();
-      }
+    if (selectedTemplate && selectedTemplatePrompt && newValue !== selectedTemplatePrompt) {
+      onTemplateClear();
     }
   }
 

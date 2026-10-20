@@ -17,6 +17,7 @@ import { isAgentProvider } from "@/shared/settings";
 import { getTranscriptTableConfig } from "../transcripts/table-config";
 import { getMessageAttachmentKind } from "@/shared/message-attachments";
 import { isPersistedMessage } from "../transcripts/codec";
+import { LEGACY_PROMPT_TEMPLATES } from "./legacy-prompt-templates";
 
 const log = createLogger("persistence:migrations");
 
@@ -807,6 +808,23 @@ export const migrations: Migration[] = [
           AND json_type(harness_state_json, '$.unfinishedMessages') IS NULL
         ELSE 0 END
       `);
+    },
+  },
+  {
+    version: 83,
+    name: "copy_global_prompt_templates_to_users",
+    up: (db) => {
+      const users = db.query("SELECT id FROM webapp_users").all() as Array<{ id: string }>;
+      const insert = db.prepare(`
+        INSERT INTO preferences (key, user_id, value)
+        VALUES ('promptTemplates', ?, ?)
+        ON CONFLICT(key, user_id) DO NOTHING
+      `);
+      const templatesJson = JSON.stringify(LEGACY_PROMPT_TEMPLATES);
+
+      for (const user of users) {
+        insert.run(user.id, templatesJson);
+      }
     },
   },
 ];

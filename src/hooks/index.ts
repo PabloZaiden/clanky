@@ -33,6 +33,7 @@ export {
 export { useQuickChatSettings, type UseQuickChatSettingsResult } from "./useQuickChatSettings";
 export { useSchedulerTimezone, type UseSchedulerTimezoneResult } from "./useSchedulerTimezone";
 export { useGithubUsername, type UseGithubUsernameResult } from "./useGithubUsername";
+export { usePromptTemplates, type UsePromptTemplatesResult } from "./usePromptTemplates";
 export { usePrivateItemsPreference, type PrivateItemsPreference } from "./usePrivateItemsPreference";
 export { useVoiceSettings, type UseVoiceSettingsResult } from "./useVoiceSettings";
 export {

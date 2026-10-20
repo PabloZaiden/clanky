@@ -22,6 +22,7 @@ import { useCreateTaskForm } from "./use-create-task-form";
 import { useGitHubIssues } from "./use-github-issues";
 import { resolveWorkspaceBranchSelection } from "../../lib/workspace-branch-selection";
 import { UPLOADED_PLAN_IMPLEMENTATION_PROMPT } from "../../lib/uploaded-plan";
+import { usePromptTemplates } from "../../hooks";
 import type { ComposerAttachment } from "@/shared/message-attachments";
 import type { CreateTaskFormSubmitRequest } from "@/lib/task-request";
 import type { UploadedPlanFile } from "./types";
@@ -57,6 +58,7 @@ export function CreateTaskForm({
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const [uploadedPlan, setUploadedPlan] = useState<UploadedPlanFile | null>(null);
   const [uploadedPlanError, setUploadedPlanError] = useState<string | null>(null);
+  const promptTemplates = usePromptTemplates();
   const {
     formRef,
     promptRef,
@@ -233,6 +235,9 @@ export function CreateTaskForm({
 
       {!uploadedPlan && (
         <TemplateSelector
+          templates={promptTemplates.templates}
+          loading={promptTemplates.loading}
+          error={promptTemplates.error}
           selectedTemplate={selectedTemplate}
           onChange={setSelectedTemplate}
           onPromptChange={(p) => {
@@ -270,6 +275,9 @@ export function CreateTaskForm({
           attachments={attachments}
           onAttachmentsChange={setAttachments}
           selectedTemplate={selectedTemplate}
+          selectedTemplatePrompt={promptTemplates.templates.find(
+            (template) => template.id === selectedTemplate,
+          )?.prompt}
           onTemplateClear={() => setSelectedTemplate("")}
         />
       )}

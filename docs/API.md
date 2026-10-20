@@ -883,6 +883,7 @@ included in this table.
 | GET, PUT | `/api/preferences/last-model` | Persist the user's most recently used model. |
 | GET, PUT | `/api/preferences/markdown-rendering` | Persist markdown rendering preferences. |
 | GET, PUT | `/api/preferences/quick-chat` | Persist quick chat workspace and model preferences. |
+| GET, PUT | `/api/preferences/prompt-templates` | Read or replace the authenticated user's ordered message templates. |
 | GET, PUT | `/api/preferences/scheduler-timezone` | Persist the scheduler timezone preference. |
 | GET | `/api/previews` | List active previews and previews with pending cleanup. |
 | DELETE | `/api/previews/:previewId` | Close a preview or retry its pending cleanup on the original host. |
@@ -2362,6 +2363,72 @@ non-empty.
   }
 }
 ```
+
+#### GET /api/preferences/prompt-templates
+
+Get the authenticated user's ordered message templates. Existing users receive
+the current global templates once during upgrade; newly created users start
+with an empty list.
+
+**Response**
+
+```json
+{
+  "templates": [
+    {
+      "id": "start-pr",
+      "name": "Start a PR",
+      "description": "Starts a PR and addresses comments without requesting extra reviews.",
+      "prompt": "Start a PR, wait for comments and address them. Don’t ask for extra reviews"
+    }
+  ]
+}
+```
+
+#### PUT /api/preferences/prompt-templates
+
+Replace the authenticated user's ordered message-template list. Add, edit,
+delete, and reorder templates by sending the complete updated list. IDs must be
+unique; a user can store up to 100 templates. Names are limited to 120
+characters, descriptions to 500, and prompts to 50,000.
+
+**Request Body**
+
+```json
+{
+  "templates": [
+    {
+      "id": "start-pr",
+      "name": "Start a PR",
+      "description": "Starts a PR and addresses comments without requesting extra reviews.",
+      "prompt": "Start a PR, wait for comments and address them. Don’t ask for extra reviews"
+    }
+  ]
+}
+```
+
+**Response**
+
+```json
+{
+  "success": true,
+  "templates": [
+    {
+      "id": "start-pr",
+      "name": "Start a PR",
+      "description": "Starts a PR and addresses comments without requesting extra reviews.",
+      "prompt": "Start a PR, wait for comments and address them. Don’t ask for extra reviews"
+    }
+  ]
+}
+```
+
+**Errors**
+
+| Status | Error | Description |
+|--------|-------|-------------|
+| 400 | `validation_error` | Invalid template list, duplicate IDs, or field limits exceeded |
+| 500 | `save_failed` | Failed to save message templates |
 
 #### GET /api/preferences/scheduler-timezone
 

@@ -30,6 +30,13 @@ interface Workspace {
   name: string;
 }
 
+interface PromptTemplate {
+  id: string;
+  name: string;
+  description: string;
+  prompt: string;
+}
+
 let application: E2EApplication | undefined;
 
 afterEach(async () => {
@@ -221,6 +228,84 @@ test("passkey users see only their own Clanky data and permissions", async () =>
       memberCookies,
       "member-e2e",
     );
+    const initialOwnerTemplates = (await application.json<{ templates: PromptTemplate[] }>(
+      "/api/preferences/prompt-templates",
+      { apiKey: ownerApiKey },
+    )).data.templates;
+    const initialMemberTemplates = (await application.json<{ templates: PromptTemplate[] }>(
+      "/api/preferences/prompt-templates",
+      { apiKey: memberApiKey },
+    )).data.templates;
+    expect(initialOwnerTemplates).toEqual([]);
+    expect(initialMemberTemplates).toEqual([]);
+
+    const ownerTemplates: PromptTemplate[] = [
+      {
+        id: "owner-first",
+        name: "Owner first",
+        description: "First owner's template",
+        prompt: "Owner first prompt",
+      },
+      {
+        id: "owner-second",
+        name: "Owner second",
+        description: "Second owner's template",
+        prompt: "Owner second prompt",
+      },
+    ];
+    await application.json("/api/preferences/prompt-templates", {
+      method: "PUT",
+      apiKey: ownerApiKey,
+      body: JSON.stringify({ templates: ownerTemplates }),
+    });
+    expect((await application.json<{ templates: PromptTemplate[] }>(
+      "/api/preferences/prompt-templates",
+      { apiKey: memberApiKey },
+    )).data.templates).toEqual([]);
+
+    const memberTemplates: PromptTemplate[] = [{
+      id: "member-only",
+      name: "Member only",
+      description: "",
+      prompt: "Member prompt",
+    }];
+    await application.json("/api/preferences/prompt-templates", {
+      method: "PUT",
+      apiKey: memberApiKey,
+      body: JSON.stringify({ templates: memberTemplates }),
+    });
+    const updatedOwnerTemplates = [
+      ownerTemplates[1]!,
+      {
+        ...ownerTemplates[0]!,
+        name: "Owner first updated",
+        prompt: "Updated owner prompt",
+      },
+    ];
+    await application.json("/api/preferences/prompt-templates", {
+      method: "PUT",
+      apiKey: ownerApiKey,
+      body: JSON.stringify({ templates: updatedOwnerTemplates }),
+    });
+    expect((await application.json<{ templates: PromptTemplate[] }>(
+      "/api/preferences/prompt-templates",
+      { apiKey: ownerApiKey },
+    )).data.templates).toEqual(updatedOwnerTemplates);
+
+    const remainingOwnerTemplates = [updatedOwnerTemplates[0]!];
+    await application.json("/api/preferences/prompt-templates", {
+      method: "PUT",
+      apiKey: ownerApiKey,
+      body: JSON.stringify({ templates: remainingOwnerTemplates }),
+    });
+    expect((await application.json<{ templates: PromptTemplate[] }>(
+      "/api/preferences/prompt-templates",
+      { apiKey: ownerApiKey },
+    )).data.templates).toEqual(remainingOwnerTemplates);
+    expect((await application.json<{ templates: PromptTemplate[] }>(
+      "/api/preferences/prompt-templates",
+      { apiKey: memberApiKey },
+    )).data.templates).toEqual(memberTemplates);
 
     const ownerHosts = (await application.json<ExecutionHost[]>(
       "/api/execution-hosts",

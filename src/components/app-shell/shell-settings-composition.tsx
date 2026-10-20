@@ -14,6 +14,7 @@ import {
   SettingsError,
   SettingsSelect,
   VoiceSettingsRowContent,
+  PromptTemplatesSettingsContent,
 } from "../app-settings";
 import type {
   PrivateItemsPreference,
@@ -69,7 +70,6 @@ export function buildShellSettingsSections({
   const selectedQuickChatWorkspace = workspaces.find(
     (workspace) => workspace.id === quickChatSettings.settings.workspaceId,
   ) ?? null;
-
   return [
     {
       id: "quick-chat",
@@ -242,6 +242,14 @@ export function buildShellSettingsSections({
           />
         ),
       }],
+    },
+    {
+      id: "prompt-templates",
+      title: "Templates",
+      category: { id: "content", title: "Content" },
+      scope: "user" as const,
+      // The row model cannot represent a collection with per-item editing and ordering.
+      render: () => <PromptTemplatesSettingsContent />,
     },
     {
       id: "private-items",

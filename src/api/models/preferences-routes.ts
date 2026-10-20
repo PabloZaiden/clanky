@@ -20,7 +20,18 @@ import { isDomainError } from "../../domain/domain-error";
 import { preferencesManager } from "../../core/preferences-manager";
 import { parseAndValidate } from "../validation";
 import { domainErrorResponse, internalErrorResponse } from "../helpers";
-import { SetLastModelRequestSchema, SetLastCheapModelRequestSchema, SetLastDirectoryRequestSchema, SetGithubUsernameRequestSchema, SetMarkdownRenderingRequestSchema, SetFileExplorerFullTreeRequestSchema, SetDashboardViewModeRequestSchema, SetSchedulerTimezoneRequestSchema, SetQuickChatSettingsRequestSchema } from "@/contracts/schemas";
+import {
+  SetLastModelRequestSchema,
+  SetLastCheapModelRequestSchema,
+  SetLastDirectoryRequestSchema,
+  SetGithubUsernameRequestSchema,
+  SetMarkdownRenderingRequestSchema,
+  SetFileExplorerFullTreeRequestSchema,
+  SetDashboardViewModeRequestSchema,
+  SetSchedulerTimezoneRequestSchema,
+  SetQuickChatSettingsRequestSchema,
+  SetPromptTemplatesRequestSchema,
+} from "@/contracts/schemas";
 
 const log = createLogger("api:preferences");
 
@@ -407,6 +418,49 @@ export const preferencesRoutes = defineRoutes({
         return internalErrorResponse(error, {
           error: "save_failed",
           message: "Failed to save quick chat settings",
+          status: 500,
+        });
+      }
+    },
+  },
+
+  "/api/preferences/prompt-templates": {
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "Read and update the authenticated user's message templates.",
+    requestSchema: SetPromptTemplatesRequestSchema,
+    operations: {
+      GET: {
+        description: "Read the authenticated user's ordered message templates.",
+        requestSchema: undefined,
+        querySchema: undefined,
+        automation: { policy: "read" },
+      },
+      PUT: {
+        requestSchema: SetPromptTemplatesRequestSchema,
+        querySchema: undefined,
+        automation: { policy: "write" },
+      },
+    },
+    async GET(_req: Request, _ctx: RouteContext): Promise<Response> {
+      const templates = await preferencesManager.getPromptTemplates();
+      return Response.json({ templates });
+    },
+
+    async PUT(req: Request, _ctx): Promise<Response> {
+      const result = await parseAndValidate(SetPromptTemplatesRequestSchema, req);
+      if (!result.success) {
+        return result.response;
+      }
+
+      try {
+        await preferencesManager.setPromptTemplates(result.data.templates);
+        return Response.json({ success: true, templates: result.data.templates });
+      } catch (error) {
+        logPreferenceSaveFailure("prompt-templates", error);
+        return internalErrorResponse(error, {
+          error: "save_failed",
+          message: "Failed to save message templates",
           status: 500,
         });
       }

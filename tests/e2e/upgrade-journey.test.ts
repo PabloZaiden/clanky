@@ -50,10 +50,18 @@ interface ApiKey {
   name: string;
 }
 
+interface PromptTemplate {
+  id: string;
+  name: string;
+  description: string;
+  prompt: string;
+}
+
 interface UpgradeSnapshot {
   apiKeyId: string;
   chatId: string;
   githubUsername: string;
+  promptTemplates: PromptTemplate[];
   taskId: string;
   taskStatus: string;
   workspaceId: string;
@@ -132,11 +140,15 @@ async function readUpgradeSnapshot(
     "/api/preferences/github-username",
   )).data;
   expect(preference.githubUsername).toBe(manifest.expected.githubUsername);
+  const promptTemplates = (await app.json<{ templates: PromptTemplate[] }>(
+    "/api/preferences/prompt-templates",
+  )).data.templates;
 
   return {
     apiKeyId: apiKey!.id,
     chatId: chat!.config.id,
     githubUsername: preference.githubUsername!,
+    promptTemplates,
     taskId: task!.config.id,
     taskStatus: task!.state.status,
     workspaceId: workspace!.id,
@@ -156,6 +168,19 @@ test("current binary upgrades and preserves public v5.4.1 state", async () => {
     await application.start();
     const firstSnapshot = await readUpgradeSnapshot(application, manifest);
     expect(firstSnapshot.taskStatus).toBe("draft");
+    expect(firstSnapshot.promptTemplates.map((template) => template.name)).toEqual([
+      "Start a PR with automerge",
+      "Start a PR",
+      "Project Analysis",
+      "Thorough Code Review",
+      "Fix Failing Tests",
+      "Continue Planned Tasks",
+      "Review & Fix Documentation",
+      "Update all project dependencies to the latest stable version",
+    ]);
+    expect(firstSnapshot.promptTemplates.every(
+      (template) => template.description.length > 0 && template.prompt.length > 0,
+    )).toBe(true);
 
     const workspace = (await application.json<Workspace>(
       `/api/workspaces/${firstSnapshot.workspaceId}`,
@@ -175,11 +200,21 @@ test("current binary upgrades and preserves public v5.4.1 state", async () => {
       },
     )).data;
     expect(updatedWorkspace.scratchpad).toBe(migratedScratchpad);
+    const editedTemplates = firstSnapshot.promptTemplates.map(
+      (template, index) => index === 0
+        ? { ...template, name: "Customized after migration" }
+        : template,
+    );
+    await application.json("/api/preferences/prompt-templates", {
+      method: "PUT",
+      body: JSON.stringify({ templates: editedTemplates }),
+    });
 
     await application.restart();
-    expect(await readUpgradeSnapshot(application, manifest)).toEqual(
-      firstSnapshot,
-    );
+    expect(await readUpgradeSnapshot(application, manifest)).toEqual({
+      ...firstSnapshot,
+      promptTemplates: editedTemplates,
+    });
     expect(
       (await application.json<Workspace>(
         `/api/workspaces/${firstSnapshot.workspaceId}`,
