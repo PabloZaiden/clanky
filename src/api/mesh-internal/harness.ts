@@ -16,6 +16,7 @@ import {
 import { DomainError } from "../../domain/domain-error";
 import { parseAndValidate } from "../validation";
 import { internalMeshErrorResponse, validateMeshSessionHeaders } from "./shared";
+import { createHarnessEventStream } from "./harness-events";
 import { errorResponse } from "../helpers";
 
 export const meshHarnessRoutes = defineRoutes({
@@ -70,58 +71,15 @@ export const meshHarnessRoutes = defineRoutes({
       try {
         const key = meshExecutionGateway.getSessionEncryptionPublicKey(envelope.sessionId, envelope.sessionToken);
         const subscription = await meshHarnessGateway.subscribe(envelope.sessionId, envelope.sessionToken, envelope.conversationId);
-        let sequence = 0;
-        let closed = false;
-        let heartbeat: ReturnType<typeof setInterval> | undefined;
-        const encoder = new TextEncoder();
-        const enqueueFrame = (
-          controller: ReadableStreamDefaultController<Uint8Array>,
-          payload: { type: string; event?: unknown },
-        ): void => {
-          const frameSequence = sequence++;
-          controller.enqueue(encoder.encode(`${JSON.stringify({
-            protocolVersion: envelope.protocolVersion,
-            sequence: frameSequence,
-            encryptedPayload: encryptMeshPayload(payload, key),
-          })}\n`));
-        };
-        const close = (): void => {
-          if (closed) return;
-          closed = true;
-          subscription.close();
-          clearInterval(heartbeat);
-          req.signal.removeEventListener("abort", close);
-          if (req.signal.aborted) meshHarnessGateway.observationTransportClosed(envelope.sessionId, envelope.conversationId);
-        };
-        req.signal.addEventListener("abort", close, { once: true });
-        const stream = new ReadableStream<Uint8Array>({
-          start(controller): void {
-            enqueueFrame(controller, { type: "ready" });
-            heartbeat = setInterval(() => {
-              if (closed) return;
-              if ((controller.desiredSize ?? 0) <= 0) {
-                close();
-                meshExecutionGateway.closeSession(envelope.sessionId);
-                controller.error(new DomainError("harness_event_gap", "The native observation consumer exceeded its buffer."));
-                return;
-              }
-              enqueueFrame(controller, { type: "heartbeat" });
-            }, 15_000);
-            heartbeat.unref?.();
-          },
-          async pull(controller): Promise<void> {
-            try {
-              const event = await subscription.next();
-              if (!event) { close(); controller.close(); return; }
-              enqueueFrame(controller, { type: "event", event });
-            } catch (error) { close(); controller.error(error); }
-          },
-          cancel(): void {
-            if (closed) return;
-            close();
+        const stream = createHarnessEventStream({
+          subscription,
+          encryptionKey: key,
+          protocolVersion: envelope.protocolVersion,
+          signal: req.signal,
+          onObservationClosed: () => {
             meshHarnessGateway.observationTransportClosed(envelope.sessionId, envelope.conversationId);
           },
-        }, { highWaterMark: 1 });
+        });
         return new Response(stream, { headers: { "content-type": "application/x-ndjson", "cache-control": "no-store" } });
       } catch (error) { return internalMeshErrorResponse(error); }
     },

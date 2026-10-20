@@ -171,6 +171,21 @@ Stop retain the selected provider's capabilities and limitations.
   gap or overflow invalidates observation and requires authoritative refresh
   and owned resume, not blind prompt or steering replay.
 
+Native event-response backpressure is not an observation gap. A full response
+queue pauses consumption; the 15-second heartbeat skips a keepalive when no
+response capacity is available instead of closing the native lease. Provider
+events retain their order and the separate 256-event subscriber queue remains
+bounded and fails explicitly on real overflow. Heartbeats do not accumulate
+while a consumer is paused.
+
+Worker observation failures use the existing encrypted error-event contract.
+The controller retains `harness_event_gap` for observation integrity failures
+and `harness_transport_closed` for disconnection rather than replacing them
+with a generic relay error. Unknown exception details remain private. Upgrade
+the affected worker for the heartbeat correction and both worker and controller
+for typed observation failure handling; no relay upgrade or wire-generation
+change is required.
+
 Preserve the worker data directory during upgrades and service restarts. Do
 not copy a conversation binding to another user, workspace, controller, or
 worker. The workspace directory remains a navigation root, not a sandbox.
