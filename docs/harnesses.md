@@ -123,8 +123,8 @@ and **Cached**. Cached is the percentage of total input read from the prompt
 cache; cache writes are not included in that percentage. It is unavailable
 when input is zero or either required counter is missing. Counts use decimal
 **K**, **M**, and **B** abbreviations; the exact count is available in the
-value's tooltip and accessible label. Changed displayed values briefly pop
-in unless reduced motion is enabled.
+value's tooltip and accessible label. Changed displayed values pop in over
+800 ms unless reduced motion is enabled.
 
 Clanky stores cumulative consumption for native Copilot, Codex and OpenCode 2
 sessions, including their observed subagents. Input, output, reasoning,
