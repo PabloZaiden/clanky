@@ -29,7 +29,10 @@ export class HarnessUsageObserver {
     if (this.options.control.capabilities.usage !== "tokens" || !this.options.control.getUsage) return;
     await this.refresh();
     if (!this.closed) {
-      this.interval = setInterval(() => { void this.refresh(); }, USAGE_CHECKPOINT_INTERVAL_MS);
+      this.interval = setInterval(() => {
+        if (this.pending) return;
+        void this.refresh();
+      }, USAGE_CHECKPOINT_INTERVAL_MS);
     }
   }
 

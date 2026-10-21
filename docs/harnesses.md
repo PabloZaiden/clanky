@@ -135,7 +135,8 @@ again. Token counts are not context-window utilization or a billing estimate.
 
 Checkpoints run server-side every 5 seconds while a native session is
 connected and when a principal or child turn ends, including interruption and
-failure. They do not depend on an open browser or menu. Providers may only
+failure. Periodic ticks skip an in-flight read; turn-end checkpoints still
+queue a final read. They do not depend on an open browser or menu. Providers may only
 finalize their counters at model-call boundaries. Saved totals survive Clanky
 restart, reconnect and replacement of a native session. Repeated cumulative
 snapshots do not count as additional consumption.
