@@ -293,6 +293,9 @@ Example CLI output:
 clanky preview --workspace "my-workspace" --port 3000
 clanky preview --server "my-server" --port 3000
 
+# Choose a different local port explicitly:
+clanky preview --workspace "my-workspace" --port 3000 --local-port 13000
+
 # HTTPS development app with a self-signed certificate:
 clanky preview --workspace "my-workspace" --port 8443 --https
 
@@ -336,10 +339,15 @@ a development CA already trusted by that browser (for example, `mkcert`).
 `--tls-cert` and `--tls-key` must be supplied together and require `--https`;
 they configure only the CLI listener, not upstream trust.
 
-The local port is random unless `--local-port` is supplied. Relative URLs work
-on that port, and absolute redirects to the registered application or tunnel
-origin are rewritten to the preview origin. Absolute URLs embedded in HTML,
-JavaScript, or app configuration are not rewritten: for
+Without `--local-port`, the CLI first tries the remote `--port` on the selected
+local `--host`. If that port is occupied or binding it is denied, it prints a
+notice and uses a random available local port. `--local-port PORT` requires
+exactly that port and fails if it cannot be bound; it never falls back.
+The printed URL always reflects the actual local port.
+
+Relative URLs work on that port, and absolute redirects to the registered
+application or tunnel origin are rewritten to the preview origin. Absolute
+URLs embedded in HTML, JavaScript, or app configuration are not rewritten: for
 `https://localhost:8443/...`, use `--local-port 8443` on a CLI machine where
 that address and port are free, or configure the application's public origin
 to match the printed preview URL. If the app and CLI run on the same machine
