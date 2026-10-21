@@ -71,6 +71,16 @@ Use `clanky api` to list the routes exposed by the running server and
 metadata. Public routes are exceptional and are identified explicitly in the
 route reference.
 
+## Deterministic agent execution
+
+Scheduled runs, manual runs, and deterministic code tests execute on the
+workspace's selected host without a runner execution timeout. On Mesh, they use
+the existing asynchronous command lifecycle, so expiry of a short execution
+session does not cancel the running program. Explicit program output is streamed
+while the run is active. Interrupting a run still cancels its processes and
+cleans up its temporary runner files; disconnecting a code-test request cancels
+that test.
+
 ## Transcript snapshots
 
 Chat, task and agent-run `GET .../:id/snapshot` responses default to the

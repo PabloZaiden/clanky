@@ -559,6 +559,12 @@ If the schema or endpoint list differs from this example, follow the local `clan
 
 ## Working with chats, agents, and other entities
 
+Deterministic agent runs and code tests use long-running execution on the
+selected workspace host. A short Mesh session expiry is not a run deadline.
+Monitor admitted runs through their status and transcript; use the explicit
+agent interrupt operation to cancel them. Keep code-test requests connected
+until completion, since disconnecting cancels the test.
+
 Clanky may expose chats, agents, terminal sessions, previews, provisioning
 jobs, or other entity APIs depending on the instance configuration. Discover
 them first:
