@@ -14,12 +14,13 @@ import {
   Button,
   ComposerInterruptButton,
   MicrophoneIcon,
+  PaperclipIcon,
 } from "../common";
 import { VoiceListeningPanel } from "./voice-listening-panel";
 import { ComposerSendButton } from "./composer-send-button";
 import { useConversationComposer } from "./use-conversation-composer";
 import type { ConversationComposerProps } from "./types";
-import { OutputTokenUsage } from "../output-token-usage";
+import { TokenUsage } from "../token-usage";
 
 function ThinkingSpinner() {
   return (
@@ -172,17 +173,9 @@ export function ConversationComposer(props: ConversationComposerProps) {
                 >
                   {props.tokenUsage !== undefined && (
                     <ComposerActionsMenuSection label="Usage">
-                      <OutputTokenUsage usage={props.tokenUsage} />
+                      <TokenUsage usage={props.tokenUsage} />
                     </ComposerActionsMenuSection>
                   )}
-                  <ComposerActionsMenuSection label="Template">
-                    <ConversationTemplateSelector
-                      selectedTemplate={selectedTemplate}
-                      onChange={setSelectedTemplate}
-                      onPromptChange={setMessage}
-                      disabled={controlsDisabled}
-                    />
-                  </ComposerActionsMenuSection>
                   {modelEnabled && (
                     <ComposerActionsMenuSection label="Model">
                       <ModelSelector
@@ -206,37 +199,43 @@ export function ConversationComposer(props: ConversationComposerProps) {
                       />
                     </ComposerActionsMenuSection>
                   )}
-                  {attachmentsEnabled && (
-                    <ComposerActionsMenuSection label="Attachments">
-                      <ComposerActionsMenuButton
-                        disabled={controlsDisabled || attachmentLimitReached}
-                        onClick={() => attachmentControlRef.current?.openFilePicker()}
-                      >
-                        <span>{attachmentLimitReached ? "Attachment limit reached" : "Attach file"}</span>
-                        <span aria-hidden="true">📎</span>
-                      </ComposerActionsMenuButton>
-                    </ComposerActionsMenuSection>
-                  )}
-                  {voice?.available && (
-                    <ComposerActionsMenuSection label="Voice">
-                      {voice?.available ? (
-                      <ComposerActionsMenuButton
-                        disabled={
-                          controlsDisabled
-                          || active
-                          || voice.status !== "idle"
-                          || hasContent
-                        }
-                        onClick={() => void voice.start()}
-                      >
-                        <span>Talk</span>
-                        <span aria-hidden="true">
-                          <MicrophoneIcon />
-                        </span>
-                      </ComposerActionsMenuButton>
-                      ) : null}
-                    </ComposerActionsMenuSection>
-                  )}
+                  <ComposerActionsMenuSection label="Template">
+                    <ConversationTemplateSelector
+                      selectedTemplate={selectedTemplate}
+                      onChange={setSelectedTemplate}
+                      onPromptChange={setMessage}
+                      disabled={controlsDisabled}
+                      actions={(attachmentsEnabled || voice?.available) && (
+                        <div className="flex shrink-0 items-center gap-3" role="group" aria-label="Message tools">
+                          {voice?.available && (
+                            <ComposerActionsMenuButton
+                              label="Talk"
+                              disabled={
+                                controlsDisabled
+                                || active
+                                || voice.status !== "idle"
+                                || hasContent
+                              }
+                              onClick={() => void voice.start()}
+                            >
+                              <span aria-hidden="true">
+                                <MicrophoneIcon />
+                              </span>
+                            </ComposerActionsMenuButton>
+                          )}
+                          {attachmentsEnabled && (
+                            <ComposerActionsMenuButton
+                              label={attachmentLimitReached ? "Attachment limit reached" : "Attach file"}
+                              disabled={controlsDisabled || attachmentLimitReached}
+                              onClick={() => attachmentControlRef.current?.openFilePicker()}
+                            >
+                              <PaperclipIcon />
+                            </ComposerActionsMenuButton>
+                          )}
+                        </div>
+                      )}
+                    />
+                  </ComposerActionsMenuSection>
                 </ComposerActionsMenu>
                 <textarea
                   ref={(node) => {

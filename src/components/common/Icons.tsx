@@ -93,6 +93,25 @@ export function MicrophoneIcon({ className = "", size = "h-4 w-4" }: IconProps) 
   );
 }
 
+export function PaperclipIcon({ className = "", size = "h-4 w-4" }: IconProps) {
+  return (
+    <svg
+      className={`${size} ${className}`.trim()}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2}
+      aria-hidden="true"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M21 11.5l-9 9a6 6 0 01-8.5-8.5l9.5-9.5a4 4 0 015.7 5.7l-9.5 9.5a2 2 0 01-2.8-2.8l9-9"
+      />
+    </svg>
+  );
+}
+
 /**
  * Close/cancel icon for compact action buttons.
  */

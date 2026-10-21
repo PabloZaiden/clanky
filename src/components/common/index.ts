@@ -46,6 +46,7 @@ export {
   ListIcon,
   MeshIcon,
   MicrophoneIcon,
+  PaperclipIcon,
   PreviewIcon,
   RefreshIcon,
   SaveIcon,
