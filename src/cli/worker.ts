@@ -43,7 +43,6 @@ interface WorkerBootstrapOptions {
   instanceName: string;
   keyName: string;
   rotate: boolean;
-  insecure: boolean;
   relayOnly: boolean;
 }
 
@@ -70,16 +69,11 @@ export function parseWorkerBootstrapArgs(
   let meshEndpoint: string | undefined;
   let instanceName: string | undefined;
   let rotate = false;
-  let insecure = false;
   let relayOnly = false;
   for (let index = 0; index < rest.length; index += 1) {
     const arg = rest[index];
     if (arg === "--rotate") {
       rotate = true;
-      continue;
-    }
-    if (arg === "--insecure") {
-      insecure = true;
       continue;
     }
     if (arg === "--relay-only") {
@@ -128,9 +122,6 @@ export function parseWorkerBootstrapArgs(
     if (meshEndpoint) {
       throw new Error("worker bootstrap --relay-only does not accept --mesh-endpoint");
     }
-    if (insecure) {
-      throw new Error("worker bootstrap --relay-only does not accept --insecure");
-    }
     if (host && !isLoopbackHost(host)) {
       throw new Error("worker bootstrap --relay-only requires a loopback --host");
     }
@@ -145,17 +136,15 @@ export function parseWorkerBootstrapArgs(
       instanceName,
       keyName,
       rotate,
-      insecure: false,
       relayOnly: true,
     };
   }
   if (!host) throw new Error("worker bootstrap requires --host");
   if (port === undefined) throw new Error("worker bootstrap requires --port");
   if (!meshEndpoint) throw new Error("worker bootstrap requires --mesh-endpoint");
-  const expectedTransport = insecure ? "http" : "https";
-  if (getMeshTransport(meshEndpoint) !== expectedTransport) {
+  if (getMeshTransport(meshEndpoint) !== "https") {
     throw new Error(
-      `worker bootstrap requires an ${expectedTransport.toUpperCase()} --mesh-endpoint${insecure ? "" : " (or pass --insecure for HTTP)"}`,
+      "worker bootstrap requires an HTTPS --mesh-endpoint",
     );
   }
   return {
@@ -166,7 +155,6 @@ export function parseWorkerBootstrapArgs(
     instanceName,
     keyName,
     rotate,
-    insecure,
     relayOnly: false,
   };
 }
@@ -191,7 +179,6 @@ async function persistWorkerBootstrapConfiguration(
         "relay-only": options.relayOnly,
         "worker-directory": options.workerDirectory,
         "worker-execution-enabled": true,
-        insecure: options.insecure,
       },
     },
   };
@@ -209,7 +196,6 @@ async function bootstrapWorker(
     meshWorker: true,
     workerDirectory: options.workerDirectory,
     workerExecutionEnabled: true,
-    insecure: options.insecure,
     relayOnly: options.relayOnly,
     ...(options.meshEndpoint ? { workerEndpoint: options.meshEndpoint } : {}),
     rotateWorkerTls: options.rotate,
@@ -332,7 +318,6 @@ async function joinWorker(
     relayOnly: runtime.relayOnly,
     workerDirectory: runtime.workerDirectory,
     workerExecutionEnabled: runtime.workerExecutionEnabled,
-    insecure: runtime.insecure,
   });
   log.info("Worker enrollment runtime initialized", {
     elapsedMs: Math.round(performance.now() - startedAt),

@@ -387,9 +387,9 @@ rejects unavailable saved selections and leaves the profile's reasoning default
 alone when no override was requested. Copilot's catalog namespace identifies its
 serving harness, not an inferred model vendor. Workspace settings select ACP, native Copilot, Codex app-server or OpenCode
 runtime 2. Existing workspaces migrate to ACP with their original harness
-preset. Native execution uses local hosts or end-to-end Mesh v6 paths; every
-controller, relay, and worker on the route must support v6. Direct SSH remains
-ACP-only. Startup migration normalizes persisted Mesh protocol metadata to v6.
+preset. Native execution uses local hosts or end-to-end Mesh v7 paths; every
+controller, relay, and worker on the route must support v7 and use TLS.
+Direct SSH remains ACP-only.
 See [harness adapters](harnesses.md) for operational setup.
 
 Codex reconciliation can query paginated history across the original thread when

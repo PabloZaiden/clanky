@@ -4,9 +4,7 @@
 import { z } from "zod";
 import { HarnessConversationBindingSchema, HarnessEventScopeSchema, HarnessQuestionInfoSchema } from "./harness";
 import { MessageAttachmentsSchema } from "./task";
-import { MESH_LEGACY_PROTOCOL_VERSION, MESH_PROTOCOL_VERSION } from "@/shared/mesh-protocol";
 import { MeshProtocolVersionSchema } from "./mesh-protocol";
-import { MESH_HARNESS_MAX_CIPHERTEXT_BYTES } from "@/shared/mesh-execution";
 import { ClankyControlContextSchema } from "@/shared/clanky-control";
 import {
   HARNESS_HISTORY_MAX_BYTES,
@@ -92,33 +90,17 @@ export const MeshHarnessOperationSchema = z.discriminatedUnion("operation", [
 ]);
 export type MeshHarnessOperation = z.infer<typeof MeshHarnessOperationSchema>;
 
-export const MeshHarnessEncryptedPayloadSchema = z.object({
-  __clankyMeshEncrypted: z.literal(true), version: z.literal(1),
-  wrappedKey: z.string().min(1).max(16_384), iv: z.string().min(1).max(128),
-  authTag: z.string().min(1).max(128), ciphertext: z.string().max(MESH_HARNESS_MAX_CIPHERTEXT_BYTES),
-}).strict();
 const MeshHarnessEnvelopeBaseSchema = z.object({
   sessionId: Id,
   sessionToken: z.string().min(32).max(256), requestId: Id,
 });
-export const MeshHarnessEnvelopeSchema = z.discriminatedUnion("protocolVersion", [
-  MeshHarnessEnvelopeBaseSchema.extend({
-    protocolVersion: z.literal(MESH_LEGACY_PROTOCOL_VERSION),
-    encryptedPayload: MeshHarnessEncryptedPayloadSchema,
-  }).strict(),
-  MeshHarnessEnvelopeBaseSchema.extend({
-    protocolVersion: z.literal(MESH_PROTOCOL_VERSION),
-    payload: MeshHarnessOperationSchema,
-  }).strict(),
-]);
+export const MeshHarnessEnvelopeSchema = MeshHarnessEnvelopeBaseSchema.extend({
+  protocolVersion: MeshProtocolVersionSchema,
+  payload: MeshHarnessOperationSchema,
+}).strict();
 export const MeshHarnessEventsRequestSchema = MeshHarnessEnvelopeBaseSchema.extend({
-  protocolVersion: MeshProtocolVersionSchema, conversationId: Id, encryptedPayload: z.null().optional(),
-}).strict().superRefine((value, ctx) => {
-  if (value.protocolVersion === MESH_LEGACY_PROTOCOL_VERSION && value.encryptedPayload !== null
-    || value.protocolVersion === MESH_PROTOCOL_VERSION && value.encryptedPayload !== undefined) {
-    ctx.addIssue({ code: "custom", path: ["encryptedPayload"], message: "Event request does not match the negotiated generation." });
-  }
-});
+  protocolVersion: MeshProtocolVersionSchema, conversationId: Id,
+}).strict();
 
 export const MeshHarnessEventSchema = z.intersection(z.discriminatedUnion("type", [
   z.object({ type: z.literal("activity.changed") }),

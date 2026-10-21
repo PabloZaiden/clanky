@@ -13,19 +13,17 @@ the enrollment list and health action; **Enroll worker** opens a focused form
 and then the join command. Open a worker for runtime/protocol details.
 Controller contains the guarded name/endpoint form and local runtime metadata.
 Controllers without an advertised endpoint can save their name without adding
-one; replacing an existing endpoint still requires a valid URL.
+one; replacing an existing endpoint requires a valid HTTPS URL.
 Relays contains paired connections and primary selection; **Pair relay** or
 **Edit pairing** opens the URL/name form and bootstrap configuration.
 
-## Protocol generations and migration
+## Protocol and transport security
 
 Mesh protocol generations are global and aligned with the Clanky release major.
-The Mesh 7 rollout temporarily supports both v7 and v6. Every controller,
-relay, and worker on a route must share a supported generation. Capability
-lists need not be identical or ordered the same: each route selects the highest
-generation shared by every hop and rejects a route with no intersection.
-Additional peer capabilities are metadata only; a process does not parse or
-emit contracts for generations it does not implement.
+Only Mesh v7 is supported. Every controller, relay, and worker on a route
+must support v7, with HTTPS/WSS on every hop. Discovery and negotiation reject
+incompatible peers before parsing session contracts. Additional advertised
+generations are metadata only and do not enable another wire format.
 
 Selection is automatic, with no activation flag:
 
@@ -33,15 +31,13 @@ Selection is automatic, with no activation flag:
 | --- | --- |
 | Mesh 7 controller and worker, direct HTTPS | v7, trusted TLS |
 | Mesh 7 controller, selected relay and worker, HTTPS/WSS on both hops | v7, trusted TLS |
-| An older v6 peer or relay, or a permitted HTTP development route | v6, legacy payload encryption |
+| Incompatible peer or relay, or an insecure transport | Rejected |
 
-Mesh 7 removes application RSA/AES payload envelopes. Native RPC/event frames
-and execution, terminal and tunnel admission responses use `payload` instead
-of `encryptedPayload`; managed environments use `environment` instead of
-`encryptedEnvironment`. The selected generation is checked against the
-admitted session before decoding or responding. TLS-only admissions and
-session traffic are rejected on insecure transports; HTTPS requests carrying
-v7 payloads do not follow redirects.
+Native RPC/event frames and execution, terminal and tunnel admission responses
+use `payload`; managed environments use `environment`. The protocol version
+is checked against the admitted session before reading or responding.
+Admissions and session traffic require TLS, including on loopback; Mesh peer
+requests do not follow redirects.
 
 **Relays and TLS-terminating proxies are trusted with Mesh 7 content.** This
 is hop-by-hop TLS, not an opaque end-to-end tunnel: a relay can see traffic
@@ -49,26 +45,21 @@ after TLS termination. The relay still only authenticates nodes, routes
 bounded streams and forwards bytes with backpressure; it does not decode
 agent/tool payloads or perform application payload encryption. Node signatures,
 certificate verification, grants, ownership, tokens, expiry, renewal and
-revocation remain in place. v6 retains its existing encrypted-payload adapter
-and wire format, including when v6 streams cross differently negotiated
-relay control links.
+revocation remain in place. The signed v7 identity and enrollment contracts
+retain their required key fields; these are not payload-encryption support.
 
-Upgrade dual-version binaries in any order, preserving their data directories.
-Startup migration advances the local protocol marker idempotently without
-replacing identities, keys, grants or enrollment. New admissions discover the
-worker's signed capabilities; relay reconnects rediscover the highest common
-control-link generation. Existing sessions retain their admitted generation.
-An admission failure or ambiguous dispatched command/prompt is never replayed
-using another generation. A reconnect can negotiate anew, but does not resend
-user input.
+Preserve data directories during upgrades so identities, keys, grants and
+enrollment remain intact. New admissions discover the worker's signed
+capabilities; relay reconnects rediscover support before opening a control
+link. An admission failure or ambiguous dispatched command/prompt is never
+replayed using another protocol. A reconnect does not resend user input.
 
 Initial relay connections and reconnects require successful discovery before
 opening the control socket. Failed discovery or a mismatched identity never
 falls back to stored protocol capabilities: the existing connection manager
 retries with bounded backoff until discovery succeeds. The link stays
 unavailable during that retry, without changing its pairing or grants.
-Successful discovery of an older peer still selects Mesh 6. Healthy connected
-links are not polled or interrupted to renegotiate.
+Healthy connected links are not polled or interrupted to renegotiate.
 
 The Mesh status and Settings views show each controller, relay, and worker
 binary version, supported generations, and the generation observed in the last
@@ -78,15 +69,11 @@ not prove its external runtime is installed or authenticated.
 
 `clanky mesh status` also reports each controller-side worker's
 `routeSecurity`: the selected generation for new admissions,
-`payloadProtection` (`trusted-tls`, `legacy-encrypted` or `unavailable`), and
+`payloadProtection` (`trusted-tls` or `unavailable`), and
 `fallbackReason` when TLS or peer/relay support is missing. This is route
 eligibility based on the last verified capabilities, not a live health probe.
-Worker status exposes `activeSessions` counts by admitted generation for
-execution/native/ACP, terminal and TCP leases. Use those counts alongside
-binary/support metadata to confirm no legacy sessions remain. Remove Mesh 6,
-its adapter and legacy encryption keys only in a later rollout after every
-controller, relay and worker has been confirmed migrated. Publish this wire
-generation with the Clanky 7 release major, not as a Clanky 6 minor update.
+Worker status exposes v7 `activeSessions` counts for execution/native/ACP,
+terminal and TCP leases.
 
 Before selecting a native adapter, check worker and relay generations in
 `clanky mesh status` and `clanky mesh relay status`. A native request rejected
@@ -128,7 +115,7 @@ acknowledgements when the receiver consumes them. Slow downloads therefore
 backpressure the worker instead of overflowing the relay receive queue. Files
 remain streamed; the existing queue limits are not file-size limits.
 
-This is an optional extension supported by Mesh v6 and v7. The initiator advertises
+This is an optional Mesh v7 extension. The initiator advertises
 `x-clanky-mesh-response-flow: 1`; the peer confirms `responseFlowControl: 1`
 in the HTTP response metadata before either side uses `http.response.ack`
 frames. Acknowledgements are cumulative byte offsets at frame boundaries.
@@ -181,7 +168,7 @@ Execution-host transport and harness are independent:
 | Execution host | Available adapters |
 | --- | --- |
 | Local | Copilot native, Codex native, OpenCode 2 native, ACP |
-| Mesh v6 or v7, including relays | Copilot native, Codex native, OpenCode 2 native, ACP |
+| Mesh v7, including relays | Copilot native, Codex native, OpenCode 2 native, ACP |
 | Direct SSH | ACP only |
 
 Install and authenticate the selected runtime under the **worker service
@@ -275,8 +262,9 @@ creating a replacement worker does not transfer ownership of old sessions.
 | The worker cannot accept inbound connections | Relay plus relay-only worker |
 | The repository is already reachable over SSH | Registered SSH host |
 
-Use HTTPS for worker and relay endpoints. Plain HTTP is only appropriate for a
-deliberately trusted private network during local development.
+Use HTTPS for controller, worker and relay Mesh endpoints, including during
+local development. Plain HTTP listeners are only appropriate behind trusted
+TLS-terminating proxies or for a relay-only worker's private local API.
 
 ## Set up a relay
 
@@ -392,18 +380,6 @@ Workers use HTTPS and a durable self-signed identity by default. The
 controller pins that identity when the worker is enrolled. Do not use
 `localhost`, `127.0.0.1`, or an address the controller cannot route to.
 
-For a trusted private network only, explicitly opt into HTTP:
-
-```bash
-clanky worker bootstrap \
-  --host 0.0.0.0 \
-  --port 3000 \
-  --worker-directory /workspaces \
-  --instance-name worker-1 \
-  --mesh-endpoint http://203.0.113.10:3000 \
-  --insecure
-```
-
 The worker data directory defaults to `$HOME/.clanky`. Set
 `CLANKY_DATA_DIR` when the worker should store its state elsewhere:
 
@@ -433,8 +409,8 @@ clanky worker bootstrap \
   --instance-name worker-1
 ```
 
-Relay-only workers listen only on loopback, do not accept `--mesh-endpoint` or
-`--insecure`, and maintain an outbound connection through the paired relay.
+Relay-only workers listen only on loopback, do not accept `--mesh-endpoint`,
+and maintain an outbound TLS connection through the paired relay.
 
 ## Run the worker as a service
 
@@ -556,6 +532,10 @@ clanky worker service install
 ```
 
 The service installation keeps the existing worker data and Mesh identity.
+
+Installed service commands may still contain `serve --insecure false`.
+The `serve --insecure` option is deprecated and ignored regardless of its
+value; Mesh still requires HTTPS. New service installations omit the option.
 
 ### Update servers and automatic workspaces together
 

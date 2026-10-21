@@ -27,7 +27,7 @@ export const CLANKY_SERVE_OPTIONS = [
   {
     name: "insecure",
     type: "boolean",
-    description: "Run a Mesh worker over HTTP instead of HTTPS.",
+    description: "Deprecated and ignored; Mesh requires HTTPS. Retained for installed worker services.",
     defaultValue: false,
   },
 ] satisfies readonly WebAppServeOptionDefinition[];

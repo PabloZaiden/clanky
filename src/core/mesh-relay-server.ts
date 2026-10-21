@@ -339,7 +339,7 @@ export async function createRelayServer(
         }
         const protocolVersion = negotiateMeshProtocolVersion(MESH_SUPPORTED_PROTOCOL_VERSIONS, parseMeshProtocolVersionsHeader(new URL(req.url).searchParams.get("protocolVersion")));
         if (!protocolVersion) return new Response("Unsupported Mesh generation", { status: 406 });
-        if (protocolVersion === 7 && !isSecureMeshRequest(req, runtimeConfig)) {
+        if (!isSecureMeshRequest(req, runtimeConfig)) {
           return new Response("Mesh 7 requires WSS", { status: 406 });
         }
         const upgraded = server.upgrade(req, {
@@ -375,7 +375,7 @@ export async function createRelayServer(
             status: 401,
           });
         }
-        if (reservation.protocolVersion === 7 && !isSecureMeshRequest(req, runtimeConfig)) {
+        if (!isSecureMeshRequest(req, runtimeConfig)) {
           broker.closeData(reservation.reservationId, 1008, "Mesh 7 requires WSS");
           return new Response("Mesh 7 requires WSS", { status: 403 });
         }

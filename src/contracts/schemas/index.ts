@@ -287,7 +287,6 @@ export {
 
 export {
   MeshHarnessEnvelopeSchema,
-  MeshHarnessEncryptedPayloadSchema,
   MeshHarnessEventsRequestSchema,
   MeshHarnessOperationSchema,
   MeshHarnessEventSchema,

@@ -22,8 +22,8 @@ workspaces are the exception: their persistent hook manages the selected native
 CLI in a private workspace prefix. See
 [automatic workspace runtimes](mesh-worker.md#automatic-workspace-runtimes).
 
-Local hosts and end-to-end Mesh v6 paths support native adapters. Every
-controller, relay, and worker on a Mesh route must use v6; direct SSH supports
+Local hosts and end-to-end Mesh v7 paths support native adapters. Every
+controller, relay, and worker on a Mesh route must use v7 over TLS; direct SSH supports
 ACP only. A native failure does not switch to ACP; select ACP explicitly when
 that is the desired integration. See [Mesh workers](mesh-worker.md) for setup
 details.

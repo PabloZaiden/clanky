@@ -9,7 +9,6 @@
 import { z } from "zod";
 import {
   MESH_INSTANCE_NAME_MAX_LENGTH,
-  MESH_TRANSPORTS,
 } from "@/shared/mesh";
 import {
   ExecutionHostCapabilitiesSchema,
@@ -23,7 +22,7 @@ import {
   MeshProtocolVersionSchema,
 } from "./mesh-protocol";
 
-export const MeshTransportSchema = z.enum(MESH_TRANSPORTS);
+export const MeshTransportSchema = z.literal("https");
 export const MeshInstanceNameSchema = z.string()
   .trim()
   .min(1)
@@ -34,10 +33,10 @@ export const MeshInstanceNameSchema = z.string()
 
 export const MeshEndpointSchema = z.string().trim().url().superRefine((value, context) => {
   const protocol = new URL(value).protocol;
-  if (protocol !== "https:" && protocol !== "http:") {
+  if (protocol !== "https:") {
     context.addIssue({
       code: "custom",
-      message: "mesh endpoint must use http or https",
+      message: "mesh endpoint must use https",
     });
   }
 });
@@ -52,7 +51,7 @@ export const MeshOriginSchema = MeshEndpointSchema.superRefine((value, context) 
   ) {
     context.addIssue({
       code: "custom",
-      message: "mesh target must be an absolute HTTP(S) origin",
+      message: "mesh target must be an absolute HTTPS origin",
     });
   }
 });
@@ -134,40 +133,9 @@ const MeshEnrollmentDirectRouteSchema = z.object({
   kind: z.literal("direct"),
   endpoint: MeshEndpointSchema,
   transport: MeshTransportSchema,
-  tlsCertificate: z.string().trim().min(1).nullable(),
-  tlsFingerprint: z.string().trim().min(1).nullable(),
-}).strict().superRefine((value, context) => {
-  const endpointTransport = new URL(value.endpoint).protocol === "https:"
-    ? "https"
-    : "http";
-  if (value.transport !== endpointTransport) {
-    context.addIssue({
-      code: "custom",
-      path: ["transport"],
-      message: "Worker transport must match the worker endpoint protocol.",
-    });
-  }
-  if (
-    value.transport === "https"
-    && (value.tlsCertificate === null || value.tlsFingerprint === null)
-  ) {
-    context.addIssue({
-      code: "custom",
-      path: ["tlsCertificate"],
-      message: "HTTPS workers must provide a TLS certificate and fingerprint.",
-    });
-  }
-  if (
-    value.transport === "http"
-    && (value.tlsCertificate !== null || value.tlsFingerprint !== null)
-  ) {
-    context.addIssue({
-      code: "custom",
-      path: ["tlsCertificate"],
-      message: "HTTP workers must not provide TLS trust material.",
-    });
-  }
-});
+  tlsCertificate: z.string().trim().min(1),
+  tlsFingerprint: z.string().trim().min(1),
+}).strict();
 
 const MeshEnrollmentRelayRouteSchema = z.object({
   kind: z.literal("relay"),

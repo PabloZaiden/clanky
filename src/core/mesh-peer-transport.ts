@@ -4,10 +4,8 @@ import { DomainError } from "../domain/domain-error";
 import { resolveMeshRoute } from "./mesh-transport-config";
 import { assertMeshTransportSecurity } from "./mesh-transport-security";
 
-function assertMeshPeerTransport(route: MeshPeerRoute, headers?: HeadersInit): void {
-  if (new Headers(headers).get("x-clanky-mesh-protocol-version") === "7") {
-    assertMeshTransportSecurity(7, new URL(route.kind === "direct" ? route.endpoint : route.relayUrl).protocol === "https:");
-  }
+function assertMeshPeerTransport(route: MeshPeerRoute): void {
+  assertMeshTransportSecurity(7, new URL(route.kind === "direct" ? route.endpoint : route.relayUrl).protocol === "https:");
 }
 
 export interface MeshPeerRequest {
@@ -62,17 +60,7 @@ function directTlsOptions(
   route: Extract<MeshPeerRoute, { kind: "direct" }>,
 ): Bun.TLSOptions | undefined {
   if (route.transport === "http") {
-    if (
-      route.tlsTrust !== "none"
-      || route.tlsCertificate
-      || route.tlsFingerprint
-    ) {
-      throw new DomainError(
-        "mesh_worker_tls_identity_unexpected",
-        "The HTTP Mesh route must not contain TLS trust material.",
-      );
-    }
-    return undefined;
+    throw new DomainError("mesh_tls_required", "Mesh peer routes require HTTPS.");
   }
   if (route.tlsTrust === "system") {
     if (route.tlsCertificate || route.tlsFingerprint) {
@@ -118,7 +106,7 @@ const directTransport: MeshPeerTransport = {
     onDispatch?.();
     return fetchImpl(url, {
       ...init,
-      redirect: new Headers(init.headers).get("x-clanky-mesh-protocol-version") === "7" ? "error" : "follow",
+      redirect: "error",
       tls,
     });
   },
@@ -168,7 +156,7 @@ export function requestMeshPeer(
   path: string,
   request: MeshPeerRequest,
 ): Promise<Response> {
-  assertMeshPeerTransport(route, request.headers);
+  assertMeshPeerTransport(route);
   return getMeshPeerTransport(route).request(route, path, request);
 }
 
@@ -177,6 +165,6 @@ export function openMeshPeerSocket(
   path: string,
   headers: Record<string, string>,
 ): MeshDuplexSocket {
-  assertMeshPeerTransport(route, headers);
+  assertMeshPeerTransport(route);
   return getMeshPeerTransport(route).openSocket(route, path, headers);
 }

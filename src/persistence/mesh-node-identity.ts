@@ -240,14 +240,7 @@ export function requireMeshInstanceName(identity: MeshNodeIdentity): string {
   return identity.instanceName;
 }
 
-interface ParseStoredIdentityOptions {
-  migrateMissingEncryptionKeys?: boolean;
-}
-
-function parseStoredIdentity(
-  raw: string,
-  options: ParseStoredIdentityOptions = {},
-): StoredMeshNodeIdentity {
+function parseStoredIdentity(raw: string): StoredMeshNodeIdentity {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -276,25 +269,11 @@ function parseStoredIdentity(
     throw new DomainError("mesh_node_identity_invalid", "The stored mesh node identity has an invalid shape.");
   }
 
-  const encryptionKeysMissing = record["encryptionPublicKey"] === undefined
-    && record["encryptionPrivateKey"] === undefined;
-  let encryptionPublicKey: string;
-  let encryptionPrivateKey: string;
-  if (encryptionKeysMissing) {
-    if (options.migrateMissingEncryptionKeys !== true) {
-      throw new DomainError("mesh_node_identity_invalid", "The stored mesh node identity has an invalid shape.");
-    }
-    const generatedKeys = createMeshEncryptionKeyPair();
-    encryptionPublicKey = generatedKeys.publicKey;
-    encryptionPrivateKey = generatedKeys.privateKey;
-  } else if (
+  if (
     typeof record["encryptionPublicKey"] !== "string"
     || typeof record["encryptionPrivateKey"] !== "string"
   ) {
     throw new DomainError("mesh_node_identity_invalid", "The stored mesh node encryption keys are invalid.");
-  } else {
-    encryptionPublicKey = record["encryptionPublicKey"];
-    encryptionPrivateKey = record["encryptionPrivateKey"];
   }
 
   const identity: StoredMeshNodeIdentity = {
@@ -305,8 +284,8 @@ function parseStoredIdentity(
     publicKey: record["publicKey"],
     privateKey: record["privateKey"],
     fingerprint: record["fingerprint"],
-    encryptionPublicKey,
-    encryptionPrivateKey,
+    encryptionPublicKey: record["encryptionPublicKey"],
+    encryptionPrivateKey: record["encryptionPrivateKey"],
     execution: createDefaultExecutionNodeConfiguration(
       typeof record["instanceName"] === "string"
         ? record["instanceName"]
@@ -397,20 +376,7 @@ async function readStoredIdentity(): Promise<StoredMeshNodeIdentity | null> {
   if (!(await file.exists())) {
     return null;
   }
-  const raw = await file.text();
-  try {
-    return parseStoredIdentity(raw);
-  } catch (error) {
-    if (!(error instanceof DomainError && error.code === "mesh_node_identity_invalid")) {
-      throw error;
-    }
-    const migrated = parseStoredIdentity(raw, { migrateMissingEncryptionKeys: true });
-    await writeStoredIdentity(migrated);
-    log.info("Migrated stored Mesh identity with generated encryption keys", {
-      nodeId: migrated.nodeId,
-    });
-    return migrated;
-  }
+  return parseStoredIdentity(await file.text());
 }
 
 async function writeStoredIdentity(identity: StoredMeshNodeIdentity): Promise<void> {
@@ -796,16 +762,4 @@ export async function getLocalMeshSigningKey(): Promise<KeyObject> {
     throw new DomainError("mesh_node_identity_missing", "The local mesh node identity is unavailable.");
   }
   return createPrivateKey(resolvedIdentity.privateKey);
-}
-
-export async function getLocalMeshEncryptionPrivateKey(): Promise<KeyObject> {
-  let identity = await readStoredIdentity();
-  if (!identity?.encryptionPrivateKey) {
-    await ensureLocalMeshNodeIdentity();
-    identity = await readStoredIdentity();
-  }
-  if (!identity?.encryptionPrivateKey) {
-    throw new DomainError("mesh_node_identity_missing", "The local mesh encryption identity is unavailable.");
-  }
-  return createPrivateKey(identity.encryptionPrivateKey);
 }

@@ -1,7 +1,6 @@
 import { defineRoutes } from "@pablozaiden/webapp/server";
 import { MeshTcpTunnelSessionRequestSchema } from "@/contracts/schemas/mesh-tcp-tunnel";
 import { meshTcpTunnelGateway } from "../../core/mesh-tcp-tunnel-gateway";
-import { encodeMeshPayload } from "../../core/mesh-payload";
 import { assertMeshRequestTransport } from "../../core/mesh-transport-security";
 import { errorResponse } from "../helpers";
 import { parseAndValidate } from "../validation";
@@ -37,11 +36,7 @@ export const meshTunnelRoutes = defineRoutes({
           capability: session.capability,
           sessionId: session.sessionId,
           expiresAt: session.expiresAt,
-          ...encodeMeshPayload(
-            session.protocolVersion,
-            { sessionToken: session.sessionToken },
-            parsed.data.callerEncryptionPublicKey,
-          ),
+          payload: { sessionToken: session.sessionToken },
         });
       } catch (error) {
         return internalMeshErrorResponse(error);

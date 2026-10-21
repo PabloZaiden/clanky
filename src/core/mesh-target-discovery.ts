@@ -36,10 +36,10 @@ export function normalizeMeshEnrollmentTarget(value: string): string {
       { cause: error },
     );
   }
-  if (url.protocol !== "https:" && url.protocol !== "http:") {
+  if (url.protocol !== "https:") {
     throw new DomainError(
       "mesh_enrollment_target_invalid",
-      "The Mesh enrollment target must use HTTP or HTTPS.",
+      "The Mesh enrollment target must use HTTPS.",
     );
   }
   if (
@@ -51,7 +51,7 @@ export function normalizeMeshEnrollmentTarget(value: string): string {
   ) {
     throw new DomainError(
       "mesh_enrollment_target_invalid",
-      "The Mesh enrollment target must be an absolute HTTP(S) origin without credentials, a path, a query, or a fragment.",
+      "The Mesh enrollment target must be an absolute HTTPS origin without credentials, a path, a query, or a fragment.",
     );
   }
   return url.origin;
@@ -132,6 +132,7 @@ export async function discoverMeshEnrollmentTarget(
           [MESH_PROTOCOL_VERSIONS_HEADER]: serializeMeshProtocolVersions(meshTransportProtocolVersions(normalizedTarget)),
         },
         signal: controller.signal,
+        redirect: "error",
       },
     );
     if (!response.ok) {

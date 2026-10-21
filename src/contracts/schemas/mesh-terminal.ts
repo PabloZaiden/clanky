@@ -6,7 +6,6 @@ import {
   MESH_TERMINAL_MAX_OUTPUT_BYTES,
 } from "@/shared/mesh-terminal";
 import { MeshProtocolVersionSchema } from "./mesh-protocol";
-import { assertMeshEnvironmentGeneration } from "./mesh-payload";
 import { AgentProviderSchema } from "./workspace";
 
 const MeshTerminalPathSchema = z.string().min(1).max(16_384);
@@ -34,12 +33,11 @@ export const MeshTerminalSessionRequestSchema = z.object({
   connectionMode: z.enum(["dtach", "direct"]),
   useTmux: z.boolean(),
   allowPersistentSessionCreate: z.boolean().default(true),
-  encryptedEnvironment: z.unknown().nullable().optional(),
   environment: z.record(z.string(), z.string()).optional(),
   nonce: z.string().trim().min(1).max(200),
   expiresAt: z.string().datetime(),
   signature: z.string().trim().min(1).max(16_384),
-}).superRefine(assertMeshEnvironmentGeneration);
+});
 
 export const MeshTerminalSessionCloseRequestSchema = z.object({
   protocolVersion: MeshTerminalProtocolVersionSchema,

@@ -15,7 +15,7 @@ enabled.
 
 1. Choose a workspace in **Quick Chat settings**.
 2. Install and authenticate Codex, Copilot or OpenCode 2 on that workspace's
-   execution host. Native runtimes run on the selected host; local and Mesh v6 paths are
+   execution host. Native runtimes run on the selected host; local and Mesh v7 paths are
    supported. Direct SSH supports ACP only. See
    [Harness adapters](harnesses.md#workspace-configuration) for runtime setup.
 3. Create a normal native chat in that workspace and send an instruction there.

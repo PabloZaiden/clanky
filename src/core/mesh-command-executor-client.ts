@@ -1,5 +1,5 @@
 /**
- * HTTP client for signed, encrypted mesh CommandExecutor sessions.
+ * HTTP client for signed Mesh CommandExecutor sessions over TLS.
  */
 
 import { createLogger } from "@pablozaiden/webapp/server";
@@ -43,7 +43,7 @@ import {
   ensureLocalMeshNodeIdentity,
   signMeshPayload,
 } from "../persistence/mesh-node-identity";
-import { decodeMeshPayload, encodeMeshEnvironment, type MeshPayloadFields } from "./mesh-payload";
+import { readMeshPayload, type MeshPayloadFields } from "./mesh-payload";
 import { buildMeshExecutionSessionSigningPayload } from "./mesh-protocol";
 import { requestMeshPeer } from "./mesh-peer-transport";
 import { isMeshRelayResponseInterrupted, MeshRelayStreamError } from "./mesh-relay-errors";
@@ -97,7 +97,6 @@ export interface MeshExecutionSessionConnection {
   sessionId: string;
   sessionToken: string;
   protocolVersion: MeshExecutionProtocolVersion;
-  workerEncryptionPublicKey: string;
 }
 
 interface MeshExecutionSession {
@@ -289,7 +288,6 @@ export class MeshCommandExecutorClient {
   private openingSession: Promise<void> | null = null;
   private openingSessionController: AbortController | null = null;
   private callerNodeId: string | null = null;
-  private workerEncryptionPublicKey = "";
   private sessionGeneration = 0;
   private sessionRenewalTimer: ReturnType<typeof setTimeout> | undefined;
   private sessionRenewalController: AbortController | null = null;
@@ -450,20 +448,6 @@ export class MeshCommandExecutorClient {
     }
 
     const channel = this.channel;
-    let environmentFields: ReturnType<typeof encodeMeshEnvironment> = {};
-    if (this.managedEnvironment !== undefined) {
-      if (!registration.workerEncryptionPublicKey) {
-        throw new DomainError(
-          "mesh_execution_environment_unavailable",
-          "The selected Mesh worker cannot receive the managed runtime environment.",
-        );
-      }
-      environmentFields = encodeMeshEnvironment(
-        protocolVersion,
-        this.managedEnvironment,
-        registration.workerEncryptionPublicKey,
-      );
-    }
     const buildSessionRequest = async (
       sessionTtlMs: number,
     ): Promise<MeshExecutionSessionRequest> => {
@@ -480,7 +464,7 @@ export class MeshCommandExecutorClient {
         provider: this.provider,
         channel,
         ...(channel === MESH_HARNESS_CHANNEL ? { adapter: this.adapter, ownerId: localUserId } : {}),
-        ...environmentFields,
+        environment: this.managedEnvironment,
         nonce: crypto.randomUUID(),
         expiresAt: new Date(Date.now() + sessionTtlMs).toISOString(),
       };
@@ -511,7 +495,7 @@ export class MeshCommandExecutorClient {
       throw new DomainError("mesh_execution_response_invalid", "The mesh execution session ID is invalid.");
     }
     const decrypted = asRecord(
-      await decodeMeshPayload(protocolVersion, body),
+      readMeshPayload(body),
       "The mesh execution session payload is invalid.",
     );
     if (typeof decrypted["sessionToken"] !== "string" || decrypted["sessionToken"].length < 32) {
@@ -544,7 +528,6 @@ export class MeshCommandExecutorClient {
       throw new DomainError("mesh_execution_session_invalid", "The mesh execution session opening was superseded.");
     }
     this.callerNodeId = identity.nodeId;
-    this.workerEncryptionPublicKey = registration.workerEncryptionPublicKey;
     this.route = route;
     this.session = {
       sessionId: body.sessionId,
@@ -571,7 +554,6 @@ export class MeshCommandExecutorClient {
       sessionId: this.session.sessionId,
       sessionToken: this.session.sessionToken,
       protocolVersion: this.session.protocolVersion,
-      workerEncryptionPublicKey: this.workerEncryptionPublicKey,
     };
   }
 
@@ -1167,7 +1149,7 @@ export class MeshCommandExecutorClient {
               "The mesh asynchronous command response does not match the request.",
             );
           }
-          return parseAsyncCommandSnapshot(await decodeMeshPayload(session.protocolVersion, body));
+          return parseAsyncCommandSnapshot(readMeshPayload(body));
         } catch (error) {
           commandDispatched ||= error instanceof DomainError
             && error.details["requestDispatched"] === true;
@@ -1700,7 +1682,7 @@ export class MeshCommandExecutorClient {
           if (body.protocolVersion !== session.protocolVersion || body.requestId !== requestId) {
             throw new DomainError("mesh_execution_response_invalid", "The mesh execution RPC response does not match the request.");
           }
-          return await decodeMeshPayload(session.protocolVersion, body) as T;
+          return readMeshPayload(body) as T;
         } catch (error) {
           commandDispatched ||= error instanceof DomainError
             && error.details["requestDispatched"] === true;

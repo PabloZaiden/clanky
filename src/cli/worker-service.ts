@@ -99,7 +99,6 @@ export interface WorkerServiceConfiguration {
   workerDirectory: string;
   workerExecutionEnabled: boolean;
   relayOnly: boolean;
-  insecure: boolean;
   host: string;
   port: number;
   homeDirectory: string;
@@ -464,7 +463,6 @@ export async function resolveWorkerServiceConfiguration(
     workerDirectory,
     workerExecutionEnabled: runtimeConfiguration.workerExecutionEnabled,
     relayOnly: runtimeConfiguration.relayOnly,
-    insecure: runtimeConfiguration.insecure,
     host: runtimeConfiguration.host,
     port: runtimeConfiguration.port,
     homeDirectory,
@@ -539,8 +537,6 @@ function workerCommand(
     configuration.workerDirectory,
     "--worker-execution-enabled",
     String(configuration.workerExecutionEnabled),
-    "--insecure",
-    String(configuration.insecure),
   ];
 }
 

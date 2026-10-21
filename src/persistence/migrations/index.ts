@@ -495,17 +495,13 @@ export const migrations: Migration[] = [
   },
   {
     version: 68,
-    name: "mesh_v6_dual_generation_rollout",
+    name: "add_mesh_harness_conversations",
     up: (db) => {
       db.run(`CREATE TABLE IF NOT EXISTS mesh_harness_conversations (
         adapter TEXT NOT NULL, native_id TEXT NOT NULL,
         controller_node_id TEXT NOT NULL, workspace_id TEXT NOT NULL, owner_id TEXT NOT NULL,
         binding_json TEXT NOT NULL, PRIMARY KEY(adapter, native_id)
       )`);
-      // This tracks the local protocol generation; peer capabilities are refreshed by negotiation.
-      if (tableExists(db, "mesh_protocol_state")) {
-        db.run("UPDATE mesh_protocol_state SET current_version = 6, updated_at = ? WHERE singleton = 1 AND current_version != 6", [new Date().toISOString()]);
-      }
     },
   },
   {
@@ -890,9 +886,9 @@ function migrateControllerRelays(db: Database): void {
       paired_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       relay_binary_version TEXT,
-      relay_supported_protocol_versions_json TEXT NOT NULL DEFAULT '[6]',
-      relay_preferred_protocol_version INTEGER NOT NULL DEFAULT 6,
-      relay_negotiated_protocol_version INTEGER NOT NULL DEFAULT 6,
+      relay_supported_protocol_versions_json TEXT NOT NULL DEFAULT '[7]',
+      relay_preferred_protocol_version INTEGER NOT NULL DEFAULT 7,
+      relay_negotiated_protocol_version INTEGER NOT NULL DEFAULT 7,
       relay_protocol_updated_at TEXT
     )
   `);
@@ -906,9 +902,9 @@ function migrateControllerRelays(db: Database): void {
       const columns = getMigrationTableColumns(db, "mesh_controller_relay_pairing");
       for (const [columnName, definition] of [
         ["relay_binary_version", "TEXT"],
-        ["relay_supported_protocol_versions_json", "TEXT NOT NULL DEFAULT '[6]'"],
-        ["relay_preferred_protocol_version", "INTEGER NOT NULL DEFAULT 6"],
-        ["relay_negotiated_protocol_version", "INTEGER NOT NULL DEFAULT 6"],
+        ["relay_supported_protocol_versions_json", "TEXT NOT NULL DEFAULT '[7]'"],
+        ["relay_preferred_protocol_version", "INTEGER NOT NULL DEFAULT 7"],
+        ["relay_negotiated_protocol_version", "INTEGER NOT NULL DEFAULT 7"],
         ["relay_protocol_updated_at", "TEXT"],
       ] as const) {
         if (!columns.includes(columnName)) {

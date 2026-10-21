@@ -427,24 +427,17 @@ export class MeshManager {
       : null;
     const isRelayEnrollment = relayRoute !== null;
     if (directRoute) {
-      if (directRoute.transport === "https") {
-        if (!directRoute.tlsCertificate || !directRoute.tlsFingerprint) {
-          throw new DomainError(
-            "mesh_enrollment_tls_identity_missing",
-            "HTTPS workers must provide a TLS certificate and fingerprint.",
-          );
-        }
-        assertMeshWorkerTlsCertificate(
-          directRoute.tlsCertificate,
-          directRoute.endpoint,
-          directRoute.tlsFingerprint,
-        );
-      } else if (directRoute.tlsCertificate || directRoute.tlsFingerprint) {
+      if (!directRoute.tlsCertificate || !directRoute.tlsFingerprint) {
         throw new DomainError(
-          "mesh_enrollment_tls_identity_unexpected",
-          "HTTP workers must not provide TLS trust material.",
+          "mesh_enrollment_tls_identity_missing",
+          "HTTPS workers must provide a TLS certificate and fingerprint.",
         );
       }
+      assertMeshWorkerTlsCertificate(
+        directRoute.tlsCertificate,
+        directRoute.endpoint,
+        directRoute.tlsFingerprint,
+      );
     } else if (relayRoute) {
       const pairing = controllerRelayService.assertEnrollmentRelayRoute(
         relayRoute,
@@ -1362,7 +1355,6 @@ export class MeshManager {
       expiresAt,
     };
     let controllerRoute: MeshPeerRoute;
-    let workerTransport: "http" | "https" | undefined;
     let workerTlsIdentity: Awaited<ReturnType<typeof getMeshWorkerTlsIdentity>> =
       null;
 
@@ -1390,12 +1382,9 @@ export class MeshManager {
           "This worker must have a configured mesh endpoint before direct enrollment.",
         );
       }
-      assertMeshEndpointAllowed(discovered.target);
-      workerTransport = getMeshTransport(identity.meshEndpoint);
-      workerTlsIdentity = workerTransport === "https"
-        ? await getMeshWorkerTlsIdentity()
-        : null;
-      if (workerTransport === "https" && !workerTlsIdentity) {
+      assertMeshEndpointAllowed(identity.meshEndpoint, "https");
+      workerTlsIdentity = await getMeshWorkerTlsIdentity();
+      if (!workerTlsIdentity) {
         throw new DomainError(
           "mesh_worker_tls_identity_missing",
           "The HTTPS worker TLS identity is missing from the data directory.",
@@ -1404,10 +1393,8 @@ export class MeshManager {
       controllerRoute = {
         kind: "direct" as const,
         endpoint: discovered.target,
-        transport: getMeshTransport(discovered.target),
-        tlsTrust: getMeshTransport(discovered.target) === "https"
-          ? "system" as const
-          : "none" as const,
+        transport: "https",
+        tlsTrust: "system",
         tlsCertificate: null,
         tlsFingerprint: null,
       };
@@ -1469,9 +1456,9 @@ export class MeshManager {
           ? {
               kind: "direct" as const,
               endpoint: identity.meshEndpoint!,
-              transport: workerTransport!,
-              tlsCertificate: workerTlsIdentity?.certificate ?? null,
-              tlsFingerprint: workerTlsIdentity?.fingerprint ?? null,
+              transport: "https" as const,
+              tlsCertificate: workerTlsIdentity!.certificate,
+              tlsFingerprint: workerTlsIdentity!.fingerprint,
             }
           : {
               kind: "relay" as const,
@@ -1839,7 +1826,7 @@ export class MeshManager {
   async setEndpoint(
     endpoint: string,
   ): Promise<MeshNodeIdentity> {
-    assertMeshEndpointAllowed(endpoint);
+    assertMeshEndpointAllowed(endpoint, "https");
     const identity = await setLocalMeshEndpoint(endpoint);
     meshStateEventEmitter.emit({ type: "mesh.changed", reason: "endpoint", impact: "inventory" });
     return identity;

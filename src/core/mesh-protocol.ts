@@ -157,12 +157,7 @@ export function buildMeshExecutionSessionSigningPayload(
     envelope.provider,
     envelope.channel,
   ];
-  // Keep the no-environment shape compatible with workers that predate the
-  // managed runtime environment field.
-  if (envelope.encryptedEnvironment !== undefined) {
-    payload.push(envelope.encryptedEnvironment);
-  }
-  if (envelope.protocolVersion >= 7) payload.push(envelope.environment ?? null);
+  payload.push(envelope.environment ?? null);
   payload.push(envelope.adapter ?? null, envelope.ownerId ?? null);
   payload.push(envelope.nonce, envelope.expiresAt);
   return JSON.stringify(payload);

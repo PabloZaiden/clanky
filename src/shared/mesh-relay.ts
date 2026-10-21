@@ -58,19 +58,6 @@ export type MeshWellKnownDescriptor =
   | MeshRelayWellKnownDescriptor
   | MeshControllerWellKnownDescriptor;
 
-export function isMeshRelayLoopbackHostname(hostname: string): boolean {
-  const normalized = hostname.replace(/^\[|\]$/g, "").toLowerCase();
-  if (normalized === "localhost" || normalized === "::1") {
-    return true;
-  }
-  const octets = normalized.split(".");
-  return octets.length === 4
-    && octets[0] === "127"
-    && octets.every((octet) => /^\d{1,3}$/.test(octet)
-      && Number(octet) >= 0
-      && Number(octet) <= 255);
-}
-
 export function normalizeMeshRelayOrigin(value: string): string {
   let url: URL;
   try {
@@ -78,14 +65,8 @@ export function normalizeMeshRelayOrigin(value: string): string {
   } catch {
     throw new Error("Relay URL must be a valid absolute URL.");
   }
-  if (url.protocol !== "https:" && url.protocol !== "http:") {
-    throw new Error("Relay URL must use HTTP or HTTPS.");
-  }
-  if (
-    url.protocol === "http:"
-    && !isMeshRelayLoopbackHostname(url.hostname)
-  ) {
-    throw new Error("Remote relay URLs must use HTTPS.");
+  if (url.protocol !== "https:") {
+    throw new Error("Relay URL must use HTTPS.");
   }
   if (
     url.username
@@ -95,7 +76,7 @@ export function normalizeMeshRelayOrigin(value: string): string {
     || url.hash
   ) {
     throw new Error(
-      "Relay URL must be an absolute HTTP(S) origin without credentials, a path, a query, or a fragment.",
+      "Relay URL must be an absolute HTTPS origin without credentials, a path, a query, or a fragment.",
     );
   }
   return url.origin;

@@ -4,7 +4,6 @@ import {
   MeshTerminalSessionRequestSchema,
 } from "@/contracts/schemas/mesh-terminal";
 import { meshTerminalGateway } from "../../core/mesh-terminal-gateway";
-import { encodeMeshPayload } from "../../core/mesh-payload";
 import { assertMeshRequestTransport } from "../../core/mesh-transport-security";
 import { DomainError } from "../../domain/domain-error";
 import { requireMeshRuntimeRole } from "../../core/mesh-runtime";
@@ -44,11 +43,7 @@ export const meshTerminalRoutes = defineRoutes({
           capability: session.capability,
           sessionId: session.sessionId,
           expiresAt: session.expiresAt,
-          ...encodeMeshPayload(
-            session.protocolVersion,
-            { sessionToken: session.sessionToken },
-            parsed.data.callerEncryptionPublicKey,
-          ),
+          payload: { sessionToken: session.sessionToken },
         });
       } catch (error) {
         return internalMeshErrorResponse(error);

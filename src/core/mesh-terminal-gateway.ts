@@ -26,7 +26,6 @@ import {
   requireLocalMeshExecutionCapability,
   verifyMeshPayloadSignature,
 } from "../persistence/mesh-node-identity";
-import { decodeMeshEnvironment } from "./mesh-payload";
 import { requireTrustedController } from "./mesh-peer-auth";
 import { buildMeshTerminalSessionSigningPayload } from "./mesh-terminal-protocol";
 import {
@@ -192,9 +191,8 @@ export class MeshTerminalGateway {
       );
       request.executionRoot = trustedRoot.executionRoot;
       request.directory = directory;
-      const decryptedEnvironment = await decodeMeshEnvironment(request);
       const environment = parseManagedContextEnvironment(
-        decryptedEnvironment,
+        request.environment,
         "mesh_terminal_environment_invalid",
       );
       const expiresAt = Math.min(expiresAtRequest, Date.now() + MESH_TERMINAL_SESSION_TTL_MS);

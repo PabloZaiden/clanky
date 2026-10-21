@@ -145,8 +145,8 @@ export interface MeshControllerGrant {
 
 export interface MeshRouteSecurity {
   protocolVersion: MeshProtocolVersion | null;
-  payloadProtection: "trusted-tls" | "legacy-encrypted" | "unavailable";
-  fallbackReason: "tls-unavailable" | "relay-legacy" | "worker-legacy" | "protocol-unavailable" | "revoked" | null;
+  payloadProtection: "trusted-tls" | "unavailable";
+  fallbackReason: "tls-unavailable" | "protocol-unavailable" | "revoked" | null;
 }
 
 /** Aggregated mesh status for controllers. */

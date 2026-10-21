@@ -888,9 +888,9 @@ test("compiled relays route worker execution, reconnect, and enforce revocation"
     expect(registration.workerEndpoint).toBe(westRelay.baseUrl);
     expect(registration.route.kind).toBe("relay");
     expect(registration.routeSecurity).toEqual({
-      protocolVersion: 6,
-      payloadProtection: "legacy-encrypted",
-      fallbackReason: "tls-unavailable",
+      protocolVersion: 7,
+      payloadProtection: "trusted-tls",
+      fallbackReason: null,
     });
 
     const probe = process.platform === "win32"
