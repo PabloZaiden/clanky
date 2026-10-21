@@ -1,6 +1,7 @@
 import type { Agent, AgentConfig, AgentConfigSnapshot, AgentRun, AgentState } from "@/shared/agent";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { requirePersistenceUserId } from "../ownership";
+import { parseStoredTokenUsage } from "../harness-usage";
 
 const log = createLogger("persistence:agents");
 
@@ -244,6 +245,7 @@ export function rowToAgentRun(row: Record<string, unknown>): AgentRun {
     id: requireString(row, "id", rowId),
     agentId: requireString(row, "agent_id", rowId),
     chatId: (row["chat_id"] as string | null) ?? undefined,
+    usage: parseStoredTokenUsage(row["usage_json"], String(rowId)),
     status: row["status"] as AgentRun["status"],
     trigger: row["trigger"] as AgentRun["trigger"],
     scheduledFor: requireString(row, "scheduled_for", rowId),

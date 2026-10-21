@@ -10,6 +10,7 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import { CheapModelSelectionSchema } from "@/contracts/schemas";
 import { requirePersistenceUserId } from "../ownership";
 import { parseStoredHarnessBinding, parseStoredHarnessState } from "../harness-binding";
+import { parseStoredTokenUsage } from "../harness-usage";
 import { MessageAttachmentsSchema, TaskPendingInputSchema } from "../../contracts/schemas/task";
 
 const log = createLogger("persistence:tasks");
@@ -279,6 +280,7 @@ export function rowToTask(row: Record<string, unknown>): Task {
 
   // Optional state fields
   state.harness = parseStoredHarnessState(row["harness_state_json"], String(rowId));
+  state.usage = parseStoredTokenUsage(row["usage_json"], String(rowId));
   if (row["started_at"] !== null) {
     state.startedAt = row["started_at"] as string;
   }

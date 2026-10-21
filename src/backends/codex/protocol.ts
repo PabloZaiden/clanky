@@ -26,6 +26,7 @@ export interface CodexMethods {
 export type CodexNotification =
   | { method: "thread/started"; params: P.ThreadStartedNotification }
   | { method: "thread/status/changed"; params: P.ThreadStatusChangedNotification }
+  | { method: "thread/tokenUsage/updated"; params: P.ThreadTokenUsageUpdatedNotification }
   | { method: "turn/started"; params: P.TurnStartedNotification }
   | { method: "turn/completed"; params: P.TurnCompletedNotification }
   | { method: "item/started"; params: P.ItemStartedNotification }
@@ -38,7 +39,7 @@ export type CodexNotification =
   | { method: "serverRequest/resolved"; params: P.ServerRequestResolvedNotification };
 
 export const CODEX_NOTIFICATION_METHODS = new Set<CodexNotification["method"]>([
-  "thread/started", "thread/status/changed", "turn/started", "turn/completed",
+  "thread/started", "thread/status/changed", "thread/tokenUsage/updated", "turn/started", "turn/completed",
   "item/started", "item/completed", "item/agentMessage/delta",
   "item/reasoning/textDelta", "item/reasoning/summaryTextDelta",
   "item/commandExecution/outputDelta", "error", "serverRequest/resolved",

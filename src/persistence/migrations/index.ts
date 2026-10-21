@@ -837,6 +837,33 @@ export const migrations: Migration[] = [
       );
     },
   },
+  {
+    version: 85,
+    name: "persist_native_token_usage",
+    up: (db) => {
+      for (const table of ["chats", "tasks", "agent_runs"]) {
+        if (!getTableColumns(db, table).includes("usage_json")) {
+          db.run(`ALTER TABLE ${table} ADD COLUMN usage_json TEXT`);
+        }
+      }
+      db.run(`CREATE TABLE IF NOT EXISTS harness_usage (
+        user_id TEXT NOT NULL REFERENCES webapp_users(id) ON DELETE CASCADE,
+        source_key TEXT NOT NULL,
+        chat_id TEXT REFERENCES chats(id) ON DELETE SET NULL,
+        task_id TEXT REFERENCES tasks(id) ON DELETE CASCADE,
+        snapshot_json TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('current', 'stale')),
+        PRIMARY KEY (user_id, source_key),
+        CHECK (chat_id IS NOT NULL OR task_id IS NOT NULL)
+      )`);
+      db.run("CREATE INDEX IF NOT EXISTS idx_harness_usage_chat ON harness_usage(user_id, chat_id)");
+      db.run("CREATE INDEX IF NOT EXISTS idx_harness_usage_task ON harness_usage(user_id, task_id)");
+      db.run(`CREATE TRIGGER IF NOT EXISTS delete_standalone_chat_usage
+        BEFORE DELETE ON chats BEGIN
+          DELETE FROM harness_usage WHERE chat_id = OLD.id AND task_id IS NULL;
+        END`);
+    },
+  },
 ];
 
 function getMigrationTableColumns(db: Database, tableName: string): string[] {

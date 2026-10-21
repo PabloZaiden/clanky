@@ -278,6 +278,17 @@ async function continueCodexBackground(
 }
 
 export function notifyCodexTurnCompleted({ thread, turn }: ActiveTurn, rpc: CodexJsonRpcSession): void {
+  const calls = thread.turns.flatMap((entry) => entry.items)
+    .filter((item) => isRecord(item) && item["type"] === "agentMessage").length;
+  const usage = {
+    totalTokens: calls * 150, inputTokens: calls * 100, outputTokens: calls * 50,
+    cachedInputTokens: calls * 25, cacheWriteInputTokens: calls * 5, reasoningOutputTokens: calls * 10,
+  };
+  rpc.notify("thread/tokenUsage/updated", {
+    threadId: thread.id, turnId: turn.id,
+    tokenUsage: { total: usage, last: { totalTokens: 150, inputTokens: 100, outputTokens: 50,
+      cachedInputTokens: 25, cacheWriteInputTokens: 5, reasoningOutputTokens: 10 }, modelContextWindow: 200_000 },
+  });
   rpc.notify("thread/status/changed", {
     threadId: thread.id,
     status: { type: "idle" },

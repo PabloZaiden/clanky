@@ -22,3 +22,4 @@ export * from "./controller-relay-pairing";
 export * from "./execution-hosts";
 export * from "./workspace-execution-targets";
 export * from "./conversation-attachment-locations";
+export * from "./harness-usage";

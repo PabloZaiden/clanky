@@ -52,6 +52,7 @@ export const CHAT_METADATA_COLUMNS = [
   "session_server_url",
   "session_binding_json",
   "harness_state_json",
+  "usage_json",
   "error_message",
   "error_timestamp",
   "error_code",

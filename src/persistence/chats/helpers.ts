@@ -8,6 +8,7 @@ import { DEFAULT_CHAT_CONFIG } from "@/shared/chat";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { requirePersistenceUserId } from "../ownership";
 import { parseStoredHarnessBinding, parseStoredHarnessState } from "../harness-binding";
+import { parseStoredTokenUsage } from "../harness-usage";
 import {
   executionHostBindingFromRow,
   resolveExecutionHostBindingId,
@@ -126,7 +127,7 @@ function rowToChatSource(row: Record<string, unknown>, rowId: unknown): ChatSour
 
 export type PersistedChatStateField = Exclude<keyof ChatState,
   "id" | "revision" | "messages" | "logs" | "toolCalls"
-  | "hasMessages" | "hasTranscript" | "lastUserMessageAt"
+  | "hasMessages" | "hasTranscript" | "lastUserMessageAt" | "usage"
 >;
 
 const CHAT_STATE_ENCODERS = {
@@ -283,6 +284,7 @@ export function rowToChat(row: Record<string, unknown>): Chat {
   };
 
   state.harness = parseStoredHarnessState(row["harness_state_json"], String(rowId));
+  state.usage = parseStoredTokenUsage(row["usage_json"], String(rowId));
   if (row["session_id"] !== null && row["session_id"] !== undefined) {
     state.session = {
       id: row["session_id"] as string,

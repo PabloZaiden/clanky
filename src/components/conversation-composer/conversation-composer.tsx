@@ -19,6 +19,7 @@ import { VoiceListeningPanel } from "./voice-listening-panel";
 import { ComposerSendButton } from "./composer-send-button";
 import { useConversationComposer } from "./use-conversation-composer";
 import type { ConversationComposerProps } from "./types";
+import { OutputTokenUsage } from "../output-token-usage";
 
 function ThinkingSpinner() {
   return (
@@ -169,6 +170,11 @@ export function ConversationComposer(props: ConversationComposerProps) {
                   ariaLabel="Message actions"
                   disabled={controlsDisabled}
                 >
+                  {props.tokenUsage !== undefined && (
+                    <ComposerActionsMenuSection label="Usage">
+                      <OutputTokenUsage usage={props.tokenUsage} />
+                    </ComposerActionsMenuSection>
+                  )}
                   <ComposerActionsMenuSection label="Template">
                     <ConversationTemplateSelector
                       selectedTemplate={selectedTemplate}

@@ -24,6 +24,8 @@ interface Session {
   messages: Array<{ id: string; type: string }>;
   events: Array<Record<string, unknown>>;
   backgroundResult?: string;
+  cost: number;
+  tokens: { input: number; output: number; reasoning: number; cache: { read: number; write: number } };
 }
 
 interface Tool {
@@ -100,6 +102,14 @@ function broadcast(event: Record<string, unknown>): void {
 }
 
 function emit(session: Session, type: string, data: Record<string, unknown> = {}): void {
+  if (type === "session.step.ended") {
+    session.tokens.input += 100;
+    session.tokens.output += 50;
+    session.tokens.reasoning += 10;
+    session.tokens.cache.read += 25;
+    session.tokens.cache.write += 5;
+    data = { ...data, cost: 0, tokens: { input: 100, output: 50, reasoning: 10, cache: { read: 25, write: 5 } } };
+  }
   const event = {
     id: crypto.randomUUID(), created: Date.now(), type,
     durable: { aggregateID: session.id, seq: ++session.sequence, version: 1 },
@@ -279,6 +289,7 @@ const server = Bun.serve({
         model: input.model ?? { id: "e2e-opencode-model", providerID: "e2e-openai" },
         metadata: input.metadata ?? {}, permissions: input.permissions ?? [],
         time: { created: Date.now(), updated: Date.now() }, sequence: 0, messages: [], events: [],
+        cost: 0, tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
       };
       sessions.set(session.id, session);
       emit(session, "session.created", { session: structuredClone(session) });

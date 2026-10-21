@@ -12,6 +12,7 @@ import { CodexRpcError } from "./rpc-session";
 import type { CodexRuntime } from "./runtime";
 import type { CodexSessionService } from "./session-service";
 import { toCodexInput } from "./prompt";
+import type { HarnessUsageSnapshot } from "@/shared/harness-usage";
 
 const log = createLogger("codex-control");
 
@@ -22,8 +23,15 @@ export class CodexControl implements HarnessControl {
     questionPolicy: "session",
     clankyControlTools: true,
     history: "completed",
+    usage: "tokens",
   };
   constructor(private readonly resolve: () => { runtime: CodexRuntime; sessions: CodexSessionService }) {}
+
+  async getUsage(rootId: string): Promise<HarnessUsageSnapshot> {
+    const { sessions } = this.resolve();
+    await sessions.reconcileDescendants(rootId);
+    return sessions.getUsage(rootId);
+  }
 
   async getActivity(rootId: string): Promise<HarnessActivitySnapshot> {
     const { runtime, sessions } = this.resolve();

@@ -12,6 +12,7 @@ import { HarnessError } from "../harness-errors";
 import type { OpenCodeSessionService } from "./session-service";
 import { toOpenCodePrompt } from "./prompt";
 import type { OpenCodeControlTools } from "./control-tools";
+import type { HarnessUsageSnapshot } from "@/shared/harness-usage";
 
 const log = createLogger("opencode2-control");
 
@@ -22,10 +23,32 @@ export class OpenCodeControl implements HarnessControl {
     questionPolicy: "session",
     clankyControlTools: true,
     history: "completed",
+    usage: "tokens",
   };
   constructor(private readonly resolve: () => {
     client: OpenCodeClient; sessions: OpenCodeSessionService; directory: string; controlTools: OpenCodeControlTools;
   }) {}
+
+  async getUsage(rootId: string): Promise<HarnessUsageSnapshot> {
+    const { client, sessions } = this.resolve();
+    sessions.get(rootId);
+    const descendants = await sessions.reconcileDescendants(rootId);
+    const contributors: HarnessUsageSnapshot["contributors"] = [];
+    for (const id of [rootId, ...descendants.map((session) => session.id)]) {
+      const { tokens } = await client.session.get({ sessionID: id });
+      contributors.push({
+        id,
+        tokens: {
+          inputTokens: tokens.input + tokens.cache.read + tokens.cache.write,
+          outputTokens: tokens.output + tokens.reasoning,
+          reasoningTokens: tokens.reasoning,
+          cacheReadTokens: tokens.cache.read,
+          cacheWriteTokens: tokens.cache.write,
+        },
+      });
+    }
+    return { observedAt: new Date().toISOString(), coverage: "complete", contributors };
+  }
 
   async getActivity(rootId: string): Promise<HarnessActivitySnapshot> {
     const { client, sessions, directory } = this.resolve();

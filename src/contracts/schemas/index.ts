@@ -15,6 +15,7 @@ export {
   type AcknowledgeControlUiAction,
 } from "./clanky-control";
 export { HarnessConversationBindingSchema, HarnessConversationStateSchema } from "./harness";
+export { TokenCountsSchema, HarnessUsageSnapshotSchema, TokenUsageSummarySchema } from "./harness-usage";
 
 export {
   ModelConfigSchema,

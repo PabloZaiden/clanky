@@ -12,6 +12,7 @@ import { HarnessError } from "../harness-errors";
 import type { CopilotConnection } from "./connection";
 import { toCopilotMessage } from "./prompt";
 import { settleCopilotWork, stopCopilotActivity } from "./work-service";
+import { TOKEN_USAGE_FIELDS, type HarnessUsageSnapshot, type TokenCounts } from "@/shared/harness-usage";
 
 const log = createLogger("copilot-control");
 
@@ -26,6 +27,25 @@ export class CopilotControl implements HarnessControl {
       questionPolicy: "session",
       clankyControlTools: true,
       history: "completed",
+      usage: "tokens",
+    };
+  }
+
+  async getUsage(sessionId: string): Promise<HarnessUsageSnapshot> {
+    const native = this.connection.requireServices().sessions.get(sessionId).native;
+    const metrics = await native.rpc.usage.getMetrics();
+    const tokens: TokenCounts = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    // Session model totals already include child agents; agentMetrics is a breakdown.
+    for (const metric of Object.values(metrics.modelMetrics)) {
+      if (!metric) continue;
+      for (const field of TOKEN_USAGE_FIELDS) {
+        const value = metric.usage[field];
+        if (value !== undefined) tokens[field] = (tokens[field] ?? 0) + value;
+      }
+    }
+    return {
+      observedAt: new Date().toISOString(), coverage: "complete",
+      contributors: [{ id: sessionId, tokens }],
     };
   }
 

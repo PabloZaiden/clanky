@@ -331,6 +331,12 @@ export class MeshHarnessGateway {
         : await backend.sendPromptAsync(operation.sessionId, operation.prompt) ?? null;
       case "abort": await backend.abortSession(operation.sessionId); return null;
       case "activity": return await this.activity(host, conversation, operation.sessionId);
+      case "usage": {
+        if (backend.harness.capabilities.usage !== "tokens" || !backend.harness.getUsage) {
+          throw new DomainError("harness_unsupported_feature", "This native worker does not report token usage.");
+        }
+        return await backend.harness.getUsage(operation.sessionId);
+      }
       case "history": {
         if (!backend.readSessionHistory || backend.harness.capabilities.history !== "completed") {
           throw new DomainError("harness_unsupported_feature", "This native worker does not support completed history recovery.");

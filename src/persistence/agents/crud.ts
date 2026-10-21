@@ -29,6 +29,7 @@ const AGENT_RUN_METADATA_COLUMNS = [
   "error_code",
   "session_id",
   "session_server_url",
+  "usage_json",
   "worktree_original_branch",
   "worktree_working_branch",
   "worktree_path",

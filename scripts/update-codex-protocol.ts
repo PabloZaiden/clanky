@@ -21,7 +21,7 @@ const roots = [
     "ThreadStarted", "ThreadStatusChanged", "TurnStarted", "TurnCompleted",
     "ItemStarted", "ItemCompleted", "AgentMessageDelta", "ReasoningTextDelta",
     "ReasoningSummaryTextDelta", "CommandExecutionOutputDelta", "Error",
-    "ServerRequestResolved",
+    "ServerRequestResolved", "ThreadTokenUsageUpdated",
   ].map((name) => `v2/${name}Notification`),
   "v2/ToolRequestUserInputParams", "v2/ToolRequestUserInputResponse",
   "v2/ConfigRequirementsReadResponse",

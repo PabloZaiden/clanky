@@ -194,7 +194,7 @@ export async function getTaskImpl(ctx: TaskCtx, taskId: string): Promise<Task | 
     const persisted = await loadTaskSummary(taskId);
     if (!persisted) return null;
     engine.refreshHarnessState(persisted.state.harness);
-    return { config: engine.config, state: engine.state };
+    return { config: engine.config, state: { ...engine.state, usage: persisted.state.usage } };
   }
   return loadTask(taskId);
 }
@@ -222,6 +222,7 @@ function mergeLiveTaskSummaryState(
   return {
     ...liveState,
     harness: persistedState.harness,
+    usage: persistedState.usage,
     ...(lastUserMessageAt === undefined ? {} : { lastUserMessageAt }),
   };
 }

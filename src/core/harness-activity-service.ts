@@ -13,13 +13,14 @@ import { HarnessError } from "../backends/harness-errors";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { KeyedOperationQueue } from "../utils/keyed-operation-queue";
 import { isDomainError } from "../domain/domain-error";
+import { HarnessUsageObserver } from "./harness-usage-observer";
 
 const log = createLogger("harness-activity");
 
 interface Observation {
   context: HarnessContext;
   binding: HarnessConversationBinding;
-  backend: Pick<Backend, "harness" | "subscribeToEvents">;
+  backend: Pick<Backend, "harness" | "subscribeToEvents" | "isConnected">;
   stream: EventStream<HarnessEvent>;
   stopped: boolean;
   interval?: ReturnType<typeof setInterval>;
@@ -30,6 +31,7 @@ interface Observation {
   onEvent?: (event: HarnessEvent) => Promise<void>;
   failures: number;
   nextRefreshAt: number;
+  usage: HarnessUsageObserver;
   publish(projection: Pick<HarnessConversationState, "activity" | "cleanup">): boolean;
 }
 
@@ -56,6 +58,7 @@ export class HarnessActivityService {
     const observation: Observation = {
       context, binding, backend, stream, stopped: false, loop: Promise.resolve(),
       failures: 0, nextRefreshAt: 0,
+      usage: new HarnessUsageObserver({ context, binding, control: backend.harness }),
       onEvent: onEvent ? (event) => runWithCurrentUser(user, () => onEvent(event)) : undefined,
       publish: (projection) => runWithCurrentUser(user, () => {
         const saved = mergeHarnessProjection(context, binding, projection);
@@ -71,6 +74,7 @@ export class HarnessActivityService {
       observation.loop = this.consume(observation).catch((error) => {
         log.error("Unable to persist observation failure", { context, error: String(error) });
       });
+      await observation.usage.start();
       await this.refresh(observation).catch((error: unknown) => this.failedRefresh(observation, error));
       if (!observation.stopped) observation.interval = setInterval(() => this.scheduleRefresh(observation), 5_000);
     } catch (error) {
@@ -80,14 +84,33 @@ export class HarnessActivityService {
   }
 
   close(context: HarnessContext): Promise<void> {
-    return this.operations.run(this.key(context), () => this.closeCurrent(context));
+    return this.operations.run(this.key(context), () => this.closeCurrent(context, true));
   }
 
-  private async closeCurrent(context: HarnessContext): Promise<void> {
+  async closeBackend(backend: Observation["backend"]): Promise<void> {
+    const observations = [...this.observations.values()].filter((observation) => observation.backend === backend);
+    for (const observation of observations) await this.close(observation.context);
+  }
+
+  private async closeCurrent(context: HarnessContext, settleWork = false): Promise<void> {
     const observation = this.observations.get(this.key(context));
     if (!observation) return;
     this.stop(observation);
     await observation.loop;
+    let settled = !settleWork;
+    if (settleWork && observation.backend.isConnected()) {
+      try {
+        const cleanup = await observation.backend.harness.settleOwnedWork(observation.binding.nativeId);
+        if (cleanup.status !== "settled") {
+          throw new HarnessError("harness_request_failed", "Native work did not settle before its final usage checkpoint.");
+        }
+        settled = true;
+      } catch (error) {
+        log.warn("Unable to settle native work before closing observation", { context, error: String(error) });
+      }
+    }
+    await observation.usage.close();
+    if (!settled) observation.usage.markStale();
     if (observation.refresh) {
       try { await observation.refresh; } catch (error) {
         log.warn("Closing a failed activity refresh", { context, error: String(error) });
@@ -135,6 +158,9 @@ export class HarnessActivityService {
         const event = await observation.stream.next();
         if (event) {
           failures = 0;
+          if (event.type === "prompt.complete" || event.type === "error") {
+            await observation.usage.refresh();
+          }
           if (observation.onEvent) await observation.onEvent(event);
           if (event.type === "activity.changed" || event.type === "prompt.complete" || event.type === "session.status" || event.type === "tool.start" || event.type === "tool.complete") {
             this.scheduleRefresh(observation);
@@ -219,6 +245,7 @@ export class HarnessActivityService {
 
   private stop(observation: Observation): void {
     observation.stopped = true;
+    observation.usage.stop();
     clearInterval(observation.interval);
     clearTimeout(observation.pending);
     if (observation.reconnect) {

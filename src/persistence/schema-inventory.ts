@@ -76,6 +76,7 @@ export const SCHEMA_TABLE_INVENTORY: readonly SchemaTableDefinition[] = [
   currentTable("mesh_worker_registrations", "clanky"),
   currentTable("mesh_controller_grants", "clanky"),
   currentTable("mesh_harness_conversations", "clanky"),
+  currentTable("harness_usage", "clanky"),
   // The immutable baseline can recreate this table; reset must discard it.
   resetOnlyTable("mesh_controller_relay_pairing", "clanky"),
   currentTable("mesh_controller_relays", "clanky"),
