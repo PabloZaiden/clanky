@@ -56,6 +56,15 @@ export class HarnessUsageObserver {
     this.closed = true;
   }
 
+  markStale(): void {
+    const { context, binding } = this.options;
+    try {
+      this.publish(runWithCurrentUser(this.owner, () => markHarnessUsageStale(context, binding)));
+    } catch (error) {
+      log.error("Unable to mark token accounting stale", { context, error: String(error) });
+    }
+  }
+
   private async drain(): Promise<void> {
     while (this.dirty && !this.closed) {
       this.dirty = false;
@@ -71,11 +80,7 @@ export class HarnessUsageObserver {
         this.publish(change);
       } catch (error) {
         log.warn("Native token usage could not be refreshed", { context, adapter: binding.adapter, error: String(error) });
-        try {
-          this.publish(runWithCurrentUser(this.owner, () => markHarnessUsageStale(context, binding)));
-        } catch (persistenceError) {
-          log.error("Unable to mark token accounting stale", { context, error: String(persistenceError) });
-        }
+        this.markStale();
       }
     }
   }

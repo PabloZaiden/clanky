@@ -137,6 +137,11 @@ finalize their counters at model-call boundaries. Saved totals survive Clanky
 restart, reconnect and replacement of a native session. Repeated cumulative
 snapshots do not count as additional consumption.
 
+Task and chat teardown settles owned native work before the final usage
+checkpoint and transport release. If settlement or the final refresh fails,
+the retained total is marked **Last known** instead of implying complete
+final accounting.
+
 Tasks include their task-scoped chat consumption. Scheduled Agent runs share
 their backing chat's accounting rather than counting a second execution.
 Consumption is private to the entity owner. On Mesh, the controller requests

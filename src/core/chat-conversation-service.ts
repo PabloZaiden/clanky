@@ -81,6 +81,7 @@ import type { HarnessInputAdmission } from "@/shared/harness-control";
 import { isHarnessInputValidationError, retainHarnessInputReceipt } from "./harness-input-ledger";
 import { createTransientHarnessSession, cleanupTransientHarnessSession } from "./harness-session";
 import { HarnessError } from "../backends/harness-errors";
+import { harnessActivityService } from "./harness-activity-service";
 import { isDomainError } from "../domain/domain-error";
 import { closeOpenQuestions, isQuestionOpen, updateQuestionAnswerStatus } from "@/shared/harness-questions";
 import { projectQuestionMessages } from "@/shared/question-transcript";
@@ -939,7 +940,10 @@ export class ChatConversationService implements ChatConversationPort {
     } catch (error) {
       log.error("Failed to abort unobserved native execution; disconnecting its runtime", { chatId, error: String(error) });
       try {
-        await withTimeout(native.backend.disconnect(), CHAT_INTERRUPT_ABORT_TIMEOUT_MS, "Unobserved native runtime disconnect timed out");
+        await withTimeout((async () => {
+          await harnessActivityService.close({ kind: "chat", id: chatId });
+          await native.backend.disconnect();
+        })(), CHAT_INTERRUPT_ABORT_TIMEOUT_MS, "Unobserved native runtime disconnect timed out");
       } catch (disconnectError) {
         log.error("Failed to disconnect unobserved native runtime", { chatId, error: String(disconnectError) });
       }

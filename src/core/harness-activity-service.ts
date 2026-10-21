@@ -20,7 +20,7 @@ const log = createLogger("harness-activity");
 interface Observation {
   context: HarnessContext;
   binding: HarnessConversationBinding;
-  backend: Pick<Backend, "harness" | "subscribeToEvents">;
+  backend: Pick<Backend, "harness" | "subscribeToEvents" | "isConnected">;
   stream: EventStream<HarnessEvent>;
   stopped: boolean;
   interval?: ReturnType<typeof setInterval>;
@@ -84,15 +84,33 @@ export class HarnessActivityService {
   }
 
   close(context: HarnessContext): Promise<void> {
-    return this.operations.run(this.key(context), () => this.closeCurrent(context));
+    return this.operations.run(this.key(context), () => this.closeCurrent(context, true));
   }
 
-  private async closeCurrent(context: HarnessContext): Promise<void> {
+  async closeBackend(backend: Observation["backend"]): Promise<void> {
+    const observations = [...this.observations.values()].filter((observation) => observation.backend === backend);
+    for (const observation of observations) await this.close(observation.context);
+  }
+
+  private async closeCurrent(context: HarnessContext, settleWork = false): Promise<void> {
     const observation = this.observations.get(this.key(context));
     if (!observation) return;
     this.stop(observation);
     await observation.loop;
+    let settled = !settleWork;
+    if (settleWork && observation.backend.isConnected()) {
+      try {
+        const cleanup = await observation.backend.harness.settleOwnedWork(observation.binding.nativeId);
+        if (cleanup.status !== "settled") {
+          throw new HarnessError("harness_request_failed", "Native work did not settle before its final usage checkpoint.");
+        }
+        settled = true;
+      } catch (error) {
+        log.warn("Unable to settle native work before closing observation", { context, error: String(error) });
+      }
+    }
     await observation.usage.close();
+    if (!settled) observation.usage.markStale();
     if (observation.refresh) {
       try { await observation.refresh; } catch (error) {
         log.warn("Closing a failed activity refresh", { context, error: String(error) });

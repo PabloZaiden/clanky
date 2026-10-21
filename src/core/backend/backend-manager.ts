@@ -63,6 +63,7 @@ import { assertHarnessHostPolicy } from "./harness-host-policy";
 import { isRemoteOnlyMode } from "../config";
 import { MeshHarnessBackend } from "../../backends/mesh-harness-backend";
 import { createRetryableAsyncOperation } from "../../utils/async-operation";
+import { harnessActivityService } from "../harness-activity-service";
 
 interface WorkspaceBackendOptions {
   workspaceId: string;
@@ -1180,6 +1181,7 @@ class BackendManager {
 
   private async disconnectBackend(backend: Backend, reason?: Error): Promise<void> {
     await using connection = { backend, [Symbol.asyncDispose]: async () => await backend.disconnect() };
+    await harnessActivityService.closeBackend(backend);
     connection.backend.abortAllSubscriptions(reason);
   }
 
