@@ -563,8 +563,8 @@ async function createHostTempDirectory(
 
 /**
  * Writes the runner and user code to a temporary directory on the workspace
- * host, launches Node.js without an execution timeout, and streams only the
- * explicit program output from the control protocol.
+ * host, launches Node.js through transport-owned long-running execution without
+ * an execution timeout, and streams explicit output from the control protocol.
  */
 export async function launchDeterministicAgentOnHost(
   options: LaunchRunnerOptions,
@@ -651,6 +651,7 @@ export async function launchDeterministicAgentOnHost(
         env: runEnv,
         signal,
         timeout: null,
+        longRunning: true,
         logFailures: false,
         onStdoutChunk: handleChunk,
       },
