@@ -254,6 +254,9 @@ export function publishClankyDomainEvent(
   switch (event.type) {
     case "harness.changed":
       publishChanged(publisher, owner, event.context.kind === "chat" ? CLANKY_REALTIME_RESOURCES.chats : CLANKY_REALTIME_RESOURCES.tasks, event.context.id);
+      for (const run of event.runs ?? []) {
+        publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.agentRuns, run.id, run.agentId);
+      }
       return;
     case "mesh.changed":
       publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.mesh);

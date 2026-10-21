@@ -115,6 +115,41 @@ needs a fresh credential; Clanky does not persist SSH credentials, so an
 unreachable or unauthenticated host may retain the expired file until the next
 authorized recovery attempt or chat deletion.
 
+## Token consumption
+
+The chat composer's **...** menu shows **Usage** above **Template**. A task's
+**Info** tab shows the same **Output tokens** metric. Counts use decimal
+**K**, **M**, and **B** abbreviations; the exact count is available in the
+value's tooltip and accessible label. Changed displayed values briefly pop
+in unless reduced motion is enabled.
+
+Clanky stores cumulative consumption for native Copilot, Codex and OpenCode 2
+sessions, including their observed subagents. Input, output, reasoning,
+cache-read and cache-write counts are retained when available. Input includes
+cached input; output includes reasoning, which is also recorded separately.
+These categories overlap: do not add reasoning to output or cache to input
+again. Token counts are not context-window utilization or a billing estimate.
+
+Checkpoints run server-side every 30 seconds while a native session is
+connected and when a principal or child turn ends, including interruption and
+failure. They do not depend on an open browser or menu. Providers may only
+finalize their counters at model-call boundaries. Saved totals survive Clanky
+restart, reconnect and replacement of a native session. Repeated cumulative
+snapshots do not count as additional consumption.
+
+Tasks include their task-scoped chat consumption. Scheduled Agent runs share
+their backing chat's accounting rather than counting a second execution.
+Consumption is private to the entity owner. On Mesh, the controller requests
+usage only when the worker advertises token-accounting support; update older
+workers to enable it. Direct SSH continues to support ACP only.
+
+**Partial** means some consumption could not be recovered, such as a Codex
+thread whose usage notification has not been observed. **Last known** means
+refresh failed; the saved number is retained instead of being reset to zero.
+A dash means no consumption count is available. ACP context-size reports are
+not used as consumption, and old usage cannot be reconstructed when the native
+provider no longer exposes it.
+
 ## Activity and individual Stop
 
 Open **Activity** from the existing task or chat action menu. Inside a task's

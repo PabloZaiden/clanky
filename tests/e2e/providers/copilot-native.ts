@@ -24,6 +24,7 @@ interface Session {
   events: Array<Record<string, unknown>>;
   result?: string;
   backgroundResult?: string;
+  usage: Record<string, { inputTokens: number; outputTokens: number; reasoningTokens: number; cacheReadTokens: number; cacheWriteTokens: number }>;
 }
 
 const sessions = new Map<string, Session>();
@@ -59,6 +60,16 @@ function write(message: Record<string, unknown>): void {
 }
 
 function event(session: Session, type: string, data: Record<string, unknown>): void {
+  if (type === "assistant.message") {
+    const usage = session.usage[session.model] ??= {
+      inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
+    };
+    usage.inputTokens += 100;
+    usage.outputTokens += 50;
+    usage.reasoningTokens += 10;
+    usage.cacheReadTokens += 25;
+    usage.cacheWriteTokens += 5;
+  }
   const value = { id: crypto.randomUUID(), timestamp: new Date().toISOString(), parentId: null, type, data };
   session.events.push(value);
   session.events = session.events.slice(-500);
@@ -244,7 +255,7 @@ async function dispatch(frame: JsonRpcMessage): Promise<void> {
         id, directory: String(params["workingDirectory"] ?? process.cwd()),
         model: String(params["model"] ?? "e2e-copilot-model"),
         tools: Array.isArray(params["tools"]) ? params["tools"] : [],
-        metadata: {}, processing: false, prompt: "", events: [],
+        metadata: {}, processing: false, prompt: "", events: [], usage: {},
       });
       event(sessions.get(id)!, "session.start", {});
       await save();
@@ -285,6 +296,17 @@ async function dispatch(frame: JsonRpcMessage): Promise<void> {
       break;
     case "session.metadata.isProcessing":
       result = { processing: session!.processing };
+      break;
+    case "session.usage.getMetrics":
+      result = {
+        sessionStartTime: session!.events[0]!["timestamp"],
+        modelMetrics: Object.fromEntries(Object.entries(session!.usage).map(([model, usage]) => [
+          model, { usage, requests: { count: usage.outputTokens / 50, cost: 0 } },
+        ])),
+        totalApiDurationMs: 0, totalUserRequests: 0, totalPremiumRequestCost: 0,
+        lastCallInputTokens: 100, lastCallOutputTokens: 50,
+        codeChanges: { filesModified: [], filesModifiedCount: 0, linesAdded: 0, linesRemoved: 0 },
+      };
       break;
     case "session.tasks.list":
       result = { tasks: [] };

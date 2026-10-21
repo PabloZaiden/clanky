@@ -41,6 +41,7 @@ export type { ReasoningSummaryTextDeltaNotification } from "./v2/ReasoningSummar
 export type { CommandExecutionOutputDeltaNotification } from "./v2/CommandExecutionOutputDeltaNotification";
 export type { ErrorNotification } from "./v2/ErrorNotification";
 export type { ServerRequestResolvedNotification } from "./v2/ServerRequestResolvedNotification";
+export type { ThreadTokenUsageUpdatedNotification } from "./v2/ThreadTokenUsageUpdatedNotification";
 export type { ToolRequestUserInputParams } from "./v2/ToolRequestUserInputParams";
 export type { ToolRequestUserInputResponse } from "./v2/ToolRequestUserInputResponse";
 export type { ConfigRequirementsReadResponse } from "./v2/ConfigRequirementsReadResponse";

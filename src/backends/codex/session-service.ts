@@ -21,6 +21,7 @@ import { codexQuestionConfig } from "./question-policy";
 import { ClankyControlToolService } from "../clanky-control-tools";
 import type { ClankyControlToolResult } from "../clanky-control-tools";
 import { z } from "zod";
+import type { HarnessUsageSnapshot, TokenCounts } from "@/shared/harness-usage";
 
 const DynamicToolCallParamsSchema = z.object({
   threadId: z.string().min(1),
@@ -53,6 +54,7 @@ interface TrackedThread {
   completedTurnId?: string;
   spawningToolCallId?: string;
   translator: CodexEventTranslator;
+  usage?: TokenCounts;
 }
 
 export class CodexSessionService {
@@ -62,6 +64,7 @@ export class CodexSessionService {
   private readonly unsubscribeFailure: () => void;
   private readonly operations = new Set<Promise<AgentSession>>();
   private readonly resuming = new Map<string, Promise<AgentSession>>();
+  private readonly resumingUsage = new Map<string, TokenCounts>();
   private closing = false;
   private controlTools?: ClankyControlToolService;
 
@@ -125,7 +128,10 @@ export class CodexSessionService {
       requireMatchingHarnessBinding(JSON.stringify(session.binding), binding);
       return session;
     });
-    const resumed = this.runOperation(() => this.resumeNative(binding)).finally(() => { this.resuming.delete(binding.nativeId); });
+    const resumed = this.runOperation(() => this.resumeNative(binding)).finally(() => {
+      this.resuming.delete(binding.nativeId);
+      this.resumingUsage.delete(binding.nativeId);
+    });
     this.resuming.set(binding.nativeId, resumed);
     return resumed;
   }
@@ -159,6 +165,16 @@ export class CodexSessionService {
   descendants(rootId: string): TrackedThread[] {
     this.get(rootId);
     return [...this.threads.values()].filter((entry) => entry.rootId === rootId && entry.thread.id !== rootId);
+  }
+
+  getUsage(rootId: string): HarnessUsageSnapshot {
+    this.get(rootId);
+    const threads = [...this.threads.values()].filter((entry) => entry.rootId === rootId);
+    return {
+      observedAt: new Date().toISOString(),
+      coverage: threads.every((entry) => entry.usage !== undefined) ? "complete" : "partial",
+      contributors: threads.map((entry) => ({ id: entry.thread.id, tokens: entry.usage ?? {} })),
+    };
   }
 
   getScope(threadId: string): HarnessEventScope | null {
@@ -302,6 +318,7 @@ export class CodexSessionService {
     this.dependencies.events.closeAll();
     this.conversations.clear();
     this.threads.clear();
+    this.resumingUsage.clear();
   }
 
   private async attach(thread: Thread, binding: HarnessConversationBinding, title?: string): Promise<AgentSession> {
@@ -340,6 +357,7 @@ export class CodexSessionService {
       thread,
       rootId,
       translator: new CodexEventTranslator({ includeProviderImageFileReference }),
+      usage: this.resumingUsage.get(thread.id),
     });
   }
 
@@ -352,6 +370,25 @@ export class CodexSessionService {
     }
     if (!("threadId" in event.params)) return;
     const entry = this.threads.get(event.params.threadId);
+    if (event.method === "thread/tokenUsage/updated") {
+      const usage = event.params.tokenUsage.total;
+      const tokens: TokenCounts = {
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        reasoningTokens: usage.reasoningOutputTokens,
+        cacheReadTokens: usage.cachedInputTokens,
+        cacheWriteTokens: usage.cacheWriteInputTokens,
+      };
+      if (entry) entry.usage = tokens;
+      // Resume can emit its usage checkpoint before the owned thread is attached.
+      else if (this.resuming.has(event.params.threadId)) {
+        if (!this.resumingUsage.has(event.params.threadId) && this.resumingUsage.size >= 1000) {
+          throw new HarnessError("harness_event_gap", "The native usage checkpoint limit was exceeded.");
+        }
+        this.resumingUsage.set(event.params.threadId, tokens);
+      }
+      return;
+    }
     if (!entry) return;
     if ((event.method === "item/started" || event.method === "item/completed") && event.params.item.type === "collabAgentToolCall") {
       for (const childId of event.params.item.receiverThreadIds) {

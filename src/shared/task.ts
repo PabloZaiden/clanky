@@ -14,6 +14,7 @@ import type { CheapModelSelection, ModelConfig } from "./model";
 import type { MessageAttachment } from "./message-attachments";
 import type { ToolCallRecord } from "./tool-call";
 import type { HarnessConversationBinding, HarnessConversationState } from "./harness-control";
+import type { TokenUsageSummary } from "./harness-usage";
 import type { QuestionMessageData } from "./harness-questions";
 export type { CheapModelSelection, ModelConfig };
 
@@ -136,6 +137,7 @@ export interface TaskState {
   /** Backend session information for the active connection */
   session?: SessionInfo;
   harness?: HarnessConversationState;
+  usage?: TokenUsageSummary;
 
   /** Error information if the task failed */
   error?: TaskError;

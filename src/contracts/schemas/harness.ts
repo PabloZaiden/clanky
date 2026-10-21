@@ -100,6 +100,7 @@ export const HarnessConversationStateSchema = z.object({
     questionPolicy: z.literal("session").optional(),
     clankyControlTools: z.boolean().optional(),
     history: z.literal("completed").optional(),
+    usage: z.literal("tokens").optional(),
   }).optional(),
   gitSafety: z.union([
     z.object({ status: z.literal("safe"), observedAt: z.string() }),

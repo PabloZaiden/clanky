@@ -75,6 +75,7 @@ export const MeshHarnessOperationSchema = z.discriminatedUnion("operation", [
   Session.extend({ operation: z.literal("prompt"), prompt: Prompt, synchronous: z.boolean().optional() }),
   Session.extend({ operation: z.literal("abort") }),
   Session.extend({ operation: z.literal("activity") }),
+  Session.extend({ operation: z.literal("usage") }),
   Session.extend({ operation: z.literal("history"), cursor: Id.optional() }),
   Session.extend({ operation: z.literal("stop"), activityId: Id }),
   Session.extend({ operation: z.literal("settle") }),

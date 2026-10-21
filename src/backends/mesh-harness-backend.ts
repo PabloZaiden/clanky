@@ -12,6 +12,7 @@ import type { ModelInfo } from "@/contracts";
 import type { MeshHarnessOperation } from "@/contracts/schemas/mesh-harness";
 import { MeshHarnessEventSchema, MeshHarnessSessionHistorySchema } from "@/contracts/schemas/mesh-harness";
 import { HarnessConversationBindingSchema, HarnessConversationStateSchema } from "@/contracts/schemas/harness";
+import { HarnessUsageSnapshotSchema } from "@/contracts/schemas/harness-usage";
 import {
   MESSAGE_ATTACHMENT_MAX_BYTES,
   MESSAGE_IMAGE_ALLOWED_MIME_TYPES,
@@ -79,6 +80,12 @@ export class MeshHarnessBackend implements Backend {
     this.harness = {
       get capabilities(): HarnessCapabilities { return owner.capabilities; },
       getActivity: (id: string) => this.activity(id),
+      getUsage: async (id: string) => {
+        if (owner.capabilities.usage !== "tokens") {
+          throw new HarnessError("harness_unsupported_feature", "Update the Mesh worker to report native token usage.");
+        }
+        return HarnessUsageSnapshotSchema.parse(await owner.rpc({ operation: "usage", sessionId: id }));
+      },
       stopActivity: (id: string, activityId: string) => this.stop(id, activityId),
       steer: (id: string, request: HarnessSteerRequest) => this.inputAdmission({ operation: "steer", sessionId: id, request }),
       reconcileInput: (id: string, request: HarnessInputRecoveryRequest) => this.inputAdmission({ operation: "reconcile", sessionId: id, request }),

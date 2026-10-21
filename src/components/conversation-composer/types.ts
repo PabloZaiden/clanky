@@ -3,6 +3,7 @@ import type {
   ModelConfig,
 } from "@/shared";
 import type { VoiceRecorderStatus } from "../../hooks/useVoiceRecorder";
+import type { TokenUsageSummary } from "@/shared/harness-usage";
 
 export interface ConversationComposerSubmission {
   message: string | null;
@@ -51,6 +52,7 @@ export interface ConversationComposerProps {
   requireMessageForAttachments?: boolean;
   notice?: ConversationComposerNotice;
   status?: ConversationComposerStatus;
+  tokenUsage?: TokenUsageSummary | null;
   questionAnswerInputFocused?: boolean;
   voice?: ConversationComposerVoice;
   onSubmit: (submission: ConversationComposerSubmission) => Promise<boolean | void>;

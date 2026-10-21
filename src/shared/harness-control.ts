@@ -6,6 +6,7 @@ import type { HarnessNativeReferences } from "./harness-events";
 import type { PromptInput } from "./harness-input";
 import type { ExecutionHostBinding } from "./execution-host";
 import type { HarnessQuestionRequest } from "./harness-questions";
+import type { HarnessUsageSnapshot } from "./harness-usage";
 
 export type HarnessQuestionPolicy = "interactive" | "unattended";
 
@@ -46,6 +47,7 @@ export interface HarnessCapabilities {
   questionPolicy?: "session";
   clankyControlTools?: boolean;
   history?: "completed";
+  usage?: "tokens";
 }
 
 export interface HarnessActivity {
@@ -137,6 +139,7 @@ export type HarnessCleanupResult =
 
 export interface HarnessControl {
   readonly capabilities: HarnessCapabilities;
+  getUsage?(sessionId: string): Promise<HarnessUsageSnapshot>;
   getActivity(sessionId: string): Promise<HarnessActivitySnapshot>;
   stopActivity(sessionId: string, activityId: string): Promise<HarnessActivityStopResult>;
   /** Unsupported/model-validation errors are pre-admission; uncertain RPC outcomes return unknown. */

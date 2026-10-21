@@ -18,6 +18,7 @@ import type {
 import type { MessageAttachment } from "./message-attachments";
 import type { ExecutionHostBinding } from "./execution-host";
 import type { HarnessConversationBinding, HarnessConversationState } from "./harness-control";
+import type { TokenUsageSummary } from "./harness-usage";
 
 export type { ModelConfig };
 
@@ -150,6 +151,7 @@ export interface ChatState {
   lastUserMessageAt?: string;
   session?: SessionInfo;
   harness?: HarnessConversationState;
+  usage?: TokenUsageSummary;
   error?: ChatError;
   worktree?: ChatWorktreeState;
   messages: PersistedMessage[];

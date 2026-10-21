@@ -8,6 +8,7 @@
 import type { ChatPermissionRequest, ChatWorktreeState } from "./chat";
 import type { MessageAttachment } from "./message-attachments";
 import type { ModelConfig } from "./model";
+import type { TokenUsageSummary } from "./harness-usage";
 import type {
   PersistedMessage,
   PersistedToolCall,
@@ -108,6 +109,7 @@ export interface AgentRun {
   skipReason?: string;
   error?: AgentRunError;
   session?: SessionInfo;
+  usage?: TokenUsageSummary;
   worktree?: ChatWorktreeState;
   messages: PersistedMessage[];
   logs: TaskLogEntry[];

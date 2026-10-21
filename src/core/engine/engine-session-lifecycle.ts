@@ -133,6 +133,7 @@ export class TaskSessionLifecycleImpl implements TaskSessionLifecycle {
       }
 
       try {
+        await harnessActivityService.close({ kind: "task", id: this.config.id });
         this.emitLog(
           "info",
           options.disconnectMessage

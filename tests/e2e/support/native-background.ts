@@ -12,7 +12,10 @@ export interface BackgroundClient {
 
 export interface BackgroundChat {
   config: { id: string };
-  state: { status: string; error?: unknown; queuedMessages?: Array<{ content: string }> };
+  state: {
+    status: string; error?: unknown; queuedMessages?: Array<{ content: string }>;
+    usage?: { outputTokens?: number; inputTokens?: number };
+  };
 }
 
 interface Snapshot {
@@ -115,19 +118,25 @@ export async function useBackgroundConversation(options: {
   await writeFile(releasePath, "The report review can finish.");
   const completed = await pollUntil(() => observe(client, chatId),
     ({ chat, snapshot }) => chat.state.status === "idle" && !chat.state.queuedMessages?.length
+      && (chat.state.usage?.outputTokens ?? 0) > 0
       && assistantMessages(snapshot).some((content) => content.includes(nextStep) && content.includes(report)),
     { description: "queued request to use the report after its autonomous review", timeoutMs, formatLastObserved: JSON.stringify });
   expect(reportTools(completed.tools, report)).toHaveLength(1);
+  const outputTokens = completed.chat.state.usage!.outputTokens!;
+  expect(completed.chat.state.usage!.inputTokens).toBeGreaterThan(0);
   const persisted = assistantMessages(completed.snapshot);
 
   await reconnect();
   const reopened = await observe(client, chatId);
   expect(reopened.chat.state.status).toBe("idle");
   expect(reopened.chat.state.error).toBeUndefined();
+  expect(reopened.chat.state.usage?.outputTokens).toBeGreaterThanOrEqual(outputTokens);
+  const reopenedOutputTokens = reopened.chat.state.usage!.outputTokens!;
   const resumedRequest = "Keep the inventory and prepare the documentation handoff.";
   await send(resumedRequest);
   const resumed = await pollUntil(() => observe(client, chatId),
     ({ chat, snapshot }) => chat.state.status === "idle"
+      && (chat.state.usage?.outputTokens ?? 0) > reopenedOutputTokens
       && assistantMessages(snapshot).some((content) => content.includes(resumedRequest) && content.includes(report)),
     { description: "resumed conversation to use its retained background report", timeoutMs, formatLastObserved: JSON.stringify });
   for (const content of persisted) {
