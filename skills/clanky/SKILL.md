@@ -488,8 +488,11 @@ clanky preview --server <SERVER_NAME_OR_ID> --port 8080 --local-port 18080 --ope
 The command prints the local URL and remains active until stopped. Use
 `--remote-host` when the service is not bound to `localhost`, `--path` for a
 non-root base path, and `--local-port` to choose the local listener port. The
-listener binds to `localhost` by default; use `--host 0.0.0.0` only when LAN
-access is intended.
+CLI tries the remote `--port` locally by default; if it is occupied or binding
+is denied, it reports the fallback and uses a random available port. An explicit
+`--local-port PORT` must be available or the command fails without falling back.
+Use the printed URL for the actual local port. The listener binds to `localhost`
+by default; use `--host 0.0.0.0` only when LAN access is intended.
 
 ## Querying Clanky state
 

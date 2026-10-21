@@ -716,7 +716,20 @@ export async function runPreviewCommand(
       },
     });
 
-    const server = startListener(command.host, command.localPort ?? 0);
+    let server: Bun.Server<PreviewListenerData>;
+    try {
+      server = startListener(command.host, command.localPort ?? command.port);
+    } catch (error) {
+      if (
+        command.localPort !== undefined
+        || command.code
+        || !(error instanceof Error)
+        || !("code" in error)
+        || (error.code !== "EADDRINUSE" && error.code !== "EACCES" && error.code !== "EPERM")
+      ) throw error;
+      err(`Local port ${String(command.port)} is unavailable (${error.code}); using a random local port.`);
+      server = startListener(command.host, 0);
+    }
     listeners.push(server);
     if (command.code) {
       try {
