@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { FloatingPanel, OverflowIcon } from "@pablozaiden/webapp/web";
+import { Button, FloatingPanel, OverflowIcon } from "@pablozaiden/webapp/web";
 
 const ComposerActionsMenuCloseContext = createContext<(() => void) | null>(null);
 
@@ -97,10 +97,12 @@ export function ComposerActionsMenuSection({
 }
 
 export function ComposerActionsMenuButton({
+  label,
   children,
   disabled = false,
   onClick,
 }: {
+  label: string;
   children: ReactNode;
   disabled?: boolean;
   onClick: () => void;
@@ -108,16 +110,20 @@ export function ComposerActionsMenuButton({
   const closeMenu = useComposerActionsMenuClose();
 
   return (
-    <button
+    <Button
       type="button"
+      variant="ghost"
+      size="sm"
+      aria-label={label}
+      title={label}
       disabled={disabled}
       onClick={() => {
         onClick();
         closeMenu?.();
       }}
-      className="clanky-composer-button flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm"
+      className="h-9 w-9 p-0"
     >
       {children}
-    </button>
+    </Button>
   );
 }

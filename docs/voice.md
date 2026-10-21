@@ -143,7 +143,10 @@ conflict instead of discarding an ongoing Talk recording or transcription.
 
 ### Talk from the composer
 
-The existing **Talk** action in the composer's three-dot menu is unchanged.
+The composer's three-dot menu ends with **Template** on the left, followed by
+spaced SVG icon actions: the microphone starts **Talk**, when available, and
+the rightmost paperclip attaches files.
+Both keep tooltips and accessible names.
 With an empty draft and Talk available, hold the **send arrow** until a
 microphone button appears above it. Drag the mouse or finger onto that button
 and release to start the same record/transcribe/send flow. Releasing elsewhere,

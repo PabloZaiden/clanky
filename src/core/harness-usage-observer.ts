@@ -10,7 +10,7 @@ import { requireCurrentUser, runWithCurrentUser } from "../context/user-context"
 import { harnessEventEmitter } from "./event-emitter";
 
 const log = createLogger("harness-usage");
-const USAGE_CHECKPOINT_INTERVAL_MS = 30_000;
+const USAGE_CHECKPOINT_INTERVAL_MS = 5_000;
 
 export class HarnessUsageObserver {
   private readonly owner = requireCurrentUser();

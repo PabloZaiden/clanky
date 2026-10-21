@@ -118,7 +118,10 @@ authorized recovery attempt or chat deletion.
 ## Token consumption
 
 The chat composer's **...** menu shows **Usage** above **Template**. A task's
-**Info** tab shows the same **Output tokens** metric. Counts use decimal
+**Info** tab shows the same three rows: **Input tokens**, **Output tokens**,
+and **Cached**. Cached is the percentage of total input read from the prompt
+cache; cache writes are not included in that percentage. It is unavailable
+when input is zero or either required counter is missing. Counts use decimal
 **K**, **M**, and **B** abbreviations; the exact count is available in the
 value's tooltip and accessible label. Changed displayed values briefly pop
 in unless reduced motion is enabled.
@@ -130,7 +133,7 @@ cached input; output includes reasoning, which is also recorded separately.
 These categories overlap: do not add reasoning to output or cache to input
 again. Token counts are not context-window utilization or a billing estimate.
 
-Checkpoints run server-side every 30 seconds while a native session is
+Checkpoints run server-side every 5 seconds while a native session is
 connected and when a principal or child turn ends, including interruption and
 failure. They do not depend on an open browser or menu. Providers may only
 finalize their counters at model-call boundaries. Saved totals survive Clanky
