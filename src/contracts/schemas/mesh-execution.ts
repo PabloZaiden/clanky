@@ -8,7 +8,6 @@ import {
   MESH_EXECUTION_MAX_RESULT_BYTES,
 } from "@/shared/mesh-execution";
 import { MeshProtocolVersionSchema } from "./mesh-protocol";
-import { assertMeshEnvironmentGeneration } from "./mesh-payload";
 import { AgentProviderSchema } from "./workspace";
 import { GIT_COMMAND_SCOPES } from "@/shared/execution-host";
 
@@ -35,13 +34,11 @@ export const MeshExecutionSessionRequestSchema = z.object({
   channel: z.enum([MESH_EXECUTION_CHANNEL, MESH_ACP_CHANNEL, MESH_HARNESS_CHANNEL]),
   adapter: z.enum(["copilot", "codex", "opencode2"]).optional(),
   ownerId: z.string().min(1).max(200).optional(),
-  encryptedEnvironment: z.unknown().nullable().optional(),
   environment: z.record(z.string(), z.string()).optional(),
   nonce: z.string().trim().min(1).max(200),
   expiresAt: z.string().datetime(),
   signature: z.string().trim().min(1).max(16_384),
 }).superRefine((value, ctx) => {
-  assertMeshEnvironmentGeneration(value, ctx);
   if (value.channel === MESH_HARNESS_CHANNEL && (!value.adapter || !value.ownerId)) {
     ctx.addIssue({ code: "custom", path: ["channel"], message: "Native sessions require adapter and owner." });
   }

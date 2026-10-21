@@ -72,7 +72,6 @@ import type { AgentProvider } from "@/shared/settings";
 import type { HarnessAdapter } from "@/shared/settings";
 import { requireTrustedController } from "./mesh-peer-auth";
 import { meshInboundResourceRegistry } from "./mesh-inbound-resource-registry";
-import { decodeMeshEnvironment } from "./mesh-payload";
 import { parseManagedContextEnvironment } from "./managed-context-environment";
 import {
   executionPathStyleForPlatform,
@@ -190,7 +189,6 @@ interface MeshExecutionSession {
   adapter?: Exclude<HarnessAdapter, "acp">;
   ownerId?: string;
   expiresAt: number;
-  callerEncryptionPublicKey: string;
   environment?: Record<string, string>;
   executor: CommandExecutor;
   requestIds: Set<string>;
@@ -786,8 +784,7 @@ export class MeshExecutionGateway {
     }
 
     const { executionRoot, pathStyle } = await assertTrustedCaller(request);
-    const decryptedEnvironment = await decodeMeshEnvironment(request);
-    const environment = parseManagedContextEnvironment(decryptedEnvironment);
+    const environment = parseManagedContextEnvironment(request.environment);
     this.usedNonces.set(request.nonce, new Date(request.expiresAt).getTime());
     const sessionId = crypto.randomUUID();
     const sessionToken = randomBytes(32).toString("base64url");
@@ -810,7 +807,6 @@ export class MeshExecutionGateway {
       adapter: request.adapter,
       ownerId: request.ownerId,
       expiresAt,
-      callerEncryptionPublicKey: request.callerEncryptionPublicKey,
       environment,
       executor: new CommandExecutorImpl({
         provider: "local",
@@ -955,14 +951,6 @@ export class MeshExecutionGateway {
       expiresAt: session.expiresAt,
       environment: session.environment,
     };
-  }
-
-  getSessionEncryptionPublicKey(sessionId: string, sessionToken: string): string {
-    const session = this.requireSessionRecord(sessionId, sessionToken, "mesh_execution_session_invalid");
-    if (!session.callerEncryptionPublicKey) {
-      throw new DomainError("mesh_execution_encryption_unavailable", "The execution session has no encryption identity.");
-    }
-    return session.callerEncryptionPublicKey;
   }
 
   async startAsyncCommand(

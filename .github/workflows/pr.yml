@@ -187,7 +187,11 @@ jobs:
               if (!relayUrl) throw new Error("RELAY_URL is required");
               const response = await fetch(
                 `${relayUrl}/.well-known/clanky-mesh`,
-                { signal: AbortSignal.timeout(5000) },
+                {
+                  // Call the private listener as the production TLS proxy.
+                  headers: { "x-forwarded-proto": "https" },
+                  signal: AbortSignal.timeout(5000),
+                },
               );
               if (!response.ok) {
                 throw new Error(`Relay descriptor returned HTTP ${String(response.status)}`);

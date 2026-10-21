@@ -15,7 +15,6 @@ export interface WorkerRuntimeConfiguration {
   workerDirectory: string;
   workerExecutionEnabled: boolean;
   relayOnly: boolean;
-  insecure: boolean;
   host: string;
   port: number;
 }
@@ -56,7 +55,6 @@ export function resolveWorkerRuntimeConfiguration(input: {
     workerDirectory,
     workerExecutionEnabled: values["worker-execution-enabled"] !== false,
     relayOnly: values["relay-only"] === true,
-    insecure: values["insecure"] === true,
     host: runtime.host,
     port: runtime.port,
   };

@@ -15,7 +15,7 @@ import type {
   MeshWorkerRegistration,
 } from "@/shared/mesh";
 import {
-  MESH_LEGACY_PROTOCOL_VERSION,
+  MESH_PROTOCOL_VERSION,
   isMeshProtocolGeneration,
   isSupportedMeshProtocolVersion,
   normalizeMeshProtocolVersions,
@@ -213,9 +213,9 @@ export async function saveWorkerRegistration(
       input.workspaceWorkerEnrollmentId ?? null,
       input.workspaceId ?? null,
       input.workerBinaryVersion ?? null,
-      JSON.stringify(input.workerSupportedProtocolVersions ?? [MESH_LEGACY_PROTOCOL_VERSION]),
-      input.workerPreferredProtocolVersion ?? MESH_LEGACY_PROTOCOL_VERSION,
-      input.workerNegotiatedProtocolVersion ?? MESH_LEGACY_PROTOCOL_VERSION,
+      JSON.stringify(input.workerSupportedProtocolVersions ?? [MESH_PROTOCOL_VERSION]),
+      input.workerPreferredProtocolVersion ?? MESH_PROTOCOL_VERSION,
+      input.workerNegotiatedProtocolVersion ?? MESH_PROTOCOL_VERSION,
       now,
       "active",
       now,
@@ -704,10 +704,10 @@ export async function saveControllerGrant(
         input.controllerBinaryVersion ?? null,
         JSON.stringify(
           input.controllerSupportedProtocolVersions
-            ?? [MESH_LEGACY_PROTOCOL_VERSION],
+            ?? [MESH_PROTOCOL_VERSION],
         ),
-        input.controllerPreferredProtocolVersion ?? MESH_LEGACY_PROTOCOL_VERSION,
-        input.controllerNegotiatedProtocolVersion ?? MESH_LEGACY_PROTOCOL_VERSION,
+        input.controllerPreferredProtocolVersion ?? MESH_PROTOCOL_VERSION,
+        input.controllerNegotiatedProtocolVersion ?? MESH_PROTOCOL_VERSION,
         now,
         now,
         now,
@@ -1049,7 +1049,7 @@ function mapWorkerRegistrationRow(
     workerPreferredProtocolVersion: persistedProtocolGeneration(
       row.worker_preferred_protocol_version,
       row.worker_node_id,
-    ) ?? MESH_LEGACY_PROTOCOL_VERSION,
+    ) ?? MESH_PROTOCOL_VERSION,
     workerNegotiatedProtocolVersion: persistedProtocolVersion(
       row.worker_negotiated_protocol_version,
       row.worker_node_id,
@@ -1145,7 +1145,7 @@ function mapControllerGrantRow(
     controllerPreferredProtocolVersion: persistedProtocolGeneration(
       row.controller_preferred_protocol_version,
       row.controller_node_id,
-    ) ?? MESH_LEGACY_PROTOCOL_VERSION,
+    ) ?? MESH_PROTOCOL_VERSION,
     controllerNegotiatedProtocolVersion: persistedProtocolVersion(
       row.controller_negotiated_protocol_version,
       row.controller_node_id,

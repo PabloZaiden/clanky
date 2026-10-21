@@ -11,7 +11,7 @@ import { MeshRelayConnectorManager } from "./mesh-relay-connector-manager";
 import { requireMeshRuntimeRole } from "./mesh-runtime";
 import { discoverMeshEnrollmentTarget } from "./mesh-target-discovery";
 import { negotiateMeshDescriptorGeneration } from "./mesh-protocol-version";
-import { MESH_LEGACY_PROTOCOL_VERSION, meshTransportProtocolVersions } from "@/shared/mesh-protocol";
+import { MESH_PROTOCOL_VERSION, meshTransportProtocolVersions } from "@/shared/mesh-protocol";
 
 type RelayDispatch = (request: Request) => Promise<Response | undefined>;
 
@@ -34,7 +34,7 @@ function activeRelayGrant(
   } catch (error) {
     throw new DomainError(
       "mesh_worker_relay_url_invalid",
-      "The active worker relay must use HTTPS unless it is a loopback origin.",
+      "The active worker relay must use HTTPS.",
       { cause: error },
     );
   }
@@ -44,7 +44,7 @@ function activeRelayGrant(
     } catch (error) {
       throw new DomainError(
         "mesh_worker_relay_url_invalid",
-        "The active worker relay must use HTTPS unless it is a loopback origin.",
+        "The active worker relay must use HTTPS.",
         { cause: error },
       );
     }
@@ -155,7 +155,7 @@ export class WorkerRelayService {
       role: "worker" as const,
       targetNodeId: selected.grant.controllerNodeId,
       // Only a seed: the manager discovers the version before opening a socket.
-      protocolVersion: selected.grant.controllerNegotiatedProtocolVersion ?? MESH_LEGACY_PROTOCOL_VERSION,
+      protocolVersion: selected.grant.controllerNegotiatedProtocolVersion ?? MESH_PROTOCOL_VERSION,
     };
     const active = this.manager.activeConfig;
     if (

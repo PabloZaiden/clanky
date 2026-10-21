@@ -17,6 +17,7 @@ import {
 } from "@/shared/mesh-relay";
 import { MESH_PROTOCOL_VERSIONS_HEADER, serializeMeshProtocolVersions } from "@/shared/mesh-protocol";
 import { meshTransportProtocolVersions, negotiateMeshProtocolVersion } from "@/shared/mesh-protocol";
+import { normalizeMeshEnrollmentTarget } from "./mesh-target-discovery";
 import type { MeshEnrollmentRoute } from "@/contracts/schemas/mesh";
 import type { MeshRelayPeerRoute } from "@/shared/mesh";
 import {
@@ -208,7 +209,7 @@ export class ControllerRelayService {
           "A relay can only be selected for a relay enrollment.",
         );
       }
-      return { route, target: directTarget };
+      return { route, target: normalizeMeshEnrollmentTarget(directTarget) };
     }
     const pairing = relayName === undefined
       ? getPrimaryControllerRelayPairing()
@@ -525,6 +526,7 @@ export class ControllerRelayService {
             [MESH_PROTOCOL_VERSIONS_HEADER]: serializeMeshProtocolVersions(meshTransportProtocolVersions(relayUrl)),
           },
           signal: controller.signal,
+          redirect: "error",
         },
       );
       if (!response.ok) {

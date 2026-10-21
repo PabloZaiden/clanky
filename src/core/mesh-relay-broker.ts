@@ -39,7 +39,6 @@ import {
 } from "@/shared/mesh-relay";
 import {
   MESH_PROTOCOL_VERSION,
-  MESH_SUPPORTED_PROTOCOL_VERSIONS,
   type MeshProtocolVersion,
 } from "@/shared/mesh-protocol";
 import {
@@ -599,8 +598,7 @@ export class MeshRelayBroker {
 
   getControllerSupportedProtocolVersions(): MeshProtocolVersion[] {
     const version = this.getControllerProtocolVersion();
-    // During the dual-generation window, a Mesh 7 peer also serves Mesh 6.
-    return version ? MESH_SUPPORTED_PROTOCOL_VERSIONS.filter((candidate) => candidate <= version) : [];
+    return version ? [version] : [];
   }
 
   openControl(
@@ -1235,9 +1233,6 @@ export class MeshRelayBroker {
   ): void {
     const request = validateStreamRoute(initiator, input);
     const receiver = this.resolveReceiver(initiator, request.targetNodeId);
-    if (request.headers["x-clanky-mesh-protocol-version"] === "7" && (
-      initiator.protocolVersion !== 7 || receiver.protocolVersion !== 7
-    )) throw new RelayRequestError("protocol_mismatch", "Native traffic requires a mutually supported generation on every Mesh hop.", 406);
     this.assertNodeCapacity(initiator.id);
     this.assertNodeCapacity(receiver.id);
 

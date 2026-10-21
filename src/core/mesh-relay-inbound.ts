@@ -122,8 +122,7 @@ export function createMeshRelayInboundHandler(
       }
       const stream = await context.openDataStream();
       const secureTransport = new URL(context.relayUrl).protocol === "https:"
-        && offer.protocolVersion === 7
-        && offer.headers["x-clanky-mesh-protocol-version"] === "7";
+        && offer.protocolVersion === 7;
       if (offer.kind === "socket") {
         await serveSocketStream(stream, offer, secureTransport);
         return;
@@ -135,7 +134,7 @@ export function createMeshRelayInboundHandler(
         headers: offer.headers,
         initiatorNodeId: offer.initiatorNodeId,
         secureTransport,
-        transportProtocolVersion: new URL(context.relayUrl).protocol === "https:" ? offer.protocolVersion : 6,
+        transportProtocolVersion: offer.protocolVersion,
         dispatch: options.dispatch,
         reportStatus: context.reportStatus,
       });

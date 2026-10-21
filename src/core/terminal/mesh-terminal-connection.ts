@@ -27,7 +27,7 @@ import {
   ensureLocalMeshNodeIdentity,
   signMeshPayload,
 } from "../../persistence/mesh-node-identity";
-import { encodeMeshEnvironment, decodeMeshPayload, type MeshPayloadFields } from "../mesh-payload";
+import { readMeshPayload, type MeshPayloadFields } from "../mesh-payload";
 import { buildMeshTerminalSessionSigningPayload } from "../mesh-terminal-protocol";
 import { MeshRelayStreamError } from "../mesh-relay-errors";
 import {
@@ -400,7 +400,6 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
     if (
       !registration
       || registration.grantStatus !== "active"
-      || !registration.workerEncryptionPublicKey
     ) {
       throw new DomainError(
         "mesh_terminal_target_unavailable",
@@ -429,15 +428,7 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
         connectionMode: this.config.connectionMode,
         useTmux: this.config.useTmux,
         allowPersistentSessionCreate: this.allowPersistentSessionCreate,
-        ...(this.runtimeEnvironment
-          ? {
-              ...encodeMeshEnvironment(
-                protocolVersion,
-                this.runtimeEnvironment,
-                registration.workerEncryptionPublicKey,
-              ),
-            }
-          : {}),
+        environment: this.runtimeEnvironment,
         nonce: crypto.randomUUID(),
         expiresAt,
       };
@@ -457,7 +448,7 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
     if (response.capability !== MESH_TERMINAL_CAPABILITY) {
       throw new DomainError("mesh_terminal_capability_mismatch", "The Mesh peer does not support terminal-v1.");
     }
-    const decrypted = asRecord(await decodeMeshPayload(protocolVersion, response));
+    const decrypted = asRecord(readMeshPayload(response));
     const sessionToken = decrypted["sessionToken"];
     if (typeof sessionToken !== "string" || sessionToken.length < 32) {
       throw new DomainError("mesh_terminal_response_invalid", "The Mesh terminal session token is invalid.");

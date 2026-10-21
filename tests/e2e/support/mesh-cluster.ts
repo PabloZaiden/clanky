@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pollUntil } from "./polling";
 import { currentEnvironment, waitForExit } from "./process";
+import { getMeshTestTls } from "./mesh-tls";
 import {
   LIFECYCLE_TIMEOUT_MS,
   MESH_OPERATION_TIMEOUT_MS,
@@ -20,6 +21,7 @@ const MAX_CAPTURED_PROCESS_OUTPUT = 64 * 1024;
 
 export interface MeshHttpNode {
   baseUrl: string;
+  meshEndpoint?: string;
   dataDir: string;
   apiKey?: string;
   tlsCertificate?: string;
@@ -39,6 +41,10 @@ export interface ManagedMeshNode extends MeshHttpNode {
   environment: Record<string, string | undefined>;
   serveArguments: string[];
   output: CapturedProcessOutput;
+  tlsProxy?: {
+    child: ReturnType<typeof Bun.spawn>;
+    output: CapturedProcessOutput;
+  };
 }
 
 export interface MeshJsonResponse<T> {
@@ -204,6 +210,27 @@ async function stopNodeServer(node: ManagedMeshNode): Promise<string> {
   return await readProcessOutput(node);
 }
 
+async function stopTlsProxy(node: ManagedMeshNode): Promise<void> {
+  if (!node.tlsProxy) return;
+  if (node.tlsProxy.child.exitCode === null) node.tlsProxy.child.kill();
+  await node.tlsProxy.child.exited;
+  await Promise.all([node.tlsProxy.output.stdout, node.tlsProxy.output.stderr]);
+}
+
+async function startTlsProxy(node: ManagedMeshNode, upstreamPort: number): Promise<void> {
+  const tls = await getMeshTestTls();
+  const port = await availablePort();
+  node.meshEndpoint = `https://127.0.0.1:${String(port)}`;
+  const child = Bun.spawn([
+    process.execPath, join(import.meta.dir, "mesh-tls-proxy.ts"),
+    String(port), String(upstreamPort), tls.certificatePath, tls.privateKeyPath,
+  ], { stdout: "pipe", stderr: "pipe" });
+  node.tlsProxy = { child, output: capturedOutput(child) };
+  await waitForNodeHealth({
+    baseUrl: node.meshEndpoint, dataDir: node.dataDir, tlsCertificate: tls.certificate,
+  }, "Mesh TLS proxy to become healthy", MESH_STARTUP_TIMEOUT_MS);
+}
+
 async function removeMeshDataDirectory(dataDir: string): Promise<void> {
   // Windows may briefly retain file handles after the Mesh process tree exits.
   await rm(dataDir, {
@@ -286,6 +313,7 @@ export async function startMeshNode(options: {
 
   try {
     const port = await availablePort();
+    const tls = await getMeshTestTls();
     const baseUrl = `${role === "worker" && !relayOnly ? "https" : "http"}://127.0.0.1:${String(port)}`;
     const environment: Record<string, string | undefined> = currentEnvironment({
       ...options.environment,
@@ -293,6 +321,9 @@ export async function startMeshNode(options: {
       CLANKY_HOST: "127.0.0.1",
       CLANKY_PORT: String(port),
       CLANKY_PUBLIC_BASE_URL: baseUrl,
+      NODE_EXTRA_CA_CERTS: tls.certificatePath,
+      CLANKY_TRUST_PROXY: "true",
+      CLANKY_TRUST_PROXY_HEADERS: "proto,host",
       CLANKY_LOG_LEVEL: options.environment?.["CLANKY_LOG_LEVEL"] ?? process.env["CLANKY_LOG_LEVEL"] ?? "fatal",
     });
     let apiKey: string | undefined;
@@ -378,10 +409,20 @@ export async function startMeshNode(options: {
       `${role} to become healthy`,
       options.timeoutMs ?? MESH_STARTUP_TIMEOUT_MS,
     );
+    if (role === "controller") {
+      await startTlsProxy(node, port);
+      const endpoint = await meshJsonRequest(node, "/api/mesh/endpoint", {
+        method: "POST", body: { meshEndpoint: node.meshEndpoint },
+      });
+      if (endpoint.status !== 200) {
+        throw new Error(`Failed to configure controller TLS endpoint: ${JSON.stringify(endpoint)}`);
+      }
+    }
     return node;
   } catch (error) {
     let output = "";
     if (node) {
+      await stopTlsProxy(node);
       output = await stopNodeServer(node);
     }
     await removeMeshDataDirectory(dataDir);
@@ -403,6 +444,7 @@ export async function startMeshRelay(options: {
 
   try {
     const port = await availablePort();
+    const tls = await getMeshTestTls();
     const baseUrl = `http://127.0.0.1:${String(port)}`;
     const environment: Record<string, string | undefined> = {
       ...process.env,
@@ -413,6 +455,9 @@ export async function startMeshRelay(options: {
       CLANKY_PUBLIC_BASE_URL: baseUrl,
       CLANKY_LOG_LEVEL: options.environment?.["CLANKY_LOG_LEVEL"] ?? process.env["CLANKY_LOG_LEVEL"] ?? "fatal",
       CLANKY_RELAY_CONTROLLER_FINGERPRINT: options.controllerFingerprint,
+      NODE_EXTRA_CA_CERTS: tls.certificatePath,
+      CLANKY_TRUST_PROXY: "true",
+      CLANKY_TRUST_PROXY_HEADERS: "proto,host",
     };
     const serveArguments = ["relay"];
     const started = spawnNodeServer({
@@ -436,10 +481,14 @@ export async function startMeshRelay(options: {
       "relay to become healthy",
       options.timeoutMs ?? MESH_STARTUP_TIMEOUT_MS,
     );
+    await startTlsProxy(relay, port);
+    relay.baseUrl = relay.meshEndpoint!;
+    relay.tlsCertificate = tls.certificate;
     return relay;
   } catch (error) {
     let output = "";
     if (relay) {
+      await stopTlsProxy(relay);
       output = await stopNodeServer(relay);
     }
     await removeMeshDataDirectory(dataDir);
@@ -471,6 +520,7 @@ export async function restartMeshNode(
 }
 
 export async function stopMeshNode(node: ManagedMeshNode): Promise<void> {
+  await stopTlsProxy(node);
   await stopNodeServer(node);
   await removeMeshDataDirectory(node.dataDir);
 }
@@ -549,7 +599,7 @@ export async function enrollMeshWorker(
     ...worker.command,
     "worker",
     "join",
-    controller.baseUrl,
+    controller.meshEndpoint ?? controller.baseUrl,
     "--token",
     created.body.token,
     "--fingerprint",

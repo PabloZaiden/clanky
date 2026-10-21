@@ -2,7 +2,6 @@
  * Bounded native observation frames with demand-aware keepalives.
  */
 import { createLogger } from "@pablozaiden/webapp/server";
-import { encodeMeshPayload } from "../../core/mesh-payload";
 import { isDomainError } from "../../domain/domain-error";
 import type { HarnessEvent } from "@/shared/harness-events";
 import type { MeshExecutionProtocolVersion } from "@/shared/mesh-execution";
@@ -12,7 +11,6 @@ const log = createLogger("api:mesh:harness-events");
 
 export function createHarnessEventStream(options: {
   subscription: EventStream<HarnessEvent>;
-  encryptionKey: string;
   protocolVersion: MeshExecutionProtocolVersion;
   signal: AbortSignal;
   onObservationClosed: () => void;
@@ -29,7 +27,7 @@ export function createHarnessEventStream(options: {
     controller.enqueue(encoder.encode(`${JSON.stringify({
       protocolVersion: options.protocolVersion,
       sequence: sequence++,
-      ...encodeMeshPayload(options.protocolVersion, payload, options.encryptionKey),
+      payload,
     })}\n`));
   };
   const close = (): void => {

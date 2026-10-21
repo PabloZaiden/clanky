@@ -227,10 +227,8 @@ realtime UI, or unrelated APIs. Do not combine worker mode with
    the controller. For the common direct-worker case without DNS, include the
    port, for example `--mesh-endpoint https://203.0.113.10:3000`, bind with
    `--host 0.0.0.0`, and allow or forward that port through the firewall/NAT.
-   Workers use HTTPS by default with a durable self-signed certificate pinned
+   Workers require HTTPS with a durable self-signed certificate pinned
    during enrollment. Do not use `127.0.0.1` or an unroutable private address.
-   For a deliberately trusted private network only, use an `http://` endpoint
-   together with the explicit `--insecure` flag.
    The worker username is fixed internally. The bootstrap API key is printed
    only when first created or rotated and is not needed for enrollment.
    To replace a lost API key, repeat the same command with `--rotate`.
@@ -246,7 +244,7 @@ realtime UI, or unrelated APIs. Do not combine worker mode with
    ```
 
    Relay-only workers use loopback and an ephemeral port; do not pass
-   `--mesh-endpoint` or `--insecure`. Pair a relay on the controller before
+   `--mesh-endpoint`. Pair a relay on the controller before
    enrolling the worker.
 
 2. Install and start the native service on the worker:
@@ -320,16 +318,19 @@ realtime UI, or unrelated APIs. Do not combine worker mode with
    Inspect and revoke existing enrollments from the controller with
    `clanky mesh status` and `clanky mesh revoke <worker-node-id>`.
 
-   During the Mesh 7/6 rollout, inspect worker `routeSecurity` in controller
-   status and binary/support metadata in `clanky mesh relay status`. Selection
-   is automatic: direct HTTPS needs v7 on controller and worker; relay routes
-   also need v7 on that relay and WSS on both hops. Otherwise new sessions use
-   encrypted v6. v7 trusts the relay and TLS-terminating proxies with content;
+   Mesh supports only v7. Inspect worker `routeSecurity` in controller status
+   and binary/support metadata in `clanky mesh relay status`. Direct routes
+   require HTTPS; relay routes require WSS on both hops, including on loopback.
+   Incompatible peers and insecure routes are rejected without a protocol
+   fallback. v7 trusts the relay and TLS-terminating proxies with content;
    it is not end-to-end opaque encryption. Worker status `activeSessions`
-   counts admitted leases by generation. Preserve data directories and legacy
-   keys until all nodes and sessions have migrated; never retry an ambiguous
-   dispatched prompt or command by switching generations. See the canonical
-   guide's protocol migration section for proxy and staged-upgrade rules.
+   counts admitted v7 leases. Preserve data directories, identities and grants
+   during upgrades; never replay an ambiguous dispatched prompt or command.
+   See the canonical guide's protocol and transport security section for
+   proxy requirements.
+
+   Existing service commands can keep `serve --insecure`: it is deprecated
+   and ignored, not an HTTP opt-out. New installations must omit it.
    Failed discovery leaves new relay connections retrying without using
    stored protocol capabilities. Check connection state as well as the last
    reported version; do not re-pair or revoke trust for a transient failure.

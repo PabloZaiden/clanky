@@ -71,6 +71,7 @@ import {
   getMeshWorkerDirectory,
 } from "./core/mesh-runtime";
 import { getMeshTransport } from "./core/mesh-transport-config";
+import { isSecureMeshRequest } from "./core/mesh-transport-security";
 import { setLocalMeshExecutionConfiguration } from "./persistence/mesh-node-identity";
 import {
   ensureMeshWorkerTlsIdentity,
@@ -365,6 +366,9 @@ export const routes = defineRoutes<ClankyRealtimeEvent>({
     tags: ["mesh", "discovery"],
     operations: { GET: { automation: { policy: "excluded", reason: "Mesh wire-protocol discovery, not an app operation." } } },
     async GET(req): Promise<Response> {
+      if (!isSecureMeshRequest(req)) {
+        return new Response("Mesh 7 requires HTTPS", { status: 406 });
+      }
       const identity = await ensureLocalMeshNodeIdentity();
       const protocol = getLocalMeshProtocolMetadata();
       const requestedVersions = parseMeshProtocolVersionsHeader(
@@ -496,7 +500,6 @@ export async function getWebAppServer(
     relayOnly?: boolean;
     workerDirectory?: string;
     workerExecutionEnabled?: boolean;
-    insecure?: boolean;
     workerEndpoint?: string;
     rotateWorkerTls?: boolean;
   } = {},
@@ -548,15 +551,7 @@ export async function getWebAppServer(
   let workerTls: Bun.TLSOptions | undefined;
   if (meshWorker) {
     const workerEndpoint = options.workerEndpoint ?? identity.meshEndpoint;
-    if (relayOnly) {
-      if (options.insecure === true) {
-        throw new Error("A relay-only Mesh worker cannot use --insecure.");
-      }
-    } else if (options.insecure === true) {
-      if (workerEndpoint && getMeshTransport(workerEndpoint) !== "http") {
-        throw new Error("An insecure Mesh worker requires an HTTP Mesh endpoint.");
-      }
-    } else {
+    if (!relayOnly) {
       if (!workerEndpoint) {
         throw new Error(
           "A secure Mesh worker requires a configured Mesh endpoint before the server starts.",
@@ -564,7 +559,7 @@ export async function getWebAppServer(
       }
       if (getMeshTransport(workerEndpoint) !== "https") {
         throw new Error(
-          "A secure Mesh worker requires an HTTPS Mesh endpoint; use --insecure for HTTP.",
+          "A Mesh worker requires an HTTPS Mesh endpoint.",
         );
       }
       log.info("Loading Mesh worker TLS identity");

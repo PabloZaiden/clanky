@@ -10,7 +10,6 @@ import { MESH_ACP_CHANNEL, MESH_EXECUTION_CHANNEL, MESH_HARNESS_CHANNEL } from "
 import { meshHarnessGateway } from "../../core/mesh-harness-gateway";
 import { meshExecutionGateway } from "../../core/mesh-execution-gateway";
 import { meshAcpGateway } from "../../core/mesh-acp-gateway";
-import { encodeMeshPayload } from "../../core/mesh-payload";
 import { assertMeshRequestTransport } from "../../core/mesh-transport-security";
 import { DomainError } from "../../domain/domain-error";
 import { requireMeshRuntimeRole } from "../../core/mesh-runtime";
@@ -94,17 +93,13 @@ export const meshExecutionRoutes = defineRoutes({
           protocolVersion: session.protocolVersion,
           sessionId: session.sessionId,
           expiresAt: session.expiresAt,
-          ...encodeMeshPayload(
-            session.protocolVersion,
-            {
-              sessionToken: session.sessionToken,
-              executionRoot: session.executionRoot,
-              ...(parsed.data.channel === MESH_EXECUTION_CHANNEL
-                ? { executionSessionRenewal: 1 }
-                : {}),
-            },
-            parsed.data.callerEncryptionPublicKey,
-          ),
+          payload: {
+            sessionToken: session.sessionToken,
+            executionRoot: session.executionRoot,
+            ...(parsed.data.channel === MESH_EXECUTION_CHANNEL
+              ? { executionSessionRenewal: 1 }
+              : {}),
+          },
         });
       } catch (error) {
         return internalMeshErrorResponse(error);
@@ -157,15 +152,11 @@ export const meshExecutionRoutes = defineRoutes({
       if (headerError) return headerError;
       try {
         assertMeshExecutionTransport(req, parsed.data);
-        const encryptionPublicKey = meshExecutionGateway.getSessionEncryptionPublicKey(
-          parsed.data.sessionId,
-          parsed.data.sessionToken,
-        );
         const result = await meshExecutionGateway.execute(parsed.data, req.signal);
         return Response.json({
           protocolVersion: parsed.data.protocolVersion,
           requestId: parsed.data.requestId,
-          ...encodeMeshPayload(parsed.data.protocolVersion, result, encryptionPublicKey),
+          payload: result,
         });
       } catch (error) {
         return internalMeshErrorResponse(error);
@@ -193,10 +184,6 @@ export const meshExecutionRoutes = defineRoutes({
       try {
         assertMeshExecutionTransport(req, parsed.data);
         requireMeshRuntimeRole("worker");
-        const encryptionPublicKey = meshExecutionGateway.getSessionEncryptionPublicKey(
-          parsed.data.sessionId,
-          parsed.data.sessionToken,
-        );
         const snapshot = parsed.data.action === "start"
           ? await meshExecutionGateway.startAsyncCommand(parsed.data)
           : parsed.data.action === "status"
@@ -221,7 +208,7 @@ export const meshExecutionRoutes = defineRoutes({
         return Response.json({
           protocolVersion: parsed.data.protocolVersion,
           requestId: parsed.data.requestId,
-          ...encodeMeshPayload(parsed.data.protocolVersion, snapshot, encryptionPublicKey),
+          payload: snapshot,
         });
       } catch (error) {
         return internalMeshErrorResponse(error);

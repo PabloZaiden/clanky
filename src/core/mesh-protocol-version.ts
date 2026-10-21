@@ -37,7 +37,7 @@ export function countMeshProtocolSessions<T>(
   sessions: Iterable<T>,
   describe: (session: T) => { protocolVersion: MeshProtocolVersion; expiresAt: number },
 ): Record<MeshProtocolVersion, number> {
-  const counts: Record<MeshProtocolVersion, number> = { 6: 0, 7: 0 };
+  const counts: Record<MeshProtocolVersion, number> = { [MESH_PROTOCOL_VERSION]: 0 };
   const now = Date.now();
   for (const session of sessions) {
     const descriptor = describe(session);

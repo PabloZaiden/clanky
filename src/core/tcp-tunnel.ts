@@ -17,7 +17,7 @@ import {
   ensureLocalMeshNodeIdentity,
   signMeshPayload,
 } from "../persistence/mesh-node-identity";
-import { decodeMeshPayload, type MeshPayloadFields } from "./mesh-payload";
+import { readMeshPayload, type MeshPayloadFields } from "./mesh-payload";
 import { buildMeshTcpTunnelSigningPayload } from "./mesh-tcp-tunnel-protocol";
 import {
   openMeshPeerSocket,
@@ -128,7 +128,7 @@ class MeshTcpTunnel extends EventEmitter implements TcpTunnel {
       "api/mesh/internal/tcp-tunnel/session",
       request,
     );
-    const decrypted = await decodeMeshPayload(protocolVersion, response);
+    const decrypted = readMeshPayload(response);
     const token = typeof decrypted === "object" && decrypted
       ? (decrypted as Record<string, unknown>)["sessionToken"]
       : null;
@@ -226,7 +226,6 @@ class MeshTcpTunnel extends EventEmitter implements TcpTunnel {
       return {
         protocolVersion: body.protocolVersion,
         sessionId: payload["sessionId"],
-        ...(Object.hasOwn(payload, "encryptedPayload") ? { encryptedPayload: payload["encryptedPayload"] } : {}),
         ...(Object.hasOwn(payload, "payload") ? { payload: payload["payload"] } : {}),
       };
     } finally {
