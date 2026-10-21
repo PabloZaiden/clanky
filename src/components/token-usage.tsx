@@ -38,7 +38,7 @@ function UsageRow({
     const animation = numberRef.current?.animate([
       { opacity: 0.25, transform: "translateY(4px) scale(0.94)" },
       { opacity: 1, transform: "translateY(0) scale(1)" },
-    ], { duration: 200, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" });
+    ], { duration: 800, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" });
     return () => animation?.cancel();
   }, [text, available]);
 
