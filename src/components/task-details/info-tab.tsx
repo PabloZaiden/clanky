@@ -4,7 +4,7 @@ import type { UpdateTaskRequest } from "@/contracts";
 import type { EntityLabels } from "../../utils";
 import { formatDateTime, formatModelDisplay } from "./types";
 import { taskDetailsTabContentFullWidthClassName, taskDetailsTabScrollContainerClassName } from "./tab-layout";
-import { OutputTokenUsage } from "../output-token-usage";
+import { TokenUsage } from "../token-usage";
 
 interface InfoTabProps {
   task: Task;
@@ -81,7 +81,7 @@ export function InfoTab({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {/* Statistics */}
           <div className="space-y-2">
-            <OutputTokenUsage usage={state.usage} />
+            <TokenUsage usage={state.usage} />
             <div className="text-sm">
               <span className="text-gray-500 dark:text-gray-400">Iteration: </span>
               <span className="font-medium text-gray-900 dark:text-gray-100">
