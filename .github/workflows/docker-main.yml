@@ -138,5 +138,5 @@ jobs:
 
           curl -fsS http://localhost:8080/api/health
           curl -fsS http://localhost:8081/api/health
-          curl -fsS http://localhost:8081/.well-known/clanky-mesh \
+          curl -fsS -H 'X-Forwarded-Proto: https' http://localhost:8081/.well-known/clanky-mesh \
             | grep -Eq '"role"[[:space:]]*:[[:space:]]*"relay"'

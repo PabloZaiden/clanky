@@ -307,6 +307,9 @@ export async function createRelayServer(
       description: "Describe this Clanky Mesh relay and its public identity.",
       tags: ["mesh", "relay", "discovery"],
       GET(req): Response {
+        if (!isSecureMeshRequest(req, runtimeConfig)) {
+          return new Response("Mesh 7 requires HTTPS", { status: 406 });
+        }
         const protocol = negotiateMeshProtocolVersion(
           [...MESH_SUPPORTED_PROTOCOL_VERSIONS],
           parseMeshProtocolVersionsHeader(

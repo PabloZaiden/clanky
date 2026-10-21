@@ -71,6 +71,7 @@ import {
   getMeshWorkerDirectory,
 } from "./core/mesh-runtime";
 import { getMeshTransport } from "./core/mesh-transport-config";
+import { isSecureMeshRequest } from "./core/mesh-transport-security";
 import { setLocalMeshExecutionConfiguration } from "./persistence/mesh-node-identity";
 import {
   ensureMeshWorkerTlsIdentity,
@@ -365,6 +366,9 @@ export const routes = defineRoutes<ClankyRealtimeEvent>({
     tags: ["mesh", "discovery"],
     operations: { GET: { automation: { policy: "excluded", reason: "Mesh wire-protocol discovery, not an app operation." } } },
     async GET(req): Promise<Response> {
+      if (!isSecureMeshRequest(req)) {
+        return new Response("Mesh 7 requires HTTPS", { status: 406 });
+      }
       const identity = await ensureLocalMeshNodeIdentity();
       const protocol = getLocalMeshProtocolMetadata();
       const requestedVersions = parseMeshProtocolVersionsHeader(
