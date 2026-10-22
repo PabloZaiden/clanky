@@ -6,13 +6,20 @@ workspace's configured provider.
 
 ## Set a workspace icon
 
-Open the workspace settings and use the **Workspace icon** section. You can:
+Open the workspace settings and use the **Icon** row in **General**. You can:
 
 - Choose **Search** to look for repository icons, then preview and select a
   candidate. Clanky does not search until you request it; choose **Search
   again** to refresh the candidates.
 - Upload an SVG or ICO file from your computer, up to 1 MB.
 - Remove the current icon and return to the default workspace mark.
+
+Choosing a file, selecting a repository candidate, or confirming removal
+previews the change and enables the workspace settings **Save** action.
+Choose **Save** to apply it with your other settings, or **Undo** beside the
+icon to restore the saved icon. Leaving with pending changes asks whether to
+discard them. If saving the icon fails, the selection stays pending so you can
+retry; any other settings already saved remain applied.
 
 For Git workspaces, Clanky searches within that workspace's Git repository on
 its selected execution host; it does not scan the rest of the host. Discovery
@@ -22,7 +29,13 @@ includes tracked files and unignored untracked files named `*icon*.svg` or
 shown. Repository discovery is not available for directory-only workspaces;
 you can still upload an icon manually.
 
-Selected icons are copied into private Clanky storage. The workspace does not
+Selecting a repository candidate captures its sanitized contents for the
+preview and pending change. Saving keeps that same image even if you also
+change the execution host or the source file changes before you save.
+Icon-only saves do not require an available execution host for uploads or
+removal.
+
+Saved icons are copied into private Clanky storage. The workspace does not
 depend on the source file remaining in the repository, and later changes to
 that file do not change the saved icon. Select it again to refresh the copy.
 SVG uploads and candidates are sanitized before storage. The saved image is

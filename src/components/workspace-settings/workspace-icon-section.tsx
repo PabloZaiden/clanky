@@ -1,17 +1,17 @@
 import { useEffect, useRef, useState } from "react";
-import { Button, ConfirmModal, DataList, DataListRow, ErrorState, FormGroup, SettingsFieldRow, useToast } from "@pablozaiden/webapp/web";
-import type {
-  WorkspaceIconCandidatesResponse,
-  WorkspaceIconMetadataResponse,
-  WorkspaceIconResponse,
-} from "@/contracts/schemas";
+import { Button, ConfirmModal, DataList, DataListRow, ErrorState, FormGroup, SettingsFieldRow } from "@pablozaiden/webapp/web";
+import type { WorkspaceIconCandidate, WorkspaceIconCandidatesResponse, WorkspaceIconMetadataResponse } from "@/contracts/schemas";
 import type { Workspace } from "@/shared/workspace";
 import { appPath } from "../../lib/public-path";
 import { apiRequest } from "../../lib/api-client";
+import { loadWorkspaceIconCandidate, workspaceIconCandidatePath, type WorkspaceIconChange } from "./workspace-icon-actions";
 
 interface WorkspaceIconSectionProps {
   workspace: Workspace;
-  onChanged: () => Promise<void>;
+  icon: Workspace["workspaceIcon"];
+  change: WorkspaceIconChange | null;
+  onChange: (change: WorkspaceIconChange | null) => void;
+  onLoadingChange: (loading: boolean) => void;
 }
 
 function savedIconUrl(workspace: Workspace, icon: WorkspaceIconMetadataResponse): string {
@@ -23,20 +23,17 @@ function savedIconUrl(workspace: Workspace, icon: WorkspaceIconMetadataResponse)
 }
 
 function candidatePreviewUrl(workspaceId: string, path: string): string {
-  return appPath(
-    `/api/workspaces/${encodeURIComponent(workspaceId)}/icon-candidate-preview?path=${
-      encodeURIComponent(path)
-    }`,
-  );
+  return appPath(workspaceIconCandidatePath(workspaceId, path));
 }
 
-export function WorkspaceIconSection({ workspace, onChanged }: WorkspaceIconSectionProps) {
-  const toast = useToast();
+export function WorkspaceIconSection({ workspace, icon, change, onChange, onLoadingChange }: WorkspaceIconSectionProps) {
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const discoveryControllerRef = useRef<AbortController | null>(null);
-  const [icon, setIcon] = useState<WorkspaceIconMetadataResponse | undefined>(workspace.workspaceIcon);
+  const selectionControllerRef = useRef<AbortController | null>(null);
   const [showRemoveConfirmation, setShowRemoveConfirmation] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [filePreview, setFilePreview] = useState<string | null>(null);
+  const [selectingPath, setSelectingPath] = useState<string | null>(null);
+  const [selectionError, setSelectionError] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<WorkspaceIconCandidatesResponse>({
     candidates: [],
     truncated: false,
@@ -44,28 +41,63 @@ export function WorkspaceIconSection({ workspace, onChanged }: WorkspaceIconSect
   const [candidatesLoading, setCandidatesLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [discoveryError, setDiscoveryError] = useState<string | null>(null);
-  const [operationError, setOperationError] = useState<string | null>(null);
-  const [refreshError, setRefreshError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+  const selectedFile = change && change.kind !== "remove" ? change.file : null;
 
   useEffect(() => {
-    setIcon(workspace.workspaceIcon);
-    setShowRemoveConfirmation(false);
-    setSelectedFile(null);
-    setOperationError(null);
-    setRefreshError(null);
-  }, [workspace.id, workspace.workspaceIcon]);
+    if (!selectedFile) {
+      setFilePreview(null);
+      return;
+    }
+    const url = URL.createObjectURL(selectedFile);
+    setFilePreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [selectedFile]);
 
   useEffect(() => {
     setCandidates({ candidates: [], truncated: false });
     setCandidatesLoading(false);
     setHasSearched(false);
     setDiscoveryError(null);
+    setSelectionError(null);
+    setSelectingPath(null);
     return () => {
       discoveryControllerRef.current?.abort();
       discoveryControllerRef.current = null;
+      selectionControllerRef.current?.abort();
+      selectionControllerRef.current = null;
+      onLoadingChange(false);
     };
-  }, [workspace.id]);
+  }, [workspace.id, workspace.directory, workspace.executionTargetRevision, onLoadingChange]);
+
+  function stageChange(next: WorkspaceIconChange | null): void {
+    setSelectionError(null);
+    onChange(next);
+  }
+
+  async function selectCandidate(candidate: WorkspaceIconCandidate): Promise<void> {
+    selectionControllerRef.current?.abort();
+    const controller = new AbortController();
+    selectionControllerRef.current = controller;
+    setSelectingPath(candidate.path);
+    setSelectionError(null);
+    onLoadingChange(true);
+    try {
+      const selected = await loadWorkspaceIconCandidate(workspace.id, candidate, controller.signal);
+      if (!controller.signal.aborted && selectionControllerRef.current === controller) {
+        onChange(selected);
+      }
+    } catch (error) {
+      if (!controller.signal.aborted && selectionControllerRef.current === controller) {
+        setSelectionError(String(error));
+      }
+    } finally {
+      if (selectionControllerRef.current === controller) {
+        selectionControllerRef.current = null;
+        setSelectingPath(null);
+        onLoadingChange(false);
+      }
+    }
+  }
 
   async function discoverCandidates(): Promise<void> {
     discoveryControllerRef.current?.abort();
@@ -99,123 +131,33 @@ export function WorkspaceIconSection({ workspace, onChanged }: WorkspaceIconSect
     }
   }
 
-  async function refreshWorkspaceViews(): Promise<void> {
-    setRefreshError(null);
-    try {
-      await onChanged();
-    } catch (error) {
-      setRefreshError(`The icon changed, but workspace views could not refresh: ${String(error)}`);
-    }
-  }
-
-  async function uploadSelectedFile(): Promise<void> {
-    if (!selectedFile) {
-      setOperationError("Choose an SVG or ICO file first.");
-      return;
-    }
-    setSaving(true);
-    setOperationError(null);
-    setRefreshError(null);
-    try {
-      const body = new FormData();
-      body.append("icon", selectedFile);
-      const result = await apiRequest<WorkspaceIconResponse>(
-        `/api/workspaces/${encodeURIComponent(workspace.id)}/icon-upload`,
-        {
-          method: "POST",
-          body,
-          action: "Upload workspace icon",
-          fallbackMessage: "Unable to upload workspace icon.",
-        },
-      );
-      setIcon(result.workspaceIcon);
-      setSelectedFile(null);
-      if (uploadInputRef.current) {
-        uploadInputRef.current.value = "";
-      }
-      toast.success("Workspace icon updated.");
-      await refreshWorkspaceViews();
-    } catch (error) {
-      setOperationError(String(error));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function selectCandidate(path: string): Promise<void> {
-    setSaving(true);
-    setOperationError(null);
-    setRefreshError(null);
-    try {
-      const result = await apiRequest<WorkspaceIconResponse>(
-        `/api/workspaces/${encodeURIComponent(workspace.id)}/icon`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ path }),
-          action: "Select workspace icon",
-          fallbackMessage: "Unable to select workspace icon.",
-        },
-      );
-      setIcon(result.workspaceIcon);
-      toast.success("Workspace icon updated.");
-      await refreshWorkspaceViews();
-    } catch (error) {
-      setOperationError(String(error));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function removeIcon(): Promise<void> {
-    setSaving(true);
-    setOperationError(null);
-    setRefreshError(null);
-    try {
-      await apiRequest(
-        `/api/workspaces/${encodeURIComponent(workspace.id)}/icon`,
-        {
-          method: "DELETE",
-          action: "Remove workspace icon",
-          fallbackMessage: "Unable to remove workspace icon.",
-        },
-      );
-      setIcon(undefined);
-      toast.success("Workspace icon removed.");
-      await refreshWorkspaceViews();
-    } catch (error) {
-      setOperationError(String(error));
-    } finally {
-      setShowRemoveConfirmation(false);
-      setSaving(false);
-    }
-  }
+  const preview = change?.kind === "remove" ? null
+    : selectedFile ? filePreview : icon ? savedIconUrl(workspace, icon) : null;
+  const selectedName = change?.kind === "repository" ? change.path : selectedFile?.name;
 
   return (
     <>
       <SettingsFieldRow title="Icon" description="SVG or ICO, up to 1 MB."
         content={<>
-          {icon ? <img className="h-8 w-8 shrink-0 rounded object-contain"
-            src={savedIconUrl(workspace, icon)} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" /> : "Default"}
+          {preview ? <img className="h-8 w-8 shrink-0 rounded object-contain"
+            src={preview} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" /> : "Default"}
           <input ref={uploadInputRef} type="file" className="hidden" aria-label="Workspace icon file"
             accept=".svg,.ico,image/svg+xml,image/x-icon,image/vnd.microsoft.icon"
-            onChange={(event) => { setSelectedFile(event.currentTarget.files?.[0] ?? null); setOperationError(null); }} />
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0];
+              if (file) stageChange({ kind: "upload", file });
+              event.currentTarget.value = "";
+            }} />
         </>}
-        feedback={selectedFile ? <span className="max-w-48 truncate" title={selectedFile.name}>{selectedFile.name}</span> : null}
+        feedback={selectedName ? <span className="max-w-48 truncate" title={selectedName}>{selectedName}</span> : null}
         actions={<>
-          <Button disabled={saving} onClick={() => uploadInputRef.current?.click()}>Choose file</Button>
-          {selectedFile ? <Button loading={saving} onClick={() => void uploadSelectedFile()}>Upload</Button> : null}
+          <Button onClick={() => uploadInputRef.current?.click()}>Choose file</Button>
           {workspace.workspaceType === "git" ? <Button aria-label="Search repository icons" loading={candidatesLoading}
-            disabled={saving} onClick={() => void discoverCandidates()}>{hasSearched ? "Search again" : "Search"}</Button> : null}
-          {icon ? <Button tone="danger" disabled={saving} onClick={() => setShowRemoveConfirmation(true)}>Remove</Button> : null}
+            onClick={() => void discoverCandidates()}>{hasSearched ? "Search again" : "Search"}</Button> : null}
+          {change ? <Button onClick={() => stageChange(null)}>Undo</Button>
+            : icon ? <Button tone="danger" onClick={() => setShowRemoveConfirmation(true)}>Remove</Button> : null}
         </>} />
-      {operationError ? (
-        <ErrorState title="Workspace icon update failed" description={operationError} />
-      ) : null}
-      {refreshError ? (
-        <ErrorState title="Workspace icon saved" description={refreshError} />
-      ) : null}
-
+      {selectionError ? <ErrorState title="Unable to select workspace icon" description={selectionError} /> : null}
       {hasSearched ? <FormGroup title="Repository icons">
         {discoveryError ? (
           <ErrorState title="Unable to discover icons" description={discoveryError} />
@@ -234,7 +176,11 @@ export function WorkspaceIconSection({ workspace, onChanged }: WorkspaceIconSect
                   referrerPolicy="no-referrer"
                 />
                 <span className="break-all">{candidate.path}</span>
-              </span>} actions={<Button disabled={saving} onClick={() => void selectCandidate(candidate.path)}>Use icon</Button>} />
+              </span>} actions={<Button
+                disabled={change?.kind === "repository" && change.path === candidate.path}
+                loading={selectingPath === candidate.path}
+                onClick={() => void selectCandidate(candidate)}
+              >{change?.kind === "repository" && change.path === candidate.path ? "Selected" : "Use icon"}</Button>} />
             ))}
           </DataList>
         )}
@@ -247,11 +193,13 @@ export function WorkspaceIconSection({ workspace, onChanged }: WorkspaceIconSect
       <ConfirmModal
         isOpen={showRemoveConfirmation}
         onClose={() => setShowRemoveConfirmation(false)}
-        onConfirm={removeIcon}
+        onConfirm={() => {
+          stageChange(icon ? { kind: "remove" } : null);
+          setShowRemoveConfirmation(false);
+        }}
         title="Remove workspace icon"
-        message={`Remove the saved icon for "${workspace.name}"? The workspace will use its default mark.`}
+        message={`Remove the icon for "${workspace.name}" when you save? The workspace will use its default mark.`}
         confirmLabel="Remove icon"
-        loading={saving}
         variant="danger"
       />
     </>

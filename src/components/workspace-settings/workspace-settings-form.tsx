@@ -12,6 +12,7 @@ import { PurgeTasksSection } from "./purge-tasks-section";
 import { DeleteWorkspaceSection } from "./delete-workspace-section";
 import { GeneralSettingsSection } from "./general-settings-section";
 import { useWorkspaceSettingsDraft } from "./use-workspace-settings-draft";
+import { saveWorkspaceIcon } from "./workspace-icon-actions";
 import type { WorkspaceSettingsFormProps } from "./types";
 
 const CATEGORIES: SettingsCategory[] = [
@@ -30,8 +31,11 @@ export function WorkspaceSettingsForm({
   const model = useWorkspaceSettingsDraft(workspace);
   const [category, setCategory] = useState("general");
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [iconError, setIconError] = useState<string | null>(null);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const busy = saving || submitting;
+  const [selectingIcon, setSelectingIcon] = useState(false);
+  const busy = saving || submitting || selectingIcon;
   const invalidField = useRef<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null>(null);
   const validationFrame = useRef<number | null>(null);
   const reportingValidity = useRef(false);
@@ -79,23 +83,42 @@ export function WorkspaceSettingsForm({
       setValidationError("Enter a workspace name.");
       return;
     }
-    if (!model.runtimeValid) {
+    if (model.settingsDirty && !model.runtimeValid) {
       setCategory("execution");
       setValidationError("Select an available execution host and supported runtime.");
       return;
     }
     setValidationError(null);
+    setIconError(null);
+    setRefreshError(null);
     const submitted = model.draft;
+    const submittedIcon = model.iconChange;
     setSubmitting(true);
     try {
-      const success = await onSave(
-        submitted.name.trim(), submitted.settings, submitted.executionHost, submitted.sshTarget,
-        submitted.archived, submitted.allowClankyContext, submitted.allowWorktrees,
-      );
-      if (success) {
+      if (model.settingsDirty) {
+        const success = await onSave(
+          submitted.name.trim(), submitted.settings, submitted.executionHost, submitted.sshTarget,
+          submitted.archived, submitted.allowClankyContext, submitted.allowWorktrees,
+        );
+        if (!success) return;
         model.markSaved(submitted);
-        toast.success("Workspace saved.");
       }
+      if (submittedIcon) {
+        try {
+          model.markIconSaved(await saveWorkspaceIcon(workspace.id, submittedIcon));
+        } catch (error) {
+          setCategory("general");
+          setIconError(String(error));
+          return;
+        }
+        try {
+          await onWorkspaceIconChanged?.();
+        } catch (error) {
+          setRefreshError(`The icon was saved, but workspace views could not refresh: ${String(error)}`);
+          return;
+        }
+      }
+      toast.success("Workspace saved.");
     } finally {
       setSubmitting(false);
     }
@@ -104,11 +127,19 @@ export function WorkspaceSettingsForm({
   return (
     <SettingsLayout categories={CATEGORIES} category={category} onCategoryChange={setCategory}>
       {validationError ? <ErrorState title="Check workspace settings" description={validationError} /> : null}
-      <form id={formId} onSubmit={(event) => void handleSubmit(event)} onInvalidCapture={showInvalidField}>
+      {iconError ? <ErrorState title="Workspace icon update failed" description={iconError} /> : null}
+      {refreshError ? <ErrorState title="Workspace icon saved" description={refreshError} /> : null}
+      <form id={formId} noValidate={!model.settingsDirty}
+        onSubmit={(event) => void handleSubmit(event)} onInvalidCapture={showInvalidField}>
         <fieldset disabled={busy} className="min-w-0">
           <div hidden={category !== "general"} data-workspace-settings-category="general">
             <GeneralSettingsSection workspace={workspace} draft={model.draft} onChange={model.patch}
-              onIconChanged={onWorkspaceIconChanged} formId={formId} />
+              icon={model.icon} iconChange={model.iconChange}
+              onIconLoadingChange={setSelectingIcon}
+              onIconChange={onWorkspaceIconChanged ? (change) => {
+                model.setIconChange(change);
+                setIconError(null);
+              } : undefined} formId={formId} />
           </div>
           <div hidden={category !== "execution"} data-workspace-settings-category="execution">
             <FormSection title="Execution">
