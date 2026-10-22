@@ -29,7 +29,13 @@ includes tracked files and unignored untracked files named `*icon*.svg` or
 shown. Repository discovery is not available for directory-only workspaces;
 you can still upload an icon manually.
 
-Selected icons are copied into private Clanky storage. The workspace does not
+Selecting a repository candidate captures its sanitized contents for the
+preview and pending change. Saving keeps that same image even if you also
+change the execution host or the source file changes before you save.
+Icon-only saves do not require an available execution host for uploads or
+removal.
+
+Saved icons are copied into private Clanky storage. The workspace does not
 depend on the source file remaining in the repository, and later changes to
 that file do not change the saved icon. Select it again to refresh the copy.
 SVG uploads and candidates are sanitized before storage. The saved image is

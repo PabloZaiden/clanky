@@ -34,7 +34,8 @@ export function WorkspaceSettingsForm({
   const [iconError, setIconError] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const busy = saving || submitting;
+  const [selectingIcon, setSelectingIcon] = useState(false);
+  const busy = saving || submitting || selectingIcon;
   const invalidField = useRef<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null>(null);
   const validationFrame = useRef<number | null>(null);
   const reportingValidity = useRef(false);
@@ -128,11 +129,13 @@ export function WorkspaceSettingsForm({
       {validationError ? <ErrorState title="Check workspace settings" description={validationError} /> : null}
       {iconError ? <ErrorState title="Workspace icon update failed" description={iconError} /> : null}
       {refreshError ? <ErrorState title="Workspace icon saved" description={refreshError} /> : null}
-      <form id={formId} onSubmit={(event) => void handleSubmit(event)} onInvalidCapture={showInvalidField}>
+      <form id={formId} noValidate={!model.settingsDirty}
+        onSubmit={(event) => void handleSubmit(event)} onInvalidCapture={showInvalidField}>
         <fieldset disabled={busy} className="min-w-0">
           <div hidden={category !== "general"} data-workspace-settings-category="general">
             <GeneralSettingsSection workspace={workspace} draft={model.draft} onChange={model.patch}
               icon={model.icon} iconChange={model.iconChange}
+              onIconLoadingChange={setSelectingIcon}
               onIconChange={onWorkspaceIconChanged ? (change) => {
                 model.setIconChange(change);
                 setIconError(null);

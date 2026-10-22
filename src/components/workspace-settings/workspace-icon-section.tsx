@@ -1,16 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import { Button, ConfirmModal, DataList, DataListRow, ErrorState, FormGroup, SettingsFieldRow } from "@pablozaiden/webapp/web";
-import type { WorkspaceIconCandidatesResponse, WorkspaceIconMetadataResponse } from "@/contracts/schemas";
+import type { WorkspaceIconCandidate, WorkspaceIconCandidatesResponse, WorkspaceIconMetadataResponse } from "@/contracts/schemas";
 import type { Workspace } from "@/shared/workspace";
 import { appPath } from "../../lib/public-path";
 import { apiRequest } from "../../lib/api-client";
-import type { WorkspaceIconChange } from "./workspace-icon-actions";
+import { loadWorkspaceIconCandidate, workspaceIconCandidatePath, type WorkspaceIconChange } from "./workspace-icon-actions";
 
 interface WorkspaceIconSectionProps {
   workspace: Workspace;
   icon: Workspace["workspaceIcon"];
   change: WorkspaceIconChange | null;
   onChange: (change: WorkspaceIconChange | null) => void;
+  onLoadingChange: (loading: boolean) => void;
 }
 
 function savedIconUrl(workspace: Workspace, icon: WorkspaceIconMetadataResponse): string {
@@ -22,18 +23,17 @@ function savedIconUrl(workspace: Workspace, icon: WorkspaceIconMetadataResponse)
 }
 
 function candidatePreviewUrl(workspaceId: string, path: string): string {
-  return appPath(
-    `/api/workspaces/${encodeURIComponent(workspaceId)}/icon-candidate-preview?path=${
-      encodeURIComponent(path)
-    }`,
-  );
+  return appPath(workspaceIconCandidatePath(workspaceId, path));
 }
 
-export function WorkspaceIconSection({ workspace, icon, change, onChange }: WorkspaceIconSectionProps) {
+export function WorkspaceIconSection({ workspace, icon, change, onChange, onLoadingChange }: WorkspaceIconSectionProps) {
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const discoveryControllerRef = useRef<AbortController | null>(null);
+  const selectionControllerRef = useRef<AbortController | null>(null);
   const [showRemoveConfirmation, setShowRemoveConfirmation] = useState(false);
-  const [uploadPreview, setUploadPreview] = useState<string | null>(null);
+  const [filePreview, setFilePreview] = useState<string | null>(null);
+  const [selectingPath, setSelectingPath] = useState<string | null>(null);
+  const [selectionError, setSelectionError] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<WorkspaceIconCandidatesResponse>({
     candidates: [],
     truncated: false,
@@ -41,15 +41,15 @@ export function WorkspaceIconSection({ workspace, icon, change, onChange }: Work
   const [candidatesLoading, setCandidatesLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [discoveryError, setDiscoveryError] = useState<string | null>(null);
-  const selectedFile = change?.kind === "upload" ? change.file : null;
+  const selectedFile = change && change.kind !== "remove" ? change.file : null;
 
   useEffect(() => {
     if (!selectedFile) {
-      setUploadPreview(null);
+      setFilePreview(null);
       return;
     }
     const url = URL.createObjectURL(selectedFile);
-    setUploadPreview(url);
+    setFilePreview(url);
     return () => URL.revokeObjectURL(url);
   }, [selectedFile]);
 
@@ -58,11 +58,46 @@ export function WorkspaceIconSection({ workspace, icon, change, onChange }: Work
     setCandidatesLoading(false);
     setHasSearched(false);
     setDiscoveryError(null);
+    setSelectionError(null);
+    setSelectingPath(null);
     return () => {
       discoveryControllerRef.current?.abort();
       discoveryControllerRef.current = null;
+      selectionControllerRef.current?.abort();
+      selectionControllerRef.current = null;
+      onLoadingChange(false);
     };
-  }, [workspace.id]);
+  }, [workspace.id, workspace.directory, workspace.executionTargetRevision, onLoadingChange]);
+
+  function stageChange(next: WorkspaceIconChange | null): void {
+    setSelectionError(null);
+    onChange(next);
+  }
+
+  async function selectCandidate(candidate: WorkspaceIconCandidate): Promise<void> {
+    selectionControllerRef.current?.abort();
+    const controller = new AbortController();
+    selectionControllerRef.current = controller;
+    setSelectingPath(candidate.path);
+    setSelectionError(null);
+    onLoadingChange(true);
+    try {
+      const selected = await loadWorkspaceIconCandidate(workspace.id, candidate, controller.signal);
+      if (!controller.signal.aborted && selectionControllerRef.current === controller) {
+        onChange(selected);
+      }
+    } catch (error) {
+      if (!controller.signal.aborted && selectionControllerRef.current === controller) {
+        setSelectionError(String(error));
+      }
+    } finally {
+      if (selectionControllerRef.current === controller) {
+        selectionControllerRef.current = null;
+        setSelectingPath(null);
+        onLoadingChange(false);
+      }
+    }
+  }
 
   async function discoverCandidates(): Promise<void> {
     discoveryControllerRef.current?.abort();
@@ -97,9 +132,8 @@ export function WorkspaceIconSection({ workspace, icon, change, onChange }: Work
   }
 
   const preview = change?.kind === "remove" ? null
-    : change?.kind === "repository" ? candidatePreviewUrl(workspace.id, change.path)
-      : selectedFile ? uploadPreview : icon ? savedIconUrl(workspace, icon) : null;
-  const selectedName = selectedFile?.name ?? (change?.kind === "repository" ? change.path : null);
+    : selectedFile ? filePreview : icon ? savedIconUrl(workspace, icon) : null;
+  const selectedName = change?.kind === "repository" ? change.path : selectedFile?.name;
 
   return (
     <>
@@ -111,7 +145,7 @@ export function WorkspaceIconSection({ workspace, icon, change, onChange }: Work
             accept=".svg,.ico,image/svg+xml,image/x-icon,image/vnd.microsoft.icon"
             onChange={(event) => {
               const file = event.currentTarget.files?.[0];
-              if (file) onChange({ kind: "upload", file });
+              if (file) stageChange({ kind: "upload", file });
               event.currentTarget.value = "";
             }} />
         </>}
@@ -120,9 +154,10 @@ export function WorkspaceIconSection({ workspace, icon, change, onChange }: Work
           <Button onClick={() => uploadInputRef.current?.click()}>Choose file</Button>
           {workspace.workspaceType === "git" ? <Button aria-label="Search repository icons" loading={candidatesLoading}
             onClick={() => void discoverCandidates()}>{hasSearched ? "Search again" : "Search"}</Button> : null}
-          {change ? <Button onClick={() => onChange(null)}>Undo</Button>
+          {change ? <Button onClick={() => stageChange(null)}>Undo</Button>
             : icon ? <Button tone="danger" onClick={() => setShowRemoveConfirmation(true)}>Remove</Button> : null}
         </>} />
+      {selectionError ? <ErrorState title="Unable to select workspace icon" description={selectionError} /> : null}
       {hasSearched ? <FormGroup title="Repository icons">
         {discoveryError ? (
           <ErrorState title="Unable to discover icons" description={discoveryError} />
@@ -143,7 +178,8 @@ export function WorkspaceIconSection({ workspace, icon, change, onChange }: Work
                 <span className="break-all">{candidate.path}</span>
               </span>} actions={<Button
                 disabled={change?.kind === "repository" && change.path === candidate.path}
-                onClick={() => onChange({ kind: "repository", path: candidate.path })}
+                loading={selectingPath === candidate.path}
+                onClick={() => void selectCandidate(candidate)}
               >{change?.kind === "repository" && change.path === candidate.path ? "Selected" : "Use icon"}</Button>} />
             ))}
           </DataList>
@@ -158,7 +194,7 @@ export function WorkspaceIconSection({ workspace, icon, change, onChange }: Work
         isOpen={showRemoveConfirmation}
         onClose={() => setShowRemoveConfirmation(false)}
         onConfirm={() => {
-          onChange(icon ? { kind: "remove" } : null);
+          stageChange(icon ? { kind: "remove" } : null);
           setShowRemoveConfirmation(false);
         }}
         title="Remove workspace icon"
