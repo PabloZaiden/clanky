@@ -95,7 +95,7 @@ export async function exerciseCodePreview(options: {
   const name = `code-${crypto.randomUUID()}`;
   const cli = startManagedProcess([
     ...await compiledClankyCommand(), "code", options.workspace,
-    ...selector, "--accept-server-license-terms",
+    ...selector,
   ], {
     cwd: options.homeDirectory,
     env: currentEnvironment({

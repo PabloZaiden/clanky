@@ -373,8 +373,8 @@ clanky code "my-workspace"
 clanky code "my-workspace" --chat "chat-name-or-id"
 clanky code "my-workspace" --task "task-name-or-id" --open
 
-# Explicit consent when the installed VS Code CLI requires its server license:
-clanky code "my-workspace" --accept-server-license-terms --open
+# Open the preview in the default browser:
+clanky code "my-workspace" --open
 ```
 
 Workspace references accept an ID or exact name. `--chat` and `--task` are
@@ -391,6 +391,14 @@ Code and does not use Microsoft's tunnel service. POSIX hosts also need
 `bash`, `ps`, `awk`, and `sort` for the session's process ownership supervision,
 including inherited terminals that change process groups. Windows uses the native
 process-tree termination path.
+
+Clanky passes `DONT_PROMPT_WSL_INSTALL=1` to VS Code's availability check and
+server process, avoiding the Linux launcher's interactive WSL installation
+warning without changing the host environment globally. Availability errors
+distinguish a missing `code` in the host's `PATH` (`code_unavailable`), a failed
+launcher/probe (`code_probe_failed`), and missing required `serve-web` options
+(`code_unsupported`). Failed probes and early server exits report the exit
+code and suggest host-side checks without exposing raw process output.
 
 The command starts a token-protected VS Code listener on that host's
 `127.0.0.1` and creates a normal Clanky workspace preview. It prints a
@@ -442,14 +450,14 @@ controller loss, resources remain pending when termination cannot be confirmed.
 The first launch may download VS Code server components and needs the host's
 network access and supported system libraries. Startup waits for the editor
 to be served, not just a listening port, with a two-minute startup deadline.
-If license consent is needed, review
-[Microsoft's server terms](https://aka.ms/vscode-server-license) and explicitly
-pass `--accept-server-license-terms`; Clanky does not accept them silently.
+Starting `clanky code` automatically accepts
+[Microsoft's server terms](https://aka.ms/vscode-server-license) by passing
+`--accept-server-license-terms` to VS Code; no Clanky CLI consent flag is needed.
 This integrates your installed VS Code for individual development, not a
 shared hosted IDE offering.
 
 The authenticated raw `/api/previews/bridge` accepts a `hello` with an optional
-`code: { chat?, task?, acceptServerLicenseTerms }`. Code starts require a
+`code: { chat?, task? }` (use `{}` for the workspace directory). Code starts require a
 workspace target, `remoteHost: "127.0.0.1"`, `remotePort: 0`, and a loopback
 local URL at `/`. A successful `ready` additionally includes
 `code: { directory, remotePort }`. Errors include a stable `code` and safe

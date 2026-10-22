@@ -11,7 +11,6 @@ export const PreviewUpstreamOptionsSchema = z.object({
 export const CodePreviewOptionsSchema = z.object({
   chat: z.string().trim().min(1).optional(),
   task: z.string().trim().min(1).optional(),
-  acceptServerLicenseTerms: z.boolean(),
 }).strict().refine((value) => !(value.chat && value.task), {
   message: "--chat and --task may not be used together",
 });

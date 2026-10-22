@@ -8,6 +8,11 @@ if (args.includes("--help")) {
   process.exit(0);
 }
 
+if (!args.includes("--accept-server-license-terms")) {
+  console.error("VS Code server license acceptance is required for unattended startup");
+  process.exit(1);
+}
+
 if (!args.includes("--host-process")) {
   const child = Bun.spawn([process.execPath, import.meta.path, ...args, "--host-process"], {
     stdin: "ignore", stdout: "inherit", stderr: "inherit",

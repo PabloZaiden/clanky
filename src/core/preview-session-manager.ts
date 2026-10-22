@@ -506,7 +506,6 @@ export class PreviewSessionManager {
             await savePreviewSession(preview);
             previewSaved = true;
           },
-          acceptServerLicenseTerms: options.code.acceptServerLicenseTerms,
           signal: signal ?? new AbortController().signal,
         });
       }
