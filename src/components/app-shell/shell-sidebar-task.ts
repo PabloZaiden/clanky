@@ -101,8 +101,8 @@ export function createTaskSidebarNode(
     itemLayout,
     render,
     route: { view: "task", taskId: task.config.id },
-    actions: privateActions(actions, privateHidden, task.config.isPrivate === true),
+    actions,
     pinnable: true,
     pinId,
-  }, privateHidden);
+  }, privateHidden, privateActions(actions, privateHidden, task.config.isPrivate === true));
 }

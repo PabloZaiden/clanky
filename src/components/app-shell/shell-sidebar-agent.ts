@@ -99,8 +99,8 @@ export function createAgentSidebarNode(
     badge: formatStatusLabel(agent.config.enabled ? "enabled" : "paused"),
     badgeVariant: agent.config.enabled ? "success" : "disabled",
     route: { view: "agent", agentId: agent.config.id },
-    actions: privateActions(actions, privateHidden, agent.config.isPrivate === true),
+    actions,
     pinnable: true,
     pinId: `agent:${agent.config.id}`,
-  }, privateHidden);
+  }, privateHidden, privateActions(actions, privateHidden, agent.config.isPrivate === true));
 }

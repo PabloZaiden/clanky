@@ -1,4 +1,4 @@
-import type { MouseEvent, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Badge, formatStatusLabel } from "@pablozaiden/webapp/web";
 import type {
   ActionMenuItem,
@@ -113,16 +113,19 @@ function DefaultPrivateSidebarItem({ node }: SidebarItemRenderContext) {
   );
 }
 
+type PrivateSidebarActivationGate = {
+  canActivate: boolean;
+};
+
 function PrivateSidebarReveal({
   children,
-  route,
-  navigate,
+  activationGate,
 }: {
   children: ReactNode;
-  route?: WebAppRoute;
-  navigate: (route: WebAppRoute) => void;
+  activationGate: PrivateSidebarActivationGate;
 }) {
   const reveal = usePrivateItemReveal(true);
+  activationGate.canActivate = reveal.canActivate;
 
   return (
     <>
@@ -130,14 +133,13 @@ function PrivateSidebarReveal({
       <span
         aria-hidden="true"
         className={`clanky-private-sidebar-reveal ${reveal.stateClassName}`.trim()}
-        onPointerEnter={reveal.onPointerEnter}
-        onPointerLeave={reveal.onPointerLeave}
-        onClick={(event: MouseEvent<HTMLSpanElement>) => {
-          event.preventDefault();
-          event.stopPropagation();
-          if (reveal.canActivate && route) {
-            navigate(route);
-          }
+        onPointerEnter={(event) => {
+          activationGate.canActivate = false;
+          reveal.onPointerEnter(event);
+        }}
+        onPointerLeave={(event) => {
+          activationGate.canActivate = false;
+          reveal.onPointerLeave(event);
         }}
       />
     </>
@@ -147,6 +149,7 @@ function PrivateSidebarReveal({
 export function privateSidebarPresentation<T extends SidebarNode>(
   node: T,
   privateHidden: boolean,
+  contextActions: ActionMenuItem[] = node.actions ?? [],
 ): T & PrivateSidebarNode {
   if (!privateHidden) {
     return {
@@ -156,16 +159,17 @@ export function privateSidebarPresentation<T extends SidebarNode>(
   }
 
   const originalRender = node.render;
-  const route = node.route;
+  const activationGate: PrivateSidebarActivationGate = { canActivate: false };
 
   return {
     ...node,
-    route: undefined,
+    onActivate: () => activationGate.canActivate,
+    contextActions,
     badge: PRIVATE_SIDEBAR_BADGE,
     badgeVariant: "disabled",
     privateHidden: true,
     render: (context) => (
-      <PrivateSidebarReveal route={route} navigate={context.navigate}>
+      <PrivateSidebarReveal activationGate={activationGate}>
         {originalRender?.(context) ?? <DefaultPrivateSidebarItem {...context} />}
       </PrivateSidebarReveal>
     ),

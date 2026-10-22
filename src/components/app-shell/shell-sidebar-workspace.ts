@@ -378,6 +378,7 @@ export function createWorkspaceSidebarNode(
     },
   ];
 
+  const actions = getWorkspaceSidebarActions(workspaceNode, context.workspace);
   return privateSidebarPresentation({
     type: "item",
     id: `workspace:${workspaceId}`,
@@ -385,13 +386,13 @@ export function createWorkspaceSidebarNode(
     render: renderWorkspaceSidebarItem(workspaceNode.workspace),
     searchText: `${workspaceNode.workspace.directory} ${isGitBacked ? "git" : "directory"}`,
     route: { view: "workspace", workspaceId },
-    actions: privateActions(
-      getWorkspaceSidebarActions(workspaceNode, context.workspace),
-      workspacePrivateHidden,
-      workspaceNode.workspace.isPrivate === true,
-    ),
+    actions,
     pinnable: true,
     pinId: `workspace:${workspaceId}`,
     children,
-  }, workspacePrivateHidden);
+  }, workspacePrivateHidden, privateActions(
+    actions,
+    workspacePrivateHidden,
+    workspaceNode.workspace.isPrivate === true,
+  ));
 }

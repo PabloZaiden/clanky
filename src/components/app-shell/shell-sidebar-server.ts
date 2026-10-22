@@ -95,6 +95,16 @@ export function buildServerSidebarNodes({
             host.ref.kind === "local" ? "This server" : "Endpoint unavailable"
           );
       const hostActions = getExecutionHostSidebarActions(host, context.execution);
+      const actions = sshServer
+        ? withPrivateToggleAction(
+            hostActions,
+            sshServer.config,
+            () => void context.toggleSshServerPrivate(sshServer),
+          )
+        : hostActions;
+      const contextActions = sshServer
+        ? privateActions(actions, hostPrivateHidden, sshServer.config.isPrivate === true)
+        : actions;
       return privateSidebarPresentation({
         type: "item",
         id: `execution-host:${host.ref.kind}:${hostId}`,
@@ -108,17 +118,7 @@ export function buildServerSidebarNodes({
           hostKind: host.ref.kind,
           hostId,
         },
-        actions: sshServer
-          ? privateActions(
-              withPrivateToggleAction(
-                hostActions,
-                sshServer.config,
-                () => void context.toggleSshServerPrivate(sshServer),
-              ),
-              hostPrivateHidden,
-              sshServer.config.isPrivate === true,
-            )
-          : hostActions,
+        actions,
         pinnable: true,
         pinId: `execution-host:${host.ref.kind}:${hostId}`,
         children: [
@@ -195,7 +195,7 @@ export function buildServerSidebarNodes({
             ),
           },
         ],
-      }, hostPrivateHidden);
+      }, hostPrivateHidden, contextActions);
     })
     .sort((left, right) => left.title.localeCompare(right.title));
 }

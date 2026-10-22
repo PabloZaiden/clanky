@@ -1,4 +1,4 @@
-import type { SidebarNode, WebAppRoute } from "@pablozaiden/webapp/web";
+import type { SidebarNode } from "@pablozaiden/webapp/web";
 
 export const PRIVATE_SIDEBAR_BADGE = "Private";
 
@@ -23,8 +23,4 @@ export function isEffectivelyPrivate(
 
 export function shouldObscurePrivateItem(effectivePrivate: boolean, showPrivateItems: boolean): boolean {
   return effectivePrivate && !showPrivateItems;
-}
-
-export function privateRoute(route: WebAppRoute | undefined, privateHidden: boolean): WebAppRoute | undefined {
-  return privateHidden ? undefined : route;
 }

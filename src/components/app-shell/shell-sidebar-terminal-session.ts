@@ -88,8 +88,8 @@ export function createTerminalSessionSidebarNode(
     itemLayout,
     render,
     route: { view: "terminal", terminalSessionId: session.config.id },
-    actions: privateActions(actions, privateHidden, session.config.isPrivate === true),
+    actions,
     pinnable: true,
     pinId,
-  }, privateHidden);
+  }, privateHidden, privateActions(actions, privateHidden, session.config.isPrivate === true));
 }
