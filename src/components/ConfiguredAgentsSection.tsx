@@ -1,7 +1,7 @@
 import type { Agent } from "@/shared";
-import { DataList, DataListRow, ErrorState, LoadingState, Panel } from "@pablozaiden/webapp/web";
+import { DataList, ErrorState, LoadingState, Panel } from "@pablozaiden/webapp/web";
 import { getAgentStatusBadgeVariant, StateText, StatusBadge } from "./common";
-import { getPrivateContainerClassName } from "../lib/private-items";
+import { ClankyListRow } from "./app-shell/clanky-list-row";
 
 const MAX_CONFIGURED_AGENT_PROMPT_WORDS = 20;
 
@@ -79,7 +79,7 @@ export function ConfiguredAgentsSection({
             const workspaceName = workspaceNamesById[agent.config.workspaceId];
             const privateHidden = isAgentPrivateHidden(agent);
             return (
-              <DataListRow
+              <ClankyListRow
                 key={agent.config.id}
                 title={agent.config.name}
                 description={summarizeAgentPrompt(agent.config.prompt)}
@@ -87,8 +87,8 @@ export function ConfiguredAgentsSection({
                 meta={`${workspaceName ? `${workspaceName} · ` : ""}Next run: ${formatDate(agent.state.nextRunAt)} · ${getScheduleText(agent)}`}
                 metaPlacement="below"
                 badge={<AgentStatusPill status={agent.state.status} />}
-                onClick={!privateHidden && onSelectAgent ? () => onSelectAgent(agent.config.id) : undefined}
-                className={getPrivateContainerClassName(privateHidden)}
+                onClick={onSelectAgent ? () => onSelectAgent(agent.config.id) : undefined}
+                privateHidden={privateHidden}
               />
             );
           })}

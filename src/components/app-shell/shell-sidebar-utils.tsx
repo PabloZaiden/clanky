@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+import { Badge, formatStatusLabel } from "@pablozaiden/webapp/web";
 import type {
   ActionMenuItem,
   SidebarItemRenderContext,
@@ -7,10 +9,12 @@ import type {
 import type { Workspace } from "@/shared";
 import {
   isEffectivelyPrivate,
-  privateSidebarPresentation,
+  PRIVATE_SIDEBAR_BADGE,
   shouldObscurePrivateItem,
   type PrivateEntity,
+  type PrivateSidebarNode,
 } from "../../lib/private-items";
+import { usePrivateItemReveal } from "../../hooks/usePrivateItemReveal";
 import { getRouteString } from "./route-fields";
 import {
   ActiveWorkSidebarItem,
@@ -79,6 +83,97 @@ export function getPrivateHidden(
     isEffectivelyPrivate(entity, ancestors),
     showPrivateItems,
   );
+}
+
+function DefaultPrivateSidebarItem({ node }: SidebarItemRenderContext) {
+  const badgeLabel = node.badge ? formatStatusLabel(node.badge) : "";
+  const isTextBadge = node.badgeAppearance === "text";
+
+  return (
+    <>
+      <span>
+        <strong>{node.title}</strong>
+        {node.subtitle ? <small>{node.subtitle}</small> : null}
+      </span>
+      {node.badge ? (
+        <Badge
+          variant={node.badgeVariant}
+          appearance={isTextBadge ? "text" : "pill"}
+          className={[
+            "wapp-sidebar-badge",
+            isTextBadge ? "wapp-sidebar-badge-text" : "",
+          ].filter(Boolean).join(" ")}
+          title={badgeLabel}
+          aria-label={badgeLabel}
+        >
+          {isTextBadge ? badgeLabel : " "}
+        </Badge>
+      ) : null}
+    </>
+  );
+}
+
+type PrivateSidebarActivationGate = {
+  canActivate: boolean;
+};
+
+function PrivateSidebarReveal({
+  children,
+  activationGate,
+}: {
+  children: ReactNode;
+  activationGate: PrivateSidebarActivationGate;
+}) {
+  const reveal = usePrivateItemReveal(true);
+  activationGate.canActivate = reveal.canActivate;
+
+  return (
+    <>
+      {children}
+      <span
+        aria-hidden="true"
+        className={`clanky-private-sidebar-reveal ${reveal.stateClassName}`.trim()}
+        onPointerEnter={(event) => {
+          activationGate.canActivate = false;
+          reveal.onPointerEnter(event);
+        }}
+        onPointerLeave={(event) => {
+          activationGate.canActivate = false;
+          reveal.onPointerLeave(event);
+        }}
+      />
+    </>
+  );
+}
+
+export function privateSidebarPresentation<T extends SidebarNode>(
+  node: T,
+  privateHidden: boolean,
+  contextActions: ActionMenuItem[] = node.actions ?? [],
+): T & PrivateSidebarNode {
+  if (!privateHidden) {
+    return {
+      ...node,
+      privateHidden: false,
+    };
+  }
+
+  const originalRender = node.render;
+  const activationGate: PrivateSidebarActivationGate = { canActivate: false };
+
+  return {
+    ...node,
+    onActivate: () => activationGate.canActivate,
+    contextActions,
+    badge: PRIVATE_SIDEBAR_BADGE,
+    badgeVariant: "disabled",
+    privateHidden: true,
+    render: (context) => (
+      <PrivateSidebarReveal activationGate={activationGate}>
+        {originalRender?.(context) ?? <DefaultPrivateSidebarItem {...context} />}
+      </PrivateSidebarReveal>
+    ),
+  };
 }
 
 export function filterSidebarNodes(nodes: SearchableSidebarNode[], search: string): SidebarNode[] {
@@ -216,5 +311,3 @@ export function renderServerSidebarItem(transport: ServerTransportKind) {
     <ServerSidebarItem node={node} transport={transport} />
   );
 }
-
-export { privateSidebarPresentation };

@@ -110,17 +110,54 @@
   }
 }
 
-.clanky-private-obscured,
-.wapp-sidebar-item:has(.wapp-sidebar-badge[title="Private"]) {
-  filter: blur(4px);
-}
-
 .clanky-private-obscured {
-  pointer-events: none;
+  filter: blur(4px);
   user-select: none;
 }
 
-.wapp-sidebar-item:has(.wapp-sidebar-badge[title="Private"]) {
+.clanky-private-obscured.clanky-private-unblurring,
+.clanky-private-obscured.clanky-private-revealed {
+  filter: blur(0);
+  transition: filter 2s ease;
+}
+
+.clanky-private-obscured.clanky-private-reblurring {
+  filter: blur(4px);
+  transition: filter 0.5s ease;
+}
+
+.clanky-private-obscured:not(.clanky-private-revealed) > * {
+  pointer-events: none;
+}
+
+.clanky-private-item-event-surface {
+  width: 100%;
+}
+
+.wapp-sidebar-item:has(.clanky-private-sidebar-reveal) {
+  position: relative;
+  filter: blur(4px);
+  transition: none;
+}
+
+.clanky-private-sidebar-reveal {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+.wapp-sidebar-item:has(.clanky-private-sidebar-reveal.clanky-private-unblurring),
+.wapp-sidebar-item:has(.clanky-private-sidebar-reveal.clanky-private-revealed) {
+  filter: blur(0);
+  transition: filter 2s ease;
+}
+
+.wapp-sidebar-item:has(.clanky-private-sidebar-reveal.clanky-private-reblurring) {
+  filter: blur(4px);
+  transition: filter 0.5s ease;
+}
+
+.wapp-sidebar-item:has(.clanky-private-sidebar-reveal):not(:has(.clanky-private-sidebar-reveal.clanky-private-revealed)) {
   cursor: default;
 }
 
@@ -149,6 +186,11 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .clanky-private-obscured,
+  .wapp-sidebar-item:has(.clanky-private-sidebar-reveal) {
+    transition: none !important;
+  }
+
   .clanky-activity-breathing {
     animation: none;
   }

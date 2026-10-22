@@ -1,6 +1,7 @@
 import type { ExecutionHostDescriptor, Workspace, SshServer } from "@/shared";
 import { getWorkspaceServerLabel } from "../../lib/workspace-label";
 import { GearIcon } from "../common";
+import { usePrivateItemReveal } from "../../hooks/usePrivateItemReveal";
 
 /** Workspace header with icon, name, settings button, path, and task count */
 export function WorkspaceHeader({
@@ -18,8 +19,14 @@ export function WorkspaceHeader({
   onOpenSettings: () => void;
   privateHidden?: boolean;
 }) {
+  const reveal = usePrivateItemReveal(privateHidden);
+
   return (
-    <div className={`flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-4 pb-2 border-b border-gray-200 dark:border-gray-700 ${privateHidden ? "clanky-private-obscured" : ""}`}>
+    <div
+      className={`flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-4 pb-2 border-b border-gray-200 dark:border-gray-700 ${reveal.className}`}
+      onPointerEnter={reveal.onPointerEnter}
+      onPointerLeave={reveal.onPointerLeave}
+    >
       <div className="flex min-w-0 items-start gap-2">
         <svg className="w-5 h-5 text-gray-500 dark:text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />

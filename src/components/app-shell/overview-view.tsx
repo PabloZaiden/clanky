@@ -165,7 +165,7 @@ export function OverviewView({
                       key={group.workspace.id}
                       title={<WorkspaceIdentity workspace={group.workspace} />}
                       meta={`${sessionCount} session${sessionCount === 1 ? "" : "s"}`}
-                      onClick={!privateHidden ? () => onNavigate({ view: "workspace", workspaceId: group.workspace.id }) : undefined}
+                      onClick={() => onNavigate({ view: "workspace", workspaceId: group.workspace.id })}
                       privateHidden={privateHidden}
                     />
                   );
@@ -199,7 +199,7 @@ export function OverviewView({
                       description={host.endpoint ?? "Endpoint unavailable"}
                       meta={`${sessionCount} terminal${sessionCount === 1 ? "" : "s"}`}
                       badge={<ServerTransportIcon transport={host.ref.kind} />}
-                      onClick={!privateHidden ? () => onNavigate(getExecutionHostRoute(host)) : undefined}
+                      onClick={() => onNavigate(getExecutionHostRoute(host))}
                       privateHidden={privateHidden}
                     />
                   );

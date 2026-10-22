@@ -7,7 +7,8 @@ import { getWorkspaceServerLabel } from "../../lib/workspace-label";
 import { ActionMenu, ConfirmModal, useToast } from "@pablozaiden/webapp/web";
 import { getStoredSshCredentialToken } from "../../lib/ssh-browser-credentials";
 import { isAutoProvisionedWorkspace } from "../../lib/workspace-deletion-safety";
-import { getPrivateContainerClassName, isEffectivelyPrivate, shouldObscurePrivateItem } from "../../lib/private-items";
+import { isEffectivelyPrivate, shouldObscurePrivateItem } from "../../lib/private-items";
+import { usePrivateItemReveal } from "../../hooks/usePrivateItemReveal";
 
 export interface EmptyWorkspacesSectionProps {
   workspaceGroups: WorkspaceGroup[];
@@ -16,6 +17,62 @@ export interface EmptyWorkspacesSectionProps {
   onOpenWorkspaceSettings: (workspaceId: string) => void;
   onDeleteWorkspace: (workspaceId: string, options?: DeleteWorkspaceRequest) => Promise<{ success: boolean; error?: string }>;
   showPrivateItems?: boolean;
+}
+
+function EmptyWorkspaceEntry({
+  workspace,
+  registeredSshServers,
+  executionTargets,
+  privateHidden,
+  onOpenSettings,
+  onRequestDelete,
+}: {
+  workspace: Workspace;
+  registeredSshServers: readonly SshServer[];
+  executionTargets: readonly ExecutionHostDescriptor[];
+  privateHidden: boolean;
+  onOpenSettings: () => void;
+  onRequestDelete: () => void;
+}) {
+  const reveal = usePrivateItemReveal(privateHidden);
+
+  return (
+    <div
+      className={`flex min-w-0 items-start gap-2 rounded-md bg-gray-100 px-3 py-2 dark:bg-neutral-800 ${reveal.className}`}
+      onPointerEnter={reveal.onPointerEnter}
+      onPointerLeave={reveal.onPointerLeave}
+    >
+      <div className="min-w-0">
+        <div className="break-words text-sm text-gray-700 dark:text-gray-300 [overflow-wrap:anywhere]">
+          {workspace.name}
+        </div>
+        <div
+          className="break-words text-xs text-gray-500 dark:text-gray-400 [overflow-wrap:anywhere]"
+          title={getWorkspaceServerLabel(workspace, registeredSshServers, executionTargets)}
+        >
+          {getWorkspaceServerLabel(workspace, registeredSshServers, executionTargets)}
+        </div>
+      </div>
+      <ActionMenu
+        ariaLabel={privateHidden ? "Workspace actions" : `Actions for ${workspace.name}`}
+        triggerVariant="ghost"
+        triggerSize="compact"
+        items={[
+          {
+            id: "settings",
+            label: "Settings",
+            onAction: onOpenSettings,
+          },
+          {
+            id: "delete",
+            label: "Delete",
+            destructive: true,
+            onAction: onRequestDelete,
+          },
+        ]}
+      />
+    </div>
+  );
 }
 
 /** Renders the "Empty Workspaces" section with delete confirmation */
@@ -46,40 +103,18 @@ export function EmptyWorkspacesSection({
         {emptyGroups.map(({ workspace }) => {
           const privateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(workspace), showPrivateItems);
           return (
-            <div key={workspace.id} className={`flex min-w-0 items-start gap-2 rounded-md bg-gray-100 px-3 py-2 dark:bg-neutral-800 ${getPrivateContainerClassName(privateHidden)}`}>
-              <div className="min-w-0">
-                <div className="break-words text-sm text-gray-700 dark:text-gray-300 [overflow-wrap:anywhere]">
-                  {workspace.name}
-                </div>
-                <div
-                  className="break-words text-xs text-gray-500 dark:text-gray-400 [overflow-wrap:anywhere]"
-                  title={getWorkspaceServerLabel(workspace, registeredSshServers, executionTargets)}
-                >
-                  {getWorkspaceServerLabel(workspace, registeredSshServers, executionTargets)}
-                </div>
-              </div>
-              <ActionMenu
-                ariaLabel={privateHidden ? "Workspace actions" : `Actions for ${workspace.name}`}
-                triggerVariant="ghost"
-                triggerSize="compact"
-                items={[
-                  {
-                    id: "settings",
-                    label: "Settings",
-                    onAction: () => onOpenWorkspaceSettings(workspace.id),
-                  },
-                  {
-                    id: "delete",
-                    label: "Delete",
-                    destructive: true,
-                    onAction: () => {
-                      setDeleteWorkspace(workspace);
-                      setDeleteServerDirectory(true);
-                    },
-                  },
-                ]}
-              />
-            </div>
+            <EmptyWorkspaceEntry
+              key={workspace.id}
+              workspace={workspace}
+              registeredSshServers={registeredSshServers}
+              executionTargets={executionTargets}
+              privateHidden={privateHidden}
+              onOpenSettings={() => onOpenWorkspaceSettings(workspace.id)}
+              onRequestDelete={() => {
+                setDeleteWorkspace(workspace);
+                setDeleteServerDirectory(true);
+              }}
+            />
           );
         })}
       </div>

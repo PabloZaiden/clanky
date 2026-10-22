@@ -104,8 +104,8 @@ export function createChatSidebarNode(
     itemLayout,
     render,
     route: { view: "chat", chatId: chatNode.chat.config.id },
-    actions: privateActions(actions, privateHidden, chatNode.chat.config.isPrivate === true),
+    actions,
     pinnable: true,
     pinId: pinId ?? `${idPrefix}:${chatNode.chat.config.id}`,
-  }, privateHidden);
+  }, privateHidden, privateActions(actions, privateHidden, chatNode.chat.config.isPrivate === true));
 }
