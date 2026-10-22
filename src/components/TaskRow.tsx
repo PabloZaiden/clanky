@@ -11,6 +11,7 @@ import {
   isTaskActive,
   formatRelativeTime,
 } from "../utils";
+import { usePrivateItemReveal } from "../hooks/usePrivateItemReveal";
 
 export function TaskRow({
   task,
@@ -25,6 +26,7 @@ export function TaskRow({
   const isDraft = state.status === "draft";
   const isAddressable = state.reviewMode?.addressable === true;
   const statusPill = getTaskStatusPill(task);
+  const reveal = usePrivateItemReveal(privateHidden);
 
   // Row border highlight for active/planning states
   const borderClass = isActive && !isPlanning
@@ -38,10 +40,11 @@ export function TaskRow({
   return (
     <div
       className={`relative rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-neutral-800 ${borderClass} ${
-        onClick && !privateHidden ? "cursor-pointer hover:border-gray-300 hover:shadow-md dark:hover:border-gray-600" : ""
-      } ${privateHidden ? "clanky-private-obscured" : ""
-      } ${className}`.trim()}
-      onClick={privateHidden ? undefined : onClick}
+        onClick && reveal.canActivate ? "cursor-pointer hover:border-gray-300 hover:shadow-md dark:hover:border-gray-600" : ""
+      } ${reveal.className} ${className}`.trim()}
+      onClick={reveal.canActivate ? onClick : undefined}
+      onPointerEnter={reveal.onPointerEnter}
+      onPointerLeave={reveal.onPointerLeave}
     >
       <div className="px-4 py-3">
         {/* Responsive layout: stack on small screens and wrap across rows on wider layouts as needed */}

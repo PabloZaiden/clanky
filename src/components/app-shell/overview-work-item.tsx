@@ -108,7 +108,7 @@ export function OverviewWorkItem({
       itemType={getActiveWorkItemType(item)}
       lastInteractionAt={getOverviewActivityTimestamp(item)}
       badge={<StatusBadge variant={badge.variant}><StateText>{badge.label}</StateText></StatusBadge>}
-      onClick={!privateHidden ? () => onNavigate(getActiveWorkRoute(item)) : undefined}
+      onClick={() => onNavigate(getActiveWorkRoute(item))}
       privateHidden={privateHidden}
     />
   );

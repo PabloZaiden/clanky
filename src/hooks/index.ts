@@ -35,6 +35,7 @@ export { useSchedulerTimezone, type UseSchedulerTimezoneResult } from "./useSche
 export { useGithubUsername, type UseGithubUsernameResult } from "./useGithubUsername";
 export { usePromptTemplates, type UsePromptTemplatesResult } from "./usePromptTemplates";
 export { usePrivateItemsPreference, type PrivateItemsPreference } from "./usePrivateItemsPreference";
+export { usePrivateItemReveal, type PrivateItemReveal, type PrivateItemRevealPhase } from "./usePrivateItemReveal";
 export { useVoiceSettings, type UseVoiceSettingsResult } from "./useVoiceSettings";
 export {
   useVoiceRecorder,

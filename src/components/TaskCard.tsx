@@ -10,6 +10,7 @@ import {
   isTaskActive,
   formatRelativeTime,
 } from "../utils";
+import { usePrivateItemReveal } from "../hooks/usePrivateItemReveal";
 
 export function TaskCard({
   task,
@@ -24,6 +25,7 @@ export function TaskCard({
   const isDraft = state.status === "draft";
   const isAddressable = state.reviewMode?.addressable === true;
   const statusPill = getTaskStatusPill(task);
+  const reveal = usePrivateItemReveal(privateHidden);
 
   // Card ring color: amber for plan-ready, cyan for planning-in-progress
   const planningRingClass = isPlanReady
@@ -32,9 +34,11 @@ export function TaskCard({
 
   return (
     <Card
-      clickable={!!onClick && !privateHidden}
-      onClick={privateHidden ? undefined : onClick}
-      className={`relative flex h-full flex-col ${privateHidden ? "clanky-private-obscured" : ""} ${isActive ? "ring-2 ring-blue-500" : ""} ${isPlanning ? planningRingClass : ""} ${className}`.trim()}
+      clickable={!!onClick && reveal.canActivate}
+      onClick={reveal.canActivate ? onClick : undefined}
+      onPointerEnter={reveal.onPointerEnter}
+      onPointerLeave={reveal.onPointerLeave}
+      className={`relative flex h-full flex-col ${reveal.className} ${isActive ? "ring-2 ring-blue-500" : ""} ${isPlanning ? planningRingClass : ""} ${className}`.trim()}
       bodyClassName="flex min-h-0 flex-1 flex-col"
     >
       {/* Status indicator */}

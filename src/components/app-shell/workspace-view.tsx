@@ -122,7 +122,7 @@ export function WorkspaceView({
         itemType="Task"
         lastInteractionAt={task.state.lastUserMessageAt ?? task.config.createdAt}
         badge={<StatusBadge variant={statusPill.variant}><StateText>{statusPill.label}</StateText></StatusBadge>}
-        onClick={!privateHidden ? () => onNavigate(route) : undefined}
+        onClick={() => onNavigate(route)}
         privateHidden={privateHidden}
       />
     );
@@ -138,7 +138,7 @@ export function WorkspaceView({
         itemType="Chat"
         lastInteractionAt={chat.state.lastUserMessageAt ?? chat.config.createdAt}
         badge={<StatusBadge variant={getChatStatusBadgeVariant(chat.state.status)}><StateText>{formatStatusLabel(chat.state.status)}</StateText></StatusBadge>}
-        onClick={!privateHidden ? () => onNavigate({ view: "chat", chatId: chat.config.id }) : undefined}
+        onClick={() => onNavigate({ view: "chat", chatId: chat.config.id })}
         privateHidden={privateHidden}
       />
     );
@@ -162,7 +162,7 @@ export function WorkspaceView({
                     itemType="Terminal"
                     lastInteractionAt={terminal.state.lastConnectedAt ?? terminal.config.createdAt}
                     badge={<StatusBadge variant={getTerminalSessionStatusBadgeVariant(terminal.state.status)}>{getTerminalSessionStatusLabel(terminal.state.status)}</StatusBadge>}
-                    onClick={!privateHidden ? () => onNavigate({ view: "terminal", terminalSessionId: terminal.config.id }) : undefined}
+                    onClick={() => onNavigate({ view: "terminal", terminalSessionId: terminal.config.id })}
                     privateHidden={privateHidden}
                   />
                 );

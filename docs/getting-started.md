@@ -180,7 +180,10 @@ The dashboard exposes these actions from the task view.
 Dashboard **History** uses the same detailed rows as **Active Work**: workspace
 identity or server name, status, time since the last interaction, and item type.
 Workspace chats also show their harness provider icon. Private entries remain
-obscured when private items are hidden.
+blurred when private items are hidden. On mouse-hover-capable devices, hover for
+one second to start a two-second reveal; the item becomes clickable once clear
+and re-blurs in 0.5 seconds when the pointer leaves. **Show private items**
+reveals them immediately.
 
 In Dashboard **Resources**, each workspace's **sessions** count includes its
 tasks and standalone chats, including history. Embedded task and agent chats

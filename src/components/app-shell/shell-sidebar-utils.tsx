@@ -1,3 +1,5 @@
+import type { MouseEvent, ReactNode } from "react";
+import { Badge, formatStatusLabel } from "@pablozaiden/webapp/web";
 import type {
   ActionMenuItem,
   SidebarItemRenderContext,
@@ -7,10 +9,12 @@ import type {
 import type { Workspace } from "@/shared";
 import {
   isEffectivelyPrivate,
-  privateSidebarPresentation,
+  PRIVATE_SIDEBAR_BADGE,
   shouldObscurePrivateItem,
   type PrivateEntity,
+  type PrivateSidebarNode,
 } from "../../lib/private-items";
+import { usePrivateItemReveal } from "../../hooks/usePrivateItemReveal";
 import { getRouteString } from "./route-fields";
 import {
   ActiveWorkSidebarItem,
@@ -79,6 +83,93 @@ export function getPrivateHidden(
     isEffectivelyPrivate(entity, ancestors),
     showPrivateItems,
   );
+}
+
+function DefaultPrivateSidebarItem({ node }: SidebarItemRenderContext) {
+  const badgeLabel = node.badge ? formatStatusLabel(node.badge) : "";
+  const isTextBadge = node.badgeAppearance === "text";
+
+  return (
+    <>
+      <span>
+        <strong>{node.title}</strong>
+        {node.subtitle ? <small>{node.subtitle}</small> : null}
+      </span>
+      {node.badge ? (
+        <Badge
+          variant={node.badgeVariant}
+          appearance={isTextBadge ? "text" : "pill"}
+          className={[
+            "wapp-sidebar-badge",
+            isTextBadge ? "wapp-sidebar-badge-text" : "",
+          ].filter(Boolean).join(" ")}
+          title={badgeLabel}
+          aria-label={badgeLabel}
+        >
+          {isTextBadge ? badgeLabel : " "}
+        </Badge>
+      ) : null}
+    </>
+  );
+}
+
+function PrivateSidebarReveal({
+  children,
+  route,
+  navigate,
+}: {
+  children: ReactNode;
+  route?: WebAppRoute;
+  navigate: (route: WebAppRoute) => void;
+}) {
+  const reveal = usePrivateItemReveal(true);
+
+  return (
+    <>
+      {children}
+      <span
+        aria-hidden="true"
+        className={`clanky-private-sidebar-reveal ${reveal.stateClassName}`.trim()}
+        onPointerEnter={reveal.onPointerEnter}
+        onPointerLeave={reveal.onPointerLeave}
+        onClick={(event: MouseEvent<HTMLSpanElement>) => {
+          event.preventDefault();
+          event.stopPropagation();
+          if (reveal.canActivate && route) {
+            navigate(route);
+          }
+        }}
+      />
+    </>
+  );
+}
+
+export function privateSidebarPresentation<T extends SidebarNode>(
+  node: T,
+  privateHidden: boolean,
+): T & PrivateSidebarNode {
+  if (!privateHidden) {
+    return {
+      ...node,
+      privateHidden: false,
+    };
+  }
+
+  const originalRender = node.render;
+  const route = node.route;
+
+  return {
+    ...node,
+    route: undefined,
+    badge: PRIVATE_SIDEBAR_BADGE,
+    badgeVariant: "disabled",
+    privateHidden: true,
+    render: (context) => (
+      <PrivateSidebarReveal route={route} navigate={context.navigate}>
+        {originalRender?.(context) ?? <DefaultPrivateSidebarItem {...context} />}
+      </PrivateSidebarReveal>
+    ),
+  };
 }
 
 export function filterSidebarNodes(nodes: SearchableSidebarNode[], search: string): SidebarNode[] {
@@ -216,5 +307,3 @@ export function renderServerSidebarItem(transport: ServerTransportKind) {
     <ServerSidebarItem node={node} transport={transport} />
   );
 }
-
-export { privateSidebarPresentation };

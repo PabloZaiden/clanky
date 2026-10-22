@@ -28,27 +28,3 @@ export function shouldObscurePrivateItem(effectivePrivate: boolean, showPrivateI
 export function privateRoute(route: WebAppRoute | undefined, privateHidden: boolean): WebAppRoute | undefined {
   return privateHidden ? undefined : route;
 }
-
-export function privateSidebarPresentation<T extends SidebarNode>(
-  node: T,
-  privateHidden: boolean,
-): T & PrivateSidebarNode {
-  if (!privateHidden) {
-    return {
-      ...node,
-      privateHidden: false,
-    };
-  }
-
-  return {
-    ...node,
-    route: undefined,
-    badge: PRIVATE_SIDEBAR_BADGE,
-    badgeVariant: "disabled",
-    privateHidden: true,
-  };
-}
-
-export function getPrivateContainerClassName(privateHidden: boolean): string {
-  return privateHidden ? "clanky-private-obscured" : "";
-}
