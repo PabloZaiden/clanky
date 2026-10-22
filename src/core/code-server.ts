@@ -10,6 +10,7 @@ import type { CodePreviewCleanup } from "@/shared/preview";
 import { prepareCodeSession, cleanupCodeSession } from "./code-session-resources";
 
 const MAX_OUTPUT_BYTES = 1024 * 1024;
+const CODE_ENV = { DONT_PROMPT_WSL_INSTALL: "1" };
 
 export interface CodeServer {
   port: number;
@@ -21,10 +22,26 @@ export interface CodeServer {
 
 async function assertCodeAvailable(executor: CommandExecutor, directory: string, signal: AbortSignal): Promise<void> {
   const help = await executor.exec("code", ["serve-web", "--help"], {
-    cwd: directory, timeout: 5_000, signal, logFailures: false, maxOutputBytes: 64 * 1024,
+    cwd: directory, timeout: 5_000, signal, env: CODE_ENV, logFailures: false, maxOutputBytes: 64 * 1024,
   });
-  if (!help.success || !["--connection-token-file", "--default-folder", "--port"].every((flag) => help.stdout.includes(flag))) {
-    throw new DomainError("code_unavailable", "This workspace host needs a code CLI that supports serve-web. VS Code was not installed or replaced.");
+  signal.throwIfAborted();
+  if (!help.success) {
+    const lookup = await executor.exec(
+      executor.pathStyle === "windows" ? "where.exe" : "sh",
+      executor.pathStyle === "windows" ? ["code"] : ["-c", "command -v code >/dev/null 2>&1 || exit 1"],
+      { cwd: directory, timeout: 5_000, signal, logFailures: false },
+    );
+    signal.throwIfAborted();
+    if (!lookup.success && lookup.exitCode === 1) {
+      throw new DomainError("code_unavailable", "The code CLI was not found in PATH on the selected workspace host. Install a VS Code CLI that supports serve-web or update the host's PATH.");
+    }
+    throw new DomainError(
+      "code_probe_failed",
+      `The workspace host could not run code serve-web --help (exit ${help.exitCode}). Run it on that host with DONT_PROMPT_WSL_INSTALL=1 to check launcher prompts, permissions, and runtime dependencies.`,
+    );
+  }
+  if (!["--connection-token-file", "--default-folder", "--port"].every((flag) => help.stdout.includes(flag))) {
+    throw new DomainError("code_unsupported", "The workspace host's code CLI does not advertise the required serve-web options: --connection-token-file, --default-folder, and --port. Use a VS Code CLI that supports serve-web, not a Remote SSH/Codespaces editor launcher.");
   }
   if (executor.pathStyle !== "windows") {
     const bash = await executor.exec("bash", ["--version"], { cwd: directory, timeout: 5_000, signal, logFailures: false });
@@ -50,7 +67,7 @@ function launchCodeProcess(options: {
     options.executor.pathStyle === "windows" ? options.args : ["-c", CODE_PROCESS_WRAPPER, "clanky-code", "code", ...options.args],
     {
       cwd: options.directory, timeout: null, signal: options.signal,
-      env: { CLANKY_CODE_PID_FILE: options.pidPath, CLANKY_CODE_CLEANUP_FILE: options.cleanupPath },
+      env: { ...CODE_ENV, CLANKY_CODE_PID_FILE: options.pidPath, CLANKY_CODE_CLEANUP_FILE: options.cleanupPath },
       longRunning: true, logFailures: false, maxOutputBytes: MAX_OUTPUT_BYTES,
       onStdoutChunk(chunk) {
         output = `${output}${chunk}`.slice(-8192);
@@ -110,7 +127,6 @@ export async function startCodeServer(options: {
   persistOwnership: (ownership: CodePreviewCleanup | undefined) => Promise<void>;
   executor: CommandExecutor;
   directory: string;
-  acceptServerLicenseTerms: boolean;
   signal: AbortSignal;
 }): Promise<CodeServer> {
   const { executor, directory, signal } = options;
@@ -165,7 +181,7 @@ export async function startCodeServer(options: {
       "--connection-token-file", tokenPath,
       "--server-data-dir", paths.join(temporaryDirectory, "server"),
       "--default-folder", directory, "--log", "warn",
-      ...(options.acceptServerLicenseTerms ? ["--accept-server-license-terms"] : []),
+      "--accept-server-license-terms",
     ];
     const launched = launchCodeProcess({ executor, directory, args, pidPath, cleanupPath, signal: controller.signal });
     run = launched.run;
@@ -173,12 +189,10 @@ export async function startCodeServer(options: {
     const exited = run.then(() => undefined, () => undefined);
     const port = await Promise.race([
       launched.listening,
-      run.then(() => {
+      run.then((result) => {
         throw new DomainError(
           "code_start_failed",
-          options.acceptServerLicenseTerms
-            ? "VS Code stopped before its web listener was ready."
-            : "VS Code could not start. If license consent is required, review https://aka.ms/vscode-server-license and repeat with --accept-server-license-terms.",
+          `VS Code stopped before its web listener was ready (exit ${result.exitCode}). Check the workspace host's VS Code runtime dependencies and network access for server downloads. Server license terms are accepted automatically.`,
         );
       }),
     ]);

@@ -23,7 +23,6 @@ export type PreviewTarget =
 export interface CodePreviewOptions {
   chat?: string;
   task?: string;
-  acceptServerLicenseTerms: boolean;
 }
 
 export type CodePreviewCleanup =

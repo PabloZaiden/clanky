@@ -19,7 +19,7 @@ export function parseCodeCommandArgs(args: readonly string[]): PreviewCommandOpt
     const separator = argument.indexOf("=");
     const name = separator < 0 ? argument : argument.slice(0, separator);
     if (flags.has(name) || values[name] !== undefined) throw new Error(`${name} may only be specified once`);
-    if (name === "--open" || name === "--accept-server-license-terms") {
+    if (name === "--open") {
       if (separator >= 0) throw new Error(`${name} does not take a value`);
       flags.add(name);
       continue;
@@ -42,7 +42,6 @@ export function parseCodeCommandArgs(args: readonly string[]): PreviewCommandOpt
     code: {
       chat: values["--chat"],
       task: values["--task"],
-      acceptServerLicenseTerms: flags.has("--accept-server-license-terms"),
     },
   };
 }
