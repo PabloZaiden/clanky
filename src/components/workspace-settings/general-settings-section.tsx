@@ -2,12 +2,15 @@ import { CheckboxField, FormSection, Input, SettingsFieldRow } from "@pablozaide
 import type { Workspace } from "@/shared";
 import { WorkspaceIconSection } from "./workspace-icon-section";
 import type { WorkspaceSettingsDraft } from "./use-workspace-settings-draft";
+import type { WorkspaceIconChange } from "./workspace-icon-actions";
 
-export function GeneralSettingsSection({ workspace, draft, onChange, onIconChanged, formId }: {
+export function GeneralSettingsSection({ workspace, draft, onChange, icon, iconChange, onIconChange, formId }: {
   workspace: Workspace;
   draft: WorkspaceSettingsDraft;
   onChange: (change: Partial<WorkspaceSettingsDraft>) => void;
-  onIconChanged?: () => Promise<void>;
+  icon: Workspace["workspaceIcon"];
+  iconChange: WorkspaceIconChange | null;
+  onIconChange?: (change: WorkspaceIconChange | null) => void;
   formId: string;
 }) {
   return (
@@ -16,7 +19,8 @@ export function GeneralSettingsSection({ workspace, draft, onChange, onIconChang
         <Input id={`${formId}-workspace-name`} fieldWidth="normal" required value={draft.name}
           onChange={(event) => onChange({ name: event.currentTarget.value })} />
       } />
-      {onIconChanged ? <WorkspaceIconSection workspace={workspace} onChanged={onIconChanged} /> : null}
+      {onIconChange ? <WorkspaceIconSection workspace={workspace} icon={icon}
+        change={iconChange} onChange={onIconChange} /> : null}
       <SettingsFieldRow title="Archived" labelFor={`${formId}-archived`}
         content={<CheckboxField id={`${formId}-archived`} label="" aria-label="Archived workspace"
           checked={draft.archived} onChange={(event) => onChange({ archived: event.currentTarget.checked })} />} />

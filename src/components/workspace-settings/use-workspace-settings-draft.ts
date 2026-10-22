@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useUnsavedChanges } from "@pablozaiden/webapp/web";
 import type { Workspace, ServerSettings, ExecutionHostRef } from "@/shared";
 import type { WorkspaceSshTargetRequest } from "@/contracts/schemas";
+import type { WorkspaceIconChange } from "./workspace-icon-actions";
 
 export interface WorkspaceSettingsDraft {
   name: string;
@@ -43,9 +44,12 @@ export function useWorkspaceSettingsDraft(workspace: Workspace) {
   const [seed, setSeed] = useState(() => runtimeSeed(baseline, workspace.sshTarget?.credentialConfigured === true));
   const [revision, setRevision] = useState(0);
   const [runtimeValid, setRuntimeValid] = useState(false);
+  const [icon, setIcon] = useState(workspace.workspaceIcon);
+  const [iconChange, setIconChange] = useState<WorkspaceIconChange | null>(null);
   const incoming = readDraft(workspace);
   const incomingKey = JSON.stringify([incoming, workspace.sshTarget?.credentialConfigured === true]);
-  const dirty = JSON.stringify(draft) !== JSON.stringify(baseline);
+  const settingsDirty = JSON.stringify(draft) !== JSON.stringify(baseline);
+  const dirty = settingsDirty || iconChange !== null;
 
   function replace(next: WorkspaceSettingsDraft, credentialConfigured: boolean): void {
     setBaseline(next);
@@ -57,16 +61,26 @@ export function useWorkspaceSettingsDraft(workspace: Workspace) {
 
   function reset(): void {
     replace(incoming, workspace.sshTarget?.credentialConfigured === true);
+    setIconChange(null);
     releaseGuard();
   }
 
   const releaseGuard = useUnsavedChanges(dirty, reset);
   useEffect(() => {
-    // Rebase only a clean draft when editable server data changes, not on icon refreshes.
-    if (!dirty && incomingKey !== JSON.stringify([baseline, seed.sshTarget?.credentialConfigured === true])) {
+    // Rebase only clean settings without discarding a pending icon change.
+    if (!settingsDirty && incomingKey !== JSON.stringify([baseline, seed.sshTarget?.credentialConfigured === true])) {
       replace(incoming, workspace.sshTarget?.credentialConfigured === true);
     }
   }, [incomingKey]);
+
+  useEffect(() => {
+    setIcon(workspace.workspaceIcon);
+  }, [workspace.workspaceIcon]);
+
+  function markIconSaved(savedIcon: Workspace["workspaceIcon"]): void {
+    setIcon(savedIcon);
+    setIconChange(null);
+  }
 
   function markSaved(submitted: WorkspaceSettingsDraft): void {
     const password = submitted.sshTarget?.password;
@@ -83,7 +97,7 @@ export function useWorkspaceSettingsDraft(workspace: Workspace) {
       } : null,
     };
     replace(clean, credentialConfigured);
-    releaseGuard();
+    if (!iconChange) releaseGuard();
   }
 
   function patch(change: Partial<WorkspaceSettingsDraft>): void {
@@ -100,5 +114,8 @@ export function useWorkspaceSettingsDraft(workspace: Workspace) {
     setRuntimeValid(valid);
   }
 
-  return { draft, dirty, seed, revision, runtimeValid, patch, updateRuntime, reset, markSaved };
+  return {
+    draft, dirty, settingsDirty, seed, revision, runtimeValid, patch, updateRuntime, reset, markSaved,
+    icon, iconChange, setIconChange, markIconSaved,
+  };
 }
