@@ -26,7 +26,7 @@ import { HarnessEventHub } from "./harness-event-hub";
 import { HarnessError } from "./harness-errors";
 import { DomainError } from "../domain/domain-error";
 import type { EventStream } from "../utils/event-stream";
-import { requireCurrentUserId } from "../context/user-context";
+import { requireExecutionOwnerUserId } from "../context/user-context";
 import { readMeshControlResponseJson } from "../core/mesh-control-client";
 import { requireMatchingHarnessBinding } from "./harness-binding";
 import { createLogger } from "@pablozaiden/webapp/server";
@@ -98,7 +98,7 @@ export class MeshHarnessBackend implements Backend {
     this.directory = config.directory;
     const client = new MeshCommandExecutorClient({
       ...this.options, directory: config.directory, provider: config.provider ?? "copilot",
-      localUserId: requireCurrentUserId(), channel: MESH_HARNESS_CHANNEL,
+      localUserId: requireExecutionOwnerUserId(), channel: MESH_HARNESS_CHANNEL,
       managedEnvironment: config.managedEnvironment,
     });
     this.client = client;
