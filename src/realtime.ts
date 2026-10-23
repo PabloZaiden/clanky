@@ -563,6 +563,7 @@ export function publishClankyDomainEvent(
         CLANKY_REALTIME_RESOURCES.previews,
         event.previewId,
         scope,
+        { workspaceId: event.workspaceId, membershipId: event.membershipId },
       );
       return;
       }

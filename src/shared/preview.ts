@@ -78,6 +78,7 @@ export interface RegisterCliPreviewOptions extends PreviewUpstreamOptions {
 
 interface PreviewEventTarget {
   workspaceId?: string;
+  membershipId?: string | null;
   executionHostBinding?: ExecutionHostBinding;
 }
 

@@ -51,6 +51,7 @@ import { cleanupCodeSession } from "./code-session-resources";
 import { closeCommandExecutor } from "./command-executor";
 import { withWorkspaceExecutionLock } from "./workspace-execution-lock";
 import { withSshServerOperation } from "./ssh-server-operations";
+import { getInteractiveResourceInternal } from "./collaboration-interactive";
 
 const log = createLogger("core:preview-session-manager");
 const LOCAL_TUNNEL_HOST = "127.0.0.1";
@@ -726,6 +727,10 @@ export class PreviewSessionManager {
     if (!preview) {
       return false;
     }
+    const workspaceId = preview.config.workspaceId;
+    const membershipId = workspaceId
+      ? getInteractiveResourceInternal({ kind: "preview", id, workspaceId })?.membershipId ?? null
+      : undefined;
     const runtime = this.runtimes.get(id);
     await savePreviewSession({ ...preview, state: { ...preview.state, status: "closing" } });
     const cleanup = await Promise.allSettled([
@@ -761,7 +766,8 @@ export class PreviewSessionManager {
     previewEventEmitter.emit({
       type: "preview.closed",
       previewId: id,
-      workspaceId: preview.config.workspaceId,
+      workspaceId,
+      membershipId,
       executionHostBinding: preview.config.executionHostBinding,
       preview: closedPreview,
       timestamp: now,
@@ -820,6 +826,10 @@ export class PreviewSessionManager {
       });
       return;
     }
+    const workspaceId = preview.config.workspaceId;
+    const membershipId = workspaceId
+      ? getInteractiveResourceInternal({ kind: "preview", id, workspaceId })?.membershipId ?? null
+      : undefined;
     const now = new Date().toISOString();
     const failedPreview: PreviewSession = {
       config: { ...preview.config, updatedAt: now },
@@ -834,7 +844,8 @@ export class PreviewSessionManager {
     previewEventEmitter.emit({
       type: "preview.failed",
       previewId: id,
-      workspaceId: preview.config.workspaceId,
+      workspaceId,
+      membershipId,
       executionHostBinding: preview.config.executionHostBinding,
       error,
       preview: failedPreview,
