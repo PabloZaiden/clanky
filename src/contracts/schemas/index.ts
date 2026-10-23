@@ -80,7 +80,6 @@ export {
   InterruptChatRequestSchema,
   ReplyToChatPermissionRequestSchema,
   ReconnectChatRequestSchema,
-  SpawnCurrentPlanTaskRequestSchema,
 } from "./chat";
 
 // Agent schemas

@@ -852,8 +852,6 @@ included in this table.
 | POST | `/api/chats/:id/continue-from-history` | Explicitly create a fresh native chat session backed by a temporary persisted-history export. |
 | POST | `/api/chats/:id/reconnect` | Reconnect a chat session to its backend runtime. |
 | GET | `/api/chats/:id/snapshot` | Read a chat transcript snapshot, paged by non-empty assistant responses (page size 100). |
-| POST | `/api/chats/:id/spawn-task` | Create a task from an existing chat transcript. |
-| POST | `/api/chats/:id/spawn-task-from-current-plan` | Create a task from the current plan discussed in a chat. |
 | GET | `/api/chats/:id/tool-calls/:toolCallId` | Read the full details for one chat tool call. |
 | GET | `/api/chats/:id/transcript.html` | Open a chat transcript as a standalone HTML document. |
 | GET | `/api/chats/:id/transcript.md` | Download a chat transcript as Markdown. |

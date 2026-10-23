@@ -249,8 +249,8 @@ Use the Git/worktree service's canonical managed-path helpers for task and chat 
 
 `ChatManager` is an orchestration facade, not a second domain implementation.
 Keep chat persistence/state writes, lifecycle workflows, workspace/worktree
-operations, backend/session ownership, conversation streaming, interaction
-queues/permissions, and chat-to-task conversion in their focused core
+operations, backend/session ownership, conversation streaming, and interaction
+queues/permissions in their focused core
 services. The facade may coordinate cross-service workflows and preserve its
 public API, but must not reintroduce service-owned mutable maps, duplicate
 state-transition rules, or direct persistence/transport implementations.

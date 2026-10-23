@@ -23,7 +23,6 @@ import { ChatSessionService } from "./chat-session-service";
 import { ChatConversationService } from "./chat-conversation-service";
 import { ChatInteractionService } from "./chat-interaction-service";
 import { ChatQuestionService } from "./chat-question-service";
-import { ChatTaskConversionService } from "./chat-task-conversion-service";
 import { ChatHistoryExportService } from "./chat-history-export-service";
 import { ChatHistoryRecoveryService } from "./chat-history-recovery-service";
 import { ChatAttachmentService } from "./chat-attachment-service";
@@ -127,10 +126,6 @@ function createChatServices(emitter: SimpleEventEmitter<ChatEvent>): ChatService
     conversation: conversationService,
     historyExport,
   });
-  const taskConversion = new ChatTaskConversionService({
-    state,
-    worktree,
-  });
   const historyRecovery = new ChatHistoryRecoveryService({
     state,
     session,
@@ -147,7 +142,6 @@ function createChatServices(emitter: SimpleEventEmitter<ChatEvent>): ChatService
     conversation: conversationService,
     interaction: interactionService,
     historyRecovery,
-    taskConversion,
   };
 }
 
@@ -364,14 +358,6 @@ export class ChatManager {
   getTrashCredentialTargets(chatId?: string) { return this.services.trash.credentialTargets(chatId); }
   emptyTrash(options: Parameters<ChatTrashService["empty"]>[0] = {}) { return this.services.trash.empty(options); }
   expireTrash() { return this.services.trash.expire(); }
-
-  async spawnTaskFromChat(chatId: string): Promise<Task> {
-    return this.services.taskConversion.spawnTaskFromChat(chatId);
-  }
-
-  async spawnTaskFromCurrentPlan(chatId: string, planFilePath?: string): Promise<Task> {
-    return this.services.taskConversion.spawnTaskFromCurrentPlan(chatId, planFilePath);
-  }
 
   getChatBackend(chatId: string, workspaceId?: string): Backend {
     return this.services.session.getChatBackend(chatId, workspaceId);

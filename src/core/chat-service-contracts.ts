@@ -299,11 +299,6 @@ export interface ChatLifecyclePort {
   deleteChat(chatId: string, options?: DeleteChatOptions): Promise<boolean>;
 }
 
-export interface ChatTaskConversionPort {
-  spawnTaskFromChat(chatId: string): Promise<Task>;
-  spawnTaskFromCurrentPlan(chatId: string, planFilePath?: string): Promise<Task>;
-}
-
 export interface ChatHistoryRecoveryPort {
   continueFromHistory(
     chatId: string,
@@ -320,7 +315,6 @@ export interface ChatServiceBundle {
   conversation: ChatConversationPort;
   interaction: ChatInteractionPort;
   historyRecovery: ChatHistoryRecoveryPort;
-  taskConversion: ChatTaskConversionPort;
 }
 
 export type ChatEventStream = EventStream<import("@/shared/harness-events").HarnessEvent>;

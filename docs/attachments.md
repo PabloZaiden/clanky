@@ -81,5 +81,4 @@ retained across pending queue groups. If one expires, sending with a renewed
 credential also renews access for the remaining groups.
 
 Markdown/HTML transcript exports do not embed original attachment bytes.
-Chat-to-task conversion retains descriptive references, not a transfer of the
-original uploads. Plan-file import remains a separate operation.
+Plan-file import remains a separate operation.

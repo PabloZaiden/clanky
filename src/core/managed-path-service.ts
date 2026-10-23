@@ -20,7 +20,6 @@ export const PLANNING_DIRECTORY_NAME = ".clanky-planning";
 export const PLAN_FILE_NAME = "plan.md";
 export const STATUS_FILE_NAME = "status.md";
 export const CHAT_HISTORY_TRANSCRIPT_FILE_NAME = "conversation.jsonl";
-export const DEFAULT_PLAN_DISPLAY_PATH = `${PLANNING_DIRECTORY_NAME}/${PLAN_FILE_NAME}`;
 
 export class InvalidManagedWorktreePathError extends Error {
   readonly code = "INVALID_MANAGED_WORKTREE_PATH";
