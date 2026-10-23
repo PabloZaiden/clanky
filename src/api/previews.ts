@@ -7,6 +7,7 @@ import { previewSessionManager } from "../core/preview-session-manager";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { executionHostRefFromParts } from "@/shared";
 import { domainErrorResponse, errorResponse, successResponse } from "./helpers";
+import { workspaceOperation } from "./workspace-delegation";
 
 const log = createLogger("api:previews");
 
@@ -23,6 +24,10 @@ function mapPreviewError(error: unknown): Response {
 
 export const previewRoutes = defineRoutes({
   "/api/workspaces/:workspaceId/previews": {
+    delegation: {
+      ...workspaceOperation("preview", { collection: true }),
+      bindings: [{ source: "param", name: "workspaceId", resource: "workspace" }],
+    },
     auth: "user",
     sameOrigin: "mutations",
     description: "List previews for a workspace.",
@@ -76,6 +81,8 @@ export const previewRoutes = defineRoutes({
   },
 
   "/api/previews": {
+    delegation: workspaceOperation("preview", { collection: true }),
+    partialResults: { header: "X-Clanky-Partial" },
     auth: "user",
     sameOrigin: "mutations",
     description: "List active previews and previews with pending cleanup for the current user.",
@@ -94,6 +101,10 @@ export const previewRoutes = defineRoutes({
   },
 
   "/api/previews/:previewId": {
+    delegation: {
+      ...workspaceOperation("preview"),
+      bindings: [{ source: "param", name: "previewId", resource: "preview" }],
+    },
     auth: "user",
     sameOrigin: "mutations",
     description: "Close a preview or retry its pending cleanup on the original execution host.",

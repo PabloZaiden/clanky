@@ -2,6 +2,7 @@
  * Client-neutral bounded representations of the existing resource operations.
  */
 import { z } from "zod";
+import { COLLABORATION_RESOURCE_REFERENCE_MAX_LENGTH } from "@/shared/collaboration-reference";
 
 export const ReadSectionSchema = z.enum([
   "details", "questions", "permissions", "inputs", "activity", "prompt",
@@ -18,7 +19,7 @@ export const CollectionReadOptionsSchema = z.object({
   cursor: z.string().min(1).max(4096).optional(),
   maxBytes: z.coerce.number().int().min(1024).max(16_384).optional(),
   section: ReadSectionSchema.optional(),
-  item: z.string().min(1).max(128).optional(),
+  item: z.string().min(1).max(COLLABORATION_RESOURCE_REFERENCE_MAX_LENGTH).optional(),
 });
 
 export const ConversationReadOptionsSchema = CollectionReadOptionsSchema.extend({
@@ -27,7 +28,7 @@ export const ConversationReadOptionsSchema = CollectionReadOptionsSchema.extend(
 });
 
 export const WorkCollectionReadOptionsSchema = CollectionReadOptionsSchema.extend({
-  workspaceId: z.string().min(1).max(500).optional(),
+  workspaceId: z.string().min(1).max(COLLABORATION_RESOURCE_REFERENCE_MAX_LENGTH).optional(),
   name: z.string().trim().min(1).max(500).optional(),
   status: z.string().min(1).max(100).optional(),
   needsInput: z.enum(["true", "false"]).optional(),

@@ -8,7 +8,7 @@ import { getDatabase } from "../database";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { rowToTask } from "./helpers";
 import { TASK_LIST_COLUMNS } from "./crud";
-import { requirePersistenceUserId } from "../ownership";
+import { requireResourcePersistenceUserId, workspacePersistenceParameters } from "../ownership";
 import { taskTranscriptStore } from "../transcripts/task-store";
 
 const log = createLogger("persistence:tasks");
@@ -42,7 +42,7 @@ const ACTIVE_TASK_STATUSES: TaskStatus[] = [
 export async function getActiveTaskByDirectory(directory: string, workspaceId: string): Promise<Task | null> {
   log.debug("Getting active task by directory and workspace", { directory, workspaceId });
   const db = getDatabase();
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId("task", undefined, workspaceId);
 
   // Build placeholders for the IN clause
   const placeholders = ACTIVE_TASK_STATUSES.map(() => "?").join(", ");
@@ -92,7 +92,7 @@ export async function resetStaleTask(taskId: string): Promise<boolean> {
   log.debug("Resetting stale task", { taskId });
   const db = getDatabase();
   const now = new Date().toISOString();
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId("task", taskId);
 
   const placeholders = STALE_TASK_STATUSES.map(() => "?").join(", ");
 
@@ -140,7 +140,7 @@ export async function resetStaleTasks(): Promise<number> {
   log.debug("Resetting stale tasks");
   const db = getDatabase();
   const now = new Date().toISOString();
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId("task");
 
   // Build placeholders for the IN clause
   const placeholders = STALE_TASK_STATUSES.map(() => "?").join(", ");
@@ -152,10 +152,10 @@ export async function resetStaleTasks(): Promise<number> {
         error_iteration = ${STALE_TASK_RESET_ERROR_ITERATION},
         error_timestamp = ?,
         completed_at = ?
-    WHERE user_id = ? AND status IN (${placeholders})
+    WHERE user_id = ? AND (? IS NULL OR workspace_id = ?) AND status IN (${placeholders})
   `);
 
-  const result = stmt.run(STALE_TASK_RESET_MESSAGE, now, now, userId, ...STALE_TASK_STATUSES);
+  const result = stmt.run(STALE_TASK_RESET_MESSAGE, now, now, userId, ...workspacePersistenceParameters(), ...STALE_TASK_STATUSES);
 
   if (result.changes > 0) {
     log.info("Reset stale tasks", { count: result.changes });

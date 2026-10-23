@@ -16,7 +16,7 @@ import type {
 import { managedContextIdentityResolver } from "../managed-context-identity";
 import { managedCredentialService } from "../managed-credential-service";
 import { buildManagedContextEnvironment } from "../managed-context-environment";
-import { requireCurrentUserId } from "../../context/user-context";
+import { requireExecutionOwnerUserId } from "../../context/user-context";
 import { getWorkspace } from "../../persistence/workspaces";
 import { createOwnedHarnessSession, resumeOwnedHarnessSession } from "../harness-session";
 import { HarnessError } from "../../backends/harness-errors";
@@ -224,7 +224,7 @@ async function taskSessionContext(ctx: SessionOperationContext) {
   const workspace = await getWorkspace(ctx.config.workspaceId);
   if (!workspace) throw new HarnessError("harness_session_not_owned", "The task workspace is unavailable.");
   return {
-    ownerId: requireCurrentUserId(),
+    ownerId: requireExecutionOwnerUserId(),
     contextId: ctx.config.id,
     questionPolicy: "unattended" as const,
     directory: ctx.workingDirectory,

@@ -12,7 +12,7 @@ conversations keep their existing deletion behavior.
   manually. Restoration never automatically resumes an agent or queued input.
 - **Delete permanently** removes one trashed chat, its managed attachment
   copies and its managed worktree.
-- **Empty Trash** permanently deletes the chats currently in your Trash,
+- **Empty local Trash** permanently deletes the chats owned by this instance,
   including hidden private chats. New deletions during an empty operation are
   not added to that operation.
 
@@ -63,6 +63,15 @@ Each item includes `id`, `name`, `workspaceId`, `origin`, `isPrivate`,
 `deletedAt`, `expiresAt` and `credentialServerIds`. The latter identifies owned
 SSH servers whose credentials may be needed for resource cleanup; it contains
 no credential values.
+
+With [workspace collaboration](workspace-collaboration.md), the same paginated
+list also includes authorized shared workspace chats, with opaque remote chat
+references and the controller name in their origin. Restore and individual
+permanent deletion route to that controller. Its credentials remain there;
+shared entries do not request another controller's SSH credentials locally.
+`DELETE /api/trash` and **Empty local Trash** deliberately remain local, not a
+cross-controller bulk mutation. Unavailable origins produce explicit partial
+collection metadata, not an offline inventory.
 
 Permanent deletion and emptying accept an optional JSON body
 `{ "credentialTokensByServerId": { "<server-id>": "<credential-token>" } }`.

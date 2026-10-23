@@ -48,5 +48,6 @@ export function buildMeshRelayEnrollmentAdmissionSigningPayload(
     admission.controllerFingerprint,
     admission.nonce,
     admission.expiresAt,
+    ...(admission.peerRole ? [admission.peerRole] : []),
   ]);
 }

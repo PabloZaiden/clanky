@@ -1,3 +1,4 @@
+import { workspaceOperation } from "../workspace-delegation";
 import { defineRoutes } from "@pablozaiden/webapp/server";
 /**
  * Tasks review routes - handle review comments after push or local acceptance.
@@ -20,6 +21,7 @@ const log = createLogger("api:tasks");
 
 export const tasksReviewRoutes = defineRoutes({
   "/api/tasks/:id/address-comments": {
+    delegation: workspaceOperation("task"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Address review comments for a task.",
@@ -97,6 +99,7 @@ export const tasksReviewRoutes = defineRoutes({
   },
 
   "/api/tasks/:id/review-history": {
+    delegation: workspaceOperation("task"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Read review history for a task.",
@@ -161,6 +164,7 @@ export const tasksReviewRoutes = defineRoutes({
   },
 
   "/api/tasks/:id/automatic-pr-flow/start": {
+    delegation: workspaceOperation("task"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Enable automatic pull request monitoring for a task.",
@@ -203,6 +207,7 @@ export const tasksReviewRoutes = defineRoutes({
   },
 
   "/api/tasks/:id/automatic-pr-flow/stop": {
+    delegation: workspaceOperation("task"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Disable automatic pull request monitoring for a task.",
@@ -245,6 +250,7 @@ export const tasksReviewRoutes = defineRoutes({
   },
 
   "/api/tasks/:id/pull-request/auto-merge": {
+    delegation: workspaceOperation("task"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Enable pull request auto-merge for a task.",

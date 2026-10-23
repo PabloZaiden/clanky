@@ -140,7 +140,7 @@ export type ChatEvent = (
   | ChatInterruptedEvent
   | ChatErrorEvent
   | ChatDeletedEvent
-  | { type: "chat.trash.changed"; chatId: string; timestamp: string }
+  | { type: "chat.trash.changed"; chatId: string; workspaceId?: string; timestamp: string }
 ) & { streamPosition?: StreamDeltaPosition };
 
 /**
@@ -263,6 +263,7 @@ export interface ChatErrorEvent {
 export interface ChatDeletedEvent {
   type: "chat.deleted";
   chatId: string;
+  workspaceId?: string;
   scope: ChatConfig["scope"];
   timestamp: string;
 }
@@ -284,6 +285,7 @@ export interface AgentUpdatedEvent {
 export interface AgentDeletedEvent {
   type: "agent.deleted";
   agentId: string;
+  workspaceId: string;
   timestamp: string;
 }
 
@@ -683,6 +685,7 @@ export interface TaskDeletedEvent {
   type: "task.deleted";
   /** ID of the deleted task */
   taskId: string;
+  workspaceId: string;
   /** ISO 8601 timestamp */
   timestamp: string;
 }

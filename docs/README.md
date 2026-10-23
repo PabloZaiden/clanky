@@ -12,6 +12,7 @@ Choose the guide that matches what you are trying to do:
 | Run Clanky with Docker, configure a public URL, or place it behind a proxy | [Deployment and configuration](deployment.md) |
 | Configure voice input, Live conversations and local spoken playback | [Voice](voice.md) |
 | Run workspaces on another machine or connect workers through a relay | [Mesh workers and relays](mesh-worker.md) |
+| Invite another Clanky instance to selected workspaces | [Workspace collaboration](workspace-collaboration.md) |
 | Automate Clanky through HTTP, WebSocket, or the CLI | [API reference](API.md) |
 | Run the project from source or prepare a release | [Development](development.md) |
 

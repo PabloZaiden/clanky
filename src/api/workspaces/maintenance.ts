@@ -1,4 +1,5 @@
 import { defineRoutes } from "@pablozaiden/webapp/server";
+import { workspaceOperation } from "../workspace-delegation";
 /**
  * Workspace maintenance routes for actions like pulling the default branch.
  */
@@ -12,6 +13,7 @@ const log = createLogger("api:workspace-maintenance");
 
 export const workspaceMaintenanceRoutes = defineRoutes({
   "/api/workspaces/:id/pull-latest-changes": {
+    delegation: workspaceOperation("workspace"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Pull the workspace's default branch and refresh remote-tracking branches.",

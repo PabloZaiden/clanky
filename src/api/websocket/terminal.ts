@@ -1,4 +1,3 @@
-import type { ServerWebSocket } from "bun";
 import { isDomainError } from "../../domain/domain-error";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { runWithCurrentUser } from "../../context/user-context";
@@ -13,11 +12,20 @@ const log = createLogger("api:websocket");
 const SAFE_TERMINAL_ERROR_MESSAGE = "SSH terminal connection failed";
 const SAFE_TERMINAL_CONNECTION_ERROR_MESSAGE = "Terminal connection failed";
 export const SSH_TERMINAL_CREDENTIALS_REQUIRED_MESSAGE = "SSH credentials are required for this terminal";
-const activeTerminalSockets = new Map<string, ServerWebSocket<WebSocketData>>();
+
+export interface TerminalSocket {
+  readonly data: Pick<WebSocketData,
+    "terminalCredentialTimeout" | "terminalSessionId" | "terminalBridge"
+    | "terminalAttachment" | "terminalTransport" | "user">;
+  send(data: string): void;
+  close(code?: number, reason?: string): void;
+}
+
+const activeTerminalSockets = new Map<string, TerminalSocket>();
 
 function claimTerminalSocket(
   terminalSessionId: string,
-  ws: ServerWebSocket<WebSocketData>,
+  ws: TerminalSocket,
 ): void {
   const previous = activeTerminalSockets.get(terminalSessionId);
   if (previous && previous !== ws) {
@@ -35,14 +43,14 @@ function claimTerminalSocket(
 
 function isTerminalSocketActive(
   terminalSessionId: string,
-  ws: ServerWebSocket<WebSocketData>,
+  ws: TerminalSocket,
 ): boolean {
   return activeTerminalSockets.get(terminalSessionId) === ws;
 }
 
 export function releaseTerminalSocket(
   terminalSessionId: string,
-  ws: ServerWebSocket<WebSocketData>,
+  ws: TerminalSocket,
 ): void {
   if (activeTerminalSockets.get(terminalSessionId) === ws) {
     activeTerminalSockets.delete(terminalSessionId);
@@ -71,7 +79,7 @@ async function disposeTerminalBridgeAfterStartup(
 }
 
 export async function startTerminalBridge(
-  ws: ServerWebSocket<WebSocketData>,
+  ws: TerminalSocket,
   credentialToken?: string,
 ): Promise<void> {
   if (ws.data.terminalCredentialTimeout) {
@@ -235,7 +243,7 @@ export function getTerminalErrorPayload(
 }
 
 export function sendTerminalAuthError(
-  ws: ServerWebSocket<WebSocketData>,
+  ws: TerminalSocket,
   message: string,
   code?: string,
 ): void {

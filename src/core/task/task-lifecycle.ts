@@ -19,7 +19,7 @@ import { taskFailure, taskFailureFromUnknown, type TaskResult } from "./task-err
 import { resolveCommandExecutorDirectory } from "../command-executor";
 import { assertTaskHarnessWorkspaceSafe } from "./task-harness";
 import type { TaskEngine } from "../task-engine";
-import { getCurrentUser, runWithCurrentUser } from "../../context/user-context";
+import { requireExecutionOwnerUser, runWithExecutionOwner } from "../../context/user-context";
 import { conversationAttachmentService } from "../conversation-attachment-service";
 import {
   runTaskLifecycleOperation,
@@ -270,7 +270,7 @@ function createDeferredTaskCleanup(
   operation: TaskCleanupOperation,
   linkedChatCleanup: Promise<boolean>,
 ): () => Promise<void> {
-  const user = getCurrentUser();
+  const user = requireExecutionOwnerUser();
   return async () => {
     if (!user) {
       log.error("Cannot run deferred task cleanup without a current user", {
@@ -280,7 +280,7 @@ function createDeferredTaskCleanup(
       return;
     }
 
-    await runWithCurrentUser(user, async () => {
+    await runWithExecutionOwner(user, async () => {
       const runtimeCleanup = stopTaskRuntimeForDeletion(ctx, task, engine, operation);
       const terminalSessionCleanup = runDeferredTaskCleanupStep(
         task.config.id,
@@ -354,6 +354,7 @@ export async function deleteTaskImpl(ctx: TaskCtx, taskId: string): Promise<bool
       ctx.emitter.emit({
         type: "task.deleted",
         taskId,
+        workspaceId: deletedTask.config.workspaceId,
         timestamp: createTimestamp(),
       });
       const linkedChatDeletion = await deleteLinkedTaskChat(taskId, "delete");

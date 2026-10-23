@@ -8,7 +8,7 @@ import type {
   FileSystemCommand, FileSystemConditions, FileSystemEntry, FileSystemInfo, FileSystemResult,
 } from "../contracts/schemas/file-system";
 import { FILE_SYSTEM_MAX_METADATA_BYTES } from "../contracts/schemas/file-system";
-import { requireCurrentUserId } from "../context/user-context";
+import { requireExecutionOwnerUserId } from "../context/user-context";
 import { DomainError } from "../domain/domain-error";
 import type { FileStreamOptions, FileSystemMetadata } from "./command-executor";
 import type { FileExplorerTarget } from "./file-explorer-service";
@@ -103,7 +103,7 @@ export class FileSystemService {
   private pending = 0;
 
   private key(target: FileExplorerTarget): string {
-    return `${requireCurrentUserId()}:${target.fileSystemIdentity ?? target.id}`;
+    return `${requireExecutionOwnerUserId()}:${target.fileSystemIdentity ?? target.id}`;
   }
 
   private async serialize<T>(target: FileExplorerTarget, action: () => Promise<T>, signal?: AbortSignal): Promise<T> {

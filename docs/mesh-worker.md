@@ -4,6 +4,11 @@ Mesh lets a Clanky controller run workspaces on another host. A worker can
 connect directly to one or more controllers, or it can make an outbound
 connection through a relay when inbound connections are not possible.
 
+To let another full Clanky instance use selected existing workspaces without
+exposing its execution host, use [workspace collaboration](workspace-collaboration.md)
+instead of worker enrollment. It uses a separate relay client capability and
+does not change existing worker relationships.
+
 Mesh access is host-level access. The worker directory is the default working
 directory, not a sandbox or filesystem allowlist. Pair only controllers that
 are trusted to execute commands and access files on the worker host.

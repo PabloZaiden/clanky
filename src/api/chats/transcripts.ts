@@ -1,3 +1,4 @@
+import { workspaceOperation } from "../workspace-delegation";
 import { createLogger, defineRoutes } from "@pablozaiden/webapp/server";
 import { chatManager } from "../../core/chat-manager";
 import { TranscriptDownloadQuerySchema, TranscriptSnapshotQuerySchema } from "../route-schemas";
@@ -28,6 +29,7 @@ function isNotModified(request: Request, revision: string): boolean {
 
 export const chatsTranscriptRoutes = defineRoutes({
   "/api/chats/:id/snapshot": {
+    delegation: workspaceOperation("chat"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Read the latest 100 chat responses; use before for older history, since to refresh a loaded window, or full=1 for the complete transcript.",
@@ -92,6 +94,7 @@ export const chatsTranscriptRoutes = defineRoutes({
   },
 
   "/api/chats/:id/tool-calls/:toolCallId": {
+    delegation: workspaceOperation("chat"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Read the full details for one chat tool call.",
@@ -111,6 +114,7 @@ export const chatsTranscriptRoutes = defineRoutes({
   },
 
   "/api/chats/:id/transcript.md": {
+    delegation: workspaceOperation("chat"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Download a chat transcript as Markdown.",
@@ -145,6 +149,7 @@ export const chatsTranscriptRoutes = defineRoutes({
   },
 
   "/api/chats/:id/transcript.html": {
+    delegation: workspaceOperation("chat"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Open a chat transcript as a standalone HTML document.",

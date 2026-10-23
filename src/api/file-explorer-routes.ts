@@ -1,3 +1,4 @@
+import { workspaceOperation } from "./workspace-delegation";
 /**
  * Shared HTTP routes for executor-backed file explorers.
  *
@@ -50,6 +51,7 @@ export interface FileExplorerRouteConfig {
   invalidPathError: "invalid_workspace_path" | "invalid_server_path";
   internalError: "workspace_file_error" | "ssh_server_file_error";
   downloadDescription?: string;
+  workspaceCollaboration?: boolean;
   automationCredential?: RouteAutomationCredential;
   resolveTarget: (
     req: Request,
@@ -161,6 +163,7 @@ export function createFileExplorerRoutes(
     [basePath]: {
       auth: "user",
       sameOrigin: "mutations",
+      delegation: config.workspaceCollaboration ? workspaceOperation("workspace") : false,
       description: `List ${resourceDescription} files in the active explorer root.`,
       querySchema: ListFileExplorerRequestSchema,
       operations: {
@@ -203,6 +206,7 @@ export function createFileExplorerRoutes(
     [`${basePath}/content`]: {
       auth: "user",
       sameOrigin: "mutations",
+      delegation: config.workspaceCollaboration ? workspaceOperation("workspace") : false,
       description: `Read a ${resourceDescription} file.`,
       querySchema: GetFileExplorerFileRequestSchema,
       operations: {
@@ -241,6 +245,7 @@ export function createFileExplorerRoutes(
     [`${basePath}/preview`]: {
       auth: "user",
       sameOrigin: "mutations",
+      delegation: config.workspaceCollaboration ? workspaceOperation("workspace") : false,
       description: `Preview a browser-renderable ${resourceDescription} image file.`,
       querySchema: GetFileExplorerFileRequestSchema,
       operations: {
@@ -279,6 +284,7 @@ export function createFileExplorerRoutes(
     [`${basePath}/video-preview`]: {
       auth: "user",
       sameOrigin: "mutations",
+      delegation: config.workspaceCollaboration ? workspaceOperation("workspace") : false,
       description: `Stream a browser-renderable ${resourceDescription} video file for inline playback.`,
       querySchema: GetFileExplorerFileRequestSchema,
       operations: {
@@ -364,6 +370,7 @@ export function createFileExplorerRoutes(
     [`${basePath}/download`]: {
       auth: "user",
       sameOrigin: "mutations",
+      delegation: config.workspaceCollaboration ? workspaceOperation("workspace") : false,
       description: config.downloadDescription
         ?? `Download a ${resourceDescription} file from the active explorer root.`,
       querySchema: GetFileExplorerFileRequestSchema,
@@ -417,6 +424,7 @@ export function createFileExplorerRoutes(
     [`${basePath}/tree`]: {
       auth: "user",
       sameOrigin: "mutations",
+      delegation: config.workspaceCollaboration ? workspaceOperation("workspace") : false,
       description: `Load the full ${resourceDescription} file tree.`,
       querySchema: GetFileExplorerTreeRequestSchema,
       operations: {
@@ -454,6 +462,7 @@ export function createFileExplorerRoutes(
     [`${basePath}/metadata`]: {
       auth: "user",
       sameOrigin: "mutations",
+      delegation: config.workspaceCollaboration ? workspaceOperation("workspace") : false,
       description: `Read ${resourceDescription} file metadata.`,
       querySchema: GetFileExplorerFileRequestSchema,
       operations: {
@@ -495,6 +504,7 @@ export function createFileExplorerRoutes(
     [`${basePath}/write`]: {
       auth: "user",
       sameOrigin: "mutations",
+      delegation: config.workspaceCollaboration ? workspaceOperation("workspace") : false,
       description: `Write a ${resourceDescription} file with optional conflict checks.`,
       requestSchema: WriteFileExplorerRequestSchema,
       operations: {
@@ -541,6 +551,7 @@ export function createFileExplorerRoutes(
     [`${basePath}/rename`]: {
       auth: "user",
       sameOrigin: "mutations",
+      delegation: config.workspaceCollaboration ? workspaceOperation("workspace") : false,
       description: `Rename a ${resourceDescription} file or directory in the active explorer root.`,
       requestSchema: RenameFileExplorerRequestSchema,
       operations: {
@@ -587,6 +598,7 @@ export function createFileExplorerRoutes(
     [`${basePath}/delete`]: {
       auth: "user",
       sameOrigin: "mutations",
+      delegation: config.workspaceCollaboration ? workspaceOperation("workspace") : false,
       description: `Delete a ${resourceDescription} file or directory in the active explorer root.`,
       requestSchema: DeleteFileExplorerRequestSchema,
       operations: {
@@ -632,6 +644,7 @@ export function createFileExplorerRoutes(
     [`${basePath}/upload`]: {
       auth: "user",
       sameOrigin: "mutations",
+      delegation: config.workspaceCollaboration ? workspaceOperation("workspace") : false,
       description: `Create a ${resourceDescription} file upload session.`,
       requestSchema: CreateFileExplorerUploadRequestSchema,
       operations: {
@@ -678,6 +691,7 @@ export function createFileExplorerRoutes(
     [`${basePath}/upload/chunk`]: {
       auth: "user",
       sameOrigin: "mutations",
+      delegation: config.workspaceCollaboration ? workspaceOperation("workspace") : false,
       description: `Upload a raw chunk for a ${resourceDescription} file upload session.`,
       querySchema: UploadFileExplorerChunkRequestSchema,
       operations: {
@@ -725,6 +739,7 @@ export function createFileExplorerRoutes(
     [`${basePath}/upload/complete`]: {
       auth: "user",
       sameOrigin: "mutations",
+      delegation: config.workspaceCollaboration ? workspaceOperation("workspace") : false,
       description: `Complete a ${resourceDescription} file upload session.`,
       requestSchema: CompleteFileExplorerUploadRequestSchema,
       operations: {
@@ -766,6 +781,7 @@ export function createFileExplorerRoutes(
     [`${basePath}/upload/cancel`]: {
       auth: "user",
       sameOrigin: "mutations",
+      delegation: config.workspaceCollaboration ? workspaceOperation("workspace") : false,
       description: `Cancel a ${resourceDescription} file upload session.`,
       requestSchema: CancelFileExplorerUploadRequestSchema,
       operations: {

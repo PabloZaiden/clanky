@@ -13,6 +13,7 @@ import type { WebAppRoute } from "@pablozaiden/webapp/web";
 import type { CreateTerminalSessionRequest } from "@/contracts";
 import { getOrCreateTaskTerminalSessionApi } from "../../hooks/task-actions/terminal-actions";
 import type { CodeExplorerTarget } from "./shell-types";
+import { getWorkspaceDisplayName } from "../../lib/workspace-label";
 
 type ExplorerSession = TerminalSession;
 type CodeExplorerOptionKind = "workspace" | "task" | "server" | "chat";
@@ -130,7 +131,7 @@ export function getCodeExplorerOptions({
     ...workspaces.map((workspace) => ({
       id: `workspace:${workspace.id}`,
       kind: "workspace" as const,
-      label: workspace.name,
+      label: getWorkspaceDisplayName(workspace),
       description: workspace.directory,
       target: { contentType: "workspace" as const, workspaceId: workspace.id },
     })),
@@ -206,7 +207,7 @@ export function resolveCodeExplorerTarget({
 
       return {
         routeTarget: target,
-        title: `${workspace.name} code explorer`,
+        title: `${getWorkspaceDisplayName(workspace)} code explorer`,
         description: workspace.directory,
         defaultRootDirectory,
         backLabel: "Back to workspace",

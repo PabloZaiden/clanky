@@ -15,6 +15,7 @@ import {
   getModelsForWorkspace,
 } from "../../core/model-discovery";
 import { errorResponse, internalErrorResponse, requireWorkspace } from "../helpers";
+import { workspaceOperation } from "../workspace-delegation";
 
 const log = createLogger("api:models");
 
@@ -23,6 +24,7 @@ const log = createLogger("api:models");
  */
 export const modelsRoutes = defineRoutes({
   "/api/models/variants": {
+    delegation: workspaceOperation("workspace"),
     auth: "user",
     sameOrigin: "mutations",
     description: "List available model variants for a workspace.",
@@ -80,6 +82,7 @@ export const modelsRoutes = defineRoutes({
   },
 
   "/api/models": {
+    delegation: workspaceOperation("workspace"),
     auth: "user",
     sameOrigin: "mutations",
     description: "List available AI models for a workspace.",

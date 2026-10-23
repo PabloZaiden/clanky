@@ -57,7 +57,7 @@ export function ChatTrashView({
           disabled={actions.pending}
           onClick={actions.requestEmpty}
         >
-          Empty Trash
+          Empty local Trash
         </Button>
       </div>
     </div>

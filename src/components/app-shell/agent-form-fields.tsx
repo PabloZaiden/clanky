@@ -1,5 +1,6 @@
 import type { ModelInfo, BranchInfo } from "@/contracts";
 import type { Workspace } from "@/shared";
+import { getWorkspaceDisplayName } from "../../lib/workspace-label";
 import { ModelSelector } from "../ModelSelector";
 import { BranchSelector } from "../create-task/branch-selector";
 import type {
@@ -92,7 +93,7 @@ export function AgentFormFields({
           </option>
           {workspaces.map((workspace) => (
             <option key={workspace.id} value={workspace.id}>
-              {workspace.name}
+              {getWorkspaceDisplayName(workspace)}
             </option>
           ))}
         </select>

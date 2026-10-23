@@ -1,3 +1,4 @@
+import { workspaceOperation } from "../workspace-delegation";
 import { defineRoutes } from "@pablozaiden/webapp/server";
 import { WorkspaceQuerySchema } from "../route-schemas";
 /**
@@ -24,6 +25,7 @@ const log = createLogger("api:tasks");
 
 export const tasksDataRoutes = defineRoutes({
   "/api/tasks/:id/diff": {
+    delegation: workspaceOperation("task"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Read the git diff produced by a task.",
@@ -84,6 +86,7 @@ export const tasksDataRoutes = defineRoutes({
   },
 
   "/api/tasks/:id/plan": {
+    delegation: workspaceOperation("task"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Read a task's planning document.",
@@ -134,6 +137,7 @@ export const tasksDataRoutes = defineRoutes({
   },
 
   "/api/tasks/:id/status-file": {
+    delegation: workspaceOperation("task"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Read a task's status tracking document.",
@@ -184,6 +188,7 @@ export const tasksDataRoutes = defineRoutes({
   },
 
   "/api/tasks/:id/pull-request": {
+    delegation: workspaceOperation("task"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Read pull request navigation details for a task.",
@@ -208,6 +213,7 @@ export const tasksDataRoutes = defineRoutes({
   },
 
   "/api/check-planning-dir": {
+    delegation: workspaceOperation("workspace"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Inspect a workspace's .clanky-planning files.",

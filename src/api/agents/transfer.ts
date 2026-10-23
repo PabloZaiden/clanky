@@ -1,3 +1,4 @@
+import { workspaceOperation } from "../workspace-delegation";
 /**
  * Scheduled-agent transfer API routes.
  */
@@ -13,6 +14,7 @@ const log = createLogger("api:agents");
 
 export const transferRoutes = defineRoutes({
   "/api/agents/:id/export": {
+    delegation: workspaceOperation("agent"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Download a portable scheduled-agent configuration.",
@@ -37,6 +39,7 @@ export const transferRoutes = defineRoutes({
   },
 
   "/api/workspaces/:id/agents/import": {
+    delegation: workspaceOperation("agent", { parameterResource: "workspace" }),
     auth: "user",
     sameOrigin: "mutations",
     description: "Import a portable scheduled-agent configuration into a workspace.",

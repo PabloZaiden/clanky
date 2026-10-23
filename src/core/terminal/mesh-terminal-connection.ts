@@ -35,7 +35,7 @@ import {
   requestMeshPeer,
   type MeshDuplexSocket,
 } from "../mesh-peer-transport";
-import { requireCurrentUserId } from "../../context/user-context";
+import { requireExecutionOwnerUserId } from "../../context/user-context";
 import { DomainError } from "../../domain/domain-error";
 import type {
   InteractiveTerminalCallbacks,
@@ -392,7 +392,7 @@ export class MeshInteractiveTerminalConnection implements InteractiveTerminalCon
     if (!identity.encryptionPublicKey) {
       throw new DomainError("mesh_terminal_encryption_unavailable", "The local Mesh identity has no encryption key.");
     }
-    const localUserId = this.config.localUserId ?? requireCurrentUserId();
+    const localUserId = this.config.localUserId ?? requireExecutionOwnerUserId();
     const registration = await getWorkerRegistration(
       this.config.executionNodeId,
       localUserId,

@@ -46,6 +46,7 @@ export const MeshRelayWellKnownDescriptorSchema = z.object({
   controllerNodeId: RelayIdSchema.nullable(),
   binaryVersion: z.string().trim().min(1).max(200),
   controllerSupportedProtocolVersions: MeshProtocolVersionsSchema.optional(),
+  workspaceClientVersion: z.literal(1).optional(),
 }).strict().superRefine(assertMeshProtocolMetadata);
 
 export const MeshControllerWellKnownDescriptorSchema = z.object({
@@ -131,7 +132,7 @@ export const MeshRelayChallengeFrameSchema = z.object({
 export const MeshRelayAuthFrameSchema = z.object({
   protocolVersion: MeshRelayProtocolVersionSchema,
   type: z.literal("auth"),
-  role: z.enum(["controller", "worker"]),
+  role: z.enum(["controller", "worker", "client"]),
   nodeId: RelayIdSchema,
   publicKey: RelayPublicKeySchema,
   fingerprint: RelayFingerprintSchema,
@@ -150,6 +151,7 @@ export const MeshRelayEnrollmentAdmissionSchema = z.object({
   nonce: RelayIdSchema,
   expiresAt: RelayTimestampSchema,
   signature: RelaySignatureSchema,
+  peerRole: z.literal("client").optional(),
 }).strict();
 
 export const MeshRelayAuthorizationBeginFrameSchema = z.object({
@@ -160,6 +162,7 @@ export const MeshRelayAuthorizationBeginFrameSchema = z.object({
   identityBytes: z.number().int().min(0).max(
     MESH_RELAY_MAX_AUTHORIZATION_STAGED_BYTES,
   ),
+  clientCount: z.number().int().min(0).max(MESH_RELAY_MAX_AUTHORIZED_WORKERS).optional(),
 }).strict();
 
 export const MeshRelayAuthorizationChunkFrameSchema = z.object({
@@ -167,8 +170,9 @@ export const MeshRelayAuthorizationChunkFrameSchema = z.object({
   type: z.literal("authorization.chunk"),
   transactionId: RelayIdSchema,
   workers: z.array(MeshRelayPeerIdentitySchema)
-    .min(1)
     .max(MESH_RELAY_MAX_AUTHORIZED_WORKERS),
+  clients: z.array(MeshRelayPeerIdentitySchema)
+    .min(1).max(MESH_RELAY_MAX_AUTHORIZED_WORKERS).optional(),
 }).strict();
 
 export const MeshRelayAuthorizationCommitFrameSchema = z.object({
@@ -204,7 +208,7 @@ export const MeshRelayAuthOkFrameSchema = z.object({
   protocolVersion: MeshRelayProtocolVersionSchema,
   type: z.literal("auth.ok"),
   connectionId: RelayIdSchema,
-  role: z.enum(["controller", "worker"]),
+  role: z.enum(["controller", "worker", "client"]),
   nodeId: RelayIdSchema,
   workerStatus: z.enum(["pending", "authorized"]).optional(),
 }).strict();
@@ -214,6 +218,7 @@ export const MeshRelayAuthorizationAckFrameSchema = z.object({
   type: z.literal("authorization.ack"),
   transactionId: RelayIdSchema,
   workerCount: z.number().int().min(0).max(MESH_RELAY_MAX_AUTHORIZED_WORKERS),
+  clientCount: z.number().int().min(0).max(MESH_RELAY_MAX_AUTHORIZED_WORKERS).optional(),
 }).strict();
 
 export const MeshRelayStreamTicketFrameSchema = z.object({

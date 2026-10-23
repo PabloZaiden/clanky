@@ -1,3 +1,4 @@
+import { workspaceOperation } from "../workspace-delegation";
 /**
  * Terminal session routes for tasks.
  *
@@ -34,6 +35,7 @@ function mapTaskTerminalSessionError(error: unknown): Response {
 
 export const tasksTerminalSessionRoutes = defineRoutes({
   "/api/tasks/:id/terminal-session": {
+    delegation: workspaceOperation("task"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Read or create a task-backed terminal session.",

@@ -10,6 +10,7 @@
 
 import { createLogger } from "@pablozaiden/webapp/server";
 import type { MeshProtocolVersion } from "@/shared/mesh-protocol";
+import { MESH_RELAY_CLIENT_ENROLLMENT_PATH } from "@/shared/mesh-relay";
 import { MeshRelayStreamError } from "./mesh-relay-errors";
 import { markMeshRelayRequestTransport } from "./mesh-transport-security";
 import type { MeshRelayDataStream } from "./mesh-relay-data-stream";
@@ -667,7 +668,8 @@ export async function serveMeshRelayHttpStream(
   const responseFlowControl = options.headers[MESH_RELAY_RESPONSE_FLOW_HEADER]
     === String(MESH_RELAY_RESPONSE_FLOW_VERSION);
   const body = new MeshRelayRequestBody(bodyless);
-  const requestBodyLimit = url.pathname === "/api/mesh/internal/enrollment"
+  const requestBodyLimit = (url.pathname === "/api/mesh/internal/enrollment"
+    || url.pathname === MESH_RELAY_CLIENT_ENROLLMENT_PATH)
     ? MESH_RELAY_MAX_ENROLLMENT_BODY_BYTES
     : Number.POSITIVE_INFINITY;
   let requestBodyBytes = 0;

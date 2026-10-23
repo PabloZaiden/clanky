@@ -15,7 +15,7 @@ import {
   type PreparedAttachmentFiles,
 } from "@/shared/message-attachments";
 import { createLogger } from "@pablozaiden/webapp/server";
-import { requireCurrentUserId } from "../context/user-context";
+import { requireExecutionOwnerUserId } from "../context/user-context";
 import { DomainError, isDomainError } from "../domain/domain-error";
 import {
   assertAttachmentContextActive,
@@ -74,7 +74,7 @@ export class ConversationAttachmentService {
   }
 
   private token(context: AttachmentContext): string {
-    return `${context.kind}-${hash(JSON.stringify([requireCurrentUserId(), context.id]))}`;
+    return `${context.kind}-${hash(JSON.stringify([requireExecutionOwnerUserId(), context.id]))}`;
   }
 
   references(options: {
@@ -111,7 +111,7 @@ export class ConversationAttachmentService {
     return await executionHostService.getCommandExecutor(options.executionHost, {
       directory: options.directory,
       operationId: `attachments:${options.context.kind}:${options.context.id}`,
-      localUserId: requireCurrentUserId(),
+      localUserId: requireExecutionOwnerUserId(),
       ...(sshPassword ? { sshPassword } : {}),
     });
   }

@@ -1,4 +1,5 @@
 import { createLogger } from "@pablozaiden/webapp/web";
+import { decodeCollaborationResourceReference } from "../shared/collaboration-reference";
 
 const log = createLogger("workspaceScratchpadDrafts");
 
@@ -95,6 +96,10 @@ export function getStoredWorkspaceScratchpadDraft(
   if (!workspaceId.trim()) {
     return null;
   }
+  if (decodeCollaborationResourceReference(workspaceId)) {
+    clearStoredWorkspaceScratchpadDraft(workspaceId, dependencies);
+    return null;
+  }
 
   const storage = resolveStorage(dependencies.storage);
   if (!storage) {
@@ -141,6 +146,10 @@ export function saveStoredWorkspaceScratchpadDraft(
   dependencies: WorkspaceScratchpadDraftDependencies = {},
 ): void {
   if (!workspaceId.trim()) {
+    return;
+  }
+  if (decodeCollaborationResourceReference(workspaceId)) {
+    clearStoredWorkspaceScratchpadDraft(workspaceId, dependencies);
     return;
   }
 

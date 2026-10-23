@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Chat, Workspace } from "@/shared";
+import { getWorkspaceDisplayName } from "../../lib/workspace-label";
 import {
   executionHostRefsEqual,
   MANAGED_WORKTREES_SELECTED_BRANCH_VERSION,
@@ -383,7 +384,7 @@ export function ComposeChatView({
             </option>
             {workspaces.map((workspace) => (
               <option key={workspace.id} value={workspace.id}>
-                  {workspace.name}
+                  {getWorkspaceDisplayName(workspace)}
                 </option>
             ))}
           </SelectField>

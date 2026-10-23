@@ -59,6 +59,7 @@ const configuration: FileExplorerRouteConfig = {
   invalidPathError: "invalid_workspace_path",
   internalError: "workspace_file_error",
   downloadDescription: "Stream a workspace file from the selected execution host.",
+  workspaceCollaboration: true,
   resolveTarget: resolveWorkspaceFileTarget,
 };
 

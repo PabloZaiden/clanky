@@ -244,6 +244,9 @@ export function ChatDetails({
       }}
       onOpenActivity={isEmbedded || onOpenActivity ? openActivity : undefined}
     >
+      {chat.config.creator ? (
+        <p className="shrink-0 px-3 py-2 text-xs text-gray-500 dark:text-gray-400 sm:px-4">Created by {chat.config.creator.name}</p>
+      ) : null}
       <ChatHistoryRecoveryAction
         chat={chat}
         isPending={isContinuingFromHistory}

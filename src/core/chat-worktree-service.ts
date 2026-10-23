@@ -12,7 +12,7 @@ import { executionHostService } from "./execution-host-service";
 import { getChatExecutionHostBinding } from "./chat-history-export-service";
 import { getRegisteredSshServerId } from "@/shared/execution-host";
 import { sshCredentialManager } from "./ssh-credential-manager";
-import { requireCurrentUserId } from "../context/user-context";
+import { requireExecutionOwnerUserId } from "../context/user-context";
 import { GitService, InvalidBranchNameError } from "./git";
 import { syncMainCheckoutBeforeWorktree } from "./git/worktree-sync";
 import { assertWorktreesAllowed } from "./workspace-capabilities";
@@ -337,7 +337,7 @@ export class ChatWorktreeService implements ChatWorktreePort {
     const executor = await executionHostService.getCommandExecutor(binding, {
       directory: chat.config.directory,
       operationId: `chat-cleanup:${chat.config.id}`,
-      localUserId: requireCurrentUserId(),
+      localUserId: requireExecutionOwnerUserId(),
       ...(serverId && credentialToken ? {
         sshPassword: sshCredentialManager.getPasswordForToken(serverId, credentialToken),
       } : {}),

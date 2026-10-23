@@ -71,6 +71,13 @@ export const SCHEMA_TABLE_INVENTORY: readonly SchemaTableDefinition[] = [
   resetOnlyTable("webapp_signing_keys", "framework"),
   currentTable("webapp_users", "framework"),
 
+  currentTable("collaboration_interactive_resources", "clanky"),
+  currentTable("collaboration_authorship", "clanky"),
+  currentTable("collaboration_memberships", "clanky"),
+  currentTable("collaboration_invitation_workspaces", "clanky"),
+  currentTable("collaboration_guests", "clanky"),
+  currentTable("collaboration_invitations", "clanky"),
+  currentTable("collaboration_connections", "clanky"),
   currentTable("mesh_enrollment_tokens", "clanky"),
   currentTable("mesh_worker_kill_nonces", "clanky"),
   currentTable("mesh_worker_registrations", "clanky"),

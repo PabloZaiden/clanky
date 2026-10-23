@@ -1,3 +1,4 @@
+import { workspaceOperation } from "../workspace-delegation";
 import { defineRoutes } from "@pablozaiden/webapp/server";
 import { TaskChatQuerySchema } from "../route-schemas";
 import { chatManager } from "../../core/chat-manager";
@@ -9,6 +10,7 @@ const log = createLogger("api:tasks:chat");
 
 export const tasksChatRoutes = defineRoutes({
   "/api/tasks/:id/chat": {
+    delegation: workspaceOperation("task"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Read or create the chat session attached to a task.",

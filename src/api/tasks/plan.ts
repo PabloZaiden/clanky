@@ -1,3 +1,4 @@
+import { workspaceOperation } from "../workspace-delegation";
 import { defineRoutes } from "@pablozaiden/webapp/server";
 /**
  * Task plan management routes.
@@ -20,6 +21,7 @@ const log = createLogger("api:tasks");
 
 export const tasksPlanRoutes = defineRoutes({
   "/api/tasks/:id/plan/feedback": {
+    delegation: workspaceOperation("task"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Submit feedback on a generated task plan.",
@@ -83,6 +85,7 @@ export const tasksPlanRoutes = defineRoutes({
   },
 
   "/api/tasks/:id/plan/accept": {
+    delegation: workspaceOperation("task"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Accept a generated task plan.",
@@ -145,6 +148,7 @@ export const tasksPlanRoutes = defineRoutes({
   },
 
   "/api/tasks/:id/plan/discard": {
+    delegation: workspaceOperation("task"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Discard a generated task plan and delete the task.",

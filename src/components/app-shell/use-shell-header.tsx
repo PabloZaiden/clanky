@@ -13,6 +13,7 @@ import {
   getTaskCodeExplorerRootDirectory,
 } from "./code-explorer-targets";
 import { getRouteString } from "./route-fields";
+import { getWorkspaceDisplayName } from "../../lib/workspace-label";
 import {
   getHeaderOwnerRoute,
   sidebarNodeMatchesRoute,
@@ -107,7 +108,7 @@ function getWorkspaceScopeSubtitle(workspaceId: string | undefined, workspaces: 
   if (!workspace) {
     return undefined;
   }
-  return workspace.name;
+  return getWorkspaceDisplayName(workspace);
 }
 
 function getChatScopeSubtitle(
@@ -368,7 +369,7 @@ export function useShellHeader({
         const workspaceId = getRouteString(route, "workspaceId");
         const workspace = workspaceId ? workspaces.find((item) => item.id === workspaceId) : null;
         return {
-          title: workspace ? `Agents in ${workspace.name}` : "Agents",
+          title: workspace ? `Agents in ${getWorkspaceDisplayName(workspace)}` : "Agents",
           scopeSubtitle,
           detailSubtitle: workspace?.directory,
         };

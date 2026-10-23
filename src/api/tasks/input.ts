@@ -1,3 +1,4 @@
+import { workspaceOperation } from "../workspace-delegation";
 /**
  * Explicit native steering and exact-conversation input recovery.
  */
@@ -25,6 +26,7 @@ async function inputResponse(operation: () => Promise<TaskInputAdmissionResponse
 
 export const tasksInputRoutes = defineRoutes({
   "/api/tasks/:id/pending-inputs/:inputId/steer": {
+    delegation: workspaceOperation("task"),
     auth: "user",
     sameOrigin: "mutations",
     tags: ["tasks"],
@@ -37,6 +39,7 @@ export const tasksInputRoutes = defineRoutes({
     },
   },
   "/api/tasks/:id/pending-inputs/:inputId/reconcile": {
+    delegation: workspaceOperation("task"),
     auth: "user",
     sameOrigin: "mutations",
     tags: ["tasks"],

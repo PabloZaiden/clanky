@@ -1,3 +1,4 @@
+import { workspaceOperation } from "../workspace-delegation";
 import { defineRoutes } from "@pablozaiden/webapp/server";
 /**
  * Task accept and push routes.
@@ -20,6 +21,7 @@ const log = createLogger("api:tasks");
 
 export const tasksAcceptPushRoutes = defineRoutes({
   "/api/tasks/:id/accept": {
+    delegation: workspaceOperation("task"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Accept a completed task locally without pushing.",
@@ -60,6 +62,7 @@ export const tasksAcceptPushRoutes = defineRoutes({
   },
 
   "/api/tasks/:id/push": {
+    delegation: workspaceOperation("task"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Push a completed task branch to the remote repository.",
@@ -104,6 +107,7 @@ export const tasksAcceptPushRoutes = defineRoutes({
   },
 
   "/api/tasks/:id/update-branch": {
+    delegation: workspaceOperation("task"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Sync a pushed task branch with its base branch.",
@@ -149,6 +153,7 @@ export const tasksAcceptPushRoutes = defineRoutes({
   },
 
   "/api/tasks/:id/mark-merged": {
+    delegation: workspaceOperation("task"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Mark a task as merged after an external merge.",
@@ -186,6 +191,7 @@ export const tasksAcceptPushRoutes = defineRoutes({
   },
 
   "/api/tasks/:id/close-local": {
+    delegation: workspaceOperation("task"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Close a locally accepted task without PR actions.",
@@ -217,6 +223,7 @@ export const tasksAcceptPushRoutes = defineRoutes({
   },
 
   "/api/tasks/:id/manual-complete": {
+    delegation: workspaceOperation("task"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Promote a stopped or failed task to completed.",

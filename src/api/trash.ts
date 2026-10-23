@@ -7,6 +7,7 @@ import { chatManager } from "../core/chat-manager";
 import { isDomainError } from "../domain/domain-error";
 import { domainErrorResponse, errorResponse, successResponse } from "./helpers";
 import { parseAndValidate } from "./validation";
+import { workspaceOperation } from "./workspace-delegation";
 
 const log = createLogger("api:trash");
 
@@ -34,7 +35,11 @@ export const trashRoutes = defineRoutes({
     tags: ["trash"],
     cliPath: "trash",
     operations: {
-      GET: { querySchema: ChatTrashQuerySchema, responseSchema: ChatTrashPageSchema, automation: { policy: "read" } },
+      GET: {
+        delegation: { ...workspaceOperation("chat", { collection: true }), action: "trash-list" },
+        partialResults: { header: "X-Clanky-Partial" },
+        querySchema: ChatTrashQuerySchema, responseSchema: ChatTrashPageSchema, automation: { policy: "read" },
+      },
       DELETE: {
         requestSchema: PurgeChatTrashRequestSchema,
         responseSchema: EmptyChatTrashResponseSchema,
@@ -72,6 +77,7 @@ export const trashRoutes = defineRoutes({
     },
   },
   "/api/trash/:id/restore": {
+    delegation: workspaceOperation("chat"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Restore a chat without automatically resuming its work.",
@@ -88,6 +94,7 @@ export const trashRoutes = defineRoutes({
     },
   },
   "/api/trash/:id": {
+    delegation: workspaceOperation("chat"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Permanently delete one chat from Trash.",

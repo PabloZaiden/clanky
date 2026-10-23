@@ -44,7 +44,7 @@ import type {
   CreateExecutionHostChatOptions,
 } from "./chat-service-contracts";
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
-import { requireCurrentUser, runWithCurrentUser } from "../context/user-context";
+import { requireExecutionOwnerUser, runWithExecutionOwner } from "../context/user-context";
 import { executionHostService } from "./execution-host-service";
 import {
   EXECUTION_HOST_CAPABILITY_VERSIONS,
@@ -661,7 +661,7 @@ export class ChatLifecycleService implements ChatLifecyclePort {
     chat: Chat,
     credentialToken?: string | null,
   ): Promise<DeleteTaskChatResult> {
-    const user = requireCurrentUser();
+    const user = requireExecutionOwnerUser();
     this.conversation.closeActiveStream(chat.config.id);
     const deleted = await this.state.deletePersistedChat(chat.config.id);
     if (!deleted) {
@@ -681,7 +681,7 @@ export class ChatLifecycleService implements ChatLifecyclePort {
     credentialToken?: string | null,
   ): Promise<boolean> {
     // The persisted chat is already deleted; remote cleanup must not delay the HTTP response.
-    return runWithCurrentUser(user, async () => {
+    return runWithExecutionOwner(user, async () => {
       return await this.cleanupChatRuntime(chat, {
         continueOnError: true,
         credentialToken,

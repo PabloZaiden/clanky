@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChatTrashView } from "./chat-trash-view";
+import { WorkspaceConnectionsNotice } from "../app-settings/workspace-collaboration-content";
+import { decodeCollaborationResourceReference } from "@/shared/collaboration-reference";
 import type { ChatTrashActions } from "./use-chat-trash-actions";
 import {
   ConfirmModal,
@@ -734,6 +736,10 @@ function renderMainContent(props: ShellMainContentProps) {
   }
 
   if (route.view === "workspace-settings") {
+    const workspaceId = getRouteString(route, "workspaceId");
+    if (workspaceId && decodeCollaborationResourceReference(workspaceId)) {
+      return <ErrorState title="Workspace settings are managed on its controller" />;
+    }
     if (!selectedWorkspace) {
       if (workspacesLoading) {
         return <LoadingState title="Loading workspace" />;
@@ -965,6 +971,7 @@ export function AppRouteContent(props: ShellMainContentProps) {
   if (props.route.view === "trash") {
     return (
       <Page>
+        <WorkspaceConnectionsNotice />
         <ChatTrashView
           showPrivateItems={props.showPrivateItems}
           selectedChatId={getRouteString(props.route, "chatId")}
@@ -976,6 +983,7 @@ export function AppRouteContent(props: ShellMainContentProps) {
   const fullViewport = usesFullViewportLayout(props);
   return (
     <Page layout={fullViewport ? "full" : "padded"}>
+      <WorkspaceConnectionsNotice />
       {props.shellErrors.length > 0 && (
         <ErrorState
           title="Some app data could not be loaded"

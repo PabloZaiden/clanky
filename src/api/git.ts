@@ -1,4 +1,5 @@
 import { defineRoutes } from "@pablozaiden/webapp/server";
+import { workspaceOperation } from "./workspace-delegation";
 import { GitRemoteStatusQuerySchema, WorkspaceQuerySchema } from "./route-schemas";
 /**
  * Git API endpoints for Clanky Tasks Management System.
@@ -171,6 +172,7 @@ export const gitRoutes = defineRoutes({
    * @returns BranchesResponse with currentBranch and branches array
    */
   "/api/git/branches": {
+    delegation: workspaceOperation("workspace"),
     auth: "user",
     sameOrigin: "mutations",
     description: "List local and cached remote-tracking git branches for a workspace.",
@@ -223,6 +225,7 @@ export const gitRoutes = defineRoutes({
    * @returns DefaultBranchResponse with defaultBranch
    */
   "/api/git/default-branch": {
+    delegation: workspaceOperation("workspace"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Detect the default git branch for a workspace.",
@@ -257,6 +260,7 @@ export const gitRoutes = defineRoutes({
   },
 
   "/api/git/remote-status": {
+    delegation: workspaceOperation("workspace"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Check whether a git remote exists for a workspace.",
@@ -292,6 +296,7 @@ export const gitRoutes = defineRoutes({
   },
 
   "/api/git/github-repository-url": {
+    delegation: workspaceOperation("workspace"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Resolve the GitHub repository URL for a workspace.",
@@ -331,6 +336,7 @@ export const gitRoutes = defineRoutes({
   },
 
   "/api/git/github-issues": {
+    delegation: workspaceOperation("workspace"),
     auth: "user",
     sameOrigin: "mutations",
     description: "List open GitHub issues for a workspace repository.",

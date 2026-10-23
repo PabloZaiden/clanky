@@ -3,7 +3,7 @@
  */
 import type { ConversationMessage, Page, ResourceReadOptions } from "@/contracts/schemas/resource-read";
 import type { PersistedMessage } from "@/shared";
-import { requireCurrentUserId } from "../context/user-context";
+import { requireExecutionOwnerUserId } from "../context/user-context";
 import { DomainError } from "../domain/domain-error";
 import { getConversationMessageWindowForUser, getConversationMessageIdsForUser, getConversationAdmissionsForUser, getTranscriptMetaForUser } from "../persistence/transcripts/sql-store";
 import type { TranscriptResource } from "../persistence/transcripts/types";
@@ -24,7 +24,7 @@ function conversationPart(message: PersistedMessage, offset: number, admission: 
 export function readConversationPage(input: {
   resource: TranscriptResource; id: string; scope: string; options: ResourceReadOptions;
 }): Page<ConversationMessage> | null {
-  const userId = requireCurrentUserId();
+  const userId = requireExecutionOwnerUserId();
   const meta = getTranscriptMetaForUser(input.resource, input.id, userId);
   if (!meta) return null;
   const admissions = getConversationAdmissionsForUser(input.resource, input.id, userId);

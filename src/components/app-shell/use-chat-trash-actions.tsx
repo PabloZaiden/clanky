@@ -3,6 +3,7 @@ import { ConfirmModal, useToast, type ActionMenuItem, type WebAppRoute } from "@
 import type { ChatTrashPage, ChatTrashResult, TrashedChat } from "@/contracts/schemas/chat-trash";
 import { apiRequest } from "../../lib/api-client";
 import { getStoredSshCredentialToken } from "../../lib/ssh-browser-credentials";
+import { decodeCollaborationResourceReference } from "@/shared/collaboration-reference";
 
 async function cleanupCredentials(target: TrashedChat | "all"): Promise<Record<string, string>> {
   const serverIds = new Set<string>(target === "all" ? [] : target.credentialServerIds);
@@ -15,6 +16,7 @@ async function cleanupCredentials(target: TrashedChat | "all"): Promise<Record<s
         action: "Resolve Trash cleanup credentials", fallbackMessage: "Failed to load Trash cleanup targets",
       });
       for (const chat of page.items) {
+        if (decodeCollaborationResourceReference(chat.id)) continue;
         for (const serverId of chat.credentialServerIds) serverIds.add(serverId);
       }
       cursor = page.nextCursor;
@@ -71,7 +73,7 @@ export function useChatTrashActions(
       if (all && result.failedCount > 0) {
         toast.error(`Deleted ${result.deletedCount} chats. Some chats could not be cleaned up and remain in Trash.`);
       } else {
-        toast.success(all ? "Trash emptied" : "Chat permanently deleted");
+        toast.success(all ? "Local Trash emptied" : "Chat permanently deleted");
       }
     } catch (error) {
       toast.error(String(error));
@@ -85,7 +87,7 @@ export function useChatTrashActions(
     { id: "delete-permanently", label: "Delete permanently", destructive: true, disabled: pending, onAction: () => setTarget(chat) },
   ], [pending, restore]);
   const emptyActions = useMemo<ActionMenuItem[]>(() => [{
-    id: "empty-trash", label: "Empty Trash", destructive: true, disabled: pending,
+    id: "empty-trash", label: "Empty local Trash", destructive: true, disabled: pending,
     onAction: () => setTarget("all"),
   }], [pending]);
 
@@ -98,11 +100,11 @@ export function useChatTrashActions(
         isOpen={target !== null}
         onClose={() => { if (!pending) setTarget(null); }}
         onConfirm={confirmDelete}
-        title={target === "all" ? "Empty Trash?" : "Delete chat permanently?"}
+        title={target === "all" ? "Empty local Trash?" : "Delete chat permanently?"}
         message={target === "all"
-          ? "Permanently delete all chats in your Trash, including hidden private chats, and their managed worktrees? This cannot be undone."
+          ? "Permanently delete all chats owned by this instance, including hidden private chats, and their managed worktrees? Shared chats on other controllers are not deleted. This cannot be undone."
           : `Permanently delete "${target?.name ?? "this chat"}" and its managed worktree? This cannot be undone.`}
-        confirmLabel={target === "all" ? "Empty Trash" : "Delete permanently"}
+        confirmLabel={target === "all" ? "Empty local Trash" : "Delete permanently"}
         loading={pending}
         variant="danger"
       />

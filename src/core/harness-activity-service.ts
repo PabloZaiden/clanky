@@ -6,7 +6,7 @@ import type { Backend } from "../backends/types";
 import type { EventStream } from "../utils/event-stream";
 import type { HarnessEvent } from "@/shared/harness-events";
 import type { HarnessActivitySnapshot, HarnessConversationBinding, HarnessConversationState } from "@/shared/harness-control";
-import { requireCurrentUser, runWithCurrentUser } from "../context/user-context";
+import { requireExecutionOwnerUser, runWithExecutionOwner } from "../context/user-context";
 import { mergeHarnessProjection, type HarnessContext } from "../persistence/harness-state";
 import { harnessEventEmitter } from "./event-emitter";
 import { HarnessError } from "../backends/harness-errors";
@@ -45,7 +45,7 @@ export class HarnessActivityService {
 
   private async observeCurrent(context: HarnessContext, binding: HarnessConversationBinding, backend: Observation["backend"], onEvent?: Observation["onEvent"]): Promise<void> {
     if (backend.harness.capabilities.activity === "unavailable") return;
-    const user = requireCurrentUser();
+    const user = requireExecutionOwnerUser();
     if (binding.ownerId !== user.id || binding.contextId !== context.id || binding.adapter !== backend.harness.capabilities.adapter) {
       throw new HarnessError("harness_session_not_owned", "Activity observation requires the current owned conversation.");
     }
@@ -59,8 +59,8 @@ export class HarnessActivityService {
       context, binding, backend, stream, stopped: false, loop: Promise.resolve(),
       failures: 0, nextRefreshAt: 0,
       usage: new HarnessUsageObserver({ context, binding, control: backend.harness }),
-      onEvent: onEvent ? (event) => runWithCurrentUser(user, () => onEvent(event)) : undefined,
-      publish: (projection) => runWithCurrentUser(user, () => {
+      onEvent: onEvent ? (event) => runWithExecutionOwner(user, () => onEvent(event)) : undefined,
+      publish: (projection) => runWithExecutionOwner(user, () => {
         const saved = mergeHarnessProjection(context, binding, projection);
         if (saved) harnessEventEmitter.emit({ type: "harness.changed", context }, { userId: user.id });
         return saved;
@@ -68,7 +68,7 @@ export class HarnessActivityService {
     };
     this.observations.set(key, observation);
     try {
-      const saved = runWithCurrentUser(user, () => mergeHarnessProjection(context, binding, { capabilities: backend.harness.capabilities }));
+      const saved = runWithExecutionOwner(user, () => mergeHarnessProjection(context, binding, { capabilities: backend.harness.capabilities }));
       if (!saved) throw new HarnessError("harness_session_not_owned", "The activity conversation is not persisted.");
       // The owned loop has its own visible failure path and remains alive after prompt completion.
       observation.loop = this.consume(observation).catch((error) => {
@@ -141,7 +141,7 @@ export class HarnessActivityService {
   }
 
   private assertOwned(context: HarnessContext, binding: HarnessConversationBinding, backend: Pick<Backend, "harness">): void {
-    if (binding.ownerId !== requireCurrentUser().id || binding.contextId !== context.id || binding.adapter !== backend.harness.capabilities.adapter) {
+    if (binding.ownerId !== requireExecutionOwnerUser().id || binding.contextId !== context.id || binding.adapter !== backend.harness.capabilities.adapter) {
       throw new HarnessError("harness_session_not_owned", "Activity control requires the current owned conversation.");
     }
   }

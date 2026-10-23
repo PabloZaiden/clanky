@@ -12,6 +12,7 @@ import { domainErrorResponse, errorResponse } from "./helpers";
 import { parseAndValidate } from "./validation";
 import { CreateTerminalSessionRequestSchema, UpdateTerminalSessionRequestSchema } from "@/contracts/schemas";
 import { WorkspaceFilterQuerySchema } from "./route-schemas";
+import { workspaceOperation } from "./workspace-delegation";
 
 const log = createLogger("api:terminal-sessions");
 
@@ -28,6 +29,8 @@ function mapTerminalSessionError(error: unknown): Response {
 
 export const terminalSessionsRoutes = defineRoutes({
   "/api/terminal-sessions": {
+    delegation: workspaceOperation("terminal", { collection: true }),
+    partialResults: { header: "X-Clanky-Partial" },
     auth: "user",
     sameOrigin: "mutations",
     description: "Create a workspace terminal session.",
@@ -74,6 +77,7 @@ export const terminalSessionsRoutes = defineRoutes({
   },
 
   "/api/terminal-sessions/:id": {
+    delegation: workspaceOperation("terminal"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Update or delete a workspace terminal session.",

@@ -10,6 +10,8 @@ import {
 } from "@/shared/mesh";
 import {
   MESH_RELAY_DESCRIPTOR_PATH,
+  MESH_RELAY_WORKSPACE_CLIENT_HEADER,
+  MESH_RELAY_WORKSPACE_CLIENT_VERSION,
   normalizeMeshRelayOrigin,
   type MeshWellKnownDescriptor,
 } from "@/shared/mesh-relay";
@@ -108,6 +110,7 @@ export async function discoverMeshEnrollmentTarget(
     fetchFn?: typeof fetch;
     timeoutMs?: number;
     maxBytes?: number;
+    workspaceClient?: boolean;
   } = {},
 ): Promise<{
   target: string;
@@ -130,6 +133,9 @@ export async function discoverMeshEnrollmentTarget(
         headers: {
           accept: "application/json",
           [MESH_PROTOCOL_VERSIONS_HEADER]: serializeMeshProtocolVersions(meshTransportProtocolVersions(normalizedTarget)),
+          ...(options.workspaceClient ? {
+            [MESH_RELAY_WORKSPACE_CLIENT_HEADER]: String(MESH_RELAY_WORKSPACE_CLIENT_VERSION),
+          } : {}),
         },
         signal: controller.signal,
         redirect: "error",

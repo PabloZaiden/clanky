@@ -6,7 +6,8 @@ import type { Chat, ChatConfig, ChatSource, ChatState } from "@/shared";
 import type { PersistedMessage } from "@/shared/task";
 import { DEFAULT_CHAT_CONFIG } from "@/shared/chat";
 import { createLogger } from "@pablozaiden/webapp/server";
-import { requirePersistenceUserId } from "../ownership";
+import { requireResourcePersistenceUserId } from "../ownership";
+import { collaborationCreatorFromRow } from "../collaboration-authorship";
 import { parseStoredHarnessBinding, parseStoredHarnessState } from "../harness-binding";
 import { parseStoredTokenUsage } from "../harness-usage";
 import {
@@ -180,11 +181,13 @@ export function chatStateToRow(state: ChatState, options: {
 
 export function chatToRow(chat: Chat): Record<string, unknown> {
   const { config, state } = chat;
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId("chat", chat.config.id, chat.config.workspaceId ?? null);
+  if (config.taskId) requireResourcePersistenceUserId("task", config.taskId);
   const source = config.source ?? {
     kind: "workspace" as const,
     workspaceId: config.workspaceId,
   };
+  requireResourcePersistenceUserId("chat", config.id, source.kind === "workspace" ? source.workspaceId : null);
   const executionHostBinding = source.kind === "execution_host"
     ? source.executionHost
     : config.executionHostBinding;
@@ -226,6 +229,7 @@ export function rowToChat(row: Record<string, unknown>): Chat {
   const source = rowToChatSource(row, rowId);
   const config: ChatConfig = {
     id: requireChatString(row, "id", rowId),
+    creator: collaborationCreatorFromRow(row),
     name: requireChatString(row, "name", rowId),
     ...(source.kind === "workspace" ? { workspaceId: source.workspaceId } : {}),
     source,

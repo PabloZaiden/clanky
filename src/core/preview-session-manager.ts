@@ -43,7 +43,7 @@ import { executionHostService } from "./execution-host-service";
 import { waitForProcessExit, waitForProcessTcpListener } from "./process-lifecycle";
 import { PREVIEW_RESPONSE_CHUNK_BYTES, PREVIEW_RESPONSE_WINDOW_BYTES } from "@/shared/preview";
 import { SSH_CONNECTION_TIMEOUT_MS } from "./ssh-reliability-policy";
-import { requireCurrentUser, runWithCurrentUser } from "../context/user-context";
+import { requireCurrentUser, requireExecutionOwnerUser, runWithExecutionOwner } from "../context/user-context";
 import { CodePreviewHelloSchema, PreviewUpstreamOptionsSchema } from "../contracts/schemas/preview";
 import { resolveCodePreviewTarget } from "./code-preview-target";
 import { startCodeServer, waitForCodeEditor, type CodeServer } from "./code-server";
@@ -327,7 +327,7 @@ export class PreviewSessionManager {
   ) {}
 
   async initialize(): Promise<void> {
-    if (this.initializedUserIds.has(requireCurrentUser().id)) return;
+    if (this.initializedUserIds.has(requireExecutionOwnerUser().id)) return;
     await this.reconcilePreviewResources();
   }
 
@@ -337,7 +337,7 @@ export class PreviewSessionManager {
   }
 
   private async reconcilePreviewResources(): Promise<void> {
-    const user = requireCurrentUser();
+    const user = requireExecutionOwnerUser();
     const existing = this.initializingByUserId.get(user.id);
     if (existing) {
       await existing;
@@ -436,7 +436,7 @@ export class PreviewSessionManager {
         const id = crypto.randomUUID();
         const controller = new AbortController();
         const completion = Promise.withResolvers<void>();
-        this.registering.set(id, { userId: requireCurrentUser().id, controller, completion: completion.promise });
+        this.registering.set(id, { userId: requireExecutionOwnerUser().id, controller, completion: completion.promise });
         try {
           return await this.registerResolvedPreview({
             id, options, target: currentTarget,
@@ -573,7 +573,7 @@ export class PreviewSessionManager {
         codeServer,
         requests: new Map(),
         localOrigin: derivePreviewLocalOrigin(options.localUrl, options.localHost, options.localPort),
-        user: requireCurrentUser(),
+        user: requireExecutionOwnerUser(),
         targetBaseUrl,
         targetOrigin: new URL(targetBaseUrl).origin,
         applicationOrigin: applicationUrl.origin,
@@ -698,12 +698,12 @@ export class PreviewSessionManager {
     await this.initialize();
     const registering = this.registering.get(id);
     if (registering) {
-      if (registering.userId !== requireCurrentUser().id) return false;
+      if (registering.userId !== requireExecutionOwnerUser().id) return false;
       registering.controller.abort();
       await registering.completion;
     }
     const runtime = this.runtimes.get(id);
-    if (runtime && runtime.user.id !== requireCurrentUser().id) return false;
+    if (runtime && runtime.user.id !== requireExecutionOwnerUser().id) return false;
     if (!await getPreviewSession(id)) return registering !== undefined;
     for (const request of runtime?.requests.values() ?? []) request.controller.abort();
     return await this.closePreviewOnce(id, reason, closeCode) || registering !== undefined;
@@ -779,7 +779,7 @@ export class PreviewSessionManager {
         ? [result.reason] : [],
     );
     const closed = await Promise.allSettled([...this.runtimes.entries()].map(async ([id, runtime]) => {
-      await runWithCurrentUser(runtime.user, () => this.closePreview(id, "Clanky server stopped"));
+      await runWithExecutionOwner(runtime.user, () => this.closePreview(id, "Clanky server stopped"));
     }));
     failures.push(...closed.flatMap((result) => result.status === "rejected" ? [result.reason] : []));
     if (failures.length) {
@@ -914,7 +914,8 @@ export class PreviewSessionManager {
       return;
     }
     this.bridgeSockets.delete(previewId);
-    await runWithCurrentUser(ws.data.user, () => this.closePreview(previewId, reason));
+    const owner = this.runtimes.get(previewId)?.user;
+    if (owner) await runWithExecutionOwner(owner, () => this.closePreview(previewId, reason));
     ws.data.previewBridgeSessionId = undefined;
   }
 
@@ -977,7 +978,7 @@ export class PreviewSessionManager {
     controller: AbortController,
   ): Promise<void> {
     try {
-      const user = requireCurrentUser();
+      const user = requireExecutionOwnerUser();
       const { preview, codeServer } = await this.registerCliPreview(message, controller.signal);
       ws.data.previewBridgeSessionId = preview.config.id;
       this.bridgeSockets.set(preview.config.id, ws);
@@ -989,7 +990,7 @@ export class PreviewSessionManager {
         // The bridge owns the long-lived process; its exit terminates the preview.
         void codeServer.exited.then(async () => {
           if (!this.runtimes.has(preview.config.id) || this.closing.has(preview.config.id)) return;
-          await runWithCurrentUser(user, () =>
+          await runWithExecutionOwner(user, () =>
             this.closePreview(preview.config.id, "VS Code stopped", 1011),
           );
         }).catch((error: unknown) => {
@@ -1126,8 +1127,12 @@ export class PreviewSessionManager {
       const upstream = createUpstreamWebSocket(targetUrl, buildUpstreamHeaders(message.headers, runtime));
       const upstreamState: UpstreamWebSocketState = { socket: upstream, queuedMessages: [], queuedBytes: 0 };
       sockets.set(message.streamId, upstreamState);
+      const isActive = () => this.getOwnedRuntime(ws, previewId) === runtime
+        && !this.closing.has(previewId)
+        && this.upstreamSockets.get(previewId)?.get(message.streamId) === upstreamState;
 
       upstream.addEventListener("open", () => {
+        if (!isActive()) return;
         for (const queuedMessage of upstreamState.queuedMessages.splice(0)) {
           upstream.send(queuedMessage);
         }
@@ -1135,6 +1140,7 @@ export class PreviewSessionManager {
       });
       upstream.binaryType = "arraybuffer";
       upstream.addEventListener("message", (event: MessageEvent<string | ArrayBuffer>) => {
+        if (!isActive()) return;
         const body = typeof event.data === "string" ? new TextEncoder().encode(event.data) : new Uint8Array(event.data);
         ws.send(JSON.stringify({
           type: "websocket.message",
@@ -1144,6 +1150,7 @@ export class PreviewSessionManager {
         } satisfies PreviewBridgeWebSocketMessage));
       });
       upstream.addEventListener("close", (event: CloseEvent) => {
+        if (!isActive()) return;
         sockets.delete(message.streamId);
         ws.send(JSON.stringify({
           type: "websocket.close",
@@ -1153,6 +1160,7 @@ export class PreviewSessionManager {
         } satisfies PreviewBridgeWebSocketCloseMessage));
       });
       upstream.addEventListener("error", () => {
+        if (!isActive()) return;
         sockets.delete(message.streamId);
         ws.send(JSON.stringify({ type: "stream.error", streamId: message.streamId, error: "Preview upstream WebSocket failed" }));
       });
@@ -1219,7 +1227,6 @@ export class PreviewSessionManager {
     if (
       !runtime
       || !user
-      || runtime.user.id !== user.id
       || (
         ws.data.previewBridgeUserId
         && ws.data.previewBridgeUserId !== user.id
@@ -1245,12 +1252,12 @@ export class PreviewSessionManager {
     if (!sockets) {
       return;
     }
+    this.upstreamSockets.delete(previewId);
     for (const socket of sockets.values()) {
       if (socket.socket.readyState < WS_READY_STATE_CLOSING) {
         socket.socket.close(1000, "Preview bridge closed");
       }
     }
-    this.upstreamSockets.delete(previewId);
   }
 
   private async reconcileStalePreviews(): Promise<void> {

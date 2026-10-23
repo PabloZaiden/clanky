@@ -5,7 +5,7 @@
 
 import { getDatabase } from "./database";
 import { createLogger } from "@pablozaiden/webapp/server";
-import { requirePersistenceUserId } from "./ownership";
+import { requireResourcePersistenceUserId } from "./ownership";
 
 const log = createLogger("persistence:review-comments");
 
@@ -22,7 +22,7 @@ export function insertReviewComment(comment: {
 }): void {
   log.debug("Inserting review comment", { id: comment.id, taskId: comment.taskId, reviewCycle: comment.reviewCycle });
   const db = getDatabase();
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId("task", comment.taskId);
   db.run(
     `INSERT INTO review_comments (id, user_id, task_id, review_cycle, comment_text, created_at, status)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -59,7 +59,7 @@ export function getReviewComments(taskId: string): Array<{
      WHERE task_id = ? 
        AND user_id = ?
      ORDER BY review_cycle DESC, created_at ASC`
-  ).all(taskId, requirePersistenceUserId()) as Array<{
+  ).all(taskId, requireResourcePersistenceUserId("task", taskId)) as Array<{
     id: string;
     task_id: string;
     review_cycle: number;
@@ -80,7 +80,7 @@ export function getReviewComments(taskId: string): Array<{
 export function markCommentsAsAddressed(taskId: string, reviewCycle: number, addressedAt: string): void {
   log.debug("Marking comments as addressed", { taskId, reviewCycle });
   const db = getDatabase();
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId("task", taskId);
   db.run(
     `UPDATE review_comments 
      SET status = 'addressed', addressed_at = ?

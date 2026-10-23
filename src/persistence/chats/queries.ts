@@ -7,7 +7,7 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import { getDatabase } from "../database";
 import { rowToChat } from "./helpers";
 import { CHAT_METADATA_COLUMNS } from "./crud";
-import { requirePersistenceUserId } from "../ownership";
+import { requireResourcePersistenceUserId, workspacePersistenceParameters } from "../ownership";
 import { chatTranscriptStore } from "../transcripts/chat-store";
 import { parseStoredHarnessState } from "../harness-binding";
 import { closeOpenQuestions } from "@/shared/harness-questions";
@@ -37,7 +37,7 @@ const STALE_CHAT_STATUSES: ChatStatus[] = [
 
 export async function getActiveChatByDirectory(directory: string, workspaceId: string): Promise<Chat | null> {
   const placeholders = ACTIVE_CHAT_STATUSES.map(() => "?").join(", ");
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId("chat", undefined, workspaceId);
   const row = getDatabase().prepare(`
     SELECT ${CHAT_METADATA_COLUMNS} FROM chats
     WHERE directory = ? AND workspace_id = ? AND user_id = ? AND deleted_at IS NULL AND scope = 'workspace' AND status IN (${placeholders})
@@ -62,15 +62,15 @@ export function isStaleChatStatus(status: ChatStatus): boolean {
 function resetStale(chatId?: string): number {
   const now = new Date().toISOString();
   const placeholders = STALE_CHAT_STATUSES.map(() => "?").join(", ");
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId("chat", chatId);
   const db = getDatabase();
   invalidateChatMetadataForUser(db, userId, (chat) =>
     (!chatId || chat.config.id === chatId) && isStaleChatStatus(chat.state.status));
   return db.transaction(() => {
-    const rows = db.query<{ id: string; harness_state_json: string | null }, (string)[]>(`
-      SELECT id, harness_state_json FROM chats WHERE user_id = ? AND deleted_at IS NULL AND status IN (${placeholders})
+    const rows = db.query<{ id: string; harness_state_json: string | null }, (string | null)[]>(`
+      SELECT id, harness_state_json FROM chats WHERE user_id = ? AND (? IS NULL OR workspace_id = ?) AND deleted_at IS NULL AND status IN (${placeholders})
       ${chatId ? "AND id = ?" : ""}
-    `).all(userId, ...STALE_CHAT_STATUSES, ...(chatId ? [chatId] : []));
+    `).all(userId, ...workspacePersistenceParameters(), ...STALE_CHAT_STATUSES, ...(chatId ? [chatId] : []));
     for (const row of rows) {
       const harness = parseStoredHarnessState(row.harness_state_json, row.id);
       if (harness?.questions?.length) {
@@ -101,8 +101,8 @@ function resetStale(chatId?: string): number {
         pending_permission_requests = '[]',
         connection_status = 'disconnected',
         startup_stage = NULL
-    WHERE user_id = ? AND deleted_at IS NULL AND status IN (${placeholders}) ${chatId ? "AND id = ?" : ""}
-  `).run(STALE_CHAT_RESET_MESSAGE, now, now, userId, ...STALE_CHAT_STATUSES, ...(chatId ? [chatId] : []));
+    WHERE user_id = ? AND (? IS NULL OR workspace_id = ?) AND deleted_at IS NULL AND status IN (${placeholders}) ${chatId ? "AND id = ?" : ""}
+  `).run(STALE_CHAT_RESET_MESSAGE, now, now, userId, ...workspacePersistenceParameters(), ...STALE_CHAT_STATUSES, ...(chatId ? [chatId] : []));
     return result.changes;
   })();
 }
@@ -116,12 +116,12 @@ export async function resetStaleChat(chatId: string): Promise<boolean> {
 export async function resetStaleChats(): Promise<number> {
   const resetCount = resetStale();
   const db = getDatabase();
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId("chat");
   invalidateChatMetadataForUser(db, userId);
   db.transaction(() => {
-    const rows = db.query<{ id: string; harness_state_json: string | null }, [string]>(
-      "SELECT id, harness_state_json FROM chats WHERE user_id = ? AND deleted_at IS NULL",
-    ).all(userId);
+    const rows = db.query<{ id: string; harness_state_json: string | null }, (string | null)[]>(
+      "SELECT id, harness_state_json FROM chats WHERE user_id = ? AND (? IS NULL OR workspace_id = ?) AND deleted_at IS NULL",
+    ).all(userId, ...workspacePersistenceParameters());
     for (const row of rows) {
       const harness = parseStoredHarnessState(row.harness_state_json, row.id);
       if (harness?.activity?.observation !== "available") continue;
@@ -131,8 +131,8 @@ export async function resetStaleChats(): Promise<number> {
       );
     }
     db.run(
-      "UPDATE chats SET connection_status = 'disconnected', state_revision = state_revision + 1 WHERE user_id = ? AND deleted_at IS NULL AND connection_status IN ('connected', 'connecting')",
-      [userId],
+      "UPDATE chats SET connection_status = 'disconnected', state_revision = state_revision + 1 WHERE user_id = ? AND (? IS NULL OR workspace_id = ?) AND deleted_at IS NULL AND connection_status IN ('connected', 'connecting')",
+      [userId, ...workspacePersistenceParameters()],
     );
   })();
   return resetCount;

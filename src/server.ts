@@ -106,6 +106,12 @@ import { meshHealthService } from "./core/mesh-health-service";
 import { ClankyOperationService } from "./core/clanky-operation-service";
 import { configureLiveVoiceApi } from "./api/live-voice";
 import { createVoiceOperationAuthority } from "./server/voice-operation-adapter";
+import { workspaceClientController } from "./core/workspace-client-controller";
+import { workspaceConnections } from "./core/workspace-connections";
+import { configureWorkspaceClientGateway } from "./api/workspace-client-gateway";
+import { workspaceClientSockets } from "./api/workspace-client-sockets";
+import { remoteTerminalProxy } from "./api/workspace-socket-proxy";
+import { workspaceRealtimeSources } from "./api/workspace-realtime-source";
 
 const PREVIEW_BRIDGE_IDLE_TIMEOUT_SECONDS = 0;
 const WORKSPACE_WORKER_RECONCILE_INTERVAL_MS = 30_000;
@@ -436,6 +442,16 @@ export const routes = defineRoutes<ClankyRealtimeEvent>({
         return new Response("terminalSessionId is required", { status: 400 });
       }
       try {
+        const workspaceProxy = remoteTerminalProxy(terminalSessionId, user);
+        if (workspaceProxy) {
+          return authorizedRawWebSocketUpgrade(user.id, () => {
+            const upgraded = ctx.server?.upgrade(req, {
+              data: { webappSocketHandler: "clanky", terminalSessionId, terminalMode: true, workspaceProxy, user },
+            });
+            if (!upgraded) workspaceProxy.close();
+            return upgraded ? undefined : new Response("WebSocket upgrade failed", { status: 400 });
+          });
+        }
         const resolved = await runWithCurrentUser(
           user,
           async () => await resolveTerminal(terminalSessionId),
@@ -642,8 +658,10 @@ export async function getWebAppServer(
                   await previewSessionManager.retryPendingCleanup();
                 });
               },
+              openWorkspaceClientSocket: async (input) => await workspaceClientSockets.open(input),
             },
           );
+          await workspaceConnections.start();
           meshHealthService.scheduleRefreshAllWorkers("controller startup");
         }
       },
@@ -657,6 +675,10 @@ export async function getWebAppServer(
             errors.push(error);
           }
         };
+        await cleanup(() => workspaceConnections.stop());
+        await cleanup(() => workspaceRealtimeSources.stop());
+        await cleanup(() => workspaceClientSockets.stop());
+        workspaceClientController.stop();
         await cleanup(stopBackgroundWorkers);
         await cleanup(stopChatTrashMaintenance);
         await Promise.all([
@@ -694,6 +716,18 @@ export async function getWebAppServer(
   });
   if (!meshWorker) {
     const appServer = app;
+    configureWorkspaceClientGateway(appServer);
+    workspaceClientSockets.configure(appServer.realtime);
+    workspaceRealtimeSources.configure(appServer.realtime);
+    workspaceClientController.configure({
+      revokeTransports: async (event) => await workspaceClientSockets.revoke(event),
+      changed: (userId) => appServer.realtime.publishChanged("workspace-collaboration", { target: { userId } }),
+    });
+    workspaceConnections.configure({
+      changed: (userId) => appServer.realtime.publishChanged("workspace-connections", { target: { userId } }),
+      runtimeChanged: (runtime) => workspaceRealtimeSources.update(runtime),
+      runtimeStopped: (connectionId) => workspaceRealtimeSources.remove(connectionId),
+    });
     liveVoiceManager.configure(new ClankyOperationService(createRouteCatalog(routes)));
     configureLiveVoiceApi((req, ctx) => createVoiceOperationAuthority(appServer, req, ctx));
     registerClankyRealtimeBridge(app);

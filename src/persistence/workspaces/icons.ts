@@ -7,7 +7,7 @@ import type {
   WorkspaceIconMimeType,
 } from "@/shared/workspace";
 import { getDatabase } from "../database";
-import { requirePersistenceUserId } from "../ownership";
+import { requireResourcePersistenceUserId } from "../ownership";
 
 export interface StoredWorkspaceIcon extends WorkspaceIconMetadata {
   content: Uint8Array;
@@ -20,7 +20,7 @@ export async function getWorkspaceIcon(
     SELECT mime_type, content, updated_at
     FROM workspace_icons
     WHERE workspace_id = ? AND user_id = ?
-  `).get(workspaceId, requirePersistenceUserId()) as {
+  `).get(workspaceId, requireResourcePersistenceUserId("workspace", workspaceId, workspaceId)) as {
     mime_type: WorkspaceIconMimeType;
     content: Uint8Array;
     updated_at: string;
@@ -52,7 +52,7 @@ export async function saveWorkspaceIcon(
       updated_at = excluded.updated_at
   `).run(
     workspaceId,
-    requirePersistenceUserId(),
+    requireResourcePersistenceUserId("workspace", workspaceId, workspaceId),
     mimeType,
     content,
     updatedAt,
@@ -64,5 +64,5 @@ export async function deleteWorkspaceIcon(workspaceId: string): Promise<void> {
   getDatabase().prepare(`
     DELETE FROM workspace_icons
     WHERE workspace_id = ? AND user_id = ?
-  `).run(workspaceId, requirePersistenceUserId());
+  `).run(workspaceId, requireResourcePersistenceUserId("workspace", workspaceId, workspaceId));
 }

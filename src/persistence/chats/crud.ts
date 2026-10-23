@@ -6,7 +6,9 @@ import type { Chat, ChatStreamControlState } from "@/shared";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { getDatabase } from "../database";
 import { chatToRow, hasMessageContent, rowToChat, validateChatColumnNames } from "./helpers";
-import { requirePersistenceUserId } from "../ownership";
+import { requireResourcePersistenceUserId, workspacePersistenceParameters } from "../ownership";
+import { recordWorkspaceResourceCreation } from "../collaboration-creation";
+import { collaborationCreatorProjection } from "../collaboration-authorship";
 import { isSqliteUniqueConstraintError, uniqueConstraintError } from "../errors";
 import { replaceChatTranscriptEntriesForUserInTransaction } from "./transcript";
 import { chatTranscriptStore } from "../transcripts/chat-store";
@@ -22,6 +24,7 @@ const log = createLogger("persistence:chats");
 const STANDALONE_CHAT_CONDITION = "scope = 'workspace' AND task_id IS NULL AND deleted_at IS NULL";
 
 export const CHAT_METADATA_COLUMNS = [
+  collaborationCreatorProjection("chat"),
   "id",
   "name",
   "source_kind",
@@ -107,12 +110,15 @@ export async function saveChat(chat: Chat): Promise<void> {
   invalidateChatMetadata(db, userId, chat.config.id);
   try {
     const saved = db.transaction(() => {
+      const exists = db.query("SELECT 1 FROM chats WHERE id = ?").get(chat.config.id);
       db.prepare(`
         INSERT INTO chats (${columns.join(", ")})
         VALUES (${placeholders})
         ON CONFLICT(id) DO UPDATE SET ${updateClause}
         WHERE chats.user_id = excluded.user_id AND chats.deleted_at IS NULL
       `).run(...values);
+      if (!exists) recordWorkspaceResourceCreation({ kind: "chat", id: chat.config.id,
+        ownerUserId: userId, workspaceId: chat.config.workspaceId });
       if (!db.query("SELECT 1 FROM chats WHERE id = ? AND user_id = ? AND deleted_at IS NULL")
         .get(chat.config.id, userId)) {
         throw new Error(`Chat ${chat.config.id} is unavailable`);
@@ -124,6 +130,7 @@ export async function saveChat(chat: Chat): Promise<void> {
       if (!saved) throw new Error(`Failed to save chat ${chat.config.id}`);
       return rowToChat(saved);
     })();
+    chat.config.creator = saved.config.creator;
     chat.state.revision = saved.state.revision;
     cacheChatMetadata(db, userId, saved);
   } catch (error) {
@@ -143,7 +150,7 @@ export async function loadChat(chatId: string): Promise<Chat | null> {
   if (!chat) return null;
   const transcript = chatTranscriptStore.hydrateForUser(
     chatId,
-    requirePersistenceUserId(),
+    requireResourcePersistenceUserId("chat", chatId),
   );
   chat.state.messages = transcript.messages;
   chat.state.logs = transcript.logs;
@@ -157,26 +164,26 @@ export async function loadChatMetadata(chatId: string): Promise<Chat | null> {
 
 function loadMetadata(chatId: string): Chat | null {
   const db = getDatabase();
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId("chat", chatId);
   return readChatMetadata(db, userId, chatId, () => selectMetadata(chatId));
 }
 
 function selectMetadata(chatId: string): Chat | null {
   const row = getDatabase().query(`SELECT ${CHAT_METADATA_COLUMNS} FROM chats WHERE id = ? AND user_id = ? AND deleted_at IS NULL`)
-    .get(chatId, requirePersistenceUserId()) as Record<string, unknown> | null;
+    .get(chatId, requireResourcePersistenceUserId("chat", chatId)) as Record<string, unknown> | null;
   return row ? rowToChat(row) : null;
 }
 
 export function loadChatStreamControlState(chatId: string): ChatStreamControlState | null {
   return readChatStreamControlState(
-    getDatabase(), requirePersistenceUserId(), chatId, () => selectMetadata(chatId),
+    getDatabase(), requireResourcePersistenceUserId("chat", chatId), chatId, () => selectMetadata(chatId),
   );
 }
 
 export async function loadTaskChat(taskId: string): Promise<Chat | null> {
   const row = getDatabase()
     .prepare(`SELECT ${CHAT_METADATA_COLUMNS} FROM chats WHERE task_id = ? AND user_id = ? LIMIT 1`)
-    .get(taskId, requirePersistenceUserId()) as Record<string, unknown> | null;
+    .get(taskId, requireResourcePersistenceUserId("task", taskId)) as Record<string, unknown> | null;
 
   if (!row) {
     return null;
@@ -184,7 +191,7 @@ export async function loadTaskChat(taskId: string): Promise<Chat | null> {
   const chat = rowToChat(row);
   const transcript = chatTranscriptStore.hydrateForUser(
     chat.config.id,
-    requirePersistenceUserId(),
+    requireResourcePersistenceUserId("chat", chat.config.id),
   );
   chat.state.messages = transcript.messages;
   chat.state.logs = transcript.logs;
@@ -193,7 +200,7 @@ export async function loadTaskChat(taskId: string): Promise<Chat | null> {
 }
 
 export async function deleteChat(chatId: string): Promise<boolean> {
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId("chat", chatId);
   const db = getDatabase();
   invalidateChatMetadata(db, userId, chatId);
   const result = db.prepare("DELETE FROM chats WHERE id = ? AND user_id = ?").run(chatId, userId);
@@ -201,7 +208,7 @@ export async function deleteChat(chatId: string): Promise<boolean> {
 }
 
 export async function deleteChatsByTaskId(taskId: string): Promise<number> {
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId("task", taskId);
   const db = getDatabase();
   invalidateChatMetadataForUser(db, userId, (chat) => chat.config.taskId === taskId);
   const result = db.prepare("DELETE FROM chats WHERE task_id = ? AND user_id = ?").run(taskId, userId);
@@ -214,8 +221,8 @@ export async function listChats(): Promise<Chat[]> {
 
 export async function listChatSummaries(): Promise<Chat[]> {
   const rows = getDatabase()
-    .prepare(`SELECT ${CHAT_METADATA_COLUMNS} FROM chats WHERE ${STANDALONE_CHAT_CONDITION} AND user_id = ? ORDER BY created_at DESC`)
-    .all(requirePersistenceUserId()) as Record<string, unknown>[];
+    .prepare(`SELECT ${CHAT_METADATA_COLUMNS} FROM chats WHERE ${STANDALONE_CHAT_CONDITION} AND user_id = ? AND (? IS NULL OR workspace_id = ?) ORDER BY created_at DESC`)
+    .all(requireResourcePersistenceUserId("chat"), ...workspacePersistenceParameters()) as Record<string, unknown>[];
   return rows.map((row) => createChatListSnapshot(rowToChat(row)));
 }
 
@@ -226,7 +233,7 @@ export async function listChatsByWorkspace(workspaceId: string, options?: { incl
 export async function listChatSummariesByWorkspace(workspaceId: string, options: { includeTaskChats?: boolean } = {}): Promise<Chat[]> {
   const rows = getDatabase()
     .prepare(`SELECT ${CHAT_METADATA_COLUMNS} FROM chats WHERE workspace_id = ? AND deleted_at IS NULL AND (? = 1 OR ${STANDALONE_CHAT_CONDITION}) AND user_id = ? ORDER BY created_at DESC`)
-    .all(workspaceId, options.includeTaskChats ? 1 : 0, requirePersistenceUserId()) as Record<string, unknown>[];
+    .all(workspaceId, options.includeTaskChats ? 1 : 0, requireResourcePersistenceUserId("chat", undefined, workspaceId)) as Record<string, unknown>[];
   return rows.map((row) => createChatListSnapshot(rowToChat(row)));
 }
 
@@ -259,7 +266,7 @@ export async function getWorkspaceChatNameStats(
       suffixStart,
       suffixStart,
       workspaceId,
-      requirePersistenceUserId(),
+      requireResourcePersistenceUserId("chat", undefined, workspaceId),
     ) as { standalone_chat_count: number; max_generated_suffix: number } | null;
 
   return {
@@ -269,5 +276,5 @@ export async function getWorkspaceChatNameStats(
 }
 
 export async function chatExists(chatId: string): Promise<boolean> {
-  return getDatabase().prepare("SELECT 1 FROM chats WHERE id = ? AND user_id = ? AND deleted_at IS NULL LIMIT 1").get(chatId, requirePersistenceUserId()) !== null;
+  return getDatabase().prepare("SELECT 1 FROM chats WHERE id = ? AND user_id = ? AND deleted_at IS NULL LIMIT 1").get(chatId, requireResourcePersistenceUserId("chat", chatId)) !== null;
 }

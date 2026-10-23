@@ -14,7 +14,9 @@ import {
   rowToWorkspace,
   workspaceToRow,
 } from "./helpers";
-import { requirePersistenceUserId } from "../ownership";
+import { requireResourcePersistenceUserId, requireWorkspaceUpdateUserId } from "../ownership";
+import { getWorkspaceAccessAuthority } from "../../context/user-context";
+import { DomainError } from "../../domain/domain-error";
 import { invalidateChatMetadataForUser } from "../chats/metadata-cache";
 import {
   EXECUTION_HOST_JOIN_COLUMNS,
@@ -48,7 +50,7 @@ export async function createWorkspace(workspace: Workspace): Promise<void> {
 export async function getWorkspace(id: string): Promise<Workspace | null> {
   log.debug("Getting workspace", { id });
   const db = getDatabase();
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId("workspace", id, id);
   const stmt = db.prepare(`
     SELECT workspace.*, ${EXECUTION_HOST_JOIN_COLUMNS},
       ${PROVISIONING_HOST_JOIN_COLUMNS},
@@ -109,7 +111,7 @@ export async function updateWorkspace(
     hasWorktreesUpdate: updates.allowWorktrees !== undefined,
   });
   const db = getDatabase();
-  const userId = requirePersistenceUserId();
+  const userId = requireWorkspaceUpdateUserId(id, updates);
 
   const setClauses: string[] = [];
   const values: (string | number | null)[] = [];
@@ -201,7 +203,7 @@ export async function updateWorkspace(
 
 export async function countWorkspaceTasks(id: string): Promise<number> {
   const db = getDatabase();
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId("workspace", id, id);
   const taskCountStmt = db.prepare("SELECT COUNT(*) as count FROM tasks WHERE workspace_id = ? AND user_id = ?");
   const taskCountRow = taskCountStmt.get(id, userId) as { count: number };
   return taskCountRow.count;
@@ -214,6 +216,9 @@ export async function countWorkspaceTasks(id: string): Promise<number> {
  * @returns true if deleted, false if not found or has tasks
  */
 export async function deleteWorkspace(id: string): Promise<boolean> {
+  if (getWorkspaceAccessAuthority()?.guestId) {
+    throw new DomainError("collaboration_admin_forbidden", "Collaborators cannot delete workspaces.");
+  }
   log.debug("Deleting workspace", { id });
   const db = getDatabase();
 
@@ -230,7 +235,7 @@ export async function deleteWorkspace(id: string): Promise<boolean> {
     return false;
   }
 
-  const workspaceUserId = requirePersistenceUserId();
+  const workspaceUserId = requireResourcePersistenceUserId("workspace", id, id);
   invalidateChatMetadataForUser(db, workspaceUserId, (chat) => chat.config.workspaceId === id);
   db.run("DELETE FROM workspaces WHERE id = ? AND user_id = ?", [id, workspaceUserId]);
   log.info("Workspace deleted", { id, name: workspace.name });

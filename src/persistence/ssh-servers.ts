@@ -129,9 +129,9 @@ export async function saveSshServerConfig(config: SshServerConfig): Promise<void
   })();
 }
 
-export async function getSshServerConfig(id: string): Promise<SshServerConfig | null> {
+export async function getSshServerConfig(id: string, userId: string = requirePersistenceUserId()): Promise<SshServerConfig | null> {
   const db = getDatabase();
-  const row = db.query("SELECT * FROM ssh_servers WHERE id = ? AND user_id = ?").get(id, requirePersistenceUserId()) as Record<string, unknown> | null;
+  const row = db.query("SELECT * FROM ssh_servers WHERE id = ? AND user_id = ?").get(id, userId) as Record<string, unknown> | null;
   return row ? rowToSshServerConfig(row) : null;
 }
 
@@ -143,11 +143,11 @@ export async function getSshServer(id: string): Promise<SshServer | null> {
   return await hydrateSshServer(config);
 }
 
-export async function listSshServerConfigs(): Promise<SshServerConfig[]> {
+export async function listSshServerConfigs(userId: string = requirePersistenceUserId()): Promise<SshServerConfig[]> {
   const db = getDatabase();
   const rows = db.query(
     "SELECT * FROM ssh_servers WHERE user_id = ? ORDER BY name COLLATE NOCASE ASC, created_at ASC",
-  ).all(requirePersistenceUserId()) as Record<string, unknown>[];
+  ).all(userId) as Record<string, unknown>[];
   return rows.map(rowToSshServerConfig);
 }
 

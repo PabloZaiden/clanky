@@ -24,7 +24,7 @@ import {
   type MeshRelayConnectorOptions,
   type MeshRelayConnectorStatus,
 } from "./mesh-relay-connector";
-import { createMeshRelayInboundHandler } from "./mesh-relay-inbound";
+import { createMeshRelayInboundHandler, type MeshRelayInboundOptions } from "./mesh-relay-inbound";
 import { createMeshRelayPeerTransport } from "./mesh-relay-transport";
 
 const log = createLogger("core:mesh-relay-connector-manager");
@@ -40,6 +40,7 @@ export interface MeshRelayConnectionRequest {
   onStatusChange?(status: MeshRelayConnectorStatus): void;
   shouldMaintain?(): boolean | Promise<boolean>;
   refreshProtocol?(): Promise<MeshProtocolVersion>;
+  openWorkspaceClientSocket?: MeshRelayInboundOptions["openWorkspaceClientSocket"];
 }
 
 export interface MeshRelayConnectorManagerOptions {
@@ -159,7 +160,10 @@ export class MeshRelayConnectorManager {
   }
 
   /** Replace the relay's authorized worker snapshot on the live connection. */
-  async replaceAuthorization(workers: MeshRelayPeerIdentity[]): Promise<number> {
+  async replaceAuthorization(
+    workers: MeshRelayPeerIdentity[],
+    clients?: MeshRelayPeerIdentity[],
+  ): Promise<number> {
     const connector = this.connector;
     if (!connector || connector.status !== "connected") {
       throw new DomainError(
@@ -167,7 +171,7 @@ export class MeshRelayConnectorManager {
         "The Mesh relay connection is not authenticated.",
       );
     }
-    return await connector.replaceAuthorization(workers);
+    return await connector.replaceAuthorization(workers, clients);
   }
 
   /**
@@ -245,6 +249,7 @@ export class MeshRelayConnectorManager {
       const inbound = createMeshRelayInboundHandler({
         role: request.config.role,
         dispatch: request.dispatch,
+        openWorkspaceClientSocket: request.openWorkspaceClientSocket,
       });
       let resolveClosed: () => void = () => {};
       const closed = new Promise<void>((resolve) => {

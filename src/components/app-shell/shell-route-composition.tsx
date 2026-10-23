@@ -17,6 +17,7 @@ import type {
   Workspace,
 } from "@/shared";
 import { getExecutionHostSourceId } from "@/shared";
+import { decodeCollaborationResourceReference } from "@/shared/collaboration-reference";
 import { StandaloneChatTranscriptViewer } from "../StandaloneChatTranscriptViewer";
 import { AppRouteContent, type ShellMainContentProps } from "./shell-main-content";
 import { getRouteString } from "./route-fields";
@@ -114,6 +115,7 @@ function isMissingFromCollection<T>(
   collection: ShellRouteEntityCollection<T>,
   getId: (item: T) => string,
 ): boolean {
+  if (id && decodeCollaborationResourceReference(id)) return false;
   return Boolean(id)
     && !collection.loading
     && collection.error === null

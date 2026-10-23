@@ -18,6 +18,7 @@ import { getTranscriptTableConfig } from "../transcripts/table-config";
 import { getMessageAttachmentKind } from "@/shared/message-attachments";
 import { isPersistedMessage } from "../transcripts/codec";
 import { LEGACY_PROMPT_TEMPLATES } from "./legacy-prompt-templates";
+import { migrateCollaboration } from "../collaboration-schema";
 
 const log = createLogger("persistence:migrations");
 
@@ -859,6 +860,11 @@ export const migrations: Migration[] = [
           DELETE FROM harness_usage WHERE chat_id = OLD.id AND task_id IS NULL;
         END`);
     },
+  },
+  {
+    version: 86,
+    name: "add_workspace_collaboration",
+    up: migrateCollaboration,
   },
 ];
 

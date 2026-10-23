@@ -38,7 +38,34 @@ to list, restore, permanently delete or empty it. Retention is 30 days, checked
 at startup and daily. Tasks and their conversations are unchanged.
 See [Chat Trash](chat-trash.md) for pagination, cleanup and recovery semantics.
 
+## Shared workspace routing
+
+The normal API includes local resources and workspaces shared through a relay.
+Remote references are opaque `clanky.remote.v1.` strings in the existing ID
+fields; local IDs remain unchanged. Pass returned references unchanged to
+ordinary operations. Requests cannot mix local and remote resource references
+or references from different controllers.
+
+Unified collections preserve their existing body shape, including
+`{items,nextCursor}` for Trash. `X-Clanky-Partial: true` means an origin could
+not be included; do not interpret the result as a complete inventory. Concrete
+remote-resource failures never fall back to local content. `DELETE /api/trash`
+remains explicitly local; individual restore/delete operations route by chat ID.
+`clanky api` keeps its normal JSON envelope: `response` contains that body and
+`partial: true` marks an incomplete collection, with an unsuccessful exit code.
+
+Per-user pairing controls are under `/api/collaboration`: `relays`,
+`invitations`, `guests` and `connections`. Use normal route/schema discovery
+for their current contracts. These administrative controls are not delegated to
+workspace guests. `GET /api/collaboration/connections` reports relay transport,
+realtime and collection-operation failures separately.
+
+See [Workspace collaboration](workspace-collaboration.md) for invitation,
+permissions, revocation and recovery semantics.
+
 ## Authentication
+
+### Browser and CLI credentials
 
 Browser sessions use passkeys. CLI and automation clients can use device
 credentials or API keys. This document covers Clanky domain endpoints; the

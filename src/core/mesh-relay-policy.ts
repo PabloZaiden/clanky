@@ -6,7 +6,13 @@
  * cannot widen the Mesh surface that a node is willing to serve.
  */
 
-import type { MeshRelayPeerRole, MeshRelayStreamKind } from "@/shared/mesh-relay";
+import {
+  MESH_RELAY_CLIENT_ENROLLMENT_PATH,
+  MESH_RELAY_CLIENT_OPERATION_PATH,
+  MESH_RELAY_CLIENT_SOCKET_PATH,
+  type MeshRelayPeerRole,
+  type MeshRelayStreamKind,
+} from "@/shared/mesh-relay";
 
 export const MESH_RELAY_MAX_CONTROL_FRAME_BYTES = 256 * 1_024;
 export const MESH_RELAY_MAX_STREAM_FRAME_BYTES = 2 * 1_024 * 1_024;
@@ -88,6 +94,13 @@ export function isMeshRelayRouteAllowed(
   method: string | undefined,
   pathname: string,
 ): boolean {
+  if (initiatorRole === "client") {
+    return kind === "socket"
+      ? method === undefined && pathname === MESH_RELAY_CLIENT_SOCKET_PATH
+      : method?.toUpperCase() === "POST"
+        && (pathname === MESH_RELAY_CLIENT_ENROLLMENT_PATH
+          || pathname === MESH_RELAY_CLIENT_OPERATION_PATH);
+  }
   if (kind === "socket") {
     return method === undefined
       && initiatorRole === "controller"
@@ -106,5 +119,5 @@ export function isMeshRelayRouteAllowed(
 export function meshRelayInitiatorRole(
   localRole: MeshRelayPeerRole,
 ): MeshRelayPeerRole {
-  return localRole === "worker" ? "controller" : "worker";
+  return localRole === "controller" ? "worker" : "controller";
 }

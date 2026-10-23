@@ -11,6 +11,7 @@ import { isDomainError, type DomainError } from "../domain/domain-error";
 import { CHAT_WORKTREE_BRANCH_CONFLICT_CODE } from "../domain/chat-worktree-errors";
 import { MANAGED_WORKTREES_SELECTED_BRANCH_VERSION } from "@/shared/execution-host";
 import { MESSAGE_ATTACHMENT_MAX_TURN_MIB } from "@/shared/message-attachments";
+import { COLLABORATION_ERROR_MAPPINGS, isCollaborationErrorCode } from "./collaboration-error-policy";
 
 export type DomainErrorBoundary =
   | "authenticated"
@@ -2036,7 +2037,8 @@ export function resolveDomainErrorHttpMapping(
   const mapping = isApiDomainErrorCode(error.code)
     ? policy.mappings[error.code]
     : undefined;
-  const override = options.mappings?.[error.code];
+  const override: DomainErrorHttpMapping | undefined = options.mappings?.[error.code]
+    ?? (isCollaborationErrorCode(error.code) ? COLLABORATION_ERROR_MAPPINGS[error.code] : undefined);
   if (!mapping && !override) {
     return null;
   }

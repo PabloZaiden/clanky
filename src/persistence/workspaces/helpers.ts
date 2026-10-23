@@ -7,7 +7,7 @@ import {
   type Workspace,
 } from "@/shared/workspace";
 import { parseServerSettings } from "@/shared/settings";
-import { requirePersistenceUserId } from "../ownership";
+import { requireResourcePersistenceUserId } from "../ownership";
 import {
   executionHostBindingFromRow,
   resolveExecutionHostBindingId,
@@ -15,7 +15,7 @@ import {
 import type { WorkspaceSshTarget } from "@/shared/workspace";
 
 export function workspaceToRow(workspace: Workspace): Record<string, unknown> {
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId("workspace", workspace.id, workspace.id);
   const executionHostId = resolveExecutionHostBindingId(
     userId,
     workspace.executionHostBinding,

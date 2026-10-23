@@ -7,6 +7,7 @@ import type {
   Workspace,
 } from "@/shared";
 import { isRestartableAutomaticWorkspace } from "@/shared";
+import { decodeCollaborationResourceReference } from "@/shared/collaboration-reference";
 import { normalizeGitHubRepositoryUrl } from "../../lib/github-repository-url";
 import { apiRequest } from "../../lib/api-client";
 import {
@@ -117,8 +118,7 @@ function getWorkspaceSidebarActions(
   const workspaceArchived = workspaceNode.workspace.archived === true;
   const workspaceArchiving = context.archivingWorkspaceIds.has(workspaceId);
   const isGitBacked = workspaceNode.workspace.workspaceType === "git";
-  return withPrivateToggleAction(
-    sidebarActionItems([
+  const actions = sidebarActionItems([
       ...(isGitBacked ? [{
           id: "new-task",
           label: "New Task",
@@ -237,10 +237,12 @@ function getWorkspaceSidebarActions(
           workspaceId,
         }),
       },
-    ]),
-    workspaceNode.workspace,
-    () => void context.toggleWorkspacePrivate(workspaceNode.workspace),
-  );
+    ]);
+  if (decodeCollaborationResourceReference(workspaceId)) {
+    const administrative = new Set(["archive-workspace", "unarchive-workspace", "workspace-settings", "restart-workspace", "rebuild-workspace"]);
+    return actions.filter((action) => action.id === undefined || !administrative.has(action.id));
+  }
+  return withPrivateToggleAction(actions, workspaceNode.workspace, () => void context.toggleWorkspacePrivate(workspaceNode.workspace));
 }
 
 export function createWorkspaceSidebarNode(
@@ -382,7 +384,9 @@ export function createWorkspaceSidebarNode(
   return privateSidebarPresentation({
     type: "item",
     id: `workspace:${workspaceId}`,
-    title: workspaceNode.workspace.name,
+    title: workspaceNode.workspace.collaboration
+      ? `${workspaceNode.workspace.name} (${workspaceNode.workspace.collaboration.controllerName})`
+      : workspaceNode.workspace.name,
     render: renderWorkspaceSidebarItem(workspaceNode.workspace),
     searchText: `${workspaceNode.workspace.directory} ${isGitBacked ? "git" : "directory"}`,
     route: { view: "workspace", workspaceId },

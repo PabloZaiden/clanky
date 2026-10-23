@@ -8,6 +8,7 @@ import { z } from "zod";
 import { isValidIanaTimeZone } from "@/shared";
 import { ModelConfigSchema } from "./model";
 import { TaskNameSchema, MessageAttachmentsSchema } from "./task";
+import { CollaborationResourceIdSchema } from "./collaboration";
 
 export const AgentScheduleIntervalUnitSchema = z.enum(["minutes", "hours", "days"]);
 
@@ -78,7 +79,7 @@ export const GenerateAgentCodeRequestSchema = z.object({
   previousCode: z.string().optional(),
   workspaceId: z.string().min(1).optional(),
   model: ModelConfigSchema.optional(),
-  chatId: z.string().uuid().optional(),
+  chatId: CollaborationResourceIdSchema.optional(),
   generationMode: z.enum(["initial", "follow_up"]).optional(),
   message: z.string().trim().min(1).optional(),
   attachments: MessageAttachmentsSchema.default([]),

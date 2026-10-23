@@ -1,3 +1,4 @@
+import { workspaceOperation } from "../workspace-delegation";
 import { createLogger, defineRoutes } from "@pablozaiden/webapp/server";
 import { chatManager } from "../../core/chat-manager";
 import {
@@ -13,6 +14,7 @@ const log = createLogger("api:chats");
 
 export const chatsMessagingRoutes = defineRoutes({
   "/api/chats/:id/questions/:requestId": {
+    delegation: workspaceOperation("chat"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Answer a pending owned chat question once.",
@@ -49,6 +51,7 @@ export const chatsMessagingRoutes = defineRoutes({
     },
   },
   "/api/chats/:id/queued-messages/:messageId/reconcile": {
+    delegation: workspaceOperation("chat"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Reconcile native admission of an owned input without sending it again.",
@@ -68,6 +71,7 @@ export const chatsMessagingRoutes = defineRoutes({
     },
   },
   "/api/chats/:id/queued-messages/:messageId/steer": {
+    delegation: workspaceOperation("chat"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Inject an existing queued message into the active native execution without restarting it.",
@@ -87,6 +91,7 @@ export const chatsMessagingRoutes = defineRoutes({
     },
   },
   "/api/chats/:id/messages": {
+    delegation: workspaceOperation("chat"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Send a message to a chat session.",
@@ -145,6 +150,7 @@ export const chatsMessagingRoutes = defineRoutes({
   },
 
   "/api/chats/:id/queued-messages/:messageId": {
+    delegation: workspaceOperation("chat"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Delete a queued chat message.",
@@ -178,6 +184,7 @@ export const chatsMessagingRoutes = defineRoutes({
   },
 
   "/api/chats/:id/permissions/:requestId": {
+    delegation: workspaceOperation("chat"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Approve or deny a pending chat permission request.",

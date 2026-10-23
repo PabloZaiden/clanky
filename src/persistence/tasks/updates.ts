@@ -8,7 +8,7 @@ import { createTranscriptChangeSet } from "@/shared";
 import { getDatabase } from "../database";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { taskToRow, rowToTask, validateColumnNames } from "./helpers";
-import { requirePersistenceUserId } from "../ownership";
+import { assertResourcePersistenceUser, requireResourcePersistenceUserId } from "../ownership";
 import { taskTranscriptStore } from "../transcripts/task-store";
 import { TASK_LIST_COLUMNS } from "./crud";
 import { requireMatchingHarnessBinding } from "../../backends/harness-binding";
@@ -26,7 +26,7 @@ export async function updateTaskState(
   options: UpdateTaskStateOptions = {},
 ): Promise<boolean> {
   log.debug("Updating task state", { taskId, status: state.status });
-  return updateTaskStateForUser(taskId, state, requirePersistenceUserId(), options);
+  return updateTaskStateForUser(taskId, state, requireResourcePersistenceUserId("task", taskId), options);
 }
 
 export interface UpdateTaskStateOptions {
@@ -60,6 +60,7 @@ export async function updateTaskStateForUser(
   userId: string,
   options: UpdateTaskStateOptions = {},
 ): Promise<boolean> {
+  assertResourcePersistenceUser("task", taskId, userId);
   const db = getDatabase();
   // Prepare statements outside transaction
   const selectStmt = db.prepare(`SELECT ${TASK_LIST_COLUMNS} FROM tasks WHERE id = ? AND user_id = ?`);
@@ -152,7 +153,7 @@ export async function updateTaskStateForUser(
 export async function updateTaskConfig(taskId: string, config: TaskConfig): Promise<boolean> {
   log.debug("Updating task config", { taskId, name: config.name });
   const db = getDatabase();
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId("task", taskId, config.workspaceId ?? null);
 
   // Prepare statements outside transaction
   const selectStmt = db.prepare(`SELECT ${TASK_LIST_COLUMNS} FROM tasks WHERE id = ? AND user_id = ?`);
@@ -166,6 +167,7 @@ export async function updateTaskConfig(taskId: string, config: TaskConfig): Prom
     }
 
     const task = rowToTask(row);
+    config.creator = task.config.creator;
     task.config = config;
 
     const newRow = taskToRow(task);

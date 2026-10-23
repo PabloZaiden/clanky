@@ -12,7 +12,7 @@ import {
   type ExecutionHostBinding,
 } from "@/shared/execution-host";
 import { getDatabase } from "./database";
-import { requirePersistenceUserId } from "./ownership";
+import { assertResourcePersistenceUser, requireResourcePersistenceUserId } from "./ownership";
 import { invalidateChatMetadataForUser } from "./chats/metadata-cache";
 import {
   ensureExecutionHost,
@@ -144,7 +144,7 @@ function prepareWorkspaceSshTargetRecord(
 export function prepareWorkspaceSshTarget(
   workspaceId: string,
   input: WorkspaceSshTargetInput,
-  userId: string = requirePersistenceUserId(),
+  userId: string = requireResourcePersistenceUserId("workspace", workspaceId),
 ): {
   binding: ExecutionHostBinding;
   target: WorkspaceSshTarget;
@@ -209,6 +209,7 @@ function getTargetRow(
   workspaceId: string,
   userId: string,
 ): WorkspaceExecutionTargetRow | null {
+  assertResourcePersistenceUser("workspace", workspaceId, userId);
   return getDatabase().query(`
     SELECT
       workspace_id, user_id, host, port, username, password_ciphertext,
@@ -220,7 +221,7 @@ function getTargetRow(
 
 export function captureWorkspaceSshTargetState(
   workspaceId: string,
-  userId: string = requirePersistenceUserId(),
+  userId: string = requireResourcePersistenceUserId("workspace", workspaceId),
 ): WorkspaceSshTargetPersistenceState {
   return {
     targetRow: getTargetRow(workspaceId, userId),
@@ -236,8 +237,9 @@ export function captureWorkspaceSshTargetState(
 export function restoreWorkspaceSshTargetState(
   workspaceId: string,
   state: WorkspaceSshTargetPersistenceState,
-  userId: string = requirePersistenceUserId(),
+  userId: string = requireResourcePersistenceUserId("workspace", workspaceId),
 ): void {
+  assertResourcePersistenceUser("workspace", workspaceId, userId);
   const db = getDatabase();
   invalidateChatMetadataForUser(db, userId);
   const currentHost = getExecutionHostByRef(userId, workspaceTargetRef(workspaceId));
@@ -304,7 +306,7 @@ export function restoreWorkspaceSshTargetState(
 
 export async function getWorkspaceSshTargetSummary(
   workspaceId: string,
-  userId: string = requirePersistenceUserId(),
+  userId: string = requireResourcePersistenceUserId("workspace", workspaceId),
 ): Promise<WorkspaceSshTarget | null> {
   const row = getTargetRow(workspaceId, userId);
   return row ? rowToSummary(row) : null;
@@ -312,7 +314,7 @@ export async function getWorkspaceSshTargetSummary(
 
 export async function getWorkspaceSshTarget(
   workspaceId: string,
-  userId: string = requirePersistenceUserId(),
+  userId: string = requireResourcePersistenceUserId("workspace", workspaceId),
 ): Promise<PersistedWorkspaceSshTarget | null> {
   const row = getTargetRow(workspaceId, userId);
   if (!row) {
@@ -333,7 +335,7 @@ export async function getWorkspaceSshTarget(
 export async function ensureWorkspaceSshTarget(
   workspaceId: string,
   input: WorkspaceSshTargetInput,
-  userId: string = requirePersistenceUserId(),
+  userId: string = requireResourcePersistenceUserId("workspace", workspaceId),
 ): Promise<{
   binding: ExecutionHostBinding;
   target: PersistedWorkspaceSshTarget;
@@ -412,8 +414,9 @@ export async function ensureWorkspaceSshTarget(
 
 export async function removeWorkspaceSshTarget(
   workspaceId: string,
-  userId: string = requirePersistenceUserId(),
+  userId: string = requireResourcePersistenceUserId("workspace", workspaceId),
 ): Promise<void> {
+  assertResourcePersistenceUser("workspace", workspaceId, userId);
   getDatabase().query(
     "DELETE FROM workspace_execution_targets WHERE workspace_id = ? AND user_id = ?",
   ).run(workspaceId, userId);

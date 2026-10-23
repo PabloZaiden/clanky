@@ -43,3 +43,5 @@ export * from "./worker-update";
 export * from "./voice";
 export * from "./byte-range";
 export * from "./job-execution";
+export * from "./collaboration";
+export * from "./collaboration-reference";

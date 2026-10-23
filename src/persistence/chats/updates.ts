@@ -7,7 +7,7 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import { getDatabase } from "../database";
 import { chatStateToRow, chatToRow, rowToChat, validateChatColumnNames } from "./helpers";
 import type { PersistedChatStateField } from "./helpers";
-import { requirePersistenceUserId } from "../ownership";
+import { requireResourcePersistenceUserId } from "../ownership";
 import { syncChatTranscriptEntriesInTransaction } from "./transcript";
 import { chatTranscriptStore } from "../transcripts/chat-store";
 import { CHAT_METADATA_COLUMNS } from "./crud";
@@ -43,7 +43,7 @@ export async function updateChatStreamState(
   options: Pick<UpdateChatStateOptions, "transcriptChanges" | "expectedStatus"> = {},
 ): Promise<PersistedChatState | null> {
   const db = getDatabase();
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId("chat", chatId);
   const commitCache = beginChatMetadataWrite(db, userId, chatId);
   const statusCondition = options.expectedStatus === undefined ? "" : " AND status = ?";
   const updateStmt = db.query<{ status: ChatStatus; state_revision: number }, (string | null)[]>(`
@@ -84,7 +84,7 @@ export async function updateChatStreamState(
 
 export async function updateChatState(chatId: string, state: ChatState, options: UpdateChatStateOptions = {}): Promise<PersistedChatState | null> {
   const db = getDatabase();
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId("chat", chatId);
   const writesHarness = !options.preserveHarnessState
     && (!options.previousState || state.harness !== options.previousState.harness);
   const mergeHarness = writesHarness && Boolean(state.harness && options.previousState);
@@ -167,7 +167,7 @@ export async function updateChatConfig(
   options: { expectedName?: string } = {},
 ): Promise<boolean> {
   const db = getDatabase();
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId("chat", chatId, config.workspaceId ?? null);
   invalidateChatMetadata(db, userId, chatId);
   const selectStmt = db.prepare(`SELECT ${CHAT_METADATA_COLUMNS} FROM chats WHERE id = ? AND user_id = ? AND deleted_at IS NULL`);
 
@@ -178,6 +178,7 @@ export async function updateChatConfig(
     }
 
     const chat = rowToChat(row);
+    config.creator = chat.config.creator;
     chat.config = config;
     const newRow = chatToRow(chat);
     const columns = Object.keys(newRow).filter((column) => column !== "id" && column !== "state_revision");

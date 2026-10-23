@@ -7,7 +7,7 @@ import { requireMatchingHarnessBinding } from "../backends/harness-binding";
 import { HarnessError } from "../backends/harness-errors";
 import type { HarnessConversationBinding } from "@/shared/harness-control";
 import type { SessionInfo } from "@/shared/task";
-import { requireCurrentUserId } from "../context/user-context";
+import { requireExecutionOwnerUserId } from "../context/user-context";
 
 type SessionContext = Omit<HarnessConversationBinding, "adapter" | "nativeId">;
 
@@ -16,7 +16,7 @@ export function createTransientHarnessSession(
   options: CreateSessionOptions,
 ): Promise<AgentSession> {
   return createOwnedHarnessSession(backend, options, {
-    ownerId: requireCurrentUserId(), contextId: `helper-${crypto.randomUUID()}`, directory: options.directory,
+    ownerId: requireExecutionOwnerUserId(), contextId: `helper-${crypto.randomUUID()}`, directory: options.directory,
     questionPolicy: "unattended",
   });
 }

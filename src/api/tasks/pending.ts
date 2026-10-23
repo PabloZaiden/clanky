@@ -1,3 +1,4 @@
+import { workspaceOperation } from "../workspace-delegation";
 import { defineRoutes } from "@pablozaiden/webapp/server";
 /**
  * Task pending prompt and follow-up routes.
@@ -15,6 +16,7 @@ import { taskErrorResponse, validateEnabledModelForTask } from "./helpers";
 
 export const tasksPendingRoutes = defineRoutes({
   "/api/tasks/:id/pending-prompt": {
+    delegation: workspaceOperation("task"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Set the pending prompt used for the next task iteration.",
@@ -90,6 +92,7 @@ export const tasksPendingRoutes = defineRoutes({
   },
 
   "/api/tasks/:id/pending": {
+    delegation: workspaceOperation("task"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Apply a pending message or model override for the next task iteration.",
@@ -194,6 +197,7 @@ export const tasksPendingRoutes = defineRoutes({
   },
 
   "/api/tasks/:id/follow-up": {
+    delegation: workspaceOperation("task"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Send a follow-up message to a task.",

@@ -586,6 +586,7 @@ export class AgentManager {
       agentEventEmitter.emit({
         type: "agent.deleted",
         agentId,
+        workspaceId: agent.config.workspaceId,
         timestamp: createTimestamp(),
       });
     }

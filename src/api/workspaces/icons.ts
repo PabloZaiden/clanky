@@ -25,6 +25,7 @@ import {
   requireWorkspace,
 } from "../helpers";
 import { parseAndValidate } from "../validation";
+import { workspaceOperation } from "../workspace-delegation";
 
 const log = createLogger("api:workspace-icons");
 
@@ -140,6 +141,9 @@ export const workspaceIconRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Read, select, or remove the private icon for a workspace.",
     requestSchema: WorkspaceIconCandidateRequestSchema,
+    operations: {
+      GET: { delegation: workspaceOperation("workspace"), requestSchema: undefined, automation: { policy: "read" } },
+    },
     async GET(_req: Request, ctx) {
       const workspaceResult = await requireWorkspace(workspaceIdFromContext(ctx));
       if (workspaceResult instanceof Response) {

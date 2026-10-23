@@ -32,6 +32,9 @@ import type { PromptTemplate } from "@/shared/prompt-templates";
 import type { DashboardViewMode, QuickChatSettings } from "@/shared/preferences";
 import { DomainError } from "../domain/domain-error";
 import { workspaceManager } from "./workspace-manager";
+import { workspaceConnections } from "./workspace-connections";
+import { decodeCollaborationResourceReference } from "@/shared/collaboration-reference";
+import { getCollaborationActor, requireResourceOwnerUserId } from "../context/user-context";
 
 export interface LastModelPreference {
   providerID: string;
@@ -111,8 +114,10 @@ export class PreferencesManager {
 
   async setQuickChatSettings(settings: QuickChatSettings): Promise<void> {
     if (settings.workspaceId) {
-      const workspace = await workspaceManager.getWorkspace(settings.workspaceId);
-      if (!workspace) {
+      const remote = decodeCollaborationResourceReference(settings.workspaceId);
+      if (remote) {
+        await workspaceConnections.requireWorkspaceReference(remote);
+      } else if (!await workspaceManager.getWorkspace(settings.workspaceId)) {
         throw new DomainError(
           "workspace_not_found",
           "Quick chat workspace does not exist",
@@ -132,6 +137,11 @@ export class PreferencesManager {
   }
 
   async validateQuickChatModel(request: QuickChatModelRequest): Promise<void> {
+    if (getCollaborationActor()?.kind === "guest") {
+      // Personal preferences are validated by the guest's instance, not its controller.
+      requireResourceOwnerUserId(request.workspaceId);
+      return;
+    }
     const settings = await this.getQuickChatSettings();
     const configuredModel = settings.model;
     if (

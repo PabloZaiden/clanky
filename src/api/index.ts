@@ -49,6 +49,8 @@ import { liveVoiceRoutes } from "./live-voice";
 import { controlUiActionRoutes } from "./control-ui-actions";
 import { taskCreationContextRoutes } from "./task-creation-context";
 import { withResourceReads } from "./resource-reads";
+import { collaborationRoutes, workspaceClientInternalRoutes } from "./collaboration";
+import { withUnifiedWorkspaceResources } from "./workspace-federation";
 
 /**
  * All API routes combined.
@@ -80,6 +82,7 @@ const nativeApiRoutes = {
   ...controlUiActionRoutes,
   ...taskCreationContextRoutes,
   ...agentPromptBridgeRoutes,
+  ...collaborationRoutes,
 };
 
 const API_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
@@ -103,7 +106,10 @@ function withApiUserContext(routes: Record<string, RouteDefinition>): RouteTable
   }));
 }
 
-export const apiRoutes = defineRoutes(withApiUserContext(withResourceReads(nativeApiRoutes)));
+export const apiRoutes = defineRoutes({
+  ...withApiUserContext(withResourceReads(withUnifiedWorkspaceResources(nativeApiRoutes))),
+  ...workspaceClientInternalRoutes,
+});
 
 // Re-export individual route modules
 export * from "./helpers";
@@ -131,3 +137,4 @@ export * from "./voice";
 export * from "./live-voice";
 export * from "./control-ui-actions";
 export * from "./task-creation-context";
+export * from "./collaboration";

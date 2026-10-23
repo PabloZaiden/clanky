@@ -23,6 +23,7 @@ import {
   WorkspaceExecutionTargetsQuerySchema,
 } from "@/contracts/schemas";
 import { SensitiveQuerySchema } from "../route-schemas";
+import { workspaceOperation } from "../workspace-delegation";
 
 const log = createLogger("api:workspaces");
 
@@ -293,6 +294,7 @@ export const serverSettingsRoutes = defineRoutes({
   },
 
   "/api/workspaces/execution-targets": {
+    delegation: workspaceOperation("execution-host"),
     auth: "user",
     sameOrigin: "mutations",
     description: "List execution targets and their available harness adapters, including an authorized workspace or enrollment target.",

@@ -1,13 +1,12 @@
 /**
  * Owner-scoped chat Trash metadata and atomic lifecycle fences.
  */
-import { z } from "zod";
 import type { Chat, ChatWorktreeState } from "@/shared/chat";
 import { CHAT_TRASH_RETENTION_MS } from "@/shared/chat";
 import type { ChatTrashPage, ChatTrashQuery } from "@/contracts/schemas/chat-trash";
-import { DomainError } from "../../domain/domain-error";
+import { decodeChatTrashCursor, encodeChatTrashCursor } from "@/contracts/schemas/chat-trash";
 import { getDatabase } from "../database";
-import { requirePersistenceUserId } from "../ownership";
+import { getPersistenceWorkspaceId, requireResourcePersistenceUserId } from "../ownership";
 import { CHAT_METADATA_COLUMNS } from "./crud";
 import { rowToChat } from "./helpers";
 import { closeOpenQuestions } from "@/shared/harness-questions";
@@ -20,32 +19,28 @@ import { getRegisteredSshServerId } from "@/shared/execution-host";
 import { invalidateChatMetadata } from "./metadata-cache";
 
 const STANDALONE = "scope = 'workspace' AND task_id IS NULL";
-const CursorSchema = z.object({ deletedAt: z.iso.datetime(), id: z.string().min(1) });
-type TrashCursor = z.infer<typeof CursorSchema>;
-
-function decodeCursor(cursor: string): TrashCursor {
-  try {
-    return CursorSchema.parse(JSON.parse(Buffer.from(cursor, "base64url").toString()));
-  } catch (cause) {
-    throw new DomainError("invalid_trash_cursor", "Invalid Trash cursor", { cause });
-  }
-}
-
 export function loadTrashedChat(chatId: string): Chat | null {
   const row = getDatabase().prepare(`
     SELECT ${CHAT_METADATA_COLUMNS} FROM chats
     WHERE id = ? AND user_id = ? AND deleted_at IS NOT NULL AND ${STANDALONE}
-  `).get(chatId, requirePersistenceUserId()) as Record<string, unknown> | null;
+  `).get(chatId, requireResourcePersistenceUserId("chat", chatId)) as Record<string, unknown> | null;
   return row ? rowToChat(row) : null;
 }
 
 export function listChatTrash(options: ChatTrashQuery): ChatTrashPage {
-  const cursor = options.cursor ? decodeCursor(options.cursor) : undefined;
-  const values: (string | number)[] = [requirePersistenceUserId()];
+  const cursor = options.cursor ? decodeChatTrashCursor(options.cursor) : undefined;
+  const values: (string | number)[] = [requireResourcePersistenceUserId("chat")];
   const conditions = ["chat.user_id = ?", "chat.deleted_at IS NOT NULL", "chat.scope = 'workspace'", "chat.task_id IS NULL"];
+  const workspaceId = getPersistenceWorkspaceId();
+  if (workspaceId) { conditions.push("chat.workspace_id = ?"); values.push(workspaceId); }
   if (cursor) {
-    conditions.push("(chat.deleted_at, chat.id) < (?, ?)");
-    values.push(cursor.deletedAt, cursor.id);
+    if (cursor.timestampBoundary) {
+      conditions.push(cursor.timestampBoundary === "inclusive" ? "chat.deleted_at <= ?" : "chat.deleted_at < ?");
+      values.push(cursor.deletedAt);
+    } else {
+      conditions.push("(chat.deleted_at, chat.id) < (?, ?)");
+      values.push(cursor.deletedAt, cursor.id);
+    }
   }
   const privateExpression = "(chat.is_private OR COALESCE(workspace.is_private, 0) OR COALESCE(server.is_private, 0))";
   if (options.includePrivate === "false") conditions.push(`${privateExpression} = 0`);
@@ -86,14 +81,14 @@ export function listChatTrash(options: ChatTrashQuery): ChatTrashPage {
   return {
     items,
     nextCursor: hasMore && last
-      ? Buffer.from(JSON.stringify({ deletedAt: last.deletedAt, id: last.id })).toString("base64url")
+      ? encodeChatTrashCursor({ deletedAt: last.deletedAt, id: last.id })
       : null,
   };
 }
 
 export function markChatTrashed(chatId: string, checkpoint?: TranscriptChangeSet): Chat | null {
   const db = getDatabase();
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId("chat", chatId);
   invalidateChatMetadata(db, userId, chatId);
   return db.transaction(() => {
     const row = db.prepare(`
@@ -132,7 +127,7 @@ export function markChatTrashed(chatId: string, checkpoint?: TranscriptChangeSet
 
 export function restoreTrashedChat(chatId: string, deletedAt: string): boolean {
   const db = getDatabase();
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId("chat", chatId);
   invalidateChatMetadata(db, userId, chatId);
   return db.prepare(`
     UPDATE chats SET deleted_at = NULL, state_revision = state_revision + 1
@@ -142,7 +137,7 @@ export function restoreTrashedChat(chatId: string, deletedAt: string): boolean {
 
 export function deleteTrashedChat(chatId: string, deletedAt: string): boolean {
   const db = getDatabase();
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId("chat", chatId);
   invalidateChatMetadata(db, userId, chatId);
   return db.prepare(`
     DELETE FROM chats WHERE id = ? AND user_id = ? AND deleted_at = ? AND ${STANDALONE}
@@ -151,7 +146,7 @@ export function deleteTrashedChat(chatId: string, deletedAt: string): boolean {
 
 export function saveTrashedChatWorktree(chatId: string, worktree: ChatWorktreeState): boolean {
   const db = getDatabase();
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId("chat", chatId);
   invalidateChatMetadata(db, userId, chatId);
   return db.prepare(`
     UPDATE chats SET worktree_original_branch = ?, worktree_working_branch = ?,
@@ -163,11 +158,13 @@ export function saveTrashedChatWorktree(chatId: string, worktree: ChatWorktreeSt
 
 export function listTrashCleanupCandidates(options: {
   cutoff: string;
-  after?: TrashCursor;
+  after?: { id: string; deletedAt: string };
   workspaceId?: string;
 }): Array<{ id: string; deletedAt: string }> {
   const conditions = ["user_id = ?", "deleted_at <= ?", STANDALONE];
-  const values: string[] = [requirePersistenceUserId(), options.cutoff];
+  const values: string[] = [requireResourcePersistenceUserId("chat", undefined, options.workspaceId), options.cutoff];
+  const scopeWorkspaceId = getPersistenceWorkspaceId();
+  if (scopeWorkspaceId) { conditions.push("workspace_id = ?"); values.push(scopeWorkspaceId); }
   if (options.after) {
     conditions.push("(deleted_at, id) > (?, ?)");
     values.push(options.after.deletedAt, options.after.id);

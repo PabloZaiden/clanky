@@ -1,3 +1,4 @@
+import { workspaceOperation } from "../workspace-delegation";
 import { defineRoutes } from "@pablozaiden/webapp/server";
 /**
  * Draft task start routes.
@@ -13,6 +14,7 @@ import { startErrorResponse } from "./helpers";
 
 export const tasksDraftRoutes = defineRoutes({
   "/api/tasks/:id/draft/start": {
+    delegation: workspaceOperation("task"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Start draft generation for a task.",

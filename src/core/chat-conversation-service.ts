@@ -89,7 +89,7 @@ import { NativeChatObserver } from "./native-chat-observer";
 import type { HarnessConversationBinding } from "@/shared/harness-control";
 import { requireMatchingHarnessBindings } from "../backends/harness-binding";
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
-import { requireCurrentUser, runWithCurrentUser } from "../context/user-context";
+import { captureWorkspaceExecutionContext, requireExecutionOwnerUser, runWithExecutionOwner, runWithWorkspaceExecutionContext, type WorkspaceExecutionContext } from "../context/user-context";
 
 const log = createLogger("chat-conversation-service");
 const DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS = DEFAULT_ACTIVITY_TIMEOUT_SECONDS * 1000;
@@ -100,6 +100,7 @@ const CHAT_INTERRUPT_STARTUP_SETTLE_TIMEOUT_MS = 5_000;
 
 interface ActiveChatStream {
   owner: CurrentUser;
+  execution?: WorkspaceExecutionContext;
   handle: Pick<AgentStreamHandle, "close">;
   generation: number;
   completion: Promise<void>;
@@ -780,7 +781,8 @@ export class ChatConversationService implements ChatConversationPort {
     const observer = new NativeChatObserver();
     const generation = this.nextActiveStreamGeneration(chatId);
     const entry: ActiveChatStream = {
-      owner: requireCurrentUser(),
+      owner: requireExecutionOwnerUser(),
+      execution: chat.config.workspaceId ? captureWorkspaceExecutionContext(chat.config.workspaceId) : undefined,
       handle: observer, generation, completion: Promise.resolve(),
       streamState: this.createChatStreamState(chat, 1000),
       native: {
@@ -793,12 +795,12 @@ export class ChatConversationService implements ChatConversationPort {
     this.activeStreams.set(chatId, entry);
     entry.stopTranscriptSynchronization = this.synchronizePersistedMessages(chatId, entry.streamState!);
     try {
-      await observer.start({
+      await this.runStreamExecution(entry, () => observer.start({
         backend, sessionId: binding.nativeId,
-        recover: async () => {
+        recover: () => this.runStreamExecution(entry, async () => {
           if (recover) await this.recoverNativeSession(chatId, entry);
-        },
-        onEvent: async (event) => {
+        }),
+        onEvent: (event) => this.runStreamExecution(entry, async () => {
           if (this.activeStreams.get(chatId) !== entry) return;
           const latest = await this.state.getChatStreamControlState(chatId);
           if (!latest || latest.binding?.nativeId !== binding.nativeId) {
@@ -814,12 +816,12 @@ export class ChatConversationService implements ChatConversationPort {
             && event.type !== "question.asked" && event.type !== "question.resolved"
             && event.type !== "permission.asked") return;
           await this.consumeNativeEvent(chatId, entry, event);
-        },
-        onFailure: (error) => this.handleNativeObservationFailure(chatId, entry, error),
-        onClosed: () => {
+        }),
+        onFailure: (error) => this.runStreamExecution(entry, () => this.handleNativeObservationFailure(chatId, entry, error)),
+        onClosed: () => this.runStreamExecution(entry, () => {
           if (this.activeStreams.get(chatId) === entry) this.closeActiveStream(chatId);
-        },
-      });
+        }),
+      }));
       entry.completion = observer.completion;
     } catch (error) {
       try {
@@ -901,7 +903,7 @@ export class ChatConversationService implements ChatConversationPort {
     }
     const streams = [...this.activeStreams];
     const results = await Promise.allSettled(streams.map(([chatId, stream]) =>
-      runWithCurrentUser(stream.owner, async () => {
+      this.runStreamExecution(stream, async () => {
         try {
           await withTimeout((async () => {
             if (stream.native) await this.stopNativeObservation(chatId);
@@ -919,7 +921,7 @@ export class ChatConversationService implements ChatConversationPort {
       }),
     ));
     const disconnected = await Promise.allSettled(streams.map(([chatId, stream]) =>
-      runWithCurrentUser(stream.owner, () => withTimeout(
+      this.runStreamExecution(stream, () => withTimeout(
         this.session.disconnectChat(chatId), CHAT_INTERRUPT_ABORT_TIMEOUT_MS, "Chat session shutdown timed out",
       )),
     ));
@@ -1285,6 +1287,12 @@ export class ChatConversationService implements ChatConversationPort {
     this.state.emitChatUpdated(updated);
   }
 
+  private runStreamExecution<T>(stream: ActiveChatStream, callback: () => T): T {
+    return stream.execution
+      ? runWithWorkspaceExecutionContext(stream.execution, callback)
+      : runWithExecutionOwner(stream.owner, callback);
+  }
+
   private async startActivePrompt(options: ChatPromptStartOptions): Promise<Chat> {
     this.assertRunning();
     const { chat, backend, sessionId, prompt, signal, answerInputId, historyPromptContext } = options;
@@ -1300,7 +1308,8 @@ export class ChatConversationService implements ChatConversationPort {
     });
     const generation = this.nextActiveStreamGeneration(chat.config.id);
     const activeStream: ActiveChatStream = {
-      owner: requireCurrentUser(),
+      owner: requireExecutionOwnerUser(),
+      execution: chat.config.workspaceId ? captureWorkspaceExecutionContext(chat.config.workspaceId) : undefined,
       handle,
       generation,
       completion: Promise.resolve(),
@@ -1344,14 +1353,14 @@ export class ChatConversationService implements ChatConversationPort {
           }, { expectedStatus: streamingChat.state.status });
       if (answerInputId) this.state.emitChatUpdated(startedChat);
       throwIfChatStartupAborted(signal);
-      activeStream.completion = this.consumeEventStream(
+      activeStream.completion = this.runStreamExecution(activeStream, () => this.consumeEventStream(
         chat.config.id,
         backend,
         handle,
         generation,
         startedChat,
         historyPromptContext,
-      );
+      ));
       return startedChat;
     } catch (error) {
       this.clearActiveStream(chat.config.id, generation);

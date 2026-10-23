@@ -48,7 +48,7 @@ import { buildMeshExecutionSessionSigningPayload } from "./mesh-protocol";
 import { requestMeshPeer } from "./mesh-peer-transport";
 import { isMeshRelayResponseInterrupted, MeshRelayStreamError } from "./mesh-relay-errors";
 import { DomainError } from "../domain/domain-error";
-import { requireCurrentUserId } from "../context/user-context";
+import { requireExecutionOwnerUserId } from "../context/user-context";
 import type {
   CommandOptions,
   CommandResult,
@@ -431,7 +431,7 @@ export class MeshCommandExecutorClient {
     }
     throwIfMeshSessionOpeningAborted(signal);
     const callerEncryptionPublicKey = identity.encryptionPublicKey;
-    const localUserId = this.localUserId ?? requireCurrentUserId();
+    const localUserId = this.localUserId ?? requireExecutionOwnerUserId();
     const registration = await getWorkerRegistration(this.executionNodeId, localUserId);
     throwIfMeshSessionOpeningAborted(signal);
     if (!registration || registration.grantStatus !== "active") {

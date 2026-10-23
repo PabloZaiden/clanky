@@ -1,4 +1,24 @@
 import { z } from "zod";
+import { DomainError } from "../../domain/domain-error";
+
+const ChatTrashCursorSchema = z.object({
+  deletedAt: z.iso.datetime(),
+  id: z.string().min(1).max(2048),
+  timestampBoundary: z.enum(["inclusive", "exclusive"]).optional(),
+});
+type ChatTrashCursor = z.infer<typeof ChatTrashCursorSchema>;
+
+export function decodeChatTrashCursor(cursor: string): ChatTrashCursor {
+  try {
+    return ChatTrashCursorSchema.parse(JSON.parse(Buffer.from(cursor, "base64url").toString()));
+  } catch (cause) {
+    throw new DomainError("invalid_trash_cursor", "Invalid Trash cursor", { cause });
+  }
+}
+
+export function encodeChatTrashCursor(cursor: ChatTrashCursor): string {
+  return Buffer.from(JSON.stringify(cursor)).toString("base64url");
+}
 
 export const ChatTrashQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(30),

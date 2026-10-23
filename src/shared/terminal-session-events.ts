@@ -27,6 +27,8 @@ export interface TerminalSessionUpdatedEvent {
 export interface TerminalSessionDeletedEvent {
   type: "terminal_session.deleted";
   terminalSessionId: string;
+  workspaceId?: string;
+  membershipId?: string | null;
   timestamp: string;
 }
 

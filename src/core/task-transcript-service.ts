@@ -10,13 +10,13 @@ import { taskTranscriptStore } from "../persistence/transcripts/task-store";
 import { loadTaskSummary } from "../persistence/tasks";
 import { createTranscriptFromStoragePage, includeLiveTranscript } from "./transcript-service";
 import { taskManager } from "./task";
-import { requireCurrentUserId } from "../context/user-context";
+import { requireExecutionOwnerUserId } from "../context/user-context";
 import { isPersistedMessage } from "../persistence/transcripts/codec";
 import { DomainError } from "../domain/domain-error";
 import type { TranscriptStorageCursor } from "../persistence/transcripts/types";
 
 export async function* iterateTaskAttachmentMessages(taskId: string): AsyncIterable<PersistedMessage> {
-  const userId = requireCurrentUserId();
+  const userId = requireExecutionOwnerUserId();
   let after: TranscriptStorageCursor | undefined;
   for (;;) {
     const page = taskTranscriptStore.listEntriesAfterForUser(taskId, userId, {
