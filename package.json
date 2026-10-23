@@ -21,8 +21,8 @@
   },
   "dependencies": {
     "@github/copilot-sdk": "1.0.22",
-    "@opencode/client": "2.0.31",
     "@monaco-editor/react": "4.7.0",
+    "@opencode/client": "2.0.31",
     "@pablozaiden/webapp": "github:PabloZaiden/webapp#v2.0.5",
     "@peculiar/x509": "2.2.0",
     "@tailwindcss/typography": "0.5.20",
@@ -30,6 +30,7 @@
     "@xterm/addon-webgl": "0.19.0",
     "@xterm/xterm": "6.0.0",
     "bun-plugin-tailwind": "0.1.2",
+    "css-tree": "3.2.1",
     "franc-min": "6.2.0",
     "highlight.js": "11.12.0",
     "mermaid": "12.2.0",
@@ -44,6 +45,7 @@
   },
   "devDependencies": {
     "@types/bun": "1.4.3",
+    "@types/css-tree": "3.2.0",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "typescript": "7.0.2"

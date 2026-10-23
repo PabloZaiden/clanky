@@ -2,6 +2,8 @@
  * Workspace icon discovery, validation, and private persistence.
  */
 
+// The CommonJS entry lets Bun embed the grammar JSON in standalone binaries.
+import cssTree = require("css-tree");
 import { SaxesParser, type SaxesTagPlain } from "saxes";
 import type {
   Workspace,
@@ -154,8 +156,14 @@ function svgStyleAttributes(style: string): Map<string, string> {
     const rawValue = declaration.slice(separator + 1).trim();
     const important = /\s*!important$/i.test(rawValue);
     const value = rawValue.replace(/\s*!important$/i, "").trim();
+    if (!value) {
+      continue;
+    }
     if (!isSafeSvgStyleValue(value)) {
       throw new Error("SVG contains an unsupported presentation style.");
+    }
+    if (!cssTree.lexer.matchProperty(name, value).matched) {
+      continue;
     }
     if (important || !importantAttributes.has(name)) {
       attributes.set(name, value);

@@ -46,7 +46,9 @@ preserving the drawing. Simple inline presentation styles,
 including fill and stroke colors, opacity, and stroke widths, are converted
 to sanitized SVG attributes. Inline styles take precedence over presentation
 attributes, including declaration order and `!important`. Other style
-properties are discarded.
+properties are discarded. Declarations with invalid values for a supported
+property are ignored, so they cannot replace valid colors or override valid
+declarations through `!important`.
 
 SVG icons must remain static and self-contained. Scripts, embedded HTML,
 stylesheets, document types, and external references are not supported.
