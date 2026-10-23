@@ -41,6 +41,22 @@ that file do not change the saved icon. Select it again to refresh the copy.
 SVG uploads and candidates are sanitized before storage. The saved image is
 available only to users authorized for that workspace.
 
+Clanky discards SVG metadata and Inkscape named-view settings while
+preserving the drawing. Simple inline presentation styles,
+including fill and stroke colors, opacity, and stroke widths, are converted
+to sanitized SVG attributes. Inline styles take precedence over presentation
+attributes, including declaration order and `!important`. Other style
+properties are discarded. Declarations with invalid values for a supported
+property are ignored, so they cannot replace valid colors or override valid
+declarations through `!important`.
+
+SVG icons must remain static and self-contained. Scripts, embedded HTML,
+stylesheets, document types, and external references are not supported.
+Gradient and other image references must point to IDs inside the same SVG.
+Supported inline style values include colors, numeric values with units,
+keywords, and local `url(#id)` references; CSS variables, escapes, and other
+complex CSS expressions are not supported.
+
 ## Provider icons
 
 Provider icons follow the provider configured for the workspace, regardless
