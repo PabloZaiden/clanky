@@ -2,7 +2,7 @@
  * Workspace icon discovery, validation, and private persistence.
  */
 
-import { SaxesParser } from "saxes";
+import { SaxesParser, type SaxesTagPlain } from "saxes";
 import type {
   Workspace,
   WorkspaceIconMetadata,
@@ -55,6 +55,29 @@ const SAFE_SVG_ELEMENTS = new Set([
   "desc",
 ]);
 
+const OMITTED_SVG_ELEMENTS = new Set(["metadata", "sodipodi:namedview"]);
+
+const SAFE_SVG_PRESENTATION_ATTRIBUTES = new Set([
+  "color",
+  "display",
+  "visibility",
+  "fill",
+  "fill-rule",
+  "fill-opacity",
+  "stroke",
+  "stroke-width",
+  "stroke-linecap",
+  "stroke-linejoin",
+  "stroke-opacity",
+  "stroke-miterlimit",
+  "stroke-dasharray",
+  "stroke-dashoffset",
+  "opacity",
+  "stop-color",
+  "stop-opacity",
+  "clip-rule",
+]);
+
 const SAFE_SVG_ATTRIBUTES = new Set([
   "id",
   "viewBox",
@@ -73,20 +96,10 @@ const SAFE_SVG_ATTRIBUTES = new Set([
   "y2",
   "d",
   "points",
-  "fill",
-  "fill-rule",
-  "fill-opacity",
-  "stroke",
-  "stroke-width",
-  "stroke-linecap",
-  "stroke-linejoin",
-  "stroke-opacity",
-  "opacity",
+  ...SAFE_SVG_PRESENTATION_ATTRIBUTES,
   "transform",
   "preserveAspectRatio",
   "offset",
-  "stop-color",
-  "stop-opacity",
   "gradientUnits",
   "gradientTransform",
   "spreadMethod",
@@ -99,6 +112,7 @@ const SAFE_SVG_ATTRIBUTES = new Set([
   "href",
 ]);
 
+const LOCAL_SVG_URL = /^url\s*\(\s*(["']?)#[A-Za-z_][\w.-]*\1\s*\)$/i;
 const INVALID_ICON_MESSAGE = "The selected file is not a safe, valid SVG or ICO image.";
 
 function invalidIcon(cause?: unknown): DomainError {
@@ -122,6 +136,76 @@ function escapeXmlAttribute(value: string): string {
     .replaceAll("'", "&apos;");
 }
 
+function isSafeSvgStyleValue(value: string): boolean {
+  return /^[a-z\d\s#.,%+-]+$/i.test(value)
+    || /^(?:rgb|rgba|hsl|hsla)\([a-z\d\s.,%+/-]+\)$/i.test(value)
+    || LOCAL_SVG_URL.test(value);
+}
+
+function svgStyleAttributes(style: string): Map<string, string> {
+  const attributes = new Map<string, string>();
+  const importantAttributes = new Set<string>();
+  for (const declaration of style.split(";")) {
+    const separator = declaration.indexOf(":");
+    const name = declaration.slice(0, separator).trim().toLowerCase();
+    if (separator < 0 || !SAFE_SVG_PRESENTATION_ATTRIBUTES.has(name)) {
+      continue;
+    }
+    const rawValue = declaration.slice(separator + 1).trim();
+    const important = /\s*!important$/i.test(rawValue);
+    const value = rawValue.replace(/\s*!important$/i, "").trim();
+    if (!isSafeSvgStyleValue(value)) {
+      throw new Error("SVG contains an unsupported presentation style.");
+    }
+    if (important || !importantAttributes.has(name)) {
+      attributes.set(name, value);
+    }
+    if (important) {
+      importantAttributes.add(name);
+    }
+  }
+  return attributes;
+}
+
+function svgAttributes(tag: SaxesTagPlain): string[] {
+  const attributes = new Map<string, string>();
+  for (const [name, value] of Object.entries(tag.attributes)) {
+    if (name === "xmlns") {
+      if (tag.name !== "svg" || value !== SVG_NAMESPACE) {
+        throw new Error("SVG namespace is unsupported.");
+      }
+    } else if (SAFE_SVG_ATTRIBUTES.has(name)) {
+      attributes.set(name, value);
+    }
+  }
+  for (const [name, value] of svgStyleAttributes(tag.attributes["style"] ?? "")) {
+    attributes.set(name, value);
+  }
+
+  const serialized: string[] = [];
+  for (const [name, value] of attributes) {
+    if (
+      /(?:javascript|vbscript|data):/i.test(value)
+      || [...value.matchAll(/url\s*\([^)]*\)?/gi)].some(
+        ([reference]) => !LOCAL_SVG_URL.test(reference),
+      )
+    ) {
+      throw new Error("SVG contains an external or active reference.");
+    }
+    if (name === "href" && !/^#[A-Za-z_][\w.-]*$/.test(value)) {
+      throw new Error("SVG references must be local.");
+    }
+    if (name === "id" && !/^[A-Za-z_][\w.-]*$/.test(value)) {
+      throw new Error("SVG id is invalid.");
+    }
+    serialized.push(`${name}="${escapeXmlAttribute(value)}"`);
+  }
+  if (tag.name === "svg") {
+    serialized.unshift(`xmlns="${SVG_NAMESPACE}"`);
+  }
+  return serialized;
+}
+
 function sanitizeSvg(content: Uint8Array): Uint8Array {
   let source: string;
   try {
@@ -136,6 +220,7 @@ function sanitizeSvg(content: Uint8Array): Uint8Array {
   const parser = new SaxesParser();
   const output: string[] = [];
   const stack: string[] = [];
+  let omittedDepth = 0;
   let rootSeen = false;
   let nodeCount = 0;
   let parseError: unknown;
@@ -151,12 +236,7 @@ function sanitizeSvg(content: Uint8Array): Uint8Array {
       return;
     }
     nodeCount++;
-    if (
-      nodeCount > 10_000
-      || stack.length >= 32
-      || !SAFE_SVG_ELEMENTS.has(tag.name)
-      || tag.name.includes(":")
-    ) {
+    if (nodeCount > 10_000 || stack.length >= 32) {
       parseError = new Error("SVG contains unsupported or excessive markup.");
       return;
     }
@@ -168,51 +248,29 @@ function sanitizeSvg(content: Uint8Array): Uint8Array {
       rootSeen = true;
     }
 
-    const attributes: string[] = [];
-    for (const [name, value] of Object.entries(tag.attributes)) {
-      if (name === "xmlns") {
-        if (tag.name !== "svg" || value !== SVG_NAMESPACE) {
-          parseError = new Error("SVG namespace is unsupported.");
-          return;
-        }
-        continue;
-      }
-      if (!SAFE_SVG_ATTRIBUTES.has(name)) {
-        continue;
-      }
-      if (
-        /(?:javascript|vbscript|data):/i.test(value)
-        || /url\s*\(\s*(['"]?)(?!#)/i.test(value)
-      ) {
-        parseError = new Error("SVG contains an external or active reference.");
-        return;
-      }
-      if (name === "href" && !/^#[A-Za-z_][\w.-]*$/.test(value)) {
-        parseError = new Error("SVG references must be local.");
-        return;
-      }
-      if (name === "id" && !/^[A-Za-z_][\w.-]*$/.test(value)) {
-        parseError = new Error("SVG id is invalid.");
-        return;
-      }
-      attributes.push(`${name}="${escapeXmlAttribute(value)}"`);
+    // Omitted editor subtrees still count toward the depth and element limits.
+    if (omittedDepth > 0 || OMITTED_SVG_ELEMENTS.has(tag.name)) {
+      omittedDepth++;
+      stack.push(tag.name);
+      return;
     }
-
-    if (tag.name === "svg") {
-      attributes.unshift(`xmlns="${SVG_NAMESPACE}"`);
+    if (!SAFE_SVG_ELEMENTS.has(tag.name) || tag.name.includes(":")) {
+      parseError = new Error("SVG contains unsupported markup.");
+      return;
     }
+    const attributes = svgAttributes(tag);
     output.push(`<${tag.name}${attributes.length ? ` ${attributes.join(" ")}` : ""}>`);
     stack.push(tag.name);
   });
   parser.on("text", (text) => {
     const parent = stack.at(-1);
-    if (parent === "title" || parent === "desc") {
+    if (omittedDepth === 0 && (parent === "title" || parent === "desc")) {
       output.push(escapeXmlText(text));
     }
   });
   parser.on("cdata", (text) => {
     const parent = stack.at(-1);
-    if (parent === "title" || parent === "desc") {
+    if (omittedDepth === 0 && (parent === "title" || parent === "desc")) {
       output.push(escapeXmlText(text));
     }
   });
@@ -222,6 +280,10 @@ function sanitizeSvg(content: Uint8Array): Uint8Array {
     }
     if (stack.pop() !== tag.name) {
       parseError = new Error("SVG element nesting is invalid.");
+      return;
+    }
+    if (omittedDepth > 0) {
+      omittedDepth--;
       return;
     }
     output.push(`</${tag.name}>`);
