@@ -298,16 +298,6 @@ export class ChatPermissionReplyError extends Error {
   }
 }
 
-export class EmptyChatTranscriptError extends Error {
-  readonly code = "empty_transcript";
-  readonly status = 400;
-
-  constructor(message = "Chat transcript is empty. Send at least one message before spawning a task.") {
-    super(message);
-    this.name = "EmptyChatTranscriptError";
-  }
-}
-
 export class InvalidCurrentPlanError extends Error {
   readonly code = "invalid_current_plan";
   readonly status = 400;

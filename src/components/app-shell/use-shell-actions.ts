@@ -9,7 +9,7 @@ import type {
   TerminalSession,
 } from "@/shared";
 import type { CreateExecutionHostChatRequest } from "@/contracts";
-import { getChatWorkspaceId, isWorkspaceChat } from "@/shared/chat";
+import { isWorkspaceChat } from "@/shared/chat";
 import { getRegisteredSshServerId } from "@/shared/execution-host";
 import { isAgentProvider } from "@/shared/settings";
 import { isApiErrorCode } from "../../lib/api-error";
@@ -254,19 +254,8 @@ export function useShellActions({
     createExecutionHostChat,
     navigateWithinShell,
   ]);
-  const canSpawnTasksFromSelectedChat = useMemo(() => {
-    if (!selectedChat || !isWorkspaceChat(selectedChat)) {
-      return true;
-    }
-
-    const workspaceId = getChatWorkspaceId(selectedChat);
-    return workspaceGroups.some(({ workspace }) =>
-      workspace.id === workspaceId && workspace.workspaceType === "git"
-    );
-  }, [selectedChat, workspaceGroups]);
   const chatActions = useChatActions({
     chat: route.view === "chat" ? selectedChat : null,
-    canSpawnTasks: canSpawnTasksFromSelectedChat,
     hasCodeExplorerAction: true,
     onOpenCodeExplorer: (chat) => navigateWithinShell({
       view: "code-explorer",
@@ -274,7 +263,6 @@ export function useShellActions({
       chatId: chat.config.id,
     }),
     onCreateChatInCurrentDirectory: createChatInCurrentDirectory,
-    onTaskSpawned: (task) => navigateWithinShell({ view: "task", taskId: task.config.id }),
     onChatRenamed: () => refreshChats(),
     onChatDone: handleMarkChatDone,
     onDeleteChat: deleteChat,

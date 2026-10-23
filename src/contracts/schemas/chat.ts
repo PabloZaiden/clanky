@@ -118,7 +118,3 @@ export const DiscoverExecutionHostModelsRequestSchema = z.object({
   providerID: AgentProviderSchema,
   directory: z.string().trim().min(1, "directory is required"),
 });
-
-export const SpawnCurrentPlanTaskRequestSchema = z.object({
-  planFilePath: z.string().trim().optional(),
-});

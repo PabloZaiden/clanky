@@ -1,9 +1,7 @@
-import { ChatBranchCheckoutError, ChatBusyError, ChatNotMarkableError, ChatPermissionReplyError, ChatPermissionRequestNotFoundError, EmptyChatTranscriptError, InvalidChatBaseBranchError, InvalidCurrentPlanError, SshCredentialsRequiredError, type Chat } from "@/shared/chat";
-import type { Task } from "@/shared/task";
+import { ChatBranchCheckoutError, ChatBusyError, ChatNotMarkableError, ChatPermissionReplyError, ChatPermissionRequestNotFoundError, InvalidChatBaseBranchError, SshCredentialsRequiredError, type Chat } from "@/shared/chat";
 import { isAcpErrorCode, isAcpSshTransportFailure } from "../../backends/acp";
 import { isDomainError } from "../../domain/domain-error";
 import { chatManager } from "../../core/chat-manager";
-import { taskManager } from "../../core/task-manager";
 import { domainErrorResponse, errorResponse } from "../helpers";
 
 type ChatActionError = Error & {
@@ -13,8 +11,6 @@ type ChatActionError = Error & {
 
 function isChatActionError(error: unknown): error is ChatActionError {
   return error instanceof ChatBusyError
-    || error instanceof EmptyChatTranscriptError
-    || error instanceof InvalidCurrentPlanError
     || error instanceof InvalidChatBaseBranchError
     || error instanceof ChatBranchCheckoutError
     || error instanceof ChatNotMarkableError
@@ -73,14 +69,6 @@ export async function toLightweightChat(chat: Chat): Promise<Chat> {
   const summary = await chatManager.getChatSummary(chat.config.id);
   if (!summary) {
     throw new Error(`Chat disappeared after mutation: ${chat.config.id}`);
-  }
-  return summary;
-}
-
-export async function toLightweightTask(task: Task): Promise<Task> {
-  const summary = await taskManager.getTaskSummary(task.config.id);
-  if (!summary) {
-    throw new Error(`Task disappeared after mutation: ${task.config.id}`);
   }
   return summary;
 }

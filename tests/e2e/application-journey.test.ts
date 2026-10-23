@@ -1192,52 +1192,6 @@ test("compiled Clanky completes its principal local user journey", async () => {
     expect(transcriptExport.status).toBe(200);
     expect(await transcriptExport.text()).toContain("Continue after recovery");
 
-    const conversionChat = (await application.json<Chat>(
-      "/api/chats",
-      {
-        method: "POST",
-        body: JSON.stringify({
-          name: "E2E task conversion",
-          workspaceId: workspace.id,
-          model,
-          useWorktree: false,
-          baseBranch: git.branch,
-        }),
-      },
-      201,
-    )).data;
-    await application.json(
-      `/api/chats/${conversionChat.config.id}/messages`,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          message: "Describe the fixture task to create",
-          attachments: [],
-        }),
-      },
-    );
-    expect((await waitForChatIdle(application, conversionChat.config.id)).state.status).toBe("idle");
-    const convertedTask = (await application.json<Task>(
-      `/api/chats/${conversionChat.config.id}/spawn-task`,
-      { method: "POST", body: "{}" },
-      201,
-    )).data;
-    const convertedPlan = await waitForTask(
-      application,
-      convertedTask.config.id,
-      (task) => task.state.planMode.isPlanReady || task.state.status === "failed",
-      "chat-converted task planning",
-    );
-    expect(convertedPlan.state.status).toBe("planning");
-    await application.json(
-      `/api/tasks/${convertedTask.config.id}`,
-      { method: "DELETE" },
-    );
-    await application.json(
-      `/api/chats/${conversionChat.config.id}`,
-      { method: "DELETE" },
-    );
-
     const doneChat = (await application.json<Chat>(
       `/api/chats/${chat.config.id}/done`,
       { method: "POST", body: "{}" },

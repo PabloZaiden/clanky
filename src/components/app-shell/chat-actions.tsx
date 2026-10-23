@@ -2,10 +2,9 @@ import { useMemo, useState, type ReactNode } from "react";
 import { ConfirmModal, Modal, type ActionMenuItem } from "@pablozaiden/webapp/web";
 import { Button } from "../common";
 import { RenameChatModal } from "../RenameChatModal";
-import { SpawnCurrentPlanModal } from "../SpawnCurrentPlanModal";
 import { appAbsoluteUrl } from "../../lib/public-path";
 import { apiRequest } from "../../lib/api-client";
-import type { Chat, Task } from "@/shared";
+import type { Chat } from "@/shared";
 import {
   getCurrentChatDirectory,
   isChatBusyStatus,
@@ -14,14 +13,9 @@ import {
 
 interface ChatActionItemOptions {
   chat: Chat;
-  canSpawnTasks: boolean;
   hasCodeExplorerAction: boolean;
   sameDirectoryChatPending: boolean;
-  spawnPending: boolean;
-  spawnCurrentPlanPending: boolean;
   markDonePending: boolean;
-  onSpawnTask: () => void;
-  onSpawnTaskFromCurrentPlan: () => void;
   onCreateSameDirectoryChat: () => void;
   onOpenCodeExplorer: () => void;
   onTranscript: () => void;
@@ -32,11 +26,9 @@ interface ChatActionItemOptions {
 
 interface UseChatActionsOptions {
   chat: Chat | null;
-  canSpawnTasks: boolean;
   hasCodeExplorerAction: boolean;
   onOpenCodeExplorer?: (chat: Chat) => void;
   onCreateChatInCurrentDirectory: (chat: Chat, directory: string) => Promise<void>;
-  onTaskSpawned?: (task: Task) => void;
   onChatRenamed?: (chat: Chat) => void | Promise<void>;
   onChatDone?: (chat: Chat) => Chat | null | Promise<Chat | null>;
   onDeleteChat: (chatId: string) => Promise<boolean>;
@@ -64,14 +56,9 @@ function getChatTranscriptDownloadUrl(chat: Chat): string {
 
 function buildChatActionItems({
   chat,
-  canSpawnTasks,
   hasCodeExplorerAction,
   sameDirectoryChatPending,
-  spawnPending,
-  spawnCurrentPlanPending,
   markDonePending,
-  onSpawnTask,
-  onSpawnTaskFromCurrentPlan,
   onCreateSameDirectoryChat,
   onOpenCodeExplorer,
   onTranscript,
@@ -84,23 +71,7 @@ function buildChatActionItems({
   const hasTranscript = chat.state.hasTranscript ?? (hasMessages || chat.state.toolCalls.length > 0);
   const canCreateSameDirectoryChat = Boolean(getCurrentChatDirectory(chat));
 
-  const taskActions: ActionMenuItem[] = canSpawnTasks ? [
-    {
-      id: "spawn-task",
-      label: spawnPending ? "Spawning task..." : "Spawn Task",
-      onAction: onSpawnTask,
-      disabled: isActive || spawnPending || spawnCurrentPlanPending || !hasMessages,
-    },
-    {
-      id: "spawn-task-from-current-plan",
-      label: spawnCurrentPlanPending ? "Spawning task from plan file..." : "Spawn task from plan file",
-      onAction: onSpawnTaskFromCurrentPlan,
-      disabled: isActive || spawnPending || spawnCurrentPlanPending || !hasMessages,
-    },
-  ] : [];
-
   return [
-    ...taskActions,
     {
       id: "new-chat-current-directory",
       label: sameDirectoryChatPending ? "Creating chat..." : "New Chat here",
@@ -141,11 +112,9 @@ function buildChatActionItems({
 
 export function useChatActions({
   chat,
-  canSpawnTasks,
   hasCodeExplorerAction,
   onOpenCodeExplorer,
   onCreateChatInCurrentDirectory,
-  onTaskSpawned,
   onChatRenamed,
   onChatDone,
   onDeleteChat,
@@ -155,10 +124,6 @@ export function useChatActions({
   const [renameTarget, setRenameTarget] = useState<Chat | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Chat | null>(null);
   const [transcriptTarget, setTranscriptTarget] = useState<Chat | null>(null);
-  const [spawnCurrentPlanTarget, setSpawnCurrentPlanTarget] = useState<Chat | null>(null);
-  const [spawnCurrentPlanPath, setSpawnCurrentPlanPath] = useState("");
-  const [isSpawnPending, setIsSpawnPending] = useState(false);
-  const [isSpawnCurrentPlanPending, setIsSpawnCurrentPlanPending] = useState(false);
   const [isDeletePending, setIsDeletePending] = useState(false);
   const [isMarkDonePending, setIsMarkDonePending] = useState(false);
   const [isSameDirectoryChatPending, setIsSameDirectoryChatPending] = useState(false);
@@ -176,69 +141,6 @@ export function useChatActions({
       fallbackMessage: "Failed to rename chat",
     });
     await onChatRenamed?.(updatedChat);
-  }
-
-  async function spawnTask(target: Chat): Promise<void> {
-    if (!canSpawnTasks || isSpawnPending || isSpawnCurrentPlanPending) {
-      return;
-    }
-
-    setIsSpawnPending(true);
-    try {
-      const task = await apiRequest<Task>(`/api/chats/${encodeURIComponent(target.config.id)}/spawn-task`, {
-        method: "POST",
-        action: "Spawn task from chat",
-        fallbackMessage: "Failed to spawn task",
-      });
-      onTaskSpawned?.(task);
-    } catch (error) {
-      onActionError(getErrorMessage(error));
-    } finally {
-      setIsSpawnPending(false);
-    }
-  }
-
-  function openSpawnCurrentPlanModal(target: Chat): void {
-    if (!canSpawnTasks || isSpawnPending || isSpawnCurrentPlanPending) {
-      return;
-    }
-
-    setSpawnCurrentPlanPath("");
-    setSpawnCurrentPlanTarget(target);
-  }
-
-  function closeSpawnCurrentPlanModal(): void {
-    if (isSpawnCurrentPlanPending) {
-      return;
-    }
-
-    setSpawnCurrentPlanTarget(null);
-    setSpawnCurrentPlanPath("");
-  }
-
-  async function spawnTaskFromCurrentPlan(requestedPlanPath: string): Promise<void> {
-    if (!canSpawnTasks || !spawnCurrentPlanTarget || isSpawnPending || isSpawnCurrentPlanPending) {
-      return;
-    }
-
-    const trimmedPlanPath = requestedPlanPath.trim();
-    setIsSpawnCurrentPlanPending(true);
-    try {
-      const task = await apiRequest<Task>(`/api/chats/${encodeURIComponent(spawnCurrentPlanTarget.config.id)}/spawn-task-from-current-plan`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(trimmedPlanPath ? { planFilePath: trimmedPlanPath } : {}),
-        action: "Spawn task from current plan",
-        fallbackMessage: "Failed to spawn task from current plan",
-      });
-      setSpawnCurrentPlanTarget(null);
-      setSpawnCurrentPlanPath("");
-      onTaskSpawned?.(task);
-    } catch (error) {
-      onActionError(getErrorMessage(error));
-    } finally {
-      setIsSpawnCurrentPlanPending(false);
-    }
   }
 
   async function confirmDeleteChat(): Promise<void> {
@@ -309,14 +211,9 @@ export function useChatActions({
 
     return buildChatActionItems({
       chat,
-      canSpawnTasks,
       hasCodeExplorerAction,
       sameDirectoryChatPending: isSameDirectoryChatPending,
-      spawnPending: isSpawnPending,
-      spawnCurrentPlanPending: isSpawnCurrentPlanPending,
       markDonePending: isMarkDonePending,
-      onSpawnTask: () => void spawnTask(chat),
-      onSpawnTaskFromCurrentPlan: () => openSpawnCurrentPlanModal(chat),
       onCreateSameDirectoryChat: () => void createChatInCurrentDirectory(chat),
       onOpenCodeExplorer: () => onOpenCodeExplorer?.(chat),
       onTranscript: () => setTranscriptTarget(chat),
@@ -325,19 +222,15 @@ export function useChatActions({
       onDelete: () => setDeleteTarget(chat),
     });
   }, [
-    canSpawnTasks,
     chat,
     hasCodeExplorerAction,
     isSameDirectoryChatPending,
     isMarkDonePending,
-    isSpawnCurrentPlanPending,
-    isSpawnPending,
     onCreateChatInCurrentDirectory,
     onActionError,
     onChatDeleted,
     onDeleteChat,
     onOpenCodeExplorer,
-    onTaskSpawned,
   ]);
 
   const modals = (
@@ -397,18 +290,6 @@ export function useChatActions({
         <></>
         <p>Open the transcript in a standalone window or download it as a Markdown file.</p>
       </Modal>
-      {canSpawnTasks ? (
-        <SpawnCurrentPlanModal
-          isOpen={spawnCurrentPlanTarget !== null}
-          submitting={isSpawnCurrentPlanPending}
-          initialPlanFilePath={spawnCurrentPlanPath}
-          onClose={closeSpawnCurrentPlanModal}
-          onSubmit={async (planFilePath) => {
-            setSpawnCurrentPlanPath(planFilePath);
-            await spawnTaskFromCurrentPlan(planFilePath);
-          }}
-        />
-      ) : null}
     </>
   );
 
