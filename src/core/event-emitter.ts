@@ -14,7 +14,7 @@ import type {
   WorkerUpdateEvent,
 } from "@/shared";
 import { log } from "@pablozaiden/webapp/server";
-import { getCurrentUserId } from "../context/user-context";
+import { getExecutionOwnerUserId } from "../context/user-context";
 import type { ControlUiActionEvent } from "@/shared/clanky-control";
 import type { LiveVoiceActivityEvent } from "@/shared/live-voice";
 
@@ -60,7 +60,7 @@ export class SimpleEventEmitter<T = TaskEvent> {
   /**
    * Emit an event to all subscribers.
    */
-  emit(event: T, context: EventContext = { userId: getCurrentUserId() }): void {
+  emit(event: T, context: EventContext = { userId: getExecutionOwnerUserId() }): void {
     // Only log subscriber count for task.log events to avoid spam
     const eventType = (event as { type?: string }).type;
     if (this.handlers.size > 1 && eventType === "task.log") {

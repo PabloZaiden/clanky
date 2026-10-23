@@ -5,6 +5,7 @@
 import type { ExecutionHostBinding, ExecutionHostRef, Workspace } from "@/shared";
 import { isWorkspaceSshExecutionHostRef } from "@/shared/execution-host";
 import { DomainError } from "../domain/domain-error";
+import { requireResourceOwnerUserId } from "../context/user-context";
 import { getSshServerConfig } from "../persistence/ssh-servers";
 import { getWorkspaceSshTarget } from "../persistence/workspace-execution-targets";
 import type { SshConnectionTarget } from "./ssh-connection-target";
@@ -86,7 +87,7 @@ export async function resolveWorkspaceExecutionTarget(
     };
   }
 
-  const server = await getSshServerConfig(host.serverId);
+  const server = await getSshServerConfig(host.serverId, requireResourceOwnerUserId(workspace.id));
   if (!server) {
     throw new DomainError(
       "ssh_server_not_found",

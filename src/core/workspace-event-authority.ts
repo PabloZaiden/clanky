@@ -39,15 +39,16 @@ export function resolveWorkspaceEventAuthority(
       id = target["agentRunId"];
     } else return undefined;
   } else if (publication.kind !== "state") return undefined;
-  if (!resource || !id) return undefined;
+  if (!resource || (publication.kind === "content" && !id)) return undefined;
   const workspaceId = target["workspaceId"]
-    ?? findGuestResourceWorkspace(guest, resource, id)
+    ?? (id ? findGuestResourceWorkspace(guest, resource, id) : undefined)
     ?? (resource === "agent-run" && target.scope
       ? findGuestResourceWorkspace(guest, "agent", target.scope) : undefined)
     ?? (resource === "preview" && target.scope && guest.workspaceIds.includes(target.scope)
       ? target.scope : undefined);
   if (!workspaceId || !guest.workspaceIds.includes(workspaceId)) return undefined;
   if (resource === "terminal" || resource === "preview") {
+    if (!id) return undefined;
     const membershipId = target["membershipId"]
       ?? collaborationService.getInteractiveResourceInternal({
         kind: resource === "terminal" ? "terminal" : "preview", id, workspaceId,
