@@ -25,6 +25,7 @@ import {
   getTerminalSession,
   getTerminalSessionByTaskId,
   listTerminalSessions,
+  listTerminalSessionsByTaskId,
   listTerminalSessionsByWorkspace,
   saveTerminalSession,
   resetTerminalConnections,
@@ -44,6 +45,7 @@ import {
   unblockTerminalAttachment,
 } from "./terminal-attachment-registry";
 import { executionHostService } from "./execution-host-service";
+import { getInteractiveResourceInternal } from "./collaboration-interactive";
 
 const log = createLogger("core:terminal-session-manager");
 
@@ -245,11 +247,10 @@ export class TerminalSessionManager {
   }
 
   async deleteSessionByTaskId(taskId: string): Promise<boolean> {
-    const session = await getTerminalSessionByTaskId(taskId);
-    if (!session) {
-      return true;
+    for (const session of await listTerminalSessionsByTaskId(taskId)) {
+      await this.deleteSession(session.config.id);
     }
-    return await this.deleteSession(session.config.id);
+    return true;
   }
 
   async markStatus(id: string, status: TerminalSessionStatus, error?: string): Promise<TerminalSession> {
@@ -442,11 +443,17 @@ export class TerminalSessionManager {
       await managedCredentialService.revokeContextIfConfigured(identity);
     }
 
+    const workspaceId = currentSession.config.workspaceId;
+    const membershipId = workspaceId
+      ? getInteractiveResourceInternal({ kind: "terminal", id, workspaceId })?.membershipId ?? null
+      : undefined;
     const deleted = await deleteTerminalSession(id);
     if (deleted) {
       terminalSessionEventEmitter.emit({
         type: "terminal_session.deleted",
         terminalSessionId: id,
+        workspaceId,
+        membershipId,
         timestamp: new Date().toISOString(),
       });
     }

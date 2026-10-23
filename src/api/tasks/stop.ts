@@ -1,3 +1,4 @@
+import { workspaceOperation } from "../workspace-delegation";
 import { defineRoutes } from "@pablozaiden/webapp/server";
 /**
  * Non-destructive stop route for active tasks.
@@ -15,6 +16,7 @@ const log = createLogger("api:tasks");
 
 export const tasksStopRoutes = defineRoutes({
   "/api/tasks/:id/stop": {
+    delegation: workspaceOperation("task"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Stop an active task run.",

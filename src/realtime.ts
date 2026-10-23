@@ -16,6 +16,7 @@ import type {
   WorkerUpdateEvent,
 } from "@/shared";
 import { PROMPT_TEMPLATES_REALTIME_RESOURCE } from "@/shared/prompt-templates";
+import type { CollaborationResourceKind } from "@/shared/collaboration-reference";
 import type { MeshStateEvent, HarnessStateEvent } from "./core/event-emitter";
 import { createToolCallSummary, serializeExecutionHostRef } from "@/shared";
 import type { ControlUiActionEvent } from "@/shared/clanky-control";
@@ -119,6 +120,36 @@ export type ClankyStreamEvent =
 
 export type ClankyRealtimeEvent = ResourceRealtimeEvent | ClankyStreamEvent;
 
+export const WORKSPACE_REALTIME_RESOURCE_KINDS: Readonly<Record<string, CollaborationResourceKind>> = {
+  workspaces: "workspace",
+  tasks: "task",
+  chats: "chat",
+  trash: "chat",
+  "chat-activity": "chat",
+  agents: "agent",
+  "agent-runs": "agent-run",
+  "terminal-sessions": "terminal",
+  previews: "preview",
+};
+
+const WORKSPACE_STREAM_TYPES = new Set<string>([
+  "task.message", "task.message.delta", "task.tool_call", "task.tool_call.extra",
+  "task.log", "task.log.delta", "task.iteration.start", "task.iteration.end", "task.git.commit",
+  "chat.message", "chat.message.delta", "chat.tool_call", "chat.tool_call.extra", "chat.log", "chat.log.delta",
+  "agent.run.message", "agent.run.message.delta", "agent.run.tool_call", "agent.run.tool_call.extra",
+  "agent.run.log", "agent.run.log.delta",
+]);
+
+export function isWorkspaceRealtimeEvent(value: unknown): value is ClankyRealtimeEvent {
+  if (!value || typeof value !== "object" || !("type" in value) || typeof value.type !== "string") return false;
+  if ("resource" in value && typeof value.resource === "string"
+    && WORKSPACE_REALTIME_RESOURCE_KINDS[value.resource]
+    && "action" in value && (value.action === "changed" || value.action === "deleted")) {
+    return value.type === `${value.resource}.${value.action}`;
+  }
+  return WORKSPACE_STREAM_TYPES.has(value.type);
+}
+
 type ResourceAction = Extract<RealtimeAction, "changed" | "deleted">;
 
 export interface ResourcePublication<TPayload = unknown> {
@@ -126,6 +157,8 @@ export interface ResourcePublication<TPayload = unknown> {
   action: ResourceAction;
   id?: string;
   scope?: string;
+  workspaceId?: string;
+  membershipId?: string | null;
   payload?: TPayload;
 }
 
@@ -155,6 +188,8 @@ export function createClankyRealtimePublisher(
         userId: owner.userId,
         ...(publication.id ? { id: publication.id } : {}),
         ...(publication.scope ? { scope: publication.scope } : {}),
+        ...(publication.workspaceId ? { workspaceId: publication.workspaceId } : {}),
+        ...(publication.membershipId !== undefined ? { membershipId: publication.membershipId ?? "owner" } : {}),
       };
       const options = {
         ...(publication.scope ? { scope: publication.scope } : {}),
@@ -208,12 +243,14 @@ function publishDeleted(
   resource: ClankyRealtimeResource,
   id: string,
   scope?: string,
+  authority?: { workspaceId?: string; membershipId?: string | null },
 ): void {
   publisher.publishResource(owner, {
     resource,
     action: "deleted",
     id,
     ...(scope ? { scope } : {}),
+    ...authority,
   });
 }
 
@@ -269,7 +306,7 @@ export function publishClankyDomainEvent(
       publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.tasks, event.taskId);
       return;
     case "task.deleted":
-      publishDeleted(publisher, owner, CLANKY_REALTIME_RESOURCES.tasks, event.taskId);
+      publishDeleted(publisher, owner, CLANKY_REALTIME_RESOURCES.tasks, event.taskId, undefined, { workspaceId: event.workspaceId });
       return;
     case "task.message":
       if (event.message.role === "user") {
@@ -330,11 +367,14 @@ export function publishClankyDomainEvent(
       publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.chats, event.chatId);
       return;
     case "chat.deleted":
-      publishDeleted(publisher, owner, CLANKY_REALTIME_RESOURCES.chats, event.chatId);
+      publishDeleted(publisher, owner, CLANKY_REALTIME_RESOURCES.chats, event.chatId, undefined, { workspaceId: event.workspaceId });
       return;
     case "chat.trash.changed":
-      publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.trash);
-      publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.chats, event.chatId);
+      for (const resource of [CLANKY_REALTIME_RESOURCES.trash, CLANKY_REALTIME_RESOURCES.chats]) {
+        publisher.publishResource(owner, {
+          resource, action: "changed", id: event.chatId, workspaceId: event.workspaceId,
+        });
+      }
       return;
     case "chat.message":
       if (event.message.role === "user") {
@@ -390,7 +430,7 @@ export function publishClankyDomainEvent(
       publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.agents, event.agentId);
       return;
     case "agent.deleted":
-      publishDeleted(publisher, owner, CLANKY_REALTIME_RESOURCES.agents, event.agentId);
+      publishDeleted(publisher, owner, CLANKY_REALTIME_RESOURCES.agents, event.agentId, undefined, { workspaceId: event.workspaceId });
       return;
     case "agent.run.message":
     case "agent.run.message.delta":
@@ -450,7 +490,9 @@ export function publishClankyDomainEvent(
       publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.terminalSessions, event.terminalSessionId);
       return;
     case "terminal_session.deleted":
-      publishDeleted(publisher, owner, CLANKY_REALTIME_RESOURCES.terminalSessions, event.terminalSessionId);
+      publishDeleted(publisher, owner, CLANKY_REALTIME_RESOURCES.terminalSessions, event.terminalSessionId, undefined, {
+        workspaceId: event.workspaceId, membershipId: event.membershipId,
+      });
       return;
 
     case "provisioning.started":
@@ -521,6 +563,7 @@ export function publishClankyDomainEvent(
         CLANKY_REALTIME_RESOURCES.previews,
         event.previewId,
         scope,
+        { workspaceId: event.workspaceId, membershipId: event.membershipId },
       );
       return;
       }

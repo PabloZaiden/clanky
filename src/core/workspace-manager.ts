@@ -45,7 +45,8 @@ import { withWorkspaceExecutionLock, withWorkspaceRuntimeLock } from "./workspac
 import { executionHostService } from "./execution-host-service";
 import { workspaceWorkerEnrollmentService } from "./workspace-worker-enrollment-service";
 import { meshManager } from "./mesh-manager";
-import { requireCurrentUserId } from "../context/user-context";
+import { getCollaborationActor, requireExecutionOwnerUserId } from "../context/user-context";
+import { requireWorkspaceUpdateUserId } from "../persistence/ownership";
 import {
   captureWorkspaceSshTargetState,
   ensureWorkspaceSshTarget,
@@ -310,7 +311,22 @@ export class WorkspaceManager {
     workspaceId?: string;
     workspaceWorkerEnrollmentId?: string;
   } = {}): Promise<ExecutionHostDescriptor[]> {
-    const userId = requireCurrentUserId();
+    const userId = requireExecutionOwnerUserId();
+    if (getCollaborationActor()?.kind === "guest") {
+      if (!context.workspaceId || context.workspaceWorkerEnrollmentId) {
+        throw new DomainError("collaboration_operation_forbidden", "Only the configured workspace host is available.");
+      }
+      const workspace = await this.requireWorkspace(context.workspaceId);
+      const host = executionHostService.validateBinding(workspace.executionHostBinding, userId);
+      return [{
+        ref: host.ref, targetKey: host.targetKey, name: workspace.name,
+        endpoint: null, meshRouteKind: null, repositoriesBasePath: null, preferredModel: null,
+        configurationRevision: host.revision, revision: host.revision,
+        accessRequirement: { kind: "none" }, acceptRemoteExecution: true,
+        platform: host.runtime.platform, capabilities: host.runtime.capabilities,
+        harnessAdapters: [workspace.serverSettings.agent.adapter],
+      }];
+    }
     let additionalHost: ExecutionHostRef | undefined;
     if (context.workspaceId) {
       additionalHost = (await this.requireWorkspace(context.workspaceId)).executionHostBinding.host;
@@ -326,7 +342,7 @@ export class WorkspaceManager {
 
   async createWorkspace(input: CreateWorkspaceInput): Promise<Workspace> {
     const normalized = normalizeCreateInput(input);
-    const userId = requireCurrentUserId();
+    const userId = requireExecutionOwnerUserId();
     if (
       !normalized.executionHost
       && !normalized.sshTarget
@@ -517,6 +533,7 @@ export class WorkspaceManager {
     id: string,
     updates: UpdateWorkspaceInput,
   ): Promise<Workspace | null> {
+    requireWorkspaceUpdateUserId(id, updates);
     const update = async () => await withWorkspaceExecutionLock(id, async () => {
       return await this.updateWorkspaceUnlocked(id, updates);
     });
@@ -531,7 +548,7 @@ export class WorkspaceManager {
     if (!current) {
       return null;
     }
-    const userId = requireCurrentUserId();
+    const userId = requireExecutionOwnerUserId();
     const nextAllowWorktrees = updates.allowWorktrees
       ?? (current.allowWorktrees !== false);
 
@@ -812,7 +829,7 @@ export class WorkspaceManager {
       const binding = bindingOverride
         ?? (workspaceWorkerEnrollmentId
           ? workspaceWorkerEnrollmentService.getExecutionHostBinding(
-              requireCurrentUserId(),
+              requireExecutionOwnerUserId(),
               workspaceWorkerEnrollmentId,
             )
           : undefined);

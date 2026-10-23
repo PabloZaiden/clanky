@@ -194,7 +194,8 @@ export async function getTaskImpl(ctx: TaskCtx, taskId: string): Promise<Task | 
     const persisted = await loadTaskSummary(taskId);
     if (!persisted) return null;
     engine.refreshHarnessState(persisted.state.harness);
-    return { config: engine.config, state: { ...engine.state, usage: persisted.state.usage } };
+    return { config: { ...engine.config, creator: persisted.config.creator },
+      state: { ...engine.state, usage: persisted.state.usage } };
   }
   return loadTask(taskId);
 }
@@ -249,7 +250,7 @@ export async function getAllTasksImpl(ctx: TaskCtx): Promise<Task[]> {
     const engine = ctx.engines.get(task.config.id);
     if (engine) {
       return {
-        config: engine.config,
+        config: { ...engine.config, creator: task.config.creator },
         state: mergeLiveTaskSummaryState(engine.state, task.state),
       };
     }
@@ -263,7 +264,7 @@ export async function getTaskSummariesImpl(ctx: TaskCtx): Promise<Task[]> {
     const engine = ctx.engines.get(task.config.id);
     if (engine) {
       return createTaskListSnapshot({
-        config: engine.config,
+        config: { ...engine.config, creator: task.config.creator },
         state: mergeLiveTaskSummaryState(engine.state, task.state),
       });
     }
@@ -437,6 +438,7 @@ export async function updateTaskImpl(
   const updatedConfig: TaskConfig = {
     ...currentConfig,
     ...updates,
+    creator: task.config.creator,
     cheapModel: updates.cheapModel ?? currentConfig.cheapModel ?? DEFAULT_TASK_CONFIG.cheapModel,
     activityTimeoutSeconds: updates.activityTimeoutSeconds === undefined
       ? currentConfig.activityTimeoutSeconds ?? DEFAULT_TASK_CONFIG.activityTimeoutSeconds

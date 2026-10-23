@@ -8,7 +8,7 @@ import { TOKEN_USAGE_FIELDS, type HarnessUsageSnapshot, type TokenCounts, type T
 import { HarnessUsageSnapshotSchema, TokenUsageSummarySchema } from "@/contracts/schemas/harness-usage";
 import { HarnessError } from "../backends/harness-errors";
 import { getDatabase } from "./database";
-import { requirePersistenceUserId } from "./ownership";
+import { requireResourcePersistenceUserId } from "./ownership";
 import { parseStoredHarnessBinding } from "./harness-binding";
 import { invalidateChatMetadata } from "./chats/metadata-cache";
 import type { HarnessContext } from "./harness-state";
@@ -88,7 +88,7 @@ function sourceKey(binding: HarnessConversationBinding): string {
 
 function updateSummaries(context: HarnessContext, row: Pick<UsageRow, "chat_id" | "task_id">): UsageChange {
   const db = getDatabase();
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId(context.kind, context.id);
   const contexts: HarnessContext[] = [context];
   const runs: UsageChange["runs"] = [];
   if (row.chat_id) {
@@ -122,7 +122,7 @@ export function saveHarnessUsage(
 ): UsageChange | undefined {
   const next = HarnessUsageSnapshotSchema.parse(snapshot);
   const db = getDatabase();
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId(context.kind, context.id);
   return db.transaction(() => {
     const owner = context.kind === "chat"
       ? db.query<{ session_binding_json: string | null; task_id: string | null }, [string, string]>(
@@ -155,7 +155,7 @@ export function saveHarnessUsage(
 
 export function markHarnessUsageStale(context: HarnessContext, binding: HarnessConversationBinding): UsageChange | undefined {
   const db = getDatabase();
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId(context.kind, context.id);
   return db.transaction(() => {
     const row = db.query<UsageRow, [string, string]>(
       "SELECT * FROM harness_usage WHERE user_id = ? AND source_key = ?",

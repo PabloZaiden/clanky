@@ -10,7 +10,8 @@ import {
   executionHostBindingFromRow,
   resolveExecutionHostBindingId,
 } from "./execution-hosts";
-import { requirePersistenceUserId } from "./ownership";
+import { filterWorkspacePersistenceRows, requireResourcePersistenceUserId, workspacePersistenceParameters } from "./ownership";
+import { recordWorkspaceResourceCreation } from "./collaboration-creation";
 import { z } from "zod";
 import type { CodePreviewCleanup } from "@/shared/preview";
 
@@ -33,7 +34,7 @@ function parseCodeCleanup(raw: unknown, id: unknown): CodePreviewCleanup | undef
 }
 
 function previewToRow(preview: PreviewSession): Record<string, number | string | null> {
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId("preview", preview.config.id, preview.config.workspaceId ?? null);
   const workspaceId = preview.config.workspaceId ?? null;
   if (preview.config.targetKind === "workspace" && workspaceId === null) {
     throw new Error("Workspace previews require a workspace association");
@@ -136,12 +137,17 @@ export async function savePreviewSession(preview: PreviewSession): Promise<void>
     .map((column) => `${column} = excluded.${column}`)
     .join(", ");
 
-  db.run(
+  db.transaction(() => {
+    const exists = db.query("SELECT 1 FROM preview_sessions WHERE id = ?").get(preview.config.id);
+    db.run(
     `INSERT INTO preview_sessions (${columns.join(", ")}) VALUES (${placeholders})
      ON CONFLICT(id) DO UPDATE SET ${updateClause}
      WHERE preview_sessions.user_id = excluded.user_id`,
     Object.values(row),
-  );
+    );
+    if (!exists) recordWorkspaceResourceCreation({ kind: "preview", id: preview.config.id,
+      ownerUserId: String(row["user_id"]), workspaceId: preview.config.workspaceId });
+  })();
   log.debug("Saved preview session", { id: preview.config.id, status: preview.state.status });
 }
 
@@ -150,7 +156,7 @@ export async function getPreviewSession(id: string): Promise<PreviewSession | nu
   const row = db.query(`
     ${PREVIEW_SELECT}
     WHERE preview.id = ? AND preview.user_id = ?
-  `).get(id, requirePersistenceUserId()) as Record<string, unknown> | null;
+  `).get(id, requireResourcePersistenceUserId("preview", id)) as Record<string, unknown> | null;
   return row ? rowToPreview(row) : null;
 }
 
@@ -158,7 +164,7 @@ export async function deletePreviewSession(id: string): Promise<void> {
   const db = getDatabase();
   db.run(
     "DELETE FROM preview_sessions WHERE id = ? AND user_id = ?",
-    [id, requirePersistenceUserId()],
+    [id, requireResourcePersistenceUserId("preview", id)],
   );
   log.debug("Deleted preview session", { id });
 }
@@ -177,8 +183,8 @@ export async function listPreviewSessionsByWorkspaceAndStatuses(
     WHERE preview.workspace_id = ? AND preview.user_id = ?
       AND preview.status IN (${placeholders})
     ORDER BY preview.updated_at DESC
-  `).all(workspaceId, requirePersistenceUserId(), ...statuses) as Record<string, unknown>[];
-  return rows.map(rowToPreview);
+  `).all(workspaceId, requireResourcePersistenceUserId("preview", undefined, workspaceId), ...statuses) as Record<string, unknown>[];
+  return filterWorkspacePersistenceRows(rows, "preview").map(rowToPreview);
 }
 
 export async function listPreviewSessionsByExecutionHostAndStatuses(
@@ -189,7 +195,7 @@ export async function listPreviewSessionsByExecutionHostAndStatuses(
     return [];
   }
   const placeholders = statuses.map(() => "?").join(", ");
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId("preview", undefined, null);
   const executionHostId = resolveExecutionHostBindingId(userId, binding);
   const db = getDatabase();
   const rows = db.query(`
@@ -220,8 +226,8 @@ export async function listPreviewSessionsByStatuses(
   const db = getDatabase();
   const rows = db.query(`
     ${PREVIEW_SELECT}
-    WHERE preview.user_id = ? AND preview.status IN (${placeholders})
+    WHERE preview.user_id = ? AND (? IS NULL OR preview.workspace_id = ?) AND preview.status IN (${placeholders})
     ORDER BY preview.updated_at DESC
-  `).all(requirePersistenceUserId(), ...statuses) as Record<string, unknown>[];
-  return rows.map(rowToPreview);
+  `).all(requireResourcePersistenceUserId("preview"), ...workspacePersistenceParameters(), ...statuses) as Record<string, unknown>[];
+  return filterWorkspacePersistenceRows(rows, "preview").map(rowToPreview);
 }

@@ -30,7 +30,7 @@ import { loadTask } from "../persistence/tasks";
 import { getTerminalSession } from "../persistence/terminal-sessions";
 import { getWorkspace } from "../persistence/workspaces";
 import { DomainError } from "../domain/domain-error";
-import { requireCurrentUser } from "../context/user-context";
+import { requireExecutionOwnerUser } from "../context/user-context";
 
 const MANAGED_BY = "clanky.execution-context";
 export const DETERMINISTIC_AGENT_MANAGED_BY = "clanky.deterministic-agent-runtime";
@@ -122,7 +122,7 @@ export class ManagedCredentialService {
     mode: ManagedCredentialMode = "reuse",
     options?: ManagedCredentialOptions,
   ): Promise<ManagedRuntimeCredential> {
-    const user = requireCurrentUser();
+    const user = requireExecutionOwnerUser();
     this.assertOwner(identity, user.id);
     return await this.withCredentialLock(identity, async () => {
       const store = this.requireStore();
@@ -222,7 +222,7 @@ export class ManagedCredentialService {
     mode: ManagedCredentialMode = "reuse",
     options?: ManagedCredentialOptions,
   ): Promise<ManagedRuntimeCredential | undefined> {
-    const user = requireCurrentUser();
+    const user = requireExecutionOwnerUser();
     this.assertOwner(identity, user.id);
     const associations = await listContextApiKeyAssociationsForContextForUser(
       user.id,
@@ -246,7 +246,7 @@ export class ManagedCredentialService {
   }
 
   async revokeCredential(credential: ManagedRuntimeCredential): Promise<void> {
-    const user = requireCurrentUser();
+    const user = requireExecutionOwnerUser();
     this.assertOwner(credential, user.id);
     await this.withCredentialLock(credential, async () => {
       const store = this.requireStore();
@@ -268,7 +268,7 @@ export class ManagedCredentialService {
   }
 
   async revokeContext(identity: ManagedContextIdentity): Promise<void> {
-    const user = requireCurrentUser();
+    const user = requireExecutionOwnerUser();
     this.assertOwner(identity, user.id);
     await this.withCredentialLock(identity, async () => {
       const store = this.requireStore();
@@ -310,7 +310,7 @@ export class ManagedCredentialService {
     if (!this.store) {
       return;
     }
-    const user = requireCurrentUser();
+    const user = requireExecutionOwnerUser();
     const associations = await listContextApiKeyAssociationsForUser(user.id);
     const contextKeys = new Set<string>();
     for (const association of associations) {
@@ -339,7 +339,7 @@ export class ManagedCredentialService {
     if (!this.store) {
       return 0;
     }
-    const user = requireCurrentUser();
+    const user = requireExecutionOwnerUser();
     const associations = await listContextApiKeyAssociationsForUser(user.id);
     const managedKeys = listManagedApiKeys(this.store, user.id);
     const managedKeysById = new Map(managedKeys.map((key) => [key.id, key]));
@@ -418,7 +418,7 @@ export class ManagedCredentialService {
   }
 
   listManagedKeysForCurrentUser(managedBy?: string): ManagedApiKeySummary[] {
-    const user = requireCurrentUser();
+    const user = requireExecutionOwnerUser();
     return listManagedApiKeys(this.requireStore(), user.id, managedBy ?? MANAGED_BY);
   }
 

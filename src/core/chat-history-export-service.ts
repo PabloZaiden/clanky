@@ -28,7 +28,7 @@ import { executionHostService } from "./execution-host-service";
 import { executionPathsEqual } from "./execution-path";
 import { GitService } from "./git";
 import { ManagedPathService } from "./managed-path-service";
-import { requireCurrentUserId } from "../context/user-context";
+import { requireExecutionOwnerUserId } from "../context/user-context";
 import { sshCredentialManager } from "./ssh-credential-manager";
 import type { ChatStatePort } from "./chat-service-contracts";
 import { getCanonicalMessageAttachmentMimeType, getMessageAttachmentKind } from "@/shared/message-attachments";
@@ -743,7 +743,7 @@ export class ChatHistoryExportService {
       directory,
       operationId: `chat-history:${chat.config.id}:${operationId}`,
       provider: chat.config.model.providerID as AgentProvider,
-      localUserId: requireCurrentUserId(),
+      localUserId: requireExecutionOwnerUserId(),
       ...(sshPassword ? { sshPassword } : {}),
     });
   }

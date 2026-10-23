@@ -38,6 +38,9 @@ export async function resolveCliWorkspace(input: CliApiContext, auth: CliApiAuth
   if (!parsed.success) throw new Error("The workspace list response is invalid");
   const byId = parsed.data.find((entry) => entry.id === reference);
   if (byId) return byId;
+  if (response.headers.get("X-Clanky-Partial") === "true") {
+    throw new Error("The workspace list is incomplete. Use an exact workspace reference or reconnect unavailable controllers before selecting a name.");
+  }
   const byName = parsed.data.filter((entry) => entry.name === reference);
   if (byName.length === 1) return byName[0]!;
   throw new Error(byName.length > 1 ? `Workspace name is ambiguous: ${reference}` : `Workspace not found: ${reference}`);

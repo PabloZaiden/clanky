@@ -30,6 +30,7 @@ function compareNodeIds(left: string, right: string): number {
 export class MeshRelayStore {
   private controller: RelayControllerPairing | undefined;
   private authorizedWorkers = new Map<string, MeshRelayPeerIdentity>();
+  private authorizedClients = new Map<string, MeshRelayPeerIdentity>();
 
   getController(): RelayControllerPairing | undefined {
     return this.controller ? { ...this.controller } : undefined;
@@ -66,6 +67,24 @@ export class MeshRelayStore {
     return [...this.authorizedWorkers.values()]
       .sort((left, right) => compareNodeIds(left.nodeId, right.nodeId))
       .map(copyIdentity);
+  }
+
+  getAuthorizedClient(nodeId: string): MeshRelayPeerIdentity | undefined {
+    const client = this.authorizedClients.get(nodeId);
+    return client ? copyIdentity(client) : undefined;
+  }
+
+  replaceAuthorizedClients(clients: readonly MeshRelayPeerIdentity[]): void {
+    const next = new Map<string, MeshRelayPeerIdentity>();
+    const fingerprints = new Set<string>();
+    for (const client of clients) {
+      if (next.has(client.nodeId) || fingerprints.has(client.fingerprint)) {
+        throw new Error("Relay authorization contains duplicate client identities.");
+      }
+      next.set(client.nodeId, copyIdentity(client));
+      fingerprints.add(client.fingerprint);
+    }
+    this.authorizedClients = next;
   }
 
   replaceAuthorizedWorkers(workers: readonly MeshRelayPeerIdentity[]): void {

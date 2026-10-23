@@ -12,9 +12,11 @@ import {
   domainErrorResponse,
 } from "../helpers";
 import { parseAndValidate } from "../validation";
+import { workspaceOperation } from "../workspace-delegation";
 
 export const workspaceExecRoutes = defineRoutes({
   "/api/workspaces/:id/exec": {
+    delegation: workspaceOperation("workspace"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Execute one command on the host selected by a workspace.",

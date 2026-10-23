@@ -1,3 +1,4 @@
+import { workspaceOperation } from "../workspace-delegation";
 /**
  * Scheduled-agent code generation API routes.
  */
@@ -340,6 +341,7 @@ async function generateAgentCodeResponse(
 
 export const generationRoutes = defineRoutes({
   "/api/agents/code/generate": {
+    delegation: workspaceOperation("agent"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Reject generation for unsaved agents.",
@@ -357,6 +359,7 @@ export const generationRoutes = defineRoutes({
   },
 
   "/api/agents/:id/code/generate/prepare": {
+    delegation: workspaceOperation("agent"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Prepare the hidden deterministic-agent generation conversation before a long generation request.",
@@ -377,6 +380,7 @@ export const generationRoutes = defineRoutes({
   },
 
   "/api/agents/:id/code/generate": {
+    delegation: workspaceOperation("agent"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Generate an editable deterministic agent program without saving it.",

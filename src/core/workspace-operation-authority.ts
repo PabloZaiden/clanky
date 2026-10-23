@@ -1,0 +1,131 @@
+/**
+ * Binds canonical operation references to one granted workspace before dispatch.
+ */
+import type { DelegatedOperation } from "@pablozaiden/webapp/server";
+import type { CollaborationGuestGrant, WorkspaceAccessAuthority } from "@/shared/collaboration";
+import { DomainError } from "../domain/domain-error";
+import { findResourceWorkspace, workspaceUsesExecutionHost } from "../persistence/workspace-resource-index";
+import { collaborationService } from "./collaboration-service";
+import { isReadRecord } from "./resource-read-service";
+
+export function readReferenceField(value: unknown, name: string): unknown {
+  let current = value;
+  for (const part of name.split(".")) {
+    if (!isReadRecord(current)) return undefined;
+    current = current[part];
+  }
+  return current;
+}
+
+async function readOperationBody(operation: DelegatedOperation, request: Request): Promise<unknown> {
+  if (!request.body || !request.headers.get("content-type")?.toLowerCase().startsWith("application/json")
+    || !operation.delegation.bindings?.some((binding) => binding.source === "body")) return undefined;
+  try {
+    return await request.clone().json();
+  } catch (error) {
+    throw new DomainError("collaboration_request_invalid", "A valid JSON operation body is required.", { cause: error });
+  }
+}
+
+export function requireWorkspaceResource(input: {
+  guest: CollaborationGuestGrant;
+  workspaceId: string;
+  resource: string;
+  id: string;
+}): void {
+  if (input.resource === "read-item") return;
+  if (input.resource === "execution-host" && workspaceUsesExecutionHost({
+    workspaceId: input.workspaceId,
+    ownerUserId: input.guest.ownerUserId,
+    executionHostId: input.id,
+  })) return;
+  const workspaceId = findResourceWorkspace({
+    resource: input.resource, id: input.id, ownerUserId: input.guest.ownerUserId,
+  });
+  if (workspaceId !== input.workspaceId) {
+    throw new DomainError("collaboration_resource_unavailable", "The resource is not available in this shared workspace.");
+  }
+  if (input.resource === "terminal" || input.resource === "preview") {
+    collaborationService.authorizeInteractiveResource({
+      kind: input.resource, id: input.id, workspaceId,
+    });
+  }
+}
+
+export async function authorizeWorkspaceOperation(input: {
+  guest: CollaborationGuestGrant;
+  workspaceId: string;
+  operation: DelegatedOperation;
+  request: Request;
+}): Promise<WorkspaceAccessAuthority> {
+  const authority = collaborationService.requireWorkspaceAccess(input.workspaceId);
+  const { operation, request } = input;
+  const bindings = operation.delegation.bindings ?? [];
+  const url = new URL(request.url);
+  const body = await readOperationBody(operation, request);
+  if (operation.delegation.action === "scratchpad") {
+    if (isReadRecord(body) && Object.keys(body).some((field) => field !== "scratchpad")) {
+      throw new DomainError("collaboration_admin_forbidden", "Workspace configuration belongs to its controller.");
+    }
+    if (!isReadRecord(body) || typeof body["scratchpad"] !== "string") {
+      throw new DomainError("collaboration_request_invalid", "A scratchpad update is required.");
+    }
+  }
+  for (const binding of bindings) {
+    const value = binding.source === "param" ? operation.params[binding.name]
+      : binding.source === "query" ? url.searchParams.get(binding.name)
+        : readReferenceField(body, binding.name);
+    if (value === undefined || value === null || value === "") continue;
+    const values: unknown[] = Array.isArray(value) ? value : [value];
+    for (const id of values) {
+      if (typeof id !== "string") {
+        throw new DomainError("collaboration_reference_invalid", "An operation resource reference is invalid.");
+      }
+      requireWorkspaceResource({
+        guest: input.guest, workspaceId: input.workspaceId,
+        resource: binding.resource, id,
+      });
+    }
+  }
+  return authority;
+}
+
+export async function resolveOperationWorkspaces(input: {
+  guest: CollaborationGuestGrant;
+  operation: DelegatedOperation;
+  request: Request;
+  workspaceId?: string;
+}): Promise<string[]> {
+  const workspaceIds = new Set<string>();
+  if (input.workspaceId) workspaceIds.add(input.workspaceId);
+  const bindings = input.operation.delegation.bindings ?? [];
+  const url = new URL(input.request.url);
+  const body = await readOperationBody(input.operation, input.request);
+  for (const binding of bindings) {
+    if (binding.resource === "read-item" || binding.resource === "execution-host") continue;
+    const value = binding.source === "param" ? input.operation.params[binding.name]
+      : binding.source === "query" ? url.searchParams.get(binding.name)
+        : readReferenceField(body, binding.name);
+    if (value === undefined || value === null || value === "") continue;
+    for (const id of Array.isArray(value) ? value : [value]) {
+      if (typeof id !== "string") {
+        throw new DomainError("collaboration_reference_invalid", "An operation resource reference is invalid.");
+      }
+      const workspaceId = findResourceWorkspace({
+        resource: binding.resource, id, ownerUserId: input.guest.ownerUserId,
+      });
+      if (!workspaceId) {
+        throw new DomainError("collaboration_resource_unavailable", "The resource is unavailable.");
+      }
+      workspaceIds.add(workspaceId);
+    }
+  }
+  if (workspaceIds.size > 1) {
+    throw new DomainError("collaboration_workspace_mismatch", "An operation cannot combine resources from different workspaces.");
+  }
+  if (workspaceIds.size) return [...workspaceIds];
+  if (input.operation.method === "GET" && input.operation.delegation.collection) {
+    return input.guest.workspaceIds;
+  }
+  throw new DomainError("collaboration_authority_required", "The operation must identify a shared workspace.");
+}

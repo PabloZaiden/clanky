@@ -87,6 +87,10 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
   });
 
   // Preview bridge sockets use the raw transport directly and do not subscribe to app events.
+  if (ws.data.workspaceProxy) {
+    ws.data.workspaceProxy.start(ws);
+    return;
+  }
   if (previewBridgeMode) {
     ws.send(JSON.stringify({ type: "connected" }));
     ws.data.previewBridgeKeepalive = startPreviewBridgeKeepalive(ws);
@@ -170,6 +174,7 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
  * Cleans up transport resources to prevent leaks.
  */
 export function close(ws: ServerWebSocket<WebSocketData>): void {
+  ws.data.workspaceProxy?.close();
   // Remove from active connections
   activeConnections.delete(ws);
   log.info("WebSocket connection closed", {
@@ -197,7 +202,7 @@ export function close(ws: ServerWebSocket<WebSocketData>): void {
     releaseTerminalSocket(terminalSessionId, ws);
   }
 
-  if (ws.data.previewBridgeMode && ws.data.user) {
+  if (ws.data.previewBridgeMode && !ws.data.workspaceProxy && ws.data.user) {
     void previewSessionManager.closeBridgeSession(ws, "Preview bridge disconnected").catch((error: unknown) => {
       log.error("Failed to close disconnected preview", { error: String(error) });
     });
@@ -229,6 +234,7 @@ export function close(ws: ServerWebSocket<WebSocketData>): void {
  * Logs the error and cleans up transport resources.
  */
 export function error(ws: ServerWebSocket<WebSocketData>, err: Error): void {
+  ws.data.workspaceProxy?.close(1011, "Local websocket error");
   log.error("WebSocket error", {
     error: String(err),
     terminalSessionId: ws.data.terminalSessionId,
@@ -256,7 +262,7 @@ export function error(ws: ServerWebSocket<WebSocketData>, err: Error): void {
   if (terminalSessionId) {
     releaseTerminalSocket(terminalSessionId, ws);
   }
-  if (ws.data.previewBridgeMode && ws.data.user) {
+  if (ws.data.previewBridgeMode && !ws.data.workspaceProxy && ws.data.user) {
     void previewSessionManager.closeBridgeSession(ws, "Preview bridge error").catch((error: unknown) => {
       log.error("Failed to close errored preview", { error: String(error) });
     });

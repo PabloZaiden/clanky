@@ -12,10 +12,12 @@ import type {
   MeshRelayPeerRole,
   MeshRelayStreamOfferFrame,
 } from "@/shared/mesh-relay";
+import { MESH_RELAY_CLIENT_SOCKET_PATH } from "@/shared/mesh-relay";
 import {
   closeMeshInboundSocket,
   openMeshInboundSocket,
   type MeshInboundSocket,
+  type MeshInboundSocketAttachment,
 } from "./mesh-inbound-socket";
 import type {
   MeshRelayInboundHandler,
@@ -36,12 +38,20 @@ export interface MeshRelayInboundOptions {
   role: MeshRelayPeerRole;
   /** In-process HTTP dispatcher, normally `WebAppServer.handleRequest`. */
   dispatch(request: Request): Promise<Response | undefined>;
+  openWorkspaceClientSocket?(input: {
+    headers: Record<string, string>;
+    initiatorNodeId: string;
+    secureTransport: boolean;
+    socket: MeshInboundSocket;
+    signal: AbortSignal;
+  }): Promise<MeshInboundSocketAttachment>;
 }
 
 async function serveSocketStream(
   stream: MeshRelayDataStream,
   offer: MeshRelayStreamOfferFrame,
   secureTransport: boolean,
+  openWorkspaceClientSocket: MeshRelayInboundOptions["openWorkspaceClientSocket"],
 ): Promise<void> {
   const socket: MeshInboundSocket = {
     send: (data) => stream.send(data),
@@ -56,12 +66,30 @@ async function serveSocketStream(
   });
   let attachment;
   try {
-    attachment = await openMeshInboundSocket(
-      offer.path,
-      offer.headers,
-      socket,
-      { signal: openingController.signal, secureTransport },
-    );
+    const pathname = new URL(offer.path, "https://mesh.invalid").pathname;
+    if (pathname === MESH_RELAY_CLIENT_SOCKET_PATH) {
+      if (!secureTransport || !openWorkspaceClientSocket) {
+        throw new MeshRelayStreamError(
+          "mesh_workspace_client_unavailable",
+          "Workspace client sockets are not available on this connection.",
+          { status: 403 },
+        );
+      }
+      attachment = await openWorkspaceClientSocket({
+        headers: offer.headers,
+        initiatorNodeId: offer.initiatorNodeId,
+        secureTransport,
+        socket,
+        signal: openingController.signal,
+      });
+    } else {
+      attachment = await openMeshInboundSocket(
+        offer.path,
+        offer.headers,
+        socket,
+        { signal: openingController.signal, secureTransport },
+      );
+    }
   } catch (error) {
     stream.close(1011, "The Mesh socket could not be authorized");
     stream.dispose();
@@ -107,7 +135,12 @@ export function createMeshRelayInboundHandler(
         "https://mesh.invalid",
       ).pathname;
       const method = offer.method?.toUpperCase();
-      if (!isMeshRelayRouteAllowed(initiatorRole, offer.kind, method, pathname)) {
+      const allowed = options.role === "controller"
+        ? isMeshRelayRouteAllowed("worker", offer.kind, method, pathname)
+          || isMeshRelayRouteAllowed("client", offer.kind, method, pathname)
+        : options.role === "worker"
+          && isMeshRelayRouteAllowed(initiatorRole, offer.kind, method, pathname);
+      if (!allowed) {
         log.error("Refusing a Mesh relay offer for a route that is not allowed", {
           streamId: offer.streamId,
           kind: offer.kind,
@@ -124,7 +157,9 @@ export function createMeshRelayInboundHandler(
       const secureTransport = new URL(context.relayUrl).protocol === "https:"
         && offer.protocolVersion === 7;
       if (offer.kind === "socket") {
-        await serveSocketStream(stream, offer, secureTransport);
+        await serveSocketStream(
+          stream, offer, secureTransport, options.openWorkspaceClientSocket,
+        );
         return;
       }
       await serveMeshRelayHttpStream({

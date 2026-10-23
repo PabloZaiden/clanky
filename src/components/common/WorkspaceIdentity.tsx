@@ -48,7 +48,7 @@ export function WorkspaceIdentity({
   return (
     <span
       className={`inline-flex min-w-0 max-w-full items-center gap-1.5 ${className}`.trim()}
-      title={workspace.name}
+      title={workspace.collaboration ? `${workspace.name} (${workspace.collaboration.controllerName})` : workspace.name}
     >
       <WorkspaceIconMark workspace={workspace} size={iconSize} />
       {showProviderIcon ? (
@@ -59,6 +59,7 @@ export function WorkspaceIdentity({
         />
       ) : null}
       <span className="min-w-0 truncate font-medium">{workspace.name}</span>
+      {workspace.collaboration ? <span className="truncate text-xs opacity-70">{workspace.collaboration.controllerName}</span> : null}
     </span>
   );
 }

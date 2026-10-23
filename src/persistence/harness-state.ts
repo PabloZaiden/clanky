@@ -4,7 +4,7 @@
 
 import type { HarnessConversationBinding, HarnessConversationState } from "@/shared/harness-control";
 import { getDatabase } from "./database";
-import { requirePersistenceUserId } from "./ownership";
+import { requireResourcePersistenceUserId } from "./ownership";
 import { parseStoredHarnessBinding, parseStoredHarnessState } from "./harness-binding";
 import { HarnessConversationStateSchema } from "@/contracts/schemas/harness";
 import { HarnessError } from "../backends/harness-errors";
@@ -27,7 +27,7 @@ export function mergeHarnessProjection(
     });
   }
   const db = getDatabase();
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId(context.kind, context.id);
   const table = context.kind === "chat" ? "chats" : "tasks";
   const liveCondition = context.kind === "chat" ? " AND deleted_at IS NULL" : "";
   return db.transaction(() => {

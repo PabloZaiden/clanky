@@ -9,7 +9,7 @@ import {
   validateAgentColumnNames,
   validateAgentRunColumnNames,
 } from "./helpers";
-import { requirePersistenceUserId } from "../ownership";
+import { requireResourcePersistenceUserId, workspacePersistenceParameters } from "../ownership";
 import { agentRunTranscriptStore } from "../transcripts/agent-run-store";
 
 const DELETE_AGENT_RUN_BATCH_SIZE = 500;
@@ -79,7 +79,7 @@ export async function saveAgent(agent: Agent): Promise<void> {
 }
 
 export async function loadAgent(agentId: string): Promise<Agent | null> {
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId("agent", agentId);
   const row = getDatabase()
     .prepare("SELECT * FROM agents WHERE id = ? AND user_id = ?")
     .get(agentId, userId) as Record<string, unknown> | null;
@@ -87,15 +87,15 @@ export async function loadAgent(agentId: string): Promise<Agent | null> {
 }
 
 export async function listAgents(): Promise<Agent[]> {
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId("agent");
   const rows = getDatabase()
-    .prepare("SELECT * FROM agents WHERE user_id = ? ORDER BY created_at DESC")
-    .all(userId) as Record<string, unknown>[];
+    .prepare("SELECT * FROM agents WHERE user_id = ? AND (? IS NULL OR workspace_id = ?) ORDER BY created_at DESC")
+    .all(userId, ...workspacePersistenceParameters()) as Record<string, unknown>[];
   return rows.map(rowToAgent);
 }
 
 export async function listAgentsByWorkspace(workspaceId: string): Promise<Agent[]> {
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId("agent", undefined, workspaceId);
   const rows = getDatabase()
     .prepare("SELECT * FROM agents WHERE workspace_id = ? AND user_id = ? ORDER BY created_at DESC")
     .all(workspaceId, userId) as Record<string, unknown>[];
@@ -103,19 +103,19 @@ export async function listAgentsByWorkspace(workspaceId: string): Promise<Agent[
 }
 
 export async function listDueAgents(now: string): Promise<Agent[]> {
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId("agent");
   const rows = getDatabase()
     .prepare(`
       SELECT * FROM agents
-      WHERE enabled = 1 AND next_run_at IS NOT NULL AND next_run_at <= ? AND user_id = ?
+      WHERE enabled = 1 AND next_run_at IS NOT NULL AND next_run_at <= ? AND user_id = ? AND (? IS NULL OR workspace_id = ?)
       ORDER BY next_run_at ASC
     `)
-    .all(now, userId) as Record<string, unknown>[];
+    .all(now, userId, ...workspacePersistenceParameters()) as Record<string, unknown>[];
   return rows.map(rowToAgent);
 }
 
 export async function deleteAgent(agentId: string): Promise<boolean> {
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId("agent", agentId);
   const result = getDatabase().prepare("DELETE FROM agents WHERE id = ? AND user_id = ?").run(agentId, userId);
   return result.changes > 0;
 }
@@ -126,6 +126,7 @@ export interface SaveAgentRunOptions {
 }
 
 export async function saveAgentRun(run: AgentRun, options: SaveAgentRunOptions = {}): Promise<void> {
+  requireResourcePersistenceUserId("agent-run", run.id, run.configSnapshot.workspaceId);
   const row = agentRunToRow(run);
   validateAgentRunColumnNames(Object.keys(row));
   const { sql, values } = buildUpsertSql("agent_runs", row);
@@ -154,7 +155,7 @@ export async function saveAgentRun(run: AgentRun, options: SaveAgentRunOptions =
 }
 
 export async function loadAgentRun(runId: string): Promise<AgentRun | null> {
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId("agent-run", runId);
   const row = getDatabase()
     .prepare(`SELECT ${AGENT_RUN_LOAD_COLUMNS} FROM agent_runs WHERE id = ? AND user_id = ?`)
     .get(runId, userId) as Record<string, unknown> | null;
@@ -172,7 +173,7 @@ export async function loadAgentRun(runId: string): Promise<AgentRun | null> {
 
 /** Load agent-run metadata without parsing transcript or attachment columns. */
 export async function loadAgentRunSummary(runId: string): Promise<AgentRun | null> {
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId("agent-run", runId);
   const row = getDatabase()
     .prepare(`SELECT ${AGENT_RUN_METADATA_COLUMNS} FROM agent_runs WHERE id = ? AND user_id = ?`)
     .get(runId, userId) as Record<string, unknown> | null;
@@ -183,7 +184,7 @@ export async function loadAgentRunSummary(runId: string): Promise<AgentRun | nul
 }
 
 export async function loadAgentRunByChatId(chatId: string): Promise<AgentRun | null> {
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId("chat", chatId);
   const row = getDatabase()
     .prepare(`
       SELECT ${AGENT_RUN_LOAD_COLUMNS} FROM agent_runs
@@ -209,7 +210,7 @@ export async function listAgentRuns(
 ): Promise<AgentRun[]> {
   const limit = options.limit ?? 50;
   const offset = options.offset ?? 0;
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId("agent", agentId);
   const rows = getDatabase()
     .prepare(`
       SELECT ${AGENT_RUN_METADATA_COLUMNS} FROM agent_runs
@@ -222,7 +223,7 @@ export async function listAgentRuns(
 }
 
 export async function listActiveAgentRuns(agentId: string): Promise<AgentRun[]> {
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId("agent", agentId);
   const rows = getDatabase()
     .prepare(`
       SELECT ${AGENT_RUN_LOAD_COLUMNS} FROM agent_runs
@@ -241,7 +242,7 @@ export async function listActiveAgentRuns(agentId: string): Promise<AgentRun[]> 
 }
 
 export async function deleteAgentRun(runId: string): Promise<boolean> {
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId("agent-run", runId);
   const result = getDatabase().prepare("DELETE FROM agent_runs WHERE id = ? AND user_id = ?").run(runId, userId);
   return result.changes > 0;
 }
@@ -250,7 +251,7 @@ export async function deleteAgentRuns(
   agentId: string,
   options: AgentRunPurgeOptions = {},
 ): Promise<string[]> {
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId("agent", agentId);
   const clauses = ["agent_id = ?", "user_id = ?"];
   const values: Array<string> = [agentId, userId];
   if (options.before) {

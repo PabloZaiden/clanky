@@ -464,6 +464,7 @@ export class ChatStateService implements ChatStatePort {
     this.emitter.emit({
       type: "chat.deleted",
       chatId: chat.config.id,
+      workspaceId: chat.config.workspaceId,
       scope: chat.config.scope,
       timestamp,
     });

@@ -19,6 +19,7 @@ import { withWorkspaceExecutionLock } from "./workspace-execution-lock";
 import type { ChatCleanupCredentials, ChatConversationPort, ChatStatePort } from "./chat-service-contracts";
 import type { ChatLifecycleService } from "./chat-lifecycle-service";
 import { conversationAttachmentService } from "./conversation-attachment-service";
+import { getCollaborationActor } from "../context/user-context";
 
 const log = createLogger("chat-trash");
 
@@ -31,7 +32,12 @@ export class ChatTrashService {
     private readonly conversation: Pick<ChatConversationPort, "checkpointForDeletion">,
   ) {}
 
-  list(options: ChatTrashQuery) { return listChatTrash(options); }
+  list(options: ChatTrashQuery) {
+    const page = listChatTrash(options);
+    return getCollaborationActor()?.kind === "guest"
+      ? { ...page, items: page.items.map((item) => ({ ...item, credentialServerIds: [] })) }
+      : page;
+  }
 
   async move(chatId: string, credentialToken?: string | null): Promise<void> {
     await this.run(chatId, async () => {
@@ -41,7 +47,7 @@ export class ChatTrashService {
       const trashed = this.conversation.checkpointForDeletion(chatId, markChatTrashed);
       if (!trashed) throw this.notFound();
       this.state.emitChatDeleted(chat, createTimestamp());
-      this.changed(chatId);
+      this.changed(chatId, chat.config.workspaceId);
       // The persisted deletion fence keeps the chat unavailable even if its host
       // cannot finish disconnecting; restore retries quiescence before admission.
       try {
@@ -66,7 +72,7 @@ export class ChatTrashService {
       const complete = await this.lifecycle.cleanupTrashResources(chat, { preserveWorktree: true });
       if (!complete) throw new DomainError("trash_cleanup_failed", "The chat could not be safely disconnected. Try restoring it again.");
       if (!restoreTrashedChat(chatId, chat.config.deletedAt)) throw this.notFound();
-      this.changed(chatId);
+      this.changed(chatId, chat.config.workspaceId);
       this.state.emitChatUpdated({ ...chat, config: { ...chat.config, deletedAt: undefined } });
       log.info("Chat restored from Trash", { chatId });
     });
@@ -99,7 +105,7 @@ export class ChatTrashService {
       }
       if (!complete) log.warn("Removing workspace Trash with incomplete external cleanup", { chatId });
       const deleted = deleteTrashedChat(chatId, chat.config.deletedAt);
-      if (deleted) this.changed(chatId);
+      if (deleted) this.changed(chatId, chat.config.workspaceId);
       return deleted;
     });
   }
@@ -166,8 +172,8 @@ export class ChatTrashService {
     return chat?.config.workspaceId ? await withWorkspaceExecutionLock(chat.config.workspaceId, run) : await run();
   }
 
-  private changed(chatId: string): void {
-    this.state.emit({ type: "chat.trash.changed", chatId, timestamp: createTimestamp() });
+  private changed(chatId: string, workspaceId?: string): void {
+    this.state.emit({ type: "chat.trash.changed", chatId, workspaceId, timestamp: createTimestamp() });
   }
 
   private notFound(): DomainError {

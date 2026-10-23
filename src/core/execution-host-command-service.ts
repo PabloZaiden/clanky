@@ -13,14 +13,14 @@ import {
 import { executeCommand } from "./command-execution-service";
 import { closeCommandExecutor } from "./command-executor";
 import { executionHostService } from "./execution-host-service";
-import { requireCurrentUserId } from "../context/user-context";
+import { requireExecutionOwnerUserId } from "../context/user-context";
 
 export class ExecutionHostCommandService {
   async execute(
     ref: ExecutionHostRef,
     request: ExecutionHostExecRequest,
     signal: AbortSignal | undefined,
-    userId: string = requireCurrentUserId(),
+    userId: string = requireExecutionOwnerUserId(),
     sshPassword?: string,
   ): Promise<ExecutionHostExecResponse> {
     const binding = executionHostService.getBinding(ref, userId);

@@ -25,7 +25,7 @@ import {
   type MeshDuplexSocket,
 } from "./mesh-peer-transport";
 import { executionHostService } from "./execution-host-service";
-import { requireCurrentUserId } from "../context/user-context";
+import { requireExecutionOwnerUserId } from "../context/user-context";
 import { DomainError } from "../domain/domain-error";
 
 export interface TcpTunnel {
@@ -80,7 +80,7 @@ class MeshTcpTunnel extends EventEmitter implements TcpTunnel {
       throw new DomainError("mesh_tunnel_target_invalid", "A Mesh host is required.");
     }
     executionHostService.validateBinding(this.binding);
-    const userId = requireCurrentUserId();
+    const userId = requireExecutionOwnerUserId();
     const [identity, registration] = await Promise.all([
       ensureLocalMeshNodeIdentity(),
       getWorkerRegistration(host.nodeId, userId),

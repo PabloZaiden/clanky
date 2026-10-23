@@ -11,7 +11,7 @@ import { isQuestionOpen } from "@/shared/harness-questions";
 import { ChatBusyError, isChatBusyStatus, type Chat } from "@/shared/chat";
 import { HarnessError } from "../backends/harness-errors";
 import { requireMatchingHarnessBinding } from "../backends/harness-binding";
-import { requireCurrentUserId } from "../context/user-context";
+import { requireExecutionOwnerUserId } from "../context/user-context";
 import { KeyedOperationQueue } from "../utils/keyed-operation-queue";
 import { validateQuestionAnswers } from "./question-validation";
 import type { MessageData } from "@/shared/events";
@@ -36,7 +36,7 @@ export class ChatQuestionService {
       const chat = await this.dependencies.state.getChatSummary(chatId);
       if (!chat?.state.session?.binding) return;
       requireMatchingHarnessBinding(JSON.stringify(chat.state.session.binding), binding);
-      if (binding.ownerId !== requireCurrentUserId()) throw new HarnessError("harness_session_not_owned", "The question is not owned by this user.");
+      if (binding.ownerId !== requireExecutionOwnerUserId()) throw new HarnessError("harness_session_not_owned", "The question is not owned by this user.");
       const questions = chat.state.harness?.questions ?? [];
       const existing = questions.find((request) => request.requestId === event.requestId);
       if (event.type === "question.resolved") {
@@ -84,7 +84,7 @@ export class ChatQuestionService {
       const request = chat.state.harness?.questions?.find((entry) => entry.requestId === requestId);
       if (!request) throw new HarnessError("harness_question_not_found", "The chat question is unavailable.");
       const binding = chat.state.session?.binding;
-      if (!binding || binding.ownerId !== requireCurrentUserId()) throw new HarnessError("harness_session_not_owned", "The question is not owned by this conversation.");
+      if (!binding || binding.ownerId !== requireExecutionOwnerUserId()) throw new HarnessError("harness_session_not_owned", "The question is not owned by this conversation.");
       requireMatchingHarnessBinding(JSON.stringify(request.conversation), binding);
       validateQuestionAnswers(request.questions, answers);
       if ((request.status === "answered" || request.status === "queued") && JSON.stringify(request.answers) === JSON.stringify(answers)) return chat;

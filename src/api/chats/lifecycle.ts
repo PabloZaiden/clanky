@@ -1,3 +1,4 @@
+import { workspaceOperation } from "../workspace-delegation";
 import { createLogger, defineRoutes } from "@pablozaiden/webapp/server";
 import { chatManager } from "../../core/chat-manager";
 import { isStandaloneChat } from "@/shared/chat";
@@ -13,6 +14,7 @@ const log = createLogger("api:chats");
 
 export const chatsLifecycleRoutes = defineRoutes({
   "/api/chats/:id/done": {
+    delegation: workspaceOperation("chat"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Mark a standalone chat as done.",
@@ -55,6 +57,7 @@ export const chatsLifecycleRoutes = defineRoutes({
   },
 
   "/api/chats/:id/interrupt": {
+    delegation: workspaceOperation("chat"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Interrupt an active chat run.",
@@ -95,6 +98,7 @@ export const chatsLifecycleRoutes = defineRoutes({
   },
 
   "/api/chats/:id/reconnect": {
+    delegation: workspaceOperation("chat"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Reconnect a chat session to its backend runtime.",
@@ -149,6 +153,7 @@ export const chatsLifecycleRoutes = defineRoutes({
   },
 
   "/api/chats/:id/continue-from-history": {
+    delegation: workspaceOperation("chat"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Create a fresh native chat session that can consult the persisted chat history.",

@@ -4,7 +4,7 @@
 import { createLogger } from "@pablozaiden/webapp/server";
 import type { ResourceReadOptions, Page } from "@/contracts/schemas/resource-read";
 import type { ExecutionHostRef } from "@/shared";
-import { requireCurrentUserId } from "../context/user-context";
+import { requireExecutionOwnerUserId } from "../context/user-context";
 import { listWorkReadIds, listWorkReadWindow, type WorkReadResource, type StoredWorkReadRow } from "../persistence/resource-reads";
 import { collectionReadPage, decodeReadCursor, readRevision, resourceKey, fitCompactMetadata } from "./resource-read-service";
 import { loadChatMetadata } from "../persistence/chats";
@@ -20,6 +20,7 @@ function workMetadata(row: StoredWorkReadRow, resource: WorkReadResource, hosts:
   if (!row.stateAvailable) log.warn("Compact work state is unavailable", { resource, id: row.id });
   return {
     id: row.id, name: row.name, workspaceId: row.workspaceId, directory: row.directory,
+    ...(row.creator ? { creator: row.creator } : {}),
     status: row.status, createdAt: row.createdAt, updatedAt: row.updatedAt,
     lastActivityAt: row.lastActivityAt, lastUserMessageAt: row.lastUserMessageAt,
     model: row.providerID && row.modelID ? { providerID: row.providerID, modelID: row.modelID, variant: row.variant ?? "" } : null,
@@ -48,12 +49,12 @@ function workMetadata(row: StoredWorkReadRow, resource: WorkReadResource, hosts:
 
 function workMetadataWindow(rows: StoredWorkReadRow[], resource: WorkReadResource): Record<string, unknown>[] {
   const ids = [...new Set(rows.flatMap((row) => row.sourceKind === "execution_host" && row.executionHostId ? [row.executionHostId] : []))];
-  const hosts = getExecutionHostRefsByIds(requireCurrentUserId(), ids);
+  const hosts = getExecutionHostRefsByIds(requireExecutionOwnerUserId(), ids);
   return rows.map((row) => workMetadata(row, resource, hosts));
 }
 
 export function readWorkMetadata(input: { resource: WorkReadResource; id: string; maxBytes: number }): Record<string, unknown> | null {
-  const rows = listWorkReadWindow({ ...input, userId: requireCurrentUserId() }, 0, 1);
+  const rows = listWorkReadWindow({ ...input, userId: requireExecutionOwnerUserId() }, 0, 1);
   const metadata = workMetadataWindow(rows, input.resource)[0];
   return metadata ? fitCompactMetadata(metadata, input.maxBytes) : null;
 }
@@ -61,7 +62,7 @@ export function readWorkMetadata(input: { resource: WorkReadResource; id: string
 export async function readWorkCollectionItem(input: {
   resource: WorkReadResource; options: ResourceReadOptions; workspaceId?: string; agentId?: string;
 }): Promise<unknown> {
-  const id = listWorkReadIds({ ...input, userId: requireCurrentUserId() })
+  const id = listWorkReadIds({ ...input, userId: requireExecutionOwnerUserId() })
     .find((candidate) => resourceKey({ id: candidate }) === input.options.item);
   if (!id) throw new DomainError("read_item_unavailable", "The selected item is unavailable.");
   return input.resource === "chat" ? await loadChatMetadata(id)
@@ -72,7 +73,7 @@ export function readWorkCollection(input: {
   resource: WorkReadResource; scope: string; options: ResourceReadOptions;
   workspaceId?: string; agentId?: string; baseOffset?: number;
 }): Page<unknown> {
-  const source = { ...input, userId: requireCurrentUserId() };
+  const source = { ...input, userId: requireExecutionOwnerUserId() };
   const allIds = listWorkReadIds(source);
   const ids = allIds.slice(input.baseOffset ?? 0);
   const revision = readRevision(ids);

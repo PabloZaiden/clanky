@@ -13,6 +13,7 @@ import { meshTcpTunnelGateway } from "../../core/mesh-tcp-tunnel-gateway";
 import { MESH_TERMINAL_MAX_INPUT_BYTES } from "@/shared/mesh-terminal";
 import { domainErrorResponse } from "../helpers";
 import type { ErrorResponse } from "@/contracts";
+import { remotePreviewProxy } from "../workspace-socket-proxy";
 
 const log = createLogger("api:websocket");
 
@@ -109,6 +110,15 @@ export function createMessageHandler(helpers: TerminalHelpers) {
   const resizeStates: TerminalResizeStates = new WeakMap();
 
   return function message(ws: ServerWebSocket<WebSocketData>, msg: string | Buffer): void {
+    if (ws.data.workspaceProxy) {
+      try {
+        ws.data.workspaceProxy.send(msg);
+      } catch (error) {
+        log.warn("Workspace socket frame rejected", { error: String(error) });
+        ws.data.workspaceProxy.close(1013, "Workspace socket unavailable");
+      }
+      return;
+    }
     if (
       ws.data.meshTcpTunnelMode
       && ws.data.meshTcpTunnelSessionId
@@ -171,7 +181,15 @@ export function createMessageHandler(helpers: TerminalHelpers) {
         ws.close(1008, "Authenticated user context is required for preview bridges");
         return;
       }
-      void runWithCurrentUser(ws.data.user, () => previewSessionManager.handleBridgeMessage(ws, msg)).catch(async (error: unknown) => {
+      const handle = async (): Promise<void> => {
+        const remote = remotePreviewProxy(msg, ws.data.user!);
+        if (remote) {
+          ws.data.workspaceProxy = remote.proxy;
+          remote.proxy.start(ws);
+          remote.proxy.send(remote.hello);
+        } else await previewSessionManager.handleBridgeMessage(ws, msg);
+      };
+      void runWithCurrentUser(ws.data.user, handle).catch(async (error: unknown) => {
         const response = domainErrorResponse(error, {
           policy: "previews",
           fallback: { error: "preview_error", message: "Preview operation failed", status: 500 },

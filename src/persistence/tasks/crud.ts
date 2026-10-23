@@ -6,13 +6,16 @@ import type { Task } from "@/shared";
 import { getDatabase } from "../database";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { taskToRow, rowToTask, validateColumnNames } from "./helpers";
-import { requirePersistenceUserId } from "../ownership";
+import { assertResourcePersistenceUser, requireResourcePersistenceUserId, workspacePersistenceParameters } from "../ownership";
+import { recordWorkspaceResourceCreation } from "../collaboration-creation";
+import { collaborationCreatorFromRow, collaborationCreatorProjection } from "../collaboration-authorship";
 import { taskTranscriptStore } from "../transcripts/task-store";
 import { invalidateChatMetadataForUser } from "../chats/metadata-cache";
 
 const log = createLogger("persistence:tasks");
 
 export const TASK_LIST_COLUMNS = [
+  collaborationCreatorProjection("task"),
   "id",
   "name",
   "directory",
@@ -127,9 +130,14 @@ export async function saveTask(task: Task): Promise<void> {
   `);
 
   const userId = String(row["user_id"]);
-  db.transaction(() => {
+  const creator = db.transaction(() => {
+    const existing = db.query(`SELECT ${collaborationCreatorProjection("task")} FROM tasks WHERE id = ? AND user_id = ?`)
+      .get(task.config.id, userId) as Record<string, unknown> | null;
     const previousState = taskTranscriptStore.hydrateForUser(task.config.id, userId);
     stmt.run(...values);
+    const creator = existing ? collaborationCreatorFromRow(existing)
+      : recordWorkspaceResourceCreation({ kind: "task", id: task.config.id,
+        ownerUserId: userId, workspaceId: task.config.workspaceId });
     taskTranscriptStore.syncInTransaction(
       db,
       task.config.id,
@@ -137,7 +145,9 @@ export async function saveTask(task: Task): Promise<void> {
       previousState,
       task.state,
     );
+    return creator;
   })();
+  task.config.creator = creator;
   log.debug("Task saved to database", { id: task.config.id });
 }
 
@@ -147,12 +157,12 @@ export async function saveTask(task: Task): Promise<void> {
  */
 export async function loadTask(taskId: string): Promise<Task | null> {
   log.debug("Loading task", { taskId });
-  return loadTaskForUser(taskId, requirePersistenceUserId());
+  return loadTaskForUser(taskId, requireResourcePersistenceUserId("task", taskId));
 }
 
 /** Load task metadata without parsing transcript columns. */
 export async function loadTaskSummary(taskId: string): Promise<Task | null> {
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId("task", taskId);
   const row = getDatabase()
     .prepare(`SELECT ${TASK_LIST_COLUMNS} FROM tasks WHERE id = ? AND user_id = ?`)
     .get(taskId, userId) as Record<string, unknown> | null;
@@ -160,6 +170,7 @@ export async function loadTaskSummary(taskId: string): Promise<Task | null> {
 }
 
 export async function loadTaskForUser(taskId: string, userId: string): Promise<Task | null> {
+  assertResourcePersistenceUser("task", taskId, userId);
   const db = getDatabase();
   const stmt = db.prepare(`SELECT ${TASK_LIST_COLUMNS} FROM tasks WHERE id = ? AND user_id = ?`);
   const row = stmt.get(taskId, userId) as Record<string, unknown> | null;
@@ -185,7 +196,7 @@ export async function loadTaskForUser(taskId: string, userId: string): Promise<T
 export async function deleteTask(taskId: string): Promise<boolean> {
   log.debug("Deleting task", { taskId });
   const db = getDatabase();
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId("task", taskId);
   invalidateChatMetadataForUser(db, userId, (chat) => chat.config.taskId === taskId);
   const stmt = db.prepare("DELETE FROM tasks WHERE id = ? AND user_id = ?");
   const result = stmt.run(taskId, userId);
@@ -205,13 +216,14 @@ export async function deleteTask(taskId: string): Promise<boolean> {
  */
 export async function listTasks(): Promise<Task[]> {
   log.debug("Listing all tasks");
-  return listTasksForUser(requirePersistenceUserId());
+  return listTasksForUser(requireResourcePersistenceUserId("task"));
 }
 
 export async function listTasksForUser(userId: string): Promise<Task[]> {
+  assertResourcePersistenceUser("task", "", userId);
   const db = getDatabase();
-  const stmt = db.prepare(`SELECT ${TASK_LIST_COLUMNS} FROM tasks WHERE user_id = ? ORDER BY created_at DESC`);
-  const rows = stmt.all(userId) as Record<string, unknown>[];
+  const stmt = db.prepare(`SELECT ${TASK_LIST_COLUMNS} FROM tasks WHERE user_id = ? AND (? IS NULL OR workspace_id = ?) ORDER BY created_at DESC`);
+  const rows = stmt.all(userId, ...workspacePersistenceParameters()) as Record<string, unknown>[];
 
   const tasks = rows.map((row) => {
     const task = rowToTask(row);
@@ -234,10 +246,10 @@ export async function listTasksForUser(userId: string): Promise<Task[]> {
 export async function listTaskSummaries(): Promise<Task[]> {
   log.debug("Listing task summaries");
   const db = getDatabase();
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId("task");
 
-  const stmt = db.prepare(`SELECT ${TASK_LIST_COLUMNS} FROM tasks WHERE user_id = ? ORDER BY created_at DESC`);
-  const rows = stmt.all(userId) as Record<string, unknown>[];
+  const stmt = db.prepare(`SELECT ${TASK_LIST_COLUMNS} FROM tasks WHERE user_id = ? AND (? IS NULL OR workspace_id = ?) ORDER BY created_at DESC`);
+  const rows = stmt.all(userId, ...workspacePersistenceParameters()) as Record<string, unknown>[];
 
   const tasks = rows.map((row) => createTaskListSnapshot(rowToTask(row)));
   log.debug("Task summaries listed", { count: tasks.length });
@@ -250,7 +262,7 @@ export async function listTaskSummaries(): Promise<Task[]> {
 export async function taskExists(taskId: string): Promise<boolean> {
   log.debug("Checking if task exists", { taskId });
   const db = getDatabase();
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId("task", taskId);
 
   const stmt = db.prepare("SELECT 1 FROM tasks WHERE id = ? AND user_id = ? LIMIT 1");
   const row = stmt.get(taskId, userId);

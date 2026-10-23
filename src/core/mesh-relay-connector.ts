@@ -33,6 +33,7 @@ import {
   type MeshRelayAuthOkFrame,
   type MeshRelayClientControlFrame,
   type MeshRelayPeerIdentity,
+  type MeshRelayConnectorStatus,
   type MeshRelayPeerRole,
   type MeshRelayStreamKind,
   type MeshRelayStreamOfferFrame,
@@ -85,13 +86,7 @@ export const MESH_RELAY_MAX_INBOUND_STREAMS = 64;
 const HEARTBEAT_MONITOR_INTERVAL_MS = 5_000;
 const CLOCK_SKEW_TOLERANCE_MS = 60_000;
 
-export type MeshRelayConnectorStatus =
-  | "idle"
-  | "connecting"
-  | "authenticating"
-  | "awaiting-auth"
-  | "connected"
-  | "closed";
+export type { MeshRelayConnectorStatus } from "@/shared/mesh-relay";
 
 export interface MeshRelayConnectorConfig {
   /** Absolute relay origin, for example `https://relay.example.com`. */
@@ -169,6 +164,7 @@ interface PendingAuthorization {
   reject(error: unknown): void;
   timer: ReturnType<typeof setTimeout>;
   expectedWorkerCount: number;
+  expectedClientCount?: number;
 }
 
 function controlUrl(
@@ -270,6 +266,7 @@ export function chunkMeshRelayAuthorization(
   transactionId: string,
   workers: readonly MeshRelayPeerIdentity[],
   protocolVersion: MeshProtocolVersion = MESH_PROTOCOL_VERSION,
+  peerRole: "worker" | "client" = "worker",
 ): MeshRelayPeerIdentity[][] {
   const chunks: MeshRelayPeerIdentity[][] = [];
   let current: MeshRelayPeerIdentity[] = [];
@@ -278,6 +275,7 @@ export function chunkMeshRelayAuthorization(
     type: "authorization.chunk",
     transactionId,
     workers: [],
+    ...(peerRole === "client" ? { clients: [] } : {}),
   });
   let currentBytes = emptyFrameBytes;
   for (const worker of workers) {
@@ -445,7 +443,10 @@ export class MeshRelayConnector {
    * Transactions are serialized so their begin/chunk/commit frames cannot
    * cancel or interleave with another replacement on the same connection.
    */
-  async replaceAuthorization(workers: MeshRelayPeerIdentity[]): Promise<number> {
+  async replaceAuthorization(
+    workers: MeshRelayPeerIdentity[],
+    clients?: MeshRelayPeerIdentity[],
+  ): Promise<number> {
     const previous = this.authorizationTail;
     let release: () => void = () => {};
     this.authorizationTail = new Promise<void>((resolve) => {
@@ -453,7 +454,7 @@ export class MeshRelayConnector {
     });
     await previous;
     try {
-      return await this.sendAuthorizationTransaction(workers);
+      return await this.sendAuthorizationTransaction(workers, clients);
     } finally {
       release();
     }
@@ -461,6 +462,7 @@ export class MeshRelayConnector {
 
   private async sendAuthorizationTransaction(
     workers: MeshRelayPeerIdentity[],
+    clients?: MeshRelayPeerIdentity[],
   ): Promise<number> {
     this.assertConnected();
     if (this.options.config.role !== "controller") {
@@ -470,12 +472,20 @@ export class MeshRelayConnector {
         { status: 403 },
       );
     }
-    const validated = validateMeshRelayAuthorization(workers);
+    const validated = validateMeshRelayAuthorization([...workers, ...(clients ?? [])]);
+    const authorizedWorkers = validated.workers.slice(0, workers.length);
+    const authorizedClients = validated.workers.slice(workers.length);
     const transactionId = randomUUID();
     const chunks = chunkMeshRelayAuthorization(
       transactionId,
-      validated.workers,
+      authorizedWorkers,
       this.getRelayProtocolVersion(),
+    );
+    const clientChunks = chunkMeshRelayAuthorization(
+      transactionId,
+      authorizedClients,
+      this.getRelayProtocolVersion(),
+      "client",
     );
     const acked = new Promise<number>((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -492,7 +502,8 @@ export class MeshRelayConnector {
         resolve,
         reject,
         timer,
-        expectedWorkerCount: validated.workers.length,
+        expectedWorkerCount: workers.length,
+        ...(clients ? { expectedClientCount: clients.length } : {}),
       });
     });
     try {
@@ -500,8 +511,9 @@ export class MeshRelayConnector {
         protocolVersion: this.getRelayProtocolVersion(),
         type: "authorization.begin",
         transactionId,
-        workerCount: validated.workers.length,
+        workerCount: workers.length,
         identityBytes: validated.identityBytes,
+        ...(clients ? { clientCount: clients.length } : {}),
       });
       for (const chunk of chunks) {
         this.sendControl({
@@ -509,6 +521,15 @@ export class MeshRelayConnector {
           type: "authorization.chunk",
           transactionId,
           workers: chunk,
+        });
+      }
+      for (const chunk of clientChunks) {
+        this.sendControl({
+          protocolVersion: this.getRelayProtocolVersion(),
+          type: "authorization.chunk",
+          transactionId,
+          workers: [],
+          clients: chunk,
         });
       }
       this.sendControl({
@@ -968,7 +989,8 @@ export class MeshRelayConnector {
     }
     this.pendingAuthorizations.delete(parsed.data.transactionId);
     clearTimeout(pending.timer);
-    if (parsed.data.workerCount !== pending.expectedWorkerCount) {
+    if (parsed.data.workerCount !== pending.expectedWorkerCount
+      || parsed.data.clientCount !== pending.expectedClientCount) {
       pending.reject(new MeshRelayStreamError(
         "mesh_relay_authorization_ack_invalid",
         "The Mesh relay acknowledged an unexpected worker count.",

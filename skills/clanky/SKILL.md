@@ -192,6 +192,28 @@ before attributing a slow voice answer to local data access.
   or resend a restart whose response was lost. Existing one-shot launchers need
   manual preparation; do not migrate current Devboxes unless explicitly asked.
 
+## Shared workspace collaboration
+
+The normal API/CLI also exposes workspaces shared by another controller through
+a relay. This is a client pairing, not worker enrollment. See
+[`docs/workspace-collaboration.md`](../../docs/workspace-collaboration.md).
+Authenticate against the user's local instance and pass returned opaque
+workspace/entity references unchanged. Do not add a connection flag, switch CLI
+profiles or decode remote IDs to operate on those resources.
+
+List/schema discovery remains authoritative. Reject ambiguous names rather
+than choosing a local or first match. A partial collection has
+`X-Clanky-Partial: true`; CLI calls exit unsuccessfully while retaining JSON
+stdout. Inspect `/api/collaboration/connections`, or use an exact returned
+reference, instead of treating an incomplete list as evidence of absence.
+Never retry an uncertain mutation automatically.
+
+Execution and content remain on the controller's configured host. Revocation
+closes affected interactive resources but does not cancel admitted chats,
+tasks or schedules. Individual shared Trash restore/purge routes by reference;
+emptying Trash is local only. Pairing/invitation controls are local user actions,
+not capabilities delegated to a workspace guest.
+
 ## Bootstrapping a Mesh worker
 
 Use this flow only when the user explicitly asks to configure an installation

@@ -20,6 +20,7 @@ import {
   MESH_RELAY_CONTROL_CLOSE_REPLACED,
   MESH_RELAY_MAX_AUTHORIZATION_STAGED_BYTES,
   MESH_RELAY_MAX_AUTHORIZED_WORKERS,
+  MESH_RELAY_CLIENT_ENROLLMENT_PATH,
   type MeshRelayAuthFrame,
   type MeshRelayAuthOkFrame,
   type MeshRelayAuthorizationBeginFrame,
@@ -65,6 +66,7 @@ import {
   MESH_RELAY_STREAM_CLOSE_PROTOCOL_ERROR,
   MESH_RELAY_STREAM_CLOSE_REQUEST_FAILED,
   MESH_RELAY_STREAM_CLOSE_TIMEOUT,
+  isMeshRelayRouteAllowed,
 } from "./mesh-relay-policy";
 import { MeshRelayStore } from "./mesh-relay-store";
 
@@ -199,6 +201,8 @@ interface RelayAuthorizationTransaction {
   identityBytes: number;
   stagedBytes: number;
   workers: MeshRelayPeerIdentity[];
+  clients: MeshRelayPeerIdentity[];
+  clientCount?: number;
   nodeIds: Set<string>;
   fingerprints: Set<string>;
   timer: ReturnType<typeof setTimeout>;
@@ -511,7 +515,20 @@ function validateStreamRoute(
     );
   }
 
-  if (connection.role === "worker") {
+  if (connection.role === "client") {
+    if (
+      !isMeshRelayRouteAllowed("client", request.kind, method, route.pathname)
+      || route.hasQuery
+      || (connection.workerStatus !== "authorized"
+        && route.pathname !== MESH_RELAY_CLIENT_ENROLLMENT_PATH)
+    ) {
+      throw new RelayRequestError(
+        "relay_route_forbidden",
+        "Clients may use only their authorized workspace gateway.",
+        403,
+      );
+    }
+  } else if (connection.role === "worker") {
     if (
       request.kind !== "http"
       || method !== "POST"
@@ -552,6 +569,7 @@ function validateStreamRoute(
 }
 
 export class MeshRelayBroker {
+  private readonly clientConnections = new Map<string, string>();
   private readonly controls = new Map<string, RelayControlConnection>();
   private readonly workerConnections = new Map<string, string>();
   private readonly tickets = new Map<string, RelayTicket>();
@@ -898,7 +916,18 @@ export class MeshRelayBroker {
         );
       }
     } else {
-      const authorized = this.options.store.getAuthorizedWorker(identity.nodeId);
+      const client = auth.role === "client";
+      const foreignRole = client
+        ? this.options.store.getAuthorizedWorker(identity.nodeId)
+        : this.options.store.getAuthorizedClient(identity.nodeId);
+      if (foreignRole) {
+        this.auditAuthFailure(connection, auth, "relay_peer_role_mismatch");
+        this.closeControl(connection.id, CONTROL_CLOSE_UNAUTHORIZED, "Peer role does not match its authorization");
+        return;
+      }
+      const authorized = client
+        ? this.options.store.getAuthorizedClient(identity.nodeId)
+        : this.options.store.getAuthorizedWorker(identity.nodeId);
       if (authorized && !identitiesMatch(authorized, identity)) {
         this.auditAuthFailure(connection, auth, "relay_worker_identity_mismatch");
         this.closeControl(
@@ -915,7 +944,7 @@ export class MeshRelayBroker {
           this.options.store.getController(),
           now,
         );
-      if (!authorized && !admission) {
+      if (!authorized && (!admission || (admission.peerRole ?? "worker") !== auth.role)) {
         this.auditAuthFailure(connection, auth, "relay_worker_admission_invalid");
         this.closeControl(
           connection.id,
@@ -970,8 +999,9 @@ export class MeshRelayBroker {
         );
         return;
       }
-      const previousId = this.workerConnections.get(identity.nodeId);
-      this.workerConnections.set(identity.nodeId, connection.id);
+      const connections = client ? this.clientConnections : this.workerConnections;
+      const previousId = connections.get(identity.nodeId);
+      connections.set(identity.nodeId, connection.id);
       if (previousId && previousId !== connection.id) {
         this.closeControl(
           previousId,
@@ -1034,7 +1064,7 @@ export class MeshRelayBroker {
   ): void {
     this.assertControllerAuthorization(controller);
     this.discardAuthorizationTransaction(controller);
-    if (frame.workerCount > MESH_RELAY_MAX_AUTHORIZED_WORKERS) {
+    if (frame.workerCount + (frame.clientCount ?? 0) > MESH_RELAY_MAX_AUTHORIZED_WORKERS) {
       throw new RelayRequestError(
         "relay_authorization_too_many_workers",
         "The relay authorization snapshot exceeds the worker limit.",
@@ -1062,9 +1092,11 @@ export class MeshRelayBroker {
     controller.authorizationTransaction = {
       transactionId: frame.transactionId,
       workerCount: frame.workerCount,
+      ...(frame.clientCount !== undefined ? { clientCount: frame.clientCount } : {}),
       identityBytes: frame.identityBytes,
       stagedBytes: 0,
       workers: [],
+      clients: [],
       nodeIds: new Set<string>(),
       fingerprints: new Set<string>(),
       timer,
@@ -1080,7 +1112,14 @@ export class MeshRelayBroker {
       controller,
       frame.transactionId,
     );
-    for (const worker of frame.workers) {
+    const peers = [
+      ...frame.workers.map((identity) => ({ identity, client: false })),
+      ...(frame.clients ?? []).map((identity) => ({ identity, client: true })),
+    ];
+    if (peers.length === 0) {
+      throw new RelayRequestError("relay_authorization_empty_chunk", "Authorization chunks must contain identities.", 400);
+    }
+    for (const { identity: worker, client } of peers) {
       let fingerprint: string;
       try {
         fingerprint = getMeshRelayFingerprint(worker.publicKey);
@@ -1104,8 +1143,10 @@ export class MeshRelayBroker {
       }
       const identityBytes = encodedBytes(JSON.stringify(worker));
       if (
-        transaction.workers.length + 1 > transaction.workerCount
-        || transaction.workers.length + 1 > MESH_RELAY_MAX_AUTHORIZED_WORKERS
+        (client ? transaction.clients.length + 1 : transaction.workers.length + 1)
+          > (client ? transaction.clientCount ?? 0 : transaction.workerCount)
+        || transaction.workers.length + transaction.clients.length + 1
+          > MESH_RELAY_MAX_AUTHORIZED_WORKERS
       ) {
         throw new RelayRequestError(
           "relay_authorization_too_many_workers",
@@ -1126,7 +1167,7 @@ export class MeshRelayBroker {
       }
       transaction.nodeIds.add(worker.nodeId);
       transaction.fingerprints.add(worker.fingerprint);
-      transaction.workers.push(worker);
+      (client ? transaction.clients : transaction.workers).push(worker);
       transaction.stagedBytes += identityBytes;
     }
   }
@@ -1142,6 +1183,7 @@ export class MeshRelayBroker {
     );
     if (
       transaction.workers.length !== transaction.workerCount
+      || transaction.clients.length !== (transaction.clientCount ?? 0)
       || transaction.stagedBytes !== transaction.identityBytes
     ) {
       throw new RelayRequestError(
@@ -1151,15 +1193,18 @@ export class MeshRelayBroker {
       );
     }
     const workers = transaction.workers;
+    const clients = transaction.clients;
+    const clientCount = transaction.clientCount;
     this.discardAuthorizationTransaction(controller);
     this.options.store.replaceAuthorizedWorkers(workers);
-    const authorizedByNodeId = new Map(
-      workers.map((worker) => [worker.nodeId, worker]),
-    );
+    this.options.store.replaceAuthorizedClients(clients);
+    const workerByNodeId = new Map(workers.map((worker) => [worker.nodeId, worker]));
+    const clientByNodeId = new Map(clients.map((client) => [client.nodeId, client]));
     for (const connection of [...this.controls.values()]) {
-      if (connection.role !== "worker" || !connection.identity) {
+      if ((connection.role !== "worker" && connection.role !== "client") || !connection.identity) {
         continue;
       }
+      const authorizedByNodeId = connection.role === "client" ? clientByNodeId : workerByNodeId;
       const authorized = authorizedByNodeId.get(connection.identity.nodeId);
       if (authorized && identitiesMatch(authorized, connection.identity)) {
         const wasPending = connection.workerStatus === "pending";
@@ -1170,7 +1215,7 @@ export class MeshRelayBroker {
             protocolVersion: connection.protocolVersion,
             type: "auth.ok",
             connectionId: connection.id,
-            role: "worker",
+            role: connection.role,
             nodeId: connection.identity.nodeId,
             workerStatus: "authorized",
           });
@@ -1191,6 +1236,7 @@ export class MeshRelayBroker {
       type: "authorization.ack",
       transactionId: frame.transactionId,
       workerCount: workers.length,
+      ...(clientCount !== undefined ? { clientCount: clients.length } : {}),
     });
     logRelayAudit({
       eventType: "authorization.replace",
@@ -1333,7 +1379,7 @@ export class MeshRelayBroker {
     initiator: RelayControlConnection,
     targetNodeId: string,
   ): RelayControlConnection {
-    if (initiator.role === "worker") {
+    if (initiator.role === "worker" || initiator.role === "client") {
       const controller = this.controllerConnectionId
         ? this.controls.get(this.controllerConnectionId)
         : undefined;
@@ -1713,6 +1759,10 @@ export class MeshRelayBroker {
     ) {
       this.workerConnections.delete(connection.identity.nodeId);
     }
+    if (connection.identity
+      && this.clientConnections.get(connection.identity.nodeId) === connectionId) {
+      this.clientConnections.delete(connection.identity.nodeId);
+    }
     for (const ticket of [...this.tickets.values()]) {
       if (
         ticket.initiatorConnectionId === connectionId
@@ -1805,7 +1855,7 @@ export class MeshRelayBroker {
     let count = 0;
     for (const connection of this.controls.values()) {
       if (
-        connection.role === "worker"
+        (connection.role === "worker" || connection.role === "client")
         && connection.workerStatus === "pending"
       ) {
         count++;

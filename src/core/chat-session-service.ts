@@ -29,7 +29,7 @@ import {
 import { buildManagedContextEnvironment } from "./managed-context-environment";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { preferencesManager } from "./preferences-manager";
-import { requireCurrentUserId } from "../context/user-context";
+import { requireExecutionOwnerUserId } from "../context/user-context";
 import { createOwnedHarnessSession, resumeOwnedHarnessSession } from "./harness-session";
 import { HarnessError } from "../backends/harness-errors";
 import { harnessActivityService } from "./harness-activity-service";
@@ -456,7 +456,7 @@ export class ChatSessionService implements ChatSessionPort {
       throw new HarnessError("harness_unsupported_feature", "This execution host does not support Clanky control tools.");
     }
     return {
-      ownerId: requireCurrentUserId(),
+      ownerId: requireExecutionOwnerUserId(),
       contextId: chat.config.id,
       questionPolicy: chat.config.scope === "agent" ? "unattended" as const : "interactive" as const,
       directory: backend.getDirectory(),

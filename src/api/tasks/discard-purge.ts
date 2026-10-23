@@ -1,3 +1,4 @@
+import { workspaceOperation } from "../workspace-delegation";
 import { defineRoutes } from "@pablozaiden/webapp/server";
 /**
  * Task discard and purge routes.
@@ -15,6 +16,7 @@ const log = createLogger("api:tasks");
 
 export const tasksDiscardPurgeRoutes = defineRoutes({
   "/api/tasks/:id/discard": {
+    delegation: workspaceOperation("task"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Discard a task; provider, session, and Git cleanup is best-effort.",
@@ -52,6 +54,7 @@ export const tasksDiscardPurgeRoutes = defineRoutes({
   },
 
   "/api/tasks/:id/purge": {
+    delegation: workspaceOperation("task"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Permanently delete an eligible task; external cleanup is best-effort.",

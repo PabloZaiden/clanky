@@ -12,7 +12,7 @@ import type { ModelInfo } from "@/contracts";
 import { createAgentSettings, type ServerSettings } from "@/shared/settings";
 import type { Workspace } from "@/shared/workspace";
 import { getAgentExecutionHostCapability, type ExecutionHostBinding } from "@/shared/execution-host";
-import { requireCurrentUserId } from "../context/user-context";
+import { requireExecutionOwnerUserId } from "../context/user-context";
 import { executionHostService } from "./execution-host-service";
 
 const MODEL_DISCOVERY_CACHE_TTL_MS = 12 * 60 * 60 * 1_000;
@@ -55,7 +55,7 @@ function pruneExpiredCacheEntries<T>(cache: Map<string, TimedCacheEntry<T>>): vo
 }
 
 function createCacheKey(parts: unknown[]): string {
-  return JSON.stringify([requireCurrentUserId(), ...parts]);
+  return JSON.stringify([requireExecutionOwnerUserId(), ...parts]);
 }
 
 function getWorkspaceCatalogCacheKey(

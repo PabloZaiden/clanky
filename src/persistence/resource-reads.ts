@@ -5,10 +5,15 @@
 import { getDatabase } from "./database";
 import type { ResourceReadOptions } from "@/contracts/schemas/resource-read";
 import { getTranscriptTableConfig } from "./transcripts/table-config";
+import { getPersistenceWorkspaceId, requireResourcePersistenceUserId } from "./ownership";
+import { DomainError } from "../domain/domain-error";
+import type { CollaborationCreator } from "@/shared/collaboration";
+import { collaborationCreatorFromRow, collaborationCreatorProjection } from "./collaboration-authorship";
 
 export type WorkReadResource = "chat" | "task" | "agent_run";
 export interface StoredWorkReadRow {
   id: string;
+  creator?: CollaborationCreator;
   name: string;
   workspaceId: string | null;
   directory: string | null;
@@ -45,12 +50,19 @@ interface WorkReadSource {
 const TABLES = { chat: "chats", task: "tasks", agent_run: "agent_runs" } as const;
 
 function sourceWhere(source: WorkReadSource): { clause: string; values: string[] } {
+  const kind = source.resource === "agent_run" ? "agent-run" : source.resource;
+  const expectedOwner = requireResourcePersistenceUserId(kind, source.id,
+    source.workspaceId ?? source.options?.workspaceId);
+  if (getPersistenceWorkspaceId() && source.userId !== expectedOwner) {
+    throw new DomainError("collaboration_authority_mismatch", "The collection owner does not match workspace authority.");
+  }
+  if (source.agentId) requireResourcePersistenceUserId("agent", source.agentId);
   const clauses = ["user_id = ?"];
   const values = [source.userId];
   if (source.resource === "chat") clauses.push("deleted_at IS NULL");
   if (source.resource === "chat" && !source.id) clauses.push("scope = 'workspace' AND task_id IS NULL");
   if (source.id) { clauses.push("id = ?"); values.push(source.id); }
-  const workspaceId = source.workspaceId ?? source.options?.workspaceId;
+  const workspaceId = getPersistenceWorkspaceId() ?? source.workspaceId ?? source.options?.workspaceId;
   if (workspaceId && source.resource !== "agent_run") {
     clauses.push("workspace_id = ?");
     values.push(workspaceId);
@@ -58,6 +70,10 @@ function sourceWhere(source: WorkReadSource): { clause: string; values: string[]
   if (source.resource === "agent_run" && source.agentId) {
     clauses.push("agent_id = ?");
     values.push(source.agentId!);
+  }
+  if (workspaceId && source.resource === "agent_run") {
+    clauses.push("agent_id IN (SELECT id FROM agents WHERE workspace_id = ? AND user_id = ?)");
+    values.push(workspaceId, source.userId);
   }
   return { clause: clauses.join(" AND "), values };
 }
@@ -133,7 +149,8 @@ function workQuery(source: WorkReadSource): { sql: string; values: string[] } {
   return { sql: `
     WITH work AS (SELECT id, status, created_at AS createdAt, updated_at AS updatedAt,
       ${run ? "COALESCE(completed_at, started_at, created_at)" : "COALESCE(last_activity_at, created_at)"} AS lastActivityAt,
-      ${lastUser} AS lastUserMessageAt, ${select}
+      ${lastUser} AS lastUserMessageAt,
+      ${run ? "NULL AS collaboration_creator_json" : collaborationCreatorProjection(task ? "task" : "chat")}, ${select}
     FROM ${TABLES[source.resource]} WHERE ${where.clause}
     )
     SELECT * FROM work ${clauses.length ? `WHERE ${clauses.join(" AND ")}` : ""}
@@ -149,6 +166,10 @@ export function listWorkReadIds(source: WorkReadSource): string[] {
 
 export function listWorkReadWindow(source: WorkReadSource, position: number, limit: number): StoredWorkReadRow[] {
   const { sql, values } = workQuery(source);
-  return getDatabase().prepare(`${sql} LIMIT ? OFFSET ?`)
-    .all(...values, limit, position) as StoredWorkReadRow[];
+  const rows = getDatabase().prepare(`${sql} LIMIT ? OFFSET ?`)
+    .all(...values, limit, position) as Array<StoredWorkReadRow & Record<string, unknown>>;
+  return rows.map((row) => {
+    const { collaboration_creator_json: _creator, ...metadata } = row;
+    return { ...metadata, creator: collaborationCreatorFromRow(row) } as StoredWorkReadRow;
+  });
 }

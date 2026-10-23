@@ -43,6 +43,7 @@ export interface WorkspaceIconMetadata {
  * Each workspace has its own server settings for independent operation.
  */
 export interface Workspace {
+  collaboration?: { controllerName: string };
   /** Unique identifier (UUID v4) */
   id: string;
   /** Human-readable workspace name */

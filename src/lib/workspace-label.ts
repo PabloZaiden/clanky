@@ -2,6 +2,12 @@ import type { SshServer } from "@/shared/ssh-server";
 import type { ExecutionHostDescriptor, Workspace } from "@/shared";
 import { getServerLabel } from "@/shared/settings";
 
+export function getWorkspaceDisplayName(workspace: Pick<Workspace, "name" | "collaboration">): string {
+  return workspace.collaboration
+    ? `${workspace.name} (${workspace.collaboration.controllerName})`
+    : workspace.name;
+}
+
 /**
  * Resolve the execution target metadata needed to label a workspace without
  * mistaking a local stdio node for a remote peer.

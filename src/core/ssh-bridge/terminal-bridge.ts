@@ -40,7 +40,7 @@ import {
   buildDirectResizeCommand,
 } from "./command-builders";
 import { extractClipboardSequences } from "./osc52";
-import { requireCurrentUser, runWithCurrentUser } from "../../context/user-context";
+import { requireExecutionOwnerUser, runWithExecutionOwner } from "../../context/user-context";
 import { managedContextIdentityResolver } from "../managed-context-identity";
 import { managedCredentialService, type ManagedRuntimeCredential } from "../managed-credential-service";
 import { buildManagedContextEnvironment } from "../managed-context-environment";
@@ -96,7 +96,7 @@ export class SshTerminalBridge {
 
   private async connectInternal(): Promise<void> {
     this.assertNotDisposed();
-    this.user = requireCurrentUser();
+    this.user = requireExecutionOwnerUser();
     this.closing = false;
     this.ready = false;
     this.skipCloseStatusUpdate = false;
@@ -531,7 +531,7 @@ export class SshTerminalBridge {
     if (!this.user) {
       throw new Error("Current user context is required");
     }
-    return runWithCurrentUser(this.user, callback);
+    return runWithExecutionOwner(this.user, callback);
   }
 
   private async getCommandExecutor(): Promise<CommandExecutor> {

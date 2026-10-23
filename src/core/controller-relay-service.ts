@@ -11,6 +11,8 @@ import {
 } from "@/contracts/schemas/mesh-relay";
 import {
   MESH_RELAY_DESCRIPTOR_PATH,
+  MESH_RELAY_WORKSPACE_CLIENT_HEADER,
+  MESH_RELAY_WORKSPACE_CLIENT_VERSION,
   normalizeMeshRelayOrigin,
   type MeshRelayPeerIdentity,
   type MeshRelayWellKnownDescriptor,
@@ -50,6 +52,7 @@ import { setMeshRelayTransport } from "./mesh-peer-transport";
 import { createMeshRelayPeerTransport } from "./mesh-relay-transport";
 import { requireMeshRuntimeRole } from "./mesh-runtime";
 import { negotiateMeshDescriptorGeneration } from "./mesh-protocol-version";
+import type { MeshRelayInboundOptions } from "./mesh-relay-inbound";
 
 const log = createLogger("core:controller-relay-service");
 
@@ -81,6 +84,7 @@ export interface ControllerRelayServiceOptions {
 export interface ControllerRelayRuntimeOptions {
   onAuthenticated?(): void;
   onReady?(): Promise<void>;
+  openWorkspaceClientSocket?: MeshRelayInboundOptions["openWorkspaceClientSocket"];
 }
 
 type RelayDispatch = (request: Request) => Promise<Response | undefined>;
@@ -173,8 +177,49 @@ export class ControllerRelayService {
   private usedInjectedManager = false;
   private onAuthenticated?: () => void;
   private onReady?: () => Promise<void>;
+  private openWorkspaceClientSocket?: MeshRelayInboundOptions["openWorkspaceClientSocket"];
+  private readonly workspaceClientRelays = new Set<string>();
+  private workspaceClients?: (
+    route: { relayUrl: string; relayFingerprint: string },
+  ) => MeshRelayPeerIdentity[] | Promise<MeshRelayPeerIdentity[]>;
 
   constructor(private readonly options: ControllerRelayServiceOptions = {}) {}
+
+  configureWorkspaceClients(
+    provider: (
+      route: { relayUrl: string; relayFingerprint: string },
+    ) => MeshRelayPeerIdentity[] | Promise<MeshRelayPeerIdentity[]>,
+  ): void {
+    this.workspaceClients = provider;
+  }
+
+  async synchronizeWorkspaceClients(): Promise<void> {
+    await Promise.all([...this.runtimes.values()].map(async (runtime) => {
+      if (runtime.manager.status !== "connected") return;
+      this.requestAuthorizationRefresh(runtime);
+      await this.waitUntilAuthorizationSynchronized(
+        runtime,
+        CONTROLLER_RELAY_CONNECTION_TIMEOUT_MS,
+      );
+    }));
+  }
+
+  async assertWorkspaceClientSupport(route: {
+    relayUrl: string;
+    relayFingerprint: string;
+  }): Promise<void> {
+    const descriptor = await this.fetchDescriptor(route.relayUrl);
+    const identity = await ensureLocalMeshNodeIdentity();
+    if (descriptor.fingerprint !== route.relayFingerprint
+      || descriptor.controllerFingerprint !== identity.fingerprint
+      || descriptor.controllerNodeId !== identity.nodeId
+      || descriptor.workspaceClientVersion !== MESH_RELAY_WORKSPACE_CLIENT_VERSION) {
+      throw new DomainError(
+        "collaboration_relay_incompatible",
+        "The selected relay does not support workspace clients for this controller.",
+      );
+    }
+  }
 
   async getStatus(): Promise<ControllerRelayStatus> {
     requireMeshRuntimeRole("controller");
@@ -394,6 +439,7 @@ export class ControllerRelayService {
       this.dispatch = dispatch;
       this.onAuthenticated = options.onAuthenticated;
       this.onReady = options.onReady;
+      this.openWorkspaceClientSocket = options.openWorkspaceClientSocket;
       this.unsubscribeMesh ??= meshStateEventEmitter.subscribe(() => {
         this.requestRuntimeRefresh();
       });
@@ -429,6 +475,7 @@ export class ControllerRelayService {
       this.dispatch = undefined;
       this.onAuthenticated = undefined;
       this.onReady = undefined;
+      this.openWorkspaceClientSocket = undefined;
     });
   }
 
@@ -524,6 +571,7 @@ export class ControllerRelayService {
           headers: {
             accept: "application/json",
             [MESH_PROTOCOL_VERSIONS_HEADER]: serializeMeshProtocolVersions(meshTransportProtocolVersions(relayUrl)),
+            [MESH_RELAY_WORKSPACE_CLIENT_HEADER]: String(MESH_RELAY_WORKSPACE_CLIENT_VERSION),
           },
           signal: controller.signal,
           redirect: "error",
@@ -577,6 +625,11 @@ export class ControllerRelayService {
           "mesh_relay_descriptor_invalid",
           "The Mesh relay does not negotiate the required protocol generation.",
         );
+      }
+      if (parsed.data.workspaceClientVersion === MESH_RELAY_WORKSPACE_CLIENT_VERSION) {
+        this.workspaceClientRelays.add(relayUrl);
+      } else {
+        this.workspaceClientRelays.delete(relayUrl);
       }
       return parsed.data;
     } catch (error) {
@@ -671,6 +724,7 @@ export class ControllerRelayService {
         protocolVersion: pairing.relayNegotiatedProtocolVersion!,
       },
       dispatch,
+      openWorkspaceClientSocket: this.openWorkspaceClientSocket,
       refreshProtocol: async () => {
         pairing = await this.refreshPairingProtocol(pairing);
         return pairing.relayNegotiatedProtocolVersion!;
@@ -755,6 +809,7 @@ export class ControllerRelayService {
     ) {
       runtime.authorizationDirty = false;
       let workers: MeshRelayPeerIdentity[];
+      let clients: MeshRelayPeerIdentity[] | undefined;
       try {
         const config = runtime.manager.activeConfig;
         if (!config) {
@@ -764,6 +819,13 @@ export class ControllerRelayService {
           relayUrl: config.relayUrl,
           relayFingerprint: config.relayFingerprint,
         });
+        if (this.workspaceClientRelays.has(config.relayUrl)) {
+          clients = await this.workspaceClients?.({
+            relayUrl: config.relayUrl,
+            relayFingerprint: config.relayFingerprint,
+          }) ?? [];
+          validateMeshRelayAuthorization([...workers, ...clients]);
+        }
       } catch (error) {
         const mapped = this.mapRuntimeError(error);
         runtime.runtimeError = {
@@ -777,7 +839,7 @@ export class ControllerRelayService {
         return;
       }
       try {
-        await runtime.manager.replaceAuthorization(workers);
+        await runtime.manager.replaceAuthorization(workers, clients);
         runtime.runtimeError = null;
       } catch (error) {
         if (

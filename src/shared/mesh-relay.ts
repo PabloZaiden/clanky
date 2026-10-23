@@ -16,10 +16,22 @@ export const MESH_RELAY_DESCRIPTOR_PATH = "/.well-known/clanky-mesh";
 export const MESH_RELAY_CONTROL_PATH = "/api/mesh/relay/control";
 export const MESH_RELAY_STREAM_PATH = "/api/mesh/relay/stream";
 export const MESH_RELAY_CONTROL_CLOSE_REPLACED = 4409;
+export const MESH_RELAY_WORKSPACE_CLIENT_HEADER = "x-clanky-workspace-client";
+export const MESH_RELAY_WORKSPACE_CLIENT_VERSION = 1;
+export const MESH_RELAY_CLIENT_ENROLLMENT_PATH = "/api/mesh/internal/client/enrollment";
+export const MESH_RELAY_CLIENT_OPERATION_PATH = "/api/mesh/internal/client/operation";
+export const MESH_RELAY_CLIENT_SOCKET_PATH = "/api/mesh/internal/client/socket";
 
-export type MeshRelayPeerRole = "controller" | "worker";
+export type MeshRelayPeerRole = "controller" | "worker" | "client";
 export type MeshRelayWorkerStatus = "pending" | "authorized";
 export type MeshRelayStreamKind = "http" | "socket";
+export type MeshRelayConnectorStatus =
+  | "idle"
+  | "connecting"
+  | "authenticating"
+  | "awaiting-auth"
+  | "connected"
+  | "closed";
 
 export interface MeshRelayPeerIdentity {
   nodeId: string;
@@ -34,6 +46,7 @@ export interface MeshRelayEnrollmentAdmission {
   nonce: string;
   expiresAt: string;
   signature: string;
+  peerRole?: "client";
 }
 
 export interface MeshRelayWellKnownDescriptor extends MeshProtocolMetadata {
@@ -44,6 +57,7 @@ export interface MeshRelayWellKnownDescriptor extends MeshProtocolMetadata {
   controllerFingerprint: string;
   controllerNodeId: string | null;
   controllerSupportedProtocolVersions?: MeshProtocolGeneration[];
+  workspaceClientVersion?: typeof MESH_RELAY_WORKSPACE_CLIENT_VERSION;
 }
 
 export interface MeshControllerWellKnownDescriptor extends MeshProtocolMetadata {
@@ -124,6 +138,7 @@ export interface MeshRelayAuthorizationBeginFrame {
   transactionId: string;
   workerCount: number;
   identityBytes: number;
+  clientCount?: number;
 }
 
 export interface MeshRelayAuthorizationChunkFrame {
@@ -131,6 +146,7 @@ export interface MeshRelayAuthorizationChunkFrame {
   type: "authorization.chunk";
   transactionId: string;
   workers: MeshRelayPeerIdentity[];
+  clients?: MeshRelayPeerIdentity[];
 }
 
 export interface MeshRelayAuthorizationCommitFrame {
@@ -144,6 +160,7 @@ export interface MeshRelayAuthorizationAckFrame {
   type: "authorization.ack";
   transactionId: string;
   workerCount: number;
+  clientCount?: number;
 }
 
 export interface MeshRelayStreamRequestFrame {

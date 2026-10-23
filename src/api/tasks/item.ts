@@ -1,3 +1,4 @@
+import { workspaceOperation } from "../workspace-delegation";
 import { defineRoutes } from "@pablozaiden/webapp/server";
 /**
  * Task item routes.
@@ -131,6 +132,7 @@ async function applyTaskUpdates(
 
 export const tasksItemRoutes = defineRoutes({
   "/api/tasks/:id": {
+    delegation: workspaceOperation("task"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Read, update, or delete a task.",

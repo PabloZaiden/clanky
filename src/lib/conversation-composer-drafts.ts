@@ -1,4 +1,5 @@
 import { createLogger } from "@pablozaiden/webapp/web";
+import { decodeCollaborationResourceReference } from "../shared/collaboration-reference";
 
 const log = createLogger("conversationComposerDrafts");
 
@@ -62,6 +63,11 @@ function getStorageKey(conversationId: string): string {
   return `${CONVERSATION_COMPOSER_DRAFT_STORAGE_PREFIX}${encodeURIComponent(conversationId)}`;
 }
 
+function isSharedConversation(conversationId: string): boolean {
+  // Composer keys prefix the resource reference with "chat:" or "task:".
+  return !!decodeCollaborationResourceReference(conversationId.slice(conversationId.indexOf(":") + 1));
+}
+
 function isStoredConversationComposerDraft(
   value: unknown,
 ): value is StoredConversationComposerDraft {
@@ -95,6 +101,10 @@ export function getStoredConversationComposerDraft(
   dependencies: ConversationComposerDraftDependencies = {},
 ): string | null {
   if (!conversationId.trim()) {
+    return null;
+  }
+  if (isSharedConversation(conversationId)) {
+    clearStoredConversationComposerDraft(conversationId, dependencies);
     return null;
   }
 
@@ -151,6 +161,10 @@ export function saveStoredConversationComposerDraft(
   dependencies: ConversationComposerDraftDependencies = {},
 ): void {
   if (!conversationId.trim()) {
+    return;
+  }
+  if (isSharedConversation(conversationId)) {
+    clearStoredConversationComposerDraft(conversationId, dependencies);
     return;
   }
 

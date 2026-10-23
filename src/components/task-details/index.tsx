@@ -292,6 +292,9 @@ export function TaskDetails({
       onOpenActivity={onOpenActivity}
     >
     <div className="flex h-full flex-col overflow-hidden">
+      {config.creator ? (
+        <p className="shrink-0 px-3 py-2 text-xs text-gray-500 dark:text-gray-400 sm:px-4">Created by {config.creator.name}</p>
+      ) : null}
       <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
         {error && (
           <div className={`${errorBannerSpacingClassName} rounded-md bg-red-50 dark:bg-red-900/20 p-3 flex-shrink-0`}>

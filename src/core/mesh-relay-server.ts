@@ -22,6 +22,8 @@ import {
   MESH_RELAY_CONTROL_PATH,
   MESH_RELAY_DESCRIPTOR_PATH,
   MESH_RELAY_STREAM_PATH,
+  MESH_RELAY_WORKSPACE_CLIENT_HEADER,
+  MESH_RELAY_WORKSPACE_CLIENT_VERSION,
   type MeshRelayWellKnownDescriptor,
 } from "@/shared/mesh-relay";
 import {
@@ -298,6 +300,9 @@ export async function createRelayServer(
       } : {}),
       binaryVersion: CLANKY_VERSION,
       negotiatedProtocolVersion,
+      ...(request?.headers.get(MESH_RELAY_WORKSPACE_CLIENT_HEADER) === "1"
+        ? { workspaceClientVersion: MESH_RELAY_WORKSPACE_CLIENT_VERSION }
+        : {}),
     };
   };
   const routes = defineRoutes({

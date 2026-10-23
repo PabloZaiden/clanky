@@ -8,11 +8,13 @@ import { TaskCreationContextResponseSchema } from "@/contracts/schemas/task-crea
 import { taskCreationService } from "../core/task-creation-service";
 import { isDomainError } from "../domain/domain-error";
 import { internalErrorResponse } from "./helpers";
+import { workspaceOperation } from "./workspace-delegation";
 
 const log = createLogger("api:task-creation-context");
 
 export const taskCreationContextRoutes = defineRoutes({
   "/api/workspaces/:id/task-creation-context": {
+    delegation: workspaceOperation("workspace"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Read task capabilities, effective creation defaults, model preferences and usable branches on the selected workspace host. Apply saved browser planning preferences or explicit user overrides before POST /api/tasks; nullable selections require attention.",

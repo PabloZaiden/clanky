@@ -1,6 +1,6 @@
 import type { Agent, AgentConfig, AgentConfigSnapshot, AgentRun, AgentState } from "@/shared/agent";
 import { createLogger } from "@pablozaiden/webapp/server";
-import { requirePersistenceUserId } from "../ownership";
+import { requireResourcePersistenceUserId } from "../ownership";
 import { parseStoredTokenUsage } from "../harness-usage";
 
 const log = createLogger("persistence:agents");
@@ -100,9 +100,10 @@ function requireString(row: Record<string, unknown>, columnName: string, rowId: 
 
 export function agentToRow(agent: Agent): Record<string, unknown> {
   const { config, state } = agent;
+  if (config.generationChatId) requireResourcePersistenceUserId("chat", config.generationChatId);
   return {
     id: config.id,
-    user_id: requirePersistenceUserId(),
+    user_id: requireResourcePersistenceUserId("agent", config.id, config.workspaceId),
     name: config.name,
     workspace_id: config.workspaceId,
     directory: config.directory,
@@ -189,9 +190,11 @@ export function rowToAgent(row: Record<string, unknown>): Agent {
 }
 
 export function agentRunToRow(run: AgentRun): Record<string, unknown> {
+  requireResourcePersistenceUserId("agent-run", run.id);
+  if (run.chatId) requireResourcePersistenceUserId("chat", run.chatId);
   return {
     id: run.id,
-    user_id: requirePersistenceUserId(),
+    user_id: requireResourcePersistenceUserId("agent", run.agentId, run.configSnapshot.workspaceId),
     agent_id: run.agentId,
     chat_id: run.chatId ?? null,
     status: run.status,

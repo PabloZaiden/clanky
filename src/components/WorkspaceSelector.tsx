@@ -9,7 +9,7 @@ import type { ChangeEvent } from "react";
 import type { SshServer } from "@/shared";
 import type { Workspace } from "@/shared/workspace";
 import { useWorkspaceExecutionTargets } from "../hooks/workspace-server-settings";
-import { getWorkspaceServerLabel } from "../lib/workspace-label";
+import { getWorkspaceDisplayName, getWorkspaceServerLabel } from "../lib/workspace-label";
 
 export interface WorkspaceSelectorProps {
   /** List of available workspaces */
@@ -81,9 +81,9 @@ export function WorkspaceSelector({
         
         {workspaces.map((workspace) => (
           <option key={workspace.id} value={workspace.id}>
-            {showServerDetails
-              ? `${workspace.name} — ${getWorkspaceServerLabel(workspace, registeredSshServers, executionTargets)}`
-              : workspace.name}
+            {showServerDetails && !workspace.collaboration
+              ? `${getWorkspaceDisplayName(workspace)} — ${getWorkspaceServerLabel(workspace, registeredSshServers, executionTargets)}`
+              : getWorkspaceDisplayName(workspace)}
           </option>
         ))}
       </select>

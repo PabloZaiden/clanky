@@ -1,3 +1,4 @@
+import { workspaceOperation } from "../workspace-delegation";
 /**
  * Scheduled-agent transcript API routes.
  */
@@ -26,6 +27,7 @@ function isNotModified(request: Request, revision: string): boolean {
 
 export const transcriptRoutes = defineRoutes({
   "/api/agent-runs/:id/snapshot": {
+    delegation: workspaceOperation("agent-run"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Read the latest 100 agent-run responses; use before for older history, since to refresh a loaded window, or full=1 for the complete transcript.",
@@ -84,6 +86,7 @@ export const transcriptRoutes = defineRoutes({
   },
 
   "/api/agent-runs/:id/tool-calls/:toolCallId": {
+    delegation: workspaceOperation("agent-run"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Read one complete agent-run tool-call payload.",

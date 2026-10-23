@@ -23,6 +23,8 @@ import {
 } from "../../lib/sensitive-data";
 import { CreateWorkspaceRequestSchema, DeleteWorkspaceRequestSchema, UpdateWorkspaceRequestSchema } from "@/contracts/schemas";
 import { SensitiveQuerySchema } from "../route-schemas";
+import { workspaceOperation } from "../workspace-delegation";
+import { requireResourceOwnerUserId } from "../../context/user-context";
 
 const log = createLogger("api:workspaces");
 
@@ -68,6 +70,8 @@ export const crudRoutes = defineRoutes({
     querySchema: SensitiveQuerySchema,
     operations: {
       GET: {
+        delegation: workspaceOperation("workspace", { collection: true }),
+        partialResults: { header: "X-Clanky-Partial" },
         description: "List public workspace summaries.",
         requestSchema: undefined,
         querySchema: SensitiveQuerySchema,
@@ -142,12 +146,14 @@ export const crudRoutes = defineRoutes({
     querySchema: SensitiveQuerySchema,
     operations: {
       GET: {
+        delegation: workspaceOperation("workspace"),
         description: "Read public workspace details and scratchpad.",
         requestSchema: undefined,
         querySchema: SensitiveQuerySchema,
         automation: { policy: "read", hiddenQuery: ["sensitive"] },
       },
       PUT: {
+        delegation: { ...workspaceOperation("workspace"), action: "scratchpad" },
         description: "Update workspace details, execution host, adapter, privacy, or scratchpad.",
         requestSchema: UpdateWorkspaceRequestSchema,
         querySchema: SensitiveQuerySchema,
@@ -218,7 +224,9 @@ export const crudRoutes = defineRoutes({
         if (workspace.updatedAt === currentWorkspace.updatedAt) {
           log.info(`Workspace unchanged: ${currentWorkspace.name}`);
         } else {
-          ctx.userRealtime.publishEntityChanged(CLANKY_REALTIME_RESOURCES.workspaces, workspace.id);
+          ctx.realtime.publishEntityChanged(CLANKY_REALTIME_RESOURCES.workspaces, workspace.id, {
+            target: { userId: requireResourceOwnerUserId(workspace.id) },
+          });
           log.info(`Updated workspace: ${workspace.name}`);
         }
         return Response.json(includeSensitive ? workspace : sanitizeWorkspace(workspace));

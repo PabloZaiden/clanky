@@ -1,3 +1,4 @@
+import { workspaceOperation } from "../workspace-delegation";
 /**
  * Scheduled-agent run and deterministic code-test API routes.
  */
@@ -313,6 +314,7 @@ function mapPurgeStatuses(body: {
 
 export const runsRoutes = defineRoutes({
   "/api/agents/code/test": {
+    delegation: workspaceOperation("agent"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Test deterministic agent code without saving an agent or run.",
@@ -334,6 +336,7 @@ export const runsRoutes = defineRoutes({
   },
 
   "/api/agents/code/test/stream": {
+    delegation: workspaceOperation("agent"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Stream deterministic agent code test output without saving an agent or run.",
@@ -355,6 +358,7 @@ export const runsRoutes = defineRoutes({
   },
 
   "/api/agents/:id/run": {
+    delegation: workspaceOperation("agent"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Start an agent run immediately.",
@@ -395,6 +399,7 @@ export const runsRoutes = defineRoutes({
   },
 
   "/api/agents/:id/interrupt": {
+    delegation: workspaceOperation("agent"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Interrupt an active agent run.",
@@ -429,6 +434,7 @@ export const runsRoutes = defineRoutes({
   },
 
   "/api/agents/:id/pause": {
+    delegation: workspaceOperation("agent"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Pause a scheduled agent.",
@@ -457,6 +463,7 @@ export const runsRoutes = defineRoutes({
   },
 
   "/api/agents/:id/resume": {
+    delegation: workspaceOperation("agent"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Resume a paused scheduled agent.",
@@ -485,6 +492,8 @@ export const runsRoutes = defineRoutes({
   },
 
   "/api/agents/:id/runs": {
+    delegation: workspaceOperation("agent", { collection: true }),
+    partialResults: { header: "X-Clanky-Partial" },
     auth: "user",
     sameOrigin: "mutations",
     description: "List or purge runs for an agent.",
@@ -550,6 +559,7 @@ export const runsRoutes = defineRoutes({
   },
 
   "/api/agent-runs/:id": {
+    delegation: workspaceOperation("agent-run"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Read or delete an agent run.",

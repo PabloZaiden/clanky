@@ -1,3 +1,4 @@
+import { workspaceOperation } from "../workspace-delegation";
 import { createLogger, defineRoutes } from "@pablozaiden/webapp/server";
 import { chatManager } from "../../core/chat-manager";
 import { isDomainError } from "../../domain/domain-error";
@@ -74,6 +75,8 @@ async function validateQuickChatRequestModel(body: {
 
 export const chatsCrudRoutes = defineRoutes({
   "/api/chats": {
+    delegation: workspaceOperation("chat", { collection: true }),
+    partialResults: { header: "X-Clanky-Partial" },
     auth: "user",
     sameOrigin: "mutations",
     description: "List chats or create a chat session.",
@@ -168,6 +171,7 @@ export const chatsCrudRoutes = defineRoutes({
   },
 
   "/api/chats/:id/new-here": {
+    delegation: workspaceOperation("chat"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Create a fresh chat in the source chat's current workspace directory; permission requests are automatically approved.",
@@ -202,6 +206,7 @@ export const chatsCrudRoutes = defineRoutes({
   },
 
   "/api/chats/:id": {
+    delegation: workspaceOperation("chat"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Read, update, or delete a chat session; remote cleanup may continue after deletion. Chat deletion accepts x-clanky-ssh-credential-token when remote history cleanup requires SSH credentials.",

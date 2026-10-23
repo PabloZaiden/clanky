@@ -1,3 +1,4 @@
+import { workspaceOperation } from "../workspace-delegation";
 import { createLogger, defineRoutes } from "@pablozaiden/webapp/server";
 import { taskManager } from "../../core/task-manager";
 import { domainErrorResponse, errorResponse, successResponse } from "../helpers";
@@ -15,6 +16,7 @@ function activityErrorResponse(error: unknown): Response {
 
 export const tasksActivityRoutes = defineRoutes({
   "/api/tasks/:id/activity": {
+    delegation: workspaceOperation("task"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Observe owned native task work independently of logical task completion.",
@@ -26,6 +28,7 @@ export const tasksActivityRoutes = defineRoutes({
     },
   },
   "/api/tasks/:id/activity/:activityId/stop": {
+    delegation: workspaceOperation("task"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Stop one owned native child or process without escalating to the principal or siblings.",

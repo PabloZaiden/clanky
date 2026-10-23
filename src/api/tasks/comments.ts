@@ -1,3 +1,4 @@
+import { workspaceOperation } from "../workspace-delegation";
 import { defineRoutes } from "@pablozaiden/webapp/server";
 /**
  * Task comments routes.
@@ -14,6 +15,7 @@ const log = createLogger("api:tasks");
 
 export const tasksCommentsRoutes = defineRoutes({
   "/api/tasks/:id/comments": {
+    delegation: workspaceOperation("task"),
     auth: "user",
     sameOrigin: "mutations",
     description: "List review comments for a task.",

@@ -1,3 +1,4 @@
+import { workspaceOperation } from "../workspace-delegation";
 /**
  * Scheduled-agent CRUD API routes.
  */
@@ -15,6 +16,8 @@ const log = createLogger("api:agents");
 
 export const crudRoutes = defineRoutes({
   "/api/agents": {
+    delegation: workspaceOperation("agent", { collection: true }),
+    partialResults: { header: "X-Clanky-Partial" },
     auth: "user",
     sameOrigin: "mutations",
     description: "List or create scheduled agents.",
@@ -94,6 +97,7 @@ export const crudRoutes = defineRoutes({
   },
 
   "/api/agents/:id": {
+    delegation: workspaceOperation("agent"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Read, update, or delete a scheduled agent.",
@@ -195,6 +199,7 @@ export const crudRoutes = defineRoutes({
   },
 
   "/api/agents/:id/code/draft": {
+    delegation: workspaceOperation("agent"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Read the current generated deterministic agent draft.",

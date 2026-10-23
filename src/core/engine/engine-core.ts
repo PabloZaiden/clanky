@@ -40,7 +40,7 @@ import { harnessActivityService } from "../harness-activity-service";
 import { mergeHarnessProjection } from "../../persistence/harness-state";
 import { getHarnessWorkspaceSafety } from "../harness-workspace-safety";
 import { isDomainError } from "../../domain/domain-error";
-import { requireCurrentUser, runWithCurrentUser } from "../../context/user-context";
+import { captureWorkspaceExecutionContext, requireExecutionOwnerUser, runWithExecutionOwner, runWithWorkspaceExecutionContext, type WorkspaceExecutionContext } from "../../context/user-context";
 import { conversationAttachmentService } from "../conversation-attachment-service";
 import { DomainError } from "../../domain/domain-error";
 import { iterateTaskAttachmentMessages } from "../task-transcript-service";
@@ -88,7 +88,8 @@ import {
 } from "../../backends/acp";
 
 export class TaskEngine {
-  private readonly owner = requireCurrentUser();
+  private readonly owner = requireExecutionOwnerUser();
+  private readonly execution: WorkspaceExecutionContext | undefined;
   private task: Task;
   private backend: TaskBackend;
   private git: GitService;
@@ -122,6 +123,8 @@ export class TaskEngine {
 
   constructor(options: TaskEngineOptions) {
     this.task = options.task;
+    this.execution = options.task.config.workspaceId
+      ? captureWorkspaceExecutionContext(options.task.config.workspaceId) : undefined;
     this.backend = options.backend;
     this.git = options.gitService;
     this.emitter = options.eventEmitter ?? taskEventEmitter;
@@ -411,7 +414,17 @@ export class TaskEngine {
    * Start the task execution.
    * This sets up the git branch and backend session.
    */
-  async start(): Promise<void> {
+  start(): Promise<void> {
+    return this.runOwned(() => this.startOwned());
+  }
+
+  private runOwned<T>(callback: () => T): T {
+    return this.execution
+      ? runWithWorkspaceExecutionContext(this.execution, callback)
+      : runWithExecutionOwner(this.owner, callback);
+  }
+
+  private async startOwned(): Promise<void> {
     // Allow starting from idle, starting (claimed draft startup), stopped,
     // planning (for plan mode), or resolving_conflicts (for conflict resolution).
     if (
@@ -521,7 +534,8 @@ export class TaskEngine {
 
   async shutdown(): Promise<void> {
     this.injectionPending = false;
-    await runWithCurrentUser(this.owner, () => this.abortSessionOnly("Server shutdown"));
+    const abort = () => this.abortSessionOnly("Server shutdown");
+    await (this.execution ? runWithWorkspaceExecutionContext(this.execution, abort) : runWithExecutionOwner(this.owner, abort));
   }
 
   /**
@@ -646,7 +660,11 @@ export class TaskEngine {
    * Used to process feedback or continue plan refinement.
    * The engine must already be in planning status.
    */
-  async runPlanIteration(): Promise<void> {
+  runPlanIteration(): Promise<void> {
+    return this.runOwned(() => this.runPlanIterationOwned());
+  }
+
+  private async runPlanIterationOwned(): Promise<void> {
     if (this.task.state.status !== "planning") {
       throw new Error(`Cannot run plan iteration in status: ${this.task.state.status}`);
     }
@@ -710,7 +728,11 @@ export class TaskEngine {
    * Continue task execution with the pending prompt.
    * The engine must be in running status with a pending prompt set.
    */
-  async continueExecution(): Promise<void> {
+  continueExecution(): Promise<void> {
+    return this.runOwned(() => this.continueExecutionOwned());
+  }
+
+  private async continueExecutionOwned(): Promise<void> {
     if (this.task.state.status !== "running") {
       throw new Error(`Cannot continue execution in status: ${this.task.state.status}`);
     }
@@ -735,7 +757,11 @@ export class TaskEngine {
    * Run exactly one user-initiated turn without applying normal task
    * completion-marker semantics.
    */
-  async runSingleTurn(): Promise<void> {
+  runSingleTurn(): Promise<void> {
+    return this.runOwned(() => this.runSingleTurnOwned());
+  }
+
+  private async runSingleTurnOwned(): Promise<void> {
     if (this.task.state.status !== "running") {
       throw new Error(`Cannot run a single turn in status: ${this.task.state.status}`);
     }

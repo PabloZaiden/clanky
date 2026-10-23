@@ -1,3 +1,4 @@
+import { workspaceOperation } from "../workspace-delegation";
 import { defineRoutes } from "@pablozaiden/webapp/server";
 import { TranscriptSnapshotQuerySchema } from "../route-schemas";
 import { errorResponse, internalErrorResponse } from "../helpers";
@@ -30,6 +31,7 @@ function isNotModified(request: Request, revision: string): boolean {
 
 export const tasksTranscriptRoutes = defineRoutes({
   "/api/tasks/:id/snapshot": {
+    delegation: workspaceOperation("task"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Read the latest 100 task responses; use before for older history, since to refresh a loaded window, or full=1 for the complete transcript.",
@@ -86,6 +88,7 @@ export const tasksTranscriptRoutes = defineRoutes({
   },
 
   "/api/tasks/:id/tool-calls/:toolCallId": {
+    delegation: workspaceOperation("task"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Read one complete task tool-call payload.",

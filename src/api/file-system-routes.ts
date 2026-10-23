@@ -1,3 +1,4 @@
+import { workspaceOperation } from "./workspace-delegation";
 /**
  * Authenticated exact-path file operations, shared by workspace and host routes.
  */
@@ -68,6 +69,7 @@ export function createFileSystemRoutes(config: FileExplorerRouteConfig): RouteTa
     [path]: {
       auth: "user",
       sameOrigin: "mutations",
+      delegation: config.workspaceCollaboration ? workspaceOperation("workspace") : false,
       scopes: ["clanky:files"],
       description: `Exact-path operations on the ${config.resourceLabel} execution host; the initial directory is not a sandbox.`,
       tags: ["files"],
@@ -98,6 +100,7 @@ export function createFileSystemRoutes(config: FileExplorerRouteConfig): RouteTa
     [`${path}/content`]: {
       auth: "user",
       sameOrigin: "mutations",
+      delegation: config.workspaceCollaboration ? workspaceOperation("workspace") : false,
       scopes: ["clanky:files"],
       description: `GET/HEAD stream an exact-path file; PUT stages and replaces its binary content on the ${config.resourceLabel} host.`,
       tags: ["files"],

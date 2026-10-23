@@ -19,6 +19,7 @@ import { MAX_PERSISTED_LOGS } from "./engine/engine-types";
 import { AgentRunStreamPersistence } from "./agent-run-stream-persistence";
 import { getWorkspace } from "../persistence/workspaces";
 import { assertWorktreesAllowed } from "./workspace-capabilities";
+import { captureWorkspaceExecutionContext, runWithWorkspaceExecutionContext } from "../context/user-context";
 
 const log = createLogger("agent-runner");
 
@@ -141,7 +142,8 @@ export class AgentRunner {
       timestamp: createTimestamp(),
     });
 
-    const promise = this.executeRun(agent, run);
+    const execution = captureWorkspaceExecutionContext(agent.config.workspaceId);
+    const promise = runWithWorkspaceExecutionContext(execution, () => this.executeRun(agent, run));
     this.activeRuns.set(run.id, promise);
     promise.finally(() => {
       this.activeRuns.delete(run.id);

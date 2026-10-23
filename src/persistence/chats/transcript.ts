@@ -8,14 +8,14 @@ import type {
 } from "@/shared";
 import type { TranscriptStorageCursor, TranscriptStoragePage } from "../transcripts/types";
 import { getDatabase } from "../database";
-import { requirePersistenceUserId } from "../ownership";
+import { assertResourcePersistenceUser, requireResourcePersistenceUserId } from "../ownership";
 import { chatTranscriptStore } from "../transcripts/chat-store";
 import type { TranscriptMeta } from "../transcripts/types";
 
 export type ChatTranscriptMeta = TranscriptMeta;
 
 export function getChatTranscriptMeta(chatId: string): ChatTranscriptMeta | null {
-  return chatTranscriptStore.getMetaForUser(chatId, requirePersistenceUserId());
+  return chatTranscriptStore.getMetaForUser(chatId, requireResourcePersistenceUserId("chat", chatId));
 }
 
 export function hasSingleChatUserMessage(chatId: string): boolean {
@@ -24,7 +24,7 @@ export function hasSingleChatUserMessage(chatId: string): boolean {
     FROM chat_transcript_entries
     WHERE user_id = ? AND chat_id = ? AND kind = 'message' AND message_role = 'user'
     LIMIT 2
-  `).all(requirePersistenceUserId(), chatId).length === 1;
+  `).all(requireResourcePersistenceUserId("chat", chatId), chatId).length === 1;
 }
 
 export function replaceChatTranscriptEntriesForUserInTransaction(
@@ -32,6 +32,7 @@ export function replaceChatTranscriptEntriesForUserInTransaction(
   chat: Chat,
   userId: string,
 ): void {
+  assertResourcePersistenceUser("chat", chat.config.id, userId);
   chatTranscriptStore.replaceForUserInTransaction(
     db,
     chat.config.id,
@@ -40,6 +41,7 @@ export function replaceChatTranscriptEntriesForUserInTransaction(
   );
 }
 export function replaceChatTranscriptEntriesForUser(chat: Chat, userId: string): void {
+  assertResourcePersistenceUser("chat", chat.config.id, userId);
   chatTranscriptStore.replaceForUser(
     chat.config.id,
     userId,
@@ -48,7 +50,7 @@ export function replaceChatTranscriptEntriesForUser(chat: Chat, userId: string):
 }
 
 export function replaceChatTranscriptEntries(chat: Chat): void {
-  replaceChatTranscriptEntriesForUser(chat, requirePersistenceUserId());
+  replaceChatTranscriptEntriesForUser(chat, requireResourcePersistenceUserId("chat", chat.config.id));
 }
 
 export function syncChatTranscriptEntriesInTransaction(
@@ -60,7 +62,7 @@ export function syncChatTranscriptEntriesInTransaction(
   chatTranscriptStore.syncInTransaction(
     db,
     chatId,
-    requirePersistenceUserId(),
+    requireResourcePersistenceUserId("chat", chatId),
     previousState,
     nextState,
   );
@@ -81,7 +83,7 @@ export function listChatTranscriptEntries(
 ): ChatTranscriptStorageEntry[] {
   return chatTranscriptStore.listForUser(
     chatId,
-    requirePersistenceUserId(),
+    requireResourcePersistenceUserId("chat", chatId),
     includeToolPayload,
   );
 }
@@ -104,7 +106,7 @@ export function listChatTranscriptEntriesAfter(
 ): TranscriptStoragePage {
   return chatTranscriptStore.listEntriesAfterForUser(
     chatId,
-    requirePersistenceUserId(),
+    requireResourcePersistenceUserId("chat", chatId),
     options,
   );
 }
@@ -115,7 +117,7 @@ export function getChatToolCallFromTranscript(
 ): ToolCallRecord | null {
   return chatTranscriptStore.getToolCallForUser(
     chatId,
-    requirePersistenceUserId(),
+    requireResourcePersistenceUserId("chat", chatId),
     toolCallId,
   );
 }
@@ -126,7 +128,7 @@ export function getChatMessageFromTranscript(
 ): PersistedMessage | null {
   return chatTranscriptStore.getMessageForUser(
     chatId,
-    requirePersistenceUserId(),
+    requireResourcePersistenceUserId("chat", chatId),
     messageId,
   );
 }

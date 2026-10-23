@@ -43,7 +43,7 @@ import {
 } from "./backend-state";
 import { ensureLocalMeshNodeIdentity } from "../../persistence/mesh-node-identity";
 import { getWorkerRegistration } from "../../persistence/mesh";
-import { requireCurrentUserId } from "../../context/user-context";
+import { requireExecutionOwnerUserId } from "../../context/user-context";
 import { getSshReliabilityPolicy } from "../ssh-reliability-policy";
 import { executionHostService } from "../execution-host-service";
 import { executionHostBindingsEqual, getAgentExecutionHostCapability } from "@/shared/execution-host";
@@ -206,7 +206,7 @@ class BackendManager {
         },
       };
     }
-    const server = await getSshServerConfig(binding.host.serverId);
+    const server = await getSshServerConfig(binding.host.serverId, requireExecutionOwnerUserId());
     if (!server) {
       throw new Error(`SSH server not found: ${binding.host.serverId}`);
     }
@@ -272,7 +272,7 @@ class BackendManager {
    * configuration has been loaded from persistence.
    */
   private async ensureWorkspaceState(workspaceId: string, workspaceOverride?: Workspace): Promise<WorkspaceConnectionState> {
-    const userId = requireCurrentUserId();
+    const userId = requireExecutionOwnerUserId();
     const workspace = workspaceOverride ?? await getWorkspace(workspaceId);
     if (!workspace) {
       throw new Error(`Workspace not found: ${workspaceId}`);
@@ -421,7 +421,7 @@ class BackendManager {
     },
     operation: (backend: Backend) => Promise<T>,
   ): Promise<T> {
-    const userId = requireCurrentUserId();
+    const userId = requireExecutionOwnerUserId();
     const expectedBinding = options.expectedBinding && structuredClone(options.expectedBinding);
     const workspace = await getWorkspace(options.workspaceId);
     if (!workspace) {
@@ -967,7 +967,7 @@ class BackendManager {
       status.executionAvailability = "local";
     } else if (host.kind === "mesh") {
       const localNodeId = await this.getLocalMeshNodeId();
-      const registration = await getWorkerRegistration(host.nodeId, requireCurrentUserId());
+      const registration = await getWorkerRegistration(host.nodeId, requireExecutionOwnerUserId());
       status.executionAvailability = (
         host.nodeId !== localNodeId
         && registration?.grantStatus === "active"
@@ -1051,7 +1051,7 @@ class BackendManager {
     }
     const existing = this.taskConnections.get(taskId);
     if (existing) {
-      if (existing.userId !== requireCurrentUserId() || existing.workspaceId !== workspaceId) {
+      if (existing.userId !== requireExecutionOwnerUserId() || existing.workspaceId !== workspaceId) {
         throw new HarnessError("harness_session_not_owned", "The backend belongs to a different task or chat context.");
       }
       return existing.backend;
@@ -1064,7 +1064,7 @@ class BackendManager {
         `[BackendManager] Workspace ${workspaceId} not initialized. Use getBackendAsync() first.`,
       );
     }
-    if (workspaceState.userId !== requireCurrentUserId()) {
+    if (workspaceState.userId !== requireExecutionOwnerUserId()) {
       throw new HarnessError("harness_session_not_owned", "The workspace backend belongs to a different user.");
     }
     if (!workspaceState.executionHostBinding) {
@@ -1096,7 +1096,7 @@ class BackendManager {
 
   getInitializedContextBackend(contextId: string): Backend | null {
     const state = this.taskConnections.get(contextId);
-    if (state && state.userId !== requireCurrentUserId()) {
+    if (state && state.userId !== requireExecutionOwnerUserId()) {
       throw new HarnessError("harness_session_not_owned", "The backend belongs to a different user.");
     }
     return state?.backend ?? null;
@@ -1227,7 +1227,7 @@ class BackendManager {
       operationId: workspaceId,
       directory: dir,
       provider: state.settings.agent.provider,
-      localUserId: requireCurrentUserId(),
+      localUserId: requireExecutionOwnerUserId(),
       sshTargetOverride: execution.sshTarget,
     };
     if (!state.executionHostBinding) {
@@ -1275,7 +1275,7 @@ class BackendManager {
     },
     operation: (backend: Backend, settings: RuntimeServerSettings) => Promise<T>,
   ): Promise<T> {
-    const userId = requireCurrentUserId();
+    const userId = requireExecutionOwnerUserId();
     const pending = this.trackPendingExecutionHost(userId, context.binding);
     try {
       const settings = await this.buildRuntimeSettings(
@@ -1308,7 +1308,7 @@ class BackendManager {
     this.assertAcceptingConnections();
     const state = this.taskConnections.get(context.connectionId);
     if (!state) return null;
-    if (state.userId !== requireCurrentUserId()) {
+    if (state.userId !== requireExecutionOwnerUserId()) {
       throw new HarnessError("harness_session_not_owned", "The backend belongs to a different user.");
     }
     if (
@@ -1337,7 +1337,7 @@ class BackendManager {
     provider: AgentProvider,
     sshPassword?: string,
   ): Promise<{ backend: Backend; settings: RuntimeServerSettings }> {
-    const userId = requireCurrentUserId();
+    const userId = requireExecutionOwnerUserId();
     const pending = this.trackPendingExecutionHost(userId, binding);
     try {
       const settings = await this.buildRuntimeSettings(binding, createAgentSettings("acp", provider), sshPassword);

@@ -20,7 +20,7 @@ import type {
   TranscriptSnapshotOptions,
 } from "@/shared";
 import { getDatabase } from "../database";
-import { requirePersistenceUserId } from "../ownership";
+import { assertResourcePersistenceUser, requireResourcePersistenceUserId } from "../ownership";
 import { invalidateChatMetadata } from "../chats/metadata-cache";
 import {
   decodeTranscriptCursor,
@@ -148,6 +148,7 @@ export function replaceTranscriptEntriesForUserInTransaction(
   state: TranscriptStateLike,
   shouldIncludeLog: (entry: TaskLogEntry) => boolean = () => true,
 ): void {
+  assertResourcePersistenceUser(resource === "agent_run" ? "agent-run" : resource, resourceId, userId);
   if (resource === "chat") invalidateChatMetadata(db, userId, resourceId);
   const config = getTableConfig(resource);
   const entries = sortStateEntries(getTranscriptStateEntries(state, shouldIncludeLog));
@@ -190,7 +191,7 @@ export function replaceTranscriptEntries(
   replaceTranscriptEntriesForUser(
     resource,
     resourceId,
-    requirePersistenceUserId(),
+    requireResourcePersistenceUserId(resource === "agent_run" ? "agent-run" : resource, resourceId),
     state,
     shouldIncludeLog,
   );
@@ -205,6 +206,7 @@ export function syncTranscriptEntriesInTransaction(
   nextState: TranscriptStateLike,
   shouldIncludeLog: (entry: TaskLogEntry) => boolean = () => true,
 ): void {
+  assertResourcePersistenceUser(resource === "agent_run" ? "agent-run" : resource, resourceId, userId);
   if (resource === "chat") invalidateChatMetadata(db, userId, resourceId);
   const config = getTableConfig(resource);
   const previousEntries = new Map(
@@ -281,6 +283,7 @@ export function applyTranscriptChangeSetInTransaction(
   userId: string,
   changes: TranscriptChangeSet,
 ): void {
+  assertResourcePersistenceUser(resource === "agent_run" ? "agent-run" : resource, resourceId, userId);
   if (resource === "chat" && (changes.upserts.length > 0 || changes.deletes.length > 0)) {
     invalidateChatMetadata(db, userId, resourceId);
   }
@@ -352,7 +355,7 @@ export function syncTranscriptEntries(
   shouldIncludeLog?: (entry: TaskLogEntry) => boolean,
 ): void {
   const db = getDatabase();
-  const userId = requirePersistenceUserId();
+  const userId = requireResourcePersistenceUserId(resource === "agent_run" ? "agent-run" : resource, resourceId);
   db.transaction(() => {
     syncTranscriptEntriesInTransaction(
       db,
@@ -371,6 +374,7 @@ export function getTranscriptMetaForUser(
   resourceId: string,
   userId: string,
 ): TranscriptMeta | null {
+  assertResourcePersistenceUser(resource === "agent_run" ? "agent-run" : resource, resourceId, userId);
   const config = getTableConfig(resource);
   const row = getDatabase().prepare(`
     SELECT revision, entry_count
@@ -381,10 +385,11 @@ export function getTranscriptMetaForUser(
 }
 
 export function getTranscriptMeta(resource: TranscriptResource, resourceId: string): TranscriptMeta | null {
-  return getTranscriptMetaForUser(resource, resourceId, requirePersistenceUserId());
+  return getTranscriptMetaForUser(resource, resourceId, requireResourcePersistenceUserId(resource === "agent_run" ? "agent-run" : resource, resourceId));
 }
 
 export function getConversationMessageIdsForUser(resource: TranscriptResource, resourceId: string, userId: string): string[] {
+  assertResourcePersistenceUser(resource === "agent_run" ? "agent-run" : resource, resourceId, userId);
   const config = getTableConfig(resource);
   const rows = getDatabase().prepare(`
     SELECT entry_id FROM ${config.entriesTable}
@@ -397,6 +402,7 @@ export function getConversationMessageIdsForUser(resource: TranscriptResource, r
 export function getConversationMessageWindowForUser(input: {
   resource: TranscriptResource; resourceId: string; userId: string; position: number; limit: number;
 }): PersistedMessage[] {
+  assertResourcePersistenceUser(input.resource === "agent_run" ? "agent-run" : input.resource, input.resourceId, input.userId);
   const config = getTableConfig(input.resource);
   const rows = getDatabase().prepare(`
     SELECT entry_id, kind, timestamp, sequence, payload, updated_at,
@@ -421,6 +427,7 @@ export function getConversationAdmissionsForUser(
   resourceId: string,
   userId: string,
 ): Array<{ inputId: string; nativeMessageId: string | null; status: string }> {
+  assertResourcePersistenceUser(resource === "agent_run" ? "agent-run" : resource, resourceId, userId);
   const table = resource === "task" ? "tasks" : "chats";
   const target = resource === "agent_run"
     ? getDatabase().prepare("SELECT chat_id FROM agent_runs WHERE id = ? AND user_id = ?")
@@ -445,6 +452,7 @@ export function listTranscriptEntriesForUser(
   userId: string,
   includeToolPayload = false,
 ): ChatTranscriptStorageEntry[] {
+  assertResourcePersistenceUser(resource === "agent_run" ? "agent-run" : resource, resourceId, userId);
   const config = getTableConfig(resource);
 
   const rows = getDatabase().prepare(`
@@ -474,6 +482,7 @@ export function listTranscriptEntriesAfterForUser(
     fileAttachmentsOnly?: boolean;
   },
 ): TranscriptStoragePage {
+  assertResourcePersistenceUser(resource === "agent_run" ? "agent-run" : resource, resourceId, userId);
   const MAX_TRANSCRIPT_STORAGE_PAGE_SIZE = 256;
   if (
     !Number.isInteger(options.limit)
@@ -739,6 +748,7 @@ export function listTranscriptEntriesPageForUser(
   userId: string,
   options: TranscriptSnapshotOptions = {},
 ): TranscriptEntriesPage {
+  assertResourcePersistenceUser(resource === "agent_run" ? "agent-run" : resource, resourceId, userId);
   if ([options.full, options.before, options.since].filter(Boolean).length > 1) {
     throw new TranscriptCursorError("Transcript window options cannot be combined");
   }
@@ -857,7 +867,7 @@ export function listTranscriptEntries(
   return listTranscriptEntriesForUser(
     resource,
     resourceId,
-    requirePersistenceUserId(),
+    requireResourcePersistenceUserId(resource === "agent_run" ? "agent-run" : resource, resourceId),
     includeToolPayload,
   );
 }
@@ -870,7 +880,7 @@ export function listTranscriptEntriesPage(
   return listTranscriptEntriesPageForUser(
     resource,
     resourceId,
-    requirePersistenceUserId(),
+    requireResourcePersistenceUserId(resource === "agent_run" ? "agent-run" : resource, resourceId),
     options,
   );
 }
@@ -881,6 +891,7 @@ export function getTranscriptToolCallForUser(
   userId: string,
   toolCallId: string,
 ): ToolCallRecord | null {
+  assertResourcePersistenceUser(resource === "agent_run" ? "agent-run" : resource, resourceId, userId);
   const config = getTableConfig(resource);
   const row = getDatabase().prepare(`
     SELECT entry_id, kind, timestamp, sequence, payload,
@@ -903,6 +914,7 @@ export function getTranscriptMessageForUser(
   userId: string,
   messageId: string,
 ): PersistedMessage | null {
+  assertResourcePersistenceUser(resource === "agent_run" ? "agent-run" : resource, resourceId, userId);
   const config = getTableConfig(resource);
   const row = getDatabase().prepare(`
     SELECT entry_id, kind, timestamp, sequence, payload,
@@ -927,7 +939,7 @@ export function getTranscriptToolCall(
   resourceId: string,
   toolCallId: string,
 ): ToolCallRecord | null {
-  return getTranscriptToolCallForUser(resource, resourceId, requirePersistenceUserId(), toolCallId);
+  return getTranscriptToolCallForUser(resource, resourceId, requireResourcePersistenceUserId(resource === "agent_run" ? "agent-run" : resource, resourceId), toolCallId);
 }
 
 export function hydrateTranscriptStateForUser(
@@ -973,5 +985,5 @@ export function hydrateTranscriptState(
   resource: TranscriptResource,
   resourceId: string,
 ): TranscriptStateLike {
-  return hydrateTranscriptStateForUser(resource, resourceId, requirePersistenceUserId());
+  return hydrateTranscriptStateForUser(resource, resourceId, requireResourcePersistenceUserId(resource === "agent_run" ? "agent-run" : resource, resourceId));
 }

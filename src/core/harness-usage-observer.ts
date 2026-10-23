@@ -6,14 +6,14 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import type { HarnessControl, HarnessConversationBinding } from "@/shared/harness-control";
 import type { HarnessContext } from "../persistence/harness-state";
 import { markHarnessUsageStale, saveHarnessUsage, type UsageChange } from "../persistence/harness-usage";
-import { requireCurrentUser, runWithCurrentUser } from "../context/user-context";
+import { requireExecutionOwnerUser, runWithExecutionOwner } from "../context/user-context";
 import { harnessEventEmitter } from "./event-emitter";
 
 const log = createLogger("harness-usage");
 const USAGE_CHECKPOINT_INTERVAL_MS = 5_000;
 
 export class HarnessUsageObserver {
-  private readonly owner = requireCurrentUser();
+  private readonly owner = requireExecutionOwnerUser();
   private interval?: ReturnType<typeof setInterval>;
   private pending?: Promise<void>;
   private dirty = false;
@@ -62,7 +62,7 @@ export class HarnessUsageObserver {
   markStale(): void {
     const { context, binding } = this.options;
     try {
-      this.publish(runWithCurrentUser(this.owner, () => markHarnessUsageStale(context, binding)));
+      this.publish(runWithExecutionOwner(this.owner, () => markHarnessUsageStale(context, binding)));
     } catch (error) {
       log.error("Unable to mark token accounting stale", { context, error: String(error) });
     }
@@ -74,7 +74,7 @@ export class HarnessUsageObserver {
       const { context, binding, control } = this.options;
       try {
         const snapshot = await control.getUsage!(binding.nativeId);
-        const change = runWithCurrentUser(this.owner, () => saveHarnessUsage(context, binding, snapshot));
+        const change = runWithExecutionOwner(this.owner, () => saveHarnessUsage(context, binding, snapshot));
         if (!change) {
           this.closed = true;
           this.stop();

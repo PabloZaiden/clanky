@@ -1,3 +1,4 @@
+import { workspaceOperation } from "../workspace-delegation";
 import { createLogger, defineRoutes } from "@pablozaiden/webapp/server";
 import { chatManager } from "../../core/chat-manager";
 import { errorResponse, successResponse } from "../helpers";
@@ -7,6 +8,7 @@ const log = createLogger("api:chat-activity");
 
 export const chatsActivityRoutes = defineRoutes({
   "/api/chats/:id/activity": {
+    delegation: workspaceOperation("chat"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Observe owned native work independently of the principal prompt.",
@@ -25,6 +27,7 @@ export const chatsActivityRoutes = defineRoutes({
     },
   },
   "/api/chats/:id/activity/:activityId/stop": {
+    delegation: workspaceOperation("chat"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Stop one owned child execution or process without interrupting the principal or siblings.",

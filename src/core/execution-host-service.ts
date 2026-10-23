@@ -56,7 +56,7 @@ import { MeshCommandExecutor } from "./mesh-command-executor";
 import { CommandExecutorImpl } from "./remote-command-executor";
 import type { SshConnectionTarget } from "./ssh-connection-target";
 import { sshServerManager } from "./ssh-server-manager";
-import { requireCurrentUserId } from "../context/user-context";
+import { requireExecutionOwnerUserId } from "../context/user-context";
 import { getWorkspaceSshTarget } from "../persistence/workspace-execution-targets";
 import {
   executionPathStyleForPlatform,
@@ -133,7 +133,7 @@ export class ExecutionHostService {
 
   validateBinding(
     binding: ExecutionHostBinding,
-    userId: string = requireCurrentUserId(),
+    userId: string = requireExecutionOwnerUserId(),
   ): PersistedExecutionHost {
     assertExecutionHostAllowedInCurrentMode(binding.host);
     const persisted = getExecutionHostByRef(userId, binding.host);
@@ -144,7 +144,7 @@ export class ExecutionHostService {
   requireBindingCapability(
     binding: ExecutionHostBinding,
     capability: ExecutionHostCapabilityId,
-    userId: string = requireCurrentUserId(),
+    userId: string = requireExecutionOwnerUserId(),
     minimumVersion?: number,
   ): PersistedExecutionHost {
     let persisted = this.validateBinding(binding, userId);
@@ -184,7 +184,7 @@ export class ExecutionHostService {
   }
 
   async listHosts(
-    userId: string = requireCurrentUserId(),
+    userId: string = requireExecutionOwnerUserId(),
     additionalHost?: ExecutionHostRef,
   ): Promise<ExecutionHostDescriptor[]> {
     const descriptors: ExecutionHostDescriptor[] = [];
@@ -233,7 +233,7 @@ export class ExecutionHostService {
       descriptors.push(this.describeMeshWorker(worker, userId));
     }
 
-    for (const server of await listSshServerConfigs()) {
+    for (const server of await listSshServerConfigs(userId)) {
       const host = ensureExecutionHost(
         userId,
         { kind: "ssh", serverId: server.id },
@@ -316,7 +316,7 @@ export class ExecutionHostService {
   async requireCapability(
     ref: ExecutionHostRef,
     capability: ExecutionHostCapabilityId,
-    userId: string = requireCurrentUserId(),
+    userId: string = requireExecutionOwnerUserId(),
     minimumVersion?: number,
   ): Promise<ExecutionHostDescriptor> {
     let descriptor = (await this.listHosts(userId))
@@ -365,7 +365,7 @@ export class ExecutionHostService {
 
   async resolveReference(
     reference: string,
-    userId: string = requireCurrentUserId(),
+    userId: string = requireExecutionOwnerUserId(),
   ): Promise<ExecutionHostDescriptor> {
     const normalized = reference.trim();
     if (!normalized) {
@@ -402,7 +402,7 @@ export class ExecutionHostService {
     return matches[0]!;
   }
 
-  getRegisteredHosts(userId: string = requireCurrentUserId()): PersistedExecutionHost[] {
+  getRegisteredHosts(userId: string = requireExecutionOwnerUserId()): PersistedExecutionHost[] {
     return listExecutionHosts(userId);
   }
 
@@ -413,7 +413,7 @@ export class ExecutionHostService {
       sshPassword?: string;
     } = {},
   ): Promise<{ directory: string; configured: boolean }> {
-    const userId = options.userId ?? requireCurrentUserId();
+    const userId = options.userId ?? requireExecutionOwnerUserId();
     const descriptor = await this.requireCapability(
       ref,
       "fileOperations",
@@ -468,7 +468,7 @@ export class ExecutionHostService {
       sshPassword?: string;
     } = {},
   ): Promise<void> {
-    const userId = options.userId ?? requireCurrentUserId();
+    const userId = options.userId ?? requireExecutionOwnerUserId();
     let binding: ExecutionHostBinding;
     if ("targetKey" in target) {
       binding = target;
@@ -506,7 +506,7 @@ export class ExecutionHostService {
 
   async resolveAgentProvider(
     ref: ExecutionHostRef,
-    userId: string = requireCurrentUserId(),
+    userId: string = requireExecutionOwnerUserId(),
   ): Promise<AgentProvider> {
     const descriptor = (await this.listHosts(userId))
       .find((candidate) => executionHostRefsEqual(candidate.ref, ref));
@@ -521,7 +521,7 @@ export class ExecutionHostService {
 
   getBinding(
     ref: ExecutionHostRef,
-    userId: string = requireCurrentUserId(),
+    userId: string = requireExecutionOwnerUserId(),
   ): ExecutionHostBinding {
     assertExecutionHostAllowedInCurrentMode(ref);
     if (isPrivateMeshExecutionHostRef(ref)) {
@@ -548,7 +548,7 @@ export class ExecutionHostService {
     ref: ExecutionHostRef,
     context: ExecutionHostCommandContext,
   ): Promise<Array<{ providerID: AgentProvider; available: boolean }>> {
-    const userId = context.localUserId ?? requireCurrentUserId();
+    const userId = context.localUserId ?? requireExecutionOwnerUserId();
     await this.requireCapability(ref, "acpRuntime", userId, 1);
     const binding = this.getBinding(ref, userId);
     const executor = await this.getCommandExecutor(binding, {
@@ -571,7 +571,7 @@ export class ExecutionHostService {
     binding: ExecutionHostBinding,
     context: ExecutionHostCommandContext,
   ): Promise<CommandExecutor> {
-    const userId = context.localUserId ?? requireCurrentUserId();
+    const userId = context.localUserId ?? requireExecutionOwnerUserId();
     this.validateBinding(binding, userId);
     return await this.getCommandExecutorForRef(binding.host, {
       ...context,
@@ -584,7 +584,7 @@ export class ExecutionHostService {
     context: ExecutionHostCommandContext,
   ): Promise<CommandExecutor> {
     assertExecutionHostAllowedInCurrentMode(host);
-    const userId = context.localUserId ?? requireCurrentUserId();
+    const userId = context.localUserId ?? requireExecutionOwnerUserId();
     if (host.kind === "local") {
       const localIdentity = await ensureLocalMeshNodeIdentity();
       if (localIdentity.nodeId !== host.nodeId) {
@@ -650,6 +650,7 @@ export class ExecutionHostService {
     return (await sshServerManager.getCommandExecutor(
       host.serverId,
       context.sshPassword,
+      userId,
     )).executor;
   }
 

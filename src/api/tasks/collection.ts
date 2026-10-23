@@ -1,3 +1,4 @@
+import { workspaceOperation } from "../workspace-delegation";
 import { defineRoutes } from "@pablozaiden/webapp/server";
 /**
  * Task collection routes.
@@ -72,6 +73,8 @@ function mapTaskCreationError(error: unknown, workspaceId: string): Response | n
 
 export const tasksCollectionRoutes = defineRoutes({
   "/api/tasks": {
+    delegation: workspaceOperation("task", { collection: true }),
+    partialResults: { header: "X-Clanky-Partial" },
     auth: "user",
     sameOrigin: "mutations",
     description: "List tasks or create a new task.",
@@ -176,6 +179,7 @@ export const tasksCollectionRoutes = defineRoutes({
   },
 
   "/api/tasks/title": {
+    delegation: workspaceOperation("task"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Generate a task title from a prompt.",

@@ -26,7 +26,7 @@ import {
 } from "./terminal";
 import { DEFAULT_SSH_TERMINAL_COMMAND_TIMEOUT_MS } from "./ssh-bridge/constants";
 import { hasPersistentSession } from "./ssh-persistent-session";
-import { requireCurrentUser, runWithCurrentUser } from "../context/user-context";
+import { requireExecutionOwnerUser, runWithExecutionOwner } from "../context/user-context";
 import { workspaceManager } from "./workspace-manager";
 import { resolveWorkspaceExecutionTarget } from "./workspace-execution-target";
 import {
@@ -119,7 +119,7 @@ class StatusManagedTerminalConnection implements InteractiveTerminalConnection {
       throw new DomainError("terminal_connection_closed", "The terminal connection is closed.");
     }
     try {
-      await runWithCurrentUser(
+      await runWithExecutionOwner(
         this.user,
         async () => await terminalSessionManager.markStatus(this.sessionId, "connecting"),
       );
@@ -131,7 +131,7 @@ class StatusManagedTerminalConnection implements InteractiveTerminalConnection {
         await this.connection.dispose();
         throw new DomainError("terminal_connection_closed", "The terminal connection was closed while connecting.");
       }
-      await runWithCurrentUser(
+      await runWithExecutionOwner(
         this.user,
         async () => {
           await terminalSessionManager.updateRuntimeConnectionState(this.sessionId, {
@@ -157,7 +157,7 @@ class StatusManagedTerminalConnection implements InteractiveTerminalConnection {
       } catch (cleanupError) {
         failure = cleanupError;
       }
-      await runWithCurrentUser(
+      await runWithExecutionOwner(
         this.user,
         async () => await terminalSessionManager.markStatus(
           this.sessionId,
@@ -221,7 +221,7 @@ class StatusManagedTerminalConnection implements InteractiveTerminalConnection {
       && this.lifecycle.exitStatus !== "failed"
     ) {
       try {
-        await runWithCurrentUser(
+        await runWithExecutionOwner(
           this.user,
           async () => await terminalSessionManager.markStatus(this.sessionId, "disconnected"),
         );
@@ -258,7 +258,7 @@ function buildStatusCallbacks(
       const error = status === "failed"
         ? `Terminal process exited with code ${String(code)}${signal ? ` (${signal})` : ""}`
         : undefined;
-      void runWithCurrentUser(
+      void runWithExecutionOwner(
         user,
         async () => await terminalSessionManager.markStatus(sessionId, status, error),
       ).catch((statusError: Error) => {
@@ -281,7 +281,7 @@ export async function createTerminalConnection(
   attachment: TerminalAttachmentHandle;
   resolved: ResolvedTerminal;
 }> {
-  const user = requireCurrentUser();
+  const user = requireExecutionOwnerUser();
   const resolved = await resolveTerminal(sessionId);
   const host = resolved.executionHostBinding.host;
   if (host.kind === "ssh") {
@@ -358,7 +358,7 @@ export async function createTerminalConnection(
         allowPersistentSessionCreate,
         callbacks: statusCallbacks,
         onRuntimeConnectionState: async (state) => {
-          await runWithCurrentUser(
+          await runWithExecutionOwner(
             user,
             async () => await terminalSessionManager.updateRuntimeConnectionState(sessionId, state),
           );
@@ -424,7 +424,7 @@ export async function createTerminalConnection(
       lifecycle,
       credential
         ? async (error) => {
-            await runWithCurrentUser(
+            await runWithExecutionOwner(
               user,
               async () => await managedCredentialService.cleanupFailedLaunch(credential, error),
             );
@@ -438,7 +438,7 @@ export async function createTerminalConnection(
     };
   } catch (error) {
     if (credential) {
-      await runWithCurrentUser(
+      await runWithExecutionOwner(
         user,
         async () => await managedCredentialService.cleanupFailedLaunch(credential, error),
       );

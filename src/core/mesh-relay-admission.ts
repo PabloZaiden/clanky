@@ -19,6 +19,7 @@ export async function createMeshRelayEnrollmentAdmission(input: {
   controllerFingerprint: string;
   expiresAt: string;
   sign?: (payload: string) => Promise<string>;
+  peerRole?: "client";
 }): Promise<string> {
   const unsigned: Omit<MeshRelayEnrollmentAdmission, "signature"> = {
     version: MESH_RELAY_ENROLLMENT_ADMISSION_VERSION,
@@ -26,6 +27,7 @@ export async function createMeshRelayEnrollmentAdmission(input: {
     controllerFingerprint: input.controllerFingerprint,
     nonce: crypto.randomUUID(),
     expiresAt: input.expiresAt,
+    ...(input.peerRole ? { peerRole: input.peerRole } : {}),
   };
   const admission: MeshRelayEnrollmentAdmission = {
     ...unsigned,

@@ -78,7 +78,7 @@ export function fitReadText(text: string, fits: (part: string) => boolean): stri
 }
 
 const SUMMARY_FIELDS = [
-  "id", "name", "title", "description", "workspaceId", "taskId", "chatId",
+  "id", "name", "title", "description", "creator", "workspaceId", "taskId", "chatId",
   "agentId", "runId", "providerId", "modelId", "displayName", "kind", "type",
   "status", "createdAt", "updatedAt", "lastActivityAt", "startedAt", "completedAt",
   "directory", "resolvedDirectory", "targetDirectory", "workspaceAction",

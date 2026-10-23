@@ -10,7 +10,7 @@ import { loadChat } from "../persistence/chats";
 import { loadTask } from "../persistence/tasks";
 import { getTerminalSession } from "../persistence/terminal-sessions";
 import { DomainError } from "../domain/domain-error";
-import { requireCurrentUserId } from "../context/user-context";
+import { requireExecutionOwnerUserId } from "../context/user-context";
 
 function missingContext(contextType: ManagedContextType, contextId: string): DomainError {
   return new DomainError("managed_context_not_found", "Managed execution context was not found", {
@@ -127,7 +127,7 @@ export class ManagedContextIdentityResolver {
     workspaceId: string,
   ): ManagedContextIdentity {
     return {
-      userId: requireCurrentUserId(),
+      userId: requireExecutionOwnerUserId(),
       workspaceId,
       contextType,
       contextId,

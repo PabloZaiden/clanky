@@ -19,6 +19,7 @@ import type { MessageAttachment } from "./message-attachments";
 import type { ExecutionHostBinding } from "./execution-host";
 import type { HarnessConversationBinding, HarnessConversationState } from "./harness-control";
 import type { TokenUsageSummary } from "./harness-usage";
+import type { CollaborationCreator } from "./collaboration";
 
 export type { ModelConfig };
 
@@ -51,6 +52,7 @@ export type ChatSource =
 
 export interface ChatConfig {
   id: string;
+  creator?: CollaborationCreator;
   name: string;
   workspaceId?: string;
   source?: ChatSource;

@@ -8,7 +8,8 @@ import { DEFAULT_TASK_CONFIG } from "@/shared/task";
 import { normalizeCommitScope } from "@/shared";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { CheapModelSelectionSchema } from "@/contracts/schemas";
-import { requirePersistenceUserId } from "../ownership";
+import { requireResourcePersistenceUserId } from "../ownership";
+import { collaborationCreatorFromRow } from "../collaboration-authorship";
 import { parseStoredHarnessBinding, parseStoredHarnessState } from "../harness-binding";
 import { parseStoredTokenUsage } from "../harness-usage";
 import { MessageAttachmentsSchema, TaskPendingInputSchema } from "../../contracts/schemas/task";
@@ -108,7 +109,7 @@ export function taskToRow(task: Task): Record<string, unknown> {
   const { config, state } = task;
   return {
     id: config.id,
-    user_id: requirePersistenceUserId(),
+    user_id: requireResourcePersistenceUserId("task", task.config.id, task.config.workspaceId ?? null),
     // Config fields
     name: config.name,
     directory: config.directory,
@@ -211,6 +212,7 @@ export function rowToTask(row: Record<string, unknown>): Task {
 
   const config: TaskConfig = {
     id: row["id"] as string,
+    creator: collaborationCreatorFromRow(row),
     name: row["name"] as string,
     directory: row["directory"] as string,
     prompt: row["prompt"] as string,

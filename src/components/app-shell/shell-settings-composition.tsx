@@ -1,5 +1,6 @@
 import type { WebAppRootProps } from "@pablozaiden/webapp/web";
 import type { Workspace } from "@/shared";
+import { getWorkspaceDisplayName } from "../../lib/workspace-label";
 import { DEFAULT_QUICK_CHAT_SETTINGS } from "@/shared/preferences";
 import {
   PurgeTerminalTasksAction,
@@ -28,6 +29,7 @@ import type {
   UseVoiceSettingsResult,
 } from "../../hooks";
 import type { UseWorkerUpdateJobsResult } from "../../hooks/useWorkerUpdateJobs";
+import { WorkspaceCollaborationContent } from "../app-settings/workspace-collaboration-content";
 
 export interface ShellSettingsCompositionOptions {
   quickChatSettings: UseQuickChatSettingsResult;
@@ -72,6 +74,14 @@ export function buildShellSettingsSections({
   ) ?? null;
   return [
     {
+      id: "collaboration",
+      title: "Collaboration",
+      category: { id: "collaboration", title: "Collaboration" },
+      scope: "user" as const,
+      // Pairing spans workspace selection, one-use tokens and per-workspace grant retirement.
+      render: () => <WorkspaceCollaborationContent workspaces={workspaces} />,
+    },
+    {
       id: "quick-chat",
       title: "Quick Chat",
       category: { id: "chats", title: "Chats" },
@@ -106,7 +116,7 @@ export function buildShellSettingsSections({
                 </option>
                 {workspaces.map((workspace) => (
                   <option key={workspace.id} value={workspace.id}>
-                    {workspace.name}
+                    {getWorkspaceDisplayName(workspace)}
                   </option>
                 ))}
               </SettingsSelect>

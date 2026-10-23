@@ -116,8 +116,9 @@ export class SshServerManager {
   async getCommandExecutor(
     serverId: string,
     password?: string,
+    userId?: string,
   ): Promise<{ server: SshServerConfig; executor: CommandExecutor }> {
-    const server = await this.requireServerConfig(serverId);
+    const server = await this.requireServerConfig(serverId, userId);
     return {
       server,
       executor: this.buildExecutor(server, password ?? ""),
@@ -157,8 +158,8 @@ export class SshServerManager {
     });
   }
 
-  private async requireServerConfig(id: string): Promise<SshServerConfig> {
-    const server = await getSshServerConfig(id);
+  private async requireServerConfig(id: string, userId?: string): Promise<SshServerConfig> {
+    const server = await getSshServerConfig(id, userId);
     if (!server) {
       throw new DomainError("ssh_server_not_found", "SSH server not found", {
         details: { serverId: id },
