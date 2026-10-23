@@ -50,6 +50,14 @@ clanky auth --base-url http://localhost:3000
 clanky status
 ```
 
+Device sessions default to `clanky-cli-<hostname>`, so computers with different
+hostnames can stay signed in independently. After upgrading from a version
+that used the shared `clanky-cli` ID, run `clanky auth` again on each computer;
+existing credentials retain their saved client ID until reauthentication.
+Computers sharing a hostname or independent profiles on one computer need
+distinct `--client-id` values. Authenticating again with the same client ID
+replaces its previous session.
+
 After authentication, discover and call endpoints with:
 
 ```bash
