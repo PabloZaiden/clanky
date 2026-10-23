@@ -23,7 +23,7 @@
     "@github/copilot-sdk": "1.0.22",
     "@monaco-editor/react": "4.7.0",
     "@opencode/client": "2.0.31",
-    "@pablozaiden/webapp": "github:PabloZaiden/webapp#v2.0.5",
+    "@pablozaiden/webapp": "github:PabloZaiden/webapp#v2.0.6",
     "@peculiar/x509": "2.2.0",
     "@tailwindcss/typography": "0.5.20",
     "@xterm/addon-fit": "0.11.0",
