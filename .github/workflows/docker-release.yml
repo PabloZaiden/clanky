@@ -32,22 +32,22 @@ jobs:
 
       - name: Resolve release version
         id: version
-        uses: pablozaiden/installer/.github/actions/resolve-version@d65a93c1af0d7ce62524d6ccdfee44d0f6ceac4e # installer #7
+        uses: pablozaiden/installer/.github/actions/resolve-version@b47bdc7e7721c12c9b6b8e5e0a97c045bf526a9b # installer v0.2.0
         with:
           mode: release
           update_package_version: false
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Log in to Docker Hub
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Log in to Container Registry
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -68,7 +68,7 @@ jobs:
           tags: ${{ fromJSON(steps.release_metadata.outputs.config).tags }}
 
       - name: Build and push server image
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: Dockerfile
@@ -83,7 +83,7 @@ jobs:
           platforms: ${{ fromJSON(steps.release_metadata.outputs.config).platforms }}
 
       - name: Build and push relay image
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: Dockerfile

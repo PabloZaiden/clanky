@@ -222,6 +222,23 @@ preview and Mesh sockets remain separate raw transports.
 
 ## Build and test
 
+### Dependency updates
+
+Update registry packages and their transitive resolutions with
+`bun update --latest --exact`, then commit `package.json` and `bun.lock`
+together. Bun normally enforces the three-day minimum release age in
+`bunfig.toml`. An explicitly approved update to freshly published stable
+versions can use `--minimum-release-age 0` for that command only; keep the
+repository safeguard unchanged.
+
+Check GitHub-hosted packages against their latest stable release tags
+separately. Keep CI actions pinned to the corresponding release commit SHAs
+and refresh development-container feature versions and digests together in
+`.devcontainer/devcontainer-lock.json`. Do not force transitive dependencies
+outside their parents' supported ranges.
+
+### Validation
+
 Build the standalone artifacts and run the black-box E2E suite:
 
 ```bash
