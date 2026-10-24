@@ -506,7 +506,23 @@ service port on a workspace or registered server:
 ```bash
 clanky preview --workspace <WORKSPACE_ID_OR_NAME> --port 3000
 clanky preview --server <SERVER_NAME_OR_ID> --port 8080 --local-port 18080 --open
+clanky code "Workspace name"
+clanky code "Workspace name" --chat "Existing chat"
+clanky code "Workspace name" --task "Existing task"
 ```
+
+Workspace targets accept IDs or exact names from the unified local/shared list.
+For a shared workspace, authenticate the CLI to the invited instance as usual:
+both commands use its relay connection without a connection flag or controller
+credentials. Ambiguous names or an incomplete workspace list require an exact
+reference returned by `clanky api workspaces --method GET`; never decode remote
+references. Code chat/task names resolve only within that workspace, and qualified
+selectors must belong to the same controller.
+
+`code` starts the workspace host's existing `code serve-web` executable and
+opens the workspace's current directory, or the selected chat/task directory.
+It does not install Code or prepare missing worktrees. Both the service port and
+Code process are on the selected execution host, not the invited/CLI machine.
 
 The command prints the local URL and remains active until stopped. Use
 `--remote-host` when the service is not bound to `localhost`, `--path` for a

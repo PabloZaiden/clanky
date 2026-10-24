@@ -5,13 +5,11 @@ import {
   normalizeBaseUrl,
   refreshDeviceCredentials,
   resolveEnvironmentApiKeyAuth,
-  type CliEnvironment,
-  type DeviceCredentialsStore,
-  type StoredDeviceCredentials,
 } from "@pablozaiden/webapp/cli";
 import type { CodePreviewOptions, PreviewBridgeClientMessage, PreviewBridgeReadyMessage, PreviewBridgeServerMessage } from "@/shared";
 import { PREVIEW_RESPONSE_WINDOW_BYTES, previewWebSocketCloseCode } from "@/shared/preview";
 import { getPreviewListenerTls } from "./preview-tls";
+import { resolveCliWorkspace, type CliApiAuth, type CliApiContext } from "./remote-api";
 
 const WS_READY_STATE_CLOSING = 2;
 const PREVIEW_LISTENER_WS_IDLE_TIMEOUT_SECONDS = 0;
@@ -53,14 +51,8 @@ interface PreviewListenerData {
   streamId: string;
 }
 
-export interface CliPreviewDependencies {
-  fetchFn: typeof fetch;
+export interface CliPreviewDependencies extends CliApiContext {
   now?: () => Date;
-  envPrefix?: string;
-  environment?: CliEnvironment;
-  credentials?: DeviceCredentialsStore & {
-    read(): Promise<StoredDeviceCredentials | undefined>;
-  };
   out?: (message: string) => void;
   err?: (message: string) => void;
   getHostname?: () => string;
@@ -338,16 +330,11 @@ function createPreviewBridgeFailureResponse(error: unknown): Response {
   return new Response(`Preview bridge request failed: ${String(error)}`, { status: 502 });
 }
 
-interface PreviewAuthContext {
-  baseUrl: string;
-  headers: Headers;
-}
-
 async function getAuthContext(
   command: PreviewCommandOptions,
   dependencies: CliPreviewDependencies,
-): Promise<PreviewAuthContext | null> {
-  const stored = await dependencies.credentials?.read();
+): Promise<CliApiAuth | null> {
+  const stored = await dependencies.credentials.read();
   if (stored) {
     const refreshed = await refreshDeviceCredentials({
       credentials: stored,
@@ -359,6 +346,8 @@ async function getAuthContext(
       return {
         baseUrl: refreshed.baseUrl,
         headers: getAuthorizedHeaders(refreshed),
+        source: "device",
+        accessToken: refreshed.accessToken,
       };
     }
   }
@@ -376,6 +365,7 @@ async function getAuthContext(
     return {
       baseUrl: environmentAuth.baseUrl,
       headers,
+      source: "environment",
     };
   }
 
@@ -412,6 +402,7 @@ async function getAuthContext(
   return {
     baseUrl,
     headers: anonymousHeaders,
+    source: "anonymous",
   };
 }
 
@@ -426,6 +417,9 @@ export async function runPreviewCommand(
     err("Not logged in.");
     return 1;
   }
+  const workspace = command.workspace
+    ? await resolveCliWorkspace(dependencies, authContext, command.workspace)
+    : undefined;
 
   const localPath = normalizePreviewPath(command.path);
   if (command.host === "0.0.0.0") {
@@ -777,7 +771,7 @@ export async function runPreviewCommand(
       ...(command.code ? { code: command.code } : {}),
       target: command.server
         ? { kind: "server", reference: command.server }
-        : { kind: "workspace", reference: command.workspace! },
+        : { kind: "workspace", reference: workspace!.id },
       remoteHost: command.remoteHost,
       remotePort: command.port,
       protocol,

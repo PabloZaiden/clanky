@@ -105,7 +105,7 @@ export async function fetchCliApi(
   path: string,
   init: RequestInit = {},
 ): Promise<Response> {
-  const send = () => input.fetchFn(new URL(path, `${auth.baseUrl}/`), {
+  const send = () => input.fetchFn(new URL(`${auth.baseUrl.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`), {
     ...init,
     headers: new Headers({
       ...Object.fromEntries(auth.headers.entries()),

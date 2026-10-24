@@ -37,6 +37,7 @@ interface Task {
   };
   state: {
     status: string;
+    error?: { message: string };
     planMode: {
       feedbackRounds: number;
       isPlanReady: boolean;
@@ -1540,7 +1541,7 @@ test("compiled Clanky completes its principal local user journey", async () => {
       `/api/tasks/${restartRecoveryTask.config.id}`,
       { apiKey: apiKey.token },
     )).data;
-    expect(interruptedPlanningTask.state.status).toBe("planning");
+    expect(interruptedPlanningTask.state.status, interruptedPlanningTask.state.error?.message).toBe("planning");
     expect(interruptedPlanningTask.state.planMode.isPlanReady).toBe(false);
     await application.json(
       `/api/tasks/${restartRecoveryTask.config.id}/plan/feedback`,

@@ -289,6 +289,8 @@ deterministic `devbox` executable through real SSH and validates successful,
 failed, cancelled, and restarted jobs at the public API boundary. Harnesses
 allocate isolated data directories and ports, bound their polling, capture
 subprocess logs for failure diagnostics, and clean up their process groups.
+Application failure diagnostics include server logs from before and after
+restarts, so recovery failures retain the original shutdown context.
 
 Provider waits for future user input, such as Codex steering, belong to the
 turn lifecycle: they end on input, interruption, deletion, or connection closure.
