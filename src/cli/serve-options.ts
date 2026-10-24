@@ -2,6 +2,12 @@ import type { WebAppServeOptionDefinition } from "@pablozaiden/webapp/cli";
 
 export const CLANKY_SERVE_OPTIONS = [
   {
+    name: "api-only",
+    type: "boolean",
+    description: "Serve the API and server-origin sign-in pages without the Clanky UI.",
+    defaultValue: false,
+  },
+  {
     name: "mesh-worker",
     type: "boolean",
     description: "Run the restricted Mesh execution worker surface.",

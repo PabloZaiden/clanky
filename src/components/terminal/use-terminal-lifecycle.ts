@@ -2,9 +2,9 @@
  * WebSocket lifecycle management: connect, mark ready, and reconnect on foreground.
  */
 
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { Terminal } from "@xterm/xterm";
-import { appWebSocketUrl } from "../../lib/public-path";
+import { appWebSocketConnection } from "../../lib/public-path";
 import type { TerminalSessionKind } from "./use-terminal-connection";
 
 interface UseTerminalLifecycleParams {
@@ -56,6 +56,7 @@ export function useTerminalLifecycle({
   setPendingStandaloneAction,
   setShowPasswordPrompt,
 }: UseTerminalLifecycleParams) {
+  const connectControllerRef = useRef<AbortController | null>(null);
   const markTerminalReady = useCallback(() => {
     if (terminalReadyRef.current) {
       return;
@@ -87,6 +88,8 @@ export function useTerminalLifecycle({
       return;
     }
     terminalConnectInFlightRef.current = true;
+    const controller = new AbortController();
+    connectControllerRef.current = controller;
     try {
       let standaloneAuthToken = options?.standaloneCredentialToken ?? null;
       if (sessionKind === "standalone") {
@@ -96,6 +99,7 @@ export function useTerminalLifecycle({
             promptOnFailure: true,
           });
         }
+        controller.signal.throwIfAborted();
         if (!standaloneAuthToken) {
           return;
         }
@@ -108,7 +112,7 @@ export function useTerminalLifecycle({
       clearSelectedTerminalText();
       setSocketStatus("connecting");
 
-      const ws = new WebSocket(appWebSocketUrl(terminalUrl));
+      const ws = await appWebSocketConnection(terminalUrl, { signal: controller.signal });
       terminalSocketRef.current = ws;
 
       ws.onopen = () => {
@@ -119,7 +123,7 @@ export function useTerminalLifecycle({
           }));
         }
       };
-      ws.onmessage = (event) => {
+      ws.onmessage = (event: MessageEvent) => {
         if (terminalSocketRef.current !== ws) {
           return;
         }
@@ -206,8 +210,16 @@ export function useTerminalLifecycle({
         clearSelectedTerminalText();
         setSocketStatus("closed");
       };
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        setSocketStatus("closed");
+        showErrorToast(`Unable to connect terminal: ${String(error)}`);
+      }
     } finally {
-      terminalConnectInFlightRef.current = false;
+      if (connectControllerRef.current === controller) {
+        connectControllerRef.current = null;
+        terminalConnectInFlightRef.current = false;
+      }
     }
   }, [
     clearSelectedTerminalText,
@@ -252,12 +264,15 @@ export function useTerminalLifecycle({
     }
     void connectTerminal();
     return () => {
+      connectControllerRef.current?.abort();
+      connectControllerRef.current = null;
+      terminalConnectInFlightRef.current = false;
       terminalReadyRef.current = false;
       terminalSocketRef.current?.close();
       terminalSocketRef.current = null;
       clearSelectedTerminalText();
     };
-  }, [clearSelectedTerminalText, connectTerminal, terminalReadyRef, terminalSocketRef, terminalUrl]);
+  }, [clearSelectedTerminalText, connectTerminal, terminalConnectInFlightRef, terminalReadyRef, terminalSocketRef, terminalUrl]);
 
   useEffect(() => {
     if (!terminalUrl || typeof window === "undefined" || typeof document === "undefined") {

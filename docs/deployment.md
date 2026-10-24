@@ -4,6 +4,10 @@ Clanky can run as a local binary, a Docker container, or a controller for
 remote execution hosts. This guide covers the settings that matter when the
 server is shared or exposed through a reverse proxy.
 
+For a frontend on an ordinary static host with a separate API, see
+[Static frontend and remote API](static-client.md). The combined container
+remains the default deployment.
+
 ## Docker
 
 The image contains the server and web application. Persist `/app/data`:
@@ -68,6 +72,7 @@ The most common server settings are environment variables:
 | `CLANKY_DATA_DIR` | Directory for database, configuration, and logs | `$HOME/.clanky` |
 | `CLANKY_PUBLIC_BASE_URL` | External origin used for Mesh and browser links | unset |
 | `CLANKY_REMOTE_ONLY` | Disable the local execution host | unset |
+| `CLANKY_API_ONLY` | Serve API and server-origin authentication/account pages without the app UI | `false` |
 | `CLANKY_LOG_LEVEL` | Server log level | `info` |
 
 The Docker image sets its own bind address, port, and data directory. Native
@@ -89,9 +94,11 @@ Keep these development-only overrides unset in a public deployment:
 - `CLANKY_DISABLE_SAME_ORIGIN_CHECK` disables origin checks for mutations and
   WebSocket upgrades.
 
-Use the same-origin override only when a local frontend intentionally runs on a
-different origin. Use an isolated data directory whenever passkey enforcement
-is disabled.
+Detached clients use explicit tokens from any hosting origin; no client-host
+registration or same-origin override is needed. Cookie-backed browser sessions
+retain their same-origin checks. With authentication disabled, even a loopback
+API can expose private unauthenticated reads to other websites. Use an isolated
+data directory whenever passkey enforcement is disabled.
 
 ## Remote execution
 

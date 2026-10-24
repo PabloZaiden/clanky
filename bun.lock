@@ -8,7 +8,7 @@
         "@github/copilot-sdk": "1.0.26",
         "@monaco-editor/react": "4.7.0",
         "@opencode/client": "2.1.4",
-        "@pablozaiden/webapp": "github:PabloZaiden/webapp#v2.1.0",
+        "@pablozaiden/webapp": "github:PabloZaiden/webapp#v3.0.0",
         "@peculiar/x509": "2.2.0",
         "@tailwindcss/typography": "0.5.20",
         "@xterm/addon-fit": "0.11.0",
@@ -19,6 +19,7 @@
         "franc-min": "6.2.0",
         "highlight.js": "11.12.0",
         "mermaid": "12.2.0",
+        "monaco-editor": "0.57.0",
         "react": "19.3.1",
         "react-dom": "19.3.1",
         "react-markdown": "10.1.0",
@@ -152,7 +153,7 @@
 
     "@pablozaiden/installer": ["@pablozaiden/installer@0.2.0", "", { "peerDependencies": { "typescript": "^7.0.0" } }, "sha512-lcdVdqYRdI5cu6ljDZpCGCaDD4MRmjzAq/ZgOkALrRdmH0RuSY2LmIADCuJJtGHmpWo0HNOlHuboNo+4JAQ22A=="],
 
-    "@pablozaiden/webapp": ["@pablozaiden/webapp@github:PabloZaiden/webapp#b032bd3", { "dependencies": { "@pablozaiden/installer": "0.2.0", "@simplewebauthn/browser": "14.0.0", "@simplewebauthn/server": "14.0.3", "bun-plugin-tailwind": "0.1.2", "jose": "6.2.12", "tailwindcss": "4.3.3", "tslog": "5.2.0", "zod": "4.6.5" }, "peerDependencies": { "react": "19.3.0", "react-dom": "19.3.0" } }, "PabloZaiden-webapp-b032bd3", "sha512-7Vdv7GZeULg8zADmBNlOUiyge898/57VXanvNW1Q87ZWlZGZiypX6fZqvorCgIrU+sdgnCl/nzUw5OC21Hs0+w=="],
+    "@pablozaiden/webapp": ["@pablozaiden/webapp@github:PabloZaiden/webapp#8ed656a", { "dependencies": { "@pablozaiden/installer": "0.2.0", "@simplewebauthn/browser": "14.0.0", "@simplewebauthn/server": "14.0.3", "bun-plugin-tailwind": "0.1.2", "jose": "6.2.12", "tailwindcss": "4.3.3", "tslog": "5.2.0", "zod": "4.6.5" }, "peerDependencies": { "react": "19.3.0", "react-dom": "19.3.0" } }, "PabloZaiden-webapp-8ed656a", "sha512-CiVKgELzXynUXynzk8piCdeXv0p9JzeXOQ9YNttZWbyPJlzLOzn2P/Raq22NU10WdesbtnMLF3se/n+YzAVI7w=="],
 
     "@peculiar/asn1-android": ["@peculiar/asn1-android@2.11.0", "", { "dependencies": { "@peculiar/asn1-schema": "^2.11.0", "asn1js": "^3.0.10", "tslib": "^2.8.1" } }, "sha512-llW/qjavL+tOxt5i9whUv4wsbsLpUwI6k/DrvKsdA/H7A/TB/6CosMFgvei28fcJ8ncD0c5lig1oBBlo4KGMCw=="],
 

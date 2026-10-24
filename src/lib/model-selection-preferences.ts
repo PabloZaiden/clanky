@@ -1,6 +1,6 @@
 import { CheapModelSelectionSchema, ModelConfigSchema } from "@/contracts/schemas/model";
 import type { CheapModelSelection, ModelConfig } from "@/shared";
-import { createLogger } from "@pablozaiden/webapp/web";
+import { clientScopedStorageKey, createLogger } from "@pablozaiden/webapp/web";
 
 const log = createLogger("modelSelectionPreferences");
 
@@ -43,7 +43,7 @@ function readStorageItem(
   storageKey: string,
 ): string | null {
   try {
-    return storage.getItem(storageKey);
+    return storage.getItem(clientScopedStorageKey(storageKey));
   } catch (error) {
     log.warn("Failed to read model preference", {
       storageKey,
@@ -59,7 +59,7 @@ function removeStoredPreference(
   reason: Record<string, unknown>,
 ): void {
   try {
-    storage.removeItem(storageKey);
+    storage.removeItem(clientScopedStorageKey(storageKey));
   } catch (error) {
     log.warn("Failed to clear invalid model preference", {
       storageKey,
@@ -159,7 +159,7 @@ function writeStoredPreference(
   }
 
   try {
-    storage.setItem(storageKey, JSON.stringify(value));
+    storage.setItem(clientScopedStorageKey(storageKey), JSON.stringify(value));
   } catch (error) {
     log.warn("Failed to persist model preference", {
       storageKey,

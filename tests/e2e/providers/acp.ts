@@ -7,7 +7,7 @@
 
 import { createInterface } from "node:readline";
 import { appendFileSync, createReadStream } from "node:fs";
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { E2E_IMAGE_DATA } from "./image-input";
 import { inspectAttachedFiles } from "./file-input";
@@ -437,7 +437,14 @@ class MockAcpServer {
       delete persisted.activePromptRequestId;
       return persisted;
     });
-    await Bun.write(this.sessionStatePath, JSON.stringify(stored));
+    const temporaryPath = `${this.sessionStatePath}.${crypto.randomUUID()}.tmp`;
+    try {
+      // Other provider processes can restore this file while a session is saved.
+      await Bun.write(temporaryPath, JSON.stringify(stored));
+      await rename(temporaryPath, this.sessionStatePath);
+    } finally {
+      await rm(temporaryPath, { force: true });
+    }
   }
 
   private handleLine(line: string): void {

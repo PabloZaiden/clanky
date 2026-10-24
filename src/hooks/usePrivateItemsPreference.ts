@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { createLogger } from "@pablozaiden/webapp/web";
+import { clientScopedStorageKey, createLogger } from "@pablozaiden/webapp/web";
 
 const log = createLogger("usePrivateItemsPreference");
 const PRIVATE_ITEMS_STORAGE_KEY = "clanky.showPrivateItems";
@@ -28,7 +28,7 @@ function loadShowPrivateItems(): boolean {
     return false;
   }
   try {
-    return storage.getItem(PRIVATE_ITEMS_STORAGE_KEY) === "true";
+    return storage.getItem(clientScopedStorageKey(PRIVATE_ITEMS_STORAGE_KEY)) === "true";
   } catch (error) {
     log.warn("Failed to load private items preference", { error: String(error) });
     return false;
@@ -43,10 +43,10 @@ function saveShowPrivateItems(showPrivateItems: boolean): void {
 
   try {
     if (showPrivateItems) {
-      storage.setItem(PRIVATE_ITEMS_STORAGE_KEY, "true");
+      storage.setItem(clientScopedStorageKey(PRIVATE_ITEMS_STORAGE_KEY), "true");
       return;
     }
-    storage.removeItem(PRIVATE_ITEMS_STORAGE_KEY);
+    storage.removeItem(clientScopedStorageKey(PRIVATE_ITEMS_STORAGE_KEY));
   } catch (error) {
     log.warn("Failed to persist private items preference", { error: String(error) });
   }
@@ -65,7 +65,7 @@ export function usePrivateItemsPreference(): PrivateItemsPreference {
     }
 
     const handleStorage = (event: StorageEvent) => {
-      if (event.key !== PRIVATE_ITEMS_STORAGE_KEY) {
+      if (event.key !== clientScopedStorageKey(PRIVATE_ITEMS_STORAGE_KEY)) {
         return;
       }
       setShowPrivateItemsState(event.newValue === "true");

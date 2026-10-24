@@ -293,8 +293,6 @@ export function useFileExplorerDocument(
     const activeFile = currentFileRef.current;
     if (
       !activeFile?.isVideo
-      || scope.target.type !== "executionHost"
-      || scope.target.kind !== "ssh"
       || !scope.isCurrent()
     ) {
       return false;
@@ -309,7 +307,7 @@ export function useFileExplorerDocument(
         {
           startDirectory: scope.target.startDirectory,
           signal: operation.signal,
-          refreshSshCredential: true,
+          refreshSshCredential: scope.target.type === "executionHost" && scope.target.kind === "ssh",
         },
       );
       const latestFile = currentFileRef.current;

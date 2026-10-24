@@ -3,7 +3,9 @@ import { E2EApplication } from "./support/application";
 import { createGitFixture } from "./support/git";
 import {
   CookieJar,
+  bootstrapOwner,
   createPasskeyRegistration,
+  requestWithCookies,
 } from "./support/passkey";
 
 interface ExecutionHost {
@@ -43,60 +45,6 @@ afterEach(async () => {
   await application?.cleanup();
   application = undefined;
 });
-
-async function requestWithCookies(
-  app: E2EApplication,
-  jar: CookieJar,
-  path: string,
-  options: RequestInit = {},
-): Promise<Response> {
-  const headers = new Headers(options.headers);
-  const cookie = jar.header();
-  if (cookie) {
-    headers.set("cookie", cookie);
-  }
-  const response = await app.request(path, {
-    ...options,
-    headers,
-  });
-  jar.absorb(response);
-  return response;
-}
-
-async function bootstrapOwner(
-  app: E2EApplication,
-  jar: CookieJar,
-): Promise<void> {
-  const optionsResponse = await requestWithCookies(
-    app,
-    jar,
-    "/api/passkey-auth/bootstrap/options",
-    {
-      method: "POST",
-      body: JSON.stringify({ username: "e2e-owner" }),
-    },
-  );
-  const optionsBody = await optionsResponse.text();
-  if (optionsResponse.status !== 200) {
-    throw new Error(`Owner bootstrap options failed (${optionsResponse.status}): ${optionsBody}`);
-  }
-  const options = JSON.parse(optionsBody) as {
-    challenge: string;
-    rp: { id?: string };
-  };
-  const verifyResponse = await requestWithCookies(
-    app,
-    jar,
-    "/api/passkey-auth/bootstrap/verify",
-    {
-      method: "POST",
-      body: JSON.stringify(
-        await createPasskeyRegistration(options, app.baseUrl),
-      ),
-    },
-  );
-  expect(verifyResponse.status).toBe(200);
-}
 
 async function completeUserSetup(
   app: E2EApplication,

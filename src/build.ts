@@ -1,4 +1,5 @@
 import { buildWebAppBinary, getBunCompileTargetFromArgs } from "@pablozaiden/webapp/build";
+import { buildClient } from "./build-client";
 
 const target = getBunCompileTargetFromArgs();
 const releaseTarget = target?.startsWith("bun-") ? target.slice("bun-".length) : target;
@@ -27,9 +28,7 @@ await buildWebAppBinary({
   entrypoint: "src/index.ts",
   outfile,
   target,
-  web: {
-    entry: "./frontend.tsx",
-  },
+  web: { client: await buildClient() },
   define: {
     "process.env.NODE_ENV": JSON.stringify("production"),
     __CLANKY_MACOS_WORKER_PERMISSION_PREFLIGHT_SOURCE__: JSON.stringify(permissionWorkerSource),

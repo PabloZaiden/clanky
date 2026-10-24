@@ -1,5 +1,5 @@
 import type { Workspace } from "@/shared/workspace";
-import { appPath } from "../../lib/public-path";
+import { ResourceImage } from "@pablozaiden/webapp/web";
 import { FolderTreeIcon } from "./Icons";
 import { ProviderIcon } from "./ProviderIcon";
 
@@ -16,13 +16,12 @@ export function WorkspaceIconMark({
     return <FolderTreeIcon size={size} className={`shrink-0 ${className}`.trim()} />;
   }
 
-  const iconUrl = appPath(
+  const iconUrl =
     `/api/workspaces/${encodeURIComponent(workspace.id)}/icon?updatedAt=${
       encodeURIComponent(workspace.workspaceIcon.updatedAt)
-    }`,
-  );
+    }`;
   return (
-    <img
+    <ResourceImage
       className={`${size} shrink-0 rounded-sm object-contain ${className}`.trim()}
       src={iconUrl}
       alt=""

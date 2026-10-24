@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, RefreshIcon } from "../common";
 
-const CREDENTIAL_RENEWAL_LEAD_MS = 60_000;
+const CREDENTIAL_RENEWAL_LEAD_MS = 10_000;
 
 interface WorkspaceVideoPreviewPanelProps {
   filePath?: string;

@@ -177,6 +177,10 @@ before attributing a slow voice answer to local data access.
 - Use `--payload '<json>'` for request bodies.
 - Use `clanky schema <endpoint>` before constructing payloads, especially for task, workspace, chat, or agent-related endpoints.
 - Use `clanky auth --base-url URL` to configure a profile for a server. Framework commands use the selected profile or the `CLANKY_BASE_URL`/`CLANKY_API_KEY` environment pair.
+- CLI access works against both combined and API-only servers without registering
+  the client's host. A separately hosted frontend uses its own device session;
+  it does not change CLI profiles or turn the server into a Mesh worker. See
+  [static frontend deployment](../../docs/static-client.md).
 - Use `clanky update --check` to check the latest stable release. Add
   `--pre-release` to select the latest published prerelease only when it is
   newer than stable; otherwise, stable is selected. `--check` never replaces

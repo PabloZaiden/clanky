@@ -2,6 +2,8 @@ export {
   appAbsoluteUrl,
   appFetch,
   appPath,
+  appResourceUrl,
+  appWebSocketConnection,
   appWebSocketUrl,
   configureClientRuntime,
   getConfiguredPublicBasePath,

@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import { ConfirmModal, Modal, type ActionMenuItem } from "@pablozaiden/webapp/web";
 import { Button } from "../common";
 import { RenameChatModal } from "../RenameChatModal";
-import { appAbsoluteUrl } from "../../lib/public-path";
+import { appResourceUrl } from "../../lib/public-path";
 import { apiRequest } from "../../lib/api-client";
 import type { Chat } from "@/shared";
 import {
@@ -44,14 +44,6 @@ interface ChatActionsController {
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-function getChatTranscriptViewerUrl(chat: Chat): string {
-  return appAbsoluteUrl(`/api/chats/${encodeURIComponent(chat.config.id)}/transcript.html`);
-}
-
-function getChatTranscriptDownloadUrl(chat: Chat): string {
-  return appAbsoluteUrl(`/api/chats/${encodeURIComponent(chat.config.id)}/transcript.md?download=1`);
 }
 
 function buildChatActionItems({
@@ -127,6 +119,29 @@ export function useChatActions({
   const [isDeletePending, setIsDeletePending] = useState(false);
   const [isMarkDonePending, setIsMarkDonePending] = useState(false);
   const [isSameDirectoryChatPending, setIsSameDirectoryChatPending] = useState(false);
+  const [isTranscriptPending, setIsTranscriptPending] = useState(false);
+
+  async function openTranscript(format: "view" | "download"): Promise<void> {
+    if (!transcriptTarget || isTranscriptPending) return;
+    const popup = window.open("about:blank", "_blank");
+    if (!popup) {
+      onActionError("Allow pop-ups to open the transcript.");
+      return;
+    }
+    popup.opener = null;
+    setIsTranscriptPending(true);
+    try {
+      const suffix = format === "view" ? "transcript.html" : "transcript.md?download=1";
+      const resource = await appResourceUrl(`/api/chats/${encodeURIComponent(transcriptTarget.config.id)}/${suffix}`);
+      popup.location.replace(resource.url);
+      setTranscriptTarget(null);
+    } catch (error) {
+      popup.close();
+      onActionError(getErrorMessage(error));
+    } finally {
+      setIsTranscriptPending(false);
+    }
+  }
 
   async function handleRename(newName: string): Promise<void> {
     if (!renameTarget) {
@@ -265,22 +280,14 @@ export function useChatActions({
             </Button>
             <Button
               variant="secondary"
-              onClick={() => {
-                if (transcriptTarget) {
-                  window.open(getChatTranscriptDownloadUrl(transcriptTarget), "_blank", "noopener,noreferrer");
-                }
-                setTranscriptTarget(null);
-              }}
+              disabled={isTranscriptPending}
+              onClick={() => void openTranscript("download")}
             >
               Download
             </Button>
             <Button
-              onClick={() => {
-                if (transcriptTarget) {
-                  window.open(getChatTranscriptViewerUrl(transcriptTarget), "_blank", "noopener,noreferrer");
-                }
-                setTranscriptTarget(null);
-              }}
+              disabled={isTranscriptPending}
+              onClick={() => void openTranscript("view")}
             >
               View
             </Button>

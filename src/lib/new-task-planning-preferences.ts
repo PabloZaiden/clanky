@@ -1,4 +1,4 @@
-import { createLogger } from "@pablozaiden/webapp/web";
+import { clientScopedStorageKey, createLogger } from "@pablozaiden/webapp/web";
 
 const log = createLogger("newTaskPlanningPreferences");
 
@@ -62,14 +62,14 @@ export function getStoredNewTaskPlanningPreferences(
   }
 
   try {
-    const raw = storage.getItem(NEW_TASK_PLANNING_STORAGE_KEY);
+    const raw = storage.getItem(clientScopedStorageKey(NEW_TASK_PLANNING_STORAGE_KEY));
     if (!raw) {
       return null;
     }
 
     const parsed = JSON.parse(raw) as unknown;
     if (!isNewTaskPlanningPreferences(parsed)) {
-      storage.removeItem(NEW_TASK_PLANNING_STORAGE_KEY);
+      storage.removeItem(clientScopedStorageKey(NEW_TASK_PLANNING_STORAGE_KEY));
       return null;
     }
 
@@ -84,7 +84,7 @@ export function getStoredNewTaskPlanningPreferences(
       error: String(error),
     });
     try {
-      storage.removeItem(NEW_TASK_PLANNING_STORAGE_KEY);
+      storage.removeItem(clientScopedStorageKey(NEW_TASK_PLANNING_STORAGE_KEY));
     } catch (cleanupError) {
       log.warn("Failed to clear invalid new task planning preferences", {
         storageKey: NEW_TASK_PLANNING_STORAGE_KEY,
@@ -105,7 +105,7 @@ export function saveStoredNewTaskPlanningPreferences(
   }
 
   try {
-    storage.setItem(NEW_TASK_PLANNING_STORAGE_KEY, JSON.stringify(preferences));
+    storage.setItem(clientScopedStorageKey(NEW_TASK_PLANNING_STORAGE_KEY), JSON.stringify(preferences));
   } catch (error) {
     log.warn("Failed to persist new task planning preferences", {
       storageKey: NEW_TASK_PLANNING_STORAGE_KEY,

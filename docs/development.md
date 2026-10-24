@@ -20,6 +20,12 @@ bun dev
 The application is available at <http://localhost:3000>. Use an isolated
 `CLANKY_DATA_DIR` for local experiments or visual validation.
 
+`bun run build` produces the standalone binary and the relocatable
+`dist/client/` frontend. `bun run build:client` builds only the frontend;
+`CLANKY_CLIENT_API_URL` optionally supplies its initial API default. See
+[Static frontend and remote API](static-client.md) for static hosting,
+authentication and the independent `serve --api-only` mode.
+
 Transient feedback uses the webapp framework's header notifications. Desktop
 shows the message and severity; mobile shows a severity icon that opens the
 full message. Notifications expire after five seconds by default, so use

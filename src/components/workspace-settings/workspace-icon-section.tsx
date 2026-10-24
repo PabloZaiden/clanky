@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Button, ConfirmModal, DataList, DataListRow, ErrorState, FormGroup, SettingsFieldRow } from "@pablozaiden/webapp/web";
+import { Button, ConfirmModal, DataList, DataListRow, ErrorState, FormGroup, ResourceImage, SettingsFieldRow } from "@pablozaiden/webapp/web";
 import type { WorkspaceIconCandidate, WorkspaceIconCandidatesResponse, WorkspaceIconMetadataResponse } from "@/contracts/schemas";
 import type { Workspace } from "@/shared/workspace";
-import { appPath } from "../../lib/public-path";
 import { apiRequest } from "../../lib/api-client";
 import { loadWorkspaceIconCandidate, workspaceIconCandidatePath, type WorkspaceIconChange } from "./workspace-icon-actions";
 
@@ -15,15 +14,13 @@ interface WorkspaceIconSectionProps {
 }
 
 function savedIconUrl(workspace: Workspace, icon: WorkspaceIconMetadataResponse): string {
-  return appPath(
-    `/api/workspaces/${encodeURIComponent(workspace.id)}/icon?updatedAt=${
-      encodeURIComponent(icon.updatedAt)
-    }`,
-  );
+  return `/api/workspaces/${encodeURIComponent(workspace.id)}/icon?updatedAt=${
+    encodeURIComponent(icon.updatedAt)
+  }`;
 }
 
 function candidatePreviewUrl(workspaceId: string, path: string): string {
-  return appPath(workspaceIconCandidatePath(workspaceId, path));
+  return workspaceIconCandidatePath(workspaceId, path);
 }
 
 export function WorkspaceIconSection({ workspace, icon, change, onChange, onLoadingChange }: WorkspaceIconSectionProps) {
@@ -139,7 +136,7 @@ export function WorkspaceIconSection({ workspace, icon, change, onChange, onLoad
     <>
       <SettingsFieldRow title="Icon" description="SVG or ICO, up to 1 MB."
         content={<>
-          {preview ? <img className="h-8 w-8 shrink-0 rounded object-contain"
+          {preview ? <ResourceImage className="h-8 w-8 shrink-0 rounded object-contain"
             src={preview} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" /> : "Default"}
           <input ref={uploadInputRef} type="file" className="hidden" aria-label="Workspace icon file"
             accept=".svg,.ico,image/svg+xml,image/x-icon,image/vnd.microsoft.icon"
@@ -168,7 +165,7 @@ export function WorkspaceIconSection({ workspace, icon, change, onChange, onLoad
           <DataList>
             {candidates.candidates.map((candidate) => (
               <DataListRow key={candidate.path} title={<span className="flex min-w-0 items-center gap-3">
-                <img className="h-8 w-8 shrink-0 rounded object-contain"
+                <ResourceImage className="h-8 w-8 shrink-0 rounded object-contain"
                   src={candidatePreviewUrl(workspace.id, candidate.path)}
                   alt=""
                   loading="lazy"
