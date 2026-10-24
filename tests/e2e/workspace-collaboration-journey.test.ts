@@ -10,7 +10,7 @@ import { pollUntil } from "./support/polling";
 import { subscribeRealtime } from "./support/realtime";
 import { MESH_OPERATION_TIMEOUT_MS } from "./support/timeouts";
 import { installExternalAcpProvider, installExternalCode } from "./support/provider";
-import { exerciseCodePreview } from "./support/code-preview";
+import { exerciseCodePreview, exerciseServicePreview } from "./support/code-preview";
 
 interface Workspace { id: string; name: string; directory: string }
 interface Connection { connection: { id: string; status: string }; realtime: string; errorCode: string | null }
@@ -197,10 +197,31 @@ test("collaborators work across granted workspaces and retain their remaining ac
     await json(guest, `/api/trash/${encodeURIComponent(existing.config.id)}/restore`, "POST");
     expect((await json<Work>(guest, `/api/chats/${encodeURIComponent(existing.config.id)}`)).state.status).toBe("idle");
     await exerciseCodePreview({
-      baseUrl: guest.baseUrl, apiKey: key.token, workspace: sharedBeta.id, workspaceId: sharedBeta.id,
+      baseUrl: guest.baseUrl, apiKey: key.token, workspace: beta.name, workspaceId: sharedBeta.id,
       homeDirectory: guest.environment["HOME"]!, logsDirectory: directory,
+      selector: { chat: existing.config.name },
       expectedDirectory: beta.directory, timeoutMs: MESH_OPERATION_TIMEOUT_MS,
     });
+    const application: Bun.Server<undefined> = Bun.serve<undefined>({
+      hostname: "127.0.0.1", port: 0,
+      fetch(request: Request) {
+        if (request.headers.get("upgrade") === "websocket") {
+          return application.upgrade(request) ? undefined : new Response("Upgrade failed", { status: 400 });
+        }
+        return new Response("Shared workspace application");
+      },
+      websocket: { message(socket, data) { socket.send(data); } },
+    });
+    try {
+      await exerciseServicePreview({
+        baseUrl: guest.baseUrl, apiKey: key.token, workspace: beta.name, workspaceId: sharedBeta.id,
+        homeDirectory: guest.environment["HOME"]!, logsDirectory: directory,
+        port: application.port!, expectedContent: "Shared workspace application",
+        timeoutMs: MESH_OPERATION_TIMEOUT_MS,
+      });
+    } finally {
+      await application.stop(true);
+    }
     const realtime = observeSocket(guest, "/api/ws", key.token);
     sockets.push(realtime.socket);
     await pollUntil(() => realtime.socket.readyState, (value) => value === WebSocket.OPEN,

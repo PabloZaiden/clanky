@@ -1,5 +1,5 @@
 /**
- * User journey through the compiled CLI, IDE preview and host process lifecycle.
+ * User journeys through compiled CLI service/IDE previews and host process cleanup.
  */
 
 import { expect } from "bun:test";
@@ -14,23 +14,23 @@ import {
 } from "./process";
 import { LIFECYCLE_TIMEOUT_MS, OPERATION_TIMEOUT_MS } from "./timeouts";
 
-async function exerciseIdeConnection(url: string, timeoutMs: number): Promise<void> {
+async function exercisePreviewConnection(url: string, timeoutMs: number): Promise<void> {
   const socket = new WebSocket(url.replace("http:", "ws:"));
   socket.binaryType = "arraybuffer";
   let reply: Uint8Array | undefined;
   let failure: Error | undefined;
   socket.onmessage = (event: MessageEvent) => {
     if (event.data instanceof ArrayBuffer) reply = new Uint8Array(event.data);
-    else failure = new Error("IDE protocol did not return binary data");
+    else failure = new Error("Preview application did not return binary data");
   };
-  socket.onerror = () => { failure = new Error("IDE protocol connection failed"); };
-  socket.onclose = () => { failure = new Error("IDE protocol connection closed"); };
+  socket.onerror = () => { failure = new Error("Preview application connection failed"); };
+  socket.onclose = () => { failure = new Error("Preview application connection closed"); };
   try {
     await pollUntil(() => {
       if (failure) throw failure;
       return socket.readyState;
     }, (state) => state === WebSocket.OPEN, {
-      description: "IDE protocol connection", timeoutMs,
+      description: "preview application connection", timeoutMs,
     });
     const message = new Uint8Array([0, 1, 2, 127, 128, 255]);
     socket.send(message);
@@ -38,7 +38,7 @@ async function exerciseIdeConnection(url: string, timeoutMs: number): Promise<vo
       if (failure) throw failure;
       return reply;
     }, (value) => value !== undefined, {
-      description: "IDE protocol response", timeoutMs,
+      description: "preview application response", timeoutMs,
     });
     expect(received).toEqual(message);
   } finally {
@@ -63,7 +63,7 @@ async function closePreviewViaApi(options: {
   expect(previews.status).toBe(200);
   const active = await previews.json() as Array<{ config: { id: string; localUrl: string } }>;
   const preview = active.find((item) => item.config.localUrl === options.localUrl);
-  if (!preview) throw new Error("IDE preview is not available to close");
+  if (!preview) throw new Error("Workspace preview is not available to close");
   const closed = await fetch(`${options.baseUrl}/api/previews/${encodeURIComponent(preview.config.id)}`, {
     method: "DELETE",
     headers: { authorization: `Bearer ${options.apiKey}` },
@@ -72,30 +72,55 @@ async function closePreviewViaApi(options: {
   expect(closed.status).toBe(200);
 }
 
-export async function exerciseCodePreview(options: {
+interface WorkspacePreviewOptions {
   baseUrl: string;
   apiKey: string;
   homeDirectory: string;
   logsDirectory: string;
   workspace: string;
   workspaceId?: string;
+  timeoutMs?: number;
+}
+
+export async function exerciseCodePreview(options: WorkspacePreviewOptions & {
   expectedDirectory: string;
   selector?: { chat: string } | { task: string };
-  timeoutMs?: number;
   restartController?: () => Promise<string>;
 }): Promise<void> {
-  const timeoutMs = options.timeoutMs ?? LIFECYCLE_TIMEOUT_MS;
-  const operationTimeoutMs = options.timeoutMs ?? OPERATION_TIMEOUT_MS;
-  let baseUrl = options.baseUrl;
   const selector = options.selector
     ? "chat" in options.selector
       ? ["--chat", options.selector.chat]
       : ["--task", options.selector.task]
     : [];
-  const name = `code-${crypto.randomUUID()}`;
+  await exercisePreviewCommand({
+    ...options, args: ["code", options.workspace, ...selector],
+    code: true, expectedContent: options.expectedDirectory,
+  });
+}
+
+export async function exerciseServicePreview(options: WorkspacePreviewOptions & {
+  port: number;
+  expectedContent: string;
+}): Promise<void> {
+  await exercisePreviewCommand({
+    ...options, code: false,
+    args: ["preview", "--workspace", options.workspace, "--port", String(options.port),
+      "--remote-host", "127.0.0.1", "--host", "127.0.0.1"],
+  });
+}
+
+async function exercisePreviewCommand(options: WorkspacePreviewOptions & {
+  args: string[];
+  code: boolean;
+  expectedContent: string;
+  restartController?: () => Promise<string>;
+}): Promise<void> {
+  const timeoutMs = options.timeoutMs ?? LIFECYCLE_TIMEOUT_MS;
+  const operationTimeoutMs = options.timeoutMs ?? OPERATION_TIMEOUT_MS;
+  let baseUrl = options.baseUrl;
+  const name = `preview-${crypto.randomUUID()}`;
   const cli = startManagedProcess([
-    ...await compiledClankyCommand(), "code", options.workspace,
-    ...selector,
+    ...await compiledClankyCommand(), ...options.args,
   ], {
     cwd: options.homeDirectory,
     env: currentEnvironment({
@@ -109,9 +134,9 @@ export async function exerciseCodePreview(options: {
   try {
     const readyUrl = await pollUntil(async () => {
       if (cli.child.exitCode !== null) throw new Error(await readProcessDiagnostics(cli));
-      return /VS Code ready: (http:\/\/[^\s]+)/.exec(await Bun.file(cli.stdoutPath).text())?.[1];
+      return /(?:VS Code|Preview) ready: (http:\/\/[^\s]+)/.exec(await Bun.file(cli.stdoutPath).text())?.[1];
     }, (value) => value !== undefined, {
-      description: "VS Code preview availability",
+      description: "workspace preview availability",
       timeoutMs,
       formatLastObserved: () => `CLI exit=${String(cli.child.exitCode)}`,
     });
@@ -119,11 +144,11 @@ export async function exerciseCodePreview(options: {
     url.hostname = "localhost";
     const page = await fetch(url, { signal: AbortSignal.timeout(operationTimeoutMs) });
     expect(page.status).toBe(200);
-    expect(await page.text()).toContain(options.expectedDirectory);
+    expect(await page.text()).toContain(options.expectedContent);
     const remotePort = /Remote target: 127\.0\.0\.1:(\d+)/.exec(await Bun.file(cli.stdoutPath).text())?.[1];
-    if (!remotePort) throw new Error("IDE did not report its execution-host listener");
+    if (!remotePort) throw new Error("Preview did not report its execution-host listener");
 
-    await exerciseIdeConnection(url.href, operationTimeoutMs);
+    await exercisePreviewConnection(url.href, operationTimeoutMs);
 
     if (options.restartController) {
       baseUrl = await options.restartController();
@@ -146,11 +171,23 @@ export async function exerciseCodePreview(options: {
       cli.child.kill("SIGINT");
     }
     await pollUntil(() => cli.child.exitCode, (code) => code !== null, {
-      description: "VS Code command shutdown",
+      description: "workspace preview command shutdown",
       timeoutMs,
     });
     if (!options.restartController) expect(cli.child.exitCode).toBe(0);
     await expect(fetch(url, { signal: AbortSignal.timeout(operationTimeoutMs) })).rejects.toThrow();
+    if (!options.restartController) {
+      await pollUntil(async () => {
+        const response = await fetch(`${baseUrl}/api/workspaces/${encodeURIComponent(options.workspaceId ?? options.workspace)}/previews`, {
+          headers: { authorization: `Bearer ${options.apiKey}` },
+          signal: AbortSignal.timeout(operationTimeoutMs),
+        });
+        expect(response.status).toBe(200);
+        const previews = await response.json() as Array<{ config: { localUrl: string } }>;
+        return previews.some((preview) => preview.config.localUrl === readyUrl);
+      }, (active) => !active, { description: "workspace preview session cleanup", timeoutMs });
+    }
+    if (!options.code) return;
     const closed = await fetch(`${baseUrl}/api/workspaces/${encodeURIComponent(options.workspaceId ?? options.workspace)}/exec`, {
       method: "POST",
       headers: { authorization: `Bearer ${options.apiKey}`, "content-type": "application/json" },

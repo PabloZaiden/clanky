@@ -336,6 +336,11 @@ clanky preview --workspace "my-workspace" --port 8443 --https \
 
 Keep the CLI running while using the printed preview URL. The destination port
 belongs to the selected execution host, not necessarily the Clanky controller.
+`--workspace` accepts an ID or exact workspace name from the instance's unified
+local/shared workspace list. Shared workspaces use the invited instance's normal
+CLI authentication and relay connection; no controller credentials or connection
+flag are needed. Ambiguous names or incomplete workspace lists require an exact
+reference returned by `clanky api workspaces --method GET`.
 Workspace previews support local, SSH, and Mesh execution hosts; direct server
 previews support local and Mesh hosts. HTTP is the default. `--remote-host`
 defaults to `localhost`; `--host` selects the CLI listener address and defaults
@@ -404,9 +409,17 @@ clanky code "my-workspace" --task "task-name-or-id" --open
 clanky code "my-workspace" --open
 ```
 
-Workspace references accept an ID or exact name. `--chat` and `--task` are
+Workspace references accept an ID or exact name across local and shared
+workspaces, using the same resolution rules as `clanky preview --workspace`.
+Connect the CLI to your invited instance to open a shared workspace through its
+relay; the Code process runs on the controller's selected workspace host, not
+on the invited instance or CLI machine.
+
+`--chat` and `--task` are
 mutually exclusive and are resolved only within that workspace. Duplicate
-names require an ID. Chat/task selectors open their existing effective working
+names require an ID; shared selectors accept exact names or the qualified
+references returned by your instance, never references from another controller.
+Chat/task selectors open their existing effective working
 directory, including managed worktrees and task-linked chats; a missing worktree fails without
 creating it or starting an agent.
 

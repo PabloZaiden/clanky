@@ -156,7 +156,9 @@ export function remotePreviewProxy(raw: string | Buffer, user: CurrentUser): {
       const value = frame["code"][field];
       if (value === undefined) continue;
       const codeReference = typeof value === "string" ? decodeCollaborationResourceReference(value) : undefined;
-      if (!codeReference || codeReference.connectionId !== reference.connectionId || codeReference.resourceKind !== field) {
+      // Unqualified selectors resolve only within the controller's authorized workspace.
+      if (!codeReference) continue;
+      if (codeReference.connectionId !== reference.connectionId || codeReference.resourceKind !== field) {
         throw new DomainError("collaboration_mixed_sources", "The code preview must use the same controller.");
       }
       frame["code"][field] = codeReference.resourceId;

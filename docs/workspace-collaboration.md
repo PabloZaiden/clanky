@@ -51,6 +51,25 @@ clanky schema chats
 clanky api chats --method POST --payload '{"workspaceId":"<returned-workspace-reference>","name":"Shared planning","model":{"providerID":"<provider>","modelID":"<model>","variant":""},"useWorktree":false}'
 ```
 
+Preview and Code accept the shared workspace's exact name, just like a local
+workspace. Keep your usual CLI profile connected to your invited instance:
+
+```bash
+clanky preview --workspace "Shared workspace" --port 3000
+clanky code "Shared workspace"
+clanky code "Shared workspace" --chat "Shared planning"
+clanky code "Shared workspace" --task "Existing task"
+```
+
+HTTP and WebSocket traffic travels through the relay. The application port and
+Code process belong to the controller's selected workspace host; the printed
+browser URL is on your CLI machine. Keep the command running while using it.
+If workspace names collide across local or shared sources, select the exact
+workspace reference returned by your instance instead. Chat/task names are
+resolved only within the selected workspace; their qualified references also
+work. Code requires a compatible `code serve-web` CLI on the workspace host;
+see [Preview and Code](API.md#live-previews-from-the-cli) for prerequisites.
+
 The controller's configured host performs the work, including when that host
 is SSH or Mesh. Filesystem navigation is not restricted to the workspace's
 initial directory: the execution account's permissions still apply.
