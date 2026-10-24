@@ -121,9 +121,10 @@ to the API/client session rather than shared with another server.
 HTTP requests use bearer authorization without third-party cookies. Realtime
 and raw terminal connections use short-lived, single-use socket tickets.
 Protected downloads and video use short-lived target-bound resource tickets;
-images are fetched with authorization. Long-lived access/refresh tokens are
-not put into resource or login URLs. Revoking a device session removes its API
-and resource access.
+video previews renew them before expiry for workspace, local and remote
+execution targets. Images are fetched with authorization. Long-lived
+access/refresh tokens are not put into resource or login URLs. Revoking a device
+session removes its API and resource access.
 
 Keep authentication enabled, including on localhost. An API with authentication
 disabled can expose private unauthenticated reads to arbitrary websites.
