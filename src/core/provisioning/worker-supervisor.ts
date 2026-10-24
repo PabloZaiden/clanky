@@ -18,7 +18,11 @@ stop_file="$root/stopped"
 
 alive() {
   [ -s "$1" ] || return 1
-  pid=$(cat "$1")
+  if ! pid=$(cat "$1" 2>/dev/null); then
+    [ ! -e "$1" ] && return 1
+    echo "Cannot read worker process identity from $1." >&2
+    exit 1
+  fi
   case "$pid" in ""|*[!0-9]*|0|1) return 1 ;; esac
   kill -0 "$pid" 2>/dev/null || return 1
   if [ -r "/proc/$pid/cmdline" ]; then
@@ -27,14 +31,23 @@ alive() {
   fi
 }
 
+terminate() {
+  if kill -TERM "$1" 2>/dev/null; then return 0; fi
+  if kill -0 "$1" 2>/dev/null; then
+    echo "Cannot terminate worker process $1." >&2
+    return 1
+  fi
+  return 0
+}
+
 running() {
   [ ! -e "$stop_file" ] && alive "$supervisor_pid_file" "$script" && alive "$pid_file" "$binary"
 }
 
 stop_child() {
   if alive "$pid_file" "$binary"; then
-    child_pid=$(cat "$pid_file")
-    kill -TERM "$child_pid" 2>/dev/null || true
+    child_pid=$pid
+    terminate "$child_pid"
     attempts=0
     while alive "$pid_file" "$binary" && [ "$attempts" -lt 50 ]; do
       sleep 0.1
@@ -55,14 +68,14 @@ case "\${1:-start}" in
     ;;
   restart)
     running || { echo "The workspace worker loop is not running." >&2; exit 1; }
-    kill -TERM "$(cat "$pid_file")"
+    terminate "$pid"
     printf '{"operation":"restart","supervisor":"workspace-loop"}\\n'
     ;;
   stop)
     : >"$stop_file"
     if alive "$supervisor_pid_file" "$script"; then
-      supervisor_pid=$(cat "$supervisor_pid_file")
-      kill -TERM "$supervisor_pid"
+      supervisor_pid=$pid
+      terminate "$supervisor_pid"
       attempts=0
       while alive "$supervisor_pid_file" "$script" && [ "$attempts" -lt 100 ]; do
         sleep 0.1

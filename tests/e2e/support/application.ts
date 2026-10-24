@@ -151,13 +151,11 @@ export class E2EApplication {
   }
 
   async diagnostics(): Promise<string> {
-    if (this.server !== null) {
-      return await readProcessDiagnostics(this.server);
-    }
     const entries = await Array.fromAsync(new Bun.Glob("server-*.{stdout,stderr}.log").scan(this.logsDirectory));
-    const sections: string[] = [];
+    const sections: string[] = this.server === null ? [] : [await readProcessDiagnostics(this.server)];
     for (const entry of entries.sort()) {
       const path = join(this.logsDirectory, entry);
+      if (path === this.server?.stdoutPath || path === this.server?.stderrPath) continue;
       const contents = (await Bun.file(path).text()).trim();
       if (contents.length > 0) {
         sections.push(`${entry}:\n${contents}`);

@@ -682,7 +682,9 @@ sh <workspace-directory>/.devbox/clanky-worker/launcher.sh
 `restart` terminates only the worker; the already-running loop starts its
 replacement even if the Mesh connection disappears. `stop` records an intentional
 stop, terminates the loop and worker, and waits for shutdown. Running the launcher
-explicitly starts it again. Provisioning cleanup stops the loop, and removing
+explicitly starts it again. A concurrent runtime exit does not make `stop` fail;
+unreadable process identity files or failure to terminate a live process remain
+errors. Provisioning cleanup stops the loop, and removing
 the dedicated worker's last controller grant records a permanent stop before the
 worker awaits its command cleanup and normal server shutdown, so retiring a
 workspace cannot resurrect its runtime or leave its commands running.
