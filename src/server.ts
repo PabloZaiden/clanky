@@ -4,10 +4,7 @@
 
 import type { Server } from "bun";
 import { homedir } from "node:os";
-import appleTouchIconPath from "./apple-touch-icon.png" with { type: "file" };
-import faviconPath from "./favicon.svg" with { type: "file" };
-import manifestIcon192Path from "./web-app-manifest-192x192.png" with { type: "file" };
-import manifestIcon512Path from "./web-app-manifest-512x512.png" with { type: "file" };
+import { CLANKY_WEB_OPTIONS } from "./web-client-options";
 import { createWebAppServer, createRouteCatalog, defineRoutes, getRequestOriginInfo, log, readRuntimeConfig, sqliteWebAppStore, type WebAppServer, type WebAppWebSocketData } from "@pablozaiden/webapp/server";
 import { apiRoutes } from "./api";
 import {
@@ -126,6 +123,7 @@ const MESH_WORKER_CONTROL_ROUTE_METHODS = {
 let app: WebAppServer<ClankyRealtimeEvent> | undefined;
 let appMeshWorkerMode: boolean | undefined;
 let appRelayOnlyMode: boolean | undefined;
+let appApiOnlyMode: boolean | undefined;
 let realtimeBridgeUnsubscribers: Array<() => void> | undefined;
 let workspaceWorkerReconcileTimer: Timer | undefined;
 let workspaceWorkerReconcileRunning = false;
@@ -516,12 +514,17 @@ export async function getWebAppServer(
     relayOnly?: boolean;
     workerDirectory?: string;
     workerExecutionEnabled?: boolean;
+    apiOnly?: boolean;
     workerEndpoint?: string;
     rotateWorkerTls?: boolean;
   } = {},
 ): Promise<WebAppServer<ClankyRealtimeEvent>> {
   const meshWorker = options.meshWorker ?? false;
   const relayOnly = options.relayOnly ?? false;
+  const apiOnly = options.apiOnly ?? false;
+  if (meshWorker && apiOnly) {
+    throw new Error("API-only serving applies to controllers, not restricted Mesh workers.");
+  }
   if (relayOnly && !meshWorker) {
     throw new Error("Relay-only mode requires Mesh worker mode.");
   }
@@ -541,9 +544,10 @@ export async function getWebAppServer(
     if (
       appMeshWorkerMode !== meshWorker
       || appRelayOnlyMode !== relayOnly
+      || appApiOnlyMode !== apiOnly
     ) {
       throw new Error(
-        `Clanky server is already initialized with meshWorker=${String(appMeshWorkerMode)}, relayOnly=${String(appRelayOnlyMode)} and cannot be reused with meshWorker=${String(meshWorker)}, relayOnly=${String(relayOnly)}`,
+        `Clanky server is already initialized with meshWorker=${String(appMeshWorkerMode)}, relayOnly=${String(appRelayOnlyMode)}, apiOnly=${String(appApiOnlyMode)} and cannot be reused with meshWorker=${String(meshWorker)}, relayOnly=${String(relayOnly)}, apiOnly=${String(apiOnly)}`,
       );
     }
     return app;
@@ -605,17 +609,7 @@ export async function getWebAppServer(
     appName: "Clanky",
     envPrefix: "CLANKY",
     appDirectoryName: ".clanky",
-    web: meshWorker ? false : {
-      entry: "./frontend.tsx",
-      icons: {
-        favicon: { src: faviconPath, sizes: "any", type: "image/svg+xml" },
-        appleTouch: { src: appleTouchIconPath, sizes: "180x180", type: "image/png" },
-        manifest: [
-          { src: manifestIcon192Path, sizes: "192x192", type: "image/png", purpose: "any maskable" },
-          { src: manifestIcon512Path, sizes: "512x512", type: "image/png", purpose: "any maskable" },
-        ],
-      },
-    },
+    web: meshWorker ? false : { ...CLANKY_WEB_OPTIONS, mode: apiOnly ? "auth" : "app" },
     ...(meshWorker ? { requestFilter: isMeshWorkerRequestAllowed } : {}),
     ...(workerTls ? { server: { tls: workerTls } } : {}),
     version: CLANKY_VERSION,
@@ -710,6 +704,7 @@ export async function getWebAppServer(
   });
   appMeshWorkerMode = meshWorker;
   appRelayOnlyMode = relayOnly;
+  appApiOnlyMode = apiOnly;
   managedCredentialService.configure(app.store, {
     publicBaseUrl: app.config.publicBaseUrl,
     localBaseUrl: getLocalManagedCredentialBaseUrl(app.config.host, app.config.port),
@@ -739,7 +734,7 @@ export async function getWebAppServer(
 }
 
 export async function startServer(
-  options: { meshWorker?: boolean; relayOnly?: boolean } = {},
+  options: { meshWorker?: boolean; relayOnly?: boolean; apiOnly?: boolean } = {},
 ): Promise<Server<WebAppWebSocketData>> {
   return await (await getWebAppServer(options)).start();
 }

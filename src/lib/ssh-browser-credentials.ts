@@ -1,4 +1,4 @@
-import { createLogger } from "@pablozaiden/webapp/web";
+import { clientScopedStorageKey, createLogger } from "@pablozaiden/webapp/web";
 import { isApiErrorCode, parseApiError } from "./api-error";
 import { readApiResponse } from "./api-client";
 import { appFetch } from "./public-path";
@@ -58,7 +58,7 @@ function resolveFetch(fetchFn?: FetchLike): FetchLike {
 }
 
 function getStorageKey(serverId: string): string {
-  return `${SSH_CREDENTIAL_STORAGE_PREFIX}${serverId}`;
+  return clientScopedStorageKey(`${SSH_CREDENTIAL_STORAGE_PREFIX}${serverId}`);
 }
 
 function getNow(dependencies: SshBrowserCredentialDependencies): Date {
@@ -66,7 +66,7 @@ function getNow(dependencies: SshBrowserCredentialDependencies): Date {
 }
 
 function clearCachedCredentialToken(serverId: string): void {
-  exchangedCredentialTokenCache.delete(serverId);
+  exchangedCredentialTokenCache.delete(getStorageKey(serverId));
 }
 
 export function invalidateStoredSshCredentialToken(serverId: string): void {
@@ -78,13 +78,13 @@ function getCachedCredentialToken(
   storedCredential: StoredSshServerCredential,
   dependencies: SshBrowserCredentialDependencies,
 ): CachedSshCredentialToken | null {
-  const cachedToken = exchangedCredentialTokenCache.get(serverId);
+  const cachedToken = exchangedCredentialTokenCache.get(getStorageKey(serverId));
   if (!cachedToken) {
     return null;
   }
 
   if (cachedToken.storedAt !== storedCredential.storedAt || cachedToken.expiresAt <= getNow(dependencies).getTime()) {
-    exchangedCredentialTokenCache.delete(serverId);
+    exchangedCredentialTokenCache.delete(getStorageKey(serverId));
     return null;
   }
 
@@ -101,7 +101,7 @@ function cacheCredentialToken(
     return;
   }
 
-  exchangedCredentialTokenCache.set(serverId, {
+  exchangedCredentialTokenCache.set(getStorageKey(serverId), {
     credentialToken: exchange.credentialToken,
     expiresAt,
     storedAt: storedCredential.storedAt,

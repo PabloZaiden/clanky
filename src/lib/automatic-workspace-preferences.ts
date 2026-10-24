@@ -1,4 +1,4 @@
-import { createLogger } from "@pablozaiden/webapp/web";
+import { clientScopedStorageKey, createLogger } from "@pablozaiden/webapp/web";
 import type { SshServer } from "@/shared";
 
 const log = createLogger("automaticWorkspacePreferences");
@@ -31,7 +31,7 @@ export function getLastAutomaticWorkspaceSshServerId(): string | null {
   }
 
   try {
-    return storage.getItem(LAST_AUTOMATIC_WORKSPACE_SSH_SERVER_STORAGE_KEY);
+    return storage.getItem(clientScopedStorageKey(LAST_AUTOMATIC_WORKSPACE_SSH_SERVER_STORAGE_KEY));
   } catch (error) {
     log.warn("Unable to read last automatic workspace SSH server", { error: String(error) });
     return null;
@@ -46,9 +46,9 @@ export function saveLastAutomaticWorkspaceSshServerId(serverId: string): void {
 
   try {
     if (serverId) {
-      storage.setItem(LAST_AUTOMATIC_WORKSPACE_SSH_SERVER_STORAGE_KEY, serverId);
+      storage.setItem(clientScopedStorageKey(LAST_AUTOMATIC_WORKSPACE_SSH_SERVER_STORAGE_KEY), serverId);
     } else {
-      storage.removeItem(LAST_AUTOMATIC_WORKSPACE_SSH_SERVER_STORAGE_KEY);
+      storage.removeItem(clientScopedStorageKey(LAST_AUTOMATIC_WORKSPACE_SSH_SERVER_STORAGE_KEY));
     }
   } catch (error) {
     log.warn("Unable to save last automatic workspace SSH server", { error: String(error) });

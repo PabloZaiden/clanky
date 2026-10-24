@@ -1,4 +1,4 @@
-import { createLogger } from "@pablozaiden/webapp/web";
+import { clientScopedStorageKey, createLogger } from "@pablozaiden/webapp/web";
 import { decodeCollaborationResourceReference } from "../shared/collaboration-reference";
 
 const log = createLogger("conversationComposerDrafts");
@@ -60,7 +60,7 @@ function resolveStorage(
 }
 
 function getStorageKey(conversationId: string): string {
-  return `${CONVERSATION_COMPOSER_DRAFT_STORAGE_PREFIX}${encodeURIComponent(conversationId)}`;
+  return clientScopedStorageKey(`${CONVERSATION_COMPOSER_DRAFT_STORAGE_PREFIX}${encodeURIComponent(conversationId)}`);
 }
 
 function isSharedConversation(conversationId: string): boolean {

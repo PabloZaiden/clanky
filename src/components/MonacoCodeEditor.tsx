@@ -1,10 +1,13 @@
-import MonacoEditor from "@monaco-editor/react";
+import MonacoEditor, { loader } from "@monaco-editor/react";
 import { useTheme } from "@pablozaiden/webapp/web";
 import { useEffect, useRef } from "react";
+import { appAbsoluteUrl } from "../lib/public-path";
 import {
   CLANKY_PYTHON_LANGUAGE_ID,
   configureClankyPython,
 } from "./python-monaco-language";
+
+loader.config({ paths: { vs: appAbsoluteUrl("/webapp-assets/monaco/vs") } });
 
 export function MonacoCodeEditor({
   value,

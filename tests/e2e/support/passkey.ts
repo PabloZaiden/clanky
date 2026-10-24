@@ -3,6 +3,7 @@
  */
 
 import { isoCBOR } from "@simplewebauthn/server/helpers";
+import type { E2EApplication } from "./application";
 
 interface RegistrationOptions {
   challenge: string;
@@ -164,5 +165,34 @@ export class CookieJar {
     return [...this.cookies]
       .map(([name, value]) => `${name}=${value}`)
       .join("; ");
+  }
+}
+
+export async function requestWithCookies(
+  app: E2EApplication,
+  jar: CookieJar,
+  path: string,
+  options: RequestInit = {},
+): Promise<Response> {
+  const headers = new Headers(options.headers);
+  const cookie = jar.header();
+  if (cookie) headers.set("cookie", cookie);
+  const response = await app.request(path, { ...options, headers });
+  jar.absorb(response);
+  return response;
+}
+
+export async function bootstrapOwner(app: E2EApplication, jar: CookieJar): Promise<void> {
+  const response = await requestWithCookies(app, jar, "/api/passkey-auth/bootstrap/options", {
+    method: "POST", body: JSON.stringify({ username: "e2e-owner" }),
+  });
+  const body = await response.text();
+  if (response.status !== 200) throw new Error(`Owner bootstrap options failed (${response.status}): ${body}`);
+  const options = JSON.parse(body) as { challenge: string; rp: { id?: string } };
+  const verification = await requestWithCookies(app, jar, "/api/passkey-auth/bootstrap/verify", {
+    method: "POST", body: JSON.stringify(await createPasskeyRegistration(options, app.baseUrl)),
+  });
+  if (verification.status !== 200) {
+    throw new Error(`Owner bootstrap verification failed (${verification.status}): ${await verification.text()}`);
   }
 }

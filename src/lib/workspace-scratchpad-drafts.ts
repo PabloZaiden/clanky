@@ -1,4 +1,4 @@
-import { createLogger } from "@pablozaiden/webapp/web";
+import { clientScopedStorageKey, createLogger } from "@pablozaiden/webapp/web";
 import { decodeCollaborationResourceReference } from "../shared/collaboration-reference";
 
 const log = createLogger("workspaceScratchpadDrafts");
@@ -60,7 +60,7 @@ function resolveStorage(
 }
 
 function getStorageKey(workspaceId: string): string {
-  return `${WORKSPACE_SCRATCHPAD_DRAFT_STORAGE_PREFIX}${encodeURIComponent(workspaceId)}`;
+  return clientScopedStorageKey(`${WORKSPACE_SCRATCHPAD_DRAFT_STORAGE_PREFIX}${encodeURIComponent(workspaceId)}`);
 }
 
 function isStoredWorkspaceScratchpadDraft(

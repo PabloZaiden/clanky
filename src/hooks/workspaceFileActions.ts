@@ -4,7 +4,7 @@
 
 import { apiRequest } from "../lib/api-client";
 import { isApiErrorCode } from "../lib/api-error";
-import { appPath } from "../lib/public-path";
+import { appResourceUrl } from "../lib/public-path";
 import {
   getStoredSshCredentialTokenLease,
   getStoredSshServerCredential,
@@ -376,9 +376,15 @@ async function getFileExplorerResourceUrl(
     searchParams.set("credentialToken", credential.credentialToken);
     credentialExpiresAt = credential.expiresAt;
   }
+  const authenticated = await appResourceUrl(
+    `${getFileExplorerBasePath(target)}/${resource}?${searchParams.toString()}`,
+    "resource",
+    { signal: options?.signal },
+  );
   return {
-    url: appPath(`${getFileExplorerBasePath(target)}/${resource}?${searchParams.toString()}`),
-    credentialExpiresAt,
+    url: authenticated.url,
+    credentialExpiresAt: credentialExpiresAt === null ? authenticated.expiresAt
+      : authenticated.expiresAt === null ? credentialExpiresAt : Math.min(credentialExpiresAt, authenticated.expiresAt),
   };
 }
 

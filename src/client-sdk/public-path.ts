@@ -2,13 +2,15 @@ import {
   appAbsoluteUrl,
   appPath,
   appRequest,
+  appResourceUrl,
+  appWebSocketConnection,
   appWebSocketUrl,
   configureWebAppClient,
   getWebAppPublicBasePath,
   setWebAppPublicBasePath,
 } from "@pablozaiden/webapp/web";
 
-export { appAbsoluteUrl, appPath, appWebSocketUrl };
+export { appAbsoluteUrl, appPath, appResourceUrl, appWebSocketConnection, appWebSocketUrl };
 
 export function configureClientRuntime(options: {
   publicBasePath?: string | null;

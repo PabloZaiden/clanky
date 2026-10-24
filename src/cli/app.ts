@@ -75,6 +75,7 @@ export function createClankyCli() {
     },
     start: async ({ options }) => {
       const server = await getWebAppServer({
+        apiOnly: options["api-only"] === true,
         meshWorker: options["mesh-worker"] === true,
         relayOnly: options["relay-only"] === true,
         workerDirectory: typeof options["worker-directory"] === "string"
