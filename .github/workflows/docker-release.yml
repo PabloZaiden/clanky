@@ -32,7 +32,7 @@ jobs:
 
       - name: Resolve release version
         id: version
-        uses: pablozaiden/installer/.github/actions/resolve-version@b47bdc7e7721c12c9b6b8e5e0a97c045bf526a9b # installer v0.2.0
+        uses: pablozaiden/installer/.github/actions/resolve-version@0b6626e46072ebba395d5304577a58c298d39e98
         with:
           mode: release
           update_package_version: false

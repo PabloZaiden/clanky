@@ -9,6 +9,7 @@ import {
   type WebAppClientBootstrap,
 } from "@pablozaiden/webapp/contracts";
 import { buildClient } from "./build-client";
+import { CLANKY_VERSION } from "./version";
 
 const outdir = resolve("dist/pages");
 const revision = (process.env["GITHUB_SHA"] ?? await Bun.$`git rev-parse HEAD`.text()).trim();
@@ -21,7 +22,7 @@ const apiDirectory = join(outdir, "api");
 await buildClient({ outdir: apiDirectory, clientMode: "remote" });
 const collaborationDirectory = join(outdir, "collaboration");
 await cp(apiDirectory, collaborationDirectory, { recursive: true, errorOnExist: true, force: false });
-const collaborationBootstrap: WebAppClientBootstrap = { mode: "external" };
+const collaborationBootstrap: WebAppClientBootstrap = { mode: "external", version: CLANKY_VERSION };
 await Bun.write(
   join(collaborationDirectory, WEB_APP_CLIENT_CONFIG_PATH.slice(1)),
   JSON.stringify(collaborationBootstrap),
@@ -29,6 +30,7 @@ await Bun.write(
 
 await Bun.write(join(outdir, "build-info.json"), `${JSON.stringify({
   revision,
+  version: CLANKY_VERSION,
   builtAt: new Date().toISOString(),
 }, null, 2)}\n`);
 await Bun.write(join(outdir, "index.html"), `<!doctype html>

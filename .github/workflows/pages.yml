@@ -30,6 +30,13 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Resolve client build version
+        uses: pablozaiden/installer/.github/actions/resolve-version@0b6626e46072ebba395d5304577a58c298d39e98
+        with:
+          mode: main
+          github_token: ${{ github.token }}
+          update_package_version: true
+
       - name: Typecheck
         run: bun run typecheck
 
