@@ -45,29 +45,27 @@ export class SshServerManager {
       createdAt: now,
       updatedAt: now,
     };
-    return await withSshServerOperation(config.id, async () => {
-      const keyPair = await generateSshServerKeyPair(1);
+    const keyPair = await generateSshServerKeyPair(1);
+    try {
+      await saveSshServerKeyPair(config.id, keyPair);
+      await saveSshServerConfig(config);
+    } catch (error) {
       try {
-        await saveSshServerKeyPair(config.id, keyPair);
-        await saveSshServerConfig(config);
-      } catch (error) {
-        try {
-          await deleteSshServerKeyPair(config.id);
-        } catch (cleanupError) {
-          throw new AggregateError([error, cleanupError], "SSH server registration and key cleanup failed.");
-        }
-        throw error;
+        await deleteSshServerKeyPair(config.id);
+      } catch (cleanupError) {
+        throw new AggregateError([error, cleanupError], "SSH server registration and key cleanup failed.");
       }
-      const server = await getSshServer(config.id);
-      if (!server) {
-        throw new DomainError(
-          "ssh_server_reload_failed",
-          "Failed to reload SSH server after creation",
-          { details: { serverId: config.id } },
-        );
-      }
-      return server;
-    });
+      throw error;
+    }
+    const server = await getSshServer(config.id);
+    if (!server) {
+      throw new DomainError(
+        "ssh_server_reload_failed",
+        "Failed to reload SSH server after creation",
+        { details: { serverId: config.id } },
+      );
+    }
+    return server;
   }
 
   async updateServer(id: string, request: UpdateSshServerRequest): Promise<SshServer> {

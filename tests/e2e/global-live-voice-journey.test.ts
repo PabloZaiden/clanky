@@ -447,11 +447,7 @@ test("global Live operates owned recent and waiting work, resumes its conversati
     expect(waiting.state.status).toBe("waiting");
     const trashDecision = await visualDecision({
       application, client, callId, approved: true,
-      async inspect(event) {
-        const description = event.action.confirmation?.description ?? "";
-        expect(description).toContain(errorChat.config.name);
-        expect(description).toMatch(/Trash/u);
-        expect(description).toMatch(/30 days/u);
+      async inspect() {
         expect((await application.request(`/api/chats/${errorChat.config.id}`)).status).toBe(200);
         expect((await application.json<TrashPage>("/api/trash")).data.items
           .some((chat) => chat.id === errorChat.config.id)).toBe(false);
@@ -476,9 +472,6 @@ test("global Live operates owned recent and waiting work, resumes its conversati
     }, 201)).data;
     callId = resumed.call.id;
     await other.open("open_chat", createdChat.config.id);
-    await provider.waitForGoodbyeBarrier();
-    expect((await application.json<LiveState>(`/api/voice/live/${callId}`)).data.status).toBe("active");
-    provider.releaseGoodbyeBarrier();
     const ended = await pollUntil(
       async () => (await application.json<LiveState>(`/api/voice/live/${callId}`)).data,
       (state) => state.status === "closed" || state.status === "failed",

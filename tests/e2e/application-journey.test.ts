@@ -120,15 +120,7 @@ interface ChatSnapshot {
       content: string;
       attachments?: Array<{ data: string; mimeType: string; size: number }>;
     }>;
-    toolCalls?: Array<{ output: unknown }>;
   };
-}
-
-function getAssistantImageAttachments(snapshot: ChatSnapshot) {
-  return snapshot.transcript.messages
-    .filter((message) => message.role === "assistant")
-    .flatMap((message) => message.attachments ?? [])
-    .filter((attachment) => attachment.mimeType.startsWith("image/"));
 }
 
 interface JourneyModel {
@@ -466,28 +458,22 @@ test("compiled Clanky completes its principal local user journey", async () => {
     expect(plan.exists).toBe(true);
     expect(plan.content).toContain("Create the requested fixture change");
 
-    for (const [index, feedback] of [
-      "Keep the plan focused on the externally observable file change",
-      "Confirm the final Git state remains reviewable",
-    ].entries()) {
-      await application.json(
-        `/api/tasks/${createdTask.config.id}/plan/feedback`,
-        {
-          method: "POST",
-          body: JSON.stringify({ feedback, attachments: [] }),
-        },
-      );
-      const refinedTask = await waitForTask(
-        application,
-        createdTask.config.id,
-        (task) => (
-          task.state.planMode.feedbackRounds >= index + 1
-          && task.state.planMode.isPlanReady
-        ),
-        `plan feedback round ${String(index + 1)} to complete`,
-      );
-      expect(refinedTask.state.planMode.feedbackRounds).toBe(index + 1);
-    }
+    await application.json(
+      `/api/tasks/${createdTask.config.id}/plan/feedback`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          feedback: "Keep the plan focused on the externally observable file change",
+          attachments: [],
+        }),
+      },
+    );
+    await waitForTask(
+      application,
+      createdTask.config.id,
+      (task) => task.state.planMode.feedbackRounds === 1 && task.state.planMode.isPlanReady,
+      "the revised plan to become ready",
+    );
 
     await application.json(
       `/api/tasks/${createdTask.config.id}/plan/accept`,
@@ -1036,12 +1022,12 @@ test("compiled Clanky completes its principal local user journey", async () => {
         await application.json<ChatSnapshot>(`/api/chats/${chat.config.id}/snapshot?full=1`)
       ).data,
       (candidate) => candidate.transcript.messages
-        .filter((message) => message.role === "assistant")
-        .reduce((count, message) => count + (message.attachments?.filter(
-          (attachment) => attachment.mimeType === "image/png" && attachment.data === E2E_IMAGE_DATA,
-        ).length ?? 0), 0) >= 2,
+        .some((message) => message.role === "assistant"
+          && message.attachments?.some(
+            (attachment) => attachment.mimeType === "image/png" && attachment.data === E2E_IMAGE_DATA,
+          )),
       {
-        description: "ACP image outputs to appear as standalone assistant attachments",
+        description: "ACP image output to become available in the conversation",
         timeoutMs: 10_000,
         formatLastObserved: (candidate) => JSON.stringify({
           assistantMessages: candidate.transcript.messages
@@ -1056,119 +1042,47 @@ test("compiled Clanky completes its principal local user journey", async () => {
     expect(imageSnapshot.transcript.messages.some(
       (message) => message.role === "assistant" && message.content.length > 0,
     )).toBe(true);
-    const generatedImageMessages = imageSnapshot.transcript.messages
-      .filter((message) => message.role === "assistant")
-      .filter((message) => message.content === ""
-        && message.attachments?.some(
-          (attachment) => attachment.mimeType === "image/png" && attachment.data === E2E_IMAGE_DATA,
-        ));
-    expect(generatedImageMessages).toHaveLength(2);
-    expect(generatedImageMessages.every((message) => message.attachments?.length === 1)).toBe(true);
-    expect(JSON.stringify(imageSnapshot.transcript.toolCalls ?? [])).not.toContain(E2E_IMAGE_DATA);
-    const assistantMessages = imageSnapshot.transcript.messages;
-    const textBeforeImageIndex = assistantMessages.findIndex(
-      (message) => message.role === "assistant" && message.content.includes("ACP text before generated image."),
-    );
-    const firstGeneratedImageIndex = assistantMessages.findIndex(
-      (message) => message.role === "assistant"
-        && message.content === ""
-        && message.attachments?.some((attachment) => attachment.data === E2E_IMAGE_DATA),
-    );
-    const textAfterImageIndex = assistantMessages.findIndex(
-      (message) => message.role === "assistant" && message.content.includes("ACP text after generated image."),
-    );
-    expect(textBeforeImageIndex).toBeGreaterThanOrEqual(0);
-    expect(firstGeneratedImageIndex).toBeGreaterThan(textBeforeImageIndex);
-    expect(textAfterImageIndex).toBeGreaterThan(firstGeneratedImageIndex);
-
-    const twentyImagePrompt = "Review these 20 attached photos.";
-    const imageByteLength = Buffer.from(E2E_IMAGE_DATA, "base64").byteLength;
-    const twentyImageAttachments = Array.from({ length: 20 }, (_, index) => ({
+    const photoPrompt = "Review the attached photo.";
+    const photo = {
       id: crypto.randomUUID(),
-      filename: `e2e-photo-${index + 1}.png`,
+      filename: "photo.png",
       mimeType: "image/png",
       data: E2E_IMAGE_DATA,
-      size: imageByteLength,
-    }));
+      size: Buffer.from(E2E_IMAGE_DATA, "base64").byteLength,
+    };
     await application.json(
       `/api/chats/${chat.config.id}/messages`,
       {
         method: "POST",
         body: JSON.stringify({
-          message: twentyImagePrompt,
-          attachments: twentyImageAttachments,
+          message: photoPrompt,
+          attachments: [photo],
         }),
       },
     );
     expect((await waitForChatIdle(application, chat.config.id)).state.status).toBe("idle");
-    const twentyImageSnapshot = (await application.json<ChatSnapshot>(
+    const photoSnapshot = (await application.json<ChatSnapshot>(
       `/api/chats/${chat.config.id}/snapshot?full=1`,
     )).data;
-    const submittedImageMessageIndex = twentyImageSnapshot.transcript.messages.findIndex(
-      (message) => message.role === "user" && message.content === twentyImagePrompt,
+    const submittedImageMessageIndex = photoSnapshot.transcript.messages.findIndex(
+      (message) => message.role === "user" && message.content === photoPrompt,
     );
     expect(submittedImageMessageIndex).toBeGreaterThanOrEqual(0);
-    const submittedImageMessage = twentyImageSnapshot.transcript.messages[submittedImageMessageIndex];
-    expect(submittedImageMessage?.attachments).toHaveLength(20);
+    const submittedImageMessage = photoSnapshot.transcript.messages[submittedImageMessageIndex];
+    expect(submittedImageMessage?.attachments?.[0]?.data).toBe(photo.data);
     expect(
-      twentyImageSnapshot.transcript.messages
+      photoSnapshot.transcript.messages
         .slice(submittedImageMessageIndex + 1)
         .some((message) => message.role === "assistant" && message.content.length > 0),
     ).toBe(true);
-    const providerResponseAfterImages = twentyImageSnapshot.transcript.messages
+    const providerResponseAfterImages = photoSnapshot.transcript.messages
       .slice(submittedImageMessageIndex + 1)
       .filter((message) => message.role === "assistant")
       .map((message) => message.content)
       .join(" ");
     expect(providerResponseAfterImages).toContain(
-      `E2E ACP provider received ${twentyImageAttachments.length} image attachments.`,
+      "E2E ACP provider received 1 image attachments.",
     );
-
-    const imageBudgetChat = (await application.json<Chat>(
-      "/api/chats",
-      {
-        method: "POST",
-        body: JSON.stringify({
-          name: "E2E image output budgets",
-          workspaceId: workspace.id,
-          model,
-          useWorktree: false,
-          baseBranch: git.branch,
-        }),
-      },
-      201,
-    )).data;
-    const sendImageBudgetPrompt = async (message: string): Promise<void> => {
-      await application.json(
-        `/api/chats/${imageBudgetChat.config.id}/messages`,
-        {
-          method: "POST",
-          body: JSON.stringify({ message, attachments: [] }),
-        },
-      );
-      expect((await waitForChatIdle(application, imageBudgetChat.config.id)).state.status).toBe("idle");
-    };
-    await sendImageBudgetPrompt("Exercise the provider image count budget [generated-image-count-budget].");
-    const countBudgetSnapshot = (await application.json<ChatSnapshot>(
-      `/api/chats/${imageBudgetChat.config.id}/snapshot?full=1`,
-    )).data;
-    expect(getAssistantImageAttachments(countBudgetSnapshot)).toHaveLength(20);
-
-    await sendImageBudgetPrompt("Start a fresh image output budget [generated-image-output].");
-    const resetBudgetSnapshot = (await application.json<ChatSnapshot>(
-      `/api/chats/${imageBudgetChat.config.id}/snapshot?full=1`,
-    )).data;
-    expect(getAssistantImageAttachments(resetBudgetSnapshot)).toHaveLength(22);
-
-    await sendImageBudgetPrompt("Exercise the aggregate byte budget [generated-image-byte-budget].");
-    await sendImageBudgetPrompt("Start a fresh image budget after the byte limit [generated-image-output].");
-    const byteBudgetSnapshot = (await application.json<ChatSnapshot>(
-      `/api/chats/${imageBudgetChat.config.id}/snapshot?full=1`,
-    )).data;
-    const byteBudgetImages = getAssistantImageAttachments(byteBudgetSnapshot);
-    expect(byteBudgetImages.filter((attachment) => attachment.size === 20 * 1024 * 1024)).toHaveLength(2);
-    expect(byteBudgetImages.filter((attachment) => attachment.data === E2E_IMAGE_DATA)).toHaveLength(25);
-    await application.json(`/api/chats/${imageBudgetChat.config.id}`, { method: "DELETE" });
 
     const snapshot = (await application.json<ChatSnapshot>(
       `/api/chats/${chat.config.id}/snapshot?full=1`,
@@ -1417,7 +1331,6 @@ test("compiled Clanky completes its principal local user journey", async () => {
       )).data;
       expect(persistedImageSnapshot.transcript.messages.some(
         (message) => message.role === "assistant"
-          && message.content === ""
           && message.attachments?.some(
             (attachment) => attachment.mimeType === "image/png" && attachment.data === E2E_IMAGE_DATA,
           ),

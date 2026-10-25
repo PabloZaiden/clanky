@@ -182,7 +182,7 @@ export interface ChatStatePort {
 
 export interface ChatWorktreePort {
   hasEstablishedWorkspaceContext(chat: Chat): boolean;
-  reserveWorktreeBranchForCreation(chat: Chat): Promise<() => void>;
+  assertWorktreeBranchAvailable(chat: Chat): Promise<void>;
   resolveWorkingDirectory(
     chat: Chat,
     options: { prepareWorkspace: boolean; signal?: AbortSignal },

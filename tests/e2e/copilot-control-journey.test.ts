@@ -70,31 +70,6 @@ async function waitForChatIdle(application: E2EApplication, chatId: string): Pro
   return chat;
 }
 
-async function waitForToolResult(
-  application: E2EApplication,
-  chatId: string,
-  workspaceName: string,
-  expectedCount: number,
-): Promise<ChatSnapshot> {
-  return await pollUntil(
-    async () => (
-      await application.json<ChatSnapshot>(`/api/chats/${chatId}/snapshot?full=1`)
-    ).data,
-    (snapshot) => snapshot.transcript.messages.filter(
-      (message) => message.role === "assistant" && message.content.includes(workspaceName),
-    ).length >= expectedCount,
-    {
-      description: `Codex to return ${String(expectedCount)} public workspace-list results`,
-      timeoutMs: 10_000,
-      formatLastObserved: (snapshot) => JSON.stringify({
-        assistantMessages: snapshot.transcript.messages
-          .filter((message) => message.role === "assistant")
-          .map((message) => message.content.slice(0, 300)),
-      }),
-    },
-  );
-}
-
 async function waitForImageReceipt(
   application: E2EApplication,
   chatId: string,
@@ -119,7 +94,7 @@ async function waitForImageReceipt(
   );
 }
 
-test("Copilot users inspect images and steer queued Control work across clients", async () => {
+test("Copilot users inspect attachments, steer work and open their workspace", async () => {
   const application = await E2EApplication.create();
   const sockets: WebSocket[] = [];
   try {
@@ -217,49 +192,29 @@ test("Copilot users inspect images and steer queued Control work across clients"
       async () => (await application.json<Chat>(`/api/chats/${chatId}`)).data.state.status,
       (status) => status === "streaming", { description: "Copilot native turn to become active", timeoutMs: 10_000 },
     );
-    await send("Wait for a steering instruction, then open the workspace.", clients[0]!, [createImageAttachment()]);
+    await send("Wait for a steering instruction.", clients[0]!);
     await waitForActive();
-    await steer("Inspect the attached files. Change the request, but keep waiting.", clients[1]!, [createImageAttachment(), inputFile]);
-    await steer("Finish the request and open the workspace.", clients[0]!);
+    const instruction = "Inspect the attached files and image, then open the workspace.";
+    await steer(instruction, clients[0]!, [createImageAttachment(), inputFile]);
+    const action = await pollUntil(() => actions[0]!.at(-1),
+      (value) => value?.source.kind === "chat_turn" && value.source.chatId === chatId,
+      { description: "Copilot to open the workspace in the originating tab", timeoutMs: 10_000 });
+    expect(action!.clientId).toBe(clients[0]!);
+    expect(action!.action.workspaceId).toBe(workspace.id);
+    await application.json(`/api/control/ui-actions/${action!.actionId}/ack`, {
+      method: "POST", body: JSON.stringify({
+        clientId: action!.clientId, source: action!.source,
+        outcome: { status: "opened", action: action!.action },
+      }),
+    });
     await waitForChatIdle(application, chatId);
-    const mixed = await waitForToolResult(application, chatId, workspaceName, 1);
-    expect(mixed.transcript.messages.some((message) => message.role === "assistant"
-      && message.content.includes("Change the request, but keep waiting.")
-      && message.content.includes("Finish the request and open the workspace.")
+    const snapshot = (await application.json<ChatSnapshot>(`/api/chats/${chatId}/snapshot?full=1`)).data;
+    expect(snapshot.transcript.messages.some((message) => message.role === "assistant"
+      && message.content.includes(instruction)
+      && message.content.includes(workspaceName)
       && message.content.includes(expectedFileInspection(inputFile).sha256)
-      && message.content.includes("control_client_unavailable")
       && message.content.includes(E2E_IMAGE_RECEIPT))).toBe(true);
-    await waitForImageReceipt(application, chatId, 2);
-    expect(actions.flat()).toHaveLength(0);
-
-    await send("Wait for a steering instruction before starting the queued work.", clients[0]!);
-    await waitForActive();
-    const first = "First grouped instruction: open the workspace.";
-    const second = "Second grouped instruction: include its name.";
-    const other = "Another-tab instruction: open the workspace.";
-    await send(first, clients[0]!);
-    await send(second, clients[0]!);
-    await send(other, clients[1]!);
-    await steer("Finish this turn and drain the queued requests.", clients[0]!);
-    for (const index of [0, 1]) {
-      const action = await pollUntil(() => actions[index]!.at(-1),
-        (value) => value?.source.kind === "chat_turn" && value.source.chatId === chatId,
-        { description: `queued turn to route its browser action to client ${index}`, timeoutMs: 10_000 });
-      expect(action!.clientId).toBe(clients[index]!);
-      await application.json(`/api/control/ui-actions/${action!.actionId}/ack`, {
-        method: "POST", body: JSON.stringify({
-          clientId: action!.clientId, source: action!.source,
-          outcome: { status: "opened", action: action!.action },
-        }),
-      });
-    }
-    await waitForChatIdle(application, chatId);
-    const grouped = (await application.json<ChatSnapshot>(`/api/chats/${chatId}/snapshot?full=1`)).data;
-    expect(grouped.transcript.messages.some((message) => message.role === "assistant"
-      && message.content.includes(`${first}\n${second}`))).toBe(true);
-    expect(grouped.transcript.messages.some((message) => message.role === "assistant"
-      && message.content.includes(other) && !message.content.includes(first))).toBe(true);
-    expect(actions.map((entries) => entries.length)).toEqual([1, 1]);
+    expect(actions[1]).toHaveLength(0);
   } catch (error) {
     console.error(await application.diagnostics());
     throw error;

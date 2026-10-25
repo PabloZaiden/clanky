@@ -33,6 +33,30 @@ Clanky is a full-stack Bun + React application for controlling and managing Clan
 
 For more project information, see the [README.md](README.md).
 
+### Proportional concurrency and reviews
+
+Clanky is primarily single-user, with occasional collaboration, not a
+high-contention collaborative editor. Complexity must be justified by a
+plausible supported workflow and meaningful user impact, not merely by a
+possible interleaving across an `await`.
+
+- Before adding or requesting locks, queues, reservations, generations,
+  retries, or reconciliation, identify the independent producers, the real
+  workflow that overlaps them, and the likelihood and consequence of failure.
+- Rare conflicting manual actions with low impact may fail visibly and be
+  retried by the user. Do not serialize every action or transparently repair
+  hypothetical races just to make every ordering succeed.
+- Reuse existing domain/lifecycle coordination rather than layering another
+  lock or queue around an already coordinated operation. Prefer the simplest
+  implementation that preserves the required behavior.
+- Single-user does not mean single-process or synchronous: provider events,
+  background tasks, shutdown, transports, and navigation can overlap normally.
+  Preserve proportional safeguards for data integrity, authorization,
+  irreversible operations, host identity, and deterministic resource cleanup.
+- Apply the same bar in reviews. A concurrency finding must explain the
+  plausible workflow and material consequence; theoretical ordering
+  variations alone are not actionable defects.
+
 ### Mesh protocol breaking changes
 
 Mesh wire generations are global and aligned with the Clanky release major.
@@ -572,6 +596,12 @@ locally with temporary scripts or validation artifacts, and remove them when
 the investigation is finished. If the investigation exposes a missing normal
 workflow, obtain independent approval for that workflow and implement its
 smallest coherent journey; do not copy the reproduction matrix into the suite.
+
+Do not manufacture concurrency with barriers, cross-client input permutations,
+or repeated near-limit payloads solely to preserve a past failure. Synchronize
+on the real workflow's public outcomes, not an artificial interleaving. When
+removing regression-only steps, also remove their exclusive provider stimuli,
+fixture state, and orchestration helpers.
 
 For example, working in workspace A while creating, maintaining, using, and
 retiring an automatic workspace B is a valid multi-workspace journey when its

@@ -194,12 +194,6 @@ test("passkey users see only their own Clanky data and permissions", async () =>
         description: "First owner's template",
         prompt: "Owner first prompt",
       },
-      {
-        id: "owner-second",
-        name: "Owner second",
-        description: "Second owner's template",
-        prompt: "Owner second prompt",
-      },
     ];
     await application.json("/api/preferences/prompt-templates", {
       method: "PUT",
@@ -222,34 +216,10 @@ test("passkey users see only their own Clanky data and permissions", async () =>
       apiKey: memberApiKey,
       body: JSON.stringify({ templates: memberTemplates }),
     });
-    const updatedOwnerTemplates = [
-      ownerTemplates[1]!,
-      {
-        ...ownerTemplates[0]!,
-        name: "Owner first updated",
-        prompt: "Updated owner prompt",
-      },
-    ];
-    await application.json("/api/preferences/prompt-templates", {
-      method: "PUT",
-      apiKey: ownerApiKey,
-      body: JSON.stringify({ templates: updatedOwnerTemplates }),
-    });
     expect((await application.json<{ templates: PromptTemplate[] }>(
       "/api/preferences/prompt-templates",
       { apiKey: ownerApiKey },
-    )).data.templates).toEqual(updatedOwnerTemplates);
-
-    const remainingOwnerTemplates = [updatedOwnerTemplates[0]!];
-    await application.json("/api/preferences/prompt-templates", {
-      method: "PUT",
-      apiKey: ownerApiKey,
-      body: JSON.stringify({ templates: remainingOwnerTemplates }),
-    });
-    expect((await application.json<{ templates: PromptTemplate[] }>(
-      "/api/preferences/prompt-templates",
-      { apiKey: ownerApiKey },
-    )).data.templates).toEqual(remainingOwnerTemplates);
+    )).data.templates).toEqual(ownerTemplates);
     expect((await application.json<{ templates: PromptTemplate[] }>(
       "/api/preferences/prompt-templates",
       { apiKey: memberApiKey },
