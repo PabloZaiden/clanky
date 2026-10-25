@@ -9,7 +9,7 @@
         "@monaco-editor/react": "4.7.0",
         "@noble/hashes": "2.4.0",
         "@opencode/client": "2.1.4",
-        "@pablozaiden/webapp": "github:PabloZaiden/webapp#ec76983e6633ea22cba055f3a00f3b2068582587",
+        "@pablozaiden/webapp": "github:PabloZaiden/webapp#7b704ce939887cc366c3af24892e4b5b568ce6d1",
         "@peculiar/x509": "2.2.0",
         "@tailwindcss/typography": "0.5.20",
         "@xterm/addon-fit": "0.11.0",
@@ -154,9 +154,9 @@
 
     "@oven/bun-windows-x64": ["@oven/bun-windows-x64@1.4.4", "", { "os": "win32", "cpu": "x64" }, "sha512-a3LNctBVO8PjePsFZfwDleF2JXYf2BfQ1u/PLRnBDLnC2Riml+4+LgJpKj4xRGhB92KweGyQI5PXaTkP9qypMQ=="],
 
-    "@pablozaiden/installer": ["@pablozaiden/installer@github:PabloZaiden/installer#0b6626e", { "peerDependencies": { "typescript": "^7.0.0" } }, "PabloZaiden-installer-0b6626e", "sha512-p63UkpMRqxiB9sVmlaOj9WBNetNmK3FSFgjRy8p7m/yBBqAG3C18QuyOhbch+PkcnNQ7UwBAAE7eq6bCIAeCWw=="],
+    "@pablozaiden/installer": ["@pablozaiden/installer@github:PabloZaiden/installer#bd5fa66", { "peerDependencies": { "typescript": "^7.0.0" } }, "PabloZaiden-installer-bd5fa66", "sha512-16oFeQa0IoS1eSyEfeTYKsWzvMbqBAQqWyqqbcqBymHpDFDOPAhIxDQ0IVspu8vpfx5OChmHkOIuF/ViPQlq0w=="],
 
-    "@pablozaiden/webapp": ["@pablozaiden/webapp@github:PabloZaiden/webapp#ec76983", { "dependencies": { "@pablozaiden/installer": "github:PabloZaiden/installer#0b6626e46072ebba395d5304577a58c298d39e98", "@simplewebauthn/browser": "14.0.0", "@simplewebauthn/server": "14.0.3", "bun-plugin-tailwind": "0.1.2", "jose": "6.2.12", "tailwindcss": "4.3.3", "tslog": "5.2.0", "zod": "4.6.5" }, "peerDependencies": { "react": "19.3.0", "react-dom": "19.3.0" } }, "PabloZaiden-webapp-ec76983", "sha512-eX/S6gi9Op8QZ2suk0N5O3mLbOE6oyj3ZdY5/VnQKGMgTj84ah2hB2ey3TD0doW4vxgec9a3HfqJkvyanWKp1g=="],
+    "@pablozaiden/webapp": ["@pablozaiden/webapp@github:PabloZaiden/webapp#7b704ce", { "dependencies": { "@pablozaiden/installer": "github:PabloZaiden/installer#bd5fa6697c003e620d8d7b92734aea506f31e3fa", "@simplewebauthn/browser": "14.0.0", "@simplewebauthn/server": "14.0.3", "bun-plugin-tailwind": "0.1.2", "jose": "6.2.12", "tailwindcss": "4.3.3", "tslog": "5.2.0", "zod": "4.6.5" }, "peerDependencies": { "react": "19.3.0", "react-dom": "19.3.0" } }, "PabloZaiden-webapp-7b704ce", "sha512-I9PJWkj3IVMTbJAe8BwUZcuNtD4xqyNrsmE0KkZG1G3kaeCVhhDXov4ZpnIUErLMtplV1npD/WqS/TYBK3qpRA=="],
 
     "@peculiar/asn1-android": ["@peculiar/asn1-android@2.11.0", "", { "dependencies": { "@peculiar/asn1-schema": "^2.11.0", "asn1js": "^3.0.10", "tslib": "^2.8.1" } }, "sha512-llW/qjavL+tOxt5i9whUv4wsbsLpUwI6k/DrvKsdA/H7A/TB/6CosMFgvei28fcJ8ncD0c5lig1oBBlo4KGMCw=="],
 

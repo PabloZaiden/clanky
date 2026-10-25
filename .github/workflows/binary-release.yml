@@ -41,7 +41,7 @@ jobs:
 
   binaries:
     needs: metadata
-    uses: pablozaiden/installer/.github/workflows/reusable-binary-release.yml@d142bb0f31e72a803d3d7ff982843ffbd3ae9506
+    uses: pablozaiden/installer/.github/workflows/reusable-binary-release.yml@bd5fa6697c003e620d8d7b92734aea506f31e3fa
     permissions:
       contents: write
     secrets:
