@@ -55,7 +55,7 @@ export interface UseMeshResult {
   checkHealth: () => Promise<MeshControllerStatus | null>;
 }
 
-export function useMesh(): UseMeshResult {
+export function useMesh({ enabled = true }: { enabled?: boolean } = {}): UseMeshResult {
   const [saving, setSaving] = useState(false);
   const [mutationError, setMutationError] = useState<string | null>(null);
   const query = useLiveQuery<{
@@ -63,6 +63,7 @@ export function useMesh(): UseMeshResult {
     relayStatus: ControllerRelayPairingStatus;
     enrollmentTokens: MeshEnrollmentTokenSummary[];
   }>({
+    enabled,
     load: async (signal) => {
       const [status, enrollmentTokens, relayStatus] = await Promise.all([
         apiRequest<MeshControllerStatus>("/api/mesh/status", {

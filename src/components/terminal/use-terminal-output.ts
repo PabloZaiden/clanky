@@ -4,8 +4,15 @@
 
 import { useCallback } from "react";
 import type { Terminal } from "@xterm/xterm";
-import { MAX_PENDING_OSC_COLOR_QUERY_BYTES } from "./terminal-constants";
+import { createLogger } from "@pablozaiden/webapp/web";
+import {
+  MAX_PENDING_OSC_COLOR_QUERY_BYTES,
+  MAX_PENDING_TERMINAL_OUTPUT_CHARACTERS,
+  MAX_PENDING_TERMINAL_OUTPUT_CHUNKS,
+} from "./terminal-constants";
 import { parseTerminalOscColorQueries } from "./terminal-osc";
+
+const log = createLogger("terminal-output");
 
 interface UseTerminalOutputParams {
   pendingOutputRef: React.MutableRefObject<string[]>;
@@ -14,7 +21,7 @@ interface UseTerminalOutputParams {
   sendTerminalInput: (
     data: string,
     options?: { focusTerminal?: boolean; notifyOnFailure?: boolean },
-  ) => boolean;
+  ) => Promise<boolean>;
 }
 
 export function useTerminalOutput({
@@ -41,7 +48,15 @@ export function useTerminalOutput({
     }
 
     if (!terminalRef.current) {
-      pendingOutputRef.current.push(nextVisibleOutput);
+      const pending = pendingOutputRef.current;
+      pending.push(nextVisibleOutput);
+      let characters = pending.reduce((total, chunk) => total + chunk.length, 0);
+      let truncated = false;
+      while (pending.length > MAX_PENDING_TERMINAL_OUTPUT_CHUNKS || characters > MAX_PENDING_TERMINAL_OUTPUT_CHARACTERS) {
+        characters -= pending.shift()!.length;
+        truncated = true;
+      }
+      if (truncated) log.warn("Old terminal output was truncated before the renderer became available.");
       return;
     }
 

@@ -7,6 +7,7 @@
  */
 
 export * from "./file-system";
+export { CollaborationOperationCatalogSchema } from "./collaboration-operation";
 export { CodePreviewOptionsSchema, CodePreviewHelloSchema, PreviewUpstreamOptionsSchema } from "./preview";
 export {
   RequestControlUiActionSchema,
@@ -154,6 +155,7 @@ export {
   SetFileExplorerFullTreeRequestSchema,
   SetDashboardViewModeRequestSchema,
   SetSchedulerTimezoneRequestSchema,
+  SchedulerTimezoneQuerySchema,
   QuickChatSettingsSchema,
   SetQuickChatSettingsRequestSchema,
   PromptTemplateSchema,

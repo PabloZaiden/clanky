@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
-import { useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { getWebAppClientMode, useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
 import type { WorkspaceFileEntry, WorkspaceFileNode, TerminalSession } from "@/shared";
 import {
   useFileExplorer,
@@ -10,7 +10,7 @@ import {
 import { storeSshServerPassword } from "../../lib/ssh-browser-credentials";
 import { formatFileSize, writeTextToClipboard } from "../../utils";
 import { TerminalSessionDetails } from "../terminal/terminal-session-details";
-import { ConfirmModal, Modal } from "@pablozaiden/webapp/web";
+import { ConfirmModal, ErrorState, Modal, Panel } from "@pablozaiden/webapp/web";
 import { Button, SidebarIcon } from "../common";
 import type { CodeExplorerTerminalOptions } from "./code-explorer-targets";
 import { requireFileExplorerServerCredentialToken } from "../../hooks/workspaceFileActions";
@@ -24,12 +24,13 @@ import { ServerPasswordModal } from "./server-password-modal";
 import { getStoredSshServerCredential } from "../../lib/ssh-browser-credentials";
 import { TerminalSessionModeModal } from "./terminal-session-mode-modal";
 import {
-  getFileExplorerDownloadUrl,
+  saveFileExplorerFileApi,
 } from "../../hooks/workspaceFileActions";
 import type { FileExplorerTarget } from "../../hooks/workspaceFileActions";
 import type { ControlUiActionOutcome } from "@/shared/clanky-control";
 import type { PendingControlFileOpen } from "./use-control-ui-actions";
 import { isPathWithinOrEqual } from "../../hooks/file-explorer-utils";
+import { getClankyClientCapabilities } from "../../client-sdk/capabilities";
 
 function TerminalIcon() {
   return (
@@ -95,17 +96,6 @@ function isFileExplorerMobileViewport(): boolean {
   return typeof window !== "undefined"
     && typeof window.matchMedia === "function"
     && window.matchMedia(FILE_EXPLORER_MOBILE_MEDIA_QUERY).matches;
-}
-
-function triggerBrowserDownload(url: string, fileName: string): void {
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = fileName || "download";
-  link.rel = "noopener noreferrer";
-  link.referrerPolicy = "no-referrer";
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
 }
 
 interface FileExplorerViewProps {
@@ -436,11 +426,12 @@ export function FileExplorerView({
         toast.error("Select a file to download.");
         return;
       }
-      const downloadUrl = await getFileExplorerDownloadUrl(target, file.path, {
+      await saveFileExplorerFileApi(target, file.path, file.name, {
         startDirectory: target.startDirectory,
       });
-      triggerBrowserDownload(downloadUrl, file.name);
-      toast.success(`Started download: ${file.name}`);
+      toast.success(getWebAppClientMode() === "external"
+        ? `${file.name} is ready to export in Settings > Downloads.`
+        : `Started download: ${file.name}`);
     } catch (error) {
       toast.error(`Failed to download file: ${String(error)}`);
     } finally {
@@ -886,6 +877,11 @@ export function FileExplorerView({
                 onDownload={() => handleDownloadFile(explorer.largeFileWarning?.file ?? null)}
                 onOpenInCodeExplorer={() => handleOpenLargeFileInEditor(explorer.largeFileWarning?.file ?? null)}
               />
+            ) : explorer.currentFile?.isVideo && !getClankyClientCapabilities().inlineVideo ? (
+              <Panel>
+                <ErrorState title="Video preview unavailable" description="Download this video to open it outside the browser client." />
+                <Button onClick={() => void handleDownloadFile()} loading={downloadingFilePath !== null}>Download</Button>
+              </Panel>
             ) : explorer.currentFile?.isVideo ? (
               <WorkspaceVideoPreviewPanel
                 key={JSON.stringify([

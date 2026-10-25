@@ -4,7 +4,7 @@
 import { DomainError } from "../domain/domain-error";
 import { directItems, directRecord, LiveVoiceDirectContext } from "./live-voice-direct-context";
 import type { DirectToolInput } from "./live-voice-direct-contracts";
-import { isReadRecord, readBytes } from "./resource-read-service";
+import { isReadRecord, readBytes } from "../client-sdk/collaboration/resource-read";
 import type { ChatStatus } from "@/shared/chat";
 import type { TaskStatus } from "@/shared/task";
 

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createLogger } from "@pablozaiden/webapp/web";
+import { createLogger, type WebAppResourceUrl } from "@pablozaiden/webapp/web";
 import type { WorkspaceFileEntry } from "@/shared";
-import { readFileExplorerImagePreviewApi } from "../../hooks/workspaceFileActions";
+import { getFileExplorerImagePreviewResource } from "../../hooks/workspaceFileActions";
 import type { ImageViewerModalImage } from "../ImageViewerModal";
 import type { TranscriptFileLinkContext, TranscriptFileLinkTarget } from "./types";
 
@@ -42,15 +42,12 @@ export function useTranscriptImagePreview(
   const [pendingPreview, setPendingPreview] = useState<PendingImagePreview | null>(null);
   const requestIdRef = useRef(0);
   const abortControllerRef = useRef<AbortController | null>(null);
-  const objectUrlRef = useRef<string | null>(null);
+  const resourceRef = useRef<WebAppResourceUrl | null>(null);
   const previousContextKeyRef = useRef<string | null>(null);
 
   const revokeObjectUrl = useCallback(() => {
-    if (!objectUrlRef.current) {
-      return;
-    }
-    URL.revokeObjectURL(objectUrlRef.current);
-    objectUrlRef.current = null;
+    resourceRef.current?.dispose?.();
+    resourceRef.current = null;
   }, []);
 
   const cancelImageLoad = useCallback(() => {
@@ -89,7 +86,7 @@ export function useTranscriptImagePreview(
 
     void (async () => {
       try {
-        const imageBlob = await readFileExplorerImagePreviewApi(
+        const resource = await getFileExplorerImagePreviewResource(
           fileLinkContext.fileExplorerTarget,
           target.path,
           {
@@ -98,14 +95,14 @@ export function useTranscriptImagePreview(
           },
         );
         if (abortController.signal.aborted || requestIdRef.current !== requestId) {
+          resource.dispose?.();
           return;
         }
 
-        const objectUrl = URL.createObjectURL(imageBlob);
-        objectUrlRef.current = objectUrl;
-        const mimeType = imageBlob.type || file.mimeType;
+        resourceRef.current = resource;
+        const mimeType = file.mimeType;
         setImage({
-          src: objectUrl,
+          src: resource.url,
           alt: file.name || title,
           title,
           ...(mimeType ? { mimeType } : {}),

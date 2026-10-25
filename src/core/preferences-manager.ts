@@ -158,8 +158,11 @@ export class PreferencesManager {
     }
   }
 
-  async getSchedulerTimezone(): Promise<string> {
-    return await getSchedulerTimezoneRecord();
+  async getSchedulerTimezone(workspaceId?: string): Promise<string> {
+    if (workspaceId && !await workspaceManager.getWorkspace(workspaceId)) {
+      throw new DomainError("workspace_not_found", "The scheduling workspace is unavailable.");
+    }
+    return await getSchedulerTimezoneRecord(workspaceId ? requireResourceOwnerUserId(workspaceId) : undefined);
   }
 
   async setSchedulerTimezone(timezone: string): Promise<void> {

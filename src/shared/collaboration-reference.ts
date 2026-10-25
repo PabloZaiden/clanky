@@ -4,6 +4,7 @@
 
 import { DomainError } from "../domain/domain-error";
 import { z } from "zod";
+import { decodeUtf8Base64Url, encodeJsonBase64Url } from "./encoding";
 
 export const COLLABORATION_RESOURCE_KINDS = [
   "workspace", "task", "chat", "agent", "agent-run", "terminal", "preview",
@@ -52,9 +53,7 @@ export function encodeCollaborationResourceReference(reference: CollaborationRes
   const parsed = CollaborationResourceReferenceSchema.safeParse(reference);
   if (!parsed.success) return invalidReference();
   const value = parsed.data;
-  const bytes = new TextEncoder().encode(JSON.stringify([value.connectionId, value.resourceKind, value.resourceId]));
-  const encoded = btoa(Array.from(bytes, (byte) => String.fromCharCode(byte)).join(""))
-    .replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+  const encoded = encodeJsonBase64Url([value.connectionId, value.resourceKind, value.resourceId]);
   const result = `${PREFIX}${encoded}`;
   if (result.length > COLLABORATION_RESOURCE_REFERENCE_MAX_LENGTH) return invalidReference();
   return result;
@@ -74,9 +73,7 @@ export function decodeCollaborationResourceReference(
   if (!/^[A-Za-z0-9_-]+$/.test(encoded)) return invalidReference();
   let value: unknown;
   try {
-    const binary = atob(encoded.replaceAll("-", "+").replaceAll("_", "/"));
-    value = JSON.parse(new TextDecoder("utf-8", { fatal: true })
-      .decode(Uint8Array.from(binary, (character) => character.charCodeAt(0))));
+    value = JSON.parse(decodeUtf8Base64Url(encoded));
   } catch (error) {
     return invalidReference(error);
   }

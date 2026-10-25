@@ -38,6 +38,7 @@ import {
   createTerminalSessionSidebarNode,
   type TerminalSessionSidebarContext,
 } from "./shell-sidebar-terminal-session";
+import { getClankyClientCapabilities } from "../../client-sdk/capabilities";
 
 export interface WorkspaceSidebarContext {
   navigateWithinShell: ChatSidebarContext["navigateWithinShell"];
@@ -114,6 +115,7 @@ function getWorkspaceSidebarActions(
   workspaceNode: SidebarWorkspaceGroupNode["workspaces"][number],
   context: WorkspaceSidebarContext,
 ): ActionMenuItem[] {
+  const capabilities = getClankyClientCapabilities();
   const workspaceId = workspaceNode.workspace.id;
   const workspaceArchived = workspaceNode.workspace.archived === true;
   const workspaceArchiving = context.archivingWorkspaceIds.has(workspaceId);
@@ -168,14 +170,14 @@ function getWorkspaceSidebarActions(
           workspaceId,
         }),
       },
-      {
+      ...(capabilities.webPreviews ? [{
         id: "workspace-previews",
         label: "Previews",
         onClick: () => context.navigateWithinShell({
           view: "workspace-previews",
           workspaceId,
         }),
-      },
+      }] : []),
       ...(isGitBacked ? [
         {
           id: "pull-latest-changes",
@@ -203,7 +205,7 @@ function getWorkspaceSidebarActions(
           workspaceId,
         }),
       },
-      ...(isRestartableAutomaticWorkspace(workspaceNode.workspace) ? [
+      ...(capabilities.provisioning && isRestartableAutomaticWorkspace(workspaceNode.workspace) ? [
         {
           id: "restart-workspace",
           label: "Restart",

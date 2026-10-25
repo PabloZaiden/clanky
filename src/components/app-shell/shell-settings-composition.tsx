@@ -30,6 +30,7 @@ import type {
 } from "../../hooks";
 import type { UseWorkerUpdateJobsResult } from "../../hooks/useWorkerUpdateJobs";
 import { WorkspaceCollaborationContent } from "../app-settings/workspace-collaboration-content";
+import { getClankyClientCapabilities } from "../../client-sdk/capabilities";
 
 export interface ShellSettingsCompositionOptions {
   quickChatSettings: UseQuickChatSettingsResult;
@@ -72,7 +73,7 @@ export function buildShellSettingsSections({
   const selectedQuickChatWorkspace = workspaces.find(
     (workspace) => workspace.id === quickChatSettings.settings.workspaceId,
   ) ?? null;
-  return [
+  const sections: ShellSettingsSections = [
     {
       id: "collaboration",
       title: "Collaboration",
@@ -340,4 +341,9 @@ export function buildShellSettingsSections({
       </>,
     },
   ];
+  const capabilities = getClankyClientCapabilities();
+  const controllerSections = new Set(["mesh", "controller", "relays", "agents", "github", "clanky-danger-zone"]);
+  return sections.filter((section) => section.id === "voice"
+    ? capabilities.voice
+    : capabilities.controllerAdministration || !controllerSections.has(section.id));
 }

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { WebAppRoute } from "@pablozaiden/webapp/web";
+import type { WebAppConfigState, WebAppRoute } from "@pablozaiden/webapp/web";
 import {
   useAgents,
   useChats,
@@ -27,13 +27,15 @@ import {
   getShellRouteTaskId,
   isMissingShellRouteTarget,
 } from "./shell-route-composition";
+import { getClankyClientCapabilities } from "../../client-sdk/capabilities";
 
 interface TaskRouteVerification {
   taskId: string;
   status: "checking" | "missing" | "present" | "failed";
 }
 
-export function useShellResources(route: WebAppRoute, isOwner: boolean) {
+export function useShellResources(route: WebAppRoute, isOwner: boolean, config: WebAppConfigState["config"]) {
+  const capabilities = getClankyClientCapabilities();
   const {
     chats,
     loading: chatsLoading,
@@ -68,7 +70,7 @@ export function useShellResources(route: WebAppRoute, isOwner: boolean) {
     createServer,
     updateServer,
     deleteServer,
-  } = useSshServers();
+  } = useSshServers({ enabled: capabilities.executionHosts });
   const {
     sessions: terminalSessions,
     loading: terminalSessionsLoading,
@@ -78,7 +80,7 @@ export function useShellResources(route: WebAppRoute, isOwner: boolean) {
     updateSession: updateTerminalSession,
     deleteSession: deleteTerminalSession,
   } = useTerminalSessions();
-  const executionHosts = useExecutionHosts();
+  const executionHosts = useExecutionHosts({ enabled: capabilities.executionHosts });
   const {
     workspaces,
     loading: workspacesLoading,
@@ -91,16 +93,16 @@ export function useShellResources(route: WebAppRoute, isOwner: boolean) {
     pullLatestChanges,
   } = useWorkspaces();
   const quickChatSettings = useQuickChatSettings();
-  const schedulerTimezone = useSchedulerTimezone();
-  const githubUsername = useGithubUsername();
+  const schedulerTimezone = useSchedulerTimezone({ enabled: capabilities.controllerAdministration });
+  const githubUsername = useGithubUsername({ enabled: capabilities.controllerAdministration });
   const markdownPreference = useMarkdownPreference();
-  const mesh = useMesh();
+  const mesh = useMesh({ enabled: capabilities.controllerAdministration });
   const fullTreePreference = useFileExplorerFullTreePreference();
   const privateItemsPreference = usePrivateItemsPreference();
-  const voiceSettings = useVoiceSettings();
-  const dashboardData = useDashboardData();
-  const provisioning = useProvisioningJob();
-  const workerUpdates = useWorkerUpdateJobs({ enabled: isOwner });
+  const voiceSettings = useVoiceSettings({ enabled: capabilities.voice });
+  const dashboardData = useDashboardData(config);
+  const provisioning = useProvisioningJob({ enabled: capabilities.provisioning });
+  const workerUpdates = useWorkerUpdateJobs({ enabled: isOwner && capabilities.controllerAdministration });
   const { workspaceGroups: allWorkspaceGroups } = useTaskGrouping(
     tasks,
     workspaces,

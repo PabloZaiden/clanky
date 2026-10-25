@@ -6,7 +6,7 @@ import { z } from "zod";
 
 import { createLogger } from "@pablozaiden/webapp/server";
 import { workspaceManager } from "../../core/workspace-manager";
-import { CLANKY_REALTIME_RESOURCES } from "../../realtime";
+import { CLANKY_REALTIME_RESOURCES } from "@/shared/realtime";
 import { isDomainError } from "../../domain/domain-error";
 import { parseAndValidate, validateRequest } from "../validation";
 import {

@@ -17,7 +17,7 @@ export interface UseGithubUsernameResult {
   updateGithubUsername: (githubUsername: string) => Promise<string | null>;
 }
 
-export function useGithubUsername(): UseGithubUsernameResult {
+export function useGithubUsername({ enabled = true }: { enabled?: boolean } = {}): UseGithubUsernameResult {
   const loadPreference = useCallback(async (signal: AbortSignal): Promise<string> => {
     const data = await apiRequest<{ githubUsername?: string | null }>(
       "/api/preferences/github-username",
@@ -56,6 +56,7 @@ export function useGithubUsername(): UseGithubUsernameResult {
   }, []);
 
   const preference = usePreferenceLifecycle({
+    enabled,
     initialValue: "",
     load: loadPreference,
     save: savePreference,

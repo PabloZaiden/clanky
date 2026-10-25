@@ -27,11 +27,13 @@ export interface UseSshServersResult {
 
 export interface UseSshServersOptions {
   realtime?: boolean;
+  enabled?: boolean;
 }
 
-export function useSshServers({ realtime = true }: UseSshServersOptions = {}): UseSshServersResult {
+export function useSshServers({ realtime = true, enabled = true }: UseSshServersOptions = {}): UseSshServersResult {
   const [error, setError] = useState<string | null>(null);
   const query = useLiveQuery<SshServer[]>({
+    enabled,
     load: (signal) => apiRequest<SshServer[]>("/api/ssh-servers", {
       signal,
       action: "List SSH servers",

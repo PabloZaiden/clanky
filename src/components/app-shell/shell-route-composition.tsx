@@ -3,7 +3,8 @@ import {
   ErrorState,
   LoadingState,
   Page,
-  useCurrentUser,
+  useWebAppConfig,
+  type WebAppConfigState,
   type WebAppRootProps,
   type WebAppRoute,
 } from "@pablozaiden/webapp/web";
@@ -21,6 +22,7 @@ import { decodeCollaborationResourceReference } from "@/shared/collaboration-ref
 import { StandaloneChatTranscriptViewer } from "../StandaloneChatTranscriptViewer";
 import { AppRouteContent, type ShellMainContentProps } from "./shell-main-content";
 import { getRouteString } from "./route-fields";
+import { getClankyRouteUnavailableReason } from "../../client-sdk/capabilities";
 
 const ROUTE_VIEWS = [
   "home",
@@ -313,6 +315,10 @@ function renderShellRouteContent(
   route: WebAppRoute,
   context: ShellRouteCompositionContext,
 ): ReactNode {
+  const unavailable = getClankyRouteUnavailableReason(route);
+  if (unavailable) {
+    return <Page><ErrorState title="Operation unavailable" description={unavailable} /></Page>;
+  }
   if (route.view === "chat-transcript") {
     const transcriptChatId = getRouteString(route, "chatId");
     return (
@@ -368,15 +374,19 @@ export function buildShellRoutes(
   ) as WebAppRootProps["routes"];
 }
 
-export function CurrentUserObserver({
+export function ShellRuntimeObserver({
   onOwnerChange,
+  onConfigChange,
 }: {
   onOwnerChange: (isOwner: boolean) => void;
+  onConfigChange: (config: WebAppConfigState["config"]) => void;
 }) {
-  const isOwner = useCurrentUser()?.isOwner === true;
+  const { config } = useWebAppConfig();
+  const isOwner = config?.currentUser?.isOwner === true;
   useEffect(() => {
     onOwnerChange(isOwner);
-    return () => onOwnerChange(false);
-  }, [isOwner, onOwnerChange]);
+    onConfigChange(config);
+    return () => { onOwnerChange(false); onConfigChange(undefined); };
+  }, [config, isOwner, onConfigChange, onOwnerChange]);
   return null;
 }

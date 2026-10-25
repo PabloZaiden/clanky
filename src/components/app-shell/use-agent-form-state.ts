@@ -5,6 +5,7 @@ import type { CreateAgentRequest, UpdateAgentRequest } from "@/contracts/schemas
 import { useToast } from "@pablozaiden/webapp/web";
 import { makeModelKey, modelVariantExists, parseModelKey } from "../ModelSelector";
 import type { UseAgentsResult } from "../../hooks/useAgents";
+import { useWorkspaceSchedulerTimezone } from "../../hooks/useWorkspaceSchedulerTimezone";
 import {
   isWorkspaceBranchSelectionValid,
   resolveWorkspaceBranchSelection,
@@ -41,7 +42,6 @@ type AgentFormAction =
 interface CreateInitialDraftOptions {
   agent: Agent | null;
   initialWorkspace: Workspace | null;
-  schedulerTimezone: string;
 }
 
 function formatDateTimeLocalInTimezone(date: Date, timezone: string): string {
@@ -92,7 +92,6 @@ function getDefaultModelKey(models: ModelInfo[], lastModel: ModelConfig | null):
 function createInitialDraft({
   agent,
   initialWorkspace,
-  schedulerTimezone,
 }: CreateInitialDraftOptions): AgentFormDraft {
   return {
     name: agent?.config.name ?? "",
@@ -103,8 +102,7 @@ function createInitialDraft({
       : "",
     baseBranch: agent?.config.baseBranch ?? "",
     useWorktree: agent?.config.useWorktree ?? true,
-    startAtLocal: agent?.config.schedule.startAtLocal
-      ?? formatDateTimeLocalInTimezone(new Date(), schedulerTimezone),
+    startAtLocal: agent?.config.schedule.startAtLocal ?? "",
     startAtTouched: Boolean(agent),
     intervalValue: agent?.config.schedule.interval.value ?? 60,
     intervalUnit: agent?.config.schedule.interval.unit ?? "minutes",
@@ -153,7 +151,6 @@ export interface UseAgentFormStateOptions {
   modelsLoading: boolean;
   modelsWorkspaceId: string | null;
   lastModel: ModelConfig | null;
-  schedulerTimezone: string;
   branches: BranchInfo[];
   branchesLoading: boolean;
   branchesWorkspaceId: string | null;
@@ -177,6 +174,9 @@ export interface UseAgentFormStateResult {
   workspaceSelectionsReady: boolean;
   worktreeControlDisabled: boolean;
   worktreeForNewRun: boolean;
+  schedulerTimezone: string | null;
+  schedulerError: Error | null;
+  refreshScheduler: () => Promise<void>;
   setName: (value: string) => void;
   setPrompt: (value: string) => void;
   setWorkspaceId: (value: string) => void;
@@ -199,7 +199,6 @@ export function useAgentFormState({
   modelsLoading,
   modelsWorkspaceId,
   lastModel,
-  schedulerTimezone,
   branches,
   branchesLoading,
   branchesWorkspaceId,
@@ -214,10 +213,12 @@ export function useAgentFormState({
   const toastError = toast.error;
   const [draft, dispatch] = useReducer(
     agentFormReducer,
-    { agent, initialWorkspace, schedulerTimezone },
+    { agent, initialWorkspace },
     createInitialDraft,
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const scheduling = useWorkspaceSchedulerTimezone(draft.workspaceId, agent?.config.schedule.timezone);
+  const schedulerTimezone = scheduling.timezone;
 
   const selectedWorkspace = useMemo(
     () => workspaces.find((workspace) => workspace.id === draft.workspaceId) ?? null,
@@ -318,7 +319,7 @@ export function useAgentFormState({
   }, [draft.modelKey, lastModel, models, modelsReady]);
 
   useEffect(() => {
-    if (mode !== "create" || draft.startAtTouched) {
+    if (mode !== "create" || draft.startAtTouched || !schedulerTimezone) {
       return;
     }
     dispatch({
@@ -356,6 +357,8 @@ export function useAgentFormState({
   }, []);
 
   const canSubmit = !isSubmitting
+    && Boolean(schedulerTimezone)
+    && !scheduling.error
     && workspaceSelectionsReady
     && Boolean(draft.name.trim())
     && Boolean(draft.prompt.trim())
@@ -364,6 +367,10 @@ export function useAgentFormState({
     && draft.intervalValue >= 1;
 
   const submit = useCallback(async (code: string): Promise<void> => {
+    if (!schedulerTimezone || scheduling.error) {
+      toastError("Scheduling defaults are not available from the workspace controller.");
+      return;
+    }
     if (!selectedWorkspace) {
       toastError("Select a workspace first");
       return;
@@ -454,6 +461,7 @@ export function useAgentFormState({
     onSaved,
     onUpdateAgent,
     schedulerTimezone,
+    scheduling.error,
     selectedWorkspace,
     toastError,
     preserveExistingWorktree,
@@ -468,6 +476,9 @@ export function useAgentFormState({
     workspaceSelectionsReady,
     worktreeControlDisabled,
     worktreeForNewRun: draft.useWorktree,
+    schedulerTimezone,
+    schedulerError: scheduling.error,
+    refreshScheduler: scheduling.refresh,
     setName,
     setPrompt,
     setWorkspaceId,

@@ -3,7 +3,6 @@
  */
 
 import { MeshWellKnownDescriptorSchema } from "@/contracts/schemas/mesh-relay";
-import { negotiateMeshDescriptorGeneration } from "./mesh-protocol-version";
 import {
   MESH_RUNTIME_SNAPSHOT_HEADER,
   MESH_RUNTIME_SNAPSHOT_VERSION,
@@ -17,6 +16,7 @@ import {
 } from "@/shared/mesh-relay";
 import {
   meshTransportProtocolVersions,
+  negotiateMeshDescriptorGeneration,
   negotiateMeshProtocolVersion,
   MESH_PROTOCOL_VERSIONS_HEADER,
   serializeMeshProtocolVersions,

@@ -22,6 +22,7 @@ import type {
   ShellSidebarComposition,
   ShellSidebarCompositionOptions,
 } from "./shell-sidebar-types";
+import { getClankyClientCapabilities } from "../../client-sdk/capabilities";
 
 export type {
   ShellSidebarActionHandlers,
@@ -113,7 +114,7 @@ function buildSidebarNodes(options: ShellSidebarCompositionOptions): SidebarNode
     contexts,
   });
   const trashIndex = nodes.findIndex((node) => node.id === "ssh-servers");
-  nodes.splice(trashIndex, 0, {
+  nodes.splice(trashIndex < 0 ? nodes.length : trashIndex, 0, {
     type: "section", id: "trash", title: "Trash",
     action: { id: "open-trash", title: "Open Trash", label: "Open", route: { view: "trash" } },
     children: [
@@ -157,7 +158,7 @@ export function buildShellSidebarComposition(
   };
   const sidebar = {
     search: true,
-    tabs: SIDEBAR_TABS,
+    tabs: SIDEBAR_TABS.filter((tab) => tab.id !== "servers" || getClankyClientCapabilities().executionHosts),
     pinning: { sectionTitle: "Pinned", storageKey: "clanky.frameworkSidebarPins" },
     topActions: [
       ...options.voiceActions,

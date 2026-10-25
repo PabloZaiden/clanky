@@ -21,6 +21,10 @@ const buildSteps: BuildStep[] = [
     label: "compile",
     cmd: [process.execPath, "src/build.ts"],
   },
+  {
+    label: "client SDK",
+    cmd: [process.execPath, "run", "build:client-sdk"],
+  },
 ];
 
 function formatDuration(elapsedMs: number): string {

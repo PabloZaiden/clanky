@@ -1,10 +1,12 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createLogger, useRealtimeRefresh } from "@pablozaiden/webapp/web";
 import {
   PROMPT_TEMPLATES_REALTIME_RESOURCE,
   type PromptTemplate,
 } from "@/shared/prompt-templates";
 import { apiRequest } from "../lib/api-client";
+import { browserPreferences } from "../client-sdk/browser-preferences";
+import { isBrowserCollaborationClient } from "../client-sdk/browser-runtime";
 import {
   usePreferenceLifecycle,
   type PreferenceErrorContext,
@@ -33,6 +35,7 @@ export function usePromptTemplates(): UsePromptTemplatesResult {
   const activeRefreshesRef = useRef(0);
 
   const loadPreference = useCallback(async (signal: AbortSignal): Promise<PromptTemplate[]> => {
+    if (isBrowserCollaborationClient()) return browserPreferences.promptTemplates.read(signal);
     const data = await apiRequest<{ templates: PromptTemplate[] }>(
       "/api/preferences/prompt-templates",
       {
@@ -48,6 +51,7 @@ export function usePromptTemplates(): UsePromptTemplatesResult {
     templates: PromptTemplate[],
     signal: AbortSignal,
   ): Promise<PromptTemplate[]> => {
+    if (isBrowserCollaborationClient()) return browserPreferences.promptTemplates.write(templates, signal);
     const data = await apiRequest<{ templates: PromptTemplate[] }>(
       "/api/preferences/prompt-templates",
       {
@@ -95,9 +99,14 @@ export function usePromptTemplates(): UsePromptTemplatesResult {
   }, [preference.refresh]);
 
   useRealtimeRefresh({
+    enabled: !isBrowserCollaborationClient(),
     resources: [PROMPT_TEMPLATES_REALTIME_RESOURCE],
     refresh,
   });
+
+  useEffect(() => isBrowserCollaborationClient()
+    ? browserPreferences.promptTemplates.subscribe(() => { void refresh(); })
+    : undefined, [refresh]);
 
   const clearSaveError = useCallback(() => {
     setSaveError(null);

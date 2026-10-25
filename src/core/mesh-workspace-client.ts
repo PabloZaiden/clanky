@@ -10,12 +10,13 @@ import {
   normalizeMeshRelayOrigin,
 } from "@/shared/mesh-relay";
 import { DomainError } from "../domain/domain-error";
-import { MeshRelayConnectorManager } from "./mesh-relay-connector-manager";
+import { MeshRelayConnectorManager } from "../client-sdk/collaboration/relay-manager";
+import type { CollaborationClientLogger } from "../client-sdk/collaboration/types";
 import type { MeshRelayConnectorIdentity, MeshRelayConnectorStatus } from "./mesh-relay-connector";
 import type { MeshRelayDataStream } from "./mesh-relay-data-stream";
-import { performMeshRelayHttpRequest } from "./mesh-relay-http";
+import { performMeshRelayHttpRequest } from "./mesh-relay-http-client";
 import { MESH_RELAY_RESPONSE_FLOW_HEADER } from "./mesh-relay-http-response-flow";
-import { createWorkspaceClientProof } from "./workspace-client-proof";
+import { createWorkspaceClientProof } from "../client-sdk/collaboration/proof";
 import { discoverMeshEnrollmentTarget } from "./mesh-target-discovery";
 import { MESH_PROTOCOL_VERSION } from "@/shared/mesh-protocol";
 import { MeshRelayStreamError } from "./mesh-relay-errors";
@@ -27,19 +28,23 @@ export interface MeshWorkspaceClientOptions {
   relayUrl: string;
   relayFingerprint: string;
   enrollmentAdmission?: string;
+  logger?: CollaborationClientLogger;
   onStatusChange?(status: MeshRelayConnectorStatus): void;
 }
 
 export class MeshWorkspaceClient {
   private readonly manager: MeshRelayConnectorManager;
   private readonly streams = new Set<MeshRelayDataStream>();
-  private opening = 0;
+  private readonly opening = new Set<Promise<MeshRelayDataStream>>();
   private started = false;
+  private stopping?: Promise<void>;
+  private lifetime = new AbortController();
+  private cleanupFailure?: unknown;
 
   constructor(private readonly options: MeshWorkspaceClientOptions) {
     this.manager = new MeshRelayConnectorManager({
       identity: options.identity,
-      manageTransport: false,
+      logger: options.logger,
     });
   }
 
@@ -48,7 +53,7 @@ export class MeshWorkspaceClient {
   }
 
   async start(options: { waitForConnection?: boolean } = {}): Promise<void> {
-    if (this.started) {
+    if (this.started || this.stopping) {
       throw new DomainError("collaboration_connection_busy", "The workspace connection is already running.");
     }
     const relayUrl = normalizeMeshRelayOrigin(this.options.relayUrl);
@@ -64,6 +69,7 @@ export class MeshWorkspaceClient {
       }
       return discovered.negotiatedProtocolVersion;
     };
+    this.lifetime = new AbortController();
     this.started = true;
     this.manager.start({
       config: {
@@ -77,7 +83,6 @@ export class MeshWorkspaceClient {
           : {}),
       },
       refreshProtocol,
-      dispatch: async () => new Response("Workspace clients do not serve inbound operations.", { status: 403 }),
       onStatusChange: (status) => this.options.onStatusChange?.(status),
     });
     if (options.waitForConnection === false) return;
@@ -117,6 +122,7 @@ export class MeshWorkspaceClient {
       body: input.body,
       signal: input.signal,
       responseFlowControl: true,
+      logger: this.options.logger,
     });
   }
 
@@ -150,10 +156,25 @@ export class MeshWorkspaceClient {
     if (!this.started) {
       throw new DomainError("collaboration_disconnected", "The workspace controller is disconnected.");
     }
-    if (this.streams.size + this.opening >= 64) {
+    if (this.streams.size + this.opening.size >= 64) {
       throw new DomainError("collaboration_connection_capacity", "The workspace connection has too many active streams.");
     }
-    this.opening += 1;
+    const opening = this.openRuntimeStream(input);
+    this.opening.add(opening);
+    try {
+      return await opening;
+    } finally {
+      this.opening.delete(opening);
+    }
+  }
+
+  private async openRuntimeStream(input: {
+    kind: "http" | "socket";
+    method?: string;
+    path: string;
+    headers: Record<string, string>;
+    signal?: AbortSignal;
+  }): Promise<MeshRelayDataStream> {
     try {
       const connector = this.manager.resolveConnector({
         kind: "relay",
@@ -161,33 +182,67 @@ export class MeshWorkspaceClient {
         relayUrl: this.options.relayUrl,
         relayFingerprint: this.options.relayFingerprint,
       });
-      const stream = await connector.openStream(input);
+      const stream = await connector.openStream({
+        ...input,
+        signal: input.signal
+          ? AbortSignal.any([input.signal, this.lifetime.signal])
+          : this.lifetime.signal,
+      });
+      this.streams.add(stream);
+      void stream.waitUntilClosed()
+        .then(() => stream.waitUntilTransportClosed())
+        .then(() => this.streams.delete(stream))
+        .catch((error: unknown) => {
+          (this.options.logger ?? console).error("The workspace stream transport could not finish closing", {
+            error: String(error),
+          });
+        });
       if (!this.started) {
-        stream.close(1000, "Workspace connection stopped");
-        stream.dispose();
         throw new DomainError("collaboration_disconnected", "The workspace controller is disconnected.");
       }
-      this.streams.add(stream);
-      void stream.waitUntilClosed().then(() => this.streams.delete(stream));
       return stream;
     } catch (error) {
+      if (error instanceof MeshRelayStreamError && error.code === "mesh_relay_transport_cleanup_failed") {
+        this.cleanupFailure = error;
+      }
       // These fixed client gateway routes are denied when the relay withdraws admission.
       if (error instanceof MeshRelayStreamError && error.code === "mesh_relay_relay_route_forbidden") {
         throw new DomainError("collaboration_access_denied", "Workspace access has been revoked.", { cause: error });
       }
       throw error;
-    } finally {
-      this.opening -= 1;
     }
   }
 
   async stop(): Promise<void> {
-    this.started = false;
-    for (const stream of this.streams) {
-      stream.close(1000, "Workspace connection stopped");
-      stream.dispose();
+    if (this.stopping) return await this.stopping;
+    const stopping = this.stopRuntime();
+    this.stopping = stopping;
+    try {
+      await stopping;
+    } finally {
+      if (this.stopping === stopping) this.stopping = undefined;
     }
-    this.streams.clear();
-    await this.manager.stop();
+  }
+
+  private async stopRuntime(): Promise<void> {
+    this.started = false;
+    this.lifetime.abort();
+    await Promise.allSettled([...this.opening]);
+    const streams = [...this.streams];
+    const results = await Promise.allSettled([
+      this.manager.stop(),
+      ...streams.map(async (stream) => {
+        stream.abort(1000, "Workspace connection stopped");
+        try {
+          await stream.waitUntilTransportClosed();
+          this.streams.delete(stream);
+        } finally {
+          stream.dispose();
+        }
+      }),
+    ]);
+    const failures = results.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
+    if (this.cleanupFailure) failures.push(this.cleanupFailure);
+    if (failures.length > 0) throw new AggregateError(failures, "Workspace transport cleanup failed.");
   }
 }

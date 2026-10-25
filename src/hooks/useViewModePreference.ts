@@ -7,6 +7,8 @@ import { useCallback, useEffect, useRef } from "react";
 import { createLogger } from "@pablozaiden/webapp/web";
 import type { DashboardViewMode } from "@/shared/preferences";
 import { apiRequest } from "../lib/api-client";
+import { browserPreferences } from "../client-sdk/browser-preferences";
+import { isBrowserCollaborationClient } from "../client-sdk/browser-runtime";
 import {
   usePreferenceLifecycle,
   type PreferenceErrorContext,
@@ -34,11 +36,12 @@ export interface UseViewModePreferenceResult {
 
 /**
  * Hook for managing the dashboard view mode preference.
- * The setting persists across browser sessions via server-side storage.
+ * API-backed clients retain server preferences; relay-only profiles use device storage.
  */
 export function useViewModePreference(): UseViewModePreferenceResult {
   const log = createLogger("useViewModePreference");
   const loadPreference = useCallback(async (signal: AbortSignal): Promise<DashboardViewMode> => {
+    if (isBrowserCollaborationClient()) return browserPreferences.viewMode.read(signal);
     const data = await apiRequest<{ mode: DashboardViewMode }>("/api/preferences/dashboard-view-mode", {
       signal,
       action: "Load dashboard view mode preference",
@@ -51,6 +54,10 @@ export function useViewModePreference(): UseViewModePreferenceResult {
     newMode: DashboardViewMode,
     signal: AbortSignal,
   ): Promise<void> => {
+    if (isBrowserCollaborationClient()) {
+      browserPreferences.viewMode.write(newMode, signal);
+      return;
+    }
     await apiRequest("/api/preferences/dashboard-view-mode", {
       signal,
       method: "PUT",
@@ -77,6 +84,7 @@ export function useViewModePreference(): UseViewModePreferenceResult {
     load: loadPreference,
     save: savePreference,
     onError: handlePreferenceError,
+    subscribe: isBrowserCollaborationClient() ? browserPreferences.viewMode.subscribe : undefined,
   });
 
   const viewModeRef = useRef(preference.value);

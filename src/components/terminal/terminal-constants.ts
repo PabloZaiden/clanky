@@ -59,6 +59,8 @@ export const TERMINAL_OSC_STRING_TERMINATOR = "\u001b\\";
 export const TERMINAL_OSC_BELL_TERMINATOR = "\u0007";
 export const TERMINAL_OSC_C1_TERMINATOR = "\u009c";
 export const MAX_PENDING_OSC_COLOR_QUERY_BYTES = 4 * 1024;
+export const MAX_PENDING_TERMINAL_OUTPUT_CHARACTERS = 1024 * 1024;
+export const MAX_PENDING_TERMINAL_OUTPUT_CHUNKS = 256;
 export const TERMINAL_THEME = {
   background: "#1e1e1e",
   foreground: "#d4d4d4",

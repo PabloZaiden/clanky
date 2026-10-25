@@ -45,3 +45,5 @@ export * from "./byte-range";
 export * from "./job-execution";
 export * from "./collaboration";
 export * from "./collaboration-reference";
+export * from "./realtime";
+export * from "./workspace-event";

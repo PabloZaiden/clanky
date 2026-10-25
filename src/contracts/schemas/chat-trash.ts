@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { DomainError } from "../../domain/domain-error";
+import { decodeUtf8Base64Url, encodeJsonBase64Url } from "@/shared/encoding";
 
 const ChatTrashCursorSchema = z.object({
   deletedAt: z.iso.datetime(),
@@ -10,14 +11,14 @@ type ChatTrashCursor = z.infer<typeof ChatTrashCursorSchema>;
 
 export function decodeChatTrashCursor(cursor: string): ChatTrashCursor {
   try {
-    return ChatTrashCursorSchema.parse(JSON.parse(Buffer.from(cursor, "base64url").toString()));
+    return ChatTrashCursorSchema.parse(JSON.parse(decodeUtf8Base64Url(cursor)));
   } catch (cause) {
     throw new DomainError("invalid_trash_cursor", "Invalid Trash cursor", { cause });
   }
 }
 
 export function encodeChatTrashCursor(cursor: ChatTrashCursor): string {
-  return Buffer.from(JSON.stringify(cursor)).toString("base64url");
+  return encodeJsonBase64Url(cursor);
 }
 
 export const ChatTrashQuerySchema = z.object({

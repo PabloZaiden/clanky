@@ -145,8 +145,9 @@ async function dismissProvisioningJobRequest(
   }
 }
 
-export function useProvisioningJob(): UseProvisioningJobResult {
+export function useProvisioningJob({ enabled = true }: { enabled?: boolean } = {}): UseProvisioningJobResult {
   const jobsQuery = useLiveQuery<PublicProvisioningJob[]>({
+    enabled,
     load: async (signal) => (await apiRequest<{ jobs: PublicProvisioningJob[] }>("/api/provisioning-jobs", {
       signal,
       action: "Load provisioning jobs",

@@ -61,20 +61,21 @@ export function useWorkerUpdateJobs(
   activeJobIdRef.current = activeJobId;
 
   const jobsQuery = useLiveQuery<WorkerUpdateJob[]>({
-    load: async (signal) => enabled ? (await apiRequest<WorkerUpdateJobsResponse>(
+    enabled,
+    load: async (signal) => (await apiRequest<WorkerUpdateJobsResponse>(
       "/api/worker-update-jobs",
       {
         signal,
         action: "Load worker update jobs",
         fallbackMessage: "Failed to load worker update jobs",
       },
-    )).jobs : [],
-    deps: [enabled],
+    )).jobs,
     realtime: { resources: ["worker-update-jobs"], enabled },
   });
   const jobQuery = useLiveQuery<{ jobId: string; snapshot: WorkerUpdateJobSnapshotResponse | null } | null>({
+    enabled: enabled && activeJobId !== null,
     load: async (signal) => {
-      if (!enabled || !activeJobId) return null;
+      if (!activeJobId) throw new Error("Select a worker update job before loading it.");
       const response = await requestApiResponse(
         `/api/worker-update-jobs/${encodeURIComponent(activeJobId)}`,
         {

@@ -11,6 +11,7 @@ import { getClankyClientId } from "../../lib/clanky-client-id";
 import { useRealtime } from "@pablozaiden/webapp/web";
 import { getExecutionHostSourceId } from "@/shared";
 import type { useShellResources } from "./use-shell-resources";
+import { getClankyClientCapabilities } from "../../client-sdk/capabilities";
 
 const NAVIGATION_ACK_TIMEOUT_MS = 5_000;
 const FILE_OPEN_ACK_TIMEOUT_MS = 18_000;
@@ -371,6 +372,7 @@ export function useControlUiActions({
   }, [acknowledge, clientId, processAction]);
 
   useRealtime<ControlUiActionEvent>({
+    enabled: getClankyClientCapabilities().controllerAdministration,
     targets: { clientId },
     types: ["control.ui_action"],
     kinds: ["action"],

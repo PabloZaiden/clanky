@@ -51,8 +51,8 @@ import {
   createClankyRealtimePublisher,
   publishClankyDomainEvent,
   type ClankyDomainEvent,
-  type ClankyRealtimeEvent,
 } from "./realtime";
+import type { ClankyRealtimeEvent } from "@/shared/realtime";
 import { CLANKY_VERSION } from "./version";
 import { resolveTerminal } from "./core/terminal-connection";
 import { terminalSessionManager } from "./core/terminal-session-manager";
@@ -605,6 +605,10 @@ export async function getWebAppServer(
     log.info("Creating Mesh worker application server");
   }
   const store = sqliteWebAppStore({ dataDir, fileName: "clanky.db" });
+  if (!meshWorker && !Bun.isStandaloneExecutable) {
+    const { writeClientOperationCatalog } = await import("./client-operation-catalog");
+    await writeClientOperationCatalog();
+  }
   app = createWebAppServer<ClankyRealtimeEvent>({
     appName: "Clanky",
     envPrefix: "CLANKY",

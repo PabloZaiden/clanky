@@ -4,6 +4,8 @@ import { apiRequest } from "../lib/api-client";
 import { createRefreshCoordinator } from "../lib/refresh-coordinator";
 import { DEFAULT_QUICK_CHAT_SETTINGS, type QuickChatSettings } from "@/shared/preferences";
 import { normalizeQuickChatSettings } from "@/contracts/schemas";
+import { browserPreferences } from "../client-sdk/browser-preferences";
+import { isBrowserCollaborationClient } from "../client-sdk/browser-runtime";
 
 const log = createLogger("useQuickChatSettings");
 
@@ -43,15 +45,13 @@ export function useQuickChatSettings(): UseQuickChatSettingsResult {
       try {
         setLoading(true);
         setError(null);
-        const data = await apiRequest<unknown>("/api/preferences/quick-chat", {
-          signal: controller.signal,
-          action: "Load quick chat settings",
-          fallbackMessage: "Failed to load quick chat settings",
-        });
-        if (controller.signal.aborted || !isActiveRequest()) {
-          return;
-        }
-        const nextSettings = normalizeQuickChatSettings(data);
+        const nextSettings = isBrowserCollaborationClient()
+          ? browserPreferences.quickChat.read(controller.signal)
+          : normalizeQuickChatSettings(await apiRequest<unknown>("/api/preferences/quick-chat", {
+            signal: controller.signal,
+            action: "Load quick chat settings",
+            fallbackMessage: "Failed to load quick chat settings",
+          }));
         if (controller.signal.aborted || !isActiveRequest()) {
           return;
         }
@@ -73,18 +73,23 @@ export function useQuickChatSettings(): UseQuickChatSettingsResult {
   }, []);
 
   const updateSettings = useCallback(async (nextSettings: QuickChatSettings): Promise<QuickChatSettings | null> => {
-    const normalizedSettings = normalizeQuickChatSettings(nextSettings);
     try {
       setSaving(true);
       setError(null);
-      const body = await apiRequest<{ settings?: unknown }>("/api/preferences/quick-chat", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(normalizedSettings),
-        action: "Save quick chat settings",
-        fallbackMessage: "Failed to save quick chat settings",
-      });
-      const savedSettings = normalizeQuickChatSettings(body.settings ?? normalizedSettings);
+      let savedSettings: QuickChatSettings;
+      if (isBrowserCollaborationClient()) {
+        savedSettings = browserPreferences.quickChat.write(nextSettings);
+      } else {
+        const normalizedSettings = normalizeQuickChatSettings(nextSettings);
+        const body = await apiRequest<{ settings?: unknown }>("/api/preferences/quick-chat", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(normalizedSettings),
+          action: "Save quick chat settings",
+          fallbackMessage: "Failed to save quick chat settings",
+        });
+        savedSettings = normalizeQuickChatSettings(body.settings ?? normalizedSettings);
+      }
       setSettings(savedSettings);
       return savedSettings;
     } catch (saveError) {
@@ -107,6 +112,10 @@ export function useQuickChatSettings(): UseQuickChatSettingsResult {
       refreshCoordinatorRef.current.reset();
     };
   }, [refresh]);
+
+  useEffect(() => isBrowserCollaborationClient()
+    ? browserPreferences.quickChat.subscribe(() => { void refresh(); })
+    : undefined, [refresh]);
 
   return {
     settings,

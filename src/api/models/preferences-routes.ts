@@ -18,9 +18,10 @@ import { defineRoutes, type RouteContext } from "@pablozaiden/webapp/server";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { isDomainError } from "../../domain/domain-error";
 import { preferencesManager } from "../../core/preferences-manager";
-import { parseAndValidate } from "../validation";
+import { parseAndValidate, validateRequest } from "../validation";
 import { domainErrorResponse, internalErrorResponse } from "../helpers";
-import { CLANKY_REALTIME_RESOURCES } from "../../realtime";
+import { workspaceOperation } from "../workspace-delegation";
+import { CLANKY_REALTIME_RESOURCES } from "@/shared/realtime";
 import {
   SetLastModelRequestSchema,
   SetLastCheapModelRequestSchema,
@@ -30,6 +31,7 @@ import {
   SetFileExplorerFullTreeRequestSchema,
   SetDashboardViewModeRequestSchema,
   SetSchedulerTimezoneRequestSchema,
+  SchedulerTimezoneQuerySchema,
   SetQuickChatSettingsRequestSchema,
   SetPromptTemplatesRequestSchema,
 } from "@/contracts/schemas";
@@ -474,12 +476,34 @@ export const preferencesRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Persist the scheduler timezone preference.",
     operations: {
-      GET: { description: "Read the scheduler timezone preference.", requestSchema: undefined, querySchema: undefined, automation: { policy: "read" } },
+      GET: {
+        description: "Read scheduling defaults from the selected workspace's controller, or the current user's defaults.",
+        delegation: workspaceOperation("workspace"),
+        requestSchema: undefined,
+        querySchema: SchedulerTimezoneQuerySchema,
+        automation: { policy: "read" },
+      },
       PUT: { requestSchema: SetSchedulerTimezoneRequestSchema, querySchema: undefined, automation: { policy: "write" } },
     },
-    async GET(_req: Request, _ctx: RouteContext): Promise<Response> {
-      const timezone = await preferencesManager.getSchedulerTimezone();
-      return Response.json({ timezone });
+    async GET(req: Request, _ctx: RouteContext): Promise<Response> {
+      const query = validateRequest(SchedulerTimezoneQuerySchema, Object.fromEntries(new URL(req.url).searchParams));
+      if (!query.success) return query.response;
+      try {
+        const timezone = await preferencesManager.getSchedulerTimezone(query.data.workspaceId);
+        return Response.json({ timezone });
+      } catch (error) {
+        const response = domainErrorResponse(error, {
+          policy: "workspaces",
+          fallback: {
+            error: "scheduling_defaults_failed",
+            message: "Failed to load scheduling defaults",
+            status: 500,
+          },
+        });
+        if (response.status >= 500) log.error("Failed to read scheduling defaults", { error: String(error) });
+        else log.warn("Scheduling defaults unavailable", { error: String(error) });
+        return response;
+      }
     },
 
     async PUT(req: Request, _ctx): Promise<Response> {

@@ -6,16 +6,8 @@ import type { CollaborationGuestGrant, WorkspaceAccessAuthority } from "@/shared
 import { DomainError } from "../domain/domain-error";
 import { findResourceWorkspace, workspaceUsesExecutionHost } from "../persistence/workspace-resource-index";
 import { collaborationService } from "./collaboration-service";
-import { isReadRecord } from "./resource-read-service";
-
-export function readReferenceField(value: unknown, name: string): unknown {
-  let current = value;
-  for (const part of name.split(".")) {
-    if (!isReadRecord(current)) return undefined;
-    current = current[part];
-  }
-  return current;
-}
+import { isReadRecord } from "../client-sdk/collaboration/resource-read";
+import { readReferenceField } from "@/shared/record";
 
 async function readOperationBody(operation: DelegatedOperation, request: Request): Promise<unknown> {
   if (!request.body || !request.headers.get("content-type")?.toLowerCase().startsWith("application/json")

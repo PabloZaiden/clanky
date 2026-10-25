@@ -15,7 +15,7 @@ export interface UseSchedulerTimezoneResult {
   updateTimezone: (timezone: string) => Promise<string | null>;
 }
 
-export function useSchedulerTimezone(): UseSchedulerTimezoneResult {
+export function useSchedulerTimezone({ enabled = true }: { enabled?: boolean } = {}): UseSchedulerTimezoneResult {
   const [timezone, setTimezone] = useState(DEFAULT_SCHEDULER_TIMEZONE);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -92,7 +92,7 @@ export function useSchedulerTimezone(): UseSchedulerTimezoneResult {
 
   useEffect(() => {
     isMountedRef.current = true;
-    void refresh();
+    if (enabled) void refresh();
     return () => {
       isMountedRef.current = false;
       requestIdRef.current += 1;
@@ -100,11 +100,11 @@ export function useSchedulerTimezone(): UseSchedulerTimezoneResult {
       abortControllerRef.current = null;
       refreshCoordinatorRef.current.reset();
     };
-  }, [refresh]);
+  }, [enabled, refresh]);
 
   return {
     timezone,
-    loading,
+    loading: enabled && loading,
     saving,
     error,
     refresh,

@@ -27,6 +27,7 @@ import { WorkspaceIdentity } from "../common";
 import { OverviewAgents } from "./overview-agents";
 import { OverviewWork } from "./overview-work";
 import { JobListRow } from "../job-list-row";
+import { getClankyClientCapabilities } from "../../client-sdk/capabilities";
 
 function getExecutionHostRoute(host: ExecutionHostDescriptor): WebAppRoute {
   return {
@@ -83,6 +84,7 @@ export function OverviewView({
   dismissingAllWorkerUpdateJobs: boolean;
   showPrivateItems?: boolean;
 }) {
+  const capabilities = getClankyClientCapabilities();
   const toast = useToast();
   const [dismissConfirmOpen, setDismissConfirmOpen] = useState(false);
   const serverMapItems = useMemo(() => {
@@ -150,7 +152,7 @@ export function OverviewView({
       />
 
       <Panel title="Resources">
-        <div className="grid items-start gap-6 lg:grid-cols-3">
+        <div className={`grid items-start gap-6 ${capabilities.executionHosts ? "lg:grid-cols-3" : "lg:grid-cols-2"}`}>
           <section className="space-y-2" aria-label="Workspaces">
             <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Workspaces</h3>
             {workspaceGroups.length === 0 ? (
@@ -181,7 +183,7 @@ export function OverviewView({
             onNavigate={onNavigate}
             showPrivateItems={showPrivateItems}
           />
-          <section className="space-y-2" aria-label="Servers">
+          {capabilities.executionHosts ? <section className="space-y-2" aria-label="Servers">
             <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Servers</h3>
             {serverMapItems.length === 0 ? (
               <p className="text-sm text-gray-500 dark:text-gray-400">No servers</p>
@@ -206,7 +208,7 @@ export function OverviewView({
                 })}
               </DataList>
             )}
-          </section>
+          </section> : null}
         </div>
       </Panel>
 

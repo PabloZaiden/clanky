@@ -58,7 +58,7 @@ import { withUnifiedWorkspaceResources } from "./workspace-federation";
  * Raw WebSocket upgrades are handled separately in src/server.ts; the framework
  * realtime endpoint is also registered by the webapp server.
  */
-const nativeApiRoutes = {
+export const nativeApiRoutes = {
   ...tasksRoutes,
   ...modelsAndPreferencesRoutes,
   ...settingsRoutes,

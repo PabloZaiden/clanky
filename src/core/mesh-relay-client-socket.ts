@@ -5,11 +5,16 @@
  * `WebSocket` constructor so socket lifecycle ownership remains explicit.
  */
 
+import { utf8ByteLength } from "@/shared/encoding";
+import { MeshRelayStreamError } from "./mesh-relay-errors";
+
+const SOCKET_CLOSE_TIMEOUT_MS = 5_000;
+
 export interface MeshRelayClientSocket {
   readonly readyState: number;
   readonly bufferedAmount: number;
   binaryType: BinaryType;
-  send(data: string | ArrayBufferView | ArrayBufferLike): void;
+  send(data: string | Uint8Array<ArrayBuffer>): void;
   close(code?: number, reason?: string): void;
   addEventListener(type: "open", listener: (event: Event) => void): void;
   addEventListener(type: "message", listener: (event: MessageEvent) => void): void;
@@ -24,7 +29,33 @@ export interface MeshRelayClientSocket {
 export type MeshRelayClientSocketFactory = (url: string) => MeshRelayClientSocket;
 
 export const openMeshRelayClientSocket: MeshRelayClientSocketFactory = (url) =>
-  new WebSocket(url) as unknown as MeshRelayClientSocket;
+  new WebSocket(url);
+
+/** Observe physical closure independently of logical protocol teardown. */
+export async function waitForMeshRelaySocketClosed(socket: MeshRelayClientSocket): Promise<void> {
+  if (socket.readyState === 3) return;
+  await new Promise<void>((resolve, reject) => {
+    const cleanup = (): void => {
+      clearTimeout(timer);
+      socket.removeEventListener("close", onClose);
+    };
+    const onClose = (): void => {
+      cleanup();
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new MeshRelayStreamError(
+        "mesh_relay_close_timeout",
+        "The Mesh relay socket did not finish closing in time.",
+        { status: 504 },
+      ));
+    }, SOCKET_CLOSE_TIMEOUT_MS);
+    timer.unref?.();
+    socket.addEventListener("close", onClose);
+    if (socket.readyState === 3) onClose();
+  });
+}
 
 /**
  * WebSocket clients may only send close code `1000` or `3000`-`4999`. Mesh
@@ -54,7 +85,7 @@ export function fromMeshRelayCloseCode(code: number): number {
 /** Truncate a close reason to the 123 byte WebSocket limit. */
 export function toMeshRelayCloseReason(reason: string | undefined): string {
   let value = (reason ?? "").replace(/[\r\n\0]/g, " ");
-  while (Buffer.byteLength(value, "utf8") > 123) {
+  while (utf8ByteLength(value) > 123) {
     value = value.slice(0, -1);
   }
   return value;

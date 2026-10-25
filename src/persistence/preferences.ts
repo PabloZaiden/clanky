@@ -77,11 +77,11 @@ export interface UserPreferences {
 /**
  * Get a preference value by key.
  */
-function getPreference(key: string): string | null {
+function getPreference(key: string, userId = requirePersistenceUserId()): string | null {
   log.trace("Getting preference", { key });
   const db = getDatabase();
   const stmt = db.prepare("SELECT value FROM preferences WHERE key = ? AND user_id = ?");
-  const row = stmt.get(key, requirePersistenceUserId()) as { value: string } | null;
+  const row = stmt.get(key, userId) as { value: string } | null;
   const value = row?.value ?? null;
   log.trace("Preference retrieved", { key, found: value !== null });
   return value;
@@ -363,9 +363,9 @@ export async function setPromptTemplates(templates: PromptTemplate[]): Promise<v
   setPreference("promptTemplates", JSON.stringify(validatedTemplates));
 }
 
-export async function getSchedulerTimezone(): Promise<string> {
+export async function getSchedulerTimezone(ownerUserId?: string): Promise<string> {
   log.debug("Getting scheduler timezone preference");
-  const value = getPreference("schedulerTimezone");
+  const value = getPreference("schedulerTimezone", ownerUserId);
   if (value === null) {
     log.trace("Scheduler timezone preference not set, using default", {
       default: DEFAULT_SCHEDULER_TIMEZONE,

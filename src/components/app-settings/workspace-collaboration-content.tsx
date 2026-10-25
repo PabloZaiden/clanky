@@ -9,6 +9,9 @@ import { decodeCollaborationResourceReference } from "@/shared/collaboration-ref
 import { apiRequest } from "../../lib/api-client";
 import { Button, StatusBadge } from "../common";
 import { SettingsSelect } from "./settings-row-controls";
+import { isBrowserCollaborationClient } from "../../client-sdk/browser-runtime";
+import { BrowserCollaborationContent, BrowserConnectionsNotice } from "./browser-collaboration-content";
+import { controllerStatusLabel, isControllerUnavailable } from "./collaboration-connection-status";
 
 interface SharingState {
   connections: WorkspaceConnectionStatus[];
@@ -28,6 +31,12 @@ async function loadSharing(signal: AbortSignal): Promise<SharingState> {
 }
 
 export function WorkspaceCollaborationContent({ workspaces }: { workspaces: Workspace[] }) {
+  return isBrowserCollaborationClient()
+    ? <BrowserCollaborationContent />
+    : <ApiWorkspaceCollaborationContent workspaces={workspaces} />;
+}
+
+function ApiWorkspaceCollaborationContent({ workspaces }: { workspaces: Workspace[] }) {
   const toast = useToast();
   const query = useLiveQuery({
     load: loadSharing, realtime: { resources: ["workspace-connections", "workspace-collaboration", "mesh", "workspaces"] },
@@ -129,12 +138,12 @@ export function WorkspaceCollaborationContent({ workspaces }: { workspaces: Work
       <h3 className="font-medium">Connected controllers</h3>
       {state?.connections.length === 0 ? <EmptyState title="No connected controllers" /> : null}
       <DataList>
-        {state?.connections.map(({ connection, transport, realtime, errorCode, operationErrorCode }) => (
+        {state?.connections.map((entry) => {
+          const { connection } = entry;
+          const status = controllerStatusLabel(entry);
+          return (
           <DataListRow key={connection.id} title={connection.name ?? "Shared controller"}
-            badge={<StatusBadge variant={connection.status === "active" && transport === "connected" && realtime === "connected" && !errorCode && !operationErrorCode ? "success" : "warning"}>
-              {connection.status === "revoked" ? "Access revoked" : connection.status === "pending" ? "Pairing pending"
-                : transport === "connected" && realtime === "connected" && !errorCode && !operationErrorCode ? "Connected" : "Unavailable"}
-            </StatusBadge>}
+            badge={<StatusBadge variant={status === "Connected" ? "success" : "warning"}>{status}</StatusBadge>}
             actions={<>
               {connection.status !== "revoked" ? <Button size="sm" disabled={saving} onClick={() => void recover(connection.id)}>Reconnect</Button> : null}
               <Button size="sm" variant="danger" disabled={saving} onClick={() => setConfirmation({
@@ -142,7 +151,7 @@ export function WorkspaceCollaborationContent({ workspaces }: { workspaces: Work
                 title: "Disconnect controller", message: "Remote tasks, chats and agent schedules will continue on the controller.",
               })}>Disconnect</Button>
             </>} />
-        ))}
+        ); })}
       </DataList>
       <h3 className="font-medium">Collaborators</h3>
       {state && !state.guests.some((guest) => !guest.revokedAt) ? <EmptyState title="No collaborators" /> : null}
@@ -212,12 +221,15 @@ export function WorkspaceCollaborationContent({ workspaces }: { workspaces: Work
 }
 
 export function WorkspaceConnectionsNotice() {
+  return isBrowserCollaborationClient() ? <BrowserConnectionsNotice /> : <ApiConnectionsNotice />;
+}
+
+function ApiConnectionsNotice() {
   const query = useLiveQuery<WorkspaceConnectionStatus[]>({
     load: (signal) => apiRequest("/api/collaboration/connections", { signal }),
     realtime: { resources: ["workspace-connections"] },
   });
-  const unavailable = query.data?.filter((entry) => entry.connection.status === "active"
-    && (entry.transport !== "connected" || entry.realtime !== "connected" || entry.errorCode || entry.operationErrorCode));
+  const unavailable = query.data?.filter(isControllerUnavailable);
   if (query.error) return <ErrorState title="Controller connection status unavailable" description={String(query.error)} />;
   if (!unavailable?.length) return null;
   return <ErrorState title="Some shared workspaces are unavailable"

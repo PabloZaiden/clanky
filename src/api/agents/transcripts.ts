@@ -11,7 +11,7 @@ import { errorResponse, internalErrorResponse } from "../helpers";
 import { parseTranscriptSnapshotOptions, transcriptSnapshotErrorResponse } from "../transcript-snapshot";
 import { ConversationReadOptionsSchema } from "@/contracts/schemas/resource-read";
 import { readConversationPage } from "../../core/conversation-read-service";
-import { readScope } from "../../core/resource-read-service";
+import { readScope } from "../../client-sdk/collaboration/resource-read";
 
 function transcriptResponseHeaders(revision: string): Headers {
   return new Headers({

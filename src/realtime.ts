@@ -15,8 +15,10 @@ import type {
   TaskEvent,
   WorkerUpdateEvent,
 } from "@/shared";
-import { PROMPT_TEMPLATES_REALTIME_RESOURCE } from "@/shared/prompt-templates";
-import type { CollaborationResourceKind } from "@/shared/collaboration-reference";
+import {
+  CLANKY_REALTIME_RESOURCES, type ClankyRealtimeResource, type ClankyStreamEvent,
+  type ClankyRealtimeEvent, type RetainedChatEvent,
+} from "@/shared/realtime";
 import type { MeshStateEvent, HarnessStateEvent } from "./core/event-emitter";
 import { createToolCallSummary, serializeExecutionHostRef } from "@/shared";
 import type { ControlUiActionEvent } from "@/shared/clanky-control";
@@ -26,76 +28,7 @@ import type {
   RealtimeBus,
   RealtimeAction,
   RealtimeTarget,
-  ResourceRealtimeEvent,
 } from "@pablozaiden/webapp/server";
-
-export const CLANKY_REALTIME_RESOURCES = {
-  workspaces: "workspaces",
-  tasks: "tasks",
-  chats: "chats",
-  chatActivity: "chat-activity",
-  trash: "trash",
-  agents: "agents",
-  agentRuns: "agent-runs",
-  terminalSessions: "terminal-sessions",
-  provisioningJobs: "provisioning-jobs",
-  workerUpdateJobs: "worker-update-jobs",
-  previews: "previews",
-  mesh: "mesh",
-  executionHosts: "execution-hosts",
-  promptTemplates: PROMPT_TEMPLATES_REALTIME_RESOURCE,
-} as const;
-
-export type ClankyRealtimeResource = typeof CLANKY_REALTIME_RESOURCES[keyof typeof CLANKY_REALTIME_RESOURCES];
-
-type RetainedTaskEvent = Extract<
-  TaskEvent,
-  {
-    type:
-      | "task.message"
-      | "task.message.delta"
-      | "task.tool_call"
-      | "task.tool_call.extra"
-      | "task.log"
-      | "task.log.delta"
-      | "task.iteration.start"
-      | "task.iteration.end"
-      | "task.git.commit";
-  }
->;
-
-type RetainedChatEvent = Extract<
-  ChatEvent,
-  {
-    type:
-      | "chat.message"
-      | "chat.message.delta"
-      | "chat.tool_call"
-      | "chat.tool_call.extra"
-      | "chat.log"
-      | "chat.log.delta";
-  }
->;
-
-type RetainedAgentEvent = Extract<
-  AgentEvent,
-  {
-    type:
-      | "agent.run.message"
-      | "agent.run.message.delta"
-      | "agent.run.tool_call"
-      | "agent.run.tool_call.extra"
-      | "agent.run.log"
-      | "agent.run.log.delta";
-  }
->;
-
-type RetainedProvisioningEvent = Extract<
-  ProvisioningEvent,
-  {
-    type: "provisioning.step" | "provisioning.updated" | "provisioning.output";
-  }
->;
 
 export type ClankyDomainEvent =
   | TaskEvent
@@ -109,46 +42,6 @@ export type ClankyDomainEvent =
   | MeshStateEvent
   | ControlUiActionEvent
   | LiveVoiceActivityEvent;
-
-export type ClankyStreamEvent =
-  | RetainedTaskEvent
-  | RetainedChatEvent
-  | ControlUiActionEvent
-  | LiveVoiceActivityEvent
-  | RetainedAgentEvent
-  | RetainedProvisioningEvent;
-
-export type ClankyRealtimeEvent = ResourceRealtimeEvent | ClankyStreamEvent;
-
-export const WORKSPACE_REALTIME_RESOURCE_KINDS: Readonly<Record<string, CollaborationResourceKind>> = {
-  workspaces: "workspace",
-  tasks: "task",
-  chats: "chat",
-  trash: "chat",
-  "chat-activity": "chat",
-  agents: "agent",
-  "agent-runs": "agent-run",
-  "terminal-sessions": "terminal",
-  previews: "preview",
-};
-
-const WORKSPACE_STREAM_TYPES = new Set<string>([
-  "task.message", "task.message.delta", "task.tool_call", "task.tool_call.extra",
-  "task.log", "task.log.delta", "task.iteration.start", "task.iteration.end", "task.git.commit",
-  "chat.message", "chat.message.delta", "chat.tool_call", "chat.tool_call.extra", "chat.log", "chat.log.delta",
-  "agent.run.message", "agent.run.message.delta", "agent.run.tool_call", "agent.run.tool_call.extra",
-  "agent.run.log", "agent.run.log.delta",
-]);
-
-export function isWorkspaceRealtimeEvent(value: unknown): value is ClankyRealtimeEvent {
-  if (!value || typeof value !== "object" || !("type" in value) || typeof value.type !== "string") return false;
-  if ("resource" in value && typeof value.resource === "string"
-    && WORKSPACE_REALTIME_RESOURCE_KINDS[value.resource]
-    && "action" in value && (value.action === "changed" || value.action === "deleted")) {
-    return value.type === `${value.resource}.${value.action}`;
-  }
-  return WORKSPACE_STREAM_TYPES.has(value.type);
-}
 
 type ResourceAction = Extract<RealtimeAction, "changed" | "deleted">;
 

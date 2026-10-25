@@ -3,7 +3,7 @@
  */
 import type { ClankyOperationService } from "./clanky-operation-service";
 import type { LiveVoiceActions, ConfirmationContinuation, ConfirmedWriteExecutor } from "./live-voice-actions";
-import { compactResource, isReadRecord, readBytes } from "./resource-read-service";
+import { compactResource, isReadRecord, readBytes } from "../client-sdk/collaboration/resource-read";
 import { DomainError } from "../domain/domain-error";
 import { ExecutionHostRefSchema } from "@/contracts/schemas/execution-host";
 import { getExecutionHostSourceId } from "@/shared/execution-host";

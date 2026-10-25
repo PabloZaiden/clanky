@@ -2,18 +2,14 @@
  * Local pairing lifecycle; the accepting user owns only credentials and trust.
  */
 
-import { randomUUID } from "node:crypto";
 import type {
   CollaborationConnection,
   CollaborationConnectionChange,
-  CollaborationGuestGrant,
 } from "@/shared/collaboration";
-import { COLLABORATION_PROTOCOL_VERSION } from "@/shared/collaboration";
 import {
-  CollaborationGuestGrantSchema,
-  CreateCollaborationConnectionSchema,
   type CreateCollaborationConnection,
 } from "@/contracts/schemas/collaboration";
+import { createPendingCollaborationPairing } from "../client-sdk/collaboration/pairing-state";
 import { DomainError } from "../domain/domain-error";
 import { decryptPersistedSecret, encryptPersistedSecret } from "../persistence/encrypted-secret";
 import {
@@ -30,7 +26,6 @@ import { requireCollaborationLocalUserId } from "./collaboration-authority";
 import {
   createCollaborationSigner,
   generateCollaborationIdentity,
-  parseCollaborationInput,
   validateCollaborationIdentity,
 } from "./collaboration-identity";
 import { CollaborationSubscriptions } from "./collaboration-subscriptions";
@@ -41,49 +36,20 @@ export interface CollaborationConnectionIdentity {
 }
 
 export class CollaborationConnections {
-  private mutationTail: Promise<void> = Promise.resolve();
   private readonly changes = new CollaborationSubscriptions<CollaborationConnectionChange>();
 
   async createPendingConnection(input: CreateCollaborationConnection): Promise<CollaborationConnection> {
     const localUserId = requireCollaborationLocalUserId();
-    const parsed = parseCollaborationInput(CreateCollaborationConnectionSchema, input);
-    const controller = validateCollaborationIdentity(parsed.controller);
-    const previous = this.mutationTail;
-    let release: () => void = () => {};
-    this.mutationTail = new Promise<void>((resolve) => { release = resolve; });
-    await previous;
-    try {
-      const generated = generateCollaborationIdentity();
-      const now = new Date();
-      const connection: CollaborationConnection = {
-        id: randomUUID(), name: parsed.name ?? null, controller,
-        protocolVersion: COLLABORATION_PROTOCOL_VERSION,
-        relayUrl: parsed.relayUrl, relayFingerprint: parsed.relayFingerprint,
-        identity: generated.identity, guestId: null, status: "pending",
-        createdAt: now.toISOString(),
-        pendingExpiresAt: new Date(now.getTime() + 86_400_000).toISOString(),
-      };
-      const encrypted = await encryptPersistedSecret(generated.privateKey);
-      insertCollaborationConnection(localUserId, connection, encrypted);
-      return connection;
-    } finally {
-      release();
-    }
+    const generated = generateCollaborationIdentity();
+    const connection = await createPendingCollaborationPairing(input, generated.identity);
+    const encrypted = await encryptPersistedSecret(generated.privateKey);
+    insertCollaborationConnection(localUserId, connection, encrypted);
+    return connection;
   }
 
-  activateConnection(connectionId: string, input: CollaborationGuestGrant): CollaborationConnection {
+  activateConnection(connectionId: string, guestId: string, expectedRevision: string): CollaborationConnection {
     const localUserId = requireCollaborationLocalUserId();
-    const connection = requireCollaborationConnection(localUserId, connectionId);
-    const grant = parseCollaborationInput(CollaborationGuestGrantSchema, input);
-    validateCollaborationIdentity(grant.identity);
-    if (grant.revokedAt !== null || grant.workspaceIds.length === 0
-      || grant.identity.nodeId !== connection.identity.nodeId
-      || grant.identity.publicKey !== connection.identity.publicKey
-      || grant.identity.fingerprint !== connection.identity.fingerprint
-      || grant.relayUrl !== connection.relayUrl || grant.relayFingerprint !== connection.relayFingerprint) {
-      throw new DomainError("collaboration_grant_mismatch", "The guest grant does not match this connection.");
-    }
-    const active = activateCollaborationConnection(localUserId, connectionId, grant.id, new Date().toISOString());
+    const active = activateCollaborationConnection(localUserId, connectionId, guestId, expectedRevision);
     this.changes.publish({ localUserId, connectionId, status: "active" });
     return active;
   }
@@ -123,15 +89,15 @@ export class CollaborationConnections {
     };
   }
 
-  revokeConnection(connectionId: string): void {
+  revokeConnection(connectionId: string, expectedRevision: string): void {
     const localUserId = requireCollaborationLocalUserId();
-    revokeCollaborationConnection(localUserId, connectionId);
+    revokeCollaborationConnection(localUserId, connectionId, expectedRevision);
     this.changes.publish({ localUserId, connectionId, status: "revoked" });
   }
 
-  deleteConnection(connectionId: string): void {
+  deleteConnection(connectionId: string, expectedRevision: string): void {
     const localUserId = requireCollaborationLocalUserId();
-    deleteCollaborationConnection(localUserId, connectionId);
+    deleteCollaborationConnection(localUserId, connectionId, expectedRevision);
     this.changes.publish({ localUserId, connectionId, status: "deleted" });
   }
 

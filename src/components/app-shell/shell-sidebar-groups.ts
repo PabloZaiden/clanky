@@ -37,6 +37,7 @@ import {
 } from "./shell-sidebar-server";
 import type { AgentSidebarContext } from "./shell-sidebar-agent";
 import type { WorkspaceSidebarContext } from "./shell-sidebar-workspace";
+import { getClankyClientCapabilities } from "../../client-sdk/capabilities";
 
 export interface SidebarDomainBuilderContexts {
   chat: ChatSidebarContext;
@@ -70,6 +71,7 @@ export function buildSidebarDomainNodes({
   agents,
   contexts,
 }: BuildSidebarDomainNodesOptions): SidebarNode[] {
+  const capabilities = getClankyClientCapabilities();
   const activeWork = buildActiveWorkSidebarItems(sidebarWorkspaceGroups, { executionHostNodes }).map((item): SidebarNode => {
     if (item.kind === "task") {
       return createTaskSidebarNode({
@@ -185,12 +187,12 @@ export function buildSidebarDomainNodes({
       type: "section" as const,
       id: "workspaces",
       title: "Workspaces",
-      action: {
+      action: capabilities.workspaceCreation ? {
         id: "new-workspace",
         title: "New workspace",
         label: "New",
         route: { view: "compose", kind: "workspace" },
-      },
+      } : undefined,
       children: workspaceNodes,
     },
     ...(archivedWorkspaceNodes.length > 0 ? [{
@@ -199,7 +201,7 @@ export function buildSidebarDomainNodes({
       title: "Archived",
       children: archivedWorkspaceNodes,
     }] : []),
-    {
+    ...(capabilities.executionHosts ? [{
       type: "section" as const,
       id: "ssh-servers",
       title: "Servers",
@@ -210,6 +212,6 @@ export function buildSidebarDomainNodes({
         route: { view: "compose", kind: "ssh-server" },
       },
       children: unifiedServerNodes,
-    },
+    }] : []),
   ];
 }

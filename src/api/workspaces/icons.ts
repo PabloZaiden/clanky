@@ -8,7 +8,7 @@ import {
   WorkspaceIconCandidateQuerySchema,
   WorkspaceIconCandidateRequestSchema,
 } from "@/contracts/schemas";
-import { CLANKY_REALTIME_RESOURCES } from "../../realtime";
+import { CLANKY_REALTIME_RESOURCES } from "@/shared/realtime";
 import { DomainError, isDomainError } from "../../domain/domain-error";
 import {
   getWorkspaceIconContent,

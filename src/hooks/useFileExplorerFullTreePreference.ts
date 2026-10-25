@@ -5,6 +5,8 @@
 import { useCallback, useEffect, useRef } from "react";
 import { createLogger } from "@pablozaiden/webapp/web";
 import { apiRequest } from "../lib/api-client";
+import { browserPreferences } from "../client-sdk/browser-preferences";
+import { isBrowserCollaborationClient } from "../client-sdk/browser-runtime";
 import {
   usePreferenceLifecycle,
   type PreferenceErrorContext,
@@ -22,6 +24,7 @@ export interface UseFileExplorerFullTreePreferenceResult {
 export function useFileExplorerFullTreePreference(): UseFileExplorerFullTreePreferenceResult {
   const log = createLogger("useFileExplorerFullTreePreference");
   const loadPreference = useCallback(async (signal: AbortSignal): Promise<boolean> => {
+    if (isBrowserCollaborationClient()) return browserPreferences.fullTree.read(signal);
     const data = await apiRequest<{ enabled: boolean }>("/api/preferences/file-explorer-full-tree", {
       signal,
       action: "Load file explorer full-tree preference",
@@ -34,6 +37,10 @@ export function useFileExplorerFullTreePreference(): UseFileExplorerFullTreePref
     nextEnabled: boolean,
     signal: AbortSignal,
   ): Promise<void> => {
+    if (isBrowserCollaborationClient()) {
+      browserPreferences.fullTree.write(nextEnabled, signal);
+      return;
+    }
     await apiRequest("/api/preferences/file-explorer-full-tree", {
       signal,
       method: "PUT",
@@ -60,6 +67,7 @@ export function useFileExplorerFullTreePreference(): UseFileExplorerFullTreePref
     load: loadPreference,
     save: savePreference,
     onError: handlePreferenceError,
+    subscribe: isBrowserCollaborationClient() ? browserPreferences.fullTree.subscribe : undefined,
   });
 
   const enabledRef = useRef(preference.value);

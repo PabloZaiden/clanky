@@ -4,7 +4,8 @@
 
 import { apiRequest } from "../lib/api-client";
 import { isApiErrorCode } from "../lib/api-error";
-import { appResourceUrl } from "../lib/public-path";
+import { appResourceUrl, appSaveResource } from "../lib/public-path";
+import type { WebAppResourceUrl } from "@pablozaiden/webapp/web";
 import {
   getStoredSshCredentialTokenLease,
   getStoredSshServerCredential,
@@ -335,19 +336,13 @@ export async function getFileExplorerFileMetadataApi(
   });
 }
 
-export async function readFileExplorerImagePreviewApi(
+export async function getFileExplorerImagePreviewResource(
   target: FileExplorerTarget,
   path: string,
   options?: WorkspaceFileRequestOptions,
-): Promise<Blob> {
-  const searchParams = buildFileExplorerSearchParams(target, {
-    path,
-  }, options);
-  return await requestFileExplorerBlob(
-    `${getFileExplorerBasePath(target)}/preview?${searchParams.toString()}`,
-    await buildFileExplorerRequestInit(target, options),
-    "Load file explorer image preview",
-  );
+): Promise<WebAppResourceUrl> {
+  const resource = await resolveFileExplorerResourcePath(target, path, "preview", options);
+  return await appResourceUrl(resource.path, "resource", { signal: options?.signal });
 }
 
 export interface FileExplorerVideoPreviewResource {
@@ -359,12 +354,12 @@ interface FileExplorerResourceUrlOptions extends WorkspaceFileRequestOptions {
   refreshSshCredential?: boolean;
 }
 
-async function getFileExplorerResourceUrl(
+async function resolveFileExplorerResourcePath(
   target: FileExplorerTarget,
   path: string,
-  resource: "download" | "video-preview",
+  resource: "download" | "video-preview" | "preview",
   options?: FileExplorerResourceUrlOptions,
-): Promise<FileExplorerVideoPreviewResource> {
+): Promise<{ path: string; credentialExpiresAt: number | null }> {
   const searchParams = buildFileExplorerSearchParams(target, {
     path,
   }, options);
@@ -376,25 +371,20 @@ async function getFileExplorerResourceUrl(
     searchParams.set("credentialToken", credential.credentialToken);
     credentialExpiresAt = credential.expiresAt;
   }
-  const authenticated = await appResourceUrl(
-    `${getFileExplorerBasePath(target)}/${resource}?${searchParams.toString()}`,
-    "resource",
-    { signal: options?.signal },
-  );
   return {
-    url: authenticated.url,
-    credentialExpiresAt: credentialExpiresAt === null ? authenticated.expiresAt
-      : authenticated.expiresAt === null ? credentialExpiresAt : Math.min(credentialExpiresAt, authenticated.expiresAt),
+    path: `${getFileExplorerBasePath(target)}/${resource}?${searchParams.toString()}`,
+    credentialExpiresAt,
   };
 }
 
-export async function getFileExplorerDownloadUrl(
+export async function saveFileExplorerFileApi(
   target: FileExplorerTarget,
   path: string,
+  name: string,
   options?: WorkspaceFileRequestOptions,
-): Promise<string> {
-  const resource = await getFileExplorerResourceUrl(target, path, "download", options);
-  return resource.url;
+): Promise<void> {
+  const resource = await resolveFileExplorerResourcePath(target, path, "download", options);
+  await appSaveResource(resource.path, { suggestedName: name, signal: options?.signal });
 }
 
 export async function getFileExplorerVideoPreviewUrl(
@@ -402,7 +392,13 @@ export async function getFileExplorerVideoPreviewUrl(
   path: string,
   options?: FileExplorerResourceUrlOptions,
 ): Promise<FileExplorerVideoPreviewResource> {
-  return await getFileExplorerResourceUrl(target, path, "video-preview", options);
+  const resource = await resolveFileExplorerResourcePath(target, path, "video-preview", options);
+  const authenticated = await appResourceUrl(resource.path, "resource", { signal: options?.signal });
+  return {
+    url: authenticated.url,
+    credentialExpiresAt: resource.credentialExpiresAt === null ? authenticated.expiresAt
+      : authenticated.expiresAt === null ? resource.credentialExpiresAt : Math.min(resource.credentialExpiresAt, authenticated.expiresAt),
+  };
 }
 
 export async function downloadFileExplorerFileApi(

@@ -2,14 +2,10 @@
  * Sub-hook for app config, version, and server-level actions.
  */
 
-import { useState, useCallback, useEffect } from "react";
-import type {
-  AppConfig,
-  HealthResponse,
-} from "@/contracts";
-import { createLogger, useToast } from "@pablozaiden/webapp/web";
+import { useState, useCallback } from "react";
+import { createLogger, useToast, type WebAppConfigState } from "@pablozaiden/webapp/web";
 import { apiRequest } from "../../lib/api-client";
-import { setConfiguredPublicBasePath } from "../../lib/public-path";
+import { isBrowserCollaborationClient } from "@/client-sdk/browser-runtime";
 import { purgeTerminalTasksApi, type PurgeTerminalTasksResult } from "../taskActions";
 
 const log = createLogger("useAppConfig");
@@ -23,55 +19,13 @@ export interface UseAppConfigResult {
   purgeTerminalTasks: () => Promise<PurgeTerminalTasksResult | null>;
 }
 
-export function useAppConfig(): UseAppConfigResult {
+export function useAppConfig(config: WebAppConfigState["config"]): UseAppConfigResult {
   const toast = useToast();
 
-  const [remoteOnly, setRemoteOnly] = useState(false);
-  const [version, setVersion] = useState<string | null>(null);
+  const remoteOnly = isBrowserCollaborationClient() || Boolean(config && "remoteOnly" in config && config.remoteOnly === true);
+  const version = config?.version ?? null;
   const [appSettingsResetting, setAppSettingsResetting] = useState(false);
   const [appSettingsPurgingTerminalTasks, setAppSettingsPurgingTerminalTasks] = useState(false);
-
-  useEffect(() => {
-    let active = true;
-    void (async () => {
-      try {
-        const config = await apiRequest<AppConfig>("/api/config", {
-          action: "Load app configuration",
-          fallbackMessage: "Failed to load app configuration",
-        });
-        if (!active) {
-          return;
-        }
-        setConfiguredPublicBasePath(config.publicBasePath ?? undefined);
-        setRemoteOnly(config.remoteOnly);
-      } catch {
-        // Configuration is optional during initial startup; keep the defaults.
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    void (async () => {
-      try {
-        const data = await apiRequest<HealthResponse>("/api/health", {
-          action: "Load server health",
-          fallbackMessage: "Failed to load server health",
-        });
-        if (active) {
-          setVersion(data.version);
-        }
-      } catch {
-        // Health is informational; leave the version unset when unavailable.
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, []);
 
   const resetAllSettings = useCallback(async () => {
     setAppSettingsResetting(true);

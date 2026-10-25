@@ -16,6 +16,7 @@ export interface AgentFormFieldsProps {
   mode: AgentFormMode;
   initialWorkspace: Workspace | null;
   draft: AgentFormDraft;
+  schedulerTimezone: string | null;
   workspaces: Workspace[];
   workspacesLoading: boolean;
   workspaceError: string | null;
@@ -42,6 +43,7 @@ export function AgentFormFields({
   mode,
   initialWorkspace,
   draft,
+  schedulerTimezone,
   workspaces,
   workspacesLoading,
   workspaceError,
@@ -140,12 +142,13 @@ export function AgentFormFields({
       <div className="flex flex-wrap items-end gap-3">
         <div>
           <label htmlFor="agent-start-at" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-            Start at
+            Start at{schedulerTimezone ? ` (${schedulerTimezone})` : ""}
           </label>
           <input
             id="agent-start-at"
             className={`${compactInputClassName} w-56`}
             type="datetime-local"
+            disabled={!schedulerTimezone}
             value={draft.startAtLocal}
             onChange={(event) => setStartAtLocal(event.target.value)}
             required
