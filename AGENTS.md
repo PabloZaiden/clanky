@@ -52,19 +52,14 @@ new generation; do not mix cleanup with wire-contract changes.
   `patchedDependencies`, or manual edits to installed packages. If Clanky needs
   missing `@pablozaiden/webapp` functionality or a framework fix, implement it
   upstream instead of adding a local patch or app-owned workaround.
-- During development, accumulate related webapp changes on a dedicated pushed
-  upstream branch for one eventual PR. Clanky may temporarily depend on that
-  GitHub branch or an unreleased commit to validate the integrated application;
-  a development tag is not required. Prefer an explicit commit SHA for
-  reproducibility and update `package.json` and `bun.lock` together as work
-  advances. Validate Clanky against each consumed revision, preserving existing
-  functionality. This exception does not permit local dependency patches.
-- Before opening the final Clanky PR, complete the upstream webapp PR and
-  publish a stable release containing the changes. Replace every temporary
-  branch/commit dependency with that released tag, refresh the lockfile, and
-  rerun the required validation against the release. The final PR must not
-  contain development-only webapp dependency references. If the release is
-  unavailable, report the blocker and do not open the final Clanky PR.
+- Accumulate related webapp changes on a dedicated pushed upstream branch for
+  one eventual PR. Consume first-party dependencies directly from GitHub;
+  commits, branches, and release tags are supported, including in final PRs.
+  Prefer an explicit commit SHA for reproducibility and update `package.json`
+  and `bun.lock` together. Validate Clanky against each consumed revision,
+  preserving existing functionality. Intermediate stable releases are not
+  required. This does not permit local dependency patches or npm publication
+  of first-party packages.
 - Use the webapp public `useTheme()` hook for JavaScript integrations that need preference or resolved theme state. Never observe or mutate framework-owned root classes or DOM nodes to infer the resolved theme; prefer CSS theme variants when JavaScript state is unnecessary.
 - Keep Clanky as one app and one binary. Use `clanky serve` for the server and `clanky <subcommand>` for CLI commands; do not reintroduce a separate `clanky-cli` binary.
 - Use `bun --hot src/index.ts serve` for development; do not add Vite, a separate web dev server, or `CLANKY_WEB_DIST_DIR` for dev.

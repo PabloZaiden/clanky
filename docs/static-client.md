@@ -48,8 +48,10 @@ Every push to `main` publishes both clients together:
 | https://pablozaiden.github.io/clanky/collaboration/ | Accept a controller invitation through its HTTPS relay |
 
 The [site root](https://pablozaiden.github.io/clanky/) links both clients and
-the deployed commit. Its `build-info.json` records the full source revision and
-build timestamp. These deployments follow `main`, not the latest stable release;
+the deployed commit. Its `build-info.json` records the full source revision,
+client version and build timestamp. Sidebar and Settings / About show the
+client's own embedded build version, including in collaboration mode without
+a server connection. These deployments follow `main`, not the latest stable release;
 compare the deployed commit when investigating browser behavior or API
 compatibility. Reload the page after deployment to pick up the new frontend.
 

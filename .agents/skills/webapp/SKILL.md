@@ -35,6 +35,9 @@ the application being built; they are not expected to exist beside this skill.
 
 ## Rules
 
+- Consume first-party webapp/installer packages from GitHub commits or tags, not npm. Prefer immutable SHAs and update manifests/lockfiles together; final integrations do not require intermediate releases.
+- Build main binaries with installer's `release_channel: latest`; keep stable installs as the default and let latest builds retain their update channel. Use framework `update --channel latest|stable`, not app-owned updater logic.
+- Pass the application's build `version` to `buildWebAppClient` for static clients; preserve it when changing bootstrap mode so sidebar/About identify the client without a server.
 - Treat a UI app as one Bun server that serves React, API routes, and websockets together. Use `web: false` only for API/WebSocket-only processes.
 - Do not add Vite or a standalone client dev server.
 - Use `bun --hot src/index.ts serve` for dev.

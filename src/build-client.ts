@@ -1,6 +1,7 @@
 import { buildWebAppClient } from "@pablozaiden/webapp/build";
 import { CLANKY_WEB_OPTIONS } from "./web-client-options";
 import { writeClientOperationCatalog } from "./client-operation-catalog";
+import { CLANKY_VERSION } from "./version";
 
 export async function buildClient(options?: {
   outdir: string;
@@ -15,6 +16,7 @@ export async function buildClient(options?: {
   return await buildWebAppClient({
     ...CLANKY_WEB_OPTIONS,
     appName: "Clanky",
+    version: CLANKY_VERSION,
     outdir: options?.outdir ?? "dist/client",
     apiBaseUrl: options ? options.apiBaseUrl : process.env["CLANKY_CLIENT_API_URL"],
     clientMode: mode,

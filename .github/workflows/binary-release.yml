@@ -1,12 +1,15 @@
 name: Build and Release Binaries
 
 on:
+  push:
+    branches: [main]
   release:
     types:
       - published
 
 jobs:
   metadata:
+    if: github.event_name != 'release' || github.event.release.tag_name != 'latest'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -38,13 +41,14 @@ jobs:
 
   binaries:
     needs: metadata
-    uses: pablozaiden/installer/.github/workflows/reusable-binary-release.yml@b47bdc7e7721c12c9b6b8e5e0a97c045bf526a9b # installer v0.2.0
+    uses: pablozaiden/installer/.github/workflows/reusable-binary-release.yml@bd5fa6697c003e620d8d7b92734aea506f31e3fa
     permissions:
       contents: write
     secrets:
       macos_signing_certificate_base64: ${{ secrets.CLANKY_MACOS_SIGNING_CERT_BASE64 }}
       macos_signing_certificate_password: ${{ secrets.CLANKY_MACOS_SIGNING_CERT_PASSWORD }}
     with:
+      release_channel: ${{ github.event_name == 'push' && 'latest' || 'stable' }}
       install_command: bun install --frozen-lockfile
       prebuild_command: bun run build
       targets: ${{ needs.metadata.outputs.targets }}

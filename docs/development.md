@@ -106,10 +106,16 @@ stable notification method, not the reactive service object containing the
 notification list.
 
 Accumulate webapp work on one pushed upstream branch for one eventual PR.
-During development, Clanky may consume a GitHub branch or exact commit;
+Clanky may consume a GitHub branch, exact commit, or release tag;
 prefer the SHA and update `package.json`/`bun.lock` together. Never patch the
-installed dependency. Before the final Clanky PR, finish the upstream PR,
-publish a stable release, switch to that release and repeat validation.
+installed dependency. Final integration PRs may retain commit references;
+intermediate releases are not required. First-party packages are consumed
+directly from GitHub, not published to npm.
+
+Binary workflows publish every main push to a single rolling `latest`
+prerelease, with a unique embedded build version, checksums and the existing
+macOS signing configuration. Deliberate versioned releases remain separate.
+See [Binary installation and update channels](binary-updates.md).
 
 Screenshots, capture manifests and review notes are disposable working material.
 Keep them in a git-ignored location, not in documentation or commits.
