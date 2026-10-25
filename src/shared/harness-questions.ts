@@ -16,6 +16,7 @@ export interface HarnessQuestionRequest {
   createdAt: string;
   resolvedAt?: string;
   answers?: string[][];
+  attachmentIds?: string[][];
   error?: string;
   transcript?: {
     questionMessageId: string;
@@ -28,6 +29,7 @@ export interface QuestionMessageData {
   requestId: string;
   scope: HarnessEventScope;
   status: HarnessQuestionRequest["status"];
+  imageDelivery?: "file";
 }
 
 export function formatHarnessQuestions(questions: QuestionInfo[], context?: string): string {
@@ -39,7 +41,9 @@ export function formatHarnessQuestions(questions: QuestionInfo[], context?: stri
 
 export function formatHarnessAnswers(request: HarnessQuestionRequest): string {
   return request.questions.map((question, index) => {
-    const answer = request.answers?.[index]?.join(", ") || "(No answer provided)";
+    const imageCount = request.attachmentIds?.[index]?.length ?? 0;
+    const answer = request.answers?.[index]?.join(", ")
+      || (imageCount ? imageCount === 1 ? "(Image attached)" : `(${imageCount} images attached)` : "(No answer provided)");
     return request.questions.length === 1 ? answer : `${index + 1}. ${question.question}\n${answer}`;
   }).join("\n\n");
 }

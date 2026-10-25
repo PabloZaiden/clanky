@@ -6,6 +6,11 @@ import type { QuestionInfo } from "@/shared/harness-events";
 import { isQuestionOpen } from "@/shared/harness-questions";
 import { apiRequest } from "../../lib/api-client";
 import { getClankyClientId } from "../../lib/clanky-client-id";
+import type { ComposerAttachment } from "@/shared/message-attachments";
+import { toMessageAttachments } from "../../lib/image-attachments";
+import { ImageAttachmentControl, type ImageAttachmentControlHandle } from "../ImageAttachmentControl";
+import { getRegisteredSshServerId } from "@/shared/execution-host";
+import { getStoredSshCredentialToken } from "../../lib/ssh-browser-credentials";
 
 const actionClass = "py-1 text-xs text-gray-500 underline decoration-dotted underline-offset-2 hover:text-gray-900 disabled:opacity-50 dark:text-gray-400 dark:hover:text-gray-100";
 
@@ -14,11 +19,15 @@ function isQuestionAnswerInput(target: EventTarget | null): target is HTMLInputE
     && (target.type === "text" || target.type === "number");
 }
 
-function QuestionField({ question, index, requestId, values, custom, disabled, numbered, onValues, onCustom }: {
+function QuestionField({ question, index, requestId, values, custom, attachments, otherAttachments, disabled, numbered, onValues, onCustom, onAttachments, onProcessingChange }: {
   question: QuestionInfo; index: number; requestId: string; values: string[]; custom: string;
   disabled: boolean; numbered: boolean; onValues: (values: string[]) => void; onCustom: (value: string) => void;
+  attachments: ComposerAttachment[]; otherAttachments: ComposerAttachment[];
+  onAttachments: (attachments: ComposerAttachment[]) => void; onProcessingChange: (processing: boolean) => void;
 }) {
   const name = `question-${requestId}-${index}`;
+  const attachmentControl = useRef<ImageAttachmentControlHandle>(null);
+  const imagesEnabled = question.custom !== false && question.valueType !== "number" && question.valueType !== "integer";
   return (
     <fieldset disabled={disabled} aria-label={numbered ? `Answer ${index + 1}` : "Answer"} className="min-w-0 space-y-2">
       {numbered && <legend className="text-sm font-medium">{index + 1}.</legend>}
@@ -30,7 +39,7 @@ function QuestionField({ question, index, requestId, values, custom, disabled, n
               onValues(question.multiple
                 ? event.target.checked ? [...values, option.label] : values.filter((value) => value !== option.label)
                 : [option.label]);
-              if (!question.multiple) onCustom("");
+              if (!question.multiple) { onCustom(""); onAttachments([]); }
             }} />
           <span className="min-w-0 break-words">{option.label}
             {option.description && <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">{option.description}</span>}
@@ -45,8 +54,25 @@ function QuestionField({ question, index, requestId, values, custom, disabled, n
             step={question.valueType === "integer" ? 1 : "any"} min={question.minimum} max={question.maximum}
             minLength={question.minLength} maxLength={question.maxLength}
             className="mt-1 block w-full rounded border border-gray-200 bg-transparent px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:text-gray-100"
-            value={custom} onChange={(event) => { onCustom(event.target.value); if (!question.multiple) onValues([]); }} />
+            value={custom}
+            onPaste={imagesEnabled ? (event) => attachmentControl.current?.handlePaste(event) : undefined}
+            onChange={(event) => { onCustom(event.target.value); if (!question.multiple) onValues([]); }} />
         </label>
+      )}
+      {imagesEnabled && (
+        <ImageAttachmentControl
+          ref={attachmentControl}
+          attachments={attachments}
+          otherAttachments={otherAttachments}
+          imagesOnly
+          onChange={(next) => {
+            onAttachments(next);
+            if (next.length && !question.multiple) onValues([]);
+          }}
+          onProcessingChange={onProcessingChange}
+          disabled={disabled}
+          showTrigger={false}
+        />
       )}
     </fieldset>
   );
@@ -63,6 +89,8 @@ function QuestionForm({
 }) {
   const [values, setValues] = useState<string[][]>(() => request.questions.map(() => []));
   const [custom, setCustom] = useState<string[]>(() => request.questions.map(() => ""));
+  const [attachments, setAttachments] = useState<ComposerAttachment[][]>(() => request.questions.map(() => []));
+  const [processing, setProcessing] = useState<boolean[]>(() => request.questions.map(() => false));
   const [submitting, setSubmitting] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [error, setError] = useState<string>();
@@ -72,22 +100,32 @@ function QuestionForm({
   const answers = values.map((selection, index) => custom[index]?.trim() ? [...selection, custom[index]!.trim()] : selection);
 
   async function submit(): Promise<void> {
-    if (disabled) return;
+    if (disabled || processing.some(Boolean)) return;
     const controller = new AbortController();
     operation.current = controller;
     setSubmitting(true);
     setError(undefined);
     try {
+      const serverId = request.conversation.executionHost
+        ? getRegisteredSshServerId(request.conversation.executionHost.host)
+        : null;
+      const credentialToken = serverId ? await getStoredSshCredentialToken(serverId) : null;
       const { chat } = await apiRequest<{ chat: Chat }>(
         `/api/chats/${encodeURIComponent(chatId)}/questions/${encodeURIComponent(request.requestId)}`,
         {
           method: "POST",
-          body: JSON.stringify({ answers, clientId: getClankyClientId() }),
+          body: JSON.stringify({
+            answers,
+            attachments: attachments.map(toMessageAttachments),
+            clientId: getClankyClientId(),
+            credentialToken,
+          }),
           headers: { "content-type": "application/json" },
           signal: controller.signal, action: "Answer chat question",
         },
       );
       onChatSnapshot(chat);
+      setAttachments(request.questions.map(() => []));
     } catch (failure) {
       if (!controller.signal.aborted) setError(String(failure));
     } finally {
@@ -123,12 +161,15 @@ function QuestionForm({
       {request.questions.map((question, index) => (
         <QuestionField key={index} question={question} index={index} requestId={request.requestId}
           numbered={request.questions.length > 1}
-          values={values[index]!} custom={custom[index]!} disabled={disabled}
+          values={values[index]!} custom={custom[index]!} disabled={disabled || processing[index]!}
+          attachments={attachments[index]!} otherAttachments={attachments.flatMap((group, position) => position === index ? [] : group)}
           onValues={(selection) => setValues((current) => current.map((value, position) => position === index ? selection : value))}
+          onAttachments={(images) => setAttachments((current) => current.map((value, position) => position === index ? images : value))}
+          onProcessingChange={(busy) => setProcessing((current) => current.map((value, position) => position === index ? busy : value))}
           onCustom={(text) => setCustom((current) => current.map((value, position) => position === index ? text : value))} />
       ))}
       {(request.error ?? error) && <ErrorState title="Question could not be updated" description={request.error ?? error} />}
-      <button type="button" className={actionClass} disabled={disabled || answers.some((answer, index) => !answer.length && request.questions[index]!.required !== false)} onClick={() => void submit()}>
+      <button type="button" className={actionClass} disabled={disabled || processing.some(Boolean) || answers.some((answer, index) => !answer.length && !attachments[index]!.length && request.questions[index]!.required !== false)} onClick={() => void submit()}>
         {submitting || request.status === "submitting" ? "Sending answer"
           : request.status === "queued" ? "Answer queued" : request.status === "unconfirmed" ? "Delivery unconfirmed" : "Send answer"}
       </button>

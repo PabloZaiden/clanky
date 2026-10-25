@@ -30,12 +30,14 @@ import { executionHostService } from "./execution-host-service";
 import { GitService } from "./git";
 import { ManagedPathService } from "./managed-path-service";
 import { sshCredentialManager } from "./ssh-credential-manager";
+import type { QuestionMessageData } from "@/shared/harness-questions";
 
 const log = createLogger("conversation-attachments");
 
 interface AttachmentMessage {
   id: string;
   attachments?: readonly MessageAttachment[];
+  question?: QuestionMessageData;
 }
 
 interface MaterializeOptions {
@@ -85,7 +87,7 @@ export class ConversationAttachmentService {
   }): AttachmentFileReference[] {
     const paths = new ManagedPathService(options.pathStyle);
     return (options.message.attachments ?? []).flatMap((attachment, index) =>
-      getMessageAttachmentKind(attachment) === "image" ? [] : [{
+      getMessageAttachmentKind(attachment) === "image" && options.message.question?.imageDelivery !== "file" ? [] : [{
         attachmentIndex: index,
         path: paths.getConversationAttachmentPath({
           directory: options.directory,
@@ -122,7 +124,8 @@ export class ConversationAttachmentService {
       assertAttachmentContextActive(options.context);
       let context: MaterializationContext | undefined;
       const prepare = async (message: AttachmentMessage): Promise<AttachmentFileReference[]> => {
-        if (!message.attachments?.some((attachment) => getMessageAttachmentKind(attachment) === "file")) return [];
+        if (!message.attachments?.some((attachment) =>
+          getMessageAttachmentKind(attachment) === "file" || message.question?.imageDelivery === "file")) return [];
         context ??= await this.open(options);
         return await this.materializeMessage(context, message);
       };

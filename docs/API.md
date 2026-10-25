@@ -658,9 +658,21 @@ question, with multiple values only for multiple-selection fields. Optional
 fields may use an empty array. Numeric bounds and supported string/selection
 constraints are validated before native admission.
 
+An optional `attachments` array has the same question ordering as `answers`:
+each entry is an array of `{ id, filename, mimeType, data, size }` images, or
+`[]` for an answer without images. Only custom text answers accept PNG, JPEG,
+WebP and GIF; an empty text answer may contain images unless explicit text or
+selection constraints require a value. The 20-attachment and 60-MiB limits
+apply to the whole response, not separately to each question. Images are
+retained in the answer transcript. Message-based questions deliver them inline;
+text-only native callbacks receive references to copies on the selected
+execution host. See [Images in question answers](attachments.md#images-in-question-answers).
+Registered SSH hosts may supply the usual transient `credentialToken`.
+
 The response contains the current `chat`. Invalid answers return 400, a missing
 owned request returns 404, and a closed or conflicting reply returns 409.
-Repeating the same confirmed answer is idempotent. `submitting` and `unconfirmed`
+Repeating the same confirmed answer, including image content and question
+association, is idempotent. `submitting` and `unconfirmed`
 requests cannot be resent; native acknowledgement and model continuation are
 different outcomes. Stop the chat or reconnect after uncertain delivery.
 Interrupt, disconnect and restart expire callbacks that are no longer live.

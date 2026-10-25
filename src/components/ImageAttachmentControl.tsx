@@ -14,7 +14,11 @@ import type { ComposerAttachment } from "@/shared/message-attachments";
 import {
   getMessageAttachmentExtension,
   getMessageAttachmentKind,
+  getMessageAttachmentByteLength,
   MESSAGE_ATTACHMENT_LIMIT,
+  MESSAGE_ATTACHMENT_MAX_TURN_BYTES,
+  MESSAGE_ATTACHMENT_MAX_TURN_MIB,
+  MESSAGE_IMAGE_ACCEPT,
 } from "@/shared/message-attachments";
 import {
   createComposerAttachments,
@@ -45,6 +49,9 @@ interface ImageAttachmentControlProps {
   showClipboardTrigger?: boolean;
   /** Receives ordinary clipboard text when no file is present. */
   onClipboardText?: (text: string) => void;
+  imagesOnly?: boolean;
+  otherAttachments?: ComposerAttachment[];
+  onProcessingChange?: (processing: boolean) => void;
 }
 
 export interface ImageAttachmentControlHandle {
@@ -180,11 +187,18 @@ function ImageAttachmentControlInner({
   showTrigger = true,
   showClipboardTrigger = false,
   onClipboardText,
+  imagesOnly = false,
+  otherAttachments = [],
+  onProcessingChange,
 }: ImageAttachmentControlProps, ref: ForwardedRef<ImageAttachmentControlHandle>) {
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const attachmentsRef = useRef<ComposerAttachment[]>(attachments);
   const clipboardReadInProgressRef = useRef(false);
+  const pendingFileReadsRef = useRef(0);
+  const mountedRef = useRef(true);
+  const otherAttachmentsRef = useRef(otherAttachments);
+  otherAttachmentsRef.current = otherAttachments;
   const [error, setError] = useState<string | null>(null);
   const [isReadingClipboard, setIsReadingClipboard] = useState(false);
 
@@ -204,7 +218,9 @@ function ImageAttachmentControlInner({
   }, [attachments]);
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
       revokeComposerAttachments(attachmentsRef.current);
     };
   }, []);
@@ -218,21 +234,40 @@ function ImageAttachmentControlInner({
       return;
     }
     setError(null);
+    pendingFileReadsRef.current += 1;
+    onProcessingChange?.(true);
 
     try {
+      if (imagesOnly && files.some((file) => getMessageAttachmentKind({ filename: file.name, mimeType: file.type }) !== "image")) {
+        throw new Error("Paste a PNG, JPEG, WebP or GIF image.");
+      }
       const nextAttachments = await createComposerAttachments(
         files,
-        attachmentsRef.current,
+        [...otherAttachmentsRef.current, ...attachmentsRef.current],
       );
-      onChange([...attachmentsRef.current, ...nextAttachments]);
+      if (!mountedRef.current) {
+        revokeComposerAttachments(nextAttachments);
+        return;
+      }
+      const updated = [...attachmentsRef.current, ...nextAttachments];
+      const combined = [...otherAttachmentsRef.current, ...updated];
+      if (combined.length > MESSAGE_ATTACHMENT_LIMIT
+        || getMessageAttachmentByteLength(combined) > MESSAGE_ATTACHMENT_MAX_TURN_BYTES) {
+        revokeComposerAttachments(nextAttachments);
+        throw new Error(`Attachments cannot exceed ${MESSAGE_ATTACHMENT_LIMIT} files or ${MESSAGE_ATTACHMENT_MAX_TURN_MIB} MiB in total.`);
+      }
+      attachmentsRef.current = updated;
+      onChange(updated);
     } catch (attachmentError) {
-      setError(String(attachmentError));
+      if (mountedRef.current) setError(String(attachmentError));
     } finally {
+      pendingFileReadsRef.current -= 1;
+      if (mountedRef.current) onProcessingChange?.(pendingFileReadsRef.current > 0);
       if (inputRef.current) {
         inputRef.current.value = "";
       }
     }
-  }, [disabled, onChange]);
+  }, [disabled, imagesOnly, onChange, onProcessingChange]);
 
   async function handleFilesSelected(fileList: FileList | null) {
     if (!fileList || fileList.length === 0) {
@@ -320,6 +355,7 @@ function ImageAttachmentControlInner({
           ref={inputRef}
           id={inputId}
           type="file"
+          accept={imagesOnly ? MESSAGE_IMAGE_ACCEPT : undefined}
           multiple
           className="hidden"
           disabled={disabled}

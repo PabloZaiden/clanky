@@ -41,6 +41,7 @@ import type {
   ChatStatePort,
   NormalizedChatMessageInput,
 } from "./chat-service-contracts";
+import type { ReplyToChatQuestionRequest } from "@/contracts/api";
 
 const log = createLogger("chat-interaction-service");
 
@@ -120,10 +121,10 @@ export class ChatInteractionService implements ChatInteractionPort {
   }
   private readonly questions?: Pick<ChatQuestionService, "reply">;
 
-  replyToQuestion(chatId: string, requestId: string, answers: string[][], clientId?: string): Promise<Chat> {
+  replyToQuestion(chatId: string, requestId: string, reply: ReplyToChatQuestionRequest): Promise<Chat> {
     return this.trackReply(async () => {
       if (!this.questions) throw new HarnessError("harness_unsupported_feature", "Chat questions are unavailable.");
-      return await this.questions.reply(chatId, requestId, answers, clientId);
+      return await this.questions.reply(chatId, requestId, reply);
     });
   }
 

@@ -9,11 +9,12 @@ import { isPersistedMessage } from "../persistence/transcripts/codec";
 import { getChatExecutionHostBinding } from "./chat-history-export-service";
 import type { ChatStatePort } from "./chat-service-contracts";
 import { conversationAttachmentService } from "./conversation-attachment-service";
+import type { QuestionMessageData } from "@/shared/harness-questions";
 
 export class ChatAttachmentService {
   constructor(private readonly state: Pick<ChatStatePort, "getWorkspace" | "iterateChatTranscriptEntries">) {}
 
-  async prepare(chat: Chat, message: { id: string; attachments?: readonly MessageAttachment[] }, options: {
+  async prepare(chat: Chat, message: { id: string; attachments?: readonly MessageAttachment[]; question?: QuestionMessageData }, options: {
     credentialToken?: string | null;
     signal?: AbortSignal;
   } = {}) {
