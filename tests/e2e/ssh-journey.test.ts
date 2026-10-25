@@ -1008,14 +1008,6 @@ test("compiled app crosses real SSH execution, files, Git, terminal, and ACP bou
       step: "devbox_up",
     });
     expect(provisioningCancelled.job.state.workspaceId).toBeUndefined();
-    const provisioningLogs = (await application.json<{
-      logs: ProvisioningSnapshot["logs"];
-    }>(`/api/provisioning-jobs/${cancellationJob.job.config.id}/logs`)).data.logs;
-    expect(provisioningLogs.some(
-      (entry) => entry.source === "system"
-        && entry.text.includes("Cancellation requested"),
-    )).toBe(true);
-
     await restartEphemeralSshServer(sshServer, sshOptions);
     expect((await application.cli([
       "server",

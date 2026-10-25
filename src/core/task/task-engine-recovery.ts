@@ -10,10 +10,7 @@ import { startStatePersistenceImpl } from "./task-state-persistence";
 import { handleFullyAutonomousCompletionImpl } from "./task-fully-autonomous";
 import { TaskOperationError } from "./task-errors";
 import { harnessActivityService } from "../harness-activity-service";
-import { KeyedOperationQueue } from "../../utils/keyed-operation-queue";
 import { runTaskLifecycleOperation } from "./task-lifecycle-operations";
-
-const completionRecovery = new KeyedOperationQueue();
 
 type NativeEngineRecoveryPurpose = "finalization" | "input-recovery";
 type OwnedNativeRecoveryPurpose = NativeEngineRecoveryPurpose | "workspace-safety";
@@ -88,31 +85,29 @@ export function recoverOwnedNativeEngineImpl(
   return runTaskLifecycleOperation(taskId, () => recoverOwnedNativeEngineLocked(ctx, taskId, purpose));
 }
 
-export function recoverOwnedNativeEngineLocked(
+export async function recoverOwnedNativeEngineLocked(
   ctx: TaskCtx,
   taskId: string,
   purpose: NativeEngineRecoveryPurpose,
 ): Promise<TaskEngine> {
-  return completionRecovery.run(taskId, async () => {
-    const existing = ctx.engines.get(taskId);
-    if (existing) return existing;
-    const { engine } = await createOwnedNativeTaskEngine(ctx, taskId, purpose);
-    try {
-      // Recovery attaches the exact owned session; it never starts another task turn.
-      await engine.reconnectSession();
-      ctx.engines.set(taskId, engine);
-      startStatePersistenceImpl(ctx, taskId);
-      return engine;
-    } catch (error) {
-      await harnessActivityService.close({ kind: "task", id: taskId });
-      await backendManager.disconnectTask(taskId);
-      throw new TaskOperationError(
-        "task_session_reconnect_failed",
-        "Cannot recover the owned native task session.",
-        { cause: error },
-      );
-    }
-  });
+  const existing = ctx.engines.get(taskId);
+  if (existing) return existing;
+  const { engine } = await createOwnedNativeTaskEngine(ctx, taskId, purpose);
+  try {
+    // Recovery attaches the exact owned session; it never starts another task turn.
+    await engine.reconnectSession();
+    ctx.engines.set(taskId, engine);
+    startStatePersistenceImpl(ctx, taskId);
+    return engine;
+  } catch (error) {
+    await harnessActivityService.close({ kind: "task", id: taskId });
+    await backendManager.disconnectTask(taskId);
+    throw new TaskOperationError(
+      "task_session_reconnect_failed",
+      "Cannot recover the owned native task session.",
+      { cause: error },
+    );
+  }
 }
 
 export function withOwnedNativeEngineForWorkspaceSafetyImpl<T>(
@@ -126,78 +121,76 @@ export function withOwnedNativeEngineForWorkspaceSafetyImpl<T>(
   );
 }
 
-export function withOwnedNativeEngineForWorkspaceSafetyLocked<T>(
+export async function withOwnedNativeEngineForWorkspaceSafetyLocked<T>(
   ctx: TaskCtx,
   taskId: string,
   operation: () => Promise<T>,
 ): Promise<T> {
-  return completionRecovery.run(taskId, async () => {
-    const existing = ctx.engines.get(taskId);
-    if (existing) {
-      const backend = backendManager.getInitializedContextBackend(taskId);
-      if (backend?.isConnected()) return await operation();
-      try {
-        await existing.reconnectSession();
-      } catch (error) {
-        ctx.engines.delete(taskId);
-        await harnessActivityService.close({ kind: "task", id: taskId });
-        await backendManager.disconnectTask(taskId);
-        throw new TaskOperationError(
-          "task_session_reconnect_failed",
-          "Cannot recover native workspace safety.",
-          { cause: error },
-        );
-      }
-      return await operation();
-    }
-
-    const { engine, createdBackend } = await createOwnedNativeTaskEngine(ctx, taskId, "workspace-safety");
+  const existing = ctx.engines.get(taskId);
+  if (existing) {
+    const backend = backendManager.getInitializedContextBackend(taskId);
+    if (backend?.isConnected()) return await operation();
     try {
-      await engine.reconnectSession({ observeHarnessActivity: false });
+      await existing.reconnectSession();
     } catch (error) {
-      if (createdBackend) {
-        try {
-          await disconnectRecoveryBackend(taskId);
-        } catch (cleanupError) {
-          log.error("Failed to release temporary native task backend after safety recovery failed", {
-            taskId,
-            error: String(cleanupError),
-          });
-        }
-      }
+      ctx.engines.delete(taskId);
+      await harnessActivityService.close({ kind: "task", id: taskId });
+      await backendManager.disconnectTask(taskId);
       throw new TaskOperationError(
         "task_session_reconnect_failed",
-        "Cannot recover the owned native task session for workspace safety.",
+        "Cannot recover native workspace safety.",
         { cause: error },
       );
     }
+    return await operation();
+  }
 
-    let operationFailed = false;
-    let operationError: unknown;
-    try {
-      return await operation();
-    } catch (error) {
-      operationFailed = true;
-      operationError = error;
-      throw error;
-    } finally {
-      if (createdBackend) {
-        try {
-          await disconnectRecoveryBackend(taskId);
-        } catch (cleanupError) {
-          if (operationFailed) {
-            log.error("Failed to release temporary native task backend after workspace safety check failed", {
-              taskId,
-              cleanupError: String(cleanupError),
-              operationError: String(operationError),
-            });
-          } else {
-            throw cleanupError;
-          }
+  const { engine, createdBackend } = await createOwnedNativeTaskEngine(ctx, taskId, "workspace-safety");
+  try {
+    await engine.reconnectSession({ observeHarnessActivity: false });
+  } catch (error) {
+    if (createdBackend) {
+      try {
+        await disconnectRecoveryBackend(taskId);
+      } catch (cleanupError) {
+        log.error("Failed to release temporary native task backend after safety recovery failed", {
+          taskId,
+          error: String(cleanupError),
+        });
+      }
+    }
+    throw new TaskOperationError(
+      "task_session_reconnect_failed",
+      "Cannot recover the owned native task session for workspace safety.",
+      { cause: error },
+    );
+  }
+
+  let operationFailed = false;
+  let operationError: unknown;
+  try {
+    return await operation();
+  } catch (error) {
+    operationFailed = true;
+    operationError = error;
+    throw error;
+  } finally {
+    if (createdBackend) {
+      try {
+        await disconnectRecoveryBackend(taskId);
+      } catch (cleanupError) {
+        if (operationFailed) {
+          log.error("Failed to release temporary native task backend after workspace safety check failed", {
+            taskId,
+            cleanupError: String(cleanupError),
+            operationError: String(operationError),
+          });
+        } else {
+          throw cleanupError;
         }
       }
     }
-  });
+  }
 }
 
 export async function recoverPlanningEngineImpl(ctx: TaskCtx, taskId: string): Promise<TaskEngine> {

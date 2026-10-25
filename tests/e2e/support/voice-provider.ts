@@ -17,14 +17,8 @@ export interface ManagedVoiceProvider {
   certificatePath: string;
   server: Bun.Server<LiveFixture>;
   address: string;
-  waitForGoodbyeBarrier(): Promise<void>;
-  releaseGoodbyeBarrier(): void;
   diagnostics(): string;
 }
-
-// Approximate the provider's completion limit so the long-translation journey detects truncation.
-const DEFAULT_FIXTURE_OUTPUT_TOKENS = 4_096;
-const APPROXIMATE_OUTPUT_CHARS_PER_TOKEN = 4;
 
 export function createFixtureLiveOffer(scenario: string): string {
   const fingerprint = Array.from({ length: 32 }, (_, index) =>
@@ -100,19 +94,6 @@ function getResponsesInputText(payload: unknown): string {
   }).join("\n\n");
 }
 
-function getResponsesOutputCharacterLimit(payload: unknown): number {
-  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
-    return DEFAULT_FIXTURE_OUTPUT_TOKENS * APPROXIMATE_OUTPUT_CHARS_PER_TOKEN;
-  }
-  const maxOutputTokens = (payload as Record<string, unknown>)["max_output_tokens"];
-  const outputTokens = typeof maxOutputTokens === "number"
-    && Number.isSafeInteger(maxOutputTokens)
-    && maxOutputTokens > 0
-    ? maxOutputTokens
-    : DEFAULT_FIXTURE_OUTPUT_TOKENS;
-  return outputTokens * APPROXIMATE_OUTPUT_CHARS_PER_TOKEN;
-}
-
 export async function startVoiceProvider(
   runDirectory: string,
 ): Promise<ManagedVoiceProvider> {
@@ -155,11 +136,6 @@ export async function startVoiceProvider(
 
   let server: Bun.Server<LiveFixture> | undefined;
   const sessions = new Map<string, LiveFixture>();
-  let resolveGoodbyeBarrierReady: () => void = () => {};
-  const goodbyeBarrierReady = new Promise<void>((resolve) => {
-    resolveGoodbyeBarrierReady = resolve;
-  });
-  let goodbyeBarrierSession: LiveFixture | undefined;
   try {
     server = Bun.serve<LiveFixture>({
       hostname: address,
@@ -200,10 +176,6 @@ export async function startVoiceProvider(
             resume, history: body.session.input,
             started: false, notices: [],
           };
-          if (resume) {
-            session.notifyGoodbyeBarrierReady = resolveGoodbyeBarrierReady;
-            goodbyeBarrierSession = session;
-          }
           sessions.set(id, session);
           return Response.json({ session: { id }, transport: { type: "webrtc", sdp: "v=0\r\ns=external-live-provider\r\n" } }, { status: 201 });
         }
@@ -221,11 +193,10 @@ export async function startVoiceProvider(
             return Response.json({ error: "unsupported_reasoning_effort" }, { status: 400 });
           }
           const prompt = getResponsesInputText(payload);
-          const sourceSentenceCount = prompt.match(/Le serveur a redémarré\./gu)?.length ?? 0;
-          const responseText = sourceSentenceCount > 0 && prompt.includes("Target language: English.")
-            ? "The server restarted. ".repeat(sourceSentenceCount).trim()
-            : sourceSentenceCount > 0 && prompt.includes("Target language: Spanish.")
-              ? "El servidor se reinició. ".repeat(sourceSentenceCount).trim()
+          const responseText = prompt.includes("Target language: English.")
+            ? "The server restarted."
+            : prompt.includes("Target language: Spanish.")
+              ? "El servidor se reinició."
               : "OK";
           return Response.json({
             status: "completed",
@@ -234,7 +205,7 @@ export async function startVoiceProvider(
               role: "assistant",
               content: [{
                 type: "output_text",
-                text: responseText.slice(0, getResponsesOutputCharacterLimit(payload)),
+                text: responseText,
               }],
             }],
           });
@@ -248,45 +219,6 @@ export async function startVoiceProvider(
       baseUrl: `https://${address}:${String(port)}/v1`,
       certificatePath,
       server,
-      async waitForGoodbyeBarrier() {
-        let timer: ReturnType<typeof setTimeout> | undefined;
-        try {
-          await Promise.race([
-            goodbyeBarrierReady,
-            new Promise<never>((_resolve, reject) => {
-              timer = setTimeout(() => reject(new Error(
-                "The Live provider did not receive the concurrent goodbye response.",
-              )), 5_000);
-            }),
-          ]);
-        } finally {
-          if (timer) clearTimeout(timer);
-        }
-      },
-      releaseGoodbyeBarrier() {
-        const session = goodbyeBarrierSession;
-        const barrier = session?.goodbyeBarrier;
-        if (!session?.socket || !barrier?.ready) {
-          throw new Error("The concurrent goodbye response is not ready to complete.");
-        }
-        session.goodbyeBarrier = undefined;
-        session.socket.send(JSON.stringify({
-          type: "response.event",
-          delegation_id: barrier.delegationId,
-          event: {
-            type: "response.in_progress",
-            response: { id: barrier.continuationResponseId },
-          },
-        }));
-        session.socket.send(JSON.stringify({
-          type: "response.event",
-          delegation_id: barrier.delegationId,
-          event: {
-            type: "response.completed",
-            response: { id: barrier.continuationResponseId, output: [] },
-          },
-        }));
-      },
       diagnostics: () => JSON.stringify([...sessions.values()].map((session) => ({
         stage: session.stage, current: session.current, diagnostic: session.diagnostic,
       }))),

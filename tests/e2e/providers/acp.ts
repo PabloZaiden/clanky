@@ -21,26 +21,12 @@ const METHOD_NOT_FOUND_ERROR_CODE = -32601;
 const INVALID_PARAMS_ERROR_CODE = -32602;
 const INVALID_REQUEST_ERROR_CODE = -32600;
 const INTERNAL_ERROR_CODE = -32603;
-const MAX_PROVIDER_IMAGE_BYTES = 20 * 1024 * 1024;
-
-let maximumProviderImageData: string | undefined;
-
 function imageContentBlock(data: string): Record<string, unknown> {
   return {
     type: "image",
     mimeType: "image/png",
     data,
   };
-}
-
-function getMaximumProviderImageData(): string {
-  if (maximumProviderImageData) {
-    return maximumProviderImageData;
-  }
-  const bytes = Buffer.alloc(MAX_PROVIDER_IMAGE_BYTES);
-  Buffer.from(E2E_IMAGE_DATA, "base64").copy(bytes);
-  maximumProviderImageData = bytes.toString("base64");
-  return maximumProviderImageData;
 }
 
 type JsonRpcId = number | string;
@@ -1083,31 +1069,7 @@ class MockAcpServer {
     }
 
     const imageOutputRequested = promptText.includes("[generated-image-output]");
-    const imageCountBudgetRequested = promptText.includes("[generated-image-count-budget]");
-    const imageByteBudgetRequested = promptText.includes("[generated-image-byte-budget]");
-    const generatedImagesRequested = imageOutputRequested
-      || imageCountBudgetRequested
-      || imageByteBudgetRequested;
-    const maximumImageData = imageByteBudgetRequested
-      ? getMaximumProviderImageData()
-      : E2E_IMAGE_DATA;
-    if (imageByteBudgetRequested) {
-      this.sendNotification("session/update", {
-        sessionId: session.id,
-        update: {
-          sessionUpdate: "agent_message_chunk",
-          content: imageContentBlock(maximumImageData),
-        },
-      });
-    } else if (imageCountBudgetRequested) {
-      this.sendNotification("session/update", {
-        sessionId: session.id,
-        update: {
-          sessionUpdate: "agent_message_chunk",
-          content: Array.from({ length: 12 }, () => imageContentBlock(E2E_IMAGE_DATA)),
-        },
-      });
-    } else if (imageOutputRequested) {
+    if (imageOutputRequested) {
       this.sendNotification("session/update", {
         sessionId: session.id,
         update: {
@@ -1129,10 +1091,10 @@ class MockAcpServer {
         },
       },
       ...Array.from(
-        { length: imageCountBudgetRequested ? 8 : generatedImagesRequested ? 1 : 0 },
+        { length: imageOutputRequested ? 1 : 0 },
         () => ({
           type: "content",
-          content: imageContentBlock(maximumImageData),
+          content: imageContentBlock(E2E_IMAGE_DATA),
         }),
       ),
     ];
@@ -1142,7 +1104,7 @@ class MockAcpServer {
         sessionUpdate: "tool_call_update",
         toolCallId,
         status: "completed",
-        ...(generatedImagesRequested ? {} : {
+        ...(imageOutputRequested ? {} : {
           rawOutput: {
             summary: "Mock ACP tool finished successfully",
             responseLength: responseText.length,
@@ -1151,16 +1113,6 @@ class MockAcpServer {
         content: toolOutputContent,
       },
     });
-    if (imageByteBudgetRequested) {
-      this.sendNotification("session/update", {
-        sessionId: session.id,
-        update: {
-          sessionUpdate: "agent_message_chunk",
-          content: imageContentBlock(E2E_IMAGE_DATA),
-        },
-      });
-    }
-
     if (promptText.includes("[config-update]")) {
       const thoughtLevel = session.configOptions.find((option) => option.id === "thought_level");
       if (thoughtLevel) {

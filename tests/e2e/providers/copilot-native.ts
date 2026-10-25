@@ -146,7 +146,7 @@ async function sendInput(session: Session | undefined, params: Record<string, un
   event(session, "user.message", { messageId, content: prompt });
   if (session.processing) {
     session.prompt += `\nSteered instruction: ${promptWithImages}`;
-    if (!prompt.includes("keep waiting")) execute(session);
+    execute(session);
   } else {
     session.processing = true;
     session.prompt = promptWithImages;

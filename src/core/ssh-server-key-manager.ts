@@ -65,13 +65,11 @@ export async function generateSshServerKeyPair(version: number): Promise<Persist
 
 export class SshServerKeyManager {
   async getPublicKey(serverId: string): Promise<SshServerPublicKey | null> {
-    return await withSshServerOperation(serverId, async () => {
-      const server = await getSshServerConfig(serverId);
-      if (!server) return null;
+    const server = await getSshServerConfig(serverId);
+    if (!server) return null;
 
-      const keyPair = await loadSshServerKeyPair(serverId);
-      return keyPair ? toPublicKey(keyPair) : null;
-    });
+    const keyPair = await loadSshServerKeyPair(serverId);
+    return keyPair ? toPublicKey(keyPair) : null;
   }
 
   async ensurePublicKey(serverId: string): Promise<SshServerPublicKey> {

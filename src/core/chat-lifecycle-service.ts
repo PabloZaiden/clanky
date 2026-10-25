@@ -225,38 +225,34 @@ export class ChatLifecycleService implements ChatLifecyclePort {
             startupStage: "preparing_workspace" as const,
           },
         };
-    const releaseWorktreeBranch = await this.worktree.reserveWorktreeBranchForCreation(initialChat);
-    try {
-      const preparedChat = shouldPrepareWorktreeOnCreate
-        ? {
-            ...initialChat,
-            state: {
-              ...initialChat.state,
-              worktree: await timer.measure("worktree_preparation", () => this.worktree.prepareWorktreeState(initialChat, {
-                syncBaseBranch: options.syncBaseBranch ?? true,
-              })),
-              startupStage: undefined,
-              lastActivityAt: initialChat.state.lastActivityAt ?? createTimestamp(),
-            },
-          }
-        : initialChat;
+    await this.worktree.assertWorktreeBranchAvailable(initialChat);
+    const preparedChat = shouldPrepareWorktreeOnCreate
+      ? {
+          ...initialChat,
+          state: {
+            ...initialChat.state,
+            worktree: await timer.measure("worktree_preparation", () => this.worktree.prepareWorktreeState(initialChat, {
+              syncBaseBranch: options.syncBaseBranch ?? true,
+            })),
+            startupStage: undefined,
+            lastActivityAt: initialChat.state.lastActivityAt ?? createTimestamp(),
+          },
+        }
+      : initialChat;
 
-      await timer.measure("chat_persistence", () => this.state.saveNewChat(preparedChat));
-      this.state.emitChatCreated(preparedChat, now);
-      if (!shouldPrepareWorktreeOnCreate && !isTaskChat(preparedChat) && preparedChat.config.useWorktree) {
-        this.worktree.prepareWorktreeInBackground(preparedChat);
-      }
-      const timing = timer.complete();
-      log.info("Chat creation timing", {
-        chatId: id,
-        totalMs: timing.totalMs,
-        stages: timing.stages,
-        deferredWorktree: !shouldPrepareWorktreeOnCreate && preparedChat.config.useWorktree,
-      });
-      return preparedChat;
-    } finally {
-      releaseWorktreeBranch();
+    await timer.measure("chat_persistence", () => this.state.saveNewChat(preparedChat));
+    this.state.emitChatCreated(preparedChat, now);
+    if (!shouldPrepareWorktreeOnCreate && !isTaskChat(preparedChat) && preparedChat.config.useWorktree) {
+      this.worktree.prepareWorktreeInBackground(preparedChat);
     }
+    const timing = timer.complete();
+    log.info("Chat creation timing", {
+      chatId: id,
+      totalMs: timing.totalMs,
+      stages: timing.stages,
+      deferredWorktree: !shouldPrepareWorktreeOnCreate && preparedChat.config.useWorktree,
+    });
+    return preparedChat;
   }
 
   async createChatHere(sourceChatId: string): Promise<Chat> {

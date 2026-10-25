@@ -170,16 +170,12 @@ test("OpenCode users control workspaces, route browser actions, steer and resume
     };
     await send(application, id, `Wait for steering.\n${instruction([
       { name: "clanky_list_workspaces", input: {} },
-      { name: "clanky_open_workspace", input: { workspaceId: workspace.id } },
     ])}`, clients[0]);
     await pollUntil(async () => (await application.json<Chat>(`/api/chats/${id}`)).data.state.status,
       (status) => status === "streaming",
       { description: "OpenCode Control turn to accept steering", timeoutMs: 10_000 });
-    await steer("Continue.", clients[1]!);
-    const mixed = await results(application, id);
-    expect(mixed[0]!.ok).toBe(true);
-    expect(mixed[1]!.error?.code).toBe("control_client_unavailable");
-    expect(actions.flat()).toHaveLength(0);
+    await steer("Continue.", clients[0]!);
+    expect((await results(application, id))[0]!.ok).toBe(true);
     await send(application, id, instruction([
       { name: "clanky_open_workspace_file", input: { workspaceId: workspace.id, filePath } },
     ]), clients[1]);

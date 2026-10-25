@@ -337,6 +337,22 @@ or versioning roughly 90 MB of checksum-pinned runtime and voice assets. Do not
 fake Piper by pre-populating its private cache layout; use real assets for an
 optional manual smoke instead.
 
+### Proportional concurrency
+
+Clanky is primarily single-user, with occasional collaboration. Before adding
+coordination or raising a concurrency finding in review, identify independent
+producers, a plausible supported workflow that overlaps them, and the likelihood
+and user-visible impact of failure. A possible ordering across an `await` is not
+enough. Rare, low-impact conflicts between manual actions may fail visibly and
+be retried; do not add locks, reservations, retries, or reconciliation just to
+make every ordering succeed.
+
+Reuse existing lifecycle coordination instead of adding another queue inside
+it. Preserve safeguards where provider events, background work, transports,
+navigation, or shutdown really overlap, especially for authorization, data
+integrity, irreversible operations, execution-host identity, and resource
+cleanup. See `AGENTS.md` for the implementation and review decision gate.
+
 ### Scenario-only E2E policy
 
 The suite is a small catalog of real user/API/CLI/protocol scenarios the
@@ -345,6 +361,12 @@ regression-prevention layer. Do not add tests just to reproduce a defect, prove
 that its fix works, or ensure that the same bug does not return. Remove
 regression-only checks after the fix; do not rename or relocate them into a
 broader test.
+
+Apply that rule to each step and assertion, not just the journey's name.
+Remove artificial interleaving barriers, cross-client permutations, exact
+message segmentation, copy checks, and payload matrices that do not establish
+a required workflow or public contract. Remove their exclusive mock and fixture
+support too; do not replace them with another regression layer.
 
 A bug report alone does not establish a test scenario. Add coverage only when
 the workflow is independently identified as required product behavior, and
