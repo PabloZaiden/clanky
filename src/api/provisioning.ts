@@ -135,9 +135,7 @@ export const provisioningRoutes = defineRoutes({
           createNewRepository: validation.data.createNewRepository,
           targetDirectory: validation.data.targetDirectory ?? undefined,
           workspaceId: validation.data.workspaceId ?? undefined,
-          ...(validation.data.useClankyPrerelease
-            ? { useClankyPrerelease: true }
-            : {}),
+          channel: validation.data.channel,
           password,
         });
         return Response.json(

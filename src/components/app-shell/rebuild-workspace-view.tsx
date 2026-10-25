@@ -7,6 +7,8 @@ import { getRegisteredSshServerId, isWorkspaceMeshExecutionHostRef } from "@/sha
 import type { SshServer } from "@/shared/ssh-server";
 import type { ProvisioningJobMode } from "@/shared/provisioning";
 import { useState } from "react";
+import type { WorkerUpdateMode } from "@/shared/worker-update";
+import { WorkerChannelSelect } from "../worker-channel-select";
 
 interface RebuildWorkspaceViewProps {
   mode: Extract<ProvisioningJobMode, "rebuild" | "restart">;
@@ -24,7 +26,7 @@ export function RebuildWorkspaceView({
   navigateWithinShell,
 }: RebuildWorkspaceViewProps) {
   const [password, setPassword] = useState("");
-  const [useClankyPrerelease, setUseClankyPrerelease] = useState(false);
+  const [channel, setChannel] = useState<WorkerUpdateMode>("default");
   const actionLabel = mode === "restart" ? "Restart" : "Rebuild";
   const actionLabelLower = actionLabel.toLowerCase();
   const formId = `${mode}-workspace-form`;
@@ -55,7 +57,7 @@ export function RebuildWorkspaceView({
       mode,
       targetDirectory: workspace.sourceDirectory ?? null,
       workspaceId: workspace.id,
-      ...(useClankyPrerelease ? { useClankyPrerelease: true } : {}),
+      ...(isDedicatedWorkerWorkspace ? { channel } : {}),
     });
 
     if (snapshot) {
@@ -175,15 +177,12 @@ export function RebuildWorkspaceView({
 
           {isDedicatedWorkerWorkspace && (
             <FormGroup title="Advanced options">
-              <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-                <input
-                  type="checkbox"
-                  checked={useClankyPrerelease}
-                  onChange={(event) => setUseClankyPrerelease(event.target.checked)}
-                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <span>Use the latest Clanky prerelease for this and future automatic starts</span>
-              </label>
+              <WorkerChannelSelect
+                id={`${mode}-clanky-channel`}
+                value={channel}
+                onChange={setChannel}
+                disabled={provisioning.starting}
+              />
             </FormGroup>
           )}
 

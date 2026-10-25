@@ -4,20 +4,21 @@
 
 import { posix as pathPosix } from "node:path";
 import type { AgentSettings } from "@/shared";
+import type { WorkerReleaseChannel } from "@/shared/worker-update";
 import { DomainError } from "../../domain/domain-error";
 import type { CommandExecutor } from "../command-executor";
-import { buildRuntimeInstaller, buildWorkerLauncher, type WorkerPaths } from "./worker-assets";
+import { parseWorkerChannel } from "../worker-channel";
+import { buildRuntimeInstaller, buildWorkerLauncher, type AutomaticWorkerChannel, type WorkerPaths } from "./worker-assets";
 import { buildWorkerSupervisor } from "./worker-supervisor";
 
-function getExistingPrereleaseSelection(
+function getExistingLauncherChannel(
   launcher: string | null | undefined,
-): boolean | undefined {
+): AutomaticWorkerChannel | undefined {
   const assignment = launcher?.match(
-    /^\s*(?:export\s+)?CLANKY_RELEASE_CHANNEL\s*=\s*(?:(['"])(stable|prerelease)\1|(stable|prerelease))\s*(?:#.*)?$/m,
+    /^\s*(?:export\s+)?CLANKY_RELEASE_CHANNEL\s*=\s*(?:(['"])(stable|latest|prerelease)\1|(stable|latest|prerelease))\s*(?:#.*)?$/m,
   );
   const channel = assignment?.[2] ?? assignment?.[3];
-  if (channel === "prerelease") return true;
-  if (channel === "stable") return false;
+  if (channel === "prerelease" || channel === "stable" || channel === "latest") return channel;
   return undefined;
 }
 
@@ -27,12 +28,14 @@ export async function prepareWorkerRuntimeAssets(
     paths,
     runtime,
     install = false,
-    useClankyPrerelease,
+    releaseChannel,
+    installedChannel,
   }: {
     paths: WorkerPaths;
     runtime: AgentSettings;
     install?: boolean;
-    useClankyPrerelease?: boolean;
+    releaseChannel?: AutomaticWorkerChannel;
+    installedChannel?: WorkerReleaseChannel;
   },
 ): Promise<{ rollback: () => Promise<void> }> {
   const assetPaths = [
@@ -40,6 +43,8 @@ export async function prepareWorkerRuntimeAssets(
     pathPosix.join(paths.hostRoot, "runtime.json"),
     pathPosix.join(paths.hostRoot, "launcher.sh"),
     pathPosix.join(paths.hostRoot, "supervisor.sh"),
+    paths.hostChannel,
+    paths.hostInstalledChannel,
   ] as const;
   const suffix = `.pending-${crypto.randomUUID()}`;
   const previous = await Promise.all(assetPaths.map(async (assetPath) => {
@@ -48,17 +53,24 @@ export async function prepareWorkerRuntimeAssets(
     if (content === null) throw new DomainError("workspace_runtime_assets_failed", "Cannot read the previous workspace runtime configuration.");
     return content;
   }));
-  const effectivePrereleaseSelection = useClankyPrerelease
-    ?? getExistingPrereleaseSelection(previous[2])
-    ?? false;
+  const effectiveChannel = releaseChannel
+    ?? (previous[4] === null ? undefined : parseWorkerChannel(previous[4]!))
+    ?? getExistingLauncherChannel(previous[2])
+    ?? "stable";
   const assets = [
     { path: assetPaths[0], content: buildRuntimeInstaller() },
     { path: assetPaths[1], content: JSON.stringify(runtime) },
     {
       path: assetPaths[2],
-      content: buildWorkerLauncher(paths, effectivePrereleaseSelection),
+      content: buildWorkerLauncher(paths, effectiveChannel),
     },
     { path: assetPaths[3], content: buildWorkerSupervisor(paths) },
+    ...(effectiveChannel === "prerelease"
+      ? []
+      : [{ path: assetPaths[4], content: `${effectiveChannel}\n` }]),
+    ...(installedChannel === effectiveChannel
+      ? [{ path: assetPaths[5], content: `${installedChannel}\n` }]
+      : []),
   ];
   const rollback = async (): Promise<void> => {
     const errors: unknown[] = [];

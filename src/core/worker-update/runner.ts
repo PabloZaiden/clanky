@@ -5,6 +5,7 @@ import type {
   WorkerUpdateJobState,
   WorkerUpdateLogEntry,
   WorkerUpdateStep,
+  WorkerReleaseChannel,
 } from "@/shared/worker-update";
 import type { CommandExecutionState } from "@/shared/job-execution";
 import { isWorkerUpdateJobTerminal } from "@/shared/worker-update";
@@ -84,34 +85,15 @@ export class WorkerUpdateJobRunner {
       }
 
       commandInFlight = "update";
-      const updateResult = await executor.exec(
-        "clanky",
-        ["update", ...(beforeUpdate.releaseChannel === "prerelease" ? ["--pre-release"] : [])],
-        this.commandOptions(userId, () => job, "update", (next) => { job = next; }),
-      );
-      if (!updateResult.success) {
-        const error = new DomainError(
-          "worker_update_command_failed",
-          `clanky update exited with code ${String(updateResult.exitCode)}.`,
-        );
-        job = this.failStep(userId, job, "update", error, updateResult.exitCode);
-        commandInFlight = null;
-        return;
-      }
-      job = this.succeedStep(userId, job, "update", updateResult.exitCode);
+      const updated = await this.updateWorker({ userId, initialJob: job, executor, beforeUpdate });
       commandInFlight = null;
-      this.appendLog(
-        userId,
-        job,
-        "system",
-        `clanky update succeeded with exit code ${String(updateResult.exitCode)}.`,
-        "update",
-      );
+      if (!updated) return;
+      job = updated.job;
 
-      const updatedBinary = await readWorkerServiceStatus(executor);
       await this.restartWorker({
         userId, initialJob: job, worker, executor, beforeUpdate,
-        expectedVersion: updatedBinary.binaryVersion,
+        expectedVersion: updated.status.binaryVersion,
+        expectedChannel: job.config.channel === "default" ? undefined : job.config.channel,
       });
     } catch (error) {
       this.reconcileUnexpectedFailure(userId, job, commandInFlight, error);
@@ -130,6 +112,57 @@ export class WorkerUpdateJobRunner {
     }
   }
 
+  private async updateWorker({
+    userId, initialJob, executor, beforeUpdate,
+  }: {
+    userId: string;
+    initialJob: WorkerUpdateJob;
+    executor: CommandExecutor;
+    beforeUpdate: WorkerServiceStatus;
+  }): Promise<{ job: WorkerUpdateJob; status: WorkerServiceStatus } | null> {
+    let job = initialJob;
+    const channel = job.config.channel === "default" ? undefined : job.config.channel;
+    const result = await executor.exec(
+      "clanky",
+      ["update", ...(channel
+        ? ["--channel", channel]
+        : beforeUpdate.releaseChannel === "prerelease" ? ["--pre-release"] : [])],
+      this.commandOptions(userId, () => job, "update", (next) => { job = next; }),
+    );
+    if (!result.success) {
+      this.failStep(userId, job, "update", new DomainError(
+        "worker_update_command_failed",
+        `clanky update exited with code ${String(result.exitCode)}.`,
+      ), result.exitCode);
+      return null;
+    }
+    if (channel) {
+      const configured = await executor.exec(
+        "clanky",
+        ["worker", "channel", channel],
+        this.commandOptions(userId, () => job, "update", (next) => { job = next; }),
+      );
+      if (!configured.success) {
+        this.failStep(userId, job, "update", new DomainError(
+          "worker_release_channel_save_failed",
+          "The binary was updated, but its default channel could not be saved. The installed Clanky must support worker channel stable|latest.",
+        ), configured.exitCode);
+        return null;
+      }
+    }
+    const status = await readWorkerServiceStatus(executor);
+    if (channel && status.releaseChannel !== channel) {
+      this.failStep(userId, job, "update", new DomainError(
+        "worker_release_channel_verification_failed",
+        "The worker did not report the selected channel after saving its configuration.",
+      ));
+      return null;
+    }
+    job = this.succeedStep(userId, job, "update", result.exitCode);
+    this.appendLog(userId, job, "system", `clanky update succeeded with exit code ${String(result.exitCode)}.`, "update");
+    return { job, status };
+  }
+
   private async restartWorker({
     userId,
     initialJob,
@@ -137,6 +170,7 @@ export class WorkerUpdateJobRunner {
     executor,
     beforeUpdate,
     expectedVersion,
+    expectedChannel,
   }: {
     userId: string;
     initialJob: WorkerUpdateJob;
@@ -144,6 +178,7 @@ export class WorkerUpdateJobRunner {
     executor: CommandExecutor;
     beforeUpdate: WorkerServiceStatus;
     expectedVersion?: string;
+    expectedChannel?: WorkerReleaseChannel;
   }): Promise<void> {
     let job = this.beginStep(userId, initialJob, "restart");
     const deadline = performance.now() + WORKER_RESTART_TIMEOUT_MS;
@@ -205,6 +240,7 @@ export class WorkerUpdateJobRunner {
         deadline,
         previousInstanceId: beforeUpdate.instanceId,
         expectedVersion,
+        expectedChannel,
         createExecutor: () => this.acquireExecutor(userId, job, worker),
         onRetry: (error) => this.appendLog(
           userId, job, "system",
@@ -268,6 +304,7 @@ export class WorkerUpdateJobRunner {
       onExecutionState: (execution) => {
         const job = getJob();
         const now = new Date().toISOString();
+        const previous = job.state.steps[step];
         onState(this.persistState(userId, job, {
           status: "running",
           ...(execution === "started" && !job.state.startedAt ? { startedAt: now } : {}),
@@ -275,9 +312,9 @@ export class WorkerUpdateJobRunner {
             ...job.state.steps,
             [step]: {
               ...job.state.steps[step],
-              execution,
+              execution: previous.execution === "started" && execution === "dispatched" ? "started" : execution,
               status: "running",
-              ...(execution === "started" ? { startedAt: now } : {}),
+              ...(execution === "started" && !previous.startedAt ? { startedAt: now } : {}),
             },
           },
         }));
@@ -370,7 +407,7 @@ export class WorkerUpdateJobRunner {
               ...job.state.steps.restart,
               status: "skipped" as const,
               completedAt: now,
-              error: "Skipped because clanky update did not succeed.",
+              error: "Skipped because the update and channel configuration did not succeed.",
             },
           }
         : {}),
@@ -387,7 +424,7 @@ export class WorkerUpdateJobRunner {
       failed,
       "system",
       step === "update"
-        ? "clanky update did not succeed; restart was skipped."
+        ? "The update and channel configuration did not succeed; restart was skipped."
         : "clanky worker service restart failed.",
       step,
     );

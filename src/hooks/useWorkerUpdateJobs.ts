@@ -6,7 +6,7 @@ import type {
   WorkerUpdateJobSnapshotResponse,
   WorkerUpdateJobsResponse,
 } from "@/contracts/api";
-import { isWorkerUpdateJobTerminal, type WorkerUpdateJob } from "@/shared/worker-update";
+import { isWorkerUpdateJobTerminal, type WorkerUpdateJob, type WorkerUpdateMode } from "@/shared/worker-update";
 import { apiRequest, readApiResponse, requestApiResponse } from "../lib/api-client";
 import { isAbortError } from "../lib/request-lifecycle";
 
@@ -26,7 +26,7 @@ export interface UseWorkerUpdateJobsResult {
   notFoundJobId: string | null;
   starting: boolean;
   error: string | null;
-  startUpdates: () => Promise<StartWorkerUpdatesResponse | null>;
+  startUpdates: (channel: WorkerUpdateMode) => Promise<StartWorkerUpdatesResponse | null>;
   openJob: (jobId: string) => void;
   refreshJobs: () => Promise<void>;
   refreshJob: () => Promise<void>;
@@ -133,13 +133,15 @@ export function useWorkerUpdateJobs(
     }
   }, [clearActiveJob, enabled]);
 
-  const startUpdates = useCallback(async (): Promise<StartWorkerUpdatesResponse | null> => {
+  const startUpdates = useCallback(async (channel: WorkerUpdateMode): Promise<StartWorkerUpdatesResponse | null> => {
     if (!enabled) return null;
     setStarting(true);
     setError(null);
     try {
       return await mutateJobs((signal) => apiRequest<StartWorkerUpdatesResponse>("/api/worker-update-jobs", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channel }),
         signal,
         action: "Start worker updates",
         fallbackMessage: "Failed to start worker updates",

@@ -544,17 +544,30 @@ value; Mesh still requires HTTPS. New service installations omit the option.
 
 ### Update servers and automatic workspaces together
 
-From the controller, use **Settings > Maintenance > Clanky on servers and
-automatic workspaces > Update all** to start one background job per active
+From the controller, use **Settings > Maintenance > Clanky workers > Update
+all** to start one background job per active
 Mesh worker, including workspace-exclusive automatic workers. The same owner-only action
 is available through `POST /api/worker-update-jobs`; read progress and logs
 with `GET /api/worker-update-jobs` and `GET /api/worker-update-jobs/:id`.
 
+The worker update selector offers **Default**, **Stable** and **Latest**.
+Default keeps each worker's saved channel. An explicit Stable or Latest choice
+updates the binary and persistently changes that worker's default, including
+automatic-workspace startup configuration. The confirmation remembers the
+maintenance mode and the last explicit channel for new automatic workspaces.
+Choosing Default later does not clear that inherited channel; it is Stable
+until explicitly changed. Cancelling confirmation saves nothing.
+
 Jobs run concurrently across workers. Each checks that its service or workspace
-loop is running, then runs `clanky update` and
+loop is running, then runs `clanky update` (with `--channel stable|latest`
+when forced), saves a forced default with `clanky worker channel`, and
 restarts the worker service with `clanky worker service restart` only after the
-update succeeds. Automatic workers configured for prereleases add `--pre-release`.
-If the update fails, the restart is skipped. Updating a workspace worker uses
+update and channel verification succeed. Legacy automatic workers configured
+for prereleases retain `--pre-release` in Default mode.
+If updating or saving the channel fails, the restart is skipped. The installed
+binary must support `worker channel stable|latest` to save a forced default;
+unsupported versions fail visibly rather than silently using another channel.
+Updating a workspace worker uses
 Mesh directly: it does not need SSH credentials, contact the provisioning host,
 rerun provisioning, or restart the container. Restart response
 and recovery checks share a 20-second deadline. Restart runs as a host-owned
@@ -635,21 +648,26 @@ execution stopped or authorize replay. Server `arise` jobs remain unconfirmed
 when their result is lost because host reachability alone cannot prove that
 the server update completed.
 
-To manually select the Clanky binary channel for an automatic worker, edit
-`.devbox/clanky-worker/launcher.sh` in the workspace repository on its
-execution host. Set `CLANKY_RELEASE_CHANNEL='prerelease'` to install the latest
-published prerelease when first installing or changing channels; set it to
-`stable` to use the stable channel. Ordinary starts reuse the installed binary;
-use **Update all** for subsequent updates. Prerelease downloads require and verify the release
-asset's SHA-256 checksum, and do not fall back to stable if no prerelease is
-available.
+Automatic workspace creation offers the same channel selector.
+Default inherits the user's saved channel from Maintenance, resolved when the
+job is admitted. Selecting Stable or Latest overrides it only for that workspace.
+The **Restart** and **Rebuild** views offer the selector under **Advanced
+options**; Default preserves the existing workspace channel, while a forced
+choice persists for future automatic starts and maintenance. Changing a runtime
+adapter also preserves the saved channel.
 
-The **Restart** and **Rebuild** views expose the same choice under **Advanced
-options** for worker-backed workspaces. Selecting it stores the prerelease
-channel in the persistent launcher for future automatic starts. Leaving it
-unchecked writes the stable channel.
-Changing a worker workspace's runtime adapter preserves the channel already
-stored in the launcher.
+Within a worker's execution environment, `clanky worker channel` reports its
+effective default; `clanky worker channel stable` or `latest` changes it without
+updating the binary immediately. `clanky update` then follows that saved
+default. Automatic worker configuration lives in
+`.devbox/clanky-worker/update-channel`; ordinary server workers keep it in
+their Clanky data directory. Do not edit generated launcher scripts to override
+this file. Older stable/prerelease launcher selections remain readable until
+explicitly replaced.
+
+Stable/latest bootstrap uses the shared GitHub installer and required SHA-256
+checksums, with no cross-channel fallback. Ordinary starts reuse the installed
+binary; use **Update all** for subsequent updates.
 
 ### Worker process loop
 

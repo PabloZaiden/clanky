@@ -7,6 +7,7 @@ import type { PublicServerSettings, PublicWorkspace, Workspace } from "./workspa
 import type { ExecutionHostBinding } from "./execution-host";
 import type { CommandExecutionState } from "./job-execution";
 import type { StreamDeltaPosition, StreamPosition } from "./stream-position";
+import type { WorkerReleaseChannel, WorkerUpdateMode } from "./worker-update";
 
 export type ProvisioningJobStatus =
   | "pending"
@@ -109,7 +110,9 @@ export interface ProvisioningJobConfig {
   targetDirectory?: string;
   /** For rebuild/restart mode: existing workspace ID */
   workspaceId?: string;
-  /** Install the latest Clanky prerelease in an automatic worker launcher */
+  channel?: WorkerUpdateMode;
+  releaseChannel?: WorkerReleaseChannel;
+  /** Read only when recovering jobs saved before stable/latest channel selection. */
   useClankyPrerelease?: boolean;
   createdAt: string;
 }

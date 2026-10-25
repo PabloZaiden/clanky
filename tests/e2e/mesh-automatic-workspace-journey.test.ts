@@ -69,6 +69,7 @@ interface WorkerUpdateJob {
     id: string;
     workerNodeId: string;
     workerName: string;
+    channel: "default" | "stable" | "latest";
   };
   state: {
     status: "pending" | "running" | "completed" | "failed" | "interrupted";
@@ -279,7 +280,77 @@ test("users can maintain and retire an automatic workspace while planning and ch
   }
 });
 
-test("controller updates server and automatic workspace workers and retains per-worker outcomes", async () => {
+async function updateConnectedWorkers({
+  controller,
+  nativeWorker,
+  nativeWorkerId,
+  workerIds,
+  channel,
+  stateDirectory,
+}: {
+  controller: ManagedMeshNode;
+  nativeWorker: ManagedMeshNode;
+  nativeWorkerId: string;
+  workerIds: string[];
+  channel: "default" | "stable" | "latest";
+  stateDirectory: string;
+}): Promise<WorkerUpdateJobReadResponse[]> {
+  const release = join(stateDirectory, "release-update");
+  await rm(release, { force: true });
+  const admission = await meshJsonRequest<StartWorkerUpdatesResponse>(controller, "/api/worker-update-jobs", {
+    method: "POST", body: { channel },
+  });
+  expect(admission.status, JSON.stringify(admission.body)).toBe(202);
+  expect(admission.body.totalWorkers).toBe(workerIds.length);
+  const jobs = admission.body.results.filter((item) => item.status === "started");
+  expect(new Set(jobs.map((job) => job.workerNodeId))).toEqual(new Set(workerIds));
+  const jobIds = new Set(jobs.map((job) => job.jobId));
+  await pollUntil(async () => {
+    const result = await meshJsonRequest<{ jobs: WorkerUpdateJob[] }>(controller, "/api/worker-update-jobs");
+    return result.body.jobs.filter((job) => jobIds.has(job.config.id));
+  }, (current) => current.length === workerIds.length
+    && current.every((job) => job.state.steps.update.status === "running"), {
+    description: `${channel} updates to become active on all selected workers`,
+    timeoutMs: MESH_OPERATION_TIMEOUT_MS,
+    formatLastObserved: (current) => JSON.stringify(current),
+  });
+  await Bun.write(release, "release");
+  const nativeJobId = jobs.find((job) => job.workerNodeId === nativeWorkerId)!.jobId;
+  await pollUntil(
+    async () => (await meshJsonRequest<WorkerUpdateJobReadResponse>(controller, `/api/worker-update-jobs/${nativeJobId}`)).body.job,
+    (job) => job?.state.steps.restart.execution === "started", {
+      description: "native supervisor to receive its restart command",
+      timeoutMs: MESH_OPERATION_TIMEOUT_MS,
+      formatLastObserved: (job) => JSON.stringify(job),
+    },
+  );
+  await restartMeshNode(nativeWorker);
+  await Bun.write(join(stateDirectory, "global-update-success", "service-running"), "running");
+  const terminal = await pollUntil(
+    async () => await Promise.all(jobs.map(async (job) =>
+      (await meshJsonRequest<WorkerUpdateJobReadResponse>(controller, `/api/worker-update-jobs/${job.jobId}`)).body)),
+    (current) => current.every((snapshot) => snapshot.job
+      && ["completed", "failed", "interrupted", "not_started", "connection_failed", "unconfirmed"].includes(snapshot.job.state.status)), {
+      description: `${channel} worker maintenance outcomes`,
+      timeoutMs: MESH_OPERATION_TIMEOUT_MS,
+      formatLastObserved: (current) => JSON.stringify(current),
+    },
+  );
+  expect(terminal.every((snapshot) => snapshot.job?.config.channel === channel)).toBe(true);
+  return terminal;
+}
+
+async function readWorkerChannel(controller: ManagedMeshNode, executionPath: string): Promise<string> {
+  const result = await meshJsonRequest<{ exitCode: number; stdout: string }>(controller, executionPath, {
+    method: "POST",
+    body: { command: "clanky", args: ["worker", "channel"], timeoutMs: MESH_OPERATION_TIMEOUT_MS },
+  });
+  expect(result.status, JSON.stringify(result.body)).toBe(200);
+  expect(result.body.exitCode, JSON.stringify(result.body)).toBe(0);
+  return (JSON.parse(result.body.stdout) as { releaseChannel: string }).releaseChannel;
+}
+
+test("controller rolls out worker channels and maintains inherited and overridden automatic workspaces", async () => {
   const fixtureDirectory = await mkdtemp(join(tmpdir(), "clanky-worker-update-"));
   const binDirectory = join(fixtureDirectory, "bin");
   const updateStateDirectory = join(fixtureDirectory, "update-state");
@@ -319,6 +390,7 @@ test("controller updates server and automatic workspace workers and retains per-
         PATH: workerPath,
         CLANKY_E2E_WORKER_UPDATE_STATE_DIR: updateStateDirectory,
         CLANKY_E2E_WORKER_UPDATE_ID: "global-update-success",
+        CLANKY_E2E_MESH_BINARY: command[0],
       },
     });
     nodes.push(successfulWorker);
@@ -332,6 +404,7 @@ test("controller updates server and automatic workspace workers and retains per-
         CLANKY_E2E_WORKER_UPDATE_STATE_DIR: updateStateDirectory,
         CLANKY_E2E_WORKER_UPDATE_ID: "global-update-failure",
         CLANKY_E2E_WORKER_UPDATE_FAIL: "true",
+        CLANKY_E2E_MESH_BINARY: command[0],
       },
     });
     nodes.push(failingWorker);
@@ -361,6 +434,19 @@ test("controller updates server and automatic workspace workers and retains per-
       throw new Error("The active global worker registrations were not returned.");
     }
 
+    const rollout = await updateConnectedWorkers({
+      controller, nativeWorker: successfulWorker, nativeWorkerId: successfulRegistration.workerNodeId,
+      workerIds: [successfulRegistration.workerNodeId, failingRegistration.workerNodeId],
+      channel: "latest", stateDirectory: updateStateDirectory,
+    });
+    lastObservedPublicState = JSON.stringify(rollout);
+    expect(rollout.find((item) => item.job?.config.workerNodeId === successfulRegistration.workerNodeId)?.job?.state.status)
+      .toBe("completed");
+    expect(rollout.find((item) => item.job?.config.workerNodeId === failingRegistration.workerNodeId)?.job?.state.status)
+      .toBe("failed");
+    const nativeExecutionPath = `/api/execution-hosts/mesh/${successfulRegistration.workerNodeId}/exec`;
+    expect(await readWorkerChannel(controller, nativeExecutionPath)).toBe("latest");
+
     const gitFixture = await createGitFixture(successfulWorker.dataDir);
     gitStatusDescription = await gitStatus(gitFixture) || "clean";
     const hosts = await meshJsonRequest<ExecutionHost[]>(controller, "/api/execution-hosts");
@@ -372,8 +458,8 @@ test("controller updates server and automatic workspace workers and retains per-
       throw new Error("The successful global worker execution host is unavailable.");
     }
 
-    const automaticWorkspace = await runAutomaticWorkspaceJob(controller, {
-      name: "Automatic update workspace",
+    const automaticRequest = {
+      name: "Inherited latest workspace",
       executionHost: successfulHost.ref,
       transport: "worker",
       workerEnrollmentRoute: "direct",
@@ -390,13 +476,26 @@ test("controller updates server and automatic workspace workers and retains per-
       mode: "provision",
       targetDirectory: null,
       workspaceId: null,
+    };
+    const automaticWorkspace = await runAutomaticWorkspaceJob(controller, automaticRequest);
+    const stableWorkspace = await runAutomaticWorkspaceJob(controller, {
+      ...automaticRequest,
+      name: "Explicit stable workspace",
+      basePath: join(fixtureDirectory, "stable-workspace"),
+      channel: "stable",
     });
+    const automaticWorkspaceId = automaticWorkspace.job.state.workspaceId!;
+    const stableWorkspaceId = stableWorkspace.job.state.workspaceId!;
+    const automaticExecutionPath = `/api/workspaces/${automaticWorkspaceId}/exec`;
+    const stableExecutionPath = `/api/workspaces/${stableWorkspaceId}/exec`;
+    expect(await readWorkerChannel(controller, automaticExecutionPath)).toBe("latest");
+    expect(await readWorkerChannel(controller, stableExecutionPath)).toBe("stable");
     const workspaceRegistrations = await pollUntil(
       async () => await meshJsonRequest<ControllerStatus>(controller, "/api/mesh/status"),
       (response) => response.status === 200
-        && response.body.workers.some(
+        && response.body.workers.filter(
           (worker) => worker.registrationScope === "workspace" && worker.grantStatus === "active",
-        ),
+        ).length === 2,
       {
         description: "automatic workspace worker registration",
         timeoutMs: MESH_OPERATION_TIMEOUT_MS,
@@ -404,90 +503,35 @@ test("controller updates server and automatic workspace workers and retains per-
       },
     );
     const automaticWorker = workspaceRegistrations.body.workers.find(
-      (worker) => worker.registrationScope === "workspace",
+      (worker) => worker.workerInstanceName === automaticRequest.name,
     );
-    if (!automaticWorker) {
+    const stableWorker = workspaceRegistrations.body.workers.find(
+      (worker) => worker.workerInstanceName === "Explicit stable workspace",
+    );
+    if (!automaticWorker || !stableWorker) {
       throw new Error("The automatic workspace worker registration is unavailable.");
     }
     const expectedWorkerIds = new Set([
       successfulRegistration.workerNodeId,
       failingRegistration.workerNodeId,
       automaticWorker.workerNodeId,
+      stableWorker.workerNodeId,
     ]);
 
-    const admission = await meshJsonRequest<StartWorkerUpdatesResponse>(
-      controller,
-      "/api/worker-update-jobs",
-      { method: "POST" },
-    );
-    expect(admission.status, JSON.stringify(admission.body)).toBe(202);
-    expect(admission.body.totalWorkers).toBe(3);
-    expect(admission.body.results).toHaveLength(3);
-    expect(admission.body.results.every((item) => item.status === "started")).toBe(true);
-    const startedJobs = admission.body.results.filter(
-      (item): item is Extract<StartWorkerUpdatesResponse["results"][number], { status: "started" }> =>
-        item.status === "started",
-    );
-    expect(new Set(startedJobs.map((item) => item.workerNodeId))).toEqual(expectedWorkerIds);
-
-    await pollUntil(
-      async () => (await meshJsonRequest<{ jobs: WorkerUpdateJob[] }>(controller, "/api/worker-update-jobs")).body.jobs,
-      (jobs) => jobs.length === 3 && jobs.every((job) => job.state.steps.update.execution === "started"),
-      {
-        description: "server and automatic workspace updates to start concurrently",
-        timeoutMs: MESH_OPERATION_TIMEOUT_MS,
-        formatLastObserved: (state) => {
-          lastObservedPublicState = JSON.stringify(state);
-          return lastObservedPublicState;
-        },
-      },
-    );
-    await Bun.write(updateReleasePath, "release");
-
-    const successfulAdmission = startedJobs.find((item) =>
-      item.workerNodeId === successfulRegistration.workerNodeId)!;
-    await pollUntil(
-      async () => (await meshJsonRequest<WorkerUpdateJobReadResponse>(
-        controller, `/api/worker-update-jobs/${successfulAdmission.jobId}`,
-      )).body.job,
-      (job) => job?.state.steps.restart.execution === "started",
-      {
-        description: "successful worker service restart request",
-        timeoutMs: MESH_OPERATION_TIMEOUT_MS,
-      },
-    );
-    await restartMeshNode(successfulWorker);
-    await Bun.write(join(updateStateDirectory, "global-update-success", "service-running"), "running");
-
-    const terminalSnapshots = await pollUntil(
-      async () => await Promise.all(startedJobs.map((item) =>
-        meshJsonRequest<WorkerUpdateJobReadResponse>(
-          controller,
-          `/api/worker-update-jobs/${encodeURIComponent(item.jobId)}`,
-        ),
-      )),
-      (responses) => responses.every((response) =>
-        response.status === 200
-        && ["completed", "failed", "interrupted", "not_started", "connection_failed", "unconfirmed"].includes(response.body.job?.state.status ?? ""),
-      ),
-      {
-        description: "server and automatic workspace update jobs to finish",
-        timeoutMs: MESH_OPERATION_TIMEOUT_MS,
-        formatLastObserved: (responses) => {
-          lastObservedPublicState = JSON.stringify(responses);
-          return lastObservedPublicState;
-        },
-      },
-    );
+    const terminalSnapshots = await updateConnectedWorkers({
+      controller, nativeWorker: successfulWorker, nativeWorkerId: successfulRegistration.workerNodeId,
+      workerIds: [...expectedWorkerIds], channel: "default", stateDirectory: updateStateDirectory,
+    });
+    lastObservedPublicState = JSON.stringify(terminalSnapshots);
     const successfulJob = terminalSnapshots.find(
-      (response) => response.body.job?.config.workerNodeId === successfulRegistration.workerNodeId,
-    )?.body.job;
+      (response) => response.job?.config.workerNodeId === successfulRegistration.workerNodeId,
+    )?.job;
     const failedJob = terminalSnapshots.find(
-      (response) => response.body.job?.config.workerNodeId === failingRegistration.workerNodeId,
-    )?.body.job;
+      (response) => response.job?.config.workerNodeId === failingRegistration.workerNodeId,
+    )?.job;
     const automaticJob = terminalSnapshots.find(
-      (response) => response.body.job?.config.workerNodeId === automaticWorker.workerNodeId,
-    )?.body.job;
+      (response) => response.job?.config.workerNodeId === automaticWorker.workerNodeId,
+    )?.job;
     if (!successfulJob || !failedJob) {
       throw new Error("Per-worker update job results were not returned.");
     }
@@ -498,7 +542,21 @@ test("controller updates server and automatic workspace workers and retains per-
     expect(failedJob.state.steps.update.status).toBe("failed");
     expect(failedJob.state.steps.restart.status).toBe("skipped");
     expect(automaticJob?.state.status, JSON.stringify(terminalSnapshots)).toBe("completed");
-    const automaticWorkspaceId = automaticWorkspace.job.state.workspaceId!;
+    expect(terminalSnapshots.find((response) => response.job?.config.workerNodeId === stableWorker.workerNodeId)?.job?.state.status)
+      .toBe("completed");
+    expect(await readWorkerChannel(controller, nativeExecutionPath)).toBe("latest");
+    expect(await readWorkerChannel(controller, automaticExecutionPath)).toBe("latest");
+    expect(await readWorkerChannel(controller, stableExecutionPath)).toBe("stable");
+    await runAutomaticWorkspaceJob(controller, {
+      ...automaticRequest, mode: "restart", workspaceId: automaticWorkspaceId,
+      targetDirectory: automaticWorkspace.job.state.targetDirectory,
+    });
+    await runAutomaticWorkspaceJob(controller, {
+      ...automaticRequest, mode: "rebuild", workspaceId: stableWorkspaceId,
+      targetDirectory: stableWorkspace.job.state.targetDirectory,
+    });
+    expect(await readWorkerChannel(controller, automaticExecutionPath)).toBe("latest");
+    expect(await readWorkerChannel(controller, stableExecutionPath)).toBe("stable");
     const checkout = await meshJsonRequest<{ exitCode: number; stdout: string }>(
       controller, `/api/workspaces/${automaticWorkspaceId}/exec`, {
         method: "POST",
@@ -508,6 +566,9 @@ test("controller updates server and automatic workspace workers and retains per-
     expect(checkout.status, JSON.stringify(checkout.body)).toBe(200);
     expect(checkout.body.exitCode).toBe(0);
     expect(checkout.body.stdout).toBe(await Bun.file(join(gitFixture.repositoryDirectory, "README.md")).text());
+    expect((await meshJsonRequest(controller, `/api/workspaces/${stableWorkspaceId}`, {
+      method: "DELETE",
+    })).status).toBe(200);
     expect((await meshJsonRequest(controller, `/api/workspaces/${automaticWorkspaceId}`, {
       method: "DELETE",
     })).status).toBe(200);
@@ -533,9 +594,14 @@ test("controller updates server and automatic workspace workers and retains per-
       "/api/worker-update-jobs",
     );
     expect(retainedJobs.status).toBe(200);
-    expect(retainedJobs.body.jobs).toHaveLength(3);
+    expect(retainedJobs.body.jobs).toHaveLength(6);
     expect(new Set(retainedJobs.body.jobs.map((job) => job.config.workerNodeId)))
       .toEqual(expectedWorkerIds);
+    const savedPreference = await meshJsonRequest<{ mode: string; defaultChannel: string }>(
+      controller, "/api/preferences/worker-updates",
+    );
+    expect(savedPreference.status).toBe(200);
+    expect(savedPreference.body).toEqual({ mode: "default", defaultChannel: "latest" });
 
     const retainedFailure = await meshJsonRequest<WorkerUpdateJobReadResponse>(
       controller,

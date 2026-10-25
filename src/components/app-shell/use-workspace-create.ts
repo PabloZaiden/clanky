@@ -35,6 +35,7 @@ import type { MeshEnrollmentRoute } from "@/contracts/schemas/mesh";
 import { getRouteString } from "./route-fields";
 import { createRefreshCoordinator } from "../../lib/refresh-coordinator";
 import { isAbortError } from "../../lib/request-lifecycle";
+import type { WorkerUpdateMode } from "@/shared/worker-update";
 
 const log = createLogger("useWorkspaceCreate");
 
@@ -103,6 +104,8 @@ export interface UseWorkspaceCreateResult {
   setAutomaticProvider: (provider: AgentProvider) => void;
   automaticPassword: string;
   setAutomaticPassword: (password: string) => void;
+  automaticChannel: WorkerUpdateMode;
+  setAutomaticChannel: (channel: WorkerUpdateMode) => void;
   handleCreateWorkspace: (event: FormEvent<HTMLFormElement>) => void;
   handleTestWorkspaceConnection: (
     settings: ServerSettings,
@@ -211,6 +214,7 @@ export function useWorkspaceCreate({
   );
   const [automaticAdapter, setAutomaticAdapter] = useState<HarnessAdapter>("acp");
   const [automaticPassword, setAutomaticPassword] = useState("");
+  const [automaticChannel, setAutomaticChannel] = useState<WorkerUpdateMode>("default");
   const lastProvisioningRefreshIdRef = useRef<string | null>(null);
   const wasOnComposeWorkspaceRef = useRef(false);
   const prefilledRetryJobIdRef = useRef<string | null>(null);
@@ -297,6 +301,7 @@ export function useWorkspaceCreate({
         setAutomaticAdvancedOpen(Boolean(config.devboxTemplate ?? config.devcontainerSubpath ?? config.githubUser));
         setAutomaticProvider(config.provider);
         setAutomaticAdapter(config.adapter ?? "acp");
+        setAutomaticChannel(config.releaseChannel ?? config.channel ?? "default");
         setAutomaticPassword("");
         prefilledRetryJobIdRef.current = retryJobId;
         provisioning.clearActiveJob();
@@ -382,6 +387,7 @@ export function useWorkspaceCreate({
     setAutomaticGithubUser("");
     setAutomaticAdvancedOpen(false);
     setAutomaticProvider(DEFAULT_EXECUTION_AGENT_PROVIDER);
+    setAutomaticChannel("default");
     setAutomaticPassword("");
   }, [
     provisioning.clearActiveJob,
@@ -629,6 +635,7 @@ export function useWorkspaceCreate({
     setAutomaticAdvancedOpen(Boolean(config.devboxTemplate ?? config.devcontainerSubpath ?? config.githubUser));
     setAutomaticProvider(config.provider);
     setAutomaticAdapter(config.adapter ?? "acp");
+    setAutomaticChannel(config.releaseChannel ?? config.channel ?? "default");
     setAutomaticPassword("");
     provisioning.clearActiveJob();
   }
@@ -703,6 +710,9 @@ export function useWorkspaceCreate({
           createNewRepository: automaticCreateNewRepository,
           password: automaticPassword,
           mode: "provision",
+          ...(automaticTransport === "worker" && !workspaceWorkerEnrollmentSelected
+            ? { channel: automaticChannel }
+            : {}),
           targetDirectory: null,
           workspaceId: null,
         });
@@ -820,6 +830,8 @@ export function useWorkspaceCreate({
     setAutomaticProvider,
     automaticPassword,
     setAutomaticPassword,
+    automaticChannel,
+    setAutomaticChannel,
     handleCreateWorkspace,
     handleTestWorkspaceConnection,
     handleBackToAutomaticWorkspaceForm,

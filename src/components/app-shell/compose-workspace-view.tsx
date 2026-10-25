@@ -33,6 +33,8 @@ import {
   saveLastAutomaticWorkspaceSshServerId,
 } from "../../lib/automatic-workspace-preferences";
 import { useWorkspaceExecutionTargets } from "../../hooks/workspace-server-settings";
+import { useWorkerUpdatePreferences } from "../../hooks/useWorkerUpdatePreferences";
+import { WorkerChannelSelect } from "../worker-channel-select";
 
 interface ComposeWorkspaceViewProps {
   navigateWithinShell: (route: WebAppRoute) => void;
@@ -222,9 +224,14 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     setAutomaticProvider,
     automaticPassword,
     setAutomaticPassword,
+    automaticChannel,
+    setAutomaticChannel,
     handleCreateWorkspace,
     handleTestWorkspaceConnection,
   } = workspaceCreate;
+  const automaticWorker = workspaceCreateMode === "automatic"
+    && automaticTransport === "worker" && !workspaceWorkerEnrollmentSelected;
+  const channelPreferences = useWorkerUpdatePreferences({ enabled: automaticWorker });
   const { targets: executionTargets } = useWorkspaceExecutionTargets();
   const automaticExecutionTargets = useMemo(
     () => executionTargets.filter((target) =>
@@ -309,6 +316,8 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     }
   }, [automaticCreateNewRepository, automaticDevboxTemplate, setAutomaticDevboxTemplate, templates, templatesLoading]);
   const automaticFormValid =
+    (!automaticWorker || automaticChannel !== "default"
+      || (channelPreferences.data !== undefined && !channelPreferences.error)) &&
     (automaticAdapter === "acp" || (automaticTransport === "worker" && !workspaceWorkerEnrollmentSelected)) &&
     workspaceName.trim().length > 0 &&
     (automaticExecutionHost !== null
@@ -715,6 +724,19 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                   supportedAdapters={automaticTransport === "worker" && !workspaceWorkerEnrollmentSelected ? HARNESS_ADAPTER_IDS : ["acp"]}
                   onAdapterChange={setAutomaticAdapter} onProviderChange={setAutomaticProvider} />
               </div>
+              {automaticWorker ? (
+                <>
+                  <WorkerChannelSelect
+                    id="automatic-clanky-channel"
+                    value={automaticChannel}
+                    onChange={setAutomaticChannel}
+                    disabled={provisioning.starting}
+                  />
+                  {channelPreferences.error ? (
+                    <ErrorState title="Unable to load the default Clanky channel" description={String(channelPreferences.error)} />
+                  ) : null}
+                </>
+              ) : null}
               {automaticAdapter !== "acp" && (automaticTransport !== "worker" || workspaceWorkerEnrollmentSelected) && (
                 <ErrorState title="Native adapters require a dedicated worker" description="Select ACP for direct SSH execution." />
               )}

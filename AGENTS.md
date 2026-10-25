@@ -54,12 +54,21 @@ new generation; do not mix cleanup with wire-contract changes.
   upstream instead of adding a local patch or app-owned workaround.
 - Accumulate related webapp changes on a dedicated pushed upstream branch for
   one eventual PR. Consume first-party dependencies directly from GitHub;
-  commits, branches, and release tags are supported, including in final PRs.
+  commits, branches, and release tags are supported during cross-repository
+  development.
   Prefer an explicit commit SHA for reproducibility and update `package.json`
   and `bun.lock` together. Validate Clanky against each consumed revision,
   preserving existing functionality. Intermediate stable releases are not
   required. This does not permit local dependency patches or npm publication
   of first-party packages.
+- Before finishing a Clanky change that requires a webapp improvement, merge
+  the upstream webapp PR into webapp `main`. The final dependency must resolve
+  to a commit reachable from webapp `main`, not depend on a feature-branch ref.
+  Commit pins remain valid without a release. After a squash or rebase merge,
+  update `package.json` and `bun.lock` to the resulting main commit and validate
+  Clanky against it. Fetch upstream `main` and verify the consumed commit with
+  `git merge-base --is-ancestor <consumed-sha> origin/main` before considering
+  the Clanky change complete.
 - Use the webapp public `useTheme()` hook for JavaScript integrations that need preference or resolved theme state. Never observe or mutate framework-owned root classes or DOM nodes to infer the resolved theme; prefer CSS theme variants when JavaScript state is unnecessary.
 - Keep Clanky as one app and one binary. Use `clanky serve` for the server and `clanky <subcommand>` for CLI commands; do not reintroduce a separate `clanky-cli` binary.
 - Use `bun --hot src/index.ts serve` for development; do not add Vite, a separate web dev server, or `CLANKY_WEB_DIST_DIR` for dev.
