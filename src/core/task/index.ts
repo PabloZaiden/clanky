@@ -350,7 +350,12 @@ export class TaskManager {
     return getRunningTaskStateImpl(this.ctx, taskId);
   }
 
+  beginShutdown(): void {
+    for (const engine of this.engines.values()) engine.beginShutdown();
+  }
+
   async shutdown(): Promise<void> {
+    this.beginShutdown();
     return shutdownImpl(this.ctx);
   }
 

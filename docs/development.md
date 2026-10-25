@@ -381,6 +381,13 @@ not. Neither signal proves that descendant processes have exited. ACP translates
 its explicit prompt terminal signal into the same contract; task execution
 depends on the generic `Backend` port, not the `AcpBackend` class.
 
+Graceful shutdown marks task and chat interruption before awaiting transport
+cleanup. A process-group signal can reap an ACP provider before the parent's
+signal callback runs: its process owner closes I/O immediately and dispatches
+the exit notification after pending signal callbacks, cancelling that owned
+notification on teardown. Interrupted planning remains recoverable after a
+restart; provider exits without server shutdown still surface as failures.
+
 Test doubles at the harness seam must preserve these distinctions. Use HTTP
 state/transcript observations to check them rather than asserting internal
 translation calls.

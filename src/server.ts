@@ -665,6 +665,7 @@ export async function getWebAppServer(
       },
       beforeStop: async () => {
         chatManager.beginShutdown();
+        taskManager.beginShutdown();
         const errors: unknown[] = [];
         const cleanup = async (operation: () => void | Promise<void>): Promise<void> => {
           try {
