@@ -2,8 +2,12 @@ import { buildWebAppClient } from "@pablozaiden/webapp/build";
 import { CLANKY_WEB_OPTIONS } from "./web-client-options";
 import { writeClientOperationCatalog } from "./client-operation-catalog";
 
-export async function buildClient() {
-  const mode = process.env["CLANKY_CLIENT_MODE"];
+export async function buildClient(options?: {
+  outdir: string;
+  clientMode?: "remote" | "external";
+  apiBaseUrl?: string;
+}) {
+  const mode = options ? options.clientMode : process.env["CLANKY_CLIENT_MODE"];
   if (mode !== undefined && mode !== "remote" && mode !== "external") {
     throw new Error("CLANKY_CLIENT_MODE must be remote or external.");
   }
@@ -11,8 +15,8 @@ export async function buildClient() {
   return await buildWebAppClient({
     ...CLANKY_WEB_OPTIONS,
     appName: "Clanky",
-    outdir: "dist/client",
-    apiBaseUrl: process.env["CLANKY_CLIENT_API_URL"],
+    outdir: options?.outdir ?? "dist/client",
+    apiBaseUrl: options ? options.apiBaseUrl : process.env["CLANKY_CLIENT_API_URL"],
     clientMode: mode,
     define: { "process.env.NODE_ENV": JSON.stringify("production") },
   });

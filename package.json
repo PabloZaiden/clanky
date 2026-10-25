@@ -12,6 +12,7 @@
     "build": "bun scripts/run-build.ts",
     "build:client": "bun src/build-client.ts",
     "build:client-sdk": "bun src/build-client-sdk.ts",
+    "build:pages": "bun src/build-pages.ts",
     "generate:macos-signing-cert": "bun scripts/generate-macos-signing-cert.ts",
     "release": "bun scripts/release.ts",
     "release:metadata": "bun scripts/release-metadata.ts",
