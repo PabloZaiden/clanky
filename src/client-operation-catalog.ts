@@ -21,7 +21,8 @@ export async function writeClientOperationCatalog(options: { isolated?: boolean;
           XDG_CONFIG_HOME: join(home, "config"), XDG_DATA_HOME: join(home, "share"),
           XDG_CACHE_HOME: join(home, "cache"),
         },
-        timeout: 5_000, maxBuffer: 64 * 1_024,
+        // Cold route projection is build work, not a request-time operation.
+        timeout: 30_000, maxBuffer: 64 * 1_024,
         stdout: "pipe", stderr: "pipe",
       });
       if (child.exitCode !== 0) {

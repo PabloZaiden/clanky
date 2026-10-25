@@ -341,6 +341,16 @@ export async function getFileExplorerImagePreviewResource(
   path: string,
   options?: WorkspaceFileRequestOptions,
 ): Promise<WebAppResourceUrl> {
+  if (target.type === "executionHost" && target.kind === "ssh") {
+    const searchParams = buildFileExplorerSearchParams(target, { path }, options);
+    const blob = await requestFileExplorerBlob(
+      `${getFileExplorerBasePath(target)}/preview?${searchParams.toString()}`,
+      await buildFileExplorerRequestInit(target, options),
+      "Load file explorer image preview",
+    );
+    const url = URL.createObjectURL(blob);
+    return { url, expiresAt: null, dispose: () => URL.revokeObjectURL(url) };
+  }
   const resource = await resolveFileExplorerResourcePath(target, path, "preview", options);
   return await appResourceUrl(resource.path, "resource", { signal: options?.signal });
 }
