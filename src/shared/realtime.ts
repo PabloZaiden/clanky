@@ -21,6 +21,7 @@ export const CLANKY_REALTIME_RESOURCES = {
   terminalSessions: "terminal-sessions",
   provisioningJobs: "provisioning-jobs",
   workerUpdateJobs: "worker-update-jobs",
+  workerUpdatePreferences: "worker-update-preferences",
   previews: "previews",
   mesh: "mesh",
   executionHosts: "execution-hosts",

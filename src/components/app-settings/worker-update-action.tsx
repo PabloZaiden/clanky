@@ -3,6 +3,9 @@ import { ConfirmModal, SettingsFieldRow, useToast } from "@pablozaiden/webapp/we
 import type { UseWorkerUpdateJobsResult } from "../../hooks/useWorkerUpdateJobs";
 import { Button } from "../common";
 import { SettingsError } from "./settings-row-controls";
+import type { WorkerUpdateMode } from "@/shared/worker-update";
+import { useWorkerUpdatePreferences } from "../../hooks/useWorkerUpdatePreferences";
+import { WorkerChannelSelect } from "../worker-channel-select";
 
 export function WorkerUpdateAction({
   workerUpdates,
@@ -10,14 +13,21 @@ export function WorkerUpdateAction({
   workerUpdates: UseWorkerUpdateJobsResult;
 }) {
   const toast = useToast();
-  const [showConfirm, setShowConfirm] = useState(false);
+  const preferences = useWorkerUpdatePreferences({ enabled: workerUpdates.enabled });
+  const [channel, setChannel] = useState<WorkerUpdateMode | undefined>();
+  const [confirmedChannel, setConfirmedChannel] = useState<WorkerUpdateMode | null>(null);
+  const selectedChannel = channel ?? preferences.data?.mode;
+  const unavailable = !preferences.data || Boolean(preferences.error);
 
   async function startUpdates(): Promise<void> {
-    const response = await workerUpdates.startUpdates();
-    setShowConfirm(false);
+    if (confirmedChannel === null) return;
+    const response = await workerUpdates.startUpdates(confirmedChannel);
+    setConfirmedChannel(null);
     if (!response) {
       return;
     }
+    await preferences.refresh();
+    setChannel(undefined);
 
     const startedCount = response.results.filter((item) => item.status === "started").length;
     const alreadyActiveCount = response.results.filter((item) => item.status === "not_started").length;
@@ -53,29 +63,39 @@ export function WorkerUpdateAction({
 
   return (
     <>
-      <SettingsFieldRow title="Clanky workers" actions={<Button
+      <SettingsFieldRow title="Clanky workers" content={(
+        <WorkerChannelSelect
+          id="worker-update-channel"
+          value={selectedChannel}
+          onChange={setChannel}
+          disabled={workerUpdates.starting || !workerUpdates.enabled || unavailable}
+        />
+      )} actions={<Button
           type="button"
           size="sm"
           loading={workerUpdates.starting}
-          disabled={workerUpdates.starting || !workerUpdates.enabled}
-          onClick={() => setShowConfirm(true)}
+          disabled={workerUpdates.starting || !workerUpdates.enabled || unavailable}
+          onClick={() => selectedChannel && setConfirmedChannel(selectedChannel)}
         >
           Update all
         </Button>} feedback={<>
 
       {workerUpdates.error ? <SettingsError>{workerUpdates.error}</SettingsError> : null}
+      {preferences.error ? <SettingsError>{String(preferences.error)}</SettingsError> : null}
 
       </>} />
       <ConfirmModal
-        isOpen={showConfirm}
+        isOpen={confirmedChannel !== null}
         onClose={() => {
           if (!workerUpdates.starting) {
-            setShowConfirm(false);
+            setConfirmedChannel(null);
           }
         }}
         onConfirm={() => void startUpdates()}
         title="Update Clanky on all workers?"
-        message="Update Clanky on all enrolled server and automatic workspace workers? Clanky restarts after each successful update. Active connections may close."
+        message={confirmedChannel === "default"
+          ? "Update all enrolled server and automatic workspace workers using each worker's saved channel. Workers restart after successful updates; active connections may close."
+          : `Permanently switch all enrolled workers to ${confirmedChannel === "latest" ? "Latest" : "Stable"} and use it by default for new automatic workspaces. ${confirmedChannel === "stable" ? "Latest builds may be downgraded. " : ""}Workers restart after successful updates; active connections may close.`}
         confirmLabel="Update workers"
         loading={workerUpdates.starting}
       />

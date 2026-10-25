@@ -37,6 +37,16 @@ to an older stable release. `--check --channel latest` checks that channel
 without changing the installation. Channel selection cannot be combined with
 `--version` or `--pre-release`; an exact `--version` remains available.
 
+Workers can have a persistent default that takes precedence over version-based
+inference. Read or set it with `clanky worker channel [stable|latest]`; this
+does not immediately update the binary. With a saved worker default,
+`update --channel ...` overrides the channel for that invocation, whereas
+`worker channel ...` changes future default updates. Maintenance's
+**Stable/Latest** applies both operations and restarts the worker only
+after verification. **Default** preserves each worker's selection.
+The same selector controls automatic workspace creation and Restart/Rebuild;
+see [Mesh worker maintenance](mesh-worker.md#update-servers-and-automatic-workspaces-together).
+
 Every main push builds the supported Linux, macOS and Windows targets. After
 all target builds succeed, the shared installer workflow replaces assets in
 one prerelease tagged `latest`. A unique version and source revision identify

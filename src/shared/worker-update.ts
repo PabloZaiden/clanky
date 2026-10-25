@@ -1,3 +1,12 @@
+export const WORKER_UPDATE_MODES = ["default", "stable", "latest"] as const;
+export type WorkerUpdateMode = typeof WORKER_UPDATE_MODES[number];
+export type WorkerReleaseChannel = Exclude<WorkerUpdateMode, "default">;
+
+export interface WorkerUpdatePreferences {
+  mode: WorkerUpdateMode;
+  defaultChannel: WorkerReleaseChannel;
+}
+
 export type WorkerUpdateJobStatus =
   | "pending"
   | "connecting"
@@ -44,6 +53,7 @@ export interface WorkerUpdateJobConfig {
   id: string;
   workerNodeId: string;
   workerName: string;
+  channel: WorkerUpdateMode;
   createdAt: string;
 }
 

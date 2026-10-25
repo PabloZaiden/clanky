@@ -2,11 +2,14 @@ import { createLogger, defineRoutes } from "@pablozaiden/webapp/server";
 import {
   DismissWorkerUpdateJobResponseSchema,
   StartWorkerUpdatesResponseSchema,
+  StartWorkerUpdatesRequestSchema,
   WorkerUpdateJobSnapshotSchema,
   WorkerUpdateJobsResponseSchema,
 } from "@/contracts/schemas/worker-update";
 import { workerUpdateManager } from "../core/worker-update-manager";
 import { domainErrorResponse, errorResponse, successResponse } from "./helpers";
+import { parseAndValidate } from "./validation";
+import { CLANKY_REALTIME_RESOURCES } from "@/shared/realtime";
 
 const log = createLogger("api:worker-update-jobs");
 
@@ -37,8 +40,8 @@ export const workerUpdateRoutes = defineRoutes({
         automation: { policy: "read" },
       },
       POST: {
-        description: "Start one update job per active Mesh worker, including automatic workspaces.",
-        requestSchema: undefined,
+        description: "Update active Mesh workers using their defaults or persistently force stable/latest; remember the selected mode and automatic-workspace default.",
+        requestSchema: StartWorkerUpdatesRequestSchema,
         querySchema: undefined,
         responseSchema: StartWorkerUpdatesResponseSchema,
         automation: {
@@ -62,7 +65,13 @@ export const workerUpdateRoutes = defineRoutes({
     async POST(req, ctx): Promise<Response> {
       ctx.server?.timeout(req, 0);
       try {
-        const result = await workerUpdateManager.startWorkerUpdates();
+        const validation = await parseAndValidate(StartWorkerUpdatesRequestSchema, req, {
+          allowEmptyBody: true,
+          emptyBodyValue: {},
+        });
+        if (!validation.success) return validation.response;
+        const result = await workerUpdateManager.startWorkerUpdates(validation.data.channel);
+        ctx.userRealtime.publishChanged(CLANKY_REALTIME_RESOURCES.workerUpdatePreferences);
         log.info("Worker update jobs admitted", {
           userId: ctx.requireOwner().id,
           totalWorkers: result.totalWorkers,

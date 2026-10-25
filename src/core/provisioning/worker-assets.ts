@@ -4,6 +4,8 @@
 
 import { posix as pathPosix } from "node:path";
 import { AGENT_PROVIDER_IDS, createAgentSettings, type HarnessAdapter } from "@/shared/settings";
+import type { WorkerReleaseChannel } from "@/shared/worker-update";
+import { getWorkerChannelPath } from "../worker-channel";
 
 export interface WorkerPaths {
   hostRoot: string;
@@ -14,7 +16,13 @@ export interface WorkerPaths {
   containerSupervisor: string;
   containerLog: string;
   containerPid: string;
+  hostChannel: string;
+  containerChannel: string;
+  containerRuntime: string;
+  hostInstalledChannel: string;
 }
+
+export type AutomaticWorkerChannel = WorkerReleaseChannel | "prerelease";
 
 const PROCESS_PRERELEASE_PAGE_SCRIPT = `let body = "";
 process.stdin.setEncoding("utf8");
@@ -31,6 +39,7 @@ process.stdin.on("end", () => {
         && release.prerelease === true
         && release.draft !== true
         && typeof release.tag_name === "string"
+        && release.tag_name !== "latest"
         && release.tag_name.trim().length > 0
         && typeof release.published_at === "string"
         && Number.isFinite(Date.parse(release.published_at))
@@ -54,6 +63,15 @@ export function shellQuote(value: string): string {
 export function getWorkerPaths(targetDirectory: string, containerWorkdir: string): WorkerPaths {
   const hostRoot = pathPosix.join(targetDirectory, ".devbox", "clanky-worker");
   const containerRoot = pathPosix.join(containerWorkdir, ".devbox", "clanky-worker");
+  return workerPaths(hostRoot, containerRoot);
+}
+
+export function getWorkerPathsForSupervisor(supervisor: string): WorkerPaths {
+  const root = pathPosix.dirname(supervisor);
+  return workerPaths(root, root);
+}
+
+function workerPaths(hostRoot: string, containerRoot: string): WorkerPaths {
   return {
     hostRoot, containerRoot,
     containerBinary: pathPosix.join(containerRoot, "bin", "clanky"),
@@ -62,6 +80,10 @@ export function getWorkerPaths(targetDirectory: string, containerWorkdir: string
     containerSupervisor: pathPosix.join(containerRoot, "supervisor.sh"),
     containerLog: pathPosix.join(containerRoot, "worker.log"),
     containerPid: pathPosix.join(containerRoot, "worker.pid"),
+    hostChannel: getWorkerChannelPath(hostRoot, "posix"),
+    containerChannel: getWorkerChannelPath(containerRoot, "posix"),
+    containerRuntime: pathPosix.join(containerRoot, "runtime.json"),
+    hostInstalledChannel: pathPosix.join(hostRoot, "release-channel"),
   };
 }
 
@@ -153,11 +175,19 @@ trap - EXIT
 `;
 }
 
-export function buildWorkerLauncher(paths: WorkerPaths, useClankyPrerelease = false): string {
+export function buildWorkerLauncher(paths: WorkerPaths, channel: AutomaticWorkerChannel = "stable"): string {
   return `#!/bin/sh
 set -eu
-CLANKY_RELEASE_CHANNEL=${shellQuote(useClankyPrerelease ? "prerelease" : "stable")}
+CLANKY_RELEASE_CHANNEL=${shellQuote(channel)}
 root=${shellQuote(paths.containerRoot)}
+channel_file=${shellQuote(paths.containerChannel)}
+if [ -f "$channel_file" ]; then
+  CLANKY_RELEASE_CHANNEL=$(cat "$channel_file")
+fi
+case "$CLANKY_RELEASE_CHANNEL" in
+  stable|latest|prerelease) ;;
+  *) echo "Invalid saved Clanky release channel." >&2; exit 1 ;;
+esac
 bin_dir=${shellQuote(pathPosix.join(paths.containerRoot, "bin"))}
 data_dir=${shellQuote(paths.containerData)}
 binary=${shellQuote(paths.containerBinary)}
@@ -206,10 +236,10 @@ latest_prerelease_tag() {
 }
 
 case "$CLANKY_RELEASE_CHANNEL" in
-  stable)
-    curl -fsSL --proto '=https' --tlsv1.2 https://raw.githubusercontent.com/pablozaiden/installer/1e73c9a4b84bb2282d5a6fd8463f9a9f62c26c67/install.sh -o "$installer"
-    printf '%s  %s\\n' d377a7ed04b150781b94cb0af97e6f7a2efe2c8d12dae1a1f0aa825306ea28f3 "$installer" | sha256sum -c -
-    HOME="$install_home" sh "$installer" pablozaiden/clanky --install-dir "$install_dir" --checksum required
+  stable|latest)
+    curl -fsSL --proto '=https' --tlsv1.2 https://raw.githubusercontent.com/pablozaiden/installer/bd5fa6697c003e620d8d7b92734aea506f31e3fa/install.sh -o "$installer"
+    printf '%s  %s\\n' 9790660f15f0925472ff819a729fc086c42e7b38e6ccb7d93aa19511f867ce8d "$installer" | sha256sum -c -
+    HOME="$install_home" sh "$installer" pablozaiden/clanky --channel "$CLANKY_RELEASE_CHANNEL" --install-dir "$install_dir" --checksum required
     if [ -x "$install_dir/clanky" ]; then
       source_binary="$install_dir/clanky"
     elif [ -x "$installed_binary" ]; then

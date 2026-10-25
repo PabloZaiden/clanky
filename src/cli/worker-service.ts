@@ -37,6 +37,7 @@ import {
 import { resolveWorkerRuntimeConfiguration } from "./worker-runtime";
 import { runWorkspaceWorkerService } from "./worker-supervisor";
 import { CLANKY_VERSION } from "../version";
+import { getEffectiveWorkerChannel } from "./worker-channel";
 import {
   getWindowsWorkerServicePaths,
   getWindowsWorkerServiceStatus,
@@ -1381,7 +1382,7 @@ export async function runWorkerServiceCommand(
       binaryVersion: CLANKY_VERSION,
       instanceId: context.environment["CLANKY_WORKER_INSTANCE_ID"],
       runningVersion: context.environment["CLANKY_WORKER_RUNNING_VERSION"],
-      releaseChannel: context.environment["CLANKY_WORKER_RELEASE_CHANNEL"],
+      releaseChannel: getEffectiveWorkerChannel(context.environment),
     } : {}),
   })}\n`);
   return { exitCode: 0 };

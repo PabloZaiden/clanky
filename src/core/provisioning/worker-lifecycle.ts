@@ -87,7 +87,8 @@ export class ProvisioningWorkerLifecycle {
     await prepareWorkerRuntimeAssets(executor, {
       paths,
       runtime: { adapter: record.job.config.adapter ?? "acp", provider: record.job.config.provider },
-      useClankyPrerelease: record.job.config.useClankyPrerelease === true,
+      releaseChannel: record.job.config.releaseChannel
+        ?? (record.job.config.useClankyPrerelease ? "prerelease" : undefined),
     });
     await this.runCommand(record, executor, {
       step: "prepare_directory",

@@ -1,7 +1,7 @@
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import { createLogger } from "@pablozaiden/webapp/server";
 import type { MeshWorkerRegistration } from "@/shared/mesh";
-import type { WorkerUpdateJob, WorkerUpdateJobSnapshot } from "@/shared/worker-update";
+import type { WorkerUpdateJob, WorkerUpdateJobSnapshot, WorkerUpdateMode } from "@/shared/worker-update";
 import {
   admitWorkerUpdateJob,
   dismissWorkerUpdateJob,
@@ -13,6 +13,7 @@ import { requireCurrentUser, requireCurrentUserId, runWithCurrentUser } from "..
 import { meshManager } from "./mesh-manager";
 import { isWorkerUpdateJobTerminal } from "@/shared/worker-update";
 import { WorkerUpdateJobRunner } from "./worker-update/runner";
+import { preferencesManager } from "./preferences-manager";
 import {
   emitWorkerUpdateJobChanged,
   emitWorkerUpdateJobDeleted,
@@ -62,16 +63,19 @@ export class WorkerUpdateManager {
     return recovered;
   }
 
-  async startWorkerUpdates(): Promise<StartWorkerUpdateJobsResult> {
+  async startWorkerUpdates(channel?: WorkerUpdateMode): Promise<StartWorkerUpdateJobsResult> {
     const owner = requireCurrentUser();
+    const previous = await preferencesManager.getWorkerUpdatePreferences();
+    const mode = channel ?? previous.mode;
     const { workers } = await meshManager.getControllerStatus(owner.id);
     const targets = workers.filter(
       (worker) =>
         worker.grantStatus === "active",
     );
+    await preferencesManager.rememberWorkerUpdateMode(mode);
     return {
       totalWorkers: targets.length,
-      results: targets.map((worker) => this.admitJob(owner, worker)),
+      results: targets.map((worker) => this.admitJob(owner, worker, mode)),
     };
   }
 
@@ -102,6 +106,7 @@ export class WorkerUpdateManager {
   private admitJob(
     owner: CurrentUser,
     worker: MeshWorkerRegistration,
+    channel: WorkerUpdateMode,
   ): WorkerUpdateAdmissionResult {
     const workerName = worker.workerInstanceName?.trim() || "Worker";
     const now = new Date().toISOString();
@@ -110,6 +115,7 @@ export class WorkerUpdateManager {
         id: crypto.randomUUID(),
         workerNodeId: worker.workerNodeId,
         workerName,
+        channel,
         createdAt: now,
       },
       state: {

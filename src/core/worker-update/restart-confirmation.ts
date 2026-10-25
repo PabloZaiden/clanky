@@ -12,7 +12,7 @@ const WorkerServiceStatusSchema = z.object({
   binaryVersion: z.string().optional(),
   instanceId: z.string().optional(),
   runningVersion: z.string().optional(),
-  releaseChannel: z.enum(["stable", "prerelease"]).optional(),
+  releaseChannel: z.enum(["stable", "latest", "prerelease"]).optional(),
 });
 
 export type WorkerServiceStatus = z.infer<typeof WorkerServiceStatusSchema>;
@@ -46,6 +46,7 @@ function isRecoverableProbeFailure(error: unknown): boolean {
       || error.code === "worker_service_not_running"
       || error.code === "worker_restart_not_observed"
       || error.code === "worker_restart_version_mismatch"
+      || error.code === "worker_restart_channel_mismatch"
       || ((error.code === "mesh_control_request_rejected"
         || error.code === "mesh_execution_request_failed")
         && [502, 503, 504].includes(Number(error.details["status"])))
@@ -104,6 +105,7 @@ export async function confirmWorkerRestart({
   deadline,
   previousInstanceId,
   expectedVersion,
+  expectedChannel,
   createExecutor,
   onRetry,
 }: {
@@ -112,6 +114,7 @@ export async function confirmWorkerRestart({
   deadline: number;
   previousInstanceId?: string;
   expectedVersion?: string;
+  expectedChannel?: "stable" | "latest";
   createExecutor: () => Promise<CommandExecutor>;
   onRetry: (error: unknown) => void;
 }): Promise<void> {
@@ -135,6 +138,9 @@ export async function confirmWorkerRestart({
       }
       if (expectedVersion && status.runningVersion !== expectedVersion) {
         throw new DomainError("worker_restart_version_mismatch", "The worker has not started the updated binary yet.");
+      }
+      if (expectedChannel && status.releaseChannel !== expectedChannel) {
+        throw new DomainError("worker_restart_channel_mismatch", "The worker has not restored the selected release channel yet.");
       }
       if (performance.now() < deadline) return;
     } catch (error) {

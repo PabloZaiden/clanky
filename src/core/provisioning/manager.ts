@@ -34,6 +34,7 @@ import { ProvisioningWorkerLifecycle } from "./worker-lifecycle";
 import { ProvisioningWorkflows } from "./workflows";
 import { workspaceManager } from "../workspace-manager";
 import { StreamVersion } from "../stream-version";
+import { preferencesManager } from "../preferences-manager";
 
 const log = createLogger("core:provisioning-manager");
 
@@ -81,13 +82,13 @@ export class ProvisioningManager {
       workspaceWorkerEnrollmentId,
     } = target;
     if (
-      options.useClankyPrerelease
-      && ((mode !== "rebuild" && mode !== "restart") || transport !== "worker")
+      options.channel && options.channel !== "default"
+      && (transport !== "worker" || mode === "arise")
     ) {
       throw new ProvisioningFailedError(
         "invalid_clanky_release_channel",
         "verify_devbox",
-        "Clanky prereleases are only supported for automatic worker workspace restarts and rebuilds.",
+        "Release channels are only supported for automatic worker workspaces.",
       );
     }
     const runtime: AgentSettings = (mode === "rebuild" || mode === "restart") && options.workspaceId
@@ -96,6 +97,14 @@ export class ProvisioningManager {
     if (!isAgentSettings(runtime) || (mode !== "arise" && transport !== "worker" && runtime.adapter !== "acp")) {
       throw new ProvisioningFailedError("invalid_runtime", "verify_devbox", "The selected runtime requires a dedicated worker and matching harness preset.");
     }
+    const channel = options.channel ?? "default";
+    const releaseChannel = transport !== "worker" || mode === "arise"
+      ? undefined
+      : channel !== "default"
+        ? channel
+        : mode === "provision"
+          ? (await preferencesManager.getWorkerUpdatePreferences()).defaultChannel
+          : undefined;
     const now = new Date().toISOString();
     const record: ProvisioningJobRecord = {
       version: new StreamVersion(),
@@ -128,7 +137,7 @@ export class ProvisioningManager {
           createNewRepository: options.createNewRepository === true,
           targetDirectory: normalizeOptionalValue(options.targetDirectory),
           workspaceId: normalizeOptionalValue(options.workspaceId),
-          ...(options.useClankyPrerelease ? { useClankyPrerelease: true } : {}),
+          ...(transport === "worker" && mode !== "arise" ? { channel, releaseChannel } : {}),
           createdAt: now,
         },
         state: {

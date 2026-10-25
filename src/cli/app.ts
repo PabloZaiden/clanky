@@ -13,6 +13,7 @@ import { createRelayCommand } from "./relay";
 import { parseCodeCommandArgs } from "./code";
 import type { WebAppCliCommandContext } from "@pablozaiden/webapp/cli";
 import type { PreviewCommandOptions } from "./preview";
+import { readConfiguredWorkerChannel } from "./worker-channel";
 
 const CLANKY_UPDATER_CONFIG = {
   repository: "pablozaiden/clanky",
@@ -65,7 +66,7 @@ export function createClankyCli() {
     version: CLANKY_VERSION,
     realtimePath: "/api/ws",
     routeCatalog: appContext.routeCatalog,
-    update: CLANKY_UPDATER_CONFIG,
+    update: { ...CLANKY_UPDATER_CONFIG, channel: readConfiguredWorkerChannel(environment) },
     serve: {
       options: CLANKY_SERVE_OPTIONS,
       development: {

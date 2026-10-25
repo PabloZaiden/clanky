@@ -22,6 +22,7 @@ import { parseAndValidate, validateRequest } from "../validation";
 import { domainErrorResponse, internalErrorResponse } from "../helpers";
 import { workspaceOperation } from "../workspace-delegation";
 import { CLANKY_REALTIME_RESOURCES } from "@/shared/realtime";
+import { WorkerUpdatePreferencesSchema } from "@/contracts/schemas/worker-update";
 import {
   SetLastModelRequestSchema,
   SetLastCheapModelRequestSchema,
@@ -49,6 +50,32 @@ function logPreferenceSaveFailure(preference: string, error: unknown): void {
  * Preferences API routes.
  */
 export const preferencesRoutes = defineRoutes({
+  "/api/preferences/worker-updates": {
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "Read the saved maintenance mode and inherited automatic-workspace release channel.",
+    operations: {
+      GET: {
+        requestSchema: undefined,
+        querySchema: undefined,
+        responseSchema: WorkerUpdatePreferencesSchema,
+        automation: { policy: "read" },
+      },
+    },
+    async GET(): Promise<Response> {
+      try {
+        return Response.json(await preferencesManager.getWorkerUpdatePreferences());
+      } catch (error) {
+        log.error("Failed to read worker update preferences", { error: String(error) });
+        return internalErrorResponse(error, {
+          error: "worker_update_preferences_failed",
+          message: "Failed to read worker update preferences",
+          status: 500,
+        });
+      }
+    },
+  },
+
   "/api/preferences/last-model": {
     auth: "user",
     sameOrigin: "mutations",

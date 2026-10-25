@@ -5,6 +5,7 @@
 import { chmod, copyFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { MESH_OPERATION_TIMEOUT_MS } from "../support/timeouts";
+import { renderExternalWorkerUpdateBinary } from "../support/provider";
 
 const args = process.argv.slice(2);
 const root = join(process.cwd(), ".devbox", "clanky-worker");
@@ -37,15 +38,7 @@ if (args[0] === "--help") {
       const runtime = join(root, "bin", "clanky-runtime");
       await copyFile(source, runtime);
       await chmod(runtime, 0o755);
-      const quote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
-      await Bun.write(binary, [
-        "#!/bin/sh",
-        'if [ "$#" -eq 1 ] && [ "$1" = update ]; then',
-        `  exec ${quote(process.execPath)} ${quote(process.env["CLANKY_E2E_UPDATE_COMMAND"]!)} "$@"`,
-        "fi",
-        `exec ${quote(runtime)} "$@"`,
-        "",
-      ].join("\n"));
+      await Bun.write(binary, renderExternalWorkerUpdateBinary());
     } else {
       await copyFile(source, binary);
     }

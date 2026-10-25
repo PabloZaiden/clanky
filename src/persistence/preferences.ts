@@ -22,6 +22,8 @@ import {
 } from "@/contracts/schemas";
 import type { PromptTemplate } from "@/shared/prompt-templates";
 import type { CheapModelSelection } from "@/shared";
+import type { WorkerUpdateMode, WorkerUpdatePreferences } from "@/shared/worker-update";
+import { WorkerUpdatePreferencesSchema } from "@/contracts/schemas/worker-update";
 
 const log = createLogger("persistence:preferences");
 
@@ -72,6 +74,29 @@ export interface UserPreferences {
   quickChatSettings?: QuickChatSettings;
   /** IANA timezone used by schedules such as Agents */
   schedulerTimezone?: string;
+  workerUpdates?: WorkerUpdatePreferences;
+}
+
+export async function getWorkerUpdatePreferences(): Promise<WorkerUpdatePreferences> {
+  return readWorkerUpdatePreferences();
+}
+
+function readWorkerUpdatePreferences(): WorkerUpdatePreferences {
+  const raw = getPreference("workerUpdates");
+  if (raw === null) return { mode: "default", defaultChannel: "stable" };
+  try {
+    return WorkerUpdatePreferencesSchema.parse(JSON.parse(raw));
+  } catch (error) {
+    throw new Error("The stored worker update preferences are invalid.", { cause: error });
+  }
+}
+
+export async function rememberWorkerUpdateMode(mode: WorkerUpdateMode): Promise<void> {
+  const previous = readWorkerUpdatePreferences();
+  setPreference("workerUpdates", JSON.stringify({
+    mode,
+    defaultChannel: mode === "default" ? previous.defaultChannel : mode,
+  }));
 }
 
 /**

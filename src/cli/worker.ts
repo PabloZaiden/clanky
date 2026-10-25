@@ -32,6 +32,7 @@ import {
   runWorkerSshAgentCommand,
 } from "./worker-ssh-agent";
 import { resolveWorkerRuntimeConfiguration } from "./worker-runtime";
+import { runWorkerChannelCommand } from "./worker-channel";
 
 const log = createLogger("cli:worker");
 
@@ -348,6 +349,9 @@ async function runWorkerCommand(
   if (operation === "service") {
     return await createWorkerServiceCommand().handler({ ...context, args: rest });
   }
+  if (operation === "channel") {
+    return await runWorkerChannelCommand({ ...context, args: rest });
+  }
   if (operation === "bootstrap") {
     return await bootstrapWorker(context);
   }
@@ -367,13 +371,13 @@ async function runWorkerCommand(
       configuration,
     );
   }
-  throw new Error("Worker command must be bootstrap, join, service, or ssh-agent");
+  throw new Error("Worker command must be bootstrap, join, channel, service, or ssh-agent");
 }
 
 export function createWorkerCommand(): WebAppCliCommandDefinition<ClankyCliContext> {
   return {
     description: "Bootstrap and manage a Mesh worker.",
-    usage: "worker <bootstrap|join|service|ssh-agent> [options]",
+    usage: "worker <bootstrap|join|channel|service|ssh-agent> [options]",
     handler: runWorkerCommand,
   };
 }

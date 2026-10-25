@@ -1,8 +1,19 @@
 import { z } from "zod";
 import { COMMAND_EXECUTION_STATES } from "@/shared/job-execution";
+import { WORKER_UPDATE_MODES } from "@/shared/worker-update";
 
 const RequiredStringSchema = z.string().trim().min(1);
 const TimestampSchema = z.string().datetime();
+
+export const WorkerUpdateModeSchema = z.enum(WORKER_UPDATE_MODES);
+export const WorkerReleaseChannelSchema = z.enum(["stable", "latest"]);
+export const WorkerUpdatePreferencesSchema = z.object({
+  mode: WorkerUpdateModeSchema,
+  defaultChannel: WorkerReleaseChannelSchema,
+});
+export const StartWorkerUpdatesRequestSchema = z.object({
+  channel: WorkerUpdateModeSchema.optional(),
+});
 
 export const WorkerUpdateJobStatusSchema = z.enum([
   "pending",
@@ -53,6 +64,7 @@ export const WorkerUpdateJobSchema = z.object({
     id: RequiredStringSchema,
     workerNodeId: RequiredStringSchema,
     workerName: RequiredStringSchema,
+    channel: WorkerUpdateModeSchema.default("default"),
     createdAt: TimestampSchema,
   }),
   state: z.object({

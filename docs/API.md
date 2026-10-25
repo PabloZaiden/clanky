@@ -3455,6 +3455,7 @@ Create a provisioning job.
 | `executionHost` | object | Exactly one of `executionHost` or `workspaceWorkerEnrollmentId` | Execution host reference, such as `{ "kind": "local", "nodeId": "..." }` or `{ "kind": "ssh", "serverId": "..." }` |
 | `workspaceWorkerEnrollmentId` | string | Exactly one of `executionHost` or `workspaceWorkerEnrollmentId` | Existing dedicated worker enrollment; only valid for `provision` mode |
 | `transport` | string | No | `worker` (default for new automatic workspaces) or `ssh` |
+| `channel` | string | No | `default`, `stable`, or `latest` for worker transport. New workspaces inherit the saved global channel in Default; Restart/Rebuild preserve the workspace's channel. Explicit choices persist only for that workspace. |
 | `workerEnrollmentRoute` | string | No | `direct` or `relay` for a new worker transport; when omitted, the controller selects its configured default |
 | `workerHostAddress` | string \| null | Required for direct worker `provision`; omit for relay workers | Reachable IPv4 address or hostname without spaces |
 | `workerHostAddressManual` | boolean | No | Set to `true` when using a manually entered host instead of a discovered IPv4 address |
@@ -3470,6 +3471,9 @@ Create a provisioning job.
 | `createNewRepository` | boolean | No | Create a new repository with a devbox template; defaults to `false` |
 | `targetDirectory` | string \| null | Yes | Existing repository path for `rebuild` or `restart`; use `null` otherwise |
 | `workspaceId` | string \| null | Yes | Existing workspace ID for `rebuild` or `restart`; use `null` otherwise |
+
+Unknown request fields are rejected. The former `useClankyPrerelease` option
+is replaced by `channel`.
 
 ```json
 {
@@ -3667,16 +3671,30 @@ Get the collected log entries for a provisioning job.
 ### Mesh worker updates
 
 Worker update routes require owner authorization and same-origin protection for
-mutations. `POST /api/worker-update-jobs` accepts no request body and starts a
+mutations. `POST /api/worker-update-jobs` accepts an optional channel selection and starts a
 separate background job for every active Mesh worker registration, including
 `registrationScope: "workspace"` workers. SSH-only workspaces without an enrolled
 Mesh worker are not targets. Different workers run concurrently; each job checks
 for a running service or workspace loop and runs its commands in order:
 
-1. `clanky update`
-2. `clanky worker service restart`, only after the update exits successfully.
+1. `clanky update`, adding `--channel stable|latest` when forced.
+2. `clanky worker channel stable|latest` for a forced choice, then verification.
+3. `clanky worker service restart`, only after updating and saving the default succeed.
 
-Automatic workers configured for prereleases add `--pre-release` to the update.
+`channel` accepts `default`, `stable`, or `latest`. Omission uses the saved
+maintenance mode, initially `default`. Default preserves each worker's channel;
+forcing changes its persistent default as well as the installed binary.
+The owner's maintenance mode and last explicit stable/latest choice survive
+controller restarts. Default does not reset the inherited channel for future
+automatic workspaces, initially stable. `GET /api/preferences/worker-updates`
+returns `{ "mode": "default", "defaultChannel": "stable" }` for a new user;
+this user-authorized read returns only that user's preferences. Explicit
+provisioning choices do not change this global preference. New provisioning
+jobs record the resolved `releaseChannel`; update jobs record `config.channel`.
+
+Legacy automatic workers configured for prereleases add `--pre-release` in
+Default mode. Forced choices require an installed binary supporting
+`worker channel stable|latest`; unsupported operations fail visibly.
 In new automatic workspaces the service command controls the persistent local
 shell loop; no provisioning-host access or container restart is involved.
 Existing one-shot workspace launchers require manual replacement; this operation
@@ -3699,7 +3717,9 @@ it finishes, its connection is lost, or the deadline expires. The job then
 polls every second for signed Mesh health and an installed, running worker
 service or workspace loop through a fresh execution connection. Runtime metadata
 reported by supported workers verifies a new instance and the expected binary
-version. `clanky worker service status` reports `binaryVersion` for the executable
+version and, for forced changes, the persisted release channel.
+`clanky worker service status` reports `releaseChannel` (`stable`, `latest`,
+or a legacy `prerelease`), `binaryVersion` for the executable
 on disk and, when invoked through a worker, `instanceId` and `runningVersion`
 for that worker process. A lost response
 after dispatch does not by itself interrupt the job or cause the restart
@@ -3723,6 +3743,17 @@ Start update jobs for all active server and automatic workspace Mesh worker regi
 is `202 Accepted`; `totalWorkers` is the number of eligible registrations, and
 `results` contains one admission result per worker.
 
+Optional request body:
+
+```json
+{ "channel": "latest" }
+```
+
+The selection is snapshotted into each admitted job; later preference changes
+do not alter active jobs. An empty body reuses the last confirmed maintenance
+mode. Even when no workers are eligible, confirmation saves the preference for
+future automatic workspace creation.
+
 ```json
 {
   "success": true,
@@ -3731,6 +3762,7 @@ is `202 Accepted`; `totalWorkers` is the number of eligible registrations, and
     {
       "workerNodeId": "worker-1",
       "workerName": "build-east",
+      "channel": "latest",
       "status": "started",
       "jobId": "job-1"
     },

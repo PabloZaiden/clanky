@@ -15,6 +15,7 @@ import type {
 } from "./attempt";
 import type { ProvisioningTargetOwnership } from "./target-resolver";
 import type { StreamVersion } from "../stream-version";
+import type { WorkerUpdateMode } from "@/shared/worker-update";
 
 export interface StartProvisioningJobOptions {
   name: string;
@@ -39,8 +40,7 @@ export interface StartProvisioningJobOptions {
   targetDirectory?: string;
   /** For rebuild/restart mode: existing workspace ID */
   workspaceId?: string;
-  /** Use the latest Clanky prerelease for a dedicated worker workspace */
-  useClankyPrerelease?: boolean;
+  channel?: WorkerUpdateMode;
 }
 
 export interface ProvisioningJobRecord {

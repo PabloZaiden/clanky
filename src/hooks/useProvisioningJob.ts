@@ -19,6 +19,7 @@ import type {
 import { getRegisteredSshServerId } from "@/shared/execution-host";
 import { useLiveQuery, type RealtimeStatus } from "@pablozaiden/webapp/web";
 import { useProvisioningSnapshot } from "./useProvisioningSnapshot";
+import type { WorkerUpdateMode } from "@/shared/worker-update";
 
 export interface StartProvisioningJobRequest {
   name: string;
@@ -41,7 +42,7 @@ export interface StartProvisioningJobRequest {
   mode: "provision" | "rebuild" | "restart" | "arise";
   targetDirectory: string | null;
   workspaceId: string | null;
-  useClankyPrerelease?: boolean;
+  channel?: WorkerUpdateMode;
 }
 
 export interface DismissAllProvisioningJobsResult {
@@ -246,7 +247,7 @@ export function useProvisioningJob({ enabled = true }: { enabled?: boolean } = {
           createNewRepository: request.createNewRepository ?? false,
           targetDirectory: request.targetDirectory?.trim() ? request.targetDirectory.trim() : null,
           workspaceId: request.workspaceId?.trim() ? request.workspaceId.trim() : null,
-          ...(request.useClankyPrerelease ? { useClankyPrerelease: true } : {}),
+          ...(request.channel ? { channel: request.channel } : {}),
         }),
         action: "Start provisioning job",
         fallbackMessage: "Failed to start provisioning job",

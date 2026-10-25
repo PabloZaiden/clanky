@@ -16,6 +16,7 @@ import {
   getPromptTemplates as getPromptTemplatesRecord,
   getQuickChatSettings as getQuickChatSettingsRecord,
   getSchedulerTimezone as getSchedulerTimezoneRecord,
+  getWorkerUpdatePreferences as getWorkerUpdatePreferencesRecord,
   setDashboardViewMode as setDashboardViewModeRecord,
   setFileExplorerFullTreeEnabled as setFileExplorerFullTreeEnabledRecord,
   setGithubUsername as setGithubUsernameRecord,
@@ -26,6 +27,7 @@ import {
   setPromptTemplates as setPromptTemplatesRecord,
   setQuickChatSettings as setQuickChatSettingsRecord,
   setSchedulerTimezone as setSchedulerTimezoneRecord,
+  rememberWorkerUpdateMode as rememberWorkerUpdateModeRecord,
 } from "../persistence/preferences";
 import type { CheapModelSelection } from "@/contracts/schemas/model";
 import type { PromptTemplate } from "@/shared/prompt-templates";
@@ -35,6 +37,7 @@ import { workspaceManager } from "./workspace-manager";
 import { workspaceConnections } from "./workspace-connections";
 import { decodeCollaborationResourceReference } from "@/shared/collaboration-reference";
 import { getCollaborationActor, requireResourceOwnerUserId } from "../context/user-context";
+import type { WorkerUpdateMode, WorkerUpdatePreferences } from "@/shared/worker-update";
 
 export interface LastModelPreference {
   providerID: string;
@@ -52,6 +55,14 @@ export interface QuickChatModelRequest {
 }
 
 export class PreferencesManager {
+  async getWorkerUpdatePreferences(): Promise<WorkerUpdatePreferences> {
+    return await getWorkerUpdatePreferencesRecord();
+  }
+
+  async rememberWorkerUpdateMode(mode: WorkerUpdateMode): Promise<void> {
+    await rememberWorkerUpdateModeRecord(mode);
+  }
+
   async getLastModel(): Promise<LastModelPreference | undefined> {
     return await getLastModelRecord();
   }

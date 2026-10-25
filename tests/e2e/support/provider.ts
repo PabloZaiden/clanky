@@ -20,6 +20,19 @@ const WORKER_UPDATE_COMMAND_PATH = resolve(
   "worker-update-command.ts",
 );
 
+export function renderExternalWorkerUpdateBinary(): string {
+  const quote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
+  return [
+    "#!/bin/sh",
+    'root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)',
+    'if [ "${1:-}" = update ]; then',
+    `  exec ${quote(process.execPath)} ${quote(WORKER_UPDATE_COMMAND_PATH)} "$@"`,
+    "fi",
+    'exec "$root/clanky-runtime" "$@"',
+    "",
+  ].join("\n");
+}
+
 export async function installExternalCodexProvider(binDirectory: string): Promise<void> {
   await mkdir(binDirectory, { recursive: true, mode: 0o700 });
   const executable = process.execPath;

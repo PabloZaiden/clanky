@@ -240,6 +240,10 @@ export {
   WorkerUpdateJobSnapshotSchema,
   WorkerUpdateJobsResponseSchema,
   StartWorkerUpdatesResponseSchema,
+  StartWorkerUpdatesRequestSchema,
+  WorkerUpdateModeSchema,
+  WorkerReleaseChannelSchema,
+  WorkerUpdatePreferencesSchema,
   DismissWorkerUpdateJobResponseSchema,
 } from "./worker-update";
 
