@@ -38,6 +38,48 @@ fingerprinted assets. Keep frontend and API on the same Clanky revision during
 development. An old production API does not support the new detached-client
 authentication contract.
 
+### Continuous GitHub Pages deployments
+
+Every push to `main` publishes both clients together:
+
+| URL | Connection |
+| --- | --- |
+| https://pablozaiden.github.io/clanky/api/ | Select an HTTPS API and authorize a device session |
+| https://pablozaiden.github.io/clanky/collaboration/ | Accept a controller invitation through its HTTPS relay |
+
+The [site root](https://pablozaiden.github.io/clanky/) links both clients and
+the deployed commit. Its `build-info.json` records the full source revision and
+build timestamp. These deployments follow `main`, not the latest stable release;
+compare the deployed commit when investigating browser behavior or API
+compatibility. Reload the page after deployment to pick up the new frontend.
+
+The `Publish browser clients` workflow builds PRs without publishing them.
+Main pushes and manual runs on `main` deploy through the `github-pages`
+environment. Deployments are serialized and superseded revisions are skipped.
+Configure repository **Settings > Pages > Source** to
+**GitHub Actions** before the first deployment. Both clients are packaged from
+one frontend build; only their `webapp-client.json` modes differ. No API URL,
+invitation or credentials are preconfigured.
+
+To generate the same complete site locally:
+
+```bash
+bun run build:pages
+```
+
+Publish all of `dist/pages/`. This command creates a clean site rather than
+copying accumulated files from `dist/client/`, and fails if the result exceeds
+GitHub Pages' 1 GB site limit. Normal `build`, `build:client` and binary
+packaging are unchanged.
+
+Pages is a different origin from localhost or your controller. Authenticate
+again for the API client, or create and accept a new invitation for the
+collaboration client; existing origin-bound credentials and pairing keys are
+not migrated. The two directory paths share the same Pages origin and are not
+security isolation boundaries. Trust the public site's code as you would any
+other client deployment. Hosting on Pages does not bypass Safari policies or
+guarantee a fix for browser-specific connection failures.
+
 ## Configure the API
 
 The combined deployment remains the default:
