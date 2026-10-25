@@ -20,7 +20,7 @@ export function useTerminalResize({
   fitAddonRef,
   sendTerminalPayload,
 }: UseTerminalResizeParams) {
-  const sendTerminalResize = useCallback((cols: number, rows: number) => {
+  const sendTerminalResize = useCallback(async (cols: number, rows: number) => {
     if (cols <= 0 || rows <= 0) {
       return;
     }
@@ -28,7 +28,7 @@ export function useTerminalResize({
     if (previousSize && previousSize.cols === cols && previousSize.rows === rows) {
       return;
     }
-    const didSend = sendTerminalPayload(
+    const didSend = await sendTerminalPayload(
       { type: "terminal.resize", cols, rows },
       { focusTerminal: false, notifyOnFailure: false },
     );
@@ -45,7 +45,7 @@ export function useTerminalResize({
     if (options?.fit) {
       fitAddonRef.current?.fit();
     }
-    sendTerminalResize(terminal.cols, terminal.rows);
+    void sendTerminalResize(terminal.cols, terminal.rows);
   }, [fitAddonRef, sendTerminalResize, terminalRef]);
 
   return { sendTerminalResize, syncTerminalSize };

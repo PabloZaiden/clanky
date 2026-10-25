@@ -3,7 +3,7 @@
  */
 
 import { createLogger } from "@pablozaiden/webapp/server";
-import { readRevision } from "./resource-read-service";
+import { readRevision } from "../client-sdk/collaboration/resource-read";
 
 const log = createLogger("core:live-voice-latency");
 

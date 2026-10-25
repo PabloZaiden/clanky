@@ -6,7 +6,12 @@
  */
 import { z } from "zod";
 import type { ContentPart, Page, ResourceReadOptions } from "@/contracts/schemas/resource-read";
-import { DomainError } from "../domain/domain-error";
+import { DomainError } from "../../domain/domain-error";
+import { decodeUtf8Base64Url, encodeJsonBase64Url, utf8ByteLength } from "@/shared/encoding";
+import { sha256Text } from "@/shared/hash";
+import { isReadRecord } from "@/shared/record";
+
+export { isReadRecord } from "@/shared/record";
 
 export const DEFAULT_READ_BYTES = 4096;
 const DEFAULT_READ_LIMIT = 20;
@@ -19,16 +24,12 @@ const CursorSchema = z.object({
 }).strict();
 export type ReadCursor = z.infer<typeof CursorSchema>;
 
-export function isReadRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
 export function readBytes(value: unknown): number {
-  return Buffer.byteLength(JSON.stringify(value) ?? "null", "utf8");
+  return utf8ByteLength(JSON.stringify(value) ?? "null");
 }
 
 export function readRevision(value: unknown): string {
-  return new Bun.CryptoHasher("sha256").update(JSON.stringify(value) ?? "null").digest("hex");
+  return sha256Text(JSON.stringify(value) ?? "null");
 }
 
 export function readScope(ownerId: string, url: URL, inputIdentity?: unknown): string {
@@ -39,7 +40,7 @@ export function readScope(ownerId: string, url: URL, inputIdentity?: unknown): s
 }
 
 export function encodeReadCursor(cursor: ReadCursor): string {
-  return Buffer.from(JSON.stringify(cursor)).toString("base64url");
+  return encodeJsonBase64Url(cursor);
 }
 
 export function decodeReadCursor(input: {
@@ -52,7 +53,7 @@ export function decodeReadCursor(input: {
   }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(Buffer.from(input.cursor, "base64url").toString("utf8"));
+    parsed = JSON.parse(decodeUtf8Base64Url(input.cursor));
   } catch (cause) {
     throw new DomainError("read_cursor_invalid", "Invalid read cursor.", { cause });
   }

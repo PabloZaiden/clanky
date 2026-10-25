@@ -9,7 +9,7 @@ import type { LiveVoiceActions } from "./live-voice-actions";
 import type { LiveVoiceObserver } from "./live-voice-observer";
 import { isDomainError } from "../domain/domain-error";
 import { createLogger } from "@pablozaiden/webapp/server";
-import { contentReadPage, readBytes, readRevision } from "./resource-read-service";
+import { contentReadPage, readBytes, readRevision } from "../client-sdk/collaboration/resource-read";
 import { LIVE_READ_BYTES } from "./live-voice-output";
 import { liveVoiceDirectSchemas, liveVoiceDirectDescriptions } from "./live-voice-direct-contracts";
 import { LiveVoiceDirectContext } from "./live-voice-direct-context";

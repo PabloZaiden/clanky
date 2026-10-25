@@ -7,7 +7,7 @@ import { requireExecutionOwnerUserId } from "../context/user-context";
 import { DomainError } from "../domain/domain-error";
 import { getConversationMessageWindowForUser, getConversationMessageIdsForUser, getConversationAdmissionsForUser, getTranscriptMetaForUser } from "../persistence/transcripts/sql-store";
 import type { TranscriptResource } from "../persistence/transcripts/types";
-import { DEFAULT_READ_BYTES, decodeReadCursor, encodeReadCursor, fitReadText, readBytes, readRevision } from "./resource-read-service";
+import { DEFAULT_READ_BYTES, decodeReadCursor, encodeReadCursor, fitReadText, readBytes, readRevision } from "../client-sdk/collaboration/resource-read";
 
 function conversationPart(message: PersistedMessage, offset: number, admission: string | undefined): ConversationMessage {
   return {

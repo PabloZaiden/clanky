@@ -7,7 +7,7 @@ import { ControlNavigationActionSchema } from "@/shared/clanky-control";
 import { ExecutionHostRefSchema } from "@/contracts/schemas/execution-host";
 import { getExecutionHostSourceId } from "@/shared/execution-host";
 import { directRecord, LiveVoiceDirectContext } from "./live-voice-direct-context";
-import { isReadRecord } from "./resource-read-service";
+import { isReadRecord } from "../client-sdk/collaboration/resource-read";
 import { liveVoiceDirectSchemas, type DirectToolName } from "./live-voice-direct-contracts";
 import { directList, directOverview, directRead, directServers, pendingInteractions } from "./live-voice-direct-reads";
 import { directCreateChat, directCreateTask, directCreateWorkspace } from "./live-voice-direct-creation";

@@ -8,6 +8,8 @@ import type { CheapModelSelection, ModelConfig } from "@/shared";
 import type { ModelInfo } from "@/contracts";
 import { apiRequest } from "../../lib/api-client";
 import { ModelConfigSchema } from "@/contracts/schemas/model";
+import { browserPreferences } from "../../client-sdk/browser-preferences";
+import { isBrowserCollaborationClient } from "../../client-sdk/browser-runtime";
 
 export interface UseWorkspaceModelsResult {
   models: ModelInfo[];
@@ -61,34 +63,56 @@ export function useWorkspaceModels(): UseWorkspaceModelsResult {
   }, []);
 
   useEffect(() => {
+    const controller = new AbortController();
     async function fetchLastModel() {
       try {
-        const raw = await apiRequest<unknown>("/api/preferences/last-model", {
+        const raw = isBrowserCollaborationClient()
+          ? browserPreferences.lastModel.read(controller.signal)
+          : await apiRequest<unknown>("/api/preferences/last-model", {
+          signal: controller.signal,
           action: "Load last model preference",
           fallbackMessage: "Failed to load last model preference",
         });
+        if (controller.signal.aborted) return;
         const data = normalizeLastModelPreference(raw);
         if (raw !== null && data === null) {
           log.warn("Failed to normalize last model preference response");
         }
         setLastModel(data);
       } catch (error) {
+        if (controller.signal.aborted) return;
         log.warn("Failed to fetch last model preference", { error: String(error) });
       }
     }
     async function fetchLastCheapModel() {
       try {
-        const data = await apiRequest<CheapModelSelection | null>("/api/preferences/last-cheap-model", {
+        const data = isBrowserCollaborationClient()
+          ? browserPreferences.lastCheapModel.read(controller.signal)
+          : await apiRequest<CheapModelSelection | null>("/api/preferences/last-cheap-model", {
+          signal: controller.signal,
           action: "Load last cheap model preference",
           fallbackMessage: "Failed to load last cheap model preference",
         });
+        if (controller.signal.aborted) return;
         setLastCheapModel(data);
       } catch (error) {
+        if (controller.signal.aborted) return;
         log.warn("Failed to fetch last cheap model preference", { error: String(error) });
       }
     }
     void fetchLastModel();
     void fetchLastCheapModel();
+    const unsubscribeModel = isBrowserCollaborationClient()
+      ? browserPreferences.lastModel.subscribe(() => { void fetchLastModel(); })
+      : undefined;
+    const unsubscribeCheapModel = isBrowserCollaborationClient()
+      ? browserPreferences.lastCheapModel.subscribe(() => { void fetchLastCheapModel(); })
+      : undefined;
+    return () => {
+      controller.abort();
+      unsubscribeModel?.();
+      unsubscribeCheapModel?.();
+    };
   }, []);
 
   const fetchModels = useCallback(async (

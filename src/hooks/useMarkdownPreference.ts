@@ -6,6 +6,8 @@
 import { useCallback, useEffect, useRef } from "react";
 import { createLogger } from "@pablozaiden/webapp/web";
 import { apiRequest } from "../lib/api-client";
+import { browserPreferences } from "../client-sdk/browser-preferences";
+import { isBrowserCollaborationClient } from "../client-sdk/browser-runtime";
 import {
   usePreferenceLifecycle,
   type PreferenceErrorContext,
@@ -33,6 +35,7 @@ export interface UseMarkdownPreferenceResult {
 export function useMarkdownPreference(): UseMarkdownPreferenceResult {
   const log = createLogger("useMarkdownPreference");
   const loadPreference = useCallback(async (signal: AbortSignal): Promise<boolean> => {
+    if (isBrowserCollaborationClient()) return browserPreferences.markdown.read(signal);
     const data = await apiRequest<{ enabled: boolean }>("/api/preferences/markdown-rendering", {
       signal,
       action: "Load markdown preference",
@@ -45,6 +48,10 @@ export function useMarkdownPreference(): UseMarkdownPreferenceResult {
     nextEnabled: boolean,
     signal: AbortSignal,
   ): Promise<void> => {
+    if (isBrowserCollaborationClient()) {
+      browserPreferences.markdown.write(nextEnabled, signal);
+      return;
+    }
     await apiRequest("/api/preferences/markdown-rendering", {
       signal,
       method: "PUT",
@@ -71,6 +78,7 @@ export function useMarkdownPreference(): UseMarkdownPreferenceResult {
     load: loadPreference,
     save: savePreference,
     onError: handlePreferenceError,
+    subscribe: isBrowserCollaborationClient() ? browserPreferences.markdown.subscribe : undefined,
   });
 
   const enabledRef = useRef(preference.value);

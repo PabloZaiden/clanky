@@ -14,8 +14,8 @@ import type { MeshRelayInboundOptions } from "../core/mesh-relay-inbound";
 import type { MeshInboundSocketAttachment } from "../core/mesh-inbound-socket";
 import { findGuestResourceWorkspace, resolveWorkspaceEventAuthority } from "../core/workspace-event-authority";
 import { previewSessionManager } from "../core/preview-session-manager";
-import { isReadRecord } from "../core/resource-read-service";
-import { isWorkspaceRealtimeEvent, type ClankyRealtimeEvent } from "../realtime";
+import { isReadRecord } from "../client-sdk/collaboration/resource-read";
+import { isWorkspaceRealtimeEvent, type ClankyRealtimeEvent } from "@/shared/realtime";
 import { workspaceGuestActor } from "./workspace-client-gateway";
 import { startTerminalBridge, releaseTerminalSocket, type TerminalSocket } from "./websocket/terminal";
 

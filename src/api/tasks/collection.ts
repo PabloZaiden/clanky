@@ -17,7 +17,7 @@ import { parseAndValidate } from "../validation";
 import { startErrorResponse } from "./helpers";
 import { WorkCollectionReadOptionsSchema } from "@/contracts/schemas/resource-read";
 import { readWorkCollection, readWorkCollectionItem } from "../../core/work-read-service";
-import { readScope } from "../../core/resource-read-service";
+import { readScope } from "../../client-sdk/collaboration/resource-read";
 import { resourcePageResponse } from "../resource-reads";
 
 const log = createLogger("api:tasks");

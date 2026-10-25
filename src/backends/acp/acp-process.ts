@@ -28,6 +28,7 @@ export class AcpProcess {
   private closed = false;
   private started = false;
   private stopping: Promise<void> | null = null;
+  private exitNotification: ReturnType<typeof setImmediate> | undefined;
 
   private constructor(
     private readonly child: Bun.Subprocess,
@@ -92,6 +93,10 @@ export class AcpProcess {
       return await this.stopping;
     }
     this.closed = true;
+    if (this.exitNotification) {
+      clearImmediate(this.exitNotification);
+      this.exitNotification = undefined;
+    }
     const stopping = terminateAcpProcess(this.child, options);
     this.stopping = stopping;
     try {
@@ -117,9 +122,14 @@ export class AcpProcess {
         return;
       }
       this.closed = true;
-      this.options.onExit({
-        exitCode,
-        signalCode: this.child.signalCode,
+      // Group shutdown can queue the parent's signal alongside child exit.
+      // Deliver exit after pending signal callbacks can mark shutdown intent.
+      this.exitNotification = setImmediate(() => {
+        this.exitNotification = undefined;
+        this.options.onExit({
+          exitCode,
+          signalCode: this.child.signalCode,
+        });
       });
     });
   }

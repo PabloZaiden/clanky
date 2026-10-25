@@ -1,7 +1,7 @@
 # Static frontend and remote API
 
-Clanky supports two deployments from the same source: the normal combined
-server/UI binary, and a frontend-only artifact that connects to a remote API.
+Clanky supports the normal combined server/UI binary, a static frontend that
+connects to a remote API, and a browser-only invited collaboration client.
 The static frontend needs no Bun, Node, application server or SPA rewrites.
 
 ## Build and publish
@@ -130,8 +130,90 @@ Keep authentication enabled, including on localhost. An API with authentication
 disabled can expose private unauthenticated reads to arbitrary websites.
 Passkey bypasses are intended only for isolated, disposable validation data.
 
+## Browser-only collaboration
+
+To connect directly to invited controllers through their relays, without an
+API server of your own, select the external bootstrap when building:
+
+```bash
+CLANKY_CLIENT_MODE=external bun run build:client
+```
+
+Publish all of `dist/client/` as above. This uses the same frontend code and
+assets as API-backed modes; `webapp-client.json` selects the runtime. Open
+**Connect controller** or **Settings > Collaboration**, enter your name and the
+invitation, and connect. The controller keeps its normal authorization and
+workspace execution responsibilities. The browser is neither a worker nor an
+API server and makes no requests to an API on the static host.
+
+The browser and invited Bun controllers use the same pairing, protocol,
+request routing, reference qualification, collection composition, realtime and
+terminal policy. The relay and Mesh wire generation are unchanged. Multiple
+controller connections can coexist; an unavailable controller does not replace
+other available sources with an offline copy.
+
+The browser needs a secure context with Ed25519 Web Crypto, IndexedDB and Web
+Locks. HTTP localhost is supported; remote relay certificates must be trusted
+by the browser. No client-origin registration is needed. Private signing keys
+are nonextractable and remain in this site's IndexedDB; reconnect/reload reuses
+the saved identity. Only one document may own a pairing at a time. Close the
+other tab before reconnecting. Clearing site storage loses the pairing;
+controller revocation remains the authoritative way to retire access.
+Nonextractable keys do not protect against malicious scripts on the same origin.
+
+Granted workspaces support conversations, tasks/plans, agents, scratchpad,
+Git/files, uploads, bounded images and application terminals. New agent
+schedules use the selected workspace controller's timezone; editing preserves
+the schedule's existing timezone. Quick Chat, templates, Markdown, view/tree
+preferences and last-used models are device/profile preferences in this mode.
+Controller settings, workspace creation/administration, provisioning and local
+execution-host management are not browser capabilities. Arbitrary web/VS Code
+previews and inline streamed video require an API-backed client; download video
+instead. HTML transcripts are downloaded, not navigated as application-origin
+Blob documents.
+
+### Disk downloads and export
+
+Browser-only downloads stream through the relay into origin-private filesystem
+storage (OPFS), with an actual-byte limit of **4 GiB per file**
+(4,294,967,296 bytes) and at most **64 retained records**. This is not a
+whole-response RAM download or an unlimited buffering fallback. Unsupported
+disk APIs, quota errors, oversized/truncated responses and cancellations fail
+explicitly; incomplete copies are removed, including recovery after an
+interrupted document.
+
+Use **Settings > Downloads** to inspect progress, cancel a transfer, export a
+completed copy, or remove it with confirmation. **Ready to export** means the
+file is in browser storage, not in Downloads or Files. **Export opened** means
+the browser download or native share flow started; it does not confirm the
+destination saved the file. Verify the exported file before removing the
+browser copy. Completed copies survive normal reloads until explicitly removed,
+but site-storage clearing or browser eviction can still delete them.
+
+Downloads need OPFS streaming writers and sufficient browser quota and free
+disk space. The 4 GiB path has been exercised in Chromium through a real
+controller/relay, including an OS-file export; this is **not an iPhone size
+guarantee**. Safari/iOS support depends on its version, storage policy, export
+support and foreground lifetime. Suspension can interrupt a transfer; there
+is no background-download or resumable-transfer guarantee. Image resource URLs
+have separate in-memory limits: 20 MiB per image, 60 MiB total and 64 active or
+pending resources, and are released by their consumers.
+
+### Portable SDK
+
+`bun run build` also emits `dist/client-sdk/index.js`, a browser ESM entry point
+for consumers that need the same invited-client implementation without Clanky's
+React UI. Host that directory, including its generated
+`dist/client-sdk/collaboration-operations.json`; this catalog is
+projected from actual route metadata, not a second hand-written API registry.
+`BrowserCollaborationClient.open({ catalogUrl })` loads that catalog and saved
+pairings. Its request, session, connection, realtime, duplex, resource and
+download APIs own real transports and storage. Call and await `stop()` before
+replacing a client. The SDK does not grant access beyond the controller's
+existing grants or make browser-specific storage into a server dependency.
+
 This frontend can later be packaged in an iPhone WebView without a local
 Bun/Node server. The framework exposes native credential-storage and
 system-browser login hooks, but native origins, Keychain integration, signing,
 packaging and distribution are a separate phase. `file://` hosting, offline
-execution/synchronization and a browser-owned Mesh peer are not included.
+execution/synchronization and native wrappers are not included.

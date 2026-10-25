@@ -11,6 +11,7 @@
     "start:server": "bun run start",
     "build": "bun scripts/run-build.ts",
     "build:client": "bun src/build-client.ts",
+    "build:client-sdk": "bun src/build-client-sdk.ts",
     "generate:macos-signing-cert": "bun scripts/generate-macos-signing-cert.ts",
     "release": "bun scripts/release.ts",
     "release:metadata": "bun scripts/release-metadata.ts",
@@ -23,8 +24,9 @@
   "dependencies": {
     "@github/copilot-sdk": "1.0.26",
     "@monaco-editor/react": "4.7.0",
+    "@noble/hashes": "2.4.0",
     "@opencode/client": "2.1.4",
-    "@pablozaiden/webapp": "github:PabloZaiden/webapp#v3.0.0",
+    "@pablozaiden/webapp": "github:PabloZaiden/webapp#v3.1.2",
     "@peculiar/x509": "2.2.0",
     "@tailwindcss/typography": "0.5.20",
     "@xterm/addon-fit": "0.11.0",

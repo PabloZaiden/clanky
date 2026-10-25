@@ -7,6 +7,9 @@ import type { CollaborationConnection } from "@/shared/collaboration";
 import { COLLABORATION_MAX_CONNECTIONS } from "@/shared/collaboration";
 import { CollaborationConnectionSchema } from "@/contracts/schemas/collaboration";
 import { DomainError } from "../domain/domain-error";
+import {
+  activateCollaborationPairing, assertCollaborationPairingRevision,
+} from "../client-sdk/collaboration/pairing-state";
 import { getDatabase } from "./database";
 import { getCollaborationOwner, parseCollaborationRecord } from "./collaboration-storage";
 
@@ -123,16 +126,12 @@ export function activateCollaborationConnection(
   localUserId: string,
   connectionId: string,
   guestId: string,
-  now: string,
+  expectedRevision: string,
 ): CollaborationConnection {
   const db = getDatabase();
   return db.transaction(() => {
     const connection = requireCollaborationConnection(localUserId, connectionId);
-    if (connection.status === "revoked"
-      || (connection.status === "pending" && connection.pendingExpiresAt <= now)
-      || (connection.guestId !== null && connection.guestId !== guestId)) {
-      throw new DomainError("collaboration_connection_inactive", "The connection can no longer be activated.");
-    }
+    activateCollaborationPairing(connection, guestId, expectedRevision);
     db.query(`
       UPDATE collaboration_connections SET status = 'active', guest_id = ?
       WHERE id = ? AND local_user_id = ?
@@ -158,16 +157,22 @@ export function getCollaborationConnectionCiphertextInternal(
     .private_key_ciphertext;
 }
 
-export function revokeCollaborationConnection(localUserId: string, connectionId: string): void {
-  requireCollaborationConnection(localUserId, connectionId);
-  getDatabase().query(`
-    UPDATE collaboration_connections SET status = 'revoked', private_key_ciphertext = NULL
-    WHERE id = ? AND local_user_id = ?
-  `).run(connectionId, localUserId);
+export function revokeCollaborationConnection(localUserId: string, connectionId: string, expectedRevision: string): void {
+  const db = getDatabase();
+  db.transaction(() => {
+    assertCollaborationPairingRevision(requireCollaborationConnection(localUserId, connectionId), expectedRevision);
+    db.query(`
+      UPDATE collaboration_connections SET status = 'revoked', private_key_ciphertext = NULL
+      WHERE id = ? AND local_user_id = ?
+    `).run(connectionId, localUserId);
+  }).immediate();
 }
 
-export function deleteCollaborationConnection(localUserId: string, connectionId: string): void {
-  requireCollaborationConnection(localUserId, connectionId);
-  getDatabase().query("DELETE FROM collaboration_connections WHERE id = ? AND local_user_id = ?")
-    .run(connectionId, localUserId);
+export function deleteCollaborationConnection(localUserId: string, connectionId: string, expectedRevision: string): void {
+  const db = getDatabase();
+  db.transaction(() => {
+    assertCollaborationPairingRevision(requireCollaborationConnection(localUserId, connectionId), expectedRevision);
+    db.query("DELETE FROM collaboration_connections WHERE id = ? AND local_user_id = ?")
+      .run(connectionId, localUserId);
+  }).immediate();
 }

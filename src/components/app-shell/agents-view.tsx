@@ -61,7 +61,6 @@ function AgentForm({
   modelsLoading,
   modelsWorkspaceId,
   lastModel,
-  schedulerTimezone,
   branches,
   branchesLoading,
   branchesWorkspaceId,
@@ -85,7 +84,6 @@ function AgentForm({
   modelsLoading: boolean;
   modelsWorkspaceId: string | null;
   lastModel: ModelConfig | null;
-  schedulerTimezone: string;
   branches: BranchInfo[];
   branchesLoading: boolean;
   branchesWorkspaceId: string | null;
@@ -117,7 +115,6 @@ function AgentForm({
     modelsLoading,
     modelsWorkspaceId,
     lastModel,
-    schedulerTimezone,
     branches,
     branchesLoading,
     branchesWorkspaceId,
@@ -214,10 +211,18 @@ function AgentForm({
 
   return (
     <div className="space-y-5">
+      {form.schedulerError && (
+        <ErrorState
+          title="Scheduling defaults unavailable"
+          description={String(form.schedulerError)}
+          action={<Button onClick={() => void form.refreshScheduler()}>Retry</Button>}
+        />
+      )}
       <AgentFormFields
         mode={mode}
         initialWorkspace={initialWorkspace}
         draft={form.draft}
+        schedulerTimezone={form.schedulerTimezone}
         workspaces={workspaces}
         workspacesLoading={workspacesLoading}
         workspaceError={workspaceError}
@@ -385,7 +390,6 @@ function AgentDetail({
   modelsLoading,
   modelsWorkspaceId,
   lastModel,
-  schedulerTimezone,
   branches,
   branchesLoading,
   branchesWorkspaceId,
@@ -411,7 +415,6 @@ function AgentDetail({
   modelsLoading: boolean;
   modelsWorkspaceId: string | null;
   lastModel: ModelConfig | null;
-  schedulerTimezone: string;
   branches: BranchInfo[];
   branchesLoading: boolean;
   branchesWorkspaceId: string | null;
@@ -447,7 +450,6 @@ function AgentDetail({
         modelsLoading={modelsLoading}
         modelsWorkspaceId={modelsWorkspaceId}
         lastModel={lastModel}
-        schedulerTimezone={schedulerTimezone}
         branches={branches}
         branchesLoading={branchesLoading}
         branchesWorkspaceId={branchesWorkspaceId}
@@ -619,7 +621,6 @@ export function AgentComposer({
   modelsLoading,
   modelsWorkspaceId,
   lastModel,
-  schedulerTimezone,
   branches,
   branchesLoading,
   branchesWorkspaceId,
@@ -640,7 +641,6 @@ export function AgentComposer({
   modelsLoading: boolean;
   modelsWorkspaceId: string | null;
   lastModel: ModelConfig | null;
-  schedulerTimezone: string;
   branches: BranchInfo[];
   branchesLoading: boolean;
   branchesWorkspaceId: string | null;
@@ -664,7 +664,6 @@ export function AgentComposer({
       modelsLoading={modelsLoading}
       modelsWorkspaceId={modelsWorkspaceId}
       lastModel={lastModel}
-      schedulerTimezone={schedulerTimezone}
       branches={branches}
       branchesLoading={branchesLoading}
       branchesWorkspaceId={branchesWorkspaceId}
@@ -688,7 +687,6 @@ export function AgentsView({
   modelsLoading,
   modelsWorkspaceId,
   lastModel,
-  schedulerTimezone,
   selectedWorkspaceId: _selectedWorkspaceId,
   onWorkspaceChange,
   onUpdateAgent,
@@ -716,7 +714,6 @@ export function AgentsView({
   modelsLoading: boolean;
   modelsWorkspaceId: string | null;
   lastModel: ModelConfig | null;
-  schedulerTimezone: string;
   selectedWorkspaceId: string | null;
   onWorkspaceChange: (workspaceId: string | null, directory: string) => void;
   onUpdateAgent: UseAgentsResult["updateAgent"];
@@ -772,7 +769,6 @@ export function AgentsView({
         modelsLoading={modelsLoading}
         modelsWorkspaceId={modelsWorkspaceId}
         lastModel={lastModel}
-        schedulerTimezone={schedulerTimezone}
         branches={branches}
         branchesLoading={branchesLoading}
         branchesWorkspaceId={branchesWorkspaceId}

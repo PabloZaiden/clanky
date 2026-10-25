@@ -140,12 +140,12 @@ export interface UseVoiceSettingsResult {
   validateCapability: (capability: VoiceCapability) => Promise<VoiceSettings>;
 }
 
-export function useVoiceSettings(): UseVoiceSettingsResult {
+export function useVoiceSettings({ enabled = true }: { enabled?: boolean } = {}): UseVoiceSettingsResult {
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
   useEffect(() => {
-    void refreshVoiceSettings();
-  }, []);
+    if (enabled) void refreshVoiceSettings();
+  }, [enabled]);
 
   const updateSettings = useCallback(async (
     update: VoiceSettingsUpdate,

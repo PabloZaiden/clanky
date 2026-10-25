@@ -5,7 +5,7 @@
  */
 
 import { useCallback } from "react";
-import { createLogger, type ToastService } from "@pablozaiden/webapp/web";
+import { createLogger, type ToastService, type WebAppConfigState } from "@pablozaiden/webapp/web";
 import type { WorkspaceType } from "@/shared";
 import { useAppConfig } from "./use-app-config";
 import { useWorkspaceModels } from "./use-workspace-models";
@@ -66,8 +66,8 @@ export interface UseDashboardDataResult {
   resetCreateModalState: () => void;
 }
 
-export function useDashboardData(): UseDashboardDataResult {
-  const appConfig = useAppConfig();
+export function useDashboardData(config: WebAppConfigState["config"]): UseDashboardDataResult {
+  const appConfig = useAppConfig(config);
   const workspaceModels = useWorkspaceModels();
   const workspaceBranches = useWorkspaceBranches();
   const planningDir = usePlanningDir();

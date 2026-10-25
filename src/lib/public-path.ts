@@ -1,8 +1,10 @@
 export {
   appAbsoluteUrl,
+  appDuplexConnection,
   appFetch,
   appPath,
   appResourceUrl,
+  appSaveResource,
   appWebSocketConnection,
   appWebSocketUrl,
   configureClientRuntime,

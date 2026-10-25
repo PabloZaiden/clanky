@@ -41,9 +41,12 @@ import { DomainError } from "../domain/domain-error";
 import { meshStateEventEmitter } from "./event-emitter";
 import {
   MeshRelayConnector,
-  type MeshRelayConnectorOptions,
   validateMeshRelayAuthorization,
 } from "./mesh-relay-connector";
+import {
+  createMeshNodeRelayConnector,
+  type MeshNodeRelayConnectorOptions as MeshRelayConnectorOptions,
+} from "./mesh-relay-node-connector";
 import { MeshRelayStreamError } from "./mesh-relay-errors";
 import {
   MeshRelayConnectorManager,
@@ -337,7 +340,7 @@ export class ControllerRelayService {
       }
 
       const connectorFactory = this.options.createConnector
-        ?? ((options: MeshRelayConnectorOptions) => new MeshRelayConnector(options));
+        ?? createMeshNodeRelayConnector;
       const connector = connectorFactory({
         config: {
           relayUrl: normalizedRelayUrl,
@@ -710,7 +713,7 @@ export class ControllerRelayService {
     }
     // Validate before connecting so deterministic local snapshot corruption
     // cannot enter the manager's reconnect loop.
-    this.loadAuthorizationWorkers({
+    await this.loadAuthorizationWorkers({
       relayUrl,
       relayFingerprint: pairing.relayFingerprint,
     });
@@ -815,7 +818,7 @@ export class ControllerRelayService {
         if (!config) {
           return;
         }
-        workers = this.loadAuthorizationWorkers({
+        workers = await this.loadAuthorizationWorkers({
           relayUrl: config.relayUrl,
           relayFingerprint: config.relayFingerprint,
         });
@@ -824,7 +827,7 @@ export class ControllerRelayService {
             relayUrl: config.relayUrl,
             relayFingerprint: config.relayFingerprint,
           }) ?? [];
-          validateMeshRelayAuthorization([...workers, ...clients]);
+          await validateMeshRelayAuthorization([...workers, ...clients]);
         }
       } catch (error) {
         const mapped = this.mapRuntimeError(error);
@@ -889,12 +892,12 @@ export class ControllerRelayService {
     ));
   }
 
-  private loadAuthorizationWorkers(route: {
+  private async loadAuthorizationWorkers(route: {
     relayUrl: string;
     relayFingerprint: string;
-  }): MeshRelayPeerIdentity[] {
+  }): Promise<MeshRelayPeerIdentity[]> {
     const workers = listActiveControllerWorkerIdentities(route);
-    validateMeshRelayAuthorization(workers);
+    await validateMeshRelayAuthorization(workers);
     return workers;
   }
 

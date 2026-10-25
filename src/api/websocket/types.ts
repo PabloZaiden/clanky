@@ -2,14 +2,14 @@ import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import type { ExecutionHostKind } from "@/shared";
 import type { InteractiveTerminalConnection } from "../../core/terminal";
 import type { TerminalAttachmentHandle } from "../../core/terminal-attachment-registry";
-import type { WorkspaceSocketProxy } from "../workspace-socket-proxy";
+import type { CollaborationSocketBridge } from "../../client-sdk/collaboration/socket";
 
 /**
  * WebSocket client data attached to each connection.
  * Stored in the WebSocket's data property for per-connection state.
  */
 export interface WebSocketData {
-  workspaceProxy?: WorkspaceSocketProxy;
+  workspaceProxy?: CollaborationSocketBridge;
   /** Canonical terminal session ID */
   terminalSessionId?: string;
   /** Resolved transport for a canonical workspace terminal */

@@ -5,14 +5,20 @@
  * It is included in the framework-owned web document.
  */
 
-import { configureClientRuntime } from "@/client-sdk/public-path";
-import { renderWebApp } from "@pablozaiden/webapp/web";
+import { initializeClankyClient } from "@/client-sdk/browser-runtime";
+import { ErrorState, renderWebApp } from "@pablozaiden/webapp/web";
 import "@pablozaiden/webapp/web/styles.css";
 import { App } from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 
-function start() {
-  configureClientRuntime();
+async function start(): Promise<void> {
+  try {
+    await initializeClankyClient();
+  } catch (error) {
+    console.error("Clanky could not initialize", String(error));
+    renderWebApp(<ErrorState title="Unable to start Clanky" description={error instanceof Error ? error.message : String(error)} />);
+    return;
+  }
   renderWebApp(
     <ErrorBoundary>
       <App />
@@ -21,7 +27,7 @@ function start() {
 }
 
 if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", start);
+  document.addEventListener("DOMContentLoaded", () => void start(), { once: true });
 } else {
-  start();
+  void start();
 }

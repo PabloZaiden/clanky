@@ -2,8 +2,9 @@ import type { ExecutionHostDescriptor } from "@/shared";
 import { apiRequest } from "../lib/api-client";
 import { useLiveQuery } from "@pablozaiden/webapp/web";
 
-export function useExecutionHosts() {
+export function useExecutionHosts({ enabled = true }: { enabled?: boolean } = {}) {
   const query = useLiveQuery<ExecutionHostDescriptor[]>({
+    enabled,
     load: (signal) => apiRequest<ExecutionHostDescriptor[]>("/api/execution-hosts", {
       signal,
       action: "Load execution hosts",

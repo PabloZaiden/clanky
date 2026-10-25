@@ -1,7 +1,7 @@
 /**
  * Retains JSON-stream heartbeats while qualifying the final structured result.
  */
-import { DomainError } from "../domain/domain-error";
+import { DomainError } from "../../domain/domain-error";
 
 export function workspaceJsonResponseStream(options: {
   maxBytes: number;

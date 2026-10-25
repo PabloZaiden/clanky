@@ -129,7 +129,7 @@ import {
   isMeshRelayEnrollmentAdmissionToken,
 } from "./mesh-relay-admission";
 import { discoverMeshEnrollmentTarget } from "./mesh-target-discovery";
-import { MeshRelayConnector } from "./mesh-relay-connector";
+import { createMeshNodeRelayConnector } from "./mesh-relay-node-connector";
 import { createMeshRelayPeerTransport } from "./mesh-relay-transport";
 import { getMeshRelayFingerprint } from "./mesh-relay-identity";
 import { workerRelayService } from "./worker-relay-service";
@@ -1482,7 +1482,7 @@ export class MeshManager {
         );
         rawResponse = await readMeshControlResponseJson<unknown>(response);
       } else {
-        const connector = new MeshRelayConnector({
+        const connector = createMeshNodeRelayConnector({
           config: {
             relayUrl: discovered.target,
             relayFingerprint: discovered.descriptor.fingerprint,

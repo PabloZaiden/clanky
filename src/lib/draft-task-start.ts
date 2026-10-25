@@ -9,6 +9,8 @@ import {
 import { toDraftTaskUpdateRequest } from "./task-request";
 import { parseApiError } from "./api-error";
 import { readApiResponse, requestApiResponse, apiRequest } from "./api-client";
+import { browserPreferences } from "../client-sdk/browser-preferences";
+import { isBrowserCollaborationClient } from "../client-sdk/browser-runtime";
 
 const log = createLogger("DraftTaskStart");
 
@@ -40,6 +42,11 @@ export async function persistTaskPreferences({
   workspaces,
   request,
 }: PersistTaskPreferencesOptions): Promise<void> {
+  if (isBrowserCollaborationClient()) {
+    if (request.model) browserPreferences.lastModel.write(request.model);
+    if (request.cheapModel) browserPreferences.lastCheapModel.write(request.cheapModel);
+    return;
+  }
   const operations: Promise<unknown>[] = [];
 
   if (request.model) {

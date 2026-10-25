@@ -5,7 +5,7 @@ import {
   decodeChatTrashCursor, encodeChatTrashCursor, type ChatTrashPage,
 } from "@/contracts/schemas/chat-trash";
 import { decodeCollaborationResourceReference } from "@/shared/collaboration-reference";
-import { DomainError } from "../domain/domain-error";
+import { DomainError } from "../../domain/domain-error";
 
 function position(id: string): { origin: string; id: string } {
   const reference = decodeCollaborationResourceReference(id);

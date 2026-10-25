@@ -1,5 +1,5 @@
 /**
- * Node-side Mesh relay control connection.
+ * Portable Mesh relay control connection.
  *
  * A connector owns exactly one authenticated outbound control WebSocket for a
  * local controller or worker. It verifies the relay challenge against the
@@ -11,8 +11,9 @@
  * `MeshRelayConnectorManager` so a pairing attempt can never retry silently.
  */
 
-import { randomUUID } from "node:crypto";
-import { createLogger } from "@pablozaiden/webapp/server";
+import { getClientKeyFingerprint, verifyClientSignature } from "../client-sdk/collaboration/crypto";
+import { utf8ByteLength } from "@/shared/encoding";
+import type { CollaborationClientLogger, CollaborationSigningIdentity } from "../client-sdk/collaboration/types";
 import {
   MeshRelayAuthOkFrameSchema,
   MeshRelayAuthorizationAckFrameSchema,
@@ -44,13 +45,10 @@ import {
   type MeshProtocolVersion,
 } from "@/shared/mesh-protocol";
 import {
-  ensureLocalMeshNodeIdentity,
-  signMeshPayload,
-} from "../persistence/mesh-node-identity";
-import {
   openMeshRelayClientSocket,
   toMeshRelayCloseCode,
   toMeshRelayCloseReason,
+  waitForMeshRelaySocketClosed,
   type MeshRelayClientSocket,
   type MeshRelayClientSocketFactory,
 } from "./mesh-relay-client-socket";
@@ -63,10 +61,6 @@ import { MeshRelayStreamError } from "./mesh-relay-errors";
 
 type MeshRelayProtocolVersion = MeshProtocolVersion;
 import {
-  getMeshRelayFingerprint,
-  verifyMeshRelaySignature,
-} from "./mesh-relay-identity";
-import {
   MESH_RELAY_MAX_CONTROL_FRAME_BYTES,
   isMeshRelayRouteAllowed,
 } from "./mesh-relay-policy";
@@ -74,8 +68,6 @@ import {
   buildMeshRelayAuthSigningPayload,
   buildMeshRelayChallengeSigningPayload,
 } from "./mesh-relay-protocol";
-
-const log = createLogger("core:mesh-relay-connector");
 
 export const MESH_RELAY_CONNECT_TIMEOUT_MS = 15_000;
 export const MESH_RELAY_HEARTBEAT_TIMEOUT_MS = 45_000;
@@ -103,12 +95,7 @@ export interface MeshRelayConnectorConfig {
   protocolVersion?: MeshProtocolVersion;
 }
 
-export interface MeshRelayConnectorIdentity {
-  nodeId: string;
-  publicKey: string;
-  fingerprint: string;
-  sign(payload: string): Promise<string>;
-}
+export type MeshRelayConnectorIdentity = CollaborationSigningIdentity;
 
 export interface MeshRelayOfferContext {
   role: MeshRelayPeerRole;
@@ -139,7 +126,8 @@ export interface MeshRelayStreamRequestInput {
 export interface MeshRelayConnectorOptions {
   config: MeshRelayConnectorConfig;
   inbound?: MeshRelayInboundHandler;
-  identity?: MeshRelayConnectorIdentity;
+  identity: MeshRelayConnectorIdentity | (() => Promise<MeshRelayConnectorIdentity>);
+  logger?: CollaborationClientLogger;
   socketFactory?: MeshRelayClientSocketFactory;
   connectTimeoutMs?: number;
   heartbeatTimeoutMs?: number;
@@ -182,11 +170,11 @@ function controlUrl(
 }
 
 function controlFrameBytes(frame: MeshRelayClientControlFrame): number {
-  return Buffer.byteLength(JSON.stringify(frame), "utf8");
+  return utf8ByteLength(JSON.stringify(frame));
 }
 
 function authorizationIdentityBytes(identity: MeshRelayPeerIdentity): number {
-  return Buffer.byteLength(JSON.stringify(identity), "utf8");
+  return utf8ByteLength(JSON.stringify(identity));
 }
 
 export interface ValidatedMeshRelayAuthorization {
@@ -198,9 +186,9 @@ export interface ValidatedMeshRelayAuthorization {
  * Validate a complete authorization snapshot before any transaction frame is
  * sent. The returned identities contain the schema-normalized values.
  */
-export function validateMeshRelayAuthorization(
+export async function validateMeshRelayAuthorization(
   workers: readonly MeshRelayPeerIdentity[],
-): ValidatedMeshRelayAuthorization {
+): Promise<ValidatedMeshRelayAuthorization> {
   if (workers.length > MESH_RELAY_MAX_AUTHORIZED_WORKERS) {
     throw new MeshRelayStreamError(
       "mesh_relay_authorization_too_many_workers",
@@ -224,7 +212,7 @@ export function validateMeshRelayAuthorization(
     const worker = parsed.data;
     let derived: string;
     try {
-      derived = getMeshRelayFingerprint(worker.publicKey);
+      derived = await getClientKeyFingerprint(worker.publicKey);
     } catch (error) {
       throw new MeshRelayStreamError(
         "mesh_relay_worker_identity_invalid",
@@ -313,17 +301,8 @@ export function chunkMeshRelayAuthorization(
   return chunks;
 }
 
-async function resolveDefaultIdentity(): Promise<MeshRelayConnectorIdentity> {
-  const identity = await ensureLocalMeshNodeIdentity();
-  return {
-    nodeId: identity.nodeId,
-    publicKey: identity.publicKey,
-    fingerprint: identity.fingerprint,
-    sign: signMeshPayload,
-  };
-}
-
 export class MeshRelayConnector {
+  private readonly log: CollaborationClientLogger;
   private socket?: MeshRelayClientSocket;
   private relayUrl?: string;
   private state: MeshRelayConnectorStatus = "idle";
@@ -340,7 +319,9 @@ export class MeshRelayConnector {
   private connectTimer?: ReturnType<typeof setTimeout>;
   private detachSocket: () => void = () => {};
 
-  constructor(private readonly options: MeshRelayConnectorOptions) {}
+  constructor(private readonly options: MeshRelayConnectorOptions) {
+    this.log = options.logger ?? console;
+  }
 
   private getRelayProtocolVersion(): MeshRelayProtocolVersion {
     return this.options.config.protocolVersion ?? MESH_PROTOCOL_VERSION;
@@ -383,7 +364,12 @@ export class MeshRelayConnector {
       );
     }
     this.relayUrl = relayUrl;
-    const identity = this.options.identity ?? await resolveDefaultIdentity();
+    const identity = typeof this.options.identity === "function"
+      ? await this.options.identity()
+      : this.options.identity;
+    if (this.status !== "connecting") {
+      throw new MeshRelayStreamError("mesh_relay_disconnected", "The Mesh relay connection was closed while loading its identity.");
+    }
     const factory = this.options.socketFactory ?? openMeshRelayClientSocket;
     const socket = factory(controlUrl(relayUrl, this.getRelayProtocolVersion()));
     socket.binaryType = "arraybuffer";
@@ -397,7 +383,7 @@ export class MeshRelayConnector {
       this.finalize(event.code, event.reason || "The Mesh relay connection closed.");
     };
     const onError = (): void => {
-      log.warn("Mesh relay control socket reported an error");
+      this.log.warn("Mesh relay control socket reported an error");
       this.finalize(1006, "The Mesh relay connection failed.");
     };
     this.detachSocket = (): void => {
@@ -432,10 +418,14 @@ export class MeshRelayConnector {
       try {
         socket.close(toMeshRelayCloseCode(code), toMeshRelayCloseReason(reason));
       } catch (error) {
-        log.debug("Mesh relay control close was rejected", { error: String(error) });
+        this.log.debug("Mesh relay control close was rejected", { error: String(error) });
       }
     }
     this.finalize(code, reason);
+  }
+
+  async waitUntilTransportClosed(): Promise<void> {
+    if (this.socket) await waitForMeshRelaySocketClosed(this.socket);
   }
 
   /**
@@ -472,10 +462,11 @@ export class MeshRelayConnector {
         { status: 403 },
       );
     }
-    const validated = validateMeshRelayAuthorization([...workers, ...(clients ?? [])]);
+    const validated = await validateMeshRelayAuthorization([...workers, ...(clients ?? [])]);
+    this.assertConnected();
     const authorizedWorkers = validated.workers.slice(0, workers.length);
     const authorizedClients = validated.workers.slice(workers.length);
-    const transactionId = randomUUID();
+    const transactionId = crypto.randomUUID();
     const chunks = chunkMeshRelayAuthorization(
       transactionId,
       authorizedWorkers,
@@ -592,7 +583,7 @@ export class MeshRelayConnector {
         { status: 429 },
       );
     }
-    const requestId = randomUUID();
+    const requestId = crypto.randomUUID();
     const timeoutMs = input.timeoutMs
       ?? this.options.streamRequestTimeoutMs
       ?? MESH_RELAY_STREAM_REQUEST_TIMEOUT_MS;
@@ -680,6 +671,7 @@ export class MeshRelayConnector {
         credential: ticket.credential,
         requestId,
         streamId: ticket.streamId,
+        logger: this.log,
         timeoutMs: this.options.dataOpenTimeoutMs ?? MESH_RELAY_DATA_OPEN_TIMEOUT_MS,
         ...(input.signal ? { signal: input.signal } : {}),
         ...(this.options.socketFactory
@@ -705,7 +697,7 @@ export class MeshRelayConnector {
         status,
       });
     } catch (error) {
-      log.debug("Mesh relay stream status could not be reported", {
+      this.log.debug("Mesh relay stream status could not be reported", {
         streamId,
         error: String(error),
       });
@@ -741,7 +733,7 @@ export class MeshRelayConnector {
     }
 
     const serialized = JSON.stringify(frame);
-    if (Buffer.byteLength(serialized, "utf8") > MESH_RELAY_MAX_CONTROL_FRAME_BYTES) {
+    if (utf8ByteLength(serialized) > MESH_RELAY_MAX_CONTROL_FRAME_BYTES) {
       throw new MeshRelayStreamError(
         "mesh_relay_control_frame_too_large",
         "The Mesh relay control frame exceeds the transport limit.",
@@ -762,7 +754,7 @@ export class MeshRelayConnector {
         requestId,
       });
     } catch (error) {
-      log.debug("A Mesh relay stream cancellation could not be sent", {
+      this.log.debug("A Mesh relay stream cancellation could not be sent", {
         requestId,
         error: String(error),
       });
@@ -780,7 +772,7 @@ export class MeshRelayConnector {
       this.close(4400, "Mesh relay control frames must be JSON text");
       return;
     }
-    if (Buffer.byteLength(event.data, "utf8") > MESH_RELAY_MAX_CONTROL_FRAME_BYTES) {
+    if (utf8ByteLength(event.data) > MESH_RELAY_MAX_CONTROL_FRAME_BYTES) {
       this.close(1009, "Mesh relay control frame exceeds the size limit");
       return;
     }
@@ -788,7 +780,7 @@ export class MeshRelayConnector {
     try {
       raw = JSON.parse(event.data);
     } catch (error) {
-      log.warn("Malformed Mesh relay control frame", { error: String(error) });
+      this.log.warn("Malformed Mesh relay control frame", { error: String(error) });
       this.close(4400, "Malformed Mesh relay control frame");
       return;
     }
@@ -834,7 +826,7 @@ export class MeshRelayConnector {
         this.handleHeartbeat(raw);
         return;
       default:
-        log.warn("Unknown Mesh relay control frame", { type: record["type"] });
+        this.log.warn("Unknown Mesh relay control frame", { type: record["type"] });
         this.close(4400, "Unknown Mesh relay control frame");
     }
   }
@@ -871,19 +863,22 @@ export class MeshRelayConnector {
       return;
     }
     let derived: string;
+    let verified: boolean;
     try {
-      derived = getMeshRelayFingerprint(challenge.relayPublicKey);
-    } catch (error) {
-      this.rejectChallenge("The Mesh relay public key is invalid.", error);
-      return;
-    }
-    if (
-      derived !== challenge.relayFingerprint
-      || !verifyMeshRelaySignature(
+      derived = await getClientKeyFingerprint(challenge.relayPublicKey);
+      verified = await verifyClientSignature(
         buildMeshRelayChallengeSigningPayload(challenge),
         challenge.signature,
         challenge.relayPublicKey,
-      )
+      );
+    } catch (error) {
+      if (this.status === "authenticating") this.rejectChallenge("The Mesh relay challenge identity or signature is invalid.", error);
+      return;
+    }
+    if (this.status !== "authenticating") return;
+    if (
+      derived !== challenge.relayFingerprint
+      || !verified
     ) {
       this.rejectChallenge("The Mesh relay challenge signature is not trusted.");
       return;
@@ -1010,7 +1005,7 @@ export class MeshRelayConnector {
     }
     const pending = this.pendingTickets.get(parsed.data.requestId);
     if (!pending) {
-      log.debug("Discarding a Mesh relay ticket with no pending request", {
+      this.log.debug("Discarding a Mesh relay ticket with no pending request", {
         requestId: parsed.data.requestId,
       });
       this.cancelStreamRequest(parsed.data.requestId);
@@ -1047,7 +1042,7 @@ export class MeshRelayConnector {
       authorization.reject(error);
       return;
     }
-    log.warn("Mesh relay reported an error for an unknown request", {
+    this.log.warn("Mesh relay reported an error for an unknown request", {
       requestId,
       code,
       status,
@@ -1067,7 +1062,7 @@ export class MeshRelayConnector {
         sentAt: new Date().toISOString(),
       });
     } catch (error) {
-      log.warn("The Mesh relay heartbeat could not be answered", {
+      this.log.warn("The Mesh relay heartbeat could not be answered", {
         error: String(error),
       });
     }
@@ -1082,13 +1077,14 @@ export class MeshRelayConnector {
     const offer = parsed.data as MeshRelayStreamOfferFrame;
     const inbound = this.options.inbound;
     if (!inbound) {
-      log.warn("Discarding a Mesh relay offer with no inbound handler", {
+      this.log.warn("Discarding a Mesh relay offer with no inbound handler", {
         streamId: offer.streamId,
+        logger: this.log,
       });
       return;
     }
     if (this.activeOffers.size >= (this.options.maxInboundStreams ?? MESH_RELAY_MAX_INBOUND_STREAMS)) {
-      log.warn("Discarding a Mesh relay offer past the inbound stream limit", {
+      this.log.warn("Discarding a Mesh relay offer past the inbound stream limit", {
         streamId: offer.streamId,
       });
       return;
@@ -1120,7 +1116,7 @@ export class MeshRelayConnector {
     };
     void inbound.handleOffer(offer, context)
       .catch((error: unknown) => {
-        log.warn("Mesh relay inbound stream failed", {
+        this.log.warn("Mesh relay inbound stream failed", {
           streamId: offer.streamId,
           path: new URL(offer.path, "https://mesh.invalid").pathname,
           error: String(error),
@@ -1137,7 +1133,7 @@ export class MeshRelayConnector {
       if (Date.now() - this.lastServerFrameAt <= timeoutMs) {
         return;
       }
-      log.warn("The Mesh relay control connection went silent", {
+      this.log.warn("The Mesh relay control connection went silent", {
         relayUrl: this.options.config.relayUrl,
       });
       this.close(4410, "Mesh relay heartbeat timed out");
@@ -1166,7 +1162,7 @@ export class MeshRelayConnector {
       return;
     }
     if (code === MESH_RELAY_CONTROL_CLOSE_REPLACED) {
-      log.warn(
+      this.log.warn(
         "Mesh relay control connection was replaced; another process or runtime is using the same Mesh identity",
         {
           relayUrl: this.options.config.relayUrl,

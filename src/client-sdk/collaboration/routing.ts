@@ -4,20 +4,18 @@
 import {
   buildCompiledRoutePath,
   compileRoutePatterns,
-  compileRouteTable,
-  matchCompiledRouteTable,
-  resolveRouteOperationMetadata,
+  compileRouteOperations,
+  matchRouteOperations,
   type HttpMethod,
   type RouteDelegationMetadata,
-  type RouteTable,
-} from "@pablozaiden/webapp/server";
+} from "@pablozaiden/webapp/routing";
 import {
   decodeCollaborationResourceReference,
   encodeCollaborationResourceReference,
 } from "@/shared/collaboration-reference";
-import { DomainError } from "../domain/domain-error";
-import { isReadRecord } from "../core/resource-read-service";
-import { readReferenceField } from "../core/workspace-operation-authority";
+import type { CollaborationRouteOperation } from "@/shared/collaboration-operation";
+import { DomainError } from "../../domain/domain-error";
+import { isReadRecord, readReferenceField } from "@/shared/record";
 
 export interface WorkspaceSourceRequest {
   connectionId?: string;
@@ -93,17 +91,17 @@ export function workspaceOperationPath(
   })) + url.search;
 }
 
-export function createWorkspaceUrlQualifier(routes: RouteTable) {
-  const compiled = compileRouteTable(routes);
+export function createWorkspaceUrlQualifier(operations: readonly CollaborationRouteOperation[]) {
+  const compiled = compileRouteOperations(operations);
   return (connectionId: string, path: string): string => {
     if (!path.startsWith("/api/") || path.startsWith("//")) return path;
     const url = new URL(path, "https://clanky.invalid");
-    const match = matchCompiledRouteTable(compiled, url.pathname);
-    if (match.kind !== "matched") return path;
     const method: HttpMethod = "GET";
-    const metadata = resolveRouteOperationMetadata(match.match.route, method).delegation;
+    const match = matchRouteOperations(compiled, url.pathname, method);
+    if (match.kind !== "matched") return path;
+    const metadata = match.operation.metadata.delegation;
     if (!metadata) return path;
-    const params = { ...match.match.params };
+    const params = { ...match.params };
     for (const binding of metadata.bindings ?? []) {
       if (binding.source === "body") continue;
       const value = binding.source === "param" ? params[binding.name] : url.searchParams.get(binding.name);
@@ -114,6 +112,6 @@ export function createWorkspaceUrlQualifier(routes: RouteTable) {
       if (binding.source === "param") params[binding.name] = qualified;
       else url.searchParams.set(binding.name, qualified);
     }
-    return workspaceOperationPath(match.match.pattern, params, url);
+    return workspaceOperationPath(match.operation.path, params, url);
   };
 }

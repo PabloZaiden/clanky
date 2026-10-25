@@ -80,6 +80,19 @@ export function negotiateMeshProtocolVersion(
     : null;
 }
 
+/** Read the negotiation envelope before choosing a versioned descriptor schema. */
+export function negotiateMeshDescriptorGeneration(
+  value: unknown,
+  localVersions: readonly MeshProtocolVersion[] = MESH_SUPPORTED_PROTOCOL_VERSIONS,
+): MeshProtocolVersion | null {
+  if (typeof value !== "object" || value === null) return null;
+  const envelope = value as Record<string, unknown>;
+  const versions = envelope["supportedProtocolVersions"];
+  if (!Array.isArray(versions) || !versions.every(isMeshProtocolGeneration)) return null;
+  const selected = negotiateMeshProtocolVersion(localVersions, versions);
+  return selected && envelope["protocolVersion"] === selected && envelope["negotiatedProtocolVersion"] === selected ? selected : null;
+}
+
 export function parseMeshProtocolVersionsHeader(
   value: string | null,
 ): MeshProtocolGeneration[] {

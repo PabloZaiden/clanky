@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef } from "react";
 import { useVoiceRecorder } from "../../hooks/useVoiceRecorder";
 import { useVoiceSettings } from "../../hooks/useVoiceSettings";
 import type { ConversationComposerVoice } from "./types";
+import { getClankyClientCapabilities } from "../../client-sdk/capabilities";
 
 export interface ConversationVoiceController {
   composer: ConversationComposerVoice;
@@ -11,7 +12,7 @@ export interface ConversationVoiceController {
 }
 
 export function useConversationVoice(): ConversationVoiceController {
-  const voiceSettings = useVoiceSettings();
+  const voiceSettings = useVoiceSettings({ enabled: getClankyClientCapabilities().voice });
   const draftSetterRef = useRef<((text: string) => void) | null>(null);
   const draftGetterRef = useRef<(() => string) | null>(null);
   const draftSubmitterRef = useRef<((text: string) => Promise<void>) | null>(null);

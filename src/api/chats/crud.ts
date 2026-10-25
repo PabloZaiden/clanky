@@ -15,7 +15,7 @@ import { chatActionErrorResponse, toLightweightChat } from "./helpers";
 import { WorkspaceFilterQuerySchema } from "../route-schemas";
 import { CollectionReadOptionsSchema, WorkCollectionReadOptionsSchema } from "@/contracts/schemas/resource-read";
 import { readWorkCollection, readWorkCollectionItem } from "../../core/work-read-service";
-import { readScope } from "../../core/resource-read-service";
+import { readScope } from "../../client-sdk/collaboration/resource-read";
 import { resourcePageResponse, workMetadataResponse } from "../resource-reads";
 
 const log = createLogger("api:chats");

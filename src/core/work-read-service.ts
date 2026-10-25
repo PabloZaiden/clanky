@@ -6,7 +6,7 @@ import type { ResourceReadOptions, Page } from "@/contracts/schemas/resource-rea
 import type { ExecutionHostRef } from "@/shared";
 import { requireExecutionOwnerUserId } from "../context/user-context";
 import { listWorkReadIds, listWorkReadWindow, type WorkReadResource, type StoredWorkReadRow } from "../persistence/resource-reads";
-import { collectionReadPage, decodeReadCursor, readRevision, resourceKey, fitCompactMetadata } from "./resource-read-service";
+import { collectionReadPage, decodeReadCursor, readRevision, resourceKey, fitCompactMetadata } from "../client-sdk/collaboration/resource-read";
 import { loadChatMetadata } from "../persistence/chats";
 import { loadTaskSummary } from "../persistence/tasks";
 import { loadAgentRunSummary } from "../persistence/agents";

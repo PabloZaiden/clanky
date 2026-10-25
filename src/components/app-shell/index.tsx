@@ -5,11 +5,12 @@ import {
   routeToHash,
   WebAppRoot,
   type WebAppRoute,
+  type WebAppConfigState,
 } from "@pablozaiden/webapp/web";
 import type { Agent } from "@/shared";
 import {
   buildShellRoutes,
-  CurrentUserObserver,
+  ShellRuntimeObserver,
   type ShellRouteCompositionContext,
 } from "./shell-route-composition";
 import { buildShellSidebarComposition } from "./shell-sidebar-composition";
@@ -28,14 +29,19 @@ import { buildVoiceLauncherActions, LiveVoiceControls } from "./live-voice-contr
 import { useVoiceClientActions } from "./use-voice-client-actions";
 import { useChatTrash } from "../../hooks/useChatTrash";
 import { useChatTrashActions } from "./use-chat-trash-actions";
+import { getClankyClientCapabilities } from "../../client-sdk/capabilities";
+import { useBrowserDownloadSettings } from "../app-settings/browser-download-settings";
 
 export function AppShell() {
+  const capabilities = getClankyClientCapabilities();
   const toast = useToast();
+  const browserDownloadSettings = useBrowserDownloadSettings();
   const [isOwner, setIsOwner] = useState(false);
+  const [frameworkConfig, setFrameworkConfig] = useState<WebAppConfigState["config"]>(undefined);
   const [route, setRoute] = useState<WebAppRoute>(HOME_ROUTE);
   const [activityRoute, setActivityRoute] = useState<WebAppRoute | null>(null);
   const [liveVoiceExpanded, setLiveVoiceExpanded] = useState(true);
-  const resources = useShellResources(route, isOwner);
+  const resources = useShellResources(route, isOwner, frameworkConfig);
   const {
     chats,
     chatsLoading,
@@ -138,9 +144,9 @@ export function AppShell() {
     webAppRootRef.current?.sidebar.close();
   }, []);
   const voiceClient = useVoiceClientActions({ voice: liveVoice, rootRef: webAppRootRef });
-  const voiceActions = useMemo(() => buildVoiceLauncherActions(
+  const voiceActions = useMemo(() => capabilities.voice ? buildVoiceLauncherActions(
     liveVoice, () => navigateWithinShell({ view: "settings" }),
-  ), [liveVoice, navigateWithinShell]);
+  ) : [], [capabilities.voice, liveVoice, navigateWithinShell]);
   const {
     pendingFileOpen: pendingControlFileOpen,
     reportFileOpenResult: onControlFileOpenResult,
@@ -300,7 +306,6 @@ export function AppShell() {
     deleteServer,
     deleteWorkspace,
     dashboardData,
-    schedulerTimezone: schedulerTimezone.timezone,
     agents,
     editingAgentId: dialogs.editingAgentId,
     onSavedAgentEdit: dialogs.handleAgentSaved,
@@ -345,7 +350,6 @@ export function AppShell() {
     markTaskStarting,
     clearOptimisticTaskStart,
     refreshWorkspaces,
-    schedulerTimezone.timezone,
     executionHostNodes,
     servers,
     shellErrors,
@@ -369,7 +373,7 @@ export function AppShell() {
     workspacesSaving,
   ]);
 
-  const settingsSections = useMemo(() => buildShellSettingsSections({
+  const settingsSections = useMemo(() => [...buildShellSettingsSections({
     quickChatSettings,
     schedulerTimezone,
     githubUsername,
@@ -383,7 +387,8 @@ export function AppShell() {
     mesh,
     workerUpdates,
     voiceSettings,
-  }), [
+  }), ...(browserDownloadSettings ? [browserDownloadSettings] : [])], [
+    browserDownloadSettings,
     dashboardData,
     fullTreePreference,
     githubUsername,
@@ -524,7 +529,7 @@ export function AppShell() {
           homeRoute={HOME_ROUTE}
           sidebar={sidebarComposition.sidebar}
           mainOverlay={<>
-            <CurrentUserObserver onOwnerChange={setIsOwner} />
+            <ShellRuntimeObserver onOwnerChange={setIsOwner} onConfigChange={setFrameworkConfig} />
             {liveVoice.busy && liveVoiceExpanded
               ? <LiveVoiceControls voice={liveVoice} expanded onToggleExpanded={() => setLiveVoiceExpanded(false)} />
               : null}

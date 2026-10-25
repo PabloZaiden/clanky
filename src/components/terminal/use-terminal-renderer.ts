@@ -25,9 +25,9 @@ interface UseTerminalRendererParams {
   terminalRef: React.MutableRefObject<Terminal | null>;
   fitAddonRef: React.MutableRefObject<FitAddon | null>;
   terminalReadyRef: React.MutableRefObject<boolean>;
-  sendTerminalKeystroke: (data: string) => void;
-  sendTerminalResize: (cols: number, rows: number) => void;
-  sendTerminalInput: (data: string, options?: { focusTerminal?: boolean; notifyOnFailure?: boolean }) => boolean;
+  sendTerminalKeystroke: (data: string) => Promise<boolean>;
+  sendTerminalResize: (cols: number, rows: number) => Promise<void>;
+  sendTerminalInput: (data: string, options?: { focusTerminal?: boolean; notifyOnFailure?: boolean }) => Promise<boolean>;
   syncTerminalSelectionState: () => void;
   syncTerminalSize: (options?: { fit?: boolean }) => void;
   flushPendingOutput: () => void;
@@ -134,7 +134,7 @@ export function useTerminalRenderer({
           void sendTerminalKeystroke(data);
         });
         resizeDisposable = terminal.onResize(({ cols, rows }: { cols: number; rows: number }) => {
-          sendTerminalResize(cols, rows);
+          void sendTerminalResize(cols, rows);
         });
         selectionDisposable = terminal.onSelectionChange(() => {
           syncTerminalSelectionState();

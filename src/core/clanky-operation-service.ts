@@ -13,7 +13,7 @@ import {
   type RouteCatalogEntry,
 } from "@pablozaiden/webapp/server";
 import { DomainError } from "../domain/domain-error";
-import { contentReadPage, readBytes, readRevision } from "./resource-read-service";
+import { contentReadPage, readBytes, readRevision } from "../client-sdk/collaboration/resource-read";
 import { LIVE_READ_BYTES } from "./live-voice-output";
 
 export interface OperationRequest {

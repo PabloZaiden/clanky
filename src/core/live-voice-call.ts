@@ -15,7 +15,7 @@ import { LiveVoiceConnection, type LiveVoiceCredentials, type LiveVoiceEvent } f
 import { clientActionEventEmitter } from "./event-emitter";
 import { LiveVoiceConversation, type LiveVoiceHistoryMessage } from "./live-voice-memory";
 import { LIVE_MAX_PARALLEL_TOOLS, LIVE_TOOL_BATCH_BYTES, liveToolOutput } from "./live-voice-output";
-import { readRevision } from "./resource-read-service";
+import { readRevision } from "../client-sdk/collaboration/resource-read";
 import { LiveVoiceLatency } from "./live-voice-latency";
 
 const log = createLogger("core:live-voice");

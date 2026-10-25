@@ -1,8 +1,10 @@
 import {
   appAbsoluteUrl,
+  appDuplexConnection,
   appPath,
   appRequest,
   appResourceUrl,
+  appSaveResource,
   appWebSocketConnection,
   appWebSocketUrl,
   configureWebAppClient,
@@ -10,13 +12,9 @@ import {
   setWebAppPublicBasePath,
 } from "@pablozaiden/webapp/web";
 
-export { appAbsoluteUrl, appPath, appResourceUrl, appWebSocketConnection, appWebSocketUrl };
+export { appAbsoluteUrl, appDuplexConnection, appPath, appResourceUrl, appSaveResource, appWebSocketConnection, appWebSocketUrl };
 
-export function configureClientRuntime(options: {
-  publicBasePath?: string | null;
-  apiBaseUrl?: string | null;
-  wsBaseUrl?: string | null;
-} = {}): void {
+export function configureClientRuntime(options: Parameters<typeof configureWebAppClient>[0] = {}): void {
   configureWebAppClient(options);
 }
 

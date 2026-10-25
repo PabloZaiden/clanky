@@ -8,7 +8,8 @@
  * socket — is released exactly once by `dispose()`.
  */
 
-import { createLogger } from "@pablozaiden/webapp/server";
+import { utf8ByteLength } from "@/shared/encoding";
+import type { CollaborationClientLogger } from "../client-sdk/collaboration/types";
 import { MeshRelayStreamReadyFrameSchema } from "@/contracts/schemas/mesh-relay";
 import { MESH_RELAY_STREAM_PATH } from "@/shared/mesh-relay";
 import {
@@ -16,6 +17,7 @@ import {
   openMeshRelayClientSocket,
   toMeshRelayCloseCode,
   toMeshRelayCloseReason,
+  waitForMeshRelaySocketClosed,
   type MeshRelayClientSocket,
   type MeshRelayClientSocketFactory,
 } from "./mesh-relay-client-socket";
@@ -25,8 +27,6 @@ import {
   MESH_RELAY_MAX_STREAM_FRAME_BYTES,
   MESH_RELAY_STREAM_CLOSE_TIMEOUT,
 } from "./mesh-relay-policy";
-
-const log = createLogger("core:mesh-relay-data-stream");
 
 export const MESH_RELAY_DATA_OPEN_TIMEOUT_MS = 15_000;
 export const MESH_RELAY_BODY_CHUNK_BYTES = 64 * 1_024;
@@ -63,6 +63,7 @@ export class MeshRelayDataStream {
   private pendingRead?: PendingRead;
   private closedItem?: MeshRelayStreamItem & { kind: "closed" };
   private closeRequested = false;
+  private transportClosing?: Promise<void>;
   private disposed = false;
   private readonly closedPromise: Promise<
     MeshRelayStreamItem & { kind: "closed" }
@@ -76,6 +77,7 @@ export class MeshRelayDataStream {
     readonly requestId: string,
     readonly streamId: string,
     private readonly detach: () => void,
+    private readonly log: CollaborationClientLogger = console,
   ) {
     this.closedPromise = new Promise((resolve) => {
       this.resolveClosed = resolve;
@@ -85,6 +87,10 @@ export class MeshRelayDataStream {
   get closed(): boolean {
     return this.closedItem !== undefined
       || this.socket.readyState > 1;
+  }
+
+  get bufferedAmount(): number {
+    return this.socket.bufferedAmount;
   }
 
   /** Accept a frame forwarded by the relay. */
@@ -106,14 +112,14 @@ export class MeshRelayDataStream {
       return;
     }
     if (this.queue.length >= MAX_QUEUED_ITEMS && item.kind !== "closed") {
-      log.warn("Dropping Mesh relay stream frame past the queue limit", {
+      this.log.warn("Dropping Mesh relay stream frame past the queue limit", {
         streamId: this.streamId,
       });
       this.close(1009, "Mesh relay stream queue overflow");
       return;
     }
     const itemBytes = item.kind === "text"
-      ? Buffer.byteLength(item.text, "utf8")
+      ? utf8ByteLength(item.text)
       : item.kind === "binary"
         ? item.bytes.byteLength
         : 0;
@@ -121,7 +127,7 @@ export class MeshRelayDataStream {
       item.kind !== "closed"
       && this.queuedBytes + itemBytes > MESH_RELAY_MAX_QUEUED_BYTES
     ) {
-      log.warn("Closing Mesh relay stream past the queued byte limit", {
+      this.log.warn("Closing Mesh relay stream past the queued byte limit", {
         streamId: this.streamId,
       });
       this.close(1009, "Mesh relay stream queue overflow");
@@ -136,12 +142,17 @@ export class MeshRelayDataStream {
     return await this.closedPromise;
   }
 
+  async waitUntilTransportClosed(): Promise<void> {
+    await this.transportClosing;
+    await waitForMeshRelaySocketClosed(this.socket);
+  }
+
   /** Read the next frame, or the terminal close item. */
   async next(timeoutMs?: number): Promise<MeshRelayStreamItem> {
     const queued = this.queue.shift();
     if (queued) {
       this.queuedBytes -= queued.kind === "text"
-        ? Buffer.byteLength(queued.text, "utf8")
+        ? utf8ByteLength(queued.text)
         : queued.kind === "binary"
           ? queued.bytes.byteLength
           : 0;
@@ -188,7 +199,7 @@ export class MeshRelayDataStream {
       );
     }
     const bytes = typeof data === "string"
-      ? Buffer.byteLength(data, "utf8")
+      ? utf8ByteLength(data)
       : data.byteLength;
     if (bytes > MESH_RELAY_MAX_STREAM_FRAME_BYTES) {
       throw new MeshRelayStreamError(
@@ -197,7 +208,7 @@ export class MeshRelayDataStream {
         { status: 413 },
       );
     }
-    this.socket.send(data);
+    this.socket.send(typeof data === "string" ? data : new Uint8Array(data));
   }
 
   /** Send binary payloads split into relay-sized chunks, honouring backpressure. */
@@ -232,25 +243,12 @@ export class MeshRelayDataStream {
       return;
     }
     this.closeRequested = true;
-    const closeSocket = (): void => {
-      if (this.socket.readyState > 1) {
-        return;
-      }
-      try {
-        this.socket.close(toMeshRelayCloseCode(code), toMeshRelayCloseReason(reason));
-      } catch (error) {
-        log.debug("Mesh relay stream close was rejected by the socket", {
-          streamId: this.streamId,
-          error: String(error),
-        });
-      }
-    };
     // Closing a WebSocket discards frames that are still buffered, so the
     // send buffer is drained first while the local side is already closed.
     if (this.socket.readyState === 1 && this.socket.bufferedAmount > 0) {
-      void this.flush().finally(closeSocket);
+      this.transportClosing = this.flush().then(() => this.closeSocket(code, reason));
     } else {
-      closeSocket();
+      this.closeSocket(code, reason);
     }
     this.push({
       kind: "closed",
@@ -259,12 +257,31 @@ export class MeshRelayDataStream {
     });
   }
 
+  /** Cancellation must not wait for a graceful send-buffer flush. */
+  abort(code = 1000, reason = "Mesh relay stream cancelled"): void {
+    this.closeRequested = true;
+    this.closeSocket(code, reason);
+    this.push({ kind: "closed", code, reason });
+  }
+
+  private closeSocket(code?: number, reason?: string): void {
+    if (this.socket.readyState > 1) return;
+    try {
+      this.socket.close(toMeshRelayCloseCode(code), toMeshRelayCloseReason(reason));
+    } catch (error) {
+      this.log.debug("Mesh relay stream close was rejected by the socket", {
+        streamId: this.streamId,
+        error: String(error),
+      });
+    }
+  }
+
   /** Wait until every queued frame has been handed to the transport. */
   async flush(timeoutMs = FLUSH_TIMEOUT_MS): Promise<void> {
     const deadline = Date.now() + timeoutMs;
     while (this.socket.readyState === 1 && this.socket.bufferedAmount > 0) {
       if (Date.now() > deadline) {
-        log.warn("A Mesh relay stream did not flush before closing", {
+        this.log.warn("A Mesh relay stream did not flush before closing", {
           streamId: this.streamId,
         });
         return;
@@ -311,6 +328,7 @@ export interface OpenMeshRelayDataStreamOptions {
   timeoutMs?: number;
   signal?: AbortSignal;
   socketFactory?: MeshRelayClientSocketFactory;
+  logger?: CollaborationClientLogger;
 }
 
 function buildStreamUrl(relayUrl: string, ticket: string, credential: string): string {
@@ -407,7 +425,14 @@ export async function openMeshRelayDataStream(
     if (socket.readyState <= 1) {
       socket.close(4_400, "Mesh relay stream handshake failed");
     }
-    rejectStream(error);
+    void waitForMeshRelaySocketClosed(socket).then(
+      () => rejectStream(error),
+      (cleanupError: unknown) => rejectStream(new MeshRelayStreamError(
+        "mesh_relay_transport_cleanup_failed",
+        "Mesh relay stream startup and transport cleanup failed.",
+        { cause: new AggregateError([error, cleanupError], "Mesh relay startup cleanup failed.", { cause: error }) },
+      )),
+    );
   }
 
   const onAbort = (): void => {
@@ -454,6 +479,7 @@ export async function openMeshRelayDataStream(
       options.requestId,
       options.streamId,
       detach,
+      options.logger,
     );
     finish(stream);
   }

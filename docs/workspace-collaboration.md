@@ -28,6 +28,13 @@ If acceptance reports an uncertain outcome, use **Reconnect** on the pending
 connection. This recovers its existing identity rather than reusing the
 invitation to create a different pairing.
 
+An invitee can also use the [browser-only static client](static-client.md#browser-only-collaboration)
+without running a local Clanky server. It accepts the same invitation and uses
+the same client protocol/policy directly through the unchanged relay. Its
+nonextractable identity is kept in site storage rather than a Bun controller's
+encrypted database. Browser pairings and Bun-controller pairings are distinct;
+they are not automatically copied or migrated between hosts.
+
 ## Work normally
 
 Local and shared workspaces appear together in the usual web, API and CLI
@@ -41,6 +48,13 @@ workspace agents, scratchpad, Git/files, transfers, terminals and previews.
 Chats and tasks show their creator. They cannot delete or administer the
 workspace, change its host/provider, manage controller credentials or invite
 another collaborator.
+
+The browser-only client supports those workspace workflows except arbitrary
+web/VS Code previews and inline streamed video. It has no local workspace or
+execution-host creation, controller administration, CLI listener or offline
+execution. Images are bounded resources; downloads stage to browser disk and
+require a separate export action under **Settings > Downloads**. See the
+static-client guide for the 4 GiB target and browser/iPhone limitations.
 
 For CLI automation, authenticate against **your own instance**, discover the
 current schema, then use the workspace/resource reference returned by its API:
@@ -85,6 +99,13 @@ The invited server maintains its relay/realtime connection without a browser
 tab. Normal `/api/ws` and `clanky ws` interests include authorized shared
 resources. Reconnection refreshes authoritative state; it does not replay
 prompts, commands or uploads.
+
+The browser-only client owns its connections while its document is active.
+Reload recovers the saved identity; suspension/disconnection can interrupt
+interactive work or transfers. A second document cannot take over the same
+pairing while the first owns it. Foreground/reconnect refreshes authoritative
+state instead of replaying prompts or terminal input. Already admitted
+controller work does not depend on that document remaining open.
 
 If a controller is unavailable, available local work remains usable and
 collection responses carry `X-Clanky-Partial: true`. The web displays an

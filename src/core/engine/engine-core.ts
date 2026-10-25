@@ -532,8 +532,13 @@ export class TaskEngine {
     }
   }
 
-  async shutdown(): Promise<void> {
+  beginShutdown(): void {
     this.injectionPending = false;
+    this.aborted = true;
+  }
+
+  async shutdown(): Promise<void> {
+    this.beginShutdown();
     const abort = () => this.abortSessionOnly("Server shutdown");
     await (this.execution ? runWithWorkspaceExecutionContext(this.execution, abort) : runWithExecutionOwner(this.owner, abort));
   }

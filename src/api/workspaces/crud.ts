@@ -7,7 +7,7 @@ import { defineRoutes } from "@pablozaiden/webapp/server";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { isDomainError } from "../../domain/domain-error";
 import { workspaceManager } from "../../core/workspace-manager";
-import { CLANKY_REALTIME_RESOURCES } from "../../realtime";
+import { CLANKY_REALTIME_RESOURCES } from "@/shared/realtime";
 import { parseAndValidate } from "../validation";
 import {
   domainErrorResponse,

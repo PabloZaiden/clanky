@@ -23,6 +23,8 @@ export interface UsePreferenceLifecycleOptions<T> {
   load: (signal: AbortSignal) => Promise<T>;
   save: (value: T, signal: AbortSignal) => Promise<T | void>;
   onError?: (context: PreferenceErrorContext<T>) => void;
+  subscribe?: (listener: () => void) => () => void;
+  enabled?: boolean;
 }
 
 export interface UsePreferenceLifecycleResult<T> {
@@ -41,6 +43,8 @@ export function usePreferenceLifecycle<T>({
   load,
   save,
   onError,
+  subscribe,
+  enabled = true,
 }: UsePreferenceLifecycleOptions<T>): UsePreferenceLifecycleResult<T> {
   const [value, setValue] = useState(initialValue);
   const [loading, setLoading] = useState(true);
@@ -143,7 +147,7 @@ export function usePreferenceLifecycle<T>({
 
   useEffect(() => {
     isMountedRef.current = true;
-    void refresh();
+    if (enabled) void refresh();
 
     return () => {
       isMountedRef.current = false;
@@ -155,11 +159,13 @@ export function usePreferenceLifecycle<T>({
       saveControllerRef.current = null;
       loadRefreshCoordinatorRef.current.reset();
     };
-  }, [refresh]);
+  }, [enabled, refresh]);
+
+  useEffect(() => subscribe?.(() => { void refresh(); }), [refresh, subscribe]);
 
   return {
     value,
-    loading,
+    loading: enabled && loading,
     loaded,
     saving,
     error,

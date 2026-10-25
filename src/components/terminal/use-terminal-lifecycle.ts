@@ -1,17 +1,34 @@
 /**
- * WebSocket lifecycle management: connect, mark ready, and reconnect on foreground.
+ * Application terminal lifecycle and protocol handling over WebAppDuplex.
  */
 
 import { useCallback, useEffect, useRef } from "react";
 import type { Terminal } from "@xterm/xterm";
-import { appWebSocketConnection } from "../../lib/public-path";
+import { createLogger, type WebAppDuplex } from "@pablozaiden/webapp/web";
+import { z } from "zod";
 import type { TerminalSessionKind } from "./use-terminal-connection";
+import { TerminalChannel } from "./terminal-channel";
+
+const log = createLogger("terminal-lifecycle");
+const TerminalMessageSchema = z.object({
+  type: z.string(),
+  code: z.union([z.string(), z.number(), z.null()]).optional(),
+  data: z.string().optional(),
+  message: z.string().optional(),
+  text: z.string().optional(),
+});
+
+interface TerminalMessageContext {
+  isCurrent: () => boolean;
+  fail: (error: unknown) => void;
+  reconnect: () => Promise<void>;
+}
 
 interface UseTerminalLifecycleParams {
   terminalUrl: string | null;
   terminalRef: React.MutableRefObject<Terminal | null>;
   sessionKind: TerminalSessionKind | null;
-  terminalSocketRef: React.MutableRefObject<WebSocket | null>;
+  terminalSocketRef: React.MutableRefObject<WebAppDuplex | null>;
   terminalReadyRef: React.MutableRefObject<boolean>;
   pendingOutputRef: React.MutableRefObject<string[]>;
   pendingOscColorQueryRef: React.MutableRefObject<string>;
@@ -56,7 +73,29 @@ export function useTerminalLifecycle({
   setPendingStandaloneAction,
   setShowPasswordPrompt,
 }: UseTerminalLifecycleParams) {
-  const connectControllerRef = useRef<AbortController | null>(null);
+  const currentRef = useRef<TerminalChannel | null>(null);
+  const closingRef = useRef<Promise<void>>(Promise.resolve());
+  const resetTerminal = useCallback(() => {
+    terminalSocketRef.current = null;
+    terminalReadyRef.current = false;
+    lastSentResizeRef.current = null;
+    pendingOscColorQueryRef.current = "";
+    clearSelectedTerminalText();
+    setSocketStatus("closed");
+  }, [clearSelectedTerminalText, lastSentResizeRef, pendingOscColorQueryRef, setSocketStatus, terminalReadyRef, terminalSocketRef]);
+  const closeTerminal = useCallback((): Promise<void> => {
+    const previous = currentRef.current;
+    currentRef.current = null;
+    terminalConnectInFlightRef.current = false;
+    resetTerminal();
+    if (previous) {
+      closingRef.current = Promise.all([closingRef.current, previous.stop()]).then(() => undefined);
+    }
+    return closingRef.current;
+  }, [resetTerminal, terminalConnectInFlightRef]);
+  const reportCleanupFailure = useCallback((error: unknown) => {
+    log.error("Terminal shutdown failed; replacement connection is blocked", { error: String(error) });
+  }, []);
   const markTerminalReady = useCallback(() => {
     if (terminalReadyRef.current) {
       return;
@@ -78,20 +117,93 @@ export function useTerminalLifecycle({
     terminalReadyRef,
   ]);
 
+  const handleMessage = useCallback((raw: string | ArrayBuffer, context: TerminalMessageContext): void => {
+    if (!context.isCurrent()) return;
+    try {
+      if (typeof raw !== "string") throw new Error("The terminal received an unsupported binary message.");
+      const data = TerminalMessageSchema.parse(JSON.parse(raw));
+      if (data.type === "terminal.connected") markTerminalReady();
+      if (data.type === "terminal.clipboard" && typeof data.text === "string") {
+        void copyTerminalClipboardText(data.text).catch((error: unknown) => {
+          log.error("Terminal clipboard copy failed", { error: String(error) });
+          showErrorToast("Terminal text could not be copied.");
+        });
+      }
+      if (data.type === "terminal.output" && data.data) {
+        markTerminalReady();
+        writeTerminalOutput(data.data);
+      }
+      if (data.type === "terminal.closed") {
+        void closeTerminal().catch(reportCleanupFailure);
+      }
+      if (data.type === "terminal.error" && data.message) {
+        terminalRef.current?.writeln(`\r\n${data.message}`);
+        if (sessionKind === "standalone"
+          && (data.code === "invalid_credential_token" || data.code === "ssh_credentials_required")) {
+          setStandaloneCredentialToken(null);
+          const retry = !standaloneTokenRecoveryAttemptedRef.current;
+          standaloneTokenRecoveryAttemptedRef.current = true;
+          const closing = closeTerminal();
+          if (retry) {
+            void closing.then(context.reconnect).catch(reportCleanupFailure);
+          } else {
+            void closing.catch(reportCleanupFailure);
+            setPendingStandaloneAction("terminal");
+            setShowPasswordPrompt(true);
+            showErrorToast("Failed to refresh the SSH session automatically. Re-enter the SSH password to continue.");
+          }
+        } else {
+          context.fail(new Error(data.message));
+        }
+      }
+    } catch (error) {
+      context.fail(error);
+    }
+  }, [
+    closeTerminal, copyTerminalClipboardText, markTerminalReady, reportCleanupFailure,
+    sessionKind, setPendingStandaloneAction, setShowPasswordPrompt, setStandaloneCredentialToken,
+    showErrorToast, standaloneTokenRecoveryAttemptedRef, terminalRef, writeTerminalOutput,
+  ]);
+
   const connectTerminal = useCallback(async (
     options?: { refreshStandaloneCredential?: boolean; standaloneCredentialToken?: string },
   ) => {
-    if (!terminalUrl) {
-      return;
-    }
-    if (terminalConnectInFlightRef.current) {
-      return;
-    }
+    if (!terminalUrl || terminalConnectInFlightRef.current) return;
+    const previous = closeTerminal();
     terminalConnectInFlightRef.current = true;
-    const controller = new AbortController();
-    connectControllerRef.current = controller;
+    let reported = false;
+    const fail = (error: unknown): void => {
+      if (currentRef.current !== owner || reported) return;
+      reported = true;
+      resetTerminal();
+      showErrorToast(`Terminal connection failed: ${String(error)}`);
+      void closeTerminal().catch(reportCleanupFailure);
+    };
+    const messages: TerminalMessageContext = {
+      isCurrent: () => currentRef.current === owner,
+      fail,
+      reconnect: () => connectTerminal({ refreshStandaloneCredential: true }),
+    };
+    let standaloneAuthToken: string | null = null;
+    const owner = new TerminalChannel({
+      path: terminalUrl,
+      onChannel: (channel) => { if (currentRef.current === owner) terminalSocketRef.current = channel; },
+      onReady: async (channel) => {
+        if (standaloneAuthToken) await channel.send(JSON.stringify({
+          type: "terminal.auth", credentialToken: standaloneAuthToken,
+        }));
+      },
+      onMessage: (raw) => handleMessage(raw, messages),
+      onClose: () => {
+        if (currentRef.current === owner) void closeTerminal().catch(reportCleanupFailure);
+      },
+      onError: fail,
+    });
+    currentRef.current = owner;
     try {
-      let standaloneAuthToken = options?.standaloneCredentialToken ?? null;
+      await previous;
+      if (currentRef.current !== owner) return;
+      standaloneAuthToken = options?.standaloneCredentialToken ?? null;
       if (sessionKind === "standalone") {
         if (!standaloneAuthToken) {
           standaloneAuthToken = await loadStandaloneCredentialToken({
@@ -99,12 +211,12 @@ export function useTerminalLifecycle({
             promptOnFailure: true,
           });
         }
-        controller.signal.throwIfAborted();
+        if (currentRef.current !== owner) return;
         if (!standaloneAuthToken) {
+          await closeTerminal();
           return;
         }
       }
-      terminalSocketRef.current?.close();
       terminalReadyRef.current = false;
       pendingOutputRef.current = [];
       pendingOscColorQueryRef.current = "";
@@ -112,136 +224,29 @@ export function useTerminalLifecycle({
       clearSelectedTerminalText();
       setSocketStatus("connecting");
 
-      const ws = await appWebSocketConnection(terminalUrl, { signal: controller.signal });
-      terminalSocketRef.current = ws;
-
-      ws.onopen = () => {
-        if (standaloneAuthToken) {
-          ws.send(JSON.stringify({
-            type: "terminal.auth",
-            credentialToken: standaloneAuthToken,
-          }));
-        }
-      };
-      ws.onmessage = (event: MessageEvent) => {
-        if (terminalSocketRef.current !== ws) {
-          return;
-        }
-        const data = JSON.parse(event.data as string) as {
-          type: string;
-          code?: string;
-          data?: string;
-          message?: string;
-          text?: string;
-        };
-        if (data.type === "terminal.connected") {
-          markTerminalReady();
-        }
-        if (data.type === "terminal.clipboard" && typeof data.text === "string") {
-          void copyTerminalClipboardText(data.text);
-        }
-        if (data.type === "terminal.output" && data.data) {
-          if (!terminalReadyRef.current) {
-            markTerminalReady();
-          }
-          writeTerminalOutput(data.data);
-        }
-        if (data.type === "terminal.error" && data.message) {
-          terminalRef.current?.writeln(`\r\n${data.message}`);
-          if (
-            sessionKind === "standalone"
-            && (data.code === "invalid_credential_token" || data.code === "ssh_credentials_required")
-          ) {
-            setStandaloneCredentialToken(null);
-            if (standaloneTokenRecoveryAttemptedRef.current) {
-              setPendingStandaloneAction("terminal");
-              setShowPasswordPrompt(true);
-              showErrorToast("Failed to refresh the SSH session automatically. Re-enter the SSH password to continue.");
-              return;
-            }
-            standaloneTokenRecoveryAttemptedRef.current = true;
-            terminalReadyRef.current = false;
-            lastSentResizeRef.current = null;
-            pendingOscColorQueryRef.current = "";
-            setSocketStatus("closed");
-            if (terminalSocketRef.current === ws) {
-              terminalSocketRef.current = null;
-            }
-            ws.close();
-            void connectTerminal({ refreshStandaloneCredential: true });
-            return;
-          }
-          terminalReadyRef.current = false;
-          lastSentResizeRef.current = null;
-          pendingOscColorQueryRef.current = "";
-          clearSelectedTerminalText();
-          setSocketStatus("closed");
-          showErrorToast(data.message);
-          if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-            ws.close();
-          }
-        }
-        if (data.type === "terminal.closed") {
-          terminalReadyRef.current = false;
-          lastSentResizeRef.current = null;
-          pendingOscColorQueryRef.current = "";
-          clearSelectedTerminalText();
-          setSocketStatus("closed");
-        }
-      };
-      ws.onclose = () => {
-        if (terminalSocketRef.current !== ws) {
-          return;
-        }
-        terminalSocketRef.current = null;
-        terminalReadyRef.current = false;
-        lastSentResizeRef.current = null;
-        pendingOscColorQueryRef.current = "";
-        clearSelectedTerminalText();
-        setSocketStatus("closed");
-      };
-      ws.onerror = () => {
-        if (terminalSocketRef.current !== ws) {
-          return;
-        }
-        terminalReadyRef.current = false;
-        lastSentResizeRef.current = null;
-        pendingOscColorQueryRef.current = "";
-        clearSelectedTerminalText();
-        setSocketStatus("closed");
-      };
+      await owner.start();
     } catch (error) {
-      if (!controller.signal.aborted) {
-        setSocketStatus("closed");
-        showErrorToast(`Unable to connect terminal: ${String(error)}`);
-      }
+      fail(error);
     } finally {
-      if (connectControllerRef.current === controller) {
-        connectControllerRef.current = null;
-        terminalConnectInFlightRef.current = false;
-      }
+      if (currentRef.current === owner) terminalConnectInFlightRef.current = false;
     }
   }, [
     clearSelectedTerminalText,
-    copyTerminalClipboardText,
+    closeTerminal,
+    handleMessage,
     lastSentResizeRef,
     loadStandaloneCredentialToken,
-    markTerminalReady,
     pendingOscColorQueryRef,
     pendingOutputRef,
+    reportCleanupFailure,
+    resetTerminal,
     sessionKind,
-    setShowPasswordPrompt,
     setSocketStatus,
-    setStandaloneCredentialToken,
-    setPendingStandaloneAction,
     showErrorToast,
-    standaloneTokenRecoveryAttemptedRef,
     terminalConnectInFlightRef,
     terminalReadyRef,
-    terminalRef,
     terminalSocketRef,
     terminalUrl,
-    writeTerminalOutput,
   ]);
 
   const recoverTerminalOnForeground = useCallback(() => {
@@ -251,12 +256,11 @@ export function useTerminalLifecycle({
     if (typeof document !== "undefined" && document.visibilityState === "hidden") {
       return;
     }
-    const readyState = terminalSocketRef.current?.readyState;
-    if (readyState === WebSocket.OPEN || readyState === WebSocket.CONNECTING) {
+    if (terminalSocketRef.current || terminalConnectInFlightRef.current) {
       return;
     }
     void connectTerminal({ refreshStandaloneCredential: sessionKind === "standalone" });
-  }, [connectTerminal, sessionKind, terminalSocketRef, terminalUrl]);
+  }, [connectTerminal, sessionKind, terminalConnectInFlightRef, terminalSocketRef, terminalUrl]);
 
   useEffect(() => {
     if (!terminalUrl) {
@@ -264,15 +268,10 @@ export function useTerminalLifecycle({
     }
     void connectTerminal();
     return () => {
-      connectControllerRef.current?.abort();
-      connectControllerRef.current = null;
-      terminalConnectInFlightRef.current = false;
-      terminalReadyRef.current = false;
-      terminalSocketRef.current?.close();
-      terminalSocketRef.current = null;
-      clearSelectedTerminalText();
+      // React cleanup is synchronous; retain shutdown and await it before replacement.
+      void closeTerminal().catch(reportCleanupFailure);
     };
-  }, [clearSelectedTerminalText, connectTerminal, terminalConnectInFlightRef, terminalReadyRef, terminalSocketRef, terminalUrl]);
+  }, [closeTerminal, connectTerminal, reportCleanupFailure, terminalUrl]);
 
   useEffect(() => {
     if (!terminalUrl || typeof window === "undefined" || typeof document === "undefined") {

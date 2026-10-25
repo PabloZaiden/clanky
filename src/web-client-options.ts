@@ -1,6 +1,7 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { WebAppDocumentConfig } from "@pablozaiden/webapp/server";
+import { CLIENT_OPERATION_CATALOG_FILE, CLIENT_OPERATION_CATALOG_PATH } from "./client-operation-catalog";
 import appleTouchIconPath from "./apple-touch-icon.png" with { type: "file" };
 import faviconPath from "./favicon.svg" with { type: "file" };
 import manifestIcon192Path from "./web-app-manifest-192x192.png" with { type: "file" };
@@ -17,8 +18,11 @@ export const CLANKY_WEB_OPTIONS = {
     ],
   },
   // Standalone binaries serve the assets embedded by the shared browser build.
-  assets: Bun.isStandaloneExecutable ? [] : [{
-    src: join(dirname(Bun.resolveSync("monaco-editor/package.json", import.meta.dir)), "min", "vs"),
-    path: "/webapp-assets/monaco/vs",
-  }],
+  assets: Bun.isStandaloneExecutable ? [] : [
+    {
+      src: join(dirname(Bun.resolveSync("monaco-editor/package.json", import.meta.dir)), "min", "vs"),
+      path: "/webapp-assets/monaco/vs",
+    },
+    { src: CLIENT_OPERATION_CATALOG_FILE, path: CLIENT_OPERATION_CATALOG_PATH },
+  ],
 } satisfies WebAppDocumentConfig;

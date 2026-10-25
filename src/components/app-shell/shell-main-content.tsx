@@ -120,7 +120,6 @@ export interface ShellMainContentProps {
 
   // Dashboard data
   dashboardData: UseDashboardDataResult;
-  schedulerTimezone: string;
   agents: UseAgentsResult;
   editingAgentId: string | null;
   onSavedAgentEdit: (agent: import("@/shared").Agent) => void;
@@ -473,7 +472,6 @@ function renderMainContent(props: ShellMainContentProps) {
     deleteWorkspace,
     createTerminalSession,
     dashboardData,
-    schedulerTimezone,
     createChat,
     workspaceSettings,
     workspacesSaving,
@@ -495,7 +493,6 @@ function renderMainContent(props: ShellMainContentProps) {
         modelsWorkspaceId={dashboardData.modelsWorkspaceId}
         lastModel={dashboardData.lastModel}
         selectedWorkspaceId={dashboardData.modelsWorkspaceId}
-        schedulerTimezone={schedulerTimezone}
         editingAgentId={props.editingAgentId}
         onSavedAgentEdit={props.onSavedAgentEdit}
         onWorkspaceChange={dashboardData.handleWorkspaceChange}
@@ -915,7 +912,6 @@ function renderMainContent(props: ShellMainContentProps) {
         createChat={createChat}
         dashboardData={dashboardData}
         agents={agents}
-        schedulerTimezone={schedulerTimezone}
         workspaces={workspaces}
         workspacesLoading={workspacesLoading}
         workspaceError={workspaceError}

@@ -11,6 +11,7 @@ export {
 export { useForegroundPresentation } from "./useForegroundPresentation";
 export { useTextStateSwap } from "./useTextStateSwap";
 export { useAgents, type UseAgentsResult } from "./useAgents";
+export { useWorkspaceSchedulerTimezone } from "./useWorkspaceSchedulerTimezone";
 export { useTasks, type UseTasksResult, type CreateTaskResult } from "./useTasks";
 export { useTask, type UseTaskResult } from "./useTask";
 export { useTerminalSessions, type UseTerminalSessionsResult } from "./useTerminalSessions";
@@ -136,7 +137,7 @@ export {
   listFileExplorerFilesApi,
   readFileExplorerFileApi,
   downloadFileExplorerFileApi,
-  getFileExplorerDownloadUrl,
+  saveFileExplorerFileApi,
   getFileExplorerVideoPreviewUrl,
   getFileExplorerFileMetadataApi,
   writeFileExplorerFileApi,

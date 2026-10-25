@@ -1,7 +1,7 @@
 /**
  * Qualifies domain references at known response boundaries, never in content.
  */
-import { isReadRecord } from "./resource-read-service";
+import { isReadRecord } from "./resource-read";
 import type { CollaborationResourceKind } from "@/shared/collaboration-reference";
 
 const REFERENCE_FIELDS = {

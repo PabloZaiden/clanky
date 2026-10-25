@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { WebAppResourceUrl } from "@pablozaiden/webapp/web";
 import type { WorkspaceFileEntry } from "@/shared";
 import {
   WorkspaceFileConflictError,
   getFileExplorerFileMetadataApi,
   getFileExplorerVideoPreviewUrl,
   readFileExplorerFileApi,
-  readFileExplorerImagePreviewApi,
+  getFileExplorerImagePreviewResource,
 } from "./workspaceFileActions";
 import type { FileExplorerVideoPreviewResource } from "./workspaceFileActions";
 import type { FileExplorerRequestScope } from "./file-explorer-request-scope";
@@ -20,6 +21,7 @@ import {
   type WorkspaceLargeFileWarningState,
 } from "./file-explorer-types";
 import { isBrowserRenderableImage } from "../utils/workspace-file-images";
+import { getClankyClientCapabilities } from "../client-sdk/capabilities";
 
 export const LARGE_FILE_WARNING_THRESHOLD_BYTES = 1 * 1024 * 1024;
 
@@ -86,7 +88,7 @@ export function useFileExplorerDocument(
   const currentFileRef = useRef<WorkspaceFileEntry | null>(currentFile);
   const isDirtyRef = useRef(false);
   const largeFileWarningRef = useRef<WorkspaceLargeFileWarningState | null>(largeFileWarning);
-  const imagePreviewUrlRef = useRef<string | null>(imagePreviewUrl);
+  const imagePreviewResourceRef = useRef<WebAppResourceUrl | null>(null);
   const stateTargetKeyRef = useRef(scope.targetKey);
 
   const isDirty = useMemo(() => editorContent !== savedContent, [editorContent, savedContent]);
@@ -96,7 +98,6 @@ export function useFileExplorerDocument(
   currentFileRef.current = currentFile;
   isDirtyRef.current = isDirty;
   largeFileWarningRef.current = largeFileWarning;
-  imagePreviewUrlRef.current = imagePreviewUrl;
 
   const invalidateFileLoad = useCallback(() => {
     fileLoadAbortControllerRef.current?.abort();
@@ -104,13 +105,11 @@ export function useFileExplorerDocument(
     fileLoadRequestIdRef.current += 1;
   }, []);
 
-  const replaceImagePreviewUrl = useCallback((nextUrl: string | null) => {
-    if (imagePreviewUrlRef.current) {
-      URL.revokeObjectURL(imagePreviewUrlRef.current);
-    }
-    imagePreviewUrlRef.current = nextUrl;
+  const replaceImagePreviewUrl = useCallback((next: WebAppResourceUrl | null) => {
+    imagePreviewResourceRef.current?.dispose?.();
+    imagePreviewResourceRef.current = next;
     if (scope.isCurrent()) {
-      setImagePreviewUrl(nextUrl);
+      setImagePreviewUrl(next?.url ?? null);
     }
   }, [scope]);
 
@@ -149,14 +148,14 @@ export function useFileExplorerDocument(
         }
         const metadata = metadataResponse.file;
         if (metadata.isVideo) {
-          const nextVideoPreviewUrl = await getFileExplorerVideoPreviewUrl(
+          const nextVideoPreviewUrl = getClankyClientCapabilities().inlineVideo ? await getFileExplorerVideoPreviewUrl(
             scope.target,
             path,
             {
               startDirectory: scope.target.startDirectory,
               signal: operation.signal,
             },
-          );
+          ) : null;
           if (!operation.isCurrent() || fileLoadRequestIdRef.current !== localRequestId) {
             return;
           }
@@ -206,11 +205,12 @@ export function useFileExplorerDocument(
         return;
       }
       const metadata = metadataResponse.file;
-      const imageBlob = await readFileExplorerImagePreviewApi(scope.target, path, {
+      const imageResource = await getFileExplorerImagePreviewResource(scope.target, path, {
         startDirectory: scope.target.startDirectory,
         signal: operation.signal,
       });
       if (!operation.isCurrent() || fileLoadRequestIdRef.current !== localRequestId) {
+        imageResource.dispose?.();
         return;
       }
       tree.setCurrentDirectoryForOperation(getParentDirectory(metadata.path), operation.isCurrent);
@@ -218,7 +218,7 @@ export function useFileExplorerDocument(
       tree.selectNode(metadata);
       setAutoReloadedAt(null);
       setLargeFileWarning(null);
-      replaceImagePreviewUrl(URL.createObjectURL(imageBlob));
+      replaceImagePreviewUrl(imageResource);
       setEditorContentState("");
       setSavedContent("");
     } catch (requestError) {
@@ -293,6 +293,7 @@ export function useFileExplorerDocument(
     const activeFile = currentFileRef.current;
     if (
       !activeFile?.isVideo
+      || !getClankyClientCapabilities().inlineVideo
       || !scope.isCurrent()
     ) {
       return false;
@@ -301,7 +302,7 @@ export function useFileExplorerDocument(
     const localRequestId = fileLoadRequestIdRef.current;
     const operation = scope.createOperation();
     try {
-      const nextVideoPreviewUrl = await getFileExplorerVideoPreviewUrl(
+      const nextVideoPreviewUrl = getClankyClientCapabilities().inlineVideo ? await getFileExplorerVideoPreviewUrl(
         scope.target,
         activeFile.path,
         {
@@ -309,7 +310,7 @@ export function useFileExplorerDocument(
           signal: operation.signal,
           refreshSshCredential: scope.target.type === "executionHost" && scope.target.kind === "ssh",
         },
-      );
+      ) : null;
       const latestFile = currentFileRef.current;
       if (
         !operation.isCurrent()
@@ -379,7 +380,7 @@ export function useFileExplorerDocument(
       }
 
       if (metadata.isImage) {
-        const imageBlob = await readFileExplorerImagePreviewApi(scope.target, activeFile.path, {
+        const imageResource = await getFileExplorerImagePreviewResource(scope.target, activeFile.path, {
           startDirectory: scope.target.startDirectory,
           signal: operation.signal,
         });
@@ -390,12 +391,13 @@ export function useFileExplorerDocument(
           || latestFileBeforeApply?.path !== activeFile.path
           || latestFileBeforeApply.versionToken !== activeFile.versionToken
         ) {
+          imageResource.dispose?.();
           return;
         }
 
         setCurrentFile(metadata);
         setVideoPreviewUrl(null);
-        replaceImagePreviewUrl(URL.createObjectURL(imageBlob));
+        replaceImagePreviewUrl(imageResource);
         setEditorContentState("");
         setSavedContent("");
         tree.updateDirectoryEntry(metadata, operation.isCurrent);
@@ -539,10 +541,8 @@ export function useFileExplorerDocument(
   useEffect(() => {
     return () => {
       invalidateFileLoad();
-      if (imagePreviewUrlRef.current) {
-        URL.revokeObjectURL(imagePreviewUrlRef.current);
-        imagePreviewUrlRef.current = null;
-      }
+      imagePreviewResourceRef.current?.dispose?.();
+      imagePreviewResourceRef.current = null;
     };
   }, [invalidateFileLoad]);
 

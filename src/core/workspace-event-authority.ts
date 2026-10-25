@@ -1,12 +1,12 @@
 /**
  * Resolves workspace and participant authority for private realtime publications.
  */
-import type { RealtimePublication, RealtimeTarget } from "@pablozaiden/webapp/server";
+import type { RealtimePublication } from "@pablozaiden/webapp/contracts";
 import type { CollaborationGuestGrant } from "@/shared/collaboration";
-import { WORKSPACE_REALTIME_RESOURCE_KINDS } from "../realtime";
+import { WORKSPACE_REALTIME_RESOURCE_KINDS } from "@/shared/realtime";
 import { findResourceWorkspace } from "../persistence/workspace-resource-index";
 import { collaborationService } from "./collaboration-service";
-import { isReadRecord } from "./resource-read-service";
+import { isReadRecord } from "../client-sdk/collaboration/resource-read";
 
 export function findGuestResourceWorkspace(
   guest: CollaborationGuestGrant,
@@ -56,17 +56,4 @@ export function resolveWorkspaceEventAuthority(
     if (membershipId !== guest.id) return undefined;
   }
   return workspaceId;
-}
-
-export function workspaceEventReferenceFields(target: Readonly<RealtimeTarget>): Record<string, string> {
-  const fields: Record<string, string> = {
-    workspaceId: "workspace", taskId: "task", chatId: "chat",
-    agentId: "agent", agentRunId: "agent-run", terminalSessionId: "terminal", previewId: "preview",
-  };
-  if (target.resource && WORKSPACE_REALTIME_RESOURCE_KINDS[target.resource]) {
-    fields["id"] = WORKSPACE_REALTIME_RESOURCE_KINDS[target.resource]!;
-    if (target.resource === "agent-runs") fields["scope"] = "agent";
-    else if (target.resource === "previews") fields["scope"] = "workspace";
-  }
-  return fields;
 }

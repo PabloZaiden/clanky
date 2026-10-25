@@ -1,8 +1,8 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { ConfirmModal, Modal, type ActionMenuItem } from "@pablozaiden/webapp/web";
+import { ConfirmModal, Modal, getWebAppClientMode, useToast, type ActionMenuItem } from "@pablozaiden/webapp/web";
 import { Button } from "../common";
 import { RenameChatModal } from "../RenameChatModal";
-import { appResourceUrl } from "../../lib/public-path";
+import { appResourceUrl, appSaveResource } from "../../lib/public-path";
 import { apiRequest } from "../../lib/api-client";
 import type { Chat } from "@/shared";
 import {
@@ -113,6 +113,8 @@ export function useChatActions({
   onChatDeleted,
   onActionError,
 }: UseChatActionsOptions): ChatActionsController {
+  const toast = useToast();
+  const browserOnly = getWebAppClientMode() === "external";
   const [renameTarget, setRenameTarget] = useState<Chat | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Chat | null>(null);
   const [transcriptTarget, setTranscriptTarget] = useState<Chat | null>(null);
@@ -123,20 +125,26 @@ export function useChatActions({
 
   async function openTranscript(format: "view" | "download"): Promise<void> {
     if (!transcriptTarget || isTranscriptPending) return;
-    const popup = window.open("about:blank", "_blank");
-    if (!popup) {
+    const popup = format === "view" && !browserOnly ? window.open("about:blank", "_blank") : null;
+    if (format === "view" && !browserOnly && !popup) {
       onActionError("Allow pop-ups to open the transcript.");
       return;
     }
-    popup.opener = null;
+    if (popup) popup.opener = null;
     setIsTranscriptPending(true);
     try {
       const suffix = format === "view" ? "transcript.html" : "transcript.md?download=1";
-      const resource = await appResourceUrl(`/api/chats/${encodeURIComponent(transcriptTarget.config.id)}/${suffix}`);
-      popup.location.replace(resource.url);
+      const path = `/api/chats/${encodeURIComponent(transcriptTarget.config.id)}/${suffix}`;
+      if (popup) {
+        const resource = await appResourceUrl(path);
+        popup.location.replace(resource.url);
+      } else {
+        await appSaveResource(path, { suggestedName: `transcript.${format === "view" ? "html" : "md"}` });
+        if (browserOnly) toast.success("Transcript is ready to export in Settings > Downloads.");
+      }
       setTranscriptTarget(null);
     } catch (error) {
-      popup.close();
+      popup?.close();
       onActionError(getErrorMessage(error));
     } finally {
       setIsTranscriptPending(false);
@@ -289,13 +297,13 @@ export function useChatActions({
               disabled={isTranscriptPending}
               onClick={() => void openTranscript("view")}
             >
-              View
+              {browserOnly ? "Download HTML" : "View"}
             </Button>
           </>
         }
       >
         <></>
-        <p>Open the transcript in a standalone window or download it as a Markdown file.</p>
+        <p>{browserOnly ? "Download the transcript as Markdown or HTML." : "Open the transcript in a standalone window or download it as a Markdown file."}</p>
       </Modal>
     </>
   );

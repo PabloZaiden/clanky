@@ -7,7 +7,7 @@ import type {
 } from "@pablozaiden/webapp/server";
 import { getRequestOriginInfo, createLogger } from "@pablozaiden/webapp/server";
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
-import type { ClankyRealtimeEvent } from "../realtime";
+import type { ClankyRealtimeEvent } from "@/shared/realtime";
 import type {
   OperationAuthority, OperationRequest, OperationResult,
 } from "../core/clanky-operation-service";

@@ -78,6 +78,10 @@ export const SetSchedulerTimezoneRequestSchema = z.object({
   ),
 });
 
+export const SchedulerTimezoneQuerySchema = z.object({
+  workspaceId: z.string().min(1).optional(),
+});
+
 export const QuickChatSettingsSchema = z.object({
   workspaceId: z.string().trim().default(""),
   model: ModelConfigSchema.nullable().default(null),

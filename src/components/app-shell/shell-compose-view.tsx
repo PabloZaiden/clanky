@@ -48,7 +48,6 @@ interface ComposeViewProps {
   createChat: (request: import("@/contracts").CreateChatRequest) => Promise<import("@/shared").Chat | null>;
   dashboardData: UseDashboardDataResult;
   agents: UseAgentsResult;
-  schedulerTimezone: string;
   workspaces: Workspace[];
   workspacesLoading: boolean;
   workspaceError: string | null;
@@ -77,7 +76,6 @@ export function ComposeView(props: ComposeViewProps) {
     createChat,
     dashboardData,
     agents,
-    schedulerTimezone,
     workspaces,
     workspacesLoading,
     workspaceError,
@@ -129,7 +127,6 @@ export function ComposeView(props: ComposeViewProps) {
         modelsLoading={dashboardData.modelsLoading}
         modelsWorkspaceId={dashboardData.modelsWorkspaceId}
         lastModel={dashboardData.lastModel}
-        schedulerTimezone={schedulerTimezone}
         branches={dashboardData.branches}
         branchesLoading={dashboardData.branchesLoading}
         branchesWorkspaceId={dashboardData.branchesWorkspaceId}

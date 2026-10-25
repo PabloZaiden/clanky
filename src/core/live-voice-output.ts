@@ -1,7 +1,7 @@
 /**
  * Wire-size admission, independent of the API's content-page byte budget.
  */
-import { isReadRecord, readBytes } from "./resource-read-service";
+import { isReadRecord, readBytes } from "../client-sdk/collaboration/resource-read";
 
 export const LIVE_MAX_PARALLEL_TOOLS = 8;
 export const LIVE_TOOL_ITEM_BYTES = 3500;

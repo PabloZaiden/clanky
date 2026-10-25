@@ -19,7 +19,7 @@ import { parseAndValidate, validateRequest } from "../validation";
 import { validateAgentModel } from "./helpers";
 import { CollectionReadOptionsSchema } from "@/contracts/schemas/resource-read";
 import { readWorkCollection, readWorkCollectionItem } from "../../core/work-read-service";
-import { readScope } from "../../core/resource-read-service";
+import { readScope } from "../../client-sdk/collaboration/resource-read";
 import { resourcePageResponse, workMetadataResponse } from "../resource-reads";
 
 const log = createLogger("api:agents");
