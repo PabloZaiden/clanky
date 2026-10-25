@@ -29,11 +29,16 @@ export function projectQuestionMessages(
     });
     if (transcript.answerTimestamp && request.answers) {
       updates.push({
+        ...existing.get(transcript.answerMessageId),
         id: transcript.answerMessageId,
         role: "user",
         content: formatHarnessAnswers(request),
         timestamp: transcript.answerTimestamp,
-        question,
+        question: {
+          ...question,
+          ...(request.attachmentIds?.some((ids) => ids.length) && request.responseMode !== "message"
+            ? { imageDelivery: "file" as const } : {}),
+        },
       });
     }
   }

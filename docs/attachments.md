@@ -9,6 +9,26 @@ Limits are unchanged: 20 attachments per message, 20 MiB per file and 60 MiB
 combined per provider turn, including grouped queued input and steering.
 Empty non-image files are supported.
 
+## Images in question answers
+
+Paste a PNG, JPEG, WebP or GIF into a question's custom text answer to attach it.
+The answer keeps the same image thumbnails, full-size preview and removal
+controls as the message composer, without an attachment button or toolbox.
+Text paste still works normally. You can send text with images or images alone;
+numeric answers and questions restricted to offered choices do not accept images.
+Explicit text-length and selection constraints still apply.
+
+Each image belongs to the answer where it was pasted. The usual attachment
+count and combined-size limits apply across the entire question response.
+Original images remain in the conversation transcript, including after restart.
+
+Message-based questions send images through the ordinary inline-image pipeline.
+Native question callbacks that accept only text instead receive filenames and
+absolute paths to image copies on the conversation's execution host. The agent
+must open those images with its own tools; model/tool support determines whether
+it can inspect them. Copies follow the same ownership, recovery and permanent
+deletion rules as other execution-host attachments.
+
 ## What the agent receives
 
 PNG, JPEG, WebP and GIF retain their inline image behavior and previews. Other

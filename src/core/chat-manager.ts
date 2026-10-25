@@ -40,6 +40,7 @@ import type {
 } from "./chat-service-contracts";
 import type { Backend } from "../backends/types";
 import { includeLiveTranscript } from "./transcript-service";
+import type { ReplyToChatQuestionRequest } from "@/contracts/api";
 
 export type {
   ChatConfigUpdates,
@@ -95,11 +96,11 @@ function createChatServices(emitter: SimpleEventEmitter<ChatEvent>): ChatService
     },
   });
   conversation = conversationService;
-  questions = new ChatQuestionService({ state, session,
+  questions = new ChatQuestionService({ state, session, attachments,
     hasActiveStream: (id: string) => conversationService.hasActiveStream(id),
-    sendMessage: async (id, message, transcriptMessage, clientId) => {
+    sendMessage: async (id, options) => {
       if (!interaction) throw new Error("Chat interaction service is not initialized");
-      return interaction.sendMessage(id, { message, transcriptMessage, clientId });
+      return interaction.sendMessage(id, options);
     } });
   const questionService = questions;
   conversationService.setQuestionHandler(async (chat, event, questionMessageId) => {
@@ -341,8 +342,8 @@ export class ChatManager {
     return this.services.interaction.replyToPermission(chatId, requestId, decision);
   }
 
-  replyToQuestion(chatId: string, requestId: string, answers: string[][], clientId?: string): Promise<Chat> {
-    return this.services.interaction.replyToQuestion(chatId, requestId, answers, clientId);
+  replyToQuestion(chatId: string, requestId: string, reply: ReplyToChatQuestionRequest): Promise<Chat> {
+    return this.services.interaction.replyToQuestion(chatId, requestId, reply);
   }
 
   async deleteChat(chatId: string, options?: DeleteChatOptions): Promise<boolean> {

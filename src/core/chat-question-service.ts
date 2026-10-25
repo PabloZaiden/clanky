@@ -3,11 +3,11 @@
  */
 
 import type { Backend } from "../backends/types";
-import type { ChatStatePort, ChatSessionPort } from "./chat-service-contracts";
+import type { ChatStatePort, ChatSessionPort, ChatMessageOptions } from "./chat-service-contracts";
 import type { HarnessEvent } from "@/shared/harness-events";
 import type { HarnessConversationBinding } from "@/shared/harness-control";
 import type { HarnessQuestionRequest } from "@/shared/harness-questions";
-import { isQuestionOpen } from "@/shared/harness-questions";
+import { formatHarnessAnswers, isQuestionOpen } from "@/shared/harness-questions";
 import { ChatBusyError, isChatBusyStatus, type Chat } from "@/shared/chat";
 import { HarnessError } from "../backends/harness-errors";
 import { requireMatchingHarnessBinding } from "../backends/harness-binding";
@@ -16,6 +16,8 @@ import { KeyedOperationQueue } from "../utils/keyed-operation-queue";
 import { validateQuestionAnswers } from "./question-validation";
 import type { MessageData } from "@/shared/events";
 import { isHarnessInputValidationError } from "./harness-input-ledger";
+import type { ReplyToChatQuestionRequest } from "@/contracts/api";
+import type { ChatAttachmentService } from "./chat-attachment-service";
 
 export class ChatQuestionService {
   private readonly operations = new KeyedOperationQueue();
@@ -23,8 +25,9 @@ export class ChatQuestionService {
   constructor(private readonly dependencies: {
     state: ChatStatePort;
     session: ChatSessionPort;
+    attachments: ChatAttachmentService;
     hasActiveStream: (id: string) => boolean;
-    sendMessage?: (chatId: string, message: string, transcriptMessage?: MessageData, clientId?: string) => Promise<Chat>;
+    sendMessage?: (chatId: string, options: ChatMessageOptions) => Promise<Chat>;
   }) {}
 
   handle(chatId: string, binding: HarnessConversationBinding, { event, questionMessageId }: {
@@ -77,8 +80,9 @@ export class ChatQuestionService {
     });
   }
 
-  reply(chatId: string, requestId: string, answers: string[][], clientId?: string): Promise<Chat> {
+  reply(chatId: string, requestId: string, reply: ReplyToChatQuestionRequest): Promise<Chat> {
     return this.operations.run(chatId, async () => {
+      const { answers, attachments = [] } = reply;
       let chat = await this.dependencies.state.getChatSummary(chatId);
       if (!chat) throw new HarnessError("harness_question_not_found", "The chat question is unavailable.");
       const request = chat.state.harness?.questions?.find((entry) => entry.requestId === requestId);
@@ -86,33 +90,57 @@ export class ChatQuestionService {
       const binding = chat.state.session?.binding;
       if (!binding || binding.ownerId !== requireExecutionOwnerUserId()) throw new HarnessError("harness_session_not_owned", "The question is not owned by this conversation.");
       requireMatchingHarnessBinding(JSON.stringify(request.conversation), binding);
-      validateQuestionAnswers(request.questions, answers);
-      if ((request.status === "answered" || request.status === "queued") && JSON.stringify(request.answers) === JSON.stringify(answers)) return chat;
+      validateQuestionAnswers(request.questions, answers, attachments);
+      if ((request.status === "answered" || request.status === "queued")
+        && JSON.stringify(request.answers) === JSON.stringify(answers)
+        && JSON.stringify(request.attachmentIds ?? request.questions.map(() => []))
+          === JSON.stringify(request.questions.map((_, index) => attachments[index]?.map((image) => image.id) ?? []))) {
+        const previous = request.transcript
+          ? await this.dependencies.state.getChatMessage(chatId, request.transcript.answerMessageId) : null;
+        if (JSON.stringify(previous?.attachments ?? []) === JSON.stringify(attachments.flat())) return chat;
+      }
       if (request.status !== "pending") throw new HarnessError("harness_question_closed", "This question can no longer receive an answer.");
       const backend: Backend = this.dependencies.session.getChatBackend(chatId, chat.config.workspaceId);
       if (!backend.isConnected()) throw new HarnessError("harness_transport_closed", "Reconnect the conversation before answering.");
-      // Persist uncertain admission first; a lost RPC must never trigger a blind resend.
-      chat = await this.save(chat, (chat.state.harness?.questions ?? []).map((entry) => entry.requestId === requestId ? {
-        ...entry,
+      const answering: HarnessQuestionRequest = {
+        ...request,
         status: "submitting", answers, error: undefined,
+        attachmentIds: request.questions.map((_, index) => attachments[index]?.map((image) => image.id) ?? []),
         transcript: request.transcript ? {
           ...request.transcript,
           answerTimestamp: new Date(Math.max(Date.now(), Date.parse(request.createdAt) + 1)).toISOString(),
         } : undefined,
-      } : entry));
+      };
+      if (attachments.flat().length && !answering.transcript) {
+        throw new HarnessError("harness_unsupported_feature", "This question cannot retain image answers.");
+      }
+      // Persist originals and uncertain admission before any native reply.
+      chat = await this.save(chat, (chat.state.harness?.questions ?? []).map((entry) => entry.requestId === requestId ? {
+        ...answering,
+      } : entry), answering.transcript ? {
+        id: answering.transcript.answerMessageId, role: "user",
+        content: formatHarnessAnswers(answering), timestamp: answering.transcript.answerTimestamp!,
+        attachments: attachments.flat().length ? attachments.flat() : undefined,
+      } : undefined);
       if (chat.state.harness?.questions?.find((entry) => entry.requestId === requestId)?.status !== "submitting") {
         throw new HarnessError("harness_question_closed", "This question was closed before answer delivery.");
       }
+      const transcriptMessage = chat.state.messages.find((message) => message.id === request.transcript?.answerMessageId);
+      const nativeAnswers = request.responseMode === "message" ? answers
+        : await this.prepareCallbackAnswers({ chat, request: answering, reply, transcriptMessage });
       try {
         if (request.responseMode === "message") {
           if (!this.dependencies.sendMessage) throw new HarnessError("harness_unsupported_feature", "Asynchronous question responses are unavailable.");
-          return await this.dependencies.sendMessage(
-            chatId,
-            request.questions.map((question, index) => `${question.question}\n${answers[index]!.join(", ")}`).join("\n\n"),
-            chat.state.messages.find((message) => message.id === request.transcript?.answerMessageId),
-            clientId,
-          );
-        } else await backend.replyToQuestion(requestId, answers);
+          return await this.dependencies.sendMessage(chatId, {
+            message: request.questions.map((question, index) => [
+              question.question, answers[index]!.join(", "),
+              ...(attachments[index]?.length
+                ? [`Attached images for this answer: ${JSON.stringify(attachments[index]!.map((image) => image.filename))}`] : []),
+            ].filter(Boolean).join("\n")).join("\n\n"),
+            attachments: attachments.flat(), transcriptMessage,
+            clientId: reply.clientId, credentialToken: reply.credentialToken,
+          });
+        } else await backend.replyToQuestion(requestId, nativeAnswers);
       } catch (error) {
         if (request.responseMode === "message") {
           const latest = await this.requireChat(chatId);
@@ -138,6 +166,41 @@ export class ChatQuestionService {
     });
   }
 
+  private async prepareCallbackAnswers({ chat, request, reply, transcriptMessage }: {
+    chat: Chat;
+    request: HarnessQuestionRequest;
+    reply: ReplyToChatQuestionRequest;
+    transcriptMessage?: MessageData;
+  }): Promise<string[][]> {
+    if (!reply.attachments?.some((images) => images.length)) return reply.answers;
+    try {
+      if (!transcriptMessage) throw new HarnessError("harness_question_invalid", "The answer images could not be restored.");
+      const prepared = await this.dependencies.attachments.prepare(chat, transcriptMessage, { credentialToken: reply.credentialToken });
+      const latest = await this.requireChat(chat.config.id);
+      if (!latest.state.session?.binding) throw new HarnessError("harness_question_closed", "The question conversation is no longer active.");
+      requireMatchingHarnessBinding(JSON.stringify(request.conversation), latest.state.session.binding);
+      if (latest.state.harness?.questions?.find((entry) => entry.requestId === request.requestId)?.status !== "submitting") {
+        throw new HarnessError("harness_question_closed", "The question closed while its images were being prepared.");
+      }
+      let offset = 0;
+      const paths = new Map(prepared.files.map((file) => [file.attachmentIndex, file.path]));
+      return reply.answers.map((values, index) => {
+        const references = (reply.attachments?.[index] ?? []).map((image) => {
+          const path = paths.get(offset++);
+          if (!path) throw new HarnessError("harness_question_invalid", "An answer image is unavailable on the execution host.");
+          return `Attached image (open with your tools on the execution host):\n${JSON.stringify({ name: image.filename, path })}`;
+        });
+        if (!references.length) return values;
+        return request.questions[index]!.multiple
+          ? [...values, references.join("\n\n")]
+          : [[...values, ...references].join("\n\n")];
+      });
+    } catch (error) {
+      await this.replace(await this.requireChat(chat.config.id), request.requestId, { status: "pending", error: undefined });
+      throw error;
+    }
+  }
+
   private async requireChat(id: string): Promise<Chat> {
     const chat = await this.dependencies.state.getChatSummary(id);
     if (!chat) throw new HarnessError("harness_session_not_found", "The chat was removed during answer delivery.");
@@ -149,7 +212,7 @@ export class ChatQuestionService {
       request.requestId === requestId ? { ...request, ...updates } : request));
   }
 
-  private async save(chat: Chat, questions: HarnessQuestionRequest[]): Promise<Chat> {
+  private async save(chat: Chat, questions: HarnessQuestionRequest[], answerMessage?: MessageData): Promise<Chat> {
     // Metadata-only reads do not carry transcript counts or collections.
     const updated = await this.dependencies.state.mutateState(chat.config.id, (current) => {
       if (!current.state.session?.binding || !chat.state.session?.binding) {
@@ -167,6 +230,10 @@ export class ChatQuestionService {
           : current.state.status;
       return {
         ...current.state, status,
+        messages: answerMessage && next.some((request) =>
+          request.transcript?.answerMessageId === answerMessage.id && request.status === "submitting")
+          ? current.state.messages.filter((message) => message.id !== answerMessage.id).concat(answerMessage)
+          : current.state.messages,
         harness: { ...current.state.harness, questions: next },
         lastActivityAt: new Date().toISOString(),
       };

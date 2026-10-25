@@ -5,7 +5,8 @@
 import { z } from "zod";
 import { ExecutionHostBindingSchema } from "./execution-host";
 import { HARNESS_ADAPTER_IDS } from "@/shared/harness-events";
-import { MESSAGE_ATTACHMENT_MAX_TURN_BYTES } from "@/shared/message-attachments";
+import { getMessageAttachmentKind, MESSAGE_ATTACHMENT_LIMIT, MESSAGE_ATTACHMENT_MAX_TURN_BYTES } from "@/shared/message-attachments";
+import { MessageAttachmentsSchema } from "./task";
 
 export const HarnessConversationBindingSchema = z.object({
   adapter: z.enum(HARNESS_ADAPTER_IDS),
@@ -52,11 +53,25 @@ export const HarnessQuestionMessageSchema = z.object({
   requestId: z.string(),
   scope: HarnessEventScopeSchema,
   status: HarnessQuestionStatusSchema,
+  imageDelivery: z.literal("file").optional(),
 });
 
 export const ReplyToChatQuestionRequestSchema = z.object({
   answers: z.array(z.array(z.string().min(1).max(10_000)).max(100)).min(1).max(100),
+  attachments: z.array(MessageAttachmentsSchema).max(100).superRefine((groups, ctx) => {
+    const attachments = groups.flat();
+    const validation = MessageAttachmentsSchema.safeParse(attachments);
+    if (!validation.success) {
+      for (const issue of validation.error.issues) {
+        ctx.addIssue({ code: "custom", message: issue.message });
+      }
+    }
+    if (attachments.some((attachment) => getMessageAttachmentKind(attachment) !== "image")) {
+      ctx.addIssue({ code: "custom", message: "Question answers accept only PNG, JPEG, WebP and GIF images." });
+    }
+  }).optional(),
   clientId: z.string().uuid().optional(),
+  credentialToken: z.string().nullable().optional(),
 }).strict();
 
 const AcceptedInputSchema = z.object({
@@ -144,6 +159,7 @@ export const HarnessConversationStateSchema = z.object({
     status: HarnessQuestionStatusSchema,
     createdAt: z.string(), resolvedAt: z.string().optional(),
     answers: z.array(z.array(z.string().max(10_000)).max(100)).max(100).optional(),
+    attachmentIds: z.array(z.array(z.string()).max(MESSAGE_ATTACHMENT_LIMIT)).max(100).optional(),
     error: z.string().optional(),
     transcript: z.object({
       questionMessageId: z.string(),

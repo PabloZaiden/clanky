@@ -39,6 +39,7 @@ import type { HarnessActivitySnapshot, HarnessActivityStopResult, HarnessCapabil
 import type { QueuedChatMessage } from "@/shared/chat";
 import type { ChatTrashService } from "./chat-trash-service";
 import type { LiveTranscriptState } from "./transcript-stream-projection";
+import type { ReplyToChatQuestionRequest } from "@/contracts/api";
 
 export interface CreateChatOptions {
   name?: string;
@@ -272,7 +273,7 @@ export interface ChatConversationPort {
 export interface ChatInteractionPort {
   beginShutdown(): void;
   shutdown(): Promise<void>;
-  replyToQuestion(chatId: string, requestId: string, answers: string[][], clientId?: string): Promise<Chat>;
+  replyToQuestion(chatId: string, requestId: string, reply: ReplyToChatQuestionRequest): Promise<Chat>;
   reconcileQueuedMessage(chatId: string, queuedMessageId: string): Promise<{ chat: Chat; admission: HarnessInputAdmission }>;
   steerQueuedMessage(chatId: string, queuedMessageId: string): Promise<{ chat: Chat; admission: HarnessInputAdmission }>;
   sendMessage(chatId: string, options: ChatMessageOptions): Promise<Chat>;

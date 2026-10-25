@@ -25,7 +25,12 @@ export const chatsMessagingRoutes = defineRoutes({
       POST: {
         requestSchema: ReplyToChatQuestionRequestSchema,
         querySchema: undefined,
-        automation: { policy: "write", hiddenInputs: ["clientId"], completion: "admission" },
+        automation: {
+          policy: "write", hiddenInputs: ["clientId", "credentialToken"], completion: "admission",
+          credential: {
+            kind: "ssh", resource: { name: "chats", idParameter: "id", purpose: "connection" }, input: "credentialToken",
+          },
+        },
       },
     },
     async POST(req: Request, ctx): Promise<Response> {
@@ -35,8 +40,7 @@ export const chatsMessagingRoutes = defineRoutes({
         const chat = await chatManager.replyToQuestion(
           ctx.params["id"]!,
           ctx.params["requestId"]!,
-          validation.data.answers,
-          validation.data.clientId,
+          validation.data,
         );
         return successResponse({ chat: await toLightweightChat(chat) });
       } catch (error) {

@@ -5,6 +5,7 @@
 export * from "./conventional-commits";
 export * from "./conversation-attachment-service";
 export * from "./chat-attachment-service";
+export * from "./chat-question-transcript";
 export * from "../domain/domain-error";
 export * from "./github-issues";
 export * from "./file-explorer-errors";
