@@ -113,7 +113,8 @@ function upsertEntry(
     output,
     extras,
     tool && hasToolCallImagePreview(tool) ? 1 : 0,
-    message?.attachments?.some((attachment) => getMessageAttachmentKind(attachment) === "file") ? 1 : 0,
+    message?.attachments?.some((attachment) =>
+      getMessageAttachmentKind(attachment) === "file" || message.question?.imageDelivery === "file") ? 1 : 0,
     now,
     now,
   );

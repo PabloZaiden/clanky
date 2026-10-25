@@ -52,7 +52,7 @@ import type { ChatStatePort } from "./chat-service-contracts";
 import { closeOpenQuestions, reconcileQuestionAnswerAdmissions } from "@/shared/harness-questions";
 import { KeyedOperationQueue } from "../utils/keyed-operation-queue";
 import { HarnessError } from "../backends/harness-errors";
-import { projectQuestionMessages } from "@/shared/question-transcript";
+import { projectChatQuestionMessages } from "./chat-question-transcript";
 
 const CHAT_TRANSCRIPT_EXPORT_PAGE_SIZE = 4;
 
@@ -294,7 +294,11 @@ export class ChatStateService implements ChatStatePort {
       };
     }
     const questionMessages = state.harness?.questions !== chat.state.harness?.questions
-      ? projectQuestionMessages(state.messages, state.harness?.questions)
+      ? await projectChatQuestionMessages({
+          messages: state.messages,
+          requests: state.harness?.questions,
+          getMessage: (id) => this.getChatMessage(chat.config.id, id),
+        })
       : [];
     if (questionMessages.length) {
       const updates = new Map(questionMessages.map((message) => [message.id, message]));

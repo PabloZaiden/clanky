@@ -84,7 +84,7 @@ import { HarnessError } from "../backends/harness-errors";
 import { harnessActivityService } from "./harness-activity-service";
 import { isDomainError } from "../domain/domain-error";
 import { closeOpenQuestions, isQuestionOpen, updateQuestionAnswerStatus } from "@/shared/harness-questions";
-import { projectQuestionMessages } from "@/shared/question-transcript";
+import { projectChatQuestionMessages } from "./chat-question-transcript";
 import { NativeChatObserver } from "./native-chat-observer";
 import type { HarnessConversationBinding } from "@/shared/harness-control";
 import { requireMatchingHarnessBindings } from "../backends/harness-binding";
@@ -1676,10 +1676,11 @@ export class ChatConversationService implements ChatConversationPort {
     if (!latestChat) {
       return false;
     }
-    for (const message of projectQuestionMessages(
-      streamState.transcriptMemory.messages.values,
-      latestChat.state.harness?.questions,
-    )) {
+    for (const message of await projectChatQuestionMessages({
+      messages: streamState.transcriptMemory.messages.values,
+      requests: latestChat.state.harness?.questions,
+      getMessage: (id) => this.state.getChatMessage(chatId, id),
+    })) {
       streamState.transcriptMemory.messages.upsert(message);
     }
     streamState.chat = {

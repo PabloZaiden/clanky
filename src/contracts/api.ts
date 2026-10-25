@@ -74,6 +74,7 @@ import {
   WorkspaceExecResponseSchema,
 } from "./schemas";
 import type { z } from "zod";
+import type { ReplyToChatQuestionRequestSchema } from "./schemas/harness";
 
 export type RestartAutomaticWorkspacesRequest =
   z.infer<typeof RestartAutomaticWorkspacesRequestSchema>;
@@ -248,6 +249,7 @@ export type UpdateChatRequest = z.infer<typeof UpdateChatRequestSchema>;
 export type SendChatMessageRequest = z.infer<typeof SendChatMessageRequestSchema>;
 export type InterruptChatRequest = z.infer<typeof InterruptChatRequestSchema>;
 export type ReplyToChatPermissionRequest = z.infer<typeof ReplyToChatPermissionRequestSchema>;
+export type ReplyToChatQuestionRequest = z.infer<typeof ReplyToChatQuestionRequestSchema>;
 export type ReconnectChatRequest = z.infer<typeof ReconnectChatRequestSchema>;
 export type DiscoverSshServerChatProvidersRequest = z.infer<typeof DiscoverSshServerChatProvidersRequestSchema>;
 export type DiscoverSshServerChatModelsRequest = z.infer<typeof DiscoverSshServerChatModelsRequestSchema>;
