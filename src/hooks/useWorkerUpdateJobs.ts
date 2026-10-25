@@ -159,10 +159,12 @@ export function useWorkerUpdateJobs(
     if (!enabled || !jobId) return false;
     setError(null);
     try {
-      // Both projections establish their barriers before the shared operation.
-      await mutateJobs(() => mutateJob(async (signal) => {
+      const dismiss = async (signal: AbortSignal): Promise<void> => {
         await dismissWorkerUpdateJobRequest(jobId, signal);
-      }, (previous) => previous?.jobId === jobId ? null : previous),
+      };
+      await mutateJobs((signal) => activeJobIdRef.current === jobId
+        ? mutateJob(dismiss, (previous) => previous?.jobId === jobId ? null : previous)
+        : dismiss(signal),
       (previous) => previous?.filter((job) => job.config.id !== jobId));
       if (activeJobIdRef.current === jobId) clearActiveJob();
       return true;
@@ -177,13 +179,16 @@ export function useWorkerUpdateJobs(
     if (dismissAllPromiseRef.current) return dismissAllPromiseRef.current;
     const jobIds = jobs.filter((job) => isWorkerUpdateJobTerminal(job.state.status)).map((job) => job.config.id);
     setDismissingAllJobs(true);
-    const promise = mutateJobs(() => mutateJob(async (signal) => {
+    const dismiss = async (signal: AbortSignal): Promise<DismissAllWorkerUpdateJobsResult> => {
       const results = await Promise.allSettled(jobIds.map((jobId) => dismissWorkerUpdateJobRequest(jobId, signal)));
       signal.throwIfAborted();
       const dismissedJobIds = jobIds.filter((_jobId, index) => results[index]?.status === "fulfilled");
       const failedJobIds = jobIds.filter((_jobId, index) => results[index]?.status === "rejected");
       return { dismissedJobIds, failedJobIds };
-    }, (previous, result) => previous && result.dismissedJobIds.includes(previous.jobId) ? null : previous),
+    };
+    const promise = mutateJobs((signal) => activeJobIdRef.current !== null && jobIds.includes(activeJobIdRef.current)
+      ? mutateJob(dismiss, (previous, result) => previous && result.dismissedJobIds.includes(previous.jobId) ? null : previous)
+      : dismiss(signal),
     (previous, result) => {
       const dismissed = new Set(result.dismissedJobIds);
       return previous?.filter((job) => !dismissed.has(job.config.id));

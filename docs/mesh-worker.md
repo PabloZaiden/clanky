@@ -601,9 +601,10 @@ maintenance, not for routine Clanky updates. The bulk restart API remains
 available for explicit provisioning lifecycle operations.
 
 Use **Dismiss all** in the Dashboard's **Worker updates** panel to remove
-terminal jobs and their logs after confirmation.
-Pending, connecting, running, and verifying jobs are kept. Individual jobs can still be dismissed from
-their detail view.
+terminal jobs and their logs after confirmation, even while other updates are
+still in progress. Pending, connecting, running, and verifying jobs are kept
+and do not prevent finished jobs from being dismissed. Individual jobs can
+still be dismissed from their detail view.
 
 ## Automatic workspace runtimes
 
