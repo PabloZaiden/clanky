@@ -184,7 +184,7 @@ export class ChatQuestionService {
       }
       let offset = 0;
       const paths = new Map(prepared.files.map((file) => [file.attachmentIndex, file.path]));
-      return reply.answers.map((values, index) => {
+      const nativeAnswers = reply.answers.map((values, index) => {
         const references = (reply.attachments?.[index] ?? []).map((image) => {
           const path = paths.get(offset++);
           if (!path) throw new HarnessError("harness_question_invalid", "An answer image is unavailable on the execution host.");
@@ -195,6 +195,8 @@ export class ChatQuestionService {
           ? [...values, references.join("\n\n")]
           : [[...values, ...references].join("\n\n")];
       });
+      validateQuestionAnswers(request.questions, nativeAnswers);
+      return nativeAnswers;
     } catch (error) {
       await this.replace(await this.requireChat(chat.config.id), request.requestId, { status: "pending", error: undefined });
       throw error;

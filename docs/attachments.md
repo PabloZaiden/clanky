@@ -28,6 +28,9 @@ absolute paths to image copies on the conversation's execution host. The agent
 must open those images with its own tools; model/tool support determines whether
 it can inspect them. Copies follow the same ownership, recovery and permanent
 deletion rules as other execution-host attachments.
+Those references also count toward the callback's text and selection limits.
+If they exceed a field or delivery limit, the answer remains pending so you
+can shorten the text or remove images before retrying.
 
 ## What the agent receives
 

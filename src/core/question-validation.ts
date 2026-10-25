@@ -35,7 +35,7 @@ export function validateQuestionAnswers(
       if (!values.length && !question.minLength && !question.minItems) continue;
     }
     if (!values.length && question.required === false) continue;
-    if (!values.length || (!question.multiple && values.length !== 1)
+    if (!values.length || values.length > 100 || (!question.multiple && values.length !== 1)
       || new Set(values).size !== values.length || values.some((value) => !value.trim() || value.length > 10_000
         || (question.minLength !== undefined && value.length < question.minLength)
         || (question.maxLength !== undefined && value.length > question.maxLength))
