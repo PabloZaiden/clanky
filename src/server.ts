@@ -107,6 +107,7 @@ import { workspaceClientController } from "./core/workspace-client-controller";
 import { workspaceConnections } from "./core/workspace-connections";
 import { configureWorkspaceClientGateway } from "./api/workspace-client-gateway";
 import { workspaceClientSockets } from "./api/workspace-client-sockets";
+import { workspaceDirectRoutes, workspaceDirectHandlers, stopWorkspaceDirect } from "./api/workspace-direct";
 import { remoteTerminalProxy } from "./api/workspace-socket-proxy";
 import { workspaceRealtimeSources } from "./api/workspace-realtime-source";
 
@@ -481,6 +482,7 @@ export const routes = defineRoutes<ClankyRealtimeEvent>({
     },
   },
   ...apiRoutes,
+  ...workspaceDirectRoutes,
   ...meshControllerInternalRoutes,
 });
 
@@ -625,6 +627,7 @@ export async function getWebAppServer(
     routes: meshWorker ? meshWorkerRoutes : routes,
     websockets: {
       clanky: websocketHandlers as never,
+      workspaceDirect: workspaceDirectHandlers as never,
     },
     lifecycle: {
       beforeStart: meshWorker
@@ -677,6 +680,7 @@ export async function getWebAppServer(
         await cleanup(() => workspaceConnections.stop());
         await cleanup(() => workspaceRealtimeSources.stop());
         await cleanup(() => workspaceClientSockets.stop());
+        await cleanup(stopWorkspaceDirect);
         workspaceClientController.stop();
         await cleanup(stopBackgroundWorkers);
         await cleanup(stopChatTrashMaintenance);

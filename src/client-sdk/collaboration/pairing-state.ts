@@ -7,7 +7,7 @@ import {
   type CreateCollaborationConnection,
 } from "@/contracts/schemas/collaboration";
 import type { CollaborationConnection, CollaborationGuestGrant } from "@/shared/collaboration";
-import { COLLABORATION_PROTOCOL_VERSION } from "@/shared/collaboration";
+import { COLLABORATION_PROTOCOL_VERSION, collaborationRoute, sameCollaborationRoute } from "@/shared/collaboration";
 import type { MeshRelayPeerIdentity } from "@/shared/mesh-relay";
 import { DomainError } from "../../domain/domain-error";
 import { getClientKeyFingerprint } from "./crypto";
@@ -33,7 +33,7 @@ export async function createPendingCollaborationPairing(
   return {
     id: crypto.randomUUID(), name: value.name ?? null, controller: value.controller,
     protocolVersion: COLLABORATION_PROTOCOL_VERSION,
-    relayUrl: value.relayUrl, relayFingerprint: value.relayFingerprint,
+    ...collaborationRoute(value),
     identity, guestId: null, status: "pending", createdAt: now.toISOString(),
     pendingExpiresAt: new Date(now.getTime() + 86_400_000).toISOString(),
   };
@@ -45,7 +45,7 @@ export function collaborationPairingRevision(connection: CollaborationConnection
   return JSON.stringify([
     connection.id, connection.protocolVersion, connection.name,
     connection.controller.nodeId, connection.controller.publicKey, connection.controller.fingerprint,
-    connection.relayUrl, connection.relayFingerprint,
+    collaborationRoute(connection),
     connection.identity.nodeId, connection.identity.publicKey, connection.identity.fingerprint,
     connection.status, connection.guestId, connection.createdAt, connection.pendingExpiresAt,
   ]);
@@ -92,7 +92,7 @@ export async function validateCollaborationPairingGrant(
     || grant.identity.nodeId !== connection.identity.nodeId
     || grant.identity.publicKey !== connection.identity.publicKey
     || grant.identity.fingerprint !== connection.identity.fingerprint
-    || grant.relayUrl !== connection.relayUrl || grant.relayFingerprint !== connection.relayFingerprint
+    || !sameCollaborationRoute(grant, connection)
     || await getClientKeyFingerprint(grant.identity.publicKey) !== grant.identity.fingerprint) {
     throw new DomainError("collaboration_grant_mismatch", "The guest grant does not match this connection.");
   }

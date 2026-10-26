@@ -346,10 +346,29 @@ function buildStreamUrl(relayUrl: string, ticket: string, credential: string): s
 export async function openMeshRelayDataStream(
   options: OpenMeshRelayDataStreamOptions,
 ): Promise<MeshRelayDataStream> {
+  return await openMeshDataStream({
+    ...options,
+    url: buildStreamUrl(options.relayUrl, options.ticket, options.credential),
+  });
+}
+
+export interface OpenMeshDataStreamOptions {
+  url: string;
+  requestId: string;
+  streamId: string;
+  openingFrame?: string;
+  verifyReady?(value: unknown): Promise<void>;
+  timeoutMs?: number;
+  signal?: AbortSignal;
+  socketFactory?: MeshRelayClientSocketFactory;
+  logger?: CollaborationClientLogger;
+}
+
+export async function openMeshDataStream(
+  options: OpenMeshDataStreamOptions,
+): Promise<MeshRelayDataStream> {
   const factory = options.socketFactory ?? openMeshRelayClientSocket;
-  const socket = factory(
-    buildStreamUrl(options.relayUrl, options.ticket, options.credential),
-  );
+  const socket = factory(options.url);
   socket.binaryType = "arraybuffer";
 
   let stream: MeshRelayDataStream | undefined;
@@ -397,6 +416,7 @@ export async function openMeshRelayDataStream(
   };
 
   const detach = (): void => {
+    socket.removeEventListener("open", onOpen);
     socket.removeEventListener("message", onMessage);
     socket.removeEventListener("close", onClose);
     socket.removeEventListener("error", onError);
@@ -421,6 +441,7 @@ export async function openMeshRelayDataStream(
     if (settled) return;
     settled = true;
     if (timer) clearTimeout(timer);
+    stream?.dispose();
     detach();
     if (socket.readyState <= 1) {
       socket.close(4_400, "Mesh relay stream handshake failed");
@@ -436,6 +457,10 @@ export async function openMeshRelayDataStream(
   }
 
   const onAbort = (): void => {
+    if (settled && stream) {
+      stream.abort(1000, "Mesh request cancelled");
+      return;
+    }
     fail(new MeshRelayStreamError(
       "mesh_relay_request_aborted",
       "The Mesh relay request was aborted.",
@@ -462,7 +487,10 @@ export async function openMeshRelayDataStream(
       ));
       return;
     }
-    const result = MeshRelayStreamReadyFrameSchema.safeParse(parsed);
+    const readyValue = options.verifyReady && parsed && typeof parsed === "object" && "signature" in parsed
+      ? Object.fromEntries(Object.entries(parsed).filter(([key]) => key !== "signature"))
+      : parsed;
+    const result = MeshRelayStreamReadyFrameSchema.safeParse(readyValue);
     if (
       !result.success
       || result.data.streamId !== options.streamId
@@ -481,9 +509,16 @@ export async function openMeshRelayDataStream(
       detach,
       options.logger,
     );
-    finish(stream);
+    const opened = stream;
+    if (options.verifyReady) {
+      void options.verifyReady(parsed).then(() => finish(opened), fail);
+    } else finish(opened);
   }
 
+  const onOpen = (): void => {
+    if (options.openingFrame) socket.send(options.openingFrame);
+  };
+  socket.addEventListener("open", onOpen);
   socket.addEventListener("message", onMessage);
   socket.addEventListener("close", onClose);
   socket.addEventListener("error", onError);

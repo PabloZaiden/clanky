@@ -30,6 +30,7 @@ export const COLLABORATION_ERROR_MAPPINGS = {
   collaboration_authority_required: { status: 403 },
   collaboration_interactive_forbidden: { status: 403 },
   collaboration_relay_required: { status: 409 },
+  collaboration_endpoint_required: { status: 409 },
   collaboration_relay_mismatch: { status: 403 },
   collaboration_controller_mismatch: { status: 409 },
   collaboration_identity_already_paired: { status: 409 },

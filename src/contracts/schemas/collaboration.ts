@@ -30,6 +30,11 @@ const RelayRoute = {
   relayUrl: ControllerRelayUrlSchema,
   relayFingerprint: z.string().regex(/^sha256:[a-f0-9]{64}$/),
 };
+export const CollaborationRouteSchema = z.union([
+  z.object({ controllerUrl: ControllerRelayUrlSchema }).strict(),
+  z.object(RelayRoute).strict(),
+]);
+const DirectRoute = { controllerUrl: ControllerRelayUrlSchema };
 const TimestampSchema = z.string().datetime();
 export const CollaborationWorkspacePermissionSchema = z.enum(["read", "work"]);
 export const CollaborationWorkspacePermissionsSchema = z.record(CollaborationIdSchema, CollaborationWorkspacePermissionSchema);
@@ -41,19 +46,22 @@ export const CreateCollaborationInvitationSchema = z.object({
   allWorkspacesAdmin: z.boolean().default(false),
   workspaceIds: CollaborationWorkspaceIdsSchema.default([]),
   workspacePermissions: CollaborationWorkspacePermissionsSchema.optional(),
-  relayName: ControllerRelayNameSchema,
+  transport: z.enum(["direct", "relay"]).default("relay"),
+  relayName: ControllerRelayNameSchema.optional(),
   name: CollaborationNameSchema.optional(),
   ttlSeconds: z.number().int().min(60)
     .max(COLLABORATION_INVITATION_MAX_TTL_SECONDS)
     .default(COLLABORATION_INVITATION_DEFAULT_TTL_SECONDS),
-}).strict().refine((value) => Object.keys(value.workspacePermissions ?? {}).every((id) => value.workspaceIds.includes(id)),
+}).strict().refine((value) => value.transport === "direct" ? value.relayName === undefined : value.relayName !== undefined,
+  "Select a paired relay for Relay invitations; Direct invitations do not use a relay.")
+  .refine((value) => Object.keys(value.workspacePermissions ?? {}).every((id) => value.workspaceIds.includes(id)),
   "Permissions must refer to selected workspaces.")
   .refine((value) => value.allWorkspacesAdmin
     ? value.workspaceIds.length === 0 && Object.keys(value.workspacePermissions ?? {}).length === 0
     : value.workspaceIds.length > 0,
   "Select workspaces or grant Work access to all workspaces, not both.");
 
-export const CollaborationInvitationSchema = z.object({
+const InvitationFields = {
   protocolVersion: z.literal(COLLABORATION_PROTOCOL_VERSION),
   controller: MeshRelayPeerIdentitySchema,
   id: CollaborationIdSchema,
@@ -61,40 +69,52 @@ export const CollaborationInvitationSchema = z.object({
   allWorkspacesAdmin: z.boolean(),
   workspaceIds: z.array(CollaborationIdSchema).max(COLLABORATION_MAX_WORKSPACES),
   workspacePermissions: CollaborationWorkspacePermissionsSchema,
-  ...RelayRoute,
   createdAt: TimestampSchema,
   expiresAt: TimestampSchema,
   consumedAt: TimestampSchema.nullable(),
   revokedAt: TimestampSchema.nullable(),
-}).strict();
+};
+export const CollaborationInvitationSchema = z.union([
+  z.object({ ...InvitationFields, ...RelayRoute }).strict(),
+  z.object({ ...InvitationFields, ...DirectRoute }).strict(),
+]);
 
-export const AcceptCollaborationInvitationSchema = z.object({
+const AcceptanceFields = {
   token: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
   guest: MeshRelayPeerIdentitySchema,
   name: CollaborationNameSchema.optional(),
-  ...RelayRoute,
-}).strict();
+};
+export const AcceptCollaborationInvitationSchema = z.union([
+  z.object({ ...AcceptanceFields, ...RelayRoute }).strict(),
+  z.object({ ...AcceptanceFields, ...DirectRoute }).strict(),
+]);
 
-export const CollaborationGuestGrantSchema = z.object({
+const GuestFields = {
   id: CollaborationIdSchema,
   ownerUserId: CollaborationIdSchema,
   ownerUsername: z.string().min(1).max(200),
   identity: MeshRelayPeerIdentitySchema,
   name: CollaborationNameSchema.nullable(),
   workspaceIds: z.array(CollaborationIdSchema),
-  ...RelayRoute,
   createdAt: TimestampSchema,
   revokedAt: TimestampSchema.nullable(),
-}).strict();
+};
+export const CollaborationGuestGrantSchema = z.union([
+  z.object({ ...GuestFields, ...RelayRoute }).strict(),
+  z.object({ ...GuestFields, ...DirectRoute }).strict(),
+]);
 
-export const CreateCollaborationConnectionSchema = z.object({
+const ConnectionInputFields = {
   protocolVersion: z.literal(COLLABORATION_PROTOCOL_VERSION).default(COLLABORATION_PROTOCOL_VERSION),
   name: CollaborationNameSchema.optional(),
   controller: MeshRelayPeerIdentitySchema,
-  ...RelayRoute,
-}).strict();
+};
+export const CreateCollaborationConnectionSchema = z.union([
+  z.object({ ...ConnectionInputFields, ...RelayRoute }).strict(),
+  z.object({ ...ConnectionInputFields, ...DirectRoute }).strict(),
+]);
 
-export const CollaborationConnectionSchema = z.object({
+const ConnectionFields = {
   protocolVersion: z.literal(COLLABORATION_PROTOCOL_VERSION),
   id: CollaborationIdSchema,
   name: CollaborationNameSchema.nullable(),
@@ -102,10 +122,13 @@ export const CollaborationConnectionSchema = z.object({
   identity: MeshRelayPeerIdentitySchema,
   guestId: CollaborationIdSchema.nullable(),
   status: z.enum(["pending", "active", "revoked"]),
-  ...RelayRoute,
   createdAt: TimestampSchema,
   pendingExpiresAt: TimestampSchema,
-}).strict().refine((value) => value.status !== "active" || value.guestId !== null,
+};
+export const CollaborationConnectionSchema = z.union([
+  z.object({ ...ConnectionFields, ...RelayRoute }).strict(),
+  z.object({ ...ConnectionFields, ...DirectRoute }).strict(),
+]).refine((value) => value.status !== "active" || value.guestId !== null,
   "An active connection must have a guest grant.");
 
 export const CollaborationActorSchema = z.discriminatedUnion("kind", [

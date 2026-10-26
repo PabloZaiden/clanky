@@ -9,10 +9,12 @@ import type {
   CollaborationWorkspacePermission,
   CollaborationInvitation,
   CollaborationRelayRoute,
+  CollaborationRoute,
   CollaborationRevocation,
   CreatedCollaborationInvitation,
 } from "@/shared/collaboration";
 import { COLLABORATION_PROTOCOL_VERSION } from "@/shared/collaboration";
+import { normalizeMeshEnrollmentTarget } from "./mesh-target-discovery";
 import type { MeshRelayPeerIdentity } from "@/shared/mesh-relay";
 import {
   AcceptCollaborationInvitationSchema,
@@ -90,11 +92,21 @@ class CollaborationService {
     const ownerUserId = requireCollaborationLocalUserId();
     const parsed = parseCollaborationInput(CreateCollaborationInvitationSchema, input);
     if (!parsed.allWorkspacesAdmin) requireCollaborationWorkspaces(ownerUserId, parsed.workspaceIds);
-    const target = await controllerRelayService.resolveEnrollmentInvitationTarget("relay", "", parsed.relayName);
-    if (!target.relay) {
-      throw new DomainError("collaboration_relay_required", "Workspace collaboration requires a paired relay.");
-    }
     const identity = await ensureLocalMeshNodeIdentity();
+    let route: CollaborationRoute;
+    if (parsed.transport === "direct") {
+      if (!identity.meshEndpoint) {
+        throw new DomainError("collaboration_endpoint_required", "Configure this controller's advertised HTTPS endpoint before creating a direct invitation.");
+      }
+      route = { controllerUrl: normalizeMeshEnrollmentTarget(identity.meshEndpoint) };
+    } else {
+      const target = await controllerRelayService.resolveEnrollmentInvitationTarget("relay", "", parsed.relayName);
+      if (!target.relay) {
+        throw new DomainError("collaboration_relay_required", "Workspace collaboration requires a paired relay.");
+      }
+      await controllerRelayService.assertWorkspaceClientSupport(target.relay);
+      route = target.relay;
+    }
     const controller = validateCollaborationIdentity({
       nodeId: identity.nodeId, publicKey: identity.publicKey, fingerprint: identity.fingerprint,
     });
@@ -105,12 +117,12 @@ class CollaborationService {
       allWorkspacesAdmin: parsed.allWorkspacesAdmin,
       workspacePermissions: Object.fromEntries(parsed.workspaceIds.map((id) => [id, parsed.workspacePermissions?.[id] ?? "work"])),
       protocolVersion: COLLABORATION_PROTOCOL_VERSION, controller,
-      ...target.relay, createdAt: now.toISOString(),
+      ...route, createdAt: now.toISOString(),
       expiresAt: new Date(now.getTime() + parsed.ttlSeconds * 1_000).toISOString(),
       consumedAt: null, revokedAt: null,
     };
     saveCollaborationInvitation(ownerUserId, hashToken(token), invitation);
-    return { token, invitation, controller, ...target.relay };
+    return { token, invitation, controller, ...route };
   }
 
   listInvitations(): CollaborationInvitation[] {
@@ -126,10 +138,15 @@ class CollaborationService {
    * The transport must verify possession of guest.publicKey before calling.
    * This boundary rechecks route trust, invitation state, and all memberships.
    */
-  acceptInvitation(input: AcceptCollaborationInvitation): CollaborationGuestGrant {
+  async acceptInvitation(input: AcceptCollaborationInvitation): Promise<CollaborationGuestGrant> {
     const parsed = parseCollaborationInput(AcceptCollaborationInvitationSchema, input);
     validateCollaborationIdentity(parsed.guest);
-    controllerRelayService.assertEnrollmentRelayRoute(parsed);
+    if ("controllerUrl" in parsed) {
+      const identity = await ensureLocalMeshNodeIdentity();
+      if (!identity.meshEndpoint || normalizeMeshEnrollmentTarget(identity.meshEndpoint) !== parsed.controllerUrl) {
+        throw new DomainError("collaboration_controller_mismatch", "The invitation controller endpoint does not match.");
+      }
+    } else controllerRelayService.assertEnrollmentRelayRoute(parsed);
     return consumeCollaborationInvitation({
       ...parsed, tokenHash: hashToken(parsed.token), now: new Date().toISOString(),
     });

@@ -6,7 +6,7 @@ import {
   CollaborationConnectionSchema, type CreateCollaborationConnection,
 } from "@/contracts/schemas/collaboration";
 import type { CollaborationConnection, CollaborationGuestGrant } from "@/shared/collaboration";
-import { COLLABORATION_MAX_CONNECTIONS } from "@/shared/collaboration";
+import { COLLABORATION_MAX_CONNECTIONS, sameCollaborationRoute } from "@/shared/collaboration";
 import { DomainError } from "../../domain/domain-error";
 import {
   generateClientSigningKey, signClientPayload, verifyClientSignature,
@@ -163,8 +163,7 @@ export class BrowserCollaborationPairingStore implements CollaborationPairingSto
           && Date.parse(record.connection.pendingExpiresAt) > Date.now()
           && record.connection.controller.nodeId === connection.controller.nodeId
           && record.connection.controller.fingerprint === connection.controller.fingerprint
-          && record.connection.relayUrl === connection.relayUrl
-          && record.connection.relayFingerprint === connection.relayFingerprint);
+          && sameCollaborationRoute(record.connection, connection));
         if (previous) {
           task.result(snapshot(previous.connection));
           return;

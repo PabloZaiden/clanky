@@ -3,7 +3,7 @@
  */
 
 import type { CollaborationConnection, WorkspaceConnectionStatus } from "@/shared/collaboration";
-import { COLLABORATION_MAX_CONNECTIONS } from "@/shared/collaboration";
+import { COLLABORATION_MAX_CONNECTIONS, collaborationRoute, sameCollaborationRoute } from "@/shared/collaboration";
 import type { CollaborationResourceReference } from "@/shared/collaboration-reference";
 import { MESH_RELAY_CLIENT_ENROLLMENT_PATH } from "@/shared/mesh-relay";
 import { DomainError, isDomainError } from "../../domain/domain-error";
@@ -100,10 +100,13 @@ export class CollaborationClientEngine {
   async accept(input: { invitation: string; name?: string; guestName: string }): Promise<CollaborationConnection> {
     this.assertActive();
     const invitation = await decodeWorkspaceInvitation(input.invitation.trim());
+    const route = "controllerUrl" in invitation
+      ? { controllerUrl: invitation.controllerUrl }
+      : { relayUrl: invitation.relay.url, relayFingerprint: invitation.relay.fingerprint };
     this.assertActive();
     const destination = JSON.stringify([
       invitation.controller.nodeId, invitation.controller.fingerprint,
-      invitation.relay.url, invitation.relay.fingerprint,
+      route,
     ]);
     return await this.singleFlight(`accept:${destination}:${invitation.token}`, () => this.enqueue(async () => {
       const destinationLease = await this.options.ownership?.acquire("destination", destination);
@@ -114,8 +117,7 @@ export class CollaborationClientEngine {
           && Date.parse(candidate.pendingExpiresAt) > Date.now()
           && candidate.controller.nodeId === invitation.controller.nodeId
           && candidate.controller.fingerprint === invitation.controller.fingerprint
-          && candidate.relayUrl === invitation.relay.url
-          && candidate.relayFingerprint === invitation.relay.fingerprint
+          && sameCollaborationRoute(candidate, route)
         ));
         this.assertActive();
         if (!connection) {
@@ -125,13 +127,13 @@ export class CollaborationClientEngine {
               nodeId: invitation.controller.nodeId, publicKey: invitation.controller.publicKey,
               fingerprint: invitation.controller.fingerprint,
             },
-            relayUrl: invitation.relay.url, relayFingerprint: invitation.relay.fingerprint,
+            ...route,
           });
           connection = pending.connection;
         }
         this.assertActive(connection.id);
         const runtime = await this.openRuntime(connection.id, {
-          admission: invitation.relayAdmission, waitForConnection: true,
+          admission: "relayAdmission" in invitation ? invitation.relayAdmission : undefined, waitForConnection: true,
         });
         return await this.enroll(runtime, { token: invitation.token, name: input.guestName });
       } finally {
@@ -214,7 +216,7 @@ export class CollaborationClientEngine {
     this.assertRuntime(runtime);
     const body = JSON.stringify({
       ...input, guest: snapshot.connection.identity,
-      relayUrl: snapshot.connection.relayUrl, relayFingerprint: snapshot.connection.relayFingerprint,
+      ...collaborationRoute(snapshot.connection),
     });
     const bodySha256 = await sha256Hex(utf8Bytes(body));
     this.assertRuntime(runtime);
@@ -280,7 +282,8 @@ export class CollaborationClientEngine {
         identity, logger: this.log,
         controllerNodeId: snapshot.connection.controller.nodeId,
         controllerFingerprint: snapshot.connection.controller.fingerprint,
-        relayUrl: snapshot.connection.relayUrl, relayFingerprint: snapshot.connection.relayFingerprint,
+        controllerPublicKey: snapshot.connection.controller.publicKey,
+        ...collaborationRoute(snapshot.connection),
         enrollmentAdmission: options.admission,
         onStatusChange: () => {
           if (!runtime || this.disposed || this.runtimes.get(connectionId) !== runtime

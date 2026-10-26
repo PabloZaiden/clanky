@@ -3,6 +3,7 @@
  */
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import type { CollaborationGuestGrant } from "@/shared/collaboration";
+import { collaborationRoute } from "@/shared/collaboration";
 import type { WebAppServer } from "@pablozaiden/webapp/server";
 import { WorkspaceClientEnrollmentSchema } from "@/contracts/schemas/mesh-client";
 import { CollaborationGuestGrantSchema } from "@/contracts/schemas/collaboration";
@@ -15,7 +16,7 @@ import { DomainError } from "../domain/domain-error";
 import { collaborationService } from "../core/collaboration-service";
 import { workspaceClientController } from "../core/workspace-client-controller";
 import { getMeshRelayRequestInitiatorNodeId } from "../core/mesh-relay-http";
-import { isSecureMeshRequest } from "../core/mesh-transport-security";
+import { isSecureMeshRequest, isDirectWorkspaceRequest } from "../core/mesh-transport-security";
 import { readWorkspaceClientProof } from "../core/workspace-client-proof";
 import { authorizeWorkspaceOperation, resolveOperationWorkspaces } from "../core/workspace-operation-authority";
 import { reconstructWorkspaceRequest, readWorkspaceRequestBytes, verifyWorkspaceBody } from "./workspace-client-request";
@@ -49,6 +50,9 @@ export async function enrollWorkspaceClient(request: Request): Promise<Response>
       throw new DomainError("collaboration_request_invalid", "The enrollment fields are invalid.", { cause: parsed.error });
     }
     const input = parsed.data;
+    if (("controllerUrl" in input) !== isDirectWorkspaceRequest(request)) {
+      throw new DomainError("collaboration_access_denied", "The invitation does not authorize this transport.");
+    }
     const metadata = await workspaceClientController.verifyProof({
       headers: request.headers,
       publicKey: input.guest.publicKey,
@@ -62,7 +66,12 @@ export async function enrollWorkspaceClient(request: Request): Promise<Response>
     }
     await verifyWorkspaceBody(new Request(request.url, { method: "POST", body: bytes }), metadata, 64 * 1_024);
     // Keep controller-owned permissions out of the strict v1 pairing contract.
-    return Response.json(CollaborationGuestGrantSchema.strip().parse(await workspaceClientController.enroll(input)));
+    const grant = await workspaceClientController.enroll(input);
+    return Response.json(CollaborationGuestGrantSchema.parse({
+      id: grant.id, ownerUserId: grant.ownerUserId, ownerUsername: grant.ownerUsername,
+      identity: grant.identity, name: grant.name, workspaceIds: grant.workspaceIds,
+      createdAt: grant.createdAt, revokedAt: grant.revokedAt, ...collaborationRoute(grant),
+    }));
   } catch (error) {
     return workspaceClientErrorResponse(error);
   }
@@ -74,6 +83,9 @@ export async function dispatchWorkspaceClient(request: Request): Promise<Respons
     const nodeId = getMeshRelayRequestInitiatorNodeId(request);
     const guest = nodeId ? collaborationService.getAuthenticatedGuest(nodeId) : undefined;
     if (!guest) throw new DomainError("collaboration_access_denied", "The client grant is unavailable.");
+    if ((guest.controllerUrl !== undefined) !== isDirectWorkspaceRequest(request)) {
+      throw new DomainError("collaboration_access_denied", "The guest does not authorize this transport.");
+    }
     const metadata = await workspaceClientController.verifyProof({
       headers: request.headers, initiatorNodeId: nodeId,
       publicKey: guest.identity.publicKey, secureTransport: isSecureMeshRequest(request),

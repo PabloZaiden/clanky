@@ -7,6 +7,7 @@ import type { WorkspaceConnectionStatus } from "@/shared/collaboration";
 import { CollaborationNameSchema } from "@/contracts/schemas/collaboration";
 import { browserPreferences } from "../../client-sdk/browser-preferences";
 import { getBrowserCollaborationClient } from "../../client-sdk/browser-runtime";
+import { readWorkspaceInvitationFile } from "../../client-sdk/collaboration/invitation-file";
 import { Button, StatusBadge } from "../common";
 import { controllerStatusLabel, isControllerUnavailable } from "./collaboration-connection-status";
 
@@ -21,7 +22,7 @@ export function BrowserCollaborationContent() {
   const [dialog, setDialog] = useState<{ kind: "connect" } | { kind: "recover"; id: string } | null>(null);
   const [name, setName] = useState("");
   const [guestName, setGuestName] = useState("");
-  const [invitation, setInvitation] = useState("");
+  const [invitationFile, setInvitationFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<WorkspaceConnectionStatus | null>(null);
@@ -29,7 +30,7 @@ export function BrowserCollaborationContent() {
   function open(next: NonNullable<typeof dialog>): void {
     setError(null);
     setName("");
-    setInvitation("");
+    setInvitationFile(null);
     setDialog(next);
     try {
       setGuestName(browserPreferences.collaborationName.read() ?? "");
@@ -41,7 +42,7 @@ export function BrowserCollaborationContent() {
   function close(): void {
     if (saving) return;
     setDialog(null);
-    setInvitation("");
+    setInvitationFile(null);
     setError(null);
   }
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -55,13 +56,15 @@ export function BrowserCollaborationContent() {
       if (dialog.kind === "recover") {
         await client.recover(dialog.id, guest);
       } else {
+        if (!invitationFile) throw new Error("Choose a Clanky invitation file.");
+        const invitation = await readWorkspaceInvitationFile(invitationFile);
         await client.accept({
-          invitation: invitation.trim(), guestName: guest,
+          invitation, guestName: guest,
           ...(name.trim() ? { name: CollaborationNameSchema.parse(name) } : {}),
         });
       }
       setDialog(null);
-      setInvitation("");
+      setInvitationFile(null);
       toast.success("Controller connected.");
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : String(failure));
@@ -126,8 +129,9 @@ export function BrowserCollaborationContent() {
         {dialog?.kind === "connect" ? <>
           <TextField label="Controller name" maxLength={120} value={name}
             onChange={(event) => setName(event.currentTarget.value)} disabled={saving} />
-          <TextField label="Invitation token" required value={invitation}
-            onChange={(event) => setInvitation(event.currentTarget.value)} disabled={saving} />
+          <TextField label="Invitation file" type="file" required accept=".clanky-invite.json,application/json"
+            hint="Choose a .clanky-invite.json file up to 72 KiB."
+            onChange={(event) => { setInvitationFile(event.currentTarget.files?.[0] ?? null); setError(null); }} disabled={saving} />
         </> : null}
         {error ? <ErrorState title="Unable to complete pairing" description={error} /> : null}
         <FormActions>

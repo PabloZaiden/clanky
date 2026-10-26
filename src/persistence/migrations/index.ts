@@ -20,6 +20,7 @@ import { isPersistedMessage } from "../transcripts/codec";
 import { LEGACY_PROMPT_TEMPLATES } from "./legacy-prompt-templates";
 import { migrateCollaboration } from "../collaboration-schema";
 import { migrateCollaborationAdministration } from "./collaboration-administration";
+import { migrateCollaborationDirectRoutes } from "./collaboration-direct-routes";
 
 const log = createLogger("persistence:migrations");
 
@@ -884,6 +885,12 @@ export const migrations: Migration[] = [
     name: "add_collaboration_workspace_administration",
     transactional: false,
     up: migrateCollaborationAdministration,
+  },
+  {
+    version: 89,
+    name: "add_direct_collaboration_routes",
+    transactional: false,
+    up: migrateCollaborationDirectRoutes,
   },
 ];
 

@@ -71,7 +71,8 @@ class WorkspaceRealtimeSources {
 
   update(runtime: WorkspaceConnectionRuntime): void {
     const previous = this.sources.get(runtime.connection.id);
-    if (runtime.connection.status !== "active" || runtime.client.status !== "connected") {
+    if (runtime.connection.status !== "active"
+      || runtime.connection.controllerUrl === undefined && runtime.client.status !== "connected") {
       previous?.source.close();
       this.sources.delete(runtime.connection.id);
       return;

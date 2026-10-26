@@ -5,7 +5,9 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { CollaborationGuestGrant, CollaborationInvitation } from "@/shared/collaboration";
-import { COLLABORATION_MAX_GUESTS, COLLABORATION_MAX_INVITATIONS } from "@/shared/collaboration";
+import {
+  COLLABORATION_MAX_GUESTS, COLLABORATION_MAX_INVITATIONS, collaborationRoute, sameCollaborationRoute,
+} from "@/shared/collaboration";
 import { CollaborationInvitationSchema, CollaborationWorkspacePermissionSchema } from "@/contracts/schemas/collaboration";
 import type { AcceptCollaborationInvitation } from "@/contracts/schemas/collaboration";
 import { DomainError } from "../domain/domain-error";
@@ -25,15 +27,16 @@ const InvitationRowSchema = z.object({
   controller_fingerprint: z.string(),
   owner_user_id: z.string(),
   name: z.string().nullable(),
-  relay_url: z.string(),
-  relay_fingerprint: z.string(),
   created_at: z.string(),
   expires_at: z.string(),
   consumed_at: z.string().nullable(),
   revoked_at: z.string().nullable(),
   workspace_count: z.number().int().nonnegative(),
   all_workspaces_admin: z.union([z.literal(0), z.literal(1)]),
-});
+}).and(z.union([
+  z.object({ controller_url: z.string(), relay_url: z.null(), relay_fingerprint: z.null() }),
+  z.object({ controller_url: z.null(), relay_url: z.string(), relay_fingerprint: z.string() }),
+]));
 
 function decodeInvitation(value: unknown): CollaborationInvitation {
   const row = parseCollaborationRecord(InvitationRowSchema, value);
@@ -51,7 +54,9 @@ function decodeInvitation(value: unknown): CollaborationInvitation {
       fingerprint: row.controller_fingerprint },
     id: row.id, name: row.name, workspaceIds, allWorkspacesAdmin: row.all_workspaces_admin === 1,
     workspacePermissions: Object.fromEntries(workspaces.map((entry) => [entry.id, entry.permission])),
-    relayUrl: row.relay_url, relayFingerprint: row.relay_fingerprint,
+    ...collaborationRoute(row.controller_url === null
+      ? { relayUrl: row.relay_url, relayFingerprint: row.relay_fingerprint }
+      : { controllerUrl: row.controller_url }),
     createdAt: row.created_at, expiresAt: row.expires_at,
     consumedAt: row.consumed_at, revokedAt: row.revoked_at,
   });
@@ -63,6 +68,7 @@ export function saveCollaborationInvitation(
   invitation: CollaborationInvitation,
 ): void {
   const db = getDatabase();
+  const route = collaborationRoute(invitation);
   db.transaction(() => {
     if (!invitation.allWorkspacesAdmin) requireCollaborationWorkspaces(ownerUserId, invitation.workspaceIds);
     db.query("DELETE FROM collaboration_invitations WHERE owner_user_id = ? AND expires_at <= ?")
@@ -75,13 +81,13 @@ export function saveCollaborationInvitation(
     db.query(`
       INSERT INTO collaboration_invitations
         (id, owner_user_id, token_hash, protocol_version, controller_node_id, controller_public_key,
-         controller_fingerprint, name, relay_url, relay_fingerprint,
+         controller_fingerprint, name, controller_url, relay_url, relay_fingerprint,
          created_at, expires_at, consumed_at, revoked_at, workspace_count, all_workspaces_admin)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)
     `).run(invitation.id, ownerUserId, tokenHash, invitation.protocolVersion,
       invitation.controller.nodeId, invitation.controller.publicKey,
       invitation.controller.fingerprint, invitation.name,
-      invitation.relayUrl, invitation.relayFingerprint, invitation.createdAt,
+      route.controllerUrl ?? null, route.relayUrl ?? null, route.relayFingerprint ?? null, invitation.createdAt,
       invitation.expiresAt, invitation.workspaceIds.length, invitation.allWorkspacesAdmin ? 1 : 0);
     const insert = db.query(`
       INSERT INTO collaboration_invitation_workspaces (invitation_id, owner_user_id, workspace_id, permission)
@@ -125,8 +131,8 @@ export function consumeCollaborationInvitation(
       || invitation.expiresAt <= input.now) {
       throw new DomainError("collaboration_invitation_unavailable", "The invitation is unavailable or expired.");
     }
-    if (input.relayUrl !== invitation.relayUrl || input.relayFingerprint !== invitation.relayFingerprint) {
-      throw new DomainError("collaboration_relay_mismatch", "The invitation relay route does not match.");
+    if (!sameCollaborationRoute(input, invitation)) {
+      throw new DomainError("collaboration_relay_mismatch", "The invitation route does not match.");
     }
     const controller = getCollaborationControllerIdentityInternal();
     if (!controller || controller.nodeId !== invitation.controller.nodeId
@@ -148,14 +154,16 @@ export function consumeCollaborationInvitation(
       throw new DomainError("collaboration_guest_limit", "The collaboration guest limit has been reached.");
     }
     const guestId = randomUUID();
+    const route = collaborationRoute(invitation);
     db.query(`
       INSERT INTO collaboration_guests
         (id, owner_user_id, node_id, public_key, fingerprint, name,
-         relay_url, relay_fingerprint, created_at, revoked_at, all_workspaces_admin)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
+         controller_url, relay_url, relay_fingerprint, created_at, revoked_at, all_workspaces_admin)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
     `).run(guestId, row.owner_user_id, input.guest.nodeId, input.guest.publicKey,
       input.guest.fingerprint, input.name ?? invitation.name,
-      input.relayUrl, input.relayFingerprint, input.now, invitation.allWorkspacesAdmin ? 1 : 0);
+      route.controllerUrl ?? null, route.relayUrl ?? null, route.relayFingerprint ?? null,
+      input.now, invitation.allWorkspacesAdmin ? 1 : 0);
     const insert = db.query(`
       INSERT INTO collaboration_memberships (guest_id, owner_user_id, workspace_id, permission, revoked_at)
       VALUES (?, ?, ?, ?, NULL)

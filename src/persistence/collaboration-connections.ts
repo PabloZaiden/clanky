@@ -4,7 +4,7 @@
 
 import { z } from "zod";
 import type { CollaborationConnection } from "@/shared/collaboration";
-import { COLLABORATION_MAX_CONNECTIONS } from "@/shared/collaboration";
+import { COLLABORATION_MAX_CONNECTIONS, collaborationRoute } from "@/shared/collaboration";
 import { CollaborationConnectionSchema } from "@/contracts/schemas/collaboration";
 import { DomainError } from "../domain/domain-error";
 import {
@@ -21,8 +21,6 @@ const ConnectionRowSchema = z.object({
   controller_node_id: z.string(),
   controller_public_key: z.string(),
   controller_fingerprint: z.string(),
-  relay_url: z.string(),
-  relay_fingerprint: z.string(),
   node_id: z.string(),
   public_key: z.string(),
   fingerprint: z.string(),
@@ -31,7 +29,10 @@ const ConnectionRowSchema = z.object({
   status: z.enum(["pending", "active", "revoked"]),
   created_at: z.string(),
   pending_expires_at: z.string(),
-});
+}).and(z.union([
+  z.object({ controller_url: z.string(), relay_url: z.null(), relay_fingerprint: z.null() }),
+  z.object({ controller_url: z.null(), relay_url: z.string(), relay_fingerprint: z.string() }),
+]));
 
 function decodeConnection(value: unknown): CollaborationConnection {
   const row = parseCollaborationRecord(ConnectionRowSchema, value);
@@ -42,8 +43,9 @@ function decodeConnection(value: unknown): CollaborationConnection {
     controller: { nodeId: row.controller_node_id, publicKey: row.controller_public_key,
       fingerprint: row.controller_fingerprint },
     identity: { nodeId: row.node_id, publicKey: row.public_key, fingerprint: row.fingerprint },
-    relayUrl: row.relay_url,
-    relayFingerprint: row.relay_fingerprint,
+    ...collaborationRoute(row.controller_url === null
+      ? { relayUrl: row.relay_url, relayFingerprint: row.relay_fingerprint }
+      : { controllerUrl: row.controller_url }),
     guestId: row.guest_id,
     status: row.status,
     createdAt: row.created_at,
@@ -57,6 +59,7 @@ export function insertCollaborationConnection(
   privateKeyCiphertext: string,
 ): void {
   const db = getDatabase();
+  const route = collaborationRoute(connection);
   db.transaction(() => {
     if (!getCollaborationOwner(localUserId)) {
       throw new DomainError("collaboration_user_unavailable", "The local user is unavailable.");
@@ -69,12 +72,12 @@ export function insertCollaborationConnection(
     db.query(`
       INSERT INTO collaboration_connections
         (id, local_user_id, protocol_version, name, controller_node_id, controller_public_key, controller_fingerprint,
-         relay_url, relay_fingerprint, node_id, public_key, fingerprint, private_key_ciphertext,
+         controller_url, relay_url, relay_fingerprint, node_id, public_key, fingerprint, private_key_ciphertext,
          guest_id, status, created_at, pending_expires_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'pending', ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'pending', ?, ?)
     `).run(connection.id, localUserId, connection.protocolVersion, connection.name, connection.controller.nodeId,
       connection.controller.publicKey, connection.controller.fingerprint,
-      connection.relayUrl, connection.relayFingerprint, connection.identity.nodeId,
+      route.controllerUrl ?? null, route.relayUrl ?? null, route.relayFingerprint ?? null, connection.identity.nodeId,
       connection.identity.publicKey, connection.identity.fingerprint, privateKeyCiphertext,
       connection.createdAt, connection.pendingExpiresAt);
   }).immediate();

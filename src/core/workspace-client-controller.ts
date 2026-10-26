@@ -1,11 +1,12 @@
 /**
  * Authenticated client admission and deterministic revocation of guest access.
  */
-import type { AcceptCollaborationInvitation } from "@/contracts/schemas/collaboration";
+import { workspaceDirectReadyPayload, type WorkspaceClientEnrollment, type WorkspaceDirectOpen } from "@/contracts/schemas/mesh-client";
+import { MESH_RELAY_CLIENT_ENROLLMENT_PATH } from "@/shared/mesh-relay";
 import type { CollaborationRevocation, CollaborationWorkspacePermission } from "@/shared/collaboration";
 import { runWithCollaborationActor, runWithCurrentUser } from "../context/user-context";
 import { DomainError } from "../domain/domain-error";
-import { ensureLocalMeshNodeIdentity } from "../persistence/mesh-node-identity";
+import { ensureLocalMeshNodeIdentity, signMeshPayload } from "../persistence/mesh-node-identity";
 import { getCollaborationOwnerUser } from "../persistence/collaboration-storage";
 import { collaborationService } from "./collaboration-service";
 import { controllerRelayService } from "./controller-relay-service";
@@ -13,9 +14,12 @@ import { terminalSessionManager } from "./terminal-session-manager";
 import { previewSessionManager } from "./preview-session-manager";
 import { validateCollaborationIdentity } from "./collaboration-identity";
 import { WorkspaceClientProofVerifier } from "./workspace-client-proof";
+import { sameCollaborationRoute } from "@/shared/collaboration";
+import { MESH_PROTOCOL_VERSION } from "@/shared/mesh-protocol";
 
 class WorkspaceClientController {
   private readonly proofs = new WorkspaceClientProofVerifier();
+  private readonly directProofs = new WorkspaceClientProofVerifier();
   private revokeTransports?: (event: CollaborationRevocation) => Promise<void>;
   private changed?: (ownerUserId: string) => void;
 
@@ -35,7 +39,7 @@ class WorkspaceClientController {
     secureTransport: boolean;
   }) {
     if (!input.secureTransport || !input.initiatorNodeId) {
-      throw new DomainError("collaboration_transport_required", "An authenticated TLS relay transport is required.");
+      throw new DomainError("collaboration_transport_required", "An authenticated TLS collaboration transport is required.");
     }
     const identity = await ensureLocalMeshNodeIdentity();
     return this.proofs.verify({
@@ -46,24 +50,48 @@ class WorkspaceClientController {
     });
   }
 
-  async enroll(input: Omit<AcceptCollaborationInvitation, "token"> & { token?: string }) {
+  async admitDirectStream(opening: WorkspaceDirectOpen) {
+    validateCollaborationIdentity(opening.identity);
+    const identity = await ensureLocalMeshNodeIdentity();
+    const metadata = this.directProofs.verify({
+      headers: new Headers(opening.headers), publicKey: opening.identity.publicKey,
+      initiatorNodeId: opening.identity.nodeId, controllerNodeId: identity.nodeId,
+    });
+    if (metadata.requestId !== opening.requestId) {
+      throw new DomainError("collaboration_request_invalid", "The direct workspace request identity does not match.");
+    }
+    const enrollment = metadata.kind === "enrollment";
+    if (opening.kind === "probe" && (!enrollment || metadata.path !== MESH_RELAY_CLIENT_ENROLLMENT_PATH
+      || metadata.method !== "POST" || metadata.bodySha256)
+      || opening.kind === "http" && (metadata.kind !== "enrollment" && metadata.kind !== "operation")
+      || opening.kind === "socket" && !["realtime", "terminal", "preview"].includes(metadata.kind)) {
+      throw new DomainError("collaboration_operation_forbidden", "This direct workspace operation is unavailable.");
+    }
+    const ready = {
+      type: "stream.ready" as const, protocolVersion: MESH_PROTOCOL_VERSION,
+      requestId: opening.requestId, streamId: opening.streamId,
+    };
+    return { enrollment, ready: { ...ready, signature: await signMeshPayload(workspaceDirectReadyPayload(ready)) } };
+  }
+
+  async enroll(input: WorkspaceClientEnrollment) {
     validateCollaborationIdentity(input.guest);
     const previous = collaborationService.getGrantByNodeId(input.guest.nodeId);
     if (previous) {
       if (previous.revokedAt !== null || previous.identity.publicKey !== input.guest.publicKey
         || previous.identity.fingerprint !== input.guest.fingerprint
-        || previous.relayUrl !== input.relayUrl || previous.relayFingerprint !== input.relayFingerprint) {
+        || !sameCollaborationRoute(previous, input)) {
         throw new DomainError("collaboration_access_denied", "The pairing is no longer authorized.");
       }
-      await controllerRelayService.synchronizeWorkspaceClients();
+      if (previous.controllerUrl === undefined) await controllerRelayService.synchronizeWorkspaceClients();
       return previous;
     }
     if (!input.token) {
       throw new DomainError("collaboration_invitation_required", "A workspace invitation is required to pair a new client.");
     }
-    const grant = collaborationService.acceptInvitation({ ...input, token: input.token });
+    const grant = await collaborationService.acceptInvitation({ ...input, token: input.token });
     this.changed?.(grant.ownerUserId);
-    await controllerRelayService.synchronizeWorkspaceClients();
+    if (grant.controllerUrl === undefined) await controllerRelayService.synchronizeWorkspaceClients();
     return grant;
   }
 
@@ -79,7 +107,7 @@ class WorkspaceClientController {
     };
     this.changed?.(guest.ownerUserId);
     const outcomes = await Promise.allSettled([
-      controllerRelayService.synchronizeWorkspaceClients(),
+      ...(guest.controllerUrl === undefined ? [controllerRelayService.synchronizeWorkspaceClients()] : []),
       this.revokeTransports?.(event),
       this.closeInteractiveResources(event),
     ]);
@@ -126,6 +154,7 @@ class WorkspaceClientController {
 
   stop(): void {
     this.proofs.clear();
+    this.directProofs.clear();
     this.revokeTransports = undefined;
     this.changed = undefined;
   }

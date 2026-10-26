@@ -45,7 +45,7 @@ Every push to `main` publishes both clients together:
 | URL | Connection |
 | --- | --- |
 | https://pablozaiden.github.io/clanky/api/ | Select an HTTPS API and authorize a device session |
-| https://pablozaiden.github.io/clanky/collaboration/ | Accept a controller invitation through its HTTPS relay |
+| https://pablozaiden.github.io/clanky/collaboration/ | Upload an invitation file for Direct or Relay collaboration |
 
 The [site root](https://pablozaiden.github.io/clanky/) is a lightweight,
 mobile-friendly connection chooser with dark and light system themes. It links
@@ -178,7 +178,7 @@ Passkey bypasses are intended only for isolated, disposable validation data.
 
 ## Browser-only collaboration
 
-To connect directly to invited controllers through their relays, without an
+To connect to invited controllers using Direct or Relay routes, without an
 API server of your own, select the external bootstrap when building:
 
 ```bash
@@ -187,20 +187,27 @@ CLANKY_CLIENT_MODE=external bun run build:client
 
 Publish all of `dist/client/` as above. This uses the same frontend code and
 assets as API-backed modes; `webapp-client.json` selects the runtime. Open
-**Connect controller** or **Settings > Collaboration**, enter your name and the
-invitation, and connect. The controller keeps its normal authorization and
-workspace execution responsibilities. The browser is neither a worker nor an
+**Connect controller** or **Settings > Collaboration**, enter your name, choose
+the owner's `.clanky-invite.json` file, and connect. The file is limited to
+72 KiB; its envelope, invitation signature and expiration are validated before
+acceptance. Treat invitation files as secrets and share them only through trusted
+channels, not public issues or logs. The controller keeps its normal
+authorization and workspace execution responsibilities. The browser is neither a worker nor an
 API server and makes no requests to an API on the static host.
 
 The browser and invited Bun controllers use the same pairing, protocol,
 request routing, reference qualification, collection composition, realtime and
-terminal policy. The relay and Mesh wire generation are unchanged. Multiple
+terminal policy. Direct needs no relay; Relay uses the existing Mesh relay.
+The route is selected by the invitation, with no automatic fallback. Multiple
 controller connections can coexist; an unavailable controller does not replace
 other available sources with an offline copy.
 
 The browser needs a secure context with Ed25519 Web Crypto, IndexedDB and Web
-Locks. HTTP localhost is supported; remote relay certificates must be trusted
-by the browser. No client-origin registration is needed. Private signing keys
+Locks. HTTP localhost is supported for hosting the client; collaboration routes
+still require trusted HTTPS/WSS. A Direct controller's advertised HTTPS URL must
+be reachable from the browser, and its proxy must forward WebSockets. A Relay
+route needs the same reachability and trusted certificate for the relay.
+No client-origin registration is needed. Private signing keys
 are nonextractable and remain in this site's IndexedDB; reconnect/reload reuses
 the saved identity. Only one document may own a pairing at a time. Close the
 other tab before reconnecting. Clearing site storage loses the pairing;
@@ -224,7 +231,7 @@ Blob documents.
 
 ### Disk downloads and export
 
-Browser-only downloads stream through the relay into origin-private filesystem
+Browser-only downloads stream over the selected route into origin-private filesystem
 storage (OPFS), with an actual-byte limit of **4 GiB per file**
 (4,294,967,296 bytes) and at most **64 retained records**. This is not a
 whole-response RAM download or an unlimited buffering fallback. Unsupported

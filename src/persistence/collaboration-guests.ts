@@ -4,6 +4,7 @@
 
 import { z } from "zod";
 import type { CollaborationGuestAccess, CollaborationRevocation, CollaborationWorkspacePermission } from "@/shared/collaboration";
+import { collaborationRoute } from "@/shared/collaboration";
 import { CollaborationGuestGrantSchema, CollaborationWorkspacePermissionSchema } from "@/contracts/schemas/collaboration";
 import { DomainError } from "../domain/domain-error";
 import { getDatabase } from "./database";
@@ -17,12 +18,13 @@ const GuestRowSchema = z.object({
   public_key: z.string(),
   fingerprint: z.string(),
   name: z.string().nullable(),
-  relay_url: z.string(),
-  relay_fingerprint: z.string(),
   created_at: z.string(),
   revoked_at: z.string().nullable(),
   all_workspaces_admin: z.union([z.literal(0), z.literal(1)]),
-});
+}).and(z.union([
+  z.object({ controller_url: z.string(), relay_url: z.null(), relay_fingerprint: z.null() }),
+  z.object({ controller_url: z.null(), relay_url: z.string(), relay_fingerprint: z.string() }),
+]));
 
 function decodeGuest(value: unknown): CollaborationGuestAccess {
   const row = parseCollaborationRecord(GuestRowSchema, value);
@@ -46,8 +48,9 @@ function decodeGuest(value: unknown): CollaborationGuestAccess {
     ownerUsername: row.owner_username,
     identity: { nodeId: row.node_id, publicKey: row.public_key, fingerprint: row.fingerprint },
     name: row.name,
-    relayUrl: row.relay_url,
-    relayFingerprint: row.relay_fingerprint,
+    ...collaborationRoute(row.controller_url === null
+      ? { relayUrl: row.relay_url, relayFingerprint: row.relay_fingerprint }
+      : { controllerUrl: row.controller_url }),
     workspaceIds: row.revoked_at ? [] : workspaceIds,
     createdAt: row.created_at,
     revokedAt: row.revoked_at,

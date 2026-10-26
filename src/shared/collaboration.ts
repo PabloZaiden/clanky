@@ -17,9 +17,29 @@ export type CollaborationWorkspacePermissions = Record<string, CollaborationWork
 export interface CollaborationRelayRoute {
   relayUrl: string;
   relayFingerprint: string;
+  controllerUrl?: never;
 }
 
-export interface CollaborationInvitation extends CollaborationRelayRoute {
+export interface CollaborationDirectRoute {
+  controllerUrl: string;
+  relayUrl?: never;
+  relayFingerprint?: never;
+}
+
+export type CollaborationRoute = CollaborationRelayRoute | CollaborationDirectRoute;
+
+export function collaborationRoute(value: CollaborationRoute): CollaborationRoute {
+  return value.controllerUrl !== undefined
+    ? { controllerUrl: value.controllerUrl }
+    : { relayUrl: value.relayUrl, relayFingerprint: value.relayFingerprint };
+}
+
+export function sameCollaborationRoute(a: CollaborationRoute, b: CollaborationRoute): boolean {
+  return a.controllerUrl === b.controllerUrl
+    && a.relayUrl === b.relayUrl && a.relayFingerprint === b.relayFingerprint;
+}
+
+export type CollaborationInvitation = CollaborationRoute & {
   protocolVersion: typeof COLLABORATION_PROTOCOL_VERSION;
   controller: MeshRelayPeerIdentity;
   id: string;
@@ -33,13 +53,13 @@ export interface CollaborationInvitation extends CollaborationRelayRoute {
   revokedAt: string | null;
 }
 
-export interface CreatedCollaborationInvitation extends CollaborationRelayRoute {
+export type CreatedCollaborationInvitation = CollaborationRoute & {
   token: string;
   invitation: CollaborationInvitation;
   controller: MeshRelayPeerIdentity;
 }
 
-export interface CollaborationGuestGrant extends CollaborationRelayRoute {
+export type CollaborationGuestGrant = CollaborationRoute & {
   id: string;
   ownerUserId: string;
   ownerUsername: string;
@@ -51,7 +71,7 @@ export interface CollaborationGuestGrant extends CollaborationRelayRoute {
 }
 
 /** Controller-owned permissions, not part of the v1 pairing wire contract. */
-export interface CollaborationGuestAccess extends CollaborationGuestGrant {
+export type CollaborationGuestAccess = CollaborationGuestGrant & {
   allWorkspacesAdmin: boolean;
   workspacePermissions: CollaborationWorkspacePermissions;
 }
@@ -85,7 +105,7 @@ export interface CollaborationRevocation {
   wholeGuest: boolean;
 }
 
-export interface CollaborationConnection extends CollaborationRelayRoute {
+export type CollaborationConnection = CollaborationRoute & {
   protocolVersion: typeof COLLABORATION_PROTOCOL_VERSION;
   id: string;
   name: string | null;
