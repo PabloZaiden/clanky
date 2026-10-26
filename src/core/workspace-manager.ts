@@ -45,7 +45,15 @@ import { withWorkspaceExecutionLock, withWorkspaceRuntimeLock } from "./workspac
 import { executionHostService } from "./execution-host-service";
 import { workspaceWorkerEnrollmentService } from "./workspace-worker-enrollment-service";
 import { meshManager } from "./mesh-manager";
-import { getCollaborationActor, getWorkspaceAccessAuthority, getWorkspaceAdministrationAuthority, requireExecutionOwnerUserId } from "../context/user-context";
+import {
+  getCollaborationActor,
+  getWorkspaceAccessAuthority,
+  getWorkspaceAdministrationAuthority,
+  requireExecutionOwnerUserId,
+  requireResourceOwnerUser,
+  runWithExecutionOwner,
+} from "../context/user-context";
+import { requireWorkspaceAccess } from "./collaboration-authority";
 import { requireWorkspaceUpdateUserId } from "../persistence/ownership";
 import {
   captureWorkspaceSshTargetState,
@@ -812,11 +820,16 @@ export class WorkspaceManager {
     id: string,
     options: DeleteWorkspaceOptions = {},
   ): Promise<DeleteWorkspaceResult> {
-    const result = await deleteWorkspaceWithOptions(id, options);
-    if (result.success) {
-      await backendManager.resetWorkspaceConnection(id);
+    if (getCollaborationActor()?.kind === "guest") {
+      requireWorkspaceAccess(id, "admin");
     }
-    return result;
+    return await runWithExecutionOwner(requireResourceOwnerUser(id), async () => {
+      const result = await deleteWorkspaceWithOptions(id, options);
+      if (result.success) {
+        await backendManager.resetWorkspaceConnection(id);
+      }
+      return result;
+    });
   }
 
   async getWorkspaceStatus(

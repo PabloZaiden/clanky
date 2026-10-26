@@ -430,7 +430,6 @@ test("an invited workspace administrator manages existing and future workspaces 
     const invitation = await json<{ token: string }>(owner, "/api/collaboration/invitations", "POST", {
       name: "Workspace administrator", allWorkspacesAdmin: true, relayName: "administration",
     });
-    const existing = await createWorkspace(owner, join(directory, "existing"), "Existing workspace");
     await json(administrator, "/api/collaboration/connections", "POST", { invitation: invitation.token });
     await pollUntil(() => json<Connection[]>(administrator, "/api/collaboration/connections"),
       (value) => value.some((entry) => entry.realtime === "connected" && !entry.errorCode),
@@ -438,6 +437,10 @@ test("an invited workspace administrator manages existing and future workspaces 
     const access = await json<Array<{ id: string; allWorkspacesAdmin: boolean }>>(administrator, "/api/collaboration/access");
     const controller = access.find((entry) => entry.allWorkspacesAdmin);
     if (!controller) throw new Error("Workspace administration was not granted.");
+    const created = await createWorkspace(administrator, join(directory, "created"), "Administrator-created workspace", controller.id);
+    expect(created.access).toBe("admin");
+    expect((await json<Workspace[]>(owner, "/api/workspaces")).some((workspace) => workspace.name === created.name)).toBe(true);
+    const existing = await createWorkspace(owner, join(directory, "existing"), "Existing workspace");
     const shared = (await json<Workspace[]>(administrator, "/api/workspaces"))
       .find((workspace) => workspace.name === existing.name);
     if (!shared) throw new Error("The administrator cannot discover the existing workspace.");
@@ -450,9 +453,6 @@ test("an invited workspace administrator manages existing and future workspaces 
     expect(configured.name).toBe("Managed workspace");
     expect(configured.archived).toBe(true);
     expect(configured.allowWorktrees).toBe(true);
-    const created = await createWorkspace(administrator, join(directory, "created"), "Administrator-created workspace", controller.id);
-    expect(created.access).toBe("admin");
-    expect((await json<Workspace[]>(owner, "/api/workspaces")).some((workspace) => workspace.name === created.name)).toBe(true);
     const key = await json<{ token: string }>(administrator, "/api/api-keys", "POST", { name: "workspace-administration", scopes: ["*"] });
     const future = await createWorkspace(owner, join(directory, "future"), "Future workspace");
     const discovered = await pollUntil(() => json<Workspace[]>(administrator, "/api/workspaces"),

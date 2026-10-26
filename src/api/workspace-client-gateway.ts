@@ -97,8 +97,8 @@ export async function dispatchWorkspaceClient(request: Request): Promise<Respons
         run: async (invocation, invoke) => {
           const action = invocation.operation.delegation.action;
           if (action === "controller-access") return await invoke();
-          if (!invocation.authorization.workspaceIds.length
-            && ["workspace-create", "workspace-targets", "workspace-test"].includes(action)) {
+          if (action === "workspace-create" || action === "workspace-test"
+            || (action === "workspace-targets" && !invocation.authorization.workspaceIds.length)) {
             return await collaborationService.withWorkspaceAdministration(
               new URL(inner.url).searchParams.get("controllerId") ?? undefined,
               async () => await invoke(),

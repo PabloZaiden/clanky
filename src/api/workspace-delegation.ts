@@ -17,6 +17,7 @@ export function workspaceOperation(
       { source: "query", name: "workspaceId", resource: "workspace" },
       { source: "query", name: "item", resource: "read-item" },
       { source: "body", name: "workspaceId", resource: "workspace" },
+      { source: "body", name: "executionHost.workspaceId", resource: "workspace" },
       { source: "body", name: "chatId", resource: "chat" },
       { source: "body", name: "taskId", resource: "task" },
       { source: "body", name: "agentId", resource: "agent" },

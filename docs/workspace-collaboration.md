@@ -25,7 +25,7 @@ name, with **Revoke invitation** alongside those details.
 
 To delegate workspace administration, select **All workspaces**
 instead of individual workspaces. This includes all your current and future
-workspaces, even if none exist when the invitation is created. The collaborator
+workspaces, even if none exist when the invitation is accepted. The collaborator
 can create, configure, archive and delete your workspaces; newly created
 workspaces belong to you. Server, user, credential and collaboration-invitation
 administration are not granted. Existing invitations and collaborators are not

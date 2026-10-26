@@ -88,7 +88,7 @@ export async function validateCollaborationPairingGrant(
     });
   }
   const grant = parsed.data;
-  if (grant.revokedAt !== null || grant.workspaceIds.length === 0
+  if (grant.revokedAt !== null
     || grant.identity.nodeId !== connection.identity.nodeId
     || grant.identity.publicKey !== connection.identity.publicKey
     || grant.identity.fingerprint !== connection.identity.fingerprint
