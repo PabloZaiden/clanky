@@ -13,7 +13,6 @@ import {
   requireCollaborationActor,
   requireCurrentUserId,
   runWithWorkspaceAccessAuthority,
-  runWithWorkspaceAdministration,
 } from "../context/user-context";
 import { DomainError } from "../domain/domain-error";
 import {
@@ -62,7 +61,7 @@ export function requireWorkspaceAccess(
     throw new DomainError("collaboration_access_denied", "Workspace access is no longer available.");
   }
   validateCollaborationIdentity(guest.identity);
-  if (capability === "admin" && !guest.allWorkspacesAdmin) {
+  if (capability === "admin") {
     throw new DomainError("collaboration_admin_forbidden", "Collaborators cannot administer workspaces.");
   }
   const permission = guest.workspacePermissions[workspaceId];
@@ -70,7 +69,7 @@ export function requireWorkspaceAccess(
     throw new DomainError("collaboration_read_only", "This workspace is read-only.");
   }
   return { actor, ownerUserId: guest.ownerUserId, workspaceId, guestId: guest.id,
-    capabilities: guest.allWorkspacesAdmin ? ["read", "work", "admin"] : permission === "work" ? ["read", "work"] : ["read"] };
+    capabilities: permission === "work" ? ["read", "work"] : ["read"] };
 }
 
 function requireCollaborationGuest(): CollaborationGuestAccess {
@@ -86,19 +85,8 @@ function requireCollaborationGuest(): CollaborationGuestAccess {
 export function getCollaborationControllerAccess(): CollaborationControllerAccess[] {
   if (requireCollaborationActor().kind === "user") return [];
   const guest = requireCollaborationGuest();
-  return [{ id: guest.ownerUserId, name: guest.ownerUsername, allWorkspacesAdmin: guest.allWorkspacesAdmin }];
-}
-
-export function withWorkspaceAdministration<T>(controllerId: string | undefined, callback: () => T): T {
-  const actor = requireCollaborationActor();
-  const guest = requireCollaborationGuest();
-  if (actor.kind !== "guest" || !guest.allWorkspacesAdmin
-    || controllerId && controllerId !== guest.ownerUserId) {
-    throw new DomainError("collaboration_admin_forbidden", "Administration of all workspaces is required.");
-  }
-  const owner = getCollaborationOwnerUser(guest.ownerUserId);
-  if (!owner) throw new DomainError("collaboration_user_unavailable", "The workspace owner is unavailable.");
-  return runWithWorkspaceAdministration({ actor, guestId: guest.id, ownerUserId: guest.ownerUserId }, owner, callback);
+  return [{ id: guest.ownerUserId, name: guest.ownerUsername, allWorkspacesAdmin: guest.allWorkspacesAdmin,
+    capabilities: Object.values(guest.workspacePermissions).includes("work") ? ["read", "work"] : ["read"] }];
 }
 
 export function withWorkspaceAccess<T>(

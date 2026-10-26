@@ -51,7 +51,7 @@ export const CreateCollaborationInvitationSchema = z.object({
   .refine((value) => value.allWorkspacesAdmin
     ? value.workspaceIds.length === 0 && Object.keys(value.workspacePermissions ?? {}).length === 0
     : value.workspaceIds.length > 0,
-  "Select workspaces or grant administration of all workspaces, not both.");
+  "Select workspaces or grant Work access to all workspaces, not both.");
 
 export const CollaborationInvitationSchema = z.object({
   protocolVersion: z.literal(COLLABORATION_PROTOCOL_VERSION),

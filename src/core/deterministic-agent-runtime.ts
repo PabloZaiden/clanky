@@ -12,6 +12,7 @@
 
 import type { AgentRun } from "@/shared/agent";
 import type { ManagedContextIdentity } from "@/shared/context-api-key";
+import { AGENT_PROMPT_SCOPE, agentPromptChatScope } from "@/shared/context-api-key";
 import { backendManager } from "./backend";
 import { managedContextIdentityResolver } from "./managed-context-identity";
 import {
@@ -88,7 +89,7 @@ export async function executeDeterministicAgent(
       credential = await managedCredentialService.ensureCredentialForRuntime(identity, "recreate", {
         managedBy: DETERMINISTIC_AGENT_MANAGED_BY,
         name: "Clanky deterministic agent runtime",
-        scopes: ["clanky:agent-prompt"],
+        scopes: [AGENT_PROMPT_SCOPE, agentPromptChatScope(chatId)],
         expiresAt: new Date(Date.now() + DETERMINISTIC_AGENT_CREDENTIAL_TTL_MS).toISOString(),
         // Deterministic prompt calls use a temporary, prompt-only key and do
         // not depend on the workspace's general CLI-access toggle.

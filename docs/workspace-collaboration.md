@@ -23,13 +23,14 @@ issues, logs or shell history.
 Pending invitations show their workspaces and expiration beneath the invitation
 name, with **Revoke invitation** alongside those details.
 
-To delegate workspace administration, select **All workspaces**
+To grant **Work** access everywhere, select **All workspaces**
 instead of individual workspaces. This includes all your current and future
 workspaces, even if none exist when the invitation is accepted. The collaborator
-can create, configure, archive and delete your workspaces; newly created
-workspaces belong to you. Server, user, credential and collaboration-invitation
-administration are not granted. Existing invitations and collaborators are not
-promoted automatically.
+can use them, including scratchpad, chats, tasks and agents, but cannot create,
+configure, archive or delete your workspaces. This also prevents changing
+**Clanky Context**, the execution host or provider. Server, user, credential and
+collaboration-invitation administration are not granted. Existing all-workspaces
+invitations and grants follow this Work-only policy after upgrading the controller.
 
 On the invited instance, open **Settings > Collaboration > Connect controller**
 and paste the token. An optional controller name helps distinguish workspaces
@@ -61,16 +62,11 @@ Chats and tasks show their creator. They cannot delete or administer the
 workspace, change its host/provider, manage controller credentials or invite
 another collaborator.
 
-### Workspace administrators
+### All-workspaces access
 
-An administrator sees all the inviting owner's workspaces automatically and
-can open **Workspace Settings** from the workspace menu. To create a workspace,
-choose **New workspace**, select the owning **Controller**, then choose an
-execution host and directory on that controller. The controller retains the
-workspace and its execution resources, including when creation is requested
-from the browser-only client. Existing host credentials may be used for
-execution, but this permission does not expose or administer those credentials.
-Automatic provisioning and execution-host enrollment remain controller-local.
+The collaborator sees all the inviting owner's workspaces automatically with
+effective `access: "work"`. Workspace creation and settings remain owner-only,
+including in API/CLI calls and the browser-only client.
 
 The grant survives restarts and reconnects. It cannot be reduced or revoked
 one workspace at a time: revoke the whole collaborator, then create a normal
@@ -78,13 +74,29 @@ invitation if selected-workspace access is needed.
 
 For API/CLI use, create the invitation with
 `{ "allWorkspacesAdmin": true, "relayName": "<paired-relay>" }`; omit
-`workspaceIds` and `workspacePermissions`. On the invited instance,
-`GET /api/collaboration/access` returns the connected controllers' effective
-`allWorkspacesAdmin` flag and their qualified `id`. Use that exact controller
-reference as the `controllerId` query parameter on
-`GET /api/workspaces/execution-targets`, `POST /api/server-settings/test` and
-`POST /api/workspaces`. Workspace reads and mutations use the returned
-workspace reference as usual; effective `access` is `"admin"`.
+`workspaceIds` and `workspacePermissions`. The existing field name is retained
+in API/storage contracts, but grants Work access, never administration.
+`GET /api/collaboration/access` reports the all-workspaces flag and effective
+`capabilities`; no collaborator receives `admin`. Operate on the returned
+workspace references as usual. A controller reference does not authorize
+workspace creation or controller-wide connection tests/host discovery.
+
+### Clanky Context and execution credentials
+
+Without Clanky Context, deterministic-agent prompt credentials can only call
+`workspace.prompt()` for that execution's chat. They cannot access other chats,
+unrelated APIs or framework account/key-management operations, regardless of
+whether an owner or collaborator starts the agent. The credential expires and
+is revoked when execution finishes.
+
+When the owner enables **Clanky Context**, execution contexts intentionally
+receive broader owner API access. Collaborators with Work access may use that
+enabled context; only the owner may change the setting. Do not enable it for
+workspace code or participants you do not trust with that access.
+
+Agents and their schedules stay on the owning controller. An invited controller
+does not schedule a second copy. Work access permits manual runs and schedule
+edits; admitted runs and schedules continue under the original owner.
 
 ### Read-only access
 
@@ -203,7 +215,7 @@ relay alone does not prove that the controller is available.
 On the controller, revoke one workspace or the whole collaborator from
 **Settings > Collaboration**. Affected guest terminals and interactive previews
 close, and new requests are denied. Other granted workspaces remain usable.
-For an administrator of all workspaces, revoke the whole collaborator.
+For all-workspaces access, revoke the whole collaborator.
 
 Already admitted chats, tasks and agent schedules continue under the controller.
 Revocation does not cancel them, delete shared content or undo commands.

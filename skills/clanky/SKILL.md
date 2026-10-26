@@ -212,16 +212,18 @@ stdout. Inspect `/api/collaboration/connections`, or use an exact returned
 reference, instead of treating an incomplete list as evidence of absence.
 Never retry an uncertain mutation automatically.
 
-Shared workspace responses include effective `access`: `"read"`, `"work"` or
-`"admin"`. Workspace administration is not global server/user/credential access.
-An invitation with `allWorkspacesAdmin: true` grants administration of all the
+Shared workspace responses include effective `access`: `"read"` or `"work"`.
+An invitation with `allWorkspacesAdmin: true` grants Work access to all the
 inviting user's current and future workspaces; omit individual workspace lists
-and permissions. On the invited instance, discover eligible controllers with
-`GET /api/collaboration/access`. Use the returned qualified controller `id` as
-`controllerId` on execution-target discovery, connection tests and workspace
-creation; use qualified workspace references for configuration and deletion.
-New workspaces belong to the inviting owner. Revoke the whole collaborator to
-remove administrative access; per-workspace reductions do not apply.
+and permissions. The field name remains in API/storage, but never grants
+administration. Collaborators cannot create, configure, archive or delete
+workspaces, or change `allowClankyContext`. `GET /api/collaboration/access`
+reports effective capabilities; no invited controller has `admin`. Use qualified
+workspace references for ordinary work. Revoke the whole collaborator to remove
+all-workspaces access; per-workspace reductions do not apply.
+Without Clanky Context, deterministic prompt tokens authorize only that run's
+chat, not other APIs or chats. Owner-enabled Clanky Context intentionally grants
+broader execution-context access; Work collaborators may use it.
 For `"read"`, inspect content, transcripts, files, Git information and realtime
 updates, and download files normally. Do not send messages, answer questions or
 permissions, edit content, upload, run/stop work, execute commands or open

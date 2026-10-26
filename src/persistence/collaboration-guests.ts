@@ -101,7 +101,7 @@ function assertSelectiveGrant(ownerUserId: string, guestId: string): void {
     SELECT 1 FROM collaboration_guests WHERE id = ? AND owner_user_id = ? AND all_workspaces_admin = 1
   `).get(guestId, ownerUserId)) {
     throw new DomainError("collaboration_admin_forbidden",
-      "An administrator has access to all workspaces. Revoke the collaborator to remove this access.");
+      "This collaborator has Work access to all workspaces. Revoke the collaborator to remove this access.");
   }
 }
 

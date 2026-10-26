@@ -22,7 +22,7 @@ export const collaborationRoutes = defineRoutes({
   "/api/collaboration/access": {
     auth: "user",
     sameOrigin: "mutations",
-    description: "Discover effective workspace administration on connected controllers.",
+    description: "Discover effective workspace access on connected controllers.",
     delegation: { resource: "workspace-controller", action: "controller-access", collection: true },
     operations: { GET: { automation: { policy: "read" } } },
     GET() {
@@ -42,12 +42,12 @@ export const collaborationRoutes = defineRoutes({
   "/api/collaboration/invitations": {
     auth: "user",
     sameOrigin: "mutations",
-    description: "List invitations or invite one client to selected workspaces or administration of all owned workspaces.",
+    description: "List invitations or invite one client to selected workspaces or Work access to all owned workspaces.",
     operations: {
       GET: { automation: { policy: "read" } },
       POST: {
         requestSchema: CreateCollaborationInvitationSchema,
-        automation: { policy: "confirm", reason: "Grants selected workspace access or administration of all current and future owned workspaces." },
+        automation: { policy: "confirm", reason: "Grants selected workspace access or Work access to all current and future owned workspaces." },
       },
     },
     GET() {

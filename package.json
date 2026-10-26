@@ -27,7 +27,7 @@
     "@monaco-editor/react": "4.7.0",
     "@noble/hashes": "2.4.0",
     "@opencode/client": "2.1.4",
-    "@pablozaiden/webapp": "github:PabloZaiden/webapp#90a77cf28f28e98494c45cca8be1147ba13ed6b0",
+    "@pablozaiden/webapp": "github:PabloZaiden/webapp#b155b3bd95b4c74f982054b1dd882b2550a96954",
     "@peculiar/x509": "2.2.0",
     "@tailwindcss/typography": "0.5.20",
     "@xterm/addon-fit": "0.11.0",

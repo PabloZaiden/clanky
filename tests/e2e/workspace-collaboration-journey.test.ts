@@ -31,7 +31,7 @@ async function json<T>(node: ManagedMeshNode, path: string, method = "GET", body
   return response.body;
 }
 
-async function createWorkspace(node: ManagedMeshNode, directory: string, name: string, controllerId?: string): Promise<Workspace> {
+async function createWorkspace(node: ManagedMeshNode, directory: string, name: string): Promise<Workspace> {
   await mkdir(directory);
   const git = Bun.spawnSync(["git", "-C", directory, "init", "--quiet"]);
   if (git.exitCode) throw new Error(git.stderr.toString());
@@ -43,12 +43,10 @@ async function createWorkspace(node: ManagedMeshNode, directory: string, name: s
     const result = Bun.spawnSync(["git", "-C", directory, ...args]);
     if (result.exitCode) throw new Error(result.stderr.toString());
   }
-  const query = controllerId ? `?controllerId=${encodeURIComponent(controllerId)}` : "";
-  const hosts = await json<Array<{ ref: { kind: string; nodeId?: string } }>>(node,
-    controllerId ? `/api/workspaces/execution-targets${query}` : "/api/execution-hosts");
+  const hosts = await json<Array<{ ref: { kind: string; nodeId?: string } }>>(node, "/api/execution-hosts");
   const host = hosts.find((entry) => entry.ref.kind === "local");
   if (!host) throw new Error("Local execution host unavailable");
-  return await json(node, `/api/workspaces${query}`, "POST", {
+  return await json(node, "/api/workspaces", "POST", {
     name, directory, executionHost: host.ref, workspaceType: "git", allowWorktrees: false,
     serverSettings: { agent: { adapter: "acp", provider: "copilot" } },
   });
@@ -402,7 +400,7 @@ test("collaborators review and work across granted workspaces while owners manag
   if (failure) throw failure;
 }, 120_000);
 
-test("an invited workspace administrator manages existing and future workspaces until the owner revokes access", async () => {
+test("an invited collaborator works in all current and future workspaces while the owner retains workspace administration", async () => {
   const directory = await mkdtemp(join(tmpdir(), "clanky-workspace-administration-e2e-"));
   const nodes: ManagedMeshNode[] = [];
   const sockets: WebSocket[] = [];
@@ -427,8 +425,9 @@ test("an invited workspace administrator manages existing and future workspaces 
     await pollUntil(() => json<{ relays: Array<{ connected: boolean }> }>(owner, "/api/mesh/relay"),
       (value) => value.relays.some((entry) => entry.connected),
       { description: "the workspace administration relay to connect", timeoutMs: MESH_OPERATION_TIMEOUT_MS });
+    const existing = await createWorkspace(owner, join(directory, "existing"), "Existing workspace");
     const invitation = await json<{ token: string }>(owner, "/api/collaboration/invitations", "POST", {
-      name: "Workspace administrator", allWorkspacesAdmin: true, relayName: "administration",
+      name: "All-workspaces collaborator", allWorkspacesAdmin: true, relayName: "administration",
     });
     await json(administrator, "/api/collaboration/connections", "POST", { invitation: invitation.token });
     await pollUntil(() => json<Connection[]>(administrator, "/api/collaboration/connections"),
@@ -436,23 +435,25 @@ test("an invited workspace administrator manages existing and future workspaces 
       { description: "the workspace administrator pairing to connect", timeoutMs: MESH_OPERATION_TIMEOUT_MS });
     const access = await json<Array<{ id: string; allWorkspacesAdmin: boolean }>>(administrator, "/api/collaboration/access");
     const controller = access.find((entry) => entry.allWorkspacesAdmin);
-    if (!controller) throw new Error("Workspace administration was not granted.");
-    const created = await createWorkspace(administrator, join(directory, "created"), "Administrator-created workspace", controller.id);
-    expect(created.access).toBe("admin");
-    expect((await json<Workspace[]>(owner, "/api/workspaces")).some((workspace) => workspace.name === created.name)).toBe(true);
-    const existing = await createWorkspace(owner, join(directory, "existing"), "Existing workspace");
+    if (!controller) throw new Error("All-workspaces access was not granted.");
     const shared = (await json<Workspace[]>(administrator, "/api/workspaces"))
       .find((workspace) => workspace.name === existing.name);
-    if (!shared) throw new Error("The administrator cannot discover the existing workspace.");
-    expect(shared.access).toBe("admin");
-    await json(administrator, `/api/workspaces/${encodeURIComponent(shared.id)}`, "PUT", {
-      name: "Managed workspace", archived: true, allowWorktrees: true,
-    });
-    const configured = await json<Workspace & { archived: boolean; allowWorktrees: boolean }>(owner,
-      `/api/workspaces/${existing.id}`);
-    expect(configured.name).toBe("Managed workspace");
-    expect(configured.archived).toBe(true);
-    expect(configured.allowWorktrees).toBe(true);
+    if (!shared) throw new Error("The collaborator cannot discover the existing workspace.");
+    expect(shared.access).toBe("work");
+    expect((await meshJsonRequest(administrator, `/api/workspaces?controllerId=${encodeURIComponent(controller.id)}`, {
+      method: "POST", body: {
+        name: "Additional workspace", directory: existing.directory, executionHost: { kind: "local" },
+        serverSettings: { agent: { adapter: "acp", provider: "copilot" } },
+      },
+    })).status).toBe(403);
+    expect((await meshJsonRequest(administrator, `/api/workspaces/${encodeURIComponent(shared.id)}`, {
+      method: "PUT", body: { name: "Managed workspace", archived: true, allowClankyContext: true },
+    })).status).toBe(403);
+    expect((await meshJsonRequest(administrator, `/api/workspaces/${encodeURIComponent(shared.id)}`, {
+      method: "DELETE",
+    })).status).toBe(403);
+    await json(administrator, `/api/workspaces/${encodeURIComponent(shared.id)}`, "PUT", { scratchpad: "Existing workspace handoff" });
+    expect((await json<Workspace>(owner, `/api/workspaces/${existing.id}`)).scratchpad).toBe("Existing workspace handoff");
     const key = await json<{ token: string }>(administrator, "/api/api-keys", "POST", { name: "workspace-administration", scopes: ["*"] });
     const future = await createWorkspace(owner, join(directory, "future"), "Future workspace");
     const discovered = await pollUntil(() => json<Workspace[]>(administrator, "/api/workspaces"),
@@ -461,18 +462,12 @@ test("an invited workspace administrator manages existing and future workspaces 
     const sharedFuture = discovered.find((workspace) => workspace.name === future.name)!;
     await json(administrator, `/api/workspaces/${encodeURIComponent(sharedFuture.id)}`, "PUT", { scratchpad: "New workspace handoff" });
     expect((await json<Workspace>(owner, `/api/workspaces/${future.id}`)).scratchpad).toBe("New workspace handoff");
-    expect((await meshJsonRequest(administrator,
-      `/api/settings/reset-all?controllerId=${encodeURIComponent(controller.id)}`,
-      { method: "POST", body: {} })).status).toBe(403);
     await restartMeshNode(owner);
     await restartMeshNode(administrator);
     await pollUntil(() => json<Connection[]>(administrator, "/api/collaboration/connections"),
       (value) => value.some((entry) => entry.realtime === "connected" && !entry.errorCode),
       { description: "workspace administration to recover after restart", timeoutMs: MESH_OPERATION_TIMEOUT_MS });
-    expect((await json<Workspace>(administrator, `/api/workspaces/${encodeURIComponent(sharedFuture.id)}`)).access).toBe("admin");
-    await json(administrator, `/api/workspaces/${encodeURIComponent(created.id)}`, "DELETE");
-    expect((await json<Workspace[]>(owner, "/api/workspaces")).some((workspace) => workspace.name === created.name)).toBe(false);
-    expect(await Bun.file(join(created.directory, ".git", "HEAD")).exists()).toBe(true);
+    expect((await json<Workspace>(administrator, `/api/workspaces/${encodeURIComponent(sharedFuture.id)}`)).access).toBe("work");
     const terminal = await json<Terminal>(administrator, "/api/terminal-sessions", "POST", {
       workspaceId: sharedFuture.id, name: "Workspace administrator shell", connectionMode: "direct", useTmux: false,
     });

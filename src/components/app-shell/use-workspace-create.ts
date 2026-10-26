@@ -184,7 +184,7 @@ export function useWorkspaceCreate({
     load: (signal) => apiRequest("/api/collaboration/access", { signal }),
     realtime: { resources: ["workspace-connections", "workspaces"] },
   });
-  const workspaceControllers = useMemo(() => (controllerAccess.data ?? []).filter((entry) => entry.allWorkspacesAdmin),
+  const workspaceControllers = useMemo(() => (controllerAccess.data ?? []).filter((entry) => entry.capabilities?.includes("admin")),
     [controllerAccess.data]);
   useEffect(() => {
     if (!getClankyClientCapabilities().controllerAdministration && !workspaceControllerId && workspaceControllers[0]) {
