@@ -387,11 +387,6 @@ export async function openMeshDataStream(
   };
   const onClose = (event: CloseEvent): void => {
     const code = fromMeshRelayCloseCode(event.code);
-    if (!settled && stream) {
-      fail(new MeshRelayStreamError("mesh_relay_stream_unavailable",
-        "The Mesh stream closed before authentication completed.", { status: 503 }));
-      return;
-    }
     if (stream) {
       stream.push({ kind: "closed", code, reason: event.reason });
       return;
@@ -405,11 +400,6 @@ export async function openMeshDataStream(
     ));
   };
   const onError = (): void => {
-    if (!settled && stream) {
-      fail(new MeshRelayStreamError("mesh_relay_stream_unavailable",
-        "The Mesh stream could not be opened.", { status: 503 }));
-      return;
-    }
     if (stream) {
       stream.push({
         kind: "closed",

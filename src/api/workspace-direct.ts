@@ -87,7 +87,8 @@ class DirectSession {
     if (this.ws.readyState !== 1) return;
     this.stream = new MeshRelayDataStream(this.socket, opening.requestId, opening.streamId, () => {}, log);
     this.stream.send(JSON.stringify(ready));
-    clearTimeout(this.timeout);
+    // Enrollment is not authorized until its bounded request body is read.
+    if (!enrollment) clearTimeout(this.timeout);
     if (opening.kind === "probe") {
       await this.stream.next(10_000);
       this.stream.close();
