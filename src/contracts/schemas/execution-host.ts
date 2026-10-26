@@ -120,6 +120,7 @@ export const ExecutionHostDescriptorSchema = z.object({
 }).strict();
 
 export const WorkspaceExecutionTargetsQuerySchema = z.object({
+  controllerId: z.string().min(1).max(2048).optional(),
   workspaceId: RequiredIdSchema.optional(),
   workspaceWorkerEnrollmentId: RequiredIdSchema.optional(),
 }).strict();

@@ -23,7 +23,9 @@ import {
   WorkspaceExecutionTargetsQuerySchema,
 } from "@/contracts/schemas";
 import { SensitiveQuerySchema } from "../route-schemas";
-import { workspaceOperation } from "../workspace-delegation";
+import { workspaceAdministrationOperation } from "../workspace-delegation";
+import { WorkspaceControllerQuerySchema } from "@/contracts/schemas/workspace";
+import { requireResourceOwnerUserId } from "../../context/user-context";
 
 const log = createLogger("api:workspaces");
 
@@ -40,12 +42,14 @@ export const serverSettingsRoutes = defineRoutes({
     querySchema: SensitiveQuerySchema,
     operations: {
       GET: {
+        delegation: workspaceAdministrationOperation(),
         description: "Read the workspace's public agent adapter and provider settings.",
         requestSchema: undefined,
         querySchema: SensitiveQuerySchema,
         automation: { policy: "read", hiddenQuery: ["sensitive"] },
       },
       PUT: {
+        delegation: workspaceAdministrationOperation(),
         description: "Change the workspace's agent adapter and provider.",
         requestSchema: ServerSettingsSchema,
         querySchema: SensitiveQuerySchema,
@@ -97,7 +101,9 @@ export const serverSettingsRoutes = defineRoutes({
         if (workspace.updatedAt === currentWorkspace.updatedAt) {
           log.info(`Server settings unchanged for workspace: ${currentWorkspace.name}`);
         } else {
-          ctx.userRealtime.publishEntityChanged(CLANKY_REALTIME_RESOURCES.workspaces, workspace.id);
+          ctx.realtime.publishEntityChanged(CLANKY_REALTIME_RESOURCES.workspaces, workspace.id, {
+            target: { userId: requireResourceOwnerUserId(workspace.id) },
+          });
           log.info(`Updated server settings for workspace: ${workspace.name}`);
         }
         return Response.json(
@@ -126,6 +132,7 @@ export const serverSettingsRoutes = defineRoutes({
    * GET /api/workspaces/:id/server-settings/status - Get connection status for workspace
    */
   "/api/workspaces/:id/server-settings/status": {
+    delegation: workspaceAdministrationOperation(),
     auth: "user",
     sameOrigin: "mutations",
     description: "Read the current workspace connection status.",
@@ -157,6 +164,7 @@ export const serverSettingsRoutes = defineRoutes({
    * If no body, uses the workspace's current settings.
    */
   "/api/workspaces/:id/server-settings/test": {
+    delegation: workspaceAdministrationOperation(),
     auth: "user",
     sameOrigin: "mutations",
     description: "Test the configured workspace connection using workspace settings.",
@@ -248,6 +256,7 @@ export const serverSettingsRoutes = defineRoutes({
    * Expects { settings: ServerSettings, directory: string } in the body.
    */
   "/api/server-settings/test": {
+    delegation: workspaceAdministrationOperation("workspace", "workspace-test"),
     auth: "user",
     sameOrigin: "mutations",
     description: "Test a server connection without creating a workspace.",
@@ -255,7 +264,7 @@ export const serverSettingsRoutes = defineRoutes({
     operations: {
       POST: {
         requestSchema: TestConnectionRequestSchema,
-        querySchema: undefined,
+        querySchema: WorkspaceControllerQuerySchema,
         automation: { policy: "read", hiddenInputs: ["sshTarget"] },
       },
     },
@@ -294,7 +303,7 @@ export const serverSettingsRoutes = defineRoutes({
   },
 
   "/api/workspaces/execution-targets": {
-    delegation: workspaceOperation("execution-host"),
+    delegation: workspaceAdministrationOperation("execution-host", "workspace-targets"),
     auth: "user",
     sameOrigin: "mutations",
     description: "List execution targets and their available harness adapters, including an authorized workspace or enrollment target.",

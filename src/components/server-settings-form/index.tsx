@@ -26,6 +26,8 @@ import { useWorkspaceExecutionTargets } from "../../hooks/workspace-server-setti
 import { TestConnection } from "./test-connection";
 
 export interface ServerSettingsFormProps {
+  controllerId?: string;
+  workspaceId?: string;
   initialSettings?: ServerSettings;
   initialExecutionHost?: ExecutionHostRef | null;
   initialSshTarget?: InitialSshTarget | null;
@@ -48,6 +50,8 @@ export interface ServerSettingsFormProps {
 }
 
 export function ServerSettingsForm({
+  controllerId,
+  workspaceId,
   initialSettings,
   initialExecutionHost = null,
   initialSshTarget = null,
@@ -65,9 +69,10 @@ export function ServerSettingsForm({
       ? initialExecutionHost.enrollmentId
       : undefined;
   const { targets, loading } = useWorkspaceExecutionTargets({
-    workspaceId: initialExecutionHost && isWorkspaceMeshExecutionHostRef(initialExecutionHost)
+    controllerId,
+    workspaceId: workspaceId ?? (initialExecutionHost && isWorkspaceMeshExecutionHostRef(initialExecutionHost)
       ? initialExecutionHost.workspaceId
-      : undefined,
+      : undefined),
     workspaceWorkerEnrollmentId: enrollmentId,
   });
   const selectableTargets = useMemo(

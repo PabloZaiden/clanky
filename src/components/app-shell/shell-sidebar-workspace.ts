@@ -240,9 +240,14 @@ function getWorkspaceSidebarActions(
         }),
       },
     ]);
-  if (decodeCollaborationResourceReference(workspaceId)) {
+  if (decodeCollaborationResourceReference(workspaceId) && workspaceNode.workspace.access !== "admin") {
     const administrative = new Set(["archive-workspace", "unarchive-workspace", "workspace-settings", "restart-workspace", "rebuild-workspace"]);
     return actions.filter((action) => action.id === undefined || !administrative.has(action.id));
+  }
+  if (decodeCollaborationResourceReference(workspaceId)) {
+    return withPrivateToggleAction(actions.filter((action) =>
+      action.id !== "restart-workspace" && action.id !== "rebuild-workspace"),
+    workspaceNode.workspace, () => void context.toggleWorkspacePrivate(workspaceNode.workspace));
   }
   return withPrivateToggleAction(actions, workspaceNode.workspace, () => void context.toggleWorkspacePrivate(workspaceNode.workspace));
 }

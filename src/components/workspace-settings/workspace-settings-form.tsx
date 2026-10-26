@@ -144,9 +144,10 @@ export function WorkspaceSettingsForm({
           <div hidden={category !== "execution"} data-workspace-settings-category="execution">
             <FormSection title="Execution">
               <ServerSettingsForm key={model.revision}
+                workspaceId={workspace.id}
                 initialSettings={model.seed.settings} initialExecutionHost={model.seed.executionHost}
                 initialSshTarget={model.seed.sshTarget} allowWorkspaceSshTarget
-                onChange={model.updateRuntime} onTest={onTest} testing={testing} remoteOnly={remoteOnly} />
+                onChange={model.updateRuntime} onTest={onTest} testing={testing} remoteOnly={workspace.access === "admin" ? false : remoteOnly} />
               <SettingsFieldRow title="Initial directory" content={<CodeValue value={workspace.directory} />} />
               {status?.error ? <ErrorState title="Connection unavailable" description={status.error} /> : null}
             </FormSection>

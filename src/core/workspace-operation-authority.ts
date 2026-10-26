@@ -64,15 +64,19 @@ export async function authorizeWorkspaceOperation(input: {
     readOnly = command.success && ["info", "stat", "list"].includes(command.data.operation);
   }
   const authority = collaborationService.requireWorkspaceAccess(input.workspaceId, readOnly ? "read" : "work");
+  if (operation.delegation.action === "workspace-admin") {
+    collaborationService.requireWorkspaceAccess(input.workspaceId, "admin");
+  }
   if (operation.delegation.action === "scratchpad") {
     if (isReadRecord(body) && Object.keys(body).some((field) => field !== "scratchpad")) {
-      throw new DomainError("collaboration_admin_forbidden", "Workspace configuration belongs to its controller.");
+      collaborationService.requireWorkspaceAccess(input.workspaceId, "admin");
     }
-    if (!isReadRecord(body) || typeof body["scratchpad"] !== "string") {
+    if ((!isReadRecord(body) || typeof body["scratchpad"] !== "string") && !authority.capabilities.includes("admin")) {
       throw new DomainError("collaboration_request_invalid", "A scratchpad update is required.");
     }
   }
   for (const binding of bindings) {
+    if (binding.resource === "workspace-controller") continue;
     const value = binding.source === "param" ? operation.params[binding.name]
       : binding.source === "query" ? url.searchParams.get(binding.name)
         : readReferenceField(body, binding.name);
@@ -103,6 +107,13 @@ export async function resolveOperationWorkspaces(input: {
   const url = new URL(input.request.url);
   const body = await readOperationBody(input.operation, input.request);
   for (const binding of bindings) {
+    if (binding.resource === "workspace-controller") {
+      const controllerId = url.searchParams.get(binding.name);
+      if (controllerId && controllerId !== input.guest.ownerUserId) {
+        throw new DomainError("collaboration_access_denied", "The workspace controller is unavailable.");
+      }
+      continue;
+    }
     if (binding.resource === "read-item" || binding.resource === "execution-host") continue;
     const value = binding.source === "param" ? input.operation.params[binding.name]
       : binding.source === "query" ? url.searchParams.get(binding.name)
@@ -125,6 +136,9 @@ export async function resolveOperationWorkspaces(input: {
     throw new DomainError("collaboration_workspace_mismatch", "An operation cannot combine resources from different workspaces.");
   }
   if (workspaceIds.size) return [...workspaceIds];
+  if (["controller-access", "workspace-create", "workspace-targets", "workspace-test"].includes(input.operation.delegation.action)) {
+    return [];
+  }
   if (input.operation.method === "GET" && input.operation.delegation.collection) {
     return input.guest.workspaceIds;
   }

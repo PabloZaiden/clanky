@@ -12,7 +12,7 @@ import { MESH_OPERATION_TIMEOUT_MS } from "./support/timeouts";
 import { installExternalAcpProvider, installExternalCode } from "./support/provider";
 import { exerciseCodePreview, exerciseServicePreview } from "./support/code-preview";
 
-interface Workspace { id: string; name: string; directory: string; access?: "read" | "work"; scratchpad: string }
+interface Workspace { id: string; name: string; directory: string; access?: "read" | "work" | "admin"; scratchpad: string }
 interface Connection { connection: { id: string; status: string }; realtime: string; errorCode: string | null }
 interface Terminal { config: { id: string } }
 interface Frame { type?: string; data?: string; event?: { resource?: string; id?: string } }
@@ -31,7 +31,7 @@ async function json<T>(node: ManagedMeshNode, path: string, method = "GET", body
   return response.body;
 }
 
-async function createWorkspace(node: ManagedMeshNode, directory: string, name: string): Promise<Workspace> {
+async function createWorkspace(node: ManagedMeshNode, directory: string, name: string, controllerId?: string): Promise<Workspace> {
   await mkdir(directory);
   const git = Bun.spawnSync(["git", "-C", directory, "init", "--quiet"]);
   if (git.exitCode) throw new Error(git.stderr.toString());
@@ -43,10 +43,12 @@ async function createWorkspace(node: ManagedMeshNode, directory: string, name: s
     const result = Bun.spawnSync(["git", "-C", directory, ...args]);
     if (result.exitCode) throw new Error(result.stderr.toString());
   }
-  const hosts = await json<Array<{ ref: { kind: string; nodeId?: string } }>>(node, "/api/execution-hosts");
+  const query = controllerId ? `?controllerId=${encodeURIComponent(controllerId)}` : "";
+  const hosts = await json<Array<{ ref: { kind: string; nodeId?: string } }>>(node,
+    controllerId ? `/api/workspaces/execution-targets${query}` : "/api/execution-hosts");
   const host = hosts.find((entry) => entry.ref.kind === "local");
   if (!host) throw new Error("Local execution host unavailable");
-  return await json(node, "/api/workspaces", "POST", {
+  return await json(node, `/api/workspaces${query}`, "POST", {
     name, directory, executionHost: host.ref, workspaceType: "git", allowWorktrees: false,
     serverSettings: { agent: { adapter: "acp", provider: "copilot" } },
   });
@@ -396,6 +398,112 @@ test("collaborators review and work across granted workspaces while owners manag
     for (const result of results) if (result.status === "rejected") cleanup.push(result.reason);
     if (!cleanup.length) await rm(directory, { recursive: true, force: true });
     if (cleanup.length) failure = new AggregateError(failure ? [failure, ...cleanup] : cleanup, "Collaboration journey cleanup failed", { cause: failure });
+  }
+  if (failure) throw failure;
+}, 120_000);
+
+test("an invited workspace administrator manages existing and future workspaces until the owner revokes access", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "clanky-workspace-administration-e2e-"));
+  const nodes: ManagedMeshNode[] = [];
+  const sockets: WebSocket[] = [];
+  let failure: unknown;
+  try {
+    const command = await compiledClankyCommand();
+    const bin = join(directory, "bin");
+    await installExternalAcpProvider(bin);
+    for (const name of ["owner", "administrator"]) {
+      const home = join(directory, name);
+      await mkdir(home);
+      nodes.push(await startMeshNode({
+        role: "controller", command,
+        environment: { HOME: home, PATH: `${bin}${delimiter}${process.env["PATH"] ?? ""}`, CLANKY_LOG_LEVEL: "info" },
+      }));
+    }
+    const owner = nodes[0]!, administrator = nodes[1]!;
+    const bootstrap = await json<{ controllerFingerprint: string }>(owner, "/api/mesh/relay");
+    const relay = await startMeshRelay({ command, controllerFingerprint: bootstrap.controllerFingerprint });
+    nodes.push(relay);
+    await json(owner, "/api/mesh/relay", "POST", { name: "administration", relayUrl: relay.baseUrl });
+    await pollUntil(() => json<{ relays: Array<{ connected: boolean }> }>(owner, "/api/mesh/relay"),
+      (value) => value.relays.some((entry) => entry.connected),
+      { description: "the workspace administration relay to connect", timeoutMs: MESH_OPERATION_TIMEOUT_MS });
+    const invitation = await json<{ token: string }>(owner, "/api/collaboration/invitations", "POST", {
+      name: "Workspace administrator", allWorkspacesAdmin: true, relayName: "administration",
+    });
+    await json(administrator, "/api/collaboration/connections", "POST", { invitation: invitation.token });
+    await pollUntil(() => json<Connection[]>(administrator, "/api/collaboration/connections"),
+      (value) => value.some((entry) => entry.realtime === "connected" && !entry.errorCode),
+      { description: "the workspace administrator pairing to connect", timeoutMs: MESH_OPERATION_TIMEOUT_MS });
+    const access = await json<Array<{ id: string; allWorkspacesAdmin: boolean }>>(administrator, "/api/collaboration/access");
+    const controller = access.find((entry) => entry.allWorkspacesAdmin);
+    if (!controller) throw new Error("Workspace administration was not granted.");
+    const created = await createWorkspace(administrator, join(directory, "created"), "Administrator-created workspace", controller.id);
+    expect(created.access).toBe("admin");
+    expect((await json<Workspace[]>(owner, "/api/workspaces")).some((workspace) => workspace.name === created.name)).toBe(true);
+    const existing = await createWorkspace(owner, join(directory, "existing"), "Existing workspace");
+    const shared = (await json<Workspace[]>(administrator, "/api/workspaces"))
+      .find((workspace) => workspace.name === existing.name);
+    if (!shared) throw new Error("The administrator cannot discover the existing workspace.");
+    expect(shared.access).toBe("admin");
+    await json(administrator, `/api/workspaces/${encodeURIComponent(shared.id)}`, "PUT", {
+      name: "Managed workspace", archived: true, allowWorktrees: true,
+    });
+    const configured = await json<Workspace & { archived: boolean; allowWorktrees: boolean }>(owner,
+      `/api/workspaces/${existing.id}`);
+    expect(configured.name).toBe("Managed workspace");
+    expect(configured.archived).toBe(true);
+    expect(configured.allowWorktrees).toBe(true);
+    const key = await json<{ token: string }>(administrator, "/api/api-keys", "POST", { name: "workspace-administration", scopes: ["*"] });
+    const future = await createWorkspace(owner, join(directory, "future"), "Future workspace");
+    const discovered = await pollUntil(() => json<Workspace[]>(administrator, "/api/workspaces"),
+      (workspaces) => workspaces.some((workspace) => workspace.name === future.name),
+      { description: "the administrator to discover the owner's new workspace", timeoutMs: MESH_OPERATION_TIMEOUT_MS });
+    const sharedFuture = discovered.find((workspace) => workspace.name === future.name)!;
+    await json(administrator, `/api/workspaces/${encodeURIComponent(sharedFuture.id)}`, "PUT", { scratchpad: "New workspace handoff" });
+    expect((await json<Workspace>(owner, `/api/workspaces/${future.id}`)).scratchpad).toBe("New workspace handoff");
+    expect((await meshJsonRequest(administrator,
+      `/api/settings/reset-all?controllerId=${encodeURIComponent(controller.id)}`,
+      { method: "POST", body: {} })).status).toBe(403);
+    await restartMeshNode(owner);
+    await restartMeshNode(administrator);
+    await pollUntil(() => json<Connection[]>(administrator, "/api/collaboration/connections"),
+      (value) => value.some((entry) => entry.realtime === "connected" && !entry.errorCode),
+      { description: "workspace administration to recover after restart", timeoutMs: MESH_OPERATION_TIMEOUT_MS });
+    expect((await json<Workspace>(administrator, `/api/workspaces/${encodeURIComponent(sharedFuture.id)}`)).access).toBe("admin");
+    await json(administrator, `/api/workspaces/${encodeURIComponent(created.id)}`, "DELETE");
+    expect((await json<Workspace[]>(owner, "/api/workspaces")).some((workspace) => workspace.name === created.name)).toBe(false);
+    expect(await Bun.file(join(created.directory, ".git", "HEAD")).exists()).toBe(true);
+    const terminal = await json<Terminal>(administrator, "/api/terminal-sessions", "POST", {
+      workspaceId: sharedFuture.id, name: "Workspace administrator shell", connectionMode: "direct", useTmux: false,
+    });
+    const observed = observeSocket(administrator, `/api/terminal?terminalSessionId=${encodeURIComponent(terminal.config.id)}`, key.token);
+    sockets.push(observed.socket);
+    await pollUntil(() => observed.frames, (frames) => frames.some((frame) => frame.type === "terminal.connected"),
+      { description: "the administrator's workspace shell to connect", timeoutMs: MESH_OPERATION_TIMEOUT_MS });
+    const guests = await json<Array<{ id: string; allWorkspacesAdmin: boolean }>>(owner, "/api/collaboration/guests");
+    const guest = guests.find((entry) => entry.allWorkspacesAdmin);
+    if (!guest) throw new Error("The owner cannot find the workspace administrator.");
+    await json(owner, `/api/collaboration/guests/${guest.id}`, "DELETE");
+    await pollUntil(() => observed.socket.readyState, (state) => state === WebSocket.CLOSED,
+      { description: "revocation to close the administrator's workspace shell", timeoutMs: MESH_OPERATION_TIMEOUT_MS });
+    expect((await meshJsonRequest(administrator, `/api/workspaces/${encodeURIComponent(sharedFuture.id)}`)).status)
+      .toBeGreaterThanOrEqual(400);
+    expect((await json<Workspace>(owner, `/api/workspaces/${future.id}`)).scratchpad).toBe("New workspace handoff");
+  } catch (error) {
+    failure = error;
+    for (const node of nodes) console.error(meshNodeDiagnostics(node));
+  } finally {
+    const cleanup: unknown[] = [];
+    const closed = await Promise.allSettled(sockets.map(async (socket) => {
+      socket.close();
+      await pollUntil(() => socket.readyState, (state) => state === WebSocket.CLOSED,
+        { description: "the administration journey websocket to close", timeoutMs: MESH_OPERATION_TIMEOUT_MS });
+    }));
+    for (const result of closed) if (result.status === "rejected") cleanup.push(result.reason);
+    const results = await Promise.allSettled(nodes.reverse().map(async (node) => await stopMeshNode(node)));
+    for (const result of results) if (result.status === "rejected") cleanup.push(result.reason);
+    if (!cleanup.length) await rm(directory, { recursive: true, force: true });
+    if (cleanup.length) failure = new AggregateError(failure ? [failure, ...cleanup] : cleanup, "Workspace administration cleanup failed", { cause: failure });
   }
   if (failure) throw failure;
 }, 120_000);

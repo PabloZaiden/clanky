@@ -137,6 +137,10 @@ export function qualifyWorkspaceResponse(
   if (Array.isArray(value)) {
     return value.map((entry: unknown) => {
       if (!isReadRecord(entry)) return entry;
+      if (context.resource === "workspace-controller" && typeof entry["id"] === "string") {
+        return { ...entry, id: context.qualify("workspace-controller", entry["id"]),
+          name: context.controllerName ?? entry["name"] };
+      }
       if (isEntity(entry)) return qualifyEntity(entry, context.resource, context);
       if (context.resource === "execution-host" && isReadRecord(entry["ref"])) {
         return { ...entry, ref: qualifyFields(entry["ref"], context) };

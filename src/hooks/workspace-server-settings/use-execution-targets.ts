@@ -7,6 +7,7 @@ import { isAbortError } from "../../lib/request-lifecycle";
 const log = createLogger("useWorkspaceExecutionTargets");
 
 export function useWorkspaceExecutionTargets(context: {
+  controllerId?: string;
   workspaceId?: string;
   workspaceWorkerEnrollmentId?: string;
 } = {}): {
@@ -19,7 +20,7 @@ export function useWorkspaceExecutionTargets(context: {
   const activeControllerRef = useRef<AbortController | null>(null);
   const latestRequestIdRef = useRef(0);
   const mountedRef = useRef(false);
-  const { workspaceId, workspaceWorkerEnrollmentId } = context;
+  const { workspaceId, workspaceWorkerEnrollmentId, controllerId } = context;
 
   const refresh = useCallback(async (): Promise<void> => {
     if (!mountedRef.current) {
@@ -39,6 +40,7 @@ export function useWorkspaceExecutionTargets(context: {
     setLoading(true);
     try {
       const query = new URLSearchParams();
+      if (controllerId) query.set("controllerId", controllerId);
       if (workspaceId) query.set("workspaceId", workspaceId);
       if (workspaceWorkerEnrollmentId) query.set("workspaceWorkerEnrollmentId", workspaceWorkerEnrollmentId);
       const nextTargets = await apiRequest<ExecutionHostDescriptor[]>(`/api/workspaces/execution-targets?${query}`, {
@@ -62,7 +64,7 @@ export function useWorkspaceExecutionTargets(context: {
         setLoading(false);
       }
     }
-  }, [workspaceId, workspaceWorkerEnrollmentId]);
+  }, [workspaceId, workspaceWorkerEnrollmentId, controllerId]);
 
   useEffect(() => {
     mountedRef.current = true;

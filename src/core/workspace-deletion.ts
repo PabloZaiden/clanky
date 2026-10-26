@@ -11,7 +11,7 @@ import { withWorkspaceExecutionLock } from "./workspace-execution-lock";
 import { getRegisteredSshServerId } from "@/shared/execution-host";
 import { meshManager } from "./mesh-manager";
 import { workspaceWorkerEnrollmentService } from "./workspace-worker-enrollment-service";
-import { requireCurrentUserId } from "../context/user-context";
+import { requireExecutionOwnerUserId } from "../context/user-context";
 
 const log = createLogger("core:workspace-deletion");
 const workspaceDeletionLocks = new Set<string>();
@@ -173,12 +173,12 @@ async function deleteWorkspaceWithOptionsUnlocked(
     await terminalSessionManager.deleteSessionsForWorkspace(id, { lockAlreadyHeld: true });
     await managedCredentialService.revokeWorkspace(id);
     const dedicatedWorker = workspaceWorkerEnrollmentService.getByWorkspace(
-      requireCurrentUserId(),
+      requireExecutionOwnerUserId(),
       id,
     );
     if (dedicatedWorker) {
       await meshManager.cleanupDedicatedWorker(
-        requireCurrentUserId(),
+        requireExecutionOwnerUserId(),
         dedicatedWorker.enrollment.id,
         { preserveRegistration: true },
       );
@@ -188,7 +188,7 @@ async function deleteWorkspaceWithOptionsUnlocked(
       if (dedicatedWorker?.enrollment.workerNodeId) {
         try {
           await meshManager.removeDedicatedWorker(
-            requireCurrentUserId(),
+            requireExecutionOwnerUserId(),
             dedicatedWorker.enrollment.workerNodeId,
           );
         } catch (error) {

@@ -15,7 +15,7 @@ import {
   workspaceToRow,
 } from "./helpers";
 import { requireResourcePersistenceUserId, requireWorkspaceUpdateUserId } from "../ownership";
-import { getWorkspaceAccessAuthority } from "../../context/user-context";
+import { getWorkspaceAccessAuthority, getWorkspaceAdministrationAuthority } from "../../context/user-context";
 import { DomainError } from "../../domain/domain-error";
 import { invalidateChatMetadataForUser } from "../chats/metadata-cache";
 import {
@@ -216,7 +216,8 @@ export async function countWorkspaceTasks(id: string): Promise<number> {
  * @returns true if deleted, false if not found or has tasks
  */
 export async function deleteWorkspace(id: string): Promise<boolean> {
-  if (getWorkspaceAccessAuthority()?.guestId) {
+  if (getWorkspaceAccessAuthority()?.guestId && !getWorkspaceAccessAuthority()?.capabilities.includes("admin")
+    && !getWorkspaceAdministrationAuthority()) {
     throw new DomainError("collaboration_admin_forbidden", "Collaborators cannot delete workspaces.");
   }
   log.debug("Deleting workspace", { id });

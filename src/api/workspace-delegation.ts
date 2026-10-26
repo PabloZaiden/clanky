@@ -17,11 +17,27 @@ export function workspaceOperation(
       { source: "query", name: "workspaceId", resource: "workspace" },
       { source: "query", name: "item", resource: "read-item" },
       { source: "body", name: "workspaceId", resource: "workspace" },
+      { source: "body", name: "executionHost.workspaceId", resource: "workspace" },
       { source: "body", name: "chatId", resource: "chat" },
       { source: "body", name: "taskId", resource: "task" },
       { source: "body", name: "agentId", resource: "agent" },
       { source: "body", name: "commentIds", resource: "review-comment" },
       { source: "body", name: "source.workspaceId", resource: "workspace" },
+    ],
+  };
+}
+
+export function workspaceAdministrationOperation(
+  resource: CollaborationResourceKind = "workspace",
+  action = "workspace-admin",
+): RouteDelegationMetadata {
+  const operation = workspaceOperation(resource);
+  return {
+    ...operation,
+    action,
+    bindings: [
+      ...operation.bindings!,
+      { source: "query", name: "controllerId", resource: "workspace-controller" },
     ],
   };
 }

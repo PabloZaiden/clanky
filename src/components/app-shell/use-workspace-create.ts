@@ -1,5 +1,7 @@
-import { type FormEvent, useEffect, useRef, useState } from "react";
-import { createLogger, type ToastService, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { createLogger, useLiveQuery, type ToastService, type WebAppRoute } from "@pablozaiden/webapp/web";
+import type { CollaborationControllerAccess } from "@/shared/collaboration";
+import { getClankyClientCapabilities } from "../../client-sdk/capabilities";
 import {
   getRegisteredSshServerId,
   canRetryProvisioningJob,
@@ -40,6 +42,11 @@ import type { WorkerUpdateMode } from "@/shared/worker-update";
 const log = createLogger("useWorkspaceCreate");
 
 export interface UseWorkspaceCreateResult {
+  workspaceControllerId: string;
+  setWorkspaceControllerId: (id: string) => void;
+  workspaceControllers: CollaborationControllerAccess[];
+  workspaceControllersLoading: boolean;
+  workspaceControllersError: string | null;
   workspaceCreateMode: "manual" | "automatic";
   setWorkspaceCreateMode: (mode: "manual" | "automatic") => void;
   workspaceName: string;
@@ -148,7 +155,7 @@ interface UseWorkspaceCreateOptions {
   route: WebAppRoute;
   servers: SshServer[];
   provisioning: UseProvisioningJobResult;
-  createWorkspace: (req: CreateWorkspaceRequest) => Promise<Workspace | null>;
+  createWorkspace: (req: CreateWorkspaceRequest, controllerId?: string) => Promise<Workspace | null>;
   refreshWorkspaces: () => Promise<void>;
   toast: ToastService;
   navigateWithinShell: (route: WebAppRoute) => void;
@@ -171,6 +178,19 @@ export function useWorkspaceCreate({
   relayStatusLoading,
   refreshRelayStatus,
 }: UseWorkspaceCreateOptions): UseWorkspaceCreateResult {
+  const [workspaceControllerId, setWorkspaceControllerIdState] = useState("");
+  const controllerAccess = useLiveQuery<CollaborationControllerAccess[]>({
+    enabled: route.view === "compose" && getRouteString(route, "kind") === "workspace",
+    load: (signal) => apiRequest("/api/collaboration/access", { signal }),
+    realtime: { resources: ["workspace-connections", "workspaces"] },
+  });
+  const workspaceControllers = useMemo(() => (controllerAccess.data ?? []).filter((entry) => entry.allWorkspacesAdmin),
+    [controllerAccess.data]);
+  useEffect(() => {
+    if (!getClankyClientCapabilities().controllerAdministration && !workspaceControllerId && workspaceControllers[0]) {
+      setWorkspaceControllerIdState(workspaceControllers[0].id);
+    }
+  }, [workspaceControllerId, workspaceControllers]);
   const primaryRelayName = relayStatus?.primaryName ?? null;
   const relayPaired = primaryRelayName !== null;
   const relayOptions = relayStatus?.relays.map(
@@ -194,6 +214,13 @@ export function useWorkspaceCreate({
   const [workspaceServerSettingsValid, setWorkspaceServerSettingsValid] = useState(true);
   const [workspaceTesting, setWorkspaceTesting] = useState(false);
   const [workspaceCreateSubmitting, setWorkspaceCreateSubmitting] = useState(false);
+  function setWorkspaceControllerId(id: string): void {
+    setWorkspaceControllerIdState(id);
+    setWorkspaceExecutionHost(null);
+    setWorkspaceSshTarget(null);
+    setWorkspaceServerSettingsValid(false);
+    setWorkspaceCreateMode("manual");
+  }
   const [automaticExecutionHost, setAutomaticExecutionHostState] = useState<ExecutionHostRef | null>(null);
   const [automaticTransport, setAutomaticTransport] = useState<ProvisioningTransport>("worker");
   const [automaticWorkerEnrollmentRoute, setAutomaticWorkerEnrollmentRouteState] =
@@ -517,7 +544,8 @@ export function useWorkspaceCreate({
 
     setWorkspaceTesting(true);
     try {
-      return await apiRequest<{ success: boolean; error?: string }>("/api/server-settings/test", {
+      return await apiRequest<{ success: boolean; error?: string }>(
+        `/api/server-settings/test${workspaceControllerId ? `?controllerId=${encodeURIComponent(workspaceControllerId)}` : ""}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -729,6 +757,10 @@ export function useWorkspaceCreate({
       }
 
       const directory = workspaceDirectory.trim();
+      if (!getClankyClientCapabilities().controllerAdministration && !workspaceControllerId) {
+        toast.error("Select a controller with workspace administration access.");
+        return;
+      }
       if (
         !directory
         || !workspaceServerSettingsValid
@@ -753,7 +785,7 @@ export function useWorkspaceCreate({
             ? { workspaceWorkerEnrollmentId: workspaceWorkerEnrollment.enrollment.id }
             : {}),
         };
-        const workspace = await createWorkspace(request);
+        const workspace = await createWorkspace(request, workspaceControllerId || undefined);
         if (!workspace) {
           toast.error("Failed to create workspace");
           return;
@@ -766,6 +798,11 @@ export function useWorkspaceCreate({
   }
 
   return {
+    workspaceControllerId,
+    setWorkspaceControllerId,
+    workspaceControllers,
+    workspaceControllersLoading: controllerAccess.loading,
+    workspaceControllersError: controllerAccess.error ? String(controllerAccess.error) : null,
     workspaceCreateMode,
     setWorkspaceCreateMode,
     workspaceName,

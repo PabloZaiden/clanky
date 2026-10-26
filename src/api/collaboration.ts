@@ -19,6 +19,16 @@ import { workspaceClientErrorResponse } from "./workspace-client-errors";
 import { dispatchWorkspaceClient, enrollWorkspaceClient } from "./workspace-client-gateway";
 
 export const collaborationRoutes = defineRoutes({
+  "/api/collaboration/access": {
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "Discover effective workspace administration on connected controllers.",
+    delegation: { resource: "workspace-controller", action: "controller-access", collection: true },
+    operations: { GET: { automation: { policy: "read" } } },
+    GET() {
+      return Response.json(collaborationService.getControllerAccess());
+    },
+  },
   "/api/collaboration/relays": {
     auth: "user",
     sameOrigin: "mutations",
@@ -32,12 +42,12 @@ export const collaborationRoutes = defineRoutes({
   "/api/collaboration/invitations": {
     auth: "user",
     sameOrigin: "mutations",
-    description: "List invitations or invite one client to selected owned workspaces through a paired relay.",
+    description: "List invitations or invite one client to selected workspaces or administration of all owned workspaces.",
     operations: {
       GET: { automation: { policy: "read" } },
       POST: {
         requestSchema: CreateCollaborationInvitationSchema,
-        automation: { policy: "confirm", reason: "Grants a collaborator access to selected workspace contents and execution capabilities." },
+        automation: { policy: "confirm", reason: "Grants selected workspace access or administration of all current and future owned workspaces." },
       },
     },
     GET() {

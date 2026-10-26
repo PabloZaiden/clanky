@@ -95,6 +95,15 @@ export async function dispatchWorkspaceClient(request: Request): Promise<Respons
           operation,
         }),
         run: async (invocation, invoke) => {
+          const action = invocation.operation.delegation.action;
+          if (action === "controller-access") return await invoke();
+          if (action === "workspace-create" || action === "workspace-test"
+            || (action === "workspace-targets" && !invocation.authorization.workspaceIds.length)) {
+            return await collaborationService.withWorkspaceAdministration(
+              new URL(inner.url).searchParams.get("controllerId") ?? undefined,
+              async () => await invoke(),
+            );
+          }
           const results: unknown[] = [];
           const trash: ChatTrashPage[] = [];
           const pagedTrash = invocation.operation.delegation.action === "trash-list";

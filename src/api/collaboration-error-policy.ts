@@ -24,7 +24,7 @@ export const COLLABORATION_ERROR_MAPPINGS = {
   collaboration_workspace_mismatch: { status: 400 },
   collaboration_transport_required: { status: 403 },
   collaboration_owner_required: { status: 403 },
-  collaboration_admin_forbidden: { status: 403, message: "Workspace settings can only be changed on its controller." },
+  collaboration_admin_forbidden: { status: 403, message: "This operation requires workspace administration access." },
   collaboration_access_denied: { status: 403, message: "Workspace access is no longer available." },
   collaboration_read_only: { status: 403, message: "This workspace is read-only." },
   collaboration_authority_required: { status: 403 },

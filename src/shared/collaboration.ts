@@ -24,6 +24,7 @@ export interface CollaborationInvitation extends CollaborationRelayRoute {
   controller: MeshRelayPeerIdentity;
   id: string;
   name: string | null;
+  allWorkspacesAdmin: boolean;
   workspaceIds: string[];
   workspacePermissions: CollaborationWorkspacePermissions;
   createdAt: string;
@@ -51,7 +52,14 @@ export interface CollaborationGuestGrant extends CollaborationRelayRoute {
 
 /** Controller-owned permissions, not part of the v1 pairing wire contract. */
 export interface CollaborationGuestAccess extends CollaborationGuestGrant {
+  allWorkspacesAdmin: boolean;
   workspacePermissions: CollaborationWorkspacePermissions;
+}
+
+export interface CollaborationControllerAccess {
+  id: string;
+  name: string;
+  allWorkspacesAdmin: boolean;
 }
 
 export type CollaborationActor =
@@ -66,6 +74,12 @@ export interface WorkspaceAccessAuthority {
   workspaceId: string;
   guestId: string | null;
   capabilities: readonly WorkspaceAccessCapability[];
+}
+
+export interface WorkspaceAdministrationAuthority {
+  actor: Extract<CollaborationActor, { kind: "guest" }>;
+  ownerUserId: string;
+  guestId: string;
 }
 
 export interface CollaborationRevocation {

@@ -71,7 +71,7 @@ export const WorkspaceRealtimeFrameSchema = z.discriminatedUnion("type", [
     type: z.literal("workspace.ready"),
     guestId: IdentityString,
     ownerUserId: IdentityString,
-    workspaceIds: z.array(IdentityString).max(100),
+    workspaceIds: z.array(IdentityString),
   }),
   z.strictObject({
     type: z.literal("workspace.publication"),
