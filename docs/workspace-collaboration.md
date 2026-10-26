@@ -20,6 +20,9 @@ one-use token to the invited person through a trusted channel. The token expires
 revoking an unused invitation prevents its acceptance. Do not publish tokens in
 issues, logs or shell history.
 
+Pending invitations show their workspaces and expiration beneath the invitation
+name, with **Revoke invitation** alongside those details.
+
 On the invited instance, open **Settings > Collaboration > Connect controller**
 and paste the token. An optional controller name helps distinguish workspaces
 with the same name. Pairing belongs to the accepting local user; other users of

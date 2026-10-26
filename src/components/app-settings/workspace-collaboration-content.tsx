@@ -196,6 +196,7 @@ function ApiWorkspaceCollaborationContent({ workspaces }: { workspaces: Workspac
         {state?.invitations.filter((entry) => !entry.consumedAt && !entry.revokedAt && Date.parse(entry.expiresAt) > Date.now()).map((entry) => (
           <DataListRow key={entry.id} title={entry.name ?? "Workspace invitation"}
             meta={`Expires ${new Date(entry.expiresAt).toLocaleString()}`}
+            metaPlacement="below"
             description={entry.workspaceIds.map((id) => `${workspaceName(id)} (${entry.workspacePermissions[id] === "read" ? "Read only" : "Work"})`).join(", ")}
             actions={<Button variant="danger" size="sm" disabled={saving} onClick={() => setConfirmation({
               path: `/api/collaboration/invitations/${encodeURIComponent(entry.id)}`,
