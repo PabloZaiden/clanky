@@ -6,6 +6,7 @@ import { useMarkdownPreference } from "../../hooks";
 import type { ChatTranscriptProps } from "./types";
 import { ChatQuestions } from "./chat-questions";
 import { LiveVoiceContext } from "../../hooks/useLiveVoice";
+import { useWorkspaceReadOnly } from "../../context/workspace-access-context";
 
 const VOICE_TRIPLE_TAP_WINDOW_MS = 750;
 const VOICE_TAP_MOVE_THRESHOLD_PX = 10;
@@ -30,6 +31,7 @@ export function ChatTranscript({
 }: ChatTranscriptProps) {
   const { enabled: markdownEnabled } = useMarkdownPreference();
   const liveVoice = useContext(LiveVoiceContext);
+  const readOnly = useWorkspaceReadOnly();
   const tapCountRef = useRef(0);
   const lastTapAtRef = useRef(0);
   const pointerDownRef = useRef<{
@@ -46,7 +48,7 @@ export function ChatTranscript({
 
   function isVoiceInputReady(): boolean {
     return Boolean(
-      liveVoice?.available
+      !readOnly && liveVoice?.available
       && !liveVoice.busy
     );
   }
@@ -186,12 +188,12 @@ export function ChatTranscript({
         playingReadAloudKey={playingReadAloudKey}
         readAloudStatus={readAloudStatus}
         scrollContentFooter={
-          <ChatQuestions
+          <fieldset disabled={readOnly} className="min-w-0"><ChatQuestions
             chatId={chat.config.id}
             requests={chat.state.harness?.questions ?? []}
             onChatSnapshot={onChatSnapshot}
             onAnswerInputFocusChange={onQuestionAnswerFocusChange}
-          />
+          /></fieldset>
         }
       />
     </div>

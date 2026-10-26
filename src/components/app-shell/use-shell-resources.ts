@@ -143,6 +143,9 @@ export function useShellResources(route: WebAppRoute, isOwner: boolean, config: 
     if (!quickChatWorkspace) {
       return "The selected quick chat workspace no longer exists";
     }
+    if (quickChatWorkspace.access === "read") {
+      return "The selected quick chat workspace is read-only";
+    }
     if (!quickChatSettings.settings.model) {
       return "Choose a quick chat model in Settings first";
     }

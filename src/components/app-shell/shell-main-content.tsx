@@ -59,6 +59,7 @@ import type {
 import type { CreateTaskFormSubmitRequest } from "@/lib/task-request";
 import type { ControlUiActionOutcome } from "@/shared/clanky-control";
 import type { PendingControlFileOpen } from "./use-control-ui-actions";
+import { useWorkspaceReadOnly } from "../../context/workspace-access-context";
 
 export interface ShellMainContentProps {
   trashActions: ChatTrashActions;
@@ -532,7 +533,8 @@ function renderMainContent(props: ShellMainContentProps) {
       );
     }
 
-    if (selectedTask.state.status === "draft") {
+    if (selectedTask.state.status === "draft" && selectedWorkspace?.access !== "read"
+      && workspaces.find((workspace) => workspace.id === selectedTask.config.workspaceId)?.access !== "read") {
       return (
         <DraftTaskComposer
           task={selectedTask}
@@ -912,7 +914,7 @@ function renderMainContent(props: ShellMainContentProps) {
         createChat={createChat}
         dashboardData={dashboardData}
         agents={agents}
-        workspaces={workspaces}
+        workspaces={workspaces.filter((workspace) => workspace.access !== "read")}
         workspacesLoading={workspacesLoading}
         workspaceError={workspaceError}
         servers={servers}
@@ -964,6 +966,10 @@ function usesFullViewportLayout(props: ShellMainContentProps): boolean {
 }
 
 export function AppRouteContent(props: ShellMainContentProps) {
+  const readOnly = useWorkspaceReadOnly();
+  if (readOnly && ["compose", "terminal", "workspace-previews", "workspace-settings", "restart-workspace", "rebuild-workspace"].includes(props.route.view)) {
+    return <Page><ErrorState title="Read-only workspace" description="This action requires work access." /></Page>;
+  }
   if (props.route.view === "trash") {
     return (
       <Page>
@@ -979,6 +985,7 @@ export function AppRouteContent(props: ShellMainContentProps) {
   const fullViewport = usesFullViewportLayout(props);
   return (
     <Page layout={fullViewport ? "full" : "padded"}>
+      {readOnly ? <p role="status" className="shrink-0 px-3 py-2 text-sm text-gray-500 dark:text-gray-400">Read-only workspace</p> : null}
       <WorkspaceConnectionsNotice />
       {props.shellErrors.length > 0 && (
         <ErrorState

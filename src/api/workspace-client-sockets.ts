@@ -109,7 +109,7 @@ class WorkspaceClientSockets {
         attachment = this.openPreview(input, guest, workspaceId);
       } else throw new DomainError("collaboration_operation_denied", "This socket is not available to collaborators.");
       if (this.stopping || !collaborationService.getAuthenticatedGuest(guest.identity.nodeId)
-        || workspaceId && !collaborationService.getGrantByNodeId(guest.identity.nodeId)?.workspaceIds.includes(workspaceId)) {
+        || workspaceId && collaborationService.getGrantByNodeId(guest.identity.nodeId)?.workspacePermissions[workspaceId] !== "work") {
         await attachment.close();
         throw new DomainError(this.stopping ? "collaboration_disconnected" : "collaboration_access_denied",
           "The workspace socket is no longer available.");

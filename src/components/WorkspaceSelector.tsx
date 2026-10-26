@@ -80,10 +80,10 @@ export function WorkspaceSelector({
         </option>
         
         {workspaces.map((workspace) => (
-          <option key={workspace.id} value={workspace.id}>
+          <option key={workspace.id} value={workspace.id} disabled={workspace.access === "read"}>
             {showServerDetails && !workspace.collaboration
               ? `${getWorkspaceDisplayName(workspace)} — ${getWorkspaceServerLabel(workspace, registeredSshServers, executionTargets)}`
-              : getWorkspaceDisplayName(workspace)}
+              : getWorkspaceDisplayName(workspace)}{workspace.access === "read" ? " (Read only)" : ""}
           </option>
         ))}
       </select>

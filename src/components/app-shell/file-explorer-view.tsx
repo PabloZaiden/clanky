@@ -31,6 +31,7 @@ import type { ControlUiActionOutcome } from "@/shared/clanky-control";
 import type { PendingControlFileOpen } from "./use-control-ui-actions";
 import { isPathWithinOrEqual } from "../../hooks/file-explorer-utils";
 import { getClankyClientCapabilities } from "../../client-sdk/capabilities";
+import { useWorkspaceReadOnly } from "../../context/workspace-access-context";
 
 function TerminalIcon() {
   return (
@@ -140,6 +141,7 @@ export function FileExplorerView({
   controlFileOpenRequest,
   onControlFileOpenResult,
 }: FileExplorerViewProps) {
+  const readOnly = useWorkspaceReadOnly();
   const toast = useToast();
   const hasStoredServerCredential = target.type === "executionHost" && target.kind === "ssh"
     ? getStoredSshServerCredential(target.id) !== null
@@ -174,7 +176,7 @@ export function FileExplorerView({
   const [creatingTerminal, setCreatingTerminal] = useState(false);
   const [downloadingFilePath, setDownloadingFilePath] = useState<string | null>(null);
   const [openingLargeFile, setOpeningLargeFile] = useState(false);
-  const canPromptForTerminalTmux = hasTerminal && canChooseTerminalTmux;
+  const canPromptForTerminalTmux = !readOnly && hasTerminal && canChooseTerminalTmux;
   const activeRootDirectory = target.startDirectory?.trim() || defaultRootDirectory.trim();
   const selectedFilePath = explorer.currentFile?.path;
   const selectedFileAbsolutePath = explorer.currentFile?.absolutePath;
@@ -280,6 +282,10 @@ export function FileExplorerView({
   }, [canPromptForTerminalTmux]);
 
   async function createTerminal(options?: CodeExplorerTerminalOptions) {
+    if (readOnly) {
+      toast.error("This workspace is read-only.");
+      return;
+    }
     try {
       setCreatingTerminal(true);
       const session = await onCreateTerminal(options, activeRootDirectory);
@@ -303,6 +309,10 @@ export function FileExplorerView({
   }
 
   async function handleSave(): Promise<boolean> {
+    if (readOnly) {
+      toast.error("This workspace is read-only.");
+      return false;
+    }
     const success = await explorer.saveCurrentFile();
     return success;
   }
@@ -506,12 +516,16 @@ export function FileExplorerView({
   const selectedNode = explorer.selectedNode;
 
   const blockDirtyNodeMutation = useCallback((node: WorkspaceFileNode) => {
+    if (readOnly) {
+      toast.error("This workspace is read-only.");
+      return true;
+    }
     if (explorer.isDirty && explorer.currentFile && isPathWithinOrEqual(explorer.currentFile.path, node.path)) {
       toast.error("Save or discard local changes before modifying this item.");
       return true;
     }
     return false;
-  }, [explorer.currentFile, explorer.isDirty, toast]);
+  }, [explorer.currentFile, explorer.isDirty, readOnly, toast]);
 
   const openRenameModal = useCallback((node: WorkspaceFileNode | null = selectedNode) => {
     if (!node) {
@@ -587,6 +601,10 @@ export function FileExplorerView({
   }, []);
 
   const uploadFile = useCallback(async (file: File, targetDirectory?: string) => {
+    if (readOnly) {
+      toast.error("This workspace is read-only.");
+      return;
+    }
     try {
       setUploadingFile(true);
       const uploadedFile = await explorer.uploadFileToSelectedDirectory(
@@ -600,7 +618,7 @@ export function FileExplorerView({
     } finally {
       setUploadingFile(false);
     }
-  }, [explorer.uploadFileToSelectedDirectory, toast]);
+  }, [explorer.uploadFileToSelectedDirectory, readOnly, toast]);
 
   const handleUploadInputChange = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0] ?? null;
@@ -816,9 +834,9 @@ export function FileExplorerView({
                 onOpenFile={handleOpenFile}
                 canCopySelectedFilePath={Boolean(selectedFileAbsolutePath)}
                 canDownloadSelectedFile={Boolean(explorer.currentFile)}
-                canUploadFile={!explorer.loadingTree && !uploadingFile}
-                canRenameSelectedNode={Boolean(explorer.selectedNode) && !renamingNode}
-                canDeleteSelectedNode={Boolean(explorer.selectedNode) && !deletingNode}
+                canUploadFile={!readOnly && !explorer.loadingTree && !uploadingFile}
+                canRenameSelectedNode={!readOnly && Boolean(explorer.selectedNode) && !renamingNode}
+                canDeleteSelectedNode={!readOnly && Boolean(explorer.selectedNode) && !deletingNode}
               />
             </div>
             <div
@@ -858,6 +876,7 @@ export function FileExplorerView({
                 onClick={() => setActivePane("terminal")}
                 aria-pressed={activePane === "terminal"}
                 aria-label="Terminals"
+                disabled={readOnly}
                 title="Terminals"
               >
                 <TerminalIcon />
@@ -868,7 +887,7 @@ export function FileExplorerView({
         </div>
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          {activePane === "editor" ? (
+          {activePane === "editor" || readOnly ? (
             explorer.largeFileWarning ? (
               <LargeFileWarningPanel
                 file={explorer.largeFileWarning.file}
@@ -988,6 +1007,7 @@ export function FileExplorerView({
         ref={uploadInputRef}
         type="file"
         className="hidden"
+        disabled={readOnly}
         onChange={(event) => {
           void handleUploadInputChange(event);
         }}
@@ -1001,7 +1021,7 @@ export function FileExplorerView({
       )}
 
       <Modal
-        isOpen={renameTarget !== null}
+        isOpen={!readOnly && renameTarget !== null}
         onClose={() => {
           if (!renamingNode) {
             closeRenameModal();
@@ -1045,7 +1065,7 @@ export function FileExplorerView({
       </Modal>
 
       <ConfirmModal
-        isOpen={deleteTarget !== null}
+        isOpen={!readOnly && deleteTarget !== null}
         onClose={() => {
           if (!deletingNode) {
             setDeleteTarget(null);
@@ -1071,7 +1091,7 @@ export function FileExplorerView({
       />
 
       <WorkspaceFileConflictModal
-        isOpen={conflictState?.kind === "save_conflict"}
+        isOpen={!readOnly && conflictState?.kind === "save_conflict"}
         title="File changed outside the code explorer"
         message={conflictState?.message ?? ""}
         confirmLabel="Overwrite file"

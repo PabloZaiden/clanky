@@ -18,6 +18,7 @@ import {
 import { MarkdownRenderer } from "../MarkdownRenderer";
 import { Button, PreviewIcon, RefreshIcon, SaveIcon } from "../common";
 import { MonacoCodeEditor } from "../MonacoCodeEditor";
+import { useWorkspaceReadOnly } from "../../context/workspace-access-context";
 
 interface WorkspaceScratchpadViewProps {
   workspaceId: string;
@@ -33,6 +34,7 @@ const scratchpadActionButtonClassName =
 export function WorkspaceScratchpadView({
   workspaceId,
 }: WorkspaceScratchpadViewProps) {
+  const readOnly = useWorkspaceReadOnly();
   const toast = useToast();
   const [content, setContent] = useState("");
   const [serverContent, setServerContent] = useState<string | null>(null);
@@ -84,7 +86,7 @@ export function WorkspaceScratchpadView({
         }
 
         const savedContent = workspace.scratchpad;
-        const localDraft = getStoredWorkspaceScratchpadDraft(workspaceId);
+        const localDraft = readOnly ? null : getStoredWorkspaceScratchpadDraft(workspaceId);
         const restoredContent = localDraft ?? savedContent;
         serverContentRef.current = savedContent;
         contentRef.current = restoredContent;
@@ -106,7 +108,7 @@ export function WorkspaceScratchpadView({
 
     void loadWorkspace();
     return () => controller.abort();
-  }, [draftPersistence, workspaceId]);
+  }, [draftPersistence, workspaceId, readOnly]);
 
   function handleContentChange(nextContent: string): void {
     contentRef.current = nextContent;
@@ -144,7 +146,7 @@ export function WorkspaceScratchpadView({
 
   async function saveToServer(): Promise<void> {
     if (
-      serverContentRef.current === null
+      readOnly || serverContentRef.current === null
       || contentRef.current === serverContentRef.current
       || busy
       || contentTooLong
@@ -253,7 +255,7 @@ export function WorkspaceScratchpadView({
               variant="ghost"
               size="sm"
               onClick={() => void saveToServer()}
-              disabled={!dirty || busy || contentTooLong}
+              disabled={readOnly || !dirty || busy || contentTooLong}
               loading={saving}
               icon={<SaveIcon size="h-4 w-4" />}
               aria-label="Save Scratchpad"
@@ -271,7 +273,7 @@ export function WorkspaceScratchpadView({
               language="markdown"
               value={content}
               onChange={handleContentChange}
-              readOnly={busy}
+              readOnly={readOnly || busy}
               ariaLabel="Workspace Scratchpad Markdown editor"
               onSaveShortcut={() => {
                 void saveToServer();

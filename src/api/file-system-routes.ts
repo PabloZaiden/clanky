@@ -69,7 +69,7 @@ export function createFileSystemRoutes(config: FileExplorerRouteConfig): RouteTa
     [path]: {
       auth: "user",
       sameOrigin: "mutations",
-      delegation: config.workspaceCollaboration ? workspaceOperation("workspace") : false,
+      delegation: config.workspaceCollaboration ? { ...workspaceOperation("workspace"), action: "filesystem" } : false,
       scopes: ["clanky:files"],
       description: `Exact-path operations on the ${config.resourceLabel} execution host; the initial directory is not a sandbox.`,
       tags: ["files"],

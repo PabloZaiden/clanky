@@ -1,10 +1,10 @@
-import { useState, type FormEvent } from "react";
+import { Fragment, useState, type FormEvent } from "react";
 import {
-  CodeValue, ConfirmModal, DataList, DataListRow, EmptyState, ErrorState,
+  CheckboxField, CodeValue, ConfirmModal, DataList, DataListRow, EmptyState, ErrorState,
   FormActions, FormGroup, LoadingState, Modal, TextField, useLiveQuery, useToast,
 } from "@pablozaiden/webapp/web";
 import type { Workspace } from "@/shared/workspace";
-import type { CollaborationGuestGrant, CollaborationInvitation, WorkspaceConnectionStatus } from "@/shared/collaboration";
+import type { CollaborationGuestAccess, CollaborationInvitation, CollaborationWorkspacePermission, CollaborationWorkspacePermissions, WorkspaceConnectionStatus } from "@/shared/collaboration";
 import { decodeCollaborationResourceReference } from "@/shared/collaboration-reference";
 import { apiRequest } from "../../lib/api-client";
 import { Button, StatusBadge } from "../common";
@@ -15,7 +15,7 @@ import { controllerStatusLabel, isControllerUnavailable } from "./collaboration-
 
 interface SharingState {
   connections: WorkspaceConnectionStatus[];
-  guests: CollaborationGuestGrant[];
+  guests: CollaborationGuestAccess[];
   invitations: CollaborationInvitation[];
   relays: Array<{ name: string; connected: boolean }>;
 }
@@ -43,6 +43,7 @@ function ApiWorkspaceCollaborationContent({ workspaces }: { workspaces: Workspac
   });
   const [dialog, setDialog] = useState<"invite" | "connect" | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
+  const [permissions, setPermissions] = useState<CollaborationWorkspacePermissions>({});
   const [relayName, setRelayName] = useState("");
   const [name, setName] = useState("");
   const [invitation, setInvitation] = useState("");
@@ -58,6 +59,7 @@ function ApiWorkspaceCollaborationContent({ workspaces }: { workspaces: Workspac
     setToken("");
     setInvitation("");
     setSelected([]);
+    setPermissions({});
     setName("");
     setError(null);
   }
@@ -78,7 +80,9 @@ function ApiWorkspaceCollaborationContent({ workspaces }: { workspaces: Workspac
     try {
       if (dialog === "invite") {
         const result = await mutate("/api/collaboration/invitations", "POST", {
-          workspaceIds: selected, relayName, ...(name.trim() ? { name: name.trim() } : {}),
+          workspaceIds: selected,
+          workspacePermissions: Object.fromEntries(selected.map((id) => [id, permissions[id] ?? "work"])),
+          relayName, ...(name.trim() ? { name: name.trim() } : {}),
         });
         if (!result || typeof result !== "object" || !("token" in result) || typeof result.token !== "string") {
           throw new Error("The invitation response is invalid.");
@@ -122,6 +126,17 @@ function ApiWorkspaceCollaborationContent({ workspaces }: { workspaces: Workspac
       setSaving(false);
     }
   }
+  async function changePermission(guestId: string, workspaceId: string, permission: CollaborationWorkspacePermission): Promise<void> {
+    setSaving(true);
+    try {
+      await mutate(`/api/collaboration/guests/${encodeURIComponent(guestId)}/workspaces/${encodeURIComponent(workspaceId)}`,
+        "PUT", { permission });
+    } catch (failure) {
+      toast.error(failure instanceof Error ? failure.message : String(failure));
+    } finally {
+      setSaving(false);
+    }
+  }
   const workspaceName = (id: string): string => workspaces.find((workspace) => workspace.id === id)?.name ?? "Workspace unavailable";
   return (
     <div className="space-y-4">
@@ -157,25 +172,31 @@ function ApiWorkspaceCollaborationContent({ workspaces }: { workspaces: Workspac
       {state && !state.guests.some((guest) => !guest.revokedAt) ? <EmptyState title="No collaborators" /> : null}
       <DataList>
         {state?.guests.filter((guest) => !guest.revokedAt).map((guest) => (
-          <DataListRow key={guest.id} title={guest.name ?? "Collaborator"}
-            description={<div className="space-y-1">{guest.workspaceIds.map((id) => (
-              <div key={id} className="flex items-center justify-between gap-3">
-                <span>{workspaceName(id)}</span>
-                <Button size="sm" variant="danger" disabled={saving} onClick={() => setConfirmation({
+          <Fragment key={guest.id}>
+            <DataListRow title={guest.name ?? "Collaborator"}
+              actions={<Button variant="danger" size="sm" disabled={saving} onClick={() => setConfirmation({
+                path: `/api/collaboration/guests/${encodeURIComponent(guest.id)}`,
+                title: "Revoke collaborator", message: "This revokes all workspace access and closes the collaborator's terminals and previews. Admitted work continues.",
+              })}>Revoke</Button>} />
+            {guest.workspaceIds.map((id) => (
+              <DataListRow key={id} title={workspaceName(id)} actions={<FormActions>
+                <div className="w-fit shrink-0 whitespace-nowrap">
+                  <CheckboxField label="Read only" aria-label={`Read only access to ${workspaceName(id)}`}
+                    checked={guest.workspacePermissions[id] === "read"} disabled={saving}
+                    onChange={(event) => void changePermission(guest.id, id, event.currentTarget.checked ? "read" : "work")} />
+                </div>
+                <Button size="sm" variant="danger" disabled={saving} aria-label={`Revoke access to ${workspaceName(id)}`} onClick={() => setConfirmation({
                   path: `/api/collaboration/guests/${encodeURIComponent(guest.id)}/workspaces/${encodeURIComponent(id)}`,
                   title: `Revoke ${workspaceName(id)}`, message: "This closes the collaborator's terminals and previews in this workspace. Admitted work continues.",
-                })}>Revoke workspace</Button>
-              </div>
-            ))}</div>}
-            actions={<Button variant="danger" size="sm" disabled={saving} onClick={() => setConfirmation({
-              path: `/api/collaboration/guests/${encodeURIComponent(guest.id)}`,
-              title: "Revoke collaborator", message: "This revokes all workspace access and closes the collaborator's terminals and previews. Admitted work continues.",
-            })}>Revoke</Button>} />
+                })}>Revoke</Button>
+              </FormActions>} />
+            ))}
+          </Fragment>
         ))}
         {state?.invitations.filter((entry) => !entry.consumedAt && !entry.revokedAt && Date.parse(entry.expiresAt) > Date.now()).map((entry) => (
           <DataListRow key={entry.id} title={entry.name ?? "Workspace invitation"}
             meta={`Expires ${new Date(entry.expiresAt).toLocaleString()}`}
-            description={entry.workspaceIds.map(workspaceName).join(", ")}
+            description={entry.workspaceIds.map((id) => `${workspaceName(id)} (${entry.workspacePermissions[id] === "read" ? "Read only" : "Work"})`).join(", ")}
             actions={<Button variant="danger" size="sm" disabled={saving} onClick={() => setConfirmation({
               path: `/api/collaboration/invitations/${encodeURIComponent(entry.id)}`,
               title: "Revoke invitation", message: "The unused invitation will no longer allow pairing.",
@@ -190,13 +211,23 @@ function ApiWorkspaceCollaborationContent({ workspaces }: { workspaces: Workspac
           <TextField label={dialog === "invite" ? "Invitation name" : "Controller name"} value={name} maxLength={120} onChange={(event) => setName(event.currentTarget.value)} disabled={saving} />
           {dialog === "invite" ? <>
             <FormGroup title="Workspaces">
-              {owned.map((workspace) => <label key={workspace.id} className="flex items-center gap-2">
-                <input type="checkbox" checked={selected.includes(workspace.id)} disabled={saving} onChange={(event) => {
-                  const checked = event.currentTarget.checked;
-                  setSelected((ids) => checked ? [...ids, workspace.id] : ids.filter((id) => id !== workspace.id));
-                }} />
-                <span>{workspace.name}</span>
-              </label>)}
+              {owned.map((workspace) => <div key={workspace.id} className="flex items-center justify-between gap-3">
+                <label className="flex min-w-0 flex-1 items-center gap-2">
+                  <input type="checkbox" checked={selected.includes(workspace.id)} disabled={saving} onChange={(event) => {
+                    const checked = event.currentTarget.checked;
+                    setSelected((ids) => checked ? [...ids, workspace.id] : ids.filter((id) => id !== workspace.id));
+                  }} />
+                  <span>{workspace.name}</span>
+                </label>
+                <div className="w-fit shrink-0 whitespace-nowrap">
+                  <CheckboxField label="Read only" aria-label={`Read only access to ${workspace.name}`}
+                    checked={permissions[workspace.id] === "read"}
+                    disabled={saving || !selected.includes(workspace.id)} onChange={(event) => {
+                      const permission = event.currentTarget.checked ? "read" : "work";
+                      setPermissions((current) => ({ ...current, [workspace.id]: permission }));
+                    }} />
+                </div>
+              </div>)}
             </FormGroup>
             <label className="block space-y-1"><span>Relay</span>
               <SettingsSelect value={relayName} required disabled={saving} onChange={(event) => setRelayName(event.currentTarget.value)}>

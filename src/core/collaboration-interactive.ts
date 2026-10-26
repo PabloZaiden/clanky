@@ -50,7 +50,7 @@ export function listInteractiveResources(
   input: ListCollaborationInteractiveResources,
 ): CollaborationInteractiveResource[] {
   const parsed = parseCollaborationInput(ListCollaborationInteractiveResourcesSchema, input);
-  const authority = requireWorkspaceAccess(parsed.workspaceId);
+  const authority = requireWorkspaceAccess(parsed.workspaceId, "read");
   return listCollaborationInteractiveResourcesForPrincipal({
     ownerUserId: authority.ownerUserId, membershipId: authority.guestId,
     workspaceId: parsed.workspaceId, ...(parsed.kind ? { kind: parsed.kind } : {}),

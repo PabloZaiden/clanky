@@ -23,6 +23,7 @@ import type {
   ShellSidebarCompositionOptions,
 } from "./shell-sidebar-types";
 import { getClankyClientCapabilities } from "../../client-sdk/capabilities";
+import { isReadOnlyWorkspaceAction, isReadOnlyWorkspaceRoute } from "../../lib/workspace-access";
 
 export type {
   ShellSidebarActionHandlers,
@@ -131,7 +132,23 @@ function buildSidebarNodes(options: ShellSidebarCompositionOptions): SidebarNode
       })),
     ],
   });
-  return nodes;
+  const accessResources = {
+    ...options,
+    tasks: options.sidebarWorkspaceGroups.flatMap((group) => group.workspaces.flatMap((workspace) =>
+      [...workspace.tasks, ...workspace.historyTasks].map((node) => node.task))),
+  };
+  function applyWorkspacePermissions(node: SidebarNode, inherited = false): SidebarNode {
+    const readOnly = inherited || Boolean(node.route && isReadOnlyWorkspaceRoute(node.route, accessResources));
+    return {
+      ...node,
+      ...(readOnly ? {
+        actions: node.actions?.filter(isReadOnlyWorkspaceAction),
+        action: undefined,
+      } : {}),
+      ...(node.children ? { children: node.children.map((child) => applyWorkspacePermissions(child, readOnly)) } : {}),
+    };
+  }
+  return nodes.map((node) => applyWorkspacePermissions(node));
 }
 
 function selectSidebarTabNodes(nodes: SidebarNode[], activeTab: string | undefined): SidebarNode[] {
@@ -166,6 +183,7 @@ export function buildShellSidebarComposition(
         id: "quick-chat",
         title: options.quickChatUnavailableReason ?? "Start Quick Chat",
         label: options.quickChatCreating ? "Creating..." : "Start Quick Chat",
+        disabled: Boolean(options.quickChatUnavailableReason),
         icon: "chat" as const,
         onAction: options.onQuickChat,
       },

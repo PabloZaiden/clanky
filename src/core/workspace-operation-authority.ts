@@ -8,10 +8,12 @@ import { findResourceWorkspace, workspaceUsesExecutionHost } from "../persistenc
 import { collaborationService } from "./collaboration-service";
 import { isReadRecord } from "../client-sdk/collaboration/resource-read";
 import { readReferenceField } from "@/shared/record";
+import { FileSystemCommandSchema } from "@/contracts/schemas/file-system";
 
 async function readOperationBody(operation: DelegatedOperation, request: Request): Promise<unknown> {
   if (!request.body || !request.headers.get("content-type")?.toLowerCase().startsWith("application/json")
-    || !operation.delegation.bindings?.some((binding) => binding.source === "body")) return undefined;
+    || (!operation.delegation.bindings?.some((binding) => binding.source === "body")
+      && operation.delegation.action !== "filesystem")) return undefined;
   try {
     return await request.clone().json();
   } catch (error) {
@@ -50,11 +52,19 @@ export async function authorizeWorkspaceOperation(input: {
   operation: DelegatedOperation;
   request: Request;
 }): Promise<WorkspaceAccessAuthority> {
-  const authority = collaborationService.requireWorkspaceAccess(input.workspaceId);
   const { operation, request } = input;
   const bindings = operation.delegation.bindings ?? [];
   const url = new URL(request.url);
   const body = await readOperationBody(operation, request);
+  const policy = operation.metadata.automation?.policy;
+  let readOnly = policy === "read"
+    || operation.method === "GET"
+      && (policy === undefined || policy === "excluded");
+  if (operation.delegation.action === "filesystem") {
+    const command = FileSystemCommandSchema.safeParse(body);
+    readOnly = command.success && ["info", "stat", "list"].includes(command.data.operation);
+  }
+  const authority = collaborationService.requireWorkspaceAccess(input.workspaceId, readOnly ? "read" : "work");
   if (operation.delegation.action === "scratchpad") {
     if (isReadRecord(body) && Object.keys(body).some((field) => field !== "scratchpad")) {
       throw new DomainError("collaboration_admin_forbidden", "Workspace configuration belongs to its controller.");

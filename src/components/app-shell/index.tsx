@@ -31,6 +31,8 @@ import { useChatTrash } from "../../hooks/useChatTrash";
 import { useChatTrashActions } from "./use-chat-trash-actions";
 import { getClankyClientCapabilities } from "../../client-sdk/capabilities";
 import { useBrowserDownloadSettings } from "../app-settings/browser-download-settings";
+import { WorkspaceReadOnlyContext } from "../../context/workspace-access-context";
+import { isReadOnlyWorkspaceAction, isReadOnlyWorkspaceRoute } from "../../lib/workspace-access";
 
 export function AppShell() {
   const capabilities = getClankyClientCapabilities();
@@ -132,7 +134,7 @@ export function AppShell() {
     enabled: voiceSettings.settings.live.configured, route,
   });
   const trash = useChatTrash(privateItemsPreference.showPrivateItems);
-  const trashActions = useChatTrashActions(navigateWithinShell, refreshChats);
+  const trashActions = useChatTrashActions(navigateWithinShell, refreshChats, workspaces);
   const startLiveVoice = useCallback(async (): Promise<void> => {
     setLiveVoiceExpanded(true);
     webAppRootRef.current?.sidebar.close();
@@ -518,9 +520,10 @@ export function AppShell() {
     editingAgentId: dialogs.editingAgentId,
     composeActionState: composeState.composeActionState,
   });
+  const readOnly = isReadOnlyWorkspaceRoute(route, { workspaces, tasks, chats, agents: agents.agents, terminalSessions });
 
   return (
-    <>
+    <WorkspaceReadOnlyContext.Provider value={readOnly}>
       <LiveVoiceContext.Provider value={liveVoice}>
         <WebAppRoot
           ref={webAppRootRef}
@@ -539,8 +542,8 @@ export function AppShell() {
           header={{
             renderTitle: ({ defaultTitle }) => <RouteHeaderTitle key={routeToHash(header.headerOwnerRoute ?? route)} model={header.headerModel} defaultTitle={defaultTitle} />,
             getHeaderActions: () => ({
-              primary: header.directHeaderActions,
-              overflow: header.headerActions,
+              primary: readOnly ? [] : header.directHeaderActions,
+              overflow: readOnly ? header.headerActions?.filter(isReadOnlyWorkspaceAction) : header.headerActions,
             }),
           }}
           settings={{ sections: settingsSections }}
@@ -557,7 +560,7 @@ export function AppShell() {
         className="hidden"
         onChange={(event) => void handleAgentImportFile(event)}
       />
-    </>
+    </WorkspaceReadOnlyContext.Provider>
   );
 }
 

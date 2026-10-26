@@ -22,6 +22,7 @@ import {
   useHarnessInputReconciliation,
 } from "./harness-input-reconciliation";
 import { useHarnessActivity } from "./use-harness-activity";
+import { useWorkspaceReadOnly } from "../context/workspace-access-context";
 
 interface HarnessActivityProps {
   kind: "chat" | "task";
@@ -129,6 +130,7 @@ function ActivityRow({
 }
 
 function HarnessActivityPage({ kind, entityId, snapshot, capabilities, onBack }: HarnessActivityProps) {
+  const readOnly = useWorkspaceReadOnly();
   const { activity, loaded, error, stoppingId, unconfirmedId, stop } = useHarnessActivity({ kind, entityId, snapshot });
   return (
     <Page className="h-full overflow-y-auto">
@@ -163,7 +165,7 @@ function HarnessActivityPage({ kind, entityId, snapshot, capabilities, onBack }:
                   <ActivityRow
                     key={item.id}
                     activity={item}
-                    canStop={item.ownership === "owned"
+                    canStop={!readOnly && item.ownership === "owned"
                       && ["queued", "running", "waiting", "unknown"].includes(item.status)
                       && (item.kind === "process" ? capabilities?.stopScopes.includes("command") === true
                         : item.kind === "subagent" && capabilities?.stopScopes.includes("child-execution") === true)}
@@ -187,6 +189,7 @@ export function HarnessEntityView({
   activityFooter,
   ...props
 }: HarnessActivityProps & { showActivity: boolean; children: ReactNode; activityFooter?: ReactNode }) {
+  const readOnly = useWorkspaceReadOnly();
   const byTool = useMemo(() => {
     const result = new Map<string, HarnessActivity[]>();
     if (props.snapshot?.observation === "available") {
@@ -209,7 +212,7 @@ export function HarnessEntityView({
     <HarnessInputReconciliationProvider
       kind={props.kind}
       entityId={props.entityId}
-      inputs={props.inputs}
+      inputs={readOnly ? undefined : props.inputs}
       onUpdated={props.onInputUpdated}
     >
       <ToolActivityContext.Provider value={toolActivity}>
