@@ -13,13 +13,13 @@ export function ChatTab({ taskId, active }: { taskId: string; active: boolean })
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!active || chatId) return;
     const controller = new AbortController();
 
     async function loadTaskChat(): Promise<void> {
       try {
         setLoading(true);
         setError(null);
-        setChatId(null);
         const data = readOnly
           ? { chatId: (await apiRequest<Chat>(`/api/tasks/${encodeURIComponent(taskId)}/chat`, {
             signal: controller.signal, action: "Load task chat",
@@ -58,7 +58,7 @@ export function ChatTab({ taskId, active }: { taskId: string; active: boolean })
     return () => {
       controller.abort();
     };
-  }, [taskId, readOnly]);
+  }, [taskId, readOnly, active, chatId]);
 
   if (loading && !chatId) {
     return <div className="p-6 text-sm text-gray-500 dark:text-gray-400">Loading chat…</div>;

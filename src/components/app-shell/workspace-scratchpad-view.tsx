@@ -86,7 +86,7 @@ export function WorkspaceScratchpadView({
         }
 
         const savedContent = workspace.scratchpad;
-        const localDraft = readOnly ? null : getStoredWorkspaceScratchpadDraft(workspaceId);
+        const localDraft = getStoredWorkspaceScratchpadDraft(workspaceId);
         const restoredContent = localDraft ?? savedContent;
         serverContentRef.current = savedContent;
         contentRef.current = restoredContent;
@@ -108,7 +108,7 @@ export function WorkspaceScratchpadView({
 
     void loadWorkspace();
     return () => controller.abort();
-  }, [draftPersistence, workspaceId, readOnly]);
+  }, [draftPersistence, workspaceId]);
 
   function handleContentChange(nextContent: string): void {
     contentRef.current = nextContent;

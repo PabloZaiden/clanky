@@ -57,9 +57,8 @@ export async function authorizeWorkspaceOperation(input: {
   const url = new URL(request.url);
   const body = await readOperationBody(operation, request);
   const policy = operation.metadata.automation?.policy;
-  let readOnly = policy === "read"
-    || operation.method === "GET"
-      && (policy === undefined || policy === "excluded");
+  let readOnly = operation.method === "GET"
+    && (policy === "read" || policy === undefined || policy === "excluded");
   if (operation.delegation.action === "filesystem") {
     const command = FileSystemCommandSchema.safeParse(body);
     readOnly = command.success && ["info", "stat", "list"].includes(command.data.operation);

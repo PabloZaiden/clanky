@@ -85,6 +85,36 @@ jobs:
       - name: Build native binary
         run: bun run build
 
+      - name: Diagnose native CLI startup
+        shell: bash
+        run: |
+          bun -e '
+            import { mkdtemp, rm } from "node:fs/promises";
+            import { availableParallelism, tmpdir } from "node:os";
+            import { join, resolve } from "node:path";
+            const directory = await mkdtemp(join(tmpdir(), "clanky-cli-startup-"));
+            const binary = resolve("dist", process.platform === "win32" ? "clanky.exe" : "clanky");
+            const environment = { ...process.env, HOME: directory, CLANKY_DATA_DIR: directory, CLANKY_LOG_LEVEL: "fatal" };
+            async function measure(label, args) {
+              const started = performance.now();
+              const child = Bun.spawn([binary, ...args], {
+                env: environment, stdout: "ignore", stderr: "pipe", timeout: 20000,
+              });
+              const stderr = await new Response(child.stderr).text();
+              const exitCode = await child.exited;
+              console.log(JSON.stringify({ label, elapsedMs: Math.round(performance.now() - started), exitCode, stderr }));
+              if (exitCode !== 0) throw new Error(`${label} exited with ${exitCode}`);
+            }
+            try {
+              console.log(JSON.stringify({ platform: process.platform, cpus: availableParallelism() }));
+              await measure("help", ["--help"]);
+              await measure("channel-single", ["worker", "channel"]);
+              await Promise.all(Array.from({ length: 4 }, (_, index) => measure(`channel-parallel-${index}`, ["worker", "channel"])));
+            } finally {
+              await rm(directory, { recursive: true, force: true });
+            }
+          '
+
       - name: Run distributed Mesh E2E
         run: bun run test:mesh
         env:

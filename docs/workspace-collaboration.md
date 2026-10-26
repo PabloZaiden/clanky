@@ -67,7 +67,8 @@ The controller also enforces these permissions for direct API/CLI calls and
 the browser-only client. Changes return HTTP `403` with the
 `collaboration_read_only` code. This includes sending messages, answering
 questions or permission requests, starting/stopping work, changing schedules,
-editing scratchpad/files, uploads, Git changes and arbitrary commands.
+editing scratchpad/files, uploads, Git changes and arbitrary commands. Provider
+execution, including task-title generation, also requires **Work** access.
 Filesystem metadata reads remain available even though their API uses POST.
 Interactive terminals, Code and application previews require **Work** access;
 they cannot provide a read-only guarantee.
@@ -79,6 +80,8 @@ closes that collaborator's existing terminals and previews in the workspace.
 Realtime reconnects and refreshes the effective permissions. Already admitted
 tasks, chats and schedules continue, and other workspace grants are unchanged.
 Permission changes persist across restarts.
+Unsaved Scratchpad edits remain in the open view when access changes, but
+cannot be saved while read-only. Reloading still discards shared drafts.
 
 API invitation requests may include
 `workspacePermissions: { "<workspace-id>": "read" }` alongside `workspaceIds`;

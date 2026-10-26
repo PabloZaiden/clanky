@@ -12,6 +12,8 @@ export interface WorkspaceAccessResources {
 }
 
 export function isReadOnlyWorkspaceRoute(route: WebAppRoute, resources: WorkspaceAccessResources): boolean {
+  // Trash actions check the deleted chat's workspace grant independently.
+  if (route.view === "trash") return false;
   const workspaceId = typeof route["workspaceId"] === "string" ? route["workspaceId"]
     : route.view === "compose" && typeof route["scopeId"] === "string" ? route["scopeId"]
       : resources.tasks.find((task) => task.config.id === route["taskId"])?.config.workspaceId
