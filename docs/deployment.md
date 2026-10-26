@@ -59,7 +59,8 @@ Use a reverse proxy for any public deployment:
 
 The production image expects a trusted proxy that sanitizes forwarded headers.
 Do not expose the container directly to an untrusted network with those
-defaults.
+defaults. It enables `CLANKY_TRUST_PROXY=true`, trusts `proto,host,prefix`
+headers, and uses the `first` chain policy.
 
 ## Configuration
 
@@ -99,6 +100,24 @@ registration or same-origin override is needed. Cookie-backed browser sessions
 retain their same-origin checks. With authentication disabled, even a loopback
 API can expose private unauthenticated reads to other websites. Use an isolated
 data directory whenever passkey enforcement is disabled.
+
+## Production access
+
+When inspecting production, use the configured `CLANKY_` environment variables,
+such as `CLANKY_BASE_URL` and `CLANKY_API_KEY`, for the actual production API.
+Do not substitute local development defaults or print credential values.
+Keep passkey and same-origin enforcement enabled.
+
+## Reset persisted data
+
+**Reset all settings** in Server Settings and `POST /api/settings/reset-all`
+delete persisted application data and recreate the database. Treat reset as
+destructive, not a routine troubleshooting step; preserve a backup if data
+must be recoverable. See the [API reference](API.md#post-apisettingsreset-all).
+
+For manual recovery, stop Clanky before removing only `clanky.db` and its
+WAL/SHM files from the configured `CLANKY_DATA_DIR`. The default data directory
+is `$HOME/.clanky`; never assume the default when a deployment overrides it.
 
 ## Remote execution
 

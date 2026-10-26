@@ -85,6 +85,21 @@ Before selecting a native adapter, check worker and relay generations in
 by a Mesh route is not retried through ACP. Explicitly select ACP on the
 workspace when that is the desired integration.
 
+### Protocol evolution
+
+For a future breaking wire change, keep generations global and aligned with
+the Clanky release major. Introduce the new generation behind a narrow
+compatibility adapter, migrate existing persisted Mesh state idempotently at
+startup, and negotiate the highest mutually supported generation before
+parsing or emitting contracts.
+
+Keep the old generation isolated during a short dual-version rollout and
+expose binary/protocol metadata in status so completion is observable. Remove
+the old adapter, migration-only paths, and compatibility tests only after every
+controller, relay, and worker has been confirmed on the new generation. Do not
+mix compatibility cleanup with the wire-contract change. This policy governs
+future transitions; it does not restore support for pre-v7 peers today.
+
 ### Optional aggregated directory trees
 
 Workers can advertise `directoryTree: 1` alongside the unchanged

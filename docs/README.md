@@ -15,6 +15,9 @@ Choose the guide that matches what you are trying to do:
 | Invite another Clanky instance to selected workspaces | [Workspace collaboration](workspace-collaboration.md) |
 | Automate Clanky through HTTP, WebSocket, or the CLI | [API reference](API.md) |
 | Run the project from source or prepare a release | [Development](development.md) |
+| Change domain services, execution hosts, persistence, or realtime | [Architecture and domain boundaries](development/architecture.md) |
+| Decide coverage or run deterministic black-box E2E and visual validation | [Testing and validation](development/testing.md) |
+| Change UI or integrate upstream webapp improvements | [UI and webapp development](development/webapp.md) |
 
 The README is intentionally a short introduction. These guides are the
 canonical place for operational instructions and reference material.
