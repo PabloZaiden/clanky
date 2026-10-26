@@ -87,6 +87,10 @@ Save failure retains the draft; explicit Cancel resets it. Simple preferences
 can autosave with local saving/saved/error feedback. Voice saves all settings
 together and validates each saved capability separately.
 
+Global Settings remembers the last opened category for each app and client
+server. Explicit category links take precedence; unavailable categories fall
+back to General.
+
 Workspace Settings uses General, Execution and Maintenance
 categories in the same public `SettingsLayout` as global Settings. Keep one
 draft mounted across these in-page categories: Save persists it without
