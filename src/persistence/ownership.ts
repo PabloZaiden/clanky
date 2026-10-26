@@ -1,7 +1,6 @@
 import {
   getCollaborationActor,
   getWorkspaceAccessAuthority,
-  getWorkspaceAdministrationAuthority,
   requireCurrentUserId,
   requireResourceOwnerUserId,
 } from "../context/user-context";
@@ -49,14 +48,6 @@ export function requireResourcePersistenceUserId(
 ): string {
   const scope = getWorkspaceAccessAuthority();
   if (!scope) {
-    const administration = getWorkspaceAdministrationAuthority();
-    if (administration && resource === "workspace") {
-      const binding = id ? getDatabase().query(RESOURCE_BINDINGS.workspace).get(id) as { owner: string } | null : null;
-      if (binding && binding.owner !== administration.ownerUserId) {
-        throw new DomainError("collaboration_workspace_mismatch", "The workspace belongs to another owner.");
-      }
-      return administration.ownerUserId;
-    }
     if (getCollaborationActor()?.kind === "guest") {
       throw new DomainError("collaboration_authority_required", "Workspace authority is required.");
     }
@@ -96,8 +87,7 @@ export function assertResourcePersistenceUser(
 
 export function requireWorkspaceUpdateUserId(workspaceId: string, updates: object): string {
   const userId = requireResourcePersistenceUserId("workspace", workspaceId, workspaceId);
-  if (getCollaborationActor()?.kind === "guest" && !getWorkspaceAccessAuthority()?.capabilities.includes("admin")
-    && !getWorkspaceAdministrationAuthority()) {
+  if (getCollaborationActor()?.kind === "guest") {
     const keys = Reflect.ownKeys(updates);
     if (keys.length !== 1 || keys[0] !== "scratchpad"
       || typeof (updates as Record<string, unknown>)["scratchpad"] !== "string") {

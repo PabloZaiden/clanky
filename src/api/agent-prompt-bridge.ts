@@ -6,14 +6,15 @@
  * route forwards the message to the appropriate chat, waits for the ACP
  * session to become idle, and returns the last assistant response.
  *
- * Security: The endpoint is `auth: "user"` — the managed API key created for
- * the run is a normal user-scoped bearer token.  The caller must supply a
- * `chatId` that belongs to the authenticated user.
+ * Security: prompt-only credentials are bound to the execution's chat in
+ * addition to ordinary user ownership. Unrestricted credentials retain the
+ * owner's normal access.
  */
 
 import { defineRoutes, createLogger } from "@pablozaiden/webapp/server";
 import { z } from "zod";
 import type { Chat } from "@/shared/chat";
+import { AGENT_PROMPT_SCOPE, agentPromptChatScope } from "@/shared/context-api-key";
 import { chatManager } from "../core/chat-manager";
 import {
   createInterruptibleOperationCoordinator,
@@ -49,7 +50,7 @@ export const agentPromptBridgeRoutes = defineRoutes({
   "/api/internal/agent-prompt": {
     auth: "user",
     sameOrigin: "never",
-    scopes: ["clanky:agent-prompt"],
+    scopes: [AGENT_PROMPT_SCOPE],
     description: "Internal endpoint used by the workspace-side deterministic agent runner to forward workspace.prompt() calls to the authenticated user's chat.",
     operations: {
       POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Internal authenticated provider execution bridge, not a user automation operation." } },
@@ -71,6 +72,13 @@ export const agentPromptBridgeRoutes = defineRoutes({
       }
 
       const { chatId, message } = body;
+
+      const scopes = ctx.auth.kind === "api-key" ? ctx.auth.scopes
+        : ctx.auth.kind === "bearer" ? ctx.auth.claims.scope.split(/\s+/) : undefined;
+      if (scopes && !scopes.includes("*") && !scopes.includes(agentPromptChatScope(chatId))) {
+        log.warn("Workspace prompt credential does not authorize this chat", { chatId });
+        return errorResponse("insufficient_scope", "The credential does not authorize this chat", 403);
+      }
 
       // The chat is automatically scoped to the authenticated user via runWithCurrentUser;
       // no explicit ownership check is needed.

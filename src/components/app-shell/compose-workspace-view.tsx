@@ -413,12 +413,12 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
           onSubmit={(event) => handleCreateWorkspace(event)}
         >
           {workspaceControllersError ? <ErrorState title="Controller access unavailable" description={workspaceControllersError} /> : null}
-          <SelectField label="Controller" value={workspaceControllerId}
+          {workspaceControllers.length > 0 && <SelectField label="Controller" value={workspaceControllerId}
             disabled={workspaceControllersLoading || createActionLoading || workspaceWorkerEnrollment !== null}
             onChange={(event) => setWorkspaceControllerId(event.currentTarget.value)}>
             {localAdministration ? <option value="">This instance</option> : <option value="" disabled>Select a controller</option>}
             {workspaceControllers.map((controller) => <option key={controller.id} value={controller.id}>{controller.name}</option>)}
-          </SelectField>
+          </SelectField>}
           <div className="flex flex-wrap gap-2">
             {createModeControls}
           </div>

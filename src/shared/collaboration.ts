@@ -60,6 +60,7 @@ export interface CollaborationControllerAccess {
   id: string;
   name: string;
   allWorkspacesAdmin: boolean;
+  capabilities: readonly WorkspaceAccessCapability[];
 }
 
 export type CollaborationActor =
@@ -74,12 +75,6 @@ export interface WorkspaceAccessAuthority {
   workspaceId: string;
   guestId: string | null;
   capabilities: readonly WorkspaceAccessCapability[];
-}
-
-export interface WorkspaceAdministrationAuthority {
-  actor: Extract<CollaborationActor, { kind: "guest" }>;
-  ownerUserId: string;
-  guestId: string;
 }
 
 export interface CollaborationRevocation {

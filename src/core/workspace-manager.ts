@@ -48,7 +48,6 @@ import { meshManager } from "./mesh-manager";
 import {
   getCollaborationActor,
   getWorkspaceAccessAuthority,
-  getWorkspaceAdministrationAuthority,
   requireExecutionOwnerUserId,
   requireResourceOwnerUser,
   runWithExecutionOwner,
@@ -71,7 +70,7 @@ function withEffectiveWorkspaceAccess(workspace: Workspace): Workspace {
   const authority = getWorkspaceAccessAuthority();
   return authority?.guestId && authority.workspaceId === workspace.id
     ? { ...workspace, access: authority.capabilities.includes("admin") ? "admin" : authority.capabilities.includes("work") ? "work" : "read" }
-    : getWorkspaceAdministrationAuthority() ? { ...workspace, access: "admin" } : workspace;
+    : workspace;
 }
 
 export interface CreateWorkspaceInput {
@@ -328,8 +327,7 @@ export class WorkspaceManager {
     workspaceWorkerEnrollmentId?: string;
   } = {}): Promise<ExecutionHostDescriptor[]> {
     const userId = requireExecutionOwnerUserId();
-    if (getCollaborationActor()?.kind === "guest" && !getWorkspaceAdministrationAuthority()
-      && !getWorkspaceAccessAuthority()?.capabilities.includes("admin")) {
+    if (getCollaborationActor()?.kind === "guest") {
       if (!context.workspaceId || context.workspaceWorkerEnrollmentId) {
         throw new DomainError("collaboration_operation_forbidden", "Only the configured workspace host is available.");
       }

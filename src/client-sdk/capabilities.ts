@@ -8,7 +8,7 @@ export function getClankyClientCapabilities() {
   const apiBacked = getWebAppClientMode() !== "external";
   return {
     controllerAdministration: apiBacked,
-    workspaceCreation: true,
+    workspaceCreation: apiBacked,
     executionHosts: apiBacked,
     provisioning: apiBacked,
     voice: apiBacked,

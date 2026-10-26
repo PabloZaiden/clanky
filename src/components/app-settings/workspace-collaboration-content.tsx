@@ -177,7 +177,7 @@ function ApiWorkspaceCollaborationContent({ workspaces }: { workspaces: Workspac
         {state?.guests.filter((guest) => !guest.revokedAt).map((guest) => (
           <Fragment key={guest.id}>
             <DataListRow title={guest.name ?? "Collaborator"}
-              description={guest.allWorkspacesAdmin ? "Administrator of all current and future workspaces" : undefined}
+              description={guest.allWorkspacesAdmin ? "Work access to all current and future workspaces" : undefined}
               actions={<Button variant="danger" size="sm" disabled={saving} onClick={() => setConfirmation({
                 path: `/api/collaboration/guests/${encodeURIComponent(guest.id)}`,
                 title: "Revoke collaborator", message: "This revokes all workspace access and closes the collaborator's terminals and previews. Admitted work continues.",
@@ -201,7 +201,7 @@ function ApiWorkspaceCollaborationContent({ workspaces }: { workspaces: Workspac
           <DataListRow key={entry.id} title={entry.name ?? "Workspace invitation"}
             meta={`Expires ${new Date(entry.expiresAt).toLocaleString()}`}
             metaPlacement="below"
-            description={entry.allWorkspacesAdmin ? "Administrator of all current and future workspaces"
+            description={entry.allWorkspacesAdmin ? "Work access to all current and future workspaces"
               : entry.workspaceIds.map((id) => `${workspaceName(id)} (${entry.workspacePermissions[id] === "read" ? "Read only" : "Work"})`).join(", ")}
             actions={<Button variant="danger" size="sm" disabled={saving} onClick={() => setConfirmation({
               path: `/api/collaboration/invitations/${encodeURIComponent(entry.id)}`,

@@ -98,6 +98,10 @@ Use `clanky api` to list the routes exposed by the running server and
 metadata. Public routes are exceptional and are identified explicitly in the
 route reference.
 
+API keys and device tokens with limited scopes may access only routes declaring
+those scopes. Private routes without scopes and framework account/key/settings
+management require `*`. Browser sessions retain their normal authorization.
+
 ## Deterministic agent execution
 
 Scheduled runs, manual runs, and deterministic code tests execute on the
@@ -107,6 +111,11 @@ session does not cancel the running program. Explicit program output is streamed
 while the run is active. Interrupting a run still cancels its processes and
 cleans up its temporary runner files; disconnecting a code-test request cancels
 that test.
+
+The temporary prompt-only key is bound to the execution's chat and cannot call
+unrelated APIs, mint keys or prompt another chat. This restriction applies to
+owner-started and collaborator-started runs alike. Owner-enabled Clanky Context
+continues to allow broad API credentials in execution contexts.
 
 ## Transcript snapshots
 

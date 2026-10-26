@@ -45,7 +45,6 @@ import {
   requireCollaborationLocalUserId,
   requireWorkspaceAccess,
   withWorkspaceAccess,
-  withWorkspaceAdministration,
   getCollaborationControllerAccess,
 } from "./collaboration-authority";
 import { CollaborationConnections } from "./collaboration-connections";
@@ -69,7 +68,6 @@ class CollaborationService {
 
   readonly requireWorkspaceAccess = requireWorkspaceAccess;
   readonly withWorkspaceAccess = withWorkspaceAccess;
-  readonly withWorkspaceAdministration = withWorkspaceAdministration;
   readonly getControllerAccess = getCollaborationControllerAccess;
   readonly recordCreator = recordCollaborationCreator;
   readonly getCreator = getCollaborationCreator;
