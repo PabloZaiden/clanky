@@ -1,4 +1,4 @@
-# Shared workspaces through a relay
+# Shared workspaces
 
 Connect your local Clanky to another controller to work in selected shared
 workspaces. Your instance remains a normal Clanky application, not an execution
@@ -9,16 +9,28 @@ local draft storage; reload discards unsent text.
 
 ## Invite and connect
 
-Both instances and the relay must support workspace collaboration. First
-[pair the controller with a relay](mesh-worker.md). Configure the workspace's
-execution host and provider on that controller before sharing it.
+Both instances must support workspace collaboration. Configure the workspace's
+execution host and provider on the controller before sharing it. Choose one
+connection route:
+
+- **Direct** needs no relay. The controller's advertised HTTPS endpoint must be
+  reachable from the invited instance or browser, with a trusted certificate
+  and WebSocket forwarding for WSS. An internal-only or localhost address will
+  not work for invitees on another network.
+- **Relay** uses a [paired relay](mesh-worker.md) that supports workspace
+  collaboration. The invitee must be able to reach its trusted HTTPS/WSS endpoint.
+
+These are explicit routes, not automatic fallback choices.
 
 On the controller, open **Settings > Collaboration > Invite collaborator**,
-select the workspaces, each workspace's **Read only** or **Work** access, and the
-paired relay, then create an invitation. Give its
-one-use token to the invited person through a trusted channel. The token expires;
-revoking an unused invitation prevents its acceptance. Do not publish tokens in
-issues, logs or shell history.
+select **Direct** or **Relay**, the workspaces and each workspace's **Read only**
+or **Work** access. For Relay, select the paired relay too. Creating an invitation
+opens a download of a named `.clanky-invite.json` file. **Download invitation**
+retries the download while the dialog is open; verify the file was saved before
+closing it. Give the file to the invited person through a trusted channel.
+Treat it as a secret: do not publish it in issues, logs or shell history.
+The invitation is one-use and expires; revoking an unused invitation prevents
+its acceptance. Remove unneeded file copies after pairing.
 
 Pending invitations show their workspaces and expiration beneath the invitation
 name, with **Revoke invitation** alongside those details.
@@ -33,17 +45,19 @@ collaboration-invitation administration are not granted. Existing all-workspaces
 invitations and grants follow this Work-only policy after upgrading the controller.
 
 On the invited instance, open **Settings > Collaboration > Connect controller**
-and paste the token. An optional controller name helps distinguish workspaces
-with the same name. Pairing belongs to the accepting local user; other users of
-that instance do not inherit it.
+and choose the invitation file. Files are limited to 72 KiB; the client validates
+the file format, invitation signature and expiration before acceptance. An
+optional controller name helps distinguish workspaces with the same name.
+Pairing belongs to the accepting local user; other users of that instance do not
+inherit it.
 
 If acceptance reports an uncertain outcome, use **Reconnect** on the pending
 connection. This recovers its existing identity rather than reusing the
 invitation to create a different pairing.
 
 An invitee can also use the [browser-only static client](static-client.md#browser-only-collaboration)
-without running a local Clanky server. It accepts the same invitation and uses
-the same client protocol/policy directly through the unchanged relay. Its
+without running a local Clanky server. It accepts the same invitation file and
+uses the same client protocol/policy over the selected Direct or Relay route. Its
 nonextractable identity is kept in site storage rather than a Bun controller's
 encrypted database. Browser pairings and Bun-controller pairings are distinct;
 they are not automatically copied or migrated between hosts.
@@ -73,9 +87,10 @@ one workspace at a time: revoke the whole collaborator, then create a normal
 invitation if selected-workspace access is needed.
 
 For API/CLI use, create the invitation with
-`{ "allWorkspacesAdmin": true, "relayName": "<paired-relay>" }`; omit
-`workspaceIds` and `workspacePermissions`. The existing field name is retained
-in API/storage contracts, but grants Work access, never administration.
+`{ "allWorkspacesAdmin": true, "transport": "direct" }`, or use
+`"transport": "relay"` with `"relayName": "<paired-relay>"`; omit
+`workspaceIds` and `workspacePermissions`. The existing all-workspaces field name
+is retained in API/storage contracts, but grants Work access, never administration.
 `GET /api/collaboration/access` reports the all-workspaces flag and effective
 `capabilities`; no collaborator receives `admin`. Operate on the returned
 workspace references as usual. A controller reference does not authorize
@@ -165,8 +180,8 @@ clanky code "Shared workspace" --chat "Shared planning"
 clanky code "Shared workspace" --task "Existing task"
 ```
 
-HTTP and WebSocket traffic travels through the relay. The application port and
-Code process belong to the controller's selected workspace host; the printed
+HTTP and WebSocket traffic uses the invitation's Direct or Relay route. The
+application port and Code process belong to the controller's selected workspace host; the printed
 browser URL is on your CLI machine. Keep the command running while using it.
 If workspace names collide across local or shared sources, select the exact
 workspace reference returned by your instance instead. Chat/task names are
@@ -185,7 +200,7 @@ bulk-delete another controller's shared content. Restoration does not resume wor
 
 ## Connection state and recovery
 
-The invited server maintains its relay/realtime connection without a browser
+The invited server maintains its transport/realtime connection without a browser
 tab. Normal `/api/ws` and `clanky ws` interests include authorized shared
 resources. Reconnection refreshes authoritative state; it does not replay
 prompts, commands or uploads.
@@ -206,7 +221,7 @@ incomplete or ambiguous collections; use an exact returned reference.
 
 An individual unavailable remote resource fails explicitly, without falling
 back to local content or an offline copy. Inspect **Settings > Collaboration**
-or `GET /api/collaboration/connections` for per-origin health. Relay transport,
+or `GET /api/collaboration/connections` for per-origin health. Route transport,
 controller realtime and collection-operation health are separate: a connected
 relay alone does not prove that the controller is available.
 
@@ -222,7 +237,8 @@ Revocation does not cancel them, delete shared content or undo commands.
 Disconnecting a pairing on the invited instance also leaves controller work
 intact. Neither action can retract information already seen or downloaded.
 
-The relay is a trusted Mesh 7 hop: TLS protects each hop, but the relay can see
-the traffic. Pairing pins the relay and controller; it does not add transitive
-trust, a direct-connection fallback, end-to-end encryption, offline work or an
-audit history.
+Direct pairing pins the controller identity. With Relay, the relay is a trusted
+Mesh 7 hop: TLS protects each hop, but the relay can see the traffic, and pairing
+pins both relay and controller. Neither route adds transitive trust, automatic
+route fallback, offline work or an audit history; relay traffic is not
+end-to-end encrypted between guests and controllers.

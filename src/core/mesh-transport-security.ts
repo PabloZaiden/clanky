@@ -6,6 +6,15 @@ import { isSupportedMeshProtocolVersion, MESH_SUPPORTED_PROTOCOL_VERSIONS, type 
 import { DomainError } from "../domain/domain-error";
 
 const relayRequestSecurity = new WeakMap<Request, { secure: boolean; protocolVersion: MeshProtocolVersion }>();
+const directWorkspaceRequests = new WeakSet<Request>();
+
+export function markDirectWorkspaceRequest(request: Request): void {
+  directWorkspaceRequests.add(request);
+}
+
+export function isDirectWorkspaceRequest(request: Request): boolean {
+  return directWorkspaceRequests.has(request);
+}
 
 export function markMeshRelayRequestTransport(
   request: Request,

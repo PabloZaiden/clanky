@@ -25,6 +25,20 @@ interface Snapshot {
   transcript: { messages: Array<{ role: string; content: string; attachments?: Array<{ filename: string; data: string }> }> };
 }
 
+function previewApplication(content: string): Bun.Server<undefined> {
+  const application: Bun.Server<undefined> = Bun.serve<undefined>({
+    hostname: "127.0.0.1", port: 0,
+    fetch(request: Request) {
+      if (request.headers.get("upgrade") === "websocket") {
+        return application.upgrade(request) ? undefined : new Response("Upgrade failed", { status: 400 });
+      }
+      return new Response(content);
+    },
+    websocket: { message(socket, data) { socket.send(data); } },
+  });
+  return application;
+}
+
 async function json<T>(node: ManagedMeshNode, path: string, method = "GET", body?: unknown): Promise<T> {
   const response = await meshJsonRequest<T>(node, path, { method, ...(body === undefined ? {} : { body }) });
   if (response.status >= 400) throw new Error(`${path}: HTTP ${response.status}: ${JSON.stringify(response.body)}`);
@@ -87,6 +101,121 @@ function observeSocket(node: ManagedMeshNode, path: string, apiKey: string): { s
   });
   return { socket, frames };
 }
+
+test("a direct invitation file shares workspace work and streams without a relay and survives restart", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "clanky-direct-collaboration-e2e-"));
+  const nodes: ManagedMeshNode[] = [];
+  const sockets: WebSocket[] = [];
+  let failure: unknown;
+  try {
+    const command = await compiledClankyCommand();
+    const bin = join(directory, "bin");
+    await installExternalCode(bin);
+    for (const name of ["owner", "invitee"]) {
+      const home = join(directory, name);
+      await mkdir(home);
+      nodes.push(await startMeshNode({
+        role: "controller", command,
+        environment: { HOME: home, PATH: `${bin}${delimiter}${process.env["PATH"] ?? ""}`, CLANKY_LOG_LEVEL: "info" },
+      }));
+    }
+    const owner = nodes[0]!, invitee = nodes[1]!;
+    const workspace = await createWorkspace(owner, join(directory, "project"), "Direct shared project");
+    const created = await json<{ token: string }>(owner, "/api/collaboration/invitations", "POST", {
+      transport: "direct", workspaceIds: [workspace.id],
+    });
+    const invitationPath = join(directory, "project.clanky-invite.json");
+    await Bun.write(invitationPath, JSON.stringify({
+      format: "clanky-workspace-invitation", version: 1, invitation: created.token,
+    }));
+    const invitation: { invitation: string } = await Bun.file(invitationPath).json();
+    const connection = await json<{ id: string }>(invitee, "/api/collaboration/connections", "POST", {
+      invitation: invitation.invitation,
+    });
+    const ready = async () => await pollUntil(() => json<Connection[]>(invitee, "/api/collaboration/connections"),
+      (entries) => entries.some((entry) => entry.connection.id === connection.id && entry.realtime === "connected" && !entry.errorCode),
+      { description: "direct collaboration realtime to connect", timeoutMs: MESH_OPERATION_TIMEOUT_MS, formatLastObserved: JSON.stringify });
+    await ready();
+    const shared = (await json<Workspace[]>(invitee, "/api/workspaces")).find((entry) => entry.name === workspace.name)!;
+    expect(shared.access).toBe("work");
+    const key = await json<{ token: string }>(invitee, "/api/api-keys", "POST", { name: "direct-guest", scopes: ["*"] });
+    const realtime = observeSocket(invitee, "/api/ws", key.token);
+    sockets.push(realtime.socket);
+    await pollUntil(() => realtime.socket.readyState, (state) => state === WebSocket.OPEN,
+      { description: "direct guest local realtime to open", timeoutMs: MESH_OPERATION_TIMEOUT_MS });
+    await subscribeRealtime(realtime.socket, { kinds: ["state"], resources: ["workspaces"] });
+    await json(invitee, `/api/workspaces/${encodeURIComponent(shared.id)}`, "PUT", { scratchpad: "Direct handoff" });
+    expect((await json<Workspace>(owner, `/api/workspaces/${workspace.id}`)).scratchpad).toBe("Direct handoff");
+    await pollUntil(() => realtime.frames,
+      (frames) => frames.some((frame) => frame.event?.resource === "workspaces" && frame.event.id === shared.id),
+      { description: "direct workspace publication", timeoutMs: MESH_OPERATION_TIMEOUT_MS });
+    const uploadPath = join(directory, "handoff.txt"), downloadPath = join(directory, "received.txt");
+    await Bun.write(uploadPath, "Direct file handoff\n");
+    const upload = await cli(invitee, key.token, ["workspace", "upload", shared.id, uploadPath, "--remote-path", "handoff.txt", "--force"]);
+    if (upload.exitCode) throw new Error(`Direct upload failed: ${upload.stderr}`);
+    const download = await cli(invitee, key.token, ["workspace", "download", shared.id, "handoff.txt", "--output", downloadPath, "--force"]);
+    if (download.exitCode) throw new Error(`Direct download failed: ${download.stderr}`);
+    expect(await Bun.file(downloadPath).text()).toBe("Direct file handoff\n");
+    await exerciseCodePreview({
+      baseUrl: invitee.baseUrl, apiKey: key.token, workspace: workspace.name,
+      workspaceId: shared.id, homeDirectory: invitee.environment["HOME"]!, logsDirectory: directory,
+      expectedDirectory: workspace.directory, timeoutMs: MESH_OPERATION_TIMEOUT_MS,
+    });
+    const application = previewApplication("Direct shared application");
+    try {
+      await exerciseServicePreview({
+        baseUrl: invitee.baseUrl, apiKey: key.token, workspace: workspace.name,
+        workspaceId: shared.id, homeDirectory: invitee.environment["HOME"]!, logsDirectory: directory,
+        port: application.port!, expectedContent: "Direct shared application",
+        timeoutMs: MESH_OPERATION_TIMEOUT_MS,
+      });
+    } finally {
+      await application.stop(true);
+    }
+    const terminal = await json<Terminal>(invitee, "/api/terminal-sessions", "POST", {
+      workspaceId: shared.id, name: "Direct shell", connectionMode: "direct", useTmux: false,
+    });
+    const shell = observeSocket(invitee, `/api/terminal?terminalSessionId=${encodeURIComponent(terminal.config.id)}`, key.token);
+    sockets.push(shell.socket);
+    await pollUntil(() => shell.frames, (frames) => frames.some((frame) => frame.type === "terminal.connected"),
+      { description: "direct shared terminal to connect", timeoutMs: MESH_OPERATION_TIMEOUT_MS });
+    shell.socket.send(JSON.stringify({ type: "terminal.input", data: "echo DIRECT_WORKSPACE_READY\r" }));
+    await pollUntil(() => shell.frames,
+      (frames) => frames.some((frame) => frame.type === "terminal.output" && frame.data?.includes("DIRECT_WORKSPACE_READY")),
+      { description: "direct shared terminal output", timeoutMs: MESH_OPERATION_TIMEOUT_MS });
+    const grants = await json<Array<{ id: string }>>(owner, "/api/collaboration/guests");
+    const grant = grants[0]!;
+    await json(owner, `/api/collaboration/guests/${grant.id}/workspaces/${workspace.id}`, "PUT", { permission: "read" });
+    await pollUntil(() => shell.socket.readyState, (state) => state === WebSocket.CLOSED,
+      { description: "direct shell to close after permission reduction", timeoutMs: MESH_OPERATION_TIMEOUT_MS });
+    await ready();
+    expect((await json<Workspace>(invitee, `/api/workspaces/${encodeURIComponent(shared.id)}`)).access).toBe("read");
+    expect((await meshJsonRequest(invitee, `/api/workspaces/${encodeURIComponent(shared.id)}`, {
+      method: "PUT", body: { scratchpad: "Not allowed" },
+    })).status).toBe(403);
+    await restartMeshNode(owner);
+    await ready();
+    await restartMeshNode(invitee);
+    await ready();
+    expect((await json<Workspace>(invitee, `/api/workspaces/${encodeURIComponent(shared.id)}`)).scratchpad).toBe("Direct handoff");
+    expect((await json<Workspace>(invitee, `/api/workspaces/${encodeURIComponent(shared.id)}`)).access).toBe("read");
+    await json(owner, `/api/collaboration/guests/${grant.id}`, "DELETE");
+    await pollUntil(async () => await meshJsonRequest(invitee, `/api/workspaces/${encodeURIComponent(shared.id)}`),
+      (result) => result.status === 403 || result.status === 410 || result.status === 503,
+      { description: "direct grant revocation to deny workspace access", timeoutMs: MESH_OPERATION_TIMEOUT_MS });
+  } catch (error) {
+    failure = error;
+    for (const node of nodes) console.error(meshNodeDiagnostics(node));
+  } finally {
+    const cleanup: unknown[] = [];
+    for (const socket of sockets) socket.close();
+    const results = await Promise.allSettled(nodes.reverse().map((node) => stopMeshNode(node)));
+    for (const result of results) if (result.status === "rejected") cleanup.push(result.reason);
+    if (!cleanup.length) await rm(directory, { recursive: true, force: true });
+    if (cleanup.length) failure = new AggregateError(failure ? [failure, ...cleanup] : cleanup, "Direct collaboration cleanup failed", { cause: failure });
+  }
+  if (failure) throw failure;
+}, 120_000);
 
 test("collaborators review and work across granted workspaces while owners manage their access", async () => {
   const directory = await mkdtemp(join(tmpdir(), "clanky-collaboration-e2e-"));
@@ -235,16 +364,7 @@ test("collaborators review and work across granted workspaces while owners manag
       selector: { chat: existing.config.name },
       expectedDirectory: beta.directory, timeoutMs: MESH_OPERATION_TIMEOUT_MS,
     });
-    const application: Bun.Server<undefined> = Bun.serve<undefined>({
-      hostname: "127.0.0.1", port: 0,
-      fetch(request: Request) {
-        if (request.headers.get("upgrade") === "websocket") {
-          return application.upgrade(request) ? undefined : new Response("Upgrade failed", { status: 400 });
-        }
-        return new Response("Shared workspace application");
-      },
-      websocket: { message(socket, data) { socket.send(data); } },
-    });
+    const application = previewApplication("Shared workspace application");
     try {
       await exerciseServicePreview({
         baseUrl: guest.baseUrl, apiKey: key.token, workspace: beta.name, workspaceId: sharedBeta.id,

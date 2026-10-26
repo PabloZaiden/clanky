@@ -1,15 +1,17 @@
 /**
- * Signed transport contracts for relay-backed workspace clients.
+ * Signed transport contracts for direct and relayed workspace clients.
  */
 import { z } from "zod";
 import { normalizeMeshRelayOrigin } from "@/shared/mesh-relay";
-import { AcceptCollaborationInvitationSchema, CollaborationNameSchema } from "./collaboration";
+import { CollaborationNameSchema } from "./collaboration";
+import { ControllerRelayUrlSchema, MeshRelayPeerIdentitySchema } from "./mesh-relay";
+import { MESH_PROTOCOL_VERSION } from "@/shared/mesh-protocol";
 
 const IdentityString = z.string().min(1).max(200);
 const PublicKey = z.string().min(1).max(16_384);
 const Signature = z.string().min(1).max(16_384);
 
-export const WorkspaceInvitationBootstrapSchema = z.object({
+const InvitationFields = {
   version: z.literal(1),
   token: z.string().min(1).max(16_384),
   expiresAt: z.string().datetime(),
@@ -19,6 +21,10 @@ export const WorkspaceInvitationBootstrapSchema = z.object({
     fingerprint: IdentityString,
     name: z.string().min(1).max(200),
   }).strict(),
+  signature: Signature,
+};
+export const WorkspaceInvitationBootstrapSchema = z.union([z.object({
+  ...InvitationFields,
   relay: z.object({
     url: z.string().superRefine((value, context) => {
       try {
@@ -30,8 +36,10 @@ export const WorkspaceInvitationBootstrapSchema = z.object({
     fingerprint: IdentityString,
   }).strict(),
   relayAdmission: z.string().min(1).max(16_384),
-  signature: Signature,
-}).strict();
+}).strict(), z.object({
+  ...InvitationFields,
+  controllerUrl: ControllerRelayUrlSchema,
+}).strict()]);
 
 export const WorkspaceClientRequestMetadataSchema = z.object({
   version: z.literal(1),
@@ -55,6 +63,8 @@ export const WorkspaceClientRequestMetadataSchema = z.object({
 }).strict();
 
 export type WorkspaceInvitationBootstrap = z.infer<typeof WorkspaceInvitationBootstrapSchema>;
+type Unsigned<T> = T extends unknown ? Omit<T, "signature"> : never;
+export type UnsignedWorkspaceInvitation = Unsigned<WorkspaceInvitationBootstrap>;
 export type WorkspaceClientRequestMetadata = z.infer<typeof WorkspaceClientRequestMetadataSchema>;
 
 export const ConnectWorkspaceControllerSchema = z.object({
@@ -62,9 +72,40 @@ export const ConnectWorkspaceControllerSchema = z.object({
   name: CollaborationNameSchema.optional(),
 }).strict();
 
-export const WorkspaceClientEnrollmentSchema = AcceptCollaborationInvitationSchema.extend({
-  token: AcceptCollaborationInvitationSchema.shape.token.optional(),
-});
+const EnrollmentFields = {
+  token: z.string().regex(/^[A-Za-z0-9_-]{43}$/).optional(),
+  guest: MeshRelayPeerIdentitySchema,
+  name: CollaborationNameSchema.optional(),
+};
+export const WorkspaceClientEnrollmentSchema = z.union([
+  z.object({ ...EnrollmentFields, relayUrl: ControllerRelayUrlSchema,
+    relayFingerprint: z.string().regex(/^sha256:[a-f0-9]{64}$/) }).strict(),
+  z.object({ ...EnrollmentFields, controllerUrl: ControllerRelayUrlSchema }).strict(),
+]);
+export type WorkspaceClientEnrollment = z.infer<typeof WorkspaceClientEnrollmentSchema>;
+
+export const WORKSPACE_DIRECT_PATH = "/api/mesh/internal/client/direct";
+export const WorkspaceDirectOpenSchema = z.object({
+  type: z.literal("workspace.open"),
+  protocolVersion: z.literal(MESH_PROTOCOL_VERSION),
+  requestId: z.uuid(),
+  streamId: z.uuid(),
+  kind: z.enum(["http", "socket", "probe"]),
+  identity: MeshRelayPeerIdentitySchema,
+  headers: z.record(z.string().max(200), z.string().max(24 * 1_024))
+    .refine((value) => Object.keys(value).length <= 4),
+}).strict();
+export type WorkspaceDirectOpen = z.infer<typeof WorkspaceDirectOpenSchema>;
+export const WorkspaceDirectReadySchema = z.object({
+  type: z.literal("stream.ready"),
+  protocolVersion: z.literal(MESH_PROTOCOL_VERSION),
+  requestId: z.uuid(),
+  streamId: z.uuid(),
+  signature: Signature,
+}).strict();
+export function workspaceDirectReadyPayload(value: { requestId: string; streamId: string }): string {
+  return JSON.stringify(["clanky-workspace-direct-ready-v1", MESH_PROTOCOL_VERSION, value.requestId, value.streamId]);
+}
 
 export const WorkspaceRealtimeFrameSchema = z.discriminatedUnion("type", [
   z.strictObject({

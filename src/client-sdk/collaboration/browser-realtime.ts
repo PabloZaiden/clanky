@@ -57,7 +57,8 @@ export class BrowserCollaborationRealtime {
 
   update(runtime: CollaborationClientRuntime): void {
     if (this.disposed) return;
-    if (runtime.connection.status !== "active" || runtime.client.status !== "connected") {
+    if (runtime.connection.status !== "active"
+      || runtime.connection.controllerUrl === undefined && runtime.client.status !== "connected") {
       this.remove(runtime.connection.id);
       return;
     }

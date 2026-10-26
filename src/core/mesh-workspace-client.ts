@@ -16,17 +16,18 @@ import type { MeshRelayConnectorIdentity, MeshRelayConnectorStatus } from "./mes
 import type { MeshRelayDataStream } from "./mesh-relay-data-stream";
 import { performMeshRelayHttpRequest } from "./mesh-relay-http-client";
 import { MESH_RELAY_RESPONSE_FLOW_HEADER } from "./mesh-relay-http-response-flow";
-import { createWorkspaceClientProof } from "../client-sdk/collaboration/proof";
+import { createWorkspaceClientProof, readWorkspaceClientProof } from "../client-sdk/collaboration/proof";
 import { discoverMeshEnrollmentTarget } from "./mesh-target-discovery";
 import { MESH_PROTOCOL_VERSION } from "@/shared/mesh-protocol";
 import { MeshRelayStreamError } from "./mesh-relay-errors";
+import type { CollaborationRoute } from "@/shared/collaboration";
+import { openWorkspaceDirectStream } from "../client-sdk/collaboration/direct-stream";
 
-export interface MeshWorkspaceClientOptions {
+export type MeshWorkspaceClientOptions = CollaborationRoute & {
   identity: MeshRelayConnectorIdentity;
   controllerNodeId: string;
   controllerFingerprint: string;
-  relayUrl: string;
-  relayFingerprint: string;
+  controllerPublicKey: string;
   enrollmentAdmission?: string;
   logger?: CollaborationClientLogger;
   onStatusChange?(status: MeshRelayConnectorStatus): void;
@@ -40,6 +41,7 @@ export class MeshWorkspaceClient {
   private stopping?: Promise<void>;
   private lifetime = new AbortController();
   private cleanupFailure?: unknown;
+  private directStatus: MeshRelayConnectorStatus = "idle";
 
   constructor(private readonly options: MeshWorkspaceClientOptions) {
     this.manager = new MeshRelayConnectorManager({
@@ -49,12 +51,39 @@ export class MeshWorkspaceClient {
   }
 
   get status(): MeshRelayConnectorStatus {
-    return this.manager.status;
+    return this.options.controllerUrl !== undefined ? this.directStatus : this.manager.status;
+  }
+
+  private setDirectStatus(status: MeshRelayConnectorStatus): void {
+    if (this.directStatus === status) return;
+    this.directStatus = status;
+    this.options.onStatusChange?.(status);
   }
 
   async start(options: { waitForConnection?: boolean } = {}): Promise<void> {
     if (this.started || this.stopping) {
       throw new DomainError("collaboration_connection_busy", "The workspace connection is already running.");
+    }
+    if (this.options.controllerUrl !== undefined) {
+      this.lifetime = new AbortController();
+      this.started = true;
+      this.setDirectStatus("connecting");
+      if (options.waitForConnection === false) return;
+      try {
+        const headers = await createWorkspaceClientProof(this.options.identity, {
+          controllerNodeId: this.options.controllerNodeId, kind: "enrollment",
+          method: "POST", path: MESH_RELAY_CLIENT_ENROLLMENT_PATH,
+        });
+        const stream = await this.openStream({ kind: "probe", path: MESH_RELAY_CLIENT_ENROLLMENT_PATH, headers });
+        stream.close();
+        await stream.waitUntilTransportClosed();
+        stream.dispose();
+        this.setDirectStatus("connected");
+      } catch (error) {
+        await this.stop();
+        throw error;
+      }
+      return;
     }
     const relayUrl = normalizeMeshRelayOrigin(this.options.relayUrl);
     const refreshProtocol = async () => {
@@ -147,7 +176,7 @@ export class MeshWorkspaceClient {
   }
 
   private async openStream(input: {
-    kind: "http" | "socket";
+    kind: "http" | "socket" | "probe";
     method?: string;
     path: string;
     headers: Record<string, string>;
@@ -169,27 +198,43 @@ export class MeshWorkspaceClient {
   }
 
   private async openRuntimeStream(input: {
-    kind: "http" | "socket";
+    kind: "http" | "socket" | "probe";
     method?: string;
     path: string;
     headers: Record<string, string>;
     signal?: AbortSignal;
   }): Promise<MeshRelayDataStream> {
     try {
-      const connector = this.manager.resolveConnector({
+      const signal = input.signal
+        ? AbortSignal.any([input.signal, this.lifetime.signal])
+        : this.lifetime.signal;
+      const direct = this.options.controllerUrl !== undefined;
+      const stream = this.options.controllerUrl !== undefined
+        ? await openWorkspaceDirectStream({
+          controllerUrl: this.options.controllerUrl,
+          controller: { nodeId: this.options.controllerNodeId, publicKey: this.options.controllerPublicKey,
+            fingerprint: this.options.controllerFingerprint },
+          identity: this.options.identity, kind: input.kind, headers: input.headers,
+          signal, logger: this.options.logger,
+        })
+        : await this.manager.resolveConnector({
         kind: "relay",
         targetNodeId: this.options.controllerNodeId,
         relayUrl: this.options.relayUrl,
         relayFingerprint: this.options.relayFingerprint,
-      });
-      const stream = await connector.openStream({
+      }).openStream({
         ...input,
-        signal: input.signal
-          ? AbortSignal.any([input.signal, this.lifetime.signal])
-          : this.lifetime.signal,
+        kind: input.kind === "probe" ? "http" : input.kind,
+        signal,
       });
+      const realtime = direct && input.kind === "socket"
+        && readWorkspaceClientProof(new Headers(input.headers)).kind === "realtime";
+      if (realtime) this.setDirectStatus("connected");
       this.streams.add(stream);
       void stream.waitUntilClosed()
+        .then(() => {
+          if (realtime && this.started) this.setDirectStatus("closed");
+        })
         .then(() => stream.waitUntilTransportClosed())
         .then(() => this.streams.delete(stream))
         .catch((error: unknown) => {
@@ -202,6 +247,8 @@ export class MeshWorkspaceClient {
       }
       return stream;
     } catch (error) {
+      if (this.options.controllerUrl !== undefined && input.kind === "socket"
+        && readWorkspaceClientProof(new Headers(input.headers)).kind === "realtime") this.setDirectStatus("closed");
       if (error instanceof MeshRelayStreamError && error.code === "mesh_relay_transport_cleanup_failed") {
         this.cleanupFailure = error;
       }
@@ -226,6 +273,7 @@ export class MeshWorkspaceClient {
 
   private async stopRuntime(): Promise<void> {
     this.started = false;
+    if (this.options.controllerUrl !== undefined) this.setDirectStatus("idle");
     this.lifetime.abort();
     await Promise.allSettled([...this.opening]);
     const streams = [...this.streams];

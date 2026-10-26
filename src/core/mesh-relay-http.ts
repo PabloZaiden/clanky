@@ -6,7 +6,7 @@ import type { MeshProtocolVersion } from "@/shared/mesh-protocol";
 import { MESH_RELAY_CLIENT_ENROLLMENT_PATH } from "@/shared/mesh-relay";
 import { utf8ByteLength } from "@/shared/encoding";
 import { MeshRelayStreamError } from "./mesh-relay-errors";
-import { markMeshRelayRequestTransport } from "./mesh-transport-security";
+import { markMeshRelayRequestTransport, markDirectWorkspaceRequest } from "./mesh-transport-security";
 import type { MeshRelayDataStream } from "./mesh-relay-data-stream";
 import { MESH_RELAY_RESPONSE_FLOW_HEADER, MESH_RELAY_RESPONSE_FLOW_VERSION, MeshRelayHttpResponseSender } from "./mesh-relay-http-response-flow";
 import { MESH_RELAY_MAX_HEADER_BYTES, MESH_RELAY_MAX_HEADER_COUNT, MESH_RELAY_MAX_ENROLLMENT_BODY_BYTES, MESH_RELAY_PROHIBITED_HEADERS, MESH_RELAY_STREAM_CLOSE_DISPATCH_FAILED, MESH_RELAY_STREAM_CLOSE_PROTOCOL_ERROR, MESH_RELAY_STREAM_CLOSE_REQUEST_FAILED, MESH_RELAY_STREAM_CLOSE_TIMEOUT } from "./mesh-relay-policy";
@@ -75,6 +75,7 @@ function closeFailedRequestDrain(
 }
 
 export interface ServeMeshRelayHttpStreamOptions {
+  directWorkspace?: boolean;
   secureTransport?: boolean;
   transportProtocolVersion: MeshProtocolVersion;
   stream: MeshRelayDataStream;
@@ -250,6 +251,7 @@ export async function serveMeshRelayHttpStream(
     ...(bodyless ? {} : { body: body.stream, duplex: "half" }),
   } as RequestInit);
   relayRequestInitiators.set(request, options.initiatorNodeId);
+  if (options.directWorkspace) markDirectWorkspaceRequest(request);
   markMeshRelayRequestTransport(request, {
     secure: options.secureTransport === true,
     protocolVersion: options.transportProtocolVersion,

@@ -6,8 +6,10 @@ connection through a relay when inbound connections are not possible.
 
 To let another full Clanky instance use selected existing workspaces without
 exposing its execution host, use [workspace collaboration](workspace-collaboration.md)
-instead of worker enrollment. It uses a separate relay client capability and
-does not change existing worker relationships.
+instead of worker enrollment. Invited Clanky instances and browser-only clients
+can connect directly to the controller's advertised HTTPS endpoint or through
+a paired relay. These are separate collaboration transports and do not change
+existing worker relationships.
 
 Mesh access is host-level access. The worker directory is the default working
 directory, not a sandbox or filesystem allowlist. Pair only controllers that

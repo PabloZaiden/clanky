@@ -139,7 +139,7 @@ export const collaborationRoutes = defineRoutes({
     description: "List controller connection health or accept a signed workspace invitation.",
     operations: {
       GET: { automation: { policy: "read" } },
-      POST: { requestSchema: ConnectWorkspaceControllerSchema, automation: { policy: "confirm", reason: "Pairs this user with the invitation's pinned controller and relay." } },
+      POST: { requestSchema: ConnectWorkspaceControllerSchema, automation: { policy: "confirm", reason: "Pairs this user with the invitation's pinned controller and selected transport." } },
     },
     GET() {
       return Response.json(workspaceConnections.list());

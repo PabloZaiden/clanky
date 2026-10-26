@@ -40,7 +40,8 @@ See [Chat Trash](chat-trash.md) for pagination, cleanup and recovery semantics.
 
 ## Shared workspace routing
 
-The normal API includes local resources and workspaces shared through a relay.
+The normal API includes local resources and workspaces shared over Direct or
+Relay routes.
 Remote references are opaque `clanky.remote.v1.` strings in the existing ID
 fields; local IDs remain unchanged. Pass returned references unchanged to
 ordinary operations. Requests cannot mix local and remote resource references
@@ -57,8 +58,35 @@ remains explicitly local; individual restore/delete operations route by chat ID.
 Per-user pairing controls are under `/api/collaboration`: `relays`,
 `invitations`, `guests` and `connections`. Use normal route/schema discovery
 for their current contracts. These administrative controls are not delegated to
-workspace guests. `GET /api/collaboration/connections` reports relay transport,
+workspace guests. `GET /api/collaboration/connections` reports route transport,
 realtime and collection-operation failures separately.
+
+Create invitations with `POST /api/collaboration/invitations`. Use
+`"transport": "direct"` without `relayName`, or `"transport": "relay"` with a
+paired `relayName`; omitting `transport` retains Relay for existing callers.
+Direct uses the controller's advertised HTTPS URL, which invitees must be able
+to reach with trusted TLS and WSS support. Public Direct metadata uses
+`controllerUrl` instead of `relayUrl`/`relayFingerprint`.
+
+The creation response remains `{ invitation, token }`, where `token` is the
+signed serialization, not the user-facing exchange format. Save it in a
+`.clanky-invite.json` file with this JSON envelope:
+
+```json
+{
+  "format": "clanky-workspace-invitation",
+  "version": 1,
+  "invitation": "<signed token from the creation response>"
+}
+```
+
+Both Connect controller forms require this file and validate its size (at most
+72 KiB), envelope, signature and expiration. For API/CLI automation, extract the
+envelope's `invitation` string and submit it as `invitation` to
+`POST /api/collaboration/connections`; do not submit the envelope itself. Keep
+these files and creation responses secret, out of logs and shell history.
+Use the selected CLI profile against your own instance and route/schema
+discovery for request details.
 
 See [Workspace collaboration](workspace-collaboration.md) for invitation,
 permissions, revocation and recovery semantics.

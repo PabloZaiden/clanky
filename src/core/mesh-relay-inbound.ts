@@ -47,9 +47,9 @@ export interface MeshRelayInboundOptions {
   }): Promise<MeshInboundSocketAttachment>;
 }
 
-async function serveSocketStream(
+export async function serveSocketStream(
   stream: MeshRelayDataStream,
-  offer: MeshRelayStreamOfferFrame,
+  offer: Pick<MeshRelayStreamOfferFrame, "path" | "headers" | "initiatorNodeId">,
   secureTransport: boolean,
   openWorkspaceClientSocket: MeshRelayInboundOptions["openWorkspaceClientSocket"],
 ): Promise<void> {

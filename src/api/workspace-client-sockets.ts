@@ -20,7 +20,9 @@ import { workspaceGuestActor } from "./workspace-client-gateway";
 import { startTerminalBridge, releaseTerminalSocket, type TerminalSocket } from "./websocket/terminal";
 
 const log = createLogger("api:workspace-client-sockets");
-type SocketInput = Parameters<NonNullable<MeshRelayInboundOptions["openWorkspaceClientSocket"]>>[0];
+type SocketInput = Parameters<NonNullable<MeshRelayInboundOptions["openWorkspaceClientSocket"]>>[0] & {
+  directWorkspace?: boolean;
+};
 interface ActiveSocket {
   guestId: string;
   workspaceId?: string;
@@ -88,6 +90,9 @@ class WorkspaceClientSockets {
     try {
       const guest = collaborationService.getAuthenticatedGuest(input.initiatorNodeId);
       if (!guest) throw new DomainError("collaboration_access_denied", "The client grant is unavailable.");
+      if ((guest.controllerUrl !== undefined) !== (input.directWorkspace === true)) {
+        throw new DomainError("collaboration_access_denied", "The guest does not authorize this transport.");
+      }
       const proof = await workspaceClientController.verifyProof({
         headers: new Headers(input.headers), initiatorNodeId: input.initiatorNodeId,
         publicKey: guest.identity.publicKey, secureTransport: input.secureTransport,

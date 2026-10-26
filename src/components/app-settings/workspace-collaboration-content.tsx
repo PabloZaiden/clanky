@@ -1,6 +1,6 @@
 import { Fragment, useState, type FormEvent } from "react";
 import {
-  CheckboxField, CodeValue, ConfirmModal, DataList, DataListRow, EmptyState, ErrorState,
+  CheckboxField, ConfirmModal, DataList, DataListRow, EmptyState, ErrorState,
   FormActions, FormGroup, LoadingState, Modal, TextField, useLiveQuery, useToast,
 } from "@pablozaiden/webapp/web";
 import type { Workspace } from "@/shared/workspace";
@@ -10,6 +10,7 @@ import { apiRequest } from "../../lib/api-client";
 import { Button, StatusBadge } from "../common";
 import { SettingsSelect } from "./settings-row-controls";
 import { isBrowserCollaborationClient } from "../../client-sdk/browser-runtime";
+import { downloadWorkspaceInvitationFile, readWorkspaceInvitationFile } from "../../client-sdk/collaboration/invitation-file";
 import { BrowserCollaborationContent, BrowserConnectionsNotice } from "./browser-collaboration-content";
 import { controllerStatusLabel, isControllerUnavailable } from "./collaboration-connection-status";
 
@@ -45,9 +46,10 @@ function ApiWorkspaceCollaborationContent({ workspaces }: { workspaces: Workspac
   const [selected, setSelected] = useState<string[]>([]);
   const [allWorkspacesAdmin, setAllWorkspacesAdmin] = useState(false);
   const [permissions, setPermissions] = useState<CollaborationWorkspacePermissions>({});
+  const [transport, setTransport] = useState<"direct" | "relay">("direct");
   const [relayName, setRelayName] = useState("");
   const [name, setName] = useState("");
-  const [invitation, setInvitation] = useState("");
+  const [invitationFile, setInvitationFile] = useState<File | null>(null);
   const [token, setToken] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,12 +60,20 @@ function ApiWorkspaceCollaborationContent({ workspaces }: { workspaces: Workspac
     if (saving) return;
     setDialog(null);
     setToken("");
-    setInvitation("");
+    setInvitationFile(null);
     setSelected([]);
     setAllWorkspacesAdmin(false);
     setPermissions({});
     setName("");
     setError(null);
+  }
+  function downloadInvitation(value: string): void {
+    setError(null);
+    try {
+      downloadWorkspaceInvitationFile(value, name.trim());
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : String(failure));
+    }
   }
   async function mutate(path: string, method: string, body?: unknown): Promise<unknown> {
     const value = await query.mutate(async (signal) => {
@@ -77,6 +87,7 @@ function ApiWorkspaceCollaborationContent({ workspaces }: { workspaces: Workspac
   }
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
+    if (!dialog || saving) return;
     setSaving(true);
     setError(null);
     try {
@@ -85,18 +96,22 @@ function ApiWorkspaceCollaborationContent({ workspaces }: { workspaces: Workspac
           allWorkspacesAdmin,
           workspaceIds: allWorkspacesAdmin ? [] : selected,
           workspacePermissions: allWorkspacesAdmin ? {} : Object.fromEntries(selected.map((id) => [id, permissions[id] ?? "work"])),
-          relayName, ...(name.trim() ? { name: name.trim() } : {}),
+          transport, ...(transport === "relay" ? { relayName } : {}),
+          ...(name.trim() ? { name: name.trim() } : {}),
         });
         if (!result || typeof result !== "object" || !("token" in result) || typeof result.token !== "string") {
           throw new Error("The invitation response is invalid.");
         }
         setToken(result.token);
+        downloadInvitation(result.token);
       } else {
+        if (!invitationFile) throw new Error("Choose a Clanky invitation file.");
+        const invitation = await readWorkspaceInvitationFile(invitationFile);
         await mutate("/api/collaboration/connections", "POST", {
-          invitation: invitation.trim(), ...(name.trim() ? { name: name.trim() } : {}),
+          invitation, ...(name.trim() ? { name: name.trim() } : {}),
         });
         setDialog(null);
-        setInvitation("");
+        setInvitationFile(null);
         setName("");
         toast.success("Controller connected.");
       }
@@ -145,8 +160,9 @@ function ApiWorkspaceCollaborationContent({ workspaces }: { workspaces: Workspac
     <div className="space-y-4">
       <FormActions>
         <Button disabled={saving} onClick={() => { setError(null); setDialog("connect"); }}>Connect controller</Button>
-        <Button disabled={saving || !state?.relays.length} onClick={() => {
+        <Button disabled={saving || !state} onClick={() => {
           setError(null);
+          setTransport(state?.relays.length ? "relay" : "direct");
           setRelayName(state?.relays[0]?.name ?? "");
           setDialog("invite");
         }}>Invite collaborator</Button>
@@ -211,11 +227,23 @@ function ApiWorkspaceCollaborationContent({ workspaces }: { workspaces: Workspac
       </DataList>
       <Modal isOpen={dialog !== null} onClose={close} title={dialog === "invite" ? "Invite collaborator" : "Connect controller"}>
         {token ? <>
-          <CodeValue label="One-use invitation" value={token} />
-          <FormActions><Button onClick={close}>Close</Button></FormActions>
+          <p>Share the invitation file through a trusted channel. Keep it secret.</p>
+          <p>If the download did not open, download it again before closing.</p>
+          {error ? <ErrorState title="Unable to download invitation" description={error} /> : null}
+          <FormActions>
+            <Button onClick={() => downloadInvitation(token)}>Download invitation</Button>
+            <Button onClick={close}>Close</Button>
+          </FormActions>
         </> : <form className="space-y-4" onSubmit={(event) => void submit(event)}>
           <TextField label={dialog === "invite" ? "Invitation name" : "Controller name"} value={name} maxLength={120} onChange={(event) => setName(event.currentTarget.value)} disabled={saving} />
           {dialog === "invite" ? <>
+            <label className="block space-y-1"><span>Connection</span>
+              <SettingsSelect value={transport} disabled={saving} onChange={(event) => setTransport(event.currentTarget.value as "direct" | "relay")}>
+                <option value="direct">Direct</option>
+                <option value="relay">Relay</option>
+              </SettingsSelect>
+            </label>
+            {transport === "direct" ? <p>Invitees must be able to reach this controller's advertised HTTPS URL.</p> : null}
             <CheckboxField label="All workspaces" checked={allWorkspacesAdmin}
               disabled={saving} onChange={(event) => setAllWorkspacesAdmin(event.currentTarget.checked)} />
             {!allWorkspacesAdmin && <FormGroup title="Workspaces">
@@ -237,16 +265,20 @@ function ApiWorkspaceCollaborationContent({ workspaces }: { workspaces: Workspac
                 </div>
               </div>)}
             </FormGroup>}
-            <label className="block space-y-1"><span>Relay</span>
+            {transport === "relay" ? <label className="block space-y-1"><span>Relay</span>
               <SettingsSelect value={relayName} required disabled={saving} onChange={(event) => setRelayName(event.currentTarget.value)}>
+                {!state?.relays.length ? <option value="">No paired relays</option> : null}
                 {state?.relays.map((relay) => <option key={relay.name} value={relay.name}>{relay.name}{relay.connected ? "" : " (disconnected)"}</option>)}
               </SettingsSelect>
-            </label>
-          </> : <TextField label="Invitation token" required value={invitation} onChange={(event) => setInvitation(event.currentTarget.value)} disabled={saving} />}
+            </label> : null}
+          </> : <TextField label="Invitation file" type="file" required accept=".clanky-invite.json,application/json"
+            hint="Choose a .clanky-invite.json file up to 72 KiB."
+            onChange={(event) => { setInvitationFile(event.currentTarget.files?.[0] ?? null); setError(null); }} disabled={saving} />}
           {error ? <ErrorState title="Unable to complete pairing" description={error} /> : null}
           <FormActions>
             <Button disabled={saving} onClick={close}>Cancel</Button>
-            <Button type="submit" variant="primary" loading={saving} disabled={dialog === "invite" && (!allWorkspacesAdmin && !selected.length || !relayName)}>
+            <Button type="submit" variant="primary" loading={saving} disabled={dialog === "invite"
+              && (!allWorkspacesAdmin && !selected.length || transport === "relay" && !relayName)}>
               {dialog === "invite" ? "Create invitation" : "Connect"}
             </Button>
           </FormActions>

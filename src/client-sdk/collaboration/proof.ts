@@ -4,7 +4,7 @@
 
 import {
   WorkspaceClientRequestMetadataSchema, WorkspaceInvitationBootstrapSchema,
-  type WorkspaceClientRequestMetadata, type WorkspaceInvitationBootstrap,
+  type WorkspaceClientRequestMetadata, type WorkspaceInvitationBootstrap, type UnsignedWorkspaceInvitation,
 } from "@/contracts/schemas/mesh-client";
 import { DomainError } from "../../domain/domain-error";
 import { sanitizeMeshRelayRequestHeaders } from "../../core/mesh-relay-http-client";
@@ -24,7 +24,11 @@ export const WORKSPACE_CLIENT_REQUEST_HEADERS = new Set([
   "if-range", "x-clanky-file-target", "x-clanky-file-conditions",
 ]);
 
-function invitationPayload(input: Omit<WorkspaceInvitationBootstrap, "signature">): string {
+function invitationPayload(input: UnsignedWorkspaceInvitation): string {
+  if ("controllerUrl" in input) return JSON.stringify([
+    "clanky-workspace-direct-invitation-v1", input.version, input.token,
+    input.expiresAt, input.controller, input.controllerUrl,
+  ]);
   return JSON.stringify([
     "clanky-workspace-invitation-v1", input.version, input.token,
     input.expiresAt, input.controller, input.relay, input.relayAdmission,
@@ -32,7 +36,7 @@ function invitationPayload(input: Omit<WorkspaceInvitationBootstrap, "signature"
 }
 
 export async function encodeWorkspaceInvitation(
-  input: Omit<WorkspaceInvitationBootstrap, "signature">,
+  input: UnsignedWorkspaceInvitation,
   sign: (payload: string) => Promise<string>,
 ): Promise<string> {
   const signature = await sign(invitationPayload(input));
