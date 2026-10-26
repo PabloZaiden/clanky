@@ -212,6 +212,18 @@ stdout. Inspect `/api/collaboration/connections`, or use an exact returned
 reference, instead of treating an incomplete list as evidence of absence.
 Never retry an uncertain mutation automatically.
 
+Shared workspace responses include effective `access`: `"read"` or `"work"`.
+For `"read"`, inspect content, transcripts, files, Git information and realtime
+updates, and download files normally. Do not send messages, answer questions or
+permissions, edit content, upload, run/stop work, execute commands or open
+interactive terminals, Code or application previews. The controller rejects
+changes with `403 collaboration_read_only`; do not retry or bypass that denial.
+Owners select per-workspace permissions in invitations with
+`workspacePermissions`, or change an existing grant through
+`PUT /api/collaboration/guests/:id/workspaces/:workspaceId` and
+`{ "permission": "read" }` or `{ "permission": "work" }`. Reducing permissions
+closes affected interactive resources without cancelling admitted work.
+
 Execution and content remain on the controller's configured host. Revocation
 closes affected interactive resources but does not cancel admitted chats,
 tasks or schedules. Individual shared Trash restore/purge routes by reference;

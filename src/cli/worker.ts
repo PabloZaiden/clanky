@@ -12,7 +12,6 @@ import type {
   WebAppCliCommandDefinition,
 } from "@pablozaiden/webapp/cli";
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
-import { getWebAppServer } from "../server";
 import { getDataDir } from "../persistence/database";
 import {
   normalizeMeshInstanceName,
@@ -193,6 +192,7 @@ async function bootstrapWorker(
   if (options.relayOnly) {
     await persistWorkerBootstrapConfiguration(options);
   }
+  const { getWebAppServer } = await import("../server");
   const app = await getWebAppServer({
     meshWorker: true,
     workerDirectory: options.workerDirectory,
@@ -314,6 +314,7 @@ async function joinWorker(
   });
   const startedAt = performance.now();
   log.info("Initializing worker enrollment runtime");
+  const { getWebAppServer } = await import("../server");
   await getWebAppServer({
     meshWorker: true,
     relayOnly: runtime.relayOnly,

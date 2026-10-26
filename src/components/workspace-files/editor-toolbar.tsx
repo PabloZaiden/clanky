@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ActionMenu, Modal, Select, SelectField, type ActionMenuItem } from "@pablozaiden/webapp/web";
 import { Button, PreviewIcon, RefreshIcon, SaveIcon, WrapTextIcon } from "../common";
+import { useWorkspaceReadOnly } from "../../context/workspace-access-context";
 import {
   EditorLanguageOptions,
   getEditorLanguageLabel,
@@ -93,6 +94,7 @@ export function WorkspaceEditorToolbar({ displayPath, statusText, dirty, saving,
   onSave: () => Promise<boolean>;
   tools: EditorTools;
 }) {
+  const readOnly = useWorkspaceReadOnly();
   const [languageDialogOpen, setLanguageDialogOpen] = useState(false);
   const displayName = displayPath?.split(/[\\/]/).pop() || "No file selected";
   const wordWrapLabel = tools.wordWrapEnabled ? "Disable word wrap" : "Enable word wrap";
@@ -133,7 +135,7 @@ export function WorkspaceEditorToolbar({ displayPath, statusText, dirty, saving,
             variant="primary"
             size="sm"
             onClick={() => void onSave()}
-            disabled={!tools.filePath || !dirty || tools.loading}
+            disabled={readOnly || !tools.filePath || !dirty || tools.loading}
             loading={saving}
             icon={<SaveIcon size="h-4 w-4" />}
             aria-label="Save file"

@@ -31,6 +31,7 @@ import { TaskDetailsTabContent } from "./task-details-tab-content";
 import { useTaskComposerAdapter } from "./task-composer-adapter";
 import { HarnessEntityView } from "../harness-activity";
 import { TaskPendingInput } from "./pending-input";
+import { useWorkspaceReadOnly } from "../../context/workspace-access-context";
 
 export interface TaskDetailsProps {
   /** Task ID to display */
@@ -54,6 +55,7 @@ export function TaskDetails({
   onOpenActivity,
   onMissingEntity,
 }: TaskDetailsProps) {
+  const readOnly = useWorkspaceReadOnly();
    const {
       task, loading, error, notFound, messages, toolCalls, logs, gitChangeCounter, refresh,
       hasOlderTranscript, loadingTranscript, loadMoreTranscript, loadFullTranscript,
@@ -88,7 +90,7 @@ export function TaskDetails({
       fetchReviewComments: content.fetchReviewComments,
     });
   const taskMenuActions = useMemo<ActionMenuItem[]>(() => {
-    if (!task) return [];
+    if (!task || readOnly) return [];
 
     const { state } = task;
     const menuActions: ActionMenuItem[] = [
@@ -209,9 +211,10 @@ export function TaskDetails({
     content.pullRequestDestination,
     task,
     actions,
+    readOnly,
   ]);
   useHeaderActions({
-    primary: task && isTaskPlanReady(task) ? [{
+    primary: !readOnly && task && isTaskPlanReady(task) ? [{
       id: "accept-plan",
       label: "Accept plan & start",
       loading: actions.planActionSubmitting,
@@ -276,7 +279,7 @@ export function TaskDetails({
   const visibleTabs = tabs;
   const showLogActionBar = activeTab === "log" && (isActive || canTerminalFollowUp);
   const showPlanActionBar = activeTab === "plan" && isPlanning;
-  const showActionBar = showLogActionBar || showPlanActionBar;
+  const showActionBar = !readOnly && (showLogActionBar || showPlanActionBar);
   const errorBannerSpacingClassName = "mx-3 mt-3 mb-3 sm:mx-4";
 
   return (
@@ -372,17 +375,17 @@ export function TaskDetails({
         </div>
       </div>
 
-      <TaskPendingInput task={task} onRefresh={refresh} />
+      <fieldset disabled={readOnly}><TaskPendingInput task={task} onRefresh={refresh} /></fieldset>
       {showActionBar && composerProps && <ConversationComposer {...composerProps} />}
 
-      <TaskDetailsModals
+      {!readOnly && <TaskDetailsModals
         taskName={config.name}
         state={state}
         planContent={content.planContent}
         actions={actions}
         canPushToRemote={remoteStatus.hasOriginRemote !== false}
         remoteStatusLoading={remoteStatus.loading}
-      />
+      />}
     </div>
     </HarnessEntityView>
   );

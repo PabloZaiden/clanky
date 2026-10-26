@@ -31,6 +31,7 @@ import { useAgentCodeGeneration } from "./use-agent-code-generation";
 import { useAgentCodeTest } from "./use-agent-code-test";
 import { useAgentFormState } from "./use-agent-form-state";
 import { DeterministicOutputStreams } from "./deterministic-output-streams";
+import { useWorkspaceReadOnly } from "../../context/workspace-access-context";
 
 function formatDate(value?: string): string {
   if (!value) {
@@ -266,6 +267,7 @@ function AgentRunsList({
   onNavigate: (route: WebAppRoute) => void;
 }) {
   const toast = useToast();
+  const readOnly = useWorkspaceReadOnly();
   const [deleteRun, setDeleteRun] = useState<AgentRun | null>(null);
   const [deletePending, setDeletePending] = useState(false);
 
@@ -322,7 +324,7 @@ function AgentRunsList({
               type="button"
               size="sm"
               variant="danger"
-              disabled={deletePending}
+              disabled={readOnly || deletePending}
               onClick={() => setDeleteRun(run)}
             >
               Delete
@@ -331,7 +333,7 @@ function AgentRunsList({
         ))}
       </div>
       <ConfirmModal
-        isOpen={Boolean(deleteRun)}
+        isOpen={!readOnly && Boolean(deleteRun)}
         onClose={closeDeleteRunConfirmation}
         onConfirm={() => void handleConfirmDeleteRun()}
         title="Delete agent run"
@@ -432,12 +434,13 @@ function AgentDetail({
   onNavigate: (route: WebAppRoute) => void;
 }) {
   const workspace = workspaces.find((item) => item.id === agent.config.workspaceId) ?? null;
+  const readOnly = useWorkspaceReadOnly();
 
   useEffect(() => {
     void onRefreshRuns(agent.config.id);
   }, [agent.config.id, onRefreshRuns]);
 
-  if (editing) {
+  if (editing && !readOnly) {
     return (
       <AgentForm
         mode="edit"

@@ -2,7 +2,7 @@
  * Per-user pairing controls; a shared-workspace guest cannot delegate these.
  */
 import { defineRoutes } from "@pablozaiden/webapp/server";
-import { CreateCollaborationInvitationSchema } from "@/contracts/schemas/collaboration";
+import { CreateCollaborationInvitationSchema, UpdateCollaborationWorkspacePermissionSchema } from "@/contracts/schemas/collaboration";
 import { ConnectWorkspaceControllerSchema } from "@/contracts/schemas/mesh-client";
 import {
   MESH_RELAY_CLIENT_ENROLLMENT_PATH,
@@ -96,8 +96,24 @@ export const collaborationRoutes = defineRoutes({
   "/api/collaboration/guests/:id/workspaces/:workspaceId": {
     auth: "user",
     sameOrigin: "mutations",
-    description: "Revoke one workspace without affecting the collaborator's remaining grants.",
-    operations: { DELETE: { automation: { policy: "confirm", reason: "Closes the collaborator's terminals and previews in this workspace." } } },
+    description: "Change workspace permissions or revoke one workspace without affecting the collaborator's remaining grants.",
+    operations: {
+      PUT: {
+        requestSchema: UpdateCollaborationWorkspacePermissionSchema,
+        automation: { policy: "confirm", reason: "Changes the collaborator's workspace permissions and closes interactive connections." },
+      },
+      DELETE: { automation: { policy: "confirm", reason: "Closes the collaborator's terminals and previews in this workspace." } },
+    },
+    async PUT(req, ctx) {
+      const parsed = await parseAndValidate(UpdateCollaborationWorkspacePermissionSchema, req);
+      if (!parsed.success) return parsed.response;
+      try {
+        await workspaceClientController.updatePermission(ctx.params["id"]!, ctx.params["workspaceId"]!, parsed.data.permission);
+        return successResponse();
+      } catch (error) {
+        return workspaceClientErrorResponse(error);
+      }
+    },
     async DELETE(_req, ctx) {
       try {
         await workspaceClientController.revoke(ctx.params["id"]!, ctx.params["workspaceId"]!);

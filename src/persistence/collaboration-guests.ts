@@ -3,8 +3,8 @@
  */
 
 import { z } from "zod";
-import type { CollaborationGuestGrant, CollaborationRevocation } from "@/shared/collaboration";
-import { CollaborationGuestGrantSchema } from "@/contracts/schemas/collaboration";
+import type { CollaborationGuestAccess, CollaborationRevocation, CollaborationWorkspacePermission } from "@/shared/collaboration";
+import { CollaborationGuestGrantSchema, CollaborationWorkspacePermissionSchema } from "@/contracts/schemas/collaboration";
 import { DomainError } from "../domain/domain-error";
 import { getDatabase } from "./database";
 import { parseCollaborationRecord } from "./collaboration-storage";
@@ -23,19 +23,21 @@ const GuestRowSchema = z.object({
   revoked_at: z.string().nullable(),
 });
 
-function decodeGuest(value: unknown): CollaborationGuestGrant {
+function decodeGuest(value: unknown): CollaborationGuestAccess {
   const row = parseCollaborationRecord(GuestRowSchema, value);
   const memberships = getDatabase().query(`
-    SELECT membership.workspace_id AS id FROM collaboration_memberships membership
+    SELECT membership.workspace_id AS id, membership.permission FROM collaboration_memberships membership
     JOIN workspaces workspace ON workspace.id = membership.workspace_id
       AND workspace.user_id = membership.owner_user_id
     WHERE membership.guest_id = ? AND membership.owner_user_id = ?
       AND membership.revoked_at IS NULL
     ORDER BY membership.workspace_id
   `).all(row.id, row.owner_user_id);
-  const workspaceIds = parseCollaborationRecord(z.array(z.object({ id: z.string().min(1) })), memberships)
-    .map((entry) => entry.id);
-  return parseCollaborationRecord(CollaborationGuestGrantSchema, {
+  const workspaces = row.revoked_at ? [] : parseCollaborationRecord(z.array(z.object({
+    id: z.string().min(1), permission: CollaborationWorkspacePermissionSchema,
+  })), memberships);
+  const workspaceIds = workspaces.map((entry) => entry.id);
+  const grant = parseCollaborationRecord(CollaborationGuestGrantSchema, {
     id: row.id,
     ownerUserId: row.owner_user_id,
     ownerUsername: row.owner_username,
@@ -47,9 +49,10 @@ function decodeGuest(value: unknown): CollaborationGuestGrant {
     createdAt: row.created_at,
     revokedAt: row.revoked_at,
   });
+  return { ...grant, workspacePermissions: Object.fromEntries(workspaces.map((entry) => [entry.id, entry.permission])) };
 }
 
-export function getCollaborationGuestByNodeInternal(nodeId: string): CollaborationGuestGrant | undefined {
+export function getCollaborationGuestByNodeInternal(nodeId: string): CollaborationGuestAccess | undefined {
   const row = getDatabase().query(`
     SELECT guest.*, owner.username AS owner_username FROM collaboration_guests guest
     JOIN webapp_users owner ON owner.id = guest.owner_user_id AND owner.disabled_at IS NULL
@@ -58,7 +61,7 @@ export function getCollaborationGuestByNodeInternal(nodeId: string): Collaborati
   return row ? decodeGuest(row) : undefined;
 }
 
-export function listCollaborationGuests(ownerUserId: string): CollaborationGuestGrant[] {
+export function listCollaborationGuests(ownerUserId: string): CollaborationGuestAccess[] {
   return getDatabase().query(`
     SELECT guest.*, owner.username AS owner_username FROM collaboration_guests guest
     JOIN webapp_users owner ON owner.id = guest.owner_user_id AND owner.disabled_at IS NULL
@@ -66,12 +69,26 @@ export function listCollaborationGuests(ownerUserId: string): CollaborationGuest
   `).all(ownerUserId).map(decodeGuest);
 }
 
-export function listActiveCollaborationGuestsInternal(): CollaborationGuestGrant[] {
+export function listActiveCollaborationGuestsInternal(): CollaborationGuestAccess[] {
   return getDatabase().query(`
     SELECT guest.*, owner.username AS owner_username FROM collaboration_guests guest
     JOIN webapp_users owner ON owner.id = guest.owner_user_id AND owner.disabled_at IS NULL
     WHERE guest.revoked_at IS NULL ORDER BY guest.id
   `).all().map(decodeGuest).filter((guest) => guest.workspaceIds.length > 0);
+}
+
+export function updateCollaborationWorkspacePermission(input: {
+  ownerUserId: string; guestId: string; workspaceId: string; permission: CollaborationWorkspacePermission;
+}): void {
+  const result = getDatabase().query(`
+    UPDATE collaboration_memberships SET permission = ?
+    WHERE guest_id = ? AND owner_user_id = ? AND workspace_id = ? AND revoked_at IS NULL
+      AND EXISTS (SELECT 1 FROM collaboration_guests
+        WHERE id = ? AND owner_user_id = ? AND revoked_at IS NULL)
+  `).run(input.permission, input.guestId, input.ownerUserId, input.workspaceId, input.guestId, input.ownerUserId);
+  if (result.changes === 0) {
+    throw new DomainError("collaboration_workspace_unavailable", "The collaborator's workspace grant is unavailable.");
+  }
 }
 
 export function revokeCollaborationGuest(

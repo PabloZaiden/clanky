@@ -4,6 +4,7 @@ import type { WorkspaceFileNode } from "@/shared";
 import { Button, CopyPathIcon, RefreshIcon, SidebarIcon } from "../common";
 import { WorkspaceFileTreeNodes } from "./file-tree-nodes";
 import { useFileTreeDrop } from "./use-file-tree-drop";
+import { useWorkspaceReadOnly } from "../../context/workspace-access-context";
 
 interface FileTreeHeaderButtonProps {
   label: string;
@@ -103,6 +104,7 @@ function WorkspaceFileTreeComponent({
   canRenameSelectedNode,
   canDeleteSelectedNode,
 }: WorkspaceFileTreeProps) {
+  const readOnly = useWorkspaceReadOnly();
   const {
     dropTargetDirectory,
     dropZoneRef,
@@ -133,7 +135,7 @@ function WorkspaceFileTreeComponent({
       disabled: nodeActionsDisabled,
       onAction: () => void onDownloadNode(node),
     }] : []),
-    {
+    ...(!readOnly ? [{
       id: "rename",
       label: "Rename",
       disabled: nodeActionsDisabled,
@@ -145,8 +147,8 @@ function WorkspaceFileTreeComponent({
       destructive: true,
       disabled: nodeActionsDisabled,
       onAction: () => onDeleteNode(node),
-    },
-  ], [nodeActionsDisabled, onDeleteNode, onDownloadNode, onRenameNode]);
+    }] : []),
+  ], [nodeActionsDisabled, onDeleteNode, onDownloadNode, onRenameNode, readOnly]);
   const collapseLabel = collapsed ? "Expand file explorer" : "Collapse file explorer";
   const actionItems = useMemo<ActionMenuItem[]>(() => [
     {

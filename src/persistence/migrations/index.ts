@@ -866,6 +866,18 @@ export const migrations: Migration[] = [
     name: "add_workspace_collaboration",
     up: migrateCollaboration,
   },
+  {
+    version: 87,
+    name: "add_collaboration_workspace_permissions",
+    up: (db) => {
+      if (!getTableColumns(db, "collaboration_memberships").includes("permission")) {
+        db.run("ALTER TABLE collaboration_memberships ADD COLUMN permission TEXT NOT NULL DEFAULT 'work' CHECK(permission IN ('read', 'work'))");
+      }
+      if (!getTableColumns(db, "collaboration_invitation_workspaces").includes("permission")) {
+        db.run("ALTER TABLE collaboration_invitation_workspaces ADD COLUMN permission TEXT NOT NULL DEFAULT 'work' CHECK(permission IN ('read', 'work'))");
+      }
+    },
+  },
 ];
 
 function getMigrationTableColumns(db: Database, tableName: string): string[] {

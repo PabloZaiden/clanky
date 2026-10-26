@@ -94,7 +94,7 @@ export function AgentFormFields({
             {workspacesLoading ? "Loading workspaces..." : "Select a workspace"}
           </option>
           {workspaces.map((workspace) => (
-            <option key={workspace.id} value={workspace.id}>
+            <option key={workspace.id} value={workspace.id} disabled={workspace.access === "read"}>
               {getWorkspaceDisplayName(workspace)}
             </option>
           ))}

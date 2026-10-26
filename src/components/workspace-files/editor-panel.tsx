@@ -3,6 +3,7 @@ import { MonacoCodeEditor } from "../MonacoCodeEditor";
 import { MarkdownRenderer } from "../MarkdownRenderer";
 import { detectEditorLanguage, type EditorLanguageSelection } from "./editor-language";
 import { WorkspaceEditorToolbar } from "./editor-toolbar";
+import { useWorkspaceReadOnly } from "../../context/workspace-access-context";
 
 interface WorkspaceEditorPanelProps {
   filePath?: string;
@@ -29,6 +30,7 @@ export function WorkspaceEditorPanel({
   onRefresh,
   onSave,
 }: WorkspaceEditorPanelProps) {
+  const readOnly = useWorkspaceReadOnly();
   const [wordWrapEnabled, setWordWrapEnabled] = useState(true);
   const [selectedLanguage, setSelectedLanguage] = useState<EditorLanguageSelection>("auto");
   const [previewFilePath, setPreviewFilePath] = useState<string | null>(null);
@@ -86,6 +88,7 @@ export function WorkspaceEditorPanel({
                 height="100%"
                 language={editorLanguage}
                 value={value}
+                readOnly={readOnly}
                 onChange={onChange}
                 wordWrap={wordWrapEnabled ? "on" : "off"}
                 ariaLabel={`Code editor: ${displayPath ?? "file"}`}

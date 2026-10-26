@@ -5,6 +5,7 @@ import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import type { CollaborationGuestGrant } from "@/shared/collaboration";
 import type { WebAppServer } from "@pablozaiden/webapp/server";
 import { WorkspaceClientEnrollmentSchema } from "@/contracts/schemas/mesh-client";
+import { CollaborationGuestGrantSchema } from "@/contracts/schemas/collaboration";
 import { ChatTrashPageSchema, ChatTrashQuerySchema, type ChatTrashPage } from "@/contracts/schemas/chat-trash";
 import { mergeChatTrashPages } from "../client-sdk/collaboration/trash-pagination";
 import { MESH_RELAY_CLIENT_ENROLLMENT_PATH } from "@/shared/mesh-relay";
@@ -60,7 +61,8 @@ export async function enrollWorkspaceClient(request: Request): Promise<Response>
       throw new DomainError("collaboration_request_invalid", "The enrollment proof does not match its operation.");
     }
     await verifyWorkspaceBody(new Request(request.url, { method: "POST", body: bytes }), metadata, 64 * 1_024);
-    return Response.json(await workspaceClientController.enroll(input));
+    // Keep controller-owned permissions out of the strict v1 pairing contract.
+    return Response.json(CollaborationGuestGrantSchema.strip().parse(await workspaceClientController.enroll(input)));
   } catch (error) {
     return workspaceClientErrorResponse(error);
   }
@@ -102,7 +104,7 @@ export async function dispatchWorkspaceClient(request: Request): Promise<Respons
                 guest, workspaceId, operation: invocation.authorization.operation, request: inner,
               });
               return await invoke();
-            });
+            }, "read");
             if (!invocation.operation.delegation.collection || inner.method !== "GET"
               || invocation.authorization.workspaceIds.length === 1) return result;
             if (!result?.ok) return result;

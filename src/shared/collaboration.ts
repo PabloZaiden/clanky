@@ -11,6 +11,8 @@ export const COLLABORATION_MAX_CONNECTIONS = 100;
 export const COLLABORATION_INVITATION_DEFAULT_TTL_SECONDS = 900;
 export const COLLABORATION_INVITATION_MAX_TTL_SECONDS = 86_400;
 export const COLLABORATION_PROTOCOL_VERSION = 1 as const;
+export type CollaborationWorkspacePermission = "read" | "work";
+export type CollaborationWorkspacePermissions = Record<string, CollaborationWorkspacePermission>;
 
 export interface CollaborationRelayRoute {
   relayUrl: string;
@@ -23,6 +25,7 @@ export interface CollaborationInvitation extends CollaborationRelayRoute {
   id: string;
   name: string | null;
   workspaceIds: string[];
+  workspacePermissions: CollaborationWorkspacePermissions;
   createdAt: string;
   expiresAt: string;
   consumedAt: string | null;
@@ -46,11 +49,16 @@ export interface CollaborationGuestGrant extends CollaborationRelayRoute {
   revokedAt: string | null;
 }
 
+/** Controller-owned permissions, not part of the v1 pairing wire contract. */
+export interface CollaborationGuestAccess extends CollaborationGuestGrant {
+  workspacePermissions: CollaborationWorkspacePermissions;
+}
+
 export type CollaborationActor =
   | { kind: "user"; userId: string }
   | { kind: "guest"; guestId: string; nodeId: string };
 
-export type WorkspaceAccessCapability = "work" | "admin";
+export type WorkspaceAccessCapability = "read" | "work" | "admin";
 
 export interface WorkspaceAccessAuthority {
   actor: CollaborationActor;

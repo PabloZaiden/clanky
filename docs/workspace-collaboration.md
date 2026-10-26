@@ -14,7 +14,8 @@ Both instances and the relay must support workspace collaboration. First
 execution host and provider on that controller before sharing it.
 
 On the controller, open **Settings > Collaboration > Invite collaborator**,
-select the workspaces and paired relay, and create an invitation. Give its
+select the workspaces, each workspace's **Read only** or **Work** access, and the
+paired relay, then create an invitation. Give its
 one-use token to the invited person through a trusted channel. The token expires;
 revoking an unused invitation prevents its acceptance. Do not publish tokens in
 issues, logs or shell history.
@@ -46,11 +47,52 @@ There is no connection flag or separate remote mode. Preserve the reference
 returned by the API when reading or modifying a shared resource; do not extract
 or construct its underlying controller ID.
 
-Collaborators can work with existing and new conversations, tasks/plans,
+Collaborators with **Work** access can work with existing and new conversations, tasks/plans,
 workspace agents, scratchpad, Git/files, transfers, terminals and previews.
 Chats and tasks show their creator. They cannot delete or administer the
 workspace, change its host/provider, manage controller credentials or invite
 another collaborator.
+
+### Read-only access
+
+Permissions are assigned separately for each collaborator and workspace. A
+collaborator can review one workspace while working in another. Existing grants
+and invitations retain **Work** access after upgrading.
+
+**Read only** allows reading conversations, tasks/plans, agents, transcripts,
+logs, scratchpad, files and Git information, downloading files, and receiving
+authorized realtime updates. The UI marks the workspace as read-only and
+disables or removes modification controls. Controller credentials and other
+participants' private interactive sessions remain subject to the existing
+collaboration restrictions.
+
+The controller also enforces these permissions for direct API/CLI calls and
+the browser-only client. Changes return HTTP `403` with the
+`collaboration_read_only` code. This includes sending messages, answering
+questions or permission requests, starting/stopping work, changing schedules,
+editing scratchpad/files, uploads, Git changes and arbitrary commands. Provider
+execution, including task-title generation, also requires **Work** access.
+Filesystem metadata reads remain available even though their API uses POST.
+Interactive terminals, Code and application previews require **Work** access;
+they cannot provide a read-only guarantee.
+
+In **Settings > Collaboration > Collaborators**, change the access beside a
+workspace with its compact **Read only** checkbox, without creating another
+invitation. Unchecked grants retain **Work** access. Reducing access to **Read only**
+closes that collaborator's existing terminals and previews in the workspace.
+Realtime reconnects and refreshes the effective permissions. Already admitted
+tasks, chats and schedules continue, and other workspace grants are unchanged.
+Permission changes persist across restarts.
+Unsaved Scratchpad edits remain in the open view when access changes, but
+cannot be saved while read-only. Reloading still discards shared drafts.
+
+API invitation requests may include
+`workspacePermissions: { "<workspace-id>": "read" }` alongside `workspaceIds`;
+selected workspaces omitted from that map receive `"work"`. To change an
+existing grant, use
+`PUT /api/collaboration/guests/:id/workspaces/:workspaceId` with
+`{ "permission": "read" }` or `{ "permission": "work" }`.
+Workspace responses expose the effective `access` for shared workspaces.
 
 The browser-only client supports those workspace workflows except arbitrary
 web/VS Code previews and inline streamed video. It has no local workspace or

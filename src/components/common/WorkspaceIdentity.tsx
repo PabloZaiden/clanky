@@ -58,7 +58,7 @@ export function WorkspaceIdentity({
         />
       ) : null}
       <span className="min-w-0 truncate font-medium">{workspace.name}</span>
-      {workspace.collaboration ? <span className="truncate text-xs opacity-70">{workspace.collaboration.controllerName}</span> : null}
+      {workspace.collaboration ? <span className="truncate text-xs opacity-70">{workspace.collaboration.controllerName}{workspace.access === "read" ? " · Read only" : ""}</span> : null}
     </span>
   );
 }

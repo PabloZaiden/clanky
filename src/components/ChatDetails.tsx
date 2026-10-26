@@ -20,6 +20,7 @@ import { harnessActivityActions } from "./app-shell/harness-actions";
 import type { ChatSendMessageHandler } from "./chat-details/types";
 import { VoicePlaybackOverlay } from "./chat-details/voice-playback-overlay";
 import { useLiveVoiceBusy } from "../lib/voice-audio-ownership";
+import { useWorkspaceReadOnly } from "../context/workspace-access-context";
 import {
   useVoicePlayback,
 } from "../hooks";
@@ -48,6 +49,7 @@ export function ChatDetails({
   isVisible?: boolean;
 }) {
   const { error: notifyError } = useToast();
+  const readOnly = useWorkspaceReadOnly();
   const isEmbedded = embedded || (typeof embeddedTaskId === "string" && embeddedTaskId.length > 0);
   const [embeddedActivity, setEmbeddedActivity] = useState(false);
   const [questionAnswerInputFocused, setQuestionAnswerInputFocused] = useState(false);
@@ -247,11 +249,11 @@ export function ChatDetails({
       {chat.config.creator ? (
         <p className="shrink-0 px-3 py-2 text-xs text-gray-500 dark:text-gray-400 sm:px-4">Created by {chat.config.creator.name}</p>
       ) : null}
-      <ChatHistoryRecoveryAction
+      {!readOnly && <ChatHistoryRecoveryAction
         chat={chat}
         isPending={isContinuingFromHistory}
         onContinue={handleContinueFromHistory}
-      />
+      />}
       <ChatTranscript
         chat={chat}
         transcript={transcript}
@@ -273,6 +275,7 @@ export function ChatDetails({
         playingReadAloudKey={voicePlayback.playingKey}
         readAloudStatus={voicePlayback.status === "idle" ? null : voicePlayback.status}
       />
+      <fieldset disabled={readOnly} className="min-w-0">
       <ChatPermissionPanel
         chatId={chatId}
         requests={chat.state.pendingPermissionRequests ?? []}
@@ -286,7 +289,8 @@ export function ChatDetails({
         onRefresh={refreshInput}
         onChatSnapshot={applyChatSnapshot}
       />
-      {composerProps && (
+      </fieldset>
+      {!readOnly && composerProps && (
         <ConversationComposer
           {...composerProps}
           questionAnswerInputFocused={questionAnswerInputFocused}

@@ -13,6 +13,7 @@
 
 import type { ServerSettings } from "./settings";
 import type { ExecutionHostBinding } from "./execution-host";
+import type { CollaborationWorkspacePermission } from "./collaboration";
 
 export const WORKSPACE_SCRATCHPAD_MAX_LENGTH = 100_000;
 export const WORKSPACE_SCRATCHPAD_TOO_LONG_MESSAGE =
@@ -43,6 +44,7 @@ export interface WorkspaceIconMetadata {
  * Each workspace has its own server settings for independent operation.
  */
 export interface Workspace {
+  access?: CollaborationWorkspacePermission;
   collaboration?: { controllerName: string };
   /** Unique identifier (UUID v4) */
   id: string;
@@ -86,6 +88,10 @@ export interface Workspace {
   devcontainerSubpath?: string;
   /** Private icon metadata; image bytes are served by an authenticated resource route. */
   workspaceIcon?: WorkspaceIconMetadata;
+}
+
+export function isWorkspaceReadOnly(workspace: Pick<Workspace, "access"> | null | undefined): boolean {
+  return workspace?.access === "read";
 }
 
 export function isRestartableAutomaticWorkspace<

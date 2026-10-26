@@ -52,7 +52,7 @@ export function requireWorkspaceAccess(
     if (!collaborationWorkspaceExists(ownerUserId, workspaceId)) {
       throw new DomainError("collaboration_workspace_unavailable", "Workspace not found.");
     }
-    return { actor, ownerUserId, workspaceId, guestId: null, capabilities: ["work", "admin"] };
+    return { actor, ownerUserId, workspaceId, guestId: null, capabilities: ["read", "work", "admin"] };
   }
   const guest = getCollaborationGuestByNodeInternal(actor.nodeId);
   if (!guest || guest.id !== actor.guestId || guest.revokedAt !== null
@@ -60,10 +60,15 @@ export function requireWorkspaceAccess(
     throw new DomainError("collaboration_access_denied", "Workspace access is no longer available.");
   }
   validateCollaborationIdentity(guest.identity);
-  if (capability !== "work") {
+  if (capability === "admin") {
     throw new DomainError("collaboration_admin_forbidden", "Collaborators cannot administer workspaces.");
   }
-  return { actor, ownerUserId: guest.ownerUserId, workspaceId, guestId: guest.id, capabilities: ["work"] };
+  const permission = guest.workspacePermissions[workspaceId];
+  if (capability === "work" && permission !== "work") {
+    throw new DomainError("collaboration_read_only", "This workspace is read-only.");
+  }
+  return { actor, ownerUserId: guest.ownerUserId, workspaceId, guestId: guest.id,
+    capabilities: permission === "work" ? ["read", "work"] : ["read"] };
 }
 
 export function withWorkspaceAccess<T>(
@@ -112,7 +117,7 @@ export function getCollaborationCreator(
   workspaceId: string,
 ): CollaborationAuthorship | undefined {
   parseCollaborationInput(CollaborationAuthorshipResourceKindSchema, kind);
-  const authority = requireWorkspaceAccess(workspaceId);
+  const authority = requireWorkspaceAccess(workspaceId, "read");
   parseCollaborationInput(CollaborationIdSchema, resourceId);
   return getCollaborationAuthorship(kind, resourceId, authority.ownerUserId, workspaceId);
 }
