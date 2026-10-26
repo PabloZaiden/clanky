@@ -47,8 +47,10 @@ Every push to `main` publishes both clients together:
 | https://pablozaiden.github.io/clanky/api/ | Select an HTTPS API and authorize a device session |
 | https://pablozaiden.github.io/clanky/collaboration/ | Accept a controller invitation through its HTTPS relay |
 
-The [site root](https://pablozaiden.github.io/clanky/) links both clients and
-the deployed commit. Its `build-info.json` records the full source revision,
+The [site root](https://pablozaiden.github.io/clanky/) is a lightweight,
+mobile-friendly connection chooser with dark and light system themes. It links
+both clients and the deployed commit without JavaScript or external resources.
+Its `build-info.json` records the full source revision,
 client version and build timestamp. Sidebar and Settings / About show the
 client's own embedded build version, including in collaboration mode without
 a server connection. These deployments follow `main`, not the latest stable release;
