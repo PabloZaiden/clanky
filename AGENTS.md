@@ -27,6 +27,13 @@ When working on tasks, follow this general workflow to ensure clarity and goal a
   5. If all goals are met, you are done.
   6. If not, go back to step 2.
 
+### Subagent usage
+
+- Use subagents only when using a different model is essential to the task or
+  when running independent work in parallel with other agents offers a clear
+  advantage.
+- Otherwise, do the work directly without subagents.
+
 ## Project Overview
 
 Clanky is a full-stack Bun + React application for controlling and managing Clanky Tasks through ACP-compatible agent backends (Codex, Copilot, OpenCode, Claude, Pi, or Grok). It uses Bun's native bundler and server, React 19 for the frontend, Tailwind CSS v4 for styling, and `@pablozaiden/webapp` for shared app foundations.
