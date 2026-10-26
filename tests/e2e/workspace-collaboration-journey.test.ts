@@ -12,7 +12,7 @@ import { MESH_OPERATION_TIMEOUT_MS } from "./support/timeouts";
 import { installExternalAcpProvider, installExternalCode } from "./support/provider";
 import { exerciseCodePreview, exerciseServicePreview } from "./support/code-preview";
 
-interface Workspace { id: string; name: string; directory: string }
+interface Workspace { id: string; name: string; directory: string; access?: "read" | "work"; scratchpad: string }
 interface Connection { connection: { id: string; status: string }; realtime: string; errorCode: string | null }
 interface Terminal { config: { id: string } }
 interface Frame { type?: string; data?: string; event?: { resource?: string; id?: string } }
@@ -88,7 +88,7 @@ function observeSocket(node: ManagedMeshNode, path: string, apiKey: string): { s
   return { socket, frames };
 }
 
-test("collaborators work across granted workspaces and retain their remaining access after retirement", async () => {
+test("collaborators review and work across granted workspaces while owners manage their access", async () => {
   const directory = await mkdtemp(join(tmpdir(), "clanky-collaboration-e2e-"));
   const nodes: ManagedMeshNode[] = [];
   const sockets: WebSocket[] = [];
@@ -116,6 +116,9 @@ test("collaborators work across granted workspaces and retain their remaining ac
       { description: "the sharing controller relay to connect", timeoutMs: MESH_OPERATION_TIMEOUT_MS });
     const alpha = await createWorkspace(controller, join(directory, "alpha"), "Shared alpha");
     const beta = await createWorkspace(controller, join(directory, "beta"), "Shared beta");
+    const review = await createWorkspace(controller, join(directory, "review"), "Shared review");
+    await Bun.write(join(review.directory, "handoff.txt"), "Published review handoff\n");
+    await json(controller, `/api/workspaces/${review.id}`, "PUT", { scratchpad: "Review the published handoff" });
     await createWorkspace(controller, join(directory, "private"), "Controller private");
     const local = await createWorkspace(guest, join(directory, "local"), "Guest local");
     const models = await json<Model[]>(controller, `/api/models?workspaceId=${beta.id}`);
@@ -126,17 +129,42 @@ test("collaborators work across granted workspaces and retain their remaining ac
       workspaceId: beta.id, name: "Owner's existing conversation", model, useWorktree: false,
     });
     const invitation = await json<{ token: string }>(controller, "/api/collaboration/invitations", "POST", {
-      workspaceIds: [alpha.id, beta.id], relayName: "sharing",
+      workspaceIds: [alpha.id, beta.id, review.id],
+      workspacePermissions: { [review.id]: "read" }, relayName: "sharing",
     });
     await json(guest, "/api/collaboration/connections", "POST", { invitation: invitation.token });
     await pollUntil(() => json<Connection[]>(guest, "/api/collaboration/connections"),
       (value) => value.some((entry) => entry.realtime === "connected" && !entry.errorCode),
       { description: "the paired realtime source to become ready", timeoutMs: MESH_OPERATION_TIMEOUT_MS });
     const workspaces = await json<Workspace[]>(guest, "/api/workspaces");
-    expect(workspaces.map((entry) => entry.name).sort()).toEqual(["Guest local", "Shared alpha", "Shared beta"]);
+    expect(workspaces.map((entry) => entry.name).sort()).toEqual(["Guest local", "Shared alpha", "Shared beta", "Shared review"]);
     expect(workspaces.find((entry) => entry.name === "Guest local")?.id).toBe(local.id);
     const sharedAlpha = workspaces.find((entry) => entry.name === alpha.name)!;
     const sharedBeta = workspaces.find((entry) => entry.name === beta.name)!;
+    const sharedReview = workspaces.find((entry) => entry.name === review.name)!;
+    expect(sharedReview.access).toBe("read");
+    expect(sharedBeta.access).toBe("work");
+    expect((await json<Workspace>(guest, `/api/workspaces/${encodeURIComponent(sharedReview.id)}`)).scratchpad)
+      .toBe("Review the published handoff");
+    const metadata = await json<{ entries: Array<{ name: string }> }>(guest,
+      `/api/workspaces/${encodeURIComponent(sharedReview.id)}/files/filesystem`, "POST", {
+        operation: "list", path: review.directory,
+      });
+    expect(metadata.entries.some((entry) => entry.name === "handoff.txt")).toBe(true);
+    const deniedNotes = await meshJsonRequest(guest, `/api/workspaces/${encodeURIComponent(sharedReview.id)}`, {
+      method: "PUT", body: { scratchpad: "Changed by observer" },
+    });
+    expect(deniedNotes.status).toBe(403);
+    const deniedExecution = await meshJsonRequest(guest, `/api/workspaces/${encodeURIComponent(sharedReview.id)}/exec`, {
+      method: "POST", body: { command: "git", args: ["status"], timeoutMs: 5_000 },
+    });
+    expect(deniedExecution.status).toBe(403);
+    const deniedFile = await meshJsonRequest(guest, `/api/workspaces/${encodeURIComponent(sharedReview.id)}/files/filesystem`, {
+      method: "POST", body: { operation: "delete", path: join(review.directory, "handoff.txt") },
+    });
+    expect(deniedFile.status).toBe(403);
+    expect((await json<Workspace>(controller, `/api/workspaces/${review.id}`)).scratchpad).toBe("Review the published handoff");
+    expect(await Bun.file(join(review.directory, "handoff.txt")).text()).toBe("Published review handoff\n");
     expect(sharedAlpha.id).toStartWith("clanky.remote.v1.");
     const execution = await json<{ stdout: string; exitCode: number }>(guest,
       `/api/workspaces/${encodeURIComponent(sharedAlpha.id)}/exec`, "POST", {
@@ -145,6 +173,11 @@ test("collaborators work across granted workspaces and retain their remaining ac
     expect(execution.exitCode).toBe(0);
     expect(execution.stdout.trim()).toBe(controller.environment["HOME"]!);
     const key = await json<{ token: string }>(guest, "/api/api-keys", "POST", { name: "collaboration-client", scopes: ["*"] });
+    const reviewDownload = join(directory, "review-handoff.txt");
+    const reviewTransfer = await cli(guest, key.token,
+      ["workspace", "download", sharedReview.id, "handoff.txt", "--output", reviewDownload, "--force"]);
+    if (reviewTransfer.exitCode) throw new Error(`Review download failed: ${reviewTransfer.stderr}`);
+    expect(await Bun.file(reviewDownload).text()).toBe("Published review handoff\n");
     const sharedChats = await json<Work[]>(guest, `/api/chats?workspaceId=${encodeURIComponent(sharedBeta.id)}`);
     const existing = sharedChats.find((entry) => entry.config.name === "Owner's existing conversation");
     if (!existing) throw new Error("The collaborator cannot open existing workspace work.");
@@ -311,6 +344,11 @@ test("collaborators work across granted workspaces and retain their remaining ac
         description: "the controller to run its admitted shared schedule after guest retirement",
         timeoutMs: MESH_OPERATION_TIMEOUT_MS, formatLastObserved: JSON.stringify,
       });
+    await json(controller, `/api/collaboration/guests/${collaborators[0]!.id}/workspaces/${beta.id}`, "PUT", { permission: "read" });
+    await pollUntil(() => guestTerminals[1]!.socket.readyState, (value) => value === WebSocket.CLOSED,
+      { description: "the workspace shell to close when work access ends", timeoutMs: MESH_OPERATION_TIMEOUT_MS });
+    expect((await json<Workspace>(guest, `/api/workspaces/${encodeURIComponent(sharedBeta.id)}`)).access).toBe("read");
+    expect((await json<Terminal>(controller, `/api/terminal-sessions/${ownerTerminal.config.id}`)).config.id).toBe(ownerTerminal.config.id);
     controller.child.kill();
     await controller.child.exited;
     await pollUntil(() => json<Connection[]>(guest, "/api/collaboration/connections"),
@@ -333,7 +371,13 @@ test("collaborators work across granted workspaces and retain their remaining ac
     const reopened = await json<Work>(guest, `/api/chats/${encodeURIComponent(existing.config.id)}`);
     expect(reopened.config.creator?.kind).toBe("user");
     expect((await json<Workspace[]>(guest, "/api/workspaces")).map((entry) => entry.name).sort())
-      .toEqual([local.name, beta.name].sort());
+      .toEqual([local.name, beta.name, review.name].sort());
+    expect((await json<Workspace>(guest, `/api/workspaces/${encodeURIComponent(sharedBeta.id)}`)).access).toBe("read");
+    expect((await json<Workspace>(guest, `/api/workspaces/${encodeURIComponent(sharedReview.id)}`)).access).toBe("read");
+    const deniedMessage = await meshJsonRequest(guest, `/api/chats/${encodeURIComponent(existing.config.id)}/messages`, {
+      method: "POST", body: { message: "Continue the reviewed work" },
+    });
+    expect(deniedMessage.status).toBe(403);
     const restoredTask = await json<Work>(controller, `/api/tasks/${ownerTask.config.id}`);
     expect(restoredTask.config.creator).toEqual(task.config.creator);
   } catch (error) {

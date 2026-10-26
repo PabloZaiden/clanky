@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { CollaborationGuestGrant, CollaborationInvitation } from "@/shared/collaboration";
 import { COLLABORATION_MAX_GUESTS, COLLABORATION_MAX_INVITATIONS } from "@/shared/collaboration";
-import { CollaborationInvitationSchema } from "@/contracts/schemas/collaboration";
+import { CollaborationInvitationSchema, CollaborationWorkspacePermissionSchema } from "@/contracts/schemas/collaboration";
 import type { AcceptCollaborationInvitation } from "@/contracts/schemas/collaboration";
 import { DomainError } from "../domain/domain-error";
 import { getDatabase } from "./database";
@@ -37,16 +37,19 @@ const InvitationRowSchema = z.object({
 function decodeInvitation(value: unknown): CollaborationInvitation {
   const row = parseCollaborationRecord(InvitationRowSchema, value);
   const relations = getDatabase().query(`
-    SELECT workspace_id AS id FROM collaboration_invitation_workspaces
+    SELECT workspace_id AS id, permission FROM collaboration_invitation_workspaces
     WHERE invitation_id = ? AND owner_user_id = ? ORDER BY workspace_id
   `).all(row.id, row.owner_user_id);
-  const workspaceIds = parseCollaborationRecord(z.array(z.object({ id: z.string().min(1) })), relations)
-    .map((entry) => entry.id);
+  const workspaces = parseCollaborationRecord(z.array(z.object({
+    id: z.string().min(1), permission: CollaborationWorkspacePermissionSchema,
+  })), relations);
+  const workspaceIds = workspaces.map((entry) => entry.id);
   return parseCollaborationRecord(CollaborationInvitationSchema, {
     protocolVersion: row.protocol_version,
     controller: { nodeId: row.controller_node_id, publicKey: row.controller_public_key,
       fingerprint: row.controller_fingerprint },
     id: row.id, name: row.name, workspaceIds,
+    workspacePermissions: Object.fromEntries(workspaces.map((entry) => [entry.id, entry.permission])),
     relayUrl: row.relay_url, relayFingerprint: row.relay_fingerprint,
     createdAt: row.created_at, expiresAt: row.expires_at,
     consumedAt: row.consumed_at, revokedAt: row.revoked_at,
@@ -80,11 +83,11 @@ export function saveCollaborationInvitation(
       invitation.relayUrl, invitation.relayFingerprint, invitation.createdAt,
       invitation.expiresAt, invitation.workspaceIds.length);
     const insert = db.query(`
-      INSERT INTO collaboration_invitation_workspaces (invitation_id, owner_user_id, workspace_id)
-      VALUES (?, ?, ?)
+      INSERT INTO collaboration_invitation_workspaces (invitation_id, owner_user_id, workspace_id, permission)
+      VALUES (?, ?, ?, ?)
     `);
     for (const workspaceId of invitation.workspaceIds) {
-      insert.run(invitation.id, ownerUserId, workspaceId);
+      insert.run(invitation.id, ownerUserId, workspaceId, invitation.workspacePermissions[workspaceId]!);
     }
   }).immediate();
 }
@@ -153,11 +156,11 @@ export function consumeCollaborationInvitation(
       input.guest.fingerprint, input.name ?? invitation.name,
       input.relayUrl, input.relayFingerprint, input.now);
     const insert = db.query(`
-      INSERT INTO collaboration_memberships (guest_id, owner_user_id, workspace_id, revoked_at)
-      VALUES (?, ?, ?, NULL)
+      INSERT INTO collaboration_memberships (guest_id, owner_user_id, workspace_id, permission, revoked_at)
+      VALUES (?, ?, ?, ?, NULL)
     `);
     for (const workspaceId of invitation.workspaceIds) {
-      insert.run(guestId, row.owner_user_id, workspaceId);
+      insert.run(guestId, row.owner_user_id, workspaceId, invitation.workspacePermissions[workspaceId]!);
     }
     db.query(`
       UPDATE collaboration_invitations SET consumed_at = ?

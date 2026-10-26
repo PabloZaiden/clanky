@@ -5,6 +5,8 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type {
   CollaborationGuestGrant,
+  CollaborationGuestAccess,
+  CollaborationWorkspacePermission,
   CollaborationInvitation,
   CollaborationRelayRoute,
   CollaborationRevocation,
@@ -16,6 +18,7 @@ import {
   AcceptCollaborationInvitationSchema,
   CollaborationIdSchema,
   CreateCollaborationInvitationSchema,
+  CollaborationWorkspacePermissionSchema,
   type AcceptCollaborationInvitation,
   type CreateCollaborationInvitation,
 } from "@/contracts/schemas/collaboration";
@@ -32,6 +35,7 @@ import {
   listActiveCollaborationGuestsInternal,
   listCollaborationGuests,
   revokeCollaborationGuest,
+  updateCollaborationWorkspacePermission,
 } from "../persistence/collaboration-guests";
 import { requireCollaborationWorkspaces } from "../persistence/collaboration-storage";
 import { controllerRelayService } from "./controller-relay-service";
@@ -96,6 +100,7 @@ class CollaborationService {
     const token = randomBytes(32).toString("base64url");
     const invitation: CollaborationInvitation = {
       id: randomUUID(), name: parsed.name ?? null, workspaceIds: parsed.workspaceIds,
+      workspacePermissions: Object.fromEntries(parsed.workspaceIds.map((id) => [id, parsed.workspacePermissions?.[id] ?? "work"])),
       protocolVersion: COLLABORATION_PROTOCOL_VERSION, controller,
       ...target.relay, createdAt: now.toISOString(),
       expiresAt: new Date(now.getTime() + parsed.ttlSeconds * 1_000).toISOString(),
@@ -128,19 +133,19 @@ class CollaborationService {
   }
 
   /** Internal lookup for a transport that has already verified node possession. */
-  getGrantByNodeId(nodeId: string): CollaborationGuestGrant | undefined {
+  getGrantByNodeId(nodeId: string): CollaborationGuestAccess | undefined {
     parseCollaborationInput(CollaborationIdSchema, nodeId);
     const guest = getCollaborationGuestByNodeInternal(nodeId);
     if (guest) validateCollaborationIdentity(guest.identity);
     return guest;
   }
 
-  getAuthenticatedGuest(nodeId: string): CollaborationGuestGrant | undefined {
+  getAuthenticatedGuest(nodeId: string): CollaborationGuestAccess | undefined {
     const guest = this.getGrantByNodeId(nodeId);
     return guest?.revokedAt === null ? guest : undefined;
   }
 
-  listActiveGuestsInternal(): CollaborationGuestGrant[] {
+  listActiveGuestsInternal(): CollaborationGuestAccess[] {
     const guests = listActiveCollaborationGuestsInternal();
     for (const guest of guests) validateCollaborationIdentity(guest.identity);
     return guests;
@@ -152,8 +157,17 @@ class CollaborationService {
       .map((guest) => guest.identity);
   }
 
-  listGuests(): CollaborationGuestGrant[] {
+  listGuests(): CollaborationGuestAccess[] {
     return listCollaborationGuests(requireCollaborationLocalUserId());
+  }
+
+  updateWorkspacePermission(id: string, workspaceId: string, permission: CollaborationWorkspacePermission): void {
+    parseCollaborationInput(CollaborationIdSchema, id);
+    parseCollaborationInput(CollaborationIdSchema, workspaceId);
+    parseCollaborationInput(CollaborationWorkspacePermissionSchema, permission);
+    updateCollaborationWorkspacePermission({
+      ownerUserId: requireCollaborationLocalUserId(), guestId: id, workspaceId, permission,
+    });
   }
 
   revokeGuest(id: string): void {

@@ -263,6 +263,12 @@ starts that executable and interacts with it only through public CLI, HTTP,
 WebSocket, WebDAV, process, filesystem, Git, or network boundaries. The suite
 does not import application internals or inspect persistence.
 
+Keep local CLI commands such as `worker channel` and `worker service status`
+independent of application-server initialization. Load the server only for
+commands that need it, and pass the framework an asynchronous route-catalog
+loader shared with the Mesh CLI. Maintenance probes must not pay for loading
+the full server graph or constructing its route catalog.
+
 The runner discovers only `tests/e2e/**/*.test.ts`, partitions those files from
 their count and `CLANKY_TEST_MAX_WORKERS`, and never retries failures. Its
 architecture guard rejects automated tests outside `tests/e2e`, production

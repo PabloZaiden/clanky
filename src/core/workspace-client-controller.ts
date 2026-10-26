@@ -2,7 +2,7 @@
  * Authenticated client admission and deterministic revocation of guest access.
  */
 import type { AcceptCollaborationInvitation } from "@/contracts/schemas/collaboration";
-import type { CollaborationRevocation } from "@/shared/collaboration";
+import type { CollaborationRevocation, CollaborationWorkspacePermission } from "@/shared/collaboration";
 import { runWithCollaborationActor, runWithCurrentUser } from "../context/user-context";
 import { DomainError } from "../domain/domain-error";
 import { ensureLocalMeshNodeIdentity } from "../persistence/mesh-node-identity";
@@ -85,6 +85,24 @@ class WorkspaceClientController {
     ]);
     const failures = outcomes.flatMap((outcome) => outcome.status === "rejected" ? [outcome.reason] : []);
     if (failures.length) throw new AggregateError(failures, "Collaborator access was revoked but transport cleanup failed.");
+  }
+
+  async updatePermission(guestId: string, workspaceId: string, permission: CollaborationWorkspacePermission): Promise<void> {
+    const guest = collaborationService.listGuests().find((item) => item.id === guestId);
+    if (!guest) throw new DomainError("collaboration_guest_not_found", "Collaborator not found.");
+    collaborationService.updateWorkspacePermission(guestId, workspaceId, permission);
+    this.changed?.(guest.ownerUserId);
+    const event: CollaborationRevocation = {
+      guestId, nodeId: guest.identity.nodeId, ownerUserId: guest.ownerUserId,
+      workspaceIds: [workspaceId], wholeGuest: false,
+    };
+    // Reconnect realtime to refresh effective permissions as well as closing write-capable streams.
+    const outcomes = await Promise.allSettled([
+      this.revokeTransports?.(event),
+      ...(permission === "read" ? [this.closeInteractiveResources(event)] : []),
+    ]);
+    const failures = outcomes.flatMap((outcome) => outcome.status === "rejected" ? [outcome.reason] : []);
+    if (failures.length) throw new AggregateError(failures, "Workspace permissions changed but transport cleanup failed.");
   }
 
   private async closeInteractiveResources(event: CollaborationRevocation): Promise<void> {

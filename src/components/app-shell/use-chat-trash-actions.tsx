@@ -4,6 +4,7 @@ import type { ChatTrashPage, ChatTrashResult, TrashedChat } from "@/contracts/sc
 import { apiRequest } from "../../lib/api-client";
 import { getStoredSshCredentialToken } from "../../lib/ssh-browser-credentials";
 import { decodeCollaborationResourceReference } from "@/shared/collaboration-reference";
+import type { Workspace } from "@/shared";
 
 async function cleanupCredentials(target: TrashedChat | "all"): Promise<Record<string, string>> {
   const serverIds = new Set<string>(target === "all" ? [] : target.credentialServerIds);
@@ -33,12 +34,21 @@ async function cleanupCredentials(target: TrashedChat | "all"): Promise<Record<s
 export function useChatTrashActions(
   navigate: (route: WebAppRoute) => void,
   refreshChats: () => Promise<void>,
+  workspaces: Workspace[],
 ) {
   const toast = useToast();
   const [target, setTarget] = useState<TrashedChat | "all" | null>(null);
   const [pending, setPending] = useState(false);
+  const canModify = useCallback((chat: TrashedChat): boolean => {
+    const workspace = workspaces.find((entry) => entry.id === chat.workspaceId);
+    return workspace ? workspace.access !== "read" : !decodeCollaborationResourceReference(chat.id);
+  }, [workspaces]);
 
   const restore = useCallback(async (chat: TrashedChat): Promise<void> => {
+    if (!canModify(chat)) {
+      toast.error("This workspace is read-only.");
+      return;
+    }
     setPending(true);
     try {
       await apiRequest(`/api/trash/${encodeURIComponent(chat.id)}/restore`, {
@@ -52,10 +62,14 @@ export function useChatTrashActions(
     } finally {
       setPending(false);
     }
-  }, [navigate, refreshChats, toast]);
+  }, [navigate, refreshChats, toast, canModify]);
 
   async function confirmDelete(): Promise<void> {
     if (!target) return;
+    if (target !== "all" && !canModify(target)) {
+      toast.error("This workspace is read-only.");
+      return;
+    }
     setPending(true);
     try {
       const all = target === "all";
@@ -82,22 +96,22 @@ export function useChatTrashActions(
     }
   }
 
-  const items = useCallback((chat: TrashedChat): ActionMenuItem[] => [
+  const items = useCallback((chat: TrashedChat): ActionMenuItem[] => !canModify(chat) ? [] : [
     { id: "restore", label: "Restore", disabled: pending, onAction: () => void restore(chat) },
     { id: "delete-permanently", label: "Delete permanently", destructive: true, disabled: pending, onAction: () => setTarget(chat) },
-  ], [pending, restore]);
+  ], [pending, restore, canModify]);
   const emptyActions = useMemo<ActionMenuItem[]>(() => [{
     id: "empty-trash", label: "Empty local Trash", destructive: true, disabled: pending,
     onAction: () => setTarget("all"),
   }], [pending]);
 
   return {
-    restore, items, emptyActions, pending,
+    restore, items, emptyActions, pending, canModify,
     requestDelete: (chat: TrashedChat) => setTarget(chat),
     requestEmpty: () => setTarget("all"),
     dialogs: (
       <ConfirmModal
-        isOpen={target !== null}
+        isOpen={target !== null && (target === "all" || canModify(target))}
         onClose={() => { if (!pending) setTarget(null); }}
         onConfirm={confirmDelete}
         title={target === "all" ? "Empty local Trash?" : "Delete chat permanently?"}

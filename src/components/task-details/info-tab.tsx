@@ -5,6 +5,7 @@ import type { EntityLabels } from "../../utils";
 import { formatDateTime, formatModelDisplay } from "./types";
 import { taskDetailsTabContentFullWidthClassName, taskDetailsTabScrollContainerClassName } from "./tab-layout";
 import { TokenUsage } from "../token-usage";
+import { useWorkspaceReadOnly } from "../../context/workspace-access-context";
 
 interface InfoTabProps {
   task: Task;
@@ -22,8 +23,9 @@ export function InfoTab({
   onUpdatePlanningSettings,
 }: InfoTabProps) {
   const { config, state } = task;
-  const canEditAutoAcceptPlan = state.status === "planning" && state.planMode?.active === true;
-  const canEditFullyAutonomous = (
+  const readOnly = useWorkspaceReadOnly();
+  const canEditAutoAcceptPlan = !readOnly && state.status === "planning" && state.planMode?.active === true;
+  const canEditFullyAutonomous = !readOnly && (
     canEditAutoAcceptPlan
     || (state.planMode?.active === false && POST_APPROVAL_FULLY_AUTONOMOUS_EDITABLE_STATUSES.has(state.status))
   );

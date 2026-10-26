@@ -31,15 +31,22 @@ const RelayRoute = {
   relayFingerprint: z.string().regex(/^sha256:[a-f0-9]{64}$/),
 };
 const TimestampSchema = z.string().datetime();
+export const CollaborationWorkspacePermissionSchema = z.enum(["read", "work"]);
+export const CollaborationWorkspacePermissionsSchema = z.record(CollaborationIdSchema, CollaborationWorkspacePermissionSchema);
+export const UpdateCollaborationWorkspacePermissionSchema = z.object({
+  permission: CollaborationWorkspacePermissionSchema,
+}).strict();
 
 export const CreateCollaborationInvitationSchema = z.object({
   workspaceIds: CollaborationWorkspaceIdsSchema,
+  workspacePermissions: CollaborationWorkspacePermissionsSchema.optional(),
   relayName: ControllerRelayNameSchema,
   name: CollaborationNameSchema.optional(),
   ttlSeconds: z.number().int().min(60)
     .max(COLLABORATION_INVITATION_MAX_TTL_SECONDS)
     .default(COLLABORATION_INVITATION_DEFAULT_TTL_SECONDS),
-}).strict();
+}).strict().refine((value) => Object.keys(value.workspacePermissions ?? {}).every((id) => value.workspaceIds.includes(id)),
+  "Permissions must refer to selected workspaces.");
 
 export const CollaborationInvitationSchema = z.object({
   protocolVersion: z.literal(COLLABORATION_PROTOCOL_VERSION),
@@ -47,6 +54,7 @@ export const CollaborationInvitationSchema = z.object({
   id: CollaborationIdSchema,
   name: CollaborationNameSchema.nullable(),
   workspaceIds: z.array(CollaborationIdSchema).max(COLLABORATION_MAX_WORKSPACES),
+  workspacePermissions: CollaborationWorkspacePermissionsSchema,
   ...RelayRoute,
   createdAt: TimestampSchema,
   expiresAt: TimestampSchema,

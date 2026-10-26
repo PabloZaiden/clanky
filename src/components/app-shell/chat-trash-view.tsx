@@ -30,7 +30,7 @@ export function ChatTrashView({
               className={selectedChatId === chat.id ? "ring-1 ring-gray-400" : ""}
               meta={`Deleted ${new Date(chat.deletedAt).toLocaleDateString()} · Expires ${new Date(chat.expiresAt).toLocaleDateString()}`}
               metaPlacement="footer"
-              actions={
+              actions={actions.canModify(chat) ? (
                 <div className="flex shrink-0 items-center gap-2">
                   <Button size="sm" variant="secondary" disabled={actions.pending} onClick={() => void actions.restore(chat)}>Restore</Button>
                   <ActionMenu
@@ -41,7 +41,7 @@ export function ChatTrashView({
                     items={actions.items(chat).filter((item) => item.id !== "restore")}
                   />
                 </div>
-              }
+              ) : undefined}
             />
           )) : undefined}
         </DataList>

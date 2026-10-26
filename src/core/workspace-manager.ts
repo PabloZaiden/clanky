@@ -45,7 +45,7 @@ import { withWorkspaceExecutionLock, withWorkspaceRuntimeLock } from "./workspac
 import { executionHostService } from "./execution-host-service";
 import { workspaceWorkerEnrollmentService } from "./workspace-worker-enrollment-service";
 import { meshManager } from "./mesh-manager";
-import { getCollaborationActor, requireExecutionOwnerUserId } from "../context/user-context";
+import { getCollaborationActor, getWorkspaceAccessAuthority, requireExecutionOwnerUserId } from "../context/user-context";
 import { requireWorkspaceUpdateUserId } from "../persistence/ownership";
 import {
   captureWorkspaceSshTargetState,
@@ -58,6 +58,13 @@ import {
 } from "../persistence/workspace-execution-targets";
 
 const log = createLogger("core:workspace-manager");
+
+function withEffectiveWorkspaceAccess(workspace: Workspace): Workspace {
+  const authority = getWorkspaceAccessAuthority();
+  return authority?.guestId && authority.workspaceId === workspace.id
+    ? { ...workspace, access: authority.capabilities.includes("work") ? "work" : "read" }
+    : workspace;
+}
 
 export interface CreateWorkspaceInput {
   name: string;
@@ -274,7 +281,8 @@ function createWorkspaceRecordFromInput(
 
 export class WorkspaceManager {
   async getWorkspace(id: string): Promise<Workspace | null> {
-    return await getWorkspaceRecord(id);
+    const workspace = await getWorkspaceRecord(id);
+    return workspace ? withEffectiveWorkspaceAccess(workspace) : null;
   }
 
   async requireWorkspace(id: string): Promise<Workspace> {
@@ -288,7 +296,7 @@ export class WorkspaceManager {
   }
 
   async listWorkspaces(): Promise<Workspace[]> {
-    return await listWorkspaceRecords();
+    return (await listWorkspaceRecords()).map(withEffectiveWorkspaceAccess);
   }
 
   async validateRemoteDirectory(

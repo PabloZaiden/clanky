@@ -14,6 +14,7 @@ import {
 } from "./code-explorer-targets";
 import { getRouteString } from "./route-fields";
 import { getWorkspaceDisplayName } from "../../lib/workspace-label";
+import { isWorkspaceReadOnly } from "@/shared/workspace";
 import {
   getHeaderOwnerRoute,
   sidebarNodeMatchesRoute,
@@ -290,6 +291,7 @@ export function useShellHeader({
           return { title: "Task" };
         }
         return selectedTask?.state.status === "draft"
+          && !isWorkspaceReadOnly(workspaces.find((workspace) => workspace.id === selectedTask.config.workspaceId))
           ? { ...nodeModel, title: `Edit ${nodeModel.title}`, scopeSubtitle }
           : { ...nodeModel, scopeSubtitle };
       case "task-files":
@@ -345,6 +347,7 @@ export function useShellHeader({
           ? workspaces.find((workspace) => workspace.id === agent.config.workspaceId)
           : undefined;
         return editingAgentId && editingAgentId === agentId
+          && !isWorkspaceReadOnly(agentWorkspace)
           ? { title: `Edit agent ${agent?.config.name ?? nodeModel?.title ?? ""}`.trim(), scopeSubtitle }
           : agent
             ? {
