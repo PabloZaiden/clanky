@@ -27,6 +27,15 @@ When working on tasks, follow this general workflow to ensure clarity and goal a
   5. If all goals are met, you are done.
   6. If not, go back to step 2.
 
+### Pull request reviews and merging
+
+- Unless explicitly instructed otherwise, after opening a PR, wait for review
+  comments before merging; do not merge immediately.
+- Address every requested or suggested change, either by implementing it or by
+  replying to the feedback with an explanation of why the change will not be made.
+- Merge only after review comments have arrived and all requested or suggested
+  changes have been addressed.
+
 ### Subagent usage
 
 - Use subagents only when using a different model is essential to the task or
