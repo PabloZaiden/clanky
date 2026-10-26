@@ -19,6 +19,7 @@ import { getMessageAttachmentKind } from "@/shared/message-attachments";
 import { isPersistedMessage } from "../transcripts/codec";
 import { LEGACY_PROMPT_TEMPLATES } from "./legacy-prompt-templates";
 import { migrateCollaboration } from "../collaboration-schema";
+import { migrateCollaborationAdministration } from "./collaboration-administration";
 
 const log = createLogger("persistence:migrations");
 
@@ -877,6 +878,12 @@ export const migrations: Migration[] = [
         db.run("ALTER TABLE collaboration_invitation_workspaces ADD COLUMN permission TEXT NOT NULL DEFAULT 'work' CHECK(permission IN ('read', 'work'))");
       }
     },
+  },
+  {
+    version: 88,
+    name: "add_collaboration_workspace_administration",
+    transactional: false,
+    up: migrateCollaborationAdministration,
   },
 ];
 

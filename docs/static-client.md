@@ -212,8 +212,12 @@ Git/files, uploads, bounded images and application terminals. New agent
 schedules use the selected workspace controller's timezone; editing preserves
 the schedule's existing timezone. Quick Chat, templates, Markdown, view/tree
 preferences and last-used models are device/profile preferences in this mode.
-Controller settings, workspace creation/administration, provisioning and local
-execution-host management are not browser capabilities. Arbitrary web/VS Code
+An **All workspaces** invitation also permits creating,
+configuring and deleting the inviting owner's current and future workspaces.
+Choose the owning **Controller** when creating a workspace; execution stays on
+that controller's selected host. See [workspace administration](workspace-collaboration.md#workspace-administrators).
+Global controller settings, provisioning and local execution-host management
+are not browser capabilities. Arbitrary web/VS Code
 previews and inline streamed video require an API-backed client; download video
 instead. HTML transcripts are downloaded, not navigated as application-origin
 Blob documents.

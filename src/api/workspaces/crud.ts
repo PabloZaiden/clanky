@@ -22,8 +22,9 @@ import {
   shouldIncludeSensitiveData,
 } from "../../lib/sensitive-data";
 import { CreateWorkspaceRequestSchema, DeleteWorkspaceRequestSchema, UpdateWorkspaceRequestSchema } from "@/contracts/schemas";
+import { WorkspaceControllerQuerySchema } from "@/contracts/schemas/workspace";
 import { SensitiveQuerySchema } from "../route-schemas";
-import { workspaceOperation } from "../workspace-delegation";
+import { workspaceOperation, workspaceAdministrationOperation } from "../workspace-delegation";
 import { requireResourceOwnerUserId } from "../../context/user-context";
 
 const log = createLogger("api:workspaces");
@@ -78,9 +79,10 @@ export const crudRoutes = defineRoutes({
         automation: { policy: "read", hiddenQuery: ["sensitive"] },
       },
       POST: {
+        delegation: workspaceAdministrationOperation("workspace", "workspace-create"),
         description: "Create a workspace on an explicitly selected execution host or dedicated worker enrollment.",
         requestSchema: CreateWorkspaceRequestSchema,
-        querySchema: undefined,
+        querySchema: WorkspaceControllerQuerySchema,
         automation: { policy: "confirm", reason: "May prepare repositories or grant Clanky context access.", hiddenInputs: ["sshTarget"] },
       },
     },
@@ -117,7 +119,9 @@ export const crudRoutes = defineRoutes({
 
       try {
         const workspace = await workspaceManager.createWorkspace(body);
-        ctx.userRealtime.publishEntityChanged(CLANKY_REALTIME_RESOURCES.workspaces, workspace.id);
+        ctx.realtime.publishEntityChanged(CLANKY_REALTIME_RESOURCES.workspaces, workspace.id, {
+          target: { userId: requireResourceOwnerUserId(workspace.id) },
+        });
         log.info(`Created workspace: ${workspace.name} (${workspace.directory})`);
         return Response.json(workspace, { status: 201 });
       } catch (error) {
@@ -160,6 +164,7 @@ export const crudRoutes = defineRoutes({
         automation: { policy: "confirm", reason: "May change execution authority or grant Clanky context access.", hiddenInputs: ["sshTarget"], hiddenQuery: ["sensitive"] },
       },
       DELETE: {
+        delegation: workspaceAdministrationOperation(),
         description: "Delete a workspace, optionally including its server directory.",
         requestSchema: DeleteWorkspaceRequestSchema,
         querySchema: undefined,
@@ -257,6 +262,7 @@ export const crudRoutes = defineRoutes({
       }
 
       try {
+        const ownerUserId = requireResourceOwnerUserId(id);
         const result = await workspaceManager.deleteWorkspace(id, validation.data);
         if (!result.success) {
           log.warn("DELETE /api/workspaces/:id - Failed", {
@@ -272,7 +278,7 @@ export const crudRoutes = defineRoutes({
             },
           });
         }
-        ctx.userRealtime.publishDeleted(CLANKY_REALTIME_RESOURCES.workspaces, id);
+        ctx.realtime.publishDeleted(CLANKY_REALTIME_RESOURCES.workspaces, id, { target: { userId: ownerUserId } });
         log.info(`Deleted workspace: ${id}`);
         return Response.json({ success: true });
       } catch (error) {

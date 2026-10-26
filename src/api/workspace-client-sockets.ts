@@ -4,7 +4,7 @@
 import { createLogger, type RealtimeBus, type RealtimePublication } from "@pablozaiden/webapp/server";
 import { realtimeClientMessageSchema, type CurrentUser } from "@pablozaiden/webapp/contracts";
 import { decodeCollaborationResourceReference } from "@/shared/collaboration-reference";
-import type { CollaborationGuestGrant, CollaborationRevocation } from "@/shared/collaboration";
+import type { CollaborationGuestGrant, CollaborationGuestAccess, CollaborationRevocation } from "@/shared/collaboration";
 import { MESH_TERMINAL_MAX_INPUT_BYTES } from "@/shared/mesh-terminal";
 import { runWithCollaborationActor, runWithCurrentUser, runWithExecutionOwner, requireExecutionOwnerUser } from "../context/user-context";
 import { DomainError, isDomainError } from "../domain/domain-error";
@@ -148,7 +148,7 @@ class WorkspaceClientSockets {
     ));
   }
 
-  private openRealtime(input: SocketInput, guest: CollaborationGuestGrant): MeshInboundSocketAttachment {
+  private openRealtime(input: SocketInput, guest: CollaborationGuestAccess): MeshInboundSocketAttachment {
     const realtime = this.realtime;
     if (!realtime) throw new Error("Workspace realtime is not configured.");
     let publication: RealtimePublication<unknown> | undefined;
@@ -168,8 +168,9 @@ class WorkspaceClientSockets {
     realtime.add(transport, {
       authorize: (value) => {
         if (value.target.userId === guest.ownerUserId && value.target.resource === "workspaces"
-          && value.target.id && guest.workspaceIds.includes(value.target.id)
-          && isWorkspaceRealtimeEvent(value.event) && value.event.type === "workspaces.deleted") {
+          && isWorkspaceRealtimeEvent(value.event)
+          && (guest.allWorkspacesAdmin
+            || value.target.id && guest.workspaceIds.includes(value.target.id) && value.event.type === "workspaces.deleted")) {
           input.socket.close(1000, "Workspace grants changed");
           return false;
         }
@@ -178,7 +179,8 @@ class WorkspaceClientSockets {
           && resolveWorkspaceEventAuthority(current, value));
       },
       transform: (value) => {
-        const workspaceId = resolveWorkspaceEventAuthority(guest, value);
+        const current = collaborationService.getAuthenticatedGuest(guest.identity.nodeId);
+        const workspaceId = current ? resolveWorkspaceEventAuthority(current, value) : undefined;
         if (!workspaceId || !isWorkspaceRealtimeEvent(value.event)) return undefined;
         publication = { ...value, target: { ...value.target, workspaceId } };
         return { ...value, event: value.event };

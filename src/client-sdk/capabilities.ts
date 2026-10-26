@@ -3,13 +3,12 @@
  */
 
 import { getWebAppClientMode, type WebAppRoute } from "@pablozaiden/webapp/web";
-import { decodeCollaborationResourceReference } from "@/shared/collaboration-reference";
 
 export function getClankyClientCapabilities() {
   const apiBacked = getWebAppClientMode() !== "external";
   return {
     controllerAdministration: apiBacked,
-    workspaceCreation: apiBacked,
+    workspaceCreation: true,
     executionHosts: apiBacked,
     provisioning: apiBacked,
     voice: apiBacked,
@@ -20,11 +19,6 @@ export function getClankyClientCapabilities() {
 
 export function getClankyRouteUnavailableReason(route: WebAppRoute): string | undefined {
   const capabilities = getClankyClientCapabilities();
-  if (route.view === "workspace-settings"
-    && (!capabilities.controllerAdministration
-      || typeof route["workspaceId"] === "string" && decodeCollaborationResourceReference(route["workspaceId"]))) {
-    return "Workspace settings are managed on the owning controller.";
-  }
   if (!capabilities.executionHosts && (route.view === "execution-host" || route.view === "execution-host-files"
     || route.view === "code-explorer" && route["contentType"] === "execution-host"
     || route.view === "compose" && ["ssh-server", "execution-host-chat", "execution-host-terminal"].includes(String(route["kind"])))) {

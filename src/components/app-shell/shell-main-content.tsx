@@ -736,9 +736,6 @@ function renderMainContent(props: ShellMainContentProps) {
 
   if (route.view === "workspace-settings") {
     const workspaceId = getRouteString(route, "workspaceId");
-    if (workspaceId && decodeCollaborationResourceReference(workspaceId)) {
-      return <ErrorState title="Workspace settings are managed on its controller" />;
-    }
     if (!selectedWorkspace) {
       if (workspacesLoading) {
         return <LoadingState title="Loading workspace" />;
@@ -749,6 +746,9 @@ function renderMainContent(props: ShellMainContentProps) {
           description="The selected workspace no longer exists. Use the sidebar or home button to continue."
         />
       );
+    }
+    if (workspaceId && decodeCollaborationResourceReference(workspaceId) && selectedWorkspace.access !== "admin") {
+      return <ErrorState title="Workspace administration access required" />;
     }
 
     return (

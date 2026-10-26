@@ -21,11 +21,14 @@ const GuestRowSchema = z.object({
   relay_fingerprint: z.string(),
   created_at: z.string(),
   revoked_at: z.string().nullable(),
+  all_workspaces_admin: z.union([z.literal(0), z.literal(1)]),
 });
 
 function decodeGuest(value: unknown): CollaborationGuestAccess {
   const row = parseCollaborationRecord(GuestRowSchema, value);
-  const memberships = getDatabase().query(`
+  const memberships = row.all_workspaces_admin === 1
+    ? getDatabase().query("SELECT id, 'work' AS permission FROM workspaces WHERE user_id = ? ORDER BY id").all(row.owner_user_id)
+    : getDatabase().query(`
     SELECT membership.workspace_id AS id, membership.permission FROM collaboration_memberships membership
     JOIN workspaces workspace ON workspace.id = membership.workspace_id
       AND workspace.user_id = membership.owner_user_id
@@ -49,7 +52,8 @@ function decodeGuest(value: unknown): CollaborationGuestAccess {
     createdAt: row.created_at,
     revokedAt: row.revoked_at,
   });
-  return { ...grant, workspacePermissions: Object.fromEntries(workspaces.map((entry) => [entry.id, entry.permission])) };
+  return { ...grant, allWorkspacesAdmin: row.all_workspaces_admin === 1,
+    workspacePermissions: Object.fromEntries(workspaces.map((entry) => [entry.id, entry.permission])) };
 }
 
 export function getCollaborationGuestByNodeInternal(nodeId: string): CollaborationGuestAccess | undefined {
@@ -74,12 +78,13 @@ export function listActiveCollaborationGuestsInternal(): CollaborationGuestAcces
     SELECT guest.*, owner.username AS owner_username FROM collaboration_guests guest
     JOIN webapp_users owner ON owner.id = guest.owner_user_id AND owner.disabled_at IS NULL
     WHERE guest.revoked_at IS NULL ORDER BY guest.id
-  `).all().map(decodeGuest).filter((guest) => guest.workspaceIds.length > 0);
+  `).all().map(decodeGuest).filter((guest) => guest.allWorkspacesAdmin || guest.workspaceIds.length > 0);
 }
 
 export function updateCollaborationWorkspacePermission(input: {
   ownerUserId: string; guestId: string; workspaceId: string; permission: CollaborationWorkspacePermission;
 }): void {
+  assertSelectiveGrant(input.ownerUserId, input.guestId);
   const result = getDatabase().query(`
     UPDATE collaboration_memberships SET permission = ?
     WHERE guest_id = ? AND owner_user_id = ? AND workspace_id = ? AND revoked_at IS NULL
@@ -88,6 +93,15 @@ export function updateCollaborationWorkspacePermission(input: {
   `).run(input.permission, input.guestId, input.ownerUserId, input.workspaceId, input.guestId, input.ownerUserId);
   if (result.changes === 0) {
     throw new DomainError("collaboration_workspace_unavailable", "The collaborator's workspace grant is unavailable.");
+  }
+}
+
+function assertSelectiveGrant(ownerUserId: string, guestId: string): void {
+  if (getDatabase().query(`
+    SELECT 1 FROM collaboration_guests WHERE id = ? AND owner_user_id = ? AND all_workspaces_admin = 1
+  `).get(guestId, ownerUserId)) {
+    throw new DomainError("collaboration_admin_forbidden",
+      "An administrator has access to all workspaces. Revoke the collaborator to remove this access.");
   }
 }
 
@@ -107,6 +121,7 @@ export function revokeCollaborationGuest(
     const guest = decodeGuest(row);
     if (guest.revokedAt !== null) return undefined;
     const wholeGuest = input.workspaceId === undefined;
+    if (!wholeGuest) assertSelectiveGrant(input.ownerUserId, input.guestId);
     const workspaceIds = wholeGuest
       ? guest.workspaceIds
       : guest.workspaceIds.filter((id) => id === input.workspaceId);

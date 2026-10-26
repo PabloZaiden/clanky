@@ -4,7 +4,6 @@ import type { PurgeArchivedTasksResult } from "../../hooks";
 import type { WorkspaceGroup } from "../../hooks/useTaskGrouping";
 import { useWorkspaceServerSettings, type UseWorkspaceServerSettingsResult } from "../../hooks/useWorkspaceServerSettings";
 import { getRouteString } from "./route-fields";
-import { decodeCollaborationResourceReference } from "@/shared/collaboration-reference";
 
 export interface UseWorkspaceSettingsShellResult extends UseWorkspaceServerSettingsResult {
   workspaceSettingsWorkspaceId: string | null;
@@ -30,8 +29,7 @@ export function useWorkspaceSettingsShell({
     : null;
   const [workspaceArchivedTasksPurging, setWorkspaceArchivedTasksPurging] = useState(false);
 
-  const remote = workspaceSettingsWorkspaceId ? decodeCollaborationResourceReference(workspaceSettingsWorkspaceId) : null;
-  const workspaceServerSettings = useWorkspaceServerSettings(remote ? null : workspaceSettingsWorkspaceId);
+  const workspaceServerSettings = useWorkspaceServerSettings(workspaceSettingsWorkspaceId);
 
   const selectedWorkspaceArchivedTaskCount = useMemo(() => {
     if (!workspaceSettingsWorkspaceId) {

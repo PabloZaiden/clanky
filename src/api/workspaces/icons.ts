@@ -25,7 +25,8 @@ import {
   requireWorkspace,
 } from "../helpers";
 import { parseAndValidate } from "../validation";
-import { workspaceOperation } from "../workspace-delegation";
+import { workspaceOperation, workspaceAdministrationOperation } from "../workspace-delegation";
+import { requireResourceOwnerUserId } from "../../context/user-context";
 
 const log = createLogger("api:workspace-icons");
 
@@ -143,6 +144,8 @@ export const workspaceIconRoutes = defineRoutes({
     requestSchema: WorkspaceIconCandidateRequestSchema,
     operations: {
       GET: { delegation: workspaceOperation("workspace"), requestSchema: undefined, automation: { policy: "read" } },
+      PUT: { delegation: workspaceAdministrationOperation(), automation: { policy: "write" } },
+      DELETE: { delegation: workspaceAdministrationOperation(), automation: { policy: "write" } },
     },
     async GET(_req: Request, ctx) {
       const workspaceResult = await requireWorkspace(workspaceIdFromContext(ctx));
@@ -182,9 +185,10 @@ export const workspaceIconRoutes = defineRoutes({
           parsed.data.path,
           req.signal,
         );
-        ctx.userRealtime.publishEntityChanged(
+        ctx.realtime.publishEntityChanged(
           CLANKY_REALTIME_RESOURCES.workspaces,
           workspaceResult.id,
+          { target: { userId: requireResourceOwnerUserId(workspaceResult.id) } },
         );
         return Response.json({ workspaceIcon: metadata });
       } catch (error) {
@@ -202,9 +206,10 @@ export const workspaceIconRoutes = defineRoutes({
       }
       try {
         await removeWorkspaceIcon(workspaceResult.id);
-        ctx.userRealtime.publishEntityChanged(
+        ctx.realtime.publishEntityChanged(
           CLANKY_REALTIME_RESOURCES.workspaces,
           workspaceResult.id,
+          { target: { userId: requireResourceOwnerUserId(workspaceResult.id) } },
         );
         return Response.json({ success: true });
       } catch (error) {
@@ -217,6 +222,7 @@ export const workspaceIconRoutes = defineRoutes({
   },
 
   "/api/workspaces/:id/icon-upload": {
+    delegation: workspaceAdministrationOperation(),
     auth: "user",
     sameOrigin: "mutations",
     description: "Upload a private SVG or ICO icon for a workspace.",
@@ -273,9 +279,10 @@ export const workspaceIconRoutes = defineRoutes({
           iconFile.type,
           new Uint8Array(await iconFile.arrayBuffer()),
         );
-        ctx.userRealtime.publishEntityChanged(
+        ctx.realtime.publishEntityChanged(
           CLANKY_REALTIME_RESOURCES.workspaces,
           workspaceResult.id,
+          { target: { userId: requireResourceOwnerUserId(workspaceResult.id) } },
         );
         return Response.json({ workspaceIcon: metadata });
       } catch (error) {
@@ -288,6 +295,7 @@ export const workspaceIconRoutes = defineRoutes({
   },
 
   "/api/workspaces/:id/icon-candidates": {
+    delegation: workspaceAdministrationOperation(),
     auth: "user",
     sameOrigin: "mutations",
     description: "Find workspace SVG and ICO icons available in a Git repository.",
@@ -312,6 +320,7 @@ export const workspaceIconRoutes = defineRoutes({
   },
 
   "/api/workspaces/:id/icon-candidate-preview": {
+    delegation: workspaceAdministrationOperation(),
     auth: "user",
     sameOrigin: "mutations",
     description: "Preview a sanitized icon candidate from a workspace Git repository.",

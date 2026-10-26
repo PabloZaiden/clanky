@@ -31,7 +31,8 @@ const InvitationRowSchema = z.object({
   expires_at: z.string(),
   consumed_at: z.string().nullable(),
   revoked_at: z.string().nullable(),
-  workspace_count: z.number().int().positive(),
+  workspace_count: z.number().int().nonnegative(),
+  all_workspaces_admin: z.union([z.literal(0), z.literal(1)]),
 });
 
 function decodeInvitation(value: unknown): CollaborationInvitation {
@@ -48,7 +49,7 @@ function decodeInvitation(value: unknown): CollaborationInvitation {
     protocolVersion: row.protocol_version,
     controller: { nodeId: row.controller_node_id, publicKey: row.controller_public_key,
       fingerprint: row.controller_fingerprint },
-    id: row.id, name: row.name, workspaceIds,
+    id: row.id, name: row.name, workspaceIds, allWorkspacesAdmin: row.all_workspaces_admin === 1,
     workspacePermissions: Object.fromEntries(workspaces.map((entry) => [entry.id, entry.permission])),
     relayUrl: row.relay_url, relayFingerprint: row.relay_fingerprint,
     createdAt: row.created_at, expiresAt: row.expires_at,
@@ -63,7 +64,7 @@ export function saveCollaborationInvitation(
 ): void {
   const db = getDatabase();
   db.transaction(() => {
-    requireCollaborationWorkspaces(ownerUserId, invitation.workspaceIds);
+    if (!invitation.allWorkspacesAdmin) requireCollaborationWorkspaces(ownerUserId, invitation.workspaceIds);
     db.query("DELETE FROM collaboration_invitations WHERE owner_user_id = ? AND expires_at <= ?")
       .run(ownerUserId, invitation.createdAt);
     const count = parseCollaborationRecord(z.object({ count: z.number().int() }),
@@ -75,13 +76,13 @@ export function saveCollaborationInvitation(
       INSERT INTO collaboration_invitations
         (id, owner_user_id, token_hash, protocol_version, controller_node_id, controller_public_key,
          controller_fingerprint, name, relay_url, relay_fingerprint,
-         created_at, expires_at, consumed_at, revoked_at, workspace_count)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?)
+         created_at, expires_at, consumed_at, revoked_at, workspace_count, all_workspaces_admin)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)
     `).run(invitation.id, ownerUserId, tokenHash, invitation.protocolVersion,
       invitation.controller.nodeId, invitation.controller.publicKey,
       invitation.controller.fingerprint, invitation.name,
       invitation.relayUrl, invitation.relayFingerprint, invitation.createdAt,
-      invitation.expiresAt, invitation.workspaceIds.length);
+      invitation.expiresAt, invitation.workspaceIds.length, invitation.allWorkspacesAdmin ? 1 : 0);
     const insert = db.query(`
       INSERT INTO collaboration_invitation_workspaces (invitation_id, owner_user_id, workspace_id, permission)
       VALUES (?, ?, ?, ?)
@@ -136,7 +137,7 @@ export function consumeCollaborationInvitation(
     if (invitation.workspaceIds.length !== row.workspace_count) {
       throw new DomainError("collaboration_workspace_unavailable", "One or more selected workspaces are unavailable.");
     }
-    requireCollaborationWorkspaces(row.owner_user_id, invitation.workspaceIds);
+    if (!invitation.allWorkspacesAdmin) requireCollaborationWorkspaces(row.owner_user_id, invitation.workspaceIds);
     if (db.query("SELECT 1 FROM collaboration_guests WHERE node_id = ? OR fingerprint = ?")
       .get(input.guest.nodeId, input.guest.fingerprint)) {
       throw new DomainError("collaboration_identity_already_paired", "Use a new identity for each collaboration pairing.");
@@ -150,11 +151,11 @@ export function consumeCollaborationInvitation(
     db.query(`
       INSERT INTO collaboration_guests
         (id, owner_user_id, node_id, public_key, fingerprint, name,
-         relay_url, relay_fingerprint, created_at, revoked_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+         relay_url, relay_fingerprint, created_at, revoked_at, all_workspaces_admin)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
     `).run(guestId, row.owner_user_id, input.guest.nodeId, input.guest.publicKey,
       input.guest.fingerprint, input.name ?? invitation.name,
-      input.relayUrl, input.relayFingerprint, input.now);
+      input.relayUrl, input.relayFingerprint, input.now, invitation.allWorkspacesAdmin ? 1 : 0);
     const insert = db.query(`
       INSERT INTO collaboration_memberships (guest_id, owner_user_id, workspace_id, permission, revoked_at)
       VALUES (?, ?, ?, ?, NULL)

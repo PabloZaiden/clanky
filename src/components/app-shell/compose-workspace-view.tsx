@@ -35,6 +35,7 @@ import {
 import { useWorkspaceExecutionTargets } from "../../hooks/workspace-server-settings";
 import { useWorkerUpdatePreferences } from "../../hooks/useWorkerUpdatePreferences";
 import { WorkerChannelSelect } from "../worker-channel-select";
+import { getClankyClientCapabilities } from "../../client-sdk/capabilities";
 
 interface ComposeWorkspaceViewProps {
   navigateWithinShell: (route: WebAppRoute) => void;
@@ -161,6 +162,11 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
 
   const {
     workspaceCreateMode,
+    workspaceControllerId,
+    setWorkspaceControllerId,
+    workspaceControllers,
+    workspaceControllersLoading,
+    workspaceControllersError,
     setWorkspaceCreateMode,
     workspaceName,
     setWorkspaceName,
@@ -232,7 +238,8 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
   const automaticWorker = workspaceCreateMode === "automatic"
     && automaticTransport === "worker" && !workspaceWorkerEnrollmentSelected;
   const channelPreferences = useWorkerUpdatePreferences({ enabled: automaticWorker });
-  const { targets: executionTargets } = useWorkspaceExecutionTargets();
+  const { targets: executionTargets } = useWorkspaceExecutionTargets({ controllerId: workspaceControllerId || undefined });
+  const localAdministration = getClankyClientCapabilities().controllerAdministration;
   const automaticExecutionTargets = useMemo(
     () => executionTargets.filter((target) =>
       Boolean(target.capabilities.provisioning)
@@ -343,6 +350,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
         ))
     );
   const manualFormValid =
+    (localAdministration || Boolean(workspaceControllerId)) &&
     workspaceName.trim().length > 0 &&
     workspaceDirectory.trim().length > 0 &&
     (workspaceExecutionHost !== null
@@ -374,6 +382,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
       <Button
         type="button"
         size="sm"
+        disabled={Boolean(workspaceControllerId) || !localAdministration}
         variant={workspaceCreateMode === "automatic" ? "primary" : "secondary"}
         onClick={() => setWorkspaceCreateMode("automatic")}
       >
@@ -403,6 +412,13 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
           className="space-y-6"
           onSubmit={(event) => handleCreateWorkspace(event)}
         >
+          {workspaceControllersError ? <ErrorState title="Controller access unavailable" description={workspaceControllersError} /> : null}
+          <SelectField label="Controller" value={workspaceControllerId}
+            disabled={workspaceControllersLoading || createActionLoading || workspaceWorkerEnrollment !== null}
+            onChange={(event) => setWorkspaceControllerId(event.currentTarget.value)}>
+            {localAdministration ? <option value="">This instance</option> : <option value="" disabled>Select a controller</option>}
+            {workspaceControllers.map((controller) => <option key={controller.id} value={controller.id}>{controller.name}</option>)}
+          </SelectField>
           <div className="flex flex-wrap gap-2">
             {createModeControls}
           </div>
@@ -438,7 +454,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                   <span className="block font-medium">Enable task features</span>
                 </span>
               </label>
-                  <DedicatedWorkerEnrollment
+                  {localAdministration && !workspaceControllerId ? <DedicatedWorkerEnrollment
                     enrollment={workspaceWorkerEnrollment}
                     loading={workspaceWorkerEnrollmentLoading}
                     route={dedicatedWorkerRoute}
@@ -450,8 +466,10 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                     relayStatusLoading={automaticRelayStatusLoading}
                     onStart={() => void startWorkspaceWorkerEnrollment()}
                     onCancel={() => void cancelWorkspaceWorkerEnrollment()}
-                  />
+                  /> : null}
                   <ServerSettingsForm
+                key={workspaceControllerId}
+                controllerId={workspaceControllerId || undefined}
                 initialSettings={workspaceServerSettings}
                 initialExecutionHost={workspaceExecutionHost}
                 initialSshTarget={workspaceSshTarget}
@@ -487,7 +505,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                 }}
                 onTest={handleTestWorkspaceConnection}
                 testing={workspaceTesting}
-                remoteOnly={dashboardData.remoteOnly}
+                remoteOnly={workspaceControllerId ? false : dashboardData.remoteOnly}
               />
             </>
           ) : (

@@ -43,6 +43,7 @@ function ApiWorkspaceCollaborationContent({ workspaces }: { workspaces: Workspac
   });
   const [dialog, setDialog] = useState<"invite" | "connect" | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
+  const [allWorkspacesAdmin, setAllWorkspacesAdmin] = useState(false);
   const [permissions, setPermissions] = useState<CollaborationWorkspacePermissions>({});
   const [relayName, setRelayName] = useState("");
   const [name, setName] = useState("");
@@ -59,6 +60,7 @@ function ApiWorkspaceCollaborationContent({ workspaces }: { workspaces: Workspac
     setToken("");
     setInvitation("");
     setSelected([]);
+    setAllWorkspacesAdmin(false);
     setPermissions({});
     setName("");
     setError(null);
@@ -80,8 +82,9 @@ function ApiWorkspaceCollaborationContent({ workspaces }: { workspaces: Workspac
     try {
       if (dialog === "invite") {
         const result = await mutate("/api/collaboration/invitations", "POST", {
-          workspaceIds: selected,
-          workspacePermissions: Object.fromEntries(selected.map((id) => [id, permissions[id] ?? "work"])),
+          allWorkspacesAdmin,
+          workspaceIds: allWorkspacesAdmin ? [] : selected,
+          workspacePermissions: allWorkspacesAdmin ? {} : Object.fromEntries(selected.map((id) => [id, permissions[id] ?? "work"])),
           relayName, ...(name.trim() ? { name: name.trim() } : {}),
         });
         if (!result || typeof result !== "object" || !("token" in result) || typeof result.token !== "string") {
@@ -142,7 +145,7 @@ function ApiWorkspaceCollaborationContent({ workspaces }: { workspaces: Workspac
     <div className="space-y-4">
       <FormActions>
         <Button disabled={saving} onClick={() => { setError(null); setDialog("connect"); }}>Connect controller</Button>
-        <Button disabled={saving || !owned.length || !state?.relays.length} onClick={() => {
+        <Button disabled={saving || !state?.relays.length} onClick={() => {
           setError(null);
           setRelayName(state?.relays[0]?.name ?? "");
           setDialog("invite");
@@ -174,11 +177,12 @@ function ApiWorkspaceCollaborationContent({ workspaces }: { workspaces: Workspac
         {state?.guests.filter((guest) => !guest.revokedAt).map((guest) => (
           <Fragment key={guest.id}>
             <DataListRow title={guest.name ?? "Collaborator"}
+              description={guest.allWorkspacesAdmin ? "Administrator of all current and future workspaces" : undefined}
               actions={<Button variant="danger" size="sm" disabled={saving} onClick={() => setConfirmation({
                 path: `/api/collaboration/guests/${encodeURIComponent(guest.id)}`,
                 title: "Revoke collaborator", message: "This revokes all workspace access and closes the collaborator's terminals and previews. Admitted work continues.",
               })}>Revoke</Button>} />
-            {guest.workspaceIds.map((id) => (
+            {!guest.allWorkspacesAdmin && guest.workspaceIds.map((id) => (
               <DataListRow key={id} title={workspaceName(id)} actions={<FormActions>
                 <div className="w-fit shrink-0 whitespace-nowrap">
                   <CheckboxField label="Read only" aria-label={`Read only access to ${workspaceName(id)}`}
@@ -197,7 +201,8 @@ function ApiWorkspaceCollaborationContent({ workspaces }: { workspaces: Workspac
           <DataListRow key={entry.id} title={entry.name ?? "Workspace invitation"}
             meta={`Expires ${new Date(entry.expiresAt).toLocaleString()}`}
             metaPlacement="below"
-            description={entry.workspaceIds.map((id) => `${workspaceName(id)} (${entry.workspacePermissions[id] === "read" ? "Read only" : "Work"})`).join(", ")}
+            description={entry.allWorkspacesAdmin ? "Administrator of all current and future workspaces"
+              : entry.workspaceIds.map((id) => `${workspaceName(id)} (${entry.workspacePermissions[id] === "read" ? "Read only" : "Work"})`).join(", ")}
             actions={<Button variant="danger" size="sm" disabled={saving} onClick={() => setConfirmation({
               path: `/api/collaboration/invitations/${encodeURIComponent(entry.id)}`,
               title: "Revoke invitation", message: "The unused invitation will no longer allow pairing.",
@@ -211,7 +216,9 @@ function ApiWorkspaceCollaborationContent({ workspaces }: { workspaces: Workspac
         </> : <form className="space-y-4" onSubmit={(event) => void submit(event)}>
           <TextField label={dialog === "invite" ? "Invitation name" : "Controller name"} value={name} maxLength={120} onChange={(event) => setName(event.currentTarget.value)} disabled={saving} />
           {dialog === "invite" ? <>
-            <FormGroup title="Workspaces">
+            <CheckboxField label="All workspaces" checked={allWorkspacesAdmin}
+              disabled={saving} onChange={(event) => setAllWorkspacesAdmin(event.currentTarget.checked)} />
+            {!allWorkspacesAdmin && <FormGroup title="Workspaces">
               {owned.map((workspace) => <div key={workspace.id} className="flex items-center justify-between gap-3">
                 <label className="flex min-w-0 flex-1 items-center gap-2">
                   <input type="checkbox" checked={selected.includes(workspace.id)} disabled={saving} onChange={(event) => {
@@ -229,7 +236,7 @@ function ApiWorkspaceCollaborationContent({ workspaces }: { workspaces: Workspac
                     }} />
                 </div>
               </div>)}
-            </FormGroup>
+            </FormGroup>}
             <label className="block space-y-1"><span>Relay</span>
               <SettingsSelect value={relayName} required disabled={saving} onChange={(event) => setRelayName(event.currentTarget.value)}>
                 {state?.relays.map((relay) => <option key={relay.name} value={relay.name}>{relay.name}{relay.connected ? "" : " (disconnected)"}</option>)}
@@ -239,7 +246,7 @@ function ApiWorkspaceCollaborationContent({ workspaces }: { workspaces: Workspac
           {error ? <ErrorState title="Unable to complete pairing" description={error} /> : null}
           <FormActions>
             <Button disabled={saving} onClick={close}>Cancel</Button>
-            <Button type="submit" variant="primary" loading={saving} disabled={dialog === "invite" && (!selected.length || !relayName)}>
+            <Button type="submit" variant="primary" loading={saving} disabled={dialog === "invite" && (!allWorkspacesAdmin && !selected.length || !relayName)}>
               {dialog === "invite" ? "Create invitation" : "Connect"}
             </Button>
           </FormActions>

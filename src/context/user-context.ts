@@ -1,12 +1,13 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
-import type { CollaborationActor, WorkspaceAccessAuthority } from "@/shared/collaboration";
+import type { CollaborationActor, WorkspaceAccessAuthority, WorkspaceAdministrationAuthority } from "@/shared/collaboration";
 import { DomainError } from "../domain/domain-error";
 
 const userContext = new AsyncLocalStorage<CurrentUser>();
 const actorContext = new AsyncLocalStorage<CollaborationActor>();
 const workspaceContext = new AsyncLocalStorage<WorkspaceAccessAuthority | undefined>();
 const resourceOwnerContext = new AsyncLocalStorage<CurrentUser>();
+const workspaceAdministrationContext = new AsyncLocalStorage<WorkspaceAdministrationAuthority | undefined>();
 
 export interface WorkspaceExecutionContext {
   readonly authority: WorkspaceAccessAuthority;
@@ -76,7 +77,6 @@ export function runWithWorkspaceAccessAuthority<T>(
       || actor.guestId !== authority.actor.guestId
       || actor.nodeId !== authority.actor.nodeId
       || actor.guestId !== authority.guestId
-      || authority.capabilities.includes("admin")
     ))) {
     throw new DomainError("collaboration_authority_mismatch", "Workspace authority does not match the authenticated actor.");
   }
@@ -94,6 +94,24 @@ export function getWorkspaceAccessAuthority(): WorkspaceAccessAuthority | undefi
   return workspaceContext.getStore();
 }
 
+export function runWithWorkspaceAdministration<T>(
+  authority: WorkspaceAdministrationAuthority,
+  owner: CurrentUser,
+  callback: () => T,
+): T {
+  const actor = requireCollaborationActor();
+  if (actor.kind !== "guest" || actor.guestId !== authority.guestId
+    || actor.nodeId !== authority.actor.nodeId || owner.id !== authority.ownerUserId) {
+    throw new DomainError("collaboration_authority_mismatch", "Workspace administration does not match the authenticated actor.");
+  }
+  return workspaceAdministrationContext.run(Object.freeze({ ...authority, actor: Object.freeze({ ...authority.actor }) }),
+    () => resourceOwnerContext.run(Object.freeze({ ...owner }), callback));
+}
+
+export function getWorkspaceAdministrationAuthority(): WorkspaceAdministrationAuthority | undefined {
+  return workspaceAdministrationContext.getStore();
+}
+
 /**
  * Runtime resources must explicitly name their authorized workspace when they
  * need the data owner. Unscoped persistence continues to use the current user.
@@ -107,6 +125,8 @@ export function requireResourceOwnerUserId(workspaceId: string): string {
     return authority.ownerUserId;
   }
   if (requireCollaborationActor().kind === "guest") {
+    const administration = getWorkspaceAdministrationAuthority();
+    if (administration) return administration.ownerUserId;
     throw new DomainError("collaboration_authority_required", "Workspace authority is required for guest resources.");
   }
   return requireCurrentUserId();
@@ -127,6 +147,7 @@ export function requireResourceOwnerUser(workspaceId: string): CurrentUser {
 
 export function getExecutionOwnerUserId(): string | undefined {
   return getWorkspaceAccessAuthority()?.ownerUserId
+    ?? getWorkspaceAdministrationAuthority()?.ownerUserId
     ?? (getCollaborationActor()?.kind === "guest" ? undefined : getCurrentUserId());
 }
 
@@ -143,7 +164,8 @@ export function requireExecutionOwnerUser(): CurrentUser {
 /** Resume admitted controller work, never use this to dispatch a new request. */
 export function runWithExecutionOwner<T>(owner: CurrentUser, callback: () => T): T {
   return userContext.run(owner, () => actorContext.run({ kind: "user", userId: owner.id },
-    () => workspaceContext.run(undefined, () => resourceOwnerContext.run(owner, callback))));
+    () => workspaceContext.run(undefined, () => workspaceAdministrationContext.run(undefined,
+      () => resourceOwnerContext.run(owner, callback)))));
 }
 
 /**

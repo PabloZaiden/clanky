@@ -26,7 +26,7 @@ export interface UseWorkspacesResult {
   /** Refresh the workspaces list */
   refresh: () => Promise<void>;
   /** Create a new workspace */
-  createWorkspace: (request: CreateWorkspaceRequest) => Promise<Workspace | null>;
+  createWorkspace: (request: CreateWorkspaceRequest, controllerId?: string) => Promise<Workspace | null>;
   /** Update a workspace */
   updateWorkspace: (id: string, request: string | UpdateWorkspaceRequest) => Promise<Workspace | null>;
   /** Delete a workspace (only if it has no tasks) */
@@ -64,12 +64,12 @@ export function useWorkspaces(): UseWorkspacesResult {
   }, [query.refresh]);
 
   // Create a new workspace
-  const createWorkspace = useCallback(async (request: CreateWorkspaceRequest): Promise<Workspace | null> => {
+  const createWorkspace = useCallback(async (request: CreateWorkspaceRequest, controllerId?: string): Promise<Workspace | null> => {
     try {
       setSaving(true);
       setError(null);
       return await mutate(async (signal) => {
-        const response = await requestApiResponse("/api/workspaces", {
+        const response = await requestApiResponse(`/api/workspaces${controllerId ? `?controllerId=${encodeURIComponent(controllerId)}` : ""}`, {
           signal,
           method: "POST",
           headers: { "Content-Type": "application/json" },

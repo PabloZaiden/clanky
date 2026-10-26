@@ -24,7 +24,7 @@ export const CollaborationResourceIdSchema = z.union([
 export const CollaborationNameSchema = z.string().trim().min(1).max(120)
   .refine((value) => !/[\p{Cc}\p{Cf}]/u.test(value), "Name must not contain control characters.");
 export const CollaborationWorkspaceIdsSchema = z.array(CollaborationIdSchema)
-  .min(1).max(COLLABORATION_MAX_WORKSPACES)
+  .max(COLLABORATION_MAX_WORKSPACES)
   .refine((ids) => new Set(ids).size === ids.length, "Workspace IDs must be unique.");
 const RelayRoute = {
   relayUrl: ControllerRelayUrlSchema,
@@ -38,7 +38,8 @@ export const UpdateCollaborationWorkspacePermissionSchema = z.object({
 }).strict();
 
 export const CreateCollaborationInvitationSchema = z.object({
-  workspaceIds: CollaborationWorkspaceIdsSchema,
+  allWorkspacesAdmin: z.boolean().default(false),
+  workspaceIds: CollaborationWorkspaceIdsSchema.default([]),
   workspacePermissions: CollaborationWorkspacePermissionsSchema.optional(),
   relayName: ControllerRelayNameSchema,
   name: CollaborationNameSchema.optional(),
@@ -46,13 +47,18 @@ export const CreateCollaborationInvitationSchema = z.object({
     .max(COLLABORATION_INVITATION_MAX_TTL_SECONDS)
     .default(COLLABORATION_INVITATION_DEFAULT_TTL_SECONDS),
 }).strict().refine((value) => Object.keys(value.workspacePermissions ?? {}).every((id) => value.workspaceIds.includes(id)),
-  "Permissions must refer to selected workspaces.");
+  "Permissions must refer to selected workspaces.")
+  .refine((value) => value.allWorkspacesAdmin
+    ? value.workspaceIds.length === 0 && Object.keys(value.workspacePermissions ?? {}).length === 0
+    : value.workspaceIds.length > 0,
+  "Select workspaces or grant administration of all workspaces, not both.");
 
 export const CollaborationInvitationSchema = z.object({
   protocolVersion: z.literal(COLLABORATION_PROTOCOL_VERSION),
   controller: MeshRelayPeerIdentitySchema,
   id: CollaborationIdSchema,
   name: CollaborationNameSchema.nullable(),
+  allWorkspacesAdmin: z.boolean(),
   workspaceIds: z.array(CollaborationIdSchema).max(COLLABORATION_MAX_WORKSPACES),
   workspacePermissions: CollaborationWorkspacePermissionsSchema,
   ...RelayRoute,
@@ -75,7 +81,7 @@ export const CollaborationGuestGrantSchema = z.object({
   ownerUsername: z.string().min(1).max(200),
   identity: MeshRelayPeerIdentitySchema,
   name: CollaborationNameSchema.nullable(),
-  workspaceIds: z.array(CollaborationIdSchema).max(COLLABORATION_MAX_WORKSPACES),
+  workspaceIds: z.array(CollaborationIdSchema),
   ...RelayRoute,
   createdAt: TimestampSchema,
   revokedAt: TimestampSchema.nullable(),
@@ -144,7 +150,7 @@ export const ListCollaborationInteractiveResourcesSchema = z.object({
 export const ListGuestCollaborationInteractiveResourcesSchema = z.object({
   guestId: CollaborationIdSchema,
   ownerUserId: CollaborationIdSchema,
-  workspaceIds: z.array(CollaborationIdSchema).max(COLLABORATION_MAX_WORKSPACES).optional(),
+  workspaceIds: z.array(CollaborationIdSchema).optional(),
 }).strict();
 
 export type CreateCollaborationInvitation = z.input<typeof CreateCollaborationInvitationSchema>;

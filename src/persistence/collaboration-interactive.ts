@@ -67,12 +67,15 @@ export function claimCollaborationInteractiveResource(
       throw new DomainError("collaboration_resource_unavailable", "The interactive resource is outside the authorized workspace.");
     }
     if (validated.membershipId !== null && !db.query(`
-      SELECT 1 FROM collaboration_memberships membership
-      JOIN collaboration_guests guest ON guest.id = membership.guest_id
-        AND guest.owner_user_id = membership.owner_user_id
-      WHERE membership.guest_id = ? AND membership.owner_user_id = ?
-        AND membership.workspace_id = ? AND membership.revoked_at IS NULL AND guest.revoked_at IS NULL
-    `).get(validated.membershipId, validated.ownerUserId, validated.workspaceId)) {
+      SELECT 1 FROM collaboration_guests guest
+      JOIN workspaces workspace ON workspace.user_id = guest.owner_user_id AND workspace.id = ?
+      WHERE guest.id = ? AND guest.owner_user_id = ? AND guest.revoked_at IS NULL
+        AND (guest.all_workspaces_admin = 1 OR EXISTS (
+          SELECT 1 FROM collaboration_memberships membership
+          WHERE membership.guest_id = guest.id AND membership.owner_user_id = guest.owner_user_id
+            AND membership.workspace_id = workspace.id AND membership.revoked_at IS NULL
+        ))
+    `).get(validated.workspaceId, validated.membershipId, validated.ownerUserId)) {
       throw new DomainError("collaboration_access_denied", "Workspace access is no longer available.");
     }
     db.query(`

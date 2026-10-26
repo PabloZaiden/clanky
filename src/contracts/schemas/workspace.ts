@@ -104,6 +104,10 @@ export const CreateWorkspaceRequestSchema = z.object({
   },
 );
 
+export const WorkspaceControllerQuerySchema = z.object({
+  controllerId: z.string().min(1).max(2048).optional(),
+}).strict();
+
 /**
  * Schema for UpdateWorkspaceRequest - PUT /api/workspaces/:id
  *

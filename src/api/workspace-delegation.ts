@@ -25,3 +25,18 @@ export function workspaceOperation(
     ],
   };
 }
+
+export function workspaceAdministrationOperation(
+  resource: CollaborationResourceKind = "workspace",
+  action = "workspace-admin",
+): RouteDelegationMetadata {
+  const operation = workspaceOperation(resource);
+  return {
+    ...operation,
+    action,
+    bindings: [
+      ...operation.bindings!,
+      { source: "query", name: "controllerId", resource: "workspace-controller" },
+    ],
+  };
+}

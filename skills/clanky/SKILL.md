@@ -212,7 +212,16 @@ stdout. Inspect `/api/collaboration/connections`, or use an exact returned
 reference, instead of treating an incomplete list as evidence of absence.
 Never retry an uncertain mutation automatically.
 
-Shared workspace responses include effective `access`: `"read"` or `"work"`.
+Shared workspace responses include effective `access`: `"read"`, `"work"` or
+`"admin"`. Workspace administration is not global server/user/credential access.
+An invitation with `allWorkspacesAdmin: true` grants administration of all the
+inviting user's current and future workspaces; omit individual workspace lists
+and permissions. On the invited instance, discover eligible controllers with
+`GET /api/collaboration/access`. Use the returned qualified controller `id` as
+`controllerId` on execution-target discovery, connection tests and workspace
+creation; use qualified workspace references for configuration and deletion.
+New workspaces belong to the inviting owner. Revoke the whole collaborator to
+remove administrative access; per-workspace reductions do not apply.
 For `"read"`, inspect content, transcripts, files, Git information and realtime
 updates, and download files normally. Do not send messages, answer questions or
 permissions, edit content, upload, run/stop work, execute commands or open

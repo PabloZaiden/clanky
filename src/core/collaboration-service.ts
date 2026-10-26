@@ -45,6 +45,8 @@ import {
   requireCollaborationLocalUserId,
   requireWorkspaceAccess,
   withWorkspaceAccess,
+  withWorkspaceAdministration,
+  getCollaborationControllerAccess,
 } from "./collaboration-authority";
 import { CollaborationConnections } from "./collaboration-connections";
 import { parseCollaborationInput, validateCollaborationIdentity } from "./collaboration-identity";
@@ -67,6 +69,8 @@ class CollaborationService {
 
   readonly requireWorkspaceAccess = requireWorkspaceAccess;
   readonly withWorkspaceAccess = withWorkspaceAccess;
+  readonly withWorkspaceAdministration = withWorkspaceAdministration;
+  readonly getControllerAccess = getCollaborationControllerAccess;
   readonly recordCreator = recordCollaborationCreator;
   readonly getCreator = getCollaborationCreator;
   readonly claimInteractiveResource = claimInteractiveResource;
@@ -87,7 +91,7 @@ class CollaborationService {
   async createInvitation(input: CreateCollaborationInvitation): Promise<CreatedCollaborationInvitation> {
     const ownerUserId = requireCollaborationLocalUserId();
     const parsed = parseCollaborationInput(CreateCollaborationInvitationSchema, input);
-    requireCollaborationWorkspaces(ownerUserId, parsed.workspaceIds);
+    if (!parsed.allWorkspacesAdmin) requireCollaborationWorkspaces(ownerUserId, parsed.workspaceIds);
     const target = await controllerRelayService.resolveEnrollmentInvitationTarget("relay", "", parsed.relayName);
     if (!target.relay) {
       throw new DomainError("collaboration_relay_required", "Workspace collaboration requires a paired relay.");
@@ -100,6 +104,7 @@ class CollaborationService {
     const token = randomBytes(32).toString("base64url");
     const invitation: CollaborationInvitation = {
       id: randomUUID(), name: parsed.name ?? null, workspaceIds: parsed.workspaceIds,
+      allWorkspacesAdmin: parsed.allWorkspacesAdmin,
       workspacePermissions: Object.fromEntries(parsed.workspaceIds.map((id) => [id, parsed.workspacePermissions?.[id] ?? "work"])),
       protocolVersion: COLLABORATION_PROTOCOL_VERSION, controller,
       ...target.relay, createdAt: now.toISOString(),

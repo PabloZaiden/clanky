@@ -23,6 +23,14 @@ issues, logs or shell history.
 Pending invitations show their workspaces and expiration beneath the invitation
 name, with **Revoke invitation** alongside those details.
 
+To delegate workspace administration, select **All workspaces**
+instead of individual workspaces. This includes all your current and future
+workspaces, even if none exist when the invitation is created. The collaborator
+can create, configure, archive and delete your workspaces; newly created
+workspaces belong to you. Server, user, credential and collaboration-invitation
+administration are not granted. Existing invitations and collaborators are not
+promoted automatically.
+
 On the invited instance, open **Settings > Collaboration > Connect controller**
 and paste the token. An optional controller name helps distinguish workspaces
 with the same name. Pairing belongs to the accepting local user; other users of
@@ -53,11 +61,36 @@ Chats and tasks show their creator. They cannot delete or administer the
 workspace, change its host/provider, manage controller credentials or invite
 another collaborator.
 
+### Workspace administrators
+
+An administrator sees all the inviting owner's workspaces automatically and
+can open **Workspace Settings** from the workspace menu. To create a workspace,
+choose **New workspace**, select the owning **Controller**, then choose an
+execution host and directory on that controller. The controller retains the
+workspace and its execution resources, including when creation is requested
+from the browser-only client. Existing host credentials may be used for
+execution, but this permission does not expose or administer those credentials.
+Automatic provisioning and execution-host enrollment remain controller-local.
+
+The grant survives restarts and reconnects. It cannot be reduced or revoked
+one workspace at a time: revoke the whole collaborator, then create a normal
+invitation if selected-workspace access is needed.
+
+For API/CLI use, create the invitation with
+`{ "allWorkspacesAdmin": true, "relayName": "<paired-relay>" }`; omit
+`workspaceIds` and `workspacePermissions`. On the invited instance,
+`GET /api/collaboration/access` returns the connected controllers' effective
+`allWorkspacesAdmin` flag and their qualified `id`. Use that exact controller
+reference as the `controllerId` query parameter on
+`GET /api/workspaces/execution-targets`, `POST /api/server-settings/test` and
+`POST /api/workspaces`. Workspace reads and mutations use the returned
+workspace reference as usual; effective `access` is `"admin"`.
+
 ### Read-only access
 
 Permissions are assigned separately for each collaborator and workspace. A
 collaborator can review one workspace while working in another. Existing grants
-and invitations retain **Work** access after upgrading.
+and invitations preserve their **Read only** or **Work** access after upgrading.
 
 **Read only** allows reading conversations, tasks/plans, agents, transcripts,
 logs, scratchpad, files and Git information, downloading files, and receiving
@@ -96,7 +129,7 @@ Workspace responses expose the effective `access` for shared workspaces.
 
 The browser-only client supports those workspace workflows except arbitrary
 web/VS Code previews and inline streamed video. It has no local workspace or
-execution-host creation, controller administration, CLI listener or offline
+execution-host creation, global controller administration, CLI listener or offline
 execution. Images are bounded resources; downloads stage to browser disk and
 require a separate export action under **Settings > Downloads**. See the
 static-client guide for the 4 GiB target and browser/iPhone limitations.
@@ -170,6 +203,7 @@ relay alone does not prove that the controller is available.
 On the controller, revoke one workspace or the whole collaborator from
 **Settings > Collaboration**. Affected guest terminals and interactive previews
 close, and new requests are denied. Other granted workspaces remain usable.
+For an administrator of all workspaces, revoke the whole collaborator.
 
 Already admitted chats, tasks and agent schedules continue under the controller.
 Revocation does not cancel them, delete shared content or undo commands.

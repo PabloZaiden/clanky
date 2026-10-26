@@ -45,7 +45,7 @@ import { withWorkspaceExecutionLock, withWorkspaceRuntimeLock } from "./workspac
 import { executionHostService } from "./execution-host-service";
 import { workspaceWorkerEnrollmentService } from "./workspace-worker-enrollment-service";
 import { meshManager } from "./mesh-manager";
-import { getCollaborationActor, getWorkspaceAccessAuthority, requireExecutionOwnerUserId } from "../context/user-context";
+import { getCollaborationActor, getWorkspaceAccessAuthority, getWorkspaceAdministrationAuthority, requireExecutionOwnerUserId } from "../context/user-context";
 import { requireWorkspaceUpdateUserId } from "../persistence/ownership";
 import {
   captureWorkspaceSshTargetState,
@@ -62,8 +62,8 @@ const log = createLogger("core:workspace-manager");
 function withEffectiveWorkspaceAccess(workspace: Workspace): Workspace {
   const authority = getWorkspaceAccessAuthority();
   return authority?.guestId && authority.workspaceId === workspace.id
-    ? { ...workspace, access: authority.capabilities.includes("work") ? "work" : "read" }
-    : workspace;
+    ? { ...workspace, access: authority.capabilities.includes("admin") ? "admin" : authority.capabilities.includes("work") ? "work" : "read" }
+    : getWorkspaceAdministrationAuthority() ? { ...workspace, access: "admin" } : workspace;
 }
 
 export interface CreateWorkspaceInput {
@@ -320,7 +320,8 @@ export class WorkspaceManager {
     workspaceWorkerEnrollmentId?: string;
   } = {}): Promise<ExecutionHostDescriptor[]> {
     const userId = requireExecutionOwnerUserId();
-    if (getCollaborationActor()?.kind === "guest") {
+    if (getCollaborationActor()?.kind === "guest" && !getWorkspaceAdministrationAuthority()
+      && !getWorkspaceAccessAuthority()?.capabilities.includes("admin")) {
       if (!context.workspaceId || context.workspaceWorkerEnrollmentId) {
         throw new DomainError("collaboration_operation_forbidden", "Only the configured workspace host is available.");
       }
@@ -502,7 +503,7 @@ export class WorkspaceManager {
         name: workspace.name,
         directory: workspace.directory,
       });
-      return workspace;
+      return withEffectiveWorkspaceAccess(workspace);
     } catch (error) {
       if (workspaceCreated) {
         await deleteWorkspaceRecord(workspaceId);
@@ -792,7 +793,7 @@ export class WorkspaceManager {
     if (workspace && (serverSettingsChanged || executionTargetChanged)) {
       await backendManager.resetWorkspaceConnection(id);
     }
-    return workspace;
+    return workspace ? withEffectiveWorkspaceAccess(workspace) : null;
   }
 
   async updateServerSettings(

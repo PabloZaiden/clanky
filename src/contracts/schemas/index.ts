@@ -127,6 +127,7 @@ export {
   WorkspaceIconCandidatesResponseSchema,
   WorkspaceIconResponseSchema,
   CreateWorkspaceRequestSchema,
+  WorkspaceControllerQuerySchema,
   DeleteWorkspaceRequestSchema,
   UpdateWorkspaceRequestSchema,
   TestConnectionRequestSchema,
