@@ -1,7 +1,8 @@
 # Development
 
-Clanky is a Bun application with an embedded server, web UI, CLI, and
-standalone build.
+Clanky is a Bun application with an embedded server, React UI, CLI, and
+standalone build. This is the entry point for contributors; technical policies
+have one canonical guide rather than copies in `AGENTS.md`.
 
 ## Set up a source checkout
 
@@ -9,236 +10,51 @@ standalone build.
 git clone https://github.com/pablozaiden/clanky.git
 cd clanky
 bun install
+bun run dev
 ```
 
-Run the combined development server:
+The combined development server runs `bun --hot src/index.ts serve` at
+<http://localhost:3000>. Use Bun tooling, not a separate frontend development
+server or `CLANKY_WEB_DIST_DIR`. Use a disposable `CLANKY_DATA_DIR` for local
+experiments so developer/production data is not modified.
 
-```bash
-bun dev
-```
+## Choose a development guide
 
-The application is available at <http://localhost:3000>. Use an isolated
-`CLANKY_DATA_DIR` for local experiments or visual validation.
+Read the guide relevant to the change, not every guide for every task.
 
-`bun run build` produces the standalone binary and the relocatable
-`dist/client/` frontend. `bun run build:client` builds only the frontend;
-`CLANKY_CLIENT_API_URL` optionally supplies its initial API default. See
-[Static frontend and remote API](static-client.md) for static hosting,
-authentication and the independent `serve --api-only` mode.
+| Work | Canonical guide |
+| --- | --- |
+| Layers, authorization, execution hosts, backends, persistence, realtime, or concurrency | [Architecture and domain boundaries](development/architecture.md) |
+| Coverage decisions, E2E boundaries, fixtures, timeouts, cleanup, or visual validation | [Testing and validation](development/testing.md) |
+| UI, settings, routing, framework ownership, or upstream webapp changes | [UI and webapp development](development/webapp.md) |
+| Breaking Mesh wire changes | [Protocol evolution](mesh-worker.md#protocol-evolution) |
+| Docker, proxy, authentication, production access, or database reset | [Deployment and configuration](deployment.md) |
+| Provider selection and runtime behavior | [Harness adapters](harnesses.md) |
 
-Transient feedback uses the webapp framework's header notifications. Desktop
-shows the message and severity; mobile shows a severity icon that opens the
-full message. Notifications expire after five seconds by default, so use
-inline errors or validation for persistent failures.
-
-## Shared UI and webapp development
-
-Use framework defaults rather than screen-specific corrections: ordinary
-`Button` is subtle; request `variant="primary"` for the principal action,
-`variant="link"` for inline actions, and `tone="danger"` for understated
-destructive affordances. Irreversible confirmations explicitly use
-`variant="danger"`; update/restart is not deletion.
-Primary actions are unboxed too. Show actions directly when they fit; use
-ellipsis for constrained space or meaningful secondary groups. Header
-primaries are semantic `HeaderPrimaryAction[]` descriptors: the framework
-moves them first into overflow as space narrows, preserving native form
-validation and submission.
-
-Use public fields, `SettingsLayout`, `SettingsFieldRow`, `FormGroup`/`FormActions`, bounded
-`Page layout="form"`, `DataList` rows and toolbar slots. Associate checkbox
-titles with their input IDs. Settings sections declare category and scope;
-custom renderers need a concrete composition limitation, not different CSS.
-Sidebar items and list rows share framework-owned 6 px symmetric horizontal
-padding and 8 px corners at the default root font size; keep those defaults
-instead of adding local hover or spacing overrides. Rounded backgrounds mark
-hover and selection without visible row borders or dividers; keyboard focus
-remains visible.
-Standard list rows use Webapp's line height and title-to-description spacing;
-do not add a redundant `mt-1` to `ClankyListRow`. Existing compact job,
-activity, Trash, configured-agent and relay rows intentionally keep their
-flush descriptions through `descriptionClassName`, preserving their density
-when upgrading the framework.
-Use framework `Select` for toolbar dropdowns and `SelectField` for labeled
-forms; do not recreate their styling with raw native selects.
-Keep labels, values, actions and actionable errors instead of workflow
-explanations. Never use an internal ID as a visible fallback name.
-Settings have two zones, with controls and actions centered vertically and
-aligned right. Use intrinsic/bounded widths for short fields and
-`FormGroup layout="inline"` for related inputs; URLs and long values can use
-`fieldWidth="full"`. Dialog footers stay right-aligned in one wrapping row.
-
-Transcripts use 18px message text and 16px technical output in both viewports.
-Verify the actual Markdown, raw text, code and tool descendants. Job lists and
-progress rows share the compact title/date/status composition; console output
-combines every stream without adding stream-name prefixes.
-An initial directory is not workspace identity. Use the workspace ID internally
-and its name in ordinary UI; show paths only for real filesystem operations or
-requested diagnostics.
-
-Work-item lists (Recent activity, Needs attention, workspace Activity/History,
-and server chats/terminals) use `WorkItemRow`: workspace icon/name and status
-on the first line, item name on the second, relative interaction time and
-type/provider on the third. Host-owned items use the host name instead of a
-workspace. Keep this order aligned with Active work in the sidebar; the two
-surfaces retain their existing framework controls.
-
-Use `useUnsavedChanges(dirty, resetDraft)` for composite Settings drafts.
-Save failure retains the draft; explicit Cancel resets it. Simple preferences
-can autosave with local saving/saved/error feedback. Voice saves all settings
-together and validates each saved capability separately.
-
-Global Settings remembers the last opened category for each app and client
-server. Explicit category links take precedence; unavailable categories fall
-back to General.
-
-Workspace Settings uses General, Execution and Maintenance
-categories in the same public `SettingsLayout` as global Settings. Keep one
-draft mounted across these in-page categories: Save persists it without
-navigating away, and route navigation
-uses the framework unsaved-change confirmation. Native validation reveals
-the first invalid field's category before focusing it. Icon actions save
-independently and must not reset unrelated edits. Keep the draft locked until
-persistence, refresh and saved-draft updates finish. Boolean rows keep their
-checkboxes aligned beside the label on mobile; use the framework row layout,
-not local responsive CSS. Keep workspace deletion restrictions and
-managed-directory confirmation intact.
-
-Use the public `useTheme()` integration; Dark is the no-preference default,
-not a forced override of saved Light/System. Do not inspect or change
-framework root classes. When an effect sends notifications, depend on the
-stable notification method, not the reactive service object containing the
-notification list.
-
-Accumulate webapp work on one pushed upstream branch for one eventual PR.
-Clanky may consume a GitHub branch, exact commit, or release tag;
-prefer the SHA and update `package.json`/`bun.lock` together. Never patch the
-installed dependency. Final integration PRs may retain commit references;
-intermediate releases are not required. First-party packages are consumed
-directly from GitHub, not published to npm.
-
-Binary workflows publish every main push to a single rolling `latest`
-prerelease, with a unique embedded build version, checksums and the existing
-macOS signing configuration. Deliberate versioned releases remain separate.
-See [Binary installation and update channels](binary-updates.md).
-
-Screenshots, capture manifests and review notes are disposable working material.
-Keep them in a git-ignored location, not in documentation or commits.
-
-The devcontainer automatically downloads SF Pro from Apple, installs its
-variable regular and italic fonts, and configures fontconfig to use SF Pro
-for local browser UI text. It does not install DejaVu, Noto core, or Roboto.
-Existing Liberation and Noto Color Emoji packages remain available for
-monospace and missing-glyph/emoji coverage, not as the selected UI font.
-To update an existing container, rerun
-`./.devcontainer/install-prerequisites.sh`; font installation, selection, and
-cache refresh run even when Chromium, `sshpass`, and `dtach` are already
-installed. Matching installations are reused without downloading again;
-download, checksum, extraction, or font-selection failures stop setup.
-
-SF Pro is used only in the development environment for Apple-platform UI
-previews. Its files and the included Apple license stay outside the checkout;
-no font files are bundled with Clanky or added to production images. Apple's
-[SF Pro license](https://developer.apple.com/fonts/) applies. The official
-download is checksum-pinned in `.devcontainer/install-sf-pro.sh`; when Apple
-updates that download, review the new package and update its checksum and
-extraction paths together. Linux rendering can still differ from Safari on
-macOS/iOS even with the same font family.
-
-### Chat metadata reads
-
-Per-ID chat metadata and stream-control reads use a connection-scoped,
-per-user in-memory LRU cache
-(256 entries, 16 MiB of serialized metadata, at most 1 MiB per entry). Reads
-return independent copies; transcripts remain in their existing storage and
-live-stream owners. Collection queries still read SQLite.
-Stream-control reads copy only status, interruption and session-binding fields,
-including independent execution-host values, rather than the full snapshot.
-Native observers check those fresh values on every event. Stored bindings are
-validated when decoded; typed comparisons retain ownership checks without
-serializing and parsing the same binding again for each delta.
-Metadata, native activity projections, and transcript writes invalidate affected
-entries before changing SQLite, and normal chat writes repopulate them from
-committed database results.
-Reads inside transactions bypass the cache so rollback cannot publish partial
-state. Trash, cascade deletion, execution-host changes, and database reset also
-invalidate affected metadata. There is no TTL or SQLite version query on hits.
-As with the application's persistence ownership, writes must go through the
-controller; editing the database from another process while it runs is not a
-cache-coherent operation.
-
-Use `ChatStateService.mutateMetadata` for changes that do not read or modify
-transcript collections, such as native unfinished-message checkpoints and input
-admissions. It shares the serialized mutation queue and transactional write path
-with full state mutations, but avoids transcript hydration and synchronization.
-Question projections that depend on existing message bodies retain the full
-transcript path. Metadata mutations must not replace transcript counts with the
-empty metadata snapshot's collection lengths. Hot state/transcript writes use
-Bun's connection-local bounded statement cache through `db.query`; persistence
-and checkpoint timing are unchanged.
-State writes encode only changed state fields, leaving configuration and
-execution-host columns untouched. Mutation callbacks replace changed objects
-and arrays rather than mutating their input snapshots in place.
-Writes use `UPDATE RETURNING` for authoritative
-revision/status guards, reading prior status/harness only when the mutation
-needs it, and decode metadata once after transcript effects. Cache refreshes
-reuse private unchanged branches only when the cached revision matches that
-guard; changed nested values are defensively copied.
-Cold or mismatched snapshots use the full write-through path, and failed or
-enclosing transactions cannot publish partial cache state.
-
-For local profiling, subscribe to the standard `diagnostics_channel` channel
-`clanky.chat-metadata-cache` from a Bun preload and retain the channel reference
-for the observation lifetime. Events contain only
-`{ operation, count }`: `hit`, `miss`, `store`, `invalidate`, `evict`, `clear`,
-`transaction`, and `oversized`. `invalidate` counts removed cached snapshots,
-not database misses; successful writes can immediately `store` a fresh snapshot.
-The channel retains no history and publishes nothing without subscribers.
-
-### Application realtime
-
-Webapp owns one authenticated application WebSocket per browser tab, including
-heartbeat, reconnect and dynamic subscriptions. Mounted consumers declare
-interests, not URL filters. Server delivery enforces authoritative user
-ownership before matching interests; no interests means no application feed.
-
-Connection loss and automatic reconnection stay silent, even during extended
-outages. Keep the last loaded data visible; webapp refreshes it after the
-connection recovers. Do not translate recoverable transport status into global
-or per-resource errors. Explicit operation failures and terminal protocol or
-synchronization errors remain visible; mutations are never automatically retried.
-
-Use `useLiveQuery` for collection/entity reads and its mutation barrier for
-local operations and reconciliation. Sidebar chat activity uses compact
-metadata, never every chat's transcript body. Keep versioned deltas for
-transcript and provisioning content where refetching each chunk is disruptive.
-Supply identity dependencies when a versioned hook changes entities.
-
-Baseline reads start after subscription acknowledgement. Live transcript
-snapshots capture the domain owner's retained in-memory collections and
-position together, rather than relying on a delayed persistence checkpoint.
-Snapshots carry an epoch and revision; deltas name their predecessor.
-The framework buffers concurrent events, discards covered deltas and applies
-contiguous changes. Reconnect, gaps and buffer overflow request a new cut;
-persistent failures remain visible. Navigation and disconnect invalidate old
-reads. Applications must not add independent reconnect timers or fallback
-polling to recover the same state.
-
-Transcript snapshots default to the latest 100 responses. `before` loads an
-older page; `since` refreshes the explicitly loaded window inclusively from
-its oldest response cursor; `full=1` requests all retained history. These
-options are mutually exclusive. Preserve the currently displayed window
-while loading older history so a concurrent advancing tail cannot leave a
-gap. Recovery replaces that loaded window authoritatively, rather than
-unioning stale cached records into a new snapshot. Default live windows are
-bounded; loading additional history remains an explicit user action.
-
-There is no durable global replay log. Transient UI commands keep their own
-acknowledgement/deduplication contract and are not blindly replayed. Terminal,
-preview and Mesh sockets remain separate raw transports.
+Keep documentation about behavior, constraints, and their rationale. Types,
+method signatures, helper catalogs, and implementation details already clear
+in code do not need a parallel prose reference. Document feature changes in
+the appropriate guide and update applicable skills. Keep the root README a
+short introduction, installation/quick-start guide, and navigation entry point.
 
 ## Build and test
 
-### Dependency updates
+For application changes:
+
+```bash
+bun run build && bun run test
+```
+
+The build produces the standalone `dist/clanky` and relocatable `dist/client/`.
+`bun run build:client` builds just the frontend;
+`CLANKY_CLIENT_API_URL` can supply its initial API default. See
+[Static frontend and remote API](static-client.md) for separate hosting and
+`serve --api-only`.
+
+Use the [testing guide](development/testing.md) for prerequisites, narrower
+checks, coverage decisions, and required validation.
+
+## Dependency updates
 
 Update registry packages and their transitive resolutions with
 `bun update --latest --exact`, then commit `package.json` and `bun.lock`
@@ -253,298 +69,46 @@ and refresh development-container feature versions and digests together in
 `.devcontainer/devcontainer-lock.json`. Do not force transitive dependencies
 outside their parents' supported ranges.
 
-### Validation
+First-party webapp dependencies use the
+[upstream integration workflow](development/webapp.md#upstream-framework-changes),
+including the final upstream merge and commit verification.
 
-Build the standalone artifacts and run the black-box E2E suite:
+## Pull request reviews
 
-```bash
-bun run build
-bun run test
-```
-
-The build writes the production executable to `dist/`. Every automated test
-starts that executable and interacts with it only through public CLI, HTTP,
-WebSocket, WebDAV, process, filesystem, Git, or network boundaries. The suite
-does not import application internals or inspect persistence.
-
-Keep local CLI commands such as `worker channel` and `worker service status`
-independent of application-server initialization. Load the server only for
-commands that need it, and pass the framework an asynchronous route-catalog
-loader shared with the Mesh CLI. Maintenance probes must not pay for loading
-the full server graph or constructing its route catalog.
-
-The runner discovers only `tests/e2e/**/*.test.ts`, partitions those files from
-their count and `CLANKY_TEST_MAX_WORKERS`, and never retries failures. Its
-architecture guard rejects automated tests outside `tests/e2e`, production
-source imports, in-process mocks or spies, route-handler harnesses, direct
-persistence access, and production testing hooks.
-
-Fail-fast budgets are 5 seconds for an individual request, command, local poll,
-or WebSocket operation and 10 seconds for an asynchronous task, chat, agent,
-SSH, provisioning, Mesh, startup, or recovery lifecycle. The 120-second
-whole-journey limit remains only as a final backstop for slow CI. Successful
-steps never wait out those budgets, and failures retain the named condition,
-last observed state, and process logs.
-HTTP transport errors include the method and pathname, preserve the original
-cause, and omit request bodies, credentials, and query parameters.
-
-Mesh E2E operations use `MESH_OPERATION_TIMEOUT_MS` (20 seconds) instead of
-the generic five-second operation budget. This covers bootstrap, enrollment,
-HTTP/health requests, remote command requests, Windows termination, and the
-external Mesh Devbox fixture. Existing lifecycle/polling budgets, Windows
-startup and large-image budgets, and whole-journey limits remain unchanged.
-Production timeouts and non-Mesh operation budgets are not affected.
-
-Useful commands:
-
-```bash
-bun run typecheck
-CLANKY_TEST_MAX_WORKERS=1 bun run test
-bun run test:mesh
-CLANKY_LOG_LEVEL=info bun run test:mesh
-```
-
-Mesh bootstrap and enrollment failure diagnostics include subprocess exit/signal
-status, timeout/output-limit flags, and elapsed time. Set
-`CLANKY_LOG_LEVEL=info` to include worker startup and enrollment milestones;
-automatic provisioning also streams registration progress into its job logs.
-
-`test:mesh` runs the portable controller/worker ACP and relay journeys on
-Linux, macOS, and Windows. On Linux and macOS it also runs the automatic
-workspace journey: provision, restart, rebuild, use, and retire a Devbox
-workspace while another worker prepares a plan and handles a conversation.
-The external Devbox fixture runs the real workspace shell loop and requires
-`flock`: use util-linux on Linux or `brew install flock` on macOS. The macOS
-Mesh CI job installs it before running the journeys.
-Devbox supports Linux and macOS, so that journey is not selected on Windows.
-The complete Linux suite includes all of these journeys.
-
-Provider-dependent E2E scenarios put deterministic provider executables first
-in an isolated `PATH`. Clanky discovers and launches the fixtures in
-`tests/e2e/providers/` through the same process, adapter, transport, and
-lifecycle boundaries used for a real provider; production has no test-only
-backend switch. The provisioning journey likewise invokes an external
-deterministic `devbox` executable through real SSH and validates successful,
-failed, cancelled, and restarted jobs at the public API boundary. Harnesses
-allocate isolated data directories and ports, bound their polling, capture
-subprocess logs for failure diagnostics, and clean up their process groups.
-Application failure diagnostics include server logs from before and after
-restarts, so recovery failures retain the original shutdown context.
-
-Provider waits for future user input, such as Codex steering, belong to the
-turn lifecycle: they end on input, interruption, deletion, or connection closure.
-Do not add a separate provider timer that expires while the journey is still
-preparing its input. The journey's existing operation/lifecycle deadlines and
-whole-test limit remain the failure bounds.
-
-The local voice E2E journey uses an external HTTPS OpenAI-compatible provider
-to check provider settings and destination safety, validate transcription/text
-capabilities, transcribe audio, and verify persistence. The Copilot and OpenCode
-journeys also exercise Live voice, including OpenCode steering on a Mesh worker
-and persisted call summaries. Positive Piper synthesis is
-intentionally not part of the hermetic PR gate: a real run requires downloading
-or versioning roughly 90 MB of checksum-pinned runtime and voice assets. Do not
-fake Piper by pre-populating its private cache layout; use real assets for an
-optional manual smoke instead.
-
-### Proportional concurrency
-
-Clanky is primarily single-user, with occasional collaboration. Before adding
-coordination or raising a concurrency finding in review, identify independent
-producers, a plausible supported workflow that overlaps them, and the likelihood
-and user-visible impact of failure. A possible ordering across an `await` is not
-enough. Rare, low-impact conflicts between manual actions may fail visibly and
-be retried; do not add locks, reservations, retries, or reconciliation just to
-make every ordering succeed.
-
-Reuse existing lifecycle coordination instead of adding another queue inside
-it. Preserve safeguards where provider events, background work, transports,
-navigation, or shutdown really overlap, especially for authorization, data
-integrity, irreversible operations, execution-host identity, and resource
-cleanup. See `AGENTS.md` for the implementation and review decision gate.
-
-### Scenario-only E2E policy
-
-The suite is a small catalog of real user/API/CLI/protocol scenarios the
-application is required to support. It is not a history of bugs or a
-regression-prevention layer. Do not add tests just to reproduce a defect, prove
-that its fix works, or ensure that the same bug does not return. Remove
-regression-only checks after the fix; do not rename or relocate them into a
-broader test.
-
-Apply that rule to each step and assertion, not just the journey's name.
-Remove artificial interleaving barriers, cross-client permutations, exact
-message segmentation, copy checks, and payload matrices that do not establish
-a required workflow or public contract. Remove their exclusive mock and fixture
-support too; do not replace them with another regression layer.
-
-A bug report alone does not establish a test scenario. Add coverage only when
-the workflow is independently identified as required product behavior, and
-test that complete user journey through the compiled app and public boundary.
-Before changing the suite, record the user/workflow, public boundary,
-observable outcome, and why that scenario merits coverage without duplicating
-an existing journey. If the rationale depends on the old bug or its
-implementation, do not add or retain the test.
-
-Keep a few broad, coherent scenarios rather than endpoint matrices or
-feature-specific regression checks. Do not add component, hook, class, or
-helper tests. UI-only behavior is validated manually with `Bun.WebView`, not
-committed browser automation.
-
-Run `bun run build && bun run test` before considering a change complete.
-
-The complete Linux suite also starts an isolated OpenSSH server. Install
-`openssh-server`, `sshpass`, and `dtach` before running it; the harness creates its own
-host key, client key, agent socket, port, configuration, and data directory.
-It does not modify the user's SSH keys or contact an external host.
-The SSH terminal journey uses `dtach` to resume a persistent shell after
-controller loss.
-Its single OpenSSH `SetEnv` directive sets an isolated `HOME`, provider `PATH`,
-and `/bin/sh` login shell with an isolated `.profile`. Keep these values in one
-directive: OpenSSH ignores subsequent `SetEnv` declarations. Using the host
-account's interactive Bash configuration would run unrelated global toolchain
-initialization on every remote operation.
-
-## Harness execution boundaries
-
-`src/shared/harness-events.ts` is the canonical harness event contract. It is
-distinct from scheduled Clanky Agent events. Every live event identifies its
-principal or child scope; child output and failures must not enter the parent
-transcript or complete the parent execution. Child permissions/questions retain
-their origin and continue through the interaction coordinator.
-
-`message.complete` closes one assistant message, not the logical prompt.
-`prompt.complete` closes the principal prompt; `session.status: idle` alone does
-not. Neither signal proves that descendant processes have exited. ACP translates
-its explicit prompt terminal signal into the same contract; task execution
-depends on the generic `Backend` port, not the `AcpBackend` class.
-
-Graceful shutdown marks task and chat interruption before awaiting transport
-cleanup. A process-group signal can reap an ACP provider before the parent's
-signal callback runs: its process owner closes I/O immediately and dispatches
-the exit notification after pending signal callbacks, cancelling that owned
-notification on teardown. Interrupted planning remains recoverable after a
-restart; provider exits without server shutdown still surface as failures.
-
-Test doubles at the harness seam must preserve these distinctions. Use HTTP
-state/transcript observations to check them rather than asserting internal
-translation calls.
-
-`Backend.harness` is the session-lifetime control port. Capabilities distinguish
-active-session steering from expected-turn admission, and native/partial activity
-coverage from unavailable observation. An unavailable snapshot has no fabricated
-empty activity list. Stop and owned-work settlement have separate confirmed,
-pending and unknown outcomes; a cancellation acknowledgment is not confirmation.
-
-Steering input IDs belong to Clanky's queue. Native admission/delivery identifiers
-are recorded separately and used for recovery; an unknown admission must not be
-blindly resubmitted. These controls do not imply that the model obeyed an accepted
-message. ACP explicitly reports unsupported observation/steering rather than
-emulating steering through cancellation and restart.
-
-Native Copilot runtime/catalog collaborators live in `src/backends/copilot/`.
-They use the installed execution-host CLI through explicit, attached SDK stdio,
-not in-process FFI or a shared detached server. Startup checks authentication and
-records the actual CLI/protocol version. Shutdown is awaited and idempotent;
-cleanup failures preserve their causes.
-
-Native executable discovery uses the configured execution-host `PATH`.
-Codex's app-server startup receives the same environment and working directory
-as its process; it must not depend on the controller's global CLI path.
-
-The catalog queries real native model/effort metadata, checks transport health,
-rejects unavailable saved selections and leaves the profile's reasoning default
-alone when no override was requested. Copilot's catalog namespace identifies its
-serving harness, not an inferred model vendor. Workspace settings select ACP, native Copilot, Codex app-server or OpenCode
-runtime 2. Existing workspaces migrate to ACP with their original harness
-preset. Native execution uses local hosts or end-to-end Mesh v7 paths; every
-controller, relay, and worker on the route must support v7 and use TLS.
-Direct SSH remains ACP-only.
-See [harness adapters](harnesses.md) for operational setup.
-
-Codex reconciliation can query paginated history across the original thread when
-an admission reply lost native references. The canonical input ID is the native
-client ID, not evidence of delivery by itself; only a matching persisted native
-user message confirms delivery. Recovery must not create a conversation or resend.
-
-Task session lifecycle starts observation only after checkpointing the owned
-binding, including uploaded-plan execution and cold reconnects. Engine-generated
-initial goals retain deterministic IDs; queued/steered user messages retain the
-queue input ID as their public message ID. This correlation also survives cold
-delivery recovery.
-
-Native registry payloads may disagree with SDK declarations. Normalize valid
-nullable metadata at the adapter boundary, and validate activity projections
-before storage; malformed observation must not overwrite unrelated input
-receipts. Invalid persisted input history stays fail-closed rather than being
-cleared by a fresh activity read.
-
-Activity opens through the framework entity menu and retains the conversation
-DOM, scroll, and composer draft on its canonical URL. An embedded task chat has a
-separate **Chat activity** header action while its tab is visible, distinct from
-the task execution's **Activity** action. Native tool rows link to their own scope.
-Steer is a text-style action beneath queued input; admission, native delivery,
-and model obedience remain separate.
-
-## Markdown rendering validation
-
-The file preview, chat messages, and agent logs share `MarkdownRenderer`.
-Validate unsaved editor changes, undo after switching views, diagram errors,
-raw-text mode, and theme changes with a temporary Bun.WebView harness. Capture
-and review desktop and mobile screenshots; do not add browser or component
-tests to the repository.
-
-For regular code blocks, verify that the copy button copies the complete block
-content without the Markdown fences or trailing whitespace. It stays inside
-the block at the upper-right corner and remains fixed when code scrolls
-horizontally. Check the rendered code itself retains the 16px technical size,
-not a smaller typography-plugin scale inherited from the 18px transcript.
-
-Mermaid is pinned to 11.16.1: the FastDOM dependencies in 11.17 conflict with
-Monaco's global AMD loader. Before upgrading, render the first diagram **after**
-Monaco has initialized and check both the development server and standalone
-binary. Do not work around an incompatible dependency by changing the global
-loader. The `.mermaid-measurement` container disables transitions so global
-reduced-motion styles cannot interpolate SVG geometry during measurement.
-
-## Demo data
-
-The demo generator creates disposable data for UI validation:
-
-```bash
-CLANKY_DISABLE_PASSKEY=true \
-  bun tests/test-data-generation/generate-demo-ui-data.ts \
-  --data-dir /tmp/clanky-demo
-```
-
-Use a temporary data directory. The generator is intended for local
-validation, not for production data.
+After opening a PR, wait for review comments before merging unless explicitly
+instructed otherwise. Address every requested or suggested change by implementing
+it or replying with a reason not to. Merge only after review has arrived and
+all feedback has been addressed. This also applies to upstream integration PRs.
 
 ## Creating a GitHub release
 
 Install [GitHub CLI](https://cli.github.com/) and authenticate with
 `gh auth login` using an account allowed to create releases in the repository.
-From the repository, run:
+Always use the release script, not manual tags or `gh release create`:
 
 ```bash
 bun run release
 ```
 
-The script uses the highest published stable `vX.Y.Z` release on GitHub as
-the baseline, ignoring drafts, prereleases, and tags in other formats. It
-requires an existing stable release; local tags and the development version in
-`package.json` are not used.
+Choose a `major`, `minor`, or `patch` increment. The script uses the highest
+published stable `vX.Y.Z`
+release as its baseline, ignoring drafts, prereleases, and other tag formats.
+An existing stable release is required; local tags and the development version
+in `package.json` are not used.
 
-Choose `major`, `minor`, or `patch`. Major resets minor and patch to zero;
-minor resets patch to zero. The script previews the proposed tag/title and
-the remote default branch's commit SHA. It releases that exact remote commit,
-regardless of your current local branch or unpushed changes.
+Review the proposed tag/title and remote default branch commit before confirming
+publication. The script releases that exact remote commit, regardless of the
+local branch or unpushed changes. Do not publish merely to validate the script.
 
 Only typing `yes` at the final prompt publishes. Enter at the bump prompt,
 EOF, or any other confirmation cancels without creating a tag or release.
-The tag and title are always the same `vX.Y.Z` string, and the description
-is generated by GitHub. Existing remote tags are rejected. Publication
-triggers the existing binary and Docker release workflows.
+The tag and title are identical `vX.Y.Z` strings, notes are GitHub-generated,
+and existing remote tags are rejected. Publication triggers binary and Docker
+release workflows.
+
+Every main push separately updates the rolling `latest` binary prerelease with
+a unique embedded build version, checksums, and macOS signing. See
+[Binary installation and update channels](binary-updates.md).
 
 ## Release metadata
 

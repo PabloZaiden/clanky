@@ -10,6 +10,11 @@ Use this skill when building an app with `@pablozaiden/webapp`.
 
 ## Repository-local references
 
+For work in Clanky, use its canonical
+[UI and integration guide](../../../docs/development/webapp.md) and
+[testing policy](../../../docs/development/testing.md). The browser workflow
+below is disposable development tooling, not permission to add browser tests.
+
 The current documentation is maintained in the `pablozaiden/webapp` repository
 at its root, not relative to this skill file or an installed skill bundle:
 

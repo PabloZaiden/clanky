@@ -104,6 +104,10 @@ R() { cargo run --release -- "$@"; }
 snapshot or visual-regression tests, test modules, or test harnesses. Validate the video
 with `inspect`, rendered frames, contact sheets, audio checks and the native preview.
 
+In Clanky, do not modify existing automated tests or test-harness code during
+video-only work either. Application code changes still require the checks in
+the [testing guide](../../../docs/development/testing.md).
+
 **For the GPU backend, offer the native preview before a full render.** Do not render the
 whole video as a routine review step. Once the changes are ready to review:
 
