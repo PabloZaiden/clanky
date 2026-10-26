@@ -8,7 +8,7 @@ import type { RouteCatalogEntry } from "@pablozaiden/webapp/server";
 import type { MeshEnrollmentRoute } from "@/contracts/schemas/mesh";
 
 export interface ClankyCliContext {
-  routeCatalog: readonly RouteCatalogEntry[];
+  routeCatalog(): Promise<readonly RouteCatalogEntry[]>;
 }
 
 export type MeshOperation =
@@ -265,7 +265,7 @@ export async function runMeshCommand(
       request.method,
       ...(request.payload === undefined ? [] : ["--payload", request.payload]),
     ],
-    catalog: context.appContext.routeCatalog,
+    catalog: await context.appContext.routeCatalog(),
     credentials: context.profiles.credentials(context.profile),
     envPrefix: context.envPrefix,
     environment: context.environment,

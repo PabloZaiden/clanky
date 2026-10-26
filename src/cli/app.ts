@@ -1,7 +1,6 @@
 import { resolve } from "node:path";
 import { createWebAppCli } from "@pablozaiden/webapp/cli";
 import { createRouteCatalog } from "@pablozaiden/webapp/server";
-import { routes, getWebAppServer } from "../server";
 import { CLANKY_VERSION } from "../version";
 import { createMeshCommand, type ClankyCliContext } from "./mesh";
 import { parsePreviewCommandArgs, runPreviewCommand } from "./preview";
@@ -42,7 +41,7 @@ async function buildClankyFromSource(sourcePath: string): Promise<void> {
 
 export function createClankyCli() {
   const appContext: ClankyCliContext = {
-    routeCatalog: createRouteCatalog(routes),
+    routeCatalog: async () => createRouteCatalog((await import("../server")).routes),
   };
   const environment = { ...process.env };
   delete environment["CLANKY_MESH_WORKER"];
@@ -75,6 +74,7 @@ export function createClankyCli() {
       },
     },
     start: async ({ options }) => {
+      const { getWebAppServer } = await import("../server");
       const server = await getWebAppServer({
         apiOnly: options["api-only"] === true,
         meshWorker: options["mesh-worker"] === true,
