@@ -15,6 +15,7 @@ import { HarnessToolActivity } from "../harness-activity";
 interface ToolGroupEntryProps {
   entry: ToolGroupEntryBase & {
     showTimestamp: boolean;
+    showDate: boolean;
     showGroupHeader: boolean;
   };
   spacingClass: string;
@@ -110,7 +111,7 @@ export const ToolGroupEntry = memo(function ToolGroupEntry({
     <div className={`group ${spacingClass}`.trim()} data-entry-type="tool-group">
       {entry.showTimestamp && (
         <time className="mb-1 block text-[11px] text-gray-500" dateTime={entry.timestamp}>
-          {formatTime(entry.timestamp)}
+          {formatTime(entry.timestamp, entry.showDate)}
         </time>
       )}
       <div className="min-w-0">
@@ -148,6 +149,7 @@ export const ToolGroupEntry = memo(function ToolGroupEntry({
               data={groupedTool.data}
               timestamp={groupedTool.timestamp}
               showTimestamp={index !== 0 && groupedTool.showTimestamp}
+              showDate={groupedTool.showDate}
               spacingClass={getEntrySpacingClass(groupedTool, groupedToolEntries[index - 1])}
               toolPathDisplayRoot={toolPathDisplayRoot}
               fullWidth

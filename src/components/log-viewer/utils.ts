@@ -16,6 +16,15 @@ const timeFormatter = new Intl.DateTimeFormat("en-US", {
   hourCycle: "h23",
 });
 
+const dateTimeFormatter = new Intl.DateTimeFormat("en-US", {
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
 const MAX_TOOL_DETAIL_SUMMARY_LENGTH = 72;
 const MAX_WORKING_TOOL_DETAIL_COUNT = 2;
 
@@ -53,18 +62,23 @@ export function getWorkingGroupToolSummary(
 }
 
 /**
- * Format a timestamp for display.
+ * Format a timestamp label, including its local date when requested.
  */
-export function formatTime(isoString: string): string {
-  return timeFormatter.format(new Date(isoString));
+export function formatTime(isoString: string, showDate = false): string {
+  const date = new Date(isoString);
+  return showDate ? dateTimeFormatter.format(date) : timeFormatter.format(date);
 }
 
 /**
  * Group timestamps by their absolute minute so repeated local clock values
  * across different dates or DST fall-back hours do not collapse together.
  */
-function getTimestampMinuteBucket(isoString: string): number {
-  return Math.floor(new Date(isoString).getTime() / 60_000);
+function getTimestampMinuteBucket(date: Date): number {
+  return Math.floor(date.getTime() / 60_000);
+}
+
+function getLocalDateKey(date: Date): number {
+  return date.getFullYear() * 10_000 + (date.getMonth() + 1) * 100 + date.getDate();
 }
 
 /**
@@ -361,22 +375,38 @@ export function hasActiveWorkEntry(entries: DisplayEntry[]): boolean {
 }
 
 /**
- * Annotate a sorted array of entries with derived render metadata.
- * Timestamps are shown only when the visible formatted time changes.
- * Group headers remain driven by entry grouping so spacing and labels
- * still reflect structural changes within the transcript.
+ * Annotate a sorted array of entries with derived render metadata in one pass.
+ * Timestamps remain minute-based, while historical date labels are set when
+ * the local calendar day changes.
  */
 export function annotateDisplayEntries(sorted: GroupedEntryBase[]): DisplayEntry[] {
-  const keys = sorted.map(getEntryGroupKey);
-  const minuteBuckets = sorted.map((entry) =>
-    getTimestampMinuteBucket(entry.timestamp),
-  );
+  const todayDateKey = getLocalDateKey(new Date());
+  let previousGroupKey: string | undefined;
+  let previousMinuteBucket: number | undefined;
+  let previousDateKey: number | undefined;
+  let showDate = false;
 
-  return sorted.map((entry, i) => ({
-    ...entry,
-    showTimestamp: i === 0 || minuteBuckets[i] !== minuteBuckets[i - 1],
-    showGroupHeader: i === 0 || keys[i] !== keys[i - 1],
-  }));
+  return sorted.map((entry, index) => {
+    const date = new Date(entry.timestamp);
+    const dateKey = getLocalDateKey(date);
+    const groupKey = getEntryGroupKey(entry);
+    const minuteBucket = getTimestampMinuteBucket(date);
+
+    if (index === 0 || dateKey !== previousDateKey) {
+      showDate = dateKey < todayDateKey;
+    }
+
+    const displayEntry = {
+      ...entry,
+      showTimestamp: index === 0 || minuteBucket !== previousMinuteBucket,
+      showGroupHeader: index === 0 || groupKey !== previousGroupKey,
+      showDate,
+    };
+    previousGroupKey = groupKey;
+    previousMinuteBucket = minuteBucket;
+    previousDateKey = dateKey;
+    return displayEntry;
+  });
 }
 
 export function getEntrySpacingClass(entry: DisplayEntry, previousEntry?: DisplayEntry): string {

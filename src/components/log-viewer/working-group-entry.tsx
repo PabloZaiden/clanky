@@ -26,6 +26,7 @@ type WorkingChildDisplayEntry = Extract<
 interface WorkingGroupEntryProps {
   entry: WorkingGroupEntryBase & {
     showTimestamp: boolean;
+    showDate: boolean;
     showGroupHeader: boolean;
   };
   spacingClass: string;
@@ -110,7 +111,7 @@ export const WorkingGroupEntry = memo(function WorkingGroupEntry({
     >
       {entry.showTimestamp && (
         <time className="mb-1 block text-[11px] text-gray-500" dateTime={entry.timestamp}>
-          {formatTime(entry.timestamp)}
+          {formatTime(entry.timestamp, entry.showDate)}
         </time>
       )}
       <LazyDetails

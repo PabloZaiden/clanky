@@ -150,6 +150,8 @@ export type GroupedEntryBase =
 export type DisplayEntry = GroupedEntryBase & {
   /** Whether this entry should render its visible timestamp. */
   showTimestamp: boolean;
+  /** Whether a rendered timestamp should include its local date. */
+  showDate: boolean;
   /** Whether this entry starts a new grouped row for spacing and labels. */
   showGroupHeader: boolean;
 };

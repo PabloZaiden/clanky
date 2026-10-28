@@ -11,6 +11,7 @@ interface ToolImageEntryProps {
   data: ToolCallDisplayData;
   timestamp: string;
   showTimestamp: boolean;
+  showDate: boolean;
   spacingClass: string;
   toolPathDisplayRoot?: string;
   onLoadToolDetails: ConversationViewerProps["onLoadToolDetails"];
@@ -20,6 +21,7 @@ export const ToolImageEntry = memo(function ToolImageEntry({
   data: tool,
   timestamp,
   showTimestamp,
+  showDate,
   spacingClass,
   toolPathDisplayRoot,
   onLoadToolDetails,
@@ -70,6 +72,7 @@ export const ToolImageEntry = memo(function ToolImageEntry({
         data={activeTool}
         timestamp={timestamp}
         showTimestamp={showTimestamp}
+        showDate={showDate}
         spacingClass={spacingClass}
         toolPathDisplayRoot={toolPathDisplayRoot}
         onLoadToolDetails={onLoadToolDetails}
@@ -81,7 +84,7 @@ export const ToolImageEntry = memo(function ToolImageEntry({
     <div className={`group ${spacingClass}`.trim()} data-entry-type="tool-image" data-message-role="assistant">
       {showTimestamp && (
         <time className="mb-1 block text-[11px] text-gray-500" dateTime={timestamp}>
-          {formatTime(timestamp)}
+          {formatTime(timestamp, showDate)}
         </time>
       )}
       <div className="min-w-0 w-full space-y-3">
