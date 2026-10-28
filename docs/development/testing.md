@@ -26,9 +26,10 @@ bun run test:mesh
 CLANKY_LOG_LEVEL=info bun run test:mesh
 ```
 
-The Linux suite requires `openssh-server`, `sshpass`, and `dtach`. Automatic
-Devbox workspace scenarios require `flock` (util-linux on Linux,
-`brew install flock` on macOS); Devbox is not supported on Windows.
+The Linux suite requires `iproute2`, `openssh-server`, `sshpass`, `dtach`, and
+`util-linux`. Automatic Devbox workspace scenarios require `flock`
+(`util-linux` on Linux, `brew install flock` on macOS); Devbox is not supported
+on Windows.
 Install prerequisites before running the relevant journey.
 
 The voice-provider fixture requires OpenSSL and listens on an ephemeral HTTPS
@@ -116,10 +117,22 @@ credentials, sockets, and subprocesses. Use `CLANKY_DISABLE_PASSKEY=true` for
 unattended scenarios except those verifying authentication boundaries.
 Never modify the developer's data or SSH keys, or contact an external host.
 
+URL-fetch journeys that must validate a public destination use a dedicated
+Linux network namespace with no external interfaces or default route. A
+globally routable test address may be assigned to loopback inside that
+namespace for a local HTTP fixture; run the fixture, compiled application,
+and E2E client in the same namespace. The runner uses an unprivileged user
+namespace where available; if the kernel disables those, it uses noninteractive
+sudo to create only the network namespace, then drops to the original test UID
+and GID before starting the E2E process. Keep production address validation
+unchanged and never send fixture traffic outside the namespace.
+
 Fixed delays are not synchronization. Wait for health, public state, frames,
 process completion, or filesystem/Git effects with a bounded named condition
 and last-observed-state diagnostics. Keep timers only where time itself is
 the contract; do not retry or lengthen sleeps to hide failures.
+For terminal commands, wait for the expected execution result, not a marker
+also present in echoed input.
 
 | Operation | Budget |
 | --- | --- |
