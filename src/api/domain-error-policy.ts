@@ -381,6 +381,9 @@ const API_DOMAIN_ERROR_CODES = {
   workspace_icon_invalid: true,
   workspace_icon_not_found: true,
   workspace_icon_too_large: true,
+  workspace_icon_url_blocked: true,
+  workspace_icon_url_fetch_failed: true,
+  workspace_icon_url_invalid: true,
   workspace_name_ambiguous: true,
   workspace_not_auto_provisioned: true,
   workspace_not_found: true,
@@ -1879,7 +1882,7 @@ const POLICY_PROFILES = {
       },
       workspace_icon_invalid: {
         status: 400,
-        message: "Choose a valid SVG or ICO workspace icon.",
+        message: "Choose a valid SVG, PNG, or ICO workspace icon.",
       },
       workspace_icon_not_found: {
         status: 404,
@@ -1887,7 +1890,19 @@ const POLICY_PROFILES = {
       },
       workspace_icon_too_large: {
         status: 413,
-        message: "Workspace icons must be 1 MB or smaller.",
+        message: "Workspace icons must be 1 MB or smaller and within image dimension limits.",
+      },
+      workspace_icon_url_blocked: {
+        status: 400,
+        message: "Icon URLs must point to public internet hosts.",
+      },
+      workspace_icon_url_fetch_failed: {
+        status: 502,
+        message: "Unable to retrieve an icon from the supplied URL.",
+      },
+      workspace_icon_url_invalid: {
+        status: 400,
+        message: "Enter a valid public HTTP(S) URL for an SVG, PNG, or ICO icon.",
       },
       directory_not_found: {
         status: 400,

@@ -11,7 +11,10 @@ Open the workspace settings and use the **Icon** row in **General**. You can:
 - Choose **Search** to look for repository icons, then preview and select a
   candidate. Clanky does not search until you request it; choose **Search
   again** to refresh the candidates.
-- Upload an SVG or ICO file from your computer, up to 1 MB.
+- Upload an SVG, PNG, or ICO file from your computer, up to 1 MB. PNG files are
+  converted to ICO when saved.
+- Import an SVG, PNG, or ICO from a public HTTP(S) URL. Clanky validates and
+  copies the image for preview; it does not hotlink the remote file.
 - Remove the current icon and return to the default workspace mark.
 
 Choosing a file, selecting a repository candidate, or confirming removal
@@ -21,13 +24,13 @@ icon to restore the saved icon. Leaving with pending changes asks whether to
 discard them. If saving the icon fails, the selection stays pending so you can
 retry; any other settings already saved remain applied.
 
-For Git workspaces, Clanky searches within that workspace's Git repository on
-its selected execution host; it does not scan the rest of the host. Discovery
-includes tracked files and unignored untracked files named `*icon*.svg` or
-`*logo*.svg`. It also offers
-`*icon*.ico`, `*logo*.ico`, and `favicon*.ico` files. Up to 200 candidates are
-shown. Repository discovery is not available for directory-only workspaces;
-you can still upload an icon manually.
+For Git workspaces, Clanky searches by `.svg`, `.png`, and `.ico` extension
+within that workspace's Git repository on its selected execution host; it does
+not scan the rest of the host or filter by filename. Discovery includes tracked
+files and unignored untracked files, but excludes ignored files. Up to 200
+candidates are shown, with an indicator when there are more. Repository
+discovery is not available for directory-only workspaces; local upload and URL
+import remain available.
 
 Selecting a repository candidate captures its sanitized contents for the
 preview and pending change. Saving keeps that same image even if you also
@@ -35,10 +38,17 @@ change the execution host or the source file changes before you save.
 Icon-only saves do not require an available execution host for uploads or
 removal.
 
+URL imports are limited to public HTTP(S) URLs without embedded credentials.
+Local, private, link-local, and metadata-service destinations are rejected,
+including redirect targets. Imports have a 5-second timeout, allow at most
+three redirects, and are limited to 1 MB. Clanky validates the image contents
+before showing the preview; PNG is converted to ICO when saved.
+
 Saved icons are copied into private Clanky storage. The workspace does not
-depend on the source file remaining in the repository, and later changes to
-that file do not change the saved icon. Select it again to refresh the copy.
-SVG uploads and candidates are sanitized before storage. The saved image is
+depend on the source file remaining in the repository or the remote URL
+remaining available, and later changes to either source do not change the
+saved icon. Select or import it again to refresh the copy. SVG uploads,
+candidates, and URL imports are sanitized before storage. The saved image is
 available only to users authorized for that workspace.
 
 Clanky discards SVG metadata and Inkscape named-view settings while

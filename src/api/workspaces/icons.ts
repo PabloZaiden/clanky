@@ -7,10 +7,12 @@ import {
   WorkspaceIconCandidatesResponseSchema,
   WorkspaceIconCandidateQuerySchema,
   WorkspaceIconCandidateRequestSchema,
+  WorkspaceIconUrlRequestSchema,
 } from "@/contracts/schemas";
 import { CLANKY_REALTIME_RESOURCES } from "@/shared/realtime";
 import { DomainError, isDomainError } from "../../domain/domain-error";
 import {
+  fetchWorkspaceIconFromUrl,
   getWorkspaceIconContent,
   listWorkspaceIconCandidates,
   previewWorkspaceIconCandidate,
@@ -225,7 +227,7 @@ export const workspaceIconRoutes = defineRoutes({
     delegation: workspaceAdministrationOperation(),
     auth: "user",
     sameOrigin: "mutations",
-    description: "Upload a private SVG or ICO icon for a workspace.",
+    description: "Upload a private SVG, PNG, or ICO icon for a workspace.",
     async POST(req: Request, ctx) {
       const workspaceResult = await requireWorkspace(workspaceIdFromContext(ctx));
       if (workspaceResult instanceof Response) {
@@ -233,7 +235,7 @@ export const workspaceIconRoutes = defineRoutes({
       }
       const contentType = req.headers.get("content-type") ?? "";
       if (!contentType.toLowerCase().startsWith("multipart/form-data")) {
-        return errorResponse("workspace_icon_invalid", "Upload an SVG or ICO file.", 400);
+        return errorResponse("workspace_icon_invalid", "Upload an SVG, PNG, or ICO file.", 400);
       }
 
       let form: FormData;
@@ -255,7 +257,7 @@ export const workspaceIconRoutes = defineRoutes({
             message: "Failed to upload workspace icon.",
           });
         }
-        return errorResponse("workspace_icon_invalid", "Upload an SVG or ICO file.", 400);
+        return errorResponse("workspace_icon_invalid", "Upload an SVG, PNG, or ICO file.", 400);
       }
 
       const entries = [...form.entries()];
@@ -269,7 +271,7 @@ export const workspaceIconRoutes = defineRoutes({
         iconFile = iconValue;
       }
       if (!iconFile) {
-        return errorResponse("workspace_icon_invalid", "Upload one SVG or ICO file.", 400);
+        return errorResponse("workspace_icon_invalid", "Upload one SVG, PNG, or ICO file.", 400);
       }
 
       try {
@@ -298,7 +300,7 @@ export const workspaceIconRoutes = defineRoutes({
     delegation: workspaceAdministrationOperation(),
     auth: "user",
     sameOrigin: "mutations",
-    description: "Find workspace SVG and ICO icons available in a Git repository.",
+    description: "Find workspace SVG, PNG, and ICO files available in a Git repository.",
     responseSchema: WorkspaceIconCandidatesResponseSchema,
     operations: {
       GET: { requestSchema: undefined, querySchema: undefined, automation: { policy: "read" } },
@@ -323,7 +325,7 @@ export const workspaceIconRoutes = defineRoutes({
     delegation: workspaceAdministrationOperation(),
     auth: "user",
     sameOrigin: "mutations",
-    description: "Preview a sanitized icon candidate from a workspace Git repository.",
+    description: "Preview a validated icon candidate from a workspace Git repository.",
     querySchema: WorkspaceIconCandidateQuerySchema,
     async GET(req: Request, ctx) {
       const workspaceResult = await requireWorkspace(workspaceIdFromContext(ctx));
@@ -347,6 +349,39 @@ export const workspaceIconRoutes = defineRoutes({
         return reportWorkspaceIconFailure("preview", workspaceResult.id, error, {
           error: "workspace_icon_preview_failed",
           message: "Failed to preview workspace icon candidate.",
+        });
+      }
+    },
+  },
+
+  "/api/workspaces/:id/icon-url-import": {
+    delegation: workspaceAdministrationOperation(),
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "Fetch and validate a public SVG, PNG, or ICO icon URL for preview.",
+    requestSchema: WorkspaceIconUrlRequestSchema,
+    operations: {
+      POST: { automation: { policy: "write" } },
+    },
+    async POST(req: Request, ctx) {
+      const workspaceResult = await requireWorkspace(workspaceIdFromContext(ctx));
+      if (workspaceResult instanceof Response) {
+        return workspaceResult;
+      }
+      const parsed = await parseAndValidate(WorkspaceIconUrlRequestSchema, req);
+      if (!parsed.success) {
+        return parsed.response;
+      }
+      try {
+        const icon = await fetchWorkspaceIconFromUrl(parsed.data.url, req.signal);
+        return imageResponse(icon.content, icon.mimeType, "no-store");
+      } catch (error) {
+        if (req.signal.aborted) {
+          throw error;
+        }
+        return reportWorkspaceIconFailure("import", workspaceResult.id, error, {
+          error: "workspace_icon_url_fetch_failed",
+          message: "Unable to retrieve an icon from the supplied URL.",
         });
       }
     },
