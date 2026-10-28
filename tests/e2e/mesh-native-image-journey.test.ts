@@ -63,6 +63,7 @@ interface Chat {
   };
   state: {
     status: string;
+    error?: { code?: string; message: string };
   };
 }
 
@@ -286,7 +287,26 @@ test("compiled Mesh hosts deliver large images to native Codex and Copilot", asy
         },
       );
       expect(started.status).toBe(200);
-      expect((await waitForIdleChat(controller, chatId)).state.status).toBe("idle");
+      const settled = await waitForIdleChat(controller, chatId);
+      if (settled.state.status !== "idle") {
+        console.error("Native Mesh image chat failed:", JSON.stringify({
+          provider: provider.provider, chatId, status: settled.state.status, error: settled.state.error,
+        }));
+        try {
+          const failedSnapshot = await meshJsonRequest<ChatSnapshot>(
+            controller, `/api/chats/${encodeURIComponent(chatId)}/snapshot?full=1`,
+          );
+          console.error("Native Mesh image transcript:", JSON.stringify({
+            status: failedSnapshot.status,
+            messages: failedSnapshot.body.transcript.messages.slice(-6).map((message) => ({
+              role: message.role, content: message.content.slice(0, 2000),
+            })),
+          }));
+        } catch (diagnosticError) {
+          console.error("Native Mesh image transcript unavailable:", String(diagnosticError));
+        }
+      }
+      expect(settled.state.status).toBe("idle");
       const snapshot = await pollUntil(
         async () => await meshJsonRequest<ChatSnapshot>(
           controller,

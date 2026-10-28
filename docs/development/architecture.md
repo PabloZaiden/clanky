@@ -53,6 +53,50 @@ task may return before completion only when its lifecycle owner handles errors,
 persists failed state, and reports progress through public channels. Document
 that intentional background lifecycle at the call site.
 
+### Shared application control
+
+Control contracts, direct intents, operation discovery/execution and human
+interaction policy belong to the common control core, not Live Voice or a
+provider adapter. Canonical framework route declarations remain the operation
+inventory. Native tools, voice, MCP and deterministic runner IPC adapt that
+core; do not duplicate domain transitions or launch an internal MCP server per
+execution.
+
+Resolve managed origin from persisted credential/execution associations.
+Optional browser context supplies verified provenance and navigation, never
+authority. Workspace grants permit project work, not workspace/access/host
+administration. General grants stay within the real user's in-scope authority,
+not wildcard scopes or a fabricated owner. Enforce the immutable grant ceiling
+and current source authorization for discovery, referenced resources and every
+dispatch, including after approval or private credential entry.
+An ended Agent run cannot authorize further control or pending approvals, even
+when its native conversation credential is retained.
+Grant and provenance checks use metadata snapshots, not unrequested transcripts.
+Connected native chats renew expired control credentials before the next turn
+and resume their owned conversation; bounded key lifetimes remain unchanged.
+
+Unsupported ACP model processes receive no automatic Clanky credential, even
+when the workspace enables general control. Keep deterministic runner
+credentials private across ACP prompts. Retire associated legacy nonterminal
+wildcard keys and prevent their reissuance; do not change unrelated personal
+keys or interactive terminal contracts.
+
+Server control dispatch uses the framework's authenticated dispatcher with
+mandatory operation admission, preserving current account checks and the
+application's bound workspace authority. Do not forward unrestricted bearer
+credentials or expose arbitrary user-ID impersonation over HTTP. Generic OAuth
+and its persistence belong to the framework; Clanky validates workspace/general
+selection and owns operation policy. See
+[deployment and MCP authorization](../deployment.md#agent-control-and-mcp).
+
+Nonvoice control sessions own bounded, expiring requests and private SSH
+continuations. Return pending human interaction without blocking an unattended
+agent indefinitely; the session owns detached work, cancellation and cleanup.
+Only a separate real passkey-backed human interaction can approve frozen work
+or supply a private credential. Pending requests are single-use and do not
+survive restart. Credential tokens never enter tool results or deterministic
+user code. Voice retains its existing call-bound presentation and direct paths.
+
 ## Execution hosts and workspace paths
 
 Workspace paths refer to the selected execution host, not the Clanky server.

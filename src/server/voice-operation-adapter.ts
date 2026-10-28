@@ -12,9 +12,9 @@ import type {
   OperationAuthority, OperationRequest, OperationResult,
 } from "../core/clanky-operation-service";
 import { DomainError } from "../domain/domain-error";
+import { readOperationResponse } from "./operation-response";
 
 const log = createLogger("server:voice-operations");
-const MAX_RESPONSE_BYTES = 200_000;
 
 interface AuthorityState {
   user: CurrentUser;
@@ -81,34 +81,7 @@ class VoiceOperationAuthority implements OperationAuthority {
           ...(input.body === undefined ? {} : { body: JSON.stringify(input.body) }),
           signal,
         }));
-        if (!response) throw new DomainError("voice_operation_response", "The operation returned no HTTP response.");
-        if (response.status === 204) return { ok: true, status: 204, data: null };
-        if (!response.headers.get("content-type")?.includes("application/json")) {
-          await response.body?.cancel();
-          return { ok: false, status: response.status, code: "voice_operation_response", message: "The operation did not return JSON." };
-        }
-        const reader = response.body?.getReader();
-        if (!reader) throw new DomainError("voice_operation_response", "The operation returned an empty response.");
-        const chunks: Uint8Array[] = [];
-        let size = 0;
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            size += value.byteLength;
-            if (size > MAX_RESPONSE_BYTES) {
-              await reader.cancel();
-              return { ok: false, status: response.status, code: "voice_operation_response_too_large",
-                message: `The response exceeds ${MAX_RESPONSE_BYTES} bytes. Use paging or a targeted read. A successful mutation may already have taken effect; do not repeat it.` };
-            }
-            chunks.push(value);
-          }
-        } finally { reader.releaseLock(); }
-        const bytes = new Uint8Array(size);
-        let offset = 0;
-        for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
-        const data: unknown = JSON.parse(new TextDecoder().decode(bytes));
-        return { ok: response.ok, status: response.status, data };
+        return await readOperationResponse(response, "voice");
       };
       return await Promise.race([
         dispatch(),

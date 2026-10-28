@@ -52,7 +52,11 @@ export async function setupTaskSession(ctx: SessionOperationContext): Promise<st
     const credential = await managedCredentialService.ensureCredentialForRuntime(
       identity,
       ctx.state.session?.id ? "recreate" : "reuse",
+      { control: ["codex", "copilot", "opencode2"].includes(ctx.backend.harness.capabilities.adapter) },
     );
+    if (ctx.backend.harness.capabilities.clankyControlTools && !credential) {
+      throw new HarnessError("harness_runtime_unavailable", "Managed Clanky API credentials are unavailable for the task.");
+    }
     const runtimeEnvironment = buildManagedContextEnvironment(credential);
     ctx.emitLog("info", "Backend not connected, establishing connection...", {
       provider: settings.agent.provider,
@@ -142,7 +146,12 @@ export async function reconnectTaskSession(ctx: SessionOperationContext): Promis
         ctx.config.id,
         ctx.config.workspaceId,
       );
-      const credential = await managedCredentialService.ensureCredentialForRuntime(identity, "recreate");
+      const credential = await managedCredentialService.ensureCredentialForRuntime(identity, "recreate", {
+        control: ["codex", "copilot", "opencode2"].includes(ctx.backend.harness.capabilities.adapter),
+      });
+      if (ctx.backend.harness.capabilities.clankyControlTools && !credential) {
+        throw new HarnessError("harness_runtime_unavailable", "Managed Clanky API credentials are unavailable for the task.");
+      }
       const runtimeEnvironment = buildManagedContextEnvironment(credential);
       ctx.emitLog("info", "Reconnecting to backend...", {
         provider: settings.agent.provider,
@@ -223,12 +232,17 @@ export async function reconnectTaskSession(ctx: SessionOperationContext): Promis
 async function taskSessionContext(ctx: SessionOperationContext) {
   const workspace = await getWorkspace(ctx.config.workspaceId);
   if (!workspace) throw new HarnessError("harness_session_not_owned", "The task workspace is unavailable.");
+  const native = ["codex", "copilot", "opencode2"].includes(ctx.backend.harness.capabilities.adapter);
+  if (native && ctx.backend.harness.capabilities.clankyControlTools !== true) {
+    throw new HarnessError("harness_unsupported_feature", "This execution host does not support Clanky control tools.");
+  }
   return {
     ownerId: requireExecutionOwnerUserId(),
     contextId: ctx.config.id,
     questionPolicy: "unattended" as const,
     directory: ctx.workingDirectory,
     executionHost: workspace.executionHostBinding,
+    ...(native ? { controlTools: true } : {}),
   };
 }
 

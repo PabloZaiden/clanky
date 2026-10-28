@@ -5,7 +5,7 @@
 import { createContext, useCallback, useEffect, useRef, useState } from "react";
 import { useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
 import type { LiveVoiceCallState } from "@/shared";
-import type { LiveVoiceUiContext } from "@/shared/live-voice";
+import type { ControlClientContext } from "@/shared/control-interactions";
 import { apiRequest } from "../lib/api-client";
 import { LiveVoiceBrowser } from "../lib/live-voice-browser";
 import { acquireVoiceAudio } from "../lib/voice-audio-ownership";
@@ -45,7 +45,7 @@ export interface UseLiveVoiceResult extends LiveVoiceUiState {
   end: () => Promise<void>;
   toggleMute: () => void;
   playAudio: () => Promise<void>;
-  getContext: () => LiveVoiceUiContext;
+  getContext: () => ControlClientContext;
 }
 
 export const LiveVoiceContext = createContext<UseLiveVoiceResult | null>(null);
@@ -57,14 +57,14 @@ export function useLiveVoice(options: { enabled: boolean; route: WebAppRoute }):
   const active = useRef<BrowserCall | null>(null);
   const mounted = useRef(true);
   const endRef = useRef<() => Promise<void>>(async () => {});
-  const context = useRef<LiveVoiceUiContext>({ revision: 0, route: { view: "home" } });
+  const context = useRef<ControlClientContext>({ revision: 0, route: { view: "home" } });
   const safeRoute = Object.fromEntries(Object.entries(options.route).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
   const routeJson = JSON.stringify(safeRoute);
   const currentRouteJson = JSON.stringify(context.current.route);
   if (currentRouteJson !== routeJson) {
     context.current = { revision: context.current.revision + 1, route: safeRoute };
   }
-  const getContext = useCallback((): LiveVoiceUiContext => {
+  const getContext = useCallback((): ControlClientContext => {
     const taskModel = getStoredTaskModelPreference();
     const cheapModel = getStoredTaskCheapModelPreference();
     const { revision, ...previous } = context.current;

@@ -1,9 +1,12 @@
 # Control chats
 
-A control chat is a normal workspace chat whose native Codex, Copilot or
-OpenCode 2 agent can operate Clanky on the signed-in user's behalf. It uses the
-user's configured Quick Chat workspace; there is no separate conversation type
-or control-workspace setting.
+Native Codex, Copilot and OpenCode 2 executions can collaborate through Clanky's
+shared application-control tools. Normal workspace chats, tasks and managed
+Agent runs automatically receive workspace access. Neither Quick Chat setup
+nor the workspace's general-access setting is required for project work.
+There is no separate control conversation type.
+Codex registers the new tools only on newly created native threads; resuming
+an existing thread preserves its previously registered catalog.
 
 Sending, queueing, steering, questions, streaming and persistence use the same
 services as other chats. Consecutive queued instructions from the same browser
@@ -13,44 +16,58 @@ enabled.
 
 ## Setup
 
-1. Choose a workspace in **Quick Chat settings**.
-2. Install and authenticate Codex, Copilot or OpenCode 2 on that workspace's
+1. Install and authenticate Codex, Copilot or OpenCode 2 on the workspace's
    execution host. Native runtimes run on the selected host; local and Mesh v7 paths are
    supported. Direct SSH supports ACP only. See
    [Harness adapters](harnesses.md#workspace-configuration) for runtime setup.
-3. Create a normal native chat in that workspace and send an instruction there.
+2. Create a native chat, task or Agent run in that workspace.
 
 For OpenCode 2, select `agent.adapter: "opencode2"` and configure a model in
 its isolated Clanky profile. Control eligibility for all three runtimes follows
 the native adapter, not the model's provider name. Selecting Codex or Copilot
 as an ACP provider does not enable Control.
+For external clients, scoped credentials, approvals and MCP setup, see
+[Agent control and MCP](deployment.md#agent-control-and-mcp).
 
-Clanky injects its managed API base URL and the user's API credential into
-control-chat runtime environments. If the workspace, credential, native
-provider, or advertised Mesh capability is unavailable, starting control tools
+Clanky injects its managed API base URL and a scoped managed credential into
+owned runtime environments. The credential identifies the admitted chat, task
+or Agent run and its workspace; caller-supplied workspace IDs are not grants.
+If the workspace, credential, native provider, or advertised Mesh capability
+is unavailable, starting control tools
 fails explicitly rather than starting a chat that appears able to control
-Clanky but cannot.
+Clanky but cannot. Mesh runtimes require a configured `CLANKY_PUBLIC_BASE_URL`
+that is reachable from the selected execution host, even for workspace-only
+collaboration. They do not substitute the worker's local API or silently omit
+the tools when that controller URL is unavailable.
 
 ## What the agent can do
 
-The shared native tool set can:
+Native adapters discover their applicable definitions from the authenticated
+common control endpoint. They do not maintain a separate native catalog or use
+broad credentials to call arbitrary REST routes. Successful and pending results
+are returned without a native-specific wrapper.
+Actual chat roots supply their real chat ID during HTTP discovery so the server
+can include optional browser tools after checking the credential association.
+Task and scheduled-run roots omit it; this does not change Mesh bindings or
+grant additional authority.
 
-- List workspaces and chats; inspect chat state, pending questions, activity,
-  and transcript snapshots.
-- Read workspace files through Clanky's file API and the selected workspace
-  host; read or update workspace and Quick Chat settings.
-- Create a chat, send a message to another chat, or answer a pending chat
-  question.
-- Read the in-memory server log snapshot when the user's API credential has
-  admin access.
-- Ask the browser tab that sent the current control-chat turn to open a
-  workspace, workspace file, or chat.
+Workspace access permits reading literal chat/task history and creating,
+messaging and managing work in that project, subject to the user's existing
+permissions and human-approval policies. Explicit general access is required
+for other workspaces and in-scope workspace/server administration. A workspace
+agent cannot grant itself that authority.
 
-For work on another repository, the control chat delegates by sending an
+For work on another repository, an authorized agent delegates by sending an
 instruction to that repository's chat. It does not run Git commands directly
 against another workspace. To read a file's contents, use the file-reading
-tool; opening a file in the UI only displays it and does not send its contents
-to the model.
+operation; opening a file in the UI only displays it and does not send its
+contents to the model. Browser tools are available only when the server can
+reliably associate the current turn with its originating tab.
+
+An admitted message is not completed agent work. Required human approval is a
+pending result, never implicit approval; unattended tasks and scheduled runs
+do not wait indefinitely or auto-answer it. An interrupted or timed-out request
+can have an uncertain outcome and must not be automatically replayed.
 
 ## Browser actions and multiple tabs
 
@@ -78,24 +95,47 @@ its own browser provenance.
 started from the sidebar rather than a chat. It can operate chats, tasks,
 workspaces and servers through authorized API contracts and navigate its
 originating tab. It requires neither a native adapter nor a Quick Chat workspace.
-Native Control chats keep their existing tools and turn-based browser
-provenance; they do not become global voice sessions. Ending voice does not
-interrupt their agent work.
+Native executions use the same common control operations while keeping their
+turn-based browser provenance; they do not become global voice sessions. Ending
+voice does not interrupt their agent work.
 
 ## Provider limitations
 
-Only normal workspace chats using native Codex, Copilot or OpenCode 2 receive
-these tools. ACP, execution-host chats and unattended runs do not receive them.
+New native Codex threads and owned Copilot/OpenCode 2 conversations receive
+these tools for workspace chats, tasks and managed Agent runs. Tasks and Agent
+runs retain their unattended question policy. Standalone execution-host chats
+and native subagents do not inherit them.
 Use the versions and execution hosts supported by the
 [harness guide](harnesses.md).
 
-Codex persists dynamic-tool definitions with the thread history and restores
-them when `thread/resume` loads that history. The same control chat can
-therefore continue after restarting Clanky or its host, provided Codex's home
+ACP executions receive no automatic Clanky control or CLI credentials, even
+when general access is enabled. Clanky removes `CLANKY_BASE_URL` and
+`CLANKY_API_KEY` from their provider environment, including values inherited
+from the server, worker or SSH login shell. Ordinary ACP model execution and
+provider credentials remain available. This does not disable personal API
+keys, interactive terminals or deterministic programs' trusted runner control;
+an ACP prompt subprocess does not inherit that runner's credential.
+
+Codex registers the new control tools only when creating a new native thread.
+Existing threads retain the catalog registered with their history; resuming
+them does not retrofit or upgrade those definitions. Codex restores persisted
+definitions when `thread/resume` loads that history. The same native conversation
+can therefore continue after restarting Clanky or its host, provided Codex's home
 and session data persist. As with other Codex chats, do not expect an in-flight
 turn to continue if the worker is stopped while it is running. No separate
-Codex daemon is required. Copilot registers its tools on session creation and
-resume.
+Codex daemon is required. Clanky preserves existing native history and does
+not reject resume merely because its tool catalog changed. Every invoked action
+remains server-authorized and must satisfy the current common contracts and
+grants, even when its definition was registered earlier. Clanky does not rewrite
+provider histories, replace conversations, keep a separate legacy tool
+implementation, or add an MCP fallback to upgrade existing Codex threads.
+Copilot registers current tools on creation and cold resume.
+
+Control uses the existing Mesh environment, session binding and prompt
+contracts. Browser chat context carries real chat/tab/turn provenance, while
+tasks and unattended runs need no browser context: their managed credential
+identifies the canonical execution server-side. The native adapter privately
+requires an active owned root turn before forwarding any tool call.
 
 OpenCode 2 loads a managed native Promise plugin on the selected execution
 host. It exposes the same shared tools directly, without an ACP or MCP server.
@@ -103,11 +143,11 @@ The plugin forwards calls through a private authenticated loopback bridge;
 API credentials remain in the managed runtime environment, not in plugin files.
 Existing process-scoped OpenCode configuration and plugins are preserved;
 Clanky does not write Control settings into the workspace repository.
-Tools are available only to the owned root session's active Control turn, not
+Tools are available only to the owned root session's active turn, not
 to its native subagents or unrelated sessions.
 
-OpenCode restores the plugin and tools when resuming a persisted Control chat
-after restart. Its isolated native profile and Clanky data must persist. An
+OpenCode restores the plugin and granted tools when resuming a persisted
+conversation after restart. Its isolated native profile and Clanky data must persist. An
 in-flight turn does not continue after its runtime is stopped. Missing or failed
 plugin activation is reported explicitly rather than falling back to a
 tool-less Control chat. Pending Control requests are cancelled on interruption,
@@ -117,6 +157,6 @@ After abrupt Clanky process termination, abandoned plugin directories are
 removed on the next native connection; directories owned by a live Clanky
 process are preserved.
 
-This feature controls Clanky through a normal chat; it does not add a standalone
-command textbox, arbitrary DOM control, or direct repository execution against
-another workspace by the control agent.
+This feature controls Clanky through managed native executions; it does not add
+a standalone command textbox, arbitrary DOM control, or direct repository
+execution against another workspace by the control agent.

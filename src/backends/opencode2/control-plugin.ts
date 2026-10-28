@@ -11,6 +11,7 @@ export default {
     const url = process.env.CLANKY_OPENCODE_CONTROL_URL;
     const token = process.env.CLANKY_OPENCODE_CONTROL_TOKEN;
     if (!url || !token) throw new Error("The managed Clanky Control bridge is unavailable.");
+    if (typeof ctx.tool.reload !== "function") throw new Error("Managed Clanky Control requires OpenCode tool reload support.");
     const lifetime = new AbortController();
     const request = async (path, body, signal) => {
       const response = await fetch(url + path, {
@@ -22,11 +23,11 @@ export default {
       if (!response.ok) throw new Error("The managed Clanky Control bridge request failed.");
       return await response.json();
     };
-    const definitions = await request("/tools");
+    const definitions = new Map((await request("/tools")).map((definition) => [definition.name, definition]));
     const registrations = [];
     try {
       registrations.push(await ctx.tool.transform((tools) => {
-        for (const definition of definitions) {
+        for (const definition of definitions.values()) {
           tools.add({
             name: definition.name,
             description: definition.description,
@@ -42,10 +43,22 @@ export default {
           });
         }
       }));
+      registrations.push(await ctx.session.hook("prompt", async (event) => {
+        const context = await request("/context", { sessionId: event.sessionID });
+        let changed = false;
+        for (const definition of context.tools) {
+          if (JSON.stringify(definitions.get(definition.name)) !== JSON.stringify(definition)) {
+            definitions.set(definition.name, definition);
+            changed = true;
+          }
+        }
+        if (changed) await ctx.tool.reload();
+      }));
       registrations.push(await ctx.session.hook("context", async (event) => {
         const context = await request("/context", { sessionId: event.sessionID });
-        if (!context.enabled) {
-          for (const definition of definitions) delete event.tools[definition.name];
+        const applicable = new Set(context.tools.map((definition) => definition.name));
+        for (const name of definitions.keys()) {
+          if (!context.enabled || !applicable.has(name)) delete event.tools[name];
         }
       }));
     } catch (error) {

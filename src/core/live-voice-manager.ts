@@ -4,7 +4,7 @@
 
 import { createLogger } from "@pablozaiden/webapp/server";
 import type { LiveVoiceCallState, LiveVoiceSessionResponse } from "@/shared/voice";
-import type { LiveVoiceUiContext } from "@/shared/live-voice";
+import type { ControlClientContext } from "@/shared/control-interactions";
 import { DomainError, isDomainError } from "../domain/domain-error";
 import { requireCurrentUser, runWithCurrentUser } from "../context/user-context";
 import { voiceManager } from "./voice-manager";
@@ -35,7 +35,7 @@ export class LiveVoiceManager {
   }
 
   async create(options: {
-    sdp: string; clientId: string; context: LiveVoiceUiContext;
+    sdp: string; clientId: string; context: ControlClientContext;
     authority: OperationAuthority; signal: AbortSignal;
   }): Promise<LiveVoiceSessionResponse> {
     const { sdp, clientId, context, authority } = options;
@@ -110,7 +110,7 @@ export class LiveVoiceManager {
     }
   }
 
-  heartbeat(id: string, clientId: string, context: LiveVoiceUiContext, authority: OperationAuthority): LiveVoiceCallState {
+  heartbeat(id: string, clientId: string, context: ControlClientContext, authority: OperationAuthority): LiveVoiceCallState {
     let call: LiveVoiceCall;
     try { call = this.requireCall(id, clientId); } catch (error) { authority.release(); throw error; }
     call.scope.authority.refresh(authority);

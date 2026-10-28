@@ -25,6 +25,8 @@ export const CLANKY_REALTIME_RESOURCES = {
   previews: "previews",
   mesh: "mesh",
   executionHosts: "execution-hosts",
+  controlRequests: "control-requests",
+  controlCredentials: "control-credentials",
   promptTemplates: PROMPT_TEMPLATES_REALTIME_RESOURCE,
 } as const;
 

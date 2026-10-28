@@ -47,7 +47,7 @@ export class OpenCodeConnection {
       const controlTools = new OpenCodeControlTools(config.managedEnvironment ?? {});
       let runtime: OpenCodeRuntime;
       try {
-        const env = await controlTools.open({ ...config.env, ...config.managedEnvironment });
+        const env = await controlTools.open({ ...config.env, ...config.managedEnvironment }, this.startupAbort?.signal);
         runtime = await OpenCodeRuntime.open({ directory: config.directory, env }, this.startupAbort?.signal);
       } catch (error) {
         try { await controlTools.close(); } catch (cleanupError) {

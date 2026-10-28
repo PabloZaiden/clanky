@@ -5,7 +5,6 @@ import {
 } from "@/contracts/schemas/clanky-control";
 import { chatManager } from "../core/chat-manager";
 import { controlUiActionService } from "../core/control-ui-action-service";
-import { preferencesManager } from "../core/preferences-manager";
 import { DomainError } from "../domain/domain-error";
 import type { ControlUiActionOutcome } from "@/shared/clanky-control";
 import { getChatWorkspaceId } from "@/shared/chat";
@@ -53,8 +52,7 @@ export const controlUiActionRoutes = defineRoutes({
         if (!chat) {
           return errorResponse("not_found", "Chat not found.", 404);
         }
-        const quickChatSettings = await preferencesManager.getQuickChatSettings();
-        if (!isClankyControlChat(chat, quickChatSettings.workspaceId, chat.state.session?.binding?.adapter)) {
+        if (!isClankyControlChat(chat, chat.state.session?.binding?.adapter)) {
           return errorResponse("control_chat_required", "This chat is not configured for Clanky control.", 403);
         }
 

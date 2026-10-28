@@ -1,9 +1,9 @@
 /**
- * Direct bounded work overviews and literal latest conversation reads.
+ * Shared bounded work overviews and literal conversation reads.
  */
 import { DomainError } from "../domain/domain-error";
-import { directItems, directRecord, LiveVoiceDirectContext } from "./live-voice-direct-context";
-import type { DirectToolInput } from "./live-voice-direct-contracts";
+import { directItems, directRecord, ControlToolContext } from "./control-tool-context";
+import type { DirectToolInput } from "./control-tool-contracts";
 import { isReadRecord, readBytes } from "../client-sdk/collaboration/resource-read";
 import type { ChatStatus } from "@/shared/chat";
 import type { TaskStatus } from "@/shared/task";
@@ -133,7 +133,7 @@ export function pendingInteractions(value: unknown): Record<string, unknown>[] {
 }
 
 export async function directList(
-  context: LiveVoiceDirectContext, kind: "chat" | "task",
+  context: ControlToolContext, kind: "chat" | "task",
   input: DirectToolInput<"clanky_list_chats">,
 ): Promise<unknown> {
   const workspaceId = input.workspace ? String((await context.resolve("workspace", input.workspace))["id"]) : null;
@@ -151,7 +151,7 @@ export async function directList(
 }
 
 export async function directRead(
-  context: LiveVoiceDirectContext, kind: "chat" | "task",
+  context: ControlToolContext, kind: "chat" | "task",
   input: DirectToolInput<"clanky_read_task"> | DirectToolInput<"clanky_read_chat">,
 ): Promise<unknown> {
   const target = withVoiceStatus(kind, await context.resolve(kind, input.target, input.workspace));
@@ -191,7 +191,7 @@ function overviewCursor(cursor: string | null, scope: string): OverviewCursor | 
 }
 
 export async function directOverview(
-  context: LiveVoiceDirectContext, waiting: boolean,
+  context: ControlToolContext, waiting: boolean,
   input: DirectToolInput<"clanky_recent_work"> | DirectToolInput<"clanky_waiting_work">,
 ): Promise<unknown> {
   const workspaceId = input.workspace ? String((await context.resolve("workspace", input.workspace))["id"]) : null;
@@ -270,7 +270,7 @@ export async function directOverview(
   return context.bounded(result());
 }
 
-export async function directServers(context: LiveVoiceDirectContext, input: DirectToolInput<"clanky_list_servers">): Promise<unknown> {
+export async function directServers(context: ControlToolContext, input: DirectToolInput<"clanky_list_servers">): Promise<unknown> {
   const operations = { servers: "GET /api/ssh-servers", hosts: "GET /api/execution-hosts" };
   if (input.kind !== "all") return await context.read({
     operationId: operations[input.kind],

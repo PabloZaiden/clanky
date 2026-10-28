@@ -86,13 +86,14 @@ export class E2EApplication {
     disablePasskey?: boolean;
     env?: Record<string, string>;
     requestHostname?: string;
+    port?: number;
   } = {}): Promise<void> {
     if (this.server !== null) {
       throw new Error("Application is already started");
     }
     this.disablePasskey = options.disablePasskey ?? true;
     this.requestHostname = options.requestHostname ?? this.requestHostname;
-    this.port = await findFreeLoopbackPort();
+    this.port = options.port ?? await findFreeLoopbackPort();
     const stdoutPath = join(this.logsDirectory, `server-${String(this.port)}.stdout.log`);
     const stderrPath = join(this.logsDirectory, `server-${String(this.port)}.stderr.log`);
     const environment = currentEnvironment({
@@ -128,12 +129,14 @@ export class E2EApplication {
     disablePasskey?: boolean;
     env?: Record<string, string>;
     requestHostname?: string;
+    port?: number;
   } = {}): Promise<void> {
     await this.stop({ force: options.force });
     await this.start({
       disablePasskey: options.disablePasskey ?? this.disablePasskey,
       env: options.env,
       requestHostname: options.requestHostname ?? this.requestHostname,
+      port: options.port,
     });
   }
 

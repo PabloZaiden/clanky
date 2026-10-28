@@ -5,9 +5,9 @@
 import type { ManagedContextIdentity, ManagedContextType } from "@/shared/context-api-key";
 import type { Task } from "@/shared/task";
 import { getChatWorkspaceId, type Chat } from "@/shared/chat";
-import { loadAgentRun, loadAgentRunByChatId } from "../persistence/agents";
-import { loadChat } from "../persistence/chats";
-import { loadTask } from "../persistence/tasks";
+import { loadAgentRunSummary, loadAgentRunSummaryByChatId } from "../persistence/agents";
+import { loadChatMetadata } from "../persistence/chats";
+import { loadTaskSummary } from "../persistence/tasks";
 import { getTerminalSession } from "../persistence/terminal-sessions";
 import { DomainError } from "../domain/domain-error";
 import { requireExecutionOwnerUserId } from "../context/user-context";
@@ -39,7 +39,7 @@ function ensureWorkspace(
 
 export class ManagedContextIdentityResolver {
   async forTask(taskId: string, expectedWorkspaceId?: string): Promise<ManagedContextIdentity> {
-    const task = await loadTask(taskId);
+    const task = await loadTaskSummary(taskId);
     if (!task) {
       throw missingContext("task", taskId);
     }
@@ -58,7 +58,7 @@ export class ManagedContextIdentityResolver {
   }
 
   async forChat(chatId: string, expectedWorkspaceId?: string): Promise<ManagedContextIdentity> {
-    const chat = await loadChat(chatId);
+    const chat = await loadChatMetadata(chatId);
     if (!chat) {
       throw missingContext("chat", chatId);
     }
@@ -72,7 +72,7 @@ export class ManagedContextIdentityResolver {
     }
 
     if (chat.config.scope === "agent") {
-      const run = await loadAgentRunByChatId(chatId);
+      const run = await loadAgentRunSummaryByChatId(chatId);
       if (run) {
         return this.createIdentity(
           "agent_run",
@@ -92,7 +92,7 @@ export class ManagedContextIdentityResolver {
   }
 
   async forAgentRun(runId: string, expectedWorkspaceId?: string): Promise<ManagedContextIdentity> {
-    const run = await loadAgentRun(runId);
+    const run = await loadAgentRunSummary(runId);
     if (!run) {
       throw missingContext("agent_run", runId);
     }

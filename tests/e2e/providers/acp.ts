@@ -1047,6 +1047,13 @@ class MockAcpServer {
     const fileReceipt = await inspectAttachedFiles(promptText, session.cwd, session.history.map((entry) => entry.text));
     const responseWithImageReceipt = [
       imageAttachmentCount > 0 ? `E2E ACP provider received ${imageAttachmentCount} image attachments.` : "",
+      promptText.includes("[control-environment]")
+        ? `ACP environment: ${JSON.stringify({
+          baseUrl: process.env["CLANKY_BASE_URL"] !== undefined,
+          apiKey: process.env["CLANKY_API_KEY"] !== undefined,
+          providerKeyPreserved: process.env["OPENAI_API_KEY"] === "e2e-provider-credential",
+        })}`
+        : "",
       fileReceipt, responseText,
     ].filter(Boolean).join("\n");
     for (const chunk of splitIntoChunks(responseWithImageReceipt, 4)) {

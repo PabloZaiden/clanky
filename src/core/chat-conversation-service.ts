@@ -422,7 +422,8 @@ export class ChatConversationService implements ChatConversationPort {
       current = await this.state.updateStartupStage(current, "sending_prompt", {
         expectedStatus: current.state.status,
       });
-      const controlContext = current.state.session?.binding?.controlTools
+      const controlBinding = current.state.session?.binding;
+      const controlContext = controlBinding?.controlTools && controlBinding.controlChatId === current.config.id
         ? {
             chatId: current.config.id,
             ...(input.clientId ? { clientId: input.clientId } : {}),

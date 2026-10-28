@@ -5,10 +5,10 @@
 import { createLogger } from "@pablozaiden/webapp/server";
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import type { LiveVoiceCallState } from "@/shared";
-import type { LiveVoiceUiContext } from "@/shared/live-voice";
+import type { ControlClientContext } from "@/shared/control-interactions";
 import { runWithCurrentUser } from "../context/user-context";
 import { executeLiveVoiceTool, liveVoiceToolDefinitions, LIVE_VOICE_SESSION_END_REQUEST } from "./live-voice-tools";
-import { LiveVoiceActions } from "./live-voice-actions";
+import { ControlActions } from "./control-actions";
 import { LiveVoiceObserver } from "./live-voice-observer";
 import type { ClankyOperationService, OperationAuthority } from "./clanky-operation-service";
 import { LiveVoiceConnection, type LiveVoiceCredentials, type LiveVoiceEvent } from "./live-voice-provider";
@@ -17,6 +17,7 @@ import { LiveVoiceConversation, type LiveVoiceHistoryMessage } from "./live-voic
 import { LIVE_MAX_PARALLEL_TOOLS, LIVE_TOOL_BATCH_BYTES, liveToolOutput } from "./live-voice-output";
 import { readRevision } from "../client-sdk/collaboration/resource-read";
 import { LiveVoiceLatency } from "./live-voice-latency";
+import { controlUiActionService } from "./control-ui-action-service";
 
 const log = createLogger("core:live-voice");
 interface Delegation {
@@ -58,7 +59,7 @@ function providerFailureDetails(event: Record<string, unknown>, apiKey: string) 
 export class LiveVoiceCall {
   readonly connection: LiveVoiceConnection;
   readonly state: LiveVoiceCallState;
-  readonly actions: LiveVoiceActions;
+  readonly actions: ControlActions;
   readonly observer: LiveVoiceObserver;
   readonly conversation: LiveVoiceConversation;
   started = false;
@@ -77,7 +78,7 @@ export class LiveVoiceCall {
     user: CurrentUser;
     credentials: LiveVoiceCredentials;
     authority: OperationAuthority;
-    context: LiveVoiceUiContext;
+    context: ControlClientContext;
     service: ClankyOperationService;
   }, private readonly ended: () => void, history: readonly LiveVoiceHistoryMessage[] = []) {
     this.state = { id: scope.id, status: "connecting", error: null, processing: false, intention: null };
@@ -97,10 +98,14 @@ export class LiveVoiceCall {
         this.flushCommentary();
       } catch { this.fail("The Live context could not be updated."); }
     };
-    this.actions = new LiveVoiceActions({
-      callId: scope.id, clientId: scope.clientId, userId: scope.user.id,
+    this.actions = new ControlActions({
+      clientId: scope.clientId,
       context: scope.context, authority: scope.authority, service: scope.service, notify,
       remember: (operation, result) => this.conversation.rememberOperation(operation, result),
+      interact: async (action, requestId, signal) => (await controlUiActionService.dispatch({
+        ownerId: scope.user.id, clientId: scope.clientId,
+        source: { kind: "live_voice", callId: scope.id, requestId }, action,
+      }, signal)).outcome,
     });
     this.observer = new LiveVoiceObserver({
       user: scope.user, authority: scope.authority, service: scope.service, notify,

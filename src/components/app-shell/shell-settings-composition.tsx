@@ -30,6 +30,8 @@ import type {
 } from "../../hooks";
 import type { UseWorkerUpdateJobsResult } from "../../hooks/useWorkerUpdateJobs";
 import { WorkspaceCollaborationContent } from "../app-settings/workspace-collaboration-content";
+import { ControlCredentialsContent } from "../app-settings/control-credentials-content";
+import { ControlOAuthGrantsContent } from "../app-settings/control-oauth-grants-content";
 import { getClankyClientCapabilities } from "../../client-sdk/capabilities";
 
 export interface ShellSettingsCompositionOptions {
@@ -74,6 +76,22 @@ export function buildShellSettingsSections({
     (workspace) => workspace.id === quickChatSettings.settings.workspaceId,
   ) ?? null;
   const sections: ShellSettingsSections = [
+    {
+      id: "control-oauth-grants",
+      title: "Authorized integrations",
+      category: { id: "integrations", title: "Agents & integrations" },
+      scope: "user" as const,
+      // Grant summaries need a collection with individual guarded revocation.
+      render: () => <ControlOAuthGrantsContent />,
+    },
+    {
+      id: "control-credentials",
+      title: "Control service credentials",
+      category: { id: "integrations", title: "Agents & integrations" },
+      scope: "user" as const,
+      // Creation spans a grant form, a private one-time token and per-credential revocation.
+      render: () => <ControlCredentialsContent />,
+    },
     {
       id: "collaboration",
       title: "Collaboration",
@@ -342,7 +360,7 @@ export function buildShellSettingsSections({
     },
   ];
   const capabilities = getClankyClientCapabilities();
-  const controllerSections = new Set(["mesh", "controller", "relays", "agents", "github", "clanky-danger-zone"]);
+  const controllerSections = new Set(["mesh", "controller", "relays", "agents", "github", "control-oauth-grants", "control-credentials", "clanky-danger-zone"]);
   return sections.filter((section) => section.id === "voice"
     ? capabilities.voice
     : capabilities.controllerAdministration || !controllerSections.has(section.id));
