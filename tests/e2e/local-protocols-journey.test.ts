@@ -257,15 +257,16 @@ async function exerciseTerminalSession(options: {
       data: "printf 'CLANKY_TERMINAL_E2E:%s\\n' \"$PWD\"\n",
     }));
 
+    const expectedOutput = `CLANKY_TERMINAL_E2E:${expectedDirectory}`;
     const terminalOutput = await pollUntil(
       () => output,
-      (value) => value.includes("CLANKY_TERMINAL_E2E:"),
+      (value) => value.includes(expectedOutput),
       {
         description: "terminal command output",
         timeoutMs: 5_000,
       },
     );
-    expect(terminalOutput).toContain(`CLANKY_TERMINAL_E2E:${expectedDirectory}`);
+    expect(terminalOutput).toContain(expectedOutput);
 
     socket.send(JSON.stringify({ type: "terminal.input", data: "exit\n" }));
     await pollUntil(
