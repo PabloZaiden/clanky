@@ -120,6 +120,8 @@ Fixed delays are not synchronization. Wait for health, public state, frames,
 process completion, or filesystem/Git effects with a bounded named condition
 and last-observed-state diagnostics. Keep timers only where time itself is
 the contract; do not retry or lengthen sleeps to hide failures.
+For terminal commands, wait for the expected execution result, not a marker
+also present in echoed input.
 
 | Operation | Budget |
 | --- | --- |
