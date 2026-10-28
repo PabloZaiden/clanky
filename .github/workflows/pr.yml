@@ -40,7 +40,7 @@ jobs:
       - name: Install E2E system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --yes openssh-server sshpass dtach
+          sudo apt-get install --yes iproute2 openssh-server sshpass dtach util-linux
 
       - name: Install dependencies
         run: bun install --frozen-lockfile

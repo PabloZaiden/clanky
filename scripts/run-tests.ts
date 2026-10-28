@@ -25,6 +25,7 @@ const e2eTestFilePattern = "tests/e2e/**/*.test.{ts,tsx,js,jsx}";
 const e2eSourcePattern = "tests/e2e/**/*.{ts,tsx,js,jsx}";
 const meshTestFile = "tests/e2e/mesh-journey.test.ts";
 const meshAutomaticTestFile = "tests/e2e/mesh-automatic-workspace-journey.test.ts";
+const publicAddressFixtureTestFile = "tests/e2e/workspace-icon-journey.test.ts";
 
 const architectureRules: ArchitectureRule[] = [
   {
@@ -142,25 +143,48 @@ async function validateTestArchitecture(): Promise<void> {
   }
 }
 
-async function runShard(shard: TestShard): Promise<ShardResult> {
-  const startedAt = performance.now();
+async function runTestFiles(
+  files: string[],
+  isolatedPublicAddressFixture: boolean,
+): Promise<{ exitCode: number; output: string }> {
+  const testCommand = [
+    process.execPath,
+    "test",
+    "--timeout",
+    "120000",
+    "--isolate",
+    "--no-orphans",
+    "--max-concurrency",
+    "1",
+    ...files,
+  ];
+  const command = isolatedPublicAddressFixture
+    ? [
+      "unshare",
+      "--user",
+      "--map-root-user",
+      "--net",
+      "--",
+      "sh",
+      `${rootDirectory}/tests/e2e/support/with-isolated-public-ip.sh`,
+      ...testCommand,
+    ]
+    : testCommand;
+  const environment: Record<string, string> = {};
+  for (const [name, value] of Object.entries(process.env)) {
+    if (value !== undefined) {
+      environment[name] = value;
+    }
+  }
+  environment["CLANKY_LOG_LEVEL"] = process.env["CLANKY_LOG_LEVEL"] ?? "fatal";
+  delete environment["CLANKY_TEST_PUBLIC_IP_FIXTURE"];
+  if (isolatedPublicAddressFixture) {
+    environment["CLANKY_TEST_PUBLIC_IP_FIXTURE"] = "1";
+  }
   const processHandle = Bun.spawn({
-    cmd: [
-      process.execPath,
-      "test",
-      "--timeout",
-      "120000",
-      "--isolate",
-      "--no-orphans",
-      "--max-concurrency",
-      "1",
-      ...shard.files,
-    ],
+    cmd: command,
     cwd: rootDirectory,
-    env: {
-      ...process.env,
-      CLANKY_LOG_LEVEL: process.env["CLANKY_LOG_LEVEL"] ?? "fatal",
-    },
+    env: environment,
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -170,9 +194,31 @@ async function runShard(shard: TestShard): Promise<ShardResult> {
     processHandle.exited,
   ]);
   return {
-    shard,
     exitCode,
     output: [stdout, stderr].filter(Boolean).join("\n").trim(),
+  };
+}
+
+async function runShard(shard: TestShard): Promise<ShardResult> {
+  const startedAt = performance.now();
+  const useIsolatedPublicAddressFixture = process.platform === "linux";
+  const isolatedFiles = useIsolatedPublicAddressFixture
+    ? shard.files.filter((file) => file === publicAddressFixtureTestFile)
+    : [];
+  const isolatedFileSet = new Set<string>(isolatedFiles);
+  const regularFiles = shard.files.filter((file) => !isolatedFileSet.has(file));
+  const invocations = [
+    ...(regularFiles.length > 0 ? [{ files: regularFiles, isolated: false }] : []),
+    ...(isolatedFiles.length > 0 ? [{ files: isolatedFiles, isolated: true }] : []),
+  ];
+  const results: Array<{ exitCode: number; output: string }> = [];
+  for (const invocation of invocations) {
+    results.push(await runTestFiles(invocation.files, invocation.isolated));
+  }
+  return {
+    shard,
+    exitCode: results.find((result) => result.exitCode !== 0)?.exitCode ?? 0,
+    output: results.map((result) => result.output).filter(Boolean).join("\n\n"),
     elapsedMs: performance.now() - startedAt,
   };
 }
