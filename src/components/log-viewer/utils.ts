@@ -77,7 +77,7 @@ function getTimestampMinuteBucket(date: Date): number {
   return Math.floor(date.getTime() / 60_000);
 }
 
-function getLocalDateKey(date: Date): number {
+export function getLocalDateKey(date: Date): number {
   return date.getFullYear() * 10_000 + (date.getMonth() + 1) * 100 + date.getDate();
 }
 
@@ -379,8 +379,10 @@ export function hasActiveWorkEntry(entries: DisplayEntry[]): boolean {
  * Timestamps remain minute-based, while historical date labels are set when
  * the local calendar day changes.
  */
-export function annotateDisplayEntries(sorted: GroupedEntryBase[]): DisplayEntry[] {
-  const todayDateKey = getLocalDateKey(new Date());
+export function annotateDisplayEntries(
+  sorted: GroupedEntryBase[],
+  todayDateKey: number,
+): DisplayEntry[] {
   let previousGroupKey: string | undefined;
   let previousMinuteBucket: number | undefined;
   let previousDateKey: number | undefined;

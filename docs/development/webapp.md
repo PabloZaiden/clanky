@@ -81,8 +81,9 @@ Check rendered Markdown, raw text, code, and tool descendants, not just inherite
 container styles. Across chat, task-log, and agent transcripts, visible
 timestamps for entries before the current local day include the date and time;
 same-day entries remain time-only. Keep the existing timestamp visibility
-cadence. Job lists/progress use compact title/date/status composition; console
-output combines streams without extra stream-name prefixes.
+cadence, and refresh the displayed day at local midnight and when returning to
+the foreground. Job lists/progress use compact title/date/status composition;
+console output combines streams without extra stream-name prefixes.
 
 Work-item lists and sidebar Active work share a composition: workspace/host
 name and status, then item name, then relative interaction time and type/provider.

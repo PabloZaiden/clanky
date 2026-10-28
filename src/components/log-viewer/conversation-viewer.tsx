@@ -29,6 +29,7 @@ import { WorkingGroupEntry } from "./working-group-entry";
 import { LogEntryItem } from "./log-entry-item";
 import { useStickyBottomScroll } from "./use-sticky-bottom-scroll";
 import { useTranscriptImagePreview } from "./use-transcript-image-preview";
+import { useLocalDayKey } from "./use-local-day-key";
 import { ActivityIndicator } from "./activity-indicator";
 
 function isAbortError(error: unknown): boolean {
@@ -64,6 +65,7 @@ const ConversationPresentation = memo(function ConversationPresentation({
   onLoadFullTranscript,
   loadingTranscript = false,
 }: ConversationViewerProps) {
+  const localDayKey = useLocalDayKey();
   const { error: notifyError } = useToast();
   const translateMessage = useCallback(async (
     text: string,
@@ -167,7 +169,10 @@ const ConversationPresentation = memo(function ConversationPresentation({
     return groupConsecutiveEntries(result, hasActiveWork);
   }, [hasActiveWork, logs, messages, toolCalls]);
 
-  const visibleEntries = useMemo(() => annotateDisplayEntries(groupedEntries), [groupedEntries]);
+  const visibleEntries = useMemo(
+    () => annotateDisplayEntries(groupedEntries, localDayKey),
+    [groupedEntries, localDayKey],
+  );
   const isEmpty = groupedEntries.length === 0;
   const hasActiveWorkRow = hasActiveWorkEntry(visibleEntries);
   const shouldShowWorkingIndicator = hasActiveWork && !isEmpty && !hasActiveWorkRow;
@@ -306,6 +311,7 @@ const ConversationPresentation = memo(function ConversationPresentation({
                   <ToolGroupEntry
                     key={`tool-group-${entry.id}`}
                     entry={entry}
+                    localDayKey={localDayKey}
                     spacingClass={spacingClass}
                     toolPathDisplayRoot={toolPathDisplayRoot}
                     onLoadToolDetails={onLoadToolDetails}
@@ -326,6 +332,7 @@ const ConversationPresentation = memo(function ConversationPresentation({
                   <WorkingGroupEntry
                     key={`working-group-${entry.id}`}
                     entry={entry}
+                    localDayKey={localDayKey}
                     spacingClass={spacingClass}
                     markdownEnabled={markdownEnabled}
                     fileLinkContext={resolvedFileLinkContext}

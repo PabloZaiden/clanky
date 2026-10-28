@@ -29,6 +29,7 @@ interface WorkingGroupEntryProps {
     showDate: boolean;
     showGroupHeader: boolean;
   };
+  localDayKey: number;
   spacingClass: string;
   markdownEnabled: boolean;
   fileLinkContext?: TranscriptFileLinkContext;
@@ -38,6 +39,7 @@ interface WorkingGroupEntryProps {
 
 export const WorkingGroupEntry = memo(function WorkingGroupEntry({
   entry,
+  localDayKey,
   spacingClass,
   markdownEnabled,
   fileLinkContext,
@@ -49,11 +51,11 @@ export const WorkingGroupEntry = memo(function WorkingGroupEntry({
     ? `Thinking and using ${toolSummary}…`
     : `Worked for ${formatThoughtDuration(entry.timestamp, entry.endedAt ?? entry.lastTimestamp)} - thought and used ${toolSummary}`;
   const groupedChildEntries = useMemo(
-    () => annotateDisplayEntries(entry.entries).filter(
+    () => annotateDisplayEntries(entry.entries, localDayKey).filter(
       (childEntry): childEntry is WorkingChildDisplayEntry =>
         childEntry.type === "tool-group" || childEntry.type === "reasoning-group",
     ),
-    [entry.entries],
+    [entry.entries, localDayKey],
   );
   const renderContent = useCallback(
     () => (
@@ -73,6 +75,7 @@ export const WorkingGroupEntry = memo(function WorkingGroupEntry({
               <ToolGroupEntry
                 key={`working-tool-group-${childEntryForRender.id}`}
                 entry={childEntryForRender}
+                localDayKey={localDayKey}
                 spacingClass={spacingClass}
                 showActivityIndicator={false}
                 toolPathDisplayRoot={toolPathDisplayRoot}
@@ -97,6 +100,7 @@ export const WorkingGroupEntry = memo(function WorkingGroupEntry({
     [
       fileLinkContext,
       groupedChildEntries,
+      localDayKey,
       markdownEnabled,
       onLoadToolDetails,
       toolPathDisplayRoot,

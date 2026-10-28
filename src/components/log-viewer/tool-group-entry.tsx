@@ -18,6 +18,7 @@ interface ToolGroupEntryProps {
     showDate: boolean;
     showGroupHeader: boolean;
   };
+  localDayKey: number;
   spacingClass: string;
   showActivityIndicator?: boolean;
   toolPathDisplayRoot?: string;
@@ -82,6 +83,7 @@ function getToolGroupSummary(entry: ToolGroupEntryBase, toolPathDisplayRoot?: st
 
 export const ToolGroupEntry = memo(function ToolGroupEntry({
   entry,
+  localDayKey,
   spacingClass,
   showActivityIndicator = true,
   toolPathDisplayRoot,
@@ -102,9 +104,10 @@ export const ToolGroupEntry = memo(function ToolGroupEntry({
         type: "tool" as const,
         data: tool,
         timestamp: tool.timestamp,
-      }))
+      })),
+      localDayKey,
     ).filter((groupedTool): groupedTool is Extract<DisplayEntry, { type: "tool" }> => groupedTool.type === "tool"),
-    [entry.tools]
+    [entry.tools, localDayKey]
   );
 
   return (
