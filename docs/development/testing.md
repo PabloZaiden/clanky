@@ -121,7 +121,10 @@ URL-fetch journeys that must validate a public destination use a dedicated
 Linux network namespace with no external interfaces or default route. A
 globally routable test address may be assigned to loopback inside that
 namespace for a local HTTP fixture; run the fixture, compiled application,
-and E2E client in the same namespace. Keep production address validation
+and E2E client in the same namespace. The runner uses an unprivileged user
+namespace where available; if the kernel disables those, it uses noninteractive
+sudo to create only the network namespace, then drops to the original test UID
+and GID before starting the E2E process. Keep production address validation
 unchanged and never send fixture traffic outside the namespace.
 
 Fixed delays are not synchronization. Wait for health, public state, frames,

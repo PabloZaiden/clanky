@@ -143,6 +143,17 @@ async function validateTestArchitecture(): Promise<void> {
   }
 }
 
+async function supportsUnprivilegedNetworkNamespaces(): Promise<boolean> {
+  const probe = Bun.spawn({
+    cmd: ["unshare", "--user", "--map-root-user", "--net", "--", "true"],
+    cwd: rootDirectory,
+    stdin: "ignore",
+    stdout: "ignore",
+    stderr: "ignore",
+  });
+  return await probe.exited === 0;
+}
+
 async function runTestFiles(
   files: string[],
   isolatedPublicAddressFixture: boolean,
@@ -158,18 +169,6 @@ async function runTestFiles(
     "1",
     ...files,
   ];
-  const command = isolatedPublicAddressFixture
-    ? [
-      "unshare",
-      "--user",
-      "--map-root-user",
-      "--net",
-      "--",
-      "sh",
-      `${rootDirectory}/tests/e2e/support/with-isolated-public-ip.sh`,
-      ...testCommand,
-    ]
-    : testCommand;
   const environment: Record<string, string> = {};
   for (const [name, value] of Object.entries(process.env)) {
     if (value !== undefined) {
@@ -180,6 +179,59 @@ async function runTestFiles(
   delete environment["CLANKY_TEST_PUBLIC_IP_FIXTURE"];
   if (isolatedPublicAddressFixture) {
     environment["CLANKY_TEST_PUBLIC_IP_FIXTURE"] = "1";
+  }
+  let command = testCommand;
+  if (isolatedPublicAddressFixture) {
+    const uid = process.getuid?.();
+    const gid = process.getgid?.();
+    if (uid === undefined || gid === undefined) {
+      throw new Error("The isolated public-IP fixture requires Linux user and group IDs.");
+    }
+
+    const wrapper = `${rootDirectory}/tests/e2e/support/with-isolated-public-ip.sh`;
+    if (uid === 0) {
+      command = [
+        "unshare",
+        "--net",
+        "--",
+        "sh",
+        wrapper,
+        "0",
+        "0",
+        "--",
+        ...testCommand,
+      ];
+    } else if (await supportsUnprivilegedNetworkNamespaces()) {
+      command = [
+        "unshare",
+        "--user",
+        "--map-root-user",
+        "--net",
+        "--",
+        "sh",
+        wrapper,
+        "0",
+        "0",
+        "--",
+        ...testCommand,
+      ];
+    } else {
+      console.log("Unprivileged network namespaces are disabled; using sudo for the isolated icon fixture.");
+      command = [
+        "sudo",
+        "-n",
+        "--preserve-env=PATH,HOME,TMPDIR,CI,GITHUB_ACTIONS,CLANKY_LOG_LEVEL,CLANKY_TEST_PUBLIC_IP_FIXTURE",
+        "unshare",
+        "--net",
+        "--",
+        "sh",
+        wrapper,
+        String(uid),
+        String(gid),
+        "--",
+        ...testCommand,
+      ];
+    }
   }
   const processHandle = Bun.spawn({
     cmd: command,
