@@ -30,9 +30,9 @@ import {
   revokeContextApiKeyAssociationForUser,
   type ContextApiKeyAssociation,
 } from "../persistence/context-api-keys";
-import { loadAgentRun } from "../persistence/agents";
+import { loadAgentRunSummary } from "../persistence/agents";
 import { loadChatMetadata } from "../persistence/chats";
-import { loadTask } from "../persistence/tasks";
+import { loadTaskSummary } from "../persistence/tasks";
 import { getTerminalSession } from "../persistence/terminal-sessions";
 import { getWorkspace } from "../persistence/workspaces";
 import { DomainError } from "../domain/domain-error";
@@ -192,6 +192,7 @@ export class ManagedCredentialService {
         if (cached && cached.managedBy === managedBy
           && cached.scopes.length === scopes.length && scopes.every((scope) => cached.scopes.includes(scope))
           && activeKeys.some((key) => key.id === cached.apiKeyId)
+          && (!cached.expiresAt || Date.parse(cached.expiresAt) > Date.now())
           && (!options?.expiresAt || cached.expiresAt
             && Date.parse(cached.expiresAt) <= Date.parse(options.expiresAt))) {
           const baseUrl = await this.requirePublicBaseUrl(identity);
@@ -611,7 +612,7 @@ export class ManagedCredentialService {
 
     switch (association.contextType) {
       case "task": {
-        const task = await loadTask(association.contextId);
+        const task = await loadTaskSummary(association.contextId);
         return task?.config.workspaceId === association.workspaceId && task.state.status !== "deleted";
       }
       case "chat": {
@@ -619,7 +620,7 @@ export class ManagedCredentialService {
         return chat?.config.workspaceId === association.workspaceId;
       }
       case "agent_run": {
-        const run = await loadAgentRun(association.contextId);
+        const run = await loadAgentRunSummary(association.contextId);
         return run?.configSnapshot.workspaceId === association.workspaceId
           && isAgentRunActiveStatus(run.status);
       }

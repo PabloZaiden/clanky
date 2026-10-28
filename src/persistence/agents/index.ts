@@ -8,7 +8,7 @@ export {
   saveAgentRun,
   loadAgentRun,
   loadAgentRunSummary,
-  loadAgentRunByChatId,
+  loadAgentRunSummaryByChatId,
   listAgentRuns,
   listActiveAgentRuns,
   deleteAgentRun,

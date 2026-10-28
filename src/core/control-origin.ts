@@ -4,8 +4,8 @@ import type { ControlGrant } from "./control-authority";
 import type { ControlToolOrigin } from "./control-tool-context";
 import { managedContextIdentityResolver } from "./managed-context-identity";
 import { loadChatMetadata } from "../persistence/chats";
-import { loadTask } from "../persistence/tasks";
-import { loadAgentRun } from "../persistence/agents";
+import { loadTaskSummary } from "../persistence/tasks";
+import { loadAgentRunSummary } from "../persistence/agents";
 import { DomainError } from "../domain/domain-error";
 
 export async function requireControlChat(grant: ControlGrant, chatId: string): Promise<void> {
@@ -35,7 +35,7 @@ export async function resolveControlOrigin(
     origin.current.chat = chat.config.id;
     origin.defaultModel = chat.config.model;
   } else if (identity?.contextType === "task") {
-    const task = await loadTask(identity.contextId);
+    const task = await loadTaskSummary(identity.contextId);
     if (!task) throw new DomainError("control_context_unavailable", "The originating task is unavailable.");
     origin.current.task = task.config.id;
     origin.defaultModel = task.config.model;
@@ -44,7 +44,7 @@ export async function resolveControlOrigin(
       fullyAutonomous: task.config.fullyAutonomous === true,
     };
   } else if (identity?.contextType === "agent_run") {
-    const run = await loadAgentRun(identity.contextId);
+    const run = await loadAgentRunSummary(identity.contextId);
     if (!run) throw new DomainError("control_context_unavailable", "The originating agent run is unavailable.");
     origin.defaultModel = run.configSnapshot.model;
     if (run.chatId) origin.current.chat = run.chatId;

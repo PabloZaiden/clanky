@@ -68,7 +68,7 @@ export class ChatSessionService implements ChatSessionPort {
   private readonly sshCredentialManager: Pick<typeof sshCredentialManager, "getPasswordForToken">;
   private readonly hasActiveStream: (chatId: string) => boolean;
   private readonly directChatBackends = new Map<string, Backend>();
-  private readonly connectedControlModes = new WeakMap<Backend, boolean>();
+  private readonly connectedControlStates = new WeakMap<Backend, { controlTools: boolean; expiresAt?: number }>();
   private readonly onHarnessEvent: ChatSessionServiceDependencies["onHarnessEvent"];
   private readonly onNativeSession: ChatSessionServiceDependencies["onNativeSession"];
   private readonly onNativeDisconnect: ChatSessionServiceDependencies["onNativeDisconnect"];
@@ -156,9 +156,12 @@ export class ChatSessionService implements ChatSessionPort {
     const backend = this.getChatBackend(stagedWorking.chat.config.id, workspaceId);
     const controlTools = isClankyControlChat(stagedWorking.chat, backend.harness.capabilities.adapter);
     const backendConnected = backend.isConnected();
+    const connectedControl = this.connectedControlStates.get(backend);
     const controlModeChanged = backendConnected
-      && this.connectedControlModes.get(backend) !== controlTools;
-    if (!backendConnected || backend.getDirectory() !== stagedWorking.directory || controlModeChanged) {
+      && connectedControl?.controlTools !== controlTools;
+    const controlCredentialExpired = backendConnected && controlTools
+      && (connectedControl?.expiresAt === undefined || connectedControl.expiresAt <= Date.now());
+    if (!backendConnected || backend.getDirectory() !== stagedWorking.directory || controlModeChanged || controlCredentialExpired) {
       await this.onNativeDisconnect?.(chat.config.id);
       await harnessActivityService.close({ kind: "chat", id: chat.config.id });
       await backend.disconnect();
@@ -183,7 +186,10 @@ export class ChatSessionService implements ChatSessionPort {
           ),
           controlTools,
         }, options.signal);
-        this.connectedControlModes.set(backend, controlTools);
+        this.connectedControlStates.set(backend, {
+          controlTools,
+          ...(credential?.expiresAt ? { expiresAt: Date.parse(credential.expiresAt) } : {}),
+        });
       } catch (error) {
         await managedCredentialService.cleanupFailedLaunch(credential, error);
         throw error;
@@ -437,17 +443,19 @@ export class ChatSessionService implements ChatSessionPort {
 
   private async sessionContext(chat: Chat, backend: Backend): Promise<Omit<HarnessConversationBinding, "adapter" | "nativeId">> {
     const controlTools = isClankyControlChat(chat, backend.harness.capabilities.adapter);
-    const connectedControlMode = this.connectedControlModes.get(backend);
-    if (connectedControlMode !== undefined && connectedControlMode !== controlTools) {
+    const connectedControl = this.connectedControlStates.get(backend);
+    if (connectedControl !== undefined && connectedControl.controlTools !== controlTools) {
       throw new HarnessError("harness_transport_closed", "The Clanky control mode changed while the chat was connected. Reconnect before continuing.");
     }
     if (controlTools && backend.harness.capabilities.clankyControlTools !== true) {
       throw new HarnessError("harness_unsupported_feature", "This execution host does not support Clanky control tools.");
     }
+    const unattended = chat.config.scope === "agent"
+      && (await managedContextIdentityResolver.forChatSnapshot(chat)).contextType === "agent_run";
     return {
       ownerId: requireExecutionOwnerUserId(),
       contextId: chat.config.id,
-      questionPolicy: chat.config.scope === "workspace" ? "interactive" as const : "unattended" as const,
+      questionPolicy: unattended ? "unattended" as const : "interactive" as const,
       directory: backend.getDirectory(),
       executionHost: chat.config.source?.kind === "execution_host" ? chat.config.source.executionHost : chat.config.executionHostBinding,
       ...(controlTools ? {

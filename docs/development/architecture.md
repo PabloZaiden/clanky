@@ -71,6 +71,9 @@ and current source authorization for discovery, referenced resources and every
 dispatch, including after approval or private credential entry.
 An ended Agent run cannot authorize further control or pending approvals, even
 when its native conversation credential is retained.
+Grant and provenance checks use metadata snapshots, not unrequested transcripts.
+Connected native chats renew expired control credentials before the next turn
+and resume their owned conversation; bounded key lifetimes remain unchanged.
 
 Unsupported ACP model processes receive no automatic Clanky credential, even
 when the workspace enables general control. Keep deterministic runner
