@@ -696,11 +696,11 @@ async function exerciseVoice(
   expect(initial.piper.available).toBe(true);
   expect(initial.models).toEqual({ transcription: "", text: "" });
 
-  const unsafe = await app.request("/api/voice/settings", {
+  const insecure = await app.request("/api/voice/settings", {
     method: "PUT",
     body: JSON.stringify({
-      baseUrl: "https://127.0.0.1/v1",
-      apiKey: "unsafe-key",
+      baseUrl: "http://127.0.0.1/v1",
+      apiKey: "insecure-key",
       models: {
         transcription: "fixture-transcription",
         text: "fixture-text",
@@ -708,9 +708,9 @@ async function exerciseVoice(
       languageHints: ["es", "en"],
     }),
   });
-  expect(unsafe.status).toBe(400);
-  expect(await unsafe.json()).toMatchObject({
-    error: "voice_unsafe_provider_url",
+  expect(insecure.status).toBe(400);
+  expect(await insecure.json()).toMatchObject({
+    error: "voice_invalid_base_url",
   });
 
   const configured = (await app.json<VoiceSettings>(

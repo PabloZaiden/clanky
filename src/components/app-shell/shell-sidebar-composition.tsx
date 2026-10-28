@@ -185,6 +185,7 @@ export function buildShellSidebarComposition(
         label: options.quickChatCreating ? "Creating..." : "Start Quick Chat",
         disabled: Boolean(options.quickChatUnavailableReason),
         icon: "chat" as const,
+        systemImage: "bubble.left",
         onAction: options.onQuickChat,
       },
     ],

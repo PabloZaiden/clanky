@@ -6,7 +6,7 @@ import { z } from "zod";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { DomainError } from "../domain/domain-error";
 import {
-  assertSafeProviderDestination, buildVoiceV1Url, fetchWithTimeout,
+  buildVoiceV1Url, fetchWithTimeout,
   providerError, readJsonResponse, type VoiceProviderCredentials,
   VOICE_TEXT_REASONING,
 } from "./voice-provider";
@@ -145,7 +145,6 @@ export class LiveVoiceConnection {
     this.transportClosed = false;
     this.terminal = Promise.withResolvers<void>();
     const destination = buildVoiceV1Url(credentials.baseUrl, `live/sessions/${encodeURIComponent(sessionId)}/attach`);
-    await assertSafeProviderDestination(destination);
     if (signal.aborted) throw new DOMException("Live connection aborted.", "AbortError");
     const url = new URL(destination);
     url.protocol = "wss:";

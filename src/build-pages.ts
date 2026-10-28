@@ -38,7 +38,7 @@ await Bun.write(join(outdir, "index.html"), `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="color-scheme" content="dark light">
     <title>Clanky clients</title>
     <link rel="icon" href="./favicon.svg" type="image/svg+xml">
@@ -65,12 +65,13 @@ await Bun.write(join(outdir, "index.html"), `<!doctype html>
       }
       * { box-sizing: border-box; }
       body {
+        --page-padding: clamp(24px, 6vw, 64px);
         margin: 0;
         min-height: 100vh;
         min-height: 100svh;
         display: grid;
         place-items: center;
-        padding: clamp(24px, 6vw, 64px);
+        padding: max(var(--page-padding), env(safe-area-inset-top, 0px)) max(var(--page-padding), env(safe-area-inset-right, 0px)) max(var(--page-padding), env(safe-area-inset-bottom, 0px)) max(var(--page-padding), env(safe-area-inset-left, 0px));
         background: var(--background);
         color: var(--text);
         font: 16px/1.5 system-ui, sans-serif;

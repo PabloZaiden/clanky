@@ -356,7 +356,6 @@ const API_DOMAIN_ERROR_CODES = {
   voice_provider_response_too_large: true,
   voice_provider_timeout: true,
   voice_provider_unreachable: true,
-  voice_unsafe_provider_url: true,
   voice_validation_stale: true,
   voice_text_too_large: true,
   voice_piper_audio_too_large: true,
@@ -1815,10 +1814,6 @@ const POLICY_PROFILES = {
       voice_provider_unreachable: {
         status: 502,
         message: "The voice provider is unavailable.",
-      },
-      voice_unsafe_provider_url: {
-        status: 400,
-        message: "The voice provider URL is unsafe.",
       },
       voice_validation_stale: {
         status: 409,

@@ -51,6 +51,11 @@ The build produces the standalone `dist/clanky` and relocatable `dist/client/`.
 [Static frontend and remote API](static-client.md) for separate hosting and
 `serve --api-only`.
 
+The optional [Apple app shell](apple-apps.md) packages the same frontend in
+Swift + WKWebView for macOS and iPhone/iPad. Use `bun run build:apple:macos`
+for a Mac `.app` including the existing standalone CLI/controller, or
+`bun run build:apple:ios` for the client-only iOS simulator app.
+
 Use the [testing guide](development/testing.md) for prerequisites, narrower
 checks, coverage decisions, and required validation.
 

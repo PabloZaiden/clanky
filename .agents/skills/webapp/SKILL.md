@@ -14,6 +14,51 @@ For work in Clanky, use its canonical
 [UI and integration guide](../../../docs/development/webapp.md) and
 [testing policy](../../../docs/development/testing.md). The browser workflow
 below is disposable development tooling, not permission to add browser tests.
+The [Apple app guide](../../../docs/apple-apps.md) covers Clanky's thin
+Swift/WKWebView shell without browser chrome, bundled assets and optional
+macOS CLI/controller.
+Native app icons are separate from web favicons: both Apple targets use the
+shared Xcode `AppIcon` catalog generated from `src/logo.png`. Follow the Apple
+guide's regeneration instructions when changing the logo.
+The asset listener's origin belongs to the installation: allocate an available
+port on first use and persist it, then inject that origin into browser and
+native presentation guards. Do not silently rotate it on restart or fall back
+to another process. A change of origin requires new web authorization/pairing;
+never work around that by copying credentials or invitation keys into Swift.
+The Apple shell remembers only its last connection mode; authentication and
+invitation identity remain web-owned. Keep an explicit connection-chooser link
+available both before API login and in General settings. Enable that optional
+framework bootstrap link only in bundled responses; do not make ordinary web
+startup auto-redirect or auto-start the optional Mac controller.
+The native mobile host extends WKWebView to every window edge and follows its
+page background. The shared framework protects header and route content from
+safe areas, including lateral system bars; full-page tools own bottom clearance
+and main overlays own their safe-area padding. Do not apply a second native
+safe-area constraint, device-size CSS fixes or a second SwiftUI keyboard resize.
+Keyboard viewport sizing is independent of the mobile breakpoint: wide tablets
+and unfolded displays must keep their composer above an on-screen keyboard too.
+On iOS 27.1 modes with a system side bar, the host presents existing sidebar
+and page actions in a bottom-anchored native toolbar through the framework's
+optional presentation-only host contract. Keep callbacks and business logic in
+the web UI; do not duplicate actions or transfer credentials through the bridge.
+Move the existing logo/Home action too and omit the entire web sidebar header
+after native acceptance, reclaiming its height. Reuse the bundled raster logo;
+unsupported layouts keep the original web header.
+The host can report public reserved-region geometry through the optional native
+layout getter independently of toolbar acceptance. Use that framework contract
+to share a partially occupied top row, not app-owned CSS overrides or guessed
+device dimensions. Keep conventional safe-area fallback for centered notches,
+zoom and unavailable/stale geometry. Ordinary sidebar opening focuses its panel;
+only an explicit search request should focus Search.
+Combine a composer's normal bottom spacing with the system inset using `max`,
+not additive nested padding.
+API downloads use the optional framework `webappNativeResourceSaver` handoff
+after selected-server/ticket validation, not a document click listener (the
+framework's download anchor may be detached). Keep caller/destination validation
+and actual save/export in the host, without native authentication. Content
+popups must be visible and closable; external authorization stays in the system
+browser. Validate bridge payloads before Foundation JSON serialization, which
+can raise an uncaught Objective-C exception for scalar roots.
 
 The current documentation is maintained in the `pablozaiden/webapp` repository
 at its root, not relative to this skill file or an installed skill bundle:

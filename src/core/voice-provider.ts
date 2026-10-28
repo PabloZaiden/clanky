@@ -34,134 +34,6 @@ function isAzureOpenAiUrl(url: URL): boolean {
   return url.hostname.toLowerCase().endsWith(".openai.azure.com");
 }
 
-function parseIpv4(address: string): number[] | null {
-  const parts = address.split(".");
-  if (parts.length !== 4) {
-    return null;
-  }
-  const octets = parts.map((part) => Number(part));
-  if (
-    octets.some((octet, index) => (
-      !Number.isInteger(octet)
-      || octet < 0
-      || octet > 255
-      || parts[index] !== String(octet)
-    ))
-  ) {
-    return null;
-  }
-  return octets;
-}
-
-function isPrivateIpv4(address: string): boolean {
-  const octets = parseIpv4(address);
-  if (!octets) {
-    return false;
-  }
-  const [first = 0, second = 0] = octets;
-  return first === 0
-    || first === 10
-    || first === 127
-    || (first === 100 && second >= 64 && second <= 127)
-    || (first === 169 && second === 254)
-    || (first === 172 && second >= 16 && second <= 31)
-    || (first === 192 && second === 0)
-    || (first === 192 && second === 168)
-    || (first === 192 && second === 2)
-    || (first === 198 && second >= 18 && second <= 19)
-    || (first === 198 && second === 51)
-    || (first === 203 && second === 0)
-    || first >= 224;
-}
-
-function parseIpv6Words(address: string): number[] | null {
-  const normalized = address.replace(/^\[|\]$/g, "").toLowerCase().split("%", 1)[0] ?? "";
-  const sections = normalized.split("::");
-  if (sections.length > 2) {
-    return null;
-  }
-  const parseSection = (section: string): number[] | null => {
-    if (!section) {
-      return [];
-    }
-    const words: number[] = [];
-    for (const segment of section.split(":")) {
-      if (segment.includes(".")) {
-        const octets = parseIpv4(segment);
-        if (!octets) {
-          return null;
-        }
-        const [first = 0, second = 0, third = 0, fourth = 0] = octets;
-        words.push((first << 8) | second, (third << 8) | fourth);
-        continue;
-      }
-      if (!/^[0-9a-f]{1,4}$/.test(segment)) {
-        return null;
-      }
-      words.push(Number.parseInt(segment, 16));
-    }
-    return words;
-  };
-
-  const left = parseSection(sections[0] ?? "");
-  const right = parseSection(sections.length === 2 ? sections[1] ?? "" : "");
-  if (!left || !right) {
-    return null;
-  }
-  if (sections.length === 1) {
-    return left.length === 8 ? left : null;
-  }
-  const missing = 8 - left.length - right.length;
-  if (missing < 1) {
-    return null;
-  }
-  return [...left, ...Array.from({ length: missing }, () => 0), ...right];
-}
-
-function isPrivateIpv6(address: string): boolean {
-  if (!address.includes(":")) {
-    return false;
-  }
-  const words = parseIpv6Words(address);
-  if (!words) {
-    return false;
-  }
-  const first = words[0] ?? 0;
-  const isMappedIpv4 = words.slice(0, 5).every((word) => word === 0) && words[5] === 0xffff;
-  const mappedIpv4 = isMappedIpv4
-    ? `${(words[6] ?? 0) >> 8}.${(words[6] ?? 0) & 0xff}.${(words[7] ?? 0) >> 8}.${(words[7] ?? 0) & 0xff}`
-    : null;
-  return words.every((word) => word === 0)
-    || words.slice(0, 7).every((word) => word === 0) && words[7] === 1
-    || (first & 0xfe00) === 0xfc00
-    || (first & 0xffc0) === 0xfe80
-    || (first & 0xff00) === 0xff00
-    || (first === 0x2001 && words[1] === 0x0db8)
-    || (mappedIpv4 !== null && isPrivateIpv4(mappedIpv4));
-}
-
-function isPrivateAddress(address: string): boolean {
-  return address.includes(":")
-    ? isPrivateIpv6(address)
-    : isPrivateIpv4(address);
-}
-
-function assertSafeBaseUrlHost(url: URL): void {
-  const hostname = url.hostname;
-  if (isPrivateAddress(hostname)) {
-    throw new DomainError(
-      "voice_unsafe_provider_url",
-      "The voice provider URL must resolve to a public address.",
-    );
-  }
-  if (url.protocol === "http:") {
-    throw new DomainError(
-      "voice_invalid_base_url",
-      "The voice provider base URL must use HTTPS.",
-    );
-  }
-}
-
 function assertAllowedQueryParams(url: URL): void {
   const keys = Array.from(url.searchParams.keys());
   if (keys.some((key) => key.toLowerCase() !== "api-version")) {
@@ -251,18 +123,17 @@ export function normalizeVoiceBaseUrl(value: string): string {
     );
   }
   if (
-    (url.protocol !== "https:" && url.protocol !== "http:")
+    url.protocol !== "https:"
     || url.username
     || url.password
     || url.hash
   ) {
     throw new DomainError(
       "voice_invalid_base_url",
-      "The voice provider base URL must be an HTTP(S) URL without credentials or a fragment.",
+      "The voice provider base URL must be an HTTPS URL without credentials or a fragment.",
     );
   }
   assertAllowedQueryParams(url);
-  assertSafeBaseUrlHost(url);
   return url.toString().replace(/\/+$/, "");
 }
 
@@ -286,37 +157,6 @@ export function providerError(
     "voice_provider_request_failed",
     "The voice provider rejected the request.",
     { details: { status } },
-  );
-}
-
-export async function assertSafeProviderDestination(url: string): Promise<void> {
-  const parsed = new URL(url);
-  assertSafeBaseUrlHost(parsed);
-
-  let addresses: Bun.DNSLookup[];
-  try {
-    addresses = await Bun.dns.lookup(parsed.hostname, { family: "any" });
-  } catch (error) {
-    throw new DomainError(
-      "voice_provider_unreachable",
-      "The voice provider could not be reached.",
-      { cause: error },
-    );
-  }
-  if (
-    addresses.length === 0
-    || addresses.some(({ address }) => isPrivateAddress(address))
-  ) {
-    throw new DomainError(
-      "voice_unsafe_provider_url",
-      "The voice provider URL must resolve to a public address.",
-    );
-  }
-  // Resolve immediately before fetch so a later request does not reuse an
-  // earlier hostname decision; prefetch also narrows the DNS rebinding window.
-  Bun.dns.prefetch(
-    parsed.hostname,
-    parsed.port ? Number(parsed.port) : parsed.protocol === "https:" ? 443 : 80,
   );
 }
 
@@ -400,7 +240,6 @@ export async function fetchWithTimeout<T>(
   signal: AbortSignal | undefined,
   consume: (response: Response, requestSignal: AbortSignal) => Promise<T>,
 ): Promise<T> {
-  await assertSafeProviderDestination(url);
   const controller = new AbortController();
   const timeout = setTimeout(
     () => controller.abort(),

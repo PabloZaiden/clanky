@@ -269,8 +269,9 @@ download APIs own real transports and storage. Call and await `stop()` before
 replacing a client. The SDK does not grant access beyond the controller's
 existing grants or make browser-specific storage into a server dependency.
 
-This frontend can later be packaged in an iPhone WebView without a local
-Bun/Node server. The framework exposes native credential-storage and
-system-browser login hooks, but native origins, Keychain integration, signing,
-packaging and distribution are a separate phase. `file://` hosting, offline
-execution/synchronization and native wrappers are not included.
+The [Apple app shell](apple-apps.md) packages this frontend in WKWebView for
+macOS, iPhone and iPad without a local Bun/Node frontend server. It retains
+the existing web storage and browser-based API login rather than introducing
+native authentication or a custom Keychain store. Only macOS includes the
+optional existing CLI/controller. `file://` hosting and offline
+execution/synchronization remain unsupported.

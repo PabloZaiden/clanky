@@ -36,7 +36,7 @@ export function buildVoiceLauncherActions(voice: UseLiveVoiceResult, onConfigure
   if (voice.busy) return [];
   const label = voice.available ? "Start Live voice" : "Configure Live voice";
   return [{
-    id: "live-voice", title: label, label, icon: <MicrophoneIcon />,
+    id: "live-voice", title: label, label, icon: <MicrophoneIcon />, systemImage: "mic",
     onAction: () => {
       if (voice.available) void voice.start();
       else onConfigure();
@@ -58,7 +58,7 @@ export function LiveVoiceControls({ voice, expanded, onToggleExpanded }: {
   return (
     <div role="group" aria-label="Live voice controls"
       className={`flex min-w-0 items-center ${expanded
-        ? "clanky-live-voice-bar absolute inset-x-0 bottom-0 min-h-14 flex-wrap gap-x-1.5 gap-y-1 rounded-none border-t pt-1.5 pb-[max(var(--wapp-safe-area-bottom),0.375rem)] pl-[max(var(--wapp-safe-area-left),0.75rem)] pr-[max(var(--wapp-safe-area-right),0.75rem)] sm:min-h-[var(--wapp-sidebar-tabs-height)]"
+        ? "clanky-live-voice-bar absolute inset-x-0 bottom-0 min-h-14 flex-wrap gap-x-1.5 gap-y-1 rounded-none border-t pt-1.5 pb-[max(var(--wapp-safe-area-bottom),0.375rem)] pl-[max(var(--wapp-main-safe-area-left),0.75rem)] pr-[max(var(--wapp-safe-area-right),0.75rem)] sm:min-h-[var(--wapp-sidebar-tabs-height)]"
         : "gap-1.5 p-1.5"}`}>
       <span className="inline-flex shrink-0"><VoiceIndicator voice={voice} /></span>
       <div className={`min-w-0 flex-1 ${expanded ? "sm:flex-none" : ""}`} role="status">

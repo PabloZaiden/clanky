@@ -44,3 +44,7 @@ data/*
 
 # Local macOS signing identity and password
 .clanky-dev/
+
+# Xcode local state (shared project and schemes are versioned)
+xcuserdata/
+*.xcuserstate
