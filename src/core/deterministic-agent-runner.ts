@@ -8,6 +8,7 @@
  */
 
 import type { AgentRun } from "@/shared/agent";
+import { CONTROL_REQUEST_MAX_BYTES } from "@/contracts/schemas/control";
 import type { CommandExecutor } from "./command-executor";
 import type { DeterministicAgentOutput } from "./deterministic-agent-output";
 import type { ManagedRuntimeCredential } from "./managed-credential-service";
@@ -56,7 +57,7 @@ const MAX_BUFFER = 16 * 1024 * 1024;
 const MAX_EXPLICIT_OUTPUT_BYTES = 16 * 1024 * 1024;
 const MAX_EXPLICIT_OUTPUT_CHUNK = 16 * 1024;
 const MAX_PENDING_OUTPUT_BYTES = 256 * 1024;
-const MAX_CONTROL_INPUT_BYTES = 256 * 1024;
+const MAX_CONTROL_INPUT_BYTES = ${CONTROL_REQUEST_MAX_BYTES};
 const MAX_CONTROL_RESULT_BYTES = 1024 * 1024;
 const CONTROL_REQUEST_TIMEOUT_MS = 30_000;
 const CONTROL_TOOL_NAMES = new Set(${JSON.stringify(Object.keys(controlToolSchemas))});

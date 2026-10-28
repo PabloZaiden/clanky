@@ -3,6 +3,7 @@ import {
   ControlToolInvocationSchema, ControlToolsQuerySchema, ControlToolsResponseSchema,
   ControlRequestSnapshotSchema, ControlDecisionSchema, ControlCredentialHandoffSchema,
   CreateControlCredentialSchema, ControlCredentialSummarySchema,
+  CONTROL_REQUEST_MAX_BYTES,
 } from "@/contracts/schemas/control";
 import { z } from "zod";
 import { CLANKY_CONTROL_SCOPE } from "@/shared/context-api-key";
@@ -73,7 +74,7 @@ export const controlRoutes = defineRoutes({
     description: "Invoke one authorized shared control tool. Browser context is provenance, not authority.",
     operations: { POST: { requestSchema: ControlToolInvocationSchema, automation: EXCLUDED } },
     async POST(req, ctx) {
-      const body = await parseAndValidate(ControlToolInvocationSchema, req, { maxBodyBytes: 200_000 });
+      const body = await parseAndValidate(ControlToolInvocationSchema, req, { maxBodyBytes: CONTROL_REQUEST_MAX_BYTES });
       if (!body.success) return body.response;
       try {
         const api = control();

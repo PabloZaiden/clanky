@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { ClankyControlContextSchema } from "@/shared/clanky-control";
 
+export const CONTROL_REQUEST_MAX_BYTES = 256 * 1024;
+
 export const ControlToolInvocationSchema = z.object({
   input: z.unknown(),
   context: ClankyControlContextSchema.optional(),

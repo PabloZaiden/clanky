@@ -20,6 +20,7 @@ import {
   controlWorkspaceScope,
   type ManagedContextIdentity,
 } from "@/shared/context-api-key";
+import { isAgentRunActiveStatus } from "@/shared/agent";
 import {
   createContextApiKeyAssociationForUser,
   getContextApiKeyAssociationForUser,
@@ -30,7 +31,7 @@ import {
   type ContextApiKeyAssociation,
 } from "../persistence/context-api-keys";
 import { loadAgentRun } from "../persistence/agents";
-import { loadChat } from "../persistence/chats";
+import { loadChatMetadata } from "../persistence/chats";
 import { loadTask } from "../persistence/tasks";
 import { getTerminalSession } from "../persistence/terminal-sessions";
 import { getWorkspace } from "../persistence/workspaces";
@@ -614,12 +615,13 @@ export class ManagedCredentialService {
         return task?.config.workspaceId === association.workspaceId && task.state.status !== "deleted";
       }
       case "chat": {
-        const chat = await loadChat(association.contextId);
+        const chat = await loadChatMetadata(association.contextId);
         return chat?.config.workspaceId === association.workspaceId;
       }
       case "agent_run": {
         const run = await loadAgentRun(association.contextId);
-        return run?.configSnapshot.workspaceId === association.workspaceId;
+        return run?.configSnapshot.workspaceId === association.workspaceId
+          && isAgentRunActiveStatus(run.status);
       }
       case "terminal_session": {
         const session = await getTerminalSession(association.contextId);

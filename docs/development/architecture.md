@@ -69,6 +69,8 @@ administration. General grants stay within the real user's in-scope authority,
 not wildcard scopes or a fabricated owner. Enforce the immutable grant ceiling
 and current source authorization for discovery, referenced resources and every
 dispatch, including after approval or private credential entry.
+An ended Agent run cannot authorize further control or pending approvals, even
+when its native conversation credential is retained.
 
 Unsupported ACP model processes receive no automatic Clanky credential, even
 when the workspace enables general control. Keep deterministic runner
