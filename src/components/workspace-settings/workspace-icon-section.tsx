@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { Button, ConfirmModal, DataList, DataListRow, ErrorState, FormGroup, ResourceImage, SettingsFieldRow } from "@pablozaiden/webapp/web";
+import { Button, ConfirmModal, DataList, DataListRow, ErrorState, FormGroup, ResourceImage, SettingsFieldRow, TextField } from "@pablozaiden/webapp/web";
 import type { WorkspaceIconCandidate, WorkspaceIconCandidatesResponse, WorkspaceIconMetadataResponse } from "@/contracts/schemas";
 import type { Workspace } from "@/shared/workspace";
 import { apiRequest } from "../../lib/api-client";
-import { loadWorkspaceIconCandidate, workspaceIconCandidatePath, type WorkspaceIconChange } from "./workspace-icon-actions";
+import { loadWorkspaceIconCandidate, loadWorkspaceIconFromUrl, workspaceIconCandidatePath, type WorkspaceIconChange } from "./workspace-icon-actions";
 
 interface WorkspaceIconSectionProps {
   workspace: Workspace;
@@ -27,10 +27,14 @@ export function WorkspaceIconSection({ workspace, icon, change, onChange, onLoad
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const discoveryControllerRef = useRef<AbortController | null>(null);
   const selectionControllerRef = useRef<AbortController | null>(null);
+  const urlImportControllerRef = useRef<AbortController | null>(null);
   const [showRemoveConfirmation, setShowRemoveConfirmation] = useState(false);
   const [filePreview, setFilePreview] = useState<string | null>(null);
   const [selectingPath, setSelectingPath] = useState<string | null>(null);
   const [selectionError, setSelectionError] = useState<string | null>(null);
+  const [iconUrl, setIconUrl] = useState("");
+  const [urlImportError, setUrlImportError] = useState<string | null>(null);
+  const [importingUrl, setImportingUrl] = useState(false);
   const [candidates, setCandidates] = useState<WorkspaceIconCandidatesResponse>({
     candidates: [],
     truncated: false,
@@ -57,17 +61,23 @@ export function WorkspaceIconSection({ workspace, icon, change, onChange, onLoad
     setDiscoveryError(null);
     setSelectionError(null);
     setSelectingPath(null);
+    setIconUrl("");
+    setUrlImportError(null);
+    setImportingUrl(false);
     return () => {
       discoveryControllerRef.current?.abort();
       discoveryControllerRef.current = null;
       selectionControllerRef.current?.abort();
       selectionControllerRef.current = null;
+      urlImportControllerRef.current?.abort();
+      urlImportControllerRef.current = null;
       onLoadingChange(false);
     };
   }, [workspace.id, workspace.directory, workspace.executionTargetRevision, onLoadingChange]);
 
   function stageChange(next: WorkspaceIconChange | null): void {
     setSelectionError(null);
+    setUrlImportError(null);
     onChange(next);
   }
 
@@ -128,18 +138,49 @@ export function WorkspaceIconSection({ workspace, icon, change, onChange, onLoad
     }
   }
 
+  async function importFromUrl(): Promise<void> {
+    const url = iconUrl.trim();
+    if (!url) {
+      setUrlImportError("Enter a public HTTP(S) URL.");
+      return;
+    }
+    urlImportControllerRef.current?.abort();
+    const controller = new AbortController();
+    urlImportControllerRef.current = controller;
+    setImportingUrl(true);
+    setUrlImportError(null);
+    onLoadingChange(true);
+    try {
+      const imported = await loadWorkspaceIconFromUrl(workspace.id, url, controller.signal);
+      if (!controller.signal.aborted && urlImportControllerRef.current === controller) {
+        stageChange(imported);
+        setIconUrl("");
+      }
+    } catch (error) {
+      if (!controller.signal.aborted && urlImportControllerRef.current === controller) {
+        setUrlImportError(String(error));
+      }
+    } finally {
+      if (urlImportControllerRef.current === controller) {
+        urlImportControllerRef.current = null;
+        setImportingUrl(false);
+        onLoadingChange(false);
+      }
+    }
+  }
+
   const preview = change?.kind === "remove" ? null
     : selectedFile ? filePreview : icon ? savedIconUrl(workspace, icon) : null;
   const selectedName = change?.kind === "repository" ? change.path : selectedFile?.name;
 
   return (
     <>
-      <SettingsFieldRow title="Icon" description="SVG or ICO, up to 1 MB."
+      <SettingsFieldRow title="Icon" description="SVG, PNG, or ICO, up to 1 MB."
         content={<>
           {preview ? <ResourceImage className="h-8 w-8 shrink-0 rounded object-contain"
             src={preview} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" /> : "Default"}
           <input ref={uploadInputRef} type="file" className="hidden" aria-label="Workspace icon file"
-            accept=".svg,.ico,image/svg+xml,image/x-icon,image/vnd.microsoft.icon"
+            accept=".svg,.png,.ico,image/svg+xml,image/png,image/x-icon,image/vnd.microsoft.icon"
             onChange={(event) => {
               const file = event.currentTarget.files?.[0];
               if (file) stageChange({ kind: "upload", file });
@@ -155,12 +196,34 @@ export function WorkspaceIconSection({ workspace, icon, change, onChange, onLoad
             : icon ? <Button tone="danger" onClick={() => setShowRemoveConfirmation(true)}>Remove</Button> : null}
         </>} />
       {selectionError ? <ErrorState title="Unable to select workspace icon" description={selectionError} /> : null}
+      <FormGroup title="Import from URL">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+          <div className="min-w-0 flex-1">
+            <TextField label="Public HTTP(S) URL" fieldWidth="full" inputMode="url"
+              value={iconUrl} disabled={importingUrl} autoComplete="url" autoCapitalize="none"
+              placeholder="https://example.com/icon.png"
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void importFromUrl();
+                }
+              }}
+              onChange={(event) => {
+                setIconUrl(event.currentTarget.value);
+                setUrlImportError(null);
+              }} />
+          </div>
+          <Button type="button" disabled={importingUrl || !iconUrl.trim()} loading={importingUrl}
+            onClick={() => void importFromUrl()}>Import</Button>
+        </div>
+        {urlImportError ? <ErrorState title="Unable to import workspace icon" description={urlImportError} /> : null}
+      </FormGroup>
       {hasSearched ? <FormGroup title="Repository icons">
         {discoveryError ? (
           <ErrorState title="Unable to discover icons" description={discoveryError} />
         ) : candidatesLoading ? <span role="status">Searching...</span>
         : candidates.candidates.length === 0 ? (
-          <span>No SVG or ICO files found.</span>
+          <span>No SVG, PNG, or ICO files found.</span>
         ) : (
           <DataList>
             {candidates.candidates.map((candidate) => (

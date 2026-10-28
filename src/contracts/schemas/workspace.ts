@@ -56,6 +56,10 @@ export const WorkspaceIconCandidateQuerySchema = z.object({
   path: z.string().min(1).max(2048),
 }).strict();
 
+export const WorkspaceIconUrlRequestSchema = z.object({
+  url: z.string().trim().min(1).max(2048),
+}).strict();
+
 export const WorkspaceIconMetadataSchema = z.object({
   mimeType: z.enum(["image/svg+xml", "image/x-icon"]),
   updatedAt: z.string().datetime(),
@@ -64,7 +68,7 @@ export const WorkspaceIconMetadataSchema = z.object({
 export const WorkspaceIconCandidateSchema = z.object({
   path: z.string().min(1).max(2048),
   name: z.string().min(1).max(255),
-  mimeType: z.enum(["image/svg+xml", "image/x-icon"]),
+  mimeType: z.enum(["image/svg+xml", "image/x-icon", "image/png"]),
 }).strict();
 
 export const WorkspaceIconCandidatesResponseSchema = z.object({
@@ -172,6 +176,7 @@ export type DeleteWorkspaceRequest = z.infer<typeof DeleteWorkspaceRequestSchema
 export type WorkspaceSshTargetRequest = z.infer<typeof WorkspaceSshTargetSchema>;
 export type WorkspaceIconCandidateRequest = z.infer<typeof WorkspaceIconCandidateRequestSchema>;
 export type WorkspaceIconCandidateQuery = z.infer<typeof WorkspaceIconCandidateQuerySchema>;
+export type WorkspaceIconUrlRequest = z.infer<typeof WorkspaceIconUrlRequestSchema>;
 export type WorkspaceIconMetadataResponse = z.infer<typeof WorkspaceIconMetadataSchema>;
 export type WorkspaceIconCandidate = z.infer<typeof WorkspaceIconCandidateSchema>;
 export type WorkspaceIconCandidatesResponse = z.infer<typeof WorkspaceIconCandidatesResponseSchema>;
