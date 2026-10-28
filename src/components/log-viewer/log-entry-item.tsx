@@ -9,6 +9,7 @@ import { formatTime, getLogLevelColor, isReasoningLogEntry } from "./utils";
 interface LogEntryItemProps {
   data: TaskLogEntry;
   showTimestamp: boolean;
+  showDate: boolean;
   showGroupHeader: boolean;
   spacingClass: string;
   markdownEnabled: boolean;
@@ -24,6 +25,7 @@ function getOtherDetails(details: Record<string, unknown>): Record<string, unkno
 export const LogEntryItem = memo(function LogEntryItem({
   data: log,
   showTimestamp,
+  showDate,
   showGroupHeader,
   spacingClass,
   markdownEnabled,
@@ -69,7 +71,7 @@ export const LogEntryItem = memo(function LogEntryItem({
     <div className={`group ${spacingClass}`.trim()} data-log-kind={logKind ?? "default"}>
       {showTimestamp && (
         <time className="mb-1 block text-[11px] text-gray-500" dateTime={log.timestamp}>
-          {formatTime(log.timestamp)}
+          {formatTime(log.timestamp, showDate)}
         </time>
       )}
       <div

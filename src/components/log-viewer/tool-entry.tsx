@@ -21,6 +21,7 @@ interface ToolEntryProps {
   data: ToolCallDisplayData;
   timestamp: string;
   showTimestamp: boolean;
+  showDate: boolean;
   spacingClass: string;
   isActive?: boolean;
   toolPathDisplayRoot?: string;
@@ -179,6 +180,7 @@ export const ToolEntry = memo(function ToolEntry({
   data: tool,
   timestamp,
   showTimestamp,
+  showDate,
   spacingClass,
   isActive = false,
   toolPathDisplayRoot,
@@ -337,7 +339,7 @@ export const ToolEntry = memo(function ToolEntry({
       <HarnessToolActivity toolIds={[tool.id]} />
       {showTimestamp && (
         <time className="mb-1 block text-[11px] text-gray-500" dateTime={timestamp}>
-          {formatTime(timestamp)}
+          {formatTime(timestamp, showDate)}
         </time>
       )}
       <div className={fullWidth ? "min-w-0 w-full" : "min-w-0 max-w-[min(96%,72rem)]"}>

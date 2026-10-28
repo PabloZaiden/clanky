@@ -26,6 +26,7 @@ import {
 interface MessageEntryProps {
   data: MessageData;
   showTimestamp: boolean;
+  showDate: boolean;
   spacingClass: string;
   markdownEnabled: boolean;
   fileLinkContext?: TranscriptFileLinkContext;
@@ -57,6 +58,7 @@ function getOutcomeBadgeVariant(kind: PromiseMarkerOutcomeKind): BadgeVariant {
 export const MessageEntry = memo(function MessageEntry({
   data: msg,
   showTimestamp,
+  showDate,
   spacingClass,
   markdownEnabled,
   fileLinkContext,
@@ -150,7 +152,7 @@ export const MessageEntry = memo(function MessageEntry({
           className={`mb-1 block text-[11px] text-gray-500 ${isUser ? "text-right pr-1" : ""}`}
           dateTime={msg.timestamp}
         >
-          {formatTime(msg.timestamp)}
+          {formatTime(msg.timestamp, showDate)}
         </time>
       )}
       <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>

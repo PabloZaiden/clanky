@@ -8,6 +8,7 @@ import { ActivityIndicator } from "./activity-indicator";
 interface ReasoningGroupEntryProps {
   entry: ReasoningGroupEntryBase & {
     showTimestamp: boolean;
+    showDate: boolean;
     showGroupHeader: boolean;
   };
   spacingClass: string;
@@ -34,6 +35,7 @@ export const ReasoningGroupEntry = memo(function ReasoningGroupEntry({
             key={`reasoning-${log.id}`}
             data={log}
             showTimestamp={false}
+            showDate={false}
             showGroupHeader={false}
             spacingClass={index === 0 ? "" : "mt-2"}
             markdownEnabled={markdownEnabled}
@@ -53,7 +55,7 @@ export const ReasoningGroupEntry = memo(function ReasoningGroupEntry({
     >
       {entry.showTimestamp && (
         <time className="mb-1 block text-[11px] text-gray-500" dateTime={entry.timestamp}>
-          {formatTime(entry.timestamp)}
+          {formatTime(entry.timestamp, entry.showDate)}
         </time>
       )}
       <LazyDetails
