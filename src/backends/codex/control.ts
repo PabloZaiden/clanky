@@ -72,6 +72,7 @@ export class CodexControl implements HarnessControl {
   async abort(rootId: string): Promise<void> {
     const { runtime, sessions } = this.resolve();
     sessions.get(rootId);
+    sessions.cancelControlTurn(rootId);
     const turns = await runtime.rpc.request("thread/turns/list", { threadId: rootId, limit: 20, sortDirection: "desc" });
     const active = turns.data.find((turn) => turn.status === "inProgress");
     if (active) await runtime.rpc.request("turn/interrupt", { threadId: rootId, turnId: active.id });

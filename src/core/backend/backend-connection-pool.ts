@@ -12,11 +12,7 @@ import {
   buildProviderShellInvocation,
   getProviderAcpCommand,
 } from "../agent-runtime-command";
-import {
-  buildManagedContextShellBootstrap,
-  buildManagedContextStdinPayload,
-  withoutManagedContextEnvironment,
-} from "../managed-context-environment";
+import { withoutManagedContextEnvironment } from "../managed-context-environment";
 
 function buildAgentRuntimeCommand(
   settings: RuntimeServerSettings,
@@ -41,11 +37,9 @@ function buildAgentRuntimeCommand(
   }
   const providerInvocation = buildProviderShellInvocation(
     providerCommand,
-    withoutManagedContextEnvironment(runtimeEnvironment),
+    runtimeEnvironment,
   );
-  const remoteCommand = buildSshRemoteShellCommand(
-    buildManagedContextShellBootstrap(runtimeEnvironment, providerInvocation),
-  );
+  const remoteCommand = buildSshRemoteShellCommand(providerInvocation);
   const sshProcess = buildSshProcessConfig({
     target: sshTarget,
     remoteCommand,
@@ -56,7 +50,6 @@ function buildAgentRuntimeCommand(
     command: sshProcess.command,
     args: sshProcess.args,
     env: sshProcess.env,
-    startupStdin: buildManagedContextStdinPayload(runtimeEnvironment),
   };
 }
 
@@ -74,7 +67,9 @@ export function buildConnectionConfig(
   directory: string,
   runtimeEnvironment?: Record<string, string>,
 ): BackendConnectionConfig {
-  const derivedCommand = buildAgentRuntimeCommand(settings, directory, runtimeEnvironment);
+  const isAcp = settings.agent.adapter === "acp";
+  const environment = isAcp ? withoutManagedContextEnvironment(runtimeEnvironment) : runtimeEnvironment;
+  const derivedCommand = buildAgentRuntimeCommand(settings, directory, environment);
   const sshTarget = getSshConnectionTargetFromSettings(settings);
   return {
     provider: settings.agent.provider,
@@ -85,7 +80,7 @@ export function buildConnectionConfig(
     password: sshTarget?.password,
     identityFile: sshTarget?.identityFile,
     ...derivedCommand,
-    managedEnvironment: runtimeEnvironment,
+    managedEnvironment: isAcp ? undefined : runtimeEnvironment,
     directory,
   };
 }

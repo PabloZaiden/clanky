@@ -13,12 +13,14 @@ import { runProductionHttpSmoke } from "./support/http-smoke";
 import { pollUntil } from "./support/polling";
 import { E2E_IMAGE_DATA } from "./providers/image-input";
 import { createFileAttachment, expectedFileInspection } from "./support/attachments";
+import { findFreeLoopbackPort } from "./support/process";
 
 interface ExecutionHost {
   ref: Record<string, string>;
 }
 
 interface Workspace {
+  allowClankyContext?: boolean;
   archived?: boolean;
   id: string;
   name: string;
@@ -167,7 +169,13 @@ interface AgentRun {
 }
 
 interface AgentRunSnapshot {
+  run: {
+    status: string;
+  };
   transcript: {
+    logs: Array<{
+      message: string;
+    }>;
     messages: Array<{
       role: string;
       content: string;
@@ -326,7 +334,15 @@ test("compiled Clanky completes its principal local user journey", async () => {
   const application = await E2EApplication.create();
   try {
     const git = await createGitFixture(application.runDirectory);
-    await application.start();
+    const port = await findFreeLoopbackPort();
+    await application.start({
+      port,
+      env: {
+        CLANKY_BASE_URL: `http://127.0.0.1:${port}`,
+        CLANKY_API_KEY: "e2e-operator-key-not-a-real-credential",
+        OPENAI_API_KEY: "e2e-provider-credential",
+      },
+    });
 
     await runProductionHttpSmoke({
       baseUrl: application.baseUrl,
@@ -358,6 +374,7 @@ test("compiled Clanky completes its principal local user journey", async () => {
       name: "E2E workspace",
       directory: git.repositoryDirectory,
       executionHost: localHost!.ref,
+      allowClankyContext: false,
       serverSettings: {
         agent: {
           adapter: "acp",
@@ -380,6 +397,7 @@ test("compiled Clanky completes its principal local user journey", async () => {
       },
       201,
     )).data;
+    expect(workspace.allowClankyContext).toBe(false);
 
     const models = (await application.json<Model[]>(
       `/api/models?workspaceId=${encodeURIComponent(workspace.id)}`,
@@ -859,7 +877,11 @@ test("compiled Clanky completes its principal local user journey", async () => {
     )).data;
     expect(renamedChat.config.name).toBe("E2E lifecycle chat");
 
-    const interactiveMessage = "Explain the fixture [retry] [permission] [question]";
+    const generalWorkspace = (await application.json<Workspace>(`/api/workspaces/${workspace.id}`, {
+      method: "PUT", body: JSON.stringify({ allowClankyContext: true }),
+    })).data;
+    expect(generalWorkspace.allowClankyContext).toBe(true);
+    const interactiveMessage = "Explain the fixture [retry] [permission] [question] [control-environment]";
     await application.json(
       `/api/chats/${chat.config.id}/messages`,
       {
@@ -920,6 +942,18 @@ test("compiled Clanky completes its principal local user journey", async () => {
       status: "answered",
       answers: [["Concise"]],
     }));
+    const acpSnapshot = (await application.json<ChatSnapshot>(
+      `/api/chats/${chat.config.id}/snapshot?full=1`,
+    )).data;
+    expect(acpSnapshot.transcript.messages.some((message) =>
+      message.role === "assistant" && message.content.includes(
+        'ACP environment: {"baseUrl":false,"apiKey":false,"providerKeyPreserved":true}',
+      )
+    )).toBe(true);
+    const workspaceOnly = (await application.json<Workspace>(`/api/workspaces/${workspace.id}`, {
+      method: "PUT", body: JSON.stringify({ allowClankyContext: false }),
+    })).data;
+    expect(workspaceOnly.allowClankyContext).toBe(false);
 
     const slowMessage = "Process this slowly [slow]";
     await application.json(
@@ -1181,6 +1215,7 @@ test("compiled Clanky completes its principal local user journey", async () => {
       { method: "POST", body: "{}" },
     )).data;
     expect(resumedAgent.state.status).toBe("enabled");
+    const directReadOutput = "Project chat inspected: E2E lifecycle chat\n";
     const updatedAgent = (await application.json<Agent>(
       `/api/agents/${agent.config.id}`,
       {
@@ -1188,6 +1223,26 @@ test("compiled Clanky completes its principal local user journey", async () => {
         body: JSON.stringify({
           name: "E2E persisted agent",
           prompt: "Run until interrupted [slow]",
+          code: [
+            "export default async function run(ctx) {",
+            '  const result = await ctx.clanky.call("clanky_read_chat", {',
+            `    target: ${JSON.stringify(chat.config.id)}, workspace: ${JSON.stringify(workspace.id)},`,
+            "  });",
+            '  if (typeof result !== "object" || result === null || !("target" in result)',
+            '      || typeof result.target !== "object" || result.target === null',
+            `      || !("id" in result.target) || result.target.id !== ${JSON.stringify(chat.config.id)}`,
+            '      || !("name" in result.target) || typeof result.target.name !== "string") {',
+            '    throw new Error("Project chat inspection failed");',
+            "  }",
+            '  ctx.stdout.write("Project chat inspected: " + result.target.name + "\\n");',
+            '  const inspected = await ctx.workspace.exec("git", ["status", "--short"]);',
+            "  if (ctx.signal.aborted) return;",
+            '  if (!inspected.success) throw new Error("Workspace inspection failed");',
+            '  const response = await ctx.workspace.prompt("Run until interrupted [slow]\\nWorkspace status:\\n" + inspected.stdout);',
+            "  if (ctx.signal.aborted) return;",
+            '  ctx.stdout.write(response + "\\n");',
+            "}",
+          ].join("\n"),
         }),
       },
     )).data;
@@ -1198,17 +1253,23 @@ test("compiled Clanky completes its principal local user journey", async () => {
       { method: "POST", body: "{}" },
       202,
     )).data;
-    await pollUntil(
-      async () => (await application.json<AgentRun>(
-        `/api/agent-runs/${interruptibleRun.id}`,
+    const interruptibleSnapshot = await pollUntil(
+      async () => (await application.json<AgentRunSnapshot>(
+        `/api/agent-runs/${interruptibleRun.id}/snapshot?full=1`,
       )).data,
-      (run) => run.status === "running",
+      (snapshot) => snapshot.run.status === "running"
+        && snapshot.transcript.logs.some((entry) => entry.message === directReadOutput)
+        && snapshot.transcript.messages.some((message) =>
+          message.role === "assistant" && message.content.length > 0),
       {
-        description: "manual agent run to become interruptible",
+        description: "deterministic project inspection and interruptible workspace prompt",
         timeoutMs: 10_000,
-        formatLastObserved: (run) => run.status,
+        formatLastObserved: (snapshot) => JSON.stringify(snapshot),
       },
     );
+    expect(interruptibleSnapshot.transcript.logs).toContainEqual(expect.objectContaining({
+      message: directReadOutput,
+    }));
     await application.json(
       `/api/agents/${agent.config.id}/interrupt`,
       { method: "POST", body: "{}" },
@@ -1225,7 +1286,10 @@ test("compiled Clanky completes its principal local user journey", async () => {
       `/api/agents/${agent.config.id}`,
       {
         method: "PATCH",
-        body: JSON.stringify({ prompt: "Inspect the attached files and complete the manual fixture report" }),
+        body: JSON.stringify({
+          prompt: "Inspect the attached files and complete the manual fixture report",
+          code: null,
+        }),
       },
     );
     const agentInput = createFileAttachment("agent-input.csv", "name,value\nexample,42\n", "text/csv");

@@ -117,7 +117,6 @@ export class MeshAcpTransport implements AcpTransportLifecycle {
       executionNodeId: config.mesh.executionNodeId,
       provider: this.provider,
       channel: "acp",
-      managedEnvironment: config.managedEnvironment,
     });
     this.sessionClient = sessionClient;
     const startup = createMeshStartupAbortContext(signal);

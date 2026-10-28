@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import type { ClankyControlContext } from "@/shared/clanky-control";
 import type { HarnessConversationBinding } from "@/shared/harness-control";
-import { CLANKY_CONTROL_TOOLS, ClankyControlToolService } from "../clanky-control-tools";
+import { ClankyControlToolService, type ClankyControlToolDefinition } from "../clanky-control-tools";
 import { HarnessError } from "../harness-errors";
 import { OPENCODE_CONTROL_PLUGIN_ID, OPENCODE_CONTROL_PLUGIN_SOURCE } from "./control-plugin";
 
@@ -28,7 +28,8 @@ const ConfigSchema = z.object({
 
 interface ControlConversation {
   binding: HarnessConversationBinding;
-  active?: { context: ClankyControlContext; abort: AbortController };
+  definitions: readonly ClankyControlToolDefinition[];
+  active?: { context?: ClankyControlContext; abort: AbortController };
 }
 
 export class OpenCodeControlTools {
@@ -38,10 +39,13 @@ export class OpenCodeControlTools {
   private toolService?: ClankyControlToolService;
   private pluginDirectory?: string;
   private closing?: Promise<void>;
+  private definitions: readonly ClankyControlToolDefinition[] = [];
 
   constructor(private readonly managedEnvironment: Record<string, string | undefined>) {}
 
-  async open(environment: NodeJS.ProcessEnv): Promise<NodeJS.ProcessEnv> {
+  async open(environment: NodeJS.ProcessEnv, signal?: AbortSignal): Promise<NodeJS.ProcessEnv> {
+    if (!this.managedEnvironment["CLANKY_BASE_URL"] || !this.managedEnvironment["CLANKY_API_KEY"]) return environment;
+    this.definitions = await this.getToolService().listTools({ signal });
     const profile = join(resolveAppDataDir({ envPrefix: "CLANKY", appDirectoryName: ".clanky" }), "native", "opencode2");
     await mkdir(profile, { recursive: true, mode: 0o700 });
     await this.removeAbandonedPlugins(profile);
@@ -102,13 +106,14 @@ export class OpenCodeControlTools {
     }
   }
 
-  register(binding: HarnessConversationBinding): void {
+  async register(binding: HarnessConversationBinding): Promise<void> {
     this.end(binding.nativeId);
     if (binding.controlTools) {
       if (!this.conversations.has(binding.nativeId) && this.conversations.size >= 128) {
         throw new HarnessError("harness_request_failed", "OpenCode Control conversation capacity reached.");
       }
-      this.conversations.set(binding.nativeId, { binding });
+      const definitions = await this.getToolService().listTools({ chatId: binding.controlChatId });
+      this.conversations.set(binding.nativeId, { binding, definitions });
     } else {
       this.conversations.delete(binding.nativeId);
     }
@@ -120,17 +125,17 @@ export class OpenCodeControlTools {
       if (context) throw new HarnessError("harness_session_not_owned", "Clanky control context is not enabled for this conversation.");
       return;
     }
-    if (
-      !context || context.chatId !== (conversation.binding.controlChatId ?? conversation.binding.contextId)
+    if (context && (
+      context.chatId !== conversation.binding.controlChatId
       || !context.workspaceId || !context.turnId
-    ) throw new HarnessError("harness_session_not_owned", "The active Clanky control turn does not match its native conversation.");
+    )) throw new HarnessError("harness_session_not_owned", "The active Clanky control turn does not match its native conversation.");
     if (conversation.active) throw new HarnessError("harness_request_failed", "A Clanky control turn is already active in this conversation.");
     conversation.active = { context, abort: new AbortController() };
   }
 
   prepareSteering(id: string, clientId: string | undefined): void {
     const active = this.conversations.get(id)?.active;
-    if (active?.context.clientId && active.context.clientId !== clientId) {
+    if (active?.context?.clientId && active.context.clientId !== clientId) {
       active.context = { ...active.context, clientId: undefined };
     }
   }
@@ -154,10 +159,12 @@ export class OpenCodeControlTools {
     this.closing ??= (async () => {
       const errors: unknown[] = [];
       this.cancelAll();
+      this.toolService?.close();
       try { await this.server?.stop(true); } catch (error) { errors.push(error); }
       await Promise.allSettled(this.pending);
       this.conversations.clear();
       this.toolService = undefined;
+      this.definitions = [];
       if (this.pluginDirectory) {
         try { await rm(this.pluginDirectory, { recursive: true, force: true }); } catch (error) { errors.push(error); }
       }
@@ -198,7 +205,7 @@ export class OpenCodeControlTools {
   private async handle(request: Request): Promise<Response> {
     const path = new URL(request.url).pathname;
     if (path === "/tools" && request.method === "GET") {
-      return Response.json(CLANKY_CONTROL_TOOLS.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })));
+      return Response.json(this.definitions);
     }
     if ((path !== "/context" && path !== "/invoke") || request.method !== "POST") {
       return new Response(null, { status: 404 });
@@ -209,13 +216,23 @@ export class OpenCodeControlTools {
     }
     const parsed = (path === "/invoke" ? InvocationSchema : SessionInputSchema).safeParse(input);
     if (!parsed.success) return Response.json({ error: "invalid_bridge_input" }, { status: 400 });
-    const active = this.conversations.get(parsed.data.sessionId)?.active;
-    if (path === "/context") return Response.json({ enabled: active !== undefined });
+    const conversation = this.conversations.get(parsed.data.sessionId);
+    const active = conversation?.active;
+    if (path === "/context") return Response.json({
+      enabled: active !== undefined,
+      tools: active ? conversation!.definitions : [],
+    });
     if (!active) return Response.json({
       ok: false,
-      error: { code: "control_context_unavailable", message: "The control tool call is not correlated with an active chat turn." },
+      error: { code: "control_context_unavailable", message: "The control tool call is not correlated with an active owned turn." },
     });
     const invocation = InvocationSchema.parse(input);
+    if (!conversation!.definitions.some((definition) => definition.name === invocation.name)) {
+      return Response.json({
+        ok: false,
+        error: { code: "unknown_control_tool", message: "The requested Clanky tool is not available for this root." },
+      });
+    }
     const result = await this.getToolService().invoke(invocation.name, invocation.input, active.context,
       AbortSignal.any([request.signal, active.abort.signal]));
     return Response.json(result);

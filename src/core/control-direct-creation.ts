@@ -1,5 +1,5 @@
 /**
- * Real creation defaults and confirmation-frozen create/message/open intent.
+ * Shared creation defaults and confirmation-frozen create/message/open intent.
  */
 import { z } from "zod";
 import { DomainError } from "../domain/domain-error";
@@ -12,10 +12,10 @@ import { ExecutionHostRefSchema } from "@/contracts/schemas/execution-host";
 import { getExecutionHostSourceId } from "@/shared/execution-host";
 import { DEFAULT_CHAT_CONFIG } from "@/shared/chat";
 import { getTaskCreationDefaults, resolveTaskCreationModel, resolveTaskCreationCheapModel } from "@/shared/task-creation";
-import type { DirectToolInput } from "./live-voice-direct-contracts";
-import { directRecord, LiveVoiceDirectContext } from "./live-voice-direct-context";
+import type { DirectToolInput } from "./control-tool-contracts";
+import { directRecord, ControlToolContext } from "./control-tool-context";
 import type { OperationResult } from "./clanky-operation-service";
-import type { ConfirmedWriteExecutor } from "./live-voice-actions";
+import type { ConfirmedWriteExecutor } from "./control-actions";
 import { createLogger } from "@pablozaiden/webapp/server";
 
 const log = createLogger("core:voice-direct-creation");
@@ -49,11 +49,12 @@ function chooseModel(models: Models, preference: ModelConfig | null): ModelConfi
   return model;
 }
 
-export async function directCreateTask(context: LiveVoiceDirectContext, input: DirectToolInput<"clanky_create_task">): Promise<unknown> {
-  if (!input.workspace) throw new DomainError("voice_workspace_required", "Choose a workspace for the task.");
-  const workspaceId = String((await context.resolve("workspace", input.workspace))["id"]);
+export async function directCreateTask(context: ControlToolContext, input: DirectToolInput<"clanky_create_task">): Promise<unknown> {
+  const workspaceTarget = input.workspace ?? context.options.origin?.workspaceId;
+  if (!workspaceTarget) throw new DomainError("voice_workspace_required", "Choose a workspace for the task.");
+  const workspaceId = String((await context.resolve("workspace", workspaceTarget))["id"]);
   const [ui, creation] = await Promise.all([
-    context.uiContext(),
+    context.creationPreferences(),
     context.readExact("GET /api/workspaces/:id/task-creation-context", { id: workspaceId }),
   ]);
   const available = TaskCreationContextResponseSchema.parse(creation);
@@ -90,7 +91,7 @@ export async function directCreateTask(context: LiveVoiceDirectContext, input: D
 }
 
 async function afterChatCreation(options: {
-  context: LiveVoiceDirectContext; input: DirectToolInput<"clanky_create_chat">;
+  context: ControlToolContext; input: DirectToolInput<"clanky_create_chat">;
   created: OperationResult; executeWrite: ConfirmedWriteExecutor;
 }): Promise<OperationResult> {
   const { context, input, created, executeWrite } = options;
@@ -126,19 +127,22 @@ async function afterChatCreation(options: {
   }
 }
 
-export async function directCreateChat(context: LiveVoiceDirectContext, input: DirectToolInput<"clanky_create_chat">): Promise<unknown> {
-  if (Boolean(input.workspace) === Boolean(input.host)) {
+export async function directCreateChat(context: ControlToolContext, input: DirectToolInput<"clanky_create_chat">): Promise<unknown> {
+  const workspaceTarget = input.workspace ?? (input.host ? null : context.options.origin?.workspaceId);
+  if (Boolean(workspaceTarget) === Boolean(input.host)) {
     throw new DomainError("voice_creation_target_required", "Choose exactly one workspace or execution host.");
   }
   let operationId = "POST /api/chats";
   let parameters: Record<string, string> = {};
   let body: unknown;
-  if (input.workspace) {
-    const workspaceId = String((await context.resolve("workspace", input.workspace))["id"]);
+  if (workspaceTarget) {
+    const workspaceId = String((await context.resolve("workspace", workspaceTarget))["id"]);
     const [workspace, models, last] = await Promise.all([
       context.readExact("GET /api/workspaces/:id", { id: workspaceId }),
       context.readExact("GET /api/models", {}, { query: { workspaceId } }),
-      context.readExact("GET /api/preferences/last-model"),
+      context.options.origin
+        ? Promise.resolve(context.options.origin.defaultModel ?? null)
+        : context.readExact("GET /api/preferences/last-model"),
     ]);
     const owned = directRecord(workspace);
     const preference = input.model ?? (last ? ModelConfigSchema.parse(last) : null);
@@ -190,7 +194,7 @@ export async function directCreateChat(context: LiveVoiceDirectContext, input: D
   });
 }
 
-export async function directCreateWorkspace(context: LiveVoiceDirectContext, input: DirectToolInput<"clanky_create_workspace">): Promise<unknown> {
+export async function directCreateWorkspace(context: ControlToolContext, input: DirectToolInput<"clanky_create_workspace">): Promise<unknown> {
   const host = await context.host(input.host);
   const body = CreateWorkspaceRequestSchema.parse({
     name: input.name, directory: input.directory, executionHost: host["ref"],

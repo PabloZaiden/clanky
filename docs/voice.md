@@ -70,6 +70,15 @@ list. Existing user ownership, scopes and selected-host
 execution still apply. Credential management, raw transports, uploads/downloads
 and browser media are not ordinary JSON assistant operations.
 
+The application-control contracts and execution are shared with native agents,
+external MCP clients and deterministic programs. Live keeps its existing
+27-tool surface: 23 application tools plus UI context, UI actions, selective
+watching and goodbye. Direct common requests add no mandatory discovery/model
+rounds and do not go through MCP. Visual approval, private SSH handoff and
+voice-specific result/presentation budgets retain their existing behavior.
+See [agent control and MCP](deployment.md#agent-control-and-mcp) for external
+authorization and nonvoice human requests.
+
 Live and its delegated model are instructed to express your requests directly
 to the recipient, not narrate them as "the user asks". For example, "Ask the
 Backend chat to review the timeouts" becomes "Review the timeouts". This applies

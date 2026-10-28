@@ -8,6 +8,7 @@ import { backendManager } from "./backend";
 import { chatManager } from "./chat-manager";
 import type { CommandExecutor } from "./command-executor";
 import { validateDeterministicAgentCode } from "./deterministic-agent-code";
+import { controlToolDefinitions } from "./control-tool-contracts";
 import {
   createInterruptibleOperationCoordinator,
   INTERRUPTIBLE_OPERATION_SETTLE_TIMEOUT_MS,
@@ -64,10 +65,15 @@ function buildContractInstructions(): string[] {
     `- ${DETERMINISTIC_AGENT_CODE_CONTRACT.asyncRule}`,
     `- ${DETERMINISTIC_AGENT_CODE_CONTRACT.exec}`,
     `- ${DETERMINISTIC_AGENT_CODE_CONTRACT.prompt}`,
+    `- ${DETERMINISTIC_AGENT_CODE_CONTRACT.control}`,
     `- ${DETERMINISTIC_AGENT_CODE_CONTRACT.output}`,
     `- ${DETERMINISTIC_AGENT_CODE_CONTRACT.signal}`,
     `- ${DETERMINISTIC_AGENT_CODE_CONTRACT.restrictions}`,
     `- ${DETERMINISTIC_AGENT_CODE_CONTRACT.visibility}`,
+    "Canonical control-tool inputs (ControlToolName is the name union; ControlToolInput<K> is that tool's input):",
+    JSON.stringify(controlToolDefinitions),
+    "These schemas describe inputs only. Results remain unknown JSON; narrow them before use.",
+    "Use the supplied context without importing Clanky modules into the generated source.",
     "Examples:",
     ...DETERMINISTIC_AGENT_CODE_CONTRACT.examples.flatMap((example) => [
       `Example: ${example.title}`,

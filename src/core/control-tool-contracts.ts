@@ -1,16 +1,17 @@
 /**
- * Small user-intent contracts available before any catalog discovery.
+ * Canonical application-control intents shared by all client adapters.
  */
 import { z } from "zod";
 import { ModelConfigSchema, CheapModelSelectionSchema } from "@/contracts/schemas/model";
 import { AgentSettingsSchema } from "@/contracts/schemas/workspace";
-import { VoiceConfirmationDescriptionSchema } from "@/shared/live-voice";
+import { ControlConfirmationDescriptionSchema } from "@/shared/control-interactions";
+import { ExecuteOperationSchema, type ControlToolDefinition } from "@/contracts/schemas/control";
 
 const optionalText = z.string().trim().min(1).max(500).nullable().default(null);
 const workspace = optionalText.describe("Workspace ID or exact name; null means no workspace filter.");
 const target = z.string().trim().min(1).max(500).describe("ID, exact name, or 'current' for the originating client's selected entity. Never guess an ambiguous name.");
 const model = ModelConfigSchema.nullable().default(null).describe("Explicit model override; null uses the actual saved/effective preference.");
-const confirmation = VoiceConfirmationDescriptionSchema.nullable().default(null);
+const confirmation = ControlConfirmationDescriptionSchema.nullable().default(null);
 const message = z.string().trim().min(1).max(30_000);
 const page = {
   cursor: z.string().min(1).max(4096).nullable().default(null),
@@ -22,7 +23,7 @@ const exactStatus = optionalText.describe(
 const selection = { target, workspace };
 const listing = { workspace, status: exactStatus, ...page };
 
-export const liveVoiceDirectSchemas = {
+export const controlDirectSchemas = {
   clanky_recent_work: z.object({
     kind: z.enum(["chat", "task", "all"]), ...listing,
   }).strict(),
@@ -97,10 +98,10 @@ export const liveVoiceDirectSchemas = {
   }).strict(),
 };
 
-export type DirectToolName = keyof typeof liveVoiceDirectSchemas;
-export type DirectToolInput<T extends DirectToolName> = z.infer<typeof liveVoiceDirectSchemas[T]>;
+export type DirectToolName = keyof typeof controlDirectSchemas;
+export type DirectToolInput<T extends DirectToolName> = z.infer<typeof controlDirectSchemas[T]>;
 
-export const liveVoiceDirectDescriptions: Record<DirectToolName, string> = {
+export const controlDirectDescriptions: Record<DirectToolName, string> = {
   clanky_recent_work: "Recent authorized chats/tasks ordered by real activity, with raw status, Voice status category and literal last-exchange previews. For chats, voiceStatus is active for streaming/waiting, idle for idle, done for done, and error for all other chat statuses. For tasks, active means planning/starting/running/waiting/resolving_conflicts; idle means idle/draft; done means completed/accepted_local/merged/pushed/deleted; error means stopped/failed/max_iterations. Direct: no discovery. kind=chat for chats. Cursor continues each selected source.",
   clanky_waiting_work: "Chats/tasks needing the user: pending questions, permissions AND ready plans awaiting manual approval. Includes actionable pending interactions, raw status and voiceStatus using the same chat/task categories as clanky_recent_work. Unavailable state is explicit. Direct, no discovery.",
   clanky_list_chats: "List compact chats by workspace, exact name and raw status, activity ordered. Each item retains status and includes voiceStatus: active for streaming/waiting, idle for idle, done for done, error for starting/interrupting/reconnecting/stopped/failed. Leave status null for Voice-category queries; do not filter active chats using a made-up raw status such as working. Direct, no discovery.",
@@ -122,3 +123,40 @@ export const liveVoiceDirectDescriptions: Record<DirectToolName, string> = {
   clanky_list_servers: "List owned SSH registrations and available local/SSH/Mesh hosts, known capabilities and availability without probing or secrets. Direct, no discovery.",
   clanky_create_workspace: "Create a workspace at an explicit directory on an exact host ID/name. Explicit adapter/provider and supported repository type. Uses the selected host, never server-local path guesses; visual confirmation required. Direct, no discovery.",
 };
+
+export const controlToolSchemas = {
+  ...controlDirectSchemas,
+  clanky_find_operations: z.object({
+    text: z.string().max(500),
+    domain: z.string().max(100).nullable(),
+    method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]).nullable(),
+    cursor: z.number().int().nonnegative().max(10_000).nullable(),
+  }).strict(),
+  clanky_describe_operation: z.object({
+    operationId: z.string().min(1).max(500),
+    section: z.enum(["overview", "query", "body"]).nullable().default(null),
+    cursor: z.string().max(4096).nullable().default(null),
+  }).strict(),
+  clanky_execute_operation: ExecuteOperationSchema.extend({
+    confirmationDescription: ControlConfirmationDescriptionSchema.nullable(),
+  }),
+};
+
+export type ControlToolName = keyof typeof controlToolSchemas;
+export type ControlToolInput<T extends ControlToolName> = z.input<typeof controlToolSchemas[T]>;
+
+export const controlToolDescriptions: Record<ControlToolName, string> = {
+  ...controlDirectDescriptions,
+  clanky_find_operations: "Fallback only for intents not covered by a direct tool. Find authorized Clanky operations by words/domain/method. Empty text lists a page.",
+  clanky_describe_operation: "Read the exact contract and risk/completion policy. Start with section/cursor null; if contractSections are returned, read query/body separately. Content parts identify JSON paths; continue with nextCursor until null to obtain the complete schema.",
+  clanky_execute_operation: "Execute a described API operation with exact parameters/query and bodyJson (null without a body). Reads automatically select compact pages or literal conversation history. Follow nextCursor with the same read operation, filters and public body to read more; section=details and item read a row's original content. Content parts contain JSON paths and string offsets, not a generated summary. For policy confirm, supply confirmationDescription: one or two short plain-text sentences in the user's language describing the exact action, named target and material consequences. No API paths, technical identifiers, JSON or credentials. Use null for other policies. Mutations are never retried automatically. High-risk actions prepare a visual confirmation, not execution.",
+};
+
+export const controlToolDefinitions: ControlToolDefinition[] = Object.entries(controlToolSchemas).map(([name, schema]) => {
+  const { $schema: _schema, ...inputSchema } = z.toJSONSchema(schema, { io: "input" });
+  return { name, description: controlToolDescriptions[name as ControlToolName], inputSchema };
+});
+
+export function isControlToolName(name: string): name is ControlToolName {
+  return Object.hasOwn(controlToolSchemas, name);
+}

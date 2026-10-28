@@ -7,7 +7,8 @@
  * stdout delivers ctx.stdout/stderr writes; workspace.exec runs commands on the
  * host and returns results to the program without appending them to visible output.
  * workspace.prompt bridges to Clanky's chat via the /api/internal/agent-prompt
- * route authenticated with a temporary managed API key.
+ * route; clanky.call uses the shared control endpoint. Only the trusted runner
+ * receives the temporary scoped managed API key.
  */
 
 import type { AgentRun } from "@/shared/agent";
@@ -80,8 +81,8 @@ export async function executeDeterministicAgent(
   // Verify that the workspace host has a supported Node.js version.
   await assertNodeVersionOnHost(executor);
 
-  // Create a short-lived managed API key for this run so the runner can call
-  // the prompt bridge.  We use "recreate" to ensure a fresh token per run.
+  // The credential service adds project control scopes for this managed origin;
+  // the prompt bridge additionally requires this run's exact chat scope.
   let credential: ManagedRuntimeCredential | undefined;
   let executionError: unknown;
   try {
@@ -91,15 +92,15 @@ export async function executeDeterministicAgent(
         name: "Clanky deterministic agent runtime",
         scopes: [AGENT_PROMPT_SCOPE, agentPromptChatScope(chatId)],
         expiresAt: new Date(Date.now() + DETERMINISTIC_AGENT_CREDENTIAL_TTL_MS).toISOString(),
-        // Deterministic prompt calls use a temporary, prompt-only key and do
-        // not depend on the workspace's general CLI-access toggle.
+        // Project control and this chat's prompt bridge do not require general
+        // CLI access. General control authority still requires an explicit grant.
         allowWhenWorkspaceDisabled: true,
       });
     } catch (error) {
       if (!isOptionalCredentialUnavailable(error)) {
         throw error;
       }
-      log.debug("Deterministic prompt bridge credentials are not configured", {
+      log.debug("Deterministic runtime credentials are not configured", {
         runId: run.id,
         reason: error.code,
       });

@@ -6,7 +6,7 @@ import type { LiveVoiceSessionResponse } from "@/shared";
 import { getClankyClientId } from "./clanky-client-id";
 import { parseApiError } from "./api-error";
 import { appFetch } from "./public-path";
-import type { LiveVoiceUiContext } from "@/shared/live-voice";
+import type { ControlClientContext } from "@/shared/control-interactions";
 import { createLogger } from "@pablozaiden/webapp/web";
 
 const log = createLogger("live-voice-browser");
@@ -89,7 +89,7 @@ export class LiveVoiceBrowser {
     };
   }
 
-  async connect(getContext: () => LiveVoiceUiContext, signal: AbortSignal): Promise<void> {
+  async connect(getContext: () => ControlClientContext, signal: AbortSignal): Promise<void> {
     await this.audioContext.resume();
     const microphone = await this.acquireMicrophone();
     if (this.stopped || signal.aborted) {

@@ -111,7 +111,7 @@ export class OpenCodeSessionService {
       });
       const existing = this.conversations.get(native.id);
       const info = existing?.info ?? await this.attach(native, binding);
-      if (existing && existing.info.binding?.controlTools !== binding.controlTools) this.dependencies.controlTools.register(binding);
+      if (existing && existing.info.binding?.controlTools !== binding.controlTools) await this.dependencies.controlTools.register(binding);
       info.binding = binding;
       if (binding.questionPolicy !== "interactive") {
         // Persisted children retain their own permission snapshots on resume.
@@ -243,7 +243,7 @@ export class OpenCodeSessionService {
       native, info: { id: native.id, binding, title: native.title, createdAt: new Date(native.time.created).toISOString() },
     };
     await this.updateInfo(conversation);
-    this.dependencies.controlTools.register(binding);
+    await this.dependencies.controlTools.register(binding);
     this.conversations.set(native.id, conversation);
     this.track(native, native.id);
     return conversation.info;

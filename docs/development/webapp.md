@@ -113,6 +113,18 @@ and managed-directory confirmation. Use framework checkbox layout on mobile.
 Global Settings remembers its category per app/client server; explicit links
 win and unavailable categories fall back to General.
 
+Control authorization uses framework `control-request` and `control-consent`
+routes. Request pages show the frozen action, expiry and canonical result;
+approval uses a separate confirmation and SSH handoffs remain private browser
+operations. OAuth consent reads its opaque request handle from the URL search
+query, not route fields, and requires an explicit workspace/general selection.
+Never pass that query through request-path logging. Scoped service credentials
+live under Settings → Agents & integrations; newly issued tokens are shown
+once and are not retained after the dialog closes. Authorized OAuth integrations
+are listed there separately, with their selected access, scope and expiry.
+Human revocation uses the framework grant-management API; no OAuth credentials
+are displayed or copied into Clanky settings.
+
 Separate lifecycle/realtime state, transcript/display state, and composer/form
 state in large interactive views. Effects must be abortable, guard stale reads,
 and keep failures visible. Keep loaded data visible during refresh rather than

@@ -35,12 +35,17 @@ interface Tool {
   execute(input: unknown, invocation: { sessionID: string; messageID: string; signal: AbortSignal }): Promise<{ output: unknown; content: string }>;
 }
 
-interface ContextEvent { sessionID: string; tools: Record<string, Tool> }
+interface ContextEvent { sessionID: string; tools: Record<string, { description: string; input: unknown }> }
 interface Plugin {
   id: string;
   setup(context: {
-    tool: { transform(edit: (editor: { add(tool: Tool): void }) => void): Promise<{ dispose(): Promise<void> }> };
-    session: { hook(name: string, handler: (event: ContextEvent) => Promise<void>): Promise<{ dispose(): Promise<void> }> };
+    tool: {
+      transform(edit: (editor: { add(tool: Tool): void }) => void): Promise<{ dispose(): Promise<void> }>;
+      reload(): Promise<void>;
+    };
+    session: {
+      hook(name: string, handler: (event: { sessionID: string; tools?: ContextEvent["tools"] }) => Promise<void>): Promise<{ dispose(): Promise<void> }>;
+    };
   }): Promise<() => Promise<void>>;
 }
 
@@ -50,7 +55,9 @@ const active = new Map<string, {
 }>();
 const backgrounds = new Map<string, { controller: AbortController; operation: Promise<void> }>();
 const tools = new Map<string, Tool>();
+const toolTransforms = new Set<() => void>();
 const contextHooks = new Set<(event: ContextEvent) => Promise<void>>();
+const promptHooks = new Set<(event: { sessionID: string }) => Promise<void>>();
 const streams = new Set<ReadableStreamDefaultController<Uint8Array>>();
 const pluginCleanups: Array<() => Promise<void>> = [];
 const plugins: Array<{ id: string; source: { type: string; path: string }; state: { status: string } }> = [];
@@ -71,16 +78,32 @@ for (const entry of config.plugins ?? []) {
   pluginCleanups.push(await plugin.setup({
     tool: {
       async transform(edit) {
-        const registered: string[] = [];
-        edit({ add(tool) { tools.set(tool.name, tool); registered.push(tool.name); } });
-        return { async dispose() { for (const name of registered) tools.delete(name); } };
+        const registered = new Set<string>();
+        const apply = () => {
+          for (const name of registered) tools.delete(name);
+          registered.clear();
+          edit({ add(tool) { tools.set(tool.name, tool); registered.add(tool.name); } });
+        };
+        toolTransforms.add(apply);
+        apply();
+        return { async dispose() {
+          toolTransforms.delete(apply);
+          for (const name of registered) tools.delete(name);
+        } };
       },
+      async reload() { for (const apply of toolTransforms) apply(); },
     },
     session: {
       async hook(name, handler) {
-        if (name !== "context") throw new Error(`Unsupported fixture hook: ${name}`);
-        contextHooks.add(handler);
-        return { async dispose() { contextHooks.delete(handler); } };
+        if (name === "prompt") {
+          promptHooks.add(handler);
+          return { async dispose() { promptHooks.delete(handler); } };
+        }
+        if (name === "context") {
+          contextHooks.add(handler);
+          return { async dispose() { contextHooks.delete(handler); } };
+        }
+        throw new Error(`Unsupported fixture hook: ${name}`);
       },
     },
   }));
@@ -168,7 +191,11 @@ async function execute(session: Session): Promise<void> {
       emit(session, "session.execution.succeeded");
       return;
     }
-    const event: ContextEvent = { sessionID: session.id, tools: Object.fromEntries(tools) };
+    for (const hook of promptHooks) await hook({ sessionID: session.id });
+    const event: ContextEvent = {
+      sessionID: session.id,
+      tools: Object.fromEntries([...tools].map(([name, tool]) => [name, { description: tool.description, input: tool.input }])),
+    };
     for (const hook of contextHooks) await hook(event);
     if (execution.prompt.includes("[voice-end-wait]")) {
       await waitForVoiceEndRelease(session.location.directory, execution.abort.signal);
@@ -182,8 +209,8 @@ async function execute(session: Session): Promise<void> {
     }
     const results: unknown[] = [];
     for (const request of requests) {
-      const tool = event.tools[request.name];
-      if (!tool) throw new Error("Clanky tools unavailable.");
+      const tool = tools.get(request.name);
+      if (!event.tools[request.name] || !tool) throw new Error("Clanky tools unavailable.");
       const id = crypto.randomUUID();
       emit(session, "session.tool.input.started", { id, name: request.name });
       emit(session, "session.tool.called", { id, input: request.input });

@@ -96,18 +96,34 @@ is retained in API/storage contracts, but grants Work access, never administrati
 workspace references as usual. A controller reference does not authorize
 workspace creation or controller-wide connection tests/host discovery.
 
-### Clanky Context and execution credentials
+### Workspace control and execution credentials
 
-Without Clanky Context, deterministic-agent prompt credentials can only call
-`workspace.prompt()` for that execution's chat. They cannot access other chats,
-unrelated APIs or framework account/key-management operations, regardless of
-whether an owner or collaborator starts the agent. The credential expires and
-is revoked when execution finishes.
+Managed native and deterministic executions automatically receive scoped
+application control for their own project. Supported native agents manage
+project chats/tasks with their registered tools; deterministic code uses
+`ctx.clanky.call()`. Neither requires **Allow general Clanky access** or a Quick
+Chat preference. Existing `workspace.prompt()` remains bound to that
+execution's conversation. Credentials expire and are revoked when execution
+finishes; they are not unrestricted CLI/API or browser credentials.
 
-When the owner enables **Clanky Context**, execution contexts intentionally
-receive broader owner API access. Collaborators with Work access may use that
-enabled context; only the owner may change the setting. Do not enable it for
-workspace code or participants you do not trust with that access.
+ACP model processes receive no automatic Clanky credentials, even when general
+access is enabled; ordinary ACP chats/prompts remain supported. A deterministic
+program retains its trusted runner control independently of its prompt adapter
+and does not share the control key with ACP.
+
+When the owner enables **Allow general Clanky access** (the existing Clanky
+Context setting), the execution can additionally control in-scope resources
+across the owner's permitted projects and registered servers. Collaborators
+with Work access may use that enabled execution context; only the owner may
+change the setting. Do not enable it for workspace code or participants you
+do not trust with that broader application access.
+
+Neither level grants account, API-key, session or collaborator administration,
+or permits an agent to approve its own destructive work. General access remains
+subject to current user authority and explicit human confirmation. Reducing
+the grant constrains subsequent operations and pending approvals. See
+[agent control and MCP](deployment.md#agent-control-and-mcp) for external
+integration grants and human interactions.
 
 Agents and their schedules stay on the owning controller. An invited controller
 does not schedule a second copy. Work access permits manual runs and schedule

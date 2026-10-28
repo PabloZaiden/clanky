@@ -1,12 +1,22 @@
 /**
- * Authorized local composition and bounded resolution of spoken references.
+ * Authorized composition and bounded resolution of application references.
  */
 import type { ClankyOperationService } from "./clanky-operation-service";
-import type { LiveVoiceActions, ConfirmationContinuation, ConfirmedWriteExecutor } from "./live-voice-actions";
+import type { ControlActions, ConfirmationContinuation, ConfirmedWriteExecutor } from "./control-actions";
 import { compactResource, isReadRecord, readBytes } from "../client-sdk/collaboration/resource-read";
 import { DomainError } from "../domain/domain-error";
 import { ExecutionHostRefSchema } from "@/contracts/schemas/execution-host";
 import { getExecutionHostSourceId } from "@/shared/execution-host";
+import type { ModelConfig } from "@/contracts/schemas/model";
+import type { ControlClientContext } from "@/shared/control-interactions";
+
+export interface ControlToolOrigin {
+  workspaceId?: string;
+  current: Partial<Record<"chat" | "task" | "workspace", string>>;
+  defaultModel?: ModelConfig;
+  planningPreferences?: ControlClientContext["planningPreferences"];
+  modelPreferences?: ControlClientContext["modelPreferences"];
+}
 
 export function directRecord(value: unknown): Record<string, unknown> {
   if (!isReadRecord(value)) throw new DomainError("voice_operation_response", "The operation returned an invalid object.");
@@ -21,9 +31,10 @@ export function directItems(value: unknown): Record<string, unknown>[] {
   return page["items"];
 }
 
-export class LiveVoiceDirectContext {
+export class ControlToolContext {
   constructor(readonly options: {
-    service: ClankyOperationService; actions: LiveVoiceActions; requestId: string; maxBytes: number;
+    service: ClankyOperationService; actions: ControlActions; requestId: string; maxBytes: number;
+    origin?: ControlToolOrigin;
   }) {}
 
   async execute(input: {
@@ -45,7 +56,7 @@ export class LiveVoiceDirectContext {
     });
   }
 
-  async read(input: Parameters<LiveVoiceDirectContext["execute"]>[0]): Promise<unknown> {
+  async read(input: Parameters<ControlToolContext["execute"]>[0]): Promise<unknown> {
     const result = directRecord(await this.execute(input));
     if (result["ok"] !== true) {
       throw new DomainError("voice_direct_read_failed", "Required authorized data could not be read.", {
@@ -102,6 +113,10 @@ export class LiveVoiceDirectContext {
     return outcome.context;
   }
 
+  async creationPreferences(): Promise<Pick<ControlClientContext, "planningPreferences" | "modelPreferences">> {
+    return this.options.origin ?? await this.uiContext();
+  }
+
   async resolve(kind: "chat" | "task" | "workspace" | "server", target: string, workspace: string | null = null): Promise<Record<string, unknown>> {
     const paths = { chat: "chats", task: "tasks", workspace: "workspaces", server: "ssh-servers" } as const;
     if (target === "current") {
@@ -112,8 +127,9 @@ export class LiveVoiceDirectContext {
         }
         target = ref.serverId;
       } else {
-        const context = await this.uiContext();
-        const id = context.route[`${kind}Id`];
+        const id = this.options.origin
+          ? this.options.origin.current[kind]
+          : (await this.uiContext()).route[`${kind}Id`];
         if (!id) throw new DomainError("voice_target_not_found", "The originating client has no selected target of that kind.");
         target = id;
       }

@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ConfirmModal, ErrorState, useToast, type WebAppRootController } from "@pablozaiden/webapp/web";
 import type { ControlUiActionEvent, ControlUiActionOutcome } from "@/shared/clanky-control";
-import type { VoiceConfirmation } from "@/shared/live-voice";
+import type { ControlConfirmation } from "@/shared/control-interactions";
 import type { UseLiveVoiceResult } from "../../hooks/useLiveVoice";
 import { apiRequest } from "../../lib/api-client";
 import { getClankyClientId } from "../../lib/clanky-client-id";
@@ -17,7 +17,7 @@ export function useVoiceClientActions(options: {
   rootRef: React.RefObject<WebAppRootController | null>;
 }) {
   const toast = useToast();
-  const [confirmation, setConfirmation] = useState<{ callId: string; value: VoiceConfirmation; shown: () => void } | null>(null);
+  const [confirmation, setConfirmation] = useState<{ callId: string; value: ControlConfirmation; shown: () => void } | null>(null);
   const [credential, setCredential] = useState<{ callId: string; requestId: string; serverId: string; serverName: string; expiresAt: number } | null>(null);
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -65,6 +65,9 @@ export function useVoiceClientActions(options: {
       return { status: "opened", action };
     }
     if (!["get_context", "confirm_operation", "request_ssh_credential"].includes(action.type)) return null;
+    if (action.type === "get_context" && event.source.kind === "chat_turn") {
+      return { status: "context", context: options.voice.getContext() };
+    }
     if (event.source.kind !== "live_voice" || event.source.callId !== options.voice.callId) {
       return { status: "failed", code: "navigation_failed", message: "The originating Live call is no longer active." };
     }

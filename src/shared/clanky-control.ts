@@ -5,7 +5,7 @@
 import { z } from "zod";
 import type { Chat } from "./chat";
 import type { HarnessCapabilities } from "./harness-control";
-import { LiveVoiceUiContextSchema, VoiceClientActionSchema } from "./live-voice";
+import { ControlClientContextSchema, ControlClientActionSchema } from "./control-interactions";
 
 export const ClankyControlContextSchema = z.object({
   chatId: z.string().min(1).max(500),
@@ -23,13 +23,10 @@ export type ClankyControlContext = z.infer<typeof ClankyControlContextSchema>;
 
 export function isClankyControlChat(
   chat: Pick<Chat, "config">,
-  workspaceId: string | undefined,
   adapter: HarnessCapabilities["adapter"] | undefined,
 ): boolean {
-  return Boolean(workspaceId)
-    && chat.config.scope === "workspace"
-    && chat.config.source?.kind !== "execution_host"
-    && (chat.config.source?.workspaceId ?? chat.config.workspaceId) === workspaceId
+  return chat.config.source?.kind !== "execution_host"
+    && Boolean(chat.config.source?.workspaceId ?? chat.config.workspaceId)
     && (adapter === "codex" || adapter === "copilot" || adapter === "opencode2");
 }
 
@@ -65,7 +62,7 @@ export const ControlNavigationActionSchema = z.discriminatedUnion("type", [
   }).strict(),
 ]);
 
-export const ControlUiActionSchema = z.union([ControlNavigationActionSchema, VoiceClientActionSchema]);
+export const ControlUiActionSchema = z.union([ControlNavigationActionSchema, ControlClientActionSchema]);
 export type ControlUiAction = z.infer<typeof ControlUiActionSchema>;
 
 export const ControlUiSourceSchema = z.discriminatedUnion("kind", [
@@ -89,7 +86,7 @@ export const ControlUiActionOutcomeSchema = z.discriminatedUnion("status", [
     action: ControlUiActionSchema,
   }).strict(),
   z.object({ status: z.literal("presented") }).strict(),
-  z.object({ status: z.literal("context"), context: LiveVoiceUiContextSchema }).strict(),
+  z.object({ status: z.literal("context"), context: ControlClientContextSchema }).strict(),
   z.object({
     status: z.literal("failed"),
     code: z.enum([

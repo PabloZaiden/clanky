@@ -3,17 +3,17 @@
  */
 
 import { z } from "zod";
-import { ExecuteOperationSchema, type ClankyOperationService } from "./clanky-operation-service";
-import { LiveVoiceIntentionSchema, VoiceConfirmationDescriptionSchema } from "@/shared/live-voice";
-import type { LiveVoiceActions } from "./live-voice-actions";
+import type { ClankyOperationService } from "./clanky-operation-service";
+import { LiveVoiceIntentionSchema } from "@/shared/live-voice";
+import type { ControlActions } from "./control-actions";
 import type { LiveVoiceObserver } from "./live-voice-observer";
 import { isDomainError } from "../domain/domain-error";
 import { createLogger } from "@pablozaiden/webapp/server";
-import { contentReadPage, readBytes, readRevision } from "../client-sdk/collaboration/resource-read";
 import { LIVE_READ_BYTES } from "./live-voice-output";
-import { liveVoiceDirectSchemas, liveVoiceDirectDescriptions } from "./live-voice-direct-contracts";
-import { LiveVoiceDirectContext } from "./live-voice-direct-context";
-import { directUiAction, executeDirectLiveVoiceTool, isDirectToolName, LiveVoiceNavigationActionSchema } from "./live-voice-direct-tools";
+import { controlToolSchemas, controlToolDescriptions, isControlToolName } from "./control-tool-contracts";
+import { executeControlTool } from "./control-tools";
+import { ControlToolContext } from "./control-tool-context";
+import { controlUiToolSchemas, controlUiToolDescriptions, isControlUiToolName, executeControlUiTool } from "./control-ui-tools";
 
 const log = createLogger("core:voice-tools");
 export const LIVE_VOICE_SESSION_END_REQUEST = "voice_session_end_requested";
@@ -22,26 +22,8 @@ export const LIVE_VOICE_GOODBYE_GUIDANCE =
 export const LIVE_VOICE_GOODBYE_TOOL_GUIDANCE =
   "Call this tool alone after a clear goodbye (such as 'chau', 'chao', 'adiós' or 'hasta luego') or direct request to finish. Do not use it for an opening greeting or pause. After calling it, do not call another tool or produce additional speech.";
 const schemas = {
-  ...liveVoiceDirectSchemas,
-  clanky_find_operations: z.object({
-    text: z.string().max(500),
-    domain: z.string().max(100).nullable(),
-    method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]).nullable(),
-    cursor: z.number().int().nonnegative().max(10_000).nullable(),
-  }).strict(),
-  clanky_describe_operation: z.object({
-    operationId: z.string().min(1).max(500),
-    section: z.enum(["overview", "query", "body"]).nullable().default(null),
-    cursor: z.string().max(4096).nullable().default(null),
-  }).strict(),
-  clanky_execute_operation: ExecuteOperationSchema.extend({
-    confirmationDescription: VoiceConfirmationDescriptionSchema.nullable(),
-  }),
-  clanky_get_ui_state: z.object({
-    section: z.enum(["route", "preferences"]).nullable().default(null),
-    cursor: z.string().max(4096).nullable().default(null),
-  }).strict(),
-  clanky_ui_action: z.object({ action: LiveVoiceNavigationActionSchema }).strict(),
+  ...controlToolSchemas,
+  ...controlUiToolSchemas,
   clanky_watch_work: z.object({
     command: z.enum(["add", "remove", "list"]),
     targets: z.array(z.object({
@@ -53,12 +35,8 @@ const schemas = {
 };
 
 const descriptions: Record<keyof typeof schemas, string> = {
-  ...liveVoiceDirectDescriptions,
-  clanky_find_operations: "Fallback only for intents not covered by a direct tool. Find authorized Clanky operations by words/domain/method. Empty text lists a page.",
-  clanky_describe_operation: "Read the exact contract and risk/completion policy. Start with section/cursor null; if contractSections are returned, read query/body separately. Content parts identify JSON paths; continue with nextCursor until null to obtain the complete schema.",
-  clanky_execute_operation: "Execute a described API operation with exact parameters/query and bodyJson (null without a body). Reads automatically select compact pages or literal conversation history. Follow nextCursor with the same read operation, filters and public body to read more; section=details and item read a row's original content. Content parts contain JSON paths and string offsets, not a generated summary. For policy confirm, supply confirmationDescription: one or two short plain-text sentences in the user's language describing the exact action, named target and material consequences. No API paths, technical identifiers, JSON or credentials. Use null for other policies. Mutations are never retried automatically. High-risk actions prepare a visual confirmation, not execution.",
-  clanky_get_ui_state: "Read fresh acknowledged originating-client context, not authoritative entity state. Start with section/cursor null; use route/preferences sections and nextCursor if the snapshot is large. Preferences include saved planning booleans and canonical model JSON.",
-  clanky_ui_action: "Navigate or control the originating client's sidebar. open_named resolves an exact chat/task/workspace/server/host name or ID directly, with optional workspace. Other actions use known canonical IDs. Returns success only after that tab acknowledges the effect. Never supplies confirmation approval.",
+  ...controlToolDescriptions,
+  ...controlUiToolDescriptions,
   clanky_watch_work: "Watch selected owned chats/tasks/provisioning jobs for meaningful state changes. Ending voice stops watching, not the work.",
   clanky_accept_goodbye: LIVE_VOICE_GOODBYE_TOOL_GUIDANCE,
 };
@@ -86,7 +64,7 @@ export const liveVoiceToolDefinitions = Object.entries(schemas).map(([name, sche
 
 export async function executeLiveVoiceTool(options: {
   service: ClankyOperationService;
-  actions: LiveVoiceActions;
+  actions: ControlActions;
   observer: LiveVoiceObserver;
   requestId: string;
   name: string;
@@ -105,41 +83,12 @@ export async function executeLiveVoiceTool(options: {
     }
     const { actions, service, requestId, observer } = options;
     const maxBytes = options.maxReadBytes ?? LIVE_READ_BYTES;
-    const direct = new LiveVoiceDirectContext({ actions, service, requestId, maxBytes });
-    if (isDirectToolName(options.name)) return await executeDirectLiveVoiceTool(direct, options.name, args);
+    const direct = new ControlToolContext({ actions, service, requestId, maxBytes });
+    if (isControlToolName(options.name)) return await executeControlTool({
+      service, actions, requestId, name: options.name, input: args, maxReadBytes: maxBytes,
+    });
+    if (isControlUiToolName(options.name)) return await executeControlUiTool(direct, options.name, args);
     switch (options.name) {
-      case "clanky_find_operations":
-        return service.find(actions.authority, schemas.clanky_find_operations.parse(args), maxBytes);
-      case "clanky_describe_operation": {
-        const { operationId, section, cursor } = schemas.clanky_describe_operation.parse(args);
-        return service.describe(actions.authority, operationId, {
-          maxBytes,
-          ...(section ? { section } : {}), ...(cursor ? { cursor } : {}),
-        });
-      }
-      case "clanky_execute_operation": {
-        const { confirmationDescription, ...input } = schemas.clanky_execute_operation.parse(args);
-        return await actions.execute(input, { requestId, confirmationDescription, maxBytes });
-      }
-      case "clanky_get_ui_state": {
-        const { section, cursor } = schemas.clanky_get_ui_state.parse(args);
-        const outcome = await actions.getUiState(requestId);
-        if (outcome.status !== "context") return outcome;
-        if (!section && !cursor && readBytes(outcome) <= maxBytes) return outcome;
-        if (!section) {
-          return { status: "context", revision: outcome.context.revision, sections: ["route", "preferences"] };
-        }
-        const source = section === "route" ? outcome.context.route : {
-          planningPreferences: outcome.context.planningPreferences ?? null,
-          modelPreferences: outcome.context.modelPreferences ?? null,
-        };
-        return contentReadPage({
-          source, options: { ...(cursor ? { cursor } : {}), maxBytes },
-          scope: readRevision(["originating_ui", section]),
-        });
-      }
-      case "clanky_ui_action":
-        return await directUiAction(direct, schemas.clanky_ui_action.parse(args).action);
       case "clanky_watch_work":
         return await observer.change(schemas.clanky_watch_work.parse(args));
       case "clanky_accept_goodbye":
@@ -157,7 +106,7 @@ export async function executeLiveVoiceTool(options: {
       log.warn("Voice tool rejected", { tool: options.name, code: error.code });
       return {
         ok: false, code: error.code, message: error.message, completion: "not_executed",
-        ...(isDirectToolName(options.name) || options.name === "clanky_ui_action" ? { details: error.details } : {}),
+        ...(options.name === "clanky_ui_action" ? { details: error.details } : {}),
       };
     }
     throw error;

@@ -13,8 +13,10 @@ import {
   type RouteCatalogEntry,
 } from "@pablozaiden/webapp/server";
 import { DomainError } from "../domain/domain-error";
-import { contentReadPage, readBytes, readRevision } from "../client-sdk/collaboration/resource-read";
-import { LIVE_READ_BYTES } from "./live-voice-output";
+import { contentReadPage, readBytes, readRevision, DEFAULT_READ_BYTES } from "../client-sdk/collaboration/resource-read";
+import type { ExecuteOperationInput } from "@/contracts/schemas/control";
+
+export const CONTROL_READ_BYTES = DEFAULT_READ_BYTES;
 
 export interface OperationRequest {
   method: HttpMethod;
@@ -35,19 +37,12 @@ export interface OperationResult {
 }
 
 export interface OperationAuthority {
-  allows: (entry: RouteCatalogEntry) => boolean;
+  allows: (entry: RouteCatalogEntry, method: HttpMethod) => boolean;
   request: (request: OperationRequest) => Promise<Omit<OperationResult, "operationId" | "completion">>;
   refresh: (next: OperationAuthority) => void;
   release: () => void;
+  validate?: (operation: PreparedOperation, signal: AbortSignal) => Promise<void>;
 }
-
-export const ExecuteOperationSchema = z.object({
-  operationId: z.string().min(1).max(500),
-  parameters: z.array(z.object({ name: z.string().min(1).max(100), value: z.string().max(16_384) }).strict()).max(16),
-  query: z.array(z.object({ name: z.string().min(1).max(100), value: z.string().max(16_384) }).strict()).max(32),
-  bodyJson: z.string().max(40_000).nullable(),
-}).strict();
-export type ExecuteOperationInput = z.infer<typeof ExecuteOperationSchema>;
 
 type OperationMetadata = ReturnType<typeof resolveRouteOperation>;
 export interface PreparedOperation {
@@ -135,7 +130,7 @@ export class ClankyOperationService {
 
   private requireOperation(id: string, authority: OperationAuthority) {
     const operation = this.operations.get(id);
-    if (!operation || !authority.allows(operation.entry)) {
+    if (!operation || !authority.allows(operation.entry, operation.method)) {
       throw new DomainError("voice_operation_unavailable", "The operation is unavailable to this call.");
     }
     const metadata = resolveRouteOperation(operation.entry, operation.method);
@@ -145,12 +140,12 @@ export class ClankyOperationService {
     return { ...operation, metadata };
   }
 
-  find(authority: OperationAuthority, input: { text: string; domain: string | null; method: HttpMethod | null; cursor: number | null }, maxBytes = LIVE_READ_BYTES) {
+  find(authority: OperationAuthority, input: { text: string; domain: string | null; method: HttpMethod | null; cursor: number | null }, maxBytes = CONTROL_READ_BYTES) {
     const words = input.text.toLowerCase().split(/\s+/).filter(Boolean);
     const entries = [...this.operations].flatMap(([id, { entry, method }]) => {
       const metadata = resolveRouteOperation(entry, method);
       const policy = metadata.automation?.policy;
-      if (!policy || policy === "excluded" || !authority.allows(entry)
+      if (!policy || policy === "excluded" || !authority.allows(entry, method)
         || input.method && method !== input.method
         || input.domain && ![entry.path, ...entry.tags].some((value) => value.includes(input.domain!))) return [];
       const description = metadata.description ?? `${method} ${entry.path}`;
@@ -193,7 +188,7 @@ export class ClankyOperationService {
     };
     const source = (options.section === "query" ? description.querySchema
       : options.section === "body" ? description.requestSchema : description) ?? null;
-    const maxBytes = options.maxBytes ?? LIVE_READ_BYTES;
+    const maxBytes = options.maxBytes ?? CONTROL_READ_BYTES;
     if (!options.cursor && readBytes(source) <= maxBytes) return source;
     if (!options.section || options.section === "overview") {
       return {
@@ -239,7 +234,7 @@ export class ClankyOperationService {
       const viewSchema = querySchema.shape["view"];
       query["view"] ??= viewSchema instanceof z.ZodType && viewSchema.safeParse("conversation").success
         ? "conversation" : "compact";
-      const maxBytes = options.maxBytes ?? LIVE_READ_BYTES;
+      const maxBytes = options.maxBytes ?? CONTROL_READ_BYTES;
       query["maxBytes"] = String(Math.min(Number(query["maxBytes"] ?? maxBytes), maxBytes));
     }
     if (!querySchema && Object.keys(query).length) throw new DomainError("voice_operation_invalid", "This operation has no query inputs.");
@@ -280,7 +275,7 @@ export class ClankyOperationService {
       && compileRoutePatterns(entry.path, entry.cliPath).api.captures.length > 0
       && resolveRouteOperation(entry, "GET").automation?.policy === "read"
       && (executableSchema(resolveRouteOperation(entry, "GET").querySchema)?.safeParse({}).success ?? true)
-      && authority.allows(entry)).sort((left, right) => right.path.length - left.path.length)[0];
+      && authority.allows(entry, "GET")).sort((left, right) => right.path.length - left.path.length)[0];
     if (!target) return null;
     const names = compileRoutePatterns(target.path, target.cliPath).api.captures.map(({ name }) => name);
     const read = this.prepare(authority, {
@@ -295,7 +290,7 @@ export class ClankyOperationService {
 
   async execute(authority: OperationAuthority, prepared: PreparedOperation, options: {
     signal: AbortSignal;
-    clientId: string;
+    clientId?: string;
     credentialToken?: string | null;
     credentialTokens?: Readonly<Record<string, string>>;
     unavailableServerIds?: readonly string[];

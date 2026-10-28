@@ -14,7 +14,7 @@ import { sshServerManager } from "./ssh-server-manager";
 import { getChatExecutionHostBinding } from "./chat-history-export-service";
 import { DomainError } from "../domain/domain-error";
 
-export async function resolveVoiceCredentialTargets(operation: PreparedOperation): Promise<{
+export async function resolveControlCredentialTargets(operation: PreparedOperation): Promise<{
   serverIds: string[];
   revision: string;
 }> {

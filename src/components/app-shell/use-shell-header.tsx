@@ -283,6 +283,10 @@ export function useShellHeader({
     switch (route.view) {
       case "home":
         return { title: "Clanky" };
+      case "control-request":
+        return { title: "Control request" };
+      case "control-consent":
+        return { title: "Authorize integration" };
       case "task":
         if (taskId && !selectedTask && !tasksLoading) {
           return { title: "Task not found" };
