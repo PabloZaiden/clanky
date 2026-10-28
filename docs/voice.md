@@ -23,6 +23,13 @@ unsaved changes and failed saves retain the draft.
 Blank key fields preserve saved keys. Use the explicit remove-key checkbox and
 Save to clear a key. Provider and independent Live keys are cleared separately.
 
+Provider URLs must use HTTPS and may point to public services, `localhost`,
+or private-network addresses, including independent Live endpoints. Connections
+originate from the Clanky server: `localhost` refers to that server, not the
+phone or browser. The server must trust the provider's TLS certificate.
+Each signed-in user can configure their own endpoints; deployments must account
+for those users being able to connect to services reachable from the server.
+
 Assistant response blocks in chat, task, and agent-run transcripts can be
 translated to English or Spanish. Translation sends the selected block's text
 to the configured, validated shared text-generation model. Clanky returns the

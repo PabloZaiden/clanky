@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
-import logoSvgPath from "../../favicon.svg" with { type: "file" };
+import logoPath from "../../web-app-manifest-192x192.png" with { type: "file" };
 import {
   useToast,
   routeToHash,
@@ -528,7 +528,7 @@ export function AppShell() {
         <WebAppRoot
           ref={webAppRootRef}
           appName="Clanky"
-          appIcon={logoSvgPath}
+          appIcon={logoPath}
           homeRoute={HOME_ROUTE}
           sidebar={sidebarComposition.sidebar}
           mainOverlay={<>

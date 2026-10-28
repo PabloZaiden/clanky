@@ -1,14 +1,10 @@
 /**
- * Local HTTPS OpenAI-compatible boundary reachable through a public IP alias.
+ * Local HTTPS OpenAI-compatible boundary.
  */
 
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import {
-  currentEnvironment,
-  findFreeLoopbackPort,
-  requireCommand,
-} from "./process";
+import { currentEnvironment, requireCommand } from "./process";
 import { liveFixtureWebSocket, type LiveFixture } from "./live-voice-provider";
 
 export interface ManagedVoiceProvider {
@@ -16,7 +12,6 @@ export interface ManagedVoiceProvider {
   baseUrl: string;
   certificatePath: string;
   server: Bun.Server<LiveFixture>;
-  address: string;
   diagnostics(): string;
 }
 
@@ -66,17 +61,6 @@ function isBrowserLiveOffer(sdp: unknown): sdp is string {
     && !/^00(?::00){31}$/u.test(fingerprint);
 }
 
-function privileged(command: readonly string[]): string[] {
-  return process.getuid?.() === 0
-    ? [...command]
-    : ["sudo", "-n", ...command];
-}
-
-function randomPublicAddress(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(3));
-  return `11.${String(bytes[0] || 1)}.${String(bytes[1] || 1)}.${String(bytes[2] || 1)}`;
-}
-
 function getResponsesInputText(payload: unknown): string {
   if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
     return "";
@@ -100,10 +84,9 @@ export async function startVoiceProvider(
   const directory = join(runDirectory, "voice-provider");
   const keyPath = join(directory, "tls.key");
   const certificatePath = join(directory, "tls.crt");
-  const address = randomPublicAddress();
+  const address = "127.0.0.1";
   const apiKey = "voice-e2e-secret";
   const authorization = ["Bearer", apiKey].join(" ");
-  const port = await findFreeLoopbackPort();
   await mkdir(directory, { recursive: true, mode: 0o700 });
   await requireCommand([
     "openssl",
@@ -118,7 +101,7 @@ export async function startVoiceProvider(
     "-subj",
     `/CN=${address}`,
     "-addext",
-    `subjectAltName=IP:${address}`,
+    `subjectAltName=IP:${address},DNS:localhost`,
     "-addext",
     "basicConstraints=critical,CA:TRUE",
     "-keyout",
@@ -129,115 +112,96 @@ export async function startVoiceProvider(
     cwd: directory,
     env: currentEnvironment(),
   });
-  await requireCommand(
-    privileged(["ip", "address", "add", `${address}/32`, "dev", "lo"]),
-    { cwd: directory },
-  );
-
-  let server: Bun.Server<LiveFixture> | undefined;
   const sessions = new Map<string, LiveFixture>();
-  try {
-    server = Bun.serve<LiveFixture>({
-      hostname: address,
-      port,
-      tls: {
-        key: Bun.file(keyPath),
-        cert: Bun.file(certificatePath),
-      },
-      websocket: liveFixtureWebSocket,
-      async fetch(request, server) {
-        const url = new URL(request.url);
-        if (
-          request.headers.get("authorization") !== authorization
-          || request.headers.get("api-key") !== apiKey
-        ) {
-          return Response.json({ error: "unauthorized" }, { status: 401 });
+  const server = Bun.serve<LiveFixture>({
+    hostname: address,
+    port: 0,
+    tls: {
+      key: Bun.file(keyPath),
+      cert: Bun.file(certificatePath),
+    },
+    websocket: liveFixtureWebSocket,
+    async fetch(request, server) {
+      const url = new URL(request.url);
+      if (
+        request.headers.get("authorization") !== authorization
+        || request.headers.get("api-key") !== apiKey
+      ) {
+        return Response.json({ error: "unauthorized" }, { status: 401 });
+      }
+      if (url.pathname === "/v1/audio/transcriptions" && request.method === "POST") {
+        return Response.json({ text: "transcribed by the external voice fixture" });
+      }
+      const path = url.pathname.replace(/^\/openai/, "");
+      if (path === "/v1/live/sessions" && request.method === "POST") {
+        const body = await request.json();
+        if (body.session?.model !== "gpt-live-1" || body.session?.delegation?.type !== "responses"
+          || typeof body.session.delegation.responses.model !== "string"
+          || body.session.delegation.responses.reasoning?.effort !== "none"
+          || body.transport?.type !== "webrtc" || !body.session.delegation.responses.tools?.length) {
+          return Response.json({ error: "invalid_live_configuration" }, { status: 400 });
         }
-        if (url.pathname === "/v1/audio/transcriptions" && request.method === "POST") {
-          return Response.json({ text: "transcribed by the external voice fixture" });
+        const offer = body.transport.sdp;
+        if (!isBrowserLiveOffer(offer)) {
+          return Response.json({ error: "invalid_webrtc_offer" }, { status: 400 });
         }
-        const path = url.pathname.replace(/^\/openai/, "");
-        if (path === "/v1/live/sessions" && request.method === "POST") {
-          const body = await request.json();
-          if (body.session?.model !== "gpt-live-1" || body.session?.delegation?.type !== "responses"
-            || typeof body.session.delegation.responses.model !== "string"
-            || body.session.delegation.responses.reasoning?.effort !== "none"
-            || body.transport?.type !== "webrtc" || !body.session.delegation.responses.tools?.length) {
-            return Response.json({ error: "invalid_live_configuration" }, { status: 400 });
-          }
-          const offer = body.transport.sdp;
-          if (!isBrowserLiveOffer(offer)) {
-            return Response.json({ error: "invalid_webrtc_offer" }, { status: 400 });
-          }
-          const id = crypto.randomUUID();
-          const resume = offer.includes("global-resume");
-          const session: LiveFixture = {
-            id, stage: 0, global: offer.includes("global-product") || offer.includes("global-resume"),
-            resume, history: body.session.input,
-            started: false, notices: [],
-          };
-          sessions.set(id, session);
-          return Response.json({ session: { id }, transport: { type: "webrtc", sdp: "v=0\r\ns=external-live-provider\r\n" } }, { status: 201 });
+        const id = crypto.randomUUID();
+        const resume = offer.includes("global-resume");
+        const session: LiveFixture = {
+          id, stage: 0, global: offer.includes("global-product") || offer.includes("global-resume"),
+          resume, history: body.session.input,
+          started: false, notices: [],
+        };
+        sessions.set(id, session);
+        return Response.json({ session: { id }, transport: { type: "webrtc", sdp: "v=0\r\ns=external-live-provider\r\n" } }, { status: 201 });
+      }
+      const attach = /^\/v1\/live\/sessions\/([^/]+)\/attach$/.exec(path);
+      if (attach) {
+        const session = sessions.get(attach[1]!);
+        if (!session) return new Response("Unknown session", { status: 404 });
+        return server.upgrade(request, { data: session }) ? undefined : new Response("Expected websocket", { status: 400 });
+      }
+      if (path === "/v1/responses" && request.method === "POST") {
+        const payload: unknown = await request.json();
+        if (!payload || typeof payload !== "object" || !("reasoning" in payload)
+          || !payload.reasoning || typeof payload.reasoning !== "object"
+          || !("effort" in payload.reasoning) || payload.reasoning.effort !== "none") {
+          return Response.json({ error: "unsupported_reasoning_effort" }, { status: 400 });
         }
-        const attach = /^\/v1\/live\/sessions\/([^/]+)\/attach$/.exec(path);
-        if (attach) {
-          const session = sessions.get(attach[1]!);
-          if (!session) return new Response("Unknown session", { status: 404 });
-          return server.upgrade(request, { data: session }) ? undefined : new Response("Expected websocket", { status: 400 });
-        }
-        if (path === "/v1/responses" && request.method === "POST") {
-          const payload: unknown = await request.json();
-          if (!payload || typeof payload !== "object" || !("reasoning" in payload)
-            || !payload.reasoning || typeof payload.reasoning !== "object"
-            || !("effort" in payload.reasoning) || payload.reasoning.effort !== "none") {
-            return Response.json({ error: "unsupported_reasoning_effort" }, { status: 400 });
-          }
-          const prompt = getResponsesInputText(payload);
-          const responseText = prompt.includes("Target language: English.")
-            ? "The server restarted."
-            : prompt.includes("Target language: Spanish.")
-              ? "El servidor se reinició."
-              : "OK";
-          return Response.json({
-            status: "completed",
-            output: [{
-              type: "message",
-              role: "assistant",
-              content: [{
-                type: "output_text",
-                text: responseText,
-              }],
+        const prompt = getResponsesInputText(payload);
+        const responseText = prompt.includes("Target language: English.")
+          ? "The server restarted."
+          : prompt.includes("Target language: Spanish.")
+            ? "El servidor se reinició."
+            : "OK";
+        return Response.json({
+          status: "completed",
+          output: [{
+            type: "message",
+            role: "assistant",
+            content: [{
+              type: "output_text",
+              text: responseText,
             }],
-          });
-        }
-        return Response.json({ error: "not_found" }, { status: 404 });
-      },
-    });
-    return {
-      address,
-      apiKey,
-      baseUrl: `https://${address}:${String(port)}/v1`,
-      certificatePath,
-      server,
-      diagnostics: () => JSON.stringify([...sessions.values()].map((session) => ({
-        stage: session.stage, current: session.current, diagnostic: session.diagnostic,
-      }))),
-    };
-  } catch (error) {
-    await requireCommand(
-      privileged(["ip", "address", "del", `${address}/32`, "dev", "lo"]),
-      { cwd: directory },
-    );
-    throw error;
-  }
+          }],
+        });
+      }
+      return Response.json({ error: "not_found" }, { status: 404 });
+    },
+  });
+  return {
+    apiKey,
+    baseUrl: `https://${address}:${String(server.port)}/v1`,
+    certificatePath,
+    server,
+    diagnostics: () => JSON.stringify([...sessions.values()].map((session) => ({
+      stage: session.stage, current: session.current, diagnostic: session.diagnostic,
+    }))),
+  };
 }
 
 export async function stopVoiceProvider(
   provider: ManagedVoiceProvider,
 ): Promise<void> {
   await provider.server.stop(true);
-  await requireCommand(
-    privileged(["ip", "address", "del", `${provider.address}/32`, "dev", "lo"]),
-    { cwd: "/" },
-  );
 }

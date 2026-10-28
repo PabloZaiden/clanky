@@ -34,6 +34,7 @@ function VoiceActionButton({
 }
 
 export function VoiceListeningPanel({
+  className = "",
   status,
   elapsedMs,
   error,
@@ -43,6 +44,7 @@ export function VoiceListeningPanel({
   onRetry,
   onDismissError,
 }: {
+  className?: string;
   status: VoiceRecorderStatus;
   elapsedMs: number;
   error: string | null;
@@ -96,7 +98,7 @@ export function VoiceListeningPanel({
       aria-busy={pending || undefined}
       tabIndex={-1}
       onKeyDown={handleKeyDown}
-      className="border-t border-[var(--wapp-border-soft)] bg-[var(--wapp-surface)] px-3 py-2.5 text-[var(--wapp-text)] shadow-[var(--wapp-shadow)] sm:px-4"
+      className={`border-t border-[var(--wapp-border-soft)] bg-[var(--wapp-surface)] px-3 py-2.5 text-[var(--wapp-text)] shadow-[var(--wapp-shadow)] sm:px-4 ${className}`}
     >
       <div className="mx-auto flex w-full max-w-7xl items-center gap-3">
         <div

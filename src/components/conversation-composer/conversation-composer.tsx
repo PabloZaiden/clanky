@@ -96,10 +96,11 @@ export function ConversationComposer(props: ConversationComposerProps) {
     <div
       hidden={hideForQuestionAnswer}
       aria-hidden={hideForQuestionAnswer || undefined}
-      className={`${isKeyboardVisible ? "" : "safe-area-bottom"} clanky-conversation-composer-surface`}
+      className="clanky-conversation-composer-surface"
     >
       {showVoicePanel && voice ? (
         <VoiceListeningPanel
+          className={isKeyboardVisible ? "" : "pb-[max(var(--wapp-safe-area-bottom),0.625rem)]"}
           status={voice.status}
           elapsedMs={voice.elapsedMs}
           error={voice.error}
@@ -116,7 +117,7 @@ export function ConversationComposer(props: ConversationComposerProps) {
             void handleSubmit(event);
           }}
         >
-          <div className="p-3">
+          <div className={`p-3 ${isKeyboardVisible ? "" : "pb-[max(var(--wapp-safe-area-bottom),0.75rem)]"}`}>
             {modelEnabled && (
               <label htmlFor={modelSelectId} className="sr-only">Model</label>
             )}

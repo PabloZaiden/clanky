@@ -31,6 +31,10 @@ Devbox workspace scenarios require `flock` (util-linux on Linux,
 `brew install flock` on macOS); Devbox is not supported on Windows.
 Install prerequisites before running the relevant journey.
 
+The voice-provider fixture requires OpenSSL and listens on an ephemeral HTTPS
+loopback port. Its certificate is trusted only by the isolated Clanky process;
+it needs no network aliases or elevated privileges.
+
 ## Decide whether a scenario belongs
 
 Add or materially change E2E only for a considerable change to an observable
