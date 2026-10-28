@@ -79,6 +79,9 @@ private struct BrowserSession: View {
         .onAppear {
             if browser.webView.url == nil { browser.home() }
         }
+        .sheet(item: $browser.popup) { popup in
+            PopupContent(webView: popup.webView)
+        }
         .alert("Clanky", isPresented: Binding(
             get: { browser.error != nil },
             set: { if !$0 { browser.error = nil } }

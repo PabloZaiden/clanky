@@ -10,11 +10,11 @@ final class LocalController: ObservableObject {
     @Published private(set) var running = false
     @Published private(set) var busy = false
     @Published var error: String?
-    private var process: Process?
+    @Published private var process: Process?
     private var output: FileHandle?
     private var logURL: URL?
     private var stopRequested = false
-    var hasProcess: Bool { process?.isRunning == true }
+    var hasProcess: Bool { process != nil }
 
     func start() async {
         guard process == nil, !busy else { return }
@@ -108,6 +108,7 @@ final class LocalController: ObservableObject {
         defer { busy = false }
         if child.isRunning {
             stopRequested = true
+            running = false
             child.terminate()
         }
         let deadline = Date().addingTimeInterval(10)
@@ -177,10 +178,11 @@ struct ControllerCommands: Commands {
     var body: some Commands {
         CommandMenu("Local Controller") {
             Group {
-                if controller.running {
+                if controller.hasProcess {
                     Button("Connect to Local Controller") {
                         if let browser { connect(browser) }
                     }
+                    .disabled(!controller.running)
                     Button("Stop Local Controller") { Task { await controller.stop() } }
                 } else {
                     Button("Start Local Controller") {

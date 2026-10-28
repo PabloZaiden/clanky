@@ -93,6 +93,10 @@ to it after its health check succeeds. **Connect to Local Controller** connects
 the active window to the running controller. Commands require an active Clanky window and are disabled
 while the controller starts or stops. It is optional and never starts just
 because the app opens.
+An owned process that failed its startup health check still offers **Stop Local
+Controller**, including after an interrupted or timed-out shutdown. **Connect**
+is available only after a successful health check, and is disabled once shutdown
+starts.
 All windows share this one app-owned controller. Its executable is
 `Clanky.app/Contents/Helpers/clanky`, separate from the native app executable.
 It can also be used as the regular Clanky CLI from Terminal.
@@ -231,6 +235,14 @@ identity may lose sessions and pairings.
 
 External top-level links open in the system browser. File selection uses WebKit's
 native picker; downloads use the Mac save panel or iPhone/iPad export sheet.
+API resource downloads use the framework's explicit native-save handoff after
+the existing selected-server validation and ticket acquisition. The native host
+checks the calling bundled document and allows HTTPS destinations or loopback
+HTTP without receiving API bearer credentials. Acceptance starts WebKit's
+download flow; it does not mean that a file has already been saved.
+Content popups such as **Open image in a new tab** appear in a closable in-app
+sheet. Authorization popups still hand their external URL to the system browser
+and dismiss the temporary sheet.
 The invited client's **Ready to export** still means browser storage, not a
 confirmed save to Files/Downloads. Platform storage/export limits still apply.
 

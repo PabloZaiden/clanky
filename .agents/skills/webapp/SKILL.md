@@ -52,6 +52,13 @@ zoom and unavailable/stale geometry. Ordinary sidebar opening focuses its panel;
 only an explicit search request should focus Search.
 Combine a composer's normal bottom spacing with the system inset using `max`,
 not additive nested padding.
+API downloads use the optional framework `webappNativeResourceSaver` handoff
+after selected-server/ticket validation, not a document click listener (the
+framework's download anchor may be detached). Keep caller/destination validation
+and actual save/export in the host, without native authentication. Content
+popups must be visible and closable; external authorization stays in the system
+browser. Validate bridge payloads before Foundation JSON serialization, which
+can raise an uncaught Objective-C exception for scalar roots.
 
 The current documentation is maintained in the `pablozaiden/webapp` repository
 at its root, not relative to this skill file or an installed skill bundle:

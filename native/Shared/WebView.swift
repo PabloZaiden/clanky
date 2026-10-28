@@ -6,6 +6,50 @@ import AppKit
 import UIKit
 #endif
 
+struct PopupContent: View {
+    let webView: WKWebView
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            PopupWebView(webView: webView)
+                .ignoresSafeArea()
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Close") { dismiss() }
+                    }
+                }
+        }
+        #if os(macOS)
+        .frame(minWidth: 600, minHeight: 400)
+        #endif
+    }
+}
+
+#if os(macOS)
+private struct PopupWebView: NSViewRepresentable {
+    let webView: WKWebView
+    func makeNSView(context: Context) -> WKWebView { webView }
+    func updateNSView(_ view: WKWebView, context: Context) {}
+    static func dismantleNSView(_ view: WKWebView, coordinator: ()) {
+        view.stopLoading()
+        view.navigationDelegate = nil
+        view.uiDelegate = nil
+    }
+}
+#else
+private struct PopupWebView: UIViewRepresentable {
+    let webView: WKWebView
+    func makeUIView(context: Context) -> WKWebView { webView }
+    func updateUIView(_ view: WKWebView, context: Context) {}
+    static func dismantleUIView(_ view: WKWebView, coordinator: ()) {
+        view.stopLoading()
+        view.navigationDelegate = nil
+        view.uiDelegate = nil
+    }
+}
+#endif
+
 #if os(macOS)
 struct WebView: NSViewRepresentable {
     @ObservedObject var browser: BrowserModel
@@ -75,9 +119,10 @@ final class WebContentView: UIView {
 #endif
 
 @MainActor
-final class BrowserDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
+final class BrowserDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate, WKScriptMessageHandlerWithReply {
     private let browser: BrowserModel
-    private var popups: [WKWebView] = []
+    private var downloads: [ObjectIdentifier: WKDownload] = [:]
+    private var requestedNames: [ObjectIdentifier: String] = [:]
     private struct Transfer {
         let download: WKDownload
         let directory: URL
@@ -93,6 +138,8 @@ final class BrowserDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, WKDow
         stopped = false
         browser.webView.navigationDelegate = self
         browser.webView.uiDelegate = self
+        browser.webView.configuration.userContentController.addScriptMessageHandler(
+            self, contentWorld: .page, name: "clankyDownloads")
         return browser.webView
     }
 
@@ -104,18 +151,52 @@ final class BrowserDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, WKDow
         browser.webView.stopLoading()
         browser.webView.navigationDelegate = nil
         browser.webView.uiDelegate = nil
-        for popup in popups {
+        browser.webView.configuration.userContentController.removeScriptMessageHandler(
+            forName: "clankyDownloads", contentWorld: .page)
+        if let popup = browser.popup?.webView {
             popup.stopLoading()
             popup.navigationDelegate = nil
             popup.uiDelegate = nil
         }
-        popups.removeAll()
-        for transfer in transfers.values {
-            transfer.download.cancel { _ in
-                self.removeTemporaryDirectory(transfer.directory)
+        browser.popup = nil
+        for (id, download) in downloads {
+            let directory = transfers[id]?.directory
+            download.cancel { _ in
+                if let directory { self.removeTemporaryDirectory(directory) }
             }
         }
+        downloads.removeAll()
+        requestedNames.removeAll()
         transfers.removeAll()
+    }
+
+    func userContentController(_ userContentController: WKUserContentController,
+                               didReceive message: WKScriptMessage,
+                               replyHandler: @escaping (Any?, String?) -> Void) {
+        let origin = message.frameInfo.securityOrigin
+        guard !stopped, message.webView === browser.webView, message.frameInfo.isMainFrame,
+              origin.protocol == browser.origin.scheme, origin.host == browser.origin.host,
+              origin.port == browser.origin.port,
+              let path = message.frameInfo.request.url?.path,
+              path.hasPrefix("/api/") || path.hasPrefix("/local/"),
+              let body = message.body as? [String: Any],
+              let value = body["url"] as? String, let url = URL(string: value),
+              let host = url.host, url.user == nil, url.password == nil, url.fragment == nil,
+              url.scheme == "https" || (url.scheme == "http" &&
+                ["localhost", "127.0.0.1", "::1", "[::1]"].contains(host)),
+              let name = body["suggestedName"] as? String, !name.isEmpty, name.utf8.count <= 1024 else {
+            replyHandler(nil, "Invalid native download request.")
+            return
+        }
+        browser.webView.startDownload(using: URLRequest(url: url)) { [weak self] download in
+            guard let self, !self.stopped else {
+                download.cancel { _ in }
+                replyHandler(nil, "The native download was closed.")
+                return
+            }
+            self.manage(download, suggestedName: name)
+            replyHandler(nil, nil)
+        }
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
@@ -137,6 +218,7 @@ final class BrowserDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, WKDow
         } else if ["http", "https", "mailto", "tel"].contains(url.scheme?.lowercased() ?? "") {
             decisionHandler(.cancel)
             openExternal(url)
+            if webView !== browser.webView { self.webViewDidClose(webView) }
         } else {
             decisionHandler(.cancel)
             browser.error = "This link cannot be opened by Clanky."
@@ -157,16 +239,20 @@ final class BrowserDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, WKDow
             openExternal(url)
             return nil
         }
-        // The existing device login preopens a blank window, then assigns its authorization URL.
+        guard browser.popup == nil else {
+            browser.error = "Close the open popup before opening another."
+            return nil
+        }
+        // Content popups remain visible; authorization navigation still leaves for the system browser.
         let popup = WKWebView(frame: .zero, configuration: configuration)
         popup.navigationDelegate = self
         popup.uiDelegate = self
-        popups.append(popup)
+        browser.popup = BrowserPopup(webView: popup)
         return popup
     }
 
     func webViewDidClose(_ webView: WKWebView) {
-        popups.removeAll { $0 === webView }
+        if browser.popup?.webView === webView { browser.popup = nil }
         webView.navigationDelegate = nil
         webView.uiDelegate = nil
     }
@@ -227,21 +313,34 @@ final class BrowserDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, WKDow
     #endif
 
     func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
-        download.delegate = self
+        manage(download)
     }
 
     func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
+        manage(download)
+    }
+
+    private func manage(_ download: WKDownload, suggestedName: String? = nil) {
+        guard !stopped else {
+            download.cancel { _ in }
+            return
+        }
+        let id = ObjectIdentifier(download)
+        downloads[id] = download
+        requestedNames[id] = suggestedName
         download.delegate = self
     }
 
     func download(_ download: WKDownload, decideDestinationUsing response: URLResponse,
                   suggestedFilename: String, completionHandler: @escaping (URL?) -> Void) {
-        let name = (suggestedFilename as NSString).lastPathComponent
+        let id = ObjectIdentifier(download)
+        let name = ((requestedNames.removeValue(forKey: id) ?? suggestedFilename) as NSString).lastPathComponent
         #if os(macOS)
         let panel = NSSavePanel()
         panel.nameFieldStringValue = name
         panel.begin { result in
             guard result == .OK, let destination = panel.url else {
+                self.downloads.removeValue(forKey: id)
                 completionHandler(nil)
                 return
             }
@@ -272,6 +371,7 @@ final class BrowserDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, WKDow
     }
 
     func downloadDidFinish(_ download: WKDownload) {
+        downloads.removeValue(forKey: ObjectIdentifier(download))
         guard let transfer = transfers.removeValue(forKey: ObjectIdentifier(download)) else { return }
         #if os(macOS)
         defer { removeTemporaryDirectory(transfer.directory) }
@@ -306,6 +406,8 @@ final class BrowserDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, WKDow
     }
 
     func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
+        downloads.removeValue(forKey: ObjectIdentifier(download))
+        requestedNames.removeValue(forKey: ObjectIdentifier(download))
         if let transfer = transfers.removeValue(forKey: ObjectIdentifier(download)) {
             removeTemporaryDirectory(transfer.directory)
         }

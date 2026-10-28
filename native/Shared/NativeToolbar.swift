@@ -150,6 +150,10 @@ final class NativeToolbar: NSObject, ObservableObject, WKScriptMessageHandlerWit
             replyHandler(false, nil)
             return
         }
+        guard JSONSerialization.isValidJSONObject(message.body) else {
+            replyHandler(nil, "Invalid native toolbar description.")
+            return
+        }
         do {
             let data = try JSONSerialization.data(withJSONObject: message.body)
             let next = try JSONDecoder().decode(NativeToolbarSnapshot.self, from: data)

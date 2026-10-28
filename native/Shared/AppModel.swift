@@ -68,6 +68,12 @@ final class AppModel: ObservableObject {
 }
 
 @MainActor
+struct BrowserPopup: Identifiable {
+    let id = UUID()
+    let webView: WKWebView
+}
+
+@MainActor
 final class BrowserModel: ObservableObject {
     private static let connectionKey = "lastConnectionMode"
     #if os(macOS)
@@ -81,6 +87,7 @@ final class BrowserModel: ObservableObject {
     let nativeToolbar: NativeToolbar
     #endif
     @Published var error: String?
+    @Published var popup: BrowserPopup?
 
     init(origin: URL) {
         self.origin = origin
@@ -89,6 +96,11 @@ final class BrowserModel: ObservableObject {
         #endif
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .default()
+        configuration.userContentController.addUserScript(WKUserScript(source: """
+        window.webappNativeResourceSaver = {
+          saveResource: resource => window.webkit.messageHandlers.clankyDownloads.postMessage(resource)
+        };
+        """, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         #if os(iOS)
         configuration.allowsInlineMediaPlayback = true
         nativeToolbar.install(in: configuration.userContentController)
