@@ -7,7 +7,8 @@ import { DomainError, isDomainError } from "../domain/domain-error";
 import { readBytes, isReadRecord } from "../client-sdk/collaboration/resource-read";
 import { ControlActions, type ControlInteractionOutcome } from "./control-actions";
 import type { ControlGrant, ControlOperationAuthority } from "./control-authority";
-import type { ClankyOperationService } from "./clanky-operation-service";
+import type { ClankyOperationService, PreparedOperation } from "./clanky-operation-service";
+import { controlRequestPrivate } from "./control-request-privacy";
 import { controlToolDefinitions, isControlToolName } from "./control-tool-contracts";
 import { controlUiToolDefinitions, isControlUiToolName } from "./control-ui-tools";
 import { executeControlTool } from "./control-tools";
@@ -51,6 +52,7 @@ interface ControlSession {
 interface HumanRequest {
   session: ControlSession;
   snapshot: ControlRequestSnapshot;
+  operation?: PreparedOperation;
   browser?: ClankyControlContext;
   run?: ControlRun;
   removeAt: number;
@@ -111,14 +113,17 @@ export class ControlSessionService {
     return structuredClone(request.snapshot);
   }
 
-  listPendingRequests(): ControlRequestSummary[] {
+  async listPendingRequests(): Promise<ControlRequestSummary[]> {
     this.prune();
     const userId = requireCurrentUserId();
-    return [...this.requests.values()]
+    const requests = await Promise.all([...this.requests.values()]
       .filter(({ session, snapshot }) => session.access.grant.user.id === userId && snapshot.status === "pending")
-      .map(({ snapshot: { id, kind, status, description, expiresAt, serverName } }) => ({
-        id, kind, status, description, expiresAt, ...(serverName ? { serverName } : {}),
-      }))
+      .map(async ({ snapshot, operation }) => {
+        const isPrivate = await controlRequestPrivate(operation, snapshot.serverId);
+        const { id, kind, status, description, expiresAt, serverName } = snapshot;
+        return { id, kind, status, description, expiresAt, isPrivate, ...(serverName ? { serverName } : {}) };
+      }));
+    return requests.filter(({ status, expiresAt }) => status === "pending" && expiresAt > Date.now())
       .sort((left, right) => left.expiresAt - right.expiresAt || left.id.localeCompare(right.id));
   }
 
@@ -247,12 +252,20 @@ export class ControlSessionService {
       this.prune();
       if (this.requests.size >= MAX_REQUESTS) throw new DomainError("control_busy", "Too many human requests are awaiting review.");
       const id = action.type === "confirm_operation" ? action.confirmation.requestId : action.requestId;
-      const snapshot: ControlRequestSnapshot = action.type === "confirm_operation"
-        ? { id, kind: "confirmation", status: "pending", ...session.actions.getConfirmation(id) }
-        : { id, kind: "ssh_credential", status: "pending", description: `Supply the private SSH credential for ${action.serverName}.`,
+      let operation: PreparedOperation | undefined;
+      let snapshot: ControlRequestSnapshot;
+      if (action.type === "confirm_operation") {
+        const confirmation = session.actions.getConfirmation(id);
+        operation = confirmation.operation;
+        snapshot = { id, kind: "confirmation", status: "pending", description: confirmation.description,
+          expiresAt: confirmation.expiresAt, operation: structuredClone(operation.input) };
+      } else {
+        snapshot = { id, kind: "ssh_credential", status: "pending",
+          description: `Supply the private SSH credential for ${action.serverName}.`,
           serverId: action.serverId, serverName: action.serverName, expiresAt: action.expiresAt };
+      }
       const request: HumanRequest = {
-        session, snapshot, browser: run.browser,
+        session, snapshot, operation, browser: run.browser,
         ...(action.type === "request_ssh_credential" ? { run } : {}),
         removeAt: snapshot.expiresAt + RESULT_TTL_MS,
         timer: setTimeout(() => this.expire(request), Math.max(0, snapshot.expiresAt - Date.now())),

@@ -328,7 +328,7 @@ function renderShellRouteContent(
     const requestId = getRouteString(route, "requestId");
     return requestId
       ? <ControlRequestPage key={requestId} requestId={requestId} />
-      : <ControlRequestsPage onNavigate={context.navigateWithinShell} />;
+      : <ControlRequestsPage onNavigate={context.navigateWithinShell} showPrivateItems={context.showPrivateItems} />;
   }
   if (route.view === "control-consent") {
     return <ControlConsentPage />;

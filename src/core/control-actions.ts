@@ -73,7 +73,7 @@ export class ControlActions {
   }
 
   getConfirmation(requestId: string): {
-    description: string; expiresAt: number; operation: ExecuteOperationInput;
+    description: string; expiresAt: number; operation: PreparedOperation;
   } {
     this.prune();
     const pending = this.confirmations.get(requestId);
@@ -82,7 +82,7 @@ export class ControlActions {
     }
     return {
       description: pending.description, expiresAt: pending.expiresAt,
-      operation: structuredClone(pending.operation.input),
+      operation: pending.operation,
     };
   }
 

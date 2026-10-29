@@ -61,7 +61,7 @@ export function OverviewWork({
         {attentionItems.length > 0 || attentionAgents.length > 0 || Boolean(approvals.data?.length) ? (
           <DataList>
             {approvals.data?.map((request) => (
-              <ControlRequestRow key={request.id} request={request} onNavigate={onNavigate} />
+              <ControlRequestRow key={request.id} request={request} onNavigate={onNavigate} showPrivateItems={showPrivateItems} />
             ))}
             {attentionItems.map(({ item, attention }) => (
               <OverviewWorkItem key={item.key} item={item} attention={attention} onNavigate={onNavigate} showPrivateItems={showPrivateItems} />

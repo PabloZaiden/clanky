@@ -93,7 +93,7 @@ export const controlRoutes = defineRoutes({
       try {
         const api = control();
         api.requireHuman(req, ctx);
-        return Response.json(api.sessions.listPendingRequests(), { headers: NO_STORE });
+        return Response.json(await api.sessions.listPendingRequests(), { headers: NO_STORE });
       } catch (error) { return controlErrorResponse(error); }
     },
   },

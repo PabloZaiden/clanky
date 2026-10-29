@@ -43,7 +43,7 @@ export const ControlRequestSnapshotSchema = z.object({
 export type ControlRequestSnapshot = z.infer<typeof ControlRequestSnapshotSchema>;
 export const ControlRequestSummarySchema = ControlRequestSnapshotSchema.omit({
   operation: true, result: true, serverId: true,
-});
+}).extend({ isPrivate: z.boolean() });
 export type ControlRequestSummary = z.infer<typeof ControlRequestSummarySchema>;
 export const ControlRequestsResponseSchema = z.array(ControlRequestSummarySchema).max(256);
 
