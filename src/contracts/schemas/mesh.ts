@@ -7,6 +7,7 @@
  */
 
 import { z } from "zod";
+import { MESH_EXECUTION_CONTROL_VERSION } from "@/shared/mesh-execution";
 import {
   MESH_INSTANCE_NAME_MAX_LENGTH,
 } from "@/shared/mesh";
@@ -68,7 +69,7 @@ export const MeshWorkerProtocolDescriptorSchema = z.object({
   requestNonce: z.string().min(1).max(200), binaryVersion: z.string().min(1).max(200),
   supportedProtocolVersions: MeshProtocolVersionsSchema,
   preferredProtocolVersion: MeshProtocolGenerationSchema,
-  controlTools: z.literal(1).optional(),
+  controlTools: z.union([z.literal(1), z.literal(MESH_EXECUTION_CONTROL_VERSION)]).optional(),
   signature: z.string().min(1).max(16_384),
 }).strict().superRefine(assertMeshProtocolMetadata);
 export type MeshWorkerProtocolDescriptor = z.infer<typeof MeshWorkerProtocolDescriptorSchema>;

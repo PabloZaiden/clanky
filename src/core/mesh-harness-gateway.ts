@@ -17,7 +17,9 @@ import { requireMatchingHarnessBinding } from "../backends/harness-binding";
 import { saveMeshHarnessConversation, requireMeshHarnessConversation, deleteMeshHarnessConversation } from "../persistence/mesh-harness-conversations";
 import type { EventStream } from "../utils/event-stream";
 import { createEventStream } from "../utils/event-stream";
-import { meshControlToolConnection } from "./mesh-control-tool-transport";
+import { MeshControlToolChannel } from "./mesh-control-tool-transport";
+import { legacyMeshControlConnection } from "./mesh-control-v1-adapter";
+import type { MeshHarnessControlEvent } from "@/contracts/schemas/mesh-harness";
 
 const log = createLogger("core:mesh-harness-gateway");
 const MAX_HOSTS = 64;
@@ -65,6 +67,7 @@ export class MeshHarnessGateway {
   private readonly hosts = new Map<string, Host>();
   private readonly opening = new Map<string, { controller: AbortController; promise: Promise<Host> }>();
   private readonly stopping = new Map<string, Promise<void>>();
+  private readonly controls = new Map<string, MeshControlToolChannel>();
 
   constructor(private readonly leases: MeshExecutionGateway = meshExecutionGateway) {
     leases.onSessionClosed((id) => {
@@ -88,11 +91,15 @@ export class MeshHarnessGateway {
     const backend = createLocalHarnessBackend(config.adapter);
     const promise = (async (): Promise<Host> => {
       try {
+        const control = config.controlTools ? this.controls.get(id)?.connection
+          : config.legacyControlCredential ? legacyMeshControlConnection(config.callerNodeId, config.legacyControlCredential) : undefined;
+        if (config.controlTools && !control) {
+          throw new DomainError("control_unavailable", "The execution control channel must be ready before provider connection.");
+        }
         await backend.connect({
           directory: config.directory, transport: "stdio",
           env: config.environment, managedEnvironment: config.environment,
-          control: config.controlCredential
-            ? meshControlToolConnection(config.callerNodeId, config.controlCredential) : undefined,
+          control,
         }, controller.signal);
         await this.leases.getHarnessSessionConfig(id, token);
         if (controller.signal.aborted) throw new DomainError("harness_connection_aborted", "The native host connection was aborted.");
@@ -121,7 +128,7 @@ export class MeshHarnessGateway {
       || binding.executionHost.host.nodeId !== host.config.executionNodeId
       || ("scope" in binding.executionHost.host && binding.executionHost.host.scope === "workspace" && binding.executionHost.host.workspaceId !== host.config.workspaceId)
     )) throw new DomainError("harness_session_not_owned", "The native conversation execution host does not match the Mesh workspace.");
-    if (binding.controlTools && host.backend.harness.capabilities.clankyControlTools !== true) {
+    if (binding.controlTools && (!(host.config.controlTools || host.config.legacyControlCredential) || host.backend.harness.capabilities.clankyControlTools !== true)) {
       throw new DomainError("harness_unsupported_feature", "The native Mesh worker does not support Clanky control tools.");
     }
     return {
@@ -229,13 +236,20 @@ export class MeshHarnessGateway {
   }
 
   async execute(id: string, token: string, operation: MeshHarnessOperation, signal?: AbortSignal): Promise<unknown> {
+    if (operation.operation === "control.result") {
+      const config = await this.leases.getHarnessSessionConfig(id, token);
+      if (!config.controlTools) throw new DomainError("control_scope_required", "This execution lease has no control channel.");
+      const control = this.controls.get(id);
+      if (!control) throw new DomainError("control_unavailable", "The execution control channel is unavailable.");
+      return control.reply(operation.controlRequestId, operation.reply);
+    }
     const host = await this.host(id, token, signal);
     if (host.inFlight >= 8) throw new DomainError("harness_input_capacity", "The native request capacity was reached.");
     host.inFlight++;
     try { return await this.executeHost(host, operation); } finally { host.inFlight--; }
   }
 
-  private async executeHost(host: Host, operation: MeshHarnessOperation): Promise<unknown> {
+  private async executeHost(host: Host, operation: Exclude<MeshHarnessOperation, { operation: "control.result" }>): Promise<unknown> {
     const backend = host.backend;
     if (operation.operation === "capabilities") return backend.harness.capabilities;
     if (operation.operation === "models" || operation.operation === "variants") {
@@ -400,9 +414,22 @@ export class MeshHarnessGateway {
     } };
   }
 
+  async subscribeControl(id: string, token: string): Promise<EventStream<MeshHarnessControlEvent>> {
+    const config = await this.leases.getHarnessSessionConfig(id, token);
+    if (!config.controlTools) throw new DomainError("control_scope_required", "This execution lease has no control channel.");
+    this.leases.getSessionProtocolVersion(id, token);
+    if (this.controls.has(id)) throw new DomainError("control_busy", "The execution control channel is already observed.");
+    if (this.controls.size >= MAX_HOSTS) throw new DomainError("control_busy", "The execution control channel capacity was reached.");
+    const control = new MeshControlToolChannel();
+    this.controls.set(id, control);
+    return control.events;
+  }
+
   async close(id: string): Promise<void> {
     const stopping = this.stopping.get(id);
     if (stopping) return await stopping;
+    this.controls.get(id)?.close();
+    this.controls.delete(id);
     const opening = this.opening.get(id);
     opening?.controller.abort();
     const host = this.hosts.get(id);
@@ -428,12 +455,16 @@ export class MeshHarnessGateway {
   }
 
   async closeAll(): Promise<void> {
-    await Promise.all([...new Set([...this.hosts.keys(), ...this.opening.keys(), ...this.stopping.keys()])].map((id) => this.close(id)));
+    await Promise.all([...new Set([...this.hosts.keys(), ...this.opening.keys(), ...this.stopping.keys(), ...this.controls.keys()])].map((id) => this.close(id)));
   }
 
   observationTransportClosed(id: string, conversationId: string): void {
     const conversation = this.hosts.get(id)?.conversations.get(conversationId);
     if (conversation && !conversation.closing) this.leases.closeSession(id);
+  }
+
+  controlTransportClosed(id: string): void {
+    this.leases.closeSession(id);
   }
 }
 

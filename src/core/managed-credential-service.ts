@@ -1,5 +1,5 @@
 /**
- * Owns Clanky's managed webapp API-key generations for execution contexts.
+ * Owns managed CLI credentials for explicit human terminal sessions.
  *
  * The service stores only key metadata in Clanky's database. Plaintext tokens
  * remain in this bounded process-memory cache for runtime launch/reconnect.
@@ -13,68 +13,27 @@ import {
   type RuntimeConfig,
   type WebAppStore,
 } from "@pablozaiden/webapp/server";
-import {
-  CLANKY_CONTROL_SCOPE,
-  CLANKY_CONTROL_GENERAL_SCOPE,
-  CLANKY_CONTROL_MANAGED_SCOPE,
-  controlWorkspaceScope,
-  type ManagedContextIdentity,
-} from "@/shared/context-api-key";
-import { isAgentRunActiveStatus } from "@/shared/agent";
+import type { ManagedContextIdentity } from "@/shared/context-api-key";
 import {
   createContextApiKeyAssociationForUser,
-  getContextApiKeyAssociationForUser,
   getNextContextApiKeyGenerationForUser,
   listContextApiKeyAssociationsForUser,
   listContextApiKeyAssociationsForContextForUser,
   revokeContextApiKeyAssociationForUser,
   type ContextApiKeyAssociation,
 } from "../persistence/context-api-keys";
-import { loadAgentRunSummary } from "../persistence/agents";
-import { loadChatMetadata } from "../persistence/chats";
-import { loadTaskSummary } from "../persistence/tasks";
-import { getTerminalSession } from "../persistence/terminal-sessions";
 import { getWorkspace } from "../persistence/workspaces";
 import { DomainError } from "../domain/domain-error";
 import { requireExecutionOwnerUser } from "../context/user-context";
+import { managedContextIdentityResolver } from "./managed-context-identity";
 
 const MANAGED_BY = "clanky.execution-context";
-export const DETERMINISTIC_AGENT_MANAGED_BY = "clanky.deterministic-agent-runtime";
-export const CLANKY_CONTROL_CHAT_MANAGED_BY = "clanky.control-chat";
-export const DETERMINISTIC_AGENT_CREDENTIAL_TTL_MS = 24 * 60 * 60 * 1000;
+const RETIRED_RUNTIME_CREDENTIALS = new Set([
+  "clanky.deterministic-agent-runtime", "clanky.control-chat", "clanky.control-runtime",
+]);
 const MAX_CACHED_CREDENTIALS = 256;
-const CONTROL_CREDENTIAL_TTL_MS = 24 * 60 * 60 * 1000;
-
-function isControlCredential(options?: ManagedCredentialOptions): boolean {
-  return options?.control === true
-    || options?.managedBy === DETERMINISTIC_AGENT_MANAGED_BY
-    || options?.managedBy === CLANKY_CONTROL_CHAT_MANAGED_BY;
-}
-
-function canCreateWhenWorkspaceDisabled(options?: ManagedCredentialOptions): boolean {
-  return options?.allowWhenWorkspaceDisabled === true
-    && (
-      options.managedBy === DETERMINISTIC_AGENT_MANAGED_BY
-      || options.managedBy === CLANKY_CONTROL_CHAT_MANAGED_BY
-    );
-}
 
 export type ManagedCredentialMode = "reuse" | "recreate";
-
-export interface ManagedCredentialOptions {
-  control?: boolean;
-  managedBy?: string;
-  name?: string;
-  scopes?: string[];
-  expiresAt?: string;
-  /**
-   * Allow a narrowly scoped runtime credential to be created even when the
-   * workspace does not expose general Clanky CLI credentials.
-   */
-  allowWhenWorkspaceDisabled?: boolean;
-  /** Reuse a cached key when the requested runtime-specific options are compatible. */
-  reuseActiveCredential?: boolean;
-}
 
 export type ManagedCredentialErrorCode =
   | "managed_context_not_configured"
@@ -136,11 +95,10 @@ export class ManagedCredentialService {
   async ensureCredential(
     identity: ManagedContextIdentity,
     mode: ManagedCredentialMode = "reuse",
-    options?: ManagedCredentialOptions,
   ): Promise<ManagedRuntimeCredential> {
     const user = requireExecutionOwnerUser();
     this.assertOwner(identity, user.id);
-    if (identity.contextType !== "terminal_session" && !isControlCredential(options)) {
+    if (identity.contextType !== "terminal_session") {
       throw new ManagedCredentialError(
         "managed_context_disabled",
         "Automatic Clanky credentials are unavailable for this execution adapter",
@@ -157,18 +115,14 @@ export class ManagedCredentialService {
         identity.contextId,
       );
 
-      const control = isControlCredential(options);
       const workspace = await getWorkspace(identity.workspaceId);
-      if (control && identity.contextType === "terminal_session") {
-        throw new ManagedCredentialError("managed_context_scope_invalid", "A terminal session is not an application-control execution.");
-      }
-      if (control || associations.length === 0) {
+      if (associations.length === 0) {
         if (!workspace) {
           throw new ManagedCredentialError("managed_context_not_configured", "Managed context workspace was not found", {
             details: contextDetails(identity),
           });
         }
-        if (!control && workspace.allowClankyContext !== true && !canCreateWhenWorkspaceDisabled(options)) {
+        if (workspace.allowClankyContext !== true) {
           throw new ManagedCredentialError(
             "managed_context_disabled",
             "This workspace does not allow new Clanky execution contexts",
@@ -177,58 +131,33 @@ export class ManagedCredentialService {
         }
       }
 
-      if (control && options?.scopes?.some((scope) => scope === "*" || scope.startsWith(CLANKY_CONTROL_SCOPE))) {
-        throw new ManagedCredentialError("managed_context_scope_invalid", "Application-control grants must be derived from the execution, not supplied scopes.");
-      }
-      const scopes = control ? [...new Set([
-        CLANKY_CONTROL_SCOPE, CLANKY_CONTROL_MANAGED_SCOPE, controlWorkspaceScope(identity.workspaceId),
-        ...(workspace?.allowClankyContext === true ? [CLANKY_CONTROL_GENERAL_SCOPE] : []),
-        ...(options?.scopes ?? []),
-      ])] : options?.scopes ?? ["*"];
-      const managedBy = options?.managedBy ?? (control ? "clanky.control-runtime" : MANAGED_BY);
+      const scopes = ["*"];
+      const managedBy = MANAGED_BY;
       const activeKeys = listManagedApiKeys(store, user.id);
-      if (mode === "reuse" && (control ? options?.reuseActiveCredential !== false : !options || options.reuseActiveCredential === true)) {
+      if (mode === "reuse") {
         const cached = this.activeCredentials.get(cacheKey);
         if (cached && cached.managedBy === managedBy
           && cached.scopes.length === scopes.length && scopes.every((scope) => cached.scopes.includes(scope))
           && activeKeys.some((key) => key.id === cached.apiKeyId)
-          && (!cached.expiresAt || Date.parse(cached.expiresAt) > Date.now())
-          && (!options?.expiresAt || cached.expiresAt
-            && Date.parse(cached.expiresAt) <= Date.parse(options.expiresAt))) {
-          const baseUrl = await this.requirePublicBaseUrl(identity, control);
+          && (!cached.expiresAt || Date.parse(cached.expiresAt) > Date.now())) {
+          const baseUrl = await this.requirePublicBaseUrl(identity);
           this.activeCredentials.delete(cacheKey);
           this.activeCredentials.set(cacheKey, { ...cached, baseUrl });
           return { ...cached, baseUrl };
         }
       }
 
-      const baseUrl = await this.requirePublicBaseUrl(identity, control);
+      const baseUrl = await this.requirePublicBaseUrl(identity);
       const generation = await getNextContextApiKeyGenerationForUser(
         user.id,
         identity.workspaceId,
         identity.contextType,
         identity.contextId,
       );
-      if (control) {
-        for (const association of associations) {
-          if (association.revokedAt || !activeKeys.some((key) => key.id === association.apiKeyId && key.scopes.includes("*"))) continue;
-          revokeManagedApiKey(store, association.apiKeyId, user.id);
-          await revokeContextApiKeyAssociationForUser(user.id, association.apiKeyId);
-        }
-      }
-      let expiresAt = options?.expiresAt;
-      if (control) {
-        const requestedExpiry = expiresAt ? Date.parse(expiresAt) : Date.now() + CONTROL_CREDENTIAL_TTL_MS;
-        if (!Number.isFinite(requestedExpiry) || requestedExpiry <= Date.now()) {
-          throw new ManagedCredentialError("managed_context_scope_invalid", "A control credential must have a valid future expiration.");
-        }
-        expiresAt = new Date(Math.min(requestedExpiry, Date.now() + CONTROL_CREDENTIAL_TTL_MS)).toISOString();
-      }
       const created = createManagedApiKey(store, user, {
-        name: options?.name ?? "Clanky execution context",
+        name: "Clanky execution context",
         managedBy,
         scopes,
-        expiresAt,
       });
 
       let association: ContextApiKeyAssociation;
@@ -278,11 +207,9 @@ export class ManagedCredentialService {
   async ensureCredentialForRuntime(
     identity: ManagedContextIdentity,
     mode: ManagedCredentialMode = "reuse",
-    options?: ManagedCredentialOptions,
   ): Promise<ManagedRuntimeCredential | undefined> {
     const user = requireExecutionOwnerUser();
     this.assertOwner(identity, user.id);
-    if (isControlCredential(options)) return await this.ensureCredential(identity, mode, options);
     if (identity.contextType !== "terminal_session") return undefined;
     const associations = await listContextApiKeyAssociationsForContextForUser(
       user.id,
@@ -297,27 +224,12 @@ export class ManagedCredentialService {
           details: contextDetails(identity),
         });
       }
-      if (workspace.allowClankyContext !== true && !canCreateWhenWorkspaceDisabled(options)) {
+      if (workspace.allowClankyContext !== true) {
         return undefined;
       }
     }
 
-    return await this.ensureCredential(identity, mode, options);
-  }
-
-  async resolveControlContext(apiKeyId: string): Promise<ManagedContextIdentity | undefined> {
-    const user = requireExecutionOwnerUser();
-    const association = await getContextApiKeyAssociationForUser(user.id, apiKeyId);
-    if (!association) return undefined;
-    const key = listManagedApiKeys(this.requireStore(), user.id).find((candidate) => candidate.id === apiKeyId);
-    if (association.revokedAt || !key || !key.scopes.includes(CLANKY_CONTROL_MANAGED_SCOPE)
-      || association.contextType === "terminal_session" || !await this.contextExists(association)) {
-      throw new DomainError("control_context_unavailable", "The managed control execution has ended or its credential was revoked.");
-    }
-    return {
-      userId: user.id, workspaceId: association.workspaceId,
-      contextType: association.contextType, contextId: association.contextId,
-    };
+    return await this.ensureCredential(identity, mode);
   }
 
   async revokeCredential(credential: ManagedRuntimeCredential): Promise<void> {
@@ -432,8 +344,7 @@ export class ManagedCredentialService {
         continue;
       }
       activeAssociationKeyIds.add(association.apiKeyId);
-      if (key.managedBy === DETERMINISTIC_AGENT_MANAGED_BY
-        || association.contextType !== "terminal_session" && key.scopes.includes("*")) {
+      if (association.contextType !== "terminal_session") {
         revokeManagedApiKey(this.store, association.apiKeyId, user.id);
         await revokeContextApiKeyAssociationForUser(user.id, association.apiKeyId);
         revokedContextCount += 1;
@@ -461,7 +372,7 @@ export class ManagedCredentialService {
     }
     for (const managedKey of managedKeys) {
       if (
-        managedKey.managedBy === DETERMINISTIC_AGENT_MANAGED_BY
+        RETIRED_RUNTIME_CREDENTIALS.has(managedKey.managedBy ?? "")
         && !activeAssociationKeyIds.has(managedKey.id)
       ) {
         revokeManagedApiKey(this.store, managedKey.id, user.id);
@@ -518,11 +429,11 @@ export class ManagedCredentialService {
     return this.store;
   }
 
-  private async requirePublicBaseUrl(identity: ManagedContextIdentity, control = false): Promise<string> {
+  private async requirePublicBaseUrl(identity: ManagedContextIdentity): Promise<string> {
     let rawValue = this.publicBaseUrl?.trim();
     if (!rawValue) {
       const workspace = await getWorkspace(identity.workspaceId);
-      if (control || workspace?.executionHostBinding.host.kind === "local") {
+      if (workspace?.executionHostBinding.host.kind === "local") {
         rawValue = this.localBaseUrl?.trim();
       }
     }
@@ -605,30 +516,7 @@ export class ManagedCredentialService {
   }
 
   private async contextExists(association: ContextApiKeyAssociation): Promise<boolean> {
-    const workspace = await getWorkspace(association.workspaceId);
-    if (!workspace) {
-      return false;
-    }
-
-    switch (association.contextType) {
-      case "task": {
-        const task = await loadTaskSummary(association.contextId);
-        return task?.config.workspaceId === association.workspaceId && task.state.status !== "deleted";
-      }
-      case "chat": {
-        const chat = await loadChatMetadata(association.contextId);
-        return chat?.config.workspaceId === association.workspaceId;
-      }
-      case "agent_run": {
-        const run = await loadAgentRunSummary(association.contextId);
-        return run?.configSnapshot.workspaceId === association.workspaceId
-          && isAgentRunActiveStatus(run.status);
-      }
-      case "terminal_session": {
-        const session = await getTerminalSession(association.contextId);
-        return session?.config.workspaceId === association.workspaceId;
-      }
-    }
+    return await managedContextIdentityResolver.isActive(association);
   }
 }
 

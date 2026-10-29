@@ -18,9 +18,10 @@ import { ControlSessionService, type ControlAccess } from "../core/control-sessi
 import { ControlIntegrationService } from "../core/control-integration-service";
 import { ClankyOperationService } from "../core/clanky-operation-service";
 import { isControlToolName } from "../core/control-tool-contracts";
-import { controlGrantScopes, resolveControlGrant, requireControlWorker, type ControlGrant } from "../core/control-authority";
-import { configureControlToolTransport } from "../core/control-tool-transport";
-import { runWithAuthenticatedUser, runWithCurrentUser } from "../context/user-context";
+import { controlGrantScopes, resolveControlGrant, resolveExecutionControlGrant, requireControlWorker, type ControlGrant } from "../core/control-authority";
+import { configureExecutionControl } from "../core/control-tool-transport";
+import { requireExecutionOwnerUserId, runWithAuthenticatedUser, runWithCurrentUser } from "../context/user-context";
+import { toCurrentUser } from "../persistence/users";
 import { DomainError, isDomainError } from "../domain/domain-error";
 import { isReadRecord } from "@/shared/record";
 import { configureControlApi, controlErrorResponse } from "../api/control";
@@ -152,19 +153,40 @@ export class ControlServer {
 
   configure(app: WebAppServer<ClankyRealtimeEvent>): void {
     this.app = app;
-    configureControlToolTransport(async (credential, request, signal, workerNodeId) => {
+    configureExecutionControl(async (identity) => {
+      if (identity.userId !== requireExecutionOwnerUserId()) {
+        throw new DomainError("control_actor_mismatch", "The control source belongs to another execution owner.");
+      }
+      let admittedGrant: ControlGrant | undefined;
       const resolve = async (): Promise<ControlGrant> => {
-        const grant = await this.keyGrant(credential);
-        if (!grant.managedContext) throw new DomainError("control_scope_required", "Native control requires an execution-owned credential.");
-        if (workerNodeId) await runWithAuthenticatedUser(grant.user, async () => await requireControlWorker(grant, workerNodeId));
-        return grant;
+        const account = this.options.store.getUserById(identity.userId);
+        if (!account || account.disabledAt) {
+          throw new DomainError("control_context_unavailable", "The execution owner is unavailable.");
+        }
+        return await runWithAuthenticatedUser(toCurrentUser(account),
+          async () => await resolveExecutionControlGrant(identity, admittedGrant));
       };
-      const access = { grant: await resolve(), revalidate: resolve };
-      return await runWithAuthenticatedUser(access.grant.user, async () => request.operation === "list"
-        ? { tools: await this.sessions.tools(access, request.chatId) }
-        : await this.sessions.call(access, {
-          name: request.name, input: request.input, browser: request.context, signal,
-        }));
+      const grant = await resolve();
+      admittedGrant = grant;
+      const access = { grant, revalidate: resolve };
+      return {
+        access,
+        request: async (request, signal, workerNodeId) => {
+          const revalidate = async (): Promise<ControlGrant> => {
+            const grant = await resolve();
+            if (workerNodeId) await runWithAuthenticatedUser(grant.user,
+              async () => await requireControlWorker(grant, workerNodeId));
+            return grant;
+          };
+          const current = await revalidate();
+          const bound = { grant: access.grant, revalidate };
+          return await runWithAuthenticatedUser(current.user, async () => request.operation === "list"
+            ? { tools: await this.sessions.tools(bound, request.chatId) }
+            : await this.sessions.call(bound, {
+              name: request.name, input: request.input, browser: request.context, signal,
+            }));
+        },
+      };
     });
     configureControlApi({
       sessions: this.sessions, integrations: this.integrations,
@@ -187,7 +209,7 @@ export class ControlServer {
       throw new DomainError("control_scope_required", "Use an explicitly scoped Clanky control credential.");
     }
     const access = await this.keyAccess(token);
-    if (access.grant.credentialId !== `api-key:${context.auth.apiKeyId}`) {
+    if (access.grant.id !== `api-key:${context.auth.apiKeyId}`) {
       throw new DomainError("control_credential_invalid", "The authenticated control credential does not match.");
     }
     return access;
@@ -201,7 +223,7 @@ export class ControlServer {
     const authenticated = authenticateApiKey(this.options.store, token);
     if (!authenticated) throw new DomainError("control_credential_invalid", "The control credential expired or was revoked.");
     return await runWithAuthenticatedUser(authenticated.user, async () => await resolveControlGrant({
-      credentialId: `api-key:${authenticated.apiKeyId}`, scopes: authenticated.scopes, apiKeyId: authenticated.apiKeyId,
+      id: `api-key:${authenticated.apiKeyId}`, scopes: authenticated.scopes,
     }));
   }
 
@@ -211,7 +233,7 @@ export class ControlServer {
     }
     const selection = ControlGrantSelectionSchema.parse(principal.authorizationContext);
     return await runWithCurrentUser(principal.user, async () => await resolveControlGrant({
-      credentialId: `oauth:${principal.grantId}`, scopes: controlGrantScopes(selection),
+      id: `oauth:${principal.grantId}`, scopes: controlGrantScopes(selection),
     }));
   }
 

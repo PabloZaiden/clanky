@@ -93,12 +93,12 @@ export class ControlSessionService {
     ];
   }
 
-  withCredential<T>(credentialId: string, invoke: () => T): T {
-    return this.actor.run(credentialId, invoke);
+  withGrant<T>(grantId: string, invoke: () => T): T {
+    return this.actor.run(grantId, invoke);
   }
 
   async tools(access: ControlAccess, chatId?: string) {
-    const session = this.session(access);
+    const session = await this.session(access);
     if (chatId) await requireControlChat(access.grant, chatId);
     return [
       ...controlToolDefinitions.filter(({ name }) => session.authority.general || !GENERAL_TOOLS.has(name)),
@@ -109,7 +109,7 @@ export class ControlSessionService {
   async call(access: ControlAccess, input: {
     name: string; input: unknown; browser?: ClankyControlContext; signal: AbortSignal;
   }): Promise<unknown> {
-    const session = this.session(access);
+    const session = await this.session(access);
     if ((!isControlToolName(input.name) && !isControlUiToolName(input.name))
       || GENERAL_TOOLS.has(input.name) && !session.authority.general) {
       throw new DomainError("control_tool_unavailable", "This tool is outside the authorized catalog.");
@@ -169,14 +169,21 @@ export class ControlSessionService {
     return await Promise.race([run.work, run.pending.promise]);
   }
 
-  private session(access: ControlAccess): ControlSession {
+  private async session(access: ControlAccess): Promise<ControlSession> {
     if (access.grant.user.id !== requireCurrentUserId()) {
       throw new DomainError("control_actor_mismatch", "The control actor does not match the authenticated user.");
     }
     this.prune();
-    const id = access.grant.credentialId;
-    let session = this.sessions.get(id);
+    const id = access.grant.id;
     const authority = this.options.createAuthority(access);
+    try {
+      await authority.revalidate();
+      if (this.closed) throw new DomainError("control_unavailable", "Application control has closed.");
+    } catch (error) {
+      authority.release();
+      throw error;
+    }
+    let session = this.sessions.get(id);
     if (session) {
       session.authority.refresh(authority);
       session.access = access;
@@ -221,7 +228,7 @@ export class ControlSessionService {
     session.runs.add(run);
     callerSignal.addEventListener("abort", onAbort, { once: true });
     if (callerSignal.aborted) onAbort();
-    const work = this.withCredential(session.access.grant.credentialId, () => this.invocation.run({ session, run }, async () => await session.actions.withInvocation({
+    const work = this.withGrant(session.access.grant.id, () => this.invocation.run({ session, run }, async () => await session.actions.withInvocation({
       signal: controller.signal, ...(browser?.clientId ? { clientId: browser.clientId } : {}),
     }, invoke)));
     run.work = work.then(
@@ -330,9 +337,9 @@ export class ControlSessionService {
 
   private requireRequest(id: string): HumanRequest {
     const request = this.requests.get(id);
-    const credentialId = this.actor.getStore();
+    const grantId = this.actor.getStore();
     if (!request || request.session.access.grant.user.id !== requireCurrentUserId()
-      || credentialId && credentialId !== request.session.access.grant.credentialId) {
+      || grantId && grantId !== request.session.access.grant.id) {
       throw new DomainError("control_request_unavailable", "The control request is unavailable.");
     }
     return request;

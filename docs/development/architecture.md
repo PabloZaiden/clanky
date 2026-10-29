@@ -63,41 +63,59 @@ core; do not duplicate domain transitions or launch an internal MCP server per
 execution.
 
 Pass application control as an explicit execution-owned connection, never
-derive its transport from CLI environment variables. Local calls use the
-common controller owner; worker-side native calls use the enrolled Mesh route.
-The narrow callback authenticates the managed credential and revalidates the
-current execution, workspace/worker binding and active registration. Relay
-authorization/header restrictions remain intact; do not introduce general API
-forwarding or a public-URL fallback. Deterministic `ctx.clanky.call` uses the
-trusted runner's request protocol and bounded atomic result files through its
-selected executor; cleanup owns pending requests and files. CLI/terminal
-environment and the separate `ctx.workspace.prompt` callback retain their
-existing contracts.
+derive authority or transport from CLI credentials/environment. The controller
+validates the fresh account, active execution source and workspace before
+admission and every operation. Local calls use the common owner directly.
+Native Mesh calls use a negotiated, signed control-enabled lease over existing
+harness events/RPC. Establish its control observation before provider
+connection, without awaiting provider initialization or a conversation. Replies
+have independent bounded capacity so discovery and waiting operations can
+progress. Bind calls to the actual worker and active registration; observation
+loss closes the lease without replaying inputs or tool mutations. Keep control
+frames out of model/transcript events. Relay header restrictions remain intact;
+do not introduce general API forwarding or an independent return route.
+See [Mesh control and rollout](../mesh-worker.md#execution-owned-control-tools).
 
-Credential-authenticated control starts with a fresh user/actor context and
+Deterministic `ctx.clanky.call` adapts the same controller-owned authority.
+Current-conversation `ctx.workspace.prompt` reuses Core send/wait/interrupt
+behavior through the runner request protocol, not an HTTP credential bridge.
+The selected executor exposes command output and file operations, not ongoing
+process stdin: atomic response mailboxes are a host IPC adapter only, never
+the control API or its authority. Cleanup owns requests, runner processes and
+files; failed delivery aborts the runner. Ordinary project commands and
+explicit human CLI/terminal environment retain their contracts.
+
+Authenticated control starts with a fresh user/actor context and
 clears inherited workspace and resource-owner state before grant resolution
 and dispatch. In-process scheduled executions must not carry their source
 workspace restriction into a general control grant; the validated grant owns
 the restrictions reapplied by the common control authority.
 
-Resolve managed origin from persisted credential/execution associations.
+Resolve internal origin from validated execution metadata, not API-key
+associations. Scoped API-key and OAuth authentication remain external adapters.
 Optional browser context supplies verified provenance and navigation, never
 authority. Workspace grants permit project work, not workspace/access/host
 administration. General grants stay within the real user's in-scope authority,
 not wildcard scopes or a fabricated owner. Enforce the immutable grant ceiling
 and current source authorization for discovery, referenced resources and every
 dispatch, including after approval or private credential entry.
+Internal admission identity stays stable across transport reconnects only for
+the same source, permission ceiling and execution-host binding. Domain-owned
+pending requests must not be lost merely because a lease reconnects.
+Retain the admitted binding separately and reject host, target or revision
+changes during live validation, including pending decisions. Live permission
+narrowing does not replace that binding or the immutable ceiling.
 An ended Agent run cannot authorize further control or pending approvals, even
-when its native conversation credential is retained.
+when its native conversation is retained.
 Grant and provenance checks use metadata snapshots, not unrequested transcripts.
-Connected native chats renew expired control credentials before the next turn
-and resume their owned conversation; bounded key lifetimes remain unchanged.
+Native control has no API-key-expiry reconnect; Mesh lease renewal and owned
+conversation recovery remain transport lifecycle responsibilities.
 
 Unsupported ACP model processes receive no automatic Clanky credential, even
-when the workspace enables general control. Keep deterministic runner
-credentials private across ACP prompts. Retire associated legacy nonterminal
-wildcard keys and prevent their reissuance; do not change unrelated personal
-keys or interactive terminal contracts.
+when the workspace enables general control. Do not pass deterministic control
+authority to ACP prompts. Retire old automatic nonterminal API keys and prevent
+their reissuance; do not change external integrations, unrelated personal keys
+or interactive terminal contracts.
 
 Server control dispatch uses the framework's authenticated dispatcher with
 mandatory operation admission, preserving current account checks and the

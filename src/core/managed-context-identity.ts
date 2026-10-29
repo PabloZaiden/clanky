@@ -1,5 +1,5 @@
 /**
- * Resolves persisted Clanky entities to stable managed-credential identities.
+ * Resolves persisted Clanky entities to stable execution identities.
  */
 
 import type { ManagedContextIdentity, ManagedContextType } from "@/shared/context-api-key";
@@ -11,6 +11,8 @@ import { loadTaskSummary } from "../persistence/tasks";
 import { getTerminalSession } from "../persistence/terminal-sessions";
 import { DomainError } from "../domain/domain-error";
 import { requireExecutionOwnerUserId } from "../context/user-context";
+import { getWorkspace } from "../persistence/workspaces";
+import { isAgentRunActiveStatus } from "@/shared/agent";
 
 function missingContext(contextType: ManagedContextType, contextId: string): DomainError {
   return new DomainError("managed_context_not_found", "Managed execution context was not found", {
@@ -119,6 +121,28 @@ export class ManagedContextIdentityResolver {
       sessionId,
       ensureWorkspace("terminal_session", sessionId, session.config.workspaceId, expectedWorkspaceId),
     );
+  }
+
+  async isActive(identity: ManagedContextIdentity): Promise<boolean> {
+    if (identity.userId !== requireExecutionOwnerUserId() || !await getWorkspace(identity.workspaceId)) return false;
+    switch (identity.contextType) {
+      case "task": {
+        const task = await loadTaskSummary(identity.contextId);
+        return task?.config.workspaceId === identity.workspaceId && task.state.status !== "deleted";
+      }
+      case "chat": {
+        const chat = await loadChatMetadata(identity.contextId);
+        return chat?.config.workspaceId === identity.workspaceId;
+      }
+      case "agent_run": {
+        const run = await loadAgentRunSummary(identity.contextId);
+        return run?.configSnapshot.workspaceId === identity.workspaceId && isAgentRunActiveStatus(run.status);
+      }
+      case "terminal_session": {
+        const session = await getTerminalSession(identity.contextId);
+        return session?.config.workspaceId === identity.workspaceId;
+      }
+    }
   }
 
   private createIdentity(

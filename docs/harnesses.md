@@ -48,12 +48,13 @@ Owned native chats, tasks and managed Agent runs support
 [Clanky Control](control-chats.md) in their workspace without Quick Chat setup
 or general access. Explicit general access permits broader application control
 within the user's permissions. Native adapters discover their granted catalog
-from the shared control boundary and invoke it with scoped managed credentials;
+from the shared control boundary and invoke it with scoped execution authority;
 they do not call arbitrary application routes with broad API keys.
 The control connection is separate from `CLANKY_BASE_URL` and CLI credentials.
-Local control dispatches to the common core; Mesh control uses the enrolled
-controller route transparently over direct TLS or a relay. Control tools do
-not require worker access to the controller's public hostname. See
+Local control dispatches to the common core; Mesh control reuses its native
+lease's event/RPC infrastructure over direct TLS or a relay. Control readiness
+precedes provider connection and needs neither a callback endpoint nor CLI
+credentials. See
 [Mesh control transport](mesh-worker.md#execution-owned-control-tools) for
 upgrade requirements.
 Codex registers these tools only on newly created native threads. Existing
@@ -67,7 +68,7 @@ Provider subprocesses do not inherit `CLANKY_BASE_URL` or `CLANKY_API_KEY` from
 the server, worker or SSH login environment. Other environment variables and
 provider authentication are preserved. Personal keys and interactive terminals
 are unchanged. Deterministic programs retain scoped control through their
-trusted runner, without passing its key to an ACP prompt subprocess.
+controller-owned runner adapter, without granting that authority to ACP.
 
 For OpenCode 2, Clanky loads a managed native plugin and private loopback bridge on
 the execution host; no separate plugin installation, ACP adapter or MCP
@@ -76,7 +77,7 @@ Promise plugin API, including tool reload. Actual chat roots discover optional
 browser tools using their persisted real chat ID; task/run roots do not claim a
 chat identity. The plugin reloads newly discovered tools before the native
 prompt is prepared and filters each model context to that owned root's catalog.
-Plugin activation and managed credentials are checked
+Plugin activation and execution-owned control readiness are checked
 before admitting a Control conversation. Tools belong only to an active owned
 root turn; native subagents do not inherit them. Task and scheduled-run
 question policies remain unattended, and human control approval remains a

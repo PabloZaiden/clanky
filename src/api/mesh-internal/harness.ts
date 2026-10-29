@@ -38,8 +38,10 @@ export const meshHarnessRoutes = defineRoutes({
       let release: (() => void) | undefined;
       try {
         assertMeshExecutionTransport(req, envelope);
-        release = await meshExecutionGateway.claimHarnessRequest(envelope.sessionId, envelope.sessionToken, envelope.requestId);
-        if (Buffer.byteLength(JSON.stringify(envelope.payload)) > MESH_HARNESS_MAX_OPERATION_BYTES) throw new DomainError("mesh_execution_request_too_large", "The native Mesh harness request exceeds the supported size limit.");
+        const controlReply = envelope.payload.operation === "control.result";
+        release = await meshExecutionGateway.claimHarnessRequest(envelope.sessionId, envelope.sessionToken, envelope.requestId, controlReply);
+        const maxBytes = controlReply ? 1024 * 1024 + 8192 : MESH_HARNESS_MAX_OPERATION_BYTES;
+        if (Buffer.byteLength(JSON.stringify(envelope.payload)) > maxBytes) throw new DomainError("mesh_execution_request_too_large", "The native Mesh harness request exceeds the supported size limit.");
         const result = await meshHarnessGateway.execute(envelope.sessionId, envelope.sessionToken, envelope.payload, req.signal);
         if (Buffer.byteLength(JSON.stringify(result)) > MESH_EXECUTION_MAX_MESSAGE_BYTES) throw new DomainError("mesh_execution_result_too_large", "The native result exceeds the Mesh limit.");
         return Response.json({
@@ -66,13 +68,18 @@ export const meshHarnessRoutes = defineRoutes({
       if (headerError) return headerError;
       try {
         assertMeshExecutionTransport(req, envelope);
-        const subscription = await meshHarnessGateway.subscribe(envelope.sessionId, envelope.sessionToken, envelope.conversationId);
+        const control = "channel" in envelope;
+        const subscription = control
+          ? await meshHarnessGateway.subscribeControl(envelope.sessionId, envelope.sessionToken)
+          : await meshHarnessGateway.subscribe(envelope.sessionId, envelope.sessionToken, envelope.conversationId);
         const stream = createHarnessEventStream({
           subscription,
+          ...(control ? { channel: "control" as const } : {}),
           protocolVersion: envelope.protocolVersion,
           signal: req.signal,
           onObservationClosed: () => {
-            meshHarnessGateway.observationTransportClosed(envelope.sessionId, envelope.conversationId);
+            if ("channel" in envelope) meshHarnessGateway.controlTransportClosed(envelope.sessionId);
+            else meshHarnessGateway.observationTransportClosed(envelope.sessionId, envelope.conversationId);
           },
         });
         return new Response(stream, { headers: { "content-type": "application/x-ndjson", "cache-control": "no-store" } });

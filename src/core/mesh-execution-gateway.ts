@@ -22,6 +22,8 @@ import type {
 import {
   MESH_ACP_CHANNEL,
   MESH_HARNESS_CHANNEL,
+  MESH_EXECUTION_CONTROL_VERSION,
+  MESH_CONTROL_MAX_IN_FLIGHT_REQUESTS,
   MESH_EXECUTION_CHANNEL,
   MESH_EXECUTION_ASYNC_COMMAND_RETENTION_MS,
   MESH_EXECUTION_ASYNC_MAX_RETAINED_OUTPUT_BYTES,
@@ -190,11 +192,13 @@ interface MeshExecutionSession {
   ownerId?: string;
   expiresAt: number;
   environment?: Record<string, string>;
-  controlCredential?: string;
+  controlTools?: typeof MESH_EXECUTION_CONTROL_VERSION;
+  legacyControlCredential?: string;
   executor: CommandExecutor;
   requestIds: Set<string>;
   activeControllers: Set<AbortController>;
   inFlight: number;
+  controlReplies: number;
   expiryTimer?: ReturnType<typeof setTimeout>;
 }
 
@@ -809,7 +813,8 @@ export class MeshExecutionGateway {
       ownerId: request.ownerId,
       expiresAt,
       environment,
-      controlCredential: request.controlCredential,
+      controlTools: request.controlTools,
+      legacyControlCredential: request.controlCredential,
       executor: new CommandExecutorImpl({
         provider: "local",
         directory: executionRoot,
@@ -818,6 +823,7 @@ export class MeshExecutionGateway {
       requestIds: new Set(),
       activeControllers: new Set(),
       inFlight: 0,
+      controlReplies: 0,
     };
     this.sessions.set(sessionId, sessionRecord);
     this.scheduleSessionExpiry(sessionRecord);
@@ -886,7 +892,7 @@ export class MeshExecutionGateway {
   async getHarnessSessionConfig(sessionId: string, sessionToken: string): Promise<{
     callerNodeId: string; workspaceId: string; ownerId: string;
     executionNodeId: string;
-    adapter: Exclude<HarnessAdapter, "acp">; directory: string; bindingDirectory: string; environment?: Record<string, string>; controlCredential?: string;
+    adapter: Exclude<HarnessAdapter, "acp">; directory: string; bindingDirectory: string; environment?: Record<string, string>; controlTools?: typeof MESH_EXECUTION_CONTROL_VERSION; legacyControlCredential?: string;
   }> {
     const { session } = await this.requireValidatedSession(sessionId, sessionToken, {
       expectedChannel: MESH_HARNESS_CHANNEL,
@@ -903,23 +909,30 @@ export class MeshExecutionGateway {
       callerNodeId: session.callerNodeId, workspaceId: session.workspaceId, ownerId: session.ownerId,
       executionNodeId: (await ensureLocalMeshNodeIdentity()).nodeId,
       adapter: session.adapter, directory: session.directory, bindingDirectory: session.bindingDirectory, environment,
-      controlCredential: session.controlCredential,
+      controlTools: session.controlTools,
+      legacyControlCredential: session.legacyControlCredential,
     };
   }
 
-  async claimHarnessRequest(sessionId: string, sessionToken: string, requestId: string): Promise<() => void> {
+  async claimHarnessRequest(
+    sessionId: string, sessionToken: string, requestId: string, controlReply = false,
+  ): Promise<() => void> {
     const { session } = await this.requireValidatedSession(sessionId, sessionToken, {
       expectedChannel: MESH_HARNESS_CHANNEL,
       memberErrorCode: "mesh_execution_context_changed",
     });
-    if (session.inFlight >= MESH_EXECUTION_MAX_IN_FLIGHT_REQUESTS) throw new DomainError("mesh_execution_limit_exceeded", "The execution session has too many in-flight requests.");
+    if (controlReply ? session.controlReplies >= MESH_CONTROL_MAX_IN_FLIGHT_REQUESTS : session.inFlight >= MESH_EXECUTION_MAX_IN_FLIGHT_REQUESTS) {
+      throw new DomainError("mesh_execution_limit_exceeded", "The execution session has too many in-flight requests.");
+    }
     this.claimRequestId(session, requestId);
-    session.inFlight++;
+    if (controlReply) session.controlReplies++;
+    else session.inFlight++;
     let released = false;
     return (): void => {
       if (released) return;
       released = true;
-      session.inFlight--;
+      if (controlReply) session.controlReplies--;
+      else session.inFlight--;
     };
   }
 

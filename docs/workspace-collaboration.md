@@ -103,13 +103,14 @@ application control for their own project. Supported native agents manage
 project chats/tasks with their registered tools; deterministic code uses
 `ctx.clanky.call()`. Neither requires **Allow general Clanky access** or a Quick
 Chat preference. Existing `workspace.prompt()` remains bound to that
-execution's conversation. Credentials expire and are revoked when execution
-finishes; they are not unrestricted CLI/API or browser credentials.
+execution's conversation. Authority comes from the live execution source and
+account, not an injected CLI/API key. An ended source cannot authorize further
+control or pending approvals; this is not browser authority.
 
 ACP model processes receive no automatic Clanky credentials, even when general
 access is enabled; ordinary ACP chats/prompts remain supported. A deterministic
 program retains its trusted runner control independently of its prompt adapter
-and does not share the control key with ACP.
+and does not share that execution authority with ACP.
 
 When the owner enables **Allow general Clanky access** (the existing Clanky
 Context setting), the execution can additionally control in-scope resources

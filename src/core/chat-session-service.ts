@@ -22,7 +22,7 @@ import { getRegisteredSshServerId } from "@/shared/execution-host";
 import { backendManager, buildConnectionConfig } from "./backend";
 import { sshCredentialManager } from "./ssh-credential-manager";
 import { managedContextIdentityResolver } from "./managed-context-identity";
-import { managedCredentialService } from "./managed-credential-service";
+import { createExecutionControlConnection } from "./control-tool-transport";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { requireExecutionOwnerUserId } from "../context/user-context";
 import { createOwnedHarnessSession, resumeOwnedHarnessSession } from "./harness-session";
@@ -67,7 +67,7 @@ export class ChatSessionService implements ChatSessionPort {
   private readonly sshCredentialManager: Pick<typeof sshCredentialManager, "getPasswordForToken">;
   private readonly hasActiveStream: (chatId: string) => boolean;
   private readonly directChatBackends = new Map<string, Backend>();
-  private readonly connectedControlStates = new WeakMap<Backend, { controlTools: boolean; expiresAt?: number }>();
+  private readonly connectedControlStates = new WeakMap<Backend, boolean>();
   private readonly onHarnessEvent: ChatSessionServiceDependencies["onHarnessEvent"];
   private readonly onNativeSession: ChatSessionServiceDependencies["onNativeSession"];
   private readonly onNativeDisconnect: ChatSessionServiceDependencies["onNativeDisconnect"];
@@ -155,44 +155,24 @@ export class ChatSessionService implements ChatSessionPort {
     const backend = this.getChatBackend(stagedWorking.chat.config.id, workspaceId);
     const controlTools = isClankyControlChat(stagedWorking.chat, backend.harness.capabilities.adapter);
     const backendConnected = backend.isConnected();
-    const connectedControl = this.connectedControlStates.get(backend);
     const controlModeChanged = backendConnected
-      && connectedControl?.controlTools !== controlTools;
-    const controlCredentialExpired = backendConnected && controlTools
-      && (connectedControl?.expiresAt === undefined || connectedControl.expiresAt <= Date.now());
-    if (!backendConnected || backend.getDirectory() !== stagedWorking.directory || controlModeChanged || controlCredentialExpired) {
+      && this.connectedControlStates.get(backend) !== controlTools;
+    if (!backendConnected || backend.getDirectory() !== stagedWorking.directory || controlModeChanged) {
       await this.onNativeDisconnect?.(chat.config.id);
       await harnessActivityService.close({ kind: "chat", id: chat.config.id });
       await backend.disconnect();
-      const identity = await managedContextIdentityResolver.forChat(
-        stagedWorking.chat.config.id,
-        workspaceId,
-      );
-      const credential = await managedCredentialService.ensureCredentialForRuntime(
-        identity,
-        working.chat.state.session?.id ? "recreate" : "reuse",
-        { control: controlTools },
-      );
-      if (controlTools && !credential) {
-        throw new HarnessError("harness_runtime_unavailable", "Managed Clanky API credentials could not be provided to the control chat.");
-      }
-      try {
-        await backend.connect({
-          ...buildConnectionConfig(
-            await this.backendManager.getWorkspaceSettings(workspaceId),
-            stagedWorking.directory,
-          ),
-          control: credential ? { credential: credential.token } : undefined,
-          controlTools,
-        }, options.signal);
-        this.connectedControlStates.set(backend, {
-          controlTools,
-          ...(credential?.expiresAt ? { expiresAt: Date.parse(credential.expiresAt) } : {}),
-        });
-      } catch (error) {
-        await managedCredentialService.cleanupFailedLaunch(credential, error);
-        throw error;
-      }
+      const control = controlTools ? await createExecutionControlConnection(
+        await managedContextIdentityResolver.forChat(stagedWorking.chat.config.id, workspaceId),
+      ) : undefined;
+      await backend.connect({
+        ...buildConnectionConfig(
+          await this.backendManager.getWorkspaceSettings(workspaceId),
+          stagedWorking.directory,
+        ),
+        control,
+        controlTools,
+      }, options.signal);
+      this.connectedControlStates.set(backend, controlTools);
     }
 
     return backend;
@@ -443,7 +423,7 @@ export class ChatSessionService implements ChatSessionPort {
   private async sessionContext(chat: Chat, backend: Backend): Promise<Omit<HarnessConversationBinding, "adapter" | "nativeId">> {
     const controlTools = isClankyControlChat(chat, backend.harness.capabilities.adapter);
     const connectedControl = this.connectedControlStates.get(backend);
-    if (connectedControl !== undefined && connectedControl.controlTools !== controlTools) {
+    if (connectedControl !== undefined && connectedControl !== controlTools) {
       throw new HarnessError("harness_transport_closed", "The Clanky control mode changed while the chat was connected. Reconnect before continuing.");
     }
     if (controlTools && backend.harness.capabilities.clankyControlTools !== true) {

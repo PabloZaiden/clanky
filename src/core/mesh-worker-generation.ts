@@ -12,6 +12,7 @@ import { requireMeshRuntimeRole } from "./mesh-runtime";
 import { getLocalMeshProtocolMetadata } from "./mesh-protocol-version";
 import { readMeshControlResponseJson } from "./mesh-control-client";
 import { updateWorkerNegotiatedProtocolVersion } from "../persistence/mesh";
+import { MESH_EXECUTION_CONTROL_VERSION } from "@/shared/mesh-execution";
 
 export function meshWorkerGenerationSigningPayload(input: Omit<MeshWorkerProtocolDescriptor, "signature">): string {
   const payload: unknown[] = [`clanky-mesh-worker-generation-v${input.protocolVersion}`, input.nodeId, input.fingerprint, input.requestNonce, input.binaryVersion, input.supportedProtocolVersions, input.preferredProtocolVersion];
@@ -23,7 +24,7 @@ export async function describeMeshWorkerGeneration(
   versionsHeader: string | null,
   nonce: string | null,
   localVersions: readonly MeshProtocolVersion[] = MESH_SUPPORTED_PROTOCOL_VERSIONS,
-  controlTools = false,
+  controlTools?: MeshWorkerProtocolDescriptor["controlTools"],
 ): Promise<MeshWorkerProtocolDescriptor> {
   requireMeshRuntimeRole("worker");
   const selected = negotiateMeshProtocolVersion(
@@ -32,13 +33,13 @@ export async function describeMeshWorkerGeneration(
   );
   if (!selected || !nonce || nonce.length > 200) throw new DomainError("mesh_execution_protocol_mismatch", "Supported generations and a request nonce are required.");
   const identity = await ensureLocalMeshNodeIdentity();
-  const descriptor = {
+  const descriptor: Omit<MeshWorkerProtocolDescriptor, "signature"> = {
     ...meshProtocolProjection(selected),
     supportedProtocolVersions: [...localVersions],
     preferredProtocolVersion: localVersions[0]!,
     nodeId: identity.nodeId, fingerprint: identity.fingerprint, requestNonce: nonce,
     binaryVersion: getLocalMeshProtocolMetadata().binaryVersion!,
-    ...(controlTools ? { controlTools: 1 as const } : {}),
+    ...(controlTools ? { controlTools } : {}),
   };
   return { ...descriptor, signature: await signMeshPayload(meshWorkerGenerationSigningPayload(descriptor)) };
 }
@@ -58,7 +59,7 @@ export async function discoverMeshWorkerGeneration(worker: MeshWorkerRegistratio
       method: "GET", signal: controller.signal, fetch,
       headers: {
         [MESH_PROTOCOL_VERSIONS_HEADER]: serializeMeshProtocolVersions(versions), "x-clanky-mesh-request-id": nonce,
-        ...(controlTools ? { "x-clanky-mesh-control-tools": "1" } : {}),
+        ...(controlTools ? { "x-clanky-mesh-control-tools": String(MESH_EXECUTION_CONTROL_VERSION) } : {}),
       },
     });
     if (response.status === 404) {
@@ -93,8 +94,8 @@ export async function discoverMeshWorkerGeneration(worker: MeshWorkerRegistratio
       || selected !== negotiateMeshProtocolVersion(versions, descriptor.supportedProtocolVersions)
       || !verifyMeshPayloadSignature(meshWorkerGenerationSigningPayload(unsigned), signature, worker.workerPublicKey)
     ) throw new DomainError("mesh_execution_protocol_mismatch", "The worker generation descriptor is invalid.");
-    if (controlTools && descriptor.controlTools !== 1) {
-      throw new DomainError("control_unavailable", "Update the Mesh worker to support execution-owned Clanky control.");
+    if (controlTools && descriptor.controlTools !== MESH_EXECUTION_CONTROL_VERSION) {
+      throw new DomainError("control_unavailable", "Update the Mesh peers to support lease-owned Clanky control.");
     }
     await updateWorkerNegotiatedProtocolVersion({
       workerNodeId: worker.workerNodeId,

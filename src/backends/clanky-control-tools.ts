@@ -28,7 +28,7 @@ export class ClankyControlToolService {
   private readonly lifetime = new AbortController();
 
   constructor(private readonly connection: ControlToolConnection) {
-    if (!connection?.credential) {
+    if (typeof connection?.request !== "function") {
       throw new HarnessError("harness_runtime_unavailable", "Execution-owned Clanky control is unavailable.");
     }
   }

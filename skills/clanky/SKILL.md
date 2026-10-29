@@ -11,8 +11,9 @@ Use this skill when you need to operate an existing Clanky instance from a termi
 Clanky evolves over time, so prefer discovery over memorized command details. Treat the running CLI and its API/schema output as the source of truth.
 The canonical command and HTTP reference is [`docs/API.md`](../../docs/API.md).
 
-Managed agent control keys are limited, not unrestricted CLI/raw REST
-credentials. Prefer the provided native control tools or `ctx.clanky.call()`;
+Managed native and deterministic tools use execution-owned authority, not
+CLI/raw REST credentials. External control keys remain explicitly scoped.
+Prefer the provided native control tools or `ctx.clanky.call()`;
 do not treat a `403` as permission to fall back through CLI, key-management or
 session endpoints. External client setup, OAuth preregistration, service grants
 and human approval links are documented in
@@ -50,10 +51,10 @@ regardless of its model's upstream provider. Setup and restart requirements are 
 [`docs/control-chats.md`](../../docs/control-chats.md).
 
 ACP has no automatic Clanky access, even with general workspace access enabled.
-Ordinary ACP chats and prompts still work without receiving a managed control
-key. This does not disable trusted-runner `ctx.clanky.call()` for deterministic
-programs whose `workspace.prompt()` uses ACP; the runner's credential stays out
-of the ACP subprocess. Do not adapt legacy ACP CLI access as a fallback.
+Ordinary ACP chats and prompts still work without application credentials.
+This does not disable trusted-runner `ctx.clanky.call()` for deterministic
+programs whose `workspace.prompt()` uses ACP; execution authority stays outside
+the ACP subprocess. Do not adapt legacy ACP CLI access as a fallback.
 
 Prefer these tools when they are available. Cross-project work requires an
 explicit grant; delegate repository work through an authorized chat rather than
@@ -240,14 +241,17 @@ workspace references for ordinary work. Revoke the whole collaborator to remove
 all-workspaces access; per-workspace reductions do not apply.
 Deterministic programs use `ctx.clanky.call(name, input)` for direct shared
 control, with names and input types derived from canonical contracts. The
-trusted runner retains the managed credential; the program and its commands
-receive no credentials or server configuration. Authority follows the admitted
-project, never a caller-supplied workspace ID; general access needs an explicit
+controller validates the active execution owner/source and admitted grant.
+The trusted runner forwards requests without a Clanky CLI executable, API key
+or base URL; the program and its commands receive no control credentials or
+server configuration. Authority follows the admitted project, never a
+caller-supplied workspace ID; general access needs an explicit
 grant. Treat results as unknown JSON and inspect them before use.
 `confirmation_required` / `not_executed` is pending approval, not success: return
 it without autoapproval, invented browser/voice sessions, or an indefinite wait.
-Do not retry uncertain mutations automatically. The prompt bridge remains
-limited to that run's exact chat. See
+Do not retry uncertain mutations automatically. Current-conversation prompts
+use the same owned runner protocol, remain limited to that run's exact chat,
+and wait for conversation settlement rather than the control-tool deadline. See
 [deterministic execution](../../docs/API.md#deterministic-agent-execution) for
 request bounds, cancellation and the unchanged exec/prompt workflow.
 For `"read"`, inspect content, transcripts, files, Git information and realtime

@@ -27,6 +27,7 @@ import {
   validateMeshIdentityHeaders,
 } from "./shared";
 import { getLocalMeshProtocolMetadata } from "../../core/mesh-protocol-version";
+import { MESH_EXECUTION_CONTROL_VERSION } from "@/shared/mesh-execution";
 
 export const meshControlRoutes = defineRoutes({
   "/api/mesh/internal/protocol": {
@@ -40,11 +41,13 @@ export const meshControlRoutes = defineRoutes({
     tags: ["mesh", "internal", "discovery"],
     async GET(req): Promise<Response> {
       try {
+        const controlVersion = req.headers.get("x-clanky-mesh-control-tools");
         const descriptor = await describeMeshWorkerGeneration(
           req.headers.get(MESH_PROTOCOL_VERSIONS_HEADER),
           req.headers.get("x-clanky-mesh-request-id"),
           meshRequestProtocolVersions(req),
-          req.headers.get("x-clanky-mesh-control-tools") === "1",
+          controlVersion === String(MESH_EXECUTION_CONTROL_VERSION) ? MESH_EXECUTION_CONTROL_VERSION
+            : controlVersion === "1" ? 1 : undefined,
         );
         return Response.json(descriptor, { headers: {
           [MESH_PROTOCOL_VERSION_HEADER]: String(descriptor.protocolVersion),

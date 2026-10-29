@@ -6,6 +6,7 @@ import {
   MESH_EXECUTION_OPERATIONS,
   MESH_EXECUTION_MAX_RPC_TIMEOUT_MS,
   MESH_EXECUTION_MAX_RESULT_BYTES,
+  MESH_EXECUTION_CONTROL_VERSION,
 } from "@/shared/mesh-execution";
 import { MeshProtocolVersionSchema } from "./mesh-protocol";
 import { AgentProviderSchema } from "./workspace";
@@ -35,6 +36,8 @@ export const MeshExecutionSessionRequestSchema = z.object({
   adapter: z.enum(["copilot", "codex", "opencode2"]).optional(),
   ownerId: z.string().min(1).max(200).optional(),
   environment: z.record(z.string(), z.string()).optional(),
+  controlTools: z.literal(MESH_EXECUTION_CONTROL_VERSION).optional(),
+  // v1 controllers only; retained by the isolated rollout adapter.
   controlCredential: z.string().min(1).max(4096).optional(),
   nonce: z.string().trim().min(1).max(200),
   expiresAt: z.string().datetime(),
@@ -42,6 +45,12 @@ export const MeshExecutionSessionRequestSchema = z.object({
 }).superRefine((value, ctx) => {
   if (value.channel === MESH_HARNESS_CHANNEL && (!value.adapter || !value.ownerId)) {
     ctx.addIssue({ code: "custom", path: ["channel"], message: "Native sessions require adapter and owner." });
+  }
+  if ((value.controlTools !== undefined || value.controlCredential !== undefined) && value.channel !== MESH_HARNESS_CHANNEL) {
+    ctx.addIssue({ code: "custom", path: ["controlTools"], message: "Execution control requires a native harness lease." });
+  }
+  if (value.controlTools !== undefined && value.controlCredential !== undefined) {
+    ctx.addIssue({ code: "custom", path: ["controlTools"], message: "An execution must select exactly one control protocol." });
   }
 });
 

@@ -1,6 +1,5 @@
 import { z } from "zod";
 import { ControlToolInvocationSchema } from "./control";
-import { MeshProtocolVersionSchema } from "./mesh-protocol";
 
 export const ControlToolRequestSchema = z.discriminatedUnion("operation", [
   z.object({ operation: z.literal("list"), chatId: z.string().min(1).max(500).optional() }).strict(),
@@ -10,10 +9,18 @@ export const ControlToolRequestSchema = z.discriminatedUnion("operation", [
 ]);
 export type ControlToolRequest = z.infer<typeof ControlToolRequestSchema>;
 
-export const MeshControlToolRequestSchema = z.object({
-  protocolVersion: MeshProtocolVersionSchema,
-  requestId: z.string().uuid(),
-  workerNodeId: z.string().min(1).max(200),
-  credential: z.string().min(1).max(4096),
-  request: ControlToolRequestSchema,
+export const ControlToolFailureSchema = z.object({
+  ok: z.literal(false),
+  completion: z.enum(["not_executed", "outcome_unknown"]),
+  error: z.object({
+    code: z.string().regex(/^[a-z][a-z0-9_]{0,100}$/),
+    message: z.string().min(1).max(1000),
+  }).strict(),
 }).strict();
+export type ControlToolFailure = z.infer<typeof ControlToolFailureSchema>;
+
+export const ControlToolReplySchema = z.union([
+  z.object({ ok: z.literal(true), result: z.unknown() }).strict(),
+  ControlToolFailureSchema,
+]);
+export type ControlToolReply = z.infer<typeof ControlToolReplySchema>;
